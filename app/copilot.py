@@ -130,8 +130,8 @@ class CopilotClient:
         await self.client.aclose()
 
     async def validate_model(self) -> dict | None:
-        base_url = self.config.api_url.split("/chat/completions")[0]
-        models_url = base_url + "/models"
+        base_url = self.config.api_url.split("/inference")[0]
+        models_url = base_url + "/catalog/models"
         try:
             response = await self.client.get(models_url)
             response.raise_for_status()

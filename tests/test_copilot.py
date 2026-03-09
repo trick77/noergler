@@ -129,7 +129,7 @@ class TestCopilotClient:
             ]
         }
 
-        respx.get("https://models.github.ai/inference/models").mock(
+        respx.get("https://models.github.ai/catalog/models").mock(
             return_value=httpx.Response(200, json=models_response)
         )
 
@@ -146,7 +146,7 @@ class TestCopilotClient:
     async def test_validate_model_not_found(self, copilot_config, review_config):
         models_response = {"data": [{"id": "other-model"}]}
 
-        respx.get("https://models.github.ai/inference/models").mock(
+        respx.get("https://models.github.ai/catalog/models").mock(
             return_value=httpx.Response(200, json=models_response)
         )
 
