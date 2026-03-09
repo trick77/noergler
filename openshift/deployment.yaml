@@ -2,9 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nitpick
-  annotations:
-    image.openshift.io/triggers: >-
-      [{"from":{"kind":"ImageStreamTag","name":"nitpick:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"nitpick\")].image"}]
 spec:
   replicas: 1
   selector:
@@ -17,7 +14,7 @@ spec:
     spec:
       containers:
         - name: nitpick
-          image: nitpick:latest
+          image: registry.example.com/nitpick/nitpick:latest
           ports:
             - containerPort: 8080
           envFrom:

@@ -4,6 +4,7 @@
 
 - `oc` CLI installed and logged in to the cluster
 - A project/namespace to deploy into
+- Access to a container registry (replace `registry.example.com/nitpick` below with your actual registry and namespace)
 
 ## 1. Create project
 
@@ -28,15 +29,20 @@ oc create secret generic nitpick \
 oc apply -f openshift/
 ```
 
-## 4. Build the image
+## 4. Build and push the image
 
-From the repository root:
+From the repository root, build the container image and push it to your registry:
 
 ```bash
-oc start-build nitpick --from-dir=. --follow
+podman build -t registry.example.com/nitpick/nitpick:latest -f Containerfile .
+podman push registry.example.com/nitpick/nitpick:latest
 ```
 
-The build uploads the repo contents to the cluster which builds the image using the `Containerfile`. The deployment rolls out automatically when the build completes.
+Then restart the deployment to pick up the new image:
+
+```bash
+oc rollout restart deploy/nitpick
+```
 
 ## 5. Verify
 
@@ -64,10 +70,10 @@ oc get route nitpick -o jsonpath='{.spec.host}'
 
 ## Rebuilding
 
-After code changes, trigger a new build:
+After code changes, build and push the updated image:
 
 ```bash
-oc start-build nitpick --from-dir=. --follow
+podman build -t registry.example.com/nitpick/nitpick:latest -f Containerfile .
+podman push registry.example.com/nitpick/nitpick:latest
+oc rollout restart deploy/nitpick
 ```
-
-The deployment rolls out the new image automatically.
