@@ -22,7 +22,24 @@ export BITBUCKET_WEBHOOK_SECRET="..."
 export GITHUB_TOKEN="..."   # GitHub Copilot token
 ```
 
-Edit `config.yaml` to set your Bitbucket base URL, Copilot model, and allowed PR authors.
+Edit `config.yaml` to set your Bitbucket base URL, Copilot model, and allowed PR authors:
+
+```yaml
+bitbucket:
+  base_url: "https://bitbucket.company.com"
+  token: "${BITBUCKET_TOKEN}"
+  webhook_secret: "${BITBUCKET_WEBHOOK_SECRET}"
+
+copilot:
+  model: "gpt-4.1"
+  github_token: "${GITHUB_TOKEN}"
+
+review:
+  allowed_authors:
+    - "your.username"
+```
+
+Only PRs by authors listed in `allowed_authors` will be reviewed; all others are ignored.
 
 ## Run
 
@@ -35,6 +52,27 @@ Or with a container:
 ```bash
 podman build -t bitbucket-review -f Containerfile .
 podman run -p 8080:8080 --env-file .env bitbucket-review
+```
+
+Or with Compose — create a `compose.yaml`:
+
+```yaml
+services:
+  nitpick:
+    build:
+      context: .
+      dockerfile: Containerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - BITBUCKET_TOKEN=${BITBUCKET_TOKEN}
+      - BITBUCKET_WEBHOOK_SECRET=${BITBUCKET_WEBHOOK_SECRET}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    restart: unless-stopped
+```
+
+```bash
+docker compose up -d
 ```
 
 ## Configure Bitbucket webhook
