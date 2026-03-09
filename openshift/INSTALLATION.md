@@ -49,7 +49,7 @@ oc rollout restart deploy/nitpick
 ```bash
 oc get pods
 oc logs deploy/nitpick
-curl https://$(oc get route nitpick -o jsonpath='{.spec.host}')/health
+curl https://nitpick.example.com/health
 ```
 
 Expected health response: `{"status": "ok"}`
@@ -59,14 +59,10 @@ Expected health response: `{"status": "ok"}`
 In Bitbucket Server, add a webhook pointing to:
 
 ```
-https://<route-host>/webhook
+https://nitpick.example.com/webhook
 ```
 
-The route host can be retrieved with:
-
-```bash
-oc get route nitpick -o jsonpath='{.spec.host}'
-```
+Create the route manually before configuring the webhook.
 
 ## Rebuilding
 
