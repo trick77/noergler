@@ -1,6 +1,6 @@
 # Bitbucket PR Auto-Review Bridge
 
-[![Tests](https://github.com/trick77/nitpick/actions/workflows/test.yml/badge.svg)](https://github.com/trick77/nitpick/actions/workflows/test.yml)
+[![Tests](https://github.com/trick77/nitpick/actions/workflows/test.yml/badge.svg)](https://github.com/trick77/nitpick/actions/workflows/test.yml) ![Python 3.12](https://img.shields.io/badge/python-3.12-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
 Automatically reviews pull requests on Bitbucket Server using the GitHub Models API. Reviews trigger only for configured usernames.
 
