@@ -19,7 +19,8 @@ class CopilotConfig(BaseModel):
 
 class ReviewConfig(BaseModel):
     allowed_authors: list[str] = []
-    max_files_per_request: int = 10
+    max_comments: int = 25
+    max_lines_per_file: int = 1000
     review_prompt_template: str = "prompts/review.txt"
 
     @field_validator("allowed_authors", mode="before")
@@ -65,7 +66,8 @@ def load_config() -> AppConfig:
         ),
         review=ReviewConfig(
             allowed_authors=_env("REVIEW_ALLOWED_AUTHORS", ""),
-            max_files_per_request=int(_env("REVIEW_MAX_FILES", "10")),
+            max_comments=int(_env("REVIEW_MAX_COMMENTS", "25")),
+            max_lines_per_file=int(_env("REVIEW_MAX_LINES_PER_FILE", "1000")),
             review_prompt_template=_env("REVIEW_PROMPT_TEMPLATE", "prompts/review.txt"),
         ),
         server=ServerConfig(

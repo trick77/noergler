@@ -31,7 +31,10 @@ async def lifespan(app: FastAPI):
     bitbucket_client = BitbucketClient(config.bitbucket)
     copilot_client = CopilotClient(config.copilot, config.review)
     reviewer = Reviewer(
-        bitbucket_client, copilot_client, config.review.allowed_authors
+        bitbucket_client,
+        copilot_client,
+        config.review.allowed_authors,
+        max_comments=config.review.max_comments,
     )
 
     await copilot_client.validate_model()

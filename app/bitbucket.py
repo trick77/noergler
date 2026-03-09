@@ -8,6 +8,8 @@ from app.models import ReviewFinding
 
 logger = logging.getLogger(__name__)
 
+NITPICK_MARKER = "<!-- nitpick -->"
+
 
 class BitbucketClient:
     def __init__(self, config: BitbucketConfig):
@@ -55,22 +57,49 @@ class BitbucketClient:
     ) -> None:
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{pr_id}/comments"
         payload = {
-            "text": f"**[{finding.severity.upper()}]** {finding.comment}",
+            "text": f"{NITPICK_MARKER}\n**[{finding.severity.upper()}]** {finding.comment}",
             "anchor": {
                 "path": finding.file,
                 "line": finding.line,
                 "lineType": "ADDED",
-                "diffType": "EFFECTIVE",
+                "fileType": "TO",
             },
         }
         response = await self.client.post(url, json=payload)
         response.raise_for_status()
-        logger.info("Posted inline comment on %s:%d", finding.file, finding.line)
+        logger.debug("Posted inline comment on %s:%d", finding.file, finding.line)
 
     async def post_pr_comment(
         self, project: str, repo: str, pr_id: int, text: str
     ) -> None:
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{pr_id}/comments"
-        response = await self.client.post(url, json={"text": text})
+        response = await self.client.post(url, json={"text": f"{NITPICK_MARKER}\n{text}"})
         response.raise_for_status()
-        logger.info("Posted summary comment on PR %d", pr_id)
+        logger.debug("Posted summary comment on PR %d", pr_id)
+
+    async def fetch_pr_comments(
+        self, project: str, repo: str, pr_id: int
+    ) -> list[dict]:
+        """Fetch all PR activity comments and return dicts with text, path, line."""
+        comments: list[dict] = []
+        start = 0
+        while True:
+            url = f"/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{pr_id}/activities"
+            response = await self.client.get(url, params={"start": start, "limit": 1000})
+            response.raise_for_status()
+            data = response.json()
+            for activity in data.get("values", []):
+                if activity.get("action") != "COMMENTED":
+                    continue
+                comment = activity.get("comment", {})
+                text = comment.get("text", "")
+                anchor = comment.get("anchor") or activity.get("commentAnchor") or {}
+                comments.append({
+                    "text": text,
+                    "path": anchor.get("path"),
+                    "line": anchor.get("line"),
+                })
+            if data.get("isLastPage", True):
+                break
+            start = data.get("nextPageStart", start + 1000)
+        return comments

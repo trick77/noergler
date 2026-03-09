@@ -2,8 +2,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.bitbucket import NITPICK_MARKER
 from app.models import ReviewFinding, WebhookPayload
-from app.reviewer import Reviewer
+from app.reviewer import Reviewer, _deduplicate, _sort_and_limit
 
 
 def _make_payload(author: str = "jan.username") -> WebhookPayload:
@@ -182,6 +183,8 @@ def _make_real_payload() -> WebhookPayload:
 def mock_bitbucket():
     client = AsyncMock()
     client.fetch_pr_diff = AsyncMock(return_value="diff --git a/file.py b/file.py\n+hello\n")
+    client.fetch_file_content = AsyncMock(side_effect=Exception("not found"))
+    client.fetch_pr_comments = AsyncMock(return_value=[])
     client.post_inline_comment = AsyncMock()
     client.post_pr_comment = AsyncMock()
     return client
@@ -268,5 +271,102 @@ class TestReviewer:
 
         mock_bitbucket.fetch_pr_diff.assert_called_once_with("~USERNAME", "test", 1)
         mock_copilot.review_diff.assert_called_once()
+        mock_bitbucket.post_inline_comment.assert_called_once()
+        mock_bitbucket.post_pr_comment.assert_called_once()
+
+
+class TestDedupAndLimit:
+    def test_findings_limited_to_max_comments(self):
+        findings = [
+            ReviewFinding(file=f"f{i}.py", line=i, severity="warning", comment=f"issue {i}")
+            for i in range(30)
+        ]
+        limited, truncated = _sort_and_limit(findings, max_comments=5)
+        assert len(limited) == 5
+        assert truncated is True
+
+    def test_no_truncation_when_under_limit(self):
+        findings = [
+            ReviewFinding(file="a.py", line=1, severity="warning", comment="issue"),
+        ]
+        limited, truncated = _sort_and_limit(findings, max_comments=25)
+        assert len(limited) == 1
+        assert truncated is False
+
+    def test_findings_sorted_by_severity(self):
+        findings = [
+            ReviewFinding(file="a.py", line=1, severity="info", comment="info"),
+            ReviewFinding(file="b.py", line=2, severity="error", comment="err"),
+            ReviewFinding(file="c.py", line=3, severity="warning", comment="warn"),
+        ]
+        sorted_findings, _ = _sort_and_limit(findings, max_comments=25)
+        assert [f.severity for f in sorted_findings] == ["error", "warning", "info"]
+
+    def test_dedup_skips_existing_nitpick_comments(self):
+        findings = [
+            ReviewFinding(file="a.py", line=10, severity="error", comment="bug"),
+            ReviewFinding(file="b.py", line=20, severity="warning", comment="style"),
+        ]
+        existing = [
+            {"text": f"{NITPICK_MARKER}\n**[ERROR]** bug", "path": "a.py", "line": 10},
+        ]
+        result = _deduplicate(findings, existing)
+        assert len(result) == 1
+        assert result[0].file == "b.py"
+
+    def test_dedup_ignores_human_comments(self):
+        findings = [
+            ReviewFinding(file="a.py", line=10, severity="error", comment="bug"),
+        ]
+        existing = [
+            {"text": "**[ERROR]** bug", "path": "a.py", "line": 10},
+        ]
+        result = _deduplicate(findings, existing)
+        assert len(result) == 1
+
+    def test_dedup_ignores_different_severity(self):
+        findings = [
+            ReviewFinding(file="a.py", line=10, severity="warning", comment="style"),
+        ]
+        existing = [
+            {"text": f"{NITPICK_MARKER}\n**[ERROR]** bug", "path": "a.py", "line": 10},
+        ]
+        result = _deduplicate(findings, existing)
+        assert len(result) == 1
+
+    @pytest.fixture
+    def reviewer(self, mock_bitbucket, mock_copilot):
+        return Reviewer(mock_bitbucket, mock_copilot, allowed_authors=["jan.username"])
+
+    def test_build_summary_truncated(self, reviewer):
+        findings = [
+            ReviewFinding(file="a.py", line=1, severity="error", comment="err"),
+            ReviewFinding(file="b.py", line=2, severity="warning", comment="warn"),
+        ]
+        summary = reviewer._build_summary(findings, truncated=True)
+        assert "2 issue(s) found" in summary
+        assert "Additional findings were omitted" in summary
+
+    @pytest.mark.asyncio
+    async def test_findings_limited_in_review(self, mock_bitbucket, mock_copilot):
+        mock_copilot.review_diff.return_value = [
+            ReviewFinding(file=f"f{i}.py", line=i, severity="warning", comment=f"issue {i}")
+            for i in range(30)
+        ]
+        rev = Reviewer(mock_bitbucket, mock_copilot, allowed_authors=["jan.username"], max_comments=5)
+        payload = _make_payload("jan.username")
+        await rev.review_pull_request(payload)
+
+        assert mock_bitbucket.post_inline_comment.call_count == 5
+        summary_text = mock_bitbucket.post_pr_comment.call_args[0][3]
+        assert "Additional findings were omitted" in summary_text
+
+    @pytest.mark.asyncio
+    async def test_dedup_graceful_on_fetch_failure(self, mock_bitbucket, mock_copilot):
+        mock_bitbucket.fetch_pr_comments.side_effect = Exception("API error")
+        rev = Reviewer(mock_bitbucket, mock_copilot, allowed_authors=["jan.username"])
+        payload = _make_payload("jan.username")
+        await rev.review_pull_request(payload)
+
         mock_bitbucket.post_inline_comment.assert_called_once()
         mock_bitbucket.post_pr_comment.assert_called_once()

@@ -2,7 +2,7 @@ import httpx
 import pytest
 import respx
 
-from app.bitbucket import BitbucketClient
+from app.bitbucket import NITPICK_MARKER, BitbucketClient
 from app.config import BitbucketConfig
 from app.models import ReviewFinding
 
@@ -69,4 +69,92 @@ class TestBitbucketClient:
         ).mock(return_value=httpx.Response(201, json={"id": 2}))
 
         await client.post_pr_comment("PROJ", "my-repo", 1, "Review summary")
+        await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_post_inline_comment_includes_marker(self, client):
+        route = respx.post(
+            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/comments"
+        ).mock(return_value=httpx.Response(201, json={"id": 1}))
+
+        finding = ReviewFinding(
+            file="src/main.py", line=10, severity="error", comment="Bug here"
+        )
+        await client.post_inline_comment("PROJ", "my-repo", 1, finding, "abc123")
+
+        body = route.calls[0].request.content.decode()
+        assert NITPICK_MARKER in body
+        await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_fetch_pr_comments(self, client):
+        activities_response = {
+            "values": [
+                {
+                    "action": "COMMENTED",
+                    "comment": {
+                        "text": f"{NITPICK_MARKER}\n**[ERROR]** bug",
+                        "anchor": {"path": "a.py", "line": 10},
+                    },
+                },
+                {
+                    "action": "APPROVED",
+                },
+                {
+                    "action": "COMMENTED",
+                    "comment": {
+                        "text": "Human comment",
+                    },
+                },
+            ],
+            "isLastPage": True,
+        }
+        respx.get(
+            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/activities"
+        ).mock(return_value=httpx.Response(200, json=activities_response))
+
+        comments = await client.fetch_pr_comments("PROJ", "my-repo", 1)
+        assert len(comments) == 2
+        assert comments[0]["path"] == "a.py"
+        assert comments[0]["line"] == 10
+        assert NITPICK_MARKER in comments[0]["text"]
+        assert comments[1]["text"] == "Human comment"
+        await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_fetch_pr_comments_pagination(self, client):
+        page1 = {
+            "values": [
+                {
+                    "action": "COMMENTED",
+                    "comment": {"text": "comment1", "anchor": {"path": "a.py", "line": 1}},
+                },
+            ],
+            "isLastPage": False,
+            "nextPageStart": 1000,
+        }
+        page2 = {
+            "values": [
+                {
+                    "action": "COMMENTED",
+                    "comment": {"text": "comment2", "anchor": {"path": "b.py", "line": 2}},
+                },
+            ],
+            "isLastPage": True,
+        }
+        route = respx.get(
+            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/activities"
+        ).mock(side_effect=[
+            httpx.Response(200, json=page1),
+            httpx.Response(200, json=page2),
+        ])
+
+        comments = await client.fetch_pr_comments("PROJ", "my-repo", 1)
+        assert len(comments) == 2
+        assert comments[0]["path"] == "a.py"
+        assert comments[1]["path"] == "b.py"
+        assert route.call_count == 2
         await client.close()
