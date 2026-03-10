@@ -20,7 +20,7 @@ TONE_PRESETS = {
         "doing a code review. Keep it natural: if a line doesn't lend itself to humour, just "
         "be clear and concise. Never be sarcastic, condescending, or passive-aggressive."
     ),
-    "grumpy": (
+    "ramsay": (
         "**Tone:** Be brutally condescending. You are a world-class 10x engineer who cannot "
         "believe they have to review this code. Express visible disappointment, exasperation, "
         "and disbelief. Use sarcasm, rhetorical questions, and backhanded compliments. "
