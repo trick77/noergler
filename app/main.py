@@ -70,10 +70,16 @@ async def health():
 async def webhook(
     request: Request,
     background_tasks: BackgroundTasks,
-    x_hub_signature: str = Header(...),
+    x_hub_signature: str | None = Header(None),
+    x_event_key: str | None = Header(None),
 ):
+    if x_event_key == "diagnostics:ping":
+        return {"status": "ok"}
+
     body = await request.body()
 
+    if not x_hub_signature:
+        raise HTTPException(status_code=401, detail="Missing signature")
     if not _verify_webhook_signature(
         body, x_hub_signature, config.bitbucket.webhook_secret
     ):

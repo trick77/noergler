@@ -31,77 +31,80 @@ class Reviewer:
         return author_name in self.allowed_authors
 
     async def review_pull_request(self, payload: WebhookPayload) -> None:
-        pr = payload.pullRequest
-        author_name = pr.author.user.name
-        pr_id = pr.id
-
-        project_key, repo_slug = self._extract_project_repo(payload)
-        if not project_key or not repo_slug:
-            logger.error("Could not extract project/repo from webhook payload")
-            return
-
-        if not self.is_author_allowed(author_name):
-            logger.info(
-                "Skipping PR %d by %s (not in allowed authors)", pr_id, author_name
-            )
-            return
-
-        logger.info("Starting review of PR %d by %s", pr_id, author_name)
-        t0 = time.monotonic()
-
-        diff = await self.bitbucket.fetch_pr_diff(
-            project_key, repo_slug, pr_id, context_lines=self.context_lines
-        )
-        if not diff.strip():
-            logger.info("PR %d has empty diff, skipping", pr_id)
-            return
-
-        repo_instructions = await self._fetch_repo_instructions(
-            project_key, repo_slug, pr
-        )
-
-        findings = await self.copilot.review_diff(diff, repo_instructions)
-
-        existing = await self._fetch_existing_comments(project_key, repo_slug, pr_id)
-        findings = _deduplicate(findings, existing)
-        findings, truncated = _sort_and_limit(findings, self.max_comments)
-
-        to_commit = pr.fromRef.latestCommit or ""
-
-        posted = 0
-        failed = 0
-        for finding in findings:
-            try:
-                await self.bitbucket.post_inline_comment(
-                    project_key, repo_slug, pr_id, finding, to_commit
-                )
-                posted += 1
-            except Exception:
-                failed += 1
-                logger.error(
-                    "Failed to post inline comment on %s:%d",
-                    finding.file,
-                    finding.line,
-                    exc_info=True,
-                )
-
-        summary = self._build_summary(findings, truncated)
         try:
-            await self.bitbucket.post_pr_comment(
-                project_key, repo_slug, pr_id, summary
-            )
-        except Exception:
-            logger.error("Failed to post summary comment", exc_info=True)
+            pr = payload.pullRequest
+            author_name = pr.author.user.name
+            pr_id = pr.id
 
-        elapsed = time.monotonic() - t0
-        parts = [
-            f"Review of PR {pr_id} completed in {elapsed:.1f}s",
-            f"{len(findings)} issue{'s' if len(findings) != 1 else ''}",
-            f"{posted} comment{'s' if posted != 1 else ''} posted",
-        ]
-        if failed:
-            parts.append(f"{failed} failed")
-        logger.info(" — ".join(parts))
+            project_key, repo_slug = self._extract_project_repo(payload)
+            if not project_key or not repo_slug:
+                logger.error("Could not extract project/repo from webhook payload")
+                return
+
+            if not self.is_author_allowed(author_name):
+                logger.info(
+                    "Skipping PR %d by %s (not in allowed authors)", pr_id, author_name
+                )
+                return
+
+            logger.info("Starting review of PR %d by %s", pr_id, author_name)
+            t0 = time.monotonic()
+
+            diff = await self.bitbucket.fetch_pr_diff(
+                project_key, repo_slug, pr_id, context_lines=self.context_lines
+            )
+            if not diff.strip():
+                logger.info("PR %d has empty diff, skipping", pr_id)
+                return
+
+            repo_instructions = await self._fetch_repo_instructions(
+                project_key, repo_slug, pr
+            )
+
+            findings = await self.copilot.review_diff(diff, repo_instructions)
+
+            existing = await self._fetch_existing_comments(project_key, repo_slug, pr_id)
+            findings = _deduplicate(findings, existing)
+            findings, truncated = _sort_and_limit(findings, self.max_comments)
+
+            to_commit = pr.fromRef.latestCommit or ""
+
+            posted = 0
+            failed = 0
+            for finding in findings:
+                try:
+                    await self.bitbucket.post_inline_comment(
+                        project_key, repo_slug, pr_id, finding, to_commit
+                    )
+                    posted += 1
+                except Exception:
+                    failed += 1
+                    logger.error(
+                        "Failed to post inline comment on %s:%d",
+                        finding.file,
+                        finding.line,
+                        exc_info=True,
+                    )
+
+            summary = self._build_summary(findings, truncated)
+            try:
+                await self.bitbucket.post_pr_comment(
+                    project_key, repo_slug, pr_id, summary
+                )
+            except Exception:
+                logger.error("Failed to post summary comment", exc_info=True)
+
+            elapsed = time.monotonic() - t0
+            parts = [
+                f"Review of PR {pr_id} completed in {elapsed:.1f}s",
+                f"{len(findings)} issue{'s' if len(findings) != 1 else ''}",
+                f"{posted} comment{'s' if posted != 1 else ''} posted",
+            ]
+            if failed:
+                parts.append(f"{failed} failed")
+            logger.info(" — ".join(parts))
+        except Exception:
+            logger.error("Review failed for PR", exc_info=True)
 
     def _extract_project_repo(
         self, payload: WebhookPayload

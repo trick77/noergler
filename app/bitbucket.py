@@ -76,6 +76,11 @@ class BitbucketClient:
             response = await self.client.post(url, json=payload)
             if response.status_code != 400:
                 break
+        if response.status_code == 400:
+            logger.warning(
+                "Inline comment rejected for %s:%d — %s",
+                finding.file, finding.line, response.text,
+            )
         response.raise_for_status()
         logger.debug("Posted inline comment on %s:%d", finding.file, finding.line)
 
