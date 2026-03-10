@@ -55,6 +55,9 @@ def _verify_webhook_signature(body: bytes, signature: str, secret: str) -> bool:
     expected = hmac.new(
         secret.encode(), body, hashlib.sha256
     ).hexdigest()
+    # Bitbucket sends "sha256=<hex>" — strip the prefix before comparing
+    if signature.startswith("sha256="):
+        signature = signature[len("sha256="):]
     return hmac.compare_digest(expected, signature)
 
 
@@ -67,15 +70,14 @@ async def health():
 async def webhook(
     request: Request,
     background_tasks: BackgroundTasks,
-    x_hub_signature: str | None = Header(None),
+    x_hub_signature: str = Header(...),
 ):
     body = await request.body()
 
-    if config.bitbucket.webhook_secret and x_hub_signature:
-        if not _verify_webhook_signature(
-            body, x_hub_signature, config.bitbucket.webhook_secret
-        ):
-            raise HTTPException(status_code=401, detail="Invalid signature")
+    if not _verify_webhook_signature(
+        body, x_hub_signature, config.bitbucket.webhook_secret
+    ):
+        raise HTTPException(status_code=401, detail="Invalid signature")
 
     payload_json = await request.json()
 

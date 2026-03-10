@@ -7,7 +7,7 @@ from pydantic import BaseModel, field_validator
 class BitbucketConfig(BaseModel):
     base_url: str
     token: str
-    webhook_secret: str = ""
+    webhook_secret: str
 
 
 class CopilotConfig(BaseModel):
@@ -57,7 +57,7 @@ def load_config() -> AppConfig:
         bitbucket=BitbucketConfig(
             base_url=_env("BITBUCKET_URL"),
             token=_env("BITBUCKET_TOKEN"),
-            webhook_secret=_env("BITBUCKET_WEBHOOK_SECRET", ""),
+            webhook_secret=_env("BITBUCKET_WEBHOOK_SECRET"),
         ),
         copilot=CopilotConfig(
             model=_env("COPILOT_MODEL", "openai/gpt-4.1"),

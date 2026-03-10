@@ -16,7 +16,7 @@ cp .env.example .env
 |---|---|---|---|
 | `BITBUCKET_URL` | Yes | — | Bitbucket Server base URL |
 | `BITBUCKET_TOKEN` | Yes | — | Bitbucket Server API token |
-| `BITBUCKET_WEBHOOK_SECRET` | No | — | Webhook HMAC secret for signature validation |
+| `BITBUCKET_WEBHOOK_SECRET` | Yes | — | Webhook HMAC secret for signature validation (see below) |
 | `GITHUB_TOKEN` | Yes | — | GitHub fine-grained access token with `models:read` scope |
 | `REVIEW_ALLOWED_AUTHORS` | Yes | — | Comma-separated list of Bitbucket usernames to review |
 | `REVIEW_CONTEXT_LINES` | No | `20` | Lines of context around each diff hunk |
@@ -52,7 +52,20 @@ podman compose up -d
 
 ## Configure Bitbucket webhook
 
-Point a PR webhook at `http://<host>:8080/webhook` with events: `pr:opened`, `pr:modified`.
+1. Generate a webhook secret:
+
+   ```bash
+   openssl rand -hex 32
+   ```
+
+2. Set the generated value as `BITBUCKET_WEBHOOK_SECRET` in your `.env` file.
+
+3. In Bitbucket Server, go to **Repository settings → Webhooks → Create webhook**:
+   - **URL:** `http://<host>:8080/webhook`
+   - **Secret:** paste the same secret from step 1
+   - **Events:** `pr:opened`, `pr:modified`
+
+All webhook requests must include a valid `X-Hub-Signature` header (HMAC-SHA256). Requests with missing or invalid signatures are rejected.
 
 ## Health check
 
