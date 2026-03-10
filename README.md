@@ -16,6 +16,15 @@ Brings automated AI code review to on-premise Bitbucket Server installations. Re
 4. **AI review** — Files are grouped into token-aware chunks and sent to the GitHub Models API with a structured review prompt. Each chunk is reviewed independently.
 5. **Post results** — Findings are deduplicated against existing Noergler comments, sorted by severity (errors first), capped at the configured limit, and posted as inline comments. A summary comment is added to the PR.
 
+## Interacting with Noergler
+
+Besides automatic reviews on PR open/modify, you can mention Noergler in any PR comment:
+
+- **Ask a question** — `@noergler Why was this endpoint changed?` — Noergler replies to your comment with an answer based on the PR diff.
+- **Trigger a full review** — `@noergler review` — Runs a full review as if the PR was just opened. Also triggered by `@noergler` with no text, `re-review`, or `rereview`.
+
+The mention trigger name defaults to `noergler` and can be changed via `REVIEW_MENTION_TRIGGER`.
+
 ## Quick start
 
 1. Copy `.env.example` to `.env` and fill in the required values:
@@ -55,6 +64,8 @@ All configuration is driven by environment variables.
 | `REVIEW_MAX_COMMENTS` | No | `25` | Maximum inline comments per review |
 | `REVIEW_MAX_LINES_PER_FILE` | No | `1000` | Skip files exceeding this line count |
 | `REVIEW_PROMPT_TEMPLATE` | No | `prompts/review.txt` | Path to the review prompt template |
+| `REVIEW_MENTION_TRIGGER` | No | `noergler` | Trigger name for mention-based interactions (used as `@<trigger>` in PR comments) |
+| `REVIEW_MENTION_PROMPT_TEMPLATE` | No | `prompts/mention.txt` | Path to the mention Q&A prompt template |
 | `COPILOT_MODEL` | No | `openai/gpt-4.1` | Model ID for the GitHub Models API |
 | `COPILOT_API_URL` | No | `https://models.github.ai/inference/chat/completions` | GitHub Models API endpoint |
 | `COPILOT_MAX_TOKENS` | No | `80000` | Max tokens per diff chunk sent to the model |
@@ -74,7 +85,7 @@ All configuration is driven by environment variables.
 3. In Bitbucket Server, go to **Repository settings > Webhooks > Create webhook**:
    - **URL:** `https://<host>:8080/webhook`
    - **Secret:** paste the same secret from step 1
-   - **Events:** `pr:opened`, `pr:modified`
+   - **Events:** `pr:opened`, `pr:modified`, `pr:comment:added`
 
 All webhook requests must include a valid `X-Hub-Signature` header (HMAC-SHA256). Requests with missing or invalid signatures are rejected.
 
@@ -126,6 +137,7 @@ app/
   config.py        # Environment-based configuration
 prompts/
   review.txt       # Review prompt template
+  mention.txt      # Mention Q&A prompt template
 openshift/         # OpenShift/K8s deployment manifests
 certs/             # Custom CA certificates (optional)
 tests/             # pytest test suite
