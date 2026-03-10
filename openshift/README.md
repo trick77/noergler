@@ -16,11 +16,9 @@ oc new-project noergler
 
 ```bash
 oc create secret generic noergler \
-  --from-literal=BITBUCKET_URL=https://bitbucket.company.com \
   --from-literal=BITBUCKET_TOKEN=<your-token> \
   --from-literal=BITBUCKET_WEBHOOK_SECRET=<your-secret> \
-  --from-literal=GITHUB_TOKEN=<your-token> \
-  --from-literal=REVIEW_ALLOWED_AUTHORS=user1,user2
+  --from-literal=GITHUB_TOKEN=<your-token>
 ```
 
 ## 3. Apply manifests

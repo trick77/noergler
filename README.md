@@ -22,7 +22,7 @@ Brings automated AI code review to on-premise Bitbucket Server installations. Re
    cp .env.example .env
    ```
 
-2. Build and run with Podman Compose:
+2. Build and run with Podman Compose (no pre-built image is published):
 
    ```bash
    podman compose up -d
