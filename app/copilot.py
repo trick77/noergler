@@ -66,6 +66,14 @@ SKIP_EXTENSIONS = frozenset({
     # Data / config that rarely benefits from code review
     ".json", ".lock", ".min.js", ".min.css",
     ".map",
+    # Build / config files
+    ".xml", ".bat", ".cmd", ".properties",
+})
+
+SKIP_FILES = frozenset({"gradlew", "mvnw"})
+
+SKIP_DIRS = frozenset({
+    "target", "build", "node_modules", "dist", "__pycache__",
 })
 
 _DIFF_PATH_RE = re.compile(
@@ -82,6 +90,12 @@ def is_reviewable_diff(file_diff: str) -> bool:
     if "binary files" in file_diff[:500].lower() and "differ" in file_diff[:500].lower():
         return False
     if any(path.endswith(ext) for ext in SKIP_EXTENSIONS):
+        return False
+    parts = path.split("/")
+    basename = parts[-1]
+    if basename in SKIP_FILES:
+        return False
+    if any(p in SKIP_DIRS or p.startswith(".") for p in parts[:-1]):
         return False
     return True
 

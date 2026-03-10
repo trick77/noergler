@@ -112,6 +112,29 @@ class TestIsReviewableDiff:
         diff = "diff --git src://assets/image.png dst://assets/image.png\n+binary\n"
         assert not is_reviewable_diff(diff)
 
+    def test_build_config_extensions_skipped(self):
+        for ext in [".xml", ".bat", ".cmd", ".properties"]:
+            diff = f"diff --git a/some/file{ext} b/some/file{ext}\n+content\n"
+            assert not is_reviewable_diff(diff), f"{ext} should be skipped"
+
+    def test_skip_files_by_name(self):
+        for name in ["gradlew", "mvnw"]:
+            diff = f"diff --git a/{name} b/{name}\n+content\n"
+            assert not is_reviewable_diff(diff), f"{name} should be skipped"
+
+    def test_skip_dirs(self):
+        for dir_name in ["target", ".idea", "node_modules", "build", ".gradle"]:
+            diff = f"diff --git a/{dir_name}/File.java b/{dir_name}/File.java\n+code\n"
+            assert not is_reviewable_diff(diff), f"files in {dir_name}/ should be skipped"
+
+    def test_skip_hidden_dirs(self):
+        diff = "diff --git a/.hidden/secret.py b/.hidden/secret.py\n+code\n"
+        assert not is_reviewable_diff(diff)
+
+    def test_normal_source_files_pass(self):
+        diff = "diff --git a/src/main/App.java b/src/main/App.java\n+code\n"
+        assert is_reviewable_diff(diff)
+
 
 class TestFileReviewData:
     def test_dataclass_fields(self):
