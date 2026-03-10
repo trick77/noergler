@@ -227,7 +227,7 @@ class TestReviewer:
         mock_bitbucket.post_pr_comment.assert_called_once()
 
         summary_text = mock_bitbucket.post_pr_comment.call_args[0][3]
-        assert "1 issue(s) found" in summary_text
+        assert "1 issue found" in summary_text
 
     @pytest.mark.asyncio
     async def test_skip_disallowed_author(self, reviewer, mock_bitbucket, mock_copilot):
@@ -293,9 +293,9 @@ class TestReviewer:
             ReviewFinding(file="c.py", line=3, severity="info", comment="info"),
         ]
         summary = reviewer._build_summary(findings)
-        assert "3 issue(s) found" in summary
-        assert "1 error(s)" in summary
-        assert "1 warning(s)" in summary
+        assert "3 issues found" in summary
+        assert "1 error" in summary
+        assert "1 warning" in summary
         assert "1 info" in summary
 
     def test_build_summary_empty(self, reviewer):
@@ -384,7 +384,7 @@ class TestDedupAndLimit:
             ReviewFinding(file="b.py", line=2, severity="warning", comment="warn"),
         ]
         summary = reviewer._build_summary(findings, truncated=True)
-        assert "2 issue(s) found" in summary
+        assert "2 issues found" in summary
         assert "Additional findings were omitted" in summary
 
     @pytest.mark.asyncio

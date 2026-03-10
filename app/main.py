@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 
 from app.bitbucket import BitbucketClient
-from app.config import load_config
+from app.config import load_config, log_config
 from app.copilot import CopilotClient
 from app.models import WebhookPayload
 from app.reviewer import Reviewer
@@ -37,6 +37,7 @@ async def lifespan(app: FastAPI):
     global config, reviewer, bitbucket_client, copilot_client
 
     config = load_config()
+    log_config(config, logger)
     bitbucket_client = BitbucketClient(config.bitbucket)
     copilot_client = CopilotClient(config.copilot, config.review)
     reviewer = Reviewer(

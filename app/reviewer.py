@@ -209,11 +209,17 @@ class Reviewer:
             )
             return []
 
+    @staticmethod
+    def _plural(n: int, word: str) -> str:
+        if word == "info":
+            return f"{n} {word}"
+        return f"{n} {word}" if n == 1 else f"{n} {word}s"
+
     def _build_summary(
         self, findings: list[ReviewFinding], truncated: bool = False
     ) -> str:
         if not findings:
-            return "**Noergler Review:** No issues found."
+            return "**Noergler review summary:** No issues found."
 
         counts = {"error": 0, "warning": 0, "info": 0}
         for f in findings:
@@ -221,13 +227,13 @@ class Reviewer:
 
         parts = []
         if counts["error"]:
-            parts.append(f"{counts['error']} error(s)")
+            parts.append(f"🔴 {self._plural(counts['error'], 'error')}")
         if counts["warning"]:
-            parts.append(f"{counts['warning']} warning(s)")
+            parts.append(f"🟠 {self._plural(counts['warning'], 'warning')}")
         if counts["info"]:
-            parts.append(f"{counts['info']} info")
+            parts.append(f"🔵 {self._plural(counts['info'], 'info')}")
 
-        summary = f"**Noergler Review:** {len(findings)} issue(s) found — {', '.join(parts)}"
+        summary = f"**Noergler review summary:** {self._plural(len(findings), 'issue')} found — {', '.join(parts)}"
         if truncated:
             summary += f"\n\n_Showing top {len(findings)} findings by severity. Additional findings were omitted._"
         return summary

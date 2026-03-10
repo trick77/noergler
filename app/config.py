@@ -1,3 +1,4 @@
+import logging
 import os
 
 from pydantic import BaseModel, field_validator
@@ -48,6 +49,23 @@ def _env(name: str, default: str | None = None) -> str:
     if value is None:
         raise ValueError(f"Environment variable {name} is not set")
     return value
+
+
+_SECRET_FIELDS = {
+    "bitbucket": {"token", "webhook_secret"},
+    "copilot": {"github_token"},
+}
+
+
+def log_config(config: AppConfig, log: logging.Logger) -> None:
+    for section_name in ("bitbucket", "copilot", "review", "server"):
+        section = getattr(config, section_name)
+        secrets = _SECRET_FIELDS.get(section_name, set())
+        log.info("[config.%s]", section_name)
+        for field_name in section.model_fields:
+            value = getattr(section, field_name)
+            display = "***" if field_name in secrets else value
+            log.info("  %s = %s", field_name, display)
 
 
 def load_config() -> AppConfig:
