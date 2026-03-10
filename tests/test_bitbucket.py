@@ -99,6 +99,29 @@ class TestBitbucketClient:
 
     @pytest.mark.asyncio
     @respx.mock
+    async def test_post_inline_comment_falls_back_to_context_line_type(self, client):
+        route = respx.post(
+            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/comments"
+        ).mock(side_effect=[
+            httpx.Response(400, json={"errors": [{"message": "invalid line"}]}),
+            httpx.Response(201, json={"id": 1}),
+        ])
+
+        finding = ReviewFinding(
+            file="src/main.py", line=5, severity="suggestion", comment="Consider refactoring"
+        )
+        await client.post_inline_comment("PROJ", "my-repo", 1, finding, "abc123")
+
+        assert route.call_count == 2
+        import json
+        first_body = json.loads(route.calls[0].request.content)
+        second_body = json.loads(route.calls[1].request.content)
+        assert first_body["anchor"]["lineType"] == "ADDED"
+        assert second_body["anchor"]["lineType"] == "CONTEXT"
+        await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
     async def test_post_inline_comment_includes_marker(self, client):
         route = respx.post(
             f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/comments"

@@ -66,12 +66,16 @@ class BitbucketClient:
             "anchor": {
                 "path": path,
                 "line": finding.line,
-                "lineType": "ADDED",
                 "fileType": "TO",
                 "toHash": to_commit,
             },
         }
-        response = await self.client.post(url, json=payload)
+        # Try ADDED first (new lines), fall back to CONTEXT (unchanged lines)
+        for line_type in ("ADDED", "CONTEXT"):
+            payload["anchor"]["lineType"] = line_type
+            response = await self.client.post(url, json=payload)
+            if response.status_code != 400:
+                break
         response.raise_for_status()
         logger.debug("Posted inline comment on %s:%d", finding.file, finding.line)
 
