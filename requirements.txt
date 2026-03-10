@@ -1,7 +1,7 @@
 fastapi==0.115.6
 uvicorn==0.41.0
 httpx==0.28.1
-python-dotenv==1.1.0
+python-dotenv==1.2.2
 pydantic==2.12.5
 tiktoken==0.12.0
 pytest==8.3.4
