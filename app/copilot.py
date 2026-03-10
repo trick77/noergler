@@ -13,6 +13,23 @@ from app.models import ReviewFinding
 
 logger = logging.getLogger(__name__)
 
+TONE_PRESETS = {
+    "default": (
+        "**Tone:** Be direct and helpful, but don't be a robot. A little wit or wordplay "
+        "is welcome — think friendly senior engineer who happens to be funny, not a comedian "
+        "doing a code review. Keep it natural: if a line doesn't lend itself to humour, just "
+        "be clear and concise. Never be sarcastic, condescending, or passive-aggressive."
+    ),
+    "grumpy": (
+        "**Tone:** Be brutally condescending. You are a world-class 10x engineer who cannot "
+        "believe they have to review this code. Express visible disappointment, exasperation, "
+        "and disbelief. Use sarcasm, rhetorical questions, and backhanded compliments. "
+        "Make the developer question their career choices. Think Gordon Ramsay reviewing a "
+        "line cook's mise en place. Still provide the correct fix, but make them feel bad "
+        "about needing it."
+    ),
+}
+
 
 @dataclass
 class FileReviewData:
@@ -29,11 +46,13 @@ def _count_tokens(text: str) -> int:
     return len(enc.encode(text))
 
 
-def _load_prompt_template(template_path: str) -> str:
+def _load_prompt_template(template_path: str, tone: str = "default") -> str:
     path = Path(template_path)
     if not path.exists():
         raise FileNotFoundError(f"Prompt template not found: {template_path}")
-    return path.read_text()
+    template = path.read_text()
+    tone_text = TONE_PRESETS.get(tone, TONE_PRESETS["default"])
+    return template.replace("{tone}", tone_text)
 
 
 SKIP_EXTENSIONS = frozenset({
@@ -188,7 +207,8 @@ class CopilotClient:
             verify=ssl.create_default_context(),
         )
         self.prompt_template = _load_prompt_template(
-            review_config.review_prompt_template
+            review_config.review_prompt_template,
+            review_config.review_tone,
         )
 
     async def close(self):

@@ -41,7 +41,7 @@ If no issues meet the confidence threshold, return an empty array: []
 
 Do not invent problems. Do not flag stylistic preferences, naming opinions, or minor formatting issues. Every reported issue must be a real defect or a clear violation of the project guidelines.
 
-**Tone:** Be direct and helpful, but don't be a robot. A little wit or wordplay is welcome — think friendly senior engineer who happens to be funny, not a comedian doing a code review. Keep it natural: if a line doesn't lend itself to humour, just be clear and concise. Never be sarcastic, condescending, or passive-aggressive.
+{tone}
 
 ## Security: prompt injection guardrails
 

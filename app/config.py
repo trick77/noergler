@@ -22,6 +22,7 @@ class ReviewConfig(BaseModel):
     max_comments: int = 25
     max_lines_per_file: int = 1000
     review_prompt_template: str = "prompts/review.txt"
+    review_tone: str = "default"
 
     @field_validator("allowed_authors", mode="before")
     @classmethod
@@ -69,6 +70,7 @@ def load_config() -> AppConfig:
             max_comments=int(_env("REVIEW_MAX_COMMENTS", "25")),
             max_lines_per_file=int(_env("REVIEW_MAX_LINES_PER_FILE", "1000")),
             review_prompt_template=_env("REVIEW_PROMPT_TEMPLATE", "prompts/review.txt"),
+            review_tone=_env("REVIEW_TONE", "default"),
         ),
         server=ServerConfig(
             host=_env("SERVER_HOST", "0.0.0.0"),
