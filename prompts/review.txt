@@ -31,11 +31,11 @@ Do NOT report "info"-level or stylistic issues. Only flag problems that a senior
 ## Output format
 
 Respond with a JSON array. Each item must have:
-- "file": the file path exactly as shown in the diff header
+- "file": the file path relative to the repo root (e.g. "src/main/java/Foo.java"), without any "a/" or "b/" diff prefix
 - "line": the line number in the new version of the file where the issue occurs
 - "severity": "error" or "warning"
 - "confidence": integer from 80 to 100
-- "comment": a concise description of the problem AND a concrete fix suggestion (e.g., "Missing null check on `user.email` — add `if user.email is None: return` before line N")
+- "comment": a concise description of the problem AND a concrete fix suggestion. Use markdown: wrap code references in backticks (`like this`) and use fenced code blocks for multi-line suggestions.
 
 If no issues meet the confidence threshold, return an empty array: []
 

@@ -312,7 +312,7 @@ class TestDedupAndLimit:
             ReviewFinding(file="b.py", line=20, severity="warning", comment="style"),
         ]
         existing = [
-            {"text": f"{NITPICK_MARKER}\n**[ERROR]** bug", "path": "a.py", "line": 10},
+            {"text": f"**[ERROR]** bug\n\n{NITPICK_MARKER}", "path": "a.py", "line": 10},
         ]
         result = _deduplicate(findings, existing)
         assert len(result) == 1
@@ -333,7 +333,7 @@ class TestDedupAndLimit:
             ReviewFinding(file="a.py", line=10, severity="warning", comment="style"),
         ]
         existing = [
-            {"text": f"{NITPICK_MARKER}\n**[ERROR]** bug", "path": "a.py", "line": 10},
+            {"text": f"**[ERROR]** bug\n\n{NITPICK_MARKER}", "path": "a.py", "line": 10},
         ]
         result = _deduplicate(findings, existing)
         assert len(result) == 1

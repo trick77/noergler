@@ -1,4 +1,5 @@
 import logging
+import re
 import ssl
 
 import httpx
@@ -8,7 +9,7 @@ from app.models import ReviewFinding
 
 logger = logging.getLogger(__name__)
 
-NITPICK_MARKER = "<!-- nitpick -->"
+NITPICK_MARKER = "— _nitpick_"
 
 
 class BitbucketClient:
@@ -59,13 +60,15 @@ class BitbucketClient:
         to_commit: str,
     ) -> None:
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{pr_id}/comments"
+        path = re.sub(r"^[ab]/", "", finding.file)
         payload = {
-            "text": f"{NITPICK_MARKER}\n**[{finding.severity.upper()}]** {finding.comment}",
+            "text": f"**[{finding.severity.upper()}]** {finding.comment}\n\n{NITPICK_MARKER}",
             "anchor": {
-                "path": finding.file,
+                "path": path,
                 "line": finding.line,
                 "lineType": "ADDED",
                 "fileType": "TO",
+                "toHash": to_commit,
             },
         }
         response = await self.client.post(url, json=payload)
@@ -76,7 +79,7 @@ class BitbucketClient:
         self, project: str, repo: str, pr_id: int, text: str
     ) -> None:
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{pr_id}/comments"
-        response = await self.client.post(url, json={"text": f"{NITPICK_MARKER}\n{text}"})
+        response = await self.client.post(url, json={"text": f"{text}\n\n{NITPICK_MARKER}"})
         response.raise_for_status()
         logger.debug("Posted summary comment on PR %d", pr_id)
 

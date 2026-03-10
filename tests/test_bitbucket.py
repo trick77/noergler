@@ -121,7 +121,7 @@ class TestBitbucketClient:
                 {
                     "action": "COMMENTED",
                     "comment": {
-                        "text": f"{NITPICK_MARKER}\n**[ERROR]** bug",
+                        "text": f"**[ERROR]** bug\n\n{NITPICK_MARKER}",
                         "anchor": {"path": "a.py", "line": 10},
                     },
                 },
