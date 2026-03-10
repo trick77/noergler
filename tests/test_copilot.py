@@ -9,12 +9,13 @@ from app.copilot import (
     CopilotClient,
     FileReviewData,
     _format_file_entry,
+    _group_files_by_token_budget,
     _parse_review_response,
+    _render_file_group,
     extract_path,
     is_deleted,
     is_reviewable_diff,
     split_by_file,
-    split_files_into_chunks,
 )
 
 
@@ -204,13 +205,14 @@ class TestSplitByFile:
         assert "b.py" in parts[1]
 
 
-class TestSplitFilesIntoChunks:
+class TestGroupFilesByTokenBudget:
     def test_single_file_fits(self):
         files = [FileReviewData(path="file.py", diff="+hello\n", content="hello\n")]
         template = "Review:\n{files}"
-        chunks = split_files_into_chunks(files, 80000, template)
-        assert len(chunks) == 1
-        assert "file.py" in chunks[0]
+        groups = _group_files_by_token_budget(files, 80000, template)
+        assert len(groups) == 1
+        assert len(groups[0]) == 1
+        assert groups[0][0].path == "file.py"
 
     def test_multiple_files_split_by_tokens(self):
         files = [
@@ -218,15 +220,14 @@ class TestSplitFilesIntoChunks:
             FileReviewData(path="b.py", diff="+line\n" * 50, content="line\n" * 50),
         ]
         template = "Review:\n{files}"
-        # Token limit big enough for one file (~278 tokens each) but not both
-        chunks = split_files_into_chunks(files, 300, template)
-        assert len(chunks) >= 2
+        groups = _group_files_by_token_budget(files, 300, template)
+        assert len(groups) >= 2
 
     def test_oversized_single_file_skipped(self):
         files = [FileReviewData(path="huge.py", diff="+x = 1\n" * 5000, content="x = 1\n" * 5000)]
         template = "Review:\n{files}"
-        chunks = split_files_into_chunks(files, 200, template)
-        assert chunks == []
+        groups = _group_files_by_token_budget(files, 200, template)
+        assert groups == []
 
     def test_oversized_file_skipped_but_small_kept(self):
         files = [
@@ -234,17 +235,18 @@ class TestSplitFilesIntoChunks:
             FileReviewData(path="huge.py", diff="+x = 1\n" * 5000, content="x = 1\n" * 5000),
         ]
         template = "Review:\n{files}"
-        chunks = split_files_into_chunks(files, 200, template)
-        full = "\n".join(chunks)
-        assert "small.py" in full
-        assert "huge.py" not in full
+        groups = _group_files_by_token_budget(files, 200, template)
+        paths = [f.path for g in groups for f in g]
+        assert "small.py" in paths
+        assert "huge.py" not in paths
 
     def test_deleted_file_included(self):
         files = [FileReviewData(path="removed.py", diff="-old code\n", content=None)]
         template = "Review:\n{files}"
-        chunks = split_files_into_chunks(files, 80000, template)
-        assert len(chunks) == 1
-        assert "_(file deleted)_" in chunks[0]
+        groups = _group_files_by_token_budget(files, 80000, template)
+        assert len(groups) == 1
+        rendered = _render_file_group(groups[0])
+        assert "_(file deleted)_" in rendered
 
 
 class TestSystemMessage:
@@ -342,5 +344,116 @@ class TestCopilotClient:
         try:
             result = await client.validate_model()
             assert result is None
+        finally:
+            await client.close()
+
+
+class TestReviewFileGroup413Retry:
+    @pytest.mark.asyncio
+    async def test_413_bisects_and_retries(self, copilot_config, review_config):
+        """On 413, the file group is bisected and each half retried."""
+        client = CopilotClient(copilot_config, review_config)
+
+        files = [
+            FileReviewData(path="a.py", diff="+a\n", content="a\n"),
+            FileReviewData(path="b.py", diff="+b\n", content="b\n"),
+            FileReviewData(path="c.py", diff="+c\n", content="c\n"),
+            FileReviewData(path="d.py", diff="+d\n", content="d\n"),
+        ]
+
+        call_count = 0
+        finding_a = {"file": "a.py", "line": 1, "severity": "info", "comment": "ok"}
+        finding_d = {"file": "d.py", "line": 1, "severity": "info", "comment": "ok"}
+
+        original_call_api = client._call_api
+
+        async def mock_call_api(prompt: str):
+            nonlocal call_count
+            call_count += 1
+            # First call (all 4 files) → 413
+            if call_count == 1:
+                response = httpx.Response(413, request=httpx.Request("POST", "https://x"))
+                raise httpx.HTTPStatusError("too large", request=response.request, response=response)
+            # Subsequent calls succeed
+            files_in_prompt = prompt.count("## File:")
+            findings = []
+            if "a.py" in prompt:
+                findings.append(finding_a)
+            if "d.py" in prompt:
+                findings.append(finding_d)
+            return (
+                [__import__("app.models", fromlist=["ReviewFinding"]).ReviewFinding(**f) for f in findings],
+                50, 25,
+            )
+
+        client._call_api = mock_call_api
+        try:
+            template = client.prompt_template
+            findings, pt, ct = await client._review_file_group(files, template, depth=0)
+            assert len(findings) == 2
+            assert {f.file for f in findings} == {"a.py", "d.py"}
+            assert call_count >= 3  # 1 failed + at least 2 retries
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_413_single_file_skipped(self, copilot_config, review_config):
+        """A single file that triggers 413 is skipped gracefully."""
+        client = CopilotClient(copilot_config, review_config)
+
+        files = [FileReviewData(path="huge.py", diff="+x\n", content="x\n")]
+
+        async def mock_call_api(prompt: str):
+            response = httpx.Response(413, request=httpx.Request("POST", "https://x"))
+            raise httpx.HTTPStatusError("too large", request=response.request, response=response)
+
+        client._call_api = mock_call_api
+        try:
+            template = client.prompt_template
+            findings, pt, ct = await client._review_file_group(files, template, depth=0)
+            assert findings == []
+            assert pt == 0
+            assert ct == 0
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_413_max_depth_stops_recursion(self, copilot_config, review_config):
+        """Recursion stops at max_depth even with multiple files."""
+        client = CopilotClient(copilot_config, review_config)
+
+        files = [
+            FileReviewData(path="a.py", diff="+a\n", content="a\n"),
+            FileReviewData(path="b.py", diff="+b\n", content="b\n"),
+        ]
+
+        async def mock_call_api(prompt: str):
+            response = httpx.Response(413, request=httpx.Request("POST", "https://x"))
+            raise httpx.HTTPStatusError("too large", request=response.request, response=response)
+
+        client._call_api = mock_call_api
+        try:
+            template = client.prompt_template
+            findings, pt, ct = await client._review_file_group(files, template, depth=3)
+            assert findings == []
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_non_413_error_propagates(self, copilot_config, review_config):
+        """Non-413 HTTP errors are not caught."""
+        client = CopilotClient(copilot_config, review_config)
+
+        files = [FileReviewData(path="a.py", diff="+a\n", content="a\n")]
+
+        async def mock_call_api(prompt: str):
+            response = httpx.Response(500, request=httpx.Request("POST", "https://x"))
+            raise httpx.HTTPStatusError("server error", request=response.request, response=response)
+
+        client._call_api = mock_call_api
+        try:
+            template = client.prompt_template
+            with pytest.raises(httpx.HTTPStatusError):
+                await client._review_file_group(files, template, depth=0)
         finally:
             await client.close()

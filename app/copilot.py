@@ -125,14 +125,18 @@ def _format_file_entry(file_data: FileReviewData) -> str:
     return "\n".join(parts)
 
 
-def split_files_into_chunks(
+def _render_file_group(files: list[FileReviewData]) -> str:
+    return "\n\n".join(_format_file_entry(f) for f in files)
+
+
+def _group_files_by_token_budget(
     files: list[FileReviewData], max_tokens: int, prompt_template: str
-) -> list[str]:
+) -> list[list[FileReviewData]]:
     prompt_overhead = _count_tokens(prompt_template.replace("{files}", ""))
     available_tokens = max_tokens - prompt_overhead
 
-    chunks: list[str] = []
-    current_chunk_parts: list[str] = []
+    groups: list[list[FileReviewData]] = []
+    current_group: list[FileReviewData] = []
     current_tokens = 0
 
     for file_data in files:
@@ -140,9 +144,9 @@ def split_files_into_chunks(
         entry_tokens = _count_tokens(entry)
 
         if entry_tokens > available_tokens:
-            if current_chunk_parts:
-                chunks.append("\n\n".join(current_chunk_parts))
-                current_chunk_parts = []
+            if current_group:
+                groups.append(current_group)
+                current_group = []
                 current_tokens = 0
             logger.warning(
                 "Skipping %s: %d tokens exceeds chunk limit of %d",
@@ -151,17 +155,17 @@ def split_files_into_chunks(
             continue
 
         if current_tokens + entry_tokens > available_tokens:
-            chunks.append("\n\n".join(current_chunk_parts))
-            current_chunk_parts = []
+            groups.append(current_group)
+            current_group = []
             current_tokens = 0
 
-        current_chunk_parts.append(entry)
+        current_group.append(file_data)
         current_tokens += entry_tokens
 
-    if current_chunk_parts:
-        chunks.append("\n\n".join(current_chunk_parts))
+    if current_group:
+        groups.append(current_group)
 
-    return chunks
+    return groups
 
 
 def _parse_review_response(content: str) -> list[ReviewFinding]:
@@ -249,7 +253,7 @@ class CopilotClient:
                 + "\n\n{files}",
             )
 
-        chunks = split_files_into_chunks(
+        groups = _group_files_by_token_budget(
             files,
             self.config.max_tokens_per_chunk,
             template,
@@ -258,25 +262,68 @@ class CopilotClient:
         all_findings: list[ReviewFinding] = []
         total_prompt_tokens = 0
         total_completion_tokens = 0
-        for i, chunk in enumerate(chunks):
-            logger.info("Reviewing chunk %d/%d", i + 1, len(chunks))
-            prompt = template.replace("{files}", chunk)
-            findings, prompt_tokens, completion_tokens = await self._call_api(prompt)
+        for i, group in enumerate(groups):
+            logger.info("Reviewing chunk %d/%d (%d file%s)",
+                        i + 1, len(groups), len(group),
+                        "" if len(group) == 1 else "s")
+            findings, prompt_tokens, completion_tokens = await self._review_file_group(
+                group, template, depth=0,
+            )
             all_findings.extend(findings)
             total_prompt_tokens += prompt_tokens
             total_completion_tokens += completion_tokens
 
         total = total_prompt_tokens + total_completion_tokens
         logger.info(
-            "Review complete: %d prompt + %d completion = %d total tokens (%d chunk%s)",
+            "Review complete: %d prompt + %d completion = %d total tokens (%d group%s)",
             total_prompt_tokens,
             total_completion_tokens,
             total,
-            len(chunks),
-            "" if len(chunks) == 1 else "s",
+            len(groups),
+            "" if len(groups) == 1 else "s",
         )
 
         return all_findings
+
+    async def _review_file_group(
+        self,
+        group: list[FileReviewData],
+        template: str,
+        depth: int,
+        max_depth: int = 3,
+    ) -> tuple[list[ReviewFinding], int, int]:
+        rendered = _render_file_group(group)
+        prompt = template.replace("{files}", rendered)
+        try:
+            return await self._call_api(prompt)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 413:
+                raise
+            if len(group) <= 1:
+                path = group[0].path if group else "<empty>"
+                logger.warning(
+                    "413 Payload Too Large for single file %s — skipping", path,
+                )
+                return [], 0, 0
+            if depth >= max_depth:
+                paths = [f.path for f in group]
+                logger.warning(
+                    "413 Payload Too Large after %d bisections — skipping %d files: %s",
+                    depth, len(group), paths,
+                )
+                return [], 0, 0
+            mid = len(group) // 2
+            logger.info(
+                "413 Payload Too Large with %d files — bisecting (depth %d)",
+                len(group), depth + 1,
+            )
+            left = await self._review_file_group(group[:mid], template, depth + 1, max_depth)
+            right = await self._review_file_group(group[mid:], template, depth + 1, max_depth)
+            return (
+                left[0] + right[0],
+                left[1] + right[1],
+                left[2] + right[2],
+            )
 
     async def _call_api(self, prompt: str) -> tuple[list[ReviewFinding], int, int]:
         payload = {
