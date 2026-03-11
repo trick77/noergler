@@ -21,6 +21,7 @@ class ReviewConfig(BaseModel):
     auto_review_authors: list[str] = []
     max_comments: int = 25
     max_lines_per_file: int = 1000
+    context_lines: int = 0
     review_prompt_template: str = "prompts/review.txt"
     ramsay_authors: list[str] = []
     mention_trigger: str = "noergler"
@@ -87,6 +88,7 @@ def load_config() -> AppConfig:
             auto_review_authors=_env("REVIEW_AUTO_REVIEW_AUTHORS", ""),
             max_comments=int(_env("REVIEW_MAX_COMMENTS", "25")),
             max_lines_per_file=int(_env("REVIEW_MAX_LINES_PER_FILE", "1000")),
+            context_lines=int(_env("REVIEW_CONTEXT_LINES", "0")),
             review_prompt_template=_env("REVIEW_PROMPT_TEMPLATE", "prompts/review.txt"),
             ramsay_authors=_env("REVIEW_RAMSAY_AUTHORS", ""),
             mention_trigger=_env("REVIEW_MENTION_TRIGGER", "noergler"),
