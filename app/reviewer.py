@@ -121,6 +121,14 @@ class Reviewer:
                         path, line_count, self.max_lines_per_file,
                     )
                     return None
+                # Drop full file content when diff is larger (context overlap makes it redundant)
+                diff_lines = file_diff.count("\n") + 1
+                if content and diff_lines >= line_count:
+                    logger.info(
+                        "Dropping full file content for %s: diff (%d lines) >= file (%d lines)",
+                        path, diff_lines, line_count,
+                    )
+                    content = None
                 logger.info("Including %s for review (%d lines, deleted=%s)", path, line_count, deleted)
                 return FileReviewData(path=path, diff=file_diff, content=content)
 
