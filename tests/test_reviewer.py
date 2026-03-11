@@ -306,15 +306,13 @@ class TestReviewer:
 
     def test_build_summary_mixed(self, reviewer):
         findings = [
-            ReviewFinding(file="a.py", line=1, severity="error", comment="err"),
+            ReviewFinding(file="a.py", line=1, severity="critical", comment="err"),
             ReviewFinding(file="b.py", line=2, severity="warning", comment="warn"),
-            ReviewFinding(file="c.py", line=3, severity="info", comment="info"),
         ]
         summary = reviewer._build_summary(findings)
-        assert "3 issues found" in summary
-        assert "| 🔴 Error" in summary
-        assert "| 🟠 Warning" in summary
-        assert "| 🔵 Info" in summary
+        assert "2 issues found" in summary
+        assert "❌ Critical" in summary
+        assert "⚠️ Warning" in summary
 
     def test_build_summary_empty(self, reviewer):
         assert "No issues found. ✅" in reviewer._build_summary([])
@@ -353,20 +351,19 @@ class TestDedupAndLimit:
 
     def test_findings_sorted_by_severity(self):
         findings = [
-            ReviewFinding(file="a.py", line=1, severity="info", comment="info"),
-            ReviewFinding(file="b.py", line=2, severity="error", comment="err"),
-            ReviewFinding(file="c.py", line=3, severity="warning", comment="warn"),
+            ReviewFinding(file="a.py", line=1, severity="warning", comment="warn"),
+            ReviewFinding(file="b.py", line=2, severity="critical", comment="err"),
         ]
         sorted_findings, _ = _sort_and_limit(findings, max_comments=25)
-        assert [f.severity for f in sorted_findings] == ["error", "warning", "info"]
+        assert [f.severity for f in sorted_findings] == ["critical", "warning"]
 
     def test_dedup_skips_existing_nitpick_comments(self):
         findings = [
-            ReviewFinding(file="a.py", line=10, severity="error", comment="bug"),
+            ReviewFinding(file="a.py", line=10, severity="critical", comment="bug"),
             ReviewFinding(file="b.py", line=20, severity="warning", comment="style"),
         ]
         existing = [
-            {"text": f"**[ERROR]** bug\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 10},
+            {"text": f"❌ **Critical:** bug\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 10},
         ]
         result = _deduplicate(findings, existing)
         assert len(result) == 1
@@ -374,10 +371,10 @@ class TestDedupAndLimit:
 
     def test_dedup_ignores_human_comments(self):
         findings = [
-            ReviewFinding(file="a.py", line=10, severity="error", comment="bug"),
+            ReviewFinding(file="a.py", line=10, severity="critical", comment="bug"),
         ]
         existing = [
-            {"text": "**[ERROR]** bug", "path": "a.py", "line": 10},
+            {"text": "❌ **Critical:** bug", "path": "a.py", "line": 10},
         ]
         result = _deduplicate(findings, existing)
         assert len(result) == 1
@@ -387,7 +384,7 @@ class TestDedupAndLimit:
             ReviewFinding(file="a.py", line=10, severity="warning", comment="style"),
         ]
         existing = [
-            {"text": f"**[ERROR]** bug\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 10},
+            {"text": f"❌ **Critical:** bug\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 10},
         ]
         result = _deduplicate(findings, existing)
         assert len(result) == 1
@@ -398,7 +395,7 @@ class TestDedupAndLimit:
 
     def test_build_summary_truncated(self, reviewer):
         findings = [
-            ReviewFinding(file="a.py", line=1, severity="error", comment="err"),
+            ReviewFinding(file="a.py", line=1, severity="critical", comment="err"),
             ReviewFinding(file="b.py", line=2, severity="warning", comment="warn"),
         ]
         summary = reviewer._build_summary(findings, truncated=True)

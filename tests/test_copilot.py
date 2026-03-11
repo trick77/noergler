@@ -40,13 +40,13 @@ def review_config():
 class TestParseReviewResponse:
     def test_valid_json_array(self):
         content = json.dumps([
-            {"file": "src/main.py", "line": 10, "severity": "error", "comment": "Bug here"}
+            {"file": "src/main.py", "line": 10, "severity": "critical", "comment": "Bug here"}
         ])
         findings = _parse_review_response(content)
         assert len(findings) == 1
         assert findings[0].file == "src/main.py"
         assert findings[0].line == 10
-        assert findings[0].severity == "error"
+        assert findings[0].severity == "critical"
 
     def test_empty_array(self):
         findings = _parse_review_response("[]")
@@ -67,7 +67,7 @@ class TestParseReviewResponse:
 
     def test_malformed_item_skipped(self):
         content = json.dumps([
-            {"file": "a.py", "line": 1, "severity": "error", "comment": "good"},
+            {"file": "a.py", "line": 1, "severity": "critical", "comment": "good"},
             {"bad": "item"},
         ])
         findings = _parse_review_response(content)
@@ -390,8 +390,8 @@ class TestReviewFileGroup413Retry:
         ]
 
         call_count = 0
-        finding_a = {"file": "a.py", "line": 1, "severity": "info", "comment": "ok"}
-        finding_d = {"file": "d.py", "line": 1, "severity": "info", "comment": "ok"}
+        finding_a = {"file": "a.py", "line": 1, "severity": "warning", "comment": "ok"}
+        finding_d = {"file": "d.py", "line": 1, "severity": "warning", "comment": "ok"}
 
         original_call_api = client._call_api
 

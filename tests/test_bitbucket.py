@@ -82,7 +82,7 @@ class TestBitbucketClient:
         ).mock(return_value=httpx.Response(201, json={"id": 1}))
 
         finding = ReviewFinding(
-            file="src/main.py", line=10, severity="error", comment="Bug here"
+            file="src/main.py", line=10, severity="critical", comment="Bug here"
         )
         await client.post_inline_comment("PROJ", "my-repo", 1, finding)
         await client.close()
@@ -128,7 +128,7 @@ class TestBitbucketClient:
         ).mock(return_value=httpx.Response(201, json={"id": 1}))
 
         finding = ReviewFinding(
-            file="src/main.py", line=10, severity="error", comment="Bug here"
+            file="src/main.py", line=10, severity="critical", comment="Bug here"
         )
         await client.post_inline_comment("PROJ", "my-repo", 1, finding)
 
@@ -162,7 +162,7 @@ class TestBitbucketClient:
                 {
                     "action": "COMMENTED",
                     "comment": {
-                        "text": f"**[ERROR]** bug\n\n{NOERGLER_MARKER}",
+                        "text": f"❌ **Critical:** bug\n\n{NOERGLER_MARKER}",
                         "anchor": {"path": "a.py", "line": 10},
                     },
                 },

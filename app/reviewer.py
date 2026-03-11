@@ -16,8 +16,8 @@ from app.models import PullRequest, ReviewFinding, WebhookPayload
 
 logger = logging.getLogger(__name__)
 
-SEVERITY_ORDER = {"error": 0, "warning": 1, "info": 2}
-_SEVERITY_RE = re.compile(r"\*\*\[(\w+)\]\*\*")
+SEVERITY_ORDER = {"critical": 0, "warning": 1}
+_SEVERITY_RE = re.compile(r"\*\*(\w+):\*\*")
 _REVIEW_KEYWORDS = {"review", "review this", "re-review", "rereview"}
 
 
@@ -276,8 +276,6 @@ class Reviewer:
 
     @staticmethod
     def _plural(n: int, word: str) -> str:
-        if word == "info":
-            return f"{n} {word}"
         return f"{n} {word}" if n == 1 else f"{n} {word}s"
 
     def _build_summary(
@@ -291,17 +289,15 @@ class Reviewer:
         if not findings:
             summary = "**Noergler review summary:** No issues found. ✅"
         else:
-            counts = {"error": 0, "warning": 0, "info": 0}
+            counts = {"critical": 0, "warning": 0}
             for f in findings:
                 counts[f.severity] = counts.get(f.severity, 0) + 1
 
             rows = []
-            if counts["error"]:
-                rows.append(f"| 🔴 Error   | {counts['error']:>5} |")
+            if counts["critical"]:
+                rows.append(f"| ❌ Critical | {counts['critical']:>5} |")
             if counts["warning"]:
-                rows.append(f"| 🟠 Warning | {counts['warning']:>5} |")
-            if counts["info"]:
-                rows.append(f"| 🔵 Info    | {counts['info']:>5} |")
+                rows.append(f"| ⚠️ Warning  | {counts['warning']:>5} |")
 
             table = "\n".join([
                 "| Severity | Count |",

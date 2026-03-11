@@ -10,6 +10,7 @@ from app.models import ReviewFinding
 logger = logging.getLogger(__name__)
 
 NOERGLER_MARKER = "— _noergler_"
+SEVERITY_EMOJI = {"critical": "❌", "warning": "⚠️"}
 
 
 class BitbucketClient:
@@ -60,7 +61,7 @@ class BitbucketClient:
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{pr_id}/comments"
         path = re.sub(r"^[ab]/", "", finding.file)
         payload = {
-            "text": f"**[{finding.severity.upper()}]** {finding.comment}\n\n{NOERGLER_MARKER}",
+            "text": f"{SEVERITY_EMOJI.get(finding.severity, '❓')} **{finding.severity.capitalize()}:** {finding.comment}\n\n{NOERGLER_MARKER}",
             "anchor": {
                 "path": path,
                 "line": finding.line,

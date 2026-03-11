@@ -52,5 +52,5 @@ class WebhookPayload(BaseModel):
 class ReviewFinding(BaseModel):
     file: str
     line: int
-    severity: str  # "error", "warning", "info"
+    severity: str  # "critical", "warning"
     comment: str
