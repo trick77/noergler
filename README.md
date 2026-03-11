@@ -1,8 +1,7 @@
-<p align="center">
-  <img src="logo.png" alt="Noergler" width="140">
-</p>
-
-# Noergler
+<h1>
+  <img src="logo.png" alt="" width="120" style="vertical-align: middle;">
+  Noergler
+</h1>
 
 [![Tests](https://github.com/trick77/noergler/actions/workflows/test.yml/badge.svg)](https://github.com/trick77/noergler/actions/workflows/test.yml) ![Python 3.12](https://img.shields.io/badge/python-3.12-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
