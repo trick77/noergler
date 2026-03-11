@@ -222,7 +222,7 @@ class TestReviewer:
         await reviewer.review_pull_request(payload)
 
         mock_bitbucket.fetch_pr_diff.assert_called_once_with(
-            "PROJ", "my-repo", 42
+            "PROJ", "my-repo", 42, context_lines=0
         )
         mock_copilot.review_diff.assert_called_once()
         # Verify FileReviewData was passed
@@ -231,7 +231,8 @@ class TestReviewer:
         assert len(files) == 1
         assert isinstance(files[0], FileReviewData)
         assert files[0].path == "file.py"
-        assert files[0].content == "hello\n"
+        # Content is None because the diff (2 lines) >= file (1 line), triggering proactive drop
+        assert files[0].content is None
 
         mock_bitbucket.post_inline_comment.assert_called_once()
         mock_bitbucket.post_pr_comment.assert_called_once()
@@ -324,7 +325,7 @@ class TestReviewer:
         await reviewer.review_pull_request(payload)
 
         mock_bitbucket.fetch_pr_diff.assert_called_once_with(
-            "~USERNAME", "test", 1
+            "~USERNAME", "test", 1, context_lines=0
         )
         mock_copilot.review_diff.assert_called_once()
         mock_bitbucket.post_inline_comment.assert_called_once()

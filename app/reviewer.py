@@ -33,6 +33,7 @@ class Reviewer:
         auto_review_authors: list[str],
         max_comments: int = 25,
         max_lines_per_file: int = 1000,
+        context_lines: int = 0,
         mention_trigger: str = "noergler",
         ramsay_authors: list[str] | None = None,
     ):
@@ -41,6 +42,7 @@ class Reviewer:
         self.auto_review_authors = auto_review_authors
         self.max_comments = max_comments
         self.max_lines_per_file = max_lines_per_file
+        self.context_lines = context_lines
         self.mention_trigger = mention_trigger
         self.ramsay_authors = ramsay_authors or []
 
@@ -77,7 +79,7 @@ class Reviewer:
             t0 = time.monotonic()
 
             diff = await self.bitbucket.fetch_pr_diff(
-                project_key, repo_slug, pr_id
+                project_key, repo_slug, pr_id, context_lines=self.context_lines
             )
             if not diff.strip():
                 logger.info("%s has empty diff, skipping", pr_tag)
@@ -98,6 +100,8 @@ class Reviewer:
             source_commit = pr.fromRef.latestCommit
 
             # Fetch full file content in parallel for non-deleted files
+            skipped_large: list[str] = []
+
             async def _build_file_data(file_diff: str) -> FileReviewData | None:
                 path = extract_path(file_diff)
                 if not path:
@@ -120,12 +124,32 @@ class Reviewer:
                         "Skipping %s: %d lines exceeds limit of %d",
                         path, line_count, self.max_lines_per_file,
                     )
+                    skipped_large.append(path)
                     return None
+                # Drop full file content when diff is larger (context overlap makes it redundant)
+                diff_lines = file_diff.count("\n") + 1
+                if content and diff_lines >= line_count:
+                    logger.info(
+                        "Dropping full file content for %s: diff (%d lines) >= file (%d lines)",
+                        path, diff_lines, line_count,
+                    )
+                    content = None
                 logger.info("Including %s for review (%d lines, deleted=%s)", path, line_count, deleted)
                 return FileReviewData(path=path, diff=file_diff, content=content)
 
             results = await asyncio.gather(*[_build_file_data(fd) for fd in file_diffs])
             files = [f for f in results if f is not None]
+
+            total_diff_lines = sum(f.diff.count("\n") + 1 for f in files)
+            total_content_lines = sum(f.content.count("\n") + 1 for f in files if f.content)
+            files_with_content = sum(1 for f in files if f.content)
+            files_diff_only = len(files) - files_with_content
+            logger.info(
+                "%s: %d file(s) for review — %d diff lines, %d content lines, "
+                "%d with full content, %d diff-only",
+                pr_tag, len(files), total_diff_lines, total_content_lines,
+                files_with_content, files_diff_only,
+            )
 
             if not files:
                 logger.info("%s has no reviewable files after content fetch, skipping", pr_tag)
@@ -166,7 +190,7 @@ class Reviewer:
                 findings,
                 truncated,
                 agents_md_found=agents_md_found,
-                skipped_files=result.skipped_files,
+                skipped_files=skipped_large + result.skipped_files,
                 token_usage=(result.prompt_tokens, result.completion_tokens),
             )
             try:
@@ -218,7 +242,7 @@ class Reviewer:
         logger.info("Handling mention Q&A on %s: %r", pr_tag, question)
 
         try:
-            diff = await self.bitbucket.fetch_pr_diff(project_key, repo_slug, pr.id)
+            diff = await self.bitbucket.fetch_pr_diff(project_key, repo_slug, pr.id, context_lines=self.context_lines)
             repo_instructions = await self._fetch_repo_instructions(
                 project_key, repo_slug, pr
             )
