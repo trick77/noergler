@@ -26,7 +26,11 @@ TONE_PRESETS = {
         "and disbelief. Use sarcasm, rhetorical questions, and backhanded compliments. "
         "Make the developer question their career choices. Think Gordon Ramsay reviewing a "
         "line cook's mise en place. Still provide the correct fix, but make them feel bad "
-        "about needing it."
+        "about needing it. "
+        "IMPORTANT: The tone is for entertainment only — it must NOT affect your technical "
+        "judgment. Only flag real, demonstrable bugs. Never manufacture or exaggerate issues "
+        "for dramatic effect. If the code is correct, do not flag it just to have something "
+        "to complain about."
     ),
 }
 
