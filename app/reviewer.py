@@ -153,6 +153,14 @@ class Reviewer:
 
             if not files:
                 logger.info("%s has no reviewable files after content fetch, skipping", pr_tag)
+                if skipped_large:
+                    summary = self._build_summary([], skipped_files=skipped_large)
+                    try:
+                        await self.bitbucket.post_pr_comment(
+                            project_key, repo_slug, pr_id, summary
+                        )
+                    except Exception:
+                        logger.error("Failed to post summary comment", exc_info=True)
                 return
 
             repo_instructions = await self._fetch_repo_instructions(

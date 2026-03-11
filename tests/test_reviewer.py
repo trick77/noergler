@@ -294,8 +294,12 @@ class TestReviewer:
         payload = _make_payload("jan.username")
         await rev.review_pull_request(payload)
 
-        # File should be skipped, no review called
+        # File should be skipped, no review called, but summary posted
         mock_copilot.review_diff.assert_not_called()
+        mock_bitbucket.post_pr_comment.assert_called_once()
+        summary_text = mock_bitbucket.post_pr_comment.call_args[0][3]
+        assert "Not reviewed (too large)" in summary_text
+        assert "`big.py`" in summary_text
 
     def test_is_auto_review_author(self, reviewer):
         assert reviewer.is_auto_review_author("jan.username") is True
