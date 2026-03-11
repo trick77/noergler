@@ -8,7 +8,7 @@ AI-powered code review bridge for self-hosted Bitbucket Server. The name is Germ
 
 Brings automated AI code review to on-premise Bitbucket Server installations. Receives PR webhooks, sends diffs to the GitHub Models API, and posts findings back as inline comments plus a summary comment on the PR.
 
-![Noergler inline review comment](noergler.png)
+![noergler inline review comment](noergler.png)
 
 ## How it works
 
@@ -16,13 +16,13 @@ Brings automated AI code review to on-premise Bitbucket Server installations. Re
 2. **Diff fetch** — The full PR diff is fetched from Bitbucket, split by file, and filtered (binary files, non-reviewable extensions, and files exceeding the configured line limit are skipped).
 3. **Context enrichment** — Full file content is fetched for each reviewable file so the AI has complete context, not just the diff. If an `AGENTS.md` file exists in the repository root, it is loaded and included as project-specific review guidelines.
 4. **AI review** — Files are grouped into token-aware chunks and sent to the GitHub Models API with a structured review prompt. Each chunk is reviewed independently.
-5. **Post results** — Findings are deduplicated against existing Noergler comments, sorted by severity (errors first), capped at the configured limit, and posted as inline comments. A summary comment is added to the PR.
+5. **Post results** — Findings are deduplicated against existing noergler comments, sorted by severity (errors first), capped at the configured limit, and posted as inline comments. A summary comment is added to the PR.
 
-## Interacting with Noergler
+## Interacting with noergler
 
-Besides automatic reviews on PR open/modify, you can mention Noergler in any PR comment:
+Besides automatic reviews on PR open/modify, you can mention noergler in any PR comment:
 
-- **Ask a question** — `@noergler Why was this endpoint changed?` — Noergler replies to your comment with an answer based on the PR diff.
+- **Ask a question** — `@noergler Why was this endpoint changed?` — noergler replies to your comment with an answer based on the PR diff.
 - **Trigger a full review** — `@noergler review` — Runs a full review as if the PR was just opened. Also triggered by `@noergler` with no text, `re-review`, or `rereview`.
 
 The mention trigger name defaults to `noergler` and can be changed via `REVIEW_MENTION_TRIGGER`.
@@ -99,7 +99,7 @@ Edit `prompts/review.txt` to change the review focus, tone, or output format. Th
 
 ### AGENTS.md
 
-Drop an `AGENTS.md` file in the repository root to provide project-specific review guidelines. Noergler automatically picks it up from the PR source branch (falling back to the target branch) and injects the content into the review prompt. Use it to tell the reviewer about project conventions, forbidden patterns, or areas to focus on.
+Drop an `AGENTS.md` file in the repository root to provide project-specific review guidelines. noergler automatically picks it up from the PR source branch (falling back to the target branch) and injects the content into the review prompt. Use it to tell the reviewer about project conventions, forbidden patterns, or areas to focus on.
 
 ## Running tests
 
