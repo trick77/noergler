@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -256,6 +257,32 @@ class CopilotClient:
     async def close(self):
         await self.client.aclose()
 
+    async def _post_with_retry(self, url: str, **kwargs) -> httpx.Response:
+        max_retries = 3
+        wait = 60.0
+        for attempt in range(max_retries + 1):
+            response = await self.client.post(url, **kwargs)
+            if response.status_code != 429:
+                return response
+
+            if attempt == 0:
+                logger.warning(
+                    "429 rate-limited — response headers: %s, body: %s",
+                    dict(response.headers),
+                    response.text[:500],
+                )
+
+            if attempt >= max_retries:
+                return response
+
+            logger.warning(
+                "429 retry %d/%d — waiting %.0fs before next attempt",
+                attempt + 1, max_retries, wait,
+            )
+            await asyncio.sleep(wait)
+
+        return response  # unreachable, but satisfies type checkers
+
     async def validate_model(self) -> dict | None:
         base_url = self.config.api_url.split("/inference")[0]
         models_url = base_url + "/catalog/models"
@@ -432,7 +459,7 @@ class CopilotClient:
             ],
         }
 
-        response = await self.client.post(self.config.api_url, json=payload)
+        response = await self._post_with_retry(self.config.api_url, json=payload)
         response.raise_for_status()
 
         data = response.json()
@@ -510,7 +537,7 @@ class CopilotClient:
             ],
         }
 
-        response = await self.client.post(self.config.api_url, json=payload)
+        response = await self._post_with_retry(self.config.api_url, json=payload)
         response.raise_for_status()
 
         data = response.json()
