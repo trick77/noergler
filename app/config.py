@@ -83,7 +83,7 @@ def load_config() -> AppConfig:
             model=_env("COPILOT_MODEL", "openai/gpt-5"),
             github_token=_env("GITHUB_TOKEN"),
             api_url=_env("COPILOT_API_URL", "https://models.github.ai/inference/chat/completions"),
-            max_tokens_per_chunk=int(_env("COPILOT_MAX_TOKENS", "80000")),
+            max_tokens_per_chunk=int(_env("COPILOT_MAX_TOKENS_PER_CHUNK", "80000")),
         ),
         review=ReviewConfig(
             auto_review_authors=_env("REVIEW_AUTO_REVIEW_AUTHORS", ""),
