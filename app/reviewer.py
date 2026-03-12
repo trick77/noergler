@@ -97,12 +97,9 @@ class Reviewer:
                 return None
             diff_lines = file_diff.count("\n") + 1
             if content and diff_lines >= line_count:
-                logger.info(
-                    "Dropping full file content for %s: diff (%d lines) >= file (%d lines)",
-                    path, diff_lines, line_count,
-                )
                 content = None
-            logger.info("Including %s for review (%d lines, deleted=%s)", path, line_count, deleted)
+            if content:
+                logger.info("Including %s with full file content (%d lines)", path, line_count)
             return FileReviewData(path=path, diff=file_diff, content=content)
 
         results = await asyncio.gather(*[_build_file_data(fd) for fd in file_diffs])

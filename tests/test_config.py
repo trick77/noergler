@@ -11,7 +11,7 @@ def _make_config():
             webhook_secret="secret-webhook",
         ),
         copilot=CopilotConfig(
-            model="openai/gpt-4.1",
+            model="openai/gpt-5.2",
             github_token="ghp_secret123",
             api_url="https://models.github.ai/inference/chat/completions",
             max_tokens_per_chunk=80000,
@@ -42,7 +42,7 @@ def test_log_config_masks_secrets(caplog):
 
     # Non-secret fields must appear as-is
     assert "https://bitbucket.example.com" in text
-    assert "openai/gpt-4.1" in text
+    assert "openai/gpt-5.2" in text
     assert "80000" in text
     assert "['alice', 'bob']" in text
     assert "10" in text

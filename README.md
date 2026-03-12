@@ -8,7 +8,7 @@ AI-powered code review bridge for self-hosted Bitbucket Server. The name is Germ
 
 Brings automated AI code review to on-premise Bitbucket Server installations. Receives PR webhooks, sends diffs to the GitHub Models API, and posts findings back as inline comments plus a summary comment on the PR.
 
-![noergler inline review comment](noergler.png)
+![noergler inline review comment](review.png)
 
 ## How it works
 
@@ -68,7 +68,7 @@ All configuration is driven by environment variables.
 | `REVIEW_PROMPT_TEMPLATE` | No | `prompts/review.txt` | Path to the review prompt template |
 | `REVIEW_MENTION_TRIGGER` | No | `noergler` | Trigger name for mention-based interactions (used as `@<trigger>` in PR comments) |
 | `REVIEW_MENTION_PROMPT_TEMPLATE` | No | `prompts/mention.txt` | Path to the mention Q&A prompt template |
-| `COPILOT_MODEL` | No | `openai/gpt-4.1` | Model ID for the GitHub Models API |
+| `COPILOT_MODEL` | No | `openai/gpt-5.2` | Model ID for the GitHub Models API |
 | `COPILOT_API_URL` | No | `https://models.github.ai/inference/chat/completions` | GitHub Models API endpoint |
 | `COPILOT_MAX_TOKENS` | No | `80000` | Max tokens per diff chunk sent to the model |
 | `SERVER_HOST` | No | `0.0.0.0` | Host to bind the server to |
