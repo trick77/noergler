@@ -22,7 +22,7 @@ from app.copilot import (
 @pytest.fixture
 def copilot_config():
     return CopilotConfig(
-        model="openai/gpt-4.1",
+        model="openai/gpt-5.2",
         github_token="test-token",
         api_url="https://models.github.ai/inference/chat/completions",
         max_tokens_per_chunk=80000,
@@ -350,7 +350,7 @@ class TestCopilotClient:
     async def test_validate_model_found(self, copilot_config, review_config):
         models_response = {
             "data": [
-                {"id": "openai/gpt-4.1", "max_prompt_tokens": 128000},
+                {"id": "openai/gpt-5.2", "max_prompt_tokens": 128000},
                 {"id": "openai/gpt-5-mini", "max_prompt_tokens": 64000},
             ]
         }
@@ -363,7 +363,7 @@ class TestCopilotClient:
         try:
             result = await client.validate_model()
             assert result is not None
-            assert result["id"] == "openai/gpt-4.1"
+            assert result["id"] == "openai/gpt-5.2"
         finally:
             await client.close()
 
@@ -429,6 +429,94 @@ class TestRepoInstructionsInReviewPrompt:
             sent_body = json.loads(route.calls[0].request.content)
             prompt = sent_body["messages"][1]["content"]
             assert "{repo_instructions}" not in prompt
+        finally:
+            await client.close()
+
+
+class TestAnswerQuestion:
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_answer_question_with_file_data(self, copilot_config, review_config):
+        answer_response = {
+            "choices": [{"message": {"content": "The function calculates fibonacci numbers."}}],
+            "usage": {"prompt_tokens": 200, "completion_tokens": 30},
+        }
+        respx.post("https://models.github.ai/inference/chat/completions").mock(
+            return_value=httpx.Response(200, json=answer_response)
+        )
+
+        client = CopilotClient(copilot_config, review_config)
+        try:
+            files = [FileReviewData(path="math.py", diff="+def fib(n):\n", content="def fib(n):\n    pass\n")]
+            result = await client.answer_question("What does this do?", files)
+            assert "fibonacci" in result.lower()
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_answer_question_413_bisects_and_retries(self, copilot_config, review_config):
+        client = CopilotClient(copilot_config, review_config)
+
+        files = [
+            FileReviewData(path="a.py", diff="+a\n", content="a\n"),
+            FileReviewData(path="b.py", diff="+b\n", content="b\n"),
+        ]
+
+        call_count = 0
+
+        async def mock_call_mention_api(prompt: str):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                response = httpx.Response(413, request=httpx.Request("POST", "https://x"), text="too large")
+                raise httpx.HTTPStatusError("too large", request=response.request, response=response)
+            return "Answer for chunk", 50, 25
+
+        client._call_mention_api = mock_call_mention_api
+        try:
+            result = await client.answer_question("What?", files)
+            assert "Answer for chunk" in result
+            assert call_count >= 3  # 1 failed + 2 retries
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_answer_question_413_single_file_retries_diff_only(self, copilot_config, review_config):
+        client = CopilotClient(copilot_config, review_config)
+
+        files = [FileReviewData(path="huge.py", diff="+x\n", content="x\n")]
+        call_count = 0
+
+        async def mock_call_mention_api(prompt: str):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                response = httpx.Response(413, request=httpx.Request("POST", "https://x"), text="too large")
+                raise httpx.HTTPStatusError("too large", request=response.request, response=response)
+            return "Answer with diff only", 30, 10
+
+        client._call_mention_api = mock_call_mention_api
+        try:
+            result = await client.answer_question("What?", files)
+            assert result == "Answer with diff only"
+            assert call_count == 2
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_answer_question_413_all_skipped_returns_fallback(self, copilot_config, review_config):
+        client = CopilotClient(copilot_config, review_config)
+
+        files = [FileReviewData(path="huge.py", diff="+x\n", content=None)]
+
+        async def mock_call_mention_api(prompt: str):
+            response = httpx.Response(413, request=httpx.Request("POST", "https://x"), text="too large")
+            raise httpx.HTTPStatusError("too large", request=response.request, response=response)
+
+        client._call_mention_api = mock_call_mention_api
+        try:
+            result = await client.answer_question("What?", files)
+            assert "couldn't process" in result.lower()
         finally:
             await client.close()
 

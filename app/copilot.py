@@ -44,7 +44,7 @@ class FileReviewData:
 
 def _count_tokens(text: str) -> int:
     try:
-        enc = tiktoken.encoding_for_model("gpt-4")
+        enc = tiktoken.encoding_for_model("gpt-4o")
     except KeyError:
         enc = tiktoken.get_encoding("cl100k_base")
     return len(enc.encode(text))
@@ -331,12 +331,99 @@ class CopilotClient:
             completion_tokens=total_completion_tokens,
         )
 
-    async def answer_question(self, question: str, diff_context: str, repo_instructions: str = "", tone: str = "default") -> str:
+    async def answer_question(
+        self, question: str, files: list[FileReviewData], repo_instructions: str = "", tone: str = "default"
+    ) -> str:
         tone_text = TONE_PRESETS.get(tone, TONE_PRESETS["default"])
-        prompt = self.mention_template.replace("{tone}", tone_text).replace("{diff}", diff_context)
-        prompt = prompt.replace("{question}", question)
-        prompt = prompt.replace("{repo_instructions}", repo_instructions)
+        template = self.mention_template.replace("{tone}", tone_text)
+        template = template.replace("{question}", question)
+        template = template.replace("{repo_instructions}", repo_instructions)
 
+        groups, skipped_files = _group_files_by_token_budget(
+            files,
+            self.config.max_tokens_per_chunk,
+            template,
+        )
+
+        answers: list[str] = []
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
+        for i, group in enumerate(groups):
+            logger.info("Mention Q&A chunk %d/%d (%d file%s)",
+                        i + 1, len(groups), len(group),
+                        "" if len(group) == 1 else "s")
+            answer, pt, ct, skipped = await self._answer_file_group(
+                group, template, depth=0,
+            )
+            if answer:
+                answers.append(answer)
+            skipped_files.extend(skipped)
+            total_prompt_tokens += pt
+            total_completion_tokens += ct
+
+        total = total_prompt_tokens + total_completion_tokens
+        logger.info(
+            "Mention Q&A complete: %d prompt + %d completion = %d total tokens (%d group%s)",
+            total_prompt_tokens, total_completion_tokens, total,
+            len(groups), "" if len(groups) == 1 else "s",
+        )
+
+        return "\n\n".join(answers) if answers else "I couldn't process any files in this PR to answer your question."
+
+    async def _answer_file_group(
+        self,
+        group: list[FileReviewData],
+        template: str,
+        depth: int,
+        max_depth: int = 3,
+    ) -> tuple[str, int, int, list[str]]:
+        rendered = _render_file_group(group)
+        prompt = template.replace("{diff}", rendered)
+        try:
+            answer, pt, ct = await self._call_mention_api(prompt)
+            return answer, pt, ct, []
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 413:
+                raise
+            logger.warning("413 on mention Q&A: %s", exc.response.text[:500])
+            if len(group) <= 1:
+                file = group[0] if group else None
+                if file is not None and file.content is not None:
+                    logger.info("413 — retrying mention without full file content: %s", file.path)
+                    diff_only = FileReviewData(path=file.path, diff=file.diff, content=None)
+                    return await self._answer_file_group([diff_only], template, depth + 1, max_depth)
+                path = file.path if file else "<empty>"
+                logger.warning(
+                    "413 — file skipped for mention Q&A: %s (%d diff lines, ~%d prompt tokens)",
+                    path,
+                    file.diff.count("\n") + 1 if file else 0,
+                    _count_tokens(prompt),
+                )
+                return "", 0, 0, [path]
+            if depth >= max_depth:
+                paths = [f.path for f in group]
+                for f in group:
+                    logger.warning(
+                        "413 — file skipped for mention Q&A after %d bisections: %s (%d diff lines)",
+                        depth, f.path, f.diff.count("\n") + 1,
+                    )
+                return "", 0, 0, paths
+            mid = len(group) // 2
+            logger.info(
+                "413 with %d files — splitting mention chunk and retrying (depth %d)",
+                len(group), depth + 1,
+            )
+            left = await self._answer_file_group(group[:mid], template, depth + 1, max_depth)
+            right = await self._answer_file_group(group[mid:], template, depth + 1, max_depth)
+            parts = [a for a in [left[0], right[0]] if a]
+            return (
+                "\n\n".join(parts),
+                left[1] + right[1],
+                left[2] + right[2],
+                left[3] + right[3],
+            )
+
+    async def _call_mention_api(self, prompt: str) -> tuple[str, int, int]:
         payload = {
             "model": self.config.model,
             "messages": [
@@ -352,11 +439,7 @@ class CopilotClient:
         usage = data.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
-        logger.info(
-            "Mention Q&A: %d prompt + %d completion = %d total tokens",
-            prompt_tokens, completion_tokens, prompt_tokens + completion_tokens,
-        )
-        return data["choices"][0]["message"]["content"]
+        return data["choices"][0]["message"]["content"], prompt_tokens, completion_tokens
 
     async def _review_file_group(
         self,

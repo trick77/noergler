@@ -52,6 +52,75 @@ class Reviewer:
     def is_auto_review_author(self, author_name: str) -> bool:
         return not self.auto_review_authors or author_name in self.auto_review_authors
 
+    async def _prepare_files(
+        self,
+        project_key: str,
+        repo_slug: str,
+        diff: str,
+        source_commit: str | None,
+        pr_tag: str,
+    ) -> tuple[list[FileReviewData], list[str]]:
+        all_file_diffs = split_by_file(diff)
+        file_diffs = [fd for fd in all_file_diffs if is_reviewable_diff(fd)]
+        skipped = len(all_file_diffs) - len(file_diffs)
+        logger.info(
+            "%s: %d file(s) in diff, %d reviewable, %d skipped (binary/non-reviewable)",
+            pr_tag, len(all_file_diffs), len(file_diffs), skipped,
+        )
+        if not file_diffs:
+            return [], []
+
+        skipped_large: list[str] = []
+
+        async def _build_file_data(file_diff: str) -> FileReviewData | None:
+            path = extract_path(file_diff)
+            if not path:
+                first_line = file_diff.split("\n", 1)[0][:200]
+                logger.warning("Could not extract path from diff chunk: %r", first_line)
+                return None
+            deleted = is_deleted(file_diff)
+            content = None
+            if not deleted and source_commit:
+                try:
+                    content = await self.bitbucket.fetch_file_content(
+                        project_key, repo_slug, source_commit, path
+                    )
+                except Exception:
+                    logger.warning("Failed to fetch content for %s, using diff only", path)
+            line_count = content.count("\n") + 1 if content else 0
+            if content and line_count > self.max_lines_per_file:
+                logger.info(
+                    "Skipping %s: %d lines exceeds limit of %d",
+                    path, line_count, self.max_lines_per_file,
+                )
+                skipped_large.append(path)
+                return None
+            diff_lines = file_diff.count("\n") + 1
+            if content and diff_lines >= line_count:
+                logger.info(
+                    "Dropping full file content for %s: diff (%d lines) >= file (%d lines)",
+                    path, diff_lines, line_count,
+                )
+                content = None
+            logger.info("Including %s for review (%d lines, deleted=%s)", path, line_count, deleted)
+            return FileReviewData(path=path, diff=file_diff, content=content)
+
+        results = await asyncio.gather(*[_build_file_data(fd) for fd in file_diffs])
+        files = [f for f in results if f is not None]
+
+        total_diff_lines = sum(f.diff.count("\n") + 1 for f in files)
+        total_content_lines = sum(f.content.count("\n") + 1 for f in files if f.content)
+        files_with_content = sum(1 for f in files if f.content)
+        files_diff_only = len(files) - files_with_content
+        logger.info(
+            "%s: %d file(s) for review — %d diff lines, %d content lines, "
+            "%d with full content, %d diff-only",
+            pr_tag, len(files), total_diff_lines, total_content_lines,
+            files_with_content, files_diff_only,
+        )
+
+        return files, skipped_large
+
     async def review_pull_request(self, payload: WebhookPayload, *, skip_author_check: bool = False) -> None:
         pr_tag = "unknown"
         try:
@@ -85,70 +154,9 @@ class Reviewer:
                 logger.info("%s has empty diff, skipping", pr_tag)
                 return
 
-            # Phase 1: split by file, filter by extension/binary
-            all_file_diffs = split_by_file(diff)
-            file_diffs = [fd for fd in all_file_diffs if is_reviewable_diff(fd)]
-            skipped = len(all_file_diffs) - len(file_diffs)
-            logger.info(
-                "%s: %d file(s) in diff, %d reviewable, %d skipped (binary/non-reviewable)",
-                pr_tag, len(all_file_diffs), len(file_diffs), skipped,
-            )
-            if not file_diffs:
-                logger.info("%s has no reviewable files, skipping", pr_tag)
-                return
-
             source_commit = pr.fromRef.latestCommit
-
-            # Fetch full file content in parallel for non-deleted files
-            skipped_large: list[str] = []
-
-            async def _build_file_data(file_diff: str) -> FileReviewData | None:
-                path = extract_path(file_diff)
-                if not path:
-                    first_line = file_diff.split("\n", 1)[0][:200]
-                    logger.warning("Could not extract path from diff chunk: %r", first_line)
-                    return None
-                deleted = is_deleted(file_diff)
-                content = None
-                if not deleted and source_commit:
-                    try:
-                        content = await self.bitbucket.fetch_file_content(
-                            project_key, repo_slug, source_commit, path
-                        )
-                    except Exception:
-                        logger.warning("Failed to fetch content for %s, using diff only", path)
-                # Phase 2: skip if content exceeds max_lines_per_file
-                line_count = content.count("\n") + 1 if content else 0
-                if content and line_count > self.max_lines_per_file:
-                    logger.info(
-                        "Skipping %s: %d lines exceeds limit of %d",
-                        path, line_count, self.max_lines_per_file,
-                    )
-                    skipped_large.append(path)
-                    return None
-                # Drop full file content when diff is larger (context overlap makes it redundant)
-                diff_lines = file_diff.count("\n") + 1
-                if content and diff_lines >= line_count:
-                    logger.info(
-                        "Dropping full file content for %s: diff (%d lines) >= file (%d lines)",
-                        path, diff_lines, line_count,
-                    )
-                    content = None
-                logger.info("Including %s for review (%d lines, deleted=%s)", path, line_count, deleted)
-                return FileReviewData(path=path, diff=file_diff, content=content)
-
-            results = await asyncio.gather(*[_build_file_data(fd) for fd in file_diffs])
-            files = [f for f in results if f is not None]
-
-            total_diff_lines = sum(f.diff.count("\n") + 1 for f in files)
-            total_content_lines = sum(f.content.count("\n") + 1 for f in files if f.content)
-            files_with_content = sum(1 for f in files if f.content)
-            files_diff_only = len(files) - files_with_content
-            logger.info(
-                "%s: %d file(s) for review — %d diff lines, %d content lines, "
-                "%d with full content, %d diff-only",
-                pr_tag, len(files), total_diff_lines, total_content_lines,
-                files_with_content, files_diff_only,
+            files, skipped_large = await self._prepare_files(
+                project_key, repo_slug, diff, source_commit, pr_tag
             )
 
             if not files:
@@ -251,11 +259,21 @@ class Reviewer:
 
         try:
             diff = await self.bitbucket.fetch_pr_diff(project_key, repo_slug, pr.id, context_lines=self.context_lines)
+            source_commit = pr.fromRef.latestCommit
+            files, skipped = await self._prepare_files(
+                project_key, repo_slug, diff, source_commit, pr_tag
+            )
+            if not files:
+                await self.bitbucket.reply_to_comment(
+                    project_key, repo_slug, pr.id, comment.id,
+                    "No reviewable files in this PR.",
+                )
+                return
             repo_instructions = await self._fetch_repo_instructions(
                 project_key, repo_slug, pr
             )
             tone = self._tone_for_author(pr.author.user.name)
-            answer = await self.copilot.answer_question(question, diff, repo_instructions, tone=tone)
+            answer = await self.copilot.answer_question(question, files, repo_instructions, tone=tone)
             await self.bitbucket.reply_to_comment(
                 project_key, repo_slug, pr.id, comment.id, answer,
             )

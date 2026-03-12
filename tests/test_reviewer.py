@@ -31,6 +31,34 @@ def _make_payload(author: str = "jan.username") -> WebhookPayload:
     })
 
 
+def _make_mention_payload(
+    mention_text: str = "@noergler what does this do?",
+    author: str = "jan.username",
+) -> WebhookPayload:
+    return WebhookPayload(**{
+        "eventKey": "pr:comment:added",
+        "pullRequest": {
+            "id": 42,
+            "title": "Test PR",
+            "state": "OPEN",
+            "fromRef": {
+                "id": "refs/heads/feature",
+                "displayId": "feature",
+                "latestCommit": "abc123",
+                "repository": {"slug": "my-repo", "project": {"key": "PROJ"}},
+            },
+            "toRef": {
+                "id": "refs/heads/main",
+                "displayId": "main",
+                "latestCommit": "def456",
+                "repository": {"slug": "my-repo", "project": {"key": "PROJ"}},
+            },
+            "author": {"user": {"name": author}},
+        },
+        "comment": {"id": 99, "text": mention_text, "author": {"name": author}},
+    })
+
+
 def _make_real_payload() -> WebhookPayload:
     """Build a WebhookPayload from a real-world Bitbucket Server webhook (anonymized)."""
     return WebhookPayload(**{
@@ -203,7 +231,7 @@ def _make_review_result(findings=None, skipped_files=None):
 @pytest.fixture
 def mock_copilot():
     client = AsyncMock()
-    client.config.model = "openai/gpt-4.1"
+    client.config.model = "openai/gpt-5.2"
     client.review_diff = AsyncMock(return_value=_make_review_result([
         ReviewFinding(file="file.py", line=1, severity="warning", comment="Test issue"),
     ]))
@@ -453,7 +481,7 @@ class TestDedupAndLimit:
             ReviewFinding(file="a.py", line=1, severity="warning", comment="warn"),
         ]
         summary = reviewer._build_summary(findings, token_usage=(1000, 500))
-        assert "Model: `openai/gpt-4.1`" in summary
+        assert "Model: `openai/gpt-5.2`" in summary
         assert "tokens used: 1,500" in summary
         assert "1,000 prompt" in summary
         assert "500 completion" in summary
@@ -481,3 +509,55 @@ class TestDedupAndLimit:
 
         mock_bitbucket.post_inline_comment.assert_called_once()
         mock_bitbucket.post_pr_comment.assert_called_once()
+
+
+class TestHandleMention:
+    @pytest.mark.asyncio
+    async def test_mention_uses_file_level_preparation(self, mock_bitbucket, mock_copilot):
+        mock_copilot.answer_question = AsyncMock(return_value="Here's the answer.")
+        mock_bitbucket.reply_to_comment = AsyncMock()
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, auto_review_authors=["jan.username"])
+        payload = _make_mention_payload("@noergler what does this do?")
+        await rev.handle_mention(payload)
+
+        # answer_question should receive FileReviewData list, not raw string
+        mock_copilot.answer_question.assert_called_once()
+        call_args = mock_copilot.answer_question.call_args
+        question = call_args[0][0]
+        files = call_args[0][1]
+        assert question == "what does this do?"
+        assert isinstance(files, list)
+        assert len(files) == 1
+        assert isinstance(files[0], FileReviewData)
+        assert files[0].path == "file.py"
+
+        mock_bitbucket.reply_to_comment.assert_called_once()
+        assert mock_bitbucket.reply_to_comment.call_args[0][4] == "Here's the answer."
+
+    @pytest.mark.asyncio
+    async def test_mention_no_reviewable_files(self, mock_bitbucket, mock_copilot):
+        mock_bitbucket.fetch_pr_diff.return_value = (
+            "diff --git a/image.png b/image.png\nBinary files differ\n"
+        )
+        mock_bitbucket.reply_to_comment = AsyncMock()
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, auto_review_authors=["jan.username"])
+        payload = _make_mention_payload("@noergler what does this do?")
+        await rev.handle_mention(payload)
+
+        mock_copilot.answer_question.assert_not_called()
+        mock_bitbucket.reply_to_comment.assert_called_once()
+        reply_text = mock_bitbucket.reply_to_comment.call_args[0][4]
+        assert "No reviewable files" in reply_text
+
+    @pytest.mark.asyncio
+    async def test_mention_triggers_full_review(self, mock_bitbucket, mock_copilot):
+        mock_bitbucket.reply_to_comment = AsyncMock()
+        rev = Reviewer(mock_bitbucket, mock_copilot, auto_review_authors=["jan.username"])
+        payload = _make_mention_payload("@noergler review")
+        await rev.handle_mention(payload)
+
+        # Should trigger review_diff, not answer_question
+        mock_copilot.review_diff.assert_called_once()
+        mock_copilot.answer_question.assert_not_called()
