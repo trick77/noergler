@@ -297,7 +297,7 @@ class Reviewer:
                 prompt_breakdown=result.prompt_breakdown,
                 review_effort=result.review_effort,
                 ticket=ticket,
-                compliance_requirements=result.compliance_requirements or None,
+                compliance_requirements=result.compliance_requirements,
                 elapsed=elapsed,
             )
             try:
@@ -480,7 +480,7 @@ class Reviewer:
                     compliance_level = "Not compliant"
                     compliance_emoji = "❌"
                 ticket_lines.append(f"- {compliance_emoji} Compliance: **{compliance_level}**")
-                req_lines = [f"    - {'✅' if r.get('met') else '❌'} {r['requirement']}" for r in compliance_requirements]
+                req_lines = [f"    - {'✅' if r.get('met') else '❌'} {r.get('requirement', '???')}" for r in compliance_requirements]
                 ticket_lines.append(f"  - 📋 Requirements:\n" + "\n".join(req_lines))
             ticket_section = "\n\n" + "\n".join(ticket_lines)
 
