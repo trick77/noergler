@@ -64,7 +64,10 @@ All configuration is driven by environment variables.
 | `GITHUB_TOKEN` | Yes | — | GitHub fine-grained access token with `models:read` scope |
 | `REVIEW_AUTO_REVIEW_AUTHORS` | No | _(empty)_ | Comma-separated list of Bitbucket usernames whose PRs are automatically reviewed. When empty or unset, all PR authors are reviewed. Mention-triggered reviews (`@noergler review`) bypass this check. |
 | `REVIEW_MAX_COMMENTS` | No | `25` | Maximum inline comments per review |
-| `REVIEW_EXPANDED_CONTEXT_LINES` | No | `3` | Number of context lines for small PR diffs (large PRs use minimal context with compression) |
+| `REVIEW_DIFF_EXTRA_LINES_BEFORE` | No | `3` | Context lines to add before each diff hunk (asymmetric: more before than after aids comprehension) |
+| `REVIEW_DIFF_EXTRA_LINES_AFTER` | No | `1` | Context lines to add after each diff hunk |
+| `REVIEW_DIFF_MAX_EXTRA_LINES_DYNAMIC_CONTEXT` | No | `8` | Max additional lines to search backwards for enclosing function/class scope |
+| `REVIEW_DIFF_ALLOW_DYNAMIC_CONTEXT` | No | `true` | Enable dynamic scope expansion (extends context to include enclosing function/class definition) |
 | `REVIEW_PROMPT_TEMPLATE` | No | `prompts/review.txt` | Path to the review prompt template |
 | `REVIEW_MENTION_TRIGGER` | No | `noergler` | Trigger name for mention-based interactions (used as `@<trigger>` in PR comments) |
 | `REVIEW_MENTION_PROMPT_TEMPLATE` | No | `prompts/mention.txt` | Path to the mention Q&A prompt template |
@@ -134,6 +137,7 @@ app/
   main.py          # FastAPI app, /webhook and /health endpoints
   reviewer.py      # Review orchestrator (diff → AI → comments)
   copilot.py       # GitHub Models API client, token-aware chunking
+  context_expansion.py  # Asymmetric & dynamic diff context expansion
   bitbucket.py     # Bitbucket Server REST API client
   models.py        # Pydantic models (webhook payloads, findings)
   config.py        # Environment-based configuration

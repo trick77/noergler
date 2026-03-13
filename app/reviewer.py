@@ -14,6 +14,8 @@ from app.copilot import (
     is_reviewable_diff,
     split_by_file,
 )
+from app.config import ReviewConfig
+from app.context_expansion import expand_all_files
 from app.diff_compression import compress_for_large_pr, is_small_pr
 from app.models import PullRequest, ReviewFinding, WebhookPayload
 
@@ -33,19 +35,15 @@ class Reviewer:
         self,
         bitbucket: BitbucketClient,
         copilot: CopilotClient,
-        auto_review_authors: list[str],
-        max_comments: int = 25,
-        expanded_context_lines: int = 3,
-        mention_trigger: str = "noergler",
-        ramsay_authors: list[str] | None = None,
+        review_config: ReviewConfig,
     ):
         self.bitbucket = bitbucket
         self.copilot = copilot
-        self.auto_review_authors = auto_review_authors
-        self.max_comments = max_comments
-        self.expanded_context_lines = expanded_context_lines
-        self.mention_trigger = mention_trigger
-        self.ramsay_authors = ramsay_authors or []
+        self.review_config = review_config
+        self.auto_review_authors = review_config.auto_review_authors
+        self.max_comments = review_config.max_comments
+        self.mention_trigger = review_config.mention_trigger
+        self.ramsay_authors = review_config.ramsay_authors
 
     def _tone_for_author(self, author: str) -> str:
         return "ramsay" if author in self.ramsay_authors else "default"
@@ -106,23 +104,6 @@ class Reviewer:
 
         return files
 
-    def _rebuild_files_with_diff(
-        self, new_diff: str, existing_files: list[FileReviewData]
-    ) -> list[FileReviewData]:
-        """Rebuild FileReviewData list using a new diff but reusing already-fetched content."""
-        content_by_path = {f.path: f.content for f in existing_files}
-        new_file_diffs = split_by_file(new_diff)
-        result: list[FileReviewData] = []
-        for file_diff in new_file_diffs:
-            if not is_reviewable_diff(file_diff):
-                continue
-            path = extract_path(file_diff)
-            if not path:
-                continue
-            content = content_by_path.get(path)
-            result.append(FileReviewData(path=path, diff=file_diff, content=content))
-        return result
-
     async def review_pull_request(self, payload: WebhookPayload, *, skip_author_check: bool = False) -> None:
         pr_tag = "unknown"
         try:
@@ -173,16 +154,21 @@ class Reviewer:
             template = self.copilot.prompt_template
             max_tokens = self.copilot.config.max_tokens_per_chunk
 
+            rc = self.review_config
             if is_small_pr(files, max_tokens, template, count_tokens, format_file_entry):
                 logger.info(
-                    "%s: small PR (%d files) — using expanded context (%d lines)",
-                    pr_tag, len(files), self.expanded_context_lines,
+                    "%s: small PR (%d files) — expanding context (before=%d, after=%d, dynamic=%s)",
+                    pr_tag, len(files),
+                    rc.diff_extra_lines_before, rc.diff_extra_lines_after,
+                    rc.diff_allow_dynamic_context,
                 )
-                diff = await self.bitbucket.fetch_pr_diff(
-                    project_key, repo_slug, pr_id,
-                    context_lines=self.expanded_context_lines,
+                files = expand_all_files(
+                    files,
+                    before=rc.diff_extra_lines_before,
+                    after=rc.diff_extra_lines_after,
+                    max_dynamic_before=rc.diff_max_extra_lines_dynamic_context,
+                    dynamic_context=rc.diff_allow_dynamic_context,
                 )
-                files = self._rebuild_files_with_diff(diff, files)
             else:
                 compression = compress_for_large_pr(
                     files, max_tokens, template, count_tokens, format_file_entry,
@@ -194,6 +180,13 @@ class Reviewer:
                 logger.info(
                     "%s: large PR — compression applied: %d included, %d other_modified, %d deleted, %d renamed",
                     pr_tag, len(files), len(other_modified), len(deleted_paths), len(renamed_paths),
+                )
+                files = expand_all_files(
+                    files,
+                    before=rc.diff_extra_lines_before,
+                    after=rc.diff_extra_lines_after,
+                    max_dynamic_before=rc.diff_max_extra_lines_dynamic_context,
+                    dynamic_context=rc.diff_allow_dynamic_context,
                 )
 
             if not files:

@@ -3,12 +3,19 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.bitbucket import NOERGLER_MARKER
+from app.config import ReviewConfig
 from app.copilot import CopilotClient, FileReviewData
 from app.models import ReviewFinding, WebhookPayload
 from app.reviewer import Reviewer, _deduplicate, _sort_and_limit
 
 
-def _make_payload(author: str = "jan.username") -> WebhookPayload:
+def _review_config(**overrides) -> ReviewConfig:
+    defaults = dict(auto_review_authors=["username"])
+    defaults.update(overrides)
+    return ReviewConfig(**defaults)
+
+
+def _make_payload(author: str = "username") -> WebhookPayload:
     return WebhookPayload(**{
         "eventKey": "pr:opened",
         "pullRequest": {
@@ -33,7 +40,7 @@ def _make_payload(author: str = "jan.username") -> WebhookPayload:
 
 def _make_mention_payload(
     mention_text: str = "@noergler what does this do?",
-    author: str = "jan.username",
+    author: str = "username",
 ) -> WebhookPayload:
     return WebhookPayload(**{
         "eventKey": "pr:comment:added",
@@ -242,19 +249,17 @@ def mock_copilot():
 
 @pytest.fixture
 def reviewer(mock_bitbucket, mock_copilot):
-    return Reviewer(mock_bitbucket, mock_copilot, auto_review_authors=["jan.username"])
+    return Reviewer(mock_bitbucket, mock_copilot, _review_config())
 
 
 class TestReviewer:
     @pytest.mark.asyncio
     async def test_review_allowed_author(self, reviewer, mock_bitbucket, mock_copilot):
-        payload = _make_payload("jan.username")
+        payload = _make_payload("username")
         await reviewer.review_pull_request(payload)
 
-        # Small PR: fetched twice — first with context=0, then with expanded context=3
-        assert mock_bitbucket.fetch_pr_diff.call_count == 2
-        mock_bitbucket.fetch_pr_diff.assert_any_call("PROJ", "my-repo", 42, context_lines=0)
-        mock_bitbucket.fetch_pr_diff.assert_any_call("PROJ", "my-repo", 42, context_lines=3)
+        # Single diff fetch with context_lines=0, context expanded locally
+        mock_bitbucket.fetch_pr_diff.assert_called_once_with("PROJ", "my-repo", 42, context_lines=0)
 
         mock_copilot.review_diff.assert_called_once()
         call_args = mock_copilot.review_diff.call_args
@@ -282,14 +287,14 @@ class TestReviewer:
         payload = _make_payload("other.user")
         await reviewer.review_pull_request(payload, skip_author_check=True)
 
-        # Small PR: fetched twice (context=0 then expanded)
-        assert mock_bitbucket.fetch_pr_diff.call_count == 2
+        # Single diff fetch, context expanded locally
+        mock_bitbucket.fetch_pr_diff.assert_called_once()
         mock_copilot.review_diff.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_skip_empty_diff(self, reviewer, mock_bitbucket, mock_copilot):
         mock_bitbucket.fetch_pr_diff.return_value = "   \n"
-        payload = _make_payload("jan.username")
+        payload = _make_payload("username")
         await reviewer.review_pull_request(payload)
 
         mock_copilot.review_diff.assert_not_called()
@@ -297,7 +302,7 @@ class TestReviewer:
     @pytest.mark.asyncio
     async def test_no_findings(self, reviewer, mock_bitbucket, mock_copilot):
         mock_copilot.review_diff.return_value = _make_review_result([])
-        payload = _make_payload("jan.username")
+        payload = _make_payload("username")
         await reviewer.review_pull_request(payload)
 
         mock_bitbucket.post_inline_comment.assert_not_called()
@@ -307,8 +312,8 @@ class TestReviewer:
     @pytest.mark.asyncio
     async def test_content_fetch_failure_falls_back_to_diff_only(self, mock_bitbucket, mock_copilot):
         mock_bitbucket.fetch_file_content = AsyncMock(side_effect=Exception("not found"))
-        rev = Reviewer(mock_bitbucket, mock_copilot, auto_review_authors=["jan.username"])
-        payload = _make_payload("jan.username")
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        payload = _make_payload("username")
         await rev.review_pull_request(payload)
 
         # Should still review, just with content=None
@@ -319,8 +324,8 @@ class TestReviewer:
     @pytest.mark.asyncio
     async def test_content_preserved_for_small_pr(self, mock_bitbucket, mock_copilot):
         mock_bitbucket.fetch_file_content = AsyncMock(return_value="hello\n")
-        rev = Reviewer(mock_bitbucket, mock_copilot, auto_review_authors=["jan.username"])
-        payload = _make_payload("jan.username")
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        payload = _make_payload("username")
         await rev.review_pull_request(payload)
 
         mock_copilot.review_diff.assert_called_once()
@@ -328,12 +333,34 @@ class TestReviewer:
         assert len(files) == 1
         assert files[0].content == "hello\n"
 
+    @pytest.mark.asyncio
+    async def test_context_expanded_for_large_pr(self, mock_bitbucket, mock_copilot):
+        file_content = "\n".join(f"line {i}" for i in range(50))
+        # Return a diff with a hunk and enough content that file_content provides context
+        mock_bitbucket.fetch_pr_diff = AsyncMock(
+            return_value="diff --git a/file.py b/file.py\n@@ -10,1 +10,1 @@\n-old\n+new\n"
+        )
+        mock_bitbucket.fetch_file_content = AsyncMock(return_value=file_content)
+        # Use a tiny max_tokens to force the large PR path
+        mock_copilot.config.max_tokens_per_chunk = 1
+        mock_copilot.prompt_template = "{files}\n{tone}\n{repo_instructions}"
+        mock_copilot.review_diff = AsyncMock(return_value=_make_review_result())
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        payload = _make_payload("username")
+        await rev.review_pull_request(payload)
+
+        # Single diff fetch — no second call for expanded context
+        mock_bitbucket.fetch_pr_diff.assert_called_once()
+        # review_diff may or may not be called depending on compression,
+        # but the key assertion is no second fetch_pr_diff call
+
     def test_is_auto_review_author(self, reviewer):
-        assert reviewer.is_auto_review_author("jan.username") is True
+        assert reviewer.is_auto_review_author("username") is True
         assert reviewer.is_auto_review_author("other.user") is False
 
     def test_is_auto_review_author_empty_list(self, mock_bitbucket, mock_copilot):
-        rev = Reviewer(mock_bitbucket, mock_copilot, auto_review_authors=[])
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config(auto_review_authors=[]))
         assert rev.is_auto_review_author("anyone") is True
 
     def test_build_summary_mixed(self, reviewer):
@@ -352,12 +379,11 @@ class TestReviewer:
     @pytest.mark.asyncio
     async def test_review_real_webhook_payload(self, mock_bitbucket, mock_copilot):
         payload = _make_real_payload()
-        reviewer = Reviewer(mock_bitbucket, mock_copilot, auto_review_authors=["username"])
+        reviewer = Reviewer(mock_bitbucket, mock_copilot, _review_config(auto_review_authors=["username"]))
         await reviewer.review_pull_request(payload)
 
-        # Small PR: fetched twice (context=0 then context=3)
-        assert mock_bitbucket.fetch_pr_diff.call_count == 2
-        mock_bitbucket.fetch_pr_diff.assert_any_call("~USERNAME", "test", 1, context_lines=0)
+        # Single diff fetch, context expanded locally
+        mock_bitbucket.fetch_pr_diff.assert_called_once_with("~USERNAME", "test", 1, context_lines=0)
         mock_copilot.review_diff.assert_called_once()
         mock_bitbucket.post_inline_comment.assert_called_once()
         mock_bitbucket.post_pr_comment.assert_called_once()
@@ -423,7 +449,7 @@ class TestDedupAndLimit:
 
     @pytest.fixture
     def reviewer(self, mock_bitbucket, mock_copilot):
-        return Reviewer(mock_bitbucket, mock_copilot, auto_review_authors=["jan.username"])
+        return Reviewer(mock_bitbucket, mock_copilot, _review_config())
 
     def test_build_summary_truncated(self, reviewer):
         findings = [
@@ -514,8 +540,8 @@ class TestDedupAndLimit:
             ReviewFinding(file=f"f{i}.py", line=i, severity="warning", comment=f"issue {i}")
             for i in range(30)
         ])
-        rev = Reviewer(mock_bitbucket, mock_copilot, auto_review_authors=["jan.username"], max_comments=5)
-        payload = _make_payload("jan.username")
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config(max_comments=5))
+        payload = _make_payload("username")
         await rev.review_pull_request(payload)
 
         assert mock_bitbucket.post_inline_comment.call_count == 5
@@ -525,8 +551,8 @@ class TestDedupAndLimit:
     @pytest.mark.asyncio
     async def test_dedup_graceful_on_fetch_failure(self, mock_bitbucket, mock_copilot):
         mock_bitbucket.fetch_pr_comments.side_effect = Exception("API error")
-        rev = Reviewer(mock_bitbucket, mock_copilot, auto_review_authors=["jan.username"])
-        payload = _make_payload("jan.username")
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        payload = _make_payload("username")
         await rev.review_pull_request(payload)
 
         mock_bitbucket.post_inline_comment.assert_called_once()
@@ -539,7 +565,7 @@ class TestHandleMention:
         mock_copilot.answer_question = AsyncMock(return_value="Here's the answer.")
         mock_bitbucket.reply_to_comment = AsyncMock()
 
-        rev = Reviewer(mock_bitbucket, mock_copilot, auto_review_authors=["jan.username"])
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
         payload = _make_mention_payload("@noergler what does this do?")
         await rev.handle_mention(payload)
 
@@ -564,7 +590,7 @@ class TestHandleMention:
         )
         mock_bitbucket.reply_to_comment = AsyncMock()
 
-        rev = Reviewer(mock_bitbucket, mock_copilot, auto_review_authors=["jan.username"])
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
         payload = _make_mention_payload("@noergler what does this do?")
         await rev.handle_mention(payload)
 
@@ -576,7 +602,7 @@ class TestHandleMention:
     @pytest.mark.asyncio
     async def test_mention_triggers_full_review(self, mock_bitbucket, mock_copilot):
         mock_bitbucket.reply_to_comment = AsyncMock()
-        rev = Reviewer(mock_bitbucket, mock_copilot, auto_review_authors=["jan.username"])
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
         payload = _make_mention_payload("@noergler review")
         await rev.handle_mention(payload)
 

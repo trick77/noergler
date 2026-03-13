@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.bitbucket import NOERGLER_MARKER
+from app.config import ReviewConfig
 from app.models import WebhookPayload
 from app.reviewer import Reviewer, _extract_question
 
@@ -68,8 +69,7 @@ def mock_copilot():
 def reviewer(mock_bitbucket, mock_copilot):
     return Reviewer(
         mock_bitbucket, mock_copilot,
-        auto_review_authors=["pr-author"],
-        mention_trigger="noergler",
+        ReviewConfig(auto_review_authors=["pr-author"]),
     )
 
 

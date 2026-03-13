@@ -20,7 +20,10 @@ class CopilotConfig(BaseModel):
 class ReviewConfig(BaseModel):
     auto_review_authors: list[str] = []
     max_comments: int = 25
-    expanded_context_lines: int = 3
+    diff_extra_lines_before: int = 3
+    diff_extra_lines_after: int = 1
+    diff_max_extra_lines_dynamic_context: int = 8
+    diff_allow_dynamic_context: bool = True
     review_prompt_template: str = "prompts/review.txt"
     ramsay_authors: list[str] = []
     mention_trigger: str = "noergler"
@@ -86,7 +89,10 @@ def load_config() -> AppConfig:
         review=ReviewConfig(
             auto_review_authors=_env("REVIEW_AUTO_REVIEW_AUTHORS", ""),
             max_comments=int(_env("REVIEW_MAX_COMMENTS", "25")),
-            expanded_context_lines=int(_env("REVIEW_EXPANDED_CONTEXT_LINES", "3")),
+            diff_extra_lines_before=int(_env("REVIEW_DIFF_EXTRA_LINES_BEFORE", "3")),
+            diff_extra_lines_after=int(_env("REVIEW_DIFF_EXTRA_LINES_AFTER", "1")),
+            diff_max_extra_lines_dynamic_context=int(_env("REVIEW_DIFF_MAX_EXTRA_LINES_DYNAMIC_CONTEXT", "8")),
+            diff_allow_dynamic_context=_env("REVIEW_DIFF_ALLOW_DYNAMIC_CONTEXT", "true").lower() in ("true", "1", "yes"),
             review_prompt_template=_env("REVIEW_PROMPT_TEMPLATE", "prompts/review.txt"),
             ramsay_authors=_env("REVIEW_RAMSAY_AUTHORS", ""),
             mention_trigger=_env("REVIEW_MENTION_TRIGGER", "noergler"),

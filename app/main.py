@@ -40,15 +40,7 @@ async def lifespan(app: FastAPI):
     log_config(config, logger)
     bitbucket_client = BitbucketClient(config.bitbucket)
     copilot_client = CopilotClient(config.copilot, config.review)
-    reviewer = Reviewer(
-        bitbucket_client,
-        copilot_client,
-        config.review.auto_review_authors,
-        max_comments=config.review.max_comments,
-        expanded_context_lines=config.review.expanded_context_lines,
-        mention_trigger=config.review.mention_trigger,
-        ramsay_authors=config.review.ramsay_authors,
-    )
+    reviewer = Reviewer(bitbucket_client, copilot_client, config.review)
 
     await copilot_client.validate_model()
     logger.info("Bridge service started, model=%s", config.copilot.model)

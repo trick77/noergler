@@ -55,19 +55,29 @@ def test_log_config_masks_secrets(caplog):
     assert "[config.server]" in text
 
 
-def test_expanded_context_lines_default():
-    assert ReviewConfig().expanded_context_lines == 3
+def test_diff_context_defaults():
+    rc = ReviewConfig()
+    assert rc.diff_extra_lines_before == 3
+    assert rc.diff_extra_lines_after == 1
+    assert rc.diff_max_extra_lines_dynamic_context == 8
+    assert rc.diff_allow_dynamic_context is True
 
 
-def test_expanded_context_lines_from_env(monkeypatch):
+def test_diff_context_from_env(monkeypatch):
     env = {
         "BITBUCKET_URL": "https://bb.example.com",
         "BITBUCKET_TOKEN": "tok",
         "BITBUCKET_WEBHOOK_SECRET": "sec",
         "GITHUB_TOKEN": "ghp_tok",
-        "REVIEW_EXPANDED_CONTEXT_LINES": "5",
+        "REVIEW_DIFF_EXTRA_LINES_BEFORE": "5",
+        "REVIEW_DIFF_EXTRA_LINES_AFTER": "2",
+        "REVIEW_DIFF_MAX_EXTRA_LINES_DYNAMIC_CONTEXT": "12",
+        "REVIEW_DIFF_ALLOW_DYNAMIC_CONTEXT": "false",
     }
     for k, v in env.items():
         monkeypatch.setenv(k, v)
     config = load_config()
-    assert config.review.expanded_context_lines == 5
+    assert config.review.diff_extra_lines_before == 5
+    assert config.review.diff_extra_lines_after == 2
+    assert config.review.diff_max_extra_lines_dynamic_context == 12
+    assert config.review.diff_allow_dynamic_context is False
