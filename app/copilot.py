@@ -395,7 +395,7 @@ class CopilotClient:
         tone_text = TONE_PRESETS.get(tone, TONE_PRESETS["default"])
         template = self.prompt_template.replace("{tone}", tone_text)
         template = template.replace("{repo_instructions}", repo_instructions)
-        template = template.replace("{ticket_context}", ticket_context)
+        template = template.replace("{ticket_context}", ticket_context or "No ticket context provided.")
 
         supplementary = _render_supplementary_context(
             other_modified_paths, deleted_file_paths, renamed_file_paths,
