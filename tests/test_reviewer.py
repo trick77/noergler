@@ -223,15 +223,17 @@ def mock_bitbucket():
     client.fetch_pr_comments = AsyncMock(return_value=[])
     client.post_inline_comment = AsyncMock()
     client.post_pr_comment = AsyncMock()
+    client.update_pr_comment = AsyncMock(return_value=True)
     return client
 
 
-def _make_review_result(findings=None, skipped_files=None):
+def _make_review_result(findings=None, skipped_files=None, review_effort=1):
     return CopilotClient.ReviewResult(
         findings=findings or [],
         skipped_files=skipped_files or [],
         prompt_tokens=100,
         completion_tokens=50,
+        review_effort=review_effort,
     )
 
 
@@ -557,6 +559,94 @@ class TestDedupAndLimit:
 
         mock_bitbucket.post_inline_comment.assert_called_once()
         mock_bitbucket.post_pr_comment.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_persistent_comment_updates_existing(self, mock_bitbucket, mock_copilot):
+        mock_bitbucket.update_pr_comment = AsyncMock(return_value=True)
+        mock_bitbucket.fetch_pr_comments.return_value = [
+            {
+                "id": 77,
+                "version": 2,
+                "text": f"**Noergler review summary:** old\n\n{NOERGLER_MARKER}",
+                "path": None,
+                "line": None,
+            },
+        ]
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        payload = _make_payload("username")
+        await rev.review_pull_request(payload)
+
+        mock_bitbucket.update_pr_comment.assert_called_once()
+        call_args = mock_bitbucket.update_pr_comment.call_args[0]
+        assert call_args[3] == 77  # comment_id
+        assert call_args[4] == 2   # version
+        mock_bitbucket.post_pr_comment.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_persistent_comment_creates_new_when_none_exists(self, mock_bitbucket, mock_copilot):
+        mock_bitbucket.fetch_pr_comments.return_value = []
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        payload = _make_payload("username")
+        await rev.review_pull_request(payload)
+
+        mock_bitbucket.post_pr_comment.assert_called_once()
+        mock_bitbucket.update_pr_comment.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_persistent_comment_ignores_inline_markers(self, mock_bitbucket, mock_copilot):
+        mock_bitbucket.fetch_pr_comments.return_value = [
+            {
+                "id": 88,
+                "version": 1,
+                "text": f"**Suggestion:** bug\n\n{NOERGLER_MARKER}",
+                "path": "a.py",
+                "line": 10,
+            },
+        ]
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        payload = _make_payload("username")
+        await rev.review_pull_request(payload)
+
+        mock_bitbucket.post_pr_comment.assert_called_once()
+        mock_bitbucket.update_pr_comment.assert_not_called()
+
+    def test_build_summary_effort_score(self, reviewer):
+        findings = [
+            ReviewFinding(file="a.py", line=1, severity="warning", comment="warn"),
+        ]
+        summary = reviewer._build_summary(findings, review_effort=3)
+        assert "📊" in summary
+        assert "**3/5**" in summary
+        assert "Medium" in summary
+
+    def test_build_summary_no_effort_score(self, reviewer):
+        summary = reviewer._build_summary([], review_effort=None)
+        assert "📊" not in summary
+
+    def test_build_summary_security_section(self, reviewer):
+        findings = [
+            ReviewFinding(file="a.py", line=1, severity="critical", comment="SQL injection vulnerability found"),
+            ReviewFinding(file="b.py", line=2, severity="warning", comment="unused import"),
+        ]
+        summary = reviewer._build_summary(findings)
+        assert "🔒" in summary
+        assert "1 potential security issue" in summary
+
+    def test_build_summary_no_security_section(self, reviewer):
+        findings = [
+            ReviewFinding(file="a.py", line=1, severity="warning", comment="unused variable"),
+        ]
+        summary = reviewer._build_summary(findings)
+        assert "🔒" not in summary
+
+    def test_build_summary_multiple_security_findings(self, reviewer):
+        findings = [
+            ReviewFinding(file="a.py", line=1, severity="critical", comment="SQL injection risk in query"),
+            ReviewFinding(file="b.py", line=5, severity="warning", comment="XSS vulnerability in template"),
+        ]
+        summary = reviewer._build_summary(findings)
+        assert "🔒" in summary
+        assert "2 potential security issues" in summary
 
 
 class TestHandleMention:

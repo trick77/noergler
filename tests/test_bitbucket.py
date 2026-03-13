@@ -156,12 +156,43 @@ class TestBitbucketClient:
 
     @pytest.mark.asyncio
     @respx.mock
+    async def test_update_pr_comment(self, client):
+        import json as _json
+
+        route = respx.put(
+            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/comments/42"
+        ).mock(return_value=httpx.Response(200, json={"id": 42}))
+
+        await client.update_pr_comment("PROJ", "my-repo", 1, 42, 3, "Updated summary")
+
+        assert route.call_count == 1
+        body = _json.loads(route.calls[0].request.content)
+        assert NOERGLER_MARKER in body["text"]
+        assert "Updated summary" in body["text"]
+        assert body["version"] == 3
+        await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_update_pr_comment_409_returns_false(self, client):
+        respx.put(
+            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/comments/42"
+        ).mock(return_value=httpx.Response(409, json={"errors": [{"message": "version conflict"}]}))
+
+        result = await client.update_pr_comment("PROJ", "my-repo", 1, 42, 3, "Updated summary")
+        assert result is False
+        await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
     async def test_fetch_pr_comments(self, client):
         activities_response = {
             "values": [
                 {
                     "action": "COMMENTED",
                     "comment": {
+                        "id": 100,
+                        "version": 2,
                         "text": f"❌ **Critical:** bug\n\n{NOERGLER_MARKER}",
                         "anchor": {"path": "a.py", "line": 10},
                     },
@@ -172,6 +203,8 @@ class TestBitbucketClient:
                 {
                     "action": "COMMENTED",
                     "comment": {
+                        "id": 101,
+                        "version": 0,
                         "text": "Human comment",
                     },
                 },
@@ -184,9 +217,12 @@ class TestBitbucketClient:
 
         comments = await client.fetch_pr_comments("PROJ", "my-repo", 1)
         assert len(comments) == 2
+        assert comments[0]["id"] == 100
+        assert comments[0]["version"] == 2
         assert comments[0]["path"] == "a.py"
         assert comments[0]["line"] == 10
         assert NOERGLER_MARKER in comments[0]["text"]
+        assert comments[1]["id"] == 101
         assert comments[1]["text"] == "Human comment"
         await client.close()
 

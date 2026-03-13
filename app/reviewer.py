@@ -22,8 +22,23 @@ from app.models import PullRequest, ReviewFinding, WebhookPayload
 logger = logging.getLogger(__name__)
 
 SEVERITY_ORDER = {"critical": 0, "warning": 1}
+_EFFORT_LABELS = {
+    1: "Trivial",
+    2: "Small",
+    3: "Medium",
+    4: "Large",
+    5: "Very large",
+}
 _SEVERITY_RE = re.compile(r"\*\*Severity Level:\*\*\s*(\w+)")
 _REVIEW_KEYWORDS = {"review", "review this", "re-review", "rereview"}
+_SECURITY_KEYWORDS = re.compile(
+    r"\b(injection|xss|sql[_ -]?injection|authentication|authorization|"
+    r"credentials?|secret[s ]?leak|csrf|ssrf|"
+    r"path[_ -]?traversal|insecure|vulnerability|sanitiz(?:e|ation)|"
+    r"privilege[_ -]?escalation|deserialization|token[_ -]?leak|"
+    r"exposed?[_ -]?(?:secret|credential|key|token))\b",
+    re.IGNORECASE,
+)
 
 
 def _extract_question(text: str, trigger: str) -> str:
@@ -236,11 +251,25 @@ class Reviewer:
                 skipped_files=result.skipped_files,
                 token_usage=(result.prompt_tokens, result.completion_tokens),
                 prompt_breakdown=result.prompt_breakdown,
+                review_effort=result.review_effort,
             )
             try:
-                await self.bitbucket.post_pr_comment(
-                    project_key, repo_slug, pr_id, summary
+                existing_summary = next(
+                    (c for c in existing if NOERGLER_MARKER in c.get("text", "")
+                     and "Noergler review summary" in c.get("text", "")
+                     and c.get("path") is None and c.get("id")),
+                    None,
                 )
+                updated = False
+                if existing_summary:
+                    updated = await self.bitbucket.update_pr_comment(
+                        project_key, repo_slug, pr_id,
+                        existing_summary["id"], existing_summary["version"], summary,
+                    )
+                if not updated:
+                    await self.bitbucket.post_pr_comment(
+                        project_key, repo_slug, pr_id, summary
+                    )
             except Exception:
                 logger.error("Failed to post summary comment", exc_info=True)
 
@@ -364,6 +393,7 @@ class Reviewer:
         skipped_files: list[str] | None = None,
         token_usage: tuple[int, int] | None = None,
         prompt_breakdown: dict[str, int] | None = None,
+        review_effort: int | None = None,
     ) -> str:
         if not findings:
             summary = "**Noergler review summary:** No issues found. ✅"
@@ -385,8 +415,17 @@ class Reviewer:
             ])
 
             summary = f"**Noergler review summary:** {self._plural(len(findings), 'issue')} found\n\n{table}"
+
+            security_findings = [f for f in findings if _SECURITY_KEYWORDS.search(f.comment)]
+            if security_findings:
+                summary += f"\n\n🔒 **Security:** {self._plural(len(security_findings), 'potential security issue')} detected — review these findings carefully."
+
             if truncated:
                 summary += f"\n\n_Showing top {len(findings)} findings by severity. Additional findings were omitted._"
+
+        if review_effort is not None:
+            label = _EFFORT_LABELS.get(review_effort, "")
+            summary += f"\n\n📊 _Estimated review effort: **{review_effort}/5** ({label})_"
 
         if skipped_files:
             file_list = ", ".join(f"`{f}`" for f in skipped_files)

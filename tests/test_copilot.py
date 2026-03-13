@@ -328,7 +328,6 @@ class TestCopilotClient:
             ],
             "usage": {"prompt_tokens": 100, "completion_tokens": 50},
         }
-
         respx.post("https://models.github.ai/inference/chat/completions").mock(
             return_value=httpx.Response(200, json=review_response)
         )
@@ -343,6 +342,7 @@ class TestCopilotClient:
             result = await client.review_diff(files)
             assert len(result.findings) == 1
             assert result.findings[0].severity == "warning"
+            assert result.review_effort == 1  # trivial: 1 file, 1 changed line
         finally:
             await client.close()
 
@@ -682,6 +682,40 @@ class TestReviewFileGroup413Retry:
                 await client._review_file_group(files, template, depth=0)
         finally:
             await client.close()
+
+
+class TestEstimateReviewEffort:
+    def test_trivial_change(self):
+        files = [FileReviewData(path="a.py", diff="+x = 1\n", content="x = 1\n")]
+        assert CopilotClient._estimate_review_effort(files) == 1
+
+    def test_small_change(self):
+        files = [
+            FileReviewData(path="a.py", diff="\n".join(f"+line{i}" for i in range(20)), content="x\n"),
+            FileReviewData(path="b.py", diff="+fix\n", content="fix\n"),
+        ]
+        assert CopilotClient._estimate_review_effort(files) == 2
+
+    def test_medium_change(self):
+        files = [
+            FileReviewData(path=f"f{i}.py", diff="\n".join(f"+line{j}" for j in range(30)), content="x\n")
+            for i in range(4)
+        ]
+        assert CopilotClient._estimate_review_effort(files) == 3
+
+    def test_large_change(self):
+        files = [
+            FileReviewData(path=f"f{i}.py", diff="\n".join(f"+line{j}" for j in range(40)), content="x\n")
+            for i in range(10)
+        ]
+        assert CopilotClient._estimate_review_effort(files) == 4
+
+    def test_very_large_change(self):
+        files = [
+            FileReviewData(path=f"f{i}.py", diff="\n".join(f"+line{j}" for j in range(50)), content="x\n")
+            for i in range(20)
+        ]
+        assert CopilotClient._estimate_review_effort(files) == 5
 
 
 class TestPostWithRetry:

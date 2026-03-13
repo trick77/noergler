@@ -111,6 +111,23 @@ class BitbucketClient:
         response.raise_for_status()
         logger.debug("Replied to comment %d on PR %d", parent_comment_id, pr_id)
 
+    async def update_pr_comment(
+        self, project: str, repo: str, pr_id: int,
+        comment_id: int, version: int, text: str,
+    ) -> bool:
+        url = f"/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{pr_id}/comments/{comment_id}"
+        payload = {"text": f"{text}\n\n{NOERGLER_MARKER}", "version": version}
+        response = await self.client.put(url, json=payload)
+        if response.status_code == 409:
+            logger.warning(
+                "Version conflict updating comment %d on PR %d, falling back to new comment",
+                comment_id, pr_id,
+            )
+            return False
+        response.raise_for_status()
+        logger.debug("Updated summary comment %d on PR %d", comment_id, pr_id)
+        return True
+
     async def fetch_pr_comments(
         self, project: str, repo: str, pr_id: int
     ) -> list[dict]:
@@ -129,6 +146,8 @@ class BitbucketClient:
                 text = comment.get("text", "")
                 anchor = comment.get("anchor") or activity.get("commentAnchor") or {}
                 comments.append({
+                    "id": comment.get("id"),
+                    "version": comment.get("version"),
                     "text": text,
                     "path": anchor.get("path"),
                     "line": anchor.get("line"),

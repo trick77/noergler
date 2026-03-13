@@ -340,6 +340,7 @@ class CopilotClient:
         prompt_tokens: int
         completion_tokens: int
         prompt_breakdown: dict[str, int] | None = None
+        review_effort: int = 1
 
     async def review_diff(
         self,
@@ -400,13 +401,37 @@ class CopilotClient:
             "" if len(groups) == 1 else "s",
         )
 
+        review_effort = self._estimate_review_effort(files)
+
         return CopilotClient.ReviewResult(
             findings=all_findings,
             skipped_files=skipped_files,
             prompt_tokens=total_prompt_tokens,
             completion_tokens=total_completion_tokens,
             prompt_breakdown=prompt_breakdown,
+            review_effort=review_effort,
         )
+
+    @staticmethod
+    def _estimate_review_effort(files: list[FileReviewData]) -> int:
+        total_changed = 0
+        for f in files:
+            for line in f.diff.splitlines():
+                if (line.startswith("+") and not line.startswith("+++")) or \
+                   (line.startswith("-") and not line.startswith("---")):
+                    total_changed += 1
+
+        num_files = len(files)
+
+        if num_files <= 1 and total_changed <= 10:
+            return 1
+        if num_files <= 2 and total_changed <= 50:
+            return 2
+        if num_files <= 5 and total_changed <= 200:
+            return 3
+        if num_files <= 15 and total_changed <= 500:
+            return 4
+        return 5
 
     async def answer_question(
         self, question: str, files: list[FileReviewData], repo_instructions: str = "", tone: str = "default"
