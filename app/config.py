@@ -11,7 +11,7 @@ class BitbucketConfig(BaseModel):
 
 
 class CopilotConfig(BaseModel):
-    model: str = "openai/gpt-5"
+    model: str = "openai/gpt-4"
     github_token: str
     api_url: str = "https://models.github.ai/inference/chat/completions"
     max_tokens_per_chunk: int = 80000
@@ -81,7 +81,7 @@ def load_config() -> AppConfig:
             webhook_secret=_env("BITBUCKET_WEBHOOK_SECRET"),
         ),
         copilot=CopilotConfig(
-            model=_env("COPILOT_MODEL", "openai/gpt-5"),
+            model=_env("COPILOT_MODEL", "openai/gpt-4"),
             github_token=_env("GITHUB_TOKEN"),
             api_url=_env("COPILOT_API_URL", "https://models.github.ai/inference/chat/completions"),
             max_tokens_per_chunk=int(_env("COPILOT_MAX_TOKENS_PER_CHUNK", "80000")),

@@ -23,11 +23,11 @@ logger = logging.getLogger(__name__)
 
 SEVERITY_ORDER = {"critical": 0, "warning": 1}
 _EFFORT_LABELS = {
-    1: "Trivial",
-    2: "Small",
-    3: "Medium",
-    4: "Large",
-    5: "Very large",
+    1: "Trivial: typo, comment, config tweak",
+    2: "Small: single-function change, clear intent",
+    3: "Medium: multiple files, some logic changes",
+    4: "Large: significant logic changes, needs careful review",
+    5: "Very large: architectural changes, complex interactions",
 }
 _SEVERITY_RE = re.compile(r"\*\*Severity Level:\*\*\s*(\w+)")
 _REVIEW_KEYWORDS = {"review", "review this", "re-review", "rereview"}
@@ -256,7 +256,7 @@ class Reviewer:
             try:
                 existing_summary = next(
                     (c for c in existing if NOERGLER_MARKER in c.get("text", "")
-                     and "Noergler review summary" in c.get("text", "")
+                     and "Review summary" in c.get("text", "")
                      and c.get("path") is None and c.get("id")),
                     None,
                 )
@@ -396,45 +396,39 @@ class Reviewer:
         review_effort: int | None = None,
     ) -> str:
         if not findings:
-            summary = "**Noergler review summary:** No issues found. ✅"
+            summary = "**Review summary:** No issues found. ✅"
         else:
             counts = {"critical": 0, "warning": 0}
             for f in findings:
                 counts[f.severity] = counts.get(f.severity, 0) + 1
 
-            rows = []
+            parts = []
             if counts["critical"]:
-                rows.append(f"| ❌ Critical | {counts['critical']:>5} |")
+                parts.append(f"❌ {self._plural(counts['critical'], 'critical')}")
             if counts["warning"]:
-                rows.append(f"| ⚠️ Warning  | {counts['warning']:>5} |")
+                parts.append(f"⚠️ {self._plural(counts['warning'], 'warning')}")
 
-            table = "\n".join([
-                "| Severity | Count |",
-                "|----------|------:|",
-                *rows,
-            ])
-
-            summary = f"**Noergler review summary:** {self._plural(len(findings), 'issue')} found\n\n{table}"
+            summary = f"**Review summary:** {self._plural(len(findings), 'issue')} found — {', '.join(parts)}"
 
             security_findings = [f for f in findings if _SECURITY_KEYWORDS.search(f.comment)]
             if security_findings:
                 summary += f"\n\n🔒 **Security:** {self._plural(len(security_findings), 'potential security issue')} detected — review these findings carefully."
 
             if truncated:
-                summary += f"\n\n_Showing top {len(findings)} findings by severity. Additional findings were omitted._"
+                summary += f"\n\nShowing top {len(findings)} findings by severity. Additional findings were omitted."
 
         if review_effort is not None:
             label = _EFFORT_LABELS.get(review_effort, "")
-            summary += f"\n\n📊 _Estimated review effort: **{review_effort}/5** ({label})_"
+            summary += f"\n\n📊 Estimated review effort: **{review_effort}/5** — {label}"
 
         if skipped_files:
             file_list = ", ".join(f"`{f}`" for f in skipped_files)
-            summary += f"\n\n⚠️ _Not reviewed (too large): {file_list}_"
+            summary += f"\n\n⚠️ Not reviewed (too large): {file_list}"
 
         if agents_md_found:
-            summary += "\n\n✅ _Using project-specific review guidelines from `AGENTS.md`._"
+            summary += "\n\n✅ Using project-specific review guidelines from `AGENTS.md`."
         else:
-            summary += "\n\n💡 _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback._"
+            summary += "\n\n💡 Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback."
 
         if token_usage:
             prompt_t, completion_t = token_usage

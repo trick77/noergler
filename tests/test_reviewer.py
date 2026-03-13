@@ -240,7 +240,7 @@ def _make_review_result(findings=None, skipped_files=None, review_effort=1):
 @pytest.fixture
 def mock_copilot():
     client = AsyncMock()
-    client.config.model = "openai/gpt-5"
+    client.config.model = "openai/gpt-4"
     client.config.max_tokens_per_chunk = 80000
     client.prompt_template = "Review these files:\n{files}\n{tone}\n{repo_instructions}"
     client.review_diff = AsyncMock(return_value=_make_review_result([
@@ -372,8 +372,8 @@ class TestReviewer:
         ]
         summary = reviewer._build_summary(findings)
         assert "2 issues found" in summary
-        assert "❌ Critical" in summary
-        assert "⚠️ Warning" in summary
+        assert "critical" in summary
+        assert "warning" in summary
 
     def test_build_summary_empty(self, reviewer):
         assert "No issues found. ✅" in reviewer._build_summary([])
@@ -508,7 +508,7 @@ class TestDedupAndLimit:
             ReviewFinding(file="a.py", line=1, severity="warning", comment="warn"),
         ]
         summary = reviewer._build_summary(findings, token_usage=(1000, 500))
-        assert "Model: `openai/gpt-5`" in summary
+        assert "Model: `openai/gpt-4`" in summary
         assert "tokens used: 1,500" in summary
         assert "1,000 prompt" in summary
         assert "500 completion" in summary
@@ -567,7 +567,7 @@ class TestDedupAndLimit:
             {
                 "id": 77,
                 "version": 2,
-                "text": f"**Noergler review summary:** old\n\n{NOERGLER_MARKER}",
+                "text": f"**Review summary:** old\n\n{NOERGLER_MARKER}",
                 "path": None,
                 "line": None,
             },
