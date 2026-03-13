@@ -56,6 +56,9 @@ def mock_bitbucket():
 @pytest.fixture
 def mock_copilot():
     client = AsyncMock()
+    client.config.model = "openai/gpt-5"
+    client.config.max_tokens_per_chunk = 80000
+    client.prompt_template = "Review these files:\n{files}\n{tone}\n{repo_instructions}"
     client.review_diff = AsyncMock(return_value=[])
     client.answer_question = AsyncMock(return_value="Here is the answer.")
     return client

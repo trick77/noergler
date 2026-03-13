@@ -64,8 +64,7 @@ All configuration is driven by environment variables.
 | `GITHUB_TOKEN` | Yes | — | GitHub fine-grained access token with `models:read` scope |
 | `REVIEW_AUTO_REVIEW_AUTHORS` | No | _(empty)_ | Comma-separated list of Bitbucket usernames whose PRs are automatically reviewed. When empty or unset, all PR authors are reviewed. Mention-triggered reviews (`@noergler review`) bypass this check. |
 | `REVIEW_MAX_COMMENTS` | No | `25` | Maximum inline comments per review |
-| `REVIEW_MAX_LINES_PER_FILE` | No | `1000` | Skip files exceeding this line count |
-| `REVIEW_OPTIMIZE_DIFF_TOKENS` | No | `true` | When `true`, drops file content if the diff has more lines than the file (saves tokens). Set to `false` to always send full file content + diff. |
+| `REVIEW_EXPANDED_CONTEXT_LINES` | No | `3` | Number of context lines for small PR diffs (large PRs use minimal context with compression) |
 | `REVIEW_PROMPT_TEMPLATE` | No | `prompts/review.txt` | Path to the review prompt template |
 | `REVIEW_MENTION_TRIGGER` | No | `noergler` | Trigger name for mention-based interactions (used as `@<trigger>` in PR comments) |
 | `REVIEW_MENTION_PROMPT_TEMPLATE` | No | `prompts/mention.txt` | Path to the mention Q&A prompt template |

@@ -9,7 +9,7 @@ from app.config import CopilotConfig, ReviewConfig
 from app.copilot import (
     CopilotClient,
     FileReviewData,
-    _format_file_entry,
+    format_file_entry,
     _group_files_by_token_budget,
     _parse_review_response,
     _render_file_group,
@@ -152,7 +152,7 @@ class TestFileReviewData:
 class TestFormatFileEntry:
     def test_with_content(self):
         f = FileReviewData(path="src/main.py", diff="+hello\n", content="hello\nworld\n")
-        result = _format_file_entry(f)
+        result = format_file_entry(f)
         assert "## File: src/main.py" in result
         assert "### Full file content (new version):" in result
         assert "```py" in result
@@ -163,14 +163,14 @@ class TestFormatFileEntry:
     def test_deleted_file(self):
         diff = "--- a/old.py\n+++ /dev/null\n-removed\n"
         f = FileReviewData(path="old.py", diff=diff, content=None)
-        result = _format_file_entry(f)
+        result = format_file_entry(f)
         assert "## File: old.py" in result
         assert "_(file deleted)_" in result
         assert "### Changes (diff: lines with `-` are REMOVED, lines with `+` are ADDED):" in result
 
     def test_content_omitted(self):
         f = FileReviewData(path="big.py", diff="+added\n", content=None)
-        result = _format_file_entry(f)
+        result = format_file_entry(f)
         assert "## File: big.py" in result
         assert "_(full file content omitted — review diff only)_" in result
 

@@ -7,11 +7,14 @@ from app.bitbucket import NOERGLER_MARKER, BitbucketClient
 from app.copilot import (
     CopilotClient,
     FileReviewData,
+    count_tokens,
     extract_path,
+    format_file_entry,
     is_deleted,
     is_reviewable_diff,
     split_by_file,
 )
+from app.diff_compression import compress_for_large_pr, is_small_pr
 from app.models import PullRequest, ReviewFinding, WebhookPayload
 
 logger = logging.getLogger(__name__)
@@ -32,21 +35,17 @@ class Reviewer:
         copilot: CopilotClient,
         auto_review_authors: list[str],
         max_comments: int = 25,
-        max_lines_per_file: int = 1000,
-        context_lines: int = 0,
+        expanded_context_lines: int = 3,
         mention_trigger: str = "noergler",
         ramsay_authors: list[str] | None = None,
-        optimize_diff_tokens: bool = True,
     ):
         self.bitbucket = bitbucket
         self.copilot = copilot
         self.auto_review_authors = auto_review_authors
         self.max_comments = max_comments
-        self.max_lines_per_file = max_lines_per_file
-        self.context_lines = context_lines
+        self.expanded_context_lines = expanded_context_lines
         self.mention_trigger = mention_trigger
         self.ramsay_authors = ramsay_authors or []
-        self.optimize_diff_tokens = optimize_diff_tokens
 
     def _tone_for_author(self, author: str) -> str:
         return "ramsay" if author in self.ramsay_authors else "default"
@@ -61,7 +60,7 @@ class Reviewer:
         diff: str,
         source_commit: str | None,
         pr_tag: str,
-    ) -> tuple[list[FileReviewData], list[str]]:
+    ) -> list[FileReviewData]:
         all_file_diffs = split_by_file(diff)
         file_diffs = [fd for fd in all_file_diffs if is_reviewable_diff(fd)]
         skipped = len(all_file_diffs) - len(file_diffs)
@@ -70,9 +69,7 @@ class Reviewer:
             pr_tag, len(all_file_diffs), len(file_diffs), skipped,
         )
         if not file_diffs:
-            return [], []
-
-        skipped_large: list[str] = []
+            return []
 
         async def _build_file_data(file_diff: str) -> FileReviewData | None:
             path = extract_path(file_diff)
@@ -89,19 +86,8 @@ class Reviewer:
                     )
                 except Exception:
                     logger.warning("Failed to fetch content for %s, using diff only", path)
-            line_count = content.count("\n") + 1 if content else 0
-            if content and line_count > self.max_lines_per_file:
-                logger.info(
-                    "Skipping %s: %d lines exceeds limit of %d",
-                    path, line_count, self.max_lines_per_file,
-                )
-                skipped_large.append(path)
-                return None
-            diff_lines = file_diff.count("\n") + 1
-            if self.optimize_diff_tokens and content and diff_lines >= line_count:
-                content = None
             if content:
-                logger.info("Including %s with full file content (%d lines)", path, line_count)
+                logger.info("Including %s with full file content (%d lines)", path, content.count("\n") + 1)
             return FileReviewData(path=path, diff=file_diff, content=content)
 
         results = await asyncio.gather(*[_build_file_data(fd) for fd in file_diffs])
@@ -118,7 +104,24 @@ class Reviewer:
             files_with_content, files_diff_only,
         )
 
-        return files, skipped_large
+        return files
+
+    def _rebuild_files_with_diff(
+        self, new_diff: str, existing_files: list[FileReviewData]
+    ) -> list[FileReviewData]:
+        """Rebuild FileReviewData list using a new diff but reusing already-fetched content."""
+        content_by_path = {f.path: f.content for f in existing_files}
+        new_file_diffs = split_by_file(new_diff)
+        result: list[FileReviewData] = []
+        for file_diff in new_file_diffs:
+            if not is_reviewable_diff(file_diff):
+                continue
+            path = extract_path(file_diff)
+            if not path:
+                continue
+            content = content_by_path.get(path)
+            result.append(FileReviewData(path=path, diff=file_diff, content=content))
+        return result
 
     async def review_pull_request(self, payload: WebhookPayload, *, skip_author_check: bool = False) -> None:
         pr_tag = "unknown"
@@ -146,28 +149,55 @@ class Reviewer:
             )
             t0 = time.monotonic()
 
+            # Always fetch minimal diff first for size estimation
             diff = await self.bitbucket.fetch_pr_diff(
-                project_key, repo_slug, pr_id, context_lines=self.context_lines
+                project_key, repo_slug, pr_id, context_lines=0
             )
             if not diff.strip():
                 logger.info("%s has empty diff, skipping", pr_tag)
                 return
 
             source_commit = pr.fromRef.latestCommit
-            files, skipped_large = await self._prepare_files(
+            files = await self._prepare_files(
                 project_key, repo_slug, diff, source_commit, pr_tag
             )
 
             if not files:
                 logger.info("%s has no reviewable files after content fetch, skipping", pr_tag)
-                if skipped_large:
-                    summary = self._build_summary([], skipped_files=skipped_large)
-                    try:
-                        await self.bitbucket.post_pr_comment(
-                            project_key, repo_slug, pr_id, summary
-                        )
-                    except Exception:
-                        logger.error("Failed to post summary comment", exc_info=True)
+                return
+
+            other_modified: list[str] = []
+            deleted_paths: list[str] = []
+            renamed_paths: list[str] = []
+
+            template = self.copilot.prompt_template
+            max_tokens = self.copilot.config.max_tokens_per_chunk
+
+            if is_small_pr(files, max_tokens, template, count_tokens, format_file_entry):
+                logger.info(
+                    "%s: small PR (%d files) — using expanded context (%d lines)",
+                    pr_tag, len(files), self.expanded_context_lines,
+                )
+                diff = await self.bitbucket.fetch_pr_diff(
+                    project_key, repo_slug, pr_id,
+                    context_lines=self.expanded_context_lines,
+                )
+                files = self._rebuild_files_with_diff(diff, files)
+            else:
+                compression = compress_for_large_pr(
+                    files, max_tokens, template, count_tokens, format_file_entry,
+                )
+                files = compression.included_files
+                other_modified = compression.other_modified_paths
+                deleted_paths = compression.deleted_file_paths
+                renamed_paths = compression.renamed_file_paths
+                logger.info(
+                    "%s: large PR — compression applied: %d included, %d other_modified, %d deleted, %d renamed",
+                    pr_tag, len(files), len(other_modified), len(deleted_paths), len(renamed_paths),
+                )
+
+            if not files:
+                logger.info("%s has no reviewable files after compression, skipping", pr_tag)
                 return
 
             repo_instructions = await self._fetch_repo_instructions(
@@ -178,7 +208,12 @@ class Reviewer:
             )
 
             tone = self._tone_for_author(author_name)
-            result = await self.copilot.review_diff(files, repo_instructions, tone=tone)
+            result = await self.copilot.review_diff(
+                files, repo_instructions, tone=tone,
+                other_modified_paths=other_modified,
+                deleted_file_paths=deleted_paths,
+                renamed_file_paths=renamed_paths,
+            )
 
             existing = await self._fetch_existing_comments(project_key, repo_slug, pr_id)
             findings = _deduplicate(result.findings, existing)
@@ -205,7 +240,7 @@ class Reviewer:
                 findings,
                 truncated,
                 agents_md_found=agents_md_found,
-                skipped_files=skipped_large + result.skipped_files,
+                skipped_files=result.skipped_files,
                 token_usage=(result.prompt_tokens, result.completion_tokens),
                 prompt_breakdown=result.prompt_breakdown,
             )
@@ -258,9 +293,9 @@ class Reviewer:
         logger.info("Handling mention Q&A on %s: %r", pr_tag, question)
 
         try:
-            diff = await self.bitbucket.fetch_pr_diff(project_key, repo_slug, pr.id, context_lines=self.context_lines)
+            diff = await self.bitbucket.fetch_pr_diff(project_key, repo_slug, pr.id, context_lines=0)
             source_commit = pr.fromRef.latestCommit
-            files, skipped = await self._prepare_files(
+            files = await self._prepare_files(
                 project_key, repo_slug, diff, source_commit, pr_tag
             )
             if not files:

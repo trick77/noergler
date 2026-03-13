@@ -19,7 +19,6 @@ def _make_config():
         review=ReviewConfig(
             auto_review_authors=["alice", "bob"],
             max_comments=10,
-            max_lines_per_file=500,
             review_prompt_template="prompts/review.txt",
             ramsay_authors=["alice"],
         ),
@@ -46,7 +45,6 @@ def test_log_config_masks_secrets(caplog):
     assert "80000" in text
     assert "['alice', 'bob']" in text
     assert "10" in text
-    assert "500" in text
     assert "alice" in text
     assert "9090" in text
 
@@ -57,19 +55,19 @@ def test_log_config_masks_secrets(caplog):
     assert "[config.server]" in text
 
 
-def test_optimize_diff_tokens_default():
-    assert ReviewConfig().optimize_diff_tokens is True
+def test_expanded_context_lines_default():
+    assert ReviewConfig().expanded_context_lines == 3
 
 
-def test_optimize_diff_tokens_from_env(monkeypatch):
+def test_expanded_context_lines_from_env(monkeypatch):
     env = {
         "BITBUCKET_URL": "https://bb.example.com",
         "BITBUCKET_TOKEN": "tok",
         "BITBUCKET_WEBHOOK_SECRET": "sec",
         "GITHUB_TOKEN": "ghp_tok",
-        "REVIEW_OPTIMIZE_DIFF_TOKENS": "false",
+        "REVIEW_EXPANDED_CONTEXT_LINES": "5",
     }
     for k, v in env.items():
         monkeypatch.setenv(k, v)
     config = load_config()
-    assert config.review.optimize_diff_tokens is False
+    assert config.review.expanded_context_lines == 5

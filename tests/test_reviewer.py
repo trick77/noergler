@@ -232,6 +232,8 @@ def _make_review_result(findings=None, skipped_files=None):
 def mock_copilot():
     client = AsyncMock()
     client.config.model = "openai/gpt-5"
+    client.config.max_tokens_per_chunk = 80000
+    client.prompt_template = "Review these files:\n{files}\n{tone}\n{repo_instructions}"
     client.review_diff = AsyncMock(return_value=_make_review_result([
         ReviewFinding(file="file.py", line=1, severity="warning", comment="Test issue"),
     ]))
@@ -249,18 +251,17 @@ class TestReviewer:
         payload = _make_payload("jan.username")
         await reviewer.review_pull_request(payload)
 
-        mock_bitbucket.fetch_pr_diff.assert_called_once_with(
-            "PROJ", "my-repo", 42, context_lines=0
-        )
+        # Small PR: fetched twice — first with context=0, then with expanded context=3
+        assert mock_bitbucket.fetch_pr_diff.call_count == 2
+        mock_bitbucket.fetch_pr_diff.assert_any_call("PROJ", "my-repo", 42, context_lines=0)
+        mock_bitbucket.fetch_pr_diff.assert_any_call("PROJ", "my-repo", 42, context_lines=3)
+
         mock_copilot.review_diff.assert_called_once()
-        # Verify FileReviewData was passed
         call_args = mock_copilot.review_diff.call_args
         files = call_args[0][0]
         assert len(files) == 1
         assert isinstance(files[0], FileReviewData)
         assert files[0].path == "file.py"
-        # Content is None because the diff (2 lines) >= file (1 line), triggering proactive drop
-        assert files[0].content is None
 
         mock_bitbucket.post_inline_comment.assert_called_once()
         mock_bitbucket.post_pr_comment.assert_called_once()
@@ -281,7 +282,8 @@ class TestReviewer:
         payload = _make_payload("other.user")
         await reviewer.review_pull_request(payload, skip_author_check=True)
 
-        mock_bitbucket.fetch_pr_diff.assert_called_once()
+        # Small PR: fetched twice (context=0 then expanded)
+        assert mock_bitbucket.fetch_pr_diff.call_count == 2
         mock_copilot.review_diff.assert_called_once()
 
     @pytest.mark.asyncio
@@ -303,23 +305,6 @@ class TestReviewer:
         assert "No issues found" in summary_text
 
     @pytest.mark.asyncio
-    async def test_optimize_diff_tokens_false_preserves_content(self, mock_bitbucket, mock_copilot):
-        mock_bitbucket.fetch_file_content = AsyncMock(return_value="hello\n")
-        rev = Reviewer(
-            mock_bitbucket, mock_copilot,
-            auto_review_authors=["jan.username"],
-            optimize_diff_tokens=False,
-        )
-        payload = _make_payload("jan.username")
-        await rev.review_pull_request(payload)
-
-        mock_copilot.review_diff.assert_called_once()
-        files = mock_copilot.review_diff.call_args[0][0]
-        assert len(files) == 1
-        # Content preserved even though diff (2 lines) >= file (1 line)
-        assert files[0].content == "hello\n"
-
-    @pytest.mark.asyncio
     async def test_content_fetch_failure_falls_back_to_diff_only(self, mock_bitbucket, mock_copilot):
         mock_bitbucket.fetch_file_content = AsyncMock(side_effect=Exception("not found"))
         rev = Reviewer(mock_bitbucket, mock_copilot, auto_review_authors=["jan.username"])
@@ -332,19 +317,16 @@ class TestReviewer:
         assert files[0].content is None
 
     @pytest.mark.asyncio
-    async def test_large_file_skipped_by_content_lines(self, mock_bitbucket, mock_copilot):
-        mock_bitbucket.fetch_file_content = AsyncMock(return_value="line\n" * 1500)
-        rev = Reviewer(mock_bitbucket, mock_copilot, auto_review_authors=["jan.username"], max_lines_per_file=1000)
-        mock_bitbucket.fetch_pr_diff.return_value = "diff --git a/big.py b/big.py\n+hello\n"
+    async def test_content_preserved_for_small_pr(self, mock_bitbucket, mock_copilot):
+        mock_bitbucket.fetch_file_content = AsyncMock(return_value="hello\n")
+        rev = Reviewer(mock_bitbucket, mock_copilot, auto_review_authors=["jan.username"])
         payload = _make_payload("jan.username")
         await rev.review_pull_request(payload)
 
-        # File should be skipped, no review called, but summary posted
-        mock_copilot.review_diff.assert_not_called()
-        mock_bitbucket.post_pr_comment.assert_called_once()
-        summary_text = mock_bitbucket.post_pr_comment.call_args[0][3]
-        assert "Not reviewed (too large)" in summary_text
-        assert "`big.py`" in summary_text
+        mock_copilot.review_diff.assert_called_once()
+        files = mock_copilot.review_diff.call_args[0][0]
+        assert len(files) == 1
+        assert files[0].content == "hello\n"
 
     def test_is_auto_review_author(self, reviewer):
         assert reviewer.is_auto_review_author("jan.username") is True
@@ -373,9 +355,9 @@ class TestReviewer:
         reviewer = Reviewer(mock_bitbucket, mock_copilot, auto_review_authors=["username"])
         await reviewer.review_pull_request(payload)
 
-        mock_bitbucket.fetch_pr_diff.assert_called_once_with(
-            "~USERNAME", "test", 1, context_lines=0
-        )
+        # Small PR: fetched twice (context=0 then context=3)
+        assert mock_bitbucket.fetch_pr_diff.call_count == 2
+        mock_bitbucket.fetch_pr_diff.assert_any_call("~USERNAME", "test", 1, context_lines=0)
         mock_copilot.review_diff.assert_called_once()
         mock_bitbucket.post_inline_comment.assert_called_once()
         mock_bitbucket.post_pr_comment.assert_called_once()

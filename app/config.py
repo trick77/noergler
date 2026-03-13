@@ -20,13 +20,11 @@ class CopilotConfig(BaseModel):
 class ReviewConfig(BaseModel):
     auto_review_authors: list[str] = []
     max_comments: int = 25
-    max_lines_per_file: int = 1000
-    context_lines: int = 0
+    expanded_context_lines: int = 3
     review_prompt_template: str = "prompts/review.txt"
     ramsay_authors: list[str] = []
     mention_trigger: str = "noergler"
     mention_prompt_template: str = "prompts/mention.txt"
-    optimize_diff_tokens: bool = True
 
     @field_validator("auto_review_authors", "ramsay_authors", mode="before")
     @classmethod
@@ -88,13 +86,11 @@ def load_config() -> AppConfig:
         review=ReviewConfig(
             auto_review_authors=_env("REVIEW_AUTO_REVIEW_AUTHORS", ""),
             max_comments=int(_env("REVIEW_MAX_COMMENTS", "25")),
-            max_lines_per_file=int(_env("REVIEW_MAX_LINES_PER_FILE", "1000")),
-            context_lines=int(_env("REVIEW_CONTEXT_LINES", "0")),
+            expanded_context_lines=int(_env("REVIEW_EXPANDED_CONTEXT_LINES", "3")),
             review_prompt_template=_env("REVIEW_PROMPT_TEMPLATE", "prompts/review.txt"),
             ramsay_authors=_env("REVIEW_RAMSAY_AUTHORS", ""),
             mention_trigger=_env("REVIEW_MENTION_TRIGGER", "noergler"),
             mention_prompt_template=_env("REVIEW_MENTION_PROMPT_TEMPLATE", "prompts/mention.txt"),
-            optimize_diff_tokens=_env("REVIEW_OPTIMIZE_DIFF_TOKENS", "true").lower() in ("true", "1", "yes"),
         ),
         server=ServerConfig(
             host=_env("SERVER_HOST", "0.0.0.0"),
