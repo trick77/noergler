@@ -287,6 +287,7 @@ class Reviewer:
                         exc_info=True,
                     )
 
+            elapsed = time.monotonic() - t0
             summary = self._build_summary(
                 findings,
                 truncated,
@@ -296,7 +297,8 @@ class Reviewer:
                 prompt_breakdown=result.prompt_breakdown,
                 review_effort=result.review_effort,
                 ticket=ticket,
-                ticket_compliance=result.ticket_compliance,
+                compliance_requirements=result.compliance_requirements or None,
+                elapsed=elapsed,
             )
             try:
                 existing_summary = next(
@@ -318,7 +320,6 @@ class Reviewer:
             except Exception:
                 logger.error("Failed to post summary comment", exc_info=True)
 
-            elapsed = time.monotonic() - t0
             parts = [
                 f"Review of {pr_tag} completed in {elapsed:.1f}s",
                 f"{len(findings)} issue{'s' if len(findings) != 1 else ''}",
@@ -440,7 +441,8 @@ class Reviewer:
         prompt_breakdown: dict[str, int] | None = None,
         review_effort: int | None = None,
         ticket: JiraTicket | None = None,
-        ticket_compliance: str | None = None,
+        compliance_requirements: list[dict] | None = None,
+        elapsed: float | None = None,
     ) -> str:
         if not findings:
             summary = "🤖 **Review summary:** No issues found. ✅"
@@ -462,12 +464,27 @@ class Reviewer:
             if truncated:
                 summary += f"\n\nShowing top {len(findings)} findings by severity. Additional findings were omitted."
 
-        meta = []
+        ticket_section = ""
         if ticket:
-            meta.append(f"🎫 Linked ticket: [{ticket.key}]({ticket.url})")
-            if ticket_compliance:
-                compliance_emoji = {"Fully compliant": "✅", "Partially compliant": "⚠️", "Not compliant": "❌"}.get(ticket_compliance, "")
-                meta.append(f"{compliance_emoji} Ticket compliance: **{ticket_compliance}**")
+            ticket_lines = [f"**🎫 Ticket: [{ticket.key}]({ticket.url})**"]
+            if compliance_requirements:
+                met_count = sum(1 for r in compliance_requirements if r.get("met"))
+                total_count = len(compliance_requirements)
+                if met_count == total_count:
+                    compliance_level = "Fully compliant"
+                    compliance_emoji = "✅"
+                elif met_count > 0:
+                    compliance_level = "Partially compliant"
+                    compliance_emoji = "⚠️"
+                else:
+                    compliance_level = "Not compliant"
+                    compliance_emoji = "❌"
+                ticket_lines.append(f"- {compliance_emoji} Compliance: **{compliance_level}**")
+                req_lines = [f"    - {'✅' if r.get('met') else '❌'} {r['requirement']}" for r in compliance_requirements]
+                ticket_lines.append(f"  - 📋 Requirements:\n" + "\n".join(req_lines))
+            ticket_section = "\n\n" + "\n".join(ticket_lines)
+
+        meta = []
         if findings and security_findings:
             meta.append(f"🔒 **Security:** {self._plural(len(security_findings), 'potential security issue')} detected — review these findings carefully.")
         if review_effort is not None:
@@ -483,6 +500,9 @@ class Reviewer:
         else:
             meta.append("💡 Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback.")
 
+        if ticket_section:
+            summary += ticket_section
+
         if meta:
             summary += "\n\n" + "\n".join(f"- {m}" for m in meta)
 
@@ -490,7 +510,11 @@ class Reviewer:
             prompt_t, completion_t = token_usage
             model = self.copilot.config.model
             total = prompt_t + completion_t
-            summary += f"\n\n_Model: `{model}` · {prompt_t:,}↑ {completion_t:,}↓ ({total:,} total)_"
+            stats_line = f"_Model: `{model}` · {prompt_t:,}↑ {completion_t:,}↓ ({total:,} total)"
+            if elapsed is not None:
+                stats_line += f" · ⏱️ {elapsed:.1f}s"
+            stats_line += "_"
+            summary += f"\n\n{stats_line}"
             if prompt_breakdown:
                 t = prompt_breakdown['template']
                 r = prompt_breakdown['repo_instructions']

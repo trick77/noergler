@@ -3,7 +3,7 @@ import json
 import logging
 import re
 import ssl
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
@@ -194,10 +194,7 @@ def _group_files_by_token_budget(
     return groups, skipped
 
 
-_VALID_COMPLIANCE_LEVELS = {"Fully compliant", "Partially compliant", "Not compliant"}
-
-
-def _parse_review_response(content: str) -> tuple[list[ReviewFinding], str | None]:
+def _parse_review_response(content: str) -> tuple[list[ReviewFinding], list[dict]]:
     content = content.strip()
     if content.startswith("```"):
         lines = content.splitlines()
@@ -210,19 +207,25 @@ def _parse_review_response(content: str) -> tuple[list[ReviewFinding], str | Non
         data = json.loads(content)
     except json.JSONDecodeError:
         logger.error("Failed to parse review response as JSON: %s", content[:200])
-        return [], None
+        return [], []
 
-    ticket_compliance = None
+    compliance_requirements: list[dict] = []
     findings_data = data
 
     if isinstance(data, dict):
         findings_data = data.get("findings", [])
-        raw_compliance = data.get("ticket_compliance")
-        if isinstance(raw_compliance, str) and raw_compliance in _VALID_COMPLIANCE_LEVELS:
-            ticket_compliance = raw_compliance
+        raw_requirements = data.get("compliance_requirements", [])
+        if isinstance(raw_requirements, list):
+            for item in raw_requirements:
+                if (isinstance(item, dict)
+                        and isinstance(item.get("requirement"), str)
+                        and isinstance(item.get("met"), bool)):
+                    compliance_requirements.append(item)
+                else:
+                    logger.warning("Skipping malformed compliance requirement: %s", item)
     elif not isinstance(data, list):
         logger.error("Review response is not a JSON array or object")
-        return [], None
+        return [], []
 
     findings = []
     for item in findings_data:
@@ -231,7 +234,7 @@ def _parse_review_response(content: str) -> tuple[list[ReviewFinding], str | Non
         except Exception:
             logger.warning("Skipping malformed finding: %s", item)
 
-    return findings, ticket_compliance
+    return findings, compliance_requirements
 
 
 _MENTION_SYSTEM_MESSAGE = (
@@ -377,7 +380,7 @@ class CopilotClient:
         completion_tokens: int
         prompt_breakdown: dict[str, int] | None = None
         review_effort: int = 1
-        ticket_compliance: str | None = None
+        compliance_requirements: list[dict] = field(default_factory=list)
 
     async def review_diff(
         self,
@@ -418,20 +421,20 @@ class CopilotClient:
         all_findings: list[ReviewFinding] = []
         total_prompt_tokens = 0
         total_completion_tokens = 0
-        ticket_compliance = None
+        compliance_requirements: list[dict] = []
         for i, group in enumerate(groups):
             logger.info("Reviewing chunk %d/%d (%d file%s)",
                         i + 1, len(groups), len(group),
                         "" if len(group) == 1 else "s")
-            findings, prompt_tokens, completion_tokens, skipped, chunk_compliance = await self._review_file_group(
+            findings, prompt_tokens, completion_tokens, skipped, chunk_requirements = await self._review_file_group(
                 group, template, depth=0, supplementary=supplementary,
             )
             all_findings.extend(findings)
             skipped_files.extend(skipped)
             total_prompt_tokens += prompt_tokens
             total_completion_tokens += completion_tokens
-            if chunk_compliance and not ticket_compliance:
-                ticket_compliance = chunk_compliance
+            if chunk_requirements and not compliance_requirements:
+                compliance_requirements = chunk_requirements
 
         total = total_prompt_tokens + total_completion_tokens
         logger.info(
@@ -452,7 +455,7 @@ class CopilotClient:
             completion_tokens=total_completion_tokens,
             prompt_breakdown=prompt_breakdown,
             review_effort=review_effort,
-            ticket_compliance=ticket_compliance,
+            compliance_requirements=compliance_requirements,
         )
 
     @staticmethod
@@ -593,14 +596,14 @@ class CopilotClient:
         depth: int,
         max_depth: int = 3,
         supplementary: str = "",
-    ) -> tuple[list[ReviewFinding], int, int, list[str], str | None]:
+    ) -> tuple[list[ReviewFinding], int, int, list[str], list[dict]]:
         rendered = _render_file_group(group)
         if supplementary and depth == 0:
             rendered = rendered + "\n\n" + supplementary
         prompt = template.replace("{files}", rendered)
         try:
-            findings, pt, ct, ticket_compliance = await self._call_api(prompt)
-            return findings, pt, ct, [], ticket_compliance
+            findings, pt, ct, requirements = await self._call_api(prompt)
+            return findings, pt, ct, [], requirements
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code != 413:
                 raise
@@ -618,7 +621,7 @@ class CopilotClient:
                     file.diff.count("\n") + 1 if file else 0,
                     count_tokens(prompt),
                 )
-                return [], 0, 0, [path], None
+                return [], 0, 0, [path], []
             if depth >= max_depth:
                 paths = [f.path for f in group]
                 for f in group:
@@ -626,7 +629,7 @@ class CopilotClient:
                         "413 — file will not be reviewed after %d bisections: %s (%d diff lines)",
                         depth, f.path, f.diff.count("\n") + 1,
                     )
-                return [], 0, 0, paths, None
+                return [], 0, 0, paths, []
             mid = len(group) // 2
             logger.info(
                 "413 with %d files — splitting chunk and retrying (depth %d)",
@@ -634,7 +637,7 @@ class CopilotClient:
             )
             left = await self._review_file_group(group[:mid], template, depth + 1, max_depth)
             right = await self._review_file_group(group[mid:], template, depth + 1, max_depth)
-            compliance = left[4] or right[4]
+            compliance = left[4] if left[4] else right[4]
             return (
                 left[0] + right[0],
                 left[1] + right[1],
@@ -643,7 +646,7 @@ class CopilotClient:
                 compliance,
             )
 
-    async def _call_api(self, prompt: str) -> tuple[list[ReviewFinding], int, int, str | None]:
+    async def _call_api(self, prompt: str) -> tuple[list[ReviewFinding], int, int, list[dict]]:
         payload = {
             "model": self.config.model,
             "messages": [
@@ -668,5 +671,5 @@ class CopilotClient:
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
         content = data["choices"][0]["message"]["content"]
-        findings, ticket_compliance = _parse_review_response(content)
-        return findings, prompt_tokens, completion_tokens, ticket_compliance
+        findings, compliance_requirements = _parse_review_response(content)
+        return findings, prompt_tokens, completion_tokens, compliance_requirements

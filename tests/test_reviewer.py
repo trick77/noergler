@@ -750,47 +750,80 @@ class TestBuildSummaryWithTicket:
             url="https://jira.example.com/browse/SEP-22888",
         )
         summary = reviewer._build_summary([], ticket=ticket)
-        assert "SEP-22888" in summary
-        assert "https://jira.example.com/browse/SEP-22888" in summary
-        assert "🎫" in summary
+        assert "**🎫 Ticket: [SEP-22888](https://jira.example.com/browse/SEP-22888)**" in summary
 
-    def test_build_summary_with_ticket_compliance_full(self, reviewer):
+    def test_build_summary_compliance_all_met(self, reviewer):
         ticket = JiraTicket(
             key="SEP-100", title="Test", description=None,
             labels=[], acceptance_criteria=None,
             url="https://jira.example.com/browse/SEP-100",
         )
+        requirements = [
+            {"requirement": "Implement auth filter", "met": True},
+            {"requirement": "Add config endpoint", "met": True},
+        ]
         summary = reviewer._build_summary(
-            [], ticket=ticket, ticket_compliance="Fully compliant"
+            [], ticket=ticket, compliance_requirements=requirements
         )
-        assert "✅ Ticket compliance: **Fully compliant**" in summary
+        assert "✅ Compliance: **Fully compliant**" in summary
+        assert "    - ✅ Implement auth filter" in summary
+        assert "    - ✅ Add config endpoint" in summary
+        assert "📋 Requirements:" in summary
 
-    def test_build_summary_with_ticket_compliance_partial(self, reviewer):
+    def test_build_summary_compliance_partial(self, reviewer):
         ticket = JiraTicket(
             key="SEP-100", title="Test", description=None,
             labels=[], acceptance_criteria=None,
             url="https://jira.example.com/browse/SEP-100",
         )
+        requirements = [
+            {"requirement": "Implement auth filter", "met": True},
+            {"requirement": "Write integration tests", "met": False},
+        ]
         summary = reviewer._build_summary(
-            [], ticket=ticket, ticket_compliance="Partially compliant"
+            [], ticket=ticket, compliance_requirements=requirements
         )
-        assert "⚠️ Ticket compliance: **Partially compliant**" in summary
+        assert "⚠️ Compliance: **Partially compliant**" in summary
+        assert "    - ✅ Implement auth filter" in summary
+        assert "    - ❌ Write integration tests" in summary
 
-    def test_build_summary_with_ticket_compliance_not(self, reviewer):
+    def test_build_summary_compliance_none_met(self, reviewer):
         ticket = JiraTicket(
             key="SEP-100", title="Test", description=None,
             labels=[], acceptance_criteria=None,
             url="https://jira.example.com/browse/SEP-100",
         )
+        requirements = [
+            {"requirement": "Implement auth filter", "met": False},
+            {"requirement": "Write tests", "met": False},
+        ]
         summary = reviewer._build_summary(
-            [], ticket=ticket, ticket_compliance="Not compliant"
+            [], ticket=ticket, compliance_requirements=requirements
         )
-        assert "❌ Ticket compliance: **Not compliant**" in summary
+        assert "❌ Compliance: **Not compliant**" in summary
+        assert "    - ❌ Implement auth filter" in summary
+        assert "    - ❌ Write tests" in summary
+
+    def test_build_summary_no_requirements(self, reviewer):
+        ticket = JiraTicket(
+            key="SEP-100", title="Test", description=None,
+            labels=[], acceptance_criteria=None,
+            url="https://jira.example.com/browse/SEP-100",
+        )
+        summary = reviewer._build_summary([], ticket=ticket, compliance_requirements=[])
+        assert "📋" not in summary
+        assert "compliance" not in summary.lower()
 
     def test_build_summary_no_ticket(self, reviewer):
         summary = reviewer._build_summary([])
         assert "🎫" not in summary
         assert "compliance" not in summary.lower()
+
+    def test_build_summary_with_elapsed(self, reviewer):
+        summary = reviewer._build_summary(
+            [], token_usage=(1000, 500), elapsed=12.3
+        )
+        assert "⏱️ 12.3s" in summary
 
 
 class TestReviewWithJira:
@@ -805,12 +838,16 @@ class TestReviewWithJira:
             acceptance_criteria=None,
             url="https://jira.example.com/browse/SEP-123",
         ))
-        mock_copilot.review_diff.return_value = _make_review_result(
+        result = _make_review_result(
             findings=[
                 ReviewFinding(file="file.py", line=1, severity="warning", comment="Test issue"),
             ],
         )
-        mock_copilot.review_diff.return_value.ticket_compliance = "Fully compliant"
+        result.compliance_requirements = [
+            {"requirement": "Implement login page", "met": True},
+            {"requirement": "Add tests", "met": False},
+        ]
+        mock_copilot.review_diff.return_value = result
 
         rev = Reviewer(mock_bitbucket, mock_copilot, _review_config(), jira=mock_jira)
         payload = _make_payload(branch="feature/SEP-123-login")
@@ -823,7 +860,9 @@ class TestReviewWithJira:
 
         summary_text = mock_bitbucket.update_pr_comment.call_args[0][5] if mock_bitbucket.update_pr_comment.called else mock_bitbucket.post_pr_comment.call_args[0][3]
         assert "SEP-123" in summary_text
-        assert "Fully compliant" in summary_text
+        assert "⚠️ Compliance: **Partially compliant**" in summary_text
+        assert "    - ✅ Implement login page" in summary_text
+        assert "    - ❌ Add tests" in summary_text
 
     @pytest.mark.asyncio
     async def test_review_jira_disabled(self, mock_bitbucket, mock_copilot):

@@ -43,30 +43,30 @@ class TestParseReviewResponse:
         content = json.dumps([
             {"file": "src/main.py", "line": 10, "severity": "critical", "comment": "Bug here"}
         ])
-        findings, compliance = _parse_review_response(content)
+        findings, requirements = _parse_review_response(content)
         assert len(findings) == 1
         assert findings[0].file == "src/main.py"
         assert findings[0].line == 10
         assert findings[0].severity == "critical"
-        assert compliance is None
+        assert requirements == []
 
     def test_empty_array(self):
-        findings, compliance = _parse_review_response("[]")
+        findings, requirements = _parse_review_response("[]")
         assert findings == []
-        assert compliance is None
+        assert requirements == []
 
     def test_wrapped_in_code_fence(self):
         content = "```json\n[{\"file\": \"a.py\", \"line\": 1, \"severity\": \"warning\", \"comment\": \"test\"}]\n```"
-        findings, compliance = _parse_review_response(content)
+        findings, requirements = _parse_review_response(content)
         assert len(findings) == 1
 
     def test_invalid_json(self):
-        findings, compliance = _parse_review_response("not json at all")
+        findings, requirements = _parse_review_response("not json at all")
         assert findings == []
-        assert compliance is None
+        assert requirements == []
 
     def test_not_an_array(self):
-        findings, compliance = _parse_review_response('{"file": "a.py"}')
+        findings, requirements = _parse_review_response('{"file": "a.py"}')
         assert findings == []
 
     def test_malformed_item_skipped(self):
@@ -74,28 +74,39 @@ class TestParseReviewResponse:
             {"file": "a.py", "line": 1, "severity": "critical", "comment": "good"},
             {"bad": "item"},
         ])
-        findings, compliance = _parse_review_response(content)
+        findings, requirements = _parse_review_response(content)
         assert len(findings) == 1
 
-    def test_object_with_findings_and_compliance(self):
+    def test_object_with_findings_and_compliance_requirements(self):
         content = json.dumps({
             "findings": [
                 {"file": "a.py", "line": 1, "severity": "warning", "comment": "test"}
             ],
-            "ticket_compliance": "Fully compliant",
+            "compliance_requirements": [
+                {"requirement": "Implement auth filter", "met": True},
+                {"requirement": "Write tests", "met": False},
+            ],
         })
-        findings, compliance = _parse_review_response(content)
+        findings, requirements = _parse_review_response(content)
         assert len(findings) == 1
-        assert compliance == "Fully compliant"
+        assert len(requirements) == 2
+        assert requirements[0] == {"requirement": "Implement auth filter", "met": True}
+        assert requirements[1] == {"requirement": "Write tests", "met": False}
 
-    def test_object_with_invalid_compliance(self):
+    def test_object_with_malformed_compliance_requirements(self):
         content = json.dumps({
             "findings": [],
-            "ticket_compliance": "invalid value",
+            "compliance_requirements": [
+                {"requirement": "Valid", "met": True},
+                {"bad": "item"},
+                {"requirement": "Missing met field"},
+                {"requirement": "Wrong met type", "met": "yes"},
+            ],
         })
-        findings, compliance = _parse_review_response(content)
+        findings, requirements = _parse_review_response(content)
         assert findings == []
-        assert compliance is None
+        assert len(requirements) == 1
+        assert requirements[0]["requirement"] == "Valid"
 
 
 class TestIsReviewableDiff:
@@ -590,7 +601,7 @@ class TestReviewFileGroup413Retry:
                 findings.append(finding_d)
             return (
                 [__import__("app.models", fromlist=["ReviewFinding"]).ReviewFinding(**f) for f in findings],
-                50, 25, None,
+                50, 25, [],
             )
 
         client._call_api = mock_call_api
@@ -620,7 +631,7 @@ class TestReviewFileGroup413Retry:
                 response = httpx.Response(413, request=httpx.Request("POST", "https://x"), text="too large")
                 raise httpx.HTTPStatusError("too large", request=response.request, response=response)
             # Second call (diff only) → success
-            return [], 0, 0, None
+            return [], 0, 0, []
 
         client._call_api = mock_call_api
         try:
