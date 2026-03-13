@@ -467,6 +467,7 @@ class TestDedupAndLimit:
             ReviewFinding(file="a.py", line=1, severity="warning", comment="warn"),
         ]
         summary = reviewer._build_summary(findings, agents_md_found=False)
+        assert "- 💡" in summary
         assert "AGENTS.md" in summary
         assert "Tip:" in summary
 
@@ -475,18 +476,20 @@ class TestDedupAndLimit:
             ReviewFinding(file="a.py", line=1, severity="warning", comment="warn"),
         ]
         summary = reviewer._build_summary(findings, agents_md_found=True)
-        assert "✅" in summary
+        assert "- ✅" in summary
         assert "Using project-specific review guidelines" in summary
         assert "Tip:" not in summary
 
     def test_build_summary_no_findings_agents_md_not_found(self, reviewer):
         summary = reviewer._build_summary([], agents_md_found=False)
         assert "No issues found" in summary
+        assert "- 💡" in summary
         assert "Tip:" in summary
 
     def test_build_summary_no_findings_agents_md_found(self, reviewer):
         summary = reviewer._build_summary([], agents_md_found=True)
         assert "No issues found" in summary
+        assert "- ✅" in summary
         assert "Using project-specific review guidelines" in summary
         assert "Tip:" not in summary
 
@@ -495,7 +498,7 @@ class TestDedupAndLimit:
             ReviewFinding(file="a.py", line=1, severity="warning", comment="warn"),
         ]
         summary = reviewer._build_summary(findings, skipped_files=["huge.py", "big.js"])
-        assert "Not reviewed (too large)" in summary
+        assert "- ⚠️ Not reviewed (too large)" in summary
         assert "`huge.py`" in summary
         assert "`big.js`" in summary
 
@@ -509,9 +512,9 @@ class TestDedupAndLimit:
         ]
         summary = reviewer._build_summary(findings, token_usage=(1000, 500))
         assert "Model: `openai/gpt-4.1`" in summary
-        assert "tokens used: 1,500" in summary
-        assert "1,000 prompt" in summary
-        assert "500 completion" in summary
+        assert "1,000↑" in summary
+        assert "500↓" in summary
+        assert "1,500 total" in summary
 
     def test_build_summary_prompt_breakdown(self, reviewer):
         findings = [
@@ -523,10 +526,9 @@ class TestDedupAndLimit:
             token_usage=(7958, 6764),
             prompt_breakdown=breakdown,
         )
-        assert "prompt est.:" in summary
         assert "~500 template" in summary
-        assert "~200 repo instructions" in summary
-        assert "~7,258 review files" in summary
+        assert "~200 repo" in summary
+        assert "~7,258 files" in summary
 
     def test_build_summary_prompt_breakdown_without_token_usage(self, reviewer):
         findings = [
@@ -534,7 +536,7 @@ class TestDedupAndLimit:
         ]
         breakdown = {"template": 500, "repo_instructions": 0, "files": 7258}
         summary = reviewer._build_summary(findings, prompt_breakdown=breakdown)
-        assert "prompt est.:" not in summary
+        assert "template" not in summary
 
     @pytest.mark.asyncio
     async def test_findings_limited_in_review(self, mock_bitbucket, mock_copilot):
@@ -615,7 +617,7 @@ class TestDedupAndLimit:
             ReviewFinding(file="a.py", line=1, severity="warning", comment="warn"),
         ]
         summary = reviewer._build_summary(findings, review_effort=3)
-        assert "📊" in summary
+        assert "- 📊" in summary
         assert "**3/5**" in summary
         assert "Medium" in summary
 
@@ -629,7 +631,7 @@ class TestDedupAndLimit:
             ReviewFinding(file="b.py", line=2, severity="warning", comment="unused import"),
         ]
         summary = reviewer._build_summary(findings)
-        assert "🔒" in summary
+        assert "> 🔒" in summary
         assert "1 potential security issue" in summary
 
     def test_build_summary_no_security_section(self, reviewer):

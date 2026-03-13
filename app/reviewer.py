@@ -412,33 +412,39 @@ class Reviewer:
 
             security_findings = [f for f in findings if _SECURITY_KEYWORDS.search(f.comment)]
             if security_findings:
-                summary += f"\n\n🔒 **Security:** {self._plural(len(security_findings), 'potential security issue')} detected — review these findings carefully."
+                summary += f"\n\n> 🔒 **Security:** {self._plural(len(security_findings), 'potential security issue')} detected — review these findings carefully."
 
             if truncated:
                 summary += f"\n\nShowing top {len(findings)} findings by severity. Additional findings were omitted."
 
+        meta = []
         if review_effort is not None:
             label = _EFFORT_LABELS.get(review_effort, "")
-            summary += f"\n\n📊 Estimated review effort: **{review_effort}/5** — {label}"
+            meta.append(f"📊 Estimated review effort: **{review_effort}/5** — {label}")
 
         if skipped_files:
             file_list = ", ".join(f"`{f}`" for f in skipped_files)
-            summary += f"\n\n⚠️ Not reviewed (too large): {file_list}"
+            meta.append(f"⚠️ Not reviewed (too large): {file_list}")
 
         if agents_md_found:
-            summary += "\n\n✅ Using project-specific review guidelines from `AGENTS.md`"
+            meta.append("✅ Using project-specific review guidelines from `AGENTS.md`")
         else:
-            summary += "\n\n💡 Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback."
+            meta.append("💡 Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback.")
+
+        if meta:
+            summary += "\n\n" + "\n".join(f"- {m}" for m in meta)
 
         if token_usage:
             prompt_t, completion_t = token_usage
             model = self.copilot.config.model
-            summary += f"\n\n_Model: `{model}` — tokens used: {prompt_t + completion_t:,} ({prompt_t:,} prompt + {completion_t:,} completion)_"
+            total = prompt_t + completion_t
+            summary += f"\n\n_Model: `{model}` · {prompt_t:,}↑ {completion_t:,}↓ ({total:,} total)_"
             if prompt_breakdown:
+                t = prompt_breakdown['template']
+                r = prompt_breakdown['repo_instructions']
+                f = prompt_breakdown['files']
                 summary += (
-                    f"\n_↳ prompt est.: ~{prompt_breakdown['template']:,} template"
-                    f", ~{prompt_breakdown['repo_instructions']:,} repo instructions"
-                    f", ~{prompt_breakdown['files']:,} review files_"
+                    f"\n_↳ ~{t:,} template · ~{r:,} repo · ~{f:,} files_"
                 )
 
         return summary
