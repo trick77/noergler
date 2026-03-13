@@ -631,7 +631,7 @@ class TestDedupAndLimit:
             ReviewFinding(file="b.py", line=2, severity="warning", comment="unused import"),
         ]
         summary = reviewer._build_summary(findings)
-        assert "> 🔒" in summary
+        assert "- 🔒" in summary
         assert "1 potential security issue" in summary
 
     def test_build_summary_no_security_section(self, reviewer):

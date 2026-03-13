@@ -411,13 +411,13 @@ class Reviewer:
             summary = f"🤖 **Review summary:** {self._plural(len(findings), 'issue')} found — {', '.join(parts)}"
 
             security_findings = [f for f in findings if _SECURITY_KEYWORDS.search(f.comment)]
-            if security_findings:
-                summary += f"\n\n> 🔒 **Security:** {self._plural(len(security_findings), 'potential security issue')} detected — review these findings carefully."
 
             if truncated:
                 summary += f"\n\nShowing top {len(findings)} findings by severity. Additional findings were omitted."
 
         meta = []
+        if findings and security_findings:
+            meta.append(f"🔒 **Security:** {self._plural(len(security_findings), 'potential security issue')} detected — review these findings carefully.")
         if review_effort is not None:
             label = _EFFORT_LABELS.get(review_effort, "")
             meta.append(f"📊 Estimated review effort: **{review_effort}/5** — {label}")
