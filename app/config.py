@@ -41,6 +41,14 @@ class ReviewConfig(BaseModel):
 class JiraConfig(BaseModel):
     base_url: str = ""
     token: str = ""
+    acceptance_criteria_prefixes: list[str] = ["AC", "AK", "Acceptance Criteria", "Acceptance Criterion", "Akzeptanzkriterium", "Akzeptanzkriterien", "DoD", "Req"]
+
+    @field_validator("acceptance_criteria_prefixes", mode="before")
+    @classmethod
+    def parse_comma_list(cls, v):
+        if isinstance(v, str):
+            return [a.strip() for a in v.split(",") if a.strip()]
+        return v
 
     @property
     def enabled(self) -> bool:
@@ -114,6 +122,7 @@ def load_config() -> AppConfig:
         jira=JiraConfig(
             base_url=_env("JIRA_BASE_URL", ""),
             token=_env("JIRA_TOKEN", ""),
+            acceptance_criteria_prefixes=_env("JIRA_ACCEPTANCE_CRITERIA_PREFIXES", "AC,AK,Acceptance Criteria,Acceptance Criterion,Akzeptanzkriterium,Akzeptanzkriterien,DoD,Req"),
         ),
         server=ServerConfig(
             host=_env("SERVER_HOST", "0.0.0.0"),

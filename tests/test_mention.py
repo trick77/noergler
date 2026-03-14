@@ -4,6 +4,7 @@ import pytest
 
 from app.bitbucket import NOERGLER_MARKER
 from app.config import ReviewConfig
+from app.jira import JiraTicket
 from app.models import WebhookPayload
 from app.reviewer import Reviewer, _extract_question
 
@@ -117,6 +118,44 @@ class TestHandleMention:
 
         mock_copilot.answer_question.assert_not_called()
         mock_bitbucket.reply_to_comment.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_qa_with_ticket_context(self, mock_bitbucket, mock_copilot):
+        mock_jira = AsyncMock()
+        mock_jira.fetch_ticket = AsyncMock(return_value=JiraTicket(
+            key="SEP-123",
+            title="Add login",
+            description="Implement login page",
+            labels=["frontend"],
+            acceptance_criteria=None,
+            url="https://jira.example.com/browse/SEP-123",
+            issue_type="Story",
+            status="In Progress",
+        ))
+
+        reviewer = Reviewer(
+            mock_bitbucket, mock_copilot,
+            ReviewConfig(auto_review_authors=["pr-author"]),
+            jira=mock_jira,
+        )
+        payload = _make_mention_payload("@noergler explain this")
+        # Set branch to include ticket ID
+        payload.pullRequest.fromRef.displayId = "feature/SEP-123-login"
+        await reviewer.handle_mention(payload)
+
+        mock_copilot.answer_question.assert_called_once()
+        call_kwargs = mock_copilot.answer_question.call_args[1]
+        assert "SEP-123" in call_kwargs["ticket_context"]
+        assert "Add login" in call_kwargs["ticket_context"]
+
+    @pytest.mark.asyncio
+    async def test_qa_without_jira(self, reviewer, mock_copilot):
+        payload = _make_mention_payload("@noergler explain this")
+        await reviewer.handle_mention(payload)
+
+        mock_copilot.answer_question.assert_called_once()
+        call_kwargs = mock_copilot.answer_question.call_args[1]
+        assert call_kwargs["ticket_context"] == ""
 
     @pytest.mark.asyncio
     async def test_no_comment_returns_without_error(self, reviewer, mock_copilot):

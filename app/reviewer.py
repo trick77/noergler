@@ -82,6 +82,13 @@ class Reviewer:
             return "", None
         lines = [f"### Jira ticket: [{ticket.key}]({ticket.url})"]
         lines.append(f"**Title:** {ticket.title}")
+        if ticket.issue_type or ticket.status:
+            type_status_parts = []
+            if ticket.issue_type:
+                type_status_parts.append(f"**Type:** {ticket.issue_type}")
+            if ticket.status:
+                type_status_parts.append(f"**Status:** {ticket.status}")
+            lines.append(" · ".join(type_status_parts))
         if ticket.description:
             lines.append(f"**Description:** {ticket.description}")
         if ticket.labels:
@@ -378,8 +385,17 @@ class Reviewer:
             repo_instructions = await self._fetch_repo_instructions(
                 project_key, repo_slug, pr
             )
+
+            ticket_context = ""
+            ticket_id = self._extract_ticket_id(pr)
+            if ticket_id and self.jira:
+                ticket_context, _ = await self._fetch_ticket_context(ticket_id)
+
             tone = self._tone_for_author(pr.author.user.name)
-            answer = await self.copilot.answer_question(question, files, repo_instructions, tone=tone)
+            answer = await self.copilot.answer_question(
+                question, files, repo_instructions, tone=tone,
+                ticket_context=ticket_context,
+            )
             await self.bitbucket.reply_to_comment(
                 project_key, repo_slug, pr.id, comment.id, answer,
             )

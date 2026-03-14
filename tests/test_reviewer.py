@@ -838,6 +838,36 @@ class TestBuildSummaryWithTicket:
         summary = reviewer._build_summary([], jira_enabled=True)
         assert "ℹ️ No Jira ticket found in branch name or PR title" in summary
 
+    @pytest.mark.asyncio
+    async def test_fetch_ticket_context_includes_type_and_status(self, mock_bitbucket, mock_copilot):
+        ticket = JiraTicket(
+            key="SEP-100", title="Fix bug", description=None,
+            labels=[], acceptance_criteria=None,
+            url="https://jira.example.com/browse/SEP-100",
+            issue_type="Bug", status="In Progress",
+        )
+        mock_jira = AsyncMock()
+        mock_jira.fetch_ticket = AsyncMock(return_value=ticket)
+        reviewer = Reviewer(mock_bitbucket, mock_copilot, _review_config(), jira=mock_jira)
+        context, returned_ticket = await reviewer._fetch_ticket_context("SEP-100")
+        assert returned_ticket is ticket
+        assert "**Type:** Bug" in context
+        assert "**Status:** In Progress" in context
+
+    @pytest.mark.asyncio
+    async def test_fetch_ticket_context_omits_type_when_absent(self, mock_bitbucket, mock_copilot):
+        ticket = JiraTicket(
+            key="SEP-100", title="Fix bug", description=None,
+            labels=[], acceptance_criteria=None,
+            url="https://jira.example.com/browse/SEP-100",
+        )
+        mock_jira = AsyncMock()
+        mock_jira.fetch_ticket = AsyncMock(return_value=ticket)
+        reviewer = Reviewer(mock_bitbucket, mock_copilot, _review_config(), jira=mock_jira)
+        context, _ = await reviewer._fetch_ticket_context("SEP-100")
+        assert "**Type:**" not in context
+        assert "**Status:**" not in context
+
     def test_build_summary_jira_not_configured_no_ticket(self, reviewer):
         summary = reviewer._build_summary([], jira_enabled=False)
         assert "No Jira ticket found" not in summary

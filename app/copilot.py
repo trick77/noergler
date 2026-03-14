@@ -277,7 +277,10 @@ COMPLIANCE_INSTRUCTIONS = (
     "compliance_requirements: List ALL key requirements from the ticket. For each, "
     'set "met" to true if the PR addresses it, false if not. Keep requirement descriptions short (one line).\n'
     "\n"
-    "When no ticket context is present, respond with the JSON array of findings only (current behavior)."
+    "When no ticket context is present, respond with the JSON array of findings only (current behavior).\n"
+    "\n"
+    "Look for acceptance criteria in the ticket description — they may be prefixed with "
+    "identifiers like AK-1, AC-1, or similar numbered patterns."
 )
 
 
@@ -501,12 +504,14 @@ class CopilotClient:
         return 5
 
     async def answer_question(
-        self, question: str, files: list[FileReviewData], repo_instructions: str = "", tone: str = "default"
+        self, question: str, files: list[FileReviewData], repo_instructions: str = "",
+        tone: str = "default", ticket_context: str = "",
     ) -> str:
         tone_text = TONE_PRESETS.get(tone, TONE_PRESETS["default"])
         template = self.mention_template.replace("{tone}", tone_text)
         template = template.replace("{question}", question)
         template = template.replace("{repo_instructions}", repo_instructions)
+        template = template.replace("{ticket_context}", ticket_context or "No ticket context available.")
 
         groups, skipped_files = _group_files_by_token_budget(
             files,

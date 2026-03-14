@@ -4,6 +4,10 @@ A developer asked a question about this pull request. Answer it based on the cod
 
 {repo_instructions}
 
+## Ticket context
+
+{ticket_context}
+
 ## PR diff (for context)
 
 {diff}

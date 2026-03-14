@@ -1,4 +1,5 @@
 import logging
+import re
 from dataclasses import dataclass, field
 
 import httpx
@@ -17,8 +18,52 @@ class JiraTicket:
     acceptance_criteria: str | None
     subtasks: list[str] = field(default_factory=list)
     url: str = ""
+    issue_type: str | None = None
+    status: str | None = None
 
     MAX_DESCRIPTION_LENGTH = 5000
+
+
+_HEADING_RE = re.compile(r"^h[1-6]\.\s*", re.MULTILINE)
+_BLOCK_TAG_RE = re.compile(r"\{(noformat|code(?::[^}]*)?|quote|panel(?::[^}]*)?)}", re.IGNORECASE)
+_COLOR_RE = re.compile(r"\{color(?::[^}]*)?\}(.*?)\{color}", re.DOTALL)
+_IMAGE_RE = re.compile(r"!(?:[^|!\n]+\|)?[^!\n]+!")
+_LINK_RE = re.compile(r"\[([^|]+)\|([^\]]+)]")
+_TABLE_HEADER_RE = re.compile(r"\|\|")
+_BOLD_RE = re.compile(r"(?<!\w)\*(.+?)\*(?!\w)")
+_ITALIC_RE = re.compile(r"(?<!\w)_(.+?)_(?!\w)")
+_STRIKE_RE = re.compile(r"(?<!\w)-(.+?)-(?!\w)")
+_BLANK_LINES_RE = re.compile(r"\n{3,}")
+
+
+def _strip_jira_markup(text: str) -> str:
+    text = _HEADING_RE.sub("", text)
+    text = _BLOCK_TAG_RE.sub("", text)
+    text = _COLOR_RE.sub(r"\1", text)
+    text = _IMAGE_RE.sub("", text)
+    text = _LINK_RE.sub(r"\1 (\2)", text)
+    text = _TABLE_HEADER_RE.sub(" | ", text)
+    text = _BOLD_RE.sub(r"\1", text)
+    text = _ITALIC_RE.sub(r"\1", text)
+    text = _STRIKE_RE.sub(r"\1", text)
+    text = _BLANK_LINES_RE.sub("\n\n", text)
+    return text.strip()
+
+
+def _extract_acceptance_criteria(description: str, prefixes: list[str]) -> str | None:
+    if not prefixes:
+        return None
+    lines: list[str] = []
+    for prefix in prefixes:
+        pattern = re.compile(
+            rf"^\s*{re.escape(prefix)}(?:[- ]?\d+)?\s*[:.]?\s*.*$",
+            re.IGNORECASE | re.MULTILINE,
+        )
+        for match in pattern.finditer(description):
+            line = match.group(0).strip()
+            if line and line not in lines:
+                lines.append(line)
+    return "\n".join(lines) if lines else None
 
 
 class JiraClient:
@@ -35,7 +80,7 @@ class JiraClient:
     async def fetch_ticket(self, ticket_id: str) -> JiraTicket | None:
         url = (
             f"{self.config.base_url.rstrip('/')}/rest/api/2/issue/{ticket_id}"
-            f"?fields=summary,description,labels,subtasks,customfield_10004"
+            f"?fields=summary,description,labels,subtasks,issuetype,status"
         )
         try:
             response = await self.client.get(url)
@@ -57,6 +102,9 @@ class JiraClient:
         if description and len(description) > JiraTicket.MAX_DESCRIPTION_LENGTH:
             description = description[:JiraTicket.MAX_DESCRIPTION_LENGTH] + "..."
 
+        if description:
+            description = _strip_jira_markup(description)
+
         subtasks_raw = fields.get("subtasks", [])
         subtasks = [
             f"{st['key']}: {st.get('fields', {}).get('summary', '')}"
@@ -64,9 +112,12 @@ class JiraClient:
             if isinstance(st, dict) and "key" in st
         ]
 
-        acceptance_criteria = fields.get("customfield_10004")
-        if acceptance_criteria and not isinstance(acceptance_criteria, str):
-            acceptance_criteria = None
+        acceptance_criteria = _extract_acceptance_criteria(
+            description, self.config.acceptance_criteria_prefixes
+        ) if description else None
+
+        issue_type = fields.get("issuetype", {}).get("name") if isinstance(fields.get("issuetype"), dict) else None
+        status = fields.get("status", {}).get("name") if isinstance(fields.get("status"), dict) else None
 
         browse_url = f"{self.config.base_url.rstrip('/')}/browse/{data.get('key', ticket_id)}"
 
@@ -78,6 +129,8 @@ class JiraClient:
             acceptance_criteria=acceptance_criteria,
             subtasks=subtasks,
             url=browse_url,
+            issue_type=issue_type,
+            status=status,
         )
 
     async def close(self):
