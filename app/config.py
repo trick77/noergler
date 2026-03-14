@@ -40,7 +40,7 @@ class ReviewConfig(BaseModel):
 
 
 class JiraConfig(BaseModel):
-    base_url: str = ""
+    url: str = ""
     token: str = ""
     acceptance_criteria_prefixes: list[str] = ["AC", "AK", "Acceptance Criteria", "Acceptance Criterion", "Akzeptanzkriterium", "Akzeptanzkriterien", "DoD", "Req"]
 
@@ -53,7 +53,7 @@ class JiraConfig(BaseModel):
 
     @property
     def enabled(self) -> bool:
-        return bool(self.base_url and self.token)
+        return bool(self.url and self.token)
 
 
 class ServerConfig(BaseModel):
@@ -122,7 +122,7 @@ def load_config() -> AppConfig:
             ticket_compliance_check=_env("REVIEW_TICKET_COMPLIANCE_CHECK", "true").lower() in ("true", "1", "yes"),
         ),
         jira=JiraConfig(
-            base_url=_env("JIRA_BASE_URL", ""),
+            url=_env("JIRA_URL", ""),
             token=_env("JIRA_TOKEN", ""),
             acceptance_criteria_prefixes=_env("JIRA_ACCEPTANCE_CRITERIA_PREFIXES", "AC,AK,Acceptance Criteria,Acceptance Criterion,Akzeptanzkriterium,Akzeptanzkriterien,DoD,Req"),
         ),

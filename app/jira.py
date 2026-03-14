@@ -79,7 +79,7 @@ class JiraClient:
 
     async def fetch_ticket(self, ticket_id: str) -> JiraTicket | None:
         url = (
-            f"{self.config.base_url.rstrip('/')}/rest/api/2/issue/{ticket_id}"
+            f"{self.config.url.rstrip('/')}/rest/api/2/issue/{ticket_id}"
             f"?fields=summary,description,labels,subtasks,issuetype,status"
         )
         try:
@@ -119,7 +119,7 @@ class JiraClient:
         issue_type = fields.get("issuetype", {}).get("name") if isinstance(fields.get("issuetype"), dict) else None
         status = fields.get("status", {}).get("name") if isinstance(fields.get("status"), dict) else None
 
-        browse_url = f"{self.config.base_url.rstrip('/')}/browse/{data.get('key', ticket_id)}"
+        browse_url = f"{self.config.url.rstrip('/')}/browse/{data.get('key', ticket_id)}"
 
         return JiraTicket(
             key=data.get("key", ticket_id),

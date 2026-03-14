@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI):
     jira_client = None
     if config.jira.enabled:
         jira_client = JiraClient(config.jira)
-        logger.info("Jira integration enabled (%s)", config.jira.base_url)
+        logger.info("Jira integration enabled (%s)", config.jira.url)
 
     reviewer = Reviewer(bitbucket_client, copilot_client, config.review, jira=jira_client)
 

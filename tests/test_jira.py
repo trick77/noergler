@@ -8,7 +8,7 @@ from app.jira import JiraClient, JiraTicket, _extract_acceptance_criteria, _stri
 
 @pytest.fixture
 def jira_config():
-    return JiraConfig(base_url="https://jira.example.com", token="test-token")
+    return JiraConfig(url="https://jira.example.com", token="test-token")
 
 
 @pytest.fixture
@@ -195,7 +195,7 @@ class TestFetchTicket:
     @pytest.mark.asyncio
     async def test_fetch_ticket_no_ac_when_prefixes_empty(self):
         config = JiraConfig(
-            base_url="https://jira.example.com", token="test-token",
+            url="https://jira.example.com", token="test-token",
             acceptance_criteria_prefixes=[],
         )
         client = JiraClient(config)
