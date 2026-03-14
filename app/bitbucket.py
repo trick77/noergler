@@ -39,8 +39,8 @@ class BitbucketClient:
                 data.get("displayName", "?"),
                 data.get("version", "?"),
             )
-        except Exception:
-            logger.warning("Bitbucket connectivity check failed", exc_info=True)
+        except Exception as exc:
+            logger.warning("Bitbucket connectivity check failed: %s", exc)
 
     async def fetch_pr_diff(
         self, project: str, repo: str, pr_id: int, context_lines: int = 0

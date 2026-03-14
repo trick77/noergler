@@ -386,8 +386,8 @@ class CopilotClient:
             logger.warning(
                 "Model %s not found in available models", self.config.model
             )
-        except Exception:
-            logger.warning("Could not validate model against models API", exc_info=True)
+        except Exception as exc:
+            logger.warning("Could not validate model against models API: %s", exc)
         return None
 
     @dataclass

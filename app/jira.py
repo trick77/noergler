@@ -144,8 +144,8 @@ class JiraClient:
                 data.get("displayName", data.get("name", "?")),
             )
             return True
-        except Exception:
-            logger.warning("Jira connectivity check failed", exc_info=True)
+        except Exception as exc:
+            logger.warning("Jira connectivity check failed: %s", exc)
             return False
 
     async def close(self):
