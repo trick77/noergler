@@ -53,7 +53,6 @@ async def lifespan(app: FastAPI):
 
     if jira_client:
         if not await jira_client.check_connectivity():
-            logger.warning("Jira integration disabled due to connectivity failure")
             jira_client = None
 
     reviewer = Reviewer(bitbucket_client, copilot_client, config.review, jira=jira_client)

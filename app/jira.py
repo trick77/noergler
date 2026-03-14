@@ -145,7 +145,7 @@ class JiraClient:
             )
             return True
         except Exception as exc:
-            logger.warning("Jira connectivity check failed: %s", exc)
+            logger.warning("Jira connectivity check failed, disabling integration: %r", exc)
             return False
 
     async def close(self):
