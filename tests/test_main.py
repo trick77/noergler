@@ -167,6 +167,33 @@ class TestMentionRouting:
         assert data["status"] == "ignored"
         assert data["reason"] == "comment without mention"
 
+class TestEventKeyAllowList:
+    def test_unhandled_pr_event_returns_ignored_with_warning(self, client):
+        payload = {**PR_PAYLOAD, "eventKey": "pr:merged"}
+        body = json.dumps(payload).encode()
+        resp = client.post(
+            "/webhook",
+            content=body,
+            headers={"X-Hub-Signature": _sign(body), "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ignored"
+        assert "unhandled event" in data["reason"]
+
+    def test_pr_from_ref_updated_triggers_review(self, client):
+        payload = {**PR_PAYLOAD, "eventKey": "pr:from_ref_updated"}
+        body = json.dumps(payload).encode()
+        resp = client.post(
+            "/webhook",
+            content=body,
+            headers={"X-Hub-Signature": _sign(body), "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "accepted"
+
+
+class TestMentionRoutingCaseSensitivity:
     def test_comment_mention_case_insensitive(self, client):
         payload = {**COMMENT_MENTION_PAYLOAD, "comment": {
             "id": 102, "text": "@NOERGLER explain this", "author": {"name": "someone"},

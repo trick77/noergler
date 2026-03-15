@@ -18,6 +18,8 @@ logging.basicConfig(
 )
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
+_REVIEW_EVENT_KEYS = {"pr:opened", "pr:from_ref_updated"}
+
 
 class _HealthFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
@@ -146,6 +148,13 @@ async def webhook(
             background_tasks.add_task(reviewer.handle_mention, payload)
             return {"status": "accepted", "reason": "mention"}
         return {"status": "ignored", "reason": "comment without mention"}
+
+    if event_key not in _REVIEW_EVENT_KEYS:
+        logger.warning(
+            "Unhandled event %r — check your Bitbucket webhook configuration",
+            event_key,
+        )
+        return {"status": "ignored", "reason": f"unhandled event: {event_key}"}
 
     background_tasks.add_task(reviewer.review_pull_request, payload)
     return {"status": "accepted", "pr_id": payload.pullRequest.id}
