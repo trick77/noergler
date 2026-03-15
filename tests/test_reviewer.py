@@ -517,9 +517,9 @@ class TestDedupAndLimit:
         ]
         summary = reviewer._build_summary(findings, token_usage=(1000, 500))
         assert "Model: `openai/gpt-4.1`" in summary
-        assert "1,000↑" in summary
+        assert "1'000↑" in summary
         assert "500↓" in summary
-        assert "1,500 total" in summary
+        assert "1'500 total" in summary
 
     def test_build_summary_prompt_breakdown(self, reviewer):
         findings = [
@@ -533,7 +533,7 @@ class TestDedupAndLimit:
         )
         assert "~500 template" in summary
         assert "~200 repo" in summary
-        assert "~7,258 files" in summary
+        assert "~7'258 files" in summary
 
     def test_build_summary_prompt_breakdown_without_token_usage(self, reviewer):
         findings = [

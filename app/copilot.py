@@ -363,8 +363,8 @@ class CopilotClient:
                 max_out = limits.get("max_output_tokens", model.get("max_output_tokens", "?"))
                 tier = model.get("rate_limit_tier", "?")
                 caps = ",".join(model.get("capabilities", [])) or "?"
-                max_in_fmt = f"{max_in:,}" if isinstance(max_in, int) else str(max_in)
-                max_out_fmt = f"{max_out:,}" if isinstance(max_out, int) else str(max_out)
+                max_in_fmt = f"{max_in:,}".replace(",", "'") if isinstance(max_in, int) else str(max_in)
+                max_out_fmt = f"{max_out:,}".replace(",", "'") if isinstance(max_out, int) else str(max_out)
                 lines.append(
                     f"  {mid:<35s} max_in={max_in_fmt:<12s} max_out={max_out_fmt:<10s} tier={tier}  capabilities={caps}"
                 )
@@ -376,8 +376,8 @@ class CopilotClient:
                 limits = matched.get("limits", {})
                 max_in = limits.get("max_input_tokens", matched.get("max_input_tokens", "unknown"))
                 max_out = limits.get("max_output_tokens", matched.get("max_output_tokens", "unknown"))
-                max_in_fmt = f"{max_in:,}" if isinstance(max_in, int) else str(max_in)
-                max_out_fmt = f"{max_out:,}" if isinstance(max_out, int) else str(max_out)
+                max_in_fmt = f"{max_in:,}".replace(",", "'") if isinstance(max_in, int) else str(max_in)
+                max_out_fmt = f"{max_out:,}".replace(",", "'") if isinstance(max_out, int) else str(max_out)
                 logger.info(
                     "Model %s validated. max_input_tokens=%s, max_output_tokens=%s",
                     self.config.model, max_in_fmt, max_out_fmt,

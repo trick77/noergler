@@ -22,6 +22,10 @@ from app.models import PullRequest, ReviewFinding, WebhookPayload
 
 logger = logging.getLogger(__name__)
 
+
+def _fmt(n: int) -> str:
+    return f"{n:,}".replace(",", "'")
+
 SEVERITY_ORDER = {"critical": 0, "warning": 1}
 _EFFORT_LABELS = {
     1: "Trivial: typo, comment, config tweak",
@@ -556,7 +560,7 @@ class Reviewer:
             prompt_t, completion_t = token_usage
             model = self.copilot.config.model
             total = prompt_t + completion_t
-            stats_line = f"_Model: `{model}` · {prompt_t:,}↑ {completion_t:,}↓ ({total:,} total)"
+            stats_line = f"_Model: `{model}` · {_fmt(prompt_t)}↑ {_fmt(completion_t)}↓ ({_fmt(total)} total)"
             if elapsed is not None:
                 stats_line += f" · ⏱️ {elapsed:.1f}s"
             stats_line += "_"
@@ -566,7 +570,7 @@ class Reviewer:
                 r = prompt_breakdown['repo_instructions']
                 f = prompt_breakdown['files']
                 summary += (
-                    f"\n_↳ ~{t:,} template · ~{r:,} repo · ~{f:,} files_"
+                    f"\n_↳ ~{_fmt(t)} template · ~{_fmt(r)} repo · ~{_fmt(f)} files_"
                 )
 
         return summary
