@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 
-from app.bitbucket import NOERGLER_MARKER, BitbucketClient
+from app.bitbucket import BitbucketClient
 from app.config import load_config, log_config
 from app.copilot import CopilotClient
 from app.jira import JiraClient
@@ -86,26 +86,6 @@ async def health():
     return {"status": "ok"}
 
 
-@app.get("/feedback/probe/{project}/{repo}/{pr_id}")
-async def probe_feedback(project: str, repo: str, pr_id: int):
-    comments = await bitbucket_client.fetch_pr_comments(project, repo, pr_id)
-    noergler_comments = [c for c in comments if NOERGLER_MARKER in c.get("text", "")]
-
-    if not noergler_comments:
-        return {"error": "No noergler comments found on this PR"}
-
-    comment = noergler_comments[0]
-    reactions = await bitbucket_client.probe_comment_reactions(
-        project, repo, pr_id, comment["id"]
-    )
-    return {
-        "comment_id": comment["id"],
-        "comment_preview": comment["text"][:100],
-        "total_noergler_comments": len(noergler_comments),
-        "api_results": reactions,
-    }
-
-
 @app.post("/webhook")
 async def webhook(
     request: Request,
@@ -141,12 +121,20 @@ async def webhook(
         logger.error("Failed to parse webhook payload: %s", e)
         raise HTTPException(status_code=400, detail="Invalid payload")
 
+    if event_key == "pr:merged":
+        background_tasks.add_task(reviewer.handle_pr_merged, payload)
+        return {"status": "accepted", "reason": "merged-stats"}
+
     if event_key == "pr:comment:added":
         comment_text = payload_json.get("comment", {}).get("text", "")
         trigger = f"@{config.review.mention_trigger}"
         if trigger.lower() in comment_text.lower():
             background_tasks.add_task(reviewer.handle_mention, payload)
             return {"status": "accepted", "reason": "mention"}
+        parent = payload_json.get("comment", {}).get("parent")
+        if parent and parent.get("id") is not None:
+            background_tasks.add_task(reviewer.handle_feedback, payload)
+            return {"status": "accepted", "reason": "feedback"}
         return {"status": "ignored", "reason": "comment without mention"}
 
     if event_key not in _REVIEW_EVENT_KEYS:

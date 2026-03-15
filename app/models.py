@@ -36,10 +36,15 @@ class PullRequest(BaseModel):
     author: PullRequestParticipant
 
 
+class CommentParent(BaseModel):
+    id: int
+
+
 class Comment(BaseModel):
     id: int
     text: str
     author: PullRequestUser
+    parent: CommentParent | None = None
 
 
 class WebhookPayload(BaseModel):

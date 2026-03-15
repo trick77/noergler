@@ -162,6 +162,44 @@ class TestBitbucketClient:
 
     @pytest.mark.asyncio
     @respx.mock
+    async def test_post_inline_comment_includes_feedback_instruction(self, client):
+        route = respx.post(
+            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/comments"
+        ).mock(return_value=httpx.Response(201, json={"id": 1}))
+
+        finding = ReviewFinding(
+            file="src/main.py", line=10, severity="warning", comment="Consider this"
+        )
+        await client.post_inline_comment("PROJ", "my-repo", 1, finding)
+
+        body = route.calls[0].request.content.decode()
+        assert "Reply with" in body and "not helpful" in body
+        await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_add_comment_reaction_returns_true_on_success(self, client):
+        respx.put(
+            f"{BASE_URL}/rest/comment-likes/latest/projects/PROJ/repos/my-repo/pull-requests/1/comments/42/reactions"
+        ).mock(return_value=httpx.Response(200, json={}))
+
+        result = await client.add_comment_reaction("PROJ", "my-repo", 1, 42)
+        assert result is True
+        await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_add_comment_reaction_returns_false_on_404(self, client):
+        respx.put(
+            f"{BASE_URL}/rest/comment-likes/latest/projects/PROJ/repos/my-repo/pull-requests/1/comments/42/reactions"
+        ).mock(return_value=httpx.Response(404, text="Not Found"))
+
+        result = await client.add_comment_reaction("PROJ", "my-repo", 1, 42)
+        assert result is False
+        await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
     async def test_reply_to_comment(self, client):
         import json as _json
 
@@ -176,6 +214,23 @@ class TestBitbucketClient:
         assert body["parent"]["id"] == 42
         assert NOERGLER_MARKER in body["text"]
         assert "Here is the answer" in body["text"]
+        await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_reply_to_comment_without_marker(self, client):
+        import json as _json
+
+        route = respx.post(
+            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/comments"
+        ).mock(return_value=httpx.Response(201, json={"id": 99}))
+
+        await client.reply_to_comment("PROJ", "my-repo", 1, 42, "Feedback noted", include_marker=False)
+
+        assert route.call_count == 1
+        body = _json.loads(route.calls[0].request.content)
+        assert NOERGLER_MARKER not in body["text"]
+        assert "Feedback noted" in body["text"]
         await client.close()
 
     @pytest.mark.asyncio

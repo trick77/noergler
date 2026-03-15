@@ -46,6 +46,24 @@ COMMENT_NO_MENTION_PAYLOAD = {
     "pullRequest": PR_PAYLOAD["pullRequest"],
 }
 
+COMMENT_REPLY_PAYLOAD = {
+    "eventKey": "pr:comment:added",
+    "comment": {
+        "id": 200, "text": "\U0001f44d", "author": {"name": "dev"},
+        "parent": {"id": 100},
+    },
+    "pullRequest": PR_PAYLOAD["pullRequest"],
+}
+
+COMMENT_REPLY_WITH_MENTION_PAYLOAD = {
+    "eventKey": "pr:comment:added",
+    "comment": {
+        "id": 201, "text": "@noergler explain this", "author": {"name": "dev"},
+        "parent": {"id": 100},
+    },
+    "pullRequest": PR_PAYLOAD["pullRequest"],
+}
+
 NON_PR_PAYLOAD = {"eventKey": "repo:refs_changed"}
 
 
@@ -63,6 +81,7 @@ def client():
     mock_reviewer = AsyncMock()
     mock_reviewer.review_pull_request = AsyncMock()
     mock_reviewer.handle_mention = AsyncMock()
+    mock_reviewer.handle_feedback = AsyncMock()
 
     original_config = main_module.config
     original_reviewer = main_module.reviewer
@@ -167,6 +186,7 @@ class TestMentionRouting:
         assert data["status"] == "ignored"
         assert data["reason"] == "comment without mention"
 
+
 class TestEventKeyAllowList:
     def test_unhandled_pr_event_returns_ignored_with_warning(self, client):
         payload = {**PR_PAYLOAD, "eventKey": "pr:merged"}
@@ -191,6 +211,44 @@ class TestEventKeyAllowList:
         )
         assert resp.status_code == 200
         assert resp.json()["status"] == "accepted"
+
+
+class TestFeedbackRouting:
+    def test_reply_with_parent_routes_to_feedback(self, client):
+        body = json.dumps(COMMENT_REPLY_PAYLOAD).encode()
+        resp = client.post(
+            "/webhook",
+            content=body,
+            headers={"X-Hub-Signature": _sign(body), "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "accepted"
+        assert data["reason"] == "feedback"
+
+    def test_mention_takes_priority_over_parent(self, client):
+        body = json.dumps(COMMENT_REPLY_WITH_MENTION_PAYLOAD).encode()
+        resp = client.post(
+            "/webhook",
+            content=body,
+            headers={"X-Hub-Signature": _sign(body), "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "accepted"
+        assert data["reason"] == "mention"
+
+    def test_comment_without_parent_or_mention_ignored(self, client):
+        body = json.dumps(COMMENT_NO_MENTION_PAYLOAD).encode()
+        resp = client.post(
+            "/webhook",
+            content=body,
+            headers={"X-Hub-Signature": _sign(body), "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ignored"
+        assert data["reason"] == "comment without mention"
 
 
 class TestMentionRoutingCaseSensitivity:

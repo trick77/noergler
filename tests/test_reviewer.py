@@ -1005,3 +1005,137 @@ class TestReviewWithJira:
         call_kwargs = mock_copilot.review_diff.call_args[1]
         assert call_kwargs["ticket_compliance_check"] is False
         assert "SEP-123" in call_kwargs["ticket_context"]
+
+
+def _make_feedback_payload(
+    reply_text: str = "\U0001f44d",
+    parent_id: int = 10,
+    author: str = "dev",
+) -> WebhookPayload:
+    return WebhookPayload(**{
+        "eventKey": "pr:comment:added",
+        "pullRequest": {
+            "id": 42,
+            "title": "Test PR",
+            "fromRef": {
+                "id": "refs/heads/feature",
+                "displayId": "feature",
+                "latestCommit": "abc123",
+                "repository": {"slug": "my-repo", "project": {"key": "PROJ"}},
+            },
+            "toRef": {
+                "id": "refs/heads/main",
+                "displayId": "main",
+                "latestCommit": "def456",
+                "repository": {"slug": "my-repo", "project": {"key": "PROJ"}},
+            },
+            "author": {"user": {"name": "username"}},
+        },
+        "comment": {
+            "id": 200,
+            "text": reply_text,
+            "author": {"name": author},
+            "parent": {"id": parent_id},
+        },
+    })
+
+
+class TestHandleFeedback:
+    @pytest.mark.asyncio
+    async def test_positive_feedback_acknowledged(self, mock_bitbucket, mock_copilot):
+        mock_bitbucket.fetch_pr_comments.return_value = [
+            {"id": 10, "text": f"Bug here\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 5, "parent_id": None},
+        ]
+        mock_bitbucket.add_comment_reaction = AsyncMock(return_value=True)
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        await rev.handle_feedback(_make_feedback_payload("\U0001f44d", parent_id=10))
+
+        mock_bitbucket.add_comment_reaction.assert_called_once()
+        mock_bitbucket.reply_to_comment.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_negative_feedback_acknowledged(self, mock_bitbucket, mock_copilot):
+        mock_bitbucket.fetch_pr_comments.return_value = [
+            {"id": 10, "text": f"Bug here\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 5, "parent_id": None},
+        ]
+        mock_bitbucket.add_comment_reaction = AsyncMock(return_value=True)
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        await rev.handle_feedback(_make_feedback_payload("false positive", parent_id=10))
+
+        mock_bitbucket.add_comment_reaction.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_reaction_fallback_to_reply(self, mock_bitbucket, mock_copilot):
+        mock_bitbucket.fetch_pr_comments.return_value = [
+            {"id": 10, "text": f"Bug here\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 5, "parent_id": None},
+        ]
+        mock_bitbucket.add_comment_reaction = AsyncMock(return_value=False)
+        mock_bitbucket.reply_to_comment = AsyncMock()
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        await rev.handle_feedback(_make_feedback_payload("+1", parent_id=10))
+
+        mock_bitbucket.reply_to_comment.assert_called_once()
+        assert "Feedback noted" in mock_bitbucket.reply_to_comment.call_args[0][4]
+
+    @pytest.mark.asyncio
+    async def test_ignores_reply_to_non_noergler_comment(self, mock_bitbucket, mock_copilot):
+        mock_bitbucket.fetch_pr_comments.return_value = [
+            {"id": 10, "text": "Human comment", "path": "a.py", "line": 5, "parent_id": None},
+        ]
+        mock_bitbucket.add_comment_reaction = AsyncMock()
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        await rev.handle_feedback(_make_feedback_payload("+1", parent_id=10))
+
+        mock_bitbucket.add_comment_reaction.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_logs_aggregate_stats(self, mock_bitbucket, mock_copilot, caplog):
+        mock_bitbucket.fetch_pr_comments.return_value = [
+            {"id": 10, "text": f"Bug\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 5, "parent_id": None},
+            {"id": 11, "text": f"Warning\n\n{NOERGLER_MARKER}", "path": "b.py", "line": 3, "parent_id": None},
+            {"id": 20, "text": "+1", "path": None, "line": None, "parent_id": 10},
+        ]
+        mock_bitbucket.add_comment_reaction = AsyncMock(return_value=True)
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        import logging
+        with caplog.at_level(logging.INFO):
+            await rev.handle_feedback(_make_feedback_payload("\U0001f44d", parent_id=11))
+
+        assert any("Feedback on" in r.message and "positive" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_ignores_bot_own_reply(self, mock_bitbucket, mock_copilot):
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        payload = _make_feedback_payload(
+            f"👀 Feedback noted, thanks!\n\n{NOERGLER_MARKER}", parent_id=10
+        )
+        await rev.handle_feedback(payload)
+
+        mock_bitbucket.fetch_pr_comments.assert_not_called()
+        mock_bitbucket.add_comment_reaction.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_aggregate_stats_no_double_count_when_reply_already_fetched(
+        self, mock_bitbucket, mock_copilot, caplog
+    ):
+        """Current reply already present in fetched comments must not be counted twice."""
+        mock_bitbucket.fetch_pr_comments.return_value = [
+            {"id": 10, "text": f"Bug\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 5, "parent_id": None},
+            {"id": 200, "text": "\U0001f44d", "path": None, "line": None, "parent_id": 10},
+        ]
+        mock_bitbucket.add_comment_reaction = AsyncMock(return_value=True)
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        import logging
+        with caplog.at_level(logging.INFO):
+            await rev.handle_feedback(_make_feedback_payload("\U0001f44d", parent_id=10))
+
+        stat_record = next(r for r in caplog.records if "Feedback on" in r.message)
+        assert "1/1 comments" in stat_record.message
+        assert "1 positive" in stat_record.message
+        assert "0 negative" in stat_record.message

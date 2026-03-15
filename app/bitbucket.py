@@ -79,6 +79,7 @@ class BitbucketClient:
         ]
         if finding.suggestion:
             parts.append(f"**Suggested change:**\n```\n{finding.suggestion}\n```")
+        parts.append("_Not helpful? Reply with \"not helpful\" to this comment._")
         parts.append(NOERGLER_MARKER)
         text = "\n\n".join(parts)
         payload = {
@@ -114,10 +115,12 @@ class BitbucketClient:
     async def reply_to_comment(
         self, project: str, repo: str, pr_id: int,
         parent_comment_id: int, text: str,
+        include_marker: bool = True,
     ) -> None:
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{pr_id}/comments"
+        body = f"{text}\n\n{NOERGLER_MARKER}" if include_marker else text
         payload = {
-            "text": f"{text}\n\n{NOERGLER_MARKER}",
+            "text": body,
             "parent": {"id": parent_comment_id},
         }
         response = await self.client.post(url, json=payload)
@@ -141,26 +144,23 @@ class BitbucketClient:
         logger.debug("Updated summary comment %d on PR %d", comment_id, pr_id)
         return True
 
-    async def probe_comment_reactions(
-        self, project: str, repo: str, pr_id: int, comment_id: int
-    ) -> dict:
-        results = {}
-        endpoints = {
-            "likes": f"/rest/comment-likes/latest/projects/{project}/repos/{repo}/pull-requests/{pr_id}/comments/{comment_id}/likes",
-            "reactions": f"/rest/comment-likes/latest/projects/{project}/repos/{repo}/pull-requests/{pr_id}/comments/{comment_id}/reactions",
-            "comment_detail": f"/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{pr_id}/comments/{comment_id}",
-            "emoticons": "/rest/emoticons/latest/emoticons",
-        }
-        for name, url in endpoints.items():
-            try:
-                response = await self.client.get(url)
-                results[name] = {
-                    "status": response.status_code,
-                    "body": response.json() if response.status_code == 200 else response.text,
-                }
-            except Exception as e:
-                results[name] = {"status": "error", "body": str(e)}
-        return results
+    async def add_comment_reaction(
+        self, project: str, repo: str, pr_id: int, comment_id: int, emoticon: str = "eyes"
+    ) -> bool:
+        """Try to add an emoji reaction. Returns True on success, False on failure."""
+        url = (
+            f"/rest/comment-likes/latest/projects/{project}/repos/{repo}"
+            f"/pull-requests/{pr_id}/comments/{comment_id}/reactions"
+        )
+        try:
+            response = await self.client.put(url, json={"emoticon": emoticon})
+            if response.status_code < 300:
+                return True
+            logger.debug("Reaction API returned %d for comment %d", response.status_code, comment_id)
+            return False
+        except Exception:
+            logger.debug("Reaction API failed for comment %d", comment_id, exc_info=False)
+            return False
 
     async def fetch_pr_comments(
         self, project: str, repo: str, pr_id: int
@@ -185,6 +185,7 @@ class BitbucketClient:
                     "text": text,
                     "path": anchor.get("path"),
                     "line": anchor.get("line"),
+                    "parent_id": comment.get("parent", {}).get("id"),
                 })
             if data.get("isLastPage", True):
                 break

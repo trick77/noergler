@@ -4,6 +4,7 @@ import re
 import time
 
 from app.bitbucket import NOERGLER_MARKER, BitbucketClient
+from app.feedback import classify_feedback
 from app.copilot import (
     CopilotClient,
     FileReviewData,
@@ -353,12 +354,6 @@ class Reviewer:
                 parts.append(f"{failed} failed")
             logger.info(" — ".join(parts))
 
-            probe_host = self.server_config.host if self.server_config.host != "0.0.0.0" else "localhost"
-            logger.info(
-                "Feedback probe URL: http://%s:%s/feedback/probe/%s/%s/%d",
-                probe_host, self.server_config.port,
-                project_key, repo_slug, pr_id,
-            )
         except Exception:
             logger.error("Review of %s failed", pr_tag, exc_info=True)
 
@@ -423,6 +418,80 @@ class Reviewer:
             logger.info("Posted Q&A reply on %s", pr_tag)
         except Exception:
             logger.error("Mention Q&A on %s failed", pr_tag, exc_info=True)
+
+    async def handle_feedback(self, payload: WebhookPayload) -> None:
+        comment = payload.comment
+        if not comment or not comment.parent:
+            return
+
+        if NOERGLER_MARKER in comment.text:
+            return
+
+        pr = payload.pullRequest
+        project_key, repo_slug = self._extract_project_repo(payload)
+        if not project_key or not repo_slug:
+            return
+
+        pr_tag = f"{project_key}/{repo_slug}#{pr.id}"
+        parent_id = comment.parent.id
+
+        try:
+            existing = await self.bitbucket.fetch_pr_comments(project_key, repo_slug, pr.id)
+            parent_comment = next(
+                (c for c in existing if c.get("id") == parent_id), None
+            )
+
+            if not parent_comment or NOERGLER_MARKER not in parent_comment.get("text", ""):
+                return
+
+            classification = classify_feedback(comment.text)
+
+            logger.info(
+                "%s: %s feedback on comment %d from %s",
+                pr_tag, classification, parent_id, comment.author.name,
+            )
+
+            reacted = await self.bitbucket.add_comment_reaction(
+                project_key, repo_slug, pr.id, comment.id
+            )
+            if not reacted:
+                await self.bitbucket.reply_to_comment(
+                    project_key, repo_slug, pr.id, comment.id,
+                    "\U0001f440 Feedback noted, thanks!",
+                    include_marker=False,
+                )
+
+            # Aggregate stats
+            noergler_comment_ids = {
+                c["id"] for c in existing
+                if NOERGLER_MARKER in c.get("text", "") and c.get("id") is not None
+            }
+            positive = 0
+            negative = 0
+            feedback_count = 0
+            counted_ids: set[int] = set()
+            for c in existing:
+                if c.get("parent_id") in noergler_comment_ids and c.get("id") != comment.id:
+                    fb = classify_feedback(c.get("text", ""))
+                    feedback_count += 1
+                    counted_ids.add(c["id"])
+                    if fb == "positive":
+                        positive += 1
+                    else:
+                        negative += 1
+            # Include the current reply (it may not be in the fetched list yet)
+            feedback_count += 1
+            if classification == "positive":
+                positive += 1
+            else:
+                negative += 1
+
+            logger.info(
+                "Feedback on %s: %d/%d comments — %d positive, %d negative",
+                pr_tag, feedback_count, len(noergler_comment_ids), positive, negative,
+            )
+        except Exception:
+            logger.error("Feedback handling on %s failed", pr_tag, exc_info=True)
 
     def _extract_project_repo(
         self, payload: WebhookPayload
