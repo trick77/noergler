@@ -326,6 +326,28 @@ class Reviewer:
                         exc_info=True,
                     )
 
+            # Resolve stale inline comments from previous reviews
+            current_keys: set[tuple[str, int, str]] = set()
+            for f in result.findings:
+                current_keys.add((f.file, f.line, f.severity))
+            resolved = 0
+            for comment in existing:
+                if NOERGLER_MARKER not in comment.get("text", ""):
+                    continue
+                if not comment.get("path") or not comment.get("id"):
+                    continue
+                match = _SEVERITY_RE.search(comment.get("text", ""))
+                if not match:
+                    continue
+                severity = match.group(1).lower()
+                if (comment["path"], comment["line"], severity) not in current_keys:
+                    if await self.bitbucket.resolve_comment(
+                        project_key, repo_slug, pr_id, comment["id"]
+                    ):
+                        resolved += 1
+            if resolved:
+                logger.info("%s: resolved %d stale comment(s)", pr_tag, resolved)
+
             elapsed = time.monotonic() - t0
             summary = self._build_summary(
                 findings,

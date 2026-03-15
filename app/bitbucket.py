@@ -102,7 +102,7 @@ class BitbucketClient:
                 finding.file, finding.line, response.text,
             )
         response.raise_for_status()
-        logger.debug("Posted inline comment on %s:%d", finding.file, finding.line)
+        logger.info("Posted inline comment on %s:%d", finding.file, finding.line)
 
     async def post_pr_comment(
         self, project: str, repo: str, pr_id: int, text: str
@@ -110,7 +110,7 @@ class BitbucketClient:
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{pr_id}/comments"
         response = await self.client.post(url, json={"text": f"{text}\n\n{NOERGLER_MARKER}"})
         response.raise_for_status()
-        logger.debug("Posted summary comment on PR %d", pr_id)
+        logger.info("Posted summary comment on PR %d", pr_id)
 
     async def reply_to_comment(
         self, project: str, repo: str, pr_id: int,
@@ -125,7 +125,7 @@ class BitbucketClient:
         }
         response = await self.client.post(url, json=payload)
         response.raise_for_status()
-        logger.debug("Replied to comment %d on PR %d", parent_comment_id, pr_id)
+        logger.info("Replied to comment %d on PR %d", parent_comment_id, pr_id)
 
     async def update_pr_comment(
         self, project: str, repo: str, pr_id: int,
@@ -141,7 +141,7 @@ class BitbucketClient:
             )
             return False
         response.raise_for_status()
-        logger.debug("Updated summary comment %d on PR %d", comment_id, pr_id)
+        logger.info("Updated summary comment %d on PR %d", comment_id, pr_id)
         return True
 
     async def add_comment_reaction(
@@ -160,6 +160,30 @@ class BitbucketClient:
             return False
         except Exception:
             logger.debug("Reaction API failed for comment %d", comment_id, exc_info=False)
+            return False
+
+    async def resolve_comment(
+        self, project: str, repo: str, pr_id: int, comment_id: int
+    ) -> bool:
+        url = (
+            f"/rest/api/1.0/projects/{project}/repos/{repo}"
+            f"/pull-requests/{pr_id}/comments/{comment_id}/resolve"
+        )
+        try:
+            response = await self.client.put(url)
+            if response.status_code < 300:
+                logger.info("Resolved comment %d on PR %d", comment_id, pr_id)
+                return True
+            logger.warning(
+                "Failed to resolve comment %d on PR %d — HTTP %d",
+                comment_id, pr_id, response.status_code,
+            )
+            return False
+        except Exception:
+            logger.warning(
+                "Failed to resolve comment %d on PR %d",
+                comment_id, pr_id, exc_info=True,
+            )
             return False
 
     async def fetch_pr_comments(
