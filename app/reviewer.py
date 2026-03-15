@@ -460,17 +460,17 @@ class Reviewer:
     async def handle_feedback(self, payload: WebhookPayload) -> None:
         comment = payload.comment
         if not comment or payload.commentParentId is None:
-            logger.info("Feedback skipped: no comment or no commentParentId")
+            logger.debug("Feedback skipped: no comment or no commentParentId")
             return
 
         if NOERGLER_MARKER in comment.text:
-            logger.info("Feedback skipped: reply contains marker (bot's own reply)")
+            logger.debug("Feedback skipped: reply contains marker (bot's own reply)")
             return
 
         pr = payload.pullRequest
         project_key, repo_slug = self._extract_project_repo(payload)
         if not project_key or not repo_slug:
-            logger.info("Feedback skipped: could not extract project/repo")
+            logger.debug("Feedback skipped: could not extract project/repo")
             return
 
         pr_tag = f"{project_key}/{repo_slug}#{pr.id}"
@@ -483,16 +483,16 @@ class Reviewer:
             )
 
             if not parent_comment or NOERGLER_MARKER not in parent_comment.get("text", ""):
-                logger.info("Feedback skipped on %s: parent %d not found or missing marker", pr_tag, parent_id)
+                logger.debug("Feedback skipped on %s: parent %d not found or missing marker", pr_tag, parent_id)
                 return
 
             if not parent_comment.get("path"):
-                logger.info("Feedback skipped on %s: parent %d is not an inline comment", pr_tag, parent_id)
+                logger.debug("Feedback skipped on %s: parent %d is not an inline comment", pr_tag, parent_id)
                 return
 
             classification = classify_feedback(comment.text)
             if classification != "negative":
-                logger.info("Feedback skipped on %s: classified as %s", pr_tag, classification)
+                logger.debug("Feedback skipped on %s: classified as %s", pr_tag, classification)
                 return
 
             logger.info(
@@ -507,7 +507,7 @@ class Reviewer:
                 await self.bitbucket.reply_to_comment(
                     project_key, repo_slug, pr.id, comment.id,
                     random_response(),
-                    include_marker=False,
+                    include_marker=True,
                 )
 
             # Aggregate stats
@@ -515,29 +515,18 @@ class Reviewer:
                 c["id"] for c in existing
                 if NOERGLER_MARKER in c.get("text", "") and c.get("id") is not None
             }
-            positive = 0
             negative = 0
-            feedback_count = 0
-            counted_ids: set[int] = set()
             for c in existing:
                 if c.get("parent_id") in noergler_comment_ids and c.get("id") != comment.id:
-                    fb = classify_feedback(c.get("text", ""))
-                    feedback_count += 1
-                    counted_ids.add(c["id"])
-                    if fb == "positive":
-                        positive += 1
-                    else:
+                    if classify_feedback(c.get("text", "")) == "negative":
                         negative += 1
             # Include the current reply (it may not be in the fetched list yet)
-            feedback_count += 1
-            if classification == "positive":
-                positive += 1
-            else:
+            if classification == "negative":
                 negative += 1
 
             logger.info(
-                "Feedback on %s: %d/%d comments — %d positive, %d negative",
-                pr_tag, feedback_count, len(noergler_comment_ids), positive, negative,
+                "Feedback on %s: %d disagreed / %d review comments",
+                pr_tag, negative, len(noergler_comment_ids),
             )
         except Exception:
             logger.error("Feedback handling on %s failed", pr_tag, exc_info=True)

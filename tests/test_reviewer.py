@@ -1121,7 +1121,7 @@ class TestHandleFeedback:
         with caplog.at_level(logging.INFO):
             await rev.handle_feedback(_make_feedback_payload("disagree", parent_id=11))
 
-        assert any("Feedback on" in r.message and "negative" in r.message for r in caplog.records)
+        assert any("Feedback on" in r.message and "disagreed" in r.message for r in caplog.records)
 
     @pytest.mark.asyncio
     async def test_ignores_bot_own_reply(self, mock_bitbucket, mock_copilot):
@@ -1164,9 +1164,7 @@ class TestHandleFeedback:
             await rev.handle_feedback(_make_feedback_payload("disagree", parent_id=10))
 
         stat_record = next(r for r in caplog.records if "Feedback on" in r.message)
-        assert "1/1 comments" in stat_record.message
-        assert "0 positive" in stat_record.message
-        assert "1 negative" in stat_record.message
+        assert "1 disagreed / 1 review comments" in stat_record.message
 
 
 class TestHandlePrMerged:

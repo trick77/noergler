@@ -138,10 +138,7 @@ async def webhook(
         comment_text = payload_json.get("comment", {}).get("text", "")
         comment_id = payload_json.get("comment", {}).get("id")
         parent_id = payload_json.get("commentParentId")
-        logger.info(
-            "Comment event: comment_id=%s commentParentId=%s text_preview=%r",
-            comment_id, parent_id, comment_text[:80],
-        )
+        logger.info("Comment event: id=%s parentId=%s", comment_id, parent_id)
         trigger = f"@{config.review.mention_trigger}"
         if trigger.lower() in comment_text.lower():
             background_tasks.add_task(reviewer.handle_mention, payload)
