@@ -60,7 +60,7 @@ Respond with a JSON array. Each item must have:
 - "severity": "critical" or "warning"
 - "confidence": integer from 80 to 100
 - "comment": a concise description of the problem. Use markdown: wrap code references in backticks (`like this`). Do not include fix code in the comment.
-- "suggestion": (optional) the corrected code snippet as raw code (no markdown fencing). Omit this field if no concrete fix applies or if the fix is trivial/obvious from the comment alone (e.g. typos, simple renames, missing characters).
+- "suggestion": (optional) the corrected code that should replace the problematic code, as raw code only (no markdown fencing, no comments explaining the fix, no instructions — just the replacement code itself). Omit this field entirely if no concrete fix applies, if the fix is trivial/obvious from the comment alone (e.g. typos, simple renames, missing characters), or if you cannot provide actual replacement code.
 
 If no issues meet the confidence threshold, return an empty array: []
 
