@@ -460,17 +460,17 @@ class Reviewer:
     async def handle_feedback(self, payload: WebhookPayload) -> None:
         comment = payload.comment
         if not comment or not comment.parent:
-            logger.debug("Feedback skipped: no comment or no parent")
+            logger.info("Feedback skipped: no comment or no parent")
             return
 
         if NOERGLER_MARKER in comment.text:
-            logger.debug("Feedback skipped: reply contains marker (bot's own reply)")
+            logger.info("Feedback skipped: reply contains marker (bot's own reply)")
             return
 
         pr = payload.pullRequest
         project_key, repo_slug = self._extract_project_repo(payload)
         if not project_key or not repo_slug:
-            logger.debug("Feedback skipped: could not extract project/repo")
+            logger.info("Feedback skipped: could not extract project/repo")
             return
 
         pr_tag = f"{project_key}/{repo_slug}#{pr.id}"
@@ -483,16 +483,16 @@ class Reviewer:
             )
 
             if not parent_comment or NOERGLER_MARKER not in parent_comment.get("text", ""):
-                logger.debug("Feedback skipped on %s: parent %d not found or missing marker", pr_tag, parent_id)
+                logger.info("Feedback skipped on %s: parent %d not found or missing marker", pr_tag, parent_id)
                 return
 
             if not parent_comment.get("path"):
-                logger.debug("Feedback skipped on %s: parent %d is not an inline comment", pr_tag, parent_id)
+                logger.info("Feedback skipped on %s: parent %d is not an inline comment", pr_tag, parent_id)
                 return
 
             classification = classify_feedback(comment.text)
             if classification != "negative":
-                logger.debug("Feedback skipped on %s: classified as %s", pr_tag, classification)
+                logger.info("Feedback skipped on %s: classified as %s", pr_tag, classification)
                 return
 
             logger.info(

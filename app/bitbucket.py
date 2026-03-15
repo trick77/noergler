@@ -178,7 +178,7 @@ class BitbucketClient:
                     continue
                 comment = activity.get("comment", {})
                 text = comment.get("text", "")
-                anchor = comment.get("anchor") or activity.get("commentAnchor") or {}
+                anchor = activity.get("commentAnchor") or comment.get("anchor") or {}
                 comments.append({
                     "id": comment.get("id"),
                     "version": comment.get("version"),
