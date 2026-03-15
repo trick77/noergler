@@ -419,6 +419,44 @@ class Reviewer:
         except Exception:
             logger.error("Mention Q&A on %s failed", pr_tag, exc_info=True)
 
+    async def handle_pr_merged(self, payload: WebhookPayload) -> None:
+        pr = payload.pullRequest
+        project_key, repo_slug = self._extract_project_repo(payload)
+        if not project_key or not repo_slug:
+            return
+
+        pr_tag = f"{project_key}/{repo_slug}#{pr.id}"
+
+        try:
+            comments = await self.bitbucket.fetch_pr_comments(project_key, repo_slug, pr.id)
+
+            noergler_inline = {
+                c["id"]: c for c in comments
+                if NOERGLER_MARKER in c.get("text", "")
+                and c.get("path") is not None
+                and c.get("id") is not None
+            }
+
+            if not noergler_inline:
+                logger.info("%s merged — no review comments", pr_tag)
+                return
+
+            not_helpful = 0
+            for c in comments:
+                parent_id = c.get("parent_id")
+                if parent_id in noergler_inline and NOERGLER_MARKER not in c.get("text", ""):
+                    if classify_feedback(c.get("text", "")) == "negative":
+                        not_helpful += 1
+
+            total = len(noergler_inline)
+            useful_pct = (total - not_helpful) / total * 100
+            logger.info(
+                "%s merged — %d comments, %d not helpful (%.0f%% useful)",
+                pr_tag, total, not_helpful, useful_pct,
+            )
+        except Exception:
+            logger.error("Merged stats for %s failed", pr_tag, exc_info=True)
+
     async def handle_feedback(self, payload: WebhookPayload) -> None:
         comment = payload.comment
         if not comment or not comment.parent:

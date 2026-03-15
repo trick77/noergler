@@ -82,6 +82,7 @@ def client():
     mock_reviewer.review_pull_request = AsyncMock()
     mock_reviewer.handle_mention = AsyncMock()
     mock_reviewer.handle_feedback = AsyncMock()
+    mock_reviewer.handle_pr_merged = AsyncMock()
 
     original_config = main_module.config
     original_reviewer = main_module.reviewer
@@ -187,9 +188,24 @@ class TestMentionRouting:
         assert data["reason"] == "comment without mention"
 
 
+class TestMergedRouting:
+    def test_pr_merged_routes_to_handle_pr_merged(self, client):
+        payload = {**PR_PAYLOAD, "eventKey": "pr:merged"}
+        body = json.dumps(payload).encode()
+        resp = client.post(
+            "/webhook",
+            content=body,
+            headers={"X-Hub-Signature": _sign(body), "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "accepted"
+        assert data["reason"] == "merged-stats"
+
+
 class TestEventKeyAllowList:
     def test_unhandled_pr_event_returns_ignored_with_warning(self, client):
-        payload = {**PR_PAYLOAD, "eventKey": "pr:merged"}
+        payload = {**PR_PAYLOAD, "eventKey": "pr:declined"}
         body = json.dumps(payload).encode()
         resp = client.post(
             "/webhook",

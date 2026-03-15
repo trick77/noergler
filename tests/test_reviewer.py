@@ -1139,3 +1139,58 @@ class TestHandleFeedback:
         assert "1/1 comments" in stat_record.message
         assert "1 positive" in stat_record.message
         assert "0 negative" in stat_record.message
+
+
+class TestHandlePrMerged:
+    @pytest.mark.asyncio
+    async def test_mixed_feedback(self, mock_bitbucket, mock_copilot, caplog):
+        mock_bitbucket.fetch_pr_comments.return_value = [
+            {"id": 10, "text": f"Bug\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 5, "parent_id": None},
+            {"id": 11, "text": f"Warning\n\n{NOERGLER_MARKER}", "path": "b.py", "line": 3, "parent_id": None},
+            {"id": 12, "text": f"Issue\n\n{NOERGLER_MARKER}", "path": "c.py", "line": 1, "parent_id": None},
+            {"id": 20, "text": "not helpful", "path": None, "line": None, "parent_id": 10},
+            {"id": 21, "text": "false positive", "path": None, "line": None, "parent_id": 11},
+            {"id": 22, "text": "+1", "path": None, "line": None, "parent_id": 12},
+        ]
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        import logging
+        with caplog.at_level(logging.INFO):
+            await rev.handle_pr_merged(_make_payload())
+
+        stat_record = next(r for r in caplog.records if "merged" in r.message)
+        assert "3 comments" in stat_record.message
+        assert "2 not helpful" in stat_record.message
+        assert "33% useful" in stat_record.message
+
+    @pytest.mark.asyncio
+    async def test_no_noergler_comments(self, mock_bitbucket, mock_copilot, caplog):
+        mock_bitbucket.fetch_pr_comments.return_value = [
+            {"id": 10, "text": "Human comment", "path": "a.py", "line": 5, "parent_id": None},
+        ]
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        import logging
+        with caplog.at_level(logging.INFO):
+            await rev.handle_pr_merged(_make_payload())
+
+        stat_record = next(r for r in caplog.records if "merged" in r.message)
+        assert "no review comments" in stat_record.message
+
+    @pytest.mark.asyncio
+    async def test_all_comments_useful(self, mock_bitbucket, mock_copilot, caplog):
+        mock_bitbucket.fetch_pr_comments.return_value = [
+            {"id": 10, "text": f"Bug\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 5, "parent_id": None},
+            {"id": 11, "text": f"Warning\n\n{NOERGLER_MARKER}", "path": "b.py", "line": 3, "parent_id": None},
+            {"id": 20, "text": "+1 great catch", "path": None, "line": None, "parent_id": 10},
+        ]
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        import logging
+        with caplog.at_level(logging.INFO):
+            await rev.handle_pr_merged(_make_payload())
+
+        stat_record = next(r for r in caplog.records if "merged" in r.message)
+        assert "2 comments" in stat_record.message
+        assert "0 not helpful" in stat_record.message
+        assert "100% useful" in stat_record.message
