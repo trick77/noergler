@@ -136,14 +136,20 @@ async def webhook(
 
     if event_key == "pr:comment:added":
         comment_text = payload_json.get("comment", {}).get("text", "")
+        comment_id = payload_json.get("comment", {}).get("id")
+        parent = payload_json.get("comment", {}).get("parent")
+        logger.info(
+            "Comment event: comment_id=%s parent=%s text_preview=%r",
+            comment_id, parent, comment_text[:80],
+        )
         trigger = f"@{config.review.mention_trigger}"
         if trigger.lower() in comment_text.lower():
             background_tasks.add_task(reviewer.handle_mention, payload)
             return {"status": "accepted", "reason": "mention"}
-        parent = payload_json.get("comment", {}).get("parent")
         if parent and parent.get("id") is not None:
             background_tasks.add_task(reviewer.handle_feedback, payload)
             return {"status": "accepted", "reason": "feedback"}
+        logger.info("Comment ignored: no mention, no parent (comment_id=%s)", comment_id)
         return {"status": "ignored", "reason": "comment without mention"}
 
     if event_key not in _REVIEW_EVENT_KEYS:
