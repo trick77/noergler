@@ -26,7 +26,10 @@ class _HealthFilter(logging.Filter):
         return "/health" not in record.getMessage()
 
 
-logging.getLogger("uvicorn.access").addFilter(_HealthFilter())
+_access_logger = logging.getLogger("uvicorn.access")
+_access_logger.addFilter(_HealthFilter())
+_access_logger.handlers.clear()
+_access_logger.propagate = True
 logger = logging.getLogger(__name__)
 
 config = None

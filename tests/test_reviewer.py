@@ -1042,7 +1042,7 @@ def _make_feedback_payload(
 
 class TestHandleFeedback:
     @pytest.mark.asyncio
-    async def test_positive_feedback_acknowledged(self, mock_bitbucket, mock_copilot):
+    async def test_positive_feedback_ignored(self, mock_bitbucket, mock_copilot):
         mock_bitbucket.fetch_pr_comments.return_value = [
             {"id": 10, "text": f"Bug here\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 5, "parent_id": None},
         ]
@@ -1051,7 +1051,20 @@ class TestHandleFeedback:
         rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
         await rev.handle_feedback(_make_feedback_payload("\U0001f44d", parent_id=10))
 
-        mock_bitbucket.add_comment_reaction.assert_called_once()
+        mock_bitbucket.add_comment_reaction.assert_not_called()
+        mock_bitbucket.reply_to_comment.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_non_disagree_negative_text_ignored(self, mock_bitbucket, mock_copilot):
+        mock_bitbucket.fetch_pr_comments.return_value = [
+            {"id": 10, "text": f"Bug here\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 5, "parent_id": None},
+        ]
+        mock_bitbucket.add_comment_reaction = AsyncMock(return_value=True)
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        await rev.handle_feedback(_make_feedback_payload("wrong", parent_id=10))
+
+        mock_bitbucket.add_comment_reaction.assert_not_called()
         mock_bitbucket.reply_to_comment.assert_not_called()
 
     @pytest.mark.asyncio
@@ -1062,12 +1075,14 @@ class TestHandleFeedback:
         mock_bitbucket.add_comment_reaction = AsyncMock(return_value=True)
 
         rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
-        await rev.handle_feedback(_make_feedback_payload("false positive", parent_id=10))
+        await rev.handle_feedback(_make_feedback_payload("disagree", parent_id=10))
 
         mock_bitbucket.add_comment_reaction.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_reaction_fallback_to_reply(self, mock_bitbucket, mock_copilot):
+        from app.feedback import _FUN_RESPONSES
+
         mock_bitbucket.fetch_pr_comments.return_value = [
             {"id": 10, "text": f"Bug here\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 5, "parent_id": None},
         ]
@@ -1075,10 +1090,10 @@ class TestHandleFeedback:
         mock_bitbucket.reply_to_comment = AsyncMock()
 
         rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
-        await rev.handle_feedback(_make_feedback_payload("+1", parent_id=10))
+        await rev.handle_feedback(_make_feedback_payload("disagree", parent_id=10))
 
         mock_bitbucket.reply_to_comment.assert_called_once()
-        assert "Feedback noted" in mock_bitbucket.reply_to_comment.call_args[0][4]
+        assert mock_bitbucket.reply_to_comment.call_args[0][4] in _FUN_RESPONSES
 
     @pytest.mark.asyncio
     async def test_ignores_reply_to_non_noergler_comment(self, mock_bitbucket, mock_copilot):
@@ -1097,16 +1112,16 @@ class TestHandleFeedback:
         mock_bitbucket.fetch_pr_comments.return_value = [
             {"id": 10, "text": f"Bug\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 5, "parent_id": None},
             {"id": 11, "text": f"Warning\n\n{NOERGLER_MARKER}", "path": "b.py", "line": 3, "parent_id": None},
-            {"id": 20, "text": "+1", "path": None, "line": None, "parent_id": 10},
+            {"id": 20, "text": "disagree", "path": None, "line": None, "parent_id": 10},
         ]
         mock_bitbucket.add_comment_reaction = AsyncMock(return_value=True)
 
         rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
         import logging
         with caplog.at_level(logging.INFO):
-            await rev.handle_feedback(_make_feedback_payload("\U0001f44d", parent_id=11))
+            await rev.handle_feedback(_make_feedback_payload("disagree", parent_id=11))
 
-        assert any("Feedback on" in r.message and "positive" in r.message for r in caplog.records)
+        assert any("Feedback on" in r.message and "negative" in r.message for r in caplog.records)
 
     @pytest.mark.asyncio
     async def test_ignores_bot_own_reply(self, mock_bitbucket, mock_copilot):
@@ -1126,19 +1141,19 @@ class TestHandleFeedback:
         """Current reply already present in fetched comments must not be counted twice."""
         mock_bitbucket.fetch_pr_comments.return_value = [
             {"id": 10, "text": f"Bug\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 5, "parent_id": None},
-            {"id": 200, "text": "\U0001f44d", "path": None, "line": None, "parent_id": 10},
+            {"id": 200, "text": "disagree", "path": None, "line": None, "parent_id": 10},
         ]
         mock_bitbucket.add_comment_reaction = AsyncMock(return_value=True)
 
         rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
         import logging
         with caplog.at_level(logging.INFO):
-            await rev.handle_feedback(_make_feedback_payload("\U0001f44d", parent_id=10))
+            await rev.handle_feedback(_make_feedback_payload("disagree", parent_id=10))
 
         stat_record = next(r for r in caplog.records if "Feedback on" in r.message)
         assert "1/1 comments" in stat_record.message
-        assert "1 positive" in stat_record.message
-        assert "0 negative" in stat_record.message
+        assert "0 positive" in stat_record.message
+        assert "1 negative" in stat_record.message
 
 
 class TestHandlePrMerged:
@@ -1148,8 +1163,8 @@ class TestHandlePrMerged:
             {"id": 10, "text": f"Bug\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 5, "parent_id": None},
             {"id": 11, "text": f"Warning\n\n{NOERGLER_MARKER}", "path": "b.py", "line": 3, "parent_id": None},
             {"id": 12, "text": f"Issue\n\n{NOERGLER_MARKER}", "path": "c.py", "line": 1, "parent_id": None},
-            {"id": 20, "text": "not helpful", "path": None, "line": None, "parent_id": 10},
-            {"id": 21, "text": "false positive", "path": None, "line": None, "parent_id": 11},
+            {"id": 20, "text": "disagree", "path": None, "line": None, "parent_id": 10},
+            {"id": 21, "text": "I disagree with this", "path": None, "line": None, "parent_id": 11},
             {"id": 22, "text": "+1", "path": None, "line": None, "parent_id": 12},
         ]
 

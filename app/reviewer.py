@@ -4,7 +4,7 @@ import re
 import time
 
 from app.bitbucket import NOERGLER_MARKER, BitbucketClient
-from app.feedback import classify_feedback
+from app.feedback import classify_feedback, random_response
 from app.copilot import (
     CopilotClient,
     FileReviewData,
@@ -483,6 +483,8 @@ class Reviewer:
                 return
 
             classification = classify_feedback(comment.text)
+            if classification != "negative":
+                return
 
             logger.info(
                 "%s: %s feedback on comment %d from %s",
@@ -495,7 +497,7 @@ class Reviewer:
             if not reacted:
                 await self.bitbucket.reply_to_comment(
                     project_key, repo_slug, pr.id, comment.id,
-                    "\U0001f440 Feedback noted, thanks!",
+                    random_response(),
                     include_marker=False,
                 )
 
