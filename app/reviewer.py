@@ -365,6 +365,7 @@ class Reviewer:
                 elapsed=elapsed,
                 jira_enabled=self.jira is not None,
                 ticket_compliance_check=self.review_config.ticket_compliance_check,
+                change_summary=result.change_summary,
             )
             try:
                 existing_summary = next(
@@ -639,26 +640,34 @@ class Reviewer:
         elapsed: float | None = None,
         jira_enabled: bool = False,
         ticket_compliance_check: bool = True,
+        change_summary: list[str] | None = None,
     ) -> str:
+        summary = "### 🤖 Review summary\n"
+
         if not findings:
-            summary = "🤖 **Review summary:** No issues found. ✅"
+            summary += "- ✅ No issues found"
         else:
             counts = {"critical": 0, "warning": 0}
             for f in findings:
                 counts[f.severity] = counts.get(f.severity, 0) + 1
 
-            parts = []
             if counts["critical"]:
-                parts.append(f"❌ {self._plural(counts['critical'], 'critical')}")
+                summary += f"- ❌ {self._plural(counts['critical'], 'critical')}\n"
             if counts["warning"]:
-                parts.append(f"⚠️ {self._plural(counts['warning'], 'warning')}")
-
-            summary = f"🤖 **Review summary:** {self._plural(len(findings), 'issue')} found — {', '.join(parts)}"
+                summary += f"- ⚠️ {self._plural(counts['warning'], 'warning')}\n"
 
             security_findings = [f for f in findings if _SECURITY_KEYWORDS.search(f.comment)]
+            if security_findings:
+                summary += f"- 🔒 {self._plural(len(security_findings), 'potential security issue')} — review carefully\n"
 
             if truncated:
-                summary += f"\n\nShowing top {len(findings)} findings by severity. Additional findings were omitted."
+                summary += f"- Showing top {len(findings)} findings by severity. Additional findings were omitted.\n"
+
+            summary = summary.rstrip("\n")
+
+        if change_summary:
+            summary += "\n\n### What changed\n"
+            summary += "\n".join(f"- {item}" for item in change_summary)
 
         ticket_section = ""
         if ticket:
@@ -688,8 +697,6 @@ class Reviewer:
             ticket_section = "\n\n" + "ℹ️ No Jira ticket found in branch name or PR title"
 
         meta = []
-        if findings and security_findings:
-            meta.append(f"🔒 **Security:** {self._plural(len(security_findings), 'potential security issue')} detected — review these findings carefully.")
         if review_effort is not None and findings:
             label = _EFFORT_LABELS.get(review_effort, "")
             meta.append(f"📊 Estimated review effort: **{review_effort}/5** — {label}")

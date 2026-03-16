@@ -43,30 +43,33 @@ class TestParseReviewResponse:
         content = json.dumps([
             {"file": "src/main.py", "line": 10, "severity": "critical", "comment": "Bug here"}
         ])
-        findings, requirements = _parse_review_response(content)
+        findings, requirements, change_summary = _parse_review_response(content)
         assert len(findings) == 1
         assert findings[0].file == "src/main.py"
         assert findings[0].line == 10
         assert findings[0].severity == "critical"
         assert requirements == []
+        assert change_summary == []
 
     def test_empty_array(self):
-        findings, requirements = _parse_review_response("[]")
+        findings, requirements, change_summary = _parse_review_response("[]")
         assert findings == []
         assert requirements == []
+        assert change_summary == []
 
     def test_wrapped_in_code_fence(self):
         content = "```json\n[{\"file\": \"a.py\", \"line\": 1, \"severity\": \"warning\", \"comment\": \"test\"}]\n```"
-        findings, requirements = _parse_review_response(content)
+        findings, requirements, _ = _parse_review_response(content)
         assert len(findings) == 1
 
     def test_invalid_json(self):
-        findings, requirements = _parse_review_response("not json at all")
+        findings, requirements, change_summary = _parse_review_response("not json at all")
         assert findings == []
         assert requirements == []
+        assert change_summary == []
 
     def test_not_an_array(self):
-        findings, requirements = _parse_review_response('{"file": "a.py"}')
+        findings, requirements, _ = _parse_review_response('{"file": "a.py"}')
         assert findings == []
 
     def test_malformed_item_skipped(self):
@@ -74,7 +77,7 @@ class TestParseReviewResponse:
             {"file": "a.py", "line": 1, "severity": "critical", "comment": "good"},
             {"bad": "item"},
         ])
-        findings, requirements = _parse_review_response(content)
+        findings, requirements, _ = _parse_review_response(content)
         assert len(findings) == 1
 
     def test_object_with_findings_and_compliance_requirements(self):
@@ -87,7 +90,7 @@ class TestParseReviewResponse:
                 {"requirement": "Write tests", "met": False},
             ],
         })
-        findings, requirements = _parse_review_response(content)
+        findings, requirements, _ = _parse_review_response(content)
         assert len(findings) == 1
         assert len(requirements) == 2
         assert requirements[0] == {"requirement": "Implement auth filter", "met": True}
@@ -103,10 +106,41 @@ class TestParseReviewResponse:
                 {"requirement": "Wrong met type", "met": "yes"},
             ],
         })
-        findings, requirements = _parse_review_response(content)
+        findings, requirements, _ = _parse_review_response(content)
         assert findings == []
         assert len(requirements) == 1
         assert requirements[0]["requirement"] == "Valid"
+
+    def test_change_summary_parsed(self):
+        content = json.dumps({
+            "findings": [],
+            "change_summary": [
+                "Added retry logic to webhook client",
+                "Replaced sync reads with async I/O",
+            ],
+        })
+        findings, requirements, change_summary = _parse_review_response(content)
+        assert findings == []
+        assert requirements == []
+        assert len(change_summary) == 2
+        assert change_summary[0] == "Added retry logic to webhook client"
+
+    def test_change_summary_filters_non_strings(self):
+        content = json.dumps({
+            "findings": [],
+            "change_summary": ["Valid bullet", 123, None, "Another bullet"],
+        })
+        _, _, change_summary = _parse_review_response(content)
+        assert change_summary == ["Valid bullet", "Another bullet"]
+
+    def test_change_summary_missing_defaults_to_empty(self):
+        content = json.dumps({
+            "findings": [
+                {"file": "a.py", "line": 1, "severity": "warning", "comment": "test"}
+            ],
+        })
+        _, _, change_summary = _parse_review_response(content)
+        assert change_summary == []
 
 
 class TestIsReviewableDiff:
@@ -698,13 +732,13 @@ class TestReviewFileGroup413Retry:
                 findings.append(finding_d)
             return (
                 [__import__("app.models", fromlist=["ReviewFinding"]).ReviewFinding(**f) for f in findings],
-                50, 25, [],
+                50, 25, [], [],
             )
 
         client._call_api = mock_call_api
         try:
             template = client.prompt_template
-            findings, pt, ct, skipped, _compliance = await client._review_file_group(files, template, depth=0)
+            findings, pt, ct, skipped, _compliance, _summary = await client._review_file_group(files, template, depth=0)
             assert len(findings) == 2
             assert {f.file for f in findings} == {"a.py", "d.py"}
             assert skipped == []
@@ -728,12 +762,12 @@ class TestReviewFileGroup413Retry:
                 response = httpx.Response(413, request=httpx.Request("POST", "https://x"), text="too large")
                 raise httpx.HTTPStatusError("too large", request=response.request, response=response)
             # Second call (diff only) → success
-            return [], 0, 0, []
+            return [], 0, 0, [], []
 
         client._call_api = mock_call_api
         try:
             template = client.prompt_template
-            findings, pt, ct, skipped, _compliance = await client._review_file_group(files, template, depth=0)
+            findings, pt, ct, skipped, _compliance, _summary = await client._review_file_group(files, template, depth=0)
             assert findings == []
             assert skipped == []
             assert call_count == 2
@@ -754,7 +788,7 @@ class TestReviewFileGroup413Retry:
         client._call_api = mock_call_api
         try:
             template = client.prompt_template
-            findings, pt, ct, skipped, _compliance = await client._review_file_group(files, template, depth=0)
+            findings, pt, ct, skipped, _compliance, _summary = await client._review_file_group(files, template, depth=0)
             assert findings == []
             assert pt == 0
             assert ct == 0
@@ -776,7 +810,7 @@ class TestReviewFileGroup413Retry:
         client._call_api = mock_call_api
         try:
             template = client.prompt_template
-            findings, pt, ct, skipped, _compliance = await client._review_file_group(files, template, depth=0)
+            findings, pt, ct, skipped, _compliance, _summary = await client._review_file_group(files, template, depth=0)
             assert findings == []
             assert skipped == ["huge.py"]
         finally:
@@ -799,7 +833,7 @@ class TestReviewFileGroup413Retry:
         client._call_api = mock_call_api
         try:
             template = client.prompt_template
-            findings, pt, ct, skipped, _compliance = await client._review_file_group(files, template, depth=3)
+            findings, pt, ct, skipped, _compliance, _summary = await client._review_file_group(files, template, depth=3)
             assert findings == []
             assert set(skipped) == {"a.py", "b.py"}
         finally:

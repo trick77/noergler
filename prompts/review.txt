@@ -54,7 +54,11 @@ Do NOT report stylistic issues. Only report "critical" and "warning" findings �
 
 ## Output format
 
-Respond with a JSON array. Each item must have:
+Always respond with a JSON object containing:
+- "findings": array of issues (may be empty)
+- "change_summary": array of 3-5 short bullet-point strings summarizing the most important code changes in this diff. Focus on what changed functionally — ignore trivial formatting, import reordering, or insignificant changes. Summarize from the code, not from any ticket context.
+
+Each item in "findings" must have:
 - "file": the file path relative to the repo root (e.g. "src/main/java/Foo.java"), without any "a/" or "b/" diff prefix
 - "line": the line number in the **new version** of the file where the issue occurs
 - "severity": "critical" or "warning"
@@ -62,7 +66,7 @@ Respond with a JSON array. Each item must have:
 - "comment": a concise description of the problem. Use markdown: wrap code references in backticks (`like this`). Do not include fix code in the comment.
 - "suggestion": (optional) the corrected code that should replace the problematic code, as raw code only (no markdown fencing, no comments explaining the fix, no instructions — just the replacement code itself). Omit this field entirely if no concrete fix applies, if the fix is trivial/obvious from the comment alone (e.g. typos, simple renames, missing characters), or if you cannot provide actual replacement code.
 
-If no issues meet the confidence threshold, return an empty array: []
+If no issues meet the confidence threshold, return an empty findings array.
 
 {compliance_instructions}
 
