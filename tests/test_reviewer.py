@@ -279,7 +279,7 @@ class TestReviewer:
         mock_bitbucket.post_pr_comment.assert_called_once()
 
         summary_text = mock_bitbucket.post_pr_comment.call_args[0][3]
-        assert "### 🤖 Review summary" in summary_text
+        assert "### Review summary" in summary_text
         assert "1 warning" in summary_text
 
     @pytest.mark.asyncio
@@ -377,13 +377,13 @@ class TestReviewer:
             ReviewFinding(file="b.py", line=2, severity="warning", comment="warn"),
         ]
         summary = reviewer._build_summary(findings)
-        assert "### 🤖 Review summary" in summary
+        assert "### Review summary" in summary
         assert "- ❌ 1 critical" in summary
         assert "- ⚠️ 1 warning" in summary
 
     def test_build_summary_empty(self, reviewer):
         summary = reviewer._build_summary([])
-        assert "### 🤖 Review summary" in summary
+        assert "### Review summary" in summary
         assert "- ✅ No issues found" in summary
 
     @pytest.mark.asyncio

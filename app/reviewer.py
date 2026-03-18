@@ -642,7 +642,7 @@ class Reviewer:
         ticket_compliance_check: bool = True,
         change_summary: list[str] | None = None,
     ) -> str:
-        summary = "### 🤖 Review summary\n"
+        summary = "### Review summary\n"
 
         if not findings:
             summary += "- ✅ No issues found"
@@ -674,7 +674,7 @@ class Reviewer:
             ticket_lines = ["### Ticket"]
             if parent_ticket:
                 ticket_lines.append(f"**🎫 [{parent_ticket.key}]({parent_ticket.url})** — {parent_ticket.title}")
-                ticket_lines.append(f"**↳ 🎫 [{ticket.key}]({ticket.url})**")
+                ticket_lines.append(f"**↳ 🎫 [{ticket.key}]({ticket.url})** — {ticket.title}")
             else:
                 ticket_lines.append(f"**🎫 [{ticket.key}]({ticket.url})**")
             if ticket_compliance_check and compliance_requirements:
