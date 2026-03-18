@@ -642,23 +642,23 @@ class Reviewer:
         ticket_compliance_check: bool = True,
         change_summary: list[str] | None = None,
     ) -> str:
-        summary = "### Review summary\n"
+        summary = "### Review summary 🤖\n"
 
         if not findings:
-            summary += "- ✅ No issues found"
+            summary += "- No issues found ✅"
         else:
             counts = {"critical": 0, "warning": 0}
             for f in findings:
                 counts[f.severity] = counts.get(f.severity, 0) + 1
 
             if counts["critical"]:
-                summary += f"- ❌ {self._plural(counts['critical'], 'critical')}\n"
+                summary += f"- {self._plural(counts['critical'], 'critical')} ❌\n"
             if counts["warning"]:
-                summary += f"- ⚠️ {self._plural(counts['warning'], 'warning')}\n"
+                summary += f"- {self._plural(counts['warning'], 'warning')} ⚠️\n"
 
             security_findings = [f for f in findings if _SECURITY_KEYWORDS.search(f.comment)]
             if security_findings:
-                summary += f"- 🔒 {self._plural(len(security_findings), 'potential security issue')} — review carefully\n"
+                summary += f"- {self._plural(len(security_findings), 'potential security issue')} — review carefully 🔒\n"
 
             if truncated:
                 summary += f"- Showing top {len(findings)} findings by severity. Additional findings were omitted.\n"
@@ -666,17 +666,17 @@ class Reviewer:
             summary = summary.rstrip("\n")
 
         if change_summary:
-            summary += "\n\n### What changed\n"
+            summary += "\n\n### What changed 🔄\n"
             summary += "\n".join(f"- {item}" for item in change_summary)
 
         ticket_section = ""
         if ticket:
-            ticket_lines = ["### Ticket"]
+            ticket_lines = ["### Ticket 🎫"]
             if parent_ticket:
-                ticket_lines.append(f"**🎫 [{parent_ticket.key}]({parent_ticket.url})** — {parent_ticket.title}")
-                ticket_lines.append(f"**↳ 🎫 [{ticket.key}]({ticket.url})** — {ticket.title}")
+                ticket_lines.append(f"**[{parent_ticket.key}]({parent_ticket.url})** — {parent_ticket.title}")
+                ticket_lines.append(f"**↳ [{ticket.key}]({ticket.url})** — {ticket.title}")
             else:
-                ticket_lines.append(f"**🎫 [{ticket.key}]({ticket.url})**")
+                ticket_lines.append(f"**[{ticket.key}]({ticket.url})**")
             if ticket_compliance_check and compliance_requirements:
                 met_count = sum(1 for r in compliance_requirements if r.get("met"))
                 total_count = len(compliance_requirements)
@@ -689,37 +689,37 @@ class Reviewer:
                 else:
                     compliance_level = "Not compliant"
                     compliance_emoji = "❌"
-                ticket_lines.append(f"- {compliance_emoji} Compliance: **{compliance_level}**")
-                req_lines = [f"    - {'✅' if r.get('met') else '❌'} {r.get('requirement', '???')}" for r in compliance_requirements]
-                ticket_lines.append(f"  - 📋 Requirements:\n" + "\n".join(req_lines))
+                ticket_lines.append(f"- Compliance: **{compliance_level}** {compliance_emoji}")
+                req_lines = [f"    - {r.get('requirement', '???')} {'✅' if r.get('met') else '❌'}" for r in compliance_requirements]
+                ticket_lines.append(f"  - Requirements:\n" + "\n".join(req_lines))
             elif not ticket_compliance_check:
-                ticket_lines.append("- ℹ️ Ticket compliance check is disabled")
+                ticket_lines.append("- Ticket compliance check is disabled ℹ️")
             ticket_section = "\n\n" + "\n".join(ticket_lines)
         elif jira_enabled:
-            ticket_section = "\n\n### Ticket\nℹ️ No Jira ticket found in branch name or PR title"
+            ticket_section = "\n\n### Ticket 🎫\nNo Jira ticket found in branch name or PR title ℹ️"
 
         meta = []
         if review_effort is not None and findings:
             label = _EFFORT_LABELS.get(review_effort, "")
-            meta.append(f"📊 Estimated review effort: **{review_effort}/5** — {label}")
+            meta.append(f"Estimated review effort: **{review_effort}/5** — {label} 📊")
 
         if skipped_files:
             file_list = ", ".join(f"`{PurePosixPath(f).name}`" for f in skipped_files)
-            meta.append(f"⚠️ Not reviewed (too large): {file_list}")
+            meta.append(f"Not reviewed (too large): {file_list} ⚠️")
         if content_skipped_files:
             file_list = ", ".join(f"`{PurePosixPath(f).name}`" for f in content_skipped_files)
-            meta.append(f"⚠️ Reviewed without full file context (too large): {file_list}")
+            meta.append(f"Reviewed without full file context (too large): {file_list} ⚠️")
 
         if agents_md_found:
-            meta.append("✅ Using project-specific review guidelines from `AGENTS.md`")
+            meta.append("Using project-specific review guidelines from `AGENTS.md` ✅")
         else:
-            meta.append("💡 Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback.")
+            meta.append("Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡")
 
         if ticket_section:
             summary += ticket_section
 
         if meta:
-            summary += "\n\n" + "\n".join(f"- {m}" for m in meta)
+            summary += "\n\n### Info ℹ️\n" + "\n".join(f"- {m}" for m in meta)
 
         if token_usage:
             prompt_t, completion_t = token_usage

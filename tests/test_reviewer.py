@@ -279,7 +279,7 @@ class TestReviewer:
         mock_bitbucket.post_pr_comment.assert_called_once()
 
         summary_text = mock_bitbucket.post_pr_comment.call_args[0][3]
-        assert "### Review summary" in summary_text
+        assert "### Review summary 🤖" in summary_text
         assert "1 warning" in summary_text
 
     @pytest.mark.asyncio
@@ -377,14 +377,14 @@ class TestReviewer:
             ReviewFinding(file="b.py", line=2, severity="warning", comment="warn"),
         ]
         summary = reviewer._build_summary(findings)
-        assert "### Review summary" in summary
-        assert "- ❌ 1 critical" in summary
-        assert "- ⚠️ 1 warning" in summary
+        assert "### Review summary 🤖" in summary
+        assert "- 1 critical ❌" in summary
+        assert "- 1 warning ⚠️" in summary
 
     def test_build_summary_empty(self, reviewer):
         summary = reviewer._build_summary([])
-        assert "### Review summary" in summary
-        assert "- ✅ No issues found" in summary
+        assert "### Review summary 🤖" in summary
+        assert "- No issues found ✅" in summary
 
     @pytest.mark.asyncio
     async def test_review_real_webhook_payload(self, mock_bitbucket, mock_copilot):
@@ -552,7 +552,7 @@ class TestDedupAndLimit:
             ReviewFinding(file="b.py", line=2, severity="warning", comment="warn"),
         ]
         summary = reviewer._build_summary(findings, truncated=True)
-        assert "- ❌ 1 critical" in summary
+        assert "- 1 critical ❌" in summary
         assert "Additional findings were omitted" in summary
 
     def test_build_summary_agents_md_not_found(self, reviewer):
@@ -560,7 +560,7 @@ class TestDedupAndLimit:
             ReviewFinding(file="a.py", line=1, severity="warning", comment="warn"),
         ]
         summary = reviewer._build_summary(findings, agents_md_found=False)
-        assert "- 💡" in summary
+        assert "💡" in summary
         assert "AGENTS.md" in summary
         assert "Tip:" in summary
 
@@ -569,19 +569,19 @@ class TestDedupAndLimit:
             ReviewFinding(file="a.py", line=1, severity="warning", comment="warn"),
         ]
         summary = reviewer._build_summary(findings, agents_md_found=True)
-        assert "- ✅" in summary
+        assert "✅" in summary
         assert "Using project-specific review guidelines" in summary
         assert "Tip:" not in summary
 
     def test_build_summary_no_findings_agents_md_not_found(self, reviewer):
         summary = reviewer._build_summary([], agents_md_found=False)
-        assert "- ✅ No issues found" in summary
-        assert "- 💡" in summary
+        assert "- No issues found ✅" in summary
+        assert "💡" in summary
         assert "Tip:" in summary
 
     def test_build_summary_no_findings_agents_md_found(self, reviewer):
         summary = reviewer._build_summary([], agents_md_found=True)
-        assert "- ✅ No issues found" in summary
+        assert "- No issues found ✅" in summary
         assert "Using project-specific review guidelines" in summary
         assert "Tip:" not in summary
 
@@ -590,7 +590,8 @@ class TestDedupAndLimit:
             ReviewFinding(file="a.py", line=1, severity="warning", comment="warn"),
         ]
         summary = reviewer._build_summary(findings, skipped_files=["huge.py", "big.js"])
-        assert "- ⚠️ Not reviewed (too large)" in summary
+        assert "- Not reviewed (too large)" in summary
+        assert "⚠️" in summary
         assert "`huge.py`" in summary
         assert "`big.js`" in summary
 
@@ -709,7 +710,7 @@ class TestDedupAndLimit:
             ReviewFinding(file="a.py", line=1, severity="warning", comment="warn"),
         ]
         summary = reviewer._build_summary(findings, review_effort=3)
-        assert "- 📊" in summary
+        assert "📊" in summary
         assert "**3/5**" in summary
         assert "Medium" in summary
 
@@ -727,7 +728,8 @@ class TestDedupAndLimit:
             ReviewFinding(file="b.py", line=2, severity="warning", comment="unused import"),
         ]
         summary = reviewer._build_summary(findings)
-        assert "- 🔒 1 potential security issue" in summary
+        assert "- 1 potential security issue" in summary
+        assert "🔒" in summary
 
     def test_build_summary_no_security_section(self, reviewer):
         findings = [
@@ -742,13 +744,14 @@ class TestDedupAndLimit:
             ReviewFinding(file="b.py", line=5, severity="warning", comment="XSS vulnerability in template"),
         ]
         summary = reviewer._build_summary(findings)
-        assert "- 🔒 2 potential security issues" in summary
+        assert "- 2 potential security issues" in summary
+        assert "🔒" in summary
 
     def test_build_summary_with_change_summary(self, reviewer):
         summary = reviewer._build_summary(
             [], change_summary=["Added retry logic", "Replaced sync with async I/O"]
         )
-        assert "### What changed" in summary
+        assert "### What changed 🔄" in summary
         assert "- Added retry logic" in summary
         assert "- Replaced sync with async I/O" in summary
 
@@ -915,8 +918,8 @@ class TestBuildSummaryWithTicket:
             url="https://jira.example.com/browse/SEP-22888",
         )
         summary = reviewer._build_summary([], ticket=ticket)
-        assert "### Ticket" in summary
-        assert "**🎫 [SEP-22888](https://jira.example.com/browse/SEP-22888)**" in summary
+        assert "### Ticket 🎫" in summary
+        assert "**[SEP-22888](https://jira.example.com/browse/SEP-22888)**" in summary
 
     def test_build_summary_compliance_all_met(self, reviewer):
         ticket = JiraTicket(
@@ -931,10 +934,10 @@ class TestBuildSummaryWithTicket:
         summary = reviewer._build_summary(
             [], ticket=ticket, compliance_requirements=requirements
         )
-        assert "✅ Compliance: **Fully compliant**" in summary
-        assert "    - ✅ Implement auth filter" in summary
-        assert "    - ✅ Add config endpoint" in summary
-        assert "📋 Requirements:" in summary
+        assert "Compliance: **Fully compliant** ✅" in summary
+        assert "    - Implement auth filter ✅" in summary
+        assert "    - Add config endpoint ✅" in summary
+        assert "Requirements:" in summary
 
     def test_build_summary_compliance_partial(self, reviewer):
         ticket = JiraTicket(
@@ -949,9 +952,9 @@ class TestBuildSummaryWithTicket:
         summary = reviewer._build_summary(
             [], ticket=ticket, compliance_requirements=requirements
         )
-        assert "⚠️ Compliance: **Partially compliant**" in summary
-        assert "    - ✅ Implement auth filter" in summary
-        assert "    - ❌ Write integration tests" in summary
+        assert "Compliance: **Partially compliant** ⚠️" in summary
+        assert "    - Implement auth filter ✅" in summary
+        assert "    - Write integration tests ❌" in summary
 
     def test_build_summary_compliance_none_met(self, reviewer):
         ticket = JiraTicket(
@@ -966,9 +969,9 @@ class TestBuildSummaryWithTicket:
         summary = reviewer._build_summary(
             [], ticket=ticket, compliance_requirements=requirements
         )
-        assert "❌ Compliance: **Not compliant**" in summary
-        assert "    - ❌ Implement auth filter" in summary
-        assert "    - ❌ Write tests" in summary
+        assert "Compliance: **Not compliant** ❌" in summary
+        assert "    - Implement auth filter ❌" in summary
+        assert "    - Write tests ❌" in summary
 
     def test_build_summary_no_requirements(self, reviewer):
         ticket = JiraTicket(
@@ -997,12 +1000,12 @@ class TestBuildSummaryWithTicket:
             ticket_compliance_check=False,
         )
         assert "SEP-100" in summary
-        assert "ℹ️ Ticket compliance check is disabled" in summary
+        assert "Ticket compliance check is disabled ℹ️" in summary
         assert "📋" not in summary
 
     def test_build_summary_jira_enabled_no_ticket(self, reviewer):
         summary = reviewer._build_summary([], jira_enabled=True)
-        assert "ℹ️ No Jira ticket found in branch name or PR title" in summary
+        assert "No Jira ticket found in branch name or PR title ℹ️" in summary
 
     @pytest.mark.asyncio
     async def test_fetch_ticket_context_includes_type_and_status(self, mock_bitbucket, mock_copilot):
@@ -1107,9 +1110,9 @@ class TestReviewWithJira:
 
         summary_text = mock_bitbucket.update_pr_comment.call_args[0][5] if mock_bitbucket.update_pr_comment.called else mock_bitbucket.post_pr_comment.call_args[0][3]
         assert "SEP-123" in summary_text
-        assert "⚠️ Compliance: **Partially compliant**" in summary_text
-        assert "    - ✅ Implement login page" in summary_text
-        assert "    - ❌ Add tests" in summary_text
+        assert "Compliance: **Partially compliant** ⚠️" in summary_text
+        assert "    - Implement login page ✅" in summary_text
+        assert "    - Add tests ❌" in summary_text
 
     @pytest.mark.asyncio
     async def test_review_with_parent_ticket(self, mock_bitbucket, mock_copilot):
@@ -1141,7 +1144,7 @@ class TestReviewWithJira:
         assert "SEP-124" in call_kwargs["ticket_context"]
 
         summary_text = mock_bitbucket.update_pr_comment.call_args[0][5] if mock_bitbucket.update_pr_comment.called else mock_bitbucket.post_pr_comment.call_args[0][3]
-        assert "### Ticket" in summary_text
+        assert "### Ticket 🎫" in summary_text
         assert "[SEP-123]" in summary_text
         assert "↳" in summary_text
         assert "SEP-124" in summary_text
