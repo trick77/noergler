@@ -319,7 +319,18 @@ class CopilotClient:
         max_retries = 3
         default_wait = 60.0
         for attempt in range(max_retries + 1):
-            response = await self.client.post(url, **kwargs)
+            try:
+                response = await self.client.post(url, **kwargs)
+            except httpx.TimeoutException as exc:
+                if attempt >= max_retries:
+                    raise
+                logger.warning(
+                    "Timeout retry %d/%d — %s, retrying in %.0fs",
+                    attempt + 1, max_retries, type(exc).__name__, default_wait,
+                )
+                await asyncio.sleep(default_wait)
+                continue
+
             if response.status_code != 429:
                 return response
 
@@ -569,6 +580,13 @@ class CopilotClient:
         try:
             answer, pt, ct = await self._call_mention_api(prompt)
             return answer, pt, ct, []
+        except httpx.TimeoutException as exc:
+            paths = [f.path for f in group]
+            logger.warning(
+                "Timeout on mention Q&A for %d file(s) — skipping: %s (%s)",
+                len(group), ", ".join(paths), type(exc).__name__,
+            )
+            return "", 0, 0, paths
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code != 413:
                 raise
@@ -643,6 +661,13 @@ class CopilotClient:
         try:
             findings, pt, ct, requirements, change_summary = await self._call_api(prompt)
             return findings, pt, ct, [], requirements, change_summary
+        except httpx.TimeoutException as exc:
+            paths = [f.path for f in group]
+            logger.warning(
+                "Timeout reviewing %d file(s) — skipping: %s (%s)",
+                len(group), ", ".join(paths), type(exc).__name__,
+            )
+            return [], 0, 0, paths, [], []
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code != 413:
                 raise
