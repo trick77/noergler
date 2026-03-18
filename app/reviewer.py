@@ -671,10 +671,12 @@ class Reviewer:
 
         ticket_section = ""
         if ticket:
-            ticket_lines = []
+            ticket_lines = ["### Ticket"]
             if parent_ticket:
-                ticket_lines.append(f"**🎫 Parent: [{parent_ticket.key}]({parent_ticket.url})** — {parent_ticket.title}")
-            ticket_lines.append(f"**🎫 Ticket: [{ticket.key}]({ticket.url})**")
+                ticket_lines.append(f"**🎫 [{parent_ticket.key}]({parent_ticket.url})** — {parent_ticket.title}")
+                ticket_lines.append(f"**↳ 🎫 [{ticket.key}]({ticket.url})**")
+            else:
+                ticket_lines.append(f"**🎫 [{ticket.key}]({ticket.url})**")
             if ticket_compliance_check and compliance_requirements:
                 met_count = sum(1 for r in compliance_requirements if r.get("met"))
                 total_count = len(compliance_requirements)
@@ -694,7 +696,7 @@ class Reviewer:
                 ticket_lines.append("- ℹ️ Ticket compliance check is disabled")
             ticket_section = "\n\n" + "\n".join(ticket_lines)
         elif jira_enabled:
-            ticket_section = "\n\n" + "ℹ️ No Jira ticket found in branch name or PR title"
+            ticket_section = "\n\n### Ticket\nℹ️ No Jira ticket found in branch name or PR title"
 
         meta = []
         if review_effort is not None and findings:

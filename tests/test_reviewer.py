@@ -915,7 +915,8 @@ class TestBuildSummaryWithTicket:
             url="https://jira.example.com/browse/SEP-22888",
         )
         summary = reviewer._build_summary([], ticket=ticket)
-        assert "**🎫 Ticket: [SEP-22888](https://jira.example.com/browse/SEP-22888)**" in summary
+        assert "### Ticket" in summary
+        assert "**🎫 [SEP-22888](https://jira.example.com/browse/SEP-22888)**" in summary
 
     def test_build_summary_compliance_all_met(self, reviewer):
         ticket = JiraTicket(
@@ -1140,7 +1141,9 @@ class TestReviewWithJira:
         assert "SEP-124" in call_kwargs["ticket_context"]
 
         summary_text = mock_bitbucket.update_pr_comment.call_args[0][5] if mock_bitbucket.update_pr_comment.called else mock_bitbucket.post_pr_comment.call_args[0][3]
-        assert "Parent: [SEP-123]" in summary_text
+        assert "### Ticket" in summary_text
+        assert "[SEP-123]" in summary_text
+        assert "↳" in summary_text
         assert "SEP-124" in summary_text
 
     @pytest.mark.asyncio
