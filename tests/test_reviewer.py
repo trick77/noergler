@@ -279,7 +279,7 @@ class TestReviewer:
         mock_bitbucket.post_pr_comment.assert_called_once()
 
         summary_text = mock_bitbucket.post_pr_comment.call_args[0][3]
-        assert "### Review summary 🤖" in summary_text
+        assert "### 🤖 Review summary" in summary_text
         assert "1 warning" in summary_text
 
     @pytest.mark.asyncio
@@ -377,13 +377,13 @@ class TestReviewer:
             ReviewFinding(file="b.py", line=2, severity="warning", comment="warn"),
         ]
         summary = reviewer._build_summary(findings)
-        assert "### Review summary 🤖" in summary
+        assert "### 🤖 Review summary" in summary
         assert "- 1 critical ❌" in summary
         assert "- 1 warning ⚠️" in summary
 
     def test_build_summary_empty(self, reviewer):
         summary = reviewer._build_summary([])
-        assert "### Review summary 🤖" in summary
+        assert "### 🤖 Review summary" in summary
         assert "- No issues found ✅" in summary
 
     @pytest.mark.asyncio
@@ -751,7 +751,7 @@ class TestDedupAndLimit:
         summary = reviewer._build_summary(
             [], change_summary=["Added retry logic", "Replaced sync with async I/O"]
         )
-        assert "### What changed 🔄" in summary
+        assert "### 🔄 What changed" in summary
         assert "- Added retry logic" in summary
         assert "- Replaced sync with async I/O" in summary
 
@@ -918,7 +918,7 @@ class TestBuildSummaryWithTicket:
             url="https://jira.example.com/browse/SEP-22888",
         )
         summary = reviewer._build_summary([], ticket=ticket)
-        assert "### Ticket 🎫" in summary
+        assert "### 🎫 Ticket" in summary
         assert "**[SEP-22888](https://jira.example.com/browse/SEP-22888)**" in summary
 
     def test_build_summary_compliance_all_met(self, reviewer):
@@ -1005,7 +1005,8 @@ class TestBuildSummaryWithTicket:
 
     def test_build_summary_jira_enabled_no_ticket(self, reviewer):
         summary = reviewer._build_summary([], jira_enabled=True)
-        assert "No Jira ticket found in branch name or PR title ℹ️" in summary
+        assert "No ticket found in branch name or PR title ℹ️" in summary
+        assert "### 🎫 Ticket" not in summary
 
     @pytest.mark.asyncio
     async def test_fetch_ticket_context_includes_type_and_status(self, mock_bitbucket, mock_copilot):
@@ -1065,7 +1066,8 @@ class TestBuildSummaryWithTicket:
 
     def test_build_summary_jira_not_configured_no_ticket(self, reviewer):
         summary = reviewer._build_summary([], jira_enabled=False)
-        assert "No Jira ticket found" not in summary
+        assert "Jira is not enabled ℹ️" in summary
+        assert "No ticket found" not in summary
 
     def test_build_summary_with_elapsed(self, reviewer):
         summary = reviewer._build_summary(
@@ -1144,7 +1146,7 @@ class TestReviewWithJira:
         assert "SEP-124" in call_kwargs["ticket_context"]
 
         summary_text = mock_bitbucket.update_pr_comment.call_args[0][5] if mock_bitbucket.update_pr_comment.called else mock_bitbucket.post_pr_comment.call_args[0][3]
-        assert "### Ticket 🎫" in summary_text
+        assert "### 🎫 Ticket" in summary_text
         assert "[SEP-123]" in summary_text
         assert "↳" in summary_text
         assert "SEP-124" in summary_text
@@ -1245,16 +1247,27 @@ class TestHandleFeedback:
         mock_bitbucket.reply_to_comment.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_negative_feedback_acknowledged(self, mock_bitbucket, mock_copilot):
+    async def test_negative_feedback_acknowledged(self, mock_bitbucket, mock_copilot, caplog):
+        import json as _json
         mock_bitbucket.fetch_pr_comments.return_value = [
-            {"id": 10, "text": f"Bug here\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 5, "parent_id": None},
+            {"id": 10, "text": f"Bug here\n**Suggestion:** Use X instead\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 5, "parent_id": None},
         ]
         mock_bitbucket.add_comment_reaction = AsyncMock(return_value=True)
 
         rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
-        await rev.handle_feedback(_make_feedback_payload("disagree", parent_id=10))
+        import logging
+        with caplog.at_level(logging.INFO, logger="app.reviewer"):
+            await rev.handle_feedback(_make_feedback_payload("disagree", parent_id=10))
 
         mock_bitbucket.add_comment_reaction.assert_called_once()
+        disagree_logs = [r for r in caplog.records if "Disagree feedback" in r.message]
+        assert len(disagree_logs) == 1
+        payload = _json.loads(disagree_logs[0].message.split("Disagree feedback: ", 1)[1])
+        assert payload["event"] == "disagree"
+        assert payload["comment_id"] == 10
+        assert payload["file"] == "a.py"
+        assert payload["line"] == 5
+        assert payload["suggestion"] == "Use X instead"
 
     @pytest.mark.asyncio
     async def test_reaction_fallback_to_reply(self, mock_bitbucket, mock_copilot):

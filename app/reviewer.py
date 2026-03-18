@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import re
 import time
@@ -541,9 +542,22 @@ class Reviewer:
                 logger.debug("Feedback skipped on %s: classified as %s", pr_tag, classification)
                 return
 
+            suggestion_text = ""
+            parent_text = parent_comment.get("text", "")
+            if "**Suggestion:** " in parent_text:
+                suggestion_text = parent_text.split("**Suggestion:** ", 1)[1].split("\n")[0]
+
             logger.info(
-                "%s: %s feedback on comment %d from %s",
-                pr_tag, classification, parent_id, comment.author.name,
+                "Disagree feedback: %s",
+                json.dumps({
+                    "event": "disagree",
+                    "pr": pr_tag,
+                    "comment_id": parent_id,
+                    "file": parent_comment.get("path", ""),
+                    "line": parent_comment.get("line"),
+                    "suggestion": suggestion_text,
+                    "author": comment.author.name,
+                }),
             )
 
             reacted = await self.bitbucket.add_comment_reaction(
@@ -642,7 +656,7 @@ class Reviewer:
         ticket_compliance_check: bool = True,
         change_summary: list[str] | None = None,
     ) -> str:
-        summary = "### Review summary 🤖\n"
+        summary = "### 🤖 Review summary\n"
 
         if not findings:
             summary += "- No issues found ✅"
@@ -666,12 +680,12 @@ class Reviewer:
             summary = summary.rstrip("\n")
 
         if change_summary:
-            summary += "\n\n### What changed 🔄\n"
+            summary += "\n\n### 🔄 What changed\n"
             summary += "\n".join(f"- {item}" for item in change_summary)
 
         ticket_section = ""
         if ticket:
-            ticket_lines = ["### Ticket 🎫"]
+            ticket_lines = ["### 🎫 Ticket"]
             if parent_ticket:
                 ticket_lines.append(f"**[{parent_ticket.key}]({parent_ticket.url})** — {parent_ticket.title}")
                 ticket_lines.append(f"**↳ [{ticket.key}]({ticket.url})** — {ticket.title}")
@@ -695,10 +709,12 @@ class Reviewer:
             elif not ticket_compliance_check:
                 ticket_lines.append("- Ticket compliance check is disabled ℹ️")
             ticket_section = "\n\n" + "\n".join(ticket_lines)
-        elif jira_enabled:
-            ticket_section = "\n\n### Ticket 🎫\nNo Jira ticket found in branch name or PR title ℹ️"
-
         meta = []
+        if not ticket:
+            if jira_enabled:
+                meta.append("No ticket found in branch name or PR title ℹ️")
+            else:
+                meta.append("Jira is not enabled ℹ️")
         if review_effort is not None and findings:
             label = _EFFORT_LABELS.get(review_effort, "")
             meta.append(f"Estimated review effort: **{review_effort}/5** — {label} 📊")
@@ -719,7 +735,7 @@ class Reviewer:
             summary += ticket_section
 
         if meta:
-            summary += "\n\n### Info ℹ️\n" + "\n".join(f"- {m}" for m in meta)
+            summary += "\n\n### ℹ️ Info\n" + "\n".join(f"- {m}" for m in meta)
 
         if token_usage:
             prompt_t, completion_t = token_usage
