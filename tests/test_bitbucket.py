@@ -264,39 +264,6 @@ class TestBitbucketClient:
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_resolve_comment_success(self, client):
-        respx.put(
-            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/comments/42/resolve"
-        ).mock(return_value=httpx.Response(200, json={}))
-
-        result = await client.resolve_comment("PROJ", "my-repo", 1, 42)
-        assert result is True
-        await client.close()
-
-    @pytest.mark.asyncio
-    @respx.mock
-    async def test_resolve_comment_404_returns_false(self, client):
-        respx.put(
-            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/comments/42/resolve"
-        ).mock(return_value=httpx.Response(404, text="Not Found"))
-
-        result = await client.resolve_comment("PROJ", "my-repo", 1, 42)
-        assert result is False
-        await client.close()
-
-    @pytest.mark.asyncio
-    @respx.mock
-    async def test_resolve_comment_405_returns_false(self, client):
-        respx.put(
-            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/comments/42/resolve"
-        ).mock(return_value=httpx.Response(405, text="Method Not Allowed"))
-
-        result = await client.resolve_comment("PROJ", "my-repo", 1, 42)
-        assert result is False
-        await client.close()
-
-    @pytest.mark.asyncio
-    @respx.mock
     async def test_fetch_pr_comments(self, client):
         activities_response = {
             "values": [

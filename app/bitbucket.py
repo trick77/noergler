@@ -162,30 +162,6 @@ class BitbucketClient:
             logger.debug("Reaction API failed for comment %d", comment_id, exc_info=False)
             return False
 
-    async def resolve_comment(
-        self, project: str, repo: str, pr_id: int, comment_id: int
-    ) -> bool:
-        url = (
-            f"/rest/api/1.0/projects/{project}/repos/{repo}"
-            f"/pull-requests/{pr_id}/comments/{comment_id}/resolve"
-        )
-        try:
-            response = await self.client.put(url)
-            if response.status_code < 300:
-                logger.info("Resolved comment %d on PR %d", comment_id, pr_id)
-                return True
-            logger.warning(
-                "Failed to resolve comment %d on PR %d — HTTP %d",
-                comment_id, pr_id, response.status_code,
-            )
-            return False
-        except Exception:
-            logger.warning(
-                "Failed to resolve comment %d on PR %d",
-                comment_id, pr_id, exc_info=True,
-            )
-            return False
-
     async def fetch_pr_comments(
         self, project: str, repo: str, pr_id: int
     ) -> list[dict]:
