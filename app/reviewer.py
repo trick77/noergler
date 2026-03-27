@@ -52,6 +52,18 @@ _SECURITY_KEYWORDS = re.compile(
 )
 
 
+def _count_diff_lines(diff: str) -> tuple[int, int]:
+    """Count added and removed lines in a unified diff."""
+    added = 0
+    removed = 0
+    for line in diff.splitlines():
+        if line.startswith("+") and not line.startswith("+++"):
+            added += 1
+        elif line.startswith("-") and not line.startswith("---"):
+            removed += 1
+    return added, removed
+
+
 def _extract_question(text: str, trigger: str) -> str:
     return re.sub(rf"@{re.escape(trigger)}\b", "", text, flags=re.IGNORECASE).strip()
 
@@ -264,6 +276,10 @@ class Reviewer:
                 logger.info("%s has no reviewable files after content fetch, skipping", pr_tag)
                 return
 
+            # Count diff stats before compression (total PR scope).
+            diff_added, diff_removed = _count_diff_lines(diff)
+            total_files = len(files)
+
             other_modified: list[str] = []
             deleted_paths: list[str] = []
             renamed_paths: list[str] = []
@@ -388,6 +404,11 @@ class Reviewer:
                 change_summary=result.change_summary,
                 reviewed_commit=source_commit,
                 incremental_from=incremental_from,
+                files_reviewed=len(files),
+                total_files=total_files + len(deleted_paths) + len(renamed_paths),
+                diff_added=diff_added,
+                diff_removed=diff_removed,
+                cross_file_symbols=[r.symbol for r in cross_file_rels] if cross_file_rels else None,
             )
             try:
                 existing_summary = next(
@@ -678,12 +699,17 @@ class Reviewer:
         change_summary: list[str] | None = None,
         reviewed_commit: str | None = None,
         incremental_from: str | None = None,
+        files_reviewed: int | None = None,
+        total_files: int | None = None,
+        diff_added: int | None = None,
+        diff_removed: int | None = None,
+        cross_file_symbols: list[str] | None = None,
     ) -> str:
         if incremental_from and reviewed_commit:
             summary = "### Review summary (incremental update)\n"
             summary += f"- Changes reviewed: `{incremental_from[:10]}` .. `{reviewed_commit[:10]}`\n"
         else:
-            summary = "### Review summary\n"
+            summary = "### Review summary (initial review)\n"
 
         if not findings:
             summary += "- No issues found ✅"
@@ -745,6 +771,30 @@ class Reviewer:
         if review_effort is not None and findings:
             label = _EFFORT_LABELS.get(review_effort, "")
             meta.append(f"Estimated review effort: **{review_effort}/5** — {label} 📊")
+
+        if files_reviewed is not None and total_files is not None:
+            if files_reviewed == total_files:
+                meta.append(f"Reviewed {files_reviewed} files 📂")
+            else:
+                skipped_count = total_files - files_reviewed
+                meta.append(
+                    f"Reviewed {files_reviewed} of {total_files} files "
+                    f"({skipped_count} skipped: lock files, binaries, config) 📂"
+                )
+
+        if diff_added is not None or diff_removed is not None:
+            parts = []
+            if diff_added:
+                parts.append(f"🟢 +{diff_added}")
+            if diff_removed:
+                parts.append(f"🔴 -{diff_removed}")
+            if parts:
+                meta.append(f"Diff: {' / '.join(parts)} lines")
+
+        if cross_file_symbols:
+            symbol_list = ", ".join(f"`{s}`" for s in cross_file_symbols[:5])
+            suffix = f" and {len(cross_file_symbols) - 5} more" if len(cross_file_symbols) > 5 else ""
+            meta.append(f"{len(cross_file_symbols)} cross-file dependencies analyzed ({symbol_list}{suffix}) 🔗")
 
         if skipped_files:
             file_list = ", ".join(f"`{PurePosixPath(f).name}`" for f in skipped_files)

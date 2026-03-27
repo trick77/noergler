@@ -320,11 +320,15 @@ Each finding is posted as an inline comment at the specific file and line, with 
 ### Summary comment
 
 A summary comment is posted (or updated if one already exists) containing:
+- Review type indicator (initial review vs. incremental update with commit range)
 - Issue counts by severity
 - Security issue flag
 - Change summary (AI-generated bullet points)
 - Jira ticket compliance status (if applicable)
 - Review effort estimate (1-5 scale)
+- Files reviewed count (e.g., "8 of 12 files" when compression skips files)
+- Diff size (🟢 additions / 🔴 deletions)
+- Cross-file dependencies analyzed (symbol names)
 - Token usage breakdown
 - Model name and elapsed time
 - Commit tracking metadata (invisible HTML comment)
@@ -347,14 +351,20 @@ if not user_id:
 **Example summary comment (excerpt):**
 
 ```
-### Review summary
-🔴 1 critical · ⚠️ 2 warnings
+### Review summary (initial review)
+- 1 critical ❌
+- 2 warnings ⚠️
 
-**Changes:**
+### What changed
 - Added user deletion endpoint with soft-delete flag
 - Updated UserService to accept optional `include_deleted` parameter
 
-📊 Tokens: 12,450 prompt · 890 completion | Model: gpt-4o | ⏱️ 8.2s
+### Info
+- Estimated review effort: 3/5 — Medium: multiple files, some logic changes 📊
+- Reviewed 8 of 12 files (4 skipped: lock files, binaries, config) 📂
+- Diff: 🟢 +142 / 🔴 -38 lines
+- 2 cross-file dependencies analyzed (`get_user`, `UserCache`) 🔗
+- Model: `gpt-4o` · 12'450↑ 890↓ (13'340 total) · ⏱️ 8.2s
 <!-- noergler:last_reviewed_commit=e4f5g6h789 -->
 ```
 

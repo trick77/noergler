@@ -7,7 +7,7 @@ from app.config import ReviewConfig
 from app.copilot import CopilotClient, FileReviewData
 from app.jira import JiraClient, JiraTicket
 from app.models import ReviewFinding, WebhookPayload
-from app.reviewer import Reviewer, _deduplicate, _extract_last_reviewed_commit, _sort_and_limit
+from app.reviewer import Reviewer, _count_diff_lines, _deduplicate, _extract_last_reviewed_commit, _sort_and_limit
 
 
 def _review_config(**overrides) -> ReviewConfig:
@@ -680,6 +680,84 @@ class TestDedupAndLimit:
         ]
         summary = reviewer._build_summary(findings, agents_md_found=True)
         assert "\n\n---\n" not in summary
+
+    def test_build_summary_initial_review_header(self, reviewer):
+        summary = reviewer._build_summary([])
+        assert "### Review summary (initial review)" in summary
+
+    def test_build_summary_files_reviewed_all(self, reviewer):
+        summary = reviewer._build_summary([], files_reviewed=5, total_files=5)
+        assert "Reviewed 5 files 📂" in summary
+
+    def test_build_summary_files_reviewed_partial(self, reviewer):
+        summary = reviewer._build_summary([], files_reviewed=8, total_files=12)
+        assert "Reviewed 8 of 12 files" in summary
+        assert "4 skipped" in summary
+
+    def test_build_summary_diff_size(self, reviewer):
+        summary = reviewer._build_summary([], diff_added=142, diff_removed=38)
+        assert "🟢 +142" in summary
+        assert "🔴 -38" in summary
+
+    def test_build_summary_diff_size_additions_only(self, reviewer):
+        summary = reviewer._build_summary([], diff_added=50, diff_removed=0)
+        assert "🟢 +50" in summary
+        assert "🔴" not in summary
+
+    def test_build_summary_diff_size_deletions_only(self, reviewer):
+        summary = reviewer._build_summary([], diff_added=0, diff_removed=30)
+        assert "🔴 -30" in summary
+        assert "🟢" not in summary
+
+    def test_build_summary_cross_file_symbols(self, reviewer):
+        summary = reviewer._build_summary(
+            [], cross_file_symbols=["get_user", "UserCache", "process_order"]
+        )
+        assert "3 cross-file dependencies analyzed" in summary
+        assert "`get_user`" in summary
+        assert "`UserCache`" in summary
+        assert "🔗" in summary
+
+    def test_build_summary_cross_file_symbols_truncated(self, reviewer):
+        symbols = [f"func_{i}" for i in range(8)]
+        summary = reviewer._build_summary([], cross_file_symbols=symbols)
+        assert "8 cross-file dependencies analyzed" in summary
+        assert "and 3 more" in summary
+
+    def test_build_summary_no_cross_file_symbols(self, reviewer):
+        summary = reviewer._build_summary([], cross_file_symbols=None)
+        assert "cross-file" not in summary
+
+
+class TestCountDiffLines:
+    def test_counts_added_and_removed(self):
+        diff = (
+            "--- a/file.py\n"
+            "+++ b/file.py\n"
+            "@@ -1,3 +1,4 @@\n"
+            "-old_line\n"
+            "+new_line\n"
+            "+another_new\n"
+            " context\n"
+        )
+        added, removed = _count_diff_lines(diff)
+        assert added == 2
+        assert removed == 1
+
+    def test_ignores_diff_headers(self):
+        diff = (
+            "--- a/file.py\n"
+            "+++ b/file.py\n"
+            "+real addition\n"
+        )
+        added, removed = _count_diff_lines(diff)
+        assert added == 1
+        assert removed == 0
+
+    def test_empty_diff(self):
+        added, removed = _count_diff_lines("")
+        assert added == 0
+        assert removed == 0
 
 
 class TestHandleMention:
