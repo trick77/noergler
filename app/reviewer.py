@@ -39,6 +39,7 @@ _EFFORT_LABELS = {
 }
 _SEVERITY_RE = re.compile(r"\*\*Severity Level:\*\*\s*(\w+)")
 _REVIEW_KEYWORDS = {"review", "review this", "re-review", "rereview"}
+_LAST_REVIEWED_RE = re.compile(r"<!--\s*noergler:last_reviewed_commit=([0-9a-f]+)\s*-->")
 _JIRA_TICKET_RE = re.compile(r'\b([A-Z]{2,10}-\d{1,7})\b')
 _SECURITY_KEYWORDS = re.compile(
     r"\b(injection|xss|sql[_ -]?injection|authentication|authorization|"
@@ -215,15 +216,45 @@ class Reviewer:
             )
             t0 = time.monotonic()
 
-            # Always fetch minimal diff first for size estimation
-            diff = await self.bitbucket.fetch_pr_diff(
-                project_key, repo_slug, pr_id, context_lines=0
-            )
-            if not diff.strip():
-                logger.info("%s has empty diff, skipping", pr_tag)
-                return
+            # Fetch existing comments early (needed for both dedup and incremental tracking)
+            existing = await self._fetch_existing_comments(project_key, repo_slug, pr_id)
 
+            # Determine if incremental review is possible
             source_commit = pr.fromRef.latestCommit
+            last_reviewed = _extract_last_reviewed_commit(existing)
+            is_incremental = False
+            incremental_from: str | None = None
+
+            if payload.eventKey == "pr:from_ref_updated" and last_reviewed and source_commit:
+                try:
+                    inc_diff = await self.bitbucket.fetch_commit_diff(
+                        project_key, repo_slug, last_reviewed, source_commit,
+                    )
+                    if inc_diff.strip():
+                        diff = inc_diff
+                        is_incremental = True
+                        incremental_from = last_reviewed
+                        logger.info(
+                            "%s: incremental review %s..%s",
+                            pr_tag, last_reviewed[:10], source_commit[:10],
+                        )
+                    else:
+                        logger.info("%s: no changes since last review, skipping", pr_tag)
+                        return
+                except Exception:
+                    logger.warning(
+                        "%s: incremental diff failed (rebase?), falling back to full review",
+                        pr_tag, exc_info=True,
+                    )
+                    is_incremental = False
+
+            if not is_incremental:
+                diff = await self.bitbucket.fetch_pr_diff(
+                    project_key, repo_slug, pr_id, context_lines=0
+                )
+                if not diff.strip():
+                    logger.info("%s has empty diff, skipping", pr_tag)
+                    return
             files, content_skipped = await self._prepare_files(
                 project_key, repo_slug, diff, source_commit, pr_tag
             )
@@ -307,7 +338,6 @@ class Reviewer:
                 ticket_compliance_check=self.review_config.ticket_compliance_check,
             )
 
-            existing = await self._fetch_existing_comments(project_key, repo_slug, pr_id)
             findings = _deduplicate(result.findings, existing)
             findings, truncated = _sort_and_limit(findings, self.max_comments)
 
@@ -345,6 +375,8 @@ class Reviewer:
                 jira_enabled=self.jira is not None,
                 ticket_compliance_check=self.review_config.ticket_compliance_check,
                 change_summary=result.change_summary,
+                reviewed_commit=source_commit,
+                incremental_from=incremental_from,
             )
             try:
                 existing_summary = next(
@@ -633,8 +665,14 @@ class Reviewer:
         jira_enabled: bool = False,
         ticket_compliance_check: bool = True,
         change_summary: list[str] | None = None,
+        reviewed_commit: str | None = None,
+        incremental_from: str | None = None,
     ) -> str:
-        summary = "### Review summary\n"
+        if incremental_from and reviewed_commit:
+            summary = "### Review summary (incremental update)\n"
+            summary += f"- Changes reviewed: `{incremental_from[:10]}` .. `{reviewed_commit[:10]}`\n"
+        else:
+            summary = "### Review summary\n"
 
         if not findings:
             summary += "- No issues found ✅"
@@ -729,7 +767,21 @@ class Reviewer:
         if meta:
             summary += "\n\n### Info\n" + "\n".join(f"- {m}" for m in meta)
 
+        if reviewed_commit:
+            summary += f"\n\n<!-- noergler:last_reviewed_commit={reviewed_commit} -->"
+
         return summary
+
+
+def _extract_last_reviewed_commit(existing_comments: list[dict]) -> str | None:
+    """Find the last-reviewed commit hash from the summary comment metadata."""
+    for comment in existing_comments:
+        text = comment.get("text", "")
+        if NOERGLER_MARKER in text and "Review summary" in text:
+            match = _LAST_REVIEWED_RE.search(text)
+            if match:
+                return match.group(1)
+    return None
 
 
 def _deduplicate(

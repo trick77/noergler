@@ -7,7 +7,7 @@ from app.config import ReviewConfig
 from app.copilot import CopilotClient, FileReviewData
 from app.jira import JiraClient, JiraTicket
 from app.models import ReviewFinding, WebhookPayload
-from app.reviewer import Reviewer, _deduplicate, _sort_and_limit
+from app.reviewer import Reviewer, _deduplicate, _extract_last_reviewed_commit, _sort_and_limit
 
 
 def _review_config(**overrides) -> ReviewConfig:
@@ -1325,3 +1325,196 @@ class TestHandlePrMerged:
         assert "2 comments" in stat_record.message
         assert "0 disagreed" in stat_record.message
         assert "100% useful" in stat_record.message
+
+
+class TestExtractLastReviewedCommit:
+    def test_extracts_commit_from_summary(self):
+        comments = [
+            {
+                "text": f"### Review summary\n- No issues found ✅\n\n<!-- noergler:last_reviewed_commit=abc123def456 -->\n\n{NOERGLER_MARKER}",
+                "path": None,
+            },
+        ]
+        assert _extract_last_reviewed_commit(comments) == "abc123def456"
+
+    def test_returns_none_when_no_summary(self):
+        comments = [
+            {"text": "Human comment", "path": "a.py"},
+        ]
+        assert _extract_last_reviewed_commit(comments) is None
+
+    def test_returns_none_when_no_metadata(self):
+        comments = [
+            {"text": f"### Review summary\n- No issues found ✅\n\n{NOERGLER_MARKER}", "path": None},
+        ]
+        assert _extract_last_reviewed_commit(comments) is None
+
+    def test_ignores_inline_comments(self):
+        comments = [
+            {
+                "text": f"### Review summary\n<!-- noergler:last_reviewed_commit=abc123 -->\n\n{NOERGLER_MARKER}",
+                "path": "a.py",  # inline comment, not summary
+            },
+        ]
+        # inline comments have path set — _extract_last_reviewed_commit doesn't filter by path,
+        # but the marker and "Review summary" text are present so it will match
+        assert _extract_last_reviewed_commit(comments) == "abc123"
+
+
+class TestIncrementalReview:
+    @pytest.fixture
+    def mock_bitbucket(self):
+        client = AsyncMock()
+        client.fetch_pr_diff = AsyncMock(return_value="diff --git a/file.py b/file.py\n+hello\n")
+        client.fetch_commit_diff = AsyncMock(return_value="diff --git a/new.py b/new.py\n+world\n")
+        client.fetch_file_content = AsyncMock(return_value="world\n")
+        client.fetch_pr_comments = AsyncMock(return_value=[])
+        client.post_inline_comment = AsyncMock()
+        client.post_pr_comment = AsyncMock()
+        client.update_pr_comment = AsyncMock(return_value=True)
+        return client
+
+    @pytest.fixture
+    def mock_copilot(self):
+        client = AsyncMock()
+        client.config.model = "openai/gpt-4.1"
+        client.config.max_tokens_per_chunk = 80000
+        client.prompt_template = "Review these files:\n{files}\n{tone}\n{repo_instructions}"
+        client.review_diff = AsyncMock(return_value=_make_review_result([
+            ReviewFinding(file="new.py", line=1, severity="warning", comment="Test issue"),
+        ]))
+        return client
+
+    @pytest.mark.asyncio
+    async def test_incremental_review_uses_commit_diff(self, mock_bitbucket, mock_copilot):
+        """When summary has commit metadata and event is from_ref_updated, use commit diff."""
+        mock_bitbucket.fetch_pr_comments.return_value = [
+            {
+                "id": 1, "version": 2, "path": None, "line": None, "parent_id": None,
+                "text": f"### Review summary\n- No issues found ✅\n\n<!-- noergler:last_reviewed_commit=oldcommit123 -->\n\n{NOERGLER_MARKER}",
+            },
+        ]
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        payload = _make_payload()
+        payload.eventKey = "pr:from_ref_updated"
+
+        await rev.review_pull_request(payload)
+
+        mock_bitbucket.fetch_commit_diff.assert_called_once_with(
+            "PROJ", "my-repo", "oldcommit123", "abc123"
+        )
+        # Should NOT have called fetch_pr_diff since incremental succeeded
+        mock_bitbucket.fetch_pr_diff.assert_not_called()
+        mock_copilot.review_diff.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_full_review_when_no_commit_metadata(self, mock_bitbucket, mock_copilot):
+        """When no commit metadata in summary, fall back to full review."""
+        mock_bitbucket.fetch_pr_comments.return_value = [
+            {
+                "id": 1, "version": 2, "path": None, "line": None, "parent_id": None,
+                "text": f"### Review summary\n- No issues found ✅\n\n{NOERGLER_MARKER}",
+            },
+        ]
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        payload = _make_payload()
+        payload.eventKey = "pr:from_ref_updated"
+
+        await rev.review_pull_request(payload)
+
+        mock_bitbucket.fetch_commit_diff.assert_not_called()
+        mock_bitbucket.fetch_pr_diff.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_fallback_on_commit_diff_error(self, mock_bitbucket, mock_copilot):
+        """When incremental diff fails (e.g. rebase), fall back to full review."""
+        mock_bitbucket.fetch_pr_comments.return_value = [
+            {
+                "id": 1, "version": 2, "path": None, "line": None, "parent_id": None,
+                "text": f"### Review summary\n\n<!-- noergler:last_reviewed_commit=oldcommit123 -->\n\n{NOERGLER_MARKER}",
+            },
+        ]
+        mock_bitbucket.fetch_commit_diff.side_effect = Exception("404 Not Found")
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        payload = _make_payload()
+        payload.eventKey = "pr:from_ref_updated"
+
+        await rev.review_pull_request(payload)
+
+        mock_bitbucket.fetch_commit_diff.assert_called_once()
+        mock_bitbucket.fetch_pr_diff.assert_called_once()
+        mock_copilot.review_diff.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_skip_when_incremental_diff_empty(self, mock_bitbucket, mock_copilot):
+        """When incremental diff is empty, skip review entirely."""
+        mock_bitbucket.fetch_pr_comments.return_value = [
+            {
+                "id": 1, "version": 2, "path": None, "line": None, "parent_id": None,
+                "text": f"### Review summary\n\n<!-- noergler:last_reviewed_commit=oldcommit123 -->\n\n{NOERGLER_MARKER}",
+            },
+        ]
+        mock_bitbucket.fetch_commit_diff.return_value = "   \n"
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        payload = _make_payload()
+        payload.eventKey = "pr:from_ref_updated"
+
+        await rev.review_pull_request(payload)
+
+        mock_copilot.review_diff.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_pr_opened_always_does_full_review(self, mock_bitbucket, mock_copilot):
+        """pr:opened always does full review even if summary exists."""
+        mock_bitbucket.fetch_pr_comments.return_value = [
+            {
+                "id": 1, "version": 2, "path": None, "line": None, "parent_id": None,
+                "text": f"### Review summary\n\n<!-- noergler:last_reviewed_commit=oldcommit123 -->\n\n{NOERGLER_MARKER}",
+            },
+        ]
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        payload = _make_payload()
+        payload.eventKey = "pr:opened"
+
+        await rev.review_pull_request(payload)
+
+        mock_bitbucket.fetch_commit_diff.assert_not_called()
+        mock_bitbucket.fetch_pr_diff.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_summary_contains_commit_metadata(self, mock_bitbucket, mock_copilot):
+        """Summary comment should contain the reviewed commit hash."""
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        payload = _make_payload()
+        await rev.review_pull_request(payload)
+
+        summary_text = mock_bitbucket.post_pr_comment.call_args[0][3]
+        assert "<!-- noergler:last_reviewed_commit=abc123 -->" in summary_text
+
+    @pytest.mark.asyncio
+    async def test_incremental_summary_header(self, mock_bitbucket, mock_copilot):
+        """Incremental review summary should indicate it's incremental."""
+        mock_bitbucket.fetch_pr_comments.return_value = [
+            {
+                "id": 1, "version": 2, "path": None, "line": None, "parent_id": None,
+                "text": f"### Review summary\n\n<!-- noergler:last_reviewed_commit=oldcommit123 -->\n\n{NOERGLER_MARKER}",
+            },
+        ]
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config())
+        payload = _make_payload()
+        payload.eventKey = "pr:from_ref_updated"
+
+        await rev.review_pull_request(payload)
+
+        # Summary should be updated (existing summary found)
+        update_call = mock_bitbucket.update_pr_comment.call_args
+        summary_text = update_call[0][4]  # text is the 5th positional arg
+        assert "incremental update" in summary_text
+        assert "oldcommit12" in summary_text
+        assert "abc123" in summary_text

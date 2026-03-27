@@ -62,6 +62,31 @@ class TestBitbucketClient:
 
     @pytest.mark.asyncio
     @respx.mock
+    async def test_fetch_commit_diff(self, client):
+        diff_text = "diff --git a/file.py b/file.py\n+new line\n"
+        route = respx.get(
+            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/compare/diff"
+        ).mock(return_value=httpx.Response(200, text=diff_text))
+
+        result = await client.fetch_commit_diff("PROJ", "my-repo", "abc123", "def456")
+        assert result == diff_text
+        assert route.calls[0].request.url.params["from"] == "abc123"
+        assert route.calls[0].request.url.params["to"] == "def456"
+        await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_fetch_commit_diff_404_raises(self, client):
+        respx.get(
+            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/compare/diff"
+        ).mock(return_value=httpx.Response(404, text="Not Found"))
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await client.fetch_commit_diff("PROJ", "my-repo", "abc123", "def456")
+        await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
     async def test_fetch_pr_diff_with_context_lines(self, client):
         diff_text = "diff --git a/file.py b/file.py\n+hello\n"
         route = respx.get(

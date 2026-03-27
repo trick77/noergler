@@ -53,6 +53,18 @@ class BitbucketClient:
         response.raise_for_status()
         return response.text
 
+    async def fetch_commit_diff(
+        self, project: str, repo: str, from_commit: str, to_commit: str,
+    ) -> str:
+        """Fetch diff between two commits (for incremental review)."""
+        url = f"/rest/api/1.0/projects/{project}/repos/{repo}/compare/diff"
+        params = {"from": from_commit, "to": to_commit}
+        response = await self.client.get(
+            url, headers={"Accept": "text/plain"}, params=params
+        )
+        response.raise_for_status()
+        return response.text
+
     async def fetch_file_content(
         self, project: str, repo: str, commit: str, path: str
     ) -> str:
