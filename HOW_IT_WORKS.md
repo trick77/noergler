@@ -65,6 +65,8 @@ Events are routed as follows:
 
 Comment events are further routed based on content: if the comment contains the mention trigger (default `@noergler`), it goes to the Q&A handler; if it's a reply to an existing noergler comment, it goes to the feedback handler.
 
+**Example:** A developer opens a PR and pushes two more commits. noergler receives three events: one `pr:opened` (full review) and two `pr:from_ref_updated` (incremental reviews of just the new commits).
+
 ## 2. Incremental review detection
 
 **File:** `app/reviewer.py`
@@ -81,6 +83,8 @@ If found, it requests an incremental diff from Bitbucket's compare API (`/compar
 
 **Empty diff:** If the incremental diff is empty (push with no code changes), the review is skipped entirely.
 
+**Example:** A PR was reviewed at commit `a1b2c3d`. The developer pushes two more commits, landing at `e4f5g6h`. noergler finds `<!-- noergler:last_reviewed_commit=a1b2c3d -->` in the summary comment, calls `/compare/diff?from=a1b2c3d&to=e4f5g6h`, and only reviews the changes between those two commits.
+
 ## 3. Diff fetch and file splitting
 
 **Files:** `app/bitbucket.py`, `app/copilot.py`
@@ -92,6 +96,8 @@ The raw diff (either full PR diff or incremental) is split into per-file chunks 
 **Skipped by directory:** `node_modules`, `build`, `target`, `dist`, `__pycache__`, and dot-directories (`.git`, `.next`, etc.).
 
 **Skipped by content:** Files with `binary files ... differ` markers.
+
+**Example:** A PR touches `src/service.py`, `package-lock.json`, `dist/bundle.min.js`, and `logo.png`. Only `src/service.py` passes filtering — the lock file, minified bundle, and image are all skipped.
 
 ## 4. Content enrichment
 
@@ -144,6 +150,8 @@ Config, docs, CSS, and HTML files skip dynamic scope detection (no meaningful en
 
 After expansion, overlapping or adjacent hunks are merged to avoid duplicated context lines.
 
+**Example:** A diff hunk changes line 25 inside a method. The raw diff shows only line 25. After asymmetric expansion: lines 22-27. Dynamic scope detection finds `def process_order():` at line 18 and extends the window to lines 18-27. The AI now sees the full method signature alongside the change.
+
 ## 6. Cross-file context analysis
 
 **File:** `app/cross_file_context.py`
@@ -182,6 +190,8 @@ This enables the AI to detect:
 
 **Limits:** Max 5 references per symbol, max 30 relationship lines total. Symbols shorter than 3 characters are ignored to avoid noise.
 
+**Example:** A developer renames `get_user(id)` to `get_user(user_id, include_deleted=False)` in `service.py`. Cross-file analysis finds `controller.py:4` still calls `get_user(request.id)` with the old signature. The relationship map tells the AI about this, and it flags the mismatched call site.
+
 ## 7. Large PR compression
 
 **File:** `app/diff_compression.py`
@@ -212,6 +222,8 @@ Within each group, larger files (by token count) are prioritized — they likely
 - **Deleted files** are separated and listed by path only (no diff content).
 - **Renamed files** (100% similarity) are listed by path only.
 - **Deletion-only hunks** (hunks with only removed lines, no additions) are stripped from active files since there's nothing new to review.
+
+**Example:** A 40-file PR exceeds the token budget. The PR is mostly Python with 2 config files. The 30 Python source files are included first (prioritized), then 8 Python test files. The 2 config files and any remaining files are listed under "Other modified files" so the AI knows they exist but doesn't review them in detail.
 
 ## 8. What gets sent to the AI model
 
@@ -317,6 +329,35 @@ A summary comment is posted (or updated if one already exists) containing:
 - Model name and elapsed time
 - Commit tracking metadata (invisible HTML comment)
 
+**Example inline comment:**
+
+```
+🔴 **Critical** — `service.py:42`
+
+`user_id` can be `None` when called from the batch endpoint, causing an
+unhandled `TypeError` on the database query.
+
+**Suggestion:**
+```python
+if not user_id:
+    raise ValueError("user_id is required")
+```
+```
+
+**Example summary comment (excerpt):**
+
+```
+### Review summary
+🔴 1 critical · ⚠️ 2 warnings
+
+**Changes:**
+- Added user deletion endpoint with soft-delete flag
+- Updated UserService to accept optional `include_deleted` parameter
+
+📊 Tokens: 12,450 prompt · 890 completion | Model: gpt-4o | ⏱️ 8.2s
+<!-- noergler:last_reviewed_commit=e4f5g6h789 -->
+```
+
 ## 11. Mention Q&A
 
 **Files:** `app/reviewer.py`, `app/copilot.py`
@@ -328,6 +369,8 @@ When a developer mentions `@noergler` with a question in a PR comment, the Q&A p
 3. Posts the answer as a reply to the original comment
 
 Special keywords (`review`, `re-review`, `rereview`) trigger a full review instead.
+
+**Example:** A developer comments `@noergler Why does this endpoint return 404 for deleted users?` on a PR. noergler fetches the PR diff, sees the soft-delete logic, and replies explaining that the endpoint filters out soft-deleted users by default and suggests using the `include_deleted` query parameter.
 
 ## 12. Feedback collection
 
@@ -353,3 +396,5 @@ When a PR branch name or title contains a Jira ticket ID (e.g., `PROJ-123`):
 5. Compliance status (fully/partially/not compliant) is shown in the summary
 
 Acceptance criteria are extracted from ticket descriptions using configurable prefixes (AC, AK, DoD, Req, etc.).
+
+**Example:** Branch `feature/PROJ-123-user-deletion` triggers a Jira lookup. Ticket PROJ-123 has acceptance criteria: "AC1: Users can be soft-deleted", "AC2: Deleted users are excluded from search results". The AI checks both against the PR changes and reports: AC1 met, AC2 not met (search query not updated).
