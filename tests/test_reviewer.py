@@ -696,18 +696,16 @@ class TestDedupAndLimit:
 
     def test_build_summary_diff_size(self, reviewer):
         summary = reviewer._build_summary([], diff_added=142, diff_removed=38)
-        assert "🟢 +142" in summary
-        assert "🔴 -38" in summary
+        assert "+142 / -38 lines" in summary
 
     def test_build_summary_diff_size_additions_only(self, reviewer):
         summary = reviewer._build_summary([], diff_added=50, diff_removed=0)
-        assert "🟢 +50" in summary
-        assert "🔴" not in summary
+        assert "+50 lines" in summary
+        assert "-" not in summary.split("Diff:")[1].split("\n")[0]
 
     def test_build_summary_diff_size_deletions_only(self, reviewer):
         summary = reviewer._build_summary([], diff_added=0, diff_removed=30)
-        assert "🔴 -30" in summary
-        assert "🟢" not in summary
+        assert "-30 lines" in summary
 
     def test_build_summary_cross_file_symbols(self, reviewer):
         summary = reviewer._build_summary(

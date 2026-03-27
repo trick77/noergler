@@ -327,7 +327,7 @@ A summary comment is posted (or updated if one already exists) containing:
 - Jira ticket compliance status (if applicable)
 - Review effort estimate (1-5 scale)
 - Files reviewed count (e.g., "8 of 12 files" when compression skips files)
-- Diff size (🟢 additions / 🔴 deletions)
+- Diff size (additions / deletions)
 - Cross-file dependencies analyzed (symbol names)
 - Token usage breakdown
 - Model name and elapsed time
@@ -362,7 +362,7 @@ if not user_id:
 ### Info
 - Estimated review effort: 3/5 — Medium: multiple files, some logic changes 📊
 - Reviewed 8 of 12 files (4 skipped: lock files, binaries, config) 📂
-- Diff: 🟢 +142 / 🔴 -38 lines
+- Diff: +142 / -38 lines
 - 2 cross-file dependencies analyzed (`get_user`, `UserCache`) 🔗
 - Model: `gpt-4o` · 12'450↑ 890↓ (13'340 total) · ⏱️ 8.2s
 <!-- noergler:last_reviewed_commit=e4f5g6h789 -->

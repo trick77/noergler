@@ -785,9 +785,9 @@ class Reviewer:
         if diff_added is not None or diff_removed is not None:
             parts = []
             if diff_added:
-                parts.append(f"🟢 +{diff_added}")
+                parts.append(f"+{diff_added}")
             if diff_removed:
-                parts.append(f"🔴 -{diff_removed}")
+                parts.append(f"-{diff_removed}")
             if parts:
                 meta.append(f"Diff: {' / '.join(parts)} lines")
 
