@@ -459,6 +459,7 @@ class CopilotClient:
         renamed_file_paths: list[str] | None = None,
         ticket_context: str = "",
         ticket_compliance_check: bool = True,
+        cross_file_context: str = "",
     ) -> "CopilotClient.ReviewResult":
         tone_text = TONE_PRESETS.get(tone, TONE_PRESETS["default"])
         template = self.prompt_template.replace("{tone}", tone_text)
@@ -473,6 +474,8 @@ class CopilotClient:
         supplementary = _render_supplementary_context(
             other_modified_paths, deleted_file_paths, renamed_file_paths,
         )
+        if cross_file_context:
+            supplementary = (supplementary + "\n\n" + cross_file_context).strip()
 
         prompt_breakdown = {
             "template": count_tokens(

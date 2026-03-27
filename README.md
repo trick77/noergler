@@ -13,23 +13,28 @@ Brings automated AI code review to on-premise Bitbucket Server installations. Re
 ## Features
 
 - Automatic AI-powered code review on PR open/modify
+- Incremental reviews — only reviews new changes on push, not the entire PR
+- Cross-file context analysis — detects when changed symbols are referenced in other PR files
 - Mention-based interaction — ask questions or trigger re-reviews via `@noergler` in PR comments
 - Smart context enrichment — fetches full file content, not just diffs, for better AI understanding
 - Asymmetric and dynamic diff context expansion with language-aware scope detection
-- Token-aware chunking for large PRs
+- Token-aware chunking and compression for large PRs
 - Jira ticket compliance checking against acceptance criteria
 - Project-specific review guidelines via `AGENTS.md`
 - Comment deduplication against existing review comments
+- Feedback collection and usefulness tracking
 - HMAC-SHA256 webhook signature validation
 - Corporate CA certificate support
 
+For a detailed description of the review pipeline, see [HOW_IT_WORKS.md](HOW_IT_WORKS.md).
+
 ## How it works
 
-1. **Webhook** — Bitbucket Server fires a `pr:opened` or `pr:modified` event to the `/webhook` endpoint. The request is validated via HMAC-SHA256.
-2. **Diff fetch** — The full PR diff is fetched from Bitbucket, split by file, and filtered (binary files, non-reviewable extensions, and files exceeding the configured line limit are skipped).
-3. **Context enrichment** — Full file content is fetched for each reviewable file so the AI has complete context, not just the diff. If an `AGENTS.md` file exists in the repository root, it is loaded and included as project-specific review guidelines.
-4. **AI review** — Files are grouped into token-aware chunks and sent to the GitHub Models API with a structured review prompt. Each chunk is reviewed independently.
-5. **Post results** — Findings are deduplicated against existing noergler comments, sorted by severity (errors first), capped at the configured limit, and posted as inline comments. A summary comment is added to the PR.
+1. **Webhook** — Bitbucket Server fires a `pr:opened` or `pr:from_ref_updated` event to the `/webhook` endpoint. The request is validated via HMAC-SHA256.
+2. **Diff fetch** — On new PRs, the full diff is fetched. On updates, noergler performs an incremental review covering only changes since the last review (falling back to full review after force-pushes).
+3. **Context enrichment** — Full file content is fetched for each reviewable file. Diff hunks are expanded with asymmetric context and language-aware scope detection. Cross-file analysis maps changed symbols to their references in other PR files.
+4. **AI review** — Files are grouped into token-aware chunks and sent to the GitHub Models API. The prompt includes file content, diffs, cross-file relationships, repo guidelines (`AGENTS.md`), and Jira ticket context.
+5. **Post results** — Findings are deduplicated against existing comments, sorted by severity, capped at the configured limit, and posted as inline comments. A summary comment tracks the reviewed commit for incremental reviews.
 
 ## Interacting with noergler
 
@@ -135,18 +140,22 @@ GET /health → {"status": "ok"}
 
 ```
 app/
-  main.py          # FastAPI app, /webhook and /health endpoints
-  reviewer.py      # Review orchestrator (diff → AI → comments)
-  copilot.py       # GitHub Models API client, token-aware chunking
-  context_expansion.py  # Asymmetric & dynamic diff context expansion
-  bitbucket.py     # Bitbucket Server REST API client
-  models.py        # Pydantic models (webhook payloads, findings)
-  config.py        # Environment-based configuration
+  main.py              # FastAPI app, /webhook and /health endpoints
+  reviewer.py          # Review orchestrator (diff → AI → comments)
+  copilot.py           # GitHub Models API client, token-aware chunking
+  context_expansion.py # Asymmetric & dynamic diff context expansion
+  cross_file_context.py # Cross-file symbol reference analysis
+  diff_compression.py  # Large PR compression and file prioritization
+  bitbucket.py         # Bitbucket Server REST API client
+  jira.py              # Jira ticket fetching and compliance checking
+  models.py            # Pydantic models (webhook payloads, findings)
+  config.py            # Environment-based configuration
+  feedback.py          # Feedback classification
 prompts/
-  review.txt       # Review prompt template
-  mention.txt      # Mention Q&A prompt template
-openshift/         # OpenShift/K8s deployment manifests
-certs/             # Custom CA certificates (optional)
-tests/             # pytest test suite
+  review.txt           # Review prompt template
+  mention.txt          # Mention Q&A prompt template
+openshift/             # OpenShift/K8s deployment manifests
+certs/                 # Custom CA certificates (optional)
+tests/                 # pytest test suite
 ```
 

@@ -19,6 +19,7 @@ from app.copilot import (
 )
 from app.config import ReviewConfig, ServerConfig
 from app.context_expansion import expand_all_files
+from app.cross_file_context import build_cross_file_context, render_cross_file_context
 from app.diff_compression import compress_for_large_pr, is_small_pr
 from app.jira import JiraClient, JiraTicket
 from app.models import PullRequest, ReviewFinding, WebhookPayload
@@ -309,6 +310,15 @@ class Reviewer:
                 logger.info("%s has no reviewable files after compression, skipping", pr_tag)
                 return
 
+            # Build cross-file relationship map
+            cross_file_rels = build_cross_file_context(files)
+            cross_file_ctx = render_cross_file_context(cross_file_rels)
+            if cross_file_ctx:
+                logger.info(
+                    "%s: cross-file context: %d relationship(s)",
+                    pr_tag, len(cross_file_rels),
+                )
+
             repo_instructions = await self._fetch_repo_instructions(
                 project_key, repo_slug, pr
             )
@@ -336,6 +346,7 @@ class Reviewer:
                 renamed_file_paths=renamed_paths,
                 ticket_context=ticket_context,
                 ticket_compliance_check=self.review_config.ticket_compliance_check,
+                cross_file_context=cross_file_ctx,
             )
 
             findings = _deduplicate(result.findings, existing)
