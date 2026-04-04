@@ -9,6 +9,7 @@ from app.models import ReviewFinding
 
 logger = logging.getLogger(__name__)
 
+# Kept for backward-compatible identification of comments posted before bot_username was tracked
 NOERGLER_MARKER = "— _noergler_"
 SEVERITY_EMOJI = {"critical": "❌", "warning": "⚠️"}
 
@@ -16,6 +17,7 @@ SEVERITY_EMOJI = {"critical": "❌", "warning": "⚠️"}
 class BitbucketClient:
     def __init__(self, config: BitbucketConfig):
         self.config = config
+        self.bot_username: str | None = None
         self.client = httpx.AsyncClient(
             base_url=config.base_url,
             headers={
@@ -41,6 +43,25 @@ class BitbucketClient:
             )
         except Exception as exc:
             logger.warning("Bitbucket connectivity check failed: %r", exc)
+
+    async def fetch_authenticated_user(self) -> None:
+        """Discover and store the bot's Bitbucket username via the whoami endpoint."""
+        try:
+            response = await self.client.get(
+                "/plugins/servlet/applinks/whoami",
+                headers={"Accept": "text/plain"},
+            )
+            if response.status_code == 200:
+                username = response.text.strip()
+                if username:
+                    self.bot_username = username
+                    logger.info("Bot username: %s", self.bot_username)
+                    return
+        except Exception:
+            pass
+        logger.warning(
+            "Could not determine bot username; falling back to marker-based comment identification"
+        )
 
     async def fetch_pr_diff(
         self, project: str, repo: str, pr_id: int, context_lines: int = 0
@@ -82,7 +103,7 @@ class BitbucketClient:
         repo: str,
         pr_id: int,
         finding: ReviewFinding,
-    ) -> None:
+    ) -> int | None:
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{pr_id}/comments"
         path = re.sub(r"^[ab]/", "", finding.file)
         parts = [
@@ -92,7 +113,6 @@ class BitbucketClient:
         if finding.suggestion:
             parts.append(f"**Suggested change:**\n```\n{finding.suggestion}\n```")
         parts.append("_Wrong finding? Reply \"disagree\" if this comment is incorrect or hallucinated._")
-        parts.append(NOERGLER_MARKER)
         text = "\n\n".join(parts)
         payload = {
             "text": text,
@@ -115,24 +135,25 @@ class BitbucketClient:
             )
         response.raise_for_status()
         logger.info("Posted inline comment on %s:%d", finding.file, finding.line)
+        return response.json().get("id")
 
     async def post_pr_comment(
         self, project: str, repo: str, pr_id: int, text: str
-    ) -> None:
+    ) -> tuple[int, int] | None:
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{pr_id}/comments"
-        response = await self.client.post(url, json={"text": f"{text}\n\n{NOERGLER_MARKER}"})
+        response = await self.client.post(url, json={"text": text})
         response.raise_for_status()
+        data = response.json()
         logger.info("Posted summary comment on PR %d", pr_id)
+        return data.get("id"), data.get("version", 0)
 
     async def reply_to_comment(
         self, project: str, repo: str, pr_id: int,
         parent_comment_id: int, text: str,
-        include_marker: bool = True,
     ) -> None:
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{pr_id}/comments"
-        body = f"{text}\n\n{NOERGLER_MARKER}" if include_marker else text
         payload = {
-            "text": body,
+            "text": text,
             "parent": {"id": parent_comment_id},
         }
         response = await self.client.post(url, json=payload)
@@ -142,19 +163,19 @@ class BitbucketClient:
     async def update_pr_comment(
         self, project: str, repo: str, pr_id: int,
         comment_id: int, version: int, text: str,
-    ) -> bool:
+    ) -> int | None:
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{pr_id}/comments/{comment_id}"
-        payload = {"text": f"{text}\n\n{NOERGLER_MARKER}", "version": version}
+        payload = {"text": text, "version": version}
         response = await self.client.put(url, json=payload)
         if response.status_code == 409:
             logger.warning(
                 "Version conflict updating comment %d on PR %d, falling back to new comment",
                 comment_id, pr_id,
             )
-            return False
+            return None
         response.raise_for_status()
         logger.info("Updated summary comment %d on PR %d", comment_id, pr_id)
-        return True
+        return response.json().get("version")
 
     async def add_comment_reaction(
         self, project: str, repo: str, pr_id: int, comment_id: int, emoticon: str = "eyes"
@@ -191,6 +212,7 @@ class BitbucketClient:
                 comment = activity.get("comment", {})
                 text = comment.get("text", "")
                 anchor = activity.get("commentAnchor") or comment.get("anchor") or {}
+                author = comment.get("author", {})
                 comments.append({
                     "id": comment.get("id"),
                     "version": comment.get("version"),
@@ -198,6 +220,7 @@ class BitbucketClient:
                     "path": anchor.get("path"),
                     "line": anchor.get("line"),
                     "parent_id": comment.get("parent", {}).get("id"),
+                    "author_slug": author.get("slug") or author.get("name"),
                 })
             if data.get("isLastPage", True):
                 break

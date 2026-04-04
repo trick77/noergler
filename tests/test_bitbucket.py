@@ -171,7 +171,7 @@ class TestBitbucketClient:
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_post_inline_comment_includes_marker(self, client):
+    async def test_post_inline_comment_excludes_marker(self, client):
         route = respx.post(
             f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/comments"
         ).mock(return_value=httpx.Response(201, json={"id": 1}))
@@ -182,7 +182,7 @@ class TestBitbucketClient:
         await client.post_inline_comment("PROJ", "my-repo", 1, finding)
 
         body = route.calls[0].request.content.decode()
-        assert NOERGLER_MARKER in body
+        assert NOERGLER_MARKER not in body
         await client.close()
 
     @pytest.mark.asyncio
@@ -237,20 +237,20 @@ class TestBitbucketClient:
         assert route.call_count == 1
         body = _json.loads(route.calls[0].request.content)
         assert body["parent"]["id"] == 42
-        assert NOERGLER_MARKER in body["text"]
+        assert NOERGLER_MARKER not in body["text"]
         assert "Here is the answer" in body["text"]
         await client.close()
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_reply_to_comment_without_marker(self, client):
+    async def test_reply_to_comment_text_only(self, client):
         import json as _json
 
         route = respx.post(
             f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/comments"
         ).mock(return_value=httpx.Response(201, json={"id": 99}))
 
-        await client.reply_to_comment("PROJ", "my-repo", 1, 42, "Feedback noted", include_marker=False)
+        await client.reply_to_comment("PROJ", "my-repo", 1, 42, "Feedback noted")
 
         assert route.call_count == 1
         body = _json.loads(route.calls[0].request.content)
@@ -265,26 +265,27 @@ class TestBitbucketClient:
 
         route = respx.put(
             f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/comments/42"
-        ).mock(return_value=httpx.Response(200, json={"id": 42}))
+        ).mock(return_value=httpx.Response(200, json={"id": 42, "version": 4}))
 
-        await client.update_pr_comment("PROJ", "my-repo", 1, 42, 3, "Updated summary")
+        result = await client.update_pr_comment("PROJ", "my-repo", 1, 42, 3, "Updated summary")
 
         assert route.call_count == 1
         body = _json.loads(route.calls[0].request.content)
-        assert NOERGLER_MARKER in body["text"]
+        assert NOERGLER_MARKER not in body["text"]
         assert "Updated summary" in body["text"]
         assert body["version"] == 3
+        assert result == 4  # new version from response
         await client.close()
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_update_pr_comment_409_returns_false(self, client):
+    async def test_update_pr_comment_409_returns_none(self, client):
         respx.put(
             f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/comments/42"
         ).mock(return_value=httpx.Response(409, json={"errors": [{"message": "version conflict"}]}))
 
         result = await client.update_pr_comment("PROJ", "my-repo", 1, 42, 3, "Updated summary")
-        assert result is False
+        assert result is None
         await client.close()
 
     @pytest.mark.asyncio
