@@ -151,7 +151,7 @@ class JiraClient:
         response.raise_for_status()
         data = response.json()
         logger.info(
-            "Jira connectivity OK — authenticated as %s",
+            "Jira authenticated as %s",
             data.get("displayName", data.get("name", "?")),
         )
 

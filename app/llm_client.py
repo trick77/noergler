@@ -354,7 +354,10 @@ class LLMClient:
             time_remaining = response.headers.get("x-ratelimit-timeremaining", "unknown")
 
             if attempt == 0:
-                wait_display = f"{float(retry_after):.0f}s" if retry_after else f"{time_remaining}s"
+                try:
+                    wait_display = f"{float(retry_after):.0f}s" if retry_after else f"{time_remaining}s"
+                except (ValueError, TypeError):
+                    wait_display = f"{retry_after}"
                 logger.warning(
                     "429 rate-limited — type: %s, wait: %s, body: %s",
                     rate_limit_type, wait_display,

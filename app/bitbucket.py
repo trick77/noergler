@@ -36,7 +36,7 @@ class BitbucketClient:
         response.raise_for_status()
         data = response.json()
         logger.info(
-            "Bitbucket connectivity OK — %s v%s",
+            "Bitbucket Server %s v%s",
             data.get("displayName", "?"),
             data.get("version", "?"),
         )

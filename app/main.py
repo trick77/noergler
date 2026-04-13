@@ -97,6 +97,12 @@ async def lifespan(app: FastAPI):
 
     failed = [k for k, v in checks.items() if v is not None]
     if failed:
+        if db_pool:
+            await close_pool()
+        await bitbucket_client.close()
+        await copilot_client.close()
+        if jira_client:
+            await jira_client.close()
         raise RuntimeError(
             f"Startup aborted — {len(failed)} connection(s) failed: {', '.join(failed)}"
         )
