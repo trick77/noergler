@@ -61,12 +61,21 @@ class ServerConfig(BaseModel):
     port: int = 8080
 
 
+class DatabaseConfig(BaseModel):
+    url: str = ""
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.url)
+
+
 class AppConfig(BaseModel):
     bitbucket: BitbucketConfig
     copilot: CopilotConfig
     review: ReviewConfig = ReviewConfig()
     jira: JiraConfig = JiraConfig()
     server: ServerConfig = ServerConfig()
+    database: DatabaseConfig = DatabaseConfig()
 
 
 def _env(name: str, default: str | None = None) -> str:
@@ -80,11 +89,12 @@ _SECRET_FIELDS = {
     "bitbucket": {"token", "webhook_secret"},
     "copilot": {"github_token"},
     "jira": {"token"},
+    "database": {"url"},
 }
 
 
 def log_config(config: AppConfig, log: logging.Logger) -> None:
-    for section_name in ("bitbucket", "copilot", "review", "jira", "server"):
+    for section_name in ("bitbucket", "copilot", "review", "jira", "server", "database"):
         section = getattr(config, section_name)
         secrets = _SECRET_FIELDS.get(section_name, set())
         log.info("[config.%s]", section_name)
@@ -129,5 +139,8 @@ def load_config() -> AppConfig:
         server=ServerConfig(
             host=_env("SERVER_HOST", "0.0.0.0"),
             port=int(_env("SERVER_PORT", "8080")),
+        ),
+        database=DatabaseConfig(
+            url=_env("DATABASE_URL", ""),
         ),
     )

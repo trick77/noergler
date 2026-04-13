@@ -282,8 +282,13 @@ COMPLIANCE_INSTRUCTIONS = (
     '"compliance_requirements": [{"requirement": "short description", "met": true}, '
     '{"requirement": "short description", "met": false}]}\n'
     "\n"
-    "compliance_requirements: List ALL key requirements from the ticket. For each, "
-    'set "met" to true if the PR addresses it, false if not. Keep requirement descriptions short (one line).\n'
+    "compliance_requirements: List only requirements that can be verified from the code changes in this PR. "
+    'For each, set "met" to true if the PR addresses it, false if not. Keep requirement descriptions short (one line).\n'
+    "\n"
+    "Skip requirements that are not code-verifiable — e.g., process steps, communication tasks, "
+    "manual actions, documentation updates outside the repo, or sign-off/approval items "
+    '(such as "inform manager", "update Confluence", "get sign-off", "schedule meeting"). '
+    "If none of the acceptance criteria are code-relevant, return an empty compliance_requirements array.\n"
     "\n"
     "When no ticket context is present, respond with the JSON array of findings only (current behavior).\n"
     "\n"

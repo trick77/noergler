@@ -37,7 +37,7 @@ def test_log_config_masks_secrets(caplog):
     assert "secret-bb-token" not in text
     assert "secret-webhook" not in text
     assert "ghp_secret123" not in text
-    assert text.count("***") == 4  # bb token, webhook secret, github token, jira token
+    assert text.count("***") == 5  # bb token, webhook secret, github token, jira token, database url
 
     # Non-secret fields must appear as-is
     assert "https://bitbucket.example.com" in text

@@ -7,7 +7,7 @@ from app.config import ReviewConfig
 from app.llm_client import LLMClient, FileReviewData
 from app.jira import JiraClient, JiraTicket
 from app.models import ReviewFinding, WebhookPayload
-from app.reviewer import Reviewer, _count_diff_lines, _deduplicate, _extract_last_reviewed_commit, _sort_and_limit
+from app.reviewer import Reviewer, _count_diff_lines, _deduplicate, _extract_last_reviewed_commit, _is_bot_comment, _sort_and_limit
 
 
 def _review_config(**overrides) -> ReviewConfig:
@@ -223,11 +223,12 @@ def _make_real_payload() -> WebhookPayload:
 @pytest.fixture
 def mock_bitbucket():
     client = AsyncMock()
+    client.bot_username = None
     client.fetch_pr_diff = AsyncMock(return_value="diff --git a/file.py b/file.py\n+hello\n")
     client.fetch_file_content = AsyncMock(return_value="hello\n")
     client.fetch_pr_comments = AsyncMock(return_value=[])
-    client.post_inline_comment = AsyncMock()
-    client.post_pr_comment = AsyncMock()
+    client.post_inline_comment = AsyncMock(return_value=None)
+    client.post_pr_comment = AsyncMock(return_value=(123, 0))
     client.update_pr_comment = AsyncMock(return_value=True)
     return client
 
@@ -1441,12 +1442,13 @@ class TestIncrementalReview:
     @pytest.fixture
     def mock_bitbucket(self):
         client = AsyncMock()
+        client.bot_username = None
         client.fetch_pr_diff = AsyncMock(return_value="diff --git a/file.py b/file.py\n+hello\n")
         client.fetch_commit_diff = AsyncMock(return_value="diff --git a/new.py b/new.py\n+world\n")
         client.fetch_file_content = AsyncMock(return_value="world\n")
         client.fetch_pr_comments = AsyncMock(return_value=[])
-        client.post_inline_comment = AsyncMock()
-        client.post_pr_comment = AsyncMock()
+        client.post_inline_comment = AsyncMock(return_value=None)
+        client.post_pr_comment = AsyncMock(return_value=(123, 0))
         client.update_pr_comment = AsyncMock(return_value=True)
         return client
 

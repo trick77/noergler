@@ -7,6 +7,7 @@ from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 
 from app.bitbucket import BitbucketClient
 from app.config import load_config, log_config
+from app.db import close_pool, create_pool
 from app.llm_client import LLMClient
 from app.jira import JiraClient
 from app.models import WebhookPayload
@@ -60,13 +61,26 @@ async def lifespan(app: FastAPI):
         logger.info("Jira integration enabled (%s)", config.jira.url)
 
     await bitbucket_client.check_connectivity()
+    await bitbucket_client.fetch_authenticated_user()
     await copilot_client.check_connectivity()
 
     if jira_client:
         if not await jira_client.check_connectivity():
             jira_client = None
 
-    reviewer = Reviewer(bitbucket_client, copilot_client, config.review, jira=jira_client, server_config=config.server)
+    db_pool = None
+    if config.database.enabled:
+        try:
+            db_pool = await create_pool(config.database.url)
+        except Exception:
+            logger.warning("Failed to connect to PostgreSQL — continuing without DB", exc_info=True)
+
+    reviewer = Reviewer(
+        bitbucket_client, copilot_client, config.review,
+        jira=jira_client,
+        server_config=config.server,
+        db_pool=db_pool,
+    )
     logger.info("Bridge service started, model=%s", config.copilot.model)
 
     yield
@@ -75,6 +89,8 @@ async def lifespan(app: FastAPI):
     await copilot_client.close()
     if jira_client:
         await jira_client.close()
+    if db_pool:
+        await close_pool()
 
 
 app = FastAPI(title="Bitbucket PR Review Bridge", lifespan=lifespan)

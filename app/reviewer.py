@@ -6,6 +6,7 @@ import time
 from pathlib import PurePosixPath
 
 from app.bitbucket import NOERGLER_MARKER, BitbucketClient
+from app.db import repository
 from app.feedback import classify_feedback, random_response
 from app.llm_client import (
     LLMClient,
@@ -52,6 +53,22 @@ _SECURITY_KEYWORDS = re.compile(
 )
 
 
+async def _safe_db(coro, fallback=None):
+    """Wrap a DB coroutine; on failure log a warning and return the fallback value."""
+    try:
+        return await coro
+    except Exception:
+        logger.warning("DB operation failed, using fallback", exc_info=True)
+        return fallback
+
+
+def _is_bot_comment(comment: dict, bot_username: str | None) -> bool:
+    """Identify a bot comment by author slug (preferred) or legacy marker (backward compat)."""
+    if bot_username and comment.get("author_slug") == bot_username:
+        return True
+    return NOERGLER_MARKER in comment.get("text", "")
+
+
 def _count_diff_lines(diff: str) -> tuple[int, int]:
     """Count added and removed lines in a unified diff."""
     added = 0
@@ -76,12 +93,14 @@ class Reviewer:
         review_config: ReviewConfig,
         jira: JiraClient | None = None,
         server_config: ServerConfig | None = None,
+        db_pool=None,
     ):
         self.bitbucket = bitbucket
         self.copilot = copilot
         self.review_config = review_config
         self.jira = jira
         self.server_config = server_config or ServerConfig()
+        self.db_pool = db_pool
         self.auto_review_authors = review_config.auto_review_authors
         self.max_comments = review_config.max_comments
         self.mention_trigger = review_config.mention_trigger
@@ -229,12 +248,22 @@ class Reviewer:
             )
             t0 = time.monotonic()
 
-            # Fetch existing comments early (needed for both dedup and incremental tracking)
+            # Fetch existing comments early (needed for fallback dedup and summary detection)
             existing = await self._fetch_existing_comments(project_key, repo_slug, pr_id)
 
             # Determine if incremental review is possible
             source_commit = pr.fromRef.latestCommit
-            last_reviewed = _extract_last_reviewed_commit(existing)
+            last_reviewed = None
+
+            # Get last reviewed commit: DB first, then fallback to comment parsing
+            if self.db_pool:
+                last_reviewed = await _safe_db(
+                    repository.get_last_reviewed_commit(self.db_pool, project_key, repo_slug, pr_id),
+                    fallback=None,
+                )
+            if last_reviewed is None:
+                last_reviewed = _extract_last_reviewed_commit(existing)
+
             is_incremental = False
             incremental_from: str | None = None
 
@@ -355,7 +384,7 @@ class Reviewer:
                     logger.info("%s: linked Jira ticket %s", pr_tag, ticket_id)
 
             tone = self._tone_for_author(author_name)
-            result = await self.copilot.review_diff(
+            llm_result = await self.copilot.review_diff(
                 files, repo_instructions, tone=tone,
                 other_modified_paths=other_modified,
                 deleted_file_paths=deleted_paths,
@@ -365,17 +394,64 @@ class Reviewer:
                 cross_file_context=cross_file_ctx,
             )
 
-            findings = _deduplicate(result.findings, existing)
+            # Deduplicate: DB-backed (preferred) or comment-based fallback
+            original_count = len(llm_result.findings)
+            existing_keys = None
+            if self.db_pool:
+                existing_keys = await _safe_db(
+                    repository.get_existing_finding_keys(self.db_pool, project_key, repo_slug, pr_id),
+                    fallback=None,
+                )
+
+            if existing_keys is not None:
+                findings = [
+                    f for f in llm_result.findings
+                    if (f.file, f.line, f.severity) not in existing_keys
+                ]
+            else:
+                findings = _deduplicate(
+                    llm_result.findings, existing,
+                    bot_username=self.bitbucket.bot_username,
+                )
+
+            deduplicated_count = original_count - len(findings)
             findings, truncated = _sort_and_limit(findings, self.max_comments)
+
+            # Upsert PR review record to get pr_review_id for linking findings
+            pr_review_id = None
+            if self.db_pool:
+                pr_review_id = await _safe_db(
+                    repository.upsert_pr_review(
+                        self.db_pool, project_key, repo_slug, pr_id,
+                        last_reviewed_commit=source_commit,
+                        author=author_name,
+                        pr_title=pr.title,
+                    ),
+                    fallback=None,
+                )
 
             posted = 0
             failed = 0
             for finding in findings:
                 try:
-                    await self.bitbucket.post_inline_comment(
+                    comment_id = await self.bitbucket.post_inline_comment(
                         project_key, repo_slug, pr_id, finding
                     )
                     posted += 1
+                    if self.db_pool and pr_review_id:
+                        await _safe_db(
+                            repository.insert_finding(
+                                self.db_pool, pr_review_id,
+                                file_path=finding.file,
+                                line_number=finding.line,
+                                severity=finding.severity,
+                                comment_text=finding.comment,
+                                suggestion=finding.suggestion,
+                                bitbucket_comment_id=comment_id,
+                                commit_sha=source_commit,
+                                is_incremental=is_incremental,
+                            )
+                        )
                 except Exception:
                     failed += 1
                     logger.error(
@@ -390,18 +466,18 @@ class Reviewer:
                 findings,
                 truncated,
                 agents_md_found=agents_md_found,
-                skipped_files=result.skipped_files,
+                skipped_files=llm_result.skipped_files,
                 content_skipped_files=content_skipped,
-                token_usage=(result.prompt_tokens, result.completion_tokens),
-                prompt_breakdown=result.prompt_breakdown,
-                review_effort=result.review_effort,
+                token_usage=(llm_result.prompt_tokens, llm_result.completion_tokens),
+                prompt_breakdown=llm_result.prompt_breakdown,
+                review_effort=llm_result.review_effort,
                 ticket=ticket,
                 parent_ticket=parent_ticket,
-                compliance_requirements=result.compliance_requirements,
+                compliance_requirements=llm_result.compliance_requirements,
                 elapsed=elapsed,
                 jira_enabled=self.jira is not None,
                 ticket_compliance_check=self.review_config.ticket_compliance_check,
-                change_summary=result.change_summary,
+                change_summary=llm_result.change_summary,
                 reviewed_commit=source_commit,
                 incremental_from=incremental_from,
                 files_reviewed=len(files),
@@ -410,25 +486,94 @@ class Reviewer:
                 diff_removed=diff_removed,
                 cross_file_symbols=[r.symbol for r in cross_file_rels] if cross_file_rels else None,
             )
-            try:
+
+            # Find existing summary: DB first, then fallback to comment scanning
+            existing_summary = None
+            if self.db_pool and pr_review_id:
+                db_summary_info = await _safe_db(
+                    repository.get_summary_comment_info(self.db_pool, pr_review_id),
+                    fallback=None,
+                )
+                if db_summary_info:
+                    existing_summary = {
+                        "id": db_summary_info["summary_comment_id"],
+                        "version": db_summary_info["summary_comment_version"],
+                    }
+
+            if existing_summary is None:
                 existing_summary = next(
-                    (c for c in existing if NOERGLER_MARKER in c.get("text", "")
+                    (c for c in existing
+                     if _is_bot_comment(c, self.bitbucket.bot_username)
                      and "Review summary" in c.get("text", "")
-                     and c.get("path") is None and c.get("id")),
+                     and c.get("path") is None
+                     and c.get("id")),
                     None,
                 )
-                updated = False
+
+            summary_comment_id = None
+            summary_comment_version = None
+            try:
+                updated_version = None
                 if existing_summary:
-                    updated = await self.bitbucket.update_pr_comment(
+                    updated_version = await self.bitbucket.update_pr_comment(
                         project_key, repo_slug, pr_id,
                         existing_summary["id"], existing_summary["version"], summary,
                     )
-                if not updated:
-                    await self.bitbucket.post_pr_comment(
+
+                if updated_version is not None:
+                    summary_comment_id = existing_summary["id"]
+                    summary_comment_version = updated_version
+                else:
+                    post_result = await self.bitbucket.post_pr_comment(
                         project_key, repo_slug, pr_id, summary
+                    )
+                    if post_result:
+                        summary_comment_id, summary_comment_version = post_result
+
+                if self.db_pool and pr_review_id and summary_comment_id is not None:
+                    await _safe_db(
+                        repository.update_summary_comment(
+                            self.db_pool, pr_review_id,
+                            summary_comment_id, summary_comment_version or 0,
+                        )
                     )
             except Exception:
                 logger.error("Failed to post summary comment", exc_info=True)
+
+            # Persist review statistics
+            if self.db_pool:
+                counts = {"critical": 0, "warning": 0}
+                for f in findings:
+                    counts[f.severity] = counts.get(f.severity, 0) + 1
+                security_count = len([f for f in findings if _SECURITY_KEYWORDS.search(f.comment)])
+                await _safe_db(
+                    repository.insert_review_stats(
+                        self.db_pool,
+                        project_key=project_key,
+                        repo_slug=repo_slug,
+                        pr_id=pr_id,
+                        author=author_name,
+                        is_incremental=is_incremental,
+                        reviewed_commit=source_commit,
+                        diff_added=diff_added,
+                        diff_removed=diff_removed,
+                        files_reviewed=len(files),
+                        total_files=total_files + len(deleted_paths) + len(renamed_paths),
+                        critical_count=counts.get("critical", 0),
+                        warning_count=counts.get("warning", 0),
+                        security_count=security_count,
+                        review_effort=llm_result.review_effort,
+                        prompt_tokens=llm_result.prompt_tokens,
+                        completion_tokens=llm_result.completion_tokens,
+                        model_name=self.copilot.config.model,
+                        elapsed_seconds=elapsed,
+                        cross_file_deps=len(cross_file_rels) if cross_file_rels else 0,
+                        skipped_files=len(llm_result.skipped_files),
+                        content_skipped=len(content_skipped),
+                        findings_posted=posted,
+                        findings_deduplicated=deduplicated_count,
+                    )
+                )
 
             parts = [
                 f"Review of {pr_tag} completed in {elapsed:.1f}s",
@@ -447,8 +592,9 @@ class Reviewer:
         if not comment:
             return
 
-        if NOERGLER_MARKER in comment.text:
-            logger.debug("Ignoring own comment (marker found)")
+        # Self-loop prevention: ignore bot's own comments
+        if comment.author.name == self.bitbucket.bot_username or NOERGLER_MARKER in comment.text:
+            logger.debug("Ignoring own comment (bot)")
             return
 
         pr = payload.pullRequest
@@ -517,11 +663,18 @@ class Reviewer:
         pr_tag = f"{project_key}/{repo_slug}#{pr.id}"
 
         try:
+            # DB: delete PR review record (cascades to findings; stats/feedback retained)
+            if self.db_pool:
+                await _safe_db(
+                    repository.delete_pr_review(self.db_pool, project_key, repo_slug, pr.id)
+                )
+
             comments = await self.bitbucket.fetch_pr_comments(project_key, repo_slug, pr.id)
+            bot_username = self.bitbucket.bot_username
 
             noergler_inline = {
                 c["id"]: c for c in comments
-                if NOERGLER_MARKER in c.get("text", "")
+                if _is_bot_comment(c, bot_username)
                 and c.get("path") is not None
                 and c.get("id") is not None
             }
@@ -533,7 +686,7 @@ class Reviewer:
             disagreed = 0
             for c in comments:
                 parent_id = c.get("parent_id")
-                if parent_id in noergler_inline and NOERGLER_MARKER not in c.get("text", ""):
+                if parent_id in noergler_inline and not _is_bot_comment(c, bot_username):
                     if classify_feedback(c.get("text", "")) == "negative":
                         disagreed += 1
 
@@ -552,8 +705,9 @@ class Reviewer:
             logger.debug("Feedback skipped: no comment or no commentParentId")
             return
 
-        if NOERGLER_MARKER in comment.text:
-            logger.debug("Feedback skipped: reply contains marker (bot's own reply)")
+        # Self-loop prevention: ignore bot's own replies
+        if comment.author.name == self.bitbucket.bot_username or NOERGLER_MARKER in comment.text:
+            logger.debug("Feedback skipped: reply is from bot")
             return
 
         pr = payload.pullRequest
@@ -566,28 +720,57 @@ class Reviewer:
         parent_id = payload.commentParentId
 
         try:
-            existing = await self.bitbucket.fetch_pr_comments(project_key, repo_slug, pr.id)
-            parent_comment = next(
-                (c for c in existing if c.get("id") == parent_id), None
-            )
+            # Try DB path first: look up the parent finding by Bitbucket comment ID
+            parent_file: str | None = None
+            parent_line: int | None = None
+            parent_severity: str | None = None
+            suggestion_text = ""
+            using_db_for_parent = False
+            existing: list[dict] | None = None
 
-            if not parent_comment or NOERGLER_MARKER not in parent_comment.get("text", ""):
-                logger.debug("Feedback skipped on %s: parent %d not found or missing marker", pr_tag, parent_id)
-                return
+            if self.db_pool:
+                finding = await _safe_db(
+                    repository.get_finding_by_comment_id(self.db_pool, parent_id),
+                    fallback=None,
+                )
+                if finding is not None:
+                    using_db_for_parent = True
+                    parent_file = finding["file_path"]
+                    parent_line = finding["line_number"]
+                    parent_severity = finding["severity"]
 
-            if not parent_comment.get("path"):
-                logger.debug("Feedback skipped on %s: parent %d is not an inline comment", pr_tag, parent_id)
-                return
+            if not using_db_for_parent:
+                # Fallback: fetch existing comments and validate parent
+                existing = await self.bitbucket.fetch_pr_comments(project_key, repo_slug, pr.id)
+                parent_comment = next(
+                    (c for c in existing if c.get("id") == parent_id), None
+                )
+
+                if not parent_comment or not _is_bot_comment(parent_comment, self.bitbucket.bot_username):
+                    logger.debug(
+                        "Feedback skipped on %s: parent %d not found or not a bot comment",
+                        pr_tag, parent_id,
+                    )
+                    return
+
+                if not parent_comment.get("path"):
+                    logger.debug(
+                        "Feedback skipped on %s: parent %d is not an inline comment",
+                        pr_tag, parent_id,
+                    )
+                    return
+
+                parent_file = parent_comment.get("path")
+                parent_line = parent_comment.get("line")
+
+                parent_text = parent_comment.get("text", "")
+                if "**Suggestion:** " in parent_text:
+                    suggestion_text = parent_text.split("**Suggestion:** ", 1)[1].split("\n")[0]
 
             classification = classify_feedback(comment.text)
             if classification != "negative":
                 logger.debug("Feedback skipped on %s: classified as %s", pr_tag, classification)
                 return
-
-            suggestion_text = ""
-            parent_text = parent_comment.get("text", "")
-            if "**Suggestion:** " in parent_text:
-                suggestion_text = parent_text.split("**Suggestion:** ", 1)[1].split("\n")[0]
 
             logger.info(
                 "Disagree feedback: %s",
@@ -595,8 +778,8 @@ class Reviewer:
                     "event": "disagree",
                     "pr": pr_tag,
                     "comment_id": parent_id,
-                    "file": parent_comment.get("path", ""),
-                    "line": parent_comment.get("line"),
+                    "file": parent_file or "",
+                    "line": parent_line,
                     "suggestion": suggestion_text,
                     "author": comment.author.name,
                 }),
@@ -609,27 +792,44 @@ class Reviewer:
                 await self.bitbucket.reply_to_comment(
                     project_key, repo_slug, pr.id, comment.id,
                     random_response(),
-                    include_marker=True,
                 )
 
-            # Aggregate stats
-            noergler_comment_ids = {
-                c["id"] for c in existing
-                if NOERGLER_MARKER in c.get("text", "") and c.get("id") is not None
-            }
-            negative = 0
-            for c in existing:
-                if c.get("parent_id") in noergler_comment_ids and c.get("id") != comment.id:
-                    if classify_feedback(c.get("text", "")) == "negative":
-                        negative += 1
-            # Include the current reply (it may not be in the fetched list yet)
-            if classification == "negative":
-                negative += 1
+            # Persist feedback event in DB
+            if self.db_pool:
+                await _safe_db(
+                    repository.insert_feedback(
+                        self.db_pool,
+                        project_key=project_key,
+                        repo_slug=repo_slug,
+                        pr_id=pr.id,
+                        bitbucket_comment_id=parent_id,
+                        feedback_author=comment.author.name,
+                        classification=classification,
+                        file_path=parent_file,
+                        severity=parent_severity,
+                    )
+                )
 
-            logger.info(
-                "Feedback on %s: %d disagreed / %d review comments",
-                pr_tag, negative, len(noergler_comment_ids),
-            )
+            # Aggregate stats log (fallback path only — DB path has persistent stats)
+            if not using_db_for_parent and existing is not None:
+                bot_username = self.bitbucket.bot_username
+                noergler_comment_ids = {
+                    c["id"] for c in existing
+                    if _is_bot_comment(c, bot_username) and c.get("id") is not None
+                }
+                negative = 0
+                for c in existing:
+                    if c.get("parent_id") in noergler_comment_ids and c.get("id") != comment.id:
+                        if classify_feedback(c.get("text", "")) == "negative":
+                            negative += 1
+                # Include the current reply (it may not be in the fetched list yet)
+                if classification == "negative":
+                    negative += 1
+
+                logger.info(
+                    "Feedback on %s: %d disagreed / %d review comments",
+                    pr_tag, negative, len(noergler_comment_ids),
+                )
         except Exception:
             logger.error("Feedback handling on %s failed", pr_tag, exc_info=True)
 
@@ -835,10 +1035,10 @@ class Reviewer:
 
 
 def _extract_last_reviewed_commit(existing_comments: list[dict]) -> str | None:
-    """Find the last-reviewed commit hash from the summary comment metadata."""
+    """Find the last-reviewed commit hash from the summary comment metadata (fallback)."""
     for comment in existing_comments:
         text = comment.get("text", "")
-        if NOERGLER_MARKER in text and "Review summary" in text:
+        if _is_bot_comment(comment, None) and "Review summary" in text:
             match = _LAST_REVIEWED_RE.search(text)
             if match:
                 return match.group(1)
@@ -846,11 +1046,13 @@ def _extract_last_reviewed_commit(existing_comments: list[dict]) -> str | None:
 
 
 def _deduplicate(
-    findings: list[ReviewFinding], existing: list[dict]
+    findings: list[ReviewFinding],
+    existing: list[dict],
+    bot_username: str | None = None,
 ) -> list[ReviewFinding]:
     existing_keys: set[tuple[str | None, int | None, str]] = set()
     for comment in existing:
-        if NOERGLER_MARKER not in comment.get("text", ""):
+        if not _is_bot_comment(comment, bot_username):
             continue
         match = _SEVERITY_RE.search(comment.get("text", ""))
         if match:
