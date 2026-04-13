@@ -21,6 +21,13 @@ spec:
                 name: noergler
             - secretRef:
                 name: noergler
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 50m
+            limits:
+              memory: 128Mi
+              cpu: 200m
       containers:
         - name: noergler
           image: registry.example.com/noergler/noergler:latest
