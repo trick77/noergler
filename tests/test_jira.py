@@ -52,8 +52,7 @@ class TestCheckConnectivity:
             })
         )
 
-        result = await jira_client.check_connectivity()
-        assert result is True
+        await jira_client.check_connectivity()
 
     @respx.mock
     @pytest.mark.asyncio
@@ -62,8 +61,8 @@ class TestCheckConnectivity:
             return_value=httpx.Response(401, text="Unauthorized")
         )
 
-        result = await jira_client.check_connectivity()
-        assert result is False
+        with pytest.raises(httpx.HTTPStatusError):
+            await jira_client.check_connectivity()
 
     @respx.mock
     @pytest.mark.asyncio
@@ -72,8 +71,8 @@ class TestCheckConnectivity:
             side_effect=httpx.ConnectError("Connection refused")
         )
 
-        result = await jira_client.check_connectivity()
-        assert result is False
+        with pytest.raises(httpx.ConnectError):
+            await jira_client.check_connectivity()
 
 
 class TestFetchTicket:

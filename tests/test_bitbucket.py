@@ -45,8 +45,8 @@ class TestBitbucketClient:
             return_value=httpx.Response(401, text="Unauthorized")
         )
 
-        # Should not raise — just logs a warning
-        await client.check_connectivity()
+        with pytest.raises(httpx.HTTPStatusError):
+            await client.check_connectivity()
         await client.close()
 
     @pytest.mark.asyncio

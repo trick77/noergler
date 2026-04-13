@@ -145,20 +145,15 @@ class JiraClient:
         parent = await self.fetch_ticket(ticket.parent_key)
         return ticket, parent
 
-    async def check_connectivity(self) -> bool:
-        try:
-            url = f"{self.config.url.rstrip('/')}/rest/api/2/myself"
-            response = await self.client.get(url)
-            response.raise_for_status()
-            data = response.json()
-            logger.info(
-                "Jira connectivity OK — authenticated as %s",
-                data.get("displayName", data.get("name", "?")),
-            )
-            return True
-        except Exception as exc:
-            logger.warning("Jira connectivity check failed, disabling integration: %r", exc)
-            return False
+    async def check_connectivity(self) -> None:
+        url = f"{self.config.url.rstrip('/')}/rest/api/2/myself"
+        response = await self.client.get(url)
+        response.raise_for_status()
+        data = response.json()
+        logger.info(
+            "Jira authenticated as %s",
+            data.get("displayName", data.get("name", "?")),
+        )
 
     async def close(self):
         await self.client.aclose()

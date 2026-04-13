@@ -354,9 +354,13 @@ class LLMClient:
             time_remaining = response.headers.get("x-ratelimit-timeremaining", "unknown")
 
             if attempt == 0:
+                try:
+                    wait_display = f"{float(retry_after):.0f}s" if retry_after else f"{time_remaining}s"
+                except (ValueError, TypeError):
+                    wait_display = f"{retry_after}"
                 logger.warning(
-                    "429 rate-limited — type: %s, retry-after: %s, time-remaining: %ss, body: %s",
-                    rate_limit_type, retry_after, time_remaining,
+                    "429 rate-limited — type: %s, wait: %s, body: %s",
+                    rate_limit_type, wait_display,
                     response.text[:500],
                 )
 
@@ -376,72 +380,67 @@ class LLMClient:
 
         return response  # unreachable, but satisfies type checkers
 
-    async def check_connectivity(self) -> dict | None:
+    async def check_connectivity(self) -> dict:
         base_url = self.config.api_url.split("/inference")[0]
         models_url = base_url + "/catalog/models"
-        try:
-            response = await self.client.get(models_url)
-            response.raise_for_status()
-            models_data = response.json()
-            model_list = models_data.get("data", models_data) if isinstance(models_data, dict) else models_data
+        response = await self.client.get(models_url)
+        response.raise_for_status()
+        models_data = response.json()
+        model_list = models_data.get("data", models_data) if isinstance(models_data, dict) else models_data
 
-            # Log all available models
-            lines = [f"Available models (from {models_url}):"]
-            matched = None
-            for model in model_list:
-                if not isinstance(model, dict):
-                    continue
-                mid = model.get("id", "?")
-                limits = model.get("limits", {})
-                max_in = limits.get("max_input_tokens", model.get("max_input_tokens", "?"))
-                max_out = limits.get("max_output_tokens", model.get("max_output_tokens", "?"))
-                tier = model.get("rate_limit_tier", "?")
-                caps = ",".join(model.get("capabilities", [])) or "?"
-                max_in_fmt = _fmt(max_in) if isinstance(max_in, int) else str(max_in)
-                max_out_fmt = _fmt(max_out) if isinstance(max_out, int) else str(max_out)
-                lines.append(
-                    f"  {mid:<35s} max_in={max_in_fmt:<12s} max_out={max_out_fmt:<10s} tier={tier}  capabilities={caps}"
-                )
-                if mid == self.config.model:
-                    matched = model
-            logger.info("\n".join(lines))
-
-            if matched:
-                limits = matched.get("limits", {})
-                max_in = limits.get("max_input_tokens", matched.get("max_input_tokens", "unknown"))
-                max_out = limits.get("max_output_tokens", matched.get("max_output_tokens", "unknown"))
-                max_in_fmt = _fmt(max_in) if isinstance(max_in, int) else str(max_in)
-                max_out_fmt = _fmt(max_out) if isinstance(max_out, int) else str(max_out)
-                logger.info(
-                    "Model %s validated. max_input_tokens=%s, max_output_tokens=%s",
-                    self.config.model, max_in_fmt, max_out_fmt,
-                )
-                if isinstance(max_in, int) and max_in < self.config.max_tokens_per_chunk:
-                    logger.warning(
-                        "Model %s max_input_tokens (%s) is below configured max_tokens_per_chunk (%s) — capping",
-                        self.config.model, _fmt(max_in), _fmt(self.config.max_tokens_per_chunk),
-                    )
-                    self.config.max_tokens_per_chunk = max_in
-                prompt_overhead = count_tokens(
-                    self.prompt_template
-                    .replace("{files}", "").replace("{tone}", "")
-                    .replace("{repo_instructions}", "").replace("{ticket_context}", "")
-                    .replace("{compliance_instructions}", "")
-                )
-                effective = self.config.max_tokens_per_chunk - prompt_overhead
-                if effective < 2000:
-                    logger.warning(
-                        "Effective token budget for file content is very low (%s tokens). "
-                        "Most files will likely be skipped. Consider using a model with higher token limits.",
-                        _fmt(effective),
-                    )
-                return matched
-            logger.warning(
-                "Model %s not found in available models", self.config.model
+        # Log all available models
+        lines = [f"Available models (from {models_url}):"]
+        matched = None
+        for model in model_list:
+            if not isinstance(model, dict):
+                continue
+            mid = model.get("id", "?")
+            limits = model.get("limits", {})
+            max_in = limits.get("max_input_tokens", model.get("max_input_tokens", "?"))
+            max_out = limits.get("max_output_tokens", model.get("max_output_tokens", "?"))
+            tier = model.get("rate_limit_tier", "?")
+            caps = ",".join(model.get("capabilities", [])) or "?"
+            max_in_fmt = _fmt(max_in) if isinstance(max_in, int) else str(max_in)
+            max_out_fmt = _fmt(max_out) if isinstance(max_out, int) else str(max_out)
+            lines.append(
+                f"  {mid:<35s} max_in={max_in_fmt:<12s} max_out={max_out_fmt:<10s} tier={tier}  capabilities={caps}"
             )
-        except Exception as exc:
-            logger.warning("Could not validate model against models API: %r", exc)
-        return None
+            if mid == self.config.model:
+                matched = model
+        logger.info("\n".join(lines))
+
+        if not matched:
+            raise ValueError(f"Model {self.config.model} not found in available models at {models_url}")
+
+        limits = matched.get("limits", {})
+        max_in = limits.get("max_input_tokens", matched.get("max_input_tokens", "unknown"))
+        max_out = limits.get("max_output_tokens", matched.get("max_output_tokens", "unknown"))
+        max_in_fmt = _fmt(max_in) if isinstance(max_in, int) else str(max_in)
+        max_out_fmt = _fmt(max_out) if isinstance(max_out, int) else str(max_out)
+        logger.info(
+            "Model %s validated. max_input_tokens=%s, max_output_tokens=%s",
+            self.config.model, max_in_fmt, max_out_fmt,
+        )
+        if isinstance(max_in, int) and max_in < self.config.max_tokens_per_chunk:
+            logger.warning(
+                "Model %s max_input_tokens (%s) is below configured max_tokens_per_chunk (%s) — capping",
+                self.config.model, _fmt(max_in), _fmt(self.config.max_tokens_per_chunk),
+            )
+            self.config.max_tokens_per_chunk = max_in
+        prompt_overhead = count_tokens(
+            self.prompt_template
+            .replace("{files}", "").replace("{tone}", "")
+            .replace("{repo_instructions}", "").replace("{ticket_context}", "")
+            .replace("{compliance_instructions}", "")
+        )
+        effective = self.config.max_tokens_per_chunk - prompt_overhead
+        if effective < 2000:
+            logger.warning(
+                "Effective token budget for file content is very low (%s tokens). "
+                "Most files will likely be skipped. Consider using a model with higher token limits.",
+                _fmt(effective),
+            )
+        return matched
 
     @dataclass
     class ReviewResult:
