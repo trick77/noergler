@@ -83,6 +83,37 @@ All configuration is driven by environment variables. The four required variable
 
 See [`.env.example`](.env.example) for all optional settings and their defaults.
 
+### Database (optional)
+
+noergler can optionally persist review data to PostgreSQL. Without a database, the app runs normally — it falls back to parsing Bitbucket comment history for features like incremental reviews and deduplication.
+
+To enable persistence, set the `DATABASE_URL` environment variable:
+
+```bash
+DATABASE_URL=postgresql://user:password@host:5432/noergler
+```
+
+Both `postgresql://` and `postgres://` URI schemes are accepted.
+
+**What gets stored:**
+
+| Table | Purpose |
+|---|---|
+| `pr_reviews` | Tracks reviewed PRs, last reviewed commit, summary comment IDs |
+| `review_findings` | Individual code findings with file, line, severity, and Bitbucket comment ID |
+| `review_statistics` | Review metrics — token usage, finding counts, timing |
+| `feedback_events` | User feedback on review comments (agree/disagree) |
+
+**Running migrations:**
+
+Schema is managed with Alembic. Run migrations before first use:
+
+```bash
+alembic upgrade head
+```
+
+If the database is unreachable at startup, noergler logs a warning and continues without persistence.
+
 ## Webhook setup
 
 1. Generate a webhook secret:
@@ -151,6 +182,9 @@ app/
   models.py            # Pydantic models (webhook payloads, findings)
   config.py            # Environment-based configuration
   feedback.py          # Feedback classification
+  db/
+    pool.py            # asyncpg connection pool management
+    repository.py      # Database operations (upsert, query, insert)
 prompts/
   review.txt           # Review prompt template
   mention.txt          # Mention Q&A prompt template
