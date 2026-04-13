@@ -55,10 +55,7 @@ async def lifespan(app: FastAPI):
     bitbucket_client = BitbucketClient(config.bitbucket)
     copilot_client = LLMClient(config.copilot, config.review)
 
-    jira_client = None
-    if config.jira.enabled:
-        jira_client = JiraClient(config.jira)
-        logger.info("Jira integration enabled (%s)", config.jira.url)
+    jira_client = JiraClient(config.jira)
 
     checks: dict[str, str | None] = {}
 
@@ -76,12 +73,11 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         checks["Bitbucket"] = str(exc)
 
-    if jira_client:
-        try:
-            await jira_client.check_connectivity()
-            checks["Jira"] = None
-        except Exception as exc:
-            checks["Jira"] = str(exc)
+    try:
+        await jira_client.check_connectivity()
+        checks["Jira"] = None
+    except Exception as exc:
+        checks["Jira"] = str(exc)
 
     try:
         await copilot_client.check_connectivity()
@@ -101,8 +97,7 @@ async def lifespan(app: FastAPI):
             await close_pool()
         await bitbucket_client.close()
         await copilot_client.close()
-        if jira_client:
-            await jira_client.close()
+        await jira_client.close()
         raise RuntimeError(
             f"Startup aborted — {len(failed)} connection(s) failed: {', '.join(failed)}"
         )
@@ -119,8 +114,7 @@ async def lifespan(app: FastAPI):
 
     await bitbucket_client.close()
     await copilot_client.close()
-    if jira_client:
-        await jira_client.close()
+    await jira_client.close()
     await close_pool()
 
 
@@ -180,6 +174,10 @@ async def webhook(
     if event_key == "pr:merged":
         background_tasks.add_task(reviewer.handle_pr_merged, payload)
         return {"status": "accepted", "reason": "merged-stats"}
+
+    if event_key == "pr:deleted":
+        background_tasks.add_task(reviewer.handle_pr_deleted, payload)
+        return {"status": "accepted", "reason": "deleted-purge"}
 
     if event_key == "pr:comment:added":
         comment_text = payload_json.get("comment", {}).get("text", "")

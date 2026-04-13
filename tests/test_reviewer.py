@@ -1355,6 +1355,61 @@ class TestHandlePrMerged:
 
 
 
+class TestHandlePrDeleted:
+    @pytest.mark.asyncio
+    async def test_purges_data_and_logs(self, mock_bitbucket, mock_copilot, caplog):
+        mock_pool = AsyncMock()
+        mock_pool.acquire = AsyncMock()
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config(), db_pool=mock_pool)
+
+        import logging
+        from unittest.mock import patch
+        with patch("app.reviewer.repository.purge_pr_data", new_callable=AsyncMock) as mock_purge:
+            mock_purge.return_value = {
+                "review_findings": 5, "pr_reviews": 1,
+                "review_statistics": 2, "feedback_events": 1,
+            }
+            with caplog.at_level(logging.INFO):
+                await rev.handle_pr_deleted(_make_payload())
+
+            mock_purge.assert_awaited_once_with(mock_pool, "PROJ", "my-repo", 42)
+        assert "purged 9 row(s)" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_no_data_to_purge(self, mock_bitbucket, mock_copilot, caplog):
+        mock_pool = AsyncMock()
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config(), db_pool=mock_pool)
+
+        import logging
+        from unittest.mock import patch
+        with patch("app.reviewer.repository.purge_pr_data", new_callable=AsyncMock) as mock_purge:
+            mock_purge.return_value = {
+                "review_findings": 0, "pr_reviews": 0,
+                "review_statistics": 0, "feedback_events": 0,
+            }
+            with caplog.at_level(logging.INFO):
+                await rev.handle_pr_deleted(_make_payload())
+
+        assert "no data to purge" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_db_error_logged(self, mock_bitbucket, mock_copilot, caplog):
+        mock_pool = AsyncMock()
+
+        rev = Reviewer(mock_bitbucket, mock_copilot, _review_config(), db_pool=mock_pool)
+
+        import logging
+        from unittest.mock import patch
+        with patch("app.reviewer.repository.purge_pr_data", new_callable=AsyncMock) as mock_purge:
+            mock_purge.side_effect = RuntimeError("connection lost")
+            with caplog.at_level(logging.ERROR):
+                await rev.handle_pr_deleted(_make_payload())
+
+        assert "Purge for deleted" in caplog.text
+
+
 class TestIncrementalReview:
     @pytest.fixture
     def mock_bitbucket(self):

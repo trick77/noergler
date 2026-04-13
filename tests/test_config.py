@@ -1,6 +1,6 @@
 import logging
 
-from app.config import AppConfig, BitbucketConfig, CopilotConfig, DatabaseConfig, ReviewConfig, ServerConfig, load_config, log_config
+from app.config import AppConfig, BitbucketConfig, CopilotConfig, DatabaseConfig, JiraConfig, ReviewConfig, ServerConfig, load_config, log_config
 
 
 def _make_config():
@@ -24,6 +24,7 @@ def _make_config():
             ramsay_authors=["alice"],
         ),
         server=ServerConfig(host="0.0.0.0", port=9090),
+        jira=JiraConfig(url="https://jira.example.com", token="secret-jira-token"),
         database=DatabaseConfig(url="postgresql://noergler:secret@localhost/noergler"),
     )
 
@@ -74,6 +75,8 @@ def test_diff_context_from_env(monkeypatch):
         "BITBUCKET_WEBHOOK_SECRET": "sec",
         "BITBUCKET_USERNAME": "bot",
         "GITHUB_TOKEN": "ghp_tok",
+        "JIRA_URL": "https://jira.example.com",
+        "JIRA_TOKEN": "jira-tok",
         "DATABASE_URL": "postgresql://u:p@localhost/db",
         "REVIEW_DIFF_EXTRA_LINES_BEFORE": "5",
         "REVIEW_DIFF_EXTRA_LINES_AFTER": "2",
@@ -96,6 +99,8 @@ def test_ticket_compliance_check_from_env(monkeypatch):
         "BITBUCKET_WEBHOOK_SECRET": "sec",
         "BITBUCKET_USERNAME": "bot",
         "GITHUB_TOKEN": "ghp_tok",
+        "JIRA_URL": "https://jira.example.com",
+        "JIRA_TOKEN": "jira-tok",
         "DATABASE_URL": "postgresql://u:p@localhost/db",
         "REVIEW_TICKET_COMPLIANCE_CHECK": "false",
     }
@@ -112,6 +117,8 @@ def test_ticket_compliance_check_default_from_env(monkeypatch):
         "BITBUCKET_WEBHOOK_SECRET": "sec",
         "BITBUCKET_USERNAME": "bot",
         "GITHUB_TOKEN": "ghp_tok",
+        "JIRA_URL": "https://jira.example.com",
+        "JIRA_TOKEN": "jira-tok",
         "DATABASE_URL": "postgresql://u:p@localhost/db",
     }
     for k, v in env.items():
