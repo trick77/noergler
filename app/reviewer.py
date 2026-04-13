@@ -99,6 +99,8 @@ class Reviewer:
         self.review_config = review_config
         self.jira = jira
         self.server_config = server_config or ServerConfig()
+        if db_pool is None:
+            raise ValueError("db_pool is required")
         self.db_pool = db_pool
         self.auto_review_authors = review_config.auto_review_authors
         self.max_comments = review_config.max_comments
@@ -693,7 +695,7 @@ class Reviewer:
                 fallback=None,
             )
             if finding is None:
-                logger.debug(
+                logger.info(
                     "Feedback skipped on %s: parent %d not found in DB",
                     pr_tag, parent_id,
                 )
