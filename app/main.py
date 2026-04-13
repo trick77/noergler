@@ -76,7 +76,7 @@ async def lifespan(app: FastAPI):
         server_config=config.server,
         db_pool=db_pool,
     )
-    logger.info("Bridge service started, model=%s", config.copilot.model)
+    logger.info("Bridge service started, model=%s, api_url=%s", config.copilot.model, config.copilot.api_url)
 
     yield
 
