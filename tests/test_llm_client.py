@@ -444,6 +444,9 @@ class TestLLMClient:
         )
 
         client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.create = AsyncMock(
+            return_value=_mock_completion("pong", 5, 1)
+        )
         try:
             result = await client.check_connectivity()
             assert result is not None
@@ -464,6 +467,67 @@ class TestLLMClient:
         try:
             result = await client.check_connectivity()
             assert result == {}
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_check_connectivity_ping_success(self, llm_config, review_config):
+        """Startup ping succeeds → check_connectivity returns the matched model."""
+        models_response = {
+            "data": [
+                {
+                    "id": "openai/gpt-4.1",
+                    "limits": {"max_input_tokens": 1048576, "max_output_tokens": 32768},
+                    "rate_limit_tier": "high",
+                    "capabilities": [],
+                },
+            ]
+        }
+        respx.get("https://models.github.ai/catalog/models").mock(
+            return_value=httpx.Response(200, json=models_response)
+        )
+
+        client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.create = AsyncMock(
+            return_value=_mock_completion("pong", 5, 1)
+        )
+        try:
+            result = await client.check_connectivity()
+            assert result["id"] == "openai/gpt-4.1"
+            client.openai_client.chat.completions.create.assert_called_once()
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_check_connectivity_ping_failure_raises(self, llm_config, review_config):
+        """Startup ping fails → exception propagates."""
+        models_response = {
+            "data": [
+                {
+                    "id": "openai/gpt-4.1",
+                    "limits": {"max_input_tokens": 1048576, "max_output_tokens": 32768},
+                    "rate_limit_tier": "high",
+                    "capabilities": [],
+                },
+            ]
+        }
+        respx.get("https://models.github.ai/catalog/models").mock(
+            return_value=httpx.Response(200, json=models_response)
+        )
+
+        client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.create = AsyncMock(
+            side_effect=openai.APIStatusError(
+                "No access to model",
+                response=httpx.Response(403, request=httpx.Request("POST", "https://x"), text="forbidden"),
+                body=None,
+            )
+        )
+        try:
+            with pytest.raises(openai.APIStatusError):
+                await client.check_connectivity()
         finally:
             await client.close()
 
@@ -883,6 +947,9 @@ class TestAutoCapTokenBudget:
         )
 
         client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.create = AsyncMock(
+            return_value=_mock_completion("pong", 5, 1)
+        )
         try:
             result = await client.check_connectivity()
             assert result is not None
@@ -910,6 +977,9 @@ class TestAutoCapTokenBudget:
         )
 
         client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.create = AsyncMock(
+            return_value=_mock_completion("pong", 5, 1)
+        )
         try:
             await client.check_connectivity()
             assert llm_config.max_tokens_per_chunk == 80000
@@ -936,6 +1006,9 @@ class TestAutoCapTokenBudget:
         )
 
         client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.create = AsyncMock(
+            return_value=_mock_completion("pong", 5, 1)
+        )
         try:
             import logging
             with caplog.at_level(logging.WARNING, logger="app.llm_client"):

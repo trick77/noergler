@@ -390,6 +390,20 @@ class LLMClient:
                 "Most files will likely be skipped. Consider using a model with higher token limits.",
                 _fmt(effective),
             )
+
+        # Startup ping — verify the model is actually callable
+        try:
+            ping_response = await self.openai_client.chat.completions.create(
+                model=self.config.model,
+                messages=[{"role": "user", "content": "This is a ping. Answer with: pong"}],
+                max_tokens=10,
+            )
+            ping_text = ping_response.choices[0].message.content.strip() if ping_response.choices else "?"
+            logger.info("Model %s ping OK (response: %s)", self.config.model, ping_text)
+        except Exception as exc:
+            logger.error("Model %s ping FAILED: %r", self.config.model, exc)
+            raise
+
         return matched
 
     @dataclass
