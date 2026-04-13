@@ -12,6 +12,15 @@ spec:
       labels:
         app: noergler
     spec:
+      initContainers:
+        - name: migrate
+          image: registry.example.com/noergler/noergler:latest
+          command: ["alembic", "upgrade", "head"]
+          envFrom:
+            - configMapRef:
+                name: noergler
+            - secretRef:
+                name: noergler
       containers:
         - name: noergler
           image: registry.example.com/noergler/noergler:latest
