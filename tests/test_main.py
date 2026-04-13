@@ -83,13 +83,14 @@ def client():
     mock_reviewer.handle_mention = AsyncMock()
     mock_reviewer.handle_feedback = AsyncMock()
     mock_reviewer.handle_pr_merged = AsyncMock()
+    mock_reviewer.handle_pr_deleted = AsyncMock()
 
     original_config = main_module.config
     original_reviewer = main_module.reviewer
     original_lifespan = app.router.lifespan_context
 
     @asynccontextmanager
-    async def noop_lifespan(a):
+    async def noop_lifespan(_a):
         yield
 
     main_module.config = mock_config
@@ -201,6 +202,21 @@ class TestMergedRouting:
         data = resp.json()
         assert data["status"] == "accepted"
         assert data["reason"] == "merged-stats"
+
+
+class TestDeletedRouting:
+    def test_pr_deleted_routes_to_handle_pr_deleted(self, client):
+        payload = {**PR_PAYLOAD, "eventKey": "pr:deleted"}
+        body = json.dumps(payload).encode()
+        resp = client.post(
+            "/webhook",
+            content=body,
+            headers={"X-Hub-Signature": _sign(body), "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "accepted"
+        assert data["reason"] == "deleted-purge"
 
 
 class TestEventKeyAllowList:

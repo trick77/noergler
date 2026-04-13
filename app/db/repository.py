@@ -189,6 +189,43 @@ async def insert_review_stats(
         )
 
 
+async def purge_pr_data(
+    pool: asyncpg.Pool, project_key: str, repo_slug: str, pr_id: int
+) -> dict[str, int]:
+    """Delete review data for a PR (keeps review_statistics). Returns row counts per table."""
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            r1 = await conn.execute(
+                """
+                DELETE FROM review_findings
+                WHERE pr_review_id IN (
+                    SELECT id FROM pr_reviews
+                    WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
+                )
+                """,
+                project_key, repo_slug, pr_id,
+            )
+            r2 = await conn.execute(
+                "DELETE FROM pr_reviews WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3",
+                project_key, repo_slug, pr_id,
+            )
+            r3 = await conn.execute(
+                "DELETE FROM feedback_events WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3",
+                project_key, repo_slug, pr_id,
+            )
+        return {
+            "review_findings": _parse_delete_count(r1),
+            "pr_reviews": _parse_delete_count(r2),
+            "feedback_events": _parse_delete_count(r3),
+        }
+
+
+def _parse_delete_count(status: str) -> int:
+    """Extract row count from asyncpg command status like 'DELETE 3'."""
+    parts = status.split()
+    return int(parts[-1]) if parts else 0
+
+
 async def insert_feedback(
     pool: asyncpg.Pool,
     project_key: str,

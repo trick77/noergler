@@ -41,8 +41,8 @@ class ReviewConfig(BaseModel):
 
 
 class JiraConfig(BaseModel):
-    url: str = ""
-    token: str = ""
+    url: str
+    token: str
     acceptance_criteria_prefixes: list[str] = ["AC", "AK", "Acceptance Criteria", "Acceptance Criterion", "Akzeptanzkriterium", "Akzeptanzkriterien", "DoD", "Req"]
 
     @field_validator("acceptance_criteria_prefixes", mode="before")
@@ -51,10 +51,6 @@ class JiraConfig(BaseModel):
         if isinstance(v, str):
             return [a.strip() for a in v.split(",") if a.strip()]
         return v
-
-    @property
-    def enabled(self) -> bool:
-        return bool(self.url and self.token)
 
 
 class ServerConfig(BaseModel):
@@ -70,7 +66,7 @@ class AppConfig(BaseModel):
     bitbucket: BitbucketConfig
     copilot: CopilotConfig
     review: ReviewConfig = ReviewConfig()
-    jira: JiraConfig = JiraConfig()
+    jira: JiraConfig
     server: ServerConfig = ServerConfig()
     database: DatabaseConfig
 
@@ -130,8 +126,8 @@ def load_config() -> AppConfig:
             ticket_compliance_check=_env("REVIEW_TICKET_COMPLIANCE_CHECK", "true").lower() in ("true", "1", "yes"),
         ),
         jira=JiraConfig(
-            url=_env("JIRA_URL", ""),
-            token=_env("JIRA_TOKEN", ""),
+            url=_env("JIRA_URL"),
+            token=_env("JIRA_TOKEN"),
             acceptance_criteria_prefixes=_env("JIRA_ACCEPTANCE_CRITERIA_PREFIXES", "AC,AK,Acceptance Criteria,Acceptance Criterion,Akzeptanzkriterium,Akzeptanzkriterien,DoD,Req"),
         ),
         server=ServerConfig(

@@ -4,4 +4,15 @@ metadata:
   name: noergler
 data:
   BITBUCKET_URL: "https://bitbucket.company.com"
-  REVIEW_ALLOWED_AUTHORS: "user1,user2"
+  BITBUCKET_USERNAME: "noergler"
+  REVIEW_AUTO_REVIEW_AUTHORS: ""
+  REVIEW_MAX_COMMENTS: "25"
+  REVIEW_MAX_FILE_LINES: "1000"
+  REVIEW_MENTION_TRIGGER: "noergler"
+  REVIEW_TICKET_COMPLIANCE_CHECK: "true"
+  JIRA_URL: ""
+  COPILOT_MODEL: "openai/gpt-4.1"
+  COPILOT_API_URL: "https://models.github.ai/inference/chat/completions"
+  COPILOT_MAX_TOKENS_PER_CHUNK: "80000"
+  SERVER_HOST: "0.0.0.0"
+  SERVER_PORT: "8080"

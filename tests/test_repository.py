@@ -101,7 +101,7 @@ async def test_delete_pr_review_executes_delete():
     await repository.delete_pr_review(pool, "PROJ", "my-repo", 42)
 
     pool._conn.execute.assert_awaited_once()
-    sql, *args = pool._conn.execute.call_args.args
+    sql, *_args = pool._conn.execute.call_args.args
     assert "DELETE FROM pr_reviews" in sql
 
 
@@ -210,6 +210,56 @@ async def test_insert_review_stats_executes_insert_with_correct_param_count():
     assert args[0] == "PROJ"
     assert args[1] == "my-repo"
     assert args[2] == 42
+
+
+def _make_tx_pool(execute_side_effect):
+    """Build a fake pool whose connection supports both execute() and transaction()."""
+    conn = AsyncMock()
+    conn.execute = AsyncMock(side_effect=execute_side_effect)
+
+    @asynccontextmanager
+    async def _transaction():
+        yield
+
+    conn.transaction = _transaction
+
+    pool = MagicMock()
+
+    @asynccontextmanager
+    async def _acquire():
+        yield conn
+
+    pool.acquire = _acquire
+    pool._conn = conn
+    return pool
+
+
+@pytest.mark.asyncio
+async def test_purge_pr_data_deletes_review_data_but_keeps_stats():
+    pool = _make_tx_pool(["DELETE 3", "DELETE 1", "DELETE 1"])
+
+    result = await repository.purge_pr_data(pool, "PROJ", "my-repo", 42)
+
+    assert result == {
+        "review_findings": 3,
+        "pr_reviews": 1,
+        "feedback_events": 1,
+    }
+    assert "review_statistics" not in result
+    assert pool._conn.execute.await_count == 3
+    calls = [call.args[0] for call in pool._conn.execute.call_args_list]
+    assert "DELETE FROM review_findings" in calls[0]
+    assert "DELETE FROM pr_reviews" in calls[1]
+    assert "DELETE FROM feedback_events" in calls[2]
+
+
+@pytest.mark.asyncio
+async def test_purge_pr_data_zero_rows():
+    pool = _make_tx_pool(["DELETE 0", "DELETE 0", "DELETE 0"])
+
+    result = await repository.purge_pr_data(pool, "PROJ", "my-repo", 999)
+
+    assert all(v == 0 for v in result.values())
 
 
 @pytest.mark.asyncio

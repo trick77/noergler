@@ -668,6 +668,27 @@ class Reviewer:
         except Exception:
             logger.error("Merged stats for %s failed", pr_tag, exc_info=True)
 
+    async def handle_pr_deleted(self, payload: WebhookPayload) -> None:
+        pr = payload.pullRequest
+        project_key, repo_slug = self._extract_project_repo(payload)
+        if not project_key or not repo_slug:
+            return
+
+        pr_tag = f"{project_key}/{repo_slug}#{pr.id}"
+
+        counts = await _safe_db(
+            repository.purge_pr_data(self.db_pool, project_key, repo_slug, pr.id),
+            fallback=None,
+        )
+        if counts is None:
+            logger.error("Purge for deleted %s failed", pr_tag)
+            return
+        total = sum(counts.values())
+        if total:
+            logger.info("%s deleted — purged %d row(s): %s", pr_tag, total, counts)
+        else:
+            logger.info("%s deleted — no data to purge", pr_tag)
+
     async def handle_feedback(self, payload: WebhookPayload) -> None:
         comment = payload.comment
         if not comment or payload.commentParentId is None:
