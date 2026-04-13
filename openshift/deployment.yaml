@@ -15,6 +15,7 @@ spec:
       initContainers:
         - name: migrate
           image: registry.example.com/noergler/noergler:latest
+          imagePullPolicy: Always
           command: ["alembic", "upgrade", "head"]
           envFrom:
             - configMapRef:

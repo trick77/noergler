@@ -383,8 +383,12 @@ class LLMClient:
     async def check_connectivity(self) -> dict:
         base_url = self.config.api_url.split("/inference")[0]
         models_url = base_url + "/catalog/models"
-        response = await self.client.get(models_url)
-        response.raise_for_status()
+        try:
+            response = await self.client.get(models_url)
+            response.raise_for_status()
+        except Exception as exc:
+            logger.warning("Could not fetch model catalog from %s: %r — skipping validation", models_url, exc)
+            return {}
         models_data = response.json()
         model_list = models_data.get("data", models_data) if isinstance(models_data, dict) else models_data
 
