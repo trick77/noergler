@@ -166,10 +166,6 @@ Tests use pytest + pytest-asyncio with `respx` for HTTP mocking. No external ser
 
 Kubernetes/OpenShift manifests are provided in the `openshift/` directory. See [openshift/README.md](openshift/README.md) for step-by-step instructions.
 
-### Corporate CA certificates
-
-If you're behind a corporate proxy with custom CA certificates, copy `.crt` or `.pem` files into the `certs/` directory before building. They are added to the container's trust store during the build. The directory ships empty so non-corporate builds are unaffected.
-
 ## Health check
 
 ```
@@ -198,7 +194,6 @@ prompts/
   review.txt           # Review prompt template
   mention.txt          # Mention Q&A prompt template
 openshift/             # OpenShift/K8s deployment manifests
-certs/                 # Custom CA certificates (optional)
 tests/                 # pytest test suite
 ```
 

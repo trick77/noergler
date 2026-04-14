@@ -49,6 +49,7 @@ class FileReviewData:
 
 def count_tokens(text: str) -> int:
     try:
+        # o200k_base encoding — used by gpt-4o and gpt-5
         enc = tiktoken.encoding_for_model("gpt-4o")
     except KeyError:
         enc = tiktoken.get_encoding("cl100k_base")
@@ -391,14 +392,19 @@ class LLMClient:
                 _fmt(effective),
             )
 
-        # Startup ping — verify the model is actually callable
+        # Startup ping — smallest-possible call to verify the model is callable
         try:
             ping_response = await self.openai_client.chat.completions.create(
                 model=self.config.model,
-                messages=[{"role": "user", "content": "This is a ping. Answer with: pong"}],
-                max_tokens=10,
+                messages=[{"role": "user", "content": "Reply with: ok"}],
+                max_tokens=1,
             )
-            ping_text = ping_response.choices[0].message.content.strip() if ping_response.choices else "?"
+            ping_text = (
+                ping_response.choices[0].message.content.strip()
+                if ping_response.choices else ""
+            )
+            if not ping_text:
+                raise RuntimeError("empty response from model")
             logger.info("Model %s ping OK (response: %s)", self.config.model, ping_text)
         except Exception as exc:
             logger.error("Model %s ping FAILED: %r", self.config.model, exc)
