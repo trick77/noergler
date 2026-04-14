@@ -131,12 +131,52 @@ alembic upgrade head
    openssl rand -hex 32
    ```
 
-2. Set the generated value as `BITBUCKET_WEBHOOK_SECRET` in your `.env` file.
+2. Set the generated value as `BITBUCKET_WEBHOOK_SECRET` in your `.env` file. This same value must be configured on Bitbucket's side — the service and Bitbucket share the HMAC secret.
 
-3. In Bitbucket Server, go to **Repository settings > Webhooks > Create webhook**:
-   - **URL:** `https://<host>:8080/webhook`
-   - **Secret:** paste the same secret from step 1
-   - **Events:** `pr:opened`, `pr:modified`, `pr:comment:added`
+### Automated onboarding (recommended)
+
+Use `scripts/onboard_repo.py` to create/update the webhook on one or more repos in a single, idempotent command. It verifies token permissions, reconciles the webhook configuration, and triggers Bitbucket's built-in connectivity test.
+
+```bash
+python -m scripts.onboard_repo config.json [--name noergler] [--dry-run] [--env-file PATH]
+```
+
+Example `config.json` — repos are grouped under their Bitbucket project:
+
+```json
+{
+  "bitbucket_url": "https://bitbucket.example.com",
+  "webhook_url": "https://noergler.internal/webhook",
+  "projects": [
+    {
+      "project": "PROJ",
+      "repos": ["payments-service", "ledger-api"]
+    },
+    {
+      "project": "PLATFORM",
+      "repos": ["auth-gateway"]
+    }
+  ]
+}
+```
+
+**Credentials.** Secrets are never read from the JSON. `BITBUCKET_TOKEN` (bearer, needs repo read + write on every listed repo) and `BITBUCKET_WEBHOOK_SECRET` are resolved from, in order: process environment → `.env` in the current directory → `--env-file <path>`. Process env wins on conflict. `BITBUCKET_WEBHOOK_SECRET` **must match** the value the running noergler service is using — this script only programs Bitbucket's side; it does not generate a new secret.
+
+**Flags.**
+- `--name` — webhook name (default `noergler`). Used to find an existing hook to update instead of creating a duplicate.
+- `--dry-run` — print the create/update diff and the body that would be sent, without mutating Bitbucket.
+- `--env-file PATH` — additional env file for CI (`/run/secrets/noergler.env` etc.).
+
+**Behaviour.** Each repo runs through three steps: verify read access, create-or-update the webhook (idempotent — re-running prints `already up to date`), then trigger Bitbucket's test endpoint and report the downstream status. A failure on one repo logs and continues to the next; the script exits non-zero iff any repo failed, and prints a final summary table.
+
+**Known limitation — secret-only drift.** Bitbucket's webhook API does not return the stored secret, so the script cannot detect when *only* the secret has changed on one side. If you rotate `BITBUCKET_WEBHOOK_SECRET` on the service side, delete the webhook in Bitbucket (or rename it so this script recreates it) before re-running — otherwise the script will report `already up to date` while Bitbucket continues signing with the old secret.
+
+### Manual setup (fallback)
+
+In Bitbucket Server, go to **Repository settings > Webhooks > Create webhook**:
+- **URL:** `https://<host>:8080/webhook`
+- **Secret:** the value of `BITBUCKET_WEBHOOK_SECRET`
+- **Events:** `pr:opened`, `pr:from_ref_updated`, `pr:comment:added`, `pr:merged`, `pr:deleted`
 
 All webhook requests must include a valid `X-Hub-Signature` header (HMAC-SHA256). Requests with missing or invalid signatures are rejected.
 

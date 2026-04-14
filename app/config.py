@@ -3,6 +3,16 @@ import os
 
 from pydantic import BaseModel, field_validator
 
+# Webhook events the /webhook endpoint in app/main.py dispatches on.
+# Kept here so the provisioning script and the service stay in sync.
+REQUIRED_WEBHOOK_EVENTS: tuple[str, ...] = (
+    "pr:opened",
+    "pr:from_ref_updated",
+    "pr:comment:added",
+    "pr:merged",
+    "pr:deleted",
+)
+
 
 class BitbucketConfig(BaseModel):
     base_url: str

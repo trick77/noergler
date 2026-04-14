@@ -12,6 +12,7 @@ from app.llm_client import (
     FileReviewData,
     format_file_entry,
     _group_files_by_token_budget,
+    _parse_mention_response,
     _parse_review_response,
     _render_file_group,
     extract_path,
@@ -160,6 +161,57 @@ class TestParseReviewResponse:
         })
         _, _, change_summary = _parse_review_response(content)
         assert change_summary == []
+
+
+class TestParseMentionResponse:
+    def test_plain_text_fallback(self):
+        assert _parse_mention_response("Hello world") == "Hello world"
+
+    def test_envelope_answer_only(self):
+        content = json.dumps({"answer": "The function caches results.", "refs": []})
+        assert _parse_mention_response(content) == "The function caches results."
+
+    def test_envelope_with_refs(self):
+        content = json.dumps({
+            "answer": "It batches queries.",
+            "refs": [
+                {"file": "app/users.py", "line": 47},
+                {"file": "app/util.py", "line": 3},
+            ],
+        })
+        result = _parse_mention_response(content)
+        assert result.startswith("It batches queries.")
+        assert "**References:**" in result
+        assert "`app/users.py`:47" in result
+        assert "`app/util.py`:3" in result
+
+    def test_envelope_stripped_of_code_fence(self):
+        content = "```json\n" + json.dumps({"answer": "Hi"}) + "\n```"
+        assert _parse_mention_response(content) == "Hi"
+
+    def test_malformed_envelope_returns_raw(self):
+        # JSON but not the expected shape — fall back to the raw string.
+        raw = '{"unexpected": true}'
+        assert _parse_mention_response(raw) == raw
+
+    def test_empty(self):
+        assert _parse_mention_response("") == ""
+
+    def test_refs_ignore_malformed_entries(self):
+        content = json.dumps({
+            "answer": "See here.",
+            "refs": [
+                {"file": "a.py", "line": 1},
+                {"file": "b.py"},            # no line — still keep file
+                {"line": 5},                 # no file — drop
+                "not a dict",                # drop
+            ],
+        })
+        result = _parse_mention_response(content)
+        assert "`a.py`:1" in result
+        assert "`b.py`" in result
+        assert "`b.py`:" not in result  # no line for b.py
+        assert result.count("- `") == 2
 
 
 class TestIsReviewableDiff:

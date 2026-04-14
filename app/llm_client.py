@@ -246,6 +246,47 @@ def _parse_review_response(content: str) -> tuple[list[ReviewFinding], list[dict
     return findings, compliance_requirements, change_summary
 
 
+def _parse_mention_response(content: str) -> str:
+    """Parse a mention.txt JSON envelope into a rendered markdown answer.
+
+    The prompt asks for {"answer": "...", "refs": [{"file","line"}, ...]}.
+    Falls back to the raw content if parsing fails — keeps behaviour robust to
+    models that disregard the envelope.
+    """
+    text = content.strip()
+    if not text:
+        return ""
+    stripped = text
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        stripped = "\n".join(lines).strip()
+    try:
+        data = json.loads(stripped)
+    except json.JSONDecodeError:
+        return text
+    if not isinstance(data, dict) or not isinstance(data.get("answer"), str):
+        return text
+    answer = data["answer"].strip()
+    refs = data.get("refs")
+    if isinstance(refs, list):
+        ref_lines: list[str] = []
+        for item in refs:
+            if not isinstance(item, dict):
+                continue
+            file_ref = item.get("file")
+            line_ref = item.get("line")
+            if isinstance(file_ref, str) and isinstance(line_ref, int):
+                ref_lines.append(f"- `{file_ref}`:{line_ref}")
+            elif isinstance(file_ref, str):
+                ref_lines.append(f"- `{file_ref}`")
+        if ref_lines:
+            answer = f"{answer}\n\n**References:**\n" + "\n".join(ref_lines)
+    return answer
+
+
 _MENTION_SYSTEM_MESSAGE = (
     "You are a code review assistant answering questions about a pull request. "
     "You are a read-only reviewer. You may include code examples and fix suggestions, "
@@ -655,7 +696,8 @@ class LLMClient:
 
         prompt_tokens = completion.usage.prompt_tokens if completion.usage else 0
         completion_tokens = completion.usage.completion_tokens if completion.usage else 0
-        return completion.choices[0].message.content or "", prompt_tokens, completion_tokens
+        raw = completion.choices[0].message.content or ""
+        return _parse_mention_response(raw), prompt_tokens, completion_tokens
 
     async def _review_file_group(
         self,

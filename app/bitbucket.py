@@ -173,6 +173,56 @@ class BitbucketClient:
             logger.debug("Reaction API failed for comment %d", comment_id, exc_info=False)
             return False
 
+    async def list_webhooks(self, project: str, repo: str) -> list[dict]:
+        """List all webhooks configured on a repo."""
+        url = f"/rest/api/1.0/projects/{project}/repos/{repo}/webhooks"
+        hooks: list[dict] = []
+        start = 0
+        while True:
+            response = await self.client.get(url, params={"start": start, "limit": 100})
+            response.raise_for_status()
+            data = response.json()
+            hooks.extend(data.get("values", []))
+            if data.get("isLastPage", True):
+                break
+            start = data.get("nextPageStart", start + 100)
+        return hooks
+
+    async def create_webhook(self, project: str, repo: str, body: dict) -> dict:
+        url = f"/rest/api/1.0/projects/{project}/repos/{repo}/webhooks"
+        response = await self.client.post(url, json=body)
+        response.raise_for_status()
+        return response.json()
+
+    async def update_webhook(
+        self, project: str, repo: str, webhook_id: int, body: dict
+    ) -> dict:
+        url = f"/rest/api/1.0/projects/{project}/repos/{repo}/webhooks/{webhook_id}"
+        response = await self.client.put(url, json=body)
+        response.raise_for_status()
+        return response.json()
+
+    async def test_webhook(
+        self, project: str, repo: str, webhook_id: int
+    ) -> httpx.Response:
+        """Trigger Bitbucket's built-in webhook test. Returns raw response."""
+        url = f"/rest/api/1.0/projects/{project}/repos/{repo}/webhooks/{webhook_id}/test"
+        return await self.client.post(url, json={})
+
+    async def get_repo(self, project: str, repo: str) -> dict:
+        url = f"/rest/api/1.0/projects/{project}/repos/{repo}"
+        response = await self.client.get(url)
+        response.raise_for_status()
+        return response.json()
+
+    async def list_pull_requests(
+        self, project: str, repo: str, limit: int = 1
+    ) -> dict:
+        url = f"/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests"
+        response = await self.client.get(url, params={"limit": limit})
+        response.raise_for_status()
+        return response.json()
+
     async def fetch_pr_comments(
         self, project: str, repo: str, pr_id: int
     ) -> list[dict]:
