@@ -360,8 +360,7 @@ class LLMClient:
         await self.openai_client.close()
 
     async def check_connectivity(self) -> dict:
-        base_url = self.config.api_url.split("/inference")[0]
-        models_url = base_url + "/catalog/models"
+        models_url = "https://models.github.ai/catalog/models"
         headers = {
             "Authorization": f"Bearer {self.config.github_token}",
             "Accept": "application/json",
