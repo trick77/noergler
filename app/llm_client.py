@@ -442,7 +442,7 @@ class LLMClient:
                 max_tokens=1,
             )
             ping_text = (
-                ping_response.choices[0].message.content.strip()
+                (ping_response.choices[0].message.content or "").strip()
                 if ping_response.choices else ""
             )
             if not ping_text:
