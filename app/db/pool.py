@@ -9,11 +9,13 @@ _pool: asyncpg.Pool | None = None
 
 async def create_pool(dsn: str) -> asyncpg.Pool:
     global _pool
-    _pool = await asyncpg.create_pool(dsn)
-    async with _pool.acquire() as conn:
+    pool = await asyncpg.create_pool(dsn, min_size=2, max_size=10)
+    assert pool is not None
+    _pool = pool
+    async with pool.acquire() as conn:
         version = await conn.fetchval("SELECT version()")
     logger.info("PostgreSQL connection pool created (%s)", version)
-    return _pool
+    return pool
 
 
 def get_pool() -> asyncpg.Pool | None:
