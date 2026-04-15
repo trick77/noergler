@@ -435,6 +435,7 @@ class LLMClient:
 
         # Startup ping — smallest-possible call to verify the model is callable
         try:
+            logger.info("LLM inference request: %s/chat/completions model=%s", self.config.api_url.rstrip("/"), self.config.model)
             ping_response = await self.openai_client.chat.completions.create(
                 model=self.config.model,
                 messages=[{"role": "user", "content": "Reply with: ok"}],
@@ -686,6 +687,7 @@ class LLMClient:
             )
 
     async def _call_mention_api(self, prompt: str) -> tuple[str, int, int]:
+        logger.info("LLM inference request: %s/chat/completions model=%s", self.config.api_url.rstrip("/"), self.config.model)
         completion = await self.openai_client.chat.completions.create(
             model=self.config.model,
             messages=[
@@ -776,6 +778,7 @@ class LLMClient:
             )
 
     async def _call_api(self, prompt: str) -> tuple[list[ReviewFinding], int, int, list[dict], list[str]]:
+        logger.info("LLM inference request: %s/chat/completions model=%s", self.config.api_url.rstrip("/"), self.config.model)
         completion = await self.openai_client.chat.completions.create(
             model=self.config.model,
             messages=[
