@@ -153,6 +153,33 @@ class TestParseReviewResponse:
         _, _, change_summary = _parse_review_response(content)
         assert change_summary == ["Valid bullet", "Another bullet"]
 
+    def test_vacuous_suggestion_finding_dropped(self):
+        content = json.dumps([
+            {
+                "file": "a.py",
+                "line": 10,
+                "severity": "critical",
+                "comment": "You finally provide useful context for error analysis.",
+                "suggestion": "No fix needed—this code is actually correct for once.",
+            }
+        ])
+        findings, _, _ = _parse_review_response(content)
+        assert findings == []
+
+    def test_legitimate_finding_with_real_suggestion_preserved(self):
+        content = json.dumps([
+            {
+                "file": "a.py",
+                "line": 10,
+                "severity": "critical",
+                "comment": "Null pointer dereference",
+                "suggestion": "if user is None:\n    return None\nreturn user.name",
+            }
+        ])
+        findings, _, _ = _parse_review_response(content)
+        assert len(findings) == 1
+        assert findings[0].suggestion == "if user is None:\n    return None\nreturn user.name"
+
     def test_change_summary_missing_defaults_to_empty(self):
         content = json.dumps({
             "findings": [

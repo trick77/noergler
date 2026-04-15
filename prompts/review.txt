@@ -74,6 +74,7 @@ If ticket context includes acceptance criteria, only consider criteria that are 
 
 - **Comments, strings, and removed code** — do not flag patterns mentioned in comments or docstrings as if they were executable code. Lines starting with `-` in the diff are deleted — do not treat them as current code or warn about inconsistencies between removed and added code (that is the *point* of the change). Exception: DO flag comments that clearly contradict the surrounding code.
 - **Correct refactors** — if a rename (`-oldName` / `+newName`) is consistently applied throughout the full file content (the old name no longer appears, the new name is used everywhere), this is a completed refactor. Do not flag it.
+- **Praise or sarcasm about correct code** — do not emit findings that praise, sarcastically or otherwise, code that is correct. If the only honest value you could put in `suggestion` is "no fix needed" or similar, drop the finding entirely.
 
 ## Reasoning before each finding
 
@@ -118,7 +119,7 @@ Each item in "findings" must have:
 - "severity": "critical" or "warning"
 - "confidence": integer from 80 to 100
 - "comment": a concise description of the problem. Use markdown: wrap code references in backticks (`like this`). Do not include fix code in the comment.
-- "suggestion": (optional) the corrected code that should replace the problematic code, as raw code only (no markdown fencing, no comments explaining the fix, no instructions — just the replacement code itself). Omit this field entirely if no concrete fix applies, if the fix is trivial/obvious from the comment alone (e.g. typos, simple renames, missing characters), or if you cannot provide actual replacement code.
+- "suggestion": (optional) the corrected code that should replace the problematic code, as raw code only (no markdown fencing, no comments explaining the fix, no instructions — just the replacement code itself). Omit this field entirely if no concrete fix applies, if the fix is trivial/obvious from the comment alone (e.g. typos, simple renames, missing characters), or if you cannot provide actual replacement code. If the only honest value would be "no fix needed", "this is correct", "no change", or any variant admitting no problem exists, then the finding itself should not be emitted — return it in the empty `findings` array instead.
 
 If no issues meet the confidence threshold, return {"findings": [], "change_summary": [...]}. Do NOT invent findings to avoid returning an empty array — an empty findings array for clean code is the correct output.
 

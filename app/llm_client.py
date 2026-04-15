@@ -239,11 +239,37 @@ def _parse_review_response(content: str) -> tuple[list[ReviewFinding], list[dict
     findings = []
     for item in findings_data:
         try:
-            findings.append(ReviewFinding(**item))
+            finding = ReviewFinding(**item)
         except Exception:
             logger.warning("Skipping malformed finding: %s", item)
+            continue
+        if _is_vacuous_suggestion(finding.suggestion):
+            logger.info("Dropping no-issue finding (vacuous suggestion): %s", item)
+            continue
+        findings.append(finding)
 
     return findings, compliance_requirements, change_summary
+
+
+_VACUOUS_SUGGESTION_PATTERNS = [
+    re.compile(r"\bno\s+fix(es)?\s+(needed|required)\b", re.IGNORECASE),
+    re.compile(r"\bno\s+changes?\s+(needed|required)\b", re.IGNORECASE),
+    re.compile(r"\bnothing\s+to\s+(fix|change)\b", re.IGNORECASE),
+    re.compile(r"\bcode\s+is\s+(actually\s+)?correct\b", re.IGNORECASE),
+    re.compile(r"\bthis\s+is\s+correct\b", re.IGNORECASE),
+    re.compile(r"^n/?a$", re.IGNORECASE),
+]
+
+
+def _is_vacuous_suggestion(suggestion: str | None) -> bool:
+    if suggestion is None:
+        return False
+    stripped = suggestion.strip()
+    if not stripped:
+        return False
+    if len(stripped) > 120:
+        return False
+    return any(p.search(stripped) for p in _VACUOUS_SUGGESTION_PATTERNS)
 
 
 def _parse_mention_response(content: str) -> str:

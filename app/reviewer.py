@@ -835,7 +835,7 @@ class Reviewer:
             summary = "### Review summary (incremental update)\n"
             summary += f"- Changes reviewed: `{incremental_from[:10]}` .. `{reviewed_commit[:10]}`\n"
         else:
-            summary = "### Review summary (initial review)\n"
+            summary = "### Review summary\n"
 
         if not findings:
             summary += "- No issues found ✅"

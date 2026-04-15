@@ -652,7 +652,8 @@ class TestSortAndLimit:
 
     def test_build_summary_initial_review_header(self, reviewer):
         summary = reviewer._build_summary([])
-        assert "### Review summary (initial review)" in summary
+        assert "### Review summary\n" in summary
+        assert "(initial review)" not in summary
 
     def test_build_summary_files_reviewed_all(self, reviewer):
         summary = reviewer._build_summary([], files_reviewed=5, total_files=5)

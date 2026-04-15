@@ -351,7 +351,7 @@ if not user_id:
 **Example summary comment (excerpt):**
 
 ```
-### Review summary (initial review)
+### Review summary
 - 1 critical ❌
 - 2 warnings ⚠️
 
