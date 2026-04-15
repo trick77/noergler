@@ -26,6 +26,7 @@ class LLMConfig(BaseModel):
     github_token: str
     api_url: str = "https://models.github.ai/inference"
     max_tokens_per_chunk: int = 80000
+    max_tokens_per_chunk_explicit: bool = False
 
     @field_validator("api_url", mode="after")
     @classmethod
@@ -124,6 +125,7 @@ def load_config() -> AppConfig:
             github_token=_env("GITHUB_TOKEN"),
             api_url=_env("OPENAI_API_URL", "https://models.github.ai/inference"),
             max_tokens_per_chunk=int(_env("OPENAI_MAX_TOKENS_PER_CHUNK", "80000")),
+            max_tokens_per_chunk_explicit="OPENAI_MAX_TOKENS_PER_CHUNK" in os.environ,
         ),
         review=ReviewConfig(
             auto_review_authors=_env("REVIEW_AUTO_REVIEW_AUTHORS", ""),

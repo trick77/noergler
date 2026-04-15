@@ -982,8 +982,9 @@ class TestAutoCapTokenBudget:
     @pytest.mark.asyncio
     @respx.mock
     async def test_check_connectivity_caps_max_tokens_per_chunk(self, llm_config, review_config):
-        """When model max_input_tokens < max_tokens_per_chunk, cap to model limit."""
+        """When user explicitly set max_tokens_per_chunk above model limit, cap to model limit."""
         llm_config.max_tokens_per_chunk = 80000
+        llm_config.max_tokens_per_chunk_explicit = True
         models_response = {
             "data": [
                 {
@@ -1011,9 +1012,41 @@ class TestAutoCapTokenBudget:
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_check_connectivity_no_cap_when_model_limit_higher(self, llm_config, review_config):
-        """When model max_input_tokens >= max_tokens_per_chunk, no capping occurs."""
+    async def test_check_connectivity_autoconfigures_from_catalog_when_unset(self, llm_config, review_config):
+        """When env var not set, autoconfigure raises chunk size from the catalog advertised limit."""
         llm_config.max_tokens_per_chunk = 80000
+        llm_config.max_tokens_per_chunk_explicit = False
+        models_response = {
+            "data": [
+                {
+                    "id": "openai/gpt-4.1",
+                    "limits": {"max_input_tokens": 1048576, "max_output_tokens": 32768},
+                    "rate_limit_tier": "high",
+                    "capabilities": [],
+                },
+            ]
+        }
+        respx.get("https://models.github.ai/catalog/models").mock(
+            return_value=httpx.Response(200, json=models_response)
+        )
+
+        client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.create = AsyncMock(
+            return_value=_mock_completion("pong", 5, 1)
+        )
+        try:
+            await client.check_connectivity()
+            # fraction=0.65 at >=256k; usable = min(681574, 1048576-4096)
+            assert llm_config.max_tokens_per_chunk == int(1048576 * 0.65)
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_check_connectivity_preserves_user_override_below_catalog(self, llm_config, review_config):
+        """When env var explicitly set below catalog limit, the user's value is preserved."""
+        llm_config.max_tokens_per_chunk = 80000
+        llm_config.max_tokens_per_chunk_explicit = True
         models_response = {
             "data": [
                 {
@@ -1040,9 +1073,30 @@ class TestAutoCapTokenBudget:
 
     @pytest.mark.asyncio
     @respx.mock
+    async def test_check_connectivity_unreachable_catalog_leaves_chunk_untouched(self, llm_config, review_config):
+        """When catalog request fails, chunk size is left at configured value."""
+        llm_config.max_tokens_per_chunk = 80000
+        llm_config.max_tokens_per_chunk_explicit = False
+        respx.get("https://models.github.ai/catalog/models").mock(
+            return_value=httpx.Response(500, text="boom")
+        )
+
+        client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.create = AsyncMock(
+            return_value=_mock_completion("pong", 5, 1)
+        )
+        try:
+            await client.check_connectivity()
+            assert llm_config.max_tokens_per_chunk == 80000
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
     async def test_check_connectivity_warns_low_effective_budget(self, llm_config, review_config, caplog):
         """When effective budget after prompt overhead is < 2000, a warning is logged."""
         llm_config.max_tokens_per_chunk = 80000
+        llm_config.max_tokens_per_chunk_explicit = True
         models_response = {
             "data": [
                 {

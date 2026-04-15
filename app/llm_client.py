@@ -412,12 +412,35 @@ class LLMClient:
             "Model %s validated. max_input_tokens=%s, max_output_tokens=%s",
             self.config.model, max_in_fmt, max_out_fmt,
         )
-        if isinstance(max_in, int) and max_in < self.config.max_tokens_per_chunk:
-            logger.warning(
-                "Model %s max_input_tokens (%s) is below configured max_tokens_per_chunk (%s) — capping",
-                self.config.model, _fmt(max_in), _fmt(self.config.max_tokens_per_chunk),
-            )
-            self.config.max_tokens_per_chunk = max_in
+        if isinstance(max_in, int):
+            if self.config.max_tokens_per_chunk_explicit:
+                logger.info(
+                    "OPENAI_MAX_TOKENS_PER_CHUNK explicitly set to %s; not autoconfiguring from catalog (model advertises %s)",
+                    _fmt(self.config.max_tokens_per_chunk), _fmt(max_in),
+                )
+                if max_in < self.config.max_tokens_per_chunk:
+                    logger.warning(
+                        "Model %s max_input_tokens (%s) is below configured max_tokens_per_chunk (%s) — capping",
+                        self.config.model, _fmt(max_in), _fmt(self.config.max_tokens_per_chunk),
+                    )
+                    self.config.max_tokens_per_chunk = max_in
+            else:
+                # Recall/attention degrades as context grows ("lost in the middle"),
+                # but small-context models don't exhibit this meaningfully. Use ~90%
+                # of the window below 32k and ramp linearly down to 65% at 256k+.
+                # The -4096 guard always leaves headroom for the system prompt.
+                if max_in <= 32_000:
+                    fraction = 0.90
+                elif max_in >= 256_000:
+                    fraction = 0.65
+                else:
+                    fraction = 0.90 - 0.25 * (max_in - 32_000) / (256_000 - 32_000)
+                usable = min(int(max_in * fraction), max_in - 4096)
+                logger.info(
+                    "Autoconfigured max_tokens_per_chunk=%s (catalog max_input_tokens=%s, fraction=%.2f)",
+                    _fmt(usable), _fmt(max_in), fraction,
+                )
+                self.config.max_tokens_per_chunk = usable
         prompt_overhead = count_tokens(
             self.prompt_template
             .replace("{files}", "").replace("{tone}", "")
