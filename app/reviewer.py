@@ -927,7 +927,7 @@ class Reviewer:
                     first_line = f.comment.splitlines()[0].strip() if f.comment else ""
                     if len(first_line) > 120:
                         first_line = first_line[:117].rstrip() + "…"
-                    summary_lines.append(f"- {emoji} `{f.file}:{f.line}` — {first_line}")
+                    summary_lines.append(f"- {emoji} {first_line}")
                 if len(findings) > top_limit:
                     summary_lines.append(f"- …and {len(findings) - top_limit} more")
 

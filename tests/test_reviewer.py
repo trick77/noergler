@@ -487,8 +487,11 @@ class TestSortAndLimit:
         ]
         summary = reviewer._build_summary(findings)
         assert "**Top findings:**" in summary
-        assert "- ❌ `a.py:10` — Bad thing" in summary
-        assert "- ⚠️ `b.py:20` — Mild thing" in summary
+        assert "- ❌ Bad thing" in summary
+        assert "- ⚠️ Mild thing" in summary
+        # File path / line number must not leak into the summary
+        assert "a.py" not in summary
+        assert "b.py" not in summary
         assert "…and" not in summary
 
     def test_build_summary_top_findings_over_limit(self, reviewer):
@@ -499,9 +502,9 @@ class TestSortAndLimit:
         summary = reviewer._build_summary(findings)
         assert "**Top findings:**" in summary
         # Only first 5 rendered as one-liners
-        assert "`f0.py:0`" in summary
-        assert "`f4.py:4`" in summary
-        assert "`f5.py:5`" not in summary
+        assert "- ❌ issue 0" in summary
+        assert "- ❌ issue 4" in summary
+        assert "issue 5" not in summary
         assert "- …and 3 more" in summary
 
     def test_build_summary_top_findings_truncates_long_comment(self, reviewer):
@@ -509,9 +512,9 @@ class TestSortAndLimit:
         findings = [ReviewFinding(file="a.py", line=1, severity="critical", comment=long_comment)]
         summary = reviewer._build_summary(findings)
         assert "…" in summary
-        # Comment should be truncated to <= 120 chars (117 + …)
+        # Comment should be truncated to ~120 chars (117 + …)
         for line in summary.splitlines():
-            if "`a.py:1`" in line:
+            if "…" in line and "❌" in line:
                 assert len(line) < 200
 
     def test_build_summary_top_findings_first_line_only(self, reviewer):
