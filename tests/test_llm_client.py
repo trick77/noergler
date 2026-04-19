@@ -29,7 +29,6 @@ def llm_config():
         model="gpt-4.1",
         oauth_token="test-oauth",
         api_url="https://api.business.githubcopilot.com",
-        max_tokens_per_chunk=80000,
     )
 
 
@@ -523,9 +522,8 @@ class TestLLMClient:
         """When files don't fit in one budget, chunk_count equals the number of groups."""
         # Budget sized so each file fits individually but two don't share a chunk.
         # Template alone is ~2.8k tokens; each file below adds ~788 tokens.
-        llm_config.max_tokens_per_chunk = 4000
-
         client = LLMClient(llm_config, review_config, token_provider)
+        client.max_tokens_per_chunk = 4000
         client.openai_client.chat.completions.create = AsyncMock(
             return_value=_mock_completion("[]", 10, 5)
         )
@@ -983,9 +981,8 @@ class TestLowBudgetWarning:
     @pytest.mark.asyncio
     async def test_warns_low_effective_budget(self, llm_config, review_config, token_provider, caplog):
         """When configured max_tokens_per_chunk barely clears the prompt overhead, warn."""
-        llm_config.max_tokens_per_chunk = 2000
-
         client = LLMClient(llm_config, review_config, token_provider)
+        client.max_tokens_per_chunk = 2000
         client.openai_client.chat.completions.create = AsyncMock(
             return_value=_mock_completion("pong", 5, 1)
         )
@@ -1027,55 +1024,42 @@ class TestContextWindowAutoCap:
     def test_unknown_model_returns_none(self):
         assert _context_window_for("mystery-model-9000") is None
 
-    def test_autocap_applied_when_chunk_exceeds_context(self, review_config, token_provider):
+    def test_budget_derived_from_context_window(self, review_config, token_provider):
         cfg = LLMConfig(
             model="gpt-4o",
             oauth_token="t",
             api_url="https://api.business.githubcopilot.com",
-            max_tokens_per_chunk=200_000,
-            max_tokens_per_chunk_explicit=False,
         )
-        LLMClient(cfg, review_config, token_provider)
-        assert cfg.max_tokens_per_chunk == 128_000 - 16_000
+        client = LLMClient(cfg, review_config, token_provider)
+        assert client.max_tokens_per_chunk == 128_000 - 16_000
+        assert client.context_window == 128_000
 
-    def test_autocap_skipped_when_explicit(self, review_config, token_provider):
-        cfg = LLMConfig(
-            model="gpt-4o",
-            oauth_token="t",
-            api_url="https://api.business.githubcopilot.com",
-            max_tokens_per_chunk=80000,
-            max_tokens_per_chunk_explicit=True,
-        )
-        LLMClient(cfg, review_config, token_provider)
-        assert cfg.max_tokens_per_chunk == 80000
-
-    def test_autocap_noop_when_default_fits(self, review_config, token_provider):
+    def test_budget_for_large_context_model(self, review_config, token_provider):
         cfg = LLMConfig(
             model="gpt-4.1",
             oauth_token="t",
             api_url="https://api.business.githubcopilot.com",
-            max_tokens_per_chunk=80000,
         )
-        LLMClient(cfg, review_config, token_provider)
-        assert cfg.max_tokens_per_chunk == 80000
+        client = LLMClient(cfg, review_config, token_provider)
+        assert client.max_tokens_per_chunk == 1_000_000 - 16_000
+        assert client.context_window == 1_000_000
 
-    def test_autocap_skipped_for_unknown_model(self, review_config, token_provider):
+    def test_unknown_model_raises(self, review_config, token_provider):
         cfg = LLMConfig(
             model="mystery-model-9000",
             oauth_token="t",
             api_url="https://api.business.githubcopilot.com",
-            max_tokens_per_chunk=80000,
         )
-        LLMClient(cfg, review_config, token_provider)
-        assert cfg.max_tokens_per_chunk == 80000
+        with pytest.raises(RuntimeError, match="mystery-model-9000"):
+            LLMClient(cfg, review_config, token_provider)
 
 
 class TestParse413TokenLimit:
     @pytest.mark.asyncio
     async def test_413_with_max_size_updates_config(self, llm_config, review_config, token_provider):
         """A 413 response body containing 'Max size: N tokens' updates max_tokens_per_chunk."""
-        llm_config.max_tokens_per_chunk = 80000
         client = LLMClient(llm_config, review_config, token_provider)
+        client.max_tokens_per_chunk = 80000
 
         files = [FileReviewData(path="big.py", diff="+x\n", content=None)]
 
@@ -1087,15 +1071,15 @@ class TestParse413TokenLimit:
             template = client.prompt_template
             _, _, _, skipped, _, _ = await client._review_file_group(files, template, depth=0)
             assert skipped == ["big.py"]
-            assert llm_config.max_tokens_per_chunk == 4000
+            assert client.max_tokens_per_chunk == 4000
         finally:
             await client.close()
 
     @pytest.mark.asyncio
     async def test_413_without_max_size_leaves_config_unchanged(self, llm_config, review_config, token_provider):
         """A 413 response without the 'Max size' pattern does not change max_tokens_per_chunk."""
-        llm_config.max_tokens_per_chunk = 80000
         client = LLMClient(llm_config, review_config, token_provider)
+        client.max_tokens_per_chunk = 80000
 
         files = [FileReviewData(path="big.py", diff="+x\n", content=None)]
 
@@ -1106,15 +1090,15 @@ class TestParse413TokenLimit:
         try:
             template = client.prompt_template
             await client._review_file_group(files, template, depth=0)
-            assert llm_config.max_tokens_per_chunk == 80000
+            assert client.max_tokens_per_chunk == 80000
         finally:
             await client.close()
 
     @pytest.mark.asyncio
     async def test_413_answer_group_parses_limit(self, llm_config, review_config, token_provider):
         """413 in _answer_file_group also parses and updates max_tokens_per_chunk."""
-        llm_config.max_tokens_per_chunk = 80000
         client = LLMClient(llm_config, review_config, token_provider)
+        client.max_tokens_per_chunk = 80000
 
         files = [FileReviewData(path="big.py", diff="+x\n", content=None)]
 
@@ -1126,6 +1110,6 @@ class TestParse413TokenLimit:
             template = "{diff}"
             _, _, _, skipped = await client._answer_file_group(files, template, depth=0)
             assert skipped == ["big.py"]
-            assert llm_config.max_tokens_per_chunk == 5000
+            assert client.max_tokens_per_chunk == 5000
         finally:
             await client.close()

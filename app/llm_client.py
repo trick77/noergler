@@ -410,17 +410,18 @@ class LLMClient:
         self.review_config = review_config
         self._token_provider = token_provider
 
-        if not config.max_tokens_per_chunk_explicit:
-            ctx = _context_window_for(config.model)
-            if ctx is not None:
-                derived = max(2000, ctx - _CONTEXT_WINDOW_HEADROOM_TOKENS)
-                if derived < config.max_tokens_per_chunk:
-                    logger.info(
-                        "Auto-capping max_tokens_per_chunk from %s to %s based on model %s context window (%s)",
-                        _fmt(config.max_tokens_per_chunk), _fmt(derived),
-                        config.model, _fmt(ctx),
-                    )
-                    config.max_tokens_per_chunk = derived
+        ctx = _context_window_for(config.model)
+        if ctx is None:
+            raise RuntimeError(
+                f"model `{config.model}` is not in `_MODEL_CONTEXT_WINDOW` — "
+                "add it to `app/llm_client.py`"
+            )
+        self.context_window: int | None = ctx
+        self.max_tokens_per_chunk: int = max(2000, ctx - _CONTEXT_WINDOW_HEADROOM_TOKENS)
+        logger.info(
+            "Chunk budget set to %s tokens (model %s context window: %s)",
+            _fmt(self.max_tokens_per_chunk), config.model, _fmt(ctx),
+        )
 
         async def _inject_copilot_auth(request: httpx.Request) -> None:
             token, _ = await token_provider.get_token()
@@ -458,7 +459,7 @@ class LLMClient:
             .replace("{repo_instructions}", "").replace("{ticket_context}", "")
             .replace("{compliance_instructions}", "")
         )
-        effective = self.config.max_tokens_per_chunk - prompt_overhead
+        effective = self.max_tokens_per_chunk - prompt_overhead
         if effective < 2000:
             logger.warning(
                 "Effective token budget for file content is very low (%s tokens). "
@@ -549,7 +550,7 @@ class LLMClient:
 
         groups, skipped_files = _group_files_by_token_budget(
             files,
-            self.config.max_tokens_per_chunk,
+            self.max_tokens_per_chunk,
             template,
         )
 
@@ -629,7 +630,7 @@ class LLMClient:
 
         groups, skipped_files = _group_files_by_token_budget(
             files,
-            self.config.max_tokens_per_chunk,
+            self.max_tokens_per_chunk,
             template,
         )
 
@@ -685,12 +686,12 @@ class LLMClient:
             limit_match = re.search(r"Max size:\s*([\d,]+)\s*tokens", exc.response.text)
             if limit_match:
                 api_limit = int(limit_match.group(1).replace(",", ""))
-                if api_limit < self.config.max_tokens_per_chunk:
+                if api_limit < self.max_tokens_per_chunk:
                     logger.warning(
                         "Adjusting max_tokens_per_chunk from %s to %s based on 413 response",
-                        _fmt(self.config.max_tokens_per_chunk), _fmt(api_limit),
+                        _fmt(self.max_tokens_per_chunk), _fmt(api_limit),
                     )
-                    self.config.max_tokens_per_chunk = api_limit
+                    self.max_tokens_per_chunk = api_limit
             if len(group) <= 1:
                 file = group[0] if group else None
                 if file is not None and file.content is not None:
@@ -765,12 +766,12 @@ class LLMClient:
             limit_match = re.search(r"Max size:\s*([\d,]+)\s*tokens", exc.response.text)
             if limit_match:
                 api_limit = int(limit_match.group(1).replace(",", ""))
-                if api_limit < self.config.max_tokens_per_chunk:
+                if api_limit < self.max_tokens_per_chunk:
                     logger.warning(
                         "Adjusting max_tokens_per_chunk from %s to %s based on 413 response",
-                        _fmt(self.config.max_tokens_per_chunk), _fmt(api_limit),
+                        _fmt(self.max_tokens_per_chunk), _fmt(api_limit),
                     )
-                    self.config.max_tokens_per_chunk = api_limit
+                    self.max_tokens_per_chunk = api_limit
             if len(group) <= 1:
                 file = group[0] if group else None
                 if file is not None and file.content is not None:

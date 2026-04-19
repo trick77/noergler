@@ -60,7 +60,8 @@ def mock_bitbucket():
 def mock_llm():
     client = AsyncMock()
     client.config.model = "openai/gpt-4.1"
-    client.config.max_tokens_per_chunk = 80000
+    client.max_tokens_per_chunk = 80000
+    client.context_window = 1_000_000
     client.prompt_template = "Review these files:\n{files}\n{repo_instructions}"
     client.review_diff = AsyncMock(return_value=[])
     client.answer_question = AsyncMock(return_value="Here is the answer.")

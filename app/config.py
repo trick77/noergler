@@ -25,8 +25,6 @@ class LLMConfig(BaseModel):
     model: str = "gpt-4.1"
     oauth_token: str
     api_url: str = "https://api.business.githubcopilot.com"
-    max_tokens_per_chunk: int = 80000
-    max_tokens_per_chunk_explicit: bool = False
     integration_id: str = "vscode-chat"
     editor_version: str = "vscode/1.99.0"
 
@@ -126,8 +124,6 @@ def load_config() -> AppConfig:
             model=_env("COPILOT_MODEL", "gpt-4.1"),
             oauth_token=_env("COPILOT_OAUTH_TOKEN"),
             api_url=_env("COPILOT_API_URL", "https://api.business.githubcopilot.com"),
-            max_tokens_per_chunk=int(_env("COPILOT_MAX_TOKENS_PER_CHUNK", "80000")),
-            max_tokens_per_chunk_explicit="COPILOT_MAX_TOKENS_PER_CHUNK" in os.environ,
             integration_id=_env("COPILOT_INTEGRATION_ID", "vscode-chat"),
             editor_version=_env("COPILOT_EDITOR_VERSION", "vscode/1.99.0"),
         ),

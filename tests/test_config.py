@@ -15,7 +15,6 @@ def _make_config():
             model="gpt-4.1",
             oauth_token="ghp_secret123",
             api_url="https://api.business.githubcopilot.com",
-            max_tokens_per_chunk=80000,
         ),
         review=ReviewConfig(
             auto_review_authors=["alice", "bob"],
@@ -44,7 +43,6 @@ def test_log_config_masks_secrets(caplog):
     # Non-secret fields must appear as-is
     assert "https://bitbucket.example.com" in text
     assert "gpt-4.1" in text
-    assert "80000" in text
     assert "['alice', 'bob']" in text
     assert "10" in text
     assert "alice" in text

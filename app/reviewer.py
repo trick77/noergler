@@ -320,7 +320,7 @@ class Reviewer:
             renamed_paths: list[str] = []
 
             template = self.llm.prompt_template
-            max_tokens = self.llm.config.max_tokens_per_chunk
+            max_tokens = self.llm.max_tokens_per_chunk
 
             rc = self.review_config
             if is_small_pr(files, max_tokens, template, count_tokens, format_file_entry):
@@ -475,7 +475,8 @@ class Reviewer:
                 diff_removed=diff_removed,
                 cross_file_symbols=[r.symbol for r in cross_file_rels] if cross_file_rels else None,
                 chunk_count=llm_result.chunk_count,
-                chunk_budget=self.llm.config.max_tokens_per_chunk,
+                chunk_budget=self.llm.max_tokens_per_chunk,
+                context_window=self.llm.context_window,
             )
 
             await self._post_or_update_summary(
@@ -871,6 +872,7 @@ class Reviewer:
         cross_file_symbols: list[str] | None = None,
         chunk_count: int | None = None,
         chunk_budget: int | None = None,
+        context_window: int | None = None,
     ) -> str:
         if incremental_from and reviewed_commit:
             summary = "### Review summary (incremental update)\n"
@@ -978,7 +980,12 @@ class Reviewer:
             meta.append(f"Reviewed without full file context (too large): {file_list} ⚠️")
 
         if chunk_count is not None:
-            budget_str = f"{_fmt(chunk_budget)} tokens" if chunk_budget else "unknown"
+            if chunk_budget and context_window:
+                budget_str = f"{_fmt(chunk_budget)} of {_fmt(context_window)} context tokens"
+            elif chunk_budget:
+                budget_str = f"{_fmt(chunk_budget)} tokens"
+            else:
+                budget_str = "unknown"
             if chunk_count == 1:
                 meta.append(f"Reviewed in 1 pass (chunk budget: {budget_str})")
             else:
