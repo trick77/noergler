@@ -477,8 +477,55 @@ class TestSortAndLimit:
             ReviewFinding(file="b.py", line=2, severity="warning", comment="warn"),
         ]
         summary = reviewer._build_summary(findings, truncated=True)
-        assert "- 1 critical ❌" in summary
+        assert "1 critical ❌" in summary
         assert "Additional findings were omitted" in summary
+
+    def test_build_summary_top_findings_under_limit(self, reviewer):
+        findings = [
+            ReviewFinding(file="a.py", line=10, severity="critical", comment="Bad thing"),
+            ReviewFinding(file="b.py", line=20, severity="warning", comment="Mild thing"),
+        ]
+        summary = reviewer._build_summary(findings)
+        assert "**Top findings:**" in summary
+        assert "- ❌ `a.py:10` — Bad thing" in summary
+        assert "- ⚠️ `b.py:20` — Mild thing" in summary
+        assert "…and" not in summary
+
+    def test_build_summary_top_findings_over_limit(self, reviewer):
+        findings = [
+            ReviewFinding(file=f"f{i}.py", line=i, severity="critical", comment=f"issue {i}")
+            for i in range(8)
+        ]
+        summary = reviewer._build_summary(findings)
+        assert "**Top findings:**" in summary
+        # Only first 5 rendered as one-liners
+        assert "`f0.py:0`" in summary
+        assert "`f4.py:4`" in summary
+        assert "`f5.py:5`" not in summary
+        assert "- …and 3 more" in summary
+
+    def test_build_summary_top_findings_truncates_long_comment(self, reviewer):
+        long_comment = "x" * 200
+        findings = [ReviewFinding(file="a.py", line=1, severity="critical", comment=long_comment)]
+        summary = reviewer._build_summary(findings)
+        assert "…" in summary
+        # Comment should be truncated to <= 120 chars (117 + …)
+        for line in summary.splitlines():
+            if "`a.py:1`" in line:
+                assert len(line) < 200
+
+    def test_build_summary_top_findings_first_line_only(self, reviewer):
+        findings = [
+            ReviewFinding(file="a.py", line=1, severity="critical",
+                          comment="First line.\nSecond line should be dropped."),
+        ]
+        summary = reviewer._build_summary(findings)
+        assert "First line." in summary
+        assert "Second line should be dropped" not in summary
+
+    def test_build_summary_no_top_findings_when_empty(self, reviewer):
+        summary = reviewer._build_summary([])
+        assert "**Top findings:**" not in summary
 
     def test_build_summary_agents_md_not_found(self, reviewer):
         findings = [

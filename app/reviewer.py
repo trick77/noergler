@@ -916,6 +916,21 @@ class Reviewer:
                     "Additional findings were omitted."
                 )
 
+            # Top-N one-liners (sorted by severity; `findings` is already sorted).
+            top_limit = 5
+            top = findings[:top_limit]
+            if top:
+                summary_lines.append("")
+                summary_lines.append("**Top findings:**")
+                for f in top:
+                    emoji = "❌" if f.severity == "critical" else "⚠️"
+                    first_line = f.comment.splitlines()[0].strip() if f.comment else ""
+                    if len(first_line) > 120:
+                        first_line = first_line[:117].rstrip() + "…"
+                    summary_lines.append(f"- {emoji} `{f.file}:{f.line}` — {first_line}")
+                if len(findings) > top_limit:
+                    summary_lines.append(f"- …and {len(findings) - top_limit} more")
+
         sections: list[str] = ["\n".join(summary_lines)]
 
         # --- Ticket / Requirement compliance
