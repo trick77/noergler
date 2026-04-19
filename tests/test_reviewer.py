@@ -420,8 +420,8 @@ class TestReviewer:
         ]
         summary = reviewer._build_summary(findings)
         assert "### Review summary" in summary
-        assert "- 1 critical ❌" in summary
-        assert "- 1 warning ⚠️" in summary
+        assert "1 critical ❌" in summary
+        assert "1 warning ⚠️" in summary
 
     def test_build_summary_empty(self, reviewer):
         summary = reviewer._build_summary([])
@@ -558,25 +558,22 @@ class TestSortAndLimit:
 
     def test_build_summary_chunk_count_single_pass(self, reviewer):
         summary = reviewer._build_summary([], chunk_count=1, chunk_budget=80000)
-        assert "Reviewed in 1 pass" in summary
-        assert "80'000 tokens" in summary
+        assert "Context: 80k tokens · 1 pass" in summary
 
     def test_build_summary_chunk_count_multi(self, reviewer):
         summary = reviewer._build_summary([], chunk_count=3, chunk_budget=80000)
-        assert "Reviewed in 3 chunks" in summary
-        assert "80'000 tokens" in summary
+        assert "Context: 80k × 3 passes" in summary
 
     def test_build_summary_chunk_count_absent_when_none(self, reviewer):
         summary = reviewer._build_summary([])
-        assert "Reviewed in" not in summary
+        assert "Context:" not in summary
         assert "chunk budget" not in summary
 
     def test_build_summary_chunk_budget_with_context_window(self, reviewer):
         summary = reviewer._build_summary(
             [], chunk_count=1, chunk_budget=256_000, context_window=272_000,
         )
-        assert "Reviewed in 1 pass" in summary
-        assert "256'000 of 272'000 context tokens" in summary
+        assert "Context: 256k / 272k tokens · 1 pass" in summary
 
     @pytest.mark.asyncio
     async def test_findings_limited_in_review(self, mock_bitbucket, mock_llm):
@@ -933,8 +930,11 @@ class TestBuildSummaryWithTicket:
             url="https://jira.example.com/browse/SEP-22888",
         )
         summary = reviewer._build_summary([], ticket=ticket)
+        # Ticket alone (no compliance data) → Ticket section with key + title
         assert "### Ticket" in summary
+        assert "### Requirement compliance" not in summary
         assert "**[SEP-22888](https://jira.example.com/browse/SEP-22888)**" in summary
+        assert "Config security" in summary
 
     def test_build_summary_compliance_all_met(self, reviewer):
         ticket = JiraTicket(
@@ -949,10 +949,10 @@ class TestBuildSummaryWithTicket:
         summary = reviewer._build_summary(
             [], ticket=ticket, compliance_requirements=requirements
         )
-        assert "Compliance: **Fully compliant** ✅" in summary
-        assert "    - Implement auth filter ✅" in summary
-        assert "    - Add config endpoint ✅" in summary
-        assert "Requirements:" in summary
+        assert "### Requirement compliance" in summary
+        assert "**Fully compliant** ✅" in summary
+        assert "- Implement auth filter ✅" in summary
+        assert "- Add config endpoint ✅" in summary
 
     def test_build_summary_compliance_partial(self, reviewer):
         ticket = JiraTicket(
@@ -967,9 +967,9 @@ class TestBuildSummaryWithTicket:
         summary = reviewer._build_summary(
             [], ticket=ticket, compliance_requirements=requirements
         )
-        assert "Compliance: **Partially compliant** ⚠️" in summary
-        assert "    - Implement auth filter ✅" in summary
-        assert "    - Write integration tests ❌" in summary
+        assert "**Partially compliant** ⚠️" in summary
+        assert "- Implement auth filter ✅" in summary
+        assert "- Write integration tests ❌" in summary
 
     def test_build_summary_compliance_none_met(self, reviewer):
         ticket = JiraTicket(
@@ -984,9 +984,9 @@ class TestBuildSummaryWithTicket:
         summary = reviewer._build_summary(
             [], ticket=ticket, compliance_requirements=requirements
         )
-        assert "Compliance: **Not compliant** ❌" in summary
-        assert "    - Implement auth filter ❌" in summary
-        assert "    - Write tests ❌" in summary
+        assert "**Not compliant** ❌" in summary
+        assert "- Implement auth filter ❌" in summary
+        assert "- Write tests ❌" in summary
 
     def test_build_summary_no_requirements(self, reviewer):
         ticket = JiraTicket(
@@ -995,8 +995,9 @@ class TestBuildSummaryWithTicket:
             url="https://jira.example.com/browse/SEP-100",
         )
         summary = reviewer._build_summary([], ticket=ticket, compliance_requirements=[])
-        assert "📋" not in summary
-        assert "compliance" not in summary.lower()
+        assert "### Requirement compliance" not in summary
+        assert "### Ticket" in summary
+        assert "SEP-100" in summary
 
     def test_build_summary_no_ticket(self, reviewer):
         summary = reviewer._build_summary([])
@@ -1014,8 +1015,10 @@ class TestBuildSummaryWithTicket:
             [], ticket=ticket, compliance_requirements=requirements,
             ticket_compliance_check=False,
         )
+        # Compliance check off → Ticket section (not Requirement compliance)
+        assert "### Requirement compliance" not in summary
+        assert "### Ticket" in summary
         assert "SEP-100" in summary
-        assert "Ticket compliance check is disabled ℹ️" in summary
         assert "📋" not in summary
 
     def test_build_summary_jira_enabled_no_ticket(self, reviewer):
@@ -1127,9 +1130,9 @@ class TestReviewWithJira:
 
         summary_text = mock_bitbucket.update_pr_comment.call_args[0][5] if mock_bitbucket.update_pr_comment.called else mock_bitbucket.post_pr_comment.call_args[0][3]
         assert "SEP-123" in summary_text
-        assert "Compliance: **Partially compliant** ⚠️" in summary_text
-        assert "    - Implement login page ✅" in summary_text
-        assert "    - Add tests ❌" in summary_text
+        assert "**Partially compliant** ⚠️" in summary_text
+        assert "- Implement login page ✅" in summary_text
+        assert "- Add tests ❌" in summary_text
 
     @pytest.mark.asyncio
     async def test_review_with_parent_ticket(self, mock_bitbucket, mock_llm):
@@ -1148,7 +1151,9 @@ class TestReviewWithJira:
         mock_jira = AsyncMock()
         mock_jira.fetch_ticket_with_parent = AsyncMock(return_value=(subtask, parent))
         mock_jira.fetch_ticket = AsyncMock(return_value=subtask)
-        mock_llm.review_diff.return_value = _make_review_result()
+        result = _make_review_result()
+        result.compliance_requirements = [{"requirement": "Wire endpoint", "met": True}]
+        mock_llm.review_diff.return_value = result
 
         rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), jira=mock_jira, db_pool=AsyncMock())
         payload = _make_payload(branch="feature/SEP-124-subtask")
@@ -1161,7 +1166,7 @@ class TestReviewWithJira:
         assert "SEP-124" in call_kwargs["ticket_context"]
 
         summary_text = mock_bitbucket.update_pr_comment.call_args[0][5] if mock_bitbucket.update_pr_comment.called else mock_bitbucket.post_pr_comment.call_args[0][3]
-        assert "### Ticket" in summary_text
+        assert "### Requirement compliance" in summary_text
         assert "[SEP-123]" in summary_text
         assert "↳" in summary_text
         assert "SEP-124" in summary_text

@@ -31,6 +31,12 @@ logger = logging.getLogger(__name__)
 def _fmt(n: int) -> str:
     return f"{n:,}".replace(",", "'")
 
+
+def _fmt_k(n: int) -> str:
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M".replace(".0M", "M")
+    return f"{round(n / 1000)}k"
+
 SEVERITY_ORDER = {"critical": 0, "warning": 1}
 _REVIEW_KEYWORDS = {"review", "review this", "re-review", "rereview"}
 _JIRA_TICKET_RE = re.compile(r'\b([A-Z]{2,10}-\d{1,7})\b')
@@ -874,73 +880,102 @@ class Reviewer:
         chunk_budget: int | None = None,
         context_window: int | None = None,
     ) -> str:
+        # --- Review summary
         if incremental_from and reviewed_commit:
-            summary = "### Review summary (incremental update)\n"
-            summary += f"- Changes reviewed: `{incremental_from[:10]}` .. `{reviewed_commit[:10]}`\n"
+            summary_lines = ["### Review summary (incremental update)",
+                             f"- Changes reviewed: `{incremental_from[:10]}` .. `{reviewed_commit[:10]}`"]
         else:
-            summary = "### Review summary\n"
+            summary_lines = ["### Review summary"]
 
         if not findings:
-            summary += "- No issues found ✅"
+            summary_lines.append("- No issues found ✅")
         else:
             counts = {"critical": 0, "warning": 0}
             for f in findings:
                 counts[f.severity] = counts.get(f.severity, 0) + 1
 
+            severity_parts = []
             if counts["critical"]:
-                summary += f"- {self._plural(counts['critical'], 'critical')} ❌\n"
+                severity_parts.append(f"{counts['critical']} critical ❌")
             if counts["warning"]:
-                summary += f"- {self._plural(counts['warning'], 'warning')} ⚠️\n"
+                warning_word = "warning" if counts["warning"] == 1 else "warnings"
+                severity_parts.append(f"{counts['warning']} {warning_word} ⚠️")
+            if severity_parts:
+                summary_lines.append("- " + " · ".join(severity_parts))
 
             security_findings = [f for f in findings if _SECURITY_KEYWORDS.search(f.comment)]
             if security_findings:
-                summary += f"- {self._plural(len(security_findings), 'potential security issue')} — review carefully 🔒\n"
+                summary_lines.append(
+                    f"- {self._plural(len(security_findings), 'potential security issue')} "
+                    "— review carefully 🔒"
+                )
 
             if truncated:
-                summary += f"- Showing top {len(findings)} findings by severity. Additional findings were omitted.\n"
+                summary_lines.append(
+                    f"- Showing top {len(findings)} findings by severity. "
+                    "Additional findings were omitted."
+                )
 
-            summary = summary.rstrip("\n")
+        sections: list[str] = ["\n".join(summary_lines)]
 
-        if change_summary:
-            summary += "\n\n### What changed\n"
-            summary += "\n".join(f"- {item}" for item in change_summary)
-
-        ticket_section = ""
+        # --- Ticket / Requirement compliance
+        # Heading shifts based on whether we have compliance data to render.
         if ticket:
-            ticket_lines = ["### Ticket"]
-            if parent_ticket:
-                ticket_lines.append(f"**[{parent_ticket.key}]({parent_ticket.url})** — {parent_ticket.title}")
-                ticket_lines.append(f"**↳ [{ticket.key}]({ticket.url})** — {ticket.title}")
-            else:
-                ticket_lines.append(f"**[{ticket.key}]({ticket.url})**")
-            if ticket_compliance_check and compliance_requirements:
-                met_count = sum(1 for r in compliance_requirements if r.get("met"))
-                total_count = len(compliance_requirements)
+            reqs = compliance_requirements if ticket_compliance_check else None
+            has_compliance = bool(reqs)
+            if has_compliance and reqs is not None:
+                met_count = sum(1 for r in reqs if r.get("met"))
+                total_count = len(reqs)
                 if met_count == total_count:
-                    compliance_level = "Fully compliant"
-                    compliance_emoji = "✅"
+                    compliance_label, compliance_emoji = "Fully compliant", "✅"
                 elif met_count > 0:
-                    compliance_level = "Partially compliant"
-                    compliance_emoji = "⚠️"
+                    compliance_label, compliance_emoji = "Partially compliant", "⚠️"
                 else:
-                    compliance_level = "Not compliant"
-                    compliance_emoji = "❌"
-                ticket_lines.append(f"- Compliance: **{compliance_level}** {compliance_emoji}")
-                req_lines = [f"    - {r.get('requirement', '???')} {'✅' if r.get('met') else '❌'}" for r in compliance_requirements]
-                ticket_lines.append(f"  - Requirements:\n" + "\n".join(req_lines))
-            elif not ticket_compliance_check:
-                ticket_lines.append("- Ticket compliance check is disabled ℹ️")
-            ticket_section = "\n\n" + "\n".join(ticket_lines)
-        meta = []
+                    compliance_label, compliance_emoji = "Not compliant", "❌"
+                verdict_suffix = f" · **{compliance_label}** {compliance_emoji}"
+                heading = "### Requirement compliance"
+            else:
+                verdict_suffix = ""
+                heading = "### Ticket"
+
+            ticket_lines = [heading]
+            if parent_ticket:
+                ticket_lines.append(
+                    f"**[{parent_ticket.key}]({parent_ticket.url})** — {parent_ticket.title}"
+                )
+                ticket_lines.append(
+                    f"**↳ [{ticket.key}]({ticket.url})** — {ticket.title}{verdict_suffix}"
+                )
+            else:
+                ticket_lines.append(
+                    f"**[{ticket.key}]({ticket.url})** — {ticket.title}{verdict_suffix}"
+                )
+            if has_compliance and reqs is not None:
+                for r in reqs:
+                    mark = "✅" if r.get("met") else "❌"
+                    ticket_lines.append(f"- {r.get('requirement', '???')} {mark}")
+            sections.append("\n".join(ticket_lines))
+
+        # --- What changed
+        if change_summary:
+            change_lines = ["### What changed"] + [f"- {item}" for item in change_summary]
+            sections.append("\n".join(change_lines))
+
+        # --- Scope
+        scope: list[str] = []
         if agents_md_found:
-            meta.append("Using project-specific review guidelines from `AGENTS.md` ✅")
+            scope.append("Using project-specific review guidelines from `AGENTS.md` ✅")
         else:
-            meta.append("Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡")
+            scope.append(
+                "Tip: Add an `AGENTS.md` to your repository root with project-specific "
+                "review guidelines for more targeted feedback. 💡"
+            )
         if not ticket:
             if jira_enabled:
-                meta.append("No ticket found in branch name or PR title ℹ️")
+                scope.append("No ticket found in branch name or PR title ℹ️")
             else:
-                meta.append("Jira is not enabled ℹ️")
+                scope.append("Jira is not enabled ℹ️")
+
         if files_reviewed is not None and total_files is not None:
             if files_reviewed == total_files:
                 files_str = f"Reviewed {files_reviewed} files"
@@ -957,7 +992,7 @@ class Reviewer:
                 diff_parts.append(f"-{diff_removed}")
             if diff_parts:
                 files_str += f", {' / '.join(diff_parts)} lines"
-            meta.append(files_str)
+            scope.append(files_str)
         elif diff_added is not None or diff_removed is not None:
             parts = []
             if diff_added:
@@ -965,53 +1000,69 @@ class Reviewer:
             if diff_removed:
                 parts.append(f"-{diff_removed}")
             if parts:
-                meta.append(f"Diff: {' / '.join(parts)} lines")
+                scope.append(f"Diff: {' / '.join(parts)} lines")
 
         if cross_file_symbols:
             symbol_list = ", ".join(f"`{s}`" for s in cross_file_symbols[:5])
             suffix = f" and {len(cross_file_symbols) - 5} more" if len(cross_file_symbols) > 5 else ""
-            meta.append(f"{len(cross_file_symbols)} cross-file dependencies analyzed ({symbol_list}{suffix})")
+            dep_word = "dependency" if len(cross_file_symbols) == 1 else "dependencies"
+            scope.append(
+                f"{len(cross_file_symbols)} cross-file {dep_word} analyzed "
+                f"({symbol_list}{suffix})"
+            )
 
         if skipped_files:
             file_list = ", ".join(f"`{PurePosixPath(f).name}`" for f in skipped_files)
-            meta.append(f"Not reviewed (too large): {file_list} ⚠️")
+            scope.append(f"Not reviewed (too large): {file_list} ⚠️")
         if content_skipped_files:
             file_list = ", ".join(f"`{PurePosixPath(f).name}`" for f in content_skipped_files)
-            meta.append(f"Reviewed without full file context (too large): {file_list} ⚠️")
+            scope.append(f"Reviewed without full file context (too large): {file_list} ⚠️")
 
-        if chunk_count is not None:
-            if chunk_budget and context_window:
-                budget_str = f"{_fmt(chunk_budget)} of {_fmt(context_window)} context tokens"
-            elif chunk_budget:
-                budget_str = f"{_fmt(chunk_budget)} tokens"
-            else:
-                budget_str = "unknown"
+        if scope:
+            sections.append("### Details\n" + "\n".join(f"- {m}" for m in scope))
+
+        # --- Cost
+        cost: list[str] = []
+        if chunk_count is not None and chunk_budget:
+            budget_k = _fmt_k(chunk_budget)
+            window_k = _fmt_k(context_window) if context_window else None
             if chunk_count == 1:
-                meta.append(f"Reviewed in 1 pass (chunk budget: {budget_str})")
+                if window_k:
+                    cost.append(f"Context: {budget_k} / {window_k} tokens · 1 pass")
+                else:
+                    cost.append(f"Context: {budget_k} tokens · 1 pass")
             else:
-                meta.append(f"Reviewed in {chunk_count} chunks (chunk budget: {budget_str})")
+                if window_k:
+                    cost.append(
+                        f"Context: {budget_k} × {chunk_count} passes (out of {window_k} window)"
+                    )
+                else:
+                    cost.append(f"Context: {budget_k} × {chunk_count} passes")
 
         if token_usage:
             if prompt_breakdown:
-                t = prompt_breakdown['template']
-                r = prompt_breakdown['repo_instructions']
-                f = prompt_breakdown['files']
-                meta.append(f"Input tokens: ~{_fmt(t)} review prompt · ~{_fmt(r)} AGENTS.md · ~{_fmt(f)} file content")
+                t = prompt_breakdown["template"]
+                r = prompt_breakdown["repo_instructions"]
+                f = prompt_breakdown["files"]
+                cost.append(
+                    f"Input tokens: ~{_fmt(t)} review prompt · "
+                    f"~{_fmt(r)} AGENTS.md · ~{_fmt(f)} file content"
+                )
             prompt_t, completion_t = token_usage
             model = self.llm.config.model
             total = prompt_t + completion_t
-            stats = f"Model: `{model}` · {_fmt(prompt_t)}↑ {_fmt(completion_t)}↓ ({_fmt(total)} total)"
+            stats = (
+                f"Model: `{model}` · {_fmt(prompt_t)}↑ {_fmt(completion_t)}↓ "
+                f"({_fmt(total)} total)"
+            )
             if elapsed is not None:
                 stats += f" · ⏱️ {elapsed:.1f}s"
-            meta.append(stats)
+            cost.append(stats)
 
-        if ticket_section:
-            summary += ticket_section
+        if cost:
+            sections.append("### Cost\n" + "\n".join(f"- {m}" for m in cost))
 
-        if meta:
-            summary += "\n\n### Info\n" + "\n".join(f"- {m}" for m in meta)
-
-        return summary
+        return "\n\n".join(sections)
 
 
 
