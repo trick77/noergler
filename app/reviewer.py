@@ -1073,7 +1073,7 @@ class Reviewer:
             cost.append(stats)
 
         if cost:
-            sections.append("### Cost\n" + "\n".join(f"- {m}" for m in cost))
+            sections.append("**Cost:**\n" + "\n".join(f"- {m}" for m in cost))
 
         return "\n\n".join(sections)
 
