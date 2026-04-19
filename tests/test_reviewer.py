@@ -507,15 +507,12 @@ class TestSortAndLimit:
         assert "issue 5" not in summary
         assert "- …and 3 more" in summary
 
-    def test_build_summary_top_findings_truncates_long_comment(self, reviewer):
+    def test_build_summary_top_findings_keeps_long_comment(self, reviewer):
         long_comment = "x" * 200
         findings = [ReviewFinding(file="a.py", line=1, severity="critical", comment=long_comment)]
         summary = reviewer._build_summary(findings)
-        assert "…" in summary
-        # Comment should be truncated to ~120 chars (117 + …)
-        for line in summary.splitlines():
-            if "…" in line and "❌" in line:
-                assert len(line) < 200
+        # Full single-line comment must be rendered verbatim — no char truncation.
+        assert long_comment in summary
 
     def test_build_summary_top_findings_first_line_only(self, reviewer):
         findings = [
