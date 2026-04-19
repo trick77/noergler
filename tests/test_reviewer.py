@@ -555,6 +555,21 @@ class TestSortAndLimit:
         summary = reviewer._build_summary(findings, prompt_breakdown=breakdown)
         assert "template" not in summary
 
+    def test_build_summary_chunk_count_single_pass(self, reviewer):
+        summary = reviewer._build_summary([], chunk_count=1, chunk_budget=80000)
+        assert "Reviewed in 1 pass" in summary
+        assert "80'000 tokens" in summary
+
+    def test_build_summary_chunk_count_multi(self, reviewer):
+        summary = reviewer._build_summary([], chunk_count=3, chunk_budget=80000)
+        assert "Reviewed in 3 chunks" in summary
+        assert "80'000 tokens" in summary
+
+    def test_build_summary_chunk_count_absent_when_none(self, reviewer):
+        summary = reviewer._build_summary([])
+        assert "Reviewed in" not in summary
+        assert "chunk budget" not in summary
+
     @pytest.mark.asyncio
     async def test_findings_limited_in_review(self, mock_bitbucket, mock_llm):
         mock_llm.review_diff.return_value = _make_review_result([
