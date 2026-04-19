@@ -15,6 +15,43 @@ from app.models import ReviewFinding
 
 _RESPONSES_GPT_RE = re.compile(r"^gpt-(\d+)(?:\.\d+)?(?:-|$)")
 
+# Static context-window map for Copilot-served models.
+# Values are total input context size in tokens; we reserve headroom for
+# output + prompt overhead when auto-capping max_tokens_per_chunk.
+_MODEL_CONTEXT_WINDOW: dict[str, int] = {
+    "gpt-4.1": 1_000_000,
+    "gpt-4o": 128_000,
+    "gpt-5": 272_000,
+    "gpt-5-mini": 272_000,
+    "gpt-5.3-codex": 272_000,
+    "claude-sonnet-4": 200_000,
+    "claude-sonnet-4.5": 200_000,
+    "claude-opus-4": 200_000,
+    "claude-opus-4.1": 200_000,
+    "claude-haiku-4.5": 200_000,
+    "o3-mini": 200_000,
+    "o4-mini": 200_000,
+}
+
+# Reserved headroom for model output + prompt overhead when deriving a
+# chunk budget from the context window.
+_CONTEXT_WINDOW_HEADROOM_TOKENS = 16_000
+
+
+def _context_window_for(model: str) -> int | None:
+    """Return the known context window for a model id, or None if unknown.
+
+    Matches exact ids first, then falls back to a prefix match so dated ids
+    like `gpt-4.1-2025-01-01` or `claude-sonnet-4-20250514` resolve to the
+    base model's entry.
+    """
+    if model in _MODEL_CONTEXT_WINDOW:
+        return _MODEL_CONTEXT_WINDOW[model]
+    for base, ctx in _MODEL_CONTEXT_WINDOW.items():
+        if model.startswith(base + "-"):
+            return ctx
+    return None
+
 
 def _should_use_responses(model: str) -> bool:
     """True when the model must be called via /responses instead of /chat/completions.
@@ -392,6 +429,18 @@ class LLMClient:
         self.config = config
         self.review_config = review_config
         self._token_provider = token_provider
+
+        if not config.max_tokens_per_chunk_explicit:
+            ctx = _context_window_for(config.model)
+            if ctx is not None:
+                derived = max(2000, ctx - _CONTEXT_WINDOW_HEADROOM_TOKENS)
+                if derived < config.max_tokens_per_chunk:
+                    logger.info(
+                        "Auto-capping max_tokens_per_chunk from %s to %s based on model %s context window (%s)",
+                        _fmt(config.max_tokens_per_chunk), _fmt(derived),
+                        config.model, _fmt(ctx),
+                    )
+                    config.max_tokens_per_chunk = derived
 
         async def _inject_copilot_auth(request: httpx.Request) -> None:
             token, _ = await token_provider.get_token()

@@ -4,13 +4,13 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import openai
 import pytest
-import respx
 
 from app.config import LLMConfig, ReviewConfig
 from app.llm_client import (
     LLMClient,
     FileReviewData,
     format_file_entry,
+    _context_window_for,
     _group_files_by_token_budget,
     _parse_mention_response,
     _parse_review_response,
@@ -90,7 +90,7 @@ class TestParseReviewResponse:
 
     def test_wrapped_in_code_fence(self):
         content = "```json\n[{\"file\": \"a.py\", \"line\": 1, \"severity\": \"warning\", \"comment\": \"test\"}]\n```"
-        findings, requirements, _ = _parse_review_response(content)
+        findings, _requirements, _ = _parse_review_response(content)
         assert len(findings) == 1
 
     def test_invalid_json(self):
@@ -100,7 +100,7 @@ class TestParseReviewResponse:
         assert change_summary == []
 
     def test_not_an_array(self):
-        findings, requirements, _ = _parse_review_response('{"file": "a.py"}')
+        findings, _requirements, _ = _parse_review_response('{"file": "a.py"}')
         assert findings == []
 
     def test_malformed_item_skipped(self):
@@ -108,7 +108,7 @@ class TestParseReviewResponse:
             {"file": "a.py", "line": 1, "severity": "critical", "comment": "good"},
             {"bad": "item"},
         ])
-        findings, requirements, _ = _parse_review_response(content)
+        findings, _requirements, _ = _parse_review_response(content)
         assert len(findings) == 1
 
     def test_object_with_findings_and_compliance_requirements(self):
@@ -465,7 +465,7 @@ class TestGroupFilesByTokenBudget:
 
 class TestSystemMessage:
     def test_system_message_contains_injection_warning(self, llm_config, review_config, token_provider):
-        client = LLMClient(llm_config, review_config, token_provider)
+        LLMClient(llm_config, review_config, token_provider)
         # The system message is embedded in _call_api; verify by checking the constant
         system_msg = (
             "You are a read-only code review assistant. You analyse code and may suggest fixes with code examples, "
@@ -689,7 +689,7 @@ class TestAnswerQuestion:
 
         call_count = 0
 
-        async def mock_call_mention_api(prompt: str):
+        async def mock_call_mention_api(prompt: str):  # noqa: ARG001
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -715,7 +715,7 @@ class TestAnswerQuestion:
         files = [FileReviewData(path="huge.py", diff="+x\n", content="x\n")]
         call_count = 0
 
-        async def mock_call_mention_api(prompt: str):
+        async def mock_call_mention_api(prompt: str):  # noqa: ARG001
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -740,7 +740,7 @@ class TestAnswerQuestion:
 
         files = [FileReviewData(path="huge.py", diff="+x\n", content=None)]
 
-        async def mock_call_mention_api(prompt: str):
+        async def mock_call_mention_api(prompt: str):  # noqa: ARG001
             raise openai.APIStatusError(
                 "too large",
                 response=httpx.Response(413, request=httpx.Request("POST", "https://x"), text="too large"),
@@ -983,6 +983,62 @@ class TestShouldUseResponses:
         assert _should_use_responses("gpt-6") is True
 
 
+class TestContextWindowAutoCap:
+    def test_known_models_resolve(self):
+        assert _context_window_for("gpt-4.1") == 1_000_000
+        assert _context_window_for("gpt-5") == 272_000
+        assert _context_window_for("claude-sonnet-4") == 200_000
+
+    def test_dated_id_prefix_match(self):
+        assert _context_window_for("gpt-4.1-2025-01-01") == 1_000_000
+        assert _context_window_for("claude-sonnet-4-20250514") == 200_000
+
+    def test_unknown_model_returns_none(self):
+        assert _context_window_for("mystery-model-9000") is None
+
+    def test_autocap_applied_when_chunk_exceeds_context(self, review_config, token_provider):
+        cfg = LLMConfig(
+            model="gpt-4o",
+            oauth_token="t",
+            api_url="https://api.business.githubcopilot.com",
+            max_tokens_per_chunk=200_000,
+            max_tokens_per_chunk_explicit=False,
+        )
+        LLMClient(cfg, review_config, token_provider)
+        assert cfg.max_tokens_per_chunk == 128_000 - 16_000
+
+    def test_autocap_skipped_when_explicit(self, review_config, token_provider):
+        cfg = LLMConfig(
+            model="gpt-4o",
+            oauth_token="t",
+            api_url="https://api.business.githubcopilot.com",
+            max_tokens_per_chunk=80000,
+            max_tokens_per_chunk_explicit=True,
+        )
+        LLMClient(cfg, review_config, token_provider)
+        assert cfg.max_tokens_per_chunk == 80000
+
+    def test_autocap_noop_when_default_fits(self, review_config, token_provider):
+        cfg = LLMConfig(
+            model="gpt-4.1",
+            oauth_token="t",
+            api_url="https://api.business.githubcopilot.com",
+            max_tokens_per_chunk=80000,
+        )
+        LLMClient(cfg, review_config, token_provider)
+        assert cfg.max_tokens_per_chunk == 80000
+
+    def test_autocap_skipped_for_unknown_model(self, review_config, token_provider):
+        cfg = LLMConfig(
+            model="mystery-model-9000",
+            oauth_token="t",
+            api_url="https://api.business.githubcopilot.com",
+            max_tokens_per_chunk=80000,
+        )
+        LLMClient(cfg, review_config, token_provider)
+        assert cfg.max_tokens_per_chunk == 80000
+
+
 class TestParse413TokenLimit:
     @pytest.mark.asyncio
     async def test_413_with_max_size_updates_config(self, llm_config, review_config, token_provider):
@@ -1031,7 +1087,7 @@ class TestParse413TokenLimit:
 
         files = [FileReviewData(path="big.py", diff="+x\n", content=None)]
 
-        async def mock_call_mention_api(prompt: str):
+        async def mock_call_mention_api(prompt: str):  # noqa: ARG001
             raise _make_api_status_error(413, "Max size: 5000 tokens.")
 
         client._call_mention_api = mock_call_mention_api
