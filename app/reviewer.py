@@ -918,35 +918,43 @@ class Reviewer:
 
         sections: list[str] = ["\n".join(summary_lines)]
 
-        # --- Requirement compliance (only when we actually have compliance data)
-        if ticket and ticket_compliance_check and compliance_requirements:
-            met_count = sum(1 for r in compliance_requirements if r.get("met"))
-            total_count = len(compliance_requirements)
-            if met_count == total_count:
-                compliance_label, compliance_emoji = "Fully compliant", "✅"
-            elif met_count > 0:
-                compliance_label, compliance_emoji = "Partially compliant", "⚠️"
+        # --- Ticket / Requirement compliance
+        # Heading shifts based on whether we have compliance data to render.
+        if ticket:
+            reqs = compliance_requirements if ticket_compliance_check else None
+            has_compliance = bool(reqs)
+            if has_compliance and reqs is not None:
+                met_count = sum(1 for r in reqs if r.get("met"))
+                total_count = len(reqs)
+                if met_count == total_count:
+                    compliance_label, compliance_emoji = "Fully compliant", "✅"
+                elif met_count > 0:
+                    compliance_label, compliance_emoji = "Partially compliant", "⚠️"
+                else:
+                    compliance_label, compliance_emoji = "Not compliant", "❌"
+                verdict_suffix = f" · **{compliance_label}** {compliance_emoji}"
+                heading = "### Requirement compliance"
             else:
-                compliance_label, compliance_emoji = "Not compliant", "❌"
+                verdict_suffix = ""
+                heading = "### Ticket"
 
-            compliance_lines = ["### Requirement compliance"]
+            ticket_lines = [heading]
             if parent_ticket:
-                compliance_lines.append(
+                ticket_lines.append(
                     f"**[{parent_ticket.key}]({parent_ticket.url})** — {parent_ticket.title}"
                 )
-                compliance_lines.append(
-                    f"**↳ [{ticket.key}]({ticket.url})** — {ticket.title} · "
-                    f"**{compliance_label}** {compliance_emoji}"
+                ticket_lines.append(
+                    f"**↳ [{ticket.key}]({ticket.url})** — {ticket.title}{verdict_suffix}"
                 )
             else:
-                compliance_lines.append(
-                    f"**[{ticket.key}]({ticket.url})** — {ticket.title} · "
-                    f"**{compliance_label}** {compliance_emoji}"
+                ticket_lines.append(
+                    f"**[{ticket.key}]({ticket.url})** — {ticket.title}{verdict_suffix}"
                 )
-            for r in compliance_requirements:
-                mark = "✅" if r.get("met") else "❌"
-                compliance_lines.append(f"- {r.get('requirement', '???')} {mark}")
-            sections.append("\n".join(compliance_lines))
+            if has_compliance and reqs is not None:
+                for r in reqs:
+                    mark = "✅" if r.get("met") else "❌"
+                    ticket_lines.append(f"- {r.get('requirement', '???')} {mark}")
+            sections.append("\n".join(ticket_lines))
 
         # --- What changed
         if change_summary:
@@ -1011,7 +1019,7 @@ class Reviewer:
             scope.append(f"Reviewed without full file context (too large): {file_list} ⚠️")
 
         if scope:
-            sections.append("### Scope\n" + "\n".join(f"- {m}" for m in scope))
+            sections.append("### Details\n" + "\n".join(f"- {m}" for m in scope))
 
         # --- Cost
         cost: list[str] = []

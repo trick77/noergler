@@ -930,10 +930,11 @@ class TestBuildSummaryWithTicket:
             url="https://jira.example.com/browse/SEP-22888",
         )
         summary = reviewer._build_summary([], ticket=ticket)
-        # Ticket alone (no compliance data) → no section rendered
+        # Ticket alone (no compliance data) → Ticket section with key + title
+        assert "### Ticket" in summary
         assert "### Requirement compliance" not in summary
-        assert "### Ticket" not in summary
-        assert "SEP-22888" not in summary
+        assert "**[SEP-22888](https://jira.example.com/browse/SEP-22888)**" in summary
+        assert "Config security" in summary
 
     def test_build_summary_compliance_all_met(self, reviewer):
         ticket = JiraTicket(
@@ -995,7 +996,8 @@ class TestBuildSummaryWithTicket:
         )
         summary = reviewer._build_summary([], ticket=ticket, compliance_requirements=[])
         assert "### Requirement compliance" not in summary
-        assert "SEP-100" not in summary
+        assert "### Ticket" in summary
+        assert "SEP-100" in summary
 
     def test_build_summary_no_ticket(self, reviewer):
         summary = reviewer._build_summary([])
@@ -1013,9 +1015,10 @@ class TestBuildSummaryWithTicket:
             [], ticket=ticket, compliance_requirements=requirements,
             ticket_compliance_check=False,
         )
-        # Compliance check off → section dropped entirely
+        # Compliance check off → Ticket section (not Requirement compliance)
         assert "### Requirement compliance" not in summary
-        assert "SEP-100" not in summary
+        assert "### Ticket" in summary
+        assert "SEP-100" in summary
         assert "📋" not in summary
 
     def test_build_summary_jira_enabled_no_ticket(self, reviewer):
