@@ -508,6 +508,7 @@ class LLMClient:
         review_effort: int = 1
         compliance_requirements: list[dict] = field(default_factory=list)
         change_summary: list[str] = field(default_factory=list)
+        chunk_count: int = 1
 
     async def review_diff(
         self,
@@ -592,6 +593,7 @@ class LLMClient:
             review_effort=review_effort,
             compliance_requirements=compliance_requirements,
             change_summary=change_summary,
+            chunk_count=len(groups),
         )
 
     @staticmethod

@@ -506,6 +506,29 @@ class TestLLMClient:
             assert len(result.findings) == 1
             assert result.findings[0].severity == "warning"
             assert result.review_effort == 1  # trivial: 1 file, 1 changed line
+            assert result.chunk_count == 1
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_review_diff_chunk_count_reflects_grouping(self, llm_config, review_config, token_provider):
+        """When files don't fit in one budget, chunk_count equals the number of groups."""
+        # Budget sized so each file fits individually but two don't share a chunk.
+        # Template alone is ~2.8k tokens; each file below adds ~788 tokens.
+        llm_config.max_tokens_per_chunk = 4000
+
+        client = LLMClient(llm_config, review_config, token_provider)
+        client.openai_client.chat.completions.create = AsyncMock(
+            return_value=_mock_completion("[]", 10, 5)
+        )
+        try:
+            big_content = "x = 1\n" * 500
+            files = [
+                FileReviewData(path=f"f{i}.py", diff=f"+x{i}\n", content=big_content)
+                for i in range(3)
+            ]
+            result = await client.review_diff(files)
+            assert result.chunk_count >= 2
         finally:
             await client.close()
 

@@ -480,6 +480,8 @@ class Reviewer:
                 diff_added=diff_added,
                 diff_removed=diff_removed,
                 cross_file_symbols=[r.symbol for r in cross_file_rels] if cross_file_rels else None,
+                chunk_count=llm_result.chunk_count,
+                chunk_budget=self.llm.config.max_tokens_per_chunk,
             )
 
             await self._post_or_update_summary(
@@ -874,6 +876,8 @@ class Reviewer:
         diff_added: int | None = None,
         diff_removed: int | None = None,
         cross_file_symbols: list[str] | None = None,
+        chunk_count: int | None = None,
+        chunk_budget: int | None = None,
     ) -> str:
         if incremental_from and reviewed_commit:
             summary = "### Review summary (incremental update)\n"
@@ -991,6 +995,13 @@ class Reviewer:
                 r = prompt_breakdown['repo_instructions']
                 f = prompt_breakdown['files']
                 meta.append(f"Tokens: ~{_fmt(t)} template · ~{_fmt(r)} repo · ~{_fmt(f)} file content")
+
+        if chunk_count is not None:
+            budget_str = f"{_fmt(chunk_budget)} tokens" if chunk_budget else "unknown"
+            if chunk_count == 1:
+                meta.append(f"Reviewed in 1 pass (chunk budget: {budget_str}) 📦")
+            else:
+                meta.append(f"Reviewed in {chunk_count} chunks (chunk budget: {budget_str}) 📦")
 
         if ticket_section:
             summary += ticket_section
