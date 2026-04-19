@@ -7,6 +7,7 @@ from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 
 from app.bitbucket import BitbucketClient
 from app.config import load_config, log_config
+from app.copilot_auth import CopilotTokenProvider
 from app.db import close_pool, create_pool
 from app.llm_client import LLMClient
 from app.jira import JiraClient
@@ -44,17 +45,34 @@ reviewer = None
 bitbucket_client = None
 llm_client = None
 jira_client = None
+copilot_token_provider = None
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    global config, reviewer, bitbucket_client, llm_client, jira_client
+    global config, reviewer, bitbucket_client, llm_client, jira_client, copilot_token_provider
 
     _unify_uvicorn_logging()
     config = load_config()
     log_config(config, logger)
     bitbucket_client = BitbucketClient(config.bitbucket)
-    llm_client = LLMClient(config.llm, config.review)
+
+    copilot_token_provider = CopilotTokenProvider(
+        oauth_token=config.llm.oauth_token,
+        integration_id=config.llm.integration_id,
+        editor_version=config.llm.editor_version,
+    )
+    # Do the first token exchange up front so auth failures surface at startup
+    # and so we can honour the endpoints.api returned by the exchange.
+    await copilot_token_provider.get_token()
+    if copilot_token_provider.endpoints_api != config.llm.api_url:
+        logger.info(
+            "Overriding api_url with token-exchange endpoints.api: %s -> %s",
+            config.llm.api_url, copilot_token_provider.endpoints_api,
+        )
+        config.llm.api_url = copilot_token_provider.endpoints_api
+
+    llm_client = LLMClient(config.llm, config.review, copilot_token_provider)
 
     jira_client = JiraClient(config.jira)
 
@@ -99,6 +117,7 @@ async def lifespan(_app: FastAPI):
         await bitbucket_client.close()
         await llm_client.close()
         await jira_client.close()
+        await copilot_token_provider.close()
         raise RuntimeError(
             f"Startup aborted — {len(failed)} connection(s) failed: {', '.join(failed)}"
         )
@@ -116,6 +135,7 @@ async def lifespan(_app: FastAPI):
     await bitbucket_client.close()
     await llm_client.close()
     await jira_client.close()
+    await copilot_token_provider.close()
     await close_pool()
 
 

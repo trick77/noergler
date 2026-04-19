@@ -81,7 +81,7 @@ All configuration is driven by environment variables. The required variables are
 | `BITBUCKET_TOKEN` | Bitbucket Server API token |
 | `BITBUCKET_WEBHOOK_SECRET` | Webhook HMAC secret for signature validation |
 | `BITBUCKET_USERNAME` | Bitbucket service account username (used to identify bot comments) |
-| `GITHUB_TOKEN` | GitHub fine-grained access token with `models:read` scope |
+| `COPILOT_OAUTH_TOKEN` | Long-lived GitHub OAuth token for a Copilot Business seat (provision via `hack/copilot-provision-token.sh`) |
 | `JIRA_URL` | Jira Server/Cloud base URL |
 | `JIRA_TOKEN` | Jira API token |
 | `DATABASE_URL` | PostgreSQL connection string (see [Database](#database) below) |

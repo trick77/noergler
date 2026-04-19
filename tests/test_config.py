@@ -12,9 +12,9 @@ def _make_config():
             username="bot-user",
         ),
         llm=LLMConfig(
-            model="openai/gpt-4.1",
-            github_token="ghp_secret123",
-            api_url="https://models.github.ai/inference/chat/completions",
+            model="gpt-4.1",
+            oauth_token="ghp_secret123",
+            api_url="https://api.business.githubcopilot.com",
             max_tokens_per_chunk=80000,
         ),
         review=ReviewConfig(
@@ -40,11 +40,11 @@ def test_log_config_masks_secrets(caplog):
     assert "secret-bb-token" not in text
     assert "secret-webhook" not in text
     assert "ghp_secret123" not in text
-    assert text.count("***") == 5  # bb token, webhook secret, github token, jira token, database url
+    assert text.count("***") == 5  # bb token, webhook secret, copilot oauth token, jira token, database url
 
     # Non-secret fields must appear as-is
     assert "https://bitbucket.example.com" in text
-    assert "openai/gpt-4.1" in text
+    assert "gpt-4.1" in text
     assert "80000" in text
     assert "['alice', 'bob']" in text
     assert "10" in text
@@ -74,7 +74,7 @@ def test_diff_context_from_env(monkeypatch):
         "BITBUCKET_TOKEN": "tok",
         "BITBUCKET_WEBHOOK_SECRET": "sec",
         "BITBUCKET_USERNAME": "bot",
-        "GITHUB_TOKEN": "ghp_tok",
+        "COPILOT_OAUTH_TOKEN": "ghp_tok",
         "JIRA_URL": "https://jira.example.com",
         "JIRA_TOKEN": "jira-tok",
         "DATABASE_URL": "postgresql://u:p@localhost/db",
@@ -98,7 +98,7 @@ def test_ticket_compliance_check_from_env(monkeypatch):
         "BITBUCKET_TOKEN": "tok",
         "BITBUCKET_WEBHOOK_SECRET": "sec",
         "BITBUCKET_USERNAME": "bot",
-        "GITHUB_TOKEN": "ghp_tok",
+        "COPILOT_OAUTH_TOKEN": "ghp_tok",
         "JIRA_URL": "https://jira.example.com",
         "JIRA_TOKEN": "jira-tok",
         "DATABASE_URL": "postgresql://u:p@localhost/db",
@@ -116,7 +116,7 @@ def test_ticket_compliance_check_default_from_env(monkeypatch):
         "BITBUCKET_TOKEN": "tok",
         "BITBUCKET_WEBHOOK_SECRET": "sec",
         "BITBUCKET_USERNAME": "bot",
-        "GITHUB_TOKEN": "ghp_tok",
+        "COPILOT_OAUTH_TOKEN": "ghp_tok",
         "JIRA_URL": "https://jira.example.com",
         "JIRA_TOKEN": "jira-tok",
         "DATABASE_URL": "postgresql://u:p@localhost/db",
