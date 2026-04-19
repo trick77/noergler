@@ -137,6 +137,8 @@ def is_reviewable_diff(file_diff: str) -> bool:
     basename = parts[-1]
     if basename in SKIP_FILES:
         return False
+    if basename.startswith("."):
+        return False
     if any(p in SKIP_DIRS or p.startswith(".") for p in parts[:-1]):
         return False
     return True

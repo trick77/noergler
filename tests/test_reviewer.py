@@ -543,8 +543,8 @@ class TestSortAndLimit:
             token_usage=(7958, 6764),
             prompt_breakdown=breakdown,
         )
-        assert "~500 template" in summary
-        assert "~200 repo" in summary
+        assert "~500 review prompt" in summary
+        assert "~200 AGENTS.md" in summary
         assert "~7'258 file content" in summary
 
     def test_build_summary_prompt_breakdown_without_token_usage(self, reviewer):
@@ -702,7 +702,8 @@ class TestSortAndLimit:
 
     def test_build_summary_files_reviewed_all(self, reviewer):
         summary = reviewer._build_summary([], files_reviewed=5, total_files=5)
-        assert "Reviewed 5 files 📂" in summary
+        assert "Reviewed 5 files" in summary
+        assert "📂" not in summary
 
     def test_build_summary_files_reviewed_partial(self, reviewer):
         summary = reviewer._build_summary([], files_reviewed=8, total_files=12)
@@ -729,7 +730,7 @@ class TestSortAndLimit:
         assert "3 cross-file dependencies analyzed" in summary
         assert "`get_user`" in summary
         assert "`UserCache`" in summary
-        assert "🔗" in summary
+        assert "🔗" not in summary
 
     def test_build_summary_cross_file_symbols_truncated(self, reviewer):
         symbols = [f"func_{i}" for i in range(8)]

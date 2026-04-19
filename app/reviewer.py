@@ -955,7 +955,7 @@ class Reviewer:
                 diff_parts.append(f"-{diff_removed}")
             if diff_parts:
                 files_str += f", {' / '.join(diff_parts)} lines"
-            meta.append(f"{files_str} 📂")
+            meta.append(files_str)
         elif diff_added is not None or diff_removed is not None:
             parts = []
             if diff_added:
@@ -968,7 +968,7 @@ class Reviewer:
         if cross_file_symbols:
             symbol_list = ", ".join(f"`{s}`" for s in cross_file_symbols[:5])
             suffix = f" and {len(cross_file_symbols) - 5} more" if len(cross_file_symbols) > 5 else ""
-            meta.append(f"{len(cross_file_symbols)} cross-file dependencies analyzed ({symbol_list}{suffix}) 🔗")
+            meta.append(f"{len(cross_file_symbols)} cross-file dependencies analyzed ({symbol_list}{suffix})")
 
         if skipped_files:
             file_list = ", ".join(f"`{PurePosixPath(f).name}`" for f in skipped_files)
@@ -980,16 +980,16 @@ class Reviewer:
         if chunk_count is not None:
             budget_str = f"{_fmt(chunk_budget)} tokens" if chunk_budget else "unknown"
             if chunk_count == 1:
-                meta.append(f"Reviewed in 1 pass (chunk budget: {budget_str}) 📦")
+                meta.append(f"Reviewed in 1 pass (chunk budget: {budget_str})")
             else:
-                meta.append(f"Reviewed in {chunk_count} chunks (chunk budget: {budget_str}) 📦")
+                meta.append(f"Reviewed in {chunk_count} chunks (chunk budget: {budget_str})")
 
         if token_usage:
             if prompt_breakdown:
                 t = prompt_breakdown['template']
                 r = prompt_breakdown['repo_instructions']
                 f = prompt_breakdown['files']
-                meta.append(f"Input tokens: ~{_fmt(t)} template · ~{_fmt(r)} repo · ~{_fmt(f)} file content")
+                meta.append(f"Input tokens: ~{_fmt(t)} review prompt · ~{_fmt(r)} AGENTS.md · ~{_fmt(f)} file content")
             prompt_t, completion_t = token_usage
             model = self.llm.config.model
             total = prompt_t + completion_t

@@ -278,9 +278,17 @@ class TestIsReviewableDiff:
         assert not is_reviewable_diff(diff)
 
     def test_config_files_are_reviewable(self):
-        for name in ["Dockerfile", "Makefile", ".gitignore", "config.yaml", "deploy.yml", "setup.cfg"]:
+        for name in ["Dockerfile", "Makefile", "config.yaml", "deploy.yml", "setup.cfg"]:
             diff = f"diff --git a/{name} b/{name}\n+content\n"
             assert is_reviewable_diff(diff), f"{name} should be reviewable"
+
+    def test_hidden_files_skipped(self):
+        for name in [".gitignore", ".env", ".env.example", ".dockerignore", ".editorconfig"]:
+            diff = f"diff --git a/{name} b/{name}\n+content\n"
+            assert not is_reviewable_diff(diff), f"{name} should be skipped"
+        # Hidden file in a subdir should also be skipped
+        diff = "diff --git a/src/.gitkeep b/src/.gitkeep\n+content\n"
+        assert not is_reviewable_diff(diff)
 
     def test_bitbucket_src_dst_format_reviewable(self):
         diff = "diff --git src://src/main/java/Foo.java dst://src/main/java/Foo.java\n+code\n"
