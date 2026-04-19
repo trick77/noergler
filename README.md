@@ -2,7 +2,7 @@
   <img src="logo.png" alt="noergler" width="360">
 </p>
 
-[![Tests](https://github.com/trick77/noergler/actions/workflows/test.yml/badge.svg)](https://github.com/trick77/noergler/actions/workflows/test.yml) ![Python 3.12](https://img.shields.io/badge/python-3.12-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
+[![Tests](https://github.com/trick77/noergler/actions/workflows/test.yaml/badge.svg)](https://github.com/trick77/noergler/actions/workflows/test.yaml) ![Python 3.12](https://img.shields.io/badge/python-3.12-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
 AI-powered code review bridge for self-hosted Bitbucket Server. The name is German for "Nörgler" (grumbler/complainer).
 
