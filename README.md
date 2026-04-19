@@ -19,6 +19,7 @@ Brings automated AI code review to on-premise Bitbucket Server installations. Re
 - Smart context enrichment — fetches full file content, not just diffs, for better AI understanding
 - Asymmetric and dynamic diff context expansion with language-aware scope detection
 - Token-aware chunking and compression for large PRs
+- Prompt-cache-optimised template layout — stable rules and examples first, per-PR variables (tone, ticket, diff) last, so repeated reviews maximise GitHub Models cache reuse and the diff lands where model recall is strongest
 - Jira ticket compliance checking against acceptance criteria
 - Project-specific review guidelines via `AGENTS.md`
 - Comment deduplication against existing review comments
@@ -185,6 +186,22 @@ All webhook requests must include a valid `X-Hub-Signature` header (HMAC-SHA256)
 ### Review prompt
 
 Edit `prompts/review.txt` to change the review focus, tone, or output format. The prompt template uses `{files}` and `{repo_instructions}` as placeholders. The prompts directory is mounted as a volume, so changes take effect on the next review without rebuilding.
+
+### Prompt layout
+
+Both `prompts/review.txt` and `prompts/mention.txt` are ordered deliberately:
+
+1. **Stable prefix** — role, rules, output format, examples, and prompt-injection guardrails. No placeholders, identical on every call.
+2. **Per-repo block** — `{repo_instructions}` (the `AGENTS.md` content). Stable across all PRs in the same repo.
+3. **Per-PR block** — `{tone}`, `{ticket_context}`, and finally `{files}` (or `{diff}` + `{question}` in the mention template).
+
+Three reasons this matters, and they all push the same layout:
+
+- **Prompt cache reuse** — GitHub Models/OpenAI prompt caching matches on the longest stable prefix. Keeping all variable content at the tail means the entire stable portion is served from cache on every subsequent call.
+- **"Lost in the middle"** — long-context LLMs recall the start and end of a prompt better than the middle. Putting the diff (the thing the model must reason about) at the very end of the context gives it the strongest recall.
+- **KV-cache eviction on very long contexts** — some long-context implementations evict middle tokens first under pressure. Stable rules at the top are cheap to lose; the diff at the bottom stays intact.
+
+If you edit the templates, preserve this ordering: keep new stable rules above the guardrail section, and any new per-PR placeholders below it, right before `{files}` / `{diff}`.
 
 ### AGENTS.md
 
