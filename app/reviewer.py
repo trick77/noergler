@@ -906,8 +906,8 @@ class Reviewer:
             security_findings = [f for f in findings if _SECURITY_KEYWORDS.search(f.comment)]
             if security_findings:
                 summary_lines.append(
-                    f"- {self._plural(len(security_findings), 'potential security issue')} "
-                    "— review carefully 🔒"
+                    f"- {self._plural(len(security_findings), 'potential security issue')} 🔒 "
+                    "— review carefully"
                 )
 
             if truncated:
