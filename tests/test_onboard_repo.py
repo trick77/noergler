@@ -414,6 +414,65 @@ class TestUpsertWebhook:
         assert not any(c["method"] == "POST" for c in fake.calls)
 
 
+class TestRemoveWebhook:
+    def test_removes_existing(self, onboarder, spec, fake):
+        fake.respond_json(
+            "GET", "/rest/api/1.0/projects/PROJ/repos/my-repo/webhooks", 200,
+            {
+                "values": [{"id": 42, "name": DEFAULT_WEBHOOK_NAME}],
+                "isLastPage": True,
+            },
+        )
+        fake.respond_text(
+            "DELETE", "/rest/api/1.0/projects/PROJ/repos/my-repo/webhooks/42", 204, "",
+        )
+
+        result = onboarder.remove_webhook(spec)
+        assert result.status == "ok"
+        assert "42" in result.detail
+        assert any(c["method"] == "DELETE" for c in fake.calls)
+
+    def test_skipped_when_absent(self, onboarder, spec, fake):
+        fake.respond_json(
+            "GET", "/rest/api/1.0/projects/PROJ/repos/my-repo/webhooks", 200,
+            {"values": [], "isLastPage": True},
+        )
+
+        result = onboarder.remove_webhook(spec)
+        assert result.status == "skipped"
+        assert not any(c["method"] == "DELETE" for c in fake.calls)
+
+    def test_dry_run_does_not_delete(self, client, spec, fake):
+        p = RepoOnboarder(
+            client, webhook_url=WEBHOOK_URL, webhook_secret="whsec", dry_run=True,
+        )
+        fake.respond_json(
+            "GET", "/rest/api/1.0/projects/PROJ/repos/my-repo/webhooks", 200,
+            {
+                "values": [{"id": 42, "name": DEFAULT_WEBHOOK_NAME}],
+                "isLastPage": True,
+            },
+        )
+
+        result = p.remove_webhook(spec)
+        assert result.status == "ok"
+        assert "dry-run" in result.detail
+        assert not any(c["method"] == "DELETE" for c in fake.calls)
+
+    def test_ignores_other_webhook_names(self, onboarder, spec, fake):
+        fake.respond_json(
+            "GET", "/rest/api/1.0/projects/PROJ/repos/my-repo/webhooks", 200,
+            {
+                "values": [{"id": 99, "name": "other-hook"}],
+                "isLastPage": True,
+            },
+        )
+
+        result = onboarder.remove_webhook(spec)
+        assert result.status == "skipped"
+        assert not any(c["method"] == "DELETE" for c in fake.calls)
+
+
 # --------------------------------------------------------------------------- #
 # End-to-end via main()
 # --------------------------------------------------------------------------- #
@@ -474,3 +533,31 @@ class TestMain:
         out = capsys.readouterr().out
         assert "PROJ/r" in out
         assert "ok" in out
+
+    def test_remove_via_main(self, tmp_path, monkeypatch, fake):
+        cfg = tmp_path / "config.json"
+        cfg.write_text(json.dumps({
+            "bitbucket_url": BASE_URL,
+            "webhook_url": WEBHOOK_URL,
+            "projects": [{"project": "PROJ", "repos": ["r"]}],
+        }))
+        monkeypatch.setenv("BITBUCKET_TOKEN", "t")
+        monkeypatch.setenv("BITBUCKET_WEBHOOK_SECRET", "s")
+        monkeypatch.chdir(tmp_path)
+
+        fake.respond_json(
+            "GET", "/rest/api/1.0/projects/PROJ/repos/r/webhooks", 200,
+            {
+                "values": [{"id": 1, "name": DEFAULT_WEBHOOK_NAME}],
+                "isLastPage": True,
+            },
+        )
+        fake.respond_text(
+            "DELETE", "/rest/api/1.0/projects/PROJ/repos/r/webhooks/1", 204, "",
+        )
+
+        rc = main([str(cfg), "--remove"])
+        assert rc == 0
+        assert sum(1 for c in fake.calls if c["method"] == "DELETE") == 1
+        # Remove mode should skip permission check GETs (repo, pull-requests).
+        assert not any(c["path"].endswith("/repos/r") for c in fake.calls)
