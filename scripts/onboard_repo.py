@@ -14,6 +14,10 @@ BITBUCKET_WEBHOOK_SECRET used by this script MUST match the value the running
 noergler service has configured — Bitbucket and noergler share the HMAC secret;
 this script only programs Bitbucket's side.
 
+The script does two things per repo: a read-permission check and an idempotent
+webhook upsert. End-to-end delivery is verified by opening a real PR — Bitbucket's
+"/test" endpoint is intentionally not used (behavior varies by server version).
+
 This script is intentionally stdlib-only so it can run on any host with Python
 3.10+ without a venv or `pip install`.
 """
@@ -224,7 +228,6 @@ class BitbucketHTTP:
         *,
         params: dict[str, Any] | None = None,
         body: Any | None = None,
-        tolerate_errors: bool = False,
     ) -> _Response:
         url = self.base_url + path
         if params:
@@ -250,8 +253,6 @@ class BitbucketHTTP:
                 text = exc.read().decode("utf-8", errors="replace")
             except Exception:
                 pass
-            if tolerate_errors:
-                return _Response(status_code=exc.code, text=text)
             raise HTTPStatusError(exc.code, text, url) from exc
 
     def get_repo(self, project: str, repo: str) -> dict:
@@ -302,14 +303,6 @@ class BitbucketHTTP:
         )
         return resp.json()
 
-    def test_webhook(self, project: str, repo: str, webhook_id: int) -> _Response:
-        return self._request(
-            "POST",
-            f"/rest/api/1.0/projects/{project}/repos/{repo}/webhooks/{webhook_id}/test",
-            body={},
-            tolerate_errors=True,
-        )
-
 
 # --------------------------------------------------------------------------- #
 # Onboarder
@@ -320,7 +313,6 @@ class RepoResult:
     repo: RepoSpec
     status: str  # "ok", "failed", "skipped"
     detail: str = ""
-    test_status: int | None = None
     diff: list[str] = field(default_factory=list)
 
 
@@ -400,24 +392,6 @@ class RepoOnboarder:
         self.client.update_webhook(spec.project, spec.repo, int(existing["id"]), body)
         return int(existing["id"]), diff
 
-    # -- Step 3 -- #
-    def test_webhook(self, spec: RepoSpec, webhook_id: int) -> int:
-        """Trigger Bitbucket's test-webhook endpoint. Returns the observed downstream status."""
-        response = self.client.test_webhook(spec.project, spec.repo, webhook_id)
-        if response.status_code >= 400:
-            logger.error(
-                "[%s] test-webhook failed: HTTP %d — %s",
-                spec.key, response.status_code, response.text,
-            )
-            return response.status_code
-        try:
-            data = response.json()
-        except ValueError:
-            data = {}
-        downstream = data.get("statusCode") or data.get("status") or response.status_code
-        logger.info("[%s] test-webhook downstream status=%s", spec.key, downstream)
-        return int(downstream) if isinstance(downstream, int) else response.status_code
-
     # -- Orchestrator -- #
     def onboard(self, spec: RepoSpec) -> RepoResult:
         try:
@@ -431,7 +405,7 @@ class RepoOnboarder:
             return RepoResult(spec, "failed", detail=f"permission check: {exc}")
 
         try:
-            webhook_id, diff = self.upsert_webhook(spec)
+            _webhook_id, diff = self.upsert_webhook(spec)
         except HTTPStatusError as exc:
             return RepoResult(
                 spec, "failed",
@@ -443,22 +417,7 @@ class RepoOnboarder:
         if self.dry_run:
             return RepoResult(spec, "ok", detail="dry-run", diff=diff)
 
-        try:
-            status = self.test_webhook(spec, webhook_id)
-        except urllib.error.URLError as exc:
-            return RepoResult(
-                spec, "failed",
-                detail=f"webhook upserted; test failed: {exc}",
-                diff=diff,
-            )
-
-        if 200 <= status < 300:
-            return RepoResult(spec, "ok", detail=f"test status {status}", test_status=status, diff=diff)
-
-        detail = f"test-webhook returned {status}"
-        if status == 401:
-            detail += " — likely BITBUCKET_WEBHOOK_SECRET mismatch with the running service"
-        return RepoResult(spec, "failed", detail=detail, test_status=status, diff=diff)
+        return RepoResult(spec, "ok", detail="webhook configured", diff=diff)
 
 
 def _redact(body: dict) -> dict:
@@ -481,7 +440,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         epilog=(
             "Write permission check is implicit: if the token lacks repo-write, the webhook "
             "create/update will surface a 403. BITBUCKET_WEBHOOK_SECRET must match the value "
-            "configured on the running noergler service."
+            "configured on the running noergler service. To verify end-to-end delivery, open "
+            "a real PR after onboarding."
         ),
     )
     parser.add_argument("config", type=Path, help="Path to onboarding JSON config")

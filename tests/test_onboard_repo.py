@@ -414,28 +414,6 @@ class TestUpsertWebhook:
         assert not any(c["method"] == "POST" for c in fake.calls)
 
 
-class TestTestWebhook:
-    def test_success_returns_200(self, onboarder, spec, fake):
-        fake.respond_json(
-            "POST", "/rest/api/1.0/projects/PROJ/repos/my-repo/webhooks/7/test", 200,
-            {"statusCode": 200},
-        )
-        assert onboarder.test_webhook(spec, 7) == 200
-
-    def test_downstream_401_reported(self, onboarder, spec, fake):
-        fake.respond_json(
-            "POST", "/rest/api/1.0/projects/PROJ/repos/my-repo/webhooks/7/test", 200,
-            {"statusCode": 401},
-        )
-        assert onboarder.test_webhook(spec, 7) == 401
-
-    def test_bitbucket_side_failure(self, onboarder, spec, fake):
-        fake.respond_text(
-            "POST", "/rest/api/1.0/projects/PROJ/repos/my-repo/webhooks/7/test", 500, "boom",
-        )
-        assert onboarder.test_webhook(spec, 7) == 500
-
-
 # --------------------------------------------------------------------------- #
 # End-to-end via main()
 # --------------------------------------------------------------------------- #
@@ -464,10 +442,6 @@ class TestMain:
         )
         fake.respond_json(
             "POST", "/rest/api/1.0/projects/PROJ/repos/good/webhooks", 200, {"id": 1},
-        )
-        fake.respond_json(
-            "POST", "/rest/api/1.0/projects/PROJ/repos/good/webhooks/1/test", 200,
-            {"statusCode": 200},
         )
         fake.respond_text("GET", "/rest/api/1.0/projects/PROJ/repos/bad", 404, "no repo")
 
