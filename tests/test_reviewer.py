@@ -604,23 +604,32 @@ class TestSortAndLimit:
         assert "template" not in summary
 
     def test_build_summary_chunk_count_single_pass(self, reviewer):
-        summary = reviewer._build_summary([], chunk_count=1, chunk_budget=80000)
-        assert "Context: 80k tokens · 1 pass" in summary
+        summary = reviewer._build_summary(
+            [], chunk_count=1, chunk_budget=80000, token_usage=(60000, 1000)
+        )
+        assert "Tokens used: 60k of 80k available · 1 pass" in summary
 
     def test_build_summary_chunk_count_multi(self, reviewer):
-        summary = reviewer._build_summary([], chunk_count=3, chunk_budget=80000)
-        assert "Context: 80k × 3 passes" in summary
+        summary = reviewer._build_summary(
+            [], chunk_count=3, chunk_budget=80000, token_usage=(240000, 3000)
+        )
+        assert "Tokens used: 240k total across 3 passes (cap 80k/pass)" in summary
 
     def test_build_summary_chunk_count_absent_when_none(self, reviewer):
         summary = reviewer._build_summary([])
+        assert "Tokens used:" not in summary
         assert "Context:" not in summary
         assert "chunk budget" not in summary
 
     def test_build_summary_chunk_budget_with_context_window(self, reviewer):
         summary = reviewer._build_summary(
-            [], chunk_count=1, chunk_budget=256_000, context_window=272_000,
+            [],
+            chunk_count=1,
+            chunk_budget=256_000,
+            context_window=272_000,
+            token_usage=(245_000, 2_000),
         )
-        assert "Context: 256k / 272k tokens · 1 pass" in summary
+        assert "Tokens used: 245k of 256k available (model max 272k) · 1 pass" in summary
 
     @pytest.mark.asyncio
     async def test_findings_limited_in_review(self, mock_bitbucket, mock_llm):

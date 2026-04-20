@@ -1042,21 +1042,24 @@ class Reviewer:
 
         # --- Cost
         cost: list[str] = []
-        if chunk_count is not None and chunk_budget:
+        if chunk_count is not None and chunk_budget and token_usage:
+            prompt_t = token_usage[0]
+            used_k = _fmt_k(prompt_t)
             budget_k = _fmt_k(chunk_budget)
-            window_k = _fmt_k(context_window) if context_window else None
+            window_suffix = f" (model max {_fmt_k(context_window)})" if context_window else ""
             if chunk_count == 1:
-                if window_k:
-                    cost.append(f"Context: {budget_k} / {window_k} tokens · 1 pass")
-                else:
-                    cost.append(f"Context: {budget_k} tokens · 1 pass")
+                cost.append(
+                    f"Tokens used: {used_k} of {budget_k} available{window_suffix} · 1 pass"
+                )
             else:
-                if window_k:
-                    cost.append(
-                        f"Context: {budget_k} × {chunk_count} passes (out of {window_k} window)"
-                    )
-                else:
-                    cost.append(f"Context: {budget_k} × {chunk_count} passes")
+                cap_clause = (
+                    f"cap {budget_k}/pass, model max {_fmt_k(context_window)}"
+                    if context_window
+                    else f"cap {budget_k}/pass"
+                )
+                cost.append(
+                    f"Tokens used: {used_k} total across {chunk_count} passes ({cap_clause})"
+                )
 
         if token_usage:
             if prompt_breakdown:

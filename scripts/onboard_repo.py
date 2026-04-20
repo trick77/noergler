@@ -3,6 +3,10 @@ Onboard a Bitbucket Server repository to noergler webhook delivery.
 
 Usage:
     python scripts/onboard_repo.py config.json [--name noergler] [--dry-run] [--env-file PATH]
+    python scripts/onboard_repo.py config.json --remove [--dry-run] [--env-file PATH]
+
+`--remove` deletes the noergler webhook from every repo in the config instead
+of creating/updating it. Same config file drives both directions.
 
 The JSON config describes target repos and URLs. Secrets (BITBUCKET_TOKEN,
 BITBUCKET_WEBHOOK_SECRET) are resolved from, in order:
@@ -303,6 +307,12 @@ class BitbucketHTTP:
         )
         return resp.json()
 
+    def delete_webhook(self, project: str, repo: str, webhook_id: int) -> None:
+        self._request(
+            "DELETE",
+            f"/rest/api/1.0/projects/{project}/repos/{repo}/webhooks/{webhook_id}",
+        )
+
 
 # --------------------------------------------------------------------------- #
 # Onboarder
@@ -419,6 +429,42 @@ class RepoOnboarder:
 
         return RepoResult(spec, "ok", detail="webhook configured", diff=diff)
 
+    # -- Deboarding -- #
+    def remove_webhook(self, spec: RepoSpec) -> RepoResult:
+        """Delete the noergler webhook from the repo. No-op if absent."""
+        try:
+            hooks = self.client.list_webhooks(spec.project, spec.repo)
+        except HTTPStatusError as exc:
+            return RepoResult(
+                spec, "failed",
+                detail=f"list webhooks HTTP {exc.status_code}: {exc.text[:200]}",
+            )
+        except urllib.error.URLError as exc:
+            return RepoResult(spec, "failed", detail=f"list webhooks: {exc}")
+
+        existing = next((h for h in hooks if h.get("name") == self.webhook_name), None)
+        if existing is None:
+            logger.info("[%s] no %r webhook found, nothing to remove", spec.key, self.webhook_name)
+            return RepoResult(spec, "skipped", detail=f"no {self.webhook_name!r} webhook found")
+
+        webhook_id = int(existing["id"])
+        if self.dry_run:
+            logger.info("[%s] DRY-RUN would delete webhook id=%d", spec.key, webhook_id)
+            return RepoResult(spec, "ok", detail=f"dry-run: would remove webhook id={webhook_id}")
+
+        try:
+            self.client.delete_webhook(spec.project, spec.repo, webhook_id)
+        except HTTPStatusError as exc:
+            return RepoResult(
+                spec, "failed",
+                detail=f"delete webhook HTTP {exc.status_code}: {exc.text[:200]}",
+            )
+        except urllib.error.URLError as exc:
+            return RepoResult(spec, "failed", detail=f"delete webhook: {exc}")
+
+        logger.info("[%s] removed webhook id=%d", spec.key, webhook_id)
+        return RepoResult(spec, "ok", detail=f"webhook removed: id={webhook_id}")
+
 
 def _redact(body: dict) -> dict:
     copy = dict(body)
@@ -447,6 +493,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("config", type=Path, help="Path to onboarding JSON config")
     parser.add_argument("--name", default=DEFAULT_WEBHOOK_NAME, help=f"Webhook name (default: {DEFAULT_WEBHOOK_NAME})")
     parser.add_argument("--dry-run", action="store_true", help="Print planned changes without mutating Bitbucket")
+    parser.add_argument(
+        "--remove", action="store_true",
+        help="Deboard: delete the webhook from every repo in the config instead of creating/updating it",
+    )
     parser.add_argument("--env-file", type=Path, default=None, help="Additional .env file to read secrets from")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable DEBUG logging")
     return parser.parse_args(argv)
@@ -471,6 +521,8 @@ def _run(args: argparse.Namespace) -> int:
     logger.info("Bitbucket token loaded: %s", _mask(token))
     logger.info("Webhook secret loaded:  %s", _mask(webhook_secret))
     logger.info("Target repos (%d): %s", len(inp.repos), ", ".join(r.key for r in inp.repos))
+    if args.remove:
+        logger.info("REMOVE mode: will delete the %r webhook from each repo", args.name)
     if args.dry_run:
         logger.info("DRY-RUN: no writes will be issued")
 
@@ -483,11 +535,12 @@ def _run(args: argparse.Namespace) -> int:
         dry_run=args.dry_run,
     )
 
+    action = onboarder.remove_webhook if args.remove else onboarder.onboard
     results: list[RepoResult] = []
     for spec in inp.repos:
         logger.info("--- %s ---", spec.key)
         try:
-            result = onboarder.onboard(spec)
+            result = action(spec)
         except Exception as exc:  # noqa: BLE001 — per-repo isolation
             logger.exception("[%s] unexpected error", spec.key)
             result = RepoResult(spec, "failed", detail=f"unexpected: {exc}")
