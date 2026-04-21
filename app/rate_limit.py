@@ -44,7 +44,8 @@ class AsyncTokenBucket:
                     return
                 needed = 1.0 - self._tokens
                 wait_seconds = needed / self.rate_per_second
-            logger.debug(
+            log = logger.info if wait_seconds >= 1.0 else logger.debug
+            log(
                 "rate-limit[%s]: throttling %.2fs (tokens=%.2f cap=%d rate=%.2f/s)",
                 self.name, wait_seconds, self._tokens, self.capacity, self.rate_per_second,
             )

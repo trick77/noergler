@@ -67,6 +67,34 @@ async def test_exception_in_task_does_not_crash():
 
 
 @pytest.mark.asyncio
+async def test_reschedule_during_running_task_serializes():
+    # If a new schedule() arrives while the previous review is mid-flight
+    # (past sleep), the new run must wait for the prior one to finish rather
+    # than running concurrently.
+    order: list[str] = []
+    running = asyncio.Event()
+
+    async def slow():
+        order.append("slow-start")
+        running.set()
+        await asyncio.sleep(0.15)
+        order.append("slow-end")
+
+    async def fast():
+        order.append("fast-start")
+        order.append("fast-end")
+
+    debouncer = PRDebouncer(delay_seconds=0.02)
+    key = ("P", "r", 1)
+    debouncer.schedule(key, slow)
+    await running.wait()
+    # slow is now holding the per-key lock
+    debouncer.schedule(key, fast)
+    await asyncio.sleep(0.25)
+    assert order == ["slow-start", "slow-end", "fast-start", "fast-end"]
+
+
+@pytest.mark.asyncio
 async def test_shutdown_cancels_pending():
     ran = asyncio.Event()
 
