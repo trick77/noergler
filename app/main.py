@@ -5,8 +5,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 
+from typing import cast
+
 from app.bitbucket import BitbucketClient
-from app.config import load_config, log_config
+from app.config import AppConfig, load_config, log_config
 from app.copilot_auth import CopilotTokenProvider
 from app.db import close_pool, create_pool
 from app.llm_client import LLMClient
@@ -40,12 +42,12 @@ def _unify_uvicorn_logging() -> None:
         uv_logger.handlers.clear()
         uv_logger.propagate = True
 
-config = None
-reviewer = None
-bitbucket_client = None
-llm_client = None
-jira_client = None
-copilot_token_provider = None
+config: AppConfig = cast(AppConfig, None)
+reviewer: Reviewer = cast(Reviewer, None)
+bitbucket_client: BitbucketClient = cast(BitbucketClient, None)
+llm_client: LLMClient = cast(LLMClient, None)
+jira_client: JiraClient = cast(JiraClient, None)
+copilot_token_provider: CopilotTokenProvider = cast(CopilotTokenProvider, None)
 
 
 @asynccontextmanager

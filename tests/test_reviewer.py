@@ -247,7 +247,7 @@ def _make_review_result(findings=None, skipped_files=None, review_effort=1):
 @pytest.fixture
 def mock_llm():
     client = AsyncMock()
-    client.config.model = "openai/gpt-4.1"
+    client.config.model = "gpt-5.3-codex"
     client.max_tokens_per_chunk = 80000
     client.context_window = 1_000_000
     client.prompt_template = "Review these files:\n{files}\n{repo_instructions}"
@@ -576,7 +576,7 @@ class TestSortAndLimit:
             ReviewFinding(file="a.py", line=1, severity="warning", comment="warn"),
         ]
         summary = reviewer._build_summary(findings, token_usage=(1000, 500))
-        assert "Model: `openai/gpt-4.1`" in summary
+        assert "Model: `gpt-5.3-codex`" in summary
         assert "1'000↑" in summary
         assert "500↓" in summary
         assert "1'500 total" in summary
@@ -607,13 +607,13 @@ class TestSortAndLimit:
         summary = reviewer._build_summary(
             [], chunk_count=1, chunk_budget=80000, token_usage=(60000, 1000)
         )
-        assert "Tokens used: 60k of 80k available · 1 pass" in summary
+        assert "Tokens used: 60k of 80k available (75% used) · 1 pass" in summary
 
     def test_build_summary_chunk_count_multi(self, reviewer):
         summary = reviewer._build_summary(
             [], chunk_count=3, chunk_budget=80000, token_usage=(240000, 3000)
         )
-        assert "Tokens used: 240k total across 3 passes (cap 80k/pass)" in summary
+        assert "Tokens used: 240k total across 3 passes (avg 100% used/pass, cap 80k/pass)" in summary
 
     def test_build_summary_chunk_count_absent_when_none(self, reviewer):
         summary = reviewer._build_summary([])
@@ -629,7 +629,7 @@ class TestSortAndLimit:
             context_window=272_000,
             token_usage=(245_000, 2_000),
         )
-        assert "Tokens used: 245k of 256k available (model max 272k) · 1 pass" in summary
+        assert "Tokens used: 245k of 256k available (96% used, model max 272k) · 1 pass" in summary
 
     @pytest.mark.asyncio
     async def test_findings_limited_in_review(self, mock_bitbucket, mock_llm):
@@ -1560,7 +1560,7 @@ class TestIncrementalReview:
     @pytest.fixture
     def mock_llm(self):
         client = AsyncMock()
-        client.config.model = "openai/gpt-4.1"
+        client.config.model = "gpt-5.3-codex"
         client.max_tokens_per_chunk = 80000
         client.context_window = 1_000_000
         client.prompt_template = "Review these files:\n{files}\n{repo_instructions}"

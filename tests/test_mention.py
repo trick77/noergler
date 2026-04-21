@@ -59,7 +59,7 @@ def mock_bitbucket():
 @pytest.fixture
 def mock_llm():
     client = AsyncMock()
-    client.config.model = "openai/gpt-4.1"
+    client.config.model = "gpt-5.3-codex"
     client.max_tokens_per_chunk = 80000
     client.context_window = 1_000_000
     client.prompt_template = "Review these files:\n{files}\n{repo_instructions}"

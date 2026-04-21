@@ -97,8 +97,8 @@ Only report findings with confidence >= 80. Do NOT report stylistic issues at an
 
 ## Output format
 
-Always respond with a JSON object. Produce the fields in this order so that you ground yourself in what changed before emitting findings:
-- "change_summary": **required, non-empty** array of 3-5 short bullet-point strings summarizing the most important code changes in this diff. Focus on what changed functionally — ignore trivial formatting, import reordering, or insignificant changes. Summarize from the code, not from any ticket context. Write this first. If the diff is trivial or you see no functional changes, still return at least one bullet describing the PR at a high level (e.g. "Refactors X without behavior change", "Renames Y across N files"). Never return an empty array.
+Always respond with a JSON object containing these fields:
+- "change_summary": **required, non-empty** array of 3-5 short bullet-point strings summarizing the most important code changes in this diff. Focus on what changed functionally — ignore trivial formatting, import reordering, or insignificant changes. Summarize from the code, not from any ticket context. If the diff is trivial or you see no functional changes, still return at least one bullet describing the PR at a high level (e.g. "Refactors X without behavior change", "Renames Y across N files"). Never return an empty array.
 - "findings": array of issues (may be empty) discovered while reviewing the code you just summarized.
 
 Each item in "findings" must have:

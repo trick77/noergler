@@ -104,7 +104,7 @@ def _find_references(
             if stripped.startswith("#") or stripped.startswith("//") or stripped.startswith("*"):
                 continue
             refs.append(SymbolReference(
-                file=target_file.file if hasattr(target_file, 'file') else target_file.path,
+                file=target_file.path,
                 line_number=line_no,
                 line_text=stripped[:120],
             ))

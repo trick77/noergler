@@ -12,7 +12,7 @@ def _make_config():
             username="bot-user",
         ),
         llm=LLMConfig(
-            model="gpt-4.1",
+            model="gpt-5.3-codex",
             oauth_token="ghp_secret123",
             api_url="https://api.business.githubcopilot.com",
         ),
@@ -42,7 +42,7 @@ def test_log_config_masks_secrets(caplog):
 
     # Non-secret fields must appear as-is
     assert "https://bitbucket.example.com" in text
-    assert "gpt-4.1" in text
+    assert "gpt-5.3-codex" in text
     assert "['alice', 'bob']" in text
     assert "10" in text
     assert "alice" in text

@@ -22,7 +22,7 @@ class BitbucketConfig(BaseModel):
 
 
 class LLMConfig(BaseModel):
-    model: str = "gpt-4.1"
+    model: str = "gpt-5.3-codex"
     oauth_token: str
     api_url: str = "https://api.business.githubcopilot.com"
     integration_id: str = "vscode-chat"
@@ -121,14 +121,14 @@ def load_config() -> AppConfig:
             username=_env("BITBUCKET_USERNAME"),
         ),
         llm=LLMConfig(
-            model=_env("COPILOT_MODEL", "gpt-4.1"),
+            model=_env("COPILOT_MODEL", "gpt-5.3-codex"),
             oauth_token=_env("COPILOT_OAUTH_TOKEN"),
             api_url=_env("COPILOT_API_URL", "https://api.business.githubcopilot.com"),
             integration_id=_env("COPILOT_INTEGRATION_ID", "vscode-chat"),
             editor_version=_env("COPILOT_EDITOR_VERSION", "vscode/1.99.0"),
         ),
         review=ReviewConfig(
-            auto_review_authors=_env("REVIEW_AUTO_REVIEW_AUTHORS", ""),
+            auto_review_authors=[a.strip() for a in _env("REVIEW_AUTO_REVIEW_AUTHORS", "").split(",") if a.strip()],
             max_comments=int(_env("REVIEW_MAX_COMMENTS", "25")),
             max_file_lines=int(_env("REVIEW_MAX_FILE_LINES", "1000")),
             diff_extra_lines_before=int(_env("REVIEW_DIFF_EXTRA_LINES_BEFORE", "3")),
@@ -143,7 +143,7 @@ def load_config() -> AppConfig:
         jira=JiraConfig(
             url=_env("JIRA_URL"),
             token=_env("JIRA_TOKEN"),
-            acceptance_criteria_prefixes=_env("JIRA_ACCEPTANCE_CRITERIA_PREFIXES", "AC,AK,Acceptance Criteria,Acceptance Criterion,Akzeptanzkriterium,Akzeptanzkriterien,DoD,Req"),
+            acceptance_criteria_prefixes=[p.strip() for p in _env("JIRA_ACCEPTANCE_CRITERIA_PREFIXES", "AC,AK,Acceptance Criteria,Acceptance Criterion,Akzeptanzkriterium,Akzeptanzkriterien,DoD,Req").split(",") if p.strip()],
         ),
         server=ServerConfig(
             host=_env("SERVER_HOST", "0.0.0.0"),

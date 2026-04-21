@@ -193,7 +193,7 @@ async def test_insert_review_stats_executes_insert_with_correct_param_count():
         review_effort=15,
         prompt_tokens=1000,
         completion_tokens=200,
-        model_name="openai/gpt-4.1",
+        model_name="gpt-5.3-codex",
         elapsed_seconds=3.14,
         cross_file_deps=0,
         skipped_files=1,

@@ -16,7 +16,6 @@ from app.llm_client import (
     _parse_mention_response,
     _parse_review_response,
     _render_file_group,
-    _should_use_responses,
     extract_path,
     is_deleted,
     is_reviewable_diff,
@@ -27,7 +26,7 @@ from app.llm_client import (
 @pytest.fixture
 def llm_config():
     return LLMConfig(
-        model="gpt-4.1",
+        model="gpt-5.3-codex",
         oauth_token="test-oauth",
         api_url="https://api.business.githubcopilot.com",
     )
@@ -52,21 +51,22 @@ def token_provider():
 
 
 def _mock_completion(content: str, prompt_tokens: int = 100, completion_tokens: int = 50):
-    """Build a mock ChatCompletion object."""
-    message = MagicMock()
-    message.content = content
-
-    choice = MagicMock()
-    choice.message = message
-
+    """Build a mock Responses API object."""
     usage = MagicMock()
-    usage.prompt_tokens = prompt_tokens
-    usage.completion_tokens = completion_tokens
+    usage.input_tokens = prompt_tokens
+    usage.output_tokens = completion_tokens
 
-    completion = MagicMock()
-    completion.choices = [choice]
-    completion.usage = usage
-    return completion
+    response = MagicMock()
+    response.output_text = content
+    response.usage = usage
+    return response
+
+
+def _user_text_from_responses_call(mock_create) -> str:
+    """Extract the user text from a mocked `responses.create` call."""
+    call_args = mock_create.call_args
+    user_block = call_args.kwargs["input"][1]
+    return user_block["content"][0]["text"]
 
 
 class TestParseReviewResponse:
@@ -199,6 +199,14 @@ class TestParseReviewResponse:
         })
         _, _, change_summary = _parse_review_response(content)
         assert change_summary == []
+
+    def test_change_summary_empty_logs_warning(self, caplog):
+        import logging
+        content = json.dumps({"findings": [], "change_summary": []})
+        with caplog.at_level(logging.WARNING, logger="app.llm_client"):
+            _, _, change_summary = _parse_review_response(content)
+        assert change_summary == []
+        assert any("change_summary empty after parse" in msg for msg in caplog.messages)
 
 
 class TestMergeChangeSummaries:
@@ -522,7 +530,7 @@ class TestLLMClient:
         ])
 
         client = LLMClient(llm_config, review_config, token_provider)
-        client.openai_client.chat.completions.create = AsyncMock(
+        client.openai_client.responses.create = AsyncMock(
             return_value=_mock_completion(review_content, 100, 50)
         )
         try:
@@ -546,7 +554,7 @@ class TestLLMClient:
         # Template alone is ~2.8k tokens; each file below adds ~788 tokens.
         client = LLMClient(llm_config, review_config, token_provider)
         client.max_tokens_per_chunk = 4000
-        client.openai_client.chat.completions.create = AsyncMock(
+        client.openai_client.responses.create = AsyncMock(
             return_value=_mock_completion("[]", 10, 5)
         )
         try:
@@ -564,12 +572,12 @@ class TestLLMClient:
     async def test_check_connectivity_ping_success(self, llm_config, review_config, token_provider):
         """Startup ping succeeds → check_connectivity returns without raising."""
         client = LLMClient(llm_config, review_config, token_provider)
-        client.openai_client.chat.completions.create = AsyncMock(
+        client.openai_client.responses.create = AsyncMock(
             return_value=_mock_completion("pong", 5, 1)
         )
         try:
             await client.check_connectivity()
-            client.openai_client.chat.completions.create.assert_called_once()
+            client.openai_client.responses.create.assert_called_once()
         finally:
             await client.close()
 
@@ -577,7 +585,7 @@ class TestLLMClient:
     async def test_check_connectivity_ping_failure_raises(self, llm_config, review_config, token_provider):
         """Startup ping fails → exception propagates."""
         client = LLMClient(llm_config, review_config, token_provider)
-        client.openai_client.chat.completions.create = AsyncMock(
+        client.openai_client.responses.create = AsyncMock(
             side_effect=openai.APIStatusError(
                 "No access to model",
                 response=httpx.Response(403, request=httpx.Request("POST", "https://x"), text="forbidden"),
@@ -591,16 +599,21 @@ class TestLLMClient:
             await client.close()
 
     @pytest.mark.asyncio
-    async def test_check_connectivity_uses_responses_for_codex(self, llm_config, review_config, token_provider):
-        """Startup ping routes through /responses when model is gpt-5+/codex."""
-        llm_config.model = "gpt-5.3-codex"
+    async def test_chat_passes_review_response_schema(self, llm_config, review_config, token_provider):
+        """Review calls bind a strict json_schema via `text.format`."""
+        mock_create = AsyncMock(return_value=_mock_completion("[]", 10, 5))
         client = LLMClient(llm_config, review_config, token_provider)
-        response_mock = MagicMock()
-        response_mock.output_text = "ok"
-        client.openai_client.responses.create = AsyncMock(return_value=response_mock)
+        client.openai_client.responses.create = mock_create
         try:
-            await client.check_connectivity()
-            client.openai_client.responses.create.assert_called_once()
+            files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
+            await client.review_diff(files)
+            call_kwargs = mock_create.call_args.kwargs
+            fmt = call_kwargs["text"]["format"]
+            assert fmt["type"] == "json_schema"
+            assert fmt["name"] == "review_response"
+            assert fmt["strict"] is True
+            assert "change_summary" in fmt["schema"]["properties"]
+            assert "findings" in fmt["schema"]["properties"]
         finally:
             await client.close()
 
@@ -611,14 +624,12 @@ class TestRepoInstructionsInReviewPrompt:
         """Verify {repo_instructions} placeholder is replaced, not left as literal text."""
         mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
         client = LLMClient(llm_config, review_config, token_provider)
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.responses.create = mock_create
         try:
             files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
             await client.review_diff(files, repo_instructions="Use 4-space indent")
 
-            call_args = mock_create.call_args
-            messages = call_args.kwargs["messages"]
-            prompt = messages[1]["content"]
+            prompt = _user_text_from_responses_call(mock_create)
             assert "{repo_instructions}" not in prompt
             assert "Use 4-space indent" in prompt
         finally:
@@ -629,14 +640,12 @@ class TestRepoInstructionsInReviewPrompt:
         """When no repo instructions, placeholder is replaced with empty string."""
         mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
         client = LLMClient(llm_config, review_config, token_provider)
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.responses.create = mock_create
         try:
             files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
             await client.review_diff(files, repo_instructions="")
 
-            call_args = mock_create.call_args
-            messages = call_args.kwargs["messages"]
-            prompt = messages[1]["content"]
+            prompt = _user_text_from_responses_call(mock_create)
             assert "{repo_instructions}" not in prompt
         finally:
             await client.close()
@@ -647,15 +656,13 @@ class TestComplianceInstructions:
     async def test_compliance_instructions_included_when_enabled_with_ticket(self, llm_config, review_config, token_provider):
         mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
         client = LLMClient(llm_config, review_config, token_provider)
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.responses.create = mock_create
         try:
             files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
             await client.review_diff(
                 files, ticket_context="Jira ticket SEP-123", ticket_compliance_check=True,
             )
-            call_args = mock_create.call_args
-            messages = call_args.kwargs["messages"]
-            prompt = messages[1]["content"]
+            prompt = _user_text_from_responses_call(mock_create)
             assert "compliance_requirements" in prompt
             assert "{compliance_instructions}" not in prompt
         finally:
@@ -665,15 +672,13 @@ class TestComplianceInstructions:
     async def test_compliance_instructions_excluded_when_disabled(self, llm_config, review_config, token_provider):
         mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
         client = LLMClient(llm_config, review_config, token_provider)
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.responses.create = mock_create
         try:
             files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
             await client.review_diff(
                 files, ticket_context="Jira ticket SEP-123", ticket_compliance_check=False,
             )
-            call_args = mock_create.call_args
-            messages = call_args.kwargs["messages"]
-            prompt = messages[1]["content"]
+            prompt = _user_text_from_responses_call(mock_create)
             assert "compliance_requirements" not in prompt
             assert "{compliance_instructions}" not in prompt
         finally:
@@ -683,15 +688,13 @@ class TestComplianceInstructions:
     async def test_compliance_instructions_excluded_when_no_ticket_context(self, llm_config, review_config, token_provider):
         mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
         client = LLMClient(llm_config, review_config, token_provider)
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.responses.create = mock_create
         try:
             files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
             await client.review_diff(
                 files, ticket_context="", ticket_compliance_check=True,
             )
-            call_args = mock_create.call_args
-            messages = call_args.kwargs["messages"]
-            prompt = messages[1]["content"]
+            prompt = _user_text_from_responses_call(mock_create)
             assert "compliance_requirements" not in prompt
             assert "{compliance_instructions}" not in prompt
         finally:
@@ -701,15 +704,13 @@ class TestComplianceInstructions:
     async def test_ticket_context_always_present_regardless_of_compliance_flag(self, llm_config, review_config, token_provider):
         mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
         client = LLMClient(llm_config, review_config, token_provider)
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.responses.create = mock_create
         try:
             files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
             await client.review_diff(
                 files, ticket_context="Jira ticket SEP-123", ticket_compliance_check=False,
             )
-            call_args = mock_create.call_args
-            messages = call_args.kwargs["messages"]
-            prompt = messages[1]["content"]
+            prompt = _user_text_from_responses_call(mock_create)
             assert "Jira ticket SEP-123" in prompt
         finally:
             await client.close()
@@ -719,7 +720,7 @@ class TestAnswerQuestion:
     @pytest.mark.asyncio
     async def test_answer_question_with_file_data(self, llm_config, review_config, token_provider):
         client = LLMClient(llm_config, review_config, token_provider)
-        client.openai_client.chat.completions.create = AsyncMock(
+        client.openai_client.responses.create = AsyncMock(
             return_value=_mock_completion("The function calculates fibonacci numbers.", 200, 30)
         )
         try:
@@ -1005,7 +1006,7 @@ class TestLowBudgetWarning:
         """When configured max_tokens_per_chunk barely clears the prompt overhead, warn."""
         client = LLMClient(llm_config, review_config, token_provider)
         client.max_tokens_per_chunk = 2000
-        client.openai_client.chat.completions.create = AsyncMock(
+        client.openai_client.responses.create = AsyncMock(
             return_value=_mock_completion("pong", 5, 1)
         )
         try:
@@ -1017,30 +1018,13 @@ class TestLowBudgetWarning:
             await client.close()
 
 
-class TestShouldUseResponses:
-    def test_chat_models(self):
-        assert _should_use_responses("gpt-4.1") is False
-        assert _should_use_responses("gpt-4o") is False
-        assert _should_use_responses("gpt-3.5-turbo") is False
-        assert _should_use_responses("claude-sonnet-4") is False
-        assert _should_use_responses("gpt-5-mini") is False
-        assert _should_use_responses("gpt-5-mini-2025-01-01") is False
-
-    def test_responses_models(self):
-        assert _should_use_responses("gpt-5") is True
-        assert _should_use_responses("gpt-5-codex") is True
-        assert _should_use_responses("gpt-5.3-codex") is True
-        assert _should_use_responses("gpt-6") is True
-
-
 class TestContextWindowAutoCap:
     def test_known_models_resolve(self):
-        assert _context_window_for("gpt-4.1") == 1_000_000
         assert _context_window_for("gpt-5") == 272_000
         assert _context_window_for("claude-sonnet-4") == 200_000
 
     def test_dated_id_prefix_match(self):
-        assert _context_window_for("gpt-4.1-2025-01-01") == 1_000_000
+        assert _context_window_for("gpt-5-2025-01-01") == 272_000
         assert _context_window_for("claude-sonnet-4-20250514") == 200_000
 
     def test_unknown_model_returns_none(self):
@@ -1056,15 +1040,15 @@ class TestContextWindowAutoCap:
         assert client.max_tokens_per_chunk == 128_000 - 16_000
         assert client.context_window == 128_000
 
-    def test_budget_for_large_context_model(self, review_config, token_provider):
+    def test_budget_for_codex_model(self, review_config, token_provider):
         cfg = LLMConfig(
-            model="gpt-4.1",
+            model="gpt-5.3-codex",
             oauth_token="t",
             api_url="https://api.business.githubcopilot.com",
         )
         client = LLMClient(cfg, review_config, token_provider)
-        assert client.max_tokens_per_chunk == 1_000_000 - 16_000
-        assert client.context_window == 1_000_000
+        assert client.max_tokens_per_chunk == 272_000 - 16_000
+        assert client.context_window == 272_000
 
     def test_unknown_model_raises(self, review_config, token_provider):
         cfg = LLMConfig(

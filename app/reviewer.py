@@ -1046,19 +1046,23 @@ class Reviewer:
             prompt_t = token_usage[0]
             used_k = _fmt_k(prompt_t)
             budget_k = _fmt_k(chunk_budget)
-            window_suffix = f" (model max {_fmt_k(context_window)})" if context_window else ""
             if chunk_count == 1:
+                pct = round(prompt_t / chunk_budget * 100) if chunk_budget else 0
+                window_suffix = f", model max {_fmt_k(context_window)}" if context_window else ""
                 cost.append(
-                    f"Tokens used: {used_k} of {budget_k} available{window_suffix} · 1 pass"
+                    f"Tokens used: {used_k} of {budget_k} available "
+                    f"({pct}% used{window_suffix}) · 1 pass"
                 )
             else:
+                avg_pct = round(prompt_t / chunk_count / chunk_budget * 100) if chunk_budget else 0
                 cap_clause = (
                     f"cap {budget_k}/pass, model max {_fmt_k(context_window)}"
                     if context_window
                     else f"cap {budget_k}/pass"
                 )
                 cost.append(
-                    f"Tokens used: {used_k} total across {chunk_count} passes ({cap_clause})"
+                    f"Tokens used: {used_k} total across {chunk_count} passes "
+                    f"(avg {avg_pct}% used/pass, {cap_clause})"
                 )
 
         if token_usage:
