@@ -354,7 +354,7 @@ class TestReviewer:
         summary = Reviewer._build_agents_md_missing_summary()
         assert "AGENTS.md" in summary
         assert "REVIEW_REQUIRE_AGENTS_MD" in summary
-        assert NOERGLER_MARKER in summary
+        assert NOERGLER_MARKER not in summary
 
     @pytest.mark.asyncio
     async def test_review_skipped_when_branch_contains_opt_out_keyword(self, mock_bitbucket, mock_llm):
@@ -405,7 +405,7 @@ class TestReviewer:
         assert "noergloff" in summary
         assert "feature/x-noergloff" in summary
         assert "REVIEW_OPT_OUT_BRANCH_KEYWORD" in summary
-        assert NOERGLER_MARKER in summary
+        assert NOERGLER_MARKER not in summary
 
     @pytest.mark.asyncio
     async def test_content_fetch_failure_falls_back_to_diff_only(self, mock_bitbucket, mock_llm):

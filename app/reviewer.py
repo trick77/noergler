@@ -786,7 +786,6 @@ class Reviewer:
     @staticmethod
     def _build_opt_out_branch_summary(keyword: str, branch: str) -> str:
         return (
-            f"{NOERGLER_MARKER}\n"
             "### Review skipped — opt-out keyword in branch name 🛑\n\n"
             f"The source branch `{branch}` contains the opt-out keyword "
             f"`{keyword}`, so the auto-review was skipped. No LLM or Jira "
@@ -804,7 +803,6 @@ class Reviewer:
     @staticmethod
     def _build_agents_md_missing_summary() -> str:
         return (
-            f"{NOERGLER_MARKER}\n"
             "### Review skipped — no `AGENTS.md` found 🛑\n\n"
             "This repository has no `AGENTS.md` on the PR branch or the target branch. "
             "Project-specific review guidelines are **vital** for producing targeted, "
