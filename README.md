@@ -6,7 +6,7 @@
 
 Code review agent for typical private cloud corporate environments. The name is German for "Nörgler" (grumbler/complainer).
 
-Built for the realities of enterprise setups: self-hosted Bitbucket Server, on-prem Jira, GitHub Copilot Business seats, corporate CA certificates, and HMAC-signed webhooks. Receives PR webhooks, sends diffs to a Copilot-backed LLM, and posts findings back as inline comments plus a summary comment on the PR.
+Built for the realities of enterprise setups: self-hosted Bitbucket Server, on-prem Jira, GitHub Copilot Business seats, and corporate CA certificates. Receives PR webhooks, sends diffs to a Copilot-backed LLM, and posts findings back as inline comments plus a summary comment on the PR.
 
 ![noergler inline review comment](review.png)
 
