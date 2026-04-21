@@ -608,6 +608,67 @@ class TestSortAndLimit:
         assert "Using project-specific review guidelines" in summary
         assert "Tip:" not in summary
 
+    def test_build_summary_agents_md_within_token_limit(self, reviewer):
+        findings = [
+            ReviewFinding(file="a.py", line=1, severity="warning", comment="warn"),
+        ]
+        summary = reviewer._build_summary(
+            findings,
+            agents_md_found=True,
+            prompt_breakdown={"template": 100, "repo_instructions": 1240, "files": 500},
+        )
+        assert "Using project-specific review guidelines from `AGENTS.md`" in summary
+        assert "~1240 / 4000 tokens, 31%" in summary
+        assert "✅" in summary
+        assert "context bloat" not in summary
+
+    def test_build_summary_agents_md_exceeds_token_limit(self, reviewer):
+        findings = [
+            ReviewFinding(file="a.py", line=1, severity="warning", comment="warn"),
+        ]
+        summary = reviewer._build_summary(
+            findings,
+            agents_md_found=True,
+            prompt_breakdown={"template": 100, "repo_instructions": 9000, "files": 500},
+        )
+        assert "Using project-specific review guidelines from `AGENTS.md`" in summary
+        assert "~9000 / 4000 tokens, 225%" in summary
+        assert "context bloat" in summary
+        assert "⚠️" in summary
+
+    def test_build_summary_agents_md_no_token_breakdown(self, reviewer):
+        findings = [
+            ReviewFinding(file="a.py", line=1, severity="warning", comment="warn"),
+        ]
+        summary = reviewer._build_summary(
+            findings,
+            agents_md_found=True,
+            prompt_breakdown=None,
+        )
+        assert "Using project-specific review guidelines from `AGENTS.md` ✅" in summary
+        assert "tokens," not in summary
+        assert "context bloat" not in summary
+
+    def test_build_summary_agents_md_warn_disabled(self, mock_bitbucket, mock_llm):
+        """agents_md_warn_tokens=0 disables the token-count annotation entirely."""
+        from app.reviewer import Reviewer
+        reviewer = Reviewer(
+            mock_bitbucket, mock_llm,
+            _review_config(agents_md_warn_tokens=0),
+            db_pool=AsyncMock(),
+        )
+        findings = [
+            ReviewFinding(file="a.py", line=1, severity="warning", comment="warn"),
+        ]
+        summary = reviewer._build_summary(
+            findings,
+            agents_md_found=True,
+            prompt_breakdown={"template": 100, "repo_instructions": 9999, "files": 500},
+        )
+        assert "Using project-specific review guidelines from `AGENTS.md` ✅" in summary
+        assert "tokens," not in summary
+        assert "context bloat" not in summary
+
     def test_build_summary_skipped_files(self, reviewer):
         findings = [
             ReviewFinding(file="a.py", line=1, severity="warning", comment="warn"),
