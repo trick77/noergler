@@ -19,7 +19,7 @@ def jira_client(jira_config):
 def _jira_response(
     key="SEP-22888",
     summary="Config security for intranet",
-    description="Implement security config",
+    description: str | None = "Implement security config",
     labels=None,
     subtasks=None,
     issue_type=None,
