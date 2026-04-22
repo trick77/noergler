@@ -1,27 +1,19 @@
-import random
-
 _DISAGREE = "disagree"
 
-_FUN_RESPONSES = [
-    "Ouch! I'll try harder next time 😅",
-    "Noted — my AI feelings are only slightly hurt 🤖",
-    "Fair enough, back to the drawing board 📝",
-    "Well, even I have off days 🤷",
-    "Message received — recalibrating snark levels 🔧",
-    "I'll add that to my list of regrets 📋",
-    "Tough crowd! Noted though 🎭",
-    "Roger that — filing under 'room for improvement' 🗂️",
-    "Oof. I'll do better, promise! 🫡",
-    "Copy that — not my finest moment 😬",
-]
+_DISAGREE_RESPONSE = (
+    "This disagree has been recorded as a negative signal against my overall "
+    "review-quality metric. Please reserve `disagree` for findings that are "
+    "**technically wrong** or **hallucinated**. If that was the case here, "
+    "sincere apologies 🙏"
+)
 
 
 def is_disagreed(text: str) -> bool:
     return _DISAGREE in text.strip().lower()
 
 
-def random_response() -> str:
-    return random.choice(_FUN_RESPONSES)
+def disagree_response() -> str:
+    return _DISAGREE_RESPONSE
 
 
 def classify_feedback(text: str) -> str:

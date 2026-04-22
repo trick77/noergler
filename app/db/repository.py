@@ -226,6 +226,26 @@ def _parse_delete_count(status: str) -> int:
     return int(parts[-1]) if parts else 0
 
 
+async def has_negative_feedback(
+    pool: asyncpg.Pool,
+    project_key: str,
+    repo_slug: str,
+    pr_id: int,
+    bitbucket_comment_id: int,
+) -> bool:
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT 1 FROM feedback_events
+            WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
+              AND bitbucket_comment_id = $4 AND classification = 'negative'
+            LIMIT 1
+            """,
+            project_key, repo_slug, pr_id, bitbucket_comment_id,
+        )
+        return row is not None
+
+
 async def insert_feedback(
     pool: asyncpg.Pool,
     project_key: str,

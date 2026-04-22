@@ -1477,8 +1477,31 @@ class TestHandleFeedback:
         assert payload["line"] == 5
 
     @pytest.mark.asyncio
+    async def test_repeated_disagree_on_same_comment_ignored(self, mock_bitbucket, mock_llm, monkeypatch):
+        # Second `disagree` on the same finding must not react, reply, or insert.
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_finding_by_comment_id",
+            AsyncMock(return_value={"file_path": "a.py", "line_number": 5, "severity": "warning"}),
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.has_negative_feedback",
+            AsyncMock(return_value=True),
+        )
+        insert_mock = AsyncMock()
+        monkeypatch.setattr("app.reviewer.repository.insert_feedback", insert_mock)
+        mock_bitbucket.add_comment_reaction = AsyncMock(return_value=True)
+        mock_bitbucket.reply_to_comment = AsyncMock()
+
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        await rev.handle_feedback(_make_feedback_payload("disagree", parent_id=10))
+
+        mock_bitbucket.add_comment_reaction.assert_not_called()
+        mock_bitbucket.reply_to_comment.assert_not_called()
+        insert_mock.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_reaction_fallback_to_reply(self, mock_bitbucket, mock_llm, monkeypatch):
-        from app.feedback import _FUN_RESPONSES
+        from app.feedback import disagree_response
 
         monkeypatch.setattr(
             "app.reviewer.repository.get_finding_by_comment_id",
@@ -1491,7 +1514,7 @@ class TestHandleFeedback:
         await rev.handle_feedback(_make_feedback_payload("disagree", parent_id=10))
 
         mock_bitbucket.reply_to_comment.assert_called_once()
-        assert mock_bitbucket.reply_to_comment.call_args[0][4] in _FUN_RESPONSES
+        assert mock_bitbucket.reply_to_comment.call_args[0][4] == disagree_response()
 
     @pytest.mark.asyncio
     async def test_ignores_reply_to_non_noergler_comment(self, mock_bitbucket, mock_llm):
@@ -1600,6 +1623,48 @@ class TestHandlePrMerged:
         assert "0 disagreed" in stat_record.message
         assert "100% useful" in stat_record.message
 
+
+
+    @pytest.mark.asyncio
+    async def test_repeated_disagrees_count_once_per_comment(self, mock_bitbucket, mock_llm, caplog):
+        # Same user spams 3 `disagree` replies against the same finding → 1 count.
+        mock_bitbucket.fetch_pr_comments.return_value = [
+            {"id": 10, "text": "Bug", "path": "a.py", "line": 5, "parent_id": None, "author_slug": "noergler"},
+            {"id": 11, "text": "Warning", "path": "b.py", "line": 3, "parent_id": None, "author_slug": "noergler"},
+            {"id": 20, "text": "disagree", "path": None, "line": None, "parent_id": 10, "author_slug": "dev"},
+            {"id": 21, "text": "disagree", "path": None, "line": None, "parent_id": 10, "author_slug": "dev"},
+            {"id": 22, "text": "disagree!", "path": None, "line": None, "parent_id": 10, "author_slug": "dev"},
+        ]
+
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        import logging
+        with caplog.at_level(logging.INFO):
+            await rev.handle_pr_merged(_make_payload())
+
+        stat_record = next(r for r in caplog.records if "merged" in r.message)
+        assert "2 comments" in stat_record.message
+        assert "1 disagreed" in stat_record.message
+        assert "50% useful" in stat_record.message
+
+    @pytest.mark.asyncio
+    async def test_disagree_nested_under_user_reply_not_counted(self, mock_bitbucket, mock_llm, caplog):
+        # Only direct replies to noergler findings count. A disagree nested under
+        # another user reply (grandchild of the finding) must be ignored.
+        mock_bitbucket.fetch_pr_comments.return_value = [
+            {"id": 10, "text": "Bug", "path": "a.py", "line": 5, "parent_id": None, "author_slug": "noergler"},
+            {"id": 20, "text": "let's discuss", "path": None, "line": None, "parent_id": 10, "author_slug": "dev"},
+            {"id": 30, "text": "disagree", "path": None, "line": None, "parent_id": 20, "author_slug": "dev"},
+        ]
+
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        import logging
+        with caplog.at_level(logging.INFO):
+            await rev.handle_pr_merged(_make_payload())
+
+        stat_record = next(r for r in caplog.records if "merged" in r.message)
+        assert "1 comments" in stat_record.message
+        assert "0 disagreed" in stat_record.message
+        assert "100% useful" in stat_record.message
 
 
 class TestHandlePrDeleted:
