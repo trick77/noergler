@@ -2,7 +2,7 @@ import httpx
 import pytest
 import respx
 
-from app.bitbucket import NOERGLER_MARKER, BitbucketClient
+from app.bitbucket import BitbucketClient
 from app.config import BitbucketConfig
 from app.models import ReviewFinding
 
@@ -172,22 +172,6 @@ class TestBitbucketClient:
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_post_inline_comment_excludes_marker(self, client):
-        route = respx.post(
-            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/comments"
-        ).mock(return_value=httpx.Response(201, json={"id": 1}))
-
-        finding = ReviewFinding(
-            file="src/main.py", line=10, severity="critical", comment="Bug here"
-        )
-        await client.post_inline_comment("PROJ", "my-repo", 1, finding)
-
-        body = route.calls[0].request.content.decode()
-        assert NOERGLER_MARKER not in body
-        await client.close()
-
-    @pytest.mark.asyncio
-    @respx.mock
     async def test_post_inline_comment_includes_feedback_instruction(self, client):
         route = respx.post(
             f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/comments"
@@ -238,7 +222,6 @@ class TestBitbucketClient:
         assert route.call_count == 1
         body = _json.loads(route.calls[0].request.content)
         assert body["parent"]["id"] == 42
-        assert NOERGLER_MARKER not in body["text"]
         assert "Here is the answer" in body["text"]
         await client.close()
 
@@ -255,7 +238,6 @@ class TestBitbucketClient:
 
         assert route.call_count == 1
         body = _json.loads(route.calls[0].request.content)
-        assert NOERGLER_MARKER not in body["text"]
         assert "Feedback noted" in body["text"]
         await client.close()
 
@@ -272,7 +254,6 @@ class TestBitbucketClient:
 
         assert route.call_count == 1
         body = _json.loads(route.calls[0].request.content)
-        assert NOERGLER_MARKER not in body["text"]
         assert "Updated summary" in body["text"]
         assert body["version"] == 3
         assert result == 4  # new version from response
@@ -299,7 +280,7 @@ class TestBitbucketClient:
                     "comment": {
                         "id": 100,
                         "version": 2,
-                        "text": f"❌ **Critical:** bug\n\n{NOERGLER_MARKER}",
+                        "text": "❌ **Critical:** bug",
                         "anchor": {"path": "a.py", "line": 10},
                     },
                 },
@@ -327,7 +308,6 @@ class TestBitbucketClient:
         assert comments[0]["version"] == 2
         assert comments[0]["path"] == "a.py"
         assert comments[0]["line"] == 10
-        assert NOERGLER_MARKER in comments[0]["text"]
         assert comments[1]["id"] == 101
         assert comments[1]["text"] == "Human comment"
         await client.close()

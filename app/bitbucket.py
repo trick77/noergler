@@ -9,8 +9,6 @@ from app.models import ReviewFinding
 
 logger = logging.getLogger(__name__)
 
-# Kept for backward-compatible identification of comments posted before bot_username was tracked
-NOERGLER_MARKER = "— _noergler_"
 SEVERITY_EMOJI = {"critical": "❌", "warning": "⚠️"}
 
 

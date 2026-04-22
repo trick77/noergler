@@ -5,7 +5,7 @@ import re
 import time
 from pathlib import PurePosixPath
 
-from app.bitbucket import NOERGLER_MARKER, BitbucketClient
+from app.bitbucket import BitbucketClient
 from app.db import repository
 from app.feedback import classify_feedback, random_response
 from app.llm_client import (
@@ -60,10 +60,8 @@ async def _safe_db(coro, fallback=None):
 
 
 def _is_bot_comment(comment: dict, bot_username: str | None) -> bool:
-    """Identify a bot comment by author slug (preferred) or legacy marker (backward compat)."""
-    if bot_username and comment.get("author_slug") == bot_username:
-        return True
-    return NOERGLER_MARKER in comment.get("text", "")
+    """Identify a bot comment by author slug."""
+    return bool(bot_username) and comment.get("author_slug") == bot_username
 
 
 def _count_diff_lines(diff: str) -> tuple[int, int]:
@@ -563,7 +561,7 @@ class Reviewer:
             return
 
         # Self-loop prevention: ignore bot's own comments
-        if comment.author.name == self.bitbucket.bot_username or NOERGLER_MARKER in comment.text:
+        if comment.author.name == self.bitbucket.bot_username:
             logger.debug("Ignoring own comment (bot)")
             return
 
@@ -695,7 +693,7 @@ class Reviewer:
             return
 
         # Self-loop prevention: ignore bot's own replies
-        if comment.author.name == self.bitbucket.bot_username or NOERGLER_MARKER in comment.text:
+        if comment.author.name == self.bitbucket.bot_username:
             logger.debug("Feedback skipped: reply is from bot")
             return
 
@@ -786,7 +784,6 @@ class Reviewer:
     @staticmethod
     def _build_opt_out_branch_summary(keyword: str, branch: str) -> str:
         return (
-            f"{NOERGLER_MARKER}\n"
             "### Review skipped — opt-out keyword in branch name 🛑\n\n"
             f"The source branch `{branch}` contains the opt-out keyword "
             f"`{keyword}`, so the auto-review was skipped. No LLM or Jira "
@@ -804,7 +801,6 @@ class Reviewer:
     @staticmethod
     def _build_agents_md_missing_summary() -> str:
         return (
-            f"{NOERGLER_MARKER}\n"
             "### Review skipped — no `AGENTS.md` found 🛑\n\n"
             "This repository has no `AGENTS.md` on the PR branch or the target branch. "
             "Project-specific review guidelines are **vital** for producing targeted, "

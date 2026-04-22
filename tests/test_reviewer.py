@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.bitbucket import NOERGLER_MARKER
 from app.config import ReviewConfig
 from app.llm_client import LLMClient, FileReviewData
 from app.jira import JiraTicket
@@ -354,7 +353,6 @@ class TestReviewer:
         summary = Reviewer._build_agents_md_missing_summary()
         assert "AGENTS.md" in summary
         assert "REVIEW_REQUIRE_AGENTS_MD" in summary
-        assert NOERGLER_MARKER in summary
 
     @pytest.mark.asyncio
     async def test_review_skipped_when_branch_contains_opt_out_keyword(self, mock_bitbucket, mock_llm):
@@ -405,7 +403,6 @@ class TestReviewer:
         assert "noergloff" in summary
         assert "feature/x-noergloff" in summary
         assert "REVIEW_OPT_OUT_BRANCH_KEYWORD" in summary
-        assert NOERGLER_MARKER in summary
 
     @pytest.mark.asyncio
     async def test_content_fetch_failure_falls_back_to_diff_only(self, mock_bitbucket, mock_llm):
@@ -804,9 +801,10 @@ class TestSortAndLimit:
             {
                 "id": 88,
                 "version": 1,
-                "text": f"**Suggestion:** bug\n\n{NOERGLER_MARKER}",
+                "text": "**Suggestion:** bug",
                 "path": "a.py",
                 "line": 10,
+                "author_slug": "noergler",
             },
         ]
         rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
@@ -1432,7 +1430,7 @@ class TestHandleFeedback:
     @pytest.mark.asyncio
     async def test_positive_feedback_ignored(self, mock_bitbucket, mock_llm):
         mock_bitbucket.fetch_pr_comments.return_value = [
-            {"id": 10, "text": f"Bug here\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 5, "parent_id": None},
+            {"id": 10, "text": "Bug here", "path": "a.py", "line": 5, "parent_id": None, "author_slug": "noergler"},
         ]
         mock_bitbucket.add_comment_reaction = AsyncMock(return_value=True)
 
@@ -1445,7 +1443,7 @@ class TestHandleFeedback:
     @pytest.mark.asyncio
     async def test_non_disagree_negative_text_ignored(self, mock_bitbucket, mock_llm):
         mock_bitbucket.fetch_pr_comments.return_value = [
-            {"id": 10, "text": f"Bug here\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 5, "parent_id": None},
+            {"id": 10, "text": "Bug here", "path": "a.py", "line": 5, "parent_id": None, "author_slug": "noergler"},
         ]
         mock_bitbucket.add_comment_reaction = AsyncMock(return_value=True)
 
@@ -1526,7 +1524,7 @@ class TestHandleFeedback:
     async def test_ignores_bot_own_reply(self, mock_bitbucket, mock_llm):
         rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
         payload = _make_feedback_payload(
-            f"👀 Feedback noted, thanks!\n\n{NOERGLER_MARKER}", parent_id=10
+            "👀 Feedback noted, thanks!", parent_id=10, author="noergler",
         )
         await rev.handle_feedback(payload)
 
@@ -1536,7 +1534,7 @@ class TestHandleFeedback:
     @pytest.mark.asyncio
     async def test_ignores_reply_to_summary_comment(self, mock_bitbucket, mock_llm):
         mock_bitbucket.fetch_pr_comments.return_value = [
-            {"id": 10, "text": f"Summary\n\n{NOERGLER_MARKER}", "path": None, "line": None, "parent_id": None},
+            {"id": 10, "text": "Summary", "path": None, "line": None, "parent_id": None, "author_slug": "noergler"},
         ]
         mock_bitbucket.add_comment_reaction = AsyncMock()
 
@@ -1552,12 +1550,12 @@ class TestHandlePrMerged:
     @pytest.mark.asyncio
     async def test_mixed_feedback(self, mock_bitbucket, mock_llm, caplog):
         mock_bitbucket.fetch_pr_comments.return_value = [
-            {"id": 10, "text": f"Bug\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 5, "parent_id": None},
-            {"id": 11, "text": f"Warning\n\n{NOERGLER_MARKER}", "path": "b.py", "line": 3, "parent_id": None},
-            {"id": 12, "text": f"Issue\n\n{NOERGLER_MARKER}", "path": "c.py", "line": 1, "parent_id": None},
-            {"id": 20, "text": "disagree", "path": None, "line": None, "parent_id": 10},
-            {"id": 21, "text": "I disagree with this", "path": None, "line": None, "parent_id": 11},
-            {"id": 22, "text": "+1", "path": None, "line": None, "parent_id": 12},
+            {"id": 10, "text": "Bug", "path": "a.py", "line": 5, "parent_id": None, "author_slug": "noergler"},
+            {"id": 11, "text": "Warning", "path": "b.py", "line": 3, "parent_id": None, "author_slug": "noergler"},
+            {"id": 12, "text": "Issue", "path": "c.py", "line": 1, "parent_id": None, "author_slug": "noergler"},
+            {"id": 20, "text": "disagree", "path": None, "line": None, "parent_id": 10, "author_slug": "dev"},
+            {"id": 21, "text": "I disagree with this", "path": None, "line": None, "parent_id": 11, "author_slug": "dev"},
+            {"id": 22, "text": "+1", "path": None, "line": None, "parent_id": 12, "author_slug": "dev"},
         ]
 
         rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
@@ -1587,9 +1585,9 @@ class TestHandlePrMerged:
     @pytest.mark.asyncio
     async def test_all_comments_useful(self, mock_bitbucket, mock_llm, caplog):
         mock_bitbucket.fetch_pr_comments.return_value = [
-            {"id": 10, "text": f"Bug\n\n{NOERGLER_MARKER}", "path": "a.py", "line": 5, "parent_id": None},
-            {"id": 11, "text": f"Warning\n\n{NOERGLER_MARKER}", "path": "b.py", "line": 3, "parent_id": None},
-            {"id": 20, "text": "+1 great catch", "path": None, "line": None, "parent_id": 10},
+            {"id": 10, "text": "Bug", "path": "a.py", "line": 5, "parent_id": None, "author_slug": "noergler"},
+            {"id": 11, "text": "Warning", "path": "b.py", "line": 3, "parent_id": None, "author_slug": "noergler"},
+            {"id": 20, "text": "+1 great catch", "path": None, "line": None, "parent_id": 10, "author_slug": "dev"},
         ]
 
         rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())

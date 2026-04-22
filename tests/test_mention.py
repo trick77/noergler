@@ -2,7 +2,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.bitbucket import NOERGLER_MARKER
 from app.config import ReviewConfig
 from app.jira import JiraTicket
 from app.models import WebhookPayload
@@ -107,7 +106,7 @@ class TestHandleMention:
 
     @pytest.mark.asyncio
     async def test_self_loop_ignored(self, reviewer, mock_bitbucket, mock_llm):
-        payload = _make_mention_payload(f"@noergler some text\n\n{NOERGLER_MARKER}")
+        payload = _make_mention_payload("@noergler some text", author="noergler")
         await reviewer.handle_mention(payload)
 
         mock_llm.answer_question.assert_not_called()
