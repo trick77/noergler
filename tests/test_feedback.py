@@ -1,4 +1,4 @@
-from app.feedback import _FUN_RESPONSES, classify_feedback, is_disagreed, random_response
+from app.feedback import classify_feedback, disagree_response, is_disagreed
 
 
 class TestIsDisagreed:
@@ -44,7 +44,9 @@ class TestClassifyFeedback:
         assert classify_feedback("I'll fix this") == "positive"
 
 
-class TestRandomResponse:
-    def test_returns_from_list(self):
-        for _ in range(20):
-            assert random_response() in _FUN_RESPONSES
+class TestDisagreeResponse:
+    def test_mentions_quality_metric(self):
+        response = disagree_response()
+        assert response
+        assert "review-quality metric" in response
+        assert "disagree" in response.lower()

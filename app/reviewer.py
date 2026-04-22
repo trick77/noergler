@@ -7,7 +7,7 @@ from pathlib import PurePosixPath
 
 from app.bitbucket import BitbucketClient
 from app.db import repository
-from app.feedback import classify_feedback, random_response
+from app.feedback import classify_feedback, disagree_response
 from app.llm_client import (
     LLMClient,
     FileReviewData,
@@ -748,7 +748,7 @@ class Reviewer:
             if not reacted:
                 await self.bitbucket.reply_to_comment(
                     project_key, repo_slug, pr.id, comment.id,
-                    random_response(),
+                    disagree_response(),
                 )
 
             # Persist feedback event

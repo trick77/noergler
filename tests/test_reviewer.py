@@ -1478,7 +1478,7 @@ class TestHandleFeedback:
 
     @pytest.mark.asyncio
     async def test_reaction_fallback_to_reply(self, mock_bitbucket, mock_llm, monkeypatch):
-        from app.feedback import _FUN_RESPONSES
+        from app.feedback import disagree_response
 
         monkeypatch.setattr(
             "app.reviewer.repository.get_finding_by_comment_id",
@@ -1491,7 +1491,7 @@ class TestHandleFeedback:
         await rev.handle_feedback(_make_feedback_payload("disagree", parent_id=10))
 
         mock_bitbucket.reply_to_comment.assert_called_once()
-        assert mock_bitbucket.reply_to_comment.call_args[0][4] in _FUN_RESPONSES
+        assert mock_bitbucket.reply_to_comment.call_args[0][4] == disagree_response()
 
     @pytest.mark.asyncio
     async def test_ignores_reply_to_non_noergler_comment(self, mock_bitbucket, mock_llm):
