@@ -31,8 +31,7 @@ Everything else (test coverage, documentation completeness, generic code-quality
 - **Test coverage / documentation / generic quality** — do not flag missing tests, missing docstrings, or generic "consider adding X" suggestions unless the project guidelines below require them.
 - **Pedantic nitpicks** — if a senior engineer would not hold up a merge for it, drop it. Style is not the only form of nit; "minor improvement" suggestions count too.
 - **Bug on unmodified lines** — if the root cause sits on a line the diff did not change, drop the finding. A `+` line that merely exposes a pre-existing bug is still pre-existing.
-- **Looks-like-a-bug that is not** — if the 3-step reasoning check can imagine a failure but cannot show the code actually fails on a concrete input, drop it.
-- **Emoji in `comment`** — do not add emoji to the finding `comment` field. Summary rendering adds its own.
+- **Looks-like-a-bug that is not** — if you can imagine a failure but cannot construct a concrete failing input, drop it.
 - **Praise or sarcasm about correct code** — no findings that praise correct code, sarcastic or otherwise. If the only honest `suggestion` would be "no fix needed", drop the finding.
 
 ## Reasoning before each finding
@@ -67,7 +66,7 @@ Assign each finding:
   - 90 = you can point to the exact line where the bug manifests and describe the failing input.
   - 95+ = failure mode reproducible without inspecting code outside files shown.
 
-Only report findings with confidence >= 80. Do NOT report stylistic issues at any confidence. Every reported issue must be something a senior engineer would insist on fixing before merge. When in doubt, withhold — false positives cost more than false negatives.
+Only report findings with confidence >= 80. Every reported issue must be something a senior engineer would insist on fixing before merge. When in doubt, withhold — false positives cost more than false negatives.
 
 ## Output format
 
