@@ -13,6 +13,7 @@ from app.copilot_auth import CopilotTokenProvider
 from app.db import close_pool, create_pool
 from app.llm_client import LLMClient
 from app.jira import JiraClient
+from app.metrics import router as metrics_router
 from app.models import WebhookPayload
 from app.review_queue import ReviewQueue
 from app.reviewer import Reviewer
@@ -134,6 +135,8 @@ async def lifespan(_app: FastAPI):
     )
     review_queue = ReviewQueue(reviewer.review_pull_request)
     review_queue.start()
+    _app.state.config = config
+    _app.state.db_pool = db_pool
     logger.info("Bridge service started, model=%s, api_url=%s", config.llm.model, config.llm.api_url)
 
     yield
@@ -147,6 +150,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Bitbucket PR Review Bridge", lifespan=lifespan)
+app.include_router(metrics_router)
 
 
 def _verify_webhook_signature(body: bytes, signature: str, secret: str) -> bool:
