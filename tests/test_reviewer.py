@@ -828,7 +828,7 @@ class TestSortAndLimit:
             ReviewFinding(file="b.py", line=2, severity="warning", comment="unused import"),
         ]
         summary = reviewer._build_summary(findings)
-        assert "- 1 potential security issue" in summary
+        assert "- of which 1 potential security issue" in summary
         assert "🔒" in summary
 
     def test_build_summary_no_security_section(self, reviewer):
@@ -844,7 +844,7 @@ class TestSortAndLimit:
             ReviewFinding(file="b.py", line=5, severity="warning", comment="XSS vulnerability in template"),
         ]
         summary = reviewer._build_summary(findings)
-        assert "- 2 potential security issues" in summary
+        assert "- of which 2 potential security issues" in summary
         assert "🔒" in summary
 
     def test_build_summary_with_change_summary(self, reviewer):
