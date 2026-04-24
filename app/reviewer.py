@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import time
+from datetime import datetime, timezone
 from pathlib import PurePosixPath
 
 from app.bitbucket import BitbucketClient
@@ -36,6 +37,12 @@ def _fmt_k(n: int) -> str:
     if n >= 1_000_000:
         return f"{n / 1_000_000:.1f}M".replace(".0M", "M")
     return f"{round(n / 1000)}k"
+
+
+def _epoch_ms_to_datetime(epoch_ms: int | None) -> datetime | None:
+    if epoch_ms is None:
+        return None
+    return datetime.fromtimestamp(epoch_ms / 1000, tz=timezone.utc)
 
 SEVERITY_ORDER = {"critical": 0, "important": 1}
 _REVIEW_KEYWORDS = {"review", "review this", "re-review", "rereview"}
@@ -229,6 +236,7 @@ class Reviewer:
                 return
 
             pr_tag = f"{project_key}/{repo_slug}#{pr_id}"
+            opened_at = _epoch_ms_to_datetime(pr.createdDate)
 
             if not skip_author_check and not self.is_auto_review_author(author_name):
                 logger.info(
@@ -249,6 +257,7 @@ class Reviewer:
                         last_reviewed_commit=pr.fromRef.latestCommit,
                         author=author_name,
                         pr_title=pr.title,
+                        opened_at=opened_at,
                     ),
                     fallback=None,
                 )
@@ -273,6 +282,7 @@ class Reviewer:
                         last_reviewed_commit=pr.fromRef.latestCommit,
                         author=author_name,
                         pr_title=pr.title,
+                        opened_at=opened_at,
                     ),
                     fallback=None,
                 )
@@ -442,6 +452,7 @@ class Reviewer:
                     last_reviewed_commit=source_commit,
                     author=author_name,
                     pr_title=pr.title,
+                    opened_at=opened_at,
                 ),
                 fallback=None,
             )
@@ -630,9 +641,9 @@ class Reviewer:
         pr_tag = f"{project_key}/{repo_slug}#{pr.id}"
 
         try:
-            # Delete PR review record (cascades to findings; stats/feedback retained)
+            # Mark PR as merged; data retained for metrics
             await _safe_db(
-                repository.delete_pr_review(self.db_pool, project_key, repo_slug, pr.id)
+                repository.mark_pr_merged(self.db_pool, project_key, repo_slug, pr.id)
             )
 
             comments = await self.bitbucket.fetch_pr_comments(project_key, repo_slug, pr.id)
@@ -677,18 +688,10 @@ class Reviewer:
 
         pr_tag = f"{project_key}/{repo_slug}#{pr.id}"
 
-        counts = await _safe_db(
-            repository.purge_pr_data(self.db_pool, project_key, repo_slug, pr.id),
-            fallback=None,
+        await _safe_db(
+            repository.mark_pr_deleted(self.db_pool, project_key, repo_slug, pr.id)
         )
-        if counts is None:
-            logger.error("Purge for deleted %s failed", pr_tag)
-            return
-        total = sum(counts.values())
-        if total:
-            logger.info("%s deleted — purged %d row(s): %s", pr_tag, total, counts)
-        else:
-            logger.info("%s deleted — no data to purge", pr_tag)
+        logger.info("%s deleted — marked, data retained", pr_tag)
 
     async def handle_feedback(self, payload: WebhookPayload) -> None:
         comment = payload.comment

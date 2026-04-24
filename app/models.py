@@ -34,6 +34,7 @@ class PullRequest(BaseModel):
     fromRef: PullRequestRef
     toRef: PullRequestRef
     author: PullRequestParticipant
+    createdDate: int | None = None  # Bitbucket epoch milliseconds
 
 
 class CommentParent(BaseModel):
