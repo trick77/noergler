@@ -178,7 +178,7 @@ class TestBitbucketClient:
         ).mock(return_value=httpx.Response(201, json={"id": 1}))
 
         finding = ReviewFinding(
-            file="src/main.py", line=10, severity="warning", comment="Consider this"
+            file="src/main.py", line=10, severity="important", comment="Consider this"
         )
         await client.post_inline_comment("PROJ", "my-repo", 1, finding)
 

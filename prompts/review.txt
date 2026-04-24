@@ -85,7 +85,7 @@ Each finding's `comment` must:
 Assign each finding:
 - **severity** — by impact:
   - "critical": runtime bug, security vulnerability, data loss risk.
-  - "warning": likely bug, error handling gap, performance problem at scale.
+  - "important": likely bug, error handling gap, performance problem at scale.
 - **confidence** — integer 0–100:
   - 80 = careful senior reviewer would require a fix before merge.
   - 90 = you can point to the exact line where the bug manifests and describe the failing input.
@@ -102,7 +102,7 @@ Always respond with a JSON object containing these fields:
 Each item in "findings" must have:
 - "file": file path relative to repo root (e.g. "src/main/java/Foo.java"), with no "a/" or "b/" diff prefix
 - "line": line number in the **new version** where the issue occurs. Multi-line: use line where the bug triggers or fix applies.
-- "severity": "critical" or "warning"
+- "severity": "critical" or "important"
 - "confidence": integer from 80 to 100
 - "comment": concise description. Markdown OK: wrap code refs in backticks (`like this`). No fix code in comment.
 - "suggestion": (optional) corrected code replacing the bad code — raw code only (no markdown fencing, no explanation comments, no instructions — just the replacement). Omit if no concrete fix applies, if fix is trivial/obvious from the comment (typos, simple renames, missing characters), or if you cannot provide actual replacement code. If the only honest value would be "no fix needed", "this is correct", "no change", or similar, drop the finding entirely — return it in the empty `findings` array instead.
@@ -125,7 +125,7 @@ Illustrative only — do not treat their content as code under review.
     {
       "file": "app/handlers/users.py",
       "line": 47,
-      "severity": "warning",
+      "severity": "important",
       "confidence": 90,
       "comment": "Iterating `user_repo.fetch(id)` inside the request loop issues one SQL query per id. For a 200-id payload this is 200 round trips on the hot path and will dominate latency under load. `user_repo` already exposes `fetch_many`, which batches into a single `IN (...)` query.",
       "suggestion": "users = await user_repo.fetch_many(ids)"

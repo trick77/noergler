@@ -114,7 +114,7 @@ async def test_insert_finding_executes_insert():
         pr_review_id=1,
         file_path="src/foo.py",
         line_number=10,
-        severity="warning",
+        severity="important",
         comment_text="Fix this",
         suggestion=None,
         bitbucket_comment_id=77,
@@ -133,14 +133,14 @@ async def test_insert_finding_executes_insert():
 @pytest.mark.asyncio
 async def test_get_existing_finding_keys_returns_set():
     fake_rows = [
-        {"file_path": "a.py", "line_number": 1, "severity": "warning"},
+        {"file_path": "a.py", "line_number": 1, "severity": "important"},
         {"file_path": "b.py", "line_number": 2, "severity": "critical"},
     ]
     pool = _make_pool(fetch_return=fake_rows)
 
     result = await repository.get_existing_finding_keys(pool, "PROJ", "my-repo", 42)
 
-    assert result == {("a.py", 1, "warning"), ("b.py", 2, "critical")}
+    assert result == {("a.py", 1, "important"), ("b.py", 2, "critical")}
 
 
 @pytest.mark.asyncio
@@ -188,7 +188,7 @@ async def test_insert_review_stats_executes_insert_with_correct_param_count():
         files_reviewed=3,
         total_files=4,
         critical_count=1,
-        warning_count=2,
+        important_count=2,
         security_count=0,
         review_effort=15,
         prompt_tokens=1000,
@@ -275,7 +275,7 @@ async def test_insert_feedback_executes_insert():
         feedback_author="bob",
         classification="disagree",
         file_path="foo.py",
-        severity="warning",
+        severity="important",
     )
 
     pool._conn.execute.assert_awaited_once()

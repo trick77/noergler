@@ -9,7 +9,7 @@ from app.models import ReviewFinding
 
 logger = logging.getLogger(__name__)
 
-SEVERITY_EMOJI = {"critical": "❌", "warning": "⚠️"}
+SEVERITY_EMOJI = {"critical": "❌", "important": "⚠️"}
 
 
 class BitbucketClient:
