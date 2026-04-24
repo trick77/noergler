@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import asyncpg
 
 
@@ -9,22 +11,24 @@ async def upsert_pr_review(
     last_reviewed_commit: str | None = None,
     author: str | None = None,
     pr_title: str | None = None,
+    opened_at: datetime | None = None,
 ) -> int:
     """Insert or update PR review record. Returns the pr_review_id."""
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            INSERT INTO pr_reviews (project_key, repo_slug, pr_id, last_reviewed_commit, author, pr_title)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO pr_reviews (project_key, repo_slug, pr_id, last_reviewed_commit, author, pr_title, opened_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT (project_key, repo_slug, pr_id)
             DO UPDATE SET
                 last_reviewed_commit = EXCLUDED.last_reviewed_commit,
                 author = EXCLUDED.author,
                 pr_title = EXCLUDED.pr_title,
+                opened_at = COALESCE(pr_reviews.opened_at, EXCLUDED.opened_at),
                 updated_at = NOW()
             RETURNING id
             """,
-            project_key, repo_slug, pr_id, last_reviewed_commit, author, pr_title,
+            project_key, repo_slug, pr_id, last_reviewed_commit, author, pr_title, opened_at,
         )
         return row["id"]
 
@@ -34,7 +38,11 @@ async def get_last_reviewed_commit(
 ) -> str | None:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT last_reviewed_commit FROM pr_reviews WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3",
+            """
+            SELECT last_reviewed_commit FROM pr_reviews
+            WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
+              AND merged_at IS NULL AND deleted_at IS NULL
+            """,
             project_key, repo_slug, pr_id,
         )
         return row["last_reviewed_commit"] if row else None
@@ -73,12 +81,30 @@ async def get_summary_comment_info(
         return None
 
 
-async def delete_pr_review(
+async def mark_pr_merged(
     pool: asyncpg.Pool, project_key: str, repo_slug: str, pr_id: int
 ) -> None:
     async with pool.acquire() as conn:
         await conn.execute(
-            "DELETE FROM pr_reviews WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3",
+            """
+            UPDATE pr_reviews SET merged_at = NOW(), updated_at = NOW()
+            WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
+              AND merged_at IS NULL
+            """,
+            project_key, repo_slug, pr_id,
+        )
+
+
+async def mark_pr_deleted(
+    pool: asyncpg.Pool, project_key: str, repo_slug: str, pr_id: int
+) -> None:
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE pr_reviews SET deleted_at = NOW(), updated_at = NOW()
+            WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
+              AND deleted_at IS NULL
+            """,
             project_key, repo_slug, pr_id,
         )
 
@@ -118,6 +144,7 @@ async def get_existing_finding_keys(
             FROM review_findings f
             JOIN pr_reviews r ON f.pr_review_id = r.id
             WHERE r.project_key = $1 AND r.repo_slug = $2 AND r.pr_id = $3
+              AND r.merged_at IS NULL AND r.deleted_at IS NULL
             """,
             project_key, repo_slug, pr_id,
         )
@@ -187,43 +214,6 @@ async def insert_review_stats(
             cross_file_deps, skipped_files, content_skipped,
             findings_posted, findings_deduplicated,
         )
-
-
-async def purge_pr_data(
-    pool: asyncpg.Pool, project_key: str, repo_slug: str, pr_id: int
-) -> dict[str, int]:
-    """Delete review data for a PR (keeps review_statistics). Returns row counts per table."""
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            r1 = await conn.execute(
-                """
-                DELETE FROM review_findings
-                WHERE pr_review_id IN (
-                    SELECT id FROM pr_reviews
-                    WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
-                )
-                """,
-                project_key, repo_slug, pr_id,
-            )
-            r2 = await conn.execute(
-                "DELETE FROM pr_reviews WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3",
-                project_key, repo_slug, pr_id,
-            )
-            r3 = await conn.execute(
-                "DELETE FROM feedback_events WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3",
-                project_key, repo_slug, pr_id,
-            )
-        return {
-            "review_findings": _parse_delete_count(r1),
-            "pr_reviews": _parse_delete_count(r2),
-            "feedback_events": _parse_delete_count(r3),
-        }
-
-
-def _parse_delete_count(status: str) -> int:
-    """Extract row count from asyncpg command status like 'DELETE 3'."""
-    parts = status.split()
-    return int(parts[-1]) if parts else 0
 
 
 async def has_negative_feedback(
