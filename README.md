@@ -278,6 +278,23 @@ curl -H "X-API-Key: $METRICS_API_KEY" \
 
 Merged and deleted PR data is retained indefinitely so historical metrics remain stable; deleted PRs are excluded from every view by filter.
 
+### What these metrics tell you
+
+**`v_reviewer_precision` — reviewer quality, not code quality.** `1 - (disagreed findings / posted findings)` per repo × week. Rising precision = the LLM review is getting more useful; falling precision = more false positives or less patient developers. One loud dissenter cannot skew the number: disagrees are deduped per finding, so multiple humans piling on one false positive still count as one.
+
+**`v_lead_time` — DORA lead-time for changes.** `merged_at - opened_at` per merged PR. Classic velocity metric. Useful for trend dashboards and A/B-ing process changes (e.g. adding a branch-protection rule). Lead time depends heavily on PR size, review load, and CI — not just on the author.
+
+**`v_activity_weekly` — SPACE Activity, team-level.** PRs observed and review runs per author × week. Useful to spot vacation dips, onboarding ramps, load imbalance, and process-change effects. A high `review_runs / prs` ratio (churn) often signals scope-creep on individual PRs.
+
+**`v_cost_by_model` — LLM spend audit.** Tokens and runs per model × week. Operational metric for budget, capacity planning, and cost-per-PR estimates before switching models or scaling volume.
+
+### What these metrics cannot tell you
+
+- **Individual productivity.** SPACE and DORA are explicit: activity metrics are not for performance reviews. Rewarding high PR counts or lead-time wins invites Goodhart's Law (fragmented PRs, rushed reviews).
+- **Absolute code quality.** The LLM reviewer is the measurement instrument; a change in precision could reflect sharper prompts, calmer developers, or cleaner code — the signal can't separate them.
+- **Deployment frequency, change failure rate, MTTR.** Noergler sees PR events only — not deployments or incidents.
+- **Developer satisfaction.** No survey data is collected. Disagree-rate is a proxy for *review usefulness*, not happiness.
+
 ## Project structure
 
 ```
