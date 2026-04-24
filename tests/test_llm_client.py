@@ -114,7 +114,7 @@ class TestParseReviewResponse:
     def test_object_with_findings_and_compliance_requirements(self):
         content = json.dumps({
             "findings": [
-                {"file": "a.py", "line": 1, "severity": "warning", "comment": "test"}
+                {"file": "a.py", "line": 1, "severity": "important", "comment": "test"}
             ],
             "compliance_requirements": [
                 {"requirement": "Implement auth filter", "met": True},
@@ -194,7 +194,7 @@ class TestParseReviewResponse:
     def test_change_summary_missing_defaults_to_empty(self):
         content = json.dumps({
             "findings": [
-                {"file": "a.py", "line": 1, "severity": "warning", "comment": "test"}
+                {"file": "a.py", "line": 1, "severity": "important", "comment": "test"}
             ],
         })
         _, _, change_summary = _parse_review_response(content)
@@ -524,7 +524,7 @@ class TestLLMClient:
             {
                 "file": "src/main.py",
                 "line": 5,
-                "severity": "warning",
+                "severity": "important",
                 "comment": "Unused variable",
             }
         ])
@@ -541,7 +541,7 @@ class TestLLMClient:
             )]
             result = await client.review_diff(files)
             assert len(result.findings) == 1
-            assert result.findings[0].severity == "warning"
+            assert result.findings[0].severity == "important"
             assert result.review_effort == 1  # trivial: 1 file, 1 changed line
             assert result.chunk_count == 1
         finally:
@@ -829,8 +829,8 @@ class TestReviewFileGroup413Retry:
         ]
 
         call_count = 0
-        finding_a = {"file": "a.py", "line": 1, "severity": "warning", "comment": "ok"}
-        finding_d = {"file": "d.py", "line": 1, "severity": "warning", "comment": "ok"}
+        finding_a = {"file": "a.py", "line": 1, "severity": "important", "comment": "ok"}
+        finding_d = {"file": "d.py", "line": 1, "severity": "important", "comment": "ok"}
 
         async def mock_call_api(prompt: str):
             nonlocal call_count

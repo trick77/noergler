@@ -37,7 +37,7 @@ def _fmt_k(n: int) -> str:
         return f"{n / 1_000_000:.1f}M".replace(".0M", "M")
     return f"{round(n / 1000)}k"
 
-SEVERITY_ORDER = {"critical": 0, "warning": 1}
+SEVERITY_ORDER = {"critical": 0, "important": 1}
 _REVIEW_KEYWORDS = {"review", "review this", "re-review", "rereview"}
 _JIRA_TICKET_RE = re.compile(r'\b([A-Z]{2,10}-\d{1,7})\b')
 _SECURITY_KEYWORDS = re.compile(
@@ -510,7 +510,7 @@ class Reviewer:
             )
 
             # Persist review statistics
-            counts = {"critical": 0, "warning": 0}
+            counts = {"critical": 0, "important": 0}
             for f in findings:
                 counts[f.severity] = counts.get(f.severity, 0) + 1
             security_count = len([f for f in findings if _SECURITY_KEYWORDS.search(f.comment)])
@@ -528,7 +528,7 @@ class Reviewer:
                     files_reviewed=len(files),
                     total_files=total_files + len(deleted_paths) + len(renamed_paths),
                     critical_count=counts.get("critical", 0),
-                    warning_count=counts.get("warning", 0),
+                    important_count=counts.get("important", 0),
                     security_count=security_count,
                     review_effort=llm_result.review_effort,
                     prompt_tokens=llm_result.prompt_tokens,
@@ -959,23 +959,22 @@ class Reviewer:
                 for item in change_summary:
                     summary_lines.append(f"- {item}")
         else:
-            counts = {"critical": 0, "warning": 0}
+            counts = {"critical": 0, "important": 0}
             for f in findings:
                 counts[f.severity] = counts.get(f.severity, 0) + 1
 
             severity_parts = []
             if counts["critical"]:
                 severity_parts.append(f"{counts['critical']} critical ❌")
-            if counts["warning"]:
-                warning_word = "warning" if counts["warning"] == 1 else "warnings"
-                severity_parts.append(f"{counts['warning']} {warning_word} ⚠️")
+            if counts["important"]:
+                severity_parts.append(f"{counts['important']} important ⚠️")
             if severity_parts:
                 summary_lines.append("- " + " · ".join(severity_parts))
 
             security_findings = [f for f in findings if _SECURITY_KEYWORDS.search(f.comment)]
             if security_findings:
                 summary_lines.append(
-                    f"- {self._plural(len(security_findings), 'potential security issue')} 🔒 "
+                    f"- of which {self._plural(len(security_findings), 'potential security issue')} 🔒 "
                     "— review carefully"
                 )
 

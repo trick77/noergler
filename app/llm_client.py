@@ -74,7 +74,7 @@ _REVIEW_RESPONSE_SCHEMA: dict = {
                 "properties": {
                     "file": {"type": "string"},
                     "line": {"type": "integer"},
-                    "severity": {"type": "string", "enum": ["critical", "warning"]},
+                    "severity": {"type": "string", "enum": ["critical", "important"]},
                     "confidence": {"type": "integer", "minimum": 80, "maximum": 100},
                     "comment": {"type": "string"},
                     "suggestion": {"type": ["string", "null"]},
