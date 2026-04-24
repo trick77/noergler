@@ -262,12 +262,12 @@ Optional read-only HTTP API for exporting the four metric views into dashboards 
 
 Endpoints (all `GET`, all require the header, all require a `since` query param):
 
-| Path | Answers |
-|---|---|
-| `/metrics/reviewer-precision` | How useful is the LLM review? `1 - disagree_rate` per repo × week. Higher = better. |
-| `/metrics/lead-time` | DORA lead-time per merged PR (`merged_at - opened_at`). |
-| `/metrics/activity` | SPACE Activity: PRs and review runs per author × week. |
-| `/metrics/cost-by-model` | Token spend and run count per model × week. |
+| Path | Answers | Framework |
+|---|---|---|
+| `/metrics/reviewer-precision` | How useful is the LLM review? `1 - disagree_rate` per repo × week. Higher = better. | DX Core 4 — Effectiveness (proxy); SPACE — Performance |
+| `/metrics/lead-time` | Lead-time per merged PR (`merged_at - opened_at`). | DORA — Lead Time for Changes; DX Core 4 — Speed; SPACE — Efficiency/Flow |
+| `/metrics/activity` | PRs and review runs per author × week. | SPACE — Activity; DX Core 4 — Speed |
+| `/metrics/cost-by-model` | Token spend and run count per model × week. | Operational / FinOps (not in DORA/SPACE/DX Core 4) |
 
 Common query params: `since` (required, ISO 8601, inclusive lower bound on week or `merged_at`), `until` (optional, exclusive upper bound), `limit` (1–10 000, default 1 000). Endpoint-specific filters: `project_key`, `repo_slug`, `author`, `model`. All response bodies are `{"count": N, "rows": [...]}`.
 
