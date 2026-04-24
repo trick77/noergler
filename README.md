@@ -124,10 +124,12 @@ Both `postgresql://` and `postgres://` URI schemes are accepted.
 
 | Table | Purpose |
 |---|---|
-| `pr_reviews` | Tracks reviewed PRs, last reviewed commit, summary comment IDs |
+| `pr_reviews` | Tracks reviewed PRs, lifecycle timestamps (`opened_at` / `merged_at` / `deleted_at`), summary comment IDs. Rows are retained across merge and delete for metrics — never hard-deleted. |
 | `review_findings` | Individual code findings with file, line, severity, and Bitbucket comment ID |
-| `review_statistics` | Review metrics — token usage, finding counts, timing |
-| `feedback_events` | User feedback on review comments (agree/disagree) |
+| `review_statistics` | Per-review-run metrics — token usage, finding counts, timing |
+| `feedback_events` | Disagree reactions on review comments |
+
+Four read-only views expose derived metrics: `v_reviewer_precision`, `v_lead_time`, `v_activity_weekly`, `v_cost_by_model`. See the [Metrics API](#metrics-api).
 
 **Running migrations:**
 
@@ -250,11 +252,38 @@ If you're behind a corporate proxy with custom CA certificates, copy `.crt` or `
 GET /health → {"status": "ok"}
 ```
 
+## Metrics API
+
+Optional read-only HTTP API for exporting the four metric views into dashboards or ad-hoc analysis. Disabled by default — set `METRICS_API_KEY` to enable.
+
+| Env var | Description |
+|---|---|
+| `METRICS_API_KEY` | Shared secret sent by clients as the `X-API-Key` header. Empty (default) → endpoints return `503`. Wrong or missing → `401`. |
+
+Endpoints (all `GET`, all require the header, all require a `since` query param):
+
+| Path | Answers |
+|---|---|
+| `/metrics/reviewer-precision` | How useful is the LLM review? `1 - disagree_rate` per repo × week. Higher = better. |
+| `/metrics/lead-time` | DORA lead-time per merged PR (`merged_at - opened_at`). |
+| `/metrics/activity` | SPACE Activity: PRs and review runs per author × week. |
+| `/metrics/cost-by-model` | Token spend and run count per model × week. |
+
+Common query params: `since` (required, ISO 8601, inclusive lower bound on week or `merged_at`), `until` (optional, exclusive upper bound), `limit` (1–10 000, default 1 000). Endpoint-specific filters: `project_key`, `repo_slug`, `author`, `model`. All response bodies are `{"count": N, "rows": [...]}`.
+
+```bash
+curl -H "X-API-Key: $METRICS_API_KEY" \
+  "https://noergler.internal/metrics/reviewer-precision?since=2026-01-01T00:00:00Z&project_key=PROJ"
+```
+
+Merged and deleted PR data is retained indefinitely so historical metrics remain stable; deleted PRs are excluded from every view by filter.
+
 ## Project structure
 
 ```
 app/
-  main.py              # FastAPI app, /webhook and /health endpoints
+  main.py              # FastAPI app, /webhook, /health, /metrics endpoints
+  metrics.py           # Read-only /metrics API over the alembic 004 views
   reviewer.py          # Review orchestrator (diff → AI → comments)
   llm_client.py        # OpenAI SDK client for the configured LLM API, token-aware chunking
   context_expansion.py # Asymmetric & dynamic diff context expansion
