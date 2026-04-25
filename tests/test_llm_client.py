@@ -618,6 +618,74 @@ class TestLLMClient:
             await client.close()
 
 
+class TestReasoningEffort:
+    @pytest.mark.asyncio
+    async def test_reasoning_omitted_when_explicitly_none(self, review_config, token_provider):
+        cfg = LLMConfig(
+            model="gpt-5.3-codex",
+            oauth_token="test-oauth",
+            api_url="https://api.business.githubcopilot.com",
+            reasoning_effort=None,
+        )
+        mock_create = AsyncMock(return_value=_mock_completion("[]", 10, 5))
+        client = LLMClient(cfg, review_config, token_provider)
+        client.openai_client.responses.create = mock_create
+        try:
+            files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
+            await client.review_diff(files)
+            assert "reasoning" not in mock_create.call_args.kwargs
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_reasoning_defaults_to_high(self, llm_config, review_config, token_provider):
+        assert llm_config.reasoning_effort == "high"
+        mock_create = AsyncMock(return_value=_mock_completion("[]", 10, 5))
+        client = LLMClient(llm_config, review_config, token_provider)
+        client.openai_client.responses.create = mock_create
+        try:
+            files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
+            await client.review_diff(files)
+            assert mock_create.call_args.kwargs["reasoning"] == {"effort": "high"}
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_reasoning_passed_when_set(self, review_config, token_provider):
+        cfg = LLMConfig(
+            model="gpt-5.3-codex",
+            oauth_token="test-oauth",
+            api_url="https://api.business.githubcopilot.com",
+            reasoning_effort="high",
+        )
+        mock_create = AsyncMock(return_value=_mock_completion("[]", 10, 5))
+        client = LLMClient(cfg, review_config, token_provider)
+        client.openai_client.responses.create = mock_create
+        try:
+            files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
+            await client.review_diff(files)
+            assert mock_create.call_args.kwargs["reasoning"] == {"effort": "high"}
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_reasoning_passed_on_connectivity_ping(self, review_config, token_provider):
+        cfg = LLMConfig(
+            model="gpt-5.3-codex",
+            oauth_token="test-oauth",
+            api_url="https://api.business.githubcopilot.com",
+            reasoning_effort="low",
+        )
+        mock_create = AsyncMock(return_value=_mock_completion("ok", 5, 1))
+        client = LLMClient(cfg, review_config, token_provider)
+        client.openai_client.responses.create = mock_create
+        try:
+            await client.check_connectivity()
+            assert mock_create.call_args.kwargs["reasoning"] == {"effort": "low"}
+        finally:
+            await client.close()
+
+
 class TestRepoInstructionsInReviewPrompt:
     @pytest.mark.asyncio
     async def test_repo_instructions_replaced_in_review_prompt(self, llm_config, review_config, token_provider):

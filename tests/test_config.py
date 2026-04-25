@@ -1,5 +1,7 @@
 import logging
 
+import pytest
+
 from app.config import AppConfig, BitbucketConfig, LLMConfig, DatabaseConfig, JiraConfig, ReviewConfig, ServerConfig, load_config, log_config
 
 
@@ -38,7 +40,7 @@ def test_log_config_masks_secrets(caplog):
     assert "secret-bb-token" not in text
     assert "secret-webhook" not in text
     assert "ghp_secret123" not in text
-    assert text.count("***") == 5  # bb token, webhook secret, copilot oauth token, jira token, database url
+    assert text.count("***") == 6  # bb token, webhook secret, copilot oauth token, jira token, database url, analytics api key
 
     # Non-secret fields must appear as-is
     assert "https://bitbucket.example.com" in text
@@ -126,6 +128,51 @@ def test_ticket_compliance_check_default_from_env(monkeypatch):
 
 def test_opt_out_branch_keyword_default():
     assert ReviewConfig().opt_out_branch_keyword == "noergloff"
+
+
+def _base_env():
+    return {
+        "BITBUCKET_URL": "https://bb.example.com",
+        "BITBUCKET_TOKEN": "tok",
+        "BITBUCKET_WEBHOOK_SECRET": "sec",
+        "BITBUCKET_USERNAME": "bot",
+        "COPILOT_OAUTH_TOKEN": "ghp_tok",
+        "JIRA_URL": "https://jira.example.com",
+        "JIRA_TOKEN": "jira-tok",
+        "DATABASE_URL": "postgresql://u:p@localhost/db",
+    }
+
+
+def test_reasoning_effort_default_high(monkeypatch):
+    for k, v in _base_env().items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.delenv("COPILOT_REASONING_EFFORT", raising=False)
+    config = load_config()
+    assert config.llm.reasoning_effort == "high"
+
+
+def test_reasoning_effort_valid_from_env(monkeypatch):
+    env = _base_env() | {"COPILOT_REASONING_EFFORT": "HIGH"}
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    config = load_config()
+    assert config.llm.reasoning_effort == "high"
+
+
+def test_reasoning_effort_empty_string_uses_default(monkeypatch):
+    env = _base_env() | {"COPILOT_REASONING_EFFORT": ""}
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    config = load_config()
+    assert config.llm.reasoning_effort == "high"
+
+
+def test_reasoning_effort_invalid_rejected(monkeypatch):
+    env = _base_env() | {"COPILOT_REASONING_EFFORT": "extreme"}
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    with pytest.raises(Exception):
+        load_config()
 
 
 def test_opt_out_branch_keyword_from_env(monkeypatch):

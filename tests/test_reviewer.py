@@ -247,6 +247,7 @@ def _make_review_result(findings=None, skipped_files=None, review_effort=1):
 def mock_llm():
     client = AsyncMock()
     client.config.model = "gpt-5.3-codex"
+    client.config.reasoning_effort = None
     client.max_tokens_per_chunk = 80000
     client.context_window = 1_000_000
     client.prompt_template = "Review these files:\n{files}\n{repo_instructions}"
@@ -1715,6 +1716,7 @@ class TestIncrementalReview:
     def mock_llm(self):
         client = AsyncMock()
         client.config.model = "gpt-5.3-codex"
+        client.config.reasoning_effort = None
         client.max_tokens_per_chunk = 80000
         client.context_window = 1_000_000
         client.prompt_template = "Review these files:\n{files}\n{repo_instructions}"

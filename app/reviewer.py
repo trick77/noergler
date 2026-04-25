@@ -19,7 +19,7 @@ from app.llm_client import (
     is_reviewable_diff,
     split_by_file,
 )
-from app.config import ReviewConfig, ServerConfig
+from app.config import ReviewConfig, ServerConfig, model_label
 from app.context_expansion import expand_all_files
 from app.cross_file_context import build_cross_file_context, render_cross_file_context
 from app.diff_compression import compress_for_large_pr, is_small_pr
@@ -544,7 +544,7 @@ class Reviewer:
                     review_effort=llm_result.review_effort,
                     prompt_tokens=llm_result.prompt_tokens,
                     completion_tokens=llm_result.completion_tokens,
-                    model_name=self.llm.config.model,
+                    model_name=model_label(self.llm.config.model, self.llm.config.reasoning_effort),
                     elapsed_seconds=elapsed,
                     cross_file_deps=len(cross_file_rels) if cross_file_rels else 0,
                     skipped_files=len(llm_result.skipped_files),
@@ -1143,7 +1143,7 @@ class Reviewer:
                     f"~{_fmt(r)} AGENTS.md · ~{_fmt(f)} file content"
                 )
             prompt_t, completion_t = token_usage
-            model = self.llm.config.model
+            model = model_label(self.llm.config.model, self.llm.config.reasoning_effort)
             total = prompt_t + completion_t
             stats = (
                 f"Model: `{model}` · {_fmt(prompt_t)}↑ {_fmt(completion_t)}↓ "
