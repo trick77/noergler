@@ -1,10 +1,19 @@
-"""Metric views over retained PR review data
+"""Metrics: rename warning_count, add PR lifecycle timestamps, create metric views
 
-Revision ID: 004
-Revises: 003
-Create Date: 2026-04-24
+Revision ID: 002
+Revises: 001
+Create Date: 2026-04-25
 
-Four views, one question each:
+Consolidates three previously-separate revisions (warning rename, lifecycle
+timestamps, metric views) into one. None of them ever ran against the
+production database, so no downstream migration depended on the intermediate
+states.
+
+Schema changes:
+    - review_statistics.warning_count -> important_count
+    - review_findings.severity: backfill 'warning' -> 'important'
+    - pr_reviews: add opened_at / merged_at / deleted_at + lifecycle index
+Views (one question each):
     v_reviewer_precision  — how useful is the LLM review?        (higher = better)
     v_lead_time           — DORA lead-time for changes
     v_activity_weekly     — SPACE Activity: PRs / runs per author per week
@@ -14,14 +23,26 @@ from typing import Sequence, Union
 
 from alembic import op
 
-revision: str = "004"
-down_revision: Union[str, None] = "003"
+revision: str = "002"
+down_revision: Union[str, None] = "001"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Reviewer precision = 1 - disagree_rate. Positive framing.
+    # --- review_statistics: rename warning_count -> important_count ---
+    op.execute("ALTER TABLE review_statistics RENAME COLUMN warning_count TO important_count")
+
+    # --- review_findings: backfill historical severity strings to match new naming ---
+    op.execute("UPDATE review_findings SET severity = 'important' WHERE severity = 'warning'")
+
+    # --- pr_reviews: add lifecycle timestamps + supporting index ---
+    op.execute("ALTER TABLE pr_reviews ADD COLUMN opened_at TIMESTAMPTZ")
+    op.execute("ALTER TABLE pr_reviews ADD COLUMN merged_at TIMESTAMPTZ")
+    op.execute("ALTER TABLE pr_reviews ADD COLUMN deleted_at TIMESTAMPTZ")
+    op.execute("CREATE INDEX idx_pr_reviews_lifecycle ON pr_reviews (merged_at, deleted_at)")
+
+    # --- Reviewer precision = 1 - disagree_rate. Positive framing.
     # Both sides bucket by review_findings.created_at so a finding posted
     # in week N and disagreed in week N+1 lands in the same row (the
     # posting week). Otherwise a quiet week with old findings still being
@@ -138,3 +159,9 @@ def downgrade() -> None:
     op.execute("DROP VIEW IF EXISTS v_cost_by_model")
     op.execute("DROP VIEW IF EXISTS v_activity_weekly")
     op.execute("DROP VIEW IF EXISTS v_reviewer_precision")
+    op.execute("DROP INDEX IF EXISTS idx_pr_reviews_lifecycle")
+    op.execute("ALTER TABLE pr_reviews DROP COLUMN IF EXISTS deleted_at")
+    op.execute("ALTER TABLE pr_reviews DROP COLUMN IF EXISTS merged_at")
+    op.execute("ALTER TABLE pr_reviews DROP COLUMN IF EXISTS opened_at")
+    op.execute("UPDATE review_findings SET severity = 'warning' WHERE severity = 'important'")
+    op.execute("ALTER TABLE review_statistics RENAME COLUMN important_count TO warning_count")
