@@ -544,7 +544,11 @@ class Reviewer:
                     review_effort=llm_result.review_effort,
                     prompt_tokens=llm_result.prompt_tokens,
                     completion_tokens=llm_result.completion_tokens,
-                    model_name=self.llm.config.model,
+                    model_name=(
+                        f"{self.llm.config.model} ({self.llm.config.reasoning_effort})"
+                        if self.llm.config.reasoning_effort
+                        else self.llm.config.model
+                    ),
                     elapsed_seconds=elapsed,
                     cross_file_deps=len(cross_file_rels) if cross_file_rels else 0,
                     skipped_files=len(llm_result.skipped_files),
