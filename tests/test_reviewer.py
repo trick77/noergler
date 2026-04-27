@@ -283,7 +283,7 @@ class TestReviewer:
 
         summary_text = mock_bitbucket.post_pr_comment.call_args[0][3]
         assert "### Review summary" in summary_text
-        assert "1 suggestion" in summary_text
+        assert "**Suggestion.**" in summary_text
 
     @pytest.mark.asyncio
     async def test_skip_disallowed_author(self, reviewer, mock_bitbucket, mock_llm):
@@ -318,7 +318,7 @@ class TestReviewer:
 
         mock_bitbucket.post_inline_comment.assert_not_called()
         summary_text = mock_bitbucket.post_pr_comment.call_args[0][3]
-        assert "No issues found" in summary_text
+        assert "✅" in summary_text  # one of CLEAN_REVIEW_MESSAGES
 
     @pytest.mark.asyncio
     async def test_review_skipped_when_agents_md_missing_and_required(self, mock_bitbucket, mock_llm):
@@ -469,15 +469,20 @@ class TestReviewer:
         ]
         summary = reviewer._build_summary(findings)
         assert "### Review summary" in summary
-        assert "1 issue" in summary
-        assert "1 suggestion" in summary
+        assert "**Top findings:**" in summary
+        assert "**Issue.** err" in summary
+        assert "**Suggestion.** warn" in summary
         assert "❌" not in summary
         assert "⚠️" not in summary
 
     def test_build_summary_empty(self, reviewer):
         summary = reviewer._build_summary([])
         assert "### Review summary" in summary
-        assert "- No issues found ✅" in summary
+        assert "✅" in summary
+        # The clean-PR message is randomly chosen from CLEAN_REVIEW_MESSAGES;
+        # any of them satisfies the contract: contain the green check, no failure emoji.
+        assert "❌" not in summary
+        assert "⚠️" not in summary
 
     @pytest.mark.asyncio
     async def test_review_real_webhook_payload(self, mock_bitbucket, mock_llm):
@@ -528,7 +533,7 @@ class TestSortAndLimit:
             ReviewFinding(file="b.py", line=2, severity="important", comment="warn"),
         ]
         summary = reviewer._build_summary(findings, truncated=True)
-        assert "1 issue" in summary
+        assert "**Top findings:**" in summary
         assert "Additional findings were omitted" in summary
 
     def test_build_summary_top_findings_under_limit(self, reviewer):
@@ -598,13 +603,13 @@ class TestSortAndLimit:
 
     def test_build_summary_no_findings_agents_md_not_found(self, reviewer):
         summary = reviewer._build_summary([], agents_md_found=False)
-        assert "- No issues found ✅" in summary
+        assert "✅" in summary
         assert "💡" in summary
         assert "Tip:" in summary
 
     def test_build_summary_no_findings_agents_md_found(self, reviewer):
         summary = reviewer._build_summary([], agents_md_found=True)
-        assert "- No issues found ✅" in summary
+        assert "✅" in summary
         assert "Using project-specific review guidelines" in summary
         assert "Tip:" not in summary
 
@@ -831,7 +836,7 @@ class TestSortAndLimit:
             ReviewFinding(file="b.py", line=2, severity="important", comment="unused import"),
         ]
         summary = reviewer._build_summary(findings)
-        assert "- of which 1 potential security issue" in summary
+        assert "1 potential security issue" in summary
         assert "🔒" in summary
 
     def test_build_summary_no_security_section(self, reviewer):
@@ -847,7 +852,7 @@ class TestSortAndLimit:
             ReviewFinding(file="b.py", line=5, severity="important", comment="XSS vulnerability in template"),
         ]
         summary = reviewer._build_summary(findings)
-        assert "- of which 2 potential security issues" in summary
+        assert "2 potential security issues" in summary
         assert "🔒" in summary
 
     def test_build_summary_with_change_summary(self, reviewer):
@@ -862,7 +867,8 @@ class TestSortAndLimit:
         summary = reviewer._build_summary([])
         assert "What changed" not in summary
 
-    def test_build_summary_what_changed_above_top_findings(self, reviewer):
+    def test_build_summary_top_findings_above_what_changed(self, reviewer):
+        """Findings are the news; What changed is context — findings render first."""
         findings = [
             ReviewFinding(file="a.py", line=1, severity="critical", comment="bug A"),
             ReviewFinding(file="b.py", line=2, severity="important", comment="issue B"),
@@ -870,15 +876,15 @@ class TestSortAndLimit:
         summary = reviewer._build_summary(
             findings, change_summary=["Added retry logic"]
         )
-        what_idx = summary.index("**What changed:**")
         top_idx = summary.index("**Top findings:**")
-        assert what_idx < top_idx
+        what_idx = summary.index("**What changed:**")
+        assert top_idx < what_idx
 
     def test_build_summary_what_changed_when_no_findings(self, reviewer):
         summary = reviewer._build_summary(
             [], change_summary=["Refactors X without behavior change"]
         )
-        assert "No issues found" in summary
+        assert "✅" in summary
         assert "**What changed:**" in summary
         assert "- Refactors X without behavior change" in summary
 

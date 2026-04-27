@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import random
 import re
 import time
 from datetime import datetime, timezone
@@ -46,6 +47,28 @@ def _epoch_ms_to_datetime(epoch_ms: int | None) -> datetime | None:
     return datetime.fromtimestamp(epoch_ms / 1000, tz=timezone.utc)
 
 SEVERITY_ORDER = {"critical": 0, "important": 1}
+
+CLEAN_REVIEW_MESSAGES = (
+    "No issues found ✅",
+    "Looks good to me ✅",
+    "LGTM ✅",
+    "Clean diff — nothing to flag ✅",
+    "All clear — ready when you are ✅",
+    "Nothing to nitpick — solid work ✅",
+    "Clean as a whistle ✅",
+    "Squeaky clean — ship it ✅",
+    "No bugs in sight ✅",
+    "Crisp and clean ✅",
+    "Looking sharp ✅",
+    "Smooth as butter ✅",
+    "Gold star material ⭐ ✅",
+    "All systems go ✅",
+)
+
+
+def _clean_review_message() -> str:
+    return random.choice(CLEAN_REVIEW_MESSAGES)
+
 # Hard ceiling for the cumulative-diff context, regardless of model. Beyond this
 # the LLM tends to drown the focused review in noise.
 MAX_CUMULATIVE_CONTEXT_TOKENS = 80_000
@@ -1027,29 +1050,12 @@ class Reviewer:
             summary_lines = ["### Review summary"]
 
         if not findings:
-            summary_lines.append("- No issues found ✅")
-            if change_summary:
-                summary_lines.append("")
-                summary_lines.append("**What changed:**")
-                for item in change_summary:
-                    summary_lines.append(f"- {item}")
+            summary_lines.append(f"- {_clean_review_message()}")
         else:
-            counts = {"critical": 0, "important": 0}
-            for f in findings:
-                counts[f.severity] = counts.get(f.severity, 0) + 1
-
-            severity_parts = []
-            if counts["critical"]:
-                severity_parts.append(self._plural(counts["critical"], "issue"))
-            if counts["important"]:
-                severity_parts.append(self._plural(counts["important"], "suggestion"))
-            if severity_parts:
-                summary_lines.append("- " + " · ".join(severity_parts))
-
             security_findings = [f for f in findings if _SECURITY_KEYWORDS.search(f.comment)]
             if security_findings:
                 summary_lines.append(
-                    f"- of which {self._plural(len(security_findings), 'potential security issue')} 🔒 "
+                    f"- {self._plural(len(security_findings), 'potential security issue')} 🔒 "
                     "— review carefully"
                 )
 
@@ -1058,12 +1064,6 @@ class Reviewer:
                     f"- Showing top {len(findings)} findings by severity. "
                     "Additional findings were omitted."
                 )
-
-            if change_summary:
-                summary_lines.append("")
-                summary_lines.append("**What changed:**")
-                for item in change_summary:
-                    summary_lines.append(f"- {item}")
 
             # Top-N one-liners (sorted by severity; `findings` is already sorted).
             top_limit = 5
@@ -1117,6 +1117,13 @@ class Reviewer:
                     mark = "✅" if r.get("met") else "❌"
                     ticket_lines.append(f"- {r.get('requirement', '???')} {mark}")
             sections.append("\n".join(ticket_lines))
+
+        # --- What changed (after compliance: findings/verdict are the news; this is context)
+        if change_summary:
+            change_lines = ["**What changed:**"]
+            for item in change_summary:
+                change_lines.append(f"- {item}")
+            sections.append("\n".join(change_lines))
 
         # --- Scope
         scope: list[str] = []
