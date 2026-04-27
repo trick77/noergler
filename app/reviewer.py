@@ -12,12 +12,12 @@ from app.feedback import classify_feedback, disagree_response
 from app.llm_client import (
     LLMClient,
     FileReviewData,
-    _render_previously_posted_findings,
     count_tokens,
     extract_path,
     format_file_entry,
     is_deleted,
     is_reviewable_diff,
+    render_previously_posted_findings,
     split_by_file,
 )
 from app.config import ReviewConfig, ServerConfig, model_label
@@ -65,11 +65,9 @@ MAX_PREVIOUSLY_POSTED_FINDINGS_TOKENS = 4_000
 
 
 def _previously_posted_findings_budget(max_tokens_per_chunk: int) -> int:
+    # ~5% of chunk budget: this block is cross-context, not the focus of review;
+    # keep it tight so the focused files dominate the prompt.
     return min(MAX_PREVIOUSLY_POSTED_FINDINGS_TOKENS, max(500, max_tokens_per_chunk // 20))
-
-
-def _preview_findings_block(findings: list[dict]) -> str:
-    return _render_previously_posted_findings(findings)
 _REVIEW_KEYWORDS = {"review", "review this", "re-review", "rereview"}
 _JIRA_TICKET_RE = re.compile(r'\b([A-Z]{2,10}-\d{1,7})\b')
 _SECURITY_KEYWORDS = re.compile(
@@ -388,7 +386,7 @@ class Reviewer:
                             "%s: cumulative PR diff %d tokens exceeds budget %d "
                             "(model context %s), dropping",
                             pr_tag, cum_tokens, cum_budget,
-                            getattr(self.llm, "context_window", None),
+                            self.llm.context_window,
                         )
                         cumulative_pr_diff = ""
             files, content_skipped = await self._prepare_files(
@@ -485,10 +483,13 @@ class Reviewer:
             # remain in `existing_keys` below, so post-hoc dedup is unaffected.
             findings_for_prompt = existing_findings[-MAX_PREVIOUSLY_POSTED_FINDINGS:]
             findings_budget = _previously_posted_findings_budget(self.llm.max_tokens_per_chunk)
+            # Drop oldest in chunks until rendered block fits the budget.
+            # Step is 25% of remaining count to avoid an O(n^2) re-render per item.
             while findings_for_prompt and count_tokens(
-                _preview_findings_block(findings_for_prompt)
+                render_previously_posted_findings(findings_for_prompt)
             ) > findings_budget:
-                findings_for_prompt = findings_for_prompt[1:]
+                drop = max(1, len(findings_for_prompt) // 4)
+                findings_for_prompt = findings_for_prompt[drop:]
 
             llm_result = await self.llm.review_diff(
                 files, repo_instructions,

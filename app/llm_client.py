@@ -447,7 +447,7 @@ def _render_cumulative_pr_diff(cumulative_pr_diff: str) -> str:
     )
 
 
-def _render_previously_posted_findings(findings: list[dict] | None) -> str:
+def render_previously_posted_findings(findings: list[dict] | None) -> str:
     if not findings:
         return ""
     lines: list[str] = []
@@ -630,7 +630,7 @@ class LLMClient:
         )
         template = template.replace(
             "{previously_posted_findings}",
-            _render_previously_posted_findings(previously_posted_findings),
+            render_previously_posted_findings(previously_posted_findings),
         )
 
         supplementary = _render_supplementary_context(
