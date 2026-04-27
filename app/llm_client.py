@@ -428,6 +428,51 @@ def _render_supplementary_context(
     return "\n\n".join(sections)
 
 
+def _render_cumulative_pr_diff(cumulative_pr_diff: str) -> str:
+    if not cumulative_pr_diff.strip():
+        return ""
+    return (
+        "## Cumulative PR diff (cross-file context only)\n"
+        "\n"
+        "The diff below is the **entire PR** as it currently stands. "
+        "Use it ONLY to verify cross-file invariants (e.g. that a renamed entity field "
+        "also has its repository methods/queries renamed elsewhere in the PR). "
+        "DO NOT raise findings about lines that are not in the focused review files below. "
+        "Treat any change shown only in this cumulative diff (and not in the focused files) "
+        "as already-resolved context — the focused review files are the sole subject of review.\n"
+        "\n"
+        "<cumulative_pr_diff>\n"
+        f"{cumulative_pr_diff}\n"
+        "</cumulative_pr_diff>"
+    )
+
+
+def render_previously_posted_findings(findings: list[dict] | None) -> str:
+    if not findings:
+        return ""
+    lines: list[str] = []
+    for f in findings:
+        path = f.get("file_path") or "<unknown>"
+        line = f.get("line_number")
+        sev = f.get("severity") or "important"
+        text = (f.get("comment_text") or "").strip().replace("\n", " ")
+        if len(text) > 300:
+            text = text[:297] + "..."
+        loc = f"{path}:{line}" if line is not None else path
+        lines.append(f"- {loc} [{sev}] {text}")
+    body = "\n".join(lines)
+    return (
+        "## Already-posted findings on this PR\n"
+        "\n"
+        "Previous reviews already posted the findings below on this PR. "
+        "DO NOT re-raise the same issue (same file + same logical problem), "
+        "even if line numbers have shifted because of new commits. "
+        "Only flag genuinely new issues introduced by the focused diff.\n"
+        "\n"
+        f"{body}"
+    )
+
+
 COMPLIANCE_INSTRUCTIONS = (
     "If ticket context is provided above, evaluate whether the code changes align with the ticket's requirements.\n"
     "\n"
@@ -569,6 +614,8 @@ class LLMClient:
         ticket_context: str = "",
         ticket_compliance_check: bool = True,
         cross_file_context: str = "",
+        cumulative_pr_diff: str = "",
+        previously_posted_findings: list[dict] | None = None,
     ) -> "LLMClient.ReviewResult":
         template = self.prompt_template.replace("{repo_instructions}", repo_instructions)
         template = template.replace("{ticket_context}", ticket_context or "No ticket context provided.")
@@ -577,6 +624,14 @@ class LLMClient:
             template = template.replace("{compliance_instructions}", COMPLIANCE_INSTRUCTIONS)
         else:
             template = template.replace("{compliance_instructions}", "")
+
+        template = template.replace(
+            "{cumulative_pr_diff}", _render_cumulative_pr_diff(cumulative_pr_diff)
+        )
+        template = template.replace(
+            "{previously_posted_findings}",
+            render_previously_posted_findings(previously_posted_findings),
+        )
 
         supplementary = _render_supplementary_context(
             other_modified_paths, deleted_file_paths, renamed_file_paths,

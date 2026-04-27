@@ -151,6 +151,33 @@ async def get_existing_finding_keys(
         return {(row["file_path"], row["line_number"], row["severity"]) for row in rows}
 
 
+async def get_existing_findings_for_prompt(
+    pool: asyncpg.Pool, project_key: str, repo_slug: str, pr_id: int
+) -> list[dict]:
+    """Return previously posted findings on this PR for inclusion in the review prompt."""
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT f.file_path, f.line_number, f.severity, f.comment_text, f.id
+            FROM review_findings f
+            JOIN pr_reviews r ON f.pr_review_id = r.id
+            WHERE r.project_key = $1 AND r.repo_slug = $2 AND r.pr_id = $3
+              AND r.merged_at IS NULL AND r.deleted_at IS NULL
+            ORDER BY f.id ASC
+            """,
+            project_key, repo_slug, pr_id,
+        )
+        return [
+            {
+                "file_path": row["file_path"],
+                "line_number": row["line_number"],
+                "severity": row["severity"],
+                "comment_text": row["comment_text"],
+            }
+            for row in rows
+        ]
+
+
 async def get_finding_by_comment_id(
     pool: asyncpg.Pool, bitbucket_comment_id: int
 ) -> dict | None:

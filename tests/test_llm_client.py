@@ -723,6 +723,74 @@ class TestRepoInstructionsInReviewPrompt:
             await client.close()
 
 
+class TestCumulativeDiffAndPostedFindingsInPrompt:
+    @pytest.mark.asyncio
+    async def test_cumulative_pr_diff_rendered_when_provided(self, llm_config, review_config, token_provider):
+        mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
+        client = LLMClient(llm_config, review_config, token_provider)
+        client.openai_client.responses.create = mock_create
+        try:
+            files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
+            await client.review_diff(
+                files,
+                cumulative_pr_diff="diff --git a/Foo.java b/Foo.java\n-old\n+new\n",
+            )
+            prompt = _user_text_from_responses_call(mock_create)
+            assert "{cumulative_pr_diff}" not in prompt
+            assert "Cumulative PR diff" in prompt
+            assert "diff --git a/Foo.java b/Foo.java" in prompt
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_cumulative_pr_diff_placeholder_cleared_when_empty(self, llm_config, review_config, token_provider):
+        mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
+        client = LLMClient(llm_config, review_config, token_provider)
+        client.openai_client.responses.create = mock_create
+        try:
+            files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
+            await client.review_diff(files)
+            prompt = _user_text_from_responses_call(mock_create)
+            assert "{cumulative_pr_diff}" not in prompt
+            assert "Cumulative PR diff" not in prompt
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_previously_posted_findings_rendered_when_provided(self, llm_config, review_config, token_provider):
+        mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
+        client = LLMClient(llm_config, review_config, token_provider)
+        client.openai_client.responses.create = mock_create
+        try:
+            files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
+            findings = [
+                {"file_path": "src/Foo.java", "line_number": 11, "severity": "critical",
+                 "comment_text": "PropertyReferenceException risk"},
+            ]
+            await client.review_diff(files, previously_posted_findings=findings)
+            prompt = _user_text_from_responses_call(mock_create)
+            assert "{previously_posted_findings}" not in prompt
+            assert "Already-posted findings" in prompt
+            assert "src/Foo.java:11" in prompt
+            assert "PropertyReferenceException" in prompt
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_previously_posted_findings_placeholder_cleared_when_empty(self, llm_config, review_config, token_provider):
+        mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
+        client = LLMClient(llm_config, review_config, token_provider)
+        client.openai_client.responses.create = mock_create
+        try:
+            files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
+            await client.review_diff(files, previously_posted_findings=None)
+            prompt = _user_text_from_responses_call(mock_create)
+            assert "{previously_posted_findings}" not in prompt
+            assert "Already-posted findings" not in prompt
+        finally:
+            await client.close()
+
+
 class TestComplianceInstructions:
     @pytest.mark.asyncio
     async def test_compliance_instructions_included_when_enabled_with_ticket(self, llm_config, review_config, token_provider):

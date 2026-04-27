@@ -17,6 +17,7 @@ from app.llm_client import (
     format_file_entry,
     is_deleted,
     is_reviewable_diff,
+    render_previously_posted_findings,
     split_by_file,
 )
 from app.config import ReviewConfig, ServerConfig, model_label
@@ -45,6 +46,28 @@ def _epoch_ms_to_datetime(epoch_ms: int | None) -> datetime | None:
     return datetime.fromtimestamp(epoch_ms / 1000, tz=timezone.utc)
 
 SEVERITY_ORDER = {"critical": 0, "important": 1}
+# Hard ceiling for the cumulative-diff context, regardless of model. Beyond this
+# the LLM tends to drown the focused review in noise.
+MAX_CUMULATIVE_CONTEXT_TOKENS = 80_000
+MAX_PREVIOUSLY_POSTED_FINDINGS = 50
+
+
+def _cumulative_diff_budget(max_tokens_per_chunk: int) -> int:
+    """Token budget for the cumulative PR diff. ~1/3 of the per-chunk budget so
+    the focused review files still fit, capped at the hard ceiling."""
+    return min(MAX_CUMULATIVE_CONTEXT_TOKENS, max(2_000, max_tokens_per_chunk // 3))
+
+
+# Previously-posted findings are bounded both by count and by rendered token size:
+# count guards prompt latency, tokens guard against a few very long comments
+# inflating the prompt unboundedly.
+MAX_PREVIOUSLY_POSTED_FINDINGS_TOKENS = 4_000
+
+
+def _previously_posted_findings_budget(max_tokens_per_chunk: int) -> int:
+    # ~5% of chunk budget: this block is cross-context, not the focus of review;
+    # keep it tight so the focused files dominate the prompt.
+    return min(MAX_PREVIOUSLY_POSTED_FINDINGS_TOKENS, max(500, max_tokens_per_chunk // 20))
 _REVIEW_KEYWORDS = {"review", "review this", "re-review", "rereview"}
 _JIRA_TICKET_RE = re.compile(r'\b([A-Z]{2,10}-\d{1,7})\b')
 _SECURITY_KEYWORDS = re.compile(
@@ -308,6 +331,7 @@ class Reviewer:
             is_incremental = False
             incremental_from: str | None = None
             diff: str = ""
+            cumulative_pr_diff: str = ""
 
             if payload.eventKey == "pr:from_ref_updated" and last_reviewed and source_commit:
                 try:
@@ -339,6 +363,32 @@ class Reviewer:
                 if not diff.strip():
                     logger.info("%s has empty diff, skipping", pr_tag)
                     return
+            else:
+                # Cumulative PR diff used as cross-file context so the LLM can verify
+                # invariants split across multiple commits (e.g. entity rename in commit 1,
+                # repository method rename in commit 2). Best-effort: a failure here must
+                # not block the incremental review.
+                try:
+                    cumulative_pr_diff = await self.bitbucket.fetch_pr_diff(
+                        project_key, repo_slug, pr_id, context_lines=0
+                    )
+                except Exception:
+                    logger.warning(
+                        "%s: failed to fetch cumulative PR diff for context",
+                        pr_tag, exc_info=True,
+                    )
+                    cumulative_pr_diff = ""
+                if cumulative_pr_diff:
+                    cum_budget = _cumulative_diff_budget(self.llm.max_tokens_per_chunk)
+                    cum_tokens = count_tokens(cumulative_pr_diff)
+                    if cum_tokens > cum_budget:
+                        logger.warning(
+                            "%s: cumulative PR diff %d tokens exceeds budget %d "
+                            "(model context %s), dropping",
+                            pr_tag, cum_tokens, cum_budget,
+                            self.llm.context_window,
+                        )
+                        cumulative_pr_diff = ""
             files, content_skipped = await self._prepare_files(
                 project_key, repo_slug, diff, source_commit, pr_tag
             )
@@ -420,6 +470,27 @@ class Reviewer:
                     )
                     logger.info("%s: linked Jira ticket %s", pr_tag, ticket_id)
 
+            # Load previously posted findings once: feed them to the LLM as
+            # "do not re-raise" context AND reuse for the post-hoc dedup below.
+            existing_findings = await _safe_db(
+                repository.get_existing_findings_for_prompt(
+                    self.db_pool, project_key, repo_slug, pr_id,
+                ),
+                fallback=[],
+            ) or []
+            # Tail = most recent (DB returns ORDER BY id ASC). On a long-lived PR
+            # with >MAX prior findings the oldest are dropped from the prompt but
+            # remain in `existing_keys` below, so post-hoc dedup is unaffected.
+            findings_for_prompt = existing_findings[-MAX_PREVIOUSLY_POSTED_FINDINGS:]
+            findings_budget = _previously_posted_findings_budget(self.llm.max_tokens_per_chunk)
+            # Drop oldest in chunks until rendered block fits the budget.
+            # Step is 25% of remaining count to avoid an O(n^2) re-render per item.
+            while findings_for_prompt and count_tokens(
+                render_previously_posted_findings(findings_for_prompt)
+            ) > findings_budget:
+                drop = max(1, len(findings_for_prompt) // 4)
+                findings_for_prompt = findings_for_prompt[drop:]
+
             llm_result = await self.llm.review_diff(
                 files, repo_instructions,
                 other_modified_paths=other_modified,
@@ -428,15 +499,16 @@ class Reviewer:
                 ticket_context=ticket_context,
                 ticket_compliance_check=self.review_config.ticket_compliance_check,
                 cross_file_context=cross_file_ctx,
+                cumulative_pr_diff=cumulative_pr_diff,
+                previously_posted_findings=findings_for_prompt,
             )
 
             # Deduplicate against existing findings in DB
             original_count = len(llm_result.findings)
-            existing_keys = await _safe_db(
-                repository.get_existing_finding_keys(self.db_pool, project_key, repo_slug, pr_id),
-                fallback=set(),
-            )
-            existing_keys = existing_keys or set()
+            existing_keys = {
+                (f["file_path"], f["line_number"], f["severity"])
+                for f in existing_findings
+            }
             findings = [
                 f for f in llm_result.findings
                 if (f.file, f.line, f.severity) not in existing_keys

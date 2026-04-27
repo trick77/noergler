@@ -1742,9 +1742,13 @@ class TestIncrementalReview:
         mock_bitbucket.fetch_commit_diff.assert_called_once_with(
             "PROJ", "my-repo", "aabbccdd1234", "abc123"
         )
-        # Should NOT have called fetch_pr_diff since incremental succeeded
-        mock_bitbucket.fetch_pr_diff.assert_not_called()
+        # fetch_pr_diff is now called once during incremental review to load
+        # the cumulative PR diff as cross-file context.
+        mock_bitbucket.fetch_pr_diff.assert_called_once()
         mock_llm.review_diff.assert_called_once()
+        kwargs = mock_llm.review_diff.call_args.kwargs
+        assert kwargs.get("cumulative_pr_diff"), \
+            "incremental review should pass non-empty cumulative_pr_diff"
 
     @pytest.mark.asyncio
     async def test_full_review_when_no_last_reviewed_commit(self, mock_bitbucket, mock_llm, monkeypatch):
@@ -1815,6 +1819,156 @@ class TestIncrementalReview:
 
         mock_bitbucket.fetch_commit_diff.assert_not_called()
         mock_bitbucket.fetch_pr_diff.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_incremental_review_proceeds_when_cumulative_fetch_fails(
+        self, mock_bitbucket, mock_llm, monkeypatch,
+    ):
+        """If the cumulative-diff fetch raises (e.g. Bitbucket flake), the incremental
+        review still completes with cumulative_pr_diff=''."""
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_last_reviewed_commit",
+            AsyncMock(return_value="aabbccdd1234"),
+        )
+        # First call to fetch_pr_diff (the cumulative fetch in incremental mode) raises.
+        mock_bitbucket.fetch_pr_diff.side_effect = Exception("boom")
+
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        payload = _make_payload()
+        payload.eventKey = "pr:from_ref_updated"
+
+        await rev.review_pull_request(payload)
+
+        mock_llm.review_diff.assert_called_once()
+        kwargs = mock_llm.review_diff.call_args.kwargs
+        assert kwargs.get("cumulative_pr_diff", "") == ""
+
+    @pytest.mark.asyncio
+    async def test_full_review_does_not_pass_cumulative_diff(self, mock_bitbucket, mock_llm, monkeypatch):
+        """Full (non-incremental) reviews must not pass cumulative_pr_diff — focused diff IS the PR."""
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_last_reviewed_commit",
+            AsyncMock(return_value=None),
+        )
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        payload = _make_payload()
+        payload.eventKey = "pr:opened"
+
+        await rev.review_pull_request(payload)
+
+        kwargs = mock_llm.review_diff.call_args.kwargs
+        assert kwargs.get("cumulative_pr_diff", "") == ""
+
+    @pytest.mark.asyncio
+    async def test_incremental_review_passes_previously_posted_findings(
+        self, mock_bitbucket, mock_llm, monkeypatch,
+    ):
+        """Previously posted findings on the PR are forwarded to the LLM as do-not-re-raise context."""
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_last_reviewed_commit",
+            AsyncMock(return_value="aabbccdd1234"),
+        )
+        prior = [
+            {"file_path": "src/Foo.java", "line_number": 11, "severity": "critical",
+             "comment_text": "PropertyReferenceException risk"},
+        ]
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_existing_findings_for_prompt",
+            AsyncMock(return_value=prior),
+        )
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        payload = _make_payload()
+        payload.eventKey = "pr:from_ref_updated"
+
+        await rev.review_pull_request(payload)
+
+        kwargs = mock_llm.review_diff.call_args.kwargs
+        assert kwargs.get("previously_posted_findings") == prior
+
+    @pytest.mark.asyncio
+    async def test_cumulative_diff_dropped_when_oversized(
+        self, mock_bitbucket, mock_llm, monkeypatch,
+    ):
+        """Cumulative diff exceeding the token budget is dropped (focused review still proceeds)."""
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_last_reviewed_commit",
+            AsyncMock(return_value="aabbccdd1234"),
+        )
+        monkeypatch.setattr("app.reviewer.MAX_CUMULATIVE_CONTEXT_TOKENS", 10)
+        mock_bitbucket.fetch_pr_diff.return_value = "diff line\n" * 5000  # well over 10 tokens
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        payload = _make_payload()
+        payload.eventKey = "pr:from_ref_updated"
+
+        await rev.review_pull_request(payload)
+
+        kwargs = mock_llm.review_diff.call_args.kwargs
+        assert kwargs.get("cumulative_pr_diff", "") == ""
+        mock_llm.review_diff.assert_called_once()  # review still happened
+
+    @pytest.mark.asyncio
+    async def test_previously_posted_findings_trimmed_when_oversized(
+        self, mock_bitbucket, mock_llm, monkeypatch,
+    ):
+        """When the rendered findings block exceeds budget, oldest are dropped from the prompt."""
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_last_reviewed_commit",
+            AsyncMock(return_value="aabbccdd1234"),
+        )
+        monkeypatch.setattr("app.reviewer.MAX_PREVIOUSLY_POSTED_FINDINGS_TOKENS", 50)
+        big_text = "x" * 280  # near the 300-char per-comment cap → ~70 tokens each
+        prior = [
+            {"file_path": f"src/F{i}.java", "line_number": i, "severity": "important",
+             "comment_text": big_text}
+            for i in range(20)
+        ]
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_existing_findings_for_prompt",
+            AsyncMock(return_value=prior),
+        )
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        payload = _make_payload()
+        payload.eventKey = "pr:from_ref_updated"
+
+        await rev.review_pull_request(payload)
+
+        forwarded = mock_llm.review_diff.call_args.kwargs.get("previously_posted_findings", [])
+        assert len(forwarded) < len(prior), \
+            "expected oversized findings block to be trimmed"
+        # Trim drops oldest first, so what survives must be a tail of the original.
+        assert forwarded == prior[len(prior) - len(forwarded):]
+
+    @pytest.mark.asyncio
+    async def test_dropped_findings_still_dedupe_post_hoc(
+        self, mock_bitbucket, mock_llm, monkeypatch,
+    ):
+        """Findings dropped from the prompt (token budget) still participate in
+        post-hoc dedup so the LLM cannot re-post them via Bitbucket."""
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_last_reviewed_commit",
+            AsyncMock(return_value="aabbccdd1234"),
+        )
+        # Force the entire findings block to be dropped from the prompt.
+        monkeypatch.setattr("app.reviewer.MAX_PREVIOUSLY_POSTED_FINDINGS_TOKENS", 1)
+        prior = [
+            {"file_path": "new.py", "line_number": 1, "severity": "important",
+             "comment_text": "Already-posted issue"},
+        ]
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_existing_findings_for_prompt",
+            AsyncMock(return_value=prior),
+        )
+        # mock_llm regenerates the same finding (file/line/severity match prior).
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        payload = _make_payload()
+        payload.eventKey = "pr:from_ref_updated"
+
+        await rev.review_pull_request(payload)
+
+        forwarded = mock_llm.review_diff.call_args.kwargs.get("previously_posted_findings", [])
+        assert forwarded == [], "with budget=1 the entire block must be dropped"
+        # But post-hoc dedup must still suppress the duplicate inline comment.
+        mock_bitbucket.post_inline_comment.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_summary_no_commit_metadata_in_comment(self, mock_bitbucket, mock_llm):
