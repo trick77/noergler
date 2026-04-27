@@ -283,7 +283,7 @@ class TestReviewer:
 
         summary_text = mock_bitbucket.post_pr_comment.call_args[0][3]
         assert "### Review summary" in summary_text
-        assert "1 important" in summary_text
+        assert "1 suggestion" in summary_text
 
     @pytest.mark.asyncio
     async def test_skip_disallowed_author(self, reviewer, mock_bitbucket, mock_llm):
@@ -469,8 +469,10 @@ class TestReviewer:
         ]
         summary = reviewer._build_summary(findings)
         assert "### Review summary" in summary
-        assert "1 critical ❌" in summary
-        assert "1 important ⚠️" in summary
+        assert "1 issue" in summary
+        assert "1 suggestion" in summary
+        assert "❌" not in summary
+        assert "⚠️" not in summary
 
     def test_build_summary_empty(self, reviewer):
         summary = reviewer._build_summary([])
@@ -526,7 +528,7 @@ class TestSortAndLimit:
             ReviewFinding(file="b.py", line=2, severity="important", comment="warn"),
         ]
         summary = reviewer._build_summary(findings, truncated=True)
-        assert "1 critical ❌" in summary
+        assert "1 issue" in summary
         assert "Additional findings were omitted" in summary
 
     def test_build_summary_top_findings_under_limit(self, reviewer):
@@ -536,8 +538,8 @@ class TestSortAndLimit:
         ]
         summary = reviewer._build_summary(findings)
         assert "**Top findings:**" in summary
-        assert "- ❌ Bad thing" in summary
-        assert "- ⚠️ Mild thing" in summary
+        assert "- **Issue.** Bad thing" in summary
+        assert "- **Suggestion.** Mild thing" in summary
         # File path / line number must not leak into the summary
         assert "a.py" not in summary
         assert "b.py" not in summary
@@ -551,8 +553,8 @@ class TestSortAndLimit:
         summary = reviewer._build_summary(findings)
         assert "**Top findings:**" in summary
         # Only first 5 rendered as one-liners
-        assert "- ❌ issue 0" in summary
-        assert "- ❌ issue 4" in summary
+        assert "- **Issue.** issue 0" in summary
+        assert "- **Issue.** issue 4" in summary
         assert "issue 5" not in summary
         assert "- …and 3 more" in summary
 

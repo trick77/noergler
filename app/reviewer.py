@@ -1040,9 +1040,9 @@ class Reviewer:
 
             severity_parts = []
             if counts["critical"]:
-                severity_parts.append(f"{counts['critical']} critical ❌")
+                severity_parts.append(self._plural(counts["critical"], "issue"))
             if counts["important"]:
-                severity_parts.append(f"{counts['important']} important ⚠️")
+                severity_parts.append(self._plural(counts["important"], "suggestion"))
             if severity_parts:
                 summary_lines.append("- " + " · ".join(severity_parts))
 
@@ -1072,9 +1072,9 @@ class Reviewer:
                 summary_lines.append("")
                 summary_lines.append("**Top findings:**")
                 for f in top:
-                    emoji = "❌" if f.severity == "critical" else "⚠️"
+                    label = "Issue" if f.severity == "critical" else "Suggestion"
                     first_line = f.comment.splitlines()[0].strip() if f.comment else ""
-                    summary_lines.append(f"- {emoji} {first_line}")
+                    summary_lines.append(f"- **{label}.** {first_line}")
                 if len(findings) > top_limit:
                     summary_lines.append(f"- …and {len(findings) - top_limit} more")
 
