@@ -1,5 +1,5 @@
 fastapi==0.136.1
-uvicorn==0.44.0
+uvicorn==0.46.0
 httpx==0.28.1
 openai==2.32.0
 pydantic==2.13.3
