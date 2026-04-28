@@ -22,6 +22,24 @@ class TestPricingFor:
         assert price is not None
         assert price.input_per_mtok == 3.00
 
+    def test_dated_suffix_prefers_longest_match(self):
+        # Regression: `gpt-5.4-mini-2025-06-01` must resolve to the mini
+        # entry, not the (3x more expensive) `gpt-5.4` entry. This is why
+        # pricing_for iterates longest-base-first.
+        price = pricing_for("gpt-5.4-mini-2025-06-01")
+        assert price is not None
+        assert price.input_per_mtok == 0.75
+        assert price.output_per_mtok == 4.50
+
+    def test_default_llm_model_is_priced(self):
+        # Guard: the default model in LLMConfig must always have a price
+        # entry, otherwise cost lines silently disappear from summaries.
+        from app.config import LLMConfig
+        default_model = LLMConfig.model_fields["model"].default
+        assert pricing_for(default_model) is not None, (
+            f"default model {default_model!r} has no entry in _MODEL_PRICING"
+        )
+
 
 class TestEstimateCostUsd:
     def test_gpt_5_4_sample(self):

@@ -71,9 +71,12 @@ def pricing_for(model: str) -> ModelPrice | None:
     """
     if model in _MODEL_PRICING:
         return _MODEL_PRICING[model]
-    for base, price in _MODEL_PRICING.items():
+    # Iterate longest base first so `gpt-5.4-mini-2025-06-01` matches
+    # `gpt-5.4-mini` instead of falling through to the (3x more expensive)
+    # `gpt-5.4` entry.
+    for base in sorted(_MODEL_PRICING, key=len, reverse=True):
         if model.startswith(base + "-"):
-            return price
+            return _MODEL_PRICING[base]
     return None
 
 
