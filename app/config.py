@@ -30,6 +30,74 @@ def model_label(model: str, reasoning_effort: str | None) -> str:
     return model
 
 
+# GitHub Copilot per-model token pricing, USD per 1M tokens.
+# Effective 2026-06-01 (usage-based billing). Source:
+# https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing
+# We can't bill cached input separately because the Copilot LLM response
+# doesn't expose cached-token counts — see estimate_cost_usd().
+class ModelPrice(BaseModel):
+    input_per_mtok: float
+    cached_input_per_mtok: float
+    output_per_mtok: float
+
+
+_MODEL_PRICING: dict[str, ModelPrice] = {
+    # OpenAI
+    "gpt-4.1":        ModelPrice(input_per_mtok=2.00, cached_input_per_mtok=0.50,  output_per_mtok=8.00),
+    "gpt-5-mini":     ModelPrice(input_per_mtok=0.25, cached_input_per_mtok=0.025, output_per_mtok=2.00),
+    "gpt-5.2":        ModelPrice(input_per_mtok=1.75, cached_input_per_mtok=0.175, output_per_mtok=14.00),
+    "gpt-5.2-codex":  ModelPrice(input_per_mtok=1.75, cached_input_per_mtok=0.175, output_per_mtok=14.00),
+    "gpt-5.3-codex":  ModelPrice(input_per_mtok=1.75, cached_input_per_mtok=0.175, output_per_mtok=14.00),
+    "gpt-5.4":        ModelPrice(input_per_mtok=2.50, cached_input_per_mtok=0.25,  output_per_mtok=15.00),
+    "gpt-5.4-mini":   ModelPrice(input_per_mtok=0.75, cached_input_per_mtok=0.075, output_per_mtok=4.50),
+    "gpt-5.4-nano":   ModelPrice(input_per_mtok=0.20, cached_input_per_mtok=0.02,  output_per_mtok=1.25),
+    "gpt-5.5":        ModelPrice(input_per_mtok=5.00, cached_input_per_mtok=0.50,  output_per_mtok=30.00),
+    # Anthropic
+    "claude-haiku-4.5":  ModelPrice(input_per_mtok=1.00, cached_input_per_mtok=0.10, output_per_mtok=5.00),
+    "claude-sonnet-4":   ModelPrice(input_per_mtok=3.00, cached_input_per_mtok=0.30, output_per_mtok=15.00),
+    "claude-sonnet-4.5": ModelPrice(input_per_mtok=3.00, cached_input_per_mtok=0.30, output_per_mtok=15.00),
+    "claude-sonnet-4.6": ModelPrice(input_per_mtok=3.00, cached_input_per_mtok=0.30, output_per_mtok=15.00),
+    "claude-opus-4.5":   ModelPrice(input_per_mtok=5.00, cached_input_per_mtok=0.50, output_per_mtok=25.00),
+    "claude-opus-4.6":   ModelPrice(input_per_mtok=5.00, cached_input_per_mtok=0.50, output_per_mtok=25.00),
+    "claude-opus-4.7":   ModelPrice(input_per_mtok=5.00, cached_input_per_mtok=0.50, output_per_mtok=25.00),
+}
+
+
+def pricing_for(model: str) -> ModelPrice | None:
+    """Return the price entry for a model id, or None if unknown.
+
+    Falls back to a prefix match so dated/suffixed ids resolve to the base
+    model entry (mirrors _context_window_for in app/llm_client.py).
+    """
+    if model in _MODEL_PRICING:
+        return _MODEL_PRICING[model]
+    # Iterate longest base first so `gpt-5.4-mini-2025-06-01` matches
+    # `gpt-5.4-mini` instead of falling through to the (3x more expensive)
+    # `gpt-5.4` entry.
+    for base in sorted(_MODEL_PRICING, key=len, reverse=True):
+        if model.startswith(base + "-"):
+            return _MODEL_PRICING[base]
+    return None
+
+
+def estimate_cost_usd(
+    model: str, prompt_tokens: int, completion_tokens: int
+) -> float | None:
+    """Upper-bound USD cost for one LLM call.
+
+    The Copilot API doesn't return a cached-tokens breakdown, so all prompt
+    tokens are billed at the full input rate. Real bill on follow-up runs
+    will be lower because prompt cache hits are charged at the cached rate.
+    """
+    price = pricing_for(model)
+    if price is None:
+        return None
+    return (
+        prompt_tokens * price.input_per_mtok
+        + completion_tokens * price.output_per_mtok
+    ) / 1_000_000
+
+
 class LLMConfig(BaseModel):
     model: str = "gpt-5.4"
     oauth_token: str
