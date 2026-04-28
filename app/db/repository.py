@@ -81,6 +81,51 @@ async def get_summary_comment_info(
         return None
 
 
+async def add_pr_cost(
+    pool: asyncpg.Pool,
+    project_key: str,
+    repo_slug: str,
+    pr_id: int,
+    delta_usd: float,
+) -> float | None:
+    """Add this run's cost to pr_reviews.total_cost_usd and return the new total.
+
+    Returns None if no matching PR row exists (shouldn't happen — upsert runs
+    first — but keeps the helper safe).
+    """
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE pr_reviews
+            SET total_cost_usd = COALESCE(total_cost_usd, 0) + $4,
+                updated_at = NOW()
+            WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
+            RETURNING total_cost_usd
+            """,
+            project_key, repo_slug, pr_id, delta_usd,
+        )
+        return float(row["total_cost_usd"]) if row else None
+
+
+async def freeze_pr_cost(
+    pool: asyncpg.Pool, project_key: str, repo_slug: str, pr_id: int
+) -> float | None:
+    """Copy total_cost_usd into final_cost_usd and return the frozen value."""
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE pr_reviews
+            SET final_cost_usd = total_cost_usd, updated_at = NOW()
+            WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
+            RETURNING final_cost_usd
+            """,
+            project_key, repo_slug, pr_id,
+        )
+        if row and row["final_cost_usd"] is not None:
+            return float(row["final_cost_usd"])
+        return None
+
+
 async def mark_pr_merged(
     pool: asyncpg.Pool, project_key: str, repo_slug: str, pr_id: int
 ) -> None:

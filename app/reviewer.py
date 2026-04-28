@@ -21,7 +21,7 @@ from app.llm_client import (
     render_previously_posted_findings,
     split_by_file,
 )
-from app.config import ReviewConfig, ServerConfig, model_label
+from app.config import ReviewConfig, ServerConfig, estimate_cost_usd, model_label
 from app.context_expansion import expand_all_files
 from app.cross_file_context import build_cross_file_context, render_cross_file_context
 from app.diff_compression import compress_for_large_pr, is_small_pr
@@ -584,6 +584,22 @@ class Reviewer:
                     )
 
             elapsed = time.monotonic() - t0
+
+            # Per-run + cumulative USD cost. Both are None when the model
+            # has no entry in _MODEL_PRICING (e.g. an unmapped Copilot id).
+            run_cost_usd = estimate_cost_usd(
+                self.llm.config.model,
+                llm_result.prompt_tokens,
+                llm_result.completion_tokens,
+            )
+            cumulative_cost_usd: float | None = None
+            if run_cost_usd is not None:
+                cumulative_cost_usd = await _safe_db(
+                    repository.add_pr_cost(
+                        self.db_pool, project_key, repo_slug, pr_id, run_cost_usd,
+                    )
+                )
+
             summary = self._build_summary(
                 findings,
                 truncated,
@@ -591,6 +607,8 @@ class Reviewer:
                 skipped_files=llm_result.skipped_files,
                 content_skipped_files=content_skipped,
                 token_usage=(llm_result.prompt_tokens, llm_result.completion_tokens),
+                run_cost_usd=run_cost_usd,
+                cumulative_cost_usd=cumulative_cost_usd,
                 prompt_breakdown=llm_result.prompt_breakdown,
                 ticket=ticket,
                 parent_ticket=parent_ticket,
@@ -740,6 +758,14 @@ class Reviewer:
             await _safe_db(
                 repository.mark_pr_merged(self.db_pool, project_key, repo_slug, pr.id)
             )
+            frozen_cost = await _safe_db(
+                repository.freeze_pr_cost(self.db_pool, project_key, repo_slug, pr.id)
+            )
+            if frozen_cost is not None:
+                logger.info(
+                    "%s merged — frozen LLM cost $%.4f (upper bound)",
+                    pr_tag, frozen_cost,
+                )
 
             comments = await self.bitbucket.fetch_pr_comments(project_key, repo_slug, pr.id)
             bot_username = self.bitbucket.bot_username
@@ -1041,6 +1067,8 @@ class Reviewer:
         chunk_count: int | None = None,
         chunk_budget: int | None = None,
         context_window: int | None = None,
+        run_cost_usd: float | None = None,
+        cumulative_cost_usd: float | None = None,
     ) -> str:
         # --- Review summary
         if incremental_from and reviewed_commit:
@@ -1231,6 +1259,16 @@ class Reviewer:
             if elapsed is not None:
                 stats += f" · ⏱️ {elapsed:.1f}s"
             cost.append(stats)
+
+        # Upper-bound USD cost. Omitted entirely when the model has no
+        # pricing entry — better than printing a misleading "$0.00".
+        if run_cost_usd is not None:
+            cost.append(
+                f"Estimated cost (this run): ${run_cost_usd:.4f} "
+                "— upper bound, ignores prompt cache"
+            )
+            if cumulative_cost_usd is not None:
+                cost.append(f"Cumulative for this PR: ${cumulative_cost_usd:.4f}")
 
         if cost:
             sections.append("**Cost:**\n" + "\n".join(f"- {m}" for m in cost))

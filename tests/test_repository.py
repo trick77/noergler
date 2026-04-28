@@ -107,6 +107,49 @@ async def test_mark_pr_merged_sets_merged_at():
 
 
 @pytest.mark.asyncio
+async def test_add_pr_cost_returns_new_total():
+    pool = _make_pool(fetchrow_return={"total_cost_usd": 0.1183})
+
+    result = await repository.add_pr_cost(pool, "PROJ", "my-repo", 42, 0.0421)
+
+    assert result == pytest.approx(0.1183)
+    pool._conn.fetchrow.assert_awaited_once()
+    sql, *args = pool._conn.fetchrow.call_args.args
+    assert "UPDATE pr_reviews" in sql
+    assert "COALESCE(total_cost_usd, 0) + $4" in sql
+    assert 0.0421 in args
+
+
+@pytest.mark.asyncio
+async def test_add_pr_cost_returns_none_when_no_row():
+    pool = _make_pool(fetchrow_return=None)
+
+    result = await repository.add_pr_cost(pool, "PROJ", "my-repo", 999, 0.01)
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_freeze_pr_cost_copies_total_to_final():
+    pool = _make_pool(fetchrow_return={"final_cost_usd": 0.1604})
+
+    result = await repository.freeze_pr_cost(pool, "PROJ", "my-repo", 42)
+
+    assert result == pytest.approx(0.1604)
+    sql, *_args = pool._conn.fetchrow.call_args.args
+    assert "final_cost_usd = total_cost_usd" in sql
+
+
+@pytest.mark.asyncio
+async def test_freeze_pr_cost_returns_none_when_total_unset():
+    pool = _make_pool(fetchrow_return={"final_cost_usd": None})
+
+    result = await repository.freeze_pr_cost(pool, "PROJ", "my-repo", 42)
+
+    assert result is None
+
+
+@pytest.mark.asyncio
 async def test_mark_pr_deleted_sets_deleted_at():
     pool = _make_pool()
 

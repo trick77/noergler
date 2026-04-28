@@ -6,14 +6,24 @@ from alembic.script import ScriptDirectory
 
 _VERSIONS = Path("alembic/versions")
 _M002 = _VERSIONS / "002_metrics_and_lifecycle.py"
+_M003 = _VERSIONS / "003_pr_cost.py"
 
 
-def test_migration_chain_is_linear_and_reaches_002():
+def test_migration_chain_is_linear_and_reaches_003():
     script = ScriptDirectory.from_config(Config("alembic.ini"))
     revs = [(r.revision, r.down_revision) for r in script.walk_revisions()]
     chain = [r for r, _ in revs]
-    assert chain == ["002", "001"]
-    assert dict(revs) == {"002": "001", "001": None}
+    assert chain == ["003", "002", "001"]
+    assert dict(revs) == {"003": "002", "002": "001", "001": None}
+
+
+def test_003_adds_cost_columns_with_numeric_type():
+    text = _M003.read_text()
+    assert "ADD COLUMN total_cost_usd NUMERIC(10,6)" in text
+    assert "ADD COLUMN final_cost_usd NUMERIC(10,6)" in text
+    # downgrade reverses both
+    assert "DROP COLUMN IF EXISTS total_cost_usd" in text
+    assert "DROP COLUMN IF EXISTS final_cost_usd" in text
 
 
 def test_002_creates_four_metric_views():
