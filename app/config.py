@@ -188,6 +188,18 @@ class AnalyticsConfig(BaseModel):
     api_key: str = ""  # empty -> /analytics endpoints return 503
 
 
+class RiptideConfig(BaseModel):
+    """Optional forwarding to riptide-collector.
+
+    When both `url` and `token` are non-empty, noergler emits review-cost
+    and feedback events to riptide and validates the bearer at startup.
+    Empty values disable forwarding entirely.
+    """
+
+    url: str = ""
+    token: str = ""
+
+
 class AppConfig(BaseModel):
     bitbucket: BitbucketConfig
     llm: LLMConfig
@@ -196,6 +208,7 @@ class AppConfig(BaseModel):
     server: ServerConfig = ServerConfig()
     database: DatabaseConfig
     analytics: AnalyticsConfig = AnalyticsConfig()
+    riptide: RiptideConfig = RiptideConfig()
 
 
 def _env(name: str, default: str | None = None) -> str:
@@ -211,11 +224,12 @@ _SECRET_FIELDS = {
     "jira": {"token"},
     "database": {"url"},
     "analytics": {"api_key"},
+    "riptide": {"token"},
 }
 
 
 def log_config(config: AppConfig, log: logging.Logger) -> None:
-    for section_name in ("bitbucket", "llm", "review", "jira", "server", "database", "analytics"):
+    for section_name in ("bitbucket", "llm", "review", "jira", "server", "database", "analytics", "riptide"):
         section = getattr(config, section_name)
         secrets = _SECRET_FIELDS.get(section_name, set())
         log.info("[config.%s]", section_name)
@@ -274,5 +288,9 @@ def load_config() -> AppConfig:
         ),
         analytics=AnalyticsConfig(
             api_key=_env("ANALYTICS_API_KEY", ""),
+        ),
+        riptide=RiptideConfig(
+            url=_env("RIPTIDE_URL", ""),
+            token=_env("RIPTIDE_TOKEN", ""),
         ),
     )

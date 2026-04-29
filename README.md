@@ -101,6 +101,30 @@ All configuration is driven by environment variables. The required variables are
 
 See [`.env.example`](.env.example) for all optional settings and their defaults.
 
+### Optional: forward review-cost + reviewer-precision events to riptide
+
+If your org runs [riptide](https://github.com/trick77/riptide) as a delivery-metrics
+collector, noergler can forward two event types so that LLM finops (model, tokens,
+cost) and reviewer-precision (disagree feedback) live alongside your DORA metrics
+instead of in a parallel API. Set both:
+
+| Variable | Description |
+|---|---|
+| `RIPTIDE_URL` | base URL, e.g. `https://riptide-collector.example.com` |
+| `RIPTIDE_TOKEN` | your team's raw bearer (issued by the riptide platform team) |
+
+Leave either unset to disable forwarding entirely — noergler runs standalone.
+When set, noergler verifies reachability and the bearer at startup via
+`GET /auth/ping`:
+
+- 200 → continue normally.
+- 401 → noergler **fails to start** with a clear error.
+- Connection error / timeout → noergler **starts** with a warning;
+  runtime emissions are best-effort and never block PR webhooks.
+
+PR lifecycle (open/merge/decline) is **not** forwarded — riptide already
+captures that from Bitbucket directly.
+
 ### Database
 
 noergler requires PostgreSQL for review state, deduplication, and statistics. The database connection is validated on startup — the app will not start without it.
