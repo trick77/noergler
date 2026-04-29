@@ -455,15 +455,10 @@ class Reviewer:
                             pr_tag, last_reviewed[:10], source_commit[:10],
                         )
                     else:
-                        # source_commit differs from last_reviewed but the
-                        # compare endpoint returned no content. This happens
-                        # when a rebase / squash produces a tree identical
-                        # to what was already reviewed, but it can also
-                        # happen in edge cases where Bitbucket gives us an
-                        # empty diff for genuinely-changed history. Always
-                        # fall back to a full review rather than risk
-                        # silently skipping real changes — the safety net
-                        # the user explicitly asked for.
+                        # HEAD moved but compare/diff was empty: rebase to
+                        # identical tree, or a Bitbucket edge case. Fall
+                        # back to full review — never silently skip when the
+                        # SHA actually changed.
                         logger.warning(
                             "%s: HEAD moved %s -> %s but compare/diff is empty — "
                             "falling back to full review to avoid missing changes",

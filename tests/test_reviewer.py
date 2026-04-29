@@ -2118,11 +2118,13 @@ class TestIncrementalReview:
         # Full review ran.
         mock_bitbucket.fetch_pr_diff.assert_called()
         mock_llm.review_diff.assert_called_once()
-        # No WARNING-level "incremental diff failed" record (we downgraded to
-        # INFO for this expected, well-handled case).
+        # The typed-exception path is INFO-only by design. Assert zero
+        # WARNING records mention the incremental diff at all — catches
+        # regressions that route 406s through the generic except (which
+        # would still match a narrower "incremental diff failed" substring).
         warn_records = [
             r for r in caplog.records
-            if r.levelno == logging.WARNING and "incremental diff failed" in r.message
+            if r.levelno == logging.WARNING and "incremental diff" in r.message
         ]
         assert warn_records == []
         # An INFO-level "incremental diff unavailable" record is present.
