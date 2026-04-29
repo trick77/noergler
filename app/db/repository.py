@@ -234,60 +234,6 @@ async def get_finding_by_comment_id(
         return dict(row) if row else None
 
 
-async def insert_review_stats(
-    pool: asyncpg.Pool,
-    project_key: str,
-    repo_slug: str,
-    pr_id: int,
-    author: str | None,
-    is_incremental: bool,
-    reviewed_commit: str | None,
-    diff_added: int,
-    diff_removed: int,
-    files_reviewed: int,
-    total_files: int,
-    issue_count: int,
-    suggestion_count: int,
-    security_count: int,
-    review_effort: int | None,
-    prompt_tokens: int,
-    completion_tokens: int,
-    model_name: str,
-    elapsed_seconds: float,
-    cross_file_deps: int,
-    skipped_files: int,
-    content_skipped: int,
-    findings_posted: int,
-    findings_deduplicated: int,
-) -> None:
-    async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO review_statistics (
-                project_key, repo_slug, pr_id, author, is_incremental, reviewed_commit,
-                diff_added, diff_removed, files_reviewed, total_files,
-                issue_count, suggestion_count, security_count, review_effort,
-                prompt_tokens, completion_tokens, model_name, elapsed_seconds,
-                cross_file_deps, skipped_files, content_skipped,
-                findings_posted, findings_deduplicated
-            ) VALUES (
-                $1, $2, $3, $4, $5, $6,
-                $7, $8, $9, $10,
-                $11, $12, $13, $14,
-                $15, $16, $17, $18,
-                $19, $20, $21,
-                $22, $23
-            )
-            """,
-            project_key, repo_slug, pr_id, author, is_incremental, reviewed_commit,
-            diff_added, diff_removed, files_reviewed, total_files,
-            issue_count, suggestion_count, security_count, review_effort,
-            prompt_tokens, completion_tokens, model_name, elapsed_seconds,
-            cross_file_deps, skipped_files, content_skipped,
-            findings_posted, findings_deduplicated,
-        )
-
-
 async def has_negative_feedback(
     pool: asyncpg.Pool,
     project_key: str,

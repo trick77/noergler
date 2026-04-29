@@ -236,47 +236,6 @@ async def test_get_finding_by_comment_id_returns_none():
 
 
 @pytest.mark.asyncio
-async def test_insert_review_stats_executes_insert_with_correct_param_count():
-    pool = _make_pool()
-
-    await repository.insert_review_stats(
-        pool,
-        project_key="PROJ",
-        repo_slug="my-repo",
-        pr_id=42,
-        author="alice",
-        is_incremental=False,
-        reviewed_commit="abc123",
-        diff_added=10,
-        diff_removed=5,
-        files_reviewed=3,
-        total_files=4,
-        issue_count=1,
-        suggestion_count=2,
-        security_count=0,
-        review_effort=15,
-        prompt_tokens=1000,
-        completion_tokens=200,
-        model_name="gpt-5.3-codex",
-        elapsed_seconds=3.14,
-        cross_file_deps=0,
-        skipped_files=1,
-        content_skipped=0,
-        findings_posted=3,
-        findings_deduplicated=1,
-    )
-
-    pool._conn.execute.assert_awaited_once()
-    sql, *args = pool._conn.execute.call_args.args
-    assert "INSERT INTO review_statistics" in sql
-    # 23 positional parameters: $1 through $23
-    assert len(args) == 23
-    assert args[0] == "PROJ"
-    assert args[1] == "my-repo"
-    assert args[2] == 42
-
-
-@pytest.mark.asyncio
 async def test_insert_feedback_executes_insert():
     pool = _make_pool()
 

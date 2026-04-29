@@ -184,10 +184,6 @@ class DatabaseConfig(BaseModel):
     url: str
 
 
-class AnalyticsConfig(BaseModel):
-    api_key: str = ""  # empty -> /analytics endpoints return 503
-
-
 class RiptideConfig(BaseModel):
     """Optional forwarding to riptide-collector.
 
@@ -207,7 +203,6 @@ class AppConfig(BaseModel):
     jira: JiraConfig
     server: ServerConfig = ServerConfig()
     database: DatabaseConfig
-    analytics: AnalyticsConfig = AnalyticsConfig()
     riptide: RiptideConfig = RiptideConfig()
 
 
@@ -223,13 +218,12 @@ _SECRET_FIELDS = {
     "llm": {"oauth_token"},
     "jira": {"token"},
     "database": {"url"},
-    "analytics": {"api_key"},
     "riptide": {"token"},
 }
 
 
 def log_config(config: AppConfig, log: logging.Logger) -> None:
-    for section_name in ("bitbucket", "llm", "review", "jira", "server", "database", "analytics", "riptide"):
+    for section_name in ("bitbucket", "llm", "review", "jira", "server", "database", "riptide"):
         section = getattr(config, section_name)
         secrets = _SECRET_FIELDS.get(section_name, set())
         log.info("[config.%s]", section_name)
@@ -285,9 +279,6 @@ def load_config() -> AppConfig:
         ),
         database=DatabaseConfig(
             url=_env("DATABASE_URL"),
-        ),
-        analytics=AnalyticsConfig(
-            api_key=_env("ANALYTICS_API_KEY", ""),
         ),
         riptide=RiptideConfig(
             url=_env("RIPTIDE_URL", ""),

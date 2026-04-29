@@ -525,17 +525,10 @@ class TestReviewTimeoutHandling:
             "app.reviewer.repository.update_summary_comment",
             update_summary_comment,
         )
-        insert_review_stats = AsyncMock()
-        monkeypatch.setattr(
-            "app.reviewer.repository.insert_review_stats",
-            insert_review_stats,
-        )
-
         rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
         await rev.review_pull_request(_make_payload("username"))
 
         mock_bitbucket.post_inline_comment.assert_not_called()
-        insert_review_stats.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_first_ever_timeout_posts_review_skipped_notice(

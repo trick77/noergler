@@ -148,12 +148,11 @@ Both `postgresql://` and `postgres://` URI schemes are accepted.
 
 | Table | Purpose |
 |---|---|
-| `pr_reviews` | Tracks reviewed PRs, lifecycle timestamps (`opened_at` / `merged_at` / `deleted_at`), summary comment IDs. Rows are retained across merge and delete for metrics — never hard-deleted. |
-| `review_findings` | Individual code findings with file, line, severity, and Bitbucket comment ID |
-| `review_statistics` | Per-review-run metrics — token usage, finding counts, timing |
-| `feedback_events` | Disagree reactions on review comments |
+| `pr_reviews` | Tracks reviewed PRs, lifecycle timestamps (`opened_at` / `merged_at` / `deleted_at`), summary comment IDs, and per-PR cost totals. Rows are retained across merge and delete — never hard-deleted. |
+| `review_findings` | Individual code findings with file, line, severity, and Bitbucket comment ID. Used for inline-comment dedup on incremental reviews. |
+| `feedback_events` | Disagree reactions on review comments. Used to skip duplicate reactions. |
 
-Four read-only views expose derived metrics: `v_reviewer_precision`, `v_lead_time`, `v_activity_weekly`, `v_cost_by_model`. See the [Analytics API](#analytics-api).
+Metrics (cost-by-model, reviewer-precision, etc.) live in [riptide](https://github.com/trick77/riptide), not in noergler. Set `RIPTIDE_URL` + `RIPTIDE_TOKEN` to forward them.
 
 **Running migrations:**
 
@@ -276,55 +275,21 @@ If you're behind a corporate proxy with custom CA certificates, copy `.crt` or `
 GET /health → {"status": "ok"}
 ```
 
-## Analytics API
+## Metrics
 
-Optional read-only HTTP API for exporting the four metric views into dashboards or ad-hoc analysis. The path is `/analytics/*` (not `/metrics/*`) to avoid colliding with the Prometheus convention. Disabled by default — set `ANALYTICS_API_KEY` to enable.
-
-| Env var | Description |
-|---|---|
-| `ANALYTICS_API_KEY` | Shared secret sent by clients as the `X-API-Key` header. Empty (default) → endpoints return `503`. Wrong or missing → `401`. |
-
-Endpoints (all `GET`, all require the header, all require a `since` query param):
-
-| Path | Answers | Framework |
-|---|---|---|
-| `/analytics/reviewer-precision` | How useful is the LLM review? `1 - disagree_rate` per repo × week. Higher = better. | DX Core 4 — Effectiveness (proxy); SPACE — Performance |
-| `/analytics/lead-time` | Lead-time per merged PR (`merged_at - opened_at`). | DORA — Lead Time for Changes; DX Core 4 — Speed; SPACE — Efficiency/Flow |
-| `/analytics/activity` | PRs and review runs per author × week. | SPACE — Activity; DX Core 4 — Speed |
-| `/analytics/cost-by-model` | Token spend and run count per model × week. | Operational / FinOps (not in DORA/SPACE/DX Core 4) |
-
-Common query params: `since` (required, ISO 8601, inclusive lower bound on week or `merged_at`), `until` (optional, exclusive upper bound), `limit` (1–10 000, default 1 000). Endpoint-specific filters: `project_key`, `repo_slug`, `author`, `model`. All response bodies are `{"count": N, "rows": [...]}`.
-
-```bash
-curl -H "X-API-Key: $ANALYTICS_API_KEY" \
-  "https://noergler.internal/analytics/reviewer-precision?since=2026-01-01T00:00:00Z&project_key=PROJ"
-```
-
-Merged and deleted PR data is retained indefinitely so historical metrics remain stable. Deleted PRs are filtered out of `v_reviewer_precision`, `v_lead_time`, and `v_activity_weekly`. `v_cost_by_model` does **not** filter them — tokens spent on later-deleted PRs are real spend and stay in the FinOps view.
-
-### What these metrics tell you
-
-**`v_reviewer_precision` — reviewer quality, not code quality.** `1 - (disagreed findings / posted findings)` per repo × week. Rising precision = the LLM review is getting more useful; falling precision = more false positives or less patient developers. One loud dissenter cannot skew the number: disagrees are deduped per finding, so multiple humans piling on one false positive still count as one.
-
-**`v_lead_time` — DORA lead-time for changes.** `merged_at - opened_at` per merged PR. Classic velocity metric. Useful for trend dashboards and A/B-ing process changes (e.g. adding a branch-protection rule). Lead time depends heavily on PR size, review load, and CI — not just on the author.
-
-**`v_activity_weekly` — SPACE Activity, team-level.** PRs observed and review runs per author × week. Useful to spot vacation dips, onboarding ramps, load imbalance, and process-change effects. A high `review_runs / prs` ratio (churn) often signals scope-creep on individual PRs.
-
-**`v_cost_by_model` — LLM spend audit.** Tokens and runs per model × week. Operational metric for budget, capacity planning, and cost-per-PR estimates before switching models or scaling volume.
-
-### What these metrics cannot tell you
-
-- **Individual productivity.** SPACE and DORA are explicit: activity metrics are not for performance reviews. Rewarding high PR counts or lead-time wins invites Goodhart's Law (fragmented PRs, rushed reviews).
-- **Absolute code quality.** The LLM reviewer is the measurement instrument; a change in precision could reflect sharper prompts, calmer developers, or cleaner code — the signal can't separate them.
-- **Deployment frequency, change failure rate, MTTR.** Noergler sees PR events only — not deployments or incidents.
-- **Developer satisfaction.** No survey data is collected. Disagree-rate is a proxy for *review usefulness*, not happiness.
+Noergler does **not** expose metrics directly. Set `RIPTIDE_URL` + `RIPTIDE_TOKEN`
+(see [Optional: forward review-cost + reviewer-precision events to riptide](#optional-forward-review-cost--reviewer-precision-events-to-riptide))
+to forward LLM finops (model, tokens, cost) and reviewer-precision (disagree feedback)
+to a [riptide](https://github.com/trick77/riptide) collector — all dashboards,
+SQL queries, and DORA/SPACE rollups live there alongside delivery metrics from
+Bitbucket / ArgoCD / CI.
 
 ## Project structure
 
 ```
 app/
-  main.py              # FastAPI app, /webhook, /health, /analytics endpoints
-  analytics.py         # Read-only /analytics API over the alembic 004 views
+  main.py              # FastAPI app, /webhook, /health endpoints
+  riptide_client.py    # Optional outbound emitter to riptide-collector
   reviewer.py          # Review orchestrator (diff → AI → comments)
   llm_client.py        # OpenAI SDK client for the configured LLM API, token-aware chunking
   context_expansion.py # Asymmetric & dynamic diff context expansion

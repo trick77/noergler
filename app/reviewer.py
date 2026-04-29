@@ -765,40 +765,7 @@ class Reviewer:
                 project_key, repo_slug, pr_id, pr_review_id, summary
             )
 
-            # Persist review statistics
-            counts = {"issue": 0, "suggestion": 0}
-            for f in findings:
-                counts[f.severity] = counts.get(f.severity, 0) + 1
-            security_count = len([f for f in findings if _SECURITY_KEYWORDS.search(f.comment)])
             review_model_name = model_label(self.llm.config.model, self.llm.config.reasoning_effort)
-            await _safe_db(
-                repository.insert_review_stats(
-                    self.db_pool,
-                    project_key=project_key,
-                    repo_slug=repo_slug,
-                    pr_id=pr_id,
-                    author=author_name,
-                    is_incremental=is_incremental,
-                    reviewed_commit=source_commit,
-                    diff_added=diff_added,
-                    diff_removed=diff_removed,
-                    files_reviewed=len(files),
-                    total_files=total_files + len(deleted_paths) + len(renamed_paths),
-                    issue_count=counts.get("issue", 0),
-                    suggestion_count=counts.get("suggestion", 0),
-                    security_count=security_count,
-                    review_effort=llm_result.review_effort,
-                    prompt_tokens=llm_result.prompt_tokens,
-                    completion_tokens=llm_result.completion_tokens,
-                    model_name=review_model_name,
-                    elapsed_seconds=elapsed,
-                    cross_file_deps=len(cross_file_rels) if cross_file_rels else 0,
-                    skipped_files=len(llm_result.skipped_files),
-                    content_skipped=len(content_skipped),
-                    findings_posted=posted,
-                    findings_deduplicated=deduplicated_count,
-                )
-            )
 
             if self.riptide is not None and self.riptide.enabled:
                 # pr_review_id is noergler's per-run primary key; use it as
