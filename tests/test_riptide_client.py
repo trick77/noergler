@@ -59,6 +59,7 @@ class TestNoOpWhenDisabled:
             verdict="disagreed",
             actor="alice",
             repo="org/repo",
+            commit_sha=None,
             occurred_at=datetime(2026, 4, 29, tzinfo=timezone.utc),
         )
 
@@ -159,6 +160,7 @@ class TestEmit:
                 verdict="disagreed",
                 actor="alice",
                 repo="org/repo",
+                commit_sha="abc1234567890abc1234567890abc1234567890a",
                 occurred_at=datetime(2026, 4, 29, 12, 0, 0, tzinfo=timezone.utc),
             )
         finally:
@@ -169,6 +171,7 @@ class TestEmit:
         assert body["event_type"] == "feedback"
         assert body["finding_id"] == "42"
         assert body["verdict"] == "disagreed"
+        assert body["commit_sha"] == "abc1234567890abc1234567890abc1234567890a"
 
     @pytest.mark.asyncio
     @respx.mock

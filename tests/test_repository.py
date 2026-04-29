@@ -210,12 +210,20 @@ async def test_get_existing_finding_keys_empty():
 
 @pytest.mark.asyncio
 async def test_get_finding_by_comment_id_returns_dict():
-    fake_row = {"file_path": "foo.py", "line_number": 5, "severity": "issue"}
+    fake_row = {
+        "file_path": "foo.py",
+        "line_number": 5,
+        "severity": "issue",
+        "commit_sha": "abc1234",
+    }
     pool = _make_pool(fetchrow_return=fake_row)
 
     result = await repository.get_finding_by_comment_id(pool, 77)
 
-    assert result == {"file_path": "foo.py", "line_number": 5, "severity": "issue"}
+    assert result == fake_row
+    sql, *_args = pool._conn.fetchrow.call_args.args
+    # commit_sha must be selected so handle_feedback can forward it to riptide.
+    assert "commit_sha" in sql
 
 
 @pytest.mark.asyncio

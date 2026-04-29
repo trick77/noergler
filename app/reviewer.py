@@ -1022,6 +1022,7 @@ class Reviewer:
             parent_file = finding["file_path"]
             parent_line = finding["line_number"]
             parent_severity = finding["severity"]
+            parent_commit_sha = finding.get("commit_sha")
             suggestion_text = ""
 
             classification = classify_feedback(comment.text)
@@ -1088,6 +1089,7 @@ class Reviewer:
                         verdict="disagreed",
                         actor=comment.author.name,
                         repo=f"{project_key}/{repo_slug}",
+                        commit_sha=parent_commit_sha,
                         occurred_at=datetime.now(timezone.utc),
                     )
                 except Exception:

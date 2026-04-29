@@ -152,6 +152,7 @@ class RiptideClient:
         verdict: str,
         actor: str,
         repo: str | None,
+        commit_sha: str | None,
         occurred_at: datetime,
     ) -> None:
         body: dict[str, Any] = {
@@ -161,6 +162,7 @@ class RiptideClient:
             "verdict": verdict,
             "actor": actor,
             "repo": repo,
+            "commit_sha": commit_sha,
             "occurred_at": _isoformat_z(occurred_at),
         }
         await self._post(body)

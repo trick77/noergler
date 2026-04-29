@@ -228,7 +228,7 @@ async def get_finding_by_comment_id(
 ) -> dict | None:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT file_path, line_number, severity FROM review_findings WHERE bitbucket_comment_id = $1",
+            "SELECT file_path, line_number, severity, commit_sha FROM review_findings WHERE bitbucket_comment_id = $1",
             bitbucket_comment_id,
         )
         return dict(row) if row else None
