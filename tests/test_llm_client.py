@@ -1283,6 +1283,55 @@ class TestParse413TokenLimit:
             await client.close()
 
 
+class TestCopilotIdentityHeaders:
+    """Copilot Business/Enterprise validates Editor-Version, Editor-Plugin-Version,
+    Copilot-Integration-Id, and User-Agent together. _inject_copilot_auth must
+    set the full set on every outbound request so we land on the same routing
+    path the official Copilot Chat plugin gets."""
+
+    @pytest.mark.asyncio
+    async def test_inject_copilot_auth_sets_full_identity_header_set(
+        self, llm_config, review_config, token_provider,
+    ):
+        client = LLMClient(llm_config, review_config, token_provider)
+        try:
+            request = httpx.Request("POST", "https://example/responses")
+            for hook in client._http_client.event_hooks["request"]:
+                await hook(request)
+
+            assert request.headers["Authorization"] == "Bearer stub-copilot-token"
+            assert request.headers["Copilot-Integration-Id"] == llm_config.integration_id
+            assert request.headers["Editor-Version"] == llm_config.editor_version
+            assert request.headers["Editor-Plugin-Version"] == llm_config.editor_plugin_version
+            assert request.headers["User-Agent"] == llm_config.user_agent
+            assert request.headers["X-GitHub-Api-Version"] == llm_config.github_api_version
+            assert request.headers["Openai-Intent"] == "conversation-agent"
+            assert request.headers["x-initiator"] == "agent"
+            # No abexp by default — opt-in via env only.
+            assert "vscode-abexpcontext" not in request.headers
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_abexp_context_attached_only_when_configured(
+        self, review_config, token_provider,
+    ):
+        cfg = LLMConfig(
+            model="gpt-5.3-codex",
+            oauth_token="t",
+            api_url="https://api.business.githubcopilot.com",
+            abexp_context="00h15499_gpt_53_codex:31464543;feature-x:1",
+        )
+        client = LLMClient(cfg, review_config, token_provider)
+        try:
+            request = httpx.Request("POST", "https://example/responses")
+            for hook in client._http_client.event_hooks["request"]:
+                await hook(request)
+            assert request.headers["vscode-abexpcontext"] == cfg.abexp_context
+        finally:
+            await client.close()
+
+
 class TestSerializationAndDeadline:
     @pytest.mark.asyncio
     async def test_concurrent_chats_are_serialized(self, llm_config, review_config, token_provider):

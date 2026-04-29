@@ -41,7 +41,7 @@ _CONTEXT_WINDOW_HEADROOM_TOKENS = 16_000
 # itself is unaware of any deadline. Once exceeded, the in-flight request is
 # cancelled and an APITimeoutError is raised so existing handlers route
 # through the normal "skipped chunk" / timeout-notice paths.
-INFERENCE_HARD_TIMEOUT_SECONDS = 180.0
+INFERENCE_HARD_TIMEOUT_SECONDS = 300.0
 
 
 def _context_window_for(model: str) -> int | None:
@@ -555,8 +555,18 @@ class LLMClient:
             request.headers["Authorization"] = f"Bearer {token}"
             request.headers["Copilot-Integration-Id"] = config.integration_id
             request.headers["Editor-Version"] = config.editor_version
-            request.headers["Openai-Intent"] = "conversation-edits"
+            request.headers["Editor-Plugin-Version"] = config.editor_plugin_version
+            request.headers["User-Agent"] = config.user_agent
+            request.headers["X-GitHub-Api-Version"] = config.github_api_version
+            # `conversation-agent` matches what the blessed Copilot Chat
+            # plugin sends for agent-driven flows. Both review and mention
+            # Q&A are agent-driven (no human-in-the-loop edit), so this is
+            # the accurate intent — `conversation-edits` was misleading and
+            # may have contributed to upstream throttling/routing weirdness.
+            request.headers["Openai-Intent"] = "conversation-agent"
             request.headers["x-initiator"] = "agent"
+            if config.abexp_context:
+                request.headers["vscode-abexpcontext"] = config.abexp_context
 
         # httpx + SDK timeouts are aligned with INFERENCE_HARD_TIMEOUT_SECONDS
         # so the asyncio.wait_for cap in _execute_responses_create is the

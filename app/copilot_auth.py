@@ -24,11 +24,15 @@ class CopilotTokenProvider:
         self,
         oauth_token: str,
         integration_id: str = "vscode-chat",
-        editor_version: str = "vscode/1.99.0",
+        editor_version: str = "vscode/1.109.2",
+        editor_plugin_version: str = "copilot-chat/0.37.5",
+        user_agent: str = "GitHubCopilotChat/0.37.5",
     ):
         self._oauth_token = oauth_token
         self._integration_id = integration_id
         self._editor_version = editor_version
+        self._editor_plugin_version = editor_plugin_version
+        self._user_agent = user_agent
         self._token: str | None = None
         self._expires_at: int = 0
         self._endpoints_api: str = DEFAULT_API_URL
@@ -65,7 +69,9 @@ class CopilotTokenProvider:
                 "Authorization": f"token {self._oauth_token}",
                 "Accept": "application/json",
                 "Editor-Version": self._editor_version,
+                "Editor-Plugin-Version": self._editor_plugin_version,
                 "Copilot-Integration-Id": self._integration_id,
+                "User-Agent": self._user_agent,
             },
         )
         response.raise_for_status()

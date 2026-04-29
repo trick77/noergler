@@ -103,7 +103,18 @@ class LLMConfig(BaseModel):
     oauth_token: str
     api_url: str = "https://api.business.githubcopilot.com"
     integration_id: str = "vscode-chat"
-    editor_version: str = "vscode/1.99.0"
+    # Identity headers Copilot Business/Enterprise validates against. Pin to
+    # current GitHub-Copilot-Chat-shaped values (matches the blessed opencode
+    # plugin) so we land on the same routing path the official client gets.
+    # Bump these together when rotating to a newer working set.
+    editor_version: str = "vscode/1.109.2"
+    editor_plugin_version: str = "copilot-chat/0.37.5"
+    user_agent: str = "GitHubCopilotChat/0.37.5"
+    github_api_version: str = "2025-10-01"
+    # vscode-abexpcontext experiment-flag blob. Empty by default — opt in via
+    # COPILOT_ABEXP_CONTEXT when a working value is needed (the flags rotate
+    # so we don't ship a hardcoded default that may go stale).
+    abexp_context: str = ""
     reasoning_effort: str | None = "high"
 
     @field_validator("api_url", mode="after")
@@ -227,7 +238,11 @@ def load_config() -> AppConfig:
             oauth_token=_env("COPILOT_OAUTH_TOKEN"),
             api_url=_env("COPILOT_API_URL", "https://api.business.githubcopilot.com"),
             integration_id=_env("COPILOT_INTEGRATION_ID", "vscode-chat"),
-            editor_version=_env("COPILOT_EDITOR_VERSION", "vscode/1.99.0"),
+            editor_version=_env("COPILOT_EDITOR_VERSION", "vscode/1.109.2"),
+            editor_plugin_version=_env("COPILOT_EDITOR_PLUGIN_VERSION", "copilot-chat/0.37.5"),
+            user_agent=_env("COPILOT_USER_AGENT", "GitHubCopilotChat/0.37.5"),
+            github_api_version=_env("COPILOT_GITHUB_API_VERSION", "2025-10-01"),
+            abexp_context=_env("COPILOT_ABEXP_CONTEXT", ""),
             reasoning_effort=os.environ.get("COPILOT_REASONING_EFFORT") or "high",
         ),
         review=ReviewConfig(
