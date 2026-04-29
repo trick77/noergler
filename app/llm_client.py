@@ -558,18 +558,21 @@ class LLMClient:
             request.headers["Openai-Intent"] = "conversation-edits"
             request.headers["x-initiator"] = "agent"
 
+        # httpx + SDK timeouts are aligned with INFERENCE_HARD_TIMEOUT_SECONDS
+        # so the asyncio.wait_for cap in _execute_responses_create is the
+        # decisive deadline. Two competing deadlines (e.g. SDK=120s, cap=180s)
+        # made the cap dead code and split the failure mode across two layers.
         self._http_client = httpx.AsyncClient(
-            timeout=120.0,
+            timeout=INFERENCE_HARD_TIMEOUT_SECONDS,
             event_hooks={"request": [_inject_copilot_auth]},
         )
         self.openai_client = AsyncOpenAI(
             base_url=config.api_url,
             api_key="placeholder",  # real auth injected per-request by event hook
             # No SDK-internal retries: silent retries previously turned a 30s
-            # stall into an 8-minute outage. The wall-clock cap below is the
-            # one mechanism that decides when to give up.
+            # stall into an 8-minute outage.
             max_retries=0,
-            timeout=120.0,
+            timeout=INFERENCE_HARD_TIMEOUT_SECONDS,
             http_client=self._http_client,
         )
         # Process-wide serialization for every LLM HTTP call. Acquired in

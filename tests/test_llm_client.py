@@ -1315,6 +1315,46 @@ class TestSerializationAndDeadline:
             await client.close()
 
     @pytest.mark.asyncio
+    async def test_review_and_mention_paths_share_the_lock(
+        self, llm_config, review_config, token_provider,
+    ):
+        """answer_question (mention path) and review_diff (review path) both
+        funnel through _execute_responses_create. Concurrent calls from the
+        two entry points must serialize on the same lock."""
+        import asyncio
+        client = LLMClient(llm_config, review_config, token_provider)
+
+        active = 0
+        max_active = 0
+
+        async def fake_create(**_kwargs):
+            nonlocal active, max_active
+            active += 1
+            max_active = max(max_active, active)
+            try:
+                await asyncio.sleep(0.05)
+                # Empty findings JSON: parses cleanly for the review path,
+                # and answer_question doesn't validate JSON shape itself.
+                return _mock_completion('{"findings": [], "compliance_requirements": [], "change_summary": ["x"]}')
+            finally:
+                active -= 1
+
+        client.openai_client.responses.create = fake_create
+        files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
+        try:
+            await asyncio.gather(
+                client.review_diff(files),
+                client.answer_question("what?", files),
+                client.review_diff(files),
+            )
+            assert max_active == 1, (
+                f"review and mention paths must serialize via _execute_responses_create, "
+                f"but observed {max_active} concurrent calls"
+            )
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
     async def test_hard_timeout_translates_to_apitimeout(self, llm_config, review_config, token_provider, monkeypatch):
         """When the wall-clock cap fires, _chat raises openai.APITimeoutError."""
         import asyncio

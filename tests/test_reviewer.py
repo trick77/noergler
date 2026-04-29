@@ -685,6 +685,30 @@ class TestStripStaleBanner:
         assert _STALE_BANNER_SENTINEL not in result
         assert result.startswith("### Review summary")
 
+    def test_strips_banner_when_sentinel_was_stripped_by_renderer(self):
+        """Bitbucket's markdown renderer may strip HTML comments from the
+        comment body roundtrip. The visible-prefix fallback ensures we still
+        detect and replace the previous banner instead of stacking."""
+        from app.reviewer import _strip_stale_banner, _STALE_BANNER_SENTINEL
+        # Sentinel was eaten — only the visible warning line remains.
+        body = (
+            "⚠️ No response from the model within 3 minutes on commit `abc12345` "
+            "— findings below reflect the earlier commit `def67890`.\n"
+            "\n"
+            "### Review summary\n- 1 issue ❌"
+        )
+        result = _strip_stale_banner(body)
+        assert _STALE_BANNER_SENTINEL not in result
+        assert "No response from the model within" not in result
+        assert result.startswith("### Review summary")
+
+    def test_does_not_strip_unrelated_warning_emoji(self):
+        """A summary that happens to contain other ⚠️ icons must not be
+        misidentified as a stale banner."""
+        from app.reviewer import _strip_stale_banner
+        body = "### Review summary\n⚠️ 1 issue found in your code"
+        assert _strip_stale_banner(body) == body
+
 
 class TestSortAndLimit:
     def test_findings_limited_to_max_comments(self):

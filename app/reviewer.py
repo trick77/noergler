@@ -56,6 +56,13 @@ SEVERITY_ORDER = {"issue": 0, "suggestion": 1}
 # previous banner instead of stacking new ones.
 _STALE_BANNER_SENTINEL = "<!-- noergler-stale-banner -->"
 
+# Visible prefix of the banner. Used as a defensive fallback in case
+# Bitbucket's markdown renderer strips the HTML comment sentinel before
+# returning the comment body — without this fallback, banners would stack on
+# repeated timeouts. The phrase is stable across the two banner variants
+# (with/without prior commit sha).
+_STALE_BANNER_VISIBLE_PREFIX = "⚠️ No response from the model within"
+
 
 def _strip_stale_banner(body: str) -> str:
     """If `body` starts with our staleness banner block, return the body
@@ -63,17 +70,34 @@ def _strip_stale_banner(body: str) -> str:
 
     Banner format we write:
         <!-- noergler-stale-banner -->
-        ⚠️ ...one-line message...
+        ⚠️ No response from the model within ...one-line message...
         <blank line>
         <original body>
 
-    Strip everything from the sentinel through the first blank line that
-    follows it.
+    Detection priority: sentinel first; if that's missing (Bitbucket may
+    strip HTML comments through its renderer), fall back to the visible
+    "⚠️ No response from the model within" prefix on the first content line.
+    Strips everything up to and including the first blank line that follows.
     """
-    if not body.startswith(_STALE_BANNER_SENTINEL):
-        return body
+    has_sentinel = body.startswith(_STALE_BANNER_SENTINEL)
+    if not has_sentinel:
+        # Skip leading blank lines, then check the first non-blank.
+        lines_iter = iter(body.splitlines())
+        first_content = ""
+        for line in lines_iter:
+            if line.strip():
+                first_content = line
+                break
+        if not first_content.startswith(_STALE_BANNER_VISIBLE_PREFIX):
+            return body
+
     lines = body.splitlines()
-    i = 1
+    # Find the first non-blank line (the visible banner row, possibly
+    # preceded by the sentinel).
+    i = 0
+    if has_sentinel:
+        i = 1
+    # Skip the visible banner line itself, then skip until first blank line.
     while i < len(lines) and lines[i].strip() != "":
         i += 1
     while i < len(lines) and lines[i].strip() == "":
