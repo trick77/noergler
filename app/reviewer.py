@@ -1280,10 +1280,10 @@ class Reviewer:
         # Upper-bound USD cost. Omitted entirely when the model has no
         # pricing entry — better than printing a misleading "$0.00".
         if run_cost_usd is not None:
-            cost.append(f"Estimated cost (this run): ${run_cost_usd:.4f}")
+            cost.append(f"Estimated cost (this run): ${run_cost_usd:.2f}")
             if cumulative_cost_usd is not None:
                 cost.append(
-                    f"Cumulative for this PR: ${cumulative_cost_usd:.4f} "
+                    f"Cumulative for this PR: ${cumulative_cost_usd:.2f} "
                     "— upper bound, ignores prompt cache"
                 )
 
