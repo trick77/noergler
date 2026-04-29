@@ -9,7 +9,7 @@ from pathlib import PurePosixPath
 
 import openai
 
-from app.bitbucket import BitbucketClient
+from app.bitbucket import BitbucketClient, IncrementalDiffUnavailable
 from app.db import repository
 from app.feedback import classify_feedback, disagree_response
 from app.llm_client import (
@@ -413,10 +413,39 @@ class Reviewer:
             cumulative_pr_diff: str = ""
 
             if payload.eventKey == "pr:from_ref_updated" and last_reviewed and source_commit:
+                if source_commit == last_reviewed:
+                    # Same SHA — nothing actually changed (e.g. retrigger or
+                    # no-op force-push). Skip is safe.
+                    logger.info(
+                        "%s: HEAD unchanged since last review (%s), skipping",
+                        pr_tag, source_commit[:10],
+                    )
+                    return
                 try:
                     inc_diff = await self.bitbucket.fetch_commit_diff(
                         project_key, repo_slug, last_reviewed, source_commit,
                     )
+                except IncrementalDiffUnavailable as exc:
+                    # Expected, well-handled control flow: branch was rebased
+                    # / squashed, history rewritten. Log at INFO without a
+                    # traceback. Fall through to the full-review path below;
+                    # we MUST NOT skip the review just because the
+                    # incremental optimization didn't apply.
+                    logger.info(
+                        "%s: incremental diff unavailable (%s) — running full review",
+                        pr_tag, exc,
+                    )
+                    is_incremental = False
+                except Exception:
+                    # Genuinely unexpected — keep the warning + traceback so
+                    # operators can see the underlying error. Fall through
+                    # to full review.
+                    logger.warning(
+                        "%s: incremental diff failed unexpectedly, falling back to full review",
+                        pr_tag, exc_info=True,
+                    )
+                    is_incremental = False
+                else:
                     if inc_diff.strip():
                         diff = inc_diff
                         is_incremental = True
@@ -426,14 +455,21 @@ class Reviewer:
                             pr_tag, last_reviewed[:10], source_commit[:10],
                         )
                     else:
-                        logger.info("%s: no changes since last review, skipping", pr_tag)
-                        return
-                except Exception:
-                    logger.warning(
-                        "%s: incremental diff failed (rebase?), falling back to full review",
-                        pr_tag, exc_info=True,
-                    )
-                    is_incremental = False
+                        # source_commit differs from last_reviewed but the
+                        # compare endpoint returned no content. This happens
+                        # when a rebase / squash produces a tree identical
+                        # to what was already reviewed, but it can also
+                        # happen in edge cases where Bitbucket gives us an
+                        # empty diff for genuinely-changed history. Always
+                        # fall back to a full review rather than risk
+                        # silently skipping real changes — the safety net
+                        # the user explicitly asked for.
+                        logger.warning(
+                            "%s: HEAD moved %s -> %s but compare/diff is empty — "
+                            "falling back to full review to avoid missing changes",
+                            pr_tag, last_reviewed[:10], source_commit[:10],
+                        )
+                        is_incremental = False
 
             if not is_incremental:
                 diff = await self.bitbucket.fetch_pr_diff(

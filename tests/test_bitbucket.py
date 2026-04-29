@@ -88,6 +88,22 @@ class TestBitbucketClient:
 
     @pytest.mark.asyncio
     @respx.mock
+    async def test_fetch_commit_diff_406_raises_typed_exception(self, client):
+        """Bitbucket returns 406 when commits don't share reachable history
+        (typically after a rebase or squash). Surface this as a typed
+        exception so callers can fall back without a noisy traceback."""
+        from app.bitbucket import IncrementalDiffUnavailable
+
+        respx.get(
+            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/compare/diff"
+        ).mock(return_value=httpx.Response(406, text="Not Acceptable"))
+
+        with pytest.raises(IncrementalDiffUnavailable):
+            await client.fetch_commit_diff("PROJ", "my-repo", "abc123", "def456")
+        await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
     async def test_fetch_pr_diff_with_context_lines(self, client):
         diff_text = "diff --git a/file.py b/file.py\n+hello\n"
         route = respx.get(

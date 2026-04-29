@@ -2073,7 +2073,7 @@ class TestIncrementalReview:
 
     @pytest.mark.asyncio
     async def test_fallback_on_commit_diff_error(self, mock_bitbucket, mock_llm, monkeypatch):
-        """When incremental diff fails (e.g. rebase), fall back to full review."""
+        """When incremental diff fails unexpectedly, fall back to full review."""
         monkeypatch.setattr(
             "app.reviewer.repository.get_last_reviewed_commit",
             AsyncMock(return_value="aabbccdd1234"),
@@ -2091,8 +2091,106 @@ class TestIncrementalReview:
         mock_llm.review_diff.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_skip_when_incremental_diff_empty(self, mock_bitbucket, mock_llm, monkeypatch):
-        """When incremental diff is empty, skip review entirely."""
+    async def test_rebase_406_logs_at_info_and_falls_back(
+        self, mock_bitbucket, mock_llm, monkeypatch, caplog,
+    ):
+        """A rebased branch causes Bitbucket compare/diff to 406. The client
+        translates that into IncrementalDiffUnavailable; the reviewer logs at
+        INFO without a traceback and runs a full review."""
+        from app.bitbucket import IncrementalDiffUnavailable
+        import logging
+
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_last_reviewed_commit",
+            AsyncMock(return_value="aabbccdd1234"),
+        )
+        mock_bitbucket.fetch_commit_diff.side_effect = IncrementalDiffUnavailable(
+            "compare/diff 406 for aabbccdd12..abc123 (unreachable history — likely rebase)"
+        )
+
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        payload = _make_payload()
+        payload.eventKey = "pr:from_ref_updated"
+
+        with caplog.at_level(logging.INFO, logger="app.reviewer"):
+            await rev.review_pull_request(payload)
+
+        # Full review ran.
+        mock_bitbucket.fetch_pr_diff.assert_called()
+        mock_llm.review_diff.assert_called_once()
+        # No WARNING-level "incremental diff failed" record (we downgraded to
+        # INFO for this expected, well-handled case).
+        warn_records = [
+            r for r in caplog.records
+            if r.levelno == logging.WARNING and "incremental diff failed" in r.message
+        ]
+        assert warn_records == []
+        # An INFO-level "incremental diff unavailable" record is present.
+        info_records = [
+            r for r in caplog.records
+            if r.levelno == logging.INFO and "incremental diff unavailable" in r.message
+        ]
+        assert len(info_records) == 1
+        # No traceback attached on the INFO line.
+        assert info_records[0].exc_info is None
+
+    @pytest.mark.asyncio
+    async def test_squashed_branch_falls_back_to_full_review(
+        self, mock_bitbucket, mock_llm, monkeypatch,
+    ):
+        """A squash rewrites history just like a rebase: compare/diff 406 →
+        IncrementalDiffUnavailable. We must still run the full review on the
+        new HEAD so changes are not silently missed."""
+        from app.bitbucket import IncrementalDiffUnavailable
+
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_last_reviewed_commit",
+            AsyncMock(return_value="oldcommit12345"),
+        )
+        mock_bitbucket.fetch_commit_diff.side_effect = IncrementalDiffUnavailable(
+            "compare/diff 406 for oldcommit..abc123 (unreachable history — likely rebase)"
+        )
+
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        payload = _make_payload()
+        payload.eventKey = "pr:from_ref_updated"
+
+        await rev.review_pull_request(payload)
+
+        # Full PR diff endpoint was used (not the failed compare/diff).
+        mock_bitbucket.fetch_pr_diff.assert_called()
+        # LLM review ran end-to-end on the squashed HEAD.
+        mock_llm.review_diff.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_skip_when_head_unchanged_since_last_review(
+        self, mock_bitbucket, mock_llm, monkeypatch,
+    ):
+        """When the source HEAD equals last_reviewed (e.g. retrigger with no
+        new commits), skip review entirely — the compare endpoint isn't even
+        consulted."""
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_last_reviewed_commit",
+            AsyncMock(return_value="abc123"),  # same as payload's latestCommit
+        )
+
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        payload = _make_payload()
+        payload.eventKey = "pr:from_ref_updated"
+
+        await rev.review_pull_request(payload)
+
+        mock_bitbucket.fetch_commit_diff.assert_not_called()
+        mock_llm.review_diff.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_empty_incremental_diff_with_changed_head_falls_back_to_full_review(
+        self, mock_bitbucket, mock_llm, monkeypatch,
+    ):
+        """Safety net: source HEAD changed but compare/diff returned empty
+        (rare rebase / squash edge case where Bitbucket gives us no content
+        even though history moved). Fall back to full review rather than
+        risk silently skipping real changes."""
         monkeypatch.setattr(
             "app.reviewer.repository.get_last_reviewed_commit",
             AsyncMock(return_value="aabbccdd1234"),
@@ -2105,7 +2203,9 @@ class TestIncrementalReview:
 
         await rev.review_pull_request(payload)
 
-        mock_llm.review_diff.assert_not_called()
+        # Full diff endpoint was called as a fallback, and the LLM ran.
+        mock_bitbucket.fetch_pr_diff.assert_called()
+        mock_llm.review_diff.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_pr_opened_always_does_full_review(self, mock_bitbucket, mock_llm, monkeypatch):

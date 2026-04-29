@@ -10,6 +10,15 @@ from app.models import ReviewFinding
 logger = logging.getLogger(__name__)
 
 
+class IncrementalDiffUnavailable(Exception):
+    """Raised when Bitbucket cannot produce a diff between two commits.
+
+    Typical causes: the source branch was rebased so the old commit is no
+    longer reachable from the new HEAD, or the two commits live on unrelated
+    histories. Bitbucket signals this with `406 Not Acceptable` on
+    `compare/diff`. Callers should fall back to a full review.
+    """
+
 
 class BitbucketClient:
     def __init__(self, config: BitbucketConfig):
@@ -52,12 +61,23 @@ class BitbucketClient:
     async def fetch_commit_diff(
         self, project: str, repo: str, from_commit: str, to_commit: str,
     ) -> str:
-        """Fetch diff between two commits (for incremental review)."""
+        """Fetch diff between two commits (for incremental review).
+
+        Raises `IncrementalDiffUnavailable` when Bitbucket returns 406, which
+        means the two commits don't have a common history Bitbucket can diff
+        (typically: the branch was rebased and `from_commit` is no longer
+        reachable from `to_commit`). Other HTTP errors propagate as-is.
+        """
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/compare/diff"
         params = {"from": from_commit, "to": to_commit}
         response = await self.client.get(
             url, headers={"Accept": "text/plain"}, params=params
         )
+        if response.status_code == 406:
+            raise IncrementalDiffUnavailable(
+                f"compare/diff 406 for {from_commit[:10]}..{to_commit[:10]} "
+                f"(unreachable history — likely rebase)"
+            )
         response.raise_for_status()
         return response.text
 
