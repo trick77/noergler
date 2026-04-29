@@ -40,7 +40,9 @@ def test_log_config_masks_secrets(caplog):
     assert "secret-bb-token" not in text
     assert "secret-webhook" not in text
     assert "ghp_secret123" not in text
-    assert text.count("***") == 6  # bb token, webhook secret, copilot oauth token, jira token, database url, analytics api key
+    # bb token, webhook secret, copilot oauth token, jira token, database url,
+    # analytics api key, riptide token
+    assert text.count("***") == 7
 
     # Non-secret fields must appear as-is
     assert "https://bitbucket.example.com" in text
@@ -56,6 +58,7 @@ def test_log_config_masks_secrets(caplog):
     assert "[config.review]" in text
     assert "[config.jira]" in text
     assert "[config.server]" in text
+    assert "[config.riptide]" in text
 
 
 def test_diff_context_defaults():

@@ -25,6 +25,7 @@ from app.llm_client import (
     split_by_file,
 )
 from app.config import ReviewConfig, ServerConfig, estimate_cost_usd, model_label
+from app.riptide_client import RiptideClient
 from app.context_expansion import expand_all_files
 from app.cross_file_context import build_cross_file_context, render_cross_file_context
 from app.diff_compression import compress_for_large_pr, is_small_pr
@@ -199,6 +200,7 @@ class Reviewer:
         server_config: ServerConfig | None = None,
         *,
         db_pool,
+        riptide: RiptideClient | None = None,
     ):
         self.bitbucket = bitbucket
         self.llm = llm
@@ -211,6 +213,7 @@ class Reviewer:
         self.auto_review_authors = review_config.auto_review_authors
         self.max_comments = review_config.max_comments
         self.mention_trigger = bitbucket.bot_username
+        self.riptide = riptide
 
     @staticmethod
     def _extract_ticket_id(pr: PullRequest) -> str | None:
@@ -767,6 +770,7 @@ class Reviewer:
             for f in findings:
                 counts[f.severity] = counts.get(f.severity, 0) + 1
             security_count = len([f for f in findings if _SECURITY_KEYWORDS.search(f.comment)])
+            review_model_name = model_label(self.llm.config.model, self.llm.config.reasoning_effort)
             await _safe_db(
                 repository.insert_review_stats(
                     self.db_pool,
@@ -786,7 +790,7 @@ class Reviewer:
                     review_effort=llm_result.review_effort,
                     prompt_tokens=llm_result.prompt_tokens,
                     completion_tokens=llm_result.completion_tokens,
-                    model_name=model_label(self.llm.config.model, self.llm.config.reasoning_effort),
+                    model_name=review_model_name,
                     elapsed_seconds=elapsed,
                     cross_file_deps=len(cross_file_rels) if cross_file_rels else 0,
                     skipped_files=len(llm_result.skipped_files),
@@ -795,6 +799,27 @@ class Reviewer:
                     findings_deduplicated=deduplicated_count,
                 )
             )
+
+            if self.riptide is not None and self.riptide.enabled:
+                # pr_review_id is noergler's per-run primary key; use it as
+                # the riptide idempotency key (run_id) so retries collapse.
+                try:
+                    await self.riptide.emit_completed(
+                        pr_key=pr_tag,
+                        repo=f"{project_key}/{repo_slug}",
+                        commit_sha=source_commit or "",
+                        run_id=str(pr_review_id),
+                        model=review_model_name,
+                        prompt_tokens=llm_result.prompt_tokens,
+                        completion_tokens=llm_result.completion_tokens,
+                        elapsed_ms=int(elapsed * 1000),
+                        findings_count=len(findings),
+                        cost_usd=run_cost_usd,
+                        finished_at=datetime.now(timezone.utc),
+                    )
+                except Exception:
+                    # Best-effort. Never let forwarding break a successful review.
+                    logger.warning("riptide emit (completed) failed", exc_info=True)
 
             parts = [
                 f"Review of {pr_tag} completed in {elapsed:.1f}s",
@@ -1053,6 +1078,20 @@ class Reviewer:
                     severity=parent_severity,
                 )
             )
+            if self.riptide is not None and self.riptide.enabled:
+                # `disagreed` mirrors noergler's "negative" classification.
+                # `acknowledged` is reserved for a future positive-feedback path.
+                try:
+                    await self.riptide.emit_feedback(
+                        pr_key=pr_tag,
+                        finding_id=str(parent_id),
+                        verdict="disagreed",
+                        actor=comment.author.name,
+                        repo=f"{project_key}/{repo_slug}",
+                        occurred_at=datetime.now(timezone.utc),
+                    )
+                except Exception:
+                    logger.warning("riptide emit (feedback) failed", exc_info=True)
         except Exception:
             logger.error("Feedback handling on %s failed", pr_tag, exc_info=True)
 

@@ -17,6 +17,7 @@ from app.analytics import router as analytics_router
 from app.models import WebhookPayload
 from app.review_queue import ReviewQueue
 from app.reviewer import Reviewer
+from app.riptide_client import RiptideAuthError, RiptideClient
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,16 +52,18 @@ llm_client: LLMClient = cast(LLMClient, None)
 jira_client: JiraClient = cast(JiraClient, None)
 copilot_token_provider: CopilotTokenProvider = cast(CopilotTokenProvider, None)
 review_queue: ReviewQueue = cast(ReviewQueue, None)
+riptide_client: RiptideClient = cast(RiptideClient, None)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    global config, reviewer, bitbucket_client, llm_client, jira_client, copilot_token_provider, review_queue
+    global config, reviewer, bitbucket_client, llm_client, jira_client, copilot_token_provider, review_queue, riptide_client
 
     _unify_uvicorn_logging()
     config = load_config()
     log_config(config, logger)
     bitbucket_client = BitbucketClient(config.bitbucket)
+    riptide_client = RiptideClient.from_env(config.riptide.url, config.riptide.token)
 
     copilot_token_provider = CopilotTokenProvider(
         oauth_token=config.llm.oauth_token,
@@ -112,6 +115,15 @@ async def lifespan(_app: FastAPI):
     except Exception as exc:
         checks["LLM"] = str(exc)
 
+    if riptide_client.enabled:
+        # Verify riptide reachability + bearer at startup. A wrong token
+        # fails fast (RiptideAuthError); transient unreachability only logs.
+        try:
+            await riptide_client.verify_at_startup()
+            checks["Riptide"] = None
+        except RiptideAuthError as exc:
+            checks["Riptide"] = str(exc)
+
     for name, error in checks.items():
         if error is None:
             logger.info("  ✔ %s: OK", name)
@@ -126,6 +138,7 @@ async def lifespan(_app: FastAPI):
         await llm_client.close()
         await jira_client.close()
         await copilot_token_provider.close()
+        await riptide_client.close()
         raise RuntimeError(
             f"Startup aborted — {len(failed)} connection(s) failed: {', '.join(failed)}"
         )
@@ -135,6 +148,7 @@ async def lifespan(_app: FastAPI):
         jira=jira_client,
         server_config=config.server,
         db_pool=db_pool,
+        riptide=riptide_client,
     )
     review_queue = ReviewQueue(reviewer.review_pull_request)
     review_queue.start()
@@ -149,6 +163,7 @@ async def lifespan(_app: FastAPI):
     await llm_client.close()
     await jira_client.close()
     await copilot_token_provider.close()
+    await riptide_client.close()
     await close_pool()
 
 
