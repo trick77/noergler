@@ -59,7 +59,8 @@ Events are routed as follows:
 |---|---|
 | `pr:opened` | Full review |
 | `pr:from_ref_updated` | Incremental or full review |
-| `pr:merged` | Usefulness stats collection |
+| `pr:merged` | Mark PR merged + freeze final cost |
+| `pr:deleted` | Mark PR deleted (data retained) |
 | `pr:comment:added` | Mention Q&A or feedback handling |
 | `diagnostics:ping` | Health check acknowledgment |
 
@@ -386,11 +387,11 @@ Special keywords (`review`, `re-review`, `rereview`) trigger a full review inste
 **File:** `app/reviewer.py`
 
 When a developer replies to a noergler inline comment:
-- If the reply contains "disagree" (or similar negative feedback), it's logged as a disagreement
-- An emoji reaction is added to acknowledge the feedback
-- Aggregate stats (disagreement rate) are tracked per PR
+- If the reply contains "disagree" (or similar negative feedback), it's logged as a disagreement in `feedback_events` (deduped per parent comment to avoid double-counting).
+- An emoji reaction is added to acknowledge the feedback.
+- If [riptide forwarding](README.md#optional-forward-review-cost--reviewer-precision-events-to-riptide) is configured, a `feedback` event is emitted to riptide carrying `pr_key`, `finding_id`, `verdict=disagreed`, the actor, the parent finding's `commit_sha`, and `occurred_at`. Otherwise the event stays in noergler's local `feedback_events` table only.
 
-On PR merge, final usefulness stats are calculated: percentage of comments that weren't disagreed with.
+`feedback_events` exists solely for de-duplication on the noergler side; aggregate reviewer-precision metrics live in riptide (or are skipped entirely if forwarding is disabled).
 
 ## 13. Jira integration
 
