@@ -1,6 +1,7 @@
 import logging
 import os
 
+import httpx
 from pydantic import BaseModel, field_validator
 
 # Webhook events the /webhook endpoint in app/main.py dispatches on.
@@ -41,7 +42,7 @@ class ModelPrice(BaseModel):
     output_per_mtok: float
 
 
-_MODEL_PRICING: dict[str, ModelPrice] = {
+_STATIC_MODEL_PRICING: dict[str, ModelPrice] = {
     # OpenAI
     "gpt-4.1":        ModelPrice(input_per_mtok=2.00, cached_input_per_mtok=0.50,  output_per_mtok=8.00),
     "gpt-5-mini":     ModelPrice(input_per_mtok=0.25, cached_input_per_mtok=0.025, output_per_mtok=2.00),
@@ -62,6 +63,17 @@ _MODEL_PRICING: dict[str, ModelPrice] = {
     "claude-opus-4.7":   ModelPrice(input_per_mtok=5.00, cached_input_per_mtok=0.50, output_per_mtok=25.00),
 }
 
+# Live pricing table. Initially the static defaults; replaced wholesale
+# (atomic reference swap under the GIL) by `_swap_pricing` whenever a refresh
+# completes. `pricing_for` snapshots this reference at call time so a swap
+# in flight never tears a single lookup.
+_MODEL_PRICING: dict[str, ModelPrice] = dict(_STATIC_MODEL_PRICING)
+
+
+def _swap_pricing(new_table: dict[str, ModelPrice]) -> None:
+    global _MODEL_PRICING
+    _MODEL_PRICING = new_table
+
 
 def pricing_for(model: str) -> ModelPrice | None:
     """Return the price entry for a model id, or None if unknown.
@@ -69,15 +81,104 @@ def pricing_for(model: str) -> ModelPrice | None:
     Falls back to a prefix match so dated/suffixed ids resolve to the base
     model entry (mirrors _context_window_for in app/llm_client.py).
     """
-    if model in _MODEL_PRICING:
-        return _MODEL_PRICING[model]
+    table = _MODEL_PRICING  # snapshot to survive an atomic refresh swap
+    if model in table:
+        return table[model]
     # Iterate longest base first so `gpt-5.4-mini-2025-06-01` matches
     # `gpt-5.4-mini` instead of falling through to the (3x more expensive)
     # `gpt-5.4` entry.
-    for base in sorted(_MODEL_PRICING, key=len, reverse=True):
+    for base in sorted(table, key=len, reverse=True):
         if model.startswith(base + "-"):
-            return _MODEL_PRICING[base]
+            return table[base]
     return None
+
+
+LITELLM_PRICING_URL = (
+    "https://raw.githubusercontent.com/BerriAI/litellm/main/"
+    "model_prices_and_context_window.json"
+)
+
+# LiteLLM exposes Anthropic models only under provider-prefixed keys. Probe
+# these in order so e.g. `claude-sonnet-4.6` resolves to the openrouter entry.
+_LITELLM_KEY_PREFIXES: tuple[str, ...] = (
+    "",
+    "openrouter/anthropic/",
+    "vercel_ai_gateway/anthropic/",
+)
+
+
+def _build_pricing_from_litellm(data: dict) -> dict[str, ModelPrice]:
+    """Overlay LiteLLM pricing onto static defaults, returning a fresh dict.
+
+    Only ids present in `_STATIC_MODEL_PRICING` are looked up; ids missing
+    from LiteLLM keep their static price.
+    """
+    log = logging.getLogger(__name__)
+    table: dict[str, ModelPrice] = dict(_STATIC_MODEL_PRICING)
+    for model_id in _STATIC_MODEL_PRICING:
+        entry = None
+        for prefix in _LITELLM_KEY_PREFIXES:
+            candidate = data.get(f"{prefix}{model_id}")
+            if candidate and "input_cost_per_token" in candidate:
+                entry = candidate
+                break
+        if entry is None:
+            continue
+        try:
+            input_per_mtok = float(entry["input_cost_per_token"]) * 1_000_000
+            output_per_mtok = float(entry["output_cost_per_token"]) * 1_000_000
+            cached_raw = entry.get("cache_read_input_token_cost")
+            cached_per_mtok = (
+                float(cached_raw) * 1_000_000 if cached_raw is not None
+                else input_per_mtok * 0.1
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            log.warning("malformed LiteLLM entry for %s: %s", model_id, exc)
+            continue
+        table[model_id] = ModelPrice(
+            input_per_mtok=input_per_mtok,
+            cached_input_per_mtok=cached_per_mtok,
+            output_per_mtok=output_per_mtok,
+        )
+    return table
+
+
+def apply_pricing_overlay(entries: dict[str, tuple[float, float, float]]) -> int:
+    """Replace the live pricing table by overlaying `entries` on the static
+    defaults. Used by the DB hydrator at startup. Returns count overlaid.
+    """
+    table: dict[str, ModelPrice] = dict(_STATIC_MODEL_PRICING)
+    overlaid = 0
+    for model_id, (inp, cached, out) in entries.items():
+        if model_id not in _STATIC_MODEL_PRICING:
+            continue
+        table[model_id] = ModelPrice(
+            input_per_mtok=inp,
+            cached_input_per_mtok=cached,
+            output_per_mtok=out,
+        )
+        overlaid += 1
+    _swap_pricing(table)
+    return overlaid
+
+
+async def fetch_litellm_pricing(timeout: float = 5.0) -> dict[str, ModelPrice] | None:
+    """Fetch LiteLLM pricing JSON and return a fresh overlaid dict.
+
+    Returns None on any fetch / parse failure (caller keeps the existing
+    table). Async so it can run inside the FastAPI lifespan / background
+    task without blocking the event loop.
+    """
+    log = logging.getLogger(__name__)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(LITELLM_PRICING_URL)
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:
+        log.warning("model-pricing fetch failed: %s", exc)
+        return None
+    return _build_pricing_from_litellm(data)
 
 
 def estimate_cost_usd(

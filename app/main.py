@@ -9,6 +9,7 @@ from typing import cast
 
 from app.bitbucket import BitbucketClient
 from app.config import AppConfig, load_config, log_config, model_label
+from app.pricing_refresher import PricingRefresher, hydrate_from_db, refresh_once
 from app.copilot_auth import CopilotTokenProvider
 from app.db import close_pool, create_pool
 from app.llm_client import LLMClient
@@ -52,11 +53,12 @@ jira_client: JiraClient = cast(JiraClient, None)
 copilot_token_provider: CopilotTokenProvider = cast(CopilotTokenProvider, None)
 review_queue: ReviewQueue = cast(ReviewQueue, None)
 riptide_client: RiptideClient = cast(RiptideClient, None)
+pricing_refresher: PricingRefresher = cast(PricingRefresher, None)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    global config, reviewer, bitbucket_client, llm_client, jira_client, copilot_token_provider, review_queue, riptide_client
+    global config, reviewer, bitbucket_client, llm_client, jira_client, copilot_token_provider, review_queue, riptide_client, pricing_refresher
 
     _unify_uvicorn_logging()
     config = load_config()
@@ -148,12 +150,25 @@ async def lifespan(_app: FastAPI):
     )
     review_queue = ReviewQueue(reviewer.review_pull_request)
     review_queue.start()
+
+    # Pricing: hydrate from DB cache (non-fatal if empty), then attempt one
+    # live refresh from LiteLLM. The background task takes over from there
+    # and refreshes every 24h. None of these are blocking on hard failures —
+    # we always fall through to the static defaults baked into app.config.
+    if db_pool is not None:
+        await hydrate_from_db(db_pool)
+    await refresh_once(db_pool)
+    pricing_refresher = PricingRefresher(db_pool)
+    pricing_refresher.start()
+
     _app.state.config = config
     _app.state.db_pool = db_pool
     logger.info("Bridge service started, model=%s, api_url=%s", model_label(config.llm.model, config.llm.reasoning_effort), config.llm.api_url)
 
     yield
 
+    if pricing_refresher is not None:
+        await pricing_refresher.stop()
     await review_queue.stop()
     await bitbucket_client.close()
     await llm_client.close()

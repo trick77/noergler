@@ -276,3 +276,48 @@ async def insert_feedback(
             project_key, repo_slug, pr_id, bitbucket_comment_id,
             feedback_author, classification, file_path, severity,
         )
+
+
+async def upsert_model_pricing(
+    pool: asyncpg.Pool,
+    entries: dict[str, tuple[float, float, float]],
+) -> None:
+    """Upsert (input, cached_input, output) per 1M tokens for each model id."""
+    if not entries:
+        return
+    rows = [
+        (model_id, inp, cached, out)
+        for model_id, (inp, cached, out) in entries.items()
+    ]
+    async with pool.acquire() as conn:
+        await conn.executemany(
+            """
+            INSERT INTO model_pricing
+                (model_id, input_per_mtok, cached_input_per_mtok, output_per_mtok, updated_at)
+            VALUES ($1, $2, $3, $4, NOW())
+            ON CONFLICT (model_id) DO UPDATE SET
+                input_per_mtok = EXCLUDED.input_per_mtok,
+                cached_input_per_mtok = EXCLUDED.cached_input_per_mtok,
+                output_per_mtok = EXCLUDED.output_per_mtok,
+                updated_at = NOW()
+            """,
+            rows,
+        )
+
+
+async def load_model_pricing(
+    pool: asyncpg.Pool,
+) -> dict[str, tuple[float, float, float]]:
+    """Return cached pricing as `{model_id: (input, cached_input, output)}`."""
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT model_id, input_per_mtok, cached_input_per_mtok, output_per_mtok FROM model_pricing"
+        )
+    return {
+        r["model_id"]: (
+            float(r["input_per_mtok"]),
+            float(r["cached_input_per_mtok"]),
+            float(r["output_per_mtok"]),
+        )
+        for r in rows
+    }

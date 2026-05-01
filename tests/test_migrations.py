@@ -8,20 +8,29 @@ _VERSIONS = Path("alembic/versions")
 _M003 = _VERSIONS / "003_pr_cost.py"
 _M004 = _VERSIONS / "004_rename_severity.py"
 _M005 = _VERSIONS / "005_drop_metrics_layer.py"
+_M006 = _VERSIONS / "006_model_pricing.py"
 
 
-def test_migration_chain_is_linear_and_reaches_005():
+def test_migration_chain_is_linear_and_reaches_006():
     script = ScriptDirectory.from_config(Config("alembic.ini"))
     revs = [(r.revision, r.down_revision) for r in script.walk_revisions()]
     chain = [r for r, _ in revs]
-    assert chain == ["005", "004", "003", "002", "001"]
+    assert chain == ["006", "005", "004", "003", "002", "001"]
     assert dict(revs) == {
+        "006": "005",
         "005": "004",
         "004": "003",
         "003": "002",
         "002": "001",
         "001": None,
     }
+
+
+def test_006_creates_model_pricing_table():
+    text = _M006.read_text()
+    assert "CREATE TABLE model_pricing" in text
+    assert "model_id TEXT PRIMARY KEY" in text
+    assert "DROP TABLE IF EXISTS model_pricing" in text
 
 
 def test_003_adds_cost_columns_with_numeric_type():
