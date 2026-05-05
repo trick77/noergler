@@ -553,10 +553,9 @@ class LLMClient:
         async def _inject_copilot_auth(request: httpx.Request) -> None:
             token, _ = await token_provider.get_token()
             request.headers["Authorization"] = f"Bearer {token}"
-            request.headers["Copilot-Integration-Id"] = config.integration_id
-            request.headers["Editor-Version"] = config.editor_version
+            request.headers["User-Agent"] = "opencode/1.2.7"
             request.headers["Openai-Intent"] = "conversation-edits"
-            request.headers["x-initiator"] = "agent"
+            request.headers["x-initiator"] = "user"
 
         # httpx + SDK timeouts are aligned with INFERENCE_HARD_TIMEOUT_SECONDS
         # so the asyncio.wait_for cap in _execute_responses_create is the
