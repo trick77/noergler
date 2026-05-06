@@ -553,7 +553,7 @@ class LLMClient:
         async def _inject_copilot_auth(request: httpx.Request) -> None:
             token, _ = await token_provider.get_token()
             request.headers["Authorization"] = f"Bearer {token}"
-            request.headers["User-Agent"] = "opencode/1.2.7"
+            request.headers["User-Agent"] = "opencode/1.14.39"
             request.headers["Openai-Intent"] = "conversation-edits"
             request.headers["x-initiator"] = "user"
 
