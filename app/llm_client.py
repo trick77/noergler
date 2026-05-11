@@ -109,6 +109,68 @@ _REVIEW_RESPONSE_SCHEMA: dict = {
 def _fmt(n: int) -> str:
     return f"{n:,}".replace(",", "'")
 
+
+def _inspect_request_body(content: bytes | None) -> tuple[bool, bool]:
+    """Return (is_agent, is_vision) for a Copilot request, mirroring opencode.
+
+    Source of truth: sst/opencode@dev
+    `packages/opencode/src/plugin/github-copilot/copilot.ts` lines 97-148.
+    Inspects the JSON body and detects:
+      - Completions API:    body.messages  (last message role / image_url parts)
+      - Responses API:      body.input     (last input role / input_image parts)
+      - Messages (Anthropic) API: body.messages with image content
+    Falls back to (False, False) on any parse error or unknown shape.
+    """
+    if not content:
+        return False, False
+    try:
+        body = json.loads(content)
+    except (ValueError, TypeError):
+        return False, False
+    if not isinstance(body, dict):
+        return False, False
+
+    def _msg_has_image(msg: dict, image_part_types: tuple[str, ...]) -> bool:
+        parts = msg.get("content")
+        if not isinstance(parts, list):
+            return False
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") in image_part_types:
+                return True
+            # Anthropic API: images can be nested inside tool_result content
+            if part.get("type") == "tool_result":
+                nested = part.get("content")
+                if isinstance(nested, list) and any(
+                    isinstance(n, dict) and n.get("type") == "image" for n in nested
+                ):
+                    return True
+        return False
+
+    # Responses API
+    if isinstance(body.get("input"), list):
+        items = body["input"]
+        if not items:
+            return False, False
+        last = items[-1] if isinstance(items[-1], dict) else {}
+        is_vision = any(
+            isinstance(it, dict) and _msg_has_image(it, ("input_image",)) for it in items
+        )
+        is_agent = last.get("role") != "user" or _msg_has_image(last, ("input_image",))
+        return is_agent, is_vision
+
+    messages = body.get("messages")
+    if isinstance(messages, list) and messages:
+        last = messages[-1] if isinstance(messages[-1], dict) else {}
+        is_vision = any(
+            isinstance(m, dict) and _msg_has_image(m, ("image_url",)) for m in messages
+        )
+        is_agent = last.get("role") != "user" or _msg_has_image(last, ("image_url",))
+        return is_agent, is_vision
+
+    return False, False
+
 @dataclass
 class FileReviewData:
     path: str
@@ -555,7 +617,10 @@ class LLMClient:
             request.headers["Authorization"] = f"Bearer {token}"
             request.headers["User-Agent"] = "opencode/1.14.39"
             request.headers["Openai-Intent"] = "conversation-edits"
-            request.headers["x-initiator"] = "user"
+            is_agent, is_vision = _inspect_request_body(request.content)
+            request.headers["x-initiator"] = "agent" if is_agent else "user"
+            if is_vision:
+                request.headers["Copilot-Vision-Request"] = "true"
 
         # httpx + SDK timeouts are aligned with INFERENCE_HARD_TIMEOUT_SECONDS
         # so the asyncio.wait_for cap in _execute_responses_create is the

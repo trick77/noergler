@@ -66,20 +66,7 @@ async def lifespan(_app: FastAPI):
     bitbucket_client = BitbucketClient(config.bitbucket)
     riptide_client = RiptideClient.from_env(config.riptide.url, config.riptide.token)
 
-    copilot_token_provider = CopilotTokenProvider(
-        oauth_token=config.llm.oauth_token,
-        integration_id=config.llm.integration_id,
-        editor_version=config.llm.editor_version,
-    )
-    # Do the first token exchange up front so auth failures surface at startup
-    # and so we can honour the endpoints.api returned by the exchange.
-    await copilot_token_provider.get_token()
-    if copilot_token_provider.endpoints_api != config.llm.api_url:
-        logger.info(
-            "Overriding api_url with token-exchange endpoints.api: %s -> %s",
-            config.llm.api_url, copilot_token_provider.endpoints_api,
-        )
-        config.llm.api_url = copilot_token_provider.endpoints_api
+    copilot_token_provider = CopilotTokenProvider(oauth_token=config.llm.oauth_token)
 
     llm_client = LLMClient(config.llm, config.review, copilot_token_provider)
 

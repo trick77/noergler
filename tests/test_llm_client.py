@@ -12,6 +12,7 @@ from app.llm_client import (
     format_file_entry,
     _context_window_for,
     _group_files_by_token_budget,
+    _inspect_request_body,
     _merge_change_summaries,
     _parse_mention_response,
     _parse_review_response,
@@ -1455,3 +1456,87 @@ class TestReviewResultTimedOut:
             assert result.timed_out is False
         finally:
             await client.close()
+
+
+class TestInspectRequestBody:
+    """Mirrors sst/opencode@dev copilot.ts lines 97-148."""
+
+    def test_empty_returns_defaults(self):
+        assert _inspect_request_body(None) == (False, False)
+        assert _inspect_request_body(b"") == (False, False)
+        assert _inspect_request_body(b"not json") == (False, False)
+
+    def test_responses_api_user_last_no_image(self):
+        body = json.dumps({
+            "input": [
+                {"role": "user", "content": [{"type": "input_text", "text": "hi"}]},
+            ]
+        }).encode()
+        assert _inspect_request_body(body) == (False, False)
+
+    def test_responses_api_assistant_last_is_agent(self):
+        body = json.dumps({
+            "input": [
+                {"role": "user", "content": [{"type": "input_text", "text": "hi"}]},
+                {"role": "assistant", "content": [{"type": "input_text", "text": "ok"}]},
+            ]
+        }).encode()
+        assert _inspect_request_body(body) == (True, False)
+
+    def test_responses_api_image_in_history_is_vision(self):
+        body = json.dumps({
+            "input": [
+                {"role": "user", "content": [{"type": "input_image", "image_url": "..."}]},
+                {"role": "user", "content": [{"type": "input_text", "text": "describe"}]},
+            ]
+        }).encode()
+        is_agent, is_vision = _inspect_request_body(body)
+        assert is_vision is True
+        assert is_agent is False  # last message is user with text only
+
+    def test_responses_api_image_on_last_user_is_agent(self):
+        body = json.dumps({
+            "input": [
+                {"role": "user", "content": [{"type": "input_image", "image_url": "..."}]},
+            ]
+        }).encode()
+        # opencode: imgMsg(last) → isAgent=true
+        is_agent, is_vision = _inspect_request_body(body)
+        assert is_agent is True
+        assert is_vision is True
+
+    def test_completions_api_user_last(self):
+        body = json.dumps({
+            "messages": [
+                {"role": "user", "content": "hi"},
+            ]
+        }).encode()
+        assert _inspect_request_body(body) == (False, False)
+
+    def test_completions_api_assistant_last_is_agent(self):
+        body = json.dumps({
+            "messages": [
+                {"role": "user", "content": "hi"},
+                {"role": "assistant", "content": "ok"},
+            ]
+        }).encode()
+        # In OpenAI/completions shape, string content has no "non_tool_calls" list,
+        # so opencode treats it as not vision/anthropic. is_agent = last.role != "user".
+        assert _inspect_request_body(body) == (True, False)
+
+    def test_completions_api_image_url_is_vision(self):
+        body = json.dumps({
+            "messages": [
+                {"role": "user", "content": [
+                    {"type": "image_url", "image_url": {"url": "..."}},
+                    {"type": "text", "text": "describe"},
+                ]},
+            ]
+        }).encode()
+        is_agent, is_vision = _inspect_request_body(body)
+        assert is_vision is True
+        # last user message has non-tool parts → has_non_tool_calls → anthropic branch
+        # but no anthropic image, OAI branch: is_agent = last.role != "user" or imgMsg(...)
+        # last has image_url → imgMsg(last, image_url) → True
+        assert is_agent is True
+
