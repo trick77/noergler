@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
@@ -61,6 +62,8 @@ async def lifespan(_app: FastAPI):
     global config, reviewer, bitbucket_client, llm_client, jira_client, copilot_token_provider, review_queue, riptide_client, pricing_refresher
 
     _unify_uvicorn_logging()
+    version = os.environ.get("OPENSHIFT_BUILD_COMMIT") or os.environ.get("NOERGLER_VERSION") or "dev"
+    logger.info("noergler version: %s", version)
     config = load_config()
     log_config(config, logger)
     bitbucket_client = BitbucketClient(config.bitbucket)

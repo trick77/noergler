@@ -16,7 +16,7 @@ def _make_config():
         llm=LLMConfig(
             model="gpt-5.3-codex",
             oauth_token="ghp_secret123",
-            api_url="https://api.business.githubcopilot.com",
+            api_url="https://api.githubcopilot.com",
         ),
         review=ReviewConfig(
             auto_review_authors=["alice", "bob"],

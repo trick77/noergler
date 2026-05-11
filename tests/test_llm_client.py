@@ -29,7 +29,7 @@ def llm_config():
     return LLMConfig(
         model="gpt-5.3-codex",
         oauth_token="test-oauth",
-        api_url="https://api.business.githubcopilot.com",
+        api_url="https://api.githubcopilot.com",
     )
 
 
@@ -650,7 +650,7 @@ class TestReasoningEffort:
         cfg = LLMConfig(
             model="gpt-5.3-codex",
             oauth_token="test-oauth",
-            api_url="https://api.business.githubcopilot.com",
+            api_url="https://api.githubcopilot.com",
             reasoning_effort=None,
         )
         mock_create = AsyncMock(return_value=_mock_completion("[]", 10, 5))
@@ -681,7 +681,7 @@ class TestReasoningEffort:
         cfg = LLMConfig(
             model="gpt-5.3-codex",
             oauth_token="test-oauth",
-            api_url="https://api.business.githubcopilot.com",
+            api_url="https://api.githubcopilot.com",
             reasoning_effort="high",
         )
         mock_create = AsyncMock(return_value=_mock_completion("[]", 10, 5))
@@ -699,7 +699,7 @@ class TestReasoningEffort:
         cfg = LLMConfig(
             model="gpt-5.3-codex",
             oauth_token="test-oauth",
-            api_url="https://api.business.githubcopilot.com",
+            api_url="https://api.githubcopilot.com",
             reasoning_effort="low",
         )
         mock_create = AsyncMock(return_value=_mock_completion("ok", 5, 1))
@@ -1196,7 +1196,7 @@ class TestContextWindowAutoCap:
         cfg = LLMConfig(
             model="gpt-4o",
             oauth_token="t",
-            api_url="https://api.business.githubcopilot.com",
+            api_url="https://api.githubcopilot.com",
         )
         client = LLMClient(cfg, review_config, token_provider)
         assert client.max_tokens_per_chunk == 128_000 - 16_000
@@ -1206,7 +1206,7 @@ class TestContextWindowAutoCap:
         cfg = LLMConfig(
             model="gpt-5.3-codex",
             oauth_token="t",
-            api_url="https://api.business.githubcopilot.com",
+            api_url="https://api.githubcopilot.com",
         )
         client = LLMClient(cfg, review_config, token_provider)
         assert client.max_tokens_per_chunk == 272_000 - 16_000
@@ -1216,7 +1216,7 @@ class TestContextWindowAutoCap:
         cfg = LLMConfig(
             model="mystery-model-9000",
             oauth_token="t",
-            api_url="https://api.business.githubcopilot.com",
+            api_url="https://api.githubcopilot.com",
         )
         with pytest.raises(RuntimeError, match="mystery-model-9000"):
             LLMClient(cfg, review_config, token_provider)
