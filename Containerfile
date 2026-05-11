@@ -1,5 +1,7 @@
 FROM python:3.12-slim
 WORKDIR /app
+ARG NOERGLER_VERSION=dev
+ENV NOERGLER_VERSION=${NOERGLER_VERSION}
 COPY certs/ /usr/local/share/ca-certificates/
 RUN update-ca-certificates
 ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
