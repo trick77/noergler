@@ -202,7 +202,7 @@ def estimate_cost_usd(
 class LLMConfig(BaseModel):
     model: str = "gpt-5.4"
     oauth_token: str
-    api_url: str = "https://api.business.githubcopilot.com"
+    api_url: str = "https://api.githubcopilot.com"
     reasoning_effort: str | None = "high"
 
     @field_validator("api_url", mode="after")
@@ -332,7 +332,7 @@ def load_config() -> AppConfig:
         llm=LLMConfig(
             model=_env("COPILOT_MODEL", "gpt-5.4"),
             oauth_token=_env("COPILOT_OAUTH_TOKEN"),
-            api_url=_env("COPILOT_API_URL", "https://api.business.githubcopilot.com"),
+            api_url=_env("COPILOT_API_URL", "https://api.githubcopilot.com"),
             reasoning_effort=os.environ.get("COPILOT_REASONING_EFFORT") or "high",
         ),
         review=ReviewConfig(
