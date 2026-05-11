@@ -19,12 +19,8 @@ class CopilotTokenProvider:
     def __init__(self, oauth_token: str):
         self._oauth_token = oauth_token
 
-    @property
-    def endpoints_api(self) -> str:
-        return DEFAULT_API_URL
-
     async def close(self) -> None:
         return None
 
-    async def get_token(self) -> tuple[str, str]:
-        return self._oauth_token, DEFAULT_API_URL
+    async def get_token(self) -> str:
+        return self._oauth_token

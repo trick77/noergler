@@ -115,11 +115,11 @@ def _inspect_request_body(content: bytes | None) -> tuple[bool, bool]:
 
     Source of truth: sst/opencode@dev
     `packages/opencode/src/plugin/github-copilot/copilot.ts` lines 97-148.
-    Inspects the JSON body and detects:
-      - Completions API:    body.messages  (last message role / image_url parts)
-      - Responses API:      body.input     (last input role / input_image parts)
-      - Messages (Anthropic) API: body.messages with image content
-    Falls back to (False, False) on any parse error or unknown shape.
+    Detects two shapes (noergler only sends Responses API; Completions stays for
+    parity with opencode's logic and any future code path):
+      - Responses API:   body.input     (last role / input_image parts)
+      - Completions API: body.messages  (last role / image_url parts)
+    Falls back to (False, False) on parse error or unknown shape.
     """
     if not content:
         return False, False
@@ -613,7 +613,7 @@ class LLMClient:
         )
 
         async def _inject_copilot_auth(request: httpx.Request) -> None:
-            token, _ = await token_provider.get_token()
+            token = await token_provider.get_token()
             request.headers["Authorization"] = f"Bearer {token}"
             request.headers["User-Agent"] = "opencode/1.14.39"
             request.headers["Openai-Intent"] = "conversation-edits"

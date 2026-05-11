@@ -45,8 +45,7 @@ def review_config():
 def token_provider():
     """Stub token provider — yields a static token, no real HTTP."""
     provider = MagicMock()
-    provider.get_token = AsyncMock(return_value=("stub-copilot-token", "https://api.business.githubcopilot.com"))
-    provider.endpoints_api = "https://api.business.githubcopilot.com"
+    provider.get_token = AsyncMock(return_value="stub-copilot-token")
     provider.close = AsyncMock()
     return provider
 
@@ -1535,8 +1534,6 @@ class TestInspectRequestBody:
         }).encode()
         is_agent, is_vision = _inspect_request_body(body)
         assert is_vision is True
-        # last user message has non-tool parts → has_non_tool_calls → anthropic branch
-        # but no anthropic image, OAI branch: is_agent = last.role != "user" or imgMsg(...)
-        # last has image_url → imgMsg(last, image_url) → True
+        # last user message carries an image_url → imgMsg(last) → is_agent True
         assert is_agent is True
 
