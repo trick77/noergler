@@ -1,21 +1,58 @@
-name: Release image
+name: Release
 
 on:
   push:
     branches: [master]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump"
+        type: choice
+        options: [patch, minor, major]
+        default: patch
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  build-and-push:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
-      - id: sha
-        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+      - id: ver
+        name: Compute next version
+        run: |
+          BUMP="${{ github.event.inputs.bump || 'patch' }}"
+          LATEST=$(git tag --list '[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+          LATEST="${LATEST:-0.0.0}"
+          IFS=. read -r MA MI PA <<< "$LATEST"
+          case "$BUMP" in
+            major) MA=$((MA+1)); MI=0; PA=0 ;;
+            minor) MI=$((MI+1)); PA=0 ;;
+            patch) PA=$((PA+1)) ;;
+          esac
+          NEXT="$MA.$MI.$PA"
+          SHORT=$(git rev-parse --short HEAD)
+          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "major=$MA"     >> "$GITHUB_OUTPUT"
+          echo "minor=$MI"     >> "$GITHUB_OUTPUT"
+          echo "short=$SHORT"  >> "$GITHUB_OUTPUT"
+          echo "Bumping $LATEST -> $NEXT ($BUMP) at $SHORT" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create and push tag
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.ver.outputs.version }}"
+          git push origin "${{ steps.ver.outputs.version }}"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -31,9 +68,12 @@ jobs:
           file: ./Containerfile
           push: true
           build-args: |
-            NOERGLER_VERSION=${{ steps.sha.outputs.short }}
+            NOERGLER_VERSION=${{ steps.ver.outputs.version }}
           tags: |
+            ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.version }}
+            ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.major }}.${{ steps.ver.outputs.minor }}
+            ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.major }}
+            ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.short }}
             ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ steps.sha.outputs.short }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
