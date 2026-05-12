@@ -105,7 +105,7 @@ class BitbucketClient:
         parts = [f"**{label}:** {finding.comment}"]
         if finding.suggestion:
             parts.append(f"**Suggested change:**\n```\n{finding.suggestion}\n```")
-        parts.append("_Wrong finding? Reply \"disagree\" if this comment is incorrect or hallucinated._")
+        parts.append("_Hallucinated finding? Reply \"disagree\". Not for: ego, taste, missing context._")
         text = "\n\n".join(parts)
         payload = {
             "text": text,
