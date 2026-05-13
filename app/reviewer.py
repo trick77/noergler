@@ -1284,9 +1284,9 @@ class Reviewer:
         return f"{base} {stats} ✅"
 
     _VERDICT_LABEL = {
-        "approve": "Approved ✅",
-        "approve_with_followups": "Approved with follow-ups ⚠️",
-        "request_changes": "Changes requested 🛑",
+        "approve": "Approve ✅",
+        "approve_with_followups": "Approve with follow-ups ⚠️",
+        "request_changes": "Request changes 🛑",
     }
 
     def _build_summary(
@@ -1435,7 +1435,7 @@ class Reviewer:
             summary.verdict_decision, self._VERDICT_LABEL["approve"],
         )
         rationale = summary.verdict_rationale.strip() or "_No rationale provided._"
-        sections.append(f"### Verdict\n**{verdict_label}** — {rationale}")
+        sections.append(f"### Recommendation\n**{verdict_label}** — {rationale}")
 
         # --- Scope
         scope: list[str] = []
