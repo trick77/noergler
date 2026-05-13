@@ -1381,7 +1381,7 @@ class TestBuildSummaryWithTicket:
         summary = reviewer._build_summary([], ticket=ticket)
         # Ticket alone (no compliance data) → Ticket section with key + title
         assert "### Ticket" in summary
-        assert "### Requirement compliance" not in summary
+        assert "### Requirement Compliance" not in summary
         assert "**[SEP-22888](https://jira.example.com/browse/SEP-22888)**" in summary
         assert "Config security" in summary
 
@@ -1398,7 +1398,7 @@ class TestBuildSummaryWithTicket:
         summary = reviewer._build_summary(
             [], ticket=ticket, compliance_requirements=requirements
         )
-        assert "### Requirement compliance" in summary
+        assert "### Requirement Compliance" in summary
         assert "**Fully compliant** ✅" in summary
         assert "- Implement auth filter ✅" in summary
         assert "- Add config endpoint ✅" in summary
@@ -1444,7 +1444,7 @@ class TestBuildSummaryWithTicket:
             url="https://jira.example.com/browse/SEP-100",
         )
         summary = reviewer._build_summary([], ticket=ticket, compliance_requirements=[])
-        assert "### Requirement compliance" not in summary
+        assert "### Requirement Compliance" not in summary
         assert "### Ticket" in summary
         assert "SEP-100" in summary
 
@@ -1464,8 +1464,8 @@ class TestBuildSummaryWithTicket:
             [], ticket=ticket, compliance_requirements=requirements,
             ticket_compliance_check=False,
         )
-        # Compliance check off → Ticket section (not Requirement compliance)
-        assert "### Requirement compliance" not in summary
+        # Compliance check off → Ticket section (not Requirement Compliance)
+        assert "### Requirement Compliance" not in summary
         assert "### Ticket" in summary
         assert "SEP-100" in summary
         assert "📋" not in summary
@@ -1676,7 +1676,7 @@ class TestReviewWithJira:
         assert "SEP-124" in call_kwargs["ticket_context"]
 
         summary_text = mock_bitbucket.update_pr_comment.call_args[0][5] if mock_bitbucket.update_pr_comment.called else mock_bitbucket.post_pr_comment.call_args[0][3]
-        assert "### Requirement compliance" in summary_text
+        assert "### Requirement Compliance" in summary_text
         assert "[SEP-123]" in summary_text
         assert "↳" in summary_text
         assert "SEP-124" in summary_text

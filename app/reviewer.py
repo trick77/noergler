@@ -637,7 +637,6 @@ class Reviewer:
                 return
 
             # Deduplicate against existing findings in DB
-            original_count = len(llm_result.findings)
             existing_keys = {
                 (f["file_path"], f["line_number"], f["severity"])
                 for f in existing_findings
@@ -647,7 +646,6 @@ class Reviewer:
                 if (f.file, f.line, f.severity) not in existing_keys
             ]
 
-            deduplicated_count = original_count - len(findings)
             findings, truncated = _sort_and_limit(findings, self.max_comments)
 
             # Upsert PR review record to get pr_review_id for linking findings
@@ -1380,7 +1378,7 @@ class Reviewer:
         tc_body = summary.test_coverage.strip() or "_Not assessed._"
         sections.append("### Test Coverage\n" + tc_body)
 
-        # --- 6. Ticket / Requirement compliance (conditional on ticket presence)
+        # --- 6. Ticket / Requirement Compliance (conditional on ticket presence)
         if ticket:
             reqs = compliance_requirements if ticket_compliance_check else None
             has_compliance = bool(reqs)
@@ -1394,7 +1392,7 @@ class Reviewer:
                 else:
                     compliance_label, compliance_emoji = "Not compliant", "❌"
                 verdict_suffix = f" · **{compliance_label}** {compliance_emoji}"
-                heading = "### Requirement compliance"
+                heading = "### Requirement Compliance"
             else:
                 verdict_suffix = ""
                 heading = "### Ticket"
@@ -1499,7 +1497,7 @@ class Reviewer:
             scope.append(f"Reviewed without full file context (too large): {file_list} ⚠️")
 
         if scope:
-            sections.append("### Details\n" + "\n".join(f"- {m}" for m in scope))
+            sections.append("\n".join(f"> - {m}" for m in scope))
 
         # --- Cost
         cost: list[str] = []
@@ -1557,7 +1555,7 @@ class Reviewer:
                 )
 
         if cost:
-            sections.append("**Cost:**\n" + "\n".join(f"- {m}" for m in cost))
+            sections.append("\n".join(f"> - {m}" for m in cost))
 
         return "\n\n".join(sections)
 
