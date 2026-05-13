@@ -1496,9 +1496,6 @@ class Reviewer:
             file_list = ", ".join(f"`{PurePosixPath(f).name}`" for f in content_skipped_files)
             scope.append(f"Reviewed without full file context (too large): {file_list} ⚠️")
 
-        if scope:
-            sections.append("\n".join(f"> - {m}" for m in scope))
-
         # --- Cost
         cost: list[str] = []
         if chunk_count is not None and chunk_budget and token_usage:
@@ -1537,7 +1534,7 @@ class Reviewer:
             model = model_label(self.llm.config.model, self.llm.config.reasoning_effort)
             total = prompt_t + completion_t
             stats = (
-                f"Model: `{model}` · {_fmt(prompt_t)}↑ {_fmt(completion_t)}↓ "
+                f"Model: `{model}` · ↑ {_fmt(prompt_t)} ↓ {_fmt(completion_t)} "
                 f"({_fmt(total)} total)"
             )
             if elapsed is not None:
@@ -1554,8 +1551,9 @@ class Reviewer:
                     "— upper bound, ignores prompt cache"
                 )
 
-        if cost:
-            sections.append("\n".join(f"> - {m}" for m in cost))
+        footnote = scope + cost
+        if footnote:
+            sections.append("---\n" + "\n".join(f"> - {m}" for m in footnote))
 
         return "\n\n".join(sections)
 

@@ -903,8 +903,8 @@ class TestSortAndLimit:
         ]
         summary = reviewer._build_summary(findings, token_usage=(1000, 500))
         assert "Model: `gpt-5.3-codex`" in summary
-        assert "1'000↑" in summary
-        assert "500↓" in summary
+        assert "↑ 1'000" in summary
+        assert "↓ 500" in summary
         assert "1'500 total" in summary
 
     def test_build_summary_prompt_breakdown(self, reviewer):
@@ -1118,12 +1118,12 @@ class TestSortAndLimit:
         )
         assert "**Request changes ❌** — Blocks merge — see #1." in summary
 
-    def test_build_summary_no_divider_before_meta(self, reviewer):
+    def test_build_summary_divider_before_meta(self, reviewer):
         findings = [
             ReviewFinding(file="a.py", line=1, severity="suggestion", comment="warn"),
         ]
         summary = reviewer._build_summary(findings, agents_md_found=True)
-        assert "\n\n---\n" not in summary
+        assert "\n\n---\n" in summary
 
     def test_build_summary_initial_review_no_incremental_banner(self, reviewer):
         # No incremental banner unless both reviewed_commit and incremental_from
