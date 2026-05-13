@@ -1284,9 +1284,9 @@ class Reviewer:
         return f"{base} {stats} ✅"
 
     _VERDICT_LABEL = {
-        "approve": "Approve ✅",
-        "approve_with_followups": "Approve with follow-ups ⚠️",
-        "request_changes": "Request changes ❌",
+        "approve": "Approved ✅",
+        "approve_with_followups": "Approved with follow-ups ⚠️",
+        "request_changes": "Changes requested 🛑",
     }
 
     def _build_summary(

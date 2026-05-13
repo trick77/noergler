@@ -321,9 +321,9 @@ class TestReviewer:
         mock_bitbucket.post_inline_comment.assert_not_called()
         summary_text = mock_bitbucket.post_pr_comment.call_args[0][3]
         # Clean diff renders the Issues section with the "None." sentinel and
-        # the verdict line carries the Approve ✅ marker.
+        # the verdict line carries the Approved ✅ marker.
         assert "### Issues / Suggestions\nNone." in summary_text
-        assert "**Approve ✅**" in summary_text
+        assert "**Approved ✅**" in summary_text
 
     @pytest.mark.asyncio
     async def test_review_skipped_when_agents_md_missing_and_required(self, mock_bitbucket, mock_llm):
@@ -495,7 +495,7 @@ class TestReviewer:
         assert "### Issues / Suggestions\nNone." in summary
         assert "### Security / Performance\nNone notable." in summary
         # Default verdict on a clean diff with no LLM data is "Approve".
-        assert "**Approve ✅**" in summary
+        assert "**Approved ✅**" in summary
 
     @pytest.mark.asyncio
     async def test_review_real_webhook_payload(self, mock_bitbucket, mock_llm):
@@ -1079,7 +1079,7 @@ class TestSortAndLimit:
         )
         assert "### Overview\nAdds retry logic to the webhook client." in summary
         assert "- Test added for the new retry path" in summary
-        assert "### Verdict\n**Approve ✅** — Retry path is bounded and tested." in summary
+        assert "### Verdict\n**Approved ✅** — Retry path is bounded and tested." in summary
 
     def test_build_summary_section_order(self, reviewer):
         from app.llm_client import ReviewSummary
@@ -1116,7 +1116,7 @@ class TestSortAndLimit:
                 verdict_rationale="Blocks merge — see #1.",
             ),
         )
-        assert "**Request changes ❌** — Blocks merge — see #1." in summary
+        assert "**Changes requested 🛑** — Blocks merge — see #1." in summary
 
     def test_build_summary_divider_before_meta(self, reviewer):
         findings = [
