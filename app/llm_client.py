@@ -382,10 +382,12 @@ def _merge_review_summaries(parts: list[ReviewSummary]) -> ReviewSummary:
     """Combine per-chunk review summaries into one.
 
     First-non-empty wins for the prose fields (overview, security_performance,
-    test_coverage, verdict_rationale). Strengths are concatenated and de-duped
-    case-insensitively. The verdict_decision rolls up to the most severe.
+    test_coverage). Strengths are concatenated and de-duped case-insensitively.
+    The verdict rolls up to the most severe decision, and its rationale is
+    taken from the same winning chunk — keeping decision and rationale aligned
+    (e.g. a `request_changes` chunk's rationale won't be paired with another
+    chunk's `approve` decision).
     """
-    parts = [p for p in parts if p is not None]
     if not parts:
         return ReviewSummary()
 
@@ -412,10 +414,9 @@ def _merge_review_summaries(parts: list[ReviewSummary]) -> ReviewSummary:
         if len(strengths) >= _STRENGTHS_MAX_BULLETS:
             break
 
-    decision = max(
-        (p.verdict_decision for p in parts if p.verdict_decision),
-        key=lambda d: _VERDICT_SEVERITY.get(d, -1),
-        default="approve",
+    winning_chunk = max(
+        parts,
+        key=lambda p: _VERDICT_SEVERITY.get(p.verdict_decision, -1),
     )
 
     return ReviewSummary(
@@ -423,8 +424,8 @@ def _merge_review_summaries(parts: list[ReviewSummary]) -> ReviewSummary:
         strengths=strengths,
         security_performance=_first_non_empty("security_performance"),
         test_coverage=_first_non_empty("test_coverage"),
-        verdict_decision=decision,
-        verdict_rationale=_first_non_empty("verdict_rationale"),
+        verdict_decision=winning_chunk.verdict_decision or "approve",
+        verdict_rationale=winning_chunk.verdict_rationale,
     )
 
 

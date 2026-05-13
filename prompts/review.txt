@@ -119,7 +119,8 @@ Illustrative only — do not treat as code under review.
       "comment": "Iterating `user_repo.fetch(id)` inside the request loop issues one SQL query per id. For a 200-id payload this is 200 round trips on the hot path and will dominate latency under load. `user_repo` already exposes `fetch_many`, which batches into a single `IN (...)` query.",
       "suggestion": "users = await user_repo.fetch_many(ids)"
     }
-  ]
+  ],
+  "compliance_requirements": null
 }
 ```
 
@@ -137,7 +138,8 @@ Illustrative only — do not treat as code under review.
     "decision": "approve",
     "rationale": "Pure rename of `_format_ts` to `_format_timestamp`; call sites updated consistently and behavior preserved."
   },
-  "findings": []
+  "findings": [],
+  "compliance_requirements": null
 }
 ```
 

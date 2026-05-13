@@ -1332,6 +1332,11 @@ class Reviewer:
             )
 
         # --- 1. Overview (always rendered)
+        # Italic "_Not provided._" / "_Not assessed._" fallbacks below are
+        # distinct from the LLM-emitted "None." / "None notable." sentinels:
+        # the italic form means "the model did not return this field at all"
+        # (a defect worth seeing) while the plain sentinel means "the model
+        # looked and had nothing to report" (the intended clean-case output).
         overview_body = summary.overview.strip() if summary.overview else "_Not provided._"
         sections.append("### Overview\n" + overview_body)
 

@@ -264,15 +264,16 @@ class TestParseReviewResponse:
 
 class TestMergeReviewSummaries:
     def test_first_non_empty_wins_for_prose_fields(self):
+        # Note: verdict_rationale is paired with the winning decision and is
+        # covered separately by test_verdict_rationale_paired_with_winning_decision.
         a = ReviewSummary(overview="", security_performance="None notable.",
-                          test_coverage="", verdict_rationale="")
+                          test_coverage="")
         b = ReviewSummary(overview="From B", security_performance="Adds a hot loop",
-                          test_coverage="Tests added", verdict_rationale="ship it")
+                          test_coverage="Tests added")
         merged = _merge_review_summaries([a, b])
         assert merged.overview == "From B"
         assert merged.security_performance == "None notable."  # first non-empty wins
         assert merged.test_coverage == "Tests added"
-        assert merged.verdict_rationale == "ship it"
 
     def test_strengths_concatenated_and_deduped(self):
         a = ReviewSummary(strengths=["Clean rename", "Good test"])
@@ -291,6 +292,22 @@ class TestMergeReviewSummaries:
         c = ReviewSummary(verdict_decision="approve_with_followups")
         merged = _merge_review_summaries([a, b, c])
         assert merged.verdict_decision == "request_changes"
+
+    def test_verdict_rationale_paired_with_winning_decision(self):
+        # Regression: rationale must come from the chunk that owns the worst
+        # decision — not from the first non-empty chunk — so a clean chunk's
+        # "ship it" rationale doesn't get attached to a request_changes verdict.
+        clean = ReviewSummary(
+            verdict_decision="approve",
+            verdict_rationale="Rename is consistent across call sites.",
+        )
+        blocking = ReviewSummary(
+            verdict_decision="request_changes",
+            verdict_rationale="SQL injection in /users handler.",
+        )
+        merged = _merge_review_summaries([clean, blocking])
+        assert merged.verdict_decision == "request_changes"
+        assert merged.verdict_rationale == "SQL injection in /users handler."
 
     def test_empty_parts_returns_default(self):
         merged = _merge_review_summaries([])
