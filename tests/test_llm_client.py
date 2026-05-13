@@ -9,11 +9,12 @@ from app.config import LLMConfig, ReviewConfig
 from app.llm_client import (
     LLMClient,
     FileReviewData,
+    ReviewSummary,
     format_file_entry,
     _context_window_for,
     _group_files_by_token_budget,
     _inspect_request_body,
-    _merge_change_summaries,
+    _merge_review_summaries,
     _parse_mention_response,
     _parse_review_response,
     _render_file_group,
@@ -74,19 +75,19 @@ class TestParseReviewResponse:
         content = json.dumps([
             {"file": "src/main.py", "line": 10, "severity": "issue", "comment": "Bug here"}
         ])
-        findings, requirements, change_summary = _parse_review_response(content)
+        findings, requirements, summary = _parse_review_response(content)
         assert len(findings) == 1
         assert findings[0].file == "src/main.py"
         assert findings[0].line == 10
         assert findings[0].severity == "issue"
         assert requirements == []
-        assert change_summary == []
+        assert summary == ReviewSummary()
 
     def test_empty_array(self):
-        findings, requirements, change_summary = _parse_review_response("[]")
+        findings, requirements, summary = _parse_review_response("[]")
         assert findings == []
         assert requirements == []
-        assert change_summary == []
+        assert summary == ReviewSummary()
 
     def test_wrapped_in_code_fence(self):
         content = "```json\n[{\"file\": \"a.py\", \"line\": 1, \"severity\": \"suggestion\", \"comment\": \"test\"}]\n```"
@@ -94,18 +95,18 @@ class TestParseReviewResponse:
         assert len(findings) == 1
 
     def test_invalid_json(self):
-        findings, requirements, change_summary = _parse_review_response("not json at all")
+        findings, requirements, summary = _parse_review_response("not json at all")
         assert findings == []
         # None signals extraction failure (vs [] which means "successfully
         # parsed, no requirements") so the reviewer can render the reason.
         assert requirements is None
-        assert change_summary == []
+        assert summary == ReviewSummary()
 
     def test_top_level_string_signals_extraction_failure(self):
-        findings, requirements, change_summary = _parse_review_response('"oops"')
+        findings, requirements, summary = _parse_review_response('"oops"')
         assert findings == []
         assert requirements is None
-        assert change_summary == []
+        assert summary == ReviewSummary()
 
     def test_not_an_array(self):
         findings, _requirements, _ = _parse_review_response('{"file": "a.py"}')
@@ -164,27 +165,50 @@ class TestParseReviewResponse:
         assert len(requirements) == 1
         assert requirements[0]["requirement"] == "Valid"
 
-    def test_change_summary_parsed(self):
+    def test_summary_fields_parsed(self):
         content = json.dumps({
             "findings": [],
-            "change_summary": [
-                "Added retry logic to webhook client",
-                "Replaced sync reads with async I/O",
-            ],
+            "overview": "Adds retry logic to the webhook client.",
+            "strengths": ["Test added for the new code path"],
+            "security_performance": "None notable.",
+            "test_coverage": "Existing webhook tests updated; new test for retry path.",
+            "verdict": {
+                "decision": "approve",
+                "rationale": "Retry path is bounded and covered by a test.",
+            },
         })
-        findings, requirements, change_summary = _parse_review_response(content)
-        assert findings == []
-        assert requirements == []
-        assert len(change_summary) == 2
-        assert change_summary[0] == "Added retry logic to webhook client"
+        _findings, _requirements, summary = _parse_review_response(content)
+        assert summary.overview == "Adds retry logic to the webhook client."
+        assert summary.strengths == ["Test added for the new code path"]
+        assert summary.security_performance == "None notable."
+        assert summary.test_coverage.startswith("Existing webhook tests")
+        assert summary.verdict_decision == "approve"
+        assert summary.verdict_rationale == "Retry path is bounded and covered by a test."
 
-    def test_change_summary_filters_non_strings(self):
+    def test_summary_strengths_filters_non_strings(self):
         content = json.dumps({
             "findings": [],
-            "change_summary": ["Valid bullet", 123, None, "Another bullet"],
+            "overview": "x",
+            "strengths": ["Valid bullet", 123, None, "Another bullet"],
+            "security_performance": "None notable.",
+            "test_coverage": "x",
+            "verdict": {"decision": "approve", "rationale": "x"},
         })
-        _, _, change_summary = _parse_review_response(content)
-        assert change_summary == ["Valid bullet", "Another bullet"]
+        _, _, summary = _parse_review_response(content)
+        assert summary.strengths == ["Valid bullet", "Another bullet"]
+
+    def test_summary_invalid_verdict_decision_falls_back(self):
+        content = json.dumps({
+            "findings": [],
+            "overview": "x",
+            "strengths": [],
+            "security_performance": "None notable.",
+            "test_coverage": "x",
+            "verdict": {"decision": "looks_good_to_me", "rationale": "x"},
+        })
+        _, _, summary = _parse_review_response(content)
+        # Unknown decisions are ignored and the dataclass default ("approve") sticks.
+        assert summary.verdict_decision == "approve"
 
     def test_vacuous_suggestion_finding_dropped(self):
         content = json.dumps([
@@ -213,43 +237,64 @@ class TestParseReviewResponse:
         assert len(findings) == 1
         assert findings[0].suggestion == "if user is None:\n    return None\nreturn user.name"
 
-    def test_change_summary_missing_defaults_to_empty(self):
+    def test_summary_fields_missing_default_to_empty(self):
         content = json.dumps({
             "findings": [
                 {"file": "a.py", "line": 1, "severity": "suggestion", "comment": "test"}
             ],
         })
-        _, _, change_summary = _parse_review_response(content)
-        assert change_summary == []
+        _, _, summary = _parse_review_response(content)
+        assert summary == ReviewSummary()
 
-    def test_change_summary_empty_logs_warning(self, caplog):
+    def test_overview_empty_logs_warning(self, caplog):
         import logging
-        content = json.dumps({"findings": [], "change_summary": []})
+        content = json.dumps({
+            "findings": [],
+            "overview": "",
+            "strengths": [],
+            "security_performance": "None notable.",
+            "test_coverage": "x",
+            "verdict": {"decision": "approve", "rationale": "x"},
+        })
         with caplog.at_level(logging.WARNING, logger="app.llm_client"):
-            _, _, change_summary = _parse_review_response(content)
-        assert change_summary == []
-        assert any("change_summary empty after parse" in msg for msg in caplog.messages)
+            _, _, summary = _parse_review_response(content)
+        assert summary.overview == ""
+        assert any("overview empty after parse" in msg for msg in caplog.messages)
 
 
-class TestMergeChangeSummaries:
-    def test_concatenates_in_order(self):
-        merged = _merge_change_summaries([["A", "B"], ["C"]])
-        assert merged == ["A", "B", "C"]
+class TestMergeReviewSummaries:
+    def test_first_non_empty_wins_for_prose_fields(self):
+        a = ReviewSummary(overview="", security_performance="None notable.",
+                          test_coverage="", verdict_rationale="")
+        b = ReviewSummary(overview="From B", security_performance="Adds a hot loop",
+                          test_coverage="Tests added", verdict_rationale="ship it")
+        merged = _merge_review_summaries([a, b])
+        assert merged.overview == "From B"
+        assert merged.security_performance == "None notable."  # first non-empty wins
+        assert merged.test_coverage == "Tests added"
+        assert merged.verdict_rationale == "ship it"
 
-    def test_dedupes_case_insensitive(self):
-        merged = _merge_change_summaries([["Adds retry"], ["adds retry", "New thing"]])
-        assert merged == ["Adds retry", "New thing"]
+    def test_strengths_concatenated_and_deduped(self):
+        a = ReviewSummary(strengths=["Clean rename", "Good test"])
+        b = ReviewSummary(strengths=["clean rename", "Solid docs"])
+        merged = _merge_review_summaries([a, b])
+        assert merged.strengths == ["Clean rename", "Good test", "Solid docs"]
 
-    def test_filters_non_strings_and_empty(self):
-        merged = _merge_change_summaries([["A", "", "  "], [None, 42, "B"]])  # type: ignore[list-item]
-        assert merged == ["A", "B"]
+    def test_strengths_capped(self):
+        a = ReviewSummary(strengths=[f"item {i}" for i in range(10)])
+        merged = _merge_review_summaries([a])
+        assert len(merged.strengths) == 4
 
-    def test_caps_at_ten_bullets(self):
-        parts = [[f"item {i}" for i in range(20)]]
-        merged = _merge_change_summaries(parts)
-        assert len(merged) == 10
-        assert merged[0] == "item 0"
-        assert merged[-1] == "item 9"
+    def test_verdict_rolls_up_to_worst(self):
+        a = ReviewSummary(verdict_decision="approve")
+        b = ReviewSummary(verdict_decision="request_changes")
+        c = ReviewSummary(verdict_decision="approve_with_followups")
+        merged = _merge_review_summaries([a, b, c])
+        assert merged.verdict_decision == "request_changes"
+
+    def test_empty_parts_returns_default(self):
+        merged = _merge_review_summaries([])
+        assert merged == ReviewSummary()
 
 
 class TestParseMentionResponse:
@@ -638,7 +683,11 @@ class TestLLMClient:
             assert fmt["type"] == "json_schema"
             assert fmt["name"] == "review_response"
             assert fmt["strict"] is True
-            assert "change_summary" in fmt["schema"]["properties"]
+            assert "overview" in fmt["schema"]["properties"]
+            assert "strengths" in fmt["schema"]["properties"]
+            assert "security_performance" in fmt["schema"]["properties"]
+            assert "test_coverage" in fmt["schema"]["properties"]
+            assert "verdict" in fmt["schema"]["properties"]
             assert "findings" in fmt["schema"]["properties"]
         finally:
             await client.close()
@@ -825,7 +874,10 @@ class TestComplianceInstructions:
                 files, ticket_context="Jira ticket SEP-123", ticket_compliance_check=True,
             )
             prompt = _user_text_from_responses_call(mock_create)
-            assert "compliance_requirements" in prompt
+            # Unique marker from COMPLIANCE_INSTRUCTIONS — the word
+            # "compliance_requirements" alone now appears in the base prompt's
+            # output spec, so we look for a phrase only the injected block has.
+            assert "evaluate whether the code changes align" in prompt
             assert "{compliance_instructions}" not in prompt
         finally:
             await client.close()
@@ -841,7 +893,7 @@ class TestComplianceInstructions:
                 files, ticket_context="Jira ticket SEP-123", ticket_compliance_check=False,
             )
             prompt = _user_text_from_responses_call(mock_create)
-            assert "compliance_requirements" not in prompt
+            assert "evaluate whether the code changes align" not in prompt
             assert "{compliance_instructions}" not in prompt
         finally:
             await client.close()
@@ -857,7 +909,7 @@ class TestComplianceInstructions:
                 files, ticket_context="", ticket_compliance_check=True,
             )
             prompt = _user_text_from_responses_call(mock_create)
-            assert "compliance_requirements" not in prompt
+            assert "evaluate whether the code changes align" not in prompt
             assert "{compliance_instructions}" not in prompt
         finally:
             await client.close()
@@ -1008,7 +1060,7 @@ class TestReviewFileGroup413Retry:
                 findings.append(finding_d)
             return (
                 [__import__("app.models", fromlist=["ReviewFinding"]).ReviewFinding(**f) for f in findings],
-                50, 25, [], [],
+                50, 25, [], ReviewSummary(),
             )
 
         client._call_api = mock_call_api
@@ -1035,7 +1087,7 @@ class TestReviewFileGroup413Retry:
             call_count += 1
             if call_count == 1:
                 raise _make_api_status_error(413, "too large")
-            return [], 0, 0, [], []
+            return [], 0, 0, [], ReviewSummary()
 
         client._call_api = mock_call_api
         try:
@@ -1335,7 +1387,11 @@ class TestSerializationAndDeadline:
                 await asyncio.sleep(0.05)
                 # Empty findings JSON: parses cleanly for the review path,
                 # and answer_question doesn't validate JSON shape itself.
-                return _mock_completion('{"findings": [], "compliance_requirements": [], "change_summary": ["x"]}')
+                return _mock_completion(
+                    '{"findings": [], "compliance_requirements": [], "overview": "x", '
+                    '"strengths": [], "security_performance": "None notable.", '
+                    '"test_coverage": "x", "verdict": {"decision": "approve", "rationale": "x"}}'
+                )
             finally:
                 active -= 1
 
@@ -1423,7 +1479,7 @@ class TestReviewResultTimedOut:
                 raise openai.APITimeoutError(request=httpx.Request("POST", "https://x"))
             return (
                 [ReviewFinding(file="b.py", line=1, severity="suggestion", comment="ok")],
-                10, 5, [], [],
+                10, 5, [], ReviewSummary(),
             )
 
         client._call_api = mock_call_api
@@ -1445,7 +1501,7 @@ class TestReviewResultTimedOut:
         async def ok(prompt: str):
             return (
                 [ReviewFinding(file="a.py", line=1, severity="suggestion", comment="ok")],
-                10, 5, [], [],
+                10, 5, [], ReviewSummary(),
             )
 
         client._call_api = ok

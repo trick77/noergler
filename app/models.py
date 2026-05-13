@@ -63,5 +63,6 @@ class ReviewFinding(BaseModel):
     line: int
     severity: Literal["issue", "suggestion"]
     confidence: int | None = None
+    headline: str | None = None
     comment: str
     suggestion: str | None = None

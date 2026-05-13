@@ -70,19 +70,26 @@ Only report confidence >= 80. Every reported issue must be something a senior en
 
 ## Output format
 
-Respond with a JSON object:
-- "change_summary": **required, non-empty** array of 3–5 short bullets summarizing most important code changes. Functional changes only — ignore trivial formatting/import reordering/noise. Summarize from code, not ticket. Trivial diff / no functional change → still return at least one bullet at high level (e.g. "Refactors X without behavior change", "Renames Y across N files"). Never empty.
+Respond with a JSON object containing exactly these top-level keys: `overview`, `strengths`, `security_performance`, `test_coverage`, `verdict`, `findings`, `compliance_requirements`. The first five drive a fixed-skeleton review summary — every section renders in the posted comment, every time. **Sentinel rule:** when a section has nothing to report, emit the exact sentinel string (`"None."` or `"None notable."`) — do not pad, do not invent.
+
+- "overview": one tight paragraph (1–3 sentences) naming what the diff does and why. Functional read of the code, not a restatement of the ticket. Required, non-empty. Trivial diff is fine ("Renames `_format_ts` to `_format_timestamp` across N files; behavior unchanged.").
+- "strengths": array of 0–4 short bullets pointing at things the diff does well (clean abstraction, good test, correct invariant preserved, etc.). May be empty — do not pad. Empty array renders as `None.` in the posted comment.
+- "security_performance": one short string covering anything notable about security or performance. Use the literal `"None notable."` when nothing rises to mention. Do not invent concerns to fill the slot.
+- "test_coverage": one short string describing the state of test coverage for this change (tests added/updated, untested edge case, etc.). Required, non-empty. If you cannot tell from the diff alone, say so (`"Test coverage not assessable from diff alone."`).
+- "verdict": object `{"decision": "approve" | "approve_with_followups" | "request_changes", "rationale": "<one sentence>"}`. The rationale **must name the actual change** — not "looks good" or "no issues found". `decision` follows the findings: `approve` when `findings` is empty, `approve_with_followups` when only `suggestion`-severity findings exist, `request_changes` when any `issue`-severity finding exists.
 - "findings": array of issues (may be empty).
+- "compliance_requirements": as described in the compliance instructions (may be null when not requested).
 
 Each "findings" item:
 - "file": path relative to repo root (e.g. "src/main/java/Foo.java"), no "a/" or "b/" prefix
 - "line": line in **new version** where issue occurs. Multi-line: line where bug triggers or fix applies.
 - "severity": "issue" or "suggestion"
 - "confidence": integer 80–100
-- "comment": concise. Markdown OK: code refs in backticks. No fix code.
-- "suggestion": (optional) corrected code — raw code only (no fencing, no comments, no instructions — just replacement). Omit if no concrete fix applies, fix is trivial/obvious from comment (typos, renames, missing chars), or you cannot provide actual replacement. Only honest value would be "no fix needed" / "this is correct" / "no change" → drop the finding entirely (return in empty `findings`).
+- "headline": one-line title (≤ 80 chars) summarizing the finding for the numbered Issues list in the review summary. Imperative or noun-phrase form, plain text only (no markdown, no leading number). Optionally end with " — minor" / " — blocking" / similar to communicate severity at a glance. Example: `"RATE_LIMIT_BURST default vs PR description — minor inconsistency"`.
+- "comment": full body of the inline comment posted on the line — concise paragraph. Markdown OK: code refs in backticks. No fix code (use `suggestion`). This is the detail; do NOT duplicate it in the headline.
+- "suggestion": (optional) corrected code — raw code only (no fencing, no comments, no instructions — just replacement). Omit if no concrete fix applies, fix is trivial/obvious from comment (typos, renames, missing chars), or you cannot provide actual replacement. Only honest value would be "no fix needed" / "this is correct" / "no change" → drop the finding entirely.
 
-No issues meet the bar → return `{"findings": [], "change_summary": [...]}` — `change_summary` still non-empty. Do NOT invent findings; empty findings for clean code is correct.
+No issues meet the bar → return `"findings": []`. All summary fields (`overview`, `strengths`, `security_performance`, `test_coverage`, `verdict`) still required and populated per the rules above. Do NOT invent findings; empty findings for clean code is correct — and the verdict should be `approve`.
 
 ## Examples
 
@@ -92,16 +99,23 @@ Illustrative only — do not treat as code under review.
 
 ```json
 {
-  "change_summary": [
-    "Added /users/batch endpoint that returns users by id list",
-    "Loop fetches each user individually through user_repo"
+  "overview": "Adds a `/users/batch` endpoint that returns multiple users by id. The handler iterates the id list and calls `user_repo.fetch(id)` per element.",
+  "strengths": [
+    "Request schema validates the id list shape before the loop runs"
   ],
+  "security_performance": "Per-id query loop scales O(N) round trips with payload size — see finding #1.",
+  "test_coverage": "New handler test covers the happy path; no test for the empty-list or oversized-payload cases.",
+  "verdict": {
+    "decision": "approve_with_followups",
+    "rationale": "Endpoint works but the per-id query loop will dominate latency on realistic payloads; switch to batched fetch before merge."
+  },
   "findings": [
     {
       "file": "app/handlers/users.py",
       "line": 47,
       "severity": "suggestion",
       "confidence": 90,
+      "headline": "N+1 query in /users/batch handler — fix before merge",
       "comment": "Iterating `user_repo.fetch(id)` inside the request loop issues one SQL query per id. For a 200-id payload this is 200 round trips on the hot path and will dominate latency under load. `user_repo` already exposes `fetch_many`, which batches into a single `IN (...)` query.",
       "suggestion": "users = await user_repo.fetch_many(ids)"
     }
@@ -113,9 +127,16 @@ Illustrative only — do not treat as code under review.
 
 ```json
 {
-  "change_summary": [
-    "Renamed private helper `_format_ts` to `_format_timestamp` for clarity"
+  "overview": "Renames the private helper `_format_ts` to `_format_timestamp` across 4 call sites. No behavior change.",
+  "strengths": [
+    "Rename is applied consistently at every call site"
   ],
+  "security_performance": "None notable.",
+  "test_coverage": "Existing tests cover the renamed helper; no new tests required.",
+  "verdict": {
+    "decision": "approve",
+    "rationale": "Pure rename of `_format_ts` to `_format_timestamp`; call sites updated consistently and behavior preserved."
+  },
   "findings": []
 }
 ```
