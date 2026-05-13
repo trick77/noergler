@@ -285,7 +285,7 @@ class TestReviewer:
         summary_text = mock_bitbucket.post_pr_comment.call_args[0][3]
         assert "### Overview" in summary_text
         assert "### Issues / Suggestions" in summary_text
-        assert "### Verdict" in summary_text
+        assert "### Recommendation" in summary_text
 
     @pytest.mark.asyncio
     async def test_skip_disallowed_author(self, reviewer, mock_bitbucket, mock_llm):
@@ -487,7 +487,7 @@ class TestReviewer:
             "### Issues / Suggestions",
             "### Security / Performance",
             "### Test Coverage",
-            "### Verdict",
+            "### Recommendation",
         ):
             assert heading in summary, f"missing {heading}"
         # Empty sections render sentinels.
@@ -888,7 +888,7 @@ class TestSortAndLimit:
             ReviewFinding(file="a.py", line=1, severity="suggestion", comment="warn"),
         ]
         summary = reviewer._build_summary(findings, skipped_files=["huge.py", "big.js"])
-        assert "- Not reviewed (too large)" in summary
+        assert "- _Not reviewed (too large)" in summary
         assert "⚠️" in summary
         assert "`huge.py`" in summary
         assert "`big.js`" in summary
@@ -1079,7 +1079,7 @@ class TestSortAndLimit:
         )
         assert "### Overview\nAdds retry logic to the webhook client." in summary
         assert "- Test added for the new retry path" in summary
-        assert "### Verdict\n**Approve ✅** — Retry path is bounded and tested." in summary
+        assert "### Recommendation\n**Approve ✅** — Retry path is bounded and tested." in summary
 
     def test_build_summary_section_order(self, reviewer):
         from app.llm_client import ReviewSummary
@@ -1103,7 +1103,7 @@ class TestSortAndLimit:
             summary.index("### Issues / Suggestions"),
             summary.index("### Security / Performance"),
             summary.index("### Test Coverage"),
-            summary.index("### Verdict"),
+            summary.index("### Recommendation"),
         ]
         assert order == sorted(order)
 
@@ -1116,7 +1116,7 @@ class TestSortAndLimit:
                 verdict_rationale="Blocks merge — see #1.",
             ),
         )
-        assert "**Request changes ❌** — Blocks merge — see #1." in summary
+        assert "**Request changes 🛑** — Blocks merge — see #1." in summary
 
     def test_build_summary_divider_before_meta(self, reviewer):
         findings = [
