@@ -283,8 +283,9 @@ class TestReviewer:
         mock_bitbucket.post_pr_comment.assert_called_once()
 
         summary_text = mock_bitbucket.post_pr_comment.call_args[0][3]
-        assert "### Review summary" in summary_text
-        assert "**Suggestion:**" in summary_text
+        assert "### Overview" in summary_text
+        assert "### Issues / Suggestions" in summary_text
+        assert "### Verdict" in summary_text
 
     @pytest.mark.asyncio
     async def test_skip_disallowed_author(self, reviewer, mock_bitbucket, mock_llm):
@@ -319,7 +320,10 @@ class TestReviewer:
 
         mock_bitbucket.post_inline_comment.assert_not_called()
         summary_text = mock_bitbucket.post_pr_comment.call_args[0][3]
-        assert "✅" in summary_text  # one of CLEAN_REVIEW_MESSAGES
+        # Clean diff renders the Issues section with the "None." sentinel and
+        # the verdict line carries the Approve ✅ marker.
+        assert "### Issues / Suggestions\nNone." in summary_text
+        assert "**Approve ✅**" in summary_text
 
     @pytest.mark.asyncio
     async def test_review_skipped_when_agents_md_missing_and_required(self, mock_bitbucket, mock_llm):
@@ -465,25 +469,33 @@ class TestReviewer:
 
     def test_build_summary_mixed(self, reviewer):
         findings = [
-            ReviewFinding(file="a.py", line=1, severity="issue", comment="err"),
-            ReviewFinding(file="b.py", line=2, severity="suggestion", comment="warn"),
+            ReviewFinding(file="a.py", line=1, severity="issue", headline="err A", comment="err"),
+            ReviewFinding(file="b.py", line=2, severity="suggestion", headline="warn B", comment="warn"),
         ]
         summary = reviewer._build_summary(findings)
-        assert "### Review summary" in summary
-        assert "**Top findings:**" in summary
-        assert "**Issue:** err" in summary
-        assert "**Suggestion:** warn" in summary
-        assert "❌" not in summary
-        assert "⚠️" not in summary
+        assert "### Issues / Suggestions" in summary
+        # Numbered headlines, no body duplicated in the summary.
+        assert "1. err A" in summary
+        assert "2. warn B" in summary
 
     def test_build_summary_empty(self, reviewer):
         summary = reviewer._build_summary([])
-        assert "### Review summary" in summary
-        assert "✅" in summary
-        # The clean-PR message is randomly chosen from CLEAN_REVIEW_MESSAGES;
-        # any of them satisfies the contract: contain the green check, no failure emoji.
-        assert "❌" not in summary
-        assert "⚠️" not in summary
+        # Fixed skeleton: every section header appears, even on clean diffs.
+        for heading in (
+            "### Overview",
+            "### Strengths",
+            "### Issues / Suggestions",
+            "### Security / Performance",
+            "### Test Coverage",
+            "### Verdict",
+        ):
+            assert heading in summary, f"missing {heading}"
+        # Empty sections render sentinels.
+        assert "### Strengths\nNone." in summary
+        assert "### Issues / Suggestions\nNone." in summary
+        assert "### Security / Performance\nNone notable." in summary
+        # Default verdict on a clean diff with no LLM data is "Approve".
+        assert "**Approve ✅**" in summary
 
     @pytest.mark.asyncio
     async def test_review_real_webhook_payload(self, mock_bitbucket, mock_llm):
@@ -735,59 +747,50 @@ class TestSortAndLimit:
 
     def test_build_summary_truncated(self, reviewer):
         findings = [
-            ReviewFinding(file="a.py", line=1, severity="issue", comment="err"),
-            ReviewFinding(file="b.py", line=2, severity="suggestion", comment="warn"),
+            ReviewFinding(file="a.py", line=1, severity="issue", headline="err A", comment="err"),
+            ReviewFinding(file="b.py", line=2, severity="suggestion", headline="warn B", comment="warn"),
         ]
         summary = reviewer._build_summary(findings, truncated=True)
-        assert "**Top findings:**" in summary
+        assert "### Issues / Suggestions" in summary
         assert "Additional findings were omitted" in summary
 
-    def test_build_summary_top_findings_under_limit(self, reviewer):
+    def test_build_summary_issues_numbered(self, reviewer):
         findings = [
-            ReviewFinding(file="a.py", line=10, severity="issue", comment="Bad thing"),
-            ReviewFinding(file="b.py", line=20, severity="suggestion", comment="Mild thing"),
+            ReviewFinding(file="a.py", line=10, severity="issue", headline="Bad thing — blocking", comment="Bad thing"),
+            ReviewFinding(file="b.py", line=20, severity="suggestion", headline="Mild thing — minor", comment="Mild thing"),
         ]
         summary = reviewer._build_summary(findings)
-        assert "**Top findings:**" in summary
-        assert "- **Issue:** Bad thing" in summary
-        assert "- **Suggestion:** Mild thing" in summary
+        assert "### Issues / Suggestions" in summary
+        assert "1. Bad thing — blocking" in summary
+        assert "2. Mild thing — minor" in summary
         # File path / line number must not leak into the summary
         assert "a.py" not in summary
         assert "b.py" not in summary
-        assert "…and" not in summary
 
-    def test_build_summary_top_findings_over_limit(self, reviewer):
+    def test_build_summary_issues_all_rendered(self, reviewer):
+        # All findings are numbered in the summary; no top-5 truncation here —
+        # truncation is the caller's job before passing the list in.
         findings = [
-            ReviewFinding(file=f"f{i}.py", line=i, severity="issue", comment=f"issue {i}")
+            ReviewFinding(file=f"f{i}.py", line=i, severity="issue",
+                          headline=f"issue {i}", comment=f"issue {i}")
             for i in range(8)
         ]
         summary = reviewer._build_summary(findings)
-        assert "**Top findings:**" in summary
-        # Only first 5 rendered as one-liners
-        assert "- **Issue:** issue 0" in summary
-        assert "- **Issue:** issue 4" in summary
-        assert "issue 5" not in summary
-        assert "- …and 3 more" in summary
+        for i in range(8):
+            assert f"{i + 1}. issue {i}" in summary
 
-    def test_build_summary_top_findings_keeps_long_comment(self, reviewer):
-        long_comment = "x" * 200
-        findings = [ReviewFinding(file="a.py", line=1, severity="issue", comment=long_comment)]
-        summary = reviewer._build_summary(findings)
-        # Full single-line comment must be rendered verbatim — no char truncation.
-        assert long_comment in summary
-
-    def test_build_summary_top_findings_first_line_only(self, reviewer):
+    def test_build_summary_issues_falls_back_to_comment_when_headline_missing(self, reviewer):
         findings = [
             ReviewFinding(file="a.py", line=1, severity="issue",
                           comment="First line.\nSecond line should be dropped."),
         ]
         summary = reviewer._build_summary(findings)
-        assert "First line." in summary
+        assert "1. First line." in summary
         assert "Second line should be dropped" not in summary
 
-    def test_build_summary_no_top_findings_when_empty(self, reviewer):
+    def test_build_summary_no_issues_renders_sentinel(self, reviewer):
         summary = reviewer._build_summary([])
-        assert "**Top findings:**" not in summary
+        assert "### Issues / Suggestions\nNone." in summary
 
     def test_build_summary_agents_md_not_found(self, reviewer):
         findings = [
@@ -1061,38 +1064,59 @@ class TestSortAndLimit:
         assert "2 potential security issues" in summary
         assert "🔒" in summary
 
-    def test_build_summary_with_change_summary(self, reviewer):
+    def test_build_summary_renders_overview_from_summary(self, reviewer):
+        from app.llm_client import ReviewSummary
         summary = reviewer._build_summary(
-            [], change_summary=["Added retry logic", "Replaced sync with async I/O"]
+            [],
+            summary=ReviewSummary(
+                overview="Adds retry logic to the webhook client.",
+                strengths=["Test added for the new retry path"],
+                security_performance="None notable.",
+                test_coverage="Existing tests cover the retry path.",
+                verdict_decision="approve",
+                verdict_rationale="Retry path is bounded and tested.",
+            ),
         )
-        assert "**What changed:**" in summary
-        assert "- Added retry logic" in summary
-        assert "- Replaced sync with async I/O" in summary
+        assert "### Overview\nAdds retry logic to the webhook client." in summary
+        assert "- Test added for the new retry path" in summary
+        assert "### Verdict\n**Approve ✅** — Retry path is bounded and tested." in summary
 
-    def test_build_summary_without_change_summary(self, reviewer):
-        summary = reviewer._build_summary([])
-        assert "What changed" not in summary
-
-    def test_build_summary_top_findings_above_what_changed(self, reviewer):
-        """Findings are the news; What changed is context — findings render first."""
+    def test_build_summary_section_order(self, reviewer):
+        from app.llm_client import ReviewSummary
         findings = [
-            ReviewFinding(file="a.py", line=1, severity="issue", comment="bug A"),
-            ReviewFinding(file="b.py", line=2, severity="suggestion", comment="issue B"),
+            ReviewFinding(file="a.py", line=1, severity="issue", headline="A1", comment="bug A"),
         ]
         summary = reviewer._build_summary(
-            findings, change_summary=["Added retry logic"]
+            findings,
+            summary=ReviewSummary(
+                overview="Adds retry logic.",
+                strengths=["Test added"],
+                security_performance="None notable.",
+                test_coverage="x",
+                verdict_decision="approve_with_followups",
+                verdict_rationale="r",
+            ),
         )
-        top_idx = summary.index("**Top findings:**")
-        what_idx = summary.index("**What changed:**")
-        assert top_idx < what_idx
+        order = [
+            summary.index("### Overview"),
+            summary.index("### Strengths"),
+            summary.index("### Issues / Suggestions"),
+            summary.index("### Security / Performance"),
+            summary.index("### Test Coverage"),
+            summary.index("### Verdict"),
+        ]
+        assert order == sorted(order)
 
-    def test_build_summary_what_changed_when_no_findings(self, reviewer):
+    def test_build_summary_verdict_request_changes(self, reviewer):
+        from app.llm_client import ReviewSummary
         summary = reviewer._build_summary(
-            [], change_summary=["Refactors X without behavior change"]
+            [],
+            summary=ReviewSummary(
+                verdict_decision="request_changes",
+                verdict_rationale="Blocks merge — see #1.",
+            ),
         )
-        assert "✅" in summary
-        assert "**What changed:**" in summary
-        assert "- Refactors X without behavior change" in summary
+        assert "**Request changes ❌** — Blocks merge — see #1." in summary
 
     def test_build_summary_no_divider_before_meta(self, reviewer):
         findings = [
@@ -1101,9 +1125,11 @@ class TestSortAndLimit:
         summary = reviewer._build_summary(findings, agents_md_found=True)
         assert "\n\n---\n" not in summary
 
-    def test_build_summary_initial_review_header(self, reviewer):
+    def test_build_summary_initial_review_no_incremental_banner(self, reviewer):
+        # No incremental banner unless both reviewed_commit and incremental_from
+        # are provided.
         summary = reviewer._build_summary([])
-        assert "### Review summary\n" in summary
+        assert "incremental update" not in summary
         assert "(initial review)" not in summary
 
     def test_build_summary_files_reviewed_all(self, reviewer):

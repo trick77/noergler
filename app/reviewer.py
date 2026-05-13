@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import random
 import re
 import time
 from datetime import datetime, timezone
@@ -16,6 +15,7 @@ from app.llm_client import (
     INFERENCE_HARD_TIMEOUT_SECONDS,
     LLMClient,
     FileReviewData,
+    ReviewSummary,
     count_tokens,
     extract_path,
     format_file_entry,
@@ -104,27 +104,6 @@ def _strip_stale_banner(body: str) -> str:
     while i < len(lines) and lines[i].strip() == "":
         i += 1
     return "\n".join(lines[i:])
-
-CLEAN_REVIEW_MESSAGES = (
-    "No issues found ✅",
-    "Looks good to me ✅",
-    "LGTM ✅",
-    "Clean diff — nothing to flag ✅",
-    "All clear — ready when you are ✅",
-    "Nothing to nitpick — solid work ✅",
-    "Clean as a whistle ✅",
-    "Squeaky clean — ship it ✅",
-    "No bugs in sight ✅",
-    "Crisp and clean ✅",
-    "Looking sharp ✅",
-    "Smooth as butter ✅",
-    "Gold star material ⭐ ✅",
-    "All systems go ✅",
-)
-
-
-def _clean_review_message() -> str:
-    return random.choice(CLEAN_REVIEW_MESSAGES)
 
 # Hard ceiling for the cumulative-diff context, regardless of model. Beyond this
 # the LLM tends to drown the focused review in noise.
@@ -748,7 +727,7 @@ class Reviewer:
                 elapsed=elapsed,
                 jira_enabled=self.jira is not None,
                 ticket_compliance_check=self.review_config.ticket_compliance_check,
-                change_summary=llm_result.change_summary,
+                summary=llm_result.summary,
                 reviewed_commit=source_commit,
                 incremental_from=incremental_from,
                 files_reviewed=len(files),
@@ -1306,6 +1285,12 @@ class Reviewer:
             return f"{base} {stats} — risk of context bloat, consider trimming ⚠️"
         return f"{base} {stats} ✅"
 
+    _VERDICT_LABEL = {
+        "approve": "Approve ✅",
+        "approve_with_followups": "Approve with follow-ups ⚠️",
+        "request_changes": "Request changes ❌",
+    }
+
     def _build_summary(
         self,
         findings: list[ReviewFinding],
@@ -1322,7 +1307,7 @@ class Reviewer:
         elapsed: float | None = None,
         jira_enabled: bool = False,
         ticket_compliance_check: bool = True,
-        change_summary: list[str] | None = None,
+        summary: ReviewSummary | None = None,
         reviewed_commit: str | None = None,
         incremental_from: str | None = None,
         files_reviewed: int | None = None,
@@ -1336,46 +1321,66 @@ class Reviewer:
         run_cost_usd: float | None = None,
         cumulative_cost_usd: float | None = None,
     ) -> str:
-        # --- Review summary
-        if incremental_from and reviewed_commit:
-            summary_lines = ["### Review summary (incremental update)",
-                             f"- Changes reviewed: `{incremental_from[:10]}` .. `{reviewed_commit[:10]}`"]
-        else:
-            summary_lines = ["### Review summary"]
+        summary = summary or ReviewSummary()
+        sections: list[str] = []
 
+        # --- Header (incremental update banner) — always shown when applicable.
+        if incremental_from and reviewed_commit:
+            sections.append(
+                f"### Review summary (incremental update)\n"
+                f"- Changes reviewed: `{incremental_from[:10]}` .. `{reviewed_commit[:10]}`"
+            )
+
+        # --- 1. Overview (always rendered)
+        # Italic "_Not provided._" / "_Not assessed._" fallbacks below are
+        # distinct from the LLM-emitted "None." / "None notable." sentinels:
+        # the italic form means "the model did not return this field at all"
+        # (a defect worth seeing) while the plain sentinel means "the model
+        # looked and had nothing to report" (the intended clean-case output).
+        overview_body = summary.overview.strip() if summary.overview else "_Not provided._"
+        sections.append("### Overview\n" + overview_body)
+
+        # --- 2. Strengths (always rendered; `None.` when empty)
+        if summary.strengths:
+            strengths_body = "\n".join(f"- {s}" for s in summary.strengths)
+        else:
+            strengths_body = "None."
+        sections.append("### Strengths\n" + strengths_body)
+
+        # --- 3. Issues / Suggestions (always rendered; numbered headlines only)
+        issues_lines: list[str] = ["### Issues / Suggestions"]
         if not findings:
-            summary_lines.append(f"- {_clean_review_message()}")
+            issues_lines.append("None.")
         else:
             security_findings = [f for f in findings if _SECURITY_KEYWORDS.search(f.comment)]
             if security_findings:
-                summary_lines.append(
+                issues_lines.append(
                     f"- {self._plural(len(security_findings), 'potential security issue')} 🔒 "
                     "— review carefully"
                 )
-
             if truncated:
-                summary_lines.append(
+                issues_lines.append(
                     f"- Showing top {len(findings)} findings by severity. "
                     "Additional findings were omitted."
                 )
+            if security_findings or truncated:
+                issues_lines.append("")
+            for idx, f in enumerate(findings, start=1):
+                headline = (f.headline or "").strip()
+                if not headline:
+                    headline = f.comment.splitlines()[0].strip() if f.comment else "(no description)"
+                issues_lines.append(f"{idx}. {headline}")
+        sections.append("\n".join(issues_lines))
 
-            # Top-N one-liners (sorted by severity; `findings` is already sorted).
-            top_limit = 5
-            top = findings[:top_limit]
-            if top:
-                summary_lines.append("")
-                summary_lines.append("**Top findings:**")
-                for f in top:
-                    label = f.severity.capitalize()
-                    first_line = f.comment.splitlines()[0].strip() if f.comment else ""
-                    summary_lines.append(f"- **{label}:** {first_line}")
-                if len(findings) > top_limit:
-                    summary_lines.append(f"- …and {len(findings) - top_limit} more")
+        # --- 4. Security / Performance (always rendered; `None notable.` when empty)
+        sec_body = summary.security_performance.strip() or "None notable."
+        sections.append("### Security / Performance\n" + sec_body)
 
-        sections: list[str] = ["\n".join(summary_lines)]
+        # --- 5. Test Coverage (always rendered)
+        tc_body = summary.test_coverage.strip() or "_Not assessed._"
+        sections.append("### Test Coverage\n" + tc_body)
 
-        # --- Ticket / Requirement compliance
-        # Heading shifts based on whether we have compliance data to render.
+        # --- 6. Ticket / Requirement compliance (conditional on ticket presence)
         if ticket:
             reqs = compliance_requirements if ticket_compliance_check else None
             has_compliance = bool(reqs)
@@ -1427,12 +1432,12 @@ class Reviewer:
                 ticket_lines.append(reason)
             sections.append("\n".join(ticket_lines))
 
-        # --- What changed (after compliance: findings/verdict are the news; this is context)
-        if change_summary:
-            change_lines = ["**What changed:**"]
-            for item in change_summary:
-                change_lines.append(f"- {item}")
-            sections.append("\n".join(change_lines))
+        # --- 7. Verdict (always rendered)
+        verdict_label = self._VERDICT_LABEL.get(
+            summary.verdict_decision, self._VERDICT_LABEL["approve"],
+        )
+        rationale = summary.verdict_rationale.strip() or "_No rationale provided._"
+        sections.append(f"### Verdict\n**{verdict_label}** — {rationale}")
 
         # --- Scope
         scope: list[str] = []

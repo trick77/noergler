@@ -62,28 +62,67 @@ def _context_window_for(model: str) -> int | None:
 logger = logging.getLogger(__name__)
 
 
+VERDICT_DECISIONS = ("approve", "approve_with_followups", "request_changes")
+
+
+@dataclass
+class ReviewSummary:
+    """Fixed-skeleton review summary produced by the LLM.
+
+    Every field is populated on every review — sentinel strings (``None.`` /
+    ``None notable.``) carry the "nothing to report" case rather than empty
+    values, so the posted comment can render a stable section list.
+    """
+    overview: str = ""
+    strengths: list[str] = field(default_factory=list)
+    security_performance: str = ""
+    test_coverage: str = ""
+    verdict_decision: str = "approve"
+    verdict_rationale: str = ""
+
+
 _REVIEW_RESPONSE_SCHEMA: dict = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["change_summary", "findings", "compliance_requirements"],
+    "required": [
+        "overview",
+        "strengths",
+        "security_performance",
+        "test_coverage",
+        "verdict",
+        "findings",
+        "compliance_requirements",
+    ],
     "properties": {
-        "change_summary": {
+        "overview": {"type": "string", "minLength": 1},
+        "strengths": {
             "type": "array",
-            "minItems": 1,
-            "maxItems": 10,
+            "maxItems": 4,
             "items": {"type": "string"},
+        },
+        "security_performance": {"type": "string", "minLength": 1},
+        "test_coverage": {"type": "string", "minLength": 1},
+        "verdict": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["decision", "rationale"],
+            "properties": {
+                "decision": {"type": "string", "enum": list(VERDICT_DECISIONS)},
+                "rationale": {"type": "string", "minLength": 1},
+            },
         },
         "findings": {
             "type": "array",
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["file", "line", "severity", "confidence", "comment", "suggestion"],
+                "required": ["file", "line", "severity", "confidence", "headline", "comment", "suggestion"],
                 "properties": {
                     "file": {"type": "string"},
                     "line": {"type": "integer"},
                     "severity": {"type": "string", "enum": ["issue", "suggestion"]},
                     "confidence": {"type": "integer", "minimum": 80, "maximum": 100},
+                    "headline": {"type": "string", "minLength": 1},
                     "comment": {"type": "string"},
                     "suggestion": {"type": ["string", "null"]},
                 },
@@ -332,25 +371,62 @@ def _group_files_by_token_budget(
     return groups, skipped
 
 
-_CHANGE_SUMMARY_MAX_BULLETS = 10
+_STRENGTHS_MAX_BULLETS = 4
+
+# Ordered most-severe → least-severe so the merged verdict reflects the worst
+# chunk: any chunk that requested changes drags the whole review down.
+_VERDICT_SEVERITY = {"request_changes": 2, "approve_with_followups": 1, "approve": 0}
 
 
-def _merge_change_summaries(parts: list[list[str]]) -> list[str]:
-    """Concatenate chunk summaries in order, de-dup case-insensitively, cap length."""
+def _merge_review_summaries(parts: list[ReviewSummary]) -> ReviewSummary:
+    """Combine per-chunk review summaries into one.
+
+    First-non-empty wins for the prose fields (overview, security_performance,
+    test_coverage). Strengths are concatenated and de-duped case-insensitively.
+    The verdict rolls up to the most severe decision, and its rationale is
+    taken from the same winning chunk — keeping decision and rationale aligned
+    (e.g. a `request_changes` chunk's rationale won't be paired with another
+    chunk's `approve` decision).
+    """
+    if not parts:
+        return ReviewSummary()
+
+    def _first_non_empty(field_name: str) -> str:
+        for p in parts:
+            v = getattr(p, field_name)
+            if v:
+                return v
+        return ""
+
     seen: set[str] = set()
-    merged: list[str] = []
-    for part in parts:
-        for item in part:
+    strengths: list[str] = []
+    for p in parts:
+        for item in p.strengths:
             if not isinstance(item, str):
                 continue
             key = item.strip().lower()
             if not key or key in seen:
                 continue
             seen.add(key)
-            merged.append(item)
-            if len(merged) >= _CHANGE_SUMMARY_MAX_BULLETS:
-                return merged
-    return merged
+            strengths.append(item)
+            if len(strengths) >= _STRENGTHS_MAX_BULLETS:
+                break
+        if len(strengths) >= _STRENGTHS_MAX_BULLETS:
+            break
+
+    winning_chunk = max(
+        parts,
+        key=lambda p: _VERDICT_SEVERITY.get(p.verdict_decision, -1),
+    )
+
+    return ReviewSummary(
+        overview=_first_non_empty("overview"),
+        strengths=strengths,
+        security_performance=_first_non_empty("security_performance"),
+        test_coverage=_first_non_empty("test_coverage"),
+        verdict_decision=winning_chunk.verdict_decision or "approve",
+        verdict_rationale=winning_chunk.verdict_rationale,
+    )
 
 
 def _combine_compliance(
@@ -368,7 +444,7 @@ def _combine_compliance(
     return a if a else b
 
 
-def _parse_review_response(content: str) -> tuple[list[ReviewFinding], list[dict] | None, list[str]]:
+def _parse_review_response(content: str) -> tuple[list[ReviewFinding], list[dict] | None, ReviewSummary]:
     """Parse the LLM review response.
 
     Returns ``compliance_requirements=None`` when the response could not be
@@ -388,10 +464,10 @@ def _parse_review_response(content: str) -> tuple[list[ReviewFinding], list[dict
         data = json.loads(content)
     except json.JSONDecodeError:
         logger.error("Failed to parse review response as JSON: %s", content[:200])
-        return [], None, []
+        return [], None, ReviewSummary()
 
     compliance_requirements: list[dict] = []
-    change_summary: list[str] = []
+    summary = ReviewSummary()
     findings_data = data
 
     if isinstance(data, dict):
@@ -405,14 +481,36 @@ def _parse_review_response(content: str) -> tuple[list[ReviewFinding], list[dict
                     compliance_requirements.append(item)
                 else:
                     logger.warning("Skipping malformed compliance requirement: %s", item)
-        raw_summary = data.get("change_summary", [])
-        if isinstance(raw_summary, list):
-            change_summary = [s for s in raw_summary if isinstance(s, str)]
-        if not change_summary:
-            logger.warning("change_summary empty after parse")
+
+        raw_overview = data.get("overview", "")
+        if isinstance(raw_overview, str):
+            summary.overview = raw_overview.strip()
+        if not summary.overview:
+            logger.warning("overview empty after parse")
+
+        raw_strengths = data.get("strengths", [])
+        if isinstance(raw_strengths, list):
+            summary.strengths = [s for s in raw_strengths if isinstance(s, str) and s.strip()]
+
+        raw_sec = data.get("security_performance", "")
+        if isinstance(raw_sec, str):
+            summary.security_performance = raw_sec.strip()
+
+        raw_tests = data.get("test_coverage", "")
+        if isinstance(raw_tests, str):
+            summary.test_coverage = raw_tests.strip()
+
+        raw_verdict = data.get("verdict")
+        if isinstance(raw_verdict, dict):
+            decision = raw_verdict.get("decision")
+            if decision in VERDICT_DECISIONS:
+                summary.verdict_decision = decision
+            rationale = raw_verdict.get("rationale")
+            if isinstance(rationale, str):
+                summary.verdict_rationale = rationale.strip()
     elif not isinstance(data, list):
         logger.error("Review response is not a JSON array or object")
-        return [], None, []
+        return [], None, ReviewSummary()
 
     findings = []
     for item in findings_data:
@@ -426,7 +524,7 @@ def _parse_review_response(content: str) -> tuple[list[ReviewFinding], list[dict
             continue
         findings.append(finding)
 
-    return findings, compliance_requirements, change_summary
+    return findings, compliance_requirements, summary
 
 
 _VACUOUS_SUGGESTION_PATTERNS = [
@@ -706,7 +804,7 @@ class LLMClient:
         prompt_breakdown: dict[str, int] | None = None
         review_effort: int = 1
         compliance_requirements: list[dict] = field(default_factory=list)
-        change_summary: list[str] = field(default_factory=list)
+        summary: ReviewSummary = field(default_factory=ReviewSummary)
         chunk_count: int = 1
         # True when at least one chunk failed to return a parseable response
         # AND no chunk produced any compliance requirements — signals that the
@@ -775,7 +873,7 @@ class LLMClient:
         compliance_requirements: list[dict] = []
         any_chunk_extraction_failed = False
         any_chunk_timed_out = False
-        chunk_summaries: list[list[str]] = []
+        chunk_summaries: list[ReviewSummary] = []
         for i, group in enumerate(groups):
             logger.info("Reviewing chunk %d/%d (%d file%s)",
                         i + 1, len(groups), len(group),
@@ -793,10 +891,9 @@ class LLMClient:
                 any_chunk_extraction_failed = True
             elif chunk_requirements and not compliance_requirements:
                 compliance_requirements = chunk_requirements
-            if chunk_summary:
-                chunk_summaries.append(chunk_summary)
+            chunk_summaries.append(chunk_summary)
 
-        change_summary = _merge_change_summaries(chunk_summaries)
+        merged_summary = _merge_review_summaries(chunk_summaries)
 
         total = total_prompt_tokens + total_completion_tokens
         logger.info(
@@ -818,7 +915,7 @@ class LLMClient:
             prompt_breakdown=prompt_breakdown,
             review_effort=review_effort,
             compliance_requirements=compliance_requirements,
-            change_summary=change_summary,
+            summary=merged_summary,
             chunk_count=len(groups),
             compliance_extraction_failed=(
                 any_chunk_extraction_failed and not compliance_requirements
@@ -971,10 +1068,10 @@ class LLMClient:
         depth: int,
         max_depth: int = 3,
         supplementary: str = "",
-    ) -> tuple[list[ReviewFinding], int, int, list[str], list[dict] | None, list[str], bool]:
+    ) -> tuple[list[ReviewFinding], int, int, list[str], list[dict] | None, ReviewSummary, bool]:
         """Review a group of files. Returns
         (findings, prompt_tokens, completion_tokens, skipped_paths,
-        compliance_requirements_or_None, change_summary, timed_out).
+        compliance_requirements_or_None, summary, timed_out).
 
         `timed_out=True` signals the wall-clock deadline was exceeded for at
         least one underlying API call (including any bisected sub-chunk).
@@ -984,15 +1081,15 @@ class LLMClient:
             rendered = rendered + "\n\n" + supplementary
         prompt = template.replace("{files}", rendered)
         try:
-            findings, pt, ct, requirements, change_summary = await self._call_api(prompt)
-            return findings, pt, ct, [], requirements, change_summary, False
+            findings, pt, ct, requirements, summary = await self._call_api(prompt)
+            return findings, pt, ct, [], requirements, summary, False
         except openai.APITimeoutError as exc:
             paths = [f.path for f in group]
             logger.warning(
                 "Timeout reviewing %d file(s) — skipping: %s (%s)",
                 len(group), ", ".join(paths), type(exc).__name__,
             )
-            return [], 0, 0, paths, None, [], True
+            return [], 0, 0, paths, None, ReviewSummary(), True
         except openai.APIStatusError as exc:
             if exc.status_code != 413:
                 raise
@@ -1020,7 +1117,7 @@ class LLMClient:
                     file.diff.count("\n") + 1 if file else 0,
                     count_tokens(prompt),
                 )
-                return [], 0, 0, [path], None, [], False
+                return [], 0, 0, [path], None, ReviewSummary(), False
             if depth >= max_depth:
                 paths = [f.path for f in group]
                 for f in group:
@@ -1028,7 +1125,7 @@ class LLMClient:
                         "413 — file will not be reviewed after %d bisections: %s (%d diff lines)",
                         depth, f.path, f.diff.count("\n") + 1,
                     )
-                return [], 0, 0, paths, None, [], False
+                return [], 0, 0, paths, None, ReviewSummary(), False
             mid = len(group) // 2
             logger.info(
                 "413 with %d files — splitting chunk and retrying (depth %d)",
@@ -1037,18 +1134,18 @@ class LLMClient:
             left = await self._review_file_group(group[:mid], template, depth + 1, max_depth)
             right = await self._review_file_group(group[mid:], template, depth + 1, max_depth)
             compliance = _combine_compliance(left[4], right[4])
-            change_summary = _merge_change_summaries([left[5], right[5]])
+            summary = _merge_review_summaries([left[5], right[5]])
             return (
                 left[0] + right[0],
                 left[1] + right[1],
                 left[2] + right[2],
                 left[3] + right[3],
                 compliance,
-                change_summary,
+                summary,
                 left[6] or right[6],
             )
 
-    async def _call_api(self, prompt: str) -> tuple[list[ReviewFinding], int, int, list[dict] | None, list[str]]:
+    async def _call_api(self, prompt: str) -> tuple[list[ReviewFinding], int, int, list[dict] | None, ReviewSummary]:
         system = (
             "You are a read-only code review assistant. You analyse code and may suggest fixes with code examples, "
             "but never produce full patches, diffs to apply, or act as an agent that modifies repository content. "
@@ -1061,8 +1158,8 @@ class LLMClient:
         content, prompt_tokens, completion_tokens = await self._chat(
             system=system, user=prompt, response_schema=_REVIEW_RESPONSE_SCHEMA,
         )
-        findings, compliance_requirements, change_summary = _parse_review_response(content)
-        return findings, prompt_tokens, completion_tokens, compliance_requirements, change_summary
+        findings, compliance_requirements, summary = _parse_review_response(content)
+        return findings, prompt_tokens, completion_tokens, compliance_requirements, summary
 
     async def _chat(
         self, system: str, user: str, response_schema: dict | None = None,
