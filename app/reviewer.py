@@ -1534,7 +1534,7 @@ class Reviewer:
             model = model_label(self.llm.config.model, self.llm.config.reasoning_effort)
             total = prompt_t + completion_t
             stats = (
-                f"Model: `{model}` · ↑ {_fmt(prompt_t)} ↓ {_fmt(completion_t)} "
+                f"Model: `{model}` · ↑ {_fmt(prompt_t)} · ↓ {_fmt(completion_t)} "
                 f"({_fmt(total)} total)"
             )
             if elapsed is not None:
@@ -1553,7 +1553,7 @@ class Reviewer:
 
         footnote = scope + cost
         if footnote:
-            sections.append("---\n" + "\n".join(f"> - {m}" for m in footnote))
+            sections.append("---\n" + "\n".join(f"- _{m}_" for m in footnote))
 
         return "\n\n".join(sections)
 

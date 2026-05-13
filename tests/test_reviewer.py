@@ -888,7 +888,7 @@ class TestSortAndLimit:
             ReviewFinding(file="a.py", line=1, severity="suggestion", comment="warn"),
         ]
         summary = reviewer._build_summary(findings, skipped_files=["huge.py", "big.js"])
-        assert "- Not reviewed (too large)" in summary
+        assert "- _Not reviewed (too large)" in summary
         assert "⚠️" in summary
         assert "`huge.py`" in summary
         assert "`big.js`" in summary
