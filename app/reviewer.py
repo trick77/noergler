@@ -1157,8 +1157,8 @@ class Reviewer:
         further_reading = "\n".join(f"- [{title}]({url})" for title, url in links)
         return (
             "### Review skipped — `AGENTS.md` too large 🛑\n\n"
-            f"`AGENTS.md` weighs in at ~{tokens} tokens, exceeding the configured "
-            f"hard limit of {limit} tokens. Oversized agent instructions crowd out "
+            f"`AGENTS.md` weighs in at ~{_fmt(tokens)} tokens, exceeding the configured "
+            f"hard limit of {_fmt(limit)} tokens. Oversized agent instructions crowd out "
             "the actual diff, degrade review quality (context rot), and inflate "
             "inference cost — so the review was not run.\n\n"
             "**What to do**\n"

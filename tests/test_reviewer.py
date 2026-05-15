@@ -401,7 +401,8 @@ class TestReviewer:
     def test_build_agents_md_too_large_summary_contains_links_and_tokens(self, mock_bitbucket, mock_llm):
         rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
         summary = rev._build_agents_md_too_large_summary(tokens=9000, limit=7000)
-        assert "9000" in summary and "7000" in summary
+        # Token counts use _fmt() — Swiss apostrophe thousands separator.
+        assert "9'000" in summary and "7'000" in summary
         assert "REVIEW_AGENTS_MD_MAX_TOKENS" in summary
         assert "https://developer.upsun.com/posts/ai/agents-md-less-is-more" in summary
         assert "https://www.augmentcode.com/blog/how-to-write-good-agents-dot-md-files" in summary
