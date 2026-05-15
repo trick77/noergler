@@ -16,6 +16,22 @@ def _review_config(**overrides) -> ReviewConfig:
     return ReviewConfig(**kwargs)
 
 
+def _assert_upsert_pr_review_called(mock_upsert) -> None:
+    """Shared assertion for the three skip paths: upsert must be awaited once
+    with the canonical (project_key, repo_slug, pr_id) positional args and the
+    expected metadata kwargs from `_make_payload`."""
+    mock_upsert.assert_awaited_once()
+    args = mock_upsert.await_args.args
+    kwargs = mock_upsert.await_args.kwargs
+    # args[0] is the db_pool (AsyncMock); identity check would be brittle.
+    assert args[1] == "PROJ"
+    assert args[2] == "my-repo"
+    assert args[3] == 42
+    assert kwargs["last_reviewed_commit"] == "abc123"
+    assert kwargs["author"] == "username"
+    assert kwargs["pr_title"] == "Test PR"
+
+
 def _make_payload(
     author: str = "username",
     branch: str = "feature",
@@ -330,7 +346,11 @@ class TestReviewer:
         mock_bitbucket.fetch_file_content = AsyncMock(return_value="")
         rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
         payload = _make_payload("username")
-        await rev.review_pull_request(payload)
+        with patch(
+            "app.reviewer.repository.upsert_pr_review",
+            new_callable=AsyncMock, return_value=42,
+        ) as mock_upsert:
+            await rev.review_pull_request(payload)
 
         mock_llm.review_diff.assert_not_called()
         mock_bitbucket.fetch_pr_diff.assert_not_called()
@@ -339,6 +359,7 @@ class TestReviewer:
         summary_text = mock_bitbucket.post_pr_comment.call_args[0][3]
         assert "AGENTS.md" in summary_text
         assert "REVIEW_REQUIRE_AGENTS_MD" in summary_text
+        _assert_upsert_pr_review_called(mock_upsert)
 
     @pytest.mark.asyncio
     async def test_review_proceeds_when_agents_md_missing_and_not_required(self, mock_bitbucket, mock_llm):
@@ -370,7 +391,11 @@ class TestReviewer:
             db_pool=AsyncMock(),
         )
         payload = _make_payload("username")
-        await rev.review_pull_request(payload)
+        with patch(
+            "app.reviewer.repository.upsert_pr_review",
+            new_callable=AsyncMock, return_value=42,
+        ) as mock_upsert:
+            await rev.review_pull_request(payload)
 
         mock_llm.review_diff.assert_not_called()
         mock_bitbucket.fetch_pr_diff.assert_not_called()
@@ -380,6 +405,23 @@ class TestReviewer:
         assert "AGENTS.md" in summary_text
         assert "too large" in summary_text
         assert "REVIEW_AGENTS_MD_MAX_TOKENS" in summary_text
+        _assert_upsert_pr_review_called(mock_upsert)
+
+    @pytest.mark.asyncio
+    async def test_skip_path_still_posts_summary_when_upsert_fails(self, mock_bitbucket, mock_llm):
+        # Graceful-degradation: if upsert raises, _safe_db swallows it and the
+        # skip summary must still be posted (via post_pr_comment, no update path).
+        mock_bitbucket.fetch_file_content = AsyncMock(return_value="")
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        payload = _make_payload("username")
+        with patch(
+            "app.reviewer.repository.upsert_pr_review",
+            new_callable=AsyncMock, side_effect=RuntimeError("db gone"),
+        ) as mock_upsert:
+            await rev.review_pull_request(payload)
+
+        mock_upsert.assert_awaited_once()
+        mock_bitbucket.post_pr_comment.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_review_runs_when_agents_md_max_tokens_zero(self, mock_bitbucket, mock_llm):
@@ -445,7 +487,11 @@ class TestReviewer:
     async def test_review_skipped_when_branch_contains_opt_out_keyword(self, mock_bitbucket, mock_llm):
         rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
         payload = _make_payload("username", branch="feature/x-noergloff")
-        await rev.review_pull_request(payload)
+        with patch(
+            "app.reviewer.repository.upsert_pr_review",
+            new_callable=AsyncMock, return_value=42,
+        ) as mock_upsert:
+            await rev.review_pull_request(payload)
 
         mock_llm.review_diff.assert_not_called()
         mock_bitbucket.fetch_pr_diff.assert_not_called()
@@ -456,6 +502,7 @@ class TestReviewer:
         assert "noergloff" in summary_text
         assert "feature/x-noergloff" in summary_text
         assert "REVIEW_OPT_OUT_BRANCH_KEYWORD" in summary_text
+        _assert_upsert_pr_review_called(mock_upsert)
 
     @pytest.mark.asyncio
     async def test_opt_out_keyword_match_is_case_insensitive(self, mock_bitbucket, mock_llm):
