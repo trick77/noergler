@@ -398,13 +398,35 @@ class TestReviewer:
     def test_default_agents_md_max_tokens_is_7000(self):
         assert ReviewConfig().agents_md_max_tokens == 7000
 
-    def test_build_agents_md_too_large_summary_contains_links_and_tokens(self):
-        summary = Reviewer._build_agents_md_too_large_summary(tokens=9000, limit=7000)
+    def test_build_agents_md_too_large_summary_contains_links_and_tokens(self, mock_bitbucket, mock_llm):
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        summary = rev._build_agents_md_too_large_summary(tokens=9000, limit=7000)
         assert "9000" in summary and "7000" in summary
         assert "REVIEW_AGENTS_MD_MAX_TOKENS" in summary
         assert "https://developer.upsun.com/posts/ai/agents-md-less-is-more" in summary
         assert "https://www.augmentcode.com/blog/how-to-write-good-agents-dot-md-files" in summary
         assert "https://github.com/juliusbrussee/caveman" in summary
+
+    def test_build_agents_md_too_large_summary_prepends_custom_link(self, mock_bitbucket, mock_llm):
+        cfg = _review_config(
+            agents_md_custom_link_url="https://wiki.example.com/agents-md-guide",
+            agents_md_custom_link_title="Internal AGENTS.md guide",
+        )
+        rev = Reviewer(mock_bitbucket, mock_llm, cfg, db_pool=AsyncMock())
+        summary = rev._build_agents_md_too_large_summary(tokens=9000, limit=7000)
+        # Custom link must appear before the curated defaults.
+        custom_idx = summary.index("https://wiki.example.com/agents-md-guide")
+        upsun_idx = summary.index("https://developer.upsun.com/posts/ai/agents-md-less-is-more")
+        assert custom_idx < upsun_idx
+        assert "Internal AGENTS.md guide" in summary
+
+    def test_build_agents_md_too_large_summary_custom_link_falls_back_to_url_as_title(
+        self, mock_bitbucket, mock_llm
+    ):
+        cfg = _review_config(agents_md_custom_link_url="https://wiki.example.com/x")
+        rev = Reviewer(mock_bitbucket, mock_llm, cfg, db_pool=AsyncMock())
+        summary = rev._build_agents_md_too_large_summary(tokens=9000, limit=7000)
+        assert "[https://wiki.example.com/x](https://wiki.example.com/x)" in summary
 
     @pytest.mark.asyncio
     async def test_review_skipped_when_branch_contains_opt_out_keyword(self, mock_bitbucket, mock_llm):

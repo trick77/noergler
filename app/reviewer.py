@@ -1134,11 +1134,16 @@ class Reviewer:
             "`REVIEW_REQUIRE_AGENTS_MD=false` on the noergler service and restart.\n"
         )
 
-    @staticmethod
-    def _build_agents_md_too_large_summary(tokens: int, limit: int) -> str:
-        further_reading = "\n".join(
-            f"- [{title}]({url})" for title, url in _AGENTS_MD_FURTHER_READING
-        )
+    def _build_agents_md_too_large_summary(self, tokens: int, limit: int) -> str:
+        links: list[tuple[str, str]] = []
+        custom_url = self.review_config.agents_md_custom_link_url.strip()
+        if custom_url:
+            custom_title = (
+                self.review_config.agents_md_custom_link_title.strip() or custom_url
+            )
+            links.append((custom_title, custom_url))
+        links.extend(_AGENTS_MD_FURTHER_READING)
+        further_reading = "\n".join(f"- [{title}]({url})" for title, url in links)
         return (
             "### Review skipped — `AGENTS.md` too large 🛑\n\n"
             f"`AGENTS.md` weighs in at ~{tokens} tokens, exceeding the configured "
