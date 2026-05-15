@@ -54,8 +54,10 @@ _AGENTS_MD_FURTHER_READING: tuple[tuple[str, str], ...] = (
     ),
 )
 
-# Markdown link syntax: [Title](URL) — captured as (title, url).
-_MARKDOWN_LINK_RE = re.compile(r"^\[([^\]]+)\]\(([^)]+)\)$")
+# Markdown link syntax: [Title](URL) — captured as (title, url). The URL group
+# is greedy so URLs containing `)` (e.g. Wikipedia-style `Foo_(bar)`) still
+# match: anchoring to end-of-string forces the final `)` to be the closer.
+_MARKDOWN_LINK_RE = re.compile(r"^\[([^\]]+)\]\((.+)\)$")
 
 
 def _parse_custom_link(raw: str) -> tuple[str, str] | None:

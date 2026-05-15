@@ -430,6 +430,17 @@ class TestReviewer:
         summary = rev._build_agents_md_too_large_summary(tokens=9000, limit=7000)
         assert "[https://wiki.example.com/x](https://wiki.example.com/x)" in summary
 
+    def test_build_agents_md_too_large_summary_custom_link_url_with_parenthesis(
+        self, mock_bitbucket, mock_llm
+    ):
+        # Wikipedia-style URLs contain `)` — regex must match up to the final `)`.
+        cfg = _review_config(
+            agents_md_custom_link="[Foo](https://en.wikipedia.org/wiki/Foo_(bar))",
+        )
+        rev = Reviewer(mock_bitbucket, mock_llm, cfg, db_pool=AsyncMock())
+        summary = rev._build_agents_md_too_large_summary(tokens=9000, limit=7000)
+        assert "[Foo](https://en.wikipedia.org/wiki/Foo_(bar))" in summary
+
     @pytest.mark.asyncio
     async def test_review_skipped_when_branch_contains_opt_out_keyword(self, mock_bitbucket, mock_llm):
         rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
