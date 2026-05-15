@@ -54,6 +54,20 @@ _AGENTS_MD_FURTHER_READING: tuple[tuple[str, str], ...] = (
     ),
 )
 
+# Markdown link syntax: [Title](URL) — captured as (title, url).
+_MARKDOWN_LINK_RE = re.compile(r"^\[([^\]]+)\]\(([^)]+)\)$")
+
+
+def _parse_custom_link(raw: str) -> tuple[str, str] | None:
+    """Parse `[Title](URL)` markdown or a bare URL. Returns None if empty."""
+    value = raw.strip()
+    if not value:
+        return None
+    m = _MARKDOWN_LINK_RE.match(value)
+    if m:
+        return (m.group(1).strip(), m.group(2).strip())
+    return (value, value)
+
 
 def _fmt(n: int) -> str:
     return f"{n:,}".replace(",", "'")
@@ -1136,12 +1150,9 @@ class Reviewer:
 
     def _build_agents_md_too_large_summary(self, tokens: int, limit: int) -> str:
         links: list[tuple[str, str]] = []
-        custom_url = self.review_config.agents_md_custom_link_url.strip()
-        if custom_url:
-            custom_title = (
-                self.review_config.agents_md_custom_link_title.strip() or custom_url
-            )
-            links.append((custom_title, custom_url))
+        custom = _parse_custom_link(self.review_config.agents_md_custom_link)
+        if custom is not None:
+            links.append(custom)
         links.extend(_AGENTS_MD_FURTHER_READING)
         further_reading = "\n".join(f"- [{title}]({url})" for title, url in links)
         return (

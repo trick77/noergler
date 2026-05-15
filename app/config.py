@@ -241,8 +241,7 @@ class ReviewConfig(BaseModel):
     require_agents_md: bool = True
     agents_md_warn_tokens: int = 4000
     agents_md_max_tokens: int = 7000
-    agents_md_custom_link_url: str = ""
-    agents_md_custom_link_title: str = ""
+    agents_md_custom_link: str = ""
     opt_out_branch_keyword: str = "noergloff"
 
     @field_validator("auto_review_authors", mode="before")
@@ -352,8 +351,7 @@ def load_config() -> AppConfig:
             require_agents_md=_env("REVIEW_REQUIRE_AGENTS_MD", "true").lower() in ("true", "1", "yes"),
             agents_md_warn_tokens=int(_env("REVIEW_AGENTS_MD_WARN_TOKENS", "4000")),
             agents_md_max_tokens=int(_env("REVIEW_AGENTS_MD_MAX_TOKENS", "7000")),
-            agents_md_custom_link_url=_env("REVIEW_AGENTS_MD_CUSTOM_LINK_URL", ""),
-            agents_md_custom_link_title=_env("REVIEW_AGENTS_MD_CUSTOM_LINK_TITLE", ""),
+            agents_md_custom_link=_env("REVIEW_AGENTS_MD_CUSTOM_LINK", ""),
             opt_out_branch_keyword=_env("REVIEW_OPT_OUT_BRANCH_KEYWORD", "noergloff"),
         ),
         jira=JiraConfig(

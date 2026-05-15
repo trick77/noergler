@@ -407,10 +407,11 @@ class TestReviewer:
         assert "https://www.augmentcode.com/blog/how-to-write-good-agents-dot-md-files" in summary
         assert "https://github.com/juliusbrussee/caveman" in summary
 
-    def test_build_agents_md_too_large_summary_prepends_custom_link(self, mock_bitbucket, mock_llm):
+    def test_build_agents_md_too_large_summary_prepends_custom_link_markdown(
+        self, mock_bitbucket, mock_llm
+    ):
         cfg = _review_config(
-            agents_md_custom_link_url="https://wiki.example.com/agents-md-guide",
-            agents_md_custom_link_title="Internal AGENTS.md guide",
+            agents_md_custom_link="[Internal AGENTS.md guide](https://wiki.example.com/agents-md-guide)",
         )
         rev = Reviewer(mock_bitbucket, mock_llm, cfg, db_pool=AsyncMock())
         summary = rev._build_agents_md_too_large_summary(tokens=9000, limit=7000)
@@ -418,12 +419,12 @@ class TestReviewer:
         custom_idx = summary.index("https://wiki.example.com/agents-md-guide")
         upsun_idx = summary.index("https://developer.upsun.com/posts/ai/agents-md-less-is-more")
         assert custom_idx < upsun_idx
-        assert "Internal AGENTS.md guide" in summary
+        assert "[Internal AGENTS.md guide](https://wiki.example.com/agents-md-guide)" in summary
 
-    def test_build_agents_md_too_large_summary_custom_link_falls_back_to_url_as_title(
+    def test_build_agents_md_too_large_summary_custom_link_bare_url(
         self, mock_bitbucket, mock_llm
     ):
-        cfg = _review_config(agents_md_custom_link_url="https://wiki.example.com/x")
+        cfg = _review_config(agents_md_custom_link="https://wiki.example.com/x")
         rev = Reviewer(mock_bitbucket, mock_llm, cfg, db_pool=AsyncMock())
         summary = rev._build_agents_md_too_large_summary(tokens=9000, limit=7000)
         assert "[https://wiki.example.com/x](https://wiki.example.com/x)" in summary
