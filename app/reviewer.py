@@ -35,6 +35,26 @@ from app.models import PullRequest, ReviewFinding, WebhookPayload
 logger = logging.getLogger(__name__)
 
 
+# Curated 2026 references surfaced in the "AGENTS.md too large" skip summary.
+# Publication dates verified via WebFetch (2026-05); replace if the URLs rot or
+# better-dated sources appear.
+_AGENTS_MD_FURTHER_READING: tuple[tuple[str, str], ...] = (
+    (
+        "Upsun — The research is in: your AGENTS.md is probably too long (2026-02-23)",
+        "https://developer.upsun.com/posts/ai/agents-md-less-is-more",
+    ),
+    (
+        "Augment Code — A good AGENTS.md is a model upgrade. A bad one is "
+        "worse than no docs at all (2026-04-22)",
+        "https://www.augmentcode.com/blog/how-to-write-good-agents-dot-md-files",
+    ),
+    (
+        "Caveman — Claude Code skill, \"why use many token when few token do trick\"",
+        "https://github.com/juliusbrussee/caveman",
+    ),
+)
+
+
 def _fmt(n: int) -> str:
     return f"{n:,}".replace(",", "'")
 
@@ -375,6 +395,31 @@ class Reviewer:
                     self._build_agents_md_missing_summary(),
                 )
                 return
+
+            max_tokens = self.review_config.agents_md_max_tokens
+            if repo_instructions and max_tokens > 0:
+                agents_md_tokens = count_tokens(repo_instructions)
+                if agents_md_tokens > max_tokens:
+                    logger.info(
+                        "%s: AGENTS.md too large (%d > %d tokens), skipping review "
+                        "(set REVIEW_AGENTS_MD_MAX_TOKENS=0 to disable the hard limit)",
+                        pr_tag, agents_md_tokens, max_tokens,
+                    )
+                    pr_review_id = await _safe_db(
+                        repository.upsert_pr_review(
+                            self.db_pool, project_key, repo_slug, pr_id,
+                            last_reviewed_commit=pr.fromRef.latestCommit,
+                            author=author_name,
+                            pr_title=pr.title,
+                            opened_at=opened_at,
+                        ),
+                        fallback=None,
+                    )
+                    await self._post_or_update_summary(
+                        project_key, repo_slug, pr_id, pr_review_id,
+                        self._build_agents_md_too_large_summary(agents_md_tokens, max_tokens),
+                    )
+                    return
 
             logger.info(
                 "Starting review of %s by %s (branch: %s)",
@@ -1087,6 +1132,32 @@ class Reviewer:
             "**Opt-out**\n"
             "- To review PRs without an `AGENTS.md`, set "
             "`REVIEW_REQUIRE_AGENTS_MD=false` on the noergler service and restart.\n"
+        )
+
+    @staticmethod
+    def _build_agents_md_too_large_summary(tokens: int, limit: int) -> str:
+        further_reading = "\n".join(
+            f"- [{title}]({url})" for title, url in _AGENTS_MD_FURTHER_READING
+        )
+        return (
+            "### Review skipped — `AGENTS.md` too large 🛑\n\n"
+            f"`AGENTS.md` weighs in at ~{tokens} tokens, exceeding the configured "
+            f"hard limit of {limit} tokens. Oversized agent instructions crowd out "
+            "the actual diff, degrade review quality (context rot), and inflate "
+            "inference cost — so the review was not run.\n\n"
+            "**What to do**\n"
+            "- Trim `AGENTS.md`: drop sections that are there for humans to skim, "
+            "remove duplicated README content, replace prose with terse rules.\n"
+            "- Move detailed reference material into separate files and link to "
+            "them; keep the main file lean.\n"
+            "- Push the slimmer file and the next webhook event on this PR will "
+            "trigger a full review.\n\n"
+            "**Configure**\n"
+            "- Raise the limit via `REVIEW_AGENTS_MD_MAX_TOKENS` on the noergler "
+            "service, or set it to `0` to disable the hard cut-off entirely "
+            "(the soft warning via `REVIEW_AGENTS_MD_WARN_TOKENS` remains).\n\n"
+            "**Further reading**\n"
+            f"{further_reading}\n"
         )
 
     async def _post_or_update_summary(

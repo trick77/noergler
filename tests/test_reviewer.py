@@ -361,6 +361,52 @@ class TestReviewer:
         assert "REVIEW_REQUIRE_AGENTS_MD" in summary
 
     @pytest.mark.asyncio
+    async def test_review_skipped_when_agents_md_exceeds_max_tokens(self, mock_bitbucket, mock_llm):
+        # AGENTS.md large enough to blow past a 100-token hard limit.
+        large_agents_md = "agents.md content " * 500
+        mock_bitbucket.fetch_file_content = AsyncMock(return_value=large_agents_md)
+        rev = Reviewer(
+            mock_bitbucket, mock_llm, _review_config(agents_md_max_tokens=100),
+            db_pool=AsyncMock(),
+        )
+        payload = _make_payload("username")
+        await rev.review_pull_request(payload)
+
+        mock_llm.review_diff.assert_not_called()
+        mock_bitbucket.fetch_pr_diff.assert_not_called()
+        mock_bitbucket.post_inline_comment.assert_not_called()
+        mock_bitbucket.post_pr_comment.assert_called_once()
+        summary_text = mock_bitbucket.post_pr_comment.call_args[0][3]
+        assert "AGENTS.md" in summary_text
+        assert "too large" in summary_text
+        assert "REVIEW_AGENTS_MD_MAX_TOKENS" in summary_text
+
+    @pytest.mark.asyncio
+    async def test_review_runs_when_agents_md_max_tokens_zero(self, mock_bitbucket, mock_llm):
+        # Same huge AGENTS.md, but hard limit disabled — review must proceed.
+        large_agents_md = "agents.md content " * 500
+        mock_bitbucket.fetch_file_content = AsyncMock(return_value=large_agents_md)
+        rev = Reviewer(
+            mock_bitbucket, mock_llm, _review_config(agents_md_max_tokens=0),
+            db_pool=AsyncMock(),
+        )
+        payload = _make_payload("username")
+        await rev.review_pull_request(payload)
+
+        mock_llm.review_diff.assert_called_once()
+
+    def test_default_agents_md_max_tokens_is_7000(self):
+        assert ReviewConfig().agents_md_max_tokens == 7000
+
+    def test_build_agents_md_too_large_summary_contains_links_and_tokens(self):
+        summary = Reviewer._build_agents_md_too_large_summary(tokens=9000, limit=7000)
+        assert "9000" in summary and "7000" in summary
+        assert "REVIEW_AGENTS_MD_MAX_TOKENS" in summary
+        assert "https://developer.upsun.com/posts/ai/agents-md-less-is-more" in summary
+        assert "https://www.augmentcode.com/blog/how-to-write-good-agents-dot-md-files" in summary
+        assert "https://github.com/juliusbrussee/caveman" in summary
+
+    @pytest.mark.asyncio
     async def test_review_skipped_when_branch_contains_opt_out_keyword(self, mock_bitbucket, mock_llm):
         rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
         payload = _make_payload("username", branch="feature/x-noergloff")
