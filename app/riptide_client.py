@@ -88,11 +88,7 @@ class RiptideClient:
         try:
             response = await self._client.get(self._url + self._PING_PATH)
         except httpx.HTTPError as exc:
-            logger.warning(
-                "riptide_unreachable_at_startup",
-                err=str(exc),
-                url=self._url,
-            )
+            logger.warning("Riptide unreachable at startup (url=%s): %s", self._url, exc)
             return None
         if response.status_code == 401:
             raise RiptideAuthError(
@@ -101,13 +97,12 @@ class RiptideClient:
             )
         if response.status_code >= 400:
             logger.warning(
-                "riptide_ping_unexpected_status",
-                status_code=response.status_code,
-                body=response.text[:200],
+                "Riptide ping returned unexpected status %d: %s",
+                response.status_code, response.text[:200],
             )
             return None
         team = (response.json() or {}).get("team")
-        logger.info("riptide_reachable", team=team, url=self._url)
+        logger.info("Riptide: OK (team=%s)", team)
         return team if isinstance(team, str) else None
 
     async def emit_pr_completed(
@@ -141,10 +136,8 @@ class RiptideClient:
             # for a model is a config gap worth surfacing on the riptide side
             # via low row-counts, not silently filled with zeros.
             logger.debug(
-                "riptide_emit_skipped_no_cost",
-                pr_key=pr_key,
-                outcome=outcome,
-                models_used=models_used,
+                "Riptide emit skipped (no cost) for %s outcome=%s models=%s",
+                pr_key, outcome, models_used,
             )
             return
         body: dict[str, Any] = {
@@ -201,17 +194,14 @@ class RiptideClient:
             response = await self._client.post(url, json=body)
         except httpx.HTTPError as exc:
             logger.warning(
-                "riptide_emit_failed",
-                event_type=body.get("event_type"),
-                err=str(exc),
+                "Riptide emit failed (event_type=%s): %s",
+                body.get("event_type"), exc,
             )
             return
         if response.status_code >= 400:
             logger.warning(
-                "riptide_emit_rejected",
-                event_type=body.get("event_type"),
-                status_code=response.status_code,
-                body=response.text[:200],
+                "Riptide emit rejected (event_type=%s, status=%d): %s",
+                body.get("event_type"), response.status_code, response.text[:200],
             )
 
 
