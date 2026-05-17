@@ -5,6 +5,7 @@ import re
 import time
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
+from typing import Literal
 
 import openai
 import structlog
@@ -813,26 +814,27 @@ class Reviewer:
 
             review_model_name = model_label(self.llm.config.model, self.llm.config.reasoning_effort)
 
-            if self.riptide is not None and self.riptide.enabled:
-                # pr_review_id is noergler's per-run primary key; use it as
-                # the riptide idempotency key (run_id) so retries collapse.
-                try:
-                    await self.riptide.emit_completed(
-                        pr_key=pr_tag,
-                        repo=f"{project_key}/{repo_slug}",
-                        commit_sha=source_commit or "",
-                        run_id=str(pr_review_id),
-                        model=review_model_name,
-                        prompt_tokens=llm_result.prompt_tokens,
-                        completion_tokens=llm_result.completion_tokens,
-                        elapsed_ms=int(elapsed * 1000),
-                        findings_count=len(findings),
-                        cost_usd=run_cost_usd,
-                        finished_at=datetime.now(timezone.utc),
-                    )
-                except Exception:
-                    # Best-effort. Never let forwarding break a successful review.
-                    logger.warning("riptide emit (completed) failed", exc_info=True)
+            # Fold this run into the per-PR rollup that ships to riptide at
+            # PR close. We persist regardless of whether riptide is wired —
+            # the accumulator is also useful for local introspection, and
+            # toggling riptide on later still sees a complete history.
+            await _safe_db(
+                repository.record_review_run_stats(
+                    self.db_pool,
+                    project_key=project_key,
+                    repo_slug=repo_slug,
+                    pr_id=pr_id,
+                    model=review_model_name,
+                    prompt_tokens=llm_result.prompt_tokens,
+                    completion_tokens=llm_result.completion_tokens,
+                    elapsed_ms=int(elapsed * 1000),
+                    findings_count=len(findings),
+                    source_commit_sha=source_commit,
+                    lines_added=diff_added,
+                    lines_removed=diff_removed,
+                    files_changed=total_files + len(deleted_paths) + len(renamed_paths),
+                )
+            )
 
             parts = [
                 f"Review of {pr_tag} completed in {elapsed:.1f}s",
@@ -954,6 +956,22 @@ class Reviewer:
                     pr_tag, frozen_cost,
                 )
 
+            # Forward the per-PR rollup (cost + diff size + tokens + findings)
+            # to riptide. Best-effort: a failure here must not block the
+            # rest of the merge handler.
+            try:
+                merge_commit_sha = self._extract_merge_commit_sha(payload)
+                await self._emit_pr_rollup_to_riptide(
+                    project_key=project_key,
+                    repo_slug=repo_slug,
+                    pr_id=pr.id,
+                    pr_tag=pr_tag,
+                    outcome="merged",
+                    merge_commit_sha=merge_commit_sha,
+                )
+            except Exception:
+                logger.warning("riptide emit (pr_completed merged) failed", exc_info=True)
+
             comments = await self.bitbucket.fetch_pr_comments(project_key, repo_slug, pr.id)
             bot_username = self.bitbucket.bot_username
 
@@ -988,6 +1006,31 @@ class Reviewer:
         except Exception:
             logger.error("Merged stats for %s failed", pr_tag, exc_info=True)
 
+    async def handle_pr_declined(self, payload: WebhookPayload) -> None:
+        pr = payload.pullRequest
+        project_key, repo_slug = self._extract_project_repo(payload)
+        if not project_key or not repo_slug:
+            return
+
+        pr_tag = f"{project_key}/{repo_slug}#{pr.id}"
+
+        await _safe_db(
+            repository.mark_pr_declined(self.db_pool, project_key, repo_slug, pr.id)
+        )
+        logger.info("%s declined — marked, data retained", pr_tag)
+
+        try:
+            await self._emit_pr_rollup_to_riptide(
+                project_key=project_key,
+                repo_slug=repo_slug,
+                pr_id=pr.id,
+                pr_tag=pr_tag,
+                outcome="declined",
+                merge_commit_sha=None,
+            )
+        except Exception:
+            logger.warning("riptide emit (pr_completed declined) failed", exc_info=True)
+
     async def handle_pr_deleted(self, payload: WebhookPayload) -> None:
         pr = payload.pullRequest
         project_key, repo_slug = self._extract_project_repo(payload)
@@ -1000,6 +1043,134 @@ class Reviewer:
             repository.mark_pr_deleted(self.db_pool, project_key, repo_slug, pr.id)
         )
         logger.info("%s deleted — marked, data retained", pr_tag)
+
+        try:
+            await self._emit_pr_rollup_to_riptide(
+                project_key=project_key,
+                repo_slug=repo_slug,
+                pr_id=pr.id,
+                pr_tag=pr_tag,
+                outcome="deleted",
+                merge_commit_sha=None,
+            )
+        except Exception:
+            logger.warning("riptide emit (pr_completed deleted) failed", exc_info=True)
+
+    def _extract_merge_commit_sha(self, payload: WebhookPayload) -> str | None:
+        """Best-effort: pull the merge commit SHA out of the pr:merged payload.
+
+        Bitbucket places it on pullRequest.properties.mergeCommit.id; not all
+        deployments populate it. Returning None is fine — riptide accepts a
+        nullable merge_commit_sha.
+        """
+        pr = payload.pullRequest
+        props = getattr(pr, "properties", None)
+        if not isinstance(props, dict):
+            return None
+        merge = props.get("mergeCommit")
+        if isinstance(merge, dict):
+            sha = merge.get("id")
+            if isinstance(sha, str) and sha:
+                return sha
+        return None
+
+    async def _emit_pr_rollup_to_riptide(
+        self,
+        *,
+        project_key: str,
+        repo_slug: str,
+        pr_id: int,
+        pr_tag: str,
+        outcome: Literal["merged", "declined", "deleted"],
+        merge_commit_sha: str | None,
+    ) -> None:
+        """Aggregate per-run review stats and POST a pr_completed event.
+
+        No-op when riptide is not configured, when no review ever ran on
+        the PR, or when the rollup has already been emitted (idempotency
+        via riptide_emitted_at).
+        """
+        if self.riptide is None or not self.riptide.enabled:
+            return
+
+        # Refresh the final cumulative PR diff from Bitbucket at close time
+        # — the per-run accumulators may have only seen incremental diffs.
+        # For deleted PRs the diff is gone, so skip the fetch entirely and
+        # fall back to the per-run trail rather than always log-and-except.
+        final_lines_added: int | None = None
+        final_lines_removed: int | None = None
+        final_files_changed: int | None = None
+        if outcome != "deleted":
+            try:
+                full_diff = await self.bitbucket.fetch_pr_diff(
+                    project_key, repo_slug, pr_id, context_lines=0
+                )
+                if full_diff.strip():
+                    final_lines_added, final_lines_removed = _count_diff_lines(full_diff)
+                    # files_changed = number of distinct paths in the diff
+                    # ('diff --git a/... b/...' header). Cheaper than parsing.
+                    final_files_changed = sum(
+                        1 for line in full_diff.splitlines() if line.startswith("diff --git ")
+                    )
+            except Exception:
+                logger.info(
+                    "%s: final PR diff unavailable at close — using last-known per-run stats",
+                    pr_tag,
+                )
+
+        # Use the source-branch HEAD as recorded by the latest review run.
+        snapshot = await _safe_db(
+            repository.claim_rollup_for_emit(
+                self.db_pool,
+                project_key=project_key,
+                repo_slug=repo_slug,
+                pr_id=pr_id,
+                final_source_commit_sha=None,  # already set by record_review_run_stats
+                final_merge_commit_sha=merge_commit_sha,
+                final_lines_added=final_lines_added,
+                final_lines_removed=final_lines_removed,
+                final_files_changed=final_files_changed,
+            )
+        )
+        if snapshot is None:
+            logger.debug(
+                "%s: rollup not emitted (already emitted or no review runs)",
+                pr_tag,
+            )
+            return
+
+        source_sha = snapshot.get("final_source_commit_sha")
+        if not source_sha:
+            logger.warning(
+                "%s: rollup has no source_commit_sha — skipping emit "
+                "(should not happen if record_review_run_stats ran)",
+                pr_tag,
+            )
+            return
+
+        first_review_at = snapshot.get("first_review_at") or datetime.now(timezone.utc)
+        total_cost_usd = snapshot.get("total_cost_usd")
+        models_used = list(snapshot.get("models_used") or [])
+
+        await self.riptide.emit_pr_completed(
+            outcome=outcome,
+            pr_key=pr_tag,
+            repo=f"{project_key}/{repo_slug}",
+            source_commit_sha=source_sha,
+            merge_commit_sha=snapshot.get("final_merge_commit_sha"),
+            lines_added=snapshot.get("final_lines_added") or 0,
+            lines_removed=snapshot.get("final_lines_removed") or 0,
+            files_changed=snapshot.get("final_files_changed") or 0,
+            total_runs=snapshot["total_runs"],
+            total_prompt_tokens=snapshot["total_prompt_tokens"],
+            total_completion_tokens=snapshot["total_completion_tokens"],
+            total_elapsed_ms=snapshot["total_elapsed_ms"],
+            total_findings_count=snapshot["total_findings_count"],
+            total_cost_usd=total_cost_usd,
+            models_used=models_used,
+            first_review_at=first_review_at,
+            closed_at=datetime.now(timezone.utc),
+        )
 
     async def handle_feedback(self, payload: WebhookPayload) -> None:
         comment = payload.comment

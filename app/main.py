@@ -108,9 +108,9 @@ async def lifespan(_app: FastAPI):
 
     for name, error in checks.items():
         if error is None:
-            logger.info("  ✔ %s: OK", name)
+            logger.info("%s: OK", name)
         else:
-            logger.error("  ✘ %s: %s", name, error)
+            logger.error("%s: %s", name, error)
 
     failed = [k for k, v in checks.items() if v is not None]
     if failed:
@@ -256,6 +256,10 @@ async def webhook(
     if event_key == "pr:merged":
         background_tasks.add_task(reviewer.handle_pr_merged, payload)
         return {"status": "accepted", "reason": "merged-stats"}
+
+    if event_key == "pr:declined":
+        background_tasks.add_task(reviewer.handle_pr_declined, payload)
+        return {"status": "accepted", "reason": "declined-rollup"}
 
     if event_key == "pr:deleted":
         background_tasks.add_task(reviewer.handle_pr_deleted, payload)

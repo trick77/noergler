@@ -140,6 +140,20 @@ async def mark_pr_merged(
         )
 
 
+async def mark_pr_declined(
+    pool: asyncpg.Pool, project_key: str, repo_slug: str, pr_id: int
+) -> None:
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE pr_reviews SET declined_at = NOW(), updated_at = NOW()
+            WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
+              AND declined_at IS NULL
+            """,
+            project_key, repo_slug, pr_id,
+        )
+
+
 async def mark_pr_deleted(
     pool: asyncpg.Pool, project_key: str, repo_slug: str, pr_id: int
 ) -> None:
@@ -152,6 +166,107 @@ async def mark_pr_deleted(
             """,
             project_key, repo_slug, pr_id,
         )
+
+
+async def record_review_run_stats(
+    pool: asyncpg.Pool,
+    *,
+    project_key: str,
+    repo_slug: str,
+    pr_id: int,
+    model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    elapsed_ms: int,
+    findings_count: int,
+    source_commit_sha: str | None,
+    lines_added: int | None,
+    lines_removed: int | None,
+    files_changed: int | None,
+) -> None:
+    """Fold a single review run into the per-PR rollup accumulators.
+
+    Called once per review run; the matching row is emitted to riptide
+    later, when the PR reaches its terminal state (merged / declined /
+    deleted). Idempotency: callers should pass distinct (pr_id, run)
+    invocations — DB-level dedup is handled by the lifecycle path
+    via `riptide_emitted_at`.
+    """
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE pr_reviews
+            SET total_prompt_tokens = total_prompt_tokens + $4,
+                total_completion_tokens = total_completion_tokens + $5,
+                total_elapsed_ms = total_elapsed_ms + $6,
+                total_findings_count = total_findings_count + $7,
+                total_runs = total_runs + 1,
+                models_used = (
+                    SELECT ARRAY(SELECT DISTINCT m FROM unnest(models_used || ARRAY[$8::text]) AS m)
+                ),
+                first_review_at = COALESCE(first_review_at, NOW()),
+                final_source_commit_sha = COALESCE($9, final_source_commit_sha),
+                final_lines_added = COALESCE($10, final_lines_added),
+                final_lines_removed = COALESCE($11, final_lines_removed),
+                final_files_changed = COALESCE($12, final_files_changed),
+                updated_at = NOW()
+            WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
+            """,
+            project_key, repo_slug, pr_id,
+            prompt_tokens, completion_tokens, elapsed_ms, findings_count,
+            model,
+            source_commit_sha, lines_added, lines_removed, files_changed,
+        )
+
+
+async def claim_rollup_for_emit(
+    pool: asyncpg.Pool,
+    *,
+    project_key: str,
+    repo_slug: str,
+    pr_id: int,
+    final_source_commit_sha: str | None,
+    final_merge_commit_sha: str | None,
+    final_lines_added: int | None,
+    final_lines_removed: int | None,
+    final_files_changed: int | None,
+) -> dict | None:
+    """Atomically mark the rollup as emitted and return its snapshot.
+
+    Returns None if the rollup was already emitted (idempotency: a redelivered
+    pr:merged webhook must not produce a second event) or if the PR had no
+    review runs (nothing meaningful to forward).
+
+    The caller is expected to overwrite the per-run accumulators with the
+    final cumulative diff size (the per-run trail may have only seen the
+    incremental diffs).
+    """
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE pr_reviews
+            SET riptide_emitted_at = NOW(),
+                final_source_commit_sha = COALESCE($4, final_source_commit_sha),
+                final_merge_commit_sha = COALESCE($5, final_merge_commit_sha),
+                final_lines_added = COALESCE($6, final_lines_added),
+                final_lines_removed = COALESCE($7, final_lines_removed),
+                final_files_changed = COALESCE($8, final_files_changed),
+                updated_at = NOW()
+            WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
+              AND riptide_emitted_at IS NULL
+              AND total_runs > 0
+            RETURNING
+                total_runs, total_prompt_tokens, total_completion_tokens,
+                total_elapsed_ms, total_findings_count, total_cost_usd,
+                models_used, first_review_at,
+                final_source_commit_sha, final_merge_commit_sha,
+                final_lines_added, final_lines_removed, final_files_changed
+            """,
+            project_key, repo_slug, pr_id,
+            final_source_commit_sha, final_merge_commit_sha,
+            final_lines_added, final_lines_removed, final_files_changed,
+        )
+        return dict(row) if row else None
 
 
 async def insert_finding(

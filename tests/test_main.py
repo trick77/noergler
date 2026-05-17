@@ -83,6 +83,7 @@ def client():
     mock_reviewer.handle_mention = AsyncMock()
     mock_reviewer.handle_feedback = AsyncMock()
     mock_reviewer.handle_pr_merged = AsyncMock()
+    mock_reviewer.handle_pr_declined = AsyncMock()
     mock_reviewer.handle_pr_deleted = AsyncMock()
 
     # A stub review queue that invokes the reviewer synchronously on submit,
@@ -215,6 +216,21 @@ class TestMergedRouting:
         assert data["reason"] == "merged-stats"
 
 
+class TestDeclinedRouting:
+    def test_pr_declined_routes_to_handle_pr_declined(self, client):
+        payload = {**PR_PAYLOAD, "eventKey": "pr:declined"}
+        body = json.dumps(payload).encode()
+        resp = client.post(
+            "/webhook",
+            content=body,
+            headers={"X-Hub-Signature": _sign(body), "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "accepted"
+        assert data["reason"] == "declined-rollup"
+
+
 class TestDeletedRouting:
     def test_pr_deleted_routes_to_handle_pr_deleted(self, client):
         payload = {**PR_PAYLOAD, "eventKey": "pr:deleted"}
@@ -232,7 +248,9 @@ class TestDeletedRouting:
 
 class TestEventKeyAllowList:
     def test_unhandled_pr_event_returns_ignored_with_warning(self, client):
-        payload = {**PR_PAYLOAD, "eventKey": "pr:declined"}
+        # 'pr:reviewed' is intentionally not handled — used here to exercise
+        # the unknown-event branch now that pr:declined has a real route.
+        payload = {**PR_PAYLOAD, "eventKey": "pr:reviewed"}
         body = json.dumps(payload).encode()
         resp = client.post(
             "/webhook",

@@ -1,8 +1,10 @@
 """Optional outbound emitter to riptide-collector.
 
-Forwards finops (review-completion cost) and reviewer-precision (feedback)
-events. PR lifecycle is not forwarded — riptide already gets that from
-Bitbucket directly.
+Forwards per-PR review rollups (cost + diff size) and reviewer-precision
+(feedback) events. The PR lifecycle itself is not forwarded directly —
+riptide already gets that from Bitbucket — but the rollup is keyed off
+the PR's terminal state (merged / declined / deleted) so finops can
+distinguish review spend that shipped from review spend that didn't.
 
 If `RIPTIDE_URL` or `RIPTIDE_TOKEN` is unset, every emit is a no-op and the
 client is `enabled=False`. When configured, the client validates the token
@@ -108,40 +110,62 @@ class RiptideClient:
         logger.info("riptide_reachable", team=team, url=self._url)
         return team if isinstance(team, str) else None
 
-    async def emit_completed(
+    async def emit_pr_completed(
         self,
         *,
+        outcome: str,
         pr_key: str,
         repo: str,
-        commit_sha: str,
-        run_id: str,
-        model: str,
-        prompt_tokens: int,
-        completion_tokens: int,
-        elapsed_ms: int,
-        findings_count: int,
-        cost_usd: Decimal | float | None,
-        finished_at: datetime,
+        source_commit_sha: str,
+        merge_commit_sha: str | None,
+        lines_added: int,
+        lines_removed: int,
+        files_changed: int,
+        total_runs: int,
+        total_prompt_tokens: int,
+        total_completion_tokens: int,
+        total_elapsed_ms: int,
+        total_findings_count: int,
+        total_cost_usd: Decimal | float | None,
+        models_used: list[str],
+        first_review_at: datetime,
+        closed_at: datetime,
     ) -> None:
-        if cost_usd is None:
+        """Emit the per-PR rollup once the PR has reached a terminal state.
+
+        `outcome` must be one of 'merged' / 'declined' / 'deleted' — riptide
+        rejects anything else with HTTP 422.
+        """
+        if total_cost_usd is None:
             # Skip emission rather than send a meaningless 0; missing pricing
             # for a model is a config gap worth surfacing on the riptide side
             # via low row-counts, not silently filled with zeros.
-            logger.debug("riptide_emit_skipped_no_cost", model=model, run_id=run_id)
+            logger.debug(
+                "riptide_emit_skipped_no_cost",
+                pr_key=pr_key,
+                outcome=outcome,
+                models_used=models_used,
+            )
             return
         body: dict[str, Any] = {
-            "event_type": "completed",
+            "event_type": "pr_completed",
+            "outcome": outcome,
             "pr_key": pr_key,
             "repo": repo,
-            "commit_sha": commit_sha,
-            "run_id": run_id,
-            "model": model,
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "elapsed_ms": elapsed_ms,
-            "findings_count": findings_count,
-            "cost_usd": str(cost_usd),
-            "finished_at": _isoformat_z(finished_at),
+            "source_commit_sha": source_commit_sha,
+            "merge_commit_sha": merge_commit_sha,
+            "lines_added": lines_added,
+            "lines_removed": lines_removed,
+            "files_changed": files_changed,
+            "total_runs": total_runs,
+            "total_prompt_tokens": total_prompt_tokens,
+            "total_completion_tokens": total_completion_tokens,
+            "total_elapsed_ms": total_elapsed_ms,
+            "total_findings_count": total_findings_count,
+            "total_cost_usd": str(total_cost_usd),
+            "models_used": models_used,
+            "first_review_at": _isoformat_z(first_review_at),
+            "closed_at": _isoformat_z(closed_at),
         }
         await self._post(body)
 
