@@ -1,4 +1,6 @@
 import logging
+from datetime import datetime, timezone
+from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -2117,6 +2119,106 @@ class TestHandlePrMerged:
         assert "1 comments" in stat_record.message
         assert "0 disagreed" in stat_record.message
         assert "100% useful" in stat_record.message
+
+
+class TestPrRollupIdempotency:
+    """A redelivered pr:merged webhook must not produce two riptide events.
+
+    The rollup is claimed via UPDATE … WHERE riptide_emitted_at IS NULL …
+    RETURNING; the second handle_pr_merged call must see snapshot=None and
+    emit nothing.
+    """
+
+    @pytest.mark.asyncio
+    async def test_merged_redelivery_emits_once(self, mock_bitbucket, mock_llm):
+        mock_bitbucket.fetch_pr_comments.return_value = []
+        mock_bitbucket.fetch_pr_diff = AsyncMock(return_value="")
+
+        riptide = AsyncMock()
+        riptide.enabled = True
+        riptide.emit_pr_completed = AsyncMock()
+
+        rev = Reviewer(
+            mock_bitbucket, mock_llm, _review_config(),
+            db_pool=AsyncMock(), riptide=riptide,
+        )
+
+        snapshot = {
+            "total_runs": 2,
+            "total_prompt_tokens": 100,
+            "total_completion_tokens": 20,
+            "total_elapsed_ms": 1500,
+            "total_findings_count": 3,
+            "total_cost_usd": Decimal("0.12"),
+            "models_used": ["gpt-4o"],
+            "first_review_at": datetime(2026, 4, 29, tzinfo=timezone.utc),
+            "final_source_commit_sha": "abc1234567890abc1234567890abc1234567890a",
+            "final_merge_commit_sha": None,
+            "final_lines_added": 10,
+            "final_lines_removed": 2,
+            "final_files_changed": 1,
+        }
+
+        # First call: claim returns the snapshot → emit fires.
+        # Second call: claim returns None (riptide_emitted_at set) → no emit.
+        with patch(
+            "app.reviewer.repository.claim_rollup_for_emit",
+            new_callable=AsyncMock,
+            side_effect=[snapshot, None],
+        ), patch(
+            "app.reviewer.repository.mark_pr_merged", new_callable=AsyncMock
+        ), patch(
+            "app.reviewer.repository.freeze_pr_cost", new_callable=AsyncMock, return_value=None
+        ):
+            await rev.handle_pr_merged(_make_payload())
+            await rev.handle_pr_merged(_make_payload())
+
+        assert riptide.emit_pr_completed.await_count == 1
+        kwargs = riptide.emit_pr_completed.call_args.kwargs
+        assert kwargs["outcome"] == "merged"
+        assert kwargs["total_runs"] == 2
+
+    @pytest.mark.asyncio
+    async def test_deleted_skips_diff_fetch(self, mock_bitbucket, mock_llm):
+        # On pr:deleted the PR is gone — calling fetch_pr_diff would just
+        # log noise. The implementation must skip the fetch entirely.
+        mock_bitbucket.fetch_pr_diff = AsyncMock()
+
+        riptide = AsyncMock()
+        riptide.enabled = True
+        riptide.emit_pr_completed = AsyncMock()
+
+        rev = Reviewer(
+            mock_bitbucket, mock_llm, _review_config(),
+            db_pool=AsyncMock(), riptide=riptide,
+        )
+
+        snapshot = {
+            "total_runs": 1,
+            "total_prompt_tokens": 50,
+            "total_completion_tokens": 10,
+            "total_elapsed_ms": 800,
+            "total_findings_count": 1,
+            "total_cost_usd": Decimal("0.05"),
+            "models_used": ["gpt-4o"],
+            "first_review_at": datetime(2026, 4, 29, tzinfo=timezone.utc),
+            "final_source_commit_sha": "abc1234567890abc1234567890abc1234567890a",
+            "final_merge_commit_sha": None,
+            "final_lines_added": 5,
+            "final_lines_removed": 1,
+            "final_files_changed": 1,
+        }
+
+        with patch(
+            "app.reviewer.repository.claim_rollup_for_emit",
+            new_callable=AsyncMock, return_value=snapshot,
+        ), patch(
+            "app.reviewer.repository.mark_pr_deleted", new_callable=AsyncMock
+        ):
+            await rev.handle_pr_deleted(_make_payload())
+
+        mock_bitbucket.fetch_pr_diff.assert_not_called()
+        assert riptide.emit_pr_completed.await_count == 1
 
 
 class TestHandlePrDeleted:

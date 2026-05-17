@@ -9,14 +9,16 @@ _M003 = _VERSIONS / "003_pr_cost.py"
 _M004 = _VERSIONS / "004_rename_severity.py"
 _M005 = _VERSIONS / "005_drop_metrics_layer.py"
 _M006 = _VERSIONS / "006_model_pricing.py"
+_M007 = _VERSIONS / "007_pr_rollup_for_riptide.py"
 
 
-def test_migration_chain_is_linear_and_reaches_006():
+def test_migration_chain_is_linear_and_reaches_007():
     script = ScriptDirectory.from_config(Config("alembic.ini"))
     revs = [(r.revision, r.down_revision) for r in script.walk_revisions()]
     chain = [r for r, _ in revs]
-    assert chain == ["006", "005", "004", "003", "002", "001"]
+    assert chain == ["007", "006", "005", "004", "003", "002", "001"]
     assert dict(revs) == {
+        "007": "006",
         "006": "005",
         "005": "004",
         "004": "003",
@@ -24,6 +26,28 @@ def test_migration_chain_is_linear_and_reaches_006():
         "002": "001",
         "001": None,
     }
+
+
+def test_007_adds_rollup_columns_and_round_trips():
+    text = _M007.read_text()
+    for col in (
+        "total_prompt_tokens",
+        "total_completion_tokens",
+        "total_elapsed_ms",
+        "total_findings_count",
+        "total_runs",
+        "models_used",
+        "first_review_at",
+        "declined_at",
+        "final_source_commit_sha",
+        "final_merge_commit_sha",
+        "final_lines_added",
+        "final_lines_removed",
+        "final_files_changed",
+        "riptide_emitted_at",
+    ):
+        assert f"ADD COLUMN {col}" in text, f"missing ADD COLUMN {col}"
+        assert f"DROP COLUMN IF EXISTS {col}" in text, f"missing DROP COLUMN {col}"
 
 
 def test_006_creates_model_pricing_table():

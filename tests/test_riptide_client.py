@@ -13,19 +13,25 @@ import respx
 from app.riptide_client import RiptideAuthError, RiptideClient
 
 
-def _completed_kwargs() -> dict[str, Any]:
+def _pr_completed_kwargs() -> dict[str, Any]:
     return dict(
+        outcome="merged",
         pr_key="PROJ/repo#1",
         repo="org/repo",
-        commit_sha="abc1234567890abc1234567890abc1234567890a",
-        run_id="42",
-        model="gpt-4o",
-        prompt_tokens=10,
-        completion_tokens=20,
-        elapsed_ms=1500,
-        findings_count=2,
-        cost_usd=Decimal("0.0123"),
-        finished_at=datetime(2026, 4, 29, 12, 0, 0, tzinfo=timezone.utc),
+        source_commit_sha="abc1234567890abc1234567890abc1234567890a",
+        merge_commit_sha="def4567890abc1234567890abc1234567890abcd",
+        lines_added=120,
+        lines_removed=30,
+        files_changed=5,
+        total_runs=2,
+        total_prompt_tokens=10,
+        total_completion_tokens=20,
+        total_elapsed_ms=1500,
+        total_findings_count=2,
+        total_cost_usd=Decimal("0.0123"),
+        models_used=["gpt-4o"],
+        first_review_at=datetime(2026, 4, 29, 11, 0, 0, tzinfo=timezone.utc),
+        closed_at=datetime(2026, 4, 29, 12, 0, 0, tzinfo=timezone.utc),
     )
 
 
@@ -46,10 +52,10 @@ class TestEnabledFlag:
 
 class TestNoOpWhenDisabled:
     @pytest.mark.asyncio
-    async def test_emit_completed_is_noop(self):
+    async def test_emit_pr_completed_is_noop(self):
         client = RiptideClient(url="", token="")
         # Should not raise, should not require any HTTP mock.
-        await client.emit_completed(**_completed_kwargs())
+        await client.emit_pr_completed(**_pr_completed_kwargs())
 
     @pytest.mark.asyncio
     async def test_emit_feedback_is_noop(self):
@@ -111,13 +117,13 @@ class TestStartupVerification:
 class TestEmit:
     @pytest.mark.asyncio
     @respx.mock
-    async def test_emit_completed_posts_expected_body(self):
+    async def test_emit_pr_completed_posts_expected_body(self):
         route = respx.post("http://r/webhooks/noergler").mock(
             return_value=httpx.Response(202, json={"status": "accepted"})
         )
         client = RiptideClient(url="http://r", token="t")
         try:
-            await client.emit_completed(**_completed_kwargs())
+            await client.emit_pr_completed(**_pr_completed_kwargs())
         finally:
             await client.close()
 
@@ -126,26 +132,52 @@ class TestEmit:
         assert sent.headers["authorization"] == "Bearer t"
         assert sent.headers["content-type"] == "application/json"
         body = httpx.Response(200, content=sent.content).json()
-        assert body["event_type"] == "completed"
-        assert body["run_id"] == "42"
-        assert body["cost_usd"] == "0.0123"
-        assert body["finished_at"].endswith("Z")
+        assert body["event_type"] == "pr_completed"
+        assert body["outcome"] == "merged"
+        assert body["pr_key"] == "PROJ/repo#1"
+        assert body["lines_added"] == 120
+        assert body["lines_removed"] == 30
+        assert body["files_changed"] == 5
+        assert body["total_runs"] == 2
+        assert body["total_cost_usd"] == "0.0123"
+        assert body["models_used"] == ["gpt-4o"]
+        assert body["closed_at"].endswith("Z")
+        assert body["first_review_at"].endswith("Z")
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_emit_completed_skipped_when_cost_none(self):
+    async def test_emit_pr_completed_skipped_when_cost_none(self):
         route = respx.post("http://r/webhooks/noergler").mock(
             return_value=httpx.Response(202, json={"status": "accepted"})
         )
         client = RiptideClient(url="http://r", token="t")
         try:
-            kwargs = _completed_kwargs()
-            kwargs["cost_usd"] = None
-            await client.emit_completed(**kwargs)
+            kwargs = _pr_completed_kwargs()
+            kwargs["total_cost_usd"] = None
+            await client.emit_pr_completed(**kwargs)
         finally:
             await client.close()
 
         assert not route.called
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_emit_pr_completed_declined_has_no_merge_commit(self):
+        route = respx.post("http://r/webhooks/noergler").mock(
+            return_value=httpx.Response(202, json={"status": "accepted"})
+        )
+        client = RiptideClient(url="http://r", token="t")
+        try:
+            kwargs = _pr_completed_kwargs()
+            kwargs["outcome"] = "declined"
+            kwargs["merge_commit_sha"] = None
+            await client.emit_pr_completed(**kwargs)
+        finally:
+            await client.close()
+
+        body = httpx.Response(200, content=route.calls[0].request.content).json()
+        assert body["outcome"] == "declined"
+        assert body["merge_commit_sha"] is None
 
     @pytest.mark.asyncio
     @respx.mock
@@ -181,7 +213,7 @@ class TestEmit:
         client = RiptideClient(url="http://r", token="t")
         try:
             # Must not raise; emission is best-effort.
-            await client.emit_completed(**_completed_kwargs())
+            await client.emit_pr_completed(**_pr_completed_kwargs())
         finally:
             await client.close()
 
@@ -193,6 +225,6 @@ class TestEmit:
         )
         client = RiptideClient(url="http://r", token="t")
         try:
-            await client.emit_completed(**_completed_kwargs())
+            await client.emit_pr_completed(**_pr_completed_kwargs())
         finally:
             await client.close()
