@@ -268,6 +268,8 @@ class JiraConfig(BaseModel):
 class ServerConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8080
+    log_level: str = "INFO"
+    env: str = "dev"
 
 
 class DatabaseConfig(BaseModel):
@@ -362,6 +364,8 @@ def load_config() -> AppConfig:
         server=ServerConfig(
             host=_env("SERVER_HOST", "0.0.0.0"),
             port=int(_env("SERVER_PORT", "8080")),
+            log_level=_env("LOG_LEVEL", "INFO"),
+            env=_env("NOERGLER_ENV", "dev"),
         ),
         database=DatabaseConfig(
             url=_env("DATABASE_URL"),

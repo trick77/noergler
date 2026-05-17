@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import PurePosixPath
 
 import openai
+import structlog
 
 from app.bitbucket import BitbucketClient, IncrementalDiffUnavailable
 from app.db import repository
@@ -345,6 +346,10 @@ class Reviewer:
 
     async def review_pull_request(self, payload: WebhookPayload, *, skip_author_check: bool = False) -> None:
         pr_tag = "unknown"
+        # Bind pr identity to structlog contextvars so every child log
+        # inherits pr_tag/repo and Splunk can filter all activity for one
+        # PR with a single query.
+        structlog.contextvars.bind_contextvars(pr_tag=pr_tag)
         try:
             pr = payload.pullRequest
             author_name = pr.author.user.name
@@ -356,6 +361,9 @@ class Reviewer:
                 return
 
             pr_tag = f"{project_key}/{repo_slug}#{pr_id}"
+            structlog.contextvars.bind_contextvars(
+                pr_tag=pr_tag, repo=f"{project_key}/{repo_slug}", pr_id=pr_id
+            )
             opened_at = _epoch_ms_to_datetime(pr.createdDate)
 
             if not skip_author_check and not self.is_auto_review_author(author_name):
@@ -837,6 +845,8 @@ class Reviewer:
 
         except Exception:
             logger.error("Review of %s failed", pr_tag, exc_info=True)
+        finally:
+            structlog.contextvars.unbind_contextvars("pr_tag", "repo", "pr_id")
 
     async def handle_mention(self, payload: WebhookPayload) -> None:
         comment = payload.comment
