@@ -13,14 +13,14 @@ temporarily down — emissions are best-effort anyway).
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
 import httpx
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.stdlib.get_logger(__name__)
 
 
 class RiptideAuthError(RuntimeError):
@@ -87,8 +87,9 @@ class RiptideClient:
             response = await self._client.get(self._url + self._PING_PATH)
         except httpx.HTTPError as exc:
             logger.warning(
-                "riptide_unreachable_at_startup: %s — continuing without forwarding",
-                exc,
+                "riptide_unreachable_at_startup",
+                err=str(exc),
+                url=self._url,
             )
             return None
         if response.status_code == 401:
@@ -98,13 +99,13 @@ class RiptideClient:
             )
         if response.status_code >= 400:
             logger.warning(
-                "riptide_ping_unexpected_status status=%s body=%s",
-                response.status_code,
-                response.text[:200],
+                "riptide_ping_unexpected_status",
+                status_code=response.status_code,
+                body=response.text[:200],
             )
             return None
         team = (response.json() or {}).get("team")
-        logger.info("riptide_reachable team=%s url=%s", team, self._url)
+        logger.info("riptide_reachable", team=team, url=self._url)
         return team if isinstance(team, str) else None
 
     async def emit_completed(
@@ -126,7 +127,7 @@ class RiptideClient:
             # Skip emission rather than send a meaningless 0; missing pricing
             # for a model is a config gap worth surfacing on the riptide side
             # via low row-counts, not silently filled with zeros.
-            logger.debug("riptide_emit_skipped_no_cost model=%s run_id=%s", model, run_id)
+            logger.debug("riptide_emit_skipped_no_cost", model=model, run_id=run_id)
             return
         body: dict[str, Any] = {
             "event_type": "completed",
@@ -176,15 +177,17 @@ class RiptideClient:
             response = await self._client.post(url, json=body)
         except httpx.HTTPError as exc:
             logger.warning(
-                "riptide_emit_failed event=%s err=%s", body.get("event_type"), exc
+                "riptide_emit_failed",
+                event_type=body.get("event_type"),
+                err=str(exc),
             )
             return
         if response.status_code >= 400:
             logger.warning(
-                "riptide_emit_rejected event=%s status=%s body=%s",
-                body.get("event_type"),
-                response.status_code,
-                response.text[:200],
+                "riptide_emit_rejected",
+                event_type=body.get("event_type"),
+                status_code=response.status_code,
+                body=response.text[:200],
             )
 
 

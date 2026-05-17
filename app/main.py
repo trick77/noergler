@@ -2,14 +2,18 @@ import hashlib
 import hmac
 import logging
 import os
+import re
+import time
+import uuid
 from contextlib import asynccontextmanager
+from typing import Awaitable, Callable, cast
 
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
-
-from typing import cast
+import structlog
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request, Response
 
 from app.bitbucket import BitbucketClient
 from app.config import AppConfig, load_config, log_config, model_label
+from app.logging_config import configure_logging
 from app.pricing_refresher import PricingRefresher, hydrate_from_db, refresh_once
 from app.copilot_auth import CopilotTokenProvider
 from app.db import close_pool, create_pool
@@ -20,31 +24,20 @@ from app.review_queue import ReviewQueue
 from app.reviewer import Reviewer
 from app.riptide_client import RiptideAuthError, RiptideClient
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+# Logging is configured at import time so uvicorn's own loggers get the JSON
+# bridge before the first line is written. We read env vars directly here
+# (not via load_config) because config loading itself logs.
+configure_logging(
+    level=os.environ.get("LOG_LEVEL", "INFO"),
+    env=os.environ.get("NOERGLER_ENV", "dev"),
 )
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("openai").setLevel(logging.WARNING)
 
 _REVIEW_EVENT_KEYS = {"pr:opened", "pr:from_ref_updated"}
+_SILENT_PATHS = frozenset({"/health"})
+_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
-
-class _HealthFilter(logging.Filter):
-    def filter(self, record: logging.LogRecord) -> bool:
-        return "/health" not in record.getMessage()
-
-
-logging.getLogger("uvicorn.access").addFilter(_HealthFilter())
 logger = logging.getLogger(__name__)
-
-
-def _unify_uvicorn_logging() -> None:
-    """Force all uvicorn loggers to propagate to the root logger for consistent formatting."""
-    for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
-        uv_logger = logging.getLogger(name)
-        uv_logger.handlers.clear()
-        uv_logger.propagate = True
+access_logger = structlog.stdlib.get_logger("app.access")
 
 config: AppConfig = cast(AppConfig, None)
 reviewer: Reviewer = cast(Reviewer, None)
@@ -61,7 +54,6 @@ pricing_refresher: PricingRefresher = cast(PricingRefresher, None)
 async def lifespan(_app: FastAPI):
     global config, reviewer, bitbucket_client, llm_client, jira_client, copilot_token_provider, review_queue, riptide_client, pricing_refresher
 
-    _unify_uvicorn_logging()
     version = os.environ.get("OPENSHIFT_BUILD_COMMIT") or os.environ.get("NOERGLER_VERSION") or "dev"
     logger.info("noergler version: %s", version)
     config = load_config()
@@ -111,6 +103,8 @@ async def lifespan(_app: FastAPI):
             checks["Riptide"] = None
         except RiptideAuthError as exc:
             checks["Riptide"] = str(exc)
+    else:
+        logger.info("riptide_disabled: RIPTIDE_URL/RIPTIDE_TOKEN not set — event forwarding off")
 
     for name, error in checks.items():
         if error is None:
@@ -169,6 +163,44 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Bitbucket PR Review Bridge", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def access_log(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    # Liveness checks fire every few seconds; logging them buries real
+    # traffic in Splunk. Pass through unobserved.
+    if request.url.path in _SILENT_PATHS:
+        return await call_next(request)
+    # Honor caller-supplied X-Request-Id only when it looks like a sane
+    # correlation token. Untrusted input must not become an indexed field
+    # — an attacker could otherwise inject newlines or huge strings.
+    header_id = request.headers.get("x-request-id")
+    if header_id and _REQUEST_ID_RE.match(header_id):
+        request_id = header_id
+    else:
+        request_id = uuid.uuid4().hex
+    structlog.contextvars.bind_contextvars(
+        request_id=request_id,
+        method=request.method,
+        path=request.url.path,
+    )
+    started = time.perf_counter()
+    status_code = 500
+    try:
+        response: Response = await call_next(request)
+        status_code = response.status_code
+        return response
+    finally:
+        # Emit the access record BEFORE clearing contextvars so method/path
+        # are still merged onto the log event.
+        access_logger.info(
+            "http_request",
+            status_code=status_code,
+            duration_ms=round((time.perf_counter() - started) * 1000, 1),
+        )
+        structlog.contextvars.clear_contextvars()
 
 
 def _verify_webhook_signature(body: bytes, signature: str, secret: str) -> bool:
