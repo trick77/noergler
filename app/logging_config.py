@@ -84,6 +84,14 @@ def configure_logging(level: str = "INFO", env: str = "dev") -> None:
     root.handlers = [handler]
     root.setLevel(log_level)
 
+    # Uvicorn installs its own stream handlers on startup; clear them and
+    # force propagation so its records flow through our JSON pipeline
+    # instead of uvicorn's plaintext formatter.
+    for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        uv_logger = logging.getLogger(name)
+        uv_logger.handlers.clear()
+        uv_logger.propagate = True
+
     # uvicorn's access log becomes redundant once our middleware emits
     # http_request; keep only warnings/errors from it. Same for chatty
     # client libraries.

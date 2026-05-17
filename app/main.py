@@ -2,10 +2,11 @@ import hashlib
 import hmac
 import logging
 import os
+import re
 import time
 import uuid
 from contextlib import asynccontextmanager
-from typing import Any, cast
+from typing import Awaitable, Callable, cast
 
 import structlog
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request, Response
@@ -33,17 +34,10 @@ configure_logging(
 
 _REVIEW_EVENT_KEYS = {"pr:opened", "pr:from_ref_updated"}
 _SILENT_PATHS = frozenset({"/health"})
+_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 logger = logging.getLogger(__name__)
-
-
-def _unify_uvicorn_logging() -> None:
-    """Force all uvicorn loggers to propagate to the root logger so they go
-    through the structlog JSON bridge instead of uvicorn's plain formatter."""
-    for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
-        uv_logger = logging.getLogger(name)
-        uv_logger.handlers.clear()
-        uv_logger.propagate = True
+access_logger = structlog.stdlib.get_logger("app.access")
 
 config: AppConfig = cast(AppConfig, None)
 reviewer: Reviewer = cast(Reviewer, None)
@@ -60,7 +54,6 @@ pricing_refresher: PricingRefresher = cast(PricingRefresher, None)
 async def lifespan(_app: FastAPI):
     global config, reviewer, bitbucket_client, llm_client, jira_client, copilot_token_provider, review_queue, riptide_client, pricing_refresher
 
-    _unify_uvicorn_logging()
     version = os.environ.get("OPENSHIFT_BUILD_COMMIT") or os.environ.get("NOERGLER_VERSION") or "dev"
     logger.info("noergler version: %s", version)
     config = load_config()
@@ -173,12 +166,21 @@ app = FastAPI(title="Bitbucket PR Review Bridge", lifespan=lifespan)
 
 
 @app.middleware("http")
-async def access_log(request: Request, call_next: Any) -> Response:
+async def access_log(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
     # Liveness checks fire every few seconds; logging them buries real
     # traffic in Splunk. Pass through unobserved.
     if request.url.path in _SILENT_PATHS:
         return await call_next(request)
-    request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+    # Honor caller-supplied X-Request-Id only when it looks like a sane
+    # correlation token. Untrusted input must not become an indexed field
+    # — an attacker could otherwise inject newlines or huge strings.
+    header_id = request.headers.get("x-request-id")
+    if header_id and _REQUEST_ID_RE.match(header_id):
+        request_id = header_id
+    else:
+        request_id = uuid.uuid4().hex
     structlog.contextvars.bind_contextvars(
         request_id=request_id,
         method=request.method,
@@ -191,10 +193,12 @@ async def access_log(request: Request, call_next: Any) -> Response:
         status_code = response.status_code
         return response
     finally:
-        logger.info(
-            "http_request status=%s duration_ms=%s",
-            status_code,
-            round((time.perf_counter() - started) * 1000, 1),
+        # Emit the access record BEFORE clearing contextvars so method/path
+        # are still merged onto the log event.
+        access_logger.info(
+            "http_request",
+            status_code=status_code,
+            duration_ms=round((time.perf_counter() - started) * 1000, 1),
         )
         structlog.contextvars.clear_contextvars()
 
