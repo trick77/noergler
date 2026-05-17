@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal
+from typing import Any
 
 import httpx
 import pytest
@@ -12,7 +13,7 @@ import respx
 from app.riptide_client import RiptideAuthError, RiptideClient
 
 
-def _completed_kwargs():
+def _completed_kwargs() -> dict[str, Any]:
     return dict(
         pr_key="PROJ/repo#1",
         repo="org/repo",
