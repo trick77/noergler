@@ -30,7 +30,7 @@ from app.config import ReviewConfig, ServerConfig, estimate_cost_usd, model_labe
 from app.riptide_client import RiptideClient
 from app.context_expansion import expand_all_files
 from app.cross_file_context import build_cross_file_context, render_cross_file_context
-from app.diff_compression import compress_for_large_pr, is_small_pr
+from app.diff_compression import compress_for_large_pr, is_small_pr, sort_files_by_language_priority
 from app.jira import JiraClient, JiraTicket
 from app.models import PullRequest, ReviewFinding, WebhookPayload
 
@@ -331,6 +331,8 @@ class Reviewer:
 
         results = await asyncio.gather(*[_build_file_data(fd) for fd in file_diffs])
         files = [f for f in results if f is not None]
+        # Stable ordering across re-reviews — keeps unchanged files in the LLM prefix cache.
+        files = sort_files_by_language_priority(files)
 
         total_diff_lines = sum(f.diff.count("\n") + 1 for f in files)
         total_content_lines = sum(f.content.count("\n") + 1 for f in files if f.content)

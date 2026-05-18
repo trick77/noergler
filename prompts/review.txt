@@ -167,10 +167,10 @@ If ticket includes acceptance criteria, only consider criteria verifiable from c
 
 {compliance_instructions}
 
-{cumulative_pr_diff}
-
-{previously_posted_findings}
-
 ## Files to review
 
 {files}
+
+{cumulative_pr_diff}
+
+{previously_posted_findings}
