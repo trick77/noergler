@@ -1,9 +1,7 @@
 from app.llm_client import FileReviewData
 from app.diff_compression import (
-    CompressionResult,
     compress_for_large_pr,
     detect_language,
-    determine_repo_languages,
     is_deletion_only_hunk,
     is_rename_only,
     is_small_pr,
@@ -85,45 +83,17 @@ class TestIsTestFile:
         assert is_test_file("src/__tests__/App.tsx") is True
 
 
-class TestDetermineRepoLanguages:
-    def test_frequency_ordering(self):
-        files = [
-            FileReviewData(path="a.py", diff=""),
-            FileReviewData(path="b.py", diff=""),
-            FileReviewData(path="c.java", diff=""),
-            FileReviewData(path="d.ts", diff=""),
-            FileReviewData(path="e.ts", diff=""),
-            FileReviewData(path="f.ts", diff=""),
-        ]
-        langs = determine_repo_languages(files)
-        assert langs[0] == "typescript"  # 3 files
-        assert langs[1] == "python"      # 2 files
-        assert langs[2] == "jvm"         # 1 file
-
-    def test_excludes_test_files_from_count(self):
-        files = [
-            FileReviewData(path="src/main.py", diff=""),
-            FileReviewData(path="tests/test_main.py", diff=""),
-            FileReviewData(path="tests/test_other.py", diff=""),
-            FileReviewData(path="src/App.ts", diff=""),
-            FileReviewData(path="src/Other.ts", diff=""),
-        ]
-        langs = determine_repo_languages(files)
-        assert langs[0] == "typescript"  # 2 non-test files
-        assert langs[1] == "python"      # 1 non-test file
-
-
 class TestSortFilesByLanguagePriority:
-    def test_sorts_by_language_then_tokens(self):
+    def test_sorts_by_language_then_path(self):
         files = [
             FileReviewData(path="small.ts", diff="x"),
-            FileReviewData(path="big.py", diff="x" * 100),
-            FileReviewData(path="small.py", diff="x" * 10),
+            FileReviewData(path="zzz.py", diff="x" * 100),
+            FileReviewData(path="aaa.py", diff="x" * 10),
         ]
-        order = ["python", "typescript"]
-        result = sort_files_by_language_priority(files, order, _count_tokens_fake)
-        assert result[0].path == "big.py"
-        assert result[1].path == "small.py"
+        result = sort_files_by_language_priority(files)
+        # Python before TypeScript per _LANGUAGE_PRIORITY; within Python, by path.
+        assert result[0].path == "aaa.py"
+        assert result[1].path == "zzz.py"
         assert result[2].path == "small.ts"
 
     def test_test_files_after_source(self):
@@ -132,8 +102,7 @@ class TestSortFilesByLanguagePriority:
             FileReviewData(path="src/main.py", diff="x" * 10),
             FileReviewData(path="src/app.ts", diff="x" * 20),
         ]
-        order = ["python", "typescript"]
-        result = sort_files_by_language_priority(files, order, _count_tokens_fake)
+        result = sort_files_by_language_priority(files)
         assert result[0].path == "src/main.py"      # source python
         assert result[1].path == "src/app.ts"        # source ts
         assert result[2].path == "tests/test_main.py"  # test
@@ -144,11 +113,27 @@ class TestSortFilesByLanguagePriority:
             FileReviewData(path="src/main.py", diff="x"),
             FileReviewData(path="README.md", diff="x"),
         ]
-        order = ["python", "config", "docs"]
-        result = sort_files_by_language_priority(files, order, _count_tokens_fake)
+        result = sort_files_by_language_priority(files)
         assert result[0].path == "src/main.py"
         assert result[1].path == "config.yaml"
         assert result[2].path == "README.md"
+
+    def test_deterministic_across_content_changes(self):
+        # Same paths, different diffs/content → identical order. This is the
+        # property the prompt-cache change relies on.
+        a = [
+            FileReviewData(path="src/b.py", diff="small"),
+            FileReviewData(path="src/a.py", diff="x" * 1000, content="x" * 5000),
+            FileReviewData(path="src/c.py", diff=""),
+        ]
+        b = [
+            FileReviewData(path="src/b.py", diff="x" * 9999),
+            FileReviewData(path="src/a.py", diff="tiny"),
+            FileReviewData(path="src/c.py", diff="x" * 500),
+        ]
+        paths_a = [f.path for f in sort_files_by_language_priority(a)]
+        paths_b = [f.path for f in sort_files_by_language_priority(b)]
+        assert paths_a == paths_b == ["src/a.py", "src/b.py", "src/c.py"]
 
 
 class TestHunkAnalysis:

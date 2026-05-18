@@ -84,43 +84,24 @@ def is_test_file(path: str) -> bool:
     return bool(_TEST_PATTERNS.search(path))
 
 
-def determine_repo_languages(files: list[FileReviewData]) -> list[str]:
-    lang_counts: dict[str, int] = {}
-    for f in files:
-        lang = detect_language(f.path)
-        if not is_test_file(f.path):
-            lang_counts[lang] = lang_counts.get(lang, 0) + 1
-    return sorted(lang_counts, key=lambda l: (-lang_counts[l], _LANGUAGE_PRIORITY.index(l) if l in _LANGUAGE_PRIORITY else 999))
+_DEPRIORITIZED_LANGUAGES = frozenset({"build-config", "config", "docs", "other"})
 
 
-def sort_files_by_language_priority(
-    files: list[FileReviewData],
-    language_order: list[str],
-    count_tokens_fn: Callable[[str], int],
-) -> list[FileReviewData]:
-    lang_rank = {lang: i for i, lang in enumerate(language_order)}
-    max_rank = len(language_order)
-
-    # Deprioritized groups always sort after source languages
-    deprioritized = {"build-config", "config", "docs", "other"}
+def sort_files_by_language_priority(files: list[FileReviewData]) -> list[FileReviewData]:
+    # Content-independent so the same PR sorts identically across re-reviews,
+    # which keeps unchanged files in the OpenAI/Copilot prefix-cache window.
+    lang_rank = {lang: i for i, lang in enumerate(_LANGUAGE_PRIORITY)}
+    max_rank = len(_LANGUAGE_PRIORITY)
 
     def sort_key(f: FileReviewData) -> tuple:
         lang = detect_language(f.path)
-        test = is_test_file(f.path)
-        is_depri = lang in deprioritized
-        base_rank = lang_rank.get(lang, max_rank)
-
-        # Source files first, then test files of same language, then deprioritized
-        if is_depri:
+        if lang in _DEPRIORITIZED_LANGUAGES:
             group = 2
-        elif test:
+        elif is_test_file(f.path):
             group = 1
         else:
             group = 0
-
-        text = f.diff + (f.content or "")
-        tokens = count_tokens_fn(text)
-        return (group, base_rank, -tokens)
+        return (group, lang_rank.get(lang, max_rank), f.path)
 
     return sorted(files, key=sort_key)
 
@@ -203,9 +184,7 @@ def compress_for_large_pr(
         else:
             compressed_active.append(FileReviewData(path=f.path, diff=cleaned_diff, content=f.content))
 
-    # Sort by language priority
-    language_order = determine_repo_languages(files)
-    sorted_files = sort_files_by_language_priority(compressed_active, language_order, count_tokens_fn)
+    sorted_files = sort_files_by_language_priority(compressed_active)
 
     # Calculate budget (90% of available)
     prompt_overhead = count_tokens_fn(prompt_template.replace("{files}", ""))
