@@ -38,26 +38,30 @@ def _make_payload(
     author: str = "username",
     branch: str = "feature",
     title: str = "Test PR",
+    merge_commit_sha: str | None = None,
 ) -> WebhookPayload:
+    pull_request: dict = {
+        "id": 42,
+        "title": title,
+        "fromRef": {
+            "id": f"refs/heads/{branch}",
+            "displayId": branch,
+            "latestCommit": "abc123",
+            "repository": {"slug": "my-repo", "project": {"key": "PROJ"}},
+        },
+        "toRef": {
+            "id": "refs/heads/main",
+            "displayId": "main",
+            "latestCommit": "def456",
+            "repository": {"slug": "my-repo", "project": {"key": "PROJ"}},
+        },
+        "author": {"user": {"name": author}},
+    }
+    if merge_commit_sha is not None:
+        pull_request["properties"] = {"mergeCommit": {"id": merge_commit_sha}}
     return WebhookPayload(**{
         "eventKey": "pr:opened",
-        "pullRequest": {
-            "id": 42,
-            "title": title,
-            "fromRef": {
-                "id": f"refs/heads/{branch}",
-                "displayId": branch,
-                "latestCommit": "abc123",
-                "repository": {"slug": "my-repo", "project": {"key": "PROJ"}},
-            },
-            "toRef": {
-                "id": "refs/heads/main",
-                "displayId": "main",
-                "latestCommit": "def456",
-                "repository": {"slug": "my-repo", "project": {"key": "PROJ"}},
-            },
-            "author": {"user": {"name": author}},
-        },
+        "pullRequest": pull_request,
     })
 
 
@@ -2143,6 +2147,11 @@ class TestPrRollupIdempotency:
             db_pool=AsyncMock(), riptide=riptide,
         )
 
+        # Use distinct SHAs for input (extracted from payload, written to DB)
+        # and snapshot (read from DB, forwarded to riptide) so each assertion
+        # below pinpoints exactly which path is being exercised.
+        payload_sha = "fed4321098765432109876543210987654321098"
+        snapshot_sha = "0123456789abcdef0123456789abcdef01234567"
         snapshot = {
             "total_runs": 2,
             "total_prompt_tokens": 100,
@@ -2153,7 +2162,7 @@ class TestPrRollupIdempotency:
             "models_used": ["gpt-4o"],
             "first_review_at": datetime(2026, 4, 29, tzinfo=timezone.utc),
             "final_source_commit_sha": "abc1234567890abc1234567890abc1234567890a",
-            "final_merge_commit_sha": None,
+            "final_merge_commit_sha": snapshot_sha,
             "final_lines_added": 10,
             "final_lines_removed": 2,
             "final_files_changed": 1,
@@ -2165,18 +2174,22 @@ class TestPrRollupIdempotency:
             "app.reviewer.repository.claim_rollup_for_emit",
             new_callable=AsyncMock,
             side_effect=[snapshot, None],
-        ), patch(
+        ) as mock_claim, patch(
             "app.reviewer.repository.mark_pr_merged", new_callable=AsyncMock
         ), patch(
             "app.reviewer.repository.freeze_pr_cost", new_callable=AsyncMock, return_value=None
         ):
-            await rev.handle_pr_merged(_make_payload())
-            await rev.handle_pr_merged(_make_payload())
+            await rev.handle_pr_merged(_make_payload(merge_commit_sha=payload_sha))
+            await rev.handle_pr_merged(_make_payload(merge_commit_sha=payload_sha))
 
         assert riptide.emit_pr_completed.await_count == 1
         kwargs = riptide.emit_pr_completed.call_args.kwargs
         assert kwargs["outcome"] == "merged"
         assert kwargs["total_runs"] == 2
+        # Snapshot value (DB → riptide) — verifies the read path.
+        assert kwargs["merge_commit_sha"] == snapshot_sha
+        # Payload value (Pydantic extract → DB write) — verifies the write path.
+        assert mock_claim.await_args_list[0].kwargs["final_merge_commit_sha"] == payload_sha
 
     @pytest.mark.asyncio
     async def test_deleted_skips_diff_fetch(self, mock_bitbucket, mock_llm):
@@ -2219,6 +2232,43 @@ class TestPrRollupIdempotency:
 
         mock_bitbucket.fetch_pr_diff.assert_not_called()
         assert riptide.emit_pr_completed.await_count == 1
+
+
+class TestExtractMergeCommitSha:
+    """Pydantic v2 silently drops unknown keys, so `properties` must be a real
+    field on PullRequest. Without it, the SHA is always None and riptide
+    rejects the merged event."""
+
+    def _reviewer(self, mock_bitbucket, mock_llm) -> Reviewer:
+        return Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+
+    def test_returns_sha_when_present(self, mock_bitbucket, mock_llm):
+        sha = "abc1234567890abc1234567890abc1234567890a"
+        payload = _make_payload(merge_commit_sha=sha)
+        testee = self._reviewer(mock_bitbucket, mock_llm)
+        assert testee._extract_merge_commit_sha(payload) == sha
+
+    def test_returns_none_when_properties_absent(self, mock_bitbucket, mock_llm):
+        payload = _make_payload()
+        testee = self._reviewer(mock_bitbucket, mock_llm)
+        assert testee._extract_merge_commit_sha(payload) is None
+
+    def test_returns_none_when_merge_commit_absent(self, mock_bitbucket, mock_llm):
+        # _make_payload doesn't cover the "properties is present but empty"
+        # case — construct it inline; eventKey mirrors the helper's default.
+        payload = WebhookPayload(**{
+            "eventKey": "pr:opened",
+            "pullRequest": {
+                "id": 42,
+                "title": "t",
+                "fromRef": {"id": "r", "displayId": "r"},
+                "toRef": {"id": "r", "displayId": "r"},
+                "author": {"user": {"name": "u"}},
+                "properties": {},
+            },
+        })
+        testee = self._reviewer(mock_bitbucket, mock_llm)
+        assert testee._extract_merge_commit_sha(payload) is None
 
 
 class TestHandlePrDeleted:
