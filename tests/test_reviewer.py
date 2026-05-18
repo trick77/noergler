@@ -1339,6 +1339,35 @@ class TestCountDiffLines:
         assert added == 0
         assert removed == 0
 
+    def test_skips_ignored_files(self):
+        diff = (
+            "diff --git a/src/app.py b/src/app.py\n"
+            "--- a/src/app.py\n"
+            "+++ b/src/app.py\n"
+            "@@ -1,1 +1,2 @@\n"
+            "+real_code\n"
+            "+more_real_code\n"
+            "diff --git a/package-lock.json b/package-lock.json\n"
+            "--- a/package-lock.json\n"
+            "+++ b/package-lock.json\n"
+            "@@ -1,3 +1,3 @@\n"
+            "-old_lock_line\n"
+            "+new_lock_line\n"
+            "+another_lock_line\n"
+        )
+        added, removed = _count_diff_lines(diff)
+        assert added == 2
+        assert removed == 0
+
+    def test_skips_binary_marker(self):
+        diff = (
+            "diff --git a/image.png b/image.png\n"
+            "Binary files a/image.png and b/image.png differ\n"
+        )
+        added, removed = _count_diff_lines(diff)
+        assert added == 0
+        assert removed == 0
+
 
 class TestHandleMention:
     @pytest.mark.asyncio
