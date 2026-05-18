@@ -438,6 +438,28 @@ class TestIsReviewableDiff:
         diff = "diff --git a/src/main/App.java b/src/main/App.java\n+code\n"
         assert is_reviewable_diff(diff)
 
+    def test_bitbucket_quoted_octal_escaped_png_skipped(self):
+        diff = (
+            'diff --git '
+            '"src://apps/schadenmeldung-e2e/tests/e2e/__screenshots__/uvg/einsatzbetrieb.spec.ts/'
+            'einsatzbetrieb-chooser-\\303\\274berpr\\303\\274fung-arbeitgeber-ueberpruefung.png" '
+            '"dst://apps/schadenmeldung-e2e/tests/e2e/__screenshots__/uvg/einsatzbetrieb.spec.ts/'
+            'einsatzbetrieb-chooser-\\303\\274berpr\\303\\274fung-arbeitgeber-ueberpruefung.png"\n'
+        )
+        assert is_reviewable_diff(diff) is False
+
+    def test_quoted_source_file_still_reviewable(self):
+        diff = (
+            'diff --git '
+            '"src://src/main/java/F\\303\\266o.java" '
+            '"dst://src/main/java/F\\303\\266o.java"\n+code\n'
+        )
+        assert is_reviewable_diff(diff) is True
+
+    def test_extension_in_middle_not_skipped(self):
+        diff = "diff --git a/src/foo.png.java b/src/foo.png.java\n+code\n"
+        assert is_reviewable_diff(diff) is True
+
 
 class TestFileReviewData:
     def test_dataclass_fields(self):
