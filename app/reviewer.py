@@ -1067,7 +1067,10 @@ class Reviewer:
         props = payload.pullRequest.properties
         if props is None or props.mergeCommit is None:
             return None
-        return props.mergeCommit.id or None
+        sha = props.mergeCommit.id
+        # Treat empty string the same as missing — Bitbucket has been seen
+        # to populate the field as "" on some deployments.
+        return sha if sha else None
 
     async def _emit_pr_rollup_to_riptide(
         self,

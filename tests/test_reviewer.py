@@ -2147,7 +2147,11 @@ class TestPrRollupIdempotency:
             db_pool=AsyncMock(), riptide=riptide,
         )
 
-        merge_sha = "fed4321098765432109876543210987654321098"
+        # Use distinct SHAs for input (extracted from payload, written to DB)
+        # and snapshot (read from DB, forwarded to riptide) so each assertion
+        # below pinpoints exactly which path is being exercised.
+        payload_sha = "fed4321098765432109876543210987654321098"
+        snapshot_sha = "0123456789abcdef0123456789abcdef01234567"
         snapshot = {
             "total_runs": 2,
             "total_prompt_tokens": 100,
@@ -2158,7 +2162,7 @@ class TestPrRollupIdempotency:
             "models_used": ["gpt-4o"],
             "first_review_at": datetime(2026, 4, 29, tzinfo=timezone.utc),
             "final_source_commit_sha": "abc1234567890abc1234567890abc1234567890a",
-            "final_merge_commit_sha": merge_sha,
+            "final_merge_commit_sha": snapshot_sha,
             "final_lines_added": 10,
             "final_lines_removed": 2,
             "final_files_changed": 1,
@@ -2175,17 +2179,17 @@ class TestPrRollupIdempotency:
         ), patch(
             "app.reviewer.repository.freeze_pr_cost", new_callable=AsyncMock, return_value=None
         ):
-            await rev.handle_pr_merged(_make_payload(merge_commit_sha=merge_sha))
-            await rev.handle_pr_merged(_make_payload(merge_commit_sha=merge_sha))
+            await rev.handle_pr_merged(_make_payload(merge_commit_sha=payload_sha))
+            await rev.handle_pr_merged(_make_payload(merge_commit_sha=payload_sha))
 
         assert riptide.emit_pr_completed.await_count == 1
         kwargs = riptide.emit_pr_completed.call_args.kwargs
         assert kwargs["outcome"] == "merged"
         assert kwargs["total_runs"] == 2
-        assert kwargs["merge_commit_sha"] == merge_sha
-        # The SHA must be passed into claim_rollup_for_emit so it lands in the
-        # DB row — that is the path that exercises the Pydantic properties field.
-        assert mock_claim.await_args_list[0].kwargs["final_merge_commit_sha"] == merge_sha
+        # Snapshot value (DB → riptide) — verifies the read path.
+        assert kwargs["merge_commit_sha"] == snapshot_sha
+        # Payload value (Pydantic extract → DB write) — verifies the write path.
+        assert mock_claim.await_args_list[0].kwargs["final_merge_commit_sha"] == payload_sha
 
     @pytest.mark.asyncio
     async def test_deleted_skips_diff_fetch(self, mock_bitbucket, mock_llm):
@@ -2250,8 +2254,10 @@ class TestExtractMergeCommitSha:
         assert testee._extract_merge_commit_sha(payload) is None
 
     def test_returns_none_when_merge_commit_absent(self, mock_bitbucket, mock_llm):
+        # _make_payload doesn't cover the "properties is present but empty"
+        # case — construct it inline; eventKey mirrors the helper's default.
         payload = WebhookPayload(**{
-            "eventKey": "pr:merged",
+            "eventKey": "pr:opened",
             "pullRequest": {
                 "id": 42,
                 "title": "t",
