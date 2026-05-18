@@ -263,14 +263,20 @@ _DIFF_PATH_RE = re.compile(
 
 def is_reviewable_diff(file_diff: str) -> bool:
     """Phase 1: check extension and binary markers on the diff (before fetching content)."""
+    head = file_diff.split("\n", 1)[0].lower()
+    # Early filter on raw header line — robust against quoted, octal-escaped,
+    # src:// prefixes and other header variants the path regex may not match.
+    if any(
+        f"{ext}\"" in head or f"{ext} " in head or head.endswith(ext)
+        for ext in SKIP_EXTENSIONS
+    ):
+        return False
+    if "binary files" in file_diff[:500].lower() and "differ" in file_diff[:500].lower():
+        return False
     match = _DIFF_PATH_RE.search(file_diff)
     if not match:
         return True
     path = match.group(1).rstrip("\r").lower()
-    if "binary files" in file_diff[:500].lower() and "differ" in file_diff[:500].lower():
-        return False
-    if any(path.endswith(ext) for ext in SKIP_EXTENSIONS):
-        return False
     parts = path.split("/")
     basename = parts[-1]
     if basename in SKIP_FILES:
