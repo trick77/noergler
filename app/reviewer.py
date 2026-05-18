@@ -192,14 +192,22 @@ def _is_bot_comment(comment: dict, bot_username: str | None) -> bool:
 
 
 def _count_diff_lines(diff: str) -> tuple[int, int]:
-    """Count added and removed lines in a unified diff."""
+    """Count added and removed lines in a unified diff.
+
+    Skips files the reviewer ignores (lock files, generated/minified files,
+    binaries, build output, …) so the count reflects real code changes
+    rather than reformatted JSON or vendored bundles.
+    """
     added = 0
     removed = 0
-    for line in diff.splitlines():
-        if line.startswith("+") and not line.startswith("+++"):
-            added += 1
-        elif line.startswith("-") and not line.startswith("---"):
-            removed += 1
+    for file_diff in split_by_file(diff):
+        if not is_reviewable_diff(file_diff):
+            continue
+        for line in file_diff.splitlines():
+            if line.startswith("+") and not line.startswith("+++"):
+                added += 1
+            elif line.startswith("-") and not line.startswith("---"):
+                removed += 1
     return added, removed
 
 
