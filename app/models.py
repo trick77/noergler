@@ -29,6 +29,14 @@ class PullRequestParticipant(BaseModel):
     user: PullRequestUser
 
 
+class PullRequestMergeCommit(BaseModel):
+    id: str | None = None
+
+
+class PullRequestProperties(BaseModel):
+    mergeCommit: PullRequestMergeCommit | None = None
+
+
 class PullRequest(BaseModel):
     id: int
     title: str
@@ -37,6 +45,7 @@ class PullRequest(BaseModel):
     toRef: PullRequestRef
     author: PullRequestParticipant
     createdDate: int | None = None  # Bitbucket epoch milliseconds
+    properties: PullRequestProperties | None = None
 
 
 class CommentParent(BaseModel):

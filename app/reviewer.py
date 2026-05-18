@@ -1057,22 +1057,17 @@ class Reviewer:
             logger.warning("riptide emit (pr_completed deleted) failed", exc_info=True)
 
     def _extract_merge_commit_sha(self, payload: WebhookPayload) -> str | None:
-        """Best-effort: pull the merge commit SHA out of the pr:merged payload.
+        """Pull the merge commit SHA from a pr:merged payload.
 
-        Bitbucket places it on pullRequest.properties.mergeCommit.id; not all
-        deployments populate it. Returning None is fine — riptide accepts a
-        nullable merge_commit_sha.
+        Bitbucket places it on pullRequest.properties.mergeCommit.id. Riptide's
+        pr_completed validator rejects merged events with merge_commit_sha=None
+        (intentional, to catch sender bugs), so a missing SHA here causes the
+        emit to fail loudly downstream.
         """
-        pr = payload.pullRequest
-        props = getattr(pr, "properties", None)
-        if not isinstance(props, dict):
+        props = payload.pullRequest.properties
+        if props is None or props.mergeCommit is None:
             return None
-        merge = props.get("mergeCommit")
-        if isinstance(merge, dict):
-            sha = merge.get("id")
-            if isinstance(sha, str) and sha:
-                return sha
-        return None
+        return props.mergeCommit.id or None
 
     async def _emit_pr_rollup_to_riptide(
         self,
