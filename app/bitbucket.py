@@ -104,7 +104,12 @@ class BitbucketClient:
         label = finding.severity.capitalize()
         parts = [f"**{label}:** {finding.comment}"]
         if finding.suggestion:
-            parts.append(f"**Suggested change:**\n```\n{finding.suggestion}\n```")
+            body = finding.suggestion.strip("\n")
+            # BBDC renders an "Apply suggestion" button only on single-line
+            # ```suggestion fences. Multi-line stays plain so the reviewer
+            # doesn't get a button that would only replace one line.
+            fence = "suggestion" if "\n" not in body else ""
+            parts.append(f"**Suggested change:**\n```{fence}\n{body}\n```")
         parts.append("_Hallucinated finding? Reply \"disagree\". Not for: ego, taste, missing context._")
         text = "\n\n".join(parts)
         payload = {

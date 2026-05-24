@@ -204,6 +204,49 @@ class TestBitbucketClient:
 
     @pytest.mark.asyncio
     @respx.mock
+    async def test_single_line_suggestion_uses_apply_fence(self, client):
+        route = respx.post(
+            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/comments"
+        ).mock(return_value=httpx.Response(201, json={"id": 1}))
+
+        finding = ReviewFinding(
+            file="src/main.py",
+            line=10,
+            severity="issue",
+            comment="Use await",
+            suggestion="    result = await fetch(id)",
+        )
+        await client.post_inline_comment("PROJ", "my-repo", 1, finding)
+
+        import json
+        body = json.loads(route.calls[0].request.content)
+        assert "```suggestion\n    result = await fetch(id)\n```" in body["text"]
+        await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_multi_line_suggestion_uses_plain_fence(self, client):
+        route = respx.post(
+            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/comments"
+        ).mock(return_value=httpx.Response(201, json={"id": 1}))
+
+        finding = ReviewFinding(
+            file="src/main.py",
+            line=10,
+            severity="issue",
+            comment="Refactor",
+            suggestion="if x:\n    return y\nreturn z",
+        )
+        await client.post_inline_comment("PROJ", "my-repo", 1, finding)
+
+        import json
+        body = json.loads(route.calls[0].request.content)
+        assert "```suggestion" not in body["text"]
+        assert "```\nif x:\n    return y\nreturn z\n```" in body["text"]
+        await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
     async def test_add_comment_reaction_returns_true_on_success(self, client):
         respx.put(
             f"{BASE_URL}/rest/comment-likes/latest/projects/PROJ/repos/my-repo/pull-requests/1/comments/42/reactions"
