@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 import asyncpg
 
@@ -67,7 +68,7 @@ async def update_summary_comment(
 
 async def get_summary_comment_info(
     pool: asyncpg.Pool, pr_review_id: int
-) -> dict | None:
+) -> dict[str, Any] | None:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT summary_comment_id, summary_comment_version FROM pr_reviews WHERE id = $1",
@@ -230,7 +231,7 @@ async def claim_rollup_for_emit(
     final_lines_added: int | None,
     final_lines_removed: int | None,
     final_files_changed: int | None,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Atomically mark the rollup as emitted and return its snapshot.
 
     Returns None if the rollup was already emitted (idempotency: a redelivered
@@ -313,7 +314,7 @@ async def get_existing_finding_keys(
 
 async def get_existing_findings_for_prompt(
     pool: asyncpg.Pool, project_key: str, repo_slug: str, pr_id: int
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Return previously posted findings on this PR for inclusion in the review prompt."""
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -340,7 +341,7 @@ async def get_existing_findings_for_prompt(
 
 async def get_finding_by_comment_id(
     pool: asyncpg.Pool, bitbucket_comment_id: int
-) -> dict | None:
+) -> dict[str, Any] | None:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT file_path, line_number, severity, commit_sha FROM review_findings WHERE bitbucket_comment_id = $1",

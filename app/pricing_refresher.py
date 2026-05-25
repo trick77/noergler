@@ -78,7 +78,7 @@ class PricingRefresher:
 
     def __init__(self, pool: asyncpg.Pool | None) -> None:
         self._pool = pool
-        self._task: asyncio.Task | None = None
+        self._task: asyncio.Task[None] | None = None
         self._stop = asyncio.Event()
 
     def start(self) -> None:

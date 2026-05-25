@@ -13,7 +13,7 @@ _HUNK_HEADER_RE = re.compile(
 
 _NO_DYNAMIC_LANGUAGES = frozenset({"config", "docs", "css", "html", "build-config"})
 
-_SCOPE_PATTERNS: dict[str, re.Pattern] = {
+_SCOPE_PATTERNS: dict[str, re.Pattern[str]] = {
     "python": re.compile(
         r"^\s*(?:def |class |async def )"
     ),

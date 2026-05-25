@@ -5,6 +5,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import httpx
 import openai
@@ -81,7 +82,7 @@ class ReviewSummary:
     verdict_rationale: str = ""
 
 
-_REVIEW_RESPONSE_SCHEMA: dict = {
+_REVIEW_RESPONSE_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
     "required": [
@@ -169,7 +170,7 @@ def _inspect_request_body(content: bytes | None) -> tuple[bool, bool]:
     if not isinstance(body, dict):
         return False, False
 
-    def _msg_has_image(msg: dict, image_part_types: tuple[str, ...]) -> bool:
+    def _msg_has_image(msg: dict[str, Any], image_part_types: tuple[str, ...]) -> bool:
         parts = msg.get("content")
         if not isinstance(parts, list):
             return False
@@ -436,8 +437,8 @@ def _merge_review_summaries(parts: list[ReviewSummary]) -> ReviewSummary:
 
 
 def _combine_compliance(
-    a: list[dict] | None, b: list[dict] | None,
-) -> list[dict] | None:
+    a: list[dict[str, Any]] | None, b: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]] | None:
     """Merge compliance results across bisected chunks.
 
     None means extraction failed for that branch. Prefer any successful
@@ -450,7 +451,7 @@ def _combine_compliance(
     return a if a else b
 
 
-def _parse_review_response(content: str) -> tuple[list[ReviewFinding], list[dict] | None, ReviewSummary]:
+def _parse_review_response(content: str) -> tuple[list[ReviewFinding], list[dict[str, Any]] | None, ReviewSummary]:
     """Parse the LLM review response.
 
     Returns ``compliance_requirements=None`` when the response could not be
@@ -472,7 +473,7 @@ def _parse_review_response(content: str) -> tuple[list[ReviewFinding], list[dict
         logger.error("Failed to parse review response as JSON: %s", content[:200])
         return [], None, ReviewSummary()
 
-    compliance_requirements: list[dict] = []
+    compliance_requirements: list[dict[str, Any]] = []
     summary = ReviewSummary()
     findings_data = data
 
@@ -643,7 +644,7 @@ def _render_cumulative_pr_diff(cumulative_pr_diff: str) -> str:
     )
 
 
-def render_previously_posted_findings(findings: list[dict] | None) -> str:
+def render_previously_posted_findings(findings: list[dict[str, Any]] | None) -> str:
     if not findings:
         return ""
     lines: list[str] = []
@@ -758,7 +759,7 @@ class LLMClient:
     async def close(self):
         await self.openai_client.close()
 
-    def _reasoning_kwargs(self) -> dict:
+    def _reasoning_kwargs(self) -> dict[str, Any]:
         effort = self.config.reasoning_effort
         if not effort:
             return {}
@@ -809,7 +810,7 @@ class LLMClient:
         completion_tokens: int
         prompt_breakdown: dict[str, int] | None = None
         review_effort: int = 1
-        compliance_requirements: list[dict] = field(default_factory=list)
+        compliance_requirements: list[dict[str, Any]] = field(default_factory=list)
         summary: ReviewSummary = field(default_factory=ReviewSummary)
         chunk_count: int = 1
         # True when at least one chunk failed to return a parseable response
@@ -833,7 +834,7 @@ class LLMClient:
         ticket_compliance_check: bool = True,
         cross_file_context: str = "",
         cumulative_pr_diff: str = "",
-        previously_posted_findings: list[dict] | None = None,
+        previously_posted_findings: list[dict[str, Any]] | None = None,
     ) -> "LLMClient.ReviewResult":
         template = self.prompt_template.replace("{repo_instructions}", repo_instructions)
         template = template.replace("{ticket_context}", ticket_context or "No ticket context provided.")
@@ -876,7 +877,7 @@ class LLMClient:
         all_findings: list[ReviewFinding] = []
         total_prompt_tokens = 0
         total_completion_tokens = 0
-        compliance_requirements: list[dict] = []
+        compliance_requirements: list[dict[str, Any]] = []
         any_chunk_extraction_failed = False
         any_chunk_timed_out = False
         chunk_summaries: list[ReviewSummary] = []
@@ -1074,7 +1075,7 @@ class LLMClient:
         depth: int,
         max_depth: int = 3,
         supplementary: str = "",
-    ) -> tuple[list[ReviewFinding], int, int, list[str], list[dict] | None, ReviewSummary, bool]:
+    ) -> tuple[list[ReviewFinding], int, int, list[str], list[dict[str, Any]] | None, ReviewSummary, bool]:
         """Review a group of files. Returns
         (findings, prompt_tokens, completion_tokens, skipped_paths,
         compliance_requirements_or_None, summary, timed_out).
@@ -1151,7 +1152,7 @@ class LLMClient:
                 left[6] or right[6],
             )
 
-    async def _call_api(self, prompt: str) -> tuple[list[ReviewFinding], int, int, list[dict] | None, ReviewSummary]:
+    async def _call_api(self, prompt: str) -> tuple[list[ReviewFinding], int, int, list[dict[str, Any]] | None, ReviewSummary]:
         system = (
             "You are a read-only code review assistant. You analyse code and may suggest fixes with code examples, "
             "but never produce full patches, diffs to apply, or act as an agent that modifies repository content. "
@@ -1168,7 +1169,7 @@ class LLMClient:
         return findings, prompt_tokens, completion_tokens, compliance_requirements, summary
 
     async def _chat(
-        self, system: str, user: str, response_schema: dict | None = None,
+        self, system: str, user: str, response_schema: dict[str, Any] | None = None,
     ) -> tuple[str, int, int]:
         """Run a single LLM call via the /responses API.
 
@@ -1180,7 +1181,7 @@ class LLMClient:
             "LLM inference request: %s/responses model=%s",
             self.config.api_url.rstrip("/"), model_label(self.config.model, self.config.reasoning_effort),
         )
-        kwargs: dict = {
+        kwargs: dict[str, Any] = {
             "model": self.config.model,
             "input": [
                 {"role": "system", "content": [{"type": "input_text", "text": system}]},

@@ -14,7 +14,7 @@ def _make_mention_payload(
     author: str = "someone",
     pr_state: str = "OPEN",
 ) -> WebhookPayload:
-    return WebhookPayload(**{
+    return WebhookPayload.model_validate({
         "eventKey": "pr:comment:added",
         "comment": {
             "id": comment_id,
@@ -164,7 +164,7 @@ class TestHandleMention:
 
     @pytest.mark.asyncio
     async def test_no_comment_returns_without_error(self, reviewer, mock_llm):
-        payload = WebhookPayload(**{
+        payload = WebhookPayload.model_validate({
             "eventKey": "pr:comment:added",
             "pullRequest": {
                 "id": 42,

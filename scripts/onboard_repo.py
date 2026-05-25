@@ -109,7 +109,7 @@ def resolve_secrets(env_file: Path | None) -> tuple[str, str]:
     for k in ("BITBUCKET_TOKEN", "BITBUCKET_WEBHOOK_SECRET", "BITBUCKET_USERNAME"):
         if k in os.environ and os.environ[k]:
             merged[k] = os.environ[k]
-    resolve_secrets._resolved = merged  # type: ignore[attr-defined]
+    resolve_secrets._resolved = merged  # pyright: ignore[reportAttributeAccessIssue, reportFunctionMemberAccess]
 
     missing = [k for k in ("BITBUCKET_TOKEN", "BITBUCKET_WEBHOOK_SECRET") if not merged.get(k)]
     if missing:
@@ -260,11 +260,11 @@ class BitbucketHTTP:
                 pass
             raise HTTPStatusError(exc.code, text, url) from exc
 
-    def get_repo(self, project: str, repo: str) -> dict:
+    def get_repo(self, project: str, repo: str) -> dict[str, Any]:
         resp = self._request("GET", f"/rest/api/1.0/projects/{project}/repos/{repo}")
         return resp.json()
 
-    def list_pull_requests(self, project: str, repo: str, limit: int = 1) -> dict:
+    def list_pull_requests(self, project: str, repo: str, limit: int = 1) -> dict[str, Any]:
         resp = self._request(
             "GET",
             f"/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests",
@@ -272,9 +272,9 @@ class BitbucketHTTP:
         )
         return resp.json()
 
-    def list_webhooks(self, project: str, repo: str) -> list[dict]:
+    def list_webhooks(self, project: str, repo: str) -> list[dict[str, Any]]:
         """Return all webhooks (handles pagination)."""
-        values: list[dict] = []
+        values: list[dict[str, Any]] = []
         start = 0
         while True:
             resp = self._request(
@@ -292,7 +292,7 @@ class BitbucketHTTP:
             start = next_start
         return values
 
-    def create_webhook(self, project: str, repo: str, body: dict) -> dict:
+    def create_webhook(self, project: str, repo: str, body: dict[str, Any]) -> dict[str, Any]:
         resp = self._request(
             "POST",
             f"/rest/api/1.0/projects/{project}/repos/{repo}/webhooks",
@@ -300,7 +300,7 @@ class BitbucketHTTP:
         )
         return resp.json()
 
-    def update_webhook(self, project: str, repo: str, webhook_id: int, body: dict) -> dict:
+    def update_webhook(self, project: str, repo: str, webhook_id: int, body: dict[str, Any]) -> dict[str, Any]:
         resp = self._request(
             "PUT",
             f"/rest/api/1.0/projects/{project}/repos/{repo}/webhooks/{webhook_id}",
@@ -350,7 +350,7 @@ class RepoOnboarder:
         logger.info("[%s] read permissions OK", spec.key)
 
     # -- Step 2 -- #
-    def _build_webhook_body(self) -> dict:
+    def _build_webhook_body(self) -> dict[str, Any]:
         return {
             "name": self.webhook_name,
             "url": self.webhook_url,
@@ -360,7 +360,7 @@ class RepoOnboarder:
             "sslVerificationRequired": True,
         }
 
-    def _diff_webhook(self, existing: dict) -> list[str]:
+    def _diff_webhook(self, existing: dict[str, Any]) -> list[str]:
         diffs: list[str] = []
         if existing.get("url") != self.webhook_url:
             diffs.append(f"url: {existing.get('url')!r} -> {self.webhook_url!r}")
@@ -467,7 +467,7 @@ class RepoOnboarder:
         return RepoResult(spec, "ok", detail=f"webhook removed: id={webhook_id}")
 
 
-def _redact(body: dict) -> dict:
+def _redact(body: dict[str, Any]) -> dict[str, Any]:
     copy = dict(body)
     cfg = dict(copy.get("configuration") or {})
     if "secret" in cfg:

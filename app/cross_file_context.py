@@ -18,7 +18,7 @@ from app.diff_compression import detect_language
 logger = logging.getLogger(__name__)
 
 # Patterns to extract the symbol name from a scope definition line.
-_SYMBOL_NAME_PATTERNS: dict[str, re.Pattern] = {
+_SYMBOL_NAME_PATTERNS: dict[str, re.Pattern[str]] = {
     "python": re.compile(
         r"^\s*(?:async\s+)?(?:def|class)\s+(\w+)"
     ),

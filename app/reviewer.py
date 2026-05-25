@@ -5,7 +5,7 @@ import re
 import time
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
-from typing import Literal
+from typing import Any, Literal
 
 import openai
 import structlog
@@ -186,7 +186,7 @@ async def _safe_db(coro, fallback=None):
         return fallback
 
 
-def _is_bot_comment(comment: dict, bot_username: str | None) -> bool:
+def _is_bot_comment(comment: dict[str, Any], bot_username: str | None) -> bool:
     """Identify a bot comment by author slug."""
     return bool(bot_username) and comment.get("author_slug") == bot_username
 
@@ -1578,7 +1578,7 @@ class Reviewer:
         prompt_breakdown: dict[str, int] | None = None,
         ticket: JiraTicket | None = None,
         parent_ticket: JiraTicket | None = None,
-        compliance_requirements: list[dict] | None = None,
+        compliance_requirements: list[dict[str, Any]] | None = None,
         compliance_extraction_failed: bool = False,
         elapsed: float | None = None,
         jira_enabled: bool = False,

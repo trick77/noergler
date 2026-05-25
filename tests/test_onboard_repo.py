@@ -2,7 +2,7 @@ import json
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 from urllib.parse import urlsplit
 
 import pytest
@@ -42,7 +42,7 @@ class _FakeHTTPResponse:
         return False
 
 
-RouteHandler = Callable[[dict, bytes | None], tuple[int, dict | str]]
+RouteHandler = Callable[[dict[str, Any], bytes | None], tuple[int, dict[str, Any] | str]]
 
 
 class FakeBitbucket:
@@ -50,12 +50,12 @@ class FakeBitbucket:
 
     def __init__(self):
         self.routes: dict[tuple[str, str], RouteHandler] = {}
-        self.calls: list[dict] = []
+        self.calls: list[dict[str, Any]] = []
 
     def route(self, method: str, path: str, handler: RouteHandler) -> None:
         self.routes[(method.upper(), path)] = handler
 
-    def respond_json(self, method: str, path: str, status: int, body: dict) -> None:
+    def respond_json(self, method: str, path: str, status: int, body: dict[str, Any]) -> None:
         self.route(method, path, lambda q, b: (status, body))
 
     def respond_text(self, method: str, path: str, status: int, text: str) -> None:
@@ -67,7 +67,7 @@ class FakeBitbucket:
         query_str = parsed.query
         method = req.get_method().upper()
         raw = req.data
-        body: bytes | None = bytes(raw) if raw is not None else None  # type: ignore[arg-type]
+        body: bytes | None = bytes(raw) if raw is not None else None  # pyright: ignore[reportArgumentType]
         self.calls.append({
             "method": method,
             "path": path,
@@ -99,7 +99,7 @@ def _make_httperror(url: str, status: int, body_bytes: bytes) -> urllib.error.HT
         url=url,
         code=status,
         msg=f"HTTP {status}",
-        hdrs=None,  # type: ignore[arg-type]
+        hdrs=None,  # pyright: ignore[reportArgumentType]
         fp=io.BytesIO(body_bytes),
     )
 

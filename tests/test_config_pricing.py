@@ -77,9 +77,13 @@ class TestApplyPricingOverlay:
         n = apply_pricing_overlay({"gpt-5.4": (9.99, 1.0, 99.0)})
         # Then live pricing reflects the overlay for that model only
         assert n == 1
-        assert pricing_for("gpt-5.4").input_per_mtok == 9.99  # type: ignore[union-attr]
+        gpt54 = pricing_for("gpt-5.4")
+        assert gpt54 is not None
+        assert gpt54.input_per_mtok == 9.99
         # And other models still come from the static defaults
-        assert pricing_for("gpt-4.1").input_per_mtok == 2.00  # type: ignore[union-attr]
+        gpt41 = pricing_for("gpt-4.1")
+        assert gpt41 is not None
+        assert gpt41.input_per_mtok == 2.00
 
     def test_overlay_ignores_unknown_models(self):
         n = apply_pricing_overlay({"unknown-model-x": (1.0, 0.1, 2.0)})
