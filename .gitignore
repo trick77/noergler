@@ -24,6 +24,9 @@ __pycache__/
 # Aider
 .aider*
 
+# Codex
+.codex/
+
 # Windsurf
 .windsurf/
 

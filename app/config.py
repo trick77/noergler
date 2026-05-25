@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import Any
 
 import httpx
 from pydantic import BaseModel, field_validator
@@ -73,7 +74,7 @@ _MODEL_PRICING: dict[str, ModelPrice] = dict(_STATIC_MODEL_PRICING)
 
 def _swap_pricing(new_table: dict[str, ModelPrice]) -> None:
     global _MODEL_PRICING
-    _MODEL_PRICING = new_table
+    _MODEL_PRICING = new_table  # pyright: ignore[reportConstantRedefinition]
 
 
 def pricing_for(model: str) -> ModelPrice | None:
@@ -108,7 +109,7 @@ _LITELLM_KEY_PREFIXES: tuple[str, ...] = (
 )
 
 
-def _build_pricing_from_litellm(data: dict) -> dict[str, ModelPrice]:
+def _build_pricing_from_litellm(data: dict[str, Any]) -> dict[str, ModelPrice]:
     """Overlay LiteLLM pricing onto static defaults, returning a fresh dict.
 
     Only ids present in `_STATIC_MODEL_PRICING` are looked up; ids missing

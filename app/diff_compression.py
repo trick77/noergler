@@ -93,7 +93,7 @@ def sort_files_by_language_priority(files: list[FileReviewData]) -> list[FileRev
     lang_rank = {lang: i for i, lang in enumerate(_LANGUAGE_PRIORITY)}
     max_rank = len(_LANGUAGE_PRIORITY)
 
-    def sort_key(f: FileReviewData) -> tuple:
+    def sort_key(f: FileReviewData) -> tuple[int, int, str]:
         lang = detect_language(f.path)
         if lang in _DEPRIORITIZED_LANGUAGES:
             group = 2

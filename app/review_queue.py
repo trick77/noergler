@@ -35,7 +35,7 @@ class ReviewQueue:
         self._review_fn = review_fn
         self._queue: asyncio.Queue[PRKey] = asyncio.Queue()
         self._pending: dict[PRKey, _Entry] = {}
-        self._worker: asyncio.Task | None = None
+        self._worker: asyncio.Task[None] | None = None
 
     def _tag(self, key: PRKey) -> str:
         return f"{key[0]}/{key[1]}#{key[2]}"

@@ -12,7 +12,7 @@ def _fake_payload(pr_id: int, label: str = "p") -> WebhookPayload:
         def __init__(self, i, l):
             self.id = i
             self.label = l
-    return cast(WebhookPayload, P(pr_id, label))
+    return cast(WebhookPayload, cast(object, P(pr_id, label)))
 
 
 @pytest.mark.asyncio

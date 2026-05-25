@@ -8,6 +8,11 @@ Noergler is a Bitbucket Server PR auto-review bridge backed by a Copilot-enabled
 - Mock HTTP with `respx`; use `unittest.mock.AsyncMock` for async unit mocks.
 - Do not call live services from tests.
 
+## Type checking
+
+- Run `.venv/bin/basedpyright` from the repo root. Config lives in `basedpyrightconfig.json`.
+- Must be clean (no errors) before committing.
+
 ## Database
 
 - Schema changes are managed through Alembic revisions in `alembic/versions/`.

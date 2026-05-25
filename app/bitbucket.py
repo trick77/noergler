@@ -1,6 +1,7 @@
 import logging
 import re
 import ssl
+from typing import Any
 
 import httpx
 
@@ -112,7 +113,7 @@ class BitbucketClient:
             parts.append(f"**Suggested change:**\n```{fence}\n{body}\n```")
         parts.append("_Hallucinated finding? Reply \"disagree\". Not for: ego, taste, missing context._")
         text = "\n\n".join(parts)
-        payload = {
+        payload: dict[str, Any] = {
             "text": text,
             "anchor": {
                 "path": path,
@@ -160,7 +161,7 @@ class BitbucketClient:
 
     async def fetch_pr_comment(
         self, project: str, repo: str, pr_id: int, comment_id: int,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Fetch a single PR comment. Returns the raw payload (text, version, ...)."""
         url = (
             f"/rest/api/1.0/projects/{project}/repos/{repo}"
@@ -205,10 +206,10 @@ class BitbucketClient:
             logger.debug("Reaction API failed for comment %d", comment_id, exc_info=False)
             return False
 
-    async def list_webhooks(self, project: str, repo: str) -> list[dict]:
+    async def list_webhooks(self, project: str, repo: str) -> list[dict[str, Any]]:
         """List all webhooks configured on a repo."""
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/webhooks"
-        hooks: list[dict] = []
+        hooks: list[dict[str, Any]] = []
         start = 0
         while True:
             response = await self.client.get(url, params={"start": start, "limit": 100})
@@ -220,15 +221,15 @@ class BitbucketClient:
             start = data.get("nextPageStart", start + 100)
         return hooks
 
-    async def create_webhook(self, project: str, repo: str, body: dict) -> dict:
+    async def create_webhook(self, project: str, repo: str, body: dict[str, Any]) -> dict[str, Any]:
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/webhooks"
         response = await self.client.post(url, json=body)
         response.raise_for_status()
         return response.json()
 
     async def update_webhook(
-        self, project: str, repo: str, webhook_id: int, body: dict
-    ) -> dict:
+        self, project: str, repo: str, webhook_id: int, body: dict[str, Any]
+    ) -> dict[str, Any]:
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/webhooks/{webhook_id}"
         response = await self.client.put(url, json=body)
         response.raise_for_status()
@@ -241,7 +242,7 @@ class BitbucketClient:
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/webhooks/{webhook_id}/test"
         return await self.client.post(url, json={})
 
-    async def get_repo(self, project: str, repo: str) -> dict:
+    async def get_repo(self, project: str, repo: str) -> dict[str, Any]:
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}"
         response = await self.client.get(url)
         response.raise_for_status()
@@ -249,7 +250,7 @@ class BitbucketClient:
 
     async def list_pull_requests(
         self, project: str, repo: str, limit: int = 1
-    ) -> dict:
+    ) -> dict[str, Any]:
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests"
         response = await self.client.get(url, params={"limit": limit})
         response.raise_for_status()
@@ -257,9 +258,9 @@ class BitbucketClient:
 
     async def fetch_pr_comments(
         self, project: str, repo: str, pr_id: int
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Fetch all PR activity comments and return dicts with text, path, line."""
-        comments: list[dict] = []
+        comments: list[dict[str, Any]] = []
         start = 0
         while True:
             url = f"/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{pr_id}/activities"

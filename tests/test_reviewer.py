@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -13,7 +14,7 @@ from app.reviewer import Reviewer, _count_diff_lines, _sort_and_limit
 
 
 def _review_config(**overrides) -> ReviewConfig:
-    kwargs: dict = {"auto_review_authors": ["username"]}
+    kwargs: dict[str, Any] = {"auto_review_authors": ["username"]}
     kwargs.update(overrides)
     return ReviewConfig(**kwargs)
 
@@ -40,7 +41,7 @@ def _make_payload(
     title: str = "Test PR",
     merge_commit_sha: str | None = None,
 ) -> WebhookPayload:
-    pull_request: dict = {
+    pull_request: dict[str, Any] = {
         "id": 42,
         "title": title,
         "fromRef": {
@@ -59,7 +60,7 @@ def _make_payload(
     }
     if merge_commit_sha is not None:
         pull_request["properties"] = {"mergeCommit": {"id": merge_commit_sha}}
-    return WebhookPayload(**{
+    return WebhookPayload.model_validate({
         "eventKey": "pr:opened",
         "pullRequest": pull_request,
     })
@@ -69,7 +70,7 @@ def _make_mention_payload(
     mention_text: str = "@noergler what does this do?",
     author: str = "username",
 ) -> WebhookPayload:
-    return WebhookPayload(**{
+    return WebhookPayload.model_validate({
         "eventKey": "pr:comment:added",
         "pullRequest": {
             "id": 42,
@@ -95,7 +96,7 @@ def _make_mention_payload(
 
 def _make_real_payload() -> WebhookPayload:
     """Build a WebhookPayload from a real-world Bitbucket Server webhook (anonymized)."""
-    return WebhookPayload(**{
+    return WebhookPayload.model_validate({
         "eventKey": "pr:opened",
         "date": "2025-06-17T06:55:51+0000",
         "actor": {
@@ -1885,7 +1886,7 @@ def _make_feedback_payload(
     parent_id: int = 10,
     author: str = "dev",
 ) -> WebhookPayload:
-    return WebhookPayload(**{
+    return WebhookPayload.model_validate({
         "eventKey": "pr:comment:added",
         "commentParentId": parent_id,
         "pullRequest": {
@@ -2285,7 +2286,7 @@ class TestExtractMergeCommitSha:
     def test_returns_none_when_merge_commit_absent(self, mock_bitbucket, mock_llm):
         # _make_payload doesn't cover the "properties is present but empty"
         # case — construct it inline; eventKey mirrors the helper's default.
-        payload = WebhookPayload(**{
+        payload = WebhookPayload.model_validate({
             "eventKey": "pr:opened",
             "pullRequest": {
                 "id": 42,
