@@ -27,7 +27,7 @@ from app.llm_client import (
     split_by_file,
 )
 from app.config import ReviewConfig, ServerConfig, estimate_cost_usd, model_label
-from app.http_stats import enter_http_scope, exit_http_scope, summarize
+from app.http_stats import HttpScope, enter_http_scope, exit_http_scope, summarize
 from app.riptide_client import RiptideClient
 from app.context_expansion import expand_all_files
 from app.cross_file_context import build_cross_file_context, render_cross_file_context
@@ -362,8 +362,9 @@ class Reviewer:
         # inherits pr_tag/repo and Splunk can filter all activity for one
         # PR with a single query.
         structlog.contextvars.bind_contextvars(pr_tag=pr_tag)
-        http_scope = enter_http_scope()
+        http_scope: HttpScope | None = None
         try:
+            http_scope = enter_http_scope()
             pr = payload.pullRequest
             author_name = pr.author.user.name
             pr_id = pr.id
@@ -860,15 +861,16 @@ class Reviewer:
         except Exception:
             logger.error("Review of %s failed", pr_tag, exc_info=True)
         finally:
-            totals = summarize(http_scope.counter)
-            logger.info(
-                "Review HTTP totals — bitbucket=%d jira=%d total=%d (%s)",
-                totals["bitbucket"],
-                totals["jira"],
-                totals["total"],
-                dict(http_scope.counter),
-            )
-            exit_http_scope(http_scope)
+            if http_scope is not None:
+                totals = summarize(http_scope.counter)
+                logger.info(
+                    "Review HTTP totals - bitbucket=%d jira=%d inference=%d (%s)",
+                    totals["bitbucket"],
+                    totals["jira"],
+                    totals["inference"],
+                    dict(http_scope.counter),
+                )
+                exit_http_scope(http_scope)
             structlog.contextvars.unbind_contextvars("pr_tag", "repo", "pr_id")
 
     async def handle_mention(self, payload: WebhookPayload) -> None:

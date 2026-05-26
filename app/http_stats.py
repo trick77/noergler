@@ -8,7 +8,7 @@ every method signature.
 """
 
 from collections import Counter
-from collections.abc import Generator
+from collections.abc import Awaitable, Callable, Generator
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 
@@ -65,18 +65,19 @@ def exit_http_scope(scope: HttpScope) -> None:
 
 
 def summarize(counter: Counter[str]) -> dict[str, int]:
-    """Sum a per-method counter into per-client totals plus total.
+    """Sum a per-method counter into per-client totals.
 
-    Keys: `bitbucket`, `jira`, `total` (each int).
+    Keys: `bitbucket`, `jira`, `inference` (each int).
     Methods (e.g. `bitbucket:GET`) stay in the source counter for the caller
     to log as breakdown.
     """
     bitbucket = sum(v for k, v in counter.items() if k.startswith("bitbucket:"))
     jira = sum(v for k, v in counter.items() if k.startswith("jira:"))
-    return {"bitbucket": bitbucket, "jira": jira, "total": bitbucket + jira}
+    inference = sum(v for k, v in counter.items() if k.startswith("inference:"))
+    return {"bitbucket": bitbucket, "jira": jira, "inference": inference}
 
 
-def make_event_hook(client_label: str):
+def make_event_hook(client_label: str) -> Callable[[httpx.Request], Awaitable[None]]:
     """Build an httpx request event hook that records under `client_label`."""
 
     async def _hook(request: httpx.Request) -> None:

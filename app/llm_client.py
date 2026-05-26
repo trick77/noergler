@@ -14,6 +14,7 @@ from openai import AsyncOpenAI
 
 from app.config import LLMConfig, ReviewConfig, model_label
 from app.copilot_auth import CopilotTokenProvider
+from app.http_stats import make_event_hook
 from app.models import ReviewFinding
 
 # Static context-window map for Copilot-served models.
@@ -798,7 +799,7 @@ class LLMClient:
         # made the cap dead code and split the failure mode across two layers.
         self._http_client = httpx.AsyncClient(
             timeout=INFERENCE_HARD_TIMEOUT_SECONDS,
-            event_hooks={"request": [_inject_copilot_auth]},
+            event_hooks={"request": [_inject_copilot_auth, make_event_hook("inference")]},
         )
         self.openai_client = AsyncOpenAI(
             base_url=config.api_url,
