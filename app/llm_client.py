@@ -63,6 +63,71 @@ def _context_window_for(model: str) -> int | None:
 logger = logging.getLogger(__name__)
 
 
+_SENSITIVE_HEADERS = frozenset({
+    "authorization",
+    "cookie",
+    "set-cookie",
+    "proxy-authorization",
+    "x-api-key",
+    "openai-organization",
+})
+
+
+def _format_api_exception(exc: BaseException) -> str:
+    """Render an OpenAI/httpx exception with all diagnostic context available.
+
+    Why: the OpenAI SDK collapses transport failures into terse messages like
+    `APIConnectionError('Connection error.')`, hiding status code, response
+    headers, body, request id, and the underlying httpx cause. We need all of
+    that to diagnose endpoint problems — minus auth-bearing headers.
+    """
+    parts: list[str] = [f"{type(exc).__name__}: {exc}"]
+
+    request = getattr(exc, "request", None)
+    if request is not None:
+        method = getattr(request, "method", "?")
+        url = getattr(request, "url", "?")
+        parts.append(f"request={method} {url}")
+
+    request_id = getattr(exc, "request_id", None)
+    if request_id:
+        parts.append(f"request_id={request_id}")
+
+    status_code = getattr(exc, "status_code", None)
+    if status_code is not None:
+        parts.append(f"status_code={status_code}")
+
+    response = getattr(exc, "response", None)
+    if response is not None:
+        try:
+            headers = {
+                k: v for k, v in response.headers.items()
+                if k.lower() not in _SENSITIVE_HEADERS
+            }
+            parts.append(f"response_headers={headers}")
+        except Exception:
+            pass
+        try:
+            body = response.text
+            if body:
+                parts.append(f"response_body={body[:2000]}")
+        except Exception:
+            pass
+
+    body_attr = getattr(exc, "body", None)
+    if body_attr is not None and response is None:
+        parts.append(f"body={str(body_attr)[:2000]}")
+
+    cause: BaseException | None = exc.__cause__ or exc.__context__
+    seen: set[int] = {id(exc)}
+    while cause is not None and id(cause) not in seen:
+        seen.add(id(cause))
+        parts.append(f"caused_by={type(cause).__name__}: {cause}")
+        cause = cause.__cause__ or cause.__context__
+
+    return " | ".join(parts)
+
+
 VERDICT_DECISIONS = ("approve", "approve_with_followups", "request_changes")
 
 
@@ -799,7 +864,11 @@ class LLMClient:
                 raise RuntimeError("empty response from model")
             logger.info("Model %s ping OK (response: %s)", model_label(self.config.model, self.config.reasoning_effort), ping_text)
         except Exception as exc:
-            logger.error("Model %s ping FAILED: %r", model_label(self.config.model, self.config.reasoning_effort), exc)
+            logger.error(
+                "Model %s ping FAILED: %s",
+                model_label(self.config.model, self.config.reasoning_effort),
+                _format_api_exception(exc),
+            )
             raise
 
     @dataclass
@@ -1231,3 +1300,6 @@ class LLMClient:
                 raise openai.APITimeoutError(
                     request=httpx.Request("POST", self.config.api_url),
                 ) from exc
+            except Exception as exc:
+                logger.error("LLM inference error: %s", _format_api_exception(exc))
+                raise
