@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, final
 
 import httpx
 import structlog
@@ -29,6 +29,7 @@ class RiptideAuthError(RuntimeError):
     """Raised at startup when riptide rejects the configured token."""
 
 
+@final
 class RiptideClient:
     """Best-effort emitter for noergler → riptide events.
 

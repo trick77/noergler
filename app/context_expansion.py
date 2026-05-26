@@ -13,7 +13,7 @@ _HUNK_HEADER_RE = re.compile(
 
 _NO_DYNAMIC_LANGUAGES = frozenset({"config", "docs", "css", "html", "build-config"})
 
-_SCOPE_PATTERNS: dict[str, re.Pattern[str]] = {
+SCOPE_PATTERNS: dict[str, re.Pattern[str]] = {
     "python": re.compile(
         r"^\s*(?:def |class |async def )"
     ),
@@ -88,7 +88,7 @@ def find_enclosing_scope_line(
     if lang in _NO_DYNAMIC_LANGUAGES:
         return None
 
-    pattern = _SCOPE_PATTERNS.get(lang, _SCOPE_PATTERNS["other"])
+    pattern = SCOPE_PATTERNS.get(lang, SCOPE_PATTERNS["other"])
 
     # hunk_new_start is 1-based line number
     start_idx = hunk_new_start - 1
@@ -208,7 +208,7 @@ def _merge_expanded_hunks(
     merged: list[_ExpandedHunk] = [expanded[0]]
 
     for old_start, old_count, new_start, new_count, body in expanded[1:]:
-        prev_old_start, prev_old_count, prev_new_start, prev_new_count, prev_body = merged[-1]
+        prev_old_start, _prev_old_count, prev_new_start, prev_new_count, prev_body = merged[-1]
         prev_new_end = prev_new_start + prev_new_count
 
         if new_start <= prev_new_end:

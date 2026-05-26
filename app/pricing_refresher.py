@@ -5,6 +5,7 @@ back to the last-known-good prices instead of the baked-in static table.
 """
 import asyncio
 import logging
+from typing import final
 
 import asyncpg
 
@@ -73,6 +74,7 @@ async def refresh_once(pool: asyncpg.Pool | None) -> bool:
     return True
 
 
+@final
 class PricingRefresher:
     """Background asyncio task that calls `refresh_once` every 24h."""
 

@@ -1,10 +1,12 @@
 import logging
+from typing import final
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_API_URL = "https://api.githubcopilot.com"
 
 
+@final
 class CopilotTokenProvider:
     """Holds the long-lived GitHub OAuth token used directly against the Copilot API.
 

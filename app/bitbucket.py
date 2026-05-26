@@ -1,7 +1,7 @@
 import logging
 import re
 import ssl
-from typing import Any
+from typing import Any, final
 
 import httpx
 
@@ -21,6 +21,7 @@ class IncrementalDiffUnavailable(Exception):
     """
 
 
+@final
 class BitbucketClient:
     def __init__(self, config: BitbucketConfig):
         self.config = config

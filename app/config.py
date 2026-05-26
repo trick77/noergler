@@ -214,7 +214,7 @@ class LLMConfig(BaseModel):
 
     @field_validator("reasoning_effort", mode="before")
     @classmethod
-    def normalize_reasoning_effort(cls, v):
+    def normalize_reasoning_effort(cls, v: object) -> str | None:
         if v is None:
             return None
         if isinstance(v, str):
@@ -248,7 +248,7 @@ class ReviewConfig(BaseModel):
 
     @field_validator("auto_review_authors", mode="before")
     @classmethod
-    def parse_comma_list(cls, v):
+    def parse_comma_list(cls, v: str | list[str]) -> list[str]:
         if isinstance(v, str):
             return [a.strip() for a in v.split(",") if a.strip()]
         return v
@@ -261,7 +261,7 @@ class JiraConfig(BaseModel):
 
     @field_validator("acceptance_criteria_prefixes", mode="before")
     @classmethod
-    def parse_comma_list(cls, v):
+    def parse_comma_list(cls, v: str | list[str]) -> list[str]:
         if isinstance(v, str):
             return [a.strip() for a in v.split(",") if a.strip()]
         return v

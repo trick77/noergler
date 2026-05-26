@@ -5,12 +5,13 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, final
 
 import httpx
 import openai
 import tiktoken
 from openai import AsyncOpenAI
+from openai.types.responses import Response
 
 from app.config import LLMConfig, ReviewConfig, model_label
 from app.copilot_auth import CopilotTokenProvider
@@ -474,8 +475,6 @@ def _merge_review_summaries(parts: list[ReviewSummary]) -> ReviewSummary:
     strengths: list[str] = []
     for p in parts:
         for item in p.strengths:
-            if not isinstance(item, str):
-                continue
             key = item.strip().lower()
             if not key or key in seen:
                 continue
@@ -758,6 +757,7 @@ COMPLIANCE_INSTRUCTIONS = (
 )
 
 
+@final
 class LLMClient:
     def __init__(
         self,
@@ -1272,7 +1272,7 @@ class LLMClient:
         completion_tokens = usage.output_tokens if usage else 0
         return text, prompt_tokens, completion_tokens
 
-    async def _execute_responses_create(self, **kwargs):
+    async def _execute_responses_create(self, **kwargs: Any) -> Response:
         """Single chokepoint for `openai_client.responses.create`.
 
         Serializes every LLM HTTP call via `_inference_lock` and enforces

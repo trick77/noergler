@@ -1,8 +1,9 @@
 import asyncio
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Awaitable, Callable
+from typing import final
 
 from app.models import WebhookPayload
 
@@ -20,6 +21,7 @@ class _Entry:
     enqueued_at: float
 
 
+@final
 class ReviewQueue:
     """Single-worker PR review queue.
 

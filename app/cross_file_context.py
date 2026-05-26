@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass, field
 
 from app.llm_client import FileReviewData
-from app.context_expansion import _SCOPE_PATTERNS
+from app.context_expansion import SCOPE_PATTERNS
 from app.diff_compression import detect_language
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ class CrossFileRelationship:
 def _extract_changed_symbols(file_data: FileReviewData) -> list[str]:
     """Extract symbol names from added/modified scope lines in the diff."""
     lang = detect_language(file_data.path)
-    scope_pattern = _SCOPE_PATTERNS.get(lang, _SCOPE_PATTERNS["other"])
+    scope_pattern = SCOPE_PATTERNS.get(lang, SCOPE_PATTERNS["other"])
     name_pattern = _SYMBOL_NAME_PATTERNS.get(lang, _SYMBOL_NAME_PATTERNS["other"])
 
     symbols: list[str] = []
