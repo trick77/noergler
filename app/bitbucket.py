@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from app.config import BitbucketConfig
+from app.http_stats import make_event_hook
 from app.models import ReviewFinding
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ class BitbucketClient:
             },
             timeout=30.0,
             verify=ssl.create_default_context(),
+            event_hooks={"request": [make_event_hook("bitbucket")]},
         )
 
     async def close(self):

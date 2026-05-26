@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 import httpx
 
 from app.config import JiraConfig
+from app.http_stats import make_event_hook
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,7 @@ class JiraClient:
             },
             timeout=30.0,
             verify=ssl.create_default_context(),
+            event_hooks={"request": [make_event_hook("jira")]},
         )
 
     async def fetch_ticket(self, ticket_id: str) -> JiraTicket | None:
