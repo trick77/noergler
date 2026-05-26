@@ -1,4 +1,9 @@
-FROM python:3.13-slim
+# Pinned to 3.12-slim (Debian bookworm, OpenSSL 3.0). Python 3.13/3.14-slim
+# ship Debian trixie with OpenSSL 3.5, which enforces a stricter RFC 5280
+# check and rejects CA certs without a `keyUsage` extension — the corporate
+# TLS-inspection CA in our OpenShift trust bundle lacks that extension and
+# breaks every outbound HTTPS call. Bump back up once the CA is reissued.
+FROM python:3.12-slim
 WORKDIR /app
 ARG NOERGLER_VERSION=dev
 ENV NOERGLER_VERSION=${NOERGLER_VERSION}
