@@ -267,7 +267,7 @@ Kubernetes/OpenShift manifests are provided in the `openshift/` directory. See [
 
 ### Corporate CA certificates
 
-If you're behind a corporate proxy with custom CA certificates, copy `.crt` or `.pem` files into the `certs/` directory before building. They are added to the container's trust store during the build. The directory ships empty so non-corporate builds are unaffected.
+In OpenShift, mount the cluster's trusted CA bundle (e.g. via a ConfigMap labeled `config.openshift.io/inject-trusted-cabundle: "true"`) into the pod and point `SSL_CERT_FILE` at the resulting `ca-bundle.crt`. See [openshift/README.md](openshift/README.md).
 
 ## Health check
 
@@ -307,7 +307,6 @@ prompts/
   review.txt           # Review prompt template
   mention.txt          # Mention Q&A prompt template
 openshift/             # OpenShift/K8s deployment manifests
-certs/                 # Custom CA certificates (optional)
 tests/                 # pytest test suite
 ```
 
