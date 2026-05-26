@@ -27,6 +27,7 @@ from app.llm_client import (
     split_by_file,
 )
 from app.config import ReviewConfig, ServerConfig, estimate_cost_usd, model_label
+from app.http_stats import HttpScope, enter_http_scope, exit_http_scope, summarize
 from app.riptide_client import RiptideClient
 from app.context_expansion import expand_all_files
 from app.cross_file_context import build_cross_file_context, render_cross_file_context
@@ -361,7 +362,9 @@ class Reviewer:
         # inherits pr_tag/repo and Splunk can filter all activity for one
         # PR with a single query.
         structlog.contextvars.bind_contextvars(pr_tag=pr_tag)
+        http_scope: HttpScope | None = None
         try:
+            http_scope = enter_http_scope()
             pr = payload.pullRequest
             author_name = pr.author.user.name
             pr_id = pr.id
@@ -858,6 +861,16 @@ class Reviewer:
         except Exception:
             logger.error("Review of %s failed", pr_tag, exc_info=True)
         finally:
+            if http_scope is not None:
+                totals = summarize(http_scope.counter)
+                logger.info(
+                    "Review HTTP totals - bitbucket=%d jira=%d inference=%d (%s)",
+                    totals.get("bitbucket", 0),
+                    totals.get("jira", 0),
+                    totals.get("inference", 0),
+                    dict(http_scope.counter),
+                )
+                exit_http_scope(http_scope)
             structlog.contextvars.unbind_contextvars("pr_tag", "repo", "pr_id")
 
     async def handle_mention(self, payload: WebhookPayload) -> None:
@@ -1774,8 +1787,8 @@ class Reviewer:
             file_list = ", ".join(f"`{PurePosixPath(f).name}`" for f in content_skipped_files)
             scope.append(f"Reviewed without full file context (too large): {file_list} ⚠️")
 
-        # --- Cost
-        cost: list[str] = []
+        # --- Cost / telemetry
+        telemetry: list[str] = []
         if chunk_count is not None and chunk_budget and token_usage:
             prompt_t = token_usage[0]
             used_k = _fmt_k(prompt_t)
@@ -1783,7 +1796,7 @@ class Reviewer:
             if chunk_count == 1:
                 pct = round(prompt_t / chunk_budget * 100) if chunk_budget else 0
                 window_suffix = f", model max {_fmt_k(context_window)}" if context_window else ""
-                cost.append(
+                telemetry.append(
                     f"Tokens used: {used_k} of {budget_k} available "
                     f"({pct}% used{window_suffix}) · 1 pass"
                 )
@@ -1794,7 +1807,7 @@ class Reviewer:
                     if context_window
                     else f"cap {budget_k}/pass"
                 )
-                cost.append(
+                telemetry.append(
                     f"Tokens used: {used_k} total across {chunk_count} passes "
                     f"(avg {avg_pct}% used/pass, {cap_clause})"
                 )
@@ -1804,7 +1817,7 @@ class Reviewer:
                 t = prompt_breakdown["template"]
                 r = prompt_breakdown["repo_instructions"]
                 f = prompt_breakdown["files"]
-                cost.append(
+                telemetry.append(
                     f"Input tokens: ~{_fmt(t)} review prompt · "
                     f"~{_fmt(r)} AGENTS.md · ~{_fmt(f)} file content"
                 )
@@ -1817,19 +1830,19 @@ class Reviewer:
             )
             if elapsed is not None:
                 stats += f" · ⏱️ {elapsed:.1f}s"
-            cost.append(stats)
+            telemetry.append(stats)
 
-        # Upper-bound USD cost. Omitted entirely when the model has no
-        # pricing entry — better than printing a misleading "$0.00".
+        # Omitted entirely when the model has no pricing entry — better than
+        # printing a misleading "$0.00".
         if run_cost_usd is not None:
-            cost.append(f"Estimated cost (this run): ${run_cost_usd:.2f}")
+            cost_line = f"Estimated cost: ${run_cost_usd:.2f} this run"
             if cumulative_cost_usd is not None:
-                cost.append(
-                    f"Cumulative for this PR: ${cumulative_cost_usd:.2f} "
-                    "— upper bound, ignores prompt cache"
-                )
+                cost_line += f", ${cumulative_cost_usd:.2f} PR total"
+            telemetry.append(cost_line)
 
-        footnote = scope + cost
+        footnote = [*scope]
+        if telemetry:
+            footnote.append(" · ".join(telemetry))
         if footnote:
             sections.append("---\n" + "\n".join(f"- _{m}_" for m in footnote))
 
