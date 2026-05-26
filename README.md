@@ -2,7 +2,7 @@
   <img src="logo.png" alt="noergler" width="360">
 </p>
 
-[![Tests](https://github.com/trick77/noergler/actions/workflows/test.yaml/badge.svg)](https://github.com/trick77/noergler/actions/workflows/test.yaml) ![Python 3.14](https://img.shields.io/badge/python-3.14-blue)
+[![Tests](https://github.com/trick77/noergler/actions/workflows/test.yaml/badge.svg)](https://github.com/trick77/noergler/actions/workflows/test.yaml) ![Python 3.13](https://img.shields.io/badge/python-3.13-blue)
 
 Code review agent for typical private cloud corporate environments. The name is German for "Nörgler" (grumbler/complainer).
 
