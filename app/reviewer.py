@@ -865,9 +865,9 @@ class Reviewer:
                 totals = summarize(http_scope.counter)
                 logger.info(
                     "Review HTTP totals - bitbucket=%d jira=%d inference=%d (%s)",
-                    totals["bitbucket"],
-                    totals["jira"],
-                    totals["inference"],
+                    totals.get("bitbucket", 0),
+                    totals.get("jira", 0),
+                    totals.get("inference", 0),
                     dict(http_scope.counter),
                 )
                 exit_http_scope(http_scope)
@@ -1840,7 +1840,7 @@ class Reviewer:
                 cost_line += f", ${cumulative_cost_usd:.2f} PR total"
             telemetry.append(cost_line)
 
-        footnote = scope
+        footnote = [*scope]
         if telemetry:
             footnote.append(" · ".join(telemetry))
         if footnote:

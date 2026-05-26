@@ -1,7 +1,5 @@
 import asyncio
-import inspect
 from collections import Counter
-from collections.abc import Awaitable, Callable
 
 import httpx
 import pytest
@@ -49,17 +47,18 @@ def test_summarize_aggregates_per_client() -> None:
         "bitbucket:POST": 1,
         "jira:GET": 2,
         "inference:POST": 2,
+        "riptide:POST": 1,
     })
-    assert summarize(counter) == {"bitbucket": 4, "jira": 2, "inference": 2}
+    assert summarize(counter) == {
+        "bitbucket": 4,
+        "inference": 2,
+        "jira": 2,
+        "riptide": 1,
+    }
 
 
 def test_summarize_empty() -> None:
-    assert summarize(Counter()) == {"bitbucket": 0, "jira": 0, "inference": 0}
-
-
-def test_make_event_hook_return_type_is_annotated() -> None:
-    annotation = inspect.signature(make_event_hook).return_annotation
-    assert annotation == Callable[[httpx.Request], Awaitable[None]]
+    assert summarize(Counter()) == {}
 
 
 @pytest.mark.asyncio

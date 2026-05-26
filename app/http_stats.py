@@ -67,14 +67,15 @@ def exit_http_scope(scope: HttpScope) -> None:
 def summarize(counter: Counter[str]) -> dict[str, int]:
     """Sum a per-method counter into per-client totals.
 
-    Keys: `bitbucket`, `jira`, `inference` (each int).
-    Methods (e.g. `bitbucket:GET`) stay in the source counter for the caller
-    to log as breakdown.
+    Method keys use `<client_label>:<METHOD>`; the prefix becomes the summary
+    key. Methods stay in the source counter for the caller to log as breakdown.
     """
-    bitbucket = sum(v for k, v in counter.items() if k.startswith("bitbucket:"))
-    jira = sum(v for k, v in counter.items() if k.startswith("jira:"))
-    inference = sum(v for k, v in counter.items() if k.startswith("inference:"))
-    return {"bitbucket": bitbucket, "jira": jira, "inference": inference}
+    totals: Counter[str] = Counter()
+    for key, value in counter.items():
+        label, _sep, _method = key.partition(":")
+        if label:
+            totals[label] += value
+    return dict(sorted(totals.items()))
 
 
 def make_event_hook(client_label: str) -> Callable[[httpx.Request], Awaitable[None]]:
