@@ -1847,8 +1847,7 @@ class Reviewer:
             telemetry.append(cost_line)
 
         footnote = [*scope]
-        if telemetry:
-            footnote.append(" · ".join(telemetry))
+        footnote.extend(telemetry)
         if footnote:
             sections.append("---\n" + "\n".join(f"- _{m}_" for m in footnote))
 
