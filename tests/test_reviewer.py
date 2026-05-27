@@ -1092,7 +1092,7 @@ class TestSortAndLimit:
         )
         assert "Tokens used: 245k of 256k available (96% used, model max 272k) · 1 pass" in summary
 
-    def test_build_summary_renders_token_and_cost_metadata_on_one_line(self, reviewer):
+    def test_build_summary_renders_cost_metadata_on_one_line(self, reviewer):
         summary = reviewer._build_summary(
             [],
             token_usage=(123_456, 7_890),
@@ -1105,16 +1105,16 @@ class TestSortAndLimit:
             cumulative_cost_usd=1.37,
         )
 
-        telemetry_lines = [
-            line for line in summary.splitlines()
-            if "Model:" in line or "Tokens used:" in line or "Estimated cost:" in line
-        ]
-        assert telemetry_lines == [
-            "- _Tokens used: 123k of 256k available (48% used, model max 272k) · 1 pass · "
-            "Input tokens: ~500 review prompt · ~200 AGENTS.md · ~122'756 file content · "
-            "Model: `gpt-5.3-codex` · ↑ 123'456 · ↓ 7'890 (131'346 total) · ⏱️ 18.4s · "
-            "Estimated cost: $0.42 this run, $1.37 PR total_"
-        ]
+        footnote_lines = [line for line in summary.splitlines() if line.startswith("- _")]
+        assert "- _Tokens used: 123k of 256k available (48% used, model max 272k) · 1 pass_" in footnote_lines
+        assert "- _Input tokens: ~500 review prompt · ~200 AGENTS.md · ~122'756 file content_" in footnote_lines
+        assert (
+            "- _Model: `gpt-5.3-codex` · ↑ 123'456 · ↓ 7'890 "
+            "(131'346 total) · ⏱️ 18.4s_"
+        ) in footnote_lines
+        assert "- _Estimated cost: $0.42 this run, $1.37 PR total_" in footnote_lines
+        assert "Estimated cost (this run)" not in summary
+        assert "Cumulative for this PR" not in summary
         assert "upper bound" not in summary
         assert "ignores prompt cache" not in summary
 
