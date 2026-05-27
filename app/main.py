@@ -5,8 +5,9 @@ import os
 import re
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
-from typing import Awaitable, Callable, cast
+from typing import Annotated, cast
 
 import structlog
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request, Response
@@ -151,8 +152,7 @@ async def lifespan(_app: FastAPI):
 
     yield
 
-    if pricing_refresher is not None:
-        await pricing_refresher.stop()
+    await pricing_refresher.stop()
     await review_queue.stop()
     await bitbucket_client.close()
     await llm_client.close()
@@ -222,8 +222,8 @@ async def health():
 async def webhook(
     request: Request,
     background_tasks: BackgroundTasks,
-    x_hub_signature: str | None = Header(None),
-    x_event_key: str | None = Header(None),
+    x_hub_signature: Annotated[str | None, Header()] = None,
+    x_event_key: Annotated[str | None, Header()] = None,
 ):
     if x_event_key == "diagnostics:ping":
         return {"status": "ok"}

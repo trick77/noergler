@@ -1,5 +1,24 @@
 {
   "venvPath": ".",
   "venv": ".venv",
-  "typeCheckingMode": "standard"
+  "typeCheckingMode": "standard",
+
+  // Noise suppression: the rules below fire en masse (~3500 hits, 84% in
+  // tests/) purely because third-party deps (httpx, openai, asyncpg, structlog)
+  // expose untyped `Any` surfaces and because of idiomatic Python. They flag no
+  // real defects here, and "fixing" them would mean cast-spam or typing the
+  // entire external API surface. Disabled so genuine signal isn't drowned out.
+  // Valuable rules (real type errors, reportUnusedCoroutine = forgotten await,
+  // reportPrivateUsage, reportDeprecated, reportUnused*, redundant type:ignore)
+  // stay ON.
+  "reportAny": false,
+  "reportExplicitAny": false,
+  "reportUnknownMemberType": false,
+  "reportUnknownVariableType": false,
+  "reportUnknownArgumentType": false,
+  "reportUnknownParameterType": false,
+  "reportMissingParameterType": false,
+  "reportUnusedCallResult": false,
+  "reportImplicitStringConcatenation": false,
+  "reportMissingTypeStubs": false
 }

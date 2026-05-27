@@ -3,10 +3,12 @@ import json
 import logging
 import re
 import time
+from collections.abc import Awaitable
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar, final
 
+import asyncpg
 import openai
 import structlog
 
@@ -178,7 +180,10 @@ _SECURITY_KEYWORDS = re.compile(
 )
 
 
-async def _safe_db(coro, fallback=None):
+_T = TypeVar("_T")
+
+
+async def _safe_db(coro: Awaitable[_T], fallback: _T | None = None) -> _T | None:
     """Wrap a DB coroutine; on failure log a warning and return the fallback value."""
     try:
         return await coro
@@ -216,6 +221,7 @@ def _extract_question(text: str, trigger: str) -> str:
     return re.sub(rf"@{re.escape(trigger)}\b", "", text, flags=re.IGNORECASE).strip()
 
 
+@final
 class Reviewer:
     def __init__(
         self,
@@ -225,7 +231,7 @@ class Reviewer:
         jira: JiraClient | None = None,
         server_config: ServerConfig | None = None,
         *,
-        db_pool,
+        db_pool: asyncpg.Pool | None,
         riptide: RiptideClient | None = None,
     ):
         self.bitbucket = bitbucket
@@ -1673,7 +1679,7 @@ class Reviewer:
         if ticket:
             reqs = compliance_requirements if ticket_compliance_check else None
             has_compliance = bool(reqs)
-            if has_compliance and reqs is not None:
+            if has_compliance:
                 met_count = sum(1 for r in reqs if r.get("met"))
                 total_count = len(reqs)
                 if met_count == total_count:
@@ -1700,7 +1706,7 @@ class Reviewer:
                 ticket_lines.append(
                     f"**[{ticket.key}]({ticket.url})** — {ticket.title}{verdict_suffix}"
                 )
-            if has_compliance and reqs is not None:
+            if has_compliance:
                 for r in reqs:
                     mark = "✅" if r.get("met") else "❌"
                     ticket_lines.append(f"- {r.get('requirement', '???')} {mark}")

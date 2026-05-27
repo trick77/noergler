@@ -2,6 +2,7 @@ import logging
 import re
 import ssl
 from dataclasses import dataclass, field
+from typing import ClassVar, final
 
 import httpx
 
@@ -24,7 +25,7 @@ class JiraTicket:
     status: str | None = None
     parent_key: str | None = None
 
-    MAX_DESCRIPTION_LENGTH = 5000
+    MAX_DESCRIPTION_LENGTH: ClassVar[int] = 5000
 
 
 _HEADING_RE = re.compile(r"^h[1-6]\.\s*", re.MULTILINE)
@@ -69,6 +70,7 @@ def _extract_acceptance_criteria(description: str, prefixes: list[str]) -> str |
     return "\n".join(lines) if lines else None
 
 
+@final
 class JiraClient:
     def __init__(self, config: JiraConfig):
         self.config = config
