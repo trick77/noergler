@@ -27,6 +27,7 @@ _MODEL_CONTEXT_WINDOW: dict[str, int] = {
     "gpt-5-mini": 272_000,
     "gpt-5.3-codex": 272_000,
     "gpt-5.4": 272_000,
+    "gpt-5.5": 272_000,
     "claude-sonnet-4": 200_000,
     "claude-sonnet-4.5": 200_000,
     "claude-opus-4": 200_000,
@@ -39,6 +40,14 @@ _MODEL_CONTEXT_WINDOW: dict[str, int] = {
 # Reserved headroom for model output + prompt overhead when deriving a
 # chunk budget from the context window.
 _CONTEXT_WINDOW_HEADROOM_TOKENS = 16_000
+
+# Conservative fallback when a model's context window is unknown. The values in
+# `_MODEL_CONTEXT_WINDOW` are only a *starting estimate*: GitHub Copilot enforces
+# its own per-request limit server-side and returns "Max size: N tokens" on a
+# 413, which we parse to shrink `max_tokens_per_chunk` for the rest of the
+# process (see `_answer_file_group` / `_review_file_group`). So an unknown model
+# self-corrects at runtime — we must never hard-fail startup over a missing entry.
+_DEFAULT_CONTEXT_WINDOW = 128_000
 
 # Hard wall-clock cap on a single LLM HTTP call. We impose this; the model
 # itself is unaware of any deadline. Once exceeded, the in-flight request is
@@ -772,10 +781,14 @@ class LLMClient:
 
         ctx = _context_window_for(config.model)
         if ctx is None:
-            raise RuntimeError(
-                f"model `{config.model}` is not in `_MODEL_CONTEXT_WINDOW` — "
-                "add it to `app/llm_client.py`"
+            logger.warning(
+                "model `%s` is not in `_MODEL_CONTEXT_WINDOW` — falling back to a "
+                "conservative %s-token window. Copilot enforces the real limit at "
+                "request time (413 → auto-shrink); add an entry to "
+                "`app/llm_client.py` to skip the first oversized round-trip.",
+                config.model, _fmt(_DEFAULT_CONTEXT_WINDOW),
             )
+            ctx = _DEFAULT_CONTEXT_WINDOW
         self.context_window: int | None = ctx
         self.max_tokens_per_chunk: int = max(2000, ctx - _CONTEXT_WINDOW_HEADROOM_TOKENS)
         logger.info(
