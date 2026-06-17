@@ -1303,14 +1303,15 @@ class TestContextWindowAutoCap:
         assert client.max_tokens_per_chunk == 272_000 - 16_000
         assert client.context_window == 272_000
 
-    def test_unknown_model_raises(self, review_config, token_provider):
+    def test_unknown_model_falls_back_to_default(self, review_config, token_provider):
         cfg = LLMConfig(
             model="mystery-model-9000",
             oauth_token="t",
             api_url="https://api.githubcopilot.com",
         )
-        with pytest.raises(RuntimeError, match="mystery-model-9000"):
-            LLMClient(cfg, review_config, token_provider)
+        client = LLMClient(cfg, review_config, token_provider)
+        assert client.context_window == 128_000
+        assert client.max_tokens_per_chunk == 128_000 - 16_000
 
 
 class TestParse413TokenLimit:
