@@ -82,6 +82,64 @@ async def get_summary_comment_info(
         return None
 
 
+async def get_pr_skip_state(
+    pool: asyncpg.Pool, project_key: str, repo_slug: str, pr_id: int
+) -> dict[str, Any] | None:
+    """Return the fields the review guard needs to decide whether to skip a PR.
+
+    `ignored_at` non-NULL means the summary comment was removed and the PR
+    should be skipped. `summary_comment_id` lets the guard verify the comment
+    still exists. Returns None when the PR has no row yet (first review).
+    """
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id, ignored_at, summary_comment_id, summary_comment_version
+            FROM pr_reviews
+            WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
+            """,
+            project_key, repo_slug, pr_id,
+        )
+        return dict(row) if row else None
+
+
+async def mark_pr_ignored(
+    pool: asyncpg.Pool, project_key: str, repo_slug: str, pr_id: int
+) -> None:
+    """Flag a PR as ignored because its summary comment was deleted."""
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE pr_reviews SET ignored_at = NOW(), updated_at = NOW()
+            WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
+              AND ignored_at IS NULL
+            """,
+            project_key, repo_slug, pr_id,
+        )
+
+
+async def reactivate_pr(
+    pool: asyncpg.Pool, project_key: str, repo_slug: str, pr_id: int
+) -> None:
+    """Clear the ignored flag and forget the old summary comment.
+
+    Nulling summary_comment_id/version forces the next review to post a fresh
+    summary comment instead of trying to update the deleted one.
+    """
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE pr_reviews
+            SET ignored_at = NULL,
+                summary_comment_id = NULL,
+                summary_comment_version = NULL,
+                updated_at = NOW()
+            WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
+            """,
+            project_key, repo_slug, pr_id,
+        )
+
+
 async def add_pr_cost(
     pool: asyncpg.Pool,
     project_key: str,

@@ -9,6 +9,7 @@ from pathlib import PurePosixPath
 from typing import Any, Literal, TypeVar, final
 
 import asyncpg
+import httpx
 import openai
 import structlog
 
@@ -385,6 +386,54 @@ class Reviewer:
                 pr_tag=pr_tag, repo=f"{project_key}/{repo_slug}", pr_id=pr_id
             )
             opened_at = _epoch_ms_to_datetime(pr.createdDate)
+
+            # If the user removed our summary comment, they want noergler to
+            # leave this PR alone. Skip before any path that posts a comment
+            # (opt-out / AGENTS.md early returns call _post_or_update_summary).
+            # An @mention clears `ignored_at` (see handle_mention), so a PR
+            # reactivated via mention has no skip state and falls through here.
+            skip_state = await _safe_db(
+                repository.get_pr_skip_state(self.db_pool, project_key, repo_slug, pr_id),
+                fallback=None,
+            )
+            if skip_state:
+                if skip_state["ignored_at"] is not None:
+                    logger.info(
+                        "%s: PR ignored (summary comment removed) — skipping", pr_tag
+                    )
+                    return
+                summary_comment_id = skip_state["summary_comment_id"]
+                if summary_comment_id is not None:
+                    try:
+                        await self.bitbucket.fetch_pr_comment(
+                            project_key, repo_slug, pr_id, summary_comment_id
+                        )
+                    except httpx.HTTPStatusError as exc:
+                        if exc.response.status_code == 404:
+                            await _safe_db(
+                                repository.mark_pr_ignored(
+                                    self.db_pool, project_key, repo_slug, pr_id
+                                )
+                            )
+                            logger.info(
+                                "%s: summary comment %d was deleted — "
+                                "ignoring PR from now on",
+                                pr_tag, summary_comment_id,
+                            )
+                            return
+                        # Any other HTTP status is not a clear "deleted" signal —
+                        # do not silence a live PR; fall through to the review.
+                        logger.warning(
+                            "%s: could not verify summary comment %d (HTTP %d) — proceeding",
+                            pr_tag, summary_comment_id, exc.response.status_code,
+                        )
+                    except Exception:
+                        # Network / timeout / 5xx: never mark ignored on a
+                        # transient failure; fall through to the review.
+                        logger.warning(
+                            "%s: summary-comment check failed — proceeding",
+                            pr_tag, exc_info=True,
+                        )
 
             if not skip_author_check and not self.is_auto_review_author(author_name):
                 logger.info(
@@ -894,19 +943,33 @@ class Reviewer:
             logger.info("Ignoring mention on non-open PR (state=%s)", pr.state)
             return
 
-        question = _extract_question(comment.text, self.mention_trigger)
-
-        if not question or question.lower() in _REVIEW_KEYWORDS:
-            logger.info("Mention triggers full review (question=%r)", question)
-            await self.review_pull_request(payload, skip_author_check=True)
-            return
-
         project_key, repo_slug = self._extract_project_repo(payload)
         if not project_key or not repo_slug:
             logger.error("Could not extract project/repo from webhook payload")
             return
 
         pr_tag = f"{project_key}/{repo_slug}#{pr.id}"
+
+        # Any @mention reactivates a PR that was ignored after its summary
+        # comment was removed. Clearing the skip state (and the stale
+        # summary_comment_id, done in reactivate_pr) lets the next review post
+        # a fresh summary and stops the review guard from re-ignoring the PR.
+        skip_state = await _safe_db(
+            repository.get_pr_skip_state(self.db_pool, project_key, repo_slug, pr.id),
+            fallback=None,
+        )
+        if skip_state and skip_state["ignored_at"] is not None:
+            await _safe_db(
+                repository.reactivate_pr(self.db_pool, project_key, repo_slug, pr.id)
+            )
+            logger.info("%s: reactivating ignored PR via @mention", pr_tag)
+
+        question = _extract_question(comment.text, self.mention_trigger)
+
+        if not question or question.lower() in _REVIEW_KEYWORDS:
+            logger.info("Mention triggers full review (question=%r)", question)
+            await self.review_pull_request(payload, skip_author_check=True)
+            return
         logger.info("Handling mention Q&A on %s: %r", pr_tag, question)
 
         try:

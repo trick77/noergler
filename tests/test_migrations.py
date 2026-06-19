@@ -10,14 +10,16 @@ _M004 = _VERSIONS / "004_rename_severity.py"
 _M005 = _VERSIONS / "005_drop_metrics_layer.py"
 _M006 = _VERSIONS / "006_model_pricing.py"
 _M007 = _VERSIONS / "007_pr_rollup_for_riptide.py"
+_M008 = _VERSIONS / "008_pr_ignored.py"
 
 
-def test_migration_chain_is_linear_and_reaches_007():
+def test_migration_chain_is_linear_and_reaches_008():
     script = ScriptDirectory.from_config(Config("alembic.ini"))
     revs = [(r.revision, r.down_revision) for r in script.walk_revisions()]
     chain = [r for r, _ in revs]
-    assert chain == ["007", "006", "005", "004", "003", "002", "001"]
+    assert chain == ["008", "007", "006", "005", "004", "003", "002", "001"]
     assert dict(revs) == {
+        "008": "007",
         "007": "006",
         "006": "005",
         "005": "004",
@@ -26,6 +28,12 @@ def test_migration_chain_is_linear_and_reaches_007():
         "002": "001",
         "001": None,
     }
+
+
+def test_008_adds_ignored_at_and_round_trips():
+    text = _M008.read_text()
+    assert "ADD COLUMN ignored_at" in text
+    assert "DROP COLUMN IF EXISTS ignored_at" in text
 
 
 def test_007_adds_rollup_columns_and_round_trips():

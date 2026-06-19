@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 
 from app.config import ReviewConfig
@@ -643,6 +644,103 @@ class TestReviewer:
         mock_llm.review_diff.assert_called_once()
         mock_bitbucket.post_inline_comment.assert_called_once()
         mock_bitbucket.post_pr_comment.assert_called_once()
+
+
+def _http_status_error(status_code: int) -> httpx.HTTPStatusError:
+    request = httpx.Request("GET", "https://bitbucket.example.com/comment")
+    response = httpx.Response(status_code, request=request)
+    return httpx.HTTPStatusError("error", request=request, response=response)
+
+
+class TestSummaryRemovedIgnore:
+    """When the summary comment is deleted, the PR is ignored; a mention reactivates it."""
+
+    @pytest.mark.asyncio
+    async def test_already_ignored_skips_without_api_call(self, reviewer, mock_bitbucket):
+        payload = _make_payload("username")
+        with patch(
+            "app.reviewer.repository.get_pr_skip_state",
+            new=AsyncMock(return_value={
+                "id": 1,
+                "ignored_at": datetime(2026, 6, 1, tzinfo=timezone.utc),
+                "summary_comment_id": 55,
+                "summary_comment_version": 2,
+            }),
+        ):
+            await reviewer.review_pull_request(payload)
+
+        mock_bitbucket.fetch_pr_comment.assert_not_called()
+        mock_bitbucket.fetch_pr_diff.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_deleted_summary_marks_ignored_and_skips(self, reviewer, mock_bitbucket):
+        payload = _make_payload("username")
+        mock_bitbucket.fetch_pr_comment = AsyncMock(side_effect=_http_status_error(404))
+        with patch(
+            "app.reviewer.repository.get_pr_skip_state",
+            new=AsyncMock(return_value={
+                "id": 1, "ignored_at": None,
+                "summary_comment_id": 55, "summary_comment_version": 2,
+            }),
+        ), patch(
+            "app.reviewer.repository.mark_pr_ignored", new=AsyncMock(),
+        ) as mark_ignored:
+            await reviewer.review_pull_request(payload)
+
+        mark_ignored.assert_awaited_once()
+        mock_bitbucket.fetch_pr_diff.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_transient_error_does_not_ignore(self, reviewer, mock_bitbucket):
+        payload = _make_payload("username")
+        mock_bitbucket.fetch_pr_comment = AsyncMock(side_effect=_http_status_error(503))
+        with patch(
+            "app.reviewer.repository.get_pr_skip_state",
+            new=AsyncMock(return_value={
+                "id": 1, "ignored_at": None,
+                "summary_comment_id": 55, "summary_comment_version": 2,
+            }),
+        ), patch(
+            "app.reviewer.repository.mark_pr_ignored", new=AsyncMock(),
+        ) as mark_ignored:
+            await reviewer.review_pull_request(payload)
+
+        mark_ignored.assert_not_awaited()
+        # A transient blip must not silence a live PR — review proceeds.
+        mock_bitbucket.fetch_pr_diff.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_no_summary_yet_skips_check_and_proceeds(self, reviewer, mock_bitbucket):
+        payload = _make_payload("username")
+        with patch(
+            "app.reviewer.repository.get_pr_skip_state",
+            new=AsyncMock(return_value={
+                "id": 1, "ignored_at": None,
+                "summary_comment_id": None, "summary_comment_version": None,
+            }),
+        ):
+            await reviewer.review_pull_request(payload)
+
+        # First review: no comment to verify, no skip.
+        mock_bitbucket.fetch_pr_comment.assert_not_called()
+        mock_bitbucket.fetch_pr_diff.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_mention_reactivates_ignored_pr(self, reviewer):
+        payload = _make_mention_payload("@noergler what does this do?")
+        with patch(
+            "app.reviewer.repository.get_pr_skip_state",
+            new=AsyncMock(return_value={
+                "id": 1,
+                "ignored_at": datetime(2026, 6, 1, tzinfo=timezone.utc),
+                "summary_comment_id": 55, "summary_comment_version": 2,
+            }),
+        ), patch(
+            "app.reviewer.repository.reactivate_pr", new=AsyncMock(),
+        ) as reactivate:
+            await reviewer.handle_mention(payload)
+
+        reactivate.assert_awaited_once()
 
 
 class TestReviewTimeoutHandling:

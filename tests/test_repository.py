@@ -95,6 +95,60 @@ async def test_get_summary_comment_info_returns_none_when_no_comment_id():
 
 
 @pytest.mark.asyncio
+async def test_get_pr_skip_state_returns_dict():
+    fake_row = {
+        "id": 7,
+        "ignored_at": None,
+        "summary_comment_id": 55,
+        "summary_comment_version": 3,
+    }
+    pool = _make_pool(fetchrow_return=fake_row)
+
+    result = await repository.get_pr_skip_state(pool, "PROJ", "my-repo", 42)
+
+    assert result == fake_row
+    sql, *args = pool._conn.fetchrow.call_args.args
+    assert "ignored_at" in sql
+    assert "summary_comment_id" in sql
+    assert "PROJ" in args
+
+
+@pytest.mark.asyncio
+async def test_get_pr_skip_state_returns_none_when_no_row():
+    pool = _make_pool(fetchrow_return=None)
+
+    result = await repository.get_pr_skip_state(pool, "PROJ", "my-repo", 999)
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_mark_pr_ignored_sets_ignored_at():
+    pool = _make_pool()
+
+    await repository.mark_pr_ignored(pool, "PROJ", "my-repo", 42)
+
+    pool._conn.execute.assert_awaited_once()
+    sql, *_args = pool._conn.execute.call_args.args
+    assert "UPDATE pr_reviews" in sql
+    assert "ignored_at = NOW()" in sql
+    assert "ignored_at IS NULL" in sql
+
+
+@pytest.mark.asyncio
+async def test_reactivate_pr_clears_ignored_and_summary():
+    pool = _make_pool()
+
+    await repository.reactivate_pr(pool, "PROJ", "my-repo", 42)
+
+    pool._conn.execute.assert_awaited_once()
+    sql, *_args = pool._conn.execute.call_args.args
+    assert "ignored_at = NULL" in sql
+    assert "summary_comment_id = NULL" in sql
+    assert "summary_comment_version = NULL" in sql
+
+
+@pytest.mark.asyncio
 async def test_mark_pr_merged_sets_merged_at():
     pool = _make_pool()
 
