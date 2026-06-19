@@ -9,6 +9,9 @@ _DISAGREE_RESPONSE = (
 
 
 def is_disagreed(text: str) -> bool:
+    # Text keyword, not a 👎 reaction: Bitbucket Data Center emits no webhook for
+    # comment reactions, so a thumbs-down can't be caught in real time. Disagree
+    # therefore stays a text reply (delivered as pr:comment:added).
     return _DISAGREE in text.strip().lower()
 
 

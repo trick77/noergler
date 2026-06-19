@@ -265,6 +265,10 @@ async def webhook(
         background_tasks.add_task(reviewer.handle_pr_deleted, payload)
         return {"status": "accepted", "reason": "deleted-purge"}
 
+    if event_key == "pr:comment:deleted":
+        background_tasks.add_task(reviewer.handle_comment_deleted, payload)
+        return {"status": "accepted", "reason": "comment-deleted"}
+
     if event_key == "pr:comment:added":
         comment_text = payload_json.get("comment", {}).get("text", "")
         comment_id = payload_json.get("comment", {}).get("id")

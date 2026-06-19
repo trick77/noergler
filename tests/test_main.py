@@ -85,6 +85,7 @@ def client():
     mock_reviewer.handle_pr_merged = AsyncMock()
     mock_reviewer.handle_pr_declined = AsyncMock()
     mock_reviewer.handle_pr_deleted = AsyncMock()
+    mock_reviewer.handle_comment_deleted = AsyncMock()
 
     # A stub review queue that invokes the reviewer synchronously on submit,
     # so existing assertions on review_pull_request.await_count keep working
@@ -244,6 +245,20 @@ class TestDeletedRouting:
         data = resp.json()
         assert data["status"] == "accepted"
         assert data["reason"] == "deleted-purge"
+
+    def test_pr_comment_deleted_routes_to_handle_comment_deleted(self, client):
+        payload = {**PR_PAYLOAD, "eventKey": "pr:comment:deleted",
+                   "comment": {"id": 55, "text": "", "author": {"name": "user"}}}
+        body = json.dumps(payload).encode()
+        resp = client.post(
+            "/webhook",
+            content=body,
+            headers={"X-Hub-Signature": _sign(body), "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "accepted"
+        assert data["reason"] == "comment-deleted"
 
 
 class TestEventKeyAllowList:

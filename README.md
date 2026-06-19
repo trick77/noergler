@@ -217,7 +217,7 @@ Example `config.json` — repos are grouped under their Bitbucket project:
 In Bitbucket Server, go to **Repository settings > Webhooks > Create webhook**:
 - **URL:** `https://<host>:8080/webhook`
 - **Secret:** the value of `BITBUCKET_WEBHOOK_SECRET`
-- **Events:** `pr:opened`, `pr:from_ref_updated`, `pr:comment:added`, `pr:merged`, `pr:deleted`
+- **Events:** `pr:opened`, `pr:from_ref_updated`, `pr:comment:added`, `pr:comment:deleted`, `pr:merged`, `pr:declined`, `pr:deleted`
 
 All webhook requests must include a valid `X-Hub-Signature` header (HMAC-SHA256). Requests with missing or invalid signatures are rejected.
 

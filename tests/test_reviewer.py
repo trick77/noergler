@@ -652,6 +652,31 @@ def _http_status_error(status_code: int) -> httpx.HTTPStatusError:
     return httpx.HTTPStatusError("error", request=request, response=response)
 
 
+def _make_comment_deleted_payload(comment_id: int) -> WebhookPayload:
+    return WebhookPayload.model_validate({
+        "eventKey": "pr:comment:deleted",
+        "pullRequest": {
+            "id": 42,
+            "title": "Test PR",
+            "state": "OPEN",
+            "fromRef": {
+                "id": "refs/heads/feature",
+                "displayId": "feature",
+                "latestCommit": "abc123",
+                "repository": {"slug": "my-repo", "project": {"key": "PROJ"}},
+            },
+            "toRef": {
+                "id": "refs/heads/main",
+                "displayId": "main",
+                "latestCommit": "def456",
+                "repository": {"slug": "my-repo", "project": {"key": "PROJ"}},
+            },
+            "author": {"user": {"name": "username"}},
+        },
+        "comment": {"id": comment_id, "text": "", "author": {"name": "username"}},
+    })
+
+
 class TestSummaryRemovedIgnore:
     """When the summary comment is deleted, the PR is ignored; a mention reactivates it."""
 
@@ -741,6 +766,81 @@ class TestSummaryRemovedIgnore:
             await reviewer.handle_mention(payload)
 
         reactivate.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_comment_deleted_webhook_ignores_when_summary(self, reviewer):
+        # The deleted comment IS our summary (id 55) → mark ignored.
+        payload = _make_comment_deleted_payload(55)
+        with patch(
+            "app.reviewer.repository.get_pr_skip_state",
+            new=AsyncMock(return_value={
+                "id": 1, "ignored_at": None,
+                "summary_comment_id": 55, "summary_comment_version": 2,
+            }),
+        ), patch(
+            "app.reviewer.repository.mark_pr_ignored", new=AsyncMock(),
+        ) as mark_ignored:
+            await reviewer.handle_comment_deleted(payload)
+
+        mark_ignored.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_comment_deleted_webhook_ignores_other_comment(self, reviewer):
+        # A different comment (id 99) was deleted, not our summary (55) → no-op.
+        payload = _make_comment_deleted_payload(99)
+        with patch(
+            "app.reviewer.repository.get_pr_skip_state",
+            new=AsyncMock(return_value={
+                "id": 1, "ignored_at": None,
+                "summary_comment_id": 55, "summary_comment_version": 2,
+            }),
+        ), patch(
+            "app.reviewer.repository.mark_pr_ignored", new=AsyncMock(),
+        ) as mark_ignored:
+            await reviewer.handle_comment_deleted(payload)
+
+        mark_ignored.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_comment_deleted_webhook_no_db_row(self, reviewer):
+        # PR never tracked → nothing to ignore.
+        payload = _make_comment_deleted_payload(55)
+        with patch(
+            "app.reviewer.repository.get_pr_skip_state",
+            new=AsyncMock(return_value=None),
+        ), patch(
+            "app.reviewer.repository.mark_pr_ignored", new=AsyncMock(),
+        ) as mark_ignored:
+            await reviewer.handle_comment_deleted(payload)
+
+        mark_ignored.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_mention_reactivation_leads_to_fresh_summary(self, reviewer, mock_bitbucket):
+        # End-to-end seam: a review-keyword mention on an ignored PR reactivates
+        # it (clearing the skip state), and the immediately-following review sees
+        # the cleared state and posts a FRESH summary instead of being skipped.
+        payload = _make_mention_payload("@noergler review")
+        ignored = {
+            "id": 1,
+            "ignored_at": datetime(2026, 6, 1, tzinfo=timezone.utc),
+            "summary_comment_id": 55, "summary_comment_version": 2,
+        }
+        cleared = {
+            "id": 1, "ignored_at": None,
+            "summary_comment_id": None, "summary_comment_version": None,
+        }
+        with patch(
+            "app.reviewer.repository.get_pr_skip_state",
+            new=AsyncMock(side_effect=[ignored, cleared]),
+        ), patch(
+            "app.reviewer.repository.reactivate_pr", new=AsyncMock(),
+        ) as reactivate:
+            await reviewer.handle_mention(payload)
+
+        reactivate.assert_awaited_once()
+        # Guard saw cleared state → review proceeded → fresh summary posted.
+        mock_bitbucket.post_pr_comment.assert_called_once()
 
 
 class TestReviewTimeoutHandling:
