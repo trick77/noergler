@@ -194,7 +194,15 @@ class BitbucketClient:
     async def add_comment_reaction(
         self, project: str, repo: str, pr_id: int, comment_id: int, emoticon: str = "eyes"
     ) -> bool:
-        """Try to add an emoji reaction. Returns True on success, False on failure."""
+        """Try to add an emoji reaction. Returns True on success, False on failure.
+
+        Write-only by design: Bitbucket Data Center emits NO webhook for incoming
+        reactions/likes (only pr:comment:added/edited/deleted exist), so a user's
+        👍/👎 cannot be caught in real time. That's why user feedback ("disagree")
+        runs over text replies (pr:comment:added), not reactions. Note the
+        contrast with comment *deletions*, which DO have a webhook we rely on
+        (see handle_comment_deleted).
+        """
         url = (
             f"/rest/comment-likes/latest/projects/{project}/repos/{repo}"
             f"/pull-requests/{pr_id}/comments/{comment_id}/reactions"

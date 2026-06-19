@@ -59,6 +59,8 @@ Alongside the inline findings, noergler posts (or updates) a single summary comm
 
 On every `pr:from_ref_updated` the existing comment is updated in place rather than duplicated, so the PR activity stream stays clean.
 
+**Opt out by deleting the summary.** If you delete noergler's summary comment, it takes the hint and stops processing that PR — no further reviews, no re-posting the summary (the reason is logged). Mention `@noergler` again on the PR to re-engage; the next review posts a fresh summary comment.
+
 ## Quick start
 
 1. Copy `.env.example` to `.env` and fill in the required values:
@@ -148,7 +150,7 @@ Both `postgresql://` and `postgres://` URI schemes are accepted.
 
 | Table | Purpose |
 |---|---|
-| `pr_reviews` | Tracks reviewed PRs, lifecycle timestamps (`opened_at` / `merged_at` / `deleted_at`), summary comment IDs, and per-PR cost totals. Rows are retained across merge and delete — never hard-deleted. |
+| `pr_reviews` | Tracks reviewed PRs, lifecycle timestamps (`opened_at` / `merged_at` / `deleted_at` / `ignored_at`), summary comment IDs, and per-PR cost totals. Rows are retained across merge and delete — never hard-deleted. `ignored_at` is set when the user deletes the summary comment and cleared again on the next `@noergler` mention. |
 | `review_findings` | Individual code findings with file, line, severity, and Bitbucket comment ID. Used for inline-comment dedup on incremental reviews. |
 | `feedback_events` | Disagree reactions on review comments. Used to skip duplicate reactions. |
 
@@ -215,7 +217,7 @@ Example `config.json` — repos are grouped under their Bitbucket project:
 In Bitbucket Server, go to **Repository settings > Webhooks > Create webhook**:
 - **URL:** `https://<host>:8080/webhook`
 - **Secret:** the value of `BITBUCKET_WEBHOOK_SECRET`
-- **Events:** `pr:opened`, `pr:from_ref_updated`, `pr:comment:added`, `pr:merged`, `pr:deleted`
+- **Events:** `pr:opened`, `pr:from_ref_updated`, `pr:comment:added`, `pr:comment:deleted`, `pr:merged`, `pr:declined`, `pr:deleted`
 
 All webhook requests must include a valid `X-Hub-Signature` header (HMAC-SHA256). Requests with missing or invalid signatures are rejected.
 

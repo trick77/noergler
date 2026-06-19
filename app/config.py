@@ -11,6 +11,7 @@ REQUIRED_WEBHOOK_EVENTS: tuple[str, ...] = (
     "pr:opened",
     "pr:from_ref_updated",
     "pr:comment:added",
+    "pr:comment:deleted",
     "pr:merged",
     "pr:declined",
     "pr:deleted",
