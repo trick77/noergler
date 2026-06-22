@@ -166,6 +166,32 @@ async def add_pr_cost(
         return float(row["total_cost_usd"]) if row else None
 
 
+async def get_pr_cost(
+    pool: asyncpg.Pool,
+    project_key: str,
+    repo_slug: str,
+    pr_id: int,
+) -> float | None:
+    """Return the accumulated upper-bound cost for a PR, or None.
+
+    None means either no PR row exists yet or total_cost_usd is NULL (the
+    model has no pricing entry — see estimate_cost_usd). Callers must treat
+    None as "no known cost" and never block on it (fail-open).
+    """
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT total_cost_usd
+            FROM pr_reviews
+            WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
+            """,
+            project_key, repo_slug, pr_id,
+        )
+        if row and row["total_cost_usd"] is not None:
+            return float(row["total_cost_usd"])
+        return None
+
+
 async def freeze_pr_cost(
     pool: asyncpg.Pool, project_key: str, repo_slug: str, pr_id: int
 ) -> float | None:

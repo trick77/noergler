@@ -246,6 +246,7 @@ class ReviewConfig(BaseModel):
     agents_md_max_tokens: int = 7000
     agents_md_custom_link: str = ""
     opt_out_branch_keyword: str = "noergloff"
+    max_pr_cost_usd: float = 5.00
 
     @field_validator("auto_review_authors", mode="before")
     @classmethod
@@ -356,6 +357,7 @@ def load_config() -> AppConfig:
             agents_md_max_tokens=int(_env("REVIEW_AGENTS_MD_MAX_TOKENS", "7000")),
             agents_md_custom_link=_env("REVIEW_AGENTS_MD_CUSTOM_LINK", ""),
             opt_out_branch_keyword=_env("REVIEW_OPT_OUT_BRANCH_KEYWORD", "noergloff"),
+            max_pr_cost_usd=float(_env("REVIEW_MAX_PR_COST_USD", "5.00")),
         ),
         jira=JiraConfig(
             url=_env("JIRA_URL"),

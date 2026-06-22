@@ -147,6 +147,66 @@ def _strip_stale_banner(body: str) -> str:
         i += 1
     return "\n".join(lines[i:])
 
+
+# Prepended to the summary comment whenever a PR's accumulated cost is at/over
+# the per-PR limit. Like the stale banner, it is sentinel-marked so re-runs
+# replace it instead of stacking. The visible prefix is stable across both
+# variants (blocked vs. completed-review) so it survives Bitbucket stripping the
+# HTML comment through its markdown renderer.
+_COST_BANNER_SENTINEL = "<!-- noergler-cost-banner -->"
+_COST_BANNER_VISIBLE_PREFIX = "⚠️ **Cost limit exceeded**"
+
+
+def _strip_cost_banner(body: str) -> str:
+    """Remove a leading cost-limit banner block, if present. Idempotent.
+
+    Same detection/stripping strategy as `_strip_stale_banner`: sentinel first,
+    visible-prefix fallback, then strip up to and including the first blank line.
+    """
+    has_sentinel = body.startswith(_COST_BANNER_SENTINEL)
+    if not has_sentinel:
+        first_content = ""
+        for line in body.splitlines():
+            if line.strip():
+                first_content = line
+                break
+        if not first_content.startswith(_COST_BANNER_VISIBLE_PREFIX):
+            return body
+
+    lines = body.splitlines()
+    i = 1 if has_sentinel else 0
+    while i < len(lines) and lines[i].strip() != "":
+        i += 1
+    while i < len(lines) and lines[i].strip() == "":
+        i += 1
+    return "\n".join(lines[i:])
+
+
+def _cost_limit_banner(
+    cumulative_cost_usd: float,
+    limit_usd: float,
+    bot_username: str,
+    *,
+    blocked: bool,
+) -> str:
+    """Build the sentinel-marked over-limit banner block (no trailing newline).
+
+    `blocked=True` is used when an automatic review was skipped entirely (the
+    pushed commit was not reviewed); `blocked=False` is used on a completed run
+    (an auto-run that overshot the cap, or a manual @mention review while over).
+    Swiss orthography — no ß.
+    """
+    msg = (
+        f"{_COST_BANNER_VISIBLE_PREFIX} — PR total **${cumulative_cost_usd:.2f}**, "
+        f"over the **${limit_usd:.2f}** limit. Automatic reviews are paused. "
+        f"`@{bot_username}` to review manually, or ask an admin to raise "
+        f"`REVIEW_MAX_PR_COST_USD`."
+    )
+    if blocked:
+        msg += " This push was **not** reviewed automatically."
+    return f"{_COST_BANNER_SENTINEL}\n{msg}"
+
+
 # Hard ceiling for the cumulative-diff context, regardless of model. Beyond this
 # the LLM tends to drown the focused review in noise.
 MAX_CUMULATIVE_CONTEXT_TOKENS = 80_000
@@ -517,6 +577,51 @@ class Reviewer:
                     )
                     return
 
+            # Per-PR cost cap. Pre-check the cost accumulated *before* this run:
+            # once a PR is at/over the limit, stop reviewing it automatically.
+            # Enforced on the auto-review path only — a human @mention
+            # (skip_author_check=True) is the explicit override and always runs.
+            # Fail-open: a None cost (unpriced model, NULL total_cost_usd) never
+            # blocks. The run that overshoots the cap completes; only subsequent
+            # auto-runs are blocked here.
+            if not skip_author_check:
+                limit_usd = self.review_config.max_pr_cost_usd
+                cumulative_cost = await _safe_db(
+                    repository.get_pr_cost(self.db_pool, project_key, repo_slug, pr_id),
+                    fallback=None,
+                )
+                if cumulative_cost is not None and cumulative_cost >= limit_usd:
+                    logger.info(
+                        "%s: PR cost $%.2f >= limit $%.2f — skipping auto-review "
+                        "(@%s to review manually, or raise REVIEW_MAX_PR_COST_USD)",
+                        pr_tag, cumulative_cost, limit_usd,
+                        self.bitbucket.bot_username,
+                    )
+                    # Preserve the prior reviewed commit — this push was not
+                    # reviewed, so raising the limit later must re-review the
+                    # accumulated range rather than skip it.
+                    prior_commit = await _safe_db(
+                        repository.get_last_reviewed_commit(
+                            self.db_pool, project_key, repo_slug, pr_id,
+                        ),
+                        fallback=None,
+                    )
+                    pr_review_id = await _safe_db(
+                        repository.upsert_pr_review(
+                            self.db_pool, project_key, repo_slug, pr_id,
+                            last_reviewed_commit=prior_commit,
+                            author=author_name,
+                            pr_title=pr.title,
+                            opened_at=opened_at,
+                        ),
+                        fallback=None,
+                    )
+                    await self._post_or_update_cost_limit_notice(
+                        project_key, repo_slug, pr_id, pr_review_id,
+                        cumulative_cost, limit_usd,
+                    )
+                    return
+
             logger.info(
                 "Starting review of %s by %s (branch: %s)",
                 pr_tag, author_name, pr.fromRef.displayId,
@@ -878,6 +983,26 @@ class Reviewer:
                 chunk_budget=self.llm.max_tokens_per_chunk,
                 context_window=self.llm.context_window,
             )
+
+            # Completed run that is at/over the cost limit: keep the over-limit
+            # banner on top of the summary so the over-budget state stays loud.
+            # Covers the auto-run that overshot the cap and any manual @mention
+            # review while already over. No strip needed — `summary` is freshly
+            # built each run, so the banner is applied exactly once.
+            if (
+                cumulative_cost_usd is not None
+                and cumulative_cost_usd >= self.review_config.max_pr_cost_usd
+            ):
+                summary = (
+                    _cost_limit_banner(
+                        cumulative_cost_usd,
+                        self.review_config.max_pr_cost_usd,
+                        self.bitbucket.bot_username,
+                        blocked=False,
+                    )
+                    + "\n\n"
+                    + summary
+                )
 
             await self._post_or_update_summary(
                 project_key, repo_slug, pr_id, pr_review_id, summary
@@ -1652,6 +1777,94 @@ class Reviewer:
                 )
             )
 
+    async def _post_or_update_cost_limit_notice(
+        self,
+        project_key: str,
+        repo_slug: str,
+        pr_id: int,
+        pr_review_id: int | None,
+        cumulative_cost_usd: float,
+        limit_usd: float,
+    ) -> None:
+        """Surface a blocked auto-review on the Bitbucket PR summary comment.
+
+        - **No prior summary tracked** → post a fresh banner-only comment that
+          becomes the noergler comment for this PR.
+        - **Prior summary tracked** → fetch its body, strip any previous cost
+          banner (idempotency on repeated blocked pushes), prepend a fresh
+          `blocked=True` banner. The body underneath reflects the last review
+          (older than the un-reviewed push). A later successful review replaces
+          the whole comment.
+
+        Nothing is written to Jira. Mirrors `_post_or_update_timeout_notice`.
+        """
+        banner = _cost_limit_banner(
+            cumulative_cost_usd, limit_usd, self.bitbucket.bot_username,
+            blocked=True,
+        )
+
+        existing_summary = None
+        if pr_review_id:
+            existing_summary = await _safe_db(
+                repository.get_summary_comment_info(self.db_pool, pr_review_id),
+                fallback=None,
+            )
+
+        if not existing_summary:
+            try:
+                post_result = await self.bitbucket.post_pr_comment(
+                    project_key, repo_slug, pr_id, banner,
+                )
+            except Exception:
+                logger.error("Failed to post cost-limit notice", exc_info=True)
+                return
+            if post_result and pr_review_id:
+                comment_id, version = post_result
+                await _safe_db(
+                    repository.update_summary_comment(
+                        self.db_pool, pr_review_id,
+                        comment_id, version or 0,
+                    )
+                )
+            return
+
+        comment_id = existing_summary["summary_comment_id"]
+        version = existing_summary["summary_comment_version"]
+        try:
+            existing_payload = await self.bitbucket.fetch_pr_comment(
+                project_key, repo_slug, pr_id, comment_id,
+            )
+        except Exception:
+            logger.error(
+                "Failed to fetch existing summary for cost-limit banner",
+                exc_info=True,
+            )
+            return
+        existing_body = existing_payload.get("text", "") or ""
+        # Prefer the live version over our cached one to avoid a 409.
+        live_version = existing_payload.get("version", version)
+
+        new_body = banner + "\n\n" + _strip_cost_banner(existing_body)
+
+        try:
+            new_version = await self.bitbucket.update_pr_comment(
+                project_key, repo_slug, pr_id,
+                comment_id, live_version, new_body,
+            )
+        except Exception:
+            logger.error(
+                "Failed to update existing summary with cost-limit banner",
+                exc_info=True,
+            )
+            return
+        if new_version is not None and pr_review_id:
+            await _safe_db(
+                repository.update_summary_comment(
+                    self.db_pool, pr_review_id,
+                    comment_id, new_version,
+                )
+            )
+
     async def _fetch_repo_instructions(
         self, project: str, repo: str, pr: PullRequest
     ) -> str:
@@ -1949,6 +2162,9 @@ class Reviewer:
             cost_line = f"Estimated cost: ${run_cost_usd:.2f} this run"
             if cumulative_cost_usd is not None:
                 cost_line += f", ${cumulative_cost_usd:.2f} PR total"
+                # Show the per-PR budget alongside the running total so the
+                # limit is transparent on every summary, not only at the cap.
+                cost_line += f" / ${self.review_config.max_pr_cost_usd:.2f} limit"
             telemetry.append(cost_line)
 
         footnote = [*scope]
