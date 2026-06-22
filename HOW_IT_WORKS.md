@@ -313,6 +313,16 @@ Before posting, findings are checked against existing noergler comments on the P
 
 Findings are sorted by severity (issues first), then capped at `REVIEW_MAX_COMMENTS` (default 25).
 
+### Per-PR cost cap
+
+noergler tracks an upper-bound estimated cost per PR (`pr_reviews.total_cost_usd`). Once that accumulated cost reaches `REVIEW_MAX_PR_COST_USD` (default `5.00`), **automatic** reviews stop: a new push is no longer reviewed, and the summary comment carries an "⚠️ Cost limit exceeded" banner. The cost is shown on every summary as `… PR total / $X.XX limit` so the budget is visible before the cap.
+
+Notes:
+- The cap is a pre-check, so the run that crosses the limit still completes — only *subsequent* automatic runs are blocked ("stop after exceeding").
+- An `@mention` (review or Q&A) is an explicit human override and always runs; its summary still shows the over-limit banner while the PR is over budget.
+- A blocked push does **not** advance the reviewed-commit pointer, so raising the limit (and restarting) re-reviews the accumulated range.
+- Models with no pricing entry have no known cost (`total_cost_usd` is NULL) and are therefore never capped (fail-open).
+
 ### Inline comments
 
 Each finding is posted as an inline comment at the specific file and line, with severity emoji and optional code suggestion.

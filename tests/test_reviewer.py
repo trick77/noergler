@@ -1310,7 +1310,7 @@ class TestSortAndLimit:
             "- _Model: `gpt-5.3-codex` · ↑ 123'456 · ↓ 7'890 "
             "(131'346 total) · ⏱️ 18.4s_"
         ) in footnote_lines
-        assert "- _Estimated cost: $0.42 this run, $1.37 PR total_" in footnote_lines
+        assert "- _Estimated cost: $0.42 this run, $1.37 PR total / $5.00 limit_" in footnote_lines
         assert "Estimated cost (this run)" not in summary
         assert "Cumulative for this PR" not in summary
         assert "upper bound" not in summary
@@ -1360,6 +1360,179 @@ class TestSortAndLimit:
         assert call_args[3] == 77  # comment_id
         assert call_args[4] == 2   # version
         mock_bitbucket.post_pr_comment.assert_not_called()
+
+
+class TestPerPrCostCap:
+    """The $5 (configurable) per-PR cost cap: blocks automatic inference once
+    a PR is at/over the limit, keeps the over-limit state visible on the
+    summary comment, and lets a human @mention override."""
+
+    @pytest.mark.asyncio
+    async def test_over_limit_skips_auto_review_and_posts_notice(
+        self, mock_bitbucket, mock_llm, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_pr_cost", AsyncMock(return_value=6.0)
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_last_reviewed_commit",
+            AsyncMock(return_value="oldcommit"),
+        )
+        upsert = AsyncMock(return_value=99)
+        monkeypatch.setattr("app.reviewer.repository.upsert_pr_review", upsert)
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_summary_comment_info",
+            AsyncMock(return_value=None),
+        )
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+
+        await rev.review_pull_request(_make_payload("username"))
+
+        # No inference happened.
+        mock_llm.review_diff.assert_not_called()
+        # Notice posted on the PR summary comment.
+        mock_bitbucket.post_pr_comment.assert_called_once()
+        notice = mock_bitbucket.post_pr_comment.call_args[0][3]
+        assert "Cost limit exceeded" in notice
+        assert "not** reviewed automatically" in notice
+        assert "$6.00" in notice and "$5.00" in notice
+        # The reviewed-commit pointer is NOT advanced past the un-reviewed push.
+        assert upsert.await_args is not None
+        assert upsert.await_args.kwargs["last_reviewed_commit"] == "oldcommit"
+
+    @pytest.mark.asyncio
+    async def test_mention_bypasses_gate_but_summary_keeps_banner(
+        self, mock_bitbucket, mock_llm, monkeypatch
+    ):
+        # Pre-run cost is over the limit, but a human @mention review overrides.
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_pr_cost", AsyncMock(return_value=6.0)
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.upsert_pr_review", AsyncMock(return_value=99)
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.add_pr_cost", AsyncMock(return_value=6.0)
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_summary_comment_info",
+            AsyncMock(return_value=None),
+        )
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+
+        await rev.review_pull_request(_make_payload("username"), skip_author_check=True)
+
+        # Inference ran (the override).
+        mock_llm.review_diff.assert_called_once()
+        # The summary still carries the over-limit banner, but the non-blocked
+        # variant (this run WAS reviewed).
+        summary = mock_bitbucket.post_pr_comment.call_args[0][3]
+        assert "Cost limit exceeded" in summary
+        assert "not** reviewed automatically" not in summary
+
+    @pytest.mark.asyncio
+    async def test_auto_run_that_overshoots_cap_carries_banner(
+        self, mock_bitbucket, mock_llm, monkeypatch
+    ):
+        # Pre-run cost unknown/under → gate lets the run through; this run pushes
+        # the cumulative total over the limit, so its summary gets the banner.
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_pr_cost", AsyncMock(return_value=None)
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.upsert_pr_review", AsyncMock(return_value=99)
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.add_pr_cost", AsyncMock(return_value=6.0)
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_summary_comment_info",
+            AsyncMock(return_value=None),
+        )
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+
+        await rev.review_pull_request(_make_payload("username"))
+
+        mock_llm.review_diff.assert_called_once()
+        summary = mock_bitbucket.post_pr_comment.call_args[0][3]
+        assert "Cost limit exceeded" in summary
+
+    @pytest.mark.asyncio
+    async def test_under_limit_does_not_block_or_banner(
+        self, mock_bitbucket, mock_llm, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_pr_cost", AsyncMock(return_value=1.0)
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.upsert_pr_review", AsyncMock(return_value=99)
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.add_pr_cost", AsyncMock(return_value=1.5)
+        )
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+
+        await rev.review_pull_request(_make_payload("username"))
+
+        mock_llm.review_diff.assert_called_once()
+        summary = mock_bitbucket.post_pr_comment.call_args[0][3]
+        assert "Cost limit exceeded" not in summary
+        assert "$1.50 PR total / $5.00 limit" in summary
+
+    @pytest.mark.asyncio
+    async def test_notice_strips_prior_banner_no_stacking(
+        self, mock_bitbucket, mock_llm, monkeypatch
+    ):
+        # A second blocked push must replace the existing cost banner in place,
+        # not stack a second one on top of it.
+        from app.reviewer import _COST_BANNER_SENTINEL, _cost_limit_banner
+
+        prior_body = (
+            _cost_limit_banner(5.5, 5.0, "noergler", blocked=True)
+            + "\n\n### Review summary\nsome earlier findings"
+        )
+        mock_bitbucket.fetch_pr_comment = AsyncMock(
+            return_value={"text": prior_body, "version": 7}
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_summary_comment_info",
+            AsyncMock(return_value={"summary_comment_id": 55, "summary_comment_version": 6}),
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.update_summary_comment", AsyncMock(return_value=None)
+        )
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+
+        await rev._post_or_update_cost_limit_notice(
+            "PROJ", "my-repo", 42, pr_review_id=99,
+            cumulative_cost_usd=6.0, limit_usd=5.0,
+        )
+
+        mock_bitbucket.update_pr_comment.assert_called_once()
+        new_body = mock_bitbucket.update_pr_comment.call_args[0][5]
+        # Exactly one banner sentinel, and the underlying summary is preserved.
+        assert new_body.count(_COST_BANNER_SENTINEL) == 1
+        assert "### Review summary" in new_body
+        assert "$6.00" in new_body  # banner reflects the new total
+        # Uses the live version from the fetched comment, not the stale DB one.
+        assert mock_bitbucket.update_pr_comment.call_args[0][4] == 7
+
+    @pytest.mark.asyncio
+    async def test_null_cost_unpriced_model_never_blocks(
+        self, mock_bitbucket, mock_llm, monkeypatch
+    ):
+        # Unpriced model: get_pr_cost returns None → fail-open, never blocked.
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_pr_cost", AsyncMock(return_value=None)
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.upsert_pr_review", AsyncMock(return_value=99)
+        )
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+
+        await rev.review_pull_request(_make_payload("username"))
+
+        mock_llm.review_diff.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_persistent_comment_creates_new_when_none_exists(self, mock_bitbucket, mock_llm):
