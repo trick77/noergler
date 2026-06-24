@@ -13,41 +13,29 @@ import tiktoken
 from openai import AsyncOpenAI
 from openai.types.responses import Response
 
-from app.config import LLMConfig, ReviewConfig, model_label
+from app.config import (
+    LLMConfig,
+    ReviewConfig,
+    context_window_for,
+    model_label,
+    usable_context_budget,
+)
 from app.copilot_auth import CopilotTokenProvider
 from app.http_stats import make_event_hook
 from app.models import ReviewFinding
 
-# Static context-window map for Copilot-served models.
-# Values are total input context size in tokens; we reserve headroom for
-# output + prompt overhead when auto-capping max_tokens_per_chunk.
-_MODEL_CONTEXT_WINDOW: dict[str, int] = {
-    "gpt-4o": 128_000,
-    "gpt-5": 272_000,
-    "gpt-5-mini": 272_000,
-    "gpt-5.3-codex": 272_000,
-    "gpt-5.4": 272_000,
-    "gpt-5.5": 272_000,
-    "claude-sonnet-4": 200_000,
-    "claude-sonnet-4.5": 200_000,
-    "claude-opus-4": 200_000,
-    "claude-opus-4.1": 200_000,
-    "claude-haiku-4.5": 200_000,
-    "o3-mini": 200_000,
-    "o4-mini": 200_000,
-}
-
-# Reserved headroom for model output + prompt overhead when deriving a
-# chunk budget from the context window.
-_CONTEXT_WINDOW_HEADROOM_TOKENS = 16_000
-
-# Conservative fallback when a model's context window is unknown. The values in
-# `_MODEL_CONTEXT_WINDOW` are only a *starting estimate*: GitHub Copilot enforces
-# its own per-request limit server-side and returns "Max size: N tokens" on a
-# 413, which we parse to shrink `max_tokens_per_chunk` for the rest of the
-# process (see `_answer_file_group` / `_review_file_group`). So an unknown model
-# self-corrects at runtime — we must never hard-fail startup over a missing entry.
+# Conservative fallback when a model's context window is unknown. Known windows
+# live in `app.config._MODEL_CONTEXT_WINDOW` (sourced from LiteLLM, see
+# `context_window_for`). They are only a *starting estimate*: GitHub Copilot
+# enforces its own per-request limit server-side and returns "Max size: N
+# tokens" on a 413, which we parse to shrink the chunk budget for the rest of
+# the process (see `_answer_file_group` / `_review_file_group`). So an unknown
+# model self-corrects at runtime — we must never hard-fail startup over one.
 _DEFAULT_CONTEXT_WINDOW = 128_000
+
+# Sentinel for "no API-imposed limit learned yet" — a value larger than any real
+# context window, so `min(budget, _NO_API_LIMIT)` is a no-op until a 413 lowers it.
+_NO_API_LIMIT = 1_000_000_000
 
 # Hard wall-clock cap on a single LLM HTTP call. We impose this; the model
 # itself is unaware of any deadline. Once exceeded, the in-flight request is
@@ -59,16 +47,10 @@ INFERENCE_HARD_TIMEOUT_SECONDS = 300.0
 def _context_window_for(model: str) -> int | None:
     """Return the known context window for a model id, or None if unknown.
 
-    Matches exact ids first, then falls back to a prefix match so dated ids
-    like `gpt-5.3-codex-2025-01-01` or `claude-sonnet-4-20250514` resolve to the
-    base model's entry.
+    Thin delegate to `app.config.context_window_for` (the live, LiteLLM-sourced
+    table). Kept here for its existing import sites / tests.
     """
-    if model in _MODEL_CONTEXT_WINDOW:
-        return _MODEL_CONTEXT_WINDOW[model]
-    for base, ctx in _MODEL_CONTEXT_WINDOW.items():
-        if model.startswith(base + "-"):
-            return ctx
-    return None
+    return context_window_for(model)
 
 
 logger = logging.getLogger(__name__)
@@ -779,21 +761,24 @@ class LLMClient:
         self.review_config = review_config
         self._token_provider = token_provider
 
-        ctx = _context_window_for(config.model)
-        if ctx is None:
+        # API-imposed chunk ceiling learned from a 413 "Max size: N tokens"
+        # response. Starts unlimited; `max_tokens_per_chunk` clamps to it so a
+        # runtime shrink survives and is never undone by a later table refresh.
+        self._api_learned_cap: int = _NO_API_LIMIT
+
+        if context_window_for(config.model) is None:
             logger.warning(
-                "model `%s` is not in `_MODEL_CONTEXT_WINDOW` — falling back to a "
+                "model `%s` has no known context window — falling back to a "
                 "conservative %s-token window. Copilot enforces the real limit at "
                 "request time (413 → auto-shrink); add an entry to "
-                "`app/llm_client.py` to skip the first oversized round-trip.",
+                "`app/config.py:_STATIC_MODEL_CONTEXT_WINDOW` to skip the first "
+                "oversized round-trip.",
                 config.model, _fmt(_DEFAULT_CONTEXT_WINDOW),
             )
-            ctx = _DEFAULT_CONTEXT_WINDOW
-        self.context_window: int | None = ctx
-        self.max_tokens_per_chunk: int = max(2000, ctx - _CONTEXT_WINDOW_HEADROOM_TOKENS)
         logger.info(
             "Chunk budget set to %s tokens (model %s context window: %s)",
-            _fmt(self.max_tokens_per_chunk), model_label(config.model, config.reasoning_effort), _fmt(ctx),
+            _fmt(self.max_tokens_per_chunk), model_label(config.model, config.reasoning_effort),
+            _fmt(self.context_window),
         )
 
         async def _inject_copilot_auth(request: httpx.Request) -> None:
@@ -834,6 +819,29 @@ class LLMClient:
         self.mention_template = _load_prompt_template(
             review_config.mention_prompt_template,
         )
+
+    @property
+    def context_window(self) -> int:
+        """Live input context window for the configured model.
+
+        Reads `app.config.context_window_for` at access time (same snapshot
+        pattern as `pricing_for`), so a LiteLLM refresh is picked up without
+        rebuilding the client. Falls back to the conservative default for an
+        unknown model.
+        """
+        return context_window_for(self.config.model) or _DEFAULT_CONTEXT_WINDOW
+
+    @property
+    def max_tokens_per_chunk(self) -> int:
+        """Usable per-chunk token budget: the diminishing-trust curve applied to
+        the context window, clamped to any 413-learned API ceiling."""
+        return min(usable_context_budget(self.context_window), self._api_learned_cap)
+
+    @max_tokens_per_chunk.setter
+    def max_tokens_per_chunk(self, value: int) -> None:
+        # The only legitimate writer is a 413 "Max size" response shrinking the
+        # budget; record it as the learned cap so the getter's min() preserves it.
+        self._api_learned_cap = value
 
     async def close(self):
         await self.openai_client.close()

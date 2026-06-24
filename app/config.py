@@ -96,6 +96,82 @@ def pricing_for(model: str) -> ModelPrice | None:
     return None
 
 
+# --- Model context windows -------------------------------------------------
+# Total input context window per model, in tokens. Sourced from the same
+# LiteLLM catalog as pricing (`max_input_tokens`); these static values are the
+# offline-safe fallback used before the first fetch / when LiteLLM is down.
+#
+# NOTE: 272k for gpt-5.5 / gpt-5.4 was a long-standing bug — 272_000 is OpenAI's
+# *pricing threshold* (2x input above it), not the context window. The real
+# window is 1_050_000 (LiteLLM `max_input_tokens`). The other entries were and
+# remain correct.
+_STATIC_MODEL_CONTEXT_WINDOW: dict[str, int] = {
+    "gpt-4o": 128_000,
+    "gpt-5": 272_000,
+    "gpt-5-mini": 272_000,
+    "gpt-5.3-codex": 272_000,
+    "gpt-5.4": 1_050_000,
+    "gpt-5.5": 1_050_000,
+    "claude-sonnet-4": 200_000,
+    "claude-sonnet-4.5": 200_000,
+    "claude-opus-4": 200_000,
+    "claude-opus-4.1": 200_000,
+    "claude-haiku-4.5": 200_000,
+    "o3-mini": 200_000,
+    "o4-mini": 200_000,
+}
+
+# Live context-window table. Same atomic-swap pattern as `_MODEL_PRICING`:
+# starts at the static defaults, replaced wholesale by the refresher.
+_MODEL_CONTEXT_WINDOW: dict[str, int] = dict(_STATIC_MODEL_CONTEXT_WINDOW)
+
+
+def _swap_context_windows(new_table: dict[str, int]) -> None:
+    global _MODEL_CONTEXT_WINDOW
+    _MODEL_CONTEXT_WINDOW = new_table  # pyright: ignore[reportConstantRedefinition]
+
+
+def context_window_for(model: str) -> int | None:
+    """Return the input context window for a model id, or None if unknown.
+
+    Exact match first, then a longest-base prefix match so dated/suffixed ids
+    resolve to the base model entry — mirrors `pricing_for`.
+    """
+    table = _MODEL_CONTEXT_WINDOW  # snapshot to survive an atomic refresh swap
+    if model in table:
+        return table[model]
+    for base in sorted(table, key=len, reverse=True):
+        if model.startswith(base + "-"):
+            return table[base]
+    return None
+
+
+# Turning a model's advertised context window into a usable per-chunk budget.
+# A flat headroom (the old 16k) is ~1.5% of a 1M window — useless — so we apply
+# a diminishing-trust curve: trust the window fully up to a threshold, then
+# count only a fraction of everything beyond it. Large advertised windows are
+# the least trustworthy over GitHub Copilot (which enforces a lower server-side
+# cap and 413s anything bigger), so they degrade most. All three knobs are
+# env-overridable for tuning without a redeploy.
+_CONTEXT_WINDOW_HEADROOM_TOKENS = int(os.environ.get("CONTEXT_WINDOW_HEADROOM_TOKENS", "16000"))
+_CONTEXT_TRUST_THRESHOLD = int(os.environ.get("CONTEXT_TRUST_THRESHOLD", "256000"))
+_CONTEXT_TRUST_TAIL = float(os.environ.get("CONTEXT_TRUST_TAIL", "0.5"))
+
+
+def usable_context_budget(window: int) -> int:
+    """Usable per-chunk token budget for a given context window.
+
+    Below the trust threshold: a flat headroom. Above it: only `TAIL` of the
+    excess counts. Examples (T=256k, TAIL=0.5, floor=16k): 128k->112k,
+    272k->264k, 512k->384k, 1.05M->653k.
+    """
+    if window <= _CONTEXT_TRUST_THRESHOLD:
+        usable = window - _CONTEXT_WINDOW_HEADROOM_TOKENS
+    else:
+        usable = _CONTEXT_TRUST_THRESHOLD + int((window - _CONTEXT_TRUST_THRESHOLD) * _CONTEXT_TRUST_TAIL)
+    return max(2000, usable)
+
+
 LITELLM_PRICING_URL = (
     "https://raw.githubusercontent.com/BerriAI/litellm/main/"
     "model_prices_and_context_window.json"
@@ -165,23 +241,70 @@ def apply_pricing_overlay(entries: dict[str, tuple[float, float, float]]) -> int
     return overlaid
 
 
-async def fetch_litellm_pricing(timeout: float = 5.0) -> dict[str, ModelPrice] | None:
-    """Fetch LiteLLM pricing JSON and return a fresh overlaid dict.
+def _build_context_windows_from_litellm(data: dict[str, Any]) -> dict[str, int]:
+    """Overlay LiteLLM `max_input_tokens` onto static defaults, fresh dict.
 
-    Returns None on any fetch / parse failure (caller keeps the existing
-    table). Async so it can run inside the FastAPI lifespan / background
-    task without blocking the event loop.
+    Only ids present in `_STATIC_MODEL_CONTEXT_WINDOW` are looked up; ids missing
+    from LiteLLM (or with a malformed/zero value) keep their static window.
+    Mirrors `_build_pricing_from_litellm`.
     """
+    log = logging.getLogger(__name__)
+    table: dict[str, int] = dict(_STATIC_MODEL_CONTEXT_WINDOW)
+    for model_id in _STATIC_MODEL_CONTEXT_WINDOW:
+        entry = None
+        for prefix in _LITELLM_KEY_PREFIXES:
+            candidate = data.get(f"{prefix}{model_id}")
+            if candidate and "max_input_tokens" in candidate:
+                entry = candidate
+                break
+        if entry is None:
+            continue
+        try:
+            window = int(entry["max_input_tokens"])
+        except (KeyError, TypeError, ValueError) as exc:
+            log.warning("malformed LiteLLM max_input_tokens for %s: %s", model_id, exc)
+            continue
+        if window > 0:
+            table[model_id] = window
+    return table
+
+
+async def _fetch_litellm_json(timeout: float) -> dict[str, Any] | None:
+    """GET the LiteLLM catalog once and return the parsed JSON, or None."""
     log = logging.getLogger(__name__)
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.get(LITELLM_PRICING_URL)
             resp.raise_for_status()
-            data = resp.json()
+            return resp.json()
     except Exception as exc:
-        log.warning("model-pricing fetch failed: %s", exc)
+        log.warning("model-meta fetch failed: %s", exc)
+        return None
+
+
+async def fetch_litellm_pricing(timeout: float = 5.0) -> dict[str, ModelPrice] | None:
+    """Fetch LiteLLM JSON and return a fresh pricing overlay, or None on failure.
+
+    Async so it can run inside the FastAPI lifespan / background task without
+    blocking the event loop.
+    """
+    data = await _fetch_litellm_json(timeout)
+    if data is None:
         return None
     return _build_pricing_from_litellm(data)
+
+
+async def fetch_litellm_model_meta(
+    timeout: float = 5.0,
+) -> tuple[dict[str, ModelPrice], dict[str, int]] | None:
+    """One LiteLLM fetch → (pricing overlay, context-window overlay), or None.
+
+    Lets the refresher update both tables from a single HTTP round-trip.
+    """
+    data = await _fetch_litellm_json(timeout)
+    if data is None:
+        return None
+    return _build_pricing_from_litellm(data), _build_context_windows_from_litellm(data)
 
 
 def estimate_cost_usd(
