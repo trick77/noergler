@@ -1346,6 +1346,19 @@ class TestContextWindowAutoCap:
         client.max_tokens_per_chunk = 4_000  # simulate a 413 "Max size: 4,000 tokens"
         assert client.max_tokens_per_chunk == 4_000
 
+    def test_413_cap_is_shrink_only(self, review_config, token_provider):
+        # The setter is intrinsically shrink-only (min), so a later, larger value
+        # can never raise an already-learned cap — even bypassing the 413 guard.
+        cfg = LLMConfig(
+            model="gpt-5.5",
+            oauth_token="t",
+            api_url="https://api.githubcopilot.com",
+        )
+        client = LLMClient(cfg, review_config, token_provider)
+        client.max_tokens_per_chunk = 5_000
+        client.max_tokens_per_chunk = 80_000  # would-be raise — must be ignored
+        assert client.max_tokens_per_chunk == 5_000
+
 
 class TestParse413TokenLimit:
     @pytest.mark.asyncio

@@ -829,7 +829,8 @@ class LLMClient:
         rebuilding the client. Falls back to the conservative default for an
         unknown model.
         """
-        return context_window_for(self.config.model) or _DEFAULT_CONTEXT_WINDOW
+        cw = context_window_for(self.config.model)
+        return cw if cw is not None else _DEFAULT_CONTEXT_WINDOW
 
     @property
     def max_tokens_per_chunk(self) -> int:
@@ -840,8 +841,10 @@ class LLMClient:
     @max_tokens_per_chunk.setter
     def max_tokens_per_chunk(self, value: int) -> None:
         # The only legitimate writer is a 413 "Max size" response shrinking the
-        # budget; record it as the learned cap so the getter's min() preserves it.
-        self._api_learned_cap = value
+        # budget. Record it as the learned cap, taking the min so the shrink-only
+        # invariant is intrinsic here (not reliant on the caller's guard) and a
+        # learned cap can never be raised.
+        self._api_learned_cap = min(self._api_learned_cap, value)
 
     async def close(self):
         await self.openai_client.close()

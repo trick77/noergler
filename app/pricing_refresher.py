@@ -80,6 +80,11 @@ async def refresh_once(pool: asyncpg.Pool | None) -> bool:
             await upsert_model_pricing(pool, entries)
         except Exception as exc:
             logger.warning("model-pricing DB persist failed: %s", exc)
+    # NOTE: context windows are deliberately NOT persisted/hydrated like pricing.
+    # A stale window is harmless (the 413 handler shrinks the chunk), and the
+    # corrected static defaults are already accurate, so a DB cache would be
+    # nearly inert. Pricing is persisted because cost accuracy needs the
+    # last-known actual prices when LiteLLM is down at cold start.
     return True
 
 

@@ -161,9 +161,9 @@ _CONTEXT_TRUST_TAIL = float(os.environ.get("CONTEXT_TRUST_TAIL", "0.5"))
 def usable_context_budget(window: int) -> int:
     """Usable per-chunk token budget for a given context window.
 
-    Below the trust threshold: a flat headroom. Above it: only `TAIL` of the
-    excess counts. Examples (T=256k, TAIL=0.5, floor=16k): 128k->112k,
-    272k->264k, 512k->384k, 1.05M->653k.
+    Below the trust threshold: the full window minus a flat headroom. Above it:
+    the threshold plus only `TAIL` of the excess. Examples (T=256k, TAIL=0.5,
+    floor=16k): 128k->112k, 272k->264k, 512k->384k, 1.05M->653k.
     """
     if window <= _CONTEXT_TRUST_THRESHOLD:
         usable = window - _CONTEXT_WINDOW_HEADROOM_TOKENS
