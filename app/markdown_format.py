@@ -12,7 +12,13 @@ backslash), change it here — it is the single point of control.
 
 A forced break the renderer cannot undo will double-wrap on views narrower than
 ``WRAP_WIDTH`` (mobile, side-by-side diff). That trade-off is accepted: the goal
-is a hard cap on line width, not graceful reflow.
+is to cap line width, not graceful reflow. A single unbreakable token (URL,
+``path/to/file``) is left to overflow rather than being chopped, so the cap is a
+target, not an absolute guarantee.
+
+Idempotency and the structural pass-through both assume ``HARD_BREAK == "\\n"``
+(``wrap_prose`` re-splits on ``"\\n"``, exactly reversing the join). Changing
+``HARD_BREAK`` to a multi-char token requires updating the splitter accordingly.
 """
 
 import re
@@ -31,8 +37,11 @@ _STRUCTURAL = re.compile(r"^\s*([-*+>]\s|#{1,6}\s|\d+\.\s)")
 
 # Inline code spans — masked before wrapping so a span with internal spaces
 # (e.g. `foo bar`) is never split across a break, then restored verbatim.
+# Placeholders are index-encoded (\x00<n>\x00) so adjacent spans stay distinct
+# and restore maps each back to the right span. NUL never renders, so we strip
+# any pre-existing NUL from input to keep the placeholder space collision-free.
 _CODE_SPAN = re.compile(r"`[^`]+`")
-_MASK_CHAR = "\x00"
+_PLACEHOLDER = re.compile("\x00(\\d+)\x00")
 
 
 def wrap_prose(text: str, width: int = WRAP_WIDTH) -> str:
@@ -45,6 +54,9 @@ def wrap_prose(text: str, width: int = WRAP_WIDTH) -> str:
     """
     if not text:
         return text
+
+    # NUL never renders and would collide with our mask placeholders below.
+    text = text.replace("\x00", "")
 
     out: list[str] = []
     in_fence = False
@@ -66,10 +78,11 @@ def _wrap_line(line: str, width: int) -> str:
     spans: list[str] = []
 
     def _mask(match: re.Match[str]) -> str:
+        idx = len(spans)
         spans.append(match.group(0))
-        # Same length so wrapped width stays accurate; no spaces so textwrap
-        # treats it as one unbreakable token.
-        return _MASK_CHAR * len(match.group(0))
+        # Index-encoded, no spaces → textwrap keeps it as one unbreakable token,
+        # and adjacent spans stay separately addressable on restore.
+        return f"\x00{idx}\x00"
 
     masked = _CODE_SPAN.sub(_mask, line)
     pieces = textwrap.wrap(
@@ -82,6 +95,5 @@ def _wrap_line(line: str, width: int) -> str:
         return line
     wrapped = HARD_BREAK.join(pieces)
     if spans:
-        it = iter(spans)
-        wrapped = re.sub(f"{_MASK_CHAR}+", lambda _: next(it), wrapped)
+        wrapped = _PLACEHOLDER.sub(lambda m: spans[int(m.group(1))], wrapped)
     return wrapped

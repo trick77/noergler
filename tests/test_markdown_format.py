@@ -54,6 +54,26 @@ def test_code_span_with_spaces_preserved():
     assert "`do thing`" in wrapped  # span not split across a break
 
 
+def test_adjacent_code_spans_both_preserved():
+    text = (
+        "Compare `alpha` and `beta` carefully here because the ordering of "
+        "those two calls genuinely matters for correctness in this path."
+    )
+    wrapped = wrap_prose(text)
+    assert "`alpha`" in wrapped
+    assert "`beta`" in wrapped
+
+
+def test_stray_nul_in_input_does_not_crash():
+    text = (
+        "A `real` span and a stray \x00 null byte in otherwise normal prose "
+        "that is deliberately long enough to force the wrapper to wrap it."
+    )
+    wrapped = wrap_prose(text)  # must not raise
+    assert "`real`" in wrapped
+    assert "\x00" not in wrapped
+
+
 def test_structural_lines_pass_through():
     text = (
         "# Heading\n"
