@@ -7,6 +7,7 @@ import httpx
 
 from app.config import BitbucketConfig
 from app.http_stats import make_event_hook
+from app.markdown_format import wrap_prose
 from app.models import ReviewFinding
 
 logger = logging.getLogger(__name__)
@@ -106,7 +107,7 @@ class BitbucketClient:
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{pr_id}/comments"
         path = re.sub(r"^[ab]/", "", finding.file)
         label = finding.severity.capitalize()
-        parts = [f"**{label}:** {finding.comment}"]
+        parts = [wrap_prose(f"**{label}:** {finding.comment}")]
         if finding.suggestion:
             body = finding.suggestion.strip("\n")
             # BBDC renders an "Apply suggestion" button only on single-line

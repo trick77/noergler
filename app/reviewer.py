@@ -16,6 +16,7 @@ import structlog
 from app.bitbucket import BitbucketClient, IncrementalDiffUnavailable
 from app.db import repository
 from app.feedback import classify_feedback, disagree_response
+from app.markdown_format import wrap_prose
 from app.llm_client import (
     INFERENCE_HARD_TIMEOUT_SECONDS,
     LLMClient,
@@ -1950,7 +1951,7 @@ class Reviewer:
         # the italic form means "the model did not return this field at all"
         # (a defect worth seeing) while the plain sentinel means "the model
         # looked and had nothing to report" (the intended clean-case output).
-        overview_body = summary.overview.strip() if summary.overview else "_Not provided._"
+        overview_body = wrap_prose(summary.overview.strip()) if summary.overview else "_Not provided._"
         sections.append("### Overview\n" + overview_body)
 
         # --- 2. Strengths (always rendered; `None.` when empty)
@@ -1986,11 +1987,11 @@ class Reviewer:
         sections.append("\n".join(issues_lines))
 
         # --- 4. Security / Performance (always rendered; `None notable.` when empty)
-        sec_body = summary.security_performance.strip() or "None notable."
+        sec_body = wrap_prose(summary.security_performance.strip()) or "None notable."
         sections.append("### Security / Performance\n" + sec_body)
 
         # --- 5. Test Coverage (always rendered)
-        tc_body = summary.test_coverage.strip() or "_Not assessed._"
+        tc_body = wrap_prose(summary.test_coverage.strip()) or "_Not assessed._"
         sections.append("### Test Coverage\n" + tc_body)
 
         # --- 6. Ticket / Requirement Compliance (conditional on ticket presence)
@@ -2049,7 +2050,7 @@ class Reviewer:
         verdict_label = self._VERDICT_LABEL.get(
             summary.verdict_decision, self._VERDICT_LABEL["approve"],
         )
-        rationale = summary.verdict_rationale.strip() or "_No rationale provided._"
+        rationale = wrap_prose(summary.verdict_rationale.strip()) or "_No rationale provided._"
         sections.append(f"### Recommendation\n**{verdict_label}** — {rationale}")
 
         # --- Scope
