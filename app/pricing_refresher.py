@@ -11,10 +11,12 @@ import asyncpg
 
 from app.config import (
     _MODEL_PRICING,
+    _STATIC_MODEL_CONTEXT_WINDOW,
     _STATIC_MODEL_PRICING,
+    _swap_context_windows,
     _swap_pricing,
     apply_pricing_overlay,
-    fetch_litellm_pricing,
+    fetch_litellm_model_meta,
 )
 from app.db.repository import load_model_pricing, upsert_model_pricing
 
@@ -43,20 +45,27 @@ async def hydrate_from_db(pool: asyncpg.Pool) -> int:
 async def refresh_once(pool: asyncpg.Pool | None) -> bool:
     """One refresh cycle: fetch LiteLLM, swap in-memory, persist to DB.
 
-    Returns True on success, False if the fetch failed (live table left
-    untouched in that case).
+    A single fetch updates both pricing and context-window tables. Returns
+    True on success, False if the fetch failed (live tables left untouched).
     """
-    table = await fetch_litellm_pricing()
-    if table is None:
+    meta = await fetch_litellm_model_meta()
+    if meta is None:
         return False
+    table, ctx_table = meta
     _swap_pricing(table)
+    _swap_context_windows(ctx_table)
     refreshed = sum(
         1 for k in _STATIC_MODEL_PRICING
         if table.get(k) != _STATIC_MODEL_PRICING[k]
     )
+    ctx_refreshed = sum(
+        1 for k in _STATIC_MODEL_CONTEXT_WINDOW
+        if ctx_table.get(k) != _STATIC_MODEL_CONTEXT_WINDOW[k]
+    )
     logger.info(
-        "model-pricing: refreshed %d/%d entries from LiteLLM",
+        "model-meta: refreshed %d/%d prices, %d/%d context windows from LiteLLM",
         refreshed, len(_STATIC_MODEL_PRICING),
+        ctx_refreshed, len(_STATIC_MODEL_CONTEXT_WINDOW),
     )
     if pool is not None:
         try:
@@ -71,6 +80,11 @@ async def refresh_once(pool: asyncpg.Pool | None) -> bool:
             await upsert_model_pricing(pool, entries)
         except Exception as exc:
             logger.warning("model-pricing DB persist failed: %s", exc)
+    # NOTE: context windows are deliberately NOT persisted/hydrated like pricing.
+    # A stale window is harmless (the 413 handler shrinks the chunk), and the
+    # corrected static defaults are already accurate, so a DB cache would be
+    # nearly inert. Pricing is persisted because cost accuracy needs the
+    # last-known actual prices when LiteLLM is down at cold start.
     return True
 
 

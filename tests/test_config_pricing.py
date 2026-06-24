@@ -7,12 +7,17 @@ import respx
 
 from app.config import (
     LITELLM_PRICING_URL,
+    _STATIC_MODEL_CONTEXT_WINDOW,
     _STATIC_MODEL_PRICING,
+    _swap_context_windows,
     _swap_pricing,
     apply_pricing_overlay,
+    context_window_for,
     estimate_cost_usd,
+    fetch_litellm_model_meta,
     fetch_litellm_pricing,
     pricing_for,
+    usable_context_budget,
 )
 
 
@@ -20,8 +25,10 @@ from app.config import (
 def _reset_pricing_table():
     """Each test starts (and ends) with the static defaults installed."""
     _swap_pricing(dict(_STATIC_MODEL_PRICING))
+    _swap_context_windows(dict(_STATIC_MODEL_CONTEXT_WINDOW))
     yield
     _swap_pricing(dict(_STATIC_MODEL_PRICING))
+    _swap_context_windows(dict(_STATIC_MODEL_CONTEXT_WINDOW))
 
 
 class TestPricingFor:
@@ -133,3 +140,86 @@ class TestFetchLitellmPricing:
             assert await fetch_litellm_pricing() is None
         # And the live table is untouched (still equals static defaults).
         assert pricing_for("gpt-5.4") == _STATIC_MODEL_PRICING["gpt-5.4"]
+
+
+class TestUsableContextBudget:
+    def test_below_threshold_uses_flat_headroom(self):
+        # 128k and 200k are below the 256k trust threshold → flat 16k reserve.
+        assert usable_context_budget(128_000) == 112_000
+        assert usable_context_budget(200_000) == 184_000
+
+    def test_above_threshold_degrades_by_tail_fraction(self):
+        # Only half of the excess beyond 256k counts.
+        assert usable_context_budget(272_000) == 264_000
+        assert usable_context_budget(512_000) == 384_000
+        assert usable_context_budget(1_050_000) == 653_000
+
+    def test_at_threshold_is_flat_branch(self):
+        assert usable_context_budget(256_000) == 256_000 - 16_000
+
+    def test_tiny_window_clamped_to_floor(self):
+        assert usable_context_budget(1_000) == 2_000
+
+
+class TestContextWindowFor:
+    def test_known_and_corrected_values(self):
+        assert context_window_for("gpt-5") == 272_000
+        # Corrected from the old 272k pricing-threshold bug.
+        assert context_window_for("gpt-5.5") == 1_050_000
+        assert context_window_for("gpt-5.4") == 1_050_000
+
+    def test_dated_suffix_prefix_match(self):
+        assert context_window_for("gpt-5-2025-01-01") == 272_000
+
+    def test_unknown_returns_none(self):
+        assert context_window_for("imaginary-9000") is None
+
+
+class TestFetchLitellmModelMeta:
+    @pytest.mark.asyncio
+    async def test_overlays_pricing_and_context_window(self):
+        payload = {
+            "gpt-5.4": {
+                "input_cost_per_token": 0.000004,
+                "output_cost_per_token": 0.00002,
+                "max_input_tokens": 2_000_000,
+            },
+        }
+        with respx.mock:
+            respx.get(LITELLM_PRICING_URL).mock(
+                return_value=httpx.Response(200, text=json.dumps(payload))
+            )
+            meta = await fetch_litellm_model_meta()
+        assert meta is not None
+        pricing, ctx = meta
+        assert pricing["gpt-5.4"].input_per_mtok == pytest.approx(4.0)
+        # Context window comes from max_input_tokens, overriding the static value.
+        assert ctx["gpt-5.4"] == 2_000_000
+        # Ids missing from the payload keep their static window.
+        assert ctx["gpt-5.5"] == _STATIC_MODEL_CONTEXT_WINDOW["gpt-5.5"]
+
+    @pytest.mark.asyncio
+    async def test_malformed_max_input_tokens_keeps_static(self):
+        payload = {
+            "gpt-5.4": {
+                "input_cost_per_token": 0.000004,
+                "output_cost_per_token": 0.00002,
+                "max_input_tokens": "not-a-number",
+            },
+        }
+        with respx.mock:
+            respx.get(LITELLM_PRICING_URL).mock(
+                return_value=httpx.Response(200, text=json.dumps(payload))
+            )
+            meta = await fetch_litellm_model_meta()
+        assert meta is not None
+        _, ctx = meta
+        assert ctx["gpt-5.4"] == _STATIC_MODEL_CONTEXT_WINDOW["gpt-5.4"]
+
+    @pytest.mark.asyncio
+    async def test_http_failure_returns_none(self):
+        with respx.mock:
+            respx.get(LITELLM_PRICING_URL).mock(
+                return_value=httpx.Response(503, text="boom")
+            )
+            assert await fetch_litellm_model_meta() is None

@@ -1276,6 +1276,12 @@ class TestContextWindowAutoCap:
         assert _context_window_for("gpt-5") == 272_000
         assert _context_window_for("claude-sonnet-4") == 200_000
 
+    def test_gpt_5_5_and_5_4_use_real_million_window(self):
+        # Regression: these were hardcoded to 272k (the pricing threshold), not
+        # the real 1.05M context window. Now sourced from LiteLLM's static fallback.
+        assert _context_window_for("gpt-5.5") == 1_050_000
+        assert _context_window_for("gpt-5.4") == 1_050_000
+
     def test_dated_id_prefix_match(self):
         assert _context_window_for("gpt-5-2025-01-01") == 272_000
         assert _context_window_for("claude-sonnet-4-20250514") == 200_000
@@ -1284,6 +1290,7 @@ class TestContextWindowAutoCap:
         assert _context_window_for("mystery-model-9000") is None
 
     def test_budget_derived_from_context_window(self, review_config, token_provider):
+        # gpt-4o's 128k window is below the trust threshold → flat 16k headroom.
         cfg = LLMConfig(
             model="gpt-4o",
             oauth_token="t",
@@ -1294,14 +1301,27 @@ class TestContextWindowAutoCap:
         assert client.context_window == 128_000
 
     def test_budget_for_codex_model(self, review_config, token_provider):
+        # gpt-5.3-codex's 272k window is just above the 256k threshold, so the
+        # diminishing-trust curve applies: 256k + (272k-256k)*0.5 = 264k.
         cfg = LLMConfig(
             model="gpt-5.3-codex",
             oauth_token="t",
             api_url="https://api.githubcopilot.com",
         )
         client = LLMClient(cfg, review_config, token_provider)
-        assert client.max_tokens_per_chunk == 272_000 - 16_000
+        assert client.max_tokens_per_chunk == 264_000
         assert client.context_window == 272_000
+
+    def test_budget_for_million_token_model(self, review_config, token_provider):
+        # gpt-5.5's 1.05M window degrades hard: 256k + (1050k-256k)*0.5 = 653k.
+        cfg = LLMConfig(
+            model="gpt-5.5",
+            oauth_token="t",
+            api_url="https://api.githubcopilot.com",
+        )
+        client = LLMClient(cfg, review_config, token_provider)
+        assert client.context_window == 1_050_000
+        assert client.max_tokens_per_chunk == 653_000
 
     def test_unknown_model_falls_back_to_default(self, review_config, token_provider):
         cfg = LLMConfig(
@@ -1312,6 +1332,32 @@ class TestContextWindowAutoCap:
         client = LLMClient(cfg, review_config, token_provider)
         assert client.context_window == 128_000
         assert client.max_tokens_per_chunk == 128_000 - 16_000
+
+    def test_413_cap_clamps_budget_below_curve(self, review_config, token_provider):
+        # A 413-learned cap (via the setter) takes precedence over the curve, and
+        # is never undone — the getter returns min(curve, cap).
+        cfg = LLMConfig(
+            model="gpt-5.5",
+            oauth_token="t",
+            api_url="https://api.githubcopilot.com",
+        )
+        client = LLMClient(cfg, review_config, token_provider)
+        assert client.max_tokens_per_chunk == 653_000
+        client.max_tokens_per_chunk = 4_000  # simulate a 413 "Max size: 4,000 tokens"
+        assert client.max_tokens_per_chunk == 4_000
+
+    def test_413_cap_is_shrink_only(self, review_config, token_provider):
+        # The setter is intrinsically shrink-only (min), so a later, larger value
+        # can never raise an already-learned cap — even bypassing the 413 guard.
+        cfg = LLMConfig(
+            model="gpt-5.5",
+            oauth_token="t",
+            api_url="https://api.githubcopilot.com",
+        )
+        client = LLMClient(cfg, review_config, token_provider)
+        client.max_tokens_per_chunk = 5_000
+        client.max_tokens_per_chunk = 80_000  # would-be raise — must be ignored
+        assert client.max_tokens_per_chunk == 5_000
 
 
 class TestParse413TokenLimit:
