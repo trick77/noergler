@@ -64,23 +64,70 @@ def test_adjacent_code_spans_both_preserved():
     assert "`beta`" in wrapped
 
 
-def test_stray_nul_in_input_does_not_crash():
+def test_code_span_counts_toward_width():
+    # A long code span used to be masked to a ~3-char placeholder, so textwrap
+    # undercounted the line and let it overflow. The placeholder is now padded
+    # to the span's real length, so every visible line stays within the cap.
+    span = "`ServiceLeistungsfallDatenschutz`"
     text = (
-        "A `real` span and a stray \x00 null byte in otherwise normal prose "
-        "that is deliberately long enough to force the wrapper to wrap it."
+        f"Removes the personengruppe Fremdfall privacy workaround from {span}, "
+        "including the injected feature-flag usage entirely from the service."
+    )
+    wrapped = wrap_prose(text)
+    assert wrapped != text  # the span line was broken up
+    for line in _visible_lines(wrapped):
+        assert len(line) <= WRAP_WIDTH
+
+
+def test_stray_control_bytes_in_input_do_not_crash():
+    text = (
+        "A `real` span and a stray \x00 null \x01 byte in otherwise normal "
+        "prose that is deliberately long enough to force the wrapper to wrap."
     )
     wrapped = wrap_prose(text)  # must not raise
     assert "`real`" in wrapped
     assert "\x00" not in wrapped
+    assert "\x01" not in wrapped
 
 
-def test_structural_lines_pass_through():
+def test_headings_and_block_quotes_pass_through():
     text = (
         "# Heading\n"
-        "- a bullet item that is quite long but must stay on one structural line\n"
-        "> a block quote that is also long and should not be reflowed by us here\n"
-        "1. a numbered item that is similarly long and must remain untouched too"
+        "> a block quote that is also long and should not be reflowed by us here"
     )
+    assert wrap_prose(text) == text
+
+
+def test_long_list_item_wraps_with_hang_indent():
+    text = (
+        "- Access-control logic is simplified by removing the temporary branch "
+        "and relying on the existing freigaben check across the whole service."
+    )
+    wrapped = wrap_prose(text)
+    lines = _visible_lines(wrapped)
+    assert len(lines) > 1  # the long bullet was wrapped
+    assert lines[0].startswith("- ")  # marker preserved on the first line
+    for line in lines[1:]:
+        assert line.startswith("  ")  # continuation hang-indented under text
+    for line in lines:
+        assert len(line) <= WRAP_WIDTH
+
+
+def test_long_numbered_item_wraps():
+    text = (
+        "1. The updated test covers the changed Fremdfall behavior for the "
+        "restricted personengruppe freigaben path and asserts the new return."
+    )
+    wrapped = wrap_prose(text)
+    lines = _visible_lines(wrapped)
+    assert len(lines) > 1
+    assert lines[0].startswith("1. ")
+    for line in lines:
+        assert len(line) <= WRAP_WIDTH
+
+
+def test_short_list_item_is_noop():
+    text = "- Looks good."
     assert wrap_prose(text) == text
 
 
