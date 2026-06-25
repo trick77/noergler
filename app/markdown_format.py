@@ -19,6 +19,13 @@ target, not an absolute guarantee.
 Idempotency and the structural pass-through both assume ``HARD_BREAK == "\\n"``
 (``wrap_prose`` re-splits on ``"\\n"``, exactly reversing the join). Changing
 ``HARD_BREAK`` to a multi-char token requires updating the splitter accordingly.
+
+Re-wrapping is idempotent with one bounded exception: a list-item continuation
+line consisting solely of a single token wider than the column (e.g. a bare long
+URL) loses its hang-indent on a second pass, because on re-entry such a line is
+indistinguishable from plain prose and ``textwrap`` drops the leading indent.
+This is cosmetic (content and code spans are untouched) and unreached in
+practice — every caller wraps fresh model output exactly once.
 """
 
 import re
@@ -55,7 +62,8 @@ _PLACEHOLDER = re.compile("\x00(\\d+)\x00\x01*")
 def wrap_prose(text: str, width: int = WRAP_WIDTH) -> str:
     """Hard-wrap plain prose lines at ``width``; pass structural lines through.
 
-    Idempotent. A short string (already under ``width``) is returned unchanged.
+    Idempotent (see the module docstring for the one bounded list-item
+    exception). A short string (already under ``width``) is returned unchanged.
     Headings, block quotes and fenced code blocks are left intact; list items
     are wrapped with their marker preserved and continuation lines hang-indented
     under the text. Inline code spans and long unbreakable tokens (URLs,
