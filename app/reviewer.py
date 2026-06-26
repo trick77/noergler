@@ -1956,7 +1956,7 @@ class Reviewer:
 
         # --- 2. Strengths (always rendered; `None.` when empty)
         if summary.strengths:
-            strengths_body = "\n".join(f"- {s}" for s in summary.strengths)
+            strengths_body = wrap_prose("\n".join(f"- {s}" for s in summary.strengths))
         else:
             strengths_body = "None."
         sections.append("### Strengths\n" + strengths_body)
@@ -1984,7 +1984,7 @@ class Reviewer:
                 if not headline:
                     headline = f.comment.splitlines()[0].strip() if f.comment else "(no description)"
                 issues_lines.append(f"{idx}. {headline}")
-        sections.append("\n".join(issues_lines))
+        sections.append(wrap_prose("\n".join(issues_lines)))
 
         # --- 4. Security / Performance (always rendered; `None notable.` when empty)
         sec_body = wrap_prose(summary.security_performance.strip()) or "None notable."
