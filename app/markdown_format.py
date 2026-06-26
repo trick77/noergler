@@ -33,7 +33,7 @@ import textwrap
 
 # Target column width. Kept a module constant so it is trivial to promote to
 # config later.
-WRAP_WIDTH = 80
+WRAP_WIDTH = 100
 
 # Token inserted between wrapped pieces of a paragraph. See module docstring.
 HARD_BREAK = "\n"
