@@ -23,7 +23,6 @@ Built for the realities of enterprise setups: self-hosted Bitbucket Server, on-p
 - Jira ticket compliance checking against acceptance criteria
 - Project-specific review guidelines via `AGENTS.md`
 - Comment deduplication against existing review comments
-- Feedback collection and usefulness tracking
 - HMAC-SHA256 webhook signature validation
 - Corporate CA certificate support
 
@@ -103,12 +102,12 @@ All configuration is driven by environment variables. The required variables are
 
 See [`.env.example`](.env.example) for all optional settings and their defaults.
 
-### Optional: forward review-cost + reviewer-precision events to riptide
+### Optional: forward review-cost events to riptide
 
 If your org runs [riptide](https://github.com/trick77/riptide) as a delivery-metrics
-collector, noergler can forward two event types so that LLM finops (model, tokens,
-cost) and reviewer-precision (disagree feedback) live alongside your DORA metrics
-instead of in a parallel API. Set both:
+collector, noergler can forward a per-PR review-cost rollup (model, tokens, cost,
+diff size, findings) so that LLM finops live alongside your DORA metrics instead of
+in a parallel API. Set both:
 
 | Variable | Description |
 |---|---|
@@ -152,9 +151,8 @@ Both `postgresql://` and `postgres://` URI schemes are accepted.
 |---|---|
 | `pr_reviews` | Tracks reviewed PRs, lifecycle timestamps (`opened_at` / `merged_at` / `deleted_at` / `ignored_at`), summary comment IDs, and per-PR cost totals. Rows are retained across merge and delete — never hard-deleted. `ignored_at` is set when the user deletes the summary comment and cleared again on the next `@noergler` mention. |
 | `review_findings` | Individual code findings with file, line, severity, and Bitbucket comment ID. Used for inline-comment dedup on incremental reviews. |
-| `feedback_events` | Disagree reactions on review comments. Used to skip duplicate reactions. |
 
-Metrics (cost-by-model, reviewer-precision, etc.) live in [riptide](https://github.com/trick77/riptide), not in noergler. Set `RIPTIDE_URL` + `RIPTIDE_TOKEN` to forward them.
+Metrics (cost-by-model, etc.) live in [riptide](https://github.com/trick77/riptide), not in noergler. Set `RIPTIDE_URL` + `RIPTIDE_TOKEN` to forward them.
 
 **Running migrations:**
 
@@ -280,8 +278,8 @@ GET /health → {"status": "ok"}
 ## Metrics
 
 Noergler does **not** expose metrics directly. Set `RIPTIDE_URL` + `RIPTIDE_TOKEN`
-(see [Optional: forward review-cost + reviewer-precision events to riptide](#optional-forward-review-cost--reviewer-precision-events-to-riptide))
-to forward LLM finops (model, tokens, cost) and reviewer-precision (disagree feedback)
+(see [Optional: forward review-cost events to riptide](#optional-forward-review-cost-events-to-riptide))
+to forward LLM finops (model, tokens, cost)
 to a [riptide](https://github.com/trick77/riptide) collector — all dashboards,
 SQL queries, and DORA/SPACE rollups live there alongside delivery metrics from
 Bitbucket / ArgoCD / CI.
@@ -301,7 +299,6 @@ app/
   jira.py              # Jira ticket fetching and compliance checking
   models.py            # Pydantic models (webhook payloads, findings)
   config.py            # Environment-based configuration
-  feedback.py          # Feedback classification
   db/
     pool.py            # asyncpg connection pool management
     repository.py      # Database operations (upsert, query, insert)

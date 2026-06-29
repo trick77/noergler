@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import re
 import time
@@ -15,7 +14,6 @@ import structlog
 
 from app.bitbucket import BitbucketClient, IncrementalDiffUnavailable
 from app.db import repository
-from app.feedback import classify_feedback, disagree_response
 from app.markdown_format import wrap_prose
 from app.llm_client import (
     INFERENCE_HARD_TIMEOUT_SECONDS,
@@ -252,11 +250,6 @@ async def _safe_db(coro: Awaitable[_T], fallback: _T | None = None) -> _T | None
     except Exception:
         logger.warning("DB operation failed, using fallback", exc_info=True)
         return fallback
-
-
-def _is_bot_comment(comment: dict[str, Any], bot_username: str | None) -> bool:
-    """Identify a bot comment by author slug."""
-    return bool(bot_username) and comment.get("author_slug") == bot_username
 
 
 def _count_diff_lines(diff: str) -> tuple[int, int]:
@@ -1231,40 +1224,8 @@ class Reviewer:
                 )
             except Exception:
                 logger.warning("riptide emit (pr_completed merged) failed", exc_info=True)
-
-            comments = await self.bitbucket.fetch_pr_comments(project_key, repo_slug, pr.id)
-            bot_username = self.bitbucket.bot_username
-
-            noergler_inline = {
-                c["id"]: c for c in comments
-                if _is_bot_comment(c, bot_username)
-                and c.get("path") is not None
-                and c.get("id") is not None
-            }
-
-            if not noergler_inline:
-                logger.info("%s merged — no review comments", pr_tag)
-                return
-
-            disagreed_parent_ids: set[int] = set()
-            for c in comments:
-                parent_id = c.get("parent_id")
-                if parent_id is None or parent_id not in noergler_inline:
-                    continue
-                if _is_bot_comment(c, bot_username):
-                    continue
-                if classify_feedback(c.get("text", "")) == "negative":
-                    disagreed_parent_ids.add(parent_id)
-
-            disagreed = len(disagreed_parent_ids)
-            total = len(noergler_inline)
-            useful_pct = (total - disagreed) / total * 100
-            logger.info(
-                "%s merged — %d comments, %d disagreed (%.0f%% useful)",
-                pr_tag, total, disagreed, useful_pct,
-            )
         except Exception:
-            logger.error("Merged stats for %s failed", pr_tag, exc_info=True)
+            logger.error("Merge handling for %s failed", pr_tag, exc_info=True)
 
     async def handle_pr_declined(self, payload: WebhookPayload) -> None:
         pr = payload.pullRequest
@@ -1429,117 +1390,6 @@ class Reviewer:
             first_review_at=first_review_at,
             closed_at=datetime.now(timezone.utc),
         )
-
-    async def handle_feedback(self, payload: WebhookPayload) -> None:
-        comment = payload.comment
-        if not comment or payload.commentParentId is None:
-            logger.debug("Feedback skipped: no comment or no commentParentId")
-            return
-
-        # Self-loop prevention: ignore bot's own replies
-        if comment.author.name == self.bitbucket.bot_username:
-            logger.debug("Feedback skipped: reply is from bot")
-            return
-
-        pr = payload.pullRequest
-        project_key, repo_slug = self._extract_project_repo(payload)
-        if not project_key or not repo_slug:
-            logger.debug("Feedback skipped: could not extract project/repo")
-            return
-
-        pr_tag = f"{project_key}/{repo_slug}#{pr.id}"
-        parent_id = payload.commentParentId
-
-        try:
-            # Look up the parent finding by Bitbucket comment ID
-            finding = await _safe_db(
-                repository.get_finding_by_comment_id(self.db_pool, parent_id),
-                fallback=None,
-            )
-            if finding is None:
-                logger.info(
-                    "Feedback skipped on %s: parent %d not found in DB",
-                    pr_tag, parent_id,
-                )
-                return
-
-            parent_file = finding["file_path"]
-            parent_line = finding["line_number"]
-            parent_severity = finding["severity"]
-            parent_commit_sha = finding.get("commit_sha")
-            suggestion_text = ""
-
-            classification = classify_feedback(comment.text)
-            if classification != "negative":
-                logger.debug("Feedback skipped on %s: classified as %s", pr_tag, classification)
-                return
-
-            already_disagreed = await _safe_db(
-                repository.has_negative_feedback(
-                    self.db_pool, project_key, repo_slug, pr.id, parent_id,
-                ),
-                fallback=False,
-            )
-            if already_disagreed:
-                logger.info(
-                    "Feedback skipped on %s: parent %d already has a negative feedback",
-                    pr_tag, parent_id,
-                )
-                return
-
-            logger.info(
-                "Disagree feedback: %s",
-                json.dumps({
-                    "event": "disagree",
-                    "pr": pr_tag,
-                    "comment_id": parent_id,
-                    "file": parent_file or "",
-                    "line": parent_line,
-                    "suggestion": suggestion_text,
-                    "author": comment.author.name,
-                }),
-            )
-
-            reacted = await self.bitbucket.add_comment_reaction(
-                project_key, repo_slug, pr.id, comment.id
-            )
-            if not reacted:
-                await self.bitbucket.reply_to_comment(
-                    project_key, repo_slug, pr.id, comment.id,
-                    disagree_response(),
-                )
-
-            # Persist feedback event
-            await _safe_db(
-                repository.insert_feedback(
-                    self.db_pool,
-                    project_key=project_key,
-                    repo_slug=repo_slug,
-                    pr_id=pr.id,
-                    bitbucket_comment_id=parent_id,
-                    feedback_author=comment.author.name,
-                    classification=classification,
-                    file_path=parent_file,
-                    severity=parent_severity,
-                )
-            )
-            if self.riptide is not None and self.riptide.enabled:
-                # `disagreed` mirrors noergler's "negative" classification.
-                # `acknowledged` is reserved for a future positive-feedback path.
-                try:
-                    await self.riptide.emit_feedback(
-                        pr_key=pr_tag,
-                        finding_id=str(parent_id),
-                        verdict="disagreed",
-                        actor=comment.author.name,
-                        repo=f"{project_key}/{repo_slug}",
-                        commit_sha=parent_commit_sha,
-                        occurred_at=datetime.now(timezone.utc),
-                    )
-                except Exception:
-                    logger.warning("riptide emit (feedback) failed", exc_info=True)
-        except Exception:
-            logger.error("Feedback handling on %s failed", pr_tag, exc_info=True)
 
     def _extract_project_repo(
         self, payload: WebhookPayload

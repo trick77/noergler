@@ -11,14 +11,16 @@ _M005 = _VERSIONS / "005_drop_metrics_layer.py"
 _M006 = _VERSIONS / "006_model_pricing.py"
 _M007 = _VERSIONS / "007_pr_rollup_for_riptide.py"
 _M008 = _VERSIONS / "008_pr_ignored.py"
+_M009 = _VERSIONS / "009_drop_feedback_events.py"
 
 
-def test_migration_chain_is_linear_and_reaches_008():
+def test_migration_chain_is_linear_and_reaches_009():
     script = ScriptDirectory.from_config(Config("alembic.ini"))
     revs = [(r.revision, r.down_revision) for r in script.walk_revisions()]
     chain = [r for r, _ in revs]
-    assert chain == ["008", "007", "006", "005", "004", "003", "002", "001"]
+    assert chain == ["009", "008", "007", "006", "005", "004", "003", "002", "001"]
     assert dict(revs) == {
+        "009": "008",
         "008": "007",
         "007": "006",
         "006": "005",
@@ -28,6 +30,15 @@ def test_migration_chain_is_linear_and_reaches_008():
         "002": "001",
         "001": None,
     }
+
+
+def test_009_drops_feedback_events_and_round_trips():
+    text = _M009.read_text()
+    assert "DROP TABLE IF EXISTS feedback_events" in text
+    assert "DROP INDEX IF EXISTS idx_feedback_events_pr" in text
+    # downgrade recreates the table and its index
+    assert "CREATE TABLE feedback_events" in text
+    assert "CREATE INDEX idx_feedback_events_pr" in text
 
 
 def test_008_adds_ignored_at_and_round_trips():

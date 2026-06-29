@@ -423,61 +423,6 @@ async def get_existing_findings_for_prompt(
         ]
 
 
-async def get_finding_by_comment_id(
-    pool: asyncpg.Pool, bitbucket_comment_id: int
-) -> dict[str, Any] | None:
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT file_path, line_number, severity, commit_sha FROM review_findings WHERE bitbucket_comment_id = $1",
-            bitbucket_comment_id,
-        )
-        return dict(row) if row else None
-
-
-async def has_negative_feedback(
-    pool: asyncpg.Pool,
-    project_key: str,
-    repo_slug: str,
-    pr_id: int,
-    bitbucket_comment_id: int,
-) -> bool:
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            """
-            SELECT 1 FROM feedback_events
-            WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
-              AND bitbucket_comment_id = $4 AND classification = 'negative'
-            LIMIT 1
-            """,
-            project_key, repo_slug, pr_id, bitbucket_comment_id,
-        )
-        return row is not None
-
-
-async def insert_feedback(
-    pool: asyncpg.Pool,
-    project_key: str,
-    repo_slug: str,
-    pr_id: int,
-    bitbucket_comment_id: int,
-    feedback_author: str,
-    classification: str,
-    file_path: str | None,
-    severity: str | None,
-) -> None:
-    async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO feedback_events
-                (project_key, repo_slug, pr_id, bitbucket_comment_id,
-                 feedback_author, classification, file_path, severity)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            """,
-            project_key, repo_slug, pr_id, bitbucket_comment_id,
-            feedback_author, classification, file_path, severity,
-        )
-
-
 async def upsert_model_pricing(
     pool: asyncpg.Pool,
     entries: dict[str, tuple[float, float, float]],

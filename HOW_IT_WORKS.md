@@ -61,10 +61,10 @@ Events are routed as follows:
 | `pr:from_ref_updated` | Incremental or full review |
 | `pr:merged` | Mark PR merged + freeze final cost |
 | `pr:deleted` | Mark PR deleted (data retained) |
-| `pr:comment:added` | Mention Q&A or feedback handling |
+| `pr:comment:added` | Mention Q&A |
 | `diagnostics:ping` | Health check acknowledgment |
 
-Comment events are further routed based on content: if the comment contains the mention trigger (default `@noergler`), it goes to the Q&A handler; if it's a reply to an existing noergler comment, it goes to the feedback handler.
+Comment events are further routed based on content: if the comment contains the mention trigger (default `@noergler`), it goes to the Q&A handler; otherwise it's ignored.
 
 **Example:** A developer opens a PR and pushes two more commits. noergler receives three events: one `pr:opened` (full review) and two `pr:from_ref_updated` (incremental reviews of just the new commits).
 
@@ -392,18 +392,7 @@ Special keywords (`review`, `re-review`, `rereview`) trigger a full review inste
 
 **Example:** A developer comments `@noergler Why does this endpoint return 404 for deleted users?` on a PR. noergler fetches the PR diff, sees the soft-delete logic, and replies explaining that the endpoint filters out soft-deleted users by default and suggests using the `include_deleted` query parameter.
 
-## 12. Feedback collection
-
-**File:** `app/reviewer.py`
-
-When a developer replies to a noergler inline comment:
-- If the reply contains "disagree" (or similar negative feedback), it's logged as a disagreement in `feedback_events` (deduped per parent comment to avoid double-counting).
-- An emoji reaction is added to acknowledge the feedback.
-- If [riptide forwarding](README.md#optional-forward-review-cost--reviewer-precision-events-to-riptide) is configured, a `feedback` event is emitted to riptide carrying `pr_key`, `finding_id`, `verdict=disagreed`, the actor, the parent finding's `commit_sha`, and `occurred_at`. Otherwise the event stays in noergler's local `feedback_events` table only.
-
-`feedback_events` exists solely for de-duplication on the noergler side; aggregate reviewer-precision metrics live in riptide (or are skipped entirely if forwarding is disabled).
-
-## 13. Jira integration
+## 12. Jira integration
 
 **File:** `app/jira.py`
 
