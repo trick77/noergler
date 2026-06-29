@@ -407,6 +407,24 @@ def _group_files_by_token_budget(
         entry = format_file_entry(file_data)
         entry_tokens = count_tokens(entry)
 
+        if entry_tokens > available_tokens and file_data.content is not None:
+            # Full content alone blows the budget. Before giving up, downgrade to
+            # diff-only — the same fallback the 413 path uses in
+            # `_review_file_group` — so a large changed file is still reviewed
+            # from its diff instead of dropped from the review entirely.
+            diff_only = FileReviewData(path=file_data.path, diff=file_data.diff, content=None)
+            diff_only_entry = format_file_entry(diff_only)
+            diff_only_tokens = count_tokens(diff_only_entry)
+            if diff_only_tokens <= available_tokens:
+                logger.info(
+                    "File too large with full content — reviewing diff-only: %s "
+                    "(~%d tokens with content > %d budget, ~%d diff-only)",
+                    file_data.path, entry_tokens, available_tokens, diff_only_tokens,
+                )
+                file_data = diff_only
+                entry = diff_only_entry
+                entry_tokens = diff_only_tokens
+
         if entry_tokens > available_tokens:
             if current_group:
                 groups.append(current_group)
