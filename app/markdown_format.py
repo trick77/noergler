@@ -35,6 +35,13 @@ import textwrap
 # config later.
 WRAP_WIDTH = 110
 
+# Narrower target for list items. Bullets/numbered items render with extra left
+# indentation (marker + hang-indent on continuation lines), so the same column
+# cap as plain prose would let them run visually wider than surrounding text.
+# Wrapping list content tighter keeps the rendered block aligned. The marker is
+# counted toward this width (it is the line's initial_indent).
+LIST_WRAP_WIDTH = 90
+
 # Token inserted between wrapped pieces of a paragraph. See module docstring.
 HARD_BREAK = "\n"
 
@@ -44,8 +51,11 @@ _NEVER_WRAP = re.compile(r"^\s*([>]\s|#{1,6}\s)")
 
 # List items (bullet or numbered) — captured as (prefix, content) so the content
 # can be wrapped while the marker is preserved and continuation lines are
-# hang-indented under the text.
-_LIST_ITEM = re.compile(r"^(\s*(?:[-*+]|\d+\.)\s+)(.*)$")
+# hang-indented under the text. Bullets cover ``-``/``*``/``+`` and the unicode
+# bullet ``•``; numbered items cover both ``N.`` and ``N)`` styles. Items whose
+# marker is not recognized here silently fall through to the wider plain-prose
+# path, so the marker set must stay in sync with what the model actually emits.
+_LIST_ITEM = re.compile(r"^(\s*(?:[-*+•]|\d+[.)])\s+)(.*)$")
 
 # Inline code spans — masked before wrapping so a span with internal spaces
 # (e.g. `foo bar`) is never split across a break, then restored verbatim.
@@ -59,15 +69,18 @@ _CODE_SPAN = re.compile(r"`[^`]+`")
 _PLACEHOLDER = re.compile("\x00(\\d+)\x00\x01*")
 
 
-def wrap_prose(text: str, width: int = WRAP_WIDTH) -> str:
+def wrap_prose(
+    text: str, width: int = WRAP_WIDTH, list_width: int = LIST_WRAP_WIDTH
+) -> str:
     """Hard-wrap plain prose lines at ``width``; pass structural lines through.
 
     Idempotent (see the module docstring for the one bounded list-item
     exception). A short string (already under ``width``) is returned unchanged.
     Headings, block quotes and fenced code blocks are left intact; list items
-    are wrapped with their marker preserved and continuation lines hang-indented
-    under the text. Inline code spans and long unbreakable tokens (URLs,
-    ``path/to/file``) are never split.
+    are wrapped at ``list_width`` (narrower than plain prose to offset their
+    marker/hang-indent) with their marker preserved and continuation lines
+    hang-indented under the text. Inline code spans and long unbreakable tokens
+    (URLs, ``path/to/file``) are never split.
     """
     if not text:
         return text
@@ -89,7 +102,7 @@ def wrap_prose(text: str, width: int = WRAP_WIDTH) -> str:
         item = _LIST_ITEM.match(line)
         if item:
             prefix, content = item.group(1), item.group(2)
-            out.append(_wrap_line(content, width, prefix=prefix))
+            out.append(_wrap_line(content, list_width, prefix=prefix))
         else:
             out.append(_wrap_line(line, width))
     return "\n".join(out)

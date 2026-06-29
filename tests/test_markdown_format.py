@@ -1,6 +1,11 @@
 """Tests for app.markdown_format.wrap_prose."""
 
-from app.markdown_format import HARD_BREAK, WRAP_WIDTH, wrap_prose
+from app.markdown_format import (
+    HARD_BREAK,
+    LIST_WRAP_WIDTH,
+    WRAP_WIDTH,
+    wrap_prose,
+)
 
 
 def _visible_lines(text: str) -> list[str]:
@@ -124,6 +129,58 @@ def test_long_numbered_item_wraps():
     assert lines[0].startswith("1. ")
     for line in lines:
         assert len(line) <= WRAP_WIDTH
+
+
+def test_list_items_wrap_at_narrower_width():
+    # A bullet whose content fits within WRAP_WIDTH but exceeds LIST_WRAP_WIDTH
+    # must still wrap (proving list items use the narrower cap), and every line
+    # stays within LIST_WRAP_WIDTH. The identical text as plain prose, which is
+    # under WRAP_WIDTH, stays a single line — confirming the two caps differ.
+    body = (
+        "Access-control logic is simplified by removing the temporary branch "
+        "and relying on existing checks."
+    )
+    assert LIST_WRAP_WIDTH < len(body) <= WRAP_WIDTH
+
+    bullet = wrap_prose(f"- {body}")
+    lines = _visible_lines(bullet)
+    assert len(lines) > 1  # the bullet wrapped at the narrower cap
+    for line in lines:
+        assert len(line) <= LIST_WRAP_WIDTH
+
+    assert wrap_prose(body) == body  # same text as plain prose is untouched
+
+
+def test_code_span_in_list_item_expanded():
+    # Placeholders for masked code spans must be restored within the list item,
+    # even at the narrower list width.
+    text = (
+        "- The handler now calls `do thing` before returning so the ordering "
+        "stays stable across retries here."
+    )
+    wrapped = wrap_prose(text)
+    assert "`do thing`" in wrapped  # placeholder expanded, span intact
+    assert "\x00" not in wrapped and "\x01" not in wrapped
+    for line in _visible_lines(wrapped):
+        assert len(line) <= LIST_WRAP_WIDTH
+
+
+def test_paren_and_unicode_bullet_markers_wrap_at_list_width():
+    # Regression: ``N)`` numbered items and the unicode bullet ``•`` used to miss
+    # the list-item regex and fall through to the wider plain-prose cap, so they
+    # never wrapped at LIST_WRAP_WIDTH. Every supported marker must use the
+    # narrower list cap.
+    body = (
+        "Database migration copies existing values from arbeitsvertrag to the "
+        "new schadenmeldung column before the entity mapping switches over."
+    )
+    assert len(body) > LIST_WRAP_WIDTH  # long enough to require wrapping
+    for marker in ("- ", "* ", "+ ", "1. ", "1) ", "• "):
+        wrapped = wrap_prose(f"{marker}{body}")
+        lines = _visible_lines(wrapped)
+        assert len(lines) > 1, marker
+        for line in lines:
+            assert len(line) <= LIST_WRAP_WIDTH, (marker, line)
 
 
 def test_short_list_item_is_noop():
