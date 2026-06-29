@@ -600,6 +600,23 @@ class TestGroupFilesByTokenBudget:
         assert "huge.py" not in paths
         assert skipped == ["huge.py"]
 
+    def test_oversized_content_downgraded_to_diff_only(self):
+        # Full content blows the budget, but the diff alone fits — the file must
+        # be reviewed diff-only, not dropped from the review entirely.
+        files = [FileReviewData(
+            path="big.py",
+            diff="+x = 1\n",                # tiny diff
+            content="x = 1\n" * 5000,       # huge full content
+        )]
+        template = "Review:\n{files}"
+        groups, skipped = _group_files_by_token_budget(files, 200, template)
+        paths = [f.path for g in groups for f in g]
+        assert "big.py" in paths
+        assert skipped == []
+        kept = next(f for g in groups for f in g if f.path == "big.py")
+        assert kept.content is None  # content stripped so the entry fits
+        assert kept.diff == "+x = 1\n"
+
     def test_deleted_file_included(self):
         diff = "--- a/removed.py\n+++ /dev/null\n-old code\n"
         files = [FileReviewData(path="removed.py", diff=diff, content=None)]
@@ -845,6 +862,31 @@ class TestCumulativeDiffAndPostedFindingsInPrompt:
             assert "{cumulative_pr_diff}" not in prompt
             assert "Cumulative PR diff" in prompt
             assert "diff --git a/Foo.java b/Foo.java" in prompt
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_focused_files_render_before_context_blocks(self, llm_config, review_config, token_provider):
+        # Per AGENTS.md: {files} must stay BEFORE {cumulative_pr_diff} and
+        # {previously_posted_findings}. Files are the stable bytes across
+        # re-reviews and must sit in the Copilot prefix-cache; the cumulative
+        # diff/findings grow on every push and belong in the volatile suffix.
+        mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
+        client = LLMClient(llm_config, review_config, token_provider)
+        client.openai_client.responses.create = mock_create
+        try:
+            files = [FileReviewData(path="subject.py", diff="+focusmarker\n", content="focusmarker\n")]
+            await client.review_diff(
+                files,
+                cumulative_pr_diff="diff --git a/Ctx.java b/Ctx.java\n-old\n+new\n",
+                previously_posted_findings=[
+                    {"file_path": "src/Foo.java", "line_number": 11,
+                     "severity": "issue", "comment_text": "prior finding marker"},
+                ],
+            )
+            prompt = _user_text_from_responses_call(mock_create)
+            assert prompt.index("focusmarker") < prompt.index("Cumulative PR diff")
+            assert prompt.index("focusmarker") < prompt.index("Already-posted findings")
         finally:
             await client.close()
 
