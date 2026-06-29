@@ -724,7 +724,7 @@ def _render_cumulative_pr_diff(cumulative_pr_diff: str) -> str:
         "The diff below is the **entire PR** as it currently stands. "
         "Use it ONLY to verify cross-file invariants (e.g. that a renamed entity field "
         "also has its repository methods/queries renamed elsewhere in the PR). "
-        "DO NOT raise findings about lines that are not in the focused review files below. "
+        "DO NOT raise findings about lines that are not in the focused review files above. "
         "Treat any change shown only in this cumulative diff (and not in the focused files) "
         "as already-resolved context — the focused review files are the sole subject of review.\n"
         "\n"

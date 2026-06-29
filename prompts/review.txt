@@ -163,12 +163,12 @@ If ticket includes acceptance criteria, only consider criteria verifiable from c
 
 {compliance_instructions}
 
+## Files to review
+
+The focused files below are the **subject of this review**. The cumulative PR diff and previously-posted findings that follow are context only.
+
+{files}
+
 {cumulative_pr_diff}
 
 {previously_posted_findings}
-
-## Files to review
-
-The files below are the **focus of this review** — everything above is context. Raise findings only on these.
-
-{files}

@@ -866,10 +866,11 @@ class TestCumulativeDiffAndPostedFindingsInPrompt:
             await client.close()
 
     @pytest.mark.asyncio
-    async def test_focused_files_render_after_context_blocks(self, llm_config, review_config, token_provider):
-        # The focused files are the review subject and must come last, after the
-        # cumulative diff + previously-posted findings — so the cumulative block's
-        # "focused review files below" reference points the right way.
+    async def test_focused_files_render_before_context_blocks(self, llm_config, review_config, token_provider):
+        # Per AGENTS.md: {files} must stay BEFORE {cumulative_pr_diff} and
+        # {previously_posted_findings}. Files are the stable bytes across
+        # re-reviews and must sit in the Copilot prefix-cache; the cumulative
+        # diff/findings grow on every push and belong in the volatile suffix.
         mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
         client = LLMClient(llm_config, review_config, token_provider)
         client.openai_client.responses.create = mock_create
@@ -884,9 +885,8 @@ class TestCumulativeDiffAndPostedFindingsInPrompt:
                 ],
             )
             prompt = _user_text_from_responses_call(mock_create)
-            assert prompt.index("Cumulative PR diff") < prompt.index("focusmarker")
-            assert prompt.index("Already-posted findings") < prompt.index("focusmarker")
-            assert prompt.index("## Files to review") < prompt.index("focusmarker")
+            assert prompt.index("focusmarker") < prompt.index("Cumulative PR diff")
+            assert prompt.index("focusmarker") < prompt.index("Already-posted findings")
         finally:
             await client.close()
 
