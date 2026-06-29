@@ -255,7 +255,7 @@ async def webhook(
 
     if event_key == "pr:merged":
         background_tasks.add_task(reviewer.handle_pr_merged, payload)
-        return {"status": "accepted", "reason": "merged-stats"}
+        return {"status": "accepted", "reason": "merged-rollup"}
 
     if event_key == "pr:declined":
         background_tasks.add_task(reviewer.handle_pr_declined, payload)
@@ -272,15 +272,11 @@ async def webhook(
     if event_key == "pr:comment:added":
         comment_text = payload_json.get("comment", {}).get("text", "")
         comment_id = payload_json.get("comment", {}).get("id")
-        parent_id = payload_json.get("commentParentId")
-        logger.info("Comment event: id=%s parentId=%s", comment_id, parent_id)
+        logger.info("Comment event: id=%s", comment_id)
         trigger = f"@{config.bitbucket.username}"
         if trigger.lower() in comment_text.lower():
             background_tasks.add_task(reviewer.handle_mention, payload)
             return {"status": "accepted", "reason": "mention"}
-        if parent_id is not None:
-            background_tasks.add_task(reviewer.handle_feedback, payload)
-            return {"status": "accepted", "reason": "feedback"}
         return {"status": "ignored", "reason": "comment without mention"}
 
     if event_key not in _REVIEW_EVENT_KEYS:

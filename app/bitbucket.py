@@ -115,7 +115,6 @@ class BitbucketClient:
             # doesn't get a button that would only replace one line.
             fence = "suggestion" if "\n" not in body else ""
             parts.append(f"**Suggested change:**\n```{fence}\n{body}\n```")
-        parts.append("_Hallucinated finding? Reply \"disagree\". Not for: ego, taste, missing context._")
         text = "\n\n".join(parts)
         payload: dict[str, Any] = {
             "text": text,
@@ -191,32 +190,6 @@ class BitbucketClient:
         response.raise_for_status()
         logger.info("Updated summary comment %d on PR %d", comment_id, pr_id)
         return response.json().get("version")
-
-    async def add_comment_reaction(
-        self, project: str, repo: str, pr_id: int, comment_id: int, emoticon: str = "eyes"
-    ) -> bool:
-        """Try to add an emoji reaction. Returns True on success, False on failure.
-
-        Write-only by design: Bitbucket Data Center emits NO webhook for incoming
-        reactions/likes (only pr:comment:added/edited/deleted exist), so a user's
-        👍/👎 cannot be caught in real time. That's why user feedback ("disagree")
-        runs over text replies (pr:comment:added), not reactions. Note the
-        contrast with comment *deletions*, which DO have a webhook we rely on
-        (see handle_comment_deleted).
-        """
-        url = (
-            f"/rest/comment-likes/latest/projects/{project}/repos/{repo}"
-            f"/pull-requests/{pr_id}/comments/{comment_id}/reactions"
-        )
-        try:
-            response = await self.client.put(url, json={"emoticon": emoticon})
-            if response.status_code < 300:
-                return True
-            logger.debug("Reaction API returned %d for comment %d", response.status_code, comment_id)
-            return False
-        except Exception:
-            logger.debug("Reaction API failed for comment %d", comment_id, exc_info=False)
-            return False
 
     async def list_webhooks(self, project: str, repo: str) -> list[dict[str, Any]]:
         """List all webhooks configured on a repo."""

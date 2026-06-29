@@ -58,19 +58,6 @@ class TestNoOpWhenDisabled:
         await client.emit_pr_completed(**_pr_completed_kwargs())
 
     @pytest.mark.asyncio
-    async def test_emit_feedback_is_noop(self):
-        client = RiptideClient(url="", token="")
-        await client.emit_feedback(
-            pr_key="PROJ/repo#1",
-            finding_id="f1",
-            verdict="disagreed",
-            actor="alice",
-            repo="org/repo",
-            commit_sha=None,
-            occurred_at=datetime(2026, 4, 29, tzinfo=timezone.utc),
-        )
-
-    @pytest.mark.asyncio
     async def test_verify_at_startup_is_noop_when_disabled(self):
         client = RiptideClient(url="", token="")
         assert await client.verify_at_startup() is None
@@ -178,33 +165,6 @@ class TestEmit:
         body = httpx.Response(200, content=route.calls[0].request.content).json()
         assert body["outcome"] == "declined"
         assert body["merge_commit_sha"] is None
-
-    @pytest.mark.asyncio
-    @respx.mock
-    async def test_emit_feedback_posts_expected_body(self):
-        route = respx.post("http://r/webhooks/noergler").mock(
-            return_value=httpx.Response(202)
-        )
-        client = RiptideClient(url="http://r", token="t")
-        try:
-            await client.emit_feedback(
-                pr_key="PROJ/repo#1",
-                finding_id="42",
-                verdict="disagreed",
-                actor="alice",
-                repo="org/repo",
-                commit_sha="abc1234567890abc1234567890abc1234567890a",
-                occurred_at=datetime(2026, 4, 29, 12, 0, 0, tzinfo=timezone.utc),
-            )
-        finally:
-            await client.close()
-
-        assert route.called
-        body = httpx.Response(200, content=route.calls[0].request.content).json()
-        assert body["event_type"] == "feedback"
-        assert body["finding_id"] == "42"
-        assert body["verdict"] == "disagreed"
-        assert body["commit_sha"] == "abc1234567890abc1234567890abc1234567890a"
 
     @pytest.mark.asyncio
     @respx.mock

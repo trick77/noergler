@@ -1,10 +1,10 @@
 """Optional outbound emitter to riptide-collector.
 
-Forwards per-PR review rollups (cost + diff size) and reviewer-precision
-(feedback) events. The PR lifecycle itself is not forwarded directly —
-riptide already gets that from Bitbucket — but the rollup is keyed off
-the PR's terminal state (merged / declined / deleted) so finops can
-distinguish review spend that shipped from review spend that didn't.
+Forwards per-PR review rollups (cost + diff size). The PR lifecycle itself
+is not forwarded directly — riptide already gets that from Bitbucket — but
+the rollup is keyed off the PR's terminal state (merged / declined / deleted)
+so finops can distinguish review spend that shipped from review spend that
+didn't.
 
 If `RIPTIDE_URL` or `RIPTIDE_TOKEN` is unset, every emit is a no-op and the
 client is `enabled=False`. When configured, the client validates the token
@@ -160,29 +160,6 @@ class RiptideClient:
             "models_used": models_used,
             "first_review_at": _isoformat_z(first_review_at),
             "closed_at": _isoformat_z(closed_at),
-        }
-        await self._post(body)
-
-    async def emit_feedback(
-        self,
-        *,
-        pr_key: str,
-        finding_id: str,
-        verdict: str,
-        actor: str,
-        repo: str | None,
-        commit_sha: str | None,
-        occurred_at: datetime,
-    ) -> None:
-        body: dict[str, Any] = {
-            "event_type": "feedback",
-            "pr_key": pr_key,
-            "finding_id": finding_id,
-            "verdict": verdict,
-            "actor": actor,
-            "repo": repo,
-            "commit_sha": commit_sha,
-            "occurred_at": _isoformat_z(occurred_at),
         }
         await self._post(body)
 

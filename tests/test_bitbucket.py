@@ -188,22 +188,6 @@ class TestBitbucketClient:
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_post_inline_comment_includes_feedback_instruction(self, client):
-        route = respx.post(
-            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/comments"
-        ).mock(return_value=httpx.Response(201, json={"id": 1}))
-
-        finding = ReviewFinding(
-            file="src/main.py", line=10, severity="suggestion", comment="Consider this"
-        )
-        await client.post_inline_comment("PROJ", "my-repo", 1, finding)
-
-        body = route.calls[0].request.content.decode()
-        assert "Hallucinated finding?" in body and "disagree" in body
-        await client.close()
-
-    @pytest.mark.asyncio
-    @respx.mock
     async def test_single_line_suggestion_uses_apply_fence(self, client):
         route = respx.post(
             f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/comments"
@@ -243,28 +227,6 @@ class TestBitbucketClient:
         body = json.loads(route.calls[0].request.content)
         assert "```suggestion" not in body["text"]
         assert "```\nif x:\n    return y\nreturn z\n```" in body["text"]
-        await client.close()
-
-    @pytest.mark.asyncio
-    @respx.mock
-    async def test_add_comment_reaction_returns_true_on_success(self, client):
-        respx.put(
-            f"{BASE_URL}/rest/comment-likes/latest/projects/PROJ/repos/my-repo/pull-requests/1/comments/42/reactions"
-        ).mock(return_value=httpx.Response(200, json={}))
-
-        result = await client.add_comment_reaction("PROJ", "my-repo", 1, 42)
-        assert result is True
-        await client.close()
-
-    @pytest.mark.asyncio
-    @respx.mock
-    async def test_add_comment_reaction_returns_false_on_404(self, client):
-        respx.put(
-            f"{BASE_URL}/rest/comment-likes/latest/projects/PROJ/repos/my-repo/pull-requests/1/comments/42/reactions"
-        ).mock(return_value=httpx.Response(404, text="Not Found"))
-
-        result = await client.add_comment_reaction("PROJ", "my-repo", 1, 42)
-        assert result is False
         await client.close()
 
     @pytest.mark.asyncio

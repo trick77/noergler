@@ -47,15 +47,6 @@ COMMENT_NO_MENTION_PAYLOAD = {
     "pullRequest": PR_PAYLOAD["pullRequest"],
 }
 
-COMMENT_REPLY_PAYLOAD = {
-    "eventKey": "pr:comment:added",
-    "commentParentId": 100,
-    "comment": {
-        "id": 200, "text": "\U0001f44d", "author": {"name": "dev"},
-    },
-    "pullRequest": PR_PAYLOAD["pullRequest"],
-}
-
 COMMENT_REPLY_WITH_MENTION_PAYLOAD = {
     "eventKey": "pr:comment:added",
     "commentParentId": 100,
@@ -81,7 +72,6 @@ def client():
     mock_reviewer = AsyncMock()
     mock_reviewer.review_pull_request = AsyncMock()
     mock_reviewer.handle_mention = AsyncMock()
-    mock_reviewer.handle_feedback = AsyncMock()
     mock_reviewer.handle_pr_merged = AsyncMock()
     mock_reviewer.handle_pr_declined = AsyncMock()
     mock_reviewer.handle_pr_deleted = AsyncMock()
@@ -214,7 +204,7 @@ class TestMergedRouting:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "accepted"
-        assert data["reason"] == "merged-stats"
+        assert data["reason"] == "merged-rollup"
 
 
 class TestDeclinedRouting:
@@ -350,19 +340,7 @@ class TestQueueIntegration:
             app.router.lifespan_context = original_lifespan
 
 
-class TestFeedbackRouting:
-    def test_reply_with_parent_routes_to_feedback(self, client):
-        body = json.dumps(COMMENT_REPLY_PAYLOAD).encode()
-        resp = client.post(
-            "/webhook",
-            content=body,
-            headers={"X-Hub-Signature": _sign(body), "Content-Type": "application/json"},
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] == "accepted"
-        assert data["reason"] == "feedback"
-
+class TestCommentReplyRouting:
     def test_mention_takes_priority_over_parent(self, client):
         body = json.dumps(COMMENT_REPLY_WITH_MENTION_PAYLOAD).encode()
         resp = client.post(
