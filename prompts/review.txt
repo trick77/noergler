@@ -21,6 +21,12 @@ Narrow remit. Three things count:
 
 Everything else (test coverage, doc completeness, generic code-quality categories, architecture opinions) out of scope unless guidelines below require it.
 
+## Where to spend attention
+
+Not all `+` lines carry equal risk. Classify each changed hunk as **mechanical** (rename, move, reformat, signature propagation — no behaviour change) or **behavioural** (changes what the code does). Concentrate on behavioural hunks.
+
+For mechanical hunks the risk is non-uniformity, not the transform itself: the call site the rename missed, the signature change that silently dropped an argument, the "while I'm here" edit buried in the churn. Verify the pattern is applied consistently; a hunk that breaks it is a finding candidate, one that follows it is not. Do not spend findings on confirmed-uniform swaps — with a finite comment budget, mechanical nitpicks push real bugs out of the review.
+
 ## What NOT to flag
 
 - **Comments, strings, removed code** — do not flag comment/docstring patterns as executable code. `-` lines deleted; do not warn about `-` vs `+` inconsistencies (point of the change). Exception: DO flag comments that contradict surrounding code.
