@@ -76,41 +76,63 @@ class TestParseReviewResponse:
         content = json.dumps([
             {"file": "src/main.py", "line": 10, "severity": "issue", "comment": "Bug here"}
         ])
-        findings, requirements, summary = _parse_review_response(content)
+        findings, requirements, summary, parse_failed = _parse_review_response(content)
         assert len(findings) == 1
         assert findings[0].file == "src/main.py"
         assert findings[0].line == 10
         assert findings[0].severity == "issue"
         assert requirements == []
         assert summary == ReviewSummary()
+        assert parse_failed is False
 
     def test_empty_array(self):
-        findings, requirements, summary = _parse_review_response("[]")
+        findings, requirements, summary, parse_failed = _parse_review_response("[]")
         assert findings == []
         assert requirements == []
         assert summary == ReviewSummary()
+        assert parse_failed is False
 
     def test_wrapped_in_code_fence(self):
         content = "```json\n[{\"file\": \"a.py\", \"line\": 1, \"severity\": \"suggestion\", \"comment\": \"test\"}]\n```"
-        findings, _requirements, _ = _parse_review_response(content)
+        findings, _requirements, _, _ = _parse_review_response(content)
         assert len(findings) == 1
 
     def test_invalid_json(self):
-        findings, requirements, summary = _parse_review_response("not json at all")
+        findings, requirements, summary, parse_failed = _parse_review_response("not json at all")
         assert findings == []
         # None signals extraction failure (vs [] which means "successfully
         # parsed, no requirements") so the reviewer can render the reason.
         assert requirements is None
         assert summary == ReviewSummary()
+        # parse_failed distinguishes a refused/unparseable response from a
+        # legitimately empty review so the reviewer posts a failure notice.
+        assert parse_failed is True
 
-    def test_top_level_string_signals_extraction_failure(self):
-        findings, requirements, summary = _parse_review_response('"oops"')
+    def test_refusal_text_signals_parse_failure(self):
+        findings, requirements, summary, parse_failed = _parse_review_response(
+            "I'm sorry, but I cannot assist with that request."
+        )
         assert findings == []
         assert requirements is None
         assert summary == ReviewSummary()
+        assert parse_failed is True
+
+    def test_empty_output_signals_parse_failure(self):
+        findings, requirements, summary, parse_failed = _parse_review_response("")
+        assert findings == []
+        assert requirements is None
+        assert summary == ReviewSummary()
+        assert parse_failed is True
+
+    def test_top_level_string_signals_extraction_failure(self):
+        findings, requirements, summary, parse_failed = _parse_review_response('"oops"')
+        assert findings == []
+        assert requirements is None
+        assert summary == ReviewSummary()
+        assert parse_failed is True
 
     def test_not_an_array(self):
-        findings, _requirements, _ = _parse_review_response('{"file": "a.py"}')
+        findings, _requirements, _, _ = _parse_review_response('{"file": "a.py"}')
         assert findings == []
 
     def test_malformed_item_skipped(self):
@@ -118,7 +140,7 @@ class TestParseReviewResponse:
             {"file": "a.py", "line": 1, "severity": "issue", "comment": "good"},
             {"bad": "item"},
         ])
-        findings, _requirements, _ = _parse_review_response(content)
+        findings, _requirements, _, _ = _parse_review_response(content)
         assert len(findings) == 1
 
     def test_unknown_severity_rejected(self):
@@ -129,7 +151,7 @@ class TestParseReviewResponse:
             {"file": "a.py", "line": 1, "severity": "critical", "comment": "stale"},
             {"file": "b.py", "line": 2, "severity": "issue", "comment": "ok"},
         ])
-        findings, _requirements, _ = _parse_review_response(content)
+        findings, _requirements, _, _ = _parse_review_response(content)
         assert len(findings) == 1
         assert findings[0].file == "b.py"
 
@@ -143,7 +165,7 @@ class TestParseReviewResponse:
                 {"requirement": "Write tests", "met": False},
             ],
         })
-        findings, requirements, _ = _parse_review_response(content)
+        findings, requirements, _, _ = _parse_review_response(content)
         assert len(findings) == 1
         assert requirements is not None
         assert len(requirements) == 2
@@ -160,7 +182,7 @@ class TestParseReviewResponse:
                 {"requirement": "Wrong met type", "met": "yes"},
             ],
         })
-        findings, requirements, _ = _parse_review_response(content)
+        findings, requirements, _, _ = _parse_review_response(content)
         assert findings == []
         assert requirements is not None
         assert len(requirements) == 1
@@ -178,7 +200,7 @@ class TestParseReviewResponse:
                 "rationale": "Retry path is bounded and covered by a test.",
             },
         })
-        _findings, _requirements, summary = _parse_review_response(content)
+        _findings, _requirements, summary, _ = _parse_review_response(content)
         assert summary.overview == "Adds retry logic to the webhook client."
         assert summary.strengths == ["Test added for the new code path"]
         assert summary.security_performance == "None notable."
@@ -195,7 +217,7 @@ class TestParseReviewResponse:
             "test_coverage": "x",
             "verdict": {"decision": "approve", "rationale": "x"},
         })
-        _, _, summary = _parse_review_response(content)
+        _, _, summary, _ = _parse_review_response(content)
         assert summary.strengths == ["Valid bullet", "Another bullet"]
 
     def test_summary_invalid_verdict_decision_falls_back(self):
@@ -207,7 +229,7 @@ class TestParseReviewResponse:
             "test_coverage": "x",
             "verdict": {"decision": "looks_good_to_me", "rationale": "x"},
         })
-        _, _, summary = _parse_review_response(content)
+        _, _, summary, _ = _parse_review_response(content)
         # Unknown decisions are ignored and the dataclass default ("approve") sticks.
         assert summary.verdict_decision == "approve"
 
@@ -221,7 +243,7 @@ class TestParseReviewResponse:
                 "suggestion": "No fix needed—this code is actually correct for once.",
             }
         ])
-        findings, _, _ = _parse_review_response(content)
+        findings, _, _, _ = _parse_review_response(content)
         assert findings == []
 
     def test_legitimate_finding_with_real_suggestion_preserved(self):
@@ -234,7 +256,7 @@ class TestParseReviewResponse:
                 "suggestion": "if user is None:\n    return None\nreturn user.name",
             }
         ])
-        findings, _, _ = _parse_review_response(content)
+        findings, _, _, _ = _parse_review_response(content)
         assert len(findings) == 1
         assert findings[0].suggestion == "if user is None:\n    return None\nreturn user.name"
 
@@ -244,7 +266,7 @@ class TestParseReviewResponse:
                 {"file": "a.py", "line": 1, "severity": "suggestion", "comment": "test"}
             ],
         })
-        _, _, summary = _parse_review_response(content)
+        _, _, summary, _ = _parse_review_response(content)
         assert summary == ReviewSummary()
 
     def test_overview_empty_logs_warning(self, caplog):
@@ -258,7 +280,7 @@ class TestParseReviewResponse:
             "verdict": {"decision": "approve", "rationale": "x"},
         })
         with caplog.at_level(logging.WARNING, logger="app.llm_client"):
-            _, _, summary = _parse_review_response(content)
+            _, _, summary, _ = _parse_review_response(content)
         assert summary.overview == ""
         assert any("overview empty after parse" in msg for msg in caplog.messages)
 
@@ -1137,13 +1159,13 @@ class TestReviewFileGroup413Retry:
                 findings.append(finding_d)
             return (
                 [__import__("app.models", fromlist=["ReviewFinding"]).ReviewFinding(**f) for f in findings],
-                50, 25, [], ReviewSummary(),
+                50, 25, [], ReviewSummary(), False,
             )
 
         client._call_api = mock_call_api
         try:
             template = client.prompt_template
-            findings, pt, ct, skipped, _compliance, _summary, _to = await client._review_file_group(files, template, depth=0)
+            findings, pt, ct, skipped, _compliance, _summary, _to, _pf = await client._review_file_group(files, template, depth=0)
             assert len(findings) == 2
             assert {f.file for f in findings} == {"a.py", "d.py"}
             assert skipped == []
@@ -1164,12 +1186,12 @@ class TestReviewFileGroup413Retry:
             call_count += 1
             if call_count == 1:
                 raise _make_api_status_error(413, "too large")
-            return [], 0, 0, [], ReviewSummary()
+            return [], 0, 0, [], ReviewSummary(), False
 
         client._call_api = mock_call_api
         try:
             template = client.prompt_template
-            findings, pt, ct, skipped, _compliance, _summary, _to = await client._review_file_group(files, template, depth=0)
+            findings, pt, ct, skipped, _compliance, _summary, _to, _pf = await client._review_file_group(files, template, depth=0)
             assert findings == []
             assert skipped == []
             assert call_count == 2
@@ -1189,7 +1211,7 @@ class TestReviewFileGroup413Retry:
         client._call_api = mock_call_api
         try:
             template = client.prompt_template
-            findings, pt, ct, skipped, _compliance, _summary, _to = await client._review_file_group(files, template, depth=0)
+            findings, pt, ct, skipped, _compliance, _summary, _to, _pf = await client._review_file_group(files, template, depth=0)
             assert findings == []
             assert pt == 0
             assert ct == 0
@@ -1210,7 +1232,7 @@ class TestReviewFileGroup413Retry:
         client._call_api = mock_call_api
         try:
             template = client.prompt_template
-            findings, pt, ct, skipped, _compliance, _summary, _to = await client._review_file_group(files, template, depth=0)
+            findings, pt, ct, skipped, _compliance, _summary, _to, _pf = await client._review_file_group(files, template, depth=0)
             assert findings == []
             assert skipped == ["huge.py"]
         finally:
@@ -1232,7 +1254,7 @@ class TestReviewFileGroup413Retry:
         client._call_api = mock_call_api
         try:
             template = client.prompt_template
-            findings, pt, ct, skipped, _compliance, _summary, _to = await client._review_file_group(files, template, depth=3)
+            findings, pt, ct, skipped, _compliance, _summary, _to, _pf = await client._review_file_group(files, template, depth=3)
             assert findings == []
             assert set(skipped) == {"a.py", "b.py"}
         finally:
@@ -1413,7 +1435,7 @@ class TestParse413TokenLimit:
         client._call_api = mock_call_api
         try:
             template = client.prompt_template
-            _, _, _, skipped, _, _, _ = await client._review_file_group(files, template, depth=0)
+            _, _, _, skipped, _, _, _, _ = await client._review_file_group(files, template, depth=0)
             assert skipped == ["big.py"]
             assert client.max_tokens_per_chunk == 4000
         finally:
@@ -1603,13 +1625,13 @@ class TestReviewResultTimedOut:
                 raise openai.APITimeoutError(request=httpx.Request("POST", "https://x"))
             return (
                 [ReviewFinding(file="b.py", line=1, severity="suggestion", comment="ok")],
-                10, 5, [], ReviewSummary(),
+                10, 5, [], ReviewSummary(), False,
             )
 
         client._call_api = mock_call_api
         try:
             template = client.prompt_template
-            findings, pt, ct, skipped, _compliance, _summary, timed_out = (
+            findings, pt, ct, skipped, _compliance, _summary, timed_out, _parse_failed = (
                 await client._review_file_group(files, template, depth=0)
             )
             assert timed_out is True
@@ -1625,7 +1647,7 @@ class TestReviewResultTimedOut:
         async def ok(prompt: str):
             return (
                 [ReviewFinding(file="a.py", line=1, severity="suggestion", comment="ok")],
-                10, 5, [], ReviewSummary(),
+                10, 5, [], ReviewSummary(), False,
             )
 
         client._call_api = ok
@@ -1633,6 +1655,85 @@ class TestReviewResultTimedOut:
             files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
             result = await client.review_diff(files)
             assert result.timed_out is False
+        finally:
+            await client.close()
+
+
+class TestReviewResultUnparseable:
+    @pytest.mark.asyncio
+    async def test_unparseable_chunk_sets_flag(self, llm_config, review_config, token_provider):
+        """A single chunk whose response could not be parsed (empty output or a
+        non-JSON refusal) sets response_unparseable and yields no findings."""
+        client = LLMClient(llm_config, review_config, token_provider)
+
+        async def refuse(prompt: str):
+            # Mirrors _call_api's return when _parse_review_response reports a
+            # refusal: no findings, compliance None, empty summary, parse_failed.
+            return ([], 0, 0, None, ReviewSummary(), True)
+
+        client._call_api = refuse
+        try:
+            files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
+            result = await client.review_diff(files)
+            assert result.response_unparseable is True
+            assert result.timed_out is False
+            assert result.findings == []
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_parseable_leaves_flag_false(self, llm_config, review_config, token_provider):
+        from app.models import ReviewFinding
+        client = LLMClient(llm_config, review_config, token_provider)
+
+        async def ok(prompt: str):
+            return (
+                [ReviewFinding(file="a.py", line=1, severity="suggestion", comment="ok")],
+                10, 5, [], ReviewSummary(), False,
+            )
+
+        client._call_api = ok
+        try:
+            files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
+            result = await client.review_diff(files)
+            assert result.response_unparseable is False
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_bisection_merge_propagates_parse_failed(self, llm_config, review_config, token_provider):
+        """When one half of a 413-bisected group is refused, the merged group
+        result carries parse_failed=True even if the other half parsed."""
+        from app.models import ReviewFinding
+        client = LLMClient(llm_config, review_config, token_provider)
+
+        files = [
+            FileReviewData(path="a.py", diff="+a\n", content="a\n"),
+            FileReviewData(path="b.py", diff="+b\n", content="b\n"),
+        ]
+        call_count = 0
+
+        async def mock_call_api(prompt: str):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise _make_api_status_error(413, "too large")
+            if "a.py" in prompt:
+                return ([], 0, 0, None, ReviewSummary(), True)
+            return (
+                [ReviewFinding(file="b.py", line=1, severity="suggestion", comment="ok")],
+                10, 5, [], ReviewSummary(), False,
+            )
+
+        client._call_api = mock_call_api
+        try:
+            template = client.prompt_template
+            findings, pt, ct, skipped, _compliance, _summary, timed_out, parse_failed = (
+                await client._review_file_group(files, template, depth=0)
+            )
+            assert parse_failed is True
+            assert timed_out is False
+            assert any(f.file == "b.py" for f in findings)
         finally:
             await client.close()
 

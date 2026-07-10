@@ -525,13 +525,20 @@ def _combine_compliance(
     return a if a else b
 
 
-def _parse_review_response(content: str) -> tuple[list[ReviewFinding], list[dict[str, Any]] | None, ReviewSummary]:
+def _parse_review_response(content: str) -> tuple[list[ReviewFinding], list[dict[str, Any]] | None, ReviewSummary, bool]:
     """Parse the LLM review response.
 
     Returns ``compliance_requirements=None`` when the response could not be
     parsed at all (JSON decode error or unexpected top-level type) — distinct
     from an empty list, which means the model legitimately returned no
     requirements.
+
+    The trailing ``parse_failed`` flag is ``True`` only when the response could
+    not be parsed at all — an empty model output or a non-JSON refusal such as
+    ``"I'm sorry, but I cannot assist with that request."``. Unlike the
+    ``compliance_requirements=None`` sentinel (which timeout/413 paths also
+    emit), this flag is set exclusively here, so callers can tell a refused /
+    unparseable response apart from a legitimately empty review.
     """
     content = content.strip()
     if content.startswith("```"):
@@ -545,7 +552,7 @@ def _parse_review_response(content: str) -> tuple[list[ReviewFinding], list[dict
         data = json.loads(content)
     except json.JSONDecodeError:
         logger.error("Failed to parse review response as JSON: %s", content[:200])
-        return [], None, ReviewSummary()
+        return [], None, ReviewSummary(), True
 
     compliance_requirements: list[dict[str, Any]] = []
     summary = ReviewSummary()
@@ -591,7 +598,7 @@ def _parse_review_response(content: str) -> tuple[list[ReviewFinding], list[dict
                 summary.verdict_rationale = rationale.strip()
     elif not isinstance(data, list):
         logger.error("Review response is not a JSON array or object")
-        return [], None, ReviewSummary()
+        return [], None, ReviewSummary(), True
 
     findings = []
     for item in findings_data:
@@ -605,7 +612,7 @@ def _parse_review_response(content: str) -> tuple[list[ReviewFinding], list[dict
             continue
         findings.append(finding)
 
-    return findings, compliance_requirements, summary
+    return findings, compliance_requirements, summary, False
 
 
 _VACUOUS_SUGGESTION_PATTERNS = [
@@ -947,6 +954,12 @@ class LLMClient:
         # deadline. The reviewer uses this to suppress the normal summary
         # path and post a failure notice / staleness banner instead.
         timed_out: bool = False
+        # True when the model responded but NO chunk produced a parseable
+        # response (every chunk was an empty output or a non-JSON refusal such
+        # as "I'm sorry, but I cannot assist..."). The reviewer suppresses the
+        # normal summary path and posts a failure notice instead, so a refused
+        # review is not silently indistinguishable from a clean one.
+        response_unparseable: bool = False
 
     async def review_diff(
         self,
@@ -1005,12 +1018,14 @@ class LLMClient:
         compliance_requirements: list[dict[str, Any]] = []
         any_chunk_extraction_failed = False
         any_chunk_timed_out = False
+        any_chunk_parse_failed = False
+        any_chunk_parsed_ok = False
         chunk_summaries: list[ReviewSummary] = []
         for i, group in enumerate(groups):
             logger.info("Reviewing chunk %d/%d (%d file%s)",
                         i + 1, len(groups), len(group),
                         "" if len(group) == 1 else "s")
-            findings, prompt_tokens, completion_tokens, skipped, chunk_requirements, chunk_summary, chunk_timed_out = await self._review_file_group(
+            findings, prompt_tokens, completion_tokens, skipped, chunk_requirements, chunk_summary, chunk_timed_out, chunk_parse_failed = await self._review_file_group(
                 group, template, depth=0, supplementary=supplementary,
             )
             all_findings.extend(findings)
@@ -1019,6 +1034,13 @@ class LLMClient:
             total_completion_tokens += completion_tokens
             if chunk_timed_out:
                 any_chunk_timed_out = True
+            if chunk_parse_failed:
+                any_chunk_parse_failed = True
+            elif not chunk_timed_out:
+                # A chunk that neither timed out nor failed to parse produced a
+                # usable (possibly empty) review — enough to keep the normal
+                # summary path even if a sibling chunk was refused.
+                any_chunk_parsed_ok = True
             if chunk_requirements is None:
                 any_chunk_extraction_failed = True
             elif chunk_requirements and not compliance_requirements:
@@ -1053,6 +1075,7 @@ class LLMClient:
                 any_chunk_extraction_failed and not compliance_requirements
             ),
             timed_out=any_chunk_timed_out,
+            response_unparseable=(any_chunk_parse_failed and not any_chunk_parsed_ok),
         )
 
     @staticmethod
@@ -1200,28 +1223,33 @@ class LLMClient:
         depth: int,
         max_depth: int = 3,
         supplementary: str = "",
-    ) -> tuple[list[ReviewFinding], int, int, list[str], list[dict[str, Any]] | None, ReviewSummary, bool]:
+    ) -> tuple[list[ReviewFinding], int, int, list[str], list[dict[str, Any]] | None, ReviewSummary, bool, bool]:
         """Review a group of files. Returns
         (findings, prompt_tokens, completion_tokens, skipped_paths,
-        compliance_requirements_or_None, summary, timed_out).
+        compliance_requirements_or_None, summary, timed_out, parse_failed).
 
         `timed_out=True` signals the wall-clock deadline was exceeded for at
         least one underlying API call (including any bisected sub-chunk).
+
+        `parse_failed=True` signals the model responded but its output could
+        not be parsed (an empty output or a non-JSON refusal). It is distinct
+        from `timed_out` (no response at all) and from the 413 paths (payload
+        too large), neither of which set it.
         """
         rendered = _render_file_group(group)
         if supplementary and depth == 0:
             rendered = rendered + "\n\n" + supplementary
         prompt = template.replace("{files}", rendered)
         try:
-            findings, pt, ct, requirements, summary = await self._call_api(prompt)
-            return findings, pt, ct, [], requirements, summary, False
+            findings, pt, ct, requirements, summary, parse_failed = await self._call_api(prompt)
+            return findings, pt, ct, [], requirements, summary, False, parse_failed
         except openai.APITimeoutError as exc:
             paths = [f.path for f in group]
             logger.warning(
                 "Timeout reviewing %d file(s) — skipping: %s (%s)",
                 len(group), ", ".join(paths), type(exc).__name__,
             )
-            return [], 0, 0, paths, None, ReviewSummary(), True
+            return [], 0, 0, paths, None, ReviewSummary(), True, False
         except openai.APIStatusError as exc:
             if exc.status_code != 413:
                 raise
@@ -1249,7 +1277,7 @@ class LLMClient:
                     file.diff.count("\n") + 1 if file else 0,
                     count_tokens(prompt),
                 )
-                return [], 0, 0, [path], None, ReviewSummary(), False
+                return [], 0, 0, [path], None, ReviewSummary(), False, False
             if depth >= max_depth:
                 paths = [f.path for f in group]
                 for f in group:
@@ -1257,7 +1285,7 @@ class LLMClient:
                         "413 — file will not be reviewed after %d bisections: %s (%d diff lines)",
                         depth, f.path, f.diff.count("\n") + 1,
                     )
-                return [], 0, 0, paths, None, ReviewSummary(), False
+                return [], 0, 0, paths, None, ReviewSummary(), False, False
             mid = len(group) // 2
             logger.info(
                 "413 with %d files — splitting chunk and retrying (depth %d)",
@@ -1275,14 +1303,15 @@ class LLMClient:
                 compliance,
                 summary,
                 left[6] or right[6],
+                left[7] or right[7],
             )
 
-    async def _call_api(self, prompt: str) -> tuple[list[ReviewFinding], int, int, list[dict[str, Any]] | None, ReviewSummary]:
+    async def _call_api(self, prompt: str) -> tuple[list[ReviewFinding], int, int, list[dict[str, Any]] | None, ReviewSummary, bool]:
         content, prompt_tokens, completion_tokens = await self._chat(
             system=_REVIEW_SYSTEM_MESSAGE, user=prompt, response_schema=_REVIEW_RESPONSE_SCHEMA,
         )
-        findings, compliance_requirements, summary = _parse_review_response(content)
-        return findings, prompt_tokens, completion_tokens, compliance_requirements, summary
+        findings, compliance_requirements, summary, parse_failed = _parse_review_response(content)
+        return findings, prompt_tokens, completion_tokens, compliance_requirements, summary, parse_failed
 
     async def _chat(
         self, system: str, user: str, response_schema: dict[str, Any] | None = None,
