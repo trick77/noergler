@@ -876,6 +876,41 @@ class Reviewer:
                 )
                 return
 
+            # Unparseable / refused response: the model answered but nothing it
+            # returned could be parsed (empty output or a non-JSON refusal). We
+            # never post an empty summary that looks like a clean review — post
+            # a "Review skipped" notice / staleness banner instead, preserve the
+            # prior reviewed commit, and skip stats. Mirrors the timeout path.
+            if llm_result.response_unparseable:
+                short_new = (source_commit or "")[:8] or "unknown"
+                logger.error(
+                    "Review of %s aborted — model returned an unparseable/refused "
+                    "response (commit %s)",
+                    pr_tag, short_new,
+                )
+                prior_commit = await _safe_db(
+                    repository.get_last_reviewed_commit(
+                        self.db_pool, project_key, repo_slug, pr_id,
+                    ),
+                    fallback=None,
+                )
+                pr_review_id = await _safe_db(
+                    repository.upsert_pr_review(
+                        self.db_pool, project_key, repo_slug, pr_id,
+                        last_reviewed_commit=prior_commit,
+                        author=author_name,
+                        pr_title=pr.title,
+                        opened_at=opened_at,
+                    ),
+                    fallback=None,
+                )
+                await self._post_or_update_unparseable_notice(
+                    project_key, repo_slug, pr_id, pr_review_id,
+                    new_commit=source_commit,
+                    prior_commit=prior_commit,
+                )
+                return
+
             # Deduplicate against existing findings in DB
             existing_keys = {
                 (f["file_path"], f["line_number"], f["severity"])
@@ -1527,22 +1562,102 @@ class Reviewer:
         new_commit: str | None,
         prior_commit: str | None,
     ) -> None:
-        """Post a deadline-exceeded notice or prepend a staleness banner.
+        """Surface a deadline-exceeded run on the PR summary comment.
 
-        - **No prior summary tracked** → post a fresh "Review skipped"
-          comment that becomes the noergler comment for this PR. The next
-          successful review will update it in place via
-          `_post_or_update_summary`.
+        The model did not respond within our wall-clock cap. Delegates to
+        `_post_or_update_failure_notice` with timeout-specific wording.
+        """
+        timeout_minutes = int(INFERENCE_HARD_TIMEOUT_SECONDS / 60)
+        short_new = (new_commit or "")[:8] or "unknown"
+        short_old = (prior_commit or "")[:8] if prior_commit else None
+
+        fresh_body = (
+            f"⚠️ **Review skipped** — no response from the model within "
+            f"{timeout_minutes} minutes for commit `{short_new}`. "
+            f"The review did not complete. Push a new commit or "
+            f"`@{self.bitbucket.bot_username}` to retry."
+        )
+        if short_old:
+            banner_line = (
+                f"⚠️ No response from the model within {timeout_minutes} "
+                f"minutes on commit `{short_new}` — findings below reflect "
+                f"the earlier commit `{short_old}`."
+            )
+        else:
+            banner_line = (
+                f"⚠️ No response from the model within {timeout_minutes} "
+                f"minutes on commit `{short_new}` — findings below reflect "
+                f"an earlier commit."
+            )
+        await self._post_or_update_failure_notice(
+            project_key, repo_slug, pr_id, pr_review_id,
+            fresh_body=fresh_body, banner_line=banner_line, log_label="timeout notice",
+        )
+
+    async def _post_or_update_unparseable_notice(
+        self,
+        project_key: str,
+        repo_slug: str,
+        pr_id: int,
+        pr_review_id: int | None,
+        new_commit: str | None,
+        prior_commit: str | None,
+    ) -> None:
+        """Surface a refused / unparseable model response on the PR summary.
+
+        The model responded but its output could not be parsed (an empty
+        output or a non-JSON refusal such as "I'm sorry, but I cannot assist
+        with that request."). Delegates to `_post_or_update_failure_notice`
+        with refusal-specific wording.
+        """
+        short_new = (new_commit or "")[:8] or "unknown"
+        short_old = (prior_commit or "")[:8] if prior_commit else None
+
+        fresh_body = (
+            f"⚠️ **Review skipped** — the model returned a response that could "
+            f"not be processed (it may have refused this diff) for commit "
+            f"`{short_new}`. The review did not complete. Push a new commit or "
+            f"`@{self.bitbucket.bot_username}` to retry."
+        )
+        if short_old:
+            banner_line = (
+                f"⚠️ The model returned an unprocessable response on commit "
+                f"`{short_new}` — findings below reflect the earlier commit "
+                f"`{short_old}`."
+            )
+        else:
+            banner_line = (
+                f"⚠️ The model returned an unprocessable response on commit "
+                f"`{short_new}` — findings below reflect an earlier commit."
+            )
+        await self._post_or_update_failure_notice(
+            project_key, repo_slug, pr_id, pr_review_id,
+            fresh_body=fresh_body, banner_line=banner_line,
+            log_label="unparseable-response notice",
+        )
+
+    async def _post_or_update_failure_notice(
+        self,
+        project_key: str,
+        repo_slug: str,
+        pr_id: int,
+        pr_review_id: int | None,
+        fresh_body: str,
+        banner_line: str,
+        log_label: str,
+    ) -> None:
+        """Post a review-failure notice or prepend a staleness banner.
+
+        - **No prior summary tracked** → post `fresh_body` as a new comment
+          that becomes the noergler comment for this PR. The next successful
+          review will update it in place via `_post_or_update_summary`.
         - **Prior summary tracked** → fetch its body, strip any previous
-          staleness banner (idempotency on repeated timeouts), prepend a
-          fresh banner naming the failed and prior commits.
+          staleness banner (idempotency on repeated failures), prepend a fresh
+          `banner_line` (prefixed with `_STALE_BANNER_SENTINEL`).
 
         We always preserve the original body. The next successful review
         replaces the entire comment, banner and all.
         """
-        timeout_minutes = int(INFERENCE_HARD_TIMEOUT_SECONDS / 60)
-        short_new = (new_commit or "")[:8] or "unknown"
-
         existing_summary = None
         if pr_review_id:
             existing_summary = await _safe_db(
@@ -1551,18 +1666,12 @@ class Reviewer:
             )
 
         if not existing_summary:
-            body = (
-                f"⚠️ **Review skipped** — no response from the model within "
-                f"{timeout_minutes} minutes for commit `{short_new}`. "
-                f"The review did not complete. Push a new commit or "
-                f"`@{self.bitbucket.bot_username}` to retry."
-            )
             try:
                 post_result = await self.bitbucket.post_pr_comment(
-                    project_key, repo_slug, pr_id, body,
+                    project_key, repo_slug, pr_id, fresh_body,
                 )
             except Exception:
-                logger.error("Failed to post timeout notice", exc_info=True)
+                logger.error("Failed to post %s", log_label, exc_info=True)
                 return
             if post_result and pr_review_id:
                 comment_id, version = post_result
@@ -1592,21 +1701,7 @@ class Reviewer:
         live_version = existing_payload.get("version", version)
 
         body_without_banner = _strip_stale_banner(existing_body)
-        short_old = (prior_commit or "")[:8] if prior_commit else None
-        if short_old:
-            banner = (
-                f"{_STALE_BANNER_SENTINEL}\n"
-                f"⚠️ No response from the model within {timeout_minutes} "
-                f"minutes on commit `{short_new}` — findings below reflect "
-                f"the earlier commit `{short_old}`."
-            )
-        else:
-            banner = (
-                f"{_STALE_BANNER_SENTINEL}\n"
-                f"⚠️ No response from the model within {timeout_minutes} "
-                f"minutes on commit `{short_new}` — findings below reflect "
-                f"an earlier commit."
-            )
+        banner = f"{_STALE_BANNER_SENTINEL}\n{banner_line}"
         new_body = banner + "\n\n" + body_without_banner
 
         try:

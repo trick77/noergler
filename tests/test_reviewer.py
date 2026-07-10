@@ -257,7 +257,10 @@ def mock_bitbucket():
     return client
 
 
-def _make_review_result(findings=None, skipped_files=None, review_effort=1, timed_out=False):
+def _make_review_result(
+    findings=None, skipped_files=None, review_effort=1,
+    timed_out=False, response_unparseable=False,
+):
     return LLMClient.ReviewResult(
         findings=findings or [],
         skipped_files=skipped_files or [],
@@ -265,6 +268,7 @@ def _make_review_result(findings=None, skipped_files=None, review_effort=1, time
         completion_tokens=50,
         review_effort=review_effort,
         timed_out=timed_out,
+        response_unparseable=response_unparseable,
     )
 
 
@@ -1000,6 +1004,173 @@ class TestReviewTimeoutHandling:
         # Exactly one sentinel marker — the prior banner was stripped.
         assert new_body.count(_STALE_BANNER_SENTINEL) == 1
         # Original review summary content survived.
+        assert "### Review summary" in new_body
+        assert "1 issue" in new_body
+
+
+class TestReviewUnparseableHandling:
+    """When llm_result.response_unparseable is True (model refused / returned
+    unparseable output) the normal summary path is replaced by either a fresh
+    "Review skipped" notice (no prior summary) or a staleness banner prepended
+    to the existing summary. Mirrors TestReviewTimeoutHandling."""
+
+    @pytest.mark.asyncio
+    async def test_no_inline_comments_when_unparseable(
+        self, mock_bitbucket, mock_llm, monkeypatch,
+    ):
+        mock_llm.review_diff.return_value = _make_review_result(
+            [], response_unparseable=True,
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_last_reviewed_commit",
+            AsyncMock(return_value=None),
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.upsert_pr_review",
+            AsyncMock(return_value=99),
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_summary_comment_info",
+            AsyncMock(return_value=None),
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.update_summary_comment",
+            AsyncMock(),
+        )
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        await rev.review_pull_request(_make_payload("username"))
+
+        mock_bitbucket.post_inline_comment.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_first_ever_unparseable_posts_review_skipped_notice(
+        self, mock_bitbucket, mock_llm, monkeypatch,
+    ):
+        mock_llm.review_diff.return_value = _make_review_result(
+            [], response_unparseable=True,
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_last_reviewed_commit",
+            AsyncMock(return_value=None),
+        )
+        upsert = AsyncMock(return_value=99)
+        monkeypatch.setattr(
+            "app.reviewer.repository.upsert_pr_review", upsert,
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_summary_comment_info",
+            AsyncMock(return_value=None),
+        )
+        update_summary_comment = AsyncMock()
+        monkeypatch.setattr(
+            "app.reviewer.repository.update_summary_comment",
+            update_summary_comment,
+        )
+
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        await rev.review_pull_request(_make_payload("username"))
+
+        mock_bitbucket.post_pr_comment.assert_called_once()
+        body = mock_bitbucket.post_pr_comment.call_args[0][3]
+        assert "Review skipped" in body
+        assert "could not be processed" in body
+        # Reviewed-commit pointer is preserved (prior was None here).
+        assert upsert.call_args.kwargs["last_reviewed_commit"] is None
+        # Stored so the next successful review updates this same comment.
+        update_summary_comment.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_unparseable_with_prior_summary_prepends_banner(
+        self, mock_bitbucket, mock_llm, monkeypatch,
+    ):
+        from app.reviewer import _STALE_BANNER_SENTINEL
+        mock_llm.review_diff.return_value = _make_review_result(
+            [], response_unparseable=True,
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_last_reviewed_commit",
+            AsyncMock(return_value="oldcommit1234567"),
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.upsert_pr_review",
+            AsyncMock(return_value=99),
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_summary_comment_info",
+            AsyncMock(return_value={
+                "summary_comment_id": 555,
+                "summary_comment_version": 3,
+            }),
+        )
+        update_summary_comment = AsyncMock()
+        monkeypatch.setattr(
+            "app.reviewer.repository.update_summary_comment",
+            update_summary_comment,
+        )
+
+        original_body = "### Review summary\n- 1 issue ❌\n\n(prior content)"
+        mock_bitbucket.fetch_pr_comment = AsyncMock(return_value={
+            "text": original_body,
+            "version": 3,
+        })
+        mock_bitbucket.update_pr_comment = AsyncMock(return_value=4)
+
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        await rev.review_pull_request(_make_payload("username"))
+
+        mock_bitbucket.post_pr_comment.assert_not_called()
+        mock_bitbucket.update_pr_comment.assert_called_once()
+        new_body = mock_bitbucket.update_pr_comment.call_args[0][5]
+        assert new_body.startswith(_STALE_BANNER_SENTINEL)
+        assert "unprocessable response" in new_body
+        assert "oldcommi" in new_body
+        assert original_body in new_body
+        update_summary_comment.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_repeated_unparseable_does_not_stack_banners(
+        self, mock_bitbucket, mock_llm, monkeypatch,
+    ):
+        from app.reviewer import _STALE_BANNER_SENTINEL
+        mock_llm.review_diff.return_value = _make_review_result(
+            [], response_unparseable=True,
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_last_reviewed_commit",
+            AsyncMock(return_value="oldcommit1234567"),
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.upsert_pr_review",
+            AsyncMock(return_value=99),
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.update_summary_comment",
+            AsyncMock(),
+        )
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_summary_comment_info",
+            AsyncMock(return_value={
+                "summary_comment_id": 555,
+                "summary_comment_version": 3,
+            }),
+        )
+        already_bannered = (
+            f"{_STALE_BANNER_SENTINEL}\n"
+            "⚠️ The model returned an unprocessable response on commit `oldfailed` "
+            "— findings below reflect the earlier commit `oldcommi`.\n\n"
+            "### Review summary\n- 1 issue ❌"
+        )
+        mock_bitbucket.fetch_pr_comment = AsyncMock(return_value={
+            "text": already_bannered,
+            "version": 3,
+        })
+        mock_bitbucket.update_pr_comment = AsyncMock(return_value=4)
+
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        await rev.review_pull_request(_make_payload("username"))
+
+        new_body = mock_bitbucket.update_pr_comment.call_args[0][5]
+        assert new_body.count(_STALE_BANNER_SENTINEL) == 1
         assert "### Review summary" in new_body
         assert "1 issue" in new_body
 
