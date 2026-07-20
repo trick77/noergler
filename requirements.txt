@@ -1,7 +1,7 @@
-fastapi==0.139.0
+fastapi==0.139.2
 uvicorn==0.51.0
 httpx==0.28.1
-openai==2.45.0
+openai==2.46.0
 pydantic==2.13.4
 tiktoken==0.13.0
 asyncpg==0.31.0
