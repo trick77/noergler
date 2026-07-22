@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>noergler rollout strategy — ten teams</title>
+
+<style>
+  :root {
+    --paper:      #f4f6f6;
+    --surface:    #ffffff;
+    --ink:        #10171a;
+    --ink-soft:   #46565b;
+    --ink-faint:  #6f8288;
+    --rule:       #d8e0e0;
+    --rule-soft:  #e7ecec;
+    --accent:     #10635f;
+    --accent-bg:  #e2eeed;
+    --warn:       #8a6410;
+    --warn-bg:    #f4ecd9;
+    --stop:       #9c3a2c;
+    --stop-bg:    #f6e3df;
+
+    --measure: 68ch;
+    --step-0: 1rem;
+    --step-1: 1.1875rem;
+    --step-2: 1.4375rem;
+    --step-3: 1.9375rem;
+    --step-4: 2.75rem;
+
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:     #0d1315;
+      --surface:   #141c1e;
+      --ink:       #e6edec;
+      --ink-soft:  #a6b7ba;
+      --ink-faint: #7a8d91;
+      --rule:      #27363a;
+      --rule-soft: #1d2a2d;
+      --accent:    #5cc4b8;
+      --accent-bg: #16302f;
+      --warn:      #d6ac5a;
+      --warn-bg:   #2e2718;
+      --stop:      #e08573;
+      --stop-bg:   #33201c;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:     #0d1315;
+    --surface:   #141c1e;
+    --ink:       #e6edec;
+    --ink-soft:  #a6b7ba;
+    --ink-faint: #7a8d91;
+    --rule:      #27363a;
+    --rule-soft: #1d2a2d;
+    --accent:    #5cc4b8;
+    --accent-bg: #16302f;
+    --warn:      #d6ac5a;
+    --warn-bg:   #2e2718;
+    --stop:      #e08573;
+    --stop-bg:   #33201c;
+  }
+
+  :root[data-theme="light"] {
+    --paper:     #f4f6f6;
+    --surface:   #ffffff;
+    --ink:       #10171a;
+    --ink-soft:  #46565b;
+    --ink-faint: #6f8288;
+    --rule:      #d8e0e0;
+    --rule-soft: #e7ecec;
+    --accent:    #10635f;
+    --accent-bg: #e2eeed;
+    --warn:      #8a6410;
+    --warn-bg:   #f4ecd9;
+    --stop:      #9c3a2c;
+    --stop-bg:   #f6e3df;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: var(--step-0);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 78ch;
+    margin: 0 auto;
+    padding: clamp(2rem, 6vw, 5rem) clamp(1.1rem, 5vw, 2.5rem) 6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3.25rem;
+  }
+
+  .masthead { display: flex; flex-direction: column; gap: 1rem; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-size: var(--step-4);
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    font-family: var(--serif);
+    font-size: var(--step-1);
+    line-height: 1.55;
+    color: var(--ink-soft);
+    max-width: var(--measure);
+  }
+
+  .masthead-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--rule);
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--ink-faint);
+  }
+
+  section { display: flex; flex-direction: column; gap: 1.15rem; }
+
+  h2 {
+    font-family: var(--serif);
+    font-size: var(--step-3);
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  h3 {
+    font-family: var(--sans);
+    font-size: var(--step-0);
+    font-weight: 650;
+    letter-spacing: 0.005em;
+  }
+
+  p { max-width: var(--measure); }
+
+  a { color: var(--accent); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.855em;
+    background: var(--rule-soft);
+    padding: 0.12em 0.36em;
+    border-radius: 3px;
+    word-break: break-word;
+  }
+
+  strong { font-weight: 650; }
+
+  .verdict {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 1.4rem 1.6rem;
+    background: var(--accent-bg);
+    border-left: 3px solid var(--accent);
+    border-radius: 2px;
+  }
+  .verdict .label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .verdict .call {
+    font-family: var(--serif);
+    font-size: var(--step-2);
+    line-height: 1.35;
+    text-wrap: balance;
+  }
+  .verdict p { color: var(--ink-soft); }
+
+  .revision {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 1.1rem 1.35rem;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--warn);
+    border-radius: 2px;
+  }
+  .revision .label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--warn);
+  }
+  .revision p { color: var(--ink-soft); max-width: none; }
+
+  .options { display: flex; flex-direction: column; gap: 0.9rem; }
+
+  .option {
+    display: grid;
+    grid-template-columns: 3.25rem 1fr;
+    gap: 0.4rem 1rem;
+    padding: 1.15rem 1.35rem;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+  }
+
+  .option .sigil {
+    grid-row: 1 / span 3;
+    font-family: var(--serif);
+    font-size: 1.65rem;
+    line-height: 1;
+    color: var(--ink-faint);
+  }
+
+  .option-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem 0.75rem;
+  }
+
+  .option p { color: var(--ink-soft); max-width: none; }
+
+  .option .cost {
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    color: var(--ink-faint);
+    line-height: 1.5;
+  }
+
+  .option[data-pick="yes"] { border-color: var(--accent); }
+  .option[data-pick="yes"] .sigil { color: var(--accent); }
+
+  .chip {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.15rem 0.5rem;
+    border-radius: 2px;
+    white-space: nowrap;
+  }
+  .chip[data-tone="go"]    { background: var(--accent-bg); color: var(--accent); }
+  .chip[data-tone="warn"]  { background: var(--warn-bg);   color: var(--warn); }
+  .chip[data-tone="stop"]  { background: var(--stop-bg);   color: var(--stop); }
+
+  .evidence {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    list-style: none;
+  }
+  .evidence li {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding: 0.95rem 0;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  .evidence li:first-child { border-top: 1px solid var(--rule-soft); }
+  .evidence .claim { font-weight: 650; }
+  .evidence .detail { color: var(--ink-soft); }
+
+  .bullets { display: flex; flex-direction: column; gap: 0.5rem; padding-left: 1.15rem; max-width: var(--measure); }
+  .bullets li { color: var(--ink-soft); }
+  .bullets li::marker { color: var(--ink-faint); }
+
+  .table-scroll { overflow-x: auto; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+    min-width: 34rem;
+  }
+  caption {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    padding-bottom: 0.6rem;
+  }
+  th, td {
+    text-align: left;
+    vertical-align: top;
+    padding: 0.7rem 1rem 0.7rem 0;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  thead th {
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 600;
+    border-bottom: 1px solid var(--rule);
+  }
+  tbody th { font-weight: 650; width: 30%; }
+  td { color: var(--ink-soft); }
+
+  .questions { display: flex; flex-direction: column; gap: 1rem; }
+  .question {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 1.15rem 1.35rem;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--warn);
+    border-radius: 2px;
+  }
+  .question p { color: var(--ink-soft); max-width: none; }
+
+  footer {
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--rule);
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--ink-faint);
+    max-width: var(--measure);
+    line-height: 1.7;
+  }
+
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <header class="masthead">
+    <div class="eyebrow">Design note · noergler · multi-team rollout</div>
+    <h1>One team today, ten tomorrow</h1>
+    <p class="standfirst">How to serve ten teams without handing any single account the keys to every
+      repository — and without ten review bots stampeding the Bitbucket and Jira servers they all share.</p>
+    <div class="masthead-meta">
+      <span>Assessment</span>
+      <span>Target-state, not current-state</span>
+      <span>Decision pending</span>
+    </div>
+  </header>
+
+  <div class="revision">
+    <div class="label">Constraints this rests on</div>
+    <p>Serialising reviews is a deliberate choice to avoid overwhelming Bitbucket and Jira, not an
+      implementation accident — so it stays. noergler itself is open to change, so “needs no code change” is
+      not a tiebreaker. Every team must supply its own inference key and its own Bitbucket service account;
+      Jira may share a read-only account. Together these settle the topology on a single instance — with a
+      per-team webhook secret carrying the identity that attribution depends on.</p>
+  </div>
+
+  <div class="verdict">
+    <div class="label">Direction</div>
+    <div class="call">One instance serving every team, resolving credentials per team with a fallback — and
+      one mandatory, non-negotiable inference key per team.</div>
+    <p>Serialisation protects shared infrastructure, and protection of a shared resource has to be global to
+      mean anything. Once credentials resolve per request rather than per process, a single instance stops
+      being in tension with per-team isolation.</p>
+  </div>
+
+  <section>
+    <h2>The credential resolution rules</h2>
+    <p>Two mandatory, one shared — deliberately not a single policy for all three:</p>
+    <div class="table-scroll">
+      <table>
+        <caption>Per team, per credential</caption>
+        <thead>
+          <tr><th scope="col">Credential</th><th scope="col">Policy</th><th scope="col">If absent</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Inference key</th>
+            <td>Per team. Mandatory — this is what makes provider-side spend attributable.</td>
+            <td><strong>Fail closed.</strong> Refuse the review, say so visibly. Never silently borrow
+              another team's budget.</td>
+          </tr>
+          <tr>
+            <th scope="row">Bitbucket</th>
+            <td>Per team. Mandatory — a team's own service account is what makes repository access opt-in.</td>
+            <td><strong>Fail closed.</strong> No shared account to inherit, so nothing accumulates broad
+              access by default.</td>
+          </tr>
+          <tr>
+            <th scope="row">Jira</th>
+            <td>Per team when supplied.</td>
+            <td>Fall back to the shared read-only account. Lowest risk of the three.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Validate the mandatory key at registration time, not at first review. A team that discovers its
+      configuration is incomplete when a pull request goes unreviewed learns it in the worst possible
+      place.</p>
+  </section>
+
+  <section>
+    <h2>The argument for a single instance is sound</h2>
+    <p>Bitbucket and Jira are shared infrastructure. A limit enforced <em>per instance</em> is not a limit on
+      them — ten instances each politely running one review at a time still present ten concurrent review
+      streams to a server that was only ever measured against one. Whatever headroom the current setup
+      demonstrates does not survive being multiplied by ten.</p>
+    <p>That reasoning is correct, and it's the strongest argument on the table. The question it leaves open
+      is whether a single <em>process</em> is the only way to get a single <em>budget</em>.</p>
+  </section>
+
+  <section>
+    <h2>A caveat on what is protected today</h2>
+    <p>The single review worker bounds how many pull requests are in flight. It does not bound how many
+      requests reach Bitbucket, because each review fans out internally:</p>
+    <ul class="evidence">
+      <li>
+        <span class="claim">Per-review file fetches are unbounded.</span>
+        <span class="detail"><code>app/reviewer.py:402</code> runs <code>asyncio.gather</code> across every
+          reviewable file in the diff, each calling <code>fetch_file_content</code>. A 120-file pull request
+          issues 120 concurrent fetches.</span>
+      </li>
+      <li>
+        <span class="claim">Nothing caps the connection pool.</span>
+        <span class="detail">The <code>httpx.AsyncClient</code> in <code>app/bitbucket.py:31</code> sets a
+          timeout but no <code>limits=</code>, so it inherits the default ceiling of 100 concurrent
+          connections.</span>
+      </li>
+    </ul>
+    <p>So today's protection is real but coarse: one large pull request can already burst to roughly a
+      hundred concurrent requests. The mechanism that genuinely matches the intent is an explicit
+      concurrency budget on the Bitbucket and Jira clients — which is worth adding regardless of which
+      topology wins.</p>
+  </section>
+
+  <section>
+    <h2>Team identity comes from the secret, not the payload</h2>
+    <p>If attribution has to be certain, it cannot rest on a field inside the request body. The project key in
+      a webhook payload is unauthenticated until the signature is checked — it says who the sender
+      <em>claims</em> to be. A per-team webhook secret makes the claim provable: the team that signed it is
+      the only team that could have.</p>
+    <p>The mechanism is already half-built. <code>scripts/onboard_repo.py</code> programs both the webhook URL
+      and <code>configuration.secret</code> per repository, and reports drift when either differs from the
+      desired state. Giving each team its own URL and its own secret is a change to that script's config
+      file, not new machinery.</p>
+
+    <h3>Verify in this order</h3>
+    <ul class="bullets">
+      <li>The webhook path names the team, so the secret is selected before any parsing — this replaces the
+        single global secret checked at <code>app/main.py:239</code>.</li>
+      <li>The signature verifies against that team's secret. Failure is rejection, not a fallback to another
+        team's key.</li>
+      <li><strong>The payload's project belongs to that team.</strong> Skipping this step is the security
+        hole: a team holding a valid secret could otherwise sign a payload naming another team's repository,
+        and have it reviewed with credentials that team never granted.</li>
+    </ul>
+
+    <h3>Then record the authenticated team, not the claimed one</h3>
+    <p>Attribution should be stored from the identity that survived verification. The database has no team
+      column today — <code>pr_reviews</code> is keyed <code>UNIQUE (project_key, repo_slug, pr_id)</code> —
+      so per-team cost and volume are currently inferred from the project key rather than known. Adding the
+      team to that table turns inference into an audit trail.</p>
+    <p>That unique key has a second consequence worth settling now: if two teams onboard the same repository,
+      both webhooks fire and both reviews contend for the same row. Decide that a repository belongs to
+      exactly one team and enforce it at registration, where the answer is cheap, rather than in the database,
+      where it is a corruption report.</p>
+  </section>
+
+  <section>
+    <h2>What the single instance obliges you to build</h2>
+    <p>Not a long list, but two items are easy to miss because they are invisible until a second team
+      arrives:</p>
+    <ul class="evidence">
+      <li>
+        <span class="claim">The mention trigger is a global username.</span>
+        <span class="detail"><code>app/main.py:276</code> builds the trigger from
+          <code>config.bitbucket.username</code>. With every team on its own bot account this is no longer
+          optional — each team has a different handle, and a global trigger would silently ignore every
+          mention. Worth settling a naming convention at the same time, since the handle is what people
+          type.</span>
+      </li>
+      <li>
+        <span class="claim">Module globals become per-tenant lookups.</span>
+        <span class="detail">The clients in <code>app/main.py:43</code> are assigned once at startup. Each
+          becomes a per-tenant instance resolved from the registry, cached per team.</span>
+      </li>
+      <li>
+        <span class="claim">The queue needs fairness.</span>
+        <span class="detail">One worker shared by ten teams means one very large pull request delays
+          everyone. Round-robin across tenants rather than first-in-first-out.</span>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>The counterargument worth weighing</h2>
+    <p>A single instance holds every team's credentials, so it avoids an all-seeing <em>account</em> partly by
+      creating an all-seeing <em>process</em> — one whose compromise exposes ten teams' tokens at once, and
+      whose bad deployment stops code review everywhere. A namespace holding ten teams' secrets also cannot
+      reasonably be owned by any one of those teams; it needs a platform owner.</p>
+    <p>Dropping the Bitbucket fallback closes the sharper version of this. A shared Bitbucket account would
+      have accumulated access from every team that declined to bring its own, converging on the broad-access
+      bot the design set out to avoid — the fallback would have been the default in practice, whatever the
+      intent. Requiring each team's own account means no single token reaches across teams: the process holds
+      ten credentials, but each one is narrow, and compromise of the process is the only path to breadth.</p>
+    <p>The price is onboarding friction. A team cannot start until it has created a service account and
+      granted it access, and that step now blocks rather than degrades. Better to surface it at registration,
+      where <code>scripts/onboard_repo.py</code> already performs a read-permission check, than at the first
+      unreviewed pull request.</p>
+  </section>
+
+  <section>
+    <h2>Decisions that hold either way</h2>
+    <div class="table-scroll">
+      <table>
+        <caption>Settled</caption>
+        <thead>
+          <tr><th scope="col">Decision</th><th scope="col">Verdict</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Inference key per team</th>
+            <td>Confirmed, for spend attribution. Under per-team instances it's an environment value; under
+              one instance it's a registry lookup.</td>
+          </tr>
+          <tr>
+            <th scope="row">Bitbucket opt-in via per-team accounts</th>
+            <td><strong>Endorsed.</strong> A team's bot only reaches repositories that granted it access, and
+              <code>scripts/onboard_repo.py</code> already performs the read-permission check plus an
+              idempotent webhook upsert per repository.</td>
+          </tr>
+          <tr>
+            <th scope="row">One shared Jira account</th>
+            <td><strong>Safe.</strong> The Jira client only calls <code>fetch_ticket</code> — read-only.
+              Caveats: a single rate-limit bucket at ten times the traffic, and one rotation affecting
+              everything at once.</td>
+          </tr>
+          <tr>
+            <th scope="row">Serialised reviews</th>
+            <td><strong>Keep the intent, change the mechanism.</strong> Move the limit from “one review at a
+              time” to an explicit budget on outbound Bitbucket and Jira calls, so backend load stays bounded
+              while a single team's review can still parallelise internally.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Still open</h2>
+    <div class="questions">
+      <article class="question">
+        <h3>What is the actual backend budget?</h3>
+        <p>The whole design rests on a number nobody has measured: how many concurrent requests Bitbucket and
+          Jira tolerate comfortably. One review at a time was a safe guess for one team. Before ten teams
+          arrive, that guess should become a measurement — otherwise the budget is set by superstition, and
+          either throttles reviews needlessly or fails to protect anything.</p>
+      </article>
+      <article class="question">
+        <h3>Head-of-line blocking between teams</h3>
+        <p>One queue shared by ten teams means nine wait behind the tenth's four-thousand-line pull request
+          unless fairness is explicit. This is the cost of the single instance and the thing most likely to
+          generate complaints in month one. Round-robin across tenants, and measure queue wait per team from
+          day one rather than after the first escalation.</p>
+      </article>
+      <article class="question">
+        <h3>Who owns the namespace?</h3>
+        <p>A single instance holding ten teams' credentials cannot live in a team-owned namespace. It needs a
+          platform owner with a rotation process, an on-call route, and an upgrade cadence that ten teams can
+          live with. This is an organisational decision, not a technical one, and it is the most common way
+          shared-service rollouts stall.</p>
+      </article>
+    </div>
+  </section>
+
+  <footer>
+    Code references point at <code>master</code> and were read directly rather than recalled. The
+    recommendation rests on three stated constraints — per-team spend tracking, no all-seeing Bitbucket
+    account, and deliberate protection of shared Bitbucket and Jira capacity — and would change if any were
+    relaxed.
+  </footer>
+
+</div>
+</body>
+</html>
