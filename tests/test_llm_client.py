@@ -405,9 +405,32 @@ class TestIsReviewableDiff:
             assert not is_reviewable_diff(diff), f"{name} should be skipped"
 
     def test_diagram_sources_skipped(self):
-        for name in ["docs/architecture.puml", "sequence.puml"]:
+        names = [
+            "docs/architecture.puml", "sequence.puml",
+            "arch.plantuml", "arch.pu", "shared.iuml",
+            "docs/flow.mmd", "diagram.drawio", "diagram.dio",
+            "board.excalidraw",
+        ]
+        for name in names:
             diff = f"diff --git a/{name} b/{name}\n+@startuml\n"
             assert not is_reviewable_diff(diff), f"{name} should be skipped"
+
+    def test_generated_output_skipped(self):
+        for name in ["__snapshots__/App.test.js.snap", "locale/de.po", "locale/de.mo", "msgs.xlf"]:
+            diff = f"diff --git a/{name} b/{name}\n+generated\n"
+            assert not is_reviewable_diff(diff), f"{name} should be skipped"
+
+    def test_extensionless_lockfiles_skipped(self):
+        for name in ["go.sum", "pnpm-lock.yaml", "vendor/go.sum"]:
+            diff = f"diff --git a/{name} b/{name}\n+dep\n"
+            assert not is_reviewable_diff(diff), f"{name} should be skipped"
+
+    def test_similar_extensions_still_reviewable(self):
+        # Guard against over-broad substring matching on the short extensions
+        # above (.pu/.mo/.dio) — these must survive the header filter.
+        for name in ["src/video.movie.py", "app/studio.py", "pkg/sum.go", "config.yaml"]:
+            diff = f"diff --git a/{name} b/{name}\n+code\n"
+            assert is_reviewable_diff(diff), f"{name} should be reviewable"
 
     def test_minified_files_skipped(self):
         for name in ["bundle.min.js", "styles.min.css"]:

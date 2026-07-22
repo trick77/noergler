@@ -305,13 +305,21 @@ SKIP_EXTENSIONS = frozenset({
     # Data / config that rarely benefits from code review
     ".json", ".lock", ".min.js", ".min.css", ".csv",
     ".map",
-    # Diagram markup, not code
-    ".puml",
+    # Diagram markup, not code. `.drawio`/`.excalidraw` are serialized editor
+    # state rather than hand-written markup, so they are noise either way.
+    ".puml", ".plantuml", ".pu", ".iuml",
+    ".mmd", ".drawio", ".dio", ".excalidraw",
+    # Generated output: regenerating these produces large diffs with no
+    # reviewable intent behind them.
+    ".snap",
+    ".po", ".mo", ".xlf",
     # Build / config files
     ".bat", ".cmd", ".properties",
 })
 
-SKIP_FILES = frozenset({"gradlew", "mvnw"})
+# Lockfiles whose names carry no extension we can filter on: `.lock` misses
+# both of these, and `.yaml`/`.sum` are legitimate source extensions.
+SKIP_FILES = frozenset({"gradlew", "mvnw", "go.sum", "pnpm-lock.yaml"})
 
 SKIP_DIRS = frozenset({
     "target", "build", "node_modules", "dist", "__pycache__",
