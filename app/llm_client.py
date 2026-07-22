@@ -305,15 +305,33 @@ SKIP_EXTENSIONS = frozenset({
     # Data / config that rarely benefits from code review
     ".json", ".lock", ".min.js", ".min.css", ".csv",
     ".map",
+    # Diagram markup, not code. `.drawio`/`.excalidraw` are serialized editor
+    # state rather than hand-written markup, so they are noise either way.
+    ".puml", ".plantuml", ".pu", ".iuml",
+    ".mmd", ".drawio", ".dio", ".excalidraw",
+    # Generated output: regenerating these produces large diffs with no
+    # reviewable intent behind them.
+    ".snap", ".ambr",
+    ".po", ".mo", ".xlf",
     # Build / config files
     ".bat", ".cmd", ".properties",
 })
 
-SKIP_FILES = frozenset({"gradlew", "mvnw"})
+# Lockfiles whose names carry no extension we can filter on: `.lock` misses
+# both of these, and `.yaml`/`.sum` are legitimate source extensions.
+SKIP_FILES = frozenset({"gradlew", "mvnw", "go.sum", "pnpm-lock.yaml"})
+
+# Generated sources whose names share an extension with hand-written code, so
+# only the filename suffix distinguishes them (protobuf compiler output).
+SKIP_FILE_SUFFIXES = ("_pb2.py", "_pb2_grpc.py")
 
 SKIP_DIRS = frozenset({
     "target", "build", "node_modules", "dist", "__pycache__",
 })
+
+# Directory names carrying a project-specific prefix, matched by suffix rather
+# than exact name (e.g. `myproject.egg-info`).
+SKIP_DIR_SUFFIXES = (".egg-info",)
 
 _DIFF_PATH_RE = re.compile(
     r"^diff --git (?:a/.+ b/|src://.+ dst://)(.+)$", re.MULTILINE
@@ -338,11 +356,14 @@ def is_reviewable_diff(file_diff: str) -> bool:
     path = match.group(1).rstrip("\r").lower()
     parts = path.split("/")
     basename = parts[-1]
-    if basename in SKIP_FILES:
+    if basename in SKIP_FILES or basename.endswith(SKIP_FILE_SUFFIXES):
         return False
     if basename.startswith("."):
         return False
-    if any(p in SKIP_DIRS or p.startswith(".") for p in parts[:-1]):
+    if any(
+        p in SKIP_DIRS or p.startswith(".") or p.endswith(SKIP_DIR_SUFFIXES)
+        for p in parts[:-1]
+    ):
         return False
     return True
 
