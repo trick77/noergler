@@ -305,6 +305,8 @@ SKIP_EXTENSIONS = frozenset({
     # Data / config that rarely benefits from code review
     ".json", ".lock", ".min.js", ".min.css", ".csv",
     ".map",
+    # Diagram markup, not code
+    ".puml",
     # Build / config files
     ".bat", ".cmd", ".properties",
 })

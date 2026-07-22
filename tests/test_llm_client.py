@@ -404,6 +404,11 @@ class TestIsReviewableDiff:
             diff = f"diff --git a/{name} b/{name}\n+content\n"
             assert not is_reviewable_diff(diff), f"{name} should be skipped"
 
+    def test_diagram_sources_skipped(self):
+        for name in ["docs/architecture.puml", "sequence.puml"]:
+            diff = f"diff --git a/{name} b/{name}\n+@startuml\n"
+            assert not is_reviewable_diff(diff), f"{name} should be skipped"
+
     def test_minified_files_skipped(self):
         for name in ["bundle.min.js", "styles.min.css"]:
             diff = f"diff --git a/dist/{name} b/dist/{name}\n+minified\n"
