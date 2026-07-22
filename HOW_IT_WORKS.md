@@ -92,7 +92,7 @@ If found, it requests an incremental diff from Bitbucket's compare API (`/compar
 
 The raw diff (either full PR diff or incremental) is split into per-file chunks using `diff --git` boundaries. Each file chunk is then filtered:
 
-**Skipped by extension:** Binary files (`.png`, `.jar`, `.exe`, etc.), lock files (`.lock`), minified files (`.min.js`), data files (`.json`, `.csv`), diagram sources (`.puml`), and build config (`.xml`, `.properties`).
+**Skipped by extension:** Binary files (`.png`, `.jar`, `.exe`, etc.), lock files (`.lock`), minified files (`.min.js`), data files (`.json`, `.csv`), diagram sources (`.puml`), and build config (`.properties`, `.bat`, `.cmd`). XML is *not* skipped — `pom.xml`, layout and config XML are reviewed like source.
 
 **Skipped by directory:** `node_modules`, `build`, `target`, `dist`, `__pycache__`, and dot-directories (`.git`, `.next`, etc.).
 
