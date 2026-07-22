@@ -28,6 +28,9 @@ Built for the realities of enterprise setups: self-hosted Bitbucket Server, on-p
 
 For a detailed description of the review pipeline, see [HOW_IT_WORKS.md](HOW_IT_WORKS.md).
 
+For the design note on running noergler for multiple teams — deployment topology, per-team
+credentials and webhook identity — see [MULTI_TEAM_ROLLOUT.html](MULTI_TEAM_ROLLOUT.html).
+
 ## How it works
 
 1. **Webhook** — Bitbucket Server fires a `pr:opened` or `pr:from_ref_updated` event to the `/webhook` endpoint. The request is validated via HMAC-SHA256.
