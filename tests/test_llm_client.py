@@ -5,7 +5,7 @@ import httpx
 import openai
 import pytest
 
-from app.config import LLMConfig, ReviewConfig
+from app.config import LLMConfig, ReviewConfig, usable_context_budget
 from app.llm_client import (
     LLMClient,
     FileReviewData,
@@ -874,6 +874,54 @@ class TestReasoningEffort:
         finally:
             await client.close()
 
+    @pytest.mark.asyncio
+    async def test_reasoning_rejected_ping_retries_without_it(self, review_config):
+        """If the endpoint 400s on reasoning_effort, the connectivity ping
+        disables it for the session and retries once, so startup succeeds."""
+        cfg = LLMConfig(
+            model="local-model",
+            api_key="test-key",
+            api_url="https://llm.test/v1",
+            reasoning_effort="high",
+        )
+        client = LLMClient(cfg, review_config)
+
+        async def fake_create(**kwargs):
+            if "reasoning_effort" in kwargs:
+                raise _make_api_status_error(400, "Unsupported parameter: 'reasoning_effort'")
+            return _mock_completion("ok", 5, 1)
+
+        client.openai_client.chat.completions.create = fake_create
+        try:
+            await client.check_connectivity()
+            # Disabled for the session, so subsequent calls omit it.
+            assert client._reasoning_supported is False
+            assert client._reasoning_kwargs() == {}
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_non_reasoning_400_on_ping_propagates(self, review_config):
+        """A 400 unrelated to reasoning is not silently retried — startup fails."""
+        cfg = LLMConfig(
+            model="gpt-5.3-codex",
+            api_key="test-key",
+            api_url="https://llm.test/v1",
+            reasoning_effort="high",
+        )
+        client = LLMClient(cfg, review_config)
+
+        async def fake_create(**kwargs):
+            raise _make_api_status_error(400, "Invalid value for 'temperature'")
+
+        client.openai_client.chat.completions.create = fake_create
+        try:
+            with pytest.raises(openai.APIStatusError):
+                await client.check_connectivity()
+            assert client._reasoning_supported is True
+        finally:
+            await client.close()
+
 
 class TestRepoInstructionsInReviewPrompt:
     @pytest.mark.asyncio
@@ -1521,18 +1569,20 @@ class TestParse413TokenLimit:
             await client.close()
 
     @pytest.mark.asyncio
-    async def test_400_context_overflow_updates_config(self, llm_config, review_config):
-        """A generic OpenAI/LiteLLM HTTP 400 overflow updates max_tokens_per_chunk."""
+    async def test_400_context_overflow_reserves_output_headroom(self, llm_config, review_config):
+        """A generic HTTP 400 'maximum context length is N tokens' is the TOTAL
+        window, so the learned input cap reserves output headroom (via
+        usable_context_budget) rather than pinning the whole window as input."""
         client = LLMClient(llm_config, review_config)
-        client.max_tokens_per_chunk = 80000
+        client.max_tokens_per_chunk = 300000
 
         files = [FileReviewData(path="big.py", diff="+x\n", content=None)]
 
         async def mock_call_api(prompt: str):
             raise _make_api_status_error(
                 400,
-                "This model's maximum context length is 4096 tokens, "
-                "however you requested 5000 tokens.",
+                "This model's maximum context length is 200000 tokens, "
+                "however you requested 250000 tokens.",
             )
 
         client._call_api = mock_call_api
@@ -1540,8 +1590,33 @@ class TestParse413TokenLimit:
             template = client.prompt_template
             _, _, _, skipped, _, _, _, _ = await client._review_file_group(files, template, depth=0)
             assert skipped == ["big.py"]
-            # Parses the model limit (4096), not the requested size (5000).
-            assert client.max_tokens_per_chunk == 4096
+            # 200000 total window → usable_context_budget reserves 16k headroom,
+            # not the raw 200000 (which would leave no room for the reply).
+            assert client.max_tokens_per_chunk == usable_context_budget(200000)
+            assert client.max_tokens_per_chunk < 200000
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_400_context_overflow_in_answer_group(self, llm_config, review_config):
+        """The mention path (_answer_file_group) recovers from a 400 overflow too
+        — same shared helper as the review path."""
+        client = LLMClient(llm_config, review_config)
+        client.max_tokens_per_chunk = 300000
+
+        files = [FileReviewData(path="big.py", diff="+x\n", content=None)]
+
+        async def mock_call_mention_api(prompt: str):  # noqa: ARG001
+            raise _make_api_status_error(
+                400, "This model's maximum context length is 200000 tokens."
+            )
+
+        client._call_mention_api = mock_call_mention_api
+        try:
+            template = "{diff}"
+            _, _, _, skipped = await client._answer_file_group(files, template, depth=0)
+            assert skipped == ["big.py"]
+            assert client.max_tokens_per_chunk == usable_context_budget(200000)
         finally:
             await client.close()
 

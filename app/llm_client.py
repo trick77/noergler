@@ -219,11 +219,15 @@ _OVERFLOW_MARKERS = (
     "context_length_exceeded",
     "context_window_exceeded",
 )
-# First token count stated after a known "how big is too big" phrase — the
-# model's limit, not the requested size (which follows later in the message).
-_OVERFLOW_LIMIT_RE = re.compile(
-    r"(?:max size:|maximum context length(?:\s+is)?)\s*([\d,]+)\s*tokens",
-    re.IGNORECASE,
+# "Max size: N tokens" is a per-request INPUT cap (proxy-side, Copilot-style);
+# "maximum context length is N tokens" is the model's TOTAL (input+output)
+# window (OpenAI/LiteLLM). They mean different things, so they are parsed
+# separately: the total window must have output headroom reserved before it can
+# serve as an input budget. Both capture the model's limit, not the requested
+# size (which follows later in the message).
+_OVERFLOW_INPUT_CAP_RE = re.compile(r"max size:\s*([\d,]+)\s*tokens", re.IGNORECASE)
+_OVERFLOW_TOTAL_WINDOW_RE = re.compile(
+    r"maximum context length(?:\s+is)?\s*([\d,]+)\s*tokens", re.IGNORECASE,
 )
 
 
@@ -242,14 +246,29 @@ def _is_context_overflow(exc: "openai.APIStatusError") -> bool:
     return False
 
 
-def _overflow_limit_tokens(body: str) -> int | None:
-    """Parse the model's max input size (tokens) from an overflow response
-    body, or None if not stated. The learned cap is an optimization; when it
-    can't be parsed the caller still bisects and retries."""
-    match = _OVERFLOW_LIMIT_RE.search(body)
-    if not match:
-        return None
-    return int(match.group(1).replace(",", ""))
+def _is_unsupported_reasoning_error(exc: "openai.APIStatusError") -> bool:
+    """True if a 400 signals the endpoint/model rejects the reasoning_effort
+    param, so the caller can retry once without it. Not every model behind an
+    OpenAI-compatible endpoint accepts reasoning params."""
+    return exc.status_code == 400 and "reasoning" in exc.response.text.lower()
+
+
+def _overflow_input_cap(body: str) -> int | None:
+    """Derive a per-chunk INPUT-token cap from an overflow response body, or
+    None if none is stated (the caller still bisects and retries).
+
+    A "Max size: N tokens" value is already an input cap and used as-is. A
+    "maximum context length is N tokens" value is the total window, so output
+    headroom is reserved via `usable_context_budget` — otherwise the next chunk
+    would fill the whole window and leave no room for the reply, re-overflowing.
+    """
+    match = _OVERFLOW_INPUT_CAP_RE.search(body)
+    if match:
+        return int(match.group(1).replace(",", ""))
+    match = _OVERFLOW_TOTAL_WINDOW_RE.search(body)
+    if match:
+        return usable_context_budget(int(match.group(1).replace(",", "")))
+    return None
 
 
 @dataclass
@@ -801,6 +820,11 @@ class LLMClient:
         self.config = config
         self.review_config = review_config
 
+        # Whether the endpoint accepts the reasoning_effort param. Flipped off
+        # by check_connectivity if the startup ping is rejected for it, so a
+        # non-reasoning model behind a strict endpoint doesn't fail every call.
+        self._reasoning_supported = True
+
         # API-imposed chunk ceiling learned from a 413 "Max size: N tokens"
         # response. Starts unlimited; `max_tokens_per_chunk` clamps to it so a
         # runtime shrink survives and is never undone by a later table refresh.
@@ -880,12 +904,24 @@ class LLMClient:
         # learned cap can never be raised.
         self._api_learned_cap = min(self._api_learned_cap, value)
 
+    def _lower_cap_from_overflow(self, exc: "openai.APIStatusError") -> None:
+        """Learn a tighter per-chunk input cap from an overflow response, if it
+        states one. Shared by the review and mention overflow handlers so the
+        clamping policy stays in one place."""
+        cap = _overflow_input_cap(exc.response.text)
+        if cap is not None and cap < self.max_tokens_per_chunk:
+            logger.warning(
+                "Adjusting max_tokens_per_chunk from %s to %s based on overflow response",
+                _fmt(self.max_tokens_per_chunk), _fmt(cap),
+            )
+            self.max_tokens_per_chunk = cap
+
     async def close(self):
         await self.openai_client.close()
 
     def _reasoning_kwargs(self) -> dict[str, Any]:
         effort = self.config.reasoning_effort
-        if not effort:
+        if not effort or not self._reasoning_supported:
             return {}
         return {"reasoning_effort": effort}
 
@@ -911,11 +947,22 @@ class LLMClient:
                 "LLM inference request: %s/chat/completions model=%s",
                 self.config.api_url.rstrip("/"), model_label(self.config.model, self.config.reasoning_effort),
             )
-            ping_response = await self._execute_chat_completion(
-                model=self.config.model,
-                messages=[{"role": "user", "content": "Reply with: ok"}],
-                **self._reasoning_kwargs(),
-            )
+            try:
+                ping_response = await self._ping()
+            except openai.APIStatusError as exc:
+                # A strict endpoint may reject reasoning_effort for a
+                # non-reasoning model. Disable it for the session and retry
+                # once, so startup succeeds without operator intervention.
+                if self._reasoning_supported and _is_unsupported_reasoning_error(exc):
+                    logger.warning(
+                        "endpoint rejected reasoning_effort=%s (HTTP %s) — "
+                        "disabling it for this session and retrying",
+                        self.config.reasoning_effort, exc.status_code,
+                    )
+                    self._reasoning_supported = False
+                    ping_response = await self._ping()
+                else:
+                    raise
             ping_text = (
                 (ping_response.choices[0].message.content or "").strip()
                 if ping_response.choices else ""
@@ -930,6 +977,14 @@ class LLMClient:
                 _format_api_exception(exc),
             )
             raise
+
+    async def _ping(self) -> ChatCompletion:
+        """Smallest-possible inference call used by check_connectivity."""
+        return await self._execute_chat_completion(
+            model=self.config.model,
+            messages=[{"role": "user", "content": "Reply with: ok"}],
+            **self._reasoning_kwargs(),
+        )
 
     @dataclass
     class ReviewResult:
@@ -1162,13 +1217,7 @@ class LLMClient:
                 "context overflow (HTTP %s) on mention Q&A: %s",
                 exc.status_code, exc.response.text[:500],
             )
-            api_limit = _overflow_limit_tokens(exc.response.text)
-            if api_limit is not None and api_limit < self.max_tokens_per_chunk:
-                logger.warning(
-                    "Adjusting max_tokens_per_chunk from %s to %s based on overflow response",
-                    _fmt(self.max_tokens_per_chunk), _fmt(api_limit),
-                )
-                self.max_tokens_per_chunk = api_limit
+            self._lower_cap_from_overflow(exc)
             if len(group) <= 1:
                 file = group[0] if group else None
                 if file is not None and file.content is not None:
@@ -1256,13 +1305,7 @@ class LLMClient:
                 "context overflow (HTTP %s) response body: %s",
                 exc.status_code, exc.response.text[:500],
             )
-            api_limit = _overflow_limit_tokens(exc.response.text)
-            if api_limit is not None and api_limit < self.max_tokens_per_chunk:
-                logger.warning(
-                    "Adjusting max_tokens_per_chunk from %s to %s based on overflow response",
-                    _fmt(self.max_tokens_per_chunk), _fmt(api_limit),
-                )
-                self.max_tokens_per_chunk = api_limit
+            self._lower_cap_from_overflow(exc)
             if len(group) <= 1:
                 file = group[0] if group else None
                 if file is not None and file.content is not None:
