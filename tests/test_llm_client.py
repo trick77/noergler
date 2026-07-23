@@ -1689,6 +1689,17 @@ class TestSerializationAndDeadline:
             import asyncio
             asyncio.run(client.close())
 
+    def test_empty_api_key_does_not_crash_construction(self, review_config):
+        """A no-auth endpoint (empty api_key) must not make AsyncOpenAI raise
+        'Missing credentials' at construction — a placeholder is substituted."""
+        cfg = LLMConfig(model="gpt-5.3-codex", api_key="", api_url="https://llm.test/v1")
+        client = LLMClient(cfg, review_config)
+        try:
+            assert client.openai_client.api_key == "no-auth"
+        finally:
+            import asyncio
+            asyncio.run(client.close())
+
 
 class TestReviewResultTimedOut:
     @pytest.mark.asyncio

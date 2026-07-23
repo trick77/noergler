@@ -207,17 +207,17 @@ def _fmt(n: int) -> str:
     return f"{n:,}".replace(",", "'")
 
 
-# Markers that identify a context-window overflow in an error body. Different
-# OpenAI-compatible endpoints phrase this differently: a LiteLLM/OpenAI backend
-# returns HTTP 400 with "maximum context length is N tokens" or a
-# context_window_exceeded code; some proxies use HTTP 413 with "Max size: N
-# tokens". We recover from all of them by shrinking/bisecting the chunk.
+# Markers that identify a context-window overflow in a 400 error body. Kept
+# deliberately context-specific — every marker names the context window — so an
+# unrelated bad-request 400 (validation, policy, quota) is NOT misread as
+# overflow and swallowed. A LiteLLM/OpenAI backend returns "maximum context
+# length is N tokens" or a context_window_exceeded/context_length_exceeded code.
+# Copilot-style proxies return HTTP 413, which is handled without a marker.
 _OVERFLOW_MARKERS = (
-    "max size",
-    "maximum context length",
+    "context length",
+    "context window",
+    "context_length_exceeded",
     "context_window_exceeded",
-    "context length exceeded",
-    "reduce the length",
 )
 # First token count stated after a known "how big is too big" phrase — the
 # model's limit, not the requested size (which follows later in the message).
@@ -831,7 +831,11 @@ class LLMClient:
         )
         self.openai_client = AsyncOpenAI(
             base_url=config.api_url,
-            api_key=config.api_key,  # standard Authorization: Bearer <api_key>
+            # Standard Authorization: Bearer <api_key>. Fall back to a
+            # placeholder for no-auth endpoints (e.g. an internal LiteLLM proxy)
+            # so an empty key doesn't make AsyncOpenAI raise "Missing
+            # credentials" at construction and abort startup.
+            api_key=config.api_key or "no-auth",
             # No SDK-internal retries: silent retries previously turned a 30s
             # stall into an 8-minute outage.
             max_retries=0,
