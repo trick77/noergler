@@ -1520,6 +1520,70 @@ class TestParse413TokenLimit:
         finally:
             await client.close()
 
+    @pytest.mark.asyncio
+    async def test_400_context_overflow_updates_config(self, llm_config, review_config):
+        """A generic OpenAI/LiteLLM HTTP 400 overflow updates max_tokens_per_chunk."""
+        client = LLMClient(llm_config, review_config)
+        client.max_tokens_per_chunk = 80000
+
+        files = [FileReviewData(path="big.py", diff="+x\n", content=None)]
+
+        async def mock_call_api(prompt: str):
+            raise _make_api_status_error(
+                400,
+                "This model's maximum context length is 4096 tokens, "
+                "however you requested 5000 tokens.",
+            )
+
+        client._call_api = mock_call_api
+        try:
+            template = client.prompt_template
+            _, _, _, skipped, _, _, _, _ = await client._review_file_group(files, template, depth=0)
+            assert skipped == ["big.py"]
+            # Parses the model limit (4096), not the requested size (5000).
+            assert client.max_tokens_per_chunk == 4096
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_400_overflow_marker_without_limit_still_bisects(self, llm_config, review_config):
+        """A 400 flagged as overflow but without a parseable limit still skips
+        the file (bisection path) and leaves the cap unchanged."""
+        client = LLMClient(llm_config, review_config)
+        client.max_tokens_per_chunk = 80000
+
+        files = [FileReviewData(path="big.py", diff="+x\n", content=None)]
+
+        async def mock_call_api(prompt: str):
+            raise _make_api_status_error(400, "context_window_exceeded")
+
+        client._call_api = mock_call_api
+        try:
+            template = client.prompt_template
+            _, _, _, skipped, _, _, _, _ = await client._review_file_group(files, template, depth=0)
+            assert skipped == ["big.py"]
+            assert client.max_tokens_per_chunk == 80000
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_400_without_overflow_marker_propagates(self, llm_config, review_config):
+        """A plain 400 (not a context overflow) is not caught."""
+        client = LLMClient(llm_config, review_config)
+
+        files = [FileReviewData(path="a.py", diff="+a\n", content="a\n")]
+
+        async def mock_call_api(prompt: str):
+            raise _make_api_status_error(400, "Invalid value for 'temperature'")
+
+        client._call_api = mock_call_api
+        try:
+            template = client.prompt_template
+            with pytest.raises(openai.APIStatusError):
+                await client._review_file_group(files, template, depth=0)
+        finally:
+            await client.close()
+
 
 class TestSerializationAndDeadline:
     @pytest.mark.asyncio

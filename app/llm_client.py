@@ -207,6 +207,51 @@ def _fmt(n: int) -> str:
     return f"{n:,}".replace(",", "'")
 
 
+# Markers that identify a context-window overflow in an error body. Different
+# OpenAI-compatible endpoints phrase this differently: a LiteLLM/OpenAI backend
+# returns HTTP 400 with "maximum context length is N tokens" or a
+# context_window_exceeded code; some proxies use HTTP 413 with "Max size: N
+# tokens". We recover from all of them by shrinking/bisecting the chunk.
+_OVERFLOW_MARKERS = (
+    "max size",
+    "maximum context length",
+    "context_window_exceeded",
+    "context length exceeded",
+    "reduce the length",
+)
+# First token count stated after a known "how big is too big" phrase — the
+# model's limit, not the requested size (which follows later in the message).
+_OVERFLOW_LIMIT_RE = re.compile(
+    r"(?:max size:|maximum context length(?:\s+is)?)\s*([\d,]+)\s*tokens",
+    re.IGNORECASE,
+)
+
+
+def _is_context_overflow(exc: "openai.APIStatusError") -> bool:
+    """True if the error is a recoverable context-window overflow.
+
+    HTTP 413 is always treated as overflow (the proxy rejected an oversized
+    payload). HTTP 400 counts only when the body carries an overflow marker,
+    so unrelated bad-request 400s still propagate.
+    """
+    if exc.status_code == 413:
+        return True
+    if exc.status_code == 400:
+        body = exc.response.text.lower()
+        return any(marker in body for marker in _OVERFLOW_MARKERS)
+    return False
+
+
+def _overflow_limit_tokens(body: str) -> int | None:
+    """Parse the model's max input size (tokens) from an overflow response
+    body, or None if not stated. The learned cap is an optimization; when it
+    can't be parsed the caller still bisects and retries."""
+    match = _OVERFLOW_LIMIT_RE.search(body)
+    if not match:
+        return None
+    return int(match.group(1).replace(",", ""))
+
+
 @dataclass
 class FileReviewData:
     path: str
@@ -1106,28 +1151,29 @@ class LLMClient:
             )
             return "", 0, 0, paths
         except openai.APIStatusError as exc:
-            if exc.status_code != 413:
+            if not _is_context_overflow(exc):
                 raise
             # APIStatusError.response is the underlying httpx.Response
-            logger.warning("413 on mention Q&A: %s", exc.response.text[:500])
-            limit_match = re.search(r"Max size:\s*([\d,]+)\s*tokens", exc.response.text)
-            if limit_match:
-                api_limit = int(limit_match.group(1).replace(",", ""))
-                if api_limit < self.max_tokens_per_chunk:
-                    logger.warning(
-                        "Adjusting max_tokens_per_chunk from %s to %s based on 413 response",
-                        _fmt(self.max_tokens_per_chunk), _fmt(api_limit),
-                    )
-                    self.max_tokens_per_chunk = api_limit
+            logger.warning(
+                "context overflow (HTTP %s) on mention Q&A: %s",
+                exc.status_code, exc.response.text[:500],
+            )
+            api_limit = _overflow_limit_tokens(exc.response.text)
+            if api_limit is not None and api_limit < self.max_tokens_per_chunk:
+                logger.warning(
+                    "Adjusting max_tokens_per_chunk from %s to %s based on overflow response",
+                    _fmt(self.max_tokens_per_chunk), _fmt(api_limit),
+                )
+                self.max_tokens_per_chunk = api_limit
             if len(group) <= 1:
                 file = group[0] if group else None
                 if file is not None and file.content is not None:
-                    logger.info("413 — retrying mention without full file content: %s", file.path)
+                    logger.info("context overflow — retrying mention without full file content: %s", file.path)
                     diff_only = FileReviewData(path=file.path, diff=file.diff, content=None)
                     return await self._answer_file_group([diff_only], template, depth + 1, max_depth)
                 path = file.path if file else "<empty>"
                 logger.warning(
-                    "413 — file skipped for mention Q&A: %s (%d diff lines, ~%d prompt tokens)",
+                    "context overflow — file skipped for mention Q&A: %s (%d diff lines, ~%d prompt tokens)",
                     path,
                     file.diff.count("\n") + 1 if file else 0,
                     count_tokens(prompt),
@@ -1137,13 +1183,13 @@ class LLMClient:
                 paths = [f.path for f in group]
                 for f in group:
                     logger.warning(
-                        "413 — file skipped for mention Q&A after %d bisections: %s (%d diff lines)",
+                        "context overflow — file skipped for mention Q&A after %d bisections: %s (%d diff lines)",
                         depth, f.path, f.diff.count("\n") + 1,
                     )
                 return "", 0, 0, paths
             mid = len(group) // 2
             logger.info(
-                "413 with %d files — splitting mention chunk and retrying (depth %d)",
+                "context overflow with %d files — splitting mention chunk and retrying (depth %d)",
                 len(group), depth + 1,
             )
             left = await self._answer_file_group(group[:mid], template, depth + 1, max_depth)
@@ -1199,28 +1245,29 @@ class LLMClient:
             )
             return [], 0, 0, paths, None, ReviewSummary(), True, False
         except openai.APIStatusError as exc:
-            if exc.status_code != 413:
+            if not _is_context_overflow(exc):
                 raise
             # APIStatusError.response is the underlying httpx.Response
-            logger.warning("413 response body: %s", exc.response.text[:500])
-            limit_match = re.search(r"Max size:\s*([\d,]+)\s*tokens", exc.response.text)
-            if limit_match:
-                api_limit = int(limit_match.group(1).replace(",", ""))
-                if api_limit < self.max_tokens_per_chunk:
-                    logger.warning(
-                        "Adjusting max_tokens_per_chunk from %s to %s based on 413 response",
-                        _fmt(self.max_tokens_per_chunk), _fmt(api_limit),
-                    )
-                    self.max_tokens_per_chunk = api_limit
+            logger.warning(
+                "context overflow (HTTP %s) response body: %s",
+                exc.status_code, exc.response.text[:500],
+            )
+            api_limit = _overflow_limit_tokens(exc.response.text)
+            if api_limit is not None and api_limit < self.max_tokens_per_chunk:
+                logger.warning(
+                    "Adjusting max_tokens_per_chunk from %s to %s based on overflow response",
+                    _fmt(self.max_tokens_per_chunk), _fmt(api_limit),
+                )
+                self.max_tokens_per_chunk = api_limit
             if len(group) <= 1:
                 file = group[0] if group else None
                 if file is not None and file.content is not None:
-                    logger.info("413 — retrying without full file content: %s", file.path)
+                    logger.info("context overflow — retrying without full file content: %s", file.path)
                     diff_only = FileReviewData(path=file.path, diff=file.diff, content=None)
                     return await self._review_file_group([diff_only], template, depth + 1, max_depth)
                 path = file.path if file else "<empty>"
                 logger.warning(
-                    "413 — file will not be reviewed: %s (%d diff lines, ~%d prompt tokens)",
+                    "context overflow — file will not be reviewed: %s (%d diff lines, ~%d prompt tokens)",
                     path,
                     file.diff.count("\n") + 1 if file else 0,
                     count_tokens(prompt),
@@ -1230,13 +1277,13 @@ class LLMClient:
                 paths = [f.path for f in group]
                 for f in group:
                     logger.warning(
-                        "413 — file will not be reviewed after %d bisections: %s (%d diff lines)",
+                        "context overflow — file will not be reviewed after %d bisections: %s (%d diff lines)",
                         depth, f.path, f.diff.count("\n") + 1,
                     )
                 return [], 0, 0, paths, None, ReviewSummary(), False, False
             mid = len(group) // 2
             logger.info(
-                "413 with %d files — splitting chunk and retrying (depth %d)",
+                "context overflow with %d files — splitting chunk and retrying (depth %d)",
                 len(group), depth + 1,
             )
             left = await self._review_file_group(group[:mid], template, depth + 1, max_depth)
