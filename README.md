@@ -6,7 +6,7 @@
 
 Code review agent for typical private cloud corporate environments. The name is German for "Nörgler" (grumbler/complainer).
 
-Built for the realities of enterprise setups: self-hosted Bitbucket Server, on-prem Jira, GitHub Copilot Business seats, and corporate CA certificates. Receives PR webhooks, sends diffs to a Copilot-backed LLM, and posts findings back as inline comments plus a summary comment on the PR.
+Built for the realities of enterprise setups: self-hosted Bitbucket Server, on-prem Jira, an OpenAI-compatible LLM endpoint (e.g. a LiteLLM proxy), and corporate CA certificates. Receives PR webhooks, sends diffs to the LLM via the chat/completions API, and posts findings back as inline comments plus a summary comment on the PR.
 
 ![noergler inline review comment](review.png)
 
@@ -98,7 +98,8 @@ All configuration is driven by environment variables. The required variables are
 | `BITBUCKET_TOKEN` | Bitbucket Server API token |
 | `BITBUCKET_WEBHOOK_SECRET` | Webhook HMAC secret for signature validation |
 | `BITBUCKET_USERNAME` | Bitbucket service account username (used to identify bot comments) |
-| `COPILOT_OAUTH_TOKEN` | Long-lived GitHub OAuth token for a Copilot Business seat (provision via `hack/copilot-provision-token.sh`) |
+| `OPENAI_API_KEY` | API key for the OpenAI-compatible chat/completions endpoint (e.g. a LiteLLM proxy) |
+| `OPENAI_BASE_URL` | Base URL of the OpenAI-compatible endpoint (the SDK appends `/chat/completions`) |
 | `JIRA_URL` | Jira Server/Cloud base URL |
 | `JIRA_TOKEN` | Jira API token |
 | `DATABASE_URL` | PostgreSQL connection string (see [Database](#database) below) |

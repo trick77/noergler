@@ -5,5 +5,6 @@ metadata:
 data:
   BITBUCKET_URL: "https://bitbucket.company.com"
   BITBUCKET_USERNAME: "noergler"
+  OPENAI_BASE_URL: "https://litellm.company.com/v1"
   REVIEW_AUTO_REVIEW_AUTHORS: ""
   JIRA_URL: "https://jira.company.com"
