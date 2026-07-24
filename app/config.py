@@ -328,7 +328,13 @@ class LLMConfig(BaseModel):
     model: str = "gpt-5.4"
     api_key: str
     api_url: str
-    reasoning_effort: str | None = "high"
+    # noergler requires a reasoning-capable model, so reasoning_effort is
+    # mandatory — an empty value is rejected rather than silently disabling it.
+    reasoning_effort: str = "high"
+    # Explicit context window (tokens). 0 = auto-detect from the LiteLLM table.
+    # Set this for custom proxy aliases absent from the table; the startup guard
+    # requires the resolved window to be >= 1,000,000.
+    context_window: int = 0
 
     @field_validator("api_url", mode="after")
     @classmethod
@@ -339,19 +345,20 @@ class LLMConfig(BaseModel):
 
     @field_validator("reasoning_effort", mode="before")
     @classmethod
-    def normalize_reasoning_effort(cls, v: object) -> str | None:
-        if v is None:
-            return None
+    def normalize_reasoning_effort(cls, v: object) -> str:
         if isinstance(v, str):
             stripped = v.strip().lower()
             if not stripped:
-                return None
+                raise ValueError(
+                    "reasoning_effort is required (noergler needs a reasoning-capable "
+                    f"model); set one of {sorted(_REASONING_EFFORT_VALUES)}"
+                )
             if stripped not in _REASONING_EFFORT_VALUES:
                 raise ValueError(
                     f"reasoning_effort must be one of {sorted(_REASONING_EFFORT_VALUES)}, got {v!r}"
                 )
             return stripped
-        raise ValueError("reasoning_effort must be a string or None")
+        raise ValueError("reasoning_effort must be a string")
 
 
 class ReviewConfig(BaseModel):
@@ -463,7 +470,8 @@ def load_config() -> AppConfig:
             model=_env("OPENAI_MODEL", "gpt-5.4"),
             api_key=_env("OPENAI_API_KEY"),
             api_url=_env("OPENAI_BASE_URL"),
-            reasoning_effort=os.environ.get("OPENAI_REASONING_EFFORT") or "high",
+            reasoning_effort=_env("OPENAI_REASONING_EFFORT", "high"),
+            context_window=int(_env("OPENAI_CONTEXT_WINDOW", "0")),
         ),
         review=ReviewConfig(
             auto_review_authors=[a.strip() for a in _env("REVIEW_AUTO_REVIEW_AUTHORS", "").split(",") if a.strip()],

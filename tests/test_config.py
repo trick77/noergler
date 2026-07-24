@@ -166,12 +166,14 @@ def test_reasoning_effort_valid_from_env(monkeypatch):
     assert config.llm.reasoning_effort == "high"
 
 
-def test_reasoning_effort_empty_string_uses_default(monkeypatch):
+def test_reasoning_effort_empty_string_rejected(monkeypatch):
+    # noergler requires a reasoning-capable model: an explicitly empty value is
+    # rejected rather than silently defaulting.
     env = _base_env() | {"OPENAI_REASONING_EFFORT": ""}
     for k, v in env.items():
         monkeypatch.setenv(k, v)
-    config = load_config()
-    assert config.llm.reasoning_effort == "high"
+    with pytest.raises(Exception):
+        load_config()
 
 
 def test_reasoning_effort_invalid_rejected(monkeypatch):
