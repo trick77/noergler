@@ -1001,6 +1001,21 @@ class TestAnswerQuestion:
         finally:
             await client.close()
 
+    @pytest.mark.asyncio
+    async def test_answer_question_too_large_returns_message(self, llm_config, review_config):
+        """An oversized mention is answered with a 'too large' message and makes
+        no inference call."""
+        mock_create = AsyncMock(return_value=_mock_completion("answer", 5, 1))
+        client = LLMClient(llm_config, review_config)  # 1M window → ~968k ceiling
+        client.openai_client.chat.completions.create = mock_create
+        try:
+            huge = FileReviewData(path="huge.py", diff="+x\n", content="x" * 4_000_000)
+            result = await client.answer_question("What?", [huge])
+            assert "too large" in result.lower()
+            mock_create.assert_not_called()
+        finally:
+            await client.close()
+
 
 def _make_api_status_error(status_code: int, text: str = "") -> openai.APIStatusError:
     return openai.APIStatusError(

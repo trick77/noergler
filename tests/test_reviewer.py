@@ -259,7 +259,7 @@ def mock_bitbucket():
 
 def _make_review_result(
     findings=None, skipped_files=None, review_effort=1,
-    timed_out=False, response_unparseable=False,
+    timed_out=False, response_unparseable=False, too_large=False,
 ):
     return LLMClient.ReviewResult(
         findings=findings or [],
@@ -269,6 +269,7 @@ def _make_review_result(
         review_effort=review_effort,
         timed_out=timed_out,
         response_unparseable=response_unparseable,
+        too_large=too_large,
     )
 
 
@@ -1173,6 +1174,45 @@ class TestReviewUnparseableHandling:
         assert new_body.count(_STALE_BANNER_SENTINEL) == 1
         assert "### Review summary" in new_body
         assert "1 issue" in new_body
+
+
+class TestReviewTooLargeHandling:
+    """When llm_result.too_large is True (the assembled prompt exceeds the
+    model's context window) the PR is not reviewed: a "too large" notice is
+    posted, no inline comments, and the prior reviewed commit is preserved."""
+
+    @pytest.mark.asyncio
+    async def test_too_large_posts_notice_and_no_inline_comments(
+        self, mock_bitbucket, mock_llm, monkeypatch,
+    ):
+        mock_llm.review_diff.return_value = _make_review_result([], too_large=True)
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_last_reviewed_commit",
+            AsyncMock(return_value=None),
+        )
+        upsert = AsyncMock(return_value=99)
+        monkeypatch.setattr("app.reviewer.repository.upsert_pr_review", upsert)
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_summary_comment_info",
+            AsyncMock(return_value=None),
+        )
+        update_summary_comment = AsyncMock()
+        monkeypatch.setattr(
+            "app.reviewer.repository.update_summary_comment", update_summary_comment,
+        )
+
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        await rev.review_pull_request(_make_payload("username"))
+
+        # No inline comments and no normal summary — just the notice.
+        mock_bitbucket.post_inline_comment.assert_not_called()
+        mock_bitbucket.post_pr_comment.assert_called_once()
+        body = mock_bitbucket.post_pr_comment.call_args[0][3]
+        assert "Review skipped" in body
+        assert "too large" in body.lower()
+        # Prior reviewed-commit pointer preserved (None here).
+        assert upsert.call_args.kwargs["last_reviewed_commit"] is None
+        update_summary_comment.assert_called_once()
 
 
 class TestStripStaleBanner:
