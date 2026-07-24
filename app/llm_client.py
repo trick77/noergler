@@ -34,23 +34,16 @@ _DEFAULT_CONTEXT_WINDOW = 128_000
 _MIN_CONTEXT_WINDOW = 1_000_000
 
 # Tokens held back from the context window for the model's reply when deciding
-# whether a PR fits in one call (the "too large" pre-flight check).
-_OUTPUT_TOKEN_RESERVE = 32_000
+# whether a PR fits in one call (the "too large" pre-flight check). Sized to
+# cover the review JSON output plus a reasoning model's hidden reasoning tokens,
+# which count toward the window at generation time.
+_OUTPUT_TOKEN_RESERVE = 64_000
 
 # Hard wall-clock cap on a single LLM HTTP call. We impose this; the model
 # itself is unaware of any deadline. Once exceeded, the in-flight request is
 # cancelled and an APITimeoutError is raised so existing handlers route
 # through the normal timeout-notice path.
 INFERENCE_HARD_TIMEOUT_SECONDS = 300.0
-
-
-def _context_window_for(model: str) -> int | None:
-    """Return the known context window for a model id, or None if unknown.
-
-    Thin delegate to `app.config.context_window_for` (the live, LiteLLM-sourced
-    table). Kept here for its existing import sites / tests.
-    """
-    return context_window_for(model)
 
 
 logger = logging.getLogger(__name__)
@@ -209,10 +202,11 @@ def _fmt(n: int) -> str:
 
 
 def _is_unsupported_reasoning_error(exc: "openai.APIStatusError") -> bool:
-    """True if a 400 signals the endpoint/model rejects the reasoning_effort
-    param. noergler requires a reasoning-capable model, so this turns the
-    startup ping into a clear fatal error rather than silently proceeding."""
-    return exc.status_code == 400 and "reasoning" in exc.response.text.lower()
+    """True if a 400 specifically signals the endpoint/model rejects the
+    reasoning_effort param, so the startup ping fails with a clear reasoning
+    message. Requires the exact param name to avoid misreading an unrelated 400
+    (e.g. a bad model id whose body merely mentions "reasoning")."""
+    return exc.status_code == 400 and "reasoning_effort" in exc.response.text.lower()
 
 
 @dataclass
@@ -830,13 +824,19 @@ class LLMClient:
         }
 
         # Pre-flight fit check: the whole PR is reviewed in one call, so if the
-        # fully-assembled prompt won't fit the model's context window (minus room
+        # fully-assembled request won't fit the model's context window (minus room
         # for the reply) we skip the PR entirely rather than review a partial view.
         rendered_files = _render_file_group(files)
         if supplementary:
             rendered_files = rendered_files + "\n\n" + supplementary
         final_prompt = template.replace("{files}", rendered_files)
-        assembled_tokens = count_tokens(_REVIEW_SYSTEM_MESSAGE) + count_tokens(final_prompt)
+        # Count everything the request actually carries: system + user prompt +
+        # the strict JSON schema bound via response_format (all count as input).
+        assembled_tokens = (
+            count_tokens(_REVIEW_SYSTEM_MESSAGE)
+            + count_tokens(final_prompt)
+            + count_tokens(json.dumps(_REVIEW_RESPONSE_SCHEMA))
+        )
         fit_ceiling = self.context_window - _OUTPUT_TOKEN_RESERVE
         if assembled_tokens > fit_ceiling:
             logger.warning(
@@ -855,8 +855,9 @@ class LLMClient:
                 too_large=True,
             )
 
+        # Reuse the prompt already assembled for the fit check — no re-render.
         findings, prompt_tokens, completion_tokens, skipped, requirements, summary, timed_out, parse_failed = await self._review_file_group(
-            files, template, supplementary=supplementary,
+            files, final_prompt,
         )
 
         total = prompt_tokens + completion_tokens
@@ -919,7 +920,8 @@ class LLMClient:
             )
             return "This PR is too large to answer within the model's context window."
 
-        answer, pt, ct, _skipped = await self._answer_file_group(files, template)
+        # Reuse the prompt already assembled for the fit check — no re-render.
+        answer, pt, ct, _skipped = await self._answer_file_group(files, final_prompt)
         total = pt + ct
         logger.info(
             "Mention Q&A complete: %d in + %d out = %d total tokens",
@@ -929,19 +931,17 @@ class LLMClient:
 
     async def _answer_file_group(
         self,
-        group: list[FileReviewData],
-        template: str,
+        files: list[FileReviewData],
+        prompt: str,
     ) -> tuple[str, int, int, list[str]]:
-        rendered = _render_file_group(group)
-        prompt = template.replace("{diff}", rendered)
         try:
             answer, pt, ct = await self._call_mention_api(prompt)
             return answer, pt, ct, []
         except openai.APITimeoutError as exc:
-            paths = [f.path for f in group]
+            paths = [f.path for f in files]
             logger.warning(
                 "Timeout on mention Q&A for %d file(s) — skipping: %s (%s)",
-                len(group), ", ".join(paths), type(exc).__name__,
+                len(files), ", ".join(paths), type(exc).__name__,
             )
             return "", 0, 0, paths
 
@@ -955,11 +955,11 @@ class LLMClient:
 
     async def _review_file_group(
         self,
-        group: list[FileReviewData],
-        template: str,
-        supplementary: str = "",
+        files: list[FileReviewData],
+        prompt: str,
     ) -> tuple[list[ReviewFinding], int, int, list[str], list[dict[str, Any]] | None, ReviewSummary, bool, bool]:
-        """Review the whole PR in one call. Returns
+        """Run the single whole-PR review call. `prompt` is the fully assembled
+        user message (already built by review_diff for the fit check). Returns
         (findings, prompt_tokens, completion_tokens, skipped_paths,
         compliance_requirements_or_None, summary, timed_out, parse_failed).
 
@@ -967,18 +967,14 @@ class LLMClient:
         are returned as skipped). `parse_failed=True` signals the model responded
         but its output could not be parsed (an empty output or a non-JSON refusal).
         """
-        rendered = _render_file_group(group)
-        if supplementary:
-            rendered = rendered + "\n\n" + supplementary
-        prompt = template.replace("{files}", rendered)
         try:
             findings, pt, ct, requirements, summary, parse_failed = await self._call_api(prompt)
             return findings, pt, ct, [], requirements, summary, False, parse_failed
         except openai.APITimeoutError as exc:
-            paths = [f.path for f in group]
+            paths = [f.path for f in files]
             logger.warning(
                 "Timeout reviewing %d file(s) — skipping: %s (%s)",
-                len(group), ", ".join(paths), type(exc).__name__,
+                len(files), ", ".join(paths), type(exc).__name__,
             )
             return [], 0, 0, paths, None, ReviewSummary(), True, False
 
@@ -1032,7 +1028,7 @@ class LLMClient:
         Serializes every LLM HTTP call via `_inference_lock` and enforces
         `INFERENCE_HARD_TIMEOUT_SECONDS` as a wall-clock cap. On cap-hit the
         in-flight task is cancelled and `openai.APITimeoutError` is raised so
-        existing handlers (chunk skipping, mention failure reply) trigger.
+        the review/mention timeout handlers post a skip notice.
         """
         wait_started = time.monotonic()
         async with self._inference_lock:

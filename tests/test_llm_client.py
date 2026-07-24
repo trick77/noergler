@@ -5,14 +5,13 @@ import httpx
 import openai
 import pytest
 
-from app.config import LLMConfig, ReviewConfig, usable_context_budget
+from app.config import LLMConfig, ReviewConfig, context_window_for, usable_context_budget
 from app.llm_client import (
     LLMClient,
     FileReviewData,
     ReviewSummary,
     _REVIEW_SYSTEM_MESSAGE,
     format_file_entry,
-    _context_window_for,
     _parse_mention_response,
     _parse_review_response,
     extract_path,
@@ -1082,21 +1081,21 @@ class TestEstimateReviewEffort:
 
 class TestContextWindowBudget:
     def test_known_models_resolve(self):
-        assert _context_window_for("gpt-5") == 272_000
-        assert _context_window_for("claude-sonnet-4") == 200_000
+        assert context_window_for("gpt-5") == 272_000
+        assert context_window_for("claude-sonnet-4") == 200_000
 
     def test_gpt_5_5_and_5_4_use_real_million_window(self):
         # Regression: these were hardcoded to 272k (the pricing threshold), not
         # the real 1.05M context window. Now sourced from LiteLLM's static fallback.
-        assert _context_window_for("gpt-5.5") == 1_050_000
-        assert _context_window_for("gpt-5.4") == 1_050_000
+        assert context_window_for("gpt-5.5") == 1_050_000
+        assert context_window_for("gpt-5.4") == 1_050_000
 
     def test_dated_id_prefix_match(self):
-        assert _context_window_for("gpt-5-2025-01-01") == 272_000
-        assert _context_window_for("claude-sonnet-4-20250514") == 200_000
+        assert context_window_for("gpt-5-2025-01-01") == 272_000
+        assert context_window_for("claude-sonnet-4-20250514") == 200_000
 
     def test_unknown_model_returns_none(self):
-        assert _context_window_for("mystery-model-9000") is None
+        assert context_window_for("mystery-model-9000") is None
 
     def test_explicit_context_window_overrides_table(self, review_config):
         # OPENAI_CONTEXT_WINDOW wins over the table (deterministic, race-free).

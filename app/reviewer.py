@@ -2135,7 +2135,7 @@ class Reviewer:
             prompt_t = token_usage[0]
             used_k = _fmt_k(prompt_t)
             budget_k = _fmt_k(input_budget)
-            pct = round(prompt_t / input_budget * 100) if input_budget else 0
+            pct = round(prompt_t / input_budget * 100)
             window_suffix = f", model max {_fmt_k(context_window)}" if context_window else ""
             telemetry.append(
                 f"Tokens used: {used_k} of {budget_k} available "
