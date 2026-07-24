@@ -277,7 +277,7 @@ def mock_llm():
     client = AsyncMock()
     client.config.model = "gpt-5.3-codex"
     client.config.reasoning_effort = None
-    client.max_tokens_per_chunk = 80000
+    client.input_token_budget = 80000
     client.context_window = 1_000_000
     client.prompt_template = "Review these files:\n{files}\n{repo_instructions}"
     client.review_diff = AsyncMock(return_value=_make_review_result([
@@ -586,7 +586,7 @@ class TestReviewer:
         )
         mock_bitbucket.fetch_file_content = AsyncMock(return_value=file_content)
         # Use a tiny max_tokens to force the large PR path
-        mock_llm.max_tokens_per_chunk = 1
+        mock_llm.input_token_budget = 1
         mock_llm.prompt_template = "{files}\n{repo_instructions}"
         mock_llm.review_diff = AsyncMock(return_value=_make_review_result())
 
@@ -1433,33 +1433,25 @@ class TestSortAndLimit:
         summary = reviewer._build_summary(findings, prompt_breakdown=breakdown)
         assert "template" not in summary
 
-    def test_build_summary_chunk_count_single_pass(self, reviewer):
+    def test_build_summary_budget_usage_line(self, reviewer):
         summary = reviewer._build_summary(
-            [], chunk_count=1, chunk_budget=80000, token_usage=(60000, 1000)
+            [], input_budget=80000, token_usage=(60000, 1000)
         )
-        assert "Tokens used: 60k of 80k available (75% used) · 1 pass" in summary
+        assert "Tokens used: 60k of 80k available (75% used)" in summary
 
-    def test_build_summary_chunk_count_multi(self, reviewer):
-        summary = reviewer._build_summary(
-            [], chunk_count=3, chunk_budget=80000, token_usage=(240000, 3000)
-        )
-        assert "Tokens used: 240k total across 3 passes (avg 100% used/pass, cap 80k/pass)" in summary
-
-    def test_build_summary_chunk_count_absent_when_none(self, reviewer):
+    def test_build_summary_token_usage_absent_when_no_budget(self, reviewer):
         summary = reviewer._build_summary([])
         assert "Tokens used:" not in summary
         assert "Context:" not in summary
-        assert "chunk budget" not in summary
 
-    def test_build_summary_chunk_budget_with_context_window(self, reviewer):
+    def test_build_summary_budget_with_context_window(self, reviewer):
         summary = reviewer._build_summary(
             [],
-            chunk_count=1,
-            chunk_budget=256_000,
+            input_budget=256_000,
             context_window=272_000,
             token_usage=(245_000, 2_000),
         )
-        assert "Tokens used: 245k of 256k available (96% used, model max 272k) · 1 pass" in summary
+        assert "Tokens used: 245k of 256k available (96% used, model max 272k)" in summary
 
     def test_build_summary_renders_cost_metadata_on_one_line(self, reviewer):
         summary = reviewer._build_summary(
@@ -1467,15 +1459,14 @@ class TestSortAndLimit:
             token_usage=(123_456, 7_890),
             prompt_breakdown={"template": 500, "repo_instructions": 200, "files": 122_756},
             elapsed=18.4,
-            chunk_count=1,
-            chunk_budget=256_000,
+            input_budget=256_000,
             context_window=272_000,
             run_cost_usd=0.42,
             cumulative_cost_usd=1.37,
         )
 
         footnote_lines = [line for line in summary.splitlines() if line.startswith("- _")]
-        assert "- _Tokens used: 123k of 256k available (48% used, model max 272k) · 1 pass_" in footnote_lines
+        assert "- _Tokens used: 123k of 256k available (48% used, model max 272k)_" in footnote_lines
         assert "- _Input tokens: ~500 review prompt · ~200 AGENTS.md · ~122'756 file content_" in footnote_lines
         assert (
             "- _Model: `gpt-5.3-codex` · ↑ 123'456 · ↓ 7'890 "
@@ -2644,7 +2635,7 @@ class TestIncrementalReview:
         client = AsyncMock()
         client.config.model = "gpt-5.3-codex"
         client.config.reasoning_effort = None
-        client.max_tokens_per_chunk = 80000
+        client.input_token_budget = 80000
         client.context_window = 1_000_000
         client.prompt_template = "Review these files:\n{files}\n{repo_instructions}"
         client.review_diff = AsyncMock(return_value=_make_review_result([

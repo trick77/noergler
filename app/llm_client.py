@@ -23,23 +23,24 @@ from app.config import (
 from app.http_stats import make_event_hook
 from app.models import ReviewFinding
 
-# Conservative fallback when a model's context window is unknown. Known windows
-# live in `app.config._MODEL_CONTEXT_WINDOW` (sourced from LiteLLM, see
-# `context_window_for`). They are only a *starting estimate*: the endpoint may
-# enforce its own per-request limit server-side and return "Max size: N
-# tokens" on a 413, which we parse to shrink the chunk budget for the rest of
-# the process (see `_answer_file_group` / `_review_file_group`). So an unknown
-# model self-corrects at runtime — we must never hard-fail startup over one.
+# Conservative fallback when a model's context window is unknown and no explicit
+# OPENAI_CONTEXT_WINDOW is configured. Known windows live in
+# `app.config._MODEL_CONTEXT_WINDOW` (sourced from LiteLLM, see
+# `context_window_for`); below the required floor this trips the startup guard.
 _DEFAULT_CONTEXT_WINDOW = 128_000
 
-# Sentinel for "no API-imposed limit learned yet" — a value larger than any real
-# context window, so `min(budget, _NO_API_LIMIT)` is a no-op until a 413 lowers it.
-_NO_API_LIMIT = 1_000_000_000
+# Minimum context window noergler will run on. A whole PR is reviewed in a single
+# call, so a small-context model can't hold a real PR coherently — refuse startup.
+_MIN_CONTEXT_WINDOW = 1_000_000
+
+# Tokens held back from the context window for the model's reply when deciding
+# whether a PR fits in one call (the "too large" pre-flight check).
+_OUTPUT_TOKEN_RESERVE = 32_000
 
 # Hard wall-clock cap on a single LLM HTTP call. We impose this; the model
 # itself is unaware of any deadline. Once exceeded, the in-flight request is
 # cancelled and an APITimeoutError is raised so existing handlers route
-# through the normal "skipped chunk" / timeout-notice paths.
+# through the normal timeout-notice path.
 INFERENCE_HARD_TIMEOUT_SECONDS = 300.0
 
 
@@ -207,68 +208,11 @@ def _fmt(n: int) -> str:
     return f"{n:,}".replace(",", "'")
 
 
-# Markers that identify a context-window overflow in a 400 error body. Kept
-# deliberately context-specific — every marker names the context window — so an
-# unrelated bad-request 400 (validation, policy, quota) is NOT misread as
-# overflow and swallowed. A LiteLLM/OpenAI backend returns "maximum context
-# length is N tokens" or a context_window_exceeded/context_length_exceeded code.
-# Copilot-style proxies return HTTP 413, which is handled without a marker.
-_OVERFLOW_MARKERS = (
-    "context length",
-    "context window",
-    "context_length_exceeded",
-    "context_window_exceeded",
-)
-# "Max size: N tokens" is a per-request INPUT cap (proxy-side, Copilot-style);
-# "maximum context length is N tokens" is the model's TOTAL (input+output)
-# window (OpenAI/LiteLLM). They mean different things, so they are parsed
-# separately: the total window must have output headroom reserved before it can
-# serve as an input budget. Both capture the model's limit, not the requested
-# size (which follows later in the message).
-_OVERFLOW_INPUT_CAP_RE = re.compile(r"max size:\s*([\d,]+)\s*tokens", re.IGNORECASE)
-_OVERFLOW_TOTAL_WINDOW_RE = re.compile(
-    r"maximum context length(?:\s+is)?\s*([\d,]+)\s*tokens", re.IGNORECASE,
-)
-
-
-def _is_context_overflow(exc: "openai.APIStatusError") -> bool:
-    """True if the error is a recoverable context-window overflow.
-
-    HTTP 413 is always treated as overflow (the proxy rejected an oversized
-    payload). HTTP 400 counts only when the body carries an overflow marker,
-    so unrelated bad-request 400s still propagate.
-    """
-    if exc.status_code == 413:
-        return True
-    if exc.status_code == 400:
-        body = exc.response.text.lower()
-        return any(marker in body for marker in _OVERFLOW_MARKERS)
-    return False
-
-
 def _is_unsupported_reasoning_error(exc: "openai.APIStatusError") -> bool:
     """True if a 400 signals the endpoint/model rejects the reasoning_effort
-    param, so the caller can retry once without it. Not every model behind an
-    OpenAI-compatible endpoint accepts reasoning params."""
+    param. noergler requires a reasoning-capable model, so this turns the
+    startup ping into a clear fatal error rather than silently proceeding."""
     return exc.status_code == 400 and "reasoning" in exc.response.text.lower()
-
-
-def _overflow_input_cap(body: str) -> int | None:
-    """Derive a per-chunk INPUT-token cap from an overflow response body, or
-    None if none is stated (the caller still bisects and retries).
-
-    A "Max size: N tokens" value is already an input cap and used as-is. A
-    "maximum context length is N tokens" value is the total window, so output
-    headroom is reserved via `usable_context_budget` — otherwise the next chunk
-    would fill the whole window and leave no room for the reply, re-overflowing.
-    """
-    match = _OVERFLOW_INPUT_CAP_RE.search(body)
-    if match:
-        return int(match.group(1).replace(",", ""))
-    match = _OVERFLOW_TOTAL_WINDOW_RE.search(body)
-    if match:
-        return usable_context_budget(int(match.group(1).replace(",", "")))
-    return None
 
 
 @dataclass
@@ -413,139 +357,6 @@ def format_file_entry(file_data: FileReviewData) -> str:
 
 def _render_file_group(files: list[FileReviewData]) -> str:
     return "\n\n".join(format_file_entry(f) for f in files)
-
-
-def _group_files_by_token_budget(
-    files: list[FileReviewData], max_tokens: int, prompt_template: str
-) -> tuple[list[list[FileReviewData]], list[str]]:
-    prompt_overhead = count_tokens(prompt_template.replace("{files}", ""))
-    available_tokens = max_tokens - prompt_overhead
-
-    groups: list[list[FileReviewData]] = []
-    skipped: list[str] = []
-    current_group: list[FileReviewData] = []
-    current_tokens = 0
-
-    for file_data in files:
-        entry = format_file_entry(file_data)
-        entry_tokens = count_tokens(entry)
-
-        if entry_tokens > available_tokens and file_data.content is not None:
-            # Full content alone blows the budget. Before giving up, downgrade to
-            # diff-only — the same fallback the 413 path uses in
-            # `_review_file_group` — so a large changed file is still reviewed
-            # from its diff instead of dropped from the review entirely.
-            diff_only = FileReviewData(path=file_data.path, diff=file_data.diff, content=None)
-            diff_only_entry = format_file_entry(diff_only)
-            diff_only_tokens = count_tokens(diff_only_entry)
-            if diff_only_tokens <= available_tokens:
-                logger.info(
-                    "File too large with full content — reviewing diff-only: %s "
-                    "(~%d tokens with content > %d budget, ~%d diff-only)",
-                    file_data.path, entry_tokens, available_tokens, diff_only_tokens,
-                )
-                file_data = diff_only
-                entry = diff_only_entry
-                entry_tokens = diff_only_tokens
-
-        if entry_tokens > available_tokens:
-            if current_group:
-                groups.append(current_group)
-                current_group = []
-                current_tokens = 0
-            content_lines = file_data.content.count("\n") + 1 if file_data.content else 0
-            diff_lines = file_data.diff.count("\n") + 1
-            logger.warning(
-                "File will not be reviewed (exceeds token limit): %s "
-                "(%d content lines, %d diff lines, ~%d tokens)",
-                file_data.path, content_lines, diff_lines, entry_tokens,
-            )
-            skipped.append(file_data.path)
-            continue
-
-        if current_tokens + entry_tokens > available_tokens:
-            groups.append(current_group)
-            current_group = []
-            current_tokens = 0
-
-        current_group.append(file_data)
-        current_tokens += entry_tokens
-
-    if current_group:
-        groups.append(current_group)
-
-    return groups, skipped
-
-
-_STRENGTHS_MAX_BULLETS = 4
-
-# Ordered most-severe → least-severe so the merged verdict reflects the worst
-# chunk: any chunk that requested changes drags the whole review down.
-_VERDICT_SEVERITY = {"request_changes": 2, "approve_with_followups": 1, "approve": 0}
-
-
-def _merge_review_summaries(parts: list[ReviewSummary]) -> ReviewSummary:
-    """Combine per-chunk review summaries into one.
-
-    First-non-empty wins for the prose fields (overview, security_performance,
-    test_coverage). Strengths are concatenated and de-duped case-insensitively.
-    The verdict rolls up to the most severe decision, and its rationale is
-    taken from the same winning chunk — keeping decision and rationale aligned
-    (e.g. a `request_changes` chunk's rationale won't be paired with another
-    chunk's `approve` decision).
-    """
-    if not parts:
-        return ReviewSummary()
-
-    def _first_non_empty(field_name: str) -> str:
-        for p in parts:
-            v = getattr(p, field_name)
-            if v:
-                return v
-        return ""
-
-    seen: set[str] = set()
-    strengths: list[str] = []
-    for p in parts:
-        for item in p.strengths:
-            key = item.strip().lower()
-            if not key or key in seen:
-                continue
-            seen.add(key)
-            strengths.append(item)
-            if len(strengths) >= _STRENGTHS_MAX_BULLETS:
-                break
-        if len(strengths) >= _STRENGTHS_MAX_BULLETS:
-            break
-
-    winning_chunk = max(
-        parts,
-        key=lambda p: _VERDICT_SEVERITY.get(p.verdict_decision, -1),
-    )
-
-    return ReviewSummary(
-        overview=_first_non_empty("overview"),
-        strengths=strengths,
-        security_performance=_first_non_empty("security_performance"),
-        test_coverage=_first_non_empty("test_coverage"),
-        verdict_decision=winning_chunk.verdict_decision or "approve",
-        verdict_rationale=winning_chunk.verdict_rationale,
-    )
-
-
-def _combine_compliance(
-    a: list[dict[str, Any]] | None, b: list[dict[str, Any]] | None,
-) -> list[dict[str, Any]] | None:
-    """Merge compliance results across bisected chunks.
-
-    None means extraction failed for that branch. Prefer any successful
-    parse over a failure, and any non-empty list over an empty one.
-    """
-    if a is None:
-        return b
-    if b is None:
-        return a
-    return a if a else b
 
 
 def _parse_review_response(content: str) -> tuple[list[ReviewFinding], list[dict[str, Any]] | None, ReviewSummary, bool]:
@@ -820,28 +631,9 @@ class LLMClient:
         self.config = config
         self.review_config = review_config
 
-        # Whether the endpoint accepts the reasoning_effort param. Flipped off
-        # by check_connectivity if the startup ping is rejected for it, so a
-        # non-reasoning model behind a strict endpoint doesn't fail every call.
-        self._reasoning_supported = True
-
-        # API-imposed chunk ceiling learned from a 413 "Max size: N tokens"
-        # response. Starts unlimited; `max_tokens_per_chunk` clamps to it so a
-        # runtime shrink survives and is never undone by a later table refresh.
-        self._api_learned_cap: int = _NO_API_LIMIT
-
-        if context_window_for(config.model) is None:
-            logger.warning(
-                "model `%s` has no known context window — falling back to a "
-                "conservative %s-token window. The endpoint enforces the real "
-                "limit at request time (413 → auto-shrink); add an entry to "
-                "`app/config.py:_STATIC_MODEL_CONTEXT_WINDOW` to skip the first "
-                "oversized round-trip.",
-                config.model, _fmt(_DEFAULT_CONTEXT_WINDOW),
-            )
         logger.info(
-            "Chunk budget set to %s tokens (model %s context window: %s)",
-            _fmt(self.max_tokens_per_chunk), model_label(config.model, config.reasoning_effort),
+            "Input token budget %s tokens (model %s context window: %s)",
+            _fmt(self.input_token_budget), model_label(config.model, config.reasoning_effort),
             _fmt(self.context_window),
         )
 
@@ -880,64 +672,43 @@ class LLMClient:
 
     @property
     def context_window(self) -> int:
-        """Live input context window for the configured model.
+        """Context window (tokens) for the configured model.
 
-        Reads `app.config.context_window_for` at access time (same snapshot
-        pattern as `pricing_for`), so a LiteLLM refresh is picked up without
-        rebuilding the client. Falls back to the conservative default for an
-        unknown model.
+        Prefers the explicit `OPENAI_CONTEXT_WINDOW` config value — deterministic
+        and race-free (the LiteLLM context-window table is hydrated only *after*
+        startup connectivity checks, and custom proxy aliases are absent from it).
+        Falls back to the LiteLLM-sourced table, then a conservative default.
         """
+        if self.config.context_window:
+            return self.config.context_window
         cw = context_window_for(self.config.model)
         return cw if cw is not None else _DEFAULT_CONTEXT_WINDOW
 
     @property
-    def max_tokens_per_chunk(self) -> int:
-        """Usable per-chunk token budget: the diminishing-trust curve applied to
-        the context window, clamped to any 413-learned API ceiling."""
-        return min(usable_context_budget(self.context_window), self._api_learned_cap)
-
-    @max_tokens_per_chunk.setter
-    def max_tokens_per_chunk(self, value: int) -> None:
-        # The only legitimate writer is a 413 "Max size" response shrinking the
-        # budget. Record it as the learned cap, taking the min so the shrink-only
-        # invariant is intrinsic here (not reliant on the caller's guard) and a
-        # learned cap can never be raised.
-        self._api_learned_cap = min(self._api_learned_cap, value)
-
-    def _lower_cap_from_overflow(self, exc: "openai.APIStatusError") -> None:
-        """Learn a tighter per-chunk input cap from an overflow response, if it
-        states one. Shared by the review and mention overflow handlers so the
-        clamping policy stays in one place."""
-        cap = _overflow_input_cap(exc.response.text)
-        if cap is not None and cap < self.max_tokens_per_chunk:
-            logger.warning(
-                "Adjusting max_tokens_per_chunk from %s to %s based on overflow response",
-                _fmt(self.max_tokens_per_chunk), _fmt(cap),
-            )
-            self.max_tokens_per_chunk = cap
+    def input_token_budget(self) -> int:
+        """Usable input-token budget: the diminishing-trust curve applied to the
+        context window. Governs diff compression and the prompt-hygiene caps."""
+        return usable_context_budget(self.context_window)
 
     async def close(self):
         await self.openai_client.close()
 
     def _reasoning_kwargs(self) -> dict[str, Any]:
-        effort = self.config.reasoning_effort
-        if not effort or not self._reasoning_supported:
-            return {}
-        return {"reasoning_effort": effort}
+        # noergler requires a reasoning-capable model (enforced at startup), so
+        # reasoning_effort is always sent.
+        return {"reasoning_effort": self.config.reasoning_effort}
 
     async def check_connectivity(self) -> None:
-        prompt_overhead = count_tokens(
-            self.prompt_template
-            .replace("{files}", "")
-            .replace("{repo_instructions}", "").replace("{ticket_context}", "")
-            .replace("{compliance_instructions}", "")
-        )
-        effective = self.max_tokens_per_chunk - prompt_overhead
-        if effective < 2000:
-            logger.warning(
-                "Effective token budget for file content is very low (%s tokens). "
-                "Most files will likely be skipped. Consider using a model with higher token limits.",
-                _fmt(effective),
+        # Hard requirement: noergler reviews a whole PR in one call, so it only
+        # runs on a large-context model. Reject anything below the floor before
+        # spending an inference call.
+        if self.context_window < _MIN_CONTEXT_WINDOW:
+            raise RuntimeError(
+                f"model `{self.config.model}` context window "
+                f"{_fmt(self.context_window)} is below the required "
+                f"{_fmt(_MIN_CONTEXT_WINDOW)}. noergler reviews each PR in a single "
+                f"call and requires a >= {_fmt(_MIN_CONTEXT_WINDOW)}-token model. "
+                f"Set OPENAI_CONTEXT_WINDOW if the model's window isn't auto-detected."
             )
 
         # Startup ping — smallest-possible inference call. Validates the token
@@ -950,19 +721,16 @@ class LLMClient:
             try:
                 ping_response = await self._ping()
             except openai.APIStatusError as exc:
-                # A strict endpoint may reject reasoning_effort for a
-                # non-reasoning model. Disable it for the session and retry
-                # once, so startup succeeds without operator intervention.
-                if self._reasoning_supported and _is_unsupported_reasoning_error(exc):
-                    logger.warning(
-                        "endpoint rejected reasoning_effort=%s (HTTP %s) — "
-                        "disabling it for this session and retrying",
-                        self.config.reasoning_effort, exc.status_code,
-                    )
-                    self._reasoning_supported = False
-                    ping_response = await self._ping()
-                else:
-                    raise
+                # noergler requires a reasoning-capable model. If the endpoint
+                # rejects reasoning_effort, fail loudly rather than proceeding
+                # without reasoning.
+                if _is_unsupported_reasoning_error(exc):
+                    raise RuntimeError(
+                        f"model `{self.config.model}` rejected reasoning_effort="
+                        f"{self.config.reasoning_effort!r} (HTTP {exc.status_code}). "
+                        f"noergler requires a reasoning-capable model."
+                    ) from exc
+                raise
             ping_text = (
                 (ping_response.choices[0].message.content or "").strip()
                 if ping_response.choices else ""
@@ -996,21 +764,24 @@ class LLMClient:
         review_effort: int = 1
         compliance_requirements: list[dict[str, Any]] = field(default_factory=list)
         summary: ReviewSummary = field(default_factory=ReviewSummary)
-        chunk_count: int = 1
-        # True when at least one chunk failed to return a parseable response
-        # AND no chunk produced any compliance requirements — signals that the
-        # absence of compliance data is due to an LLM error, not "no
-        # code-relevant requirements".
+        # True when the assembled prompt exceeds the model's context window, so
+        # the PR was not reviewed at all. The reviewer posts a "too large" notice
+        # instead of a normal summary — a coherent whole-PR review or none.
+        too_large: bool = False
+        # True when the review call failed to return a parseable response AND no
+        # compliance requirements were produced — signals that the absence of
+        # compliance data is due to an LLM error, not "no code-relevant
+        # requirements".
         compliance_extraction_failed: bool = False
-        # True when at least one chunk's LLM call exceeded our wall-clock
-        # deadline. The reviewer uses this to suppress the normal summary
-        # path and post a failure notice / staleness banner instead.
+        # True when the review call exceeded our wall-clock deadline. The reviewer
+        # uses this to suppress the normal summary path and post a failure notice
+        # / staleness banner instead.
         timed_out: bool = False
-        # True when the model responded but NO chunk produced a parseable
-        # response (every chunk was an empty output or a non-JSON refusal such
-        # as "I'm sorry, but I cannot assist..."). The reviewer suppresses the
-        # normal summary path and posts a failure notice instead, so a refused
-        # review is not silently indistinguishable from a clean one.
+        # True when the model responded but produced no parseable response (an
+        # empty output or a non-JSON refusal such as "I'm sorry, but I cannot
+        # assist..."). The reviewer suppresses the normal summary path and posts a
+        # failure notice instead, so a refused review is not silently
+        # indistinguishable from a clean one.
         response_unparseable: bool = False
 
     async def review_diff(
@@ -1058,76 +829,54 @@ class LLMClient:
             "files": sum(count_tokens(format_file_entry(f)) for f in files),
         }
 
-        groups, skipped_files = _group_files_by_token_budget(
-            files,
-            self.max_tokens_per_chunk,
-            template,
-        )
-
-        all_findings: list[ReviewFinding] = []
-        total_prompt_tokens = 0
-        total_completion_tokens = 0
-        compliance_requirements: list[dict[str, Any]] = []
-        any_chunk_extraction_failed = False
-        any_chunk_timed_out = False
-        any_chunk_parse_failed = False
-        any_chunk_parsed_ok = False
-        chunk_summaries: list[ReviewSummary] = []
-        for i, group in enumerate(groups):
-            logger.info("Reviewing chunk %d/%d (%d file%s)",
-                        i + 1, len(groups), len(group),
-                        "" if len(group) == 1 else "s")
-            findings, prompt_tokens, completion_tokens, skipped, chunk_requirements, chunk_summary, chunk_timed_out, chunk_parse_failed = await self._review_file_group(
-                group, template, depth=0, supplementary=supplementary,
+        # Pre-flight fit check: the whole PR is reviewed in one call, so if the
+        # fully-assembled prompt won't fit the model's context window (minus room
+        # for the reply) we skip the PR entirely rather than review a partial view.
+        rendered_files = _render_file_group(files)
+        if supplementary:
+            rendered_files = rendered_files + "\n\n" + supplementary
+        final_prompt = template.replace("{files}", rendered_files)
+        assembled_tokens = count_tokens(_REVIEW_SYSTEM_MESSAGE) + count_tokens(final_prompt)
+        fit_ceiling = self.context_window - _OUTPUT_TOKEN_RESERVE
+        if assembled_tokens > fit_ceiling:
+            logger.warning(
+                "PR too large for a single review call: ~%s prompt tokens > %s ceiling "
+                "(context window %s − %s output reserve) — skipping",
+                _fmt(assembled_tokens), _fmt(fit_ceiling),
+                _fmt(self.context_window), _fmt(_OUTPUT_TOKEN_RESERVE),
             )
-            all_findings.extend(findings)
-            skipped_files.extend(skipped)
-            total_prompt_tokens += prompt_tokens
-            total_completion_tokens += completion_tokens
-            if chunk_timed_out:
-                any_chunk_timed_out = True
-            if chunk_parse_failed:
-                any_chunk_parse_failed = True
-            elif not chunk_timed_out:
-                # A chunk that neither timed out nor failed to parse produced a
-                # usable (possibly empty) review — enough to keep the normal
-                # summary path even if a sibling chunk was refused.
-                any_chunk_parsed_ok = True
-            if chunk_requirements is None:
-                any_chunk_extraction_failed = True
-            elif chunk_requirements and not compliance_requirements:
-                compliance_requirements = chunk_requirements
-            chunk_summaries.append(chunk_summary)
+            return LLMClient.ReviewResult(
+                findings=[],
+                skipped_files=[f.path for f in files],
+                prompt_tokens=0,
+                completion_tokens=0,
+                prompt_breakdown=prompt_breakdown,
+                review_effort=self._estimate_review_effort(files),
+                too_large=True,
+            )
 
-        merged_summary = _merge_review_summaries(chunk_summaries)
-
-        total = total_prompt_tokens + total_completion_tokens
-        logger.info(
-            "Review complete: %d in + %d out = %d total tokens (%d chunk%s)",
-            total_prompt_tokens,
-            total_completion_tokens,
-            total,
-            len(groups),
-            "" if len(groups) == 1 else "s",
+        findings, prompt_tokens, completion_tokens, skipped, requirements, summary, timed_out, parse_failed = await self._review_file_group(
+            files, template, supplementary=supplementary,
         )
 
-        review_effort = self._estimate_review_effort(files)
+        total = prompt_tokens + completion_tokens
+        logger.info(
+            "Review complete: %d in + %d out = %d total tokens",
+            prompt_tokens, completion_tokens, total,
+        )
 
         return LLMClient.ReviewResult(
-            findings=all_findings,
-            skipped_files=skipped_files,
-            prompt_tokens=total_prompt_tokens,
-            completion_tokens=total_completion_tokens,
+            findings=findings,
+            skipped_files=skipped,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
             prompt_breakdown=prompt_breakdown,
-            review_effort=review_effort,
-            compliance_requirements=compliance_requirements,
-            summary=merged_summary,
-            chunk_count=len(groups),
-            compliance_extraction_failed=(
-                any_chunk_extraction_failed and not compliance_requirements
-            ),
-            timed_out=any_chunk_timed_out,
-            response_unparseable=(any_chunk_parse_failed and not any_chunk_parsed_ok),
+            review_effort=self._estimate_review_effort(files),
+            compliance_requirements=requirements or [],
+            summary=summary,
+            compliance_extraction_failed=(requirements is None),
+            timed_out=timed_out,
+            response_unparseable=parse_failed,
         )
 
     @staticmethod
@@ -1159,43 +908,29 @@ class LLMClient:
         template = template.replace("{repo_instructions}", repo_instructions)
         template = template.replace("{ticket_context}", ticket_context or "No ticket context available.")
 
-        groups, skipped_files = _group_files_by_token_budget(
-            files,
-            self.max_tokens_per_chunk,
-            template,
-        )
-
-        answers: list[str] = []
-        total_prompt_tokens = 0
-        total_completion_tokens = 0
-        for i, group in enumerate(groups):
-            logger.info("Mention Q&A chunk %d/%d (%d file%s)",
-                        i + 1, len(groups), len(group),
-                        "" if len(group) == 1 else "s")
-            answer, pt, ct, skipped = await self._answer_file_group(
-                group, template, depth=0,
+        rendered = _render_file_group(files)
+        final_prompt = template.replace("{diff}", rendered)
+        assembled_tokens = count_tokens(_MENTION_SYSTEM_MESSAGE) + count_tokens(final_prompt)
+        fit_ceiling = self.context_window - _OUTPUT_TOKEN_RESERVE
+        if assembled_tokens > fit_ceiling:
+            logger.warning(
+                "Mention Q&A too large for a single call: ~%s prompt tokens > %s ceiling",
+                _fmt(assembled_tokens), _fmt(fit_ceiling),
             )
-            if answer:
-                answers.append(answer)
-            skipped_files.extend(skipped)
-            total_prompt_tokens += pt
-            total_completion_tokens += ct
+            return "This PR is too large to answer within the model's context window."
 
-        total = total_prompt_tokens + total_completion_tokens
+        answer, pt, ct, _skipped = await self._answer_file_group(files, template)
+        total = pt + ct
         logger.info(
-            "Mention Q&A complete: %d in + %d out = %d total tokens (%d chunk%s)",
-            total_prompt_tokens, total_completion_tokens, total,
-            len(groups), "" if len(groups) == 1 else "s",
+            "Mention Q&A complete: %d in + %d out = %d total tokens",
+            pt, ct, total,
         )
-
-        return "\n\n".join(answers) if answers else "I couldn't process any files in this PR to answer your question."
+        return answer or "I couldn't process this PR to answer your question."
 
     async def _answer_file_group(
         self,
         group: list[FileReviewData],
         template: str,
-        depth: int,
-        max_depth: int = 3,
     ) -> tuple[str, int, int, list[str]]:
         rendered = _render_file_group(group)
         prompt = template.replace("{diff}", rendered)
@@ -1209,51 +944,6 @@ class LLMClient:
                 len(group), ", ".join(paths), type(exc).__name__,
             )
             return "", 0, 0, paths
-        except openai.APIStatusError as exc:
-            if not _is_context_overflow(exc):
-                raise
-            # APIStatusError.response is the underlying httpx.Response
-            logger.warning(
-                "context overflow (HTTP %s) on mention Q&A: %s",
-                exc.status_code, exc.response.text[:500],
-            )
-            self._lower_cap_from_overflow(exc)
-            if len(group) <= 1:
-                file = group[0] if group else None
-                if file is not None and file.content is not None:
-                    logger.info("context overflow — retrying mention without full file content: %s", file.path)
-                    diff_only = FileReviewData(path=file.path, diff=file.diff, content=None)
-                    return await self._answer_file_group([diff_only], template, depth + 1, max_depth)
-                path = file.path if file else "<empty>"
-                logger.warning(
-                    "context overflow — file skipped for mention Q&A: %s (%d diff lines, ~%d prompt tokens)",
-                    path,
-                    file.diff.count("\n") + 1 if file else 0,
-                    count_tokens(prompt),
-                )
-                return "", 0, 0, [path]
-            if depth >= max_depth:
-                paths = [f.path for f in group]
-                for f in group:
-                    logger.warning(
-                        "context overflow — file skipped for mention Q&A after %d bisections: %s (%d diff lines)",
-                        depth, f.path, f.diff.count("\n") + 1,
-                    )
-                return "", 0, 0, paths
-            mid = len(group) // 2
-            logger.info(
-                "context overflow with %d files — splitting mention chunk and retrying (depth %d)",
-                len(group), depth + 1,
-            )
-            left = await self._answer_file_group(group[:mid], template, depth + 1, max_depth)
-            right = await self._answer_file_group(group[mid:], template, depth + 1, max_depth)
-            parts = [a for a in [left[0], right[0]] if a]
-            return (
-                "\n\n".join(parts),
-                left[1] + right[1],
-                left[2] + right[2],
-                left[3] + right[3],
-            )
 
     async def _call_mention_api(self, prompt: str) -> tuple[str, int, int]:
         raw, prompt_tokens, completion_tokens = await self._chat(
@@ -1267,24 +957,18 @@ class LLMClient:
         self,
         group: list[FileReviewData],
         template: str,
-        depth: int,
-        max_depth: int = 3,
         supplementary: str = "",
     ) -> tuple[list[ReviewFinding], int, int, list[str], list[dict[str, Any]] | None, ReviewSummary, bool, bool]:
-        """Review a group of files. Returns
+        """Review the whole PR in one call. Returns
         (findings, prompt_tokens, completion_tokens, skipped_paths,
         compliance_requirements_or_None, summary, timed_out, parse_failed).
 
-        `timed_out=True` signals the wall-clock deadline was exceeded for at
-        least one underlying API call (including any bisected sub-chunk).
-
-        `parse_failed=True` signals the model responded but its output could
-        not be parsed (an empty output or a non-JSON refusal). It is distinct
-        from `timed_out` (no response at all) and from the 413 paths (payload
-        too large), neither of which set it.
+        `timed_out=True` signals the wall-clock deadline was exceeded (the files
+        are returned as skipped). `parse_failed=True` signals the model responded
+        but its output could not be parsed (an empty output or a non-JSON refusal).
         """
         rendered = _render_file_group(group)
-        if supplementary and depth == 0:
+        if supplementary:
             rendered = rendered + "\n\n" + supplementary
         prompt = template.replace("{files}", rendered)
         try:
@@ -1297,56 +981,6 @@ class LLMClient:
                 len(group), ", ".join(paths), type(exc).__name__,
             )
             return [], 0, 0, paths, None, ReviewSummary(), True, False
-        except openai.APIStatusError as exc:
-            if not _is_context_overflow(exc):
-                raise
-            # APIStatusError.response is the underlying httpx.Response
-            logger.warning(
-                "context overflow (HTTP %s) response body: %s",
-                exc.status_code, exc.response.text[:500],
-            )
-            self._lower_cap_from_overflow(exc)
-            if len(group) <= 1:
-                file = group[0] if group else None
-                if file is not None and file.content is not None:
-                    logger.info("context overflow — retrying without full file content: %s", file.path)
-                    diff_only = FileReviewData(path=file.path, diff=file.diff, content=None)
-                    return await self._review_file_group([diff_only], template, depth + 1, max_depth)
-                path = file.path if file else "<empty>"
-                logger.warning(
-                    "context overflow — file will not be reviewed: %s (%d diff lines, ~%d prompt tokens)",
-                    path,
-                    file.diff.count("\n") + 1 if file else 0,
-                    count_tokens(prompt),
-                )
-                return [], 0, 0, [path], None, ReviewSummary(), False, False
-            if depth >= max_depth:
-                paths = [f.path for f in group]
-                for f in group:
-                    logger.warning(
-                        "context overflow — file will not be reviewed after %d bisections: %s (%d diff lines)",
-                        depth, f.path, f.diff.count("\n") + 1,
-                    )
-                return [], 0, 0, paths, None, ReviewSummary(), False, False
-            mid = len(group) // 2
-            logger.info(
-                "context overflow with %d files — splitting chunk and retrying (depth %d)",
-                len(group), depth + 1,
-            )
-            left = await self._review_file_group(group[:mid], template, depth + 1, max_depth)
-            right = await self._review_file_group(group[mid:], template, depth + 1, max_depth)
-            compliance = _combine_compliance(left[4], right[4])
-            summary = _merge_review_summaries([left[5], right[5]])
-            return (
-                left[0] + right[0],
-                left[1] + right[1],
-                left[2] + right[2],
-                left[3] + right[3],
-                compliance,
-                summary,
-                left[6] or right[6],
-                left[7] or right[7],
-            )
 
     async def _call_api(self, prompt: str) -> tuple[list[ReviewFinding], int, int, list[dict[str, Any]] | None, ReviewSummary, bool]:
         content, prompt_tokens, completion_tokens = await self._chat(

@@ -212,10 +212,10 @@ MAX_CUMULATIVE_CONTEXT_TOKENS = 80_000
 MAX_PREVIOUSLY_POSTED_FINDINGS = 50
 
 
-def _cumulative_diff_budget(max_tokens_per_chunk: int) -> int:
-    """Token budget for the cumulative PR diff. ~1/3 of the per-chunk budget so
+def _cumulative_diff_budget(input_budget: int) -> int:
+    """Token budget for the cumulative PR diff. ~1/3 of the input-token budget so
     the focused review files still fit, capped at the hard ceiling."""
-    return min(MAX_CUMULATIVE_CONTEXT_TOKENS, max(2_000, max_tokens_per_chunk // 3))
+    return min(MAX_CUMULATIVE_CONTEXT_TOKENS, max(2_000, input_budget // 3))
 
 
 # Previously-posted findings are bounded both by count and by rendered token size:
@@ -224,10 +224,10 @@ def _cumulative_diff_budget(max_tokens_per_chunk: int) -> int:
 MAX_PREVIOUSLY_POSTED_FINDINGS_TOKENS = 4_000
 
 
-def _previously_posted_findings_budget(max_tokens_per_chunk: int) -> int:
-    # ~5% of chunk budget: this block is cross-context, not the focus of review;
-    # keep it tight so the focused files dominate the prompt.
-    return min(MAX_PREVIOUSLY_POSTED_FINDINGS_TOKENS, max(500, max_tokens_per_chunk // 20))
+def _previously_posted_findings_budget(input_budget: int) -> int:
+    # ~5% of the input-token budget: this block is cross-context, not the focus
+    # of review; keep it tight so the focused files dominate the prompt.
+    return min(MAX_PREVIOUSLY_POSTED_FINDINGS_TOKENS, max(500, input_budget // 20))
 _REVIEW_KEYWORDS = {"review", "review this", "re-review", "rereview"}
 _JIRA_TICKET_RE = re.compile(r'\b([A-Z]{2,10}-\d{1,7})\b')
 _SECURITY_KEYWORDS = re.compile(
@@ -711,7 +711,7 @@ class Reviewer:
                     )
                     cumulative_pr_diff = ""
                 if cumulative_pr_diff:
-                    cum_budget = _cumulative_diff_budget(self.llm.max_tokens_per_chunk)
+                    cum_budget = _cumulative_diff_budget(self.llm.input_token_budget)
                     cum_tokens = count_tokens(cumulative_pr_diff)
                     if cum_tokens > cum_budget:
                         logger.warning(
@@ -738,7 +738,7 @@ class Reviewer:
             renamed_paths: list[str] = []
 
             template = self.llm.prompt_template
-            max_tokens = self.llm.max_tokens_per_chunk
+            max_tokens = self.llm.input_token_budget
 
             rc = self.review_config
             if is_small_pr(files, max_tokens, template, count_tokens, format_file_entry):
@@ -814,7 +814,7 @@ class Reviewer:
             # with >MAX prior findings the oldest are dropped from the prompt but
             # remain in `existing_keys` below, so post-hoc dedup is unaffected.
             findings_for_prompt = existing_findings[-MAX_PREVIOUSLY_POSTED_FINDINGS:]
-            findings_budget = _previously_posted_findings_budget(self.llm.max_tokens_per_chunk)
+            findings_budget = _previously_posted_findings_budget(self.llm.input_token_budget)
             # Drop oldest in chunks until rendered block fits the budget.
             # Step is 25% of remaining count to avoid an O(n^2) re-render per item.
             while findings_for_prompt and count_tokens(
@@ -905,6 +905,40 @@ class Reviewer:
                     fallback=None,
                 )
                 await self._post_or_update_unparseable_notice(
+                    project_key, repo_slug, pr_id, pr_review_id,
+                    new_commit=source_commit,
+                    prior_commit=prior_commit,
+                )
+                return
+
+            # Too large: the assembled prompt exceeds the model's context window,
+            # so the PR was not reviewed at all (a whole-PR review or none — never
+            # a partial one). Post a notice, preserve the prior reviewed commit,
+            # and skip stats. Mirrors the timeout / unparseable paths.
+            if llm_result.too_large:
+                short_new = (source_commit or "")[:8] or "unknown"
+                logger.error(
+                    "Review of %s skipped — PR too large for the model's context "
+                    "window (commit %s)",
+                    pr_tag, short_new,
+                )
+                prior_commit = await _safe_db(
+                    repository.get_last_reviewed_commit(
+                        self.db_pool, project_key, repo_slug, pr_id,
+                    ),
+                    fallback=None,
+                )
+                pr_review_id = await _safe_db(
+                    repository.upsert_pr_review(
+                        self.db_pool, project_key, repo_slug, pr_id,
+                        last_reviewed_commit=prior_commit,
+                        author=author_name,
+                        pr_title=pr.title,
+                        opened_at=opened_at,
+                    ),
+                    fallback=None,
+                )
+                await self._post_or_update_too_large_notice(
                     project_key, repo_slug, pr_id, pr_review_id,
                     new_commit=source_commit,
                     prior_commit=prior_commit,
@@ -1008,8 +1042,7 @@ class Reviewer:
                 diff_added=diff_added,
                 diff_removed=diff_removed,
                 cross_file_symbols=[r.symbol for r in cross_file_rels] if cross_file_rels else None,
-                chunk_count=llm_result.chunk_count,
-                chunk_budget=self.llm.max_tokens_per_chunk,
+                input_budget=self.llm.input_token_budget,
                 context_window=self.llm.context_window,
             )
 
@@ -1636,6 +1669,46 @@ class Reviewer:
             log_label="unparseable-response notice",
         )
 
+    async def _post_or_update_too_large_notice(
+        self,
+        project_key: str,
+        repo_slug: str,
+        pr_id: int,
+        pr_review_id: int | None,
+        new_commit: str | None,
+        prior_commit: str | None,
+    ) -> None:
+        """Surface a "PR too large to review" notice on the PR summary.
+
+        The assembled prompt exceeded the model's context window, so the PR was
+        not reviewed. Delegates to `_post_or_update_failure_notice` with
+        size-specific wording.
+        """
+        short_new = (new_commit or "")[:8] or "unknown"
+        short_old = (prior_commit or "")[:8] if prior_commit else None
+
+        fresh_body = (
+            f"⚠️ **Review skipped** — this PR is too large to review within the "
+            f"model's context window (commit `{short_new}`). Split it into smaller "
+            f"PRs, then `@{self.bitbucket.bot_username}` to retry."
+        )
+        if short_old:
+            banner_line = (
+                f"⚠️ Commit `{short_new}` is too large to review within the model's "
+                f"context window — findings below reflect the earlier commit "
+                f"`{short_old}`."
+            )
+        else:
+            banner_line = (
+                f"⚠️ Commit `{short_new}` is too large to review within the model's "
+                f"context window — findings below reflect an earlier commit."
+            )
+        await self._post_or_update_failure_notice(
+            project_key, repo_slug, pr_id, pr_review_id,
+            fresh_body=fresh_body, banner_line=banner_line,
+            log_label="too-large notice",
+        )
+
     async def _post_or_update_failure_notice(
         self,
         project_key: str,
@@ -1874,8 +1947,7 @@ class Reviewer:
         diff_added: int | None = None,
         diff_removed: int | None = None,
         cross_file_symbols: list[str] | None = None,
-        chunk_count: int | None = None,
-        chunk_budget: int | None = None,
+        input_budget: int | None = None,
         context_window: int | None = None,
         run_cost_usd: float | None = None,
         cumulative_cost_usd: float | None = None,
@@ -2059,28 +2131,16 @@ class Reviewer:
 
         # --- Cost / telemetry
         telemetry: list[str] = []
-        if chunk_count is not None and chunk_budget and token_usage:
+        if input_budget and token_usage:
             prompt_t = token_usage[0]
             used_k = _fmt_k(prompt_t)
-            budget_k = _fmt_k(chunk_budget)
-            if chunk_count == 1:
-                pct = round(prompt_t / chunk_budget * 100) if chunk_budget else 0
-                window_suffix = f", model max {_fmt_k(context_window)}" if context_window else ""
-                telemetry.append(
-                    f"Tokens used: {used_k} of {budget_k} available "
-                    f"({pct}% used{window_suffix}) · 1 pass"
-                )
-            else:
-                avg_pct = round(prompt_t / chunk_count / chunk_budget * 100) if chunk_budget else 0
-                cap_clause = (
-                    f"cap {budget_k}/pass, model max {_fmt_k(context_window)}"
-                    if context_window
-                    else f"cap {budget_k}/pass"
-                )
-                telemetry.append(
-                    f"Tokens used: {used_k} total across {chunk_count} passes "
-                    f"(avg {avg_pct}% used/pass, {cap_clause})"
-                )
+            budget_k = _fmt_k(input_budget)
+            pct = round(prompt_t / input_budget * 100) if input_budget else 0
+            window_suffix = f", model max {_fmt_k(context_window)}" if context_window else ""
+            telemetry.append(
+                f"Tokens used: {used_k} of {budget_k} available "
+                f"({pct}% used{window_suffix})"
+            )
 
         if token_usage:
             if prompt_breakdown:

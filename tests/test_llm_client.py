@@ -13,11 +13,8 @@ from app.llm_client import (
     _REVIEW_SYSTEM_MESSAGE,
     format_file_entry,
     _context_window_for,
-    _group_files_by_token_budget,
-    _merge_review_summaries,
     _parse_mention_response,
     _parse_review_response,
-    _render_file_group,
     extract_path,
     is_deleted,
     is_reviewable_diff,
@@ -31,6 +28,7 @@ def llm_config():
         model="gpt-5.3-codex",
         api_key="test-key",
         api_url="https://llm.test/v1",
+        context_window=1_000_000,
     )
 
 
@@ -278,58 +276,6 @@ class TestParseReviewResponse:
             _, _, summary, _ = _parse_review_response(content)
         assert summary.overview == ""
         assert any("overview empty after parse" in msg for msg in caplog.messages)
-
-
-class TestMergeReviewSummaries:
-    def test_first_non_empty_wins_for_prose_fields(self):
-        # Note: verdict_rationale is paired with the winning decision and is
-        # covered separately by test_verdict_rationale_paired_with_winning_decision.
-        a = ReviewSummary(overview="", security_performance="None notable.",
-                          test_coverage="")
-        b = ReviewSummary(overview="From B", security_performance="Adds a hot loop",
-                          test_coverage="Tests added")
-        merged = _merge_review_summaries([a, b])
-        assert merged.overview == "From B"
-        assert merged.security_performance == "None notable."  # first non-empty wins
-        assert merged.test_coverage == "Tests added"
-
-    def test_strengths_concatenated_and_deduped(self):
-        a = ReviewSummary(strengths=["Clean rename", "Good test"])
-        b = ReviewSummary(strengths=["clean rename", "Solid docs"])
-        merged = _merge_review_summaries([a, b])
-        assert merged.strengths == ["Clean rename", "Good test", "Solid docs"]
-
-    def test_strengths_capped(self):
-        a = ReviewSummary(strengths=[f"item {i}" for i in range(10)])
-        merged = _merge_review_summaries([a])
-        assert len(merged.strengths) == 4
-
-    def test_verdict_rolls_up_to_worst(self):
-        a = ReviewSummary(verdict_decision="approve")
-        b = ReviewSummary(verdict_decision="request_changes")
-        c = ReviewSummary(verdict_decision="approve_with_followups")
-        merged = _merge_review_summaries([a, b, c])
-        assert merged.verdict_decision == "request_changes"
-
-    def test_verdict_rationale_paired_with_winning_decision(self):
-        # Regression: rationale must come from the chunk that owns the worst
-        # decision — not from the first non-empty chunk — so a clean chunk's
-        # "ship it" rationale doesn't get attached to a request_changes verdict.
-        clean = ReviewSummary(
-            verdict_decision="approve",
-            verdict_rationale="Rename is consistent across call sites.",
-        )
-        blocking = ReviewSummary(
-            verdict_decision="request_changes",
-            verdict_rationale="SQL injection in /users handler.",
-        )
-        merged = _merge_review_summaries([clean, blocking])
-        assert merged.verdict_decision == "request_changes"
-        assert merged.verdict_rationale == "SQL injection in /users handler."
-
-    def test_empty_parts_returns_default(self):
-        merged = _merge_review_summaries([])
-        assert merged == ReviewSummary()
 
 
 class TestParseMentionResponse:
@@ -623,73 +569,6 @@ class TestSplitByFile:
         assert "b.py" in parts[1]
 
 
-class TestGroupFilesByTokenBudget:
-    def test_single_file_fits(self):
-        files = [FileReviewData(path="file.py", diff="+hello\n", content="hello\n")]
-        template = "Review:\n{files}"
-        groups, skipped = _group_files_by_token_budget(files, 80000, template)
-        assert len(groups) == 1
-        assert len(groups[0]) == 1
-        assert groups[0][0].path == "file.py"
-        assert skipped == []
-
-    def test_multiple_files_split_by_tokens(self):
-        files = [
-            FileReviewData(path="a.py", diff="+line\n" * 50, content="line\n" * 50),
-            FileReviewData(path="b.py", diff="+line\n" * 50, content="line\n" * 50),
-        ]
-        template = "Review:\n{files}"
-        groups, skipped = _group_files_by_token_budget(files, 300, template)
-        assert len(groups) >= 2
-        assert skipped == []
-
-    def test_oversized_single_file_skipped(self):
-        files = [FileReviewData(path="huge.py", diff="+x = 1\n" * 5000, content="x = 1\n" * 5000)]
-        template = "Review:\n{files}"
-        groups, skipped = _group_files_by_token_budget(files, 200, template)
-        assert groups == []
-        assert skipped == ["huge.py"]
-
-    def test_oversized_file_skipped_but_small_kept(self):
-        files = [
-            FileReviewData(path="small.py", diff="+ok\n", content="ok\n"),
-            FileReviewData(path="huge.py", diff="+x = 1\n" * 5000, content="x = 1\n" * 5000),
-        ]
-        template = "Review:\n{files}"
-        groups, skipped = _group_files_by_token_budget(files, 200, template)
-        paths = [f.path for g in groups for f in g]
-        assert "small.py" in paths
-        assert "huge.py" not in paths
-        assert skipped == ["huge.py"]
-
-    def test_oversized_content_downgraded_to_diff_only(self):
-        # Full content blows the budget, but the diff alone fits — the file must
-        # be reviewed diff-only, not dropped from the review entirely.
-        files = [FileReviewData(
-            path="big.py",
-            diff="+x = 1\n",                # tiny diff
-            content="x = 1\n" * 5000,       # huge full content
-        )]
-        template = "Review:\n{files}"
-        groups, skipped = _group_files_by_token_budget(files, 200, template)
-        paths = [f.path for g in groups for f in g]
-        assert "big.py" in paths
-        assert skipped == []
-        kept = next(f for g in groups for f in g if f.path == "big.py")
-        assert kept.content is None  # content stripped so the entry fits
-        assert kept.diff == "+x = 1\n"
-
-    def test_deleted_file_included(self):
-        diff = "--- a/removed.py\n+++ /dev/null\n-old code\n"
-        files = [FileReviewData(path="removed.py", diff=diff, content=None)]
-        template = "Review:\n{files}"
-        groups, skipped = _group_files_by_token_budget(files, 80000, template)
-        assert len(groups) == 1
-        assert skipped == []
-        rendered = _render_file_group(groups[0])
-        assert "_(file deleted)_" in rendered
-
-
 class TestSystemMessage:
     def test_review_system_message_sets_role_and_json(self):
         # Assert against the real constant used by _call_api, not a local copy.
@@ -728,28 +607,41 @@ class TestLLMClient:
             assert len(result.findings) == 1
             assert result.findings[0].severity == "suggestion"
             assert result.review_effort == 1  # trivial: 1 file, 1 changed line
-            assert result.chunk_count == 1
+            assert result.too_large is False
         finally:
             await client.close()
 
     @pytest.mark.asyncio
-    async def test_review_diff_chunk_count_reflects_grouping(self, llm_config, review_config):
-        """When files don't fit in one budget, chunk_count equals the number of groups."""
-        # Budget sized so each file fits individually but two don't share a chunk.
-        # Template alone is ~2.8k tokens; each file below adds ~788 tokens.
+    async def test_review_diff_single_call_for_multiple_files(self, llm_config, review_config):
+        """The whole PR is reviewed in exactly one inference call (no chunking)."""
+        mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
         client = LLMClient(llm_config, review_config)
-        client.max_tokens_per_chunk = 4000
-        client.openai_client.chat.completions.create = AsyncMock(
-            return_value=_mock_completion("[]", 10, 5)
-        )
+        client.openai_client.chat.completions.create = mock_create
         try:
-            big_content = "x = 1\n" * 500
             files = [
-                FileReviewData(path=f"f{i}.py", diff=f"+x{i}\n", content=big_content)
-                for i in range(3)
+                FileReviewData(path=f"f{i}.py", diff=f"+x{i}\n", content="x = 1\n" * 500)
+                for i in range(5)
             ]
-            result = await client.review_diff(files)
-            assert result.chunk_count >= 2
+            await client.review_diff(files)
+            mock_create.assert_called_once()
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_review_diff_too_large_skips_without_api_call(self, llm_config, review_config):
+        """A PR that exceeds the context window is skipped (too_large=True) with
+        no inference call — a whole-PR review or none."""
+        mock_create = AsyncMock(return_value=_mock_completion("[]", 10, 5))
+        client = LLMClient(llm_config, review_config)  # 1M window → ~968k ceiling
+        client.openai_client.chat.completions.create = mock_create
+        try:
+            # ~1M fake tokens (len//4) of content — over the near-full-window ceiling.
+            huge = FileReviewData(path="huge.py", diff="+x\n", content="x" * 4_000_000)
+            result = await client.review_diff([huge])
+            assert result.too_large is True
+            assert result.findings == []
+            assert result.skipped_files == ["huge.py"]
+            mock_create.assert_not_called()
         finally:
             await client.close()
 
@@ -809,46 +701,10 @@ class TestLLMClient:
 
 class TestReasoningEffort:
     @pytest.mark.asyncio
-    async def test_reasoning_omitted_when_explicitly_none(self, review_config):
-        cfg = LLMConfig(
-            model="gpt-5.3-codex",
-            api_key="test-key",
-            api_url="https://llm.test/v1",
-            reasoning_effort=None,
-        )
-        mock_create = AsyncMock(return_value=_mock_completion("[]", 10, 5))
-        client = LLMClient(cfg, review_config)
-        client.openai_client.chat.completions.create = mock_create
-        try:
-            files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
-            await client.review_diff(files)
-            assert "reasoning_effort" not in mock_create.call_args.kwargs
-        finally:
-            await client.close()
-
-    @pytest.mark.asyncio
     async def test_reasoning_defaults_to_high(self, llm_config, review_config):
         assert llm_config.reasoning_effort == "high"
         mock_create = AsyncMock(return_value=_mock_completion("[]", 10, 5))
         client = LLMClient(llm_config, review_config)
-        client.openai_client.chat.completions.create = mock_create
-        try:
-            files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
-            await client.review_diff(files)
-            assert mock_create.call_args.kwargs["reasoning_effort"] == "high"
-        finally:
-            await client.close()
-
-    @pytest.mark.asyncio
-    async def test_reasoning_passed_when_set(self, review_config):
-        cfg = LLMConfig(
-            model="gpt-5.3-codex",
-            api_key="test-key",
-            api_url="https://llm.test/v1",
-            reasoning_effort="high",
-        )
-        mock_create = AsyncMock(return_value=_mock_completion("[]", 10, 5))
-        client = LLMClient(cfg, review_config)
         client.openai_client.chat.completions.create = mock_create
         try:
             files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
@@ -864,6 +720,7 @@ class TestReasoningEffort:
             api_key="test-key",
             api_url="https://llm.test/v1",
             reasoning_effort="low",
+            context_window=1_000_000,
         )
         mock_create = AsyncMock(return_value=_mock_completion("ok", 5, 1))
         client = LLMClient(cfg, review_config)
@@ -875,50 +732,63 @@ class TestReasoningEffort:
             await client.close()
 
     @pytest.mark.asyncio
-    async def test_reasoning_rejected_ping_retries_without_it(self, review_config):
-        """If the endpoint 400s on reasoning_effort, the connectivity ping
-        disables it for the session and retries once, so startup succeeds."""
+    async def test_reasoning_rejected_ping_fails_startup(self, review_config):
+        """noergler requires a reasoning-capable model: if the endpoint 400s on
+        reasoning_effort, the connectivity ping raises a fatal error."""
         cfg = LLMConfig(
             model="local-model",
             api_key="test-key",
             api_url="https://llm.test/v1",
             reasoning_effort="high",
+            context_window=1_000_000,
         )
         client = LLMClient(cfg, review_config)
-
-        async def fake_create(**kwargs):
-            if "reasoning_effort" in kwargs:
-                raise _make_api_status_error(400, "Unsupported parameter: 'reasoning_effort'")
-            return _mock_completion("ok", 5, 1)
-
-        client.openai_client.chat.completions.create = fake_create
+        client.openai_client.chat.completions.create = AsyncMock(
+            side_effect=_make_api_status_error(400, "Unsupported parameter: 'reasoning_effort'")
+        )
         try:
-            await client.check_connectivity()
-            # Disabled for the session, so subsequent calls omit it.
-            assert client._reasoning_supported is False
-            assert client._reasoning_kwargs() == {}
+            with pytest.raises(RuntimeError, match="reasoning-capable"):
+                await client.check_connectivity()
         finally:
             await client.close()
 
     @pytest.mark.asyncio
     async def test_non_reasoning_400_on_ping_propagates(self, review_config):
-        """A 400 unrelated to reasoning is not silently retried — startup fails."""
+        """A 400 unrelated to reasoning propagates as-is."""
         cfg = LLMConfig(
             model="gpt-5.3-codex",
             api_key="test-key",
             api_url="https://llm.test/v1",
             reasoning_effort="high",
+            context_window=1_000_000,
         )
         client = LLMClient(cfg, review_config)
-
-        async def fake_create(**kwargs):
-            raise _make_api_status_error(400, "Invalid value for 'temperature'")
-
-        client.openai_client.chat.completions.create = fake_create
+        client.openai_client.chat.completions.create = AsyncMock(
+            side_effect=_make_api_status_error(400, "Invalid value for 'temperature'")
+        )
         try:
             with pytest.raises(openai.APIStatusError):
                 await client.check_connectivity()
-            assert client._reasoning_supported is True
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_below_min_context_window_fails_startup(self, review_config):
+        """noergler refuses to start on a model below the 1M context floor."""
+        cfg = LLMConfig(
+            model="small-model",
+            api_key="test-key",
+            api_url="https://llm.test/v1",
+            reasoning_effort="high",
+            context_window=128_000,
+        )
+        client = LLMClient(cfg, review_config)
+        mock_create = AsyncMock(return_value=_mock_completion("ok", 5, 1))
+        client.openai_client.chat.completions.create = mock_create
+        try:
+            with pytest.raises(RuntimeError, match="context window"):
+                await client.check_connectivity()
+            mock_create.assert_not_called()  # rejected before any inference call
         finally:
             await client.close()
 
@@ -1131,82 +1001,6 @@ class TestAnswerQuestion:
         finally:
             await client.close()
 
-    @pytest.mark.asyncio
-    async def test_answer_question_413_bisects_and_retries(self, llm_config, review_config):
-        client = LLMClient(llm_config, review_config)
-
-        files = [
-            FileReviewData(path="a.py", diff="+a\n", content="a\n"),
-            FileReviewData(path="b.py", diff="+b\n", content="b\n"),
-        ]
-
-        call_count = 0
-
-        async def mock_call_mention_api(prompt: str):  # noqa: ARG001
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise openai.APIStatusError(
-                    "too large",
-                    response=httpx.Response(413, request=httpx.Request("POST", "https://x"), text="too large"),
-                    body=None,
-                )
-            return "Answer for chunk", 50, 25
-
-        client._call_mention_api = mock_call_mention_api
-        try:
-            result = await client.answer_question("What?", files)
-            assert "Answer for chunk" in result
-            assert call_count >= 3  # 1 failed + 2 retries
-        finally:
-            await client.close()
-
-    @pytest.mark.asyncio
-    async def test_answer_question_413_single_file_retries_diff_only(self, llm_config, review_config):
-        client = LLMClient(llm_config, review_config)
-
-        files = [FileReviewData(path="huge.py", diff="+x\n", content="x\n")]
-        call_count = 0
-
-        async def mock_call_mention_api(prompt: str):  # noqa: ARG001
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise openai.APIStatusError(
-                    "too large",
-                    response=httpx.Response(413, request=httpx.Request("POST", "https://x"), text="too large"),
-                    body=None,
-                )
-            return "Answer with diff only", 30, 10
-
-        client._call_mention_api = mock_call_mention_api
-        try:
-            result = await client.answer_question("What?", files)
-            assert result == "Answer with diff only"
-            assert call_count == 2
-        finally:
-            await client.close()
-
-    @pytest.mark.asyncio
-    async def test_answer_question_413_all_skipped_returns_fallback(self, llm_config, review_config):
-        client = LLMClient(llm_config, review_config)
-
-        files = [FileReviewData(path="huge.py", diff="+x\n", content=None)]
-
-        async def mock_call_mention_api(prompt: str):  # noqa: ARG001
-            raise openai.APIStatusError(
-                "too large",
-                response=httpx.Response(413, request=httpx.Request("POST", "https://x"), text="too large"),
-                body=None,
-            )
-
-        client._call_mention_api = mock_call_mention_api
-        try:
-            result = await client.answer_question("What?", files)
-            assert "couldn't process" in result.lower()
-        finally:
-            await client.close()
-
 
 def _make_api_status_error(status_code: int, text: str = "") -> openai.APIStatusError:
     return openai.APIStatusError(
@@ -1216,141 +1010,11 @@ def _make_api_status_error(status_code: int, text: str = "") -> openai.APIStatus
     )
 
 
-class TestReviewFileGroup413Retry:
+class TestReviewFileGroup:
     @pytest.mark.asyncio
-    async def test_413_bisects_and_retries(self, llm_config, review_config):
-        """On 413, the file group is bisected and each half retried."""
-        client = LLMClient(llm_config, review_config)
-
-        files = [
-            FileReviewData(path="a.py", diff="+a\n", content="a\n"),
-            FileReviewData(path="b.py", diff="+b\n", content="b\n"),
-            FileReviewData(path="c.py", diff="+c\n", content="c\n"),
-            FileReviewData(path="d.py", diff="+d\n", content="d\n"),
-        ]
-
-        call_count = 0
-        finding_a = {"file": "a.py", "line": 1, "severity": "suggestion", "comment": "ok"}
-        finding_d = {"file": "d.py", "line": 1, "severity": "suggestion", "comment": "ok"}
-
-        async def mock_call_api(prompt: str):
-            nonlocal call_count
-            call_count += 1
-            # First call (all 4 files) -> 413
-            if call_count == 1:
-                raise _make_api_status_error(413, "too large")
-            # Subsequent calls succeed
-            findings = []
-            if "a.py" in prompt:
-                findings.append(finding_a)
-            if "d.py" in prompt:
-                findings.append(finding_d)
-            return (
-                [__import__("app.models", fromlist=["ReviewFinding"]).ReviewFinding(**f) for f in findings],
-                50, 25, [], ReviewSummary(), False,
-            )
-
-        client._call_api = mock_call_api
-        try:
-            template = client.prompt_template
-            findings, pt, ct, skipped, _compliance, _summary, _to, _pf = await client._review_file_group(files, template, depth=0)
-            assert len(findings) == 2
-            assert {f.file for f in findings} == {"a.py", "d.py"}
-            assert skipped == []
-            assert call_count >= 3  # 1 failed + at least 2 retries
-        finally:
-            await client.close()
-
-    @pytest.mark.asyncio
-    async def test_413_single_file_retries_diff_only(self, llm_config, review_config):
-        """A single file with content that triggers 413 retries with diff only."""
-        client = LLMClient(llm_config, review_config)
-
-        files = [FileReviewData(path="huge.py", diff="+x\n", content="x\n")]
-        call_count = 0
-
-        async def mock_call_api(prompt: str):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise _make_api_status_error(413, "too large")
-            return [], 0, 0, [], ReviewSummary(), False
-
-        client._call_api = mock_call_api
-        try:
-            template = client.prompt_template
-            findings, pt, ct, skipped, _compliance, _summary, _to, _pf = await client._review_file_group(files, template, depth=0)
-            assert findings == []
-            assert skipped == []
-            assert call_count == 2
-        finally:
-            await client.close()
-
-    @pytest.mark.asyncio
-    async def test_413_single_file_skipped_when_already_diff_only(self, llm_config, review_config):
-        """A single file already without content that triggers 413 is skipped."""
-        client = LLMClient(llm_config, review_config)
-
-        files = [FileReviewData(path="huge.py", diff="+x\n", content=None)]
-
-        async def mock_call_api(prompt: str):
-            raise _make_api_status_error(413, "too large")
-
-        client._call_api = mock_call_api
-        try:
-            template = client.prompt_template
-            findings, pt, ct, skipped, _compliance, _summary, _to, _pf = await client._review_file_group(files, template, depth=0)
-            assert findings == []
-            assert pt == 0
-            assert ct == 0
-            assert skipped == ["huge.py"]
-        finally:
-            await client.close()
-
-    @pytest.mark.asyncio
-    async def test_413_single_file_falls_through_when_diff_only_also_fails(self, llm_config, review_config):
-        """A single file that 413s with content and again with diff-only is skipped."""
-        client = LLMClient(llm_config, review_config)
-
-        files = [FileReviewData(path="huge.py", diff="+x\n", content="x\n")]
-
-        async def mock_call_api(prompt: str):
-            raise _make_api_status_error(413, "too large")
-
-        client._call_api = mock_call_api
-        try:
-            template = client.prompt_template
-            findings, pt, ct, skipped, _compliance, _summary, _to, _pf = await client._review_file_group(files, template, depth=0)
-            assert findings == []
-            assert skipped == ["huge.py"]
-        finally:
-            await client.close()
-
-    @pytest.mark.asyncio
-    async def test_413_max_depth_stops_recursion(self, llm_config, review_config):
-        """Recursion stops at max_depth even with multiple files."""
-        client = LLMClient(llm_config, review_config)
-
-        files = [
-            FileReviewData(path="a.py", diff="+a\n", content="a\n"),
-            FileReviewData(path="b.py", diff="+b\n", content="b\n"),
-        ]
-
-        async def mock_call_api(prompt: str):
-            raise _make_api_status_error(413, "too large")
-
-        client._call_api = mock_call_api
-        try:
-            template = client.prompt_template
-            findings, pt, ct, skipped, _compliance, _summary, _to, _pf = await client._review_file_group(files, template, depth=3)
-            assert findings == []
-            assert set(skipped) == {"a.py", "b.py"}
-        finally:
-            await client.close()
-
-    @pytest.mark.asyncio
-    async def test_non_413_error_propagates(self, llm_config, review_config):
-        """Non-413 HTTP errors are not caught."""
+    async def test_api_status_error_propagates(self, llm_config, review_config):
+        """With chunking removed there is no overflow recovery — API errors
+        propagate from the single review call."""
         client = LLMClient(llm_config, review_config)
 
         files = [FileReviewData(path="a.py", diff="+a\n", content="a\n")]
@@ -1362,7 +1026,7 @@ class TestReviewFileGroup413Retry:
         try:
             template = client.prompt_template
             with pytest.raises(openai.APIStatusError):
-                await client._review_file_group(files, template, depth=0)
+                await client._review_file_group(files, template)
         finally:
             await client.close()
 
@@ -1401,25 +1065,7 @@ class TestEstimateReviewEffort:
         assert LLMClient._estimate_review_effort(files) == 5
 
 
-class TestLowBudgetWarning:
-    @pytest.mark.asyncio
-    async def test_warns_low_effective_budget(self, llm_config, review_config, caplog):
-        """When configured max_tokens_per_chunk barely clears the prompt overhead, warn."""
-        client = LLMClient(llm_config, review_config)
-        client.max_tokens_per_chunk = 2000
-        client.openai_client.chat.completions.create = AsyncMock(
-            return_value=_mock_completion("pong", 5, 1)
-        )
-        try:
-            import logging
-            with caplog.at_level(logging.WARNING, logger="app.llm_client"):
-                await client.check_connectivity()
-            assert any("Effective token budget" in msg for msg in caplog.messages)
-        finally:
-            await client.close()
-
-
-class TestContextWindowAutoCap:
+class TestContextWindowBudget:
     def test_known_models_resolve(self):
         assert _context_window_for("gpt-5") == 272_000
         assert _context_window_for("claude-sonnet-4") == 200_000
@@ -1437,6 +1083,18 @@ class TestContextWindowAutoCap:
     def test_unknown_model_returns_none(self):
         assert _context_window_for("mystery-model-9000") is None
 
+    def test_explicit_context_window_overrides_table(self, review_config):
+        # OPENAI_CONTEXT_WINDOW wins over the table (deterministic, race-free).
+        cfg = LLMConfig(
+            model="gpt-4o",
+            api_key="t",
+            api_url="https://llm.test/v1",
+            context_window=1_500_000,
+        )
+        client = LLMClient(cfg, review_config)
+        assert client.context_window == 1_500_000
+        assert client.input_token_budget == usable_context_budget(1_500_000)
+
     def test_budget_derived_from_context_window(self, review_config):
         # gpt-4o's 128k window is below the trust threshold → flat 16k headroom.
         cfg = LLMConfig(
@@ -1445,7 +1103,7 @@ class TestContextWindowAutoCap:
             api_url="https://llm.test/v1",
         )
         client = LLMClient(cfg, review_config)
-        assert client.max_tokens_per_chunk == 128_000 - 16_000
+        assert client.input_token_budget == 128_000 - 16_000
         assert client.context_window == 128_000
 
     def test_budget_for_codex_model(self, review_config):
@@ -1457,7 +1115,7 @@ class TestContextWindowAutoCap:
             api_url="https://llm.test/v1",
         )
         client = LLMClient(cfg, review_config)
-        assert client.max_tokens_per_chunk == 264_000
+        assert client.input_token_budget == 264_000
         assert client.context_window == 272_000
 
     def test_budget_for_million_token_model(self, review_config):
@@ -1469,7 +1127,7 @@ class TestContextWindowAutoCap:
         )
         client = LLMClient(cfg, review_config)
         assert client.context_window == 1_050_000
-        assert client.max_tokens_per_chunk == 653_000
+        assert client.input_token_budget == 653_000
 
     def test_unknown_model_falls_back_to_default(self, review_config):
         cfg = LLMConfig(
@@ -1479,185 +1137,7 @@ class TestContextWindowAutoCap:
         )
         client = LLMClient(cfg, review_config)
         assert client.context_window == 128_000
-        assert client.max_tokens_per_chunk == 128_000 - 16_000
-
-    def test_413_cap_clamps_budget_below_curve(self, review_config):
-        # A 413-learned cap (via the setter) takes precedence over the curve, and
-        # is never undone — the getter returns min(curve, cap).
-        cfg = LLMConfig(
-            model="gpt-5.5",
-            api_key="t",
-            api_url="https://llm.test/v1",
-        )
-        client = LLMClient(cfg, review_config)
-        assert client.max_tokens_per_chunk == 653_000
-        client.max_tokens_per_chunk = 4_000  # simulate a 413 "Max size: 4,000 tokens"
-        assert client.max_tokens_per_chunk == 4_000
-
-    def test_413_cap_is_shrink_only(self, review_config):
-        # The setter is intrinsically shrink-only (min), so a later, larger value
-        # can never raise an already-learned cap — even bypassing the 413 guard.
-        cfg = LLMConfig(
-            model="gpt-5.5",
-            api_key="t",
-            api_url="https://llm.test/v1",
-        )
-        client = LLMClient(cfg, review_config)
-        client.max_tokens_per_chunk = 5_000
-        client.max_tokens_per_chunk = 80_000  # would-be raise — must be ignored
-        assert client.max_tokens_per_chunk == 5_000
-
-
-class TestParse413TokenLimit:
-    @pytest.mark.asyncio
-    async def test_413_with_max_size_updates_config(self, llm_config, review_config):
-        """A 413 response body containing 'Max size: N tokens' updates max_tokens_per_chunk."""
-        client = LLMClient(llm_config, review_config)
-        client.max_tokens_per_chunk = 80000
-
-        files = [FileReviewData(path="big.py", diff="+x\n", content=None)]
-
-        async def mock_call_api(prompt: str):
-            raise _make_api_status_error(413, "Request too large. Max size: 4,000 tokens.")
-
-        client._call_api = mock_call_api
-        try:
-            template = client.prompt_template
-            _, _, _, skipped, _, _, _, _ = await client._review_file_group(files, template, depth=0)
-            assert skipped == ["big.py"]
-            assert client.max_tokens_per_chunk == 4000
-        finally:
-            await client.close()
-
-    @pytest.mark.asyncio
-    async def test_413_without_max_size_leaves_config_unchanged(self, llm_config, review_config):
-        """A 413 response without the 'Max size' pattern does not change max_tokens_per_chunk."""
-        client = LLMClient(llm_config, review_config)
-        client.max_tokens_per_chunk = 80000
-
-        files = [FileReviewData(path="big.py", diff="+x\n", content=None)]
-
-        async def mock_call_api(prompt: str):
-            raise _make_api_status_error(413, "Request entity too large")
-
-        client._call_api = mock_call_api
-        try:
-            template = client.prompt_template
-            await client._review_file_group(files, template, depth=0)
-            assert client.max_tokens_per_chunk == 80000
-        finally:
-            await client.close()
-
-    @pytest.mark.asyncio
-    async def test_413_answer_group_parses_limit(self, llm_config, review_config):
-        """413 in _answer_file_group also parses and updates max_tokens_per_chunk."""
-        client = LLMClient(llm_config, review_config)
-        client.max_tokens_per_chunk = 80000
-
-        files = [FileReviewData(path="big.py", diff="+x\n", content=None)]
-
-        async def mock_call_mention_api(prompt: str):  # noqa: ARG001
-            raise _make_api_status_error(413, "Max size: 5000 tokens.")
-
-        client._call_mention_api = mock_call_mention_api
-        try:
-            template = "{diff}"
-            _, _, _, skipped = await client._answer_file_group(files, template, depth=0)
-            assert skipped == ["big.py"]
-            assert client.max_tokens_per_chunk == 5000
-        finally:
-            await client.close()
-
-    @pytest.mark.asyncio
-    async def test_400_context_overflow_reserves_output_headroom(self, llm_config, review_config):
-        """A generic HTTP 400 'maximum context length is N tokens' is the TOTAL
-        window, so the learned input cap reserves output headroom (via
-        usable_context_budget) rather than pinning the whole window as input."""
-        client = LLMClient(llm_config, review_config)
-        client.max_tokens_per_chunk = 300000
-
-        files = [FileReviewData(path="big.py", diff="+x\n", content=None)]
-
-        async def mock_call_api(prompt: str):
-            raise _make_api_status_error(
-                400,
-                "This model's maximum context length is 200000 tokens, "
-                "however you requested 250000 tokens.",
-            )
-
-        client._call_api = mock_call_api
-        try:
-            template = client.prompt_template
-            _, _, _, skipped, _, _, _, _ = await client._review_file_group(files, template, depth=0)
-            assert skipped == ["big.py"]
-            # 200000 total window → usable_context_budget reserves 16k headroom,
-            # not the raw 200000 (which would leave no room for the reply).
-            assert client.max_tokens_per_chunk == usable_context_budget(200000)
-            assert client.max_tokens_per_chunk < 200000
-        finally:
-            await client.close()
-
-    @pytest.mark.asyncio
-    async def test_400_context_overflow_in_answer_group(self, llm_config, review_config):
-        """The mention path (_answer_file_group) recovers from a 400 overflow too
-        — same shared helper as the review path."""
-        client = LLMClient(llm_config, review_config)
-        client.max_tokens_per_chunk = 300000
-
-        files = [FileReviewData(path="big.py", diff="+x\n", content=None)]
-
-        async def mock_call_mention_api(prompt: str):  # noqa: ARG001
-            raise _make_api_status_error(
-                400, "This model's maximum context length is 200000 tokens."
-            )
-
-        client._call_mention_api = mock_call_mention_api
-        try:
-            template = "{diff}"
-            _, _, _, skipped = await client._answer_file_group(files, template, depth=0)
-            assert skipped == ["big.py"]
-            assert client.max_tokens_per_chunk == usable_context_budget(200000)
-        finally:
-            await client.close()
-
-    @pytest.mark.asyncio
-    async def test_400_overflow_marker_without_limit_still_bisects(self, llm_config, review_config):
-        """A 400 flagged as overflow but without a parseable limit still skips
-        the file (bisection path) and leaves the cap unchanged."""
-        client = LLMClient(llm_config, review_config)
-        client.max_tokens_per_chunk = 80000
-
-        files = [FileReviewData(path="big.py", diff="+x\n", content=None)]
-
-        async def mock_call_api(prompt: str):
-            raise _make_api_status_error(400, "context_window_exceeded")
-
-        client._call_api = mock_call_api
-        try:
-            template = client.prompt_template
-            _, _, _, skipped, _, _, _, _ = await client._review_file_group(files, template, depth=0)
-            assert skipped == ["big.py"]
-            assert client.max_tokens_per_chunk == 80000
-        finally:
-            await client.close()
-
-    @pytest.mark.asyncio
-    async def test_400_without_overflow_marker_propagates(self, llm_config, review_config):
-        """A plain 400 (not a context overflow) is not caught."""
-        client = LLMClient(llm_config, review_config)
-
-        files = [FileReviewData(path="a.py", diff="+a\n", content="a\n")]
-
-        async def mock_call_api(prompt: str):
-            raise _make_api_status_error(400, "Invalid value for 'temperature'")
-
-        client._call_api = mock_call_api
-        try:
-            template = client.prompt_template
-            with pytest.raises(openai.APIStatusError):
-                await client._review_file_group(files, template, depth=0)
-        finally:
-            await client.close()
+        assert client.input_token_budget == 128_000 - 16_000
 
 
 class TestSerializationAndDeadline:
@@ -1793,41 +1273,6 @@ class TestReviewResultTimedOut:
         finally:
             await client.close()
 
-    @pytest.mark.asyncio
-    async def test_bisection_merge_propagates_timed_out(self, llm_config, review_config):
-        """When one half of a 413-bisected group times out, the merged result
-        carries timed_out=True even if the other half succeeded."""
-        from app.models import ReviewFinding
-        client = LLMClient(llm_config, review_config)
-
-        files = [
-            FileReviewData(path="a.py", diff="+a\n", content="a\n"),
-            FileReviewData(path="b.py", diff="+b\n", content="b\n"),
-        ]
-        call_count = 0
-
-        async def mock_call_api(prompt: str):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise _make_api_status_error(413, "too large")
-            if "a.py" in prompt:
-                raise openai.APITimeoutError(request=httpx.Request("POST", "https://x"))
-            return (
-                [ReviewFinding(file="b.py", line=1, severity="suggestion", comment="ok")],
-                10, 5, [], ReviewSummary(), False,
-            )
-
-        client._call_api = mock_call_api
-        try:
-            template = client.prompt_template
-            findings, pt, ct, skipped, _compliance, _summary, timed_out, _parse_failed = (
-                await client._review_file_group(files, template, depth=0)
-            )
-            assert timed_out is True
-            assert any(f.file == "b.py" for f in findings)
-        finally:
-            await client.close()
 
     @pytest.mark.asyncio
     async def test_no_timeout_leaves_flag_false(self, llm_config, review_config):
@@ -1890,40 +1335,4 @@ class TestReviewResultUnparseable:
         finally:
             await client.close()
 
-    @pytest.mark.asyncio
-    async def test_bisection_merge_propagates_parse_failed(self, llm_config, review_config):
-        """When one half of a 413-bisected group is refused, the merged group
-        result carries parse_failed=True even if the other half parsed."""
-        from app.models import ReviewFinding
-        client = LLMClient(llm_config, review_config)
-
-        files = [
-            FileReviewData(path="a.py", diff="+a\n", content="a\n"),
-            FileReviewData(path="b.py", diff="+b\n", content="b\n"),
-        ]
-        call_count = 0
-
-        async def mock_call_api(prompt: str):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise _make_api_status_error(413, "too large")
-            if "a.py" in prompt:
-                return ([], 0, 0, None, ReviewSummary(), True)
-            return (
-                [ReviewFinding(file="b.py", line=1, severity="suggestion", comment="ok")],
-                10, 5, [], ReviewSummary(), False,
-            )
-
-        client._call_api = mock_call_api
-        try:
-            template = client.prompt_template
-            findings, pt, ct, skipped, _compliance, _summary, timed_out, parse_failed = (
-                await client._review_file_group(files, template, depth=0)
-            )
-            assert parse_failed is True
-            assert timed_out is False
-            assert any(f.file == "b.py" for f in findings)
-        finally:
-            await client.close()
 
