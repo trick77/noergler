@@ -645,6 +645,40 @@ class TestLLMClient:
             await client.close()
 
     @pytest.mark.asyncio
+    async def test_review_diff_runtime_overflow_maps_to_too_large(self, llm_config, review_config):
+        """A context-overflow raised at request time (past the pre-flight) is
+        surfaced as too_large, not a silent failure."""
+        client = LLMClient(llm_config, review_config)
+
+        async def overflow(prompt: str):
+            raise _make_api_status_error(400, "This model's maximum context length is ... tokens")
+
+        client._call_api = overflow
+        try:
+            files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
+            result = await client.review_diff(files)
+            assert result.too_large is True
+            assert result.skipped_files == ["a.py"]
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_review_diff_non_overflow_400_propagates(self, llm_config, review_config):
+        """A non-overflow API error is not swallowed as too_large."""
+        client = LLMClient(llm_config, review_config)
+
+        async def bad_request(prompt: str):
+            raise _make_api_status_error(400, "Invalid value for 'temperature'")
+
+        client._call_api = bad_request
+        try:
+            files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
+            with pytest.raises(openai.APIStatusError):
+                await client.review_diff(files)
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
     async def test_check_connectivity_ping_success(self, llm_config, review_config):
         """Startup ping succeeds → check_connectivity returns without raising."""
         client = LLMClient(llm_config, review_config)
@@ -1012,6 +1046,23 @@ class TestAnswerQuestion:
             result = await client.answer_question("What?", [huge])
             assert "too large" in result.lower()
             mock_create.assert_not_called()
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_answer_question_runtime_overflow_returns_message(self, llm_config, review_config):
+        """A runtime context-overflow on a mention (past the pre-flight) returns
+        the 'too large' message instead of failing silently."""
+        client = LLMClient(llm_config, review_config)
+
+        async def overflow(prompt: str):  # noqa: ARG001
+            raise _make_api_status_error(413, "too large")
+
+        client._call_mention_api = overflow
+        try:
+            files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
+            result = await client.answer_question("What?", files)
+            assert "too large" in result.lower()
         finally:
             await client.close()
 

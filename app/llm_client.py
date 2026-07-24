@@ -201,6 +201,29 @@ def _fmt(n: int) -> str:
     return f"{n:,}".replace(",", "'")
 
 
+# Context-overflow markers for a runtime 400. Kept context-specific so an
+# unrelated bad-request 400 still propagates. A 413 is always overflow.
+_CONTEXT_OVERFLOW_MARKERS = (
+    "context length",
+    "context window",
+    "context_length_exceeded",
+    "context_window_exceeded",
+)
+
+
+def _is_context_overflow(exc: "openai.APIStatusError") -> bool:
+    """True if the error is a context-window overflow we can surface as a
+    'too large' skip. The pre-flight fit check catches almost all cases; this is
+    the backstop for when the model's real limit is below the advertised window,
+    so an overflow becomes a posted notice instead of a silent no-review."""
+    if exc.status_code == 413:
+        return True
+    if exc.status_code == 400:
+        body = exc.response.text.lower()
+        return any(marker in body for marker in _CONTEXT_OVERFLOW_MARKERS)
+    return False
+
+
 def _is_unsupported_reasoning_error(exc: "openai.APIStatusError") -> bool:
     """True if a 400 specifically signals the endpoint/model rejects the
     reasoning_effort param, so the startup ping fails with a clear reasoning
@@ -856,9 +879,29 @@ class LLMClient:
             )
 
         # Reuse the prompt already assembled for the fit check — no re-render.
-        findings, prompt_tokens, completion_tokens, skipped, requirements, summary, timed_out, parse_failed = await self._review_file_group(
-            files, final_prompt,
-        )
+        try:
+            findings, prompt_tokens, completion_tokens, skipped, requirements, summary, timed_out, parse_failed = await self._review_file_group(
+                files, final_prompt,
+            )
+        except openai.APIStatusError as exc:
+            # Backstop: the pre-flight passed but the endpoint's real limit was
+            # lower and rejected the request. Surface it as a too-large skip
+            # (posted notice) rather than letting it fail silently.
+            if not _is_context_overflow(exc):
+                raise
+            logger.warning(
+                "Context overflow at request time (HTTP %s) — skipping PR as too large: %s",
+                exc.status_code, exc.response.text[:300],
+            )
+            return LLMClient.ReviewResult(
+                findings=[],
+                skipped_files=[f.path for f in files],
+                prompt_tokens=0,
+                completion_tokens=0,
+                prompt_breakdown=prompt_breakdown,
+                review_effort=self._estimate_review_effort(files),
+                too_large=True,
+            )
 
         total = prompt_tokens + completion_tokens
         logger.info(
@@ -921,7 +964,16 @@ class LLMClient:
             return "This PR is too large to answer within the model's context window."
 
         # Reuse the prompt already assembled for the fit check — no re-render.
-        answer, pt, ct, _skipped = await self._answer_file_group(files, final_prompt)
+        try:
+            answer, pt, ct, _skipped = await self._answer_file_group(files, final_prompt)
+        except openai.APIStatusError as exc:
+            # Backstop for a runtime overflow the pre-flight underestimated.
+            if not _is_context_overflow(exc):
+                raise
+            logger.warning(
+                "Context overflow at request time on mention Q&A (HTTP %s)", exc.status_code,
+            )
+            return "This PR is too large to answer within the model's context window."
         total = pt + ct
         logger.info(
             "Mention Q&A complete: %d in + %d out = %d total tokens",
