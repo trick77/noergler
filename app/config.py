@@ -34,10 +34,9 @@ def model_label(model: str, reasoning_effort: str | None) -> str:
     return model
 
 
-# GitHub Copilot per-model token pricing, USD per 1M tokens.
-# Effective 2026-06-01 (usage-based billing). Source:
-# https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing
-# We can't bill cached input separately because the Copilot LLM response
+# Per-model token pricing, USD per 1M tokens. Static fallback used until the
+# LiteLLM pricing table refresh overrides it (see LITELLM_PRICING_URL /
+# pricing_for). We can't bill cached input separately because the LLM response
 # doesn't expose cached-token counts — see estimate_cost_usd().
 class ModelPrice(BaseModel):
     input_per_mtok: float
@@ -150,8 +149,8 @@ def context_window_for(model: str) -> int | None:
 # A flat headroom (the old 16k) is ~1.5% of a 1M window — useless — so we apply
 # a diminishing-trust curve: trust the window fully up to a threshold, then
 # count only a fraction of everything beyond it. Large advertised windows are
-# the least trustworthy over GitHub Copilot (which enforces a lower server-side
-# cap and 413s anything bigger), so they degrade most. All three knobs are
+# the least trustworthy: many endpoints enforce a lower server-side cap and 413
+# anything bigger, so they degrade most. All three knobs are
 # env-overridable for tuning without a redeploy.
 _CONTEXT_WINDOW_HEADROOM_TOKENS = int(os.environ.get("CONTEXT_WINDOW_HEADROOM_TOKENS", "16000"))
 _CONTEXT_TRUST_THRESHOLD = int(os.environ.get("CONTEXT_TRUST_THRESHOLD", "256000"))
@@ -312,7 +311,7 @@ def estimate_cost_usd(
 ) -> float | None:
     """Upper-bound USD cost for one LLM call.
 
-    The Copilot API doesn't return a cached-tokens breakdown, so all prompt
+    The API doesn't return a cached-tokens breakdown, so all prompt
     tokens are billed at the full input rate. Real bill on follow-up runs
     will be lower because prompt cache hits are charged at the cached rate.
     """
@@ -327,13 +326,15 @@ def estimate_cost_usd(
 
 class LLMConfig(BaseModel):
     model: str = "gpt-5.4"
-    oauth_token: str
-    api_url: str = "https://api.githubcopilot.com"
+    api_key: str
+    api_url: str
     reasoning_effort: str | None = "high"
 
     @field_validator("api_url", mode="after")
     @classmethod
     def strip_chat_completions_suffix(cls, v: str) -> str:
+        # The OpenAI SDK appends `/chat/completions` to `base_url`, so strip a
+        # user-supplied suffix to avoid doubling it.
         return v.removesuffix("/chat/completions").rstrip("/")
 
     @field_validator("reasoning_effort", mode="before")
@@ -432,7 +433,7 @@ def _env(name: str, default: str | None = None) -> str:
 
 _SECRET_FIELDS = {
     "bitbucket": {"token", "webhook_secret"},
-    "llm": {"oauth_token"},
+    "llm": {"api_key"},
     "jira": {"token"},
     "database": {"url"},
     "riptide": {"token"},
@@ -459,10 +460,10 @@ def load_config() -> AppConfig:
             username=_env("BITBUCKET_USERNAME"),
         ),
         llm=LLMConfig(
-            model=_env("COPILOT_MODEL", "gpt-5.4"),
-            oauth_token=_env("COPILOT_OAUTH_TOKEN"),
-            api_url=_env("COPILOT_API_URL", "https://api.githubcopilot.com"),
-            reasoning_effort=os.environ.get("COPILOT_REASONING_EFFORT") or "high",
+            model=_env("OPENAI_MODEL", "gpt-5.4"),
+            api_key=_env("OPENAI_API_KEY"),
+            api_url=_env("OPENAI_BASE_URL"),
+            reasoning_effort=os.environ.get("OPENAI_REASONING_EFFORT") or "high",
         ),
         review=ReviewConfig(
             auto_review_authors=[a.strip() for a in _env("REVIEW_AUTO_REVIEW_AUTHORS", "").split(",") if a.strip()],

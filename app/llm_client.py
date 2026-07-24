@@ -11,7 +11,7 @@ import httpx
 import openai
 import tiktoken
 from openai import AsyncOpenAI
-from openai.types.responses import Response
+from openai.types.chat import ChatCompletion
 
 from app.config import (
     LLMConfig,
@@ -20,14 +20,13 @@ from app.config import (
     model_label,
     usable_context_budget,
 )
-from app.copilot_auth import CopilotTokenProvider
 from app.http_stats import make_event_hook
 from app.models import ReviewFinding
 
 # Conservative fallback when a model's context window is unknown. Known windows
 # live in `app.config._MODEL_CONTEXT_WINDOW` (sourced from LiteLLM, see
-# `context_window_for`). They are only a *starting estimate*: GitHub Copilot
-# enforces its own per-request limit server-side and returns "Max size: N
+# `context_window_for`). They are only a *starting estimate*: the endpoint may
+# enforce its own per-request limit server-side and return "Max size: N
 # tokens" on a 413, which we parse to shrink the chunk budget for the rest of
 # the process (see `_answer_file_group` / `_review_file_group`). So an unknown
 # model self-corrects at runtime — we must never hard-fail startup over one.
@@ -208,66 +207,69 @@ def _fmt(n: int) -> str:
     return f"{n:,}".replace(",", "'")
 
 
-def _inspect_request_body(content: bytes | None) -> tuple[bool, bool]:
-    """Return (is_agent, is_vision) for a Copilot request, mirroring opencode.
+# Markers that identify a context-window overflow in a 400 error body. Kept
+# deliberately context-specific — every marker names the context window — so an
+# unrelated bad-request 400 (validation, policy, quota) is NOT misread as
+# overflow and swallowed. A LiteLLM/OpenAI backend returns "maximum context
+# length is N tokens" or a context_window_exceeded/context_length_exceeded code.
+# Copilot-style proxies return HTTP 413, which is handled without a marker.
+_OVERFLOW_MARKERS = (
+    "context length",
+    "context window",
+    "context_length_exceeded",
+    "context_window_exceeded",
+)
+# "Max size: N tokens" is a per-request INPUT cap (proxy-side, Copilot-style);
+# "maximum context length is N tokens" is the model's TOTAL (input+output)
+# window (OpenAI/LiteLLM). They mean different things, so they are parsed
+# separately: the total window must have output headroom reserved before it can
+# serve as an input budget. Both capture the model's limit, not the requested
+# size (which follows later in the message).
+_OVERFLOW_INPUT_CAP_RE = re.compile(r"max size:\s*([\d,]+)\s*tokens", re.IGNORECASE)
+_OVERFLOW_TOTAL_WINDOW_RE = re.compile(
+    r"maximum context length(?:\s+is)?\s*([\d,]+)\s*tokens", re.IGNORECASE,
+)
 
-    Source of truth: sst/opencode@dev
-    `packages/opencode/src/plugin/github-copilot/copilot.ts` lines 97-148.
-    Detects two shapes (noergler only sends Responses API; Completions stays for
-    parity with opencode's logic and any future code path):
-      - Responses API:   body.input     (last role / input_image parts)
-      - Completions API: body.messages  (last role / image_url parts)
-    Falls back to (False, False) on parse error or unknown shape.
+
+def _is_context_overflow(exc: "openai.APIStatusError") -> bool:
+    """True if the error is a recoverable context-window overflow.
+
+    HTTP 413 is always treated as overflow (the proxy rejected an oversized
+    payload). HTTP 400 counts only when the body carries an overflow marker,
+    so unrelated bad-request 400s still propagate.
     """
-    if not content:
-        return False, False
-    try:
-        body = json.loads(content)
-    except (ValueError, TypeError):
-        return False, False
-    if not isinstance(body, dict):
-        return False, False
+    if exc.status_code == 413:
+        return True
+    if exc.status_code == 400:
+        body = exc.response.text.lower()
+        return any(marker in body for marker in _OVERFLOW_MARKERS)
+    return False
 
-    def _msg_has_image(msg: dict[str, Any], image_part_types: tuple[str, ...]) -> bool:
-        parts = msg.get("content")
-        if not isinstance(parts, list):
-            return False
-        for part in parts:
-            if not isinstance(part, dict):
-                continue
-            if part.get("type") in image_part_types:
-                return True
-            # Anthropic API: images can be nested inside tool_result content
-            if part.get("type") == "tool_result":
-                nested = part.get("content")
-                if isinstance(nested, list) and any(
-                    isinstance(n, dict) and n.get("type") == "image" for n in nested
-                ):
-                    return True
-        return False
 
-    # Responses API
-    if isinstance(body.get("input"), list):
-        items = body["input"]
-        if not items:
-            return False, False
-        last = items[-1] if isinstance(items[-1], dict) else {}
-        is_vision = any(
-            isinstance(it, dict) and _msg_has_image(it, ("input_image",)) for it in items
-        )
-        is_agent = last.get("role") != "user" or _msg_has_image(last, ("input_image",))
-        return is_agent, is_vision
+def _is_unsupported_reasoning_error(exc: "openai.APIStatusError") -> bool:
+    """True if a 400 signals the endpoint/model rejects the reasoning_effort
+    param, so the caller can retry once without it. Not every model behind an
+    OpenAI-compatible endpoint accepts reasoning params."""
+    return exc.status_code == 400 and "reasoning" in exc.response.text.lower()
 
-    messages = body.get("messages")
-    if isinstance(messages, list) and messages:
-        last = messages[-1] if isinstance(messages[-1], dict) else {}
-        is_vision = any(
-            isinstance(m, dict) and _msg_has_image(m, ("image_url",)) for m in messages
-        )
-        is_agent = last.get("role") != "user" or _msg_has_image(last, ("image_url",))
-        return is_agent, is_vision
 
-    return False, False
+def _overflow_input_cap(body: str) -> int | None:
+    """Derive a per-chunk INPUT-token cap from an overflow response body, or
+    None if none is stated (the caller still bisects and retries).
+
+    A "Max size: N tokens" value is already an input cap and used as-is. A
+    "maximum context length is N tokens" value is the total window, so output
+    headroom is reserved via `usable_context_budget` — otherwise the next chunk
+    would fill the whole window and leave no room for the reply, re-overflowing.
+    """
+    match = _OVERFLOW_INPUT_CAP_RE.search(body)
+    if match:
+        return int(match.group(1).replace(",", ""))
+    match = _OVERFLOW_TOTAL_WINDOW_RE.search(body)
+    if match:
+        return usable_context_budget(int(match.group(1).replace(",", "")))
+    return None
+
 
 @dataclass
 class FileReviewData:
@@ -814,11 +816,14 @@ class LLMClient:
         self,
         config: LLMConfig,
         review_config: ReviewConfig,
-        token_provider: CopilotTokenProvider,
     ):
         self.config = config
         self.review_config = review_config
-        self._token_provider = token_provider
+
+        # Whether the endpoint accepts the reasoning_effort param. Flipped off
+        # by check_connectivity if the startup ping is rejected for it, so a
+        # non-reasoning model behind a strict endpoint doesn't fail every call.
+        self._reasoning_supported = True
 
         # API-imposed chunk ceiling learned from a 413 "Max size: N tokens"
         # response. Starts unlimited; `max_tokens_per_chunk` clamps to it so a
@@ -828,8 +833,8 @@ class LLMClient:
         if context_window_for(config.model) is None:
             logger.warning(
                 "model `%s` has no known context window — falling back to a "
-                "conservative %s-token window. Copilot enforces the real limit at "
-                "request time (413 → auto-shrink); add an entry to "
+                "conservative %s-token window. The endpoint enforces the real "
+                "limit at request time (413 → auto-shrink); add an entry to "
                 "`app/config.py:_STATIC_MODEL_CONTEXT_WINDOW` to skip the first "
                 "oversized round-trip.",
                 config.model, _fmt(_DEFAULT_CONTEXT_WINDOW),
@@ -840,27 +845,21 @@ class LLMClient:
             _fmt(self.context_window),
         )
 
-        async def _inject_copilot_auth(request: httpx.Request) -> None:
-            token = await token_provider.get_token()
-            request.headers["Authorization"] = f"Bearer {token}"
-            request.headers["User-Agent"] = "opencode/1.14.39"
-            request.headers["Openai-Intent"] = "conversation-edits"
-            is_agent, is_vision = _inspect_request_body(request.content)
-            request.headers["x-initiator"] = "agent" if is_agent else "user"
-            if is_vision:
-                request.headers["Copilot-Vision-Request"] = "true"
-
         # httpx + SDK timeouts are aligned with INFERENCE_HARD_TIMEOUT_SECONDS
-        # so the asyncio.wait_for cap in _execute_responses_create is the
+        # so the asyncio.wait_for cap in _execute_chat_completion is the
         # decisive deadline. Two competing deadlines (e.g. SDK=120s, cap=180s)
         # made the cap dead code and split the failure mode across two layers.
         self._http_client = httpx.AsyncClient(
             timeout=INFERENCE_HARD_TIMEOUT_SECONDS,
-            event_hooks={"request": [_inject_copilot_auth, make_event_hook("inference")]},
+            event_hooks={"request": [make_event_hook("inference")]},
         )
         self.openai_client = AsyncOpenAI(
             base_url=config.api_url,
-            api_key="placeholder",  # real auth injected per-request by event hook
+            # Standard Authorization: Bearer <api_key>. Fall back to a
+            # placeholder for no-auth endpoints (e.g. an internal LiteLLM proxy)
+            # so an empty key doesn't make AsyncOpenAI raise "Missing
+            # credentials" at construction and abort startup.
+            api_key=config.api_key or "no-auth",
             # No SDK-internal retries: silent retries previously turned a 30s
             # stall into an 8-minute outage.
             max_retries=0,
@@ -868,7 +867,7 @@ class LLMClient:
             http_client=self._http_client,
         )
         # Process-wide serialization for every LLM HTTP call. Acquired in
-        # _execute_responses_create — the single chokepoint through which
+        # _execute_chat_completion — the single chokepoint through which
         # _chat and check_connectivity both run. Even a future caller that
         # bypasses the review queue cannot fire concurrently.
         self._inference_lock = asyncio.Lock()
@@ -905,14 +904,26 @@ class LLMClient:
         # learned cap can never be raised.
         self._api_learned_cap = min(self._api_learned_cap, value)
 
+    def _lower_cap_from_overflow(self, exc: "openai.APIStatusError") -> None:
+        """Learn a tighter per-chunk input cap from an overflow response, if it
+        states one. Shared by the review and mention overflow handlers so the
+        clamping policy stays in one place."""
+        cap = _overflow_input_cap(exc.response.text)
+        if cap is not None and cap < self.max_tokens_per_chunk:
+            logger.warning(
+                "Adjusting max_tokens_per_chunk from %s to %s based on overflow response",
+                _fmt(self.max_tokens_per_chunk), _fmt(cap),
+            )
+            self.max_tokens_per_chunk = cap
+
     async def close(self):
         await self.openai_client.close()
 
     def _reasoning_kwargs(self) -> dict[str, Any]:
         effort = self.config.reasoning_effort
-        if not effort:
+        if not effort or not self._reasoning_supported:
             return {}
-        return {"reasoning": {"effort": effort}}
+        return {"reasoning_effort": effort}
 
     async def check_connectivity(self) -> None:
         prompt_overhead = count_tokens(
@@ -933,17 +944,29 @@ class LLMClient:
         # exchange, network path, and model availability in one shot.
         try:
             logger.info(
-                "LLM inference request: %s/responses model=%s",
+                "LLM inference request: %s/chat/completions model=%s",
                 self.config.api_url.rstrip("/"), model_label(self.config.model, self.config.reasoning_effort),
             )
-            ping_response = await self._execute_responses_create(
-                model=self.config.model,
-                input=[{"role": "user", "content": [
-                    {"type": "input_text", "text": "Reply with: ok"},
-                ]}],
-                **self._reasoning_kwargs(),
+            try:
+                ping_response = await self._ping()
+            except openai.APIStatusError as exc:
+                # A strict endpoint may reject reasoning_effort for a
+                # non-reasoning model. Disable it for the session and retry
+                # once, so startup succeeds without operator intervention.
+                if self._reasoning_supported and _is_unsupported_reasoning_error(exc):
+                    logger.warning(
+                        "endpoint rejected reasoning_effort=%s (HTTP %s) — "
+                        "disabling it for this session and retrying",
+                        self.config.reasoning_effort, exc.status_code,
+                    )
+                    self._reasoning_supported = False
+                    ping_response = await self._ping()
+                else:
+                    raise
+            ping_text = (
+                (ping_response.choices[0].message.content or "").strip()
+                if ping_response.choices else ""
             )
-            ping_text = (ping_response.output_text or "").strip()
             if not ping_text:
                 raise RuntimeError("empty response from model")
             logger.info("Model %s ping OK (response: %s)", model_label(self.config.model, self.config.reasoning_effort), ping_text)
@@ -954,6 +977,14 @@ class LLMClient:
                 _format_api_exception(exc),
             )
             raise
+
+    async def _ping(self) -> ChatCompletion:
+        """Smallest-possible inference call used by check_connectivity."""
+        return await self._execute_chat_completion(
+            model=self.config.model,
+            messages=[{"role": "user", "content": "Reply with: ok"}],
+            **self._reasoning_kwargs(),
+        )
 
     @dataclass
     class ReviewResult:
@@ -1179,28 +1210,23 @@ class LLMClient:
             )
             return "", 0, 0, paths
         except openai.APIStatusError as exc:
-            if exc.status_code != 413:
+            if not _is_context_overflow(exc):
                 raise
             # APIStatusError.response is the underlying httpx.Response
-            logger.warning("413 on mention Q&A: %s", exc.response.text[:500])
-            limit_match = re.search(r"Max size:\s*([\d,]+)\s*tokens", exc.response.text)
-            if limit_match:
-                api_limit = int(limit_match.group(1).replace(",", ""))
-                if api_limit < self.max_tokens_per_chunk:
-                    logger.warning(
-                        "Adjusting max_tokens_per_chunk from %s to %s based on 413 response",
-                        _fmt(self.max_tokens_per_chunk), _fmt(api_limit),
-                    )
-                    self.max_tokens_per_chunk = api_limit
+            logger.warning(
+                "context overflow (HTTP %s) on mention Q&A: %s",
+                exc.status_code, exc.response.text[:500],
+            )
+            self._lower_cap_from_overflow(exc)
             if len(group) <= 1:
                 file = group[0] if group else None
                 if file is not None and file.content is not None:
-                    logger.info("413 — retrying mention without full file content: %s", file.path)
+                    logger.info("context overflow — retrying mention without full file content: %s", file.path)
                     diff_only = FileReviewData(path=file.path, diff=file.diff, content=None)
                     return await self._answer_file_group([diff_only], template, depth + 1, max_depth)
                 path = file.path if file else "<empty>"
                 logger.warning(
-                    "413 — file skipped for mention Q&A: %s (%d diff lines, ~%d prompt tokens)",
+                    "context overflow — file skipped for mention Q&A: %s (%d diff lines, ~%d prompt tokens)",
                     path,
                     file.diff.count("\n") + 1 if file else 0,
                     count_tokens(prompt),
@@ -1210,13 +1236,13 @@ class LLMClient:
                 paths = [f.path for f in group]
                 for f in group:
                     logger.warning(
-                        "413 — file skipped for mention Q&A after %d bisections: %s (%d diff lines)",
+                        "context overflow — file skipped for mention Q&A after %d bisections: %s (%d diff lines)",
                         depth, f.path, f.diff.count("\n") + 1,
                     )
                 return "", 0, 0, paths
             mid = len(group) // 2
             logger.info(
-                "413 with %d files — splitting mention chunk and retrying (depth %d)",
+                "context overflow with %d files — splitting mention chunk and retrying (depth %d)",
                 len(group), depth + 1,
             )
             left = await self._answer_file_group(group[:mid], template, depth + 1, max_depth)
@@ -1272,28 +1298,23 @@ class LLMClient:
             )
             return [], 0, 0, paths, None, ReviewSummary(), True, False
         except openai.APIStatusError as exc:
-            if exc.status_code != 413:
+            if not _is_context_overflow(exc):
                 raise
             # APIStatusError.response is the underlying httpx.Response
-            logger.warning("413 response body: %s", exc.response.text[:500])
-            limit_match = re.search(r"Max size:\s*([\d,]+)\s*tokens", exc.response.text)
-            if limit_match:
-                api_limit = int(limit_match.group(1).replace(",", ""))
-                if api_limit < self.max_tokens_per_chunk:
-                    logger.warning(
-                        "Adjusting max_tokens_per_chunk from %s to %s based on 413 response",
-                        _fmt(self.max_tokens_per_chunk), _fmt(api_limit),
-                    )
-                    self.max_tokens_per_chunk = api_limit
+            logger.warning(
+                "context overflow (HTTP %s) response body: %s",
+                exc.status_code, exc.response.text[:500],
+            )
+            self._lower_cap_from_overflow(exc)
             if len(group) <= 1:
                 file = group[0] if group else None
                 if file is not None and file.content is not None:
-                    logger.info("413 — retrying without full file content: %s", file.path)
+                    logger.info("context overflow — retrying without full file content: %s", file.path)
                     diff_only = FileReviewData(path=file.path, diff=file.diff, content=None)
                     return await self._review_file_group([diff_only], template, depth + 1, max_depth)
                 path = file.path if file else "<empty>"
                 logger.warning(
-                    "413 — file will not be reviewed: %s (%d diff lines, ~%d prompt tokens)",
+                    "context overflow — file will not be reviewed: %s (%d diff lines, ~%d prompt tokens)",
                     path,
                     file.diff.count("\n") + 1 if file else 0,
                     count_tokens(prompt),
@@ -1303,13 +1324,13 @@ class LLMClient:
                 paths = [f.path for f in group]
                 for f in group:
                     logger.warning(
-                        "413 — file will not be reviewed after %d bisections: %s (%d diff lines)",
+                        "context overflow — file will not be reviewed after %d bisections: %s (%d diff lines)",
                         depth, f.path, f.diff.count("\n") + 1,
                     )
                 return [], 0, 0, paths, None, ReviewSummary(), False, False
             mid = len(group) // 2
             logger.info(
-                "413 with %d files — splitting chunk and retrying (depth %d)",
+                "context overflow with %d files — splitting chunk and retrying (depth %d)",
                 len(group), depth + 1,
             )
             left = await self._review_file_group(group[:mid], template, depth + 1, max_depth)
@@ -1337,40 +1358,42 @@ class LLMClient:
     async def _chat(
         self, system: str, user: str, response_schema: dict[str, Any] | None = None,
     ) -> tuple[str, int, int]:
-        """Run a single LLM call via the /responses API.
+        """Run a single LLM call via the /chat/completions API.
 
         When `response_schema` is provided, it is bound as a strict JSON schema so
-        Codex-class models cannot silently drop fields. Returns
-        (assistant_text, input_tokens, output_tokens).
+        the model cannot silently drop fields. Returns
+        (assistant_text, prompt_tokens, completion_tokens).
         """
         logger.info(
-            "LLM inference request: %s/responses model=%s",
+            "LLM inference request: %s/chat/completions model=%s",
             self.config.api_url.rstrip("/"), model_label(self.config.model, self.config.reasoning_effort),
         )
         kwargs: dict[str, Any] = {
             "model": self.config.model,
-            "input": [
-                {"role": "system", "content": [{"type": "input_text", "text": system}]},
-                {"role": "user", "content": [{"type": "input_text", "text": user}]},
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
             ],
         }
         if response_schema is not None:
-            kwargs["text"] = {"format": {
+            kwargs["response_format"] = {
                 "type": "json_schema",
-                "name": "review_response",
-                "strict": True,
-                "schema": response_schema,
-            }}
+                "json_schema": {
+                    "name": "review_response",
+                    "strict": True,
+                    "schema": response_schema,
+                },
+            }
         kwargs.update(self._reasoning_kwargs())
-        response = await self._execute_responses_create(**kwargs)
-        text = response.output_text or ""
+        response = await self._execute_chat_completion(**kwargs)
+        text = response.choices[0].message.content or "" if response.choices else ""
         usage = response.usage
-        prompt_tokens = usage.input_tokens if usage else 0
-        completion_tokens = usage.output_tokens if usage else 0
+        prompt_tokens = usage.prompt_tokens if usage else 0
+        completion_tokens = usage.completion_tokens if usage else 0
         return text, prompt_tokens, completion_tokens
 
-    async def _execute_responses_create(self, **kwargs: Any) -> Response:
-        """Single chokepoint for `openai_client.responses.create`.
+    async def _execute_chat_completion(self, **kwargs: Any) -> ChatCompletion:
+        """Single chokepoint for `openai_client.chat.completions.create`.
 
         Serializes every LLM HTTP call via `_inference_lock` and enforces
         `INFERENCE_HARD_TIMEOUT_SECONDS` as a wall-clock cap. On cap-hit the
@@ -1386,7 +1409,7 @@ class LLMClient:
                 )
             try:
                 return await asyncio.wait_for(
-                    self.openai_client.responses.create(**kwargs),
+                    self.openai_client.chat.completions.create(**kwargs),
                     timeout=INFERENCE_HARD_TIMEOUT_SECONDS,
                 )
             except asyncio.TimeoutError as exc:

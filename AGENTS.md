@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Noergler is a Bitbucket Server PR auto-review bridge backed by a Copilot-enabled LLM.
+Noergler is a Bitbucket Server PR auto-review bridge backed by an OpenAI-compatible LLM endpoint.
 
 ## Testing
 
@@ -21,5 +21,5 @@ Noergler is a Bitbucket Server PR auto-review bridge backed by a Copilot-enabled
 
 ## Review prompt layout (`prompts/review.txt`)
 
-- Keep `{files}` BEFORE `{cumulative_pr_diff}` and `{previously_posted_findings}`. Cumulative diff grows on every push and findings accumulate, so they break Copilot prefix-cache; files are the most likely bytes to be unchanged across re-reviews of the same PR and must sit in the cached prefix.
+- Keep `{files}` BEFORE `{cumulative_pr_diff}` and `{previously_posted_findings}`. Cumulative diff grows on every push and findings accumulate, so they break the endpoint's prefix-cache; files are the most likely bytes to be unchanged across re-reviews of the same PR and must sit in the cached prefix.
 - File ordering passed to the LLM must stay content-independent (see `sort_files_by_language_priority` in `app/diff_compression.py`). Do not reintroduce token-count or file-set-derived language priority — the cache breaks if file order shifts when content changes.

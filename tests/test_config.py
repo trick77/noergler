@@ -15,8 +15,8 @@ def _make_config():
         ),
         llm=LLMConfig(
             model="gpt-5.3-codex",
-            oauth_token="ghp_secret123",
-            api_url="https://api.githubcopilot.com",
+            api_key="secret-api-key",
+            api_url="https://llm.example.com/v1",
         ),
         review=ReviewConfig(
             auto_review_authors=["alice", "bob"],
@@ -39,8 +39,8 @@ def test_log_config_masks_secrets(caplog):
     # Secret fields must be masked
     assert "secret-bb-token" not in text
     assert "secret-webhook" not in text
-    assert "ghp_secret123" not in text
-    # bb token, webhook secret, copilot oauth token, jira token, database url,
+    assert "secret-api-key" not in text
+    # bb token, webhook secret, llm api key, jira token, database url,
     # riptide token
     assert text.count("***") == 6
 
@@ -76,7 +76,8 @@ def test_diff_context_from_env(monkeypatch):
         "BITBUCKET_TOKEN": "tok",
         "BITBUCKET_WEBHOOK_SECRET": "sec",
         "BITBUCKET_USERNAME": "bot",
-        "COPILOT_OAUTH_TOKEN": "ghp_tok",
+        "OPENAI_API_KEY": "test-key",
+        "OPENAI_BASE_URL": "https://llm.example.com/v1",
         "JIRA_URL": "https://jira.example.com",
         "JIRA_TOKEN": "jira-tok",
         "DATABASE_URL": "postgresql://u:p@localhost/db",
@@ -100,7 +101,8 @@ def test_ticket_compliance_check_from_env(monkeypatch):
         "BITBUCKET_TOKEN": "tok",
         "BITBUCKET_WEBHOOK_SECRET": "sec",
         "BITBUCKET_USERNAME": "bot",
-        "COPILOT_OAUTH_TOKEN": "ghp_tok",
+        "OPENAI_API_KEY": "test-key",
+        "OPENAI_BASE_URL": "https://llm.example.com/v1",
         "JIRA_URL": "https://jira.example.com",
         "JIRA_TOKEN": "jira-tok",
         "DATABASE_URL": "postgresql://u:p@localhost/db",
@@ -118,7 +120,8 @@ def test_ticket_compliance_check_default_from_env(monkeypatch):
         "BITBUCKET_TOKEN": "tok",
         "BITBUCKET_WEBHOOK_SECRET": "sec",
         "BITBUCKET_USERNAME": "bot",
-        "COPILOT_OAUTH_TOKEN": "ghp_tok",
+        "OPENAI_API_KEY": "test-key",
+        "OPENAI_BASE_URL": "https://llm.example.com/v1",
         "JIRA_URL": "https://jira.example.com",
         "JIRA_TOKEN": "jira-tok",
         "DATABASE_URL": "postgresql://u:p@localhost/db",
@@ -139,7 +142,8 @@ def _base_env():
         "BITBUCKET_TOKEN": "tok",
         "BITBUCKET_WEBHOOK_SECRET": "sec",
         "BITBUCKET_USERNAME": "bot",
-        "COPILOT_OAUTH_TOKEN": "ghp_tok",
+        "OPENAI_API_KEY": "test-key",
+        "OPENAI_BASE_URL": "https://llm.example.com/v1",
         "JIRA_URL": "https://jira.example.com",
         "JIRA_TOKEN": "jira-tok",
         "DATABASE_URL": "postgresql://u:p@localhost/db",
@@ -149,13 +153,13 @@ def _base_env():
 def test_reasoning_effort_default_high(monkeypatch):
     for k, v in _base_env().items():
         monkeypatch.setenv(k, v)
-    monkeypatch.delenv("COPILOT_REASONING_EFFORT", raising=False)
+    monkeypatch.delenv("OPENAI_REASONING_EFFORT", raising=False)
     config = load_config()
     assert config.llm.reasoning_effort == "high"
 
 
 def test_reasoning_effort_valid_from_env(monkeypatch):
-    env = _base_env() | {"COPILOT_REASONING_EFFORT": "HIGH"}
+    env = _base_env() | {"OPENAI_REASONING_EFFORT": "HIGH"}
     for k, v in env.items():
         monkeypatch.setenv(k, v)
     config = load_config()
@@ -163,7 +167,7 @@ def test_reasoning_effort_valid_from_env(monkeypatch):
 
 
 def test_reasoning_effort_empty_string_uses_default(monkeypatch):
-    env = _base_env() | {"COPILOT_REASONING_EFFORT": ""}
+    env = _base_env() | {"OPENAI_REASONING_EFFORT": ""}
     for k, v in env.items():
         monkeypatch.setenv(k, v)
     config = load_config()
@@ -171,7 +175,7 @@ def test_reasoning_effort_empty_string_uses_default(monkeypatch):
 
 
 def test_reasoning_effort_invalid_rejected(monkeypatch):
-    env = _base_env() | {"COPILOT_REASONING_EFFORT": "extreme"}
+    env = _base_env() | {"OPENAI_REASONING_EFFORT": "extreme"}
     for k, v in env.items():
         monkeypatch.setenv(k, v)
     with pytest.raises(Exception):
@@ -184,7 +188,8 @@ def test_opt_out_branch_keyword_from_env(monkeypatch):
         "BITBUCKET_TOKEN": "tok",
         "BITBUCKET_WEBHOOK_SECRET": "sec",
         "BITBUCKET_USERNAME": "bot",
-        "COPILOT_OAUTH_TOKEN": "ghp_tok",
+        "OPENAI_API_KEY": "test-key",
+        "OPENAI_BASE_URL": "https://llm.example.com/v1",
         "JIRA_URL": "https://jira.example.com",
         "JIRA_TOKEN": "jira-tok",
         "DATABASE_URL": "postgresql://u:p@localhost/db",

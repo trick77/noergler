@@ -18,7 +18,7 @@ oc new-project noergler
 oc create secret generic noergler \
   --from-literal=BITBUCKET_TOKEN=<your-token> \
   --from-literal=BITBUCKET_WEBHOOK_SECRET=<your-secret> \
-  --from-literal=COPILOT_OAUTH_TOKEN=<your-token>
+  --from-literal=OPENAI_API_KEY=<your-api-key>
 ```
 
 ## 3. Apply manifests

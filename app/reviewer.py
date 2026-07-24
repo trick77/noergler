@@ -969,7 +969,7 @@ class Reviewer:
             elapsed = time.monotonic() - t0
 
             # Per-run + cumulative USD cost. Both are None when the model
-            # has no entry in _MODEL_PRICING (e.g. an unmapped Copilot id).
+            # has no entry in _MODEL_PRICING (e.g. an unmapped model id).
             run_cost_usd = estimate_cost_usd(
                 self.llm.config.model,
                 llm_result.prompt_tokens,

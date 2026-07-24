@@ -89,7 +89,7 @@ _DEPRIORITIZED_LANGUAGES = frozenset({"build-config", "config", "docs", "other"}
 
 def sort_files_by_language_priority(files: list[FileReviewData]) -> list[FileReviewData]:
     # Content-independent so the same PR sorts identically across re-reviews,
-    # which keeps unchanged files in the OpenAI/Copilot prefix-cache window.
+    # which keeps unchanged files in the OpenAI prefix-cache window.
     lang_rank = {lang: i for i, lang in enumerate(_LANGUAGE_PRIORITY)}
     max_rank = len(_LANGUAGE_PRIORITY)
 

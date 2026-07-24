@@ -16,7 +16,6 @@ from app.bitbucket import BitbucketClient
 from app.config import AppConfig, load_config, log_config, model_label
 from app.logging_config import configure_logging
 from app.pricing_refresher import PricingRefresher, hydrate_from_db, refresh_once
-from app.copilot_auth import CopilotTokenProvider
 from app.db import close_pool, create_pool
 from app.llm_client import LLMClient
 from app.jira import JiraClient
@@ -45,7 +44,6 @@ reviewer: Reviewer = cast(Reviewer, cast(object, None))
 bitbucket_client: BitbucketClient = cast(BitbucketClient, cast(object, None))
 llm_client: LLMClient = cast(LLMClient, cast(object, None))
 jira_client: JiraClient = cast(JiraClient, cast(object, None))
-copilot_token_provider: CopilotTokenProvider = cast(CopilotTokenProvider, cast(object, None))
 review_queue: ReviewQueue = cast(ReviewQueue, cast(object, None))
 riptide_client: RiptideClient = cast(RiptideClient, cast(object, None))
 pricing_refresher: PricingRefresher = cast(PricingRefresher, cast(object, None))
@@ -53,7 +51,7 @@ pricing_refresher: PricingRefresher = cast(PricingRefresher, cast(object, None))
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    global config, reviewer, bitbucket_client, llm_client, jira_client, copilot_token_provider, review_queue, riptide_client, pricing_refresher
+    global config, reviewer, bitbucket_client, llm_client, jira_client, review_queue, riptide_client, pricing_refresher
 
     version = os.environ.get("OPENSHIFT_BUILD_COMMIT") or os.environ.get("NOERGLER_VERSION") or "dev"
     logger.info("noergler version: %s", version)
@@ -62,9 +60,7 @@ async def lifespan(_app: FastAPI):
     bitbucket_client = BitbucketClient(config.bitbucket)
     riptide_client = RiptideClient.from_env(config.riptide.url, config.riptide.token)
 
-    copilot_token_provider = CopilotTokenProvider(oauth_token=config.llm.oauth_token)
-
-    llm_client = LLMClient(config.llm, config.review, copilot_token_provider)
+    llm_client = LLMClient(config.llm, config.review)
 
     jira_client = JiraClient(config.jira)
 
@@ -120,7 +116,6 @@ async def lifespan(_app: FastAPI):
         await bitbucket_client.close()
         await llm_client.close()
         await jira_client.close()
-        await copilot_token_provider.close()
         await riptide_client.close()
         raise RuntimeError(
             f"Startup aborted — {len(failed)} connection(s) failed: {', '.join(failed)}"
@@ -157,7 +152,6 @@ async def lifespan(_app: FastAPI):
     await bitbucket_client.close()
     await llm_client.close()
     await jira_client.close()
-    await copilot_token_provider.close()
     await riptide_client.close()
     await close_pool()
 
