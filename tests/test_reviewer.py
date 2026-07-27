@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
+from app.config import TokenUsage
 from app.config import ReviewConfig
 from app.llm_client import LLMClient, FileReviewData
 from app.jira import JiraTicket
@@ -260,12 +261,14 @@ def mock_bitbucket():
 def _make_review_result(
     findings=None, skipped_files=None, review_effort=1,
     timed_out=False, response_unparseable=False, too_large=False,
+    cost_usd=0.000875,
 ):
+    # cost_usd mirrors what the proxy reports on the response; None models an
+    # endpoint that reports no cost, which leaves the run unpriced.
     return LLMClient.ReviewResult(
         findings=findings or [],
         skipped_files=skipped_files or [],
-        prompt_tokens=100,
-        completion_tokens=50,
+        usage=TokenUsage(prompt=100, cached=0, completion=50, cost_usd=cost_usd),
         review_effort=review_effort,
         timed_out=timed_out,
         response_unparseable=response_unparseable,

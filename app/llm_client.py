@@ -1,10 +1,12 @@
 import asyncio
 import json
 import logging
+import math
 import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Any, final
 
 import httpx
@@ -16,18 +18,14 @@ from openai.types.chat import ChatCompletion
 from app.config import (
     LLMConfig,
     ReviewConfig,
-    context_window_for,
+    TokenUsage,
+    active_entry,
     model_label,
+    resolve_or_raise,
     usable_context_budget,
 )
 from app.http_stats import make_event_hook
 from app.models import ReviewFinding
-
-# Conservative fallback when a model's context window is unknown and no explicit
-# OPENAI_CONTEXT_WINDOW is configured. Known windows live in
-# `app.config._MODEL_CONTEXT_WINDOW` (sourced from LiteLLM, see
-# `context_window_for`); below the required floor this trips the startup guard.
-_DEFAULT_CONTEXT_WINDOW = 128_000
 
 # Minimum context window noergler will run on. A whole PR is reviewed in a single
 # call, so a small-context model can't hold a real PR coherently — refuse startup.
@@ -57,6 +55,60 @@ _SENSITIVE_HEADERS = frozenset({
     "x-api-key",
     "openai-organization",
 })
+
+
+# LiteLLM proxies report the cost of the call they just billed, as a bare USD
+# decimal (e.g. "9.250000000000001e-05"). It already accounts for tiered rates
+# above a prompt threshold, prompt-cache read rates, service tier and any
+# configured margin — everything a local recomputation would have to guess at.
+_COST_HEADER = "x-litellm-response-cost"
+
+
+def _reported_cost_usd(headers: Mapping[str, str]) -> float | None:
+    """USD cost of this call as reported by the proxy, or None.
+
+    None on any endpoint that doesn't send the header, or on a value that won't
+    parse. Never raises: a bad header must not fail a review that succeeded.
+    """
+    raw = headers.get(_COST_HEADER)
+    if raw is None:
+        return None
+    try:
+        cost = float(raw)
+    except (TypeError, ValueError):
+        logger.warning("unparseable %s header: %r", _COST_HEADER, raw)
+        return None
+    # float() accepts "nan" and "inf". A NaN would be summed into
+    # pr_reviews.total_cost_usd and every later `total >= limit` comparison
+    # against it is False, silently disabling the per-PR cost cap for that PR
+    # while it still looks priced. Treat any non-finite or negative value as
+    # not reported.
+    if not math.isfinite(cost) or cost < 0:
+        logger.warning("implausible %s header: %r", _COST_HEADER, raw)
+        return None
+    return cost
+
+
+def _usage_from_response(
+    response: ChatCompletion, cost_usd: float | None
+) -> TokenUsage:
+    """Token counts from one completion, plus the proxy's reported cost.
+
+    `prompt_tokens_details.cached_tokens` is optional in the OpenAI schema and
+    a proxy may not forward it; absent means 0. It is reported for visibility
+    only — `cost_usd` already accounts for cache hits.
+    """
+    usage = response.usage
+    if usage is None:
+        return TokenUsage(cost_usd=cost_usd)
+    details = getattr(usage, "prompt_tokens_details", None)
+    cached = getattr(details, "cached_tokens", None) if details is not None else None
+    return TokenUsage(
+        prompt=usage.prompt_tokens or 0,
+        cached=cached or 0,
+        completion=usage.completion_tokens or 0,
+        cost_usd=cost_usd,
+    )
 
 
 def _format_api_exception(exc: BaseException) -> str:
@@ -648,11 +700,21 @@ class LLMClient:
         self.config = config
         self.review_config = review_config
 
-        logger.info(
-            "Input token budget %s tokens (model %s context window: %s)",
-            _fmt(self.input_token_budget), model_label(config.model, config.reasoning_effort),
-            _fmt(self.context_window),
-        )
+        if self.config.context_window or active_entry() is not None:
+            logger.info(
+                "Input token budget %s tokens (model %s context window: %s)",
+                _fmt(self.input_token_budget), model_label(config.model, config.reasoning_effort),
+                _fmt(self.context_window),
+            )
+        else:
+            # The catalog resolve happens in check_connectivity, after this
+            # constructor. Logging the budget here would print a window of 0
+            # and read as a misconfiguration; check_connectivity logs the real
+            # numbers once the entry is installed.
+            logger.info(
+                "Model %s: context window pending catalog resolve",
+                model_label(config.model, config.reasoning_effort),
+            )
 
         # httpx + SDK timeouts are aligned with INFERENCE_HARD_TIMEOUT_SECONDS
         # so the asyncio.wait_for cap in _execute_chat_completion is the
@@ -691,15 +753,16 @@ class LLMClient:
     def context_window(self) -> int:
         """Context window (tokens) for the configured model.
 
-        Prefers the explicit `OPENAI_CONTEXT_WINDOW` config value — deterministic
-        and race-free (the LiteLLM context-window table is hydrated only *after*
-        startup connectivity checks, and custom proxy aliases are absent from it).
-        Falls back to the LiteLLM-sourced table, then a conservative default.
+        An explicit `OPENAI_CONTEXT_WINDOW` still wins — it's the escape hatch
+        for an endpoint whose real cap differs from what the catalog advertises.
+        Otherwise this is the catalog's `max_input_tokens` for `catalog_model`.
+        Zero before the startup resolve installs an entry; every caller runs
+        after `check_connectivity`, which resolves it or aborts the process.
         """
         if self.config.context_window:
             return self.config.context_window
-        cw = context_window_for(self.config.model)
-        return cw if cw is not None else _DEFAULT_CONTEXT_WINDOW
+        entry = active_entry()
+        return entry.max_input_tokens if entry is not None else 0
 
     @property
     def input_token_budget(self) -> int:
@@ -716,6 +779,28 @@ class LLMClient:
         return {"reasoning_effort": self.config.reasoning_effort}
 
     async def check_connectivity(self) -> None:
+        # Resolve the model against the LiteLLM catalog first — everything below
+        # (the window floor, the pre-flight fit checks, every cost figure) reads
+        # the entry this installs. Fatal on failure: there is no local fallback
+        # table and no DB cache, so an unresolvable model means noergler would be
+        # guessing at both its context window and its prices.
+        entry = await resolve_or_raise(self.config.catalog_model)
+        # Surface the matched key when it isn't the id we asked for: the prefix
+        # fallback searches the whole catalog, so an operator chasing an odd
+        # cost figure needs to see what actually priced the run.
+        matched_note = (
+            "" if entry.matched_key == entry.model_id
+            else f" [matched catalog key `{entry.matched_key}`]"
+        )
+        logger.info(
+            "Model catalog: %s%s (model=%s, base_model=%s) window=%s, "
+            "input token budget %s. "
+            "Costs are read from the endpoint's %s header, not computed here.",
+            entry.model_id, matched_note, self.config.model,
+            self.config.base_model or "<unset>", _fmt(self.context_window),
+            _fmt(self.input_token_budget), _COST_HEADER,
+        )
+
         # Hard requirement: noergler reviews a whole PR in one call, so it only
         # runs on a large-context model. Reject anything below the floor before
         # spending an inference call.
@@ -725,7 +810,8 @@ class LLMClient:
                 f"{_fmt(self.context_window)} is below the required "
                 f"{_fmt(_MIN_CONTEXT_WINDOW)}. noergler reviews each PR in a single "
                 f"call and requires a >= {_fmt(_MIN_CONTEXT_WINDOW)}-token model. "
-                f"Set OPENAI_CONTEXT_WINDOW if the model's window isn't auto-detected."
+                f"Set OPENAI_BASE_MODEL if this is a gateway alias for a larger "
+                f"model, or OPENAI_CONTEXT_WINDOW to state the window outright."
             )
 
         # Startup ping — smallest-possible inference call. Validates the token
@@ -764,20 +850,26 @@ class LLMClient:
             raise
 
     async def _ping(self) -> ChatCompletion:
-        """Smallest-possible inference call used by check_connectivity."""
-        return await self._execute_chat_completion(
+        """Smallest-possible completion used by the startup connectivity check.
+
+        Discards the reported cost — a ping's cost isn't attributable to any PR.
+        """
+        completion, _cost = await self._execute_chat_completion(
             model=self.config.model,
             messages=[{"role": "user", "content": "Reply with: ok"}],
             **self._reasoning_kwargs(),
         )
+        return completion
 
     @dataclass
     class ReviewResult:
         findings: list[ReviewFinding]
         skipped_files: list[str]
-        prompt_tokens: int
-        completion_tokens: int
+        usage: TokenUsage
         prompt_breakdown: dict[str, int] | None = None
+        # Note: `prompt_tokens` / `completion_tokens` below are read-only views
+        # onto `usage`, kept so persistence and telemetry callers that only want
+        # the two totals don't have to reach through it.
         review_effort: int = 1
         compliance_requirements: list[dict[str, Any]] = field(default_factory=list)
         summary: ReviewSummary = field(default_factory=ReviewSummary)
@@ -800,6 +892,18 @@ class LLMClient:
         # failure notice instead, so a refused review is not silently
         # indistinguishable from a clean one.
         response_unparseable: bool = False
+
+        @property
+        def prompt_tokens(self) -> int:
+            return self.usage.prompt
+
+        @property
+        def completion_tokens(self) -> int:
+            return self.usage.completion
+
+        @property
+        def cached_tokens(self) -> int:
+            return self.usage.cached
 
     async def review_diff(
         self,
@@ -871,8 +975,7 @@ class LLMClient:
             return LLMClient.ReviewResult(
                 findings=[],
                 skipped_files=[f.path for f in files],
-                prompt_tokens=0,
-                completion_tokens=0,
+                usage=TokenUsage(),
                 prompt_breakdown=prompt_breakdown,
                 review_effort=self._estimate_review_effort(files),
                 too_large=True,
@@ -880,7 +983,7 @@ class LLMClient:
 
         # Reuse the prompt already assembled for the fit check — no re-render.
         try:
-            findings, prompt_tokens, completion_tokens, skipped, requirements, summary, timed_out, parse_failed = await self._review_file_group(
+            findings, usage, skipped, requirements, summary, timed_out, parse_failed = await self._review_file_group(
                 files, final_prompt,
             )
         except openai.APIStatusError as exc:
@@ -896,24 +999,21 @@ class LLMClient:
             return LLMClient.ReviewResult(
                 findings=[],
                 skipped_files=[f.path for f in files],
-                prompt_tokens=0,
-                completion_tokens=0,
+                usage=TokenUsage(),
                 prompt_breakdown=prompt_breakdown,
                 review_effort=self._estimate_review_effort(files),
                 too_large=True,
             )
 
-        total = prompt_tokens + completion_tokens
         logger.info(
-            "Review complete: %d in + %d out = %d total tokens",
-            prompt_tokens, completion_tokens, total,
+            "Review complete: %d in (%d cached) + %d out = %d total tokens",
+            usage.prompt, usage.cached, usage.completion, usage.total,
         )
 
         return LLMClient.ReviewResult(
             findings=findings,
             skipped_files=skipped,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
+            usage=usage,
             prompt_breakdown=prompt_breakdown,
             review_effort=self._estimate_review_effort(files),
             compliance_requirements=requirements or [],
@@ -965,7 +1065,7 @@ class LLMClient:
 
         # Reuse the prompt already assembled for the fit check — no re-render.
         try:
-            answer, pt, ct, _skipped = await self._answer_file_group(files, final_prompt)
+            answer, usage, _skipped = await self._answer_file_group(files, final_prompt)
         except openai.APIStatusError as exc:
             # Backstop for a runtime overflow the pre-flight underestimated.
             if not _is_context_overflow(exc):
@@ -974,10 +1074,9 @@ class LLMClient:
                 "Context overflow at request time on mention Q&A (HTTP %s)", exc.status_code,
             )
             return "This PR is too large to answer within the model's context window."
-        total = pt + ct
         logger.info(
-            "Mention Q&A complete: %d in + %d out = %d total tokens",
-            pt, ct, total,
+            "Mention Q&A complete: %d in (%d cached) + %d out = %d total tokens",
+            usage.prompt, usage.cached, usage.completion, usage.total,
         )
         return answer or "I couldn't process this PR to answer your question."
 
@@ -985,34 +1084,34 @@ class LLMClient:
         self,
         files: list[FileReviewData],
         prompt: str,
-    ) -> tuple[str, int, int, list[str]]:
+    ) -> tuple[str, TokenUsage, list[str]]:
         try:
-            answer, pt, ct = await self._call_mention_api(prompt)
-            return answer, pt, ct, []
+            answer, usage = await self._call_mention_api(prompt)
+            return answer, usage, []
         except openai.APITimeoutError as exc:
             paths = [f.path for f in files]
             logger.warning(
                 "Timeout on mention Q&A for %d file(s) — skipping: %s (%s)",
                 len(files), ", ".join(paths), type(exc).__name__,
             )
-            return "", 0, 0, paths
+            return "", TokenUsage(), paths
 
-    async def _call_mention_api(self, prompt: str) -> tuple[str, int, int]:
-        raw, prompt_tokens, completion_tokens = await self._chat(
+    async def _call_mention_api(self, prompt: str) -> tuple[str, TokenUsage]:
+        raw, usage = await self._chat(
             system=_MENTION_SYSTEM_MESSAGE,
             user=prompt,
             response_schema=None,
         )
-        return _parse_mention_response(raw), prompt_tokens, completion_tokens
+        return _parse_mention_response(raw), usage
 
     async def _review_file_group(
         self,
         files: list[FileReviewData],
         prompt: str,
-    ) -> tuple[list[ReviewFinding], int, int, list[str], list[dict[str, Any]] | None, ReviewSummary, bool, bool]:
+    ) -> tuple[list[ReviewFinding], TokenUsage, list[str], list[dict[str, Any]] | None, ReviewSummary, bool, bool]:
         """Run the single whole-PR review call. `prompt` is the fully assembled
         user message (already built by review_diff for the fit check). Returns
-        (findings, prompt_tokens, completion_tokens, skipped_paths,
+        (findings, usage, skipped_paths,
         compliance_requirements_or_None, summary, timed_out, parse_failed).
 
         `timed_out=True` signals the wall-clock deadline was exceeded (the files
@@ -1020,31 +1119,30 @@ class LLMClient:
         but its output could not be parsed (an empty output or a non-JSON refusal).
         """
         try:
-            findings, pt, ct, requirements, summary, parse_failed = await self._call_api(prompt)
-            return findings, pt, ct, [], requirements, summary, False, parse_failed
+            findings, usage, requirements, summary, parse_failed = await self._call_api(prompt)
+            return findings, usage, [], requirements, summary, False, parse_failed
         except openai.APITimeoutError as exc:
             paths = [f.path for f in files]
             logger.warning(
                 "Timeout reviewing %d file(s) — skipping: %s (%s)",
                 len(files), ", ".join(paths), type(exc).__name__,
             )
-            return [], 0, 0, paths, None, ReviewSummary(), True, False
+            return [], TokenUsage(), paths, None, ReviewSummary(), True, False
 
-    async def _call_api(self, prompt: str) -> tuple[list[ReviewFinding], int, int, list[dict[str, Any]] | None, ReviewSummary, bool]:
-        content, prompt_tokens, completion_tokens = await self._chat(
+    async def _call_api(self, prompt: str) -> tuple[list[ReviewFinding], TokenUsage, list[dict[str, Any]] | None, ReviewSummary, bool]:
+        content, usage = await self._chat(
             system=_REVIEW_SYSTEM_MESSAGE, user=prompt, response_schema=_REVIEW_RESPONSE_SCHEMA,
         )
         findings, compliance_requirements, summary, parse_failed = _parse_review_response(content)
-        return findings, prompt_tokens, completion_tokens, compliance_requirements, summary, parse_failed
+        return findings, usage, compliance_requirements, summary, parse_failed
 
     async def _chat(
         self, system: str, user: str, response_schema: dict[str, Any] | None = None,
-    ) -> tuple[str, int, int]:
+    ) -> tuple[str, TokenUsage]:
         """Run a single LLM call via the /chat/completions API.
 
         When `response_schema` is provided, it is bound as a strict JSON schema so
-        the model cannot silently drop fields. Returns
-        (assistant_text, prompt_tokens, completion_tokens).
+        the model cannot silently drop fields. Returns (assistant_text, usage).
         """
         logger.info(
             "LLM inference request: %s/chat/completions model=%s",
@@ -1067,20 +1165,25 @@ class LLMClient:
                 },
             }
         kwargs.update(self._reasoning_kwargs())
-        response = await self._execute_chat_completion(**kwargs)
+        response, cost_usd = await self._execute_chat_completion(**kwargs)
         text = response.choices[0].message.content or "" if response.choices else ""
-        usage = response.usage
-        prompt_tokens = usage.prompt_tokens if usage else 0
-        completion_tokens = usage.completion_tokens if usage else 0
-        return text, prompt_tokens, completion_tokens
+        return text, _usage_from_response(response, cost_usd)
 
-    async def _execute_chat_completion(self, **kwargs: Any) -> ChatCompletion:
+    async def _execute_chat_completion(
+        self, **kwargs: Any
+    ) -> tuple[ChatCompletion, float | None]:
         """Single chokepoint for `openai_client.chat.completions.create`.
 
         Serializes every LLM HTTP call via `_inference_lock` and enforces
         `INFERENCE_HARD_TIMEOUT_SECONDS` as a wall-clock cap. On cap-hit the
         in-flight task is cancelled and `openai.APITimeoutError` is raised so
         the review/mention timeout handlers post a skip notice.
+
+        Goes through `with_raw_response` so the proxy's reported cost header is
+        readable alongside the parsed completion; this is the only place that
+        touches the raw wrapper. `.parse()` is synchronous here — the async
+        client's `with_raw_response` returns a legacy response object.
+        Returns (completion, reported_cost_usd_or_None).
         """
         wait_started = time.monotonic()
         async with self._inference_lock:
@@ -1090,10 +1193,13 @@ class LLMClient:
                     "LLM inference acquired lock after %.1fs", wait_elapsed,
                 )
             try:
-                return await asyncio.wait_for(
-                    self.openai_client.chat.completions.create(**kwargs),
+                raw = await asyncio.wait_for(
+                    self.openai_client.chat.completions.with_raw_response.create(
+                        **kwargs
+                    ),
                     timeout=INFERENCE_HARD_TIMEOUT_SECONDS,
                 )
+                return raw.parse(), _reported_cost_usd(raw.headers)
             except asyncio.TimeoutError as exc:
                 logger.warning(
                     "LLM inference exceeded %.0fs wall-clock cap — aborting",

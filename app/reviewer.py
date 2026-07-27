@@ -28,7 +28,7 @@ from app.llm_client import (
     render_previously_posted_findings,
     split_by_file,
 )
-from app.config import ReviewConfig, ServerConfig, estimate_cost_usd, model_label
+from app.config import ReviewConfig, ServerConfig, model_label
 from app.http_stats import HttpScope, enter_http_scope, exit_http_scope, summarize
 from app.riptide_client import RiptideClient
 from app.context_expansion import expand_all_files
@@ -1002,13 +1002,13 @@ class Reviewer:
 
             elapsed = time.monotonic() - t0
 
-            # Per-run + cumulative USD cost. Both are None when the model
-            # has no entry in _MODEL_PRICING (e.g. an unmapped model id).
-            run_cost_usd = estimate_cost_usd(
-                self.llm.config.model,
-                llm_result.prompt_tokens,
-                llm_result.completion_tokens,
-            )
+            # Per-run + cumulative USD cost. This is the proxy's own figure for
+            # the call (x-litellm-response-cost), not an estimate: it already
+            # accounts for tiered rates, prompt-cache reads, service tier and any
+            # gateway margin. None on an endpoint that doesn't report one, in
+            # which case the run is recorded without a cost and the cap fails
+            # open — same path as any unpriced run.
+            run_cost_usd = llm_result.usage.cost_usd
             cumulative_cost_usd: float | None = None
             if run_cost_usd is not None:
                 cumulative_cost_usd = await _safe_db(

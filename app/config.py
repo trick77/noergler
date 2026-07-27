@@ -34,115 +34,208 @@ def model_label(model: str, reasoning_effort: str | None) -> str:
     return model
 
 
-# Per-model token pricing, USD per 1M tokens. Static fallback used until the
-# LiteLLM pricing table refresh overrides it (see LITELLM_PRICING_URL /
-# pricing_for). We can't bill cached input separately because the LLM response
-# doesn't expose cached-token counts — see estimate_cost_usd().
-class ModelPrice(BaseModel):
-    input_per_mtok: float
-    cached_input_per_mtok: float
-    output_per_mtok: float
-
-
-_STATIC_MODEL_PRICING: dict[str, ModelPrice] = {
-    # OpenAI
-    "gpt-4.1":        ModelPrice(input_per_mtok=2.00, cached_input_per_mtok=0.50,  output_per_mtok=8.00),
-    "gpt-5-mini":     ModelPrice(input_per_mtok=0.25, cached_input_per_mtok=0.025, output_per_mtok=2.00),
-    "gpt-5.2":        ModelPrice(input_per_mtok=1.75, cached_input_per_mtok=0.175, output_per_mtok=14.00),
-    "gpt-5.2-codex":  ModelPrice(input_per_mtok=1.75, cached_input_per_mtok=0.175, output_per_mtok=14.00),
-    "gpt-5.3-codex":  ModelPrice(input_per_mtok=1.75, cached_input_per_mtok=0.175, output_per_mtok=14.00),
-    "gpt-5.4":        ModelPrice(input_per_mtok=2.50, cached_input_per_mtok=0.25,  output_per_mtok=15.00),
-    "gpt-5.4-mini":   ModelPrice(input_per_mtok=0.75, cached_input_per_mtok=0.075, output_per_mtok=4.50),
-    "gpt-5.4-nano":   ModelPrice(input_per_mtok=0.20, cached_input_per_mtok=0.02,  output_per_mtok=1.25),
-    "gpt-5.5":        ModelPrice(input_per_mtok=5.00, cached_input_per_mtok=0.50,  output_per_mtok=30.00),
-    # Anthropic
-    "claude-haiku-4.5":  ModelPrice(input_per_mtok=1.00, cached_input_per_mtok=0.10, output_per_mtok=5.00),
-    "claude-sonnet-4":   ModelPrice(input_per_mtok=3.00, cached_input_per_mtok=0.30, output_per_mtok=15.00),
-    "claude-sonnet-4.5": ModelPrice(input_per_mtok=3.00, cached_input_per_mtok=0.30, output_per_mtok=15.00),
-    "claude-sonnet-4.6": ModelPrice(input_per_mtok=3.00, cached_input_per_mtok=0.30, output_per_mtok=15.00),
-    "claude-opus-4.5":   ModelPrice(input_per_mtok=5.00, cached_input_per_mtok=0.50, output_per_mtok=25.00),
-    "claude-opus-4.6":   ModelPrice(input_per_mtok=5.00, cached_input_per_mtok=0.50, output_per_mtok=25.00),
-    "claude-opus-4.7":   ModelPrice(input_per_mtok=5.00, cached_input_per_mtok=0.50, output_per_mtok=25.00),
-}
-
-# Live pricing table. Initially the static defaults; replaced wholesale
-# (atomic reference swap under the GIL) by `_swap_pricing` whenever a refresh
-# completes. `pricing_for` snapshots this reference at call time so a swap
-# in flight never tears a single lookup.
-_MODEL_PRICING: dict[str, ModelPrice] = dict(_STATIC_MODEL_PRICING)
-
-
-def _swap_pricing(new_table: dict[str, ModelPrice]) -> None:
-    global _MODEL_PRICING
-    _MODEL_PRICING = new_table  # pyright: ignore[reportConstantRedefinition]
-
-
-def pricing_for(model: str) -> ModelPrice | None:
-    """Return the price entry for a model id, or None if unknown.
-
-    Falls back to a prefix match so dated/suffixed ids resolve to the base
-    model entry (mirrors _context_window_for in app/llm_client.py).
-    """
-    table = _MODEL_PRICING  # snapshot to survive an atomic refresh swap
-    if model in table:
-        return table[model]
-    # Iterate longest base first so `gpt-5.4-mini-2025-06-01` matches
-    # `gpt-5.4-mini` instead of falling through to the (3x more expensive)
-    # `gpt-5.4` entry.
-    for base in sorted(table, key=len, reverse=True):
-        if model.startswith(base + "-"):
-            return table[base]
-    return None
-
-
-# --- Model context windows -------------------------------------------------
-# Total input context window per model, in tokens. Sourced from the same
-# LiteLLM catalog as pricing (`max_input_tokens`); these static values are the
-# offline-safe fallback used before the first fetch / when LiteLLM is down.
+# --- Model catalog ---------------------------------------------------------
+# Context windows come from LiteLLM's public catalog, fetched over the network.
+# There is no baked-in fallback table and no DB cache: the catalog is the single
+# source of truth. Startup resolves the configured model against it exactly once
+# and aborts if that fails (see `resolve_or_raise`).
 #
-# NOTE: 272k for gpt-5.5 / gpt-5.4 was a long-standing bug — 272_000 is OpenAI's
-# *pricing threshold* (2x input above it), not the context window. The real
-# window is 1_050_000 (LiteLLM `max_input_tokens`). The other entries were and
-# remain correct.
-_STATIC_MODEL_CONTEXT_WINDOW: dict[str, int] = {
-    "gpt-4o": 128_000,
-    "gpt-5": 272_000,
-    "gpt-5-mini": 272_000,
-    "gpt-5.3-codex": 272_000,
-    "gpt-5.4": 1_050_000,
-    "gpt-5.5": 1_050_000,
-    "claude-sonnet-4": 200_000,
-    "claude-sonnet-4.5": 200_000,
-    "claude-opus-4": 200_000,
-    "claude-opus-4.1": 200_000,
-    "claude-haiku-4.5": 200_000,
-    "o3-mini": 200_000,
-    "o4-mini": 200_000,
-}
+# Pricing is deliberately NOT read from here. The proxy reports the actual cost
+# of each call on the response (`x-litellm-response-cost`), computed by the same
+# code that bills — including tiered rates above a prompt threshold, prompt-cache
+# read rates, and any service tier or margin configured on the gateway.
+# Recomputing that locally could only ever produce a second, worse estimate of a
+# number we can simply read. See `app.llm_client._reported_cost_usd`.
+LITELLM_PRICING_URL = (
+    "https://raw.githubusercontent.com/BerriAI/litellm/main/"
+    "model_prices_and_context_window.json"
+)
 
-# Live context-window table. Same atomic-swap pattern as `_MODEL_PRICING`:
-# starts at the static defaults, replaced wholesale by the refresher.
-_MODEL_CONTEXT_WINDOW: dict[str, int] = dict(_STATIC_MODEL_CONTEXT_WINDOW)
+# LiteLLM exposes some providers only under prefixed keys. Probe these in order
+# so e.g. `claude-sonnet-4.6` resolves to the openrouter entry.
+_LITELLM_KEY_PREFIXES: tuple[str, ...] = (
+    "",
+    "openrouter/anthropic/",
+    "vercel_ai_gateway/anthropic/",
+)
 
 
-def _swap_context_windows(new_table: dict[str, int]) -> None:
-    global _MODEL_CONTEXT_WINDOW
-    _MODEL_CONTEXT_WINDOW = new_table  # pyright: ignore[reportConstantRedefinition]
+class ModelCatalogEntry(BaseModel):
+    """The catalog facts noergler needs about the configured model."""
+
+    # The id we asked for (`catalog_model`).
+    model_id: str
+    # The catalog key that actually matched. Differs from `model_id` on a
+    # provider-prefixed key (`openrouter/anthropic/...`) or a prefix fallback
+    # (`gpt-5.4-mini-2025-06-01` -> `gpt-5.4-mini`). Kept distinct because the
+    # fallback searches the whole catalog (~3000 ids, including deprecated and
+    # regional variants), so a wrong-but-plausible match would otherwise be
+    # invisible — it resolves and boots cleanly.
+    matched_key: str
+    max_input_tokens: int
 
 
-def context_window_for(model: str) -> int | None:
-    """Return the input context window for a model id, or None if unknown.
+def _parse_catalog_entry(
+    model_id: str, matched_key: str, raw: dict[str, Any]
+) -> ModelCatalogEntry | None:
+    """Build an entry from one LiteLLM record, or None if it's unusable."""
+    log = logging.getLogger(__name__)
+    try:
+        window = int(raw["max_input_tokens"])
+    except (KeyError, TypeError, ValueError) as exc:
+        log.warning("malformed LiteLLM max_input_tokens for %s: %s", model_id, exc)
+        return None
+    if window <= 0:
+        log.warning("LiteLLM entry for %s has non-positive max_input_tokens", model_id)
+        return None
+    return ModelCatalogEntry(
+        model_id=model_id, matched_key=matched_key, max_input_tokens=window,
+    )
 
-    Exact match first, then a longest-base prefix match so dated/suffixed ids
-    resolve to the base model entry — mirrors `pricing_for`.
+
+def resolve_catalog_entry(
+    data: dict[str, Any], model_id: str
+) -> ModelCatalogEntry | None:
+    """Find `model_id` in a fetched catalog, or None.
+
+    Tries each provider prefix on the exact id first, then falls back to the
+    longest catalog key that `model_id` extends, so a dated id like
+    `gpt-5.4-mini-2025-06-01` resolves to `gpt-5.4-mini` rather than the
+    shorter `gpt-5.4`. The fallback is prefix-aware too: LiteLLM lists some
+    families only under a provider prefix, so `claude-sonnet-4.6-20260101` has
+    to be matched against the *unprefixed* tail of `openrouter/anthropic/...`.
+
+    A candidate that fails to parse is skipped rather than aborting the search —
+    one entry with a null window must not mask a valid entry under a later
+    prefix.
     """
-    table = _MODEL_CONTEXT_WINDOW  # snapshot to survive an atomic refresh swap
-    if model in table:
-        return table[model]
-    for base in sorted(table, key=len, reverse=True):
-        if model.startswith(base + "-"):
-            return table[base]
+    for prefix in _LITELLM_KEY_PREFIXES:
+        key = f"{prefix}{model_id}"
+        raw = data.get(key)
+        if isinstance(raw, dict) and "max_input_tokens" in raw:
+            entry = _parse_catalog_entry(model_id, key, raw)
+            if entry is not None:
+                return entry
+
+    # (catalog key, length of the part `model_id` actually extends) so the
+    # longest *model* match wins regardless of how long its provider prefix is.
+    candidates: list[tuple[str, int]] = []
+    for key, raw in data.items():
+        if not isinstance(raw, dict) or "max_input_tokens" not in raw:
+            continue
+        for prefix in _LITELLM_KEY_PREFIXES:
+            if not key.startswith(prefix):
+                continue
+            base = key[len(prefix):]
+            if base and model_id.startswith(base + "-"):
+                candidates.append((key, len(base)))
+                break
+    for key, _ in sorted(candidates, key=lambda c: c[1], reverse=True):
+        entry = _parse_catalog_entry(model_id, key, data[key])
+        if entry is not None:
+            return entry
     return None
+
+
+# The live entry for the configured model. Installed by `resolve_or_raise` at
+# startup, replaced wholesale by the 24h refresher. Readers snapshot the
+# reference (atomic under the GIL) so a swap mid-flight never tears a lookup.
+_ACTIVE_ENTRY: ModelCatalogEntry | None = None
+
+
+def _swap_active_entry(entry: ModelCatalogEntry) -> None:
+    global _ACTIVE_ENTRY
+    _ACTIVE_ENTRY = entry  # pyright: ignore[reportConstantRedefinition]
+
+
+def active_entry() -> ModelCatalogEntry | None:
+    """The catalog entry for the configured model, or None before startup."""
+    return _ACTIVE_ENTRY
+
+
+async def fetch_model_catalog(timeout: float = 10.0) -> dict[str, Any] | None:
+    """GET the LiteLLM catalog once and return the parsed JSON, or None."""
+    log = logging.getLogger(__name__)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(LITELLM_PRICING_URL)
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:
+        log.warning("model catalog fetch failed: %s", exc)
+        return None
+    if not isinstance(data, dict):
+        log.warning("model catalog is not a JSON object")
+        return None
+    return data
+
+
+class ModelCatalogError(RuntimeError):
+    """The configured model could not be resolved against the LiteLLM catalog."""
+
+
+async def resolve_or_raise(model_id: str, timeout: float = 10.0) -> ModelCatalogEntry:
+    """Fetch the catalog and install the entry for `model_id`, or raise.
+
+    Called once at startup. Both failure modes are fatal by design: without a
+    catalog entry noergler has no context window to size the review against, and
+    silently guessing one is worse than not starting. The 24h refresh is the
+    opposite — best-effort, keeping the entry installed here when a later fetch
+    fails.
+    """
+    data = await fetch_model_catalog(timeout)
+    if data is None:
+        raise ModelCatalogError(
+            f"could not fetch the model catalog from {LITELLM_PRICING_URL}. "
+            "noergler reads the model's context window from it at startup and "
+            "keeps no local fallback — check network/proxy egress to raw.githubusercontent.com."
+        )
+    entry = resolve_catalog_entry(data, model_id)
+    if entry is None:
+        raise ModelCatalogError(
+            f"model `{model_id}` is not in the LiteLLM catalog ({len(data)} entries). "
+            "Set OPENAI_BASE_MODEL to the upstream model your OPENAI_MODEL alias "
+            "maps to, spelled exactly as the catalog spells it."
+        )
+    _swap_active_entry(entry)
+    return entry
+
+
+async def refresh_active_entry(
+    model_id: str, timeout: float = 10.0, min_window: int = 0
+) -> bool:
+    """Re-resolve `model_id` and swap the entry in. Best-effort.
+
+    Returns False and leaves the installed entry untouched on any failure — a
+    refresh must never take a running instance down, unlike the startup resolve.
+
+    `min_window` rejects a swap that would drop the context window below the
+    floor startup enforces. The catalog is upstream data that can be corrected
+    downward (its own history includes a model whose window was listed as a
+    pricing threshold, ~4x too low); without this a 24h refresh could quietly
+    push a running instance under a bound the rest of the code treats as
+    guaranteed. Keeping the older, valid entry is the safer failure.
+    """
+    log = logging.getLogger(__name__)
+    data = await fetch_model_catalog(timeout)
+    if data is None:
+        return False
+    entry = resolve_catalog_entry(data, model_id)
+    if entry is None:
+        log.warning(
+            "model catalog refresh: `%s` vanished from the catalog — keeping the "
+            "entry loaded at startup", model_id,
+        )
+        return False
+    if min_window and entry.max_input_tokens < min_window:
+        log.warning(
+            "model catalog refresh: `%s` now reports a %d-token window, below the "
+            "required %d — rejecting the update and keeping the entry loaded at "
+            "startup", model_id, entry.max_input_tokens, min_window,
+        )
+        return False
+    _swap_active_entry(entry)
+    return True
 
 
 # Turning a model's advertised context window into a usable per-chunk budget.
@@ -171,157 +264,30 @@ def usable_context_budget(window: int) -> int:
     return max(2000, usable)
 
 
-LITELLM_PRICING_URL = (
-    "https://raw.githubusercontent.com/BerriAI/litellm/main/"
-    "model_prices_and_context_window.json"
-)
+class TokenUsage(BaseModel):
+    """Token counts and the reported cost for one LLM call.
 
-# LiteLLM exposes Anthropic models only under provider-prefixed keys. Probe
-# these in order so e.g. `claude-sonnet-4.6` resolves to the openrouter entry.
-_LITELLM_KEY_PREFIXES: tuple[str, ...] = (
-    "",
-    "openrouter/anthropic/",
-    "vercel_ai_gateway/anthropic/",
-)
+    `cached` is the subset of `prompt` that hit the provider's prompt cache
+    (`usage.prompt_tokens_details.cached_tokens`). It is logged only — nothing
+    multiplies it, because the cost below already has the cache discount
+    applied by the proxy. Kept because it's the one signal that explains an
+    unexpectedly high reported cost.
 
-
-def _build_pricing_from_litellm(data: dict[str, Any]) -> dict[str, ModelPrice]:
-    """Overlay LiteLLM pricing onto static defaults, returning a fresh dict.
-
-    Only ids present in `_STATIC_MODEL_PRICING` are looked up; ids missing
-    from LiteLLM keep their static price.
+    `cost_usd` is the proxy's own figure for this call, taken from the
+    `x-litellm-response-cost` response header. None means the endpoint didn't
+    report one (anything that isn't a LiteLLM proxy) — noergler then records the
+    run without a cost rather than estimating one, and the per-PR cost cap
+    fails open exactly as it does for any unpriced run.
     """
-    log = logging.getLogger(__name__)
-    table: dict[str, ModelPrice] = dict(_STATIC_MODEL_PRICING)
-    for model_id in _STATIC_MODEL_PRICING:
-        entry = None
-        for prefix in _LITELLM_KEY_PREFIXES:
-            candidate = data.get(f"{prefix}{model_id}")
-            if candidate and "input_cost_per_token" in candidate:
-                entry = candidate
-                break
-        if entry is None:
-            continue
-        try:
-            input_per_mtok = float(entry["input_cost_per_token"]) * 1_000_000
-            output_per_mtok = float(entry["output_cost_per_token"]) * 1_000_000
-            cached_raw = entry.get("cache_read_input_token_cost")
-            cached_per_mtok = (
-                float(cached_raw) * 1_000_000 if cached_raw is not None
-                else input_per_mtok * 0.1
-            )
-        except (KeyError, TypeError, ValueError) as exc:
-            log.warning("malformed LiteLLM entry for %s: %s", model_id, exc)
-            continue
-        table[model_id] = ModelPrice(
-            input_per_mtok=input_per_mtok,
-            cached_input_per_mtok=cached_per_mtok,
-            output_per_mtok=output_per_mtok,
-        )
-    return table
 
+    prompt: int = 0
+    cached: int = 0
+    completion: int = 0
+    cost_usd: float | None = None
 
-def apply_pricing_overlay(entries: dict[str, tuple[float, float, float]]) -> int:
-    """Replace the live pricing table by overlaying `entries` on the static
-    defaults. Used by the DB hydrator at startup. Returns count overlaid.
-    """
-    table: dict[str, ModelPrice] = dict(_STATIC_MODEL_PRICING)
-    overlaid = 0
-    for model_id, (inp, cached, out) in entries.items():
-        if model_id not in _STATIC_MODEL_PRICING:
-            continue
-        table[model_id] = ModelPrice(
-            input_per_mtok=inp,
-            cached_input_per_mtok=cached,
-            output_per_mtok=out,
-        )
-        overlaid += 1
-    _swap_pricing(table)
-    return overlaid
-
-
-def _build_context_windows_from_litellm(data: dict[str, Any]) -> dict[str, int]:
-    """Overlay LiteLLM `max_input_tokens` onto static defaults, fresh dict.
-
-    Only ids present in `_STATIC_MODEL_CONTEXT_WINDOW` are looked up; ids missing
-    from LiteLLM (or with a malformed/zero value) keep their static window.
-    Mirrors `_build_pricing_from_litellm`.
-    """
-    log = logging.getLogger(__name__)
-    table: dict[str, int] = dict(_STATIC_MODEL_CONTEXT_WINDOW)
-    for model_id in _STATIC_MODEL_CONTEXT_WINDOW:
-        entry = None
-        for prefix in _LITELLM_KEY_PREFIXES:
-            candidate = data.get(f"{prefix}{model_id}")
-            if candidate and "max_input_tokens" in candidate:
-                entry = candidate
-                break
-        if entry is None:
-            continue
-        try:
-            window = int(entry["max_input_tokens"])
-        except (KeyError, TypeError, ValueError) as exc:
-            log.warning("malformed LiteLLM max_input_tokens for %s: %s", model_id, exc)
-            continue
-        if window > 0:
-            table[model_id] = window
-    return table
-
-
-async def _fetch_litellm_json(timeout: float) -> dict[str, Any] | None:
-    """GET the LiteLLM catalog once and return the parsed JSON, or None."""
-    log = logging.getLogger(__name__)
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(LITELLM_PRICING_URL)
-            resp.raise_for_status()
-            return resp.json()
-    except Exception as exc:
-        log.warning("model-meta fetch failed: %s", exc)
-        return None
-
-
-async def fetch_litellm_pricing(timeout: float = 5.0) -> dict[str, ModelPrice] | None:
-    """Fetch LiteLLM JSON and return a fresh pricing overlay, or None on failure.
-
-    Async so it can run inside the FastAPI lifespan / background task without
-    blocking the event loop.
-    """
-    data = await _fetch_litellm_json(timeout)
-    if data is None:
-        return None
-    return _build_pricing_from_litellm(data)
-
-
-async def fetch_litellm_model_meta(
-    timeout: float = 5.0,
-) -> tuple[dict[str, ModelPrice], dict[str, int]] | None:
-    """One LiteLLM fetch → (pricing overlay, context-window overlay), or None.
-
-    Lets the refresher update both tables from a single HTTP round-trip.
-    """
-    data = await _fetch_litellm_json(timeout)
-    if data is None:
-        return None
-    return _build_pricing_from_litellm(data), _build_context_windows_from_litellm(data)
-
-
-def estimate_cost_usd(
-    model: str, prompt_tokens: int, completion_tokens: int
-) -> float | None:
-    """Upper-bound USD cost for one LLM call.
-
-    The API doesn't return a cached-tokens breakdown, so all prompt
-    tokens are billed at the full input rate. Real bill on follow-up runs
-    will be lower because prompt cache hits are charged at the cached rate.
-    """
-    price = pricing_for(model)
-    if price is None:
-        return None
-    return (
-        prompt_tokens * price.input_per_mtok
-        + completion_tokens * price.output_per_mtok
-    ) / 1_000_000
+    @property
+    def total(self) -> int:
+        return self.prompt + self.completion
 
 
 class LLMConfig(BaseModel):
@@ -331,10 +297,26 @@ class LLMConfig(BaseModel):
     # noergler requires a reasoning-capable model, so reasoning_effort is
     # mandatory — an empty value is rejected rather than silently disabling it.
     reasoning_effort: str = "high"
+    # Upstream model id this deployment's `model` is an alias for, e.g.
+    # `gpt-5.5` for a gateway alias `ai-gateway-gpt-5.5`. Only ever a lookup key
+    # for the pricing / context-window tables — never sent on the wire, never
+    # shown as the model label (the alias is what actually ran). Empty = the
+    # alias is itself a catalog id. Mirrors LiteLLM's own `model_info.base_model`.
+    base_model: str = ""
     # Explicit context window (tokens). 0 = auto-detect from the LiteLLM table.
     # Set this for custom proxy aliases absent from the table; the startup guard
-    # requires the resolved window to be >= 1,000,000.
+    # requires the resolved window to be >= 1,000,000. Usually unnecessary once
+    # `base_model` is set, since the base model resolves in the table.
     context_window: int = 0
+
+    @property
+    def catalog_model(self) -> str:
+        """Model id to look up in the pricing / context-window tables.
+
+        Lookup only — see `base_model`. Everything user-visible or on the wire
+        keeps using `model`.
+        """
+        return self.base_model or self.model
 
     @field_validator("api_url", mode="after")
     @classmethod
@@ -471,6 +453,7 @@ def load_config() -> AppConfig:
             api_key=_env("OPENAI_API_KEY"),
             api_url=_env("OPENAI_BASE_URL"),
             reasoning_effort=_env("OPENAI_REASONING_EFFORT", "high"),
+            base_model=_env("OPENAI_BASE_MODEL", ""),
             context_window=int(_env("OPENAI_CONTEXT_WINDOW", "0")),
         ),
         review=ReviewConfig(

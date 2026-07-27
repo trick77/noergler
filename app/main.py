@@ -15,7 +15,7 @@ from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request, Re
 from app.bitbucket import BitbucketClient
 from app.config import AppConfig, load_config, log_config, model_label
 from app.logging_config import configure_logging
-from app.pricing_refresher import PricingRefresher, hydrate_from_db, refresh_once
+from app.pricing_refresher import PricingRefresher
 from app.db import close_pool, create_pool
 from app.llm_client import LLMClient
 from app.jira import JiraClient
@@ -131,14 +131,12 @@ async def lifespan(_app: FastAPI):
     review_queue = ReviewQueue(reviewer.review_pull_request)
     review_queue.start()
 
-    # Pricing: hydrate from DB cache (non-fatal if empty), then attempt one
-    # live refresh from LiteLLM. The background task takes over from there
-    # and refreshes every 24h. None of these are blocking on hard failures —
-    # we always fall through to the static defaults baked into app.config.
-    if db_pool is not None:
-        await hydrate_from_db(db_pool)
-    await refresh_once(db_pool)
-    pricing_refresher = PricingRefresher(db_pool)
+    # The model catalog was already fetched and installed by the LLM
+    # connectivity check above — fatally, so reaching this point means pricing
+    # and the context window are known. Nothing is cached to disk or DB; this
+    # task only keeps the in-memory entry fresh every 24h, and a failed refresh
+    # keeps the startup entry rather than degrading.
+    pricing_refresher = PricingRefresher(config.llm.catalog_model)
     pricing_refresher.start()
 
     _app.state.config = config
