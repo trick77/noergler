@@ -100,11 +100,24 @@ All configuration is driven by environment variables. The required variables are
 | `BITBUCKET_USERNAME` | Bitbucket service account username (used to identify bot comments) |
 | `OPENAI_API_KEY` | API key for the OpenAI-compatible chat/completions endpoint (e.g. a LiteLLM proxy) |
 | `OPENAI_BASE_URL` | Base URL of the OpenAI-compatible endpoint (the SDK appends `/chat/completions`) |
+| `OPENAI_BASE_MODEL` | Upstream model that `OPENAI_MODEL` maps to. Required unless `OPENAI_MODEL` is itself a [LiteLLM catalog](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json) id — see [Model catalog](#model-catalog) |
 | `JIRA_URL` | Jira Server/Cloud base URL |
 | `JIRA_TOKEN` | Jira API token |
 | `DATABASE_URL` | PostgreSQL connection string (see [Database](#database) below) |
 
 See [`.env.example`](.env.example) for all optional settings and their defaults.
+
+### Model catalog
+
+Pricing and context windows are read at startup from LiteLLM's public catalog, [`model_prices_and_context_window.json`](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json). Nothing is cached locally or in the database, and there is no baked-in fallback table.
+
+noergler resolves the configured model against that catalog and **aborts startup** if the catalog can't be fetched or the model isn't in it. That's deliberate: without an entry it would have neither a context window to size the review against nor rates to price it with, and guessing either is worse than not starting.
+
+If your endpoint exposes models under its own aliases (`ai-gateway-gpt-5.5`, an Azure deployment name, …), set `OPENAI_BASE_MODEL` to the upstream id the alias maps to — spelled exactly as the catalog spells it. The alias stays what's sent to the endpoint and what appears in logs and summaries; only the lookup uses the base model. The name mirrors LiteLLM's own [`model_info.base_model`](https://docs.litellm.ai/docs/proxy/custom_pricing), which exists for the same purpose.
+
+The entry is refreshed in memory every 24h. Unlike the startup resolve, a failed refresh is non-fatal — the entry loaded at startup stays in use.
+
+**Requirements:** the resolved model needs a context window of at least 1,000,000 tokens (each PR is reviewed in a single call) and must accept `reasoning_effort`. Both are checked at startup.
 
 ### Optional: forward review-cost events to riptide
 

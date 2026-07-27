@@ -1,90 +1,50 @@
-"""Background task that keeps `app.config._MODEL_PRICING` in sync with
-the LiteLLM public pricing JSON. Refreshes every 24h, persisting the
-result to the `model_pricing` table so a LiteLLM outage at startup falls
-back to the last-known-good prices instead of the baked-in static table.
+"""Background task that keeps the installed model-catalog entry in sync with
+the LiteLLM public catalog. Refreshes every 24h.
+
+Nothing is persisted. The catalog is fetched fresh at startup (fatally, see
+`app.config.resolve_or_raise`) and re-fetched here on a timer; a failed refresh
+leaves the entry loaded at startup in place rather than degrading or exiting.
 """
 import asyncio
 import logging
 from typing import final
 
-import asyncpg
-
-from app.config import (
-    _MODEL_PRICING,
-    _STATIC_MODEL_CONTEXT_WINDOW,
-    _STATIC_MODEL_PRICING,
-    _swap_context_windows,
-    _swap_pricing,
-    apply_pricing_overlay,
-    fetch_litellm_model_meta,
-)
-from app.db.repository import load_model_pricing, upsert_model_pricing
+from app.config import active_entry, refresh_active_entry
 
 logger = logging.getLogger(__name__)
 
 REFRESH_INTERVAL_SECONDS = 24 * 60 * 60
 
 
-async def hydrate_from_db(pool: asyncpg.Pool) -> int:
-    """Load cached pricing from Postgres into the live table. Best-effort."""
-    try:
-        cached = await load_model_pricing(pool)
-    except Exception as exc:
-        logger.warning("model-pricing DB hydrate failed: %s", exc)
-        return 0
-    if not cached:
-        return 0
-    overlaid = apply_pricing_overlay(cached)
-    logger.info(
-        "model-pricing: hydrated %d/%d entries from DB",
-        overlaid, len(_STATIC_MODEL_PRICING),
-    )
-    return overlaid
+async def refresh_once(model_id: str) -> bool:
+    """One refresh cycle: re-fetch the catalog and swap the entry in.
 
-
-async def refresh_once(pool: asyncpg.Pool | None) -> bool:
-    """One refresh cycle: fetch LiteLLM, swap in-memory, persist to DB.
-
-    A single fetch updates both pricing and context-window tables. Returns
-    True on success, False if the fetch failed (live tables left untouched).
+    Returns True on success. False means the fetch failed or the model vanished
+    from the catalog — in both cases the previously installed entry stays live,
+    so a LiteLLM outage or a renamed catalog key can never take a running
+    instance down. Only the startup resolve is fatal.
     """
-    meta = await fetch_litellm_model_meta()
-    if meta is None:
+    before = active_entry()
+    ok = await refresh_active_entry(model_id)
+    if not ok:
+        logger.warning(
+            "model-catalog refresh failed — continuing with the entry loaded at "
+            "startup (%s)", before.model_id if before else "none",
+        )
         return False
-    table, ctx_table = meta
-    _swap_pricing(table)
-    _swap_context_windows(ctx_table)
-    refreshed = sum(
-        1 for k in _STATIC_MODEL_PRICING
-        if table.get(k) != _STATIC_MODEL_PRICING[k]
-    )
-    ctx_refreshed = sum(
-        1 for k in _STATIC_MODEL_CONTEXT_WINDOW
-        if ctx_table.get(k) != _STATIC_MODEL_CONTEXT_WINDOW[k]
-    )
-    logger.info(
-        "model-meta: refreshed %d/%d prices, %d/%d context windows from LiteLLM",
-        refreshed, len(_STATIC_MODEL_PRICING),
-        ctx_refreshed, len(_STATIC_MODEL_CONTEXT_WINDOW),
-    )
-    if pool is not None:
-        try:
-            entries = {
-                model_id: (
-                    price.input_per_mtok,
-                    price.cached_input_per_mtok,
-                    price.output_per_mtok,
-                )
-                for model_id, price in _MODEL_PRICING.items()
-            }
-            await upsert_model_pricing(pool, entries)
-        except Exception as exc:
-            logger.warning("model-pricing DB persist failed: %s", exc)
-    # NOTE: context windows are deliberately NOT persisted/hydrated like pricing.
-    # A stale window is harmless (the 413 handler shrinks the chunk), and the
-    # corrected static defaults are already accurate, so a DB cache would be
-    # nearly inert. Pricing is persisted because cost accuracy needs the
-    # last-known actual prices when LiteLLM is down at cold start.
+    after = active_entry()
+    if after is not None and before is not None and after != before:
+        logger.info(
+            "model-catalog: %s updated — input %.2f→%.2f, cached %.2f→%.2f, "
+            "output %.2f→%.2f per Mtok, window %d→%d",
+            after.model_id,
+            before.input_per_mtok, after.input_per_mtok,
+            before.cached_input_per_mtok, after.cached_input_per_mtok,
+            before.output_per_mtok, after.output_per_mtok,
+            before.max_input_tokens, after.max_input_tokens,
+        )
+    else:
+        logger.info("model-catalog: refreshed, no change")
     return True
 
 
@@ -92,8 +52,8 @@ async def refresh_once(pool: asyncpg.Pool | None) -> bool:
 class PricingRefresher:
     """Background asyncio task that calls `refresh_once` every 24h."""
 
-    def __init__(self, pool: asyncpg.Pool | None) -> None:
-        self._pool = pool
+    def __init__(self, model_id: str) -> None:
+        self._model_id = model_id
         self._task: asyncio.Task[None] | None = None
         self._stop = asyncio.Event()
 
@@ -120,4 +80,4 @@ class PricingRefresher:
                 return  # stop was set
             except asyncio.TimeoutError:
                 pass
-            await refresh_once(self._pool)
+            await refresh_once(self._model_id)

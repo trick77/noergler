@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
+from app.config import ModelCatalogEntry, TokenUsage, _swap_active_entry
 from app.config import ReviewConfig
 from app.llm_client import LLMClient, FileReviewData
 from app.jira import JiraTicket
@@ -257,6 +258,25 @@ def mock_bitbucket():
     return client
 
 
+@pytest.fixture(autouse=True)
+def _install_catalog_entry():
+    """Cost now comes from the catalog entry installed at startup.
+
+    Without one `estimate_cost_usd` returns None and the per-PR cost cap can
+    never engage, so the cap tests need an entry present.
+    """
+    import app.config
+    _swap_active_entry(ModelCatalogEntry(
+        model_id="gpt-5.3-codex",
+        input_per_mtok=1.75,
+        cached_input_per_mtok=0.175,
+        output_per_mtok=14.00,
+        max_input_tokens=1_050_000,
+    ))
+    yield
+    app.config._ACTIVE_ENTRY = None
+
+
 def _make_review_result(
     findings=None, skipped_files=None, review_effort=1,
     timed_out=False, response_unparseable=False, too_large=False,
@@ -264,8 +284,7 @@ def _make_review_result(
     return LLMClient.ReviewResult(
         findings=findings or [],
         skipped_files=skipped_files or [],
-        prompt_tokens=100,
-        completion_tokens=50,
+        usage=TokenUsage(prompt=100, cached=0, completion=50),
         review_effort=review_effort,
         timed_out=timed_out,
         response_unparseable=response_unparseable,

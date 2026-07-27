@@ -5,7 +5,14 @@ import httpx
 import openai
 import pytest
 
-from app.config import LLMConfig, ReviewConfig, context_window_for, usable_context_budget
+from app.config import (
+    LLMConfig,
+    ModelCatalogEntry,
+    ReviewConfig,
+    TokenUsage,
+    _swap_active_entry,
+    usable_context_budget,
+)
 from app.llm_client import (
     LLMClient,
     FileReviewData,
@@ -29,6 +36,35 @@ def llm_config():
         api_url="https://llm.test/v1",
         context_window=1_000_000,
     )
+
+
+@pytest.fixture(autouse=True)
+def _stub_model_catalog(monkeypatch):
+    """Keep the startup catalog resolve off the network.
+
+    `check_connectivity` fetches the LiteLLM catalog for real, so without this
+    the suite would depend on GitHub being reachable. Installs a 1.05M-window
+    entry and returns it from the resolve.
+    """
+    import app.config
+    import app.llm_client
+
+    entry = ModelCatalogEntry(
+        model_id="stub-model",
+        input_per_mtok=5.00,
+        cached_input_per_mtok=0.50,
+        output_per_mtok=30.00,
+        max_input_tokens=1_050_000,
+    )
+
+    async def _fake_resolve(model_id: str, timeout: float = 10.0):
+        _swap_active_entry(entry)
+        return entry
+
+    monkeypatch.setattr(app.llm_client, "resolve_or_raise", _fake_resolve)
+    _swap_active_entry(entry)
+    yield entry
+    app.config._ACTIVE_ENTRY = None
 
 
 @pytest.fixture
@@ -1131,27 +1167,24 @@ class TestEstimateReviewEffort:
 
 
 class TestContextWindowBudget:
-    def test_known_models_resolve(self):
-        assert context_window_for("gpt-5") == 272_000
-        assert context_window_for("claude-sonnet-4") == 200_000
+    """The window comes from the catalog entry installed at startup."""
 
-    def test_gpt_5_5_and_5_4_use_real_million_window(self):
-        # Regression: these were hardcoded to 272k (the pricing threshold), not
-        # the real 1.05M context window. Now sourced from LiteLLM's static fallback.
-        assert context_window_for("gpt-5.5") == 1_050_000
-        assert context_window_for("gpt-5.4") == 1_050_000
+    @staticmethod
+    def _install(window: int, model_id: str = "gpt-5.5") -> None:
+        _swap_active_entry(ModelCatalogEntry(
+            model_id=model_id,
+            input_per_mtok=5.00,
+            cached_input_per_mtok=0.50,
+            output_per_mtok=30.00,
+            max_input_tokens=window,
+        ))
 
-    def test_dated_id_prefix_match(self):
-        assert context_window_for("gpt-5-2025-01-01") == 272_000
-        assert context_window_for("claude-sonnet-4-20250514") == 200_000
-
-    def test_unknown_model_returns_none(self):
-        assert context_window_for("mystery-model-9000") is None
-
-    def test_explicit_context_window_overrides_table(self, review_config):
-        # OPENAI_CONTEXT_WINDOW wins over the table (deterministic, race-free).
+    def test_explicit_context_window_overrides_catalog(self, review_config):
+        # OPENAI_CONTEXT_WINDOW stays the escape hatch for an endpoint whose
+        # real cap differs from what the catalog advertises.
+        self._install(1_050_000)
         cfg = LLMConfig(
-            model="gpt-4o",
+            model="gpt-5.5",
             api_key="t",
             api_url="https://llm.test/v1",
             context_window=1_500_000,
@@ -1160,54 +1193,44 @@ class TestContextWindowBudget:
         assert client.context_window == 1_500_000
         assert client.input_token_budget == usable_context_budget(1_500_000)
 
-    def test_budget_derived_from_context_window(self, review_config):
-        # gpt-4o's 128k window is below the trust threshold → flat 16k headroom.
-        cfg = LLMConfig(
-            model="gpt-4o",
-            api_key="t",
-            api_url="https://llm.test/v1",
-        )
+    def test_budget_derived_from_catalog_window(self, review_config):
+        # A 128k window is below the trust threshold → flat 16k headroom.
+        self._install(128_000, "gpt-4o")
+        cfg = LLMConfig(model="gpt-4o", api_key="t", api_url="https://llm.test/v1")
         client = LLMClient(cfg, review_config)
-        assert client.input_token_budget == 128_000 - 16_000
         assert client.context_window == 128_000
+        assert client.input_token_budget == 128_000 - 16_000
 
-    def test_budget_for_codex_model(self, review_config):
-        # gpt-5.3-codex's 272k window is just above the 256k threshold, so the
-        # diminishing-trust curve applies: 256k + (272k-256k)*0.5 = 264k.
-        cfg = LLMConfig(
-            model="gpt-5.3-codex",
-            api_key="t",
-            api_url="https://llm.test/v1",
-        )
+    def test_budget_just_above_trust_threshold(self, review_config):
+        # 272k is just above the 256k threshold, so the diminishing-trust curve
+        # applies: 256k + (272k-256k)*0.5 = 264k.
+        self._install(272_000, "gpt-5.3-codex")
+        cfg = LLMConfig(model="gpt-5.3-codex", api_key="t", api_url="https://llm.test/v1")
         client = LLMClient(cfg, review_config)
-        assert client.input_token_budget == 264_000
         assert client.context_window == 272_000
+        assert client.input_token_budget == 264_000
 
     def test_budget_for_million_token_model(self, review_config):
-        # gpt-5.5's 1.05M window degrades hard: 256k + (1050k-256k)*0.5 = 653k.
-        cfg = LLMConfig(
-            model="gpt-5.5",
-            api_key="t",
-            api_url="https://llm.test/v1",
-        )
+        # A 1.05M window degrades hard: 256k + (1050k-256k)*0.5 = 653k.
+        self._install(1_050_000)
+        cfg = LLMConfig(model="gpt-5.5", api_key="t", api_url="https://llm.test/v1")
         client = LLMClient(cfg, review_config)
         assert client.context_window == 1_050_000
         assert client.input_token_budget == 653_000
 
-    def test_unknown_model_falls_back_to_default(self, review_config):
-        cfg = LLMConfig(
-            model="mystery-model-9000",
-            api_key="t",
-            api_url="https://llm.test/v1",
-        )
+    def test_window_is_zero_before_startup_resolve(self, review_config):
+        # Nothing installed yet. Every real caller runs after
+        # check_connectivity, which installs an entry or aborts the process.
+        import app.config
+        app.config._ACTIVE_ENTRY = None
+        cfg = LLMConfig(model="gpt-5.5", api_key="t", api_url="https://llm.test/v1")
         client = LLMClient(cfg, review_config)
-        assert client.context_window == 128_000
-        assert client.input_token_budget == 128_000 - 16_000
+        assert client.context_window == 0
 
-    def test_gateway_alias_resolves_window_via_base_model(self, review_config):
-        # A gateway alias is absent from the table, so without base_model it
-        # falls back to 128k and trips the 1M startup floor. base_model makes it
-        # resolve without needing an explicit OPENAI_CONTEXT_WINDOW.
+    def test_gateway_alias_uses_base_model_as_lookup_key(self, review_config):
+        # The alias is absent from the catalog; base_model is what gets
+        # resolved. The alias stays what goes on the wire.
+        self._install(1_050_000)
         cfg = LLMConfig(
             model="ai-gateway-gpt-5.5",
             base_model="gpt-5.5",
@@ -1215,21 +1238,10 @@ class TestContextWindowBudget:
             api_url="https://llm.test/v1",
         )
         client = LLMClient(cfg, review_config)
+        assert cfg.catalog_model == "gpt-5.5"
         assert client.context_window == 1_050_000
         assert client.input_token_budget == 653_000
-        # The alias, not the base model, is what goes on the wire.
         assert client.config.model == "ai-gateway-gpt-5.5"
-
-    def test_explicit_context_window_still_wins_over_base_model(self, review_config):
-        cfg = LLMConfig(
-            model="ai-gateway-gpt-5.5",
-            base_model="gpt-5.5",
-            api_key="t",
-            api_url="https://llm.test/v1",
-            context_window=2_000_000,
-        )
-        client = LLMClient(cfg, review_config)
-        assert client.context_window == 2_000_000
 
 
 class TestSerializationAndDeadline:
@@ -1374,7 +1386,7 @@ class TestReviewResultTimedOut:
         async def ok(prompt: str):
             return (
                 [ReviewFinding(file="a.py", line=1, severity="suggestion", comment="ok")],
-                10, 5, [], ReviewSummary(), False,
+                TokenUsage(prompt=10, completion=5), [], ReviewSummary(), False,
             )
 
         client._call_api = ok
@@ -1396,7 +1408,7 @@ class TestReviewResultUnparseable:
         async def refuse(prompt: str):
             # Mirrors _call_api's return when _parse_review_response reports a
             # refusal: no findings, compliance None, empty summary, parse_failed.
-            return ([], 0, 0, None, ReviewSummary(), True)
+            return ([], TokenUsage(), None, ReviewSummary(), True)
 
         client._call_api = refuse
         try:
@@ -1416,7 +1428,7 @@ class TestReviewResultUnparseable:
         async def ok(prompt: str):
             return (
                 [ReviewFinding(file="a.py", line=1, severity="suggestion", comment="ok")],
-                10, 5, [], ReviewSummary(), False,
+                TokenUsage(prompt=10, completion=5), [], ReviewSummary(), False,
             )
 
         client._call_api = ok

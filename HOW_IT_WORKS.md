@@ -321,7 +321,8 @@ Notes:
 - The cap is a pre-check, so the run that crosses the limit still completes — only *subsequent* automatic runs are blocked ("stop after exceeding").
 - An `@mention` (review or Q&A) is an explicit human override and always runs; its summary still shows the over-limit banner while the PR is over budget.
 - A blocked push does **not** advance the reviewed-commit pointer, so raising the limit (and restarting) re-reviews the accumulated range.
-- Models with no pricing entry have no known cost (`total_cost_usd` is NULL) and are therefore never capped (fail-open).
+- Costs are computed from the LiteLLM catalog entry resolved at startup, which must match or noergler doesn't start — so in practice every run is priced. Prompt-cache hits are billed at the model's published cache-read rate rather than the full input rate, so the figure tracks the real invoice. The `NULL` cost path is kept as a fail-open safety net (never capped) but is no longer reachable through normal configuration.
+- Prompts above a model's tiered-pricing threshold (e.g. gpt-5.5 above 272k tokens, where rates roughly double) are **understated**: LiteLLM's catalog doesn't say whether the higher rate applies to the whole request or only the excess, so the tier is ignored rather than guessed.
 
 ### Inline comments
 

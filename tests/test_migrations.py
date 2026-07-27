@@ -12,14 +12,16 @@ _M006 = _VERSIONS / "006_model_pricing.py"
 _M007 = _VERSIONS / "007_pr_rollup_for_riptide.py"
 _M008 = _VERSIONS / "008_pr_ignored.py"
 _M009 = _VERSIONS / "009_drop_feedback_events.py"
+_M010 = _VERSIONS / "010_drop_model_pricing.py"
 
 
-def test_migration_chain_is_linear_and_reaches_009():
+def test_migration_chain_is_linear_and_reaches_010():
     script = ScriptDirectory.from_config(Config("alembic.ini"))
     revs = [(r.revision, r.down_revision) for r in script.walk_revisions()]
     chain = [r for r, _ in revs]
-    assert chain == ["009", "008", "007", "006", "005", "004", "003", "002", "001"]
+    assert chain == ["010", "009", "008", "007", "006", "005", "004", "003", "002", "001"]
     assert dict(revs) == {
+        "010": "009",
         "009": "008",
         "008": "007",
         "007": "006",
@@ -136,3 +138,10 @@ def test_005_downgrade_recreates_views_and_table():
         "v_lead_time",
     ):
         assert f"CREATE VIEW {view}" in text, f"downgrade missing CREATE VIEW {view}"
+
+
+def test_010_drops_model_pricing_and_round_trips():
+    text = _M010.read_text()
+    assert "DROP TABLE IF EXISTS model_pricing" in text
+    # downgrade recreates the (empty) table shape
+    assert "CREATE TABLE model_pricing" in text

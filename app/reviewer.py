@@ -1002,15 +1002,14 @@ class Reviewer:
 
             elapsed = time.monotonic() - t0
 
-            # Per-run + cumulative USD cost. Both are None when the model
-            # has no entry in _MODEL_PRICING (e.g. an unmapped model id).
-            # Priced under `catalog_model` so a gateway alias bills against the
-            # upstream model it maps to; the label below keeps the alias.
-            run_cost_usd = estimate_cost_usd(
-                self.llm.config.catalog_model,
-                llm_result.prompt_tokens,
-                llm_result.completion_tokens,
-            )
+            # Per-run + cumulative USD cost, priced against the catalog entry
+            # resolved at startup — so a gateway alias bills against the upstream
+            # model it maps to, while the label below keeps the alias.
+            # Prompt-cache hits are billed at the model's cache-read rate, so
+            # this tracks the real invoice rather than an upper bound. Still
+            # None-safe: nothing guarantees an entry survives a mid-run swap,
+            # and an unpriced run must never block a review.
+            run_cost_usd = estimate_cost_usd(llm_result.usage)
             cumulative_cost_usd: float | None = None
             if run_cost_usd is not None:
                 cumulative_cost_usd = await _safe_db(
