@@ -331,10 +331,26 @@ class LLMConfig(BaseModel):
     # noergler requires a reasoning-capable model, so reasoning_effort is
     # mandatory — an empty value is rejected rather than silently disabling it.
     reasoning_effort: str = "high"
+    # Upstream model id this deployment's `model` is an alias for, e.g.
+    # `gpt-5.5` for a gateway alias `ai-gateway-gpt-5.5`. Only ever a lookup key
+    # for the pricing / context-window tables — never sent on the wire, never
+    # shown as the model label (the alias is what actually ran). Empty = the
+    # alias is itself a catalog id. Mirrors LiteLLM's own `model_info.base_model`.
+    base_model: str = ""
     # Explicit context window (tokens). 0 = auto-detect from the LiteLLM table.
     # Set this for custom proxy aliases absent from the table; the startup guard
-    # requires the resolved window to be >= 1,000,000.
+    # requires the resolved window to be >= 1,000,000. Usually unnecessary once
+    # `base_model` is set, since the base model resolves in the table.
     context_window: int = 0
+
+    @property
+    def catalog_model(self) -> str:
+        """Model id to look up in the pricing / context-window tables.
+
+        Lookup only — see `base_model`. Everything user-visible or on the wire
+        keeps using `model`.
+        """
+        return self.base_model or self.model
 
     @field_validator("api_url", mode="after")
     @classmethod
@@ -471,6 +487,7 @@ def load_config() -> AppConfig:
             api_key=_env("OPENAI_API_KEY"),
             api_url=_env("OPENAI_BASE_URL"),
             reasoning_effort=_env("OPENAI_REASONING_EFFORT", "high"),
+            base_model=_env("OPENAI_BASE_MODEL", ""),
             context_window=int(_env("OPENAI_CONTEXT_WINDOW", "0")),
         ),
         review=ReviewConfig(

@@ -1004,8 +1004,10 @@ class Reviewer:
 
             # Per-run + cumulative USD cost. Both are None when the model
             # has no entry in _MODEL_PRICING (e.g. an unmapped model id).
+            # Priced under `catalog_model` so a gateway alias bills against the
+            # upstream model it maps to; the label below keeps the alias.
             run_cost_usd = estimate_cost_usd(
-                self.llm.config.model,
+                self.llm.config.catalog_model,
                 llm_result.prompt_tokens,
                 llm_result.completion_tokens,
             )

@@ -1204,6 +1204,33 @@ class TestContextWindowBudget:
         assert client.context_window == 128_000
         assert client.input_token_budget == 128_000 - 16_000
 
+    def test_gateway_alias_resolves_window_via_base_model(self, review_config):
+        # A gateway alias is absent from the table, so without base_model it
+        # falls back to 128k and trips the 1M startup floor. base_model makes it
+        # resolve without needing an explicit OPENAI_CONTEXT_WINDOW.
+        cfg = LLMConfig(
+            model="ai-gateway-gpt-5.5",
+            base_model="gpt-5.5",
+            api_key="t",
+            api_url="https://llm.test/v1",
+        )
+        client = LLMClient(cfg, review_config)
+        assert client.context_window == 1_050_000
+        assert client.input_token_budget == 653_000
+        # The alias, not the base model, is what goes on the wire.
+        assert client.config.model == "ai-gateway-gpt-5.5"
+
+    def test_explicit_context_window_still_wins_over_base_model(self, review_config):
+        cfg = LLMConfig(
+            model="ai-gateway-gpt-5.5",
+            base_model="gpt-5.5",
+            api_key="t",
+            api_url="https://llm.test/v1",
+            context_window=2_000_000,
+        )
+        client = LLMClient(cfg, review_config)
+        assert client.context_window == 2_000_000
+
 
 class TestSerializationAndDeadline:
     @pytest.mark.asyncio

@@ -18,6 +18,7 @@ from app.config import (
     ReviewConfig,
     context_window_for,
     model_label,
+    pricing_for,
     usable_context_budget,
 )
 from app.http_stats import make_event_hook
@@ -694,11 +695,13 @@ class LLMClient:
         Prefers the explicit `OPENAI_CONTEXT_WINDOW` config value — deterministic
         and race-free (the LiteLLM context-window table is hydrated only *after*
         startup connectivity checks, and custom proxy aliases are absent from it).
-        Falls back to the LiteLLM-sourced table, then a conservative default.
+        Falls back to the LiteLLM-sourced table, looked up under `catalog_model`
+        so a gateway alias resolves via its `OPENAI_BASE_MODEL`, then a
+        conservative default.
         """
         if self.config.context_window:
             return self.config.context_window
-        cw = context_window_for(self.config.model)
+        cw = context_window_for(self.config.catalog_model)
         return cw if cw is not None else _DEFAULT_CONTEXT_WINDOW
 
     @property
@@ -716,6 +719,19 @@ class LLMClient:
         return {"reasoning_effort": self.config.reasoning_effort}
 
     async def check_connectivity(self) -> None:
+        # Surface how the catalog lookup resolved before anything can fail on it.
+        # `log_config` prints the base_model field but not the derived key, and a
+        # pricing miss is silent by design (unpriced runs fail open, never
+        # blocking a review) — so this is the only place it shows up.
+        logger.info(
+            "Model catalog lookup: key=%s (model=%s, base_model=%s) "
+            "context_window=%s pricing=%s",
+            self.config.catalog_model, self.config.model,
+            self.config.base_model or "<unset>", _fmt(self.context_window),
+            "resolved" if pricing_for(self.config.catalog_model) else
+            "unknown — runs will be recorded without a cost",
+        )
+
         # Hard requirement: noergler reviews a whole PR in one call, so it only
         # runs on a large-context model. Reject anything below the floor before
         # spending an inference call.
@@ -725,7 +741,8 @@ class LLMClient:
                 f"{_fmt(self.context_window)} is below the required "
                 f"{_fmt(_MIN_CONTEXT_WINDOW)}. noergler reviews each PR in a single "
                 f"call and requires a >= {_fmt(_MIN_CONTEXT_WINDOW)}-token model. "
-                f"Set OPENAI_CONTEXT_WINDOW if the model's window isn't auto-detected."
+                f"Set OPENAI_BASE_MODEL if this is a gateway alias for a known "
+                f"model, or OPENAI_CONTEXT_WINDOW to state the window outright."
             )
 
         # Startup ping — smallest-possible inference call. Validates the token

@@ -7,6 +7,7 @@ import respx
 
 from app.config import (
     LITELLM_PRICING_URL,
+    LLMConfig,
     _STATIC_MODEL_CONTEXT_WINDOW,
     _STATIC_MODEL_PRICING,
     _swap_context_windows,
@@ -173,6 +174,50 @@ class TestContextWindowFor:
 
     def test_unknown_returns_none(self):
         assert context_window_for("imaginary-9000") is None
+
+
+class TestCatalogModel:
+    """`base_model` maps a gateway alias onto a known catalog id."""
+
+    def _config(self, **overrides) -> LLMConfig:
+        return LLMConfig(
+            api_key="k", api_url="https://gw.example.com/v1", **overrides,
+        )
+
+    def test_unset_base_model_falls_back_to_model(self):
+        # Regression guard: the plain case must keep looking up `model`.
+        cfg = self._config(model="gpt-5.4")
+        assert cfg.base_model == ""
+        assert cfg.catalog_model == "gpt-5.4"
+
+    def test_base_model_overrides_lookup_key(self):
+        cfg = self._config(model="ai-gateway-gpt-5.5", base_model="gpt-5.5")
+        assert cfg.catalog_model == "gpt-5.5"
+        # The alias itself resolves to nothing — that's the whole problem.
+        assert pricing_for(cfg.model) is None
+        assert context_window_for(cfg.model) is None
+
+    def test_gateway_alias_resolves_pricing_via_base_model(self):
+        cfg = self._config(model="ai-gateway-gpt-5.5", base_model="gpt-5.5")
+        price = pricing_for(cfg.catalog_model)
+        assert price is not None
+        assert price.input_per_mtok == 5.00
+        assert price.output_per_mtok == 30.00
+        assert estimate_cost_usd(cfg.catalog_model, 100_000, 5_000) is not None
+
+    def test_gateway_alias_resolves_context_window_via_base_model(self):
+        # The payoff: OPENAI_CONTEXT_WINDOW becomes unnecessary because the
+        # resolved window already clears the 1M startup floor.
+        cfg = self._config(model="ai-gateway-gpt-5.5", base_model="gpt-5.5")
+        assert cfg.context_window == 0
+        assert context_window_for(cfg.catalog_model) == 1_050_000
+
+    def test_unknown_base_model_resolves_to_nothing(self):
+        # Fail-open, not a validation error: an unpriced model still reviews.
+        cfg = self._config(model="ai-gateway-mystery", base_model="imaginary-9000")
+        assert cfg.catalog_model == "imaginary-9000"
+        assert pricing_for(cfg.catalog_model) is None
+        assert context_window_for(cfg.catalog_model) is None
 
 
 class TestFetchLitellmModelMeta:
