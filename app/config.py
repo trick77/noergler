@@ -234,8 +234,10 @@ class TokenUsage(BaseModel):
     """Token counts and the reported cost for one LLM call.
 
     `cached` is the subset of `prompt` that hit the provider's prompt cache
-    (`usage.prompt_tokens_details.cached_tokens`); it is reported for visibility
-    only, since the cost below already accounts for it.
+    (`usage.prompt_tokens_details.cached_tokens`). It is logged only — nothing
+    multiplies it, because the cost below already has the cache discount
+    applied by the proxy. Kept because it's the one signal that explains an
+    unexpectedly high reported cost.
 
     `cost_usd` is the proxy's own figure for this call, taken from the
     `x-litellm-response-cost` response header. None means the endpoint didn't

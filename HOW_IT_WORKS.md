@@ -323,7 +323,7 @@ Notes:
 - A blocked push does **not** advance the reviewed-commit pointer, so raising the limit (and restarting) re-reviews the accumulated range.
 - The cost is not an estimate. It is the figure the endpoint reports for each call in the `x-litellm-response-cost` header, computed by the same code that bills — so tiered rates above a prompt threshold, prompt-cache read rates, service tier and any gateway margin are all already inside it.
 - An endpoint that reports no cost header leaves `total_cost_usd` NULL, and such runs are never capped (fail-open).
-- Cached prompt tokens are shown on the summary for visibility, but they do not enter any local calculation — the reported cost already reflects them.
+- Cached prompt tokens are logged (`Review complete: N in (M cached) + …`) but are not shown on the summary, not persisted, and not used in any local calculation — the reported cost already reflects them. They are the thing to check in the logs when a cost looks higher than expected.
 
 ### Inline comments
 
