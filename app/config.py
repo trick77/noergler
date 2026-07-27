@@ -341,7 +341,13 @@ def resolve_cost_usd(
     without it the summary shows no cost and the per-PR cap silently stops
     applying.
     """
-    if usage.cost_usd is not None:
+    # A reported zero on a call that actually consumed tokens means the endpoint
+    # is misconfigured, not that the call was free — e.g. a LiteLLM deployment
+    # with input/output cost explicitly set to 0, which prices everything at
+    # $0.00 and would silently disable the per-PR cap. Fall through to the
+    # catalog. A genuinely free model prices at 0 there too, so this can't
+    # invent a cost for one.
+    if usage.cost_usd is not None and not (usage.cost_usd == 0 and usage.total > 0):
         return usage.cost_usd, True
     price = entry if entry is not None else _ACTIVE_ENTRY
     if (

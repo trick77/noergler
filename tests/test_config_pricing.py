@@ -296,12 +296,33 @@ class TestResolveCostUsd:
         expected = (20_000 * 5.00 + 80_000 * 0.50 + 5_000 * 30.00) / 1_000_000
         assert cost == pytest.approx(expected)
 
-    def test_zero_reported_cost_is_not_replaced_by_an_estimate(self):
-        # 0.0 is falsy but is a real reported cost.
+    def test_reported_zero_on_a_real_call_falls_back_to_the_catalog(self):
+        # A call that consumed tokens cannot have cost nothing on a priced
+        # model — it means the endpoint is misconfigured (e.g. a LiteLLM
+        # deployment with input/output cost stored as 0). Trusting it would
+        # show $0.00 forever and silently disable the per-PR cap.
         cost, reported = resolve_cost_usd(
             TokenUsage(prompt=1_000_000, cost_usd=0.0), self._priced(),
         )
+        assert reported is False
+        assert cost == pytest.approx(5.00)
+
+    def test_reported_zero_with_no_tokens_is_kept(self):
+        # Nothing was consumed, so zero is the truthful answer.
+        cost, reported = resolve_cost_usd(TokenUsage(cost_usd=0.0), self._priced())
         assert (cost, reported) == (0.0, True)
+
+    def test_free_model_still_prices_at_zero(self):
+        # The fallback can't invent a cost: a genuinely free model has zero
+        # rates in the catalog too.
+        free = ModelCatalogEntry(
+            model_id="free", matched_key="free", max_input_tokens=1_050_000,
+            input_per_mtok=0.0, cached_input_per_mtok=0.0, output_per_mtok=0.0,
+        )
+        cost, _reported = resolve_cost_usd(
+            TokenUsage(prompt=1_000_000, cost_usd=0.0), free,
+        )
+        assert cost == 0.0
 
     def test_no_rates_and_no_report_yields_no_cost(self):
         cost, reported = resolve_cost_usd(TokenUsage(prompt=1000), _entry())
