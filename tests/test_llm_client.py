@@ -1321,6 +1321,24 @@ class TestReportedCost:
             await client.close()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("value", ["nan", "inf", "-inf", "-0.5"])
+    async def test_non_finite_or_negative_cost_is_rejected(
+        self, llm_config, review_config, value,
+    ):
+        # A NaN would be summed into total_cost_usd, after which every
+        # `total >= limit` comparison is False — the per-PR cap would be dead
+        # for that PR while it still looked priced.
+        client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
+            return_value=_mock_completion("[]", cost_header=value)
+        )
+        try:
+            _text, usage = await client._chat(system="s", user="u")
+            assert usage.cost_usd is None
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
     async def test_cached_tokens_reported_but_do_not_affect_cost(
         self, llm_config, review_config,
     ):

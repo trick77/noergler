@@ -10,6 +10,7 @@ import logging
 from typing import final
 
 from app.config import active_entry, refresh_active_entry
+from app.llm_client import _MIN_CONTEXT_WINDOW
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ async def refresh_once(model_id: str) -> bool:
     instance down. Only the startup resolve is fatal.
     """
     before = active_entry()
-    ok = await refresh_active_entry(model_id)
+    ok = await refresh_active_entry(model_id, min_window=_MIN_CONTEXT_WINDOW)
     if not ok:
         logger.warning(
             "model-catalog refresh failed — continuing with the entry loaded at "

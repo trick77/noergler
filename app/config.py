@@ -101,21 +101,39 @@ def resolve_catalog_entry(
     Tries each provider prefix on the exact id first, then falls back to the
     longest catalog key that `model_id` extends, so a dated id like
     `gpt-5.4-mini-2025-06-01` resolves to `gpt-5.4-mini` rather than the
-    shorter `gpt-5.4`.
+    shorter `gpt-5.4`. The fallback is prefix-aware too: LiteLLM lists some
+    families only under a provider prefix, so `claude-sonnet-4.6-20260101` has
+    to be matched against the *unprefixed* tail of `openrouter/anthropic/...`.
+
+    A candidate that fails to parse is skipped rather than aborting the search —
+    one entry with a null window must not mask a valid entry under a later
+    prefix.
     """
     for prefix in _LITELLM_KEY_PREFIXES:
         key = f"{prefix}{model_id}"
         raw = data.get(key)
         if isinstance(raw, dict) and "max_input_tokens" in raw:
-            return _parse_catalog_entry(model_id, key, raw)
-    candidates = [
-        key for key in data
-        if model_id.startswith(key + "-") and isinstance(data[key], dict)
-    ]
-    for key in sorted(candidates, key=len, reverse=True):
-        raw = data[key]
-        if "max_input_tokens" in raw:
-            return _parse_catalog_entry(model_id, key, raw)
+            entry = _parse_catalog_entry(model_id, key, raw)
+            if entry is not None:
+                return entry
+
+    # (catalog key, length of the part `model_id` actually extends) so the
+    # longest *model* match wins regardless of how long its provider prefix is.
+    candidates: list[tuple[str, int]] = []
+    for key, raw in data.items():
+        if not isinstance(raw, dict) or "max_input_tokens" not in raw:
+            continue
+        for prefix in _LITELLM_KEY_PREFIXES:
+            if not key.startswith(prefix):
+                continue
+            base = key[len(prefix):]
+            if base and model_id.startswith(base + "-"):
+                candidates.append((key, len(base)))
+                break
+    for key, _ in sorted(candidates, key=lambda c: c[1], reverse=True):
+        entry = _parse_catalog_entry(model_id, key, data[key])
+        if entry is not None:
+            return entry
     return None
 
 
@@ -183,11 +201,20 @@ async def resolve_or_raise(model_id: str, timeout: float = 10.0) -> ModelCatalog
     return entry
 
 
-async def refresh_active_entry(model_id: str, timeout: float = 10.0) -> bool:
+async def refresh_active_entry(
+    model_id: str, timeout: float = 10.0, min_window: int = 0
+) -> bool:
     """Re-resolve `model_id` and swap the entry in. Best-effort.
 
     Returns False and leaves the installed entry untouched on any failure — a
     refresh must never take a running instance down, unlike the startup resolve.
+
+    `min_window` rejects a swap that would drop the context window below the
+    floor startup enforces. The catalog is upstream data that can be corrected
+    downward (its own history includes a model whose window was listed as a
+    pricing threshold, ~4x too low); without this a 24h refresh could quietly
+    push a running instance under a bound the rest of the code treats as
+    guaranteed. Keeping the older, valid entry is the safer failure.
     """
     log = logging.getLogger(__name__)
     data = await fetch_model_catalog(timeout)
@@ -198,6 +225,13 @@ async def refresh_active_entry(model_id: str, timeout: float = 10.0) -> bool:
         log.warning(
             "model catalog refresh: `%s` vanished from the catalog — keeping the "
             "entry loaded at startup", model_id,
+        )
+        return False
+    if min_window and entry.max_input_tokens < min_window:
+        log.warning(
+            "model catalog refresh: `%s` now reports a %d-token window, below the "
+            "required %d — rejecting the update and keeping the entry loaded at "
+            "startup", model_id, entry.max_input_tokens, min_window,
         )
         return False
     _swap_active_entry(entry)

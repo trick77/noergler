@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import math
 import re
 import time
 from dataclasses import dataclass, field
@@ -73,10 +74,19 @@ def _reported_cost_usd(headers: Mapping[str, str]) -> float | None:
     if raw is None:
         return None
     try:
-        return float(raw)
+        cost = float(raw)
     except (TypeError, ValueError):
         logger.warning("unparseable %s header: %r", _COST_HEADER, raw)
         return None
+    # float() accepts "nan" and "inf". A NaN would be summed into
+    # pr_reviews.total_cost_usd and every later `total >= limit` comparison
+    # against it is False, silently disabling the per-PR cost cap for that PR
+    # while it still looks priced. Treat any non-finite or negative value as
+    # not reported.
+    if not math.isfinite(cost) or cost < 0:
+        logger.warning("implausible %s header: %r", _COST_HEADER, raw)
+        return None
+    return cost
 
 
 def _usage_from_response(
@@ -690,11 +700,21 @@ class LLMClient:
         self.config = config
         self.review_config = review_config
 
-        logger.info(
-            "Input token budget %s tokens (model %s context window: %s)",
-            _fmt(self.input_token_budget), model_label(config.model, config.reasoning_effort),
-            _fmt(self.context_window),
-        )
+        if self.config.context_window or active_entry() is not None:
+            logger.info(
+                "Input token budget %s tokens (model %s context window: %s)",
+                _fmt(self.input_token_budget), model_label(config.model, config.reasoning_effort),
+                _fmt(self.context_window),
+            )
+        else:
+            # The catalog resolve happens in check_connectivity, after this
+            # constructor. Logging the budget here would print a window of 0
+            # and read as a misconfiguration; check_connectivity logs the real
+            # numbers once the entry is installed.
+            logger.info(
+                "Model %s: context window pending catalog resolve",
+                model_label(config.model, config.reasoning_effort),
+            )
 
         # httpx + SDK timeouts are aligned with INFERENCE_HARD_TIMEOUT_SECONDS
         # so the asyncio.wait_for cap in _execute_chat_completion is the
@@ -773,11 +793,12 @@ class LLMClient:
             else f" [matched catalog key `{entry.matched_key}`]"
         )
         logger.info(
-            "Model catalog: %s%s (model=%s, base_model=%s) window=%s. "
+            "Model catalog: %s%s (model=%s, base_model=%s) window=%s, "
+            "input token budget %s. "
             "Costs are read from the endpoint's %s header, not computed here.",
             entry.model_id, matched_note, self.config.model,
-            self.config.base_model or "<unset>", _fmt(entry.max_input_tokens),
-            _COST_HEADER,
+            self.config.base_model or "<unset>", _fmt(self.context_window),
+            _fmt(self.input_token_budget), _COST_HEADER,
         )
 
         # Hard requirement: noergler reviews a whole PR in one call, so it only

@@ -56,7 +56,14 @@ CATALOG = {
         "cache_read_input_token_cost": 3e-07,
         "max_input_tokens": 200000,
     },
-    "broken-model": {"input_cost_per_token": 1e-06},  # no output cost / window
+    "broken-model": {"input_cost_per_token": 1e-06},  # no window at all
+    # Decoy: the bare key exists with a null window while the provider-prefixed
+    # key below carries the real one.
+    "claude-decoy": {"input_cost_per_token": 3e-06, "max_input_tokens": None},
+    "openrouter/anthropic/claude-decoy": {
+        "input_cost_per_token": 3e-06,
+        "max_input_tokens": 200000,
+    },
     "zero-window": {
         "input_cost_per_token": 1e-06,
         "output_cost_per_token": 2e-06,
@@ -132,6 +139,23 @@ class TestResolveCatalogEntry:
     def test_non_positive_window_returns_none(self):
         assert resolve_catalog_entry(CATALOG, "zero-window") is None
 
+    def test_dated_suffix_resolves_under_a_provider_prefix(self):
+        # Regression: the fallback used to compare the requested id against the
+        # full catalog key, so `openrouter/anthropic/...` families could never
+        # match a dated id — startup aborted on a model that does exist.
+        entry = resolve_catalog_entry(CATALOG, "claude-sonnet-4.6-20260101")
+        assert entry is not None
+        assert entry.matched_key == "openrouter/anthropic/claude-sonnet-4.6"
+        assert entry.max_input_tokens == 200_000
+
+    def test_unparseable_first_prefix_does_not_mask_a_later_one(self):
+        # Regression: a bare key with a null window used to abort the whole
+        # search, hiding a valid provider-prefixed entry.
+        entry = resolve_catalog_entry(CATALOG, "claude-decoy")
+        assert entry is not None
+        assert entry.matched_key == "openrouter/anthropic/claude-decoy"
+        assert entry.max_input_tokens == 200_000
+
 
 class TestResolveOrRaise:
     @pytest.mark.asyncio
@@ -188,6 +212,27 @@ class TestRefreshActiveEntry:
             _mock_catalog(status=503)
             assert await refresh_active_entry("gpt-5.5") is False
         assert active_entry() == installed
+
+    @pytest.mark.asyncio
+    async def test_shrunken_window_below_floor_is_rejected(self):
+        # The catalog is upstream data and can be corrected downward. A refresh
+        # must never push a running instance under the window floor that
+        # startup enforces — keep the older, valid entry instead.
+        installed = _entry(max_input_tokens=1_050_000)
+        _swap_active_entry(installed)
+        with respx.mock:
+            _mock_catalog(payload={"gpt-5.5": {"max_input_tokens": 272_000}})
+            assert await refresh_active_entry("gpt-5.5", min_window=1_000_000) is False
+        assert active_entry() == installed
+
+    @pytest.mark.asyncio
+    async def test_shrunken_window_is_accepted_without_a_floor(self):
+        _swap_active_entry(_entry(max_input_tokens=1_050_000))
+        with respx.mock:
+            _mock_catalog(payload={"gpt-5.5": {"max_input_tokens": 272_000}})
+            assert await refresh_active_entry("gpt-5.5") is True
+        current = active_entry()
+        assert current is not None and current.max_input_tokens == 272_000
 
     @pytest.mark.asyncio
     async def test_model_vanishing_from_catalog_keeps_existing_entry(self):

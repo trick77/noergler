@@ -175,7 +175,7 @@ async def get_pr_cost(
     """Return the accumulated upper-bound cost for a PR, or None.
 
     None means either no PR row exists yet or total_cost_usd is NULL (the
-    model has no pricing entry — see estimate_cost_usd). Callers must treat
+    endpoint reported no cost header for the run). Callers must treat
     None as "no known cost" and never block on it (fail-open).
     """
     async with pool.acquire() as conn:
