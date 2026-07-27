@@ -268,6 +268,7 @@ def _install_catalog_entry():
     import app.config
     _swap_active_entry(ModelCatalogEntry(
         model_id="gpt-5.3-codex",
+        matched_key="gpt-5.3-codex",
         input_per_mtok=1.75,
         cached_input_per_mtok=0.175,
         output_per_mtok=14.00,

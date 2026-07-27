@@ -51,6 +51,7 @@ def _stub_model_catalog(monkeypatch):
 
     entry = ModelCatalogEntry(
         model_id="stub-model",
+        matched_key="stub-model",
         input_per_mtok=5.00,
         cached_input_per_mtok=0.50,
         output_per_mtok=30.00,
@@ -1173,6 +1174,7 @@ class TestContextWindowBudget:
     def _install(window: int, model_id: str = "gpt-5.5") -> None:
         _swap_active_entry(ModelCatalogEntry(
             model_id=model_id,
+            matched_key=model_id,
             input_per_mtok=5.00,
             cached_input_per_mtok=0.50,
             output_per_mtok=30.00,

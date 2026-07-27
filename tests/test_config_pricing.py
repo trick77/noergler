@@ -86,6 +86,7 @@ def _reset_active_entry():
 def _entry(**overrides) -> ModelCatalogEntry:
     base = dict(
         model_id="gpt-5.5",
+        matched_key="gpt-5.5",
         input_per_mtok=5.00,
         cached_input_per_mtok=0.50,
         output_per_mtok=30.00,
@@ -111,12 +112,24 @@ class TestResolveCatalogEntry:
         assert entry is not None
         assert entry.input_per_mtok == 3.00
         assert entry.max_input_tokens == 200_000
+        # The key that actually matched is recorded, not just what we asked for.
+        assert entry.model_id == "claude-sonnet-4.6"
+        assert entry.matched_key == "openrouter/anthropic/claude-sonnet-4.6"
 
     def test_dated_suffix_prefers_longest_base(self):
         # Regression: must resolve to the mini entry, not the 3x pricier base.
         entry = resolve_catalog_entry(CATALOG, "gpt-5.4-mini-2025-06-01")
         assert entry is not None
         assert entry.input_per_mtok == 0.75
+        # A fuzzy match must be traceable — it prices and boots cleanly, so the
+        # key it landed on is the only evidence of which rates were applied.
+        assert entry.matched_key == "gpt-5.4-mini"
+        assert entry.model_id == "gpt-5.4-mini-2025-06-01"
+
+    def test_exact_match_records_itself_as_the_matched_key(self):
+        entry = resolve_catalog_entry(CATALOG, "gpt-5.5")
+        assert entry is not None
+        assert entry.matched_key == entry.model_id == "gpt-5.5"
 
     def test_unknown_model_returns_none(self):
         assert resolve_catalog_entry(CATALOG, "totally-fictional-model") is None

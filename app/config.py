@@ -62,7 +62,15 @@ class ModelCatalogEntry(BaseModel):
     see `estimate_cost_usd`.
     """
 
+    # The id we asked for (`catalog_model`).
     model_id: str
+    # The catalog key that actually matched. Differs from `model_id` on a
+    # provider-prefixed key (`openrouter/anthropic/...`) or a prefix fallback
+    # (`gpt-5.4-mini-2025-06-01` -> `gpt-5.4-mini`). Kept distinct because the
+    # fallback searches the whole catalog (~3000 ids, including deprecated and
+    # regional variants at different rates), so a wrong-but-plausible match
+    # would otherwise be invisible — it prices and boots cleanly.
+    matched_key: str
     input_per_mtok: float
     cached_input_per_mtok: float
     output_per_mtok: float
@@ -73,7 +81,9 @@ class ModelCatalogEntry(BaseModel):
         return self.cached_input_per_mtok < self.input_per_mtok
 
 
-def _parse_catalog_entry(model_id: str, raw: dict[str, Any]) -> ModelCatalogEntry | None:
+def _parse_catalog_entry(
+    model_id: str, matched_key: str, raw: dict[str, Any]
+) -> ModelCatalogEntry | None:
     """Build an entry from one LiteLLM record, or None if it's unusable.
 
     NOTE on tiered pricing: several large-context models also carry
@@ -106,6 +116,7 @@ def _parse_catalog_entry(model_id: str, raw: dict[str, Any]) -> ModelCatalogEntr
         cached_per_mtok = input_per_mtok
     return ModelCatalogEntry(
         model_id=model_id,
+        matched_key=matched_key,
         input_per_mtok=input_per_mtok,
         cached_input_per_mtok=cached_per_mtok,
         output_per_mtok=output_per_mtok,
@@ -124,9 +135,10 @@ def resolve_catalog_entry(
     shorter, more expensive `gpt-5.4`.
     """
     for prefix in _LITELLM_KEY_PREFIXES:
-        raw = data.get(f"{prefix}{model_id}")
+        key = f"{prefix}{model_id}"
+        raw = data.get(key)
         if isinstance(raw, dict) and "input_cost_per_token" in raw:
-            return _parse_catalog_entry(model_id, raw)
+            return _parse_catalog_entry(model_id, key, raw)
     candidates = [
         key for key in data
         if model_id.startswith(key + "-") and isinstance(data[key], dict)
@@ -134,7 +146,7 @@ def resolve_catalog_entry(
     for key in sorted(candidates, key=len, reverse=True):
         raw = data[key]
         if "input_cost_per_token" in raw:
-            return _parse_catalog_entry(model_id, raw)
+            return _parse_catalog_entry(model_id, key, raw)
     return None
 
 

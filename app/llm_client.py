@@ -740,10 +740,17 @@ class LLMClient:
         # table and no DB cache, so an unresolvable model means noergler would be
         # guessing at both its context window and its prices.
         entry = await resolve_or_raise(self.config.catalog_model)
+        # Surface the matched key when it isn't the id we asked for: the prefix
+        # fallback searches the whole catalog, so an operator chasing an odd
+        # cost figure needs to see what actually priced the run.
+        matched_note = (
+            "" if entry.matched_key == entry.model_id
+            else f" [matched catalog key `{entry.matched_key}`]"
+        )
         logger.info(
-            "Model catalog: %s (model=%s, base_model=%s) window=%s "
+            "Model catalog: %s%s (model=%s, base_model=%s) window=%s "
             "input=$%.2f cached=$%.2f output=$%.2f per Mtok%s",
-            entry.model_id, self.config.model,
+            entry.model_id, matched_note, self.config.model,
             self.config.base_model or "<unset>", _fmt(entry.max_input_tokens),
             entry.input_per_mtok, entry.cached_input_per_mtok,
             entry.output_per_mtok,
