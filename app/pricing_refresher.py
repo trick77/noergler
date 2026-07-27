@@ -35,13 +35,8 @@ async def refresh_once(model_id: str) -> bool:
     after = active_entry()
     if after is not None and before is not None and after != before:
         logger.info(
-            "model-catalog: %s updated — input %.2f→%.2f, cached %.2f→%.2f, "
-            "output %.2f→%.2f per Mtok, window %d→%d",
-            after.model_id,
-            before.input_per_mtok, after.input_per_mtok,
-            before.cached_input_per_mtok, after.cached_input_per_mtok,
-            before.output_per_mtok, after.output_per_mtok,
-            before.max_input_tokens, after.max_input_tokens,
+            "model-catalog: %s updated — context window %d→%d",
+            after.model_id, before.max_input_tokens, after.max_input_tokens,
         )
     else:
         logger.info("model-catalog: refreshed, no change")

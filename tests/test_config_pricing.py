@@ -13,7 +13,6 @@ from app.config import (
     TokenUsage,
     _swap_active_entry,
     active_entry,
-    estimate_cost_usd,
     fetch_model_catalog,
     refresh_active_entry,
     resolve_catalog_entry,
@@ -87,9 +86,6 @@ def _entry(**overrides) -> ModelCatalogEntry:
     base = dict(
         model_id="gpt-5.5",
         matched_key="gpt-5.5",
-        input_per_mtok=5.00,
-        cached_input_per_mtok=0.50,
-        output_per_mtok=30.00,
         max_input_tokens=1_050_000,
     )
     base.update(overrides)
@@ -97,20 +93,16 @@ def _entry(**overrides) -> ModelCatalogEntry:
 
 
 class TestResolveCatalogEntry:
-    def test_exact_match_converts_per_token_to_per_mtok(self):
+    def test_exact_match_yields_the_context_window(self):
         entry = resolve_catalog_entry(CATALOG, "gpt-5.5")
         assert entry is not None
         assert entry.model_id == "gpt-5.5"
-        assert entry.input_per_mtok == 5.00
-        assert entry.cached_input_per_mtok == 0.50
-        assert entry.output_per_mtok == 30.00
         assert entry.max_input_tokens == 1_050_000
 
     def test_provider_prefixed_key_resolves(self):
         # LiteLLM lists some Anthropic models only under a provider prefix.
         entry = resolve_catalog_entry(CATALOG, "claude-sonnet-4.6")
         assert entry is not None
-        assert entry.input_per_mtok == 3.00
         assert entry.max_input_tokens == 200_000
         # The key that actually matched is recorded, not just what we asked for.
         assert entry.model_id == "claude-sonnet-4.6"
@@ -120,7 +112,7 @@ class TestResolveCatalogEntry:
         # Regression: must resolve to the mini entry, not the 3x pricier base.
         entry = resolve_catalog_entry(CATALOG, "gpt-5.4-mini-2025-06-01")
         assert entry is not None
-        assert entry.input_per_mtok == 0.75
+        assert entry.max_input_tokens == 400_000
         # A fuzzy match must be traceable — it prices and boots cleanly, so the
         # key it landed on is the only evidence of which rates were applied.
         assert entry.matched_key == "gpt-5.4-mini"
@@ -134,15 +126,7 @@ class TestResolveCatalogEntry:
     def test_unknown_model_returns_none(self):
         assert resolve_catalog_entry(CATALOG, "totally-fictional-model") is None
 
-    def test_missing_cache_rate_bills_at_full_input_rate(self):
-        # No invented discount: an unpublished cache rate means cache hits cost
-        # the same as fresh input.
-        entry = resolve_catalog_entry(CATALOG, "budget-model")
-        assert entry is not None
-        assert entry.cached_input_per_mtok == entry.input_per_mtok
-        assert entry.supports_caching is False
-
-    def test_malformed_entry_returns_none(self):
+    def test_entry_without_a_window_returns_none(self):
         assert resolve_catalog_entry(CATALOG, "broken-model") is None
 
     def test_non_positive_window_returns_none(self):
@@ -185,20 +169,20 @@ class TestResolveOrRaise:
 
 class TestRefreshActiveEntry:
     @pytest.mark.asyncio
-    async def test_swaps_in_new_prices(self):
-        _swap_active_entry(_entry(input_per_mtok=1.00))
+    async def test_swaps_in_the_new_window(self):
+        _swap_active_entry(_entry(max_input_tokens=1))
         with respx.mock:
             _mock_catalog()
             assert await refresh_active_entry("gpt-5.5") is True
         current = active_entry()
         assert current is not None
-        assert current.input_per_mtok == 5.00
+        assert current.max_input_tokens == 1_050_000
 
     @pytest.mark.asyncio
     async def test_failed_fetch_keeps_existing_entry(self):
         # The refresh is best-effort: a LiteLLM outage must not degrade or kill
         # a running instance, unlike the startup resolve.
-        installed = _entry(input_per_mtok=1.23)
+        installed = _entry(max_input_tokens=123_456)
         _swap_active_entry(installed)
         with respx.mock:
             _mock_catalog(status=503)
@@ -239,59 +223,19 @@ class TestFetchModelCatalog:
             assert await fetch_model_catalog() is None
 
 
-class TestEstimateCostUsd:
-    def test_prices_uncached_and_cached_prompt_separately(self):
-        entry = _entry()
-        usage = TokenUsage(prompt=100_000, cached=80_000, completion=5_000)
-        # 20k uncached @ $5 + 80k cached @ $0.50 + 5k out @ $30 per Mtok
-        expected = (20_000 * 5.00 + 80_000 * 0.50 + 5_000 * 30.00) / 1_000_000
-        assert estimate_cost_usd(usage, entry) == pytest.approx(expected)
-
-    def test_no_cached_tokens_matches_full_input_rate(self):
-        # An endpoint that doesn't report cached_tokens degrades to the old
-        # upper bound rather than under-billing.
-        entry = _entry()
-        usage = TokenUsage(prompt=100_000, cached=0, completion=5_000)
-        expected = (100_000 * 5.00 + 5_000 * 30.00) / 1_000_000
-        assert estimate_cost_usd(usage, entry) == pytest.approx(expected)
-
-    def test_caching_is_cheaper_than_not(self):
-        entry = _entry()
-        cached = estimate_cost_usd(TokenUsage(prompt=100_000, cached=90_000), entry)
-        uncached = estimate_cost_usd(TokenUsage(prompt=100_000), entry)
-        assert cached is not None and uncached is not None
-        assert cached < uncached
-
-    def test_uses_installed_entry_when_none_passed(self):
-        _swap_active_entry(_entry())
-        cost = estimate_cost_usd(TokenUsage(prompt=1_000_000))
-        assert cost == pytest.approx(5.00)
-
-    def test_returns_none_without_an_entry(self):
-        # Fail-open: an unpriced run is recorded without a cost, never blocked.
-        assert estimate_cost_usd(TokenUsage(prompt=1000, completion=1000)) is None
-
-    def test_zero_tokens_yields_zero(self):
-        assert estimate_cost_usd(TokenUsage(), _entry()) == 0.0
-
-
 class TestTokenUsage:
-    def test_uncached_prompt_is_the_billable_remainder(self):
-        assert TokenUsage(prompt=100, cached=30).uncached_prompt == 70
-
-    def test_cached_exceeding_prompt_clamps_to_zero(self):
-        # Defensive: a proxy reporting nonsense must not yield a negative bill.
-        assert TokenUsage(prompt=10, cached=99).uncached_prompt == 0
-
     def test_total_excludes_cached_double_count(self):
         # cached is a subset of prompt, so it must not be added again.
         assert TokenUsage(prompt=100, cached=40, completion=10).total == 110
 
-    def test_addition_sums_each_component(self):
-        combined = TokenUsage(prompt=10, cached=4, completion=2) + TokenUsage(
-            prompt=5, cached=1, completion=3
-        )
-        assert (combined.prompt, combined.cached, combined.completion) == (15, 5, 5)
+    def test_cost_defaults_to_none(self):
+        # An endpoint that reports no cost leaves the run unpriced rather than
+        # estimated — the cap then fails open.
+        assert TokenUsage(prompt=100, completion=10).cost_usd is None
+
+    def test_zero_cost_is_preserved_not_treated_as_missing(self):
+        # 0.0 is falsy; it must stay a real reported cost, not become None.
+        assert TokenUsage(cost_usd=0.0).cost_usd == 0.0
 
 
 class TestUsableContextBudget:
@@ -334,8 +278,7 @@ class TestCatalogModel:
         with respx.mock:
             _mock_catalog()
             entry = await resolve_or_raise(cfg.catalog_model)
-        # The payoff: prices and a window that clears the 1M floor, with no
+        # The payoff: a window that clears the 1M floor, with no
         # OPENAI_CONTEXT_WINDOW set by hand.
         assert cfg.context_window == 0
         assert entry.max_input_tokens == 1_050_000
-        assert entry.input_per_mtok == 5.00

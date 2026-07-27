@@ -109,9 +109,11 @@ See [`.env.example`](.env.example) for all optional settings and their defaults.
 
 ### Model catalog
 
-Pricing and context windows are read at startup from LiteLLM's public catalog, [`model_prices_and_context_window.json`](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json). Nothing is cached locally or in the database, and there is no baked-in fallback table.
+The model's **context window** is read at startup from LiteLLM's public catalog, [`model_prices_and_context_window.json`](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json) (`max_input_tokens`). Nothing is cached locally or in the database, and there is no baked-in fallback table.
 
-noergler resolves the configured model against that catalog and **aborts startup** if the catalog can't be fetched or the model isn't in it. That's deliberate: without an entry it would have neither a context window to size the review against nor rates to price it with, and guessing either is worse than not starting.
+noergler resolves the configured model against that catalog and **aborts startup** if the catalog can't be fetched or the model isn't in it. That's deliberate: without an entry it has no context window to size the review against, and guessing one is worse than not starting.
+
+**Costs are not computed from the catalog.** The endpoint reports the actual cost of each call in the `x-litellm-response-cost` response header, produced by the same code that bills — already accounting for tiered rates above a prompt threshold, prompt-cache read rates, service tier and any gateway margin. noergler records that number verbatim. An endpoint that sends no such header leaves the run unpriced (`total_cost_usd` NULL), and the per-PR cost cap fails open for it.
 
 If your endpoint exposes models under its own aliases (`ai-gateway-gpt-5.5`, an Azure deployment name, …), set `OPENAI_BASE_MODEL` to the upstream id the alias maps to — spelled exactly as the catalog spells it. The alias stays what's sent to the endpoint and what appears in logs and summaries; only the lookup uses the base model. The name mirrors LiteLLM's own [`model_info.base_model`](https://docs.litellm.ai/docs/proxy/custom_pricing), which exists for the same purpose.
 

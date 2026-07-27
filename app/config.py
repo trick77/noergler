@@ -35,11 +35,17 @@ def model_label(model: str, reasoning_effort: str | None) -> str:
 
 
 # --- Model catalog ---------------------------------------------------------
-# Pricing and context windows come from LiteLLM's public catalog, fetched over
-# the network. There is no baked-in fallback table and no DB cache: the catalog
-# is the single source of truth. Startup resolves the configured model against
-# it exactly once and aborts if that fails (see `resolve_or_raise`), so the rest
-# of the process can assume a priced, sized model.
+# Context windows come from LiteLLM's public catalog, fetched over the network.
+# There is no baked-in fallback table and no DB cache: the catalog is the single
+# source of truth. Startup resolves the configured model against it exactly once
+# and aborts if that fails (see `resolve_or_raise`).
+#
+# Pricing is deliberately NOT read from here. The proxy reports the actual cost
+# of each call on the response (`x-litellm-response-cost`), computed by the same
+# code that bills — including tiered rates above a prompt threshold, prompt-cache
+# read rates, and any service tier or margin configured on the gateway.
+# Recomputing that locally could only ever produce a second, worse estimate of a
+# number we can simply read. See `app.llm_client._reported_cost_usd`.
 LITELLM_PRICING_URL = (
     "https://raw.githubusercontent.com/BerriAI/litellm/main/"
     "model_prices_and_context_window.json"
@@ -55,12 +61,7 @@ _LITELLM_KEY_PREFIXES: tuple[str, ...] = (
 
 
 class ModelCatalogEntry(BaseModel):
-    """One resolved LiteLLM catalog entry: prices in USD per 1M tokens.
-
-    `cached_input_per_mtok` is LiteLLM's `cache_read_input_token_cost`, the rate
-    charged for prompt-cache hits. It is a real billed rate, not an estimate —
-    see `estimate_cost_usd`.
-    """
+    """The catalog facts noergler needs about the configured model."""
 
     # The id we asked for (`catalog_model`).
     model_id: str
@@ -68,59 +69,27 @@ class ModelCatalogEntry(BaseModel):
     # provider-prefixed key (`openrouter/anthropic/...`) or a prefix fallback
     # (`gpt-5.4-mini-2025-06-01` -> `gpt-5.4-mini`). Kept distinct because the
     # fallback searches the whole catalog (~3000 ids, including deprecated and
-    # regional variants at different rates), so a wrong-but-plausible match
-    # would otherwise be invisible — it prices and boots cleanly.
+    # regional variants), so a wrong-but-plausible match would otherwise be
+    # invisible — it resolves and boots cleanly.
     matched_key: str
-    input_per_mtok: float
-    cached_input_per_mtok: float
-    output_per_mtok: float
     max_input_tokens: int
-
-    @property
-    def supports_caching(self) -> bool:
-        return self.cached_input_per_mtok < self.input_per_mtok
 
 
 def _parse_catalog_entry(
     model_id: str, matched_key: str, raw: dict[str, Any]
 ) -> ModelCatalogEntry | None:
-    """Build an entry from one LiteLLM record, or None if it's unusable.
-
-    NOTE on tiered pricing: several large-context models also carry
-    `*_cost_per_token_above_272k_tokens` keys charging up to 2x above a prompt
-    threshold. Those are deliberately ignored — LiteLLM's JSON does not say
-    whether the higher rate applies to the whole request or only to the excess,
-    and guessing would trade an honest understatement for a confident wrong
-    number. Costs for prompts above the threshold are therefore a lower bound.
-    """
+    """Build an entry from one LiteLLM record, or None if it's unusable."""
     log = logging.getLogger(__name__)
     try:
-        input_per_mtok = float(raw["input_cost_per_token"]) * 1_000_000
-        output_per_mtok = float(raw["output_cost_per_token"]) * 1_000_000
         window = int(raw["max_input_tokens"])
     except (KeyError, TypeError, ValueError) as exc:
-        log.warning("malformed LiteLLM entry for %s: %s", model_id, exc)
+        log.warning("malformed LiteLLM max_input_tokens for %s: %s", model_id, exc)
         return None
     if window <= 0:
         log.warning("LiteLLM entry for %s has non-positive max_input_tokens", model_id)
         return None
-    cached_raw = raw.get("cache_read_input_token_cost")
-    try:
-        # No cache-read rate published means the model has no prompt cache we
-        # can bill separately — charge cache hits at the full input rate rather
-        # than inventing a discount.
-        cached_per_mtok = (
-            float(cached_raw) * 1_000_000 if cached_raw is not None else input_per_mtok
-        )
-    except (TypeError, ValueError):
-        cached_per_mtok = input_per_mtok
     return ModelCatalogEntry(
-        model_id=model_id,
-        matched_key=matched_key,
-        input_per_mtok=input_per_mtok,
-        cached_input_per_mtok=cached_per_mtok,
-        output_per_mtok=output_per_mtok,
-        max_input_tokens=window,
+        model_id=model_id, matched_key=matched_key, max_input_tokens=window,
     )
 
 
@@ -132,12 +101,12 @@ def resolve_catalog_entry(
     Tries each provider prefix on the exact id first, then falls back to the
     longest catalog key that `model_id` extends, so a dated id like
     `gpt-5.4-mini-2025-06-01` resolves to `gpt-5.4-mini` rather than the
-    shorter, more expensive `gpt-5.4`.
+    shorter `gpt-5.4`.
     """
     for prefix in _LITELLM_KEY_PREFIXES:
         key = f"{prefix}{model_id}"
         raw = data.get(key)
-        if isinstance(raw, dict) and "input_cost_per_token" in raw:
+        if isinstance(raw, dict) and "max_input_tokens" in raw:
             return _parse_catalog_entry(model_id, key, raw)
     candidates = [
         key for key in data
@@ -145,7 +114,7 @@ def resolve_catalog_entry(
     ]
     for key in sorted(candidates, key=len, reverse=True):
         raw = data[key]
-        if "input_cost_per_token" in raw:
+        if "max_input_tokens" in raw:
             return _parse_catalog_entry(model_id, key, raw)
     return None
 
@@ -191,16 +160,16 @@ async def resolve_or_raise(model_id: str, timeout: float = 10.0) -> ModelCatalog
     """Fetch the catalog and install the entry for `model_id`, or raise.
 
     Called once at startup. Both failure modes are fatal by design: without a
-    catalog entry noergler has no context window to size the review against and
-    no rates to price it with, and silently guessing either is worse than not
-    starting. The 24h refresh is the opposite — best-effort, keeping the entry
-    installed here when a later fetch fails.
+    catalog entry noergler has no context window to size the review against, and
+    silently guessing one is worse than not starting. The 24h refresh is the
+    opposite — best-effort, keeping the entry installed here when a later fetch
+    fails.
     """
     data = await fetch_model_catalog(timeout)
     if data is None:
         raise ModelCatalogError(
             f"could not fetch the model catalog from {LITELLM_PRICING_URL}. "
-            "noergler reads pricing and context windows from it at startup and "
+            "noergler reads the model's context window from it at startup and "
             "keeps no local fallback — check network/proxy egress to raw.githubusercontent.com."
         )
     entry = resolve_catalog_entry(data, model_id)
@@ -262,54 +231,27 @@ def usable_context_budget(window: int) -> int:
 
 
 class TokenUsage(BaseModel):
-    """Token counts for one LLM call.
+    """Token counts and the reported cost for one LLM call.
 
     `cached` is the subset of `prompt` that hit the provider's prompt cache
-    (`usage.prompt_tokens_details.cached_tokens`). Endpoints that don't report
-    it leave it at 0, which prices every prompt token at the full input rate —
-    the old upper-bound behaviour.
+    (`usage.prompt_tokens_details.cached_tokens`); it is reported for visibility
+    only, since the cost below already accounts for it.
+
+    `cost_usd` is the proxy's own figure for this call, taken from the
+    `x-litellm-response-cost` response header. None means the endpoint didn't
+    report one (anything that isn't a LiteLLM proxy) — noergler then records the
+    run without a cost rather than estimating one, and the per-PR cost cap
+    fails open exactly as it does for any unpriced run.
     """
 
     prompt: int = 0
     cached: int = 0
     completion: int = 0
+    cost_usd: float | None = None
 
     @property
     def total(self) -> int:
         return self.prompt + self.completion
-
-    @property
-    def uncached_prompt(self) -> int:
-        # Clamp: a proxy reporting cached > prompt must not produce a negative
-        # billable count.
-        return max(0, self.prompt - self.cached)
-
-    def __add__(self, other: "TokenUsage") -> "TokenUsage":
-        return TokenUsage(
-            prompt=self.prompt + other.prompt,
-            cached=self.cached + other.cached,
-            completion=self.completion + other.completion,
-        )
-
-
-def estimate_cost_usd(
-    usage: TokenUsage, entry: ModelCatalogEntry | None = None
-) -> float | None:
-    """USD cost for one LLM call, or None if no catalog entry is installed.
-
-    Cache hits are billed at the model's published `cache_read_input_token_cost`
-    rather than the full input rate, so this tracks the real invoice instead of
-    the upper bound the old estimate produced. Prompts above a model's tiered
-    pricing threshold are still understated — see `_parse_catalog_entry`.
-    """
-    price = entry if entry is not None else _ACTIVE_ENTRY
-    if price is None:
-        return None
-    return (
-        usage.uncached_prompt * price.input_per_mtok
-        + usage.cached * price.cached_input_per_mtok
-        + usage.completion * price.output_per_mtok
-    ) / 1_000_000
 
 
 class LLMConfig(BaseModel):

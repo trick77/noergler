@@ -52,9 +52,6 @@ def _stub_model_catalog(monkeypatch):
     entry = ModelCatalogEntry(
         model_id="stub-model",
         matched_key="stub-model",
-        input_per_mtok=5.00,
-        cached_input_per_mtok=0.50,
-        output_per_mtok=30.00,
         max_input_tokens=1_050_000,
     )
 
@@ -76,21 +73,37 @@ def review_config():
     )
 
 
-def _mock_completion(content: str, prompt_tokens: int = 100, completion_tokens: int = 50):
-    """Build a mock chat/completions response object."""
+def _mock_completion(
+    content: str,
+    prompt_tokens: int = 100,
+    completion_tokens: int = 50,
+    cached_tokens: int = 0,
+    cost_header: str | None = None,
+):
+    """Build a mock raw-response wrapper around a chat/completions response.
+
+    noergler calls `with_raw_response.create` so it can read the proxy's cost
+    header, so mocks have to look like the wrapper: `.headers` plus a
+    synchronous `.parse()` returning the completion.
+    """
     usage = MagicMock()
     usage.prompt_tokens = prompt_tokens
     usage.completion_tokens = completion_tokens
+    usage.prompt_tokens_details.cached_tokens = cached_tokens
 
     message = MagicMock()
     message.content = content
     choice = MagicMock()
     choice.message = message
 
-    response = MagicMock()
-    response.choices = [choice]
-    response.usage = usage
-    return response
+    completion = MagicMock()
+    completion.choices = [choice]
+    completion.usage = usage
+
+    raw = MagicMock()
+    raw.headers = {} if cost_header is None else {"x-litellm-response-cost": cost_header}
+    raw.parse = MagicMock(return_value=completion)
+    return raw
 
 
 def _user_text_from_chat_call(mock_create) -> str:
@@ -630,7 +643,7 @@ class TestLLMClient:
         ])
 
         client = LLMClient(llm_config, review_config)
-        client.openai_client.chat.completions.create = AsyncMock(
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
             return_value=_mock_completion(review_content, 100, 50)
         )
         try:
@@ -652,7 +665,7 @@ class TestLLMClient:
         """The whole PR is reviewed in exactly one inference call (no chunking)."""
         mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
         client = LLMClient(llm_config, review_config)
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.chat.completions.with_raw_response.create = mock_create
         try:
             files = [
                 FileReviewData(path=f"f{i}.py", diff=f"+x{i}\n", content="x = 1\n" * 500)
@@ -669,7 +682,7 @@ class TestLLMClient:
         no inference call — a whole-PR review or none."""
         mock_create = AsyncMock(return_value=_mock_completion("[]", 10, 5))
         client = LLMClient(llm_config, review_config)  # 1M window → ~968k ceiling
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.chat.completions.with_raw_response.create = mock_create
         try:
             # ~1M fake tokens (len//4) of content — over the near-full-window ceiling.
             huge = FileReviewData(path="huge.py", diff="+x\n", content="x" * 4_000_000)
@@ -719,12 +732,12 @@ class TestLLMClient:
     async def test_check_connectivity_ping_success(self, llm_config, review_config):
         """Startup ping succeeds → check_connectivity returns without raising."""
         client = LLMClient(llm_config, review_config)
-        client.openai_client.chat.completions.create = AsyncMock(
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
             return_value=_mock_completion("pong", 5, 1)
         )
         try:
             await client.check_connectivity()
-            client.openai_client.chat.completions.create.assert_called_once()
+            client.openai_client.chat.completions.with_raw_response.create.assert_called_once()
         finally:
             await client.close()
 
@@ -732,7 +745,7 @@ class TestLLMClient:
     async def test_check_connectivity_ping_failure_raises(self, llm_config, review_config):
         """Startup ping fails → exception propagates."""
         client = LLMClient(llm_config, review_config)
-        client.openai_client.chat.completions.create = AsyncMock(
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
             side_effect=openai.APIStatusError(
                 "No access to model",
                 response=httpx.Response(403, request=httpx.Request("POST", "https://x"), text="forbidden"),
@@ -750,7 +763,7 @@ class TestLLMClient:
         """Review calls bind a strict json_schema via `response_format`."""
         mock_create = AsyncMock(return_value=_mock_completion("[]", 10, 5))
         client = LLMClient(llm_config, review_config)
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.chat.completions.with_raw_response.create = mock_create
         try:
             files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
             await client.review_diff(files)
@@ -775,7 +788,7 @@ class TestReasoningEffort:
         assert llm_config.reasoning_effort == "high"
         mock_create = AsyncMock(return_value=_mock_completion("[]", 10, 5))
         client = LLMClient(llm_config, review_config)
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.chat.completions.with_raw_response.create = mock_create
         try:
             files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
             await client.review_diff(files)
@@ -794,7 +807,7 @@ class TestReasoningEffort:
         )
         mock_create = AsyncMock(return_value=_mock_completion("ok", 5, 1))
         client = LLMClient(cfg, review_config)
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.chat.completions.with_raw_response.create = mock_create
         try:
             await client.check_connectivity()
             assert mock_create.call_args.kwargs["reasoning_effort"] == "low"
@@ -813,7 +826,7 @@ class TestReasoningEffort:
             context_window=1_000_000,
         )
         client = LLMClient(cfg, review_config)
-        client.openai_client.chat.completions.create = AsyncMock(
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
             side_effect=_make_api_status_error(400, "Unsupported parameter: 'reasoning_effort'")
         )
         try:
@@ -833,7 +846,7 @@ class TestReasoningEffort:
             context_window=1_000_000,
         )
         client = LLMClient(cfg, review_config)
-        client.openai_client.chat.completions.create = AsyncMock(
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
             side_effect=_make_api_status_error(400, "Invalid value for 'temperature'")
         )
         try:
@@ -854,7 +867,7 @@ class TestReasoningEffort:
         )
         client = LLMClient(cfg, review_config)
         mock_create = AsyncMock(return_value=_mock_completion("ok", 5, 1))
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.chat.completions.with_raw_response.create = mock_create
         try:
             with pytest.raises(RuntimeError, match="context window"):
                 await client.check_connectivity()
@@ -869,7 +882,7 @@ class TestRepoInstructionsInReviewPrompt:
         """Verify {repo_instructions} placeholder is replaced, not left as literal text."""
         mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
         client = LLMClient(llm_config, review_config)
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.chat.completions.with_raw_response.create = mock_create
         try:
             files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
             await client.review_diff(files, repo_instructions="Use 4-space indent")
@@ -885,7 +898,7 @@ class TestRepoInstructionsInReviewPrompt:
         """When no repo instructions, placeholder is replaced with empty string."""
         mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
         client = LLMClient(llm_config, review_config)
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.chat.completions.with_raw_response.create = mock_create
         try:
             files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
             await client.review_diff(files, repo_instructions="")
@@ -901,7 +914,7 @@ class TestCumulativeDiffAndPostedFindingsInPrompt:
     async def test_cumulative_pr_diff_rendered_when_provided(self, llm_config, review_config):
         mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
         client = LLMClient(llm_config, review_config)
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.chat.completions.with_raw_response.create = mock_create
         try:
             files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
             await client.review_diff(
@@ -923,7 +936,7 @@ class TestCumulativeDiffAndPostedFindingsInPrompt:
         # diff/findings grow on every push and belong in the volatile suffix.
         mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
         client = LLMClient(llm_config, review_config)
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.chat.completions.with_raw_response.create = mock_create
         try:
             files = [FileReviewData(path="subject.py", diff="+focusmarker\n", content="focusmarker\n")]
             await client.review_diff(
@@ -944,7 +957,7 @@ class TestCumulativeDiffAndPostedFindingsInPrompt:
     async def test_cumulative_pr_diff_placeholder_cleared_when_empty(self, llm_config, review_config):
         mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
         client = LLMClient(llm_config, review_config)
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.chat.completions.with_raw_response.create = mock_create
         try:
             files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
             await client.review_diff(files)
@@ -958,7 +971,7 @@ class TestCumulativeDiffAndPostedFindingsInPrompt:
     async def test_previously_posted_findings_rendered_when_provided(self, llm_config, review_config):
         mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
         client = LLMClient(llm_config, review_config)
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.chat.completions.with_raw_response.create = mock_create
         try:
             files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
             findings = [
@@ -978,7 +991,7 @@ class TestCumulativeDiffAndPostedFindingsInPrompt:
     async def test_previously_posted_findings_placeholder_cleared_when_empty(self, llm_config, review_config):
         mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
         client = LLMClient(llm_config, review_config)
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.chat.completions.with_raw_response.create = mock_create
         try:
             files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
             await client.review_diff(files, previously_posted_findings=None)
@@ -994,7 +1007,7 @@ class TestComplianceInstructions:
     async def test_compliance_instructions_included_when_enabled_with_ticket(self, llm_config, review_config):
         mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
         client = LLMClient(llm_config, review_config)
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.chat.completions.with_raw_response.create = mock_create
         try:
             files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
             await client.review_diff(
@@ -1013,7 +1026,7 @@ class TestComplianceInstructions:
     async def test_compliance_instructions_excluded_when_disabled(self, llm_config, review_config):
         mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
         client = LLMClient(llm_config, review_config)
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.chat.completions.with_raw_response.create = mock_create
         try:
             files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
             await client.review_diff(
@@ -1029,7 +1042,7 @@ class TestComplianceInstructions:
     async def test_compliance_instructions_excluded_when_no_ticket_context(self, llm_config, review_config):
         mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
         client = LLMClient(llm_config, review_config)
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.chat.completions.with_raw_response.create = mock_create
         try:
             files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
             await client.review_diff(
@@ -1045,7 +1058,7 @@ class TestComplianceInstructions:
     async def test_ticket_context_always_present_regardless_of_compliance_flag(self, llm_config, review_config):
         mock_create = AsyncMock(return_value=_mock_completion("[]", 100, 10))
         client = LLMClient(llm_config, review_config)
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.chat.completions.with_raw_response.create = mock_create
         try:
             files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
             await client.review_diff(
@@ -1061,7 +1074,7 @@ class TestAnswerQuestion:
     @pytest.mark.asyncio
     async def test_answer_question_with_file_data(self, llm_config, review_config):
         client = LLMClient(llm_config, review_config)
-        client.openai_client.chat.completions.create = AsyncMock(
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
             return_value=_mock_completion("The function calculates fibonacci numbers.", 200, 30)
         )
         try:
@@ -1077,7 +1090,7 @@ class TestAnswerQuestion:
         no inference call."""
         mock_create = AsyncMock(return_value=_mock_completion("answer", 5, 1))
         client = LLMClient(llm_config, review_config)  # 1M window → ~968k ceiling
-        client.openai_client.chat.completions.create = mock_create
+        client.openai_client.chat.completions.with_raw_response.create = mock_create
         try:
             huge = FileReviewData(path="huge.py", diff="+x\n", content="x" * 4_000_000)
             result = await client.answer_question("What?", [huge])
@@ -1175,9 +1188,6 @@ class TestContextWindowBudget:
         _swap_active_entry(ModelCatalogEntry(
             model_id=model_id,
             matched_key=model_id,
-            input_per_mtok=5.00,
-            cached_input_per_mtok=0.50,
-            output_per_mtok=30.00,
             max_input_tokens=window,
         ))
 
@@ -1246,6 +1256,89 @@ class TestContextWindowBudget:
         assert client.config.model == "ai-gateway-gpt-5.5"
 
 
+class TestReportedCost:
+    """Cost comes from the proxy's response header, never from local math."""
+
+    @pytest.mark.asyncio
+    async def test_cost_header_is_parsed_onto_usage(self, llm_config, review_config):
+        # Verbatim shape from a real ai-gateway response: bare USD decimal in
+        # scientific notation, no currency symbol.
+        client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
+            return_value=_mock_completion(
+                "[]", 7, 5, cost_header="9.250000000000001e-05",
+            )
+        )
+        try:
+            _text, usage = await client._chat(system="s", user="u")
+            assert usage.cost_usd == pytest.approx(9.250000000000001e-05)
+            assert usage.prompt == 7 and usage.completion == 5
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_missing_header_leaves_cost_none(self, llm_config, review_config):
+        # A non-LiteLLM endpoint reports nothing; the run stays unpriced rather
+        # than being estimated, and the per-PR cap fails open.
+        client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
+            return_value=_mock_completion("[]")
+        )
+        try:
+            _text, usage = await client._chat(system="s", user="u")
+            assert usage.cost_usd is None
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_zero_cost_header_is_not_confused_with_missing(
+        self, llm_config, review_config,
+    ):
+        # "0.0" is falsy — it must survive as a real reported cost.
+        client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
+            return_value=_mock_completion("[]", cost_header="0.0")
+        )
+        try:
+            _text, usage = await client._chat(system="s", user="u")
+            assert usage.cost_usd == 0.0
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_unparseable_header_falls_back_to_none(
+        self, llm_config, review_config,
+    ):
+        # A malformed header must not fail a review that otherwise succeeded.
+        client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
+            return_value=_mock_completion("[]", cost_header="not-a-number")
+        )
+        try:
+            _text, usage = await client._chat(system="s", user="u")
+            assert usage.cost_usd is None
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_cached_tokens_reported_but_do_not_affect_cost(
+        self, llm_config, review_config,
+    ):
+        # cached is display-only now: the proxy's figure already accounts for it.
+        client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
+            return_value=_mock_completion(
+                "[]", 100_000, 5_000, cached_tokens=80_000, cost_header="0.5",
+            )
+        )
+        try:
+            _text, usage = await client._chat(system="s", user="u")
+            assert usage.cached == 80_000
+            assert usage.cost_usd == 0.5
+        finally:
+            await client.close()
+
+
 class TestSerializationAndDeadline:
     @pytest.mark.asyncio
     async def test_concurrent_chats_are_serialized(self, llm_config, review_config):
@@ -1266,7 +1359,7 @@ class TestSerializationAndDeadline:
             finally:
                 active -= 1
 
-        client.openai_client.chat.completions.create = fake_create
+        client.openai_client.chat.completions.with_raw_response.create = fake_create
         try:
             await asyncio.gather(
                 client._chat("sys", "u1"),
@@ -1306,7 +1399,7 @@ class TestSerializationAndDeadline:
             finally:
                 active -= 1
 
-        client.openai_client.chat.completions.create = fake_create
+        client.openai_client.chat.completions.with_raw_response.create = fake_create
         files = [FileReviewData(path="a.py", diff="+x\n", content="x\n")]
         try:
             await asyncio.gather(
@@ -1334,7 +1427,7 @@ class TestSerializationAndDeadline:
             await asyncio.sleep(5)
             return _mock_completion("never")
 
-        client.openai_client.chat.completions.create = slow_create
+        client.openai_client.chat.completions.with_raw_response.create = slow_create
         try:
             with pytest.raises(openai.APITimeoutError):
                 await client._chat("sys", "u")

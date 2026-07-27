@@ -5,6 +5,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Any, final
 
 import httpx
@@ -55,24 +56,48 @@ _SENSITIVE_HEADERS = frozenset({
 })
 
 
-def _usage_from_response(response: ChatCompletion) -> TokenUsage:
-    """Token counts from one completion, including prompt-cache hits.
+# LiteLLM proxies report the cost of the call they just billed, as a bare USD
+# decimal (e.g. "9.250000000000001e-05"). It already accounts for tiered rates
+# above a prompt threshold, prompt-cache read rates, service tier and any
+# configured margin — everything a local recomputation would have to guess at.
+_COST_HEADER = "x-litellm-response-cost"
+
+
+def _reported_cost_usd(headers: Mapping[str, str]) -> float | None:
+    """USD cost of this call as reported by the proxy, or None.
+
+    None on any endpoint that doesn't send the header, or on a value that won't
+    parse. Never raises: a bad header must not fail a review that succeeded.
+    """
+    raw = headers.get(_COST_HEADER)
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        logger.warning("unparseable %s header: %r", _COST_HEADER, raw)
+        return None
+
+
+def _usage_from_response(
+    response: ChatCompletion, cost_usd: float | None
+) -> TokenUsage:
+    """Token counts from one completion, plus the proxy's reported cost.
 
     `prompt_tokens_details.cached_tokens` is optional in the OpenAI schema and
-    an OpenAI-compatible proxy may not forward it. Absent means 0 cached, which
-    prices every prompt token at the full input rate — the same upper bound
-    noergler reported before caching was accounted for, never an overstatement
-    of the discount.
+    a proxy may not forward it; absent means 0. It is reported for visibility
+    only — `cost_usd` already accounts for cache hits.
     """
     usage = response.usage
     if usage is None:
-        return TokenUsage()
+        return TokenUsage(cost_usd=cost_usd)
     details = getattr(usage, "prompt_tokens_details", None)
     cached = getattr(details, "cached_tokens", None) if details is not None else None
     return TokenUsage(
         prompt=usage.prompt_tokens or 0,
         cached=cached or 0,
         completion=usage.completion_tokens or 0,
+        cost_usd=cost_usd,
     )
 
 
@@ -748,14 +773,11 @@ class LLMClient:
             else f" [matched catalog key `{entry.matched_key}`]"
         )
         logger.info(
-            "Model catalog: %s%s (model=%s, base_model=%s) window=%s "
-            "input=$%.2f cached=$%.2f output=$%.2f per Mtok%s",
+            "Model catalog: %s%s (model=%s, base_model=%s) window=%s. "
+            "Costs are read from the endpoint's %s header, not computed here.",
             entry.model_id, matched_note, self.config.model,
             self.config.base_model or "<unset>", _fmt(entry.max_input_tokens),
-            entry.input_per_mtok, entry.cached_input_per_mtok,
-            entry.output_per_mtok,
-            "" if entry.supports_caching else
-            " (no published cache-read rate — cache hits billed at the full input rate)",
+            _COST_HEADER,
         )
 
         # Hard requirement: noergler reviews a whole PR in one call, so it only
@@ -807,12 +829,16 @@ class LLMClient:
             raise
 
     async def _ping(self) -> ChatCompletion:
-        """Smallest-possible inference call used by check_connectivity."""
-        return await self._execute_chat_completion(
+        """Smallest-possible completion used by the startup connectivity check.
+
+        Discards the reported cost — a ping's cost isn't attributable to any PR.
+        """
+        completion, _cost = await self._execute_chat_completion(
             model=self.config.model,
             messages=[{"role": "user", "content": "Reply with: ok"}],
             **self._reasoning_kwargs(),
         )
+        return completion
 
     @dataclass
     class ReviewResult:
@@ -1118,17 +1144,25 @@ class LLMClient:
                 },
             }
         kwargs.update(self._reasoning_kwargs())
-        response = await self._execute_chat_completion(**kwargs)
+        response, cost_usd = await self._execute_chat_completion(**kwargs)
         text = response.choices[0].message.content or "" if response.choices else ""
-        return text, _usage_from_response(response)
+        return text, _usage_from_response(response, cost_usd)
 
-    async def _execute_chat_completion(self, **kwargs: Any) -> ChatCompletion:
+    async def _execute_chat_completion(
+        self, **kwargs: Any
+    ) -> tuple[ChatCompletion, float | None]:
         """Single chokepoint for `openai_client.chat.completions.create`.
 
         Serializes every LLM HTTP call via `_inference_lock` and enforces
         `INFERENCE_HARD_TIMEOUT_SECONDS` as a wall-clock cap. On cap-hit the
         in-flight task is cancelled and `openai.APITimeoutError` is raised so
         the review/mention timeout handlers post a skip notice.
+
+        Goes through `with_raw_response` so the proxy's reported cost header is
+        readable alongside the parsed completion; this is the only place that
+        touches the raw wrapper. `.parse()` is synchronous here — the async
+        client's `with_raw_response` returns a legacy response object.
+        Returns (completion, reported_cost_usd_or_None).
         """
         wait_started = time.monotonic()
         async with self._inference_lock:
@@ -1138,10 +1172,13 @@ class LLMClient:
                     "LLM inference acquired lock after %.1fs", wait_elapsed,
                 )
             try:
-                return await asyncio.wait_for(
-                    self.openai_client.chat.completions.create(**kwargs),
+                raw = await asyncio.wait_for(
+                    self.openai_client.chat.completions.with_raw_response.create(
+                        **kwargs
+                    ),
                     timeout=INFERENCE_HARD_TIMEOUT_SECONDS,
                 )
+                return raw.parse(), _reported_cost_usd(raw.headers)
             except asyncio.TimeoutError as exc:
                 logger.warning(
                     "LLM inference exceeded %.0fs wall-clock cap — aborting",
