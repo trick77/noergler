@@ -28,7 +28,7 @@ from app.llm_client import (
     render_previously_posted_findings,
     split_by_file,
 )
-from app.config import ReviewConfig, ServerConfig, model_label
+from app.config import ReviewConfig, ServerConfig, model_label, resolve_cost_usd
 from app.http_stats import HttpScope, enter_http_scope, exit_http_scope, summarize
 from app.riptide_client import RiptideClient
 from app.context_expansion import expand_all_files
@@ -1008,7 +1008,7 @@ class Reviewer:
             # gateway margin. None on an endpoint that doesn't report one, in
             # which case the run is recorded without a cost and the cap fails
             # open — same path as any unpriced run.
-            run_cost_usd = llm_result.usage.cost_usd
+            run_cost_usd, cost_was_reported = resolve_cost_usd(llm_result.usage)
             cumulative_cost_usd: float | None = None
             if run_cost_usd is not None:
                 cumulative_cost_usd = await _safe_db(
@@ -1025,6 +1025,7 @@ class Reviewer:
                 content_skipped_files=content_skipped,
                 token_usage=(llm_result.prompt_tokens, llm_result.completion_tokens),
                 run_cost_usd=run_cost_usd,
+                cost_was_reported=cost_was_reported,
                 cumulative_cost_usd=cumulative_cost_usd,
                 prompt_breakdown=llm_result.prompt_breakdown,
                 ticket=ticket,
@@ -1950,6 +1951,7 @@ class Reviewer:
         input_budget: int | None = None,
         context_window: int | None = None,
         run_cost_usd: float | None = None,
+        cost_was_reported: bool = True,
         cumulative_cost_usd: float | None = None,
     ) -> str:
         summary = summary or ReviewSummary()
@@ -2162,10 +2164,11 @@ class Reviewer:
                 stats += f" · ⏱️ {elapsed:.1f}s"
             telemetry.append(stats)
 
-        # Omitted entirely when the model has no pricing entry — better than
-        # printing a misleading "$0.00".
+        # Omitted entirely only when neither the endpoint nor the catalog can
+        # price the run — better than printing a misleading "$0.00".
         if run_cost_usd is not None:
-            cost_line = f"Estimated cost: ${run_cost_usd:.2f} this run"
+            label = "Cost" if cost_was_reported else "Estimated cost"
+            cost_line = f"{label}: ${run_cost_usd:.4f} this run"
             if cumulative_cost_usd is not None:
                 cost_line += f", ${cumulative_cost_usd:.2f} PR total"
                 # Show the per-PR budget alongside the running total so the

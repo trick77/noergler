@@ -71,7 +71,10 @@ def _reported_cost_usd(headers: Mapping[str, str]) -> float | None:
     parse. Never raises: a bad header must not fail a review that succeeded.
     """
     raw = headers.get(_COST_HEADER)
-    if raw is None:
+    # LiteLLM sets this header unconditionally via str(response_cost), so a
+    # deployment it can't price yields the literal string "None" rather than an
+    # absent header. Treat that as "not reported", not as corruption.
+    if raw is None or raw.strip().lower() in ("", "none", "null"):
         return None
     try:
         cost = float(raw)
