@@ -73,6 +73,23 @@ class ModelCatalogEntry(BaseModel):
     # invisible — it resolves and boots cleanly.
     matched_key: str
     max_input_tokens: int
+    # Fallback rates, USD per 1M tokens. Only used when the endpoint reports no
+    # usable cost of its own — see `estimate_cost_usd`. None when the catalog
+    # entry publishes no pricing.
+    input_per_mtok: float | None = None
+    cached_input_per_mtok: float | None = None
+    output_per_mtok: float | None = None
+
+
+def _rate(value: object) -> float | None:
+    """LiteLLM per-token cost -> USD per 1M tokens, or None if unusable."""
+    if value is None:
+        return None
+    try:
+        rate = float(value)  # pyright: ignore[reportArgumentType]
+    except (TypeError, ValueError):
+        return None
+    return rate * 1_000_000 if rate >= 0 else None
 
 
 def _parse_catalog_entry(
@@ -88,8 +105,22 @@ def _parse_catalog_entry(
     if window <= 0:
         log.warning("LiteLLM entry for %s has non-positive max_input_tokens", model_id)
         return None
+    input_per_mtok = _rate(raw.get("input_cost_per_token"))
+    output_per_mtok = _rate(raw.get("output_cost_per_token"))
+    cached_per_mtok = _rate(raw.get("cache_read_input_token_cost"))
+    if input_per_mtok is None or output_per_mtok is None:
+        # Window is usable on its own; pricing just won't be available as a
+        # fallback for this model.
+        input_per_mtok = output_per_mtok = cached_per_mtok = None
+    elif cached_per_mtok is None:
+        # No published cache-read rate: charge cache hits at the full input
+        # rate rather than inventing a discount.
+        cached_per_mtok = input_per_mtok
     return ModelCatalogEntry(
         model_id=model_id, matched_key=matched_key, max_input_tokens=window,
+        input_per_mtok=input_per_mtok,
+        cached_input_per_mtok=cached_per_mtok,
+        output_per_mtok=output_per_mtok,
     )
 
 
@@ -288,6 +319,44 @@ class TokenUsage(BaseModel):
     @property
     def total(self) -> int:
         return self.prompt + self.completion
+
+    @property
+    def uncached_prompt(self) -> int:
+        # Clamp: a proxy reporting cached > prompt must not produce a negative
+        # billable count.
+        return max(0, self.prompt - self.cached)
+
+
+def resolve_cost_usd(
+    usage: TokenUsage, entry: ModelCatalogEntry | None = None
+) -> tuple[float | None, bool]:
+    """(cost, was_reported) for one call.
+
+    Prefers the endpoint's own figure, which is exact — it already accounts for
+    tiered rates, cache-read rates, service tier and any gateway margin. Falls
+    back to the catalog rates when the endpoint reports nothing usable, which
+    happens whenever the proxy itself can't price a deployment (LiteLLM then
+    sends the literal string "None"). The fallback is an upper bound above a
+    model's tiered-pricing threshold, but a bounded number beats no number:
+    without it the summary shows no cost and the per-PR cap silently stops
+    applying.
+    """
+    if usage.cost_usd is not None:
+        return usage.cost_usd, True
+    price = entry if entry is not None else _ACTIVE_ENTRY
+    if (
+        price is None
+        or price.input_per_mtok is None
+        or price.output_per_mtok is None
+        or price.cached_input_per_mtok is None
+    ):
+        return None, False
+    estimated = (
+        usage.uncached_prompt * price.input_per_mtok
+        + usage.cached * price.cached_input_per_mtok
+        + usage.completion * price.output_per_mtok
+    ) / 1_000_000
+    return estimated, False
 
 
 class LLMConfig(BaseModel):

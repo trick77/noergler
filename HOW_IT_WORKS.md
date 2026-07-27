@@ -321,7 +321,8 @@ Notes:
 - The cap is a pre-check, so the run that crosses the limit still completes — only *subsequent* automatic runs are blocked ("stop after exceeding").
 - An `@mention` (review or Q&A) is an explicit human override and always runs; its summary still shows the over-limit banner while the PR is over budget.
 - A blocked push does **not** advance the reviewed-commit pointer, so raising the limit (and restarting) re-reviews the accumulated range.
-- The cost is not an estimate. It is the figure the endpoint reports for each call in the `x-litellm-response-cost` header, computed by the same code that bills — so tiered rates above a prompt threshold, prompt-cache read rates, service tier and any gateway margin are all already inside it.
+- The cost prefers the figure the endpoint reports for each call in the `x-litellm-response-cost` header, computed by the same code that bills — so tiered rates, prompt-cache read rates, service tier and any gateway margin are already inside it. The summary labels it `Cost:`.
+- When the endpoint reports nothing usable — LiteLLM sets that header unconditionally, so a deployment its own cost map can't price sends the literal string `None` — the cost falls back to the catalog rates and the summary labels it `Estimated cost:`. Above a model's tiered-pricing threshold the estimate is a lower bound, but a bounded number beats none: with no cost at all the per-PR cap silently stops applying.
 - An endpoint that reports no cost header leaves `total_cost_usd` NULL, and such runs are never capped (fail-open).
 - Cached prompt tokens are logged (`Review complete: N in (M cached) + …`) but are not shown on the summary, not persisted, and not used in any local calculation — the reported cost already reflects them. They are the thing to check in the logs when a cost looks higher than expected.
 

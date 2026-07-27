@@ -113,7 +113,9 @@ The model's **context window** is read at startup from LiteLLM's public catalog,
 
 noergler resolves the configured model against that catalog and **aborts startup** if the catalog can't be fetched or the model isn't in it. That's deliberate: without an entry it has no context window to size the review against, and guessing one is worse than not starting.
 
-**Costs are not computed from the catalog.** The endpoint reports the actual cost of each call in the `x-litellm-response-cost` response header, produced by the same code that bills — already accounting for tiered rates above a prompt threshold, prompt-cache read rates, service tier and any gateway margin. noergler records that number verbatim. An endpoint that sends no such header leaves the run unpriced (`total_cost_usd` NULL), and the per-PR cost cap fails open for it.
+**Costs come from the endpoint where possible.** The `x-litellm-response-cost` response header carries the actual cost of each call, produced by the same code that bills — already accounting for tiered rates, prompt-cache read rates, service tier and any gateway margin. noergler records that number verbatim and labels it `Cost:` on the summary.
+
+If the endpoint reports nothing usable, the catalog rates are used instead and the summary says `Estimated cost:`. This matters in practice: LiteLLM sets the header unconditionally, so a deployment its own cost map can't price sends the literal string `None` rather than omitting the header. If a model resolves in neither, the run is recorded unpriced and the per-PR cap fails open for it.
 
 If your endpoint exposes models under its own aliases (`ai-gateway-gpt-5.5`, an Azure deployment name, …), set `OPENAI_BASE_MODEL` to the upstream id the alias maps to — spelled exactly as the catalog spells it. The alias stays what's sent to the endpoint and what appears in logs and summaries; only the lookup uses the base model. The name mirrors LiteLLM's own [`model_info.base_model`](https://docs.litellm.ai/docs/proxy/custom_pricing), which exists for the same purpose.
 

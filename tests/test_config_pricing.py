@@ -16,6 +16,7 @@ from app.config import (
     fetch_model_catalog,
     refresh_active_entry,
     resolve_catalog_entry,
+    resolve_cost_usd,
     resolve_or_raise,
     usable_context_budget,
 )
@@ -266,6 +267,45 @@ class TestFetchModelCatalog:
                 return_value=httpx.Response(200, text="[]")
             )
             assert await fetch_model_catalog() is None
+
+
+class TestResolveCostUsd:
+    """Endpoint figure first, catalog rates as the fallback."""
+
+    def _priced(self) -> ModelCatalogEntry:
+        return ModelCatalogEntry(
+            model_id="gpt-5.5", matched_key="gpt-5.5", max_input_tokens=1_050_000,
+            input_per_mtok=5.00, cached_input_per_mtok=0.50, output_per_mtok=30.00,
+        )
+
+    def test_reported_cost_wins(self):
+        cost, reported = resolve_cost_usd(
+            TokenUsage(prompt=1_000_000, cost_usd=0.01), self._priced(),
+        )
+        assert (cost, reported) == (0.01, True)
+
+    def test_falls_back_to_catalog_when_endpoint_reports_nothing(self):
+        # Regression: LiteLLM sends the literal "None" for a deployment it
+        # can't price, which left the summary with no cost line at all and
+        # silently disabled the per-PR cap.
+        cost, reported = resolve_cost_usd(
+            TokenUsage(prompt=100_000, cached=80_000, completion=5_000),
+            self._priced(),
+        )
+        assert reported is False
+        expected = (20_000 * 5.00 + 80_000 * 0.50 + 5_000 * 30.00) / 1_000_000
+        assert cost == pytest.approx(expected)
+
+    def test_zero_reported_cost_is_not_replaced_by_an_estimate(self):
+        # 0.0 is falsy but is a real reported cost.
+        cost, reported = resolve_cost_usd(
+            TokenUsage(prompt=1_000_000, cost_usd=0.0), self._priced(),
+        )
+        assert (cost, reported) == (0.0, True)
+
+    def test_no_rates_and_no_report_yields_no_cost(self):
+        cost, reported = resolve_cost_usd(TokenUsage(prompt=1000), _entry())
+        assert (cost, reported) == (None, False)
 
 
 class TestTokenUsage:

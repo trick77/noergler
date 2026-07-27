@@ -1321,6 +1321,23 @@ class TestReportedCost:
             await client.close()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("value", ["None", "null", "", "  "])
+    async def test_unpriced_deployment_sentinel_is_treated_as_absent(
+        self, llm_config, review_config, value,
+    ):
+        # LiteLLM sets the header unconditionally via str(response_cost), so a
+        # deployment it cannot price sends the literal "None".
+        client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
+            return_value=_mock_completion("[]", cost_header=value)
+        )
+        try:
+            _text, usage = await client._chat(system="s", user="u")
+            assert usage.cost_usd is None
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize("value", ["nan", "inf", "-inf", "-0.5"])
     async def test_non_finite_or_negative_cost_is_rejected(
         self, llm_config, review_config, value,
