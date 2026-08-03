@@ -2168,7 +2168,7 @@ class Reviewer:
         # price the run — better than printing a misleading "$0.00".
         if run_cost_usd is not None:
             label = "Cost" if cost_was_reported else "Estimated cost"
-            cost_line = f"{label}: ${run_cost_usd:.4f} this run"
+            cost_line = f"{label}: ${run_cost_usd:.2f} this run"
             if cumulative_cost_usd is not None:
                 cost_line += f", ${cumulative_cost_usd:.2f} PR total"
                 # Show the per-PR budget alongside the running total so the
