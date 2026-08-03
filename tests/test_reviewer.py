@@ -1515,10 +1515,9 @@ class TestSortAndLimit:
             "- _Model: `gpt-5.3-codex` · ↑ 123'456 · ↓ 7'890 "
             "(131'346 total) · ⏱️ 18.4s_"
         ) in footnote_lines
-        # "Cost" (not "Estimated cost") because the endpoint reported it. Four
-        # decimals on the run: a small review costs well under a cent and used
-        # to render as "$0.00".
-        assert "- _Cost: $0.4200 this run, $1.37 PR total / $5.00 limit_" in footnote_lines
+        # "Cost" (not "Estimated cost") because the endpoint reported it. Two
+        # decimals on the run so it reads consistently with the PR total.
+        assert "- _Cost: $0.42 this run, $1.37 PR total / $5.00 limit_" in footnote_lines
         assert "Estimated cost (this run)" not in summary
         assert "Cumulative for this PR" not in summary
         assert "upper bound" not in summary
