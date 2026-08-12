@@ -268,6 +268,29 @@ class TestFetchModelCatalog:
         assert "gpt-5.5" in data
 
     @pytest.mark.asyncio
+    async def test_announces_the_url_before_fetching(self, caplog):
+        # The URL is per-deployment, and a wrong one costs the whole timeout in
+        # silence. The "fetching" line must be emitted before the request, so it
+        # is present even when the fetch then hangs or fails.
+        with caplog.at_level("INFO", logger="app.config"), respx.mock:
+            _mock_catalog()
+            await fetch_model_catalog(CATALOG_URL)
+        messages = [r.getMessage() for r in caplog.records]
+        assert f"Model catalog: fetching {CATALOG_URL}" in messages
+        assert any("fetched" in m and "entries" in m for m in messages)
+
+    @pytest.mark.asyncio
+    async def test_failure_names_the_url(self, caplog):
+        # httpx carries the URL on a transport error but not on a decode
+        # failure, so the warning repeats it either way.
+        with caplog.at_level("WARNING", logger="app.config"), respx.mock:
+            respx.get(CATALOG_URL).mock(
+                return_value=httpx.Response(200, text="not json")
+            )
+            assert await fetch_model_catalog(CATALOG_URL) is None
+        assert any(CATALOG_URL in r.getMessage() for r in caplog.records)
+
+    @pytest.mark.asyncio
     async def test_returns_none_on_http_error(self):
         with respx.mock:
             _mock_catalog(status=404)

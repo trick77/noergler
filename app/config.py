@@ -1,9 +1,12 @@
 import logging
 import os
+import time
 from typing import Any
 
 import httpx
 from pydantic import BaseModel, field_validator
+
+from app.http_stats import make_event_hook
 
 # Webhook events the /webhook endpoint in app/main.py dispatches on.
 # Kept here so the provisioning script and the service stay in sync.
@@ -191,17 +194,32 @@ async def fetch_model_catalog(
 ) -> dict[str, Any] | None:
     """GET the model catalog once and return the parsed JSON, or None."""
     log = logging.getLogger(__name__)
+    # Announce the fetch before making it, not after. The URL is per-deployment
+    # now, and a wrong or unroutable one costs the full timeout at startup —
+    # without this line those seconds are silent and the first thing the
+    # operator sees is a fatal error.
+    log.info("Model catalog: fetching %s", url)
+    started = time.monotonic()
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(
+            timeout=timeout,
+            event_hooks={"request": [make_event_hook("catalog")]},
+        ) as client:
             resp = await client.get(url)
             resp.raise_for_status()
             data = resp.json()
     except Exception as exc:
-        log.warning("model catalog fetch failed: %s", exc)
+        # The URL is repeated here because `exc` carries it for a transport or
+        # status error but not for a JSON decode failure.
+        log.warning("model catalog fetch from %s failed: %s", url, exc)
         return None
     if not isinstance(data, dict):
-        log.warning("model catalog is not a JSON object")
+        log.warning("model catalog at %s is not a JSON object", url)
         return None
+    log.info(
+        "Model catalog: fetched %d entries in %.1fs",
+        len(data), time.monotonic() - started,
+    )
     return data
 
 
