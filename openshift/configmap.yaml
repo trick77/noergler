@@ -6,5 +6,6 @@ data:
   BITBUCKET_URL: "https://bitbucket.company.com"
   BITBUCKET_USERNAME: "noergler"
   OPENAI_BASE_URL: "https://litellm.company.com/v1"
+  MODEL_CATALOG_URL: "https://ai-gateway-catalog.company.com/model_prices_and_context_window.json"
   REVIEW_AUTO_REVIEW_AUTHORS: ""
   JIRA_URL: "https://jira.company.com"

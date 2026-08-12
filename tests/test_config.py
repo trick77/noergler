@@ -17,6 +17,7 @@ def _make_config():
             model="gpt-5.3-codex",
             api_key="secret-api-key",
             api_url="https://llm.example.com/v1",
+            catalog_url="https://catalog.test/model_prices_and_context_window.json",
         ),
         review=ReviewConfig(
             auto_review_authors=["alice", "bob"],
@@ -78,6 +79,7 @@ def test_diff_context_from_env(monkeypatch):
         "BITBUCKET_USERNAME": "bot",
         "OPENAI_API_KEY": "test-key",
         "OPENAI_BASE_URL": "https://llm.example.com/v1",
+        "MODEL_CATALOG_URL": "https://catalog.test/model_prices_and_context_window.json",
         "JIRA_URL": "https://jira.example.com",
         "JIRA_TOKEN": "jira-tok",
         "DATABASE_URL": "postgresql://u:p@localhost/db",
@@ -103,6 +105,7 @@ def test_ticket_compliance_check_from_env(monkeypatch):
         "BITBUCKET_USERNAME": "bot",
         "OPENAI_API_KEY": "test-key",
         "OPENAI_BASE_URL": "https://llm.example.com/v1",
+        "MODEL_CATALOG_URL": "https://catalog.test/model_prices_and_context_window.json",
         "JIRA_URL": "https://jira.example.com",
         "JIRA_TOKEN": "jira-tok",
         "DATABASE_URL": "postgresql://u:p@localhost/db",
@@ -122,6 +125,7 @@ def test_ticket_compliance_check_default_from_env(monkeypatch):
         "BITBUCKET_USERNAME": "bot",
         "OPENAI_API_KEY": "test-key",
         "OPENAI_BASE_URL": "https://llm.example.com/v1",
+        "MODEL_CATALOG_URL": "https://catalog.test/model_prices_and_context_window.json",
         "JIRA_URL": "https://jira.example.com",
         "JIRA_TOKEN": "jira-tok",
         "DATABASE_URL": "postgresql://u:p@localhost/db",
@@ -144,10 +148,24 @@ def _base_env():
         "BITBUCKET_USERNAME": "bot",
         "OPENAI_API_KEY": "test-key",
         "OPENAI_BASE_URL": "https://llm.example.com/v1",
+        "MODEL_CATALOG_URL": "https://catalog.test/model_prices_and_context_window.json",
         "JIRA_URL": "https://jira.example.com",
         "JIRA_TOKEN": "jira-tok",
         "DATABASE_URL": "postgresql://u:p@localhost/db",
     }
+
+
+def test_catalog_url_missing_is_fatal(monkeypatch):
+    # MODEL_CATALOG_URL is required with no default: intg and prod point at
+    # different catalogs, so defaulting to either would silently price and size
+    # a deployment against the wrong one. Startup must fail loudly instead.
+    env = _base_env()
+    del env["MODEL_CATALOG_URL"]
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.delenv("MODEL_CATALOG_URL", raising=False)
+    with pytest.raises(ValueError, match="MODEL_CATALOG_URL"):
+        load_config()
 
 
 def test_reasoning_effort_default_high(monkeypatch):
@@ -192,6 +210,7 @@ def test_opt_out_branch_keyword_from_env(monkeypatch):
         "BITBUCKET_USERNAME": "bot",
         "OPENAI_API_KEY": "test-key",
         "OPENAI_BASE_URL": "https://llm.example.com/v1",
+        "MODEL_CATALOG_URL": "https://catalog.test/model_prices_and_context_window.json",
         "JIRA_URL": "https://jira.example.com",
         "JIRA_TOKEN": "jira-tok",
         "DATABASE_URL": "postgresql://u:p@localhost/db",

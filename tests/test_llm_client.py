@@ -35,6 +35,7 @@ def llm_config():
         api_key="test-key",
         api_url="https://llm.test/v1",
         context_window=1_000_000,
+        catalog_url="https://catalog.test/model_prices_and_context_window.json",
     )
 
 
@@ -42,9 +43,9 @@ def llm_config():
 def _stub_model_catalog(monkeypatch):
     """Keep the startup catalog resolve off the network.
 
-    `check_connectivity` fetches the LiteLLM catalog for real, so without this
-    the suite would depend on GitHub being reachable. Installs a 1.05M-window
-    entry and returns it from the resolve.
+    `check_connectivity` fetches the configured catalog for real, so without
+    this the suite would depend on that host being reachable. Installs a
+    1.05M-window entry and returns it from the resolve.
     """
     import app.config
     import app.llm_client
@@ -55,7 +56,7 @@ def _stub_model_catalog(monkeypatch):
         max_input_tokens=1_050_000,
     )
 
-    async def _fake_resolve(model_id: str, timeout: float = 10.0):
+    async def _fake_resolve(model_id: str, url: str, timeout: float = 10.0):
         _swap_active_entry(entry)
         return entry
 
@@ -79,12 +80,14 @@ def _mock_completion(
     completion_tokens: int = 50,
     cached_tokens: int = 0,
     cost_header: str | None = None,
+    key_spend_header: str | None = None,
 ):
     """Build a mock raw-response wrapper around a chat/completions response.
 
     noergler calls `with_raw_response.create` so it can read the proxy's cost
-    header, so mocks have to look like the wrapper: `.headers` plus a
-    synchronous `.parse()` returning the completion.
+    and key-spend headers, so mocks have to look like the wrapper: `.headers`
+    plus a synchronous `.parse()` returning the completion. Either header
+    defaults to absent, which is what a non-LiteLLM endpoint sends.
     """
     usage = MagicMock()
     usage.prompt_tokens = prompt_tokens
@@ -100,8 +103,14 @@ def _mock_completion(
     completion.choices = [choice]
     completion.usage = usage
 
+    headers: dict[str, str] = {}
+    if cost_header is not None:
+        headers["x-litellm-response-cost"] = cost_header
+    if key_spend_header is not None:
+        headers["x-litellm-key-spend"] = key_spend_header
+
     raw = MagicMock()
-    raw.headers = {} if cost_header is None else {"x-litellm-response-cost": cost_header}
+    raw.headers = headers
     raw.parse = MagicMock(return_value=completion)
     return raw
 
@@ -804,6 +813,7 @@ class TestReasoningEffort:
             api_url="https://llm.test/v1",
             reasoning_effort="low",
             context_window=1_000_000,
+            catalog_url="https://catalog.test/model_prices_and_context_window.json",
         )
         mock_create = AsyncMock(return_value=_mock_completion("ok", 5, 1))
         client = LLMClient(cfg, review_config)
@@ -824,6 +834,7 @@ class TestReasoningEffort:
             api_url="https://llm.test/v1",
             reasoning_effort="high",
             context_window=1_000_000,
+            catalog_url="https://catalog.test/model_prices_and_context_window.json",
         )
         client = LLMClient(cfg, review_config)
         client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
@@ -844,6 +855,7 @@ class TestReasoningEffort:
             api_url="https://llm.test/v1",
             reasoning_effort="high",
             context_window=1_000_000,
+            catalog_url="https://catalog.test/model_prices_and_context_window.json",
         )
         client = LLMClient(cfg, review_config)
         client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
@@ -864,6 +876,7 @@ class TestReasoningEffort:
             api_url="https://llm.test/v1",
             reasoning_effort="high",
             context_window=128_000,
+            catalog_url="https://catalog.test/model_prices_and_context_window.json",
         )
         client = LLMClient(cfg, review_config)
         mock_create = AsyncMock(return_value=_mock_completion("ok", 5, 1))
@@ -1200,6 +1213,7 @@ class TestContextWindowBudget:
             api_key="t",
             api_url="https://llm.test/v1",
             context_window=1_500_000,
+            catalog_url="https://catalog.test/model_prices_and_context_window.json",
         )
         client = LLMClient(cfg, review_config)
         assert client.context_window == 1_500_000
@@ -1208,7 +1222,7 @@ class TestContextWindowBudget:
     def test_budget_derived_from_catalog_window(self, review_config):
         # A 128k window is below the trust threshold → flat 16k headroom.
         self._install(128_000, "gpt-4o")
-        cfg = LLMConfig(model="gpt-4o", api_key="t", api_url="https://llm.test/v1")
+        cfg = LLMConfig(model="gpt-4o", api_key="t", api_url="https://llm.test/v1", catalog_url="https://catalog.test/model_prices_and_context_window.json")
         client = LLMClient(cfg, review_config)
         assert client.context_window == 128_000
         assert client.input_token_budget == 128_000 - 16_000
@@ -1217,7 +1231,7 @@ class TestContextWindowBudget:
         # 272k is just above the 256k threshold, so the diminishing-trust curve
         # applies: 256k + (272k-256k)*0.5 = 264k.
         self._install(272_000, "gpt-5.3-codex")
-        cfg = LLMConfig(model="gpt-5.3-codex", api_key="t", api_url="https://llm.test/v1")
+        cfg = LLMConfig(model="gpt-5.3-codex", api_key="t", api_url="https://llm.test/v1", catalog_url="https://catalog.test/model_prices_and_context_window.json")
         client = LLMClient(cfg, review_config)
         assert client.context_window == 272_000
         assert client.input_token_budget == 264_000
@@ -1225,7 +1239,7 @@ class TestContextWindowBudget:
     def test_budget_for_million_token_model(self, review_config):
         # A 1.05M window degrades hard: 256k + (1050k-256k)*0.5 = 653k.
         self._install(1_050_000)
-        cfg = LLMConfig(model="gpt-5.5", api_key="t", api_url="https://llm.test/v1")
+        cfg = LLMConfig(model="gpt-5.5", api_key="t", api_url="https://llm.test/v1", catalog_url="https://catalog.test/model_prices_and_context_window.json")
         client = LLMClient(cfg, review_config)
         assert client.context_window == 1_050_000
         assert client.input_token_budget == 653_000
@@ -1235,25 +1249,24 @@ class TestContextWindowBudget:
         # check_connectivity, which installs an entry or aborts the process.
         import app.config
         app.config._ACTIVE_ENTRY = None
-        cfg = LLMConfig(model="gpt-5.5", api_key="t", api_url="https://llm.test/v1")
+        cfg = LLMConfig(model="gpt-5.5", api_key="t", api_url="https://llm.test/v1", catalog_url="https://catalog.test/model_prices_and_context_window.json")
         client = LLMClient(cfg, review_config)
         assert client.context_window == 0
 
-    def test_gateway_alias_uses_base_model_as_lookup_key(self, review_config):
-        # The alias is absent from the catalog; base_model is what gets
-        # resolved. The alias stays what goes on the wire.
-        self._install(1_050_000)
+    def test_gateway_alias_is_looked_up_verbatim(self, review_config):
+        # The gateway's own catalog lists the prefixed name, so the alias is
+        # both what gets resolved and what goes on the wire — no second knob.
+        self._install(1_050_000, "ai-gateway/gpt-5.5")
         cfg = LLMConfig(
-            model="ai-gateway-gpt-5.5",
-            base_model="gpt-5.5",
+            model="ai-gateway/gpt-5.5",
             api_key="t",
             api_url="https://llm.test/v1",
+            catalog_url="https://catalog.test/model_prices_and_context_window.json",
         )
         client = LLMClient(cfg, review_config)
-        assert cfg.catalog_model == "gpt-5.5"
         assert client.context_window == 1_050_000
         assert client.input_token_budget == 653_000
-        assert client.config.model == "ai-gateway-gpt-5.5"
+        assert client.config.model == "ai-gateway/gpt-5.5"
 
 
 class TestReportedCost:
@@ -1275,6 +1288,72 @@ class TestReportedCost:
             assert usage.prompt == 7 and usage.completion == 5
         finally:
             await client.close()
+
+    @pytest.mark.asyncio
+    async def test_key_spend_header_is_parsed_onto_usage(
+        self, llm_config, review_config
+    ):
+        # The running total on the API key, reported alongside the per-call
+        # cost. Read as-is — it is a gauge, never accumulated.
+        client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
+            return_value=_mock_completion(
+                "[]", 7, 5, cost_header="0.0004", key_spend_header="214.5031",
+            )
+        )
+        try:
+            _text, usage = await client._chat(system="s", user="u")
+            assert usage.key_spend_usd == pytest.approx(214.5031)
+            assert usage.cost_usd == pytest.approx(0.0004)
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_missing_key_spend_header_leaves_it_none(
+        self, llm_config, review_config
+    ):
+        client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
+            return_value=_mock_completion("[]", 7, 5, cost_header="0.0004")
+        )
+        try:
+            _text, usage = await client._chat(system="s", user="u")
+            assert usage.key_spend_usd is None
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_zero_key_spend_is_preserved_not_dropped(
+        self, llm_config, review_config
+    ):
+        # Zero is a real value for a fresh key, so the parser keeps it. The
+        # decision to hide "$0.00 key total" belongs to the summary renderer.
+        client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
+            return_value=_mock_completion("[]", 7, 5, key_spend_header="0.0")
+        )
+        try:
+            _text, usage = await client._chat(system="s", user="u")
+            assert usage.key_spend_usd == 0.0
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_unusable_key_spend_header_is_ignored(
+        self, llm_config, review_config
+    ):
+        # Same hardening as the cost header: LiteLLM stringifies None, and a
+        # NaN or negative must not reach the summary.
+        for raw in ("None", "null", "", "not-a-number", "nan", "-1"):
+            client = LLMClient(llm_config, review_config)
+            client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
+                return_value=_mock_completion("[]", 7, 5, key_spend_header=raw)
+            )
+            try:
+                _text, usage = await client._chat(system="s", user="u")
+                assert usage.key_spend_usd is None, raw
+            finally:
+                await client.close()
 
     @pytest.mark.asyncio
     async def test_missing_header_leaves_cost_none(self, llm_config, review_config):
@@ -1481,7 +1560,7 @@ class TestSerializationAndDeadline:
     def test_empty_api_key_does_not_crash_construction(self, review_config):
         """A no-auth endpoint (empty api_key) must not make AsyncOpenAI raise
         'Missing credentials' at construction — a placeholder is substituted."""
-        cfg = LLMConfig(model="gpt-5.3-codex", api_key="", api_url="https://llm.test/v1")
+        cfg = LLMConfig(model="gpt-5.3-codex", api_key="", api_url="https://llm.test/v1", catalog_url="https://catalog.test/model_prices_and_context_window.json")
         client = LLMClient(cfg, review_config)
         try:
             assert client.openai_client.api_key == "no-auth"

@@ -63,39 +63,51 @@ _SENSITIVE_HEADERS = frozenset({
 # configured margin — everything a local recomputation would have to guess at.
 _COST_HEADER = "x-litellm-response-cost"
 
+# Cumulative USD already spent on the API key this deployment authenticates
+# with. A gauge, not a per-call amount — LiteLLM maintains it across every call
+# made with the key, so it is shown and never accumulated (see
+# `TokenUsage.key_spend_usd`).
+_KEY_SPEND_HEADER = "x-litellm-key-spend"
 
-def _reported_cost_usd(headers: Mapping[str, str]) -> float | None:
-    """USD cost of this call as reported by the proxy, or None.
+
+def _usd_header(headers: Mapping[str, str], name: str) -> float | None:
+    """Parse a bare USD decimal out of response header `name`, or None.
 
     None on any endpoint that doesn't send the header, or on a value that won't
     parse. Never raises: a bad header must not fail a review that succeeded.
+
+    Note this does not reject zero — a fresh key legitimately has zero spend.
+    The "a reported 0 means the proxy can't price this deployment" judgement is
+    specific to the per-call cost and lives in `resolve_cost_usd`.
     """
-    raw = headers.get(_COST_HEADER)
+    raw = headers.get(name)
     # LiteLLM sets this header unconditionally via str(response_cost), so a
     # deployment it can't price yields the literal string "None" rather than an
     # absent header. Treat that as "not reported", not as corruption.
     if raw is None or raw.strip().lower() in ("", "none", "null"):
         return None
     try:
-        cost = float(raw)
+        value = float(raw)
     except (TypeError, ValueError):
-        logger.warning("unparseable %s header: %r", _COST_HEADER, raw)
+        logger.warning("unparseable %s header: %r", name, raw)
         return None
-    # float() accepts "nan" and "inf". A NaN would be summed into
+    # float() accepts "nan" and "inf". A NaN cost would be summed into
     # pr_reviews.total_cost_usd and every later `total >= limit` comparison
     # against it is False, silently disabling the per-PR cost cap for that PR
     # while it still looks priced. Treat any non-finite or negative value as
     # not reported.
-    if not math.isfinite(cost) or cost < 0:
-        logger.warning("implausible %s header: %r", _COST_HEADER, raw)
+    if not math.isfinite(value) or value < 0:
+        logger.warning("implausible %s header: %r", name, raw)
         return None
-    return cost
+    return value
 
 
 def _usage_from_response(
-    response: ChatCompletion, cost_usd: float | None
+    response: ChatCompletion,
+    cost_usd: float | None,
+    key_spend_usd: float | None = None,
 ) -> TokenUsage:
-    """Token counts from one completion, plus the proxy's reported cost.
+    """Token counts from one completion, plus the proxy's reported figures.
 
     `prompt_tokens_details.cached_tokens` is optional in the OpenAI schema and
     a proxy may not forward it; absent means 0. It is reported for visibility
@@ -103,7 +115,7 @@ def _usage_from_response(
     """
     usage = response.usage
     if usage is None:
-        return TokenUsage(cost_usd=cost_usd)
+        return TokenUsage(cost_usd=cost_usd, key_spend_usd=key_spend_usd)
     details = getattr(usage, "prompt_tokens_details", None)
     cached = getattr(details, "cached_tokens", None) if details is not None else None
     return TokenUsage(
@@ -111,6 +123,7 @@ def _usage_from_response(
         cached=cached or 0,
         completion=usage.completion_tokens or 0,
         cost_usd=cost_usd,
+        key_spend_usd=key_spend_usd,
     )
 
 
@@ -758,7 +771,7 @@ class LLMClient:
 
         An explicit `OPENAI_CONTEXT_WINDOW` still wins — it's the escape hatch
         for an endpoint whose real cap differs from what the catalog advertises.
-        Otherwise this is the catalog's `max_input_tokens` for `catalog_model`.
+        Otherwise this is the catalog's `max_input_tokens` for the configured model.
         Zero before the startup resolve installs an entry; every caller runs
         after `check_connectivity`, which resolves it or aborts the process.
         """
@@ -782,12 +795,12 @@ class LLMClient:
         return {"reasoning_effort": self.config.reasoning_effort}
 
     async def check_connectivity(self) -> None:
-        # Resolve the model against the LiteLLM catalog first — everything below
+        # Resolve the model against the configured catalog first — everything below
         # (the window floor, the pre-flight fit checks, every cost figure) reads
         # the entry this installs. Fatal on failure: there is no local fallback
         # table and no DB cache, so an unresolvable model means noergler would be
         # guessing at both its context window and its prices.
-        entry = await resolve_or_raise(self.config.catalog_model)
+        entry = await resolve_or_raise(self.config.model, self.config.catalog_url)
         # Surface the matched key when it isn't the id we asked for: the prefix
         # fallback searches the whole catalog, so an operator chasing an odd
         # cost figure needs to see what actually priced the run.
@@ -796,12 +809,11 @@ class LLMClient:
             else f" [matched catalog key `{entry.matched_key}`]"
         )
         logger.info(
-            "Model catalog: %s%s (model=%s, base_model=%s) window=%s, "
-            "input token budget %s. "
-            "Costs are read from the endpoint's %s header, not computed here.",
-            entry.model_id, matched_note, self.config.model,
-            self.config.base_model or "<unset>", _fmt(self.context_window),
-            _fmt(self.input_token_budget), _COST_HEADER,
+            "Model catalog: %s%s from %s, window=%s, input token budget %s. "
+            "Costs are read from the endpoint's %s header, falling back to the "
+            "catalog's rates only when it reports none.",
+            entry.model_id, matched_note, self.config.catalog_url,
+            _fmt(self.context_window), _fmt(self.input_token_budget), _COST_HEADER,
         )
 
         # Hard requirement: noergler reviews a whole PR in one call, so it only
@@ -813,8 +825,8 @@ class LLMClient:
                 f"{_fmt(self.context_window)} is below the required "
                 f"{_fmt(_MIN_CONTEXT_WINDOW)}. noergler reviews each PR in a single "
                 f"call and requires a >= {_fmt(_MIN_CONTEXT_WINDOW)}-token model. "
-                f"Set OPENAI_BASE_MODEL if this is a gateway alias for a larger "
-                f"model, or OPENAI_CONTEXT_WINDOW to state the window outright."
+                f"Set OPENAI_CONTEXT_WINDOW to state the window outright if the "
+                f"catalog understates what this endpoint actually accepts."
             )
 
         # Startup ping — smallest-possible inference call. Validates the token
@@ -857,7 +869,7 @@ class LLMClient:
 
         Discards the reported cost — a ping's cost isn't attributable to any PR.
         """
-        completion, _cost = await self._execute_chat_completion(
+        completion, _cost, _key_spend = await self._execute_chat_completion(
             model=self.config.model,
             messages=[{"role": "user", "content": "Reply with: ok"}],
             **self._reasoning_kwargs(),
@@ -1168,13 +1180,15 @@ class LLMClient:
                 },
             }
         kwargs.update(self._reasoning_kwargs())
-        response, cost_usd = await self._execute_chat_completion(**kwargs)
+        response, cost_usd, key_spend_usd = await self._execute_chat_completion(
+            **kwargs
+        )
         text = response.choices[0].message.content or "" if response.choices else ""
-        return text, _usage_from_response(response, cost_usd)
+        return text, _usage_from_response(response, cost_usd, key_spend_usd)
 
     async def _execute_chat_completion(
         self, **kwargs: Any
-    ) -> tuple[ChatCompletion, float | None]:
+    ) -> tuple[ChatCompletion, float | None, float | None]:
         """Single chokepoint for `openai_client.chat.completions.create`.
 
         Serializes every LLM HTTP call via `_inference_lock` and enforces
@@ -1182,11 +1196,12 @@ class LLMClient:
         in-flight task is cancelled and `openai.APITimeoutError` is raised so
         the review/mention timeout handlers post a skip notice.
 
-        Goes through `with_raw_response` so the proxy's reported cost header is
+        Goes through `with_raw_response` so the proxy's reported headers are
         readable alongside the parsed completion; this is the only place that
         touches the raw wrapper. `.parse()` is synchronous here — the async
         client's `with_raw_response` returns a legacy response object.
-        Returns (completion, reported_cost_usd_or_None).
+        Returns (completion, reported_cost_usd, key_spend_usd), the latter two
+        None when the endpoint reports nothing usable.
         """
         wait_started = time.monotonic()
         async with self._inference_lock:
@@ -1202,7 +1217,22 @@ class LLMClient:
                     ),
                     timeout=INFERENCE_HARD_TIMEOUT_SECONDS,
                 )
-                return raw.parse(), _reported_cost_usd(raw.headers)
+                cost = _usd_header(raw.headers, _COST_HEADER)
+                key_spend = _usd_header(raw.headers, _KEY_SPEND_HEADER)
+                if cost is not None and key_spend is None:
+                    # The proxy priced the call but reported no key spend under
+                    # the name we look for. Header naming has varied across
+                    # LiteLLM versions, and a missing gauge is otherwise
+                    # indistinguishable from one this deployment doesn't track
+                    # — so name what did arrive rather than failing silently.
+                    logger.debug(
+                        "no %s on a priced response; x-litellm-* headers seen: %s",
+                        _KEY_SPEND_HEADER,
+                        sorted(
+                            k for k in raw.headers if k.lower().startswith("x-litellm")
+                        ),
+                    )
+                return raw.parse(), cost, key_spend
             except asyncio.TimeoutError as exc:
                 logger.warning(
                     "LLM inference exceeded %.0fs wall-clock cap — aborting",

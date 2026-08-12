@@ -136,7 +136,7 @@ async def lifespan(_app: FastAPI):
     # and the context window are known. Nothing is cached to disk or DB; this
     # task only keeps the in-memory entry fresh every 24h, and a failed refresh
     # keeps the startup entry rather than degrading.
-    pricing_refresher = PricingRefresher(config.llm.catalog_model)
+    pricing_refresher = PricingRefresher(config.llm.model, config.llm.catalog_url)
     pricing_refresher.start()
 
     _app.state.config = config

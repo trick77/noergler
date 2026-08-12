@@ -100,7 +100,7 @@ All configuration is driven by environment variables. The required variables are
 | `BITBUCKET_USERNAME` | Bitbucket service account username (used to identify bot comments) |
 | `OPENAI_API_KEY` | API key for the OpenAI-compatible chat/completions endpoint (e.g. a LiteLLM proxy) |
 | `OPENAI_BASE_URL` | Base URL of the OpenAI-compatible endpoint (the SDK appends `/chat/completions`) |
-| `OPENAI_BASE_MODEL` | Upstream model that `OPENAI_MODEL` maps to. Required unless `OPENAI_MODEL` is itself a [LiteLLM catalog](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json) id — see [Model catalog](#model-catalog) |
+| `MODEL_CATALOG_URL` | Model catalog in LiteLLM's `model_prices_and_context_window.json` format — see [Model catalog](#model-catalog) |
 | `JIRA_URL` | Jira Server/Cloud base URL |
 | `JIRA_TOKEN` | Jira API token |
 | `DATABASE_URL` | PostgreSQL connection string (see [Database](#database) below) |
@@ -109,15 +109,17 @@ See [`.env.example`](.env.example) for all optional settings and their defaults.
 
 ### Model catalog
 
-The model's **context window** is read at startup from LiteLLM's public catalog, [`model_prices_and_context_window.json`](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json) (`max_input_tokens`). Nothing is cached locally or in the database, and there is no baked-in fallback table.
+The model's **context window** is read at startup from the catalog at `MODEL_CATALOG_URL` (`max_input_tokens`), in the format of LiteLLM's [`model_prices_and_context_window.json`](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json). Nothing is cached locally or in the database, and there is no baked-in fallback table.
 
-noergler resolves the configured model against that catalog and **aborts startup** if the catalog can't be fetched or the model isn't in it. That's deliberate: without an entry it has no context window to size the review against, and guessing one is worse than not starting.
+The URL is per-deployment rather than fixed, for two reasons. LiteLLM's public catalog is on GitHub, which not every environment can reach; and a gateway that proxies models under its own names publishes those names only in its own catalog. Point `MODEL_CATALOG_URL` at the catalog your gateway publishes and `OPENAI_MODEL` is looked up in it verbatim, prefix and all (`ai-gateway/gpt-5.4`) — no second setting to keep in sync. Intg and prod typically point at different catalogs.
+
+noergler resolves the configured model against that catalog and **aborts startup** if the catalog can't be fetched or the model isn't in it. That's deliberate: without an entry it has no context window to size the review against, and guessing one is worse than not starting. If your catalog understates what the endpoint actually accepts, `OPENAI_CONTEXT_WINDOW` overrides it.
 
 **Costs come from the endpoint where possible.** The `x-litellm-response-cost` response header carries the actual cost of each call, produced by the same code that bills — already accounting for tiered rates, prompt-cache read rates, service tier and any gateway margin. noergler records that number verbatim and labels it `Cost:` on the summary.
 
-If the endpoint reports nothing usable, the catalog rates are used instead and the summary says `Estimated cost:`. This matters in practice: LiteLLM sets the header unconditionally, so a deployment its own cost map can't price sends the literal string `None` rather than omitting the header. If a model resolves in neither, the run is recorded unpriced and the per-PR cap fails open for it.
+The proxy also reports `x-litellm-key-spend`, the running total already spent on the API key. When present and non-zero it is appended to the same line as `$N key total`. It covers every call made with that key by anyone, so it is shown only — never added to the PR total, never compared against the per-PR cap.
 
-If your endpoint exposes models under its own aliases (`ai-gateway-gpt-5.5`, an Azure deployment name, …), set `OPENAI_BASE_MODEL` to the upstream id the alias maps to — spelled exactly as the catalog spells it. The alias stays what's sent to the endpoint and what appears in logs and summaries; only the lookup uses the base model. The name mirrors LiteLLM's own [`model_info.base_model`](https://docs.litellm.ai/docs/proxy/custom_pricing), which exists for the same purpose.
+If the endpoint reports nothing usable, the catalog rates are used instead and the summary says `Estimated cost:`. This matters in practice: LiteLLM sets the header unconditionally, so a deployment its own cost map can't price sends the literal string `None` rather than omitting the header. If a model resolves in neither, the run is recorded unpriced and the per-PR cap fails open for it.
 
 The entry is refreshed in memory every 24h. Unlike the startup resolve, a failed refresh is non-fatal — the entry loaded at startup stays in use.
 

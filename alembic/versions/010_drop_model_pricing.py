@@ -4,10 +4,11 @@ Revision ID: 010
 Revises: 009
 Create Date: 2026-07-27
 
-noergler no longer caches LLM pricing. The LiteLLM catalog is fetched over the
+noergler no longer caches LLM pricing. The model catalog is fetched over the
 network at startup and re-fetched every 24h in memory; the configured model must
-resolve against it or startup aborts. With no fallback path left, a persisted
-copy could only ever serve stale prices, so the table goes.
+resolve against it or startup aborts. The catalog's own rates are the only
+fallback for a call the endpoint doesn't price, so a persisted copy could only
+ever serve stale prices alongside it — the table goes.
 """
 from typing import Sequence, Union
 
