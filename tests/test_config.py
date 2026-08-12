@@ -155,6 +155,19 @@ def _base_env():
     }
 
 
+def test_catalog_url_missing_is_fatal(monkeypatch):
+    # MODEL_CATALOG_URL is required with no default: intg and prod point at
+    # different catalogs, so defaulting to either would silently price and size
+    # a deployment against the wrong one. Startup must fail loudly instead.
+    env = _base_env()
+    del env["MODEL_CATALOG_URL"]
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.delenv("MODEL_CATALOG_URL", raising=False)
+    with pytest.raises(ValueError, match="MODEL_CATALOG_URL"):
+        load_config()
+
+
 def test_reasoning_effort_default_high(monkeypatch):
     for k, v in _base_env().items():
         monkeypatch.setenv(k, v)

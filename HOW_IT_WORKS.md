@@ -324,7 +324,7 @@ Notes:
 - The cost prefers the figure the endpoint reports for each call in the `x-litellm-response-cost` header, computed by the same code that bills — so tiered rates, prompt-cache read rates, service tier and any gateway margin are already inside it. The summary labels it `Cost:`.
 - The proxy's `x-litellm-key-spend` header carries the running total on the API key. When present and non-zero the summary appends `$N key total` to the same line. It is a whole-key, all-time gauge — including calls noergler never made — so it is display-only: never summed into `total_cost_usd`, never compared against the cap.
 - When the endpoint reports nothing usable — LiteLLM sets that header unconditionally, so a deployment its own cost map can't price sends the literal string `None` — the cost falls back to the catalog rates and the summary labels it `Estimated cost:`. Above a model's tiered-pricing threshold the estimate is a lower bound, but a bounded number beats none: with no cost at all the per-PR cap silently stops applying.
-- An endpoint that reports no cost header leaves `total_cost_usd` NULL, and such runs are never capped (fail-open).
+- An endpoint that reports no usable cost *and* a catalog entry with no published rates leaves `total_cost_usd` NULL, and such runs are never capped (fail-open).
 - Cached prompt tokens are logged (`Review complete: N in (M cached) + …`) but are not shown on the summary, not persisted, and not used in any local calculation — the reported cost already reflects them. They are the thing to check in the logs when a cost looks higher than expected.
 
 ### Inline comments
