@@ -261,14 +261,18 @@ def mock_bitbucket():
 def _make_review_result(
     findings=None, skipped_files=None, review_effort=1,
     timed_out=False, response_unparseable=False, too_large=False,
-    cost_usd=0.000875,
+    cost_usd=0.000875, key_spend_usd=None,
 ):
     # cost_usd mirrors what the proxy reports on the response; None models an
-    # endpoint that reports no cost, which leaves the run unpriced.
+    # endpoint that reports no cost, which falls back to the catalog rates.
+    # key_spend_usd is the whole-key gauge, absent on a non-LiteLLM endpoint.
     return LLMClient.ReviewResult(
         findings=findings or [],
         skipped_files=skipped_files or [],
-        usage=TokenUsage(prompt=100, cached=0, completion=50, cost_usd=cost_usd),
+        usage=TokenUsage(
+            prompt=100, cached=0, completion=50,
+            cost_usd=cost_usd, key_spend_usd=key_spend_usd,
+        ),
         review_effort=review_effort,
         timed_out=timed_out,
         response_unparseable=response_unparseable,
@@ -1518,10 +1522,41 @@ class TestSortAndLimit:
         # "Cost" (not "Estimated cost") because the endpoint reported it. Two
         # decimals on the run so it reads consistently with the PR total.
         assert "- _Cost: $0.42 this run, $1.37 PR total / $5.00 limit_" in footnote_lines
+        # No key-spend header reported → nothing appended.
+        assert "key total" not in summary
         assert "Estimated cost (this run)" not in summary
         assert "Cumulative for this PR" not in summary
         assert "upper bound" not in summary
         assert "ignores prompt cache" not in summary
+
+    def test_build_summary_appends_key_spend_when_reported(self, reviewer):
+        summary = reviewer._build_summary(
+            [],
+            run_cost_usd=0.42,
+            cumulative_cost_usd=1.37,
+            key_spend_usd=214.5031,
+        )
+        footnote_lines = [line for line in summary.splitlines() if line.startswith("- _")]
+        # Whole-key and all-time, so it sits after the PR total rather than
+        # being folded into it or compared against the limit.
+        assert (
+            "- _Cost: $0.42 this run, $1.37 PR total / $5.00 limit, "
+            "$214.50 key total_"
+        ) in footnote_lines
+
+    def test_build_summary_hides_zero_key_spend(self, reviewer):
+        # A proxy that doesn't track key spend reports 0; "$0.00 key total"
+        # would read as a broken integration.
+        summary = reviewer._build_summary(
+            [], run_cost_usd=0.42, cumulative_cost_usd=1.37, key_spend_usd=0.0,
+        )
+        assert "key total" not in summary
+
+    def test_build_summary_omits_key_spend_when_run_is_unpriced(self, reviewer):
+        # No cost line at all means nowhere to hang the gauge.
+        summary = reviewer._build_summary([], run_cost_usd=None, key_spend_usd=214.5)
+        assert "key total" not in summary
+        assert "Cost:" not in summary
 
     @pytest.mark.asyncio
     async def test_findings_limited_in_review(self, mock_bitbucket, mock_llm):

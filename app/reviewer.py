@@ -1005,9 +1005,9 @@ class Reviewer:
             # Per-run + cumulative USD cost. This is the proxy's own figure for
             # the call (x-litellm-response-cost), not an estimate: it already
             # accounts for tiered rates, prompt-cache reads, service tier and any
-            # gateway margin. None on an endpoint that doesn't report one, in
-            # which case the run is recorded without a cost and the cap fails
-            # open — same path as any unpriced run.
+            # gateway margin. When the endpoint reports none, the catalog's
+            # rates stand in; only if those are missing too is the run recorded
+            # without a cost, and the cap then fails open.
             run_cost_usd, cost_was_reported = resolve_cost_usd(llm_result.usage)
             cumulative_cost_usd: float | None = None
             if run_cost_usd is not None:
@@ -1027,6 +1027,7 @@ class Reviewer:
                 run_cost_usd=run_cost_usd,
                 cost_was_reported=cost_was_reported,
                 cumulative_cost_usd=cumulative_cost_usd,
+                key_spend_usd=llm_result.usage.key_spend_usd,
                 prompt_breakdown=llm_result.prompt_breakdown,
                 ticket=ticket,
                 parent_ticket=parent_ticket,
@@ -1273,9 +1274,11 @@ class Reviewer:
                 repository.freeze_pr_cost(self.db_pool, project_key, repo_slug, pr.id)
             )
             if frozen_cost is not None:
+                # No bound qualifier: the accumulated total mixes runs the
+                # endpoint priced exactly with any that fell back to catalog
+                # rates, so neither "upper" nor "lower" holds for the sum.
                 logger.info(
-                    "%s merged — frozen LLM cost $%.4f (upper bound)",
-                    pr_tag, frozen_cost,
+                    "%s merged — frozen LLM cost $%.4f", pr_tag, frozen_cost,
                 )
 
             # Forward the per-PR rollup (cost + diff size + tokens + findings)
@@ -1953,6 +1956,7 @@ class Reviewer:
         run_cost_usd: float | None = None,
         cost_was_reported: bool = True,
         cumulative_cost_usd: float | None = None,
+        key_spend_usd: float | None = None,
     ) -> str:
         summary = summary or ReviewSummary()
         sections: list[str] = []
@@ -2174,6 +2178,14 @@ class Reviewer:
                 # Show the per-PR budget alongside the running total so the
                 # limit is transparent on every summary, not only at the cap.
                 cost_line += f" / ${self.review_config.max_pr_cost_usd:.2f} limit"
+            # Total already spent on the API key, straight from the proxy. It
+            # covers the whole key and all time, so it is neither added to the
+            # PR total nor compared against the per-PR limit — it sits at the
+            # end of the line as a separate figure. Zero is suppressed: a proxy
+            # that doesn't track key spend reports 0, and "$0.00 key total"
+            # reads as a broken integration rather than as a fresh key.
+            if key_spend_usd:
+                cost_line += f", ${key_spend_usd:.2f} key total"
             telemetry.append(cost_line)
 
         footnote = [*scope]

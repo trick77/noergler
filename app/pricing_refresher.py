@@ -1,5 +1,5 @@
 """Background task that keeps the installed model-catalog entry in sync with
-the LiteLLM public catalog. Refreshes every 24h.
+the catalog at `MODEL_CATALOG_URL`. Refreshes every 24h.
 
 Nothing is persisted. The catalog is fetched fresh at startup (fatally, see
 `app.config.resolve_or_raise`) and re-fetched here on a timer; a failed refresh
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 REFRESH_INTERVAL_SECONDS = 24 * 60 * 60
 
 
-async def refresh_once(model_id: str) -> bool:
+async def refresh_once(model_id: str, catalog_url: str) -> bool:
     """One refresh cycle: re-fetch the catalog and swap the entry in.
 
     Returns True on success. False means the fetch failed or the model vanished
@@ -26,7 +26,9 @@ async def refresh_once(model_id: str) -> bool:
     instance down. Only the startup resolve is fatal.
     """
     before = active_entry()
-    ok = await refresh_active_entry(model_id, min_window=_MIN_CONTEXT_WINDOW)
+    ok = await refresh_active_entry(
+        model_id, catalog_url, min_window=_MIN_CONTEXT_WINDOW
+    )
     if not ok:
         logger.warning(
             "model-catalog refresh failed — continuing with the entry loaded at "
@@ -48,8 +50,9 @@ async def refresh_once(model_id: str) -> bool:
 class PricingRefresher:
     """Background asyncio task that calls `refresh_once` every 24h."""
 
-    def __init__(self, model_id: str) -> None:
+    def __init__(self, model_id: str, catalog_url: str) -> None:
         self._model_id = model_id
+        self._catalog_url = catalog_url
         self._task: asyncio.Task[None] | None = None
         self._stop = asyncio.Event()
 
@@ -76,4 +79,4 @@ class PricingRefresher:
                 return  # stop was set
             except asyncio.TimeoutError:
                 pass
-            await refresh_once(self._model_id)
+            await refresh_once(self._model_id, self._catalog_url)

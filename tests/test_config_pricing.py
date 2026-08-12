@@ -6,7 +6,6 @@ import pytest
 import respx
 
 from app.config import (
-    LITELLM_PRICING_URL,
     LLMConfig,
     ModelCatalogEntry,
     ModelCatalogError,
@@ -51,6 +50,13 @@ CATALOG = {
         "output_cost_per_token": 2e-06,
         "max_input_tokens": 128000,
     },
+    # A gateway publishes its own proxied names, prefix and all.
+    "ai-gateway/gpt-5.4": {
+        "input_cost_per_token": 2.5e-06,
+        "output_cost_per_token": 1.5e-05,
+        "cache_read_input_token_cost": 2.5e-07,
+        "max_input_tokens": 1050000,
+    },
     "openrouter/anthropic/claude-sonnet-4.6": {
         "input_cost_per_token": 3e-06,
         "output_cost_per_token": 1.5e-05,
@@ -73,8 +79,13 @@ CATALOG = {
 }
 
 
+# The catalog URL is deployment config now (MODEL_CATALOG_URL), so the tests
+# pick their own rather than importing a constant.
+CATALOG_URL = "https://ai-gateway-catalog.test/model_prices_and_context_window.json"
+
+
 def _mock_catalog(payload: dict[str, object] | None = None, status: int = 200):
-    return respx.get(LITELLM_PRICING_URL).mock(
+    return respx.get(CATALOG_URL).mock(
         return_value=httpx.Response(
             status, text=json.dumps(payload if payload is not None else CATALOG)
         )
@@ -163,7 +174,7 @@ class TestResolveOrRaise:
     async def test_installs_entry_on_success(self):
         with respx.mock:
             _mock_catalog()
-            entry = await resolve_or_raise("gpt-5.5")
+            entry = await resolve_or_raise("gpt-5.5", CATALOG_URL)
         assert entry.model_id == "gpt-5.5"
         assert active_entry() == entry
 
@@ -173,23 +184,25 @@ class TestResolveOrRaise:
         with respx.mock:
             _mock_catalog(status=500)
             with pytest.raises(ModelCatalogError, match="could not fetch"):
-                await resolve_or_raise("gpt-5.5")
+                await resolve_or_raise("gpt-5.5", CATALOG_URL)
         assert active_entry() is None
 
     @pytest.mark.asyncio
     async def test_raises_when_model_absent(self):
         with respx.mock:
             _mock_catalog()
-            with pytest.raises(ModelCatalogError, match="not in the LiteLLM catalog"):
-                await resolve_or_raise("ai-gateway-gpt-5.5")
+            with pytest.raises(ModelCatalogError, match="is not in the catalog"):
+                await resolve_or_raise("ai-gateway-gpt-5.5", CATALOG_URL)
         assert active_entry() is None
 
     @pytest.mark.asyncio
-    async def test_error_names_the_base_model_knob(self):
+    async def test_fetch_error_names_the_configured_url(self):
+        # An operator staring at a boot failure needs to see which URL was
+        # tried, since it is per-deployment now rather than a constant.
         with respx.mock:
-            _mock_catalog()
-            with pytest.raises(ModelCatalogError, match="OPENAI_BASE_MODEL"):
-                await resolve_or_raise("ai-gateway-gpt-5.5")
+            _mock_catalog(status=500)
+            with pytest.raises(ModelCatalogError, match=CATALOG_URL):
+                await resolve_or_raise("gpt-5.5", CATALOG_URL)
 
 
 class TestRefreshActiveEntry:
@@ -198,7 +211,7 @@ class TestRefreshActiveEntry:
         _swap_active_entry(_entry(max_input_tokens=1))
         with respx.mock:
             _mock_catalog()
-            assert await refresh_active_entry("gpt-5.5") is True
+            assert await refresh_active_entry("gpt-5.5", CATALOG_URL) is True
         current = active_entry()
         assert current is not None
         assert current.max_input_tokens == 1_050_000
@@ -211,7 +224,7 @@ class TestRefreshActiveEntry:
         _swap_active_entry(installed)
         with respx.mock:
             _mock_catalog(status=503)
-            assert await refresh_active_entry("gpt-5.5") is False
+            assert await refresh_active_entry("gpt-5.5", CATALOG_URL) is False
         assert active_entry() == installed
 
     @pytest.mark.asyncio
@@ -223,7 +236,7 @@ class TestRefreshActiveEntry:
         _swap_active_entry(installed)
         with respx.mock:
             _mock_catalog(payload={"gpt-5.5": {"max_input_tokens": 272_000}})
-            assert await refresh_active_entry("gpt-5.5", min_window=1_000_000) is False
+            assert await refresh_active_entry("gpt-5.5", CATALOG_URL, min_window=1_000_000) is False
         assert active_entry() == installed
 
     @pytest.mark.asyncio
@@ -231,7 +244,7 @@ class TestRefreshActiveEntry:
         _swap_active_entry(_entry(max_input_tokens=1_050_000))
         with respx.mock:
             _mock_catalog(payload={"gpt-5.5": {"max_input_tokens": 272_000}})
-            assert await refresh_active_entry("gpt-5.5") is True
+            assert await refresh_active_entry("gpt-5.5", CATALOG_URL) is True
         current = active_entry()
         assert current is not None and current.max_input_tokens == 272_000
 
@@ -241,7 +254,7 @@ class TestRefreshActiveEntry:
         _swap_active_entry(installed)
         with respx.mock:
             _mock_catalog(payload={"some-other-model": CATALOG["gpt-5.4"]})
-            assert await refresh_active_entry("gpt-5.5") is False
+            assert await refresh_active_entry("gpt-5.5", CATALOG_URL) is False
         assert active_entry() == installed
 
 
@@ -250,7 +263,7 @@ class TestFetchModelCatalog:
     async def test_returns_parsed_json(self):
         with respx.mock:
             _mock_catalog()
-            data = await fetch_model_catalog()
+            data = await fetch_model_catalog(CATALOG_URL)
         assert data is not None
         assert "gpt-5.5" in data
 
@@ -258,15 +271,15 @@ class TestFetchModelCatalog:
     async def test_returns_none_on_http_error(self):
         with respx.mock:
             _mock_catalog(status=404)
-            assert await fetch_model_catalog() is None
+            assert await fetch_model_catalog(CATALOG_URL) is None
 
     @pytest.mark.asyncio
     async def test_returns_none_when_payload_is_not_an_object(self):
         with respx.mock:
-            respx.get(LITELLM_PRICING_URL).mock(
+            respx.get(CATALOG_URL).mock(
                 return_value=httpx.Response(200, text="[]")
             )
-            assert await fetch_model_catalog() is None
+            assert await fetch_model_catalog(CATALOG_URL) is None
 
 
 class TestResolveCostUsd:
@@ -359,32 +372,37 @@ class TestUsableContextBudget:
         assert usable_context_budget(1_000) == 2_000
 
 
-class TestCatalogModel:
-    """`base_model` maps a gateway alias onto a catalog id."""
+class TestGatewayPrefixedNames:
+    """A gateway catalog lists its own prefixed names, so they resolve directly."""
 
     def _config(self, **overrides) -> LLMConfig:
         return LLMConfig(
-            api_key="k", api_url="https://gw.example.com/v1", **overrides,
+            api_key="k", api_url="https://gw.example.com/v1",
+            catalog_url=CATALOG_URL, **overrides,
         )
 
-    def test_unset_base_model_falls_back_to_model(self):
-        cfg = self._config(model="gpt-5.4")
-        assert cfg.base_model == ""
-        assert cfg.catalog_model == "gpt-5.4"
+    def test_prefixed_name_resolves_by_exact_key(self):
+        entry = resolve_catalog_entry(CATALOG, "ai-gateway/gpt-5.4")
+        assert entry is not None
+        assert entry.matched_key == "ai-gateway/gpt-5.4"
+        assert entry.max_input_tokens == 1_050_000
 
-    def test_base_model_overrides_lookup_key(self):
-        cfg = self._config(model="ai-gateway-gpt-5.5", base_model="gpt-5.5")
-        assert cfg.catalog_model == "gpt-5.5"
-        # The alias itself resolves to nothing — that's the whole problem.
-        assert resolve_catalog_entry(CATALOG, cfg.model) is None
+    def test_prefixed_name_is_unresolvable_without_a_gateway_entry(self):
+        # Why the catalog has to be the gateway's own: the matcher works by
+        # extension, so a left-side `ai-gateway/` prefix can never fall back to
+        # the bare `gpt-5.4` key that a public catalog would carry.
+        public_only = {
+            k: v for k, v in CATALOG.items() if not k.startswith("ai-gateway/")
+        }
+        assert resolve_catalog_entry(public_only, "ai-gateway/gpt-5.4") is None
 
     @pytest.mark.asyncio
-    async def test_gateway_alias_resolves_via_base_model(self):
-        cfg = self._config(model="ai-gateway-gpt-5.5", base_model="gpt-5.5")
+    async def test_startup_resolves_the_alias_with_no_extra_config(self):
+        cfg = self._config(model="ai-gateway/gpt-5.4")
         with respx.mock:
             _mock_catalog()
-            entry = await resolve_or_raise(cfg.catalog_model)
-        # The payoff: a window that clears the 1M floor, with no
-        # OPENAI_CONTEXT_WINDOW set by hand.
+            entry = await resolve_or_raise(cfg.model, cfg.catalog_url)
+        # The payoff: a window that clears the 1M floor, with neither a
+        # base-model knob nor OPENAI_CONTEXT_WINDOW set by hand.
         assert cfg.context_window == 0
         assert entry.max_input_tokens == 1_050_000
