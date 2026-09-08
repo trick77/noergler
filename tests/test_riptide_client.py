@@ -133,7 +133,10 @@ class TestEmit:
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_emit_pr_completed_skipped_when_cost_none(self):
+    async def test_emit_pr_completed_omits_cost_when_unpriced(self):
+        # An unpriced model must not cost the whole rollup: outcome, diff size,
+        # tokens and runs still feed riptide's delivery metrics. The cost is
+        # left out rather than sent as 0, so the gap stays countable.
         route = respx.post("http://r/webhooks/noergler").mock(
             return_value=httpx.Response(202, json={"status": "accepted"})
         )
@@ -145,7 +148,46 @@ class TestEmit:
         finally:
             await client.close()
 
-        assert not route.called
+        assert route.called
+        body = httpx.Response(
+            200, content=route.calls[0].request.content
+        ).json()
+        assert "total_cost_usd" not in body
+        assert body["outcome"] == "merged"
+        assert body["total_runs"] == 2
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_emit_pr_completed_sends_reviewer_handle(self):
+        # riptide filters our own review comments out of pickup time with it.
+        route = respx.post("http://r/webhooks/noergler").mock(
+            return_value=httpx.Response(202, json={"status": "accepted"})
+        )
+        client = RiptideClient(url="http://r", token="t")
+        try:
+            await client.emit_pr_completed(
+                **_pr_completed_kwargs(), reviewer_handle="noergler-svc"
+            )
+        finally:
+            await client.close()
+
+        body = httpx.Response(200, content=route.calls[0].request.content).json()
+        assert body["reviewer_handle"] == "noergler-svc"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_emit_pr_completed_omits_absent_reviewer_handle(self):
+        route = respx.post("http://r/webhooks/noergler").mock(
+            return_value=httpx.Response(202, json={"status": "accepted"})
+        )
+        client = RiptideClient(url="http://r", token="t")
+        try:
+            await client.emit_pr_completed(**_pr_completed_kwargs())
+        finally:
+            await client.close()
+
+        body = httpx.Response(200, content=route.calls[0].request.content).json()
+        assert "reviewer_handle" not in body
 
     @pytest.mark.asyncio
     @respx.mock

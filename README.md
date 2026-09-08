@@ -149,6 +149,17 @@ When set, noergler verifies reachability and the bearer at startup via
 PR lifecycle (open/merge/decline) is **not** forwarded — riptide already
 captures that from Bitbucket directly.
 
+The rollup also carries `reviewer_handle` (`BITBUCKET_USERNAME`, the account
+noergler comments under). riptide uses it to exclude our review comments from
+its code-review pickup-time metric: an unrecognised review bot answers every PR
+within seconds and drives that metric to near zero.
+
+A rollup whose cost could not be determined (unpriced model, gateway not
+reporting a cost header) is still forwarded, with the cost omitted rather than
+sent as `0` — the outcome, diff size, tokens and run count still feed riptide's
+delivery metrics. Such an emission logs a warning naming the models, so missing
+pricing is visible instead of silently withholding the PR.
+
 ### Database
 
 noergler requires PostgreSQL for review state, deduplication, and statistics. The database connection is validated on startup — the app will not start without it.

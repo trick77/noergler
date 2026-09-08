@@ -1461,6 +1461,7 @@ class Reviewer:
             models_used=models_used,
             first_review_at=first_review_at,
             closed_at=datetime.now(timezone.utc),
+            reviewer_handle=self.bitbucket.bot_username,
         )
 
     def _extract_project_repo(

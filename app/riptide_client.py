@@ -126,21 +126,25 @@ class RiptideClient:
         models_used: list[str],
         first_review_at: datetime,
         closed_at: datetime,
+        reviewer_handle: str | None = None,
     ) -> None:
         """Emit the per-PR rollup once the PR has reached a terminal state.
 
         `outcome` must be one of 'merged' / 'declined' / 'deleted' — riptide
         rejects anything else with HTTP 422.
+
+        An unknown cost is sent as an absent `total_cost_usd`, never as 0: a
+        zero would silently understate spend, while omitting it leaves the
+        gap countable on the riptide side. The rollup still ships, because it
+        also carries the outcome, diff size, tokens and runs that the delivery
+        metrics need — those must not be lost over missing pricing.
         """
         if total_cost_usd is None:
-            # Skip emission rather than send a meaningless 0; missing pricing
-            # for a model is a config gap worth surfacing on the riptide side
-            # via low row-counts, not silently filled with zeros.
-            logger.debug(
-                "Riptide emit skipped (no cost) for %s outcome=%s models=%s",
+            logger.warning(
+                "Riptide: emitting %s (outcome=%s) without cost — no price for "
+                "models=%s; FinOps will undercount until pricing is configured",
                 pr_key, outcome, models_used,
             )
-            return
         body: dict[str, Any] = {
             "event_type": "pr_completed",
             "outcome": outcome,
@@ -156,11 +160,18 @@ class RiptideClient:
             "total_completion_tokens": total_completion_tokens,
             "total_elapsed_ms": total_elapsed_ms,
             "total_findings_count": total_findings_count,
-            "total_cost_usd": str(total_cost_usd),
             "models_used": models_used,
             "first_review_at": _isoformat_z(first_review_at),
             "closed_at": _isoformat_z(closed_at),
         }
+        if total_cost_usd is not None:
+            body["total_cost_usd"] = str(total_cost_usd)
+        if reviewer_handle:
+            # The account these reviews are posted under. riptide filters our
+            # own comments out of review-pickup time with it; without it the
+            # bot counts as a human reviewer and the metric collapses to
+            # seconds.
+            body["reviewer_handle"] = reviewer_handle
         await self._post(body)
 
     async def _post(self, body: dict[str, Any]) -> None:
