@@ -167,11 +167,14 @@ class RiptideClient:
         if total_cost_usd is not None:
             body["total_cost_usd"] = str(total_cost_usd)
         if reviewer_handle:
-            # The account these reviews are posted under. riptide filters our
-            # own comments out of review-pickup time with it; without it the
-            # bot counts as a human reviewer and the metric collapses to
-            # seconds.
+            # Declare what we are: the account these reviews are posted under,
+            # and that it is automation. riptide keeps no bot names of its own
+            # — it stores this declaration and filters our comments out of
+            # review-pickup time with it. The handle is unavoidable: those
+            # comments reach riptide from Bitbucket, where we are just another
+            # user, so it is the only key back to them.
             body["reviewer_handle"] = reviewer_handle
+            body["reviewer_is_bot"] = True
         await self._post(body)
 
     async def _post(self, body: dict[str, Any]) -> None:
