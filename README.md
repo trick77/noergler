@@ -157,8 +157,8 @@ captures that from Bitbucket directly.
 > Requires riptide with `reviewer_handle` and optional `total_cost_usd`.
 
 The rollup also declares who we are: `reviewer_handle` (`BITBUCKET_USERNAME`,
-the account noergler comments under) plus `reviewer_is_bot: true`. riptide keeps
-no bot names of its own — it stores the declaration. The handle is needed
+the account noergler comments under) plus `reviewer_account_kind: "bot"`.
+riptide keeps no account names of its own — it stores the declaration. The handle is needed
 because the review comments reach riptide from Bitbucket, where noergler is just
 another user, so it is the only key back to those rows. riptide uses it to exclude our review comments from
 its code-review pickup-time metric: an unrecognised review bot answers every PR

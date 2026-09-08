@@ -173,9 +173,9 @@ class TestEmit:
 
         body = httpx.Response(200, content=route.calls[0].request.content).json()
         assert body["reviewer_handle"] == "noergler-svc"
-        # We declare that the account is a bot; riptide stores the declaration
+        # We declare what the account is; riptide stores the declaration
         # instead of inferring anything from the name.
-        assert body["reviewer_is_bot"] is True
+        assert body["reviewer_account_kind"] == "bot"
 
     @pytest.mark.asyncio
     @respx.mock
@@ -191,7 +191,7 @@ class TestEmit:
 
         body = httpx.Response(200, content=route.calls[0].request.content).json()
         assert "reviewer_handle" not in body
-        assert "reviewer_is_bot" not in body
+        assert "reviewer_account_kind" not in body
 
     @pytest.mark.asyncio
     @respx.mock

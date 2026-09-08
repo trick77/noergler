@@ -174,7 +174,7 @@ class RiptideClient:
             # comments reach riptide from Bitbucket, where we are just another
             # user, so it is the only key back to them.
             body["reviewer_handle"] = reviewer_handle
-            body["reviewer_is_bot"] = True
+            body["reviewer_account_kind"] = "bot"
         await self._post(body)
 
     async def _post(self, body: dict[str, Any]) -> None:
