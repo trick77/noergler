@@ -14,13 +14,18 @@ from scripts.onboard_repo import (
     HTTPStatusError,
     RepoOnboarder,
     RepoSpec,
+    default_webhook_secret_var,
     load_onboarding_input,
+    load_team_entry,
+    team_owns,
     main,
     resolve_secrets,
 )
 
 BASE_URL = "https://bitbucket.company.com"
-WEBHOOK_URL = "https://noergler.internal/webhook"
+TEAM = "platform"
+WEBHOOK_URL = f"https://noergler.internal/webhook/{TEAM}"
+SECRET_VAR = "TEAM_PLATFORM_WEBHOOK_SECRET"
 
 
 # --------------------------------------------------------------------------- #
@@ -143,8 +148,9 @@ class TestLoadOnboardingInput:
 
     def test_valid_config(self, tmp_path):
         path = self._write(tmp_path, {
+            "team": TEAM,
             "bitbucket_url": "https://bb.example.com",
-            "webhook_url": "https://noergler/webhook",
+            "webhook_url": f"https://noergler/webhook/{TEAM}",
             "projects": [
                 {"project": "A", "repos": ["one", "two"]},
                 {"project": "B", "repos": ["three"]},
@@ -152,21 +158,24 @@ class TestLoadOnboardingInput:
         })
         result = load_onboarding_input(path)
         assert result.bitbucket_url == "https://bb.example.com"
-        assert result.webhook_url == "https://noergler/webhook"
+        assert result.webhook_url == f"https://noergler/webhook/{TEAM}"
+        assert result.team == TEAM
         assert [r.key for r in result.repos] == ["A/one", "A/two", "B/three"]
 
     def test_strips_trailing_slash_on_bitbucket_url(self, tmp_path):
         path = self._write(tmp_path, {
+            "team": TEAM,
             "bitbucket_url": "https://bb.example.com/",
-            "webhook_url": "https://x/webhook",
+            "webhook_url": f"https://x/webhook/{TEAM}",
             "projects": [{"project": "A", "repos": ["one"]}],
         })
         assert load_onboarding_input(path).bitbucket_url == "https://bb.example.com"
 
     def test_rejects_http_bitbucket_url(self, tmp_path):
         path = self._write(tmp_path, {
+            "team": TEAM,
             "bitbucket_url": "http://bb",
-            "webhook_url": "https://x/webhook",
+            "webhook_url": f"https://x/webhook/{TEAM}",
             "projects": [{"project": "A", "repos": ["one"]}],
         })
         with pytest.raises(SystemExit, match="bitbucket_url"):
@@ -174,6 +183,7 @@ class TestLoadOnboardingInput:
 
     def test_rejects_missing_webhook_url(self, tmp_path):
         path = self._write(tmp_path, {
+            "team": TEAM,
             "bitbucket_url": "https://bb",
             "projects": [{"project": "A", "repos": ["one"]}],
         })
@@ -182,16 +192,18 @@ class TestLoadOnboardingInput:
 
     def test_rejects_missing_projects(self, tmp_path):
         path = self._write(tmp_path, {
+            "team": TEAM,
             "bitbucket_url": "https://bb",
-            "webhook_url": "https://x/webhook",
+            "webhook_url": f"https://x/webhook/{TEAM}",
         })
         with pytest.raises(SystemExit, match="projects"):
             load_onboarding_input(path)
 
     def test_rejects_empty_projects_list(self, tmp_path):
         path = self._write(tmp_path, {
+            "team": TEAM,
             "bitbucket_url": "https://bb",
-            "webhook_url": "https://x/webhook",
+            "webhook_url": f"https://x/webhook/{TEAM}",
             "projects": [],
         })
         with pytest.raises(SystemExit, match="projects"):
@@ -199,8 +211,9 @@ class TestLoadOnboardingInput:
 
     def test_rejects_empty_repos_under_project(self, tmp_path):
         path = self._write(tmp_path, {
+            "team": TEAM,
             "bitbucket_url": "https://bb",
-            "webhook_url": "https://x/webhook",
+            "webhook_url": f"https://x/webhook/{TEAM}",
             "projects": [{"project": "A", "repos": []}],
         })
         with pytest.raises(SystemExit, match="repos"):
@@ -208,8 +221,9 @@ class TestLoadOnboardingInput:
 
     def test_rejects_duplicate_repos(self, tmp_path):
         path = self._write(tmp_path, {
+            "team": TEAM,
             "bitbucket_url": "https://bb",
-            "webhook_url": "https://x/webhook",
+            "webhook_url": f"https://x/webhook/{TEAM}",
             "projects": [
                 {"project": "A", "repos": ["one", "one"]},
             ],
@@ -219,8 +233,9 @@ class TestLoadOnboardingInput:
 
     def test_rejects_duplicate_across_project_entries(self, tmp_path):
         path = self._write(tmp_path, {
+            "team": TEAM,
             "bitbucket_url": "https://bb",
-            "webhook_url": "https://x/webhook",
+            "webhook_url": f"https://x/webhook/{TEAM}",
             "projects": [
                 {"project": "A", "repos": ["one"]},
                 {"project": "A", "repos": ["one"]},
@@ -231,12 +246,100 @@ class TestLoadOnboardingInput:
 
     def test_rejects_missing_project_field(self, tmp_path):
         path = self._write(tmp_path, {
+            "team": TEAM,
             "bitbucket_url": "https://bb",
-            "webhook_url": "https://x/webhook",
+            "webhook_url": f"https://x/webhook/{TEAM}",
             "projects": [{"repos": ["one"]}],
         })
         with pytest.raises(SystemExit, match="project"):
             load_onboarding_input(path)
+
+
+    def test_rejects_missing_team(self, tmp_path):
+        path = self._write(tmp_path, {
+            "bitbucket_url": "https://bb.example.com",
+            "webhook_url": f"https://x/webhook/{TEAM}",
+            "projects": [{"project": "A", "repos": ["one"]}],
+        })
+        with pytest.raises(SystemExit, match="'team'"):
+            load_onboarding_input(path)
+
+    def test_rejects_invalid_team_slug(self, tmp_path):
+        path = self._write(tmp_path, {
+            "team": "Platform Team",
+            "bitbucket_url": "https://bb.example.com",
+            "webhook_url": "https://x/webhook/platform",
+            "projects": [{"project": "A", "repos": ["one"]}],
+        })
+        with pytest.raises(SystemExit, match="'team'"):
+            load_onboarding_input(path)
+
+    def test_rejects_webhook_url_without_the_team_path(self, tmp_path):
+        # The service routes by /webhook/<team>; a bare /webhook is a 404.
+        path = self._write(tmp_path, {
+            "team": TEAM,
+            "bitbucket_url": "https://bb.example.com",
+            "webhook_url": "https://x/webhook",
+            "projects": [{"project": "A", "repos": ["one"]}],
+        })
+        with pytest.raises(SystemExit, match="/webhook/platform"):
+            load_onboarding_input(path)
+
+    def test_rejects_webhook_url_for_another_team(self, tmp_path):
+        path = self._write(tmp_path, {
+            "team": TEAM,
+            "bitbucket_url": "https://bb.example.com",
+            "webhook_url": "https://x/webhook/payments",
+            "projects": [{"project": "A", "repos": ["one"]}],
+        })
+        with pytest.raises(SystemExit, match="/webhook/platform"):
+            load_onboarding_input(path)
+
+
+# --------------------------------------------------------------------------- #
+# teams.yaml lookup
+# --------------------------------------------------------------------------- #
+
+TEAMS_YAML = """
+teams:
+  - slug: platform
+    webhook_secret_env: PLATFORM_HOOK
+    projects:
+      - key: PROJ
+        repos: [r, good]
+      - key: OPEN
+    inference:
+      api_key_env: X
+"""
+
+
+class TestTeamsLookup:
+    def test_default_secret_var_follows_the_convention(self):
+        assert default_webhook_secret_var("data-platform") == "TEAM_DATA_PLATFORM_WEBHOOK_SECRET"
+
+    def test_load_team_entry_finds_the_slug(self, tmp_path):
+        path = tmp_path / "teams.yaml"
+        path.write_text(TEAMS_YAML)
+        entry = load_team_entry(path, "platform")
+        assert entry is not None
+        assert entry["webhook_secret_env"] == "PLATFORM_HOOK"
+        assert load_team_entry(path, "nobody") is None
+
+    def test_load_team_entry_rejects_a_file_without_teams(self, tmp_path):
+        path = tmp_path / "teams.yaml"
+        path.write_text("foo: bar")
+        with pytest.raises(SystemExit, match="teams:"):
+            load_team_entry(path, "platform")
+
+    def test_team_owns_respects_repo_lists(self, tmp_path):
+        path = tmp_path / "teams.yaml"
+        path.write_text(TEAMS_YAML)
+        entry = load_team_entry(path, "platform")
+        assert entry is not None
+        assert team_owns(entry, RepoSpec("PROJ", "r"))
+        assert not team_owns(entry, RepoSpec("PROJ", "other"))
+        assert team_owns(entry, RepoSpec("OPEN", "anything"))
+        assert not team_owns(entry, RepoSpec("NOPE", "x"))
 
 
 # --------------------------------------------------------------------------- #
@@ -246,59 +349,59 @@ class TestLoadOnboardingInput:
 class TestResolveSecrets:
     def test_env_vars_win(self, monkeypatch, tmp_path):
         monkeypatch.setenv("BITBUCKET_TOKEN", "from-env")
-        monkeypatch.setenv("BITBUCKET_WEBHOOK_SECRET", "sec-env")
+        monkeypatch.setenv(SECRET_VAR, "sec-env")
         monkeypatch.chdir(tmp_path)
-        token, secret = resolve_secrets(None)
+        token, secret = resolve_secrets(None, SECRET_VAR)
         assert (token, secret) == ("from-env", "sec-env")
 
     def test_env_file_fallback(self, monkeypatch, tmp_path):
         monkeypatch.delenv("BITBUCKET_TOKEN", raising=False)
-        monkeypatch.delenv("BITBUCKET_WEBHOOK_SECRET", raising=False)
+        monkeypatch.delenv(SECRET_VAR, raising=False)
         monkeypatch.chdir(tmp_path)
         env_file = tmp_path / "extra.env"
         env_file.write_text(
-            'BITBUCKET_TOKEN="file-token"\nBITBUCKET_WEBHOOK_SECRET=file-secret\n# ignored\n'
+            'BITBUCKET_TOKEN="file-token"\nTEAM_PLATFORM_WEBHOOK_SECRET=file-secret\n# ignored\n'
         )
-        token, secret = resolve_secrets(env_file)
+        token, secret = resolve_secrets(env_file, SECRET_VAR)
         assert (token, secret) == ("file-token", "file-secret")
 
     def test_cwd_dotenv_used(self, monkeypatch, tmp_path):
         monkeypatch.delenv("BITBUCKET_TOKEN", raising=False)
-        monkeypatch.delenv("BITBUCKET_WEBHOOK_SECRET", raising=False)
+        monkeypatch.delenv(SECRET_VAR, raising=False)
         (tmp_path / ".env").write_text(
-            "BITBUCKET_TOKEN=cwd-token\nBITBUCKET_WEBHOOK_SECRET=cwd-secret\n"
+            "BITBUCKET_TOKEN=cwd-token\nTEAM_PLATFORM_WEBHOOK_SECRET=cwd-secret\n"
         )
         monkeypatch.chdir(tmp_path)
-        token, secret = resolve_secrets(None)
+        token, secret = resolve_secrets(None, SECRET_VAR)
         assert (token, secret) == ("cwd-token", "cwd-secret")
 
     def test_precedence_env_beats_cwd_beats_envfile(self, monkeypatch, tmp_path):
         """Pin down: process env > cwd .env > --env-file."""
         (tmp_path / ".env").write_text(
-            "BITBUCKET_TOKEN=cwd-token\nBITBUCKET_WEBHOOK_SECRET=cwd-secret\n"
+            "BITBUCKET_TOKEN=cwd-token\nTEAM_PLATFORM_WEBHOOK_SECRET=cwd-secret\n"
         )
         env_file = tmp_path / "lowest.env"
         env_file.write_text(
-            "BITBUCKET_TOKEN=envfile-token\nBITBUCKET_WEBHOOK_SECRET=envfile-secret\n"
+            "BITBUCKET_TOKEN=envfile-token\nTEAM_PLATFORM_WEBHOOK_SECRET=envfile-secret\n"
         )
         monkeypatch.chdir(tmp_path)
 
         monkeypatch.delenv("BITBUCKET_TOKEN", raising=False)
-        monkeypatch.delenv("BITBUCKET_WEBHOOK_SECRET", raising=False)
-        token, secret = resolve_secrets(env_file)
+        monkeypatch.delenv(SECRET_VAR, raising=False)
+        token, secret = resolve_secrets(env_file, SECRET_VAR)
         assert (token, secret) == ("cwd-token", "cwd-secret")
 
         monkeypatch.setenv("BITBUCKET_TOKEN", "env-token")
-        monkeypatch.setenv("BITBUCKET_WEBHOOK_SECRET", "env-secret")
-        token, secret = resolve_secrets(env_file)
+        monkeypatch.setenv(SECRET_VAR, "env-secret")
+        token, secret = resolve_secrets(env_file, SECRET_VAR)
         assert (token, secret) == ("env-token", "env-secret")
 
     def test_missing_secrets_exits(self, monkeypatch, tmp_path):
         monkeypatch.delenv("BITBUCKET_TOKEN", raising=False)
-        monkeypatch.delenv("BITBUCKET_WEBHOOK_SECRET", raising=False)
+        monkeypatch.delenv(SECRET_VAR, raising=False)
         monkeypatch.chdir(tmp_path)
         with pytest.raises(SystemExit):
-            resolve_secrets(None)
+            resolve_secrets(None, SECRET_VAR)
 
 
 # --------------------------------------------------------------------------- #
@@ -481,6 +584,7 @@ class TestMain:
     def test_multi_repo_mixed_results(self, tmp_path, monkeypatch, fake):
         cfg = tmp_path / "config.json"
         cfg.write_text(json.dumps({
+            "team": TEAM,
             "bitbucket_url": BASE_URL,
             "webhook_url": WEBHOOK_URL,
             "projects": [
@@ -488,7 +592,7 @@ class TestMain:
             ],
         }))
         monkeypatch.setenv("BITBUCKET_TOKEN", "t")
-        monkeypatch.setenv("BITBUCKET_WEBHOOK_SECRET", "s")
+        monkeypatch.setenv(SECRET_VAR, "s")
         monkeypatch.chdir(tmp_path)
 
         fake.respond_json("GET", "/rest/api/1.0/projects/PROJ/repos/good", 200, {})
@@ -510,12 +614,13 @@ class TestMain:
     def test_dry_run_issues_no_writes(self, tmp_path, monkeypatch, capsys, fake):
         cfg = tmp_path / "config.json"
         cfg.write_text(json.dumps({
+            "team": TEAM,
             "bitbucket_url": BASE_URL,
             "webhook_url": WEBHOOK_URL,
             "projects": [{"project": "PROJ", "repos": ["r"]}],
         }))
         monkeypatch.setenv("BITBUCKET_TOKEN", "t")
-        monkeypatch.setenv("BITBUCKET_WEBHOOK_SECRET", "s")
+        monkeypatch.setenv(SECRET_VAR, "s")
         monkeypatch.chdir(tmp_path)
 
         fake.respond_json("GET", "/rest/api/1.0/projects/PROJ/repos/r", 200, {})
@@ -534,15 +639,64 @@ class TestMain:
         assert "PROJ/r" in out
         assert "ok" in out
 
+    def test_teams_file_names_the_secret_var_and_warns_on_foreign_repos(
+        self, tmp_path, monkeypatch, fake, caplog,
+    ):
+        cfg = tmp_path / "config.json"
+        cfg.write_text(json.dumps({
+            "team": TEAM,
+            "bitbucket_url": BASE_URL,
+            "webhook_url": WEBHOOK_URL,
+            "projects": [{"project": "PROJ", "repos": ["r", "foreign"]}],
+        }))
+        teams = tmp_path / "teams.yaml"
+        teams.write_text(TEAMS_YAML)
+        monkeypatch.setenv("BITBUCKET_TOKEN", "t")
+        monkeypatch.setenv("PLATFORM_HOOK", "from-teams-file")
+        monkeypatch.delenv(SECRET_VAR, raising=False)
+        monkeypatch.chdir(tmp_path)
+
+        for repo in ("r", "foreign"):
+            fake.respond_json("GET", f"/rest/api/1.0/projects/PROJ/repos/{repo}", 200, {})
+            fake.respond_json(
+                "GET", f"/rest/api/1.0/projects/PROJ/repos/{repo}/pull-requests", 200, {"values": []},
+            )
+            fake.respond_json(
+                "GET", f"/rest/api/1.0/projects/PROJ/repos/{repo}/webhooks", 200,
+                {"values": [], "isLastPage": True},
+            )
+
+        rc = main([str(cfg), "--dry-run", "--teams", str(teams)])
+        assert rc == 0
+        assert "PROJ/foreign] not owned by team platform" in caplog.text
+        assert "PROJ/r] not owned" not in caplog.text
+
+    def test_teams_file_without_the_team_exits(self, tmp_path, monkeypatch, fake):
+        cfg = tmp_path / "config.json"
+        cfg.write_text(json.dumps({
+            "team": "payments",
+            "bitbucket_url": BASE_URL,
+            "webhook_url": "https://noergler.internal/webhook/payments",
+            "projects": [{"project": "PROJ", "repos": ["r"]}],
+        }))
+        teams = tmp_path / "teams.yaml"
+        teams.write_text(TEAMS_YAML)
+        monkeypatch.setenv("BITBUCKET_TOKEN", "t")
+        monkeypatch.setenv("TEAMS_CONFIG", str(teams))
+        monkeypatch.chdir(tmp_path)
+        with pytest.raises(SystemExit, match="'payments' is not in"):
+            main([str(cfg), "--dry-run"])
+
     def test_remove_via_main(self, tmp_path, monkeypatch, fake):
         cfg = tmp_path / "config.json"
         cfg.write_text(json.dumps({
+            "team": TEAM,
             "bitbucket_url": BASE_URL,
             "webhook_url": WEBHOOK_URL,
             "projects": [{"project": "PROJ", "repos": ["r"]}],
         }))
         monkeypatch.setenv("BITBUCKET_TOKEN", "t")
-        monkeypatch.setenv("BITBUCKET_WEBHOOK_SECRET", "s")
+        monkeypatch.setenv(SECRET_VAR, "s")
         monkeypatch.chdir(tmp_path)
 
         fake.respond_json(

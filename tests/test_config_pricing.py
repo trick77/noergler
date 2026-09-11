@@ -96,9 +96,9 @@ def _mock_catalog(payload: dict[str, object] | None = None, status: int = 200):
 def _reset_active_entry():
     """No entry installed before each test — startup is what installs one."""
     import app.config
-    app.config._ACTIVE_ENTRY = None
+    app.config._ACTIVE_ENTRIES.clear()
     yield
-    app.config._ACTIVE_ENTRY = None
+    app.config._ACTIVE_ENTRIES.clear()
 
 
 def _entry(**overrides) -> ModelCatalogEntry:
@@ -176,7 +176,7 @@ class TestResolveOrRaise:
             _mock_catalog()
             entry = await resolve_or_raise("gpt-5.5", CATALOG_URL)
         assert entry.model_id == "gpt-5.5"
-        assert active_entry() == entry
+        assert active_entry("gpt-5.5") == entry
 
     @pytest.mark.asyncio
     async def test_raises_when_fetch_fails(self):
@@ -185,7 +185,7 @@ class TestResolveOrRaise:
             _mock_catalog(status=500)
             with pytest.raises(ModelCatalogError, match="could not fetch"):
                 await resolve_or_raise("gpt-5.5", CATALOG_URL)
-        assert active_entry() is None
+        assert active_entry("gpt-5.5") is None
 
     @pytest.mark.asyncio
     async def test_raises_when_model_absent(self):
@@ -193,7 +193,7 @@ class TestResolveOrRaise:
             _mock_catalog()
             with pytest.raises(ModelCatalogError, match="is not in the catalog"):
                 await resolve_or_raise("ai-gateway-gpt-5.5", CATALOG_URL)
-        assert active_entry() is None
+        assert active_entry("gpt-5.5") is None
 
     @pytest.mark.asyncio
     async def test_fetch_error_names_the_configured_url(self):
@@ -212,7 +212,7 @@ class TestRefreshActiveEntry:
         with respx.mock:
             _mock_catalog()
             assert await refresh_active_entry("gpt-5.5", CATALOG_URL) is True
-        current = active_entry()
+        current = active_entry("gpt-5.5")
         assert current is not None
         assert current.max_input_tokens == 1_050_000
 
@@ -225,7 +225,7 @@ class TestRefreshActiveEntry:
         with respx.mock:
             _mock_catalog(status=503)
             assert await refresh_active_entry("gpt-5.5", CATALOG_URL) is False
-        assert active_entry() == installed
+        assert active_entry("gpt-5.5") == installed
 
     @pytest.mark.asyncio
     async def test_shrunken_window_below_floor_is_rejected(self):
@@ -237,7 +237,7 @@ class TestRefreshActiveEntry:
         with respx.mock:
             _mock_catalog(payload={"gpt-5.5": {"max_input_tokens": 272_000}})
             assert await refresh_active_entry("gpt-5.5", CATALOG_URL, min_window=1_000_000) is False
-        assert active_entry() == installed
+        assert active_entry("gpt-5.5") == installed
 
     @pytest.mark.asyncio
     async def test_shrunken_window_is_accepted_without_a_floor(self):
@@ -245,7 +245,7 @@ class TestRefreshActiveEntry:
         with respx.mock:
             _mock_catalog(payload={"gpt-5.5": {"max_input_tokens": 272_000}})
             assert await refresh_active_entry("gpt-5.5", CATALOG_URL) is True
-        current = active_entry()
+        current = active_entry("gpt-5.5")
         assert current is not None and current.max_input_tokens == 272_000
 
     @pytest.mark.asyncio
@@ -255,7 +255,7 @@ class TestRefreshActiveEntry:
         with respx.mock:
             _mock_catalog(payload={"some-other-model": CATALOG["gpt-5.4"]})
             assert await refresh_active_entry("gpt-5.5", CATALOG_URL) is False
-        assert active_entry() == installed
+        assert active_entry("gpt-5.5") == installed
 
 
 class TestFetchModelCatalog:

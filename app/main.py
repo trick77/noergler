@@ -7,13 +7,15 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
-from typing import Annotated, cast
+from dataclasses import dataclass
+from typing import Annotated, cast, final
 
 import structlog
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 
 from app.bitbucket import BitbucketClient
-from app.config import AppConfig, load_config, log_config, model_label
+from app.config import AppConfig, TeamConfig, load_config, log_config, model_label
 from app.logging_config import configure_logging
 from app.pricing_refresher import PricingRefresher
 from app.db import close_pool, create_pool
@@ -33,37 +35,114 @@ configure_logging(
 )
 
 _REVIEW_EVENT_KEYS = {"pr:opened", "pr:from_ref_updated"}
-_SILENT_PATHS = frozenset({"/health"})
+_SILENT_PATHS = frozenset({"/health", "/ready"})
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 logger = logging.getLogger(__name__)
 access_logger = structlog.stdlib.get_logger("app.access")
 
+
+@final
+@dataclass
+class TeamRuntime:
+    """Everything one enabled team needs at request time.
+
+    The Bitbucket client, the DB pool and the review queue are shared by all
+    teams (see AGENTS.md on serialization); the LLM client, the Jira prefixes
+    and the riptide emitter are the team's own.
+    """
+
+    config: TeamConfig
+    llm: LLMClient
+    jira: JiraClient
+    riptide: RiptideClient
+    reviewer: Reviewer
+
+
 config: AppConfig = cast(AppConfig, cast(object, None))
-reviewer: Reviewer = cast(Reviewer, cast(object, None))
 bitbucket_client: BitbucketClient = cast(BitbucketClient, cast(object, None))
-llm_client: LLMClient = cast(LLMClient, cast(object, None))
 jira_client: JiraClient = cast(JiraClient, cast(object, None))
 review_queue: ReviewQueue = cast(ReviewQueue, cast(object, None))
-riptide_client: RiptideClient = cast(RiptideClient, cast(object, None))
 pricing_refresher: PricingRefresher = cast(PricingRefresher, cast(object, None))
+# Enabled teams by slug; disabled teams by slug with the reason. A slug lives
+# in exactly one of the two. Both are fixed after startup — fixing a team is
+# a config change and a redeploy, same as any other setting.
+teams: dict[str, TeamRuntime] = {}
+disabled_teams: dict[str, str] = {}
+
+
+async def _review_for_team(slug: str, payload: WebhookPayload) -> None:
+    """Queue worker entry: route the job to the team's reviewer."""
+    runtime = teams.get(slug)
+    if runtime is None:
+        # Cannot happen after startup (the set is fixed), but a queued job
+        # must never crash the worker.
+        logger.error("queued review for unknown team %s dropped", slug)
+        return
+    await runtime.reviewer.review_pull_request(payload)
+
+
+async def _start_team(
+    team: TeamConfig, db_pool, log: logging.Logger
+) -> TeamRuntime | str:
+    """Build a team's clients and run its startup checks.
+
+    Returns the runtime, or the reason string when the team must be disabled.
+    Every failure here is the team's own (its key, its model, its riptide
+    token) and never touches another team.
+    """
+    llm = LLMClient(team.llm, team.review)
+    jira = JiraClient(team.jira)
+    riptide = RiptideClient.from_env(
+        team.riptide.url if team.riptide else "",
+        team.riptide.token if team.riptide else "",
+    )
+
+    async def _teardown() -> None:
+        await llm.close()
+        await jira.close()
+        await riptide.close()
+
+    try:
+        await llm.check_connectivity()
+    except Exception as exc:
+        await _teardown()
+        return f"LLM check failed: {exc}"
+
+    if riptide.enabled:
+        # A wrong token disables the team (RiptideAuthError); transient
+        # unreachability only logs and the team stays enabled.
+        try:
+            await riptide.verify_at_startup()
+        except RiptideAuthError as exc:
+            await _teardown()
+            return f"riptide check failed: {exc}"
+    else:
+        log.info("riptide disabled for this team — event forwarding off")
+
+    reviewer = Reviewer(
+        bitbucket_client, llm, team.review,
+        jira=jira,
+        server_config=config.server,
+        db_pool=db_pool,
+        riptide=riptide,
+        team_slug=team.slug,
+    )
+    return TeamRuntime(config=team, llm=llm, jira=jira, riptide=riptide, reviewer=reviewer)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    global config, reviewer, bitbucket_client, llm_client, jira_client, review_queue, riptide_client, pricing_refresher
+    global config, bitbucket_client, jira_client, review_queue, pricing_refresher
 
     version = os.environ.get("OPENSHIFT_BUILD_COMMIT") or os.environ.get("NOERGLER_VERSION") or "dev"
     logger.info("noergler version: %s", version)
     config = load_config()
     log_config(config, logger)
     bitbucket_client = BitbucketClient(config.bitbucket)
-    riptide_client = RiptideClient.from_env(config.riptide.url, config.riptide.token)
-
-    llm_client = LLMClient(config.llm, config.review)
-
     jira_client = JiraClient(config.jira)
 
+    # --- Shared layer: any failure here aborts boot. Nothing works without it.
     checks: dict[str, str | None] = {}
 
     try:
@@ -86,23 +165,6 @@ async def lifespan(_app: FastAPI):
     except Exception as exc:
         checks["Jira"] = str(exc)
 
-    try:
-        await llm_client.check_connectivity()
-        checks["LLM"] = None
-    except Exception as exc:
-        checks["LLM"] = str(exc)
-
-    if riptide_client.enabled:
-        # Verify riptide reachability + bearer at startup. A wrong token
-        # fails fast (RiptideAuthError); transient unreachability only logs.
-        try:
-            await riptide_client.verify_at_startup()
-            checks["Riptide"] = None
-        except RiptideAuthError as exc:
-            checks["Riptide"] = str(exc)
-    else:
-        logger.info("riptide_disabled: RIPTIDE_URL/RIPTIDE_TOKEN not set — event forwarding off")
-
     for name, error in checks.items():
         if error is None:
             logger.info("%s: OK", name)
@@ -114,43 +176,64 @@ async def lifespan(_app: FastAPI):
         if db_pool:
             await close_pool()
         await bitbucket_client.close()
-        await llm_client.close()
         await jira_client.close()
-        await riptide_client.close()
         raise RuntimeError(
             f"Startup aborted — {len(failed)} connection(s) failed: {', '.join(failed)}"
         )
 
-    reviewer = Reviewer(
-        bitbucket_client, llm_client, config.review,
-        jira=jira_client,
-        server_config=config.server,
-        db_pool=db_pool,
-        riptide=riptide_client,
-    )
-    review_queue = ReviewQueue(reviewer.review_pull_request)
+    # --- Per-team layer: a failure disables that team only.
+    teams.clear()
+    disabled_teams.clear()
+    disabled_teams.update(config.disabled)
+    for slug, team in config.teams.items():
+        structlog.contextvars.bind_contextvars(team=slug)
+        try:
+            result = await _start_team(team, db_pool, logger)
+            if isinstance(result, str):
+                disabled_teams[slug] = result
+                logger.error("team_disabled team=%s reason=%s", slug, result)
+            else:
+                teams[slug] = result
+                logger.info(
+                    "team_ready team=%s model=%s riptide=%s",
+                    slug, model_label(team.llm.model, team.llm.reasoning_effort),
+                    "on" if result.riptide.enabled else "off",
+                )
+        finally:
+            structlog.contextvars.unbind_contextvars("team")
+
+    summary = "teams_ready enabled=%s disabled=%s"
+    if disabled_teams:
+        logger.warning(summary, sorted(teams), sorted(disabled_teams))
+    else:
+        logger.info(summary, sorted(teams), sorted(disabled_teams))
+    if not teams:
+        logger.error("no team is enabled — /ready reports 503 until the config is fixed")
+
+    review_queue = ReviewQueue(_review_for_team)
     review_queue.start()
 
-    # The model catalog was already fetched and installed by the LLM
-    # connectivity check above — fatally, so reaching this point means pricing
-    # and the context window are known. Nothing is cached to disk or DB; this
-    # task only keeps the in-memory entry fresh every 24h, and a failed refresh
-    # keeps the startup entry rather than degrading.
-    pricing_refresher = PricingRefresher(config.llm.model, config.llm.catalog_url)
+    # Every enabled team's model was resolved by its LLM connectivity check
+    # above; this task only keeps those entries fresh every 24h.
+    pricing_refresher = PricingRefresher(
+        [rt.config.llm.model for rt in teams.values()], config.llm.catalog_url,
+    )
     pricing_refresher.start()
 
     _app.state.config = config
     _app.state.db_pool = db_pool
-    logger.info("Bridge service started, model=%s, api_url=%s", model_label(config.llm.model, config.llm.reasoning_effort), config.llm.api_url)
+    logger.info("Bridge service started, api_url=%s, teams=%d", config.llm.api_url, len(teams))
 
     yield
 
     await pricing_refresher.stop()
     await review_queue.stop()
+    for runtime in teams.values():
+        await runtime.llm.close()
+        await runtime.jira.close()
+        await runtime.riptide.close()
     await bitbucket_client.close()
-    await llm_client.close()
     await jira_client.close()
-    await riptide_client.close()
     await close_pool()
 
 
@@ -161,8 +244,8 @@ app = FastAPI(title="Bitbucket PR Review Bridge", lifespan=lifespan)
 async def access_log(
     request: Request, call_next: Callable[[Request], Awaitable[Response]]
 ) -> Response:
-    # Liveness checks fire every few seconds; logging them buries real
-    # traffic in Splunk. Pass through unobserved.
+    # Probes fire every few seconds; logging them buries real traffic in
+    # Splunk. Pass through unobserved.
     if request.url.path in _SILENT_PATHS:
         return await call_next(request)
     # Honor caller-supplied X-Request-Id only when it looks like a sane
@@ -205,18 +288,50 @@ def _verify_webhook_signature(body: bytes, signature: str, secret: str) -> bool:
     return hmac.compare_digest(expected, signature)
 
 
+def _team_status() -> dict[str, object]:
+    return {
+        "enabled": sorted(teams),
+        "disabled": dict(sorted(disabled_teams.items())),
+    }
+
+
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    """Liveness: 200 while the process is up. A config fault that leaves
+    every team disabled is not fixed by a restart, so it never fails this."""
+    return {"status": "ok", "teams": _team_status()}
 
 
-@app.post("/webhook")
+@app.get("/ready")
+async def ready():
+    """Readiness: 503 while no team can take traffic."""
+    body = {"status": "ok" if teams else "no-teams", "teams": _team_status()}
+    return JSONResponse(body, status_code=200 if teams else 503)
+
+
+@app.post("/webhook/{team_slug}")
 async def webhook(
+    team_slug: str,
     request: Request,
     background_tasks: BackgroundTasks,
     x_hub_signature: Annotated[str | None, Header()] = None,
     x_event_key: Annotated[str | None, Header()] = None,
 ):
+    # Team identity comes from the path plus the HMAC below, never from the
+    # payload: `project.key` in the body is unauthenticated.
+    structlog.contextvars.bind_contextvars(team=team_slug)
+    runtime = teams.get(team_slug)
+    if runtime is None:
+        if team_slug in disabled_teams:
+            logger.warning("webhook rejected: team is disabled (%s)", disabled_teams[team_slug])
+            raise HTTPException(
+                status_code=503,
+                detail=f"team {team_slug} is disabled: {disabled_teams[team_slug]}",
+            )
+        raise HTTPException(status_code=404, detail="unknown team")
+    team = runtime.config
+    reviewer = runtime.reviewer
+
     if x_event_key == "diagnostics:ping":
         return {"status": "ok"}
 
@@ -228,9 +343,7 @@ async def webhook(
             logger.info("Test connection received (no signature, no event key)")
             return {"status": "ok"}
         raise HTTPException(status_code=401, detail="Missing signature")
-    if not _verify_webhook_signature(
-        body, x_hub_signature, config.bitbucket.webhook_secret
-    ):
+    if not _verify_webhook_signature(body, x_hub_signature, team.webhook_secret):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
     payload_json = await request.json()
@@ -244,6 +357,24 @@ async def webhook(
     except Exception as e:
         logger.error("Failed to parse webhook payload: %s", e)
         raise HTTPException(status_code=400, detail="Invalid payload")
+
+    # The signature proves the sender holds this team's secret; it does not
+    # prove the PR is this team's. Without this check a team could sign a
+    # payload naming another team's repo and review it on its own key.
+    pr = payload.pullRequest
+    repo = pr.toRef.repository or pr.fromRef.repository
+    if repo is None:
+        logger.error("Event %s for PR %d missing repository info", event_key, pr.id)
+        return {"status": "ignored", "reason": "missing repository"}
+    if not team.owns(repo.project.key, repo.slug):
+        logger.warning(
+            "webhook rejected: %s/%s is not owned by team %s",
+            repo.project.key, repo.slug, team_slug,
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=f"repository {repo.project.key}/{repo.slug} is not owned by team {team_slug}",
+        )
 
     if event_key == "pr:merged":
         background_tasks.add_task(reviewer.handle_pr_merged, payload)
@@ -278,11 +409,6 @@ async def webhook(
         )
         return {"status": "ignored", "reason": f"unhandled event: {event_key}"}
 
-    pr = payload.pullRequest
-    repo = pr.toRef.repository or pr.fromRef.repository
-    if repo is None:
-        logger.error("Review event for PR %d missing repository info", pr.id)
-        return {"status": "ignored", "reason": "missing repository"}
     key = (repo.project.key, repo.slug, pr.id)
-    outcome = review_queue.submit(key, payload)
+    outcome = review_queue.submit(key, payload, team_slug)
     return {"status": "accepted", "pr_id": pr.id, "queue": outcome}

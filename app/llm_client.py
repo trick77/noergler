@@ -716,7 +716,7 @@ class LLMClient:
         self.config = config
         self.review_config = review_config
 
-        if self.config.context_window or active_entry() is not None:
+        if self.config.context_window or active_entry(config.model) is not None:
             logger.info(
                 "Input token budget %s tokens (model %s context window: %s)",
                 _fmt(self.input_token_budget), model_label(config.model, config.reasoning_effort),
@@ -777,7 +777,7 @@ class LLMClient:
         """
         if self.config.context_window:
             return self.config.context_window
-        entry = active_entry()
+        entry = active_entry(self.config.model)
         return entry.max_input_tokens if entry is not None else 0
 
     @property

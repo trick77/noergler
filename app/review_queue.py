@@ -5,18 +5,23 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import final
 
+import structlog
+
 from app.models import WebhookPayload
 
 logger = logging.getLogger(__name__)
 
 PRKey = tuple[str, str, int]
-ReviewFn = Callable[[WebhookPayload], Awaitable[None]]
+# Called with the slug of the team the PR belongs to; the team was
+# authenticated by the webhook route, so the worker never has to look it up.
+ReviewFn = Callable[[str, WebhookPayload], Awaitable[None]]
 
 BACKLOG_WARN_THRESHOLD = 10
 
 
 @dataclass
 class _Entry:
+    team: str
     payload: WebhookPayload
     enqueued_at: float
 
@@ -59,13 +64,14 @@ class ReviewQueue:
         self._worker = None
         logger.info("ReviewQueue worker stopped")
 
-    def submit(self, key: PRKey, payload: WebhookPayload) -> str:
+    def submit(self, key: PRKey, payload: WebhookPayload, team: str) -> str:
         """Enqueue a review. Returns "queued" for a fresh entry or
         "superseded" when the key was already pending (payload replaced).
         """
         tag = self._tag(key)
         if key in self._pending:
             entry = self._pending[key]
+            entry.team = team
             entry.payload = payload
             entry.enqueued_at = time.monotonic()
             logger.info(
@@ -73,7 +79,7 @@ class ReviewQueue:
                 tag, self._queue.qsize(),
             )
             return "superseded"
-        self._pending[key] = _Entry(payload=payload, enqueued_at=time.monotonic())
+        self._pending[key] = _Entry(team=team, payload=payload, enqueued_at=time.monotonic())
         self._queue.put_nowait(key)
         depth = self._queue.qsize()
         logger.info("queue[%s]: enqueued (depth=%d)", tag, depth)
@@ -95,11 +101,15 @@ class ReviewQueue:
                 tag, wait, self._queue.qsize(),
             )
             started = time.monotonic()
+            # The worker is one long-lived task, so the team binding must be
+            # explicit per job — nothing else would ever clear it.
+            structlog.contextvars.bind_contextvars(team=entry.team)
             try:
-                await self._review_fn(entry.payload)
+                await self._review_fn(entry.team, entry.payload)
             except Exception:
                 logger.exception("queue[%s]: review failed", tag)
             logger.info(
                 "queue[%s]: completed in %.1fs",
                 tag, time.monotonic() - started,
             )
+            structlog.contextvars.unbind_contextvars("team")

@@ -1,9 +1,17 @@
-"""Initial schema
+"""Initial schema (multi-team)
 
 Revision ID: 001
 Revises:
-Create Date: 2026-04-04
+Create Date: 2026-09-11
 
+Squash of the former 001..010 chain into the current schema, plus
+`pr_reviews.team_slug`. There is no upgrade path from the pre-team schema:
+a database created by the old chain carries a foreign `alembic_version` and
+must be dropped and recreated.
+
+`team_slug` is the team the webhook route authenticated (the per-team path
+and HMAC secret), never a value read from the payload. It is NOT NULL: every
+row is written by a team, and riptide rollups are per team.
 """
 from typing import Sequence, Union
 
@@ -22,6 +30,7 @@ def upgrade() -> None:
             project_key TEXT NOT NULL,
             repo_slug TEXT NOT NULL,
             pr_id INTEGER NOT NULL,
+            team_slug TEXT NOT NULL,
             last_reviewed_commit TEXT,
             summary_comment_id INTEGER,
             summary_comment_version INTEGER,
@@ -29,9 +38,35 @@ def upgrade() -> None:
             pr_title TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            -- lifecycle
+            opened_at TIMESTAMPTZ,
+            merged_at TIMESTAMPTZ,
+            declined_at TIMESTAMPTZ,
+            deleted_at TIMESTAMPTZ,
+            ignored_at TIMESTAMPTZ,
+            -- cost cap + frozen final figure
+            total_cost_usd NUMERIC(10,6),
+            final_cost_usd NUMERIC(10,6),
+            -- per-PR rollup accumulators shipped to riptide at close
+            total_prompt_tokens BIGINT NOT NULL DEFAULT 0,
+            total_completion_tokens BIGINT NOT NULL DEFAULT 0,
+            total_elapsed_ms BIGINT NOT NULL DEFAULT 0,
+            total_findings_count INTEGER NOT NULL DEFAULT 0,
+            total_runs INTEGER NOT NULL DEFAULT 0,
+            models_used TEXT[] NOT NULL DEFAULT '{}',
+            first_review_at TIMESTAMPTZ,
+            final_source_commit_sha TEXT,
+            final_merge_commit_sha TEXT,
+            final_lines_added INTEGER,
+            final_lines_removed INTEGER,
+            final_files_changed INTEGER,
+            riptide_emitted_at TIMESTAMPTZ,
             UNIQUE (project_key, repo_slug, pr_id)
         )
     """)
+
+    op.execute("CREATE INDEX idx_pr_reviews_lifecycle ON pr_reviews (merged_at, deleted_at)")
+    op.execute("CREATE INDEX idx_pr_reviews_team ON pr_reviews (team_slug)")
 
     op.execute("""
         CREATE TABLE review_findings (
@@ -54,64 +89,7 @@ def upgrade() -> None:
         ON review_findings (pr_review_id, file_path, line_number, severity)
     """)
 
-    op.execute("""
-        CREATE TABLE review_statistics (
-            id BIGSERIAL PRIMARY KEY,
-            project_key TEXT NOT NULL,
-            repo_slug TEXT NOT NULL,
-            pr_id INTEGER NOT NULL,
-            author TEXT,
-            is_incremental BOOLEAN DEFAULT FALSE,
-            reviewed_commit TEXT,
-            diff_added INTEGER,
-            diff_removed INTEGER,
-            files_reviewed INTEGER,
-            total_files INTEGER,
-            critical_count INTEGER DEFAULT 0,
-            warning_count INTEGER DEFAULT 0,
-            security_count INTEGER DEFAULT 0,
-            review_effort INTEGER,
-            prompt_tokens INTEGER,
-            completion_tokens INTEGER,
-            model_name TEXT,
-            elapsed_seconds REAL,
-            cross_file_deps INTEGER DEFAULT 0,
-            skipped_files INTEGER DEFAULT 0,
-            content_skipped INTEGER DEFAULT 0,
-            findings_posted INTEGER DEFAULT 0,
-            findings_deduplicated INTEGER DEFAULT 0,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-    """)
-
-    op.execute("""
-        CREATE TABLE feedback_events (
-            id BIGSERIAL PRIMARY KEY,
-            project_key TEXT NOT NULL,
-            repo_slug TEXT NOT NULL,
-            pr_id INTEGER NOT NULL,
-            bitbucket_comment_id INTEGER,
-            feedback_author TEXT,
-            classification TEXT,
-            file_path TEXT,
-            severity TEXT,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-    """)
-
-    op.execute("""
-        CREATE INDEX idx_review_statistics_pr
-        ON review_statistics (project_key, repo_slug, pr_id)
-    """)
-
-    op.execute("""
-        CREATE INDEX idx_feedback_events_pr
-        ON feedback_events (project_key, repo_slug, pr_id)
-    """)
-
 
 def downgrade() -> None:
-    op.execute("DROP TABLE IF EXISTS feedback_events")
-    op.execute("DROP TABLE IF EXISTS review_statistics")
     op.execute("DROP TABLE IF EXISTS review_findings")
     op.execute("DROP TABLE IF EXISTS pr_reviews")

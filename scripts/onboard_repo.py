@@ -2,21 +2,31 @@
 Onboard a Bitbucket Server repository to noergler webhook delivery.
 
 Usage:
-    python scripts/onboard_repo.py config.json [--name noergler] [--dry-run] [--env-file PATH]
+    python scripts/onboard_repo.py config.json [--name noergler] [--dry-run] [--env-file PATH] [--teams teams.yaml]
     python scripts/onboard_repo.py config.json --remove [--dry-run] [--env-file PATH]
 
 `--remove` deletes the noergler webhook from every repo in the config instead
 of creating/updating it. Same config file drives both directions.
 
-The JSON config describes target repos and URLs. Secrets (BITBUCKET_TOKEN,
-BITBUCKET_WEBHOOK_SECRET) are resolved from, in order:
+The JSON config names the team, the target repos and the URLs. One config per
+team: `webhook_url` must end in `/webhook/<team>`, the per-team route the
+service authenticates against that team's secret. Secrets are resolved from,
+in order:
     1. Process environment
     2. .env in CWD
     3. --env-file <path>
 
-BITBUCKET_WEBHOOK_SECRET used by this script MUST match the value the running
-noergler service has configured — Bitbucket and noergler share the HMAC secret;
-this script only programs Bitbucket's side.
+The token is `BITBUCKET_TOKEN` (the shared service account). The webhook
+secret is the team's: by convention `TEAM_<SLUG>_WEBHOOK_SECRET` (slug
+uppercased, `-` -> `_`), or whatever `webhook_secret_env` the team's entry in
+`teams.yaml` names when `--teams` (or `TEAMS_CONFIG`) points at the file. The
+value MUST match what the running noergler service resolves for that team —
+Bitbucket and noergler share the HMAC secret; this script only programs
+Bitbucket's side.
+
+With `--teams`, the script also warns about repos the team does not own in
+`teams.yaml` (the service would answer 403 for those). Reading the file needs
+PyYAML; without `--teams` the script stays stdlib-only.
 
 The script does two things per repo: a read-permission check and an idempotent
 webhook upsert. End-to-end delivery is verified by opening a real PR — Bitbucket's
@@ -31,6 +41,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -43,6 +54,18 @@ from urllib.parse import urlparse
 logger = logging.getLogger("onboard_repo")
 
 DEFAULT_WEBHOOK_NAME = "noergler"
+
+# Must match TEAM_SLUG_RE / team_env_prefix in app/config.py. Inlined to keep
+# this script stdlib-only.
+TEAM_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+
+def team_env_prefix(slug: str) -> str:
+    return f"TEAM_{slug.upper().replace('-', '_')}_"
+
+
+def default_webhook_secret_var(slug: str) -> str:
+    return team_env_prefix(slug) + "WEBHOOK_SECRET"
 
 # Must match REQUIRED_WEBHOOK_EVENTS in app/config.py. Inlined here to keep this
 # script stdlib-only (no import of app.config, which pulls in pydantic).
@@ -73,6 +96,7 @@ class RepoSpec:
 
 @dataclass(frozen=True)
 class OnboardingInput:
+    team: str
     bitbucket_url: str
     webhook_url: str
     repos: list[RepoSpec]
@@ -97,9 +121,11 @@ def _load_env_file(path: Path) -> dict[str, str]:
     return env
 
 
-def resolve_secrets(env_file: Path | None) -> tuple[str, str]:
-    """Return (BITBUCKET_TOKEN, BITBUCKET_WEBHOOK_SECRET).
+def resolve_secrets(env_file: Path | None, secret_var: str) -> tuple[str, str]:
+    """Return (BITBUCKET_TOKEN, <the team's webhook secret>).
 
+    `secret_var` names the env var holding the team's secret (see
+    `default_webhook_secret_var` and the `--teams` lookup in `_run`).
     Precedence (first match wins): process env > cwd .env > --env-file.
     Raises SystemExit on missing.
     """
@@ -107,12 +133,12 @@ def resolve_secrets(env_file: Path | None) -> tuple[str, str]:
     if env_file is not None:
         merged.update(_load_env_file(env_file))
     merged.update(_load_env_file(Path.cwd() / ".env"))
-    for k in ("BITBUCKET_TOKEN", "BITBUCKET_WEBHOOK_SECRET", "BITBUCKET_USERNAME"):
+    for k in ("BITBUCKET_TOKEN", secret_var, "BITBUCKET_USERNAME"):
         if k in os.environ and os.environ[k]:
             merged[k] = os.environ[k]
     resolve_secrets._resolved = merged  # pyright: ignore[reportAttributeAccessIssue, reportFunctionMemberAccess]
 
-    missing = [k for k in ("BITBUCKET_TOKEN", "BITBUCKET_WEBHOOK_SECRET") if not merged.get(k)]
+    missing = [k for k in ("BITBUCKET_TOKEN", secret_var) if not merged.get(k)]
     if missing:
         sys.stderr.write(
             "ERROR: missing required environment variable(s): "
@@ -120,7 +146,40 @@ def resolve_secrets(env_file: Path | None) -> tuple[str, str]:
             + "\nSet them in the process env, a .env in CWD, or pass --env-file.\n"
         )
         raise SystemExit(2)
-    return merged["BITBUCKET_TOKEN"], merged["BITBUCKET_WEBHOOK_SECRET"]
+    return merged["BITBUCKET_TOKEN"], merged[secret_var]
+
+
+def load_team_entry(teams_path: Path, slug: str) -> dict[str, Any] | None:
+    """The team's block from `teams.yaml`, or None when the file has no such
+    team. Needs PyYAML; a plain stdlib run without `--teams` never gets here."""
+    try:
+        import yaml  # pyright: ignore[reportMissingModuleSource]
+    except ImportError:
+        raise SystemExit(
+            "ERROR: --teams needs PyYAML (pip install pyyaml), or drop --teams to use the "
+            f"{default_webhook_secret_var(slug)} convention."
+        ) from None
+    try:
+        data = yaml.safe_load(teams_path.read_text())
+    except (OSError, yaml.YAMLError) as exc:
+        raise SystemExit(f"ERROR: cannot read {teams_path}: {exc}")
+    teams = (data or {}).get("teams") if isinstance(data, dict) else None
+    if not isinstance(teams, list):
+        raise SystemExit(f"ERROR: {teams_path} has no top-level `teams:` list")
+    for entry in teams:
+        if isinstance(entry, dict) and entry.get("slug") == slug:
+            return entry
+    return None
+
+
+def team_owns(entry: dict[str, Any], spec: RepoSpec) -> bool:
+    for project in entry.get("projects") or []:
+        if not isinstance(project, dict) or project.get("key") != spec.project:
+            continue
+        repos = project.get("repos")
+        if repos is None or spec.repo in repos:
+            return True
+    return False
 
 
 def _mask(secret: str) -> str:
@@ -138,8 +197,20 @@ def load_onboarding_input(path: Path) -> OnboardingInput:
     if not isinstance(data, dict):
         raise SystemExit("ERROR: config root must be a JSON object")
 
+    team = data.get("team")
+    if not isinstance(team, str) or not TEAM_SLUG_RE.match(team):
+        raise SystemExit(
+            f"ERROR: 'team' must be the team's slug ({TEAM_SLUG_RE.pattern}), "
+            "exactly as in teams.yaml"
+        )
     bitbucket_url = _require_https(data.get("bitbucket_url"), "bitbucket_url")
     webhook_url = _require_url(data.get("webhook_url"), "webhook_url")
+    expected_path = f"/webhook/{team}"
+    if urlparse(webhook_url).path.rstrip("/") != expected_path:
+        raise SystemExit(
+            f"ERROR: 'webhook_url' must end in {expected_path} (the service routes "
+            f"each team by path; got {urlparse(webhook_url).path!r})"
+        )
     projects_raw = data.get("projects")
 
     if not isinstance(projects_raw, list) or not projects_raw:
@@ -171,8 +242,9 @@ def load_onboarding_input(path: Path) -> OnboardingInput:
             repos.append(RepoSpec(project=key[0], repo=key[1]))
 
     return OnboardingInput(
+        team=team,
         bitbucket_url=bitbucket_url.rstrip("/"),
-        webhook_url=webhook_url,
+        webhook_url=webhook_url.rstrip("/"),
         repos=repos,
     )
 
@@ -487,9 +559,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Onboard Bitbucket Server repos to noergler by creating/updating their webhooks (idempotent).",
         epilog=(
             "Write permission check is implicit: if the token lacks repo-write, the webhook "
-            "create/update will surface a 403. BITBUCKET_WEBHOOK_SECRET must match the value "
-            "configured on the running noergler service. To verify end-to-end delivery, open "
-            "a real PR after onboarding."
+            "create/update will surface a 403. The team's webhook secret "
+            "(TEAM_<SLUG>_WEBHOOK_SECRET, or the webhook_secret_env named in teams.yaml) must "
+            "match what the running noergler service resolves for that team. To verify "
+            "end-to-end delivery, open a real PR after onboarding."
         ),
     )
     parser.add_argument("config", type=Path, help="Path to onboarding JSON config")
@@ -500,6 +573,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Deboard: delete the webhook from every repo in the config instead of creating/updating it",
     )
     parser.add_argument("--env-file", type=Path, default=None, help="Additional .env file to read secrets from")
+    parser.add_argument(
+        "--teams", type=Path, default=None,
+        help="teams.yaml of the service (default: $TEAMS_CONFIG if set). Resolves the team's "
+             "webhook_secret_env and warns about repos the team does not own. Needs PyYAML.",
+    )
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable DEBUG logging")
     return parser.parse_args(argv)
 
@@ -515,14 +593,36 @@ def _print_summary(results: list[RepoResult]) -> None:
 
 
 def _run(args: argparse.Namespace) -> int:
-    token, webhook_secret = resolve_secrets(args.env_file)
     inp = load_onboarding_input(args.config)
 
+    teams_path: Path | None = args.teams
+    if teams_path is None and os.environ.get("TEAMS_CONFIG"):
+        teams_path = Path(os.environ["TEAMS_CONFIG"])
+    entry: dict[str, Any] | None = None
+    secret_var = default_webhook_secret_var(inp.team)
+    if teams_path is not None:
+        entry = load_team_entry(teams_path, inp.team)
+        if entry is None:
+            raise SystemExit(f"ERROR: team {inp.team!r} is not in {teams_path}")
+        named = entry.get("webhook_secret_env")
+        if isinstance(named, str) and named.strip():
+            secret_var = named.strip()
+
+    token, webhook_secret = resolve_secrets(args.env_file, secret_var)
+
+    logger.info("Team:          %s", inp.team)
     logger.info("Bitbucket URL: %s", inp.bitbucket_url)
     logger.info("Webhook URL:   %s", inp.webhook_url)
     logger.info("Bitbucket token loaded: %s", _mask(token))
-    logger.info("Webhook secret loaded:  %s", _mask(webhook_secret))
+    logger.info("Webhook secret loaded:  %s (from %s)", _mask(webhook_secret), secret_var)
     logger.info("Target repos (%d): %s", len(inp.repos), ", ".join(r.key for r in inp.repos))
+    if entry is not None:
+        for spec in inp.repos:
+            if not team_owns(entry, spec):
+                logger.warning(
+                    "[%s] not owned by team %s in %s — the service will answer 403 for its "
+                    "webhooks until teams.yaml lists it", spec.key, inp.team, teams_path,
+                )
     if args.remove:
         logger.info("REMOVE mode: will delete the %r webhook from each repo", args.name)
     if args.dry_run:

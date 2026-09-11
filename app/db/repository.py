@@ -13,15 +13,23 @@ async def upsert_pr_review(
     author: str | None = None,
     pr_title: str | None = None,
     opened_at: datetime | None = None,
+    *,
+    team_slug: str,
 ) -> int:
-    """Insert or update PR review record. Returns the pr_review_id."""
+    """Insert or update PR review record. Returns the pr_review_id.
+
+    `team_slug` is the team the webhook route authenticated, never a value
+    read from the payload. A repo belongs to exactly one team, so an update
+    from a different slug means the file moved the repo: the row follows.
+    """
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            INSERT INTO pr_reviews (project_key, repo_slug, pr_id, last_reviewed_commit, author, pr_title, opened_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO pr_reviews (project_key, repo_slug, pr_id, team_slug, last_reviewed_commit, author, pr_title, opened_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (project_key, repo_slug, pr_id)
             DO UPDATE SET
+                team_slug = EXCLUDED.team_slug,
                 last_reviewed_commit = EXCLUDED.last_reviewed_commit,
                 author = EXCLUDED.author,
                 pr_title = EXCLUDED.pr_title,
@@ -29,7 +37,7 @@ async def upsert_pr_review(
                 updated_at = NOW()
             RETURNING id
             """,
-            project_key, repo_slug, pr_id, last_reviewed_commit, author, pr_title, opened_at,
+            project_key, repo_slug, pr_id, team_slug, last_reviewed_commit, author, pr_title, opened_at,
         )
         return row["id"]
 

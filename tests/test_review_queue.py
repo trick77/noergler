@@ -19,13 +19,13 @@ def _fake_payload(pr_id: int, label: str = "p") -> WebhookPayload:
 async def test_single_review_runs_and_completes():
     seen: list[int] = []
 
-    async def review(payload):
+    async def review(team, payload):
         seen.append(payload.id)
 
     queue = ReviewQueue(review)
     queue.start()
     try:
-        queue.submit(("P", "r", 1), _fake_payload(1))
+        queue.submit(("P", "r", 1), _fake_payload(1), "t1")
         await asyncio.sleep(0.05)
         assert seen == [1]
     finally:
@@ -36,7 +36,7 @@ async def test_single_review_runs_and_completes():
 async def test_dedup_collapses_pending_submits():
     order: list[str] = []
 
-    async def review(payload):
+    async def review(team, payload):
         order.append(f"review:{payload.id}:{payload.label}")
         await asyncio.sleep(0.05)
 
@@ -46,10 +46,10 @@ async def test_dedup_collapses_pending_submits():
         # submit #1 immediately starts; submits #2 and #3 for the same PR
         # arrive while it runs and must collapse into one queued slot carrying
         # the latest payload.
-        queue.submit(("P", "r", 1), _fake_payload(1, "first"))
+        queue.submit(("P", "r", 1), _fake_payload(1, "first"), "t1")
         await asyncio.sleep(0.01)
-        queue.submit(("P", "r", 1), _fake_payload(1, "second"))
-        queue.submit(("P", "r", 1), _fake_payload(1, "third"))
+        queue.submit(("P", "r", 1), _fake_payload(1, "second"), "t1")
+        queue.submit(("P", "r", 1), _fake_payload(1, "third"), "t1")
         await asyncio.sleep(0.2)
         assert order == ["review:1:first", "review:1:third"]
     finally:
@@ -62,7 +62,7 @@ async def test_reviews_are_serialized_across_prs():
     running = 0
     max_concurrent = 0
 
-    async def review(payload):
+    async def review(team, payload):
         nonlocal running, max_concurrent
         running += 1
         max_concurrent = max(max_concurrent, running)
@@ -73,7 +73,7 @@ async def test_reviews_are_serialized_across_prs():
     queue.start()
     try:
         for i in range(5):
-            queue.submit(("P", "r", i), _fake_payload(i))
+            queue.submit(("P", "r", i), _fake_payload(i), "t1")
         await asyncio.sleep(0.5)
         assert max_concurrent == 1
     finally:
@@ -84,7 +84,7 @@ async def test_reviews_are_serialized_across_prs():
 async def test_review_exception_does_not_kill_worker():
     calls: list[int] = []
 
-    async def review(payload):
+    async def review(team, payload):
         calls.append(payload.id)
         if payload.id == 1:
             raise RuntimeError("boom")
@@ -92,9 +92,9 @@ async def test_review_exception_does_not_kill_worker():
     queue = ReviewQueue(review)
     queue.start()
     try:
-        queue.submit(("P", "r", 1), _fake_payload(1))
+        queue.submit(("P", "r", 1), _fake_payload(1), "t1")
         await asyncio.sleep(0.05)
-        queue.submit(("P", "r", 2), _fake_payload(2))
+        queue.submit(("P", "r", 2), _fake_payload(2), "t1")
         await asyncio.sleep(0.05)
         assert calls == [1, 2]
     finally:
@@ -103,7 +103,7 @@ async def test_review_exception_does_not_kill_worker():
 
 @pytest.mark.asyncio
 async def test_submit_returns_outcome():
-    async def review(payload):
+    async def review(team, payload):
         await asyncio.sleep(0.1)
 
     queue = ReviewQueue(review)
@@ -112,8 +112,8 @@ async def test_submit_returns_outcome():
         # Back-to-back submits with no awaits in between — the worker has
         # no chance to dequeue, so the second submit sees the pending entry
         # and returns "superseded".
-        assert queue.submit(("P", "r", 1), _fake_payload(1)) == "queued"
-        assert queue.submit(("P", "r", 1), _fake_payload(1)) == "superseded"
+        assert queue.submit(("P", "r", 1), _fake_payload(1), "t1") == "queued"
+        assert queue.submit(("P", "r", 1), _fake_payload(1), "t1") == "superseded"
         await asyncio.sleep(0.2)
     finally:
         await queue.stop()
@@ -121,7 +121,7 @@ async def test_submit_returns_outcome():
 
 @pytest.mark.asyncio
 async def test_stop_is_idempotent():
-    async def review(payload):
+    async def review(team, payload):
         pass
 
     queue = ReviewQueue(review)

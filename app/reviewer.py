@@ -28,7 +28,7 @@ from app.llm_client import (
     render_previously_posted_findings,
     split_by_file,
 )
-from app.config import ReviewConfig, ServerConfig, model_label, resolve_cost_usd
+from app.config import ReviewConfig, ServerConfig, active_entry, model_label, resolve_cost_usd
 from app.http_stats import HttpScope, enter_http_scope, exit_http_scope, summarize
 from app.riptide_client import RiptideClient
 from app.context_expansion import expand_all_files
@@ -288,7 +288,12 @@ class Reviewer:
         *,
         db_pool: asyncpg.Pool | None,
         riptide: RiptideClient | None = None,
+        team_slug: str = "",
     ):
+        # The team this reviewer serves. One Reviewer per team: each carries
+        # that team's LLM client, review config, Jira prefixes and riptide
+        # emitter, while `bitbucket` and `db_pool` are shared by all teams.
+        self.team_slug = team_slug
         self.bitbucket = bitbucket
         self.llm = llm
         self.review_config = review_config
@@ -301,6 +306,12 @@ class Reviewer:
         self.max_comments = review_config.max_comments
         self.mention_trigger = bitbucket.bot_username
         self.riptide = riptide
+
+    def _bind_team(self) -> None:
+        # BackgroundTasks run after the request middleware has cleared the
+        # contextvars, so every handler entered that way rebinds the team
+        # itself; the queue worker does the same for reviews.
+        structlog.contextvars.bind_contextvars(team=self.team_slug)
 
     @staticmethod
     def _extract_ticket_id(pr: PullRequest) -> str | None:
@@ -422,7 +433,7 @@ class Reviewer:
         # Bind pr identity to structlog contextvars so every child log
         # inherits pr_tag/repo and Splunk can filter all activity for one
         # PR with a single query.
-        structlog.contextvars.bind_contextvars(pr_tag=pr_tag)
+        structlog.contextvars.bind_contextvars(pr_tag=pr_tag, team=self.team_slug)
         http_scope: HttpScope | None = None
         try:
             http_scope = enter_http_scope()
@@ -508,6 +519,7 @@ class Reviewer:
                 pr_review_id = await _safe_db(
                     repository.upsert_pr_review(
                         self.db_pool, project_key, repo_slug, pr_id,
+                        team_slug=self.team_slug,
                         last_reviewed_commit=pr.fromRef.latestCommit,
                         author=author_name,
                         pr_title=pr.title,
@@ -533,6 +545,7 @@ class Reviewer:
                 pr_review_id = await _safe_db(
                     repository.upsert_pr_review(
                         self.db_pool, project_key, repo_slug, pr_id,
+                        team_slug=self.team_slug,
                         last_reviewed_commit=pr.fromRef.latestCommit,
                         author=author_name,
                         pr_title=pr.title,
@@ -558,6 +571,7 @@ class Reviewer:
                     pr_review_id = await _safe_db(
                         repository.upsert_pr_review(
                             self.db_pool, project_key, repo_slug, pr_id,
+                            team_slug=self.team_slug,
                             last_reviewed_commit=pr.fromRef.latestCommit,
                             author=author_name,
                             pr_title=pr.title,
@@ -603,6 +617,7 @@ class Reviewer:
                     pr_review_id = await _safe_db(
                         repository.upsert_pr_review(
                             self.db_pool, project_key, repo_slug, pr_id,
+                            team_slug=self.team_slug,
                             last_reviewed_commit=prior_commit,
                             author=author_name,
                             pr_title=pr.title,
@@ -862,6 +877,7 @@ class Reviewer:
                 pr_review_id = await _safe_db(
                     repository.upsert_pr_review(
                         self.db_pool, project_key, repo_slug, pr_id,
+                        team_slug=self.team_slug,
                         last_reviewed_commit=prior_commit,
                         author=author_name,
                         pr_title=pr.title,
@@ -897,6 +913,7 @@ class Reviewer:
                 pr_review_id = await _safe_db(
                     repository.upsert_pr_review(
                         self.db_pool, project_key, repo_slug, pr_id,
+                        team_slug=self.team_slug,
                         last_reviewed_commit=prior_commit,
                         author=author_name,
                         pr_title=pr.title,
@@ -931,6 +948,7 @@ class Reviewer:
                 pr_review_id = await _safe_db(
                     repository.upsert_pr_review(
                         self.db_pool, project_key, repo_slug, pr_id,
+                        team_slug=self.team_slug,
                         last_reviewed_commit=prior_commit,
                         author=author_name,
                         pr_title=pr.title,
@@ -961,6 +979,7 @@ class Reviewer:
             pr_review_id = await _safe_db(
                 repository.upsert_pr_review(
                     self.db_pool, project_key, repo_slug, pr_id,
+                    team_slug=self.team_slug,
                     last_reviewed_commit=source_commit,
                     author=author_name,
                     pr_title=pr.title,
@@ -1008,7 +1027,9 @@ class Reviewer:
             # gateway margin. When the endpoint reports none, the catalog's
             # rates stand in; only if those are missing too is the run recorded
             # without a cost, and the cap then fails open.
-            run_cost_usd, cost_was_reported = resolve_cost_usd(llm_result.usage)
+            run_cost_usd, cost_was_reported = resolve_cost_usd(
+                llm_result.usage, active_entry(self.llm.config.model)
+            )
             cumulative_cost_usd: float | None = None
             if run_cost_usd is not None:
                 cumulative_cost_usd = await _safe_db(
@@ -1118,7 +1139,7 @@ class Reviewer:
                     dict(http_scope.counter),
                 )
                 exit_http_scope(http_scope)
-            structlog.contextvars.unbind_contextvars("pr_tag", "repo", "pr_id")
+            structlog.contextvars.unbind_contextvars("pr_tag", "repo", "pr_id", "team")
 
     async def handle_comment_deleted(self, payload: WebhookPayload) -> None:
         """Primary signal for the opt-out feature: if the user deleted our
@@ -1130,6 +1151,7 @@ class Reviewer:
         a tombstone instead of 404). The pull-time guard in review_pull_request
         stays as a backstop for repos not yet subscribed to this event.
         """
+        self._bind_team()
         comment = payload.comment
         if not comment:
             return
@@ -1160,6 +1182,7 @@ class Reviewer:
         )
 
     async def handle_mention(self, payload: WebhookPayload) -> None:
+        self._bind_team()
         comment = payload.comment
         if not comment:
             return
@@ -1258,6 +1281,7 @@ class Reviewer:
             logger.error("Mention Q&A on %s failed", pr_tag, exc_info=True)
 
     async def handle_pr_merged(self, payload: WebhookPayload) -> None:
+        self._bind_team()
         pr = payload.pullRequest
         project_key, repo_slug = self._extract_project_repo(payload)
         if not project_key or not repo_slug:
@@ -1300,6 +1324,7 @@ class Reviewer:
             logger.error("Merge handling for %s failed", pr_tag, exc_info=True)
 
     async def handle_pr_declined(self, payload: WebhookPayload) -> None:
+        self._bind_team()
         pr = payload.pullRequest
         project_key, repo_slug = self._extract_project_repo(payload)
         if not project_key or not repo_slug:
@@ -1325,6 +1350,7 @@ class Reviewer:
             logger.warning("riptide emit (pr_completed declined) failed", exc_info=True)
 
     async def handle_pr_deleted(self, payload: WebhookPayload) -> None:
+        self._bind_team()
         pr = payload.pullRequest
         project_key, repo_slug = self._extract_project_repo(payload)
         if not project_key or not repo_slug:
@@ -1508,8 +1534,9 @@ class Reviewer:
             "- Push the file to the PR branch (or merge it into the target branch) and "
             "the next webhook event on this PR will trigger a full review.\n\n"
             "**Opt-out**\n"
-            "- To review PRs without an `AGENTS.md`, set "
-            "`REVIEW_REQUIRE_AGENTS_MD=false` on the noergler service and restart.\n"
+            "- To review PRs without an `AGENTS.md`, set `require_agents_md: false` "
+            "for this team in the noergler `teams.yaml` (or `REVIEW_REQUIRE_AGENTS_MD=false` "
+            "as the instance default) and restart.\n"
         )
 
     def _build_agents_md_too_large_summary(self, tokens: int, limit: int) -> str:
