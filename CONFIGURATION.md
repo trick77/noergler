@@ -173,18 +173,7 @@ Adding a team therefore means: generate the webhook secret, obtain the gateway k
 
 **Local / compose:** append the variables to `.env` (gitignored).
 
-**OpenShift:** add them to the `noergler` Secret next to the instance secrets, e.g.
-
-```bash
-oc create secret generic noergler \
-  --from-literal=BITBUCKET_TOKEN=... \
-  --from-literal=JIRA_TOKEN=... \
-  --from-literal=DATABASE_URL=... \
-  --from-literal=TEAM_PLATFORM_WEBHOOK_SECRET="$(openssl rand -hex 32)" \
-  --from-literal=TEAM_PLATFORM_OPENAI_API_KEY=...
-```
-
-The Secret is consumed with `envFrom`, so a new key needs no Deployment change, only a restart. In a GitOps setup (Sealed Secrets: plaintext `secrets.env` → `kubeseal` → committed `sealed-secrets.yaml`) the same keys go into `secrets.env`; each team's keys become required as soon as its block references them.
+**Cluster:** how the variables reach the process is the deployment's business; a team's variables become required the moment its `teams.yaml` block names them.
 
 **Rotation.** Webhook secret: set the new value on the service, redeploy, hand it to the team admin, who runs `onboard --remove` and then `onboard` again; Bitbucket's webhook API does not return the stored secret, so a plain re-run would report *already up to date* (see the README's *secret-only drift* note). Gateway key or riptide token: replace the variable, redeploy; a rejected key or token shows up as `team_disabled` at startup, nothing else is affected.
 
@@ -193,10 +182,19 @@ The Secret is consumed with `envFrom`, so a new key needs no Deployment change, 
 | Deployment | Instance layer | Teams file |
 |---|---|---|
 | Local / compose | `.env` (`env_file`), see `compose.yaml` | `./teams.yaml` bind-mounted to `/app/teams.yaml`, `TEAMS_CONFIG=/app/teams.yaml` |
-| OpenShift (`openshift/`) | ConfigMap `noergler` + Secret `noergler` via `envFrom` | ConfigMap `noergler-teams` mounted at `/etc/noergler/teams.yaml`; readiness probe on `/ready` |
+| Cluster | Environment of the container, however the deployment provides it | `teams.yaml` mounted anywhere, `TEAMS_CONFIG` names the path |
 
 Both `.env` and `teams.yaml` are gitignored; commit the `.example` files only.
 
+**Image contract.**
+
+- `CMD` serves on port 8080. `/health` is the liveness probe (always 200, lists enabled and disabled teams), `/ready` the readiness probe (503 while no team is enabled).
+- `alembic upgrade head` runs the migrations; run it before the app starts (init container or equivalent). Nothing creates the schema at runtime.
+- `onboard` is the webhook onboarding tool (see [Webhook setup](#webhook-setup)).
+- `TEAMS_CONFIG` points at the mounted `teams.yaml`; secrets arrive as environment variables named in that file.
+- Corporate CA: mount the trusted bundle and point `SSL_CERT_FILE` at it; httpx, openai and asyncpg all honour it.
+- One replica only: the review queue is a single in-process worker behind an inference lock.
+
 ## 7. Database
 
-PostgreSQL, schema managed by Alembic (`alembic upgrade head`, run by the OpenShift init container). The current schema is a single revision `001`; there is no upgrade path from databases created before the multi-team change, they must be recreated. `pr_reviews.team_slug` records which team a review ran for.
+PostgreSQL, schema managed by Alembic (`alembic upgrade head`, run before the app starts, e.g. by an init container). The current schema is a single revision `001`; there is no upgrade path from databases created before the multi-team change, they must be recreated. `pr_reviews.team_slug` records which team a review ran for.

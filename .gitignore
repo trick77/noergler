@@ -36,7 +36,4 @@ __pycache__/
 
 # macOS
 .DS_Store
-
-# Local scripts (oc, podman, etc.)
-hack/*
-!hack/.gitkeep
+hack/
