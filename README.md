@@ -115,7 +115,7 @@ defaults for every team-overridable knob. The required variables are:
 Plus the per-team secrets that `teams.yaml` references (`TEAM_<SLUG>_WEBHOOK_SECRET`,
 `TEAM_<SLUG>_OPENAI_API_KEY`, optionally `TEAM_<SLUG>_RIPTIDE_TOKEN`).
 
-See [`.env.example`](.env.example) for all optional settings and their defaults.
+See [CONFIGURATION.md](CONFIGURATION.md) for the complete reference of both layers, and [`.env.example`](.env.example) for all optional settings and their defaults.
 
 **Teams (`teams.yaml`):** one block per team. See [Teams](#teams) and
 [`teams.example.yaml`](teams.example.yaml).
