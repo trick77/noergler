@@ -1,0 +1,4 @@
+#!/bin/sh
+# Team-admin onboarding tool, shipped in the noergler image:
+#   podman run --rm --env-file team.env -v ./team.json:/cfg.json:ro <image> onboard /cfg.json [--status|--remove] [--grant-bot]
+exec python -m scripts.onboard_repo "$@"

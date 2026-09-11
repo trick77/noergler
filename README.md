@@ -149,6 +149,9 @@ Rules:
   block; naming them disables the team.
 - **A project or repo belongs to exactly one team.** A whole-project claim conflicts with
   any repo-level claim on the same key. Conflicting claims disable every claimant.
+- **Claim whole projects unless a project is shared between teams.** A whole-project claim
+  is onboarded with one project webhook and covers every future repo without anyone
+  touching noergler; a `repos:` list needs a `teams.yaml` change per new repo.
 - **One team's bad config never affects another.** Anything wrong with a single block
   (validation error, missing secret, model not in the catalog, riptide token rejected)
   disables that team: its webhooks answer `503` (the reason is in the startup log), everything else runs.
@@ -267,65 +270,64 @@ alembic upgrade head
 
 ## Webhook setup
 
-Each team onboards its own repositories. Per team:
+Each team onboards its own projects. The noergler admin is involved once per team (and again only when the team gets a new project); everything else the team admin does alone.
 
-1. Generate the team's webhook secret:
+**Once per team (noergler admin):** add the team to `teams.yaml` (see [Teams](#teams)), set `TEAM_<SLUG>_WEBHOOK_SECRET` (`openssl rand -hex 32`) and `TEAM_<SLUG>_OPENAI_API_KEY`, redeploy, hand the team admin the webhook secret.
 
-   ```bash
-   openssl rand -hex 32
-   ```
-
-2. Set the generated value as `TEAM_<SLUG>_WEBHOOK_SECRET` (or whatever
-   `webhook_secret_env` the team's `teams.yaml` entry names) in the service's
-   environment. This same value must be configured on Bitbucket's side — the
-   service and Bitbucket share the HMAC secret.
-
-### Automated onboarding (recommended)
-
-Use `scripts/onboard_repo.py` to create/update the webhook on one or more repos in a single, idempotent command. It verifies token permissions and reconciles the webhook configuration.
-
-```bash
-python -m scripts.onboard_repo config.json [--name noergler] [--dry-run] [--env-file PATH] [--teams teams.yaml]
-```
-
-Example `config.json` — one file per team, repos are grouped under their Bitbucket project:
+**Team admin:** you need your own Bitbucket personal access token (project admin on your projects, it creates the webhooks), the team's webhook secret, and a `team.json`:
 
 ```json
 {
   "team": "platform",
   "bitbucket_url": "https://bitbucket.example.com",
-  "webhook_url": "https://noergler.internal/webhook/platform",
+  "noergler_url": "https://noergler.internal",
   "projects": [
-    {
-      "project": "PROJ",
-      "repos": ["payments-service", "ledger-api"]
-    },
-    {
-      "project": "PLATFORM",
-      "repos": ["auth-gateway"]
-    }
+    {"key": "PLAT"},
+    {"key": "INFRA", "repos": ["terraform-core", "ansible"]}
   ]
 }
 ```
 
-`webhook_url` must end in `/webhook/<team>`: the service routes each team by path and
-verifies the signature against that team's secret.
+`projects` has the same shape as the team's block in `teams.yaml`, and each entry is one of two forms:
 
-**Credentials.** Secrets are never read from the JSON. `BITBUCKET_TOKEN` (bearer of the shared service account, needs repo read + write on every listed repo) and the team's webhook secret are resolved from, in order: process environment → `.env` in the current directory → `--env-file <path>`. Process env wins on conflict. The secret's variable is `TEAM_<SLUG>_WEBHOOK_SECRET` by convention (slug uppercased, `-` → `_`); with `--teams` (or `TEAMS_CONFIG` set) the script reads the team's `webhook_secret_env` from `teams.yaml` instead. The value **must match** what the running noergler service resolves for that team — this script only programs Bitbucket's side; it does not generate a new secret.
+| Entry | Webhook | New repo in the project |
+|---|---|---|
+| `{"key": "PLAT"}` — whole project | one **project** webhook (Bitbucket Data Center 8.8+), fires for every current and future repo | covered automatically, nobody does anything |
+| `{"key": "INFRA", "repos": [...]}` — selected repos | one **repo** webhook per listed repo (for a project shared between teams) | noergler admin adds it to `repos:` in `teams.yaml`, team admin re-runs the tool |
 
-**Flags.**
-- `--name` — webhook name (default `noergler`). Used to find an existing hook to update instead of creating a duplicate.
-- `--dry-run` — print the create/update diff and the body that would be sent, without mutating Bitbucket.
-- `--env-file PATH` — additional env file for CI (`/run/secrets/noergler.env` etc.).
-- `--teams PATH` — the service's `teams.yaml`. Resolves the team's `webhook_secret_env` and warns about repos the team does not own there (the service answers `403` for those). Needs PyYAML; without the flag the script is stdlib-only.
+Put the two secrets in `team.env`:
 
-**Behaviour.** Each repo runs through two steps: verify read access, then create-or-update the webhook (idempotent — re-running prints `already up to date`). A failure on one repo logs and continues to the next; the script exits non-zero iff any repo failed, and prints a final summary table. End-to-end delivery is verified by opening a real PR.
+```
+BITBUCKET_TOKEN=<your personal access token>
+TEAM_PLATFORM_WEBHOOK_SECRET=<from the noergler admin>
+```
 
-**Known limitation — secret-only drift.** Bitbucket's webhook API does not return the stored secret, so the script cannot detect when *only* the secret has changed on one side. If you rotate a team's webhook secret on the service side, delete the webhook in Bitbucket (or rename it so this script recreates it) before re-running — otherwise the script will report `already up to date` while Bitbucket continues signing with the old secret.
+Then run the tool from the noergler image (no checkout needed) or from a checkout:
+
+```bash
+# see what is there: ownership, bot access, webhook state, stray repo hooks. No writes.
+podman run --rm --env-file team.env -v ./team.json:/cfg.json:ro <image> onboard /cfg.json --status
+
+# create/update the webhooks; --grant-bot gives the noergler bot write access where it has none
+podman run --rm --env-file team.env -v ./team.json:/cfg.json:ro <image> onboard /cfg.json --grant-bot
+
+# from a checkout (stdlib only, any Python 3.10+; the file can also be fetched on its own)
+python -m scripts.onboard_repo team.json --status
+```
+
+Per target the tool sends a signed probe to noergler first, which answers whether the team owns the target (as declared in `teams.yaml`) and whether the bot can read it; a target the team does not own is skipped with "ask the noergler admin". Then it creates or updates the webhook idempotently (re-running prints `already up to date`) and, under a project webhook, removes leftover repo-level `noergler` hooks, which would otherwise deliver every event twice (`--no-prune` keeps them). A failure on one target logs and continues; the exit code is non-zero iff any target failed (`--status`: iff anything is not healthy). End-to-end delivery is verified by opening a real PR.
+
+The probe proves that the bot can *read* the target; whether it can also comment is proven by the first review. `--grant-bot` grants `PROJECT_WRITE` / `REPO_WRITE`, which covers both.
+
+**Flags.** `--status` report only · `--remove` deboard · `--grant-bot` · `--no-prune` · `--dry-run` · `--name` (webhook name, default `noergler`) · `--env-file PATH` · `--secret-env VAR` (when the team's `webhook_secret_env` is not the `TEAM_<SLUG>_WEBHOOK_SECRET` convention).
+
+**Several noergler instances (intg next to prod).** Hooks are matched by name *and* URL. A `noergler` hook pointing at another instance is reported as `foreign` by `--status` and never pruned, rewritten or removed; onboard the second instance with `--name noergler-intg`.
+
+**Known limitation — secret-only drift.** Bitbucket's webhook API does not return the stored secret, so the tool cannot detect when *only* the secret has changed on one side. After rotating a team's webhook secret on the service side, remove the webhook (`--remove`) and onboard again.
 
 ### Manual setup (fallback)
 
-In Bitbucket Server, go to **Repository settings > Webhooks > Create webhook**:
+In Bitbucket Server, go to **Project settings > Webhooks** (whole project) or **Repository settings > Webhooks** (single repo) **> Create webhook**:
 - **URL:** `https://<host>:8080/webhook/<team>`
 - **Secret:** the value of the team's `TEAM_<SLUG>_WEBHOOK_SECRET`
 - **Events:** `pr:opened`, `pr:from_ref_updated`, `pr:comment:added`, `pr:comment:deleted`, `pr:merged`, `pr:declined`, `pr:deleted`

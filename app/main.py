@@ -35,6 +35,8 @@ configure_logging(
 )
 
 _REVIEW_EVENT_KEYS = {"pr:opened", "pr:from_ref_updated"}
+# Must match PROBE_EVENT_KEY in scripts/onboard_repo.py.
+PROBE_EVENT_KEY = "noergler:probe"
 _SILENT_PATHS = frozenset({"/health", "/ready"})
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
@@ -295,6 +297,52 @@ def _verify_webhook_signature(body: bytes, signature: str, secret: str) -> bool:
     return hmac.compare_digest(expected, signature)
 
 
+async def _probe(team: TeamConfig, payload: object) -> dict[str, object]:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="probe body must be an object")
+    project = payload.get("project")
+    repo = payload.get("repo")
+    if not isinstance(project, str) or not project.strip():
+        raise HTTPException(status_code=400, detail="probe needs a project key")
+    if repo is not None and (not isinstance(repo, str) or not repo.strip()):
+        raise HTTPException(status_code=400, detail="probe repo must be a slug or null")
+    project = project.strip()
+    repo = repo.strip() if isinstance(repo, str) else None
+
+    # How the team claims this project in teams.yaml: the whole project, some
+    # repos, or not at all. A project probe is owned only by a whole claim; a
+    # repo probe by either. The claim kind lets the script tell an admin whose
+    # team.json disagrees with teams.yaml exactly what to change.
+    scope = next((p for p in team.projects if p.key == project), None)
+    claim = "none" if scope is None else ("whole" if scope.repos is None else "repos")
+    if repo is None:
+        owned = claim == "whole"
+    else:
+        owned = team.owns(project, repo)
+
+    # Read access as the bot, with its own token. Read only: whether it may
+    # also comment is proven by the first review.
+    bot_can_read = False
+    if owned:
+        try:
+            if repo is None:
+                await bitbucket_client.get_project(project)
+            else:
+                await bitbucket_client.get_repo(project, repo)
+            bot_can_read = True
+        except Exception as exc:
+            logger.info("probe: bot cannot read %s/%s: %s", project, repo or "*", exc)
+    target = project if repo is None else f"{project}/{repo}"
+    logger.info("probe target=%s claim=%s owned=%s bot_can_read=%s", target, claim, owned, bot_can_read)
+    return {
+        "team": team.slug,
+        "owned": owned,
+        "claim": claim,
+        "bot_can_read": bot_can_read,
+        "bot_username": config.bitbucket.username,
+    }
+
+
 def _team_status() -> dict[str, object]:
     # Slugs only. The disable reasons carry internal detail (gateway URLs and
     # error bodies, env var names) and belong in the log, not on an
@@ -358,6 +406,13 @@ async def webhook(
         raise HTTPException(status_code=401, detail="Invalid signature")
 
     payload_json = await request.json()
+
+    if x_event_key == PROBE_EVENT_KEY:
+        # Onboarding probe from scripts/onboard_repo.py: signed with the team
+        # secret like any event, so only that team can ask. Answers whether
+        # the team owns the target and whether the bot can read it, which
+        # proves route, secret, ownership and bot access without a PR.
+        return await _probe(team, payload_json)
 
     event_key = payload_json.get("eventKey", "")
     if not event_key.startswith("pr:"):

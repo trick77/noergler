@@ -27,6 +27,7 @@ Noergler is a Bitbucket Server PR auto-review bridge backed by an OpenAI-compati
 - Every WARNING/ERROR about a team carries `team=<slug>` via `structlog.contextvars`. Bind at each boundary (webhook route, queue worker, BackgroundTasks handlers via `Reviewer._bind_team`, per-team startup check); the request middleware clears contextvars before BackgroundTasks run.
 - Secrets never in `teams.yaml`; `*_env` fields name env vars. `base_url`, `catalog_url` and the prompt templates are instance-only by decision, `extra="forbid"` enforces it.
 - Keep the single review worker and single inference lock per client; they protect the shared Bitbucket/Jira accounts. Do not add a per-team worker.
+- `X-Event-Key: noergler:probe` on `/webhook/{slug}` is the onboarding probe (`_probe` in `app/main.py`); `scripts/onboard_repo.py` is stdlib-only and duplicates the key and the answer shape, keep both in sync.
 
 ## Riptide emission (optional sink, `app/riptide_client.py`)
 

@@ -227,6 +227,12 @@ class BitbucketClient:
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/webhooks/{webhook_id}/test"
         return await self.client.post(url, json={})
 
+    async def get_project(self, project: str) -> dict[str, Any]:
+        url = f"/rest/api/1.0/projects/{project}"
+        response = await self.client.get(url)
+        response.raise_for_status()
+        return response.json()
+
     async def get_repo(self, project: str, repo: str) -> dict[str, Any]:
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}"
         response = await self.client.get(url)

@@ -70,7 +70,8 @@ https://noergler.example.com/webhook/<team>
 ```
 
 with the team's `TEAM_<SLUG>_WEBHOOK_SECRET` as the secret, or run
-`python -m scripts.onboard_repo` from the app repo. Create the route manually
+`podman run <image> onboard team.json` (the tool ships in the image; see the README's
+webhook-setup section). Create the route manually
 before configuring the webhook.
 
 ## Rebuilding

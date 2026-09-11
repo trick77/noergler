@@ -1,3 +1,6 @@
+import hashlib
+import hmac
+import io
 import json
 import urllib.error
 import urllib.request
@@ -9,23 +12,32 @@ import pytest
 
 from scripts.onboard_repo import (
     DEFAULT_WEBHOOK_NAME,
+    PROBE_EVENT_KEY,
     REQUIRED_WEBHOOK_EVENTS,
     BitbucketHTTP,
     HTTPStatusError,
-    RepoOnboarder,
-    RepoSpec,
+    NoerglerProbe,
+    Onboarder,
+    Target,
     default_webhook_secret_var,
     load_onboarding_input,
-    load_team_entry,
-    team_owns,
     main,
     resolve_secrets,
 )
 
 BASE_URL = "https://bitbucket.company.com"
 TEAM = "platform"
-WEBHOOK_URL = f"https://noergler.internal/webhook/{TEAM}"
+NOERGLER_URL = "https://noergler.internal"
+WEBHOOK_URL = f"{NOERGLER_URL}/webhook/{TEAM}"
+WEBHOOK_PATH = f"/webhook/{TEAM}"
+SECRET = "whsec"
 SECRET_VAR = "TEAM_PLATFORM_WEBHOOK_SECRET"
+BOT = "noergler"
+
+PROJ = Target(project="PROJ")
+REPO = Target(project="PROJ", repo="my-repo")
+PROJ_HOOKS = "/rest/api/1.0/projects/PROJ/webhooks"
+REPO_HOOKS = "/rest/api/1.0/projects/PROJ/repos/my-repo/webhooks"
 
 
 # --------------------------------------------------------------------------- #
@@ -50,8 +62,9 @@ class _FakeHTTPResponse:
 RouteHandler = Callable[[dict[str, Any], bytes | None], tuple[int, dict[str, Any] | str]]
 
 
-class FakeBitbucket:
-    """Route registry; install into urllib.request.urlopen for the duration of a test."""
+class FakeHTTP:
+    """Route registry for both Bitbucket and noergler; installed into
+    urllib.request.urlopen for the duration of a test."""
 
     def __init__(self):
         self.routes: dict[tuple[str, str], RouteHandler] = {}
@@ -60,11 +73,42 @@ class FakeBitbucket:
     def route(self, method: str, path: str, handler: RouteHandler) -> None:
         self.routes[(method.upper(), path)] = handler
 
-    def respond_json(self, method: str, path: str, status: int, body: dict[str, Any]) -> None:
+    def respond_json(self, method: str, path: str, status: int, body: Any) -> None:
         self.route(method, path, lambda q, b: (status, body))
 
     def respond_text(self, method: str, path: str, status: int, text: str) -> None:
         self.route(method, path, lambda q, b: (status, text))
+
+    # -- noergler probe -- #
+    def probe(
+        self, owned: bool = True, bot_can_read: bool = True, status: int = 200, claim: str | None = None,
+    ) -> None:
+        """Answer the signed probe. Verifies the signature like the service does."""
+        def handler(_q: dict[str, Any], body: bytes | None) -> tuple[int, Any]:
+            assert body is not None
+            expected = hmac.new(SECRET.encode(), body, hashlib.sha256).hexdigest()
+            sig = self.calls[-1]["headers"].get("X-hub-signature", "")
+            if sig != f"sha256={expected}":
+                return 401, {"detail": "Invalid signature"}
+            if status != 200:
+                return status, {"detail": "nope"}
+            req = json.loads(body)
+            return 200, {
+                "team": TEAM, "owned": owned, "bot_can_read": bot_can_read,
+                "bot_username": BOT, "echo": req,
+                "claim": claim if claim is not None else ("whole" if owned else "none"),
+            }
+        self.route("POST", WEBHOOK_PATH, handler)
+
+    # -- Bitbucket shortcuts -- #
+    def hooks(self, path: str, values: list[dict[str, Any]]) -> None:
+        self.respond_json("GET", path, 200, {"values": values, "isLastPage": True})
+
+    def repos(self, project: str, slugs: list[str]) -> None:
+        self.respond_json(
+            "GET", f"/rest/api/1.0/projects/{project}/repos", 200,
+            {"values": [{"slug": s} for s in slugs], "isLastPage": True},
+        )
 
     def urlopen(self, req: urllib.request.Request, timeout: float | None = None):
         parsed = urlsplit(req.full_url)
@@ -96,10 +140,11 @@ class FakeBitbucket:
             raise _make_httperror(req.full_url, status, body_bytes)
         return _FakeHTTPResponse(status, body_bytes)
 
+    def calls_to(self, method: str, path: str) -> list[dict[str, Any]]:
+        return [c for c in self.calls if c["method"] == method and c["path"] == path]
+
 
 def _make_httperror(url: str, status: int, body_bytes: bytes) -> urllib.error.HTTPError:
-    import io
-
     return urllib.error.HTTPError(
         url=url,
         code=status,
@@ -111,7 +156,7 @@ def _make_httperror(url: str, status: int, body_bytes: bytes) -> urllib.error.HT
 
 @pytest.fixture
 def fake(monkeypatch):
-    fb = FakeBitbucket()
+    fb = FakeHTTP()
     monkeypatch.setattr("scripts.onboard_repo.urllib.request.urlopen", fb.urlopen)
     return fb
 
@@ -121,225 +166,119 @@ def client():
     return BitbucketHTTP(base_url=BASE_URL, token="test-token")
 
 
-@pytest.fixture
-def onboarder(client):
-    return RepoOnboarder(
+def _onboarder(client, **kwargs) -> Onboarder:
+    return Onboarder(
         client,
+        NoerglerProbe(WEBHOOK_URL, SECRET),
         webhook_url=WEBHOOK_URL,
-        webhook_secret="whsec",
+        webhook_secret=SECRET,
         webhook_name=DEFAULT_WEBHOOK_NAME,
+        **kwargs,
     )
 
 
 @pytest.fixture
-def spec():
-    return RepoSpec(project="PROJ", repo="my-repo")
+def onboarder(client):
+    return _onboarder(client)
+
+
+def _good_hook(hook_id: int = 1) -> dict[str, Any]:
+    return {
+        "id": hook_id, "name": DEFAULT_WEBHOOK_NAME, "url": WEBHOOK_URL, "active": True,
+        "events": list(REQUIRED_WEBHOOK_EVENTS), "configuration": {"secret": "x"},
+    }
+
+
+FOREIGN_URL = "https://noergler-intg.internal/webhook/platform"
+
+
+def _foreign_hook(hook_id: int = 9) -> dict[str, Any]:
+    """Same name, another noergler instance (intg next to prod)."""
+    return _good_hook(hook_id) | {"url": FOREIGN_URL}
 
 
 # --------------------------------------------------------------------------- #
 # JSON config validation
 # --------------------------------------------------------------------------- #
 
+def _cfg(**overrides) -> dict[str, Any]:
+    base = {
+        "team": TEAM,
+        "bitbucket_url": BASE_URL,
+        "noergler_url": NOERGLER_URL,
+        "projects": [{"key": "PLAT"}, {"key": "INFRA", "repos": ["terraform-core", "ansible"]}],
+    }
+    base.update(overrides)
+    return base
+
+
 class TestLoadOnboardingInput:
     def _write(self, tmp_path: Path, data) -> Path:
-        p = tmp_path / "config.json"
+        p = tmp_path / "team.json"
         p.write_text(json.dumps(data))
         return p
 
-    def test_valid_config(self, tmp_path):
-        path = self._write(tmp_path, {
-            "team": TEAM,
-            "bitbucket_url": "https://bb.example.com",
-            "webhook_url": f"https://noergler/webhook/{TEAM}",
-            "projects": [
-                {"project": "A", "repos": ["one", "two"]},
-                {"project": "B", "repos": ["three"]},
-            ],
-        })
-        result = load_onboarding_input(path)
-        assert result.bitbucket_url == "https://bb.example.com"
-        assert result.webhook_url == f"https://noergler/webhook/{TEAM}"
+    def test_whole_project_and_repo_list_become_targets(self, tmp_path):
+        result = load_onboarding_input(self._write(tmp_path, _cfg()))
         assert result.team == TEAM
-        assert [r.key for r in result.repos] == ["A/one", "A/two", "B/three"]
+        assert result.webhook_url == WEBHOOK_URL
+        assert result.targets == [
+            Target("PLAT"), Target("INFRA", "terraform-core"), Target("INFRA", "ansible"),
+        ]
+        assert result.targets[0].is_project and not result.targets[1].is_project
+        assert [t.label for t in result.targets][:2] == ["PLAT (project)", "INFRA/terraform-core"]
 
-    def test_strips_trailing_slash_on_bitbucket_url(self, tmp_path):
-        path = self._write(tmp_path, {
-            "team": TEAM,
-            "bitbucket_url": "https://bb.example.com/",
-            "webhook_url": f"https://x/webhook/{TEAM}",
-            "projects": [{"project": "A", "repos": ["one"]}],
-        })
-        assert load_onboarding_input(path).bitbucket_url == "https://bb.example.com"
+    def test_strips_trailing_slashes(self, tmp_path):
+        cfg = _cfg(bitbucket_url=BASE_URL + "/", noergler_url=NOERGLER_URL + "/")
+        result = load_onboarding_input(self._write(tmp_path, cfg))
+        assert result.bitbucket_url == BASE_URL
+        assert result.webhook_url == WEBHOOK_URL
 
-    def test_rejects_http_bitbucket_url(self, tmp_path):
-        path = self._write(tmp_path, {
-            "team": TEAM,
-            "bitbucket_url": "http://bb",
-            "webhook_url": f"https://x/webhook/{TEAM}",
-            "projects": [{"project": "A", "repos": ["one"]}],
-        })
-        with pytest.raises(SystemExit, match="bitbucket_url"):
-            load_onboarding_input(path)
+    def test_rejects_old_format(self, tmp_path):
+        with pytest.raises(SystemExit, match="old config format"):
+            load_onboarding_input(self._write(tmp_path, {
+                "team": TEAM, "bitbucket_url": BASE_URL, "webhook_url": WEBHOOK_URL,
+                "projects": [{"project": "PROJ", "repos": ["r"]}],
+            }))
 
-    def test_rejects_missing_webhook_url(self, tmp_path):
-        path = self._write(tmp_path, {
-            "team": TEAM,
-            "bitbucket_url": "https://bb",
-            "projects": [{"project": "A", "repos": ["one"]}],
-        })
-        with pytest.raises(SystemExit, match="webhook_url"):
-            load_onboarding_input(path)
+    def test_rejects_noergler_url_with_a_path(self, tmp_path):
+        with pytest.raises(SystemExit, match="base URL without a path"):
+            load_onboarding_input(self._write(tmp_path, _cfg(noergler_url=WEBHOOK_URL)))
 
-    def test_rejects_missing_projects(self, tmp_path):
-        path = self._write(tmp_path, {
-            "team": TEAM,
-            "bitbucket_url": "https://bb",
-            "webhook_url": f"https://x/webhook/{TEAM}",
-        })
-        with pytest.raises(SystemExit, match="projects"):
-            load_onboarding_input(path)
-
-    def test_rejects_empty_projects_list(self, tmp_path):
-        path = self._write(tmp_path, {
-            "team": TEAM,
-            "bitbucket_url": "https://bb",
-            "webhook_url": f"https://x/webhook/{TEAM}",
-            "projects": [],
-        })
-        with pytest.raises(SystemExit, match="projects"):
-            load_onboarding_input(path)
-
-    def test_rejects_empty_repos_under_project(self, tmp_path):
-        path = self._write(tmp_path, {
-            "team": TEAM,
-            "bitbucket_url": "https://bb",
-            "webhook_url": f"https://x/webhook/{TEAM}",
-            "projects": [{"project": "A", "repos": []}],
-        })
-        with pytest.raises(SystemExit, match="repos"):
-            load_onboarding_input(path)
-
-    def test_rejects_duplicate_repos(self, tmp_path):
-        path = self._write(tmp_path, {
-            "team": TEAM,
-            "bitbucket_url": "https://bb",
-            "webhook_url": f"https://x/webhook/{TEAM}",
-            "projects": [
-                {"project": "A", "repos": ["one", "one"]},
-            ],
-        })
-        with pytest.raises(SystemExit, match="duplicate"):
-            load_onboarding_input(path)
-
-    def test_rejects_duplicate_across_project_entries(self, tmp_path):
-        path = self._write(tmp_path, {
-            "team": TEAM,
-            "bitbucket_url": "https://bb",
-            "webhook_url": f"https://x/webhook/{TEAM}",
-            "projects": [
-                {"project": "A", "repos": ["one"]},
-                {"project": "A", "repos": ["one"]},
-            ],
-        })
-        with pytest.raises(SystemExit, match="duplicate"):
-            load_onboarding_input(path)
-
-    def test_rejects_missing_project_field(self, tmp_path):
-        path = self._write(tmp_path, {
-            "team": TEAM,
-            "bitbucket_url": "https://bb",
-            "webhook_url": f"https://x/webhook/{TEAM}",
-            "projects": [{"repos": ["one"]}],
-        })
-        with pytest.raises(SystemExit, match="project"):
-            load_onboarding_input(path)
-
-
-    def test_rejects_missing_team(self, tmp_path):
-        path = self._write(tmp_path, {
-            "bitbucket_url": "https://bb.example.com",
-            "webhook_url": f"https://x/webhook/{TEAM}",
-            "projects": [{"project": "A", "repos": ["one"]}],
-        })
-        with pytest.raises(SystemExit, match="'team'"):
-            load_onboarding_input(path)
+    @pytest.mark.parametrize("field", ["team", "bitbucket_url", "noergler_url", "projects"])
+    def test_rejects_missing_field(self, tmp_path, field):
+        cfg = _cfg()
+        del cfg[field]
+        with pytest.raises(SystemExit, match=field):
+            load_onboarding_input(self._write(tmp_path, cfg))
 
     def test_rejects_invalid_team_slug(self, tmp_path):
-        path = self._write(tmp_path, {
-            "team": "Platform Team",
-            "bitbucket_url": "https://bb.example.com",
-            "webhook_url": "https://x/webhook/platform",
-            "projects": [{"project": "A", "repos": ["one"]}],
-        })
         with pytest.raises(SystemExit, match="'team'"):
-            load_onboarding_input(path)
+            load_onboarding_input(self._write(tmp_path, _cfg(team="Platform Team")))
 
-    def test_rejects_webhook_url_without_the_team_path(self, tmp_path):
-        # The service routes by /webhook/<team>; a bare /webhook is a 404.
-        path = self._write(tmp_path, {
-            "team": TEAM,
-            "bitbucket_url": "https://bb.example.com",
-            "webhook_url": "https://x/webhook",
-            "projects": [{"project": "A", "repos": ["one"]}],
-        })
-        with pytest.raises(SystemExit, match="/webhook/platform"):
-            load_onboarding_input(path)
+    def test_rejects_http_bitbucket_url(self, tmp_path):
+        with pytest.raises(SystemExit, match="bitbucket_url"):
+            load_onboarding_input(self._write(tmp_path, _cfg(bitbucket_url="http://bb")))
 
-    def test_rejects_webhook_url_for_another_team(self, tmp_path):
-        path = self._write(tmp_path, {
-            "team": TEAM,
-            "bitbucket_url": "https://bb.example.com",
-            "webhook_url": "https://x/webhook/payments",
-            "projects": [{"project": "A", "repos": ["one"]}],
-        })
-        with pytest.raises(SystemExit, match="/webhook/platform"):
-            load_onboarding_input(path)
-
-
-# --------------------------------------------------------------------------- #
-# teams.yaml lookup
-# --------------------------------------------------------------------------- #
-
-TEAMS_YAML = """
-teams:
-  - slug: platform
-    webhook_secret_env: PLATFORM_HOOK
-    projects:
-      - key: PROJ
-        repos: [r, good]
-      - key: OPEN
-    inference:
-      api_key_env: X
-"""
-
-
-class TestTeamsLookup:
-    def test_default_secret_var_follows_the_convention(self):
-        assert default_webhook_secret_var("data-platform") == "TEAM_DATA_PLATFORM_WEBHOOK_SECRET"
-
-    def test_load_team_entry_finds_the_slug(self, tmp_path):
-        path = tmp_path / "teams.yaml"
-        path.write_text(TEAMS_YAML)
-        entry = load_team_entry(path, "platform")
-        assert entry is not None
-        assert entry["webhook_secret_env"] == "PLATFORM_HOOK"
-        assert load_team_entry(path, "nobody") is None
-
-    def test_load_team_entry_rejects_a_file_without_teams(self, tmp_path):
-        path = tmp_path / "teams.yaml"
-        path.write_text("foo: bar")
-        with pytest.raises(SystemExit, match="teams:"):
-            load_team_entry(path, "platform")
-
-    def test_team_owns_respects_repo_lists(self, tmp_path):
-        path = tmp_path / "teams.yaml"
-        path.write_text(TEAMS_YAML)
-        entry = load_team_entry(path, "platform")
-        assert entry is not None
-        assert team_owns(entry, RepoSpec("PROJ", "r"))
-        assert not team_owns(entry, RepoSpec("PROJ", "other"))
-        assert team_owns(entry, RepoSpec("OPEN", "anything"))
-        assert not team_owns(entry, RepoSpec("NOPE", "x"))
+    @pytest.mark.parametrize(
+        ("projects", "message"),
+        [
+            ([], "'projects' must be a non-empty list"),
+            (["PLAT"], "must be an object"),
+            ([{"key": ""}], "key must be a non-empty string"),
+            ([{"project": "PLAT"}], "old config format"),
+            ([{"key": "PLAT", "extra": 1}], "unknown field"),
+            ([{"key": "PLAT", "repos": []}], "non-empty list of repo slugs, or omitted"),
+            ([{"key": "PLAT", "repos": [""]}], "must be a non-empty string"),
+            ([{"key": "PLAT"}, {"key": "PLAT"}], "duplicate project entry"),
+            ([{"key": "PLAT", "repos": ["a", "a"]}], "duplicate repo entry"),
+            ([{"key": "PLAT", "repos": ["a"]}, {"key": "PLAT", "repos": ["a"]}], "duplicate repo entry"),
+            ([{"key": "PLAT"}, {"key": "PLAT", "repos": ["a"]}], "both whole and with repos"),
+        ],
+    )
+    def test_rejects_bad_projects(self, tmp_path, projects, message):
+        with pytest.raises(SystemExit, match=message):
+            load_onboarding_input(self._write(tmp_path, _cfg(projects=projects)))
 
 
 # --------------------------------------------------------------------------- #
@@ -347,233 +286,330 @@ class TestTeamsLookup:
 # --------------------------------------------------------------------------- #
 
 class TestResolveSecrets:
+    def test_default_secret_var_follows_the_convention(self):
+        assert default_webhook_secret_var("data-platform") == "TEAM_DATA_PLATFORM_WEBHOOK_SECRET"
+
     def test_env_vars_win(self, monkeypatch, tmp_path):
         monkeypatch.setenv("BITBUCKET_TOKEN", "from-env")
         monkeypatch.setenv(SECRET_VAR, "sec-env")
         monkeypatch.chdir(tmp_path)
-        token, secret = resolve_secrets(None, SECRET_VAR)
-        assert (token, secret) == ("from-env", "sec-env")
+        assert resolve_secrets(None, SECRET_VAR) == ("from-env", "sec-env")
 
     def test_env_file_fallback(self, monkeypatch, tmp_path):
         monkeypatch.delenv("BITBUCKET_TOKEN", raising=False)
         monkeypatch.delenv(SECRET_VAR, raising=False)
         monkeypatch.chdir(tmp_path)
         env_file = tmp_path / "extra.env"
-        env_file.write_text(
-            'BITBUCKET_TOKEN="file-token"\nTEAM_PLATFORM_WEBHOOK_SECRET=file-secret\n# ignored\n'
-        )
-        token, secret = resolve_secrets(env_file, SECRET_VAR)
-        assert (token, secret) == ("file-token", "file-secret")
-
-    def test_cwd_dotenv_used(self, monkeypatch, tmp_path):
-        monkeypatch.delenv("BITBUCKET_TOKEN", raising=False)
-        monkeypatch.delenv(SECRET_VAR, raising=False)
-        (tmp_path / ".env").write_text(
-            "BITBUCKET_TOKEN=cwd-token\nTEAM_PLATFORM_WEBHOOK_SECRET=cwd-secret\n"
-        )
-        monkeypatch.chdir(tmp_path)
-        token, secret = resolve_secrets(None, SECRET_VAR)
-        assert (token, secret) == ("cwd-token", "cwd-secret")
+        env_file.write_text(f'BITBUCKET_TOKEN="file-token"\n{SECRET_VAR}=file-secret\n# ignored\n')
+        assert resolve_secrets(env_file, SECRET_VAR) == ("file-token", "file-secret")
 
     def test_precedence_env_beats_cwd_beats_envfile(self, monkeypatch, tmp_path):
-        """Pin down: process env > cwd .env > --env-file."""
-        (tmp_path / ".env").write_text(
-            "BITBUCKET_TOKEN=cwd-token\nTEAM_PLATFORM_WEBHOOK_SECRET=cwd-secret\n"
-        )
+        (tmp_path / ".env").write_text(f"BITBUCKET_TOKEN=cwd-token\n{SECRET_VAR}=cwd-secret\n")
         env_file = tmp_path / "lowest.env"
-        env_file.write_text(
-            "BITBUCKET_TOKEN=envfile-token\nTEAM_PLATFORM_WEBHOOK_SECRET=envfile-secret\n"
-        )
+        env_file.write_text(f"BITBUCKET_TOKEN=envfile-token\n{SECRET_VAR}=envfile-secret\n")
         monkeypatch.chdir(tmp_path)
-
         monkeypatch.delenv("BITBUCKET_TOKEN", raising=False)
         monkeypatch.delenv(SECRET_VAR, raising=False)
-        token, secret = resolve_secrets(env_file, SECRET_VAR)
-        assert (token, secret) == ("cwd-token", "cwd-secret")
-
+        assert resolve_secrets(env_file, SECRET_VAR) == ("cwd-token", "cwd-secret")
         monkeypatch.setenv("BITBUCKET_TOKEN", "env-token")
         monkeypatch.setenv(SECRET_VAR, "env-secret")
-        token, secret = resolve_secrets(env_file, SECRET_VAR)
-        assert (token, secret) == ("env-token", "env-secret")
+        assert resolve_secrets(env_file, SECRET_VAR) == ("env-token", "env-secret")
 
-    def test_missing_secrets_exits(self, monkeypatch, tmp_path):
+    def test_custom_secret_var(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("BITBUCKET_TOKEN", "t")
+        monkeypatch.setenv("PLATFORM_HOOK", "s")
+        monkeypatch.chdir(tmp_path)
+        assert resolve_secrets(None, "PLATFORM_HOOK") == ("t", "s")
+
+    def test_missing_secrets_exits(self, monkeypatch, tmp_path, capsys):
         monkeypatch.delenv("BITBUCKET_TOKEN", raising=False)
         monkeypatch.delenv(SECRET_VAR, raising=False)
         monkeypatch.chdir(tmp_path)
         with pytest.raises(SystemExit):
             resolve_secrets(None, SECRET_VAR)
+        assert SECRET_VAR in capsys.readouterr().err
 
 
 # --------------------------------------------------------------------------- #
-# Drift guard: inlined constant must match app/config.py
+# Probe
 # --------------------------------------------------------------------------- #
 
-def test_required_webhook_events_match_app_config():
-    from app.config import REQUIRED_WEBHOOK_EVENTS as canonical
-    assert REQUIRED_WEBHOOK_EVENTS == canonical
+class TestProbe:
+    def test_signs_body_and_reads_answer(self, fake):
+        fake.probe(owned=True, bot_can_read=False)
+        result = NoerglerProbe(WEBHOOK_URL, SECRET).probe(REPO)
+        assert (result.owned, result.bot_can_read, result.bot_username) == (True, False, BOT)
+        call = fake.calls[-1]
+        assert call["headers"]["X-event-key"] == PROBE_EVENT_KEY
+        assert json.loads(call["body"]) == {"project": "PROJ", "repo": "my-repo"}
+
+    def test_project_probe_sends_null_repo(self, fake):
+        fake.probe()
+        NoerglerProbe(WEBHOOK_URL, SECRET).probe(PROJ)
+        assert json.loads(fake.calls[-1]["body"]) == {"project": "PROJ", "repo": None}
+
+    def test_wrong_secret_exits_with_hint(self, fake):
+        fake.probe()
+        with pytest.raises(SystemExit, match="secret does not match"):
+            NoerglerProbe(WEBHOOK_URL, "other").probe(PROJ)
+
+    @pytest.mark.parametrize(("status", "hint"), [(404, "no such team"), (503, "disabled this team")])
+    def test_team_level_errors_exit(self, fake, status, hint):
+        fake.probe(status=status)
+        with pytest.raises(SystemExit, match=hint):
+            NoerglerProbe(WEBHOOK_URL, SECRET).probe(PROJ)
 
 
 # --------------------------------------------------------------------------- #
-# RepoOnboarder
+# Onboarding a project / a repo
 # --------------------------------------------------------------------------- #
 
-class TestVerifyPermissions:
-    def test_ok(self, onboarder, spec, fake):
-        fake.respond_json("GET", "/rest/api/1.0/projects/PROJ/repos/my-repo", 200, {"slug": "my-repo"})
-        fake.respond_json(
-            "GET", "/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests", 200, {"values": []}
-        )
-        onboarder.verify_permissions(spec)
+class TestOnboardProject:
+    def test_creates_project_webhook_and_prunes_repo_hooks(self, onboarder, fake):
+        fake.probe()
+        fake.respond_json("GET", "/rest/api/1.0/projects/PROJ", 200, {"key": "PROJ"})
+        fake.hooks(PROJ_HOOKS, [])
+        fake.respond_json("POST", PROJ_HOOKS, 201, {"id": 7})
+        fake.repos("PROJ", ["a", "b"])
+        fake.hooks("/rest/api/1.0/projects/PROJ/repos/a/webhooks", [_good_hook(3)])
+        fake.hooks("/rest/api/1.0/projects/PROJ/repos/b/webhooks", [{"id": 4, "name": "jenkins"}])
+        fake.respond_text("DELETE", "/rest/api/1.0/projects/PROJ/repos/a/webhooks/3", 204, "")
 
-    def test_403_raises(self, onboarder, spec, fake):
-        fake.respond_text("GET", "/rest/api/1.0/projects/PROJ/repos/my-repo", 403, "Forbidden")
-        with pytest.raises(HTTPStatusError):
-            onboarder.verify_permissions(spec)
+        result = onboarder.onboard(PROJ)
 
-
-class TestUpsertWebhook:
-    def test_creates_when_absent(self, onboarder, spec, fake):
-        fake.respond_json(
-            "GET", "/rest/api/1.0/projects/PROJ/repos/my-repo/webhooks", 200,
-            {"values": [], "isLastPage": True},
-        )
-        fake.respond_json(
-            "POST", "/rest/api/1.0/projects/PROJ/repos/my-repo/webhooks", 200, {"id": 42},
-        )
-
-        webhook_id, diff = onboarder.upsert_webhook(spec)
-
-        assert webhook_id == 42
-        assert diff == ["create"]
-        create_call = next(
-            c for c in fake.calls
-            if c["method"] == "POST" and c["path"].endswith("/webhooks")
-        )
-        body = json.loads(create_call["body"])
-        assert body["name"] == DEFAULT_WEBHOOK_NAME
+        assert result.status == "ok"
+        assert "webhook created (id=7)" in result.detail
+        assert "pruned 1 repo hook(s): PROJ/a" in result.detail
+        created = fake.calls_to("POST", PROJ_HOOKS)[0]
+        body = json.loads(created["body"])
         assert body["url"] == WEBHOOK_URL
+        assert body["configuration"] == {"secret": SECRET}
         assert set(body["events"]) == set(REQUIRED_WEBHOOK_EVENTS)
-        assert body["configuration"]["secret"] == "whsec"
-        assert body["active"] is True
-        assert body["sslVerificationRequired"] is True
+        assert len(fake.calls_to("DELETE", "/rest/api/1.0/projects/PROJ/repos/a/webhooks/3")) == 1
+        # the jenkins hook on b is not ours
+        assert not fake.calls_to("DELETE", "/rest/api/1.0/projects/PROJ/repos/b/webhooks/4")
 
-    def test_no_op_when_up_to_date(self, onboarder, spec, fake):
-        fake.respond_json(
-            "GET", "/rest/api/1.0/projects/PROJ/repos/my-repo/webhooks", 200,
-            {
-                "values": [{
-                    "id": 7,
-                    "name": DEFAULT_WEBHOOK_NAME,
-                    "url": WEBHOOK_URL,
-                    "events": list(REQUIRED_WEBHOOK_EVENTS),
-                    "active": True,
-                    "configuration": {"secret": "hidden"},
-                }],
-                "isLastPage": True,
-            },
-        )
+    def test_no_prune_keeps_repo_hooks(self, client, fake):
+        fake.probe()
+        fake.respond_json("GET", "/rest/api/1.0/projects/PROJ", 200, {})
+        fake.hooks(PROJ_HOOKS, [_good_hook()])
+        result = _onboarder(client, prune=False).onboard(PROJ)
+        assert result.status == "ok"
+        assert result.detail == "webhook already up to date"
+        assert not fake.calls_to("GET", "/rest/api/1.0/projects/PROJ/repos")
 
-        webhook_id, diff = onboarder.upsert_webhook(spec)
-        assert webhook_id == 7
-        assert diff == []
+    def test_not_owned_is_skipped_before_touching_bitbucket(self, onboarder, fake):
+        fake.probe(owned=False)
+        result = onboarder.onboard(PROJ)
+        assert result.status == "skipped"
+        assert "ask the noergler admin" in result.detail
+        assert all(c["path"] == WEBHOOK_PATH for c in fake.calls)
 
-    def test_updates_on_drift(self, onboarder, spec, fake):
-        fake.respond_json(
-            "GET", "/rest/api/1.0/projects/PROJ/repos/my-repo/webhooks", 200,
-            {
-                "values": [{
-                    "id": 7,
-                    "name": DEFAULT_WEBHOOK_NAME,
-                    "url": "https://stale.example/webhook",
-                    "events": ["pr:opened"],
-                    "active": True,
-                    "configuration": {"secret": "x"},
-                }],
-                "isLastPage": True,
-            },
-        )
-        fake.respond_json(
-            "PUT", "/rest/api/1.0/projects/PROJ/repos/my-repo/webhooks/7", 200, {"id": 7},
-        )
+    def test_project_claimed_by_repos_tells_admin_to_list_repos(self, onboarder, fake):
+        fake.probe(owned=False, claim="repos")
+        result = onboarder.onboard(PROJ)
+        assert result.status == "skipped"
+        assert 'list them under "repos" in team.json' in result.detail
 
-        webhook_id, diff = onboarder.upsert_webhook(spec)
-        assert webhook_id == 7
-        assert any("url" in d for d in diff)
-        assert any("events" in d for d in diff)
-        assert any(c["method"] == "PUT" for c in fake.calls)
+    def test_repo_under_whole_claim_tells_admin_to_use_project_form(self, onboarder, fake):
+        # teams.yaml claims all of PROJ, but team.json lists a repo: a repo hook
+        # next to the project hook would deliver every event twice.
+        fake.probe(owned=False, claim="whole")
+        result = onboarder.onboard(REPO)
+        assert result.status == "skipped"
+        assert '{"key": "PROJ"}' in result.detail
+        assert "twice" in result.detail
 
-    def test_dry_run_skips_writes(self, client, spec, fake):
-        p = RepoOnboarder(
-            client, webhook_url=WEBHOOK_URL, webhook_secret="whsec", dry_run=True,
-        )
-        fake.respond_json(
-            "GET", "/rest/api/1.0/projects/PROJ/repos/my-repo/webhooks", 200,
-            {"values": [], "isLastPage": True},
-        )
+    def test_prune_leaves_hooks_of_another_instance_alone(self, onboarder, fake):
+        fake.probe()
+        fake.respond_json("GET", "/rest/api/1.0/projects/PROJ", 200, {})
+        fake.hooks(PROJ_HOOKS, [])
+        fake.respond_json("POST", PROJ_HOOKS, 201, {"id": 7})
+        fake.repos("PROJ", ["a", "b"])
+        fake.hooks("/rest/api/1.0/projects/PROJ/repos/a/webhooks", [_foreign_hook(3)])
+        fake.hooks("/rest/api/1.0/projects/PROJ/repos/b/webhooks", [_good_hook(4)])
+        fake.respond_text("DELETE", "/rest/api/1.0/projects/PROJ/repos/b/webhooks/4", 204, "")
 
-        webhook_id, diff = p.upsert_webhook(spec)
-        assert webhook_id == -1
-        assert diff == ["create"]
-        assert not any(c["method"] == "POST" for c in fake.calls)
+        result = onboarder.onboard(PROJ)
 
+        assert result.status == "ok"
+        assert "pruned 1 repo hook(s): PROJ/b" in result.detail
+        assert not [c for c in fake.calls if c["method"] == "DELETE" and "/repos/a/" in c["path"]]
+
+    def test_hook_of_another_instance_is_never_rewritten(self, onboarder, fake):
+        fake.probe()
+        fake.respond_json("GET", "/rest/api/1.0/projects/PROJ", 200, {})
+        fake.hooks(PROJ_HOOKS, [_foreign_hook(5)])
+        result = onboarder.onboard(PROJ)
+        assert result.status == "failed"
+        assert FOREIGN_URL in result.detail
+        assert "--name" in result.detail
+        assert not fake.calls_to("PUT", PROJ_HOOKS + "/5")
+        assert not fake.calls_to("POST", PROJ_HOOKS)
+
+    def test_bot_without_access_is_skipped_unless_grant(self, onboarder, fake):
+        fake.probe(bot_can_read=False)
+        fake.respond_json("GET", "/rest/api/1.0/projects/PROJ", 200, {})
+        result = onboarder.onboard(PROJ)
+        assert result.status == "skipped"
+        assert f"grant {BOT} PROJECT_WRITE" in result.detail
+        assert not fake.calls_to("GET", PROJ_HOOKS)
+
+    def test_grant_bot_grants_project_write_then_onboards(self, client, fake):
+        fake.probe(bot_can_read=False)
+        fake.respond_json("GET", "/rest/api/1.0/projects/PROJ", 200, {})
+        fake.respond_text("PUT", "/rest/api/1.0/projects/PROJ/permissions/users", 204, "")
+        fake.hooks(PROJ_HOOKS, [])
+        fake.respond_json("POST", PROJ_HOOKS, 201, {"id": 1})
+        fake.repos("PROJ", [])
+        result = _onboarder(client, grant_bot=True).onboard(PROJ)
+        assert result.status == "ok"
+        assert f"{BOT} granted PROJECT_WRITE" in result.detail
+        grant = fake.calls_to("PUT", "/rest/api/1.0/projects/PROJ/permissions/users")[0]
+        assert grant["query"] == f"name={BOT}&permission=PROJECT_WRITE"
+
+    def test_admin_without_access_fails(self, onboarder, fake):
+        fake.probe()
+        fake.respond_text("GET", "/rest/api/1.0/projects/PROJ", 403, "forbidden")
+        result = onboarder.onboard(PROJ)
+        assert result.status == "failed"
+        assert "admin access check HTTP 403" in result.detail
+
+    def test_dry_run_writes_nothing(self, client, fake):
+        fake.probe(bot_can_read=False)
+        fake.respond_json("GET", "/rest/api/1.0/projects/PROJ", 200, {})
+        fake.hooks(PROJ_HOOKS, [])
+        fake.repos("PROJ", ["a"])
+        fake.hooks("/rest/api/1.0/projects/PROJ/repos/a/webhooks", [_good_hook(3)])
+        result = _onboarder(client, dry_run=True, grant_bot=True).onboard(PROJ)
+        assert result.status == "ok"
+        assert result.detail.startswith("dry-run: ")
+        assert "pruned 1 repo hook(s)" in result.detail
+        assert not [c for c in fake.calls if c["method"] in ("POST", "PUT", "DELETE") and c["path"] != WEBHOOK_PATH]
+
+
+class TestOnboardRepo:
+    def test_creates_repo_webhook(self, onboarder, fake):
+        fake.probe()
+        fake.respond_json("GET", "/rest/api/1.0/projects/PROJ/repos/my-repo", 200, {})
+        fake.hooks(REPO_HOOKS, [])
+        fake.respond_json("POST", REPO_HOOKS, 201, {"id": 9})
+        result = onboarder.onboard(REPO)
+        assert result.status == "ok"
+        assert result.detail == "webhook created (id=9)"
+        # a repo target never lists the project's repos (no prune)
+        assert not fake.calls_to("GET", "/rest/api/1.0/projects/PROJ/repos")
+
+    def test_updates_on_drift(self, onboarder, fake):
+        stale = _good_hook(2) | {"active": False, "events": ["pr:opened"]}
+        fake.probe()
+        fake.respond_json("GET", "/rest/api/1.0/projects/PROJ/repos/my-repo", 200, {})
+        fake.hooks(REPO_HOOKS, [stale])
+        fake.respond_json("PUT", REPO_HOOKS + "/2", 200, {"id": 2})
+        result = onboarder.onboard(REPO)
+        assert result.status == "ok"
+        assert result.detail == "webhook updated (id=2)"
+        assert any(d.startswith("active:") for d in result.diff)
+        assert any(d.startswith("events:") for d in result.diff)
+
+    def test_grant_bot_uses_repo_write(self, client, fake):
+        fake.probe(bot_can_read=False)
+        fake.respond_json("GET", "/rest/api/1.0/projects/PROJ/repos/my-repo", 200, {})
+        fake.respond_text("PUT", "/rest/api/1.0/projects/PROJ/repos/my-repo/permissions/users", 204, "")
+        fake.hooks(REPO_HOOKS, [_good_hook()])
+        result = _onboarder(client, grant_bot=True).onboard(REPO)
+        assert result.status == "ok"
+        grant = fake.calls_to("PUT", "/rest/api/1.0/projects/PROJ/repos/my-repo/permissions/users")[0]
+        assert grant["query"] == f"name={BOT}&permission=REPO_WRITE"
+
+    def test_upsert_failure_is_reported(self, onboarder, fake):
+        fake.probe()
+        fake.respond_json("GET", "/rest/api/1.0/projects/PROJ/repos/my-repo", 200, {})
+        fake.respond_text("GET", REPO_HOOKS, 500, "boom")
+        result = onboarder.onboard(REPO)
+        assert result.status == "failed"
+        assert "upsert webhook HTTP 500" in result.detail
+
+
+class TestPagination:
+    def test_list_webhooks_follows_pages(self, client, fake):
+        pages = {
+            "0": {"values": [{"id": 1, "name": "x"}], "isLastPage": False, "nextPageStart": 1},
+            "1": {"values": [{"id": 2, "name": "y"}], "isLastPage": True},
+        }
+        fake.route("GET", PROJ_HOOKS, lambda q, b: (200, pages[q["start"]]))
+        assert [h["id"] for h in client.list_webhooks(PROJ)] == [1, 2]
+
+
+# --------------------------------------------------------------------------- #
+# Status
+# --------------------------------------------------------------------------- #
+
+class TestStatus:
+    def test_reports_state_without_writing(self, onboarder, fake):
+        fake.probe(bot_can_read=False)
+        fake.hooks(PROJ_HOOKS, [_good_hook() | {"active": False}])
+        fake.repos("PROJ", ["a"])
+        fake.hooks("/rest/api/1.0/projects/PROJ/repos/a/webhooks", [_good_hook(3)])
+        row = onboarder.status(PROJ)
+        assert (row.owned, row.bot_can_read) == (True, False)
+        assert row.webhook == "stale: active: False -> True"
+        assert row.stray == ["PROJ/a"]
+        assert all(c["method"] in ("GET", "POST") for c in fake.calls)
+        assert not [c for c in fake.calls if c["method"] == "POST" and c["path"] != WEBHOOK_PATH]
+
+    def test_missing_hook(self, onboarder, fake):
+        fake.probe()
+        fake.hooks(REPO_HOOKS, [])
+        row = onboarder.status(REPO)
+        assert row.webhook == "missing"
+        assert row.stray == []
+
+    def test_foreign_hooks_are_reported_not_counted_as_stray(self, onboarder, fake):
+        fake.probe()
+        fake.hooks(PROJ_HOOKS, [_foreign_hook(1)])
+        fake.repos("PROJ", ["a"])
+        fake.hooks("/rest/api/1.0/projects/PROJ/repos/a/webhooks", [_foreign_hook(3)])
+        row = onboarder.status(PROJ)
+        assert row.webhook == f"foreign: {FOREIGN_URL}"
+        assert row.stray == []
+        assert row.foreign == [f"PROJ/a -> {FOREIGN_URL}"]
+
+    def test_not_owned_row_carries_the_reason(self, onboarder, fake):
+        fake.probe(owned=False, claim="whole")
+        row = onboarder.status(REPO)
+        assert row.owned is False
+        assert '{"key": "PROJ"}' in row.webhook
+
+
+# --------------------------------------------------------------------------- #
+# Remove
+# --------------------------------------------------------------------------- #
 
 class TestRemoveWebhook:
-    def test_removes_existing(self, onboarder, spec, fake):
-        fake.respond_json(
-            "GET", "/rest/api/1.0/projects/PROJ/repos/my-repo/webhooks", 200,
-            {
-                "values": [{"id": 42, "name": DEFAULT_WEBHOOK_NAME}],
-                "isLastPage": True,
-            },
-        )
-        fake.respond_text(
-            "DELETE", "/rest/api/1.0/projects/PROJ/repos/my-repo/webhooks/42", 204, "",
-        )
-
-        result = onboarder.remove_webhook(spec)
+    def test_removes_project_hook(self, onboarder, fake):
+        fake.hooks(PROJ_HOOKS, [_good_hook(5)])
+        fake.respond_text("DELETE", PROJ_HOOKS + "/5", 204, "")
+        result = onboarder.remove_webhook(PROJ)
         assert result.status == "ok"
-        assert "42" in result.detail
-        assert any(c["method"] == "DELETE" for c in fake.calls)
+        assert len(fake.calls_to("DELETE", PROJ_HOOKS + "/5")) == 1
 
-    def test_skipped_when_absent(self, onboarder, spec, fake):
-        fake.respond_json(
-            "GET", "/rest/api/1.0/projects/PROJ/repos/my-repo/webhooks", 200,
-            {"values": [], "isLastPage": True},
-        )
+    def test_skipped_when_absent(self, onboarder, fake):
+        fake.hooks(REPO_HOOKS, [{"id": 1, "name": "jenkins"}])
+        assert onboarder.remove_webhook(REPO).status == "skipped"
 
-        result = onboarder.remove_webhook(spec)
+    def test_skips_hook_of_another_instance(self, onboarder, fake):
+        fake.hooks(REPO_HOOKS, [_foreign_hook(5)])
+        result = onboarder.remove_webhook(REPO)
         assert result.status == "skipped"
-        assert not any(c["method"] == "DELETE" for c in fake.calls)
+        assert FOREIGN_URL in result.detail
+        assert not fake.calls_to("DELETE", REPO_HOOKS + "/5")
 
-    def test_dry_run_does_not_delete(self, client, spec, fake):
-        p = RepoOnboarder(
-            client, webhook_url=WEBHOOK_URL, webhook_secret="whsec", dry_run=True,
-        )
-        fake.respond_json(
-            "GET", "/rest/api/1.0/projects/PROJ/repos/my-repo/webhooks", 200,
-            {
-                "values": [{"id": 42, "name": DEFAULT_WEBHOOK_NAME}],
-                "isLastPage": True,
-            },
-        )
-
-        result = p.remove_webhook(spec)
+    def test_dry_run_does_not_delete(self, client, fake):
+        fake.hooks(REPO_HOOKS, [_good_hook(5)])
+        result = _onboarder(client, dry_run=True).remove_webhook(REPO)
         assert result.status == "ok"
-        assert "dry-run" in result.detail
-        assert not any(c["method"] == "DELETE" for c in fake.calls)
-
-    def test_ignores_other_webhook_names(self, onboarder, spec, fake):
-        fake.respond_json(
-            "GET", "/rest/api/1.0/projects/PROJ/repos/my-repo/webhooks", 200,
-            {
-                "values": [{"id": 99, "name": "other-hook"}],
-                "isLastPage": True,
-            },
-        )
-
-        result = onboarder.remove_webhook(spec)
-        assert result.status == "skipped"
-        assert not any(c["method"] == "DELETE" for c in fake.calls)
+        assert not fake.calls_to("DELETE", REPO_HOOKS + "/5")
 
 
 # --------------------------------------------------------------------------- #
@@ -581,137 +617,63 @@ class TestRemoveWebhook:
 # --------------------------------------------------------------------------- #
 
 class TestMain:
-    def test_multi_repo_mixed_results(self, tmp_path, monkeypatch, fake):
-        cfg = tmp_path / "config.json"
-        cfg.write_text(json.dumps({
-            "team": TEAM,
-            "bitbucket_url": BASE_URL,
-            "webhook_url": WEBHOOK_URL,
-            "projects": [
-                {"project": "PROJ", "repos": ["good", "bad"]},
-            ],
-        }))
+    def _config(self, tmp_path, monkeypatch, projects) -> Path:
+        cfg = tmp_path / "team.json"
+        cfg.write_text(json.dumps(_cfg(projects=projects)))
         monkeypatch.setenv("BITBUCKET_TOKEN", "t")
-        monkeypatch.setenv(SECRET_VAR, "s")
+        monkeypatch.setenv(SECRET_VAR, SECRET)
         monkeypatch.chdir(tmp_path)
+        return cfg
 
-        fake.respond_json("GET", "/rest/api/1.0/projects/PROJ/repos/good", 200, {})
-        fake.respond_json(
-            "GET", "/rest/api/1.0/projects/PROJ/repos/good/pull-requests", 200, {"values": []},
-        )
-        fake.respond_json(
-            "GET", "/rest/api/1.0/projects/PROJ/repos/good/webhooks", 200,
-            {"values": [], "isLastPage": True},
-        )
-        fake.respond_json(
-            "POST", "/rest/api/1.0/projects/PROJ/repos/good/webhooks", 200, {"id": 1},
-        )
-        fake.respond_text("GET", "/rest/api/1.0/projects/PROJ/repos/bad", 404, "no repo")
+    def test_mixed_targets_and_results(self, tmp_path, monkeypatch, fake, capsys):
+        cfg = self._config(tmp_path, monkeypatch, [{"key": "PROJ"}, {"key": "OTHER", "repos": ["r"]}])
+        fake.probe()
+        fake.respond_json("GET", "/rest/api/1.0/projects/PROJ", 200, {})
+        fake.hooks(PROJ_HOOKS, [])
+        fake.respond_json("POST", PROJ_HOOKS, 201, {"id": 1})
+        fake.repos("PROJ", [])
+        fake.respond_text("GET", "/rest/api/1.0/projects/OTHER/repos/r", 404, "no repo")
 
         rc = main([str(cfg)])
+
         assert rc == 1
-
-    def test_dry_run_issues_no_writes(self, tmp_path, monkeypatch, capsys, fake):
-        cfg = tmp_path / "config.json"
-        cfg.write_text(json.dumps({
-            "team": TEAM,
-            "bitbucket_url": BASE_URL,
-            "webhook_url": WEBHOOK_URL,
-            "projects": [{"project": "PROJ", "repos": ["r"]}],
-        }))
-        monkeypatch.setenv("BITBUCKET_TOKEN", "t")
-        monkeypatch.setenv(SECRET_VAR, "s")
-        monkeypatch.chdir(tmp_path)
-
-        fake.respond_json("GET", "/rest/api/1.0/projects/PROJ/repos/r", 200, {})
-        fake.respond_json(
-            "GET", "/rest/api/1.0/projects/PROJ/repos/r/pull-requests", 200, {"values": []},
-        )
-        fake.respond_json(
-            "GET", "/rest/api/1.0/projects/PROJ/repos/r/webhooks", 200,
-            {"values": [], "isLastPage": True},
-        )
-
-        rc = main([str(cfg), "--dry-run"])
-        assert rc == 0
-        assert not any(c["method"] == "POST" for c in fake.calls)
         out = capsys.readouterr().out
-        assert "PROJ/r" in out
-        assert "ok" in out
+        assert "PROJ (project)" in out and "ok" in out
+        assert "OTHER/r" in out and "failed" in out
 
-    def test_teams_file_names_the_secret_var_and_warns_on_foreign_repos(
-        self, tmp_path, monkeypatch, fake, caplog,
-    ):
-        cfg = tmp_path / "config.json"
-        cfg.write_text(json.dumps({
-            "team": TEAM,
-            "bitbucket_url": BASE_URL,
-            "webhook_url": WEBHOOK_URL,
-            "projects": [{"project": "PROJ", "repos": ["r", "foreign"]}],
-        }))
-        teams = tmp_path / "teams.yaml"
-        teams.write_text(TEAMS_YAML)
-        monkeypatch.setenv("BITBUCKET_TOKEN", "t")
-        monkeypatch.setenv("PLATFORM_HOOK", "from-teams-file")
-        monkeypatch.delenv(SECRET_VAR, raising=False)
-        monkeypatch.chdir(tmp_path)
+    def test_status_mode_exit_code_reflects_health(self, tmp_path, monkeypatch, fake, capsys):
+        cfg = self._config(tmp_path, monkeypatch, [{"key": "PROJ"}])
+        fake.probe()
+        fake.hooks(PROJ_HOOKS, [_good_hook()])
+        fake.repos("PROJ", [])
+        assert main([str(cfg), "--status"]) == 0
+        assert "PROJ (project)" in capsys.readouterr().out
 
-        for repo in ("r", "foreign"):
-            fake.respond_json("GET", f"/rest/api/1.0/projects/PROJ/repos/{repo}", 200, {})
-            fake.respond_json(
-                "GET", f"/rest/api/1.0/projects/PROJ/repos/{repo}/pull-requests", 200, {"values": []},
-            )
-            fake.respond_json(
-                "GET", f"/rest/api/1.0/projects/PROJ/repos/{repo}/webhooks", 200,
-                {"values": [], "isLastPage": True},
-            )
+        fake.hooks(PROJ_HOOKS, [])
+        assert main([str(cfg), "--status"]) == 1
+        assert "missing" in capsys.readouterr().out
 
-        rc = main([str(cfg), "--dry-run", "--teams", str(teams)])
-        assert rc == 0
-        assert "PROJ/foreign] not owned by team platform" in caplog.text
-        assert "PROJ/r] not owned" not in caplog.text
+    def test_secret_env_override(self, tmp_path, monkeypatch, fake):
+        cfg = self._config(tmp_path, monkeypatch, [{"key": "PROJ"}])
+        monkeypatch.delenv(SECRET_VAR)
+        monkeypatch.setenv("PLATFORM_HOOK", SECRET)
+        fake.probe()
+        fake.hooks(PROJ_HOOKS, [_good_hook()])
+        fake.repos("PROJ", [])
+        assert main([str(cfg), "--status", "--secret-env", "PLATFORM_HOOK"]) == 0
 
-    def test_teams_file_without_the_team_exits(self, tmp_path, monkeypatch, fake):
-        cfg = tmp_path / "config.json"
-        cfg.write_text(json.dumps({
-            "team": "payments",
-            "bitbucket_url": BASE_URL,
-            "webhook_url": "https://noergler.internal/webhook/payments",
-            "projects": [{"project": "PROJ", "repos": ["r"]}],
-        }))
-        teams = tmp_path / "teams.yaml"
-        teams.write_text(TEAMS_YAML)
-        monkeypatch.setenv("BITBUCKET_TOKEN", "t")
-        monkeypatch.setenv("TEAMS_CONFIG", str(teams))
-        monkeypatch.chdir(tmp_path)
-        with pytest.raises(SystemExit, match="'payments' is not in"):
-            main([str(cfg), "--dry-run"])
+    def test_wrong_secret_aborts_the_run(self, tmp_path, monkeypatch, fake):
+        cfg = self._config(tmp_path, monkeypatch, [{"key": "PROJ"}])
+        monkeypatch.setenv(SECRET_VAR, "wrong")
+        fake.probe()
+        with pytest.raises(SystemExit, match="secret does not match"):
+            main([str(cfg)])
 
     def test_remove_via_main(self, tmp_path, monkeypatch, fake):
-        cfg = tmp_path / "config.json"
-        cfg.write_text(json.dumps({
-            "team": TEAM,
-            "bitbucket_url": BASE_URL,
-            "webhook_url": WEBHOOK_URL,
-            "projects": [{"project": "PROJ", "repos": ["r"]}],
-        }))
-        monkeypatch.setenv("BITBUCKET_TOKEN", "t")
-        monkeypatch.setenv(SECRET_VAR, "s")
-        monkeypatch.chdir(tmp_path)
-
-        fake.respond_json(
-            "GET", "/rest/api/1.0/projects/PROJ/repos/r/webhooks", 200,
-            {
-                "values": [{"id": 1, "name": DEFAULT_WEBHOOK_NAME}],
-                "isLastPage": True,
-            },
-        )
-        fake.respond_text(
-            "DELETE", "/rest/api/1.0/projects/PROJ/repos/r/webhooks/1", 204, "",
-        )
-
-        rc = main([str(cfg), "--remove"])
-        assert rc == 0
-        assert sum(1 for c in fake.calls if c["method"] == "DELETE") == 1
-        # Remove mode should skip permission check GETs (repo, pull-requests).
-        assert not any(c["path"].endswith("/repos/r") for c in fake.calls)
+        cfg = self._config(tmp_path, monkeypatch, [{"key": "PROJ", "repos": ["my-repo"]}])
+        fake.hooks(REPO_HOOKS, [_good_hook(1)])
+        fake.respond_text("DELETE", REPO_HOOKS + "/1", 204, "")
+        assert main([str(cfg), "--remove"]) == 0
+        assert len(fake.calls_to("DELETE", REPO_HOOKS + "/1")) == 1
+        # remove mode neither probes nor checks access
+        assert not fake.calls_to("POST", WEBHOOK_PATH)
