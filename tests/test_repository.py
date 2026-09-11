@@ -30,7 +30,7 @@ async def test_upsert_pr_review_returns_id():
     fake_row = {"id": 99}
     pool = _make_pool(fetchrow_return=fake_row)
 
-    result = await repository.upsert_pr_review(pool, "PROJ", "my-repo", 42, "abc123", "alice", "My PR")
+    result = await repository.upsert_pr_review(pool, "PROJ", "my-repo", 42, "abc123", "alice", "My PR", team_slug="platform")
 
     assert result == 99
     pool._conn.fetchrow.assert_awaited_once()

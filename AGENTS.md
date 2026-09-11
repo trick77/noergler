@@ -16,8 +16,17 @@ Noergler is a Bitbucket Server PR auto-review bridge backed by an OpenAI-compati
 ## Database
 
 - Schema changes are managed through Alembic revisions in `alembic/versions/`.
-- For any table or column change, add a new migration file; do not edit existing revisions.
+- For any table or column change, add a new migration file; do not edit existing revisions. (Exception already taken: the multi-team change squashed 001..010 into one `001` on the decision that no pre-team database survives; there is no upgrade path from the old chain.)
 - The OpenShift init container runs `alembic upgrade head` during deployment.
+
+## Teams (`app/config.py`, `teams.yaml`)
+
+- One instance, N teams. Shared: Bitbucket account, Jira user, DB, gateway + catalog, prompt templates. Per team: inference key, webhook secret, projects, review knobs, Jira prefixes, riptide.
+- **Team identity = webhook path + that team's HMAC secret + ownership check.** Never trust `project.key` from the payload alone. Store the authenticated slug (`pr_reviews.team_slug`).
+- **One team's fault disables that team only.** Never let a per-team error abort startup; never let a shared-layer error (DB, Bitbucket, Jira, unusable `teams.yaml`) disable just one team.
+- Every WARNING/ERROR about a team carries `team=<slug>` via `structlog.contextvars`. Bind at each boundary (webhook route, queue worker, BackgroundTasks handlers via `Reviewer._bind_team`, per-team startup check); the request middleware clears contextvars before BackgroundTasks run.
+- Secrets never in `teams.yaml`; `*_env` fields name env vars. `base_url`, `catalog_url` and the prompt templates are instance-only by decision, `extra="forbid"` enforces it.
+- Keep the single review worker and single inference lock per client; they protect the shared Bitbucket/Jira accounts. Do not add a per-team worker.
 
 ## Riptide emission (optional sink, `app/riptide_client.py`)
 
@@ -31,7 +40,7 @@ Noergler is a Bitbucket Server PR auto-review bridge backed by an OpenAI-compati
 ## Cost handling
 
 - **A `None` cost fails open.** An unpriced model, or a gateway not reporting a cost header, must never block a review. The per-PR cost cap skips only *subsequent* auto-runs; the run that overshoots completes.
-- The disagree / feedback mechanic was **removed deliberately** (migration `009`) — replies flagged findings the reviewer could not have prevented. Don't reintroduce it without asking.
+- The disagree / feedback mechanic was **removed deliberately** (former migration `009`, now folded into the squashed `001`) — replies flagged findings the reviewer could not have prevented. Don't reintroduce it without asking.
 
 ## Review prompt layout (`prompts/review.txt`)
 

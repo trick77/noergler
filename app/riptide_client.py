@@ -6,10 +6,10 @@ the rollup is keyed off the PR's terminal state (merged / declined / deleted)
 so finops can distinguish review spend that shipped from review spend that
 didn't.
 
-If `RIPTIDE_URL` or `RIPTIDE_TOKEN` is unset, every emit is a no-op and the
+If the team has no `riptide:` block, every emit is a no-op and the
 client is `enabled=False`. When configured, the client validates the token
-against riptide's `GET /auth/ping` at startup; a 401 fails noergler boot,
-while a network error is logged and noergler continues (riptide may be
+against riptide's `GET /auth/ping` at startup; a 401 disables that team,
+while a network error is logged and the team stays enabled (riptide may be
 temporarily down — emissions are best-effort anyway).
 """
 
@@ -93,7 +93,7 @@ class RiptideClient:
             return None
         if response.status_code == 401:
             raise RiptideAuthError(
-                f"RIPTIDE_TOKEN rejected by {self._url} (HTTP 401). "
+                f"riptide token rejected by {self._url} (HTTP 401). "
                 "Check that the token matches the team's entry in team-keys.json."
             )
         if response.status_code >= 400:

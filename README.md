@@ -28,12 +28,15 @@ Built for the realities of enterprise setups: self-hosted Bitbucket Server, on-p
 
 For a detailed description of the review pipeline, see [HOW_IT_WORKS.md](HOW_IT_WORKS.md).
 
-For the design note on running noergler for multiple teams — deployment topology, per-team
-credentials and webhook identity — see [MULTI_TEAM_ROLLOUT.html](MULTI_TEAM_ROLLOUT.html).
+One instance serves many teams: the Bitbucket service account, the Jira user, the
+database and the LLM gateway are shared, while each team brings its own inference key,
+webhook secret, repositories, review knobs and optional riptide forwarding — see
+[Teams](#teams). For the original design note see
+[MULTI_TEAM_ROLLOUT.html](MULTI_TEAM_ROLLOUT.html).
 
 ## How it works
 
-1. **Webhook** — Bitbucket Server fires a `pr:opened` or `pr:from_ref_updated` event to the `/webhook` endpoint. The request is validated via HMAC-SHA256.
+1. **Webhook** — Bitbucket Server fires a `pr:opened` or `pr:from_ref_updated` event to the team's `/webhook/<team>` endpoint. The request is validated via HMAC-SHA256 against that team's secret, and the PR's repository must be one the team owns.
 2. **Diff fetch** — On new PRs, the full diff is fetched. On updates, noergler performs an incremental review covering only changes since the last review (falling back to full review after force-pushes).
 3. **Context enrichment** — Full file content is fetched for each reviewable file. Diff hunks are expanded with asymmetric context and language-aware scope detection. Cross-file analysis maps changed symbols to their references in other PR files.
 4. **AI review** — Files are grouped into token-aware chunks and sent to the configured LLM API (any OpenAI-compatible endpoint). The prompt includes file content, diffs, cross-file relationships, repo guidelines (`AGENTS.md`), and Jira ticket context.
@@ -82,6 +85,8 @@ On every `pr:from_ref_updated` the existing comment is updated in place rather t
    ```bash
    podman build -t noergler -f Containerfile .
    podman run -p 8080:8080 --env-file .env \
+     -e TEAMS_CONFIG=/app/teams.yaml \
+     -v ./teams.yaml:/app/teams.yaml:ro \
      -v ./prompts:/app/prompts:ro \
      noergler
    ```
@@ -90,22 +95,75 @@ On every `pr:from_ref_updated` the existing comment is updated in place rather t
 
 ## Configuration
 
-All configuration is driven by environment variables. The required variables are:
+Configuration has two layers.
+
+**Instance (environment variables):** everything that is physically one thing, plus the
+defaults for every team-overridable knob. The required variables are:
 
 | Variable | Description |
 |---|---|
 | `BITBUCKET_URL` | Bitbucket Server base URL |
-| `BITBUCKET_TOKEN` | Bitbucket Server API token |
-| `BITBUCKET_WEBHOOK_SECRET` | Webhook HMAC secret for signature validation |
-| `BITBUCKET_USERNAME` | Bitbucket service account username (used to identify bot comments) |
-| `OPENAI_API_KEY` | API key for the OpenAI-compatible chat/completions endpoint (e.g. a LiteLLM proxy) |
-| `OPENAI_BASE_URL` | Base URL of the OpenAI-compatible endpoint (the SDK appends `/chat/completions`) |
-| `MODEL_CATALOG_URL` | Model catalog in LiteLLM's `model_prices_and_context_window.json` format — see [Model catalog](#model-catalog) |
+| `BITBUCKET_TOKEN` | Bitbucket Server API token of the shared service account |
+| `BITBUCKET_USERNAME` | Bitbucket service account username (used to identify bot comments and as the `@mention` trigger) |
+| `OPENAI_BASE_URL` | Base URL of the OpenAI-compatible endpoint (the SDK appends `/chat/completions`). Instance-wide, not team-overridable |
+| `MODEL_CATALOG_URL` | Model catalog in LiteLLM's `model_prices_and_context_window.json` format — see [Model catalog](#model-catalog). Instance-wide |
 | `JIRA_URL` | Jira Server/Cloud base URL |
-| `JIRA_TOKEN` | Jira API token |
+| `JIRA_TOKEN` | Jira API token of the single (read-only) Jira user |
 | `DATABASE_URL` | PostgreSQL connection string (see [Database](#database) below) |
+| `TEAMS_CONFIG` | Path to `teams.yaml` (default `teams.yaml`). noergler does not start without it |
+
+Plus the per-team secrets that `teams.yaml` references (`TEAM_<SLUG>_WEBHOOK_SECRET`,
+`TEAM_<SLUG>_OPENAI_API_KEY`, optionally `TEAM_<SLUG>_RIPTIDE_TOKEN`).
 
 See [`.env.example`](.env.example) for all optional settings and their defaults.
+
+**Teams (`teams.yaml`):** one block per team. See [Teams](#teams) and
+[`teams.example.yaml`](teams.example.yaml).
+
+### Teams
+
+```yaml
+teams:
+  - slug: platform                                    # /webhook/platform, pr_reviews.team_slug, log field team=
+    webhook_secret_env: TEAM_PLATFORM_WEBHOOK_SECRET  # env var holding the team's HMAC secret
+    projects:                                         # Bitbucket projects this team owns (exclusive)
+      - key: PLAT
+      - key: INFRA
+        repos: [terraform-core, ansible]              # optional: only these repos
+    inference:
+      api_key_env: TEAM_PLATFORM_OPENAI_API_KEY       # env var holding the team's inference key
+      # model / reasoning_effort / context_window: optional, default from OPENAI_*
+    # review:  any REVIEW_* knob (lowercase, no prefix) except the prompt templates
+    # jira:    acceptance_criteria_prefixes
+    # riptide: {url, token_env}, both or neither
+```
+
+Rules:
+
+- **Secrets never live in the file.** Every `*_env` field names an environment variable;
+  the loader rejects a missing or empty one.
+- **Resolution:** team value → instance default → built-in default. Only
+  `inference.api_key_env` and `webhook_secret_env` have no fallback.
+- **Instance-only knobs** (`OPENAI_BASE_URL`, `MODEL_CATALOG_URL`,
+  `REVIEW_PROMPT_TEMPLATE`, `REVIEW_MENTION_PROMPT_TEMPLATE`) cannot appear in a team
+  block; naming them disables the team.
+- **A project or repo belongs to exactly one team.** A whole-project claim conflicts with
+  any repo-level claim on the same key. Conflicting claims disable every claimant.
+- **One team's bad config never affects another.** Anything wrong with a single block
+  (validation error, missing secret, model not in the catalog, riptide token rejected)
+  disables that team: its webhooks answer `503` (the reason is in the startup log), everything else runs.
+  Only file-level faults (file missing or unparseable, zero teams, duplicate slug) and
+  shared-layer faults (database, Bitbucket, Jira) abort startup.
+- **Logs:** every line about a team carries `team=<slug>` (Splunk auto-extracts it).
+  Disabling logs `team_disabled team=<slug> reason=...`; startup ends with
+  `teams_ready enabled=[...] disabled=[...]` (at `WARNING` when any team is disabled).
+- **Probes:** `/health` is liveness and always `200` while the process is up (the body
+  lists enabled and disabled teams); `/ready` is readiness and answers `503` while no
+  team is enabled.
+
+Team identity comes from the webhook path plus the team's secret, never from the
+payload: `/webhook/<slug>` verifies the HMAC against that team's secret, then checks
+that the PR's project/repo is in the team's `projects` (`403` otherwise).
 
 ### Model catalog
 
@@ -127,23 +185,24 @@ The entry is refreshed in memory every 24h. Unlike the startup resolve, a failed
 
 ### Optional: forward review-cost events to riptide
 
-If your org runs [riptide](https://github.com/trick77/riptide) as a delivery-metrics
-collector, noergler can forward a per-PR review-cost rollup (model, tokens, cost,
-diff size, findings) so that LLM finops live alongside your DORA metrics instead of
-in a parallel API. Set both:
+If a team runs [riptide](https://github.com/trick77/riptide) as a delivery-metrics
+collector, noergler can forward that team's per-PR review-cost rollup (model, tokens,
+cost, diff size, findings) so that LLM finops live alongside its DORA metrics instead
+of in a parallel API. Riptide is per team, not per instance: add a `riptide:` block to
+the team in `teams.yaml`:
 
-| Variable | Description |
-|---|---|
-| `RIPTIDE_URL` | base URL, e.g. `https://riptide-collector.example.com` |
-| `RIPTIDE_TOKEN` | your team's raw bearer (issued by the riptide platform team) |
+```yaml
+    riptide:
+      url: https://riptide-platform.example.com      # the team's collector
+      token_env: TEAM_PLATFORM_RIPTIDE_TOKEN         # env var holding the team's raw bearer
+```
 
-Leave either unset to disable forwarding entirely — noergler runs standalone.
-When set, noergler verifies reachability and the bearer at startup via
-`GET /auth/ping`:
+Omit the block to disable forwarding for that team. When present, noergler verifies
+reachability and the bearer at startup via `GET /auth/ping`:
 
 - 200 → continue normally.
-- 401 → noergler **fails to start** with a clear error.
-- Connection error / timeout → noergler **starts** with a warning;
+- 401 → that **team is disabled** with a clear error; other teams are unaffected.
+- Connection error / timeout → the team **stays enabled** with a warning;
   runtime emissions are best-effort and never block PR webhooks.
 
 PR lifecycle (open/merge/decline) is **not** forwarded — riptide already
@@ -193,10 +252,10 @@ Both `postgresql://` and `postgres://` URI schemes are accepted.
 
 | Table | Purpose |
 |---|---|
-| `pr_reviews` | Tracks reviewed PRs, lifecycle timestamps (`opened_at` / `merged_at` / `deleted_at` / `ignored_at`), summary comment IDs, and per-PR cost totals. Rows are retained across merge and delete — never hard-deleted. `ignored_at` is set when the user deletes the summary comment and cleared again on the next `@noergler` mention. |
+| `pr_reviews` | Tracks reviewed PRs and the team that owns them (`team_slug`, set from the authenticated webhook route), lifecycle timestamps (`opened_at` / `merged_at` / `deleted_at` / `ignored_at`), summary comment IDs, and per-PR cost totals. Rows are retained across merge and delete — never hard-deleted. `ignored_at` is set when the user deletes the summary comment and cleared again on the next `@noergler` mention. |
 | `review_findings` | Individual code findings with file, line, severity, and Bitbucket comment ID. Used for inline-comment dedup on incremental reviews. |
 
-Metrics (cost-by-model, etc.) live in [riptide](https://github.com/trick77/riptide), not in noergler. Set `RIPTIDE_URL` + `RIPTIDE_TOKEN` to forward them.
+Metrics (cost-by-model, etc.) live in [riptide](https://github.com/trick77/riptide), not in noergler. Add a `riptide:` block to a team to forward them.
 
 **Running migrations:**
 
@@ -208,28 +267,34 @@ alembic upgrade head
 
 ## Webhook setup
 
-1. Generate a webhook secret:
+Each team onboards its own repositories. Per team:
+
+1. Generate the team's webhook secret:
 
    ```bash
    openssl rand -hex 32
    ```
 
-2. Set the generated value as `BITBUCKET_WEBHOOK_SECRET` in your `.env` file. This same value must be configured on Bitbucket's side — the service and Bitbucket share the HMAC secret.
+2. Set the generated value as `TEAM_<SLUG>_WEBHOOK_SECRET` (or whatever
+   `webhook_secret_env` the team's `teams.yaml` entry names) in the service's
+   environment. This same value must be configured on Bitbucket's side — the
+   service and Bitbucket share the HMAC secret.
 
 ### Automated onboarding (recommended)
 
-Use `scripts/onboard_repo.py` to create/update the webhook on one or more repos in a single, idempotent command. It verifies token permissions, reconciles the webhook configuration, and triggers Bitbucket's built-in connectivity test.
+Use `scripts/onboard_repo.py` to create/update the webhook on one or more repos in a single, idempotent command. It verifies token permissions and reconciles the webhook configuration.
 
 ```bash
-python -m scripts.onboard_repo config.json [--name noergler] [--dry-run] [--env-file PATH]
+python -m scripts.onboard_repo config.json [--name noergler] [--dry-run] [--env-file PATH] [--teams teams.yaml]
 ```
 
-Example `config.json` — repos are grouped under their Bitbucket project:
+Example `config.json` — one file per team, repos are grouped under their Bitbucket project:
 
 ```json
 {
+  "team": "platform",
   "bitbucket_url": "https://bitbucket.example.com",
-  "webhook_url": "https://noergler.internal/webhook",
+  "webhook_url": "https://noergler.internal/webhook/platform",
   "projects": [
     {
       "project": "PROJ",
@@ -243,22 +308,26 @@ Example `config.json` — repos are grouped under their Bitbucket project:
 }
 ```
 
-**Credentials.** Secrets are never read from the JSON. `BITBUCKET_TOKEN` (bearer, needs repo read + write on every listed repo) and `BITBUCKET_WEBHOOK_SECRET` are resolved from, in order: process environment → `.env` in the current directory → `--env-file <path>`. Process env wins on conflict. `BITBUCKET_WEBHOOK_SECRET` **must match** the value the running noergler service is using — this script only programs Bitbucket's side; it does not generate a new secret.
+`webhook_url` must end in `/webhook/<team>`: the service routes each team by path and
+verifies the signature against that team's secret.
+
+**Credentials.** Secrets are never read from the JSON. `BITBUCKET_TOKEN` (bearer of the shared service account, needs repo read + write on every listed repo) and the team's webhook secret are resolved from, in order: process environment → `.env` in the current directory → `--env-file <path>`. Process env wins on conflict. The secret's variable is `TEAM_<SLUG>_WEBHOOK_SECRET` by convention (slug uppercased, `-` → `_`); with `--teams` (or `TEAMS_CONFIG` set) the script reads the team's `webhook_secret_env` from `teams.yaml` instead. The value **must match** what the running noergler service resolves for that team — this script only programs Bitbucket's side; it does not generate a new secret.
 
 **Flags.**
 - `--name` — webhook name (default `noergler`). Used to find an existing hook to update instead of creating a duplicate.
 - `--dry-run` — print the create/update diff and the body that would be sent, without mutating Bitbucket.
 - `--env-file PATH` — additional env file for CI (`/run/secrets/noergler.env` etc.).
+- `--teams PATH` — the service's `teams.yaml`. Resolves the team's `webhook_secret_env` and warns about repos the team does not own there (the service answers `403` for those). Needs PyYAML; without the flag the script is stdlib-only.
 
-**Behaviour.** Each repo runs through three steps: verify read access, create-or-update the webhook (idempotent — re-running prints `already up to date`), then trigger Bitbucket's test endpoint and report the downstream status. A failure on one repo logs and continues to the next; the script exits non-zero iff any repo failed, and prints a final summary table.
+**Behaviour.** Each repo runs through two steps: verify read access, then create-or-update the webhook (idempotent — re-running prints `already up to date`). A failure on one repo logs and continues to the next; the script exits non-zero iff any repo failed, and prints a final summary table. End-to-end delivery is verified by opening a real PR.
 
-**Known limitation — secret-only drift.** Bitbucket's webhook API does not return the stored secret, so the script cannot detect when *only* the secret has changed on one side. If you rotate `BITBUCKET_WEBHOOK_SECRET` on the service side, delete the webhook in Bitbucket (or rename it so this script recreates it) before re-running — otherwise the script will report `already up to date` while Bitbucket continues signing with the old secret.
+**Known limitation — secret-only drift.** Bitbucket's webhook API does not return the stored secret, so the script cannot detect when *only* the secret has changed on one side. If you rotate a team's webhook secret on the service side, delete the webhook in Bitbucket (or rename it so this script recreates it) before re-running — otherwise the script will report `already up to date` while Bitbucket continues signing with the old secret.
 
 ### Manual setup (fallback)
 
 In Bitbucket Server, go to **Repository settings > Webhooks > Create webhook**:
-- **URL:** `https://<host>:8080/webhook`
-- **Secret:** the value of `BITBUCKET_WEBHOOK_SECRET`
+- **URL:** `https://<host>:8080/webhook/<team>`
+- **Secret:** the value of the team's `TEAM_<SLUG>_WEBHOOK_SECRET`
 - **Events:** `pr:opened`, `pr:from_ref_updated`, `pr:comment:added`, `pr:comment:deleted`, `pr:merged`, `pr:declined`, `pr:deleted`
 
 All webhook requests must include a valid `X-Hub-Signature` header (HMAC-SHA256). Requests with missing or invalid signatures are rejected.
@@ -321,7 +390,7 @@ GET /health → {"status": "ok"}
 
 ## Metrics
 
-Noergler does **not** expose metrics directly. Set `RIPTIDE_URL` + `RIPTIDE_TOKEN`
+Noergler does **not** expose metrics directly. Add a `riptide:` block to a team
 (see [Optional: forward review-cost events to riptide](#optional-forward-review-cost-events-to-riptide))
 to forward LLM finops (model, tokens, cost)
 to a [riptide](https://github.com/trick77/riptide) collector — all dashboards,
@@ -332,7 +401,7 @@ Bitbucket / ArgoCD / CI.
 
 ```
 app/
-  main.py              # FastAPI app, /webhook, /health endpoints
+  main.py              # FastAPI app, /webhook/{team}, /health, /ready endpoints
   riptide_client.py    # Optional outbound emitter to riptide-collector
   reviewer.py          # Review orchestrator (diff → AI → comments)
   llm_client.py        # OpenAI SDK client for the configured LLM API, token-aware chunking

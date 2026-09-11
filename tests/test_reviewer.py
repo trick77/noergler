@@ -5,6 +5,7 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import httpx
+import structlog
 import pytest
 
 from app.config import TokenUsage
@@ -3108,3 +3109,70 @@ class TestIncrementalReview:
         assert "incremental update" in summary_text
         assert "aabbccdd12" in summary_text
         assert "abc123" in summary_text
+
+
+class TestTeamBinding:
+    """Every entry point binds `team` on the structlog contextvars so each
+    log line inside carries the slug (Splunk auto-extracts it as a field).
+    BackgroundTasks run after the request middleware has cleared the
+    contextvars, so the handlers must rebind rather than inherit."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_contextvars(self):
+        structlog.contextvars.clear_contextvars()
+        yield
+        structlog.contextvars.clear_contextvars()
+
+    @pytest.mark.asyncio
+    async def test_review_binds_team_and_upserts_with_it(self, mock_bitbucket, mock_llm):
+        mock_bitbucket.fetch_file_content = AsyncMock(return_value="")
+        rev = Reviewer(
+            mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock(), team_slug="payments",
+        )
+        seen: dict[str, object] = {}
+
+        async def _upsert(*_args, **kwargs):
+            seen.update(structlog.contextvars.get_contextvars())
+            seen["team_slug_kwarg"] = kwargs["team_slug"]
+            return 42
+
+        with patch("app.reviewer.repository.upsert_pr_review", side_effect=_upsert):
+            await rev.review_pull_request(_make_payload("username"))
+
+        assert seen["team"] == "payments"
+        assert seen["team_slug_kwarg"] == "payments"
+        # still bound when the job returns: the queue worker logs its
+        # completed/failed line afterwards and unbinds it itself
+        assert structlog.contextvars.get_contextvars().get("team") == "payments"
+        assert "pr_tag" not in structlog.contextvars.get_contextvars()
+
+    @pytest.mark.asyncio
+    async def test_mention_binds_team(self, mock_bitbucket, mock_llm):
+        seen: dict[str, object] = {}
+
+        async def _answer(*_args, **_kwargs):
+            seen.update(structlog.contextvars.get_contextvars())
+            return "answer"
+
+        mock_llm.answer_question = AsyncMock(side_effect=_answer)
+        mock_bitbucket.reply_to_comment = AsyncMock()
+        rev = Reviewer(
+            mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock(), team_slug="payments",
+        )
+        await rev.handle_mention(_make_mention_payload("@noergler why?"))
+        assert seen["team"] == "payments"
+
+    @pytest.mark.asyncio
+    async def test_terminal_handlers_bind_team(self, mock_bitbucket, mock_llm):
+        rev = Reviewer(
+            mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock(), team_slug="payments",
+        )
+        async def _safe_db(coro, **_kwargs):
+            coro.close()  # the DB call itself is out of scope here
+            return None
+
+        for handler in (rev.handle_pr_merged, rev.handle_pr_declined, rev.handle_pr_deleted):
+            structlog.contextvars.clear_contextvars()
+            with patch("app.reviewer._safe_db", side_effect=_safe_db):
+                await handler(_make_payload())
+            assert structlog.contextvars.get_contextvars().get("team") == "payments", handler

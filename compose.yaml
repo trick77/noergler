@@ -8,8 +8,11 @@ services:
     env_file: .env
     environment:
       - DATABASE_URL=${DATABASE_URL}
+      - TEAMS_CONFIG=/app/teams.yaml
     volumes:
       - ./prompts:/app/prompts:ro
+      # One entry per team; secrets stay in .env (see teams.example.yaml).
+      - ./teams.yaml:/app/teams.yaml:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 30s

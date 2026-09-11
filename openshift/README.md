@@ -16,10 +16,17 @@ oc new-project noergler
 
 ```bash
 oc create secret generic noergler \
-  --from-literal=BITBUCKET_TOKEN=<your-token> \
-  --from-literal=BITBUCKET_WEBHOOK_SECRET=<your-secret> \
-  --from-literal=OPENAI_API_KEY=<your-api-key>
+  --from-literal=BITBUCKET_TOKEN=<service-account-token> \
+  --from-literal=JIRA_TOKEN=<jira-token> \
+  --from-literal=DATABASE_URL=<postgresql-url> \
+  --from-literal=TEAM_PLATFORM_WEBHOOK_SECRET=<hex-secret> \
+  --from-literal=TEAM_PLATFORM_OPENAI_API_KEY=<team-gateway-key>
 ```
+
+One `TEAM_<SLUG>_WEBHOOK_SECRET` (generate with `openssl rand -hex 32`) and
+`TEAM_<SLUG>_OPENAI_API_KEY` per team listed in the `noergler-teams` ConfigMap
+(`openshift/configmap.yaml`), plus `TEAM_<SLUG>_RIPTIDE_TOKEN` for a team with a
+`riptide:` block.
 
 ## 3. Apply manifests
 
@@ -50,17 +57,21 @@ oc logs deploy/noergler
 curl https://noergler.example.com/health
 ```
 
-Expected health response: `{"status": "ok"}`
+Expected health response: `{"status": "ok", "teams": {"enabled": ["platform"], "disabled": []}}`.
+`/ready` answers 503 while `enabled` is empty; the startup log says why
+(`team_disabled team=<slug> reason=...`).
 
 ## 6. Configure Bitbucket webhook
 
 In Bitbucket Server, add a webhook pointing to:
 
 ```
-https://noergler.example.com/webhook
+https://noergler.example.com/webhook/<team>
 ```
 
-Create the route manually before configuring the webhook.
+with the team's `TEAM_<SLUG>_WEBHOOK_SECRET` as the secret, or run
+`python -m scripts.onboard_repo` from the app repo. Create the route manually
+before configuring the webhook.
 
 ## Rebuilding
 

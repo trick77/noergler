@@ -42,6 +42,12 @@ spec:
                 name: noergler
             - secretRef:
                 name: noergler
+          volumeMounts:
+            - name: teams
+              mountPath: /etc/noergler
+              readOnly: true
+          # /health is liveness only: 200 while the process is up. /ready is
+          # 503 while no team is enabled, which a restart cannot fix.
           livenessProbe:
             httpGet:
               path: /health
@@ -50,7 +56,7 @@ spec:
             periodSeconds: 60
           readinessProbe:
             httpGet:
-              path: /health
+              path: /ready
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 30
@@ -61,3 +67,7 @@ spec:
             limits:
               memory: 256Mi
               cpu: 500m
+      volumes:
+        - name: teams
+          configMap:
+            name: noergler-teams

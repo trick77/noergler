@@ -14,7 +14,6 @@ def bb_config():
     return BitbucketConfig(
         base_url=BASE_URL,
         token="test-token",
-        webhook_secret="test-secret",
         username="bot-user",
     )
 

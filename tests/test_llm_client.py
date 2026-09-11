@@ -63,7 +63,7 @@ def _stub_model_catalog(monkeypatch):
     monkeypatch.setattr(app.llm_client, "resolve_or_raise", _fake_resolve)
     _swap_active_entry(entry)
     yield entry
-    app.config._ACTIVE_ENTRY = None
+    app.config._ACTIVE_ENTRIES.clear()
 
 
 @pytest.fixture
@@ -1248,7 +1248,7 @@ class TestContextWindowBudget:
         # Nothing installed yet. Every real caller runs after
         # check_connectivity, which installs an entry or aborts the process.
         import app.config
-        app.config._ACTIVE_ENTRY = None
+        app.config._ACTIVE_ENTRIES.clear()
         cfg = LLMConfig(model="gpt-5.5", api_key="t", api_url="https://llm.test/v1", catalog_url="https://catalog.test/model_prices_and_context_window.json")
         client = LLMClient(cfg, review_config)
         assert client.context_window == 0

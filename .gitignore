@@ -1,5 +1,6 @@
-# Secrets
+# Secrets / per-deployment config
 .env
+teams.yaml
 
 # Python
 .venv

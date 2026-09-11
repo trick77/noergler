@@ -51,7 +51,7 @@ Post inline comments + summary
 
 **File:** `app/main.py`
 
-noergler exposes a `/webhook` endpoint that receives Bitbucket Server webhook events. Every request is validated via HMAC-SHA256 using the `X-Hub-Signature` header.
+noergler exposes one `/webhook/<team>` endpoint per team in `teams.yaml`. The path names the team; every request is validated via HMAC-SHA256 (`X-Hub-Signature`) against that team's secret, and the PR's project/repo must be one the team owns (`403` otherwise). A disabled team answers `503`, an unknown slug `404`. The authenticated team is what the review runs as: its inference key, review config and riptide emitter.
 
 Events are routed as follows:
 
