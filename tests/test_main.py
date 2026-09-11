@@ -642,3 +642,71 @@ teams:
             assert sorted(main_module.disabled_teams) == ["payments", "platform"]
             assert c.get("/health").status_code == 200
             assert c.get("/ready").status_code == 503
+
+
+class TestProbe:
+    """Signed onboarding probe: same HMAC as an event, answers ownership and
+    bot read access, never enqueues anything."""
+
+    def _probe(self, client, team, secret, body):
+        raw = json.dumps(body).encode()
+        return client.post(
+            f"/webhook/{team}", content=raw,
+            headers={
+                "X-Hub-Signature": _sign(raw, secret),
+                "X-Event-Key": "noergler:probe",
+                "Content-Type": "application/json",
+            },
+        )
+
+    def test_unsigned_probe_is_401(self, client):
+        raw = json.dumps({"project": "PROJ", "repo": None}).encode()
+        resp = client.post(
+            WEBHOOK, content=raw,
+            headers={"X-Event-Key": "noergler:probe", "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 401
+
+    def test_wrong_team_secret_is_401(self, client):
+        assert self._probe(client, TEAM, OTHER_SECRET, {"project": "PROJ", "repo": None}).status_code == 401
+
+    def test_owned_project_with_bot_access(self, client):
+        with patch.object(main_module, "bitbucket_client") as bb:
+            bb.get_project = AsyncMock(return_value={"key": "PROJ"})
+            resp = self._probe(client, TEAM, WEBHOOK_SECRET, {"project": "PROJ", "repo": None})
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "team": TEAM, "owned": True, "claim": "whole", "bot_can_read": True, "bot_username": "noergler",
+        }
+        bb.get_project.assert_awaited_once_with("PROJ")
+        assert client.reviewer.review_pull_request.await_count == 0
+
+    def test_bot_without_access(self, client):
+        with patch.object(main_module, "bitbucket_client") as bb:
+            bb.get_repo = AsyncMock(side_effect=RuntimeError("404"))
+            resp = self._probe(client, TEAM, WEBHOOK_SECRET, {"project": "PROJ", "repo": "x"})
+        assert resp.json()["owned"] is True
+        assert resp.json()["bot_can_read"] is False
+        bb.get_repo.assert_awaited_once_with("PROJ", "x")
+
+    def test_unowned_target_skips_the_bitbucket_call(self, client):
+        with patch.object(main_module, "bitbucket_client") as bb:
+            bb.get_project = AsyncMock()
+            bb.get_repo = AsyncMock()
+            # payments owns PAY/billing only: the whole project is not owned,
+            # and PROJ belongs to platform
+            r1 = self._probe(client, OTHER_TEAM, OTHER_SECRET, {"project": "PAY", "repo": None})
+            r2 = self._probe(client, OTHER_TEAM, OTHER_SECRET, {"project": "PROJ", "repo": "repo"})
+            r3 = self._probe(client, OTHER_TEAM, OTHER_SECRET, {"project": "PAY", "repo": "billing"})
+        assert (r1.json()["owned"], r1.json()["claim"]) == (False, "repos")
+        assert (r2.json()["owned"], r2.json()["claim"]) == (False, "none")
+        assert (r3.json()["owned"], r3.json()["claim"]) == (True, "repos")
+        assert bb.get_project.await_count == 0
+        assert bb.get_repo.await_count == 1
+
+    def test_malformed_probe_is_400(self, client):
+        assert self._probe(client, TEAM, WEBHOOK_SECRET, {"repo": "x"}).status_code == 400
+        assert self._probe(client, TEAM, WEBHOOK_SECRET, {"project": "PROJ", "repo": 3}).status_code == 400
+
+    def test_disabled_team_is_503(self, client):
+        assert self._probe(client, "broken", WEBHOOK_SECRET, {"project": "PROJ", "repo": None}).status_code == 503

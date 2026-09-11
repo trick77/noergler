@@ -15,5 +15,8 @@ COPY app/ app/
 COPY prompts/ prompts/
 COPY alembic.ini alembic.ini
 COPY alembic/ alembic/
+# Team-admin onboarding tool: `podman run <image> onboard team.json`.
+COPY scripts/ scripts/
+COPY bin/onboard /usr/local/bin/onboard
 RUN chmod -R g=u /app
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

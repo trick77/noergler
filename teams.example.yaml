@@ -26,9 +26,9 @@ teams:
     name: "Platform Engineering"                      # optional, default: the slug. Display only.
     webhook_secret_env: TEAM_PLATFORM_WEBHOOK_SECRET  # required; env var holding this team's Bitbucket webhook HMAC secret (openssl rand -hex 32)
     projects:                                         # required, at least one. Bitbucket project keys this team owns; a project or repo may belong to ONE team only
-      - key: PLAT                                     # whole project: every repo under PLAT
+      - key: PLAT                                     # whole project: every current and future repo under PLAT (one project webhook, nothing to do for a new repo). Prefer this
       - key: INFRA
-        repos: [terraform-core, ansible]              # optional; restrict to these repo slugs. Omit for the whole project
+        repos: [terraform-core, ansible]              # only these repos (one repo webhook each); for a project shared between teams. A new repo needs an entry here
     inference:
       api_key_env: TEAM_PLATFORM_OPENAI_API_KEY       # required; env var holding this team's key for the OpenAI-compatible endpoint (spend is attributed per key)
       # model: gpt-5.4                                # optional, default: instance OPENAI_MODEL. Must be spelled as the catalog spells it
