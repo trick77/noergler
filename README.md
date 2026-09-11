@@ -31,8 +31,7 @@ For a detailed description of the review pipeline, see [HOW_IT_WORKS.md](HOW_IT_
 One instance serves many teams: the Bitbucket service account, the Jira user, the
 database and the LLM gateway are shared, while each team brings its own inference key,
 webhook secret, repositories, review knobs and optional riptide forwarding — see
-[Teams](#teams). For the original design note see
-[MULTI_TEAM_ROLLOUT.html](MULTI_TEAM_ROLLOUT.html).
+[Teams](#teams).
 
 ## How it works
 
@@ -376,13 +375,16 @@ Tests use pytest + pytest-asyncio with `respx` for HTTP mocking. No external ser
 
 ## Deployment notes
 
-### OpenShift
+### Deploying the image
 
-Kubernetes/OpenShift manifests are provided in the `openshift/` directory. See [openshift/README.md](openshift/README.md) for step-by-step instructions.
+The image is the whole deployment contract; how the environment reaches it is the deployment's business.
 
-### Corporate CA certificates
-
-In OpenShift, mount the cluster's trusted CA bundle (e.g. via a ConfigMap labeled `config.openshift.io/inject-trusted-cabundle: "true"`) into the pod and point `SSL_CERT_FILE` at the resulting `ca-bundle.crt`. See [openshift/README.md](openshift/README.md).
+- `CMD` serves on port 8080. `/health` is the liveness probe (always 200, lists enabled and disabled teams), `/ready` the readiness probe (503 while no team is enabled).
+- `alembic upgrade head` runs the migrations; run it before the app starts (init container or equivalent). Nothing creates the schema at runtime.
+- `onboard` is the webhook onboarding tool (see [Webhook setup](#webhook-setup)).
+- `TEAMS_CONFIG` points at the mounted `teams.yaml`; secrets arrive as environment variables named in that file.
+- Corporate CA: mount the trusted bundle and point `SSL_CERT_FILE` at it; httpx, openai and asyncpg all honour it.
+- One replica only: the review queue is a single in-process worker behind an inference lock.
 
 ## Health check
 
@@ -420,7 +422,6 @@ app/
 prompts/
   review.txt           # Review prompt template
   mention.txt          # Mention Q&A prompt template
-openshift/             # OpenShift/K8s deployment manifests
 tests/                 # pytest test suite
 ```
 
