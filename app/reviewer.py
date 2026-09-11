@@ -1139,7 +1139,9 @@ class Reviewer:
                     dict(http_scope.counter),
                 )
                 exit_http_scope(http_scope)
-            structlog.contextvars.unbind_contextvars("pr_tag", "repo", "pr_id", "team")
+            # `team` stays bound: the queue worker set it and logs the
+            # completed/failed line after this returns, then unbinds it.
+            structlog.contextvars.unbind_contextvars("pr_tag", "repo", "pr_id")
 
     async def handle_comment_deleted(self, payload: WebhookPayload) -> None:
         """Primary signal for the opt-out feature: if the user deleted our

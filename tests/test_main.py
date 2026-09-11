@@ -171,7 +171,9 @@ class TestTeamRouting:
             headers={"X-Hub-Signature": _sign(body), "Content-Type": "application/json"},
         )
         assert resp.status_code == 503
-        assert "TEAM_BROKEN_OPENAI_API_KEY" in resp.json()["detail"]
+        # the reason is for the log, not for an unauthenticated caller
+        assert "TEAM_BROKEN_OPENAI_API_KEY" not in resp.json()["detail"]
+        assert "disabled" in resp.json()["detail"]
 
     def test_signature_is_checked_against_the_path_team(self, client):
         # Signed with the other team's secret, sent to this team's path.
@@ -237,7 +239,8 @@ class TestProbes:
         resp = client.get("/health")
         assert resp.status_code == 200
         assert resp.json()["teams"]["enabled"] == [OTHER_TEAM, TEAM]
-        assert "broken" in resp.json()["teams"]["disabled"]
+        assert resp.json()["teams"]["disabled"] == ["broken"]
+        assert "TEAM_BROKEN_OPENAI_API_KEY" not in resp.text
 
     def test_ready_is_200_with_an_enabled_team(self, client):
         assert client.get("/ready").status_code == 200
@@ -599,9 +602,8 @@ teams:
                     "payments": "LLM check failed: HTTP 401 from gateway",
                 }
                 assert c.get("/ready").status_code == 200
-                assert c.get("/health").json()["teams"]["disabled"] == {
-                    "payments": "LLM check failed: HTTP 401 from gateway",
-                }
+                assert c.get("/health").json()["teams"]["disabled"] == ["payments"]
+                assert "gateway" not in c.get("/health").text
                 # the failed team's clients were torn down at startup
                 assert close.await_count == 1
                 body = json.dumps(PR_PAYLOAD).encode()
@@ -619,6 +621,17 @@ teams:
         # verify_at_startup swallows transport errors itself and returns None
         with self._boot(AsyncMock(), AsyncMock(return_value=None)):
             assert sorted(main_module.teams) == ["payments", "platform"]
+
+        # anything else the ping raises (e.g. a non-JSON 200 body) is not a
+        # bad token: the team stays enabled
+        with self._boot(AsyncMock(), AsyncMock(side_effect=ValueError("not json"))):
+            assert sorted(main_module.teams) == ["payments", "platform"]
+
+    def test_unexpected_exception_in_team_startup_disables_only_that_team(self, env):
+        with patch("app.main.Reviewer", side_effect=[RuntimeError("boom"), AsyncMock()]):
+            with self._boot(AsyncMock(), AsyncMock(return_value="platform")):
+                assert list(main_module.teams) == ["payments"]
+                assert main_module.disabled_teams == {"platform": "startup failed: boom"}
 
     def test_no_enabled_team_boots_but_is_not_ready(self, env):
         async def llm_check(self):

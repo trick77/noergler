@@ -151,7 +151,7 @@ Rules:
   any repo-level claim on the same key. Conflicting claims disable every claimant.
 - **One team's bad config never affects another.** Anything wrong with a single block
   (validation error, missing secret, model not in the catalog, riptide token rejected)
-  disables that team: its webhooks answer `503` with the reason, everything else runs.
+  disables that team: its webhooks answer `503` (the reason is in the startup log), everything else runs.
   Only file-level faults (file missing or unparseable, zero teams, duplicate slug) and
   shared-layer faults (database, Bitbucket, Jira) abort startup.
 - **Logs:** every line about a team carries `team=<slug>` (Splunk auto-extracts it).

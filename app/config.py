@@ -791,6 +791,10 @@ def _read_teams_file(path: str) -> list[dict[str, Any]]:
             f"teams file {path} not found. noergler does not start without teams: "
             "set TEAMS_CONFIG to a teams.yaml (see teams.example.yaml)."
         ) from None
+    except OSError as exc:
+        # e.g. IsADirectoryError: a compose bind-mount of a missing host file
+        # creates a directory in its place.
+        raise TeamsFileError(f"teams file {path} cannot be read: {exc}") from exc
     except yaml.YAMLError as exc:
         raise TeamsFileError(f"teams file {path} is not valid YAML: {exc}") from exc
     if not isinstance(data, dict) or "teams" not in data:
@@ -815,8 +819,8 @@ def load_teams(path: str, instance: AppConfig) -> tuple[dict[str, TeamConfig], d
     log = logging.getLogger(__name__)
     raw_teams = _read_teams_file(path)
 
-    slugs = [str(t.get("slug", "")) for t in raw_teams]
-    dupes = sorted({s for s in slugs if slugs.count(s) > 1})
+    slugs = [str(t.get("slug") or "") for t in raw_teams]
+    dupes = sorted({s for s in slugs if s and slugs.count(s) > 1})
     if dupes:
         raise TeamsFileError(f"teams file {path}: duplicate slug(s) {dupes}")
 

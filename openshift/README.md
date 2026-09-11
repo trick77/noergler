@@ -57,7 +57,7 @@ oc logs deploy/noergler
 curl https://noergler.example.com/health
 ```
 
-Expected health response: `{"status": "ok", "teams": {"enabled": ["platform"], "disabled": {}}}`.
+Expected health response: `{"status": "ok", "teams": {"enabled": ["platform"], "disabled": []}}`.
 `/ready` answers 503 while `enabled` is empty; the startup log says why
 (`team_disabled team=<slug> reason=...`).
 

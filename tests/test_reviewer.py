@@ -3141,8 +3141,10 @@ class TestTeamBinding:
 
         assert seen["team"] == "payments"
         assert seen["team_slug_kwarg"] == "payments"
-        # unbound again when the job ends: the queue worker is long-lived
-        assert "team" not in structlog.contextvars.get_contextvars()
+        # still bound when the job returns: the queue worker logs its
+        # completed/failed line afterwards and unbinds it itself
+        assert structlog.contextvars.get_contextvars().get("team") == "payments"
+        assert "pr_tag" not in structlog.contextvars.get_contextvars()
 
     @pytest.mark.asyncio
     async def test_mention_binds_team(self, mock_bitbucket, mock_llm):

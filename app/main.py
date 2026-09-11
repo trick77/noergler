@@ -110,13 +110,16 @@ async def _start_team(
         return f"LLM check failed: {exc}"
 
     if riptide.enabled:
-        # A wrong token disables the team (RiptideAuthError); transient
-        # unreachability only logs and the team stays enabled.
+        # A wrong token disables the team (RiptideAuthError); anything else
+        # (unreachable, malformed ping body) only logs and the team stays
+        # enabled — emissions are best-effort anyway.
         try:
             await riptide.verify_at_startup()
         except RiptideAuthError as exc:
             await _teardown()
             return f"riptide check failed: {exc}"
+        except Exception as exc:
+            log.warning("riptide ping failed, team stays enabled: %s", exc)
     else:
         log.info("riptide disabled for this team — event forwarding off")
 
@@ -188,7 +191,11 @@ async def lifespan(_app: FastAPI):
     for slug, team in config.teams.items():
         structlog.contextvars.bind_contextvars(team=slug)
         try:
-            result = await _start_team(team, db_pool, logger)
+            try:
+                result = await _start_team(team, db_pool, logger)
+            except Exception as exc:
+                # Nothing a single team does may take the instance down.
+                result = f"startup failed: {exc}"
             if isinstance(result, str):
                 disabled_teams[slug] = result
                 logger.error("team_disabled team=%s reason=%s", slug, result)
@@ -289,9 +296,12 @@ def _verify_webhook_signature(body: bytes, signature: str, secret: str) -> bool:
 
 
 def _team_status() -> dict[str, object]:
+    # Slugs only. The disable reasons carry internal detail (gateway URLs and
+    # error bodies, env var names) and belong in the log, not on an
+    # unauthenticated probe.
     return {
         "enabled": sorted(teams),
-        "disabled": dict(sorted(disabled_teams.items())),
+        "disabled": sorted(disabled_teams),
     }
 
 
@@ -323,10 +333,11 @@ async def webhook(
     runtime = teams.get(team_slug)
     if runtime is None:
         if team_slug in disabled_teams:
+            # Reason in the log only; this answer goes out before the HMAC check.
             logger.warning("webhook rejected: team is disabled (%s)", disabled_teams[team_slug])
             raise HTTPException(
                 status_code=503,
-                detail=f"team {team_slug} is disabled: {disabled_teams[team_slug]}",
+                detail=f"team {team_slug} is disabled, see the noergler startup log",
             )
         raise HTTPException(status_code=404, detail="unknown team")
     team = runtime.config

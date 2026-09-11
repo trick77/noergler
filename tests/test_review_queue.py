@@ -16,6 +16,26 @@ def _fake_payload(pr_id: int, label: str = "p") -> WebhookPayload:
 
 
 @pytest.mark.asyncio
+async def test_worker_binds_team_for_the_job_and_unbinds_after():
+    import structlog
+
+    seen: list[object] = []
+
+    async def review(team, payload):
+        seen.append(structlog.contextvars.get_contextvars().get("team"))
+
+    queue = ReviewQueue(review)
+    queue.start()
+    try:
+        queue.submit(("P", "r", 1), _fake_payload(1), "payments")
+        await asyncio.sleep(0.05)
+        assert seen == ["payments"]
+        assert "team" not in structlog.contextvars.get_contextvars()
+    finally:
+        await queue.stop()
+
+
+@pytest.mark.asyncio
 async def test_single_review_runs_and_completes():
     seen: list[int] = []
 

@@ -278,6 +278,22 @@ def test_zero_teams_aborts(env):
         _load(env)
 
 
+def test_unreadable_teams_file_aborts(env):
+    env.set(TEAMS_CONFIG=str(env.path.parent))  # a directory, as a stray bind-mount makes
+    with pytest.raises(TeamsFileError, match="cannot be read"):
+        _load(env)
+
+
+def test_slugless_blocks_are_disabled_not_treated_as_duplicates(env):
+    env.teams("teams:\n  - {webhook_secret_env: A, projects: [{key: X}], inference: {api_key_env: B}}\n"
+              "  - {webhook_secret_env: A, projects: [{key: Y}], inference: {api_key_env: B}}\n"
+              + MINIMAL_TEAMS.replace("teams:\n", ""))
+    config = _load(env)
+    assert list(config.teams) == ["platform"]
+    assert sorted(config.disabled) == ["teams[0]", "teams[1]"]
+    assert all(r.startswith("slug: Field required") for r in config.disabled.values())
+
+
 def test_duplicate_slug_aborts(env):
     env.teams(MINIMAL_TEAMS + MINIMAL_TEAMS.replace("teams:\n", ""))
     with pytest.raises(TeamsFileError, match="duplicate slug"):
