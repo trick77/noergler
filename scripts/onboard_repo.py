@@ -463,6 +463,12 @@ class NoerglerProbe:
         except urllib.error.URLError as exc:
             raise SystemExit(f"ERROR: cannot reach noergler at {self.webhook_url}: {exc}")
         data = resp.json()
+        if not isinstance(data, dict) or "owned" not in data or "claim" not in data:
+            # An older noergler answers a probe like any non-PR event.
+            raise SystemExit(
+                f"ERROR: noergler at {self.webhook_url} does not answer the onboarding probe; "
+                "it needs a version with multi-team onboarding"
+            )
         return ProbeResult(
             owned=bool(data.get("owned")),
             claim=str(data.get("claim") or "none"),
@@ -478,13 +484,15 @@ def _not_owned_reason(target: Target, probe: ProbeResult) -> str:
             f"noergler's teams.yaml lists specific repos of {target.project} for this team; "
             f"list them under \"repos\" in team.json, or ask the noergler admin to claim the whole project"
         )
-    if not target.is_project and probe.claim == "whole":
-        return (
-            f"noergler's teams.yaml claims all of {target.project} for this team; use "
-            f"{{\"key\": \"{target.project}\"}} in team.json (one project webhook), a repo webhook "
-            "next to it would deliver every event twice"
-        )
     return "not owned by this team in noergler's teams.yaml; ask the noergler admin"
+
+
+def _whole_claim_reason(target: Target) -> str:
+    return (
+        f"noergler's teams.yaml claims all of {target.project} for this team; use "
+        f"{{\"key\": \"{target.project}\"}} in team.json (one project webhook), a repo webhook "
+        "next to it would deliver every event twice"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -570,6 +578,8 @@ class Onboarder:
             diffs.append(f"events: missing={missing} extra={extra}")
         if not existing.get("active", True):
             diffs.append("active: False -> True")
+        if not existing.get("sslVerificationRequired", True):
+            diffs.append("sslVerificationRequired: False -> True")
         existing_cfg = existing.get("configuration") or {}
         if not existing_cfg:
             diffs.append("configuration.secret: (unset) -> (set)")
@@ -642,6 +652,28 @@ class Onboarder:
         return pruned
 
     # -- orchestrators -- #
+    def _refuse_repo_target(self, target: Target, probe: ProbeResult) -> str | None:
+        """A repo target is refused when it would sit next to a project webhook
+        of this instance: every event would be delivered twice (see prune)."""
+        if target.is_project:
+            return None
+        if probe.claim == "whole":
+            # owned is True here (teams.yaml covers every repo), so this is
+            # the only place that catches a repos: entry under a whole claim
+            return _whole_claim_reason(target)
+        try:
+            hooks = self.client.list_webhooks(Target(project=target.project))
+        except HTTPStatusError:
+            # no project admin on a shared project: nothing more to check
+            return None
+        project_hook = _hook_named(hooks, self.webhook_name)
+        if project_hook is not None and self._is_ours(project_hook):
+            return (
+                f"{target.project} still has this instance's project webhook (id={project_hook.get('id')}), "
+                f"which delivers every event as well; run --remove with {{\"key\": \"{target.project}\"}} first"
+            )
+        return None
+
     def status(self, target: Target) -> StatusRow:
         probe = self.probe.probe(target)
         webhook = "-"
@@ -650,6 +682,9 @@ class Onboarder:
         if not probe.owned:
             # Nothing to configure for a target the team does not own.
             return StatusRow(target, False, False, _not_owned_reason(target, probe), stray, foreign)
+        refused = self._refuse_repo_target(target, probe)
+        if refused is not None:
+            return StatusRow(target, True, probe.bot_can_read, f"blocked: {refused}", stray, foreign)
         try:
             existing = _hook_named(self.client.list_webhooks(target), self.webhook_name)
             if existing is None:
@@ -672,6 +707,9 @@ class Onboarder:
         probe = self.probe.probe(target)
         if not probe.owned:
             return TargetResult(target, "skipped", detail=_not_owned_reason(target, probe))
+        refused = self._refuse_repo_target(target, probe)
+        if refused is not None:
+            return TargetResult(target, "skipped", detail=refused)
 
         try:
             self.verify_admin_access(target)
@@ -890,7 +928,15 @@ def _run(args: argparse.Namespace) -> int:
     )
 
     if args.status:
-        rows = [onboarder.status(t) for t in inp.targets]
+        rows: list[StatusRow] = []
+        for target in inp.targets:
+            try:
+                rows.append(onboarder.status(target))
+            except SystemExit:
+                raise
+            except Exception as exc:  # noqa: BLE001 — per-target isolation
+                logger.exception("[%s] unexpected error", target.key)
+                rows.append(StatusRow(target, False, False, f"error: {exc}", [], []))
         _print_status(rows)
         healthy = all(r.owned and r.bot_can_read and r.webhook == "ok" and not r.stray for r in rows)
         return 0 if healthy else 1

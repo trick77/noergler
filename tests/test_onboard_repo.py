@@ -96,7 +96,11 @@ class FakeHTTP:
             return 200, {
                 "team": TEAM, "owned": owned, "bot_can_read": bot_can_read,
                 "bot_username": BOT, "echo": req,
-                "claim": claim if claim is not None else ("whole" if owned else "none"),
+                # default: a teams.yaml consistent with the target (whole for a
+                # project probe, repos for a repo probe)
+                "claim": claim if claim is not None else (
+                    "none" if not owned else ("whole" if req.get("repo") is None else "repos")
+                ),
             }
         self.route("POST", WEBHOOK_PATH, handler)
 
@@ -412,13 +416,39 @@ class TestOnboardProject:
         assert 'list them under "repos" in team.json' in result.detail
 
     def test_repo_under_whole_claim_tells_admin_to_use_project_form(self, onboarder, fake):
-        # teams.yaml claims all of PROJ, but team.json lists a repo: a repo hook
-        # next to the project hook would deliver every event twice.
-        fake.probe(owned=False, claim="whole")
+        # teams.yaml claims all of PROJ, so noergler owns the repo, but team.json
+        # lists it: a repo hook next to the project hook would deliver twice.
+        fake.probe(owned=True, claim="whole")
         result = onboarder.onboard(REPO)
         assert result.status == "skipped"
         assert '{"key": "PROJ"}' in result.detail
         assert "twice" in result.detail
+        assert not fake.calls_to("POST", REPO_HOOKS)
+
+    def test_repo_target_refused_while_own_project_hook_remains(self, onboarder, fake):
+        # whole claim turned into a repos: list; the old project hook is still there
+        fake.probe(claim="repos")
+        fake.hooks(PROJ_HOOKS, [_good_hook(5)])
+        result = onboarder.onboard(REPO)
+        assert result.status == "skipped"
+        assert "id=5" in result.detail and '--remove with {"key": "PROJ"}' in result.detail
+        assert not fake.calls_to("POST", REPO_HOOKS)
+
+    def test_repo_target_ignores_foreign_project_hook(self, onboarder, fake):
+        fake.probe(claim="repos")
+        fake.hooks(PROJ_HOOKS, [_foreign_hook(5)])
+        fake.respond_json("GET", "/rest/api/1.0/projects/PROJ/repos/my-repo", 200, {})
+        fake.hooks(REPO_HOOKS, [])
+        fake.respond_json("POST", REPO_HOOKS, 201, {"id": 9})
+        assert onboarder.onboard(REPO).status == "ok"
+
+    def test_repo_target_without_project_admin_still_onboards(self, onboarder, fake):
+        fake.probe(claim="repos")
+        fake.respond_json("GET", PROJ_HOOKS, 401, {"errors": [{"message": "no"}]})
+        fake.respond_json("GET", "/rest/api/1.0/projects/PROJ/repos/my-repo", 200, {})
+        fake.hooks(REPO_HOOKS, [])
+        fake.respond_json("POST", REPO_HOOKS, 201, {"id": 9})
+        assert onboarder.onboard(REPO).status == "ok"
 
     def test_prune_leaves_hooks_of_another_instance_alone(self, onboarder, fake):
         fake.probe()
@@ -491,6 +521,7 @@ class TestOnboardProject:
 class TestOnboardRepo:
     def test_creates_repo_webhook(self, onboarder, fake):
         fake.probe()
+        fake.hooks(PROJ_HOOKS, [])  # no project hook next to the repo hook
         fake.respond_json("GET", "/rest/api/1.0/projects/PROJ/repos/my-repo", 200, {})
         fake.hooks(REPO_HOOKS, [])
         fake.respond_json("POST", REPO_HOOKS, 201, {"id": 9})
@@ -503,6 +534,7 @@ class TestOnboardRepo:
     def test_updates_on_drift(self, onboarder, fake):
         stale = _good_hook(2) | {"active": False, "events": ["pr:opened"]}
         fake.probe()
+        fake.hooks(PROJ_HOOKS, [])  # no project hook next to the repo hook
         fake.respond_json("GET", "/rest/api/1.0/projects/PROJ/repos/my-repo", 200, {})
         fake.hooks(REPO_HOOKS, [stale])
         fake.respond_json("PUT", REPO_HOOKS + "/2", 200, {"id": 2})
@@ -514,6 +546,7 @@ class TestOnboardRepo:
 
     def test_grant_bot_uses_repo_write(self, client, fake):
         fake.probe(bot_can_read=False)
+        fake.hooks(PROJ_HOOKS, [])  # no project hook next to the repo hook
         fake.respond_json("GET", "/rest/api/1.0/projects/PROJ/repos/my-repo", 200, {})
         fake.respond_text("PUT", "/rest/api/1.0/projects/PROJ/repos/my-repo/permissions/users", 204, "")
         fake.hooks(REPO_HOOKS, [_good_hook()])
@@ -524,6 +557,7 @@ class TestOnboardRepo:
 
     def test_upsert_failure_is_reported(self, onboarder, fake):
         fake.probe()
+        fake.hooks(PROJ_HOOKS, [])  # no project hook next to the repo hook
         fake.respond_json("GET", "/rest/api/1.0/projects/PROJ/repos/my-repo", 200, {})
         fake.respond_text("GET", REPO_HOOKS, 500, "boom")
         result = onboarder.onboard(REPO)
@@ -560,6 +594,7 @@ class TestStatus:
 
     def test_missing_hook(self, onboarder, fake):
         fake.probe()
+        fake.hooks(PROJ_HOOKS, [])  # no project hook next to the repo hook
         fake.hooks(REPO_HOOKS, [])
         row = onboarder.status(REPO)
         assert row.webhook == "missing"
@@ -576,10 +611,22 @@ class TestStatus:
         assert row.foreign == [f"PROJ/a -> {FOREIGN_URL}"]
 
     def test_not_owned_row_carries_the_reason(self, onboarder, fake):
-        fake.probe(owned=False, claim="whole")
-        row = onboarder.status(REPO)
+        fake.probe(owned=False, claim="repos")
+        row = onboarder.status(PROJ)
         assert row.owned is False
-        assert '{"key": "PROJ"}' in row.webhook
+        assert 'list them under "repos"' in row.webhook
+
+    def test_repo_under_whole_claim_is_blocked(self, onboarder, fake):
+        fake.probe(claim="whole")
+        row = onboarder.status(REPO)
+        assert row.owned is True
+        assert row.webhook.startswith("blocked: ") and '{"key": "PROJ"}' in row.webhook
+
+    def test_ssl_verification_off_is_stale(self, onboarder, fake):
+        fake.probe()
+        fake.hooks(PROJ_HOOKS, [_good_hook() | {"sslVerificationRequired": False}])
+        fake.repos("PROJ", [])
+        assert onboarder.status(PROJ).webhook == "stale: sslVerificationRequired: False -> True"
 
 
 # --------------------------------------------------------------------------- #
