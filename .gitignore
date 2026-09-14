@@ -37,3 +37,6 @@ __pycache__/
 # macOS
 .DS_Store
 hack/
+
+# IntelliJ HTTP client: host, team secret and admin token, filled in locally (template: .example)
+http/http-client.env.json
