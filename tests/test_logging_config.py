@@ -9,6 +9,7 @@ from app.logging_config import (
     _make_service_metadata_processor,
     _rename_level,
     _strip_reserved,
+    _timestamp_first,
     configure_logging,
 )
 
@@ -106,3 +107,28 @@ def test_configure_logging_stdlib_bridge_emits_json(monkeypatch):
     assert payload["msg"] == "uvi boom"
     assert payload["log_level"] == "warning"
     assert payload["service"] == "noergler"
+
+
+def test_timestamp_first_moves_key_to_front():
+    out = _timestamp_first(None, "", {"request_id": "x", "timestamp": "t", "msg": "m"})
+    assert list(out) == ["timestamp", "request_id", "msg"]
+
+
+def test_configure_logging_bound_contextvars_keep_timestamp_first(monkeypatch):
+    configure_logging("INFO", env="dev")
+    root = logging.getLogger()
+    buffer = StringIO()
+    handler = root.handlers[0]
+    monkeypatch.setattr(handler, "stream", buffer)
+
+    structlog.contextvars.bind_contextvars(
+        status_code=200, duration_ms=1.2, method="POST", request_id="r" * 32, path="/webhook/x"
+    )
+    try:
+        structlog.stdlib.get_logger("test").info("http_request")
+    finally:
+        structlog.contextvars.clear_contextvars()
+
+    line = buffer.getvalue().strip().splitlines()[-1]
+    assert line.startswith('{"timestamp": "')
+    assert json.loads(line)["request_id"] == "r" * 32
