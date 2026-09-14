@@ -123,10 +123,10 @@ def _user_text_from_chat_call(mock_create) -> str:
 
 
 class TestParseReviewResponse:
-    def test_valid_json_array(self):
-        content = json.dumps([
+    def test_valid_json_object(self):
+        content = json.dumps({"findings": [
             {"file": "src/main.py", "line": 10, "severity": "issue", "comment": "Bug here"}
-        ])
+        ]})
         findings, requirements, summary, parse_failed = _parse_review_response(content)
         assert len(findings) == 1
         assert findings[0].file == "src/main.py"
@@ -136,15 +136,22 @@ class TestParseReviewResponse:
         assert summary == ReviewSummary()
         assert parse_failed is False
 
-    def test_empty_array(self):
-        findings, requirements, summary, parse_failed = _parse_review_response("[]")
+    def test_empty_findings(self):
+        findings, requirements, summary, parse_failed = _parse_review_response('{"findings": []}')
         assert findings == []
         assert requirements == []
         assert summary == ReviewSummary()
         assert parse_failed is False
 
+    def test_array_rejected(self):
+        findings, requirements, summary, parse_failed = _parse_review_response("[]")
+        assert findings == []
+        assert requirements is None
+        assert summary == ReviewSummary()
+        assert parse_failed is True
+
     def test_wrapped_in_code_fence(self):
-        content = "```json\n[{\"file\": \"a.py\", \"line\": 1, \"severity\": \"suggestion\", \"comment\": \"test\"}]\n```"
+        content = "```json\n{\"findings\": [{\"file\": \"a.py\", \"line\": 1, \"severity\": \"suggestion\", \"comment\": \"test\"}]}\n```"
         findings, _requirements, _, _ = _parse_review_response(content)
         assert len(findings) == 1
 
@@ -182,15 +189,16 @@ class TestParseReviewResponse:
         assert summary == ReviewSummary()
         assert parse_failed is True
 
-    def test_not_an_array(self):
-        findings, _requirements, _, _ = _parse_review_response('{"file": "a.py"}')
+    def test_object_without_findings(self):
+        findings, _requirements, _, parse_failed = _parse_review_response('{"file": "a.py"}')
         assert findings == []
+        assert parse_failed is False
 
     def test_malformed_item_skipped(self):
-        content = json.dumps([
+        content = json.dumps({"findings": [
             {"file": "a.py", "line": 1, "severity": "issue", "comment": "good"},
             {"bad": "item"},
-        ])
+        ]})
         findings, _requirements, _, _ = _parse_review_response(content)
         assert len(findings) == 1
 
@@ -198,10 +206,10 @@ class TestParseReviewResponse:
         # Belt-and-braces: even if the LLM regresses past the JSON-schema enum,
         # the Pydantic Literal blocks unexpected severities so downstream stats
         # and label rendering can trust the value.
-        content = json.dumps([
+        content = json.dumps({"findings": [
             {"file": "a.py", "line": 1, "severity": "critical", "comment": "stale"},
             {"file": "b.py", "line": 2, "severity": "issue", "comment": "ok"},
-        ])
+        ]})
         findings, _requirements, _, _ = _parse_review_response(content)
         assert len(findings) == 1
         assert findings[0].file == "b.py"
@@ -285,7 +293,7 @@ class TestParseReviewResponse:
         assert summary.verdict_decision == "approve"
 
     def test_vacuous_suggestion_finding_dropped(self):
-        content = json.dumps([
+        content = json.dumps({"findings": [
             {
                 "file": "a.py",
                 "line": 10,
@@ -293,12 +301,12 @@ class TestParseReviewResponse:
                 "comment": "You finally provide useful context for error analysis.",
                 "suggestion": "No fix needed—this code is actually correct for once.",
             }
-        ])
+        ]})
         findings, _, _, _ = _parse_review_response(content)
         assert findings == []
 
     def test_legitimate_finding_with_real_suggestion_preserved(self):
-        content = json.dumps([
+        content = json.dumps({"findings": [
             {
                 "file": "a.py",
                 "line": 10,
@@ -306,7 +314,7 @@ class TestParseReviewResponse:
                 "comment": "Null pointer dereference",
                 "suggestion": "if user is None:\n    return None\nreturn user.name",
             }
-        ])
+        ]})
         findings, _, _, _ = _parse_review_response(content)
         assert len(findings) == 1
         assert findings[0].suggestion == "if user is None:\n    return None\nreturn user.name"
@@ -642,14 +650,14 @@ class TestSystemMessage:
 class TestLLMClient:
     @pytest.mark.asyncio
     async def test_review_diff(self, llm_config, review_config):
-        review_content = json.dumps([
+        review_content = json.dumps({"findings": [
             {
                 "file": "src/main.py",
                 "line": 5,
                 "severity": "suggestion",
                 "comment": "Unused variable",
             }
-        ])
+        ]})
 
         client = LLMClient(llm_config, review_config)
         client.openai_client.chat.completions.with_raw_response.create = AsyncMock(

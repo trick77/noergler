@@ -238,13 +238,6 @@ class TestLoadOnboardingInput:
         assert result.bitbucket_url == BASE_URL
         assert result.webhook_url == WEBHOOK_URL
 
-    def test_rejects_old_format(self, tmp_path):
-        with pytest.raises(SystemExit, match="old config format"):
-            load_onboarding_input(self._write(tmp_path, {
-                "team": TEAM, "bitbucket_url": BASE_URL, "webhook_url": WEBHOOK_URL,
-                "projects": [{"project": "PROJ", "repos": ["r"]}],
-            }))
-
     def test_rejects_noergler_url_with_a_path(self, tmp_path):
         with pytest.raises(SystemExit, match="base URL without a path"):
             load_onboarding_input(self._write(tmp_path, _cfg(noergler_url=WEBHOOK_URL)))
@@ -270,7 +263,6 @@ class TestLoadOnboardingInput:
             ([], "'projects' must be a non-empty list"),
             (["PLAT"], "must be an object"),
             ([{"key": ""}], "key must be a non-empty string"),
-            ([{"project": "PLAT"}], "old config format"),
             ([{"key": "PLAT", "extra": 1}], "unknown field"),
             ([{"key": "PLAT", "repos": []}], "non-empty list of repo slugs, or omitted"),
             ([{"key": "PLAT", "repos": [""]}], "must be a non-empty string"),

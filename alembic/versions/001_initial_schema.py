@@ -1,13 +1,8 @@
-"""Initial schema (multi-team)
+"""Initial schema
 
 Revision ID: 001
 Revises:
 Create Date: 2026-09-11
-
-Squash of the former 001..010 chain into the current schema, plus
-`pr_reviews.team_slug`. There is no upgrade path from the pre-team schema:
-a database created by the old chain carries a foreign `alembic_version` and
-must be dropped and recreated.
 
 `team_slug` is the team the webhook route authenticated (the per-team path
 and HMAC secret), never a value read from the payload. It is NOT NULL: every

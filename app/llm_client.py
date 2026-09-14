@@ -473,51 +473,51 @@ def _parse_review_response(content: str) -> tuple[list[ReviewFinding], list[dict
         logger.error("Failed to parse review response as JSON: %s", content[:200])
         return [], None, ReviewSummary(), True
 
+    if not isinstance(data, dict):
+        logger.error("Review response is not a JSON object")
+        return [], None, ReviewSummary(), True
+
     compliance_requirements: list[dict[str, Any]] = []
     summary = ReviewSummary()
-    findings_data = data
+    findings_data = data.get("findings", [])
+    if not isinstance(findings_data, list):
+        findings_data = []
+    raw_requirements = data.get("compliance_requirements", [])
+    if isinstance(raw_requirements, list):
+        for item in raw_requirements:
+            if (isinstance(item, dict)
+                    and isinstance(item.get("requirement"), str)
+                    and isinstance(item.get("met"), bool)):
+                compliance_requirements.append(item)
+            else:
+                logger.warning("Skipping malformed compliance requirement: %s", item)
 
-    if isinstance(data, dict):
-        findings_data = data.get("findings", [])
-        raw_requirements = data.get("compliance_requirements", [])
-        if isinstance(raw_requirements, list):
-            for item in raw_requirements:
-                if (isinstance(item, dict)
-                        and isinstance(item.get("requirement"), str)
-                        and isinstance(item.get("met"), bool)):
-                    compliance_requirements.append(item)
-                else:
-                    logger.warning("Skipping malformed compliance requirement: %s", item)
+    raw_overview = data.get("overview", "")
+    if isinstance(raw_overview, str):
+        summary.overview = raw_overview.strip()
+    if not summary.overview:
+        logger.warning("overview empty after parse")
 
-        raw_overview = data.get("overview", "")
-        if isinstance(raw_overview, str):
-            summary.overview = raw_overview.strip()
-        if not summary.overview:
-            logger.warning("overview empty after parse")
+    raw_strengths = data.get("strengths", [])
+    if isinstance(raw_strengths, list):
+        summary.strengths = [s for s in raw_strengths if isinstance(s, str) and s.strip()]
 
-        raw_strengths = data.get("strengths", [])
-        if isinstance(raw_strengths, list):
-            summary.strengths = [s for s in raw_strengths if isinstance(s, str) and s.strip()]
+    raw_sec = data.get("security_performance", "")
+    if isinstance(raw_sec, str):
+        summary.security_performance = raw_sec.strip()
 
-        raw_sec = data.get("security_performance", "")
-        if isinstance(raw_sec, str):
-            summary.security_performance = raw_sec.strip()
+    raw_tests = data.get("test_coverage", "")
+    if isinstance(raw_tests, str):
+        summary.test_coverage = raw_tests.strip()
 
-        raw_tests = data.get("test_coverage", "")
-        if isinstance(raw_tests, str):
-            summary.test_coverage = raw_tests.strip()
-
-        raw_verdict = data.get("verdict")
-        if isinstance(raw_verdict, dict):
-            decision = raw_verdict.get("decision")
-            if decision in VERDICT_DECISIONS:
-                summary.verdict_decision = decision
-            rationale = raw_verdict.get("rationale")
-            if isinstance(rationale, str):
-                summary.verdict_rationale = rationale.strip()
-    elif not isinstance(data, list):
-        logger.error("Review response is not a JSON array or object")
-        return [], None, ReviewSummary(), True
+    raw_verdict = data.get("verdict")
+    if isinstance(raw_verdict, dict):
+        decision = raw_verdict.get("decision")
+        if decision in VERDICT_DECISIONS:
+            summary.verdict_decision = decision
+        rationale = raw_verdict.get("rationale")
+        if isinstance(rationale, str):
+            summary.verdict_rationale = rationale.strip()
 
     findings = []
     for item in findings_data:
