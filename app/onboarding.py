@@ -14,6 +14,7 @@ repo webhook per slug. The caller can only narrow that set.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -252,14 +253,23 @@ class Onboarder:
         a second time; the latter belong to another noergler and are left alone."""
         stray: list[tuple[Target, int]] = []
         foreign: list[str] = []
-        for repo in await self.admin.list_repos(project):
-            slug = repo.get("slug")
-            if not isinstance(slug, str):
-                continue
-            repo_target = Target(project, slug)
-            hook = _hook_named(await self.admin.list_webhooks(project, slug), self.webhook_name)
+        slugs = [
+            repo["slug"] for repo in await self.admin.list_repos(project)
+            if isinstance(repo.get("slug"), str)
+        ]
+        # One listing per repo; a project has dozens, so a few in flight at a
+        # time keeps the request short without hammering Bitbucket.
+        gate = asyncio.Semaphore(4)
+
+        async def _hooks(slug: str) -> list[dict[str, Any]]:
+            async with gate:
+                return await self.admin.list_webhooks(project, slug)
+
+        for slug, hooks in zip(slugs, await asyncio.gather(*(_hooks(s) for s in slugs))):
+            hook = _hook_named(hooks, self.webhook_name)
             if hook is None:
                 continue
+            repo_target = Target(project, slug)
             if self._is_ours(hook):
                 stray.append((repo_target, int(hook["id"])))
             else:
@@ -287,9 +297,11 @@ class Onboarder:
             return _whole_claim_reason(target)
         try:
             hooks = await self.admin.list_webhooks(target.project, None)
-        except httpx.HTTPStatusError:
-            # no project admin on a shared project: nothing more to check
-            return None
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in (401, 403):
+                # no project admin on a shared project: nothing more to check
+                return None
+            raise
         project_hook = _hook_named(hooks, self.webhook_name)
         if project_hook is not None and self._is_ours(project_hook):
             return (
@@ -305,7 +317,13 @@ class Onboarder:
         foreign: list[str] = []
         if not claim.owned:
             return StatusRow(target, False, False, _not_owned_reason(target, claim), stray, foreign)
-        refused = await self._refuse_repo_target(target, claim)
+        try:
+            refused = await self._refuse_repo_target(target, claim)
+        except httpx.HTTPStatusError as exc:
+            return StatusRow(
+                target, True, claim.bot_can_read,
+                f"project hook check HTTP {exc.response.status_code}", stray, foreign,
+            )
         if refused is not None:
             return StatusRow(target, True, claim.bot_can_read, f"blocked: {refused}", stray, foreign)
         try:
@@ -319,20 +337,30 @@ class Onboarder:
             else:
                 diff = self._diff_webhook(existing)
                 webhook = "ok" if not diff else "stale: " + "; ".join(diff)
-            if target.is_project:
-                found, foreign = await self.stray_repo_hooks(target.project)
-                stray = [t.key for t, _ in found]
         except httpx.HTTPStatusError as exc:
             webhook = f"HTTP {exc.response.status_code}"
         except httpx.HTTPError as exc:
             webhook = f"error: {exc}"
+        if target.is_project and not webhook.startswith(("HTTP ", "error: ")):
+            # The hook verdict above stands on its own; a failure here only
+            # means the repo-level check is unknown, which is not healthy either.
+            try:
+                found, foreign = await self.stray_repo_hooks(target.project)
+                stray = [t.key for t, _ in found]
+            except httpx.HTTPStatusError as exc:
+                webhook += f" (repo hooks unchecked: HTTP {exc.response.status_code})"
+            except httpx.HTTPError as exc:
+                webhook += f" (repo hooks unchecked: {exc})"
         return StatusRow(target, claim.owned, claim.bot_can_read, webhook, stray, foreign)
 
     async def onboard(self, target: Target) -> TargetResult:
         claim = await self.claim(target)
         if not claim.owned:
             return TargetResult(target, "skipped", detail=_not_owned_reason(target, claim))
-        refused = await self._refuse_repo_target(target, claim)
+        try:
+            refused = await self._refuse_repo_target(target, claim)
+        except httpx.HTTPStatusError as exc:
+            return TargetResult(target, "failed", detail=f"project hook check {_http_detail(exc)}")
         if refused is not None:
             return TargetResult(target, "skipped", detail=refused)
 

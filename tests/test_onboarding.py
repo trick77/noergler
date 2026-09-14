@@ -118,6 +118,13 @@ class TestStatus:
         assert row.stray == ["PROJ/my-repo"]
         assert row.foreign == ["PROJ/other -> https://old.test/webhook"]
 
+        # the hook verdict stands when only the repo listing fails; the row is
+        # still not healthy, and says why
+        respx.get(f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos").mock(return_value=httpx.Response(500))
+        row = await _onboarder(_team([ProjectScope(key="PROJ")])).status(PROJ)
+        assert row.webhook == "ok (repo hooks unchecked: HTTP 500)"
+        assert row.stray == []
+
     @respx.mock
     async def test_missing_stale_foreign_and_admin_401(self):
         _bot_can_read()
@@ -140,6 +147,20 @@ class TestStatus:
 
         respx.get(REPO_HOOKS).mock(return_value=httpx.Response(401, text="not permitted"))
         assert (await ob.status(REPO)).webhook == "HTTP 401"
+
+    @respx.mock
+    async def test_project_hook_guard_only_yields_on_no_admin(self):
+        _bot_can_read()
+        team = _team([ProjectScope(key="PROJ", repos=["my-repo"])])
+        ob = _onboarder(team)
+        respx.get(REPO_HOOKS).mock(return_value=httpx.Response(200, json=_page([])))
+        respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(403))
+        assert (await ob.status(REPO)).webhook == "missing"
+        # a Bitbucket hiccup on the guard is an error, not a licence to double-hook
+        respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(503))
+        result = await ob.onboard(REPO)
+        assert result.status == "failed"
+        assert "HTTP 503" in result.detail
 
     @respx.mock
     async def test_not_owned_and_whole_claim_block(self):
@@ -305,10 +326,17 @@ def api(monkeypatch):
 
 
 AUTH = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
+WHOAMI = f"{BASE_URL}/plugins/servlet/applinks/whoami"
+
+
+def _token_ok() -> None:
+    respx.get(WHOAMI).mock(return_value=httpx.Response(200, text="jan"))
 
 
 class TestEndpoint:
+    @respx.mock
     def test_auth_and_team_errors(self, api):
+        _token_ok()
         assert api.post(f"/onboard/{TEAM}", json={}).status_code == 401
         assert api.post(f"/onboard/{TEAM}", json={}, headers={"Authorization": "Basic x"}).status_code == 401
         assert api.post("/onboard/nobody", json={}, headers=AUTH).status_code == 404
@@ -316,6 +344,21 @@ class TestEndpoint:
         r = api.post(f"/onboard/{TEAM}", json={"targets": ["NOPE"]}, headers=AUTH)
         assert r.status_code == 400 and "NOPE" in r.json()["detail"]
         assert api.post(f"/onboard/{TEAM}", json={"action": "explode"}, headers=AUTH).status_code == 422
+
+    @respx.mock
+    def test_rejected_token_reveals_nothing(self, api):
+        # Bitbucket answers whoami with an empty body for a bad token: 401 here,
+        # before targets or ownership are computed, and no other Bitbucket call.
+        respx.get(WHOAMI).mock(return_value=httpx.Response(200, text=""))
+        r = api.post(f"/onboard/{TEAM}", json={"targets": ["NOPE"]}, headers=AUTH)
+        assert r.status_code == 401
+        assert "NOPE" not in r.text and "PROJ" not in r.text
+        assert len(respx.calls) == 1
+
+    @respx.mock
+    def test_bitbucket_down_on_token_check_is_502(self, api):
+        respx.get(WHOAMI).mock(side_effect=httpx.ConnectError("down"))
+        assert api.post(f"/onboard/{TEAM}", json={}, headers=AUTH).status_code == 502
 
     def test_public_url_required(self, api):
         main_module.config.server = ServerConfig()
@@ -325,6 +368,7 @@ class TestEndpoint:
 
     @respx.mock
     def test_status_and_grant_bot(self, api, caplog):
+        _token_ok()
         _bot_can_read()
         respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(200, json=_page([_good_hook()])))
         respx.get(f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos").mock(return_value=httpx.Response(200, json=_page([])))
@@ -346,6 +390,7 @@ class TestEndpoint:
         assert r.json()["rows"][0]["status"] == "ok"
         assert r.json()["rows"][0]["detail"] == "webhook already up to date"
         # the admin token went to Bitbucket on the hook listing, the bot token on the read check
+        assert "onboard by=jan" in caplog.text
         hook_calls = [c for c in respx.calls if c.request.url.path.endswith("/PROJ/webhooks")]
         assert all(c.request.headers["Authorization"] == f"Bearer {ADMIN_TOKEN}" for c in hook_calls)
         read_calls = [c for c in respx.calls if c.request.url.path.endswith("/projects/PROJ")]

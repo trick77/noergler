@@ -447,7 +447,6 @@ async def onboard(
     leaves the service: it is written into the hook here.
     """
     structlog.contextvars.bind_contextvars(team=team_slug)
-    team = _runtime_for(team_slug).config
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(
             status_code=401,
@@ -456,24 +455,34 @@ async def onboard(
     token = authorization[len("bearer "):].strip()
     if not token:
         raise HTTPException(status_code=401, detail="empty bearer token")
+    team = _runtime_for(team_slug).config
     if not config.server.public_url:
         raise HTTPException(
             status_code=503,
             detail="NOERGLER_PUBLIC_URL is not set on this instance; onboarding via API is disabled",
         )
-    try:
-        targets = onboarding.targets_for(team, body.targets)
-    except onboarding.UnknownTarget as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if not targets:
-        raise HTTPException(status_code=400, detail="no targets")
 
     webhook_url = f"{config.server.public_url}/webhook/{team_slug}"
-    logger.info(
-        "onboard action=%s targets=%d webhook_url=%s dry_run=%s",
-        body.action, len(targets), webhook_url, body.dry_run,
-    )
     async with BitbucketClient(config.bitbucket, token=token) as admin:
+        # Bitbucket must accept the token before anything derived from
+        # teams.yaml (targets, ownership, bot access) goes back to the caller.
+        try:
+            caller = await admin.whoami()
+        except Exception as exc:
+            logger.warning("onboard: whoami against Bitbucket failed: %s", exc)
+            raise HTTPException(status_code=502, detail="Bitbucket did not answer the token check") from exc
+        if not caller:
+            raise HTTPException(status_code=401, detail="Bitbucket rejected the token")
+        try:
+            targets = onboarding.targets_for(team, body.targets)
+        except onboarding.UnknownTarget as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not targets:
+            raise HTTPException(status_code=400, detail="no targets")
+        logger.info(
+            "onboard by=%s action=%s targets=%d webhook_url=%s dry_run=%s",
+            caller, body.action, len(targets), webhook_url, body.dry_run,
+        )
         onboarder = onboarding.Onboarder(
             admin, bitbucket_client, team, webhook_url,
             webhook_name=body.name,

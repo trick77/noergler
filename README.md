@@ -282,7 +282,7 @@ curl -sS -X POST $N -H "Authorization: Bearer $TOKEN" -H 'Content-Type: applicat
 curl -sS -X POST $N -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"action":"grant-bot"}'
 ```
 
-`POST /onboard/<team>` runs over every entry of the team's block in `teams.yaml`; the token is used for this request's Bitbucket calls and dropped. Body fields:
+`POST /onboard/<team>` first asks Bitbucket who the token belongs to (`401` if it is rejected, nothing else is answered), then runs over every entry of the team's block in `teams.yaml`; the token is used for this request's Bitbucket calls and dropped. Body fields:
 
 | Field | Default | Meaning |
 |---|---|---|
