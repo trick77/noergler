@@ -43,6 +43,7 @@ def _make_payload(
     branch: str = "feature",
     title: str = "Test PR",
     merge_commit_sha: str | None = None,
+    actor: str | None = None,
 ) -> WebhookPayload:
     pull_request: dict[str, Any] = {
         "id": 42,
@@ -63,10 +64,11 @@ def _make_payload(
     }
     if merge_commit_sha is not None:
         pull_request["properties"] = {"mergeCommit": {"id": merge_commit_sha}}
-    return WebhookPayload.model_validate({
-        "eventKey": "pr:opened",
-        "pullRequest": pull_request,
-    })
+    payload: dict[str, Any] = {"eventKey": "pr:opened", "pullRequest": pull_request}
+    if actor is not None:
+        payload["eventKey"] = "pr:from_ref_updated"
+        payload["actor"] = {"name": actor}
+    return WebhookPayload.model_validate(payload)
 
 
 def _make_mention_payload(
@@ -331,6 +333,22 @@ class TestReviewer:
 
         mock_bitbucket.fetch_pr_diff.assert_not_called()
         mock_llm.review_diff.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_skip_push_by_ignored_actor(self, mock_bitbucket, mock_llm):
+        # CI amends a human's PR: no re-review. The human's own push still reviews.
+        reviewer = Reviewer(
+            mock_bitbucket, mock_llm,
+            _review_config(auto_review_authors=[], ignore_authors=["os-jenkins-bb"]),
+            db_pool=AsyncMock(),
+        )
+        await reviewer.review_pull_request(_make_payload(actor="os-jenkins-bb"))
+        mock_bitbucket.fetch_pr_diff.assert_not_called()
+        mock_llm.review_diff.assert_not_called()
+
+        await reviewer.review_pull_request(_make_payload(actor="username"))
+        mock_bitbucket.fetch_pr_diff.assert_called_once()
+        mock_llm.review_diff.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_skip_author_check_allows_non_listed_author(self, reviewer, mock_bitbucket, mock_llm):
@@ -615,6 +633,21 @@ class TestReviewer:
     def test_is_auto_review_author_empty_list(self, mock_bitbucket, mock_llm):
         rev = Reviewer(mock_bitbucket, mock_llm, _review_config(auto_review_authors=[]), db_pool=AsyncMock())
         assert rev.is_auto_review_author("anyone") is True
+
+    def test_ignore_authors_wins_over_allow_list(self, mock_bitbucket, mock_llm):
+        rev = Reviewer(
+            mock_bitbucket, mock_llm,
+            _review_config(auto_review_authors=[], ignore_authors=["os-jenkins-bb"]),
+            db_pool=AsyncMock(),
+        )
+        assert rev.is_auto_review_author("os-jenkins-bb") is False
+        assert rev.is_auto_review_author("anyone") is True
+        rev = Reviewer(
+            mock_bitbucket, mock_llm,
+            _review_config(auto_review_authors=["os-jenkins-bb"], ignore_authors=["os-jenkins-bb"]),
+            db_pool=AsyncMock(),
+        )
+        assert rev.is_auto_review_author("os-jenkins-bb") is False
 
     def test_build_summary_mixed(self, reviewer):
         findings = [

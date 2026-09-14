@@ -312,6 +312,7 @@ TWO_TEAMS = MINIMAL_TEAMS + """
       context_window: 1200000
     review:
       auto_review_authors: [alice]
+      ignore_authors: [renovate-bot]
       max_pr_cost_usd: 8.5
     jira:
       acceptance_criteria_prefixes: [AC, DoD]
@@ -332,7 +333,7 @@ def _payments_env(env) -> None:
 def test_full_team_block_resolves_with_overrides_on_top_of_instance_defaults(env):
     env.teams(TWO_TEAMS)
     _payments_env(env)
-    env.set(OPENAI_MODEL="gpt-5.4", REVIEW_MAX_COMMENTS="7")
+    env.set(OPENAI_MODEL="gpt-5.4", REVIEW_MAX_COMMENTS="7", REVIEW_IGNORE_AUTHORS="os-jenkins-bb, renovate")
     config = _load(env)
     assert config.disabled == {}
     assert sorted(config.teams) == ["payments", "platform"]
@@ -344,6 +345,7 @@ def test_full_team_block_resolves_with_overrides_on_top_of_instance_defaults(env
     assert plat.llm.api_url == "https://llm.example.com/v1"
     assert plat.review.max_comments == 7
     assert plat.review.auto_review_authors == []
+    assert plat.review.ignore_authors == ["os-jenkins-bb", "renovate"]
     assert plat.jira.acceptance_criteria_prefixes == JiraConfig(url="", token="").acceptance_criteria_prefixes
     assert plat.riptide is None
 
@@ -358,6 +360,7 @@ def test_full_team_block_resolves_with_overrides_on_top_of_instance_defaults(env
     # instance-only values are inherited, never overridden
     assert pay.llm.api_url == "https://llm.example.com/v1"
     assert pay.review.auto_review_authors == ["alice"]
+    assert pay.review.ignore_authors == ["renovate-bot"]
     assert pay.review.max_pr_cost_usd == 8.5
     assert pay.review.max_comments == 7
     assert pay.jira.url == "https://jira.example.com"

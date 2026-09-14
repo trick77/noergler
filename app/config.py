@@ -163,6 +163,7 @@ class LLMConfig(BaseModel):
 
 class ReviewConfig(BaseModel):
     auto_review_authors: list[str] = []
+    ignore_authors: list[str] = []
     max_comments: int = 25
     max_file_lines: int = 1000
     diff_extra_lines_before: int = 3
@@ -179,7 +180,7 @@ class ReviewConfig(BaseModel):
     opt_out_branch_keyword: str = "noergloff"
     max_pr_cost_usd: float = 5.00
 
-    @field_validator("auto_review_authors", mode="before")
+    @field_validator("auto_review_authors", "ignore_authors", mode="before")
     @classmethod
     def parse_comma_list(cls, v: str | list[str]) -> list[str]:
         if isinstance(v, str):
@@ -305,6 +306,7 @@ class TeamReviewOverrides(BaseModel, extra="forbid"):
     teams) — naming them here disables the team."""
 
     auto_review_authors: list[str] | None = None
+    ignore_authors: list[str] | None = None
     max_comments: int | None = None
     max_file_lines: int | None = None
     diff_extra_lines_before: int | None = None
@@ -635,6 +637,7 @@ def load_instance_config() -> AppConfig:
         ),
         review=ReviewConfig(
             auto_review_authors=[a.strip() for a in _env("REVIEW_AUTO_REVIEW_AUTHORS", "").split(",") if a.strip()],
+            ignore_authors=[a.strip() for a in _env("REVIEW_IGNORE_AUTHORS", "").split(",") if a.strip()],
             max_comments=int(_env("REVIEW_MAX_COMMENTS", "25")),
             max_file_lines=int(_env("REVIEW_MAX_FILE_LINES", "1000")),
             diff_extra_lines_before=int(_env("REVIEW_DIFF_EXTRA_LINES_BEFORE", "3")),
