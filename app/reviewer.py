@@ -303,6 +303,7 @@ class Reviewer:
             raise ValueError("db_pool is required")
         self.db_pool = db_pool
         self.auto_review_authors = review_config.auto_review_authors
+        self.ignore_authors = review_config.ignore_authors
         self.max_comments = review_config.max_comments
         self.mention_trigger = bitbucket.bot_username
         self.riptide = riptide
@@ -364,6 +365,10 @@ class Reviewer:
         return "\n".join(blocks), ticket
 
     def is_auto_review_author(self, author_name: str) -> bool:
+        """Ignore list wins over the allow list; an @mention bypasses both
+        (skip_author_check), so a bot's PR can still be reviewed on request."""
+        if author_name in self.ignore_authors:
+            return False
         return not self.auto_review_authors or author_name in self.auto_review_authors
 
     async def _prepare_files(

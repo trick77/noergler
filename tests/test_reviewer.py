@@ -616,6 +616,21 @@ class TestReviewer:
         rev = Reviewer(mock_bitbucket, mock_llm, _review_config(auto_review_authors=[]), db_pool=AsyncMock())
         assert rev.is_auto_review_author("anyone") is True
 
+    def test_ignore_authors_wins_over_allow_list(self, mock_bitbucket, mock_llm):
+        rev = Reviewer(
+            mock_bitbucket, mock_llm,
+            _review_config(auto_review_authors=[], ignore_authors=["os-jenkins-bb"]),
+            db_pool=AsyncMock(),
+        )
+        assert rev.is_auto_review_author("os-jenkins-bb") is False
+        assert rev.is_auto_review_author("anyone") is True
+        rev = Reviewer(
+            mock_bitbucket, mock_llm,
+            _review_config(auto_review_authors=["os-jenkins-bb"], ignore_authors=["os-jenkins-bb"]),
+            db_pool=AsyncMock(),
+        )
+        assert rev.is_auto_review_author("os-jenkins-bb") is False
+
     def test_build_summary_mixed(self, reviewer):
         findings = [
             ReviewFinding(file="a.py", line=1, severity="issue", headline="err A", comment="err"),

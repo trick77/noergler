@@ -49,6 +49,7 @@ Review behaviour (team block `review:`, same names without the `REVIEW_` prefix,
 | Variable | Default | Purpose |
 |---|---|---|
 | `REVIEW_AUTO_REVIEW_AUTHORS` | empty (= everyone) | Comma-separated PR authors that get automatic reviews |
+| `REVIEW_IGNORE_AUTHORS` | empty | Comma-separated PR authors that never get automatic reviews (CI and dependency bots); wins over `REVIEW_AUTO_REVIEW_AUTHORS`, an @mention still reviews |
 | `REVIEW_MAX_COMMENTS` | `25` | Cap on inline comments per review run |
 | `REVIEW_MAX_FILE_LINES` | `1000` | Files longer than this are reviewed from the diff only, without full file context |
 | `REVIEW_DIFF_EXTRA_LINES_BEFORE` | `3` | Context lines added before each hunk |
