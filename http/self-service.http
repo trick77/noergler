@@ -1,6 +1,6 @@
 ### noergler team self-service, IntelliJ HTTP client
-# Pick an environment (dev / prod) from http-client.env.json; the token goes
-# into http-client.private.env.json (gitignored), never in here.
+# Pick an environment (dev / prod) from http-client.env.json and fill in host,
+# team and token there; do not commit the token.
 #
 # {{host}}   noergler base URL, e.g. https://noergler.example.com
 # {{team}}   your team slug, as in teams.yaml
