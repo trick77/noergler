@@ -110,8 +110,8 @@ teams:
 | `slug` | yes | `^[a-z0-9][a-z0-9-]*$`, unique. Becomes the webhook path (`/webhook/<slug>`), the `pr_reviews.team_slug` value and the `team=` log field |
 | `name` | no | Display only |
 | `webhook_secret_env` | yes | Env var holding the team's Bitbucket webhook HMAC secret |
-| `projects[].key` | yes, ≥ 1 | Bitbucket project keys the team owns |
-| `projects[].repos` | no | Restrict a project to these repo slugs; omitted = the whole project. Non-empty when present. Use only for a project shared between teams: a whole-project claim is onboarded with one project webhook and covers every future repo, a `repos:` list needs a `teams.yaml` change per new repo |
+| `projects[].key` | no | Seed for the team's claims: copied to `team_claims` the first time the slug starts against a DB that has no claims for it, ignored afterwards. Teams claim through `POST /onboard` |
+| `projects[].repos` | no | Restrict a project to these repo slugs; omitted = the whole project. Non-empty when present. Use only for a project shared between teams: a whole-project claim is one project webhook and covers every future repo, a `repos:` claim needs an API call per new repo |
 | `inference.api_key_env` | yes | Env var holding the team's inference key. Empty value rejected |
 | `inference.model`, `.reasoning_effort`, `.context_window` | no | Same validation as the instance variables |
 | `review.*` | no | Any review knob from the table above. Unknown keys are rejected |
@@ -146,14 +146,14 @@ Probes: `/health` is liveness and answers `200` while the process is up, with th
 
 Each team's repositories send to `https://<noergler>/webhook/<slug>`. The service verifies the `X-Hub-Signature` HMAC-SHA256 against that team's secret, then checks that the PR's project/repo is owned by the team (`403` otherwise). Team identity therefore comes from the path and the signature, never from the payload.
 
-**Who does what.** The noergler admin adds the team to `teams.yaml`, sets its secrets, redeploys. The team admin calls `POST /onboard/<slug>` with their own Bitbucket HTTP access token (project admin), see [README](README.md#webhook-setup); the service creates the webhooks from the team's `projects:` block, writing the team secret into them, so the team never handles it:
+**Who does what.** The noergler admin adds the team to `teams.yaml`, sets its secrets, redeploys. The team admin calls `POST /onboard/<slug>` with their own Bitbucket HTTP access token (project admin), see [README](README.md#webhook-setup); the service claims the projects named in the body for the team (`team_claims`), creates the webhooks and writes the team secret into them, so the team never handles it:
 
 | `teams.yaml` claim | Webhook created | New repo in the project |
 |---|---|---|
 | `key: PLAT` (whole project) | one **project** webhook (Bitbucket Data Center 8.8+) | covered automatically, nobody does anything |
 | `key: INFRA` + `repos: [...]` | one **repo** webhook per listed repo | noergler admin adds it to `repos:`, team admin re-runs `grant-bot` |
 
-**Ownership at onboarding.** Targets are always the team's own block; the request body can narrow them, never add. Per target the service answers whether the team owns it, how it is claimed (`whole`, `repos`, `none`) and whether the bot account can read it; the admin token authorises the Bitbucket writes and is dropped after the request.
+**Ownership.** A claim is written only after the caller's token proved project admin on the target, and only if no other team holds it (unique indexes on `team_claims`; a whole-project claim against another team's repo claims is refused in the same transaction). `projects:` in `teams.yaml` is a seed for a slug the database does not know yet; a conflicting seed disables that team. `GET /teams/<slug>` shows the current claims. The admin token authorises the Bitbucket writes and is dropped after the request.
 
 **Double delivery.** A project webhook plus a leftover repo webhook of the same instance delivers every event twice, and the queue only collapses events that arrive while one is pending. `onboard` removes such repo hooks under a project hook (`"prune": false` keeps them); `status` lists them. Hooks named `noergler` that point at *another* instance (intg next to prod) are reported as foreign and never touched; onboard a second instance with another `name`.
 

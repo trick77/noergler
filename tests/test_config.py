@@ -394,8 +394,6 @@ def test_team_for_resolves_ownership_by_project_and_repo(env):
          "webhook_secret_env: Field required"),
         (lambda t: t.replace("      api_key_env: TEAM_PAYMENTS_OPENAI_API_KEY\n", ""),
          "inference.api_key_env: Field required"),
-        (lambda t: t.replace("      - key: PAY\n        repos: [billing, ledger]\n", "      []\n"),
-         "projects: Value error, projects must list at least one"),
         (lambda t: t.replace("repos: [billing, ledger]", "repos: []"),
          "projects.0.repos: Value error, repos must list at least one slug"),
         # instance-only knobs in a team block
@@ -444,15 +442,18 @@ def test_empty_secret_value_disables_the_team(env):
     }
 
 
-def test_shared_project_disables_every_claimant(env):
-    env.teams(TWO_TEAMS.replace("key: PAY", "key: PLAT"))
+def test_projects_are_optional_seed(env):
+    # claims live in the DB; a block without projects: is a valid team with
+    # nothing claimed yet, and two blocks naming the same project both load
+    text = TWO_TEAMS.replace("      - key: PAY\n        repos: [billing, ledger]\n", "      []\n")
+    env.teams(text)
     _payments_env(env)
     config = _load(env)
-    assert config.teams == {}
-    assert config.disabled == {
-        "platform": "project PLAT is also claimed by team payments",
-        "payments": "project PLAT is also claimed by team platform",
-    }
+    assert config.disabled == {}
+    assert config.teams["payments"].projects == []
+    env.teams(TWO_TEAMS.replace("key: PAY", "key: PLAT"))
+    config = _load(env)
+    assert sorted(config.teams) == ["payments", "platform"]
 
 
 def test_disjoint_repo_lists_on_one_project_do_not_conflict(env):
@@ -463,17 +464,6 @@ def test_disjoint_repo_lists_on_one_project_do_not_conflict(env):
     assert config.disabled == {}
     assert config.team_for("PAY", "core") is config.teams["platform"]
     assert config.team_for("PAY", "billing") is config.teams["payments"]
-
-
-def test_a_disabled_team_does_not_take_part_in_ownership_conflicts(env):
-    # payments is disabled for a missing key; its PLAT claim must not drag
-    # platform down with it.
-    text = TWO_TEAMS.replace("key: PAY", "key: PLAT")
-    env.teams(text)
-    env.set(TEAM_PAYMENTS_WEBHOOK_SECRET="pay-secret", TEAM_PAYMENTS_RIPTIDE_TOKEN="x")
-    config = _load(env)
-    assert list(config.teams) == ["platform"]
-    assert list(config.disabled) == ["payments"]
 
 
 def test_load_teams_is_usable_standalone(env):

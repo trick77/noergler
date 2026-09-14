@@ -14,7 +14,18 @@ def test_migration_chain_is_a_single_revision():
     assert revs == [("001", None)]
 
 
-def test_001_creates_the_two_tables_and_drops_them_in_downgrade():
+def test_001_claims_are_unique_per_project_and_repo():
+    text = _M001.read_text()
+    assert "CREATE TABLE team_claims" in text
+    assert "CREATE TABLE team_settings" in text
+    # one owner per repo, one owner per whole project: the ownership guarantee
+    assert "CREATE UNIQUE INDEX uq_team_claims_repo ON team_claims (project_key, repo_slug)" in text
+    assert "CREATE UNIQUE INDEX uq_team_claims_project ON team_claims (project_key)" in text
+    assert "DROP TABLE IF EXISTS team_settings" in text
+    assert "DROP TABLE IF EXISTS team_claims" in text
+
+
+def test_001_creates_the_tables_and_drops_them_in_downgrade():
     text = _M001.read_text()
     assert "CREATE TABLE pr_reviews" in text
     assert "CREATE TABLE review_findings" in text

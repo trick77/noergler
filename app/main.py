@@ -10,16 +10,17 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
 from typing import Annotated, cast, final
 
+import httpx
 import structlog
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from app import onboarding
+from app import onboarding, team_store
 from app.bitbucket import BitbucketClient
-from app.config import AppConfig, TeamConfig, load_config, log_config, model_label
+from app.config import AppConfig, ProjectScope, TeamConfig, load_config, log_config, model_label
 from app.logging_config import configure_logging
-from app.db import close_pool, create_pool
+from app.db import close_pool, create_pool, get_pool
 from app.llm_client import LLMClient
 from app.jira import JiraClient
 from app.models import WebhookPayload
@@ -58,6 +59,19 @@ class TeamRuntime:
     jira: JiraClient
     riptide: RiptideClient
     reviewer: Reviewer
+
+    # The team's own settings change at runtime through the API (one replica,
+    # so the in-memory copy is the truth right after the DB write).
+    def apply_claims(self, scopes: list[ProjectScope]) -> None:
+        self.config.projects = scopes
+
+    def apply_settings(self, settings: team_store.TeamSettings) -> None:
+        self.config.review = self.config.review.model_copy(update={
+            "auto_review_authors": settings.auto_review_authors,
+            "ignore_authors": settings.ignore_authors,
+        })
+        self.reviewer.auto_review_authors = settings.auto_review_authors
+        self.reviewer.ignore_authors = settings.ignore_authors
 
 
 config: AppConfig = cast(AppConfig, cast(object, None))
@@ -134,6 +148,39 @@ async def _start_team(
     return TeamRuntime(config=team, llm=llm, jira=jira, riptide=riptide, reviewer=reviewer)
 
 
+async def _load_team_store(db_pool, configured: dict[str, TeamConfig]) -> dict[str, str]:
+    """Claims and author lists come from the DB; `teams.yaml` seeds a slug
+    the DB knows nothing about. Returns per-slug reasons for teams whose seed
+    conflicts with another team's claims (those are disabled)."""
+    errors: dict[str, str] = {}
+    claims = await team_store.list_all_claims(db_pool)
+    settings = await team_store.get_all_settings(db_pool)
+    for slug, team in configured.items():
+        if slug in claims:
+            team.projects = claims[slug]
+        elif team.projects:
+            try:
+                added = await team_store.add_claims(db_pool, slug, team.projects, claimed_by="teams.yaml")
+            except team_store.ClaimConflict as exc:
+                errors[slug] = f"teams.yaml seed: {exc}"
+                continue
+            logger.info("claims seeded from teams.yaml team=%s n=%d", slug, len(added))
+        else:
+            logger.info("no claims yet team=%s (claim via POST /onboard)", slug)
+        if slug in settings:
+            team.review = team.review.model_copy(update={
+                "auto_review_authors": settings[slug].auto_review_authors,
+                "ignore_authors": settings[slug].ignore_authors,
+            })
+        elif team.review.auto_review_authors or team.review.ignore_authors:
+            await team_store.put_settings(
+                db_pool, slug,
+                team_store.TeamSettings(team.review.auto_review_authors, team.review.ignore_authors),
+                updated_by="teams.yaml",
+            )
+    return errors
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     global config, bitbucket_client, jira_client, review_queue
@@ -188,11 +235,12 @@ async def lifespan(_app: FastAPI):
     teams.clear()
     disabled_teams.clear()
     disabled_teams.update(config.disabled)
+    seed_errors = await _load_team_store(db_pool, config.teams)
     for slug, team in config.teams.items():
         structlog.contextvars.bind_contextvars(team=slug)
         try:
             try:
-                result = await _start_team(team, db_pool, logger)
+                result = seed_errors.get(slug) or await _start_team(team, db_pool, logger)
             except Exception as exc:
                 # Nothing a single team does may take the instance down.
                 result = f"startup failed: {exc}"
@@ -425,28 +473,28 @@ async def webhook(
 
 class OnboardRequest(BaseModel, extra="forbid"):
     action: onboarding.Action = "status"
-    # Narrow to these entries of the team block (`KEY` or `KEY/repo`); default all.
+    # Claim these (and hook them), or with `remove`: unclaim them, drop their
+    # hooks and every PR record of the team on them. Same shape as the
+    # `projects:` block in teams.yaml.
+    projects: list[ProjectScope] | None = None
+    # Narrow to these current claims (`KEY` or `KEY/repo`); default all.
     targets: list[str] | None = None
     dry_run: bool = False
     name: str = onboarding.DEFAULT_WEBHOOK_NAME
     prune: bool = True
 
 
-@app.post("/onboard/{team_slug}")
-async def onboard(
-    team_slug: str,
-    body: OnboardRequest,
-    authorization: Annotated[str | None, Header()] = None,
-):
-    """Put noergler's webhook on the team's Bitbucket projects/repos.
+class ReviewAuthorsRequest(BaseModel, extra="forbid"):
+    auto_review_authors: list[str]
+    ignore_authors: list[str]
 
-    Authenticated by the caller's own Bitbucket token (`Authorization: Bearer`,
-    a team admin with project admin on the targets); it is used for this
-    request's Bitbucket calls and dropped. Targets come from the team's block
-    in teams.yaml, the body can only narrow them. The webhook secret never
-    leaves the service: it is written into the hook here.
-    """
-    structlog.contextvars.bind_contextvars(team=team_slug)
+
+@asynccontextmanager
+async def _admin_client(authorization: str | None):
+    """A Bitbucket client on the caller's own token, after Bitbucket has
+    accepted it. Yields (client, caller username). The token is used for this
+    request only and never logged; nothing derived from teams.yaml or the DB
+    is answered before this check passes."""
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(
             status_code=401,
@@ -455,42 +503,103 @@ async def onboard(
     token = authorization[len("bearer "):].strip()
     if not token:
         raise HTTPException(status_code=401, detail="empty bearer token")
-    team = _runtime_for(team_slug).config
+    async with BitbucketClient(config.bitbucket, token=token) as admin:
+        try:
+            caller = await admin.whoami()
+        except Exception as exc:
+            logger.warning("whoami against Bitbucket failed: %s", exc)
+            raise HTTPException(status_code=502, detail="Bitbucket did not answer the token check") from exc
+        if not caller:
+            raise HTTPException(status_code=401, detail="Bitbucket rejected the token")
+        yield admin, caller
+
+
+def _pool():
+    pool = get_pool()
+    if pool is None:  # only before lifespan finished; never in a served request
+        raise HTTPException(status_code=503, detail="database not ready")
+    return pool
+
+
+async def _has_admin(admin: BitbucketClient, target: onboarding.Target) -> bool:
+    """Listing webhooks needs admin on the target; Bitbucket answers 401/403
+    for anything less. Any other failure is Bitbucket's, not the caller's: 502."""
+    try:
+        await admin.list_webhooks(target.project, target.repo)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code in (401, 403):
+            return False
+        raise HTTPException(
+            status_code=502, detail=f"Bitbucket answered HTTP {exc.response.status_code} on {target.key}"
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Bitbucket unreachable on {target.key}: {exc}") from exc
+    return True
+
+
+def _team_view(runtime: TeamRuntime) -> dict[str, object]:
+    return {
+        "team": runtime.config.slug,
+        "projects": [p.model_dump(exclude_none=True) for p in runtime.config.projects],
+        "auto_review_authors": runtime.config.review.auto_review_authors,
+        "ignore_authors": runtime.config.review.ignore_authors,
+    }
+
+
+@app.post("/onboard/{team_slug}")
+async def onboard(
+    team_slug: str,
+    body: OnboardRequest,
+    authorization: Annotated[str | None, Header()] = None,
+):
+    """Put noergler's webhook on the team's Bitbucket projects/repos, and with
+    `projects` in the body claim them for the team first (or, with `remove`,
+    give them up along with every PR record on them).
+
+    Authenticated by the caller's own Bitbucket token (`Authorization: Bearer`);
+    it is used for this request's Bitbucket calls and dropped. A claim needs
+    project admin on the target, proven with that token. Without `projects`
+    the targets are the team's current claims, `targets` can only narrow them.
+    The webhook secret never leaves the service: it is written into the hook here.
+    """
+    structlog.contextvars.bind_contextvars(team=team_slug)
+    runtime = _runtime_for(team_slug)
+    team = runtime.config
     if not config.server.public_url:
         raise HTTPException(
             status_code=503,
             detail="NOERGLER_PUBLIC_URL is not set on this instance; onboarding via API is disabled",
         )
+    if body.projects is not None and body.action == "status":
+        raise HTTPException(status_code=400, detail="projects only with onboard, grant-bot or remove")
+    if body.projects is not None and body.targets is not None:
+        raise HTTPException(status_code=400, detail="projects and targets are exclusive")
 
     webhook_url = f"{config.server.public_url}/webhook/{team_slug}"
-    async with BitbucketClient(config.bitbucket, token=token) as admin:
-        # Bitbucket must accept the token before anything derived from
-        # teams.yaml (targets, ownership, bot access) goes back to the caller.
-        try:
-            caller = await admin.whoami()
-        except Exception as exc:
-            logger.warning("onboard: whoami against Bitbucket failed: %s", exc)
-            raise HTTPException(status_code=502, detail="Bitbucket did not answer the token check") from exc
-        if not caller:
-            raise HTTPException(status_code=401, detail="Bitbucket rejected the token")
-        try:
-            targets = onboarding.targets_for(team, body.targets)
-        except onboarding.UnknownTarget as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        if not targets:
-            raise HTTPException(status_code=400, detail="no targets")
-        logger.info(
-            "onboard by=%s action=%s targets=%d webhook_url=%s dry_run=%s",
-            caller, body.action, len(targets), webhook_url, body.dry_run,
-        )
-        onboarder = onboarding.Onboarder(
-            admin, bitbucket_client, team, webhook_url,
-            webhook_name=body.name,
-            dry_run=body.dry_run,
-            grant_bot=body.action == "grant-bot",
-            prune=body.prune,
-        )
-        rows, text, healthy = await onboarding.run(onboarder, body.action, targets)
+    extra: dict[str, object] = {}
+    async with _admin_client(authorization) as (admin, caller):
+        rows: list[onboarding.StatusRow] | list[onboarding.TargetResult]
+        if body.projects is not None and body.action != "remove":
+            rows, text, healthy = await _claim_and_onboard(runtime, admin, caller, body, webhook_url, extra)
+        elif body.projects is not None:
+            rows, text, healthy = await _remove_and_unclaim(runtime, admin, caller, body, webhook_url, extra)
+        else:
+            try:
+                targets = onboarding.targets_for(team, body.targets)
+            except onboarding.UnknownTarget as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            if not targets:
+                raise HTTPException(status_code=400, detail="no targets: claim a project first (projects in the body)")
+            logger.info(
+                "onboard by=%s action=%s targets=%d webhook_url=%s dry_run=%s",
+                caller, body.action, len(targets), webhook_url, body.dry_run,
+            )
+            onboarder = onboarding.Onboarder(
+                admin, bitbucket_client, team, webhook_url,
+                webhook_name=body.name, dry_run=body.dry_run,
+                grant_bot=body.action == "grant-bot", prune=body.prune,
+            )
+            rows, text, healthy = await onboarding.run(onboarder, body.action, targets)
     logger.info("onboard action=%s done healthy=%s\n%s", body.action, healthy, text)
     return {
         "team": team_slug,
@@ -499,4 +608,151 @@ async def onboard(
         "healthy": healthy,
         "rows": [asdict(r) for r in rows],
         "text": text,
+        **extra,
     }
+
+
+async def _claim_and_onboard(
+    runtime: TeamRuntime, admin: BitbucketClient, caller: str, body: OnboardRequest,
+    webhook_url: str, extra: dict[str, object],
+) -> tuple[list[onboarding.TargetResult], str, bool]:
+    """`projects` with onboard/grant-bot: prove admin per target, claim what
+    is proven (all or nothing against other teams), then hook exactly those."""
+    team = runtime.config
+    scopes = list(body.projects or [])
+    proven: list[ProjectScope] = []
+    failed: list[onboarding.TargetResult] = []
+    for scope in scopes:
+        ok_repos: list[str] = []
+        for target in onboarding.targets_for(team.model_copy(update={"projects": [scope]})):
+            if not await _has_admin(admin, target):
+                failed.append(onboarding.TargetResult(
+                    target, "failed", detail=f"no project admin on {target.key} with this token; not claimed",
+                ))
+            elif target.repo is None:
+                proven.append(scope)
+            else:
+                ok_repos.append(target.repo)
+        if ok_repos:
+            proven.append(ProjectScope(key=scope.key, repos=ok_repos))
+
+    claimed: list[str] = []
+    if proven and not body.dry_run:
+        try:
+            claimed = await team_store.add_claims(_pool(), team.slug, proven, claimed_by=caller)
+        except team_store.ClaimConflict as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"message": str(exc), "conflict": {
+                    "target": exc.project if exc.repo is None else f"{exc.project}/{exc.repo}",
+                    "team": exc.other_team,
+                }},
+            ) from exc
+        runtime.apply_claims(await team_store.list_claims(_pool(), team.slug))
+    extra["claimed"] = claimed
+    # For the hook step the proven scopes count as claimed even on a dry run.
+    view = team if not body.dry_run else team.model_copy(update={"projects": team.projects + proven})
+    targets = onboarding.targets_for(view.model_copy(update={"projects": proven})) if proven else []
+    logger.info(
+        "onboard by=%s action=%s claimed=%s targets=%d dry_run=%s",
+        caller, body.action, claimed, len(targets), body.dry_run,
+    )
+    onboarder = onboarding.Onboarder(
+        admin, bitbucket_client, view, webhook_url,
+        webhook_name=body.name, dry_run=body.dry_run,
+        grant_bot=body.action == "grant-bot", prune=body.prune,
+    )
+    rows, _, _ = await onboarding.run(onboarder, body.action, targets) if targets else ([], "", True)
+    results = failed + cast(list[onboarding.TargetResult], rows)
+    return results, onboarding.render_results(results), onboarding.results_healthy(results)
+
+
+async def _remove_and_unclaim(
+    runtime: TeamRuntime, admin: BitbucketClient, caller: str, body: OnboardRequest,
+    webhook_url: str, extra: dict[str, object],
+) -> tuple[list[onboarding.TargetResult], str, bool]:
+    """`projects` with remove: hooks off, claims gone, every PR record of the
+    team on those targets purged (findings cascade). `dry_run` counts only."""
+    team = runtime.config
+    scopes = list(body.projects or [])
+    # A whole-project scope means every claim the team has on that project,
+    # whether it holds the project or some of its repos.
+    wanted: list[onboarding.Target] = []
+    for scope in scopes:
+        if scope.repos is None:
+            mine = [t for t in onboarding.targets_for(team) if t.project == scope.key]
+            if not mine:
+                raise HTTPException(status_code=400, detail=f"no claim on {scope.key}")
+            wanted.extend(mine)
+        else:
+            try:
+                wanted.extend(onboarding.targets_for(team, [f"{scope.key}/{r}" for r in scope.repos]))
+            except onboarding.UnknownTarget as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # Giving a target up needs the same proof as taking it: admin on it.
+    proven: list[onboarding.Target] = []
+    results: list[onboarding.TargetResult] = []
+    for target in wanted:
+        if await _has_admin(admin, target):
+            proven.append(target)
+        else:
+            results.append(onboarding.TargetResult(
+                target, "failed", detail=f"no project admin on {target.key} with this token; not removed",
+            ))
+    onboarder = onboarding.Onboarder(admin, bitbucket_client, team, webhook_url, webhook_name=body.name, dry_run=body.dry_run)
+    rows, _, _ = await onboarding.run(onboarder, "remove", proven) if proven else ([], "", True)
+    hook_results = cast(list[onboarding.TargetResult], rows)
+    purged = 0
+    for result in hook_results:
+        t = result.target
+        if body.dry_run:
+            n = await team_store.count_project_prs(_pool(), team.slug, t.project, t.repo)
+            result.detail += f"; dry-run: would purge {n} PR record(s)"
+        else:
+            n = await team_store.purge_project(_pool(), team.slug, t.project, t.repo)
+            result.detail += f"; purged {n} PR record(s)"
+        purged += n
+    results.extend(hook_results)
+    unclaimed: list[str] = []
+    if proven and not body.dry_run:
+        drop = [ProjectScope(key=t.project) if t.repo is None else ProjectScope(key=t.project, repos=[t.repo]) for t in proven]
+        unclaimed = await team_store.remove_claims(_pool(), team.slug, drop)
+        runtime.apply_claims(await team_store.list_claims(_pool(), team.slug))
+    logger.info("onboard by=%s action=remove unclaimed=%s purged_prs=%d dry_run=%s", caller, unclaimed, purged, body.dry_run)
+    extra["unclaimed"] = unclaimed
+    extra["purged_prs"] = purged
+    return results, onboarding.render_results(results), onboarding.results_healthy(results)
+
+
+@app.get("/teams/{team_slug}")
+async def team_settings(team_slug: str, authorization: Annotated[str | None, Header()] = None):
+    """The team's own settings: claims and review author lists."""
+    structlog.contextvars.bind_contextvars(team=team_slug)
+    runtime = _runtime_for(team_slug)
+    async with _admin_client(authorization):
+        return _team_view(runtime)
+
+
+@app.put("/teams/{team_slug}/review-authors")
+async def put_review_authors(
+    team_slug: str,
+    body: ReviewAuthorsRequest,
+    authorization: Annotated[str | None, Header()] = None,
+):
+    """Replace both author lists. Needs project admin on at least one of the
+    team's claims (proven with the caller's token). Takes effect immediately."""
+    structlog.contextvars.bind_contextvars(team=team_slug)
+    runtime = _runtime_for(team_slug)
+    async with _admin_client(authorization) as (admin, caller):
+        claims = onboarding.targets_for(runtime.config)
+        if not claims:
+            raise HTTPException(status_code=409, detail="claim a project first (POST /onboard with projects)")
+        if not any([await _has_admin(admin, t) for t in claims]):
+            raise HTTPException(status_code=403, detail="no project admin on any of the team's claims with this token")
+        settings = team_store.TeamSettings(
+            [a.strip() for a in body.auto_review_authors if a.strip()],
+            [a.strip() for a in body.ignore_authors if a.strip()],
+        )
+        await team_store.put_settings(_pool(), team_slug, settings, updated_by=caller)
+        runtime.apply_settings(settings)
+    return _team_view(runtime)
