@@ -265,60 +265,45 @@ alembic upgrade head
 
 ## Webhook setup
 
-Each team onboards its own projects. The noergler admin is involved once per team (and again only when the team gets a new project); everything else the team admin does alone.
+Each team onboards its own projects through the service; nobody needs an image, a checkout or the webhook secret. The noergler admin is involved once per team (and again only when the team gets a new project); everything else the team admin does alone.
 
-**Once per team (noergler admin):** add the team to `teams.yaml` (see [Teams](#teams)), set `TEAM_<SLUG>_WEBHOOK_SECRET` (`openssl rand -hex 32`) and `TEAM_<SLUG>_OPENAI_API_KEY`, redeploy, hand the team admin the webhook secret.
+**Once per team (noergler admin):** add the team to `teams.yaml` (see [Teams](#teams)), set `TEAM_<SLUG>_WEBHOOK_SECRET` (`openssl rand -hex 32`) and `TEAM_<SLUG>_OPENAI_API_KEY`, set `NOERGLER_PUBLIC_URL` on the instance, redeploy.
 
-**Team admin:** you need your own Bitbucket personal access token (project admin on your projects, it creates the webhooks), the team's webhook secret, and a `team.json`:
-
-```json
-{
-  "team": "platform",
-  "bitbucket_url": "https://bitbucket.example.com",
-  "noergler_url": "https://noergler.internal",
-  "projects": [
-    {"key": "PLAT"},
-    {"key": "INFRA", "repos": ["terraform-core", "ansible"]}
-  ]
-}
-```
-
-`projects` has the same shape as the team's block in `teams.yaml`, and each entry is one of two forms:
-
-| Entry | Webhook | New repo in the project |
-|---|---|---|
-| `{"key": "PLAT"}` — whole project | one **project** webhook (Bitbucket Data Center 8.8+), fires for every current and future repo | covered automatically, nobody does anything |
-| `{"key": "INFRA", "repos": [...]}` — selected repos | one **repo** webhook per listed repo (for a project shared between teams) | noergler admin adds it to `repos:` in `teams.yaml`, team admin re-runs the tool |
-
-Put the two secrets in `team.env`:
-
-```
-BITBUCKET_TOKEN=<your personal access token>
-TEAM_PLATFORM_WEBHOOK_SECRET=<from the noergler admin>
-```
-
-Then run the tool from the noergler image (no checkout needed) or from a checkout:
+**Team admin:** you need your own Bitbucket HTTP access token with project admin on your projects (it creates the webhooks and grants the bot write access). Then:
 
 ```bash
+export TOKEN=<your Bitbucket HTTP access token>
+N=https://noergler.example.com/onboard/platform
+
 # see what is there: ownership, bot access, webhook state, stray repo hooks. No writes.
-podman run --rm --env-file team.env -v ./team.json:/cfg.json:ro <image> onboard /cfg.json --status
+curl -sS -X POST $N -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"action":"status"}'
 
-# create/update the webhooks; --grant-bot gives the noergler bot write access where it has none
-podman run --rm --env-file team.env -v ./team.json:/cfg.json:ro <image> onboard /cfg.json --grant-bot
-
-# from a checkout (stdlib only, any Python 3.10+; the file can also be fetched on its own)
-python -m scripts.onboard_repo team.json --status
+# create/update the webhooks and give the noergler bot write access where it has none
+curl -sS -X POST $N -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"action":"grant-bot"}'
 ```
 
-Per target the tool sends a signed probe to noergler first, which answers whether the team owns the target (as declared in `teams.yaml`) and whether the bot can read it; a target the team does not own is skipped with "ask the noergler admin". Then it creates or updates the webhook idempotently (re-running prints `already up to date`) and, under a project webhook, removes leftover repo-level `noergler` hooks, which would otherwise deliver every event twice (`--no-prune` keeps them). A failure on one target logs and continues; the exit code is non-zero iff any target failed (`--status`: iff anything is not healthy). End-to-end delivery is verified by opening a real PR.
+`POST /onboard/<team>` runs over every entry of the team's block in `teams.yaml`; the token is used for this request's Bitbucket calls and dropped. Body fields:
 
-The probe proves that the bot can *read* the target; whether it can also comment is proven by the first review. `--grant-bot` grants `PROJECT_WRITE` / `REPO_WRITE`, which covers both.
+| Field | Default | Meaning |
+|---|---|---|
+| `action` | `status` | `status` (report only) · `onboard` (create/update hooks) · `grant-bot` (onboard + grant the bot `PROJECT_WRITE` / `REPO_WRITE` where it cannot read) · `remove` (deboard) |
+| `targets` | all | Narrow to these entries of the team block: `"PLAT"` or `"INFRA/terraform-core"`; anything else is `400` |
+| `dry_run` | `false` | Report what would change, write nothing |
+| `name` | `noergler` | Webhook name; use another name to onboard a second instance next to an existing one |
+| `prune` | `true` | Under a project webhook, delete this instance's leftover repo-level hooks (they would deliver every event twice) |
 
-**Flags.** `--status` report only · `--remove` deboard · `--grant-bot` · `--no-prune` · `--dry-run` · `--name` (webhook name, default `noergler`) · `--env-file PATH` · `--secret-env VAR` (when the team's `webhook_secret_env` is not the `TEAM_<SLUG>_WEBHOOK_SECRET` convention).
+The answer is JSON: `healthy` (`status`: every target owned, bot can read, hook `ok`, no strays; actions: no target `failed`), `rows` per target, and `text`, the same as a table. `401` without a bearer token, `404` unknown team, `503` team disabled or `NOERGLER_PUBLIC_URL` unset, `400` unknown target. Per target the service answers whether the team owns it (as declared in `teams.yaml`) and whether the bot can read it; a target the team does not own is `skipped` with "ask the noergler admin". Hooks are created or updated idempotently (a second run reports `already up to date`). A failure on one target is reported and the rest continue.
 
-**Several noergler instances (intg next to prod).** Hooks are matched by name *and* URL. A `noergler` hook pointing at another instance is reported as `foreign` by `--status` and never pruned, rewritten or removed; onboard the second instance with `--name noergler-intg`.
+| `teams.yaml` claim | Webhook | New repo in the project |
+|---|---|---|
+| `key: PLAT` — whole project | one **project** webhook (Bitbucket Data Center 8.8+), fires for every current and future repo | covered automatically, nobody does anything |
+| `key: INFRA` + `repos: [...]` — selected repos | one **repo** webhook per listed repo (for a project shared between teams) | noergler admin adds it to `repos:` in `teams.yaml`, team admin re-runs `grant-bot` |
 
-**Known limitation — secret-only drift.** Bitbucket's webhook API does not return the stored secret, so the tool cannot detect when *only* the secret has changed on one side. After rotating a team's webhook secret on the service side, remove the webhook (`--remove`) and onboard again.
+Whether the bot can also comment is proven by the first review; `grant-bot` covers both.
+
+**Several noergler instances (intg next to prod).** Hooks are matched by name *and* URL. A `noergler` hook pointing at another instance is reported as `foreign` by `status`, makes `onboard` fail on that target, and is never pruned or removed; onboard the second instance with `"name": "noergler-intg"`. Moving an instance to a new hostname: `remove` against the old instance while it still runs, then `grant-bot` against the new one.
+
+**Known limitation — secret-only drift.** Bitbucket's webhook API does not return the stored secret, so the service cannot detect when *only* the secret has changed. After rotating a team's webhook secret, `remove` and then `grant-bot`.
 
 ### Manual setup (fallback)
 
@@ -377,7 +362,7 @@ The image is the whole deployment contract; how the environment reaches it is th
 
 - `CMD` serves on port 8080. `/health` is the liveness probe (always 200, lists enabled and disabled teams), `/ready` the readiness probe (503 while no team is enabled).
 - `alembic upgrade head` runs the migrations; run it before the app starts (init container or equivalent). Nothing creates the schema at runtime.
-- `onboard` is the webhook onboarding tool (see [Webhook setup](#webhook-setup)).
+- `POST /onboard/{team}` sets a team's webhooks (see [Webhook setup](#webhook-setup)); needs `NOERGLER_PUBLIC_URL`.
 - `TEAMS_CONFIG` points at the mounted `teams.yaml`; secrets arrive as environment variables named in that file.
 - Corporate CA: mount the trusted bundle and point `SSL_CERT_FILE` at it; httpx, openai and asyncpg all honour it.
 - One replica only: the review queue is a single in-process worker behind an inference lock.

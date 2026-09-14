@@ -25,13 +25,15 @@ class IncrementalDiffUnavailable(Exception):
 
 @final
 class BitbucketClient:
-    def __init__(self, config: BitbucketConfig):
+    def __init__(self, config: BitbucketConfig, token: str | None = None):
+        """`token` overrides the bot token: a team admin's own token for
+        onboarding (`app/onboarding.py`), used for one request and dropped."""
         self.config = config
         self.bot_username: str = config.username
         self.client = httpx.AsyncClient(
             base_url=config.base_url,
             headers={
-                "Authorization": f"Bearer {config.token}",
+                "Authorization": f"Bearer {token or config.token}",
                 "Accept": "application/json",
             },
             timeout=30.0,
@@ -41,6 +43,12 @@ class BitbucketClient:
 
     async def close(self):
         await self.client.aclose()
+
+    async def __aenter__(self) -> "BitbucketClient":
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        await self.close()
 
     async def check_connectivity(self) -> None:
         response = await self.client.get("/rest/api/1.0/application-properties")
@@ -191,41 +199,65 @@ class BitbucketClient:
         logger.info("Updated summary comment %d on PR %d", comment_id, pr_id)
         return response.json().get("version")
 
-    async def list_webhooks(self, project: str, repo: str) -> list[dict[str, Any]]:
-        """List all webhooks configured on a repo."""
-        url = f"/rest/api/1.0/projects/{project}/repos/{repo}/webhooks"
-        hooks: list[dict[str, Any]] = []
+    # -- webhooks and permissions, on a project (repo=None) or a repo -- #
+    # Project webhooks (Bitbucket DC 8.8+) share the body shape and paging
+    # with repo webhooks; only the path differs. Used by app/onboarding.py
+    # with the team admin's token.
+
+    @staticmethod
+    def _target_path(project: str, repo: str | None) -> str:
+        base = f"/rest/api/1.0/projects/{project}"
+        return base if repo is None else f"{base}/repos/{repo}"
+
+    async def _paged(self, url: str) -> list[dict[str, Any]]:
+        values: list[dict[str, Any]] = []
         start = 0
         while True:
             response = await self.client.get(url, params={"start": start, "limit": 100})
             response.raise_for_status()
-            data = response.json()
-            hooks.extend(data.get("values", []))
-            if data.get("isLastPage", True):
+            page = response.json()
+            values.extend(page.get("values") or [])
+            if page.get("isLastPage", True):
                 break
-            start = data.get("nextPageStart", start + 100)
-        return hooks
+            next_start = page.get("nextPageStart")
+            if not isinstance(next_start, int) or next_start <= start:
+                break
+            start = next_start
+        return values
 
-    async def create_webhook(self, project: str, repo: str, body: dict[str, Any]) -> dict[str, Any]:
-        url = f"/rest/api/1.0/projects/{project}/repos/{repo}/webhooks"
-        response = await self.client.post(url, json=body)
+    async def list_repos(self, project: str) -> list[dict[str, Any]]:
+        return await self._paged(f"/rest/api/1.0/projects/{project}/repos")
+
+    async def list_webhooks(self, project: str, repo: str | None) -> list[dict[str, Any]]:
+        return await self._paged(self._target_path(project, repo) + "/webhooks")
+
+    async def create_webhook(
+        self, project: str, repo: str | None, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        response = await self.client.post(self._target_path(project, repo) + "/webhooks", json=body)
         response.raise_for_status()
         return response.json()
 
     async def update_webhook(
-        self, project: str, repo: str, webhook_id: int, body: dict[str, Any]
+        self, project: str, repo: str | None, webhook_id: int, body: dict[str, Any]
     ) -> dict[str, Any]:
-        url = f"/rest/api/1.0/projects/{project}/repos/{repo}/webhooks/{webhook_id}"
+        url = f"{self._target_path(project, repo)}/webhooks/{webhook_id}"
         response = await self.client.put(url, json=body)
         response.raise_for_status()
         return response.json()
 
-    async def test_webhook(
-        self, project: str, repo: str, webhook_id: int
-    ) -> httpx.Response:
-        """Trigger Bitbucket's built-in webhook test. Returns raw response."""
-        url = f"/rest/api/1.0/projects/{project}/repos/{repo}/webhooks/{webhook_id}/test"
-        return await self.client.post(url, json={})
+    async def delete_webhook(self, project: str, repo: str | None, webhook_id: int) -> None:
+        url = f"{self._target_path(project, repo)}/webhooks/{webhook_id}"
+        response = await self.client.delete(url)
+        response.raise_for_status()
+
+    async def grant_user_permission(
+        self, project: str, repo: str | None, username: str, permission: str
+    ) -> None:
+        """PROJECT_WRITE / REPO_WRITE etc. for `username`; needs admin on the target."""
+        url = self._target_path(project, repo) + "/permissions/users"
+        response = await self.client.put(url, params={"name": username, "permission": permission})
+        response.raise_for_status()
 
     async def get_project(self, project: str) -> dict[str, Any]:
         url = f"/rest/api/1.0/projects/{project}"

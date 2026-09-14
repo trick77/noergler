@@ -203,6 +203,10 @@ class JiraConfig(BaseModel):
 class ServerConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8080
+    # How Bitbucket reaches this instance, e.g. https://noergler.example.com.
+    # Only `POST /onboard/{team}` needs it (it writes the webhook URL); empty
+    # disables that endpoint, nothing else. Never guessed from Host headers.
+    public_url: str = ""
 
 
 class DatabaseConfig(BaseModel):
@@ -655,6 +659,7 @@ def load_instance_config() -> AppConfig:
         server=ServerConfig(
             host=_env("SERVER_HOST", "0.0.0.0"),
             port=int(_env("SERVER_PORT", "8080")),
+            public_url=_env("NOERGLER_PUBLIC_URL", "").rstrip("/"),
         ),
         database=DatabaseConfig(
             url=_env("DATABASE_URL"),
