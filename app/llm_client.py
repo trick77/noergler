@@ -61,9 +61,18 @@ async def resolve_model_window(
     for entry in entries:
         if isinstance(entry, dict) and entry.get("id") == model:
             window = entry.get("max_input_tokens")
-            if isinstance(window, int) and not isinstance(window, bool) and window > 0:
+            # LiteLLM emits an int, but its info endpoints have been seen with
+            # integral floats (16385.0); accept those, reject anything else
+            # loudly rather than as "missing".
+            if isinstance(window, bool):
+                raise ModelAccessError(f"{url}: `max_input_tokens` for `{model}` is {window!r}, not a number")
+            if isinstance(window, float) and window.is_integer():
+                window = int(window)
+            if isinstance(window, int) and window > 0:
                 return window
-            return None
+            if window is None:
+                return None
+            raise ModelAccessError(f"{url}: `max_input_tokens` for `{model}` is {window!r}, not a positive integer")
     raise ModelAccessError(
         f"model `{model}` is not available to this team's key; "
         f"the key lists {listed}"
@@ -114,9 +123,9 @@ def _usd_header(headers: Mapping[str, str], name: str) -> float | None:
     None on any endpoint that doesn't send the header, or on a value that won't
     parse. Never raises: a bad header must not fail a review that succeeded.
 
-    Note this does not reject zero — a fresh key legitimately has zero spend.
-    The "a reported 0 means the proxy can't price this deployment" judgement is
-    specific to the per-call cost and lives in `resolve_cost_usd`.
+    Note this does not reject zero — a fresh key legitimately has zero spend,
+    and a per-call cost of 0 is recorded as such (`resolve_cost_usd` only logs
+    it when the call consumed tokens).
     """
     raw = headers.get(name)
     # LiteLLM sets this header unconditionally via str(response_cost), so a

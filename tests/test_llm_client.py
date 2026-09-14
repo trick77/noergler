@@ -1260,6 +1260,21 @@ class TestResolveModelWindow:
 
     @pytest.mark.asyncio
     @respx.mock
+    async def test_integral_float_window_is_accepted(self):
+        respx.get(self.URL).mock(return_value=self._listing({"id": "m", "max_input_tokens": 1050000.0}))
+        async with httpx.AsyncClient() as http:
+            assert await resolve_model_window(http, "https://llm.test/v1", "k", "m") == 1_050_000
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_garbage_window_is_reported_not_treated_as_missing(self):
+        respx.get(self.URL).mock(return_value=self._listing({"id": "m", "max_input_tokens": "lots"}))
+        async with httpx.AsyncClient() as http:
+            with pytest.raises(ModelAccessError, match="is 'lots', not a positive integer"):
+                await resolve_model_window(http, "https://llm.test/v1", "k", "m")
+
+    @pytest.mark.asyncio
+    @respx.mock
     async def test_listed_without_window_yields_none(self):
         respx.get(self.URL).mock(return_value=self._listing({"id": "m", "object": "model"}))
         async with httpx.AsyncClient() as http:
