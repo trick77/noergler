@@ -2,7 +2,7 @@
 review author lists. `teams.yaml` only seeds an empty DB (see `main.lifespan`).
 
 Ownership guarantee: `team_claims` holds a project or a repo for exactly one
-team (unique indexes, migration 002). The one overlap the indexes cannot
+team (unique indexes, migration 001). The one overlap the indexes cannot
 express, a whole-project claim against another team's repo claims on that
 project, is checked here inside a transaction that locks the project's rows.
 """

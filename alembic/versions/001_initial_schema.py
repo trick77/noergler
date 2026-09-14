@@ -7,6 +7,12 @@ Create Date: 2026-09-11
 `team_slug` is the team the webhook route authenticated (the per-team path
 and HMAC secret), never a value read from the payload. It is NOT NULL: every
 row is written by a team, and riptide rollups are per team.
+
+`team_claims` and `team_settings` hold what a team changes on its own: which
+projects and repos it owns and its review author lists. The unique indexes on
+`team_claims` are the ownership guarantee: a project or repo is held by
+exactly one team; the whole-project-vs-repo overlap is checked in code inside
+a transaction (`app/team_store.py`).
 """
 from typing import Sequence, Union
 
@@ -85,6 +91,40 @@ def upgrade() -> None:
     """)
 
 
+    op.execute("""
+        CREATE TABLE team_claims (
+            id BIGSERIAL PRIMARY KEY,
+            team_slug TEXT NOT NULL,
+            project_key TEXT NOT NULL,
+            -- NULL: the whole project (one project webhook)
+            repo_slug TEXT,
+            claimed_by TEXT NOT NULL,
+            claimed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """)
+    op.execute(
+        "CREATE UNIQUE INDEX uq_team_claims_repo ON team_claims (project_key, repo_slug) "
+        "WHERE repo_slug IS NOT NULL"
+    )
+    op.execute(
+        "CREATE UNIQUE INDEX uq_team_claims_project ON team_claims (project_key) "
+        "WHERE repo_slug IS NULL"
+    )
+    op.execute("CREATE INDEX idx_team_claims_team ON team_claims (team_slug)")
+    op.execute("""
+        CREATE TABLE team_settings (
+            team_slug TEXT PRIMARY KEY,
+            auto_review_authors TEXT[] NOT NULL DEFAULT '{}',
+            ignore_authors TEXT[] NOT NULL DEFAULT '{}',
+            updated_by TEXT,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """)
+
+
+
 def downgrade() -> None:
+    op.execute("DROP TABLE IF EXISTS team_settings")
+    op.execute("DROP TABLE IF EXISTS team_claims")
     op.execute("DROP TABLE IF EXISTS review_findings")
     op.execute("DROP TABLE IF EXISTS pr_reviews")
