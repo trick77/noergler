@@ -35,8 +35,9 @@ teams:
       # reasoning_effort: high                        # optional, default: instance OPENAI_REASONING_EFFORT. One of minimal, low, medium, high
       # context_window: 0                             # optional, default: instance OPENAI_CONTEXT_WINDOW. 0 = from the gateway's /v1/models
     review:                                           # optional block; any ReviewConfig field, same names as REVIEW_* without the prefix, lowercase
-      auto_review_authors: [alice, bob]               # seed only (team_settings in the DB, PUT /teams/<slug>/review-authors); default: instance REVIEW_AUTO_REVIEW_AUTHORS
-      # ignore_authors: [renovate-bot]                # optional, default: instance REVIEW_IGNORE_AUTHORS. Never auto-reviewed, @mention still works
+      auto_review_authors: [alice, bob]               # seed only (team_settings in the DB, PUT /teams/<slug>/settings); default: instance REVIEW_AUTO_REVIEW_AUTHORS
+      # ignore_authors: [renovate-bot]                # seed only, default: instance REVIEW_IGNORE_AUTHORS. Never auto-reviewed, @mention still works
+      # exclude_repos: ["*-infra"]                    # seed only, default: instance REVIEW_EXCLUDE_REPOS. Repo slug globs ignored for every event
       max_pr_cost_usd: 8.00                           # optional, default: instance REVIEW_MAX_PR_COST_USD
       agents_md_custom_link: "[Platform AGENTS.md guide](https://wiki.example.com/platform/agents-md)"  # optional, default: instance REVIEW_AGENTS_MD_CUSTOM_LINK
       # max_comments: 25                              # optional, default: instance REVIEW_MAX_COMMENTS

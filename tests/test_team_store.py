@@ -139,8 +139,8 @@ async def test_purge_is_scoped_to_the_team():
 
 @pytest.mark.asyncio
 async def test_get_settings():
-    pool = _pool(fetchrow_return=_row(auto_review_authors=["a"], ignore_authors=[]))
-    assert await get_settings(pool, "platform") == TeamSettings(["a"], [])
+    pool = _pool(fetchrow_return=_row(auto_review_authors=["a"], ignore_authors=[], exclude_repos=["*-infra"]))
+    assert await get_settings(pool, "platform") == TeamSettings(["a"], [], ["*-infra"])
     assert await get_settings(_pool(fetchrow_return=None), "platform") is None
 
 
@@ -151,3 +151,12 @@ async def test_unique_index_race_is_a_conflict():
     pool._conn.execute = AsyncMock(side_effect=asyncpg.UniqueViolationError("dup"))
     with pytest.raises(ClaimConflict, match="concurrent claim"):
         await add_claims(pool, "platform", [ProjectScope(key="PLAT")], "jan")
+
+
+def test_excludes_repo_is_a_case_insensitive_glob():
+    from app.team_store import excludes_repo
+    assert excludes_repo(["*-infra"], "platform-infra")
+    assert excludes_repo(["*-infra"], "Platform-INFRA")
+    assert not excludes_repo(["*-infra"], "infra-tools")
+    assert excludes_repo(["*-infra", "sandbox*"], "sandbox-2")
+    assert not excludes_repo([], "anything")
