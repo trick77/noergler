@@ -274,16 +274,17 @@ alembic upgrade head
 
 ## Webhook setup
 
-Each team claims and onboards its own projects through the service; nobody needs an image, a checkout or the webhook secret. The noergler admin is involved once per team; everything else the team admin does alone.
+Each team claims and onboards its own projects through the service; nobody needs an image or a checkout. The noergler admin is involved once per team; everything else the team admin does alone.
 
-**Once per team (noergler admin):** add the team to `teams.yaml` (see [Teams](#teams)), set `TEAM_<SLUG>_WEBHOOK_SECRET` (`openssl rand -hex 32`) and `TEAM_<SLUG>_OPENAI_API_KEY`, set `NOERGLER_PUBLIC_URL` on the instance, redeploy.
+**Once per team (noergler admin):** add the team to `teams.yaml` (see [Teams](#teams)), set `TEAM_<SLUG>_WEBHOOK_SECRET` (`openssl rand -hex 32`) and `TEAM_<SLUG>_OPENAI_API_KEY`, set `NOERGLER_PUBLIC_URL` on the instance, redeploy, hand the team admin the webhook secret: it is the team's credential for the API.
 
-**Team admin:** you need your own Bitbucket HTTP access token with project admin on your projects (it proves the claim, creates the webhooks and grants the bot write access). Then:
+**Team admin:** you need the team's webhook secret (authenticates you to noergler) and, for anything that touches Bitbucket, your own Bitbucket HTTP access token with project admin on your projects (it proves the claim, creates the webhooks and grants the bot write access). Then:
 
 ```bash
+export SECRET=<the team's webhook secret>
 export TOKEN=<your Bitbucket HTTP access token>
 N=https://noergler.example.com/onboard/platform
-H=(-H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json')
+H=(-H "Authorization: Bearer $SECRET" -H "X-Bitbucket-Token: $TOKEN" -H 'Content-Type: application/json')
 
 # claim a whole project and a few repos of a shared one, create the hooks, give the bot write access
 curl -sS -X POST $N "${H[@]}" -d '{"action":"grant-bot","projects":[{"key":"PLAT"},{"key":"INFRA","repos":["terraform-core"]}]}'
@@ -294,14 +295,14 @@ curl -sS -X POST $N "${H[@]}" -d '{"action":"status"}'
 # give a project up: hook, claim and every review record of it are gone (dry_run first shows the count)
 curl -sS -X POST $N "${H[@]}" -d '{"action":"remove","projects":[{"key":"PLAT"}],"dry_run":true}'
 
-# what the team currently has; and who gets automatic reviews / who never triggers one
-curl -sS https://noergler.example.com/teams/platform "${H[@]}"
-curl -sS -X PUT https://noergler.example.com/teams/platform/review-authors "${H[@]}" -d '{"auto_review_authors":[],"ignore_authors":["ci-bot"]}'
+# what the team currently has; and who gets automatic reviews / who never triggers one (secret only, no Bitbucket)
+curl -sS https://noergler.example.com/teams/platform -H "Authorization: Bearer $SECRET"
+curl -sS -X PUT https://noergler.example.com/teams/platform/review-authors -H "Authorization: Bearer $SECRET" -H 'Content-Type: application/json' -d '{"auto_review_authors":[],"ignore_authors":["ci-bot"]}'
 ```
 
 Ready-made requests for the IntelliJ HTTP client are in [`http/`](http/).
 
-`POST /onboard/<team>` first asks Bitbucket who the token belongs to (`401` if it is rejected, nothing else is answered); the token is used for this request's Bitbucket calls and dropped. Body fields:
+`POST /onboard/<team>` checks the team secret first (`401` otherwise, nothing else is answered); the Bitbucket token is used for this request's Bitbucket calls and dropped, and proves itself per target (no admin there → that target `failed`). Body fields:
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -312,9 +313,9 @@ Ready-made requests for the IntelliJ HTTP client are in [`http/`](http/).
 | `name` | `noergler` | Webhook name; use another name to onboard a second instance next to an existing one |
 | `prune` | `true` | Under a project webhook, delete this instance's leftover repo-level hooks (they would deliver every event twice) |
 
-The answer is JSON: `healthy` (`status`: every target owned, bot can read, hook `ok`, no strays; actions: no target `failed`), `rows` per target, `text` (the same as a table), and with `projects` also `claimed` / `unclaimed` and `purged_prs`. `401` without a valid bearer token, `404` unknown team, `503` team disabled or `NOERGLER_PUBLIC_URL` unset, `400` unknown target. Hooks are created or updated idempotently (a second run reports `already up to date`). A failure on one target is reported and the rest continue. `remove` without `projects` only removes hooks; claims and data stay.
+The answer is JSON: `healthy` (`status`: every target owned, bot can read, hook `ok`, no strays; actions: no target `failed`), `rows` per target, `text` (the same as a table), and with `projects` also `claimed` / `unclaimed` and `purged_prs`. `401` without the team secret or without `X-Bitbucket-Token`, `404` unknown team, `503` team disabled or `NOERGLER_PUBLIC_URL` unset, `400` unknown target. Hooks are created or updated idempotently (a second run reports `already up to date`). A failure on one target is reported and the rest continue. `remove` without `projects` only removes hooks; claims and data stay.
 
-`GET /teams/<team>` returns the claims and the two author lists. `PUT /teams/<team>/review-authors` replaces both lists (`auto_review_authors`: only these authors get automatic reviews, empty = everyone; `ignore_authors`: never an automatic review, wins over the first list; an @mention still reviews) and needs project admin on at least one of the team's claims. Changes take effect immediately, no redeploy.
+`GET /teams/<team>` returns the claims and the two author lists. `PUT /teams/<team>/review-authors` replaces both lists (`auto_review_authors`: only these authors get automatic reviews, empty = everyone; `ignore_authors`: never an automatic review, wins over the first list; an @mention still reviews). Both need only the team secret. Changes take effect immediately, no redeploy.
 
 | Claim | Webhook | New repo in the project |
 |---|---|---|

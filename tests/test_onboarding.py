@@ -327,18 +327,15 @@ def api(monkeypatch):
         main_module.disabled_teams.clear()
 
 
-AUTH = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
-WHOAMI = f"{BASE_URL}/plugins/servlet/applinks/whoami"
+AUTH = {"Authorization": f"Bearer {SECRET}", "X-Bitbucket-Token": ADMIN_TOKEN}
+SECRET_ONLY = {"Authorization": f"Bearer {SECRET}"}
 
 
-def _token_ok() -> None:
-    respx.get(WHOAMI).mock(return_value=httpx.Response(200, text="jan"))
 
 
 class TestEndpoint:
     @respx.mock
     def test_auth_and_team_errors(self, api):
-        _token_ok()
         assert api.post(f"/onboard/{TEAM}", json={}).status_code == 401
         assert api.post(f"/onboard/{TEAM}", json={}, headers={"Authorization": "Basic x"}).status_code == 401
         assert api.post("/onboard/nobody", json={}, headers=AUTH).status_code == 404
@@ -348,19 +345,20 @@ class TestEndpoint:
         assert api.post(f"/onboard/{TEAM}", json={"action": "explode"}, headers=AUTH).status_code == 422
 
     @respx.mock
-    def test_rejected_token_reveals_nothing(self, api):
-        # Bitbucket answers whoami with an empty body for a bad token: 401 here,
-        # before targets or ownership are computed, and no other Bitbucket call.
-        respx.get(WHOAMI).mock(return_value=httpx.Response(200, text=""))
-        r = api.post(f"/onboard/{TEAM}", json={"targets": ["NOPE"]}, headers=AUTH)
+    def test_wrong_secret_reveals_nothing(self, api):
+        # the team secret gates everything: no Bitbucket call, no targets in the answer
+        r = api.post(
+            f"/onboard/{TEAM}", json={"targets": ["NOPE"]},
+            headers={"Authorization": "Bearer nope", "X-Bitbucket-Token": ADMIN_TOKEN},
+        )
         assert r.status_code == 401
         assert "NOPE" not in r.text and "PROJ" not in r.text
-        assert len(respx.calls) == 1
+        assert len(respx.calls) == 0
 
-    @respx.mock
-    def test_bitbucket_down_on_token_check_is_502(self, api):
-        respx.get(WHOAMI).mock(side_effect=httpx.ConnectError("down"))
-        assert api.post(f"/onboard/{TEAM}", json={}, headers=AUTH).status_code == 502
+    def test_onboard_needs_the_bitbucket_token_too(self, api):
+        r = api.post(f"/onboard/{TEAM}", json={}, headers=SECRET_ONLY)
+        assert r.status_code == 401
+        assert "X-Bitbucket-Token" in r.json()["detail"]
 
     def test_public_url_required(self, api):
         main_module.config.server = ServerConfig()
@@ -370,7 +368,6 @@ class TestEndpoint:
 
     @respx.mock
     def test_status_and_grant_bot(self, api, caplog):
-        _token_ok()
         _bot_can_read()
         respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(200, json=_page([_good_hook()])))
         respx.get(f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos").mock(return_value=httpx.Response(200, json=_page([])))
@@ -392,7 +389,7 @@ class TestEndpoint:
         assert r.json()["rows"][0]["status"] == "ok"
         assert r.json()["rows"][0]["detail"] == "webhook already up to date"
         # the admin token went to Bitbucket on the hook listing, the bot token on the read check
-        assert "onboard by=jan" in caplog.text
+        assert "onboard by=team:platform" in caplog.text
         hook_calls = [c for c in respx.calls if c.request.url.path.endswith("/PROJ/webhooks")]
         assert all(c.request.headers["Authorization"] == f"Bearer {ADMIN_TOKEN}" for c in hook_calls)
         read_calls = [c for c in respx.calls if c.request.url.path.endswith("/projects/PROJ")]
@@ -417,7 +414,6 @@ def _store(**overrides):
 class TestClaims:
     @respx.mock
     def test_claim_proves_admin_then_hooks(self, api):
-        _token_ok()
         _bot_can_read()
         team = main_module.teams[TEAM].config
         team.projects = []
@@ -442,13 +438,12 @@ class TestClaims:
         mocks["add_claims"].assert_awaited_once()
         call = mocks["add_claims"].await_args
         assert call is not None and call.args[1:] == (TEAM, [ProjectScope(key="PROJ", repos=["my-repo"])])
-        assert call.kwargs == {"claimed_by": "jan"}
+        assert call.kwargs == {"claimed_by": "team:platform"}
         # the runtime now owns it
         assert team.projects == [ProjectScope(key="PROJ", repos=["my-repo"])]
 
     @respx.mock
     def test_no_admin_means_no_claim(self, api):
-        _token_ok()
         main_module.teams[TEAM].config.projects = []
         respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(403))
         patcher, mocks = _store()
@@ -462,7 +457,6 @@ class TestClaims:
 
     @respx.mock
     def test_foreign_claim_is_409_and_nothing_hooked(self, api):
-        _token_ok()
         respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(200, json=_page([])))
         create = respx.post(PROJ_HOOKS).mock(return_value=httpx.Response(201, json={"id": 5}))
         patcher, _ = _store(add_claims=AsyncMock(side_effect=ClaimConflict("PROJ", None, "payments")))
@@ -474,7 +468,6 @@ class TestClaims:
 
     @respx.mock
     def test_dry_run_claims_nothing_but_reports(self, api):
-        _token_ok()
         _bot_can_read()
         main_module.teams[TEAM].config.projects = []
         respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(200, json=_page([])))
@@ -499,7 +492,6 @@ class TestClaims:
 
     @respx.mock
     def test_remove_with_projects_unclaims_and_purges(self, api):
-        _token_ok()
         respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(200, json=_page([_good_hook()])))
         delete = respx.delete(f"{PROJ_HOOKS}/7").mock(return_value=httpx.Response(204))
         patcher, mocks = _store(list_claims=AsyncMock(return_value=[]))
@@ -517,7 +509,6 @@ class TestClaims:
 
     @respx.mock
     def test_remove_dry_run_counts_only(self, api):
-        _token_ok()
         respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(200, json=_page([_good_hook()])))
         patcher, mocks = _store()
         with patcher:
@@ -532,7 +523,6 @@ class TestClaims:
 
     @respx.mock
     def test_plain_remove_keeps_claims_and_data(self, api):
-        _token_ok()
         respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(200, json=_page([_good_hook()])))
         respx.delete(f"{PROJ_HOOKS}/7").mock(return_value=httpx.Response(204))
         patcher, mocks = _store()
@@ -545,7 +535,6 @@ class TestClaims:
 
     @respx.mock
     def test_unknown_remove_target_is_400(self, api):
-        _token_ok()
         with _store()[0]:
             r = api.post(f"/onboard/{TEAM}", json={"action": "remove", "projects": [{"key": "NOPE"}]}, headers=AUTH)
         assert r.status_code == 400
@@ -553,19 +542,16 @@ class TestClaims:
 
 class TestTeamSettings:
     @respx.mock
-    def test_get_needs_a_valid_token(self, api):
-        respx.get(WHOAMI).mock(return_value=httpx.Response(200, text=""))
-        assert api.get(f"/teams/{TEAM}", headers=AUTH).status_code == 401
+    def test_get_needs_the_team_secret(self, api):
+        assert api.get(f"/teams/{TEAM}", headers={"Authorization": "Bearer nope"}).status_code == 401
         assert api.get(f"/teams/{TEAM}").status_code == 401
-        _token_ok()
-        r = api.get(f"/teams/{TEAM}", headers=AUTH)
+        r = api.get(f"/teams/{TEAM}", headers=SECRET_ONLY)
+        assert len(respx.calls) == 0
         assert r.status_code == 200
         assert r.json() == {"team": TEAM, "projects": [{"key": "PROJ"}], "auto_review_authors": [], "ignore_authors": []}
 
     @respx.mock
     def test_put_review_authors_takes_effect_immediately(self, api):
-        _token_ok()
-        respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(200, json=_page([])))
         runtime = main_module.teams[TEAM]
         from app.reviewer import Reviewer
         runtime.reviewer = Reviewer(main_module.bitbucket_client, AsyncMock(), runtime.config.review, db_pool=AsyncMock())
@@ -574,38 +560,24 @@ class TestTeamSettings:
             r = api.put(
                 f"/teams/{TEAM}/review-authors",
                 json={"auto_review_authors": [], "ignore_authors": ["os-jenkins-bb", " "]},
-                headers=AUTH,
+                headers=SECRET_ONLY,
             )
+        assert len(respx.calls) == 0
         assert r.status_code == 200, r.text
         assert r.json()["ignore_authors"] == ["os-jenkins-bb"]
         mocks["put_settings"].assert_awaited_once()
         put = mocks["put_settings"].await_args
         assert put is not None and put.args[2] == TeamSettings([], ["os-jenkins-bb"])
-        assert put.kwargs == {"updated_by": "jan"}
+        assert put.kwargs == {"updated_by": "team:platform"}
         assert runtime.reviewer.is_auto_review_author("os-jenkins-bb") is False
         assert runtime.reviewer.is_auto_review_author("anyone") is True
         assert runtime.config.review.ignore_authors == ["os-jenkins-bb"]
 
-    @respx.mock
-    def test_put_needs_admin_on_a_claim(self, api):
-        _token_ok()
-        respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(403))
-        patcher, mocks = _store()
-        with patcher:
-            r = api.put(f"/teams/{TEAM}/review-authors", json={"auto_review_authors": ["a"], "ignore_authors": []}, headers=AUTH)
-        assert r.status_code == 403
-        mocks["put_settings"].assert_not_awaited()
-
-        main_module.teams[TEAM].config.projects = []
-        with patcher:
-            r = api.put(f"/teams/{TEAM}/review-authors", json={"auto_review_authors": ["a"], "ignore_authors": []}, headers=AUTH)
-        assert r.status_code == 409
 
 
 class TestRemoveNeedsAdmin:
     @respx.mock
     def test_no_admin_means_nothing_removed_or_purged(self, api):
-        _token_ok()
         respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(403))
         patcher, mocks = _store()
         with patcher:
@@ -620,7 +592,6 @@ class TestRemoveNeedsAdmin:
 
     @respx.mock
     def test_whole_project_scope_covers_the_teams_repo_claims(self, api):
-        _token_ok()
         main_module.teams[TEAM].config.projects = [ProjectScope(key="PROJ", repos=["my-repo"])]
         respx.get(REPO_HOOKS).mock(return_value=httpx.Response(200, json=_page([_good_hook()])))
         respx.delete(f"{REPO_HOOKS}/7").mock(return_value=httpx.Response(204))
@@ -634,7 +605,6 @@ class TestRemoveNeedsAdmin:
 
     @respx.mock
     def test_bitbucket_error_on_admin_check_is_502(self, api):
-        _token_ok()
         respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(503))
         with _store()[0]:
             r = api.post(f"/onboard/{TEAM}", json={"action": "onboard", "projects": [{"key": "PROJ"}]}, headers=AUTH)
