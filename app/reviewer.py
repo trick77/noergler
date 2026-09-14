@@ -462,6 +462,12 @@ class Reviewer:
                     "Skipping %s by %s (not in auto-review authors)", pr_tag, author_name
                 )
                 return
+            # A push by an ignored account (CI amending someone's PR) is not a
+            # reason to re-review; the author's next push is.
+            actor_name = payload.actor.name if payload.actor else None
+            if not skip_author_check and actor_name and actor_name in self.ignore_authors:
+                logger.info("Skipping %s: pushed by ignored author %s", pr_tag, actor_name)
+                return
 
             # If the user removed our summary comment, they want noergler to
             # leave this PR alone. This is the backstop for the pr:comment:deleted
