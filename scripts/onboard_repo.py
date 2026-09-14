@@ -200,14 +200,6 @@ def load_onboarding_input(path: Path) -> OnboardingInput:
 
     if not isinstance(data, dict):
         raise SystemExit("ERROR: config root must be a JSON object")
-    if "webhook_url" in data or any(
-        isinstance(p, dict) and "project" in p for p in (data.get("projects") or [])
-    ):
-        raise SystemExit(
-            "ERROR: old config format. Use 'noergler_url' (the service base URL) and "
-            "'projects': [{\"key\": ...}, {\"key\": ..., \"repos\": [...]}] — the same "
-            "shape as the team's block in teams.yaml"
-        )
 
     team = data.get("team")
     if not isinstance(team, str) or not TEAM_SLUG_RE.match(team):
@@ -464,10 +456,8 @@ class NoerglerProbe:
             raise SystemExit(f"ERROR: cannot reach noergler at {self.webhook_url}: {exc}")
         data = resp.json()
         if not isinstance(data, dict) or "owned" not in data or "claim" not in data:
-            # An older noergler answers a probe like any non-PR event.
             raise SystemExit(
-                f"ERROR: noergler at {self.webhook_url} does not answer the onboarding probe; "
-                "it needs a version with multi-team onboarding"
+                f"ERROR: unexpected probe response from {self.webhook_url}: {resp.text[:200]}"
             )
         return ProbeResult(
             owned=bool(data.get("owned")),

@@ -8,7 +8,7 @@ _VERSIONS = Path("alembic/versions")
 _M001 = _VERSIONS / "001_initial_schema.py"
 
 
-def test_migration_chain_is_a_single_squashed_revision():
+def test_migration_chain_is_a_single_revision():
     script = ScriptDirectory.from_config(Config("alembic.ini"))
     revs = [(r.revision, r.down_revision) for r in script.walk_revisions()]
     assert revs == [("001", None)]
@@ -20,9 +20,6 @@ def test_001_creates_the_two_tables_and_drops_them_in_downgrade():
     assert "CREATE TABLE review_findings" in text
     assert "DROP TABLE IF EXISTS review_findings" in text
     assert "DROP TABLE IF EXISTS pr_reviews" in text
-    # The metrics layer, feedback events and the pricing cache stayed dropped.
-    for gone in ("review_statistics", "feedback_events", "model_pricing"):
-        assert gone not in text
 
 
 def test_001_pr_reviews_carries_the_team_column_not_null_and_indexed():

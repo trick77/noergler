@@ -197,4 +197,4 @@ Both `.env` and `teams.yaml` are gitignored; commit the `.example` files only.
 
 ## 7. Database
 
-PostgreSQL, schema managed by Alembic (`alembic upgrade head`, run before the app starts, e.g. by an init container). The current schema is a single revision `001`; there is no upgrade path from databases created before the multi-team change, they must be recreated. `pr_reviews.team_slug` records which team a review ran for.
+PostgreSQL, schema managed by Alembic (`alembic upgrade head`, run before the app starts, e.g. by an init container). `pr_reviews.team_slug` records which team a review ran for.

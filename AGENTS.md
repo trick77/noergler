@@ -16,7 +16,7 @@ Noergler is a Bitbucket Server PR auto-review bridge backed by an OpenAI-compati
 ## Database
 
 - Schema changes are managed through Alembic revisions in `alembic/versions/`.
-- For any table or column change, add a new migration file; do not edit existing revisions. (Exception already taken: the multi-team change squashed 001..010 into one `001` on the decision that no pre-team database survives; there is no upgrade path from the old chain.)
+- For any table or column change, add a new migration file; do not edit existing revisions.
 - The OpenShift init container runs `alembic upgrade head` during deployment.
 
 ## Teams (`app/config.py`, `teams.yaml`)
@@ -41,7 +41,7 @@ Noergler is a Bitbucket Server PR auto-review bridge backed by an OpenAI-compati
 ## Cost handling
 
 - **A `None` cost fails open.** An unpriced model, or a gateway not reporting a cost header, must never block a review. The per-PR cost cap skips only *subsequent* auto-runs; the run that overshoots completes.
-- The disagree / feedback mechanic was **removed deliberately** (former migration `009`, now folded into the squashed `001`) — replies flagged findings the reviewer could not have prevented. Don't reintroduce it without asking.
+- The disagree / feedback mechanic was **removed deliberately** — replies flagged findings the reviewer could not have prevented. Don't reintroduce it without asking.
 
 ## Review prompt layout (`prompts/review.txt`)
 
