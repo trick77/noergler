@@ -19,7 +19,7 @@ Reference files: [`.env.example`](.env.example) (instance layer) and [`teams.exa
 | `BITBUCKET_TOKEN` | Personal access token of the shared noergler service account. Needs repo read + write (it posts comments) on every onboarded repo |
 | `BITBUCKET_USERNAME` | Username of that account. Identifies the bot's own comments and is the `@mention` trigger for every team |
 | `OPENAI_BASE_URL` | Base URL of the OpenAI-compatible endpoint (e.g. a LiteLLM proxy). The SDK appends `/chat/completions`; a supplied suffix is stripped. Instance-wide, not team-overridable |
-| `MODEL_CATALOG_URL` | Model catalog in LiteLLM's `model_prices_and_context_window.json` format. Every team's model is resolved against it at startup for the context window; its rates are the cost fallback. Instance-wide |
+| `OPENAI_MODEL` | Model id exactly as the gateway's `/v1/models` lists it for the team's key (e.g. `ai-gateway-gpt-5.5`). Instance default, a team overrides it with `inference.model` |
 | `JIRA_URL` | Jira base URL |
 | `JIRA_TOKEN` | Token of the single Jira user. Read-only use (fetches tickets for acceptance criteria) |
 | `DATABASE_URL` | PostgreSQL connection string. Also read by Alembic |
@@ -41,9 +41,8 @@ AI model (team block `inference:`):
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `OPENAI_MODEL` | `gpt-5.4` | Model id, looked up verbatim in the catalog (use the gateway's own alias if it publishes one, e.g. `ai-gateway/gpt-5.4`) |
 | `OPENAI_REASONING_EFFORT` | `high` | One of `minimal`, `low`, `medium`, `high`. Mandatory: an empty value is a startup error, a model that rejects it disables the team |
-| `OPENAI_CONTEXT_WINDOW` | `0` | Explicit context window in tokens; `0` = `max_input_tokens` from the catalog. The resolved window must be ≥ 1,000,000 |
+| `OPENAI_CONTEXT_WINDOW` | `0` | Explicit context window in tokens; `0` = `max_input_tokens` from the gateway's `/v1/models`. The resolved window must be ≥ 1,000,000 |
 
 Review behaviour (team block `review:`, same names without the `REVIEW_` prefix, lowercase):
 
@@ -117,7 +116,7 @@ teams:
 | `jira.acceptance_criteria_prefixes` | no | |
 | `riptide.url`, `riptide.token_env` | both or neither | Present = forwarding on for this team. The token is validated at startup |
 
-Not allowed in a team block (instance-wide by decision; naming them disables the team): `base_url`, `catalog_url`, `review_prompt_template`, `mention_prompt_template`.
+Not allowed in a team block (instance-wide by decision; naming them disables the team): `base_url`, `review_prompt_template`, `mention_prompt_template`.
 
 **Ownership is exclusive.** A project, or a project/repo pair, belongs to exactly one team. A whole-project claim conflicts with any repo-level claim on the same key. Every team in a conflict is disabled.
 
@@ -130,7 +129,7 @@ Not allowed in a team block (instance-wide by decision; naming them disables the
 | `teams.yaml` missing, unreadable, not valid YAML, no `teams:` list, zero teams, duplicate slug | Startup aborts (no single team owns the fault) |
 | A team block fails validation (missing field, unknown key, instance-only key, bad `reasoning_effort`, half a `riptide:` block) | That team is disabled |
 | A referenced `*_env` variable is missing or empty | That team is disabled |
-| The team's model is not in the catalog, its window is below 1M, or the gateway rejects the key / `reasoning_effort` | That team is disabled |
+| The gateway's `/v1/models` does not list the team's model for its key, its window is below 1M, or the gateway rejects the key / `reasoning_effort` | That team is disabled |
 | Riptide answers 401 to the team's token | That team is disabled |
 | Riptide unreachable or answers something odd | Team stays enabled, warning logged; emissions are best-effort |
 | Ownership conflict | Every claiming team is disabled |

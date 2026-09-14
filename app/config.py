@@ -5,12 +5,11 @@ import re
 import time
 from typing import Any
 
-import httpx
 import structlog
 import yaml
 from pydantic import BaseModel, ValidationError, field_validator
 
-from app.http_stats import make_event_hook
+logger = logging.getLogger(__name__)
 
 # Webhook events the /webhook endpoint in app/main.py dispatches on.
 # Kept here so the provisioning script and the service stay in sync.
@@ -38,262 +37,6 @@ def model_label(model: str, reasoning_effort: str | None) -> str:
     if reasoning_effort:
         return f"{model}-{reasoning_effort}"
     return model
-
-
-# --- Model catalog ---------------------------------------------------------
-# Context windows come from a catalog in LiteLLM's `model_prices_and_context_
-# window.json` format, fetched from `MODEL_CATALOG_URL`. That URL is deployment
-# configuration rather than a constant: the public catalog on GitHub is not
-# reachable from every environment, and a gateway that proxies models under its
-# own names (`ai-gateway/gpt-5.4`) has to publish its own catalog for those names
-# to resolve at all. There is no baked-in fallback table and no DB cache: the
-# catalog is the single source of truth. Startup resolves the configured model
-# against it exactly once and aborts if that fails (see `resolve_or_raise`).
-#
-# Pricing here is a *fallback only*. The proxy reports the actual cost of each
-# call on the response (`x-litellm-response-cost`), computed by the same code
-# that bills — including tiered rates above a prompt threshold, prompt-cache read
-# rates, and any service tier or margin configured on the gateway. That figure
-# always wins. The catalog rates are used only when the proxy reports nothing
-# usable, which happens on a deployment LiteLLM itself can't price; without them
-# the summary would show no cost at all and the per-PR cap would silently stop
-# applying. See `app.llm_client._usd_header` and `resolve_cost_usd`.
-
-# LiteLLM exposes some providers only under prefixed keys. Probe these in order
-# so e.g. `claude-sonnet-4.6` resolves to the openrouter entry.
-_LITELLM_KEY_PREFIXES: tuple[str, ...] = (
-    "",
-    "openrouter/anthropic/",
-    "vercel_ai_gateway/anthropic/",
-)
-
-
-class ModelCatalogEntry(BaseModel):
-    """The catalog facts noergler needs about the configured model."""
-
-    # The id we asked for (the configured `OPENAI_MODEL`).
-    model_id: str
-    # The catalog key that actually matched. Differs from `model_id` on a
-    # provider-prefixed key (`openrouter/anthropic/...`) or a prefix fallback
-    # (`gpt-5.4-mini-2025-06-01` -> `gpt-5.4-mini`). Kept distinct because the
-    # fallback searches the whole catalog (~3000 ids, including deprecated and
-    # regional variants), so a wrong-but-plausible match would otherwise be
-    # invisible — it resolves and boots cleanly.
-    matched_key: str
-    max_input_tokens: int
-    # Fallback rates, USD per 1M tokens. Only used when the endpoint reports no
-    # usable cost of its own — see `resolve_cost_usd`. None when the catalog
-    # entry publishes no pricing.
-    input_per_mtok: float | None = None
-    cached_input_per_mtok: float | None = None
-    output_per_mtok: float | None = None
-
-
-def _rate(value: object) -> float | None:
-    """LiteLLM per-token cost -> USD per 1M tokens, or None if unusable."""
-    if value is None:
-        return None
-    try:
-        rate = float(value)  # pyright: ignore[reportArgumentType]
-    except (TypeError, ValueError):
-        return None
-    return rate * 1_000_000 if rate >= 0 else None
-
-
-def _parse_catalog_entry(
-    model_id: str, matched_key: str, raw: dict[str, Any]
-) -> ModelCatalogEntry | None:
-    """Build an entry from one LiteLLM record, or None if it's unusable."""
-    log = logging.getLogger(__name__)
-    try:
-        window = int(raw["max_input_tokens"])
-    except (KeyError, TypeError, ValueError) as exc:
-        log.warning("malformed LiteLLM max_input_tokens for %s: %s", model_id, exc)
-        return None
-    if window <= 0:
-        log.warning("LiteLLM entry for %s has non-positive max_input_tokens", model_id)
-        return None
-    input_per_mtok = _rate(raw.get("input_cost_per_token"))
-    output_per_mtok = _rate(raw.get("output_cost_per_token"))
-    cached_per_mtok = _rate(raw.get("cache_read_input_token_cost"))
-    if input_per_mtok is None or output_per_mtok is None:
-        # Window is usable on its own; pricing just won't be available as a
-        # fallback for this model.
-        input_per_mtok = output_per_mtok = cached_per_mtok = None
-    elif cached_per_mtok is None:
-        # No published cache-read rate: charge cache hits at the full input
-        # rate rather than inventing a discount.
-        cached_per_mtok = input_per_mtok
-    return ModelCatalogEntry(
-        model_id=model_id, matched_key=matched_key, max_input_tokens=window,
-        input_per_mtok=input_per_mtok,
-        cached_input_per_mtok=cached_per_mtok,
-        output_per_mtok=output_per_mtok,
-    )
-
-
-def resolve_catalog_entry(
-    data: dict[str, Any], model_id: str
-) -> ModelCatalogEntry | None:
-    """Find `model_id` in a fetched catalog, or None.
-
-    Tries each provider prefix on the exact id first, then falls back to the
-    longest catalog key that `model_id` extends, so a dated id like
-    `gpt-5.4-mini-2025-06-01` resolves to `gpt-5.4-mini` rather than the
-    shorter `gpt-5.4`. The fallback is prefix-aware too: LiteLLM lists some
-    families only under a provider prefix, so `claude-sonnet-4.6-20260101` has
-    to be matched against the *unprefixed* tail of `openrouter/anthropic/...`.
-
-    A candidate that fails to parse is skipped rather than aborting the search —
-    one entry with a null window must not mask a valid entry under a later
-    prefix.
-    """
-    for prefix in _LITELLM_KEY_PREFIXES:
-        key = f"{prefix}{model_id}"
-        raw = data.get(key)
-        if isinstance(raw, dict) and "max_input_tokens" in raw:
-            entry = _parse_catalog_entry(model_id, key, raw)
-            if entry is not None:
-                return entry
-
-    # (catalog key, length of the part `model_id` actually extends) so the
-    # longest *model* match wins regardless of how long its provider prefix is.
-    candidates: list[tuple[str, int]] = []
-    for key, raw in data.items():
-        if not isinstance(raw, dict) or "max_input_tokens" not in raw:
-            continue
-        for prefix in _LITELLM_KEY_PREFIXES:
-            if not key.startswith(prefix):
-                continue
-            base = key[len(prefix):]
-            if base and model_id.startswith(base + "-"):
-                candidates.append((key, len(base)))
-                break
-    for key, _ in sorted(candidates, key=lambda c: c[1], reverse=True):
-        entry = _parse_catalog_entry(model_id, key, data[key])
-        if entry is not None:
-            return entry
-    return None
-
-
-# The live entries, one per model any enabled team uses. Installed by
-# `resolve_or_raise` at startup, replaced wholesale by the 24h refresher.
-# Readers snapshot the reference (atomic under the GIL) so a swap mid-flight
-# never tears a lookup.
-_ACTIVE_ENTRIES: dict[str, ModelCatalogEntry] = {}
-
-
-def _swap_active_entry(entry: ModelCatalogEntry) -> None:
-    _ACTIVE_ENTRIES[entry.model_id] = entry
-
-
-def active_entry(model_id: str) -> ModelCatalogEntry | None:
-    """The catalog entry for `model_id`, or None before its startup resolve."""
-    return _ACTIVE_ENTRIES.get(model_id)
-
-
-async def fetch_model_catalog(
-    url: str, timeout: float = 10.0
-) -> dict[str, Any] | None:
-    """GET the model catalog once and return the parsed JSON, or None."""
-    log = logging.getLogger(__name__)
-    # Announce the fetch before making it, not after. The URL is per-deployment
-    # now, and a wrong or unroutable one costs the full timeout at startup —
-    # without this line those seconds are silent and the first thing the
-    # operator sees is a fatal error.
-    log.info("Model catalog: fetching %s", url)
-    started = time.monotonic()
-    try:
-        async with httpx.AsyncClient(
-            timeout=timeout,
-            event_hooks={"request": [make_event_hook("catalog")]},
-        ) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            data = resp.json()
-    except Exception as exc:
-        # The URL is repeated here because `exc` carries it for a transport or
-        # status error but not for a JSON decode failure.
-        log.warning("model catalog fetch from %s failed: %s", url, exc)
-        return None
-    if not isinstance(data, dict):
-        log.warning("model catalog at %s is not a JSON object", url)
-        return None
-    log.info(
-        "Model catalog: fetched %d entries in %.1fs",
-        len(data), time.monotonic() - started,
-    )
-    return data
-
-
-class ModelCatalogError(RuntimeError):
-    """The configured model could not be resolved against the model catalog."""
-
-
-async def resolve_or_raise(
-    model_id: str, url: str, timeout: float = 10.0
-) -> ModelCatalogEntry:
-    """Fetch the catalog and install the entry for `model_id`, or raise.
-
-    Called once at startup. Both failure modes are fatal by design: without a
-    catalog entry noergler has no context window to size the review against, and
-    silently guessing one is worse than not starting. The 24h refresh is the
-    opposite — best-effort, keeping the entry installed here when a later fetch
-    fails.
-    """
-    data = await fetch_model_catalog(url, timeout)
-    if data is None:
-        raise ModelCatalogError(
-            f"could not fetch the model catalog from {url}. noergler reads the "
-            "model's context window from it at startup and keeps no local "
-            "fallback — check MODEL_CATALOG_URL and network/proxy egress to that host."
-        )
-    entry = resolve_catalog_entry(data, model_id)
-    if entry is None:
-        raise ModelCatalogError(
-            f"model `{model_id}` is not in the catalog at {url} ({len(data)} entries). "
-            "the model (OPENAI_MODEL or the team's inference.model) must be spelled exactly as the catalog spells it — for a "
-            "gateway alias, that is the prefixed name the gateway publishes."
-        )
-    _swap_active_entry(entry)
-    return entry
-
-
-async def refresh_active_entry(
-    model_id: str, url: str, timeout: float = 10.0, min_window: int = 0
-) -> bool:
-    """Re-resolve `model_id` and swap the entry in. Best-effort.
-
-    Returns False and leaves the installed entry untouched on any failure — a
-    refresh must never take a running instance down, unlike the startup resolve.
-
-    `min_window` rejects a swap that would drop the context window below the
-    floor startup enforces. The catalog is upstream data that can be corrected
-    downward (its own history includes a model whose window was listed as a
-    pricing threshold, ~4x too low); without this a 24h refresh could quietly
-    push a running instance under a bound the rest of the code treats as
-    guaranteed. Keeping the older, valid entry is the safer failure.
-    """
-    log = logging.getLogger(__name__)
-    data = await fetch_model_catalog(url, timeout)
-    if data is None:
-        return False
-    entry = resolve_catalog_entry(data, model_id)
-    if entry is None:
-        log.warning(
-            "model catalog refresh: `%s` vanished from the catalog — keeping the "
-            "entry loaded at startup", model_id,
-        )
-        return False
-    if min_window and entry.max_input_tokens < min_window:
-        log.warning(
-            "model catalog refresh: `%s` now reports a %d-token window, below the "
-            "required %d — rejecting the update and keeping the entry loaded at "
-            "startup", model_id, entry.max_input_tokens, min_window,
-        )
-        return False
-    _swap_active_entry(entry)
-    return True
 
 
 # Turning a model's advertised context window into a usable per-chunk budget.
@@ -333,9 +76,8 @@ class TokenUsage(BaseModel):
 
     `cost_usd` is the proxy's own figure for this call, taken from the
     `x-litellm-response-cost` response header. None means the endpoint didn't
-    report one (anything that isn't a LiteLLM proxy) — `resolve_cost_usd` then
-    falls back to the catalog rates, and only if those are missing too does the
-    run go unpriced with the per-PR cost cap failing open.
+    report one (anything that isn't a LiteLLM proxy); the run then goes
+    unpriced and the per-PR cost cap fails open. There is no fallback table.
 
     `key_spend_usd` is the total already spent on the API key, from the
     `x-litellm-key-spend` header. Unlike `cost_usd` it is a gauge, not a
@@ -361,61 +103,37 @@ class TokenUsage(BaseModel):
         return max(0, self.prompt - self.cached)
 
 
-def resolve_cost_usd(
-    usage: TokenUsage, entry: ModelCatalogEntry | None
-) -> tuple[float | None, bool]:
-    """(cost, was_reported) for one call.
+def resolve_cost_usd(usage: TokenUsage) -> float | None:
+    """The cost of one call, or None when the endpoint reported none.
 
-    Prefers the endpoint's own figure, which is exact — it already accounts for
-    tiered rates, cache-read rates, service tier and any gateway margin. Falls
-    back to the catalog rates when the endpoint reports nothing usable, which
-    happens whenever the proxy itself can't price a deployment (LiteLLM then
-    sends the literal string "None"). Above a model's tiered-pricing threshold
-    the fallback *understates* the real figure, since it charges the whole
-    prompt at the base input rate — a lower bound, not an upper one. A bounded
-    number still beats no number: without it the summary shows no cost and the
-    per-PR cap silently stops applying.
+    The proxy's figure is exact: it already accounts for tiered rates,
+    cache-read rates, service tier and any gateway margin, computed by the same
+    code that bills. It is trusted as reported. A zero on a call that consumed
+    tokens is still recorded as zero (the cap counts it), but logged: it
+    usually means a LiteLLM deployment with its costs explicitly set to 0.
     """
-    # A reported zero on a call that actually consumed tokens means the endpoint
-    # is misconfigured, not that the call was free — e.g. a LiteLLM deployment
-    # with input/output cost explicitly set to 0, which prices everything at
-    # $0.00 and would silently disable the per-PR cap. Fall through to the
-    # catalog. A genuinely free model prices at 0 there too, so this can't
-    # invent a cost for one.
-    if usage.cost_usd is not None and not (usage.cost_usd == 0 and usage.total > 0):
-        return usage.cost_usd, True
-    price = entry
-    if (
-        price is None
-        or price.input_per_mtok is None
-        or price.output_per_mtok is None
-        or price.cached_input_per_mtok is None
-    ):
-        return None, False
-    estimated = (
-        usage.uncached_prompt * price.input_per_mtok
-        + usage.cached * price.cached_input_per_mtok
-        + usage.completion * price.output_per_mtok
-    ) / 1_000_000
-    return estimated, False
+    if usage.cost_usd is not None and usage.cost_usd == 0 and usage.total > 0:
+        logger.warning(
+            "gateway reported zero cost for a call that consumed %d tokens; "
+            "recorded as $0.00 (check the deployment's pricing on the gateway)",
+            usage.total,
+        )
+    return usage.cost_usd
 
 
 class LLMConfig(BaseModel):
-    model: str = "gpt-5.4"
+    # Exactly as the gateway's `/v1/models` lists it for this key. No default:
+    # gateway names are deployment-specific.
+    model: str
     api_key: str
     api_url: str
     # noergler requires a reasoning-capable model, so reasoning_effort is
     # mandatory — an empty value is rejected rather than silently disabling it.
     reasoning_effort: str = "high"
-    # Where to fetch the model catalog. Required, with no default: the public
-    # LiteLLM catalog is unreachable from some environments and does not list
-    # gateway-prefixed names, so every deployment states its own — and intg and
-    # prod point at different hosts. `model` is looked up in it verbatim.
-    catalog_url: str
-    # Explicit context window (tokens). 0 = auto-detect from the catalog. Set
-    # this for an endpoint whose real cap differs from what its catalog
-    # advertises; the startup guard requires the resolved window to be
-    # >= 1,000,000 either way.
+    # Explicit context window (tokens). 0 = read `max_input_tokens` from the
+    # gateway's `/v1/models` at startup. Set this for an endpoint whose real
+    # cap differs from what it advertises, or one that advertises nothing; the
+    # startup guard requires the resolved window to be >= 1,000,000 either way.
     context_window: int = 0
 
     @field_validator("api_url", mode="after")
@@ -506,7 +224,7 @@ class RiptideConfig(BaseModel):
 # --- Teams -------------------------------------------------------------------
 # One instance serves many teams. The instance env (`load_config`) carries what
 # is physically one thing — the Bitbucket service account, the Jira user, the
-# database, the gateway and its catalog — plus the defaults for every
+# database, the gateway — plus the defaults for every
 # team-overridable knob. `teams.yaml` (path `TEAMS_CONFIG`) carries one block
 # per team; secrets are never in the file, each `*_env` field names the env
 # var holding the value.
@@ -567,9 +285,9 @@ class ProjectScope(BaseModel, extra="forbid"):
 
 
 class TeamInferenceBlock(BaseModel, extra="forbid"):
-    """`inference:` in a team block. `base_url`/`catalog_url` are deliberately
-    absent: the gateway is instance-wide, so naming them here is a validation
-    error (extra="forbid") and disables the team."""
+    """`inference:` in a team block. `base_url` is deliberately absent: the
+    gateway is instance-wide, so naming it here is a validation error
+    (extra="forbid") and disables the team."""
 
     api_key_env: str
     model: str | None = None
@@ -650,14 +368,6 @@ class TeamConfig(BaseModel):
         return any(p.owns(project_key, repo_slug) for p in self.projects)
 
 
-class InstanceDefaults(BaseModel):
-    """Instance-level values a team block may override."""
-
-    model: str
-    reasoning_effort: str
-    context_window: int
-
-
 class AppConfig(BaseModel):
     bitbucket: BitbucketConfig
     # Instance-wide gateway + defaults. `api_key` is empty here: every team
@@ -733,7 +443,6 @@ def resolve_team(raw: dict[str, Any], instance: AppConfig) -> TeamConfig:
                 if inference.reasoning_effort is not None
                 else instance.llm.reasoning_effort
             ),
-            catalog_url=instance.llm.catalog_url,
             context_window=(
                 inference.context_window
                 if inference.context_window is not None
@@ -914,11 +623,10 @@ def load_instance_config() -> AppConfig:
             username=_env("BITBUCKET_USERNAME"),
         ),
         llm=LLMConfig(
-            model=_env("OPENAI_MODEL", "gpt-5.4"),
+            model=_env("OPENAI_MODEL"),
             api_key="",
             api_url=_env("OPENAI_BASE_URL"),
             reasoning_effort=_env("OPENAI_REASONING_EFFORT", "high"),
-            catalog_url=_env("MODEL_CATALOG_URL"),
             context_window=int(_env("OPENAI_CONTEXT_WINDOW", "0")),
         ),
         review=ReviewConfig(

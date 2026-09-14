@@ -21,11 +21,11 @@ Noergler is a Bitbucket Server PR auto-review bridge backed by an OpenAI-compati
 
 ## Teams (`app/config.py`, `teams.yaml`)
 
-- One instance, N teams. Shared: Bitbucket account, Jira user, DB, gateway + catalog, prompt templates. Per team: inference key, webhook secret, projects, review knobs, Jira prefixes, riptide.
+- One instance, N teams. Shared: Bitbucket account, Jira user, DB, gateway, prompt templates. Per team: inference key, webhook secret, projects, review knobs, Jira prefixes, riptide.
 - **Team identity = webhook path + that team's HMAC secret + ownership check.** Never trust `project.key` from the payload alone. Store the authenticated slug (`pr_reviews.team_slug`).
 - **One team's fault disables that team only.** Never let a per-team error abort startup; never let a shared-layer error (DB, Bitbucket, Jira, unusable `teams.yaml`) disable just one team.
 - Every WARNING/ERROR about a team carries `team=<slug>` via `structlog.contextvars`. Bind at each boundary (webhook route, queue worker, BackgroundTasks handlers via `Reviewer._bind_team`, per-team startup check); the request middleware clears contextvars before BackgroundTasks run.
-- Secrets never in `teams.yaml`; `*_env` fields name env vars. `base_url`, `catalog_url` and the prompt templates are instance-only by decision, `extra="forbid"` enforces it.
+- Secrets never in `teams.yaml`; `*_env` fields name env vars. `base_url` and the prompt templates are instance-only by decision, `extra="forbid"` enforces it.
 - Keep the single review worker and single inference lock per client; they protect the shared Bitbucket/Jira accounts. Do not add a per-team worker.
 - `X-Event-Key: noergler:probe` on `/webhook/{slug}` is the onboarding probe (`_probe` in `app/main.py`); `scripts/onboard_repo.py` is stdlib-only and duplicates the key and the answer shape, keep both in sync.
 

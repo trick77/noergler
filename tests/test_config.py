@@ -22,8 +22,6 @@ from app.config import (
     team_env_prefix,
 )
 
-CATALOG_URL = "https://catalog.test/model_prices_and_context_window.json"
-
 MINIMAL_TEAMS = """
 teams:
   - slug: platform
@@ -41,7 +39,7 @@ def _instance_env(teams_path: str) -> dict[str, str]:
         "BITBUCKET_TOKEN": "tok",
         "BITBUCKET_USERNAME": "bot",
         "OPENAI_BASE_URL": "https://llm.example.com/v1",
-        "MODEL_CATALOG_URL": CATALOG_URL,
+        "OPENAI_MODEL": "gpt-5.3-codex",
         "JIRA_URL": "https://jira.example.com",
         "JIRA_TOKEN": "jira-tok",
         "DATABASE_URL": "postgresql://u:p@localhost/db",
@@ -91,7 +89,6 @@ def _make_config():
             model="gpt-5.3-codex",
             api_key="",
             api_url="https://llm.example.com/v1",
-            catalog_url=CATALOG_URL,
         ),
         review=ReviewConfig(
             auto_review_authors=["alice", "bob"],
@@ -110,7 +107,7 @@ def _make_config():
                 projects=[ProjectScope(key="PLAT")],
                 llm=LLMConfig(
                     model="gpt-5.3-codex", api_key="secret-api-key",
-                    api_url="https://llm.example.com/v1", catalog_url=CATALOG_URL,
+                    api_url="https://llm.example.com/v1",
                 ),
                 review=ReviewConfig(),
                 jira=JiraConfig(url="https://jira.example.com", token="secret-jira-token"),
@@ -192,12 +189,11 @@ def test_opt_out_branch_keyword_default():
     assert ReviewConfig().opt_out_branch_keyword == "noergloff"
 
 
-def test_catalog_url_missing_is_fatal(env):
-    # MODEL_CATALOG_URL is required with no default: intg and prod point at
-    # different catalogs, so defaulting to either would silently price and size
-    # a deployment against the wrong one. Startup must fail loudly instead.
-    env.unset("MODEL_CATALOG_URL")
-    with pytest.raises(ValueError, match="MODEL_CATALOG_URL"):
+def test_openai_model_missing_is_fatal(env):
+    # OPENAI_MODEL is required with no default: the name is whatever the
+    # gateway lists for the key, so no built-in spelling can be right.
+    env.unset("OPENAI_MODEL")
+    with pytest.raises(ValueError, match="OPENAI_MODEL"):
         load_config()
 
 
@@ -346,7 +342,6 @@ def test_full_team_block_resolves_with_overrides_on_top_of_instance_defaults(env
     assert plat.llm.model == "gpt-5.4"
     assert plat.llm.api_key == "plat-key"
     assert plat.llm.api_url == "https://llm.example.com/v1"
-    assert plat.llm.catalog_url == CATALOG_URL
     assert plat.review.max_comments == 7
     assert plat.review.auto_review_authors == []
     assert plat.jira.acceptance_criteria_prefixes == JiraConfig(url="", token="").acceptance_criteria_prefixes
@@ -362,7 +357,6 @@ def test_full_team_block_resolves_with_overrides_on_top_of_instance_defaults(env
     assert pay.llm.api_key == "pay-key"
     # instance-only values are inherited, never overridden
     assert pay.llm.api_url == "https://llm.example.com/v1"
-    assert pay.llm.catalog_url == CATALOG_URL
     assert pay.review.auto_review_authors == ["alice"]
     assert pay.review.max_pr_cost_usd == 8.5
     assert pay.review.max_comments == 7
@@ -404,8 +398,6 @@ def test_team_for_resolves_ownership_by_project_and_repo(env):
         # instance-only knobs in a team block
         (lambda t: t.replace("      model: gpt-5.5\n", "      model: gpt-5.5\n      base_url: https://x\n"),
          "inference.base_url: Extra inputs are not permitted"),
-        (lambda t: t.replace("      model: gpt-5.5\n", "      model: gpt-5.5\n      catalog_url: https://x\n"),
-         "inference.catalog_url: Extra inputs are not permitted"),
         (lambda t: t.replace("      max_pr_cost_usd: 8.5\n", "      max_pr_cost_usd: 8.5\n      review_prompt_template: x\n"),
          "review.review_prompt_template: Extra inputs are not permitted"),
         (lambda t: t.replace("      max_pr_cost_usd: 8.5\n", "      max_pr_cost_usd: 8.5\n      mention_prompt_template: x\n"),

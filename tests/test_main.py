@@ -74,7 +74,7 @@ def _sign(body: bytes, secret: str = WEBHOOK_SECRET) -> str:
 
 
 def _team_config(slug: str, secret: str, projects: list[ProjectScope]) -> TeamConfig:
-    llm = LLMConfig(api_key="k", api_url="https://llm.test/v1", catalog_url="https://catalog.test/c.json")
+    llm = LLMConfig(model="m", api_key="k", api_url="https://llm.test/v1")
     return TeamConfig(
         slug=slug, name=slug, webhook_secret=secret, projects=projects,
         llm=llm, review=ReviewConfig(), jira=JiraConfig(url="https://jira.test", token="t"),
@@ -551,7 +551,7 @@ teams:
         teams.write_text(self.TEAMS)
         for k, v in {
             "BITBUCKET_URL": "https://bb.test", "BITBUCKET_TOKEN": "t", "BITBUCKET_USERNAME": "noergler",
-            "OPENAI_BASE_URL": "https://llm.test/v1", "MODEL_CATALOG_URL": "https://catalog.test/c.json",
+            "OPENAI_BASE_URL": "https://llm.test/v1", "OPENAI_MODEL": "m",
             "JIRA_URL": "https://jira.test", "JIRA_TOKEN": "j", "DATABASE_URL": "postgresql://u:p@db/x",
             "TEAMS_CONFIG": str(teams),
             "TEAM_PLATFORM_WEBHOOK_SECRET": "plat-secret", "TEAM_PLATFORM_OPENAI_API_KEY": "plat-key",

@@ -19,9 +19,7 @@ from app.config import (
     LLMConfig,
     ReviewConfig,
     TokenUsage,
-    active_entry,
     model_label,
-    resolve_or_raise,
     usable_context_budget,
 )
 from app.http_stats import make_event_hook
@@ -30,6 +28,55 @@ from app.models import ReviewFinding
 # Minimum context window noergler will run on. A whole PR is reviewed in a single
 # call, so a small-context model can't hold a real PR coherently — refuse startup.
 _MIN_CONTEXT_WINDOW = 1_000_000
+
+
+class ModelAccessError(RuntimeError):
+    """The gateway does not list the configured model for this key."""
+
+
+async def resolve_model_window(
+    http_client: httpx.AsyncClient, api_url: str, api_key: str, model: str,
+) -> int | None:
+    """`max_input_tokens` of `model` from the gateway's `/v1/models`, or None
+    when the gateway lists the model without one.
+
+    `GET /models` with the team's key returns exactly the models that key may
+    use, so this is both the access check and the source of the context
+    window; there is no separate catalog to keep in sync with the gateway's
+    names. The OpenAI SDK's `models.list()` is not used because its typed
+    `Model` drops the LiteLLM-specific `max_input_tokens` field.
+    """
+    url = f"{api_url.rstrip('/')}/models"
+    # Short timeout: this is a listing, not inference, and a hanging gateway
+    # must not hold up every team's start for the inference deadline.
+    response = await http_client.get(
+        url, headers={"Authorization": f"Bearer {api_key}"}, timeout=10.0,
+    )
+    response.raise_for_status()
+    body = response.json()
+    entries = body.get("data") if isinstance(body, dict) else None
+    if not isinstance(entries, list):
+        raise ModelAccessError(f"unexpected response shape from {url}: no `data` list")
+    listed = [e.get("id") for e in entries if isinstance(e, dict) and isinstance(e.get("id"), str)]
+    for entry in entries:
+        if isinstance(entry, dict) and entry.get("id") == model:
+            window = entry.get("max_input_tokens")
+            # LiteLLM emits an int, but its info endpoints have been seen with
+            # integral floats (16385.0); accept those, reject anything else
+            # loudly rather than as "missing".
+            if isinstance(window, bool):
+                raise ModelAccessError(f"{url}: `max_input_tokens` for `{model}` is {window!r}, not a number")
+            if isinstance(window, float) and window.is_integer():
+                window = int(window)
+            if isinstance(window, int) and window > 0:
+                return window
+            if window is None:
+                return None
+            raise ModelAccessError(f"{url}: `max_input_tokens` for `{model}` is {window!r}, not a positive integer")
+    raise ModelAccessError(
+        f"model `{model}` is not available to this team's key; "
+        f"the key lists {listed}"
+    )
 
 # Tokens held back from the context window for the model's reply when deciding
 # whether a PR fits in one call (the "too large" pre-flight check). Sized to
@@ -76,9 +123,9 @@ def _usd_header(headers: Mapping[str, str], name: str) -> float | None:
     None on any endpoint that doesn't send the header, or on a value that won't
     parse. Never raises: a bad header must not fail a review that succeeded.
 
-    Note this does not reject zero — a fresh key legitimately has zero spend.
-    The "a reported 0 means the proxy can't price this deployment" judgement is
-    specific to the per-call cost and lives in `resolve_cost_usd`.
+    Note this does not reject zero — a fresh key legitimately has zero spend,
+    and a per-call cost of 0 is recorded as such (`resolve_cost_usd` only logs
+    it when the call consumed tokens).
     """
     raw = headers.get(name)
     # LiteLLM sets this header unconditionally via str(response_cost), so a
@@ -716,19 +763,21 @@ class LLMClient:
         self.config = config
         self.review_config = review_config
 
-        if self.config.context_window or active_entry(config.model) is not None:
+        # Window read from the gateway in check_connectivity, after this
+        # constructor. 0 until then.
+        self._resolved_window = 0
+
+        if self.config.context_window:
             logger.info(
                 "Input token budget %s tokens (model %s context window: %s)",
                 _fmt(self.input_token_budget), model_label(config.model, config.reasoning_effort),
                 _fmt(self.context_window),
             )
         else:
-            # The catalog resolve happens in check_connectivity, after this
-            # constructor. Logging the budget here would print a window of 0
-            # and read as a misconfiguration; check_connectivity logs the real
-            # numbers once the entry is installed.
+            # Logging the budget here would print a window of 0 and read as a
+            # misconfiguration; check_connectivity logs the real numbers.
             logger.info(
-                "Model %s: context window pending catalog resolve",
+                "Model %s: context window pending gateway resolve",
                 model_label(config.model, config.reasoning_effort),
             )
 
@@ -770,15 +819,14 @@ class LLMClient:
         """Context window (tokens) for the configured model.
 
         An explicit `OPENAI_CONTEXT_WINDOW` still wins — it's the escape hatch
-        for an endpoint whose real cap differs from what the catalog advertises.
-        Otherwise this is the catalog's `max_input_tokens` for the configured model.
-        Zero before the startup resolve installs an entry; every caller runs
-        after `check_connectivity`, which resolves it or aborts the process.
+        for an endpoint whose real cap differs from what it advertises.
+        Otherwise this is the gateway's `max_input_tokens` for the configured
+        model. Zero before the startup resolve; every caller runs after
+        `check_connectivity`, which resolves it or disables the team.
         """
         if self.config.context_window:
             return self.config.context_window
-        entry = active_entry(self.config.model)
-        return entry.max_input_tokens if entry is not None else 0
+        return self._resolved_window
 
     @property
     def input_token_budget(self) -> int:
@@ -795,25 +843,28 @@ class LLMClient:
         return {"reasoning_effort": self.config.reasoning_effort}
 
     async def check_connectivity(self) -> None:
-        # Resolve the model against the configured catalog first — everything below
-        # (the window floor, the pre-flight fit checks, every cost figure) reads
-        # the entry this installs. Fatal on failure: there is no local fallback
-        # table and no DB cache, so an unresolvable model means noergler would be
-        # guessing at both its context window and its prices.
-        entry = await resolve_or_raise(self.config.model, self.config.catalog_url)
-        # Surface the matched key when it isn't the id we asked for: the prefix
-        # fallback searches the whole catalog, so an operator chasing an odd
-        # cost figure needs to see what actually priced the run.
-        matched_note = (
-            "" if entry.matched_key == entry.model_id
-            else f" [matched catalog key `{entry.matched_key}`]"
+        # Ask the gateway first: `/models` with this team's key is both the
+        # access check (a model the key may not use is simply not listed) and
+        # the source of the context window everything below reads (the window
+        # floor, the pre-flight fit checks). Raising here disables the team.
+        models_url = f"{self.config.api_url.rstrip('/')}/models"
+        window = await resolve_model_window(
+            self._http_client, self.config.api_url, self.config.api_key, self.config.model,
         )
+        if window is not None:
+            self._resolved_window = window
+        elif not self.config.context_window:
+            raise RuntimeError(
+                f"model `{self.config.model}` is listed by {models_url} without "
+                f"`max_input_tokens`. Set OPENAI_CONTEXT_WINDOW (or the team's "
+                f"inference.context_window) to state the window outright."
+            )
         logger.info(
-            "Model catalog: %s%s from %s, window=%s, input token budget %s. "
-            "Costs are read from the endpoint's %s header, falling back to the "
-            "catalog's rates only when it reports none.",
-            entry.model_id, matched_note, self.config.catalog_url,
-            _fmt(self.context_window), _fmt(self.input_token_budget), _COST_HEADER,
+            "Model %s from %s: window=%s%s, input token budget %s. "
+            "Costs are read from the endpoint's %s header.",
+            self.config.model, models_url, _fmt(self.context_window),
+            " (OPENAI_CONTEXT_WINDOW)" if self.config.context_window else "",
+            _fmt(self.input_token_budget), _COST_HEADER,
         )
 
         # Hard requirement: noergler reviews a whole PR in one call, so it only
@@ -826,7 +877,7 @@ class LLMClient:
                 f"{_fmt(_MIN_CONTEXT_WINDOW)}. noergler reviews each PR in a single "
                 f"call and requires a >= {_fmt(_MIN_CONTEXT_WINDOW)}-token model. "
                 f"Set OPENAI_CONTEXT_WINDOW to state the window outright if the "
-                f"catalog understates what this endpoint actually accepts."
+                f"gateway understates what this endpoint actually accepts."
             )
 
         # Startup ping — smallest-possible inference call. Validates the token
