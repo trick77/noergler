@@ -37,3 +37,6 @@ __pycache__/
 # macOS
 .DS_Store
 hack/
+
+# IntelliJ HTTP client: the token file, see http/http-client.private.env.json.example
+http/http-client.private.env.json

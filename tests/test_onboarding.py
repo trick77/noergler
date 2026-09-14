@@ -3,7 +3,7 @@
 import logging
 from contextlib import asynccontextmanager
 from typing import Any, cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -37,6 +37,7 @@ from app.onboarding import (
     targets_for,
 )
 from app.riptide_client import RiptideClient
+from app.team_store import ClaimConflict, TeamSettings
 
 BASE_URL = "https://bitbucket.test"
 PUBLIC_URL = "https://noergler.test"
@@ -309,6 +310,7 @@ def api(monkeypatch):
         yield
 
     original = (main_module.config, main_module.bitbucket_client, app.router.lifespan_context)
+    monkeypatch.setattr(main_module, "get_pool", lambda: object())
     main_module.config = mock_config
     main_module.bitbucket_client = BitbucketClient(cfg)
     main_module.teams.clear()
@@ -395,3 +397,245 @@ class TestEndpoint:
         assert all(c.request.headers["Authorization"] == f"Bearer {ADMIN_TOKEN}" for c in hook_calls)
         read_calls = [c for c in respx.calls if c.request.url.path.endswith("/projects/PROJ")]
         assert all(c.request.headers["Authorization"] == "Bearer bot-token" for c in read_calls)
+
+
+def _store(**overrides):
+    """Patch app.main.team_store; defaults: claims come back as whatever is
+    current on the runtime, every write succeeds."""
+    mocks = {
+        "add_claims": AsyncMock(return_value=["PROJ"]),
+        "remove_claims": AsyncMock(return_value=["PROJ"]),
+        "list_claims": AsyncMock(return_value=[ProjectScope(key="PROJ")]),
+        "purge_project": AsyncMock(return_value=3),
+        "count_project_prs": AsyncMock(return_value=3),
+        "put_settings": AsyncMock(),
+        **overrides,
+    }
+    return patch.multiple("app.main.team_store", **mocks), mocks
+
+
+class TestClaims:
+    @respx.mock
+    def test_claim_proves_admin_then_hooks(self, api):
+        _token_ok()
+        _bot_can_read()
+        team = main_module.teams[TEAM].config
+        team.projects = []
+        respx.get(REPO_HOOKS).mock(return_value=httpx.Response(200, json=_page([])))
+        respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(200, json=_page([])))
+        create = respx.post(REPO_HOOKS).mock(return_value=httpx.Response(201, json={"id": 5}))
+        patcher, mocks = _store(
+            add_claims=AsyncMock(return_value=["PROJ/my-repo"]),
+            list_claims=AsyncMock(return_value=[ProjectScope(key="PROJ", repos=["my-repo"])]),
+        )
+        with patcher:
+            r = api.post(
+                f"/onboard/{TEAM}",
+                json={"action": "onboard", "projects": [{"key": "PROJ", "repos": ["my-repo"]}]},
+                headers=AUTH,
+            )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["claimed"] == ["PROJ/my-repo"]
+        assert body["rows"][0]["status"] == "ok" and "webhook created (id=5)" in body["rows"][0]["detail"]
+        assert create.called
+        mocks["add_claims"].assert_awaited_once()
+        call = mocks["add_claims"].await_args
+        assert call is not None and call.args[1:] == (TEAM, [ProjectScope(key="PROJ", repos=["my-repo"])])
+        assert call.kwargs == {"claimed_by": "jan"}
+        # the runtime now owns it
+        assert team.projects == [ProjectScope(key="PROJ", repos=["my-repo"])]
+
+    @respx.mock
+    def test_no_admin_means_no_claim(self, api):
+        _token_ok()
+        main_module.teams[TEAM].config.projects = []
+        respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(403))
+        patcher, mocks = _store()
+        with patcher:
+            r = api.post(f"/onboard/{TEAM}", json={"action": "grant-bot", "projects": [{"key": "PROJ"}]}, headers=AUTH)
+        assert r.status_code == 200, r.text
+        assert r.json()["claimed"] == []
+        assert r.json()["healthy"] is False
+        assert "no project admin on PROJ" in r.json()["rows"][0]["detail"]
+        mocks["add_claims"].assert_not_awaited()
+
+    @respx.mock
+    def test_foreign_claim_is_409_and_nothing_hooked(self, api):
+        _token_ok()
+        respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(200, json=_page([])))
+        create = respx.post(PROJ_HOOKS).mock(return_value=httpx.Response(201, json={"id": 5}))
+        patcher, _ = _store(add_claims=AsyncMock(side_effect=ClaimConflict("PROJ", None, "payments")))
+        with patcher:
+            r = api.post(f"/onboard/{TEAM}", json={"action": "onboard", "projects": [{"key": "PROJ"}]}, headers=AUTH)
+        assert r.status_code == 409
+        assert r.json()["detail"]["conflict"] == {"target": "PROJ", "team": "payments"}
+        assert not create.called
+
+    @respx.mock
+    def test_dry_run_claims_nothing_but_reports(self, api):
+        _token_ok()
+        _bot_can_read()
+        main_module.teams[TEAM].config.projects = []
+        respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(200, json=_page([])))
+        respx.get(f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos").mock(return_value=httpx.Response(200, json=_page([])))
+        patcher, mocks = _store()
+        with patcher:
+            r = api.post(
+                f"/onboard/{TEAM}", json={"action": "onboard", "projects": [{"key": "PROJ"}], "dry_run": True}, headers=AUTH
+            )
+        assert r.status_code == 200, r.text
+        assert r.json()["claimed"] == []
+        assert r.json()["rows"][0]["detail"].startswith("dry-run: webhook created")
+        mocks["add_claims"].assert_not_awaited()
+        assert main_module.teams[TEAM].config.projects == []
+
+    def test_projects_only_with_actions(self, api):
+        with _store()[0]:
+            r = api.post(f"/onboard/{TEAM}", json={"action": "status", "projects": [{"key": "PROJ"}]}, headers=AUTH)
+            assert r.status_code == 400
+            r = api.post(f"/onboard/{TEAM}", json={"projects": [{"key": "PROJ"}], "targets": ["PROJ"]}, headers=AUTH)
+            assert r.status_code == 400
+
+    @respx.mock
+    def test_remove_with_projects_unclaims_and_purges(self, api):
+        _token_ok()
+        respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(200, json=_page([_good_hook()])))
+        delete = respx.delete(f"{PROJ_HOOKS}/7").mock(return_value=httpx.Response(204))
+        patcher, mocks = _store(list_claims=AsyncMock(return_value=[]))
+        with patcher:
+            r = api.post(f"/onboard/{TEAM}", json={"action": "remove", "projects": [{"key": "PROJ"}]}, headers=AUTH)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["unclaimed"] == ["PROJ"] and body["purged_prs"] == 3
+        assert body["rows"][0]["detail"] == "webhook removed: id=7; purged 3 PR record(s)"
+        assert delete.called
+        purge = mocks["purge_project"].await_args
+        assert purge is not None and purge.args[1:] == (TEAM, "PROJ", None)
+        mocks["remove_claims"].assert_awaited_once()
+        assert main_module.teams[TEAM].config.projects == []
+
+    @respx.mock
+    def test_remove_dry_run_counts_only(self, api):
+        _token_ok()
+        respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(200, json=_page([_good_hook()])))
+        patcher, mocks = _store()
+        with patcher:
+            r = api.post(
+                f"/onboard/{TEAM}", json={"action": "remove", "projects": [{"key": "PROJ"}], "dry_run": True}, headers=AUTH
+            )
+        assert r.status_code == 200, r.text
+        assert r.json()["purged_prs"] == 3 and r.json()["unclaimed"] == []
+        assert "would purge 3" in r.json()["rows"][0]["detail"]
+        mocks["purge_project"].assert_not_awaited()
+        mocks["remove_claims"].assert_not_awaited()
+
+    @respx.mock
+    def test_plain_remove_keeps_claims_and_data(self, api):
+        _token_ok()
+        respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(200, json=_page([_good_hook()])))
+        respx.delete(f"{PROJ_HOOKS}/7").mock(return_value=httpx.Response(204))
+        patcher, mocks = _store()
+        with patcher:
+            r = api.post(f"/onboard/{TEAM}", json={"action": "remove"}, headers=AUTH)
+        assert r.status_code == 200, r.text
+        assert "purged_prs" not in r.json()
+        mocks["purge_project"].assert_not_awaited()
+        mocks["remove_claims"].assert_not_awaited()
+
+    @respx.mock
+    def test_unknown_remove_target_is_400(self, api):
+        _token_ok()
+        with _store()[0]:
+            r = api.post(f"/onboard/{TEAM}", json={"action": "remove", "projects": [{"key": "NOPE"}]}, headers=AUTH)
+        assert r.status_code == 400
+
+
+class TestTeamSettings:
+    @respx.mock
+    def test_get_needs_a_valid_token(self, api):
+        respx.get(WHOAMI).mock(return_value=httpx.Response(200, text=""))
+        assert api.get(f"/teams/{TEAM}", headers=AUTH).status_code == 401
+        assert api.get(f"/teams/{TEAM}").status_code == 401
+        _token_ok()
+        r = api.get(f"/teams/{TEAM}", headers=AUTH)
+        assert r.status_code == 200
+        assert r.json() == {"team": TEAM, "projects": [{"key": "PROJ"}], "auto_review_authors": [], "ignore_authors": []}
+
+    @respx.mock
+    def test_put_review_authors_takes_effect_immediately(self, api):
+        _token_ok()
+        respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(200, json=_page([])))
+        runtime = main_module.teams[TEAM]
+        from app.reviewer import Reviewer
+        runtime.reviewer = Reviewer(main_module.bitbucket_client, AsyncMock(), runtime.config.review, db_pool=AsyncMock())
+        patcher, mocks = _store()
+        with patcher:
+            r = api.put(
+                f"/teams/{TEAM}/review-authors",
+                json={"auto_review_authors": [], "ignore_authors": ["os-jenkins-bb", " "]},
+                headers=AUTH,
+            )
+        assert r.status_code == 200, r.text
+        assert r.json()["ignore_authors"] == ["os-jenkins-bb"]
+        mocks["put_settings"].assert_awaited_once()
+        put = mocks["put_settings"].await_args
+        assert put is not None and put.args[2] == TeamSettings([], ["os-jenkins-bb"])
+        assert put.kwargs == {"updated_by": "jan"}
+        assert runtime.reviewer.is_auto_review_author("os-jenkins-bb") is False
+        assert runtime.reviewer.is_auto_review_author("anyone") is True
+        assert runtime.config.review.ignore_authors == ["os-jenkins-bb"]
+
+    @respx.mock
+    def test_put_needs_admin_on_a_claim(self, api):
+        _token_ok()
+        respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(403))
+        patcher, mocks = _store()
+        with patcher:
+            r = api.put(f"/teams/{TEAM}/review-authors", json={"auto_review_authors": ["a"], "ignore_authors": []}, headers=AUTH)
+        assert r.status_code == 403
+        mocks["put_settings"].assert_not_awaited()
+
+        main_module.teams[TEAM].config.projects = []
+        with patcher:
+            r = api.put(f"/teams/{TEAM}/review-authors", json={"auto_review_authors": ["a"], "ignore_authors": []}, headers=AUTH)
+        assert r.status_code == 409
+
+
+class TestRemoveNeedsAdmin:
+    @respx.mock
+    def test_no_admin_means_nothing_removed_or_purged(self, api):
+        _token_ok()
+        respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(403))
+        patcher, mocks = _store()
+        with patcher:
+            r = api.post(f"/onboard/{TEAM}", json={"action": "remove", "projects": [{"key": "PROJ"}]}, headers=AUTH)
+        assert r.status_code == 200, r.text
+        assert r.json()["unclaimed"] == [] and r.json()["purged_prs"] == 0
+        assert r.json()["healthy"] is False
+        assert "not removed" in r.json()["rows"][0]["detail"]
+        mocks["purge_project"].assert_not_awaited()
+        mocks["remove_claims"].assert_not_awaited()
+        assert main_module.teams[TEAM].config.projects == [ProjectScope(key="PROJ")]
+
+    @respx.mock
+    def test_whole_project_scope_covers_the_teams_repo_claims(self, api):
+        _token_ok()
+        main_module.teams[TEAM].config.projects = [ProjectScope(key="PROJ", repos=["my-repo"])]
+        respx.get(REPO_HOOKS).mock(return_value=httpx.Response(200, json=_page([_good_hook()])))
+        respx.delete(f"{REPO_HOOKS}/7").mock(return_value=httpx.Response(204))
+        patcher, mocks = _store(list_claims=AsyncMock(return_value=[]), remove_claims=AsyncMock(return_value=["PROJ/my-repo"]))
+        with patcher:
+            r = api.post(f"/onboard/{TEAM}", json={"action": "remove", "projects": [{"key": "PROJ"}]}, headers=AUTH)
+        assert r.status_code == 200, r.text
+        assert r.json()["unclaimed"] == ["PROJ/my-repo"]
+        drop = mocks["remove_claims"].await_args
+        assert drop is not None and drop.args[2] == [ProjectScope(key="PROJ", repos=["my-repo"])]
+
+    @respx.mock
+    def test_bitbucket_error_on_admin_check_is_502(self, api):
+        _token_ok()
+        respx.get(PROJ_HOOKS).mock(return_value=httpx.Response(503))
+        with _store()[0]:
+            r = api.post(f"/onboard/{TEAM}", json={"action": "onboard", "projects": [{"key": "PROJ"}]}, headers=AUTH)
+        assert r.status_code == 502

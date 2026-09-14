@@ -1,0 +1,87 @@
+### noergler team self-service, IntelliJ HTTP client
+# Pick an environment (dev / prod) from http-client.env.json; the token goes
+# into http-client.private.env.json (gitignored), never in here.
+#
+# {{host}}   noergler base URL, e.g. https://noergler.example.com
+# {{team}}   your team slug, as in teams.yaml
+# {{token}}  your own Bitbucket HTTP access token with project admin on your projects
+
+### What the team has: claims and review author lists
+GET {{host}}/teams/{{team}}
+Authorization: Bearer {{token}}
+
+### Status of every claim: ownership, bot access, webhook state, stray repo hooks. No writes.
+POST {{host}}/onboard/{{team}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"action": "status"}
+
+### Claim a whole project and some repos of a shared one, create the hooks, grant the bot write access
+POST {{host}}/onboard/{{team}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "action": "grant-bot",
+  "projects": [
+    {"key": "PLAT"},
+    {"key": "INFRA", "repos": ["terraform-core", "ansible"]}
+  ]
+}
+
+### Same, but only report what would happen (no claim, no hook, no grant)
+POST {{host}}/onboard/{{team}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "action": "grant-bot",
+  "dry_run": true,
+  "projects": [{"key": "PLAT"}]
+}
+
+### Re-run the hooks over the current claims (after a webhook secret rotation: remove first, see below)
+POST {{host}}/onboard/{{team}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"action": "grant-bot"}
+
+### Give a repo up: hook, claim and every review record of it go. Count first.
+POST {{host}}/onboard/{{team}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "action": "remove",
+  "dry_run": true,
+  "projects": [{"key": "INFRA", "repos": ["ansible"]}]
+}
+
+### ... then for real
+POST {{host}}/onboard/{{team}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "action": "remove",
+  "projects": [{"key": "INFRA", "repos": ["ansible"]}]
+}
+
+### Remove the hooks only (claims and data stay), e.g. before a secret rotation
+POST {{host}}/onboard/{{team}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"action": "remove"}
+
+### Who gets automatic reviews (empty = everyone) and who never triggers one (CI and dependency bots)
+PUT {{host}}/teams/{{team}}/review-authors
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "auto_review_authors": [],
+  "ignore_authors": ["ci-bot", "renovate"]
+}

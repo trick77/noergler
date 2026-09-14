@@ -6,12 +6,24 @@ from alembic.script import ScriptDirectory
 
 _VERSIONS = Path("alembic/versions")
 _M001 = _VERSIONS / "001_initial_schema.py"
+_M002 = _VERSIONS / "002_team_settings.py"
 
 
-def test_migration_chain_is_a_single_revision():
+def test_migration_chain():
     script = ScriptDirectory.from_config(Config("alembic.ini"))
     revs = [(r.revision, r.down_revision) for r in script.walk_revisions()]
-    assert revs == [("001", None)]
+    assert revs == [("002", "001"), ("001", None)]
+
+
+def test_002_claims_are_unique_per_project_and_repo():
+    text = _M002.read_text()
+    assert "CREATE TABLE team_claims" in text
+    assert "CREATE TABLE team_settings" in text
+    # one owner per repo, one owner per whole project: the ownership guarantee
+    assert "CREATE UNIQUE INDEX uq_team_claims_repo ON team_claims (project_key, repo_slug)" in text
+    assert "CREATE UNIQUE INDEX uq_team_claims_project ON team_claims (project_key)" in text
+    assert "DROP TABLE IF EXISTS team_settings" in text
+    assert "DROP TABLE IF EXISTS team_claims" in text
 
 
 def test_001_creates_the_two_tables_and_drops_them_in_downgrade():

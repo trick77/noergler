@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import json
 from contextlib import ExitStack, asynccontextmanager, contextmanager
-from typing import cast
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -561,10 +561,20 @@ teams:
             monkeypatch.setenv(k, v)
 
     @contextmanager
-    def _boot(self, llm_check, riptide_check):
+    def _boot(self, llm_check, riptide_check, store: dict[str, Any] | None = None):
+        """`store` overrides the team_store functions (default: empty DB, seeds accepted)."""
+        store = {
+            "list_all_claims": AsyncMock(return_value={}),
+            "get_all_settings": AsyncMock(return_value={}),
+            "add_claims": AsyncMock(return_value=["x"]),
+            "put_settings": AsyncMock(),
+            **(store or {}),
+        }
         with ExitStack() as stack:
             stack.enter_context(patch("app.main.create_pool", new=AsyncMock(return_value=object())))
             stack.enter_context(patch("app.main.close_pool", new=AsyncMock()))
+            for name, mock in store.items():
+                stack.enter_context(patch(f"app.main.team_store.{name}", new=mock))
             stack.enter_context(patch("app.bitbucket.BitbucketClient.check_connectivity", new=AsyncMock()))
             stack.enter_context(patch("app.jira.JiraClient.check_connectivity", new=AsyncMock()))
             stack.enter_context(patch("app.llm_client.LLMClient.check_connectivity", new=llm_check))
@@ -642,3 +652,46 @@ teams:
             assert sorted(main_module.disabled_teams) == ["payments", "platform"]
             assert c.get("/health").status_code == 200
             assert c.get("/ready").status_code == 503
+
+    def test_teams_yaml_seeds_an_empty_db_once(self, env):
+        add = AsyncMock(return_value=["PLAT"])
+        with self._boot(AsyncMock(), AsyncMock(), {"add_claims": add}):
+            assert add.await_count == 2
+            slugs = sorted(c.args[1] for c in add.await_args_list)
+            assert slugs == ["payments", "platform"]
+            assert add.await_args_list[0].kwargs == {"claimed_by": "teams.yaml"}
+            assert main_module.teams["platform"].config.projects == [ProjectScope(key="PLAT")]
+
+    def test_db_claims_and_settings_win_over_teams_yaml(self, env):
+        from app.team_store import TeamSettings
+        add = AsyncMock()
+        put = AsyncMock()
+        store = {
+            "list_all_claims": AsyncMock(return_value={"platform": [ProjectScope(key="OTHER", repos=["a"])]}),
+            "get_all_settings": AsyncMock(return_value={"platform": TeamSettings(["alice"], ["ci-bot"])}),
+            "add_claims": add, "put_settings": put,
+        }
+        with self._boot(AsyncMock(), AsyncMock(), store):
+            plat = main_module.teams["platform"]
+            assert plat.config.projects == [ProjectScope(key="OTHER", repos=["a"])]
+            assert plat.config.review.auto_review_authors == ["alice"]
+            assert plat.reviewer.ignore_authors == ["ci-bot"]
+            assert plat.reviewer.is_auto_review_author("ci-bot") is False
+            # platform is known to the DB: no seed; payments (unknown) is seeded
+            assert [c.args[1] for c in add.await_args_list] == ["payments"]
+            assert put.await_count == 0
+
+    def test_seed_conflict_disables_that_team_only(self, env):
+        from app.team_store import ClaimConflict
+
+        async def add(pool, slug, scopes, claimed_by):
+            if slug == "payments":
+                raise ClaimConflict("PAY", None, "platform")
+            return ["PLAT"]
+
+        with self._boot(AsyncMock(), AsyncMock(), {"add_claims": add}) as c:
+            assert list(main_module.teams) == ["platform"]
+            assert main_module.disabled_teams == {
+                "payments": "teams.yaml seed: PAY is claimed by team platform",
+            }
+            assert c.get("/ready").status_code == 200

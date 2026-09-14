@@ -1,4 +1,3 @@
-import itertools
 import logging
 import os
 import re
@@ -337,7 +336,9 @@ class TeamBlock(BaseModel, extra="forbid"):
     slug: str
     name: str | None = None
     webhook_secret_env: str
-    projects: list[ProjectScope]
+    # Seed only: copied into `team_claims` when the DB has no claims for the
+    # slug, ignored afterwards. Teams claim projects through the API.
+    projects: list[ProjectScope] = []
     inference: TeamInferenceBlock
     review: TeamReviewOverrides | None = None
     jira: TeamJiraOverrides | None = None
@@ -350,21 +351,20 @@ class TeamBlock(BaseModel, extra="forbid"):
             raise ValueError(f"slug {v!r} must match {TEAM_SLUG_RE.pattern}")
         return v
 
-    @field_validator("projects", mode="after")
-    @classmethod
-    def at_least_one_project(cls, v: list[ProjectScope]) -> list[ProjectScope]:
-        if not v:
-            raise ValueError("projects must list at least one Bitbucket project key")
-        return v
-
 
 class TeamConfig(BaseModel):
-    """A fully resolved team: secrets read, defaults merged, ready to use."""
+    """A fully resolved team: secrets read, defaults merged, ready to use.
+
+    `projects` and the two author lists in `review` are the team's own to
+    change (`team_claims`, `team_settings` in the DB, see `app/team_store.py`);
+    at startup they are loaded from there, the values from `teams.yaml` only
+    seed an empty DB. `TeamRuntime.apply_*` updates them in place.
+    """
 
     slug: str
     name: str
     webhook_secret: str
-    projects: list[ProjectScope]
+    projects: list[ProjectScope] = []
     llm: LLMConfig
     review: ReviewConfig
     jira: JiraConfig
@@ -526,10 +526,9 @@ def _read_teams_file(path: str) -> list[dict[str, Any]]:
 def load_teams(path: str, instance: AppConfig) -> tuple[dict[str, TeamConfig], dict[str, str]]:
     """Resolve every team in the file. Returns (enabled, disabled-with-reason).
 
-    Duplicate slugs abort (the fault has no single owner). A project or repo
-    claimed by more than one team disables every claimant: ownership is
-    ambiguous and `pr_reviews` is keyed by project/repo/pr, so two owners
-    would double-review and double-charge.
+    Duplicate slugs abort (the fault has no single owner). Ownership of
+    projects and repos is not checked here: claims live in the DB, which
+    holds each project or repo for exactly one team (`app/team_store.py`).
     """
     log = logging.getLogger(__name__)
     raw_teams = _read_teams_file(path)
@@ -547,24 +546,6 @@ def load_teams(path: str, instance: AppConfig) -> tuple[dict[str, TeamConfig], d
             enabled[slug] = resolve_team(raw, instance)
         except TeamConfigError as exc:
             disabled[slug] = str(exc)
-
-    # Ownership conflicts: exact project key, or project+repo, claimed twice.
-    # A whole-project claim conflicts with any repo-level claim on that key.
-    for a, b in itertools.combinations(list(enabled.values()), 2):
-        for pa in a.projects:
-            for pb in b.projects:
-                if pa.key != pb.key:
-                    continue
-                overlap = (
-                    pa.repos is None or pb.repos is None
-                    or bool(set(pa.repos) & set(pb.repos))
-                )
-                if overlap:
-                    reason = f"project {pa.key} is also claimed by team {{other}}"
-                    disabled.setdefault(a.slug, reason.format(other=b.slug))
-                    disabled.setdefault(b.slug, reason.format(other=a.slug))
-    for slug in list(disabled):
-        enabled.pop(slug, None)
 
     for slug, reason in disabled.items():
         # Bound, not just in the message: Splunk extracts `team` as a field.

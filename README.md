@@ -125,7 +125,7 @@ See [CONFIGURATION.md](CONFIGURATION.md) for the complete reference of both laye
 teams:
   - slug: platform                                    # /webhook/platform, pr_reviews.team_slug, log field team=
     webhook_secret_env: TEAM_PLATFORM_WEBHOOK_SECRET  # env var holding the team's HMAC secret
-    projects:                                         # Bitbucket projects this team owns (exclusive)
+    projects:                                         # seed only: copied to the DB on first start, then the team claims via the API
       - key: PLAT
       - key: INFRA
         repos: [terraform-core, ansible]              # optional: only these repos
@@ -146,11 +146,20 @@ Rules:
 - **Instance-only knobs** (`OPENAI_BASE_URL`,
   `REVIEW_PROMPT_TEMPLATE`, `REVIEW_MENTION_PROMPT_TEMPLATE`) cannot appear in a team
   block; naming them disables the team.
-- **A project or repo belongs to exactly one team.** A whole-project claim conflicts with
-  any repo-level claim on the same key. Conflicting claims disable every claimant.
+- **Claims and author lists are the team's own.** Which projects and repos a team owns
+  (`projects`) and its `review.auto_review_authors` / `review.ignore_authors` live in the
+  database (`team_claims`, `team_settings`) and are changed through the API
+  (see [Webhook setup](#webhook-setup)); the values in `teams.yaml` only seed a slug the
+  database does not know yet, and are ignored afterwards. The author lists seed with their
+  resolved value (instance `REVIEW_AUTO_REVIEW_AUTHORS` / `REVIEW_IGNORE_AUTHORS` merged
+  with the block), so an instance-wide default reaches a team once, at its first start.
+  Everything else in the block is the noergler admin's and needs a redeploy.
+- **A project or repo belongs to exactly one team.** The database enforces it: a claim held
+  by another team is refused (`409`), a whole-project claim conflicts with any repo-level
+  claim on the same key. A seed from `teams.yaml` that conflicts disables that team.
 - **Claim whole projects unless a project is shared between teams.** A whole-project claim
-  is onboarded with one project webhook and covers every future repo without anyone
-  touching noergler; a `repos:` list needs a `teams.yaml` change per new repo.
+  is one project webhook and covers every future repo; a `repos:` claim needs one API call
+  per new repo.
 - **One team's bad config never affects another.** Anything wrong with a single block
   (validation error, missing secret, model not available to the key, riptide token rejected)
   disables that team: its webhooks answer `503` (the reason is in the startup log), everything else runs.
@@ -165,7 +174,7 @@ Rules:
 
 Team identity comes from the webhook path plus the team's secret, never from the
 payload: `/webhook/<slug>` verifies the HMAC against that team's secret, then checks
-that the PR's project/repo is in the team's `projects` (`403` otherwise).
+that the PR's project/repo is claimed by the team (`403` otherwise).
 
 ### Model resolution
 
@@ -265,39 +274,52 @@ alembic upgrade head
 
 ## Webhook setup
 
-Each team onboards its own projects through the service; nobody needs an image, a checkout or the webhook secret. The noergler admin is involved once per team (and again only when the team gets a new project); everything else the team admin does alone.
+Each team claims and onboards its own projects through the service; nobody needs an image, a checkout or the webhook secret. The noergler admin is involved once per team; everything else the team admin does alone.
 
 **Once per team (noergler admin):** add the team to `teams.yaml` (see [Teams](#teams)), set `TEAM_<SLUG>_WEBHOOK_SECRET` (`openssl rand -hex 32`) and `TEAM_<SLUG>_OPENAI_API_KEY`, set `NOERGLER_PUBLIC_URL` on the instance, redeploy.
 
-**Team admin:** you need your own Bitbucket HTTP access token with project admin on your projects (it creates the webhooks and grants the bot write access). Then:
+**Team admin:** you need your own Bitbucket HTTP access token with project admin on your projects (it proves the claim, creates the webhooks and grants the bot write access). Then:
 
 ```bash
 export TOKEN=<your Bitbucket HTTP access token>
 N=https://noergler.example.com/onboard/platform
+H=(-H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json')
+
+# claim a whole project and a few repos of a shared one, create the hooks, give the bot write access
+curl -sS -X POST $N "${H[@]}" -d '{"action":"grant-bot","projects":[{"key":"PLAT"},{"key":"INFRA","repos":["terraform-core"]}]}'
 
 # see what is there: ownership, bot access, webhook state, stray repo hooks. No writes.
-curl -sS -X POST $N -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"action":"status"}'
+curl -sS -X POST $N "${H[@]}" -d '{"action":"status"}'
 
-# create/update the webhooks and give the noergler bot write access where it has none
-curl -sS -X POST $N -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"action":"grant-bot"}'
+# give a project up: hook, claim and every review record of it are gone (dry_run first shows the count)
+curl -sS -X POST $N "${H[@]}" -d '{"action":"remove","projects":[{"key":"PLAT"}],"dry_run":true}'
+
+# what the team currently has; and who gets automatic reviews / who never triggers one
+curl -sS https://noergler.example.com/teams/platform "${H[@]}"
+curl -sS -X PUT https://noergler.example.com/teams/platform/review-authors "${H[@]}" -d '{"auto_review_authors":[],"ignore_authors":["ci-bot"]}'
 ```
 
-`POST /onboard/<team>` first asks Bitbucket who the token belongs to (`401` if it is rejected, nothing else is answered), then runs over every entry of the team's block in `teams.yaml`; the token is used for this request's Bitbucket calls and dropped. Body fields:
+Ready-made requests for the IntelliJ HTTP client are in [`http/`](http/).
+
+`POST /onboard/<team>` first asks Bitbucket who the token belongs to (`401` if it is rejected, nothing else is answered); the token is used for this request's Bitbucket calls and dropped. Body fields:
 
 | Field | Default | Meaning |
 |---|---|---|
 | `action` | `status` | `status` (report only) · `onboard` (create/update hooks) · `grant-bot` (onboard + grant the bot `PROJECT_WRITE` / `REPO_WRITE` where it cannot read) · `remove` (deboard) |
-| `targets` | all | Narrow to these entries of the team block: `"PLAT"` or `"INFRA/terraform-core"`; anything else is `400` |
-| `dry_run` | `false` | Report what would change, write nothing |
+| `projects` | none | Same shape as `projects:` in `teams.yaml`. With `onboard`/`grant-bot`: claim these for the team (each needs project admin with your token, unproven ones are `failed` and not claimed; one held by another team is `409` and nothing is written), then hook exactly these. With `remove`: drop their hooks, the claims and every PR record the team has on them. Not with `status` |
+| `targets` | all claims | Narrow to these current claims: `"PLAT"` or `"INFRA/terraform-core"`; anything else is `400`. Not together with `projects` |
+| `dry_run` | `false` | Report what would change, write nothing (claims and purges included) |
 | `name` | `noergler` | Webhook name; use another name to onboard a second instance next to an existing one |
 | `prune` | `true` | Under a project webhook, delete this instance's leftover repo-level hooks (they would deliver every event twice) |
 
-The answer is JSON: `healthy` (`status`: every target owned, bot can read, hook `ok`, no strays; actions: no target `failed`), `rows` per target, and `text`, the same as a table. `401` without a bearer token, `404` unknown team, `503` team disabled or `NOERGLER_PUBLIC_URL` unset, `400` unknown target. Per target the service answers whether the team owns it (as declared in `teams.yaml`) and whether the bot can read it; a target the team does not own is `skipped` with "ask the noergler admin". Hooks are created or updated idempotently (a second run reports `already up to date`). A failure on one target is reported and the rest continue.
+The answer is JSON: `healthy` (`status`: every target owned, bot can read, hook `ok`, no strays; actions: no target `failed`), `rows` per target, `text` (the same as a table), and with `projects` also `claimed` / `unclaimed` and `purged_prs`. `401` without a valid bearer token, `404` unknown team, `503` team disabled or `NOERGLER_PUBLIC_URL` unset, `400` unknown target. Hooks are created or updated idempotently (a second run reports `already up to date`). A failure on one target is reported and the rest continue. `remove` without `projects` only removes hooks; claims and data stay.
 
-| `teams.yaml` claim | Webhook | New repo in the project |
+`GET /teams/<team>` returns the claims and the two author lists. `PUT /teams/<team>/review-authors` replaces both lists (`auto_review_authors`: only these authors get automatic reviews, empty = everyone; `ignore_authors`: never an automatic review, wins over the first list; an @mention still reviews) and needs project admin on at least one of the team's claims. Changes take effect immediately, no redeploy.
+
+| Claim | Webhook | New repo in the project |
 |---|---|---|
-| `key: PLAT` — whole project | one **project** webhook (Bitbucket Data Center 8.8+), fires for every current and future repo | covered automatically, nobody does anything |
-| `key: INFRA` + `repos: [...]` — selected repos | one **repo** webhook per listed repo (for a project shared between teams) | noergler admin adds it to `repos:` in `teams.yaml`, team admin re-runs `grant-bot` |
+| `{"key": "PLAT"}` — whole project | one **project** webhook (Bitbucket Data Center 8.8+), fires for every current and future repo | covered automatically, nobody does anything |
+| `{"key": "INFRA", "repos": [...]}` — selected repos | one **repo** webhook per listed repo (for a project shared between teams) | team admin runs `grant-bot` with the new repo in `projects` |
 
 Whether the bot can also comment is proven by the first review; `grant-bot` covers both.
 
@@ -362,7 +384,7 @@ The image is the whole deployment contract; how the environment reaches it is th
 
 - `CMD` serves on port 8080. `/health` is the liveness probe (always 200, lists enabled and disabled teams), `/ready` the readiness probe (503 while no team is enabled).
 - `alembic upgrade head` runs the migrations; run it before the app starts (init container or equivalent). Nothing creates the schema at runtime.
-- `POST /onboard/{team}` sets a team's webhooks (see [Webhook setup](#webhook-setup)); needs `NOERGLER_PUBLIC_URL`.
+- `POST /onboard/{team}`, `GET /teams/{team}`, `PUT /teams/{team}/review-authors` are the team self-service (see [Webhook setup](#webhook-setup)); onboarding needs `NOERGLER_PUBLIC_URL`.
 - `TEAMS_CONFIG` points at the mounted `teams.yaml`; secrets arrive as environment variables named in that file.
 - Corporate CA: mount the trusted bundle and point `SSL_CERT_FILE` at it; httpx, openai and asyncpg all honour it.
 - One replica only: the review queue is a single in-process worker behind an inference lock.
@@ -386,7 +408,9 @@ Bitbucket / ArgoCD / CI.
 
 ```
 app/
-  main.py              # FastAPI app, /webhook/{team}, /health, /ready endpoints
+  main.py              # FastAPI app: /webhook/{team}, /onboard/{team}, /teams/{team}, /health, /ready
+  onboarding.py        # Webhook onboarding against Bitbucket with the team admin's token
+  team_store.py        # Claims and review author lists per team (DB)
   riptide_client.py    # Optional outbound emitter to riptide-collector
   reviewer.py          # Review orchestrator (diff → AI → comments)
   llm_client.py        # OpenAI SDK client for the configured LLM API, token-aware chunking
@@ -403,6 +427,7 @@ app/
 prompts/
   review.txt           # Review prompt template
   mention.txt          # Mention Q&A prompt template
+http/                  # IntelliJ HTTP client requests for the team self-service
 tests/                 # pytest test suite
 ```
 
