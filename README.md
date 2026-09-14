@@ -105,7 +105,7 @@ defaults for every team-overridable knob. The required variables are:
 | `BITBUCKET_TOKEN` | Bitbucket Server API token of the shared service account |
 | `BITBUCKET_USERNAME` | Bitbucket service account username (used to identify bot comments and as the `@mention` trigger) |
 | `OPENAI_BASE_URL` | Base URL of the OpenAI-compatible endpoint (the SDK appends `/chat/completions`). Instance-wide, not team-overridable |
-| `MODEL_CATALOG_URL` | Model catalog in LiteLLM's `model_prices_and_context_window.json` format — see [Model catalog](#model-catalog). Instance-wide |
+| `OPENAI_MODEL` | Model id exactly as the gateway's `/v1/models` lists it for the team's key — see [Model resolution](#model-resolution). Instance default, overridable per team |
 | `JIRA_URL` | Jira Server/Cloud base URL |
 | `JIRA_TOKEN` | Jira API token of the single (read-only) Jira user |
 | `DATABASE_URL` | PostgreSQL connection string (see [Database](#database) below) |
@@ -143,7 +143,7 @@ Rules:
   the loader rejects a missing or empty one.
 - **Resolution:** team value → instance default → built-in default. Only
   `inference.api_key_env` and `webhook_secret_env` have no fallback.
-- **Instance-only knobs** (`OPENAI_BASE_URL`, `MODEL_CATALOG_URL`,
+- **Instance-only knobs** (`OPENAI_BASE_URL`,
   `REVIEW_PROMPT_TEMPLATE`, `REVIEW_MENTION_PROMPT_TEMPLATE`) cannot appear in a team
   block; naming them disables the team.
 - **A project or repo belongs to exactly one team.** A whole-project claim conflicts with
@@ -152,7 +152,7 @@ Rules:
   is onboarded with one project webhook and covers every future repo without anyone
   touching noergler; a `repos:` list needs a `teams.yaml` change per new repo.
 - **One team's bad config never affects another.** Anything wrong with a single block
-  (validation error, missing secret, model not in the catalog, riptide token rejected)
+  (validation error, missing secret, model not available to the key, riptide token rejected)
   disables that team: its webhooks answer `503` (the reason is in the startup log), everything else runs.
   Only file-level faults (file missing or unparseable, zero teams, duplicate slug) and
   shared-layer faults (database, Bitbucket, Jira) abort startup.
@@ -167,23 +167,19 @@ Team identity comes from the webhook path plus the team's secret, never from the
 payload: `/webhook/<slug>` verifies the HMAC against that team's secret, then checks
 that the PR's project/repo is in the team's `projects` (`403` otherwise).
 
-### Model catalog
+### Model resolution
 
-The model's **context window** is read at startup from the catalog at `MODEL_CATALOG_URL` (`max_input_tokens`), in the format of LiteLLM's [`model_prices_and_context_window.json`](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json). Nothing is cached locally or in the database, and there is no baked-in fallback table.
+At startup every team asks the gateway `GET /v1/models` with its own key. LiteLLM answers with exactly the models that key may use, each with `max_input_tokens`. noergler takes the team's model from that list: the entry's `max_input_tokens` becomes the **context window** the review is sized against. Nothing is cached locally or in the database, and there is no catalog or baked-in table to keep in sync with the gateway's names.
 
-The URL is per-deployment rather than fixed, for two reasons. LiteLLM's public catalog is on GitHub, which not every environment can reach; and a gateway that proxies models under its own names publishes those names only in its own catalog. Point `MODEL_CATALOG_URL` at the catalog your gateway publishes and `OPENAI_MODEL` is looked up in it verbatim, prefix and all (`ai-gateway/gpt-5.4`) — no second setting to keep in sync. Intg and prod typically point at different catalogs.
-
-noergler resolves the configured model against that catalog and **aborts startup** if the catalog can't be fetched or the model isn't in it. That's deliberate: without an entry it has no context window to size the review against, and guessing one is worse than not starting. If your catalog understates what the endpoint actually accepts, `OPENAI_CONTEXT_WINDOW` overrides it.
+`OPENAI_MODEL` (or the team's `inference.model`) must be spelled exactly as the gateway lists it (`ai-gateway-gpt-5.5`). A model the key may not use is simply not in the list, so the team is **disabled** with a message naming what the key does list; other teams are unaffected. A listed model without `max_input_tokens` also disables the team unless `OPENAI_CONTEXT_WINDOW` states the window; that override also wins when the gateway understates what the endpoint actually accepts.
 
 **Costs come from the endpoint where possible.** The `x-litellm-response-cost` response header carries the actual cost of each call, produced by the same code that bills — already accounting for tiered rates, prompt-cache read rates, service tier and any gateway margin. noergler records that number verbatim and labels it `Cost:` on the summary.
 
 The proxy also reports `x-litellm-key-spend`, the running total already spent on the API key. When present and non-zero it is appended to the same line as `$N key total`. It covers every call made with that key by anyone, so it is shown only — never added to the PR total, never compared against the per-PR cap.
 
-If the endpoint reports nothing usable, the catalog rates are used instead and the summary says `Estimated cost:`. This matters in practice: LiteLLM sets the header unconditionally, so a deployment its own cost map can't price sends the literal string `None` rather than omitting the header. If a model resolves in neither, the run is recorded unpriced and the per-PR cap fails open for it.
+If the endpoint reports nothing usable, the run is recorded unpriced and the per-PR cap fails open for it. This matters in practice: LiteLLM sets the header unconditionally, so a deployment its own cost map can't price sends the literal string `None` rather than omitting the header. A reported `0` on a call that consumed tokens is recorded as `$0.00` and logged as a warning, since it usually means the gateway prices that deployment at zero.
 
-The entry is refreshed in memory every 24h. Unlike the startup resolve, a failed refresh is non-fatal — the entry loaded at startup stays in use.
-
-**Requirements:** the resolved model needs a context window of at least 1,000,000 tokens (each PR is reviewed in a single call) and must accept `reasoning_effort`. Both are checked at startup.
+**Requirements:** the model needs a context window of at least 1,000,000 tokens (each PR is reviewed in a single call) and must accept `reasoning_effort`. Both are checked at startup.
 
 ### Optional: forward review-cost events to riptide
 

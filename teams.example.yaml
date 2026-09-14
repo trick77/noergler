@@ -17,7 +17,7 @@
 # Team-overridable: model, reasoning effort, context window, every REVIEW_*
 # knob except the two prompt templates, the Jira acceptance-criteria prefixes,
 # riptide. NOT overridable (instance-wide, naming them here disables the
-# team): OPENAI_BASE_URL, MODEL_CATALOG_URL, REVIEW_PROMPT_TEMPLATE,
+# team): OPENAI_BASE_URL, REVIEW_PROMPT_TEMPLATE,
 # REVIEW_MENTION_PROMPT_TEMPLATE.
 
 teams:
@@ -31,9 +31,9 @@ teams:
         repos: [terraform-core, ansible]              # only these repos (one repo webhook each); for a project shared between teams. A new repo needs an entry here
     inference:
       api_key_env: TEAM_PLATFORM_OPENAI_API_KEY       # required; env var holding this team's key for the OpenAI-compatible endpoint (spend is attributed per key)
-      # model: gpt-5.4                                # optional, default: instance OPENAI_MODEL. Must be spelled as the catalog spells it
+      # model: ai-gateway-gpt-5.5                     # optional, default: instance OPENAI_MODEL. Exactly as the gateway's /v1/models lists it for this key
       # reasoning_effort: high                        # optional, default: instance OPENAI_REASONING_EFFORT. One of minimal, low, medium, high
-      # context_window: 0                             # optional, default: instance OPENAI_CONTEXT_WINDOW. 0 = from the catalog
+      # context_window: 0                             # optional, default: instance OPENAI_CONTEXT_WINDOW. 0 = from the gateway's /v1/models
     review:                                           # optional block; any ReviewConfig field, same names as REVIEW_* without the prefix, lowercase
       auto_review_authors: [alice, bob]               # optional, default: instance REVIEW_AUTO_REVIEW_AUTHORS (empty = all authors)
       max_pr_cost_usd: 8.00                           # optional, default: instance REVIEW_MAX_PR_COST_USD

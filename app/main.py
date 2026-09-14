@@ -17,7 +17,6 @@ from fastapi.responses import JSONResponse
 from app.bitbucket import BitbucketClient
 from app.config import AppConfig, TeamConfig, load_config, log_config, model_label
 from app.logging_config import configure_logging
-from app.pricing_refresher import PricingRefresher
 from app.db import close_pool, create_pool
 from app.llm_client import LLMClient
 from app.jira import JiraClient
@@ -65,7 +64,6 @@ config: AppConfig = cast(AppConfig, cast(object, None))
 bitbucket_client: BitbucketClient = cast(BitbucketClient, cast(object, None))
 jira_client: JiraClient = cast(JiraClient, cast(object, None))
 review_queue: ReviewQueue = cast(ReviewQueue, cast(object, None))
-pricing_refresher: PricingRefresher = cast(PricingRefresher, cast(object, None))
 # Enabled teams by slug; disabled teams by slug with the reason. A slug lives
 # in exactly one of the two. Both are fixed after startup — fixing a team is
 # a config change and a redeploy, same as any other setting.
@@ -138,7 +136,7 @@ async def _start_team(
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    global config, bitbucket_client, jira_client, review_queue, pricing_refresher
+    global config, bitbucket_client, jira_client, review_queue
 
     version = os.environ.get("OPENSHIFT_BUILD_COMMIT") or os.environ.get("NOERGLER_VERSION") or "dev"
     logger.info("noergler version: %s", version)
@@ -222,20 +220,12 @@ async def lifespan(_app: FastAPI):
     review_queue = ReviewQueue(_review_for_team)
     review_queue.start()
 
-    # Every enabled team's model was resolved by its LLM connectivity check
-    # above; this task only keeps those entries fresh every 24h.
-    pricing_refresher = PricingRefresher(
-        [rt.config.llm.model for rt in teams.values()], config.llm.catalog_url,
-    )
-    pricing_refresher.start()
-
     _app.state.config = config
     _app.state.db_pool = db_pool
     logger.info("Bridge service started, api_url=%s, teams=%d", config.llm.api_url, len(teams))
 
     yield
 
-    await pricing_refresher.stop()
     await review_queue.stop()
     for runtime in teams.values():
         await runtime.llm.close()

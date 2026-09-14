@@ -265,7 +265,7 @@ def _make_review_result(
     cost_usd=0.000875, key_spend_usd=None,
 ):
     # cost_usd mirrors what the proxy reports on the response; None models an
-    # endpoint that reports no cost, which falls back to the catalog rates.
+    # endpoint that reports no cost, which leaves the run unpriced.
     # key_spend_usd is the whole-key gauge, absent on a non-LiteLLM endpoint.
     return LLMClient.ReviewResult(
         findings=findings or [],
@@ -1520,12 +1520,10 @@ class TestSortAndLimit:
             "- _Model: `gpt-5.3-codex` · ↑ 123'456 · ↓ 7'890 "
             "(131'346 total) · ⏱️ 18.4s_"
         ) in footnote_lines
-        # "Cost" (not "Estimated cost") because the endpoint reported it. Two
-        # decimals on the run so it reads consistently with the PR total.
+        # Two decimals on the run so it reads consistently with the PR total.
         assert "- _Cost: $0.42 this run, $1.37 PR total / $5.00 limit_" in footnote_lines
         # No key-spend header reported → nothing appended.
         assert "key total" not in summary
-        assert "Estimated cost (this run)" not in summary
         assert "Cumulative for this PR" not in summary
         assert "upper bound" not in summary
         assert "ignores prompt cache" not in summary

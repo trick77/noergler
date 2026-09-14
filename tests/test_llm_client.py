@@ -4,18 +4,19 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import openai
 import pytest
+import respx
 
 from app.config import (
     LLMConfig,
-    ModelCatalogEntry,
     ReviewConfig,
     TokenUsage,
-    _swap_active_entry,
     usable_context_budget,
 )
 from app.llm_client import (
     LLMClient,
+    ModelAccessError,
     FileReviewData,
+    resolve_model_window,
     ReviewSummary,
     _REVIEW_SYSTEM_MESSAGE,
     format_file_entry,
@@ -35,35 +36,24 @@ def llm_config():
         api_key="test-key",
         api_url="https://llm.test/v1",
         context_window=1_000_000,
-        catalog_url="https://catalog.test/model_prices_and_context_window.json",
     )
 
 
 @pytest.fixture(autouse=True)
-def _stub_model_catalog(monkeypatch):
-    """Keep the startup catalog resolve off the network.
+def _stub_model_resolve(monkeypatch):
+    """Keep the startup `/models` resolve off the network.
 
-    `check_connectivity` fetches the configured catalog for real, so without
-    this the suite would depend on that host being reachable. Installs a
-    1.05M-window entry and returns it from the resolve.
+    `check_connectivity` asks the gateway for real, so without this the suite
+    would depend on that host being reachable. Reports a 1.05M window for
+    whatever model is asked for. Tests of the resolve itself re-patch or use
+    respx.
     """
-    import app.config
     import app.llm_client
 
-    entry = ModelCatalogEntry(
-        model_id="stub-model",
-        matched_key="stub-model",
-        max_input_tokens=1_050_000,
-    )
+    async def _fake_resolve(http_client, api_url: str, api_key: str, model: str):
+        return 1_050_000
 
-    async def _fake_resolve(model_id: str, url: str, timeout: float = 10.0):
-        _swap_active_entry(entry)
-        return entry
-
-    monkeypatch.setattr(app.llm_client, "resolve_or_raise", _fake_resolve)
-    _swap_active_entry(entry)
-    yield entry
-    app.config._ACTIVE_ENTRIES.clear()
+    monkeypatch.setattr(app.llm_client, "resolve_model_window", _fake_resolve)
 
 
 @pytest.fixture
@@ -821,7 +811,6 @@ class TestReasoningEffort:
             api_url="https://llm.test/v1",
             reasoning_effort="low",
             context_window=1_000_000,
-            catalog_url="https://catalog.test/model_prices_and_context_window.json",
         )
         mock_create = AsyncMock(return_value=_mock_completion("ok", 5, 1))
         client = LLMClient(cfg, review_config)
@@ -842,7 +831,6 @@ class TestReasoningEffort:
             api_url="https://llm.test/v1",
             reasoning_effort="high",
             context_window=1_000_000,
-            catalog_url="https://catalog.test/model_prices_and_context_window.json",
         )
         client = LLMClient(cfg, review_config)
         client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
@@ -863,7 +851,6 @@ class TestReasoningEffort:
             api_url="https://llm.test/v1",
             reasoning_effort="high",
             context_window=1_000_000,
-            catalog_url="https://catalog.test/model_prices_and_context_window.json",
         )
         client = LLMClient(cfg, review_config)
         client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
@@ -884,7 +871,6 @@ class TestReasoningEffort:
             api_url="https://llm.test/v1",
             reasoning_effort="high",
             context_window=128_000,
-            catalog_url="https://catalog.test/model_prices_and_context_window.json",
         )
         client = LLMClient(cfg, review_config)
         mock_create = AsyncMock(return_value=_mock_completion("ok", 5, 1))
@@ -1202,79 +1188,173 @@ class TestEstimateReviewEffort:
 
 
 class TestContextWindowBudget:
-    """The window comes from the catalog entry installed at startup."""
+    """The window comes from the gateway's `/models` at startup."""
 
     @staticmethod
-    def _install(window: int, model_id: str = "gpt-5.5") -> None:
-        _swap_active_entry(ModelCatalogEntry(
-            model_id=model_id,
-            matched_key=model_id,
-            max_input_tokens=window,
-        ))
+    def _client(window: int, model: str = "gpt-5.5", **kw) -> LLMClient:
+        cfg = LLMConfig(model=model, api_key="t", api_url="https://llm.test/v1", **kw)
+        client = LLMClient(cfg, ReviewConfig())
+        client._resolved_window = window
+        return client
 
-    def test_explicit_context_window_overrides_catalog(self, review_config):
+    def test_explicit_context_window_overrides_gateway(self):
         # OPENAI_CONTEXT_WINDOW stays the escape hatch for an endpoint whose
-        # real cap differs from what the catalog advertises.
-        self._install(1_050_000)
-        cfg = LLMConfig(
-            model="gpt-5.5",
-            api_key="t",
-            api_url="https://llm.test/v1",
-            context_window=1_500_000,
-            catalog_url="https://catalog.test/model_prices_and_context_window.json",
-        )
-        client = LLMClient(cfg, review_config)
+        # real cap differs from what the gateway advertises.
+        client = self._client(1_050_000, context_window=1_500_000)
         assert client.context_window == 1_500_000
         assert client.input_token_budget == usable_context_budget(1_500_000)
 
-    def test_budget_derived_from_catalog_window(self, review_config):
+    def test_budget_derived_from_gateway_window(self):
         # A 128k window is below the trust threshold → flat 16k headroom.
-        self._install(128_000, "gpt-4o")
-        cfg = LLMConfig(model="gpt-4o", api_key="t", api_url="https://llm.test/v1", catalog_url="https://catalog.test/model_prices_and_context_window.json")
-        client = LLMClient(cfg, review_config)
+        client = self._client(128_000, "gpt-4o")
         assert client.context_window == 128_000
         assert client.input_token_budget == 128_000 - 16_000
 
-    def test_budget_just_above_trust_threshold(self, review_config):
+    def test_budget_just_above_trust_threshold(self):
         # 272k is just above the 256k threshold, so the diminishing-trust curve
         # applies: 256k + (272k-256k)*0.5 = 264k.
-        self._install(272_000, "gpt-5.3-codex")
-        cfg = LLMConfig(model="gpt-5.3-codex", api_key="t", api_url="https://llm.test/v1", catalog_url="https://catalog.test/model_prices_and_context_window.json")
-        client = LLMClient(cfg, review_config)
+        client = self._client(272_000, "gpt-5.3-codex")
         assert client.context_window == 272_000
         assert client.input_token_budget == 264_000
 
-    def test_budget_for_million_token_model(self, review_config):
+    def test_budget_for_million_token_model(self):
         # A 1.05M window degrades hard: 256k + (1050k-256k)*0.5 = 653k.
-        self._install(1_050_000)
-        cfg = LLMConfig(model="gpt-5.5", api_key="t", api_url="https://llm.test/v1", catalog_url="https://catalog.test/model_prices_and_context_window.json")
-        client = LLMClient(cfg, review_config)
+        client = self._client(1_050_000)
         assert client.context_window == 1_050_000
         assert client.input_token_budget == 653_000
 
     def test_window_is_zero_before_startup_resolve(self, review_config):
-        # Nothing installed yet. Every real caller runs after
-        # check_connectivity, which installs an entry or aborts the process.
-        import app.config
-        app.config._ACTIVE_ENTRIES.clear()
-        cfg = LLMConfig(model="gpt-5.5", api_key="t", api_url="https://llm.test/v1", catalog_url="https://catalog.test/model_prices_and_context_window.json")
+        # Every real caller runs after check_connectivity, which resolves the
+        # window or disables the team.
+        cfg = LLMConfig(model="gpt-5.5", api_key="t", api_url="https://llm.test/v1")
         client = LLMClient(cfg, review_config)
         assert client.context_window == 0
 
-    def test_gateway_alias_is_looked_up_verbatim(self, review_config):
-        # The gateway's own catalog lists the prefixed name, so the alias is
-        # both what gets resolved and what goes on the wire — no second knob.
-        self._install(1_050_000, "ai-gateway/gpt-5.5")
-        cfg = LLMConfig(
-            model="ai-gateway/gpt-5.5",
-            api_key="t",
-            api_url="https://llm.test/v1",
-            catalog_url="https://catalog.test/model_prices_and_context_window.json",
+
+class TestResolveModelWindow:
+    """`/models` with the team's key is both the access check and the window."""
+
+    URL = "https://llm.test/v1/models"
+
+    @staticmethod
+    def _listing(*entries):
+        return httpx.Response(200, json={"object": "list", "data": list(entries)})
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_listed_model_yields_its_window(self):
+        route = respx.get(self.URL).mock(return_value=self._listing(
+            {"id": "ai-gateway-gpt-5.5", "object": "model", "max_input_tokens": 1_050_000, "max_output_tokens": 128_000},
+        ))
+        async with httpx.AsyncClient() as http:
+            window = await resolve_model_window(http, "https://llm.test/v1", "team-key", "ai-gateway-gpt-5.5")
+        assert window == 1_050_000
+        assert route.calls.last.request.headers["Authorization"] == "Bearer team-key"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_trailing_slash_on_base_url(self):
+        respx.get(self.URL).mock(return_value=self._listing({"id": "m", "max_input_tokens": 1_000_000}))
+        async with httpx.AsyncClient() as http:
+            assert await resolve_model_window(http, "https://llm.test/v1/", "k", "m") == 1_000_000
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_listed_without_window_yields_none(self):
+        respx.get(self.URL).mock(return_value=self._listing({"id": "m", "object": "model"}))
+        async with httpx.AsyncClient() as http:
+            assert await resolve_model_window(http, "https://llm.test/v1", "k", "m") is None
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_unlisted_model_names_what_the_key_may_use(self):
+        # The key is scoped to an access group; the model asked for is not in
+        # it. The message carries the listing so the operator sees the exact
+        # spelling the gateway expects.
+        respx.get(self.URL).mock(return_value=self._listing({"id": "ai-gateway-gpt-5.5", "max_input_tokens": 1}))
+        async with httpx.AsyncClient() as http:
+            with pytest.raises(ModelAccessError, match=r"`ai-gateway/gpt-5.5` is not available.*\['ai-gateway-gpt-5.5'\]"):
+                await resolve_model_window(http, "https://llm.test/v1", "k", "ai-gateway/gpt-5.5")
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_http_error_propagates(self):
+        respx.get(self.URL).mock(return_value=httpx.Response(401, json={"error": "bad key"}))
+        async with httpx.AsyncClient() as http:
+            with pytest.raises(httpx.HTTPStatusError):
+                await resolve_model_window(http, "https://llm.test/v1", "k", "m")
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_malformed_body_is_an_access_error(self):
+        respx.get(self.URL).mock(return_value=httpx.Response(200, json={"models": []}))
+        async with httpx.AsyncClient() as http:
+            with pytest.raises(ModelAccessError, match="no `data` list"):
+                await resolve_model_window(http, "https://llm.test/v1", "k", "m")
+
+
+class TestCheckConnectivityWindow:
+    """check_connectivity installs the gateway window or refuses the team."""
+
+    @staticmethod
+    def _client(monkeypatch, window, **cfg_kw) -> LLMClient:
+        import app.llm_client
+
+        async def _fake(http_client, api_url, api_key, model):
+            return window
+
+        monkeypatch.setattr(app.llm_client, "resolve_model_window", _fake)
+        cfg = LLMConfig(model="m", api_key="k", api_url="https://llm.test/v1", **cfg_kw)
+        client = LLMClient(cfg, ReviewConfig())
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
+            return_value=_mock_completion("ok", 5, 1)
         )
-        client = LLMClient(cfg, review_config)
-        assert client.context_window == 1_050_000
-        assert client.input_token_budget == 653_000
-        assert client.config.model == "ai-gateway/gpt-5.5"
+        return client
+
+    @pytest.mark.asyncio
+    async def test_gateway_window_is_installed(self, monkeypatch):
+        client = self._client(monkeypatch, 1_050_000)
+        try:
+            await client.check_connectivity()
+            assert client.context_window == 1_050_000
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_no_window_and_no_override_refuses(self, monkeypatch):
+        client = self._client(monkeypatch, None)
+        try:
+            with pytest.raises(RuntimeError, match="without `max_input_tokens`.*OPENAI_CONTEXT_WINDOW"):
+                await client.check_connectivity()
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_no_window_but_override_passes(self, monkeypatch):
+        client = self._client(monkeypatch, None, context_window=1_200_000)
+        try:
+            await client.check_connectivity()
+            assert client.context_window == 1_200_000
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_unlisted_model_propagates_access_error(self, monkeypatch):
+        import app.llm_client
+
+        async def _deny(http_client, api_url, api_key, model):
+            raise ModelAccessError("model `m` is not available to this team's key; the key lists ['x']")
+
+        monkeypatch.setattr(app.llm_client, "resolve_model_window", _deny)
+        client = LLMClient(LLMConfig(model="m", api_key="k", api_url="https://llm.test/v1"), ReviewConfig())
+        create = AsyncMock()
+        client.openai_client.chat.completions.with_raw_response.create = create
+        try:
+            with pytest.raises(ModelAccessError, match="not available to this team's key"):
+                await client.check_connectivity()
+            create.assert_not_called()
+        finally:
+            await client.close()
 
 
 class TestReportedCost:
@@ -1568,7 +1648,7 @@ class TestSerializationAndDeadline:
     def test_empty_api_key_does_not_crash_construction(self, review_config):
         """A no-auth endpoint (empty api_key) must not make AsyncOpenAI raise
         'Missing credentials' at construction — a placeholder is substituted."""
-        cfg = LLMConfig(model="gpt-5.3-codex", api_key="", api_url="https://llm.test/v1", catalog_url="https://catalog.test/model_prices_and_context_window.json")
+        cfg = LLMConfig(model="gpt-5.3-codex", api_key="", api_url="https://llm.test/v1")
         client = LLMClient(cfg, review_config)
         try:
             assert client.openai_client.api_key == "no-auth"
