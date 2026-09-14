@@ -50,7 +50,7 @@ Review behaviour (team block `review:`, same names without the `REVIEW_` prefix,
 |---|---|---|
 | `REVIEW_AUTO_REVIEW_AUTHORS` | empty (= everyone) | Comma-separated PR authors that get automatic reviews |
 | `REVIEW_IGNORE_AUTHORS` | empty | Comma-separated accounts (CI and dependency bots) whose PRs and pushes never trigger an automatic review; wins over `REVIEW_AUTO_REVIEW_AUTHORS`, an @mention still reviews |
-| `REVIEW_EXCLUDE_REPOS` | `*-infra` | Comma-separated repo slug globs (case-insensitive) noergler ignores for every event although the team's project webhook delivers them; seeds each team's `team_settings` once, the team changes it via `PUT /teams/<slug>/settings` |
+| `REVIEW_EXCLUDE_REPOS` | `*-infra` | Comma-separated repo slug globs (case-insensitive) that never get a review although the team's project webhook delivers them (lifecycle events of earlier reviews still pass; an explicitly claimed repo is never excluded). Seeds a new team's `team_settings` once; rows that existed before migration 002 got `*-infra` from the migration, not from this variable. The team changes it via `PUT /teams/<slug>/settings` |
 | `REVIEW_MAX_COMMENTS` | `25` | Cap on inline comments per review run |
 | `REVIEW_MAX_FILE_LINES` | `1000` | Files longer than this are reviewed from the diff only, without full file context |
 | `REVIEW_DIFF_EXTRA_LINES_BEFORE` | `3` | Context lines added before each hunk |

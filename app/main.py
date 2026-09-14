@@ -442,8 +442,12 @@ async def webhook(
             detail=f"repository {repo.project.key}/{repo.slug} is not owned by team {team_slug}",
         )
     # A project webhook delivers for every repo in it; the team's exclude
-    # patterns carve repos out of that, for every event kind, @mentions too.
-    if team_store.excludes_repo(team.review.exclude_repos, repo.slug):
+    # patterns carve repos out of that for everything that would start a
+    # review (opened, pushed, @mention). Lifecycle events still pass: a PR
+    # reviewed before the pattern was set must still be marked merged/
+    # declined/deleted and get its cost rollup.
+    excluded = not team.reviews_repo(repo.project.key, repo.slug)
+    if excluded and event_key in _REVIEW_EVENT_KEYS | {"pr:comment:added"}:
         logger.info("webhook ignored: %s/%s matches exclude_repos", repo.project.key, repo.slug)
         return {"status": "ignored", "reason": "repo excluded by the team's exclude_repos"}
 

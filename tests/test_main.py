@@ -161,12 +161,16 @@ class TestExcludedRepos:
             headers={"X-Hub-Signature": _sign(body), "Content-Type": "application/json"},
         )
 
-    def test_excluded_repo_is_ignored_for_every_event(self, client):
-        team = main_module.teams[TEAM].config
-        team.review = team.review.model_copy(update={"exclude_repos": ["*-infra"]})
+    def _infra_payload(self):
         payload = json.loads(json.dumps(PR_PAYLOAD))
         for ref in ("fromRef", "toRef"):
             payload["pullRequest"][ref]["repository"]["slug"] = "platform-infra"
+        return payload
+
+    def test_excluded_repo_gets_no_review_but_keeps_its_lifecycle(self, client):
+        team = main_module.teams[TEAM].config
+        team.review = team.review.model_copy(update={"exclude_repos": ["*-infra"]})
+        payload = self._infra_payload()
         r = self._post(client, payload)
         assert r.status_code == 200
         assert r.json() == {"status": "ignored", "reason": "repo excluded by the team's exclude_repos"}
@@ -174,8 +178,18 @@ class TestExcludedRepos:
         assert self._post(client, mention).json()["status"] == "ignored"
         assert client.reviewer.review_pull_request.await_count == 0
         assert client.reviewer.handle_mention.await_count == 0
+        # a PR reviewed before the pattern existed is still closed out
+        merged = dict(payload, eventKey="pr:merged")
+        assert self._post(client, merged).json()["reason"] == "merged-rollup"
+        assert client.reviewer.handle_pr_merged.await_count == 1
         # the un-excluded repo still reviews
         assert self._post(client, PR_PAYLOAD).json()["status"] == "accepted"
+
+    def test_explicit_repo_claim_wins_over_the_glob(self, client):
+        team = main_module.teams[TEAM].config
+        team.projects = [ProjectScope(key="PROJ", repos=["platform-infra", "repo"])]
+        team.review = team.review.model_copy(update={"exclude_repos": ["*-infra"]})
+        assert self._post(client, self._infra_payload()).json()["status"] == "accepted"
 
 
 class TestTeamRouting:

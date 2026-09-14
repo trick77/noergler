@@ -9,14 +9,13 @@ project, is checked here inside a transaction that locks the project's rows.
 
 from __future__ import annotations
 
-import fnmatch
 import logging
 from dataclasses import dataclass, field
 from typing import Any
 
 import asyncpg
 
-from app.config import ProjectScope
+from app.config import ProjectScope, _excludes_repo
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +45,7 @@ class TeamSettings:
 
 
 def excludes_repo(patterns: list[str], repo_slug: str) -> bool:
-    slug = repo_slug.lower()
-    return any(fnmatch.fnmatchcase(slug, p.lower()) for p in patterns)
+    return _excludes_repo(patterns, repo_slug)
 
 
 def _scopes_from_rows(rows: list[asyncpg.Record]) -> list[ProjectScope]:

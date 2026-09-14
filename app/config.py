@@ -1,3 +1,4 @@
+import fnmatch
 import logging
 import os
 import re
@@ -357,6 +358,11 @@ class TeamBlock(BaseModel, extra="forbid"):
         return v
 
 
+def _excludes_repo(patterns: list[str], repo_slug: str) -> bool:
+    slug = repo_slug.lower()
+    return any(fnmatch.fnmatchcase(slug, p.lower()) for p in patterns)
+
+
 class TeamConfig(BaseModel):
     """A fully resolved team: secrets read, defaults merged, ready to use.
 
@@ -377,6 +383,24 @@ class TeamConfig(BaseModel):
 
     def owns(self, project_key: str, repo_slug: str) -> bool:
         return any(p.owns(project_key, repo_slug) for p in self.projects)
+
+    def claims_repo_explicitly(self, project_key: str, repo_slug: str) -> bool:
+        """The repo is named in a `repos:` list, not just covered by a
+        whole-project claim. A deliberate per-repo claim wins over
+        `exclude_repos` globs."""
+        return any(
+            p.key == project_key and p.repos is not None and repo_slug in p.repos
+            for p in self.projects
+        )
+
+    def reviews_repo(self, project_key: str, repo_slug: str) -> bool:
+        """Owned, and not carved out by `review.exclude_repos` (an explicitly
+        claimed repo is never carved out)."""
+        if not self.owns(project_key, repo_slug):
+            return False
+        if self.claims_repo_explicitly(project_key, repo_slug):
+            return True
+        return not _excludes_repo(self.review.exclude_repos, repo_slug)
 
 
 class AppConfig(BaseModel):
