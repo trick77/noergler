@@ -278,7 +278,14 @@ Each team claims and onboards its own projects through the service; nobody needs
 
 **Once per team (noergler admin):** add the team to `teams.yaml` (see [Teams](#teams)), set `TEAM_<SLUG>_WEBHOOK_SECRET` (`openssl rand -hex 32`) and `TEAM_<SLUG>_OPENAI_API_KEY`, set `NOERGLER_PUBLIC_URL` on the instance, redeploy, hand the team admin the webhook secret: it is the team's credential for the API.
 
-**Team admin:** you need the team's webhook secret (authenticates you to noergler) and, for anything that touches Bitbucket, your own Bitbucket HTTP access token with project admin on your projects (it proves the claim, creates the webhooks and grants the bot write access). Then:
+**Team admin:** two credentials, not to be confused:
+
+| | What | For |
+|---|---|---|
+| **Team secret** | `TEAM_<SLUG>_WEBHOOK_SECRET`, from the noergler admin | Authenticates every API call (`Authorization: Bearer`); the same secret Bitbucket signs events with |
+| **Your Bitbucket admin token** | Your own HTTP access token (Manage account → HTTP access tokens) with **project admin** on the team's projects | `/onboard` only (`X-Bitbucket-Token`): proves the claim, creates the webhooks, grants the bot write access. Used for the request, never stored |
+
+The admin token is **not** the bot's `BITBUCKET_TOKEN` (repo read/write, no admin: it cannot create webhooks). It belongs to a person with project admin. Reading settings and editing the author lists need the team secret only. Then:
 
 ```bash
 export SECRET=<the team's webhook secret>
