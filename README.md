@@ -309,7 +309,7 @@ curl -sS -X PUT https://noergler.example.com/teams/platform/settings -H "Authori
 curl -sS -X PUT https://noergler.example.com/teams/platform/settings -H "Authorization: Bearer $SECRET" -H 'Content-Type: application/json' -d '{"exclude_repos":["*-infra","sandbox-*"]}'
 ```
 
-Ready-made requests for the IntelliJ HTTP client are in [`http/`](http/).
+Ready-made requests for the IntelliJ HTTP client are in [`http/`](http/), one file per topic (status, claim, remove, settings).
 
 `POST /onboard/<team>` checks the team secret first (`401` otherwise, nothing else is answered); the Bitbucket token is used for this request's Bitbucket calls and dropped, and proves itself per target (no admin there → that target `failed`). Body fields:
 

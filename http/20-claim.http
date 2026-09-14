@@ -1,0 +1,40 @@
+# noergler team self-service, IntelliJ HTTP client. Pick an environment
+# (dev / prod) from http-client.env.json and fill in host, team, secret and
+# token there; do not commit secret or token.
+#   {{secret}}  the team's webhook secret (from the noergler admin): authenticates every call
+#   {{token}}   your own Bitbucket HTTP access token with project admin: /onboard only,
+#               NOT the bot's BITBUCKET_TOKEN (it has no admin)
+
+### Claim a whole project and some repos of a shared one, create the hooks, grant the bot write access
+POST {{host}}/onboard/{{team}}
+Authorization: Bearer {{secret}}
+X-Bitbucket-Token: {{token}}
+Content-Type: application/json
+
+{
+  "action": "grant-bot",
+  "projects": [
+    {"key": "PLAT"},
+    {"key": "INFRA", "repos": ["terraform-core", "ansible"]}
+  ]
+}
+
+### Same, but only report what would happen (no claim, no hook, no grant)
+POST {{host}}/onboard/{{team}}
+Authorization: Bearer {{secret}}
+X-Bitbucket-Token: {{token}}
+Content-Type: application/json
+
+{
+  "action": "grant-bot",
+  "dry_run": true,
+  "projects": [{"key": "PLAT"}]
+}
+
+### Re-run the hooks over the current claims (after a webhook secret rotation: remove first, see below)
+POST {{host}}/onboard/{{team}}
+Authorization: Bearer {{secret}}
+X-Bitbucket-Token: {{token}}
+Content-Type: application/json
+
+{"action": "grant-bot"}

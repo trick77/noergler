@@ -1,0 +1,37 @@
+# noergler team self-service, IntelliJ HTTP client. Pick an environment
+# (dev / prod) from http-client.env.json and fill in host, team, secret and
+# token there; do not commit secret or token.
+#   {{secret}}  the team's webhook secret (from the noergler admin): authenticates every call
+#   {{token}}   your own Bitbucket HTTP access token with project admin: /onboard only,
+#               NOT the bot's BITBUCKET_TOKEN (it has no admin)
+
+### Give a repo up: hook, claim and every review record of it go. Count first.
+POST {{host}}/onboard/{{team}}
+Authorization: Bearer {{secret}}
+X-Bitbucket-Token: {{token}}
+Content-Type: application/json
+
+{
+  "action": "remove",
+  "dry_run": true,
+  "projects": [{"key": "INFRA", "repos": ["ansible"]}]
+}
+
+### ... then for real
+POST {{host}}/onboard/{{team}}
+Authorization: Bearer {{secret}}
+X-Bitbucket-Token: {{token}}
+Content-Type: application/json
+
+{
+  "action": "remove",
+  "projects": [{"key": "INFRA", "repos": ["ansible"]}]
+}
+
+### Remove the hooks only (claims and data stay), e.g. before a secret rotation
+POST {{host}}/onboard/{{team}}
+Authorization: Bearer {{secret}}
+X-Bitbucket-Token: {{token}}
+Content-Type: application/json
+
+{"action": "remove"}
