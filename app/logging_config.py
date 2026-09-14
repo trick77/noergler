@@ -54,6 +54,17 @@ def _strip_reserved(_logger: Any, _name: str, event_dict: dict[str, Any]) -> dic
     return event_dict
 
 
+def _timestamp_first(_logger: Any, _name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    del _logger, _name
+    # merge_contextvars runs before TimeStamper, so bound request fields
+    # (request_id, path, status_code, ...) land in front of `timestamp`.
+    # Splunk's auto timestamp search only looks 128 chars into the event
+    # and falls back to index time when it misses; keep `timestamp` first.
+    if "timestamp" in event_dict:
+        return {"timestamp": event_dict.pop("timestamp"), **event_dict}
+    return event_dict
+
+
 def configure_logging(level: str = "INFO", env: str = "dev") -> None:
     log_level = getattr(logging, level.upper(), logging.INFO)
 
@@ -67,6 +78,7 @@ def configure_logging(level: str = "INFO", env: str = "dev") -> None:
         structlog.processors.EventRenamer("msg"),
         _rename_level,
         _strip_reserved,
+        _timestamp_first,
     ]
 
     # Bridge: route stdlib logs through the same JSON pipeline so Splunk
