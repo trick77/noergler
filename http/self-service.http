@@ -85,11 +85,30 @@ Content-Type: application/json
 {"action": "remove"}
 
 ### Who gets automatic reviews (empty = everyone) and who never triggers one (CI and dependency bots)
-PUT {{host}}/teams/{{team}}/review-authors
+# Fields left out stay as they are; a list given replaces the whole list.
+PUT {{host}}/teams/{{team}}/settings
 Authorization: Bearer {{secret}}
 Content-Type: application/json
 
 {
   "auto_review_authors": [],
   "ignore_authors": ["ci-bot", "renovate"]
+}
+
+### Repos of the claimed projects noergler leaves alone (glob on the repo slug, case-insensitive). Default: *-infra
+PUT {{host}}/teams/{{team}}/settings
+Authorization: Bearer {{secret}}
+Content-Type: application/json
+
+{
+  "exclude_repos": ["*-infra", "sandbox-*"]
+}
+
+### ... or review every repo, *-infra included
+PUT {{host}}/teams/{{team}}/settings
+Authorization: Bearer {{secret}}
+Content-Type: application/json
+
+{
+  "exclude_repos": []
 }

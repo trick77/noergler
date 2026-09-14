@@ -8,10 +8,15 @@ _VERSIONS = Path("alembic/versions")
 _M001 = _VERSIONS / "001_initial_schema.py"
 
 
-def test_migration_chain_is_a_single_revision():
+def test_migration_chain():
     script = ScriptDirectory.from_config(Config("alembic.ini"))
     revs = [(r.revision, r.down_revision) for r in script.walk_revisions()]
-    assert revs == [("001", None)]
+    assert revs == [("002", "001"), ("001", None)]
+
+
+def test_002_adds_exclude_repos_with_the_infra_default():
+    text = (_VERSIONS / "002_exclude_repos.py").read_text()
+    assert "ALTER TABLE team_settings ADD COLUMN exclude_repos TEXT[] NOT NULL DEFAULT '{\"*-infra\"}'" in text
 
 
 def test_001_claims_are_unique_per_project_and_repo():

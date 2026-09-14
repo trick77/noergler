@@ -548,7 +548,10 @@ class TestTeamSettings:
         r = api.get(f"/teams/{TEAM}", headers=SECRET_ONLY)
         assert len(respx.calls) == 0
         assert r.status_code == 200
-        assert r.json() == {"team": TEAM, "projects": [{"key": "PROJ"}], "auto_review_authors": [], "ignore_authors": []}
+        assert r.json() == {
+            "team": TEAM, "projects": [{"key": "PROJ"}],
+            "auto_review_authors": [], "ignore_authors": [], "exclude_repos": ["*-infra"],
+        }
 
     @respx.mock
     def test_put_review_authors_takes_effect_immediately(self, api):
@@ -558,16 +561,18 @@ class TestTeamSettings:
         patcher, mocks = _store()
         with patcher:
             r = api.put(
-                f"/teams/{TEAM}/review-authors",
-                json={"auto_review_authors": [], "ignore_authors": ["os-jenkins-bb", " "]},
+                f"/teams/{TEAM}/settings",
+                json={"ignore_authors": ["os-jenkins-bb", " "]},
                 headers=SECRET_ONLY,
             )
         assert len(respx.calls) == 0
         assert r.status_code == 200, r.text
         assert r.json()["ignore_authors"] == ["os-jenkins-bb"]
+        # fields left out stay: the instance default for exclude_repos survives
+        assert r.json()["exclude_repos"] == ["*-infra"]
         mocks["put_settings"].assert_awaited_once()
         put = mocks["put_settings"].await_args
-        assert put is not None and put.args[2] == TeamSettings([], ["os-jenkins-bb"])
+        assert put is not None and put.args[2] == TeamSettings([], ["os-jenkins-bb"], ["*-infra"])
         assert put.kwargs == {"updated_by": "team:platform"}
         assert runtime.reviewer.is_auto_review_author("os-jenkins-bb") is False
         assert runtime.reviewer.is_auto_review_author("anyone") is True
@@ -609,3 +614,16 @@ class TestRemoveNeedsAdmin:
         with _store()[0]:
             r = api.post(f"/onboard/{TEAM}", json={"action": "onboard", "projects": [{"key": "PROJ"}]}, headers=AUTH)
         assert r.status_code == 502
+
+
+class TestExcludeRepos:
+    def test_put_replaces_and_clears(self, api):
+        patcher, mocks = _store()
+        with patcher:
+            r = api.put(f"/teams/{TEAM}/settings", json={"exclude_repos": ["*-infra", "sandbox*"]}, headers=SECRET_ONLY)
+            assert r.status_code == 200, r.text
+            assert r.json()["exclude_repos"] == ["*-infra", "sandbox*"]
+            r = api.put(f"/teams/{TEAM}/settings", json={"exclude_repos": []}, headers=SECRET_ONLY)
+            assert r.json()["exclude_repos"] == []
+            assert api.put(f"/teams/{TEAM}/settings", json={"nope": 1}, headers=SECRET_ONLY).status_code == 422
+        assert mocks["put_settings"].await_count == 2

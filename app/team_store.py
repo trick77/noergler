@@ -9,8 +9,9 @@ project, is checked here inside a transaction that locks the project's rows.
 
 from __future__ import annotations
 
+import fnmatch
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import asyncpg
@@ -37,6 +38,16 @@ class ClaimConflict(Exception):
 class TeamSettings:
     auto_review_authors: list[str]
     ignore_authors: list[str]
+    exclude_repos: list[str] = field(default_factory=list)
+
+    def excludes(self, repo_slug: str) -> bool:
+        """Case-insensitive glob match of a repo slug against `exclude_repos`."""
+        return excludes_repo(self.exclude_repos, repo_slug)
+
+
+def excludes_repo(patterns: list[str], repo_slug: str) -> bool:
+    slug = repo_slug.lower()
+    return any(fnmatch.fnmatchcase(slug, p.lower()) for p in patterns)
 
 
 def _scopes_from_rows(rows: list[asyncpg.Record]) -> list[ProjectScope]:
@@ -207,18 +218,23 @@ async def count_project_prs(pool: asyncpg.Pool, team_slug: str, project_key: str
 async def get_settings(pool: asyncpg.Pool, team_slug: str) -> TeamSettings | None:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT auto_review_authors, ignore_authors FROM team_settings WHERE team_slug = $1", team_slug
+            "SELECT auto_review_authors, ignore_authors, exclude_repos FROM team_settings WHERE team_slug = $1",
+            team_slug,
         )
     if row is None:
         return None
-    return TeamSettings(list(row["auto_review_authors"]), list(row["ignore_authors"]))
+    return TeamSettings(list(row["auto_review_authors"]), list(row["ignore_authors"]), list(row["exclude_repos"]))
 
 
 async def get_all_settings(pool: asyncpg.Pool) -> dict[str, TeamSettings]:
     async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT team_slug, auto_review_authors, ignore_authors FROM team_settings")
+        rows = await conn.fetch(
+            "SELECT team_slug, auto_review_authors, ignore_authors, exclude_repos FROM team_settings"
+        )
     return {
-        row["team_slug"]: TeamSettings(list(row["auto_review_authors"]), list(row["ignore_authors"]))
+        row["team_slug"]: TeamSettings(
+            list(row["auto_review_authors"]), list(row["ignore_authors"]), list(row["exclude_repos"])
+        )
         for row in rows
     }
 
@@ -229,17 +245,18 @@ async def put_settings(
     async with pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO team_settings (team_slug, auto_review_authors, ignore_authors, updated_by, updated_at)
-            VALUES ($1, $2, $3, $4, NOW())
+            INSERT INTO team_settings (team_slug, auto_review_authors, ignore_authors, exclude_repos, updated_by, updated_at)
+            VALUES ($1, $2, $3, $4, $5, NOW())
             ON CONFLICT (team_slug) DO UPDATE SET
                 auto_review_authors = EXCLUDED.auto_review_authors,
                 ignore_authors = EXCLUDED.ignore_authors,
+                exclude_repos = EXCLUDED.exclude_repos,
                 updated_by = EXCLUDED.updated_by,
                 updated_at = NOW()
             """,
-            team_slug, settings.auto_review_authors, settings.ignore_authors, updated_by,
+            team_slug, settings.auto_review_authors, settings.ignore_authors, settings.exclude_repos, updated_by,
         )
     logger.info(
-        "settings updated team=%s by=%s auto_review_authors=%s ignore_authors=%s",
-        team_slug, updated_by, settings.auto_review_authors, settings.ignore_authors,
+        "settings updated team=%s by=%s auto_review_authors=%s ignore_authors=%s exclude_repos=%s",
+        team_slug, updated_by, settings.auto_review_authors, settings.ignore_authors, settings.exclude_repos,
     )

@@ -147,11 +147,11 @@ Rules:
   `REVIEW_PROMPT_TEMPLATE`, `REVIEW_MENTION_PROMPT_TEMPLATE`) cannot appear in a team
   block; naming them disables the team.
 - **Claims and author lists are the team's own.** Which projects and repos a team owns
-  (`projects`) and its `review.auto_review_authors` / `review.ignore_authors` live in the
+  (`projects`), its `review.auto_review_authors` / `review.ignore_authors` and its `review.exclude_repos` live in the
   database (`team_claims`, `team_settings`) and are changed through the API
   (see [Webhook setup](#webhook-setup)); the values in `teams.yaml` only seed a slug the
   database does not know yet, and are ignored afterwards. The author lists seed with their
-  resolved value (instance `REVIEW_AUTO_REVIEW_AUTHORS` / `REVIEW_IGNORE_AUTHORS` merged
+  resolved value (instance `REVIEW_AUTO_REVIEW_AUTHORS` / `REVIEW_IGNORE_AUTHORS` / `REVIEW_EXCLUDE_REPOS` merged
   with the block), so an instance-wide default reaches a team once, at its first start.
   Everything else in the block is the noergler admin's and needs a redeploy.
 - **A project or repo belongs to exactly one team.** The database enforces it: a claim held
@@ -304,7 +304,9 @@ curl -sS -X POST $N "${H[@]}" -d '{"action":"remove","projects":[{"key":"PLAT"}]
 
 # what the team currently has; and who gets automatic reviews / who never triggers one (secret only, no Bitbucket)
 curl -sS https://noergler.example.com/teams/platform -H "Authorization: Bearer $SECRET"
-curl -sS -X PUT https://noergler.example.com/teams/platform/review-authors -H "Authorization: Bearer $SECRET" -H 'Content-Type: application/json' -d '{"auto_review_authors":[],"ignore_authors":["ci-bot"]}'
+curl -sS -X PUT https://noergler.example.com/teams/platform/settings -H "Authorization: Bearer $SECRET" -H 'Content-Type: application/json' -d '{"ignore_authors":["ci-bot"]}'
+# and which repos of the claimed projects noergler leaves alone (glob on the repo slug; default *-infra)
+curl -sS -X PUT https://noergler.example.com/teams/platform/settings -H "Authorization: Bearer $SECRET" -H 'Content-Type: application/json' -d '{"exclude_repos":["*-infra","sandbox-*"]}'
 ```
 
 Ready-made requests for the IntelliJ HTTP client are in [`http/`](http/).
@@ -322,7 +324,7 @@ Ready-made requests for the IntelliJ HTTP client are in [`http/`](http/).
 
 The answer is JSON: `healthy` (`status`: every target owned, bot can read, hook `ok`, no strays; actions: no target `failed`), `rows` per target, `text` (the same as a table), and with `projects` also `claimed` / `unclaimed` and `purged_prs`. `401` without the team secret or without `X-Bitbucket-Token`, `404` unknown team, `503` team disabled or `NOERGLER_PUBLIC_URL` unset, `400` unknown target. Hooks are created or updated idempotently (a second run reports `already up to date`). A failure on one target is reported and the rest continue. `remove` without `projects` only removes hooks; claims and data stay.
 
-`GET /teams/<team>` returns the claims and the two author lists. `PUT /teams/<team>/review-authors` replaces both lists (`auto_review_authors`: only these authors get automatic reviews, empty = everyone; `ignore_authors`: never an automatic review, wins over the first list; an @mention still reviews). Both need only the team secret. Changes take effect immediately, no redeploy.
+`GET /teams/<team>` returns the claims, the two author lists and the excluded repos. `PUT /teams/<team>/settings` updates any of `auto_review_authors` (only these authors get automatic reviews, empty = everyone), `ignore_authors` (never an automatic review, wins over the first list; an @mention still reviews) and `exclude_repos` (repo slug globs, case-insensitive, default `*-infra`: a project webhook delivers for every repo in the project, these are ignored for every event, @mentions included); a field left out stays, a list given replaces the whole list, `[]` clears it. Both need only the team secret. Changes take effect immediately, no redeploy.
 
 | Claim | Webhook | New repo in the project |
 |---|---|---|
@@ -392,7 +394,7 @@ The image is the whole deployment contract; how the environment reaches it is th
 
 - `CMD` serves on port 8080. `/health` is the liveness probe (always 200, lists enabled and disabled teams), `/ready` the readiness probe (503 while no team is enabled).
 - `alembic upgrade head` runs the migrations; run it before the app starts (init container or equivalent). Nothing creates the schema at runtime.
-- `POST /onboard/{team}`, `GET /teams/{team}`, `PUT /teams/{team}/review-authors` are the team self-service (see [Webhook setup](#webhook-setup)); onboarding needs `NOERGLER_PUBLIC_URL`.
+- `POST /onboard/{team}`, `GET /teams/{team}`, `PUT /teams/{team}/settings` are the team self-service (see [Webhook setup](#webhook-setup)); onboarding needs `NOERGLER_PUBLIC_URL`.
 - `TEAMS_CONFIG` points at the mounted `teams.yaml`; secrets arrive as environment variables named in that file.
 - Corporate CA: mount the trusted bundle and point `SSL_CERT_FILE` at it; httpx, openai and asyncpg all honour it.
 - One replica only: the review queue is a single in-process worker behind an inference lock.

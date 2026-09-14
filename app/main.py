@@ -69,9 +69,15 @@ class TeamRuntime:
         self.config.review = self.config.review.model_copy(update={
             "auto_review_authors": settings.auto_review_authors,
             "ignore_authors": settings.ignore_authors,
+            "exclude_repos": settings.exclude_repos,
         })
         self.reviewer.auto_review_authors = settings.auto_review_authors
         self.reviewer.ignore_authors = settings.ignore_authors
+
+    @property
+    def settings(self) -> team_store.TeamSettings:
+        r = self.config.review
+        return team_store.TeamSettings(r.auto_review_authors, r.ignore_authors, r.exclude_repos)
 
 
 config: AppConfig = cast(AppConfig, cast(object, None))
@@ -171,11 +177,14 @@ async def _load_team_store(db_pool, configured: dict[str, TeamConfig]) -> dict[s
             team.review = team.review.model_copy(update={
                 "auto_review_authors": settings[slug].auto_review_authors,
                 "ignore_authors": settings[slug].ignore_authors,
+                "exclude_repos": settings[slug].exclude_repos,
             })
-        elif team.review.auto_review_authors or team.review.ignore_authors:
+        elif team.review.auto_review_authors or team.review.ignore_authors or team.review.exclude_repos:
             await team_store.put_settings(
                 db_pool, slug,
-                team_store.TeamSettings(team.review.auto_review_authors, team.review.ignore_authors),
+                team_store.TeamSettings(
+                    team.review.auto_review_authors, team.review.ignore_authors, team.review.exclude_repos
+                ),
                 updated_by="teams.yaml",
             )
     return errors
@@ -432,6 +441,11 @@ async def webhook(
             status_code=403,
             detail=f"repository {repo.project.key}/{repo.slug} is not owned by team {team_slug}",
         )
+    # A project webhook delivers for every repo in it; the team's exclude
+    # patterns carve repos out of that, for every event kind, @mentions too.
+    if team_store.excludes_repo(team.review.exclude_repos, repo.slug):
+        logger.info("webhook ignored: %s/%s matches exclude_repos", repo.project.key, repo.slug)
+        return {"status": "ignored", "reason": "repo excluded by the team's exclude_repos"}
 
     if event_key == "pr:merged":
         background_tasks.add_task(reviewer.handle_pr_merged, payload)
@@ -484,9 +498,13 @@ class OnboardRequest(BaseModel, extra="forbid"):
     prune: bool = True
 
 
-class ReviewAuthorsRequest(BaseModel, extra="forbid"):
-    auto_review_authors: list[str]
-    ignore_authors: list[str]
+class TeamSettingsRequest(BaseModel, extra="forbid"):
+    """Partial update: a field left out stays as it is, a list given replaces
+    the whole list (`[]` clears it)."""
+    auto_review_authors: list[str] | None = None
+    ignore_authors: list[str] | None = None
+    # Repo slug glob patterns, e.g. "*-infra"; matched case-insensitively
+    exclude_repos: list[str] | None = None
 
 
 def _team_auth(team_slug: str, authorization: str | None) -> TeamRuntime:
@@ -551,6 +569,7 @@ def _team_view(runtime: TeamRuntime) -> dict[str, object]:
         "projects": [p.model_dump(exclude_none=True) for p in runtime.config.projects],
         "auto_review_authors": runtime.config.review.auto_review_authors,
         "ignore_authors": runtime.config.review.ignore_authors,
+        "exclude_repos": runtime.config.review.exclude_repos,
     }
 
 
@@ -736,23 +755,32 @@ async def _remove_and_unclaim(
 
 @app.get("/teams/{team_slug}")
 async def team_settings(team_slug: str, authorization: Annotated[str | None, Header()] = None):
-    """The team's own settings: claims and review author lists."""
+    """The team's own settings: claims, review author lists, excluded repos."""
     structlog.contextvars.bind_contextvars(team=team_slug)
     return _team_view(_team_auth(team_slug, authorization))
 
 
-@app.put("/teams/{team_slug}/review-authors")
-async def put_review_authors(
+def _clean(items: list[str] | None, current: list[str]) -> list[str]:
+    if items is None:
+        return current
+    return [a.strip() for a in items if a.strip()]
+
+
+@app.put("/teams/{team_slug}/settings")
+async def put_team_settings(
     team_slug: str,
-    body: ReviewAuthorsRequest,
+    body: TeamSettingsRequest,
     authorization: Annotated[str | None, Header()] = None,
 ):
-    """Replace both author lists. Takes effect immediately."""
+    """Update the team's lists: `auto_review_authors`, `ignore_authors`,
+    `exclude_repos`. Fields left out stay. Takes effect immediately."""
     structlog.contextvars.bind_contextvars(team=team_slug)
     runtime = _team_auth(team_slug, authorization)
+    current = runtime.settings
     settings = team_store.TeamSettings(
-        [a.strip() for a in body.auto_review_authors if a.strip()],
-        [a.strip() for a in body.ignore_authors if a.strip()],
+        _clean(body.auto_review_authors, current.auto_review_authors),
+        _clean(body.ignore_authors, current.ignore_authors),
+        _clean(body.exclude_repos, current.exclude_repos),
     )
     await team_store.put_settings(_pool(), team_slug, settings, updated_by=f"team:{team_slug}")
     runtime.apply_settings(settings)

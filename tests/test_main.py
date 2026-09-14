@@ -153,6 +153,31 @@ def client():
         app.router.lifespan_context = original_lifespan
 
 
+class TestExcludedRepos:
+    def _post(self, client, payload):
+        body = json.dumps(payload).encode()
+        return client.post(
+            WEBHOOK, content=body,
+            headers={"X-Hub-Signature": _sign(body), "Content-Type": "application/json"},
+        )
+
+    def test_excluded_repo_is_ignored_for_every_event(self, client):
+        team = main_module.teams[TEAM].config
+        team.review = team.review.model_copy(update={"exclude_repos": ["*-infra"]})
+        payload = json.loads(json.dumps(PR_PAYLOAD))
+        for ref in ("fromRef", "toRef"):
+            payload["pullRequest"][ref]["repository"]["slug"] = "platform-infra"
+        r = self._post(client, payload)
+        assert r.status_code == 200
+        assert r.json() == {"status": "ignored", "reason": "repo excluded by the team's exclude_repos"}
+        mention = dict(COMMENT_MENTION_PAYLOAD, pullRequest=payload["pullRequest"])
+        assert self._post(client, mention).json()["status"] == "ignored"
+        assert client.reviewer.review_pull_request.await_count == 0
+        assert client.reviewer.handle_mention.await_count == 0
+        # the un-excluded repo still reviews
+        assert self._post(client, PR_PAYLOAD).json()["status"] == "accepted"
+
+
 class TestTeamRouting:
     def test_unknown_team_returns_404(self, client):
         body = json.dumps(PR_PAYLOAD).encode()
@@ -677,9 +702,13 @@ teams:
             assert plat.config.review.auto_review_authors == ["alice"]
             assert plat.reviewer.ignore_authors == ["ci-bot"]
             assert plat.reviewer.is_auto_review_author("ci-bot") is False
+            # DB row without patterns wins over the instance default
+            assert plat.config.review.exclude_repos == []
             # platform is known to the DB: no seed; payments (unknown) is seeded
             assert [c.args[1] for c in add.await_args_list] == ["payments"]
-            assert put.await_count == 0
+            # payments has no row yet: seeded with the instance default (*-infra excluded)
+            assert [c.args[1] for c in put.await_args_list] == ["payments"]
+            assert put.await_args_list[0].args[2] == TeamSettings([], [], ["*-infra"])
 
     def test_seed_conflict_disables_that_team_only(self, env):
         from app.team_store import ClaimConflict
