@@ -50,15 +50,6 @@ class BitbucketClient:
     async def __aexit__(self, *exc: object) -> None:
         await self.close()
 
-    async def whoami(self) -> str:
-        """The account behind this client's token; empty for an anonymous or
-        rejected token (Bitbucket answers 200 with an empty body then)."""
-        response = await self.client.get("/plugins/servlet/applinks/whoami")
-        if response.status_code == 401:
-            return ""
-        response.raise_for_status()
-        return response.text.strip()
-
     async def check_connectivity(self) -> None:
         response = await self.client.get("/rest/api/1.0/application-properties")
         response.raise_for_status()

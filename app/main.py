@@ -489,29 +489,37 @@ class ReviewAuthorsRequest(BaseModel, extra="forbid"):
     ignore_authors: list[str]
 
 
-@asynccontextmanager
-async def _admin_client(authorization: str | None):
-    """A Bitbucket client on the caller's own token, after Bitbucket has
-    accepted it. Yields (client, caller username). The token is used for this
-    request only and never logged; nothing derived from teams.yaml or the DB
-    is answered before this check passes."""
+def _team_auth(team_slug: str, authorization: str | None) -> TeamRuntime:
+    """The team behind `Authorization: Bearer <its webhook secret>`.
+
+    The secret is the team's credential everywhere: Bitbucket signs events
+    with it, the team admin authenticates API calls with it. Compared in
+    constant time; nothing derived from the team's config or the DB is
+    answered before this passes. 404/503 for the slug come first (they leak
+    nothing the webhook route does not leak)."""
+    runtime = _runtime_for(team_slug)
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(
             status_code=401,
-            detail="Authorization: Bearer <your Bitbucket HTTP access token> required",
+            detail="Authorization: Bearer <the team's webhook secret> required",
         )
-    token = authorization[len("bearer "):].strip()
+    secret = authorization[len("bearer "):].strip()
+    if not secret or not hmac.compare_digest(secret.encode(), runtime.config.webhook_secret.encode()):
+        raise HTTPException(status_code=401, detail="wrong team secret")
+    return runtime
+
+
+def _admin_client(x_bitbucket_token: str | None) -> BitbucketClient:
+    """A Bitbucket client on the team admin's own token (`X-Bitbucket-Token`),
+    for this request only, never logged. The token proves itself per target:
+    listing or writing webhooks needs admin there."""
+    token = (x_bitbucket_token or "").strip()
     if not token:
-        raise HTTPException(status_code=401, detail="empty bearer token")
-    async with BitbucketClient(config.bitbucket, token=token) as admin:
-        try:
-            caller = await admin.whoami()
-        except Exception as exc:
-            logger.warning("whoami against Bitbucket failed: %s", exc)
-            raise HTTPException(status_code=502, detail="Bitbucket did not answer the token check") from exc
-        if not caller:
-            raise HTTPException(status_code=401, detail="Bitbucket rejected the token")
-        yield admin, caller
+        raise HTTPException(
+            status_code=401,
+            detail="X-Bitbucket-Token: <your Bitbucket HTTP access token with project admin> required",
+        )
+    return BitbucketClient(config.bitbucket, token=token)
 
 
 def _pool():
@@ -551,19 +559,20 @@ async def onboard(
     team_slug: str,
     body: OnboardRequest,
     authorization: Annotated[str | None, Header()] = None,
+    x_bitbucket_token: Annotated[str | None, Header()] = None,
 ):
     """Put noergler's webhook on the team's Bitbucket projects/repos, and with
     `projects` in the body claim them for the team first (or, with `remove`,
     give them up along with every PR record on them).
 
-    Authenticated by the caller's own Bitbucket token (`Authorization: Bearer`);
-    it is used for this request's Bitbucket calls and dropped. A claim needs
-    project admin on the target, proven with that token. Without `projects`
-    the targets are the team's current claims, `targets` can only narrow them.
-    The webhook secret never leaves the service: it is written into the hook here.
+    Authenticated by the team's webhook secret (`Authorization: Bearer`). The
+    Bitbucket calls run on the team admin's own token (`X-Bitbucket-Token`),
+    used for this request and dropped; a claim needs project admin on the
+    target, proven with that token. Without `projects` the targets are the
+    team's current claims, `targets` can only narrow them.
     """
     structlog.contextvars.bind_contextvars(team=team_slug)
-    runtime = _runtime_for(team_slug)
+    runtime = _team_auth(team_slug, authorization)
     team = runtime.config
     if not config.server.public_url:
         raise HTTPException(
@@ -577,7 +586,8 @@ async def onboard(
 
     webhook_url = f"{config.server.public_url}/webhook/{team_slug}"
     extra: dict[str, object] = {}
-    async with _admin_client(authorization) as (admin, caller):
+    caller = f"team:{team_slug}"
+    async with _admin_client(x_bitbucket_token) as admin:
         rows: list[onboarding.StatusRow] | list[onboarding.TargetResult]
         if body.projects is not None and body.action != "remove":
             rows, text, healthy = await _claim_and_onboard(runtime, admin, caller, body, webhook_url, extra)
@@ -728,9 +738,7 @@ async def _remove_and_unclaim(
 async def team_settings(team_slug: str, authorization: Annotated[str | None, Header()] = None):
     """The team's own settings: claims and review author lists."""
     structlog.contextvars.bind_contextvars(team=team_slug)
-    runtime = _runtime_for(team_slug)
-    async with _admin_client(authorization):
-        return _team_view(runtime)
+    return _team_view(_team_auth(team_slug, authorization))
 
 
 @app.put("/teams/{team_slug}/review-authors")
@@ -739,20 +747,13 @@ async def put_review_authors(
     body: ReviewAuthorsRequest,
     authorization: Annotated[str | None, Header()] = None,
 ):
-    """Replace both author lists. Needs project admin on at least one of the
-    team's claims (proven with the caller's token). Takes effect immediately."""
+    """Replace both author lists. Takes effect immediately."""
     structlog.contextvars.bind_contextvars(team=team_slug)
-    runtime = _runtime_for(team_slug)
-    async with _admin_client(authorization) as (admin, caller):
-        claims = onboarding.targets_for(runtime.config)
-        if not claims:
-            raise HTTPException(status_code=409, detail="claim a project first (POST /onboard with projects)")
-        if not any([await _has_admin(admin, t) for t in claims]):
-            raise HTTPException(status_code=403, detail="no project admin on any of the team's claims with this token")
-        settings = team_store.TeamSettings(
-            [a.strip() for a in body.auto_review_authors if a.strip()],
-            [a.strip() for a in body.ignore_authors if a.strip()],
-        )
-        await team_store.put_settings(_pool(), team_slug, settings, updated_by=caller)
-        runtime.apply_settings(settings)
+    runtime = _team_auth(team_slug, authorization)
+    settings = team_store.TeamSettings(
+        [a.strip() for a in body.auto_review_authors if a.strip()],
+        [a.strip() for a in body.ignore_authors if a.strip()],
+    )
+    await team_store.put_settings(_pool(), team_slug, settings, updated_by=f"team:{team_slug}")
+    runtime.apply_settings(settings)
     return _team_view(runtime)
