@@ -2203,24 +2203,30 @@ class Reviewer:
                 stats += f" · ⏱️ {elapsed:.1f}s"
             telemetry.append(stats)
 
-        # Omitted entirely when the endpoint didn't price the run — better
-        # than printing a misleading "$0.00".
+        # The run cost is omitted when the endpoint didn't price the run —
+        # better than printing a misleading "$0.00". The key total is shown
+        # regardless: it is the gateway's own gauge and stays valid while a
+        # single run goes unpriced.
+        cost_parts: list[str] = []
         if run_cost_usd is not None:
-            cost_line = f"Cost: ${run_cost_usd:.2f} this run"
+            cost_parts.append(f"${run_cost_usd:.2f} this run")
             if cumulative_cost_usd is not None:
-                cost_line += f", ${cumulative_cost_usd:.2f} PR total"
                 # Show the per-PR budget alongside the running total so the
                 # limit is transparent on every summary, not only at the cap.
-                cost_line += f" / ${self.review_config.max_pr_cost_usd:.2f} limit"
-            # Total already spent on the API key, straight from the proxy. It
-            # covers the whole key and all time, so it is neither added to the
-            # PR total nor compared against the per-PR limit — it sits at the
-            # end of the line as a separate figure. Zero is suppressed: a proxy
-            # that doesn't track key spend reports 0, and "$0.00 key total"
-            # reads as a broken integration rather than as a fresh key.
-            if key_spend_usd:
-                cost_line += f", ${key_spend_usd:.2f} key total"
-            telemetry.append(cost_line)
+                cost_parts.append(
+                    f"${cumulative_cost_usd:.2f} PR total"
+                    f" / ${self.review_config.max_pr_cost_usd:.2f} limit"
+                )
+        # Total already spent on the API key, straight from the proxy. It
+        # covers the whole key and all time, so it is neither added to the
+        # PR total nor compared against the per-PR limit — it sits at the
+        # end of the line as a separate figure. Zero is suppressed: a proxy
+        # that doesn't track key spend reports 0, and "$0.00 key total"
+        # reads as a broken integration rather than as a fresh key.
+        if key_spend_usd:
+            cost_parts.append(f"${key_spend_usd:.2f} key total")
+        if cost_parts:
+            telemetry.append("Cost: " + ", ".join(cost_parts))
 
         footnote = [*scope]
         footnote.extend(telemetry)

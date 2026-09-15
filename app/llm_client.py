@@ -128,9 +128,10 @@ def _usd_header(headers: Mapping[str, str], name: str) -> float | None:
     it when the call consumed tokens).
     """
     raw = headers.get(name)
-    # LiteLLM sets this header unconditionally via str(response_cost), so a
-    # deployment it can't price yields the literal string "None" rather than an
-    # absent header. Treat that as "not reported", not as corruption.
+    # LiteLLM sets this header via str(response_cost), so a deployment it
+    # can't price yields the literal string "None" rather than an absent
+    # header (newer versions drop the header instead). Treat that as "not
+    # reported", not as corruption; `_log_cost_headers` reports the raw value.
     if raw is None or raw.strip().lower() in ("", "none", "null"):
         return None
     try:
@@ -147,6 +148,34 @@ def _usd_header(headers: Mapping[str, str], name: str) -> float | None:
         logger.warning("implausible %s header: %r", name, raw)
         return None
     return value
+
+
+def _fmt_cost(cost: float | None) -> str:
+    return "unpriced" if cost is None else f"${cost:.4f}"
+
+
+def _log_cost_headers(headers: Mapping[str, str], cost: float | None) -> None:
+    """One INFO line per call with the raw pricing headers and the gateway's
+    call id, so an unpriced review can be matched to the gateway's own log.
+
+    An unpriced call lists every `x-litellm-*` header that did arrive: the
+    gateway has been seen to price the same model on one worker and not on
+    another, and the names that arrive are the only client-side clue to which
+    kind of response this was.
+    """
+    raw_cost = headers.get(_COST_HEADER)
+    raw_spend = headers.get(_KEY_SPEND_HEADER)
+    call_id = headers.get("x-litellm-call-id")
+    line = "LLM cost headers: %s=%s %s=%s call-id=%s" % (
+        _COST_HEADER, "absent" if raw_cost is None else repr(raw_cost),
+        _KEY_SPEND_HEADER, "absent" if raw_spend is None else repr(raw_spend),
+        call_id or "absent",
+    )
+    if cost is None:
+        seen = sorted(k for k in headers if k.lower().startswith("x-litellm"))
+        logger.warning("%s; unpriced call, x-litellm-* headers seen: %s", line, seen)
+    else:
+        logger.info(line)
 
 
 def _usage_from_response(
@@ -918,13 +947,25 @@ class LLMClient:
     async def _ping(self) -> ChatCompletion:
         """Smallest-possible completion used by the startup connectivity check.
 
-        Discards the reported cost — a ping's cost isn't attributable to any PR.
+        The reported cost is not attributed to any PR, but it is the first
+        chance to see whether the gateway prices this model at all: a None
+        here means every review will render without a `Cost:` line and the
+        per-PR cap will never apply, so say it once at boot.
         """
-        completion, _cost, _key_spend = await self._execute_chat_completion(
+        completion, cost, _key_spend = await self._execute_chat_completion(
             model=self.config.model,
             messages=[{"role": "user", "content": "Reply with: ok"}],
             **self._reasoning_kwargs(),
         )
+        label = model_label(self.config.model, self.config.reasoning_effort)
+        if cost is None:
+            logger.warning(
+                "Model %s is not priced by the gateway (no usable %s on the ping): "
+                "summaries will carry no cost and the per-PR cost cap never applies",
+                label, _COST_HEADER,
+            )
+        else:
+            logger.info("Model %s ping priced by the gateway: $%.6f", label, cost)
         return completion
 
     @dataclass
@@ -1072,8 +1113,8 @@ class LLMClient:
             )
 
         logger.info(
-            "Review complete: %d in (%d cached) + %d out = %d total tokens",
-            usage.prompt, usage.cached, usage.completion, usage.total,
+            "Review complete: %d in (%d cached) + %d out = %d total tokens, cost=%s",
+            usage.prompt, usage.cached, usage.completion, usage.total, _fmt_cost(usage.cost_usd),
         )
 
         return LLMClient.ReviewResult(
@@ -1141,8 +1182,8 @@ class LLMClient:
             )
             return "This PR is too large to answer within the model's context window."
         logger.info(
-            "Mention Q&A complete: %d in (%d cached) + %d out = %d total tokens",
-            usage.prompt, usage.cached, usage.completion, usage.total,
+            "Mention Q&A complete: %d in (%d cached) + %d out = %d total tokens, cost=%s",
+            usage.prompt, usage.cached, usage.completion, usage.total, _fmt_cost(usage.cost_usd),
         )
         return answer or "I couldn't process this PR to answer your question."
 
@@ -1270,19 +1311,7 @@ class LLMClient:
                 )
                 cost = _usd_header(raw.headers, _COST_HEADER)
                 key_spend = _usd_header(raw.headers, _KEY_SPEND_HEADER)
-                if cost is not None and key_spend is None:
-                    # The proxy priced the call but reported no key spend under
-                    # the name we look for. Header naming has varied across
-                    # LiteLLM versions, and a missing gauge is otherwise
-                    # indistinguishable from one this deployment doesn't track
-                    # — so name what did arrive rather than failing silently.
-                    logger.debug(
-                        "no %s on a priced response; x-litellm-* headers seen: %s",
-                        _KEY_SPEND_HEADER,
-                        sorted(
-                            k for k in raw.headers if k.lower().startswith("x-litellm")
-                        ),
-                    )
+                _log_cost_headers(raw.headers, cost)
                 return raw.parse(), cost, key_spend
             except asyncio.TimeoutError as exc:
                 logger.warning(

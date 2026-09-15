@@ -1584,10 +1584,16 @@ class TestSortAndLimit:
         )
         assert "key total" not in summary
 
-    def test_build_summary_omits_key_spend_when_run_is_unpriced(self, reviewer):
-        # No cost line at all means nowhere to hang the gauge.
+    def test_build_summary_keeps_key_spend_when_run_is_unpriced(self, reviewer):
+        # The gauge is the gateway's own figure and stays valid when a single
+        # run goes unpriced; only the per-run and PR figures are withheld.
         summary = reviewer._build_summary([], run_cost_usd=None, key_spend_usd=214.5)
-        assert "key total" not in summary
+        assert "Cost: $214.50 key total" in summary
+        assert "this run" not in summary
+        assert "PR total" not in summary
+
+    def test_build_summary_has_no_cost_line_when_nothing_is_reported(self, reviewer):
+        summary = reviewer._build_summary([], run_cost_usd=None, key_spend_usd=None)
         assert "Cost:" not in summary
 
     @pytest.mark.asyncio
