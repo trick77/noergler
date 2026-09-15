@@ -1,4 +1,5 @@
 import json
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -319,7 +320,6 @@ class TestParseReviewResponse:
         assert summary == ReviewSummary()
 
     def test_overview_empty_logs_warning(self, caplog):
-        import logging
         content = json.dumps({
             "findings": [],
             "overview": "",
@@ -745,6 +745,43 @@ class TestLLMClient:
         try:
             await client.check_connectivity()
             client.openai_client.chat.completions.with_raw_response.create.assert_called_once()
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_ping_warns_when_gateway_does_not_price_the_model(
+        self, llm_config, review_config, caplog,
+    ):
+        # The ping is the first call and the one place an operator reads at
+        # boot: an unpriced model is said once there, not discovered review
+        # by review.
+        client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
+            return_value=_mock_completion("pong", 5, 1)
+        )
+        try:
+            with caplog.at_level(logging.INFO, logger="app.llm_client"):
+                await client.check_connectivity()
+            assert any(
+                "is not priced by the gateway" in m and "per-PR cost cap never applies" in m
+                for m in caplog.messages
+            )
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_ping_logs_cost_when_gateway_prices_the_model(
+        self, llm_config, review_config, caplog,
+    ):
+        client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
+            return_value=_mock_completion("pong", 5, 1, cost_header="0.000015")
+        )
+        try:
+            with caplog.at_level(logging.INFO, logger="app.llm_client"):
+                await client.check_connectivity()
+            assert any("ping priced by the gateway: $0.000015" in m for m in caplog.messages)
+            assert not any("is not priced" in m for m in caplog.messages)
         finally:
             await client.close()
 
@@ -1469,6 +1506,63 @@ class TestReportedCost:
         try:
             _text, usage = await client._chat(system="s", user="u")
             assert usage.cost_usd is None
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_unpriced_call_is_logged_with_headers_seen(self, llm_config, review_config, caplog):
+        # An unpriced run used to leave no trace at all. Both the sentinel
+        # value and the list of x-litellm-* headers that did arrive are the
+        # only client-side evidence of a gateway that lost its pricing.
+        client = LLMClient(llm_config, review_config)
+        raw = _mock_completion("[]", cost_header="None")
+        raw.headers["x-litellm-call-id"] = "call-123"
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(return_value=raw)
+        try:
+            with caplog.at_level(logging.INFO, logger="app.llm_client"):
+                _text, usage = await client._chat(system="s", user="u")
+            assert usage.cost_usd is None
+            unpriced = [m for m in caplog.messages if "unpriced call" in m]
+            assert len(unpriced) == 1
+            assert "x-litellm-response-cost='None'" in unpriced[0]
+            assert "call-id=call-123" in unpriced[0]
+            assert "'x-litellm-call-id'" in unpriced[0]
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_non_litellm_endpoint_does_not_warn_per_call(self, llm_config, review_config, caplog):
+        # No x-litellm-* header at all: not a LiteLLM proxy, never priced,
+        # and a warning on every review would only be noise.
+        client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
+            return_value=_mock_completion("[]")
+        )
+        try:
+            with caplog.at_level(logging.INFO, logger="app.llm_client"):
+                _text, usage = await client._chat(system="s", user="u")
+            assert usage.cost_usd is None
+            assert [m for m in caplog.messages if m.startswith("LLM cost headers:")] == [
+                "LLM cost headers: x-litellm-response-cost=absent x-litellm-key-spend=absent call-id=absent"
+            ]
+            assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_priced_call_logs_headers_at_info(self, llm_config, review_config, caplog):
+        client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
+            return_value=_mock_completion("[]", cost_header="0.0123", key_spend_header="4.5")
+        )
+        try:
+            with caplog.at_level(logging.INFO, logger="app.llm_client"):
+                await client._chat(system="s", user="u")
+            lines = [m for m in caplog.messages if m.startswith("LLM cost headers:")]
+            assert lines == [
+                "LLM cost headers: x-litellm-response-cost='0.0123' x-litellm-key-spend='4.5' call-id=absent"
+            ]
+            assert not [m for m in caplog.messages if "unpriced" in m or "not priced" in m]
         finally:
             await client.close()
 
