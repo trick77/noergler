@@ -158,10 +158,12 @@ def _log_cost_headers(headers: Mapping[str, str], cost: float | None) -> None:
     """One INFO line per call with the raw pricing headers and the gateway's
     call id, so an unpriced review can be matched to the gateway's own log.
 
-    An unpriced call lists every `x-litellm-*` header that did arrive: the
-    gateway has been seen to price the same model on one worker and not on
-    another, and the names that arrive are the only client-side clue to which
-    kind of response this was.
+    An unpriced call from a LiteLLM gateway is a warning listing every
+    `x-litellm-*` header that did arrive: the gateway has been seen to price
+    the same model on one worker and not on another, and the names that
+    arrive are the only client-side clue to which kind of response this was.
+    An endpoint that sends no `x-litellm-*` header at all is not a LiteLLM
+    proxy and never prices; that stays at INFO rather than warning per call.
     """
     raw_cost = headers.get(_COST_HEADER)
     raw_spend = headers.get(_KEY_SPEND_HEADER)
@@ -171,8 +173,8 @@ def _log_cost_headers(headers: Mapping[str, str], cost: float | None) -> None:
         _KEY_SPEND_HEADER, "absent" if raw_spend is None else repr(raw_spend),
         call_id or "absent",
     )
-    if cost is None:
-        seen = sorted(k for k in headers if k.lower().startswith("x-litellm"))
+    seen = sorted(k for k in headers if k.lower().startswith("x-litellm"))
+    if cost is None and seen:
         logger.warning("%s; unpriced call, x-litellm-* headers seen: %s", line, seen)
     else:
         logger.info(line)

@@ -1531,6 +1531,25 @@ class TestReportedCost:
             await client.close()
 
     @pytest.mark.asyncio
+    async def test_non_litellm_endpoint_does_not_warn_per_call(self, llm_config, review_config, caplog):
+        # No x-litellm-* header at all: not a LiteLLM proxy, never priced,
+        # and a warning on every review would only be noise.
+        client = LLMClient(llm_config, review_config)
+        client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
+            return_value=_mock_completion("[]")
+        )
+        try:
+            with caplog.at_level(logging.INFO, logger="app.llm_client"):
+                _text, usage = await client._chat(system="s", user="u")
+            assert usage.cost_usd is None
+            assert [m for m in caplog.messages if m.startswith("LLM cost headers:")] == [
+                "LLM cost headers: x-litellm-response-cost=absent x-litellm-key-spend=absent call-id=absent"
+            ]
+            assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
     async def test_priced_call_logs_headers_at_info(self, llm_config, review_config, caplog):
         client = LLMClient(llm_config, review_config)
         client.openai_client.chat.completions.with_raw_response.create = AsyncMock(
