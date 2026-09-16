@@ -13,6 +13,7 @@ from app.config import ReviewConfig
 from app.llm_client import LLMClient, FileReviewData
 from app.jira import JiraTicket
 from app.models import ReviewFinding, WebhookPayload
+from app.bitbucket import ContentTooLarge
 from app.reviewer import Reviewer, _count_diff_lines, _sort_and_limit
 
 
@@ -2178,6 +2179,44 @@ class TestMaxFileLines:
         assert "Reviewed without full file context" not in summary
 
 
+class TestByteCaps:
+    @pytest.mark.asyncio
+    async def test_oversize_file_content_is_skipped(self, mock_bitbucket, mock_llm):
+        async def fetch(project, repo, commit, path):
+            if path == "file.py":
+                raise ContentTooLarge(path, 10, 99)
+            return "hello\n"
+
+        mock_bitbucket.fetch_file_content = AsyncMock(side_effect=fetch)
+        mock_llm.review_diff = AsyncMock(return_value=_make_review_result())
+
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        await rev.review_pull_request(_make_payload("username"))
+
+        files = mock_llm.review_diff.call_args[0][0]
+        assert len(files) == 1 and files[0].content is None
+        summary_text = mock_bitbucket.post_pr_comment.call_args[0][3]
+        assert "file.py" in summary_text
+
+    @pytest.mark.asyncio
+    async def test_oversize_diff_skips_review_and_keeps_prior_commit(self, mock_bitbucket, mock_llm, monkeypatch):
+        mock_bitbucket.fetch_pr_diff = AsyncMock(side_effect=ContentTooLarge("PROJ/my-repo#1 diff", 10))
+        mock_llm.review_diff = AsyncMock(return_value=_make_review_result())
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_last_reviewed_commit", AsyncMock(return_value="prior111"),
+        )
+        upsert = AsyncMock(return_value=1)
+        monkeypatch.setattr("app.reviewer.repository.upsert_pr_review", upsert)
+
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        await rev.review_pull_request(_make_payload("username"))
+
+        mock_llm.review_diff.assert_not_called()
+        summary_text = mock_bitbucket.post_pr_comment.call_args[0][3]
+        assert "diff too large" in summary_text
+        assert upsert.call_args.kwargs["last_reviewed_commit"] == "prior111"
+
+
 class TestTicketExtraction:
     def test_extract_ticket_id_from_branch(self, mock_bitbucket, mock_llm):
         rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
@@ -2785,6 +2824,27 @@ class TestIncrementalReview:
         kwargs = mock_llm.review_diff.call_args.kwargs
         assert kwargs.get("cumulative_pr_diff"), \
             "incremental review should pass non-empty cumulative_pr_diff"
+
+    @pytest.mark.asyncio
+    async def test_cumulative_diff_over_budget_by_bytes_is_dropped_untokenized(
+        self, mock_bitbucket, mock_llm, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_last_reviewed_commit",
+            AsyncMock(return_value="aabbccdd1234"),
+        )
+        mock_llm.input_token_budget = 6000  # cum_budget = 2000 -> byte cutoff 16000
+        mock_bitbucket.fetch_pr_diff = AsyncMock(return_value="x" * 20_000)
+        counted: list[str] = []
+        monkeypatch.setattr("app.reviewer.count_tokens", lambda t: counted.append(t) or 1)
+
+        rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
+        payload = _make_payload()
+        payload.eventKey = "pr:from_ref_updated"
+        await rev.review_pull_request(payload)
+
+        assert not any(len(t) == 20_000 for t in counted)
+        assert mock_llm.review_diff.call_args.kwargs.get("cumulative_pr_diff") == ""
 
     @pytest.mark.asyncio
     async def test_full_review_when_no_last_reviewed_commit(self, mock_bitbucket, mock_llm, monkeypatch):

@@ -12,7 +12,7 @@ import httpx
 import openai
 import structlog
 
-from app.bitbucket import BitbucketClient, IncrementalDiffUnavailable
+from app.bitbucket import BitbucketClient, ContentTooLarge, IncrementalDiffUnavailable
 from app.db import repository
 from app.markdown_format import wrap_prose
 from app.llm_client import (
@@ -210,6 +210,12 @@ def _cost_limit_banner(
 # the LLM tends to drown the focused review in noise.
 MAX_CUMULATIVE_CONTEXT_TOKENS = 80_000
 MAX_PREVIOUSLY_POSTED_FINDINGS = 50
+_FILE_FETCH_CONCURRENCY = 4
+
+
+# Upper bound on bytes per token for diff text; real code diffs sit at 3-4.
+# Used to reject a diff by length before paying for tokenizing it.
+_BYTES_PER_TOKEN_CEILING = 8
 
 
 def _cumulative_diff_budget(input_budget: int) -> int:
@@ -391,6 +397,9 @@ class Reviewer:
 
         content_skipped: list[str] = []
         max_file_lines = self.review_config.max_file_lines
+        # Bounds how many full file bodies are in flight at once; each one
+        # is resident until the whole review is rendered.
+        fetch_slots = asyncio.Semaphore(_FILE_FETCH_CONCURRENCY)
 
         async def _build_file_data(file_diff: str) -> FileReviewData | None:
             path = extract_path(file_diff)
@@ -402,9 +411,13 @@ class Reviewer:
             content = None
             if not deleted and source_commit:
                 try:
-                    content = await self.bitbucket.fetch_file_content(
-                        project_key, repo_slug, source_commit, path
-                    )
+                    async with fetch_slots:
+                        content = await self.bitbucket.fetch_file_content(
+                            project_key, repo_slug, source_commit, path
+                        )
+                except ContentTooLarge as exc:
+                    logger.info("Skipping full content for %s (%s)", path, exc)
+                    content_skipped.append(path)
                 except Exception:
                     logger.warning("Failed to fetch content for %s, using diff only", path)
             if content and content.count("\n") + 1 > max_file_lines:
@@ -715,9 +728,36 @@ class Reviewer:
                         is_incremental = False
 
             if not is_incremental:
-                diff = await self.bitbucket.fetch_pr_diff(
-                    project_key, repo_slug, pr_id, context_lines=0
-                )
+                try:
+                    diff = await self.bitbucket.fetch_pr_diff(
+                        project_key, repo_slug, pr_id, context_lines=0
+                    )
+                except ContentTooLarge as exc:
+                    logger.warning("%s: %s — skipping review", pr_tag, exc)
+                    # Keep the prior reviewed commit: nothing in this push was
+                    # reviewed, so the next push must not go incremental.
+                    prior_commit = await _safe_db(
+                        repository.get_last_reviewed_commit(
+                            self.db_pool, project_key, repo_slug, pr_id,
+                        ),
+                        fallback=None,
+                    )
+                    pr_review_id = await _safe_db(
+                        repository.upsert_pr_review(
+                            self.db_pool, project_key, repo_slug, pr_id,
+                            team_slug=self.team_slug,
+                            last_reviewed_commit=prior_commit,
+                            author=author_name,
+                            pr_title=pr.title,
+                            opened_at=opened_at,
+                        ),
+                        fallback=None,
+                    )
+                    await self._post_or_update_summary(
+                        project_key, repo_slug, pr_id, pr_review_id,
+                        self._build_diff_too_large_summary(exc.limit),
+                    )
+                    return
                 if not diff.strip():
                     logger.info("%s has empty diff, skipping", pr_tag)
                     return
@@ -730,6 +770,9 @@ class Reviewer:
                     cumulative_pr_diff = await self.bitbucket.fetch_pr_diff(
                         project_key, repo_slug, pr_id, context_lines=0
                     )
+                except ContentTooLarge as exc:
+                    logger.info("%s: cumulative PR diff dropped (%s)", pr_tag, exc)
+                    cumulative_pr_diff = ""
                 except Exception:
                     logger.warning(
                         "%s: failed to fetch cumulative PR diff for context",
@@ -738,12 +781,18 @@ class Reviewer:
                     cumulative_pr_diff = ""
                 if cumulative_pr_diff:
                     cum_budget = _cumulative_diff_budget(self.llm.input_token_budget)
-                    cum_tokens = count_tokens(cumulative_pr_diff)
+                    # Tokenizing expands the text ~10x in RAM (one Python int
+                    # per token). A diff that is hopelessly over budget by
+                    # byte count alone is dropped without ever tokenizing it.
+                    if len(cumulative_pr_diff) > cum_budget * _BYTES_PER_TOKEN_CEILING:
+                        cum_tokens, unit = len(cumulative_pr_diff), "bytes"
+                    else:
+                        cum_tokens, unit = count_tokens(cumulative_pr_diff), "tokens"
                     if cum_tokens > cum_budget:
                         logger.warning(
-                            "%s: cumulative PR diff %d tokens exceeds budget %d "
+                            "%s: cumulative PR diff %d %s exceeds budget %d tokens "
                             "(model context %s), dropping",
-                            pr_tag, cum_tokens, cum_budget,
+                            pr_tag, cum_tokens, unit, cum_budget,
                             self.llm.context_window,
                         )
                         cumulative_pr_diff = ""
@@ -1236,7 +1285,16 @@ class Reviewer:
         logger.info("Handling mention Q&A on %s: %r", pr_tag, question)
 
         try:
-            diff = await self.bitbucket.fetch_pr_diff(project_key, repo_slug, pr.id, context_lines=0)
+            try:
+                diff = await self.bitbucket.fetch_pr_diff(project_key, repo_slug, pr.id, context_lines=0)
+            except ContentTooLarge as exc:
+                logger.warning("%s: %s — mention not answered", pr_tag, exc)
+                await self.bitbucket.reply_to_comment(
+                    project_key, repo_slug, pr.id, comment.id,
+                    f"This PR's diff exceeds {exc.limit // (1024 * 1024)} MiB, "
+                    "too large to answer questions about.",
+                )
+                return
             source_commit = pr.fromRef.latestCommit
             files, _ = await self._prepare_files(
                 project_key, repo_slug, diff, source_commit, pr_tag
@@ -1545,6 +1603,19 @@ class Reviewer:
             "- To review PRs without an `AGENTS.md`, set `require_agents_md: false` "
             "for this team in the noergler `teams.yaml` (or `REVIEW_REQUIRE_AGENTS_MD=false` "
             "as the instance default) and restart.\n"
+        )
+
+    @staticmethod
+    def _build_diff_too_large_summary(limit: int) -> str:
+        return (
+            "### Review skipped — diff too large 🛑\n\n"
+            f"The PR diff exceeds {limit // (1024 * 1024)} MiB, more than fits in one "
+            "review even after compression, so the review was not run.\n\n"
+            "**What to do**\n"
+            "- Split the change into smaller PRs, or move generated files, vendored "
+            "code and lockfile churn into their own PR.\n"
+            "- Push the smaller change and the next webhook event on this PR will "
+            "trigger a full review.\n"
         )
 
     def _build_agents_md_too_large_summary(self, tokens: int, limit: int) -> str:

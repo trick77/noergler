@@ -3,6 +3,7 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from functools import partial
 from typing import final
 
 import structlog
@@ -16,6 +17,11 @@ PRKey = tuple[str, str, int]
 # authenticated by the webhook route, so the worker never has to look it up.
 ReviewFn = Callable[[str, WebhookPayload], Awaitable[None]]
 
+# A queued unit of work that is not a PR review: mention Q&A, merge/decline
+# rollup. Runs on the same single worker so only one diff/file/prompt set is
+# ever resident at a time — the pod's memory limit is sized for one.
+JobFn = Callable[[], Awaitable[None]]
+
 BACKLOG_WARN_THRESHOLD = 10
 
 
@@ -23,6 +29,14 @@ BACKLOG_WARN_THRESHOLD = 10
 class _Entry:
     team: str
     payload: WebhookPayload
+    enqueued_at: float
+
+
+@dataclass
+class _Job:
+    tag: str
+    team: str
+    run: JobFn
     enqueued_at: float
 
 
@@ -36,11 +50,14 @@ class ReviewQueue:
     second slot is enqueued. This collapses rapid bursts (e.g. 50 commits
     pushed in sequence) into at most two reviews (the first one in-flight
     plus the deduped latest state).
+
+    `submit_job` puts other heavy work (mention answers, rollups) on the same
+    worker, in arrival order, without dedupe.
     """
 
     def __init__(self, review_fn: ReviewFn):
         self._review_fn = review_fn
-        self._queue: asyncio.Queue[PRKey] = asyncio.Queue()
+        self._queue: asyncio.Queue[PRKey | _Job] = asyncio.Queue()
         self._pending: dict[PRKey, _Entry] = {}
         self._worker: asyncio.Task[None] | None = None
 
@@ -80,34 +97,49 @@ class ReviewQueue:
             )
             return "superseded"
         self._pending[key] = _Entry(team=team, payload=payload, enqueued_at=time.monotonic())
-        self._queue.put_nowait(key)
+        self._put(key, tag)
+        return "queued"
+
+    def submit_job(self, tag: str, team: str, fn: JobFn) -> str:
+        """Enqueue a non-review job. Never deduped; returns "queued"."""
+        self._put(_Job(tag=tag, team=team, run=fn, enqueued_at=time.monotonic()), tag)
+        return "queued"
+
+    def _put(self, item: PRKey | _Job, tag: str) -> None:
+        self._queue.put_nowait(item)
         depth = self._queue.qsize()
         logger.info("queue[%s]: enqueued (depth=%d)", tag, depth)
         if depth >= BACKLOG_WARN_THRESHOLD:
             logger.warning("ReviewQueue backlog: %d entries pending", depth)
-        return "queued"
 
     async def _run(self) -> None:
         while True:
-            key = await self._queue.get()
-            tag = self._tag(key)
-            entry = self._pending.pop(key, None)
-            if entry is None:
-                logger.warning("queue[%s]: dequeued with no payload — skipping", tag)
-                continue
-            wait = time.monotonic() - entry.enqueued_at
+            item = await self._queue.get()
+            if isinstance(item, _Job):
+                tag, team, enqueued_at = item.tag, item.team, item.enqueued_at
+                run: JobFn = item.run
+            else:
+                tag = self._tag(item)
+                entry = self._pending.pop(item, None)
+                if entry is None:
+                    logger.warning("queue[%s]: dequeued with no payload — skipping", tag)
+                    continue
+                team, enqueued_at = entry.team, entry.enqueued_at
+                run = partial(self._review_fn, team, entry.payload)
+            wait = time.monotonic() - enqueued_at
             logger.info(
-                "queue[%s]: starting review (waited %.1fs, depth=%d)",
-                tag, wait, self._queue.qsize(),
+                "queue[%s]: starting %s (waited %.1fs, depth=%d)",
+                tag, "job" if isinstance(item, _Job) else "review",
+                wait, self._queue.qsize(),
             )
             started = time.monotonic()
             # The worker is one long-lived task, so the team binding must be
             # explicit per job — nothing else would ever clear it.
-            structlog.contextvars.bind_contextvars(team=entry.team)
+            structlog.contextvars.bind_contextvars(team=team)
             try:
-                await self._review_fn(entry.team, entry.payload)
+                await run()
             except Exception:
-                logger.exception("queue[%s]: review failed", tag)
+                logger.exception("queue[%s]: %s failed", tag, "job" if isinstance(item, _Job) else "review")
             logger.info(
                 "queue[%s]: completed in %.1fs",
                 tag, time.monotonic() - started,

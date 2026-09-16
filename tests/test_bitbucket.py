@@ -2,7 +2,7 @@ import httpx
 import pytest
 import respx
 
-from app.bitbucket import BitbucketClient
+from app.bitbucket import BitbucketClient, ContentTooLarge
 from app.config import BitbucketConfig
 from app.models import ReviewFinding
 
@@ -384,4 +384,73 @@ class TestBitbucketClient:
         assert comments[0]["path"] == "a.py"
         assert comments[1]["path"] == "b.py"
         assert route.call_count == 2
+        await client.close()
+
+
+class TestByteCaps:
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_diff_over_cap_by_content_length_raises(self, client, monkeypatch):
+        monkeypatch.setattr("app.bitbucket.MAX_DIFF_BYTES", 10)
+        respx.get(
+            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/diff"
+        ).mock(return_value=httpx.Response(200, text="x" * 100))
+
+        with pytest.raises(ContentTooLarge) as exc:
+            await client.fetch_pr_diff("PROJ", "my-repo", 1)
+        assert exc.value.size == 100
+        await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_diff_over_cap_without_content_length_raises(self, client, monkeypatch):
+        monkeypatch.setattr("app.bitbucket.MAX_DIFF_BYTES", 10)
+
+        async def body():
+            for _ in range(5):
+                yield b"x" * 4
+
+        respx.get(
+            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/diff"
+        ).mock(return_value=httpx.Response(200, content=body()))
+
+        with pytest.raises(ContentTooLarge) as exc:
+            await client.fetch_pr_diff("PROJ", "my-repo", 1)
+        assert exc.value.size is None
+        await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_diff_under_cap_unchanged(self, client, monkeypatch):
+        monkeypatch.setattr("app.bitbucket.MAX_DIFF_BYTES", 10)
+        respx.get(
+            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/diff"
+        ).mock(return_value=httpx.Response(200, text="x" * 10))
+
+        assert await client.fetch_pr_diff("PROJ", "my-repo", 1) == "x" * 10
+        await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_file_over_cap_raises_with_path(self, client, monkeypatch):
+        monkeypatch.setattr("app.bitbucket.MAX_FILE_BYTES", 10)
+        respx.get(
+            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/raw/big.bin"
+        ).mock(return_value=httpx.Response(200, text="y" * 11))
+
+        with pytest.raises(ContentTooLarge) as exc:
+            await client.fetch_file_content("PROJ", "my-repo", "abc", "big.bin")
+        assert exc.value.what == "big.bin"
+        await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_error_status_still_raises_http_error(self, client, monkeypatch):
+        monkeypatch.setattr("app.bitbucket.MAX_DIFF_BYTES", 10)
+        respx.get(
+            f"{BASE_URL}/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/diff"
+        ).mock(return_value=httpx.Response(500, text="e" * 100))
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await client.fetch_pr_diff("PROJ", "my-repo", 1)
         await client.close()

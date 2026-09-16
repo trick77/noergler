@@ -394,6 +394,16 @@ def count_tokens(text: str) -> int:
     return len(enc.encode(text))
 
 
+def warm_tokenizer() -> None:
+    """Load the tiktoken encoder now instead of on the first review.
+
+    The o200k_base encoder is ~110 MiB resident. Loading it eagerly means
+    the idle RSS operators see is the real baseline, not one that jumps by
+    110 MiB the first time a PR is reviewed.
+    """
+    count_tokens("")
+
+
 def _load_prompt_template(template_path: str) -> str:
     path = Path(template_path)
     if not path.exists():
