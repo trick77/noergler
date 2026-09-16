@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 import ssl
 from typing import Any, final
@@ -11,6 +12,24 @@ from app.markdown_format import wrap_prose
 from app.models import ReviewFinding
 
 logger = logging.getLogger(__name__)
+
+# Hard byte caps on text bodies pulled from Bitbucket. The pod runs with a
+# fixed memory limit and a diff or file body is held in RAM several times
+# over (raw text, per-file split, rendered prompt, tiktoken list), so a
+# runaway response must be cut at the socket, not after `response.text`.
+MAX_DIFF_BYTES = int(os.environ.get("BITBUCKET_MAX_DIFF_BYTES", str(10 * 1024 * 1024)))
+MAX_FILE_BYTES = int(os.environ.get("BITBUCKET_MAX_FILE_BYTES", str(1024 * 1024)))
+
+
+class ContentTooLarge(Exception):
+    """A diff or file body exceeds its byte cap. `what` names the resource."""
+
+    def __init__(self, what: str, limit: int, size: int | None = None):
+        self.what = what
+        self.limit = limit
+        self.size = size
+        seen = f"{size} bytes" if size is not None else f"> {limit} bytes"
+        super().__init__(f"{what}: {seen} exceeds cap of {limit} bytes")
 
 
 class IncrementalDiffUnavailable(Exception):
@@ -50,6 +69,40 @@ class BitbucketClient:
     async def __aexit__(self, *exc: object) -> None:
         await self.close()
 
+    async def _get_text_capped(
+        self,
+        url: str,
+        *,
+        what: str,
+        max_bytes: int,
+        headers: dict[str, str] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> tuple[httpx.Response, str]:
+        """GET `url` streaming, abort once the body passes `max_bytes`.
+
+        Returns the response (for status checks) and the decoded body; the
+        body is empty on a non-2xx status. Raises `ContentTooLarge` before
+        the body is materialised: on `Content-Length` when the server sends
+        one, else on the running byte count.
+        """
+        async with self.client.stream(
+            "GET", url, headers=headers or {}, params=params or {},
+        ) as response:
+            if not response.is_success:
+                await response.aread()
+                return response, ""
+            declared = response.headers.get("Content-Length")
+            if declared is not None and declared.isdigit() and int(declared) > max_bytes:
+                raise ContentTooLarge(what, max_bytes, int(declared))
+            chunks: list[bytes] = []
+            size = 0
+            async for chunk in response.aiter_bytes():
+                size += len(chunk)
+                if size > max_bytes:
+                    raise ContentTooLarge(what, max_bytes)
+                chunks.append(chunk)
+        return response, b"".join(chunks).decode(response.encoding or "utf-8", errors="replace")
+
     async def check_connectivity(self) -> None:
         response = await self.client.get("/rest/api/1.0/application-properties")
         response.raise_for_status()
@@ -65,11 +118,12 @@ class BitbucketClient:
     ) -> str:
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{pr_id}/diff"
         params = {"contextLines": context_lines} if context_lines > 0 else {}
-        response = await self.client.get(
-            url, headers={"Accept": "text/plain"}, params=params
+        response, text = await self._get_text_capped(
+            url, what=f"{project}/{repo}#{pr_id} diff", max_bytes=MAX_DIFF_BYTES,
+            headers={"Accept": "text/plain"}, params=params,
         )
         response.raise_for_status()
-        return response.text
+        return text
 
     async def fetch_commit_diff(
         self, project: str, repo: str, from_commit: str, to_commit: str,
@@ -83,8 +137,10 @@ class BitbucketClient:
         """
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/compare/diff"
         params = {"from": from_commit, "to": to_commit}
-        response = await self.client.get(
-            url, headers={"Accept": "text/plain"}, params=params
+        response, text = await self._get_text_capped(
+            url, what=f"{project}/{repo} compare {from_commit[:10]}..{to_commit[:10]}",
+            max_bytes=MAX_DIFF_BYTES,
+            headers={"Accept": "text/plain"}, params=params,
         )
         if response.status_code == 406:
             raise IncrementalDiffUnavailable(
@@ -92,18 +148,17 @@ class BitbucketClient:
                 f"(unreachable history — likely rebase)"
             )
         response.raise_for_status()
-        return response.text
+        return text
 
     async def fetch_file_content(
         self, project: str, repo: str, commit: str, path: str
     ) -> str:
         url = f"/rest/api/1.0/projects/{project}/repos/{repo}/raw/{path}"
-        response = await self.client.get(
-            url,
-            params={"at": commit},
+        response, text = await self._get_text_capped(
+            url, what=path, max_bytes=MAX_FILE_BYTES, params={"at": commit},
         )
         response.raise_for_status()
-        return response.text
+        return text
 
     async def post_inline_comment(
         self,

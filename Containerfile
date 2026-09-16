@@ -5,6 +5,9 @@
 # breaks every outbound HTTPS call. Bump back up once the CA is reissued.
 FROM python:3.12-slim
 WORKDIR /app
+# glibc keeps freed multi-MB prompt/diff strings in per-thread arenas and
+# rarely returns them to the kernel; RSS ratchets up per big PR otherwise.
+ENV MALLOC_ARENA_MAX=2
 ARG NOERGLER_VERSION=dev
 ENV NOERGLER_VERSION=${NOERGLER_VERSION}
 COPY requirements.txt .

@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.bitbucket import ContentTooLarge
 from app.config import ReviewConfig
 from app.jira import JiraTicket
 from app.models import WebhookPayload
@@ -87,6 +88,16 @@ class TestHandleMention:
         assert call_args[0][0] == "explain this"
         mock_bitbucket.reply_to_comment.assert_called_once()
         assert mock_bitbucket.reply_to_comment.call_args[0][3] == 100
+
+    @pytest.mark.asyncio
+    async def test_qa_on_oversize_diff_replies_instead_of_answering(self, reviewer, mock_bitbucket, mock_llm):
+        mock_bitbucket.fetch_pr_diff = AsyncMock(side_effect=ContentTooLarge("PROJ/r#1 diff", 10 * 1024 * 1024))
+        payload = _make_mention_payload("@noergler explain this")
+        await reviewer.handle_mention(payload)
+
+        mock_llm.answer_question.assert_not_called()
+        mock_bitbucket.reply_to_comment.assert_called_once()
+        assert "10 MiB" in mock_bitbucket.reply_to_comment.call_args[0][4]
 
     @pytest.mark.asyncio
     async def test_empty_mention_triggers_review(self, reviewer, mock_llm):

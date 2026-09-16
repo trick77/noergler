@@ -148,3 +148,55 @@ async def test_stop_is_idempotent():
     queue.start()
     await queue.stop()
     await queue.stop()
+
+
+@pytest.mark.asyncio
+async def test_jobs_share_the_worker_in_arrival_order_without_dedupe():
+    import structlog
+
+    order: list[str] = []
+    gate = asyncio.Event()
+
+    async def review(team, payload):
+        order.append(f"review:{payload.id}")
+        await gate.wait()
+
+    async def job(name: str):
+        order.append(f"job:{name}:{structlog.contextvars.get_contextvars().get('team')}")
+
+    queue = ReviewQueue(review)
+    queue.start()
+    try:
+        queue.submit(("P", "r", 1), _fake_payload(1), "t1")
+        await asyncio.sleep(0.01)
+        assert queue.submit_job("P/r#1", "t2", lambda: job("a")) == "queued"
+        assert queue.submit_job("P/r#1", "t2", lambda: job("b")) == "queued"
+        await asyncio.sleep(0.02)
+        assert order == ["review:1"], "jobs must wait for the running review"
+        gate.set()
+        await asyncio.sleep(0.05)
+        assert order == ["review:1", "job:a:t2", "job:b:t2"]
+        assert "team" not in structlog.contextvars.get_contextvars()
+    finally:
+        await queue.stop()
+
+
+@pytest.mark.asyncio
+async def test_failing_job_does_not_kill_the_worker():
+    seen: list[int] = []
+
+    async def review(team, payload):
+        seen.append(payload.id)
+
+    async def boom():
+        raise RuntimeError("nope")
+
+    queue = ReviewQueue(review)
+    queue.start()
+    try:
+        queue.submit_job("P/r#9", "t", boom)
+        queue.submit(("P", "r", 1), _fake_payload(1), "t")
+        await asyncio.sleep(0.05)
+        assert seen == [1]
+    finally:
+        await queue.stop()

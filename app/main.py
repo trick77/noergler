@@ -8,6 +8,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
+from functools import partial
 from typing import Annotated, cast, final
 
 import httpx
@@ -21,7 +22,7 @@ from app.bitbucket import BitbucketClient
 from app.config import AppConfig, ProjectScope, TeamConfig, load_config, log_config, model_label
 from app.logging_config import configure_logging
 from app.db import close_pool, create_pool, get_pool
-from app.llm_client import LLMClient
+from app.llm_client import LLMClient, warm_tokenizer
 from app.jira import JiraClient
 from app.models import WebhookPayload
 from app.review_queue import ReviewQueue
@@ -274,6 +275,7 @@ async def lifespan(_app: FastAPI):
     if not teams:
         logger.error("no team is enabled — /ready reports 503 until the config is fixed")
 
+    warm_tokenizer()
     review_queue = ReviewQueue(_review_for_team)
     review_queue.start()
 
@@ -451,13 +453,17 @@ async def webhook(
         logger.info("webhook ignored: %s/%s matches exclude_repos", repo.project.key, repo.slug)
         return {"status": "ignored", "reason": "repo excluded by the team's exclude_repos"}
 
+    # Merge/decline rollups and mention answers fetch the full PR diff (plus
+    # file bodies for a mention), so they run on the review worker instead of
+    # as request background tasks: one diff/prompt set in memory at a time.
+    pr_tag = f"{repo.project.key}/{repo.slug}#{pr.id}"
     if event_key == "pr:merged":
-        background_tasks.add_task(reviewer.handle_pr_merged, payload)
-        return {"status": "accepted", "reason": "merged-rollup"}
+        review_queue.submit_job(pr_tag, team_slug, partial(reviewer.handle_pr_merged, payload))
+        return {"status": "accepted", "reason": "merged-rollup", "queue": "queued"}
 
     if event_key == "pr:declined":
-        background_tasks.add_task(reviewer.handle_pr_declined, payload)
-        return {"status": "accepted", "reason": "declined-rollup"}
+        review_queue.submit_job(pr_tag, team_slug, partial(reviewer.handle_pr_declined, payload))
+        return {"status": "accepted", "reason": "declined-rollup", "queue": "queued"}
 
     if event_key == "pr:deleted":
         background_tasks.add_task(reviewer.handle_pr_deleted, payload)
@@ -473,8 +479,8 @@ async def webhook(
         logger.info("Comment event: id=%s", comment_id)
         trigger = f"@{config.bitbucket.username}"
         if trigger.lower() in comment_text.lower():
-            background_tasks.add_task(reviewer.handle_mention, payload)
-            return {"status": "accepted", "reason": "mention"}
+            review_queue.submit_job(pr_tag, team_slug, partial(reviewer.handle_mention, payload))
+            return {"status": "accepted", "reason": "mention", "queue": "queued"}
         return {"status": "ignored", "reason": "comment without mention"}
 
     if event_key not in _REVIEW_EVENT_KEYS:

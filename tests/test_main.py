@@ -120,6 +120,13 @@ def client():
             asyncio.ensure_future(main_module.teams[team].reviewer.review_pull_request(payload))
             return "queued"
 
+        def submit_job(self, tag, team, fn):
+            self.jobs.append((tag, team))
+            asyncio.ensure_future(fn())
+            return "queued"
+
+        jobs: list[tuple[str, str]] = []
+
     original_config = main_module.config
     original_queue = main_module.review_queue
     original_lifespan = app.router.lifespan_context
@@ -360,6 +367,7 @@ class TestMentionRouting:
         data = resp.json()
         assert data["status"] == "accepted"
         assert data["reason"] == "mention"
+        assert main_module.review_queue.jobs == [("PROJ/repo#1", TEAM)]  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_comment_without_mention_ignored(self, client):
         body = json.dumps(COMMENT_NO_MENTION_PAYLOAD).encode()
@@ -387,6 +395,8 @@ class TestMergedRouting:
         data = resp.json()
         assert data["status"] == "accepted"
         assert data["reason"] == "merged-rollup"
+        assert data["queue"] == "queued"
+        assert main_module.review_queue.jobs == [("PROJ/repo#1", TEAM)]  # pyright: ignore[reportAttributeAccessIssue]
 
 
 class TestDeclinedRouting:
@@ -402,6 +412,8 @@ class TestDeclinedRouting:
         data = resp.json()
         assert data["status"] == "accepted"
         assert data["reason"] == "declined-rollup"
+        assert data["queue"] == "queued"
+        assert main_module.review_queue.jobs == [("PROJ/repo#1", TEAM)]  # pyright: ignore[reportAttributeAccessIssue]
 
 
 class TestDeletedRouting:
