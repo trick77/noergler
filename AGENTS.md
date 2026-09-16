@@ -44,9 +44,9 @@ Noergler is a Bitbucket Server PR auto-review bridge backed by an OpenAI-compati
 - **A `None` cost fails open.** An unpriced model, or a gateway not reporting a cost header, must never block a review. The per-PR cost cap skips only *subsequent* auto-runs; the run that overshoots completes.
 - The disagree / feedback mechanic was **removed deliberately** — replies flagged findings the reviewer could not have prevented. Don't reintroduce it without asking.
 
-## Memory (pod limit 1Gi, OOMKilled at 256Mi)
+## Memory (pod limit 2Gi, OOMKilled at 256Mi)
 
-- tiktoken encoder = ~110Mi resident, loaded at startup (`warm_tokenizer()`); a 1M-token prompt adds tens of Mi per copy. Limit stays >= 1Gi.
+- tiktoken encoder = ~110Mi resident, loaded at startup (`warm_tokenizer()`); a 1M-token prompt adds tens of Mi per copy. Limit stays >= 1Gi, prod runs 2Gi.
 - Mentions and merge/decline rollups run via `ReviewQueue.submit_job`, never `BackgroundTasks`: one diff/prompt set resident at a time. Bitbucket bodies byte-capped at the socket (`BITBUCKET_MAX_DIFF_BYTES` 10Mi, `BITBUCKET_MAX_FILE_BYTES` 1Mi -> `ContentTooLarge`), 4 file fetches in flight, cumulative diff dropped by byte length before tokenizing, `MALLOC_ARENA_MAX=2` in the Containerfile.
 
 ## Review prompt layout (`prompts/review.txt`)
