@@ -734,11 +734,19 @@ class Reviewer:
                     )
                 except ContentTooLarge as exc:
                     logger.warning("%s: %s — skipping review", pr_tag, exc)
+                    # Keep the prior reviewed commit: nothing in this push was
+                    # reviewed, so the next push must not go incremental.
+                    prior_commit = await _safe_db(
+                        repository.get_last_reviewed_commit(
+                            self.db_pool, project_key, repo_slug, pr_id,
+                        ),
+                        fallback=None,
+                    )
                     pr_review_id = await _safe_db(
                         repository.upsert_pr_review(
                             self.db_pool, project_key, repo_slug, pr_id,
                             team_slug=self.team_slug,
-                            last_reviewed_commit=pr.fromRef.latestCommit,
+                            last_reviewed_commit=prior_commit,
                             author=author_name,
                             pr_title=pr.title,
                             opened_at=opened_at,
@@ -762,6 +770,9 @@ class Reviewer:
                     cumulative_pr_diff = await self.bitbucket.fetch_pr_diff(
                         project_key, repo_slug, pr_id, context_lines=0
                     )
+                except ContentTooLarge as exc:
+                    logger.info("%s: cumulative PR diff dropped (%s)", pr_tag, exc)
+                    cumulative_pr_diff = ""
                 except Exception:
                     logger.warning(
                         "%s: failed to fetch cumulative PR diff for context",

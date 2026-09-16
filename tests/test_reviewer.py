@@ -2199,9 +2199,14 @@ class TestByteCaps:
         assert "file.py" in summary_text
 
     @pytest.mark.asyncio
-    async def test_oversize_diff_skips_review(self, mock_bitbucket, mock_llm):
+    async def test_oversize_diff_skips_review_and_keeps_prior_commit(self, mock_bitbucket, mock_llm, monkeypatch):
         mock_bitbucket.fetch_pr_diff = AsyncMock(side_effect=ContentTooLarge("PROJ/my-repo#1 diff", 10))
         mock_llm.review_diff = AsyncMock(return_value=_make_review_result())
+        monkeypatch.setattr(
+            "app.reviewer.repository.get_last_reviewed_commit", AsyncMock(return_value="prior111"),
+        )
+        upsert = AsyncMock(return_value=1)
+        monkeypatch.setattr("app.reviewer.repository.upsert_pr_review", upsert)
 
         rev = Reviewer(mock_bitbucket, mock_llm, _review_config(), db_pool=AsyncMock())
         await rev.review_pull_request(_make_payload("username"))
@@ -2209,6 +2214,7 @@ class TestByteCaps:
         mock_llm.review_diff.assert_not_called()
         summary_text = mock_bitbucket.post_pr_comment.call_args[0][3]
         assert "diff too large" in summary_text
+        assert upsert.call_args.kwargs["last_reviewed_commit"] == "prior111"
 
 
 class TestTicketExtraction:
