@@ -17,7 +17,7 @@ Noergler is a Bitbucket Server PR auto-review bridge backed by an OpenAI-compati
 
 - Schema changes are managed through Alembic revisions in `alembic/versions/`.
 - For any table or column change, add a new migration file; do not edit existing revisions.
-- The OpenShift init container runs `alembic upgrade head` during deployment.
+- Deployment runs `alembic upgrade head` before the app starts (see noergler-infra).
 
 ## Teams (`app/config.py`, `teams.yaml`)
 

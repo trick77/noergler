@@ -82,7 +82,7 @@ Jira (team block `jira:`):
 | `CONTEXT_TRUST_TAIL` | `0.5` | That fraction |
 | `LOG_LEVEL` | `INFO` | Log level |
 | `NOERGLER_ENV` | `dev` | `env` field on every log record |
-| `NOERGLER_VERSION` / `OPENSHIFT_BUILD_COMMIT` | `dev` | Version printed at startup; the Containerfile bakes `NOERGLER_VERSION` |
+| `NOERGLER_VERSION` | `dev` | Version printed at startup; the Containerfile bakes `NOERGLER_VERSION` |
 | `SERVER_HOST`, `SERVER_PORT` | `0.0.0.0`, `8080` | Loaded but not used by the app; the container runs uvicorn on `0.0.0.0:8080` |
 | `NOERGLER_PUBLIC_URL` | empty | How Bitbucket reaches this instance, e.g. `https://noergler.example.com`. `POST /onboard/{team}` writes `<url>/webhook/<team>` into the hooks and is `503` while unset; nothing else needs it |
 | `SSL_CERT_FILE` | | Corporate CA bundle, honoured by the HTTP clients |

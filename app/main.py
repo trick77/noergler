@@ -195,7 +195,7 @@ async def _load_team_store(db_pool, configured: dict[str, TeamConfig]) -> dict[s
 async def lifespan(_app: FastAPI):
     global config, bitbucket_client, jira_client, review_queue
 
-    version = os.environ.get("OPENSHIFT_BUILD_COMMIT") or os.environ.get("NOERGLER_VERSION") or "dev"
+    version = os.environ.get("NOERGLER_VERSION") or "dev"
     logger.info("noergler version: %s", version)
     config = load_config()
     log_config(config, logger)
