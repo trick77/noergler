@@ -94,6 +94,26 @@ No web framework, no ORM, no logging library. Do not add one.
   timestamp guesses wrong otherwise).
 - Bodies byte-capped at the socket, 4 file fetches in flight, tokenizer vocab
   compiled in and warmed at boot. The pod has 2 Gi.
+- o200k_base vocab costs 6.7 MiB resident, not the 110 MiB the Python encoder
+  needed. `GOMEMLIMIT=1500MiB` is generous, not tight.
+
+## Diff engine
+
+- Two header counting rules, both required, disagreeing on `\ No newline`: the
+  per-hunk one counts "non-empty and not `+`/`-`", the merged one "starts with
+  `-`/` `" and "`+`/` `". Do not unify.
+- Bugs ported as is: `\ No newline` counts as a real line; `before_count` is
+  unclamped, so a stale `content` yields header counts exceeding the body; a
+  diff with no surviving hunks is filed under deleted, mislabelling a mode
+  change.
+- Every `\w` from a Python pattern is `[\pL\pN_]`, and `\b` is spelled out as
+  `(?:^|[^\pL\pN_])`: RE2's `\w` and `\b` are ASCII, Python's are Unicode.
+  `\bÖlservice\b` matches nothing in RE2. Third trap of this shape after the
+  Jira regexes. Check every ported pattern for both.
+- Line splitters differ per Python call site. `parse_hunks`/`expand_context`/
+  `remove_deletion_only_hunks` split on `\n`; `split_by_file` and the symbol
+  finders use `splitlines()` (also `\v`, `\f`, `\x1c`-`\x1e`, `\x85`, U+2028/9).
+- Sort key reads only the path, never diff or content: prefix-cache order.
 
 ## Divergences from Python (pinned by tests)
 
@@ -104,7 +124,12 @@ deleted/comment-deleted on the queue, not concurrent; dead code not ported
 `team_for`, `uncached_prompt`); no `/docs`; `SERVER_HOST`/`SERVER_PORT`
 honoured; cross-file refs label diff lines as diff lines; riptide
 `final_files_changed` counts reviewable files; declined PRs start fresh on
-reopen; `raw/{path}` URL-escaped (Python broke on a space or `#`).
+reopen; `raw/{path}` URL-escaped (Python broke on a space or `#`); adjacent
+hunks merge without losing diff lines (Python trimmed hunk 2's body by the
+whole overlap and dropped its removals); no phantom blank line in expanded
+bodies (Python's `split("\n")` artifact survived mid-body); the dynamic scope
+search skips lines past the end of truncated content instead of indexing past
+it (Python raised `IndexError`; a panic would take the queue worker down).
 
 The disagree/feedback mechanic was removed deliberately. Do not reintroduce.
 
