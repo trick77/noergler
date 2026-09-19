@@ -110,7 +110,7 @@ func Compress(
 			continue
 		}
 		compressedActive = append(compressedActive, FileReviewData{
-			Path: f.Path, Diff: cleaned, Content: f.Content,
+			Path: f.Path, Diff: cleaned, Content: f.Content, ContentFetched: f.ContentFetched,
 		})
 	}
 

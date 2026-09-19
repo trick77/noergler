@@ -13,15 +13,28 @@ import (
 )
 
 // FileReviewData is one file's diff plus, when fetched, its full new-side
-// content. Content is empty when it was not fetched or the file was deleted.
+// content.
 type FileReviewData struct {
-	Path    string
-	Diff    string
+	Path string
+	Diff string
+	// Content is the full new-side file, empty when it was not fetched OR when
+	// the file itself is empty. ContentFetched tells the two apart.
 	Content string
+	// ContentFetched records that content was fetched, even if the file turned
+	// out to be empty.
+	//
+	// Python's content is Optional[str] and the two cases differ where it
+	// matters: the prompt's file entry renders an empty code block for a
+	// fetched empty file and "content omitted" for an unfetched one. A newly
+	// created empty file in a PR reaches that path, since the reviewer never
+	// coerces "" to None.
+	ContentFetched bool
 }
 
-// HasContent reports whether content was fetched. Python tested `content or
-// diff` truthiness, so an empty string falls through exactly like None did.
+// HasContent reports whether content is usable as text, which is Python's
+// `content or diff` truthiness: an empty string falls through to the diff
+// exactly like None did. Use ContentFetched, not this, when the distinction
+// between unfetched and fetched-but-empty matters.
 func (f FileReviewData) HasContent() bool { return f.Content != "" }
 
 var diffPathRE = regexp.MustCompile(`(?m)^diff --git (?:a/.+ b/|src://.+ dst://)(.+)$`)

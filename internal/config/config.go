@@ -61,8 +61,10 @@ type LLM struct {
 	// GatewayModels is LLMWIRE_LITELLM_MODELS verbatim.
 	GatewayModels string
 	// ReasoningEffort is mandatory: noergler needs a reasoning-capable model.
-	// Normalised (trimmed, lower-cased); the allowed set is the profile's and
-	// is checked at inference startup.
+	// Normalised (trimmed, lower-cased) and not otherwise validated here. The
+	// allowed set is the profile's, which llmwire checks before sending; a
+	// gateway that rejects the level anyway answers 400 and the startup ping
+	// reports it.
 	ReasoningEffort string
 	// ContextWindow in tokens; 0 = read max_input_tokens from the gateway.
 	ContextWindow int

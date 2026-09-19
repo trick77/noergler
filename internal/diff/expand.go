@@ -287,9 +287,10 @@ func ExpandAllFiles(files []FileReviewData, before, after, maxDynamicBefore int,
 	out := make([]FileReviewData, 0, len(files))
 	for _, f := range files {
 		out = append(out, FileReviewData{
-			Path:    f.Path,
-			Diff:    ExpandContext(f.Diff, f.Content, f.Path, before, after, maxDynamicBefore, dynamicContext),
-			Content: f.Content,
+			Path:           f.Path,
+			Diff:           ExpandContext(f.Diff, f.Content, f.Path, before, after, maxDynamicBefore, dynamicContext),
+			Content:        f.Content,
+			ContentFetched: f.ContentFetched,
 		})
 	}
 	return out
