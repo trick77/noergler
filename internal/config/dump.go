@@ -11,7 +11,8 @@ import (
 // as ***. Same section headers as the Python service so runbooks and Splunk
 // searches still match.
 func Dump(app *App, log *slog.Logger) {
-	section(log, "config.bitbucket", kv{"base_url", app.Bitbucket.BaseURL}, kv{"token", mask}, kv{"username", app.Bitbucket.Username})
+	section(log, "config.bitbucket", kv{"base_url", app.Bitbucket.BaseURL}, kv{"token", mask}, kv{"username", app.Bitbucket.Username},
+		kv{"max_diff_bytes", app.Bitbucket.MaxDiffBytes}, kv{"max_file_bytes", app.Bitbucket.MaxFileBytes})
 	llmSection(log, "config.llm", app.LLM)
 	reviewSection(log, "config.review", app.Review)
 	jiraSection(log, "config.jira", app.Jira)

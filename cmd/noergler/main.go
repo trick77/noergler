@@ -18,9 +18,11 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/trick77/noergler-go/internal/bitbucket"
 	"github.com/trick77/noergler-go/internal/buildinfo"
 	"github.com/trick77/noergler-go/internal/config"
 	"github.com/trick77/noergler-go/internal/httpapi"
+	"github.com/trick77/noergler-go/internal/jira"
 	"github.com/trick77/noergler-go/internal/logging"
 	"github.com/trick77/noergler-go/internal/store"
 )
@@ -83,9 +85,9 @@ func serve(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Shared layer: any failure here aborts boot. The Bitbucket and Jira
-	// checks join in Phase 3; all checks run before the abort so the log
-	// names every failure at once.
+	// Shared layer: any failure here aborts boot, because none of it belongs to
+	// one team. Every check runs before the abort so the log names all the
+	// failures at once rather than one per restart.
 	checks := []string{}
 	db, err := store.Open(ctx, app.Database.URL, log)
 	if err == nil {
@@ -98,6 +100,25 @@ func serve(log *slog.Logger) error {
 	} else {
 		log.Info("Database: OK")
 	}
+
+	bb, err := bitbucket.New(app.Bitbucket, log)
+	if err == nil {
+		err = bb.CheckConnectivity(ctx)
+	}
+	if err != nil {
+		log.Error("Bitbucket: " + err.Error())
+		checks = append(checks, "Bitbucket")
+	}
+
+	jr, err := jira.New(app.Jira, log)
+	if err == nil {
+		err = jr.CheckConnectivity(ctx)
+	}
+	if err != nil {
+		log.Error("Jira: " + err.Error())
+		checks = append(checks, "Jira")
+	}
+	_, _ = bb, jr // wired into the reviewer in a later phase
 	if len(checks) > 0 {
 		return fmt.Errorf("Startup aborted: %d connection(s) failed: %s", len(checks), strings.Join(checks, ", "))
 	}

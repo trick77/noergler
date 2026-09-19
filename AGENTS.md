@@ -12,49 +12,39 @@ code did not.
 `docker compose up -d postgres`, then
 `NOERGLER_TEST_DSN=postgres://noergler:changeme@localhost:5432/noergler?sslmode=disable`.
 Each test migrates its own schema and drops it.
-`./hack/smoke.sh` boots `serve` with a two-team config and hits the probes.
+`./hack/smoke.sh` boots `serve` against `hack/fakes` (Bitbucket, Jira and
+riptide probes) and hits the endpoints. `serve` is the default subcommand,
+`migrate` is the init container and never runs from `serve`.
 Go 1.26, `net/http` + `ServeMux` patterns, `pgx`, `yaml.v3`,
 `tiktoken-go/tokenizer`. No web framework, no ORM, no logging library.
 
-## Layout
-
-`cmd/noergler` (`serve` default, `migrate`), `internal/config` (env + teams.yaml),
-`internal/logging` (slog JSON handler), `internal/httpapi`, `internal/store`,
-`internal/bitbucket`, `internal/jira`, `internal/riptide`, `internal/tokens`,
-`internal/diff`, `internal/inference`, `internal/render`, `internal/review`,
-`internal/queue`, `internal/teams`, `internal/onboarding`, `hack/`, `prompts/`.
-
 ## Invariants carried over from Python
 
-- **Team identity = webhook path + that team's HMAC secret + ownership
-  check.** Never trust `project.key` from the payload alone. Store the
-  authenticated slug.
-- **One team's fault disables that team only.** Never let a per-team error
-  abort startup; never let a shared-layer error (DB, Bitbucket, Jira,
-  unusable `teams.yaml`) disable just one team.
-- Every line about a team carries `team=<slug>`: bind with
-  `logging.WithTeam(ctx, slug)` at each boundary (webhook route, queue worker,
-  per-team startup) and log with `*Context`.
-- Secrets never in `teams.yaml`; `*_env` fields name env vars. Strict decode:
-  an unknown key disables the team. Gateway host/models and the prompt
-  templates are instance-only.
+- **Team identity = webhook path + that team's HMAC secret + ownership check.**
+  Never trust payload `project.key` alone. Store the authenticated slug.
+- **One team's fault disables that team only.** A per-team error never aborts
+  startup; a shared-layer error (DB, Bitbucket, Jira, unusable `teams.yaml`)
+  never disables one team alone.
+- Every team line carries `team=<slug>`: `logging.WithTeam(ctx, slug)` at each
+  boundary (webhook route, queue worker, per-team startup), log with `*Context`.
+- No secrets in `teams.yaml`; `*_env` names env vars. Strict decode: unknown key
+  disables the team. Gateway host/models and prompt templates are instance-only.
 - **Single review worker**, per-PR supersede, FIFO jobs. `pr:deleted` and
-  `pr:comment:deleted` run on the queue too (Python ran them concurrently;
+  `pr:comment:deleted` on the queue too (Python ran them concurrently;
   divergence). One prompt set resident at a time.
 - Team self-service authenticates with the team's webhook secret (`Bearer`,
-  constant-time compare). `/onboard` writes run on the caller's
-  `X-Bitbucket-Token`, never logged or stored, proven per target by admin
-  rights. Claims are written only after that proof; uniqueness is the DB's.
-- Prompt placeholder order in `prompts/review.txt`: `{files}` BEFORE
-  `{cumulative_pr_diff}` and `{previously_posted_findings}` (prefix cache).
-  File order passed to the LLM is content-independent (group, language,
-  path). Substitute with `strings.ReplaceAll`, never `text/template` (the
-  files contain JSON braces).
-- **Cost fails open.** Unpriced run = NULL cost, review proceeds; the per-PR
-  cap skips only subsequent auto-runs. Cost is `BIGINT` nano-USD in the DB,
-  USD only at the edges. Key spend is a gauge: shown, never summed.
-- Riptide: best-effort, never fails a webhook; one rollup per PR, claimed
-  before the POST, never retried; unknown cost = omit `total_cost_usd`;
+  constant-time). `/onboard` writes use the caller's `X-Bitbucket-Token`, never
+  logged or stored, proven per target by admin rights. Claims written only after
+  that proof; uniqueness is the DB's.
+- `prompts/review.txt` placeholder order: `{files}` BEFORE
+  `{cumulative_pr_diff}` and `{previously_posted_findings}` (prefix cache). File
+  order to the LLM is content-independent (group, language, path). Substitute
+  with `strings.ReplaceAll`, never `text/template` (files contain JSON braces).
+- **Cost fails open.** Unpriced run = NULL cost, review proceeds; the per-PR cap
+  skips only later auto-runs. `BIGINT` nano-USD in the DB, USD at the edges.
+  Key spend is a gauge: shown, never summed.
+- Riptide: best-effort, never fails a webhook; one rollup per PR, claimed before
+  the POST, never retried; unknown cost omits `total_cost_usd`;
   `reviewer_handle` + `reviewer_account_kind: "bot"` always.
 - The disagree/feedback mechanic was removed deliberately. Do not reintroduce.
 
@@ -62,8 +52,7 @@ Go 1.26, `net/http` + `ServeMux` patterns, `pgx`, `yaml.v3`,
 
 Embedded SQL in `internal/store/migrations/`, filename order, one transaction
 per file, advisory lock `0x6E6F6572`, `schema_migrations` table. Never edit an
-applied file; add the next number. `noergler migrate` is the init container,
-`serve` never migrates. Schema is runs, not accumulators: totals are
+applied file; add the next number. Schema is runs, not accumulators: totals are
 aggregates over `review_runs`; `PRCost` is NULL until a run is priced.
 `ClaimRollup` stamps `riptide_emitted_at` in the same statement that reads
 the snapshot. Every store call in the review path goes through a warn-and-
@@ -85,13 +74,31 @@ fallback wrapper: a DB fault never fails a review.
 
 ## Deliberate divergences from Python (pinned by tests)
 
-Acceptance-criteria prefix needs a word boundary; Jira fetched once per
-review; deleted/comment-deleted on the queue; dead code not ported
+AC prefix needs a word boundary (`AC` no longer eats `Actual…`, `Req` no longer
+`Request…`; `AK3` still matches); Jira fetched once per review;
+deleted/comment-deleted on the queue; dead code not ported
 (`fetch_pr_comments`, `_estimate_review_effort`, `get_existing_finding_keys`,
 `team_for`, `uncached_prompt`); no `/docs`; `SERVER_HOST`/`SERVER_PORT`
 honoured; cross-file refs label diff lines as diff lines; riptide
 `final_files_changed` counts reviewable files; declined PRs start fresh on
-reopen.
+reopen; `raw/{path}` URL-escaped (Python broke on a space or `#`).
+
+## Adapters
+
+- No interfaces here. Phase 6 defines them consumer-side.
+- Never add `Client.Timeout` to Bitbucket: httpx's is per-operation, Go's spans
+  the body read and cuts a 10 MiB diff. Caller's ctx bounds the total.
+- Never follow redirects: a 3xx would replay the bearer token at the new host.
+- `getTextCapped`: non-2xx beats the cap, else a big error page reports as an
+  oversized diff. Then Content-Length, then the read. Strict `>`.
+- Unreadable Jira ticket is not an error: the key came off a branch name, may be
+  noise. Dial timeout and bad JSON do fail.
+- `fields=` verbatim; `url.Values.Encode` escapes the commas.
+- **RE2 has no lookaround.** Emphasis: one pass, boundary chars written back.
+  `**bold**` stays `*bold*`; `ü*fett*` untouched (Python `\w` is Unicode).
+  Diff against Python before touching these or the AC prefix pattern.
+- Jira `imageRE` eats any `!…!` span on a line, so `Done! Ship it!` → `Done`.
+  Python did the same; kept for parity. Fix needs a parity decision first.
 
 ## Logging
 

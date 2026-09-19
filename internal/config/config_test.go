@@ -119,6 +119,10 @@ func TestInstance_RequiredVarsAndDefaults(t *testing.T) {
 	if app.Server.Host != "0.0.0.0" || app.Server.Port != 8080 || app.Trust.Threshold != 256000 {
 		t.Errorf("server/trust defaults: %+v %+v", app.Server, app.Trust)
 	}
+	// 10 MiB / 1 MiB, as the Python module globals defaulted.
+	if app.Bitbucket.MaxDiffBytes != 10*1024*1024 || app.Bitbucket.MaxFileBytes != 1024*1024 {
+		t.Errorf("byte cap defaults: %+v", app.Bitbucket)
+	}
 	if app.LLM.APIKey != "" || app.Teams["platform"].LLM.APIKey != "plat-key" || app.Teams["platform"].WebhookSecret != "plat-secret" {
 		t.Error("instance has no key; the team's come from its env vars")
 	}
@@ -164,6 +168,38 @@ func TestInstance_BadIntAbortsBoot(t *testing.T) {
 	_, err := e.load()
 	if err == nil || !strings.Contains(err.Error(), "REVIEW_MAX_COMMENTS") || !strings.Contains(err.Error(), "SERVER_PORT") {
 		t.Errorf("err = %v", err)
+	}
+}
+
+func TestInstance_ByteCapsOverridden(t *testing.T) {
+	e := newEnv(t)
+	e.set("BITBUCKET_MAX_DIFF_BYTES", "2048", "BITBUCKET_MAX_FILE_BYTES", "512")
+	app := e.mustLoad()
+	if app.Bitbucket.MaxDiffBytes != 2048 || app.Bitbucket.MaxFileBytes != 512 {
+		t.Errorf("byte caps: %+v", app.Bitbucket)
+	}
+}
+
+// Python read these with int() at import, so a bad value killed the process.
+func TestInstance_BadByteCapAbortsBoot(t *testing.T) {
+	e := newEnv(t)
+	e.set("BITBUCKET_MAX_DIFF_BYTES", "10MiB")
+	_, err := e.load()
+	if err == nil || !strings.Contains(err.Error(), "BITBUCKET_MAX_DIFF_BYTES") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+// A zero or negative cap would boot clean and then reject every diff and file,
+// so it has to fail at load rather than at the first review.
+func TestInstance_NonPositiveByteCapAbortsBoot(t *testing.T) {
+	for _, bad := range []string{"0", "-1"} {
+		e := newEnv(t)
+		e.set("BITBUCKET_MAX_FILE_BYTES", bad)
+		_, err := e.load()
+		if err == nil || !strings.Contains(err.Error(), "BITBUCKET_MAX_FILE_BYTES") {
+			t.Errorf("%s: err = %v, want a load failure", bad, err)
+		}
 	}
 }
 

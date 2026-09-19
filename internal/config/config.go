@@ -41,6 +41,12 @@ type Bitbucket struct {
 	BaseURL  string
 	Token    string
 	Username string
+	// MaxDiffBytes and MaxFileBytes cap text bodies at the socket. The pod runs
+	// with a fixed memory limit and a diff is held several times over (raw
+	// text, per-file split, rendered prompt, token ids), so a runaway response
+	// must be cut while streaming, not after it is in memory.
+	MaxDiffBytes int
+	MaxFileBytes int
 }
 
 // LLM is the inference setup: instance-wide gateway, per-team key and model.
@@ -299,6 +305,17 @@ func (e *envReader) required(name string) string    { return e.get(name, "", tru
 func (e *envReader) list(name, def string) []string { return commaList(e.get(name, def, false)) }
 func (e *envReader) boolean(name, def string) bool  { return parseBool(e.get(name, def, false)) }
 func (e *envReader) integer(name, def string) int   { return e.intOr(name, e.get(name, def, false)) }
+
+// positive is integer plus a floor of 1. A zero or negative byte cap would boot
+// clean and then refuse every diff and file, so it has to fail at load.
+func (e *envReader) positive(name, def string) int {
+	v := e.integer(name, def)
+	if v < 1 {
+		e.errs = append(e.errs, fmt.Sprintf("%s: must be a positive integer, got %d", name, v))
+	}
+	return v
+}
+
 func (e *envReader) float(name, def string) float64 { return e.floatOr(name, e.get(name, def, false)) }
 func (e *envReader) intOr(name, raw string) int     { v, err := parseInt(raw); e.fail(name, err); return v }
 func (e *envReader) floatOr(name, raw string) float64 {
@@ -366,9 +383,11 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 	e := &envReader{lookup: lookup}
 	app := &App{
 		Bitbucket: Bitbucket{
-			BaseURL:  e.required("BITBUCKET_URL"),
-			Token:    e.required("BITBUCKET_TOKEN"),
-			Username: e.required("BITBUCKET_USERNAME"),
+			BaseURL:      e.required("BITBUCKET_URL"),
+			Token:        e.required("BITBUCKET_TOKEN"),
+			Username:     e.required("BITBUCKET_USERNAME"),
+			MaxDiffBytes: e.positive("BITBUCKET_MAX_DIFF_BYTES", "10485760"),
+			MaxFileBytes: e.positive("BITBUCKET_MAX_FILE_BYTES", "1048576"),
 		},
 		LLM: LLM{
 			Model:         e.required("OPENAI_MODEL"),
