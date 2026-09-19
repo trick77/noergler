@@ -1,0 +1,32 @@
+# Secrets / per-deployment config
+.env
+teams.yaml
+
+# Plans and other HTML deliverables
+docs/plans/
+
+# Build
+/noergler
+/bin/
+coverage/
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+*.swp
+*~
+
+# Agent tooling
+.claude/
+.cursor/
+.aider*
+.codex/
+.zed/
+.windsurf/
+
+# macOS
+.DS_Store
+
+# IntelliJ HTTP client: host, team secret and admin token, filled in locally (template: .example)
+http/http-client.env.json
