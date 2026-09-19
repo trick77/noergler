@@ -8,7 +8,10 @@ code did not.
 ## Commands
 
 `gofmt -l .` (must print nothing), `go vet ./...`, `go build ./...`,
-`go test -race ./...`. Store tests need `NOERGLER_TEST_DSN` (skipped without).
+`go test -race ./...`. Store tests need `NOERGLER_TEST_DSN` (skipped without):
+`docker compose up -d postgres`, then
+`NOERGLER_TEST_DSN=postgres://noergler:changeme@localhost:5432/noergler?sslmode=disable`.
+Each test migrates its own schema and drops it.
 `./hack/smoke.sh` boots `serve` with a two-team config and hits the probes.
 Go 1.26, `net/http` + `ServeMux` patterns, `pgx`, `yaml.v3`,
 `tiktoken-go/tokenizer`. No web framework, no ORM, no logging library.
@@ -54,6 +57,17 @@ Go 1.26, `net/http` + `ServeMux` patterns, `pgx`, `yaml.v3`,
   before the POST, never retried; unknown cost = omit `total_cost_usd`;
   `reviewer_handle` + `reviewer_account_kind: "bot"` always.
 - The disagree/feedback mechanic was removed deliberately. Do not reintroduce.
+
+## Store
+
+Embedded SQL in `internal/store/migrations/`, filename order, one transaction
+per file, advisory lock `0x6E6F6572`, `schema_migrations` table. Never edit an
+applied file; add the next number. `noergler migrate` is the init container,
+`serve` never migrates. Schema is runs, not accumulators: totals are
+aggregates over `review_runs`; `PRCost` is NULL until a run is priced.
+`ClaimRollup` stamps `riptide_emitted_at` in the same statement that reads
+the snapshot. Every store call in the review path goes through a warn-and-
+fallback wrapper: a DB fault never fails a review.
 
 ## llmwire rules
 

@@ -15,8 +15,8 @@ services:
       timeout: 3s
       retries: 10
 
-  # Run by hand until the store lands: podman compose run --rm migrate.
-  # Then noergler gates on it with service_completed_successfully.
+  # Same as the init container in the deployment: migrations run before the
+  # service, never inside it.
   migrate:
     build:
       context: .
@@ -44,8 +44,8 @@ services:
       # One entry per team; secrets stay in .env (see teams.example.yaml).
       - ./teams.yaml:/app/teams.yaml:ro
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:

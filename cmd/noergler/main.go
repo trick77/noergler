@@ -15,12 +15,14 @@ import (
 	"os/signal"
 	"sort"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/trick77/noergler-go/internal/buildinfo"
 	"github.com/trick77/noergler-go/internal/config"
 	"github.com/trick77/noergler-go/internal/httpapi"
 	"github.com/trick77/noergler-go/internal/logging"
+	"github.com/trick77/noergler-go/internal/store"
 )
 
 func main() {
@@ -33,8 +35,7 @@ func main() {
 	case "serve":
 		err = serve(logging.Setup())
 	case "migrate":
-		logging.Setup()
-		err = migrate()
+		err = migrate(logging.Setup())
 	case "version":
 		fmt.Println(buildinfo.Version())
 	case "-h", "--help", "help":
@@ -49,10 +50,26 @@ func main() {
 	}
 }
 
-// migrate is filled in by the store package. Until then it refuses rather
-// than pretending the schema is in place.
-func migrate() error {
-	return errors.New("migrate: the store is not part of this build yet")
+// migrate applies pending migrations and exits: the init container's job.
+// Only DATABASE_URL is needed, so a teams.yaml is not required here.
+func migrate(log *slog.Logger) error {
+	log.Info("noergler version: " + buildinfo.Version())
+	dsn, ok := os.LookupEnv("DATABASE_URL")
+	if !ok || strings.TrimSpace(dsn) == "" {
+		return errors.New("Environment variable DATABASE_URL is not set")
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	db, err := store.Open(ctx, dsn, log)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if err := db.Migrate(ctx); err != nil {
+		return fmt.Errorf("migrate: %w", err)
+	}
+	log.Info("migrations up to date")
+	return nil
 }
 
 func serve(log *slog.Logger) error {
@@ -62,6 +79,28 @@ func serve(log *slog.Logger) error {
 		return err
 	}
 	config.Dump(app, log)
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	// Shared layer: any failure here aborts boot. The Bitbucket and Jira
+	// checks join in Phase 3; all checks run before the abort so the log
+	// names every failure at once.
+	checks := []string{}
+	db, err := store.Open(ctx, app.Database.URL, log)
+	if err == nil {
+		defer db.Close()
+		err = db.SchemaCurrent(ctx)
+	}
+	if err != nil {
+		log.Error("Database: " + err.Error())
+		checks = append(checks, "Database")
+	} else {
+		log.Info("Database: OK")
+	}
+	if len(checks) > 0 {
+		return fmt.Errorf("Startup aborted: %d connection(s) failed: %s", len(checks), strings.Join(checks, ", "))
+	}
 
 	// Per-team startup (inference check, riptide ping, store reconciliation)
 	// arrives with the later phases; for now a team the file resolves is a
@@ -86,8 +125,6 @@ func serve(log *slog.Logger) error {
 	status := func() ([]string, []string) { return enabled, disabled }
 	srv := httpapi.New(status, log)
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 	addr := net.JoinHostPort(app.Server.Host, strconv.Itoa(app.Server.Port))
 	log.Info("Bridge service started", "base_url", app.LLM.BaseURL, "teams", len(enabled))
 	if err := httpapi.Run(ctx, addr, srv.Handler(), log); err != nil {
