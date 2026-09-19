@@ -1,0 +1,10 @@
+.git
+.claude
+.env
+teams.yaml
+docs
+http
+hack
+*.md
+*.png
+coverage

@@ -1,0 +1,57 @@
+name: CI
+
+# Tests run on pull requests. Master does not run tests: it builds and pushes
+# the image (see release.yaml).
+on:
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build + test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: noergler
+          POSTGRES_PASSWORD: noergler
+          POSTGRES_DB: noergler_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U noergler"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      # go-version-file rather than a pinned version, so the toolchain cannot
+      # drift from what the module itself declares.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::These files are not gofmt'd. Run: gofmt -w ."
+            echo "$unformatted"
+            exit 1
+          fi
+      - run: go vet ./...
+      - run: go build ./...
+      # The race detector needs cgo; this is independent of the image's
+      # CGO_ENABLED=0 build.
+      - run: go test -race ./...
+        env:
+          CGO_ENABLED: "1"
+          NOERGLER_TEST_DSN: postgres://noergler:noergler@localhost:5432/noergler_test?sslmode=disable

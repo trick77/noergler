@@ -1,0 +1,116 @@
+package config
+
+import (
+	"fmt"
+	"log/slog"
+	"sort"
+	"strings"
+)
+
+// Dump logs the effective configuration, one line per field, secrets masked
+// as ***. Same section headers as the Python service so runbooks and Splunk
+// searches still match.
+func Dump(app *App, log *slog.Logger) {
+	section(log, "config.bitbucket", kv{"base_url", app.Bitbucket.BaseURL}, kv{"token", mask}, kv{"username", app.Bitbucket.Username})
+	llmSection(log, "config.llm", app.LLM)
+	reviewSection(log, "config.review", app.Review)
+	jiraSection(log, "config.jira", app.Jira)
+	section(log, "config.server", kv{"host", app.Server.Host}, kv{"port", app.Server.Port}, kv{"public_url", app.Server.PublicURL})
+	section(log, "config.database", kv{"url", mask})
+	section(log, "config.trust", kv{"headroom_tokens", app.Trust.HeadroomTokens}, kv{"threshold", app.Trust.Threshold}, kv{"tail", app.Trust.Tail})
+	log.Info(fmt.Sprintf("[config.teams] path = %s", app.TeamsConfigPath))
+	for _, slug := range app.Order {
+		team := app.Teams[slug]
+		log.Info(fmt.Sprintf("[config.teams.%s] name = %s", slug, team.Name))
+		log.Info("  webhook_secret = ***")
+		scopes := make([]string, len(team.Projects))
+		for i, p := range team.Projects {
+			scopes[i] = p.String()
+		}
+		log.Info(fmt.Sprintf("  projects = %s", pyList(scopes)))
+		llmSection(log, "config.teams."+slug+".llm", team.LLM)
+		reviewSection(log, "config.teams."+slug+".review", team.Review)
+		jiraSection(log, "config.teams."+slug+".jira", team.Jira)
+		if team.Riptide != nil {
+			section(log, "config.teams."+slug+".riptide", kv{"url", team.Riptide.URL}, kv{"token", mask})
+		} else {
+			log.Info(fmt.Sprintf("[config.teams.%s.riptide] disabled", slug))
+		}
+	}
+	for _, slug := range sortedKeys(app.Disabled) {
+		log.Error(fmt.Sprintf("[config.teams.%s] DISABLED: %s", slug, app.Disabled[slug]))
+	}
+}
+
+const mask = "***"
+
+type kv struct {
+	k string
+	v any
+}
+
+func section(log *slog.Logger, label string, fields ...kv) {
+	log.Info(fmt.Sprintf("[%s]", label))
+	for _, f := range fields {
+		log.Info(fmt.Sprintf("  %s = %v", f.k, render(f.v)))
+	}
+}
+
+func render(v any) string {
+	switch x := v.(type) {
+	case []string:
+		return pyList(x)
+	case bool:
+		if x {
+			return "True"
+		}
+		return "False"
+	default:
+		return fmt.Sprint(v)
+	}
+}
+
+// pyList renders like Python's repr of a list of strings, which is what the
+// existing Splunk searches match on.
+func pyList(items []string) string {
+	quoted := make([]string, len(items))
+	for i, s := range items {
+		quoted[i] = "'" + s + "'"
+	}
+	return "[" + strings.Join(quoted, ", ") + "]"
+}
+
+func llmSection(log *slog.Logger, label string, l LLM) {
+	section(log, label,
+		kv{"model", l.Model}, kv{"api_key", mask}, kv{"base_url", l.BaseURL},
+		kv{"gateway_models", l.GatewayModels}, kv{"reasoning_effort", l.ReasoningEffort},
+		kv{"context_window", l.ContextWindow})
+}
+
+func reviewSection(log *slog.Logger, label string, r Review) {
+	section(log, label,
+		kv{"auto_review_authors", r.AutoReviewAuthors}, kv{"ignore_authors", r.IgnoreAuthors},
+		kv{"exclude_repos", r.ExcludeRepos}, kv{"max_comments", r.MaxComments},
+		kv{"max_file_lines", r.MaxFileLines}, kv{"diff_extra_lines_before", r.DiffExtraLinesBefore},
+		kv{"diff_extra_lines_after", r.DiffExtraLinesAfter},
+		kv{"diff_max_extra_lines_dynamic_context", r.DiffMaxExtraLinesDynamicContext},
+		kv{"diff_allow_dynamic_context", r.DiffAllowDynamicContext},
+		kv{"review_prompt_template", r.ReviewPromptTemplate}, kv{"mention_prompt_template", r.MentionPromptTemplate},
+		kv{"ticket_compliance_check", r.TicketComplianceCheck}, kv{"require_agents_md", r.RequireAgentsMD},
+		kv{"agents_md_warn_tokens", r.AgentsMDWarnTokens}, kv{"agents_md_max_tokens", r.AgentsMDMaxTokens},
+		kv{"agents_md_custom_link", r.AgentsMDCustomLink}, kv{"opt_out_branch_keyword", r.OptOutBranchKeyword},
+		kv{"max_pr_cost_usd", r.MaxPRCostUSD})
+}
+
+func jiraSection(log *slog.Logger, label string, j Jira) {
+	section(log, label, kv{"url", j.URL}, kv{"token", mask}, kv{"acceptance_criteria_prefixes", j.AcceptanceCriteriaPrefixes})
+}
+
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
