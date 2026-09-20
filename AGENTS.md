@@ -53,6 +53,25 @@ No web framework, no ORM, no logging library. Do not add one.
 - File order to the LLM is content-independent (group, language, path).
 - `strings.ReplaceAll`, never `text/template`: the files contain JSON braces.
 - One prompt set resident at a time. **Single review worker**, per-PR supersede.
+- **Editing `prompts/review.txt` means re-running the evals**:
+  `EVAL_BASE_URL=... EVAL_API_KEY=... go run ./cmd/evals` from `backend/`.
+  Seeded-bug corpus in `internal/evals/corpus/`; exit 1 = a bug went
+  unreported. The unit tests pin assembly only, never review quality.
+- Evals default to **`mimo-v2.5-pro`, effort `high`** and stay there: a
+  weaker model or less thinking scores worse on the same prompt, so a mixed
+  history cannot be compared and a regression reads as a model change.
+  `EVAL_MODEL` is an llmwire profile id, not the endpoint's own name; the
+  gateway alias defaults to that id, which is what a plain
+  OpenAI-compatible host serves (`EVAL_ALIAS` for one that renames).
+- **Every eval run is committed** to `internal/evals/results/` with a row in
+  its README, worse scores included: an uncommitted number cannot be
+  compared with the next one, and a regression nobody recorded is invisible.
+- The mimo endpoint lists no `max_input_tokens`, so a run needs
+  `-context-window 1000000`; without it Startup fails and nothing is scored.
+- Eval scoring must stay blunt (file + line window + keyword). A judge model
+  would make a moved number two non-deterministic things to explain.
+  The corpus keeps a case with NO expected findings: without it, "caught
+  every seeded bug" is satisfied by reporting everything.
 
 ## llmwire
 

@@ -1,0 +1,30 @@
+{
+  "name": "nil-deref",
+  "description": "A pointer is dereferenced on a path where it was just proven nil. The window spans both natural anchors: the now-dead nil check and the dereference itself.",
+  "files": [
+    {
+      "path": "internal/review/summary.go",
+      "diff": "@@ -14,8 +16,8 @@ func Summarize(r *Result) string {\n \tif r == nil {\n \t\treturn \"\"\n \t}\n-\tif r.Ticket == nil {\n-\t\treturn r.Body\n-\t}\n+\tif r.Ticket == nil {\n+\t\t// Ticket is optional; fall through to the shared renderer.\n+\t}\n \treturn r.Body + \"\\n\\n\" + r.Ticket.Key\n }",
+      "content": "package review\n\ntype Ticket struct {\n\tKey     string\n\tSummary string\n}\n\ntype Result struct {\n\tBody   string\n\tTicket *Ticket\n}\n\n// Summarize renders the review body, appending the ticket key when one is\n// linked.\nfunc Summarize(r *Result) string {\n\tif r == nil {\n\t\treturn \"\"\n\t}\n\tif r.Ticket == nil {\n\t\t// Ticket is optional; fall through to the shared renderer.\n\t}\n\treturn r.Body + \"\\n\\n\" + r.Ticket.Key\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": [
+    {
+      "id": "nil-ticket-deref",
+      "file": "internal/review/summary.go",
+      "lines": [
+        19,
+        22
+      ],
+      "keywords": [
+        "nil",
+        "dereference",
+        "deref",
+        "panic",
+        "Ticket"
+      ],
+      "why": "The nil branch no longer returns, so r.Ticket.Key panics whenever Ticket is nil. A reviewer may anchor on the dead check (19) or on the dereference (22)."
+    }
+  ]
+}
