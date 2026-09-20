@@ -308,9 +308,14 @@ func (c *Client) GetRepo(ctx context.Context, project, repo string) (map[string]
 	return out, nil
 }
 
-// ListPullRequests reads one page of a repo's pull requests. Onboarding uses it
-// only to prove the bot can read PRs, so the page is returned as-is rather than
-// walked.
+// ListPullRequests reads one page of a repo's pull requests, returned as-is
+// rather than walked.
+//
+// Nothing calls it: it ports Python's list_pull_requests (app/bitbucket.py:329),
+// whose only caller was a bot-read probe that onboarding now does with
+// GetProject/GetRepo, matching Python's own claim() path. Kept so the adapter
+// still covers the Python surface; a reader looking for the read probe wants
+// internal/onboarding/onboarder.go:94-96.
 func (c *Client) ListPullRequests(ctx context.Context, project, repo string, limit int) (map[string]any, error) {
 	var out map[string]any
 	query := url.Values{"limit": {strconv.Itoa(limit)}}

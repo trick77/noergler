@@ -125,8 +125,10 @@ No web framework, no ORM, no logging library. Do not add one.
 AC prefix needs a word boundary (`AC` no longer eats `Actual…`, `Req` no longer
 `Request…`; `AK3` still matches); Jira fetched once per review;
 deleted/comment-deleted on the queue, not concurrent; dead code not ported
-(`fetch_pr_comments`, `_estimate_review_effort`, `get_existing_finding_keys`,
-`team_for`, `uncached_prompt`); no `/docs`; `SERVER_HOST`/`SERVER_PORT`
+(`fetch_pr_comments`, `get_existing_finding_keys`, `team_for`,
+`uncached_prompt` have no caller; `_estimate_review_effort` has three, but
+only to set `ReviewResult.review_effort`, which nothing reads and which is
+never serialized: computed, never observed); no `/docs`; `SERVER_HOST`/`SERVER_PORT`
 honoured; cross-file refs label diff lines as diff lines; riptide
 `final_files_changed` counts reviewable files; declined PRs start fresh on
 reopen; `raw/{path}` URL-escaped (Python broke on a space or `#`); adjacent

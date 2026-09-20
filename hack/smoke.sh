@@ -44,7 +44,7 @@ cat > "$tmp/teams.yaml" <<EOF
 teams:
   - slug: $team
     webhook_secret_env: TEAM_SMOKE_WEBHOOK_SECRET
-    projects: [{key: $project}]
+    projects: [{key: $project}, {key: ${project}NOREAD}]
     inference: {api_key_env: TEAM_SMOKE_OPENAI_API_KEY}
   - slug: payments-$run
     webhook_secret_env: TEAM_BROKEN_WEBHOOK_SECRET
@@ -84,6 +84,50 @@ echo "POST /webhook/$team (signed): $(PORT="$port" TEAM="$team" SECRET=s hack/re
 echo "POST /webhook/$team (bad signature): HTTP $(curl -s -o /dev/null -w '%{http_code}' -X POST \
   -H 'X-Hub-Signature: sha256=deadbeef' --data-binary "@$payload" "localhost:$port/webhook/$team")"
 
+# Onboarding, end to end. This is the surface that writes webhooks into a
+# customer's Bitbucket with a human's admin token, and until now nothing but
+# unit tests covered it. The fake keeps the hooks it is given, so the status
+# call below reports on what the onboard call actually wrote rather than on a
+# canned answer.
+#
+# Two headers on every call: the team's own webhook secret authenticates the
+# caller, and X-Bitbucket-Token carries the admin token the writes go out on.
+#
+# The token goes in bare: the Bitbucket client prepends "Bearer " itself, so
+# sending one here would reach the fake as "Bearer Bearer …" and be refused.
+#
+# The body goes through a file rather than an argument. Passed inline, curl
+# received one --data argument per top-level key with the outer braces gone
+# ('"action":"onboard"' and '"projects":[...]' as separate arguments), so the
+# server decoded a bare string and answered 422. A file body sidesteps the
+# quoting entirely and is readable besides.
+onboard() {
+  printf '%s' "$2" > "$tmp/onboard-body.json"
+  curl -s -X POST \
+    -H "Authorization: Bearer s" \
+    -H "X-Bitbucket-Token: $1" \
+    -H 'Content-Type: application/json' \
+    --data-binary "@$tmp/onboard-body.json" "localhost:$port/onboard/$team"
+}
+echo "--- onboarding"
+echo "onboard: $(onboard admin-token '{"action":"onboard","projects":[{"key":"'"$project"'"}]}')"
+# status takes no projects: onboard.go rejects that combination with a 400.
+echo "status: $(onboard admin-token '{"action":"status"}')"
+# grant-bot against the project the bot cannot read. Onboarding grants only
+# when the bot's own read fails, so this is the one target that reaches
+# GrantUserPermission; on the readable project it would correctly do nothing.
+echo "grant-bot: $(onboard admin-token '{"action":"grant-bot","projects":[{"key":"'"${project}NOREAD"'"}]}')"
+echo "remove (dry run): $(onboard admin-token '{"action":"remove","projects":[{"key":"'"$project"'"}],"dry_run":true}')"
+# The negative case. A non-admin token must get nowhere: onboarding proves
+# admin rights by listing webhooks, so the listing refuses it and the status
+# call cannot come back healthy.
+echo "status (non-admin token): $(onboard not-admin '{"action":"status"}')"
+# And no token at all is a 401 from the route itself, before Bitbucket is
+# touched.
+echo "status (no token): HTTP $(curl -s -o /dev/null -w '%{http_code}' -X POST \
+  -H 'Authorization: Bearer s' -H 'Content-Type: application/json' \
+  --data '{"action":"status"}' "localhost:$port/onboard/$team")"
+
 # The worker needs a moment to pick the job up before SIGTERM drains it.
 sleep 2
 kill -TERM "$pid"
@@ -92,5 +136,7 @@ echo "--- log"
 grep -E "version|Database|Bitbucket:|Jira:|team_disabled|team_ready|teams_ready|http_request|stopped|listening|DISABLED|queue\[" "$tmp/serve.log"
 echo "--- review posted"
 grep -c "comment posted" "$tmp/fakes.log" || true
+echo "--- onboarding writes seen by bitbucket (want a create, a grant and a refusal)"
+grep "onboarding:" "$tmp/fakes.log" || true
 echo "--- endpoints hack/fakes does not serve (want none)"
 grep "unhandled:" "$tmp/fakes.log" | sed 's/.*unhandled: //' | sort -u || true

@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -77,6 +78,85 @@ var (
 	postedMu sync.Mutex
 	posted   = map[string]string{}
 )
+
+// Onboarding state. The webhooks have to survive between requests: onboarding
+// is a write followed by a read, and a stateless fake would answer the status
+// call with "missing" no matter what the onboard call did, so the smoke check
+// would pass without proving anything.
+//
+// Keyed by the target path ("PROJ" or "PROJ/repo"), which is what the client
+// addresses; the values are the bodies as Bitbucket would hand them back.
+var (
+	hooksMu  sync.Mutex
+	hooks    = map[string][]map[string]any{}
+	hookSeq  = 5000
+	projRepo = map[string][]string{}
+)
+
+// adminToken is the token hack/smoke.sh sends for the calls that are supposed
+// to succeed. Onboarding proves admin rights by listing webhooks, so the
+// listing has to refuse a non-admin token too, not just the writes: were only
+// the writes gated, a non-admin `status` would read "ok" and the negative case
+// in the smoke run would prove nothing.
+const adminToken = "admin-token"
+
+// isAdmin reports whether this request carries the admin token.
+func isAdmin(r *http.Request) bool {
+	return strings.TrimSpace(r.Header.Get("Authorization")) == "Bearer "+adminToken
+}
+
+// denyNonAdmin answers 401 the way Bitbucket does when a token lacks the
+// rights, and reports whether it handled the request.
+func denyNonAdmin(w http.ResponseWriter, r *http.Request) bool {
+	if isAdmin(r) {
+		return false
+	}
+	log.Printf("onboarding: refused %s %s (non-admin token)", r.Method, r.URL.Path)
+	w.WriteHeader(http.StatusUnauthorized)
+	writeJSON(w, r, map[string]any{"errors": []any{map[string]any{
+		"message": "You are not permitted to access this resource"}}})
+	return true
+}
+
+// storedConfiguration is what a listing reports for a hook's configuration.
+// Bitbucket never hands the stored secret back, but it does return the object,
+// and onboarding's diff only asks whether it is non-empty: an empty map reads
+// as "secret unset" and every status call would then report the hook stale.
+func storedConfiguration() map[string]any {
+	return map[string]any{"secret": "***"}
+}
+
+// hookIDOf reads a stored hook's id. It went in as an int and comes back out
+// as one, but a decoded body would carry a float64, so both are accepted.
+func hookIDOf(h map[string]any) int {
+	switch v := h["id"].(type) {
+	case int:
+		return v
+	case float64:
+		return int(v)
+	}
+	return 0
+}
+
+// target is the key both webhook paths share: a project, or a repo under it.
+func target(r *http.Request) string {
+	if repo := r.PathValue("repo"); repo != "" {
+		return r.PathValue("project") + "/" + repo
+	}
+	return r.PathValue("project")
+}
+
+// writePage answers with one full page. The client's paged() stops on
+// isLastPage, so a single page is all any of these listings needs.
+func writePage(w http.ResponseWriter, r *http.Request, values []map[string]any) {
+	if values == nil {
+		values = []map[string]any{}
+	}
+	writeJSON(w, r, map[string]any{
+		"values": values, "size": len(values), "start": 0,
+		"limit": len(values), "isLastPage": true,
+	})
+}
 
 func main() {
 	addr := flag.String("addr", ":18099", "listen address")
@@ -278,6 +358,180 @@ func main() {
 			"usage": map[string]any{"prompt_tokens": 1200, "completion_tokens": 300, "total_tokens": 1500},
 		})
 	})
+
+	// -- Bitbucket: the onboarding surface -- //
+	//
+	// Everything below exists for the /onboard route, which writes webhooks
+	// into a customer's Bitbucket with a human's admin token. It is the
+	// riskiest thing this service does and the smoke run had no coverage of
+	// it at all; these eight handlers are what backend/internal/onboarding's
+	// AdminClient and BotClient need to run end to end.
+
+	// The bot proving it can read a project. On the bot's own token, so it is
+	// deliberately not gated on the admin one.
+	//
+	// A project whose key ends in NOREAD is refused, so the smoke run has a
+	// target the bot cannot read. Without one the grant-bot path is
+	// unreachable: onboarding only grants when the bot's own read fails, so
+	// against a fake that answers every read the grant is correctly skipped
+	// and the call proves nothing.
+	mux.HandleFunc("GET /rest/api/1.0/projects/{project}", func(w http.ResponseWriter, r *http.Request) {
+		project := r.PathValue("project")
+		if strings.HasSuffix(project, "NOREAD") && !isAdmin(r) {
+			w.WriteHeader(http.StatusNotFound)
+			writeJSON(w, r, map[string]any{"errors": []any{map[string]any{
+				"message": "Project " + project + " does not exist or you do not have permission"}}})
+			return
+		}
+		writeJSON(w, r, map[string]any{"key": project, "id": 1, "name": project, "public": false})
+	})
+
+	// The bot proving it can read a repo.
+	mux.HandleFunc("GET /rest/api/1.0/projects/{project}/repos/{repo}", func(w http.ResponseWriter, r *http.Request) {
+		repo := r.PathValue("repo")
+		writeJSON(w, r, map[string]any{
+			"slug": repo, "id": 1, "name": repo,
+			"project": map[string]any{"key": r.PathValue("project")},
+		})
+	})
+
+	// Every repo in a project, which the stray-hook sweep walks.
+	mux.HandleFunc("GET /rest/api/1.0/projects/{project}/repos", func(w http.ResponseWriter, r *http.Request) {
+		if denyNonAdmin(w, r) {
+			return
+		}
+		project := r.PathValue("project")
+		hooksMu.Lock()
+		slugs := append([]string(nil), projRepo[project]...)
+		hooksMu.Unlock()
+		values := make([]map[string]any, 0, len(slugs))
+		for _, slug := range slugs {
+			values = append(values, map[string]any{
+				"slug": slug, "name": slug,
+				"project": map[string]any{"key": project},
+			})
+		}
+		writePage(w, r, values)
+	})
+
+	// Listing the hooks on a project or a repo. This doubles as onboarding's
+	// admin-rights proof, hence the gate.
+	listHooks := func(w http.ResponseWriter, r *http.Request) {
+		if denyNonAdmin(w, r) {
+			return
+		}
+		hooksMu.Lock()
+		got := append([]map[string]any(nil), hooks[target(r)]...)
+		hooksMu.Unlock()
+		writePage(w, r, got)
+	}
+	mux.HandleFunc("GET /rest/api/1.0/projects/{project}/webhooks", listHooks)
+	mux.HandleFunc("GET /rest/api/1.0/projects/{project}/repos/{repo}/webhooks", listHooks)
+
+	// Creating a hook. The stored body is what a later listing returns, minus
+	// the secret: Bitbucket never hands that back, and onboarding's diff only
+	// checks that `configuration` is non-empty.
+	createHook := func(w http.ResponseWriter, r *http.Request) {
+		if denyNonAdmin(w, r) {
+			return
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			writeJSON(w, r, map[string]any{"errors": []any{map[string]any{"message": "bad body"}}})
+			return
+		}
+		key := target(r)
+		hooksMu.Lock()
+		hookSeq++
+		id := hookSeq
+		body["id"] = id
+		body["configuration"] = storedConfiguration()
+		hooks[key] = append(hooks[key], body)
+		if repo := r.PathValue("repo"); repo != "" {
+			project := r.PathValue("project")
+			if !slices.Contains(projRepo[project], repo) {
+				projRepo[project] = append(projRepo[project], repo)
+			}
+		}
+		hooksMu.Unlock()
+		log.Printf("onboarding: webhook created target=%s id=%d", key, id)
+		w.WriteHeader(http.StatusCreated)
+		writeJSON(w, r, body)
+	}
+	mux.HandleFunc("POST /rest/api/1.0/projects/{project}/webhooks", createHook)
+	mux.HandleFunc("POST /rest/api/1.0/projects/{project}/repos/{repo}/webhooks", createHook)
+
+	// Replacing a hook's settings.
+	updateHook := func(w http.ResponseWriter, r *http.Request) {
+		if denyNonAdmin(w, r) {
+			return
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			writeJSON(w, r, map[string]any{"errors": []any{map[string]any{"message": "bad body"}}})
+			return
+		}
+		id, _ := strconv.Atoi(r.PathValue("webhookID"))
+		key := target(r)
+		hooksMu.Lock()
+		found := false
+		for i, h := range hooks[key] {
+			if hookIDOf(h) == id {
+				body["id"] = id
+				body["configuration"] = storedConfiguration()
+				hooks[key][i] = body
+				found = true
+				break
+			}
+		}
+		hooksMu.Unlock()
+		if !found {
+			w.WriteHeader(http.StatusNotFound)
+			writeJSON(w, r, map[string]any{"errors": []any{map[string]any{"message": "no such webhook"}}})
+			return
+		}
+		log.Printf("onboarding: webhook updated target=%s id=%d", key, id)
+		writeJSON(w, r, body)
+	}
+	mux.HandleFunc("PUT /rest/api/1.0/projects/{project}/webhooks/{webhookID}", updateHook)
+	mux.HandleFunc("PUT /rest/api/1.0/projects/{project}/repos/{repo}/webhooks/{webhookID}", updateHook)
+
+	// Removing a hook, which is what `remove` does once its checks pass.
+	deleteHook := func(w http.ResponseWriter, r *http.Request) {
+		if denyNonAdmin(w, r) {
+			return
+		}
+		id, _ := strconv.Atoi(r.PathValue("webhookID"))
+		key := target(r)
+		hooksMu.Lock()
+		kept := hooks[key][:0]
+		for _, h := range hooks[key] {
+			if hookIDOf(h) != id {
+				kept = append(kept, h)
+			}
+		}
+		hooks[key] = kept
+		hooksMu.Unlock()
+		log.Printf("onboarding: webhook deleted target=%s id=%d", key, id)
+		w.WriteHeader(http.StatusNoContent)
+	}
+	mux.HandleFunc("DELETE /rest/api/1.0/projects/{project}/webhooks/{webhookID}", deleteHook)
+	mux.HandleFunc("DELETE /rest/api/1.0/projects/{project}/repos/{repo}/webhooks/{webhookID}", deleteHook)
+
+	// Granting the bot read access. Bitbucket takes this as query parameters,
+	// not a body, so the log line records them for the smoke run to assert on.
+	grantPerm := func(w http.ResponseWriter, r *http.Request) {
+		if denyNonAdmin(w, r) {
+			return
+		}
+		log.Printf("onboarding: permission granted target=%s name=%s permission=%s",
+			target(r), r.URL.Query().Get("name"), r.URL.Query().Get("permission"))
+		w.WriteHeader(http.StatusNoContent)
+	}
+	mux.HandleFunc("PUT /rest/api/1.0/projects/{project}/permissions/users", grantPerm)
+	mux.HandleFunc("PUT /rest/api/1.0/projects/{project}/repos/{repo}/permissions/users", grantPerm)
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("unhandled: %s %s", r.Method, r.URL.Path)
