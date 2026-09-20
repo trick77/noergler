@@ -53,6 +53,9 @@ type RiptideEmitter interface {
 // InferenceClient is the part of the inference client the pipeline uses.
 type InferenceClient interface {
 	Model() string
+	// Label is Model plus the reasoning effort: what a reader sees in the
+	// summary and what a run row stores.
+	Label() string
 	Ready() bool
 	ContextWindow() int
 	InputTokenBudget() int

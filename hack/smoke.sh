@@ -65,6 +65,11 @@ env -i PATH="$PATH" \
 pid=$!
 sleep 1
 
+# RSS once the teams are up and the tokenizer is warm. The container sets
+# GOMEMLIMIT=1500MiB against a 2Gi pod, so this is the number to watch: it is
+# the floor a deployment starts from, before any PR is reviewed.
+echo "RSS after warm-up: $(ps -o rss= -p "$pid" | tr -d ' ') KiB"
+
 echo "GET /health: $(curl -s "localhost:$port/health")"
 echo "GET /ready: HTTP $(curl -s -o /dev/null -w '%{http_code}' "localhost:$port/ready")"
 echo "GET /nope: $(curl -s -H 'X-Request-Id: req-1' "localhost:$port/nope")"
@@ -72,10 +77,7 @@ echo "GET /teams/$team: $(curl -s -H 'Authorization: Bearer s' "localhost:$port/
 
 # A signed replay of the sample delivery: the only end-to-end proof that the
 # route, the HMAC, the ownership check and the queue are wired together.
-sig=$(openssl dgst -sha256 -hmac s "$payload" | awk '{print $NF}')
-echo "POST /webhook/$team (signed): $(curl -s -X POST \
-  -H "X-Hub-Signature: sha256=$sig" -H 'X-Event-Key: pr:opened' \
-  --data-binary "@$payload" "localhost:$port/webhook/$team")"
+echo "POST /webhook/$team (signed): $(PORT="$port" TEAM="$team" SECRET=s hack/replay.sh "$payload" pr:opened)"
 echo "POST /webhook/$team (bad signature): HTTP $(curl -s -o /dev/null -w '%{http_code}' -X POST \
   -H 'X-Hub-Signature: sha256=deadbeef' --data-binary "@$payload" "localhost:$port/webhook/$team")"
 

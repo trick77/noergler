@@ -143,6 +143,12 @@ body is read BEFORE the HMAC and a team slug is not a secret; `/onboard` and
 unauthenticated caller cannot probe the schema (FastAPI validates first and
 would 422 ahead of the 401; nothing pins that order).
 
+NOT ours and not fixable here: `tiktoken-go` counts `" \n \n"` as two tokens
+where tiktoken merges the run into one (id 56319), so a diff with consecutive
+blank context lines counts one token high per run (~0.3% on a small PR). Errs
+safe (a smaller usable budget) and only shows in the summary footnote's
+file-content figure, which `hack/parity.sh` therefore compares by label.
+
 ## HTTP surface
 
 Webhook check order is `main.py:389` step for step and is NOT what a Go author

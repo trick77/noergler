@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/trick77/llmwire"
+
+	"github.com/trick77/noergler-go/internal/config"
 )
 
 // CallTimeout is the hard wall-clock cap on a single LLM call. noergler
@@ -116,6 +118,17 @@ const gatewayAPIKeyEnv = "LLMWIRE_LITELLM_API_KEY"
 
 // Model is the llmwire profile id this client was built for.
 func (c *Client) Model() string { return c.model }
+
+// Label is the model string a reader sees: the profile id with the reasoning
+// effort appended, as Python's model_label renders it. It is what the summary
+// footnote shows and what a run row stores.
+//
+// Not Model(): that one names the profile llmwire routes on, and the effort is
+// part of what produced a review, so a run recorded without it cannot be told
+// apart from the same model at another effort. The profile id rather than the
+// gateway alias is deliberate: the alias is the operator's private naming and
+// has no business in a PR comment.
+func (c *Client) Label() string { return config.ModelLabel(c.model, c.effort) }
 
 // ContextWindow is the resolved window in tokens, 0 before Startup.
 func (c *Client) ContextWindow() int { return c.window }

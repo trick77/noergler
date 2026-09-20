@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/trick77/noergler-go/internal/bitbucket"
+	"github.com/trick77/noergler-go/internal/config"
 	"github.com/trick77/noergler-go/internal/inference"
 	"github.com/trick77/noergler-go/internal/jira"
 	"github.com/trick77/noergler-go/internal/riptide"
@@ -338,6 +339,7 @@ func (f *fakeStore) ClaimRollup(_ context.Context, _ store.PRKey, final store.Ro
 // fakeLLM returns canned review and mention results.
 type fakeLLM struct {
 	model   string
+	effort  string
 	ready   bool
 	window  int
 	budget  int
@@ -351,6 +353,7 @@ type fakeLLM struct {
 func newFakeLLM() *fakeLLM {
 	return &fakeLLM{
 		model:  "gpt-5.5",
+		effort: "high",
 		ready:  true,
 		window: 1_000_000,
 		budget: 628_000,
@@ -361,7 +364,12 @@ func newFakeLLM() *fakeLLM {
 	}
 }
 
-func (f *fakeLLM) Model() string         { return f.model }
+func (f *fakeLLM) Model() string { return f.model }
+
+// Label mirrors the real client rather than returning a canned string: a fake
+// that formats the label its own way would keep passing if the real one
+// changed.
+func (f *fakeLLM) Label() string         { return config.ModelLabel(f.model, f.effort) }
 func (f *fakeLLM) Ready() bool           { return f.ready }
 func (f *fakeLLM) ContextWindow() int    { return f.window }
 func (f *fakeLLM) InputTokenBudget() int { return f.budget }

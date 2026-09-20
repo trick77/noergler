@@ -149,6 +149,39 @@ func TestReviewRunsForAllowedAuthor(t *testing.T) {
 	}
 }
 
+// The model string a reader sees carries the reasoning effort, and the same
+// string is stored on the run row. Python renders both from
+// model_label(model, reasoning_effort).
+//
+// This drives the pipeline rather than the renderer: render's summary golden
+// takes ModelLabel as an input, so it pins the formatting but says nothing
+// about what the reviewer passes in. Phase 8 found the reviewer passing the
+// bare profile id, which that golden could not catch.
+func TestSummaryAndRunRowCarryTheEffortInTheModelLabel(t *testing.T) {
+	h := newHarness(t, nil)
+	h.llm.review = okResultWith(finding("a.go", 2, "issue", "bad"))
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+	// The fake is built with model gpt-5.5 at effort high.
+	const want = "gpt-5.5-high"
+
+	if len(h.st.Runs) != 1 {
+		t.Fatalf("expected one run row, got %d", len(h.st.Runs))
+	}
+	if got := h.st.Runs[0].ModelLabel; got != want {
+		t.Errorf("run row model label = %q, want %q", got, want)
+	}
+
+	if len(h.bb.Posted) != 1 {
+		t.Fatalf("expected one summary comment, got %d", len(h.bb.Posted))
+	}
+	// The summary renders it as "Model: `<label>`".
+	if body := h.bb.Posted[0].Text; !strings.Contains(body, "`"+want+"`") {
+		t.Errorf("summary does not show model %q; footnote was:\n%s", want, body)
+	}
+}
+
 // Guard 1: a payload with no repository on either ref names no PR, so there
 // is nothing to review and nothing to write.
 func TestReviewRequiresAProjectAndRepo(t *testing.T) {

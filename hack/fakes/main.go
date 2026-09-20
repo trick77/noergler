@@ -4,20 +4,103 @@
 // Covers what startup and one replayed webhook touch: the Bitbucket and Jira
 // probes, the riptide ping, and the gateway (model listing plus completions).
 //
-// Usage: fakes [-addr :18099]
+// With -record, every body that carries review output is written to a file so
+// two implementations can be diffed against each other: the comments posted to
+// Bitbucket, the completion requests sent to the gateway, and the riptide
+// rollup. The name is the payload kind plus the order it arrived in, because
+// the order is part of what parity means.
+//
+// Usage: fakes [-addr :18099] [-record dir] [-review file]
 package main
 
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
+)
+
+// recorder writes request bodies to a directory, numbered per kind in arrival
+// order. A zero recorder (no -record) discards everything, so the default
+// behaviour of the fakes is unchanged.
+type recorder struct {
+	dir string
+
+	mu sync.Mutex
+	n  map[string]int
+}
+
+func newRecorder(dir string) *recorder {
+	return &recorder{dir: dir, n: make(map[string]int)}
+}
+
+// save writes body as <kind>-<seq>.json and returns the bytes it consumed, so
+// a handler can still decode what it recorded.
+func (rec *recorder) save(kind string, body []byte) {
+	if rec.dir == "" {
+		return
+	}
+	rec.mu.Lock()
+	rec.n[kind]++
+	seq := rec.n[kind]
+	rec.mu.Unlock()
+
+	name := filepath.Join(rec.dir, fmt.Sprintf("%s-%d.json", kind, seq))
+	if err := os.WriteFile(name, body, 0o644); err != nil {
+		log.Printf("record %s: %v", name, err)
+		return
+	}
+	log.Printf("recorded %s (%d bytes)", filepath.Base(name), len(body))
+}
+
+// readAndRecord drains r.Body, saves it and hands it back for decoding.
+func (rec *recorder) readAndRecord(kind string, r *http.Request) []byte {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Printf("read %s body: %v", kind, err)
+		return nil
+	}
+	rec.save(kind, body)
+	return body
+}
+
+// posted holds the comment bodies this process accepted, keyed by the id it
+// handed out, so a GET of one can answer with the text instead of a 404.
+var (
+	postedMu sync.Mutex
+	posted   = map[string]string{}
 )
 
 func main() {
 	addr := flag.String("addr", ":18099", "listen address")
+	recordDir := flag.String("record", "", "directory to record posted comments, completion requests and riptide rollups into")
+	reviewFile := flag.String("review", "", "file holding the canned review JSON (default: the built-in one)")
 	flag.Parse()
+
+	rec := newRecorder(*recordDir)
+	if *recordDir != "" {
+		if err := os.MkdirAll(*recordDir, 0o755); err != nil {
+			log.Fatalf("record dir: %v", err)
+		}
+	}
+
+	// The review body both implementations get has to be the same bytes, so it
+	// can come from a file shared by a parity run.
+	review := cannedReview
+	if *reviewFile != "" {
+		blob, err := os.ReadFile(*reviewFile)
+		if err != nil {
+			log.Fatalf("review file: %v", err)
+		}
+		review = string(blob)
+	}
 
 	mux := http.NewServeMux()
 
@@ -44,6 +127,7 @@ func main() {
 
 	// Riptide: swallow rollups so a local run does not error on them.
 	mux.HandleFunc("POST /webhooks/noergler", func(w http.ResponseWriter, r *http.Request) {
+		rec.readAndRecord("rollup", r)
 		log.Printf("riptide rollup received")
 		w.WriteHeader(http.StatusAccepted)
 	})
@@ -60,9 +144,15 @@ func main() {
 	// from. A 404 here is a real answer, not a gap in the fake.
 	mux.HandleFunc("GET /rest/api/1.0/projects/{project}/repos/{repo}/raw/{path...}",
 		func(w http.ResponseWriter, r *http.Request) {
-			if r.PathValue("path") == "AGENTS.md" {
+			path := r.PathValue("path")
+			if path == "AGENTS.md" {
 				w.Header().Set("Content-Type", "text/plain")
 				_, _ = w.Write([]byte("# Rules\n\nBe terse.\n"))
+				return
+			}
+			if body, ok := sampleFiles[path]; ok {
+				w.Header().Set("Content-Type", "text/plain")
+				_, _ = w.Write([]byte(body))
 				return
 			}
 			w.WriteHeader(http.StatusNotFound)
@@ -74,10 +164,73 @@ func main() {
 	commentID := 1000
 	mux.HandleFunc("POST /rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{id}/comments",
 		func(w http.ResponseWriter, r *http.Request) {
+			body := rec.readAndRecord("comment", r)
+			// Keep the text so a later GET of this id can return it rather
+			// than 404, which both implementations read as "deleted".
+			//
+			// The id is handed out under the same lock that stores the text:
+			// two concurrent posts reading the counter would otherwise get the
+			// same id, and the second would overwrite the first, so a GET
+			// would answer with the wrong comment. Python interleaves its
+			// posts, so this is reachable.
+			var c struct{ Text string }
+			_ = json.Unmarshal(body, &c)
+			postedMu.Lock()
 			commentID++
-			log.Printf("comment posted id=%d", commentID)
+			id := commentID
+			posted[strconv.Itoa(id)] = c.Text
+			postedMu.Unlock()
+			log.Printf("comment posted id=%d", id)
 			w.WriteHeader(http.StatusCreated)
-			writeJSON(w, r, map[string]any{"id": commentID, "version": 0})
+			writeJSON(w, r, map[string]any{"id": id, "version": 0})
+		})
+
+	// Bitbucket: reading one comment back. Both implementations fetch the
+	// summary they recorded to see whether a human deleted it, and a 404 here
+	// means "deleted", which makes the PR ignored from then on. Serving the
+	// bodies posted in this process keeps a second replay on the review path
+	// instead of that branch.
+	mux.HandleFunc("GET /rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{id}/comments/{commentID}",
+		func(w http.ResponseWriter, r *http.Request) {
+			id := r.PathValue("commentID")
+			postedMu.Lock()
+			text, ok := posted[id]
+			postedMu.Unlock()
+			if !ok {
+				w.WriteHeader(http.StatusNotFound)
+				writeJSON(w, r, map[string]any{"errors": []any{map[string]any{"message": "no such comment"}}})
+				return
+			}
+			n, _ := strconv.Atoi(id)
+			writeJSON(w, r, map[string]any{"id": n, "text": text, "version": 0})
+		})
+
+	// Bitbucket: editing a comment in place. A re-review updates its summary
+	// rather than posting a second one, so without this the two sides diverge
+	// on comment count for a reason that is the fake's, not theirs.
+	mux.HandleFunc("PUT /rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{id}/comments/{commentID}",
+		func(w http.ResponseWriter, r *http.Request) {
+			id := r.PathValue("commentID")
+			body := rec.readAndRecord("comment-update", r)
+			var c struct {
+				Text    string `json:"text"`
+				Version int    `json:"version"`
+			}
+			_ = json.Unmarshal(body, &c)
+			postedMu.Lock()
+			_, known := posted[id]
+			if known {
+				posted[id] = c.Text
+			}
+			postedMu.Unlock()
+			if !known {
+				w.WriteHeader(http.StatusNotFound)
+				writeJSON(w, r, map[string]any{"errors": []any{map[string]any{"message": "no such comment"}}})
+				return
+			}
+			log.Printf("comment updated id=%s", id)
+			n, _ := strconv.Atoi(id)
+			writeJSON(w, r, map[string]any{"id": n, "text": c.Text, "version": c.Version + 1})
 		})
 
 	// Gateway: the model listing per-team startup reads the context window
@@ -98,14 +251,21 @@ func main() {
 	// wants any non-empty reply; a review wants a schema-valid object. They
 	// are told apart by response_format, which only the review sends.
 	mux.HandleFunc("POST /chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			log.Printf("read completions body: %v", err)
+		}
 		var req struct {
 			ResponseFormat json.RawMessage `json:"response_format"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&req)
+		_ = json.Unmarshal(body, &req)
 
 		content := "ok"
 		if len(req.ResponseFormat) > 0 {
-			content = cannedReview
+			content = review
+			// Only the review call is worth diffing. The startup ping is a
+			// fixed two-word prompt and every boot makes one.
+			rec.save("completion", body)
 		}
 		// Priced, so the run stores a cost instead of falling open to NULL.
 		w.Header().Set("x-litellm-response-cost", "0.0123")
@@ -126,6 +286,9 @@ func main() {
 	})
 
 	log.Printf("fakes listening on %s (bitbucket, jira, riptide, gateway)", *addr)
+	if *recordDir != "" {
+		log.Printf("recording comment, completion and rollup bodies to %s", *recordDir)
+	}
 	srv := &http.Server{Addr: *addr, Handler: mux}
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
@@ -134,24 +297,82 @@ func main() {
 
 // sampleDiff is one reviewable file, enough for the pipeline to produce a
 // finding and a summary.
+// Two files in different languages, each with a hunk in the middle of a longer
+// file. The languages make file ordering (group, language, path) observable,
+// and the surrounding lines give context expansion something to expand: with a
+// 404 on the file body the reviewer falls back to diff-only and neither path
+// runs, which is what the first parity run silently did.
 const sampleDiff = `diff --git a/a.go b/a.go
 index 1111111..2222222 100644
 --- a/a.go
 +++ b/a.go
-@@ -1,3 +1,4 @@
- package a
+@@ -6,3 +6,4 @@ func helper() string {
+ 	return "helper"
+ }
 
 -func old() {}
 +func newThing() int { return 42 }
 +func other() {}
+diff --git a/util.py b/util.py
+index 3333333..4444444 100644
+--- a/util.py
++++ b/util.py
+@@ -5,3 +5,3 @@ def existing():
+     return 1
+
+
+-def removed():
++def renamed():
+     return 2
 `
+
+// sampleFiles are the post-change bodies of the files in sampleDiff, served
+// from the raw endpoint so the reviewer can expand context around the hunks.
+// The hunk line numbers above index into these.
+var sampleFiles = map[string]string{
+	"a.go": `package a
+
+import "fmt"
+
+// helper is here to give the hunk some context above it.
+func helper() string {
+	return "helper"
+}
+
+func newThing() int { return 42 }
+func other() {}
+
+func trailing() { fmt.Println("after") }
+`,
+	"util.py": `"""Module docstring, context above the hunk."""
+
+
+def existing():
+    return 1
+
+
+def renamed():
+    return 2
+
+
+def trailing():
+    return 3
+`,
+}
 
 // gatewayAlias is what LLMWIRE_LITELLM_MODELS maps the profile id onto in
 // hack/smoke.sh. The listing is keyed by the alias, not the profile.
 const gatewayAlias = "ai-gateway-gpt-5.5"
 
-// cannedReview is one schema-valid review, so a replayed webhook produces an
-// inline comment and a summary rather than an unparseable-response notice.
+// cannedReview is the built-in default: one schema-valid review, so a replayed
+// webhook produces an inline comment and a summary rather than an
+// unparseable-response notice. It is what smoke.sh gets, and one finding is all
+// smoke.sh asserts on.
+//
+// Not the same bytes as hack/testdata/review.json, deliberately: -review serves
+// that file to both implementations in a parity run, and it carries a finding
+// per file in sampleDiff so the posting order of several comments is compared
+// too. Keeping the default here means the fakes still work with no flags.
 const cannedReview = `{
   "overview": "A small change to the smoke fixture.",
   "strengths": ["Focused diff"],
