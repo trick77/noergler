@@ -205,6 +205,11 @@ const (
 	PlaceholderCumulativePRDiff = "{cumulative_pr_diff}"
 	PlaceholderPreviouslyPosted = "{previously_posted_findings}"
 	PlaceholderRepoInstructions = "{repo_instructions}"
+	// PlaceholderTicketContext takes NoTicketContext when no ticket is
+	// linked, and PlaceholderComplianceInstructions is emptied unless a
+	// ticket is present and the compliance check is on.
+	PlaceholderTicketContext          = "{ticket_context}"
+	PlaceholderComplianceInstructions = "{compliance_instructions}"
 )
 
 // RenderReviewPrompt substitutes the rendered blocks into the template.

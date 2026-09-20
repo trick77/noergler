@@ -1,0 +1,110 @@
+{
+ "empty": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_"
+ },
+ "mixed": {
+  "out": "### Overview\nAdds a thing.\n\n### Strengths\n- Tests included\n\n### Issues / Suggestions\n1. Null deref\n2. Rename it\n\n### Security / Performance\nNothing notable.\n\n### Test Coverage\nGood.\n\n### Recommendation\n**Approve ✅** — Fine.\n\n---\n- _Using project-specific review guidelines from `AGENTS.md` (~300 / 4000 tokens, 8%) ✅_\n- _Jira is not enabled ℹ️_\n- _Reviewed 3 of 5 files (2 skipped: lock files, binaries, config), +40 / -7 lines_\n- _Tokens used: 1k of 628k available (0% used, model max 1M)_\n- _Input tokens: ~500 review prompt · ~300 AGENTS.md · ~200 file content_\n- _Model: `gpt-5.5-medium` · ↑ 1'000 · ↓ 200 (1'200 total) · ⏱️ 12.3s_\n- _Cost: $0.12 this run, $1.50 PR total / $5.00 limit, $42.00 key total_"
+ },
+ "truncated": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\n- Showing top 2 findings by severity. Additional findings were omitted.\n\n1. One\n2. Two\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_"
+ },
+ "security": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\n- 1 potential security issue 🔒 — review carefully\n\n1. Injection\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_"
+ },
+ "security_multiple": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\n- 2 potential security issues 🔒 — review carefully\n\n1. A\n2. B\n3. C\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_"
+ },
+ "headline_fallback": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\n1. First line of comment.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_"
+ },
+ "headline_empty_string": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\n1. Body here.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_"
+ },
+ "no_findings_agents_found": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Using project-specific review guidelines from `AGENTS.md` (~3000 / 4000 tokens, 75%) ✅_\n- _Jira is not enabled ℹ️_\n- _Input tokens: ~1 review prompt · ~3'000 AGENTS.md · ~1 file content_\n- _Model: `gpt-5.5-medium` · ↑ 1 · ↓ 1 (2 total)_"
+ },
+ "agents_over_warn": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Using project-specific review guidelines from `AGENTS.md` (~9000 / 4000 tokens, 225%) — risk of context bloat, consider trimming ⚠️_\n- _Jira is not enabled ℹ️_\n- _Input tokens: ~1 review prompt · ~9'000 AGENTS.md · ~1 file content_\n- _Model: `gpt-5.5-medium` · ↑ 1 · ↓ 1 (2 total)_"
+ },
+ "agents_no_breakdown": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Using project-specific review guidelines from `AGENTS.md` ✅_\n- _Jira is not enabled ℹ️_"
+ },
+ "agents_warn_disabled": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Using project-specific review guidelines from `AGENTS.md` ✅_\n- _Jira is not enabled ℹ️_\n- _Input tokens: ~1 review prompt · ~9'000 AGENTS.md · ~1 file content_\n- _Model: `gpt-5.5-medium` · ↑ 1 · ↓ 1 (2 total)_"
+ },
+ "ticket_no_compliance": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Ticket\n**[ABC-1](https://jira/browse/ABC-1)** — Do the thing\n_No acceptance criteria found in ticket_\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_"
+ },
+ "ticket_no_ac": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Ticket\n**[ABC-1](https://jira/browse/ABC-1)** — Do the thing\n_No acceptance criteria found in ticket_\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_"
+ },
+ "ticket_compliance_disabled": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Ticket\n**[ABC-1](https://jira/browse/ABC-1)** — Do the thing\n_Compliance check disabled in config_\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_"
+ },
+ "ticket_extraction_failed": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Ticket\n**[ABC-1](https://jira/browse/ABC-1)** — Do the thing\n_Compliance extraction failed during LLM review — check logs_\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_"
+ },
+ "ticket_fully_compliant": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Requirement Compliance\n**[ABC-1](https://jira/browse/ABC-1)** — Do the thing · **Fully compliant** ✅\n- Does X ✅\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_"
+ },
+ "ticket_partial": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Requirement Compliance\n**[ABC-1](https://jira/browse/ABC-1)** — Do the thing · **Partially compliant** ⚠️\n- Does X ✅\n- Does Y ❌\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_"
+ },
+ "ticket_none_met": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Requirement Compliance\n**[ABC-1](https://jira/browse/ABC-1)** — Do the thing · **Not compliant** ❌\n- Does X ❌\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_"
+ },
+ "ticket_with_parent": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Ticket\n**[ABC-1](https://jira/browse/ABC-1)** — Parent\n**↳ [ABC-2](https://jira/browse/ABC-2)** — Sub\n_No acceptance criteria found in ticket_\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_"
+ },
+ "no_ticket_jira_enabled": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _No ticket found in branch name or PR title ℹ️_"
+ },
+ "no_ticket_jira_disabled": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_"
+ },
+ "verdict_request_changes": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Request changes 🛑** — No.\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_"
+ },
+ "verdict_followups": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve with follow-ups ⚠️** — Mostly.\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_"
+ },
+ "verdict_unknown": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — Hm.\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_"
+ },
+ "incremental": {
+  "out": "### Review summary (incremental update)\n- Changes reviewed: `aaaaaaaaaa` .. `bbbbbbbbbb`\n\n### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_"
+ },
+ "skipped_files": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_\n- _Not reviewed (too large): `big.go`, `huge.ts` ⚠️_\n- _Reviewed without full file context (too large): `med.py` ⚠️_"
+ },
+ "cross_file_few": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_\n- _2 cross-file dependencies analyzed (`Foo`, `Bar`)_"
+ },
+ "cross_file_one": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_\n- _1 cross-file dependency analyzed (`Foo`)_"
+ },
+ "cross_file_many": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_\n- _7 cross-file dependencies analyzed (`A`, `B`, `C`, `D`, `E` and 2 more)_"
+ },
+ "cost_unpriced": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_\n- _Model: `gpt-5.5-medium` · ↑ 10 · ↓ 2 (12 total)_\n- _Cost: $7.00 key total_"
+ },
+ "cost_zero_keyspend": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_\n- _Model: `gpt-5.5-medium` · ↑ 10 · ↓ 2 (12 total)_\n- _Cost: $0.50 this run, $0.50 PR total / $5.00 limit_"
+ },
+ "cost_none_at_all": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_\n- _Model: `gpt-5.5-medium` · ↑ 10 · ↓ 2 (12 total)_"
+ },
+ "cost_run_no_cumulative": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_\n- _Model: `gpt-5.5-medium` · ↑ 10 · ↓ 2 (12 total)_\n- _Cost: $0.50 this run_"
+ },
+ "files_all_reviewed": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_\n- _Reviewed 4 files, +10 lines_"
+ },
+ "diff_only": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_\n- _Diff: +5 / -3 lines_"
+ },
+ "budget_no_window": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_\n- _Tokens used: 1k of 628k available (0% used)_\n- _Model: `gpt-5.5-medium` · ↑ 1'000 · ↓ 10 (1'010 total)_"
+ }
+}

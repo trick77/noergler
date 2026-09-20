@@ -22,6 +22,17 @@ type CallCost struct {
 	// consuming tokens. Suspicious enough to warn about, not wrong enough to
 	// fail a review.
 	ZeroWithTokens bool
+
+	// PromptTokens, CachedTokens and CompletionTokens are the endpoint's own
+	// accounting, carried through for the run row and the summary footnote.
+	// An endpoint that reports no accounting leaves them zero.
+	//
+	// CompletionTokens is Output.Total, which already includes reasoning
+	// tokens; CachedTokens is the prompt tokens the endpoint served from its
+	// own cache, a subset of PromptTokens rather than an addition to it.
+	PromptTokens     int64
+	CachedTokens     int64
+	CompletionTokens int64
 }
 
 // CostFrom extracts the cost fields from a chat response.
@@ -30,8 +41,11 @@ type CallCost struct {
 // sends "None" for a deployment it cannot price, leaves NanoUSD nil.
 func CostFrom(resp *llmwire.ChatResponse) CallCost {
 	out := CallCost{
-		CallID:          resp.Gateway.CallID,
-		KeySpendNanoUSD: resp.Gateway.KeySpendNanoUSD,
+		CallID:           resp.Gateway.CallID,
+		KeySpendNanoUSD:  resp.Gateway.KeySpendNanoUSD,
+		PromptTokens:     deref(resp.Usage.Input.Total),
+		CachedTokens:     deref(resp.Usage.Input.CacheRead),
+		CompletionTokens: deref(resp.Usage.Output.Total),
 	}
 	if resp.Usage.Cost.Provenance != llmwire.Reported {
 		return out

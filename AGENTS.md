@@ -129,7 +129,35 @@ hunks merge without losing diff lines (Python trimmed hunk 2's body by the
 whole overlap and dropped its removals); no phantom blank line in expanded
 bodies (Python's `split("\n")` artifact survived mid-body); the dynamic scope
 search skips lines past the end of truncated content instead of indexing past
-it (Python raised `IndexError`; a panic would take the queue worker down).
+it (Python raised `IndexError`; a panic would take the queue worker down);
+`findings_posted` counts comments actually posted (Python stored the attempted
+count); placeholders substituted in ONE pass, so a `{files}` inside
+`repo_instructions` or `ticket_context` stays literal (Python's sequential
+order protects only file content).
+
+## Review pipeline
+
+`OutcomeError` posts NO notice and writes NO row: Python re-raises a
+non-overflow API error into the outer except, which only logs. Only
+`timed_out`, `unparseable` and `too_large` post one. Each of those preserves
+the PRIOR commit; only success and the three stable-state skips (opt-out
+branch, AGENTS.md missing/oversized) advance the pointer.
+
+PR cost total read only when THIS run is priced (Python nests it under
+`run_cost_usd is not None`); an unconditional read shows a total Python never
+showed and can trip the banner.
+
+Queue worker recovers per job: Python cannot panic this way, and without it one
+bad PR kills the only worker for every team. `Submit` never blocks (unbounded,
+like `put_nowait`) or a backlog becomes a webhook timeout. Depth excludes the
+in-flight item, as `qsize()` does.
+
+RE2 vs Python regex, probed both directions against the venv: RE2's `\b`, `\d`,
+`\s` are ASCII, Python's are Unicode. `(?:^|[^\pL\pN_])` for `\b`, `\p{Nd}` for
+`\d`, `[\s\p{Zs}]` for `\s`. Bites the Jira key, the security keywords,
+`_extract_question` and both `markdown_format` structural regexes. `textwrap`
+likewise: ASCII-only whitespace (NBSP never breaks), tabs expand to 8-column
+stops first. Pin with a golden corpus from the venv, never by reading Python.
 
 The disagree/feedback mechanic was removed deliberately. Do not reintroduce.
 
