@@ -1,0 +1,3 @@
+# Line-coverage floors. Hard floor, not a ratchet - see hack/coverage-gate.sh.
+# No ui= line: this repo is Go only.
+backend=75.0
