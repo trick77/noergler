@@ -31,6 +31,7 @@ type harness struct {
 	llm *fakeLLM
 	jr  *fakeJira
 	rt  *fakeRiptide
+	tok *fakeTokens
 }
 
 // newHarness builds a Reviewer whose every dependency is a fake, with the
@@ -44,6 +45,7 @@ func newHarness(t *testing.T, tweak func(*harness)) *harness {
 		st:  newFakeStore(),
 		llm: newFakeLLM(),
 		rt:  &fakeRiptide{enabled: true},
+		tok: &fakeTokens{},
 	}
 	h.bb.prDiff = sampleDiff
 	h.bb.files["src1:AGENTS.md"] = "# Rules\nBe terse.\n"
@@ -79,7 +81,7 @@ func newHarness(t *testing.T, tweak func(*harness)) *harness {
 		Store:           h.st,
 		Jira:            jira,
 		Riptide:         rt,
-		Tokens:          &fakeTokens{},
+		Tokens:          h.tok,
 		Config:          cfg,
 		Template:        "REVIEW {repo_instructions} {files} {cumulative_pr_diff} {previously_posted_findings} {ticket_context} {compliance_instructions}",
 		MentionTemplate: "ASK {question} {repo_instructions} {ticket_context} {diff}",

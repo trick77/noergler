@@ -113,6 +113,14 @@ func TestInstance_RequiredVarsAndDefaults(t *testing.T) {
 	if !app.Review.TicketComplianceCheck || !app.Review.DiffAllowDynamicContext || !app.Review.RequireAgentsMD {
 		t.Errorf("bool defaults: %+v", app.Review)
 	}
+	// The AGENTS.md budget: the warn threshold is advisory, the max is the
+	// gate that skips a review outright, so both are pinned.
+	if app.Review.AgentsMDMaxTokens != 7000 || app.Review.AgentsMDWarnTokens != 4000 {
+		t.Errorf("AGENTS.md token defaults: %+v", app.Review)
+	}
+	if app.Review.MaxFileLines != 1000 {
+		t.Errorf("max file lines default = %d, want 1000", app.Review.MaxFileLines)
+	}
 	if !reflect.DeepEqual(app.Review.ExcludeRepos, []string{"*-infra"}) || len(app.Review.AutoReviewAuthors) != 0 {
 		t.Errorf("list defaults: %+v", app.Review)
 	}

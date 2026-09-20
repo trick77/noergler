@@ -106,5 +106,11 @@
  },
  "budget_no_window": {
   "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Jira is not enabled ℹ️_\n- _Tokens used: 1k of 628k available (0% used)_\n- _Model: `gpt-5.5-medium` · ↑ 1'000 · ↓ 10 (1'010 total)_"
+ },
+ "ticket_no_ac_outranks_extraction_failed": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Ticket\n**[ABC-1](https://jira/browse/ABC-1)** — Do the thing\n_No acceptance criteria found in ticket_\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_"
+ },
+ "ticket_no_requirements_code_relevant": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues / Suggestions\nNone.\n\n### Security / Performance\nNone notable.\n\n### Test Coverage\n_Not assessed._\n\n### Ticket\n**[ABC-1](https://jira/browse/ABC-1)** — Do the thing\n_No acceptance criteria are verifiable from code changes_\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_"
  }
 }

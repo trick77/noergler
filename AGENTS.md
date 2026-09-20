@@ -60,7 +60,9 @@ No web framework, no ORM, no logging library. Do not add one.
   operator's (`LLMWIRE_LITELLM_MODELS`); a profile missing there disables the
   team, else FromEnv routes it to api.openai.com.
 - Per-team key via `Config.Lookup` answering with `TEAM_<SLUG>_OPENAI_API_KEY`;
-  `Config.APIKey` stays empty.
+  `Config.APIKey` stays empty. An empty team key falls through to the env; both
+  empty and `FromEnv` returns `MissingEnvError`, `New` fails, team disabled.
+  A no-auth gateway is unsupported: Python substituted a `no-auth` placeholder.
 - `Chat` only, never streaming: a LiteLLM stream carries no cost header.
 - Never retry.
 - Context window comes from the gateway's `ListModels` `max_input_tokens` for the

@@ -144,6 +144,24 @@ func summaryCases() map[string]SummaryInput {
 	tFailed.ComplianceExtractionFailed = true
 	cases["ticket_extraction_failed"] = tFailed
 
+	// A ticket with no AC and a failed extraction: the AC check comes first,
+	// so the reader is told there was nothing to check rather than that the
+	// check broke. Nothing pinned that precedence.
+	tNoACFailed := base()
+	tNoACFailed.Ticket = testTicket("ABC-1", "Do the thing", "")
+	tNoACFailed.JiraEnabled = true
+	tNoACFailed.ComplianceExtractionFailed = true
+	cases["ticket_no_ac_outranks_extraction_failed"] = tNoACFailed
+
+	// An AC, compliance on, extraction fine, and still no requirements: none
+	// of them is verifiable from the code changes. This is the default branch
+	// of the reason switch, which no case reached.
+	tNoReqs := base()
+	tNoReqs.Ticket = testTicket("ABC-1", "Do the thing", "AC-1 do it")
+	tNoReqs.JiraEnabled = true
+	tNoReqs.ComplianceRequirements = []inference.ComplianceRequirement{}
+	cases["ticket_no_requirements_code_relevant"] = tNoReqs
+
 	tFull := base()
 	tFull.Ticket = testTicket("ABC-1", "Do the thing", "AC-1")
 	tFull.JiraEnabled = true

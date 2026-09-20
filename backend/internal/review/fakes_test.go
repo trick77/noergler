@@ -51,6 +51,11 @@ type fakeBitbucket struct {
 	Updates  []postedComment
 	Replies  []postedComment
 	FetchedC []int
+
+	// UpdateVersions records the version each UpdatePRComment was sent
+	// with; the optimistic-locking version is otherwise invisible to a
+	// test that only reads Updates.
+	UpdateVersions []int
 }
 
 func newFakeBitbucket() *fakeBitbucket {
@@ -124,12 +129,13 @@ func (f *fakeBitbucket) FetchPRComment(_ context.Context, _, _ string, _, commen
 	return nil, &bitbucket.StatusError{Method: "GET", Path: "/comments", Status: 404}
 }
 
-func (f *fakeBitbucket) UpdatePRComment(_ context.Context, _, _ string, prID, commentID, _ int, text string) (int, error) {
+func (f *fakeBitbucket) UpdatePRComment(_ context.Context, _, _ string, prID, commentID, version int, text string) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.updateErr != nil {
 		return 0, f.updateErr
 	}
+	f.UpdateVersions = append(f.UpdateVersions, version)
 	f.Updates = append(f.Updates, postedComment{PRID: prID, Text: text, Line: commentID})
 	if c, ok := f.comments[commentID]; ok {
 		c.Text = text
@@ -237,11 +243,25 @@ func (f *fakeStore) MarkIgnored(context.Context, store.PRKey) error {
 	return f.err()
 }
 
+// Reactivate clears the skip state and the tracked summary, as the real
+// store's UPDATE does. A fake that only counted the call would leave the PR
+// ignored, so a review following a reactivating mention would still skip and
+// the seam the mention exists for would be invisible.
+//
+// The failure check comes first: the real statement is a single UPDATE, so a
+// refused write commits nothing and leaves ignored_at and the summary pointer
+// standing. Mutating before the check would let a reviewer bug that ignores a
+// failed Reactivate pass.
 func (f *fakeStore) Reactivate(context.Context, store.PRKey) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return err
+	}
 	f.Reactived++
-	return f.err()
+	f.skipState = nil
+	f.summary = nil
+	return nil
 }
 
 func (f *fakeStore) MarkMerged(context.Context, store.PRKey) error {
@@ -410,12 +430,35 @@ func (f *fakeRiptide) EmitPRCompleted(_ context.Context, r riptide.Rollup) {
 
 // fakeTokens counts one token per four bytes, which is close enough to real
 // text for budget arithmetic and is exact enough to assert on.
-type fakeTokens struct{ perToken int }
+type fakeTokens struct {
+	mu       sync.Mutex
+	perToken int
+
+	// Counted records the byte length of every text handed to Count. The
+	// byte pre-check in fetchCumulativeDiff is only observable as an
+	// absence, so the sizes must be recorded to assert one.
+	Counted []int
+}
 
 func (f *fakeTokens) Count(text string) int {
+	f.mu.Lock()
+	f.Counted = append(f.Counted, len(text))
 	n := f.perToken
+	f.mu.Unlock()
 	if n <= 0 {
 		n = 4
 	}
 	return (len(text) + n - 1) / n
+}
+
+// counted reports whether a text of exactly n bytes was tokenized.
+func (f *fakeTokens) counted(n int) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, got := range f.Counted {
+		if got == n {
+			return true
+		}
+	}
+	return false
 }
