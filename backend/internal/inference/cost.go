@@ -1,6 +1,10 @@
 package inference
 
-import "github.com/trick77/llmwire"
+import (
+	"fmt"
+
+	"github.com/trick77/llmwire"
+)
 
 // CallCost is what one inference call cost, as noergler records it.
 //
@@ -60,6 +64,39 @@ func CostFrom(resp *llmwire.ChatResponse) CallCost {
 
 // Priced reports whether the call carried a usable cost.
 func (c CallCost) Priced() bool { return c.NanoUSD != nil }
+
+// LogLine is the per-call cost record, and whether it deserves a warning.
+//
+// Python writes one of these per call (llm_client.py:170). An unpriced call is
+// only worth warning about when the endpoint IS a LiteLLM proxy: one that
+// sends no x-litellm-* header at all never prices and would otherwise warn on
+// every call forever. The call id is the handle for matching an unpriced or
+// failed review to the gateway's own log.
+func (c CallCost) LogLine() (line string, warn bool) {
+	cost := "absent"
+	if c.NanoUSD != nil {
+		cost = fmt.Sprintf("$%.9f", float64(*c.NanoUSD)/1e9)
+	}
+	spend := "absent"
+	if c.KeySpendNanoUSD != nil {
+		spend = fmt.Sprintf("$%.9f", float64(*c.KeySpendNanoUSD)/1e9)
+	}
+	callID := c.CallID
+	if callID == "" {
+		callID = "absent"
+	}
+	line = fmt.Sprintf("LLM cost headers: response-cost=%s key-spend=%s call-id=%s",
+		cost, spend, callID)
+	switch {
+	case c.ZeroWithTokens:
+		return line + "; gateway reported zero cost for a call that consumed " +
+			fmt.Sprintf("%d tokens, recorded as $0.00", c.PromptTokens+c.CompletionTokens), true
+	case c.NanoUSD == nil && c.CallID != "":
+		// A call id means LiteLLM answered, so it should have priced this.
+		return line + "; unpriced call", true
+	}
+	return line, false
+}
 
 // totalTokens is the prompt plus completion count, used only to tell a real
 // zero cost from a zero that came with no work. Both lanes are nilable: an

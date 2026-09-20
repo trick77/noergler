@@ -4,10 +4,64 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/trick77/llmwire"
 )
+
+// LogLine is the per-call cost record. It warns only where the gateway owed a
+// price and did not give one: an endpoint that never prices must not warn on
+// every call, or the warning stops meaning anything.
+func TestCallCostLogLine(t *testing.T) {
+	n := func(v int64) *int64 { return &v }
+
+	cases := []struct {
+		name     string
+		cost     CallCost
+		wantWarn bool
+		contains []string
+	}{
+		{
+			name:     "priced call is informational",
+			cost:     CallCost{NanoUSD: n(12_300_000), KeySpendNanoUSD: n(5_000_000_000), CallID: "abc"},
+			wantWarn: false,
+			contains: []string{"response-cost=$0.012300000", "key-spend=$5.000000000", "call-id=abc"},
+		},
+		{
+			name:     "no headers at all is not a LiteLLM proxy, so no warning",
+			cost:     CallCost{},
+			wantWarn: false,
+			contains: []string{"response-cost=absent", "key-spend=absent", "call-id=absent"},
+		},
+		{
+			name:     "a call id without a price is LiteLLM failing to price",
+			cost:     CallCost{CallID: "abc"},
+			wantWarn: true,
+			contains: []string{"unpriced call", "call-id=abc"},
+		},
+		{
+			name:     "zero cost after real work is suspicious",
+			cost:     CallCost{NanoUSD: n(0), ZeroWithTokens: true, PromptTokens: 1200, CompletionTokens: 300},
+			wantWarn: true,
+			contains: []string{"zero cost", "1500 tokens"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			line, warn := tc.cost.LogLine()
+			if warn != tc.wantWarn {
+				t.Errorf("warn = %v, want %v (line: %s)", warn, tc.wantWarn, line)
+			}
+			for _, want := range tc.contains {
+				if !strings.Contains(line, want) {
+					t.Errorf("line %q does not contain %q", line, want)
+				}
+			}
+		})
+	}
+}
 
 func TestCostFrom(t *testing.T) {
 	n := func(v int64) *int64 { return &v }

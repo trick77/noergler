@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/trick77/noergler-go/internal/bitbucket"
+	"github.com/trick77/noergler-go/internal/httpstats"
 	"github.com/trick77/noergler-go/internal/inference"
 	"github.com/trick77/noergler-go/internal/logging"
 	"github.com/trick77/noergler-go/internal/webhook"
@@ -49,6 +50,14 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload) 
 	}
 	prTag := fmt.Sprintf("%s/%s#%d", project, repo, pr.ID)
 	ctx = logging.With(ctx, "pr_tag", prTag, "repo", project+"/"+repo, "pr_id", pr.ID)
+
+	// The Q&A path fetches a diff and posts a reply of its own, so it gets the
+	// same accounting as a review. A keyword mention delegates to
+	// ReviewPullRequest, which opens its own scope; that one reports twice,
+	// once for each unit of work, rather than merging them.
+	ctx, httpCounter := httpstats.WithScope(ctx)
+	defer r.logHTTPTotals(ctx, prTag, httpCounter)
+
 	key := prKey(project, repo, pr.ID)
 
 	// Any mention reactivates a PR ignored after its summary was removed.
@@ -111,6 +120,11 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload) 
 		Prompt:       prompt,
 		PromptTokens: r.tokens.Count(inference.MentionSystemMessage) + r.tokens.Count(prompt),
 	})
+	// Only when a call actually happened: the too-large branch decides before
+	// any request, and a transport error returns with no cost.
+	if result.Outcome == inference.OutcomeOK {
+		r.logCost(ctx, prTag, result.Cost)
+	}
 
 	switch result.Outcome {
 	case inference.OutcomeTimedOut:

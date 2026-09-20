@@ -31,6 +31,8 @@ type Client struct {
 	// window is the context window resolved at startup, 0 until Startup runs.
 	// An explicit OPENAI_CONTEXT_WINDOW wins and is set here directly.
 	window int
+	// pingCost is what the startup ping cost, for the boot-time pricing line.
+	pingCost CallCost
 	// budget knobs, read from config once.
 	headroom  int
 	threshold int

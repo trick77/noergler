@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/trick77/noergler-go/internal/bitbucket"
 	"github.com/trick77/noergler-go/internal/diff"
+	"github.com/trick77/noergler-go/internal/httpstats"
 	"github.com/trick77/noergler-go/internal/inference"
 	"github.com/trick77/noergler-go/internal/jira"
 	"github.com/trick77/noergler-go/internal/logging"
@@ -45,6 +47,14 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 
 	prTag := fmt.Sprintf("%s/%s#%d", project, repo, pr.ID)
 	ctx = logging.With(ctx, "pr_tag", prTag, "repo", project+"/"+repo, "pr_id", pr.ID)
+
+	// Per-review HTTP accounting. The bitbucket and jira transports already
+	// record into the scope; without one opened here every count was dropped
+	// and the totals line never existed. Deferred, like Python's finally, so
+	// a review that skips or fails still reports what it spent.
+	ctx, httpCounter := httpstats.WithScope(ctx)
+	defer r.logHTTPTotals(ctx, prTag, httpCounter)
+
 	key := prKey(project, repo, pr.ID)
 	author := pr.Author.User.Name
 
@@ -210,6 +220,13 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 		PromptTokens:   assembled.PromptTokens,
 		ResponseSchema: inference.ReviewResponseFormat(),
 	})
+	// One cost record per call, as Python does, and only when a call actually
+	// happened: the too-large branch decides locally before any request, and a
+	// transport error returns with no cost, so both would otherwise report an
+	// absent cost for a call the gateway never answered.
+	if result.Outcome == inference.OutcomeOK || result.Outcome == inference.OutcomeUnparseable {
+		r.logCost(ctx, prTag, result.Cost)
+	}
 
 	// 17-19. Terminal branches. Each preserves the prior commit, posts a
 	// notice and writes no run row.
@@ -300,6 +317,13 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 	if failed > 0 {
 		parts = append(parts, fmt.Sprintf("%d failed", failed))
 	}
+	// The token accounting Python carries on its completion line. An endpoint
+	// that reports no usage leaves these zero, which is worth seeing as such
+	// rather than omitting.
+	c := result.Cost
+	parts = append(parts, fmt.Sprintf("%d in (%d cached) + %d out = %d tokens",
+		c.PromptTokens, c.CachedTokens, c.CompletionTokens,
+		c.PromptTokens+c.CompletionTokens))
 	r.log.InfoContext(ctx, strings.Join(parts, " - "))
 }
 
@@ -747,4 +771,42 @@ func epochMSToTime(ms int64) *time.Time {
 	}
 	t := time.UnixMilli(ms).UTC()
 	return &t
+}
+
+// logHTTPTotals reports what one review spent upstream, keeping Python's
+// wording (reviewer.py:1190): `Review HTTP totals - bitbucket=N jira=N
+// inference=N (per-method detail)`.
+//
+// Nothing is logged when no request was made: the author and actor gates
+// return before any HTTP, and an empty totals line for every skipped PR is
+// noise. inference reports 0 because llmwire's client is not wrapped in
+// httpstats.Transport; llmwire.Config exposes HTTPClient, so that is a
+// possible follow-up rather than a limitation.
+func (r *Reviewer) logHTTPTotals(ctx context.Context, prTag string, c *httpstats.Counter) {
+	totals := c.Summarize()
+	if len(totals) == 0 {
+		return
+	}
+	// Any label beyond the three named ones still appears, in the detail.
+	methods := c.Methods()
+	detail := make([]string, 0, len(methods))
+	for _, k := range slices.Sorted(maps.Keys(methods)) {
+		detail = append(detail, fmt.Sprintf("%s=%d", k, methods[k]))
+	}
+	r.log.InfoContext(ctx, fmt.Sprintf("%s: Review HTTP totals - bitbucket=%d jira=%d inference=%d (%s)",
+		prTag, totals["bitbucket"], totals["jira"], totals["inference"],
+		strings.Join(detail, " ")))
+}
+
+// logCost writes the per-call cost record. WARNING only when the gateway
+// should have priced the call and did not, or priced it at zero after
+// consuming tokens: an endpoint that is not a LiteLLM proxy never prices, and
+// warning on every one of its calls would train the operator to ignore it.
+func (r *Reviewer) logCost(ctx context.Context, prTag string, cost inference.CallCost) {
+	line, warn := cost.LogLine()
+	if warn {
+		r.log.WarnContext(ctx, prTag+": "+line)
+		return
+	}
+	r.log.InfoContext(ctx, prTag+": "+line)
 }

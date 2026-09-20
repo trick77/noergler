@@ -139,6 +139,41 @@ func TestStartupResolvesWindow(t *testing.T) {
 	}
 }
 
+// Startup records whether the gateway priced the ping, because an unpriced
+// model means the per-PR cap can never fire and boot is the only place that
+// gets said.
+func TestStartupRecordsPingPricing(t *testing.T) {
+	const alias = "ai-gateway-gpt-5.5"
+
+	t.Run("priced", func(t *testing.T) {
+		f := &fakeGateway{costHeader: "0.0123"}
+		srv := f.start(t, alias)
+		c := newTestClient(t, srv, alias)
+		if err := c.Startup(context.Background()); err != nil {
+			t.Fatalf("Startup: %v", err)
+		}
+		pc := c.PingCost()
+		if !pc.Priced() {
+			t.Fatal("PingCost is unpriced, want priced")
+		}
+		if got := *pc.NanoUSD; got != 12_300_000 {
+			t.Errorf("NanoUSD = %d, want 12300000", got)
+		}
+	})
+
+	t.Run("unpriced", func(t *testing.T) {
+		f := &fakeGateway{}
+		srv := f.start(t, alias)
+		c := newTestClient(t, srv, alias)
+		if err := c.Startup(context.Background()); err != nil {
+			t.Fatalf("Startup: %v", err)
+		}
+		if c.PingCost().Priced() {
+			t.Error("PingCost is priced, want unpriced without a cost header")
+		}
+	})
+}
+
 // An explicit OPENAI_CONTEXT_WINDOW wins over the gateway's figure.
 func TestStartupExplicitWindowWins(t *testing.T) {
 	const alias = "ai-gateway-gpt-5.5"
@@ -182,13 +217,47 @@ func TestStartupRejects(t *testing.T) {
 		}
 	})
 
+	// A limit that is present but unusable must not report as absent: llmwire
+	// returns a nil limit plus a Warning naming it, and an operator told the
+	// field is missing goes looking for the wrong thing.
+	t.Run("unusable max_input_tokens says so", func(t *testing.T) {
+		f := &fakeGateway{models: `{"data":[{"id":"ai-gateway-gpt-5.5","max_input_tokens":"lots"}]}`}
+		srv := f.start(t, alias)
+		c := newTestClient(t, srv, alias)
+		err := c.Startup(context.Background())
+		if err == nil {
+			t.Fatal("want an error for an unusable max_input_tokens")
+		}
+		if !strings.Contains(err.Error(), "unusable") {
+			t.Errorf("err = %v, want it to say the gateway sent an unusable value", err)
+		}
+		if !strings.Contains(err.Error(), "OPENAI_CONTEXT_WINDOW") {
+			t.Errorf("err = %v, want it to still name the escape hatch", err)
+		}
+	})
+
 	t.Run("alias not listed for this key", func(t *testing.T) {
 		f := &fakeGateway{models: `{"data":[{"id":"some-other-model","max_input_tokens":1000000}]}`}
 		srv := f.start(t, alias)
 		c := newTestClient(t, srv, alias)
 		err := c.Startup(context.Background())
 		if err == nil || !strings.Contains(err.Error(), "not listed by the gateway") {
-			t.Errorf("err = %v, want a not-listed error", err)
+			t.Fatalf("err = %v, want a not-listed error", err)
+		}
+		// The alias is the one thing the operator must spell exactly, so the
+		// error names what the gateway did list.
+		if !strings.Contains(err.Error(), "some-other-model") {
+			t.Errorf("err = %v, want it to name the ids the gateway returned", err)
+		}
+	})
+
+	t.Run("nothing listed at all", func(t *testing.T) {
+		f := &fakeGateway{models: `{"data":[]}`}
+		srv := f.start(t, alias)
+		c := newTestClient(t, srv, alias)
+		err := c.Startup(context.Background())
+		if err == nil || !strings.Contains(err.Error(), "no models at all") {
+			t.Errorf("err = %v, want the empty-listing wording", err)
 		}
 	})
 

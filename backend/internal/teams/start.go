@@ -169,12 +169,32 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 		Threshold:       app.Trust.Threshold,
 		Tail:            app.Trust.Tail,
 		Env:             d.Env,
+		// Without this llmwire falls back to slog.Default(), so its per-call
+		// line (tokens, cost, provenance, gateway call id) never reaches the
+		// Splunk handler at all.
+		//
+		// The slug is bound onto the LOGGER, not taken from the context the
+		// way the rest of the service does it: llmwire logs through plain
+		// Debug/Info calls, never the *Context variants, so a context binding
+		// would not reach it and its lines would land without team=.
+		Logger: d.Log.With("team", team.Slug),
 	})
 	if err != nil {
 		return nil, fmt.Sprintf("LLM check failed: %v", err)
 	}
 	if err := llm.Startup(ctx); err != nil {
 		return nil, fmt.Sprintf("LLM check failed: %v", err)
+	}
+	// Said once at boot, as Python does: an unpriced model means summaries
+	// carry no cost and the per-PR cap never fires. Cost fails open, so this
+	// log line is the only signal an operator gets.
+	if pc := llm.PingCost(); pc.Priced() {
+		d.Log.InfoContext(ctx, fmt.Sprintf("Model %s ping priced by the gateway: $%.6f",
+			llm.Label(), float64(*pc.NanoUSD)/1e9))
+	} else {
+		d.Log.WarnContext(ctx, fmt.Sprintf("Model %s is not priced by the gateway "+
+			"(no usable cost on the ping): summaries will carry no cost and the "+
+			"per-PR cost cap never applies", llm.Label()))
 	}
 
 	var jr *jira.Client

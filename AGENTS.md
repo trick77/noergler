@@ -65,6 +65,12 @@ No web framework, no ORM, no logging library. Do not add one.
 - Never retry.
 - Context window comes from the gateway's `ListModels` `max_input_tokens` for the
   alias, `OPENAI_CONTEXT_WINDOW` overrides, `>= 1_000_000` required.
+  `ListModels` warnings are kept: a present-but-unusable limit reads as a nil
+  limit, so dropping them reports a garbage value as a missing field.
+- No local `reasoning_effort` enum. Python's hardcoded
+  {minimal, low, medium, high} was wrong both ways for the configured model;
+  llmwire validates the level against the profile and the gateway's 400 covers
+  the rest (`mapPingError`).
 
 ## Adapters
 

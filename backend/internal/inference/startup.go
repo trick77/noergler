@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/trick77/llmwire"
@@ -54,6 +55,41 @@ func (c *Client) profile() (*llmwire.Profile, error) {
 	return p, nil
 }
 
+// listedIDs names what the gateway did list, for the error that says an alias
+// is not among them. Capped: a gateway may serve hundreds of models, and an
+// error line nobody can read helps nobody.
+func listedIDs(entries []llmwire.ModelEntry) string {
+	if len(entries) == 0 {
+		return " (the gateway listed no models at all for this key)"
+	}
+	ids := make([]string, 0, len(entries))
+	for _, e := range entries {
+		ids = append(ids, e.ID)
+	}
+	sort.Strings(ids)
+	const max = 12
+	if len(ids) > max {
+		return fmt.Sprintf(" (it listed %d models, including %s)",
+			len(ids), strings.Join(ids[:max], ", "))
+	}
+	return " (it listed " + strings.Join(ids, ", ") + ")"
+}
+
+// aliasWarnings reports what llmwire said about this alias, so an unusable
+// max_input_tokens does not read as a missing one.
+func aliasWarnings(warnings []llmwire.Warning, alias string) string {
+	var hits []string
+	for _, w := range warnings {
+		if strings.Contains(w.Details, alias) || strings.Contains(w.Feature, alias) {
+			hits = append(hits, w.String())
+		}
+	}
+	if len(hits) == 0 {
+		return ""
+	}
+	return " (the gateway sent one, and it was unusable: " + strings.Join(hits, "; ") + ")"
+}
+
 // resolveWindow sets the context window from the gateway, unless an explicit
 // OPENAI_CONTEXT_WINDOW already did.
 //
@@ -61,7 +97,12 @@ func (c *Client) profile() (*llmwire.Profile, error) {
 // may not use is simply not listed) and the source of the window, so there is
 // no separate catalog to keep in sync with the gateway's names.
 func (c *Client) resolveWindow(ctx context.Context, profile *llmwire.Profile) error {
-	entries, _, err := c.wire.ListModels(ctx)
+	// The warnings are kept: llmwire reports a limit that is present but
+	// unusable (a bool, a string, a fraction, zero) as a nil limit plus a
+	// Warning naming it. Dropping them turns "the gateway sent nonsense" into
+	// "the gateway sent nothing", and the operator is told to supply a window
+	// the gateway is in fact advertising.
+	entries, warnings, err := c.wire.ListModels(ctx)
 	if err != nil {
 		return fmt.Errorf("list models: %w", err)
 	}
@@ -78,8 +119,10 @@ func (c *Client) resolveWindow(ctx context.Context, profile *llmwire.Profile) er
 		}
 	}
 	if found == nil {
-		return fmt.Errorf("model %q (gateway alias %q) is not listed by the gateway for this key",
-			c.model, alias)
+		// Name what the gateway did list: the alias is the one thing the
+		// operator has to get exactly right, and the listing is in hand.
+		return fmt.Errorf("model %q (gateway alias %q) is not listed by the gateway for this key%s",
+			c.model, alias, listedIDs(entries))
 	}
 
 	// An explicit window wins: it is the escape hatch for an endpoint whose
@@ -88,9 +131,11 @@ func (c *Client) resolveWindow(ctx context.Context, profile *llmwire.Profile) er
 		return c.checkWindowFloor()
 	}
 	if found.MaxInputTokens == nil || *found.MaxInputTokens <= 0 {
-		return fmt.Errorf("model %q is listed by the gateway without a usable `max_input_tokens`. "+
+		// A warning about this alias means the field was there and unusable,
+		// which is a different fix from the field being absent.
+		return fmt.Errorf("model %q is listed by the gateway without a usable `max_input_tokens`%s. "+
 			"Set OPENAI_CONTEXT_WINDOW (or the team's inference.context_window) to the real limit",
-			c.model)
+			c.model, aliasWarnings(warnings, alias))
 	}
 	c.window = int(*found.MaxInputTokens)
 	return c.checkWindowFloor()
@@ -119,8 +164,17 @@ func (c *Client) ping(ctx context.Context) error {
 	if strings.TrimSpace(resp.Content) == "" {
 		return errors.New("empty response from model")
 	}
+	// Whether the gateway priced the ping is the one cheap answer to "will the
+	// per-PR cap ever apply for this model". Recorded for the caller to report
+	// at boot; cost still fails open either way.
+	c.pingCost = CostFrom(resp)
 	return nil
 }
+
+// PingCost is what the startup ping cost, as the gateway reported it. Valid
+// only after Startup. An unpriced ping means summaries carry no cost and the
+// per-PR cap never fires for this model.
+func (c *Client) PingCost() CallCost { return c.pingCost }
 
 // mapPingError turns a rejection into something an operator can act on.
 //
