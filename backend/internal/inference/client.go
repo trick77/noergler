@@ -37,6 +37,11 @@ type Client struct {
 	headroom  int
 	threshold int
 	tail      float64
+
+	// log emits the parser's diagnostics, which ParseReview returns as data
+	// rather than logging itself. Never nil; New substitutes a discarding
+	// logger, as review.New does.
+	log *slog.Logger
 }
 
 // Options is what a team's client needs beyond its llmwire profile.
@@ -81,6 +86,14 @@ func New(opt Options) (*Client, error) {
 		env = os.LookupEnv
 	}
 
+	// The parser's diagnostics are logged from Review, which may run before a
+	// caller has set a logger in tests. Discard rather than panic: a missing
+	// log line must not take a review down.
+	log := opt.Logger
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
+
 	c := &Client{
 		model:     opt.Model,
 		effort:    opt.ReasoningEffort,
@@ -88,6 +101,7 @@ func New(opt Options) (*Client, error) {
 		headroom:  opt.HeadroomTokens,
 		threshold: opt.Threshold,
 		tail:      opt.Tail,
+		log:       log,
 	}
 
 	wire, err := llmwire.FromEnv(opt.Model, llmwire.Config{

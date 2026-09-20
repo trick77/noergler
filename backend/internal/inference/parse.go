@@ -3,6 +3,9 @@ package inference
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
 	"math"
 	"regexp"
 	"strconv"
@@ -59,6 +62,65 @@ type ParsedReview struct {
 	ComplianceRequirements []ComplianceRequirement
 	Summary                ReviewSummary
 	ParseFailed            bool
+	// Diagnostics is what Python logged from inside the parser. ParseReview
+	// stays a pure function, so it returns them instead and the caller, which
+	// holds the request context, emits them bound to team and pr_tag.
+	Diagnostics []ParseDiagnostic
+}
+
+// ParseDiagnostic is one operator-facing line the parser produced.
+type ParseDiagnostic struct {
+	Level   slog.Level
+	Message string
+}
+
+// warn and fail append a diagnostic at Python's level for the same event.
+func (p *ParsedReview) warn(format string, args ...any) {
+	p.Diagnostics = append(p.Diagnostics,
+		ParseDiagnostic{Level: slog.LevelWarn, Message: fmt.Sprintf(format, args...)})
+}
+
+func (p *ParsedReview) info(format string, args ...any) {
+	p.Diagnostics = append(p.Diagnostics,
+		ParseDiagnostic{Level: slog.LevelInfo, Message: fmt.Sprintf(format, args...)})
+}
+
+// parseErrorDiagnostic splits a decode failure the way Python's
+// json.JSONDecodeError / isinstance(data, dict) pair does: malformed JSON
+// reports the content prefix, while a well-formed non-object (an array, a
+// scalar, or null) reports only that it is not an object.
+func parseErrorDiagnostic(err error, content string) ParseDiagnostic {
+	var syntax *json.SyntaxError
+	if errors.As(err, &syntax) {
+		return ParseDiagnostic{
+			Level:   slog.LevelError,
+			Message: "Failed to parse review response as JSON: " + truncateRunes(content, 200),
+		}
+	}
+	return ParseDiagnostic{Level: slog.LevelError, Message: "Review response is not a JSON object"}
+}
+
+// decodesAs reports whether raw is present and holds a value of dst's type.
+//
+// It is Python's isinstance check. json.Unmarshal alone is not: a missing key
+// yields a nil RawMessage and an explicit null both decode as a silent no-op,
+// leaving the zero value in place, so `{"met": null}` would read as a real
+// "not met" rather than a malformed item.
+func decodesAs(raw json.RawMessage, dst any) bool {
+	if len(raw) == 0 || isJSONNull(raw) {
+		return false
+	}
+	return json.Unmarshal(raw, dst) == nil
+}
+
+// truncateRunes cuts s to at most n runes. Python's content[:200] slices
+// characters, so the prefix is measured the same way.
+func truncateRunes(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return string(runes[:n])
 }
 
 // Severities are the only values a finding may carry. The JSON schema already
@@ -218,7 +280,11 @@ func ParseReview(content string) ParsedReview {
 	// isinstance(data, dict) rejected it. The nil check is what covers that.
 	if err := json.Unmarshal([]byte(content), &raw); err != nil || raw == nil {
 		// The summary still carries the default verdict.
-		return ParsedReview{Summary: NewReviewSummary(), ParseFailed: true}
+		return ParsedReview{
+			Summary:     NewReviewSummary(),
+			ParseFailed: true,
+			Diagnostics: []ParseDiagnostic{parseErrorDiagnostic(err, content)},
+		}
 	}
 
 	out := ParsedReview{
@@ -230,28 +296,40 @@ func ParseReview(content string) ParsedReview {
 		var items []json.RawMessage
 		if err := json.Unmarshal(rawReqs, &items); err == nil {
 			for _, item := range items {
-				// Both fields must be present and correctly typed. A missing
-				// "met" would decode as false, so require the key explicitly.
+				// Python requires isinstance(requirement, str) and
+				// isinstance(met, bool), which is a TYPE check: a present key
+				// holding null fails it. Probing for presence alone is not
+				// enough, because encoding/json decodes a null into a string
+				// or bool field without error, turning {"met": null} into a
+				// silent "not met" and {"requirement": null} into the "???"
+				// placeholder the summary renders.
 				var probe map[string]json.RawMessage
 				if json.Unmarshal(item, &probe) != nil {
+					out.warn("Skipping malformed compliance requirement: %s", item)
 					continue
 				}
-				var req ComplianceRequirement
-				if _, hasReq := probe["requirement"]; !hasReq {
+				var reqStr string
+				if !decodesAs(probe["requirement"], &reqStr) {
+					out.warn("Skipping malformed compliance requirement: %s", item)
 					continue
 				}
-				if _, hasMet := probe["met"]; !hasMet {
+				var metBool bool
+				if !decodesAs(probe["met"], &metBool) {
+					out.warn("Skipping malformed compliance requirement: %s", item)
 					continue
 				}
-				if json.Unmarshal(item, &req) != nil {
-					continue
-				}
+				req := ComplianceRequirement{Requirement: reqStr, Met: metBool}
 				out.ComplianceRequirements = append(out.ComplianceRequirements, req)
 			}
 		}
 	}
 
 	out.Summary.Overview = strings.TrimSpace(decodeString(raw["overview"]))
+	// A blank overview parses fine but means the model returned no summary at
+	// all, which the operator should see.
+	if out.Summary.Overview == "" {
+		out.warn("overview empty after parse")
+	}
 	out.Summary.SecurityPerformance = strings.TrimSpace(decodeString(raw["security_performance"]))
 	out.Summary.TestCoverage = strings.TrimSpace(decodeString(raw["test_coverage"]))
 
@@ -295,11 +373,13 @@ func ParseReview(content string) ParsedReview {
 			for _, item := range items {
 				f, ok := parseFinding(item)
 				if !ok {
+					out.warn("Skipping malformed finding: %s", item)
 					continue
 				}
 				// A finding whose suggestion says there is nothing to do is
 				// not a finding.
 				if f.Suggestion != nil && IsVacuousSuggestion(*f.Suggestion) {
+					out.info("Dropping no-issue finding (vacuous suggestion): %s", item)
 					continue
 				}
 				out.Findings = append(out.Findings, f)

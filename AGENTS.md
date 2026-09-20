@@ -146,7 +146,11 @@ bodies (Python's `split("\n")` artifact survived mid-body); the dynamic scope
 search skips lines past the end of truncated content instead of indexing past
 it (Python raised `IndexError`; a panic would take the queue worker down);
 `findings_posted` counts comments actually posted (Python stored the attempted
-count); placeholders substituted in ONE pass, so a `{files}` inside
+count); the parser's six diagnostics are RETURNED as `ParsedReview.Diagnostics`
+and emitted by `Client.Review`, so they bind `team=`/`pr_tag` from the call ctx
+(`ParseReview` stays pure); a skipped item is logged as raw JSON where Python
+logged a dict `repr`, so `{'requirement': 'r'}` reads `{"requirement":"r"}`;
+placeholders substituted in ONE pass, so a `{files}` inside
 `repo_instructions` or `ticket_context` stays literal (Python's sequential
 order protects only file content); an empty `comment.text` is accepted and
 answers 200 `comment without mention` (Pydantic's required str is satisfied by
