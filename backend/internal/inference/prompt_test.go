@@ -88,7 +88,7 @@ func TestRenderSupplementaryContext(t *testing.T) {
 		iOther := strings.Index(got, "Other modified files")
 		iRenamed := strings.Index(got, "Renamed files")
 		iDeleted := strings.Index(got, "Deleted files")
-		if !(iOther < iRenamed && iRenamed < iDeleted) {
+		if iOther >= iRenamed || iRenamed >= iDeleted {
 			t.Errorf("want other, renamed, deleted:\n%s", got)
 		}
 	})

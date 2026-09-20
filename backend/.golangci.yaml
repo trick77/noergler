@@ -1,0 +1,54 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - errcheck
+    - errorlint
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - nilerr
+    - revive
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+  settings:
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+        # shadow fires on `if err := f(); err != nil`, which is idiomatic Go and
+        # statement-scoped. Every hit across the repo family was that pattern,
+        # so the check was pure noise.
+        - shadow
+    revive:
+      rules:
+        - name: var-naming
+        - name: exported
+        - name: error-return
+        - name: error-strings
+        - name: context-as-argument
+        - name: unused-parameter
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+          - unparam
+          # bodyclose fires on httptest.NewRecorder().Result(), whose body is an
+          # in-memory buffer with no connection to leak, and it reports at every
+          # call site rather than at the shared helper.
+          - bodyclose
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

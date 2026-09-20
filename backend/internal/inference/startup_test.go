@@ -309,7 +309,7 @@ func TestUnroutedProfileIsRefused(t *testing.T) {
 		Model:           testProfile,
 		ReasoningEffort: "medium",
 		APIKey:          "team-key",
-		Env: func(name string) (string, bool) {
+		Env: func(_ string) (string, bool) {
 			// No LLMWIRE_LITELLM_MODELS at all.
 			return "", false
 		},

@@ -112,7 +112,7 @@ func TestTransportCountsEveryRequestSent(t *testing.T) {
 
 // Without a scope in the request context the transport must still forward.
 func TestTransportWithoutScopeStillForwards(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()

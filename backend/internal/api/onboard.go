@@ -36,7 +36,7 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("team")
 	ctx := logging.WithTeam(r.Context(), slug)
 
-	rt, ok := d.teamAuth(w, ctx, slug, r.Header.Get("Authorization"))
+	rt, ok := d.teamAuth(ctx, w, slug, r.Header.Get("Authorization"))
 	if !ok {
 		return
 	}
@@ -109,7 +109,7 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 		res, err := onboarding.ClaimAndOnboard(ctx, admin, d.Bitbucket, d.Claims,
 			&team, scopes, caller, webhookURL, opts, d.Log)
 		if err != nil {
-			d.writeError(w, ctx, err)
+			d.writeError(ctx, w, err)
 			return
 		}
 		if res.Claims != nil {
@@ -127,7 +127,7 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 		res, err := onboarding.RemoveAndUnclaim(ctx, admin, d.Bitbucket, d.Claims,
 			&team, scopes, caller, webhookURL, opts, d.Log)
 		if err != nil {
-			d.writeError(w, ctx, err)
+			d.writeError(ctx, w, err)
 			return
 		}
 		if res.Claims != nil {
@@ -144,7 +144,7 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 		}
 		targets, err := onboarding.TargetsFor(&team, subset)
 		if err != nil {
-			d.writeError(w, ctx, err)
+			d.writeError(ctx, w, err)
 			return
 		}
 		if len(targets) == 0 {
@@ -204,7 +204,7 @@ func scopesOf(in []projectScopeView) ([]config.ProjectScope, error) {
 
 // writeError maps a domain error to a status. The onboarding package knows
 // nothing about HTTP; this is the only place that translation happens.
-func (d Deps) writeError(w http.ResponseWriter, ctx context.Context, err error) {
+func (d Deps) writeError(ctx context.Context, w http.ResponseWriter, err error) {
 	var unknown *onboarding.UnknownTarget
 	var noClaim *onboarding.NoClaim
 	var upstream *onboarding.UpstreamError

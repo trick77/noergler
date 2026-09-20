@@ -206,9 +206,8 @@ func (t *Team) Owns(projectKey, repoSlug string) bool {
 	return false
 }
 
-// ClaimsRepoExplicitly: the repo is named in a repos: list, not just covered
-// by a whole-project claim. A deliberate per-repo claim wins over
-// exclude_repos globs.
+// ClaimsRepoExplicitly reports whether the repo is named in a repos list, not just covered
+// by a whole-project claim. A deliberate per-repo claim wins over exclude_repos globs.
 func (t *Team) ClaimsRepoExplicitly(projectKey, repoSlug string) bool {
 	for _, p := range t.Projects {
 		if p.Key == projectKey && p.Repos != nil && p.Owns(projectKey, repoSlug) {
@@ -218,8 +217,8 @@ func (t *Team) ClaimsRepoExplicitly(projectKey, repoSlug string) bool {
 	return false
 }
 
-// ReviewsRepo: owned, and not carved out by review.exclude_repos (an
-// explicitly claimed repo is never carved out).
+// ReviewsRepo reports whether the repo is owned and not carved out by review.exclude_repos.
+// An explicitly claimed repo is never carved out.
 func (t *Team) ReviewsRepo(projectKey, repoSlug string) bool {
 	if !t.Owns(projectKey, repoSlug) {
 		return false

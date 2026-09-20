@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -158,7 +159,8 @@ func (s *Server) recoverer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {
-				if rec == http.ErrAbortHandler {
+				err, ok := rec.(error)
+				if ok && errors.Is(err, http.ErrAbortHandler) {
 					panic(rec)
 				}
 				s.log.ErrorContext(r.Context(), "panic in handler", "panic", rec, "stack", string(debug.Stack()))

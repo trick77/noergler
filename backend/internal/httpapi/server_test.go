@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -70,7 +71,7 @@ func TestReady_503WhileNoTeamEnabled(t *testing.T) {
 
 func TestAccessLog_RequestIDHonouredOnlyWhenSane(t *testing.T) {
 	s, buf := newTestServer(t, nil, nil)
-	s.HandleFunc("GET /x", func(w http.ResponseWriter, r *http.Request) {
+	s.HandleFunc("GET /x", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	})
 	h := s.Handler()
@@ -95,7 +96,7 @@ func TestAccessLog_RequestIDHonouredOnlyWhenSane(t *testing.T) {
 
 func TestRecoverer_PanicIs500AndLogged(t *testing.T) {
 	s, buf := newTestServer(t, nil, nil)
-	s.HandleFunc("GET /boom", func(w http.ResponseWriter, r *http.Request) { panic("kaboom") })
+	s.HandleFunc("GET /boom", func(_ http.ResponseWriter, _ *http.Request) { panic("kaboom") })
 	rec := get(s.Handler(), "/boom")
 	if rec.Code != 500 || body(t, rec)["detail"] != "Internal Server Error" {
 		t.Errorf("status = %d body = %s", rec.Code, rec.Body.String())
@@ -117,7 +118,7 @@ func TestRecoverer_PanicIs500AndLogged(t *testing.T) {
 
 func TestAccessLog_HandlerThatWritesNothingIs200(t *testing.T) {
 	s, buf := newTestServer(t, nil, nil)
-	s.HandleFunc("GET /empty", func(w http.ResponseWriter, r *http.Request) {})
+	s.HandleFunc("GET /empty", func(_ http.ResponseWriter, _ *http.Request) {})
 	rec := get(s.Handler(), "/empty")
 	var m map[string]any
 	_ = json.Unmarshal(buf.Bytes(), &m)
@@ -130,5 +131,61 @@ func TestUnknownRouteIs404(t *testing.T) {
 	s, _ := newTestServer(t, nil, nil)
 	if rec := get(s.Handler(), "/docs"); rec.Code != 404 {
 		t.Errorf("status = %d", rec.Code)
+	}
+}
+
+// The recoverer must re-panic on http.ErrAbortHandler rather than turning it
+// into a 500: net/http treats that sentinel as "the handler deliberately gave
+// up on this connection" and suppresses its own logging for it. Swallowing it
+// would convert a silent abort into a spurious error line plus a response body
+// written to a connection the handler meant to drop.
+//
+// Covered because the guard was rewritten from `rec == http.ErrAbortHandler`
+// to an errors.As/Is form, which also has to keep matching the bare sentinel.
+func TestRecoverer_rePanicsOnErrAbortHandler(t *testing.T) {
+	s, _ := newTestServer(t, nil, nil)
+	h := s.recoverer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic(http.ErrAbortHandler)
+	}))
+
+	defer func() {
+		rec := recover()
+		if rec == nil {
+			t.Fatal("ErrAbortHandler was swallowed; net/http must see it to abort quietly")
+		}
+		if !errors.Is(rec.(error), http.ErrAbortHandler) {
+			t.Fatalf("re-panicked with %v, want http.ErrAbortHandler", rec)
+		}
+	}()
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+}
+
+// Every other panic, including a non-error value, must become a 500 and be
+// logged rather than escaping. A panic(string) does not satisfy the error
+// interface, so this is the case a type-assertion-first guard could drop.
+func TestRecoverer_turnsOtherPanicsInto500(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		value any
+	}{
+		{"error value", errors.New("boom")},
+		{"plain string", "boom"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, buf := newTestServer(t, nil, nil)
+			h := s.recoverer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				panic(tc.value)
+			}))
+
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/", nil))
+
+			if rr.Code != http.StatusInternalServerError {
+				t.Errorf("status = %d, want 500", rr.Code)
+			}
+			if !strings.Contains(buf.String(), "panic in handler") {
+				t.Errorf("the panic was not logged: %s", buf.String())
+			}
+		})
 	}
 }

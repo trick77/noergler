@@ -29,10 +29,14 @@ const DefaultWebhookName = "noergler"
 type Action string
 
 const (
-	ActionStatus   Action = "status"
-	ActionOnboard  Action = "onboard"
+	// ActionStatus reports the status of each target.
+	ActionStatus Action = "status"
+	// ActionOnboard claims and onboards a project.
+	ActionOnboard Action = "onboard"
+	// ActionGrantBot grants the bot read access to claimed projects.
 	ActionGrantBot Action = "grant-bot"
-	ActionRemove   Action = "remove"
+	// ActionRemove removes and unclaims a project.
+	ActionRemove Action = "remove"
 )
 
 // Target is a project (Repo == "": one project webhook) or a single repo.

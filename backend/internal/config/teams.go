@@ -11,12 +11,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// TeamsFileError: teams.yaml as a whole is unusable. Aborts startup.
+// TeamsFileError indicates that teams.yaml as a whole is unusable and startup must abort.
 type TeamsFileError struct{ Msg string }
 
 func (e *TeamsFileError) Error() string { return e.Msg }
 
-// TeamError: a single team's block is unusable. Disables that team only.
+// TeamError indicates that a single team's block is unusable and that team is disabled.
 type TeamError struct{ Msg string }
 
 func (e *TeamError) Error() string { return e.Msg }
@@ -28,7 +28,8 @@ func teamErrorf(format string, args ...any) error {
 // readTeamsFile parses teams.yaml into raw block nodes. File-level faults are
 // TeamsFileError: the instance must not start without a usable file.
 func readTeamsFile(path string) ([]*yaml.Node, error) {
-	data, err := os.ReadFile(path)
+	// G304: the teams file path is operator configuration, not request data.
+	data, err := os.ReadFile(path) //nolint:gosec // G304
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, &TeamsFileError{Msg: fmt.Sprintf("teams file %s not found. noergler does not start without teams: "+

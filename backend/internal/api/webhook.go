@@ -54,7 +54,7 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 	ctx := logging.WithTeam(r.Context(), slug)
 
 	// 1. Team identity comes from the path. Never from the payload.
-	rt, ok := d.runtimeFor(w, ctx, slug)
+	rt, ok := d.runtimeFor(ctx, w, slug)
 	if !ok {
 		return
 	}

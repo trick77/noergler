@@ -116,7 +116,7 @@ func (f *fakeAdmin) ListWebhooks(_ context.Context, project, repo string) ([]map
 	return nil, statusErr(404, "no such target")
 }
 
-func (f *fakeAdmin) CreateWebhook(_ context.Context, project, repo string, body bitbucket.Webhook) (*bitbucket.Webhook, error) {
+func (f *fakeAdmin) CreateWebhook(_ context.Context, _, _ string, body bitbucket.Webhook) (*bitbucket.Webhook, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.created = append(f.created, body)
@@ -128,7 +128,7 @@ func (f *fakeAdmin) CreateWebhook(_ context.Context, project, repo string, body 
 	return &out, nil
 }
 
-func (f *fakeAdmin) UpdateWebhook(_ context.Context, project, repo string, id int, body bitbucket.Webhook) (*bitbucket.Webhook, error) {
+func (f *fakeAdmin) UpdateWebhook(_ context.Context, _, _ string, id int, body bitbucket.Webhook) (*bitbucket.Webhook, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.updated = append(f.updated, id)

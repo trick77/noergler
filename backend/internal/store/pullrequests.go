@@ -186,7 +186,9 @@ func (s *Store) exec(ctx context.Context, sql string, k PRKey) error {
 type RunKind string
 
 const (
-	RunAuto    RunKind = "auto"
+	// RunAuto is an automatic review triggered by a PR creation or update.
+	RunAuto RunKind = "auto"
+	// RunMention is a manual review triggered by a comment mention.
 	RunMention RunKind = "mention"
 )
 

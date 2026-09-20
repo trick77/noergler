@@ -272,7 +272,7 @@ func TestEmitOmitsAbsentReviewerHandle(t *testing.T) {
 }
 
 // Telemetry must never fail a webhook, and must never be retried.
-func TestEmitSwallowsTransportErrors(t *testing.T) {
+func TestEmitSwallowsTransportErrors(_ *testing.T) {
 	e := New("http://127.0.0.1:1", "t", slog.New(slog.DiscardHandler))
 	e.EmitPRCompleted(context.Background(), sampleRollup()) // must not panic or block
 }

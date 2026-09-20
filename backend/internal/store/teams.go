@@ -20,7 +20,7 @@ import (
 // a whole-project claim against another team's repo claims on that project,
 // is checked inside a transaction that locks the project's rows.
 
-// ClaimConflict: the target is held by another team; nothing was written.
+// ClaimConflict indicates that the target is held by another team and nothing was written.
 type ClaimConflict struct {
 	Project   string
 	Repo      *string

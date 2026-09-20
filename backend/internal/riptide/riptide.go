@@ -118,7 +118,7 @@ func (e *Emitter) VerifyAtStartup(ctx context.Context) (string, error) {
 		e.log.WarnContext(ctx, fmt.Sprintf("Riptide unreachable at startup (url=%s): %v", e.url, err))
 		return "", nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return "", fmt.Errorf("riptide token rejected by %s (HTTP 401); check that the token matches the team's entry in team-keys.json: %w", e.url, ErrAuth)
@@ -205,7 +205,7 @@ func (e *Emitter) EmitPRCompleted(ctx context.Context, r Rollup) {
 		e.log.WarnContext(ctx, fmt.Sprintf("Riptide emit failed (event_type=pr_completed): %v", err))
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	// Anything but a 2xx is a miss, 3xx included: redirects are not followed, so
 	// a redirected endpoint would otherwise drop every rollup without a word,
 	// and the DB claim taken before this call means it is never retried.

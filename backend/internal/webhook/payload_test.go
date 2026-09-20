@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"testing"
@@ -171,5 +172,42 @@ func TestEmptyCommentTextIsAccepted(t *testing.T) {
 	}
 	if p.Comment == nil || p.Comment.Text != "" {
 		t.Errorf("comment = %+v, want one with empty text", p.Comment)
+	}
+}
+
+// Decode has two failure paths and both must carry ErrInvalidPayload: the
+// json.Unmarshal one (malformed or wrongly-typed JSON) and the Validate one
+// (well-formed JSON, missing required fields).
+//
+// TestValidateRejectsMissingRequiredFields only covers the second: every case
+// there is structurally valid and fails in Validate. So when the Unmarshal
+// branch stopped wrapping the sentinel, nothing noticed. These cases fail in
+// Unmarshal, which is the gap.
+func TestDecodeWrapsSentinelOnMalformedJSON(t *testing.T) {
+	cases := []struct {
+		name string
+		json string
+	}{
+		{"not json at all", `not json`},
+		{"truncated", `{"eventKey":"pr:opened"`},
+		// Passes the eventKey peek in api/webhook.go, then fails on the type.
+		{"wrong type for pr id", `{"eventKey":"pr:opened","pullRequest":{"id":"abc"}}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := Decode([]byte(c.json))
+			if err == nil {
+				t.Fatal("Decode accepted malformed JSON")
+			}
+			if !errors.Is(err, ErrInvalidPayload) {
+				t.Errorf("errors.Is(err, ErrInvalidPayload) = false, err = %v", err)
+			}
+			// The underlying json error must survive too, or the reason is lost.
+			var typeErr *json.UnmarshalTypeError
+			var syntaxErr *json.SyntaxError
+			if !errors.As(err, &typeErr) && !errors.As(err, &syntaxErr) {
+				t.Errorf("the json error was dropped, err = %v", err)
+			}
+		})
 	}
 }

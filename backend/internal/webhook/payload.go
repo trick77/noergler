@@ -116,7 +116,10 @@ var ErrInvalidPayload = errors.New("invalid webhook payload")
 func Decode(data []byte) (*Payload, error) {
 	var p Payload
 	if err := json.Unmarshal(data, &p); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidPayload, err)
+		// Both wrapped: the sentinel so callers can errors.Is it, and the json
+		// error so the reason survives. Dropping either one loses information a
+		// caller needs.
+		return nil, fmt.Errorf("%w: %w", ErrInvalidPayload, err)
 	}
 	if err := p.Validate(); err != nil {
 		return nil, err

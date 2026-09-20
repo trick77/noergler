@@ -126,14 +126,17 @@ func envName() string {
 	return "dev"
 }
 
+// Enabled reports whether the given level is enabled.
 func (h *Handler) Enabled(_ context.Context, l slog.Level) bool { return l >= h.level }
 
+// WithAttrs returns a new handler with the given attributes added.
 func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	c := *h
 	c.attrs = append(append([]slog.Attr(nil), h.attrs...), qualify(h.group, attrs)...)
 	return &c
 }
 
+// WithGroup returns a new handler with the given group.
 func (h *Handler) WithGroup(name string) slog.Handler {
 	if name == "" {
 		return h

@@ -29,8 +29,8 @@ type SettingsStore interface {
 // The team's webhook secret is its credential everywhere: Bitbucket signs
 // events with it, the team admin authenticates API calls with it. 404 and
 // 503 for the slug come first; they leak nothing the webhook route does not.
-func (d Deps) teamAuth(w http.ResponseWriter, ctx context.Context, slug, authorization string) (*teams.Runtime, bool) {
-	rt, ok := d.runtimeFor(w, ctx, slug)
+func (d Deps) teamAuth(ctx context.Context, w http.ResponseWriter, slug, authorization string) (*teams.Runtime, bool) {
+	rt, ok := d.runtimeFor(ctx, w, slug)
 	if !ok {
 		return nil, false
 	}
@@ -91,7 +91,7 @@ func nonNil(s []string) []string {
 func (d Deps) getTeam(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("team")
 	ctx := logging.WithTeam(r.Context(), slug)
-	rt, ok := d.teamAuth(w, ctx, slug, r.Header.Get("Authorization"))
+	rt, ok := d.teamAuth(ctx, w, slug, r.Header.Get("Authorization"))
 	if !ok {
 		return
 	}
@@ -131,7 +131,7 @@ func (d Deps) putTeamSettings(w http.ResponseWriter, r *http.Request) {
 	// Auth before the body is decoded, so an unauthenticated caller cannot
 	// probe the schema. FastAPI validates the body first and would answer 422
 	// ahead of the 401; no test pins that ordering.
-	rt, ok := d.teamAuth(w, ctx, slug, r.Header.Get("Authorization"))
+	rt, ok := d.teamAuth(ctx, w, slug, r.Header.Get("Authorization"))
 	if !ok {
 		return
 	}

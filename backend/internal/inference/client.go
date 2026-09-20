@@ -116,6 +116,8 @@ func teamLookup(apiKey string, env func(string) (string, bool)) func(string) (st
 
 // gatewayAPIKeyEnv is the variable llmwire reads a gateway-routed model's key
 // from. Each team answers it with its own TEAM_<SLUG>_OPENAI_API_KEY.
+//
+//nolint:gosec // G101: the name of an env var, not a key
 const gatewayAPIKeyEnv = "LLMWIRE_LITELLM_API_KEY"
 
 // Model is the llmwire profile id this client was built for.

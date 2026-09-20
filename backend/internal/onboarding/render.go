@@ -68,10 +68,8 @@ func RenderResults(results []TargetResult) string {
 	return strings.Join(lines, "\n")
 }
 
-// StatusHealthy: every row owned, readable by the bot, hook ok and no stray
-// repo hooks. Foreign hooks are deliberately not part of it: they belong to
-// another instance and are none of this one's business. Vacuously true on an
-// empty list.
+// StatusHealthy reports whether every row is owned, readable by the bot, has a working webhook,
+// and has no stray repo hooks. Foreign hooks are deliberately not part of it.
 func StatusHealthy(rows []StatusRow) bool {
 	for _, r := range rows {
 		if !r.Owned || !r.BotCanRead || r.Webhook != "ok" || len(r.Stray) > 0 {
@@ -81,8 +79,7 @@ func StatusHealthy(rows []StatusRow) bool {
 	return true
 }
 
-// ResultsHealthy: no row failed. A skip is not a failure. Vacuously true on an
-// empty list.
+// ResultsHealthy reports whether no row failed. A skip is not a failure.
 func ResultsHealthy(results []TargetResult) bool {
 	for _, r := range results {
 		if r.Status == "failed" {

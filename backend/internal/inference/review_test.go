@@ -2,6 +2,7 @@ package inference
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -251,16 +252,10 @@ func TestOutcomeString(t *testing.T) {
 
 // asErr is errors.As with a bit less ceremony at the call site.
 func asErr[T error](err error, target *T) bool {
-	for err != nil {
-		if t, ok := err.(T); ok {
-			*target = t
-			return true
-		}
-		u, ok := err.(interface{ Unwrap() error })
-		if !ok {
-			return false
-		}
-		err = u.Unwrap()
+	var t T
+	if errors.As(err, &t) {
+		*target = t
+		return true
 	}
 	return false
 }

@@ -128,7 +128,7 @@ func (c *Client) get(ctx context.Context, rawURL, path string, out any) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, errBodyLimit))
@@ -284,7 +284,7 @@ func (c *Client) FetchTicketWithParent(ctx context.Context, ticketID string) (ti
 	parent, err = c.FetchTicket(ctx, ticket.ParentKey)
 	if err != nil {
 		c.log.WarnContext(ctx, "Jira parent "+ticket.ParentKey+" unreadable: "+err.Error())
-		return ticket, nil, nil
+		return ticket, nil, nil //nolint:nilerr // an unreadable parent must not fail the good child; see above
 	}
 	return ticket, parent, nil
 }

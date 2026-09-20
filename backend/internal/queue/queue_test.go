@@ -171,7 +171,7 @@ func TestPanicInReviewDoesNotKillTheWorker(t *testing.T) {
 	var mu sync.Mutex
 	var seen []int
 
-	q := New(func(_ context.Context, _ string, p *webhook.Payload) {
+	q := New(func(_ context.Context, _ string, _ *webhook.Payload) {
 		mu.Lock()
 		n := len(seen)
 		mu.Unlock()
@@ -180,6 +180,7 @@ func TestPanicInReviewDoesNotKillTheWorker(t *testing.T) {
 			seen = append(seen, 1)
 			mu.Unlock()
 			var s []int
+			//nolint:govet // nilness: the panic this test exists to trigger
 			_ = s[3] // the Phase 4 shape: a slice index out of range
 			return
 		}
@@ -294,7 +295,7 @@ func TestDepthExcludesTheItemInFlight(t *testing.T) {
 	close(release)
 }
 
-func TestStopIsIdempotentAndSafeBeforeStart(t *testing.T) {
+func TestStopIsIdempotentAndSafeBeforeStart(_ *testing.T) {
 	q := New(func(context.Context, string, *webhook.Payload) {}, quietLogger())
 	q.Stop() // never started
 

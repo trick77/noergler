@@ -61,7 +61,7 @@ func migrate(log *slog.Logger) error {
 	log.Info("noergler version: " + buildinfo.Version())
 	dsn, ok := os.LookupEnv("DATABASE_URL")
 	if !ok || strings.TrimSpace(dsn) == "" {
-		return errors.New("Environment variable DATABASE_URL is not set")
+		return errors.New("environment variable DATABASE_URL is not set")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -129,7 +129,7 @@ func serve(log *slog.Logger) error {
 		log.Info("Jira: OK")
 	}
 	if len(checks) > 0 {
-		return fmt.Errorf("Startup aborted: %d connection(s) failed: %s", len(checks), strings.Join(checks, ", "))
+		return fmt.Errorf("startup aborted: %d connection(s) failed: %s", len(checks), strings.Join(checks, ", "))
 	}
 
 	// The tokenizer's vocabulary is compiled in but cold; warming it here

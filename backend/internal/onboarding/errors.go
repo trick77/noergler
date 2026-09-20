@@ -2,20 +2,20 @@ package onboarding
 
 import "fmt"
 
-// UnknownTarget: a requested target is not in the team's `teams.yaml` block.
+// UnknownTarget indicates that a requested target is not in the team's teams.yaml block.
 // The HTTP layer answers 400 with Msg.
 type UnknownTarget struct{ Msg string }
 
 func (e *UnknownTarget) Error() string { return e.Msg }
 
-// NoClaim: a whole-project remove names a project the team holds nothing on.
+// NoClaim indicates that a whole-project remove names a project the team holds nothing on.
 // The HTTP layer answers 400 with Msg.
 type NoClaim struct{ Msg string }
 
 func (e *NoClaim) Error() string { return e.Msg }
 
-// ForeignHook: a same-named hook points at another noergler instance. It is
-// never rewritten, never pruned, never deleted; only reported.
+// ForeignHook indicates that a same-named hook points at another noergler instance.
+// It is never rewritten, never pruned, never deleted; only reported.
 type ForeignHook struct{ Msg string }
 
 func (e *ForeignHook) Error() string { return e.Msg }

@@ -23,7 +23,7 @@ import (
 // the webhook route does not already leak, and "disabled" rather than
 // "unknown" is the difference between reading the startup log and hunting a
 // typo.
-func (d Deps) runtimeFor(w http.ResponseWriter, ctx context.Context, slug string) (*teams.Runtime, bool) {
+func (d Deps) runtimeFor(ctx context.Context, w http.ResponseWriter, slug string) (*teams.Runtime, bool) {
 	rt, reason, ok := d.Teams.Lookup(slug)
 	if ok {
 		return rt, true

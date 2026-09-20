@@ -24,7 +24,7 @@ var (
 	_ TokenCounter    = (*tokens.Counter)(nil)
 )
 
-func TestConcreteAdaptersSatisfyTheInterfaces(t *testing.T) {
+func TestConcreteAdaptersSatisfyTheInterfaces(_ *testing.T) {
 	// The compile-time assertions above are the test; this keeps go vet from
 	// flagging a test file with no test.
 }

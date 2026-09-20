@@ -16,7 +16,7 @@ func newTestRuntime(t *config.Team) *Runtime {
 
 // The webhook route reads the snapshot while the team API writes it. Without
 // the atomic pointer this is the race -race reports.
-func TestRuntime_SnapshotIsRaceFreeUnderConcurrentWrites(t *testing.T) {
+func TestRuntime_SnapshotIsRaceFreeUnderConcurrentWrites(_ *testing.T) {
 	rt := newTestRuntime(&config.Team{
 		Slug:     "platform",
 		Projects: []config.ProjectScope{{Key: "PLAT"}},

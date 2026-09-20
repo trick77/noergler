@@ -10,14 +10,6 @@ import (
 	"github.com/trick77/noergler-go/internal/store"
 )
 
-// logger is what this package needs of *slog.Logger, so tests can pass a
-// buffer-backed one without the package depending on the handler.
-type logger interface {
-	InfoContext(ctx context.Context, msg string, args ...any)
-	WarnContext(ctx context.Context, msg string, args ...any)
-	ErrorContext(ctx context.Context, msg string, args ...any)
-}
-
 // ClaimStore is what reconciliation needs of the store.
 type ClaimStore interface {
 	ListAllClaims(ctx context.Context) (map[string][]config.ProjectScope, error)

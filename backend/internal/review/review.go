@@ -472,7 +472,7 @@ func (r *Reviewer) fetchCumulativeDiff(ctx context.Context, key store.PRKey, prT
 // timed_out, unparseable and too_large each preserve the prior commit, post
 // their notice and write no run row. OutcomeError posts NOTHING and writes
 // nothing: Python re-raises it into the outer handler, which only logs.
-func (r *Reviewer) handleNonOK(ctx context.Context, result inference.ReviewResult, payload *webhook.Payload, key store.PRKey, prTag, sourceCommit string, upsert store.PRUpsert) {
+func (r *Reviewer) handleNonOK(ctx context.Context, result inference.ReviewResult, _ *webhook.Payload, key store.PRKey, prTag, sourceCommit string, upsert store.PRUpsert) {
 	short := shortOrUnknown(sourceCommit)
 	project, repo, prID := key.Project, key.Repo, key.PRID
 
@@ -643,9 +643,9 @@ func (r *Reviewer) recordRun(ctx context.Context, prReviewID int64, result infer
 			FromCommit:       from,
 			ToCommit:         sourceCommit,
 			ModelLabel:       r.llm.Label(),
-			PromptTokens:     int64(result.Cost.PromptTokens),
-			CachedTokens:     int64(result.Cost.CachedTokens),
-			CompletionTokens: int64(result.Cost.CompletionTokens),
+			PromptTokens:     result.Cost.PromptTokens,
+			CachedTokens:     result.Cost.CachedTokens,
+			CompletionTokens: result.Cost.CompletionTokens,
 			CostNanoUSD:      result.Cost.NanoUSD,
 			ElapsedMS:        elapsed.Milliseconds(),
 			FindingsPosted:   postedCount,
