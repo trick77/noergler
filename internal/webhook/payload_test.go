@@ -154,3 +154,22 @@ func TestNullsDecodeSafely(t *testing.T) {
 		t.Errorf("null properties = %q, want empty", got)
 	}
 }
+
+// An empty comment.text validates: Pydantic's required str is satisfied by
+// "", so Python answers 200 "comment without mention" where a rejection here
+// would answer 400. Probed against the venv on 2026-09-20.
+func TestEmptyCommentTextIsAccepted(t *testing.T) {
+	js := `{"eventKey":"pr:comment:added",
+		"pullRequest":{"id":1,"title":"t",
+		"fromRef":{"id":"a","displayId":"a"},
+		"toRef":{"id":"b","displayId":"b"},
+		"author":{"user":{"name":"u"}}},
+		"comment":{"id":5,"text":"","author":{"name":"x"}}}`
+	p, err := Decode([]byte(js))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if p.Comment == nil || p.Comment.Text != "" {
+		t.Errorf("comment = %+v, want one with empty text", p.Comment)
+	}
+}

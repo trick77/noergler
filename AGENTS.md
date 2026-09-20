@@ -133,7 +133,39 @@ it (Python raised `IndexError`; a panic would take the queue worker down);
 `findings_posted` counts comments actually posted (Python stored the attempted
 count); placeholders substituted in ONE pass, so a `{files}` inside
 `repo_instructions` or `ticket_context` stays literal (Python's sequential
-order protects only file content).
+order protects only file content); an empty `comment.text` is accepted and
+answers 200 `comment without mention` (Pydantic's required str is satisfied by
+`""`, probed against the venv); a malformed webhook body is 400, not Python's
+accidental 500 from an unguarded `request.json()`; inbound bodies are capped
+at 1 MiB (413 over it) where Python read them unbounded, because the webhook
+body is read BEFORE the HMAC and a team slug is not a secret; `/onboard` and
+`PUT /teams/{slug}/settings` decode the body AFTER authenticating, so an
+unauthenticated caller cannot probe the schema (FastAPI validates first and
+would 422 ahead of the 401; nothing pins that order).
+
+## HTTP surface
+
+Webhook check order is `main.py:389` step for step and is NOT what a Go author
+would write: path-bound team (never the payload's `project.key`) -> ping before
+the body is read -> raw body -> test-connection shortcut -> HMAC -> `pr:`
+prefix off the RAW json -> validate -> repo from toRef then fromRef ->
+**ownership** -> exclude_repos (review-starting events only) -> dispatch.
+HMAC compares the hex STRINGS constant-time: uppercase hex must fail.
+The `pr:` prefix precedes validation, so a non-PR event is ignored, not
+refused; never call `Decode` before that check.
+**The mention gate is the route's**: `HandleMention` does not check that a
+comment names the bot, so without it every comment is an inference call.
+Trigger is the instance `BITBUCKET_USERNAME`, case-insensitive substring, no
+word boundary. Response bodies are structs, not maps: `encoding/json` sorts map
+keys, and `pr:deleted`/`pr:comment:deleted` carry no `queue` key although Go
+queues them.
+404/503 for a slug come BEFORE the 401 on every route.
+`teams.Runtime` is copy-on-write (`atomic.Pointer`): take ONE snapshot per
+request, or a concurrent settings write lands between the ownership check and
+the exclude check. `ApplySettings` must also mirror the two author lists onto
+the live Reviewer, which copies `config.Review` by value; `exclude_repos` is
+not mirrored. `teams.Reconcile` runs BEFORE any Reviewer is built, for the same
+reason. The onboarding orchestrators never mutate the team they are given.
 
 ## Review pipeline
 

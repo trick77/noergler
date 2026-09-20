@@ -167,7 +167,7 @@ func TestReviewRequiresAProjectAndRepo(t *testing.T) {
 func TestSkipsDisallowedAuthorAndIgnoredActor(t *testing.T) {
 	t.Run("author not in allow list", func(t *testing.T) {
 		h := newHarness(t, nil)
-		h.r.cfg.AutoReviewAuthors = []string{"bob"}
+		h.r.SetAuthorLists([]string{"bob"}, nil)
 		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
 		if len(h.llm.Reviews) != 0 {
 			t.Error("review ran for a disallowed author")
@@ -176,7 +176,7 @@ func TestSkipsDisallowedAuthorAndIgnoredActor(t *testing.T) {
 
 	t.Run("push by an ignored actor", func(t *testing.T) {
 		h := newHarness(t, nil)
-		h.r.cfg.IgnoreAuthors = []string{"ci-bot"}
+		h.r.SetAuthorLists(nil, []string{"ci-bot"})
 		p := prPayload(webhook.EventFromRefUpdated)
 		p.Actor = &webhook.User{Name: "ci-bot"}
 		h.r.ReviewPullRequest(context.Background(), p, false)
@@ -187,8 +187,7 @@ func TestSkipsDisallowedAuthorAndIgnoredActor(t *testing.T) {
 
 	t.Run("a mention bypasses both gates", func(t *testing.T) {
 		h := newHarness(t, nil)
-		h.r.cfg.AutoReviewAuthors = []string{"bob"}
-		h.r.cfg.IgnoreAuthors = []string{"alice"}
+		h.r.SetAuthorLists([]string{"bob"}, []string{"alice"})
 		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), true)
 		if len(h.llm.Reviews) != 1 {
 			t.Error("a mention must bypass the author gates")

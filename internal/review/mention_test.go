@@ -87,7 +87,7 @@ func TestMentionRouting(t *testing.T) {
 // skip_author_check flag.
 func TestMentionReviewBypassesAuthorGates(t *testing.T) {
 	h := newHarness(t, nil)
-	h.r.cfg.AutoReviewAuthors = []string{"nobody"}
+	h.r.SetAuthorLists([]string{"nobody"}, nil)
 
 	h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "alice"))
 

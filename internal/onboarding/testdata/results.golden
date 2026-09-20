@@ -1,0 +1,5 @@
+target            status   detail
+---------------------------------
+PROJ (project)    ok       webhook created (id=42), noergler granted PROJECT_WRITE
+PROJ/my-repo      failed   upsert webhook HTTP 401: nope
+LONGPROJECTKEY/r  skipped  no 'noergler' webhook found

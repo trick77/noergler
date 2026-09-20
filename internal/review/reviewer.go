@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/trick77/noergler-go/internal/config"
 	"github.com/trick77/noergler-go/internal/jira"
@@ -54,6 +55,14 @@ type Reviewer struct {
 	riptide   RiptideEmitter
 	tokens    TokenCounter
 	cfg       config.Review
+	// The two author lists live here rather than in cfg because the team API
+	// rewrites them at runtime (PUT /teams/{slug}/settings) while the review
+	// worker may be reading them. Everything else in cfg is fixed at startup.
+	// ExcludeRepos is deliberately not mirrored here: the webhook route reads
+	// it off the team config snapshot, and the Reviewer never asks.
+	authorsMu         sync.RWMutex
+	autoReviewAuthors []string
+	ignoreAuthors     []string
 	// template is the review prompt, mentionTmpl the Q&A prompt. Both are
 	// loaded once at startup and resident for the team.
 	template    string
@@ -82,18 +91,41 @@ type Options struct {
 // New builds a Reviewer for one team.
 func New(opt Options) *Reviewer {
 	return &Reviewer{
-		TeamSlug:    opt.TeamSlug,
-		bitbucket:   opt.Bitbucket,
-		llm:         opt.LLM,
-		store:       opt.Store,
-		jira:        opt.Jira,
-		riptide:     opt.Riptide,
-		tokens:      opt.Tokens,
-		cfg:         opt.Config,
-		template:    opt.Template,
-		mentionTmpl: opt.MentionTemplate,
-		log:         opt.Log,
+		TeamSlug:          opt.TeamSlug,
+		bitbucket:         opt.Bitbucket,
+		llm:               opt.LLM,
+		store:             opt.Store,
+		jira:              opt.Jira,
+		riptide:           opt.Riptide,
+		tokens:            opt.Tokens,
+		cfg:               opt.Config,
+		autoReviewAuthors: opt.Config.AutoReviewAuthors,
+		ignoreAuthors:     opt.Config.IgnoreAuthors,
+		template:          opt.Template,
+		mentionTmpl:       opt.MentionTemplate,
+		log:               opt.Log,
 	}
+}
+
+// SetAuthorLists replaces the two author lists.
+//
+// The team API writes them while the review worker may be reading them, so
+// they live behind a lock instead of in cfg. Mirrors Python's
+// TeamRuntime.apply_settings, which writes the same two fields onto the live
+// Reviewer and leaves exclude_repos to the config.
+func (r *Reviewer) SetAuthorLists(auto, ignore []string) {
+	r.authorsMu.Lock()
+	defer r.authorsMu.Unlock()
+	r.autoReviewAuthors, r.ignoreAuthors = auto, ignore
+}
+
+// authorLists takes one snapshot of both lists. The slices are replaced
+// wholesale by SetAuthorLists and never mutated in place, so the caller may
+// range over them after the lock is dropped.
+func (r *Reviewer) authorLists() (auto, ignore []string) {
+	r.authorsMu.RLock()
+	defer r.authorsMu.RUnlock()
+	return r.autoReviewAuthors, r.ignoreAuthors
 }
 
 // jiraEnabled reports whether this team has a Jira client.
@@ -109,15 +141,16 @@ func (r *Reviewer) jiraEnabled() bool { return r.jira != nil }
 // is why the caller passes skipAuthorCheck: a bot's PR can still be reviewed
 // on request.
 func (r *Reviewer) IsAutoReviewAuthor(author string) bool {
-	for _, ignored := range r.cfg.IgnoreAuthors {
+	auto, ignore := r.authorLists()
+	for _, ignored := range ignore {
 		if ignored == author {
 			return false
 		}
 	}
-	if len(r.cfg.AutoReviewAuthors) == 0 {
+	if len(auto) == 0 {
 		return true
 	}
-	for _, allowed := range r.cfg.AutoReviewAuthors {
+	for _, allowed := range auto {
 		if allowed == author {
 			return true
 		}
@@ -126,7 +159,8 @@ func (r *Reviewer) IsAutoReviewAuthor(author string) bool {
 }
 
 func (r *Reviewer) isIgnoredAuthor(name string) bool {
-	for _, ignored := range r.cfg.IgnoreAuthors {
+	_, ignore := r.authorLists()
+	for _, ignored := range ignore {
 		if ignored == name {
 			return true
 		}

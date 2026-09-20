@@ -1,0 +1,6 @@
+target                    owned  bot   webhook
+----------------------------------------------
+PROJ (project)            yes    yes   ok  stray repo hooks: PROJ/x
+PROJ/my-repo              yes    no    missing
+OTHER (project)           no     -     not owned by this team in teams.yaml; ask the noergler admin
+LONGPROJECTKEY (project)  yes    yes   stale: url: None -> 'https://n.test/webhook/p'; active: False -> True  stray repo hooks: A/b, A/c  foreign hooks: A/d -> https://old.test/webhook

@@ -13,18 +13,21 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"sort"
 	"strconv"
 	"strings"
 	"syscall"
 
+	"github.com/trick77/noergler-go/internal/api"
 	"github.com/trick77/noergler-go/internal/bitbucket"
 	"github.com/trick77/noergler-go/internal/buildinfo"
 	"github.com/trick77/noergler-go/internal/config"
 	"github.com/trick77/noergler-go/internal/httpapi"
 	"github.com/trick77/noergler-go/internal/jira"
 	"github.com/trick77/noergler-go/internal/logging"
+	"github.com/trick77/noergler-go/internal/queue"
 	"github.com/trick77/noergler-go/internal/store"
+	"github.com/trick77/noergler-go/internal/teams"
+	"github.com/trick77/noergler-go/internal/tokens"
 )
 
 func main() {
@@ -110,6 +113,11 @@ func serve(log *slog.Logger) error {
 		checks = append(checks, "Bitbucket")
 	}
 
+	if err == nil {
+		log.Info("Bot username: " + bb.BotUsername())
+		log.Info("Bitbucket: OK")
+	}
+
 	jr, err := jira.New(app.Jira, log)
 	if err == nil {
 		err = jr.CheckConnectivity(ctx)
@@ -117,53 +125,72 @@ func serve(log *slog.Logger) error {
 	if err != nil {
 		log.Error("Jira: " + err.Error())
 		checks = append(checks, "Jira")
+	} else {
+		log.Info("Jira: OK")
 	}
-	_, _ = bb, jr // wired into the reviewer in a later phase
 	if len(checks) > 0 {
 		return fmt.Errorf("Startup aborted: %d connection(s) failed: %s", len(checks), strings.Join(checks, ", "))
 	}
 
-	// Per-team startup (inference check, riptide ping, store reconciliation)
-	// arrives with the later phases; for now a team the file resolves is a
-	// team that takes traffic, so the probes already show the right slugs.
-	enabled := append([]string(nil), app.Order...)
-	sort.Strings(enabled)
-	disabled := make([]string, 0, len(app.Disabled))
-	for slug := range app.Disabled {
-		disabled = append(disabled, slug)
+	// The tokenizer's vocabulary is compiled in but cold; warming it here
+	// keeps the first review off the critical path.
+	counter, err := tokens.New()
+	if err != nil {
+		return fmt.Errorf("tokenizer: %w", err)
 	}
-	sort.Strings(disabled)
-	summary := fmt.Sprintf("teams_ready enabled=%s disabled=%s", pyList(enabled), pyList(disabled))
-	if len(disabled) > 0 {
-		log.Warn(summary)
-	} else {
-		log.Info(summary)
-	}
-	if len(enabled) == 0 {
-		log.Error("no team is enabled; /ready reports 503 until the config is fixed")
+	counter.Warm()
+
+	// Per-team startup. Reconciliation runs inside Boot and before any
+	// Reviewer is built, because review.New copies the review config by value.
+	reg, err := teams.Boot(ctx, app, teams.Deps{
+		Claims:      db,
+		ReviewStore: db,
+		Bitbucket:   bb,
+		Tokens:      counter,
+		Log:         log,
+	})
+	if err != nil {
+		return err
 	}
 
-	status := func() ([]string, []string) { return enabled, disabled }
-	srv := httpapi.New(status, log)
+	// The worker runs on its own context, NOT the signal one. queue.run
+	// derives every job's context from what Start was given, so handing it
+	// ctx would cancel the review that Stop then waits for: its diff fetch,
+	// its LLM call and its store writes would all fail with context
+	// canceled, and safeDB would swallow them, losing the run row and its
+	// cost. Cancellation reaches the worker through Stop alone.
+	// httpapi.Run makes the same separation for its own shutdown.
+	queueCtx, stopQueue := context.WithCancel(context.WithoutCancel(ctx))
+	defer stopQueue()
+	q := queue.New(reg.Review, log)
+	q.Start(queueCtx)
 
+	srv := httpapi.New(reg.Status, log)
+	api.Register(srv, api.Deps{
+		Teams:       reg,
+		Queue:       q,
+		Store:       db,
+		Claims:      db,
+		Bitbucket:   api.Bot(bb),
+		Log:         log,
+		BotUsername: bb.BotUsername(),
+		PublicURL:   app.Server.PublicURL,
+	})
+
+	enabled, _ := reg.Status()
 	addr := net.JoinHostPort(app.Server.Host, strconv.Itoa(app.Server.Port))
 	log.Info("Bridge service started", "base_url", app.LLM.BaseURL, "teams", len(enabled))
-	if err := httpapi.Run(ctx, addr, srv.Handler(), log); err != nil {
-		return err
+	runErr := httpapi.Run(ctx, addr, srv.Handler(), log)
+
+	// Drain in order: the server has already stopped accepting, so the queue
+	// finishes the review in flight before the pool closes under it. Not a
+	// defer, because `defer db.Close()` above is registered earlier and would
+	// otherwise run first. Stop has no timeout: a long review holds shutdown,
+	// which the pod's termination grace period has to allow for.
+	q.Stop()
+	if runErr != nil {
+		return runErr
 	}
 	log.Info("Bridge service stopped")
 	return nil
-}
-
-// pyList renders a slug list the way the Python service logged it, so the
-// Splunk alert on `teams_ready` keeps matching.
-func pyList(items []string) string {
-	out := "["
-	for i, s := range items {
-		if i > 0 {
-			out += ", "
-		}
-		out += "'" + s + "'"
-	}
-	return out + "]"
 }

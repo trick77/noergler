@@ -127,8 +127,8 @@ func Decode(data []byte) (*Payload, error) {
 // Validate reports whether every field Pydantic marks required is present.
 //
 // Mirrors app/models.py: eventKey, pullRequest.id, .title, .fromRef (id and
-// displayId), .toRef, .author.user.name, and on a comment id, text and
-// author.name. Everything else is Optional there and a zero value here.
+// displayId), .toRef, .author.user.name, and on a comment id and author.name.
+// Everything else is Optional there and a zero value here.
 func (p *Payload) Validate() error {
 	switch {
 	case p.EventKey == "":
@@ -148,11 +148,11 @@ func (p *Payload) Validate() error {
 		switch {
 		case c.ID == 0:
 			return fmt.Errorf("%w: comment.id is required", ErrInvalidPayload)
-		case c.Text == "":
-			// Pydantic's Comment.text is a required str. Bitbucket never
-			// sends a comment without one, but a mention handler that ran on
-			// an empty text would ask the model about nothing.
-			return fmt.Errorf("%w: comment.text is required", ErrInvalidPayload)
+		// comment.text is deliberately not required. Pydantic's Comment.text
+		// is a required str, but "" satisfies it: probed against the venv, a
+		// payload with text "" validates. Rejecting it here would answer 400
+		// where Python answers 200 "comment without mention". The route gates
+		// on the @mention trigger, so an empty text never reaches the model.
 		case c.Author.Name == "":
 			return fmt.Errorf("%w: comment.author.name is required", ErrInvalidPayload)
 		}

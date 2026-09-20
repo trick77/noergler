@@ -1,10 +1,36 @@
 package review
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/trick77/noergler-go/internal/config"
 )
+
+// The team API rewrites the author lists (PUT /teams/{slug}/settings) while
+// the review worker reads them. Without the lock around the two fields this
+// is the race -race reports once Phase 7 wires that route.
+func TestSetAuthorListsIsSafeUnderConcurrentReads(t *testing.T) {
+	h := newHarness(t, nil)
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 200; j++ {
+				h.r.IsAutoReviewAuthor("bob")
+			}
+		}()
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for j := 0; j < 200; j++ {
+			h.r.SetAuthorLists([]string{"alice"}, []string{"ci-bot"})
+		}
+	}()
+	wg.Wait()
+}
 
 // Probed against the venv in both directions. A naive `\b([A-Z]{2,10}-\d{1,7})\b`
 // port matches the first three (Python does not: its \b is Unicode, so a
@@ -67,7 +93,7 @@ func TestIsAutoReviewAuthor(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			r := &Reviewer{cfg: config.Review{AutoReviewAuthors: c.allow, IgnoreAuthors: c.ignore}}
+			r := New(Options{Config: config.Review{AutoReviewAuthors: c.allow, IgnoreAuthors: c.ignore}})
 			if got := r.IsAutoReviewAuthor(c.author); got != c.want {
 				t.Errorf("IsAutoReviewAuthor(%q) = %v, want %v", c.author, got, c.want)
 			}
