@@ -77,7 +77,7 @@ a different command, which is how it runs in a deployment too.
 Without compose:
 
 ```bash
-docker build -t noergler -f Containerfile .
+docker build -t noergler -f backend/Containerfile .
 docker run --rm --env-file .env noergler migrate
 docker run -p 8080:8080 --env-file .env \
   -e TEAMS_CONFIG=/app/teams.yaml \
@@ -89,10 +89,15 @@ docker run -p 8080:8080 --env-file .env \
 From source:
 
 ```bash
-go build -o noergler ./cmd/noergler
+go build -C backend -o "$PWD/noergler" ./cmd/noergler
 ./noergler migrate
 ./noergler serve
 ```
+
+Build into the repo root and run from there: `REVIEW_PROMPT_TEMPLATE` and
+`TEAMS_CONFIG` default to `prompts/review.txt` and `teams.yaml`, both relative
+to the working directory, and both live at the root beside `backend/`. Running
+from inside `backend/` disables every team with a missing prompt template.
 
 `serve` is the default subcommand. `migrate` never runs from `serve`: it is the
 init container, and nothing creates the schema at runtime.
@@ -155,7 +160,10 @@ for repositories without one unless `REVIEW_REQUIRE_AGENTS_MD=false`.
 
 ## Running tests
 
+The Go module lives in `backend/`; `hack/` and the docs stay at the repo root.
+
 ```bash
+cd backend
 gofmt -l .                 # must print nothing
 go vet ./...
 go test -race ./...
@@ -165,15 +173,26 @@ Store tests need a database and are skipped without one:
 
 ```bash
 docker compose up -d postgres
+cd backend
 NOERGLER_TEST_DSN=postgres://noergler:changeme@localhost:5432/noergler?sslmode=disable \
   go test -race ./internal/store/...
 ```
 
-End to end against fake Bitbucket, Jira, gateway and riptide:
+End to end against fake Bitbucket, Jira, gateway and riptide, from the repo root:
 
 ```bash
 ./hack/smoke.sh      # boots serve, replays a signed webhook, reports what was posted
 ./hack/parity.sh     # the same replay through this and the Python implementation, diffed
+```
+
+Coverage floor and per-PR patch coverage, the same gate the other repos use:
+
+```bash
+cd backend
+go test -race -covermode=atomic -coverpkg=./... -coverprofile=../coverage/backend.out ./...
+go run github.com/boumenot/gocover-cobertura@v1.5.0 < ../coverage/backend.out > ../coverage/backend.xml
+cd ..
+./hack/coverage-gate.sh backend
 ```
 
 ## Health check

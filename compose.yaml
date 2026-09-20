@@ -20,7 +20,7 @@ services:
   migrate:
     build:
       context: .
-      dockerfile: Containerfile
+      dockerfile: backend/Containerfile
     command: ["migrate"]
     env_file: .env
     environment:
@@ -32,7 +32,7 @@ services:
   noergler:
     build:
       context: .
-      dockerfile: Containerfile
+      dockerfile: backend/Containerfile
     ports:
       - "8080:8080"
     env_file: .env

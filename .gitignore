@@ -5,9 +5,10 @@ teams.yaml
 # Plans and other HTML deliverables
 docs/plans/
 
-# Build
-/noergler
-/fakes
+# Build. Not root-anchored: the module is in backend/, so a build there drops
+# the binary at backend/noergler.
+noergler
+fakes
 /bin/
 coverage/
 

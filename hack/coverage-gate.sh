@@ -9,12 +9,6 @@
 # Anything under cmd/ (main() wiring) is deliberately not counted. Matching the
 # whole cmd/ tree rather than one binary's name keeps this script identical
 # across every repo in the family, including those with several binaries.
-#
-# hack/ is excluded for the same reason: it is test tooling, not shipped code.
-# This is the one line that differs from the other repos in the family, where
-# the hack helper carries //go:build ignore and never enters the package graph
-# at all. Here hack/fakes is a real multi-file binary that smoke.sh and
-# parity.sh build, so it cannot be build-ignored and is excluded here instead.
 set -euo pipefail
 
 # Force a C/POSIX numeric locale so awk always uses '.' as the decimal
@@ -58,8 +52,6 @@ tot = cov = 0
 for cls in root.iter("class"):
     fn = cls.get("filename", "")
     if fn.startswith("cmd/") or "/cmd/" in fn:
-        continue
-    if fn.startswith("hack/") or "/hack/" in fn:
         continue
     for line in cls.iter("line"):
         tot += 1

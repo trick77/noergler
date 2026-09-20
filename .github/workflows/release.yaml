@@ -79,7 +79,7 @@ jobs:
       - uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./Containerfile
+          file: ./backend/Containerfile
           push: true
           build-args: |
             NOERGLER_VERSION=${{ steps.ver.outputs.version }}

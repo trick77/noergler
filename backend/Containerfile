@@ -1,8 +1,11 @@
+# Built with the REPO ROOT as context, not backend/: the image also ships
+# prompts/, which lives at the root beside backend/. Hence the backend/ prefix
+# on every source path here.
 FROM golang:1.26-alpine AS builder
 WORKDIR /build
-COPY go.mod go.sum ./
+COPY backend/go.mod backend/go.sum ./
 RUN go mod download
-COPY . ./
+COPY backend/ ./
 ARG NOERGLER_VERSION=dev
 ARG NOERGLER_COMMIT=
 # Static binary, no cgo: the tokenizer vocabulary is compiled in, so the

@@ -32,6 +32,10 @@ profile_model=gpt-5.5
 effort=high
 
 out=${OUT:-$(mktemp -d)}
+# Absolute: `go build -C backend` resolves -o against backend/, so a relative
+# OUT= would write the binaries into the module directory.
+mkdir -p "$out"
+out=$(cd "$out" && pwd)
 mkdir -p "$out/go" "$out/py"
 
 go_fakes_port=18190
@@ -56,8 +60,9 @@ project="PAR$run"
 secret=s
 
 echo "== building"
-go build -o "$out/noergler" ./cmd/noergler
-go build -o "$out/fakes" ./hack/fakes
+go build -C backend -o "$out/noergler" ./cmd/noergler
+# By file, not by package: see the note in smoke.sh.
+go build -o "$out/fakes" hack/fakes/main.go
 
 echo "== starting fakes (go :$go_fakes_port, py :$py_fakes_port)"
 "$out/fakes" -addr ":$go_fakes_port" -record "$out/go" -review hack/testdata/review.json \
@@ -102,7 +107,7 @@ write_teams "$out/teams-go.yaml" "$go_fakes_port"
 write_teams "$out/teams-py.yaml" "$py_fakes_port"
 
 payload="$out/webhook.json"
-sed "s/\"PROJ\"/\"$project\"/g" internal/webhook/testdata/sample_webhook.json > "$payload"
+sed "s/\"PROJ\"/\"$project\"/g" backend/internal/webhook/testdata/sample_webhook.json > "$payload"
 
 # The dispatch reads eventKey from the BODY; the X-Event-Key header only gates
 # the ping. A header-only change leaves a pr:merged replay running the review

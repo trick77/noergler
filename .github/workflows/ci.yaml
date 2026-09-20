@@ -18,6 +18,11 @@ jobs:
   test:
     name: Build + test
     runs-on: ubuntu-latest
+    # The Go module lives in backend/; hack/ and coverage/ stay at the root, so
+    # the two gate steps below override this back to the repo root.
+    defaults:
+      run:
+        working-directory: backend
     services:
       postgres:
         image: postgres:17-alpine
@@ -42,8 +47,11 @@ jobs:
       # drift from what the module itself declares.
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version-file: backend/go.mod
           cache: true
+          # setup-go resolves the cache key from go.sum at the WORKSPACE root
+          # by default, which no longer has one.
+          cache-dependency-path: backend/go.sum
       # hack/patch-coverage.sh drives diff-cover; without it the patch gate
       # fails with "command not found" after the tests have already run.
       - uses: actions/setup-python@v7
@@ -51,6 +59,9 @@ jobs:
           python-version: "3.12"
       - run: pip install diff-cover==10.3.0
         working-directory: .
+      # From the repo root, so hack/*.go is covered too: it is outside the
+      # module, so `go vet ./...` in backend/ never sees it, and CI itself runs
+      # hack/strip-comment-lines.go.
       - name: gofmt
         run: |
           unformatted="$(gofmt -l .)"
@@ -59,16 +70,17 @@ jobs:
             echo "$unformatted"
             exit 1
           fi
+        working-directory: .
       - run: go vet ./...
       - run: go build ./...
-      - run: mkdir -p coverage
+      - run: mkdir -p ../coverage
       # The race detector needs cgo; this is independent of the image's
       # CGO_ENABLED=0 build.
       #
       # -coverpkg=./... attributes coverage across package boundaries: code
       # exercised only by another package's tests (the api tests drive review,
       # store and render) is otherwise reported as uncovered.
-      - run: go test -race -covermode=atomic -coverpkg=./... -coverprofile=coverage/backend.out ./...
+      - run: go test -race -covermode=atomic -coverpkg=./... -coverprofile=../coverage/backend.out ./...
         env:
           CGO_ENABLED: "1"
           NOERGLER_TEST_DSN: postgres://noergler:noergler@localhost:5432/noergler_test?sslmode=disable
@@ -76,12 +88,18 @@ jobs:
       # the line percentage comes from a Cobertura conversion of the profile.
       # That also merges the duplicate blocks -coverpkg emits, one set per test
       # binary, which a naive sum over the raw profile gets badly wrong.
-      - run: go run github.com/boumenot/gocover-cobertura@v1.5.0 < coverage/backend.out > coverage/backend.xml
+      - run: go run github.com/boumenot/gocover-cobertura@v1.5.0 < ../coverage/backend.out > ../coverage/backend.xml
       # The floor gate runs first: when a PR drops the project below the floor
       # the absolute number is the more actionable failure, and reporting it
       # before patch coverage keeps the log readable.
+      # Both gates resolve paths from the repo root, not backend/.
       - run: ./hack/coverage-gate.sh backend
+        working-directory: .
       - name: Backend patch coverage
         run: ./hack/patch-coverage.sh "origin/${{ github.base_ref || 'master' }}"
-      # The gate scripts are load-bearing; this is their own test.
+        working-directory: .
+      # The gate scripts are load-bearing; these are their own tests.
       - run: ./hack/coverage-gate.test.sh
+        working-directory: .
+      - run: ./hack/strip-comment-lines.test.sh
+        working-directory: .

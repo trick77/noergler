@@ -19,8 +19,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-go build -o "$tmp/noergler" ./cmd/noergler
-go build -o "$tmp/fakes" ./hack/fakes
+go build -C backend -o "$tmp/noergler" ./cmd/noergler
+# By file, not by package: hack/ is outside the module now, so `./hack/fakes`
+# finds no go.mod on a fresh clone. It is a single stdlib-only file, which go
+# builds without a module, the same way hack/strip-comment-lines.go runs.
+go build -o "$tmp/fakes" hack/fakes/main.go
 
 # serve now checks Bitbucket and Jira at startup, so both have to answer.
 fakes_port=${FAKES_PORT:-18099}
@@ -49,7 +52,7 @@ teams:
 EOF
 # The fixture names PROJ; rewrite it to this run's key.
 payload="$tmp/webhook.json"
-sed "s/\"PROJ\"/\"$project\"/g" internal/webhook/testdata/sample_webhook.json > "$payload"
+sed "s/\"PROJ\"/\"$project\"/g" backend/internal/webhook/testdata/sample_webhook.json > "$payload"
 
 port=${PORT:-18080}
 dsn=${DATABASE_URL:-postgres://noergler:changeme@localhost:5432/noergler?sslmode=disable}

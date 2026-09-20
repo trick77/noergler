@@ -6,10 +6,15 @@ inference through `github.com/trick77/llmwire` against a LiteLLM gateway.
 
 ## Commands
 
+**The module is in `backend/`; `hack/`, docs and `prompts/` are at the root.**
+Go commands run from `backend/`, scripts from the root.
 `gofmt -l .` must print nothing. `go vet ./...`, `go test -race ./...`.
 Store tests skip without `NOERGLER_TEST_DSN`; `docker compose up -d postgres`,
 then DSN `postgres://noergler:changeme@localhost:5432/noergler?sslmode=disable`.
-`./hack/smoke.sh` boots `serve` against `hack/fakes`.
+`./hack/smoke.sh` boots `serve` against `hack/fakes`; `./hack/parity.sh` diffs
+this against the Python service. Coverage floor 75% (`hack/coverage-floors`),
+gate `./hack/coverage-gate.sh backend` over `coverage/backend.xml`; `cmd/` is
+excluded and `hack/` is outside the module.
 No web framework, no ORM, no logging library. Do not add one.
 
 ## Team isolation

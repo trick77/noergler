@@ -15,10 +15,9 @@ check() { # check <label> <expected-exit> <actual-exit>
   fi
 }
 
-# 80 of 100 lines covered outside the excluded trees -> 80.0%.
-# cmd/ and hack/ each contribute 100 uncovered lines and must be ignored
-# entirely: counting cmd/ would report 80/200 = 40.0%, counting both 80/300 =
-# 26.7%, all materially different numbers.
+# 80 of 100 lines covered outside cmd/ -> 80.0%.
+# cmd/ contributes 100 lines, all uncovered, and must be ignored entirely:
+# including it would report 80/200 = 40.0%, a materially different number.
 gen_lines() { # gen_lines <count> <hits>
   local i
   for ((i = 1; i <= $1; i++)); do
@@ -40,13 +39,6 @@ cat > "$TMP/backend.xml" <<XML
     <package name="github.com/trick77/noergler-go/cmd/noergler">
       <classes>
         <class name="main" filename="cmd/noergler/main.go">
-          <lines>$(gen_lines 100 0)</lines>
-        </class>
-      </classes>
-    </package>
-    <package name="github.com/trick77/noergler-go/hack/fakes">
-      <classes>
-        <class name="main" filename="hack/fakes/main.go">
           <lines>$(gen_lines 100 0)</lines>
         </class>
       </classes>
@@ -73,8 +65,8 @@ check "fails when below floor" 1 $?
 out=$(COVERAGE_FLOORS="$TMP/floors-under" COVERAGE_FILE="$TMP/backend.xml" \
   ./hack/coverage-gate.sh backend 2>&1)
 case "$out" in
-  *80.0*) echo "  ok   excludes cmd/ and hack/ (reports 80.0%, not 40.0% or 26.7%)" ;;
-  *)      echo "  FAIL excludes cmd/ and hack/ - got: $out"; fail=1 ;;
+  *80.0*) echo "  ok   excludes cmd/ (reports 80.0%, not 40.0%)" ;;
+  *)      echo "  FAIL excludes cmd/ - got: $out"; fail=1 ;;
 esac
 
 COVERAGE_FLOORS="$TMP/floors-under" COVERAGE_FILE="$TMP/backend-malformed.xml" \

@@ -58,7 +58,9 @@ func loadAssembleGolden(t *testing.T) (map[string]assembleGolden, schemaGolden) 
 
 func testTemplate(t *testing.T) string {
 	t.Helper()
-	blob, err := os.ReadFile("../../prompts/review.txt")
+	// prompts/ lives at the REPO root, beside backend/, not inside the module:
+	// the image mounts it and a deployment may swap it. Hence the third level.
+	blob, err := os.ReadFile("../../../prompts/review.txt")
 	if err != nil {
 		t.Fatalf("read template: %v", err)
 	}
