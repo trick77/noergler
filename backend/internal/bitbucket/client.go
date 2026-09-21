@@ -69,8 +69,8 @@ func Status(err error) int {
 // ceiling or errored, so Size is a lower bound.
 //
 // Head holds the first Limit bytes, so a caller can say which files were in
-// the part it did see. Python had neither: it discarded the running byte count
-// it held and never looked at the partial body.
+// the part it did see. Both matter: discarding the running byte count leaves
+// the size unreportable, and ignoring the partial body loses the file names.
 type ContentTooLarge struct {
 	What      string
 	Limit     int
