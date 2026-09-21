@@ -24,7 +24,6 @@ const maxTooLargeOffenders = 10
 // only file in the head.
 //
 // Returns "" when nothing can be parsed, so the caller can skip the line.
-// Python never looked at the partial body at all.
 func tooLargeOffenders(head []byte) string {
 	if len(head) == 0 {
 		return ""

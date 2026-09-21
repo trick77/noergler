@@ -247,7 +247,7 @@ func TestDiffOverCapByContentLength(t *testing.T) {
 }
 
 // Without a declared length the cap trips mid-stream, and the rest of the body
-// is drained so the size is still reported. Python discarded the count here.
+// is drained so the size is still reported.
 func TestDiffOverCapWhileStreaming(t *testing.T) {
 	_, c := newFake(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
