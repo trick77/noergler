@@ -27,10 +27,14 @@ on:
   workflow_dispatch:
     inputs:
       bump:
+        # TEMPORARY, with the push trigger above: minor while the migration is
+        # pending, so clicking Run workflow without touching the dropdown gives
+        # 0.2.0 rather than 0.1.80 with :latest, :0.1 and :0 moving onto the
+        # first Go image. RESTORE to patch once 0.2.0 is out.
         description: "Version bump"
         type: choice
         options: [patch, minor, major]
-        default: patch
+        default: minor
 
 permissions:
   contents: write
