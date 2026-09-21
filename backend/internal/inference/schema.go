@@ -9,16 +9,14 @@ import (
 // ReviewSchemaName is the strict JSON schema's name on the wire.
 const ReviewSchemaName = "review_response"
 
-// ReviewResponseSchema is the strict JSON schema bound to every review call,
-// a port of _REVIEW_RESPONSE_SCHEMA (llm_client.py:282).
+// ReviewResponseSchema is the strict JSON schema bound to every review call.
 //
 // It is also token-counted as part of the pre-flight fit check, because the
-// gateway bills it as input like everything else. Python counts
-// json.dumps(schema), which uses ", " and ": " separators; Go's json.Marshal
-// is compact and would count fewer tokens for the same schema, leaving the
-// fit check quietly more permissive here than in Python. SchemaJSON
-// re-inserts the separators, which brings the serialization to the same 1492
-// bytes the Python produces.
+// gateway bills it as input like everything else. The counted form uses ", "
+// and ": " separators, which brings the serialization to 1492 bytes. Go's
+// json.Marshal is compact and would count fewer tokens for the same schema,
+// moving every pinned total in testdata/assemble_golden.json, so SchemaJSON
+// re-inserts the separators rather than marshalling.
 func ReviewResponseSchema() map[string]any {
 	decisions := make([]any, len(VerdictDecisions))
 	for i, d := range VerdictDecisions {
@@ -89,16 +87,16 @@ func ReviewResponseFormat() *llmwire.ResponseFormat {
 	}
 }
 
-// schemaJSON is the schema exactly as Python's json.dumps renders it: key
-// order as written in the Python literal, ", " and ": " separators.
+// schemaJSON is the exact byte form the schema is counted in: the key order
+// written below, with ", " and ": " separators.
 //
 // It is a literal rather than a marshal of ReviewResponseSchema because Go's
-// encoder sorts map keys while Python preserves insertion order, and the
-// tokenizer is sensitive to that: the same 1492 bytes tokenize to 432 in
-// sorted order against Python's 435. The fit check compares against the
-// model's real ceiling, so a three-token under-count is a (small) permissive
-// drift; pinning the string keeps the two identical. TestSchemaMatchesPython
-// asserts this stays in sync with ReviewResponseSchema.
+// encoder sorts map keys, and the tokenizer is sensitive to that: the same
+// 1492 bytes tokenize to 432 in sorted order against 435 in this order. The
+// fit check compares against the model's real ceiling, so a three-token
+// under-count is a (small) permissive drift; pinning the string keeps the
+// counted form stable. TestSchemaStringAndMapAgree asserts this stays in
+// sync with ReviewResponseSchema.
 const schemaJSON = `{"type": "object", "additionalProperties": false, "required": ` +
 	`["overview", "strengths", "security_performance", "test_coverage", "verdict", "findings", ` +
 	`"compliance_requirements"], "properties": {"overview": {"type": "string", "minLength": 1}, ` +
@@ -120,7 +118,7 @@ const schemaJSON = `{"type": "object", "additionalProperties": false, "required"
 	`"properties": {"requirement": {"type": "string"}, "met": {"type": "boolean"}, ` +
 	`"evidence": {"type": ["string", "null"]}}}}}}`
 
-// SchemaJSON is the schema as Python serializes it, for token counting.
+// SchemaJSON is the schema in its pinned byte form, for token counting.
 func SchemaJSON() string { return schemaJSON }
 
 // schemaEquivalent reports whether the pinned string and the map describe the

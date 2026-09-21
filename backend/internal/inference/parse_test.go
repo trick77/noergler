@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// Expectations generated from the running Python (_parse_review_response).
+// The review-response parse is pinned: these are the shapes the model emits.
 func TestParseReviewIsPinned(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -133,7 +133,8 @@ func TestParseReviewFindings(t *testing.T) {
 	})
 }
 
-// Expectations generated from the running Python (_is_vacuous_suggestion).
+// The vacuous-suggestion rule is pinned: a change here silently changes
+// which findings are dropped.
 func TestIsVacuousSuggestionIsPinned(t *testing.T) {
 	cases := []struct {
 		in   string
@@ -153,11 +154,12 @@ func TestIsVacuousSuggestionIsPinned(t *testing.T) {
 		{"", false},
 		{"   ", false},
 		{"Add a nil check", false},
-		// Python's \s is Unicode, so non-breaking spaces match. RE2's ASCII \s
-		// would not, hence [\s\p{Zs}].
+		// Non-breaking spaces must match, which RE2's ASCII \s would not,
+		// hence [\s\p{Zs}].
 		{"no fix needed", true},
-		// Python's \b is Unicode, so ü is a word char and the boundary fails.
-		// RE2's ASCII \b would have matched, hence the explicit boundary.
+		// ü is a word character, so there is no boundary here and this must
+		// NOT match. RE2's ASCII \b would have matched, hence the explicit
+		// boundary.
 		{"üno fix needed", false},
 		// Over 120 characters is a real suggestion regardless of content.
 		{strings.Repeat("x", 121) + " no fix needed", false},
@@ -165,7 +167,7 @@ func TestIsVacuousSuggestionIsPinned(t *testing.T) {
 	}
 	for _, tc := range cases {
 		if got := IsVacuousSuggestion(tc.in); got != tc.want {
-			t.Errorf("IsVacuousSuggestion(%q) = %v, want %v (Python)", tc.in, got, tc.want)
+			t.Errorf("IsVacuousSuggestion(%q) = %v, want %v (pinned)", tc.in, got, tc.want)
 		}
 	}
 }
@@ -189,7 +191,7 @@ func TestVacuousLengthBoundIsRunes(t *testing.T) {
 	}
 }
 
-// Expectations generated from the running Python (_parse_mention_response).
+// The mention-response parse is pinned: these are the shapes the model emits.
 func TestParseMentionIsPinned(t *testing.T) {
 	cases := []struct {
 		name, content, want string
@@ -207,8 +209,8 @@ func TestParseMentionIsPinned(t *testing.T) {
 		{"answer not string", `{"answer": 42}`, `{"answer": 42}`},
 		{"no answer key", `{"other": "x"}`, `{"other": "x"}`},
 		{"not json", "just text", "just text"},
-		// null unmarshals into a nil map in Go rather than failing, so it
-		// needs the explicit nil check to fall back like Python.
+		// null unmarshals into a nil map in Go rather than failing, so the
+		// explicit nil check is what makes it fall back to the raw text.
 		{"json null", "null", "null"},
 		{"empty", "", ""},
 		{"whitespace", "   ", ""},

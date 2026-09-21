@@ -32,7 +32,7 @@ func TestCountIsPinned(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := c.Count(tc.text); got != tc.want {
-				t.Errorf("Count() = %d, want %d (Python tiktoken)", got, tc.want)
+				t.Errorf("Count() = %d, want %d (pinned)", got, tc.want)
 			}
 		})
 	}

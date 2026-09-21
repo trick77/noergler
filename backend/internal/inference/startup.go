@@ -21,11 +21,11 @@ const pingPrompt = "Reply with: ok"
 // window resolve is one HTTP call, and the ping is an inference call. A team
 // misconfigured in an obvious way fails before it costs anything.
 //
-// There is no local reasoning-effort set. Python validated against a hardcoded
-// {minimal, low, medium, high}, which is wrong for the configured model in
-// both directions: it rejected a valid xhigh and accepted an invalid minimal.
-// llmwire validates the level against the profile before sending, and the
-// gateway's 400 covers the rest; both are mapped in mapPingError.
+// There is no local reasoning-effort set. A hardcoded
+// {minimal, low, medium, high} would be wrong for the configured model in
+// both directions: it would reject a valid xhigh and accept an invalid
+// minimal. llmwire validates the level against the profile before sending,
+// and the gateway's 400 covers the rest; both are mapped in mapPingError.
 func (c *Client) Startup(ctx context.Context) error {
 	profile, err := c.profile()
 	if err != nil {

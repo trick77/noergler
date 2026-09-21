@@ -25,7 +25,7 @@ var VerdictDecisions = []string{"approve", "approve_with_followups", "request_ch
 // when the model returns an unrecognised decision or nothing at all. Build a
 // summary with NewReviewSummary, never a bare struct literal, or an
 // unparseable response silently reports "request_changes"-shaped emptiness
-// where Python reported approval.
+// instead of the approval default.
 type ReviewSummary struct {
 	Overview            string
 	Strengths           []string
@@ -39,7 +39,7 @@ type ReviewSummary struct {
 // supplies a recognised one.
 const DefaultVerdictDecision = "approve"
 
-// NewReviewSummary returns a summary with the Python dataclass defaults.
+// NewReviewSummary returns a summary with the documented field defaults.
 func NewReviewSummary() ReviewSummary {
 	return ReviewSummary{VerdictDecision: DefaultVerdictDecision}
 }
@@ -62,7 +62,7 @@ type ParsedReview struct {
 	ComplianceRequirements []ComplianceRequirement
 	Summary                ReviewSummary
 	ParseFailed            bool
-	// Diagnostics is what Python logged from inside the parser. ParseReview
+	// Diagnostics are the operator-facing lines the parser produced. ParseReview
 	// stays a pure function, so it returns them instead and the caller, which
 	// holds the request context, emits them bound to team and pr_tag.
 	Diagnostics []ParseDiagnostic
@@ -74,7 +74,7 @@ type ParseDiagnostic struct {
 	Message string
 }
 
-// warn and fail append a diagnostic at Python's level for the same event.
+// warn and info append a diagnostic at the level the event is alerted on.
 func (p *ParsedReview) warn(format string, args ...any) {
 	p.Diagnostics = append(p.Diagnostics,
 		ParseDiagnostic{Level: slog.LevelWarn, Message: fmt.Sprintf(format, args...)})
@@ -85,10 +85,9 @@ func (p *ParsedReview) info(format string, args ...any) {
 		ParseDiagnostic{Level: slog.LevelInfo, Message: fmt.Sprintf(format, args...)})
 }
 
-// parseErrorDiagnostic splits a decode failure the way Python's
-// json.JSONDecodeError / isinstance(data, dict) pair does: malformed JSON
-// reports the content prefix, while a well-formed non-object (an array, a
-// scalar, or null) reports only that it is not an object.
+// parseErrorDiagnostic splits a decode failure in two: malformed JSON reports
+// the content prefix, while a well-formed non-object (an array, a scalar, or
+// null) reports only that it is not an object.
 func parseErrorDiagnostic(err error, content string) ParseDiagnostic {
 	var syntax *json.SyntaxError
 	if errors.As(err, &syntax) {
@@ -102,7 +101,7 @@ func parseErrorDiagnostic(err error, content string) ParseDiagnostic {
 
 // decodesAs reports whether raw is present and holds a value of dst's type.
 //
-// It is Python's isinstance check. json.Unmarshal alone is not: a missing key
+// It is a type check, which json.Unmarshal alone is not: a missing key
 // yields a nil RawMessage and an explicit null both decode as a silent no-op,
 // leaving the zero value in place, so `{"met": null}` would read as a real
 // "not met" rather than a malformed item.
@@ -113,8 +112,8 @@ func decodesAs(raw json.RawMessage, dst any) bool {
 	return json.Unmarshal(raw, dst) == nil
 }
 
-// truncateRunes cuts s to at most n runes. Python's content[:200] slices
-// characters, so the prefix is measured the same way.
+// truncateRunes cuts s to at most n runes. The prefix is measured in
+// characters, not bytes, so a multi-byte rune is never split.
 func truncateRunes(s string, n int) string {
 	runes := []rune(s)
 	if len(runes) <= n {
@@ -129,8 +128,8 @@ func truncateRunes(s string, n int) string {
 // enum.
 var Severities = []string{"issue", "suggestion"}
 
-// ReviewFinding is one finding from the model, mirroring the Python Pydantic
-// model. File, Line, Severity and Comment are required; a finding missing any
+// ReviewFinding is one finding from the model. File, Line, Severity and
+// Comment are required; a finding missing any
 // of them, or carrying an unknown severity, is skipped rather than failing the
 // batch.
 type ReviewFinding struct {
@@ -148,10 +147,10 @@ type ReviewFinding struct {
 
 // parseFinding validates one finding, reporting whether it survives.
 //
-// Python is Pydantic in lax mode, so a numeric string coerces to an int
-// ("1" becomes 1) while a float with a fractional part does not. Both are
-// reproduced: the first is a model quirk worth tolerating, the second would
-// silently move a finding to the wrong line.
+// The wire contract coerces leniently: a numeric string becomes an int
+// ("1" -> 1), while a float with a fractional part is refused. The first is a
+// model quirk worth tolerating, the second would silently move a finding to
+// the wrong line.
 func parseFinding(raw json.RawMessage) (ReviewFinding, bool) {
 	var probe struct {
 		File     *string          `json:"file"`
@@ -186,8 +185,8 @@ func parseFinding(raw json.RawMessage) (ReviewFinding, bool) {
 		Headline:   probe.Headline,
 		Suggestion: probe.Suggestion,
 	}
-	// confidence is Optional, so an explicit null is absent rather than
-	// invalid. Any other unusable value drops the finding, as Pydantic does.
+	// confidence is optional, so an explicit null is absent rather than
+	// invalid. Any other unusable value drops the finding.
 	if probe.Confidence != nil && !isJSONNull(*probe.Confidence) {
 		n, ok := coerceInt(*probe.Confidence)
 		if !ok {
@@ -199,8 +198,8 @@ func parseFinding(raw json.RawMessage) (ReviewFinding, bool) {
 }
 
 // isJSONNull reports whether raw is the JSON literal null. Needed because Go
-// unmarshals null into most types without error, leaving the zero value, where
-// Python's type checks reject it.
+// unmarshals null into most types without error, leaving the zero value, so a
+// null would read as a real 0 rather than a malformed field.
 func isJSONNull(raw json.RawMessage) bool {
 	return string(bytes.TrimSpace(raw)) == "null"
 }
@@ -215,16 +214,16 @@ func validSeverity(s string) bool {
 }
 
 // coerceInt accepts an integer, a string holding one, or a float equal to its
-// own truncation, matching Pydantic's lax coercion. Verified against the
-// running Python: 95.0 becomes 95, "95" becomes 95, and 95.5 is refused
-// because silently truncating it would move a finding to the wrong line.
+// own truncation. The wire contract coerces leniently: 95.0 -> 95, "95" -> 95;
+// 95.5 is refused, because silently truncating it would move a finding to the
+// wrong line.
 func coerceInt(raw json.RawMessage) (int, bool) {
-	// null unmarshals into an int without error, leaving 0, where Python
-	// rejects it for a required field. Same trap as the map case.
+	// null unmarshals into an int without error, leaving 0, but a required
+	// field holding null is invalid, not 0. Same trap as the map case.
 	if isJSONNull(raw) {
 		return 0, false
 	}
-	// A bool coerces in Pydantic lax mode: true becomes 1.
+	// The wire contract coerces a bool too: true -> 1, false -> 0.
 	var b bool
 	if json.Unmarshal(raw, &b) == nil {
 		if b {
@@ -253,9 +252,8 @@ func coerceInt(raw json.RawMessage) (int, bool) {
 }
 
 // stripFence removes a leading ``` line and, when the final line is exactly a
-// fence, that too. Mirrors Python: the opening line is dropped unconditionally
-// (including its info string), the closing one only when it is exactly "```"
-// after trimming.
+// fence, that too. The opening line is dropped unconditionally (including its
+// info string), the closing one only when it is exactly "```" after trimming.
 func stripFence(content string) string {
 	if !strings.HasPrefix(content, "```") {
 		return content
@@ -276,8 +274,8 @@ func ParseReview(content string) ParsedReview {
 
 	var raw map[string]json.RawMessage
 	// A JSON array or scalar fails to unmarshal into a map. `null` does NOT:
-	// Go accepts it and leaves the map nil, where Python's
-	// isinstance(data, dict) rejected it. The nil check is what covers that.
+	// Go accepts it and leaves the map nil, so without the nil check a bare
+	// null would parse as an empty review instead of a parse failure.
 	if err := json.Unmarshal([]byte(content), &raw); err != nil || raw == nil {
 		// The summary still carries the default verdict.
 		return ParsedReview{
@@ -296,9 +294,9 @@ func ParseReview(content string) ParsedReview {
 		var items []json.RawMessage
 		if err := json.Unmarshal(rawReqs, &items); err == nil {
 			for _, item := range items {
-				// Python requires isinstance(requirement, str) and
-				// isinstance(met, bool), which is a TYPE check: a present key
-				// holding null fails it. Probing for presence alone is not
+				// requirement must be a string and met a bool: this is a TYPE
+				// check, so a present key holding null fails it. Probing for
+				// presence alone is not
 				// enough, because encoding/json decodes a null into a string
 				// or bool field without error, turning {"met": null} into a
 				// silent "not met" and {"requirement": null} into the "???"
@@ -334,7 +332,7 @@ func ParseReview(content string) ParsedReview {
 	out.Summary.TestCoverage = strings.TrimSpace(decodeString(raw["test_coverage"]))
 
 	// Non-string and blank entries are dropped; the rest keep their original
-	// spacing, since Python filters on s.strip() but appends s.
+	// spacing, because the blank test trims but the stored value does not.
 	if rawStrengths, ok := raw["strengths"]; ok {
 		var items []json.RawMessage
 		if err := json.Unmarshal(rawStrengths, &items); err == nil {
@@ -391,7 +389,7 @@ func ParseReview(content string) ParsedReview {
 }
 
 // decodeString returns raw as a string, or "" when it is absent or not a
-// string. Mirrors Python's isinstance(x, str) guards.
+// string: a non-string value is discarded rather than rendered.
 func decodeString(raw json.RawMessage) string {
 	if len(raw) == 0 {
 		return ""
@@ -406,12 +404,12 @@ func decodeString(raw json.RawMessage) string {
 // vacuousSuggestionPatterns drop findings whose suggestion says there is
 // nothing to do.
 //
-// Python's \b and \s are Unicode, RE2's are ASCII, and this pattern set
-// diverges in BOTH directions. Verified against the running Python:
-//   - "no fix needed" (non-breaking spaces) matches in Python
-//     because \s covers them; plain RE2 \s would not.
-//   - "üno fix needed" does NOT match in Python, because ü is a word character
-//     so \b fails; plain RE2 \b would match.
+// RE2's \b and \s are ASCII, but these patterns must treat whitespace and
+// word characters as Unicode, and they need it in BOTH directions:
+//   - "no fix needed" written with non-breaking spaces must match;
+//     plain RE2 \s would not see them.
+//   - "üno fix needed" must NOT match: ü is a word character, so there
+//     is no word boundary there; plain RE2 \b would match.
 //
 // So \s becomes [\s\p{Zs}] and \b is spelled out against the Unicode word set.
 var vacuousSuggestionPatterns = []*regexp.Regexp{
@@ -424,10 +422,10 @@ var vacuousSuggestionPatterns = []*regexp.Regexp{
 }
 
 const (
-	// uniSpace matches what Python's \s matches, including non-breaking and
-	// other Unicode spaces that RE2's ASCII \s misses.
+	// uniSpace matches Unicode whitespace, including non-breaking and other
+	// Unicode spaces that RE2's ASCII \s misses.
 	uniSpace = `[\s\p{Zs}]`
-	// wordStart and wordEnd stand in for Python's Unicode-aware \b.
+	// wordStart and wordEnd stand in for a Unicode-aware \b.
 	wordStart = `(?:^|[^\pL\pN_])`
 	wordEnd   = `(?:$|[^\pL\pN_])`
 )
@@ -442,7 +440,7 @@ func IsVacuousSuggestion(suggestion string) bool {
 	if stripped == "" {
 		return false
 	}
-	// Python measures len() in characters, not bytes.
+	// Measured in characters, not bytes.
 	if len([]rune(stripped)) > maxVacuousSuggestionLen {
 		return false
 	}
@@ -494,10 +492,11 @@ func ParseMention(content string) string {
 				if json.Unmarshal(item, &ref) != nil || ref.File == "" {
 					continue
 				}
-				// A line is rendered only when it is an integer. Python's
-				// isinstance(line, int) rejects a float or a string, and also
-				// accepts a bool, which json.Unmarshal into int would not; a
-				// bool line is vanishingly unlikely and renders without it.
+				// A line is rendered only when it is an integer: a float or a
+				// string is rejected. A bool would be accepted as an integer
+				// line by the wire contract but not by json.Unmarshal into
+				// int; a bool line is vanishingly unlikely and renders
+				// without it.
 				if ref.Line != nil {
 					var line int
 					if json.Unmarshal(*ref.Line, &line) == nil {

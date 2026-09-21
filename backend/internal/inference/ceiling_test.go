@@ -9,8 +9,8 @@ import (
 	"github.com/trick77/llmwire"
 )
 
-// The fit ceiling is the window less the reply reserve, not the compression
-// budget. Python: fit_ceiling = self.context_window - _OUTPUT_TOKEN_RESERVE.
+// The fit ceiling is the window less the reply reserve (OutputTokenReserve),
+// not the compression budget.
 //
 // Using the budget instead would skip PRs the model can hold: with a 1M window
 // and the default knobs the budget is 628k and the ceiling 936k, and
@@ -76,8 +76,7 @@ func TestClassifyCallError(t *testing.T) {
 	}
 }
 
-// Pydantic lax mode accepts an integral float and refuses a fractional one.
-// Verified against the running Python.
+// The wire contract accepts an integral float and refuses a fractional one.
 func TestCoerceIntAcceptsIntegralFloat(t *testing.T) {
 	cases := []struct {
 		raw  string
@@ -89,11 +88,11 @@ func TestCoerceIntAcceptsIntegralFloat(t *testing.T) {
 		{`5.0`, 5, true},
 		{`5.5`, 0, false},
 		{`"abc"`, 0, false},
-		// null is refused: Go would unmarshal it into an int as 0, where
-		// Python rejects it for a required field.
+		// null is refused: Go would unmarshal it into an int as 0, but a
+		// required field holding null is invalid, not 0.
 		{`null`, 0, false},
-		// A bool coerces in Pydantic lax mode; verified against Python, where
-		// line=true yields a finding with line 1.
+		// The wire contract coerces a bool too: line=true yields a finding
+		// with line 1.
 		{`true`, 1, true},
 		{`false`, 0, true},
 		{`-3.0`, -3, true},
@@ -129,7 +128,7 @@ func TestIntegralFloatLineKeepsTheFinding(t *testing.T) {
 	}
 }
 
-// A fractional line would move the finding, so it is refused as in Python.
+// A fractional line would move the finding, so it is refused.
 func TestFractionalLineDropsTheFinding(t *testing.T) {
 	got := ParseReview(`{"findings":[{"file":"a.py","line":5.5,"severity":"issue","comment":"c"}]}`)
 	if len(got.Findings) != 0 {

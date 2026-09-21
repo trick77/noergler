@@ -1,9 +1,8 @@
 // Package inference wraps llmwire for per-team review and mention calls:
 // startup checks, token budgets, prompt assembly, response parsing and cost.
 //
-// Ported from the Python service's llm_client.py and the budget curve in
-// config.py. Behaviour is pinned to the Python except where AGENTS.md records
-// a divergence.
+// Behaviour is pinned by this package's tests; AGENTS.md lists the
+// deliberate divergences.
 package inference
 
 // OutputTokenReserve is held back from the context window for the reply.
@@ -29,8 +28,8 @@ const budgetFloor = 2000
 // CONTEXT_TRUST_THRESHOLD, CONTEXT_TRUST_TAIL), which Phase 1 already reads.
 //
 // The curve is discontinuous at the threshold: with the defaults a window of
-// 255_999 yields 239_999 while 256_001 yields 256_000. That is Python's
-// behaviour and it is preserved.
+// 255_999 yields 239_999 while 256_001 yields 256_000. That jump is
+// deliberate, and TestUsableContextBudgetIsDiscontinuous pins it.
 func UsableContextBudget(window, headroom, threshold int, tail float64) int {
 	var usable int
 	if window <= threshold {
@@ -57,23 +56,21 @@ const MaxPreviouslyPostedFindingsTokens = 4_000
 // CumulativeDiffBudget is roughly a third of the input budget, so the focused
 // review files still fit, capped at the hard ceiling.
 //
-// Ported from reviewer._cumulative_diff_budget. It lives in reviewer.py, which
-// the migration plan assigns to Phase 6, but it is a pure budget function with
-// no pipeline state, so it sits beside the curve it derives from.
+// It belongs to the review pipeline of Phase 6, but it is a pure budget
+// function with no pipeline state, so it sits beside the curve it derives
+// from.
 func CumulativeDiffBudget(inputBudget int) int {
 	return clamp(inputBudget/3, 2_000, MaxCumulativeContextTokens)
 }
 
 // PreviouslyPostedBudget is roughly 5% of the input budget: the block is
 // cross-context, not the focus of review, so the focused files dominate.
-//
-// Ported from reviewer._previously_posted_findings_budget.
 func PreviouslyPostedBudget(inputBudget int) int {
 	return clamp(inputBudget/20, 500, MaxPreviouslyPostedFindingsTokens)
 }
 
-// clamp mirrors Python's min(hi, max(lo, v)): max is applied first, so when the
-// bounds conflict the upper bound wins.
+// clamp applies the lower bound first, so when the bounds conflict the upper
+// bound wins. TestClampUpperBoundWins pins that order.
 func clamp(v, lo, hi int) int {
 	if v < lo {
 		v = lo
