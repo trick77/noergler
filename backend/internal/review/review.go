@@ -424,7 +424,7 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 		if errors.As(err, &tooLarge) {
 			// 10. Nothing in this push was reviewed, so the next push must
 			// not go incremental from it.
-			r.log.WarnContext(ctx, fmt.Sprintf("%s: %v - skipping review", prTag, err))
+			r.logDiffTooLarge(ctx, prTag, err, tooLarge)
 			prior := r.priorCommit(ctx, key)
 			prReviewID := r.upsert(ctx, upsert, prior)
 			r.postOrUpdateSummary(ctx, project, repo, prID, prReviewID, render.DiffTooLargeSummary(tooLarge.Limit))

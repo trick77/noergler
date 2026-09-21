@@ -1,6 +1,7 @@
 package bitbucket
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -244,7 +245,8 @@ func TestDiffOverCapByContentLength(t *testing.T) {
 	}
 }
 
-// Without a declared length the cap trips mid-stream and the size is unknown.
+// Without a declared length the cap trips mid-stream, and the rest of the body
+// is drained so the size is still reported. Python discarded the count here.
 func TestDiffOverCapWhileStreaming(t *testing.T) {
 	_, c := newFake(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
@@ -261,8 +263,14 @@ func TestDiffOverCapWhileStreaming(t *testing.T) {
 	if !errors.As(err, &tooLarge) {
 		t.Fatalf("err = %v, want ContentTooLarge", err)
 	}
-	if tooLarge.Size != nil {
-		t.Errorf("Size = %v, want nil when the length was never declared", *tooLarge.Size)
+	if tooLarge.Size == nil || *tooLarge.Size != 20 {
+		t.Errorf("Size = %v, want the drained total 20", tooLarge.Size)
+	}
+	if tooLarge.Truncated {
+		t.Error("Truncated = true, want false: the body ended well before the ceiling")
+	}
+	if len(tooLarge.Head) != 10 {
+		t.Errorf("len(Head) = %d, want the first 10 bytes", len(tooLarge.Head))
 	}
 }
 
@@ -754,7 +762,43 @@ func TestContentTooLargeMessage(t *testing.T) {
 	if got, want := unknown.Error(), "big.bin: > 10 bytes exceeds cap of 10 bytes"; got != want {
 		t.Errorf("Error() = %q, want %q", got, want)
 	}
+	// A truncated drain knows a lower bound, not the total.
+	bound := 100
+	partial := &ContentTooLarge{What: "big.bin", Limit: 10, Size: &bound, Truncated: true}
+	if got, want := partial.Error(), "big.bin: > 100 bytes exceeds cap of 10 bytes"; got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
+	}
 }
+
+// Past the ceiling the drain stops counting and says so, so a runaway body
+// cannot hold the single review worker while bytes are read and discarded.
+func TestDrainStopsAtCeiling(t *testing.T) {
+	total, truncated := drainSize(bytes.NewReader(make([]byte, 1<<20)), 11, 100)
+	if !truncated {
+		t.Error("truncated = false, want true at the ceiling")
+	}
+	if total < 100 {
+		t.Errorf("total = %d, want at least the ceiling 100", total)
+	}
+}
+
+// A drain that fails part way still reports what it counted, flagged as a
+// lower bound. It must never turn the ContentTooLarge into a generic error:
+// that path posts no notice and writes no row.
+func TestDrainFailureKeepsTheCount(t *testing.T) {
+	r := io.MultiReader(bytes.NewReader(make([]byte, 40)), errReader{})
+	total, truncated := drainSize(r, 11, 1<<20)
+	if !truncated {
+		t.Error("truncated = false, want true after a read error")
+	}
+	if total != 51 {
+		t.Errorf("total = %d, want 51 (11 seen + 40 drained)", total)
+	}
+}
+
+type errReader struct{}
+
+func (errReader) Read([]byte) (int, error) { return 0, fmt.Errorf("connection reset") }
 
 func TestStatusOfANonStatusError(t *testing.T) {
 	if got := Status(fmt.Errorf("dial tcp: refused")); got != 0 {
