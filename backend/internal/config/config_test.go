@@ -127,8 +127,10 @@ func TestInstance_RequiredVarsAndDefaults(t *testing.T) {
 	if app.Server.Host != "0.0.0.0" || app.Server.Port != 8080 || app.Trust.Threshold != 256000 {
 		t.Errorf("server/trust defaults: %+v %+v", app.Server, app.Trust)
 	}
-	// 10 MiB / 1 MiB.
-	if app.Bitbucket.MaxDiffBytes != 10*1024*1024 || app.Bitbucket.MaxFileBytes != 1024*1024 {
+	// The diff is uncapped by default and one file body is capped at 1 MiB.
+	// A diff's size is mostly files IsReviewable discards, so capping it
+	// refuses a PR over bytes that never become resident.
+	if app.Bitbucket.MaxDiffBytes != 0 || app.Bitbucket.MaxFileBytes != 1024*1024 {
 		t.Errorf("byte cap defaults: %+v", app.Bitbucket)
 	}
 	if app.LLM.APIKey != "" || app.Teams["platform"].LLM.APIKey != "plat-key" || app.Teams["platform"].WebhookSecret != "plat-secret" {
@@ -198,7 +200,7 @@ func TestInstance_BadByteCapAbortsBoot(t *testing.T) {
 	}
 }
 
-// A zero or negative cap would boot clean and then reject every diff and file,
+// A zero or negative per-file cap would boot clean and then reject every file,
 // so it has to fail at load rather than at the first review.
 func TestInstance_NonPositiveByteCapAbortsBoot(t *testing.T) {
 	for _, bad := range []string{"0", "-1"} {
@@ -208,6 +210,28 @@ func TestInstance_NonPositiveByteCapAbortsBoot(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "BITBUCKET_MAX_FILE_BYTES") {
 			t.Errorf("%s: err = %v, want a load failure", bad, err)
 		}
+	}
+}
+
+// 0 on the DIFF cap is unlimited, not "refuse everything". It is the default,
+// so a validator that rejected it the way the file cap does would refuse every
+// PR out of the box.
+func TestInstance_ZeroDiffCapIsUnlimited(t *testing.T) {
+	e := newEnv(t)
+	e.set("BITBUCKET_MAX_DIFF_BYTES", "0")
+	app := e.mustLoad()
+	if app.Bitbucket.MaxDiffBytes != 0 {
+		t.Errorf("max_diff_bytes = %d, want 0 (unlimited)", app.Bitbucket.MaxDiffBytes)
+	}
+}
+
+// Negative is still a typo, not a third meaning.
+func TestInstance_NegativeDiffCapAbortsBoot(t *testing.T) {
+	e := newEnv(t)
+	e.set("BITBUCKET_MAX_DIFF_BYTES", "-1")
+	_, err := e.load()
+	if err == nil || !strings.Contains(err.Error(), "BITBUCKET_MAX_DIFF_BYTES") {
+		t.Errorf("err = %v, want a load failure", err)
 	}
 }
 

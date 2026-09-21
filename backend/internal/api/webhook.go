@@ -71,8 +71,10 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 	//
 	// Capped, because this read happens BEFORE the signature is checked and
 	// the team slug is not a secret: it is the path of the webhook URL every
-	// project admin can see. Uncapped, one large POST walks the pod past
-	// GOMEMLIMIT; the outbound side is byte-capped for the same budget.
+	// project admin can see. Uncapped, one large POST from anyone who can see
+	// that URL walks the pod past GOMEMLIMIT. The outbound diff fetch is a
+	// different case: it is authenticated and its size is the repo's own
+	// history, so it is uncapped by default.
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxWebhookBodyBytes))
 	if err != nil {
 		var tooLarge *http.MaxBytesError

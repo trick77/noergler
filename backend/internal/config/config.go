@@ -41,10 +41,12 @@ type Bitbucket struct {
 	BaseURL  string
 	Token    string
 	Username string
-	// MaxDiffBytes and MaxFileBytes cap text bodies at the socket. The pod runs
-	// with a fixed memory limit and a diff is held several times over (raw
-	// text, per-file split, rendered prompt, token ids), so a runaway response
-	// must be cut while streaming, not after it is in memory.
+	// MaxFileBytes caps one file body at the socket; over it, that file falls
+	// back to diff-only. MaxDiffBytes caps a whole PR or compare diff the same
+	// way, but defaults to 0 = unlimited: it refuses the PR outright, and a
+	// diff's size is mostly files IsReviewable is about to discard, so the
+	// number it measures is not the number that ends up resident. GOMEMLIMIT
+	// bounds the process; this only exists for a pod too small to trust it.
 	MaxDiffBytes int
 	MaxFileBytes int
 }
@@ -307,12 +309,23 @@ func (e *envReader) list(name, def string) []string { return commaList(e.get(nam
 func (e *envReader) boolean(name, def string) bool  { return parseBool(e.get(name, def, false)) }
 func (e *envReader) integer(name, def string) int   { return e.intOr(name, e.get(name, def, false)) }
 
-// positive is integer plus a floor of 1. A zero or negative byte cap would boot
-// clean and then refuse every diff and file, so it has to fail at load.
+// positive is integer plus a floor of 1. A zero or negative per-file byte cap
+// would boot clean and then refuse every file, so it has to fail at load.
 func (e *envReader) positive(name, def string) int {
 	v := e.integer(name, def)
 	if v < 1 {
 		e.errs = append(e.errs, fmt.Sprintf("%s: must be a positive integer, got %d", name, v))
+	}
+	return v
+}
+
+// nonNegative is integer plus a floor of 0, for a cap where 0 means unlimited
+// rather than "refuse everything". Negative still fails at load: it is a typo,
+// not a third meaning.
+func (e *envReader) nonNegative(name, def string) int {
+	v := e.integer(name, def)
+	if v < 0 {
+		e.errs = append(e.errs, fmt.Sprintf("%s: must be zero (unlimited) or a positive integer, got %d", name, v))
 	}
 	return v
 }
@@ -387,7 +400,7 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 			BaseURL:      e.required("BITBUCKET_URL"),
 			Token:        e.required("BITBUCKET_TOKEN"),
 			Username:     e.required("BITBUCKET_USERNAME"),
-			MaxDiffBytes: e.positive("BITBUCKET_MAX_DIFF_BYTES", "10485760"),
+			MaxDiffBytes: e.nonNegative("BITBUCKET_MAX_DIFF_BYTES", "0"),
 			MaxFileBytes: e.positive("BITBUCKET_MAX_FILE_BYTES", "1048576"),
 		},
 		LLM: LLM{
