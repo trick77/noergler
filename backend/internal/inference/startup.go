@@ -128,7 +128,11 @@ func (c *Client) resolveWindow(ctx context.Context, profile *llmwire.Profile) er
 	// An explicit window wins: it is the escape hatch for an endpoint whose
 	// real cap differs from what it advertises.
 	if c.window > 0 {
-		return c.checkWindowFloor()
+		if err := c.checkWindowFloor(); err != nil {
+			return err
+		}
+		c.logWindow(ctx, "OPENAI_CONTEXT_WINDOW override")
+		return nil
 	}
 	if found.MaxInputTokens == nil || *found.MaxInputTokens <= 0 {
 		// A warning about this alias means the field was there and unusable,
@@ -138,7 +142,18 @@ func (c *Client) resolveWindow(ctx context.Context, profile *llmwire.Profile) er
 			c.model, aliasWarnings(warnings, alias))
 	}
 	c.window = int(*found.MaxInputTokens)
-	return c.checkWindowFloor()
+	if err := c.checkWindowFloor(); err != nil {
+		return err
+	}
+	c.logWindow(ctx, "gateway max_input_tokens")
+	return nil
+}
+
+// logWindow records the window that was actually resolved. The config dump
+// runs before any team starts, so without this line the resolved value never
+// reaches the log and the operator only ever sees the configured one.
+func (c *Client) logWindow(ctx context.Context, source string) {
+	c.log.InfoContext(ctx, fmt.Sprintf("context window %d for %s (%s)", c.window, c.Label(), source))
 }
 
 // checkWindowFloor refuses a window too small to hold a real PR. A whole PR is

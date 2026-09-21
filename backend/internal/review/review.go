@@ -58,9 +58,16 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 	key := prKey(project, repo, pr.ID)
 	author := pr.Author.User.Name
 
-	// 2. Author gate.
+	// 2. Author gate. The ignore list wins over the allow list inside
+	// IsAutoReviewAuthor, so a bare false cannot say which list decided.
+	// Name the ignore list when it is the reason: Python reported every skip
+	// as an allow-list miss, which misstates why an ignored bot was skipped.
 	if !skipAuthorCheck && !r.IsAutoReviewAuthor(author) {
-		r.log.InfoContext(ctx, fmt.Sprintf("Skipping %s by %s (not in auto-review authors)", prTag, author))
+		reason := "not in auto-review authors"
+		if r.isIgnoredAuthor(author) {
+			reason = "ignored author"
+		}
+		r.log.InfoContext(ctx, fmt.Sprintf("Skipping %s by %s (%s)", prTag, author, reason))
 		return
 	}
 	// 3. A push by an ignored account (CI amending someone's PR) is not a
@@ -126,6 +133,11 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 		}); cost != nil {
 			cumulative := float64(*cost) / nanoPerUSD
 			if cumulative >= r.cfg.MaxPRCostUSD {
+				// 2 decimals, not the 3 the cost log lines use: these are the
+				// same two figures costLimitNotice renders into the banner
+				// below, and a log that disagrees with the posted comment
+				// about the number that paused reviews is worse than a log
+				// that is less precise than its neighbours.
 				r.log.InfoContext(ctx, fmt.Sprintf(
 					"%s: PR cost $%.2f >= limit $%.2f - skipping auto-review (@%s to review manually, or raise REVIEW_MAX_PR_COST_USD)",
 					prTag, cumulative, r.cfg.MaxPRCostUSD, r.bitbucket.BotUsername()))
@@ -779,9 +791,9 @@ func epochMSToTime(ms int64) *time.Time {
 //
 // Nothing is logged when no request was made: the author and actor gates
 // return before any HTTP, and an empty totals line for every skipped PR is
-// noise. inference reports 0 because llmwire's client is not wrapped in
-// httpstats.Transport; llmwire.Config exposes HTTPClient, so that is a
-// possible follow-up rather than a limitation.
+// noise. inference counts too: the client llmwire is built with wraps its
+// transport in httpstats.Transport (see inference.countingClient), so a
+// review that called the model reports it rather than a constant 0.
 func (r *Reviewer) logHTTPTotals(ctx context.Context, prTag string, c *httpstats.Counter) {
 	totals := c.Summarize()
 	if len(totals) == 0 {

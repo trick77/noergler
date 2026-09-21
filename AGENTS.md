@@ -168,7 +168,21 @@ bodies (Python's `split("\n")` artifact survived mid-body); the dynamic scope
 search skips lines past the end of truncated content instead of indexing past
 it (Python raised `IndexError`; a panic would take the queue worker down);
 `findings_posted` counts comments actually posted (Python stored the attempted
-count); the parser's six diagnostics are RETURNED as `ParsedReview.Diagnostics`
+count); an author skipped by `ignore_authors` is logged as `(ignored author)`,
+not Python's blanket `(not in auto-review authors)` (the ignore check lives
+inside `IsAutoReviewAuthor`, so the caller re-asks `isIgnoredAuthor`; the
+precedence is unchanged, only the reported reason); the config dump renders
+`context_window = 0` as `from gateway` and `inference/startup.go` logs the
+resolved window per team (Python logged it from `llm_client.py`; the dump runs
+before any team starts, so a bare 0 was the only window ever printed); cost log
+lines carry 3 decimals, not 9 (`$0.000560` reads `$0.001`; the DB stays BIGINT
+nano-USD and the riptide edge keeps its exact decimal string); the summary
+headings drop Python's slash form and are sentence case: `Issues and
+suggestions`, `Security and performance`, `Test coverage`, `Requirement
+compliance` (`summary_golden.json` carries the rename and is byte-for-byte
+otherwise; the prompt is unaffected, it names JSON keys like
+`security_performance`); the parser's
+six diagnostics are RETURNED as `ParsedReview.Diagnostics`
 and emitted by `Client.Review`, so they bind `team=`/`pr_tag` from the call ctx
 (`ParseReview` stays pure); a skipped item is logged as raw JSON where Python
 logged a dict `repr`, so `{'requirement': 'r'}` reads `{"requirement":"r"}`;

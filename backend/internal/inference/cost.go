@@ -73,13 +73,17 @@ func (c CallCost) Priced() bool { return c.NanoUSD != nil }
 // every call forever. The call id is the handle for matching an unpriced or
 // failed review to the gateway's own log.
 func (c CallCost) LogLine() (line string, warn bool) {
+	// Three decimals, not nano precision: the nine-decimal form buried the
+	// figure a reader wants in trailing zeros. This is the log only; the DB
+	// keeps BIGINT nano-USD and the riptide edge keeps its exact decimal
+	// string. A sub-milli-dollar call therefore reads $0.000 here.
 	cost := "absent"
 	if c.NanoUSD != nil {
-		cost = fmt.Sprintf("$%.9f", float64(*c.NanoUSD)/1e9)
+		cost = fmt.Sprintf("$%.3f", float64(*c.NanoUSD)/1e9)
 	}
 	spend := "absent"
 	if c.KeySpendNanoUSD != nil {
-		spend = fmt.Sprintf("$%.9f", float64(*c.KeySpendNanoUSD)/1e9)
+		spend = fmt.Sprintf("$%.3f", float64(*c.KeySpendNanoUSD)/1e9)
 	}
 	callID := c.CallID
 	if callID == "" {

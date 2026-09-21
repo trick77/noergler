@@ -26,7 +26,7 @@ func TestCallCostLogLine(t *testing.T) {
 			name:     "priced call is informational",
 			cost:     CallCost{NanoUSD: n(12_300_000), KeySpendNanoUSD: n(5_000_000_000), CallID: "abc"},
 			wantWarn: false,
-			contains: []string{"response-cost=$0.012300000", "key-spend=$5.000000000", "call-id=abc"},
+			contains: []string{"response-cost=$0.012", "key-spend=$5.000", "call-id=abc"},
 		},
 		{
 			name:     "no headers at all is not a LiteLLM proxy, so no warning",

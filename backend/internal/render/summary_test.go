@@ -13,6 +13,11 @@ import (
 // summaryGolden holds the output of the Python _build_summary for one case,
 // captured from the venv. The Go input for each case is built in
 // summaryCases below with the same arguments the generator used.
+//
+// The headings have since been reworded away from Python's: "and" instead of
+// a slash, and sentence case ("Issues and suggestions", "Security and
+// performance", "Test coverage", "Requirement compliance"). The corpus carries
+// the rename and is byte-for-byte otherwise.
 type summaryGolden struct {
 	Out string `json:"out"`
 }
@@ -294,8 +299,8 @@ func TestSummarySectionOrder(t *testing.T) {
 	got := Summary(in)
 
 	want := []string{
-		"### Overview", "### Strengths", "### Issues / Suggestions",
-		"### Security / Performance", "### Test Coverage", "### Ticket",
+		"### Overview", "### Strengths", "### Issues and suggestions",
+		"### Security and performance", "### Test coverage", "### Ticket",
 		"### Recommendation", "\n---\n",
 	}
 	prev := -1

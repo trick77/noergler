@@ -189,7 +189,7 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 	// carry no cost and the per-PR cap never fires. Cost fails open, so this
 	// log line is the only signal an operator gets.
 	if pc := llm.PingCost(); pc.Priced() {
-		d.Log.InfoContext(ctx, fmt.Sprintf("Model %s ping priced by the gateway: $%.6f",
+		d.Log.InfoContext(ctx, fmt.Sprintf("Model %s ping priced by the gateway: $%.3f",
 			llm.Label(), float64(*pc.NanoUSD)/1e9))
 	} else {
 		d.Log.WarnContext(ctx, fmt.Sprintf("Model %s is not priced by the gateway "+
