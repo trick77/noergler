@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"sort"
 
+	"github.com/trick77/noergler/internal/review"
 	"github.com/trick77/noergler/internal/webhook"
 )
 
@@ -67,19 +68,29 @@ func (g *Registry) Status() (enabled, disabled []string) {
 	return enabled, disabled
 }
 
+// Scheduler stages a review's inference off the worker. An alias, not a
+// second declaration: it has to be the very type the review package names
+// in its own signature, or a Reviewer cannot satisfy this package's
+// interface.
+type Scheduler = review.Scheduler
+
 // Review matches queue.ReviewFunc. The team was authenticated by the webhook
 // route, so the worker only has to find it again.
 //
 // queue.run already binds team= into the context, so this does not.
-func (g *Registry) Review(ctx context.Context, team string, p *webhook.Payload) {
+func (g *Registry) Review(ctx context.Context, team string, p *webhook.Payload, sched Scheduler) bool {
 	rt, _, ok := g.Lookup(team)
 	if !ok {
 		// A team can only be disabled at startup, so this means the queue
 		// outlived a config the process no longer has. Drop it loudly.
 		g.log.ErrorContext(ctx, "queued review for unknown team dropped", "team", team)
-		return
+		return false
 	}
-	rt.Reviewer.ReviewPullRequest(ctx, p, false)
+	// Staged: the gateway call runs on the inference pool and the posting
+	// comes back to the worker, so a 200s+ inference no longer holds the
+	// queue. True means the work outlives this call and the PR's hold must
+	// survive with it.
+	return rt.Reviewer.ReviewPullRequestStaged(ctx, p, team, sched)
 }
 
 // There is deliberately no Close. Each team's clients hold an http.Client

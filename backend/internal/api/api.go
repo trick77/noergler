@@ -25,7 +25,7 @@ import (
 // picked without starting a worker.
 type Submitter interface {
 	Submit(key store.PRKey, payload *webhook.Payload, team string) string
-	SubmitJob(tag, team string, fn queue.JobFunc) string
+	SubmitJob(key store.PRKey, team string, fn queue.JobFunc) string
 }
 
 // BotClient is the instance's Bitbucket client as the routes use it: the bot

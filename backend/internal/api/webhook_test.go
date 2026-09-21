@@ -38,6 +38,10 @@ type fakeReviewer struct{ calls []string }
 func (f *fakeReviewer) ReviewPullRequest(context.Context, *webhook.Payload, bool) {
 	f.calls = append(f.calls, "review")
 }
+func (f *fakeReviewer) ReviewPullRequestStaged(context.Context, *webhook.Payload, string, teams.Scheduler) bool {
+	f.calls = append(f.calls, "review")
+	return false
+}
 func (f *fakeReviewer) HandleMention(context.Context, *webhook.Payload) {
 	f.calls = append(f.calls, "mention")
 }
@@ -74,8 +78,8 @@ func (q *fakeQueue) Submit(key store.PRKey, _ *webhook.Payload, _ string) string
 	return "queued"
 }
 
-func (q *fakeQueue) SubmitJob(tag, _ string, fn queue.JobFunc) string {
-	q.tags = append(q.tags, tag)
+func (q *fakeQueue) SubmitJob(key store.PRKey, _ string, fn queue.JobFunc) string {
+	q.tags = append(q.tags, key.Tag())
 	q.jobs = append(q.jobs, fn)
 	return "queued"
 }

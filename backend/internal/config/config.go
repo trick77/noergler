@@ -262,6 +262,25 @@ func TeamEnvPrefix(slug string) string {
 	return "TEAM_" + strings.ReplaceAll(strings.ToUpper(slug), "-", "_") + "_"
 }
 
+// Queue sizes the review queue's inference pool.
+//
+// Prepare (Bitbucket fetches, prompt assembly) and post stay on the single
+// worker, so every Bitbucket call is still one at a time. Only the gateway
+// call overlaps, which is what a 200s+ wait was blocking the worker for.
+//
+// Both are instance-wide on purpose. A per-team value is not a per-team knob:
+// it applies to every team, so teams.yaml gets no say and the override table
+// is untouched. A team has no basis to tune a number whose only effect is on
+// other teams.
+type Queue struct {
+	// InferenceConcurrency bounds in-flight inference process-wide. The
+	// per-team cap nests inside it, so the total can never become
+	// teams * InferenceConcurrencyPerTeam.
+	InferenceConcurrency int
+	// InferenceConcurrencyPerTeam stops one team's burst taking every slot.
+	InferenceConcurrencyPerTeam int
+}
+
 // App is the instance layer plus every resolved team.
 type App struct {
 	Bitbucket       Bitbucket
@@ -271,6 +290,7 @@ type App struct {
 	Server          Server
 	Database        Database
 	Trust           Trust
+	Queue           Queue
 	TeamsConfigPath string
 	// Teams are the enabled teams by slug in file order; Disabled the rest
 	// with the reason. A slug is in exactly one of the two.
@@ -445,6 +465,10 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 			Threshold:      e.integer("CONTEXT_TRUST_THRESHOLD", "256000"),
 			Tail:           e.float("CONTEXT_TRUST_TAIL", "0.5"),
 		},
+		Queue: Queue{
+			InferenceConcurrency:        e.positive("REVIEW_INFERENCE_CONCURRENCY", "6"),
+			InferenceConcurrencyPerTeam: e.positive("REVIEW_INFERENCE_CONCURRENCY_PER_TEAM", "2"),
+		},
 		TeamsConfigPath: e.str("TEAMS_CONFIG", "teams.yaml"),
 		Teams:           map[string]*Team{},
 		Disabled:        map[string]string{},
@@ -454,6 +478,14 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 		e.errs = append(e.errs, "OPENAI_REASONING_EFFORT: "+err.Error())
 	}
 	app.LLM.ReasoningEffort = effort
+	// A per-team cap above the global one never binds, so it reads as a
+	// setting that does nothing. Fail rather than let the misconfiguration
+	// survive to production unnoticed.
+	if q := app.Queue; q.InferenceConcurrencyPerTeam > q.InferenceConcurrency {
+		e.errs = append(e.errs, fmt.Sprintf(
+			"REVIEW_INFERENCE_CONCURRENCY_PER_TEAM (%d) must not exceed REVIEW_INFERENCE_CONCURRENCY (%d)",
+			q.InferenceConcurrencyPerTeam, q.InferenceConcurrency))
+	}
 	if len(e.errs) > 0 {
 		return nil, fmt.Errorf("%s", strings.Join(e.errs, "; "))
 	}

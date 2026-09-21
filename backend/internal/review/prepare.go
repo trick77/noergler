@@ -40,7 +40,8 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 	results := make([]result, len(reviewable))
 
 	// Bounds how many full file bodies are in flight at once; each one is
-	// resident until the whole review is rendered.
+	// resident until the prompt is assembled, after which they are dropped:
+	// the plan handed to the inference stage carries counts, not content.
 	sem := make(chan struct{}, fileFetchConcurrency)
 	var wg sync.WaitGroup
 	var mu sync.Mutex

@@ -32,6 +32,7 @@ func TestDump_MasksSecretsAndKeepsTheSectionHeaders(t *testing.T) {
 	}
 	for _, want := range []string{
 		"[config.bitbucket]", "[config.llm]", "[config.review]", "[config.jira]", "[config.server]", "[config.database]",
+		"[config.queue]", "  inference_concurrency = 6", "  inference_concurrency_per_team = 2",
 		"[config.teams.platform]", "[config.teams.platform.llm]", "[config.teams.platform.riptide] disabled",
 		"[config.teams.payments.riptide]", "https://bb.example.com", "gpt-5.5", "['alice', 'bob']", "9090",
 		"projects = ['PLAT']", "projects = ['PAY/{billing,ledger}']",

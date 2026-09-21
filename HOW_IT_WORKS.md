@@ -11,8 +11,11 @@ webhook  ->  route and authenticate  ->  queue  ->  review pipeline  ->  post
 1. **Route and authenticate.** The path names the team, the team's HMAC secret
    verifies the body, the ownership check decides whether this team may review
    this repository.
-2. **Queue.** A single worker, FIFO, one review at a time. A new push for a PR
-   already queued supersedes the older job.
+2. **Queue.** A single worker, FIFO. It runs every Bitbucket call one at a
+   time; only the model call leaves it, onto a bounded pool, so a slow review
+   does not hold the next PR's turn. A new push for a PR already queued
+   supersedes the older job, and a push for a PR still being reviewed waits
+   for it.
 3. **Review pipeline.** Guards, diff, file content, context expansion or
    compression, cross-file context, Jira, the model call, dedup, posting.
 4. **Post.** Inline comments on the changed lines, one summary comment per PR,

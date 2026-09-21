@@ -42,12 +42,29 @@ const nanoPerUSD = 1_000_000_000.0
 // every store call goes through safeDB, and every skip that did not review
 // the new commit writes the PRIOR commit back, so raising a limit later
 // re-reviews the accumulated range instead of skipping it.
+// ReviewPullRequest runs the whole review inline: prepare, infer, post.
+// HandleMention and the tests use it; the queue uses the staged entry below.
 func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Payload, skipAuthorCheck bool) {
+	plan, ctx, ok := r.prepare(ctx, payload, skipAuthorCheck)
+	if !ok {
+		return
+	}
+	r.post(ctx, plan, r.infer(ctx, plan))
+}
+
+// prepare is everything up to and including prompt assembly: the guards, the
+// Bitbucket fetches, Jira, and the token budget. It returns the plan the
+// inference and posting stages need, and the ctx carrying pr_tag and the
+// httpstats scope.
+//
+// ok is false when the review is over: the caller must not continue. Every
+// such exit has already logged its own HTTP totals.
+func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAuthorCheck bool) (*reviewPlan, context.Context, bool) {
 	pr := payload.PullRequest
 	project, repo := payload.ProjectRepo()
 	if project == "" || repo == "" {
 		r.log.ErrorContext(ctx, "Could not extract project/repo from webhook payload")
-		return
+		return nil, ctx, false
 	}
 
 	prTag := fmt.Sprintf("%s/%s#%d", project, repo, pr.ID)
@@ -57,8 +74,11 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 	// record into the scope; without one opened here every count was dropped
 	// and the totals line never existed. Deferred, so a review that skips or
 	// fails still reports what it spent.
+	// NOT deferred: with the inference call staged off the worker, a defer
+	// here fires before the gateway call and before posting, so the totals
+	// line would report inference=0 and none of the post stage's Bitbucket
+	// calls. Each exit below logs its own; the full path logs in post.
 	ctx, httpCounter := httpstats.WithScope(ctx)
-	defer r.logHTTPTotals(ctx, prTag, httpCounter)
 
 	key := prKey(project, repo, pr.ID)
 	author := pr.Author.User.Name
@@ -74,20 +94,20 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 				reason = "ignored author"
 			}
 			r.log.InfoContext(ctx, fmt.Sprintf("Skipping %s by %s (%s)", prTag, author, reason))
-			return
+			return nil, ctx, r.abort(ctx, prTag, httpCounter)
 		}
 	}
 	// 3. A push by an ignored account (CI amending someone's PR) is not a
 	// reason to re-review; the author's next push is.
 	if !skipAuthorCheck && payload.Actor != nil && r.isIgnoredAuthor(payload.Actor.Name) {
 		r.log.InfoContext(ctx, fmt.Sprintf("Skipping %s: pushed by ignored author %s", prTag, payload.Actor.Name))
-		return
+		return nil, ctx, r.abort(ctx, prTag, httpCounter)
 	}
 
 	// 4. Skip state. If the user removed our summary comment they want
 	// noergler to leave this PR alone.
 	if !r.checkSkipState(ctx, key, prTag) {
-		return
+		return nil, ctx, r.abort(ctx, prTag, httpCounter)
 	}
 
 	upsert := store.PRUpsert{
@@ -105,7 +125,7 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 		prReviewID := r.upsert(ctx, upsert, pr.FromRef.LatestCommit)
 		r.postOrUpdateSummary(ctx, project, repo, pr.ID, prReviewID,
 			render.OptOutBranchSummary(keyword, pr.FromRef.DisplayID))
-		return
+		return nil, ctx, r.abort(ctx, prTag, httpCounter)
 	}
 
 	repoInstructions := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.DisplayID)
@@ -116,7 +136,7 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 			"%s: no AGENTS.md found on PR or target branch, skipping review (set REVIEW_REQUIRE_AGENTS_MD=false to override)", prTag))
 		prReviewID := r.upsert(ctx, upsert, pr.FromRef.LatestCommit)
 		r.postOrUpdateSummary(ctx, project, repo, pr.ID, prReviewID, render.AgentsMDMissingSummary())
-		return
+		return nil, ctx, r.abort(ctx, prTag, httpCounter)
 	}
 
 	// 7. AGENTS.md over the hard token limit.
@@ -128,7 +148,7 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 			prReviewID := r.upsert(ctx, upsert, pr.FromRef.LatestCommit)
 			r.postOrUpdateSummary(ctx, project, repo, pr.ID, prReviewID,
 				render.AgentsMDTooLargeSummary(n, r.cfg.AgentsMDMaxTokens, r.cfg.AgentsMDCustomLink))
-			return
+			return nil, ctx, r.abort(ctx, prTag, httpCounter)
 		}
 	}
 
@@ -152,7 +172,7 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 				prior := r.priorCommit(ctx, key)
 				prReviewID := r.upsert(ctx, upsert, prior)
 				r.costLimitNotice(ctx, project, repo, pr.ID, prReviewID, cumulative, r.cfg.MaxPRCostUSD)
-				return
+				return nil, ctx, r.abort(ctx, prTag, httpCounter)
 			}
 		}
 	}
@@ -166,14 +186,14 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 	// 9. Incremental review when the event is a push and we have a pointer.
 	rawDiff, cumulativePRDiff, incrementalFrom, ok := r.resolveDiff(ctx, payload, key, prTag, sourceCommit, lastReviewed, upsert)
 	if !ok {
-		return
+		return nil, ctx, r.abort(ctx, prTag, httpCounter)
 	}
 
 	files, contentSkipped := r.prepareFiles(ctx, project, repo, rawDiff, sourceCommit, prTag)
 	// 13. Nothing reviewable after the content fetch.
 	if len(files) == 0 {
 		r.log.InfoContext(ctx, prTag+" has no reviewable files after content fetch, skipping")
-		return
+		return nil, ctx, r.abort(ctx, prTag, httpCounter)
 	}
 
 	// Counted before compression: this is the whole PR's scope.
@@ -202,7 +222,7 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 	// 15. Compression can drop everything.
 	if len(files) == 0 {
 		r.log.InfoContext(ctx, prTag+" has no reviewable files after compression, skipping")
-		return
+		return nil, ctx, r.abort(ctx, prTag, httpCounter)
 	}
 
 	// 16. Cross-file context, Jira, previously-posted findings.
@@ -234,11 +254,55 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 		PreviouslyPosted:      posted,
 	}, r.tokens.Count)
 
-	result := r.llm.Review(ctx, inference.ReviewRequest{
-		Prompt:         assembled.Prompt,
-		PromptTokens:   assembled.PromptTokens,
+	return &reviewPlan{
+		key:             key,
+		project:         project,
+		repo:            repo,
+		prID:            pr.ID,
+		prTag:           prTag,
+		upsert:          upsert,
+		sourceCommit:    sourceCommit,
+		incrementalFrom: incrementalFrom,
+		mention:         skipAuthorCheck,
+		started:         started,
+		counter:         httpCounter,
+		prompt:          assembled.Prompt,
+		promptTokens:    assembled.PromptTokens,
+		existing:        existing,
+		contentSkipped:  contentSkipped,
+		ticket:          ticket,
+		parentTicket:    parentTicket,
+		breakdown:       breakdown(assembled),
+		crossFileSyms:   symbolsOf(relationships),
+		agentsMDFound:   repoInstructions != "",
+		budget:          budget,
+		filesReviewed:   len(files),
+		totalFiles:      totalFiles + len(deletedPaths) + len(renamedPaths),
+		diffAdded:       diffAdded,
+		diffRemoved:     diffRemoved,
+	}, ctx, true
+}
+
+// infer is the gateway call, and nothing else. It is the only stage that may
+// run off the review worker.
+func (r *Reviewer) infer(ctx context.Context, plan *reviewPlan) inference.ReviewResult {
+	return r.llm.Review(ctx, inference.ReviewRequest{
+		Prompt:         plan.prompt,
+		PromptTokens:   plan.promptTokens,
 		ResponseSchema: inference.ReviewResponseFormat(),
 	})
+}
+
+// post is everything after the gateway answers: the outcome branches, the
+// comments, the rows and the summary. It runs on the review worker, so every
+// Bitbucket call here is still one at a time.
+func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.ReviewResult) {
+	defer r.logHTTPTotals(ctx, plan.prTag, plan.counter)
+
+	key, prTag, upsert := plan.key, plan.prTag, plan.upsert
+	project, repo, sourceCommit := plan.project, plan.repo, plan.sourceCommit
+	started, existing := plan.started, plan.existing
+
 	// One cost record per call, and only when a call actually happened: the
 	// too-large branch decides locally before any request, and a
 	// transport error returns with no cost, so both would otherwise report an
@@ -253,7 +317,7 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 	// 19b. OutcomeError is NOT one of them: a non-overflow API error is only
 	// logged. No upsert, no notice, no run row.
 	if result.Outcome != inference.OutcomeOK {
-		r.handleNonOK(ctx, result, payload, key, prTag, sourceCommit, upsert)
+		r.handleNonOK(ctx, result, key, prTag, sourceCommit, upsert)
 		return
 	}
 
@@ -268,7 +332,7 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 	// 23. Post the inline comments. postedIDs is parallel to findings, with
 	// a zero where the post failed, so the count of successes is separate
 	// from the slice length.
-	postedIDs, postedCount, failed := r.postInlineComments(ctx, project, repo, pr.ID, findings)
+	postedIDs, postedCount, failed := r.postInlineComments(ctx, project, repo, plan.prID, findings)
 
 	elapsed := time.Since(started)
 
@@ -279,8 +343,8 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 	// cannot be interleaved ahead of it. The comments are already on the PR
 	// by this point, so a crash before InsertRun leaves them there with no
 	// finding row.
-	runID := r.recordRun(ctx, prReviewID, result, sourceCommit, incrementalFrom, skipAuthorCheck,
-		elapsed, postedCount, diffAdded, diffRemoved, totalFiles+len(deletedPaths)+len(renamedPaths))
+	runID := r.recordRun(ctx, prReviewID, result, sourceCommit, plan.incrementalFrom, plan.mention,
+		elapsed, postedCount, plan.diffAdded, plan.diffRemoved, plan.totalFiles)
 	r.recordFindings(ctx, prReviewID, runID, findings, postedIDs)
 
 	runCost, cumulativeCost := r.resolveCost(ctx, key, result)
@@ -289,12 +353,12 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 		Findings:                   findings,
 		Truncated:                  truncated,
 		Summary:                    result.Review.Summary,
-		AgentsMDFound:              repoInstructions != "",
-		ContentSkippedFiles:        contentSkipped,
+		AgentsMDFound:              plan.agentsMDFound,
+		ContentSkippedFiles:        plan.contentSkipped,
 		TokenUsage:                 tokenUsage(result),
-		PromptBreakdown:            breakdown(assembled),
-		Ticket:                     ticket,
-		ParentTicket:               parentTicket,
+		PromptBreakdown:            plan.breakdown,
+		Ticket:                     plan.ticket,
+		ParentTicket:               plan.parentTicket,
 		ComplianceRequirements:     result.Review.ComplianceRequirements,
 		ComplianceExtractionFailed: result.Review.ComplianceRequirements == nil,
 		TicketComplianceCheck:      r.cfg.TicketComplianceCheck,
@@ -302,14 +366,14 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 		ElapsedSeconds:             elapsed.Seconds(),
 		ElapsedPresent:             true,
 		ReviewedCommit:             sourceCommit,
-		IncrementalFrom:            incrementalFrom,
-		FilesReviewed:              len(files),
-		TotalFiles:                 totalFiles + len(deletedPaths) + len(renamedPaths),
+		IncrementalFrom:            plan.incrementalFrom,
+		FilesReviewed:              plan.filesReviewed,
+		TotalFiles:                 plan.totalFiles,
 		FilesCountsSet:             true,
-		DiffAdded:                  diffAdded,
-		DiffRemoved:                diffRemoved,
-		CrossFileSymbols:           symbolsOf(relationships),
-		InputBudget:                budget,
+		DiffAdded:                  plan.diffAdded,
+		DiffRemoved:                plan.diffRemoved,
+		CrossFileSymbols:           plan.crossFileSyms,
+		InputBudget:                plan.budget,
 		ContextWindow:              r.llm.ContextWindow(),
 		ModelLabel:                 r.llm.Label(),
 		RunCostUSD:                 runCost,
@@ -327,7 +391,7 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 			"\n\n" + summary
 	}
 
-	r.postOrUpdateSummary(ctx, project, repo, pr.ID, prReviewID, summary)
+	r.postOrUpdateSummary(ctx, project, repo, plan.prID, prReviewID, summary)
 
 	parts := []string{
 		fmt.Sprintf("Review of %s completed in %.1fs", prTag, elapsed.Seconds()),
@@ -492,7 +556,7 @@ func (r *Reviewer) fetchCumulativeDiff(ctx context.Context, key store.PRKey, prT
 // timed_out, unparseable and too_large each preserve the prior commit, post
 // their notice and write no run row. OutcomeError posts NOTHING and writes
 // nothing: it is only logged (TestTerminalOutcomes).
-func (r *Reviewer) handleNonOK(ctx context.Context, result inference.ReviewResult, _ *webhook.Payload, key store.PRKey, prTag, sourceCommit string, upsert store.PRUpsert) {
+func (r *Reviewer) handleNonOK(ctx context.Context, result inference.ReviewResult, key store.PRKey, prTag, sourceCommit string, upsert store.PRUpsert) {
 	short := shortOrUnknown(sourceCommit)
 	project, repo, prID := key.Project, key.Repo, key.PRID
 

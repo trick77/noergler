@@ -175,29 +175,30 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 //
 // Merge and decline rollups, mention answers and the two deletions all fetch
 // a diff or touch the DB, so they run on the review worker rather than in
-// the request: one diff and prompt set in memory at a time.
+// the request: the worker serializes every Bitbucket call, and the number of
+// diffs and prompts resident at once is bounded by the inference pool.
 //
 // Pinned in AGENTS.md: pr:deleted and pr:comment:deleted go on the queue,
 // but their response bodies carry no queue key.
 func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Runtime, slug, project, repo string, p *webhook.Payload) {
-	prTag := fmt.Sprintf("%s/%s#%d", project, repo, p.PullRequest.ID)
+	key := store.PRKey{Project: project, Repo: repo, PRID: p.PullRequest.ID}
 	rv := rt.Reviewer
 
 	switch p.EventKey {
 	case webhook.EventMerged:
-		d.Queue.SubmitJob(prTag, slug, func(ctx context.Context) { rv.HandlePRMerged(ctx, p) })
+		d.Queue.SubmitJob(key, slug, func(ctx context.Context) { rv.HandlePRMerged(ctx, p) })
 		httpapi.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "merged-rollup", Queue: "queued"})
 
 	case webhook.EventDeclined:
-		d.Queue.SubmitJob(prTag, slug, func(ctx context.Context) { rv.HandlePRDeclined(ctx, p) })
+		d.Queue.SubmitJob(key, slug, func(ctx context.Context) { rv.HandlePRDeclined(ctx, p) })
 		httpapi.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "declined-rollup", Queue: "queued"})
 
 	case webhook.EventDeleted:
-		d.Queue.SubmitJob(prTag, slug, func(ctx context.Context) { rv.HandlePRDeleted(ctx, p) })
+		d.Queue.SubmitJob(key, slug, func(ctx context.Context) { rv.HandlePRDeleted(ctx, p) })
 		httpapi.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "deleted-purge"})
 
 	case webhook.EventCommentDeleted:
-		d.Queue.SubmitJob(prTag, slug, func(ctx context.Context) { rv.HandleCommentDeleted(ctx, p) })
+		d.Queue.SubmitJob(key, slug, func(ctx context.Context) { rv.HandleCommentDeleted(ctx, p) })
 		httpapi.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "comment-deleted"})
 
 	case webhook.EventCommentAdded:
@@ -215,7 +216,7 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 			httpapi.WriteJSON(w, http.StatusOK, ignored{"ignored", "comment without mention"})
 			return
 		}
-		d.Queue.SubmitJob(prTag, slug, func(ctx context.Context) { rv.HandleMention(ctx, p) })
+		d.Queue.SubmitJob(key, slug, func(ctx context.Context) { rv.HandleMention(ctx, p) })
 		httpapi.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "mention", Queue: "queued"})
 
 	default:
@@ -226,7 +227,6 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 			httpapi.WriteJSON(w, http.StatusOK, ignored{"ignored", "unhandled event: " + p.EventKey})
 			return
 		}
-		key := store.PRKey{Project: project, Repo: repo, PRID: p.PullRequest.ID}
 		outcome := d.Queue.Submit(key, p, slug)
 		httpapi.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", PRID: p.PullRequest.ID, Queue: outcome})
 	}

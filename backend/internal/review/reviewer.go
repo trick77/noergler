@@ -14,7 +14,7 @@ import (
 )
 
 // fileFetchConcurrency bounds how many full file bodies are in flight at
-// once; each one stays resident until the review is rendered.
+// once; each one stays resident until the prompt is assembled.
 const fileFetchConcurrency = 4
 
 // maxPreviouslyPostedFindings caps the prompt's previously-posted block by
