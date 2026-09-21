@@ -76,7 +76,8 @@ No web framework, no ORM, no logging library. Do not add one.
   `Config.APIKey` stays empty. An empty team key falls through to the env; both
   empty and `FromEnv` returns `MissingEnvError`, `New` fails, team disabled.
   A no-auth gateway is unsupported.
-- `Chat` only, never streaming: a LiteLLM stream carries no cost header.
+- `Chat` only, never streaming: a LiteLLM stream carries no cost header
+  (in-band chunk cost is opt-in gateway-side and unread here).
 - Never retry.
 - Context window comes from the gateway's `ListModels` `max_input_tokens` for the
   alias, `OPENAI_CONTEXT_WINDOW` overrides, `>= 1_000_000` required.
