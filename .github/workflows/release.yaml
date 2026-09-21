@@ -1,40 +1,30 @@
 name: Release
 
 on:
-  # TEMPORARY, for the Python-to-Go migration only. The automatic push trigger
-  # is off so that merging the migration cannot cut a release: it touches every
-  # shipping path, so a patch would publish the first Go image as 0.1.80 and
-  # move :latest, :0.1 and :0 onto it before anyone chose to. 0.2.0 is
-  # dispatched by hand instead. RESTORE the push block below once it is out.
-  #
-  # push:
-  #   branches: [master]
-  #   # Only cut a release when something that ships changed. An ignore-list
-  #   # rather than an allow-list: a new top-level directory starts out
-  #   # releasing, which is the safe default. workflow_dispatch is unfiltered,
-  #   # so a release can always be forced by hand.
-  #   paths-ignore:
-  #     - "docs/**"
-  #     - "archive/**"
-  #     - ".github/**"
-  #     - "**/*.md"
-  #     - ".gitignore"
-  #     - ".env.example"
-  #     - "teams.example.yaml"
-  #     - "compose.yaml"
-  #     - "http/**"
-  #     - "hack/**"
+  push:
+    branches: [master]
+    # Only cut a release when something that ships changed. An ignore-list
+    # rather than an allow-list: a new top-level directory starts out
+    # releasing, which is the safe default. workflow_dispatch is unfiltered,
+    # so a release can always be forced by hand.
+    paths-ignore:
+      - "docs/**"
+      - "archive/**"
+      - ".github/**"
+      - "**/*.md"
+      - ".gitignore"
+      - ".env.example"
+      - "teams.example.yaml"
+      - "compose.yaml"
+      - "http/**"
+      - "hack/**"
   workflow_dispatch:
     inputs:
       bump:
-        # TEMPORARY, with the push trigger above: minor while the migration is
-        # pending, so clicking Run workflow without touching the dropdown gives
-        # 0.2.0 rather than 0.1.80 with :latest, :0.1 and :0 moving onto the
-        # first Go image. RESTORE to patch once 0.2.0 is out.
         description: "Version bump"
         type: choice
         options: [patch, minor, major]
-        default: minor
+        default: patch
 
 permissions:
   contents: write
