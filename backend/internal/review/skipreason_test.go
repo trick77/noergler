@@ -112,26 +112,30 @@ func TestDecisionAndReasonComeFromOneSnapshot(t *testing.T) {
 	r, _ := capturingReviewer(t)
 	r.SetAuthorLists(nil, []string{"bot"})
 
+	// Two states that DISAGREE about bot, so a decision and a reason taken
+	// from different snapshots are detectable:
+	//   A: auto=[bot], ignore=[]   -> autoReview=true,  ignored=false
+	//   B: auto=[],    ignore=[bot] -> autoReview=false, ignored=true
+	// Any other pairing means the two reads straddled a write. The old code
+	// (IsAutoReviewAuthor then isIgnoredAuthor) could return (false, false)
+	// when B was replaced by A between the calls.
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		for i := 0; i < 2000; i++ {
-			// Flip between "bot is ignored" and "bot is merely not allowed".
+		for i := 0; i < 20000; i++ {
 			if i%2 == 0 {
-				r.SetAuthorLists([]string{"alice"}, nil)
+				r.SetAuthorLists([]string{"bot"}, nil)
 			} else {
 				r.SetAuthorLists(nil, []string{"bot"})
 			}
 		}
 	}()
 
-	for i := 0; i < 2000; i++ {
+	for i := 0; i < 20000; i++ {
 		autoReview, ignored := r.autoReviewDecision("bot")
-		// Either list state skips "bot", so the decision is always false; the
-		// reason must be one the same snapshot supports. A torn read would
-		// give autoReview=true, which neither state produces.
-		if autoReview {
-			t.Fatalf("bot auto-reviewed under either list state (ignored=%v)", ignored)
+		if autoReview == ignored {
+			t.Fatalf("decision and reason disagree: autoReview=%v ignored=%v; "+
+				"the two values came from different snapshots", autoReview, ignored)
 		}
 	}
 	<-done

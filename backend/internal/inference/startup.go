@@ -131,7 +131,10 @@ func (c *Client) resolveWindow(ctx context.Context, profile *llmwire.Profile) er
 		if err := c.checkWindowFloor(); err != nil {
 			return err
 		}
-		c.logWindow(ctx, "OPENAI_CONTEXT_WINDOW override")
+		// Not "OPENAI_CONTEXT_WINDOW": a team's inference.context_window lands
+		// in the same field, and naming the env var would blame a setting the
+		// operator never touched. Same two sources the error below names.
+		c.logWindow(ctx, "configured override")
 		return nil
 	}
 	if found.MaxInputTokens == nil || *found.MaxInputTokens <= 0 {

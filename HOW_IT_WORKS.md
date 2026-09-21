@@ -183,10 +183,10 @@ order:
 
 1. Overview
 2. Strengths
-3. Issues / Suggestions
-4. Security / Performance
-5. Test Coverage
-6. Ticket or Requirement Compliance
+3. Issues and suggestions
+4. Security and performance
+5. Test coverage
+6. Ticket or Requirement compliance
 7. Recommendation
 8. A footnote with scope, token and cost figures
 
