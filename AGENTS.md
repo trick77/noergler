@@ -1,10 +1,7 @@
 # AGENTS.md
 
 Bitbucket Server PR auto-review bridge, inference through
-`github.com/trick77/llmwire` against a LiteLLM gateway. Ported from the
-Python implementation now in `archive/`.
-**That Python code is the spec for anything ported. Its docs drifted, its
-code did not.**
+`github.com/trick77/llmwire` against a LiteLLM gateway.
 
 ## Commands
 
@@ -13,8 +10,7 @@ Go commands run from `backend/`, scripts from the root.
 `gofmt -l .` must print nothing. `go vet ./...`, `go test -race ./...`.
 Store tests skip without `NOERGLER_TEST_DSN`; `docker compose up -d postgres`,
 then DSN `postgres://noergler:changeme@localhost:5432/noergler?sslmode=disable`.
-`./hack/smoke.sh` boots `serve` against `hack/fakes`; `./hack/parity.sh` diffs
-this against the archived Python service in `archive/` (needs a venv there).
+`./hack/smoke.sh` boots `serve` against `hack/fakes`.
 Coverage floor 75% (`hack/coverage-floors`),
 gate `./hack/coverage-gate.sh backend` over `coverage/backend.xml`; `cmd/` is
 excluded and `hack/` is outside the module.
@@ -84,23 +80,22 @@ No web framework, no ORM, no logging library. Do not add one.
 - Per-team key via `Config.Lookup` answering with `TEAM_<SLUG>_OPENAI_API_KEY`;
   `Config.APIKey` stays empty. An empty team key falls through to the env; both
   empty and `FromEnv` returns `MissingEnvError`, `New` fails, team disabled.
-  A no-auth gateway is unsupported: Python substituted a `no-auth` placeholder.
+  A no-auth gateway is unsupported.
 - `Chat` only, never streaming: a LiteLLM stream carries no cost header.
 - Never retry.
 - Context window comes from the gateway's `ListModels` `max_input_tokens` for the
   alias, `OPENAI_CONTEXT_WINDOW` overrides, `>= 1_000_000` required.
   `ListModels` warnings are kept: a present-but-unusable limit reads as a nil
   limit, so dropping them reports a garbage value as a missing field.
-- No local `reasoning_effort` enum. Python's hardcoded
-  {minimal, low, medium, high} was wrong both ways for the configured model;
-  llmwire validates the level against the profile and the gateway's 400 covers
-  the rest (`mapPingError`).
+- No local `reasoning_effort` enum: any hardcoded set is wrong both ways for
+  the configured model. llmwire validates the level against the profile and
+  the gateway's 400 covers the rest (`mapPingError`).
 
 ## Adapters
 
 - No interfaces here. Phase 6 defines them consumer-side.
-- **Never add `Client.Timeout` to Bitbucket.** httpx's is per-operation, Go's
-  spans the body read and cuts a 10 MiB diff. Caller's ctx bounds the total.
+- **Never add `Client.Timeout` to Bitbucket.** Go's spans the body read and
+  cuts a 10 MiB diff. The caller's ctx bounds the total instead.
 - **Never follow redirects.** A 3xx would replay the bearer token at the new
   host. Non-2xx, not `>= 400`: a redirect must not read as success.
 - `getTextCapped`: non-2xx beats the cap, else a big error page reports as an
@@ -109,10 +104,10 @@ No web framework, no ORM, no logging library. Do not add one.
   noise. Dial timeout and bad JSON do fail.
 - `fields=` verbatim; `url.Values.Encode` escapes the commas.
 - **RE2 has no lookaround.** Emphasis: one pass, boundary chars written back.
-  `**bold**` stays `*bold*`; `ü*fett*` untouched (Python `\w` is Unicode).
-  Diff against Python before touching these or the AC prefix pattern.
+  `**bold**` stays `*bold*`; `ü*fett*` untouched (the word class is Unicode).
+  These and the AC prefix pattern are pinned by a golden corpus.
 - Jira `imageRE` eats any `!…!` span on a line: `Done! Ship it!` → `Done`.
-  Python did the same, kept for parity. A fix needs a parity decision.
+  Known quirk, pinned by tests; changing it is a decision.
 
 ## Store
 
@@ -129,88 +124,83 @@ No web framework, no ORM, no logging library. Do not add one.
   timestamp guesses wrong otherwise).
 - Bodies byte-capped at the socket, 4 file fetches in flight, tokenizer vocab
   compiled in and warmed at boot. The pod has 2 Gi.
-- o200k_base vocab costs 6.7 MiB resident, not the 110 MiB the Python encoder
-  needed. `GOMEMLIMIT=1500MiB` is generous, not tight.
+- o200k_base vocab costs 6.7 MiB resident. `GOMEMLIMIT=1500MiB` is generous,
+  not tight.
 
 ## Diff engine
 
 - Two header counting rules, both required, disagreeing on `\ No newline`: the
   per-hunk one counts "non-empty and not `+`/`-`", the merged one "starts with
   `-`/` `" and "`+`/` `". Do not unify.
-- Bugs ported as is: `\ No newline` counts as a real line; `before_count` is
+- Known quirks, pinned by tests: `\ No newline` counts as a real line;
+  `before_count` is
   unclamped, so a stale `content` yields header counts exceeding the body; a
   diff with no surviving hunks is filed under deleted, mislabelling a mode
   change.
-- Every `\w` from a Python pattern is `[\pL\pN_]`, and `\b` is spelled out as
-  `(?:^|[^\pL\pN_])`: RE2's `\w` and `\b` are ASCII, Python's are Unicode.
+- Every `\w` in these patterns is `[\pL\pN_]`, and `\b` is spelled out as
+  `(?:^|[^\pL\pN_])`: RE2's `\w` and `\b` are ASCII, but the text is Unicode.
   `\bÖlservice\b` matches nothing in RE2. Third trap of this shape after the
-  Jira regexes. Check every ported pattern for both.
-- Line splitters differ per Python call site. `parse_hunks`/`expand_context`/
+  Jira regexes. Check every pattern for both.
+- Line splitters differ per call site. `parse_hunks`/`expand_context`/
   `remove_deletion_only_hunks` split on `\n`; `split_by_file` and the symbol
   finders use `splitlines()` (also `\v`, `\f`, `\x1c`-`\x1e`, `\x85`, U+2028/9).
 - Sort key reads only the path, never diff or content: prefix-cache order.
 
-## Divergences from Python (pinned by tests)
+## Pinned behavior (tests enforce this)
 
-AC prefix needs a word boundary (`AC` no longer eats `Actual…`, `Req` no longer
-`Request…`; `AK3` still matches); Jira fetched once per review;
-deleted/comment-deleted on the queue, not concurrent; dead code not ported
-(`fetch_pr_comments`, `get_existing_finding_keys`, `team_for`,
-`uncached_prompt` have no caller; `_estimate_review_effort` has three, but
-only to set `ReviewResult.review_effort`, which nothing reads and which is
-never serialized: computed, never observed); no `/docs`; `SERVER_HOST`/`SERVER_PORT`
-honoured; cross-file refs label diff lines as diff lines; riptide
-`final_files_changed` counts reviewable files; declined PRs start fresh on
-reopen; `raw/{path}` URL-escaped (Python broke on a space or `#`); adjacent
-hunks merge without losing diff lines (Python trimmed hunk 2's body by the
-whole overlap and dropped its removals); no phantom blank line in expanded
-bodies (Python's `split("\n")` artifact survived mid-body); the dynamic scope
-search skips lines past the end of truncated content instead of indexing past
-it (Python raised `IndexError`; a panic would take the queue worker down);
-`findings_posted` counts comments actually posted (Python stored the attempted
-count); an author skipped by `ignore_authors` is logged as `(ignored author)`,
-not Python's blanket `(not in auto-review authors)` (the ignore check lives
-inside `IsAutoReviewAuthor`, so the caller re-asks `isIgnoredAuthor`; the
-precedence is unchanged, only the reported reason); the config dump renders
+Each of these is deliberate and pinned by a test. Changing one is a decision,
+not a cleanup.
+
+AC prefix needs a word boundary (`AC` does not eat `Actual…`, `Req` does not
+eat `Request…`; `AK3` still matches); Jira fetched once per review;
+deleted/comment-deleted on the queue, not concurrent; no `/docs`;
+`SERVER_HOST`/`SERVER_PORT` honoured; cross-file refs label diff lines as diff
+lines; riptide `final_files_changed` counts reviewable files; declined PRs
+start fresh on reopen; `raw/{path}` URL-escaped (raw interpolation breaks on a
+space or `#`); adjacent hunks merge without losing diff lines (trimming hunk
+2's body by the whole overlap drops its removals); no phantom blank line in
+expanded bodies (the `split("\n")` artifact must not survive mid-body); the
+dynamic scope search skips lines past the end of truncated content instead of
+indexing past it (indexing past it panics and takes the queue worker down);
+`findings_posted` counts comments actually posted, not attempted; an author
+skipped by `ignore_authors` is logged as `(ignored author)`, never a blanket
+`(not in auto-review authors)` (the ignore check lives inside
+`IsAutoReviewAuthor`, so the caller re-asks `isIgnoredAuthor`; the precedence
+is unchanged, only the reported reason); the config dump renders
 `context_window = 0` as `from gateway` and `inference/startup.go` logs the
-resolved window per team (Python logged it from `llm_client.py`; the dump runs
-before any team starts, so a bare 0 was the only window ever printed); cost log
-lines carry 3 decimals, not 9 (`$0.000560` reads `$0.001`; the DB stays BIGINT
-nano-USD and the riptide edge keeps its exact decimal string); the summary
-headings drop Python's slash form and are sentence case: `Issues and
-suggestions`, `Security and performance`, `Test coverage`, `Requirement
-compliance` (`summary_golden.json` carries the rename and is byte-for-byte
-otherwise; the prompt is unaffected, it names JSON keys like
-`security_performance`); the parser's
-six diagnostics are RETURNED as `ParsedReview.Diagnostics`
-and emitted by `Client.Review`, so they bind `team=`/`pr_tag` from the call ctx
-(`ParseReview` stays pure); a skipped item is logged as raw JSON where Python
-logged a dict `repr`, so `{'requirement': 'r'}` reads `{"requirement":"r"}`;
-placeholders substituted in ONE pass, so a `{files}` inside
-`repo_instructions` or `ticket_context` stays literal (Python's sequential
-order protects only file content); an empty `comment.text` is accepted and
-answers 200 `comment without mention` (Pydantic's required str is satisfied by
-`""`, probed against the venv); a malformed webhook body is 400, not Python's
-accidental 500 from an unguarded `request.json()`; inbound bodies are capped
-at 1 MiB (413 over it) where Python read them unbounded, because the webhook
-body is read BEFORE the HMAC and a team slug is not a secret; `/onboard` and
-`PUT /teams/{slug}/settings` decode the body AFTER authenticating, so an
-unauthenticated caller cannot probe the schema (FastAPI validates first and
-would 422 ahead of the 401; nothing pins that order); an over-cap body is
-drained and counted to 10x the cap AND a 10s timeout, so `ContentTooLarge.Size`
-reports what was sent (Python dropped the counter it held); bytes alone are no
-bound, a stalled body never reaches the ceiling and would hold the single
-review worker, and the review path has no ctx deadline; a drain that stops
-early sets `Truncated` and stays `ContentTooLarge`, never a generic error
-(that path is `OutcomeError`: no notice, no row); the too-large review path
-logs the largest files parseable from `Head`, tail as a lower bound (Python
-aborted blind).
+resolved window per team (the dump runs before any team starts, so a bare 0
+would be the only window ever printed); cost log lines carry 3 decimals, not 9
+(`$0.000560` reads `$0.001`; the DB stays BIGINT nano-USD and the riptide edge
+keeps its exact decimal string); the summary headings are sentence case with no
+slash form: `Issues and suggestions`, `Security and performance`, `Test
+coverage`, `Requirement compliance` (`summary_golden.json` carries the names;
+the prompt is unaffected, it names JSON keys like `security_performance`); the
+parser's six diagnostics are RETURNED as `ParsedReview.Diagnostics` and emitted
+by `Client.Review`, so they bind `team=`/`pr_tag` from the call ctx
+(`ParseReview` stays pure); a skipped item is logged as raw JSON, so
+`{"requirement":"r"}`; placeholders substituted in ONE pass, so a `{files}`
+inside `repo_instructions` or `ticket_context` stays literal (substituting
+sequentially would protect only file content); an empty `comment.text` is
+accepted and answers 200 `comment without mention`; a malformed webhook body is
+400, never 500; inbound bodies are capped at 1 MiB (413 over it), because the
+webhook body is read BEFORE the HMAC and a team slug is not a secret;
+`/onboard` and `PUT /teams/{slug}/settings` decode the body AFTER
+authenticating, so an unauthenticated caller cannot probe the schema (validate
+first and a 422 would land ahead of the 401). An over-cap body is drained
+and counted to 10x the cap AND a 10s timeout, so `ContentTooLarge.Size`
+reports what was sent;
+bytes alone are no bound, a stalled body never reaches the ceiling and would
+hold the single review worker, and the review path has no ctx deadline; a
+drain that stops early sets `Truncated` and stays `ContentTooLarge`, never a
+generic error (that path is `OutcomeError`: no notice, no row); the too-large
+review path logs the largest files parseable from `Head`, tail as a lower
+bound.
 
 NOT ours and not fixable here: `tiktoken-go` counts `" \n \n"` as two tokens
-where tiktoken merges the run into one (id 56319), so a diff with consecutive
-blank context lines counts one token high per run (~0.3% on a small PR). Errs
-safe (a smaller usable budget) and only shows in the summary footnote's
-file-content figure, which `hack/parity.sh` therefore compares by label.
+where the reference tokenizer merges the run into one (id 56319), so a diff
+with consecutive blank context lines counts one token high per run (~0.3% on a
+small PR). Errs safe (a smaller usable budget) and only shows in the summary
+footnote's file-content figure.
 
 ## HTTP surface
 
@@ -238,27 +228,26 @@ reason. The onboarding orchestrators never mutate the team they are given.
 
 ## Review pipeline
 
-`OutcomeError` posts NO notice and writes NO row: Python re-raises a
-non-overflow API error into the outer except, which only logs. Only
+`OutcomeError` posts NO notice and writes NO row: a non-overflow API error is
+only logged. Only
 `timed_out`, `unparseable` and `too_large` post one. Each of those preserves
 the PRIOR commit; only success and the three stable-state skips (opt-out
 branch, AGENTS.md missing/oversized) advance the pointer.
 
-PR cost total read only when THIS run is priced (Python nests it under
-`run_cost_usd is not None`); an unconditional read shows a total Python never
-showed and can trip the banner.
+PR cost total read only when THIS run is priced; an unconditional read shows a
+total for an unpriced run and can trip the banner.
 
-Queue worker recovers per job: Python cannot panic this way, and without it one
-bad PR kills the only worker for every team. `Submit` never blocks (unbounded,
+Queue worker recovers per job: without it one bad PR kills the only worker for
+every team. `Submit` never blocks (unbounded,
 like `put_nowait`) or a backlog becomes a webhook timeout. Depth excludes the
 in-flight item, as `qsize()` does.
 
-RE2 vs Python regex, probed both directions against the venv: RE2's `\b`, `\d`,
-`\s` are ASCII, Python's are Unicode. `(?:^|[^\pL\pN_])` for `\b`, `\p{Nd}` for
-`\d`, `[\s\p{Zs}]` for `\s`. Bites the Jira key, the security keywords,
+RE2's `\b`, `\d`, `\s` are ASCII while the text is Unicode, in both
+directions. `(?:^|[^\pL\pN_])` for `\b`, `\p{Nd}` for `\d`,
+`[\s\p{Zs}]` for `\s`. Bites the Jira key, the security keywords,
 `_extract_question` and both `markdown_format` structural regexes. `textwrap`
 likewise: ASCII-only whitespace (NBSP never breaks), tabs expand to 8-column
-stops first. Pin with a golden corpus from the venv, never by reading Python.
+stops first. Pinned by a golden corpus.
 
 The disagree/feedback mechanic was removed deliberately. Do not reintroduce.
 
