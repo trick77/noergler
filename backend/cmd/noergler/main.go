@@ -163,12 +163,14 @@ func serve(log *slog.Logger) error {
 	// httpapi.Run makes the same separation for its own shutdown.
 	queueCtx, stopQueue := context.WithCancel(context.WithoutCancel(ctx))
 	defer stopQueue()
-	// The two Scheduler interfaces are declared consumer-side in their own
-	// packages, so neither imports the other; main is where they meet.
-	review := func(ctx context.Context, team string, p *webhook.Payload, sched queue.Scheduler) bool {
+	// queue.Scheduler and review.Scheduler are identical but separately
+	// declared, so neither package imports the other. Go unifies interfaces
+	// structurally when assigning a value, but not when matching a func
+	// type, so the bridge is explicit here.
+	reviewFn := func(ctx context.Context, team string, p *webhook.Payload, sched queue.Scheduler) bool {
 		return reg.Review(ctx, team, p, sched)
 	}
-	q := queue.New(review, app.Queue.InferenceConcurrency, app.Queue.InferenceConcurrencyPerTeam, log)
+	q := queue.New(reviewFn, app.Queue.InferenceConcurrency, app.Queue.InferenceConcurrencyPerTeam, log)
 	q.Start(queueCtx)
 
 	srv := httpapi.New(reg.Status, log)

@@ -27,6 +27,11 @@ import (
 // inference client and a store.
 type Reviewer interface {
 	ReviewPullRequest(ctx context.Context, p *webhook.Payload, skipAuthorCheck bool)
+	// ReviewPullRequestStaged is the queued path: the gateway call goes to
+	// the inference pool and the posting comes back to the worker. It
+	// reports whether that work outlives the call, which is what keeps the
+	// PR's queue hold alive across it.
+	ReviewPullRequestStaged(ctx context.Context, p *webhook.Payload, team string, sched Scheduler) bool
 	HandleMention(ctx context.Context, p *webhook.Payload)
 	HandleCommentDeleted(ctx context.Context, p *webhook.Payload)
 	HandlePRMerged(ctx context.Context, p *webhook.Payload)

@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"sort"
 
-	"github.com/trick77/noergler/internal/store"
+	"github.com/trick77/noergler/internal/review"
 	"github.com/trick77/noergler/internal/webhook"
 )
 
@@ -72,11 +72,11 @@ func (g *Registry) Status() (enabled, disabled []string) {
 // route, so the worker only has to find it again.
 //
 // queue.run already binds team= into the context, so this does not.
-// Scheduler stages a review's inference off the worker. Declared here
-// rather than imported from the queue, consumer-side like the rest.
-type Scheduler interface {
-	Stage(ctx context.Context, key store.PRKey, team string, infer, post func(context.Context))
-}
+// Scheduler stages a review's inference off the worker. An alias, not a
+// second declaration: it has to be the very type the review package names
+// in its own signature, or a Reviewer cannot satisfy this package's
+// interface.
+type Scheduler = review.Scheduler
 
 func (g *Registry) Review(ctx context.Context, team string, p *webhook.Payload, sched Scheduler) bool {
 	rt, _, ok := g.Lookup(team)
@@ -86,11 +86,11 @@ func (g *Registry) Review(ctx context.Context, team string, p *webhook.Payload, 
 		g.log.ErrorContext(ctx, "queued review for unknown team dropped", "team", team)
 		return false
 	}
-	_ = sched
-	rt.Reviewer.ReviewPullRequest(ctx, p, false)
-	// The review is synchronous today: it is finished when it returns, so
-	// the queue releases the PR's hold. The staged path lands next.
-	return false
+	// Staged: the gateway call runs on the inference pool and the posting
+	// comes back to the worker, so a 200s+ inference no longer holds the
+	// queue. True means the work outlives this call and the PR's hold must
+	// survive with it.
+	return rt.Reviewer.ReviewPullRequestStaged(ctx, p, team, sched)
 }
 
 // There is deliberately no Close. Each team's clients hold an http.Client
