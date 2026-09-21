@@ -42,8 +42,9 @@ func (f *fakeReviewer) ReviewPullRequestStaged(context.Context, *webhook.Payload
 	f.calls = append(f.calls, "review")
 	return false
 }
-func (f *fakeReviewer) HandleMention(context.Context, *webhook.Payload, string, teams.Scheduler) {
+func (f *fakeReviewer) HandleMention(context.Context, *webhook.Payload, string, teams.Scheduler) bool {
 	f.calls = append(f.calls, "mention")
+	return false
 }
 func (f *fakeReviewer) HandleCommentDeleted(context.Context, *webhook.Payload) {
 	f.calls = append(f.calls, "comment-deleted")

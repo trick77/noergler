@@ -78,7 +78,7 @@ func TestWorkerBindsTeamPerItem(t *testing.T) {
 	var mu sync.Mutex
 	var teams []string
 
-	record := func(ctx context.Context, _ Scheduler) {
+	record := func(ctx context.Context) {
 		mu.Lock()
 		defer mu.Unlock()
 		for _, a := range logging.Bound(ctx) {
@@ -90,13 +90,13 @@ func TestWorkerBindsTeamPerItem(t *testing.T) {
 		teams = append(teams, "<unbound>")
 	}
 
-	q := New(syncReview(func(ctx context.Context, _ string, _ *webhook.Payload) { record(ctx, nil) }), 1, 1, quietLogger())
+	q := New(syncReview(func(ctx context.Context, _ string, _ *webhook.Payload) { record(ctx) }), 1, 1, quietLogger())
 	q.Start(context.Background())
 	defer q.Stop()
 
 	q.Submit(key(1), payload("a"), "payments")
 	waitFor(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(teams) == 1 })
-	q.SubmitJob(key(2), "billing", record)
+	q.SubmitJob(key(2), "billing", func(ctx context.Context, _ Scheduler) bool { record(ctx); return false })
 	waitFor(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(teams) == 2 })
 
 	mu.Lock()
@@ -213,8 +213,8 @@ func TestPanicInJobDoesNotKillTheWorker(t *testing.T) {
 	q.Start(context.Background())
 	defer q.Stop()
 
-	q.SubmitJob(key(1), "t1", func(context.Context, Scheduler) { panic(errors.New("job exploded")) })
-	q.SubmitJob(key(2), "t1", func(context.Context, Scheduler) { ran.Add(1) })
+	q.SubmitJob(key(1), "t1", func(context.Context, Scheduler) bool { panic(errors.New("job exploded")) })
+	q.SubmitJob(key(2), "t1", func(context.Context, Scheduler) bool { ran.Add(1); return false })
 
 	waitFor(t, func() bool { return ran.Load() == 1 })
 }
@@ -238,10 +238,11 @@ func TestJobsShareTheWorkerInArrivalOrderWithoutDedupe(t *testing.T) {
 	waitFor(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(order) == 1 })
 
 	add := func(label string) JobFunc {
-		return func(context.Context, Scheduler) {
+		return func(context.Context, Scheduler) bool {
 			mu.Lock()
 			order = append(order, "job:"+label)
 			mu.Unlock()
+			return false
 		}
 	}
 	// The same tag twice: jobs are never deduped.

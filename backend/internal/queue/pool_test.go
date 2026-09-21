@@ -548,10 +548,11 @@ func TestJobCannotOvertakeAReviewSkippedBySaturation(t *testing.T) {
 	// skips it. Its merge job must not run ahead of it.
 	last := 99
 	q.Submit(key(last), prFor(last), "t")
-	q.SubmitJob(key(last), "t", func(context.Context, Scheduler) {
+	q.SubmitJob(key(last), "t", func(context.Context, Scheduler) bool {
 		mu.Lock()
 		order = append(order, "merge-99")
 		mu.Unlock()
+		return false
 	})
 
 	// Nothing for PR 99 may run while the pool stays saturated.
@@ -576,6 +577,67 @@ func TestJobCannotOvertakeAReviewSkippedBySaturation(t *testing.T) {
 		}
 		return false
 	})
+}
+
+// A job that stages work keeps its PR held past its own return, exactly as
+// a review does. A mention asking for a review goes down this path: without
+// it the hold is released while the inference is still outstanding, and a
+// push or a merge for the same PR runs alongside it.
+func TestJobThatStagesKeepsTheHold(t *testing.T) {
+	g := newGate()
+	var mu sync.Mutex
+	var order []string
+
+	q := New(syncReview(func(_ context.Context, _ string, p *webhook.Payload) {
+		mu.Lock()
+		order = append(order, fmt.Sprintf("review-%d", p.PullRequest.ID))
+		mu.Unlock()
+	}), 2, 2, quietLogger())
+
+	q.Start(context.Background())
+	defer q.Stop()
+	defer g.releaseAll()
+
+	// A job that stages, the way a keyword mention does.
+	q.SubmitJob(key(1), "t", func(ctx context.Context, sched Scheduler) bool {
+		sched.Stage(ctx, key(1), "t",
+			func(context.Context) { g.enter("t") },
+			func(context.Context) {
+				mu.Lock()
+				order = append(order, "mention-post")
+				mu.Unlock()
+			},
+		)
+		return true
+	})
+	g.waitEntered(t, 1)
+
+	// Still held: the staged work is outstanding.
+	if !held(q, key(1)) {
+		t.Fatal("a job that staged must keep its PR held")
+	}
+
+	// A push for the same PR must not run during it.
+	q.Submit(key(1), prFor(1), "t")
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	early := len(order)
+	mu.Unlock()
+	if early != 0 {
+		t.Fatalf("a review ran during the staged mention: %v", order)
+	}
+
+	g.releaseAll()
+	waitFor(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(order) == 2
+	})
+	mu.Lock()
+	defer mu.Unlock()
+	if order[0] != "mention-post" || order[1] != "review-1" {
+		t.Fatalf("order = %v, want the staged posting before the next review", order)
+	}
 }
 
 // A review item dequeued with no pending payload must not leave the worker
@@ -640,7 +702,7 @@ func TestSaturatedPoolStopsPreparingReviews(t *testing.T) {
 	}
 
 	// A job is still runnable despite the saturated pool.
-	q.SubmitJob(key(99), "t", func(context.Context, Scheduler) { close(jobRan) })
+	q.SubmitJob(key(99), "t", func(context.Context, Scheduler) bool { close(jobRan); return false })
 	select {
 	case <-jobRan:
 	case <-time.After(2 * time.Second):
