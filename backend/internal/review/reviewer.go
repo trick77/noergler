@@ -141,27 +141,36 @@ func (r *Reviewer) jiraEnabled() bool { return r.jira != nil }
 // is why the caller passes skipAuthorCheck: a bot's PR can still be reviewed
 // on request.
 func (r *Reviewer) IsAutoReviewAuthor(author string) bool {
-	auto, ignore := r.authorLists()
-	for _, ignored := range ignore {
-		if ignored == author {
-			return false
-		}
-	}
-	if len(auto) == 0 {
-		return true
-	}
-	for _, allowed := range auto {
-		if allowed == author {
-			return true
-		}
-	}
-	return false
+	autoReview, _ := r.autoReviewDecision(author)
+	return autoReview
 }
 
 func (r *Reviewer) isIgnoredAuthor(name string) bool {
 	_, ignore := r.authorLists()
-	for _, ignored := range ignore {
-		if ignored == name {
+	return contains(ignore, name)
+}
+
+// autoReviewDecision answers both "is this author auto-reviewed" and "which
+// list decided" from ONE snapshot.
+//
+// Asking IsAutoReviewAuthor and then isIgnoredAuthor takes two, and a
+// settings write landing between them would let the skip reason describe a
+// different list state than the decision did, which is the misreporting this
+// is meant to remove. Same rule as teams.Runtime: one snapshot per request.
+func (r *Reviewer) autoReviewDecision(author string) (autoReview, ignored bool) {
+	auto, ignore := r.authorLists()
+	if contains(ignore, author) {
+		return false, true
+	}
+	if len(auto) == 0 {
+		return true, false
+	}
+	return contains(auto, author), false
+}
+
+func contains(list []string, name string) bool {
+	for _, s := range list {
+		if s == name {
 			return true
 		}
 	}

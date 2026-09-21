@@ -2,6 +2,7 @@ package inference
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -61,10 +62,21 @@ func TestCountingClientKeepsLLMWiresTimeoutShape(t *testing.T) {
 		t.Errorf("Timeout = %v, want 0: a whole-request bound would cut a long completion", c.Timeout)
 	}
 
+	// Assert on the transport actually installed in the client, not a second
+	// one built the same way: the point is that countingClient wires the tuned
+	// transport in, which a fresh tunedTransport() call would not catch.
+	wrapper, ok := c.Transport.(interface{ Unwrap() http.RoundTripper })
+	if !ok {
+		t.Fatalf("client transport %T does not expose the wrapped transport", c.Transport)
+	}
+	tr, ok := wrapper.Unwrap().(*http.Transport)
+	if !ok {
+		t.Fatalf("wrapped transport is %T, want *http.Transport", wrapper.Unwrap())
+	}
+
 	// The backstop must be strictly later than llmwire's own header bound, or
 	// the two race and the transport's generic "timeout awaiting response
 	// headers" replaces the guard's named bound.
-	tr := tunedTransport()
 	if tr.ResponseHeaderTimeout <= llmwire.DefaultHeaderTimeout {
 		t.Errorf("ResponseHeaderTimeout = %v, want strictly more than the header bound %v, "+
 			"so llmwire's guard reports the timeout under its own name",

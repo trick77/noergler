@@ -296,6 +296,17 @@ def scrub(o):
         # it errs safe; the figure is advisory in a footnote. Compare the label
         # rather than the digits here, and only here.
         s = re.sub(r"~[\d']+ file content", "~<n> file content", s)
+        # Summary headings were reworded away from Python's: "and" instead of a
+        # slash, and sentence case. Fold Python's spelling onto Go's so the
+        # section BODIES are still compared, which is the part that carries
+        # review content.
+        for py, go in (
+            ("### Issues / Suggestions", "### Issues and suggestions"),
+            ("### Security / Performance", "### Security and performance"),
+            ("### Test Coverage", "### Test coverage"),
+            ("### Requirement Compliance", "### Requirement compliance"),
+        ):
+            s = s.replace(py, go)
         # Wall-clock figures inside rendered markdown.
         s = re.sub(r"⏱️ [\d.]+s", "⏱️ <t>", s)
         s = re.sub(r"\b\d{4}-\d{2}-\d{2}T[\d:.]+(Z|[+-]\d{2}:?\d{2})", "<ts>", s)

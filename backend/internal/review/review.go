@@ -62,13 +62,15 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 	// IsAutoReviewAuthor, so a bare false cannot say which list decided.
 	// Name the ignore list when it is the reason: Python reported every skip
 	// as an allow-list miss, which misstates why an ignored bot was skipped.
-	if !skipAuthorCheck && !r.IsAutoReviewAuthor(author) {
-		reason := "not in auto-review authors"
-		if r.isIgnoredAuthor(author) {
-			reason = "ignored author"
+	if !skipAuthorCheck {
+		if autoReview, ignored := r.autoReviewDecision(author); !autoReview {
+			reason := "not in auto-review authors"
+			if ignored {
+				reason = "ignored author"
+			}
+			r.log.InfoContext(ctx, fmt.Sprintf("Skipping %s by %s (%s)", prTag, author, reason))
+			return
 		}
-		r.log.InfoContext(ctx, fmt.Sprintf("Skipping %s by %s (%s)", prTag, author, reason))
-		return
 	}
 	// 3. A push by an ignored account (CI amending someone's PR) is not a
 	// reason to re-review; the author's next push is.

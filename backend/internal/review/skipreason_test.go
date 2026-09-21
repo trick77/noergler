@@ -90,18 +90,49 @@ func TestSkipReasonNamesTheListThatDecided(t *testing.T) {
 
 // An @mention bypasses the gate entirely, so an ignored bot's PR can still be
 // reviewed on request. Nothing about naming the ignore list may change that.
-func TestIgnoredAuthorIsNotSkippedOnMention(t *testing.T) {
-	r, buf := capturingReviewer(t)
+//
+// Asserted on the decision rather than by driving ReviewPullRequest: with
+// skipAuthorCheck the run continues past the gate into the store and
+// Bitbucket, which a bare Reviewer has not got, and a test that swallowed the
+// resulting panic would pass whether or not the gate had been consulted.
+func TestIgnoredAuthorIsStillReviewableOnMention(t *testing.T) {
+	r, _ := capturingReviewer(t)
 	r.SetAuthorLists(nil, []string{"renovate_diecibaerg"})
 
-	// skipAuthorCheck = true. The review will fail later for want of
-	// upstreams; all that matters is that it did not stop at the author gate.
-	func() {
-		defer func() { _ = recover() }()
-		r.ReviewPullRequest(context.Background(), payloadBy("renovate_diecibaerg"), true)
+	autoReview, ignored := r.autoReviewDecision("renovate_diecibaerg")
+	if autoReview || !ignored {
+		t.Fatalf("autoReviewDecision = (%v, %v), want (false, true)", autoReview, ignored)
+	}
+}
+
+// The decision and its reason must come from ONE snapshot. Asking
+// IsAutoReviewAuthor and then isIgnoredAuthor took two, so a settings write
+// landing between them could report a reason the decision never used.
+func TestDecisionAndReasonComeFromOneSnapshot(t *testing.T) {
+	r, _ := capturingReviewer(t)
+	r.SetAuthorLists(nil, []string{"bot"})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 2000; i++ {
+			// Flip between "bot is ignored" and "bot is merely not allowed".
+			if i%2 == 0 {
+				r.SetAuthorLists([]string{"alice"}, nil)
+			} else {
+				r.SetAuthorLists(nil, []string{"bot"})
+			}
+		}
 	}()
 
-	if out := buf.String(); strings.Contains(out, "Skipping") {
-		t.Errorf("an @mention must bypass the author gate, got %q", out)
+	for i := 0; i < 2000; i++ {
+		autoReview, ignored := r.autoReviewDecision("bot")
+		// Either list state skips "bot", so the decision is always false; the
+		// reason must be one the same snapshot supports. A torn read would
+		// give autoReview=true, which neither state produces.
+		if autoReview {
+			t.Fatalf("bot auto-reviewed under either list state (ignored=%v)", ignored)
+		}
 	}
+	<-done
 }

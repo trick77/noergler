@@ -109,3 +109,8 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	FromContext(req.Context()).Record(t.label, req.Method)
 	return t.next.RoundTrip(req)
 }
+
+// Unwrap returns the wrapped RoundTripper, so a caller that supplied a tuned
+// transport can assert on the one actually installed rather than on a second
+// copy built the same way.
+func (t *transport) Unwrap() http.RoundTripper { return t.next }

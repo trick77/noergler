@@ -131,15 +131,9 @@ func New(opt Options) (*Client, error) {
 // than llmwire's header bound so llmwire's guard still reports the timeout
 // under its own named bound rather than the transport's generic one.
 func countingClient() *http.Client {
-	return &http.Client{Transport: httpstats.Transport("inference", tunedTransport())}
-}
-
-// tunedTransport is the transport countingClient wraps, split out so a test
-// can assert the tuning without unwrapping the counting layer.
-func tunedTransport() *http.Transport {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.ResponseHeaderTimeout = llmwire.DefaultHeaderTimeout + headerBackstopHeadroom
-	return tr
+	return &http.Client{Transport: httpstats.Transport("inference", tr)}
 }
 
 // headerBackstopHeadroom mirrors llmwire's unexported constant of the same
