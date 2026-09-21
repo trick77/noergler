@@ -87,7 +87,7 @@ func TestWorkerBindsTeamPerItem(t *testing.T) {
 
 	q.Submit(key(1), payload("a"), "payments")
 	waitFor(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(teams) == 1 })
-	q.SubmitJob("P/r#2", "billing", record)
+	q.SubmitJob(key(2), "billing", record)
 	waitFor(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(teams) == 2 })
 
 	mu.Lock()
@@ -204,8 +204,8 @@ func TestPanicInJobDoesNotKillTheWorker(t *testing.T) {
 	q.Start(context.Background())
 	defer q.Stop()
 
-	q.SubmitJob("P/r#1", "t1", func(context.Context) { panic(errors.New("job exploded")) })
-	q.SubmitJob("P/r#2", "t1", func(context.Context) { ran.Add(1) })
+	q.SubmitJob(key(1), "t1", func(context.Context) { panic(errors.New("job exploded")) })
+	q.SubmitJob(key(2), "t1", func(context.Context) { ran.Add(1) })
 
 	waitFor(t, func() bool { return ran.Load() == 1 })
 }
@@ -236,10 +236,10 @@ func TestJobsShareTheWorkerInArrivalOrderWithoutDedupe(t *testing.T) {
 		}
 	}
 	// The same tag twice: jobs are never deduped.
-	if got := q.SubmitJob("P/r#1", "t2", add("a")); got != StatusQueued {
+	if got := q.SubmitJob(key(1), "t2", add("a")); got != StatusQueued {
 		t.Errorf("SubmitJob = %q", got)
 	}
-	if got := q.SubmitJob("P/r#1", "t2", add("b")); got != StatusQueued {
+	if got := q.SubmitJob(key(1), "t2", add("b")); got != StatusQueued {
 		t.Errorf("second SubmitJob with the same tag = %q, want queued", got)
 	}
 

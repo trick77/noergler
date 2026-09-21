@@ -84,10 +84,10 @@ func TestHeldKeyIsSkippedAndOthersProceed(t *testing.T) {
 	}
 }
 
-// An unkeyed job is always runnable, even when every review ahead of it is
-// held. This is what keeps the staged post-stage from deadlocking behind a
-// held review.
-func TestJobRunsWhileEveryReviewIsHeld(t *testing.T) {
+// A job for an unheld PR runs even when a review ahead of it is held. The
+// hold is per key, so it never stalls the whole worker; that is what keeps
+// the staged post-stage from deadlocking behind an unrelated held review.
+func TestJobRunsWhileAnotherPRIsHeld(t *testing.T) {
 	done := make(chan struct{})
 	q := New(func(context.Context, string, *webhook.Payload) {
 		t.Error("no review should run")
@@ -95,7 +95,7 @@ func TestJobRunsWhileEveryReviewIsHeld(t *testing.T) {
 
 	hold(q, key(1))
 	q.Submit(key(1), payload("one"), "t")
-	q.SubmitJob("job", "t", func(context.Context) { close(done) })
+	q.SubmitJob(key(2), "t", func(context.Context) { close(done) })
 
 	q.Start(context.Background())
 	defer q.Stop()
@@ -196,4 +196,66 @@ func TestPanicReleasesTheHold(t *testing.T) {
 
 	q.Submit(key(1), payload("two"), "t")
 	<-done
+}
+
+// A lifecycle job for a held PR waits for that PR's review. Order matters
+// per PR: ClaimRollup stamps the snapshot it reads and is never retried, so
+// a merge rollup that overtook its review would miss that run's cost.
+func TestJobForHeldPRWaitsForTheReview(t *testing.T) {
+	var mu sync.Mutex
+	var order []string
+
+	q := New(func(context.Context, string, *webhook.Payload) {
+		mu.Lock()
+		order = append(order, "review")
+		mu.Unlock()
+	}, quietLogger())
+
+	record := func(what string) func(context.Context) {
+		return func(context.Context) {
+			mu.Lock()
+			order = append(order, what)
+			mu.Unlock()
+		}
+	}
+
+	hold(q, key(1))
+	q.Submit(key(1), payload("one"), "t")
+	q.SubmitJob(key(1), "t", record("merge-1"))
+	// A job for an unheld PR behind them both. It must overtake, which is
+	// what proves the worker really skipped the held pair instead of just
+	// running everything in order.
+	q.SubmitJob(key(2), "t", record("merge-2"))
+
+	q.Start(context.Background())
+	defer q.Stop()
+
+	waitFor(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(order) == 1
+	})
+
+	mu.Lock()
+	got := append([]string(nil), order...)
+	mu.Unlock()
+	if got[0] != "merge-2" {
+		t.Fatalf("the unheld PR's job must run first, got %v", got)
+	}
+	if d := q.Depth(); d != 2 {
+		t.Fatalf("both held items must still be queued, depth=%d", d)
+	}
+
+	q.done1(key(1))
+	waitFor(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(order) == 3
+	})
+
+	mu.Lock()
+	defer mu.Unlock()
+	if order[1] != "review" || order[2] != "merge-1" {
+		t.Fatalf("merge must not overtake its own review, got %v", order)
+	}
 }

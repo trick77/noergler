@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"testing"
 	"time"
+
+	"github.com/trick77/noergler/internal/store"
 )
 
 // A job in flight when Stop is called must run to completion with a LIVE
@@ -26,7 +28,7 @@ func TestStopDrainsTheItemInFlightWithALiveContext(t *testing.T) {
 
 	started := make(chan struct{})
 	done := make(chan error, 1)
-	q.SubmitJob("PROJ/repo#1", "platform", func(ctx context.Context) {
+	q.SubmitJob(store.PRKey{Project: "PROJ", Repo: "repo", PRID: 1}, "platform", func(ctx context.Context) {
 		close(started)
 		time.Sleep(20 * time.Millisecond)
 		done <- ctx.Err()

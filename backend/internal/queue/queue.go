@@ -8,7 +8,8 @@
 // (the one in flight plus the deduped latest state).
 //
 // SubmitJob puts other heavy work (mention answers, rollups) on the same
-// worker in arrival order, without dedupe.
+// worker in arrival order, without dedupe. Those jobs carry their PR's key
+// too, so per-PR order survives once a review outlives its worker turn.
 package queue
 
 import (
@@ -41,7 +42,8 @@ type ReviewFunc func(ctx context.Context, team string, payload *webhook.Payload)
 // JobFunc is a queued unit of work that is not a PR review.
 type JobFunc func(ctx context.Context)
 
-// item is one unit of queued work. Exactly one of key or job is set.
+// item is one unit of queued work. key is always set; job distinguishes a
+// non-review job from a review, whose payload lives in pending.
 type item struct {
 	key store.PRKey
 	job *job
@@ -152,12 +154,19 @@ func (q *Queue) Submit(key store.PRKey, payload *webhook.Payload, team string) s
 	return StatusQueued
 }
 
-// SubmitJob enqueues a non-review job. Never deduped.
-func (q *Queue) SubmitJob(tag, team string, fn JobFunc) string {
+// SubmitJob enqueues a non-review job for a PR. Never deduped.
+//
+// The key is the PR the job belongs to, so the job is held while that PR's
+// review is still outstanding. Order matters per PR: a merge rollup that
+// overtook its review would claim the snapshot before the run row existed
+// and miss that run's cost, and it is never retried. A decline that
+// overtook one would reset the state the review then re-advances.
+func (q *Queue) SubmitJob(key store.PRKey, team string, fn JobFunc) string {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	q.put(item{job: &job{tag: tag, team: team, run: fn, at: time.Now()}}, tag)
+	tag := key.Tag()
+	q.put(item{key: key, job: &job{tag: tag, team: team, run: fn, at: time.Now()}}, tag)
 	return StatusQueued
 }
 
@@ -189,9 +198,6 @@ func (q *Queue) Depth() int {
 // their pending entry and supersedes it.
 func (q *Queue) nextRunnable() int {
 	for i, it := range q.items {
-		if it.job != nil {
-			return i
-		}
 		if _, held := q.inflight[it.key]; !held {
 			return i
 		}
@@ -232,7 +238,13 @@ func (q *Queue) run(ctx context.Context) {
 		if it.job != nil {
 			kind = "job"
 			tag, team, at = it.job.tag, it.job.team, it.job.at
-			run = it.job.run
+			q.inflight[it.key] = struct{}{}
+			key := it.key
+			fn := it.job.run
+			run = func(ctx context.Context) {
+				defer q.done1(key)
+				fn(ctx)
+			}
 		} else {
 			tag = it.key.Tag()
 			e, ok := q.pending[it.key]
