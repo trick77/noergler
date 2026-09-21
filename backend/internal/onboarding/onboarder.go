@@ -175,11 +175,11 @@ func quotedList(items []string) string {
 	return "[" + strings.Join(parts, ", ") + "]"
 }
 
-// isEmptyish is the emptiness test over a JSON-decoded value: nil, false, "",
-// 0 and an empty list or map are all falsey. It backs the two active/ssl
-// checks, where a null must read the same as false, and the `configuration`
-// emptiness one.
-func isEmptyish(v any) bool {
+// isTruthy reports whether a JSON-decoded value is non-empty: nil, false, "",
+// 0 and an empty list or map are all falsey, everything else is truthy. It
+// backs the two active/ssl checks, where a null must read the same as false,
+// and the `configuration` emptiness one.
+func isTruthy(v any) bool {
 	switch t := v.(type) {
 	case nil:
 		return false
@@ -244,15 +244,15 @@ func (o *Onboarder) diffWebhook(existing map[string]any) []string {
 	}
 
 	// Absent means True: Bitbucket omits neither, but a hand-made body might.
-	if v, present := existing["active"]; present && !isEmptyish(v) {
+	if v, present := existing["active"]; present && !isTruthy(v) {
 		diffs = append(diffs, "active: False -> True")
 	}
-	if v, present := existing["sslVerificationRequired"]; present && !isEmptyish(v) {
+	if v, present := existing["sslVerificationRequired"]; present && !isTruthy(v) {
 		diffs = append(diffs, "sslVerificationRequired: False -> True")
 	}
 	// Bitbucket never returns the stored secret, so only its absence is
 	// visible; a secret-only change needs remove + onboard.
-	if !isEmptyish(existing["configuration"]) {
+	if !isTruthy(existing["configuration"]) {
 		diffs = append(diffs, "configuration.secret: (unset) -> (set)")
 	}
 	return diffs
