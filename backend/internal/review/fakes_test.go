@@ -36,6 +36,8 @@ type fakeBitbucket struct {
 	prDiffErr  error
 	commitDiff string
 	commitErr  error
+	changes    []string
+	changesErr error
 
 	files    map[string]string // "commit:path" -> content
 	fileErr  map[string]error
@@ -76,6 +78,10 @@ func (f *fakeBitbucket) FetchPRDiff(_ context.Context, _, _ string, _, _ int) (s
 
 func (f *fakeBitbucket) FetchCommitDiff(_ context.Context, _, _, _, _ string) (string, error) {
 	return f.commitDiff, f.commitErr
+}
+
+func (f *fakeBitbucket) FetchPRChanges(_ context.Context, _, _ string, _ int) ([]string, error) {
+	return f.changes, f.changesErr
 }
 
 func (f *fakeBitbucket) FetchFileContent(_ context.Context, _, _, commit, path string) (string, error) {

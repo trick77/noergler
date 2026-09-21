@@ -219,6 +219,22 @@ func main() {
 			_, _ = w.Write([]byte(sampleDiff))
 		})
 
+	// Bitbucket: the PR's file list. Only the too-large log path asks for it,
+	// to name the files a diff too big to fetch would have touched. Paths
+	// match sampleDiff, plus one the diff does not carry: past the byte cap is
+	// exactly where this endpoint earns its keep.
+	mux.HandleFunc("GET /rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{id}/changes",
+		func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, r, map[string]any{
+				"values": []any{
+					map[string]any{"nodeType": "FILE", "type": "MODIFY", "path": map[string]any{"toString": "a.go"}},
+					map[string]any{"nodeType": "FILE", "type": "MODIFY", "path": map[string]any{"toString": "util.py"}},
+					map[string]any{"nodeType": "FILE", "type": "ADD", "path": map[string]any{"toString": "fixtures/big.json"}},
+				},
+				"isLastPage": true,
+			})
+		})
+
 	// Bitbucket: raw file bodies. AGENTS.md is the repo instructions the
 	// reviewer requires; anything else is a file it wants to expand context
 	// from. A 404 here is a real answer, not a gap in the fake.
