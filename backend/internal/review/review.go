@@ -68,6 +68,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	}
 
 	prTag := fmt.Sprintf("%s/%s#%d", project, repo, pr.ID)
+	kind := runKind(skipAuthorCheck)
 	ctx = logging.With(ctx, "pr_tag", prTag, "repo", project+"/"+repo, "pr_id", pr.ID)
 
 	// Per-review HTTP accounting. The bitbucket and jira transports already
@@ -89,25 +90,29 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// allow-list miss would misstate why an ignored bot was skipped.
 	if !skipAuthorCheck {
 		if autoReview, ignored := r.autoReviewDecision(author); !autoReview {
-			reason := "not in auto-review authors"
+			// The log wording and the stored reason come from the SAME
+			// decision: a dashboard that groups an ignored bot under
+			// "not in auto-review authors" while the log says otherwise
+			// reintroduces exactly the confusion this branch exists to end.
+			reason, why := "not in auto-review authors", SkipNotAutoAuthor
 			if ignored {
-				reason = "ignored author"
+				reason, why = "ignored author", SkipIgnoredAuthor
 			}
 			r.log.InfoContext(ctx, fmt.Sprintf("Skipping %s by %s (%s)", prTag, author, reason))
-			return nil, ctx, r.abort(ctx, prTag, httpCounter)
+			return nil, ctx, r.abort(ctx, key, kind, why, prTag, httpCounter)
 		}
 	}
 	// 3. A push by an ignored account (CI amending someone's PR) is not a
 	// reason to re-review; the author's next push is.
 	if !skipAuthorCheck && payload.Actor != nil && r.isIgnoredAuthor(payload.Actor.Name) {
 		r.log.InfoContext(ctx, fmt.Sprintf("Skipping %s: pushed by ignored author %s", prTag, payload.Actor.Name))
-		return nil, ctx, r.abort(ctx, prTag, httpCounter)
+		return nil, ctx, r.abort(ctx, key, kind, SkipIgnoredAuthor, prTag, httpCounter)
 	}
 
 	// 4. Skip state. If the user removed our summary comment they want
 	// noergler to leave this PR alone.
 	if !r.checkSkipState(ctx, key, prTag) {
-		return nil, ctx, r.abort(ctx, prTag, httpCounter)
+		return nil, ctx, r.abort(ctx, key, kind, SkipIgnoredPR, prTag, httpCounter)
 	}
 
 	upsert := store.PRUpsert{
@@ -125,7 +130,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		prReviewID := r.upsert(ctx, upsert, pr.FromRef.LatestCommit)
 		r.postOrUpdateSummary(ctx, project, repo, pr.ID, prReviewID,
 			render.OptOutBranchSummary(keyword, pr.FromRef.DisplayID))
-		return nil, ctx, r.abort(ctx, prTag, httpCounter)
+		return nil, ctx, r.abort(ctx, key, kind, SkipBranchOptOut, prTag, httpCounter)
 	}
 
 	repoInstructions := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.DisplayID)
@@ -136,7 +141,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 			"%s: no AGENTS.md found on PR or target branch, skipping review (set REVIEW_REQUIRE_AGENTS_MD=false to override)", prTag))
 		prReviewID := r.upsert(ctx, upsert, pr.FromRef.LatestCommit)
 		r.postOrUpdateSummary(ctx, project, repo, pr.ID, prReviewID, render.AgentsMDMissingSummary())
-		return nil, ctx, r.abort(ctx, prTag, httpCounter)
+		return nil, ctx, r.abort(ctx, key, kind, SkipNoAgentsMD, prTag, httpCounter)
 	}
 
 	// 7. AGENTS.md over the hard token limit.
@@ -148,7 +153,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 			prReviewID := r.upsert(ctx, upsert, pr.FromRef.LatestCommit)
 			r.postOrUpdateSummary(ctx, project, repo, pr.ID, prReviewID,
 				render.AgentsMDTooLargeSummary(n, r.cfg.AgentsMDMaxTokens, r.cfg.AgentsMDCustomLink))
-			return nil, ctx, r.abort(ctx, prTag, httpCounter)
+			return nil, ctx, r.abort(ctx, key, kind, SkipAgentsMDTooLarge, prTag, httpCounter)
 		}
 	}
 
@@ -172,7 +177,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 				prior := r.priorCommit(ctx, key)
 				prReviewID := r.upsert(ctx, upsert, prior)
 				r.costLimitNotice(ctx, project, repo, pr.ID, prReviewID, cumulative, r.cfg.MaxPRCostUSD)
-				return nil, ctx, r.abort(ctx, prTag, httpCounter)
+				return nil, ctx, r.abort(ctx, key, kind, SkipCostCap, prTag, httpCounter)
 			}
 		}
 	}
@@ -186,14 +191,14 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// 9. Incremental review when the event is a push and we have a pointer.
 	rawDiff, cumulativePRDiff, incrementalFrom, ok := r.resolveDiff(ctx, payload, key, prTag, sourceCommit, lastReviewed, upsert)
 	if !ok {
-		return nil, ctx, r.abort(ctx, prTag, httpCounter)
+		return nil, ctx, r.abort(ctx, key, kind, SkipNone, prTag, httpCounter)
 	}
 
 	files, contentSkipped := r.prepareFiles(ctx, project, repo, rawDiff, sourceCommit, prTag)
 	// 13. Nothing reviewable after the content fetch.
 	if len(files) == 0 {
 		r.log.InfoContext(ctx, prTag+" has no reviewable files after content fetch, skipping")
-		return nil, ctx, r.abort(ctx, prTag, httpCounter)
+		return nil, ctx, r.abort(ctx, key, kind, SkipNoReviewable, prTag, httpCounter)
 	}
 
 	// Counted before compression: this is the whole PR's scope.
@@ -222,7 +227,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// 15. Compression can drop everything.
 	if len(files) == 0 {
 		r.log.InfoContext(ctx, prTag+" has no reviewable files after compression, skipping")
-		return nil, ctx, r.abort(ctx, prTag, httpCounter)
+		return nil, ctx, r.abort(ctx, key, kind, SkipNoReviewable, prTag, httpCounter)
 	}
 
 	// 16. Cross-file context, Jira, previously-posted findings.
@@ -317,7 +322,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	// 19b. OutcomeError is NOT one of them: a non-overflow API error is only
 	// logged. No upsert, no notice, no run row.
 	if result.Outcome != inference.OutcomeOK {
-		r.handleNonOK(ctx, result, key, prTag, sourceCommit, upsert)
+		r.handleNonOK(ctx, result, key, runKind(plan.mention), prTag, sourceCommit, upsert)
 		return
 	}
 
@@ -346,6 +351,22 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	runID := r.recordRun(ctx, prReviewID, result, sourceCommit, plan.incrementalFrom, plan.mention,
 		elapsed, postedCount, plan.diffAdded, plan.diffRemoved, plan.totalFiles)
 	r.recordFindings(ctx, prReviewID, runID, findings, postedIDs)
+
+	// The attempt row carries the run's id, so the feed can show this run's
+	// findings and cost without the dashboard having to guess which run a
+	// successful attempt produced. Written after InsertRun for that reason;
+	// a zero runID (the insert failed) still records that the attempt
+	// succeeded, with the figures missing rather than wrong.
+	attempt := store.Attempt{
+		Key: key, TeamSlug: r.TeamSlug, Kind: runKind(plan.mention),
+		Outcome: inference.OutcomeOK.String(),
+	}
+	ms := elapsed.Milliseconds()
+	attempt.ElapsedMS = &ms
+	if runID != 0 {
+		attempt.RunID = &runID
+	}
+	r.recordAttempt(ctx, attempt)
 
 	runCost, cumulativeCost := r.resolveCost(ctx, key, result)
 
@@ -554,14 +575,22 @@ func (r *Reviewer) fetchCumulativeDiff(ctx context.Context, key store.PRKey, prT
 // handleNonOK posts the notice for a non-ok outcome.
 //
 // timed_out, unparseable and too_large each preserve the prior commit, post
-// their notice and write no run row. OutcomeError posts NOTHING and writes
-// nothing: it is only logged (TestTerminalOutcomes).
-func (r *Reviewer) handleNonOK(ctx context.Context, result inference.ReviewResult, key store.PRKey, prTag, sourceCommit string, upsert store.PRUpsert) {
+// their notice and write no RUN row. OutcomeError posts NOTHING, writes no
+// run row and does not upsert: it is only logged (TestTerminalOutcomes).
+//
+// All four write a review_attempts row, which is a separate table precisely
+// so those pins stay true: the dashboard needs to show a failure, and
+// review_runs must keep meaning "a review that produced a result".
+func (r *Reviewer) handleNonOK(ctx context.Context, result inference.ReviewResult, key store.PRKey, kind store.RunKind, prTag, sourceCommit string, upsert store.PRUpsert) {
 	short := shortOrUnknown(sourceCommit)
 	project, repo, prID := key.Project, key.Repo, key.PRID
 
 	if result.Outcome == inference.OutcomeError {
 		r.log.ErrorContext(ctx, fmt.Sprintf("Review of %s failed: %v", prTag, result.Err))
+		r.recordAttempt(ctx, store.Attempt{
+			Key: key, TeamSlug: r.TeamSlug, Kind: kind,
+			Outcome: result.Outcome.String(),
+		})
 		return
 	}
 
@@ -584,6 +613,11 @@ func (r *Reviewer) handleNonOK(ctx context.Context, result inference.ReviewResul
 			"Review of %s skipped - PR too large for the model's context window (commit %s)", prTag, short))
 		r.tooLargeNotice(ctx, project, repo, prID, prReviewID, sourceCommit, prior)
 	}
+
+	r.recordAttempt(ctx, store.Attempt{
+		Key: key, TeamSlug: r.TeamSlug, Kind: kind,
+		Outcome: result.Outcome.String(),
+	})
 }
 
 // fetchTicket resolves the Jira ticket for a PR, or nil when there is none.

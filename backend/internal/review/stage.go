@@ -82,8 +82,19 @@ type reviewPlan struct {
 // call staged off the worker, that defer would fire before the gateway call
 // and before posting, reporting inference=0 and none of the post stage's
 // Bitbucket calls.
-func (r *Reviewer) abort(ctx context.Context, prTag string, counter *httpstats.Counter) bool {
+//
+// why names the pre-flight exit. SkipNone means the exit was a hard failure
+// rather than a decision (an unparseable payload, a diff that would not
+// fetch), and writes no attempt row: the dashboard's skip breakdown counts
+// choices the pipeline made, not faults it hit.
+func (r *Reviewer) abort(ctx context.Context, key store.PRKey, kind store.RunKind, why SkipReason, prTag string, counter *httpstats.Counter) bool {
 	r.logHTTPTotals(ctx, prTag, counter)
+	if why != SkipNone {
+		r.recordAttempt(ctx, store.Attempt{
+			Key: key, TeamSlug: r.TeamSlug, Kind: kind,
+			Outcome: "skipped", Reason: string(why),
+		})
+	}
 	return false
 }
 

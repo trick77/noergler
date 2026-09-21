@@ -170,11 +170,13 @@ type fakeStore struct {
 	prCost     *int64
 	rollup     *store.RollupSnapshot
 
-	upsertErr error
-	failAll   bool
+	upsertErr  error
+	attemptErr error
+	failAll    bool
 
 	Upserts   []store.PRUpsert
 	Runs      []store.Run
+	Attempts  []store.Attempt
 	Findings  []store.Finding
 	Ignored   int
 	Reactived int
@@ -299,6 +301,22 @@ func (f *fakeStore) InsertRun(_ context.Context, r store.Run) (int64, error) {
 	}
 	f.Runs = append(f.Runs, r)
 	return int64(len(f.Runs)), nil
+}
+
+func (f *fakeStore) InsertAttempt(_ context.Context, a store.Attempt) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// attemptErr is separate from failAll: the point of the fail-open test
+	// is a store where ONLY the attempt write is broken, so everything else
+	// must still succeed around it.
+	if f.attemptErr != nil {
+		return f.attemptErr
+	}
+	if err := f.err(); err != nil {
+		return err
+	}
+	f.Attempts = append(f.Attempts, a)
+	return nil
 }
 
 func (f *fakeStore) InsertFinding(_ context.Context, fi store.Finding) error {
