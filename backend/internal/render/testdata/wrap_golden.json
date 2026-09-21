@@ -1,0 +1,146 @@
+[
+ {
+  "in": "Looks good.",
+  "out": "Looks good."
+ },
+ {
+  "in": "",
+  "out": ""
+ },
+ {
+  "in": "This change reworks the authentication flow so that tokens are refreshed lazily instead of eagerly, which avoids a thundering herd of refresh requests when many sessions expire at once.",
+  "out": "This change reworks the authentication flow so that tokens are refreshed lazily instead of eagerly, which\navoids a thundering herd of refresh requests when many sessions expire at once."
+ },
+ {
+  "in": "See https://bitbucket.example.com/projects/FOO/repos/bar/pull-requests/42 for the full rationale here and there and everywhere and more words to push past the column cap.",
+  "out": "See https://bitbucket.example.com/projects/FOO/repos/bar/pull-requests/42 for the full rationale here and\nthere and everywhere and more words to push past the column cap."
+ },
+ {
+  "in": "The handler now calls `do thing` before returning, which keeps the ordering stable across retries and avoids a subtle race condition in the retry path.",
+  "out": "The handler now calls `do thing` before returning, which keeps the ordering stable across retries and avoids a\nsubtle race condition in the retry path."
+ },
+ {
+  "in": "Compare `alpha` and `beta` carefully here because the ordering of those two calls genuinely matters for correctness in this path and beyond.",
+  "out": "Compare `alpha` and `beta` carefully here because the ordering of those two calls genuinely matters for\ncorrectness in this path and beyond."
+ },
+ {
+  "in": "Removes the personengruppe Fremdfall privacy workaround from `ServiceLeistungsfallDatenschutz`, including the injected feature-flag usage entirely from the service.",
+  "out": "Removes the personengruppe Fremdfall privacy workaround from `ServiceLeistungsfallDatenschutz`, including the\ninjected feature-flag usage entirely from the service."
+ },
+ {
+  "in": "- A bullet item that is quite long and should wrap at the narrower list width because list items get a tighter column than plain prose does here.",
+  "out": "- A bullet item that is quite long and should wrap at the narrower list width because list\n  items get a tighter column than plain prose does here."
+ },
+ {
+  "in": "* Star bullet with a lot of text so that it wraps somewhere in the middle of the sentence and gets a hang indent on the continuation line.",
+  "out": "* Star bullet with a lot of text so that it wraps somewhere in the middle of the sentence\n  and gets a hang indent on the continuation line."
+ },
+ {
+  "in": "+ Plus bullet with a lot of text so that it wraps somewhere in the middle of the sentence and gets a hang indent on the continuation line.",
+  "out": "+ Plus bullet with a lot of text so that it wraps somewhere in the middle of the sentence\n  and gets a hang indent on the continuation line."
+ },
+ {
+  "in": "• Unicode bullet with a lot of text so that it wraps somewhere in the middle of the sentence and gets a hang indent here.",
+  "out": "• Unicode bullet with a lot of text so that it wraps somewhere in the middle of the\n  sentence and gets a hang indent here."
+ },
+ {
+  "in": "1. Numbered item with enough words that the wrapping kicks in and the continuation is indented under the text rather than the marker.",
+  "out": "1. Numbered item with enough words that the wrapping kicks in and the continuation is\n   indented under the text rather than the marker."
+ },
+ {
+  "in": "2) Paren numbered item with enough words that the wrapping kicks in and the continuation is indented under the text itself.",
+  "out": "2) Paren numbered item with enough words that the wrapping kicks in and the continuation\n   is indented under the text itself."
+ },
+ {
+  "in": "# A heading that is quite long and must never be wrapped no matter how many words it contains in total here.",
+  "out": "# A heading that is quite long and must never be wrapped no matter how many words it contains in total here."
+ },
+ {
+  "in": "> A block quote that is quite long and must never be wrapped no matter how many words it contains in total here.",
+  "out": "> A block quote that is quite long and must never be wrapped no matter how many words it contains in total here."
+ },
+ {
+  "in": "```\nsome code that is very long and must not be wrapped at all even though it exceeds the width limit easily\n```",
+  "out": "```\nsome code that is very long and must not be wrapped at all even though it exceeds the width limit easily\n```"
+ },
+ {
+  "in": "Text with a non breaking space run that is long enough to need wrapping across the configured column width limit here.",
+  "out": "Text with a non breaking space run that is long enough to need wrapping across the configured column width\nlimit here."
+ },
+ {
+  "in": "Text\twith\ttabs\tthat\tis\tlong\tenough\tto\tneed\twrapping\tacross\tthe\tconfigured\tcolumn\twidth\tlimit\there\tand\tmore.",
+  "out": "Text    with    tabs    that    is      long    enough  to      need    wrapping        across  the\nconfigured      column  width   limit   here    and     more."
+ },
+ {
+  "in": "A line with a \u0000 null and a \u0001 filler embedded in otherwise ordinary prose that runs long enough to wrap at the column.",
+  "out": "A line with a  null and a  filler embedded in otherwise ordinary prose that runs long enough to wrap at the\ncolumn."
+ },
+ {
+  "in": "Supercalifragilisticexpialidociousandthensomemoreletterstomakethistokenlongerthanthecolumn short tail.",
+  "out": "Supercalifragilisticexpialidociousandthensomemoreletterstomakethistokenlongerthanthecolumn short tail."
+ },
+ {
+  "in": "  Indented prose line that is long enough to wrap and see what happens to the leading whitespace on the continuation lines here.",
+  "out": "  Indented prose line that is long enough to wrap and see what happens to the leading whitespace on the\ncontinuation lines here."
+ },
+ {
+  "in": "Mixed `code span` and a URL https://example.com/a/very/long/path/segment/here plus more words to force wrapping at the cap.",
+  "out": "Mixed `code span` and a URL https://example.com/a/very/long/path/segment/here plus more words to force\nwrapping at the cap."
+ },
+ {
+  "in": "One `a` two `b` three `c` four `d` five `e` adjacent-ish spans with filler text so the whole line definitely exceeds the column.",
+  "out": "One `a` two `b` three `c` four `d` five `e` adjacent-ish spans with filler text so the whole line definitely\nexceeds the column."
+ },
+ {
+  "in": "Line one is short.\nLine two is quite a lot longer and should wrap on its own while line one stays exactly as it was before.",
+  "out": "Line one is short.\nLine two is quite a lot longer and should wrap on its own while line one stays exactly as it was before."
+ },
+ {
+  "in": "-   Bullet with extra spaces after the marker and a long tail of words that will need to wrap at the list width setting.",
+  "out": "-   Bullet with extra spaces after the marker and a long tail of words that will need to\n    wrap at the list width setting."
+ },
+ {
+  "in": "Hyphenated-words-joined-together-should-not-be-split-on-hyphens even when the line is long enough to require wrapping here.",
+  "out": "Hyphenated-words-joined-together-should-not-be-split-on-hyphens even when the line is long enough to require\nwrapping here."
+ },
+ {
+  "in": "- Bullet whose marker is followed by a non-breaking space, long enough that it has to wrap at the list width.",
+  "out": "- Bullet whose marker is followed by a non-breaking space, long enough that it has to wrap\n  at the list width."
+ },
+ {
+  "in": " - Bullet indented with a non-breaking space, long enough that it has to wrap somewhere at the list width cap.",
+  "out": " - Bullet indented with a non-breaking space, long enough that it has to wrap somewhere at\n   the list width cap."
+ },
+ {
+  "in": " > Quote indented with a non-breaking space that must never wrap no matter how long the line runs in total.",
+  "out": " > Quote indented with a non-breaking space that must never wrap no matter how long the line runs in total."
+ },
+ {
+  "in": " # Heading indented with a non-breaking space that must never wrap no matter how long the line runs here.",
+  "out": " # Heading indented with a non-breaking space that must never wrap no matter how long the line runs here."
+ },
+ {
+  "in": "١. Numbered item with an Arabic-Indic marker and enough words that the wrapping kicks in at the list width.",
+  "out": "١. Numbered item with an Arabic-Indic marker and enough words that the wrapping kicks in\n   at the list width."
+ },
+ {
+  "in": " ",
+  "out": " "
+ },
+ {
+  "in": "Trailing non-breaking space that should be dropped from the end of the wrapped line right here  ",
+  "out": "Trailing non-breaking space that should be dropped from the end of the wrapped line right here "
+ },
+ {
+  "in": "  Leading non-breaking space before ordinary prose that runs long enough to need wrapping at the cap.",
+  "out": "  Leading non-breaking space before ordinary prose that runs long enough to need wrapping at the cap."
+ },
+ {
+  "in": "a\u000bb\tc",
+  "out": "a b     c"
+ },
+ {
+  "in": "a\fb\tc",
+  "out": "a b     c"
+ }
+]

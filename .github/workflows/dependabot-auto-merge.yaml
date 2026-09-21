@@ -5,7 +5,7 @@ name: Dependabot auto-merge
 # (see dependabot.yaml) fetch-metadata reports the highest bump in the batch,
 # so a group containing any major update is excluded.
 #
-# Requires branch protection on master with "Tests / test" as a required
+# Requires branch protection on master with "CI / Build + test" as a required
 # status check for `gh pr merge --auto` to have something to wait on.
 
 on: pull_request_target

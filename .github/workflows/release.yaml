@@ -1,15 +1,40 @@
 name: Release
 
 on:
-  push:
-    branches: [master]
+  # TEMPORARY, for the Python-to-Go migration only. The automatic push trigger
+  # is off so that merging the migration cannot cut a release: it touches every
+  # shipping path, so a patch would publish the first Go image as 0.1.80 and
+  # move :latest, :0.1 and :0 onto it before anyone chose to. 0.2.0 is
+  # dispatched by hand instead. RESTORE the push block below once it is out.
+  #
+  # push:
+  #   branches: [master]
+  #   # Only cut a release when something that ships changed. An ignore-list
+  #   # rather than an allow-list: a new top-level directory starts out
+  #   # releasing, which is the safe default. workflow_dispatch is unfiltered,
+  #   # so a release can always be forced by hand.
+  #   paths-ignore:
+  #     - "docs/**"
+  #     - "archive/**"
+  #     - ".github/**"
+  #     - "**/*.md"
+  #     - ".gitignore"
+  #     - ".env.example"
+  #     - "teams.example.yaml"
+  #     - "compose.yaml"
+  #     - "http/**"
+  #     - "hack/**"
   workflow_dispatch:
     inputs:
       bump:
+        # TEMPORARY, with the push trigger above: minor while the migration is
+        # pending, so clicking Run workflow without touching the dropdown gives
+        # 0.2.0 rather than 0.1.80 with :latest, :0.1 and :0 moving onto the
+        # first Go image. RESTORE to patch once 0.2.0 is out.
         description: "Version bump"
         type: choice
         options: [patch, minor, major]
-        default: patch
+        default: minor
 
 permissions:
   contents: write
@@ -42,14 +67,14 @@ jobs:
           NEXT="$MA.$MI.$PA"
           SHORT=$(git rev-parse --short HEAD)
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
-          echo "major=$MA"     >> "$GITHUB_OUTPUT"
-          echo "minor=$MI"     >> "$GITHUB_OUTPUT"
-          echo "short=$SHORT"  >> "$GITHUB_OUTPUT"
+          echo "major=$MA" >> "$GITHUB_OUTPUT"
+          echo "minor=$MI" >> "$GITHUB_OUTPUT"
+          echo "short=$SHORT" >> "$GITHUB_OUTPUT"
           echo "Bumping $LATEST -> $NEXT ($BUMP) at $SHORT" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create and push tag
         run: |
-          git config user.name  "github-actions[bot]"
+          git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag "${{ steps.ver.outputs.version }}"
           git push origin "${{ steps.ver.outputs.version }}"
@@ -65,10 +90,11 @@ jobs:
       - uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./Containerfile
+          file: ./backend/Containerfile
           push: true
           build-args: |
             NOERGLER_VERSION=${{ steps.ver.outputs.version }}
+            NOERGLER_COMMIT=${{ steps.ver.outputs.short }}
           tags: |
             ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.version }}
             ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.major }}.${{ steps.ver.outputs.minor }}

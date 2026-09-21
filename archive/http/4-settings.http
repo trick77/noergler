@@ -1,0 +1,35 @@
+# noergler team self-service, IntelliJ HTTP client. Pick an environment
+# (dev / prod): copy http-client.env.json.example to http-client.env.json (gitignored), fill in host, team, secret and
+# token there; do not commit secret or token.
+#   {{secret}}  the team's webhook secret (from the noergler admin): authenticates every call
+#   {{token}}   your own Bitbucket HTTP access token with project admin: /onboard only,
+#               NOT the bot's BITBUCKET_TOKEN (it has no admin)
+
+### Who gets automatic reviews (empty = everyone) and who never triggers one (CI and dependency bots)
+# Fields left out stay as they are; a list given replaces the whole list.
+PUT {{host}}/teams/{{team}}/settings
+Authorization: Bearer {{secret}}
+Content-Type: application/json
+
+{
+  "auto_review_authors": [],
+  "ignore_authors": ["ci-bot", "renovate"]
+}
+
+### Repos of the claimed projects noergler leaves alone (glob on the repo slug, case-insensitive). Default: *-infra
+PUT {{host}}/teams/{{team}}/settings
+Authorization: Bearer {{secret}}
+Content-Type: application/json
+
+{
+  "exclude_repos": ["*-infra", "sandbox-*"]
+}
+
+### ... or review every repo, *-infra included
+PUT {{host}}/teams/{{team}}/settings
+Authorization: Bearer {{secret}}
+Content-Type: application/json
+
+{
+  "exclude_repos": []
+}

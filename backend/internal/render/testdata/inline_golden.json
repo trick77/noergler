@@ -1,0 +1,44 @@
+[
+ {
+  "severity": "issue",
+  "comment": "Short one.",
+  "suggestion": null,
+  "out": "**Issue:** Short one."
+ },
+ {
+  "severity": "suggestion",
+  "comment": "Short one.",
+  "suggestion": null,
+  "out": "**Suggestion:** Short one."
+ },
+ {
+  "severity": "issue",
+  "comment": "This loop reallocates the slice on every iteration which makes the whole handler quadratic in the number of findings, and it shows up under load.",
+  "suggestion": null,
+  "out": "**Issue:** This loop reallocates the slice on every iteration which makes the whole handler quadratic in the\nnumber of findings, and it shows up under load."
+ },
+ {
+  "severity": "issue",
+  "comment": "Use the helper.",
+  "suggestion": "foo := bar()",
+  "out": "**Issue:** Use the helper.\n\n**Suggested change:**\n```suggestion\nfoo := bar()\n```"
+ },
+ {
+  "severity": "issue",
+  "comment": "Use the helper.",
+  "suggestion": "\n\nfoo := bar()\n\n",
+  "out": "**Issue:** Use the helper.\n\n**Suggested change:**\n```suggestion\nfoo := bar()\n```"
+ },
+ {
+  "severity": "suggestion",
+  "comment": "Split it.",
+  "suggestion": "if x {\n\treturn y\n}",
+  "out": "**Suggestion:** Split it.\n\n**Suggested change:**\n```\nif x {\n\treturn y\n}\n```"
+ },
+ {
+  "severity": "issue",
+  "comment": "Backticks `here` and a `long span` too.",
+  "suggestion": null,
+  "out": "**Issue:** Backticks `here` and a `long span` too."
+ }
+]

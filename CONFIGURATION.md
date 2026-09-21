@@ -1,202 +1,218 @@
 # Configuration
 
-noergler is configured in two layers:
+Two layers.
 
-1. **Instance** (environment variables): everything that is physically one thing, shared by every team, plus the defaults for each team-overridable knob.
-2. **Teams** (`teams.yaml`): one block per team. Secrets are never in the file; each `*_env` field names the environment variable holding the value.
+The **instance layer** is environment variables: everything shared by all teams,
+plus the defaults a team may override. The **team layer** is `teams.yaml`: one
+block per team, holding what is that team's own (its projects, its gateway key,
+its webhook secret, its riptide endpoint).
 
-Resolution for a team-overridable value: **team block → instance default → built-in default.** Only two fields have no fallback: a team's `webhook_secret_env` and `inference.api_key_env`.
+No secret goes in `teams.yaml`. A `*_env` key names the environment variable
+that holds the value.
 
-Reference files: [`.env.example`](.env.example) (instance layer) and [`teams.example.yaml`](teams.example.yaml) (team layer). In both, a live line is required and a commented line is optional with its default.
+`.env.example` is the working reference for the instance layer: a live line is
+required, a commented line is optional and shows its default. This document
+explains what the values mean and what happens when they are wrong.
 
 ## 1. Instance layer (environment variables)
 
 ### Required
 
-| Variable | Purpose |
-|---|---|
-| `BITBUCKET_URL` | Bitbucket Server base URL |
-| `BITBUCKET_TOKEN` | Personal access token of the shared noergler service account. Needs repo read + write (it posts comments) on every onboarded repo |
-| `BITBUCKET_USERNAME` | Username of that account. Identifies the bot's own comments and is the `@mention` trigger for every team |
-| `OPENAI_BASE_URL` | Base URL of the OpenAI-compatible endpoint (e.g. a LiteLLM proxy). The SDK appends `/chat/completions`; a supplied suffix is stripped. Instance-wide, not team-overridable |
-| `OPENAI_MODEL` | Model id exactly as the gateway's `/v1/models` lists it for the team's key (e.g. `ai-gateway-gpt-5.5`). Instance default, a team overrides it with `inference.model` |
-| `JIRA_URL` | Jira base URL |
-| `JIRA_TOKEN` | Token of the single Jira user. Read-only use (fetches tickets for acceptance criteria) |
-| `DATABASE_URL` | PostgreSQL connection string. Also read by Alembic |
+| Variable | Meaning |
+| --- | --- |
+| `BITBUCKET_URL` | Base URL of the Bitbucket Server instance. |
+| `BITBUCKET_TOKEN` | HTTP access token of the shared service account. Needs to read repositories and write comments; project admin is **not** needed (self-service onboarding uses the caller's own token instead). |
+| `BITBUCKET_USERNAME` | The service account's name. It doubles as the `@mention` trigger, instance-wide: a comment containing `@<BITBUCKET_USERNAME>` reaches noergler. |
+| `LLMWIRE_LITELLM_BASE_URL` | Host of the OpenAI-compatible gateway endpoint. llmwire appends `/chat/completions`. |
+| `LLMWIRE_LITELLM_MODELS` | `<profile>=<alias>,...`: which llmwire profiles the gateway serves, and the alias each is listed under. See "Models and aliases" below, it is the one setting most likely to be wrong. |
+| `OPENAI_MODEL` | Default model as an llmwire **profile id** (`gpt-5.5`), never a gateway alias. Must appear in `LLMWIRE_LITELLM_MODELS`. Teams may override it. |
+| `DATABASE_URL` | PostgreSQL DSN. |
+| `JIRA_URL` | Base URL of the Jira instance. |
+| `JIRA_TOKEN` | Token of a single read-only Jira user; used to fetch tickets for the acceptance-criteria check. |
 
 ### Teams
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `TEAMS_CONFIG` | `teams.yaml` | Path to the teams file. noergler does not start without a usable file |
-| `TEAM_<SLUG>_WEBHOOK_SECRET` | | One per team: the team's webhook HMAC secret (`openssl rand -hex 32`). Referenced from `teams.yaml` as `webhook_secret_env` |
-| `TEAM_<SLUG>_OPENAI_API_KEY` | | One per team: the team's key on the gateway. Referenced as `inference.api_key_env` |
-| `TEAM_<SLUG>_RIPTIDE_TOKEN` | | Only for a team with a `riptide:` block. Referenced as `riptide.token_env` |
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `TEAMS_CONFIG` | `teams.yaml` | Path to the teams file. noergler does not start without a readable one. |
 
-The `TEAM_<SLUG>_...` names are the convention (slug uppercased, `-` → `_`), not enforced: `teams.yaml` names its variables explicitly. The loader rejects a referenced variable that is missing or empty.
+Per-team secrets are referenced from `teams.yaml` through `*_env` keys. The
+names are yours; the convention is the slug uppercased with `-` turned into `_`:
+
+```
+TEAM_PLATFORM_WEBHOOK_SECRET=      # required per team: openssl rand -hex 32
+TEAM_PLATFORM_OPENAI_API_KEY=      # required per team: the team's key on the gateway
+TEAM_PLATFORM_RIPTIDE_TOKEN=       # only when the team has a riptide: block
+```
 
 ### Instance defaults, overridable per team
 
-AI model (team block `inference:`):
+Everything here is a default a team block may replace.
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `OPENAI_REASONING_EFFORT` | `high` | One of `minimal`, `low`, `medium`, `high`. Mandatory: an empty value is a startup error, a model that rejects it disables the team |
-| `OPENAI_CONTEXT_WINDOW` | `0` | Explicit context window in tokens; `0` = `max_input_tokens` from the gateway's `/v1/models`. The resolved window must be ≥ 1,000,000 |
-
-Review behaviour (team block `review:`, same names without the `REVIEW_` prefix, lowercase):
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `REVIEW_AUTO_REVIEW_AUTHORS` | empty (= everyone) | Comma-separated PR authors that get automatic reviews |
-| `REVIEW_IGNORE_AUTHORS` | empty | Comma-separated accounts (CI and dependency bots) whose PRs and pushes never trigger an automatic review; wins over `REVIEW_AUTO_REVIEW_AUTHORS`, an @mention still reviews |
-| `REVIEW_EXCLUDE_REPOS` | `*-infra` | Comma-separated repo slug globs (case-insensitive) that never get a review although the team's project webhook delivers them (lifecycle events of earlier reviews still pass; an explicitly claimed repo is never excluded). Seeds a new team's `team_settings` once; rows that existed before migration 002 got `*-infra` from the migration, not from this variable. The team changes it via `PUT /teams/<slug>/settings` |
-| `REVIEW_MAX_COMMENTS` | `25` | Cap on inline comments per review run |
-| `REVIEW_MAX_FILE_LINES` | `1000` | Files longer than this are reviewed from the diff only, without full file context |
-| `REVIEW_DIFF_EXTRA_LINES_BEFORE` | `3` | Context lines added before each hunk |
-| `REVIEW_DIFF_EXTRA_LINES_AFTER` | `2` | Context lines added after each hunk |
-| `REVIEW_DIFF_MAX_EXTRA_LINES_DYNAMIC_CONTEXT` | `10` | How far above a hunk to look for the enclosing function/class |
-| `REVIEW_DIFF_ALLOW_DYNAMIC_CONTEXT` | `true` | Extend hunks to the enclosing scope |
-| `REVIEW_TICKET_COMPLIANCE_CHECK` | `true` | Evaluate the PR against the Jira ticket's acceptance criteria |
-| `REVIEW_REQUIRE_AGENTS_MD` | `true` | Skip the review (with a summary explaining why) when the repo has no `AGENTS.md` |
-| `REVIEW_AGENTS_MD_WARN_TOKENS` | `4000` | Warn in the summary when `AGENTS.md` exceeds this many tokens |
-| `REVIEW_AGENTS_MD_MAX_TOKENS` | `7000` | Skip the review when `AGENTS.md` exceeds this many tokens |
-| `REVIEW_AGENTS_MD_CUSTOM_LINK` | empty | Extra link in the "AGENTS.md too large" summary: `[Title](URL)` or a bare URL |
-| `REVIEW_OPT_OUT_BRANCH_KEYWORD` | `noergloff` | Source branches containing this substring are not reviewed; empty disables |
-| `REVIEW_MAX_PR_COST_USD` | `5.00` | Once a PR's accumulated cost reaches this, automatic reviews stop for it (`@mention` still works). Unknown cost fails open |
-
-Jira (team block `jira:`):
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `JIRA_ACCEPTANCE_CRITERIA_PREFIXES` | `AC,AK,Acceptance Criteria,Acceptance Criterion,Akzeptanzkriterium,Akzeptanzkriterien,DoD,Req` | Headings recognised as acceptance-criteria sections |
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `REVIEW_AUTO_REVIEW_AUTHORS` | *(empty)* | Comma-separated author names. Empty reviews every author. |
+| `REVIEW_IGNORE_AUTHORS` | *(empty)* | Never auto-reviewed (CI and dependency bots). Wins over the list above. |
+| `REVIEW_EXCLUDE_REPOS` | `*-infra` | Repo-slug globs a team's project webhook delivers but noergler ignores. Seeds each team once. |
+| `REVIEW_MAX_COMMENTS` | `25` | Cap on inline comments per review. |
+| `REVIEW_MAX_FILE_LINES` | `1000` | Files longer than this are reviewed without full file content. |
+| `REVIEW_DIFF_EXTRA_LINES_BEFORE` | `3` | Context lines added before each hunk. |
+| `REVIEW_DIFF_EXTRA_LINES_AFTER` | `2` | Context lines added after each hunk. |
+| `REVIEW_DIFF_MAX_EXTRA_LINES_DYNAMIC_CONTEXT` | `10` | How far above the window to search for the enclosing definition. |
+| `REVIEW_DIFF_ALLOW_DYNAMIC_CONTEXT` | `true` | Extend context to include the enclosing function or class. |
+| `REVIEW_TICKET_COMPLIANCE_CHECK` | `true` | Evaluate the PR against the Jira ticket's acceptance criteria. |
+| `REVIEW_REQUIRE_AGENTS_MD` | `true` | Skip the review, with a summary saying why, when the repo has no `AGENTS.md`. |
+| `REVIEW_AGENTS_MD_WARN_TOKENS` | `4000` | Warn in the summary above this size. |
+| `REVIEW_AGENTS_MD_MAX_TOKENS` | `7000` | Skip the review above this size. |
+| `REVIEW_AGENTS_MD_CUSTOM_LINK` | *(empty)* | Extra link in the "too large" summary: `[Title](URL)` or a bare URL. |
+| `REVIEW_OPT_OUT_BRANCH_KEYWORD` | `noergloff` | Substring in the source branch name that skips the review. Empty disables it. |
+| `REVIEW_MAX_PR_COST_USD` | `5.00` | Once a PR's accumulated cost reaches this, auto-review stops. An `@mention` still works. |
+| `JIRA_ACCEPTANCE_CRITERIA_PREFIXES` | `AC,AK,Acceptance Criteria,Acceptance Criterion,Akzeptanzkriterium,Akzeptanzkriterien,DoD,Req` | Prefixes that mark an acceptance-criteria line in a ticket. Matched at a word boundary. |
+| `OPENAI_REASONING_EFFORT` | `high` | One of the profile's effort levels (`gpt-5.5`: none, low, medium, high, xhigh). noergler needs a reasoning-capable model; a team whose model rejects the parameter is disabled at startup. |
+| `OPENAI_CONTEXT_WINDOW` | `0` | `0` takes `max_input_tokens` from the gateway's `/v1/models`. Set it when the gateway lists no window, or enforces a lower cap than it advertises. |
 
 ### Instance only
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `REVIEW_PROMPT_TEMPLATE` | `prompts/review.txt` | Review prompt. One prompt set for all teams |
-| `REVIEW_MENTION_PROMPT_TEMPLATE` | `prompts/mention.txt` | Mention Q&A prompt |
-| `CONTEXT_WINDOW_HEADROOM_TOKENS` | `16000` | Flat headroom subtracted from the window below the trust threshold |
-| `CONTEXT_TRUST_THRESHOLD` | `256000` | Window size beyond which only a fraction of the excess is trusted |
-| `CONTEXT_TRUST_TAIL` | `0.5` | That fraction |
-| `LOG_LEVEL` | `INFO` | Log level |
-| `NOERGLER_ENV` | `dev` | `env` field on every log record |
-| `NOERGLER_VERSION` | `dev` | Version printed at startup; the Containerfile bakes `NOERGLER_VERSION` |
-| `SERVER_HOST`, `SERVER_PORT` | `0.0.0.0`, `8080` | Loaded but not used by the app; the container runs uvicorn on `0.0.0.0:8080` |
-| `NOERGLER_PUBLIC_URL` | empty | How Bitbucket reaches this instance, e.g. `https://noergler.example.com`. `POST /onboard/{team}` writes `<url>/webhook/<team>` into the hooks and is `503` while unset; nothing else needs it |
-| `SSL_CERT_FILE` | | Corporate CA bundle, honoured by the HTTP clients |
+Not overridable in a team block. Naming one there disables the team.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `REVIEW_PROMPT_TEMPLATE` | `prompts/review.txt` | Review prompt template. |
+| `REVIEW_MENTION_PROMPT_TEMPLATE` | `prompts/mention.txt` | Q&A prompt template. |
+| `BITBUCKET_MAX_DIFF_BYTES` | `10485760` | 10 MiB per PR or compare diff. |
+| `BITBUCKET_MAX_FILE_BYTES` | `1048576` | 1 MiB per file fetched for context. |
+| `CONTEXT_WINDOW_HEADROOM_TOKENS` | `16000` | Trust-curve headroom. |
+| `CONTEXT_TRUST_THRESHOLD` | `256000` | Window size trusted in full. |
+| `CONTEXT_TRUST_TAIL` | `0.5` | Fraction of the window beyond the threshold that counts. |
+| `SERVER_HOST` | `0.0.0.0` | Listen address. |
+| `SERVER_PORT` | `8080` | Listen port. |
+| `NOERGLER_PUBLIC_URL` | *(empty)* | How Bitbucket reaches this instance. Needed by `POST /onboard/{team}` only, to write the webhook URL. |
+| `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` (or `WARN`), `ERROR`, any case. |
+| `NOERGLER_ENV` | `dev` | The `env` field on every log record. |
+| `NOERGLER_VERSION` | *(build stamp)* | Fallback version string when the binary carries no build info. |
+
+The two body caps are enforced while streaming, not after the body is in
+memory: one diff is held several times over (raw, split per file, rendered into
+the prompt, and as token ids).
+
+### Models and aliases
+
+The single most common misconfiguration.
+
+`OPENAI_MODEL` and a team's `inference.model` are llmwire **profile ids**. The
+gateway knows its own **aliases**. `LLMWIRE_LITELLM_MODELS` maps between them:
+
+```
+LLMWIRE_LITELLM_MODELS=gpt-5.5=ai-gateway-gpt-5.5
+OPENAI_MODEL=gpt-5.5
+```
+
+A profile that is **not** listed there is disabled at startup, deliberately:
+llmwire would otherwise route it to `api.openai.com` instead of your gateway.
+
+The context window is resolved per team from the gateway's `/v1/models`, read
+for the **alias**, and must be at least 1,000,000 tokens. noergler reviews a PR
+in a single call. `OPENAI_CONTEXT_WINDOW` overrides the gateway's answer.
 
 ## 2. Team layer (`teams.yaml`)
 
+See `teams.example.yaml` for a fully commented file. The minimum:
+
 ```yaml
 teams:
-  - slug: platform                                    # required
-    name: "Platform Engineering"                      # optional, default: the slug
-    webhook_secret_env: TEAM_PLATFORM_WEBHOOK_SECRET  # required
-    projects:                                         # required, at least one
-      - key: PLAT                                     # whole project: one project webhook, future repos included
-      - key: INFRA
-        repos: [terraform-core, ansible]              # optional: only these repos (one repo webhook each)
+  - slug: payments
+    webhook_secret_env: TEAM_PAYMENTS_WEBHOOK_SECRET
+    projects:
+      - key: PAY
     inference:
-      api_key_env: TEAM_PLATFORM_OPENAI_API_KEY       # required
-      # model, reasoning_effort, context_window       # optional, default: instance OPENAI_*
-    # review:  { any review knob }                    # optional, default: instance REVIEW_*
-    # jira:    { acceptance_criteria_prefixes: [...] }# optional, default: instance JIRA_ACCEPTANCE_CRITERIA_PREFIXES
-    # riptide: { url: ..., token_env: ... }           # optional; both fields or neither
+      api_key_env: TEAM_PAYMENTS_OPENAI_API_KEY
 ```
 
-| Field | Required | Rules |
-|---|---|---|
-| `slug` | yes | `^[a-z0-9][a-z0-9-]*$`, unique. Becomes the webhook path (`/webhook/<slug>`), the `pr_reviews.team_slug` value and the `team=` log field |
-| `name` | no | Display only |
-| `webhook_secret_env` | yes | Env var holding the team's Bitbucket webhook HMAC secret |
-| `projects[].key` | no | Seed for the team's claims: copied to `team_claims` the first time the slug starts against a DB that has no claims for it, ignored afterwards. Teams claim through `POST /onboard` |
-| `projects[].repos` | no | Restrict a project to these repo slugs; omitted = the whole project. Non-empty when present. Use only for a project shared between teams: a whole-project claim is one project webhook and covers every future repo, a `repos:` claim needs an API call per new repo |
-| `inference.api_key_env` | yes | Env var holding the team's inference key. Empty value rejected |
-| `inference.model`, `.reasoning_effort`, `.context_window` | no | Same validation as the instance variables |
-| `review.*` | no | Any review knob from the table above. Unknown keys are rejected |
-| `jira.acceptance_criteria_prefixes` | no | |
-| `riptide.url`, `riptide.token_env` | both or neither | Present = forwarding on for this team. The token is validated at startup |
+| Key | Required | Meaning |
+| --- | --- | --- |
+| `slug` | yes | `[a-z0-9-]`, unique. It is the webhook path (`/webhook/payments`), the `team_slug` column and the `team=` log field. |
+| `webhook_secret_env` | yes | Env var holding this team's HMAC secret. |
+| `inference.api_key_env` | yes | Env var holding this team's gateway key. |
+| `projects` | no | A **seed** only: project keys and repo slugs the team claims, written to the database on first start. |
+| `inference.model`, `inference.reasoning_effort`, `inference.context_window` | no | Override the instance default. |
+| `review.*` | no | Override any `REVIEW_*` default. |
+| `jira.acceptance_criteria_prefixes` | no | Override the instance prefixes. |
+| `riptide.url`, `riptide.token_env` | no | Present means FinOps forwarding is on. Both required together. |
 
-Not allowed in a team block (instance-wide by decision; naming them disables the team): `base_url`, `review_prompt_template`, `mention_prompt_template`.
+Decoding is strict: an unknown key disables that team, and only that team.
 
-**Ownership is exclusive.** A project, or a project/repo pair, belongs to exactly one team. A whole-project claim conflicts with any repo-level claim on the same key. Every team in a conflict is disabled.
+`projects:` seeds the database once. After the first start the claims live in
+`team_claims`, which is what ownership is checked against, and the yaml is no
+longer consulted for them. Teams change their claims through
+`POST /onboard/{team}`, not by editing the file. A seed that collides with
+another team's existing claim disables only the seeding team.
 
 ## 3. What can go wrong, and what it affects
 
+The rule: **one team's fault disables that team only. A shared-layer fault stops
+the service.**
+
 | Fault | Effect |
-|---|---|
-| Missing/invalid instance variable | Startup aborts |
-| Database, Bitbucket or Jira unreachable at startup | Startup aborts |
-| `teams.yaml` missing, unreadable, not valid YAML, no `teams:` list, zero teams, duplicate slug | Startup aborts (no single team owns the fault) |
-| A team block fails validation (missing field, unknown key, instance-only key, bad `reasoning_effort`, half a `riptide:` block) | That team is disabled |
-| A referenced `*_env` variable is missing or empty | That team is disabled |
-| The gateway's `/v1/models` does not list the team's model for its key, its window is below 1M, or the gateway rejects the key / `reasoning_effort` | That team is disabled |
-| Riptide answers 401 to the team's token | That team is disabled |
-| Riptide unreachable or answers something odd | Team stays enabled, warning logged; emissions are best-effort |
-| Ownership conflict | Every claiming team is disabled |
+| --- | --- |
+| Unreadable or invalid `teams.yaml` | Startup aborts. It is the shared layer. |
+| Unknown key in a team block | That team is disabled. `team_disabled team=<slug> reason=...` |
+| Team's model missing from `LLMWIRE_LITELLM_MODELS` | That team is disabled, rather than being routed to `api.openai.com`. |
+| Gateway lists a window below 1M for the alias | That team is disabled. Set `OPENAI_CONTEXT_WINDOW` if the gateway understates it. |
+| Model rejects `reasoning_effort` | That team is disabled: noergler needs a reasoning-capable model. |
+| Team's riptide ping returns 401 | That team is disabled. Any other riptide error is a warning. |
+| Missing per-team secret env var | That team is disabled. |
+| Database, Bitbucket or Jira unreachable at startup | Startup aborts, after reporting every failing check rather than only the first. |
+| Jira ticket unreadable during a review | Not an error. The key came off a branch name and may be noise. |
+| Gateway does not price a call | The review proceeds and the run is stored with a NULL cost. Cost fails open. |
 
-A disabled team's webhook answers `503` (Bitbucket shows a failed delivery); the reason is in the startup log only. An unknown slug answers `404`. Fixing a team means changing the config and redeploying; nothing is retried at runtime.
-
-Startup log: one `team_disabled team=<slug> reason=...` error per disabled team, then `teams_ready enabled=[...] disabled=[...]` (at `WARNING` when anything is disabled). Every log line about a team carries `team=<slug>` as a JSON field, which Splunk extracts automatically.
-
-Probes: `/health` is liveness and answers `200` while the process is up, with the enabled and disabled slugs in the body. `/ready` is readiness and answers `503` while no team is enabled.
+`teams_ready enabled=[...] disabled=[...]` is logged once at startup and is the
+line to alert on, along with `team_disabled`.
 
 ## 4. Webhooks
 
-Each team's repositories send to `https://<noergler>/webhook/<slug>`. The service verifies the `X-Hub-Signature` HMAC-SHA256 against that team's secret, then checks that the PR's project/repo is owned by the team (`403` otherwise). Team identity therefore comes from the path and the signature, never from the payload.
+One webhook per team, pointing at `POST /webhook/<slug>`, secured with that
+team's secret.
 
-**Who does what.** The noergler admin adds the team to `teams.yaml`, sets its secrets, redeploys. The team admin calls `POST /onboard/<slug>` with the team's webhook secret (`Authorization: Bearer`) and their own Bitbucket HTTP access token (`X-Bitbucket-Token`, project admin), see [README](README.md#webhook-setup); the service claims the projects named in the body for the team (`team_claims`), creates the webhooks and writes the team secret into them:
+Team identity is the **webhook path plus that team's HMAC secret plus the
+ownership check**. The payload's `project.key` alone is never trusted: the
+authenticated slug decides. A signed delivery for a repository the team does not
+claim is ignored.
 
-| `teams.yaml` claim | Webhook created | New repo in the project |
-|---|---|---|
-| `key: PLAT` (whole project) | one **project** webhook (Bitbucket Data Center 8.8+) | covered automatically, nobody does anything |
-| `key: INFRA` + `repos: [...]` | one **repo** webhook per listed repo | noergler admin adds it to `repos:`, team admin re-runs `grant-bot` |
+Events: `pr:opened`, `pr:modified`, `pr:from_ref_updated`, `pr:merged`,
+`pr:declined`, `pr:deleted`, `pr:comment:added`, `pr:comment:deleted`.
 
-**Ownership.** A claim is written only after the caller's Bitbucket token proved project admin on the target, and only if no other team holds it (unique indexes on `team_claims`; a whole-project claim against another team's repo claims is refused in the same transaction). `projects:` in `teams.yaml` is a seed for a slug the database does not know yet; a conflicting seed disables that team. `GET /teams/<slug>` shows the current claims. The admin token authorises the Bitbucket writes and is dropped after the request.
-
-**Double delivery.** A project webhook plus a leftover repo webhook of the same instance delivers every event twice, and the queue only collapses events that arrive while one is pending. `onboard` removes such repo hooks under a project hook (`"prune": false` keeps them); `status` lists them. Hooks named `noergler` that point at *another* instance (intg next to prod) are reported as foreign and never touched; onboard a second instance with another `name`.
+`POST /onboard/{team}` sets the webhook up for a team's targets, using the
+caller's own Bitbucket token (`X-Bitbucket-Token`) to prove project admin per
+target. See `http/` for ready-made requests.
 
 ## 5. Secrets
 
-Every secret is an environment variable. `teams.yaml` and the ConfigMaps contain names only.
+`teams.yaml` holds no secrets, only the names of environment variables. The
+webhook secret is per team; generate one with `openssl rand -hex 32`.
 
-| Secret | Scope | Where it comes from |
-|---|---|---|
-| `BITBUCKET_TOKEN` | instance | Personal access token of the noergler service account in Bitbucket Server (account → *Manage account → HTTP access tokens*). Needs repository read + write |
-| `JIRA_TOKEN` | instance | Personal access token of the Jira user. Read access is enough |
-| `DATABASE_URL` | instance | Connection string with the database password embedded |
-| `TEAM_<SLUG>_WEBHOOK_SECRET` | per team | Generated by the noergler admin: `openssl rand -hex 32`. The same value goes into the service's environment and, via `POST /onboard`, into every webhook of that team; the team admin uses it as the API credential |
-| `TEAM_<SLUG>_OPENAI_API_KEY` | per team | Issued on the LLM gateway (LiteLLM: a virtual key) for that team, so spend is attributed per team. Never the gateway master key |
-| `TEAM_<SLUG>_RIPTIDE_TOKEN` | per team, optional | The team's bearer, issued by whoever runs that team's riptide-collector |
-
-Adding a team therefore means: generate the webhook secret, obtain the gateway key (and riptide token if used), put the three variables where the instance reads its environment, add the block to `teams.yaml`, redeploy, hand the webhook secret to the team admin; they call `POST /onboard/<slug>` with it and their own Bitbucket token (never the bot token).
-
-**Local / compose:** append the variables to `.env` (gitignored).
-
-**Cluster:** how the variables reach the process is the deployment's business; a team's variables become required the moment its `teams.yaml` block names them.
-
-**Rotation.** Webhook secret: set the new value on the service, redeploy, hand it to the team admin (it is also their API credential); they call `POST /onboard/<slug>` with `remove` and then `grant-bot`; Bitbucket's webhook API does not return the stored secret, so a plain re-run would report *already up to date* (see the README's *secret-only drift* note). Gateway key or riptide token: replace the variable, redeploy; a rejected key or token shows up as `team_disabled` at startup, nothing else is affected.
+The Bitbucket token in `BITBUCKET_TOKEN` is the shared bot's and needs no admin
+rights. The admin token used for onboarding is the caller's, passed per request
+in `X-Bitbucket-Token`, never logged and never stored.
 
 ## 6. Where the files go
 
-| Deployment | Instance layer | Teams file |
-|---|---|---|
-| Local / compose | `.env` (`env_file`), see `compose.yaml` | `./teams.yaml` bind-mounted to `/app/teams.yaml`, `TEAMS_CONFIG=/app/teams.yaml` |
-| Cluster | Environment of the container, however the deployment provides it | `teams.yaml` mounted anywhere, `TEAMS_CONFIG` names the path |
-
-Both `.env` and `teams.yaml` are gitignored; commit the `.example` files only.
-
-**Image contract.**
-
-- `CMD` serves on port 8080. `/health` is the liveness probe (always 200, lists enabled and disabled teams), `/ready` the readiness probe (503 while no team is enabled).
-- `alembic upgrade head` runs the migrations; run it before the app starts (init container or equivalent). Nothing creates the schema at runtime.
-- `onboard` is the webhook onboarding tool (see [Webhook setup](#webhook-setup)).
-- `TEAMS_CONFIG` points at the mounted `teams.yaml`; secrets arrive as environment variables named in that file.
-- Corporate CA: mount the trusted bundle and point `SSL_CERT_FILE` at it; httpx, openai and asyncpg all honour it.
-- One replica only: the review queue is a single in-process worker behind an inference lock.
+| Path | What |
+| --- | --- |
+| `teams.yaml` | Team layer. Mounted read-only at `/app/teams.yaml` in the container. |
+| `prompts/review.txt`, `prompts/mention.txt` | Prompt templates. Mounted read-only at `/app/prompts`. |
+| `.env` | Instance layer for compose. Never committed. |
 
 ## 7. Database
 
-PostgreSQL, schema managed by Alembic (`alembic upgrade head`, run before the app starts, e.g. by an init container). `pr_reviews.team_slug` records which team a review ran for.
+PostgreSQL. Migrations are embedded in the binary and applied by a separate
+subcommand:
+
+```
+noergler migrate
+```
+
+It is the init container in a deployment and never runs from `serve`. It is
+idempotent, guarded by an advisory lock, and applies files in filename order.
+
+The schema records **runs**, not accumulators: per-PR totals are aggregates over
+`review_runs`, and a PR's cost is NULL until at least one run is priced.

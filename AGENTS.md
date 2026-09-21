@@ -1,55 +1,247 @@
 # AGENTS.md
 
-Noergler is a Bitbucket Server PR auto-review bridge backed by an OpenAI-compatible LLM endpoint.
+Bitbucket Server PR auto-review bridge, inference through
+`github.com/trick77/llmwire` against a LiteLLM gateway. Ported from the
+Python implementation now in `archive/`.
+**That Python code is the spec for anything ported. Its docs drifted, its
+code did not.**
 
-## Testing
+## Commands
 
-- Run tests with `.venv/bin/python -m pytest`.
-- Mock HTTP with `respx`; use `unittest.mock.AsyncMock` for async unit mocks.
-- Do not call live services from tests.
+**The module is in `backend/`; `hack/`, docs and `prompts/` are at the root.**
+Go commands run from `backend/`, scripts from the root.
+`gofmt -l .` must print nothing. `go vet ./...`, `go test -race ./...`.
+Store tests skip without `NOERGLER_TEST_DSN`; `docker compose up -d postgres`,
+then DSN `postgres://noergler:changeme@localhost:5432/noergler?sslmode=disable`.
+`./hack/smoke.sh` boots `serve` against `hack/fakes`; `./hack/parity.sh` diffs
+this against the archived Python service in `archive/` (needs a venv there).
+Coverage floor 75% (`hack/coverage-floors`),
+gate `./hack/coverage-gate.sh backend` over `coverage/backend.xml`; `cmd/` is
+excluded and `hack/` is outside the module.
+No web framework, no ORM, no logging library. Do not add one.
 
-## Type checking
+## Team isolation
 
-- Run `.venv/bin/basedpyright` from the repo root. Config lives in `basedpyrightconfig.json`.
-- Must be clean (no errors) before committing.
+- **Team identity = webhook path + that team's HMAC secret + ownership check.**
+  Never trust payload `project.key` alone. Store the authenticated slug.
+- **One team's fault disables that team only.** A per-team error never aborts
+  startup. A shared-layer error (DB, Bitbucket, Jira, unusable `teams.yaml`)
+  never disables one team alone.
+- Every team line carries `team=<slug>`: bind at each boundary (webhook route,
+  queue worker, per-team startup).
+- No secrets in `teams.yaml`; `*_env` names env vars. Unknown key disables the
+  team. Gateway host/models and prompt templates are instance-only.
+- Team self-service authenticates with the team's webhook secret, compared
+  constant-time. `/onboard` writes use the caller's `X-Bitbucket-Token`, never
+  logged or stored, proven per target by admin rights. Claims written only after
+  that proof; uniqueness is the DB's.
 
-## Database
+## Money and telemetry
 
-- Schema changes are managed through Alembic revisions in `alembic/versions/`.
-- For any table or column change, add a new migration file; do not edit existing revisions.
-- Deployment runs `alembic upgrade head` before the app starts (see noergler-infra).
+- **Cost fails open.** Unpriced run = NULL cost, review proceeds. The per-PR cap
+  skips only later auto-runs. `BIGINT` nano-USD in the DB, USD at the edges.
+- Key spend is a gauge: shown, never summed.
+- `Usage.Cost.Provenance == Reported` is the only priced case.
+- Riptide never fails a webhook. One rollup per PR, claimed before the POST,
+  never retried. Unknown cost omits `total_cost_usd`; `reviewer_handle` and
+  `reviewer_account_kind: "bot"` travel together. Cost is a decimal string,
+  never a float, and never an exponent (`1E-9` breaks strict parsers).
+- A DB fault never fails a review: the review path wraps store calls in
+  warn-and-fallback.
 
-## Teams (`app/config.py`, `teams.yaml`)
+## Prompt
 
-- One instance, N teams. Shared: Bitbucket account, Jira user, DB, gateway, prompt templates. Per team: inference key, webhook secret, projects, review knobs, Jira prefixes, riptide.
-- **Team identity = webhook path + that team's HMAC secret + ownership check.** Never trust `project.key` from the payload alone. Store the authenticated slug (`pr_reviews.team_slug`).
-- **One team's fault disables that team only.** Never let a per-team error abort startup; never let a shared-layer error (DB, Bitbucket, Jira, unusable `teams.yaml`) disable just one team.
-- Every WARNING/ERROR about a team carries `team=<slug>` via `structlog.contextvars`. Bind at each boundary (webhook route, queue worker for reviews and jobs, the remaining BackgroundTasks handlers `handle_pr_deleted`/`handle_comment_deleted` via `Reviewer._bind_team`, per-team startup check); the request middleware clears contextvars before BackgroundTasks run.
-- Secrets never in `teams.yaml`; `*_env` fields name env vars. `base_url` and the prompt templates are instance-only by decision, `extra="forbid"` enforces it.
-- Keep the single review worker and single inference lock per client; they protect the shared Bitbucket/Jira accounts. Do not add a per-team worker.
-- The team self-service (`POST /onboard/{slug}`, `GET /teams/{slug}`, `PUT /teams/{slug}/settings`) authenticates with the team's webhook secret (`Authorization: Bearer`, constant-time compare), the same credential Bitbucket signs events with. Bitbucket writes in `/onboard` run on the team admin's own token (`X-Bitbucket-Token`): one throwaway `BitbucketClient` per request, never logged or stored, proven per target by admin rights. The bot token is used read-only there (can the bot read the target).
-- Claims (projects/repos) and the two review author lists live in the DB (`team_claims`, `team_settings`, `app/team_store.py`); `teams.yaml` only seeds a slug the DB does not know. A claim is written only after the caller proved project admin on it; uniqueness is the DB's (unique indexes), never only the code's. Runtime updates go through `TeamRuntime.apply_*` (one replica).
+- `prompts/review.txt` order: `{files}` BEFORE `{cumulative_pr_diff}` and
+  `{previously_posted_findings}`. Prefix cache depends on it.
+- File order to the LLM is content-independent (group, language, path).
+- `strings.ReplaceAll`, never `text/template`: the files contain JSON braces.
+- One prompt set resident at a time. **Single review worker**, per-PR supersede.
+- **Editing `prompts/review.txt` means re-running the evals**:
+  `EVAL_BASE_URL=... EVAL_API_KEY=... go run ./cmd/evals` from `backend/`.
+  Seeded-bug corpus in `internal/evals/corpus/`; exit 1 = a bug went
+  unreported. The unit tests pin assembly only, never review quality.
+- Evals default to **`mimo-v2.5-pro`, effort `high`** and stay there: a
+  weaker model or less thinking scores worse on the same prompt, so a mixed
+  history cannot be compared and a regression reads as a model change.
+  `EVAL_MODEL` is an llmwire profile id, not the endpoint's own name; the
+  gateway alias defaults to that id, which is what a plain
+  OpenAI-compatible host serves (`EVAL_ALIAS` for one that renames).
+- **Every eval run is committed** to `internal/evals/results/` with a row in
+  its README, worse scores included: an uncommitted number cannot be
+  compared with the next one, and a regression nobody recorded is invisible.
+- The mimo endpoint lists no `max_input_tokens`, so a run needs
+  `-context-window 1000000`; without it Startup fails and nothing is scored.
+- Eval scoring must stay blunt (file + line window + keyword). A judge model
+  would make a moved number two non-deterministic things to explain.
+  The corpus keeps a case with NO expected findings: without it, "caught
+  every seeded bug" is satisfied by reporting everything.
 
-## Riptide emission (optional sink, `app/riptide_client.py`)
+## llmwire
 
-- **Best-effort, always.** A slow, rejecting or absent riptide must never fail a webhook, block a review, or change the merge path. `_post` swallows everything and logs.
-- **One rollup per PR**, at its terminal outcome (merged / declined / deleted). riptide dedups on `(pr_key, outcome)`, so retries are safe. Never emit PR lifecycle events — riptide already gets those from Bitbucket.
-- **The rollup is claimed before the POST**: `riptide_emitted_at` is stamped by the same statement that reads the snapshot, so a rejected or failed emission is **never retried**. Consequence: a payload riptide's strict schema rejects 422s *every* rollup, not just the one carrying a new field, and those PRs are lost. Deploy the riptide side first when adding a field.
-- **Unknown cost → omit `total_cost_usd`.** Never send 0 (understates spend), never drop the rollup (outcome, diff size, tokens and runs need no price). Log a warning naming the models so missing pricing stays visible.
-- **Declare our own identity** — `reviewer_handle` (`BITBUCKET_USERNAME`) + `reviewer_account_kind`. riptide keeps no bot names of its own; undeclared, our review comments count as a human's and its review-pickup metric collapses to seconds.
-- **PR diff size rides on the rollup.** Bitbucket webhooks carry no diff stats, so riptide has no other source for it.
+- Models are llmwire profile ids (`gpt-5.5`). The gateway alias is the
+  operator's (`LLMWIRE_LITELLM_MODELS`); a profile missing there disables the
+  team, else FromEnv routes it to api.openai.com.
+- Per-team key via `Config.Lookup` answering with `TEAM_<SLUG>_OPENAI_API_KEY`;
+  `Config.APIKey` stays empty. An empty team key falls through to the env; both
+  empty and `FromEnv` returns `MissingEnvError`, `New` fails, team disabled.
+  A no-auth gateway is unsupported: Python substituted a `no-auth` placeholder.
+- `Chat` only, never streaming: a LiteLLM stream carries no cost header.
+- Never retry.
+- Context window comes from the gateway's `ListModels` `max_input_tokens` for the
+  alias, `OPENAI_CONTEXT_WINDOW` overrides, `>= 1_000_000` required.
+  `ListModels` warnings are kept: a present-but-unusable limit reads as a nil
+  limit, so dropping them reports a garbage value as a missing field.
+- No local `reasoning_effort` enum. Python's hardcoded
+  {minimal, low, medium, high} was wrong both ways for the configured model;
+  llmwire validates the level against the profile and the gateway's 400 covers
+  the rest (`mapPingError`).
 
-## Cost handling
+## Adapters
 
-- **A `None` cost fails open.** An unpriced model, or a gateway not reporting a cost header, must never block a review. The per-PR cost cap skips only *subsequent* auto-runs; the run that overshoots completes.
-- The disagree / feedback mechanic was **removed deliberately** — replies flagged findings the reviewer could not have prevented. Don't reintroduce it without asking.
+- No interfaces here. Phase 6 defines them consumer-side.
+- **Never add `Client.Timeout` to Bitbucket.** httpx's is per-operation, Go's
+  spans the body read and cuts a 10 MiB diff. Caller's ctx bounds the total.
+- **Never follow redirects.** A 3xx would replay the bearer token at the new
+  host. Non-2xx, not `>= 400`: a redirect must not read as success.
+- `getTextCapped`: non-2xx beats the cap, else a big error page reports as an
+  oversized diff. Then Content-Length, then the read. Strict `>`.
+- Unreadable Jira ticket is not an error: the key came off a branch name, may be
+  noise. Dial timeout and bad JSON do fail.
+- `fields=` verbatim; `url.Values.Encode` escapes the commas.
+- **RE2 has no lookaround.** Emphasis: one pass, boundary chars written back.
+  `**bold**` stays `*bold*`; `ü*fett*` untouched (Python `\w` is Unicode).
+  Diff against Python before touching these or the AC prefix pattern.
+- Jira `imageRE` eats any `!…!` span on a line: `Done! Ship it!` → `Done`.
+  Python did the same, kept for parity. A fix needs a parity decision.
 
-## Memory (pod limit 2Gi, OOMKilled at 256Mi)
+## Store
 
-- tiktoken encoder = ~110Mi resident, loaded at startup (`warm_tokenizer()`); a 1M-token prompt adds tens of Mi per copy. Limit stays >= 1Gi, prod runs 2Gi.
-- Mentions and merge/decline rollups run via `ReviewQueue.submit_job`, never `BackgroundTasks`: one diff/prompt set resident at a time. Bitbucket bodies byte-capped at the socket (`BITBUCKET_MAX_DIFF_BYTES` 10Mi, `BITBUCKET_MAX_FILE_BYTES` 1Mi -> `ContentTooLarge`), 4 file fetches in flight, cumulative diff dropped by byte length before tokenizing, `MALLOC_ARENA_MAX=2` in the Containerfile.
+- Never edit an applied migration; add the next number.
+- Schema is runs, not accumulators: totals aggregate over `review_runs`.
+- `ClaimRollup` stamps `riptide_emitted_at` in the statement that reads the
+  snapshot, so a crash cannot emit twice.
+- `serve` never migrates. `migrate` is the init container.
 
-## Review prompt layout (`prompts/review.txt`)
+## Ops
 
-- Keep `{files}` BEFORE `{cumulative_pr_diff}` and `{previously_posted_findings}`. Cumulative diff grows on every push and findings accumulate, so they break the endpoint's prefix-cache; files are the most likely bytes to be unchanged across re-reviews of the same PR and must sit in the cached prefix.
-- File ordering passed to the LLM must stay content-independent (see `sort_files_by_language_priority` in `app/diff_compression.py`). Do not reintroduce token-count or file-set-derived language priority — the cache breaks if file order shifts when content changes.
+- `team_disabled`, `team_ready`, `teams_ready` are alerted on. Do not reword.
+- Splunk-reserved keys renamed `splunk_<key>`, `timestamp` first (Splunk's auto
+  timestamp guesses wrong otherwise).
+- Bodies byte-capped at the socket, 4 file fetches in flight, tokenizer vocab
+  compiled in and warmed at boot. The pod has 2 Gi.
+- o200k_base vocab costs 6.7 MiB resident, not the 110 MiB the Python encoder
+  needed. `GOMEMLIMIT=1500MiB` is generous, not tight.
+
+## Diff engine
+
+- Two header counting rules, both required, disagreeing on `\ No newline`: the
+  per-hunk one counts "non-empty and not `+`/`-`", the merged one "starts with
+  `-`/` `" and "`+`/` `". Do not unify.
+- Bugs ported as is: `\ No newline` counts as a real line; `before_count` is
+  unclamped, so a stale `content` yields header counts exceeding the body; a
+  diff with no surviving hunks is filed under deleted, mislabelling a mode
+  change.
+- Every `\w` from a Python pattern is `[\pL\pN_]`, and `\b` is spelled out as
+  `(?:^|[^\pL\pN_])`: RE2's `\w` and `\b` are ASCII, Python's are Unicode.
+  `\bÖlservice\b` matches nothing in RE2. Third trap of this shape after the
+  Jira regexes. Check every ported pattern for both.
+- Line splitters differ per Python call site. `parse_hunks`/`expand_context`/
+  `remove_deletion_only_hunks` split on `\n`; `split_by_file` and the symbol
+  finders use `splitlines()` (also `\v`, `\f`, `\x1c`-`\x1e`, `\x85`, U+2028/9).
+- Sort key reads only the path, never diff or content: prefix-cache order.
+
+## Divergences from Python (pinned by tests)
+
+AC prefix needs a word boundary (`AC` no longer eats `Actual…`, `Req` no longer
+`Request…`; `AK3` still matches); Jira fetched once per review;
+deleted/comment-deleted on the queue, not concurrent; dead code not ported
+(`fetch_pr_comments`, `get_existing_finding_keys`, `team_for`,
+`uncached_prompt` have no caller; `_estimate_review_effort` has three, but
+only to set `ReviewResult.review_effort`, which nothing reads and which is
+never serialized: computed, never observed); no `/docs`; `SERVER_HOST`/`SERVER_PORT`
+honoured; cross-file refs label diff lines as diff lines; riptide
+`final_files_changed` counts reviewable files; declined PRs start fresh on
+reopen; `raw/{path}` URL-escaped (Python broke on a space or `#`); adjacent
+hunks merge without losing diff lines (Python trimmed hunk 2's body by the
+whole overlap and dropped its removals); no phantom blank line in expanded
+bodies (Python's `split("\n")` artifact survived mid-body); the dynamic scope
+search skips lines past the end of truncated content instead of indexing past
+it (Python raised `IndexError`; a panic would take the queue worker down);
+`findings_posted` counts comments actually posted (Python stored the attempted
+count); the parser's six diagnostics are RETURNED as `ParsedReview.Diagnostics`
+and emitted by `Client.Review`, so they bind `team=`/`pr_tag` from the call ctx
+(`ParseReview` stays pure); a skipped item is logged as raw JSON where Python
+logged a dict `repr`, so `{'requirement': 'r'}` reads `{"requirement":"r"}`;
+placeholders substituted in ONE pass, so a `{files}` inside
+`repo_instructions` or `ticket_context` stays literal (Python's sequential
+order protects only file content); an empty `comment.text` is accepted and
+answers 200 `comment without mention` (Pydantic's required str is satisfied by
+`""`, probed against the venv); a malformed webhook body is 400, not Python's
+accidental 500 from an unguarded `request.json()`; inbound bodies are capped
+at 1 MiB (413 over it) where Python read them unbounded, because the webhook
+body is read BEFORE the HMAC and a team slug is not a secret; `/onboard` and
+`PUT /teams/{slug}/settings` decode the body AFTER authenticating, so an
+unauthenticated caller cannot probe the schema (FastAPI validates first and
+would 422 ahead of the 401; nothing pins that order).
+
+NOT ours and not fixable here: `tiktoken-go` counts `" \n \n"` as two tokens
+where tiktoken merges the run into one (id 56319), so a diff with consecutive
+blank context lines counts one token high per run (~0.3% on a small PR). Errs
+safe (a smaller usable budget) and only shows in the summary footnote's
+file-content figure, which `hack/parity.sh` therefore compares by label.
+
+## HTTP surface
+
+Webhook check order is `main.py:389` step for step and is NOT what a Go author
+would write: path-bound team (never the payload's `project.key`) -> ping before
+the body is read -> raw body -> test-connection shortcut -> HMAC -> `pr:`
+prefix off the RAW json -> validate -> repo from toRef then fromRef ->
+**ownership** -> exclude_repos (review-starting events only) -> dispatch.
+HMAC compares the hex STRINGS constant-time: uppercase hex must fail.
+The `pr:` prefix precedes validation, so a non-PR event is ignored, not
+refused; never call `Decode` before that check.
+**The mention gate is the route's**: `HandleMention` does not check that a
+comment names the bot, so without it every comment is an inference call.
+Trigger is the instance `BITBUCKET_USERNAME`, case-insensitive substring, no
+word boundary. Response bodies are structs, not maps: `encoding/json` sorts map
+keys, and `pr:deleted`/`pr:comment:deleted` carry no `queue` key although Go
+queues them.
+404/503 for a slug come BEFORE the 401 on every route.
+`teams.Runtime` is copy-on-write (`atomic.Pointer`): take ONE snapshot per
+request, or a concurrent settings write lands between the ownership check and
+the exclude check. `ApplySettings` must also mirror the two author lists onto
+the live Reviewer, which copies `config.Review` by value; `exclude_repos` is
+not mirrored. `teams.Reconcile` runs BEFORE any Reviewer is built, for the same
+reason. The onboarding orchestrators never mutate the team they are given.
+
+## Review pipeline
+
+`OutcomeError` posts NO notice and writes NO row: Python re-raises a
+non-overflow API error into the outer except, which only logs. Only
+`timed_out`, `unparseable` and `too_large` post one. Each of those preserves
+the PRIOR commit; only success and the three stable-state skips (opt-out
+branch, AGENTS.md missing/oversized) advance the pointer.
+
+PR cost total read only when THIS run is priced (Python nests it under
+`run_cost_usd is not None`); an unconditional read shows a total Python never
+showed and can trip the banner.
+
+Queue worker recovers per job: Python cannot panic this way, and without it one
+bad PR kills the only worker for every team. `Submit` never blocks (unbounded,
+like `put_nowait`) or a backlog becomes a webhook timeout. Depth excludes the
+in-flight item, as `qsize()` does.
+
+RE2 vs Python regex, probed both directions against the venv: RE2's `\b`, `\d`,
+`\s` are ASCII, Python's are Unicode. `(?:^|[^\pL\pN_])` for `\b`, `\p{Nd}` for
+`\d`, `[\s\p{Zs}]` for `\s`. Bites the Jira key, the security keywords,
+`_extract_question` and both `markdown_format` structural regexes. `textwrap`
+likewise: ASCII-only whitespace (NBSP never breaks), tabs expand to 8-column
+stops first. Pin with a golden corpus from the venv, never by reading Python.
+
+The disagree/feedback mechanic was removed deliberately. Do not reintroduce.
+
+## Git
+
+Never push to master; branch + PR. `.yaml` never `.yml`, `Containerfile` never
+`Dockerfile`. A merge to master auto-tags and pushes the image.
+`docs/plans/` is gitignored.

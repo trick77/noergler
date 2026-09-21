@@ -2,7 +2,7 @@
   <img src="logo.png" alt="noergler" width="360">
 </p>
 
-[![Tests](https://github.com/trick77/noergler/actions/workflows/test.yaml/badge.svg)](https://github.com/trick77/noergler/actions/workflows/test.yaml) ![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
+[![CI](https://github.com/trick77/noergler/actions/workflows/ci.yaml/badge.svg)](https://github.com/trick77/noergler/actions/workflows/ci.yaml) ![Go 1.26](https://img.shields.io/badge/go-1.26-blue)
 
 Code review agent for typical private cloud corporate environments. The name is German for "Nörgler" (grumbler/complainer).
 
@@ -73,22 +73,37 @@ On every `pr:from_ref_updated` the existing comment is updated in place rather t
    cp .env.example .env
    ```
 
-2. Build and run with Podman Compose (no pre-built image is published):
+2. Run the published image, or build it yourself:
 
    ```bash
-   podman compose up -d
+   docker compose up -d
    ```
 
-   Or build and run manually:
+   Or manually. `migrate` is a separate step and never runs from `serve`:
 
    ```bash
-   podman build -t noergler -f Containerfile .
-   podman run -p 8080:8080 --env-file .env \
+   docker build -t noergler -f backend/Containerfile .
+   docker run --rm --env-file .env noergler migrate
+   docker run -p 8080:8080 --env-file .env \
      -e TEAMS_CONFIG=/app/teams.yaml \
      -v ./teams.yaml:/app/teams.yaml:ro \
      -v ./prompts:/app/prompts:ro \
      noergler
    ```
+
+   From source:
+
+   ```bash
+   cd backend && go build -o ../noergler ./cmd/noergler && cd ..
+   ./noergler migrate
+   ./noergler serve
+   ```
+
+   Build into the repo root and run from there: `REVIEW_PROMPT_TEMPLATE` and
+   `TEAMS_CONFIG` default to `prompts/review.txt` and `teams.yaml`, both
+   relative to the working directory, and both live at the root beside
+   `backend/`. Running from inside `backend/` disables every team with a
+   missing prompt template.
 
 3. [Configure the Bitbucket webhook](#webhook-setup).
 
@@ -266,10 +281,11 @@ Metrics (cost-by-model, etc.) live in [riptide](https://github.com/trick77/ripti
 
 **Running migrations:**
 
-Schema is managed with Alembic. Run migrations before first use:
+Run the migrations before first use. `serve` never migrates, so this is its
+own step, and the init container in a deployment:
 
 ```bash
-alembic upgrade head
+./noergler migrate
 ```
 
 ## Webhook setup
@@ -378,11 +394,43 @@ The review summary reports how many tokens `AGENTS.md` consumes against a config
 
 ## Running tests
 
+The Go module lives in `backend/`; `hack/` and the docs stay at the repo root.
+
 ```bash
-python -m pytest tests/ -v
+cd backend
+gofmt -l .                 # must print nothing
+go vet ./...
+go test -race ./...
 ```
 
-Tests use pytest + pytest-asyncio with `respx` for HTTP mocking. No external services needed. CI runs via GitHub Actions on push and PR.
+Store tests need a database and are skipped without one:
+
+```bash
+docker compose up -d postgres
+cd backend
+NOERGLER_TEST_DSN=postgres://noergler:changeme@localhost:5432/noergler?sslmode=disable \
+  go test -race ./internal/store/...
+```
+
+End to end against fake Bitbucket, Jira, gateway and riptide, from the repo
+root:
+
+```bash
+./hack/smoke.sh      # boots serve, replays a signed webhook, reports what was posted
+./hack/parity.sh     # the same replay through this and the archived implementation, diffed
+```
+
+Coverage floor and per-PR patch coverage:
+
+```bash
+cd backend
+go test -race -covermode=atomic -coverpkg=./... -coverprofile=../coverage/backend.out ./...
+go run github.com/boumenot/gocover-cobertura@v1.5.0 < ../coverage/backend.out > ../coverage/backend.xml
+cd ..
+./hack/coverage-gate.sh backend
+```
+
+CI runs the same on every pull request.
 
 ---
 
@@ -390,14 +438,22 @@ Tests use pytest + pytest-asyncio with `respx` for HTTP mocking. No external ser
 
 ### Deploying the image
 
-The image is the whole deployment contract; how the environment reaches it is the deployment's business.
+The image is `ghcr.io/trick77/noergler`, built and pushed on merge to master.
+It is the whole deployment contract; how the environment reaches it is the
+deployment's business.
 
 - `CMD` serves on port 8080. `/health` is the liveness probe (always 200, lists enabled and disabled teams), `/ready` the readiness probe (503 while no team is enabled).
-- `alembic upgrade head` runs the migrations; run it before the app starts (init container or equivalent). Nothing creates the schema at runtime.
+- `["/noergler","migrate"]` runs the migrations; run it before the app starts
+  (init container or equivalent). Nothing creates the schema at runtime, and
+  `serve` never migrates.
 - `POST /onboard/{team}`, `GET /teams/{team}`, `PUT /teams/{team}/settings` are the team self-service (see [Webhook setup](#webhook-setup)); onboarding needs `NOERGLER_PUBLIC_URL`.
 - `TEAMS_CONFIG` points at the mounted `teams.yaml`; secrets arrive as environment variables named in that file.
-- Corporate CA: mount the trusted bundle and point `SSL_CERT_FILE` at it; httpx, openai and asyncpg all honour it.
+- Corporate CA: mount the trusted bundle and point `SSL_CERT_FILE` at it. No
+  setting of ours is involved: Go's `crypto/x509` reads it when building the
+  system pool.
 - One replica only: the review queue is a single in-process worker behind an inference lock.
+- `GOMEMLIMIT=1500MiB` is set in the image against a 2 Gi pod. RSS after
+  startup and tokenizer warm-up is around 40 MiB; `hack/smoke.sh` prints it.
 
 ## Health check
 
@@ -414,30 +470,34 @@ to a [riptide](https://github.com/trick77/riptide) collector — all dashboards,
 SQL queries, and DORA/SPACE rollups live there alongside delivery metrics from
 Bitbucket / ArgoCD / CI.
 
+The cutover from the implementation in `archive/` is recorded in
+[archive/CUTOVER.md](archive/CUTOVER.md); it is history, not a live procedure.
+
 ## Project structure
 
 ```
-app/
-  main.py              # FastAPI app: /webhook/{team}, /onboard/{team}, /teams/{team}, /health, /ready
-  onboarding.py        # Webhook onboarding against Bitbucket with the team admin's token
-  team_store.py        # Claims and review author lists per team (DB)
-  riptide_client.py    # Optional outbound emitter to riptide-collector
-  reviewer.py          # Review orchestrator (diff → AI → comments)
-  llm_client.py        # OpenAI SDK client for the configured LLM API, token-aware chunking
-  context_expansion.py # Asymmetric & dynamic diff context expansion
-  cross_file_context.py # Cross-file symbol reference analysis
-  diff_compression.py  # Large PR compression and file prioritization
-  bitbucket.py         # Bitbucket Server REST API client
-  jira.py              # Jira ticket fetching and compliance checking
-  models.py            # Pydantic models (webhook payloads, findings)
-  config.py            # Environment-based configuration
-  db/
-    pool.py            # asyncpg connection pool management
-    repository.py      # Database operations (upsert, query, insert)
+backend/
+  cmd/noergler/        # serve, migrate, version
+  cmd/evals/           # scores the review prompt against a seeded-bug corpus
+  internal/
+    api/               # webhook, onboarding and team self-service routes
+    review/            # review orchestrator (diff -> LLM -> comments)
+    inference/         # llmwire client, prompt assembly, response parsing
+    diff/              # hunk parsing, context expansion, cross-file references
+    bitbucket/         # Bitbucket Server REST client
+    jira/              # ticket fetching and acceptance-criteria checks
+    store/             # Postgres access and migrations
+    teams/             # per-team config, claims, runtime
+    riptide/           # optional outbound cost emitter
+    render/            # summary and comment markdown
 prompts/
-  review.txt           # Review prompt template
-  mention.txt          # Mention Q&A prompt template
+  review.txt           # review prompt template
+  mention.txt          # mention Q&A prompt template
+hack/                  # smoke, parity and coverage scripts (outside the module)
 http/                  # IntelliJ HTTP client requests for the team self-service
-tests/                 # pytest test suite
+archive/               # the Python implementation this replaced, kept for reference
 ```
 
+## Licence
+
+MIT. See [LICENSE](LICENSE).

@@ -1,0 +1,97 @@
+{
+ "minimal": {
+  "prompt_sha256": "9f3a77d3f80ff1353b206070dc7ad55cacb4df8f2328d037e5300af98f57901a",
+  "breakdown": {
+   "template": 2782,
+   "repo_instructions": 0,
+   "files": 60
+  },
+  "prompt_tokens": 3418,
+  "prompt_len": 12167
+ },
+ "with_repo_instructions": {
+  "prompt_sha256": "42034029b928a9dfa61cdc9ff831bb87ad66e3f53c47d5d63203128a89c94a8e",
+  "breakdown": {
+   "template": 2782,
+   "repo_instructions": 6,
+   "files": 60
+  },
+  "prompt_tokens": 3424,
+  "prompt_len": 12185
+ },
+ "with_ticket": {
+  "prompt_sha256": "e35140db838fddd68476db266dee882a63e8489f86c77de2121383a3edaf5ffb",
+  "breakdown": {
+   "template": 2782,
+   "repo_instructions": 0,
+   "files": 60
+  },
+  "prompt_tokens": 3663,
+  "prompt_len": 13319
+ },
+ "ticket_compliance_off": {
+  "prompt_sha256": "654acbd1200f1edbdc766319e7b2c8538d91f23ccabbe261ef12edb0751ea22e",
+  "breakdown": {
+   "template": 2782,
+   "repo_instructions": 0,
+   "files": 60
+  },
+  "prompt_tokens": 3424,
+  "prompt_len": 12167
+ },
+ "ticket_absent_compliance_on": {
+  "prompt_sha256": "9f3a77d3f80ff1353b206070dc7ad55cacb4df8f2328d037e5300af98f57901a",
+  "breakdown": {
+   "template": 2782,
+   "repo_instructions": 0,
+   "files": 60
+  },
+  "prompt_tokens": 3418,
+  "prompt_len": 12167
+ },
+ "with_supplementary": {
+  "prompt_sha256": "cdbb8604273ee9c99a2f564996ca1169ee420b509bc8326b813cd699c80f7297",
+  "breakdown": {
+   "template": 2782,
+   "repo_instructions": 0,
+   "files": 117
+  },
+  "prompt_tokens": 3515,
+  "prompt_len": 12482
+ },
+ "with_cross_file": {
+  "prompt_sha256": "4857df87518e461a7ca451d6bc1d0a5961b3a0f5da488ff045104c1db0503166",
+  "breakdown": {
+   "template": 2782,
+   "repo_instructions": 0,
+   "files": 117
+  },
+  "prompt_tokens": 3487,
+  "prompt_len": 12371
+ },
+ "with_cumulative": {
+  "prompt_sha256": "5f10dcb82cf4d9ed6d297990e2bd167b77124d5f828a45e0f365c86cccf6da1b",
+  "breakdown": {
+   "template": 2782,
+   "repo_instructions": 0,
+   "files": 60
+  },
+  "prompt_tokens": 3557,
+  "prompt_len": 12756
+ },
+ "everything": {
+  "prompt_sha256": "eba391b256d3772a66314dc4675977aad32f3953fb715d40f4d73fdc904cd990",
+  "breakdown": {
+   "template": 2782,
+   "repo_instructions": 6,
+   "files": 117
+  },
+  "prompt_tokens": 3985,
+  "prompt_len": 14594
+ },
+ "_schema": {
+  "json_len": 1492,
+  "tokens": 435,
+  "system_tokens": 159
+ }
+}

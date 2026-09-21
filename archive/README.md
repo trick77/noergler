@@ -1,0 +1,453 @@
+> **Archived.** This is the Python implementation that preceded the Go one
+> at the top level of this repository, kept for reference and superseded on
+> 2026-09-21. Nothing builds or tests it: no workflow runs against
+> `archive/`, Dependabot does not watch it, and `release.yaml` ignores
+> changes here so an edit cannot cut a release. Everything below describes
+> the archived code, not the current service.
+>
+> `hack/parity.sh` at the repository root still runs against this tree and
+> needs a virtualenv in this directory.
+
+<p>
+  <img src="../logo.png" alt="noergler" width="360">
+</p>
+
+![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
+
+Code review agent for typical private cloud corporate environments. The name is German for "Nörgler" (grumbler/complainer).
+
+Built for the realities of enterprise setups: self-hosted Bitbucket Server, on-prem Jira, an OpenAI-compatible LLM endpoint (e.g. a LiteLLM proxy), and corporate CA certificates. Receives PR webhooks, sends diffs to the LLM via the chat/completions API, and posts findings back as inline comments plus a summary comment on the PR.
+
+![noergler inline review comment](review.png)
+
+## Features
+
+- Automatic AI-powered code review on PR open/modify
+- Incremental reviews — only reviews new changes on push, not the entire PR
+- Cross-file context analysis — detects when changed symbols are referenced in other PR files
+- Mention-based interaction — ask questions or trigger re-reviews via `@noergler` in PR comments
+- Smart context enrichment — fetches full file content, not just diffs, for better AI understanding
+- Asymmetric and dynamic diff context expansion with language-aware scope detection
+- Token-aware chunking and compression for large PRs
+- Prompt-cache-optimised template layout — stable rules and examples first, per-PR variables (ticket context, diff) last, so repeated reviews maximise LLM prompt-cache reuse and the diff lands where model recall is strongest
+- Jira ticket compliance checking against acceptance criteria
+- Project-specific review guidelines via `AGENTS.md`
+- Comment deduplication against existing review comments
+- HMAC-SHA256 webhook signature validation
+- Corporate CA certificate support
+
+For a detailed description of the review pipeline, see [HOW_IT_WORKS.md](HOW_IT_WORKS.md).
+
+One instance serves many teams: the Bitbucket service account, the Jira user, the
+database and the LLM gateway are shared, while each team brings its own inference key,
+webhook secret, repositories, review knobs and optional riptide forwarding — see
+[Teams](#teams).
+
+## How it works
+
+1. **Webhook** — Bitbucket Server fires a `pr:opened` or `pr:from_ref_updated` event to the team's `/webhook/<team>` endpoint. The request is validated via HMAC-SHA256 against that team's secret, and the PR's repository must be one the team owns.
+2. **Diff fetch** — On new PRs, the full diff is fetched. On updates, noergler performs an incremental review covering only changes since the last review (falling back to full review after force-pushes).
+3. **Context enrichment** — Full file content is fetched for each reviewable file. Diff hunks are expanded with asymmetric context and language-aware scope detection. Cross-file analysis maps changed symbols to their references in other PR files.
+4. **AI review** — Files are grouped into token-aware chunks and sent to the configured LLM API (any OpenAI-compatible endpoint). The prompt includes file content, diffs, cross-file relationships, repo guidelines (`AGENTS.md`), and Jira ticket context.
+5. **Post results** — Findings are deduplicated against existing comments, sorted by severity, capped at the configured limit, and posted as inline comments. A summary comment tracks the reviewed commit for incremental reviews.
+
+## Interacting with noergler
+
+Besides automatic reviews on PR open/modify, you can mention noergler in any PR comment:
+
+- **Ask a question** — `@noergler Why was this endpoint changed?` — noergler replies to your comment with an answer based on the PR diff.
+- **Trigger a full review** — `@noergler review` — Runs a full review as if the PR was just opened. Also triggered by `@noergler` with no text, `re-review`, or `rereview`.
+
+The mention trigger is `@<BITBUCKET_USERNAME>` — whichever Bitbucket service account noergler runs as. Configure it via the `BITBUCKET_USERNAME` env var.
+
+## Summary comment
+
+Alongside the inline findings, noergler posts (or updates) a single summary comment on each PR with at-a-glance health info:
+
+- **Top findings** — severity-sorted excerpt of the review comments, capped to a few lines.
+- **Scope** — whether an `AGENTS.md` was used (with token count against `REVIEW_AGENTS_MD_WARN_TOKENS` so you can spot context bloat), plus Jira ticket status or a tip if none was found.
+- **Ticket compliance** — per-acceptance-criterion verdict (✅ / ❌) when `REVIEW_TICKET_COMPLIANCE_CHECK` is on and a Jira ticket is linked.
+- **Reviewed / skipped files** — counts, added/removed line totals, and which files were skipped (lock files, binaries, config).
+- **Token usage** — prompt / completion token counts for the run.
+- **Last reviewed commit** — so incremental reviews on `pr:from_ref_updated` know where to start.
+
+On every `pr:from_ref_updated` the existing comment is updated in place rather than duplicated, so the PR activity stream stays clean.
+
+**Opt out by deleting the summary.** If you delete noergler's summary comment, it takes the hint and stops processing that PR — no further reviews, no re-posting the summary (the reason is logged). Mention `@noergler` again on the PR to re-engage; the next review posts a fresh summary comment.
+
+## Quick start
+
+1. Copy `.env.example` to `.env` and fill in the required values:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Build and run with Podman Compose (no pre-built image is published):
+
+   ```bash
+   podman compose up -d
+   ```
+
+   Or build and run manually:
+
+   ```bash
+   podman build -t noergler -f Containerfile .
+   podman run -p 8080:8080 --env-file .env \
+     -e TEAMS_CONFIG=/app/teams.yaml \
+     -v ./teams.yaml:/app/teams.yaml:ro \
+     -v ./prompts:/app/prompts:ro \
+     noergler
+   ```
+
+3. [Configure the Bitbucket webhook](#webhook-setup).
+
+## Configuration
+
+Configuration has two layers.
+
+**Instance (environment variables):** everything that is physically one thing, plus the
+defaults for every team-overridable knob. The required variables are:
+
+| Variable | Description |
+|---|---|
+| `BITBUCKET_URL` | Bitbucket Server base URL |
+| `BITBUCKET_TOKEN` | Bitbucket Server API token of the shared service account |
+| `BITBUCKET_USERNAME` | Bitbucket service account username (used to identify bot comments and as the `@mention` trigger) |
+| `OPENAI_BASE_URL` | Base URL of the OpenAI-compatible endpoint (the SDK appends `/chat/completions`). Instance-wide, not team-overridable |
+| `OPENAI_MODEL` | Model id exactly as the gateway's `/v1/models` lists it for the team's key — see [Model resolution](#model-resolution). Instance default, overridable per team |
+| `JIRA_URL` | Jira Server/Cloud base URL |
+| `JIRA_TOKEN` | Jira API token of the single (read-only) Jira user |
+| `DATABASE_URL` | PostgreSQL connection string (see [Database](#database) below) |
+| `TEAMS_CONFIG` | Path to `teams.yaml` (default `teams.yaml`). noergler does not start without it |
+
+Plus the per-team secrets that `teams.yaml` references (`TEAM_<SLUG>_WEBHOOK_SECRET`,
+`TEAM_<SLUG>_OPENAI_API_KEY`, optionally `TEAM_<SLUG>_RIPTIDE_TOKEN`).
+
+See [CONFIGURATION.md](CONFIGURATION.md) for the complete reference of both layers, and [`.env.example`](.env.example) for all optional settings and their defaults.
+
+**Teams (`teams.yaml`):** one block per team. See [Teams](#teams) and
+[`teams.example.yaml`](teams.example.yaml).
+
+### Teams
+
+```yaml
+teams:
+  - slug: platform                                    # /webhook/platform, pr_reviews.team_slug, log field team=
+    webhook_secret_env: TEAM_PLATFORM_WEBHOOK_SECRET  # env var holding the team's HMAC secret
+    projects:                                         # seed only: copied to the DB on first start, then the team claims via the API
+      - key: PLAT
+      - key: INFRA
+        repos: [terraform-core, ansible]              # optional: only these repos
+    inference:
+      api_key_env: TEAM_PLATFORM_OPENAI_API_KEY       # env var holding the team's inference key
+      # model / reasoning_effort / context_window: optional, default from OPENAI_*
+    # review:  any REVIEW_* knob (lowercase, no prefix) except the prompt templates
+    # jira:    acceptance_criteria_prefixes
+    # riptide: {url, token_env}, both or neither
+```
+
+Rules:
+
+- **Secrets never live in the file.** Every `*_env` field names an environment variable;
+  the loader rejects a missing or empty one.
+- **Resolution:** team value → instance default → built-in default. Only
+  `inference.api_key_env` and `webhook_secret_env` have no fallback.
+- **Instance-only knobs** (`OPENAI_BASE_URL`,
+  `REVIEW_PROMPT_TEMPLATE`, `REVIEW_MENTION_PROMPT_TEMPLATE`) cannot appear in a team
+  block; naming them disables the team.
+- **Claims and author lists are the team's own.** Which projects and repos a team owns
+  (`projects`), its `review.auto_review_authors` / `review.ignore_authors` and its `review.exclude_repos` live in the
+  database (`team_claims`, `team_settings`) and are changed through the API
+  (see [Webhook setup](#webhook-setup)); the values in `teams.yaml` only seed a slug the
+  database does not know yet, and are ignored afterwards. The author lists seed with their
+  resolved value (instance `REVIEW_AUTO_REVIEW_AUTHORS` / `REVIEW_IGNORE_AUTHORS` / `REVIEW_EXCLUDE_REPOS` merged
+  with the block), so an instance-wide default reaches a team once, at its first start.
+  Everything else in the block is the noergler admin's and needs a redeploy.
+- **A project or repo belongs to exactly one team.** The database enforces it: a claim held
+  by another team is refused (`409`), a whole-project claim conflicts with any repo-level
+  claim on the same key. A seed from `teams.yaml` that conflicts disables that team.
+- **Claim whole projects unless a project is shared between teams.** A whole-project claim
+  is one project webhook and covers every future repo; a `repos:` claim needs one API call
+  per new repo.
+- **One team's bad config never affects another.** Anything wrong with a single block
+  (validation error, missing secret, model not available to the key, riptide token rejected)
+  disables that team: its webhooks answer `503` (the reason is in the startup log), everything else runs.
+  Only file-level faults (file missing or unparseable, zero teams, duplicate slug) and
+  shared-layer faults (database, Bitbucket, Jira) abort startup.
+- **Logs:** every line about a team carries `team=<slug>` (Splunk auto-extracts it).
+  Disabling logs `team_disabled team=<slug> reason=...`; startup ends with
+  `teams_ready enabled=[...] disabled=[...]` (at `WARNING` when any team is disabled).
+- **Probes:** `/health` is liveness and always `200` while the process is up (the body
+  lists enabled and disabled teams); `/ready` is readiness and answers `503` while no
+  team is enabled.
+
+Team identity comes from the webhook path plus the team's secret, never from the
+payload: `/webhook/<slug>` verifies the HMAC against that team's secret, then checks
+that the PR's project/repo is claimed by the team (`403` otherwise).
+
+### Model resolution
+
+At startup every team asks the gateway `GET /v1/models` with its own key. LiteLLM answers with exactly the models that key may use, each with `max_input_tokens`. noergler takes the team's model from that list: the entry's `max_input_tokens` becomes the **context window** the review is sized against. Nothing is cached locally or in the database, and there is no catalog or baked-in table to keep in sync with the gateway's names.
+
+`OPENAI_MODEL` (or the team's `inference.model`) must be spelled exactly as the gateway lists it (`ai-gateway-gpt-5.5`). A model the key may not use is simply not in the list, so the team is **disabled** with a message naming what the key does list; other teams are unaffected. A listed model without `max_input_tokens` also disables the team unless `OPENAI_CONTEXT_WINDOW` states the window; that override also wins when the gateway understates what the endpoint actually accepts.
+
+**Costs come from the endpoint where possible.** The `x-litellm-response-cost` response header carries the actual cost of each call, produced by the same code that bills — already accounting for tiered rates, prompt-cache read rates, service tier and any gateway margin. noergler records that number verbatim and labels it `Cost:` on the summary.
+
+The proxy also reports `x-litellm-key-spend`, the running total already spent on the API key. When present and non-zero it is appended to the same line as `$N key total`. It covers every call made with that key by anyone, so it is shown only — never added to the PR total, never compared against the per-PR cap.
+
+If the endpoint reports nothing usable, the run is recorded unpriced and the per-PR cap fails open for it. This matters in practice: a LiteLLM deployment whose cost map lacks the model sends the literal string `None` (older versions) or no header at all, and a proxy worker that started before its catalog was servable does this for every call it handles while its siblings price normally. Every call therefore logs the raw pricing headers plus the gateway's `x-litellm-call-id`; an unpriced call is a warning listing the `x-litellm-*` headers that did arrive, and the startup ping warns once when the model is not priced at all. The `key total` figure is still shown on an unpriced run. A reported `0` on a call that consumed tokens is recorded as `$0.00` and logged as a warning, since it usually means the gateway prices that deployment at zero.
+
+**Requirements:** the model needs a context window of at least 1,000,000 tokens (each PR is reviewed in a single call) and must accept `reasoning_effort`. Both are checked at startup.
+
+### Optional: forward review-cost events to riptide
+
+If a team runs [riptide](https://github.com/trick77/riptide) as a delivery-metrics
+collector, noergler can forward that team's per-PR review-cost rollup (model, tokens,
+cost, diff size, findings) so that LLM finops live alongside its DORA metrics instead
+of in a parallel API. Riptide is per team, not per instance: add a `riptide:` block to
+the team in `teams.yaml`:
+
+```yaml
+    riptide:
+      url: https://riptide-platform.example.com      # the team's collector
+      token_env: TEAM_PLATFORM_RIPTIDE_TOKEN         # env var holding the team's raw bearer
+```
+
+Omit the block to disable forwarding for that team. When present, noergler verifies
+reachability and the bearer at startup via `GET /auth/ping`:
+
+- 200 → continue normally.
+- 401 → that **team is disabled** with a clear error; other teams are unaffected.
+- Connection error / timeout → the team **stays enabled** with a warning;
+  runtime emissions are best-effort and never block PR webhooks.
+
+PR lifecycle (open/merge/decline) is **not** forwarded — riptide already
+captures that from Bitbucket directly.
+
+> **Deploy riptide before this version of noergler.** The rollup schema on the
+> riptide side rejects unknown fields, so a collector that predates
+> `reviewer_handle` answers **every** rollup with HTTP 422 — not just the ones
+> carrying a new field. A rejected rollup is not retried (the PR is marked as
+> emitted when it is claimed), so anything closed in that window is lost.
+> Requires riptide with `reviewer_handle` and optional `total_cost_usd`.
+
+The rollup also declares who we are: `reviewer_handle` (`BITBUCKET_USERNAME`,
+the account noergler comments under) plus `reviewer_account_kind: "bot"`.
+riptide keeps no account names of its own — it stores the declaration. The handle is needed
+because the review comments reach riptide from Bitbucket, where noergler is just
+another user, so it is the only key back to those rows. riptide uses it to exclude our review comments from
+its code-review pickup-time metric: an unrecognised review bot answers every PR
+within seconds and drives that metric to near zero.
+
+A rollup whose cost could not be determined (unpriced model, gateway not
+reporting a cost header) is still forwarded, with the cost omitted rather than
+sent as `0` — the outcome, diff size, tokens and run count still feed riptide's
+delivery metrics. Such an emission logs a warning naming the models, so missing
+pricing is visible instead of silently withholding the PR.
+
+### Database
+
+noergler requires PostgreSQL for review state, deduplication, and statistics. The database connection is validated on startup — the app will not start without it.
+
+Create a PostgreSQL database and user, then set `DATABASE_URL`:
+
+```sql
+CREATE USER noergler WITH PASSWORD 'changeme';
+CREATE DATABASE noergler OWNER noergler;
+```
+
+```bash
+DATABASE_URL=postgresql://noergler:changeme@localhost:5432/noergler
+```
+
+Both `postgresql://` and `postgres://` URI schemes are accepted.
+
+> **Tip:** In production, inject `DATABASE_URL` via container or orchestrator secrets (e.g. Kubernetes Secrets, `--env-file`) rather than storing credentials in plaintext.
+
+**What gets stored:**
+
+| Table | Purpose |
+|---|---|
+| `pr_reviews` | Tracks reviewed PRs and the team that owns them (`team_slug`, set from the authenticated webhook route), lifecycle timestamps (`opened_at` / `merged_at` / `deleted_at` / `ignored_at`), summary comment IDs, and per-PR cost totals. Rows are retained across merge and delete — never hard-deleted. `ignored_at` is set when the user deletes the summary comment and cleared again on the next `@noergler` mention. |
+| `review_findings` | Individual code findings with file, line, severity, and Bitbucket comment ID. Used for inline-comment dedup on incremental reviews. |
+
+Metrics (cost-by-model, etc.) live in [riptide](https://github.com/trick77/riptide), not in noergler. Add a `riptide:` block to a team to forward them.
+
+**Running migrations:**
+
+Schema is managed with Alembic. Run migrations before first use:
+
+```bash
+alembic upgrade head
+```
+
+## Webhook setup
+
+Each team claims and onboards its own projects through the service; nobody needs an image or a checkout. The noergler admin is involved once per team; everything else the team admin does alone.
+
+**Once per team (noergler admin):** add the team to `teams.yaml` (see [Teams](#teams)), set `TEAM_<SLUG>_WEBHOOK_SECRET` (`openssl rand -hex 32`) and `TEAM_<SLUG>_OPENAI_API_KEY`, set `NOERGLER_PUBLIC_URL` on the instance, redeploy, hand the team admin the webhook secret: it is the team's credential for the API.
+
+**Team admin:** two credentials, not to be confused:
+
+| | What | For |
+|---|---|---|
+| **Team secret** | `TEAM_<SLUG>_WEBHOOK_SECRET`, from the noergler admin | Authenticates every API call (`Authorization: Bearer`); the same secret Bitbucket signs events with |
+| **Your Bitbucket admin token** | Your own HTTP access token (Manage account → HTTP access tokens) with **project admin** on the team's projects | `/onboard` only (`X-Bitbucket-Token`): proves the claim, creates the webhooks, grants the bot write access. Used for the request, never stored |
+
+The admin token is **not** the bot's `BITBUCKET_TOKEN` (repo read/write, no admin: it cannot create webhooks). It belongs to a person with project admin. Reading settings and editing the author lists need the team secret only. Then:
+
+```bash
+export SECRET=<the team's webhook secret>
+export TOKEN=<your Bitbucket HTTP access token>
+N=https://noergler.example.com/onboard/platform
+H=(-H "Authorization: Bearer $SECRET" -H "X-Bitbucket-Token: $TOKEN" -H 'Content-Type: application/json')
+
+# claim a whole project and a few repos of a shared one, create the hooks, give the bot write access
+curl -sS -X POST $N "${H[@]}" -d '{"action":"grant-bot","projects":[{"key":"PLAT"},{"key":"INFRA","repos":["terraform-core"]}]}'
+
+# see what is there: ownership, bot access, webhook state, stray repo hooks. No writes.
+curl -sS -X POST $N "${H[@]}" -d '{"action":"status"}'
+
+# give a project up: hook, claim and every review record of it are gone (dry_run first shows the count)
+curl -sS -X POST $N "${H[@]}" -d '{"action":"remove","projects":[{"key":"PLAT"}],"dry_run":true}'
+
+# what the team currently has; and who gets automatic reviews / who never triggers one (secret only, no Bitbucket)
+curl -sS https://noergler.example.com/teams/platform -H "Authorization: Bearer $SECRET"
+curl -sS -X PUT https://noergler.example.com/teams/platform/settings -H "Authorization: Bearer $SECRET" -H 'Content-Type: application/json' -d '{"ignore_authors":["ci-bot"]}'
+# and which repos of the claimed projects noergler leaves alone (glob on the repo slug; default *-infra)
+curl -sS -X PUT https://noergler.example.com/teams/platform/settings -H "Authorization: Bearer $SECRET" -H 'Content-Type: application/json' -d '{"exclude_repos":["*-infra","sandbox-*"]}'
+```
+
+Ready-made requests for the IntelliJ HTTP client are in [`http/`](http/), one file per topic (status, claim, remove, settings).
+
+`POST /onboard/<team>` checks the team secret first (`401` otherwise, nothing else is answered); the Bitbucket token is used for this request's Bitbucket calls and dropped, and proves itself per target (no admin there → that target `failed`). Body fields:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `action` | `status` | `status` (report only) · `onboard` (create/update hooks) · `grant-bot` (onboard + grant the bot `PROJECT_WRITE` / `REPO_WRITE` where it cannot read) · `remove` (deboard) |
+| `projects` | none | Same shape as `projects:` in `teams.yaml`. With `onboard`/`grant-bot`: claim these for the team (each needs project admin with your token, unproven ones are `failed` and not claimed; one held by another team is `409` and nothing is written), then hook exactly these. With `remove`: drop their hooks, the claims and every PR record the team has on them. Not with `status` |
+| `targets` | all claims | Narrow to these current claims: `"PLAT"` or `"INFRA/terraform-core"`; anything else is `400`. Not together with `projects` |
+| `dry_run` | `false` | Report what would change, write nothing (claims and purges included) |
+| `name` | `noergler` | Webhook name; use another name to onboard a second instance next to an existing one |
+| `prune` | `true` | Under a project webhook, delete this instance's leftover repo-level hooks (they would deliver every event twice) |
+
+The answer is JSON: `healthy` (`status`: every target owned, bot can read, hook `ok`, no strays; actions: no target `failed`), `rows` per target, `text` (the same as a table), and with `projects` also `claimed` / `unclaimed` and `purged_prs`. `401` without the team secret or without `X-Bitbucket-Token`, `404` unknown team, `503` team disabled or `NOERGLER_PUBLIC_URL` unset, `400` unknown target. Hooks are created or updated idempotently (a second run reports `already up to date`). A failure on one target is reported and the rest continue. `remove` without `projects` only removes hooks; claims and data stay.
+
+`GET /teams/<team>` returns the claims, the two author lists and the excluded repos. `PUT /teams/<team>/settings` updates any of `auto_review_authors` (only these authors get automatic reviews, empty = everyone), `ignore_authors` (never an automatic review, wins over the first list; an @mention still reviews) and `exclude_repos` (repo slug globs, case-insensitive, default `*-infra`: a project webhook delivers for every repo in the project, these never get a review, @mentions included, while merge/decline/delete of a PR reviewed earlier is still recorded; a repo named explicitly in a `repos:` claim is never excluded); a field left out stays, a list given replaces the whole list, `[]` clears it. Both need only the team secret. Changes take effect immediately, no redeploy.
+
+| Claim | Webhook | New repo in the project |
+|---|---|---|
+| `{"key": "PLAT"}` — whole project | one **project** webhook (Bitbucket Data Center 8.8+), fires for every current and future repo | covered automatically, nobody does anything |
+| `{"key": "INFRA", "repos": [...]}` — selected repos | one **repo** webhook per listed repo (for a project shared between teams) | team admin runs `grant-bot` with the new repo in `projects` |
+
+Whether the bot can also comment is proven by the first review; `grant-bot` covers both.
+
+**Several noergler instances (intg next to prod).** Hooks are matched by name *and* URL. A `noergler` hook pointing at another instance is reported as `foreign` by `status`, makes `onboard` fail on that target, and is never pruned or removed; onboard the second instance with `"name": "noergler-intg"`. Moving an instance to a new hostname: `remove` against the old instance while it still runs, then `grant-bot` against the new one.
+
+**Known limitation — secret-only drift.** Bitbucket's webhook API does not return the stored secret, so the service cannot detect when *only* the secret has changed. After rotating a team's webhook secret, `remove` and then `grant-bot`.
+
+### Manual setup (fallback)
+
+In Bitbucket Server, go to **Project settings > Webhooks** (whole project) or **Repository settings > Webhooks** (single repo) **> Create webhook**:
+- **URL:** `https://<host>:8080/webhook/<team>`
+- **Secret:** the value of the team's `TEAM_<SLUG>_WEBHOOK_SECRET`
+- **Events:** `pr:opened`, `pr:from_ref_updated`, `pr:comment:added`, `pr:comment:deleted`, `pr:merged`, `pr:declined`, `pr:deleted`
+
+All webhook requests must include a valid `X-Hub-Signature` header (HMAC-SHA256). Requests with missing or invalid signatures are rejected.
+
+## Customization
+
+### Review prompt
+
+Edit `prompts/review.txt` to change the review focus or output format. The prompt template uses `{files}` and `{repo_instructions}` as placeholders. The prompts directory is mounted as a volume, so changes take effect on the next review without rebuilding.
+
+### Prompt layout
+
+Both `prompts/review.txt` and `prompts/mention.txt` are ordered deliberately:
+
+1. **Stable prefix** — role, rules, output format, examples, and prompt-injection guardrails. No placeholders, identical on every call.
+2. **Per-repo block** — `{repo_instructions}` (the `AGENTS.md` content). Stable across all PRs in the same repo.
+3. **Per-PR block** — `{ticket_context}` and finally `{files}` (or `{diff}` + `{question}` in the mention template).
+
+Three reasons this matters, and they all push the same layout:
+
+- **Prompt cache reuse** — OpenAI-compatible prompt caching matches on the longest stable prefix. Keeping all variable content at the tail means the entire stable portion is served from cache on every subsequent call.
+- **"Lost in the middle"** — long-context LLMs recall the start and end of a prompt better than the middle. Putting the diff (the thing the model must reason about) at the very end of the context gives it the strongest recall.
+- **KV-cache eviction on very long contexts** — some long-context implementations evict middle tokens first under pressure. Stable rules at the top are cheap to lose; the diff at the bottom stays intact.
+
+If you edit the templates, preserve this ordering: keep new stable rules above the guardrail section, and any new per-PR placeholders below it, right before `{files}` / `{diff}`.
+
+### AGENTS.md
+
+Drop an `AGENTS.md` file in the repository root to provide project-specific review guidelines. noergler automatically picks it up from the PR source branch (falling back to the target branch) and injects the content into the review prompt. Use it to tell the reviewer about project conventions, forbidden patterns, or areas to focus on.
+
+By default, reviews are **gated** on the presence of `AGENTS.md` — without one, noergler skips the review and posts a short summary comment explaining why. To review PRs without an `AGENTS.md`, set `REVIEW_REQUIRE_AGENTS_MD=false`.
+
+The review summary reports how many tokens `AGENTS.md` consumes against a configurable soft limit (`REVIEW_AGENTS_MD_WARN_TOKENS`, default `4000`). When the file exceeds that limit, the summary flags it as a **context bloat** risk so you know to trim it. Reviews still run either way — this is a warning, not a hard cap.
+
+## Running tests
+
+```bash
+python -m pytest tests/ -v
+```
+
+Tests use pytest + pytest-asyncio with `respx` for HTTP mocking. No external services needed. CI runs via GitHub Actions on push and PR.
+
+---
+
+## Deployment notes
+
+### Deploying the image
+
+The image is the whole deployment contract; how the environment reaches it is the deployment's business.
+
+- `CMD` serves on port 8080. `/health` is the liveness probe (always 200, lists enabled and disabled teams), `/ready` the readiness probe (503 while no team is enabled).
+- `alembic upgrade head` runs the migrations; run it before the app starts (init container or equivalent). Nothing creates the schema at runtime.
+- `POST /onboard/{team}`, `GET /teams/{team}`, `PUT /teams/{team}/settings` are the team self-service (see [Webhook setup](#webhook-setup)); onboarding needs `NOERGLER_PUBLIC_URL`.
+- `TEAMS_CONFIG` points at the mounted `teams.yaml`; secrets arrive as environment variables named in that file.
+- Corporate CA: mount the trusted bundle and point `SSL_CERT_FILE` at it; httpx, openai and asyncpg all honour it.
+- One replica only: the review queue is a single in-process worker behind an inference lock.
+
+## Health check
+
+```
+GET /health → {"status": "ok"}
+```
+
+## Metrics
+
+Noergler does **not** expose metrics directly. Add a `riptide:` block to a team
+(see [Optional: forward review-cost events to riptide](#optional-forward-review-cost-events-to-riptide))
+to forward LLM finops (model, tokens, cost)
+to a [riptide](https://github.com/trick77/riptide) collector — all dashboards,
+SQL queries, and DORA/SPACE rollups live there alongside delivery metrics from
+Bitbucket / ArgoCD / CI.
+
+## Project structure
+
+```
+app/
+  main.py              # FastAPI app: /webhook/{team}, /onboard/{team}, /teams/{team}, /health, /ready
+  onboarding.py        # Webhook onboarding against Bitbucket with the team admin's token
+  team_store.py        # Claims and review author lists per team (DB)
+  riptide_client.py    # Optional outbound emitter to riptide-collector
+  reviewer.py          # Review orchestrator (diff → AI → comments)
+  llm_client.py        # OpenAI SDK client for the configured LLM API, token-aware chunking
+  context_expansion.py # Asymmetric & dynamic diff context expansion
+  cross_file_context.py # Cross-file symbol reference analysis
+  diff_compression.py  # Large PR compression and file prioritization
+  bitbucket.py         # Bitbucket Server REST API client
+  jira.py              # Jira ticket fetching and compliance checking
+  models.py            # Pydantic models (webhook payloads, findings)
+  config.py            # Environment-based configuration
+  db/
+    pool.py            # asyncpg connection pool management
+    repository.py      # Database operations (upsert, query, insert)
+prompts/
+  review.txt           # Review prompt template
+  mention.txt          # Mention Q&A prompt template
+http/                  # IntelliJ HTTP client requests for the team self-service
+tests/                 # pytest test suite
+```
+
