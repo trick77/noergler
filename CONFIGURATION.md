@@ -79,7 +79,7 @@ Not overridable in a team block. Naming one there disables the team.
 | --- | --- | --- |
 | `REVIEW_PROMPT_TEMPLATE` | `prompts/review.txt` | Review prompt template. |
 | `REVIEW_MENTION_PROMPT_TEMPLATE` | `prompts/mention.txt` | Q&A prompt template. |
-| `BITBUCKET_MAX_DIFF_BYTES` | `10485760` | 10 MiB per PR or compare diff. |
+| `BITBUCKET_MAX_DIFF_BYTES` | `0` | Bytes per PR or compare diff; `0` is unlimited. Over it the PR is skipped, so set it only on a pod too small to rely on `GOMEMLIMIT`. A diff's size is mostly files the review discards. |
 | `BITBUCKET_MAX_FILE_BYTES` | `1048576` | 1 MiB per file fetched for context. |
 | `CONTEXT_WINDOW_HEADROOM_TOKENS` | `16000` | Trust-curve headroom. |
 | `CONTEXT_TRUST_THRESHOLD` | `256000` | Window size trusted in full. |

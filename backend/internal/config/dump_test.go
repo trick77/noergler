@@ -68,6 +68,45 @@ func TestDump_ContextWindowZeroSaysWhereTheWindowComesFrom(t *testing.T) {
 	}
 }
 
+// The diff cap defaults to 0, and a bare 0 reads as "refuses every diff" -
+// which is exactly what the field used to mean, so it has to say otherwise.
+func TestDump_ZeroDiffCapSaysUnlimited(t *testing.T) {
+	e := newEnv(t)
+	e.teams(twoTeams)
+	e.payments()
+	app := e.mustLoad()
+
+	var buf bytes.Buffer
+	Dump(app, slog.New(logging.NewHandler(&buf, slog.LevelInfo, "test")))
+	text := buf.String()
+
+	if !strings.Contains(text, "max_diff_bytes = unlimited") {
+		t.Error("an unset diff cap should print as unlimited")
+	}
+	if strings.Contains(text, "max_diff_bytes = 0") {
+		t.Error("a bare 0 reads as a cap of zero bytes")
+	}
+	// The per-file cap is a real number and stays one.
+	if !strings.Contains(text, "max_file_bytes = 1048576") {
+		t.Error("the file cap should print its value")
+	}
+}
+
+func TestDump_ExplicitDiffCapIsPrintedAsTheNumber(t *testing.T) {
+	e := newEnv(t)
+	e.teams(twoTeams)
+	e.payments()
+	e.set("BITBUCKET_MAX_DIFF_BYTES", "2048")
+	app := e.mustLoad()
+
+	var buf bytes.Buffer
+	Dump(app, slog.New(logging.NewHandler(&buf, slog.LevelInfo, "test")))
+
+	if !strings.Contains(buf.String(), "max_diff_bytes = 2048") {
+		t.Error("an explicit cap should print its value")
+	}
+}
+
 func TestDump_ExplicitContextWindowIsPrintedAsTheNumber(t *testing.T) {
 	e := newEnv(t)
 	e.teams(twoTeams)

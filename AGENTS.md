@@ -114,8 +114,14 @@ No web framework, no ORM, no logging library. Do not add one.
 - `team_disabled`, `team_ready`, `teams_ready` are alerted on. Do not reword.
 - Splunk-reserved keys renamed `splunk_<key>`, `timestamp` first (Splunk's auto
   timestamp guesses wrong otherwise).
-- Bodies byte-capped at the socket, 4 file fetches in flight, tokenizer vocab
-  compiled in and warmed at boot. The pod has 2 Gi.
+- 4 file fetches in flight, tokenizer vocab compiled in and warmed at boot.
+  The pod has 2 Gi.
+- **The PR diff is UNCAPPED by default** (`BITBUCKET_MAX_DIFF_BYTES=0`); the
+  inbound webhook body (1 MiB) and one file body (1 MiB) stay capped. A diff
+  cap refuses the whole PR, and a diff's bytes are mostly files `IsReviewable`
+  discards, so it measures what never becomes resident: a 19.4 MB PR with
+  5 KB of reviewable source was skipped. `GOMEMLIMIT` bounds the process.
+  Setting a diff cap is opt-in, for a pod too small to rely on that.
 - o200k_base vocab costs 6.7 MiB resident. `GOMEMLIMIT=1500MiB` is generous,
   not tight.
 
@@ -184,7 +190,8 @@ bytes alone are no bound, a stalled body never reaches the ceiling and would
 hold the single review worker, and the review path has no ctx deadline; a
 drain that stops early sets `Truncated` and stays `ContentTooLarge`, never a
 generic error (that path is `OutcomeError`: no notice, no row); the too-large
-review path names EVERY file, one log line each, `REVIEWED` or `FILTERED`,
+review path (reachable ONLY when a diff cap is set - it is 0/unlimited by
+default) names EVERY file, one log line each, `REVIEWED` or `FILTERED`,
 reviewable first then size descending, tail as a lower bound. `Head` stops at
 the cap, so the list comes from `FetchPRChanges` (`/changes`, paths only);
 those carry `?` for size. `/changes` failing OR parsing to nothing is an error

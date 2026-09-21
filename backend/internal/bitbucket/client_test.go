@@ -227,6 +227,79 @@ func TestFetchFileContentEscapesPath(t *testing.T) {
 
 // --- byte caps ---------------------------------------------------------------
 
+// The default: no cap, so a diff far past the old 10 MiB limit comes back
+// whole. This is the case a real PR hits - its size is dominated by fixtures
+// IsReviewable discards, so refusing it costs a review and saves nothing.
+func TestDiffUnlimitedByDefault(t *testing.T) {
+	big := strings.Repeat("x", 12*1024*1024)
+	_, c := newFake(t, text(big))
+	c.maxDiffBytes = 0
+
+	got, err := c.FetchPRDiff(context.Background(), "PROJ", "my-repo", 1, 0)
+	if err != nil {
+		t.Fatalf("FetchPRDiff: %v", err)
+	}
+	if len(got) != len(big) {
+		t.Errorf("got %d bytes, want the whole %d", len(got), len(big))
+	}
+}
+
+// Unlimited must bypass the Content-Length check too, not just the read: that
+// branch returns before a single byte is read and would refuse on the header
+// alone.
+func TestDiffUnlimitedIgnoresContentLength(t *testing.T) {
+	_, c := newFake(t, text(strings.Repeat("x", 5000)))
+	c.maxDiffBytes = 0
+
+	got, err := c.FetchPRDiff(context.Background(), "PROJ", "my-repo", 1, 0)
+	if err != nil {
+		t.Fatalf("FetchPRDiff: %v", err)
+	}
+	if len(got) != 5000 {
+		t.Errorf("got %d bytes, want 5000", len(got))
+	}
+}
+
+// A negative cap cannot reach the config, but the bypass is <= 0 so the
+// function is total: no panic, no overflow on max*drainCeilingFactor.
+func TestDiffNegativeCapIsUnlimited(t *testing.T) {
+	_, c := newFake(t, text(strings.Repeat("x", 1000)))
+	c.maxDiffBytes = -1
+
+	if _, err := c.FetchPRDiff(context.Background(), "PROJ", "my-repo", 1, 0); err != nil {
+		t.Fatalf("FetchPRDiff: %v", err)
+	}
+}
+
+// Unlimited still returns valid UTF-8: the capped path sanitises, and a body
+// that skips it must not start leaking raw bytes into the prompt.
+func TestDiffUnlimitedStillSanitisesUTF8(t *testing.T) {
+	_, c := newFake(t, text("a\xffb"))
+	c.maxDiffBytes = 0
+
+	got, err := c.FetchPRDiff(context.Background(), "PROJ", "my-repo", 1, 0)
+	if err != nil {
+		t.Fatalf("FetchPRDiff: %v", err)
+	}
+	if got != "a�b" {
+		t.Errorf("got %q, want the invalid byte replaced", got)
+	}
+}
+
+// A non-2xx still wins when uncapped: the early return must not skip the
+// status check above it and report an error page as a diff.
+func TestDiffUnlimitedStillFailsOnNon2xx(t *testing.T) {
+	_, c := newFake(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = io.WriteString(w, strings.Repeat("e", 5000))
+	})
+	c.maxDiffBytes = 0
+
+	if _, err := c.FetchPRDiff(context.Background(), "PROJ", "my-repo", 1, 0); err == nil {
+		t.Fatal("want an error for a 500")
+	}
+}
+
 // A declared Content-Length over the cap fails before the body is read, and
 // reports the size the server promised.
 func TestDiffOverCapByContentLength(t *testing.T) {

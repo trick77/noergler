@@ -12,13 +12,14 @@ import (
 // as ***. Section headers are fixed so runbooks and Splunk
 // searches still match.
 //
-// One field deliberately does not render its raw value: context_window is 0
-// "from gateway". The raw 0 reads as "no context window" when it means the
-// limit is read from the gateway's max_input_tokens at team startup, and the
-// resolved value never appeared in this dump at all.
+// Two fields deliberately do not render their raw value, because 0 means the
+// opposite of what it reads as: context_window is 0 "from gateway" (the limit
+// comes from max_input_tokens at team startup, and the resolved value never
+// appeared in this dump at all), and max_diff_bytes is 0 "unlimited" (a cap of
+// zero would refuse every diff, which is what the field used to mean).
 func Dump(app *App, log *slog.Logger) {
 	section(log, "config.bitbucket", kv{"base_url", app.Bitbucket.BaseURL}, kv{"token", mask}, kv{"username", app.Bitbucket.Username},
-		kv{"max_diff_bytes", app.Bitbucket.MaxDiffBytes}, kv{"max_file_bytes", app.Bitbucket.MaxFileBytes})
+		kv{"max_diff_bytes", byteCap(app.Bitbucket.MaxDiffBytes)}, kv{"max_file_bytes", app.Bitbucket.MaxFileBytes})
 	llmSection(log, "config.llm", app.LLM)
 	reviewSection(log, "config.review", app.Review)
 	jiraSection(log, "config.jira", app.Jira)
@@ -101,6 +102,15 @@ func quotedList(items []string) string {
 func contextWindow(n int) string {
 	if n == 0 {
 		return "from gateway"
+	}
+	return fmt.Sprint(n)
+}
+
+// byteCap renders a byte cap. 0 is not a cap of zero, which would refuse every
+// body; it means no cap at all, which is the diff default.
+func byteCap(n int) string {
+	if n <= 0 {
+		return "unlimited"
 	}
 	return fmt.Sprint(n)
 }

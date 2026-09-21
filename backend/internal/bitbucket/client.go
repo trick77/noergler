@@ -228,6 +228,10 @@ func statusError(method, path string, resp *http.Response) error {
 //     up to a ceiling of drainCeilingFactor times the cap.
 //
 // The comparison is strictly greater than: a body of exactly max passes.
+//
+// max <= 0 is unlimited: the body is read whole and ContentTooLarge is never
+// returned. That is the default for the PR diff, whose size is dominated by
+// files IsReviewable discards before anything expensive touches them.
 func (c *Client) getTextCapped(ctx context.Context, path string, query url.Values, accept, what string, max int) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url(path, query), nil)
 	if err != nil {
@@ -248,6 +252,16 @@ func (c *Client) getTextCapped(ctx context.Context, path string, query url.Value
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", statusError(http.MethodGet, path, resp)
 	}
+	// Unlimited: read the body whole, no Content-Length check, no limit reader,
+	// no drain. Returning early keeps the capped path below exactly as it was.
+	if max <= 0 {
+		buf, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", fmt.Errorf("read %s: %w", what, err)
+		}
+		return strings.ToValidUTF8(string(buf), "�"), nil
+	}
+
 	if resp.ContentLength >= 0 && resp.ContentLength > int64(max) {
 		size := int(resp.ContentLength)
 		return "", &ContentTooLarge{What: what, Limit: max, Size: &size}
