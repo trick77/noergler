@@ -102,9 +102,9 @@ func TestAcceptanceCriteria(t *testing.T) {
 		},
 		{"multiple prefixes", "AK-1: a\nDoD-2: b", []string{"AK", "DoD"}, "AK-1: a\nDoD-2: b"},
 
-		// Divergence from Python, deliberate: the prefix must end on a word
-		// boundary. Python matched any line merely starting with the letters,
-		// so ordinary prose was filed as an acceptance criterion.
+		// The prefix must end on a word boundary. Matching any line merely
+		// starting with the letters files ordinary prose as an acceptance
+		// criterion.
 		{"AC does not match Actual", "Actual behaviour is wrong\nAC-1: real", []string{"AC"}, "AC-1: real"},
 		{"Req does not match Request", "Request: please\nReq-2: real", []string{"Req"}, "Req-2: real"},
 		{"AK does not match AKuebung", "AKübung foo\nAK-9: real", []string{"AK"}, "AK-9: real"},

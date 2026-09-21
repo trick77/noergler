@@ -125,8 +125,8 @@ func TestParseHunks(t *testing.T) {
 		}
 	})
 
-	// Divergence from Python: the split("\n") artifact is dropped, so no phantom
-	// blank reaches the body.
+	// The trailing "" from splitting on "\n" is dropped, so no phantom blank
+	// reaches the body.
 	t.Run("trailing empty body line dropped", func(t *testing.T) {
 		_, hunks := ParseHunks("@@ -1,1 +1,1 @@\n-a\n+b\n")
 		if got := hunks[0].BodyLines; !reflect.DeepEqual(got, []string{"-a", "+b"}) {

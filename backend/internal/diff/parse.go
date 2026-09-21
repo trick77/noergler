@@ -101,11 +101,12 @@ func IsDeleted(fileDiff string) bool {
 
 // ParseHunks splits a per-file diff into the leading header lines and its hunks.
 //
-// Mirrors Python parse_hunks, which uses split("\n") rather than splitlines().
+// Splits on "\n" rather than by Unicode line boundaries: a diff's own line
+// terminators are the only ones that may split a hunk.
 //
-// Divergence (AGENTS.md): a trailing empty body line, the artifact of splitting
-// a diff that ends in a newline, is dropped here. Python kept it, which left a
-// phantom blank line mid-body whenever after-context followed it.
+// Pinned (AGENTS.md): a trailing empty body line, the artifact of splitting a
+// diff that ends in a newline, is dropped here. Keeping it leaves a phantom
+// blank line mid-body whenever after-context follows.
 func ParseHunks(fileDiff string) (headerLines []string, hunks []*Hunk) {
 	var current *Hunk
 

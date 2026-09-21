@@ -26,7 +26,7 @@ func payloadBy(author string) *webhook.Payload {
 // caller gets a bare false and cannot say which list decided. Python reported
 // every skip as an allow-list miss, which misstates why an ignored bot was
 // skipped: prod logged `renovate_diecibaerg (not in auto-review authors)` for
-// an author that was in ignore_authors. Divergence from Python, on purpose.
+// an author that was in ignore_authors.
 //
 // The gate returns before any HTTP or store call, so a bare Reviewer with no
 // upstreams wired is enough to drive it.

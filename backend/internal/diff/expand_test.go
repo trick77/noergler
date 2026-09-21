@@ -439,9 +439,9 @@ func TestMergeHeaderCountsCases(t *testing.T) {
 		if n := len(headersOf(got)); n != 1 {
 			t.Errorf("got %d hunk headers, want 1:\n%s", n, got)
 		}
-		// Divergence: Python dropped -old2 here. It must survive.
+		// A merge must not drop the second hunk's removal lines.
 		if !strings.Contains(got, "-old2") {
-			t.Errorf("-old2 was dropped, reintroducing the Python bug:\n%s", got)
+			t.Errorf("-old2 was dropped by the merge:\n%s", got)
 		}
 	})
 

@@ -64,11 +64,11 @@ func findEnclosingScopeLine(fileLines []string, fromLine, maxLines int, path str
 		if idx < 0 {
 			break
 		}
-		// Divergence (AGENTS.md): skip lines past the end of content instead of
+		// Pinned (AGENTS.md): skip lines past the end of content instead of
 		// indexing past it. Content is byte-capped at the socket while the diff
 		// is not, so a truncated large file plus a late hunk reaches here.
-		// Python raised IndexError and failed that review; a panic would take
-		// down the single queue worker for every team.
+		// Indexing past the end would panic and take down the single queue
+		// worker for every team.
 		if idx >= len(fileLines) {
 			continue
 		}
@@ -83,11 +83,12 @@ func findEnclosingScopeLine(fileLines []string, fromLine, maxLines int, path str
 // whose windows overlap.
 //
 // content is the full new-side file; when empty the diff is returned unchanged,
-// matching Python's `if file_content is None`.
+// when empty the diff is returned unchanged.
 //
-// Divergence (AGENTS.md): adjacent hunks merge without losing diff lines. Python
-// trimmed the second hunk's body by the whole overlap, which silently dropped
-// removal lines whenever the overlap exceeded that hunk's before-context.
+// Pinned (AGENTS.md): adjacent hunks merge without losing diff lines. The
+// overlap comes off the first hunk's added context, never off the second
+// hunk's body; trimming the body silently drops removal lines whenever the
+// overlap exceeds that hunk's before-context.
 func ExpandContext(fileDiff, content, path string, before, after, maxDynamicBefore int, dynamicContext bool) string {
 	if content == "" {
 		return fileDiff

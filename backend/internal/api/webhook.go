@@ -176,9 +176,8 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 // a diff or touch the DB, so they run on the review worker rather than in
 // the request: one diff and prompt set in memory at a time.
 //
-// Divergence from Python, pinned in AGENTS.md: pr:deleted and
-// pr:comment:deleted run as FastAPI background tasks there and on the queue
-// here. Their response bodies keep Python's shape and carry no queue key.
+// Pinned in AGENTS.md: pr:deleted and pr:comment:deleted go on the queue,
+// but their response bodies carry no queue key.
 func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Runtime, slug, project, repo string, p *webhook.Payload) {
 	prTag := fmt.Sprintf("%s/%s#%d", project, repo, p.PullRequest.ID)
 	rv := rt.Reviewer

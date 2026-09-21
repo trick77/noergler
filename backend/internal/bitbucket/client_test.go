@@ -213,8 +213,8 @@ func TestFetchFileContent(t *testing.T) {
 	}
 }
 
-// Python interpolated the path raw, so a space or '#' produced a broken URL.
-// Divergence: the path is escaped, and '#' does not become a fragment.
+// The path is escaped: interpolating it raw makes a space or '#' produce a
+// broken URL, with '#' swallowing the rest as a fragment.
 func TestFetchFileContentEscapesPath(t *testing.T) {
 	f, c := newFake(t, text("x"))
 	if _, err := c.FetchFileContent(context.Background(), "PROJ", "r", "abc", "src/my file#1.py"); err != nil {
