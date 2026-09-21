@@ -26,16 +26,16 @@ import (
 // runs of those six characters keeping the separators, which is what
 // splitChunks does.
 
-// pyWhitespace is the wrapper's six-character whitespace set. Deliberately not
+// wrapWhitespace is the wrapper's six-character whitespace set. Deliberately not
 // unicode.IsSpace: a non-breaking space must not become a break point.
-const pyWhitespace = "\t\n\v\f\r "
+const wrapWhitespace = "\t\n\v\f\r "
 
 const tabSize = 8
 
-// isPyWhitespace reports whether r is one of the six characters the wrapper
+// isWrapWhitespace reports whether r is one of the six characters the wrapper
 // treats as whitespace.
-func isPyWhitespace(r rune) bool {
-	return strings.ContainsRune(pyWhitespace, r)
+func isWrapWhitespace(r rune) bool {
+	return strings.ContainsRune(wrapWhitespace, r)
 }
 
 // expandTabs expands to 8-column tab stops: each tab advances to the next
@@ -70,7 +70,7 @@ func expandTabs(s string) string {
 // space. Runs after tab expansion.
 func replaceWhitespace(s string) string {
 	return strings.Map(func(r rune) rune {
-		if isPyWhitespace(r) {
+		if isWrapWhitespace(r) {
 			return ' '
 		}
 		return r
@@ -84,7 +84,7 @@ func splitChunks(s string) []string {
 	var cur strings.Builder
 	inWS := false
 	for i, r := range s {
-		ws := isPyWhitespace(r)
+		ws := isWrapWhitespace(r)
 		if i > 0 && ws != inWS {
 			out = append(out, cur.String())
 			cur.Reset()

@@ -154,11 +154,11 @@ func (o *Onboarder) buildWebhookBody() bitbucket.Webhook {
 	return w
 }
 
-// pyRepr renders a string for the messages that carry one: single quotes,
+// quoted renders a string for the messages that carry one: single quotes,
 // switching to double quotes when the value holds a single quote and no
 // double, otherwise backslash-escaping the inner quote. The golden messages
 // pin this exact form.
-func pyRepr(s string) string {
+func quoted(s string) string {
 	if strings.Contains(s, "'") && !strings.Contains(s, `"`) {
 		return `"` + s + `"`
 	}
@@ -166,20 +166,20 @@ func pyRepr(s string) string {
 }
 
 // quotedList renders a sorted string slice as ['a', 'b'], each entry through
-// pyRepr, ", " between them.
+// quoted, ", " between them.
 func quotedList(items []string) string {
 	parts := make([]string, len(items))
 	for i, s := range items {
-		parts[i] = pyRepr(s)
+		parts[i] = quoted(s)
 	}
 	return "[" + strings.Join(parts, ", ") + "]"
 }
 
-// pyTruthy is the emptiness test over a JSON-decoded value: nil, false, "",
+// isEmptyish is the emptiness test over a JSON-decoded value: nil, false, "",
 // 0 and an empty list or map are all falsey. It backs the two active/ssl
 // checks, where a null must read the same as false, and the `configuration`
 // emptiness one.
-func pyTruthy(v any) bool {
+func isEmptyish(v any) bool {
 	switch t := v.(type) {
 	case nil:
 		return false
@@ -205,13 +205,13 @@ func (o *Onboarder) diffWebhook(existing map[string]any) []string {
 	if u, ok := existing["url"].(string); !ok || u != o.webhookURL {
 		var was string
 		if ok {
-			was = pyRepr(u)
+			was = quoted(u)
 		} else if existing["url"] == nil {
 			was = "None"
 		} else {
 			was = fmt.Sprintf("%v", existing["url"])
 		}
-		diffs = append(diffs, fmt.Sprintf("url: %s -> %s", was, pyRepr(o.webhookURL)))
+		diffs = append(diffs, fmt.Sprintf("url: %s -> %s", was, quoted(o.webhookURL)))
 	}
 
 	existingEvents := map[string]bool{}
@@ -244,15 +244,15 @@ func (o *Onboarder) diffWebhook(existing map[string]any) []string {
 	}
 
 	// Absent means True: Bitbucket omits neither, but a hand-made body might.
-	if v, present := existing["active"]; present && !pyTruthy(v) {
+	if v, present := existing["active"]; present && !isEmptyish(v) {
 		diffs = append(diffs, "active: False -> True")
 	}
-	if v, present := existing["sslVerificationRequired"]; present && !pyTruthy(v) {
+	if v, present := existing["sslVerificationRequired"]; present && !isEmptyish(v) {
 		diffs = append(diffs, "sslVerificationRequired: False -> True")
 	}
 	// Bitbucket never returns the stored secret, so only its absence is
 	// visible; a secret-only change needs remove + onboard.
-	if !pyTruthy(existing["configuration"]) {
+	if !isEmptyish(existing["configuration"]) {
 		diffs = append(diffs, "configuration.secret: (unset) -> (set)")
 	}
 	return diffs
@@ -285,11 +285,11 @@ func (o *Onboarder) UpsertWebhook(ctx context.Context, target Target) (int, []st
 		return 0, nil, &ForeignHook{Msg: fmt.Sprintf(
 			"%s hook points at another noergler (%s); "+
 				"gone? remove it with that instance first, else use another name",
-			pyRepr(o.opts.WebhookName), hookURL(existing))}
+			quoted(o.opts.WebhookName), hookURL(existing))}
 	}
 	body := o.buildWebhookBody()
 	if existing == nil {
-		o.log.InfoContext(ctx, fmt.Sprintf("[%s] creating webhook %s", target.Key(), pyRepr(o.opts.WebhookName)))
+		o.log.InfoContext(ctx, fmt.Sprintf("[%s] creating webhook %s", target.Key(), quoted(o.opts.WebhookName)))
 		if o.opts.DryRun {
 			return -1, []string{"create"}, nil
 		}
@@ -400,7 +400,7 @@ func (o *Onboarder) PruneRepoHooks(ctx context.Context, project string) ([]strin
 	}
 	for _, entry := range foreign {
 		o.log.WarnContext(ctx, fmt.Sprintf(
-			"[%s] hook named %s points at another noergler, left alone", entry, pyRepr(o.opts.WebhookName)))
+			"[%s] hook named %s points at another noergler, left alone", entry, quoted(o.opts.WebhookName)))
 	}
 	pruned := []string{}
 	for _, s := range stray {

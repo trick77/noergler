@@ -195,12 +195,12 @@ func (o *Onboarder) Remove(ctx context.Context, target Target) (TargetResult, er
 	existing := hookNamed(hooks, o.opts.WebhookName)
 	if existing == nil {
 		return TargetResult{target, "skipped",
-			fmt.Sprintf("no %s webhook found", pyRepr(o.opts.WebhookName)), []string{}}, nil
+			fmt.Sprintf("no %s webhook found", quoted(o.opts.WebhookName)), []string{}}, nil
 	}
 	if !o.isOurs(existing) {
 		return TargetResult{target, "skipped", fmt.Sprintf(
 			"%s webhook points at another noergler (%s), left alone",
-			pyRepr(o.opts.WebhookName), hookURL(existing)), []string{}}, nil
+			quoted(o.opts.WebhookName), hookURL(existing)), []string{}}, nil
 	}
 	webhookID, err := hookID(existing)
 	if err != nil {
