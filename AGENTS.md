@@ -184,8 +184,14 @@ bytes alone are no bound, a stalled body never reaches the ceiling and would
 hold the single review worker, and the review path has no ctx deadline; a
 drain that stops early sets `Truncated` and stays `ContentTooLarge`, never a
 generic error (that path is `OutcomeError`: no notice, no row); the too-large
-review path logs the largest files parseable from `Head`, tail as a lower
-bound.
+review path names EVERY file, one log line each, `REVIEWED` or `FILTERED`,
+reviewable first then size descending, tail as a lower bound. `Head` stops at
+the cap, so the list comes from `FetchPRChanges` (`/changes`, paths only);
+those carry `?` for size. `/changes` failing OR parsing to nothing is an error
+that logs `full file list unavailable` and falls back to `Head` - an empty list
+with no error would report head-only scope as if it had never been called.
+`diff.PathIsReviewable` shares `IsReviewable`'s four skip lists; a test pins
+that they agree.
 
 NOT ours and not fixable here: `tiktoken-go` counts `" \n \n"` as two tokens
 where the reference tokenizer merges the run into one (id 56319), so a diff

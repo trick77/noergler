@@ -26,6 +26,7 @@ import (
 type BitbucketClient interface {
 	BotUsername() string
 	FetchPRDiff(ctx context.Context, project, repo string, prID, contextLines int) (string, error)
+	FetchPRChanges(ctx context.Context, project, repo string, prID int) ([]string, error)
 	FetchCommitDiff(ctx context.Context, project, repo, fromCommit, toCommit string) (string, error)
 	FetchFileContent(ctx context.Context, project, repo, commit, path string) (string, error)
 	PostInlineComment(ctx context.Context, project, repo string, prID int, file string, line int, body string) (int, error)

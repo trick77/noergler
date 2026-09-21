@@ -63,3 +63,49 @@ func TestBinaryMarkerScanIsRuneBounded(t *testing.T) {
 		t.Error("marker beyond 500 runes should not be seen")
 	}
 }
+
+// PathIsReviewable is the name-based half of IsReviewable, for callers holding
+// a path but no diff text (the too-large log listing a PR from /changes).
+func TestPathIsReviewable(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{"src/app.go", true},
+		{"src/app/schadenmeldung.component.ts", true},
+		{"README.md", true},
+		// The case this was written for: e2e fixtures dominating a diff.
+		{"apps/e2e/fixtures/fallartwechsel.json", false},
+		{"docs/architecture/flow.puml", false},
+		{"assets/logo.png", false},
+		{"go.sum", false},
+		{"pnpm-lock.yaml", false},
+		{"node_modules/pkg/index.js", false},
+		{"target/classes/App.class", false},
+		{".github/workflows/ci.yaml", false},
+		{"src/.hidden.go", false},
+		{"gen/service_pb2.py", false},
+		{"", true},
+	}
+	for _, c := range cases {
+		if got := PathIsReviewable(c.path); got != c.want {
+			t.Errorf("PathIsReviewable(%q) = %v, want %v", c.path, got, c.want)
+		}
+	}
+}
+
+// One source of truth for the skip lists: a path both functions can judge must
+// get the same verdict, or a list edit would make the log disagree with the
+// review it describes.
+func TestPathIsReviewableAgreesWithIsReviewable(t *testing.T) {
+	paths := []string{
+		"src/app.go", "fixtures/big.json", "docs/flow.puml", "assets/logo.png",
+		"go.sum", "node_modules/pkg/index.js", "README.md", "src/app.ts",
+	}
+	for _, p := range paths {
+		fd := "diff --git a/" + p + " b/" + p + "\n--- a/" + p + "\n+++ b/" + p + "\n@@ -0,0 +1 @@\n+x\n"
+		if got, want := PathIsReviewable(p), IsReviewable(fd); got != want {
+			t.Errorf("%q: PathIsReviewable=%v but IsReviewable=%v", p, got, want)
+		}
+	}
+}

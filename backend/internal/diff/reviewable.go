@@ -89,10 +89,32 @@ func IsReviewable(fileDiff string) bool {
 	if path == "" {
 		return true
 	}
+	return PathIsReviewable(path)
+}
+
+// PathIsReviewable applies the name-based half of IsReviewable to a bare path.
+//
+// It exists for callers holding a path but no diff text: the too-large log
+// path, which lists a PR's files from `/changes` after the cap tripped at the
+// socket. The extension heuristic and the binary-marker scan in IsReviewable
+// both need the diff header, so a path-only verdict is the weaker of the two
+// and may call a binary file reviewable when its extension is not listed.
+//
+// Shares the skip lists with IsReviewable: one source of truth, so a list
+// edit cannot make the two disagree.
+func PathIsReviewable(path string) bool {
+	if path == "" {
+		return true
+	}
 	path = strings.ToLower(path)
 
 	parts := strings.Split(path, "/")
 	basename := parts[len(parts)-1]
+	for ext := range skipExtensions {
+		if strings.HasSuffix(basename, ext) {
+			return false
+		}
+	}
 	if skipFiles[basename] || hasAnySuffix(basename, skipFileSuffixes) {
 		return false
 	}

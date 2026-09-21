@@ -66,6 +66,47 @@ func (c *Client) FetchCommitDiff(ctx context.Context, project, repo, fromCommit,
 	return text, err
 }
 
+// FetchPRChanges returns the paths of every file in a PR, in the order
+// Bitbucket reports them.
+//
+// This is the file list only, no diff bodies, so it stays cheap on a PR whose
+// diff is far too large to fetch. That is its one caller: the too-large log
+// path, where the cap tripped at the socket and the truncated head covers only
+// the files that fit inside it.
+//
+// Decoding is deliberately tolerant. Bitbucket nests the path under
+// `path.toString`; an entry that does not carry one is skipped rather than
+// failing the call, so an unexpected shape degrades to a short list instead of
+// turning a failure path into a second failure.
+func (c *Client) FetchPRChanges(ctx context.Context, project, repo string, prID int) ([]string, error) {
+	values, err := c.paged(ctx, prPath(project, repo, prID)+"/changes")
+	if err != nil {
+		return nil, err
+	}
+	paths := make([]string, 0, len(values))
+	for _, v := range values {
+		// Directories carry nodeType DIRECTORY; only files have diffs.
+		if nodeType, ok := v["nodeType"].(string); ok && !strings.EqualFold(nodeType, "FILE") {
+			continue
+		}
+		path, _ := v["path"].(map[string]any)
+		if path == nil {
+			continue
+		}
+		if s, ok := path["toString"].(string); ok && s != "" {
+			paths = append(paths, s)
+		}
+	}
+	// Entries that all failed to parse mean the response shape is not what
+	// this assumes. Erroring is the point: returning an empty list with no
+	// error would have the caller report head-only scope as if the call had
+	// never been made, hiding the very breakage the caller exists to surface.
+	if len(values) > 0 && len(paths) == 0 {
+		return nil, fmt.Errorf("changes: %d entries, none carried path.toString", len(values))
+	}
+	return paths, nil
+}
+
 func shortSHA(s string) string {
 	if len(s) > 10 {
 		return s[:10]

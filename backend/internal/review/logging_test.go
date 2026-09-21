@@ -16,8 +16,9 @@ func capturingReviewer(t *testing.T) (*Reviewer, *bytes.Buffer) {
 	t.Helper()
 	var buf bytes.Buffer
 	r := New(Options{
-		TeamSlug: "payments",
-		Log:      slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		TeamSlug:  "payments",
+		Bitbucket: newFakeBitbucket(),
+		Log:       slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
 	})
 	return r, &buf
 }
