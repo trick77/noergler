@@ -34,6 +34,19 @@ func TestDetectLanguage(t *testing.T) {
 		{"main.Py", "other"},
 		// Build-file map is basename-exact, so a nested one still matches.
 		{"app/pom.xml", "build-config"},
+		{"stubs/types.pyi", "python"},
+		{"src/Main.java", "jvm"},
+		{"src/Main.kt", "jvm"},
+		{"src/app.ts", "typescript"},
+		{"src/App.tsx", "typescript"},
+		{"utils.mjs", "typescript"},
+		{"template.html", "html"},
+		{"app.css", "css"},
+		{"settings.toml", "config"},
+		{"notes.rst", "docs"},
+		{"angular.json", "build-config"},
+		{"nx.json", "build-config"},
+		{"data.dat", "other"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {
@@ -63,6 +76,17 @@ func TestIsTestFile(t *testing.T) {
 		{"src/TESTS/x.go", true},
 		{"main.py", false},
 		{"contest.py", false},
+		{"tests/test_main.py", true},
+		{"src/main_test.py", true},
+		{"src/main.py", false},
+		{"src/test/MainTest.java", true},
+		{"src/test/MainTests.java", true},
+		{"src/main/Main.java", false},
+		{"app.spec.ts", true},
+		{"app.test.ts", true},
+		{"app.ts", false},
+		{"src/test/Helper.java", true},
+		{"src/__tests__/App.tsx", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {

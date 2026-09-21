@@ -9,7 +9,7 @@ import (
 // Pydantic model: file, line, severity and comment are required, severity is a
 // Literal["issue","suggestion"], and validation failures skip the finding
 // rather than failing the batch.
-func TestParseFindingMatchesPython(t *testing.T) {
+func TestParseFindingIsPinned(t *testing.T) {
 	cases := []struct {
 		name string
 		item string

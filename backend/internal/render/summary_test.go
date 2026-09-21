@@ -264,10 +264,10 @@ func summaryCases() map[string]SummaryInput {
 	return cases
 }
 
-// TestSummaryMatchesPython drives the Go builder with the same arguments the
+// TestSummaryIsPinned drives the Go builder with the same arguments the
 // Python generator used and compares the rendered markdown byte for byte.
 // This is what the ~35 test_build_summary_* cases in test_reviewer.py cover.
-func TestSummaryMatchesPython(t *testing.T) {
+func TestSummaryIsPinned(t *testing.T) {
 	golden := loadSummaryGolden(t)
 	cases := summaryCases()
 

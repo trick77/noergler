@@ -57,7 +57,7 @@ func TestComplianceInstructionsContent(t *testing.T) {
 // byte: a "contains" assertion would miss a typo mid-sentence, and the model
 // is the only thing that reads them. Lengths and hashes generated from the
 // running Python.
-func TestSystemMessagesAreByteIdenticalToPython(t *testing.T) {
+func TestSystemMessagesArePinned(t *testing.T) {
 	cases := []struct {
 		name   string
 		got    string

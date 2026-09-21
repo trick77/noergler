@@ -33,7 +33,7 @@ func loadSkipGolden(t *testing.T) skipGolden {
 	return g
 }
 
-func TestSkipSummariesMatchPython(t *testing.T) {
+func TestSkipSummariesIsPinned(t *testing.T) {
 	g := loadSkipGolden(t)
 
 	if got := OptOutBranchSummary("noergloff", "feature/noergloff-thing"); got != g.OptOut {
@@ -47,7 +47,7 @@ func TestSkipSummariesMatchPython(t *testing.T) {
 	}
 }
 
-func TestAgentsMDTooLargeSummaryMatchesPython(t *testing.T) {
+func TestAgentsMDTooLargeSummaryIsPinned(t *testing.T) {
 	g := loadSkipGolden(t)
 	cases := []struct {
 		name   string

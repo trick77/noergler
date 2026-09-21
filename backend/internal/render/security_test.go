@@ -10,7 +10,7 @@ import (
 // Both directions of the RE2 divergence are covered: "üinsecure" and
 // "insecureü" are false in Python (no word boundary next to a letter) where a
 // naive \b port says true, and "1insecure" is false for the same reason.
-func TestSecurityKeywordsMatchPython(t *testing.T) {
+func TestSecurityKeywordsIsPinned(t *testing.T) {
 	blob, err := os.ReadFile("testdata/security_golden.json")
 	if err != nil {
 		t.Fatalf("read security golden: %v", err)

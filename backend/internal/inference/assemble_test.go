@@ -139,10 +139,10 @@ func assembleCases(template string) map[string]AssembleRequest {
 	return cases
 }
 
-// TestAssembleReviewPromptMatchesPython pins the whole assembled prompt by
+// TestAssembleReviewPromptIsPinned pins the whole assembled prompt by
 // SHA-256 against the Python review_diff assembly, plus the breakdown counts
 // and the fit-check token total.
-func TestAssembleReviewPromptMatchesPython(t *testing.T) {
+func TestAssembleReviewPromptIsPinned(t *testing.T) {
 	golden, _ := loadAssembleGolden(t)
 	template := testTemplate(t)
 	count := counter(t)
@@ -185,7 +185,7 @@ func TestAssembleReviewPromptMatchesPython(t *testing.T) {
 // The fit check weighs system + prompt + schema, because the gateway bills
 // all three as input. Counting the prompt alone would under-count by roughly
 // the schema and let a PR through that does not fit.
-func TestSchemaSerializationMatchesPython(t *testing.T) {
+func TestSchemaSerializationIsPinned(t *testing.T) {
 	_, schema := loadAssembleGolden(t)
 	count := counter(t)
 

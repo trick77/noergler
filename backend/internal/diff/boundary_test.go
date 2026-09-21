@@ -5,7 +5,7 @@ import "testing"
 // Expectations generated from Python re with \b, which is Unicode-aware. RE2's
 // \b is ASCII-only, so symbolBoundaryRE spells the boundary out; these pairs
 // pin it to Python's behaviour, including the cases that must NOT match.
-func TestSymbolBoundaryMatchesPython(t *testing.T) {
+func TestSymbolBoundaryIsPinned(t *testing.T) {
 	lines := []string{
 		"new Ölservice();",
 		"this.café()",

@@ -5,7 +5,7 @@ import "testing"
 // Expectations generated from Python Path(p).suffix.lstrip("."). Go's
 // path.Ext disagrees on a dotfile, calling ".env" an extension of ".env",
 // which would label the fence "env".
-func TestFenceLanguageMatchesPython(t *testing.T) {
+func TestFenceLanguageIsPinned(t *testing.T) {
 	cases := []struct{ path, want string }{
 		{".env", ""},
 		{"a.py", "py"},

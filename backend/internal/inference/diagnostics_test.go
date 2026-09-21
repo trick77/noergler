@@ -26,7 +26,7 @@ func diagnosticsOf(content string) []string {
 	return out
 }
 
-func TestParseDiagnosticsMatchPython(t *testing.T) {
+func TestParseDiagnosticsIsPinned(t *testing.T) {
 	cases := []struct {
 		name    string
 		content string

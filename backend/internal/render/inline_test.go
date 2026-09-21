@@ -11,7 +11,7 @@ import (
 
 // Expected bodies captured from the Python (app/bitbucket.py
 // post_inline_comment text assembly) with the venv.
-func TestInlineCommentMatchesPython(t *testing.T) {
+func TestInlineCommentIsPinned(t *testing.T) {
 	blob, err := os.ReadFile("testdata/inline_golden.json")
 	if err != nil {
 		t.Fatalf("read inline golden: %v", err)

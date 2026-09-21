@@ -7,7 +7,7 @@ import (
 
 // Expectations generated from CPython's str.splitlines. A bug here shifts every
 // line number, so the boundary set is pinned rather than assumed.
-func TestSplitLinesKeepEndsMatchesPython(t *testing.T) {
+func TestSplitLinesKeepEndsIsPinned(t *testing.T) {
 	cases := []struct {
 		in   string
 		want []string
@@ -38,7 +38,7 @@ func TestSplitLinesKeepEndsMatchesPython(t *testing.T) {
 }
 
 // splitLines drops the terminators, matching Python's plain splitlines.
-func TestSplitLinesMatchesPython(t *testing.T) {
+func TestSplitLinesIsPinned(t *testing.T) {
 	cases := []struct {
 		in   string
 		want []string

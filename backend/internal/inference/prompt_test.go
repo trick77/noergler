@@ -8,7 +8,7 @@ import (
 )
 
 // Expectations generated from the running Python (format_file_entry).
-func TestFormatFileEntryMatchesPython(t *testing.T) {
+func TestFormatFileEntryIsPinned(t *testing.T) {
 	const changes = "### Changes (diff: lines with `-` are REMOVED, lines with `+` are ADDED):\n```diff\n@@ -1 +1 @@\n+x\n```"
 
 	cases := []struct {

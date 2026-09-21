@@ -8,7 +8,7 @@ import (
 // Counts produced by Python tiktoken.encoding_for_model("gpt-4o") over the same
 // inputs. They are literals on purpose: a library upgrade that shifts
 // tokenization has to fail here rather than silently reprice every review.
-func TestCountMatchesPython(t *testing.T) {
+func TestCountIsPinned(t *testing.T) {
 	c, err := New()
 	if err != nil {
 		t.Fatalf("New: %v", err)

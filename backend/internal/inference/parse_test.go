@@ -6,7 +6,7 @@ import (
 )
 
 // Expectations generated from the running Python (_parse_review_response).
-func TestParseReviewMatchesPython(t *testing.T) {
+func TestParseReviewIsPinned(t *testing.T) {
 	cases := []struct {
 		name        string
 		content     string
@@ -134,7 +134,7 @@ func TestParseReviewFindings(t *testing.T) {
 }
 
 // Expectations generated from the running Python (_is_vacuous_suggestion).
-func TestIsVacuousSuggestionMatchesPython(t *testing.T) {
+func TestIsVacuousSuggestionIsPinned(t *testing.T) {
 	cases := []struct {
 		in   string
 		want bool
@@ -190,7 +190,7 @@ func TestVacuousLengthBoundIsRunes(t *testing.T) {
 }
 
 // Expectations generated from the running Python (_parse_mention_response).
-func TestParseMentionMatchesPython(t *testing.T) {
+func TestParseMentionIsPinned(t *testing.T) {
 	cases := []struct {
 		name, content, want string
 	}{

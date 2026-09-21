@@ -809,7 +809,7 @@ func TestReviewSurvivesADeadDatabase(t *testing.T) {
 
 // --- extractQuestion -------------------------------------------------------
 
-func TestExtractQuestionMatchesPython(t *testing.T) {
+func TestExtractQuestionIsPinned(t *testing.T) {
 	blob, err := os.ReadFile("testdata/question_golden.json")
 	if err != nil {
 		t.Fatalf("read question golden: %v", err)

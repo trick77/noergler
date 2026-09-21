@@ -77,7 +77,7 @@ func TestFindEnclosingScopeLine(t *testing.T) {
 
 // Ported from Python TestParseHunks, which asserts header and hunk counts plus
 // exact start/count values.
-func TestParseHunksPythonCases(t *testing.T) {
+func TestParseHunksCases(t *testing.T) {
 	t.Run("single hunk", func(t *testing.T) {
 		diff := "diff --git a/file.py b/file.py\n--- a/file.py\n+++ b/file.py\n" +
 			"@@ -10,3 +10,4 @@\n-old line\n+new line\n+added line"

@@ -141,7 +141,7 @@ func TestBoot_SeedConflictDisablesBeforeStartup(t *testing.T) {
 
 // The three alerted lines keep Python's rendering: the lists live inside the
 // message, in Python list repr, because the Splunk alert matches on it.
-func TestBoot_TeamsReadyLineKeepsPythonRendering(t *testing.T) {
+func TestBoot_TeamsReadyLineRendering(t *testing.T) {
 	log, buf := bufLogger()
 	team := &config.Team{Slug: "platform", Review: reviewCfg()}
 

@@ -36,7 +36,7 @@ func TestSetAuthorListsIsSafeUnderConcurrentReads(t *testing.T) {
 // port matches the first three (Python does not: its \b is Unicode, so a
 // letter next to the key means no boundary) and misses the Arabic-Indic case
 // (Python's \d is Unicode).
-func TestExtractTicketIDMatchesPython(t *testing.T) {
+func TestExtractTicketIDIsPinned(t *testing.T) {
 	cases := []struct {
 		in   string
 		want string

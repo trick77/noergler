@@ -12,7 +12,7 @@ const (
 
 // Values generated from Python usable_context_budget. They are literals so a
 // change to the curve fails here rather than silently repricing every review.
-func TestUsableContextBudgetMatchesPython(t *testing.T) {
+func TestUsableContextBudgetIsPinned(t *testing.T) {
 	cases := []struct {
 		window, want int
 	}{
