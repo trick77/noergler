@@ -3,7 +3,9 @@ package queue
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
@@ -33,11 +35,11 @@ func TestHeldKeyIsSkippedAndOthersProceed(t *testing.T) {
 	var mu sync.Mutex
 	var ran []int
 
-	q := New(func(_ context.Context, _ string, p *webhook.Payload) {
+	q := New(syncReview(func(_ context.Context, _ string, p *webhook.Payload) {
 		mu.Lock()
 		ran = append(ran, p.PullRequest.ID)
 		mu.Unlock()
-	}, quietLogger())
+	}), quietLogger())
 
 	// Hold PR 1 before the worker starts, so the ordering is deterministic.
 	hold(q, key(1))
@@ -89,9 +91,9 @@ func TestHeldKeyIsSkippedAndOthersProceed(t *testing.T) {
 // the staged post-stage from deadlocking behind an unrelated held review.
 func TestJobRunsWhileAnotherPRIsHeld(t *testing.T) {
 	done := make(chan struct{})
-	q := New(func(context.Context, string, *webhook.Payload) {
+	q := New(syncReview(func(context.Context, string, *webhook.Payload) {
 		t.Error("no review should run")
-	}, quietLogger())
+	}), quietLogger())
 
 	hold(q, key(1))
 	q.Submit(key(1), payload("one"), "t")
@@ -106,7 +108,7 @@ func TestJobRunsWhileAnotherPRIsHeld(t *testing.T) {
 // Depth counts held items: they are genuinely waiting. The in-flight item
 // the worker already holds is still excluded, which queue_test.go pins.
 func TestDepthCountsHeldItems(t *testing.T) {
-	q := New(func(context.Context, string, *webhook.Payload) {}, quietLogger())
+	q := New(syncReview(func(context.Context, string, *webhook.Payload) {}), quietLogger())
 	hold(q, key(1))
 	q.Submit(key(1), payload("one"), "t")
 
@@ -122,11 +124,11 @@ func TestSupersedeReplacesHeldPayload(t *testing.T) {
 	var mu sync.Mutex
 	var titles []string
 
-	q := New(func(_ context.Context, _ string, p *webhook.Payload) {
+	q := New(syncReview(func(_ context.Context, _ string, p *webhook.Payload) {
 		mu.Lock()
 		titles = append(titles, p.PullRequest.Title)
 		mu.Unlock()
-	}, quietLogger())
+	}), quietLogger())
 
 	hold(q, key(1))
 	if got := q.Submit(key(1), payload("first"), "t"); got != StatusQueued {
@@ -161,9 +163,9 @@ func TestSupersedeReplacesHeldPayload(t *testing.T) {
 // the set stays invisible until the staged pipeline lands.
 func TestSynchronousReviewReleasesItsHold(t *testing.T) {
 	ran := make(chan struct{})
-	q := New(func(context.Context, string, *webhook.Payload) {
+	q := New(syncReview(func(context.Context, string, *webhook.Payload) {
 		close(ran)
-	}, quietLogger())
+	}), quietLogger())
 
 	q.Start(context.Background())
 	defer q.Stop()
@@ -179,13 +181,13 @@ func TestPanicReleasesTheHold(t *testing.T) {
 	var calls int
 	done := make(chan struct{}, 2)
 
-	q := New(func(context.Context, string, *webhook.Payload) {
+	q := New(syncReview(func(context.Context, string, *webhook.Payload) {
 		calls++
 		done <- struct{}{}
 		if calls == 1 {
 			panic("boom")
 		}
-	}, quietLogger())
+	}), quietLogger())
 
 	q.Start(context.Background())
 	defer q.Stop()
@@ -198,6 +200,50 @@ func TestPanicReleasesTheHold(t *testing.T) {
 	<-done
 }
 
+// A review that hands off keeps its PR held after it returns. This is the
+// case the whole set exists for: the staged pipeline returns from the
+// worker while the inference call is still outstanding, and a second run of
+// the same PR would race on the prior-commit pointer, the summary and the
+// inline comments.
+func TestHandoffKeepsTheHold(t *testing.T) {
+	var runs atomic.Int32
+	ran := make(chan struct{}, 4)
+
+	q := New(func(context.Context, string, *webhook.Payload) bool {
+		runs.Add(1)
+		ran <- struct{}{}
+		return true // work outlives this call
+	}, quietLogger())
+
+	q.Start(context.Background())
+	defer q.Stop()
+
+	q.Submit(key(1), payload("one"), "t")
+	<-ran
+
+	// Still held: the review returned but its work is outstanding.
+	if !held(q, key(1)) {
+		t.Fatal("a handed-off review must keep its PR held")
+	}
+
+	// A fresh submit for the same PR must not start a second run.
+	q.Submit(key(1), payload("two"), "t")
+	waitFor(t, func() bool { return q.Depth() == 1 })
+	select {
+	case <-ran:
+		t.Fatal("a second run started while the first was outstanding")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	// Whatever finishes the work releases the key, and the queued newer
+	// payload then runs.
+	q.done1(key(1))
+	<-ran
+	if got := runs.Load(); got != 2 {
+		t.Fatalf("runs = %d, want 2", got)
+	}
+}
+
 // A lifecycle job for a held PR waits for that PR's review. Order matters
 // per PR: ClaimRollup stamps the snapshot it reads and is never retried, so
 // a merge rollup that overtook its review would miss that run's cost.
@@ -205,11 +251,11 @@ func TestJobForHeldPRWaitsForTheReview(t *testing.T) {
 	var mu sync.Mutex
 	var order []string
 
-	q := New(func(context.Context, string, *webhook.Payload) {
+	q := New(syncReview(func(context.Context, string, *webhook.Payload) {
 		mu.Lock()
 		order = append(order, "review")
 		mu.Unlock()
-	}, quietLogger())
+	}), quietLogger())
 
 	record := func(what string) func(context.Context) {
 		return func(context.Context) {

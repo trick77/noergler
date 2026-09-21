@@ -37,7 +37,11 @@ const (
 // ReviewFunc reviews one PR. It is called with the slug of the team the PR
 // belongs to; the team was authenticated by the webhook route, so the worker
 // never has to look it up.
-type ReviewFunc func(ctx context.Context, team string, payload *webhook.Payload)
+//
+// It reports whether the review handed off work that outlives this call. A
+// handoff keeps the PR's hold: the review is not finished, and whatever
+// finishes it releases the key. Returning false releases it here.
+type ReviewFunc func(ctx context.Context, team string, payload *webhook.Payload) (handedOff bool)
 
 // JobFunc is a queued unit of work that is not a PR review.
 type JobFunc func(ctx context.Context)
@@ -54,6 +58,11 @@ type job struct {
 	team string
 	run  JobFunc
 	at   time.Time
+	// internal marks work submitted by the pipeline itself rather than a
+	// webhook: the tail of a review that already holds this key. It runs
+	// despite the hold, and releasing it on completion is what ends the
+	// hold the handoff kept open.
+	internal bool
 }
 
 type entry struct {
@@ -198,6 +207,9 @@ func (q *Queue) Depth() int {
 // their pending entry and supersedes it.
 func (q *Queue) nextRunnable() int {
 	for i, it := range q.items {
+		if it.job != nil && it.job.internal {
+			return i
+		}
 		if _, held := q.inflight[it.key]; !held {
 			return i
 		}
@@ -259,8 +271,16 @@ func (q *Queue) run(ctx context.Context) {
 			team, at = e.team, e.at
 			payload := e.payload
 			run = func(ctx context.Context) {
-				defer q.done1(key)
-				q.review(ctx, team, payload)
+				// The defer, not a tail call: a panicking review must not
+				// leave its key held forever. runOne recovers above, and
+				// handedOff stays false, so the hold is released here.
+				handedOff := false
+				defer func() {
+					if !handedOff {
+						q.done1(key)
+					}
+				}()
+				handedOff = q.review(ctx, team, payload)
 			}
 		}
 		depth := len(q.items)

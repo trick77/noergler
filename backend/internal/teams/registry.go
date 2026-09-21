@@ -71,15 +71,18 @@ func (g *Registry) Status() (enabled, disabled []string) {
 // route, so the worker only has to find it again.
 //
 // queue.run already binds team= into the context, so this does not.
-func (g *Registry) Review(ctx context.Context, team string, p *webhook.Payload) {
+func (g *Registry) Review(ctx context.Context, team string, p *webhook.Payload) bool {
 	rt, _, ok := g.Lookup(team)
 	if !ok {
 		// A team can only be disabled at startup, so this means the queue
 		// outlived a config the process no longer has. Drop it loudly.
 		g.log.ErrorContext(ctx, "queued review for unknown team dropped", "team", team)
-		return
+		return false
 	}
 	rt.Reviewer.ReviewPullRequest(ctx, p, false)
+	// The review is synchronous today: it is finished when it returns, so
+	// the queue releases the PR's hold.
+	return false
 }
 
 // There is deliberately no Close. Each team's clients hold an http.Client
