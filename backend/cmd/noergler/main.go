@@ -28,6 +28,7 @@ import (
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/teams"
 	"github.com/trick77/noergler/internal/tokens"
+	"github.com/trick77/noergler/internal/webhook"
 )
 
 func main() {
@@ -162,7 +163,12 @@ func serve(log *slog.Logger) error {
 	// httpapi.Run makes the same separation for its own shutdown.
 	queueCtx, stopQueue := context.WithCancel(context.WithoutCancel(ctx))
 	defer stopQueue()
-	q := queue.New(reg.Review, log)
+	// The two Scheduler interfaces are declared consumer-side in their own
+	// packages, so neither imports the other; main is where they meet.
+	review := func(ctx context.Context, team string, p *webhook.Payload, sched queue.Scheduler) bool {
+		return reg.Review(ctx, team, p, sched)
+	}
+	q := queue.New(review, app.Queue.InferenceConcurrency, app.Queue.InferenceConcurrencyPerTeam, log)
 	q.Start(queueCtx)
 
 	srv := httpapi.New(reg.Status, log)
@@ -186,7 +192,9 @@ func serve(log *slog.Logger) error {
 	// finishes the review in flight before the pool closes under it. Not a
 	// defer, because `defer db.Close()` above is registered earlier and would
 	// otherwise run first. Stop has no timeout: a long review holds shutdown,
-	// which the pod's termination grace period has to allow for.
+	// which the pod's termination grace period has to allow for. With the
+	// inference pool that budget is now prepare + pool wait + the gateway's
+	// 300s call timeout + posting, for every review still in flight.
 	q.Stop()
 	if runErr != nil {
 		return runErr

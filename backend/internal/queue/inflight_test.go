@@ -39,7 +39,7 @@ func TestHeldKeyIsSkippedAndOthersProceed(t *testing.T) {
 		mu.Lock()
 		ran = append(ran, p.PullRequest.ID)
 		mu.Unlock()
-	}), quietLogger())
+	}), 1, 1, quietLogger())
 
 	// Hold PR 1 before the worker starts, so the ordering is deterministic.
 	hold(q, key(1))
@@ -93,7 +93,7 @@ func TestJobRunsWhileAnotherPRIsHeld(t *testing.T) {
 	done := make(chan struct{})
 	q := New(syncReview(func(context.Context, string, *webhook.Payload) {
 		t.Error("no review should run")
-	}), quietLogger())
+	}), 1, 1, quietLogger())
 
 	hold(q, key(1))
 	q.Submit(key(1), payload("one"), "t")
@@ -108,7 +108,7 @@ func TestJobRunsWhileAnotherPRIsHeld(t *testing.T) {
 // Depth counts held items: they are genuinely waiting. The in-flight item
 // the worker already holds is still excluded, which queue_test.go pins.
 func TestDepthCountsHeldItems(t *testing.T) {
-	q := New(syncReview(func(context.Context, string, *webhook.Payload) {}), quietLogger())
+	q := New(syncReview(func(context.Context, string, *webhook.Payload) {}), 1, 1, quietLogger())
 	hold(q, key(1))
 	q.Submit(key(1), payload("one"), "t")
 
@@ -128,7 +128,7 @@ func TestSupersedeReplacesHeldPayload(t *testing.T) {
 		mu.Lock()
 		titles = append(titles, p.PullRequest.Title)
 		mu.Unlock()
-	}), quietLogger())
+	}), 1, 1, quietLogger())
 
 	hold(q, key(1))
 	if got := q.Submit(key(1), payload("first"), "t"); got != StatusQueued {
@@ -165,7 +165,7 @@ func TestSynchronousReviewReleasesItsHold(t *testing.T) {
 	ran := make(chan struct{})
 	q := New(syncReview(func(context.Context, string, *webhook.Payload) {
 		close(ran)
-	}), quietLogger())
+	}), 1, 1, quietLogger())
 
 	q.Start(context.Background())
 	defer q.Stop()
@@ -187,7 +187,7 @@ func TestPanicReleasesTheHold(t *testing.T) {
 		if calls == 1 {
 			panic("boom")
 		}
-	}), quietLogger())
+	}), 1, 1, quietLogger())
 
 	q.Start(context.Background())
 	defer q.Stop()
@@ -209,11 +209,11 @@ func TestHandoffKeepsTheHold(t *testing.T) {
 	var runs atomic.Int32
 	ran := make(chan struct{}, 4)
 
-	q := New(func(context.Context, string, *webhook.Payload) bool {
+	q := New(func(context.Context, string, *webhook.Payload, Scheduler) bool {
 		runs.Add(1)
 		ran <- struct{}{}
 		return true // work outlives this call
-	}, quietLogger())
+	}, 1, 1, quietLogger())
 
 	q.Start(context.Background())
 	defer q.Stop()
@@ -255,7 +255,7 @@ func TestJobForHeldPRWaitsForTheReview(t *testing.T) {
 		mu.Lock()
 		order = append(order, "review")
 		mu.Unlock()
-	}), quietLogger())
+	}), 1, 1, quietLogger())
 
 	record := func(what string) func(context.Context) {
 		return func(context.Context) {

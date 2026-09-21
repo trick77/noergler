@@ -23,7 +23,7 @@ import (
 func TestStopDrainsTheItemInFlightWithALiveContext(t *testing.T) {
 	root, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	q := New(nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	q := New(nil, 1, 1, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	q.Start(root)
 
 	started := make(chan struct{})

@@ -41,7 +41,14 @@ const (
 // It reports whether the review handed off work that outlives this call. A
 // handoff keeps the PR's hold: the review is not finished, and whatever
 // finishes it releases the key. Returning false releases it here.
-type ReviewFunc func(ctx context.Context, team string, payload *webhook.Payload) (handedOff bool)
+type ReviewFunc func(ctx context.Context, team string, payload *webhook.Payload, sched Scheduler) (handedOff bool)
+
+// Scheduler is the pool as a review uses it, so the review package never
+// imports the queue back. Stage runs infer on the inference pool and then
+// puts post back on the single worker.
+type Scheduler interface {
+	Stage(ctx context.Context, key store.PRKey, team string, infer, post func(context.Context))
+}
 
 // JobFunc is a queued unit of work that is not a PR review.
 type JobFunc func(ctx context.Context)
@@ -71,16 +78,30 @@ type entry struct {
 	at      time.Time
 }
 
-// Queue is the single-worker PR review queue.
+// Queue is the single-worker PR review queue with a bounded inference pool.
 type Queue struct {
 	review ReviewFunc
 	log    *slog.Logger
 
-	mu      sync.Mutex
-	cond    *sync.Cond
-	items   []item
-	pending map[store.PRKey]*entry
-	stopped bool
+	// sem bounds inference process-wide; perTeam nests inside it so one
+	// team's burst cannot take every slot. Acquire team first, then global,
+	// and release in reverse: the other order lets a goroutine hold a global
+	// slot while queuing for its team's, which is how a nested pair
+	// deadlocks.
+	sem     chan struct{}
+	perTeam int
+	teamSem map[string]chan struct{}
+	infWG   sync.WaitGroup
+
+	mu       sync.Mutex
+	cond     *sync.Cond
+	items    []item
+	pending  map[store.PRKey]*entry
+	stopped  bool
+	draining bool
+	// running is set while the worker is executing an item, so Stop can tell
+	// an idle worker from one mid-item without racing on the item itself.
+	running bool
 
 	// inflight holds the keys of PRs whose work has been dequeued but is not
 	// finished yet. A keyed item whose key is in flight is not runnable: the
@@ -96,10 +117,23 @@ type Queue struct {
 }
 
 // New builds a queue. The worker does not run until Start.
-func New(review ReviewFunc, log *slog.Logger) *Queue {
+//
+// global and perTeam size the inference pool; both must be at least 1, which
+// config enforces at load. perTeam above global never binds and config
+// rejects it, but clamping here keeps a direct caller honest.
+func New(review ReviewFunc, global, perTeam int, log *slog.Logger) *Queue {
+	if global < 1 {
+		global = 1
+	}
+	if perTeam < 1 || perTeam > global {
+		perTeam = global
+	}
 	q := &Queue{
 		review:   review,
 		log:      log,
+		sem:      make(chan struct{}, global),
+		perTeam:  perTeam,
+		teamSem:  make(map[string]chan struct{}),
 		pending:  make(map[store.PRKey]*entry),
 		inflight: make(map[store.PRKey]struct{}),
 		done:     make(chan struct{}),
@@ -122,8 +156,18 @@ func (q *Queue) Start(ctx context.Context) {
 	q.log.Info("ReviewQueue worker started")
 }
 
-// Stop signals the worker to finish the item in flight and exit, then waits
-// for it. Calling it before Start, or twice, is safe.
+// Stop drains everything already accepted and then stops the worker.
+// Calling it before Start, or twice, is safe.
+//
+// This is a fixpoint, not a sequence: a review spawns an inference call,
+// which submits a post stage back onto the worker. Stopping as soon as the
+// queue looks empty would return with an inference still in flight and its
+// post stage never submitted, losing the run row, the findings and the cost
+// on every shutdown.
+//
+// No timeout, deliberately: the drain now spans prepare, the pool wait, the
+// gateway's own call timeout and posting, for every review in flight. The
+// pod's termination grace period has to allow for it.
 func (q *Queue) Stop() {
 	q.mu.Lock()
 	if !q.started || q.stopped {
@@ -131,6 +175,40 @@ func (q *Queue) Stop() {
 		q.mu.Unlock()
 		return
 	}
+	q.draining = true
+	q.cond.Broadcast()
+	q.mu.Unlock()
+
+	// Alternate between letting the worker empty the queue and waiting for
+	// the inference goroutines, because each can create work for the other.
+	// Settles when a pass adds nothing: the worker is idle, no inference is
+	// in flight, and no key is still held.
+	for {
+		q.mu.Lock()
+		// Wait while the worker can still make progress on its own. Items
+		// that are only held are not progress: the goroutine that releases
+		// them is an inference call, which infWG below waits for.
+		for q.running || q.nextRunnable() >= 0 {
+			q.cond.Wait()
+		}
+		q.mu.Unlock()
+
+		q.infWG.Wait()
+
+		// Settled when the worker is idle and nothing runnable is left.
+		// Deliberately not "no key is held": a hold is released by an
+		// inference goroutine, and infWG above has just waited for all of
+		// them, so a key still held here is one nothing will ever release.
+		// Blocking on it would hang shutdown forever.
+		q.mu.Lock()
+		settled := !q.running && q.nextRunnable() < 0
+		q.mu.Unlock()
+		if settled {
+			break
+		}
+	}
+
+	q.mu.Lock()
 	q.stopped = true
 	q.cond.Broadcast()
 	q.mu.Unlock()
@@ -217,6 +295,93 @@ func (q *Queue) nextRunnable() int {
 	return -1
 }
 
+// Stage runs infer on the inference pool and then puts post back on the
+// single worker, so only the gateway call overlaps and every Bitbucket call
+// stays one at a time.
+//
+// The caller must already hold key (it returned handedOff from a review), and
+// Stage is what eventually releases it: post runs as an internal job, whose
+// completion ends the hold. A panic in infer releases it here instead, so the
+// PR is never stuck.
+//
+// ctx is the review's own, carrying pr_tag, team= and the httpstats scope. It
+// must not be the worker's job context, which has none of them past the
+// handoff.
+func (q *Queue) Stage(ctx context.Context, key store.PRKey, team string, infer, post func(context.Context)) {
+	q.infWG.Add(1)
+	go func() {
+		defer q.infWG.Done()
+
+		posted := false
+		defer func() {
+			if r := recover(); r != nil {
+				q.log.ErrorContext(ctx, fmt.Sprintf("queue[%s]: inference panicked: %v", key.Tag(), r),
+					slog.String("stack", string(debug.Stack())))
+			}
+			// Whatever happened, the hold must end. Normally post ends it;
+			// if it never got submitted, end it here.
+			if !posted {
+				q.done1(key)
+			}
+		}()
+
+		waited := q.acquire(team)
+		if waited > 50*time.Millisecond {
+			q.log.InfoContext(ctx, fmt.Sprintf("queue[%s]: inference waited %.1fs for a pool slot",
+				key.Tag(), waited.Seconds()))
+		}
+		func() {
+			defer q.release(team)
+			infer(ctx)
+		}()
+
+		// Submitted before the deferred release above runs, so the hold is
+		// handed from this goroutine to the job without a gap.
+		posted = true
+		q.submitInternal(key, team, post)
+	}()
+}
+
+// acquire takes the team slot, then the global one, and reports how long it
+// waited. Order matters: holding a global slot while queuing for a team slot
+// is how a nested pair deadlocks.
+func (q *Queue) acquire(team string) time.Duration {
+	started := time.Now()
+	ts := q.teamSemFor(team)
+	ts <- struct{}{}
+	q.sem <- struct{}{}
+	return time.Since(started)
+}
+
+// release reverses acquire.
+func (q *Queue) release(team string) {
+	<-q.sem
+	<-q.teamSemFor(team)
+}
+
+// teamSemFor is the team's semaphore, created on first use. Teams are fixed
+// at startup, so the map only ever grows to the configured team count.
+func (q *Queue) teamSemFor(team string) chan struct{} {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	ts, ok := q.teamSem[team]
+	if !ok {
+		ts = make(chan struct{}, q.perTeam)
+		q.teamSem[team] = ts
+	}
+	return ts
+}
+
+// submitInternal queues the tail of a staged review. It runs despite that
+// PR's hold, which the review itself is holding, and its completion is what
+// releases the key.
+func (q *Queue) submitInternal(key store.PRKey, team string, fn JobFunc) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	tag := key.Tag()
+	q.put(item{key: key, job: &job{tag: tag, team: team, run: fn, at: time.Now(), internal: true}}, tag)
+}
+
 // done1 releases a key's hold and wakes the worker, which may have parked
 // with only held items left.
 func (q *Queue) done1(key store.PRKey) {
@@ -241,6 +406,7 @@ func (q *Queue) run(ctx context.Context) {
 		}
 		it := q.items[idx]
 		q.items = append(q.items[:idx], q.items[idx+1:]...)
+		q.running = true
 
 		var tag, team string
 		var at time.Time
@@ -280,7 +446,7 @@ func (q *Queue) run(ctx context.Context) {
 						q.done1(key)
 					}
 				}()
-				handedOff = q.review(ctx, team, payload)
+				handedOff = q.review(ctx, team, payload, q)
 			}
 		}
 		depth := len(q.items)
@@ -296,6 +462,13 @@ func (q *Queue) run(ctx context.Context) {
 		started := time.Now()
 		q.runOne(jobCtx, run, tag, kind)
 		q.log.Info(fmt.Sprintf("queue[%s]: completed in %.1fs", tag, time.Since(started).Seconds()))
+
+		// Wake Stop: it alternates between an empty queue and an idle
+		// worker, and this is the only place the second becomes true.
+		q.mu.Lock()
+		q.running = false
+		q.cond.Broadcast()
+		q.mu.Unlock()
 	}
 }
 

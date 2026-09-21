@@ -26,7 +26,7 @@ func key(id int) store.PRKey {
 // syncReview adapts a review that finishes when it returns, which is every review
 // in these tests, to ReviewFunc's handedOff result.
 func syncReview(fn func(context.Context, string, *webhook.Payload)) ReviewFunc {
-	return func(ctx context.Context, team string, p *webhook.Payload) bool {
+	return func(ctx context.Context, team string, p *webhook.Payload, _ Scheduler) bool {
 		fn(ctx, team, p)
 		return false
 	}
@@ -60,7 +60,7 @@ func TestSingleReviewRunsAndCompletes(t *testing.T) {
 		mu.Lock()
 		seen = append(seen, p.PullRequest.Title)
 		mu.Unlock()
-	}), quietLogger())
+	}), 1, 1, quietLogger())
 	q.Start(context.Background())
 	defer q.Stop()
 
@@ -90,7 +90,7 @@ func TestWorkerBindsTeamPerItem(t *testing.T) {
 		teams = append(teams, "<unbound>")
 	}
 
-	q := New(syncReview(func(ctx context.Context, _ string, _ *webhook.Payload) { record(ctx) }), quietLogger())
+	q := New(syncReview(func(ctx context.Context, _ string, _ *webhook.Payload) { record(ctx) }), 1, 1, quietLogger())
 	q.Start(context.Background())
 	defer q.Stop()
 
@@ -120,7 +120,7 @@ func TestDedupeCollapsesPendingSubmits(t *testing.T) {
 		if first {
 			<-release // hold the worker so the next submits queue up
 		}
-	}), quietLogger())
+	}), 1, 1, quietLogger())
 	q.Start(context.Background())
 	defer q.Stop()
 
@@ -160,7 +160,7 @@ func TestReviewsAreSerializedAcrossPRs(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 		inFlight.Add(-1)
 		done.Add(1)
-	}), quietLogger())
+	}), 1, 1, quietLogger())
 	q.Start(context.Background())
 	defer q.Stop()
 
@@ -196,7 +196,7 @@ func TestPanicInReviewDoesNotKillTheWorker(t *testing.T) {
 		mu.Lock()
 		seen = append(seen, 2)
 		mu.Unlock()
-	}), quietLogger())
+	}), 1, 1, quietLogger())
 	q.Start(context.Background())
 	defer q.Stop()
 
@@ -209,7 +209,7 @@ func TestPanicInReviewDoesNotKillTheWorker(t *testing.T) {
 func TestPanicInJobDoesNotKillTheWorker(t *testing.T) {
 	var ran atomic.Int32
 
-	q := New(syncReview(func(context.Context, string, *webhook.Payload) {}), quietLogger())
+	q := New(syncReview(func(context.Context, string, *webhook.Payload) {}), 1, 1, quietLogger())
 	q.Start(context.Background())
 	defer q.Stop()
 
@@ -230,7 +230,7 @@ func TestJobsShareTheWorkerInArrivalOrderWithoutDedupe(t *testing.T) {
 		order = append(order, "review:1")
 		mu.Unlock()
 		<-release
-	}), quietLogger())
+	}), 1, 1, quietLogger())
 	q.Start(context.Background())
 	defer q.Stop()
 
@@ -269,7 +269,7 @@ func TestJobsShareTheWorkerInArrivalOrderWithoutDedupe(t *testing.T) {
 }
 
 func TestSubmitReturnsOutcome(t *testing.T) {
-	q := New(syncReview(func(context.Context, string, *webhook.Payload) {}), quietLogger())
+	q := New(syncReview(func(context.Context, string, *webhook.Payload) {}), 1, 1, quietLogger())
 	// Not started: nothing drains, so the first stays pending.
 	if got := q.Submit(key(1), payload("a"), "t1"); got != StatusQueued {
 		t.Errorf("first = %q, want queued", got)
@@ -290,7 +290,7 @@ func TestDepthExcludesTheItemInFlight(t *testing.T) {
 	q := New(syncReview(func(context.Context, string, *webhook.Payload) {
 		close(started)
 		<-release
-	}), quietLogger())
+	}), 1, 1, quietLogger())
 	q.Start(context.Background())
 	defer q.Stop()
 
@@ -305,10 +305,10 @@ func TestDepthExcludesTheItemInFlight(t *testing.T) {
 }
 
 func TestStopIsIdempotentAndSafeBeforeStart(_ *testing.T) {
-	q := New(syncReview(func(context.Context, string, *webhook.Payload) {}), quietLogger())
+	q := New(syncReview(func(context.Context, string, *webhook.Payload) {}), 1, 1, quietLogger())
 	q.Stop() // never started
 
-	q2 := New(syncReview(func(context.Context, string, *webhook.Payload) {}), quietLogger())
+	q2 := New(syncReview(func(context.Context, string, *webhook.Payload) {}), 1, 1, quietLogger())
 	q2.Start(context.Background())
 	q2.Stop()
 	q2.Stop()
@@ -316,7 +316,7 @@ func TestStopIsIdempotentAndSafeBeforeStart(_ *testing.T) {
 
 func TestStartIsIdempotent(t *testing.T) {
 	var runs atomic.Int32
-	q := New(syncReview(func(context.Context, string, *webhook.Payload) { runs.Add(1) }), quietLogger())
+	q := New(syncReview(func(context.Context, string, *webhook.Payload) { runs.Add(1) }), 1, 1, quietLogger())
 	q.Start(context.Background())
 	q.Start(context.Background())
 	defer q.Stop()
@@ -332,7 +332,7 @@ func TestStartIsIdempotent(t *testing.T) {
 // Submit must never block, whatever the backlog: in Phase 7 the caller is an
 // inbound HTTP request goroutine.
 func TestSubmitNeverBlocks(t *testing.T) {
-	q := New(syncReview(func(context.Context, string, *webhook.Payload) {}), quietLogger())
+	q := New(syncReview(func(context.Context, string, *webhook.Payload) {}), 1, 1, quietLogger())
 	// Deliberately not started, so nothing drains.
 	done := make(chan struct{})
 	go func() {
