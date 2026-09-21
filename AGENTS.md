@@ -1,8 +1,10 @@
 # AGENTS.md
 
-Go port of trick77/noergler (Python). Bitbucket Server PR auto-review bridge,
-inference through `github.com/trick77/llmwire` against a LiteLLM gateway.
-**The Python code is the spec. Its docs drifted, its code did not.**
+Bitbucket Server PR auto-review bridge, inference through
+`github.com/trick77/llmwire` against a LiteLLM gateway. Ported from the
+Python implementation now in `archive/`.
+**That Python code is the spec for anything ported. Its docs drifted, its
+code did not.**
 
 ## Commands
 
@@ -12,7 +14,8 @@ Go commands run from `backend/`, scripts from the root.
 Store tests skip without `NOERGLER_TEST_DSN`; `docker compose up -d postgres`,
 then DSN `postgres://noergler:changeme@localhost:5432/noergler?sslmode=disable`.
 `./hack/smoke.sh` boots `serve` against `hack/fakes`; `./hack/parity.sh` diffs
-this against the Python service. Coverage floor 75% (`hack/coverage-floors`),
+this against the archived Python service in `archive/` (needs a venv there).
+Coverage floor 75% (`hack/coverage-floors`),
 gate `./hack/coverage-gate.sh backend` over `coverage/backend.xml`; `cmd/` is
 excluded and `hack/` is outside the module.
 No web framework, no ORM, no logging library. Do not add one.
