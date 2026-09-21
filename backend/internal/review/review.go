@@ -21,8 +21,8 @@ import (
 	"github.com/trick77/noergler/internal/webhook"
 )
 
-// contextExpansionRatio is is_small_pr's default: a PR counts as small when
-// its files plus room to expand them still fit the budget.
+// contextExpansionRatio decides when a PR counts as small: its files plus
+// room to expand them still fit the budget.
 const contextExpansionRatio = 1.5
 
 // nanoPerUSD converts the DB's BIGINT nano-USD to the USD used at the edges.
@@ -33,9 +33,8 @@ const nanoPerUSD = 1_000_000_000.0
 // skipAuthorCheck is set by an @mention: it bypasses the author and actor
 // gates and the cost cap, because a human asked for this review explicitly.
 //
-// The order of the guards below is deliberate and fixed, not incidental:
-// each one decides before the next can spend an API call or a write. The
-// "Guard order" block in review_test.go pins it guard by guard
+// The order of the guards below is deliberate and fixed, not incidental.
+// The "Guard order" block in review_test.go pins it guard by guard
 // (TestReviewRequiresAProjectAndRepo, TestSkipsDisallowedAuthorAndIgnoredActor,
 // TestIgnoredPRIsSkippedWithoutAnyAPICall,
 // TestDeletedSummaryIgnoresButTransientErrorProceeds, TestOptOutBranchKeyword,
@@ -277,7 +276,9 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 	//
 	// The run row must exist before any finding row: store.Finding.RunID is
 	// required and comes from InsertRun, so posting and inserting findings
-	// cannot be interleaved ahead of it.
+	// cannot be interleaved ahead of it. The comments are already on the PR
+	// by this point, so a crash before InsertRun leaves them there with no
+	// finding row.
 	runID := r.recordRun(ctx, prReviewID, result, sourceCommit, incrementalFrom, skipAuthorCheck,
 		elapsed, postedCount, diffAdded, diffRemoved, totalFiles+len(deletedPaths)+len(renamedPaths))
 	r.recordFindings(ctx, prReviewID, runID, findings, postedIDs)

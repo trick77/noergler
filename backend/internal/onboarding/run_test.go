@@ -182,7 +182,7 @@ func TestTransportFailureInTheGuardEscapesToRun(t *testing.T) {
 		t.Fatalf("rows = %v", rows)
 	}
 	if rows[0].Owned || rows[0].BotCanRead {
-		t.Errorf("row kept its claim through the blanket except: %+v", rows[0])
+		t.Errorf("the error row kept its claim: %+v", rows[0])
 	}
 	if rows[0].Webhook != "error: dial tcp: no route to host" {
 		t.Errorf("webhook = %q", rows[0].Webhook)

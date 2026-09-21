@@ -230,7 +230,7 @@ func (t *Team) ReviewsRepo(projectKey, repoSlug string) bool {
 }
 
 // ExcludesRepo matches the slug against the globs, both lower-cased, with
-// fnmatch semantics.
+// FnMatch: `*` crosses `/`, so a pattern needs no path segments.
 func ExcludesRepo(patterns []string, repoSlug string) bool {
 	slug := strings.ToLower(repoSlug)
 	for _, p := range patterns {

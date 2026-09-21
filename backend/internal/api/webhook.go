@@ -22,8 +22,8 @@ import (
 // comment body.
 const maxWebhookBodyBytes = 1 << 20
 
-// reviewEventKeys are the events that start a review. Everything else is
-// either a rollup, a purge or a mention.
+// reviewEventKeys are the events that start a review. Every other pr: event
+// is a rollup, a purge, a mention, or ignored.
 var reviewEventKeys = map[string]bool{
 	webhook.EventOpened:         true,
 	webhook.EventFromRefUpdated: true,

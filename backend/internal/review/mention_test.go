@@ -84,7 +84,7 @@ func TestMentionRouting(t *testing.T) {
 }
 
 // A mention bypasses the author gates, which is the whole point of the
-// skip_author_check flag.
+// skipAuthorCheck flag.
 func TestMentionReviewBypassesAuthorGates(t *testing.T) {
 	h := newHarness(t, nil)
 	h.r.SetAuthorLists([]string{"nobody"}, nil)

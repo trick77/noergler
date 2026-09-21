@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// A real Bitbucket Server delivery, captured verbatim.
+// A complete pr:opened payload (testdata/sample_webhook.json).
 func TestDecodeRealWebhookPayload(t *testing.T) {
 	blob, err := os.ReadFile("testdata/sample_webhook.json")
 	if err != nil {

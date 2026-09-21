@@ -312,8 +312,7 @@ func (c *Client) GetRepo(ctx context.Context, project, repo string) (map[string]
 // rather than walked.
 //
 // Nothing calls it: the bot-read probe onboarding needs is done with
-// GetProject/GetRepo. Kept so the adapter covers the whole pull-request
-// surface; a reader looking for the read probe wants
+// GetProject/GetRepo. A reader looking for the read probe wants
 // internal/onboarding/onboarder.go:94-96.
 func (c *Client) ListPullRequests(ctx context.Context, project, repo string, limit int) (map[string]any, error) {
 	var out map[string]any

@@ -109,9 +109,9 @@ func New(opt Options) *Reviewer {
 // SetAuthorLists replaces the two author lists.
 //
 // The team API writes them while the review worker may be reading them, so
-// they live behind a lock instead of in cfg. Only these two fields are
-// mirrored onto the live Reviewer; exclude_repos stays with the config
-// (TestSetAuthorListsIsSafeUnderConcurrentReads).
+// they live behind a lock instead of in cfg
+// (TestSetAuthorListsIsSafeUnderConcurrentReads). Only these two fields are
+// mirrored onto the live Reviewer; AGENTS.md pins that exclude_repos is not.
 func (r *Reviewer) SetAuthorLists(auto, ignore []string) {
 	r.authorsMu.Lock()
 	defer r.authorsMu.Unlock()

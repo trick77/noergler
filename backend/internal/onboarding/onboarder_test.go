@@ -19,7 +19,7 @@ func newOnboarder(t *testing.T, tm *config.Team, admin *fakeAdmin, bot *fakeBot,
 func TestInstanceURLCutsAtTheLastSeparator(t *testing.T) {
 	cases := []struct{ url, want string }{
 		{"https://noergler.test/webhook/platform", "https://noergler.test"},
-		// rsplit takes the LAST separator.
+		// The cut is at the LAST separator, not the first.
 		{"https://a/webhook/x/webhook/y", "https://a/webhook/x"},
 		// No separator leaves the URL alone.
 		{"nosep", "nosep"},

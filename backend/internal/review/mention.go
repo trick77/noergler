@@ -164,8 +164,9 @@ func (r *Reviewer) reply(ctx context.Context, project, repo string, prID, parent
 // extractQuestion strips the @trigger from a comment and trims the rest.
 //
 // The trailing word boundary must be Unicode-aware, the same rule the ticket
-// pattern needs: RE2's \b is ASCII, so "@bot" followed by a letter like ü
-// would read as a mention. This one substitutes rather than searches, so the
+// pattern needs: RE2's \b is ASCII and sees a boundary before a letter like
+// ü, so "@noerglerü frage" would be stripped down to "ü frage" instead of
+// being left alone. This one substitutes rather than searches, so the
 // trailing boundary character is captured and written back
 // (TestExtractQuestionUnicodeBoundary).
 func extractQuestion(text, trigger string) string {

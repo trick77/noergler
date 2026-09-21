@@ -6,7 +6,7 @@ import (
 	"unicode/utf8"
 )
 
-// This file is the line wrapper wrap_prose uses: long words are never
+// This file is the line wrapper WrapProse uses: long words are never
 // broken, hyphens are never break points, leading and trailing whitespace is
 // dropped, tabs are expanded, whitespace is normalised, no line cap.
 //
@@ -26,7 +26,7 @@ import (
 // runs of those six characters keeping the separators, which is what
 // splitChunks does.
 
-// pyWhitespace is that six-character whitespace set. Deliberately not
+// pyWhitespace is the wrapper's six-character whitespace set. Deliberately not
 // unicode.IsSpace: a non-breaking space must not become a break point.
 const pyWhitespace = "\t\n\v\f\r "
 

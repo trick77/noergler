@@ -162,8 +162,9 @@ func (q *Queue) put(it item, tag string) {
 	q.cond.Signal()
 }
 
-// Depth is the number of items waiting, excluding the one in flight. The
-// qsize() excludes the item already handed out by get(), so this must too.
+// Depth is the number of items waiting, excluding the one the worker already
+// holds. The backlog warning is read off it, so counting the in-flight item
+// would warn one entry early.
 func (q *Queue) Depth() int {
 	q.mu.Lock()
 	defer q.mu.Unlock()
