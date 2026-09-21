@@ -78,6 +78,7 @@ type Store interface {
 	MarkDeclined(ctx context.Context, k store.PRKey) error
 	MarkDeleted(ctx context.Context, k store.PRKey) error
 	InsertRun(ctx context.Context, r store.Run) (int64, error)
+	InsertAttempt(ctx context.Context, a store.Attempt) error
 	InsertFinding(ctx context.Context, f store.Finding) error
 	ExistingFindings(ctx context.Context, k store.PRKey) ([]store.Finding, error)
 	PRCost(ctx context.Context, k store.PRKey) (*int64, error)
@@ -111,4 +112,32 @@ func safeDBErr(ctx context.Context, log *slog.Logger, what string, fn func() err
 	if err := fn(); err != nil {
 		log.WarnContext(ctx, "DB operation failed, using fallback: "+what, slog.String("error", err.Error()))
 	}
+}
+
+// recordAttempt writes the dashboard's record of one terminal outcome.
+//
+// Fails open, like every other store call here: the row is a record of what
+// happened, and losing it must never change what happened. A returned error
+// would turn a successful review into a failed one.
+func (r *Reviewer) recordAttempt(ctx context.Context, a store.Attempt) {
+	// A Reviewer with no store is a legitimate configuration, not a fault:
+	// the author and actor gates decide before anything is wired, and the
+	// logging tests drive exactly that shape. Every other store call in this
+	// package sits behind a path that has already reached the DB, so this is
+	// the only one that has to ask.
+	if r.store == nil {
+		return
+	}
+	safeDBErr(ctx, r.log, "InsertAttempt", func() error {
+		return r.store.InsertAttempt(ctx, a)
+	})
+}
+
+// runKind spells the auto/mention choice once. prepare, post and recordRun
+// all make it, and a fourth inline copy is how the three drift apart.
+func runKind(mention bool) store.RunKind {
+	if mention {
+		return store.RunMention
+	}
+	return store.RunAuto
 }

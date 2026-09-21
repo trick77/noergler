@@ -138,6 +138,13 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		r.logCost(ctx, prTag, result.Cost)
 	}
 
+	// No review_attempts row on THIS path, deliberately. A mention asking
+	// for a review delegates to ReviewPullRequestStaged above and is
+	// recorded there, as kind=mention; what reaches here is the Q&A, which
+	// answers a question in a comment thread, advances no commit pointer,
+	// posts no findings and has no run row to link. Recording both in one
+	// feed would make "what was reviewed" unanswerable without a second
+	// filter nobody asked for. The Q&A reports itself in the log, as before.
 	switch result.Outcome {
 	case inference.OutcomeTimedOut:
 		r.log.ErrorContext(ctx, fmt.Sprintf("Mention Q&A on %s aborted - no response within %.0fs",

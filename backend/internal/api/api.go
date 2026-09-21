@@ -17,6 +17,7 @@ import (
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/teams"
 	"github.com/trick77/noergler/internal/webhook"
+	"github.com/trick77/noergler/web"
 )
 
 // Submitter is the review queue as the routes use it.
@@ -67,6 +68,10 @@ type Deps struct {
 	// BITBUCKET_USERNAME. The @mention trigger is instance-wide, not
 	// per-team.
 	BotUsername string
+	// Dashboard is the review queue's read side, for the live panel.
+	Dashboard DashboardQueue
+	// DashboardStore is the read-only half of the store the dashboard uses.
+	DashboardStore DashboardStore
 }
 
 // Register adds every route this package owns to the server.
@@ -75,4 +80,19 @@ func Register(srv *httpapi.Server, d Deps) {
 	srv.HandleFunc("GET /teams/{team}", d.getTeam)
 	srv.HandleFunc("PUT /teams/{team}/settings", d.putTeamSettings)
 	srv.HandleFunc("POST /onboard/{team}", d.onboard)
+
+	// Read-only, unauthenticated, cross-team. Registered only when the
+	// dashboard's dependencies are wired, so an instance that does not want
+	// it simply does not pass them and the routes do not exist.
+	if d.Dashboard != nil && d.DashboardStore != nil {
+		srv.HandleFunc("GET /api/dashboard/live", d.live)
+		srv.HandleFunc("GET /api/dashboard/runs", d.runs)
+		srv.HandleFunc("GET /api/dashboard/metrics", d.metrics)
+		srv.HandleFunc("GET /api/dashboard/teams", d.teamsView)
+
+		// The SPA on the catch-all, registered LAST and only alongside the
+		// API it reads. Go's ServeMux picks the most specific pattern, so
+		// every route above and every probe still wins over "/".
+		srv.Handle("/", web.Handler())
+	}
 }

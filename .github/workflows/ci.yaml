@@ -127,3 +127,31 @@ jobs:
         with:
           version: v2.13
           working-directory: backend
+
+  ui:
+    name: Build + test the dashboard
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 - hack/patch-coverage.sh diffs against the PR base.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install diff-cover==10.3.0
+      - run: npm ci
+        working-directory: ui
+      # `npm run build` is `tsc -b && vite build`, so this is the typecheck
+      # too. It also proves the SPA still lands in backend/web/dist, which is
+      # what the Go embed reads.
+      - run: npm run build
+        working-directory: ui
+      - run: make fe-coverage
+      - name: UI patch coverage
+        run: ./hack/patch-coverage.sh "origin/${{ github.base_ref || 'master' }}"

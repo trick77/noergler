@@ -5,8 +5,8 @@ Bitbucket Server PR auto-review bridge, inference through
 
 ## Commands
 
-**The module is in `backend/`; `hack/`, docs and `prompts/` are at the root.**
-Go commands run from `backend/`, scripts from the root.
+**The module is in `backend/`; `hack/`, `ui/`, docs and `prompts/` are at the
+root.** Go commands run from `backend/`, scripts and `make` from the root.
 `gofmt -l .` must print nothing. `go vet ./...`, `go test -race ./...`.
 Store tests skip without `NOERGLER_TEST_DSN`; `docker compose up -d postgres`,
 then DSN `postgres://noergler:changeme@localhost:5432/noergler?sslmode=disable`.
@@ -14,7 +14,9 @@ then DSN `postgres://noergler:changeme@localhost:5432/noergler?sslmode=disable`.
 Coverage floor 75% (`hack/coverage-floors`),
 gate `./hack/coverage-gate.sh backend` over `coverage/backend.xml`; `cmd/` is
 excluded and `hack/` is outside the module.
-No web framework, no ORM, no logging library. Do not add one.
+No web framework, no ORM, no logging library in the Go module. Do not add
+one. The dashboard SPA is `ui/` (React + Vite + Tailwind); `make fe-build`
+writes it into `backend/web/dist`, which `//go:embed` reads.
 
 ## Team isolation
 
@@ -37,6 +39,9 @@ No web framework, no ORM, no logging library. Do not add one.
 - **Cost fails open.** Unpriced run = NULL cost, review proceeds. The per-PR cap
   skips only later auto-runs. `BIGINT` nano-USD in the DB, USD at the edges.
 - Key spend is a gauge: shown, never summed.
+- USD crosses the JSON edge as a decimal STRING, 3 decimals. Never a float
+  (it would round the money), never an exponent (`1E-9` breaks strict
+  parsers). `null` means unpriced and must never render as `$0.000`.
 - `Usage.Cost.Provenance == Reported` is the only priced case.
   never a float, and never an exponent (`1E-9` breaks strict parsers).
 
@@ -104,6 +109,21 @@ No web framework, no ORM, no logging library. Do not add one.
 - Jira `imageRE` eats any `!…!` span on a line: `Done! Ship it!` → `Done`.
   Known quirk, pinned by tests; changing it is a decision.
 
+## Dashboard
+
+- Read-only, unauthenticated, cross-team: the ingress is the boundary. Routes
+  exist only when `Deps.Dashboard` and `Deps.DashboardStore` are wired.
+- **`review_runs` holds successes only.** Every failure and every pre-flight
+  skip is a `review_attempts` row (`review.SkipReason`), written fail-open. A
+  separate table, so "a non-ok outcome writes no run row" stays true.
+- A mention writes no attempt: it is a Q&A answer, not a review.
+- Tokens, fonts and page shell come from `../rongo`, charts from `../netra`.
+  No sidebar. Every page 900px, centred. Scrollbar thumb opaque, never
+  `rgba()`. The series ramp was validated for CVD against the panel surface;
+  do not re-pick it by eye, and a chart component never invents a hue.
+- `ui/src/routing.ts` and the allowlist in `backend/web/embed.go` are one
+  list in two places. An unknown path is a real 404, never the shell.
+
 ## Store
 
 - Never edit an applied migration; add the next number.
@@ -115,6 +135,9 @@ No web framework, no ORM, no logging library. Do not add one.
 ## Ops
 
 - `team_disabled`, `team_ready`, `teams_ready` are alerted on. Do not reword.
+- **A disable reason never leaves the logs.** It can name an env var, and
+  `/health` and every `/api/dashboard` route are unauthenticated. Slug and
+  state only.
 - Splunk-reserved keys renamed `splunk_<key>`, `timestamp` first (Splunk's auto
   timestamp guesses wrong otherwise).
 - 4 file fetches in flight, tokenizer vocab compiled in and warmed at boot.

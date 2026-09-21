@@ -183,6 +183,10 @@ func serve(log *slog.Logger) error {
 		Log:         log,
 		BotUsername: bb.BotUsername(),
 		PublicURL:   app.Server.PublicURL,
+		// The operator dashboard. Read-only and unauthenticated, so the
+		// ingress is the boundary.
+		Dashboard:      q,
+		DashboardStore: db,
 	})
 
 	enabled, _ := reg.Status()

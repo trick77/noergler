@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime/debug"
+	"sort"
 	"sync"
 	"time"
 
@@ -94,6 +95,19 @@ type entry struct {
 	at      time.Time
 }
 
+// heldEntry is what a held key carries for the dashboard. The set used to be
+// keyed to nothing (map[PRKey]struct{}), which was enough for nextRunnable
+// but left a RUNNING review anonymous: pending is deleted at dequeue, so
+// after that moment neither the team nor the start time survived anywhere.
+type heldEntry struct {
+	team string
+	// kind is "review" or "job", the same word the queue logs.
+	kind  string
+	since time.Time
+	// waited is how long this item sat in the queue before it started.
+	waited time.Duration
+}
+
 // Queue is the single-worker PR review queue with a bounded inference pool.
 type Queue struct {
 	review ReviewFunc
@@ -129,7 +143,7 @@ type Queue struct {
 	// staged pipeline, where the inference call outlives the worker turn and
 	// a second run of the same PR would race on the prior-commit pointer,
 	// the summary and the inline comments.
-	inflight map[store.PRKey]struct{}
+	inflight map[store.PRKey]heldEntry
 
 	started bool
 	done    chan struct{}
@@ -154,7 +168,7 @@ func New(review ReviewFunc, global, perTeam int, log *slog.Logger) *Queue {
 		perTeam:  perTeam,
 		teamSem:  make(map[string]chan struct{}),
 		pending:  make(map[store.PRKey]*entry),
-		inflight: make(map[store.PRKey]struct{}),
+		inflight: make(map[store.PRKey]heldEntry),
 		done:     make(chan struct{}),
 	}
 	q.cond = sync.NewCond(&q.mu)
@@ -502,7 +516,7 @@ func (q *Queue) run(ctx context.Context) {
 		if it.job != nil {
 			kind = "job"
 			tag, team, at = it.job.tag, it.job.team, it.job.at
-			q.inflight[it.key] = struct{}{}
+			q.inflight[it.key] = heldEntry{team: team, kind: kind, since: time.Now(), waited: time.Since(at)}
 			key := it.key
 			fn := it.job.run
 			run = func(ctx context.Context) {
@@ -531,9 +545,9 @@ func (q *Queue) run(ctx context.Context) {
 				continue
 			}
 			delete(q.pending, it.key)
-			q.inflight[it.key] = struct{}{}
 			key := it.key
 			team, at = e.team, e.at
+			q.inflight[it.key] = heldEntry{team: team, kind: kind, since: time.Now(), waited: time.Since(at)}
 			payload := e.payload
 			run = func(ctx context.Context) {
 				// The defer, not a tail call: a panicking review must not
@@ -585,4 +599,73 @@ func (q *Queue) runOne(ctx context.Context, run func(context.Context), tag, kind
 		}
 	}()
 	run(ctx)
+}
+
+// Snapshot is the queue as the dashboard reads it: one lock, one copy, no
+// internal slice or map handed out.
+//
+// Depth is the only other accessor and it deliberately excludes the in-flight
+// item (the backlog warning is read off it). This reports both, separately,
+// because "nothing is queued" and "nothing is running" are different answers
+// and a live panel needs to tell them apart.
+type Snapshot struct {
+	// Capacity and PerTeam size the inference pool.
+	Capacity int
+	PerTeam  int
+	// Staged is prompts handed to the pool and not yet through it: running,
+	// or still waiting for a slot.
+	Staged int
+	// Depth matches Depth(): waiting items, in-flight excluded.
+	Depth   int
+	Running []RunningItem
+	Waiting []WaitingItem
+}
+
+// RunningItem is one PR whose work has been dequeued and is not finished.
+type RunningItem struct {
+	Key    store.PRKey
+	Team   string
+	Kind   string
+	Since  time.Time
+	Waited time.Duration
+}
+
+// WaitingItem is one PR still in the queue.
+type WaitingItem struct {
+	Key   store.PRKey
+	Team  string
+	Since time.Time
+}
+
+// Snapshot copies the queue's live state.
+func (q *Queue) Snapshot() Snapshot {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	s := Snapshot{
+		Capacity: cap(q.sem),
+		PerTeam:  q.perTeam,
+		Staged:   q.staged,
+		Depth:    len(q.items),
+	}
+	for key, h := range q.inflight {
+		s.Running = append(s.Running, RunningItem{
+			Key: key, Team: h.team, Kind: h.kind, Since: h.since, Waited: h.waited,
+		})
+	}
+	// items order is the queue's own, which is what the panel shows; a map
+	// range is not, so only the running list needs sorting.
+	sort.Slice(s.Running, func(i, j int) bool {
+		return s.Running[i].Since.Before(s.Running[j].Since)
+	})
+	for _, it := range q.items {
+		w := WaitingItem{Key: it.key}
+		if it.job != nil {
+			w.Team, w.Since = it.job.team, it.job.at
+		} else if e, ok := q.pending[it.key]; ok {
+			w.Team, w.Since = e.team, e.at
+		}
+		s.Waiting = append(s.Waiting, w)
+	}
+	return s
 }

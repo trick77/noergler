@@ -94,7 +94,17 @@ func WriteDetail(w http.ResponseWriter, status int, detail string) {
 
 // --- middleware --------------------------------------------------------------
 
-var silentPaths = map[string]bool{"/health": true, "/ready": true}
+// silentPaths are polled on a timer and would otherwise be the bulk of the
+// access log. The probes are polled by the platform; the dashboard's live
+// panel polls itself while anyone has it open.
+var silentPaths = map[string]bool{
+	"/health":                true,
+	"/ready":                 true,
+	"/api/dashboard/live":    true,
+	"/api/dashboard/runs":    true,
+	"/api/dashboard/metrics": true,
+	"/api/dashboard/teams":   true,
+}
 
 // requestIDRE bounds a caller-supplied X-Request-Id: untrusted input must
 // not become an indexed field (newlines, huge strings).

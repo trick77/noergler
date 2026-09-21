@@ -17,7 +17,7 @@ import (
 // the set, because a synchronous review always releases before run loops.
 func hold(q *Queue, k store.PRKey) {
 	q.mu.Lock()
-	q.inflight[k] = struct{}{}
+	q.inflight[k] = heldEntry{team: "payments", kind: "review", since: time.Now()}
 	q.mu.Unlock()
 }
 
