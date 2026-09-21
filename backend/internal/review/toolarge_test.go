@@ -28,7 +28,7 @@ func TestTooLargeOffendersRanksBySize(t *testing.T) {
 	if huge < 0 || mid < 0 || small < 0 {
 		t.Fatalf("got %q, want all three paths named", got)
 	}
-	if !(huge < mid && mid < small) {
+	if huge > mid || mid > small {
 		t.Errorf("got %q, want huge.json before mid.go before small.txt", got)
 	}
 }
