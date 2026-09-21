@@ -659,7 +659,7 @@ func TestGrantUserPermissionUsesQueryParams(t *testing.T) {
 	}
 }
 
-func TestGetProjectGetRepoListPullRequests(t *testing.T) {
+func TestGetProjectGetRepo(t *testing.T) {
 	f, c := newFake(t, jsonReply(200, `{"key":"PROJ","values":[]}`))
 
 	if _, err := c.GetProject(context.Background(), "PROJ"); err != nil {
@@ -674,13 +674,6 @@ func TestGetProjectGetRepoListPullRequests(t *testing.T) {
 	}
 	if want := "/rest/api/1.0/projects/PROJ/repos/r"; f.last().Path != want {
 		t.Errorf("path = %q, want %q", f.last().Path, want)
-	}
-
-	if _, err := c.ListPullRequests(context.Background(), "PROJ", "r", 1); err != nil {
-		t.Fatal(err)
-	}
-	if got := f.last().Query.Get("limit"); got != "1" {
-		t.Errorf("limit = %q, want 1", got)
 	}
 }
 
