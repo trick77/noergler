@@ -71,6 +71,15 @@ type Queue struct {
 	pending map[store.PRKey]*entry
 	stopped bool
 
+	// inflight holds the keys of PRs whose work has been dequeued but is not
+	// finished yet. A keyed item whose key is in flight is not runnable: the
+	// worker skips over it and leaves it in items. Today a review finishes
+	// before run loops, so nothing is ever held; the set exists for the
+	// staged pipeline, where the inference call outlives the worker turn and
+	// a second run of the same PR would race on the prior-commit pointer,
+	// the summary and the inline comments.
+	inflight map[store.PRKey]struct{}
+
 	started bool
 	done    chan struct{}
 }
@@ -78,10 +87,11 @@ type Queue struct {
 // New builds a queue. The worker does not run until Start.
 func New(review ReviewFunc, log *slog.Logger) *Queue {
 	q := &Queue{
-		review:  review,
-		log:     log,
-		pending: make(map[store.PRKey]*entry),
-		done:    make(chan struct{}),
+		review:   review,
+		log:      log,
+		pending:  make(map[store.PRKey]*entry),
+		inflight: make(map[store.PRKey]struct{}),
+		done:     make(chan struct{}),
 	}
 	q.cond = sync.NewCond(&q.mu)
 	return q
@@ -171,19 +181,48 @@ func (q *Queue) Depth() int {
 	return len(q.items)
 }
 
+// nextRunnable is the index of the first item the worker may start, or -1
+// when every waiting item is held. Caller holds the lock.
+//
+// Held items stay in items rather than being parked somewhere else: Depth
+// counts them, because they are genuinely waiting, and Submit still finds
+// their pending entry and supersedes it.
+func (q *Queue) nextRunnable() int {
+	for i, it := range q.items {
+		if it.job != nil {
+			return i
+		}
+		if _, held := q.inflight[it.key]; !held {
+			return i
+		}
+	}
+	return -1
+}
+
+// done1 releases a key's hold and wakes the worker, which may have parked
+// with only held items left.
+func (q *Queue) done1(key store.PRKey) {
+	q.mu.Lock()
+	delete(q.inflight, key)
+	q.mu.Unlock()
+	q.cond.Broadcast()
+}
+
 func (q *Queue) run(ctx context.Context) {
 	defer close(q.done)
 	for {
 		q.mu.Lock()
-		for len(q.items) == 0 && !q.stopped {
+		idx := q.nextRunnable()
+		for idx < 0 && !q.stopped {
 			q.cond.Wait()
+			idx = q.nextRunnable()
 		}
 		if q.stopped {
 			q.mu.Unlock()
 			return
 		}
-		it := q.items[0]
-		q.items = q.items[1:]
+		it := q.items[idx]
+		q.items = append(q.items[:idx], q.items[idx+1:]...)
 
 		var tag, team string
 		var at time.Time
@@ -203,9 +242,14 @@ func (q *Queue) run(ctx context.Context) {
 				continue
 			}
 			delete(q.pending, it.key)
+			q.inflight[it.key] = struct{}{}
+			key := it.key
 			team, at = e.team, e.at
 			payload := e.payload
-			run = func(ctx context.Context) { q.review(ctx, team, payload) }
+			run = func(ctx context.Context) {
+				defer q.done1(key)
+				q.review(ctx, team, payload)
+			}
 		}
 		depth := len(q.items)
 		q.mu.Unlock()
