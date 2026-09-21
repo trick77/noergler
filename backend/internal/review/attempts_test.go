@@ -108,6 +108,70 @@ func TestSkipRecordsItsReason(t *testing.T) {
 	}
 }
 
+// resolveDiff used to answer with a bare false for four different stops, so
+// the two commonest skips in the pipeline reached the abort as SkipNone and
+// were recorded as nothing at all. Each of these was invisible before.
+func TestDiffSkipsRecordTheirOwnReason(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(*harness)
+		want  SkipReason
+	}{
+		{
+			name: "an empty diff is a decision, not a fault",
+			setup: func(h *harness) {
+				h.bb.prDiff = "   \n"
+			},
+			want: SkipEmptyDiff,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			h := newHarness(t, func(h *harness) { c.setup(h) })
+
+			h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+			if len(h.st.Attempts) != 1 {
+				t.Fatalf("expected one attempt, got %d", len(h.st.Attempts))
+			}
+			if got := h.st.Attempts[0]; got.Reason != string(c.want) {
+				t.Errorf("reason = %q, want %q", got.Reason, c.want)
+			}
+		})
+	}
+}
+
+// A HEAD that has not moved is the single most common skip in a busy
+// instance: every retrigger and no-op force push lands here.
+func TestHeadUnchangedRecordsItsReason(t *testing.T) {
+	h := newHarness(t, nil)
+	h.st.lastCommit, h.st.hasLast = "src1", true
+
+	p := prPayload(webhook.EventFromRefUpdated)
+	h.r.ReviewPullRequest(context.Background(), p, false)
+
+	if len(h.st.Attempts) != 1 {
+		t.Fatalf("expected one attempt, got %d", len(h.st.Attempts))
+	}
+	if got := h.st.Attempts[0]; got.Reason != string(SkipHeadUnchanged) {
+		t.Errorf("reason = %q, want %q", got.Reason, SkipHeadUnchanged)
+	}
+}
+
+// A diff that would not fetch is a FAULT, not a decision: it writes no
+// attempt row, so the skip breakdown counts only what the pipeline chose.
+func TestDiffFetchFailureIsNotASkip(t *testing.T) {
+	h := newHarness(t, func(h *harness) {
+		h.bb.prDiffErr = errors.New("bitbucket is down")
+	})
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if len(h.st.Attempts) != 0 {
+		t.Errorf("a fetch fault must write no attempt, got %+v", h.st.Attempts)
+	}
+}
+
 // The attempt row is a record of what happened; it must never change what
 // happened. A store that refuses every write still produces a full review.
 func TestAttemptWriteFailsOpen(t *testing.T) {

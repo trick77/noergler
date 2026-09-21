@@ -85,12 +85,27 @@ func run(t *testing.T, s *Store, prID int64, to string, cost *int64, model strin
 
 func TestMigrate_IsIdempotent(t *testing.T) {
 	s := testStore(t)
+	var before int
+	if err := s.pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM schema_migrations`).Scan(&before); err != nil {
+		t.Fatalf("count before: %v", err)
+	}
+	if before == 0 {
+		t.Fatal("migrate recorded nothing")
+	}
+
 	if err := s.Migrate(context.Background()); err != nil {
 		t.Fatalf("second migrate: %v", err)
 	}
-	var n int
-	if err := s.pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil || n != 1 {
-		t.Errorf("schema_migrations rows = %d, err = %v", n, err)
+
+	// Compared against the first count, not a literal: the point is that a
+	// second Migrate applies nothing, and a hardcoded number makes every
+	// future migration fail a test about idempotency.
+	var after int
+	if err := s.pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM schema_migrations`).Scan(&after); err != nil {
+		t.Fatalf("count after: %v", err)
+	}
+	if after != before {
+		t.Errorf("schema_migrations rows = %d after a second migrate, want %d", after, before)
 	}
 }
 

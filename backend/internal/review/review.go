@@ -189,9 +189,9 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	lastReviewed := r.priorCommit(ctx, key)
 
 	// 9. Incremental review when the event is a push and we have a pointer.
-	rawDiff, cumulativePRDiff, incrementalFrom, ok := r.resolveDiff(ctx, payload, key, prTag, sourceCommit, lastReviewed, upsert)
+	rawDiff, cumulativePRDiff, incrementalFrom, diffWhy, ok := r.resolveDiff(ctx, payload, key, prTag, sourceCommit, lastReviewed, upsert)
 	if !ok {
-		return nil, ctx, r.abort(ctx, key, kind, SkipNone, prTag, httpCounter)
+		return nil, ctx, r.abort(ctx, key, kind, diffWhy, prTag, httpCounter)
 	}
 
 	files, contentSkipped := r.prepareFiles(ctx, project, repo, rawDiff, sourceCommit, prTag)
@@ -473,7 +473,13 @@ func (r *Reviewer) checkSkipState(ctx context.Context, key store.PRKey, prTag st
 
 // resolveDiff decides between an incremental and a full review and fetches
 // the diff. ok is false when the review must stop.
-func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, key store.PRKey, prTag, sourceCommit, lastReviewed string, upsert store.PRUpsert) (rawDiff, cumulative, incrementalFrom string, ok bool) {
+//
+// why names which of the four stops it was, because they are not the same
+// event: three are decisions (nothing changed, nothing to review, too big)
+// and one is a fault (the diff would not fetch). A single bare false told
+// the caller only that it had to return, so the two commonest skips in the
+// whole pipeline were invisible to anything but the log.
+func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, key store.PRKey, prTag, sourceCommit, lastReviewed string, upsert store.PRUpsert) (rawDiff, cumulative, incrementalFrom string, why SkipReason, ok bool) {
 	project, repo, prID := key.Project, key.Repo, key.PRID
 	isIncremental := false
 
@@ -482,7 +488,7 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 		if sourceCommit == lastReviewed {
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: HEAD unchanged since last review (%s), skipping",
 				prTag, shortSHA(sourceCommit, 10)))
-			return "", "", "", false
+			return "", "", "", SkipHeadUnchanged, false
 		}
 		incDiff, err := r.bitbucket.FetchCommitDiff(ctx, project, repo, lastReviewed, sourceCommit)
 		switch {
@@ -519,25 +525,25 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 			prior := r.priorCommit(ctx, key)
 			prReviewID := r.upsert(ctx, upsert, prior)
 			r.postOrUpdateSummary(ctx, project, repo, prID, prReviewID, render.DiffTooLargeSummary(tooLarge.Limit))
-			return "", "", "", false
+			return "", "", "", SkipDiffTooLarge, false
 		}
 		if err != nil {
 			r.log.ErrorContext(ctx, fmt.Sprintf("%s: failed to fetch PR diff: %v", prTag, err))
-			return "", "", "", false
+			return "", "", "", SkipNone, false
 		}
 		// 11. An empty diff is nothing to review.
 		if strings.TrimSpace(full) == "" {
 			r.log.InfoContext(ctx, prTag+" has empty diff, skipping")
-			return "", "", "", false
+			return "", "", "", SkipEmptyDiff, false
 		}
-		return full, "", "", true
+		return full, "", "", SkipNone, true
 	}
 
 	// 12. The cumulative PR diff is cross-file context for an incremental
 	// review, so the model can check invariants split across commits. Best
 	// effort: a failure here must not block the review.
 	cumulative = r.fetchCumulativeDiff(ctx, key, prTag)
-	return rawDiff, cumulative, incrementalFrom, true
+	return rawDiff, cumulative, incrementalFrom, SkipNone, true
 }
 
 // fetchCumulativeDiff returns the whole-PR diff for cross-file context, or
