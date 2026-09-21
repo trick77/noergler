@@ -509,6 +509,101 @@ func TestStopDoesNotStartQueuedReviews(t *testing.T) {
 	}
 }
 
+// A job must not overtake its OWN PR's review just because the pool is
+// saturated. The staged gate skips the review, but the job behind it is not
+// gated, and the key is not in inflight because the review was never
+// dequeued: the merge rollup would claim the snapshot before the run row
+// existed, miss that run's cost, and never retry.
+func TestJobCannotOvertakeAReviewSkippedBySaturation(t *testing.T) {
+	g := newGate()
+	var mu sync.Mutex
+	var order []string
+
+	q := New(func(ctx context.Context, team string, p *webhook.Payload, sched Scheduler) bool {
+		id := p.PullRequest.ID
+		sched.Stage(ctx, key(id), team,
+			func(context.Context) { g.enter(team) },
+			func(context.Context) {
+				mu.Lock()
+				order = append(order, fmt.Sprintf("review-%d", id))
+				mu.Unlock()
+			},
+		)
+		return true
+	}, 1, 1, quietLogger())
+
+	q.Start(context.Background())
+	defer q.Stop()
+	defer g.releaseAll()
+
+	// Saturate: pool 1 plus stagedSlack prompts may be resident.
+	resident := 1 + stagedSlack
+	for i := 1; i <= resident; i++ {
+		q.Submit(key(i), prFor(i), "t")
+	}
+	g.waitEntered(t, 1)
+	waitFor(t, func() bool { return q.Depth() == 0 })
+
+	// PR 99's review is now queued behind a saturated pool, so the scan
+	// skips it. Its merge job must not run ahead of it.
+	last := 99
+	q.Submit(key(last), prFor(last), "t")
+	q.SubmitJob(key(last), "t", func(context.Context) {
+		mu.Lock()
+		order = append(order, "merge-99")
+		mu.Unlock()
+	})
+
+	// Nothing for PR 99 may run while the pool stays saturated.
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	early := append([]string(nil), order...)
+	mu.Unlock()
+	for _, e := range early {
+		if e == "merge-99" {
+			t.Fatal("the merge job overtook its own PR's review")
+		}
+	}
+
+	g.releaseAll()
+	waitFor(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		for i, e := range order {
+			if e == "merge-99" {
+				return i > 0 && order[i-1] == "review-99"
+			}
+		}
+		return false
+	})
+}
+
+// A review item dequeued with no pending payload must not leave the worker
+// marked running: Stop waits on that flag with no timeout, so a leak hangs
+// shutdown until the pod is killed.
+func TestDequeueWithNoPayloadDoesNotHangStop(t *testing.T) {
+	q := New(syncReview(func(context.Context, string, *webhook.Payload) {}), 1, 1, quietLogger())
+
+	// An item whose pending entry never existed: the defensive branch.
+	q.mu.Lock()
+	q.items = append(q.items, item{key: key(1)})
+	q.mu.Unlock()
+
+	q.Start(context.Background())
+
+	stopped := make(chan struct{})
+	go func() { q.Stop(); close(stopped) }()
+
+	select {
+	case <-stopped:
+	case <-time.After(2 * time.Second):
+		q.mu.Lock()
+		running := q.running
+		q.mu.Unlock()
+		t.Fatalf("Stop hung after a payload-less dequeue (running=%v)", running)
+	}
+}
+
 // The worker stops preparing new reviews once the pool is saturated,
 // because every prepared prompt stays resident until its inference runs.
 // Jobs still run, which is what lets post stages free the slots.

@@ -296,21 +296,36 @@ func (q *Queue) Depth() int {
 // counts them, because they are genuinely waiting, and Submit still finds
 // their pending entry and supersedes it.
 func (q *Queue) nextRunnable() int {
+	saturated := q.staged >= cap(q.sem)+stagedSlack
+	// Keys whose review this scan has passed over. A job behind a skipped
+	// review must not overtake it: the key is not in inflight, because the
+	// review was never dequeued, so without this a merge rollup would claim
+	// the snapshot before its own run row existed and never retry.
+	var deferred map[store.PRKey]struct{}
+
 	for i, it := range q.items {
 		if it.job != nil && it.job.internal {
 			return i
+		}
+		if _, skipped := deferred[it.key]; skipped {
+			continue
 		}
 		// Draining: only the tails of reviews already in flight still run.
 		// Starting queued work would make shutdown take the whole backlog,
 		// not the one round of work Stop is there to finish.
 		if q.draining {
+			if it.job == nil {
+				deferred = markDeferred(deferred, it.key)
+			}
 			continue
 		}
 		// A prepared prompt is resident until its inference finishes, so
 		// preparing the whole queue ahead of a saturated pool would hold one
 		// per queued PR. Stop taking new reviews and let the pool catch up;
-		// jobs, including the post stages that free slots, still run.
-		if it.job == nil && q.staged >= cap(q.sem)+stagedSlack {
+		// jobs for OTHER PRs, including the post stages that free slots,
+		// still run.
+		if it.job == nil && saturated {
+			deferred = markDeferred(deferred, it.key)
 			continue
 		}
 		if _, held := q.inflight[it.key]; !held {
@@ -318,6 +333,14 @@ func (q *Queue) nextRunnable() int {
 		}
 	}
 	return -1
+}
+
+func markDeferred(m map[store.PRKey]struct{}, k store.PRKey) map[store.PRKey]struct{} {
+	if m == nil {
+		m = make(map[store.PRKey]struct{}, 1)
+	}
+	m[k] = struct{}{}
+	return m
 }
 
 // Stage runs infer on the inference pool and then puts post back on the
@@ -373,8 +396,10 @@ func (q *Queue) Stage(ctx context.Context, key store.PRKey, team string, infer, 
 			infer(ctx)
 		}()
 
-		// Submitted before the deferred release above runs, so the hold is
-		// handed from this goroutine to the job without a gap.
+		// The pool slot is already released above; the PR's hold is not.
+		// It ends when this job completes, or in the outer defer if the
+		// submit never happened, so there is no window where the key is
+		// free while its posting is still outstanding.
 		//
 		// post is called with the REVIEW's ctx, not the worker's: the job
 		// context queue.run builds carries team= but no pr_tag and no
@@ -475,6 +500,11 @@ func (q *Queue) run(ctx context.Context) {
 			tag = it.key.Tag()
 			e, ok := q.pending[it.key]
 			if !ok {
+				// Reset running, or Stop waits on it forever: it has no
+				// timeout, so a leak here hangs shutdown until the pod is
+				// killed.
+				q.running = false
+				q.cond.Broadcast()
 				q.mu.Unlock()
 				q.log.Warn(fmt.Sprintf("queue[%s]: dequeued with no payload, skipping", tag))
 				continue
