@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"testing"
 
 	"github.com/trick77/noergler/internal/store"
@@ -58,4 +59,53 @@ func TestSnapshotDoesNotAliasQueueState(t *testing.T) {
 	if got := q.Snapshot(); got.Waiting[0].Team != "payments" {
 		t.Errorf("mutating a snapshot changed the queue: team = %q", got.Waiting[0].Team)
 	}
+}
+
+// The dashboard polls Snapshot while the worker dequeues, holds and releases
+// keys. It takes q.mu like every other reader, but the copy it makes is the
+// part worth proving: a snapshot that handed out the queue's own slice or
+// map would race here rather than at the lock.
+func TestSnapshotRacesNothingWhileTheWorkerRuns(t *testing.T) {
+	started := make(chan struct{}, 64)
+	q := New(func(_ context.Context, _ string, _ *webhook.Payload, _ Scheduler) bool {
+		select {
+		case started <- struct{}{}:
+		default:
+		}
+		return false
+	}, 4, 2, discardLog())
+
+	q.Start(context.Background())
+	t.Cleanup(q.Stop)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := range 200 {
+			q.Submit(
+				store.PRKey{Project: "PAY", Repo: "ledger", PRID: i % 17},
+				&webhook.Payload{}, "payments",
+			)
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for range 400 {
+			s := q.Snapshot()
+			// Read every field the handler reads, so the race detector sees
+			// the same accesses a real request makes.
+			_ = s.Capacity + s.PerTeam + s.Staged + s.Depth
+			for _, it := range s.Running {
+				_ = it.Key.Tag() + it.Team + it.Kind
+			}
+			for _, it := range s.Waiting {
+				_ = it.Key.Tag() + it.Team
+			}
+		}
+	}()
+
+	wg.Wait()
 }
