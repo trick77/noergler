@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -154,8 +155,10 @@ func TestGlobalCapBinds(t *testing.T) {
 	// unblock the gate or Stop waits on goroutines that never finish.
 	defer g.releaseAll()
 
+	// Three DISTINCT teams, so the per-team cap of 2 never binds and only
+	// the global cap can hold the third call back.
 	for i := 1; i <= 3; i++ {
-		q.Submit(key(i), prFor(i), "t")
+		q.Submit(key(i), prFor(i), fmt.Sprintf("team-%d", i))
 	}
 
 	g.waitEntered(t, 2)
@@ -439,5 +442,129 @@ func TestNestedSemaphoreNoDeadlock(t *testing.T) {
 	case <-done:
 	case <-time.After(10 * time.Second):
 		t.Fatal("nested acquire deadlocked")
+	}
+}
+
+// Stop finishes the round of work already in flight, and does NOT start
+// queued reviews that never began. Draining the whole backlog would make
+// shutdown take queue-depth worth of inference instead of one pool's.
+func TestStopDoesNotStartQueuedReviews(t *testing.T) {
+	g := newGate()
+	var posted atomic.Int32
+	var prepared atomic.Int32
+
+	q := New(func(ctx context.Context, team string, p *webhook.Payload, sched Scheduler) bool {
+		prepared.Add(1)
+		sched.Stage(ctx, key(p.PullRequest.ID), team,
+			func(context.Context) { g.enter(team) },
+			func(context.Context) { posted.Add(1) },
+		)
+		return true
+	}, 2, 2, quietLogger())
+
+	q.Start(context.Background())
+	defer g.releaseAll()
+
+	// Saturate the pool so the worker stops preparing, leaving queued
+	// reviews that have not started. Pool 2 plus stagedSlack is the ceiling.
+	resident := 2 + stagedSlack
+	for i := 1; i <= resident+3; i++ {
+		q.Submit(key(i), prFor(i), "t")
+	}
+	g.waitEntered(t, 2)
+	waitFor(t, func() bool { return prepared.Load() == int32(resident) })
+
+	stopped := make(chan struct{})
+	go func() { q.Stop(); close(stopped) }()
+
+	g.releaseAll()
+	select {
+	case <-stopped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Stop did not return")
+	}
+	// Every review that reached the pool posted; none of the queued ones ran.
+	if got := prepared.Load(); got != int32(resident) {
+		t.Fatalf("prepared %d reviews, want %d: Stop must not start queued work", got, resident)
+	}
+	if got := posted.Load(); got != int32(resident) {
+		t.Fatalf("posted %d, want %d: every staged review must finish its tail", got, resident)
+	}
+	if d := q.Depth(); d != 3 {
+		t.Fatalf("depth after Stop = %d, want 3 queued reviews left unstarted", d)
+	}
+}
+
+// The worker stops preparing new reviews once the pool is saturated,
+// because every prepared prompt stays resident until its inference runs.
+// Jobs still run, which is what lets post stages free the slots.
+func TestSaturatedPoolStopsPreparingReviews(t *testing.T) {
+	g := newGate()
+	var prepared atomic.Int32
+	jobRan := make(chan struct{})
+
+	q := New(func(ctx context.Context, team string, p *webhook.Payload, sched Scheduler) bool {
+		prepared.Add(1)
+		sched.Stage(ctx, key(p.PullRequest.ID), team,
+			func(context.Context) { g.enter(team) },
+			func(context.Context) {},
+		)
+		return true
+	}, 1, 1, quietLogger())
+
+	q.Start(context.Background())
+	defer q.Stop()
+	defer g.releaseAll()
+
+	// Pool of 1 plus stagedSlack: that many prompts may be resident, no more.
+	for i := 1; i <= 8; i++ {
+		q.Submit(key(i), prFor(i), "t")
+	}
+	g.waitEntered(t, 1)
+
+	want := int32(1 + stagedSlack)
+	waitFor(t, func() bool { return prepared.Load() == want })
+	// It must stay there: nothing releases a slot while the gate holds.
+	time.Sleep(50 * time.Millisecond)
+	if got := prepared.Load(); got != want {
+		t.Fatalf("prepared %d, want %d: the worker ran ahead of the pool", got, want)
+	}
+
+	// A job is still runnable despite the saturated pool.
+	q.SubmitJob(key(99), "t", func(context.Context) { close(jobRan) })
+	select {
+	case <-jobRan:
+	case <-time.After(2 * time.Second):
+		t.Fatal("a job was blocked by the saturated pool")
+	}
+}
+
+// The post stage runs on the review's own context, not the worker's job
+// context: pr_tag and the httpstats scope live there, and everything after
+// the handoff would otherwise log without them.
+func TestPostStageRunsOnTheReviewContext(t *testing.T) {
+	type ctxKey struct{}
+	got := make(chan any, 1)
+
+	q := New(func(ctx context.Context, team string, p *webhook.Payload, sched Scheduler) bool {
+		reviewCtx := context.WithValue(ctx, ctxKey{}, "from-the-review")
+		sched.Stage(reviewCtx, key(p.PullRequest.ID), team,
+			func(context.Context) {},
+			func(postCtx context.Context) { got <- postCtx.Value(ctxKey{}) },
+		)
+		return true
+	}, 2, 2, quietLogger())
+
+	q.Start(context.Background())
+	defer q.Stop()
+	q.Submit(key(1), prFor(1), "t")
+
+	select {
+	case v := <-got:
+		if v != "from-the-review" {
+			t.Fatalf("post ctx value = %v, want the review's", v)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("post stage never ran")
 	}
 }

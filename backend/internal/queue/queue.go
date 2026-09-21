@@ -28,6 +28,10 @@ import (
 // BacklogWarnThreshold is the depth at which the queue starts warning.
 const BacklogWarnThreshold = 10
 
+// stagedSlack is how many prepared prompts may wait beyond the pool's own
+// capacity, so a slot is never idle while the worker fetches the next diff.
+const stagedSlack = 2
+
 // Submit outcomes.
 const (
 	StatusQueued     = "queued"
@@ -92,6 +96,9 @@ type Queue struct {
 	perTeam int
 	teamSem map[string]chan struct{}
 	infWG   sync.WaitGroup
+	// staged counts prompts handed to the pool and not yet through it,
+	// running or still waiting for a slot. Guarded by mu.
+	staged int
 
 	mu       sync.Mutex
 	cond     *sync.Cond
@@ -265,7 +272,10 @@ func (q *Queue) put(it item, tag string) {
 	if depth >= BacklogWarnThreshold {
 		q.log.Warn(fmt.Sprintf("ReviewQueue backlog: %d entries pending", depth))
 	}
-	q.cond.Signal()
+	// Broadcast, not Signal: Stop waits on the same condition, so a Signal
+	// can wake the drain instead of the worker and the new item sits there
+	// until something else happens to wake it.
+	q.cond.Broadcast()
 }
 
 // Depth is the number of items waiting, excluding the one the worker already
@@ -288,6 +298,19 @@ func (q *Queue) nextRunnable() int {
 		if it.job != nil && it.job.internal {
 			return i
 		}
+		// Draining: only the tails of reviews already in flight still run.
+		// Starting queued work would make shutdown take the whole backlog,
+		// not the one round of work Stop is there to finish.
+		if q.draining {
+			continue
+		}
+		// A prepared prompt is resident until its inference finishes, so
+		// preparing the whole queue ahead of a saturated pool would hold one
+		// per queued PR. Stop taking new reviews and let the pool catch up;
+		// jobs, including the post stages that free slots, still run.
+		if it.job == nil && q.staged >= cap(q.sem)+stagedSlack {
+			continue
+		}
 		if _, held := q.inflight[it.key]; !held {
 			return i
 		}
@@ -309,11 +332,23 @@ func (q *Queue) nextRunnable() int {
 // handoff.
 func (q *Queue) Stage(ctx context.Context, key store.PRKey, team string, infer, post func(context.Context)) {
 	q.infWG.Add(1)
+	q.mu.Lock()
+	q.staged++
+	q.mu.Unlock()
 	go func() {
 		defer q.infWG.Done()
 
 		posted := false
+		acquired := false
 		defer func() {
+			if !acquired {
+				// Never got a slot, so release never ran and the staged
+				// count is still ours.
+				q.mu.Lock()
+				q.staged--
+				q.mu.Unlock()
+				q.cond.Broadcast()
+			}
 			if r := recover(); r != nil {
 				q.log.ErrorContext(ctx, fmt.Sprintf("queue[%s]: inference panicked: %v", key.Tag(), r),
 					slog.String("stack", string(debug.Stack())))
@@ -326,6 +361,7 @@ func (q *Queue) Stage(ctx context.Context, key store.PRKey, team string, infer, 
 		}()
 
 		waited := q.acquire(team)
+		acquired = true
 		if waited > 50*time.Millisecond {
 			q.log.InfoContext(ctx, fmt.Sprintf("queue[%s]: inference waited %.1fs for a pool slot",
 				key.Tag(), waited.Seconds()))
@@ -337,8 +373,13 @@ func (q *Queue) Stage(ctx context.Context, key store.PRKey, team string, infer, 
 
 		// Submitted before the deferred release above runs, so the hold is
 		// handed from this goroutine to the job without a gap.
+		//
+		// post is called with the REVIEW's ctx, not the worker's: the job
+		// context queue.run builds carries team= but no pr_tag and no
+		// httpstats scope, so everything after the handoff would log
+		// without them and record no HTTP counts.
 		posted = true
-		q.submitInternal(key, team, post)
+		q.submitInternal(key, team, func(context.Context) { post(ctx) })
 	}()
 }
 
@@ -353,10 +394,15 @@ func (q *Queue) acquire(team string) time.Duration {
 	return time.Since(started)
 }
 
-// release reverses acquire.
+// release reverses acquire and frees the prepared-prompt slot, waking a
+// worker that stopped taking reviews because the pool was saturated.
 func (q *Queue) release(team string) {
 	<-q.sem
 	<-q.teamSemFor(team)
+	q.mu.Lock()
+	q.staged--
+	q.mu.Unlock()
+	q.cond.Broadcast()
 }
 
 // teamSemFor is the team's semaphore, created on first use. Teams are fixed
