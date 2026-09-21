@@ -54,7 +54,7 @@ func TestReviewKeywordMentionReactivatesAndReviewsFresh(t *testing.T) {
 		h.st.skipState = &store.SkipState{IgnoredAt: &now}
 	})
 
-	h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "alice"))
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "alice"), "platform", nil)
 
 	if h.st.Reactived != 1 {
 		t.Errorf("Reactivate called %d times, want 1", h.st.Reactived)

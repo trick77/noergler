@@ -31,8 +31,10 @@ type Reviewer interface {
 	// the inference pool and the posting comes back to the worker. It
 	// reports whether that work outlives the call, which is what keeps the
 	// PR's queue hold alive across it.
-	ReviewPullRequestStaged(ctx context.Context, p *webhook.Payload, team string, sched Scheduler) bool
-	HandleMention(ctx context.Context, p *webhook.Payload)
+	ReviewPullRequestStaged(ctx context.Context, p *webhook.Payload, team string, skipAuthorCheck bool, sched Scheduler) bool
+	// HandleMention reports handoff like the staged review does: a keyword
+	// mention stages one, so the PR's hold must outlive the job.
+	HandleMention(ctx context.Context, p *webhook.Payload, team string, sched Scheduler) bool
 	HandleCommentDeleted(ctx context.Context, p *webhook.Payload)
 	HandlePRMerged(ctx context.Context, p *webhook.Payload)
 	HandlePRDeclined(ctx context.Context, p *webhook.Payload)

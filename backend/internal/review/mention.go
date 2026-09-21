@@ -27,34 +27,35 @@ import (
 //
 // A mention never goes incremental: the event is pr:comment:added and the
 // incremental guard only fires on pr:from_ref_updated.
-func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload) {
+func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, team string, sched Scheduler) (handedOff bool) {
 	comment := payload.Comment
 	if comment == nil {
-		return
+		return false
 	}
 	// Self-loop prevention: our own comments are not mentions.
 	if comment.Author.Name == r.bitbucket.BotUsername() {
 		r.log.DebugContext(ctx, "Ignoring own comment (bot)")
-		return
+		return false
 	}
 	pr := payload.PullRequest
 	if pr.State != "" && pr.State != "OPEN" {
 		r.log.InfoContext(ctx, "Ignoring mention on non-open PR (state="+pr.State+")")
-		return
+		return false
 	}
 
 	project, repo := payload.ProjectRepo()
 	if project == "" || repo == "" {
 		r.log.ErrorContext(ctx, "Could not extract project/repo from webhook payload")
-		return
+		return false
 	}
 	prTag := fmt.Sprintf("%s/%s#%d", project, repo, pr.ID)
 	ctx = logging.With(ctx, "pr_tag", prTag, "repo", project+"/"+repo, "pr_id", pr.ID)
 
 	// The Q&A path fetches a diff and posts a reply of its own, so it gets the
-	// same accounting as a review. A keyword mention delegates to
-	// ReviewPullRequest, which opens its own scope; that one reports twice,
-	// once for each unit of work, rather than merging them.
+	// same accounting as a review. A keyword mention stages a review, which
+	// opens its own scope and logs its own totals when its posting finishes;
+	// this one then reports only what the mention itself spent, which is
+	// two units of work reported separately rather than merged.
 	ctx, httpCounter := httpstats.WithScope(ctx)
 	defer r.logHTTPTotals(ctx, prTag, httpCounter)
 
@@ -78,10 +79,21 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload) 
 	question := extractQuestion(comment.Text, r.bitbucket.BotUsername())
 
 	// An empty question, or one of the review keywords, means "review this".
+	// It is a review like any other, so it takes the staged path: the
+	// gateway call goes to the inference pool instead of holding the worker,
+	// and the PR's queue hold covers it, so it cannot run alongside a review
+	// of the same PR already in flight.
 	if question == "" || reviewKeywords[strings.ToLower(question)] {
 		r.log.InfoContext(ctx, fmt.Sprintf("Mention triggers full review (question=%q)", question))
+		if sched != nil {
+			// The caller must keep the PR held: the staged posting is what
+			// releases it, so a push or a merge for this PR cannot run
+			// alongside the inference.
+			return r.ReviewPullRequestStaged(ctx, payload, team, true, sched)
+		}
+		// No scheduler (a direct caller, or a test): run it inline.
 		r.ReviewPullRequest(ctx, payload, true)
-		return
+		return false
 	}
 	r.log.InfoContext(ctx, fmt.Sprintf("Handling mention Q&A on %s: %q", prTag, question))
 
@@ -92,17 +104,17 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload) 
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: %v - mention not answered", prTag, err))
 		r.reply(ctx, project, repo, pr.ID, comment.ID, fmt.Sprintf(
 			"This PR's diff exceeds %d MiB, too large to answer questions about.", tooLarge.Limit/(1024*1024)))
-		return
+		return false
 	}
 	if err != nil {
 		r.log.ErrorContext(ctx, fmt.Sprintf("Mention Q&A on %s failed: %v", prTag, err))
-		return
+		return false
 	}
 
 	files, _ := r.prepareFiles(ctx, project, repo, rawDiff, pr.FromRef.LatestCommit, prTag)
 	if len(files) == 0 {
 		r.reply(ctx, project, repo, pr.ID, comment.ID, "No reviewable files in this PR.")
-		return
+		return false
 	}
 
 	repoInstructions := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.DisplayID)
@@ -148,6 +160,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload) 
 	default:
 		r.log.ErrorContext(ctx, fmt.Sprintf("Mention Q&A on %s failed: %v", prTag, result.Err))
 	}
+	return false
 }
 
 // storeSkipState is the part of the skip state the mention path reads.

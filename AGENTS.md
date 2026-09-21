@@ -243,6 +243,16 @@ rows, summary). `ReviewPullRequest` composes all three inline and is what
 `HandleMention` and the tests use; `ReviewPullRequestStaged` is the queued
 path.
 
+- **A keyword mention is a review**, so it takes the staged path with
+  `skipAuthorCheck` true (the person asking is the authorization). Running it
+  inline would hold the worker for the whole gateway call and put it outside
+  the pool, so in-flight inference could reach cap+1. A Q&A mention is not a
+  review and stays inline: one call, one reply.
+- **`JobFunc` reports `handedOff` too**, on the same contract as
+  `ReviewFunc`, and the mention propagates the staged review's result. The
+  job path released the key unconditionally at first, so a staged mention's
+  hold covered nothing: a push or a merge for that PR ran during its
+  inference. Anything that stages from a job has to say so.
 - **Staged reviews report `handedOff`.** True keeps the PR's queue hold
   alive past the worker turn; a prepare exit returns false having logged its
   own HTTP totals. Get this wrong and either a second run of the same PR

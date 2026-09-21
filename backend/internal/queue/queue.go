@@ -57,7 +57,17 @@ type Scheduler interface {
 }
 
 // JobFunc is a queued unit of work that is not a PR review.
-type JobFunc func(ctx context.Context)
+//
+// It gets the scheduler for the same reason a review does: a mention can ask
+// for a review, and that review belongs on the inference pool like any
+// other. A job that needs nothing from it ignores the argument.
+//
+// It reports handoff on the same contract as ReviewFunc: true means work
+// outlives this call and the PR's hold must survive with it, so whatever
+// finishes that work releases the key. A job that finishes when it returns
+// reports false. Releasing unconditionally here would leave a staged
+// mention's review unprotected for its whole inference.
+type JobFunc func(ctx context.Context, sched Scheduler) (handedOff bool)
 
 // item is one unit of queued work. key is always set; job distinguishes a
 // non-review job from a review, whose payload lives in pending.
@@ -406,7 +416,10 @@ func (q *Queue) Stage(ctx context.Context, key store.PRKey, team string, infer, 
 		// httpstats scope, so everything after the handoff would log
 		// without them and record no HTTP counts.
 		posted = true
-		q.submitInternal(key, team, func(context.Context) { post(ctx) })
+		q.submitInternal(key, team, func(context.Context, Scheduler) bool {
+			post(ctx)
+			return false
+		})
 	}()
 }
 
@@ -493,8 +506,16 @@ func (q *Queue) run(ctx context.Context) {
 			key := it.key
 			fn := it.job.run
 			run = func(ctx context.Context) {
-				defer q.done1(key)
-				fn(ctx)
+				// Same shape as the review path below: a defer guarded by
+				// the result, so a panicking job cannot leave its key held
+				// and a staged one keeps it.
+				handedOff := false
+				defer func() {
+					if !handedOff {
+						q.done1(key)
+					}
+				}()
+				handedOff = fn(ctx, q)
 			}
 		} else {
 			tag = it.key.Tag()

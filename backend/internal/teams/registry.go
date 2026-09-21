@@ -90,7 +90,7 @@ func (g *Registry) Review(ctx context.Context, team string, p *webhook.Payload, 
 	// comes back to the worker, so a 200s+ inference no longer holds the
 	// queue. True means the work outlives this call and the PR's hold must
 	// survive with it.
-	return rt.Reviewer.ReviewPullRequestStaged(ctx, p, team, sched)
+	return rt.Reviewer.ReviewPullRequestStaged(ctx, p, team, false, sched)
 }
 
 // There is deliberately no Close. Each team's clients hold an http.Client
