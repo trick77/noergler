@@ -13,12 +13,15 @@
 # from one file, so both receive identical bytes.
 #
 # Usage: hack/parity.sh
-# Env: PYTHON_REPO (/Users/jan/localgit/noergler), PGHOST/PGPORT, KEEP=1 to
+# The Python side is the archived implementation in archive/, which is what
+# this was written against; PYTHON_REPO overrides it. Running it needs a
+# venv in that directory, which is not checked in.
+# Env: PYTHON_REPO (archive/), PGHOST/PGPORT, KEEP=1 to
 #      keep the output directory.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-python_repo=${PYTHON_REPO:-/Users/jan/localgit/noergler}
+python_repo=${PYTHON_REPO:-$PWD/archive}
 pghost=${PGHOST:-localhost}
 pgport=${PGPORT:-5432}
 go_dsn=${GO_DSN:-postgres://noergler:changeme@$pghost:$pgport/noergler?sslmode=disable}

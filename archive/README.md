@@ -1,8 +1,18 @@
+> **Archived.** This is the Python implementation that preceded the Go one
+> at the top level of this repository, kept for reference and superseded on
+> 2026-09-21. Nothing builds or tests it: no workflow runs against
+> `archive/`, Dependabot does not watch it, and `release.yaml` ignores
+> changes here so an edit cannot cut a release. Everything below describes
+> the archived code, not the current service.
+>
+> `hack/parity.sh` at the repository root still runs against this tree and
+> needs a virtualenv in this directory.
+
 <p>
-  <img src="logo.png" alt="noergler" width="360">
+  <img src="../logo.png" alt="noergler" width="360">
 </p>
 
-[![Tests](https://github.com/trick77/noergler/actions/workflows/test.yaml/badge.svg)](https://github.com/trick77/noergler/actions/workflows/test.yaml) ![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
+![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
 
 Code review agent for typical private cloud corporate environments. The name is German for "Nörgler" (grumbler/complainer).
 

@@ -12,9 +12,9 @@ on-prem Jira, an OpenAI-compatible LLM endpoint (for example a LiteLLM proxy),
 and corporate CA certificates. Receives PR webhooks, sends diffs to the LLM,
 and posts findings back as inline comments plus a summary comment on the PR.
 
-Go port of [trick77/noergler](https://github.com/trick77/noergler) (Python).
-Its output is byte-for-byte identical to the original's for the same input; see
-`hack/parity.sh`.
+Written in Go. It replaced an earlier Python implementation, kept under
+[`archive/`](archive/) for reference; its output is byte-for-byte identical to
+that one's for the same input.
 
 ![noergler inline review comment](review.png)
 
@@ -216,7 +216,7 @@ and tokenizer warm-up is around 40 MiB; `hack/smoke.sh` prints it.
 `SSL_CERT_FILE` works for corporate CA bundles without any setting of ours:
 Go's `crypto/x509` reads it when building the system pool.
 
-Migrating from the Python service is covered in [CUTOVER.md](CUTOVER.md).
+The cutover from the Python service is recorded in [archive/CUTOVER.md](archive/CUTOVER.md); it is history, not a live procedure.
 
 ## Licence
 

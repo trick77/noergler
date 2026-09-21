@@ -9,6 +9,7 @@ on:
     # so a release can always be forced by hand.
     paths-ignore:
       - "docs/**"
+      - "archive/**"
       - ".github/**"
       - "**/*.md"
       - ".gitignore"
