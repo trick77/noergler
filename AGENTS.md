@@ -197,9 +197,11 @@ body is read BEFORE the HMAC and a team slug is not a secret; `/onboard` and
 `PUT /teams/{slug}/settings` decode the body AFTER authenticating, so an
 unauthenticated caller cannot probe the schema (FastAPI validates first and
 would 422 ahead of the 401; nothing pins that order); an over-cap body is
-drained and counted to 10x the cap, so `ContentTooLarge.Size` reports what was
-sent (Python dropped the counter it held); a drain that hits the ceiling or
-errors sets `Truncated` and stays `ContentTooLarge`, never a generic error
+drained and counted to 10x the cap AND a 10s timeout, so `ContentTooLarge.Size`
+reports what was sent (Python dropped the counter it held); bytes alone are no
+bound, a stalled body never reaches the ceiling and would hold the single
+review worker, and the review path has no ctx deadline; a drain that stops
+early sets `Truncated` and stays `ContentTooLarge`, never a generic error
 (that path is `OutcomeError`: no notice, no row); the too-large review path
 logs the largest files parseable from `Head`, tail as a lower bound (Python
 aborted blind).

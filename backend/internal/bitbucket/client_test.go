@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/httpstats"
@@ -799,6 +800,58 @@ func TestDrainFailureKeepsTheCount(t *testing.T) {
 type errReader struct{}
 
 func (errReader) Read([]byte) (int, error) { return 0, fmt.Errorf("connection reset") }
+
+// Exactly at the ceiling the count is exact, so the error must not claim ">".
+// Only a byte BEYOND the ceiling makes it a lower bound.
+func TestDrainExactlyAtCeilingIsNotTruncated(t *testing.T) {
+	total, truncated := drainSize(bytes.NewReader(make([]byte, 89)), 11, 100)
+	if truncated {
+		t.Error("truncated = true, want false for a body ending exactly at the ceiling")
+	}
+	if total != 100 {
+		t.Errorf("total = %d, want 100", total)
+	}
+}
+
+// The byte ceiling is not a bound on its own: a connection that stalls after
+// the cap sends nothing more, so the drain must give up on time instead of
+// holding the single review worker forever.
+func TestDrainStopsOnAStalledBody(t *testing.T) {
+	blocked := make(chan struct{})
+	defer close(blocked)
+
+	restore := drainTimeout
+	drainTimeout = 50 * time.Millisecond
+	defer func() { drainTimeout = restore }()
+
+	_, c := newFake(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.(http.Flusher).Flush() // chunked: no Content-Length
+		_, _ = io.WriteString(w, strings.Repeat("x", 64))
+		w.(http.Flusher).Flush()
+		<-blocked // never send the rest, never close
+	})
+	c.maxDiffBytes = 10
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.FetchPRDiff(context.Background(), "PROJ", "my-repo", 1, 0)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		var tooLarge *ContentTooLarge
+		if !errors.As(err, &tooLarge) {
+			t.Fatalf("err = %v, want ContentTooLarge even when the drain is cut short", err)
+		}
+		if !tooLarge.Truncated {
+			t.Error("Truncated = false, want true when the drain was cut short")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("drain did not give up: the review worker would be held indefinitely")
+	}
+}
 
 func TestStatusOfANonStatusError(t *testing.T) {
 	if got := Status(fmt.Errorf("dial tcp: refused")); got != 0 {

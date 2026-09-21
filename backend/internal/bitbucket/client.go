@@ -259,7 +259,13 @@ func (c *Client) getTextCapped(ctx context.Context, path string, query url.Value
 		return "", fmt.Errorf("read %s: %w", what, err)
 	}
 	if len(buf) > max {
+		// Bound the drain in time as well as bytes: a stalled connection
+		// sends no more bytes, so the ceiling would never be reached and the
+		// single review worker would block for every team. Closing the body
+		// is what interrupts a Read already blocked in the kernel.
+		stop := time.AfterFunc(drainTimeout, func() { _ = resp.Body.Close() })
 		size, truncated := drainSize(resp.Body, len(buf), max*drainCeilingFactor)
+		stop.Stop()
 		return "", &ContentTooLarge{
 			What: what, Limit: max, Size: &size, Truncated: truncated,
 			Head: buf[:max],
@@ -275,6 +281,13 @@ func (c *Client) getTextCapped(ctx context.Context, path string, query url.Value
 // Ten times the cap still separates "slightly over" from "wildly over".
 const drainCeilingFactor = 10
 
+// drainTimeout bounds the drain in wall-clock time. The byte ceiling alone is
+// not a bound: a connection that stalls after the cap sends no further bytes,
+// so the ceiling is never reached and the read blocks forever, holding the
+// single review worker. The caller's ctx does not help either, because the
+// review path runs without a deadline.
+var drainTimeout = 10 * time.Second
+
 // drainSize reads the rest of body to measure what the cap refused, counting
 // from seen and discarding as it goes. It returns the total and whether that
 // total is a lower bound, which it is once the ceiling is reached or the read
@@ -284,16 +297,19 @@ const drainCeilingFactor = 10
 // ContentTooLarge, and a drain that fails must not turn that into a generic
 // error: the review path posts no notice and writes no row for one, so a torn
 // connection here would lose the skip comment the user gets today.
+// A body that ends exactly at the ceiling is exact, not a lower bound, so the
+// error says "N bytes" rather than "> N bytes": the count is only truncated
+// once a byte BEYOND the ceiling is seen.
 func drainSize(body io.Reader, seen, ceiling int) (int, bool) {
 	total := seen
-	if total >= ceiling {
+	if total > ceiling {
 		return total, true
 	}
 	scratch := make([]byte, 32*1024)
 	for {
 		n, err := body.Read(scratch)
 		total += n
-		if total >= ceiling {
+		if total > ceiling {
 			return total, true
 		}
 		if err != nil {
