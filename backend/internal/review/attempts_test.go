@@ -200,3 +200,24 @@ func TestAttemptWriteFailsOpen(t *testing.T) {
 		t.Errorf("run rows = %d, want 1: the run must still be recorded", len(h2.st.Runs))
 	}
 }
+
+// A mention asking for a review IS a review, so it is recorded as one, with
+// kind=mention rather than a separate outcome. The Q&A path writes nothing;
+// that split is what keeps "what was reviewed" answerable.
+func TestMentionReviewIsRecordedAsAMentionKind(t *testing.T) {
+	h := newHarness(t, nil)
+
+	// skipAuthorCheck=true is the mention entry: HandleMention delegates
+	// here for an empty question or a review keyword.
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), true)
+
+	if len(h.st.Attempts) != 1 {
+		t.Fatalf("expected one attempt, got %d", len(h.st.Attempts))
+	}
+	if got := h.st.Attempts[0]; got.Kind != store.RunMention {
+		t.Errorf("kind = %q, want %q", got.Kind, store.RunMention)
+	}
+	if got := h.st.Attempts[0]; got.Outcome != "ok" {
+		t.Errorf("outcome = %q, want ok", got.Outcome)
+	}
+}
