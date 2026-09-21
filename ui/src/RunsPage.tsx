@@ -73,11 +73,14 @@ export function RunsPage() {
           it.
         </p>
 
+        {/* A dash, not a zero, when the counts could not be read: the feed
+            below may be full, and four tiles reading 0 beside it would be a
+            claim rather than an absence. */}
         <Tiles>
-          <Tile label="Attempts" value={c.total} />
-          <Tile label="Reviewed" value={c.reviewed} />
-          <Tile label="Skipped" value={c.skipped} />
-          <Tile label="Failed" value={c.failed} />
+          <Tile label="Attempts" value={metrics.failed ? "—" : c.total} />
+          <Tile label="Reviewed" value={metrics.failed ? "—" : c.reviewed} />
+          <Tile label="Skipped" value={metrics.failed ? "—" : c.skipped} />
+          <Tile label="Failed" value={metrics.failed ? "—" : c.failed} />
         </Tiles>
 
         <p className={eyebrow}>Recent attempts</p>
@@ -130,7 +133,9 @@ export function RunsPage() {
 
         <p className={eyebrow}>Why runs were skipped</p>
         <Card>
-          {skips.length === 0 ? (
+          {metrics.failed ? (
+            <Empty>Counts unavailable.</Empty>
+          ) : skips.length === 0 ? (
             <Empty>Nothing was skipped.</Empty>
           ) : (
             <table className={table}>

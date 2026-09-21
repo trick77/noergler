@@ -31,24 +31,39 @@ const SERIES_COLORS = ["var(--color-s1)", "var(--color-s2)", "var(--color-s3)", 
  *  window itself knows how wide it is. A month is 28 to 31 days, so this is
  *  never a fixed count.
  *
- *  Both ends are read as local dates, matching the server's own month
- *  boundary; slicing an ISO string would shift the day for anyone east of
- *  UTC and put the first of the month in the previous one. */
+ *  The window is the SERVER's calendar month, so its ends are read off the
+ *  ISO string rather than through the browser's clock. `new Date(iso)` plus
+ *  local getters re-derives the day in the VIEWER's zone: a +02:00 server's
+ *  September renders as Aug 31 to Sep 29 for a reader in New York, titles
+ *  itself "August", and drops Sep 30 off the chart. The bucket keys the
+ *  server sends (date_trunc, formatted server-side) would then miss by one
+ *  the whole way down.
+ *
+ *  UTC arithmetic in the middle, because Date.UTC has no DST: stepping a
+ *  local date across a spring-forward boundary can land on the same day
+ *  twice. */
 function days(since: string, until: string): string[] {
+  const start = calendarDay(since);
+  const end = calendarDay(until);
+  if (start === null || end === null) return [];
+
   const out: string[] = [];
-  const end = new Date(until);
-  const d = new Date(since);
+  const d = new Date(start);
   // A month is at most 31 days; the bound stops a bad pair spinning.
-  for (let i = 0; d < end && i < 400; i++) {
-    out.push(ymd(d));
-    d.setDate(d.getDate() + 1);
+  for (let i = 0; d.getTime() < end && i < 400; i++) {
+    out.push(d.toISOString().slice(0, 10));
+    d.setUTCDate(d.getUTCDate() + 1);
   }
   return out;
 }
 
-function ymd(d: Date): string {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+/** calendarDay reads the Y-M-D the server wrote, as a UTC timestamp, with no
+ *  reference to the viewer's zone. Returns null for anything unparseable, so
+ *  a bad pair renders an empty window rather than 400 wrong days. */
+function calendarDay(iso: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (m === null) return null;
+  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
 }
 
 const MONTHS = [
@@ -60,8 +75,12 @@ const MONTHS = [
  *  the one the page assumed it asked for. */
 function windowTitle(m: Metrics): string {
   if (m.window !== "month") return `the last ${days(m.since, m.until).length} days`;
-  const start = new Date(m.since);
-  return `${MONTHS[start.getMonth()]} ${start.getFullYear()}`;
+  // The server's month, read off the string: through the viewer's clock a
+  // +02:00 server's September titles itself "August" in New York.
+  const start = calendarDay(m.since);
+  if (start === null) return "this month";
+  const d = new Date(start);
+  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
 /** niceTicks picks 0 / half / max, rounded up so the top tick is a round
@@ -100,15 +119,35 @@ export function MetricsPage() {
 
   // Cost per day per team. A team's missing day is 0 for the chart's
   // purposes, which is true: it spent nothing.
-  const teamNames = Array.from(new Set(data.daily.map((b) => b.team))).slice(0, 4);
-  const costSeries: Series[] = teamNames.map((team, i) => ({
+  //
+  // Team order comes from by_team, which the server sorts by spend. Taking
+  // it from data.daily instead ordered by whichever team happened to appear
+  // first on the earliest day, which is unspecified within a day: the same
+  // data could repaint every series a different colour between two polls.
+  const ranked = data.by_team.map((t) => t.team);
+  const charted = ranked.slice(0, SERIES_COLORS.length - 1);
+  const rest = ranked.slice(SERIES_COLORS.length - 1);
+
+  const spendOn = (day: string, team: string) => {
+    const row = data.daily.find((b) => b.day === day && b.team === team);
+    return row?.cost_usd ? Number(row.cost_usd) : 0;
+  };
+
+  const costSeries: Series[] = charted.map((team, i) => ({
     name: team,
     color: SERIES_COLORS[i],
-    values: window.map((day) => {
-      const row = data.daily.find((b) => b.day === day && b.team === team);
-      return row?.cost_usd ? Number(row.cost_usd) : 0;
-    }),
+    values: window.map((day) => spendOn(day, team)),
   }));
+  // The tail folds into one band rather than being dropped. Truncating it
+  // let the card say "No priced runs in this window" beside a Cost tile
+  // showing the server's full, non-zero total.
+  if (rest.length > 0) {
+    costSeries.push({
+      name: rest.length === 1 ? rest[0] : `${rest.length} more`,
+      color: SERIES_COLORS[SERIES_COLORS.length - 1],
+      values: window.map((day) => rest.reduce((sum, team) => sum + spendOn(day, team), 0)),
+    });
+  }
   const costTop = Math.max(
     ...window.map((_, i) => costSeries.reduce((sum, s) => sum + s.values[i], 0)),
     0,

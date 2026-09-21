@@ -604,3 +604,76 @@ func TestLiveReportsTeamScope(t *testing.T) {
 		t.Errorf("mobile repos = %d, want 0", mobile.Repos)
 	}
 }
+
+// Every boundary this handler computes is LOCAL midnight, matching
+// date_trunc('day') in the daily queries. time.Truncate(24h) works on
+// absolute time, so it lands on UTC midnight instead: on a Europe/Zurich pod
+// that is 02:00 local, and the window then disagrees with the buckets the
+// page lays out.
+func TestWindowBoundariesAreLocalMidnight(t *testing.T) {
+	at := time.Date(2026, 3, 17, 14, 30, 0, 0, time.Local)
+
+	if got := dayStart(at); got.Hour() != 0 || got.Minute() != 0 || got.Day() != 17 {
+		t.Errorf("dayStart = %s, want local midnight on the 17th", got)
+	}
+	if got := dayStart(at); got.Location() != time.Local {
+		t.Errorf("dayStart location = %s, want local", got.Location())
+	}
+	if got := monthStart(at); got.Hour() != 0 || got.Day() != 1 {
+		t.Errorf("monthStart = %s, want local midnight on the 1st", got)
+	}
+
+	// Both boundaries agree on what a day starts at, which is the property
+	// the two code paths share.
+	if dayStart(monthStart(at)) != monthStart(at) {
+		t.Error("monthStart is not itself a day start")
+	}
+}
+
+// A rolling window's ends are day starts too, not whatever moment the
+// request happened to arrive at.
+func TestRollingWindowStartsAtLocalMidnight(t *testing.T) {
+	h := newDashHarness(t)
+
+	var got metricsBody
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/metrics?days=7").Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Since.Hour() != 0 || got.Since.Minute() != 0 || got.Since.Second() != 0 {
+		t.Errorf("since = %s, want local midnight", got.Since)
+	}
+	if got.Until.Hour() != 0 {
+		t.Errorf("until = %s, want local midnight", got.Until)
+	}
+}
+
+// The route is unauthenticated and cross-team. It says HOW MANY authors a
+// team has configured, never who they are: the same response deliberately
+// withholds a disable reason, and a username roster on it would be the same
+// mistake in a different field.
+func TestTeamsCountsAuthorsWithoutNamingThem(t *testing.T) {
+	h := newDashHarness(t)
+
+	raw := h.get(t, "/api/dashboard/teams").Body.String()
+	if strings.Contains(raw, "renovate") {
+		t.Errorf("author names reached an unauthenticated route: %s", raw)
+	}
+
+	var got teamsBody
+	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+		t.Fatal(err)
+	}
+	var platform teamBody
+	for _, tm := range got.Teams {
+		if tm.Slug == "platform" {
+			platform = tm
+		}
+	}
+	if platform.IgnoreAuthors != 1 {
+		t.Errorf("ignore_authors = %d, want the count 1", platform.IgnoreAuthors)
+	}
+	// A repo glob is not a person, so exclude_repos stays whole.
+	if len(platform.ExcludeRepos) != 1 || platform.ExcludeRepos[0] != "*-infra" {
+		t.Errorf("exclude_repos = %v, want the globs themselves", platform.ExcludeRepos)
+	}
+}

@@ -81,8 +81,10 @@ export interface Team {
   prs: number;
   last_run: string | null;
   claims: { project: string; repo?: string }[];
-  auto_review_authors: string[];
-  ignore_authors: string[];
+  /** COUNTS, not names: this route is unauthenticated and cross-team, and
+   *  the author lists are Bitbucket usernames. */
+  auto_review_authors: number;
+  ignore_authors: number;
   exclude_repos: string[];
 }
 

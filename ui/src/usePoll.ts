@@ -26,9 +26,17 @@ export function usePoll<T>(path: string, intervalMs?: number): Poll<T> {
   useEffect(() => {
     alive.current = true;
     let controller: AbortController | null = null;
+    let inFlight = false;
 
     const run = async () => {
-      controller?.abort();
+      // A tick while a request is still running is SKIPPED, not a reason to
+      // abort and retry. Aborting each time meant a response slower than the
+      // interval never landed: the AbortError returns below before
+      // setFailed, so the page sat on its loading skeleton forever while
+      // every request was cancelled a moment before it arrived. /live does a
+      // DB read on every poll, so 3s is well within reach.
+      if (inFlight) return;
+      inFlight = true;
       controller = new AbortController();
       try {
         const next = await get<T>(path, controller.signal);
@@ -38,12 +46,15 @@ export function usePoll<T>(path: string, intervalMs?: number): Poll<T> {
       } catch (err) {
         if ((err as Error).name === "AbortError" || !alive.current) return;
         setFailed(true);
+      } finally {
+        inFlight = false;
       }
     };
 
     void run();
     const id = intervalMs ? window.setInterval(run, intervalMs) : undefined;
     return () => {
+      // Unmount still aborts: that request's result has nowhere to go.
       alive.current = false;
       controller?.abort();
       if (id) window.clearInterval(id);

@@ -160,12 +160,7 @@ func (d Deps) live(w http.ResponseWriter, r *http.Request) {
 	}
 
 	enabled, disabled := d.Teams.Status()
-	activity := map[string]store.TeamActivity{}
-	if rows, err := d.DashboardStore.ActivityByTeam(r.Context()); err == nil {
-		for _, a := range rows {
-			activity[a.TeamSlug] = a
-		}
-	}
+	activity := d.activityByTeam(r.Context())
 
 	body.Teams = make([]liveTeam, 0, len(enabled)+len(disabled))
 	addTeam := func(slug string, isEnabled bool) {
@@ -305,6 +300,38 @@ func monthStart(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, t.Location())
 }
 
+// dayStart is local midnight on t's own day.
+//
+// NOT time.Truncate(24h): that works on absolute time since the epoch, so it
+// lands on UTC midnight whatever the location. On a TZ=Europe/Zurich pod that
+// is 02:00 local, putting two hours of the day inside a window that claims to
+// start at midnight, and it disagrees with both monthStart above and the
+// date_trunc('day') the daily queries bucket by.
+func dayStart(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+}
+
+// activityByTeam is the per-team history the live panel and the roster show
+// beside a team's state.
+//
+// It degrades rather than failing the request: the queue and the registry are
+// in memory and always answer, so a DB hiccup should cost the history and not
+// the panel an operator opened to see what is running. But it LOGS: the same
+// read failing silently meant every team showed "0 PRs, never" with nothing
+// anywhere to say why.
+func (d Deps) activityByTeam(ctx context.Context) map[string]store.TeamActivity {
+	activity := map[string]store.TeamActivity{}
+	rows, err := d.DashboardStore.ActivityByTeam(ctx)
+	if err != nil {
+		d.Log.ErrorContext(ctx, "dashboard: ActivityByTeam failed, reporting teams without history: "+err.Error())
+		return activity
+	}
+	for _, a := range rows {
+		activity[a.TeamSlug] = a
+	}
+	return activity
+}
+
 // metrics is spend and throughput for the CURRENT CALENDAR MONTH, which is
 // the window a key's spend is actually budgeted and invoiced in. A rolling
 // 14 days answers a different question and cannot be reconciled with a bill.
@@ -319,7 +346,7 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 		if days <= 0 || days > 90 {
 			days = 14
 		}
-		since = now.AddDate(0, 0, -days).Truncate(24 * time.Hour)
+		since = dayStart(now.AddDate(0, 0, -days))
 	}
 	ctx := r.Context()
 
@@ -358,7 +385,7 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 	until := monthStart(now).AddDate(0, 1, 0)
 	if r.URL.Query().Get("days") != "" {
 		window = "rolling"
-		until = now.AddDate(0, 0, 1).Truncate(24 * time.Hour)
+		until = dayStart(now.AddDate(0, 0, 1))
 	}
 
 	body := metricsBody{
@@ -401,16 +428,23 @@ type claimBody struct {
 }
 
 type teamBody struct {
-	Slug              string      `json:"slug"`
-	Enabled           bool        `json:"enabled"`
-	State             string      `json:"state"`
-	Repos             int         `json:"repos"`
-	PRs               int         `json:"prs"`
-	LastRun           *time.Time  `json:"last_run"`
-	Claims            []claimBody `json:"claims"`
-	AutoReviewAuthors []string    `json:"auto_review_authors"`
-	IgnoreAuthors     []string    `json:"ignore_authors"`
-	ExcludeRepos      []string    `json:"exclude_repos"`
+	Slug    string      `json:"slug"`
+	Enabled bool        `json:"enabled"`
+	State   string      `json:"state"`
+	Repos   int         `json:"repos"`
+	PRs     int         `json:"prs"`
+	LastRun *time.Time  `json:"last_run"`
+	Claims  []claimBody `json:"claims"`
+	// COUNTS, not names. The author lists are Bitbucket usernames, and this
+	// route is unauthenticated and cross-team: serving them here would hand
+	// out a roster of who works on what, on the same response that
+	// deliberately withholds a team's disable reason. A count still answers
+	// "is this team configured"; the names stay on the team's own
+	// authenticated /teams/{slug} route.
+	AutoReviewAuthors int `json:"auto_review_authors"`
+	IgnoreAuthors     int `json:"ignore_authors"`
+	// exclude_repos stays whole: a repo glob is not a person.
+	ExcludeRepos []string `json:"exclude_repos"`
 }
 
 type teamsBody struct {
@@ -424,21 +458,14 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 	enabled, disabled := d.Teams.Status()
 	ctx := r.Context()
 
-	activity := map[string]store.TeamActivity{}
-	if rows, err := d.DashboardStore.ActivityByTeam(ctx); err == nil {
-		for _, a := range rows {
-			activity[a.TeamSlug] = a
-		}
-	}
+	activity := d.activityByTeam(ctx)
 
 	body := teamsBody{Teams: make([]teamBody, 0, len(enabled)+len(disabled))}
 	add := func(slug string, isEnabled bool) {
 		t := teamBody{
 			Slug: slug, Enabled: isEnabled,
-			Claims:            []claimBody{},
-			AutoReviewAuthors: []string{},
-			IgnoreAuthors:     []string{},
-			ExcludeRepos:      []string{},
+			Claims:       []claimBody{},
+			ExcludeRepos: []string{},
 		}
 		if a, ok := activity[slug]; ok {
 			t.PRs, t.LastRun = a.PRs, a.LastRun
@@ -449,8 +476,8 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 		// report a team that never existed in that combination.
 		if rt, _, ok := d.Teams.Lookup(slug); ok && rt != nil {
 			if team := rt.Team(); team != nil {
-				t.AutoReviewAuthors = append(t.AutoReviewAuthors, team.Review.AutoReviewAuthors...)
-				t.IgnoreAuthors = append(t.IgnoreAuthors, team.Review.IgnoreAuthors...)
+				t.AutoReviewAuthors = len(team.Review.AutoReviewAuthors)
+				t.IgnoreAuthors = len(team.Review.IgnoreAuthors)
 				t.ExcludeRepos = append(t.ExcludeRepos, team.Review.ExcludeRepos...)
 				// A scope with no repo list is the whole project; one repo
 				// per claim row otherwise, so the page can show what a team

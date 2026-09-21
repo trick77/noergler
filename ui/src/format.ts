@@ -17,9 +17,11 @@ export function duration(ms: number | null): string {
   if (ms < 1000) return `${ms}ms`;
   const s = ms / 1000;
   if (s < 60) return `${s.toFixed(1)}s`;
-  const m = Math.floor(s / 60);
-  const rest = Math.round(s % 60);
-  return `${m}m ${rest}s`;
+  // Round to whole seconds FIRST, then split. Rounding the remainder
+  // independently of the minutes prints "1m 60s" for 119500ms: the minutes
+  // floor to 1 while the 59.5s remainder rounds up to 60.
+  const total = Math.round(s);
+  return `${Math.floor(total / 60)}m ${total % 60}s`;
 }
 
 /** ago is a coarse relative time. Coarse on purpose: a live panel that

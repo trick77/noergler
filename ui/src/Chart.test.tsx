@@ -103,7 +103,7 @@ describe("days", () => {
   // The API returns only days that have rows, so the window is filled here:
   // a missing day is a zero, not a gap the chart closes over.
   it("spans [since, until)", () => {
-    const out = _days("2026-09-01T00:00:00", "2026-10-01T00:00:00");
+    const out = _days("2026-09-01T00:00:00+02:00", "2026-10-01T00:00:00+02:00");
     expect(out).toHaveLength(30);
     expect(out[0]).toBe("2026-09-01");
     expect(out[29]).toBe("2026-09-30");
@@ -111,15 +111,47 @@ describe("days", () => {
 
   // A month is 28 to 31 days, so nothing may assume a fixed width.
   it("handles months of every length, February included", () => {
-    expect(_days("2026-02-01T00:00:00", "2026-03-01T00:00:00")).toHaveLength(28);
-    expect(_days("2028-02-01T00:00:00", "2028-03-01T00:00:00")).toHaveLength(29);
-    expect(_days("2026-07-01T00:00:00", "2026-08-01T00:00:00")).toHaveLength(31);
+    expect(_days("2026-02-01T00:00:00+02:00", "2026-03-01T00:00:00+02:00")).toHaveLength(28);
+    expect(_days("2028-02-01T00:00:00+02:00", "2028-03-01T00:00:00+02:00")).toHaveLength(29);
+    expect(_days("2026-07-01T00:00:00+02:00", "2026-08-01T00:00:00+02:00")).toHaveLength(31);
   });
 
   // The first of the month, mid-month: the window starts on the 1st and
   // stops at today rather than running to a month that has not happened.
   it("is empty when the window has not started", () => {
-    expect(_days("2026-09-01T00:00:00", "2026-09-01T00:00:00")).toHaveLength(0);
+    expect(_days("2026-09-01T00:00:00+02:00", "2026-09-01T00:00:00+02:00")).toHaveLength(0);
+  });
+});
+
+// The window is the server's calendar month. Reading it back through the
+// browser's clock shifted the whole page by a day for any reader west of
+// the server: a +02:00 September rendered as Aug 31 to Sep 29 in New York,
+// titled itself "August", and dropped Sep 30 off the chart.
+describe("the server's month, whatever the viewer's zone", () => {
+  const since = "2026-09-01T00:00:00+02:00";
+  const until = "2026-10-01T00:00:00+02:00";
+
+  it("spans the server's days, not the viewer's", () => {
+    const w = _days(since, until);
+    expect(w[0]).toBe("2026-09-01");
+    expect(w[w.length - 1]).toBe("2026-09-30");
+    expect(w).toHaveLength(30);
+  });
+
+  it("titles itself with the server's month", () => {
+    const m = { since, until, window: "month" };
+    expect(_windowTitle(m as never)).toBe("September 2026");
+  });
+
+  // A UTC server is the other direction, and must not shift either.
+  it("handles a UTC server", () => {
+    const w = _days("2026-09-01T00:00:00Z", "2026-10-01T00:00:00Z");
+    expect(w[0]).toBe("2026-09-01");
+    expect(w).toHaveLength(30);
+  });
+
+  it("renders an empty window rather than guessing at a bad pair", () => {
+    expect(_days("not a date", until)).toEqual([]);
   });
 });
 
@@ -127,14 +159,24 @@ describe("windowTitle", () => {
   const base = { totals: {}, by_team: [], daily: [], daily_attempts: [], breakdown: [] };
 
   it("names the month for the default window", () => {
-    const m = { ...base, since: "2026-09-01T00:00:00", until: "2026-10-01T00:00:00", window: "month" };
+    const m = {
+      ...base,
+      since: "2026-09-01T00:00:00+02:00",
+      until: "2026-10-01T00:00:00+02:00",
+      window: "month",
+    };
     expect(_windowTitle(m as never)).toBe("September 2026");
   });
 
   // The title follows what the API answered with, not what the page assumed
   // it asked for.
   it("names a rolling window by its length", () => {
-    const m = { ...base, since: "2026-09-08T00:00:00", until: "2026-09-22T00:00:00", window: "rolling" };
+    const m = {
+      ...base,
+      since: "2026-09-08T00:00:00+02:00",
+      until: "2026-09-22T00:00:00+02:00",
+      window: "rolling",
+    };
     expect(_windowTitle(m as never)).toBe("the last 14 days");
   });
 });

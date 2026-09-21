@@ -25,6 +25,17 @@ describe("duration", () => {
     expect(duration(1500)).toBe("1.5s");
     expect(duration(72400)).toBe("1m 12s");
   });
+
+  // Rounding the seconds remainder independently of the minutes printed
+  // "1m 60s": the minutes floor to 1 while 59.5s rounds up to 60.
+  it("never prints sixty seconds", () => {
+    expect(duration(119500)).toBe("2m 0s");
+    expect(duration(119999)).toBe("2m 0s");
+    expect(duration(179500)).toBe("3m 0s");
+    for (let ms = 60000; ms < 400000; ms += 137) {
+      expect(duration(ms)).not.toMatch(/ 60s$/);
+    }
+  });
 });
 
 describe("ago", () => {

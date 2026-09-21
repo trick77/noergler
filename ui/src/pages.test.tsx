@@ -190,6 +190,18 @@ describe("RunsPage", () => {
     expect(screen.queryByText("$0.000")).toBeNull();
   });
 
+  // /metrics can fail while /runs succeeds. Four tiles reading 0 above a
+  // full table would assert an absence that is really an unknown.
+  it("dashes the counts rather than claiming zero when metrics fail", async () => {
+    serve({ runs: { runs } });
+    render(<RunsPage />);
+
+    await waitFor(() => expect(screen.getByText("PAY/ledger#1")).toBeDefined());
+    expect(screen.queryByText("Counts unavailable.")).toBeDefined();
+    // The feed is there; the tiles do not claim a number.
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  });
+
   it("ranks the skip reasons by their label", async () => {
     serve({ runs: { runs }, metrics });
     render(<RunsPage />);
@@ -265,8 +277,8 @@ describe("TeamsPage", () => {
       prs: 9,
       last_run: new Date().toISOString(),
       claims: [{ project: "PAY" }, { project: "SHARED", repo: "billing-lib" }],
-      auto_review_authors: [],
-      ignore_authors: ["renovate"],
+      auto_review_authors: 3,
+      ignore_authors: 1,
       exclude_repos: ["*-infra"],
     },
     {
@@ -277,8 +289,8 @@ describe("TeamsPage", () => {
       prs: 0,
       last_run: null,
       claims: [],
-      auto_review_authors: [],
-      ignore_authors: [],
+      auto_review_authors: 0,
+      ignore_authors: 0,
       exclude_repos: [],
     },
   ];
@@ -290,6 +302,16 @@ describe("TeamsPage", () => {
     expect(await screen.findByText("PAY")).toBeDefined();
     expect(await screen.findByText("whole project")).toBeDefined();
     expect(await screen.findByText("SHARED/billing-lib")).toBeDefined();
+  });
+
+  // Unauthenticated and cross-team, so it reports that authors are
+  // configured without handing out the roster of who they are.
+  it("counts the author lists rather than naming them", async () => {
+    serve({ teams: { teams } });
+    render(<TeamsPage />);
+
+    expect(await screen.findByText(/Auto-review authors/)).toBeDefined();
+    expect(screen.queryByText(/renovate/)).toBeNull();
   });
 
   it("points at the log for a disable reason instead of showing one", async () => {
