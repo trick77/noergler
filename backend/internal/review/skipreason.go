@@ -13,12 +13,15 @@ package review
 // a reason per call site would make the grouping useless.
 type SkipReason string
 
+// The pre-flight exits, in the order prepare reaches them.
+//
+// SkipNone is the zero value: the exit was not a skip but a hard failure (an
+// unparseable payload, a diff that would not fetch), and no attempt row is
+// written for it. Every other value is a decision the pipeline made before
+// the gateway was called, stored in review_attempts.reason and grouped on,
+// so renaming one silently rewrites history.
 const (
-	// SkipNone is the zero value: the exit was not a skip. prepare's two
-	// hard failures (unparseable payload, diff fetch failed) use it, and no
-	// attempt row is written for them.
-	SkipNone SkipReason = ""
-
+	SkipNone             SkipReason = ""
 	SkipNotAutoAuthor    SkipReason = "not_auto_review_author"
 	SkipIgnoredAuthor    SkipReason = "ignored_author"
 	SkipIgnoredPR        SkipReason = "pr_ignored"
