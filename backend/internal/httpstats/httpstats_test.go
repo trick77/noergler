@@ -125,7 +125,7 @@ func TestTransportWithoutScopeStillForwards(t *testing.T) {
 	resp.Body.Close()
 }
 
-// The Python counter relied on the single-threaded event loop for atomicity.
+// Concurrent requests share the counter, so it must be atomic on its own.
 // Go fans out for real, so the counter must survive -race.
 func TestCounterIsConcurrencySafe(t *testing.T) {
 	_, c := WithScope(context.Background())

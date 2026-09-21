@@ -1,7 +1,7 @@
 // Package httpstats counts outbound HTTP round-trips per scope, so a log line
 // can say how many calls one review run made against Bitbucket and Jira.
 //
-// The counter rides in the context, like the Python service's ContextVar, so a
+// The counter rides in the context, so a
 // fan-out inherits it without threading state through every signature. Unlike
 // the asyncio original this counter is mutex-guarded: goroutines really do run
 // concurrently, where the event loop only interleaved.

@@ -140,7 +140,7 @@ func LoadTeams(path string, instance *App, lookup func(string) (string, bool)) (
 //
 // Strict: an unknown key disables the team, so that a knob named in the
 // wrong place (base_url in a team block, a typo in a review field) is loud
-// rather than silently ignored. Messages mimic the Python service's
+// rather than silently ignored. Message shape is fixed to match the
 // validation output, which the operators' runbooks quote.
 
 type teamBlock struct {

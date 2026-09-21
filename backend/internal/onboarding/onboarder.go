@@ -18,9 +18,9 @@ import (
 // request short without hammering Bitbucket.
 const repoHookConcurrency = 4
 
-// Options are the knobs the caller sets per request. The zero value matches
-// Python's defaults: name "noergler", no dry run, no bot grant, prune on
-// (hence NoPrune, not Prune).
+// Options are the knobs the caller sets per request. The zero value is the
+// default: name "noergler", no dry run, no bot grant, prune on (hence
+// NoPrune, not Prune).
 type Options struct {
 	// WebhookName defaults to DefaultWebhookName when empty.
 	WebhookName string
@@ -61,8 +61,8 @@ func New(admin AdminClient, bot BotClient, team *config.Team, webhookURL string,
 	}
 }
 
-// instanceURL cuts a webhook URL at its last "/webhook/", mirroring Python's
-// rsplit("/webhook/", 1)[0]: without the separator the URL is unchanged.
+// instanceURL cuts a webhook URL at its LAST "/webhook/". Without the
+// separator the URL is returned unchanged.
 func instanceURL(webhookURL string) string {
 	if i := strings.LastIndex(webhookURL, "/webhook/"); i >= 0 {
 		return webhookURL[:i]
@@ -133,8 +133,8 @@ func hookID(hook map[string]any) (int, error) {
 	return 0, fmt.Errorf("webhook has no numeric id: %v", hook["id"])
 }
 
-// hookURL is a hook's url for a message, rendered the way Python's str() does
-// (a missing url prints as None).
+// hookURL is a hook's url for a message. A missing url renders as the literal
+// "None", which is what the golden messages and the diff strings expect.
 func hookURL(hook map[string]any) string {
 	if u, ok := hook["url"].(string); ok {
 		return u
@@ -154,8 +154,10 @@ func (o *Onboarder) buildWebhookBody() bitbucket.Webhook {
 	return w
 }
 
-// pyRepr renders a string the way Python's repr() does for the messages that
-// carry one: single quotes, with a backslash-escaped quote inside.
+// pyRepr renders a string for the messages that carry one: single quotes,
+// switching to double quotes when the value holds a single quote and no
+// double, otherwise backslash-escaping the inner quote. The golden messages
+// pin this exact form.
 func pyRepr(s string) string {
 	if strings.Contains(s, "'") && !strings.Contains(s, `"`) {
 		return `"` + s + `"`
@@ -163,8 +165,9 @@ func pyRepr(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `\'`) + "'"
 }
 
-// pyList renders a sorted string slice as a Python list literal.
-func pyList(items []string) string {
+// quotedList renders a sorted string slice as ['a', 'b'], each entry through
+// pyRepr, ", " between them.
+func quotedList(items []string) string {
 	parts := make([]string, len(items))
 	for i, s := range items {
 		parts[i] = pyRepr(s)
@@ -172,8 +175,10 @@ func pyList(items []string) string {
 	return "[" + strings.Join(parts, ", ") + "]"
 }
 
-// pyTruthy is Python's truth test over a JSON-decoded value, for the two
-// `not existing.get(k, True)` checks and the `configuration` emptiness one.
+// pyTruthy is the emptiness test over a JSON-decoded value: nil, false, "",
+// 0 and an empty list or map are all falsey. It backs the two active/ssl
+// checks, where a null must read the same as false, and the `configuration`
+// emptiness one.
 func pyTruthy(v any) bool {
 	switch t := v.(type) {
 	case nil:
@@ -235,7 +240,7 @@ func (o *Onboarder) diffWebhook(existing map[string]any) []string {
 		}
 		sort.Strings(missing)
 		sort.Strings(extra)
-		diffs = append(diffs, fmt.Sprintf("events: missing=%s extra=%s", pyList(missing), pyList(extra)))
+		diffs = append(diffs, fmt.Sprintf("events: missing=%s extra=%s", quotedList(missing), quotedList(extra)))
 	}
 
 	// Absent means True: Bitbucket omits neither, but a hand-made body might.
@@ -304,7 +309,7 @@ func (o *Onboarder) UpsertWebhook(ctx context.Context, target Target) (int, []st
 		o.log.InfoContext(ctx, fmt.Sprintf("[%s] webhook already up to date", target.Key()))
 		return id, diff, nil
 	}
-	o.log.InfoContext(ctx, fmt.Sprintf("[%s] updating webhook id=%d changes=%s", target.Key(), id, pyList(diff)))
+	o.log.InfoContext(ctx, fmt.Sprintf("[%s] updating webhook id=%d changes=%s", target.Key(), id, quotedList(diff)))
 	if !o.opts.DryRun {
 		if _, err := o.admin.UpdateWebhook(ctx, target.Project, target.Repo, id, body); err != nil {
 			return 0, nil, err

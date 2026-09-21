@@ -1,9 +1,9 @@
 package config
 
-// FnMatch is Python's fnmatch.fnmatchcase: `*` any run, `?` one character,
-// `[seq]` a set with ranges and `[!seq]` its negation. No path semantics: a
-// `*` crosses `/`, unlike path.Match. A pattern that ends inside a bracket
-// treats the `[` literally, as Python does.
+// FnMatch is case-sensitive shell-style globbing: `*` any run, `?` one
+// character, `[seq]` a set with ranges and `[!seq]` its negation. No path
+// semantics: a `*` crosses `/`, unlike path.Match. A pattern that ends inside
+// an unclosed bracket treats the `[` literally.
 func FnMatch(pattern, name string) bool {
 	p, n := []rune(pattern), []rune(name)
 	return match(p, n)

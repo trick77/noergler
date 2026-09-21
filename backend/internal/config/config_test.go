@@ -127,7 +127,7 @@ func TestInstance_RequiredVarsAndDefaults(t *testing.T) {
 	if app.Server.Host != "0.0.0.0" || app.Server.Port != 8080 || app.Trust.Threshold != 256000 {
 		t.Errorf("server/trust defaults: %+v %+v", app.Server, app.Trust)
 	}
-	// 10 MiB / 1 MiB, as the Python module globals defaulted.
+	// 10 MiB / 1 MiB.
 	if app.Bitbucket.MaxDiffBytes != 10*1024*1024 || app.Bitbucket.MaxFileBytes != 1024*1024 {
 		t.Errorf("byte cap defaults: %+v", app.Bitbucket)
 	}
@@ -188,7 +188,7 @@ func TestInstance_ByteCapsOverridden(t *testing.T) {
 	}
 }
 
-// Python read these with int() at import, so a bad value killed the process.
+// A bad value must not kill the process at startup.
 func TestInstance_BadByteCapAbortsBoot(t *testing.T) {
 	e := newEnv(t)
 	e.set("BITBUCKET_MAX_DIFF_BYTES", "10MiB")

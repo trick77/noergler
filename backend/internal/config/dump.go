@@ -9,7 +9,7 @@ import (
 )
 
 // Dump logs the effective configuration, one line per field, secrets masked
-// as ***. Same section headers as the Python service so runbooks and Splunk
+// as ***. Section headers are fixed so runbooks and Splunk
 // searches still match.
 //
 // One field deliberately breaks that parity: context_window renders 0 as
@@ -34,7 +34,7 @@ func Dump(app *App, log *slog.Logger) {
 		for i, p := range team.Projects {
 			scopes[i] = p.String()
 		}
-		log.Info(fmt.Sprintf("  projects = %s", pyList(scopes)))
+		log.Info(fmt.Sprintf("  projects = %s", quotedList(scopes)))
 		llmSection(log, "config.teams."+slug+".llm", team.LLM)
 		reviewSection(log, "config.teams."+slug+".review", team.Review)
 		jiraSection(log, "config.teams."+slug+".jira", team.Jira)
@@ -66,14 +66,14 @@ func section(log *slog.Logger, label string, fields ...kv) {
 func render(v any) string {
 	switch x := v.(type) {
 	case []string:
-		return pyList(x)
+		return quotedList(x)
 	case bool:
 		if x {
 			return "True"
 		}
 		return "False"
 	case float64:
-		// Python's %s on a float keeps the decimal point: 5.0, not 5.
+		// The dump format keeps the decimal point: 5.0, not 5.
 		// FormatFloat with -1 drops it, so add it back for whole numbers.
 		s := strconv.FormatFloat(x, 'f', -1, 64)
 		if !strings.ContainsAny(s, ".eE") {
@@ -85,9 +85,9 @@ func render(v any) string {
 	}
 }
 
-// pyList renders like Python's repr of a list of strings, which is what the
-// existing Splunk searches match on.
-func pyList(items []string) string {
+// quotedList renders a list of strings as ['a', 'b'], single-quoted: that is
+// the shape the existing Splunk searches match on.
+func quotedList(items []string) string {
 	quoted := make([]string, len(items))
 	for i, s := range items {
 		quoted[i] = "'" + s + "'"
