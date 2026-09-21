@@ -27,7 +27,7 @@ import (
 //
 // A mention never goes incremental: the event is pr:comment:added and the
 // incremental guard only fires on pr:from_ref_updated.
-func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload) {
+func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, team string, sched Scheduler) {
 	comment := payload.Comment
 	if comment == nil {
 		return
@@ -52,9 +52,10 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload) 
 	ctx = logging.With(ctx, "pr_tag", prTag, "repo", project+"/"+repo, "pr_id", pr.ID)
 
 	// The Q&A path fetches a diff and posts a reply of its own, so it gets the
-	// same accounting as a review. A keyword mention delegates to
-	// ReviewPullRequest, which opens its own scope; that one reports twice,
-	// once for each unit of work, rather than merging them.
+	// same accounting as a review. A keyword mention stages a review, which
+	// opens its own scope and logs its own totals when its posting finishes;
+	// this one then reports only what the mention itself spent, which is
+	// two units of work reported separately rather than merged.
 	ctx, httpCounter := httpstats.WithScope(ctx)
 	defer r.logHTTPTotals(ctx, prTag, httpCounter)
 
@@ -78,8 +79,17 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload) 
 	question := extractQuestion(comment.Text, r.bitbucket.BotUsername())
 
 	// An empty question, or one of the review keywords, means "review this".
+	// It is a review like any other, so it takes the staged path: the
+	// gateway call goes to the inference pool instead of holding the worker,
+	// and the PR's queue hold covers it, so it cannot run alongside a review
+	// of the same PR already in flight.
 	if question == "" || reviewKeywords[strings.ToLower(question)] {
 		r.log.InfoContext(ctx, fmt.Sprintf("Mention triggers full review (question=%q)", question))
+		if sched != nil {
+			r.ReviewPullRequestStaged(ctx, payload, team, true, sched)
+			return
+		}
+		// No scheduler (a direct caller, or a test): run it inline.
 		r.ReviewPullRequest(ctx, payload, true)
 		return
 	}

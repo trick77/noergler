@@ -28,7 +28,7 @@ func TestStopDrainsTheItemInFlightWithALiveContext(t *testing.T) {
 
 	started := make(chan struct{})
 	done := make(chan error, 1)
-	q.SubmitJob(store.PRKey{Project: "PROJ", Repo: "repo", PRID: 1}, "platform", func(ctx context.Context) {
+	q.SubmitJob(store.PRKey{Project: "PROJ", Repo: "repo", PRID: 1}, "platform", func(ctx context.Context, _ Scheduler) {
 		close(started)
 		time.Sleep(20 * time.Millisecond)
 		done <- ctx.Err()

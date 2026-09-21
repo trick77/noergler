@@ -186,19 +186,19 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 
 	switch p.EventKey {
 	case webhook.EventMerged:
-		d.Queue.SubmitJob(key, slug, func(ctx context.Context) { rv.HandlePRMerged(ctx, p) })
+		d.Queue.SubmitJob(key, slug, func(ctx context.Context, _ teams.Scheduler) { rv.HandlePRMerged(ctx, p) })
 		httpapi.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "merged-rollup", Queue: "queued"})
 
 	case webhook.EventDeclined:
-		d.Queue.SubmitJob(key, slug, func(ctx context.Context) { rv.HandlePRDeclined(ctx, p) })
+		d.Queue.SubmitJob(key, slug, func(ctx context.Context, _ teams.Scheduler) { rv.HandlePRDeclined(ctx, p) })
 		httpapi.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "declined-rollup", Queue: "queued"})
 
 	case webhook.EventDeleted:
-		d.Queue.SubmitJob(key, slug, func(ctx context.Context) { rv.HandlePRDeleted(ctx, p) })
+		d.Queue.SubmitJob(key, slug, func(ctx context.Context, _ teams.Scheduler) { rv.HandlePRDeleted(ctx, p) })
 		httpapi.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "deleted-purge"})
 
 	case webhook.EventCommentDeleted:
-		d.Queue.SubmitJob(key, slug, func(ctx context.Context) { rv.HandleCommentDeleted(ctx, p) })
+		d.Queue.SubmitJob(key, slug, func(ctx context.Context, _ teams.Scheduler) { rv.HandleCommentDeleted(ctx, p) })
 		httpapi.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "comment-deleted"})
 
 	case webhook.EventCommentAdded:
@@ -216,7 +216,7 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 			httpapi.WriteJSON(w, http.StatusOK, ignored{"ignored", "comment without mention"})
 			return
 		}
-		d.Queue.SubmitJob(key, slug, func(ctx context.Context) { rv.HandleMention(ctx, p) })
+		d.Queue.SubmitJob(key, slug, func(ctx context.Context, sched teams.Scheduler) { rv.HandleMention(ctx, p, slug, sched) })
 		httpapi.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "mention", Queue: "queued"})
 
 	default:

@@ -57,7 +57,11 @@ type Scheduler interface {
 }
 
 // JobFunc is a queued unit of work that is not a PR review.
-type JobFunc func(ctx context.Context)
+//
+// It gets the scheduler for the same reason a review does: a mention can ask
+// for a review, and that review belongs on the inference pool like any
+// other. A job that needs nothing from it ignores the argument.
+type JobFunc func(ctx context.Context, sched Scheduler)
 
 // item is one unit of queued work. key is always set; job distinguishes a
 // non-review job from a review, whose payload lives in pending.
@@ -406,7 +410,7 @@ func (q *Queue) Stage(ctx context.Context, key store.PRKey, team string, infer, 
 		// httpstats scope, so everything after the handoff would log
 		// without them and record no HTTP counts.
 		posted = true
-		q.submitInternal(key, team, func(context.Context) { post(ctx) })
+		q.submitInternal(key, team, func(context.Context, Scheduler) { post(ctx) })
 	}()
 }
 
@@ -494,7 +498,7 @@ func (q *Queue) run(ctx context.Context) {
 			fn := it.job.run
 			run = func(ctx context.Context) {
 				defer q.done1(key)
-				fn(ctx)
+				fn(ctx, q)
 			}
 		} else {
 			tag = it.key.Tag()

@@ -7,20 +7,24 @@ import (
 	"github.com/trick77/noergler/internal/httpstats"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/jira"
+	"github.com/trick77/noergler/internal/queue"
 	"github.com/trick77/noergler/internal/render"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
 
-// Scheduler stages a review's inference off the review worker. Declared here,
-// consumer-side, so this package never imports the queue.
+// Scheduler stages a review's inference off the review worker.
 //
 // infer runs on the inference pool; post runs back on the single worker, so
 // every Bitbucket call stays one at a time. Both are called with the ctx
 // given to Stage, which carries pr_tag and the httpstats scope.
-type Scheduler interface {
-	Stage(ctx context.Context, key store.PRKey, team string, infer, post func(context.Context))
-}
+//
+// An alias of the queue's own type, not a second declaration: Go unifies
+// interfaces structurally when assigning a value but NOT when matching a
+// func type, and this one travels through queue.JobFunc. Two identical
+// declarations would not interchange there. queue imports nothing from
+// here, so the direction is safe.
+type Scheduler = queue.Scheduler
 
 // reviewPlan is what the inference and posting stages need from prepare.
 //
@@ -91,8 +95,12 @@ func (r *Reviewer) abort(ctx context.Context, prTag string, counter *httpstats.C
 // outstanding, and a second run of the same PR would race on the
 // prior-commit pointer, the summary and the inline comments. Every prepare
 // exit returns false, having logged its own totals.
-func (r *Reviewer) ReviewPullRequestStaged(ctx context.Context, payload *webhook.Payload, team string, sched Scheduler) bool {
-	plan, ctx, ok := r.prepare(ctx, payload, false)
+//
+// skipAuthorCheck is true for a mention-triggered review: the person asking
+// for it is the authorization, so the auto-review author list does not
+// apply.
+func (r *Reviewer) ReviewPullRequestStaged(ctx context.Context, payload *webhook.Payload, team string, skipAuthorCheck bool, sched Scheduler) bool {
+	plan, ctx, ok := r.prepare(ctx, payload, skipAuthorCheck)
 	if !ok {
 		return false
 	}

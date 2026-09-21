@@ -97,7 +97,7 @@ func TestJobRunsWhileAnotherPRIsHeld(t *testing.T) {
 
 	hold(q, key(1))
 	q.Submit(key(1), payload("one"), "t")
-	q.SubmitJob(key(2), "t", func(context.Context) { close(done) })
+	q.SubmitJob(key(2), "t", func(context.Context, Scheduler) { close(done) })
 
 	q.Start(context.Background())
 	defer q.Stop()
@@ -257,8 +257,8 @@ func TestJobForHeldPRWaitsForTheReview(t *testing.T) {
 		mu.Unlock()
 	}), 1, 1, quietLogger())
 
-	record := func(what string) func(context.Context) {
-		return func(context.Context) {
+	record := func(what string) JobFunc {
+		return func(context.Context, Scheduler) {
 			mu.Lock()
 			order = append(order, what)
 			mu.Unlock()

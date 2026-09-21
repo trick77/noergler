@@ -78,7 +78,7 @@ func TestWorkerBindsTeamPerItem(t *testing.T) {
 	var mu sync.Mutex
 	var teams []string
 
-	record := func(ctx context.Context) {
+	record := func(ctx context.Context, _ Scheduler) {
 		mu.Lock()
 		defer mu.Unlock()
 		for _, a := range logging.Bound(ctx) {
@@ -90,7 +90,7 @@ func TestWorkerBindsTeamPerItem(t *testing.T) {
 		teams = append(teams, "<unbound>")
 	}
 
-	q := New(syncReview(func(ctx context.Context, _ string, _ *webhook.Payload) { record(ctx) }), 1, 1, quietLogger())
+	q := New(syncReview(func(ctx context.Context, _ string, _ *webhook.Payload) { record(ctx, nil) }), 1, 1, quietLogger())
 	q.Start(context.Background())
 	defer q.Stop()
 
@@ -213,8 +213,8 @@ func TestPanicInJobDoesNotKillTheWorker(t *testing.T) {
 	q.Start(context.Background())
 	defer q.Stop()
 
-	q.SubmitJob(key(1), "t1", func(context.Context) { panic(errors.New("job exploded")) })
-	q.SubmitJob(key(2), "t1", func(context.Context) { ran.Add(1) })
+	q.SubmitJob(key(1), "t1", func(context.Context, Scheduler) { panic(errors.New("job exploded")) })
+	q.SubmitJob(key(2), "t1", func(context.Context, Scheduler) { ran.Add(1) })
 
 	waitFor(t, func() bool { return ran.Load() == 1 })
 }
@@ -238,7 +238,7 @@ func TestJobsShareTheWorkerInArrivalOrderWithoutDedupe(t *testing.T) {
 	waitFor(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(order) == 1 })
 
 	add := func(label string) JobFunc {
-		return func(context.Context) {
+		return func(context.Context, Scheduler) {
 			mu.Lock()
 			order = append(order, "job:"+label)
 			mu.Unlock()

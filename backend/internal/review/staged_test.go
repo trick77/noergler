@@ -51,7 +51,7 @@ func TestStagedReturnsBeforeInference(t *testing.T) {
 
 	sched := &deferredScheduler{}
 	handedOff := h.r.ReviewPullRequestStaged(context.Background(),
-		prPayload(webhook.EventOpened), "platform", sched)
+		prPayload(webhook.EventOpened), "platform", false, sched)
 
 	if !handedOff {
 		t.Fatal("a staged review must report the handoff, or the queue drops its hold")
@@ -89,7 +89,7 @@ func TestStagedPassesKeyAndTeam(t *testing.T) {
 	}
 
 	sched := &deferredScheduler{}
-	h.r.ReviewPullRequestStaged(context.Background(), prPayload(webhook.EventOpened), "platform", sched)
+	h.r.ReviewPullRequestStaged(context.Background(), prPayload(webhook.EventOpened), "platform", false, sched)
 	defer sched.finish()
 
 	if sched.team != "platform" {
@@ -109,11 +109,86 @@ func TestStagedSkipDoesNotHandOff(t *testing.T) {
 
 	sched := &deferredScheduler{}
 	if h.r.ReviewPullRequestStaged(context.Background(),
-		prPayload(webhook.EventOpened), "platform", sched) {
+		prPayload(webhook.EventOpened), "platform", false, sched) {
 		t.Fatal("a skipped review must not report a handoff")
 	}
 	if sched.infer != nil {
 		t.Error("a skipped review must not stage anything")
+	}
+}
+
+// A keyword mention is a review, so it takes the staged path: its gateway
+// call belongs on the inference pool like any other, and the PR's queue hold
+// then covers it, so it cannot run alongside a review of the same PR already
+// in flight.
+func TestKeywordMentionIsStaged(t *testing.T) {
+	h := newHarness(t, nil)
+	h.llm.review = inference.ReviewResult{
+		Outcome: inference.OutcomeOK,
+		Review:  inference.ParsedReview{Summary: inference.NewReviewSummary()},
+	}
+
+	sched := &deferredScheduler{}
+	h.r.HandleMention(context.Background(),
+		mentionPayload("@noergler review", "alice"), "platform", sched)
+
+	if sched.infer == nil {
+		t.Fatal("a keyword mention must stage its review, not run it on the worker")
+	}
+	if len(h.llm.Reviews) != 0 {
+		t.Errorf("the gateway was called on the worker: %d calls", len(h.llm.Reviews))
+	}
+	if sched.team != "platform" {
+		t.Errorf("team = %q, want platform", sched.team)
+	}
+
+	sched.finish()
+	if len(h.llm.Reviews) != 1 {
+		t.Errorf("gateway calls after finishing = %d, want 1", len(h.llm.Reviews))
+	}
+	if len(h.bb.Posted) == 0 {
+		t.Error("no summary posted after finishing")
+	}
+}
+
+// A mention-triggered review skips the author gate: the person asking for it
+// is the authorization, so an author outside the auto-review list still gets
+// their review.
+func TestKeywordMentionSkipsTheAuthorGate(t *testing.T) {
+	h := newHarness(t, nil)
+	h.llm.review = inference.ReviewResult{
+		Outcome: inference.OutcomeOK,
+		Review:  inference.ParsedReview{Summary: inference.NewReviewSummary()},
+	}
+	h.r.SetAuthorLists([]string{"nobody-matching"}, nil)
+
+	sched := &deferredScheduler{}
+	h.r.HandleMention(context.Background(),
+		mentionPayload("@noergler review", "alice"), "platform", sched)
+
+	if sched.infer == nil {
+		t.Fatal("the author gate blocked a mention-triggered review")
+	}
+	sched.finish()
+	if len(h.llm.Reviews) != 1 {
+		t.Errorf("gateway calls = %d, want 1", len(h.llm.Reviews))
+	}
+}
+
+// A Q&A mention is not a review and does not stage: it runs its single
+// gateway call and posts one reply inline.
+func TestQuestionMentionDoesNotStage(t *testing.T) {
+	h := newHarness(t, nil)
+
+	sched := &deferredScheduler{}
+	h.r.HandleMention(context.Background(),
+		mentionPayload("@noergler what does this do?", "alice"), "platform", sched)
+
+	if sched.infer != nil {
+		t.Error("a Q&A mention must not stage a review")
+	}
+	if len(h.llm.Mentions) != 1 {
+		t.Errorf("mention calls = %d, want 1", len(h.llm.Mentions))
 	}
 }
 
@@ -143,7 +218,7 @@ func TestStagedTerminalOutcomesMatchSynchronous(t *testing.T) {
 
 			sched := &inlineScheduler{}
 			h.r.ReviewPullRequestStaged(context.Background(),
-				prPayload(webhook.EventOpened), "platform", sched)
+				prPayload(webhook.EventOpened), "platform", false, sched)
 
 			if sched.staged != 1 {
 				t.Fatalf("staged %d times, want 1", sched.staged)
