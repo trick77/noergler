@@ -307,19 +307,3 @@ func (c *Client) GetRepo(ctx context.Context, project, repo string) (map[string]
 	}
 	return out, nil
 }
-
-// ListPullRequests reads one page of a repo's pull requests, returned as-is
-// rather than walked.
-//
-// Nothing calls it: the bot-read probe onboarding needs is done with
-// GetProject/GetRepo. A reader looking for the read probe wants
-// internal/onboarding/onboarder.go:94-96.
-func (c *Client) ListPullRequests(ctx context.Context, project, repo string, limit int) (map[string]any, error) {
-	var out map[string]any
-	query := url.Values{"limit": {strconv.Itoa(limit)}}
-	path := apiBase + "/projects/" + project + "/repos/" + repo + "/pull-requests"
-	if err := c.do(ctx, http.MethodGet, path, query, nil, &out); err != nil {
-		return nil, err
-	}
-	return out, nil
-}

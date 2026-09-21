@@ -1,0 +1,89 @@
+{
+  "bitbucket_url": "https://git.suvanet.ch",
+  "webhook_url": "https://noergler.apps.osu.suvanet.ch/webhook",
+  "projects": [
+    {
+      "project": "DD",
+      "repos": [
+        "diecibaerg-archdoc-lib",
+        "diecibaerg-java-utils",
+        "diecibaerg-gradle",
+        "diecibaerg-kafka-avro",
+        "diecibaerg-starter-dmzsecurity",
+        "diecibaerg-starter-quartz",
+        "stager2",
+        "ey-token-graber",
+        "jwt-generator-spring",
+        "mapstruct-spi-accessor-naming",
+        "mapstruct-spi-accessor-naming-usage",
+        "vpd-enforcer-spring"
+      ]
+    },
+    {
+      "project": "FADA",
+      "repos": [
+        "falldatenauswertung-persistence",
+        "falldatenauswertung-service-extranet",
+        "falldatenauswertung-ui"
+      ]
+    },
+    {
+      "project": "FALLI",
+      "repos": [
+        "falluebersicht-service",
+        "falluebersicht-ui"
+      ]
+    },
+    {
+      "project": "FALLI2",
+      "repos": [
+        "falluebersicht2-service",
+        "falluebersicht2-ui"
+      ]
+    },
+    {
+      "project": "M2M_BETRIEBE",
+      "repos": [
+        "kle-receiver-shared-lib",
+        "m2m-incoming-extranet",
+        "m2m-incoming-intranet",
+        "m2m-oms-provider-lib",
+        "m2m-outgoing-intranet",
+        "m2m-persistence",
+        "m2m-persistence-lib",
+        "pdf-from-json-lib"
+      ]
+    },
+    {
+      "project": "SCHMLD",
+      "repos": [
+        "lerb-chooser-ui",
+        "pdf-suva-components-utils",
+        "schadenmeldung-kafka-topologies",
+        "schadenmeldung-persistence",
+        "schadenmeldung-data-importer-avro",
+        "schadenmeldung-service",
+        "schadenmeldung-smoketest-recordings",
+        "schadenmeldung-service-rimex-lib",
+        "schadenmeldung-service-syrius-lib",
+        "schadenmeldung-service-vmax-lib",
+        "schadenmeldung-ui",
+        "workflow-utils"
+      ]
+    },
+    {
+      "project": "TAG",
+      "repos": [
+        "taggeldauswertung-service",
+        "taggeldauswertung-ui"
+      ]
+    },
+    {
+      "project": "VORLAGI",
+      "repos": [
+        "vorlagenverwaltung-service",
+        "vorlagenverwaltung-ui"
+      ]
+    }
+  ]
+}
