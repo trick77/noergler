@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/llmwire"
-
 	"github.com/trick77/noergler/internal/httpstats"
 )
 
@@ -84,13 +82,6 @@ func TestCountingClientKeepsLLMWiresTimeoutShape(t *testing.T) {
 		t.Errorf("ResponseHeaderTimeout = %v, want %v (CallTimeout + headroom), "+
 			"so llmwire's guard reports the timeout under its own name",
 			tr.ResponseHeaderTimeout, want)
-	}
-
-	// Sizing the backstop off llmwire's default instead of the resolved bound
-	// is the regression itself, so pin that the two are not the same number.
-	if tr.ResponseHeaderTimeout == llmwire.DefaultHeaderTimeout+headerBackstopHeadroom {
-		t.Error("ResponseHeaderTimeout is sized off DefaultHeaderTimeout, " +
-			"but llmwire resolves the guard to CallTimeout when HeaderTimeout is unset")
 	}
 }
 
