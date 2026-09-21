@@ -62,18 +62,31 @@ func Status(err error) int {
 }
 
 // ContentTooLarge is a diff or file body over its byte cap. What names the
-// resource. Size is the declared length when the server sent one, nil when the
-// cap tripped mid-stream.
+// resource.
+//
+// Size is the total body size: the declared Content-Length when the server
+// sent one, else the count measured by draining the body past the cap.
+// getTextCapped always sets it. Truncated means the drain stopped at its
+// ceiling or errored, so Size is a lower bound.
+//
+// Head holds the first Limit bytes, so a caller can say which files were in
+// the part it did see. Python had neither: it discarded the running byte count
+// it held and never looked at the partial body.
 type ContentTooLarge struct {
-	What  string
-	Limit int
-	Size  *int
+	What      string
+	Limit     int
+	Size      *int
+	Truncated bool
+	Head      []byte
 }
 
 func (e *ContentTooLarge) Error() string {
 	seen := fmt.Sprintf("> %d bytes", e.Limit)
 	if e.Size != nil {
 		seen = fmt.Sprintf("%d bytes", *e.Size)
+		if e.Truncated {
+			seen = fmt.Sprintf("> %d bytes", *e.Size)
+		}
 	}
 	return fmt.Sprintf("%s: %s exceeds cap of %d bytes", e.What, seen, e.Limit)
 }
@@ -212,7 +225,9 @@ func statusError(method, path string, resp *http.Response) error {
 //     returned, so a huge error page is never reported as ContentTooLarge;
 //  2. a declared Content-Length over the cap fails before the body is read,
 //     with Size set;
-//  3. otherwise the read itself stops one byte past the cap, with Size nil.
+//  3. otherwise the read stops one byte past the cap, and the rest of the
+//     body is drained and counted so Size reports what was actually sent,
+//     up to a ceiling of drainCeilingFactor times the cap.
 //
 // The comparison is strictly greater than: a body of exactly max passes.
 func (c *Client) getTextCapped(ctx context.Context, path string, query url.Values, accept, what string, max int) (string, error) {
@@ -244,8 +259,61 @@ func (c *Client) getTextCapped(ctx context.Context, path string, query url.Value
 		return "", fmt.Errorf("read %s: %w", what, err)
 	}
 	if len(buf) > max {
-		return "", &ContentTooLarge{What: what, Limit: max}
+		// Bound the drain in time as well as bytes: a stalled connection
+		// sends no more bytes, so the ceiling would never be reached and the
+		// single review worker would block for every team. Closing the body
+		// is what interrupts a Read already blocked in the kernel.
+		stop := time.AfterFunc(drainTimeout, func() { _ = resp.Body.Close() })
+		size, truncated := drainSize(resp.Body, len(buf), max*drainCeilingFactor)
+		stop.Stop()
+		return "", &ContentTooLarge{
+			What: what, Limit: max, Size: &size, Truncated: truncated,
+			Head: buf[:max],
+		}
 	}
 	// Python decoded with errors="replace"; Go leaves invalid bytes alone.
 	return strings.ToValidUTF8(string(buf), "�"), nil
+}
+
+// drainCeilingFactor bounds the drain at this multiple of the cap. There is a
+// single review worker and the job's ctx is shared, so reading a multi-GB diff
+// to its end would stall every team's queue for bytes that are thrown away.
+// Ten times the cap still separates "slightly over" from "wildly over".
+const drainCeilingFactor = 10
+
+// drainTimeout bounds the drain in wall-clock time. The byte ceiling alone is
+// not a bound: a connection that stalls after the cap sends no further bytes,
+// so the ceiling is never reached and the read blocks forever, holding the
+// single review worker. The caller's ctx does not help either, because the
+// review path runs without a deadline.
+var drainTimeout = 10 * time.Second
+
+// drainSize reads the rest of body to measure what the cap refused, counting
+// from seen and discarding as it goes. It returns the total and whether that
+// total is a lower bound, which it is once the ceiling is reached or the read
+// fails part way.
+//
+// It never reports an error. The caller has already decided this body is
+// ContentTooLarge, and a drain that fails must not turn that into a generic
+// error: the review path posts no notice and writes no row for one, so a torn
+// connection here would lose the skip comment the user gets today.
+// A body that ends exactly at the ceiling is exact, not a lower bound, so the
+// error says "N bytes" rather than "> N bytes": the count is only truncated
+// once a byte BEYOND the ceiling is seen.
+func drainSize(body io.Reader, seen, ceiling int) (int, bool) {
+	total := seen
+	if total > ceiling {
+		return total, true
+	}
+	scratch := make([]byte, 32*1024)
+	for {
+		n, err := body.Read(scratch)
+		total += n
+		if total > ceiling {
+			return total, true
+		}
+		if err != nil {
+			return total, err != io.EOF
+		}
+	}
 }
