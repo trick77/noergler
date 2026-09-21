@@ -74,10 +74,14 @@ diff as context.
 
 ## 4. Diff fetch and file splitting
 
-The PR diff is fetched with a byte cap applied while streaming
-(`BITBUCKET_MAX_DIFF_BYTES`, 10 MiB), then split per file. Non-reviewable files
-are dropped: binaries, lockfiles, vendored and generated paths, hidden path
+The PR diff is fetched whole and split per file. Non-reviewable files are
+dropped: binaries, lockfiles, vendored and generated paths, hidden path
 components.
+
+There is no byte cap by default. `BITBUCKET_MAX_DIFF_BYTES` can set one, but it
+skips the entire PR when exceeded, and a diff's size is dominated by the files
+this step is about to drop, so it refuses reviews over bytes that never become
+resident. `GOMEMLIMIT` bounds the process instead.
 
 ## 5. Content enrichment
 
