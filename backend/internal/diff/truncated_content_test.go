@@ -4,8 +4,9 @@ import "testing"
 
 // Content is byte-capped at the socket (BITBUCKET_MAX_FILE_BYTES) while the
 // diff is not, so a truncated large file plus a late hunk drives the dynamic
-// scope search past the end of content. Python raised IndexError and failed
-// that review; a panic here would take down the single queue worker.
+// scope search past the end of content. Indexing past the end would panic and
+// take down the single queue worker, killing reviews for every team, not just
+// this one.
 func TestDynamicSearchSurvivesTruncatedContent(t *testing.T) {
 	cases := []struct {
 		name    string

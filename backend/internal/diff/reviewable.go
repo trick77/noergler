@@ -2,8 +2,7 @@ package diff
 
 import "strings"
 
-// skipExtensions are extensions never worth reviewing. Ported verbatim from
-// Python SKIP_EXTENSIONS.
+// skipExtensions are extensions never worth reviewing.
 var skipExtensions = map[string]bool{
 	// Binary / media
 	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".bmp": true,
@@ -54,20 +53,22 @@ var skipDirs = map[string]bool{
 // matched by suffix rather than exact name (e.g. myproject.egg-info).
 var skipDirSuffixes = []string{".egg-info"}
 
-// binaryMarkerScanRunes bounds the binary-marker scan. Python sliced
-// file_diff[:500] by characters, so this counts runes, not bytes.
+// binaryMarkerScanRunes bounds the binary-marker scan. Counted in runes, not
+// bytes, so a multi-byte diff header does not shift the cut.
 const binaryMarkerScanRunes = 500
 
 // IsReviewable decides whether a per-file diff is worth sending to the model,
 // before its content is fetched.
 //
-// Order matters and mirrors Python is_reviewable_diff exactly:
+// Order matters because only step 3 can return early with true:
 //  1. an extension heuristic over the lowercased raw first line, which catches
 //     quoted and octal-escaped names the path regex misses;
 //  2. a binary marker in the first 500 characters;
 //  3. the parsed path.
 //
-// A diff whose path does not parse is reviewable, not skipped.
+// A diff whose path does not parse is reviewable, not skipped, so running
+// step 3 first would pass a binary diff or a skipped extension whose header
+// the path regex could not parse.
 func IsReviewable(fileDiff string) bool {
 	head := strings.ToLower(firstLine(fileDiff))
 	// The heuristic scans the whole first line, so it sees the a/ side too:
@@ -113,8 +114,8 @@ func firstLine(s string) string {
 	return s
 }
 
-// firstRunes returns at most n runes of s, matching Python's character slicing
-// so a multi-byte diff does not shift the cut.
+// firstRunes returns at most n runes of s, so a multi-byte diff does not
+// shift the cut where a byte slice would.
 func firstRunes(s string, n int) string {
 	count := 0
 	for i := range s {

@@ -14,9 +14,8 @@ var noDynamicLanguages = map[string]bool{
 
 // scopePatterns find an enclosing declaration to pull context back to.
 //
-// Every \w ported from a Python pattern becomes [\pL\pN_]: RE2's \w is ASCII
-// while Python's is Unicode, so `const café = (x) => x` matches in Python and
-// would not match here with \w.
+// Every \w is spelled [\pL\pN_]: RE2's \w is ASCII-only, so `const café =
+// (x) => x` would not match a pattern written with \w.
 var scopePatterns = map[string]*regexp.Regexp{
 	"python": regexp.MustCompile(`^\s*(?:def |class |async def )`),
 	"jvm": regexp.MustCompile(
@@ -98,7 +97,8 @@ func ExpandContext(fileDiff, content, path string, before, after, maxDynamicBefo
 		return fileDiff
 	}
 
-	// Mirrors Python split("\n"), not splitlines().
+	// Splits on \n only, unlike splitLines: the line numbers here must line up
+	// with the diff's, which counts \n alone.
 	fileLines := strings.Split(content, "\n")
 	totalFileLines := len(fileLines)
 
@@ -116,12 +116,12 @@ func ExpandContext(fileDiff, content, path string, before, after, maxDynamicBefo
 
 		// Not clamped to the file length; only ctxStart >= 1 is enforced. A
 		// content that disagrees with the diff yields header counts exceeding
-		// the body, as in Python.
+		// the body.
 		beforeCount := hunk.NewStart - ctxStart
 
 		// Counts body lines that are non-empty and do not start with "-". This
 		// counts `\ No newline at end of file` as a real line, pushing the
-		// after-window one line too far. Ported as is.
+		// after-window one line too far.
 		hunkNewLineCount := 0
 		for _, line := range hunk.BodyLines {
 			if line != "" && !strings.HasPrefix(line, "-") {

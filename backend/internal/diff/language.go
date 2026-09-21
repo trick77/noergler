@@ -7,7 +7,8 @@ import (
 )
 
 // extensionLanguageMap maps a file extension to a language group.
-// Case-sensitive, as in Python: Main.PY is "other", not "python".
+// Case-sensitive on purpose: Main.PY is "other", not "python".
+// TestDetectLanguage pins it.
 var extensionLanguageMap = map[string]string{
 	// Python
 	".py": "python", ".pyi": "python",
@@ -86,8 +87,8 @@ func IsTestFile(path string) bool { return testPatterns.MatchString(path) }
 //
 // The key reads only the path, never the diff or content, so the same PR sorts
 // identically across re-reviews and unchanged files stay in the prefix-cache
-// window. Sorting is stable, matching Python's sort; byte order on Go strings
-// equals Python's code-point order.
+// window. Sorting is stable, and Go string byte order equals code-point
+// order, so the ordering is deterministic for any input.
 func SortByLanguagePriority(files []FileReviewData) []FileReviewData {
 	rank := make(map[string]int, len(languagePriority))
 	for i, lang := range languagePriority {

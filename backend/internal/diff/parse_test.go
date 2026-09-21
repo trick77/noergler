@@ -15,8 +15,8 @@ func TestSplitByFileIsLossless(t *testing.T) {
 		{"empty", "", 0},
 		{"single file", "diff --git a/f.py b/f.py\n@@ -1,1 +1,1 @@\n-a\n+b\n", 1},
 		{"two files", "diff --git a/a.py b/a.py\n-a\ndiff --git a/b.py b/b.py\n-b\n", 2},
-		// Verified against Python: a preamble before the first `diff --git `
-		// becomes its own part, it is not glued onto the first file.
+		// A preamble before the first `diff --git ` becomes its own part, it
+		// is not glued onto the first file.
 		{"preamble is its own part", "warning: noise\ndiff --git a/a.py b/a.py\n-a\n", 2},
 		{"no diff header at all", "just some text\nmore text\n", 1},
 	}
@@ -33,7 +33,7 @@ func TestSplitByFileIsLossless(t *testing.T) {
 	}
 }
 
-// Python's splitlines breaks on more than \n, so a form feed starts a new line.
+// SplitByFile breaks on more than \n, so a form feed starts a new line.
 func TestSplitByFileFormFeed(t *testing.T) {
 	input := "diff --git a/a.py b/a.py\n-x\x0c-y\ndiff --git a/b.py b/b.py\n-z\n"
 	parts := SplitByFile(input)
@@ -150,7 +150,7 @@ func TestParseHunks(t *testing.T) {
 
 func TestHasContent(t *testing.T) {
 	if (FileReviewData{Content: ""}).HasContent() {
-		t.Error("empty content should report false, matching Python truthiness")
+		t.Error("empty content should report false")
 	}
 	if !(FileReviewData{Content: "x"}).HasContent() {
 		t.Error("non-empty content should report true")

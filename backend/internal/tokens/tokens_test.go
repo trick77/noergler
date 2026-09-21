@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// Counts produced by Python tiktoken.encoding_for_model("gpt-4o") over the same
+// Counts pinned against o200k_base over the same
 // inputs. They are literals on purpose: a library upgrade that shifts
 // tokenization has to fail here rather than silently reprice every review.
 func TestCountIsPinned(t *testing.T) {

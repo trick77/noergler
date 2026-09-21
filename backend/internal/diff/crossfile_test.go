@@ -29,7 +29,7 @@ func TestExtractChangedSymbols(t *testing.T) {
 		},
 		{
 			// The jvm pattern has no method alternative, so a plain method
-			// yields nothing. Intentional, pinned by a Python test.
+			// yields nothing. Intentional, pinned here.
 			"jvm plain method yields nothing",
 			FileReviewData{Path: "A.java", Diff: "+    public void processOrder(int a) {\n"},
 			nil,
@@ -131,8 +131,8 @@ func TestBuildRelationships(t *testing.T) {
 		}
 	})
 
-	// Empty content falls through to the diff, matching Python truthiness, and
-	// the reference is labelled as a diff line.
+	// Empty content falls through to the diff, and the reference is labelled
+	// as a diff line.
 	t.Run("empty content falls through to the diff", func(t *testing.T) {
 		files := []FileReviewData{
 			{Path: "svc.py", Diff: "+def process_order(x):\n"},
@@ -255,8 +255,7 @@ func refPattern(symbol string) *regexp.Regexp {
 	return regexp.MustCompile(`\b` + regexp.QuoteMeta(symbol) + `\b`)
 }
 
-// Ported from Python TestFindReferences, which asserts exact counts and line
-// numbers.
+// Asserts exact counts and line numbers.
 func TestFindReferencesCases(t *testing.T) {
 	t.Run("finds references in content", func(t *testing.T) {
 		target := FileReviewData{
@@ -321,7 +320,7 @@ func TestFindReferencesCases(t *testing.T) {
 	})
 }
 
-// Ported from Python TestExtractChangedSymbols, the exact per-language cases.
+// The exact per-language cases.
 func TestExtractChangedSymbolsCases(t *testing.T) {
 	cases := []struct {
 		name string
@@ -373,7 +372,6 @@ func TestExtractChangedSymbolsCases(t *testing.T) {
 	})
 }
 
-// Ported from Python TestBuildCrossFileContext.
 func TestBuildRelationshipsCases(t *testing.T) {
 	t.Run("single file returns empty", func(t *testing.T) {
 		got := BuildRelationships([]FileReviewData{{Path: "service.py", Diff: "+def get_user(id):\n"}})
@@ -417,7 +415,6 @@ func TestBuildRelationshipsCases(t *testing.T) {
 	})
 }
 
-// Ported from Python TestRenderCrossFileContext.
 func TestRenderRelationshipsCases(t *testing.T) {
 	t.Run("empty relationships", func(t *testing.T) {
 		if got := RenderRelationships(nil); got != "" {

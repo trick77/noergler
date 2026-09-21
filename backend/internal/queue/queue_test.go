@@ -166,7 +166,7 @@ func TestReviewsAreSerializedAcrossPRs(t *testing.T) {
 }
 
 // A panic in the review path must not take the only worker down for every
-// team. The Python cannot panic this way; this is the deliberate addition.
+// team. Recovering per item is deliberate.
 func TestPanicInReviewDoesNotKillTheWorker(t *testing.T) {
 	var mu sync.Mutex
 	var seen []int
@@ -273,7 +273,7 @@ func TestSubmitReturnsOutcome(t *testing.T) {
 	}
 }
 
-// Depth excludes the item in flight, as Python's qsize() does.
+// Depth excludes the item in flight.
 func TestDepthExcludesTheItemInFlight(t *testing.T) {
 	release := make(chan struct{})
 	started := make(chan struct{})

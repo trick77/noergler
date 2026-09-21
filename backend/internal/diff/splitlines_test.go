@@ -5,8 +5,9 @@ import (
 	"testing"
 )
 
-// Expectations generated from CPython's str.splitlines. A bug here shifts every
-// line number, so the boundary set is pinned rather than assumed.
+// Empirically: it breaks on \n, \r, \r\n, \v, \f, \x1c, \x1d, \x1e, \x85,
+// U+2028 and U+2029. A bug here shifts every line number, so the boundary set
+// is pinned rather than assumed.
 func TestSplitLinesKeepEndsIsPinned(t *testing.T) {
 	cases := []struct {
 		in   string
@@ -37,7 +38,7 @@ func TestSplitLinesKeepEndsIsPinned(t *testing.T) {
 	}
 }
 
-// splitLines drops the terminators, matching Python's plain splitlines.
+// splitLines uses the same boundary set but drops the terminators.
 func TestSplitLinesIsPinned(t *testing.T) {
 	cases := []struct {
 		in   string

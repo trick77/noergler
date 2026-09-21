@@ -1,9 +1,6 @@
-// Package tokens counts prompt tokens with the same encoding the Python
-// service used.
-//
-// Python's count_tokens resolved tiktoken.encoding_for_model("gpt-4o"), which
-// is o200k_base. Its cl100k_base fallback was unreachable (gpt-4o always
-// resolves) and is not ported.
+// Package tokens counts prompt tokens with the o200k_base encoding, which is
+// what gpt-4o resolves to. There is no cl100k_base fallback: gpt-4o always
+// resolves, so one would be unreachable.
 package tokens
 
 import (
@@ -12,8 +9,8 @@ import (
 	"github.com/tiktoken-go/tokenizer"
 )
 
-// BytesPerTokenCeiling bounds tokens by byte length, mirroring Python's
-// _BYTES_PER_TOKEN_CEILING. The cumulative PR diff is dropped by byte length
+// BytesPerTokenCeiling bounds tokens by byte length.
+// The cumulative PR diff is dropped by byte length
 // before anything is tokenized, so no encoder runs over a diff that cannot fit.
 const BytesPerTokenCeiling = 8
 

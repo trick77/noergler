@@ -122,9 +122,9 @@ func (q *Queue) Stop() {
 // StatusSuperseded when the key was already pending (the payload is
 // replaced).
 //
-// Never blocks: Python is an unbounded asyncio.Queue with put_nowait, and in
-// Phase 7 the caller is an inbound HTTP request goroutine. A bounded channel
-// would turn a backlog into Bitbucket-side webhook timeouts.
+// Never blocks: the queue is unbounded, because the caller is an inbound HTTP
+// request goroutine. A bounded channel would turn a backlog into
+// Bitbucket-side webhook timeouts.
 func (q *Queue) Submit(key store.PRKey, payload *webhook.Payload, team string) string {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -162,7 +162,7 @@ func (q *Queue) put(it item, tag string) {
 	q.cond.Signal()
 }
 
-// Depth is the number of items waiting, excluding the one in flight. Python's
+// Depth is the number of items waiting, excluding the one in flight. The
 // qsize() excludes the item already handed out by get(), so this must too.
 func (q *Queue) Depth() int {
 	q.mu.Lock()
@@ -224,10 +224,9 @@ func (q *Queue) run(ctx context.Context) {
 
 // runOne executes one item and contains its failures.
 //
-// The recover is the one deliberate addition over the Python, which cannot
-// panic the way Go can. Without it a single bad PR takes the only worker down
-// for every team: Phase 4 hit exactly that with a slice index in the scope
-// search. Recovering per item means a panicking PR loses itself and nothing
+// The recover is deliberate. Without it a single bad PR takes the only worker
+// down for every team: Phase 4 hit exactly that with a slice index in the
+// scope search. Recovering per item means a panicking PR loses itself and nothing
 // else, and the completed line below is still emitted.
 func (q *Queue) runOne(ctx context.Context, run func(context.Context), tag, kind string) {
 	defer func() {

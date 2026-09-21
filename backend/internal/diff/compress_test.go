@@ -25,7 +25,7 @@ func TestRemoveDeletionOnlyHunks(t *testing.T) {
 		},
 		{
 			// A diff with no hunks at all also returns "". Compress then files
-			// the path under deleted, which mislabels it. Ported as is.
+			// the path under deleted, which mislabels it.
 			"no hunks returns empty",
 			"diff --git a/f.go b/f.go\nold mode 100644\n",
 			"",
@@ -86,7 +86,7 @@ func TestCompressClassifies(t *testing.T) {
 }
 
 // A file whose hunks are all deletion-only is filed under deleted, mislabelling
-// it. Ported as is.
+// it.
 func TestCompressMislabelsEmptiedFileAsDeleted(t *testing.T) {
 	files := []FileReviewData{
 		{Path: "emptied.py", Diff: "@@ -1,1 +1,0 @@\n-gone\n"},
@@ -192,14 +192,14 @@ func TestCountDiffLines(t *testing.T) {
 	}
 }
 
-// fakeEntry mirrors the Python tests' _format_entry_fake, including its
-// empty-string fallback for absent content.
+// fakeEntry is a stand-in formatter, with an empty-string fallback for absent
+// content.
 func fakeEntry(f FileReviewData) string {
 	return "## " + f.Path + "\n" + f.Diff + "\n" + f.Content
 }
 
-// Ported from Python TestIsSmallPr. The borderline cases pin the exact
-// arithmetic, so an off-by-one in the ratio or the overhead fails here.
+// The borderline cases pin the exact arithmetic, so an off-by-one in the ratio
+// or the overhead fails here.
 func TestIsSmallCases(t *testing.T) {
 	t.Run("small PR fits", func(t *testing.T) {
 		files := []FileReviewData{{Path: "a.py", Diff: "short diff"}}
@@ -232,7 +232,6 @@ func TestIsSmallCases(t *testing.T) {
 	})
 }
 
-// Ported from Python TestCompressForLargePr.
 func TestCompressCases(t *testing.T) {
 	t.Run("separates deleted and renamed", func(t *testing.T) {
 		files := []FileReviewData{
@@ -279,7 +278,6 @@ func TestCompressCases(t *testing.T) {
 	})
 }
 
-// Ported from Python TestRemoveDeletionOnlyHunks and TestIsRenameOnly.
 func TestRemoveDeletionOnlyHunksCases(t *testing.T) {
 	t.Run("preserves additions", func(t *testing.T) {
 		diff := "diff --git a/f.py b/f.py\n@@ -1,1 +1,1 @@\n-old\n+new\n"
@@ -328,8 +326,7 @@ func TestIsRenameOnlyCases(t *testing.T) {
 	}
 }
 
-// Ported from Python TestDetectLanguage and TestIsTestFile, the exact pairs.
-// Ported from Python TestSortFilesByLanguagePriority, exact orderings.
+// Pins the exact orderings.
 func TestSortCases(t *testing.T) {
 	t.Run("sorts by language then path", func(t *testing.T) {
 		in := []FileReviewData{

@@ -46,9 +46,9 @@ func headersOf(out string) []string {
 	return hs
 }
 
-// D0: adjacent hunks merge into one header AND keep every diff line. Python
-// dropped -line 7 here and showed line 7 twice, once as context and once as an
-// addition.
+// D0: adjacent hunks merge into one header AND keep every diff line. Trimming
+// hunk 2's body by the whole overlap would drop -line 7 and show line 7 twice,
+// once as context and once as an addition.
 func TestAdjacentHunksMergeWithoutLosingLines(t *testing.T) {
 	diff := "@@ -5,1 +5,1 @@\n-line 5\n+new1\n@@ -7,1 +7,1 @@\n-line 7\n+new2\n"
 	out := ExpandContext(diff, numberedLines(20), "f.py", 2, 2, 10, false)
@@ -63,9 +63,9 @@ func TestAdjacentHunksMergeWithoutLosingLines(t *testing.T) {
 		t.Errorf("body =\n%q\nwant\n%q", body, want)
 	}
 
-	// The removal Python dropped must survive.
+	// The removal the overlap trim would swallow must survive.
 	if !strings.Contains(out, "-line 7") {
-		t.Error("-line 7 was dropped, reintroducing the Python bug")
+		t.Error("-line 7 was dropped: the adjacent-hunk merge lost a removal")
 	}
 	// No file line may appear both as context and as a change.
 	seen := map[string]bool{}
@@ -89,7 +89,7 @@ func TestAdjacentHunksMergeWithoutLosingLines(t *testing.T) {
 	}
 }
 
-// A three-hunk chain drops two removals in Python.
+// A three-hunk chain is where an overlap trim would drop two removals.
 func TestThreeHunkChainKeepsEveryRemoval(t *testing.T) {
 	diff := "@@ -5,1 +5,1 @@\n-line 5\n+new5\n" +
 		"@@ -7,1 +7,1 @@\n-line 7\n+new7\n" +
@@ -141,7 +141,7 @@ func TestExpandContextClamping(t *testing.T) {
 	})
 
 	// before_count is not clamped to the file length, so header counts can
-	// exceed the body. Ported as is.
+	// exceed the body.
 	t.Run("content shorter than the diff claims", func(t *testing.T) {
 		out := ExpandContext("@@ -18,1 +18,1 @@\n-line 18\n+new18\n", "line 1\nline 2\nline 3", "f.py", 2, 2, 10, false)
 		if len(headersOf(out)) != 1 {
@@ -232,8 +232,8 @@ func TestDynamicContext(t *testing.T) {
 	})
 }
 
-// RE2's \w is ASCII while Python's is Unicode, so the ported scope patterns use
-// [\pL\pN_]. A non-ASCII identifier must still match.
+// RE2's \w is ASCII-only, so the scope patterns spell it [\pL\pN_]. A
+// non-ASCII identifier must still match.
 func TestScopePatternUnicodeIdentifier(t *testing.T) {
 	re := scopePatterns["typescript"]
 	if !re.MatchString("const café = (x) => x") {
@@ -245,14 +245,14 @@ func TestScopePatternUnicodeIdentifier(t *testing.T) {
 }
 
 // `\ No newline at end of file` is counted as a real new-file line, pushing the
-// after-window one line further. Ported as is.
+// after-window one line further.
 func TestNoNewlineMarkerCountedAsLine(t *testing.T) {
 	withMarker := ExpandContext("@@ -5,1 +5,1 @@\n-line 5\n+new1\n\\ No newline at end of file\n",
 		numberedLines(20), "f.py", 2, 2, 10, false)
 	without := ExpandContext("@@ -5,1 +5,1 @@\n-line 5\n+new1\n",
 		numberedLines(20), "f.py", 2, 2, 10, false)
 	if withMarker == without {
-		t.Error("the marker should shift the after-window, matching Python")
+		t.Error("the marker should shift the after-window")
 	}
 }
 
@@ -276,14 +276,12 @@ func TestExpandAllFiles(t *testing.T) {
 	}
 }
 
-// makeDiff mirrors the Python tests' _make_diff helper.
 func makeDiff(oldStart, oldCount, newStart, newCount int, body string) string {
 	return "diff --git a/file.py b/file.py\n--- a/file.py\n+++ b/file.py\n" +
 		"@@ -" + itoa(oldStart) + "," + itoa(oldCount) +
 		" +" + itoa(newStart) + "," + itoa(newCount) + " @@\n" + body
 }
 
-// Ported from Python TestExpandContext.
 func TestExpandContextCases(t *testing.T) {
 	t.Run("adds before context", func(t *testing.T) {
 		diff := makeDiff(5, 1, 5, 1, "-old\n+new")
@@ -385,7 +383,6 @@ func TestExpandContextCases(t *testing.T) {
 	})
 }
 
-// Ported from Python TestExpandAllFiles.
 func TestExpandAllFilesCases(t *testing.T) {
 	content := numberedLines(20)
 
@@ -411,7 +408,7 @@ func TestExpandAllFilesCases(t *testing.T) {
 		}
 	})
 
-	// Python passed content=None; Go's equivalent is the empty string.
+	// An unfetched file carries the empty string as its content.
 	t.Run("preserves absent content", func(t *testing.T) {
 		files := []FileReviewData{
 			{Path: "a.py", Diff: "diff --git a/a.py b/a.py\n@@ -5,1 +5,1 @@\n-old\n+new", Content: ""},
@@ -429,8 +426,7 @@ func TestExpandAllFilesCases(t *testing.T) {
 	})
 }
 
-// Ported from Python TestMergeOverlappingHunks. The Python asserts only the
-// header count; the stronger assertions live in
+// Asserts only the header count; the stronger assertions live in
 // TestAdjacentHunksMergeWithoutLosingLines.
 func TestMergeHeaderCountsCases(t *testing.T) {
 	t.Run("adjacent hunks merged", func(t *testing.T) {

@@ -16,7 +16,7 @@ func splitLines(s string) []string {
 	start := 0
 	runes := []rune(s)
 	for i := 0; i < len(runes); i++ {
-		if !isPythonLineBreak(runes[i]) {
+		if !isLineBreak(runes[i]) {
 			continue
 		}
 		end := i
@@ -35,7 +35,7 @@ func splitLines(s string) []string {
 	return out
 }
 
-func isPythonLineBreak(r rune) bool {
+func isLineBreak(r rune) bool {
 	switch r {
 	case '\n', '\r', '\v', '\f', 0x1c, 0x1d, 0x1e, 0x85, 0x2028, 0x2029:
 		return true
