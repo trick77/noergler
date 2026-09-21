@@ -258,13 +258,59 @@ func TestMetricsReportsUnpricedBesideTheTotal(t *testing.T) {
 	}
 }
 
-// An unbounded window would seq-scan however much history exists.
-func TestMetricsClampsTheWindow(t *testing.T) {
+// The default window is the CURRENT CALENDAR MONTH, not a rolling 14 days:
+// a key's spend is budgeted and invoiced by the month, and a rolling figure
+// cannot be reconciled with a bill.
+func TestMetricsDefaultsToTheCurrentMonth(t *testing.T) {
 	h := newDashHarness(t)
-	for _, q := range []string{"", "?days=0", "?days=9999", "?days=abc"} {
+
+	var got metricsBody
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/metrics").Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Window != "month" {
+		t.Errorf("window = %q, want month", got.Window)
+	}
+	now := time.Now()
+	if got.Since.Day() != 1 || got.Since.Month() != now.Month() || got.Since.Year() != now.Year() {
+		t.Errorf("since = %s, want the first of this month", got.Since)
+	}
+	if got.Since.Hour() != 0 || got.Since.Minute() != 0 {
+		t.Errorf("since = %s, want midnight", got.Since)
+	}
+	// Exclusive end, so the page can lay out the month without deciding
+	// where it ends itself.
+	if !got.Until.After(now) || got.Until.Day() != 1 {
+		t.Errorf("until = %s, want the first of next month", got.Until)
+	}
+}
+
+// monthStart is local, not UTC: an operator reading a spend figure means
+// their month, and a UTC boundary moves the figure for anyone west of it on
+// the first.
+func TestMonthStartIsLocalMidnight(t *testing.T) {
+	at := time.Date(2026, 3, 17, 14, 30, 0, 0, time.Local)
+	got := monthStart(at)
+	want := time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)
+	if !got.Equal(want) {
+		t.Errorf("monthStart = %s, want %s", got, want)
+	}
+	if got.Location() != time.Local {
+		t.Errorf("location = %s, want local", got.Location())
+	}
+}
+
+// ?days= still gives a rolling window, and an unbounded one would seq-scan
+// however much history exists.
+func TestMetricsClampsARollingWindow(t *testing.T) {
+	h := newDashHarness(t)
+	for _, q := range []string{"?days=0", "?days=9999", "?days=abc"} {
 		var got metricsBody
 		if err := json.Unmarshal(h.get(t, "/api/dashboard/metrics"+q).Body.Bytes(), &got); err != nil {
 			t.Fatalf("%s: %v", q, err)
+		}
+		if got.Window != "rolling" {
+			t.Errorf("%s: window = %q, want rolling", q, got.Window)
 		}
 		if days := time.Since(got.Since).Hours() / 24; days > 91 {
 			t.Errorf("%s: window = %.0f days, want it clamped", q, days)
@@ -426,5 +472,135 @@ func TestDashboardRoutesAbsentWithoutDeps(t *testing.T) {
 	srv.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/dashboard/live", nil))
 	if w.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404 when the dashboard is not wired", w.Code)
+	}
+}
+
+// The SPA sits on "/" as a catch-all. Go's ServeMux prefers the most
+// specific pattern, but that is a property worth pinning: a shell served in
+// place of the webhook would swallow deliveries and answer 200, and a probe
+// answering HTML would read as healthy to a checker that only reads status.
+func TestSPACatchAllNeverShadowsTheRealRoutes(t *testing.T) {
+	h := newDashHarness(t)
+
+	for _, path := range []string{"/health", "/ready"} {
+		w := h.get(t, path)
+		if ct := w.Header().Get("Content-Type"); !strings.Contains(ct, "json") {
+			t.Errorf("%s served %q, want JSON", path, ct)
+		}
+	}
+
+	// The webhook is POST-only, so a GET must not be answered by the shell
+	// with a 200.
+	w := httptest.NewRecorder()
+	h.srv.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/webhook/platform", nil))
+	if w.Code == http.StatusOK {
+		t.Errorf("GET /webhook/platform = 200, want a method error rather than the shell")
+	}
+
+	// An unknown dashboard endpoint stays JSON-shaped 404, never a page.
+	if body := h.get(t, "/api/dashboard/typo").Body.String(); strings.Contains(body, "<!doctype") {
+		t.Errorf("a mistyped API path received the shell: %s", body)
+	}
+
+	// A real client route does get the SPA.
+	if code := h.get(t, "/metrics").Code; code != http.StatusOK {
+		t.Errorf("/metrics = %d, want the SPA to answer 200", code)
+	}
+}
+
+// A team can pass every startup check and still review nothing, because it
+// owns no repositories. Before this state that team showed a green "ready"
+// pill beside an idle instance, which is the case an operator opens the
+// dashboard to find.
+func TestScopeSizeDistinguishesNoneFromWholeProject(t *testing.T) {
+	cases := []struct {
+		name   string
+		scopes []config.ProjectScope
+		want   int
+	}{
+		{"no projects and no repos", nil, 0},
+		{"empty list", []config.ProjectScope{}, 0},
+		// A project with no repo list is the WHOLE project: unbounded
+		// coverage, reported as -1 rather than counted.
+		{"whole project", []config.ProjectScope{{Key: "PAY"}}, -1},
+		{"named repos", []config.ProjectScope{{Key: "PAY", Repos: []string{"a", "b"}}}, 2},
+		{
+			"across projects",
+			[]config.ProjectScope{
+				{Key: "PAY", Repos: []string{"a"}},
+				{Key: "INF", Repos: []string{"b", "c"}},
+			},
+			3,
+		},
+		// One whole-project claim wins: the team's coverage is unbounded
+		// regardless of what else it names.
+		{
+			"whole project beside named repos",
+			[]config.ProjectScope{{Key: "PAY", Repos: []string{"a"}}, {Key: "INF"}},
+			-1,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := scopeSize(c.scopes); got != c.want {
+				t.Errorf("scopeSize = %d, want %d", got, c.want)
+			}
+		})
+	}
+}
+
+func TestTeamStateFoldsStartupAndScope(t *testing.T) {
+	cases := []struct {
+		enabled bool
+		repos   int
+		want    string
+	}{
+		{true, 3, teamReady},
+		{true, -1, teamReady},
+		// Configured, started, owns nothing: not ready, and not disabled
+		// either. The distinction is the whole point.
+		{true, 0, teamNoScope},
+		// A disabled team's scope is irrelevant: it takes no traffic at all.
+		{false, 0, teamDisabled},
+		{false, 5, teamDisabled},
+	}
+	for _, c := range cases {
+		if got := teamState(c.enabled, c.repos); got != c.want {
+			t.Errorf("teamState(%v, %d) = %q, want %q", c.enabled, c.repos, got, c.want)
+		}
+	}
+}
+
+// The harness team owns a whole project plus a named repo, so it is ready
+// and its scope is unbounded.
+func TestLiveReportsTeamScope(t *testing.T) {
+	h := newDashHarness(t)
+
+	var got liveBody
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/live").Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	var platform, mobile liveTeam
+	for _, tm := range got.Teams {
+		switch tm.Slug {
+		case "platform":
+			platform = tm
+		case "mobile":
+			mobile = tm
+		}
+	}
+	if platform.State != teamReady {
+		t.Errorf("platform state = %q, want ready", platform.State)
+	}
+	if platform.Repos != -1 {
+		t.Errorf("platform repos = %d, want -1 for a whole-project claim", platform.Repos)
+	}
+	if mobile.State != teamDisabled {
+		t.Errorf("mobile state = %q, want disabled", mobile.State)
+	}
+	// A disabled team's scope is never looked up: it takes no traffic, and
+	// the lookup would report on a Runtime that was never built.
+	if mobile.Repos != 0 {
+		t.Errorf("mobile repos = %d, want 0", mobile.Repos)
 	}
 }

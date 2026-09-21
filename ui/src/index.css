@@ -1,0 +1,193 @@
+@import "tailwindcss";
+
+/* Warm Editorial, dark. ../rongo's token set, which it shares with ../loom and
+   ../peeq; a change here forks the family, so values are carried over rather
+   than retuned.
+
+   Not carried over: the four --color-rail-* tokens and --rail-w/--rail-pref.
+   This dashboard has a top nav and no sidebar, and a token nothing sets is a
+   token the next reader has to disprove.
+
+   Added: netra's chart layer, renamed into this scheme. Its furniture values
+   carry the contrast ratios they were measured at, and the series ramp was
+   validated as a categorical set against --color-panel. Neither was picked by
+   eye; do not re-pick them by eye. */
+@theme {
+  --color-bg: #1f1f1e;
+  --color-panel: #1b1b1a;
+  --color-active: #2c2c2a;
+  --color-border: #323230;
+  --color-border-soft: #2a2a28;
+  --color-ink: #faf9f5;
+  --color-ink-dim: #e4e1d8;
+  /* ../loom's wordmark value: warmer than ink, so the word sits as a mark
+     rather than as the brightest text on the page. */
+  --color-wordmark: #f4f0e8;
+  --color-muted: #9c9a92;
+  --color-faint: #6f6d66;
+  --color-accent: #c6613f;
+  --color-accent-strong: #d97757;
+  --color-accent-fill: #c25f34;
+  --color-accent-dim: #5a3527;
+  --color-online: #5aa06a;
+  --color-danger: #c14638;
+  --color-ochre: #d6a15a;
+  --color-ochre-wash: rgba(214, 161, 90, 0.14);
+  --color-elevated: #363632;
+  --color-elevated-border: #454540;
+  --color-elevated-ink: #f3f0e8;
+  --color-elevated-hover: #3f3f3a;
+  --color-danger-ink: #ec7e7e;
+
+  /* Chart furniture, from ../netra. The ratios are against the panel surface
+     and were measured: a grid that reads as absent on one surface and as a
+     cage on another is the failure these were tuned away from. */
+  --color-grid-minor: #33332f; /* 1.36:1 */
+  --color-grid: #45443e; /* 1.76:1 */
+  --color-axis: #6a685f; /* 3.08:1 */
+  --color-reference: #6e6c66; /* 3.3:1, the dashed threshold rule */
+  --color-track: #3a3a37;
+  --color-ink-3: #6a6963;
+
+  /* Series ramp, assigned in this fixed order and never cycled. Validated as
+     a categorical set against #1b1b1a: lightness band, chroma floor, CVD
+     separation (worst adjacent dE 16.0 deutan), normal-vision floor (19.7)
+     and 3:1 contrast all pass.
+     netra's s6 teal is deliberately absent: at L 0.724 it falls outside the
+     band on this surface, which is lighter than netra's own. A fifth series
+     folds into "other" rather than inventing a hue. */
+  --color-s1: #3987e5;
+  --color-s2: #199e70;
+  --color-s3: #9085e9;
+  --color-s4: #d55181;
+
+  --font-sans: "Anthropic Sans", system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: "Anthropic Serif", Georgia, "Times New Roman", Times, serif;
+  --font-mono: "Anthropic Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --radius-ui: 10px;
+  --radius-ui-sm: 8px;
+  --radius-ui-lg: 12px;
+  --shadow-panel: 0 24px 60px -18px rgba(0, 0, 0, 0.6);
+  --shadow-menu: 0 18px 32px rgba(0, 0, 0, 0.38);
+}
+
+/* Nothing below reaches for var(--color-...) directly: components wear the
+   generated utilities (bg-panel, text-muted), so a token rename is one edit. */
+
+@font-face {
+  font-family: "Anthropic Sans";
+  src: url("./fonts/SansWebVariable-TextRegular.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Anthropic Serif";
+  src: url("./fonts/SerifWebVariable-TextRegular.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Anthropic Serif";
+  src: url("./fonts/SerifWebVariable-TextRegularItalic.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Anthropic Mono";
+  src: url("./fonts/MonoVariableVariable-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Firefox dims the placeholder a second time on top of the colour. */
+::placeholder {
+  color: var(--color-faint);
+  opacity: 1;
+}
+
+/* Scrollbar thumb OPAQUE, never rgba(). A translucent thumb composites
+   differently over every surface it crosses, and getComputedStyle reports the
+   DECLARED colour, so a DOM sweep passes while the screen disagrees: verify
+   this one with a rendered pixel. Global, because macOS hides overlay bars
+   and Windows does not. */
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #383837 transparent;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+@supports not (scrollbar-width: thin) {
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: #383837;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: #4b4b4a;
+  }
+}
+
+/* A chart is redrawn at its measured width rather than CSS-scaled, so the
+   axis text keeps its size; this only lets it shrink below that width. */
+svg.chart {
+  display: block;
+  max-width: 100%;
+}
+
+@keyframes pulse-dot {
+  50% {
+    opacity: 0.35;
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
+
+@keyframes skeleton-fade {
+  50% {
+    opacity: 0.45;
+  }
+}
+.skeleton {
+  background: var(--color-active);
+  animation: skeleton-fade 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse-dot,
+  .skeleton {
+    animation: none;
+  }
+}

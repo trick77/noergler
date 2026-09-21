@@ -17,6 +17,7 @@ import (
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/teams"
 	"github.com/trick77/noergler/internal/webhook"
+	"github.com/trick77/noergler/web"
 )
 
 // Submitter is the review queue as the routes use it.
@@ -88,5 +89,10 @@ func Register(srv *httpapi.Server, d Deps) {
 		srv.HandleFunc("GET /api/dashboard/runs", d.runs)
 		srv.HandleFunc("GET /api/dashboard/metrics", d.metrics)
 		srv.HandleFunc("GET /api/dashboard/teams", d.teamsView)
+
+		// The SPA on the catch-all, registered LAST and only alongside the
+		// API it reads. Go's ServeMux picks the most specific pattern, so
+		// every route above and every probe still wins over "/".
+		srv.Handle("/", web.Handler())
 	}
 }

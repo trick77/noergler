@@ -138,6 +138,12 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		r.logCost(ctx, prTag, result.Cost)
 	}
 
+	// No review_attempts row here, deliberately. An attempt is a REVIEW of a
+	// PR; a mention is a question answered in a comment thread, and it
+	// advances no commit pointer, posts no findings and has no run row to
+	// link. Recording both in one feed would make "what was reviewed today"
+	// unanswerable without a second filter nobody asked for. The Q&A path
+	// reports itself in the log, as before.
 	switch result.Outcome {
 	case inference.OutcomeTimedOut:
 		r.log.ErrorContext(ctx, fmt.Sprintf("Mention Q&A on %s aborted - no response within %.0fs",

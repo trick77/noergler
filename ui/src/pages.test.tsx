@@ -1,0 +1,281 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LivePage } from "./LivePage";
+import { MetricsPage } from "./MetricsPage";
+import { RunsPage } from "./RunsPage";
+import { TeamsPage } from "./TeamsPage";
+import type { Live, Metrics, Run, Team } from "./api";
+
+/** serve answers each dashboard path from a table, so a page under test
+ *  fetches exactly what it would in the browser. */
+function serve(table: Record<string, unknown>) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => {
+      const path = url.replace("/api/dashboard/", "").split("?")[0];
+      if (!(path in table)) {
+        return { ok: false, status: 500, json: async () => ({}) };
+      }
+      return { ok: true, status: 200, json: async () => table[path] };
+    }),
+  );
+}
+
+const live: Live = {
+  pool_capacity: 6,
+  pool_per_team: 2,
+  staged: 2,
+  depth: 1,
+  running: [{ tag: "PAY/ledger#1", team: "payments", kind: "review", since: new Date().toISOString() }],
+  waiting: [{ tag: "PAY/ledger#2", team: "payments", since: new Date().toISOString() }],
+  teams: [
+    { slug: "payments", enabled: true, state: "ready", repos: -1, prs: 4, last_run: new Date().toISOString() },
+    { slug: "mobile", enabled: false, state: "disabled", repos: 0, prs: 0, last_run: null },
+    // Configured, started, owns nothing: the state the green pill used to hide.
+    { slug: "search", enabled: true, state: "no_repos", repos: 0, prs: 0, last_run: null },
+  ],
+};
+
+const metrics: Metrics = {
+  since: "2026-09-01T00:00:00",
+  until: "2026-10-01T00:00:00",
+  window: "month",
+  totals: {
+    runs: 12,
+    prompt_tokens: 1000,
+    cached_tokens: 0,
+    completion_tokens: 100,
+    findings_posted: 5,
+    cost_usd: "1.250",
+    unpriced_runs: 3,
+  },
+  by_team: [
+    {
+      team: "payments",
+      runs: 12,
+      prompt_tokens: 1000,
+      cached_tokens: 0,
+      completion_tokens: 100,
+      findings_posted: 5,
+      cost_usd: "1.250",
+      unpriced_runs: 3,
+    },
+  ],
+  daily: [{ day: "2026-09-02", team: "payments", runs: 2, cost_usd: "0.500" }],
+  daily_attempts: [
+    { day: "2026-09-02", outcome: "ok", count: 2 },
+    { day: "2026-09-02", outcome: "skipped", count: 4 },
+  ],
+  breakdown: [
+    { outcome: "ok", count: 2 },
+    { outcome: "skipped", reason: "head_unchanged", label: "HEAD unchanged since last review", count: 4 },
+    { outcome: "error", count: 1 },
+  ],
+};
+
+beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+});
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+describe("LivePage", () => {
+  it("draws the whole pool, not just what is running", async () => {
+    serve({ live });
+    render(<LivePage />);
+
+    // Six slots, because the pool is six wide: a panel showing one row per
+    // running review would report a parallel instance as serial.
+    const slots = await screen.findByLabelText("2 of 6 slots busy");
+    expect(slots.children).toHaveLength(6);
+    expect(await screen.findByText("PAY/ledger#1")).toBeDefined();
+    expect(await screen.findByText("PAY/ledger#2")).toBeDefined();
+  });
+
+  it("lists a disabled team without saying why", async () => {
+    serve({ live });
+    render(<LivePage />);
+
+    expect(await screen.findByText("mobile")).toBeDefined();
+    expect(await screen.findByText("disabled")).toBeDefined();
+    expect(screen.queryByText(/OPENAI_API_KEY/)).toBeNull();
+  });
+
+  // A team that owns nothing passes every startup check and reviews
+  // nothing. It used to show the same green pill as a working team, which
+  // is the case an operator opens this page to find.
+  it("separates a team with no repos from a ready one", async () => {
+    serve({ live });
+    render(<LivePage />);
+
+    // Twice: the pill and the scope column. Both say it, because the pill
+    // is the verdict and the column is the evidence.
+    expect(await screen.findAllByText("no repos")).toHaveLength(2);
+    expect(await screen.findByText("whole project")).toBeDefined();
+    expect(await screen.findByText("ready")).toBeDefined();
+    expect(await screen.findByText("disabled")).toBeDefined();
+  });
+
+  it("says so when the panel cannot be loaded", async () => {
+    serve({});
+    render(<LivePage />);
+    expect(await screen.findByText(/Could not load/)).toBeDefined();
+  });
+});
+
+describe("RunsPage", () => {
+  const runs: Run[] = [
+    {
+      tag: "PAY/ledger#1",
+      team: "payments",
+      kind: "auto",
+      outcome: "ok",
+      elapsed_ms: 72400,
+      findings: 6,
+      cost_usd: "0.218",
+      created_at: new Date().toISOString(),
+    },
+    {
+      tag: "PAY/ledger#2",
+      team: "payments",
+      kind: "auto",
+      outcome: "ok",
+      elapsed_ms: 41000,
+      findings: 0,
+      cost_usd: null,
+      created_at: new Date().toISOString(),
+    },
+    {
+      tag: "PAY/ledger#3",
+      team: "payments",
+      kind: "auto",
+      outcome: "skipped",
+      reason: "head_unchanged",
+      reason_label: "HEAD unchanged since last review",
+      elapsed_ms: null,
+      findings: null,
+      cost_usd: null,
+      created_at: new Date().toISOString(),
+    },
+    {
+      tag: "PAY/ledger#4",
+      team: "payments",
+      kind: "auto",
+      outcome: "timed_out",
+      elapsed_ms: 300000,
+      findings: null,
+      cost_usd: null,
+      created_at: new Date().toISOString(),
+    },
+  ];
+
+  it("shows failures and skips beside the successes", async () => {
+    serve({ runs: { runs }, metrics });
+    render(<RunsPage />);
+
+    expect(await screen.findByText("timed_out")).toBeDefined();
+    expect(await screen.findByText("skipped")).toBeDefined();
+    expect(screen.getAllByText("ok")).toHaveLength(2);
+  });
+
+  it("keeps an unpriced run unpriced", async () => {
+    serve({ runs: { runs }, metrics });
+    render(<RunsPage />);
+
+    expect(await screen.findByText("$0.218")).toBeDefined();
+    expect(await screen.findByText("unpriced")).toBeDefined();
+    // The failures have no cost at all, which is a dash, not $0.000.
+    expect(screen.queryByText("$0.000")).toBeNull();
+  });
+
+  it("ranks the skip reasons by their label", async () => {
+    serve({ runs: { runs }, metrics });
+    render(<RunsPage />);
+    expect(await screen.findByText("HEAD unchanged since last review")).toBeDefined();
+  });
+});
+
+describe("MetricsPage", () => {
+  it("reports unpriced runs beside the cost, never inside it", async () => {
+    serve({ metrics });
+    render(<MetricsPage />);
+
+    // Twice on purpose: the headline tile and the by-team row. The point
+    // is that the figure is the priced sum in both places.
+    expect(await screen.findAllByText("$1.250")).toHaveLength(2);
+    expect(await screen.findByText("Unpriced")).toBeDefined();
+    // The unpriced count stands on its own rather than being folded in.
+    expect(await screen.findAllByText("3")).not.toHaveLength(0);
+  });
+
+  it("labels both charts for a screen reader", async () => {
+    serve({ metrics });
+    render(<MetricsPage />);
+
+    expect(await screen.findByLabelText(/Cost per day/)).toBeDefined();
+    expect(await screen.findByLabelText(/Attempts per day/)).toBeDefined();
+  });
+
+  it("says a window is empty rather than drawing an empty chart", async () => {
+    serve({
+      metrics: {
+        ...metrics,
+        totals: { ...metrics.totals, cost_usd: null, runs: 0 },
+        daily: [],
+        daily_attempts: [],
+      },
+    });
+    render(<MetricsPage />);
+
+    await waitFor(() => expect(screen.getByText(/No priced runs/)).toBeDefined());
+    expect(screen.getByText(/No attempts in this window/)).toBeDefined();
+  });
+});
+
+describe("TeamsPage", () => {
+  const teams: Team[] = [
+    {
+      slug: "payments",
+      enabled: true,
+      state: "ready",
+      repos: -1,
+      prs: 9,
+      last_run: new Date().toISOString(),
+      claims: [{ project: "PAY" }, { project: "SHARED", repo: "billing-lib" }],
+      auto_review_authors: [],
+      ignore_authors: ["renovate"],
+      exclude_repos: ["*-infra"],
+    },
+    {
+      slug: "mobile",
+      enabled: false,
+      state: "disabled",
+      repos: 0,
+      prs: 0,
+      last_run: null,
+      claims: [],
+      auto_review_authors: [],
+      ignore_authors: [],
+      exclude_repos: [],
+    },
+  ];
+
+  it("distinguishes a whole-project claim from a repo one", async () => {
+    serve({ teams: { teams } });
+    render(<TeamsPage />);
+
+    expect(await screen.findByText("PAY")).toBeDefined();
+    expect(await screen.findByText("whole project")).toBeDefined();
+    expect(await screen.findByText("SHARED/billing-lib")).toBeDefined();
+  });
+
+  it("points at the log for a disable reason instead of showing one", async () => {
+    serve({ teams: { teams } });
+    render(<TeamsPage />);
+
+    expect(await screen.findByText(/not served by the API/)).toBeDefined();
+    expect(await screen.findByText("team_disabled")).toBeDefined();
+  });
+});

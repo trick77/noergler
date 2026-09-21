@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/httpapi"
 	"github.com/trick77/noergler/internal/queue"
 	"github.com/trick77/noergler/internal/review"
@@ -61,11 +62,59 @@ func usd(nano *int64) *string {
 	return &s
 }
 
+// Team states. "ready" is not the same claim as "configured": a team can
+// pass every startup check and still review nothing, because it owns no
+// repositories. Nothing else reports that, and an operator reading a green
+// pill beside an idle team has no way to tell the two apart.
+const (
+	teamReady    = "ready"
+	teamNoScope  = "no_repos"
+	teamDisabled = "disabled"
+)
+
 type liveTeam struct {
-	Slug    string     `json:"slug"`
-	Enabled bool       `json:"enabled"`
+	Slug string `json:"slug"`
+	// Enabled is the startup verdict: the team's config, secret and model
+	// all resolved. Kept separate from State, because a team with no repos
+	// is enabled and still doing nothing.
+	Enabled bool `json:"enabled"`
+	// State is ready | no_repos | disabled, the pill the dashboard shows.
+	State string `json:"state"`
+	// Repos is how many repositories the team owns. A whole-project claim
+	// counts as -1: it is unbounded coverage, not a repo count, and
+	// reporting it as some number would be a guess.
+	Repos   int        `json:"repos"`
 	PRs     int        `json:"prs"`
 	LastRun *time.Time `json:"last_run"`
+}
+
+// scopeSize counts the repositories a team owns.
+//
+// 0 means no projects AND no repos: the team reviews nothing, whatever else
+// is configured. -1 means at least one whole-project claim, which covers
+// every repo in that project, now and every one added later; that is
+// unbounded coverage, not a count, and returning a number for it would be a
+// guess that goes stale the moment a repo is added.
+func scopeSize(scopes []config.ProjectScope) int {
+	n := 0
+	for _, sc := range scopes {
+		if len(sc.Repos) == 0 {
+			return -1
+		}
+		n += len(sc.Repos)
+	}
+	return n
+}
+
+// teamState folds the startup verdict and the team's scope into one pill.
+func teamState(enabled bool, repos int) string {
+	if !enabled {
+		return teamDisabled
+	}
+	if repos == 0 {
+		return teamNoScope
+	}
+	return teamReady
 }
 
 type liveItem struct {
@@ -119,20 +168,30 @@ func (d Deps) live(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body.Teams = make([]liveTeam, 0, len(enabled)+len(disabled))
-	for _, slug := range enabled {
-		t := liveTeam{Slug: slug, Enabled: true}
+	addTeam := func(slug string, isEnabled bool) {
+		t := liveTeam{Slug: slug, Enabled: isEnabled, Repos: 0}
+		if isEnabled {
+			// ONE Runtime snapshot: it is copy-on-write behind an
+			// atomic.Pointer, so a second read could land after a
+			// concurrent claim and report a team that never existed.
+			if rt, _, ok := d.Teams.Lookup(slug); ok && rt != nil {
+				if team := rt.Team(); team != nil {
+					t.Repos = scopeSize(team.Projects)
+				}
+			}
+		}
+		t.State = teamState(isEnabled, t.Repos)
 		if a, ok := activity[slug]; ok {
 			t.PRs, t.LastRun = a.PRs, a.LastRun
 		}
 		body.Teams = append(body.Teams, t)
 	}
+	for _, slug := range enabled {
+		addTeam(slug, true)
+	}
 	for _, slug := range disabled {
 		// State only. The reason stays in the log; see the note above.
-		t := liveTeam{Slug: slug}
-		if a, ok := activity[slug]; ok {
-			t.PRs, t.LastRun = a.PRs, a.LastRun
-		}
-		body.Teams = append(body.Teams, t)
+		addTeam(slug, false)
 	}
 
 	httpapi.WriteJSON(w, http.StatusOK, body)
@@ -216,7 +275,13 @@ type breakdownBody struct {
 }
 
 type metricsBody struct {
-	Since     time.Time        `json:"since"`
+	Since time.Time `json:"since"`
+	// Until is the exclusive end of the window, so the page can lay out a
+	// month's days without deciding where the month ends itself.
+	Until time.Time `json:"until"`
+	// Window is "month" or "rolling", so the page can title itself honestly
+	// rather than assuming which one it asked for.
+	Window    string           `json:"window"`
 	Totals    totalsBody       `json:"totals"`
 	ByTeam    []teamTotalsBody `json:"by_team"`
 	Daily     []dayBody        `json:"daily"`
@@ -232,14 +297,30 @@ func toTotals(t store.Totals) totalsBody {
 	}
 }
 
-// metrics is spend and throughput over a window. days defaults to 14 and is
-// clamped: an unbounded window would seq-scan however much history exists.
+// monthStart is midnight on the first of the month that t falls in, in the
+// instance's own location. Local, not UTC: an operator reading a spend figure
+// means their month, and a UTC boundary would move the figure for anyone west
+// of it on the first of the month.
+func monthStart(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, t.Location())
+}
+
+// metrics is spend and throughput for the CURRENT CALENDAR MONTH, which is
+// the window a key's spend is actually budgeted and invoiced in. A rolling
+// 14 days answers a different question and cannot be reconciled with a bill.
+//
+// ?days=N overrides it with a rolling window, clamped: an unbounded one would
+// seq-scan however much history exists. Absent means the month.
 func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
-	days, _ := strconv.Atoi(r.URL.Query().Get("days"))
-	if days <= 0 || days > 90 {
-		days = 14
+	now := time.Now()
+	since := monthStart(now)
+	if raw := r.URL.Query().Get("days"); raw != "" {
+		days, _ := strconv.Atoi(raw)
+		if days <= 0 || days > 90 {
+			days = 14
+		}
+		since = now.AddDate(0, 0, -days).Truncate(24 * time.Hour)
 	}
-	since := time.Now().AddDate(0, 0, -days).Truncate(24 * time.Hour)
 	ctx := r.Context()
 
 	totals, err := d.DashboardStore.TotalsSince(ctx, since)
@@ -273,8 +354,17 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	window := "month"
+	until := monthStart(now).AddDate(0, 1, 0)
+	if r.URL.Query().Get("days") != "" {
+		window = "rolling"
+		until = now.AddDate(0, 0, 1).Truncate(24 * time.Hour)
+	}
+
 	body := metricsBody{
 		Since:     since,
+		Until:     until,
+		Window:    window,
 		Totals:    toTotals(totals),
 		ByTeam:    make([]teamTotalsBody, 0, len(byTeam)),
 		Daily:     make([]dayBody, 0, len(daily)),
@@ -313,6 +403,8 @@ type claimBody struct {
 type teamBody struct {
 	Slug              string      `json:"slug"`
 	Enabled           bool        `json:"enabled"`
+	State             string      `json:"state"`
+	Repos             int         `json:"repos"`
 	PRs               int         `json:"prs"`
 	LastRun           *time.Time  `json:"last_run"`
 	Claims            []claimBody `json:"claims"`
@@ -340,9 +432,9 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := teamsBody{Teams: make([]teamBody, 0, len(enabled)+len(disabled))}
-	add := func(slug string, enabled bool) {
+	add := func(slug string, isEnabled bool) {
 		t := teamBody{
-			Slug: slug, Enabled: enabled,
+			Slug: slug, Enabled: isEnabled,
 			Claims:            []claimBody{},
 			AutoReviewAuthors: []string{},
 			IgnoreAuthors:     []string{},
@@ -363,6 +455,7 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 				// A scope with no repo list is the whole project; one repo
 				// per claim row otherwise, so the page can show what a team
 				// actually owns rather than a project it half-owns.
+				t.Repos = scopeSize(team.Projects)
 				for _, sc := range team.Projects {
 					if len(sc.Repos) == 0 {
 						t.Claims = append(t.Claims, claimBody{Project: sc.Key})
@@ -374,6 +467,7 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		t.State = teamState(isEnabled, t.Repos)
 		body.Teams = append(body.Teams, t)
 	}
 	for _, slug := range enabled {

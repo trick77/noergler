@@ -39,3 +39,10 @@ __pycache__/
 
 # IntelliJ HTTP client: host, team secret and admin token, filled in locally (template: .example)
 http/http-client.env.json
+
+# The built SPA. dist/.gitkeep is tracked on purpose: //go:embed all:dist
+# fails to compile on a missing or empty directory, so a fresh clone must
+# still have one.
+/backend/web/dist/*
+!/backend/web/dist/.gitkeep
+/ui/node_modules/
