@@ -130,6 +130,11 @@ type Result struct {
 	// Extra is findings that matched no seeded bug. On a clean case every
 	// finding is extra, which is the point of having one.
 	Extra int
+	// Duplicates is how many findings were byte-identical copies of an
+	// earlier one. They are excluded from Extra, because a stutter invents
+	// nothing, but they are reported: a model repeating itself is worth
+	// seeing rather than silently collapsing.
+	Duplicates int `json:"Duplicates,omitempty"`
 	// Err is excluded from JSON: encoding/json renders an error as {}, so a
 	// committed report would record THAT a case failed but not why, making a
 	// 401 and a timeout look identical in history. ErrMsg carries the text.
@@ -187,7 +192,7 @@ func Run(ctx context.Context, client Reviewer, template string, cases []Case, co
 		if out.Err != nil {
 			res.Err, res.ErrMsg = out.Err, out.Err.Error()
 		}
-		res.Matches, res.Extra = match(c.Expected, res.Findings)
+		res.Matches, res.Extra, res.Duplicates = match(c.Expected, res.Findings)
 		score.Seeded += len(c.Expected)
 		score.Caught += res.Found()
 		score.Extra += res.Extra
@@ -309,6 +314,34 @@ func (s Score) ErrMissed() error {
 	return fmt.Errorf("missed %d of %d seeded bug(s)", s.Seeded-s.Caught, s.Seeded)
 }
 
+// ErrInvented reports findings on a case that seeds no bug. Nil when the
+// clean controls stayed clean.
+//
+// The controls exist so that "caught every seeded bug" cannot be satisfied by
+// reporting everything, and until this they proved nothing: Extra reached no
+// exit code, so a run inventing a finding on every clean case still exited 0.
+// A finding here is a false positive with no qualification available - the
+// case seeds nothing, so there is no honest anchor to have found.
+func (s Score) ErrInvented() error {
+	var noisy []string
+	for _, r := range s.Results {
+		// len(r.Matches) is how many bugs the case SEEDS, not how many were
+		// caught: match builds one Match per expectation either way. Extra
+		// rather than len(r.Findings) both here and below, so a control whose
+		// only findings are stutters does not fail, and the number in the
+		// message is the one the per-case line and the README already use.
+		if len(r.Matches) > 0 || r.Extra == 0 {
+			continue
+		}
+		noisy = append(noisy, fmt.Sprintf("%s: %d", r.Case, r.Extra))
+	}
+	if len(noisy) == 0 {
+		return nil
+	}
+	return fmt.Errorf("invented finding(s) on %d clean control(s): %s",
+		len(noisy), strings.Join(noisy, "; "))
+}
+
 // Report renders a run for a terminal.
 //
 // Write errors are dropped: this goes to stdout, and a report that cannot be
@@ -321,8 +354,12 @@ func (s Score) Report(w io.Writer) {
 		if r.ErrMsg != "" {
 			status = "ERROR: " + r.ErrMsg
 		}
-		p("%-18s %-10s %d finding(s), %d seeded, %d caught, %d extra  %s\n",
-			r.Case, r.Outcome, len(r.Findings), len(r.Matches), r.Found(), r.Extra, status)
+		dup := ""
+		if r.Duplicates > 0 {
+			dup = fmt.Sprintf(", %d duplicate", r.Duplicates)
+		}
+		p("%-18s %-10s %d finding(s), %d seeded, %d caught, %d extra%s  %s\n",
+			r.Case, r.Outcome, len(r.Findings), len(r.Matches), r.Found(), r.Extra, dup, status)
 		for _, m := range r.Matches {
 			if m.Found {
 				f := r.Findings[m.Finding]
@@ -346,7 +383,25 @@ func (s Score) Report(w io.Writer) {
 // actually caught everything. Two expectations on the same lines, one keyed
 // on "nil" and one on "error", against findings "nil pointer causes an
 // error" and "nil deref", is the case that breaks in order.
-func match(expected []Expected, findings []inference.ReviewFinding) ([]Match, int) {
+func match(expected []Expected, findings []inference.ReviewFinding) ([]Match, int, int) {
+	// A model sometimes emits the same finding twice, byte for byte: run2's
+	// lock-not-released carried two identical comments on line 22. The copy
+	// pins nothing new, so counting it as Extra reads as invention when it is
+	// a stutter. Later copies are marked here and are neither claimable nor
+	// counted; the caller keeps the raw list, so the JSON still records what
+	// the model actually said.
+	duplicate := make([]bool, len(findings))
+	dupes := 0
+	seenFinding := make(map[string]bool, len(findings))
+	for i, f := range findings {
+		k := findingKey(f)
+		if seenFinding[k] {
+			duplicate[i], dupes = true, dupes+1
+			continue
+		}
+		seenFinding[k] = true
+	}
+
 	// candidates[e] is every finding that satisfies expectation e on its own.
 	candidates := make([][]int, len(expected))
 	matches := make([]Match, len(expected))
@@ -359,6 +414,9 @@ func match(expected []Expected, findings []inference.ReviewFinding) ([]Match, in
 		// failed on the line.
 		var reachedKeywords bool
 		for i, f := range findings {
+			if duplicate[i] {
+				continue
+			}
 			if !samePath(f.File, e.File) {
 				continue
 			}
@@ -430,12 +488,51 @@ func match(expected []Expected, findings []inference.ReviewFinding) ([]Match, in
 	}
 
 	extra := 0
-	for _, u := range used {
-		if !u {
+	for i, u := range used {
+		if !u && !duplicate[i] {
 			extra++
 		}
 	}
-	return matches, extra
+	return matches, extra, dupes
+}
+
+// findingKey is a byte-identical finding's identity. The three optional
+// fields are pointers, so they are dereferenced: comparing the pointers
+// would make every finding unique and defeat the whole check.
+//
+// Every field is length-prefixed rather than separated by a delimiter, and
+// absent is a prefix of its own. A separator is a byte the model can also
+// send - the comment is free text and JSON can carry a NUL - and a sentinel
+// like "nil" is a string it can send too, so either would let two distinct
+// findings produce one key and silently collapse.
+func findingKey(f inference.ReviewFinding) string {
+	var b strings.Builder
+	put := func(s string) {
+		b.WriteString(strconv.Itoa(len(s)))
+		b.WriteByte(':')
+		b.WriteString(s)
+	}
+	opt := func(s *string) {
+		if s == nil {
+			b.WriteString("-")
+			return
+		}
+		b.WriteString("+")
+		put(*s)
+	}
+	put(f.File)
+	put(strconv.Itoa(f.Line))
+	put(f.Severity)
+	put(f.Comment)
+	if f.Confidence == nil {
+		b.WriteString("-")
+	} else {
+		b.WriteString("+")
+		put(strconv.Itoa(*f.Confidence))
+	}
+	opt(f.Headline)
+	opt(f.Suggestion)
+	return b.String()
 }
 
 // samePath compares by suffix: a model may answer with the path as it

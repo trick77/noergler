@@ -23,16 +23,18 @@
 // uses, so an eval exercises the real client: real schema, real parse, real
 // cost accounting. Nothing about the review path is stubbed.
 //
-// Exit codes: 0 every seeded bug caught, 1 something was missed, 2 the run
-// could not happen (no credentials, unreachable gateway, a case that never
-// completed). A miss is a real exit 1 so this can gate a prompt change in CI
-// once an endpoint is available there; anything else exits 2 and says why,
+// Exit codes: 0 every seeded bug caught and the clean controls stayed clean,
+// 1 the prompt got worse (a seeded bug was missed, or a finding was invented
+// on a case that seeds none), 2 the run could not happen (no credentials,
+// unreachable gateway, a case that never completed). Both halves of 1 are one
+// code because both are a regression; anything else exits 2 and says why,
 // rather than passing quietly.
 package main
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -165,7 +167,11 @@ func run(ctx context.Context, opt options) (bool, error) {
 	if err := score.ErrIncomplete(); err != nil {
 		return false, err
 	}
-	if err := score.ErrMissed(); err != nil {
+	// Missed and invented are both "the prompt got worse", so both take the
+	// exit code CI reads for a regression. Only ErrIncomplete, which means the
+	// run could not happen, is the other one. Joined rather than returned in
+	// turn: a run that both missed a bug and invented one should say so once.
+	if err := errors.Join(score.ErrMissed(), score.ErrInvented()); err != nil {
 		return true, err
 	}
 	return false, nil
