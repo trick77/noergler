@@ -28,20 +28,21 @@ const HardBreak = "\n"
 // neverWrap matches fence-adjacent structure we pass through untouched:
 // block quotes and ATX headings.
 //
-// Python is `^\s*([>]\s|#{1,6}\s)` and its \s is Unicode, so a line indented
-// with a non-breaking space IS a heading or quote to Python. RE2's \s is
-// ASCII, so [\s\p{Zs}] restores that. Verified against the venv: without it
-// " > quote" wraps in Go and passes through in Python, mangling the
-// block structure.
+// The indent class must be Unicode-aware: a line indented with a
+// non-breaking space is still a heading or quote. RE2's \s is ASCII and
+// would miss it, so the class is spelled [\s\p{Zs}]. Without it an
+// NBSP-indented " > quote" gets wrapped and its block structure is
+// mangled (TestNBSPIndentedStructureIsNotWrapped).
 var neverWrap = regexp.MustCompile(`^[\s\p{Zs}]*(?:>[\s\p{Zs}]|#{1,6}[\s\p{Zs}])`)
 
 // listItem captures (marker, content) so the content wraps while the marker
 // is preserved and continuation lines hang-indent under the text.
 //
-// Same Unicode-class treatment as neverWrap, plus \p{Nd} for Python's
-// Unicode \d: "١. item" is a numbered item to Python and plain prose to
-// a naive RE2 port. The marker set must stay in sync with what the model
-// emits; an unrecognized marker falls through to the wider prose path.
+// Same Unicode-class treatment as neverWrap, plus \p{Nd} for the digits:
+// RE2's \d is ASCII, so "١. item" would read as plain prose instead of a
+// numbered item (TestArabicIndicMarkerIsAListItem). The marker set must stay
+// in sync with what the model emits; an unrecognized marker falls through to
+// the wider prose path.
 var listItem = regexp.MustCompile(`^([\s\p{Zs}]*(?:[-*+\x{2022}]|\p{Nd}+[.)])[\s\p{Zs}]+)(.*)$`)
 
 // codeSpan matches inline code. Spans are masked before wrapping so one with
@@ -49,7 +50,7 @@ var listItem = regexp.MustCompile(`^([\s\p{Zs}]*(?:[-*+\x{2022}]|\p{Nd}+[.)])[\s
 var codeSpan = regexp.MustCompile("`[^`]+`")
 
 // placeholder matches a mask: an index between NULs, padded with \x01 to the
-// span's real width so textwrap counts the span's true column width.
+// span's real width so the wrapper counts the span's true column width.
 var placeholder = regexp.MustCompile("\x00(\\d+)\x00\x01*")
 
 // WrapProse hard-wraps plain prose lines at width and passes structural lines
@@ -60,9 +61,9 @@ var placeholder = regexp.MustCompile("\x00(\\d+)\x00\x01*")
 // unbreakable tokens (URLs, path/to/file) are never split, so the width is a
 // target and not a guarantee.
 //
-// Idempotent, with the one bounded exception Python documents: a list-item
-// continuation line that is a single over-width token loses its hang indent
-// on a second pass. Cosmetic, and every caller wraps fresh model output once.
+// Idempotent, with one bounded exception: a list-item continuation line that
+// is a single over-width token loses its hang indent on a second pass.
+// Cosmetic, and every caller wraps fresh model output once.
 func WrapProse(text string) string {
 	return WrapProseWidth(text, WrapWidth, ListWrapWidth)
 }
@@ -80,9 +81,9 @@ func WrapProseWidth(text string, width, listWidth int) string {
 	var out []string
 	inFence := false
 	for _, line := range strings.Split(text, "\n") {
-		// Python's str.lstrip() is Unicode and strips a non-breaking space,
-		// so unicode.IsSpace is right here where the regexes needed an
-		// explicit class.
+		// Unicode strip: a non-breaking space counts as indentation here,
+		// which is why unicode.IsSpace is right where the regexes above
+		// needed an explicit class.
 		stripped := strings.TrimLeftFunc(line, unicode.IsSpace)
 		if strings.HasPrefix(stripped, "```") {
 			inFence = !inFence
@@ -111,9 +112,10 @@ func wrapLine(line string, width int, prefix string) string {
 	masked := codeSpan.ReplaceAllStringFunc(line, func(span string) string {
 		idx := len(spans)
 		spans = append(spans, span)
-		// No spaces, so textwrap keeps it as one unbreakable token, and
+		// No spaces, so the wrapper keeps it as one unbreakable token, and
 		// adjacent spans stay separately addressable on restore. Padded to
-		// the span's real width in RUNES: Python len() counts characters.
+		// the span's real width in RUNES, because widths are counted in
+		// characters and not bytes.
 		base := fmt.Sprintf("\x00%d\x00", idx)
 		pad := utf8.RuneCountInString(span) - utf8.RuneCountInString(base)
 		if pad < 0 {

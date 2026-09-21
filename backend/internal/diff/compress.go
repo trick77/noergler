@@ -2,9 +2,8 @@ package diff
 
 import "strings"
 
-// CountTokensFunc and FormatEntryFunc are supplied by the caller, exactly as the
-// Python took callbacks. They keep this package free of any tokenizer or prompt
-// dependency.
+// CountTokensFunc and FormatEntryFunc are supplied by the caller. They keep
+// this package free of any tokenizer or prompt dependency.
 type CountTokensFunc func(string) int
 
 // FormatEntryFunc renders one file as it will appear in the prompt.
@@ -33,9 +32,10 @@ func isDeletionOnlyHunk(hunkLines []string) bool {
 //
 // Returns "" when no hunk survives, including a diff with no hunks at all (a
 // pure mode change, or a rename whose hunks were not included). Compress then
-// files that path under deleted, which mislabels it. Ported as is.
+// files that path under deleted, which mislabels it.
 //
-// Mirrors Python's split("\n"), not splitlines().
+// Splits on \n only and rejoins with \n: splitting on the wider set would
+// rewrite a form feed inside a hunk body as a newline on the rejoin.
 func RemoveDeletionOnlyHunks(fileDiff string) string {
 	var headerLines []string
 	var hunks [][]string
@@ -147,7 +147,8 @@ func IsSmall(
 	for _, f := range files {
 		total += countTokens(formatEntry(f))
 	}
-	// Python multiplies in floating point and compares <= against an int.
+	// Float multiply compared <= against the integer budget widened to float:
+	// a scaled total of exactly `available` still counts as small.
 	return float64(total)*contextExpansionRatio <= float64(available)
 }
 
@@ -157,7 +158,8 @@ func IsSmall(
 // build output) are skipped, so the count reflects real code changes rather
 // than reformatted JSON or vendored bundles.
 //
-// Mirrors Python splitlines(), not split("\n").
+// Uses splitLines, the wider boundary set: this only counts lines and never
+// rejoins them, so a form feed starting a new line is harmless here.
 func CountDiffLines(diff string) (added, removed int) {
 	for _, fileDiff := range SplitByFile(diff) {
 		if !IsReviewable(fileDiff) {

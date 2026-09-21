@@ -2,10 +2,10 @@ package diff
 
 import "testing"
 
-// Expectations generated from Python re with \b, which is Unicode-aware. RE2's
-// \b is ASCII-only, so symbolBoundaryRE spells the boundary out; these pairs
-// pin it to Python's behaviour, including the cases that must NOT match.
-func TestSymbolBoundaryMatchesPython(t *testing.T) {
+// RE2's \b is ASCII-only, so symbolBoundaryRE spells the boundary out as
+// [^\pL\pN_]. These pairs pin the Unicode-aware behaviour, including the cases
+// that must NOT match.
+func TestSymbolBoundaryIsPinned(t *testing.T) {
 	lines := []string{
 		"new Ölservice();",
 		"this.café()",
@@ -19,7 +19,7 @@ func TestSymbolBoundaryMatchesPython(t *testing.T) {
 		"prefixcafé",
 		"caféSuffix",
 	}
-	// want[symbol] lists, per line above, what Python's \b reports.
+	// want[symbol] lists, per line above, whether the symbol is matched.
 	want := map[string][]bool{
 		"Ölservice": {true, false, false, false, false, false, true, false, false, false, false},
 		"café":      {false, true, false, false, false, false, false, true, true, false, false},
@@ -31,7 +31,7 @@ func TestSymbolBoundaryMatchesPython(t *testing.T) {
 		re := symbolBoundaryRE(symbol)
 		for i, line := range lines {
 			if got := re.MatchString(line); got != expected[i] {
-				t.Errorf("symbol %q vs %q: got %v, want %v (Python \\b)", symbol, line, got, expected[i])
+				t.Errorf("symbol %q vs %q: got %v, want %v", symbol, line, got, expected[i])
 			}
 		}
 	}

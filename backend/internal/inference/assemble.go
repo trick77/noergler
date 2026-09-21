@@ -9,8 +9,8 @@ import (
 // NoTicketContext is what {ticket_context} becomes when no ticket is linked.
 //
 // The mention template's default differs by one word ("available" against
-// "provided"). Both are reproduced rather than unified: they are model-facing
-// text pinned to the Python.
+// "provided"). The two are kept distinct rather than unified: both are
+// model-facing text, pinned byte for byte.
 const (
 	NoTicketContext        = "No ticket context provided."
 	NoTicketContextMention = "No ticket context available."
@@ -24,11 +24,11 @@ const (
 )
 
 // MentionTooLargeReply is what a mention gets when the PR does not fit,
-// whether the pre-flight or the endpoint said so (llm_client.py:1183).
+// whether the pre-flight or the endpoint said so.
 const MentionTooLargeReply = "This PR is too large to answer within the model's context window."
 
 // MentionEmptyReply is what an empty model answer becomes, so a mention is
-// never silently unanswered (llm_client.py:1200).
+// never silently unanswered.
 const MentionEmptyReply = "I couldn't process this PR to answer your question."
 
 // MentionPromptRequest is one mention prompt's inputs.
@@ -98,15 +98,14 @@ type CountFunc func(string) int
 
 // AssembleReviewPrompt renders the review prompt and counts it.
 //
-// Python does this inside review_diff (llm_client.py:1027); in Go the client
-// takes an already-assembled prompt, so the layer lives here.
+// The client takes an already-assembled prompt, so the assembly layer lives
+// here.
 //
-// Every placeholder is substituted in ONE pass. Python substitutes
-// sequentially with {files} last, which protects file content from being
-// rescanned but leaves an earlier block, a ticket description or an AGENTS.md
-// containing "{files}", expanded into the real file group. One pass protects
-// every block equally. That is stricter than Python on purpose: the hole is
-// not worth reproducing, and PromptInjectionLiteral pins it.
+// Every placeholder is substituted in ONE pass. Substituting sequentially
+// with {files} last would protect file content from being rescanned but would
+// leave an earlier block, a ticket description or an AGENTS.md containing
+// "{files}", expanded into the real file group. One pass protects every block
+// equally, and PromptInjectionLiteral pins it.
 func AssembleReviewPrompt(req AssembleRequest, count CountFunc) AssembledPrompt {
 	ticketContext := req.TicketContext
 	if ticketContext == "" {
@@ -152,7 +151,7 @@ func AssembleReviewPrompt(req AssembleRequest, count CountFunc) AssembledPrompt 
 
 	// Count everything the request actually carries: the system message, the
 	// user prompt and the strict JSON schema bound via response_format. All
-	// three are billed as input (llm_client.py:1081).
+	// three are billed as input.
 	total := count(ReviewSystemMessage) + count(prompt) + count(SchemaJSON())
 
 	return AssembledPrompt{Prompt: prompt, Breakdown: breakdown, PromptTokens: total}

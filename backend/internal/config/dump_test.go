@@ -83,7 +83,7 @@ func TestDump_ExplicitContextWindowIsPrintedAsTheNumber(t *testing.T) {
 	}
 }
 
-// Python's %s on a float kept the decimal point. Go's default verb drops it,
+// The dump format keeps a float's decimal point. Go's default verb drops it,
 // so max_pr_cost_usd printed as 5 and any search expecting a decimal missed.
 func TestRender_FloatsKeepTheDecimalPoint(t *testing.T) {
 	cases := map[float64]string{

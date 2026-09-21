@@ -33,12 +33,11 @@ var reviewKeywords = map[string]bool{
 
 // jiraTicketRE extracts a ticket key from a branch name or PR title.
 //
-// Python is `\b([A-Z]{2,10}-\d{1,7})\b` and both classes differ in RE2: its
-// \b is ASCII where Python's is Unicode, and its \d is ASCII where Python's
-// matches Arabic-Indic digits. Probed in both directions against the venv:
-// a naive port matches "üABC-123" where Python does not, and misses
-// "ABC-١٢٣" where Python matches. This form agrees with Python on all ten
-// probe cases.
+// Both character classes must be Unicode-aware, and RE2's are ASCII: with a
+// plain `\b([A-Z]{2,10}-\d{1,7})\b` the pattern matches "üABC-123", where ü
+// is a word character and there is no boundary, and misses "ABC-١٢٣". The
+// boundary is therefore spelled out and the digits are \p{Nd}
+// (TestExtractTicketIDIsPinned).
 //
 // The boundary characters are consumed by the group-less alternatives, so
 // only the captured group is read.
@@ -110,9 +109,9 @@ func New(opt Options) *Reviewer {
 // SetAuthorLists replaces the two author lists.
 //
 // The team API writes them while the review worker may be reading them, so
-// they live behind a lock instead of in cfg. Mirrors Python's
-// TeamRuntime.apply_settings, which writes the same two fields onto the live
-// Reviewer and leaves exclude_repos to the config.
+// they live behind a lock instead of in cfg
+// (TestSetAuthorListsIsSafeUnderConcurrentReads). Only these two fields are
+// mirrored onto the live Reviewer; AGENTS.md pins that exclude_repos is not.
 func (r *Reviewer) SetAuthorLists(auto, ignore []string) {
 	r.authorsMu.Lock()
 	defer r.authorsMu.Unlock()
@@ -221,9 +220,9 @@ func formatTicketBlock(t *jira.Ticket, heading string) []string {
 
 // renderTicketContext builds the prompt block for a ticket and its parent.
 //
-// Python re-fetches the ticket here (reviewer.py:359) having already fetched
-// it with its parent; AGENTS.md pins fetching once, so this formats what the
-// caller already holds.
+// The caller already holds the ticket and its parent, so this only formats
+// them. Re-fetching here would double the Jira traffic per review, which
+// AGENTS.md pins against ("Jira fetched once per review").
 func renderTicketContext(ticket, parent *jira.Ticket) string {
 	if ticket == nil {
 		return ""

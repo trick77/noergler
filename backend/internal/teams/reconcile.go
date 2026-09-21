@@ -27,8 +27,7 @@ const seededBy = "teams.yaml"
 // The DB wins: a slug it knows carries the claims and the three lists, and
 // teams.yaml's projects: block is ignored entirely. A slug it does not know
 // is seeded from teams.yaml once. A seed that collides with another team's
-// claims disables that team alone and skips its settings step, exactly as
-// Python's `continue` does.
+// claims disables that team alone and skips its settings step.
 //
 // It MUST run before the per-team loop builds any Reviewer: review.New
 // copies config.Review by value into an unexported field, so a Reviewer
@@ -63,7 +62,7 @@ func Reconcile(ctx context.Context, db ClaimStore, teams map[string]*config.Team
 		}
 		if reason != "" {
 			seedErrors[slug] = reason
-			// Python continues here, so the team's settings are left alone.
+			// Disabled, so the team's settings are left alone.
 			continue
 		}
 		if err := reconcileSettings(ctx, db, slug, team, settings); err != nil {
@@ -75,9 +74,9 @@ func Reconcile(ctx context.Context, db ClaimStore, teams map[string]*config.Team
 
 // reconcileClaims returns a disable reason, or "" when the team is fine.
 //
-// Only a ClaimConflict disables one team. Python wraps just that exception;
-// any other add_claims failure propagates out of the lifespan and aborts
-// boot, because it means the claims table is unusable rather than contested.
+// Only a ClaimConflict disables one team. Any other AddClaims failure comes
+// back as err and aborts boot, because it means the claims table is unusable
+// rather than contested.
 func reconcileClaims(ctx context.Context, db ClaimStore, slug string, team *config.Team, claims map[string][]config.ProjectScope, log *slog.Logger) (string, error) {
 	if scopes, known := claims[slug]; known {
 		team.Projects = scopes
@@ -105,8 +104,7 @@ func reconcileClaims(ctx context.Context, db ClaimStore, slug string, team *conf
 // The seed branch effectively always fires on a team's first boot, because
 // exclude_repos defaults to ["*-infra"]. That is how the default row comes to
 // exist, independently of the column default.
-// A failed write aborts boot: Python's put_settings here is unguarded, so it
-// raises out of the lifespan. An unusable settings table is a shared-layer
+// A failed write aborts boot: an unusable settings table is a shared-layer
 // fault, not one team's.
 func reconcileSettings(ctx context.Context, db ClaimStore, slug string, team *config.Team, settings map[string]store.TeamSettings) error {
 	if s, known := settings[slug]; known {

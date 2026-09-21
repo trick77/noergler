@@ -10,14 +10,13 @@ import (
 	"github.com/trick77/noergler/internal/jira"
 )
 
-// summaryGolden holds the output of the Python _build_summary for one case,
-// captured from the venv. The Go input for each case is built in
-// summaryCases below with the same arguments the generator used.
+// summaryGolden holds the expected summary for one case. The input for each
+// case is built in summaryCases below.
 //
-// The headings have since been reworded away from Python's: "and" instead of
-// a slash, and sentence case ("Issues and suggestions", "Security and
-// performance", "Test coverage", "Requirement compliance"). The corpus carries
-// the rename and is byte-for-byte otherwise.
+// The headings were reworded after the corpus was first captured: "and"
+// instead of a slash, and sentence case ("Issues and suggestions", "Security
+// and performance", "Test coverage", "Requirement compliance"). The corpus
+// carries the rename and is byte-for-byte otherwise.
 type summaryGolden struct {
 	Out string `json:"out"`
 }
@@ -264,10 +263,9 @@ func summaryCases() map[string]SummaryInput {
 	return cases
 }
 
-// TestSummaryMatchesPython drives the Go builder with the same arguments the
-// Python generator used and compares the rendered markdown byte for byte.
-// This is what the ~35 test_build_summary_* cases in test_reviewer.py cover.
-func TestSummaryMatchesPython(t *testing.T) {
+// TestSummaryIsPinned drives the builder over the whole case corpus and
+// compares the rendered markdown byte for byte.
+func TestSummaryIsPinned(t *testing.T) {
 	golden := loadSummaryGolden(t)
 	cases := summaryCases()
 

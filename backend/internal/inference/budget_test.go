@@ -10,9 +10,9 @@ const (
 	defTail      = 0.5
 )
 
-// Values generated from Python usable_context_budget. They are literals so a
-// change to the curve fails here rather than silently repricing every review.
-func TestUsableContextBudgetMatchesPython(t *testing.T) {
+// The curve's values are pinned as literals, so a change to it fails here
+// rather than silently repricing every review.
+func TestUsableContextBudgetIsPinned(t *testing.T) {
 	cases := []struct {
 		window, want int
 	}{
@@ -45,7 +45,7 @@ func TestUsableContextBudgetMatchesPython(t *testing.T) {
 	for _, tc := range cases {
 		got := UsableContextBudget(tc.window, defHeadroom, defThreshold, defTail)
 		if got != tc.want {
-			t.Errorf("UsableContextBudget(%d) = %d, want %d (Python)", tc.window, got, tc.want)
+			t.Errorf("UsableContextBudget(%d) = %d, want %d (pinned)", tc.window, got, tc.want)
 		}
 	}
 }

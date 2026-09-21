@@ -230,7 +230,7 @@ func (t *Team) ReviewsRepo(projectKey, repoSlug string) bool {
 }
 
 // ExcludesRepo matches the slug against the globs, both lower-cased, with
-// fnmatch semantics.
+// FnMatch: `*` crosses `/`, so a pattern needs no path segments.
 func ExcludesRepo(patterns []string, repoSlug string) bool {
 	slug := strings.ToLower(repoSlug)
 	for _, p := range patterns {
@@ -294,7 +294,7 @@ func (e *envReader) get(name, def string, required bool) string {
 	}
 	// A required var set to nothing (an unfilled .env.example line) is the
 	// same misconfiguration as an unset one, caught at boot rather than at
-	// the first API call. Python let it through to the connectivity check.
+	// the first API call.
 	if required && strings.TrimSpace(v) == "" {
 		e.errs = append(e.errs, fmt.Sprintf("Environment variable %s is empty", name))
 	}
@@ -340,8 +340,8 @@ func commaList(s string) []string {
 	return out
 }
 
-// parseBool is the Python rule: true/1/yes, case-insensitive; anything else
-// is false, never an error.
+// parseBool accepts true/1/yes, case-insensitive; anything else is false,
+// never an error.
 func parseBool(s string) bool {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "true", "1", "yes":

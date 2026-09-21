@@ -11,7 +11,7 @@ var (
 )
 
 // Version is the release the binary was built as. The ldflags value wins;
-// NOERGLER_VERSION is the fallback the Python image used (the infra repo may
+// NOERGLER_VERSION is the image's version fallback (the infra repo may
 // still inject it); "dev" when neither is set.
 func Version() string {
 	if version != "" {

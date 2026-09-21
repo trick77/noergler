@@ -285,8 +285,9 @@ func TestWebhook_SignatureVerification(t *testing.T) {
 		{"valid", good, http.StatusOK},
 		{"valid without the sha256 prefix", strings.TrimPrefix(good, "sha256="), http.StatusOK},
 		{"another team's secret", sign(body, "pay-secret"), http.StatusUnauthorized},
-		// Python compares the hex strings, so uppercase hex must fail even
-		// though it decodes to the same bytes. Only the digest is uppercased:
+		// The comparison is on the hex strings, so uppercase hex must fail
+		// even though it decodes to the same bytes. Only the digest is
+		// uppercased:
 		// uppercasing the whole header would fail on the prefix instead and
 		// the case would prove nothing.
 		{"uppercase hex", "sha256=" + strings.ToUpper(strings.TrimPrefix(good, "sha256=")), http.StatusUnauthorized},
@@ -439,8 +440,8 @@ func TestWebhook_DispatchTable(t *testing.T) {
 			map[string]any{"status": "accepted", "reason": "merged-rollup", "queue": "queued"}, "merged"},
 		{webhook.EventDeclined, "",
 			map[string]any{"status": "accepted", "reason": "declined-rollup", "queue": "queued"}, "declined"},
-		// The two that Python ran as background tasks keep their body shape:
-		// no queue key, even though Go puts them on the queue.
+		// These two keep their body shape: no queue key, even though both go
+		// on the queue.
 		{webhook.EventDeleted, "",
 			map[string]any{"status": "accepted", "reason": "deleted-purge"}, "deleted"},
 		{webhook.EventCommentDeleted, `,"comment":{"id":7,"text":"x","author":{"name":"bob"}}`,
@@ -510,7 +511,7 @@ func TestWebhook_MentionGate(t *testing.T) {
 		{"plain mention", "@noergler please review", true},
 		{"uppercase", "@NOERGLER please review", true},
 		{"mixed case", "@NoErGlEr hi", true},
-		// No word boundary, matching Python's substring test.
+		// A case-insensitive substring test, no word boundary.
 		{"inside a longer word", "ask @noerglerbot about it", true},
 		{"mid sentence", "cc @noergler on this", true},
 		{"no mention", "looks good to me", false},
@@ -548,8 +549,8 @@ func TestWebhook_CommentEventWithoutACommentObject(t *testing.T) {
 	})
 }
 
-// Probed against the venv: Python accepts comment.text "" and answers
-// "comment without mention" rather than refusing the payload.
+// An empty comment.text is accepted and answers "comment without mention"
+// rather than refusing the payload with a 400.
 func TestWebhook_EmptyCommentTextIsIgnoredNotRefused(t *testing.T) {
 	h := newHarness(t, nil)
 	extra := `,"comment":{"id":7,"text":"","author":{"name":"bob"}}`

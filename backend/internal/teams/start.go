@@ -84,9 +84,9 @@ func Boot(ctx context.Context, app *config.App, d Deps) (*Registry, error) {
 
 	enabled, disabled := g.Status()
 	// The three startup lines are alerted on in Splunk, which matches the
-	// rendered message, so the lists stay inside the string and keep Python's
-	// list repr. Do not move them to attributes.
-	summary := fmt.Sprintf("teams_ready enabled=%s disabled=%s", pyList(enabled), pyList(disabled))
+	// rendered message, so the lists stay inside the string in the exact
+	// ['a', 'b'] form the alert matches. Do not move them to attributes.
+	summary := fmt.Sprintf("teams_ready enabled=%s disabled=%s", quotedList(enabled), quotedList(disabled))
 	if len(disabled) > 0 {
 		d.Log.WarnContext(ctx, summary)
 	} else {
@@ -100,9 +100,9 @@ func Boot(ctx context.Context, app *config.App, d Deps) (*Registry, error) {
 
 // safeStart contains a panic in one team's startup.
 //
-// Python wraps _start_team in `except Exception` and disables that team;
-// without this a nil map or a slice index deep in a client constructor takes
-// the whole instance down. Nothing a single team does may do that.
+// A panic becomes that team's disable reason. Without this a nil map or a
+// slice index deep in a client constructor takes the whole instance down.
+// Nothing a single team does may do that.
 func safeStart(ctx context.Context, app *config.App, team *config.Team, d Deps) (rt *Runtime, reason string) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -117,9 +117,10 @@ func (g *Registry) disable(ctx context.Context, slug, reason string) {
 	g.log.ErrorContext(ctx, fmt.Sprintf("team_disabled team=%s reason=%s", slug, reason))
 }
 
-// pyList renders a slug list the way the Python service logged it, so the
-// Splunk alert on teams_ready keeps matching.
-func pyList(items []string) string {
+// quotedList renders a slug list as ['a', 'b'] - single quotes, ", " between
+// entries, [] when empty. The Splunk alert on teams_ready matches that exact
+// form, so the rendering is pinned.
+func quotedList(items []string) string {
 	out := "["
 	for i, s := range items {
 		if i > 0 {
@@ -149,8 +150,8 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 		readFile = os.ReadFile
 	}
 
-	// Python loads both templates inside LLMClient.__init__, so a missing
-	// file disables the team rather than aborting boot.
+	// Both templates are loaded before anything else, so a missing file
+	// disables this team rather than aborting boot for all of them.
 	reviewTmpl, err := readFile(team.Review.ReviewPromptTemplate)
 	if err != nil {
 		return nil, fmt.Sprintf("prompt template not found: %s", team.Review.ReviewPromptTemplate)
@@ -185,8 +186,8 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 	if err := llm.Startup(ctx); err != nil {
 		return nil, fmt.Sprintf("LLM check failed: %v", err)
 	}
-	// Said once at boot, as Python does: an unpriced model means summaries
-	// carry no cost and the per-PR cap never fires. Cost fails open, so this
+	// Said once at boot: an unpriced model means summaries carry no cost and
+	// the per-PR cap never fires. Cost fails open, so this
 	// log line is the only signal an operator gets.
 	if pc := llm.PingCost(); pc.Priced() {
 		d.Log.InfoContext(ctx, fmt.Sprintf("Model %s ping priced by the gateway: $%.3f",

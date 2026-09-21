@@ -5,11 +5,10 @@ import (
 	"testing"
 )
 
-// Expectations generated from the running Python, whose ReviewFinding is a
-// Pydantic model: file, line, severity and comment are required, severity is a
-// Literal["issue","suggestion"], and validation failures skip the finding
-// rather than failing the batch.
-func TestParseFindingMatchesPython(t *testing.T) {
+// The wire contract for a finding: file, line, severity and comment are
+// required, severity is one of "issue" or "suggestion", and a validation
+// failure skips that finding rather than failing the batch.
+func TestParseFindingIsPinned(t *testing.T) {
 	cases := []struct {
 		name string
 		item string
@@ -23,7 +22,7 @@ func TestParseFindingMatchesPython(t *testing.T) {
 		{"missing line", `{"file":"a.py","severity":"issue","comment":"c"}`, false},
 		{"missing severity", `{"file":"a.py","line":1,"comment":"c"}`, false},
 		{"missing comment", `{"file":"a.py","line":1,"severity":"issue"}`, false},
-		// Pydantic lax mode coerces a numeric string.
+		// The wire contract coerces a numeric string.
 		{"line as string", `{"file":"a.py","line":"1","severity":"issue","comment":"c"}`, true},
 		// But not a float with a fractional part, which would move the finding.
 		{"line as float", `{"file":"a.py","line":1.5,"severity":"issue","comment":"c"}`, false},
@@ -35,7 +34,7 @@ func TestParseFindingMatchesPython(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			_, ok := parseFinding(json.RawMessage(tc.item))
 			if ok != tc.keep {
-				t.Errorf("kept = %v, want %v (Python)", ok, tc.keep)
+				t.Errorf("kept = %v, want %v (pinned)", ok, tc.keep)
 			}
 		})
 	}

@@ -43,9 +43,9 @@ type Reviewer interface {
 //
 // The team config is copy-on-write: a reader takes one snapshot per request
 // with Team(), a writer builds a whole new *config.Team and swaps the
-// pointer. Python mutates in place and gets away with it under the GIL; here
-// the webhook route reads while the team API writes, so the snapshot is the
-// synchronisation.
+// pointer. The webhook route reads while the team API writes, so the
+// snapshot is the synchronisation: mutating in place would let a settings
+// write land between the ownership check and the exclude check.
 //
 // The swap is a shallow copy of the struct. That is sound because every
 // field a writer touches is replaced with a fresh slice header and the
@@ -100,8 +100,8 @@ func (r *Runtime) ApplyClaims(scopes []config.ProjectScope) {
 //
 // The Reviewer copies config.Review by value at construction, so without the
 // mirror a team's author routing would stay stale until restart. ExcludeRepos
-// is deliberately not mirrored: Python does not either, and the only reader
-// is the webhook route, off the snapshot.
+// is deliberately not mirrored: its only reader is the webhook route, which
+// reads it off the snapshot.
 func (r *Runtime) ApplySettings(s store.TeamSettings) {
 	r.writeMu.Lock()
 	defer r.writeMu.Unlock()

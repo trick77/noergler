@@ -13,8 +13,8 @@ type Link struct {
 }
 
 // agentsMDFurtherReading are the curated references surfaced in the
-// "AGENTS.md too large" skip summary. Publication dates were verified in the
-// Python (2026-05); replace if the URLs rot or better-dated sources appear.
+// "AGENTS.md too large" skip summary. Publication dates were verified
+// 2026-05; replace if the URLs rot or better-dated sources appear.
 var agentsMDFurtherReading = []Link{
 	{
 		Title: "Upsun — The research is in: your AGENTS.md is probably too long (2026-02-23)",

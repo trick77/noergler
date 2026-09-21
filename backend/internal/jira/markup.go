@@ -26,8 +26,10 @@ var emphasisRE = func() map[string]*regexp.Regexp {
 	m := make(map[string]*regexp.Regexp, len(emphasisMarks))
 	for _, mark := range emphasisMarks {
 		q := regexp.QuoteMeta(mark)
-		// Python used lookaround: (?<!\w)MARK(.+?)MARK(?!\w). RE2 has none, so
-		// the boundary characters are captured and written back instead.
+		// RE2 has no lookaround, so the boundary characters are captured and
+		// written back instead of being asserted. The class is
+		// [\pL\pN_] because RE2's \w is ASCII: without it "ü*fett*" would
+		// lose its markers.
 		m[mark] = regexp.MustCompile(`([^\pL\pN_])` + q + `([^\n]+?)` + q + `([^\pL\pN_])`)
 	}
 	return m
@@ -50,12 +52,11 @@ func stripMarkup(text string) string {
 
 // stripEmphasis removes one emphasis marker in a single left-to-right pass.
 //
-// Two details decide whether this matches Python. It must be one pass: on
-// "**bold**" the non-greedy body swallows the inner marker, so Python leaves
-// "*bold*" behind, and a second pass would wrongly strip that too. And the
-// trailing boundary must be given back rather than consumed, because Python's
-// (?!\w) is a lookahead that matches without eating a character; otherwise
-// "*a* *b*" loses the space between the words.
+// Two details are load-bearing. It must be one pass: on "**bold**" the
+// non-greedy body swallows the inner marker, leaving "*bold*", and a second
+// pass would wrongly strip that too. And the trailing boundary must be given
+// back rather than consumed; consuming it makes "*a* *b*" lose the space
+// between the words.
 //
 // Sentinels stand in for the string ends so a marker at position zero still has
 // a preceding character to match.
@@ -89,11 +90,11 @@ func stripEmphasis(text, mark string) string {
 // precede all "AC" hits regardless of where they sit in the text. Duplicate
 // lines are dropped.
 //
-// The prefix must end on a word boundary, which is a deliberate divergence from
-// the Python: there "AC" also matched "Actual behaviour..." and "Req" matched
-// "Request: ...". Optional numbering still counts as part of the prefix, so
-// "AK3 No separator" matches while "AKzeptanz" and "AKübung" do not. The
-// boundary class is Unicode because Python's \b is.
+// The prefix must end on a word boundary; without it "AC" would also match
+// "Actual behaviour..." and "Req" would match "Request: ...". Optional
+// numbering still counts as part of the prefix, so "AK3 No separator" matches
+// while "AKzeptanz" and "AKübung" do not. The boundary class is spelled out
+// over Unicode letters and digits because RE2's \b is ASCII-only.
 func acceptanceCriteria(description string, prefixes []string) string {
 	if len(prefixes) == 0 || description == "" {
 		return ""

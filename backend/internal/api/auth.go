@@ -41,8 +41,7 @@ func (d Deps) runtimeFor(ctx context.Context, w http.ResponseWriter, slug string
 // verifySignature checks Bitbucket's X-Hub-Signature against the team secret.
 //
 // Bitbucket sends "sha256=<lowercase hex>". The comparison is on the hex
-// STRINGS, constant-time and case-sensitive, matching Python's
-// hmac.compare_digest over two hexdigests: uppercase hex must fail rather
+// STRINGS, constant-time and case-sensitive: uppercase hex must fail rather
 // than decode to the same bytes, and a malformed signature must compare
 // false rather than error.
 func verifySignature(body []byte, signature, secret string) bool {

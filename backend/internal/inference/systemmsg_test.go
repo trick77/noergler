@@ -8,8 +8,8 @@ import (
 )
 
 // The injection guardrails live in the privileged system role so untrusted PR
-// content cannot override them. These constants are retyped from the Python,
-// so the load-bearing phrases are asserted rather than assumed.
+// content cannot override them. The load-bearing phrases are asserted rather
+// than assumed, so a rewrite cannot quietly drop one.
 func TestReviewSystemMessageGuardrails(t *testing.T) {
 	for _, want := range []string{
 		"read-only code review assistant",
@@ -53,11 +53,11 @@ func TestComplianceInstructionsContent(t *testing.T) {
 	}
 }
 
-// These constants were retyped from the Python, so they are pinned byte for
-// byte: a "contains" assertion would miss a typo mid-sentence, and the model
-// is the only thing that reads them. Lengths and hashes generated from the
-// running Python.
-func TestSystemMessagesAreByteIdenticalToPython(t *testing.T) {
+// These constants are pinned byte for byte: a "contains" assertion would miss
+// a typo mid-sentence, and the model is the only thing that reads them. The
+// lengths and hashes below have no other source of truth; regenerate them
+// only together with an intentional prompt change.
+func TestSystemMessagesArePinned(t *testing.T) {
 	cases := []struct {
 		name   string
 		got    string
@@ -70,14 +70,14 @@ func TestSystemMessagesAreByteIdenticalToPython(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Python's len() counts characters. These strings carry em dashes,
-			// three bytes each in UTF-8, so a byte count reads long.
+			// Counted in characters. These strings carry em dashes, three
+			// bytes each in UTF-8, so a byte count would read long.
 			if n := len([]rune(tc.got)); n != tc.length {
-				t.Errorf("length = %d runes, want %d (Python)", n, tc.length)
+				t.Errorf("length = %d runes, want %d (pinned)", n, tc.length)
 			}
 			sum := sha256.Sum256([]byte(tc.got))
 			if got := hex.EncodeToString(sum[:])[:16]; got != tc.sha {
-				t.Errorf("sha256 = %s, want %s (Python)", got, tc.sha)
+				t.Errorf("sha256 = %s, want %s (pinned)", got, tc.sha)
 			}
 		})
 	}

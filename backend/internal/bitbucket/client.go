@@ -28,9 +28,8 @@ const errBodyLimit = 2000
 
 // dialTimeout and headerTimeout bound connecting and waiting for the response
 // head. Deliberately not an http.Client.Timeout: that one covers reading the
-// body too, and a 10 MiB diff over a slow link would trip it where the Python
-// service (httpx per-operation timeouts) succeeded. The caller's context bounds
-// the total instead.
+// body too, and a 10 MiB diff over a slow link would trip it mid-download. The
+// caller's context bounds the total instead.
 const (
 	dialTimeout   = 30 * time.Second
 	headerTimeout = 30 * time.Second
@@ -133,9 +132,8 @@ func New(cfg config.Bitbucket, log *slog.Logger) (*Client, error) {
 				ResponseHeaderTimeout: headerTimeout,
 				ForceAttemptHTTP2:     true,
 			}),
-			// httpx does not follow redirects, so a 3xx is an error there. Go
-			// would follow it by default and replay the Authorization header to
-			// whatever host it points at.
+			// Redirects are not followed: a 3xx would replay the bearer token
+			// at the new host. Non-2xx, so a redirect cannot read as success.
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
 		log:          log,
@@ -271,7 +269,7 @@ func (c *Client) getTextCapped(ctx context.Context, path string, query url.Value
 			Head: buf[:max],
 		}
 	}
-	// Python decoded with errors="replace"; Go leaves invalid bytes alone.
+	// Invalid UTF-8 is replaced with U+FFFD so the body is valid text.
 	return strings.ToValidUTF8(string(buf), "�"), nil
 }
 

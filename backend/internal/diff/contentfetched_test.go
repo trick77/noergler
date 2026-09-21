@@ -36,8 +36,8 @@ func TestContentFetchedSurvivesRebuilds(t *testing.T) {
 	})
 }
 
-// HasContent stays truthiness-based, matching Python's `content or diff`: a
-// fetched empty file still falls through to the diff for reference finding.
+// HasContent reports on the content string alone, never the flag: a fetched
+// empty file still falls through to the diff for reference finding.
 func TestHasContentIsTruthiness(t *testing.T) {
 	f := FileReviewData{Content: "", ContentFetched: true}
 	if f.HasContent() {

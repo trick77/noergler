@@ -139,10 +139,10 @@ func assembleCases(template string) map[string]AssembleRequest {
 	return cases
 }
 
-// TestAssembleReviewPromptMatchesPython pins the whole assembled prompt by
-// SHA-256 against the Python review_diff assembly, plus the breakdown counts
-// and the fit-check token total.
-func TestAssembleReviewPromptMatchesPython(t *testing.T) {
+// TestAssembleReviewPromptIsPinned pins the whole assembled prompt by
+// SHA-256 against a golden corpus, plus the breakdown counts and the
+// fit-check token total.
+func TestAssembleReviewPromptIsPinned(t *testing.T) {
 	golden, _ := loadAssembleGolden(t)
 	template := testTemplate(t)
 	count := counter(t)
@@ -159,7 +159,7 @@ func TestAssembleReviewPromptMatchesPython(t *testing.T) {
 
 			sum := sha256.Sum256([]byte(got.Prompt))
 			if hex.EncodeToString(sum[:]) != want.PromptSHA256 {
-				t.Errorf("prompt differs from Python (len %d, want %d)", len(got.Prompt), want.PromptLen)
+				t.Errorf("prompt differs from the pinned text (len %d, want %d)", len(got.Prompt), want.PromptLen)
 			}
 			if got.Breakdown.Template != want.Breakdown.Template {
 				t.Errorf("breakdown.template = %d, want %d", got.Breakdown.Template, want.Breakdown.Template)
@@ -185,12 +185,12 @@ func TestAssembleReviewPromptMatchesPython(t *testing.T) {
 // The fit check weighs system + prompt + schema, because the gateway bills
 // all three as input. Counting the prompt alone would under-count by roughly
 // the schema and let a PR through that does not fit.
-func TestSchemaSerializationMatchesPython(t *testing.T) {
+func TestSchemaSerializationIsPinned(t *testing.T) {
 	_, schema := loadAssembleGolden(t)
 	count := counter(t)
 
 	if got := len(SchemaJSON()); got != schema.JSONLen {
-		t.Errorf("SchemaJSON length = %d, want %d: Go's compact encoder must be spaced like json.dumps", got, schema.JSONLen)
+		t.Errorf("SchemaJSON length = %d, want %d: the compact encoder must keep its exact spacing", got, schema.JSONLen)
 	}
 	if got := count(SchemaJSON()); got != schema.Tokens {
 		t.Errorf("schema tokens = %d, want %d", got, schema.Tokens)
@@ -233,9 +233,9 @@ func TestReviewResponseFormatIsTheRealSchema(t *testing.T) {
 }
 
 // One substitution pass, so a block that itself contains a placeholder is
-// never expanded. Python substitutes {files} last, which protects file
-// content but leaves repo_instructions and ticket_context expandable; the
-// single pass protects every block.
+// never expanded. Substituting {files} last would protect file content but
+// leave repo_instructions and ticket_context expandable; the single pass
+// protects every block.
 func TestPlaceholderInABlockStaysLiteral(t *testing.T) {
 	count := counter(t)
 	req := AssembleRequest{

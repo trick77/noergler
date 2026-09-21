@@ -14,9 +14,8 @@ var noDynamicLanguages = map[string]bool{
 
 // scopePatterns find an enclosing declaration to pull context back to.
 //
-// Every \w ported from a Python pattern becomes [\pL\pN_]: RE2's \w is ASCII
-// while Python's is Unicode, so `const café = (x) => x` matches in Python and
-// would not match here with \w.
+// Every \w is spelled [\pL\pN_]: RE2's \w is ASCII-only, so `const café =
+// (x) => x` would not match a pattern written with \w.
 var scopePatterns = map[string]*regexp.Regexp{
 	"python": regexp.MustCompile(`^\s*(?:def |class |async def )`),
 	"jvm": regexp.MustCompile(
@@ -64,11 +63,11 @@ func findEnclosingScopeLine(fileLines []string, fromLine, maxLines int, path str
 		if idx < 0 {
 			break
 		}
-		// Divergence (AGENTS.md): skip lines past the end of content instead of
+		// Pinned (AGENTS.md): skip lines past the end of content instead of
 		// indexing past it. Content is byte-capped at the socket while the diff
 		// is not, so a truncated large file plus a late hunk reaches here.
-		// Python raised IndexError and failed that review; a panic would take
-		// down the single queue worker for every team.
+		// Indexing past the end would panic and take down the single queue
+		// worker for every team.
 		if idx >= len(fileLines) {
 			continue
 		}
@@ -83,11 +82,12 @@ func findEnclosingScopeLine(fileLines []string, fromLine, maxLines int, path str
 // whose windows overlap.
 //
 // content is the full new-side file; when empty the diff is returned unchanged,
-// matching Python's `if file_content is None`.
+// when empty the diff is returned unchanged.
 //
-// Divergence (AGENTS.md): adjacent hunks merge without losing diff lines. Python
-// trimmed the second hunk's body by the whole overlap, which silently dropped
-// removal lines whenever the overlap exceeded that hunk's before-context.
+// Pinned (AGENTS.md): adjacent hunks merge without losing diff lines. The
+// overlap comes off the first hunk's added context, never off the second
+// hunk's body; trimming the body silently drops removal lines whenever the
+// overlap exceeds that hunk's before-context.
 func ExpandContext(fileDiff, content, path string, before, after, maxDynamicBefore int, dynamicContext bool) string {
 	if content == "" {
 		return fileDiff
@@ -97,7 +97,8 @@ func ExpandContext(fileDiff, content, path string, before, after, maxDynamicBefo
 		return fileDiff
 	}
 
-	// Mirrors Python split("\n"), not splitlines().
+	// Splits on \n only, unlike splitLines: the line numbers here must line up
+	// with the diff's, which counts \n alone.
 	fileLines := strings.Split(content, "\n")
 	totalFileLines := len(fileLines)
 
@@ -115,12 +116,12 @@ func ExpandContext(fileDiff, content, path string, before, after, maxDynamicBefo
 
 		// Not clamped to the file length; only ctxStart >= 1 is enforced. A
 		// content that disagrees with the diff yields header counts exceeding
-		// the body, as in Python.
+		// the body.
 		beforeCount := hunk.NewStart - ctxStart
 
 		// Counts body lines that are non-empty and do not start with "-". This
 		// counts `\ No newline at end of file` as a real line, pushing the
-		// after-window one line too far. Ported as is.
+		// after-window one line too far.
 		hunkNewLineCount := 0
 		for _, line := range hunk.BodyLines {
 			if line != "" && !strings.HasPrefix(line, "-") {

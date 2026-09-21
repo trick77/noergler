@@ -6,16 +6,14 @@ import (
 	"testing"
 )
 
-// Python logs six diagnostics from inside the review parser. Go's ParseReview
-// is a pure function, so it returns them and the caller emits them; these pin
-// which line fires for which input, and at what level, compared against the
-// venv rather than read off the Python source.
+// The review parser produces six diagnostics. ParseReview is a pure
+// function, so it returns them and the caller emits them; these pin which
+// line fires for which input, and at what level.
 //
-// The fixed strings are byte-exact against Python. The two that interpolate
-// the offending item are not and cannot be: Python formats a dict repr
-// (`{'requirement': None}`) where Go has only the raw JSON
-// (`{"requirement":null}`). What is pinned there is that the item warns at
-// all, and that the item's own bytes reach the line.
+// The fixed strings are pinned byte for byte. The two that interpolate the
+// offending item carry its raw JSON bytes (`{"requirement":null}`): what
+// they pin is that the item warns at all, and that its own bytes reach the
+// line.
 
 // diagnosticsOf renders one parse's diagnostics as "LEVEL|message" lines.
 func diagnosticsOf(content string) []string {
@@ -26,13 +24,13 @@ func diagnosticsOf(content string) []string {
 	return out
 }
 
-func TestParseDiagnosticsMatchPython(t *testing.T) {
+func TestParseDiagnosticsIsPinned(t *testing.T) {
 	cases := []struct {
 		name    string
 		content string
 		want    []string
 	}{
-		// Python splits JSONDecodeError from isinstance(data, dict): only
+		// A decode failure and a well-formed non-object are split: only
 		// malformed JSON reports the content prefix.
 		{
 			name:    "malformed json reports the prefix",
@@ -50,7 +48,7 @@ func TestParseDiagnosticsMatchPython(t *testing.T) {
 			want:    []string{"ERROR|Review response is not a JSON object"},
 		},
 		// null decodes without error into a nil map, so only the nil check
-		// catches it; Python's isinstance(None, dict) is likewise false.
+		// catches it: a bare null is not an object.
 		{
 			name:    "null is not an object",
 			content: "null",
@@ -86,7 +84,7 @@ func TestParseDiagnosticsMatchPython(t *testing.T) {
 				"WARN|Skipping malformed compliance requirement: 42",
 			},
 		},
-		// A present key holding null fails Python's isinstance check. Go's
+		// A present key holding null fails the type check. Go's
 		// json.Unmarshal decodes null as a silent no-op, so a presence probe
 		// would accept these and turn {"met":null} into a real "not met".
 		{
@@ -196,8 +194,8 @@ func TestParseFailureDoesNotAlsoWarnAboutTheOverview(t *testing.T) {
 	}
 }
 
-// Python slices content[:200] in characters. A prefix cut at 200 bytes would
-// split a multi-byte rune and corrupt the log line.
+// The prefix is capped at 200 characters. A cut at 200 bytes would split a
+// multi-byte rune and corrupt the log line.
 func TestParseFailurePrefixIsCappedInRunes(t *testing.T) {
 	content := strings.Repeat("ü", 300)
 	got := diagnosticsOf(content)
@@ -227,8 +225,8 @@ func TestParseFailurePrefixKeepsShortContentWhole(t *testing.T) {
 }
 
 func TestParseDiagnosticLevels(t *testing.T) {
-	// The levels are Python's, and they matter: an operator alerting on ERROR
-	// must not be paged for a dropped vacuous finding.
+	// The levels matter: an operator alerting on ERROR must not be paged for
+	// a dropped vacuous finding.
 	if d := ParseReview("{bad").Diagnostics; d[0].Level != slog.LevelError {
 		t.Errorf("parse failure level = %v, want ERROR", d[0].Level)
 	}

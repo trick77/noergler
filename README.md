@@ -417,7 +417,6 @@ root:
 
 ```bash
 ./hack/smoke.sh      # boots serve, replays a signed webhook, reports what was posted
-./hack/parity.sh     # the same replay through this and the archived implementation, diffed
 ```
 
 Coverage floor and per-PR patch coverage:
@@ -470,9 +469,6 @@ to a [riptide](https://github.com/trick77/riptide) collector — all dashboards,
 SQL queries, and DORA/SPACE rollups live there alongside delivery metrics from
 Bitbucket / ArgoCD / CI.
 
-The cutover from the implementation in `archive/` is recorded in
-[archive/CUTOVER.md](archive/CUTOVER.md); it is history, not a live procedure.
-
 ## Project structure
 
 ```
@@ -493,9 +489,9 @@ backend/
 prompts/
   review.txt           # review prompt template
   mention.txt          # mention Q&A prompt template
-hack/                  # smoke, parity and coverage scripts (outside the module)
+hack/                  # smoke and coverage scripts (outside the module)
 http/                  # IntelliJ HTTP client requests for the team self-service
-archive/               # the Python implementation this replaced, kept for reference
+archive/               # the previous implementation, kept for reference
 ```
 
 ## Licence

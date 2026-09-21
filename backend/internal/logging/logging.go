@@ -68,7 +68,7 @@ func Bound(ctx context.Context) []slog.Attr {
 }
 
 // ParseLevel reads LOG_LEVEL: DEBUG, INFO, WARNING (or WARN), ERROR, in any
-// case. Anything else is INFO, as in the Python service.
+// case. Anything else is INFO.
 func ParseLevel(s string) slog.Level {
 	switch strings.ToUpper(strings.TrimSpace(s)) {
 	case "DEBUG":
@@ -258,7 +258,7 @@ func writeField(buf *bytes.Buffer, key string, v any, first bool) {
 }
 
 // attrValue turns a slog value into something json.Marshal renders the way
-// the Python logs did: durations as their string, errors as text, groups as
+// the log format requires: durations as their string, errors as text, groups as
 // objects.
 func attrValue(v slog.Value) any {
 	switch v.Kind() {

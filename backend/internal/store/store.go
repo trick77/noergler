@@ -1,6 +1,6 @@
 // Package store is the Postgres layer: pool, embedded migrations and every
-// query the service runs. One function per query, positional pgx args,
-// transactions where the Python service had them.
+// query the service runs. One function per query, positional pgx args, and a
+// transaction wherever more than one statement must land together.
 package store
 
 import (
@@ -33,8 +33,7 @@ type Store struct {
 	log  *slog.Logger
 }
 
-// Open connects with a pool of 2..10 and logs the server version, as the
-// Python service did at startup.
+// Open connects with a pool of 2..10 and logs the server version at startup.
 func Open(ctx context.Context, dsn string, log *slog.Logger) (*Store, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {

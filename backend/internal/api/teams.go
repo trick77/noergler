@@ -48,8 +48,8 @@ func (d Deps) teamAuth(ctx context.Context, w http.ResponseWriter, slug, authori
 	return rt, true
 }
 
-// projectScopeView mirrors Pydantic's exclude_none: a whole-project scope
-// serialises as {"key": "PROJ"} with no repos field at all, not null.
+// projectScopeView omits a null field rather than emitting it: a
+// whole-project scope serialises as {"key": "PROJ"} with no repos key at all.
 type projectScopeView struct {
 	Key   string   `json:"key"`
 	Repos []string `json:"repos,omitempty"`
@@ -77,8 +77,8 @@ func viewOf(t *config.Team) teamView {
 	}
 }
 
-// nonNil keeps an empty list rendering as [] rather than null, matching
-// Python, where these are always lists.
+// nonNil keeps an empty list rendering as [] rather than null: these three
+// fields are always lists on the wire.
 func nonNil(s []string) []string {
 	if s == nil {
 		return []string{}
@@ -101,16 +101,17 @@ func (d Deps) getTeam(w http.ResponseWriter, r *http.Request) {
 // settingsRequest is a PARTIAL update.
 //
 // Pointers, not slices, because a field left out must stay as it is while an
-// empty list clears it. Probed against the venv: Python's _clean treats an
-// explicit null exactly like an absent field, so a nil pointer covers both.
+// empty list clears it. An explicit null behaves exactly like an absent
+// field, so a nil pointer covers both; pinned by
+// TestTeams_PutIsAPartialUpdate.
 type settingsRequest struct {
 	AutoReviewAuthors *[]string `json:"auto_review_authors"`
 	IgnoreAuthors     *[]string `json:"ignore_authors"`
 	ExcludeRepos      *[]string `json:"exclude_repos"`
 }
 
-// clean is Python's _clean: nil keeps the current list, otherwise each entry
-// is trimmed and the blanks are dropped.
+// clean resolves one partial-update field: nil keeps the current list,
+// otherwise each entry is trimmed and the blanks are dropped.
 func clean(items *[]string, current []string) []string {
 	if items == nil {
 		return current
@@ -129,8 +130,8 @@ func (d Deps) putTeamSettings(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("team")
 	ctx := logging.WithTeam(r.Context(), slug)
 	// Auth before the body is decoded, so an unauthenticated caller cannot
-	// probe the schema. FastAPI validates the body first and would answer 422
-	// ahead of the 401; no test pins that ordering.
+	// probe the schema: a bad body behind a bad secret answers 401, never 422.
+	// Pinned by TestTeams_AuthPrecedesBodyValidation.
 	rt, ok := d.teamAuth(ctx, w, slug, r.Header.Get("Authorization"))
 	if !ok {
 		return
@@ -158,10 +159,9 @@ func (d Deps) putTeamSettings(w http.ResponseWriter, r *http.Request) {
 
 // decodeStrict rejects an unknown field with a 422.
 //
-// Both request models are Pydantic extra="forbid", where an unknown key is
-// an operator typo rather than something to shrug at, and FastAPI answers
-// 422. The detail is a plain string; Python's is a list of error objects,
-// which nothing parses.
+// An unknown key is an operator typo rather than something to shrug at, so
+// both request models reject it instead of ignoring it. The detail is a plain
+// string, not a list of error objects: nothing parses it.
 func decodeStrict(w http.ResponseWriter, r *http.Request, into any) bool {
 	// Behind auth, so the cap is only a backstop, but an authenticated caller
 	// is still not a reason to read without a bound.

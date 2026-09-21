@@ -21,8 +21,8 @@ import (
 	"github.com/trick77/noergler/internal/webhook"
 )
 
-// contextExpansionRatio is is_small_pr's default: a PR counts as small when
-// its files plus room to expand them still fit the budget.
+// contextExpansionRatio decides when a PR counts as small: its files plus
+// room to expand them still fit the budget.
 const contextExpansionRatio = 1.5
 
 // nanoPerUSD converts the DB's BIGINT nano-USD to the USD used at the edges.
@@ -33,7 +33,12 @@ const nanoPerUSD = 1_000_000_000.0
 // skipAuthorCheck is set by an @mention: it bypasses the author and actor
 // gates and the cost cap, because a human asked for this review explicitly.
 //
-// The guard order is reviewer.py:449-1202. Two rules run through all of it:
+// The order of the guards below is deliberate and fixed, not incidental.
+// The "Guard order" block in review_test.go pins it guard by guard
+// (TestReviewRequiresAProjectAndRepo, TestSkipsDisallowedAuthorAndIgnoredActor,
+// TestIgnoredPRIsSkippedWithoutAnyAPICall,
+// TestDeletedSummaryIgnoresButTransientErrorProceeds, TestOptOutBranchKeyword,
+// TestAgentsMDGates, TestCostCap). Two rules run through all of it:
 // every store call goes through safeDB, and every skip that did not review
 // the new commit writes the PRIOR commit back, so raising a limit later
 // re-reviews the accumulated range instead of skipping it.
@@ -50,8 +55,8 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 
 	// Per-review HTTP accounting. The bitbucket and jira transports already
 	// record into the scope; without one opened here every count was dropped
-	// and the totals line never existed. Deferred, like Python's finally, so
-	// a review that skips or fails still reports what it spent.
+	// and the totals line never existed. Deferred, so a review that skips or
+	// fails still reports what it spent.
 	ctx, httpCounter := httpstats.WithScope(ctx)
 	defer r.logHTTPTotals(ctx, prTag, httpCounter)
 
@@ -60,8 +65,8 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 
 	// 2. Author gate. The ignore list wins over the allow list inside
 	// IsAutoReviewAuthor, so a bare false cannot say which list decided.
-	// Name the ignore list when it is the reason: Python reported every skip
-	// as an allow-list miss, which misstates why an ignored bot was skipped.
+	// Name the ignore list when it is the reason: reporting every skip as an
+	// allow-list miss would misstate why an ignored bot was skipped.
 	if !skipAuthorCheck {
 		if autoReview, ignored := r.autoReviewDecision(author); !autoReview {
 			reason := "not in auto-review authors"
@@ -234,8 +239,8 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 		PromptTokens:   assembled.PromptTokens,
 		ResponseSchema: inference.ReviewResponseFormat(),
 	})
-	// One cost record per call, as Python does, and only when a call actually
-	// happened: the too-large branch decides locally before any request, and a
+	// One cost record per call, and only when a call actually happened: the
+	// too-large branch decides locally before any request, and a
 	// transport error returns with no cost, so both would otherwise report an
 	// absent cost for a call the gateway never answered.
 	if result.Outcome == inference.OutcomeOK || result.Outcome == inference.OutcomeUnparseable {
@@ -245,9 +250,8 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 	// 17-19. Terminal branches. Each preserves the prior commit, posts a
 	// notice and writes no run row.
 	//
-	// 19b. OutcomeError is NOT one of them: in Python a non-overflow API
-	// error re-raises out of review_diff into the outer except, which logs
-	// and returns. No upsert, no notice, no run row.
+	// 19b. OutcomeError is NOT one of them: a non-overflow API error is only
+	// logged. No upsert, no notice, no run row.
 	if result.Outcome != inference.OutcomeOK {
 		r.handleNonOK(ctx, result, payload, key, prTag, sourceCommit, upsert)
 		return
@@ -270,9 +274,11 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 
 	// 24. Run row, then cost, then the summary.
 	//
-	// Python interleaves posting and inserting findings and writes the run
-	// row last, which Go cannot: store.Finding.RunID is required and comes
-	// from InsertRun. Same end state, different failure window.
+	// The run row must exist before any finding row: store.Finding.RunID is
+	// required and comes from InsertRun, so posting and inserting findings
+	// cannot be interleaved ahead of it. The comments are already on the PR
+	// by this point, so a crash before InsertRun leaves them there with no
+	// finding row.
 	runID := r.recordRun(ctx, prReviewID, result, sourceCommit, incrementalFrom, skipAuthorCheck,
 		elapsed, postedCount, diffAdded, diffRemoved, totalFiles+len(deletedPaths)+len(renamedPaths))
 	r.recordFindings(ctx, prReviewID, runID, findings, postedIDs)
@@ -331,9 +337,9 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 	if failed > 0 {
 		parts = append(parts, fmt.Sprintf("%d failed", failed))
 	}
-	// The token accounting Python carries on its completion line. An endpoint
-	// that reports no usage leaves these zero, which is worth seeing as such
-	// rather than omitting.
+	// Token accounting on the completion line. An endpoint that reports no
+	// usage leaves these zero, which is worth seeing as such rather than
+	// omitting.
 	c := result.Cost
 	parts = append(parts, fmt.Sprintf("%d in (%d cached) + %d out = %d tokens",
 		c.PromptTokens, c.CachedTokens, c.CompletionTokens,
@@ -485,7 +491,7 @@ func (r *Reviewer) fetchCumulativeDiff(ctx context.Context, key store.PRKey, prT
 //
 // timed_out, unparseable and too_large each preserve the prior commit, post
 // their notice and write no run row. OutcomeError posts NOTHING and writes
-// nothing: Python re-raises it into the outer handler, which only logs.
+// nothing: it is only logged (TestTerminalOutcomes).
 func (r *Reviewer) handleNonOK(ctx context.Context, result inference.ReviewResult, _ *webhook.Payload, key store.PRKey, prTag, sourceCommit string, upsert store.PRUpsert) {
 	short := shortOrUnknown(sourceCommit)
 	project, repo, prID := key.Project, key.Repo, key.PRID
@@ -596,9 +602,9 @@ func severityOrder(s string) int {
 
 // sortAndLimit orders findings by severity and caps them.
 //
-// Python's sorted is stable, so SortStableFunc: findings of equal severity
-// must keep the model's order or the numbered Issues list shuffles between
-// runs of the same review.
+// SortStableFunc, not SortFunc: findings of equal severity must keep the
+// model's order or the numbered Issues list shuffles between runs of the
+// same review (TestSortAndLimit).
 func sortAndLimit(findings []inference.ReviewFinding, maxComments int) ([]inference.ReviewFinding, bool) {
 	sorted := slices.Clone(findings)
 	slices.SortStableFunc(sorted, func(a, b inference.ReviewFinding) int {
@@ -617,8 +623,9 @@ func sortAndLimit(findings []inference.ReviewFinding, maxComments int) ([]infere
 // the post failed. posted and failed count the two outcomes: ids is always
 // len(findings) long, so its length is not the success count.
 //
-// A failure is counted and logged but never stored, matching Python: a
-// finding row exists only for a comment that is actually on the PR.
+// A failure is counted and logged but never stored: a finding row exists
+// only for a comment that is actually on the PR
+// (TestFailedInlineCommentIsNotStored).
 func (r *Reviewer) postInlineComments(ctx context.Context, project, repo string, prID int, findings []inference.ReviewFinding) (ids []int, posted, failed int) {
 	ids = make([]int, len(findings))
 	for i, f := range findings {
@@ -699,10 +706,9 @@ func (r *Reviewer) recordFindings(ctx context.Context, prReviewID, runID int64, 
 // resolveCost returns this run's cost and the PR total, both nil when the
 // gateway did not price the run.
 //
-// The PR total is only read when this run is priced, matching Python, where
-// the cumulative line is nested under run_cost_usd is not None. Reading the
-// aggregate unconditionally would show a total on an unpriced run that
-// Python never showed, and could trip the cost banner.
+// The PR total is only read when this run is priced. Reading the aggregate
+// unconditionally would show a total on an unpriced run and could trip the
+// cost banner (TestUnpricedRunShowsNoCostLine).
 func (r *Reviewer) resolveCost(ctx context.Context, key store.PRKey, result inference.ReviewResult) (run, cumulative *float64) {
 	if !result.Cost.Priced() {
 		return nil, nil
@@ -787,9 +793,9 @@ func epochMSToTime(ms int64) *time.Time {
 	return &t
 }
 
-// logHTTPTotals reports what one review spent upstream, keeping Python's
-// wording (reviewer.py:1190): `Review HTTP totals - bitbucket=N jira=N
-// inference=N (per-method detail)`.
+// logHTTPTotals reports what one review spent upstream. The wording is
+// `Review HTTP totals - bitbucket=N jira=N inference=N (per-method detail)`
+// and is pinned by TestLogHTTPTotals.
 //
 // Nothing is logged when no request was made: the author and actor gates
 // return before any HTTP, and an empty totals line for every skipped PR is

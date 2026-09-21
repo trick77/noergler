@@ -12,7 +12,7 @@ import (
 // They live in the privileged system role so they cannot be overridden by the
 // untrusted PR content and guidelines carried in the user message. The prompt
 // templates do not repeat them: these constants are the single source of
-// truth, and both are reproduced verbatim from the Python.
+// truth, and both are pinned byte for byte.
 const ReviewSystemMessage = "You are a read-only code review assistant. You analyse code and may suggest fixes with code examples, " +
 	"but never produce full patches, diffs to apply, or act as an agent that modifies repository content. " +
 	"Always respond with valid JSON.\n" +
@@ -74,12 +74,12 @@ func FormatFileEntry(f diff.FileReviewData) string {
 	return b.String()
 }
 
-// fenceLanguage is the code-fence label for a path, mirroring Python's
-// Path(p).suffix.lstrip(".").
+// fenceLanguage is the code-fence label for a path: the filename suffix with
+// its leading dot stripped.
 //
-// Go's path.Ext disagrees on a dotfile: it calls ".env" an extension of
-// ".env", where pathlib reports none, which would label the fence "env". A
-// leading dot on the basename is part of the name, not a suffix.
+// Not path.Ext, which disagrees on a dotfile: it calls ".env" an extension of
+// ".env" and would label the fence "env". A leading dot on the basename is
+// part of the name, not a suffix, so such a file gets no label.
 func fenceLanguage(p string) string {
 	base := path.Base(p)
 	dot := strings.LastIndex(base, ".")
@@ -175,7 +175,7 @@ func RenderPreviouslyPostedFindings(findings []PostedFinding) string {
 		}
 		// Newlines are flattened so one finding stays one line.
 		text := strings.ReplaceAll(strings.TrimSpace(f.CommentText), "\n", " ")
-		// Python slices by character, not byte.
+		// Sliced by character, not byte, so a multi-byte rune is never split.
 		if r := []rune(text); len(r) > postedTextCap {
 			text = string(r[:postedTextKeep]) + "..."
 		}
@@ -217,8 +217,8 @@ const (
 //
 // One pass, so replacement text is never rescanned: PR file content spelling
 // "{previously_posted_findings}" stays that text rather than being expanded
-// into the real block. Python substitutes {files} LAST for the same reason;
-// a single pass removes the ordering question instead of merely reversing it.
+// into the real block. A sequential substitution would only shift which block
+// is exposed; a single pass removes the ordering question entirely.
 //
 // Never text/template: file content contains JSON braces.
 func RenderReviewPrompt(template, files, cumulative, previouslyPosted, repoInstructions string) string {

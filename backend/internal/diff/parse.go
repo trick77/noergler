@@ -1,9 +1,5 @@
 // Package diff parses unified diffs, decides which files are worth reviewing,
 // expands hunk context and fits files into a token budget.
-//
-// Ported from the Python service's diff_compression.py, context_expansion.py,
-// cross_file_context.py and the diff half of llm_client.py. Behaviour is pinned
-// to the Python except where AGENTS.md records a divergence.
 package diff
 
 import (
@@ -23,18 +19,17 @@ type FileReviewData struct {
 	// ContentFetched records that content was fetched, even if the file turned
 	// out to be empty.
 	//
-	// Python's content is Optional[str] and the two cases differ where it
-	// matters: the prompt's file entry renders an empty code block for a
-	// fetched empty file and "content omitted" for an unfetched one. A newly
-	// created empty file in a PR reaches that path, since the reviewer never
-	// coerces "" to None.
+	// The two cases differ where it matters: the prompt's file entry renders
+	// an empty code block for a fetched empty file and "content omitted" for
+	// an unfetched one. A newly created empty file in a PR reaches that path,
+	// since the reviewer never clears ContentFetched for empty content.
 	ContentFetched bool
 }
 
-// HasContent reports whether content is usable as text, which is Python's
-// `content or diff` truthiness: an empty string falls through to the diff
-// exactly like None did. Use ContentFetched, not this, when the distinction
-// between unfetched and fetched-but-empty matters.
+// HasContent reports whether content is usable as text: an empty string
+// falls through to the diff exactly like an unfetched file does. Use
+// ContentFetched, not this, when the distinction between unfetched and
+// fetched-but-empty matters.
 func (f FileReviewData) HasContent() bool { return f.Content != "" }
 
 var diffPathRE = regexp.MustCompile(`(?m)^diff --git (?:a/.+ b/|src://.+ dst://)(.+)$`)
@@ -43,7 +38,7 @@ var plusPlusPlusRE = regexp.MustCompile(`(?m)^\+\+\+ (?:b/|dst://)(.+)$`)
 
 // hunkHeaderRE matches `@@ -a,b +c,d @@`. It is deliberately not anchored at the
 // end: `@@ -1,2 +1,3 @@ def foo():` parses and the trailing function context is
-// discarded, as in Python.
+// discarded.
 var hunkHeaderRE = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)
 
 // Hunk is one parsed `@@` section. BodyLines excludes the header line.
@@ -59,10 +54,11 @@ type Hunk struct {
 //
 // Lossless: concatenating the parts reproduces the input. Any preamble before
 // the first `diff --git ` becomes its own leading part rather than being glued
-// onto the first file, matching Python.
+// onto the first file.
 //
-// Mirrors Python's splitlines(keepends=True), which also breaks on \v, \f,
-// \x1c-\x1e, \x85, U+2028 and U+2029, not just \n.
+// Splits with splitLinesKeepEnds, which breaks on \v, \f, \x1c-\x1e, \x85,
+// U+2028 and U+2029 as well as \n, so a form feed inside a hunk body starts a
+// new line here.
 func SplitByFile(diffText string) []string {
 	var parts []string
 	var current []string
@@ -101,11 +97,12 @@ func IsDeleted(fileDiff string) bool {
 
 // ParseHunks splits a per-file diff into the leading header lines and its hunks.
 //
-// Mirrors Python parse_hunks, which uses split("\n") rather than splitlines().
+// Splits on "\n" rather than by Unicode line boundaries: a diff's own line
+// terminators are the only ones that may split a hunk.
 //
-// Divergence (AGENTS.md): a trailing empty body line, the artifact of splitting
-// a diff that ends in a newline, is dropped here. Python kept it, which left a
-// phantom blank line mid-body whenever after-context followed it.
+// Pinned (AGENTS.md): a trailing empty body line, the artifact of splitting a
+// diff that ends in a newline, is dropped here. Keeping it leaves a phantom
+// blank line mid-body whenever after-context follows.
 func ParseHunks(fileDiff string) (headerLines []string, hunks []*Hunk) {
 	var current *Hunk
 
@@ -158,9 +155,12 @@ func atoiOr(s string, def int) int {
 	return n
 }
 
-// splitLinesKeepEnds splits on every boundary Python's str.splitlines treats as
-// a line break, keeping the terminator on each line. Used only where the Python
-// used splitlines; code mirroring split("\n") uses strings.Split directly.
+// splitLinesKeepEnds splits on \n, \r, \r\n, \v, \f, \x1c, \x1d, \x1e, \x85,
+// U+2028 and U+2029, keeping the terminator on each line. SplitByFile and the
+// symbol finders use it (via splitLines); ParseHunks, ExpandContext and
+// RemoveDeletionOnlyHunks split on \n only, with strings.Split. The two
+// disagree on a form feed: one line there, two here. Pinned by
+// TestSplitLinesKeepEndsIsPinned.
 func splitLinesKeepEnds(s string) []string {
 	if s == "" {
 		return nil
@@ -170,7 +170,7 @@ func splitLinesKeepEnds(s string) []string {
 	runes := []rune(s)
 	for i := 0; i < len(runes); i++ {
 		r := runes[i]
-		if !isPythonLineBreak(r) {
+		if !isLineBreak(r) {
 			continue
 		}
 		end := i + 1
@@ -188,8 +188,10 @@ func splitLinesKeepEnds(s string) []string {
 	return out
 }
 
-// isPythonLineBreak reports whether r is a boundary for str.splitlines.
-func isPythonLineBreak(r rune) bool {
+// isLineBreak reports whether r is one of the ten line-break runes
+// splitLinesKeepEnds recognises. \r\n is two runes and is joined by the
+// caller, not listed here.
+func isLineBreak(r rune) bool {
 	switch r {
 	case '\n', '\r', '\v', '\f', 0x1c, 0x1d, 0x1e, 0x85, 0x2028, 0x2029:
 		return true

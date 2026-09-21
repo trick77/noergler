@@ -85,8 +85,9 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 				}
 			}
 
-			// Python compares content.count("\n") + 1 against the limit, so
-			// a body is measured in lines, not bytes.
+			// A body is measured in lines, not bytes: newlines + 1, so a
+			// file at exactly the limit is kept
+			// (TestFileAtMaxLinesKeepsItsContent).
 			if fetched {
 				lines := strings.Count(content, "\n") + 1
 				if lines > r.cfg.MaxFileLines {
@@ -163,8 +164,8 @@ func countDiffLines(rawDiff string) (added, removed int) {
 	return added, removed
 }
 
-// truncateRunes cuts s to at most n runes. Python's len() counts characters,
-// so the log prefix is measured the same way.
+// truncateRunes cuts s to at most n runes. Runes and not bytes: a byte cut
+// would split a multi-byte character in the log prefix.
 func truncateRunes(s string, n int) string {
 	runes := []rune(s)
 	if len(runes) <= n {

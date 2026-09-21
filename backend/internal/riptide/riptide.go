@@ -87,7 +87,8 @@ func New(rawURL, token string, log *slog.Logger) *Emitter {
 	if e.enabled {
 		e.http = &http.Client{
 			Timeout: requestTimeout,
-			// Matches httpx, which does not follow redirects.
+			// Redirects are not followed: a 3xx would replay the bearer token
+			// at the new host. Non-2xx, so a redirect cannot read as success.
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		}
 	}

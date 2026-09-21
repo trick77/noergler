@@ -126,8 +126,7 @@ func TestReconcile_NoSettingsSeedWhenEverythingEmpty(t *testing.T) {
 	}
 }
 
-// A seed conflict disables that team alone AND skips its settings step,
-// matching Python's `continue`.
+// A seed conflict disables that team alone AND skips its settings step.
 func TestReconcile_SeedConflictDisablesOneTeamAndSkipsItsSettings(t *testing.T) {
 	repo := "svc"
 	db := &fakeClaimStore{

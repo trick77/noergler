@@ -84,8 +84,8 @@ func TestReviewEmitsDiagnosticsAtTheirOwnLevel(t *testing.T) {
 	}
 }
 
-// A parse failure logs the prefix line AND still reports unparseable. Python
-// logs twice here too, once in the parser and once in the review path.
+// A parse failure logs the prefix line AND still reports unparseable: it is
+// logged twice, once in the parser and once in the review path.
 func TestReviewEmitsTheParseFailureLine(t *testing.T) {
 	c, buf := capturingClient(t, chatWith("not json at all"))
 

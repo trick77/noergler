@@ -44,7 +44,7 @@ func TestHandler_TimestampIsFirstAndSchemaFieldsPresent(t *testing.T) {
 	}
 }
 
-func TestHandler_LevelNamesMatchThePythonService(t *testing.T) {
+func TestHandler_LevelNamesArePinned(t *testing.T) {
 	log, buf := newTestLogger(slog.LevelDebug)
 	log.Debug("d")
 	log.Info("i")

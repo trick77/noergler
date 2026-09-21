@@ -108,7 +108,8 @@ func New(cfg config.Jira, log *slog.Logger) (*Client, error) {
 				TLSHandshakeTimeout: 30 * time.Second,
 				ForceAttemptHTTP2:   true,
 			}),
-			// Matches httpx, which does not follow redirects.
+			// Redirects are not followed: a 3xx would replay the bearer token
+			// at the new host. Non-2xx, so a redirect cannot read as success.
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
 		log: log,
@@ -290,10 +291,9 @@ func (c *Client) FetchTicketWithParent(ctx context.Context, ticketID string) (ti
 }
 
 // isConnectError reports whether err is a failure to establish the connection
-// (refused, DNS), as opposed to a dial timeout. Python swallowed httpx's
-// ConnectError but let ConnectTimeout through, and that split is worth keeping:
-// a refused connection means Jira is not there, a timeout means something is
-// wrong with the call.
+// (refused, DNS), as opposed to a dial timeout. The split is deliberate: a
+// refused connection means Jira is not there and the ticket is skipped, a
+// timeout means something is wrong with the call and does fail.
 func isConnectError(err error) bool {
 	var opErr *net.OpError
 	if errors.As(err, &opErr) && opErr.Op == "dial" && !opErr.Timeout() {

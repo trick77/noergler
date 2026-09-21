@@ -64,7 +64,7 @@ func TestTargetsForSubsetFiltersAndKeepsOrder(t *testing.T) {
 	}
 }
 
-// The message is byte-identical to Python's, duplicates in the unknown list
+// The message is pinned byte for byte, duplicates in the unknown list
 // included, with `known:` in claim order.
 func TestTargetsForUnknownMessage(t *testing.T) {
 	_, err := TargetsFor(newTeam(whole("A"), repos("B", "x")), []string{"A", "B/y", "Z", "B/y"})

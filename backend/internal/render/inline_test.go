@@ -9,9 +9,9 @@ import (
 	"github.com/trick77/noergler/internal/inference"
 )
 
-// Expected bodies captured from the Python (app/bitbucket.py
-// post_inline_comment text assembly) with the venv.
-func TestInlineCommentMatchesPython(t *testing.T) {
+// Expected bodies are the golden corpus in testdata, compared byte for byte:
+// they are posted verbatim on real PRs.
+func TestInlineCommentIsPinned(t *testing.T) {
 	blob, err := os.ReadFile("testdata/inline_golden.json")
 	if err != nil {
 		t.Fatalf("read inline golden: %v", err)
@@ -57,8 +57,8 @@ func TestSuggestionFenceOnlyForSingleLine(t *testing.T) {
 	}
 }
 
-// An empty-string suggestion is absent, matching Python's falsy check, so no
-// empty code block is appended.
+// An empty-string suggestion counts as absent, so no empty code block is
+// appended.
 func TestEmptySuggestionOmitsTheBlock(t *testing.T) {
 	empty := ""
 	got := InlineComment(inference.ReviewFinding{Severity: "issue", Comment: "c", Suggestion: &empty})

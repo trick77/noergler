@@ -7,8 +7,8 @@ import (
 	"github.com/trick77/noergler/internal/diff"
 )
 
-// Expectations generated from the running Python (format_file_entry).
-func TestFormatFileEntryMatchesPython(t *testing.T) {
+// The rendered file entry is pinned byte for byte: it is model-facing text.
+func TestFormatFileEntryIsPinned(t *testing.T) {
 	const changes = "### Changes (diff: lines with `-` are REMOVED, lines with `+` are ADDED):\n```diff\n@@ -1 +1 @@\n+x\n```"
 
 	cases := []struct {
@@ -125,8 +125,7 @@ func TestRenderCumulativePRDiff(t *testing.T) {
 	})
 }
 
-// Expectations generated from the running Python
-// (render_previously_posted_findings).
+// The rendered block is pinned byte for byte: it is model-facing text.
 func TestRenderPreviouslyPostedFindings(t *testing.T) {
 	line := func(n int) *int { return &n }
 
@@ -208,9 +207,8 @@ func TestRenderReviewPromptSubstitution(t *testing.T) {
 
 	// One pass, so replacement text is never rescanned: PR file content
 	// spelling another placeholder's name stays that text rather than being
-	// expanded into the real block. Python reaches the same result by
-	// substituting {files} last. Attacker-controlled file content must not
-	// rewrite another section of the prompt.
+	// expanded into the real block. Attacker-controlled file content must
+	// not rewrite another section of the prompt.
 	t.Run("a placeholder inside file content is left alone", func(t *testing.T) {
 		got := RenderReviewPrompt("{files}|{cumulative_pr_diff}", "{cumulative_pr_diff}", "REAL", "", "")
 		if got != "{cumulative_pr_diff}|REAL" {

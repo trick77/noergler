@@ -2,8 +2,8 @@ package render
 
 import "testing"
 
-// Values generated from the Python (reviewer.py _fmt / _fmt_k) with the venv,
-// not derived by reading the code.
+// Expected values are written out case by case, not derived from the code
+// under test.
 func TestFmt(t *testing.T) {
 	cases := []struct {
 		in   int
@@ -30,9 +30,9 @@ func TestFmt(t *testing.T) {
 	}
 }
 
-// Python's round() is round-half-to-even, so 500 -> 0k, 1500 -> 2k,
-// 2500 -> 2k and 3500 -> 4k. math.Round would give 1k, 2k, 3k, 4k and
-// diverge on two of the four.
+// Rounding is half-to-even, so 500 -> 0k, 1500 -> 2k, 2500 -> 2k and
+// 3500 -> 4k. math.Round would give 1k, 2k, 3k, 4k and differ on two of
+// the four.
 func TestFmtKUsesBankersRounding(t *testing.T) {
 	cases := []struct {
 		in   int

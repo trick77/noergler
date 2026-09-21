@@ -21,10 +21,9 @@ const CallTimeout = 300 * time.Second
 // Client is one team's inference client.
 //
 // Safe for concurrent use: llmwire's Client guards its own state and wraps
-// *http.Client. noergler does not serialize calls here. Python held a
-// process-wide asyncio lock, which existed because asyncio makes accidental
-// concurrency easy, not because the transport needed it; serialization is the
-// review queue's policy, not this package's property.
+// *http.Client. noergler does not serialize calls here: the transport does
+// not need it. Serialization is deliberate but it is the review queue's
+// policy (a single review worker), not this package's property.
 type Client struct {
 	wire   *llmwire.Client
 	model  string
@@ -52,8 +51,8 @@ type Options struct {
 	Model string
 	// ReasoningEffort is sent on every call. Not validated locally: an
 	// unusable value is the gateway's 400, which Startup maps to a readable
-	// error. Python validated against a hardcoded set that is wrong for the
-	// configured model in both directions, so that set is not ported.
+	// error. A hardcoded allowed set would be wrong for the configured model
+	// in both directions, so there is none.
 	ReasoningEffort string
 	// APIKey is the team's key, answered to llmwire through Lookup rather than
 	// Config.APIKey: FromEnv refuses a key set directly on a gateway-routed
@@ -166,8 +165,8 @@ const gatewayAPIKeyEnv = "LLMWIRE_LITELLM_API_KEY"
 func (c *Client) Model() string { return c.model }
 
 // Label is the model string a reader sees: the profile id with the reasoning
-// effort appended, as Python's model_label renders it. It is what the summary
-// footnote shows and what a run row stores.
+// effort appended. It is what the summary footnote shows and what a run row
+// stores.
 //
 // Not Model(): that one names the profile llmwire routes on, and the effort is
 // part of what produced a review, so a run recorded without it cannot be told

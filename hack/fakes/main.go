@@ -5,10 +5,10 @@
 // probes, the riptide ping, and the gateway (model listing plus completions).
 //
 // With -record, every body that carries review output is written to a file so
-// two implementations can be diffed against each other: the comments posted to
-// Bitbucket, the completion requests sent to the gateway, and the riptide
-// rollup. The name is the payload kind plus the order it arrived in, because
-// the order is part of what parity means.
+// two runs can be diffed against each other: the comments posted to Bitbucket,
+// the completion requests sent to the gateway, and the riptide rollup. The
+// name is the payload kind plus the order it arrived in, because the order is
+// part of what the diff has to compare.
 //
 // Usage: fakes [-addr :18099] [-record dir] [-review file]
 package main
@@ -171,8 +171,8 @@ func main() {
 		}
 	}
 
-	// The review body both implementations get has to be the same bytes, so it
-	// can come from a file shared by a parity run.
+	// Two runs being diffed have to get the same review bytes, so the body
+	// can come from a shared file instead of the canned default.
 	review := cannedReview
 	if *reviewFile != "" {
 		blob, err := os.ReadFile(*reviewFile)
@@ -251,8 +251,8 @@ func main() {
 			// The id is handed out under the same lock that stores the text:
 			// two concurrent posts reading the counter would otherwise get the
 			// same id, and the second would overwrite the first, so a GET
-			// would answer with the wrong comment. Python interleaves its
-			// posts, so this is reachable.
+			// would answer with the wrong comment. The posts are interleaved,
+			// so this is reachable.
 			var c struct{ Text string }
 			_ = json.Unmarshal(body, &c)
 			postedMu.Lock()
@@ -555,7 +555,7 @@ func main() {
 // file. The languages make file ordering (group, language, path) observable,
 // and the surrounding lines give context expansion something to expand: with a
 // 404 on the file body the reviewer falls back to diff-only and neither path
-// runs, which is what the first parity run silently did.
+// runs, which is what the first recorded run silently did.
 const sampleDiff = `diff --git a/a.go b/a.go
 index 1111111..2222222 100644
 --- a/a.go
@@ -623,10 +623,10 @@ const gatewayAlias = "ai-gateway-gpt-5.5"
 // unparseable-response notice. It is what smoke.sh gets, and one finding is all
 // smoke.sh asserts on.
 //
-// Not the same bytes as hack/testdata/review.json, deliberately: -review serves
-// that file to both implementations in a parity run, and it carries a finding
-// per file in sampleDiff so the posting order of several comments is compared
-// too. Keeping the default here means the fakes still work with no flags.
+// Not the same bytes as hack/testdata/review.json, deliberately: -review
+// serves that file to two runs being diffed, and it carries a finding per file
+// in sampleDiff so the posting order of several comments is compared too.
+// Keeping the default here means the fakes still work with no flags.
 const cannedReview = `{
   "overview": "A small change to the smoke fixture.",
   "strengths": ["Focused diff"],

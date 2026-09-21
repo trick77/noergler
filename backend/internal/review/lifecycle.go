@@ -14,7 +14,7 @@ import (
 )
 
 // HandleCommentDeleted is the primary opt-out signal: if the user deleted our
-// summary comment, mark the PR ignored immediately (reviewer.py:1202).
+// summary comment, mark the PR ignored immediately.
 //
 // The payload carries the deleted comment id directly, which is robust where
 // the pull-time guard's 404 check is fragile: a summary with replies may be
@@ -128,9 +128,9 @@ func (r *Reviewer) emitRollup(ctx context.Context, key store.PRKey, prTag, outco
 			r.log.InfoContext(ctx, prTag+": final PR diff unavailable at close - using last-known per-run stats")
 		} else if strings.TrimSpace(fullDiff) != "" {
 			added, removed := countDiffLines(fullDiff)
-			// files_changed counts the reviewable files, which is the
-			// deliberate divergence AGENTS.md pins: Python counts every
-			// "diff --git" header including the ones it never reviewed.
+			// files_changed counts the reviewable files, as AGENTS.md pins:
+			// counting every "diff --git" header would put files that were
+			// never reviewed into the rollup.
 			changed := countReviewableFiles(fullDiff)
 			final.LinesAdded, final.LinesRemoved, final.FilesChanged = &added, &removed, &changed
 		}
@@ -178,10 +178,10 @@ func (r *Reviewer) emitRollup(ctx context.Context, key store.PRKey, prTag, outco
 
 // countReviewableFiles counts the files in a diff the reviewer would look at.
 //
-// Python counts every "diff --git" header, including lock files and vendored
-// bundles it never reviewed. AGENTS.md pins counting the reviewable ones as a
-// deliberate divergence, so the number riptide records matches the number the
-// summary reports.
+// Counting every "diff --git" header would include lock files and vendored
+// bundles that were never reviewed. AGENTS.md pins counting the reviewable
+// ones, so the number riptide records matches the number the summary reports
+// (TestRollupCountsReviewableFilesOnly).
 func countReviewableFiles(rawDiff string) int {
 	n := 0
 	for _, fd := range diff.SplitByFile(rawDiff) {

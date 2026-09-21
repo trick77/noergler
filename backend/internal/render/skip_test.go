@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-// skipGolden is the output of the Python builders, captured from the venv.
-// These strings are posted verbatim on real PRs, so they are pinned whole
-// rather than probed for substrings.
+// skipGolden is the expected output of the skip-summary builders. These
+// strings are posted verbatim on real PRs, so they are pinned whole rather
+// than asserted by substring.
 type skipGolden struct {
 	OptOut                 string              `json:"opt_out"`
 	AgentsMissing          string              `json:"agents_missing"`
@@ -33,7 +33,7 @@ func loadSkipGolden(t *testing.T) skipGolden {
 	return g
 }
 
-func TestSkipSummariesMatchPython(t *testing.T) {
+func TestSkipSummariesIsPinned(t *testing.T) {
 	g := loadSkipGolden(t)
 
 	if got := OptOutBranchSummary("noergloff", "feature/noergloff-thing"); got != g.OptOut {
@@ -47,7 +47,7 @@ func TestSkipSummariesMatchPython(t *testing.T) {
 	}
 }
 
-func TestAgentsMDTooLargeSummaryMatchesPython(t *testing.T) {
+func TestAgentsMDTooLargeSummaryIsPinned(t *testing.T) {
 	g := loadSkipGolden(t)
 	cases := []struct {
 		name   string

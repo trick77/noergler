@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-// Counts produced by Python tiktoken.encoding_for_model("gpt-4o") over the same
+// Counts pinned against o200k_base over the same
 // inputs. They are literals on purpose: a library upgrade that shifts
 // tokenization has to fail here rather than silently reprice every review.
-func TestCountMatchesPython(t *testing.T) {
+func TestCountIsPinned(t *testing.T) {
 	c, err := New()
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -32,7 +32,7 @@ func TestCountMatchesPython(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := c.Count(tc.text); got != tc.want {
-				t.Errorf("Count() = %d, want %d (Python tiktoken)", got, tc.want)
+				t.Errorf("Count() = %d, want %d (pinned)", got, tc.want)
 			}
 		})
 	}

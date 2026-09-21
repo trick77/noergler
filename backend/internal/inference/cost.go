@@ -67,7 +67,7 @@ func (c CallCost) Priced() bool { return c.NanoUSD != nil }
 
 // LogLine is the per-call cost record, and whether it deserves a warning.
 //
-// Python writes one of these per call (llm_client.py:170). An unpriced call is
+// One of these is written per call. An unpriced call is
 // only worth warning about when the endpoint IS a LiteLLM proxy: one that
 // sends no x-litellm-* header at all never prices and would otherwise warn on
 // every call forever. The call id is the handle for matching an unpriced or

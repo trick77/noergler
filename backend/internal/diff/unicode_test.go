@@ -2,9 +2,9 @@ package diff
 
 import "testing"
 
-// RE2's \w is ASCII while Python's is Unicode. Every \w ported from a Python
-// pattern this phase uses [\pL\pN_] so a non-ASCII identifier still matches.
-// Verified against the running Python, which extracts "caféHandler" here.
+// RE2's \w is ASCII-only, so every pattern here spells it [\pL\pN_] and a
+// non-ASCII identifier still matches: the whole of "caféHandler" is extracted,
+// not just "caf".
 func TestSymbolExtractionHandlesNonASCII(t *testing.T) {
 	got := extractChangedSymbols(FileReviewData{
 		Path: "a.ts",

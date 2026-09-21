@@ -74,7 +74,7 @@ func shortSHA(s string) string {
 }
 
 // FetchFileContent returns one file at one commit. Unlike the diff endpoints
-// this goes out with the default JSON Accept, as the Python client did.
+// this goes out with the default JSON Accept.
 func (c *Client) FetchFileContent(ctx context.Context, project, repo, commit, path string) (string, error) {
 	raw := fmt.Sprintf("%s/projects/%s/repos/%s/raw/%s", apiBase, project, repo, path)
 	return c.getTextCapped(ctx, raw, url.Values{"at": {commit}}, "", path, c.maxFileBytes)
@@ -311,10 +311,8 @@ func (c *Client) GetRepo(ctx context.Context, project, repo string) (map[string]
 // ListPullRequests reads one page of a repo's pull requests, returned as-is
 // rather than walked.
 //
-// Nothing calls it: it ports Python's list_pull_requests (app/bitbucket.py:329),
-// whose only caller was a bot-read probe that onboarding now does with
-// GetProject/GetRepo, matching Python's own claim() path. Kept so the adapter
-// still covers the Python surface; a reader looking for the read probe wants
+// Nothing calls it: the bot-read probe onboarding needs is done with
+// GetProject/GetRepo. A reader looking for the read probe wants
 // internal/onboarding/onboarder.go:94-96.
 func (c *Client) ListPullRequests(ctx context.Context, project, repo string, limit int) (map[string]any, error) {
 	var out map[string]any

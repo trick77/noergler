@@ -14,8 +14,7 @@ import (
 
 // Fmt renders a count with an apostrophe as the thousands separator.
 //
-// Swiss orthography, and the Python does the same by formatting with commas
-// and replacing them (reviewer.py:79).
+// Swiss orthography: the apostrophe, not the comma, groups thousands.
 func Fmt(n int) string {
 	s := fmt.Sprintf("%d", n)
 	neg := strings.HasPrefix(s, "-")
@@ -37,8 +36,8 @@ func Fmt(n int) string {
 
 // FmtK renders a token count compactly: "628k", "1.5M", "2M".
 //
-// Python's round() is round-half-to-even, so round(2500/1000) is 2 and not 3.
-// math.RoundToEven reproduces it; math.Round would not (reviewer.py:83).
+// Rounding is half-to-even: 2500 renders "2k", not "3k". math.RoundToEven
+// does that; math.Round would not (TestFmtKUsesBankersRounding).
 func FmtK(n int) string {
 	if n >= 1_000_000 {
 		s := fmt.Sprintf("%.1fM", float64(n)/1_000_000)
@@ -47,7 +46,8 @@ func FmtK(n int) string {
 	return fmt.Sprintf("%dk", int(math.RoundToEven(float64(n)/1000)))
 }
 
-// pct is the percentage sites in the summary, on Python's rounding rule.
+// pct is the percentage sites in the summary, on the same half-to-even
+// rounding rule as FmtK (TestPctUsesBankersRounding).
 func pct(part, whole int) int {
 	if whole == 0 {
 		return 0
@@ -55,7 +55,7 @@ func pct(part, whole int) int {
 	return int(math.RoundToEven(float64(part) / float64(whole) * 100))
 }
 
-// Plural renders "1 finding" / "2 findings" (reviewer.py:2017).
+// Plural renders "1 finding" / "2 findings".
 func Plural(n int, word string) string {
 	if n == 1 {
 		return fmt.Sprintf("%d %s", n, word)

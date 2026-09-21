@@ -45,7 +45,7 @@ func reply(status int, body string) func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-// sampleRollup mirrors the fixture the Python tests used.
+// sampleRollup is the shared fixture the emit tests build on.
 func sampleRollup() Rollup {
 	cost := int64(12_300_000) // 0.0123 USD
 	return Rollup{
@@ -328,15 +328,14 @@ func TestVerifyAtStartupTreatsRedirectAsAnUnexpectedStatus(t *testing.T) {
 
 // --- formatting --------------------------------------------------------------
 
-// Money is rendered as a plain decimal: no exponent (Python's Decimal produced
-// "1E-9" for a single nano-USD, which a strict parser may reject) and no
-// trailing zeros.
+// Money is rendered as a plain decimal: no exponent ("1E-9" for a single
+// nano-USD would be rejected by a strict parser) and no trailing zeros.
 func TestFormatNanoUSD(t *testing.T) {
 	tests := []struct {
 		nano int64
 		want string
 	}{
-		{12_300_000, "0.0123"}, // the Python fixture value
+		{12_300_000, "0.0123"},
 		{0, "0"},
 		{1, "0.000000001"},
 		{1_000_000_000, "1"},

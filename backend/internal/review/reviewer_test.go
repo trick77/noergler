@@ -32,11 +32,11 @@ func TestSetAuthorListsIsSafeUnderConcurrentReads(t *testing.T) {
 	wg.Wait()
 }
 
-// Probed against the venv in both directions. A naive `\b([A-Z]{2,10}-\d{1,7})\b`
-// port matches the first three (Python does not: its \b is Unicode, so a
-// letter next to the key means no boundary) and misses the Arabic-Indic case
-// (Python's \d is Unicode).
-func TestExtractTicketIDMatchesPython(t *testing.T) {
+// Both directions of the Unicode-class rule. A plain
+// `\b([A-Z]{2,10}-\d{1,7})\b` matches the first three, where a letter next
+// to the key means there is no boundary, and misses the Arabic-Indic case,
+// because RE2's \b and \d are ASCII.
+func TestExtractTicketIDIsPinned(t *testing.T) {
 	cases := []struct {
 		in   string
 		want string

@@ -2,10 +2,9 @@ package inference
 
 import "testing"
 
-// line: null drops the finding, confidence: null keeps it. Verified against
-// the running Python: line is required, confidence is Optional. Go would
-// unmarshal null into an int as 0 without erroring, so both need an explicit
-// null check.
+// line: null drops the finding, confidence: null keeps it. line is required
+// and confidence is optional, and Go would unmarshal null into an int as 0
+// without erroring, so both need an explicit null check.
 func TestNullHandlingInFindings(t *testing.T) {
 	dropped := ParseReview(`{"findings":[{"file":"a.py","line":null,"severity":"issue","comment":"c"}]}`)
 	if len(dropped.Findings) != 0 {

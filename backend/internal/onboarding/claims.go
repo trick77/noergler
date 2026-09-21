@@ -110,13 +110,13 @@ func ClaimAndOnboard(
 			fresh = append(append([]config.ProjectScope(nil), team.Projects...), proven...)
 		}
 		out.Claims = fresh
-		// Python's runtime.apply_claims writes onto the same config object the
-		// hook step then reads, so the new claims are in scope for it.
+		// The hook step reads this view, so the new claims must be in scope
+		// for it.
 		view.Projects = fresh
 	} else if opts.DryRun {
 		// For the hook step the proven scopes count as claimed even on a dry
-		// run, so the Onboarder's ownership check passes. Python copies the
-		// team here; the caller's runtime must not gain phantom claims from a
+		// run, so the Onboarder's ownership check passes. It is written onto
+		// a COPY: the caller's runtime must not gain phantom claims from a
 		// request that wrote nothing.
 		view.Projects = append(append([]config.ProjectScope(nil), team.Projects...), proven...)
 	}
@@ -229,8 +229,8 @@ func RemoveAndUnclaim(
 		}
 	}
 
-	// The remove Onboarder takes Python's defaults for everything but the name
-	// and the dry run: grant and prune never apply to a removal.
+	// The remove Onboarder takes the defaults for everything but the name and
+	// the dry run: grant and prune never apply to a removal.
 	o := New(admin, bot, team, webhookURL, Options{WebhookName: opts.WebhookName, DryRun: opts.DryRun}, log)
 	var hookResults []TargetResult
 	if len(proven) > 0 {

@@ -125,7 +125,8 @@ func TargetsFor(team *config.Team, subset []string) ([]Target, error) {
 	if subset == nil {
 		return targets, nil
 	}
-	// byKey keeps insertion order for the `known:` list, as Python's dict does.
+	// byKey is paired with known so the `known:` list keeps claim order; a
+	// bare map would render it differently on every call.
 	byKey := make(map[string]Target, len(targets))
 	known := make([]string, 0, len(targets))
 	for _, t := range targets {

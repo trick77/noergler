@@ -8,10 +8,10 @@ import (
 
 // symbolNamePatterns extract the symbol name from a scope definition line.
 //
-// Every \w is [\pL\pN_]: RE2's \w is ASCII, Python's is Unicode. All four use
-// unanchored search, and the jvm one has no method alternative, so a plain
-// `public void processOrder(...)` yields nothing. Intentional, pinned by a
-// Python test.
+// Every \w is spelled [\pL\pN_]: RE2's \w is ASCII-only, so `def prüfen(x)`
+// would yield "pr" with \w. All four use unanchored search, and the jvm one
+// has no method alternative, so a plain `public void processOrder(...)` yields
+// nothing. Intentional, pinned by TestExtractChangedSymbols.
 var symbolNamePatterns = map[string]*regexp.Regexp{
 	"python": regexp.MustCompile(`^\s*(?:async\s+)?(?:def|class)\s+([\pL\pN_]+)`),
 	"jvm": regexp.MustCompile(
@@ -32,8 +32,8 @@ const (
 	// maxRelationshipLines caps the rendered section. It counts header and
 	// reference lines but not the blank separators.
 	maxRelationshipLines = 30
-	// refLineTextRunes caps a reference line's text. Python sliced by
-	// characters, so this counts runes.
+	// refLineTextRunes caps a reference line's text. Counted in runes, not
+	// bytes: a byte cap would cut a line of umlauts at 60 characters.
 	refLineTextRunes = 120
 )
 
@@ -71,7 +71,7 @@ func extractChangedSymbols(f FileReviewData) []string {
 
 	var symbols []string
 	seen := map[string]bool{}
-	// Mirrors Python splitlines().
+	// splitLines, so a form feed in the diff body starts a new line.
 	for _, line := range splitLines(f.Diff) {
 		if !strings.HasPrefix(line, "+") || strings.HasPrefix(line, "+++") {
 			continue
@@ -96,7 +96,8 @@ func extractChangedSymbols(f FileReviewData) []string {
 // findReferences locates a symbol in a target file's content, or its diff when
 // no content was fetched.
 func findReferences(pattern *regexp.Regexp, target FileReviewData) []SymbolReference {
-	// Python's `content or diff`: an empty content string falls through.
+	// An empty content string falls through to the diff, exactly as an
+	// unfetched file does.
 	text, fromDiff := target.Content, false
 	if text == "" {
 		text, fromDiff = target.Diff, true
@@ -108,8 +109,9 @@ func findReferences(pattern *regexp.Regexp, target FileReviewData) []SymbolRefer
 			continue
 		}
 		stripped := strings.TrimSpace(line)
-		// Comment-only lines are skipped. The definition line itself is not,
-		// despite a Python comment claiming otherwise.
+		// A line that STARTS with a comment marker is skipped. A definition
+		// line is not: the marker test is on the stripped prefix, so a
+		// trailing comment never hides the definition.
 		if strings.HasPrefix(stripped, "#") || strings.HasPrefix(stripped, "//") ||
 			strings.HasPrefix(stripped, "*") {
 			continue
@@ -148,9 +150,9 @@ func BuildRelationships(files []FileReviewData) []CrossFileRelationship {
 		return nil
 	}
 
-	// Python compiled the word-boundary regex per (symbol, target file) pair,
-	// inside the inner loop. One per symbol is identical in behaviour and the
-	// pair loop is quadratic.
+	// One compiled boundary regex per symbol, memoised: the symbol x target
+	// loop is quadratic, and compiling inside it would recompile the same
+	// pattern once per target file for no behavioural difference.
 	patterns := map[string]*regexp.Regexp{}
 	patternFor := func(symbol string) *regexp.Regexp {
 		if re, ok := patterns[symbol]; ok {
@@ -232,16 +234,17 @@ func RenderRelationships(relationships []CrossFileRelationship) string {
 // symbolBoundaryRE matches symbol delimited by non-word runes.
 //
 // RE2's \b is ASCII-only, so `\bÖlservice\b` never matches `new Ölservice();`:
-// RE2 sees no word character at the Ö and the assertion fails. Python's \b is
-// Unicode-aware and does match, so the explicit boundaries restore parity
-// rather than diverge from it. Same trap as \w, third occurrence.
+// RE2 sees no word character at the Ö and the assertion fails. The explicit
+// [^\pL\pN_] boundaries are Unicode-aware and do match. Same trap as \w.
+// Pinned by TestSymbolBoundaryIsPinned and TestNonASCIISymbolFindsItsReferences.
 func symbolBoundaryRE(symbol string) *regexp.Regexp {
 	const notWord = `[^\pL\pN_]`
 	return regexp.MustCompile(
 		`(?:^|` + notWord + `)` + regexp.QuoteMeta(symbol) + `(?:$|` + notWord + `)`)
 }
 
-// splitLines mirrors Python str.splitlines (no terminators kept).
+// splitLines splits on the same boundary set as splitLinesKeepEnds, dropping
+// the terminators.
 func splitLines(s string) []string {
 	var out []string
 	for _, l := range splitLinesKeepEnds(s) {

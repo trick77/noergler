@@ -6,11 +6,11 @@ import (
 	"testing"
 )
 
-// Expected values generated from the Python _SECURITY_KEYWORDS with the venv.
-// Both directions of the RE2 divergence are covered: "üinsecure" and
-// "insecureü" are false in Python (no word boundary next to a letter) where a
-// naive \b port says true, and "1insecure" is false for the same reason.
-func TestSecurityKeywordsMatchPython(t *testing.T) {
+// Expected values are the golden corpus in testdata, compared case by case.
+// Both directions of the Unicode-boundary rule are covered: "üinsecure" and
+// "insecureü" are false (no word boundary next to a letter) where a naive
+// RE2 \b says true, and "1insecure" is false for the same reason.
+func TestSecurityKeywordsIsPinned(t *testing.T) {
 	blob, err := os.ReadFile("testdata/security_golden.json")
 	if err != nil {
 		t.Fatalf("read security golden: %v", err)
@@ -29,12 +29,12 @@ func TestSecurityKeywordsMatchPython(t *testing.T) {
 	}
 }
 
-// Called out separately because they are the whole reason the pattern is not
-// a transcription of the Python source.
+// Called out separately because they are the whole reason the pattern spells
+// the word boundary out instead of using \b.
 func TestSecurityKeywordsUnicodeBoundary(t *testing.T) {
 	for _, in := range []string{"üinsecure", "insecureü", "1insecure"} {
 		if IsSecurityFinding(in) {
-			t.Errorf("%q must not match: Python's \\b is Unicode and finds no boundary there", in)
+			t.Errorf("%q must not match: a Unicode word character leaves no boundary there", in)
 		}
 	}
 	for _, in := range []string{"a-insecure", "(insecure)", "insecure!", "The code is insecure."} {
@@ -44,7 +44,7 @@ func TestSecurityKeywordsUnicodeBoundary(t *testing.T) {
 	}
 }
 
-// Parity quirks worth keeping visible: the optional-character class means
+// Quirks worth keeping visible: the optional-character class means
 // "secretleak" matches while "secrets leak" does not.
 func TestSecurityKeywordsQuirks(t *testing.T) {
 	if !IsSecurityFinding("secretleak") {

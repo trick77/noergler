@@ -19,11 +19,11 @@ var timeoutMinutes = int(inference.CallTimeout.Minutes())
 // postOrUpdateSummary posts a new summary comment or updates the existing
 // one, tracking it in the store.
 //
-// Python falls back to a fresh post whenever update_pr_comment returns None.
-// Go returns errors instead, so the mapping is explicit: a 409 version
-// conflict (the adapter already logs "falling back to a new comment") and a
-// 404 (the comment was deleted) both mean post fresh. Anything else is a real
-// failure and is logged without posting a duplicate.
+// The fallback to a fresh post is mapped from the specific errors, not from
+// any failure: a 409 version conflict (the adapter already logs "falling
+// back to a new comment") and a 404 (the comment was deleted) both mean post
+// fresh. Anything else is a real failure and is logged without posting a
+// duplicate.
 func (r *Reviewer) postOrUpdateSummary(ctx context.Context, project, repo string, prID int, prReviewID int64, summary string) {
 	var existing *store.SummaryComment
 	if prReviewID != 0 {

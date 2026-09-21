@@ -18,10 +18,11 @@ const (
 // Without it, banners would stack on repeated failures.
 //
 // The cost banner has one wording, so a prefix identifies it. The stale
-// banner has three (timeout, unparseable, too large) and Python matched only
-// the timeout prefix, so a renderer that ate the sentinel would stack the
-// other two. staleBannerMarker is the phrase all six variants share, checked
-// as a substring of the banner row rather than a prefix.
+// banner has three (timeout, unparseable, too large), so matching only the
+// timeout prefix would let a renderer that ate the sentinel stack the other
+// two. staleBannerMarker is the phrase all six variants share, checked as a
+// substring of the banner row rather than a prefix
+// (TestStaleBannerFallbackCoversAllThreeNoticeKinds).
 const (
 	staleBannerVisiblePrefix = "⚠️"
 	staleBannerMarker        = "findings below reflect"
@@ -48,8 +49,7 @@ func isStaleBannerRow(line string) bool {
 		strings.Contains(line, staleBannerMarker)
 }
 
-// stripBanner implements both strippers, which are the same algorithm in
-// Python (reviewer.py:109 and :159).
+// stripBanner implements both strippers, which are the same algorithm.
 //
 // Detection priority is sentinel first, then the visible prefix on the first
 // non-blank line. On a hit, everything up to and including the first blank
