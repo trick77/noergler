@@ -46,3 +46,6 @@ http/http-client.env.json
 /backend/web/dist/*
 !/backend/web/dist/.gitkeep
 /ui/node_modules/
+
+# tsc -b incremental state, regenerated on every build.
+ui/tsconfig.tsbuildinfo
