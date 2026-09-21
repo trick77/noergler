@@ -1,0 +1,34 @@
+{
+  "name": "struct-field-race",
+  "description": "The worker goroutine's q.mu.Lock/Unlock around the depth update was removed, so it writes q.depth and reads q.pending unsynchronised while Submit and Depth take the mutex. A data race the detector catches and a torn depth callers can observe. The window starts at the func declaration: a whole-function defect is honestly anchored there, and resource-leak lost a correct review to exactly that, one line above the first statement.",
+  "files": [
+    {
+      "path": "internal/queue/queue.go",
+      "diff": "@@ -32,8 +32,6 @@ func (q *Queue) worker() {\n \t\t\treturn\n \t\t}\n \t\tq.run(j)\n-\t\tq.mu.Lock()\n \t\tq.depth = len(q.pending)\n-\t\tq.mu.Unlock()\n \t}\n }",
+      "content": "package queue\n\nimport \"sync\"\n\n// Queue runs one review at a time and reports how deep the backlog is.\ntype Queue struct {\n\tmu      sync.Mutex\n\tpending []Job\n\tdepth   int\n}\n\n// Submit enqueues j and never blocks.\nfunc (q *Queue) Submit(j Job) {\n\tq.mu.Lock()\n\tdefer q.mu.Unlock()\n\tq.pending = append(q.pending, j)\n\tq.depth = len(q.pending)\n}\n\n// Depth reports the backlog excluding the in-flight job.\nfunc (q *Queue) Depth() int {\n\tq.mu.Lock()\n\tdefer q.mu.Unlock()\n\treturn q.depth\n}\n\n// worker drains the queue in its own goroutine.\nfunc (q *Queue) worker() {\n\tfor {\n\t\tj, ok := q.take()\n\t\tif !ok {\n\t\t\treturn\n\t\t}\n\t\tq.run(j)\n\t\tq.depth = len(q.pending)\n\t}\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": [
+    {
+      "id": "depth-written-without-mutex",
+      "file": "internal/queue/queue.go",
+      "lines": [
+        28,
+        35
+      ],
+      "keywords": [
+        "race",
+        "unsynchronized",
+        "unsynchronised",
+        "without holding",
+        "without the lock",
+        "without the mutex",
+        "q.mu",
+        "concurrent",
+        "data race"
+      ],
+      "why": "The worker goroutine writes q.depth and reads q.pending without holding q.mu, while Submit writes and Depth reads the same fields under the mutex; that is a data race."
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "clean-guard-clause",
+  "description": "Nested ifs inverted into two early returns. The truth table is unchanged: both forms return false unless text and username are non-empty, and the substring comparison is untouched. Nothing to report.",
+  "files": [
+    {
+      "path": "internal/webhook/mention.go",
+      "diff": "@@ -5,11 +5,11 @@ import \"strings\"\n // mentionsBot reports whether text names the bot account.\n // The trigger is a case-insensitive substring, with no word boundary.\n func mentionsBot(text, username string) bool {\n-\tif username != \"\" {\n-\t\tif text != \"\" {\n-\t\t\treturn strings.Contains(strings.ToLower(text), strings.ToLower(username))\n-\t\t}\n+\tif username == \"\" {\n \t\treturn false\n \t}\n-\treturn false\n+\tif text == \"\" {\n+\t\treturn false\n+\t}\n+\treturn strings.Contains(strings.ToLower(text), strings.ToLower(username))\n }",
+      "content": "package webhook\n\nimport \"strings\"\n\n// mentionsBot reports whether text names the bot account.\n// The trigger is a case-insensitive substring, with no word boundary.\nfunc mentionsBot(text, username string) bool {\n\tif username == \"\" {\n\t\treturn false\n\t}\n\tif text == \"\" {\n\t\treturn false\n\t}\n\treturn strings.Contains(strings.ToLower(text), strings.ToLower(username))\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": []
+}

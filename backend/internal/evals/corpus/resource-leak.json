@@ -1,0 +1,33 @@
+{
+  "name": "resource-leak",
+  "description": "defer resp.Body.Close() was deleted, so no path closes the response body: the connection is never returned to the transport's pool and a bot token pointed at a busy endpoint exhausts it. The window starts at the func declaration: a whole-function defect is honestly anchored there, and a run scored a correct review as a miss for reporting it one line above the first statement.",
+  "files": [
+    {
+      "path": "internal/bitbucket/whoami.go",
+      "diff": "@@ -18,7 +18,6 @@ func (c *Client) WhoAmI(req *http.Request) (*User, error) {\n \tif err != nil {\n \t\treturn nil, fmt.Errorf(\"whoami: %w\", err)\n \t}\n-\tdefer resp.Body.Close()\n \tif resp.StatusCode < 200 || resp.StatusCode > 299 {\n \t\treturn nil, fmt.Errorf(\"whoami: status %d\", resp.StatusCode)\n \t}",
+      "content": "package bitbucket\n\nimport (\n\t\"encoding/json\"\n\t\"fmt\"\n\t\"net/http\"\n)\n\n// User describes the account a token belongs to.\ntype User struct {\n\tName string `json:\"name\"`\n\tSlug string `json:\"slug\"`\n}\n\n// WhoAmI resolves the account behind req's bearer token.\nfunc (c *Client) WhoAmI(req *http.Request) (*User, error) {\n\tresp, err := c.http.Do(req)\n\tif err != nil {\n\t\treturn nil, fmt.Errorf(\"whoami: %w\", err)\n\t}\n\tif resp.StatusCode < 200 || resp.StatusCode > 299 {\n\t\treturn nil, fmt.Errorf(\"whoami: status %d\", resp.StatusCode)\n\t}\n\tvar u User\n\tif err := json.NewDecoder(resp.Body).Decode(&u); err != nil {\n\t\treturn nil, fmt.Errorf(\"whoami: decode: %w\", err)\n\t}\n\treturn &u, nil\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": [
+    {
+      "id": "response-body-never-closed",
+      "file": "internal/bitbucket/whoami.go",
+      "lines": [
+        16,
+        28
+      ],
+      "keywords": [
+        "leak",
+        "leaked",
+        "not closed",
+        "never closed",
+        "close the body",
+        "closing the body",
+        "resp.Body.Close",
+        "connection"
+      ],
+      "why": "The response body is never closed on any path, so the underlying connection is leaked on every call, successful or not."
+    }
+  ]
+}

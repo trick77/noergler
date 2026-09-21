@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,6 +29,32 @@ func (s stubClient) Review(context.Context, inference.ReviewRequest) inference.R
 		Outcome: s.outcome,
 		Review:  inference.ParsedReview{Findings: s.findings, Summary: inference.NewReviewSummary()},
 	}
+}
+
+// perfectFindings answers every seeded bug in the corpus exactly: the first
+// line of each expected window, with the expectation's first keyword as the
+// comment. Derived from the corpus rather than written out, because a
+// hardcoded list silently stops being a clean sweep the moment a case is
+// added, and the failure reads as a broken orchestration instead of a stale
+// fixture.
+func perfectFindings(t *testing.T) ([]inference.ReviewFinding, int) {
+	t.Helper()
+	cases, err := evals.LoadCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []inference.ReviewFinding
+	seeded := 0
+	for _, c := range cases {
+		for _, e := range c.Expected {
+			seeded++
+			out = append(out, inference.ReviewFinding{
+				File: e.File, Line: e.Lines[0], Severity: "issue",
+				Comment: e.Keywords[0],
+			})
+		}
+	}
+	return out, seeded
 }
 
 func env(extra map[string]string) func(string) string {
@@ -61,13 +88,8 @@ func baseOptions(t *testing.T, client evals.Reviewer) options {
 // green run would be reported as a regression.
 func TestRun_CleanSweepIsNotAMiss(t *testing.T) {
 	// The corpus' own seeded bugs, answered exactly.
-	client := stubClient{findings: []inference.ReviewFinding{
-		{File: "internal/review/summary.go", Line: 19, Severity: "issue",
-			Comment: "r.Ticket is nil here, so this dereference will panic"},
-		{File: "internal/store/claims.go", Line: 21, Severity: "issue",
-			Comment: "the Commit error is ignored, so a failed commit reports success"},
-	}}
-	missed, err := run(context.Background(), baseOptions(t, client))
+	findings, _ := perfectFindings(t)
+	missed, err := run(context.Background(), baseOptions(t, stubClient{findings: findings}))
 	if err != nil || missed {
 		t.Fatalf("run = (%v, %v), want (false, nil) on a clean sweep", missed, err)
 	}
@@ -148,13 +170,8 @@ func TestRun_ClientBuilderErrorSurvives(t *testing.T) {
 // The -json report is the committed artifact, so it has to be written and
 // to carry the score.
 func TestRun_WritesTheJSONReport(t *testing.T) {
-	client := stubClient{findings: []inference.ReviewFinding{
-		{File: "internal/review/summary.go", Line: 19, Severity: "issue",
-			Comment: "nil dereference panics here"},
-		{File: "internal/store/claims.go", Line: 21, Severity: "issue",
-			Comment: "the Commit error is ignored"},
-	}}
-	opt := baseOptions(t, client)
+	findings, seeded := perfectFindings(t)
+	opt := baseOptions(t, stubClient{findings: findings})
 	opt.jsonOut = filepath.Join(t.TempDir(), "run.json")
 	if _, err := run(context.Background(), opt); err != nil {
 		t.Fatal(err)
@@ -167,8 +184,9 @@ func TestRun_WritesTheJSONReport(t *testing.T) {
 	if err := json.Unmarshal(blob, &score); err != nil {
 		t.Fatal(err)
 	}
-	if score.Seeded != 2 || score.Caught != 2 {
-		t.Errorf("report says caught %d of %d, want 2 of 2", score.Caught, score.Seeded)
+	if score.Seeded != seeded || score.Caught != seeded {
+		t.Errorf("report says caught %d of %d, want %d of %d",
+			score.Caught, score.Seeded, seeded, seeded)
 	}
 	if out := opt.stdout.(*strings.Builder).String(); !strings.Contains(out, "wrote ") {
 		t.Errorf("stdout does not mention the report:\n%s", out)
@@ -176,12 +194,14 @@ func TestRun_WritesTheJSONReport(t *testing.T) {
 }
 
 func TestRun_ReportsEveryCaseOnStdout(t *testing.T) {
+	_, seeded := perfectFindings(t)
 	opt := baseOptions(t, stubClient{})
 	if _, err := run(context.Background(), opt); err == nil {
 		t.Fatal("want the missed-bug error")
 	}
 	out := opt.stdout.(*strings.Builder).String()
-	for _, want := range []string{"mimo-v2.5-pro", "effort high", "MISS", "seeded 2"} {
+	for _, want := range []string{"mimo-v2.5-pro", "effort high", "MISS",
+		fmt.Sprintf("seeded %d", seeded)} {
 		if !strings.Contains(out, want) {
 			t.Errorf("stdout does not mention %q:\n%s", want, out)
 		}

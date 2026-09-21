@@ -1,0 +1,35 @@
+{
+  "name": "off-by-one",
+  "description": "The trailing-context clamp was rewritten to allow one line past the end, so ContextAfter slices lines[first:len(lines)+1] and panics with a slice bounds out of range on any hunk near the end of the file.",
+  "files": [
+    {
+      "path": "internal/diff/context.go",
+      "diff": "@@ -11,8 +11,8 @@ type Hunk struct {\n func ContextAfter(lines []string, h Hunk, n int) []string {\n \tfirst := h.Start + h.Count\n \tlast := first + n\n-\tif last > len(lines) {\n-\t\tlast = len(lines)\n+\tif last >= len(lines) {\n+\t\tlast = len(lines) + 1\n \t}\n \tif first >= last {\n \t\treturn nil",
+      "content": "package diff\n\n// Hunk is one contiguous run of changed lines.\ntype Hunk struct {\n\tStart int\n\tCount int\n}\n\n// ContextAfter returns up to n lines of trailing context for h.\n// The window must stop at the last line of the file.\nfunc ContextAfter(lines []string, h Hunk, n int) []string {\n\tfirst := h.Start + h.Count\n\tlast := first + n\n\tif last >= len(lines) {\n\t\tlast = len(lines) + 1\n\t}\n\tif first >= last {\n\t\treturn nil\n\t}\n\treturn lines[first:last]\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": [
+    {
+      "id": "context-window-past-end",
+      "file": "internal/diff/context.go",
+      "lines": [
+        14,
+        20
+      ],
+      "keywords": [
+        "out of range",
+        "out-of-range",
+        "bounds",
+        "past the end",
+        "beyond the end",
+        "len(lines)+1",
+        "len(lines) + 1",
+        "off-by-one",
+        "off by one",
+        "panic"
+      ],
+      "why": "The clamp sets last to len(lines)+1, so the final slice expression lines[first:last] runs one past the length. With no spare capacity that panics; with spare capacity it silently yields a phantom trailing line, which is the quieter half of the bug."
+    }
+  ]
+}

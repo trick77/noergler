@@ -1,0 +1,13 @@
+{
+  "name": "clean-rename",
+  "description": "A mechanical parameter rename, x to rollup, applied at every use. Nothing to report: a second control alongside clean-refactor, because one clean case is a thin basis for the false-positive count.",
+  "files": [
+    {
+      "path": "internal/riptide/rollup.go",
+      "diff": "@@ -16,9 +16,9 @@ func (r Rollup) Key() string {\n }\n \n // Describe renders the rollup for a log line.\n-func Describe(x Rollup) string {\n-\tif x.Findings == 0 {\n-\t\treturn x.Key() + \": no findings\"\n+func Describe(rollup Rollup) string {\n+\tif rollup.Findings == 0 {\n+\t\treturn rollup.Key() + \": no findings\"\n \t}\n-\treturn fmt.Sprintf(\"%s: %d findings\", x.Key(), x.Findings)\n+\treturn fmt.Sprintf(\"%s: %d findings\", rollup.Key(), rollup.Findings)\n }",
+      "content": "package riptide\n\nimport \"fmt\"\n\n// Rollup is the one-per-PR summary emitted after a review.\ntype Rollup struct {\n\tProject  string\n\tRepo     string\n\tPR       int\n\tFindings int\n}\n\n// Key identifies the rollup for deduplication.\nfunc (r Rollup) Key() string {\n\treturn fmt.Sprintf(\"%s/%s#%d\", r.Project, r.Repo, r.PR)\n}\n\n// Describe renders the rollup for a log line.\nfunc Describe(rollup Rollup) string {\n\tif rollup.Findings == 0 {\n\t\treturn rollup.Key() + \": no findings\"\n\t}\n\treturn fmt.Sprintf(\"%s: %d findings\", rollup.Key(), rollup.Findings)\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": []
+}

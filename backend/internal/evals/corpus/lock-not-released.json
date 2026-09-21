@@ -1,0 +1,35 @@
+{
+  "name": "lock-not-released",
+  "description": "defer r.mu.Unlock() was replaced by an explicit Unlock at the end of the function, so the early return on an unknown team leaves the registry mutex held forever and every later Disable or read deadlocks. The window starts at the func declaration: a whole-function defect is honestly anchored there, and resource-leak lost a correct review to exactly that, one line above the first statement.",
+  "files": [
+    {
+      "path": "internal/teams/registry.go",
+      "diff": "@@ -15,12 +15,12 @@ type Registry struct {\n // Disable marks a team unusable and records the reason.\n func (r *Registry) Disable(slug, reason string) error {\n \tr.mu.Lock()\n-\tdefer r.mu.Unlock()\n \tt, ok := r.byslug[slug]\n \tif !ok {\n \t\treturn fmt.Errorf(\"unknown team %q\", slug)\n \t}\n \tt.Ready = false\n \tr.disable[slug] = reason\n+\tr.mu.Unlock()\n \treturn nil\n }",
+      "content": "package teams\n\nimport (\n\t\"fmt\"\n\t\"sync\"\n)\n\n// Registry holds the live per-team runtime, guarded by mu.\ntype Registry struct {\n\tmu      sync.Mutex\n\tbyslug  map[string]*Team\n\tdisable map[string]string\n}\n\n// Disable marks a team unusable and records the reason.\nfunc (r *Registry) Disable(slug, reason string) error {\n\tr.mu.Lock()\n\tt, ok := r.byslug[slug]\n\tif !ok {\n\t\treturn fmt.Errorf(\"unknown team %q\", slug)\n\t}\n\tt.Ready = false\n\tr.disable[slug] = reason\n\tr.mu.Unlock()\n\treturn nil\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": [
+    {
+      "id": "mutex-held-on-early-return",
+      "file": "internal/teams/registry.go",
+      "lines": [
+        16,
+        24
+      ],
+      "keywords": [
+        "deadlock",
+        "still held",
+        "never released",
+        "not released",
+        "never unlocked",
+        "not unlocked",
+        "defer r.mu.Unlock",
+        "defer mu.Unlock",
+        "defer the Unlock",
+        "held forever"
+      ],
+      "why": "The Unlock now runs only on the success path, so returning the unknown-team error leaves r.mu locked and every subsequent caller blocks forever."
+    }
+  ]
+}
