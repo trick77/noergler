@@ -1,0 +1,41 @@
+{
+  "eventKey": "pr:opened",
+  "pullRequest": {
+    "id": 42,
+    "title": "Add new feature",
+    "fromRef": {
+      "id": "refs/heads/feature/cool-stuff",
+      "displayId": "feature/cool-stuff",
+      "latestCommit": "abc123def456",
+      "repository": {
+        "slug": "my-repo",
+        "project": {
+          "key": "PROJ"
+        }
+      }
+    },
+    "toRef": {
+      "id": "refs/heads/main",
+      "displayId": "main",
+      "latestCommit": "789xyz000111",
+      "repository": {
+        "slug": "my-repo",
+        "project": {
+          "key": "PROJ"
+        }
+      }
+    },
+    "author": {
+      "user": {
+        "name": "jan.username",
+        "slug": "jan.username",
+        "displayName": "Jan"
+      }
+    }
+  },
+  "actor": {
+    "name": "jan.username",
+    "slug": "jan.username",
+    "displayName": "Jan"
+  }
+}

@@ -2,7 +2,18 @@
 .env
 teams.yaml
 
-# Python
+# Plans and other HTML deliverables
+docs/plans/
+
+# Build. Anchored, unlike the Go repo's version: a bare `noergler` matches any
+# path component of that name at any depth, which would silently swallow one
+# under archive/.
+/backend/noergler
+fakes
+/bin/
+coverage/
+
+# Python, for the archived implementation under archive/
 .venv
 .venv/
 __pycache__/
@@ -16,27 +27,16 @@ __pycache__/
 *.swp
 *~
 
-# Claude Code
+# Agent tooling
 .claude/
-
-# Cursor
 .cursor/
-
-# Aider
 .aider*
-
-# Codex
 .codex/
-
-# Zed
 .zed/
-
-# Windsurf
 .windsurf/
 
 # macOS
 .DS_Store
-hack/
 
 # IntelliJ HTTP client: host, team secret and admin token, filled in locally (template: .example)
 http/http-client.env.json

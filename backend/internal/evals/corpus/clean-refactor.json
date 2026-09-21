@@ -1,0 +1,13 @@
+{
+  "name": "clean-refactor",
+  "description": "A correct extract-function refactor. Nothing to report: this is the control that makes the false-positive count mean something, since a corpus of only-buggy diffs rewards a model that flags everything.",
+  "files": [
+    {
+      "path": "internal/render/footnote.go",
+      "diff": "@@ -8,7 +9,11 @@ import \"fmt\"\n \n func Footnote(in Input) string {\n \tif in.Tokens == 0 {\n \t\treturn \"\"\n \t}\n-\treturn fmt.Sprintf(\"%d tokens (%d cached)\", in.Tokens, in.Cached)\n+\treturn tokenLine(in.Tokens, in.Cached)\n+}\n+\n+func tokenLine(total, cached int) string {\n+\treturn fmt.Sprintf(\"%d tokens (%d cached)\", total, cached)\n }",
+      "content": "package render\n\nimport \"fmt\"\n\ntype Input struct {\n\tTokens int\n\tCached int\n}\n\nfunc Footnote(in Input) string {\n\tif in.Tokens == 0 {\n\t\treturn \"\"\n\t}\n\treturn tokenLine(in.Tokens, in.Cached)\n}\n\nfunc tokenLine(total, cached int) string {\n\treturn fmt.Sprintf(\"%d tokens (%d cached)\", total, cached)\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": []
+}

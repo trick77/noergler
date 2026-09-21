@@ -1,0 +1,92 @@
+{
+ "Results": [
+  {
+   "Case": "clean-refactor",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "nil-deref",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/review/summary.go",
+     "Line": 19,
+     "Severity": "issue",
+     "Comment": "The new code comments out the nil check for `r.Ticket` but leaves the final return statement that dereferences `r.Ticket.Key`. When `r.Ticket` is nil, this will panic with a nil pointer dereference. The original code correctly returned early in this case, so this is a regression introduced by the change.",
+     "Confidence": 95,
+     "Headline": "Nil pointer dereference when Ticket is nil — runtime panic",
+     "Suggestion": "return r.Body + \"\\n\\n\" + r.Ticket.Key\nif r.Ticket != nil {\n\treturn r.Body + \"\\n\\n\" + r.Ticket.Key\n}\nreturn r.Body\n"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "nil-ticket-deref",
+      "file": "internal/review/summary.go",
+      "lines": [
+       19,
+       22
+      ],
+      "keywords": [
+       "nil",
+       "dereference",
+       "deref",
+       "panic",
+       "Ticket"
+      ],
+      "why": "The nil branch no longer returns, so r.Ticket.Key panics whenever Ticket is nil. A reviewer may anchor on the dead check (19) or on the dereference (22)."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "unchecked-error",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/store/claims.go",
+     "Line": 21,
+     "Severity": "issue",
+     "Comment": "The change silently discards the error returned by `tx.Commit(ctx)`. If the database commit fails (e.g., a network partition, connection timeout, or a deferred constraint violation not caught by the `Exec` call), the function will return `nil` to the caller, incorrectly signaling that the claim was successfully recorded. The deferred `tx.Rollback` will then run, but the caller, believing success, may proceed as if the data was persisted, leading to inconsistent state or data loss.",
+     "Confidence": 95,
+     "Headline": "Commit error is ignored, risking silent data loss",
+     "Suggestion": "\tif err := tx.Commit(ctx); err != nil {\n\t\treturn fmt.Errorf(\"commit claim: %w\", err)\n\t}\n\treturn nil"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "commit-error-swallowed",
+      "file": "internal/store/claims.go",
+      "lines": [
+       20,
+       22
+      ],
+      "keywords": [
+       "Commit",
+       "ignored",
+       "unchecked",
+       "discarded",
+       "swallow"
+      ],
+      "why": "tx.Commit's error is discarded, so a failed commit is reported to the caller as success and the claim silently does not exist."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  }
+ ],
+ "Seeded": 2,
+ "Caught": 2,
+ "Extra": 0
+}

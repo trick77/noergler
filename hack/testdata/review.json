@@ -1,0 +1,16 @@
+{
+  "overview": "A small change to the smoke fixture.",
+  "strengths": ["Focused diff"],
+  "security_performance": "No security or performance impact.",
+  "test_coverage": "Covered by the smoke run.",
+  "verdict": {"decision": "approve", "rationale": "Nothing blocking."},
+  "findings": [{"file": "a.go", "line": 10, "severity": "suggestion",
+    "confidence": 90, "headline": "Name the constant",
+    "comment": "A literal here would read better as a named constant.",
+    "suggestion": null},
+    {"file": "util.py", "line": 7, "severity": "issue",
+    "confidence": 80, "headline": "Renaming breaks callers",
+    "comment": "Callers of the old name will fail at import time.",
+    "suggestion": "Keep an alias for one release."}],
+  "compliance_requirements": null
+}

@@ -3,6 +3,20 @@ name: Release
 on:
   push:
     branches: [master]
+    # Only cut a release when something that ships changed. An ignore-list
+    # rather than an allow-list: a new top-level directory starts out
+    # releasing, which is the safe default. workflow_dispatch is unfiltered,
+    # so a release can always be forced by hand.
+    paths-ignore:
+      - "docs/**"
+      - ".github/**"
+      - "**/*.md"
+      - ".gitignore"
+      - ".env.example"
+      - "teams.example.yaml"
+      - "compose.yaml"
+      - "http/**"
+      - "hack/**"
   workflow_dispatch:
     inputs:
       bump:
@@ -42,14 +56,14 @@ jobs:
           NEXT="$MA.$MI.$PA"
           SHORT=$(git rev-parse --short HEAD)
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
-          echo "major=$MA"     >> "$GITHUB_OUTPUT"
-          echo "minor=$MI"     >> "$GITHUB_OUTPUT"
-          echo "short=$SHORT"  >> "$GITHUB_OUTPUT"
+          echo "major=$MA" >> "$GITHUB_OUTPUT"
+          echo "minor=$MI" >> "$GITHUB_OUTPUT"
+          echo "short=$SHORT" >> "$GITHUB_OUTPUT"
           echo "Bumping $LATEST -> $NEXT ($BUMP) at $SHORT" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create and push tag
         run: |
-          git config user.name  "github-actions[bot]"
+          git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag "${{ steps.ver.outputs.version }}"
           git push origin "${{ steps.ver.outputs.version }}"
@@ -65,10 +79,11 @@ jobs:
       - uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./Containerfile
+          file: ./backend/Containerfile
           push: true
           build-args: |
             NOERGLER_VERSION=${{ steps.ver.outputs.version }}
+            NOERGLER_COMMIT=${{ steps.ver.outputs.short }}
           tags: |
             ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.version }}
             ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.major }}.${{ steps.ver.outputs.minor }}

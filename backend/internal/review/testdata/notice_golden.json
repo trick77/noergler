@@ -1,0 +1,31 @@
+{
+ "timeout_with_prior": {
+  "fresh": "⚠️ **Review skipped** — no response from the model within 5 minutes for commit `abcdef01`. The review did not complete. Push a new commit or `@noergler` to retry.",
+  "banner": "⚠️ No response from the model within 5 minutes on commit `abcdef01` — findings below reflect the earlier commit `98765432`."
+ },
+ "timeout_no_prior": {
+  "fresh": "⚠️ **Review skipped** — no response from the model within 5 minutes for commit `abcdef01`. The review did not complete. Push a new commit or `@noergler` to retry.",
+  "banner": "⚠️ No response from the model within 5 minutes on commit `abcdef01` — findings below reflect an earlier commit."
+ },
+ "timeout_unknown_commit": {
+  "fresh": "⚠️ **Review skipped** — no response from the model within 5 minutes for commit `unknown`. The review did not complete. Push a new commit or `@noergler` to retry.",
+  "banner": "⚠️ No response from the model within 5 minutes on commit `unknown` — findings below reflect an earlier commit."
+ },
+ "unparseable_with_prior": {
+  "fresh": "⚠️ **Review skipped** — the model returned a response that could not be processed (it may have refused this diff) for commit `abcdef01`. The review did not complete. Push a new commit or `@noergler` to retry.",
+  "banner": "⚠️ The model returned an unprocessable response on commit `abcdef01` — findings below reflect the earlier commit `98765432`."
+ },
+ "unparseable_no_prior": {
+  "fresh": "⚠️ **Review skipped** — the model returned a response that could not be processed (it may have refused this diff) for commit `abcdef01`. The review did not complete. Push a new commit or `@noergler` to retry.",
+  "banner": "⚠️ The model returned an unprocessable response on commit `abcdef01` — findings below reflect an earlier commit."
+ },
+ "too_large_with_prior": {
+  "fresh": "⚠️ **Review skipped** — this PR is too large to review within the model's context window (commit `abcdef01`). Split it into smaller PRs, then `@noergler` to retry.",
+  "banner": "⚠️ Commit `abcdef01` is too large to review within the model's context window — findings below reflect the earlier commit `98765432`."
+ },
+ "too_large_no_prior": {
+  "fresh": "⚠️ **Review skipped** — this PR is too large to review within the model's context window (commit `abcdef01`). Split it into smaller PRs, then `@noergler` to retry.",
+  "banner": "⚠️ Commit `abcdef01` is too large to review within the model's context window — findings below reflect an earlier commit."
+ },
+ "timeout_minutes": 5
+}

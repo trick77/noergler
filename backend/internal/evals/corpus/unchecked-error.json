@@ -1,0 +1,30 @@
+{
+  "name": "unchecked-error",
+  "description": "A write error is swallowed, so a failed commit reports success. The hunk header's new-side start matches where its first context line sits in content: a model anchors off the header, so a fabricated one scores a correct finding as a miss.",
+  "files": [
+    {
+      "path": "internal/store/claims.go",
+      "diff": "@@ -19,8 +18,6 @@ func (s *Store) AddClaim(ctx context.Context, team, project string) error {\n \tif err != nil {\n \t\treturn err\n \t}\n-\tif err := tx.Commit(ctx); err != nil {\n-\t\treturn fmt.Errorf(\"commit claim: %w\", err)\n-\t}\n-\treturn nil\n+\ttx.Commit(ctx)\n+\treturn nil\n }",
+      "content": "package store\n\nimport (\n\t\"context\"\n)\n\n// AddClaim records that a team owns a project.\nfunc (s *Store) AddClaim(ctx context.Context, team, project string) error {\n\ttx, err := s.pool.Begin(ctx)\n\tif err != nil {\n\t\treturn err\n\t}\n\tdefer tx.Rollback(ctx)\n\n\t_, err = tx.Exec(ctx,\n\t\t`INSERT INTO team_claims (team_slug, project_key) VALUES ($1, $2)`,\n\t\tteam, project)\n\tif err != nil {\n\t\treturn err\n\t}\n\ttx.Commit(ctx)\n\treturn nil\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": [
+    {
+      "id": "commit-error-swallowed",
+      "file": "internal/store/claims.go",
+      "lines": [
+        20,
+        22
+      ],
+      "keywords": [
+        "Commit",
+        "ignored",
+        "unchecked",
+        "discarded",
+        "swallow"
+      ],
+      "why": "tx.Commit's error is discarded, so a failed commit is reported to the caller as success and the claim silently does not exist."
+    }
+  ]
+}
