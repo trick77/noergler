@@ -1,12 +1,9 @@
 // Package webhook holds the Bitbucket Server webhook payload types.
 //
-// A port of app/models.py. Phase 7 adds the HTTP handler that decodes these;
-// Phase 6 needs them because the review pipeline takes a payload.
-//
-// Pydantic rejects a payload missing a required field before any handler
-// sees it, and a plain Go struct does not, so Validate reproduces that check.
-// The distinction matters: a payload with no pullRequest.author would panic
-// deep inside the review path rather than being refused at the edge.
+// Decoding into a plain Go struct accepts anything that is valid JSON, so
+// Validate refuses a payload missing a required field at the edge. Without
+// it a payload with no pullRequest.author would panic deep inside the review
+// path.
 package webhook
 
 import (
@@ -127,11 +124,10 @@ func Decode(data []byte) (*Payload, error) {
 	return &p, nil
 }
 
-// Validate reports whether every field Pydantic marks required is present.
-//
-// Mirrors app/models.py: eventKey, pullRequest.id, .title, .fromRef (id and
-// displayId), .toRef, .author.user.name, and on a comment id and author.name.
-// Everything else is Optional there and a zero value here.
+// Validate reports whether every required field is present: eventKey,
+// pullRequest.id, .title, .fromRef (id or displayId), .toRef,
+// .author.user.name, and on a comment id and author.name. Everything else is
+// optional and decodes to a zero value.
 func (p *Payload) Validate() error {
 	switch {
 	case p.EventKey == "":
@@ -151,11 +147,11 @@ func (p *Payload) Validate() error {
 		switch {
 		case c.ID == 0:
 			return fmt.Errorf("%w: comment.id is required", ErrInvalidPayload)
-		// comment.text is deliberately not required. Pydantic's Comment.text
-		// is a required str, but "" satisfies it: probed against the venv, a
-		// payload with text "" validates. Rejecting it here would answer 400
-		// where Python answers 200 "comment without mention". The route gates
-		// on the @mention trigger, so an empty text never reaches the model.
+		// comment.text is deliberately not required: a payload with text ""
+		// validates. Rejecting it here would answer 400 instead of 200
+		// "comment without mention". The route gates on the @mention trigger,
+		// so an empty text never reaches the model. Pinned by
+		// TestEmptyCommentTextIsAccepted.
 		case c.Author.Name == "":
 			return fmt.Errorf("%w: comment.author.name is required", ErrInvalidPayload)
 		}
@@ -166,7 +162,7 @@ func (p *Payload) Validate() error {
 // ProjectRepo extracts the project key and repo slug.
 //
 // Bitbucket Server nests the repository under fromRef/toRef, and either side
-// may carry it, so toRef is tried first and fromRef second (reviewer.py:1559).
+// may carry it, so toRef is tried first and fromRef second.
 // Both empty means the payload is unusable for a review.
 func (p *Payload) ProjectRepo() (project, repo string) {
 	for _, ref := range []Ref{p.PullRequest.ToRef, p.PullRequest.FromRef} {

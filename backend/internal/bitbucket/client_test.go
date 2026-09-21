@@ -686,8 +686,8 @@ func TestGetProjectGetRepoListPullRequests(t *testing.T) {
 
 // --- transport behaviour -----------------------------------------------------
 
-// httpx does not follow redirects, so a 3xx is an error. Go would follow it and
-// replay the bearer token at whatever host it names.
+// Redirects are not followed: a 3xx would replay the bearer token at the new
+// host. It is reported as a StatusError, so it cannot read as success.
 func TestRedirectsAreNotFollowed(t *testing.T) {
 	var hits int
 	_, c := newFake(t, func(w http.ResponseWriter, r *http.Request) {

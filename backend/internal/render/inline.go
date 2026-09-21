@@ -35,8 +35,8 @@ func InlineComment(f inference.ReviewFinding) string {
 	return strings.Join(parts, "\n\n")
 }
 
-// capitalize is Python's str.capitalize for the severity enum: upper the
-// first character, lower the rest.
+// capitalize renders the severity enum as a label: upper the first
+// character, lower the rest, so "issue" becomes "Issue".
 func capitalize(s string) string {
 	if s == "" {
 		return s

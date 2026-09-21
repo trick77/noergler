@@ -7,8 +7,7 @@ import (
 	"testing"
 )
 
-// The fixture is the one the Python suite replays
-// (tests/fixtures/sample_webhook.json), copied verbatim.
+// A real Bitbucket Server delivery, captured verbatim.
 func TestDecodeRealWebhookPayload(t *testing.T) {
 	blob, err := os.ReadFile("testdata/sample_webhook.json")
 	if err != nil {
@@ -37,7 +36,7 @@ func TestDecodeRealWebhookPayload(t *testing.T) {
 	if p.Actor == nil || p.Actor.Name != "jan.username" {
 		t.Errorf("actor = %+v", p.Actor)
 	}
-	// Absent in the fixture; Optional in Pydantic, zero here.
+	// Absent in the fixture: optional, so it decodes to a zero value.
 	if p.PullRequest.State != "" {
 		t.Errorf("state = %q, want empty", p.PullRequest.State)
 	}
@@ -51,9 +50,8 @@ func TestDecodeRealWebhookPayload(t *testing.T) {
 	}
 }
 
-// Pydantic refuses a payload missing a required field before any handler
-// sees it. A plain Go struct would accept these and fail deep in the review
-// path instead.
+// A payload missing a required field is refused at the edge. Without
+// Validate the struct would accept these and fail deep in the review path.
 func TestValidateRejectsMissingRequiredFields(t *testing.T) {
 	cases := []struct {
 		name string
@@ -133,8 +131,8 @@ func TestMergeCommitSHA(t *testing.T) {
 	}
 }
 
-// json.Unmarshal accepts null into a pointer or map and leaves it nil where
-// Python's isinstance(x, dict) rejected it, so the nil cases must be safe.
+// json.Unmarshal accepts an explicit null into a pointer or map and leaves it
+// nil, so every reader of these fields must be nil-safe.
 func TestNullsDecodeSafely(t *testing.T) {
 	js := `{"eventKey":"pr:merged","actor":null,"comment":null,
 		"pullRequest":{"id":1,"title":"t","state":null,"properties":null,
@@ -156,9 +154,8 @@ func TestNullsDecodeSafely(t *testing.T) {
 	}
 }
 
-// An empty comment.text validates: Pydantic's required str is satisfied by
-// "", so Python answers 200 "comment without mention" where a rejection here
-// would answer 400. Probed against the venv on 2026-09-20.
+// An empty comment.text validates, so the route answers 200 "comment without
+// mention"; rejecting it here would answer 400 instead.
 func TestEmptyCommentTextIsAccepted(t *testing.T) {
 	js := `{"eventKey":"pr:comment:added",
 		"pullRequest":{"id":1,"title":"t",

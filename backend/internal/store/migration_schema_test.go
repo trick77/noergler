@@ -11,12 +11,13 @@ import (
 // callers was already covered; what the migration actually CREATED was not,
 // so an edit to 0001_initial.sql broke no test.
 //
-// Python covered this by reading the Alembic files as text and asserting on
-// substrings. These assert the live schema through information_schema
-// instead: a text match passes on SQL that never ran, and cannot see a
-// column whose type or nullability drifted. The names are Go's, not
-// Python's - pr_reviews became pull_requests, review_findings became
-// findings, and review_runs is new (schema is runs, not accumulators).
+// These assert the LIVE schema through information_schema rather than
+// matching the migration SQL as text: a text match passes on SQL that never
+// ran, and cannot see a column whose type or nullability drifted.
+//
+// The table names changed with the schema: pr_reviews became pull_requests,
+// review_findings became findings, and review_runs is new (schema is runs,
+// not accumulators).
 
 // columnSpec is one column the code depends on: its type and whether the
 // writer may omit it.
@@ -163,9 +164,9 @@ func TestSchema_PullRequestsCarriesEveryColumnTheStoreWrites(t *testing.T) {
 	}
 }
 
-// review_runs is the divergence from Python made structural: one row per
-// run, totals aggregated over it. A run counts even when its price does
-// not, so cost_nano_usd is the one nullable column here.
+// review_runs holds one row per run, with totals aggregated over it rather
+// than accumulated in a column. A run counts even when its price does not, so
+// cost_nano_usd is the one nullable column here.
 func TestSchema_ReviewRunsIsRowsNotAccumulators(t *testing.T) {
 	s := testStore(t)
 	cols := columns(t, s, "review_runs")
@@ -326,9 +327,9 @@ func TestSchema_FindingsKeepsTheDedupIndex(t *testing.T) {
 	}
 }
 
-// One owner per repo, one per whole project. Both indexes are PARTIAL -
-// Python's plain unique index could not express the NULL repo_slug case,
-// so a whole-project claim and a repo claim would have collided.
+// One owner per repo, one per whole project. Both indexes are PARTIAL: a
+// plain unique index cannot express the NULL repo_slug case, so a
+// whole-project claim and a repo claim on the same project would collide.
 func TestSchema_TeamClaimsArePartialUniquePerRepoAndProject(t *testing.T) {
 	s := testStore(t)
 	repo := indexDef(t, s, "uq_team_claims_repo")

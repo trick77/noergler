@@ -22,16 +22,16 @@ import (
 // comment body.
 const maxWebhookBodyBytes = 1 << 20
 
-// reviewEventKeys are the events that start a review. Python's
-// _REVIEW_EVENT_KEYS, exactly.
+// reviewEventKeys are the events that start a review. Everything else is
+// either a rollup, a purge or a mention.
 var reviewEventKeys = map[string]bool{
 	webhook.EventOpened:         true,
 	webhook.EventFromRefUpdated: true,
 }
 
-// accepted and ignored mirror Python's response dicts. They are structs
-// rather than maps because encoding/json sorts a map's keys and Python's
-// dict order is status, reason, queue.
+// accepted and ignored are the webhook's response bodies. They are structs
+// rather than maps because encoding/json sorts a map's keys, and the field
+// order on the wire is status, reason, queue.
 type accepted struct {
 	Status string `json:"status"`
 	Reason string `json:"reason,omitempty"`
@@ -47,8 +47,8 @@ type ignored struct {
 // webhook handles one Bitbucket delivery.
 //
 // The check order is security-critical and is not the order a Go author
-// would write. It follows app/main.py:389 step for step; the comments name
-// what each step is load-bearing for. Do not reorder.
+// would write. It is pinned in AGENTS.md; the comments name what each step is
+// load-bearing for. Do not reorder.
 func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("team")
 	ctx := logging.WithTeam(r.Context(), slug)
@@ -72,8 +72,7 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 	// Capped, because this read happens BEFORE the signature is checked and
 	// the team slug is not a secret: it is the path of the webhook URL every
 	// project admin can see. Uncapped, one large POST walks the pod past
-	// GOMEMLIMIT. Python read it unbounded; the outbound side has been
-	// byte-capped since Phase 3 for the same budget.
+	// GOMEMLIMIT; the outbound side is byte-capped for the same budget.
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxWebhookBodyBytes))
 	if err != nil {
 		var tooLarge *http.MaxBytesError
@@ -123,7 +122,7 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 7. Now the full payload, with the checks Pydantic made at the edge.
+	// 7. Now the full payload, with every required field checked.
 	payload, err := webhook.Decode(body)
 	if err != nil {
 		d.Log.ErrorContext(ctx, "Failed to parse webhook payload", "error", err)

@@ -63,8 +63,9 @@ type Deps struct {
 	Bitbucket BotClient
 	// PublicURL is this instance.s base URL. Empty disables /onboard.
 	PublicURL string
-	// BotUsername is the instance's Bitbucket account. The @mention trigger
-	// is instance-wide, not per-team: Python reads config.bitbucket.username.
+	// BotUsername is the instance's Bitbucket account, read from
+	// BITBUCKET_USERNAME. The @mention trigger is instance-wide, not
+	// per-team.
 	BotUsername string
 }
 

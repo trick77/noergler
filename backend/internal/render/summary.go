@@ -10,7 +10,7 @@ import (
 )
 
 // verdictLabels maps the model's verdict enum to its rendered label. An
-// unrecognised value falls back to approve, as Python's dict.get does.
+// unrecognised value falls back to approve.
 var verdictLabels = map[string]string{
 	"approve":                "Approve ✅",
 	"approve_with_followups": "Approve with follow-ups ⚠️",
@@ -78,7 +78,7 @@ type SummaryInput struct {
 	// RunCostUSD is nil when the gateway did not price the run.
 	RunCostUSD *float64
 	// CumulativeCostUSD is the PR total including this run; only read when
-	// RunCostUSD is set, matching Python's nesting.
+	// RunCostUSD is set, so an unpriced run shows no total.
 	CumulativeCostUSD *float64
 	// KeySpendUSD is the gateway's own gauge for the whole API key. Shown,
 	// never summed, suppressed when zero.
@@ -92,7 +92,7 @@ type SummaryInput struct {
 
 // Summary renders the PR summary comment.
 //
-// Section order is fixed (reviewer.py:2037): optional incremental header,
+// Section order is fixed (TestSummarySectionOrder): optional incremental header,
 // Overview, Strengths, Issues and suggestions, Security and performance, Test
 // coverage, the ticket block when a ticket is linked, Recommendation, and the
 // footnote after a horizontal rule.
@@ -244,7 +244,7 @@ func renderTicket(in SummaryInput) string {
 
 	// Order matters: a missing AC means there was nothing to extract, so
 	// "extraction failed" would be misleading. Ticket-side conditions are
-	// checked before LLM-side ones (reviewer.py:2164).
+	// checked before LLM-side ones.
 	var reason string
 	switch {
 	case !in.TicketComplianceCheck:
@@ -421,8 +421,8 @@ func diffParts(added, removed int) string {
 
 // baseNames renders a comma-separated list of quoted file basenames.
 //
-// Python's PurePosixPath("").name is "" while Go's path.Base("") is ".", so
-// the empty case is guarded rather than left to path.Base.
+// path.Base("") is ".", not "", so the empty case is guarded rather than
+// left to path.Base.
 func baseNames(paths []string) string {
 	out := make([]string, len(paths))
 	for i, p := range paths {

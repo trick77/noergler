@@ -204,7 +204,7 @@ func botReading(keys ...string) *fakeBot {
 }
 
 // golden reads a testdata file, dropping the one trailing newline a text
-// editor keeps but Python's join never emits.
+// editor keeps and the renderers never emit.
 func golden(t *testing.T, name string) string {
 	t.Helper()
 	b, err := os.ReadFile("testdata/" + name)

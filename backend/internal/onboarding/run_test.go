@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-// Ported from TestStatus.test_ok_and_stray_and_foreign.
 func TestStatusOkWithStrayAndForeign(t *testing.T) {
 	admin := strayAdmin()
 	admin.hooks["PROJ"] = []map[string]any{goodHook(nil)}
@@ -59,7 +58,6 @@ func TestStatusRepoListingFailureAnnotatesTheVerdict(t *testing.T) {
 	}
 }
 
-// Ported from TestStatus.test_missing_stale_foreign_and_admin_401.
 func TestStatusVerdicts(t *testing.T) {
 	stale := goodHook(map[string]any{"events": []any{"pr:opened"}, "configuration": map[string]any{}})
 	cases := []struct {
@@ -103,7 +101,6 @@ func TestStatusVerdicts(t *testing.T) {
 	}
 }
 
-// Ported from TestStatus.test_not_owned_and_whole_claim_block.
 func TestStatusNotOwnedAndWholeClaimBlock(t *testing.T) {
 	admin := &fakeAdmin{hooks: map[string][]map[string]any{"PROJ": {}}}
 	o := newOnboarder(t, newTeam(whole("PROJ")), admin, botReading("PROJ", "PROJ/my-repo"), Options{})
@@ -126,8 +123,8 @@ func TestStatusNotOwnedAndWholeClaimBlock(t *testing.T) {
 	}
 }
 
-// Ported from TestStatus.test_project_hook_guard_only_yields_on_no_admin: a
-// Bitbucket hiccup on the guard is an error, not a licence to double-hook.
+// A Bitbucket hiccup on the guard is an error, not a licence to
+// double-hook.
 func TestGuardFailureIsReportedNotIgnored(t *testing.T) {
 	ctx := context.Background()
 	tm := newTeam(repos("PROJ", "my-repo"))
@@ -164,9 +161,9 @@ func TestGuardFailureIsReportedNotIgnored(t *testing.T) {
 	}
 }
 
-// Python only caught HTTPStatusError in the guard, so a transport failure
-// escaped to run()'s blanket except. Run turns it into an error row, and the
-// status row loses its claim: owned and bot both come back false.
+// A transport failure in the guard is not a verdict: it escapes to Run,
+// which turns it into an error row, and the status row loses its claim:
+// owned and bot both come back false.
 func TestTransportFailureInTheGuardEscapesToRun(t *testing.T) {
 	ctx := context.Background()
 	tm := newTeam(repos("PROJ", "my-repo"))
@@ -207,8 +204,7 @@ func TestTransportFailureInTheGuardEscapesToRun(t *testing.T) {
 	}
 }
 
-// A transport failure in the grant escapes the same way: Python only caught
-// HTTPStatusError there too.
+// A transport failure in the grant escapes to Run the same way.
 func TestTransportFailureInTheGrantEscapesToRun(t *testing.T) {
 	admin := &fakeAdmin{
 		hooks:   map[string][]map[string]any{"PROJ": {}},
@@ -236,7 +232,6 @@ func TestTransportFailureInTheGrantEscapesToRun(t *testing.T) {
 	}
 }
 
-// Ported from TestOnboard.test_create_with_grant_and_prune.
 func TestOnboardCreateWithGrantAndPrune(t *testing.T) {
 	admin := strayAdmin()
 	admin.hooks["PROJ"] = []map[string]any{}
@@ -258,7 +253,6 @@ func TestOnboardCreateWithGrantAndPrune(t *testing.T) {
 	}
 }
 
-// Ported from TestOnboard.test_without_grant_bot_is_skipped.
 func TestOnboardWithoutGrantBotIsSkipped(t *testing.T) {
 	admin := &fakeAdmin{hooks: map[string][]map[string]any{"PROJ": {}}}
 	res, err := newOnboarder(t, newTeam(whole("PROJ")), admin, &fakeBot{err: statusErr(403, "no")}, Options{}).
@@ -275,7 +269,6 @@ func TestOnboardWithoutGrantBotIsSkipped(t *testing.T) {
 	}
 }
 
-// Ported from TestOnboard.test_up_to_date_update_and_foreign.
 func TestOnboardUpToDateUpdateAndForeign(t *testing.T) {
 	ctx := context.Background()
 	tm := newTeam(repos("PROJ", "my-repo"))
@@ -308,7 +301,6 @@ func TestOnboardUpToDateUpdateAndForeign(t *testing.T) {
 	}
 }
 
-// Ported from TestOnboard.test_dry_run_writes_nothing.
 func TestOnboardDryRunWritesNothing(t *testing.T) {
 	admin := &fakeAdmin{
 		hooks: map[string][]map[string]any{"PROJ": {}},
@@ -344,7 +336,6 @@ func TestOnboardPruneFailureIsANoteNotAFailure(t *testing.T) {
 	}
 }
 
-// Ported from TestRemove.test_removes_own_leaves_foreign.
 func TestRemove(t *testing.T) {
 	ctx := context.Background()
 	target := Target{Project: "PROJ"}
@@ -404,7 +395,6 @@ func TestRemoveDryRun(t *testing.T) {
 	}
 }
 
-// Ported from TestRun.test_one_failure_does_not_abort.
 func TestRunOneFailureDoesNotAbortTheRest(t *testing.T) {
 	tm := newTeam(repos("PROJ", "my-repo", "other"))
 	admin := &fakeAdmin{

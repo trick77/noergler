@@ -82,6 +82,5 @@ func (g *Registry) Review(ctx context.Context, team string, p *webhook.Payload) 
 	rt.Reviewer.ReviewPullRequest(ctx, p, false)
 }
 
-// There is deliberately no Close. Python's lifespan closes each team's
-// httpx.AsyncClient on shutdown; Go's clients hold an http.Client whose
-// transport needs no teardown, and the pool is the caller's.
+// There is deliberately no Close. Each team's clients hold an http.Client
+// whose transport needs no teardown, and the pool is the caller's.

@@ -34,8 +34,8 @@ type PRUpsert struct {
 
 // UpsertPullRequest inserts or updates the PR row and returns its id.
 // opened_at is sticky: the first non-NULL value stays. The pointer, author
-// and title are written as given, nil included, as in Python: the skip
-// paths pass the prior pointer back on purpose. A declined PR that sees a
+// and title are written as given, nil included: the skip paths pass the
+// prior pointer back on purpose. A declined PR that sees a
 // review again was reopened: declined_at is cleared.
 func (s *Store) UpsertPullRequest(ctx context.Context, u PRUpsert) (int64, error) {
 	var id int64
@@ -63,9 +63,9 @@ func (s *Store) UpsertPullRequest(ctx context.Context, u PRUpsert) (int64, error
 const activeFilter = `merged_at IS NULL AND deleted_at IS NULL`
 
 // GetLastReviewedCommit returns the pointer for an open PR; ok is false when
-// there is no row or the PR is closed. Declined counts as closed (divergence
-// from Python): a declined-then-reopened PR gets a full review, and the
-// upsert that follows clears declined_at.
+// there is no row or the PR is closed. Declined counts as closed, so a
+// declined-then-reopened PR gets a full review and the upsert that follows
+// clears declined_at.
 func (s *Store) GetLastReviewedCommit(ctx context.Context, k PRKey) (string, bool, error) {
 	var commit *string
 	err := s.pool.QueryRow(ctx, `
@@ -214,8 +214,8 @@ type Run struct {
 	FilesChanged   int
 }
 
-// InsertRun records the run and, as the Python accumulator did, carries the
-// run's commit and diff size onto the PR as the latest known final figures.
+// InsertRun records the run and carries the run's commit and diff size onto
+// the PR as the latest known final figures.
 // Returns the run id.
 func (s *Store) InsertRun(ctx context.Context, r Run) (int64, error) {
 	tx, err := s.pool.Begin(ctx)

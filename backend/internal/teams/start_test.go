@@ -43,8 +43,7 @@ func emptyStore() *fakeClaimStore {
 	}
 }
 
-// A missing prompt template disables that team. Python raises
-// FileNotFoundError inside LLMClient.__init__, which _start_team catches.
+// A missing prompt template disables that team rather than aborting boot.
 func TestStart_MissingTemplateDisablesTheTeam(t *testing.T) {
 	team := &config.Team{Slug: "platform", Review: reviewCfg()}
 	log, _ := bufLogger()
@@ -139,8 +138,8 @@ func TestBoot_SeedConflictDisablesBeforeStartup(t *testing.T) {
 	}
 }
 
-// The three alerted lines keep Python's rendering: the lists live inside the
-// message, in Python list repr, because the Splunk alert matches on it.
+// The three alerted lines keep their rendering: the lists live inside the
+// message as ['a', 'b'], because the Splunk alert matches on it.
 func TestBoot_TeamsReadyLineRendering(t *testing.T) {
 	log, buf := bufLogger()
 	team := &config.Team{Slug: "platform", Review: reviewCfg()}

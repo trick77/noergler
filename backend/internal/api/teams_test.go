@@ -80,8 +80,8 @@ func TestTeams_BearerAuth(t *testing.T) {
 	}
 }
 
-// A whole-project scope serialises with no repos key at all, matching
-// Pydantic's exclude_none. Empty lists stay [], never null.
+// A whole-project scope serialises with no repos key at all. Empty lists stay
+// [], never null.
 func TestTeams_GetRendersTheSnapshot(t *testing.T) {
 	h := newHarness(t, func(team *config.Team) {
 		team.Projects = []config.ProjectScope{{Key: "PLAT"}, {Key: "OPS", Repos: []string{"a", "b"}}}
@@ -101,7 +101,7 @@ func TestTeams_GetRendersTheSnapshot(t *testing.T) {
 }
 
 // The partial update: absent keeps, a list replaces, [] clears, and an
-// explicit null behaves exactly like absent (probed against the venv).
+// explicit null behaves exactly like absent.
 func TestTeams_PutIsAPartialUpdate(t *testing.T) {
 	cases := []struct {
 		name string
@@ -226,7 +226,7 @@ func TestTeams_StoreFailureDoesNotApply(t *testing.T) {
 }
 
 // Auth runs before the body is decoded, so an unauthenticated caller cannot
-// probe the schema. A divergence from FastAPI, which validates first.
+// probe the schema: a bad body behind a bad secret answers 401, never 422.
 func TestTeams_AuthPrecedesBodyValidation(t *testing.T) {
 	h := newHarness(t, nil)
 	h.setStore(t, &fakeSettingsStore{})

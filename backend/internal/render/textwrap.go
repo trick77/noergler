@@ -6,37 +6,39 @@ import (
 	"unicode/utf8"
 )
 
-// This file is a port of the subset of Python's textwrap that wrap_prose
-// uses: break_long_words=False, break_on_hyphens=False, drop_whitespace=True,
-// expand_tabs=True, replace_whitespace=True, max_lines=None.
+// This file is the line wrapper wrap_prose uses: long words are never
+// broken, hyphens are never break points, leading and trailing whitespace is
+// dropped, tabs are expanded, whitespace is normalised, no line cap.
 //
-// It is a port, not an equivalent. Three details decide parity and none of
-// them are what a Go author would reach for:
+// Three rules decide the output and none of them are what a Go author would
+// reach for:
 //
-//  1. textwrap's whitespace set is textwrap._whitespace, exactly
-//     "\t\n\v\f\r " — ASCII only. A non-breaking space is NOT a word
-//     separator, so "non breaking" is one indivisible token.
-//     strings.Fields would split it and diverge.
+//  1. The whitespace set is exactly "\t\n\v\f\r " — ASCII only. A
+//     non-breaking space is NOT a word separator, so "non breaking" is
+//     one indivisible token. strings.Fields would split it
+//     (TestNBSPIsNotABreakPoint).
 //  2. Tabs are expanded to 8-column tab stops BEFORE anything else, so a
-//     tab-separated line comes back space-padded at those stops.
-//  3. Widths are counted in characters (Python len() on str), so runes.
+//     tab-separated line comes back space-padded at those stops
+//     (TestTabsExpandToEightColumnStops).
+//  3. Widths are counted in characters, so runes and not bytes.
 //
-// With break_on_hyphens=False the chunker is textwrap's wordsep_simple_re,
-// a plain split on runs of those six characters keeping the separators,
-// which is what splitChunks does.
+// Because hyphens are never break points, the chunker is a plain split on
+// runs of those six characters keeping the separators, which is what
+// splitChunks does.
 
-// pyWhitespace is textwrap._whitespace. Deliberately not unicode.IsSpace.
+// pyWhitespace is that six-character whitespace set. Deliberately not
+// unicode.IsSpace: a non-breaking space must not become a break point.
 const pyWhitespace = "\t\n\v\f\r "
 
 const tabSize = 8
 
-// isPyWhitespace reports whether r is one of the six characters textwrap
+// isPyWhitespace reports whether r is one of the six characters the wrapper
 // treats as whitespace.
 func isPyWhitespace(r rune) bool {
 	return strings.ContainsRune(pyWhitespace, r)
 }
 
-// expandTabs reproduces str.expandtabs(8): each tab advances to the next
+// expandTabs expands to 8-column tab stops: each tab advances to the next
 // multiple of tabSize, counted from the last line start.
 func expandTabs(s string) string {
 	if !strings.ContainsRune(s, '\t') {
@@ -51,9 +53,9 @@ func expandTabs(s string) string {
 			b.WriteString(strings.Repeat(" ", n))
 			col += n
 		case '\n', '\r':
-			// Only these reset the column. CPython's str.expandtabs treats
-			// \v and \f as ordinary width-1 characters:
-			// "a\vb\tc".expandtabs(8) is "a\vb     c", not "a\vb       c".
+			// Only these reset the column. \v and \f are ordinary width-1
+			// characters here: expanding "a\vb\tc" gives "a\vb     c", not
+			// "a\vb       c" (TestExpandTabsOnlyResetsOnNewlineAndCarriageReturn).
 			b.WriteRune(r)
 			col = 0
 		default:
@@ -65,7 +67,7 @@ func expandTabs(s string) string {
 }
 
 // replaceWhitespace maps each of the six whitespace characters to a plain
-// space, as textwrap does after tab expansion.
+// space. Runs after tab expansion.
 func replaceWhitespace(s string) string {
 	return strings.Map(func(r rune) rune {
 		if isPyWhitespace(r) {
@@ -75,9 +77,8 @@ func replaceWhitespace(s string) string {
 	}, s)
 }
 
-// splitChunks is textwrap's wordsep_simple_re split: runs of whitespace and
-// runs of non-whitespace, alternating, separators kept. Empty strings are
-// dropped, as textwrap does.
+// splitChunks splits into runs of whitespace and runs of non-whitespace,
+// alternating, separators kept. Empty strings are dropped.
 func splitChunks(s string) []string {
 	var out []string
 	var cur strings.Builder
@@ -97,21 +98,22 @@ func splitChunks(s string) []string {
 	return out
 }
 
-// isBlankChunk mirrors chunk.strip() == "" in _wrap_chunks.
+// isBlankChunk reports whether a chunk is whitespace-only, for the
+// drop-whitespace step in wrapChunks.
 //
-// str.strip() is Unicode, and replaceWhitespace only normalises the six ASCII
-// characters, so a chunk of non-breaking spaces reaches here intact and is
-// still blank to Python: textwrap.wrap(" ") is [] and
-// textwrap.wrap("hello  ") is ["hello "]. Trimming ASCII spaces alone
-// would keep both, so this needs unicode.IsSpace even though the splitter
-// deliberately does not.
+// Blank detection is Unicode (unicode.IsSpace) even though the splitter is
+// deliberately ASCII-only: replaceWhitespace normalises only the six ASCII
+// characters, so a chunk of non-breaking spaces arrives here intact and must
+// still count as blank. Wrapping " " yields no lines, and
+// "hello  " yields ["hello "]. Trimming ASCII spaces alone would keep
+// both as content (TestNBSPChunkCountsAsBlank).
 func isBlankChunk(s string) bool {
 	return strings.TrimFunc(s, unicode.IsSpace) == ""
 }
 
-// wrapChunks is textwrap.TextWrapper._wrap_chunks with break_long_words and
-// max_lines removed: a chunk wider than the line is emitted on a line of its
-// own and allowed to overflow.
+// wrapChunks greedily fills lines from the chunk list. Long words are never
+// broken and there is no line cap: a chunk wider than the line is emitted on
+// a line of its own and allowed to overflow.
 func wrapChunks(chunks []string, width int, initialIndent, subsequentIndent string) []string {
 	var lines []string
 	if width <= 0 {
@@ -144,8 +146,8 @@ func wrapChunks(chunks []string, width int, initialIndent, subsequentIndent stri
 			i++
 		}
 
-		// break_long_words=False: a chunk too big for any line goes on this
-		// line alone rather than being chopped.
+		// Long words are never broken: a chunk too big for any line goes on
+		// this line alone rather than being chopped.
 		if len(cur) == 0 && i < len(chunks) {
 			cur = append(cur, chunks[i])
 			i++
@@ -163,7 +165,8 @@ func wrapChunks(chunks []string, width int, initialIndent, subsequentIndent stri
 	return lines
 }
 
-// textwrapWrap is textwrap.wrap for the option set wrap_prose uses.
+// textwrapWrap wraps text to width: expand tabs, normalise whitespace,
+// chunk, then fill lines.
 func textwrapWrap(text string, width int, initialIndent, subsequentIndent string) []string {
 	s := replaceWhitespace(expandTabs(text))
 	return wrapChunks(splitChunks(s), width, initialIndent, subsequentIndent)

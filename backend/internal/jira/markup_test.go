@@ -2,9 +2,8 @@ package jira
 
 import "testing"
 
-// Every expectation here was produced by running the Python originals over the
-// same input, so a change that drifts from the old behaviour shows up as a
-// failure rather than as differently-worded prose in a prompt.
+// These are golden values. Stripping feeds prompt text, so a drift shows up
+// here as a failure rather than as differently-worded prose in a prompt.
 func TestStripMarkup(t *testing.T) {
 	tests := []struct {
 		name string
@@ -30,17 +29,17 @@ func TestStripMarkup(t *testing.T) {
 			"Overview\n\ncode here\n\nimportant\nlink (http://x.com)",
 		},
 
-		// Emphasis edge cases. These are where a plausible-looking RE2
-		// translation of Python's lookaround quietly diverges.
+		// Emphasis edge cases. These are where a plausible-looking
+		// lookaround-free rewrite quietly diverges.
 
 		// One pass only: the non-greedy body eats the inner marker, so a single
 		// orphan is left. Stripping until stable would wrongly yield "bold".
 		{"double marker leaves one", "**bold**", "*bold*"},
-		// The trailing boundary is a lookahead in Python: it must not be eaten,
-		// or the space between the words is lost.
+		// The trailing boundary must not be eaten, or the space between the
+		// words is lost.
 		{"two spans keep their separator", "*a* *b*", "a b"},
-		// \w is Unicode in Python, so a letter with an umlaut is a word
-		// character and suppresses the match.
+		// The boundary class covers Unicode letters, so a letter with an
+		// umlaut is a word character and suppresses the match.
 		{"unicode letter suppresses the match", "ü*fett*", "ü*fett*"},
 		{"unicode letter elsewhere still matches", "Müller *fett*", "Müller fett"},
 		{"underscores inside a word survive", "snake_case_name", "snake_case_name"},

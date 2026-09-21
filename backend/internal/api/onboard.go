@@ -13,7 +13,8 @@ import (
 	"github.com/trick77/noergler/internal/store"
 )
 
-// onboardRequest is Pydantic's OnboardRequest, extra="forbid".
+// onboardRequest is the /onboard body. Decoded strictly: an unknown field is
+// rejected rather than ignored, so an operator typo is not silently dropped.
 type onboardRequest struct {
 	Action   *string             `json:"action"`
 	Projects *[]projectScopeView `json:"projects"`
@@ -174,7 +175,7 @@ func fill(resp map[string]any, results []onboarding.TargetResult, text string, h
 	resp["healthy"] = healthy
 }
 
-// scopesOf applies Pydantic's ProjectScope rules to the JSON path: the key is
+// scopesOf applies the project-scope rules to the JSON path: the key is
 // trimmed and required, each repo is trimmed, blanks are dropped, and a
 // present-but-empty repos list is refused.
 func scopesOf(in []projectScopeView) ([]config.ProjectScope, error) {

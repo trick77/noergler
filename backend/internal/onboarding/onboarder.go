@@ -359,7 +359,9 @@ func (o *Onboarder) StrayRepoHooks(ctx context.Context, project string) ([]Stray
 	}
 	wg.Wait()
 
-	// First error in listing order wins, as asyncio.gather's does.
+	// First error in LISTING order wins, not whichever goroutine failed
+	// first: the repos are listed concurrently, so a scheduling-dependent
+	// error would make the message non-deterministic.
 	for _, err := range errs {
 		if err != nil {
 			return nil, nil, err

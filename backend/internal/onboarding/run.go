@@ -9,10 +9,12 @@ import (
 	"github.com/trick77/noergler/internal/bitbucket"
 )
 
-// httpDetailCap is Python's `response.text[:200]`, counted in runes.
+// httpDetailCap bounds how much of a failing response body reaches a row's
+// detail. Counted in RUNES, not bytes, so a multi-byte body is not cut
+// mid-character.
 const httpDetailCap = 200
 
-// httpDetail renders a Bitbucket failure the way Python's _http_detail does.
+// httpDetail renders a Bitbucket failure as "HTTP <status>: <capped body>".
 // It is only ever called with an error that carries a status.
 func httpDetail(err error) string {
 	var se *bitbucket.StatusError
@@ -31,9 +33,8 @@ func truncateRunes(s string, n int) string {
 }
 
 // Status reports one target: owned, readable by the bot, and the state of its
-// webhook. It only returns an error for a failure Python's `run` would have
-// caught with its blanket except: a transport failure in the project-hook
-// guard. Run turns that into a row.
+// webhook. It only returns an error for a transport failure in the
+// project-hook guard; Run turns that into a row.
 func (o *Onboarder) Status(ctx context.Context, target Target) (StatusRow, error) {
 	claim := o.claim(ctx, target)
 	stray := []string{}
@@ -47,8 +48,8 @@ func (o *Onboarder) Status(ctx context.Context, target Target) (StatusRow, error
 			return StatusRow{target, true, claim.BotCanRead,
 				fmt.Sprintf("project hook check HTTP %d", s), stray, foreign}, nil
 		}
-		// Python only caught HTTPStatusError here; a transport failure
-		// escaped to run()'s blanket except.
+		// A status error is a verdict, above. A transport failure is not: it
+		// escapes to Run, which files it as an error row.
 		return StatusRow{}, err
 	}
 	if refused != "" {
@@ -103,8 +104,8 @@ func (o *Onboarder) Status(ctx context.Context, target Target) (StatusRow, error
 }
 
 // Onboard puts the webhook on one target, granting the bot read access first
-// when asked to. It only returns an error for what Python's blanket except
-// caught: a transport failure in the project-hook guard or in the grant.
+// when asked to. It only returns an error for a transport failure in the
+// project-hook guard or in the grant.
 func (o *Onboarder) Onboard(ctx context.Context, target Target) (TargetResult, error) {
 	claim := o.claim(ctx, target)
 	if !claim.Owned {
@@ -232,8 +233,8 @@ func Run(ctx context.Context, o *Onboarder, action Action, targets []Target) (ro
 			row, err := o.Status(ctx, target)
 			if err != nil {
 				o.log.ErrorContext(ctx, fmt.Sprintf("[%s] unexpected error: %v", target.Key(), err))
-				// Python's blanket except loses the claim: owned and bot both
-				// come back false even when the target was owned.
+				// The error row loses the claim: owned and bot both come back
+				// false even when the target was owned.
 				row = StatusRow{target, false, false, fmt.Sprintf("error: %v", err), []string{}, []string{}}
 			}
 			rows = append(rows, row)

@@ -2,8 +2,8 @@ package render
 
 import "testing"
 
-// Expected values generated from the Python (_strip_stale_banner,
-// _strip_cost_banner, _cost_limit_banner) with the venv.
+// Expected values are written out case by case, not derived from the code
+// under test.
 func TestStripStaleBanner(t *testing.T) {
 	const body = "### Overview\nBody."
 	cases := []struct {
@@ -82,8 +82,7 @@ func TestStripCostBanner(t *testing.T) {
 	}
 }
 
-// Repeated failures must replace the banner, never stack them. This is the
-// property test_repeated_timeout_does_not_stack_banners pins in Python.
+// Repeated failures must replace the banner, never stack them.
 func TestStrippersAreIdempotentAndDoNotStack(t *testing.T) {
 	body := "### Overview\nBody."
 	first := StaleBanner("⚠️ No response from the model within 10 minutes on commit `aaa`.") + "\n\n" + body
@@ -98,11 +97,9 @@ func TestStrippersAreIdempotentAndDoNotStack(t *testing.T) {
 }
 
 // All three notice kinds share the stale banner, so the visible-prefix
-// fallback has to catch all three. Python matched only the timeout wording,
-// which was fine while timeouts were the only user; routing unparseable and
-// too-large through the same banner would otherwise stack them whenever
-// Bitbucket's renderer ate the sentinel, which is the only case the fallback
-// exists for.
+// fallback has to catch all three. Matching only the timeout wording would
+// stack the unparseable and too-large banners whenever Bitbucket's renderer
+// ate the sentinel, which is the only case the fallback exists for.
 func TestStaleBannerFallbackCoversAllThreeNoticeKinds(t *testing.T) {
 	const body = "### Overview\nThe original body."
 	banners := map[string]string{

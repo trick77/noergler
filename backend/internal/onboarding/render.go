@@ -3,7 +3,7 @@ package onboarding
 import "strings"
 
 // labelWidth is the width of the target column: the longest label, or 10 for
-// an empty table (Python's `max(..., default=10)`).
+// an empty table.
 func labelWidth[T any](items []T, label func(T) string) int {
 	if len(items) == 0 {
 		return 10
@@ -17,8 +17,8 @@ func labelWidth[T any](items []T, label func(T) string) int {
 	return w
 }
 
-// ljust pads s on the right to n runes. Like Python's str.ljust it never
-// truncates, so a long value overhangs its column.
+// ljust pads s on the right to n runes. It never truncates, so a long value
+// overhangs its column.
 func ljust(s string, n int) string {
 	if pad := n - len([]rune(s)); pad > 0 {
 		return s + strings.Repeat(" ", pad)
