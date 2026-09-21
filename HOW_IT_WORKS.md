@@ -117,8 +117,7 @@ enclosing function or class header.
 Hunks whose widened windows touch are merged into one. The overlap is taken off
 the **first** hunk's added context, never off the second hunk's body: trimming
 the body would drop real removal lines and leave the first hunk's context
-claiming a line is unchanged that the second hunk deletes. (Python trimmed the
-body; this is a deliberate divergence.)
+claiming a line is unchanged that the second hunk deletes.
 
 ## 7. Cross-file context
 
