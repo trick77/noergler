@@ -37,9 +37,9 @@ type BitbucketClient interface {
 
 // JiraClient is the part of the Jira adapter the pipeline uses.
 //
-// FetchTicketWithParent is the only entry point: Python also calls
-// fetch_ticket a second time inside _fetch_ticket_context, which AGENTS.md
-// pins as a deliberate divergence ("Jira fetched once per review").
+// FetchTicketWithParent is the only entry point, so the ticket is fetched
+// once per review and never a second time while rendering the prompt block.
+// AGENTS.md pins this ("Jira fetched once per review").
 type JiraClient interface {
 	FetchTicketWithParent(ctx context.Context, key string) (ticket, parent *jira.Ticket, err error)
 }

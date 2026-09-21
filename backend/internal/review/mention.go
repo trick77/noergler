@@ -15,15 +15,15 @@ import (
 )
 
 // HandleMention answers an @mention, or re-runs the review when the comment
-// asks for one (reviewer.py:1242).
+// asks for one.
 //
 // THE CALLER OWNS THE TRIGGER CHECK. This function does not verify that the
 // comment actually mentions the bot: extractQuestion on an unrelated comment
 // returns the text unchanged, which is neither empty nor a review keyword, so
-// every comment on the PR would cost a Q&A round trip. Python gates it in the
-// router (main.py:481, a case-insensitive substring of the raw body's
-// comment.text) and Phase 7 adds the Go equivalent. Wiring this up without
-// that gate turns every comment into an inference call.
+// every comment on the PR would cost a Q&A round trip. The webhook route
+// owns the gate: a case-insensitive substring match of the trigger against
+// the raw comment text. Wiring this up without that gate turns every comment
+// into an inference call.
 //
 // A mention never goes incremental: the event is pr:comment:added and the
 // incremental guard only fires on pr:from_ref_updated.
@@ -163,10 +163,11 @@ func (r *Reviewer) reply(ctx context.Context, project, repo string, prID, parent
 
 // extractQuestion strips the @trigger from a comment and trims the rest.
 //
-// Python is re.sub(rf"@{trigger}\b", "", text, flags=IGNORECASE) and its \b
-// is Unicode, so the same boundary form the ticket pattern needs applies
-// here. This one substitutes rather than searches, so the trailing boundary
-// character is captured and written back.
+// The trailing word boundary must be Unicode-aware, the same rule the ticket
+// pattern needs: RE2's \b is ASCII, so "@bot" followed by a letter like ü
+// would read as a mention. This one substitutes rather than searches, so the
+// trailing boundary character is captured and written back
+// (TestExtractQuestionUnicodeBoundary).
 func extractQuestion(text, trigger string) string {
 	re := regexp.MustCompile(`(?i)@` + regexp.QuoteMeta(trigger) + `(?:$|([^\pL\pN_]))`)
 	return strings.TrimSpace(re.ReplaceAllString(text, "$1"))

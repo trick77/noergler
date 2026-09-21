@@ -133,10 +133,9 @@ No web framework, no ORM, no logging library. Do not add one.
   per-hunk one counts "non-empty and not `+`/`-`", the merged one "starts with
   `-`/` `" and "`+`/` `". Do not unify.
 - Known quirks, pinned by tests: `\ No newline` counts as a real line;
-  `before_count` is
-  unclamped, so a stale `content` yields header counts exceeding the body; a
-  diff with no surviving hunks is filed under deleted, mislabelling a mode
-  change.
+  `before_count` is unclamped, so a stale `content` yields header counts
+  exceeding the body; a diff with no surviving hunks is filed under deleted,
+  mislabelling a mode change.
 - Every `\w` in these patterns is `[\pL\pN_]`, and `\b` is spelled out as
   `(?:^|[^\pL\pN_])`: RE2's `\w` and `\b` are ASCII, but the text is Unicode.
   `\bÖlservice\b` matches nothing in RE2. Third trap of this shape after the
@@ -204,10 +203,10 @@ footnote's file-content figure.
 
 ## HTTP surface
 
-Webhook check order is `main.py:389` step for step and is NOT what a Go author
-would write: path-bound team (never the payload's `project.key`) -> ping before
-the body is read -> raw body -> test-connection shortcut -> HMAC -> `pr:`
-prefix off the RAW json -> validate -> repo from toRef then fromRef ->
+The webhook check order is fixed and is NOT what a Go author would write, so
+do not "tidy" it: path-bound team (never the payload's `project.key`) -> ping
+before the body is read -> raw body -> test-connection shortcut -> HMAC ->
+`pr:` prefix off the RAW json -> validate -> repo from toRef then fromRef ->
 **ownership** -> exclude_repos (review-starting events only) -> dispatch.
 HMAC compares the hex STRINGS constant-time: uppercase hex must fail.
 The `pr:` prefix precedes validation, so a non-PR event is ignored, not

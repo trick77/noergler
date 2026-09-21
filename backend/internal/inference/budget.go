@@ -2,7 +2,7 @@
 // startup checks, token budgets, prompt assembly, response parsing and cost.
 //
 // Behaviour is pinned by this package's tests; AGENTS.md lists the
-// deliberate divergences.
+// deliberate quirks.
 package inference
 
 // OutputTokenReserve is held back from the context window for the reply.

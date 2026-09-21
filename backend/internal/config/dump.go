@@ -12,7 +12,7 @@ import (
 // as ***. Section headers are fixed so runbooks and Splunk
 // searches still match.
 //
-// One field deliberately breaks that parity: context_window renders 0 as
+// One field deliberately does not render its raw value: context_window is 0
 // "from gateway". The raw 0 reads as "no context window" when it means the
 // limit is read from the gateway's max_input_tokens at team startup, and the
 // resolved value never appeared in this dump at all.

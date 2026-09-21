@@ -152,8 +152,8 @@ func TestReviewRunsForAllowedAuthor(t *testing.T) {
 }
 
 // The model string a reader sees carries the reasoning effort, and the same
-// string is stored on the run row. Python renders both from
-// model_label(model, reasoning_effort).
+// string is stored on the run row. Both come from the one model label built
+// from the profile id and the effort.
 //
 // This drives the pipeline rather than the renderer: render's summary golden
 // takes ModelLabel as an input, so it pins the formatting but says nothing
@@ -456,8 +456,8 @@ func TestCostCap(t *testing.T) {
 // --- Terminal outcomes -----------------------------------------------------
 
 // Every non-ok outcome but OutcomeError posts a notice, preserves the prior
-// commit and writes no run row. OutcomeError writes and posts nothing at all:
-// Python re-raises it into the outer handler, which only logs.
+// commit and writes no run row. OutcomeError writes and posts nothing at
+// all; it is only logged.
 func TestTerminalOutcomes(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -585,7 +585,7 @@ func TestSortAndLimit(t *testing.T) {
 		want := []string{"i1.go", "i2.go", "s1.go", "s2.go"}
 		for i, w := range want {
 			if got[i].File != w {
-				t.Errorf("position %d = %s, want %s (Python's sorted is stable)", i, got[i].File, w)
+				t.Errorf("position %d = %s, want %s (the sort is stable)", i, got[i].File, w)
 			}
 		}
 	})
@@ -761,8 +761,8 @@ func TestDiffTooLargePostsSummaryAndPreservesPointer(t *testing.T) {
 
 // --- Cost reporting --------------------------------------------------------
 
-// The PR total is only read when this run is priced, matching Python's
-// nesting. An unpriced run shows no total at all.
+// The PR total is only read when this run is priced. An unpriced run shows
+// no total at all.
 func TestUnpricedRunShowsNoCostLine(t *testing.T) {
 	h := newHarness(t, nil)
 	h.st.prCost = ptri(3_000_000_000)
@@ -825,7 +825,8 @@ func TestExtractQuestionIsPinned(t *testing.T) {
 	}
 }
 
-// Python's \b is Unicode, so a trigger followed by a letter is not a mention.
+// The boundary is Unicode-aware, so a trigger followed by a letter is not a
+// mention.
 func TestExtractQuestionUnicodeBoundary(t *testing.T) {
 	if got := extractQuestion("@noerglerü frage", "noergler"); got != "@noerglerü frage" {
 		t.Errorf("= %q: a trailing letter means no boundary, so nothing is stripped", got)

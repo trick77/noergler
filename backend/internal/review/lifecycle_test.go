@@ -199,8 +199,8 @@ func TestRollupIsANoOpWhenRiptideIsOff(t *testing.T) {
 	})
 }
 
-// files_changed counts the REVIEWABLE files, which is the divergence
-// AGENTS.md pins: Python counts every diff --git header.
+// files_changed counts the REVIEWABLE files, as AGENTS.md pins: counting
+// every diff --git header would include files that were never reviewed.
 func TestRollupCountsReviewableFilesOnly(t *testing.T) {
 	h := newHarness(t, nil)
 	h.st.rollup = snapshot()
