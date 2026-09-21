@@ -38,12 +38,7 @@ No web framework, no ORM, no logging library. Do not add one.
   skips only later auto-runs. `BIGINT` nano-USD in the DB, USD at the edges.
 - Key spend is a gauge: shown, never summed.
 - `Usage.Cost.Provenance == Reported` is the only priced case.
-- Riptide never fails a webhook. One rollup per PR, claimed before the POST,
-  never retried. Unknown cost omits `total_cost_usd`; `reviewer_handle` and
-  `reviewer_account_kind: "bot"` travel together. Cost is a decimal string,
   never a float, and never an exponent (`1E-9` breaks strict parsers).
-- A DB fault never fails a review: the review path wraps store calls in
-  warn-and-fallback.
 
 ## Prompt
 
@@ -87,13 +82,9 @@ No web framework, no ORM, no logging library. Do not add one.
   alias, `OPENAI_CONTEXT_WINDOW` overrides, `>= 1_000_000` required.
   `ListModels` warnings are kept: a present-but-unusable limit reads as a nil
   limit, so dropping them reports a garbage value as a missing field.
-- No local `reasoning_effort` enum: any hardcoded set is wrong both ways for
-  the configured model. llmwire validates the level against the profile and
-  the gateway's 400 covers the rest (`mapPingError`).
 
 ## Adapters
 
-- No interfaces here. Phase 6 defines them consumer-side.
 - **Never add `Client.Timeout` to Bitbucket.** Go's spans the body read and
   cuts a 10 MiB diff. The caller's ctx bounds the total instead.
 - **Never follow redirects.** A 3xx would replay the bearer token at the new
@@ -247,11 +238,3 @@ directions. `(?:^|[^\pL\pN_])` for `\b`, `\p{Nd}` for `\d`,
 `_extract_question` and both `markdown_format` structural regexes. `textwrap`
 likewise: ASCII-only whitespace (NBSP never breaks), tabs expand to 8-column
 stops first. Pinned by a golden corpus.
-
-The disagree/feedback mechanic was removed deliberately. Do not reintroduce.
-
-## Git
-
-Never push to master; branch + PR. `.yaml` never `.yml`, `Containerfile` never
-`Dockerfile`. A merge to master auto-tags and pushes the image.
-`docs/plans/` is gitignored.
