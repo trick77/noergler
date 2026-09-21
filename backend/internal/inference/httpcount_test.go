@@ -74,13 +74,23 @@ func TestCountingClientKeepsLLMWiresTimeoutShape(t *testing.T) {
 		t.Fatalf("wrapped transport is %T, want *http.Transport", wrapper.Unwrap())
 	}
 
-	// The backstop must be strictly later than llmwire's own header bound, or
-	// the two race and the transport's generic "timeout awaiting response
-	// headers" replaces the guard's named bound.
-	if tr.ResponseHeaderTimeout <= llmwire.DefaultHeaderTimeout {
-		t.Errorf("ResponseHeaderTimeout = %v, want strictly more than the header bound %v, "+
+	// The backstop must sit exactly one headroom above the bound llmwire
+	// actually resolves, which for a non-streaming Chat with HeaderTimeout
+	// unset is CallTimeout. Asserting merely "later than DefaultHeaderTimeout"
+	// is what let the backstop land at 90s while the guard was at 300s: the
+	// transport then won the race and every review slower than 90s failed with
+	// net/http's generic error instead of ErrNoResponseHeaders.
+	if want := CallTimeout + headerBackstopHeadroom; tr.ResponseHeaderTimeout != want {
+		t.Errorf("ResponseHeaderTimeout = %v, want %v (CallTimeout + headroom), "+
 			"so llmwire's guard reports the timeout under its own name",
-			tr.ResponseHeaderTimeout, llmwire.DefaultHeaderTimeout)
+			tr.ResponseHeaderTimeout, want)
+	}
+
+	// Sizing the backstop off llmwire's default instead of the resolved bound
+	// is the regression itself, so pin that the two are not the same number.
+	if tr.ResponseHeaderTimeout == llmwire.DefaultHeaderTimeout+headerBackstopHeadroom {
+		t.Error("ResponseHeaderTimeout is sized off DefaultHeaderTimeout, " +
+			"but llmwire resolves the guard to CallTimeout when HeaderTimeout is unset")
 	}
 }
 

@@ -129,9 +129,16 @@ func New(opt Options) (*Client, error) {
 // support, dial timeouts and pooling) and ResponseHeaderTimeout is set LONGER
 // than llmwire's header bound so llmwire's guard still reports the timeout
 // under its own named bound rather than the transport's generic one.
+//
+// That bound is CallTimeout, not DefaultHeaderTimeout: this Config leaves
+// HeaderTimeout unset, and a non-streaming Chat arms llmwire's stall guard
+// with the call cap (see classifyCallError). Sizing the backstop off the 60s
+// default put it at 90s, UNDER the 300s guard, so the transport won the race
+// and every slow review failed at 90s with net/http's generic "timeout
+// awaiting response headers" instead of ErrNoResponseHeaders.
 func countingClient() *http.Client {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
-	tr.ResponseHeaderTimeout = llmwire.DefaultHeaderTimeout + headerBackstopHeadroom
+	tr.ResponseHeaderTimeout = CallTimeout + headerBackstopHeadroom
 	return &http.Client{Transport: httpstats.Transport("inference", tr)}
 }
 
@@ -139,9 +146,10 @@ func countingClient() *http.Client {
 // name. It is the margin that keeps llmwire's header guard ahead of the
 // transport's backstop; see countingClient.
 //
-// llmwire computes the backstop from its RESOLVED HeaderTimeout, while
-// countingClient uses DefaultHeaderTimeout. The two agree only because this
-// Config never sets HeaderTimeout; set it there and set it here too.
+// llmwire computes the backstop from its RESOLVED HeaderTimeout. Size this one
+// off the same bound llmwire resolves for a non-streaming Chat, which is
+// CallTimeout while HeaderTimeout is unset. Set HeaderTimeout in the Config
+// and this must follow it instead.
 const headerBackstopHeadroom = 30 * time.Second
 
 // teamLookup answers the gateway's key variable with this team's key and
