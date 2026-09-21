@@ -1,0 +1,6 @@
+# Build artifacts of the archived implementation.
+.venv
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/

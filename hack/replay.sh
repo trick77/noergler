@@ -2,8 +2,8 @@
 # hack/replay.sh: sign a webhook payload with a team's secret and POST it.
 #
 # The signature is what the webhook route checks first, so this is the only way
-# to reach the review pipeline from outside. Both hack/smoke.sh and
-# hack/parity.sh call it rather than keeping their own copy of the HMAC.
+# to reach the review pipeline from outside. hack/smoke.sh calls it
+# rather than keeping its own copy of the HMAC.
 #
 # Usage: replay.sh <payload-file> [event-key]
 # Env: PORT (18080), TEAM (platform), SECRET (s), HOST (localhost)

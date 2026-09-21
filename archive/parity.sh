@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# hack/parity.sh: run the same webhook through the Go service and the Python
+# archive/parity.sh: run the same webhook through the Go service and the Python
 # original and diff what each one produced.
 #
 # What this proves that the golden corpora do not: the corpora drive the
@@ -12,7 +12,7 @@
 # neither can see the other's comments, claims or rows. The canned review comes
 # from one file, so both receive identical bytes.
 #
-# Usage: hack/parity.sh
+# Usage: archive/parity.sh
 # The Python side is the archived implementation in archive/, which is what
 # this was written against; PYTHON_REPO overrides it. Running it needs a
 # venv in that directory, which is not checked in.

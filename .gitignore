@@ -5,20 +5,12 @@ teams.yaml
 # Plans and other HTML deliverables
 docs/plans/
 
-# Build. Anchored, unlike the Go repo's version: a bare `noergler` matches any
-# path component of that name at any depth, which would silently swallow one
-# under archive/.
+# Build. Anchored: a bare `noergler` matches any path component of that name at
+# any depth, which would silently swallow a nested one.
 /backend/noergler
 fakes
 /bin/
 coverage/
-
-# Python, for the archived implementation under archive/
-.venv
-.venv/
-__pycache__/
-*.pyc
-.pytest_cache/
 
 # IDEs
 .vscode/
