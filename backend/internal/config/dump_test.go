@@ -46,3 +46,55 @@ func TestDump_MasksSecretsAndKeepsTheSectionHeaders(t *testing.T) {
 		t.Error("a disabled team is an error line")
 	}
 }
+
+// A bare 0 reads as "no context window" when it means the limit is read from
+// the gateway. The dump runs before any team starts, so this line is all the
+// operator sees until inference logs the resolved value.
+func TestDump_ContextWindowZeroSaysWhereTheWindowComesFrom(t *testing.T) {
+	e := newEnv(t)
+	e.teams(twoTeams)
+	e.payments()
+	app := e.mustLoad()
+
+	var buf bytes.Buffer
+	Dump(app, slog.New(logging.NewHandler(&buf, slog.LevelInfo, "test")))
+	text := buf.String()
+
+	if !strings.Contains(text, "context_window = from gateway") {
+		t.Error("an unset context window should name the gateway as its source")
+	}
+	if strings.Contains(text, "context_window = 0") {
+		t.Error("a bare 0 reads as no window at all")
+	}
+}
+
+func TestDump_ExplicitContextWindowIsPrintedAsTheNumber(t *testing.T) {
+	e := newEnv(t)
+	e.teams(twoTeams)
+	e.payments()
+	e.set("OPENAI_CONTEXT_WINDOW", "2000000")
+	app := e.mustLoad()
+
+	var buf bytes.Buffer
+	Dump(app, slog.New(logging.NewHandler(&buf, slog.LevelInfo, "test")))
+
+	if text := buf.String(); !strings.Contains(text, "context_window = 2000000") {
+		t.Error("an explicit window is printed as the number it is")
+	}
+}
+
+// Python's %s on a float kept the decimal point. Go's default verb drops it,
+// so max_pr_cost_usd printed as 5 and any search expecting a decimal missed.
+func TestRender_FloatsKeepTheDecimalPoint(t *testing.T) {
+	cases := map[float64]string{
+		5.0:  "5.0",
+		0.5:  "0.5",
+		2.25: "2.25",
+		0.0:  "0.0",
+	}
+	for in, want := range cases {
+		if got := render(in); got != want {
+			t.Errorf("render(%v) = %q, want %q", in, got, want)
+		}
+	}
+}

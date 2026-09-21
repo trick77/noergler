@@ -3,6 +3,7 @@ package inference
 import (
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/trick77/llmwire"
 
 	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/httpstats"
 )
 
 // CallTimeout is the hard wall-clock cap on a single LLM call. noergler
@@ -108,6 +110,7 @@ func New(opt Options) (*Client, error) {
 		CallTimeout: CallTimeout,
 		Logger:      opt.Logger,
 		Lookup:      teamLookup(opt.APIKey, env),
+		HTTPClient:  countingClient(),
 		// APIKey stays empty: the team's key is answered through Lookup.
 	})
 	if err != nil {
@@ -116,6 +119,31 @@ func New(opt Options) (*Client, error) {
 	c.wire = wire
 	return c, nil
 }
+
+// countingClient is llmwire's own default client with the transport wrapped so
+// inference requests reach the per-review HTTP totals. Without it the totals
+// line reported inference=0 on every review while the call plainly happened,
+// because bitbucket and jira are the only wrapped transports.
+//
+// Supplying an HTTPClient means llmwire skips building its own, so the tuned
+// pieces are reproduced here: the stdlib default is cloned (keeping proxy
+// support, dial timeouts and pooling) and ResponseHeaderTimeout is set LONGER
+// than llmwire's header bound so llmwire's guard still reports the timeout
+// under its own named bound rather than the transport's generic one.
+func countingClient() *http.Client {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.ResponseHeaderTimeout = llmwire.DefaultHeaderTimeout + headerBackstopHeadroom
+	return &http.Client{Transport: httpstats.Transport("inference", tr)}
+}
+
+// headerBackstopHeadroom mirrors llmwire's unexported constant of the same
+// name. It is the margin that keeps llmwire's header guard ahead of the
+// transport's backstop; see countingClient.
+//
+// llmwire computes the backstop from its RESOLVED HeaderTimeout, while
+// countingClient uses DefaultHeaderTimeout. The two agree only because this
+// Config never sets HeaderTimeout; set it there and set it here too.
+const headerBackstopHeadroom = 30 * time.Second
 
 // teamLookup answers the gateway's key variable with this team's key and
 // delegates everything else, so per-team keys need no llmwire change.

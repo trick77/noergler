@@ -93,8 +93,8 @@ type SummaryInput struct {
 // Summary renders the PR summary comment.
 //
 // Section order is fixed (reviewer.py:2037): optional incremental header,
-// Overview, Strengths, Issues / Suggestions, Security / Performance, Test
-// Coverage, the ticket block when a ticket is linked, Recommendation, and the
+// Overview, Strengths, Issues and suggestions, Security and performance, Test
+// coverage, the ticket block when a ticket is linked, Recommendation, and the
 // footnote after a horizontal rule.
 func Summary(in SummaryInput) string {
 	var sections []string
@@ -112,9 +112,9 @@ func Summary(in SummaryInput) string {
 	// The italic fallbacks mean the model omitted the field, which is a
 	// defect worth seeing; the plain sentinels mean it looked and found
 	// nothing. Two different states, both rendered.
-	sections = append(sections, "### Security / Performance\n"+
+	sections = append(sections, "### Security and performance\n"+
 		orDefault(WrapProse(strings.TrimSpace(in.Summary.SecurityPerformance)), "None notable."))
-	sections = append(sections, "### Test Coverage\n"+
+	sections = append(sections, "### Test coverage\n"+
 		orDefault(WrapProse(strings.TrimSpace(in.Summary.TestCoverage)), "_Not assessed._"))
 
 	if in.Ticket != nil {
@@ -153,7 +153,7 @@ func renderStrengths(in SummaryInput) string {
 // renderIssues lists numbered headlines only; the detail lives on the inline
 // comments.
 func renderIssues(in SummaryInput) string {
-	lines := []string{"### Issues / Suggestions"}
+	lines := []string{"### Issues and suggestions"}
 	if len(in.Findings) == 0 {
 		return lines[0] + "\nNone."
 	}
@@ -216,7 +216,7 @@ func renderTicket(in SummaryInput) string {
 			label, emoji = "Partially compliant", "⚠️"
 		}
 		verdictSuffix = fmt.Sprintf(" · **%s** %s", label, emoji)
-		heading = "### Requirement Compliance"
+		heading = "### Requirement compliance"
 	}
 
 	lines := []string{heading}

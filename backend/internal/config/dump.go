@@ -4,12 +4,18 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strconv"
 	"strings"
 )
 
 // Dump logs the effective configuration, one line per field, secrets masked
 // as ***. Same section headers as the Python service so runbooks and Splunk
 // searches still match.
+//
+// One field deliberately breaks that parity: context_window renders 0 as
+// "from gateway". The raw 0 reads as "no context window" when it means the
+// limit is read from the gateway's max_input_tokens at team startup, and the
+// resolved value never appeared in this dump at all.
 func Dump(app *App, log *slog.Logger) {
 	section(log, "config.bitbucket", kv{"base_url", app.Bitbucket.BaseURL}, kv{"token", mask}, kv{"username", app.Bitbucket.Username},
 		kv{"max_diff_bytes", app.Bitbucket.MaxDiffBytes}, kv{"max_file_bytes", app.Bitbucket.MaxFileBytes})
@@ -66,6 +72,14 @@ func render(v any) string {
 			return "True"
 		}
 		return "False"
+	case float64:
+		// Python's %s on a float keeps the decimal point: 5.0, not 5.
+		// FormatFloat with -1 drops it, so add it back for whole numbers.
+		s := strconv.FormatFloat(x, 'f', -1, 64)
+		if !strings.ContainsAny(s, ".eE") {
+			s += ".0"
+		}
+		return s
 	default:
 		return fmt.Sprint(v)
 	}
@@ -81,11 +95,21 @@ func pyList(items []string) string {
 	return "[" + strings.Join(quoted, ", ") + "]"
 }
 
+// contextWindow renders the configured window. 0 is not a window: it means
+// the limit comes from the gateway's max_input_tokens, resolved per team at
+// startup and logged there.
+func contextWindow(n int) string {
+	if n == 0 {
+		return "from gateway"
+	}
+	return fmt.Sprint(n)
+}
+
 func llmSection(log *slog.Logger, label string, l LLM) {
 	section(log, label,
 		kv{"model", l.Model}, kv{"api_key", mask}, kv{"base_url", l.BaseURL},
 		kv{"gateway_models", l.GatewayModels}, kv{"reasoning_effort", l.ReasoningEffort},
-		kv{"context_window", l.ContextWindow})
+		kv{"context_window", contextWindow(l.ContextWindow)})
 }
 
 func reviewSection(log *slog.Logger, label string, r Review) {

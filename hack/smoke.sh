@@ -133,7 +133,7 @@ sleep 2
 kill -TERM "$pid"
 wait "$pid" || true
 echo "--- log"
-grep -E "version|Database|Bitbucket:|Jira:|team_disabled|team_ready|teams_ready|http_request|stopped|listening|DISABLED|queue\[|priced by the gateway|HTTP totals|cost headers|Review of " "$tmp/serve.log"
+grep -E "version|Database|Bitbucket:|Jira:|team_disabled|team_ready|teams_ready|http_request|stopped|listening|DISABLED|queue\[|priced by the gateway|HTTP totals|cost headers|Review of |context_window |context window " "$tmp/serve.log"
 echo "--- review posted"
 grep -c "comment posted" "$tmp/fakes.log" || true
 echo "--- onboarding writes seen by bitbucket (want a create, a grant and a refusal)"
