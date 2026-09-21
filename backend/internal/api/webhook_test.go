@@ -16,14 +16,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/noergler-go/internal/config"
-	"github.com/trick77/noergler-go/internal/httpapi"
-	"github.com/trick77/noergler-go/internal/logging"
-	"github.com/trick77/noergler-go/internal/queue"
-	"github.com/trick77/noergler-go/internal/review"
-	"github.com/trick77/noergler-go/internal/store"
-	"github.com/trick77/noergler-go/internal/teams"
-	"github.com/trick77/noergler-go/internal/webhook"
+	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/httpapi"
+	"github.com/trick77/noergler/internal/logging"
+	"github.com/trick77/noergler/internal/queue"
+	"github.com/trick77/noergler/internal/review"
+	"github.com/trick77/noergler/internal/store"
+	"github.com/trick77/noergler/internal/teams"
+	"github.com/trick77/noergler/internal/webhook"
 )
 
 const (

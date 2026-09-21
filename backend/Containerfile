@@ -11,7 +11,7 @@ ARG NOERGLER_COMMIT=
 # Static binary, no cgo: the tokenizer vocabulary is compiled in, so the
 # image needs no runtime besides the CA bundle.
 RUN CGO_ENABLED=0 go build -trimpath \
-    -ldflags "-s -w -X github.com/trick77/noergler-go/internal/buildinfo.version=${NOERGLER_VERSION} -X github.com/trick77/noergler-go/internal/buildinfo.commit=${NOERGLER_COMMIT}" \
+    -ldflags "-s -w -X github.com/trick77/noergler/internal/buildinfo.version=${NOERGLER_VERSION} -X github.com/trick77/noergler/internal/buildinfo.commit=${NOERGLER_COMMIT}" \
     -o /out/noergler ./cmd/noergler
 
 FROM alpine:3.23

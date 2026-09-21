@@ -7,12 +7,12 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/trick77/noergler-go/internal/config"
-	"github.com/trick77/noergler-go/internal/inference"
-	"github.com/trick77/noergler-go/internal/jira"
-	"github.com/trick77/noergler-go/internal/logging"
-	"github.com/trick77/noergler-go/internal/review"
-	"github.com/trick77/noergler-go/internal/riptide"
+	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/jira"
+	"github.com/trick77/noergler/internal/logging"
+	"github.com/trick77/noergler/internal/review"
+	"github.com/trick77/noergler/internal/riptide"
 )
 
 // Deps are the shared objects every team is built on. They outlive any one

@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/trick77/noergler-go/internal/config"
-	"github.com/trick77/noergler-go/internal/httpapi"
-	"github.com/trick77/noergler-go/internal/logging"
-	"github.com/trick77/noergler-go/internal/onboarding"
-	"github.com/trick77/noergler-go/internal/store"
+	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/httpapi"
+	"github.com/trick77/noergler/internal/logging"
+	"github.com/trick77/noergler/internal/onboarding"
+	"github.com/trick77/noergler/internal/store"
 )
 
 // onboardRequest is Pydantic's OnboardRequest, extra="forbid".

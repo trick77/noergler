@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/trick77/noergler-go/internal/bitbucket"
+	"github.com/trick77/noergler/internal/bitbucket"
 )
 
 // Error values the fakes return. They are the real adapter errors wherever

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/noergler-go/internal/diff"
-	"github.com/trick77/noergler-go/internal/tokens"
+	"github.com/trick77/noergler/internal/diff"
+	"github.com/trick77/noergler/internal/tokens"
 )
 
 type assembleGolden struct {

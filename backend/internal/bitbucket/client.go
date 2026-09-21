@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trick77/noergler-go/internal/config"
-	"github.com/trick77/noergler-go/internal/httpstats"
+	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/httpstats"
 )
 
 // apiBase prefixes every path below.

@@ -3,7 +3,7 @@ package inference
 import (
 	"strings"
 
-	"github.com/trick77/noergler-go/internal/diff"
+	"github.com/trick77/noergler/internal/diff"
 )
 
 // NoTicketContext is what {ticket_context} becomes when no ticket is linked.

@@ -17,17 +17,17 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/trick77/noergler-go/internal/api"
-	"github.com/trick77/noergler-go/internal/bitbucket"
-	"github.com/trick77/noergler-go/internal/buildinfo"
-	"github.com/trick77/noergler-go/internal/config"
-	"github.com/trick77/noergler-go/internal/httpapi"
-	"github.com/trick77/noergler-go/internal/jira"
-	"github.com/trick77/noergler-go/internal/logging"
-	"github.com/trick77/noergler-go/internal/queue"
-	"github.com/trick77/noergler-go/internal/store"
-	"github.com/trick77/noergler-go/internal/teams"
-	"github.com/trick77/noergler-go/internal/tokens"
+	"github.com/trick77/noergler/internal/api"
+	"github.com/trick77/noergler/internal/bitbucket"
+	"github.com/trick77/noergler/internal/buildinfo"
+	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/httpapi"
+	"github.com/trick77/noergler/internal/jira"
+	"github.com/trick77/noergler/internal/logging"
+	"github.com/trick77/noergler/internal/queue"
+	"github.com/trick77/noergler/internal/store"
+	"github.com/trick77/noergler/internal/teams"
+	"github.com/trick77/noergler/internal/tokens"
 )
 
 func main() {

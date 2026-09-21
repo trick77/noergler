@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/trick77/noergler-go/internal/config"
+	"github.com/trick77/noergler/internal/config"
 )
 
 // What a team changes on its own: project/repo claims and the review lists.

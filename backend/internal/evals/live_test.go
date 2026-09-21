@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/noergler-go/internal/evals"
-	"github.com/trick77/noergler-go/internal/inference"
+	"github.com/trick77/noergler/internal/evals"
+	"github.com/trick77/noergler/internal/inference"
 )
 
 // One run over the real client against a fake OpenAI-compatible endpoint.

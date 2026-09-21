@@ -40,9 +40,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/trick77/noergler-go/internal/evals"
-	"github.com/trick77/noergler-go/internal/inference"
-	"github.com/trick77/noergler-go/internal/tokens"
+	"github.com/trick77/noergler/internal/evals"
+	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/tokens"
 )
 
 // options is what a run needs. Grouped rather than passed as seven

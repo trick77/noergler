@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/noergler-go/internal/logging"
+	"github.com/trick77/noergler/internal/logging"
 )
 
 func newTestServer(t *testing.T, enabled, disabled []string) (*Server, *bytes.Buffer) {

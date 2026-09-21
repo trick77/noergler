@@ -10,11 +10,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/trick77/noergler-go/internal/httpapi"
-	"github.com/trick77/noergler-go/internal/logging"
-	"github.com/trick77/noergler-go/internal/store"
-	"github.com/trick77/noergler-go/internal/teams"
-	"github.com/trick77/noergler-go/internal/webhook"
+	"github.com/trick77/noergler/internal/httpapi"
+	"github.com/trick77/noergler/internal/logging"
+	"github.com/trick77/noergler/internal/store"
+	"github.com/trick77/noergler/internal/teams"
+	"github.com/trick77/noergler/internal/webhook"
 )
 
 // maxWebhookBodyBytes bounds an unauthenticated read. A real delivery is well

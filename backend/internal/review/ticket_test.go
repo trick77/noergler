@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/noergler-go/internal/inference"
-	"github.com/trick77/noergler-go/internal/jira"
-	"github.com/trick77/noergler-go/internal/webhook"
+	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/jira"
+	"github.com/trick77/noergler/internal/webhook"
 )
 
 // The prompt's ticket block had no test at all: formatTicketBlock sat at 0%

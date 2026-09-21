@@ -2,7 +2,7 @@
   <img src="logo.png" alt="noergler" width="360">
 </p>
 
-[![CI](https://github.com/trick77/noergler-go/actions/workflows/ci.yaml/badge.svg)](https://github.com/trick77/noergler-go/actions/workflows/ci.yaml) ![Go 1.26](https://img.shields.io/badge/go-1.26-blue)
+[![CI](https://github.com/trick77/noergler/actions/workflows/ci.yaml/badge.svg)](https://github.com/trick77/noergler/actions/workflows/ci.yaml) ![Go 1.26](https://img.shields.io/badge/go-1.26-blue)
 
 Code review agent for typical private cloud corporate environments. The name is
 German for "Nörgler" (grumbler/complainer).
@@ -207,7 +207,7 @@ lines to alert on.
 
 ## Deployment notes
 
-The image is `ghcr.io/trick77/noergler-go`, built and pushed on merge to master.
+The image is `ghcr.io/trick77/noergler`, built and pushed on merge to master.
 The init container runs `["/noergler","migrate"]`.
 
 `GOMEMLIMIT=1500MiB` is set in the image against a 2 Gi pod. RSS after startup

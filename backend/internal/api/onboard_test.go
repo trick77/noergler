@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/trick77/noergler-go/internal/bitbucket"
-	"github.com/trick77/noergler-go/internal/config"
-	"github.com/trick77/noergler-go/internal/onboarding"
-	"github.com/trick77/noergler-go/internal/store"
+	"github.com/trick77/noergler/internal/bitbucket"
+	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/onboarding"
+	"github.com/trick77/noergler/internal/store"
 )
 
 // fakeBB stands in for both the bot client and the per-request admin clone.

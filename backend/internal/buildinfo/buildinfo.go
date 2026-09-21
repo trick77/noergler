@@ -4,7 +4,7 @@ package buildinfo
 import "os"
 
 // Set at link time:
-// -ldflags "-X github.com/trick77/noergler-go/internal/buildinfo.version=1.2.3".
+// -ldflags "-X github.com/trick77/noergler/internal/buildinfo.version=1.2.3".
 var (
 	version string
 	commit  string

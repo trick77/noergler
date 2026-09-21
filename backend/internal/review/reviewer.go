@@ -8,9 +8,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/trick77/noergler-go/internal/config"
-	"github.com/trick77/noergler-go/internal/jira"
-	"github.com/trick77/noergler-go/internal/store"
+	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/jira"
+	"github.com/trick77/noergler/internal/store"
 )
 
 // fileFetchConcurrency bounds how many full file bodies are in flight at

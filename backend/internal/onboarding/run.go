@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/trick77/noergler-go/internal/bitbucket"
+	"github.com/trick77/noergler/internal/bitbucket"
 )
 
 // httpDetailCap is Python's `response.text[:200]`, counted in runes.

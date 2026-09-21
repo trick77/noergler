@@ -8,8 +8,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/trick77/noergler-go/internal/config"
-	"github.com/trick77/noergler-go/internal/store"
+	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/store"
 )
 
 func quietLogger() *slog.Logger {

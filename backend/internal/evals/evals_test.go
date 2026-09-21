@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/noergler-go/internal/inference"
+	"github.com/trick77/noergler/internal/inference"
 )
 
 // stubReviewer answers each case with canned findings, so the scoring is

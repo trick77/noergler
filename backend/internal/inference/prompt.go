@@ -4,7 +4,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/trick77/noergler-go/internal/diff"
+	"github.com/trick77/noergler/internal/diff"
 )
 
 // ReviewSystemMessage and MentionSystemMessage carry the injection guardrails.

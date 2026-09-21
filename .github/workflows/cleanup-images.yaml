@@ -31,7 +31,7 @@ jobs:
         with:
           account: user
           token: ${{ secrets.GITHUB_TOKEN }}
-          image-names: "noergler-go"
+          image-names: "noergler"
           tag-selection: both
           keep-n-most-recent: 5
           # Protect anything pushed in the last hour so a fresh release is never

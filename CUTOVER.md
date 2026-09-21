@@ -1,4 +1,4 @@
-# Cutover: Python noergler to noergler-go
+# Cutover: Python noergler to noergler
 
 What has to change in `noergler-infra` to replace the Python service with this
 one. The webhook contract, the `teams.yaml` shape and the riptide payload are
@@ -9,7 +9,7 @@ environment variables.
 
 | | Python | Go |
 | --- | --- | --- |
-| Image | `ghcr.io/trick77/noergler` | `ghcr.io/trick77/noergler-go` |
+| Image | `ghcr.io/trick77/noergler` | `ghcr.io/trick77/noergler` |
 | Entrypoint | `uvicorn app.main:app --host 0.0.0.0 --port 8080` | `["/noergler"]`, default command `serve` |
 | Init container | `alembic upgrade head` | `["/noergler","migrate"]` |
 
@@ -132,7 +132,7 @@ exceptions:
    remove `MALLOC_ARENA_MAX`, convert each team's `inference.model` to a profile
    id.
 3. Point the init container at `["/noergler","migrate"]`.
-4. Deploy `ghcr.io/trick77/noergler-go`.
+4. Deploy `ghcr.io/trick77/noergler`.
 5. Check the first log lines: every shared check `OK`, then `teams_ready` with
    the teams you expect enabled and nothing unexpectedly disabled.
 6. `GET /ready` returns 200.

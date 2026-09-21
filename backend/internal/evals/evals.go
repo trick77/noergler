@@ -30,8 +30,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/trick77/noergler-go/internal/diff"
-	"github.com/trick77/noergler-go/internal/inference"
+	"github.com/trick77/noergler/internal/diff"
+	"github.com/trick77/noergler/internal/inference"
 )
 
 //go:embed corpus/*.json

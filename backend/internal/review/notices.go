@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/trick77/noergler-go/internal/bitbucket"
-	"github.com/trick77/noergler-go/internal/inference"
-	"github.com/trick77/noergler-go/internal/render"
-	"github.com/trick77/noergler-go/internal/store"
+	"github.com/trick77/noergler/internal/bitbucket"
+	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/render"
+	"github.com/trick77/noergler/internal/store"
 )
 
 // timeoutMinutes is the wall-clock cap in whole minutes, as the notices

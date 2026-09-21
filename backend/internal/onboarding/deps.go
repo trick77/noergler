@@ -3,8 +3,8 @@ package onboarding
 import (
 	"context"
 
-	"github.com/trick77/noergler-go/internal/bitbucket"
-	"github.com/trick77/noergler-go/internal/config"
+	"github.com/trick77/noergler/internal/bitbucket"
+	"github.com/trick77/noergler/internal/config"
 )
 
 // AdminClient is Bitbucket on the team admin's own token: everything that

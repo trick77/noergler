@@ -7,11 +7,11 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/trick77/noergler-go/internal/bitbucket"
-	"github.com/trick77/noergler-go/internal/httpstats"
-	"github.com/trick77/noergler-go/internal/inference"
-	"github.com/trick77/noergler-go/internal/logging"
-	"github.com/trick77/noergler-go/internal/webhook"
+	"github.com/trick77/noergler/internal/bitbucket"
+	"github.com/trick77/noergler/internal/httpstats"
+	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/logging"
+	"github.com/trick77/noergler/internal/webhook"
 )
 
 // HandleMention answers an @mention, or re-runs the review when the comment

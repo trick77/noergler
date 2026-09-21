@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/trick77/noergler-go/internal/config"
+	"github.com/trick77/noergler/internal/config"
 )
 
 // DefaultWebhookName is the name Bitbucket stores the hook under.

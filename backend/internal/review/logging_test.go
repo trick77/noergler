@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/noergler-go/internal/httpstats"
-	"github.com/trick77/noergler-go/internal/inference"
+	"github.com/trick77/noergler/internal/httpstats"
+	"github.com/trick77/noergler/internal/inference"
 )
 
 // capturingReviewer is a Reviewer whose log output can be read back.

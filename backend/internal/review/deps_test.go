@@ -3,12 +3,12 @@ package review
 import (
 	"testing"
 
-	"github.com/trick77/noergler-go/internal/bitbucket"
-	"github.com/trick77/noergler-go/internal/inference"
-	"github.com/trick77/noergler-go/internal/jira"
-	"github.com/trick77/noergler-go/internal/riptide"
-	"github.com/trick77/noergler-go/internal/store"
-	"github.com/trick77/noergler-go/internal/tokens"
+	"github.com/trick77/noergler/internal/bitbucket"
+	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/jira"
+	"github.com/trick77/noergler/internal/riptide"
+	"github.com/trick77/noergler/internal/store"
+	"github.com/trick77/noergler/internal/tokens"
 )
 
 // The interfaces are declared consumer-side, so nothing forces the concrete

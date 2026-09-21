@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/noergler-go/internal/store"
-	"github.com/trick77/noergler-go/internal/webhook"
+	"github.com/trick77/noergler/internal/store"
+	"github.com/trick77/noergler/internal/webhook"
 )
 
 func snapshot() *store.RollupSnapshot {

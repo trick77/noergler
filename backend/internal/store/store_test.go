@@ -14,7 +14,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/trick77/noergler-go/internal/config"
+	"github.com/trick77/noergler/internal/config"
 )
 
 // testStore opens a store on a fresh schema, migrates it and drops the

@@ -10,13 +10,13 @@ package api
 import (
 	"log/slog"
 
-	"github.com/trick77/noergler-go/internal/bitbucket"
-	"github.com/trick77/noergler-go/internal/httpapi"
-	"github.com/trick77/noergler-go/internal/onboarding"
-	"github.com/trick77/noergler-go/internal/queue"
-	"github.com/trick77/noergler-go/internal/store"
-	"github.com/trick77/noergler-go/internal/teams"
-	"github.com/trick77/noergler-go/internal/webhook"
+	"github.com/trick77/noergler/internal/bitbucket"
+	"github.com/trick77/noergler/internal/httpapi"
+	"github.com/trick77/noergler/internal/onboarding"
+	"github.com/trick77/noergler/internal/queue"
+	"github.com/trick77/noergler/internal/store"
+	"github.com/trick77/noergler/internal/teams"
+	"github.com/trick77/noergler/internal/webhook"
 )
 
 // Submitter is the review queue as the routes use it.

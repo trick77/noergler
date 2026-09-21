@@ -5,8 +5,8 @@ import (
 	"path"
 	"strings"
 
-	"github.com/trick77/noergler-go/internal/inference"
-	"github.com/trick77/noergler-go/internal/jira"
+	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/jira"
 )
 
 // verdictLabels maps the model's verdict enum to its rendered label. An

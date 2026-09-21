@@ -10,15 +10,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trick77/noergler-go/internal/bitbucket"
-	"github.com/trick77/noergler-go/internal/diff"
-	"github.com/trick77/noergler-go/internal/httpstats"
-	"github.com/trick77/noergler-go/internal/inference"
-	"github.com/trick77/noergler-go/internal/jira"
-	"github.com/trick77/noergler-go/internal/logging"
-	"github.com/trick77/noergler-go/internal/render"
-	"github.com/trick77/noergler-go/internal/store"
-	"github.com/trick77/noergler-go/internal/webhook"
+	"github.com/trick77/noergler/internal/bitbucket"
+	"github.com/trick77/noergler/internal/diff"
+	"github.com/trick77/noergler/internal/httpstats"
+	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/jira"
+	"github.com/trick77/noergler/internal/logging"
+	"github.com/trick77/noergler/internal/render"
+	"github.com/trick77/noergler/internal/store"
+	"github.com/trick77/noergler/internal/webhook"
 )
 
 // contextExpansionRatio is is_small_pr's default: a PR counts as small when

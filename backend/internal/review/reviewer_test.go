@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/trick77/noergler-go/internal/config"
+	"github.com/trick77/noergler/internal/config"
 )
 
 // The team API rewrites the author lists (PUT /teams/{slug}/settings) while

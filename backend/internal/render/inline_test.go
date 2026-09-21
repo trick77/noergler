@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/noergler-go/internal/inference"
+	"github.com/trick77/noergler/internal/inference"
 )
 
 // Expected bodies captured from the Python (app/bitbucket.py

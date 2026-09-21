@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/noergler-go/internal/diff"
+	"github.com/trick77/noergler/internal/diff"
 )
 
 // Expectations generated from the running Python (format_file_entry).

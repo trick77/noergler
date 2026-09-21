@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/noergler-go/internal/bitbucket"
-	"github.com/trick77/noergler-go/internal/webhook"
+	"github.com/trick77/noergler/internal/bitbucket"
+	"github.com/trick77/noergler/internal/webhook"
 )
 
 // countDiffLines ran on every review but nothing ever read its output, so the

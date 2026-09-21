@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/noergler-go/internal/config"
-	"github.com/trick77/noergler-go/internal/inference"
-	"github.com/trick77/noergler-go/internal/store"
-	"github.com/trick77/noergler-go/internal/webhook"
+	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/store"
+	"github.com/trick77/noergler/internal/webhook"
 )
 
 const sampleDiff = `diff --git a/a.go b/a.go

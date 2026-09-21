@@ -29,14 +29,14 @@ cat > "$TMP/backend.xml" <<XML
 <?xml version="1.0"?>
 <coverage>
   <packages>
-    <package name="github.com/trick77/noergler-go/internal/review">
+    <package name="github.com/trick77/noergler/internal/review">
       <classes>
         <class name="review" filename="internal/review/review.go">
           <lines>$(gen_lines 80 1)$(gen_lines 20 0)</lines>
         </class>
       </classes>
     </package>
-    <package name="github.com/trick77/noergler-go/cmd/noergler">
+    <package name="github.com/trick77/noergler/cmd/noergler">
       <classes>
         <class name="main" filename="cmd/noergler/main.go">
           <lines>$(gen_lines 100 0)</lines>

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/noergler-go/internal/config"
+	"github.com/trick77/noergler/internal/config"
 )
 
 func newOnboarder(t *testing.T, tm *config.Team, admin *fakeAdmin, bot *fakeBot, opts Options) *Onboarder {

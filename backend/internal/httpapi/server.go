@@ -14,7 +14,7 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/trick77/noergler-go/internal/logging"
+	"github.com/trick77/noergler/internal/logging"
 )
 
 // TeamStatus reports the slugs the probes show. Slugs only: the disable

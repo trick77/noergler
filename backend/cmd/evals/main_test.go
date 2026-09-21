@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/noergler-go/internal/evals"
-	"github.com/trick77/noergler-go/internal/inference"
+	"github.com/trick77/noergler/internal/evals"
+	"github.com/trick77/noergler/internal/inference"
 )
 
 // The orchestration is what the patch-coverage gate objects to being

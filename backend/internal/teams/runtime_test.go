@@ -5,9 +5,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/trick77/noergler-go/internal/config"
-	"github.com/trick77/noergler-go/internal/review"
-	"github.com/trick77/noergler-go/internal/store"
+	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/review"
+	"github.com/trick77/noergler/internal/store"
 )
 
 func newTestRuntime(t *config.Team) *Runtime {

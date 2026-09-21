@@ -1,8 +1,8 @@
 package teams
 
 import (
-	"github.com/trick77/noergler-go/internal/review"
-	"github.com/trick77/noergler-go/internal/store"
+	"github.com/trick77/noergler/internal/review"
+	"github.com/trick77/noergler/internal/store"
 )
 
 // The real implementations must satisfy the consumer-side interfaces.

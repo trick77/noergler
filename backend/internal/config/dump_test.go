@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/noergler-go/internal/logging"
+	"github.com/trick77/noergler/internal/logging"
 )
 
 func TestDump_MasksSecretsAndKeepsTheSectionHeaders(t *testing.T) {

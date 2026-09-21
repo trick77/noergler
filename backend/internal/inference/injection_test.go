@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/noergler-go/internal/diff"
+	"github.com/trick77/noergler/internal/diff"
 )
 
 // PR file content is attacker-controlled. It must not be able to rewrite

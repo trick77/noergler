@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trick77/noergler-go/internal/diff"
-	"github.com/trick77/noergler-go/internal/logging"
-	"github.com/trick77/noergler-go/internal/riptide"
-	"github.com/trick77/noergler-go/internal/store"
-	"github.com/trick77/noergler-go/internal/webhook"
+	"github.com/trick77/noergler/internal/diff"
+	"github.com/trick77/noergler/internal/logging"
+	"github.com/trick77/noergler/internal/riptide"
+	"github.com/trick77/noergler/internal/store"
+	"github.com/trick77/noergler/internal/webhook"
 )
 
 // HandleCommentDeleted is the primary opt-out signal: if the user deleted our

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/trick77/noergler-go/internal/inference"
+	"github.com/trick77/noergler/internal/inference"
 )
 
 // InlineComment builds the body of one inline review comment.

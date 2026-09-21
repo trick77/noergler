@@ -1,4 +1,4 @@
-module github.com/trick77/noergler-go
+module github.com/trick77/noergler
 
 go 1.26
 

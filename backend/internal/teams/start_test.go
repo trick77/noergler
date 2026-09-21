@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/noergler-go/internal/config"
-	"github.com/trick77/noergler-go/internal/logging"
-	"github.com/trick77/noergler-go/internal/store"
+	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/logging"
+	"github.com/trick77/noergler/internal/store"
 )
 
 // bufLogger captures the alerted startup lines so their exact shape can be

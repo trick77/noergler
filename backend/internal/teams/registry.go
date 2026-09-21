@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"sort"
 
-	"github.com/trick77/noergler-go/internal/webhook"
+	"github.com/trick77/noergler/internal/webhook"
 )
 
 // Registry is the fixed set of teams after startup.

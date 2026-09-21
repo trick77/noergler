@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/trick77/noergler-go/internal/bitbucket"
-	"github.com/trick77/noergler-go/internal/diff"
+	"github.com/trick77/noergler/internal/bitbucket"
+	"github.com/trick77/noergler/internal/diff"
 )
 
 // prepareFiles splits the diff, fetches each reviewable file's content and

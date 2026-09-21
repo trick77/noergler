@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/noergler-go/internal/inference"
-	"github.com/trick77/noergler-go/internal/jira"
+	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/jira"
 )
 
 // summaryGolden holds the output of the Python _build_summary for one case,

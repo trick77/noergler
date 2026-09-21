@@ -9,7 +9,7 @@ import (
 
 	"github.com/trick77/llmwire"
 
-	"github.com/trick77/noergler-go/internal/config"
+	"github.com/trick77/noergler/internal/config"
 )
 
 // CallTimeout is the hard wall-clock cap on a single LLM call. noergler

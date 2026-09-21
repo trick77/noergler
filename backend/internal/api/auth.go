@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/trick77/noergler-go/internal/httpapi"
-	"github.com/trick77/noergler-go/internal/teams"
+	"github.com/trick77/noergler/internal/httpapi"
+	"github.com/trick77/noergler/internal/teams"
 )
 
 // runtimeFor resolves the slug in the path and answers 404 or 503 itself.

@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/noergler-go/internal/config"
-	"github.com/trick77/noergler-go/internal/httpstats"
+	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/httpstats"
 )
 
 // recorded is one request the fake server saw.
