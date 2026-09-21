@@ -4,9 +4,7 @@ name: CI
 # the image (see release.yaml).
 on:
   pull_request:
-    # worktree-inference-pool is here because the dashboard PR is stacked
-    # on it; drop it once that branch has merged to master.
-    branches: [master, worktree-inference-pool]
+    branches: [master]
   workflow_dispatch:
 
 concurrency:
