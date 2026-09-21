@@ -156,17 +156,24 @@ export function MetricsPage() {
         </p>
 
         <Tiles>
-          <Tile label="Cost" value={money(data.totals.cost_usd)}>
-            {costTotals.length > 0 && (
+          {/* On an instance that has not run yet, "unpriced" would claim the
+              gateway declined to price something. Nothing ran; that is a
+              dash. "unpriced" is reserved for runs that actually happened
+              and came back without a price. */}
+          <Tile label="Cost" value={data.totals.runs === 0 ? "—" : money(data.totals.cost_usd)}>
+            {costTop > 0 && (
               <div className="mt-2">
                 <Sparkline values={costTotals} label="Cost trend" />
               </div>
             )}
           </Tile>
           <Tile label="Runs" value={data.totals.runs.toLocaleString()}>
-            <div className="mt-2">
-              <Sparkline values={runSeries[0].values} label="Run count trend" />
-            </div>
+            {/* A flat line of zeros is a line that says nothing. */}
+            {data.totals.runs > 0 && (
+              <div className="mt-2">
+                <Sparkline values={runSeries[0].values} label="Run count trend" />
+              </div>
+            )}
           </Tile>
           <Tile label="Findings" value={data.totals.findings_posted.toLocaleString()} />
           <Tile label="Unpriced" value={data.totals.unpriced_runs} note="runs" />

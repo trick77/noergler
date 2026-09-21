@@ -210,6 +210,27 @@ describe("MetricsPage", () => {
     expect(await screen.findAllByText("3")).not.toHaveLength(0);
   });
 
+  // A fresh instance has run nothing, which is not the same as having run
+  // something the gateway declined to price. "unpriced" there would claim a
+  // fact about a run that never happened.
+  it("shows a dash rather than unpriced before anything has run", async () => {
+    serve({
+      metrics: {
+        ...metrics,
+        totals: { ...metrics.totals, runs: 0, cost_usd: null, unpriced_runs: 0 },
+        by_team: [],
+        daily: [],
+        daily_attempts: [],
+        breakdown: [],
+      },
+    });
+    render(<MetricsPage />);
+
+    await waitFor(() => expect(screen.getByText("Cost")).toBeDefined());
+    expect(screen.queryByText("unpriced")).toBeNull();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  });
+
   it("labels both charts for a screen reader", async () => {
     serve({ metrics });
     render(<MetricsPage />);
