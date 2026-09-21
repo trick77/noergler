@@ -262,13 +262,11 @@ func TeamEnvPrefix(slug string) string {
 	return "TEAM_" + strings.ReplaceAll(strings.ToUpper(slug), "-", "_") + "_"
 }
 
-// App is the instance layer plus every resolved team.
 // Queue sizes the review queue's inference pool.
 //
-// Stage A (Bitbucket fetches, prompt assembly) and stage C (posting) stay on
-// the single worker, so every Bitbucket call is still one at a time. Only the
-// inference call overlaps, which is what a 200s+ gateway wait was blocking
-// the worker for.
+// Prepare (Bitbucket fetches, prompt assembly) and post stay on the single
+// worker, so every Bitbucket call is still one at a time. Only the gateway
+// call overlaps, which is what a 200s+ wait was blocking the worker for.
 //
 // Both are instance-wide on purpose. A per-team value is not a per-team knob:
 // it applies to every team, so teams.yaml gets no say and the override table
@@ -283,6 +281,7 @@ type Queue struct {
 	InferenceConcurrencyPerTeam int
 }
 
+// App is the instance layer plus every resolved team.
 type App struct {
 	Bitbucket       Bitbucket
 	LLM             LLM

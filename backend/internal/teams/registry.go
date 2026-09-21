@@ -68,16 +68,16 @@ func (g *Registry) Status() (enabled, disabled []string) {
 	return enabled, disabled
 }
 
-// Review matches queue.ReviewFunc. The team was authenticated by the webhook
-// route, so the worker only has to find it again.
-//
-// queue.run already binds team= into the context, so this does not.
 // Scheduler stages a review's inference off the worker. An alias, not a
 // second declaration: it has to be the very type the review package names
 // in its own signature, or a Reviewer cannot satisfy this package's
 // interface.
 type Scheduler = review.Scheduler
 
+// Review matches queue.ReviewFunc. The team was authenticated by the webhook
+// route, so the worker only has to find it again.
+//
+// queue.run already binds team= into the context, so this does not.
 func (g *Registry) Review(ctx context.Context, team string, p *webhook.Payload, sched Scheduler) bool {
 	rt, _, ok := g.Lookup(team)
 	if !ok {
