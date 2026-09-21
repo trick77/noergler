@@ -175,7 +175,8 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 //
 // Merge and decline rollups, mention answers and the two deletions all fetch
 // a diff or touch the DB, so they run on the review worker rather than in
-// the request: one diff and prompt set in memory at a time.
+// the request: the worker serializes every Bitbucket call, and the number of
+// diffs and prompts resident at once is bounded by the inference pool.
 //
 // Pinned in AGENTS.md: pr:deleted and pr:comment:deleted go on the queue,
 // but their response bodies carry no queue key.

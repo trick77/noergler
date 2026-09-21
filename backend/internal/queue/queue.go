@@ -1,8 +1,10 @@
 // Package queue is the single-worker review queue.
 //
-// Every review runs one at a time on one background worker, so only one
-// diff/file/prompt set is ever resident: the pod's memory limit is sized for
-// one. Webhooks may arrive at any rate, so the queue dedupes per PR. If a PR
+// One background worker runs every review's Bitbucket work: the diff and
+// file fetches, and the posting afterwards. Only the gateway call leaves it,
+// onto a bounded pool, because a 200s+ inference would otherwise hold the
+// queue behind it. The worker stops preparing once the pool is saturated, so
+// the resident prompts stay bounded too. Webhooks may arrive at any rate, so the queue dedupes per PR. If a PR
 // already has a pending entry the stored payload is replaced and no second
 // slot is enqueued, which collapses a 50-commit push into at most two reviews
 // (the one in flight plus the deduped latest state).

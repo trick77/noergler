@@ -46,7 +46,10 @@ No web framework, no ORM, no logging library. Do not add one.
   `{previously_posted_findings}`. Prefix cache depends on it.
 - File order to the LLM is content-independent (group, language, path).
 - `strings.ReplaceAll`, never `text/template`: the files contain JSON braces.
-- One prompt set resident at a time. **Single review worker**, per-PR supersede.
+- **Single worker for every Bitbucket call**, per-PR supersede. Only the
+  gateway call leaves it, onto a bounded pool (`REVIEW_INFERENCE_CONCURRENCY`
+  6 global, `..._PER_TEAM` 2 nested inside it). Prepare and post keep the
+  worker: serialization was for Bitbucket, never for inference.
 - **Editing `prompts/review.txt` means re-running the evals**:
   `EVAL_BASE_URL=... EVAL_API_KEY=... go run ./cmd/evals` from `backend/`.
   Seeded-bug corpus in `internal/evals/corpus/`; exit 1 = a bug went
@@ -115,7 +118,9 @@ No web framework, no ORM, no logging library. Do not add one.
 - Splunk-reserved keys renamed `splunk_<key>`, `timestamp` first (Splunk's auto
   timestamp guesses wrong otherwise).
 - 4 file fetches in flight, tokenizer vocab compiled in and warmed at boot.
-  The pod has 2 Gi.
+  The pod has 2 Gi. Resident prompts are bounded too: the worker stops
+  preparing at pool cap plus `stagedSlack`, so a 50-PR burst cannot hold 50
+  assembled prompts.
 - **The PR diff is UNCAPPED by default** (`BITBUCKET_MAX_DIFF_BYTES=0`); the
   inbound webhook body (1 MiB) and one file body (1 MiB) stay capped. A diff
   cap refuses the whole PR, and a diff's bytes are mostly files `IsReviewable`
@@ -231,6 +236,38 @@ not mirrored. `teams.Reconcile` runs BEFORE any Reviewer is built, for the same
 reason. The onboarding orchestrators never mutate the team they are given.
 
 ## Review pipeline
+
+Three stages: `prepare` (guards, Bitbucket, Jira, prompt) -> `infer` (the
+gateway call, the only stage off the worker) -> `post` (outcomes, comments,
+rows, summary). `ReviewPullRequest` composes all three inline and is what
+`HandleMention` and the tests use; `ReviewPullRequestStaged` is the queued
+path.
+
+- **Staged reviews report `handedOff`.** True keeps the PR's queue hold
+  alive past the worker turn; a prepare exit returns false having logged its
+  own HTTP totals. Get this wrong and either a second run of the same PR
+  races the first on the pointer, the summary and the comments, or the PR is
+  held forever.
+- **The HTTP totals are NOT deferred in the entry function.** With the
+  gateway call staged, a defer there fires before it and before posting:
+  `inference=0` and no post-stage Bitbucket calls. Logged once, at the end
+  of `post`.
+- **`post` runs on the review's ctx, not the worker's job ctx.** The job ctx
+  carries `team=` but no `pr_tag` and no httpstats scope. The queue passes
+  the review's through structurally; do not "simplify" it to the parameter.
+- The plan crossing the stages holds counts and names, never file bodies,
+  the raw diff or anything but the one prompt string. `render.SummaryInput`
+  has no content-bearing field, and `post`'s only use of the files is
+  `len(files)`.
+- `Queue.Stop` is a **fixpoint**: a review spawns inference which submits a
+  post stage back onto the worker. It settles on "nothing runnable", not "no
+  key held" (holds are released by inference goroutines, which `infWG` has
+  already waited for, so a key still held is one nothing will release). While
+  draining it starts no queued review, only the tails of reviews already in
+  flight: shutdown is one round of work, not the whole backlog.
+- Acquire the **team semaphore before the global one**, release in reverse.
+  The other order holds a global slot while queuing for a team slot, which
+  deadlocks the nested pair.
 
 `OutcomeError` posts NO notice and writes NO row: a non-overflow API error is
 only logged. Only
