@@ -64,6 +64,10 @@ type Deps struct {
 	Bitbucket BotClient
 	// PublicURL is this instance.s base URL. Empty disables /onboard.
 	PublicURL string
+	// BitbucketURL is the Bitbucket base the dashboard links PR tags to.
+	// Serving it is the only way the browser can learn it: it is read from
+	// BITBUCKET_URL in this process and the SPA ships as static files.
+	BitbucketURL string
 	// BotUsername is the instance's Bitbucket account, read from
 	// BITBUCKET_USERNAME. The @mention trigger is instance-wide, not
 	// per-team.
@@ -80,6 +84,12 @@ func Register(srv *httpapi.Server, d Deps) {
 	srv.HandleFunc("GET /teams/{team}", d.getTeam)
 	srv.HandleFunc("PUT /teams/{team}/settings", d.putTeamSettings)
 	srv.HandleFunc("POST /onboard/{team}", d.onboard)
+
+	// The contract for the four routes above, and the page that renders it.
+	// NOT inside the dashboard block: the self-service API exists without the
+	// dashboard, so its documentation has to as well.
+	srv.HandleFunc("GET /api/openapi.yaml", d.openapiSpec)
+	srv.HandleFunc("GET /api/docs", d.docs)
 
 	// Read-only, unauthenticated, cross-team. Registered only when the
 	// dashboard's dependencies are wired, so an instance that does not want

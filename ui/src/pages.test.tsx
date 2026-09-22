@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FaqPage } from "./FaqPage";
 import { LivePage } from "./LivePage";
 import { MetricsPage } from "./MetricsPage";
 import { RunsPage } from "./RunsPage";
@@ -26,14 +27,36 @@ const live: Live = {
   pool_per_team: 2,
   staged: 2,
   depth: 1,
-  running: [{ tag: "PAY/ledger#1", team: "payments", kind: "review", since: new Date().toISOString() }],
-  waiting: [{ tag: "PAY/ledger#2", team: "payments", since: new Date().toISOString() }],
+  running: [{ tag: "PAY/ledger#1", team: "payments", team_name: "Payments", kind: "review", since: new Date().toISOString() }],
+  waiting: [{ tag: "PAY/ledger#2", team: "payments", team_name: "Payments", since: new Date().toISOString() }],
   teams: [
-    { slug: "payments", enabled: true, state: "ready", repos: -1, prs: 4, last_run: new Date().toISOString() },
-    { slug: "mobile", enabled: false, state: "disabled", repos: 0, prs: 0, last_run: null },
-    // Configured, started, owns nothing: the state the green pill used to hide.
-    { slug: "search", enabled: true, state: "no_repos", repos: 0, prs: 0, last_run: null },
+    // Named so that slug order (mobile, payments, search) and name order
+    // (Ausgaben, Mobile, Search) differ: the page's own sort is what has to
+    // put them right.
+    {
+      slug: "payments",
+      name: "Ausgaben",
+      enabled: true,
+      state: "ready",
+      repos: -1,
+      prs: 4,
+      last_run: new Date(Date.now() - 600_000).toISOString(),
+    },
+    { slug: "mobile", name: "Mobile", enabled: false, state: "disabled", repos: 0, prs: 0, last_run: null },
+    // Configured, started, owns nothing: the state the green pill used to
+    // hide. Its last_run is the most recent, so the live page's sort puts it
+    // first while an alphabetical one would put it last.
+    {
+      slug: "search",
+      name: "Search",
+      enabled: true,
+      state: "no_repos",
+      repos: 0,
+      prs: 0,
+      last_run: new Date(Date.now() - 60_000).toISOString(),
+    },
   ],
+  bitbucket_url: "https://bitbucket.example.com",
 };
 
 const metrics: Metrics = {
@@ -52,6 +75,7 @@ const metrics: Metrics = {
   by_team: [
     {
       team: "payments",
+      team_name: "Payments",
       runs: 12,
       prompt_tokens: 1000,
       cached_tokens: 0,
@@ -98,9 +122,31 @@ describe("LivePage", () => {
     serve({ live });
     render(<LivePage />);
 
-    expect(await screen.findByText("mobile")).toBeDefined();
+    // The display name leads; the slug stays reachable on hover, because
+    // it is what team= and the webhook path use.
+    const row = await screen.findByText("Mobile");
+    expect(row.getAttribute("title")).toBe("mobile");
     expect(await screen.findByText("disabled")).toBeDefined();
     expect(screen.queryByText(/OPENAI_API_KEY/)).toBeNull();
+  });
+
+  // Most recently active first: the page answers "what is happening", so a
+  // team that ran a minute ago outranks one whose name starts with an A. A
+  // team that never ran sorts last, because null is "no activity" rather
+  // than "infinitely old".
+  it("orders teams by last run, not by name", async () => {
+    serve({ live });
+    render(<LivePage />);
+
+    // Scoped to the Teams table: the running and queue cards carry team
+    // pills with the same title attribute.
+    const table = (await screen.findByText("Mobile")).closest("table");
+    const names = Array.from(table?.querySelectorAll("tbody tr td:first-child") ?? []).map(
+      (el) => el.textContent,
+    );
+    // Search ran most recently, Ausgaben before it, Mobile never. By name
+    // this would read Ausgaben, Mobile, Search.
+    expect(names).toEqual(["Search", "Ausgaben", "Mobile"]);
   });
 
   // A team that owns nothing passes every startup check and reviews
@@ -110,12 +156,21 @@ describe("LivePage", () => {
     serve({ live });
     render(<LivePage />);
 
-    // Twice: the pill and the scope column. Both say it, because the pill
-    // is the verdict and the column is the evidence.
-    expect(await screen.findAllByText("no repos")).toHaveLength(2);
-    expect(await screen.findByText("whole project")).toBeDefined();
+    expect(await screen.findByText("no repos")).toBeDefined();
     expect(await screen.findByText("ready")).toBeDefined();
     expect(await screen.findByText("disabled")).toBeDefined();
+  });
+
+  // What a team claims is configuration read once at boot, not something
+  // that moves while you watch. It belongs on the teams page, which shows
+  // the claims themselves rather than a sentinel word for them.
+  it("does not carry the scope column", async () => {
+    serve({ live });
+    render(<LivePage />);
+
+    await screen.findByText("Ausgaben");
+    expect(screen.queryByText("Scope")).toBeNull();
+    expect(screen.queryByText("whole project")).toBeNull();
   });
 
   it("says so when the panel cannot be loaded", async () => {
@@ -130,6 +185,7 @@ describe("RunsPage", () => {
     {
       tag: "PAY/ledger#1",
       team: "payments",
+      team_name: "Payments",
       kind: "auto",
       outcome: "ok",
       elapsed_ms: 72400,
@@ -140,6 +196,7 @@ describe("RunsPage", () => {
     {
       tag: "PAY/ledger#2",
       team: "payments",
+      team_name: "Payments",
       kind: "auto",
       outcome: "ok",
       elapsed_ms: 41000,
@@ -150,6 +207,7 @@ describe("RunsPage", () => {
     {
       tag: "PAY/ledger#3",
       team: "payments",
+      team_name: "Payments",
       kind: "auto",
       outcome: "skipped",
       reason: "head_unchanged",
@@ -162,6 +220,7 @@ describe("RunsPage", () => {
     {
       tag: "PAY/ledger#4",
       team: "payments",
+      team_name: "Payments",
       kind: "auto",
       outcome: "timed_out",
       elapsed_ms: 300000,
@@ -184,10 +243,10 @@ describe("RunsPage", () => {
     serve({ runs: { runs }, metrics });
     render(<RunsPage />);
 
-    expect(await screen.findByText("$0.218")).toBeDefined();
+    expect(await screen.findByText("$0.22")).toBeDefined();
     expect(await screen.findByText("unpriced")).toBeDefined();
-    // The failures have no cost at all, which is a dash, not $0.000.
-    expect(screen.queryByText("$0.000")).toBeNull();
+    // The failures have no cost at all, which is a dash, not $0.00.
+    expect(screen.queryByText("$0.00")).toBeNull();
   });
 
   // /metrics can fail while /runs succeeds. Four tiles reading 0 above a
@@ -205,7 +264,41 @@ describe("RunsPage", () => {
   it("ranks the skip reasons by their label", async () => {
     serve({ runs: { runs }, metrics });
     render(<RunsPage />);
-    expect(await screen.findByText("HEAD unchanged since last review")).toBeDefined();
+    // Twice: on the skipped row itself and in the breakdown below it.
+    expect(await screen.findAllByText("HEAD unchanged since last review")).toHaveLength(2);
+  });
+
+  // A red pill that only says "failed" sends the reader to the logs for
+  // something the row already knows.
+  it("says why a run did not produce a review", async () => {
+    serve({ runs: { runs }, metrics });
+    render(<RunsPage />);
+
+    await screen.findByText("timed_out");
+    // The label rides the row, so the reason is beside the outcome rather
+    // than only in the aggregate below.
+    const reasons = screen.getAllByText("HEAD unchanged since last review");
+    expect(reasons.length).toBeGreaterThan(1);
+  });
+
+  it("links a PR tag to Bitbucket", async () => {
+    serve({ runs: { runs, bitbucket_url: "https://bitbucket.example.com" }, metrics });
+    render(<RunsPage />);
+
+    const link = await screen.findByText("PAY/ledger#1");
+    expect(link.getAttribute("href")).toBe(
+      "https://bitbucket.example.com/projects/PAY/repos/ledger/pull-requests/1",
+    );
+  });
+
+  // BITBUCKET_URL unset: the tag is still the row's identity, so it stays
+  // readable rather than becoming a link that goes nowhere.
+  it("leaves the tag as text when the instance has no Bitbucket base", async () => {
+    serve({ runs: { runs, bitbucket_url: "" }, metrics });
+    render(<RunsPage />);
+
+    const tag = await screen.findByText("PAY/ledger#1");
+    expect(tag.getAttribute("href")).toBeNull();
   });
 });
 
@@ -216,7 +309,7 @@ describe("MetricsPage", () => {
 
     // Twice on purpose: the headline tile and the by-team row. The point
     // is that the figure is the priced sum in both places.
-    expect(await screen.findAllByText("$1.250")).toHaveLength(2);
+    expect(await screen.findAllByText("$1.25")).toHaveLength(2);
     expect(await screen.findByText("Unpriced")).toBeDefined();
     // The unpriced count stands on its own rather than being folded in.
     expect(await screen.findAllByText("3")).not.toHaveLength(0);
@@ -271,6 +364,9 @@ describe("TeamsPage", () => {
   const teams: Team[] = [
     {
       slug: "payments",
+      // Deliberately out of slug order against "mobile" below, so the page's
+      // own sort is what puts them right.
+      name: "Zahlungen",
       enabled: true,
       state: "ready",
       repos: -1,
@@ -283,6 +379,7 @@ describe("TeamsPage", () => {
     },
     {
       slug: "mobile",
+      name: "Mobile",
       enabled: false,
       state: "disabled",
       repos: 0,
@@ -318,7 +415,39 @@ describe("TeamsPage", () => {
     serve({ teams: { teams } });
     render(<TeamsPage />);
 
-    expect(await screen.findByText(/not served by the API/)).toBeDefined();
+    // The log line to look at, not the reason itself: a disable reason can
+    // name an environment variable and this page is unauthenticated.
     expect(await screen.findByText("team_disabled")).toBeDefined();
+    expect(screen.queryByText(/OPENAI_API_KEY|WEBHOOK_SECRET/)).toBeNull();
+  });
+});
+
+// Static prose: no endpoint, nothing per-instance. What it must not do is
+// drift from the reasons the pipeline actually reports.
+describe("FaqPage", () => {
+  it("answers the question the runs page raises", async () => {
+    render(<FaqPage />);
+
+    expect(screen.getByText("Why wasn't my PR reviewed?")).toBeDefined();
+    // Worded as review.SkipReason.Label() words them, so the FAQ and a runs
+    // row say the same thing.
+    expect(screen.getByText("AGENTS.md missing")).toBeDefined();
+    expect(screen.getByText("HEAD unchanged since last review")).toBeDefined();
+    expect(screen.getByText("PR cost cap reached")).toBeDefined();
+  });
+
+  it("names the opt-out keyword and points at the API docs", () => {
+    render(<FaqPage />);
+
+    expect(screen.getByText("noergloff")).toBeDefined();
+    expect(screen.getByText("/api/docs").getAttribute("href")).toBe("/api/docs");
+  });
+
+  // The page is for developers, not operators: a reader here cannot set env
+  // vars, and naming them would send them to the wrong person.
+  it("does not hand out env var names", () => {
+    const { container } = render(<FaqPage />);
+    expect(container.textContent).not.toMatch(/REVIEW_[A-Z_]+/);
+    expect(container.textContent).not.toMatch(/BITBUCKET_[A-Z_]+/);
   });
 });

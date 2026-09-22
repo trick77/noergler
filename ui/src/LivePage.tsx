@@ -1,5 +1,5 @@
 import type { Live } from "./api";
-import { ago, elapsedSince, scope, teamStateLabel, teamTone } from "./format";
+import { ago, byLastRun, elapsedSince, teamStateLabel, teamTone } from "./format";
 import { usePoll, useNow } from "./usePoll";
 import {
   Card,
@@ -7,6 +7,8 @@ import {
   Failed,
   Note,
   Pill,
+  PrTag,
+  Sep,
   TeamPill,
   column,
   h2,
@@ -65,8 +67,8 @@ export function LivePage() {
       <div className={column}>
         <h2 className={h2}>Live</h2>
         <p className={lede}>
-          What is running right now. The inference pool overlaps the gateway calls; every Bitbucket
-          fetch and every comment posted still happens one at a time on the single review worker.
+          What is running right now. Several reviews can be waiting on the model at once, but only
+          one at a time talks to Bitbucket, so a busy queue drains in order.
         </p>
 
         <Card
@@ -74,7 +76,13 @@ export function LivePage() {
           // "max N per team", not "N per team": the per-team figure is a
           // ceiling nested inside the global one, not a reservation. A team
           // is not owed two slots, it is stopped from taking more than two.
-          note={`${busy} of ${data.pool_capacity} slots busy · max ${data.pool_per_team} per team`}
+          note={
+            <>
+              {busy} of {data.pool_capacity} slots busy
+              <Sep />
+              max {data.pool_per_team} per team
+            </>
+          }
         >
           <Slots capacity={data.pool_capacity} busy={busy} />
           {data.running.length === 0 ? (
@@ -84,9 +92,11 @@ export function LivePage() {
               <tbody>
                 {data.running.map((it) => (
                   <tr key={it.tag}>
-                    <td className={tdTag}>{it.tag}</td>
+                    <td className={tdTag}>
+                      <PrTag tag={it.tag} base={data.bitbucket_url} />
+                    </td>
                     <td className={td + " w-px"}>
-                      <TeamPill slug={it.team} />
+                      <TeamPill name={it.team_name} slug={it.team} />
                     </td>
                     <td className={tdNum}>{elapsedSince(it.since, now)}</td>
                   </tr>
@@ -96,7 +106,16 @@ export function LivePage() {
           )}
         </Card>
 
-        <Card title="Queue" note={`${data.depth} waiting · in-flight excluded`}>
+        <Card
+          title="Queue"
+          note={
+            <>
+              {data.depth} waiting
+              <Sep />
+              in-flight excluded
+            </>
+          }
+        >
           {data.waiting.length === 0 ? (
             <Empty>Queue is empty.</Empty>
           ) : (
@@ -111,9 +130,11 @@ export function LivePage() {
               <tbody>
                 {data.waiting.map((it) => (
                   <tr key={it.tag}>
-                    <td className={tdTag}>{it.tag}</td>
+                    <td className={tdTag}>
+                      <PrTag tag={it.tag} base={data.bitbucket_url} />
+                    </td>
                     <td className={td + " w-px"}>
-                      <TeamPill slug={it.team} />
+                      <TeamPill name={it.team_name} slug={it.team} />
                     </td>
                     <td className={tdNum}>{elapsedSince(it.since, now)}</td>
                   </tr>
@@ -129,19 +150,19 @@ export function LivePage() {
               <tr>
                 <th className={th}>Team</th>
                 <th className={th + " w-px"}>State</th>
-                <th className={thNum}>Scope</th>
                 <th className={thNum}>PRs</th>
                 <th className={thNum}>Last run</th>
               </tr>
             </thead>
             <tbody>
-              {data.teams.map((t) => (
+              {byLastRun(data.teams).map((t) => (
                 <tr key={t.slug}>
-                  <td className={tdTag}>{t.slug}</td>
+                  <td className={td} title={t.slug}>
+                    {t.name}
+                  </td>
                   <td className={td + " w-px"}>
                     <Pill tone={teamTone(t.state)}>{teamStateLabel(t.state)}</Pill>
                   </td>
-                  <td className={tdNum}>{t.enabled ? scope(t.repos) : "—"}</td>
                   <td className={tdNum}>{t.prs}</td>
                   <td className={tdNum}>{ago(t.last_run, now)}</td>
                 </tr>
@@ -149,9 +170,8 @@ export function LivePage() {
             </tbody>
           </table>
           <Note>
-            A team with no repositories is configured and running and reviewing nothing: it owns no
-            project and no repo. Why a team is disabled stays in the logs, because the reason can
-            name an env var.
+            A team with no repos is running fine and has simply claimed nothing yet. If a team is
+            disabled, the pod log says why.
           </Note>
         </Card>
       </div>

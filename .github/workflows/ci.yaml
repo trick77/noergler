@@ -155,3 +155,16 @@ jobs:
       - run: make fe-coverage
       - name: UI patch coverage
         run: ./hack/patch-coverage.sh "origin/${{ github.base_ref || 'master' }}"
+
+  openapi-lint:
+    name: OpenAPI lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      # Pinned: an upstream release must not be able to fail CI on a spec
+      # nobody touched. See .spectral.yaml for what is disabled and why.
+      - name: Lint the API contract
+        run: npx --yes @stoplight/spectral-cli@6.15.0 lint backend/api/openapi.yaml --ruleset .spectral.yaml

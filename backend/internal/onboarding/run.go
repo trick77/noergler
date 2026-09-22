@@ -45,7 +45,7 @@ func (o *Onboarder) Status(ctx context.Context, target Target) (StatusRow, error
 	refused, err := o.refuseRepoTarget(ctx, target, claim)
 	if err != nil {
 		if s := bitbucket.Status(err); s != 0 {
-			return StatusRow{target, true, claim.BotCanRead,
+			return StatusRow{target, true, claim.BotCanWrite,
 				fmt.Sprintf("project hook check HTTP %d", s), stray, foreign}, nil
 		}
 		// A status error is a verdict, above. A transport failure is not: it
@@ -53,7 +53,7 @@ func (o *Onboarder) Status(ctx context.Context, target Target) (StatusRow, error
 		return StatusRow{}, err
 	}
 	if refused != "" {
-		return StatusRow{target, true, claim.BotCanRead, "blocked: " + refused, stray, foreign}, nil
+		return StatusRow{target, true, claim.BotCanWrite, "blocked: " + refused, stray, foreign}, nil
 	}
 
 	var webhook string
@@ -100,7 +100,7 @@ func (o *Onboarder) Status(ctx context.Context, target Target) (StatusRow, error
 			}
 		}
 	}
-	return StatusRow{target, claim.Owned, claim.BotCanRead, webhook, stray, foreign}, nil
+	return StatusRow{target, claim.Owned, claim.BotCanWrite, webhook, stray, foreign}, nil
 }
 
 // Onboard puts the webhook on one target, granting the bot read access first
@@ -124,10 +124,10 @@ func (o *Onboarder) Onboard(ctx context.Context, target Target) (TargetResult, e
 
 	var notes []string
 	bot := o.bot.BotUsername()
-	if !claim.BotCanRead {
+	if !claim.BotCanWrite {
 		if !o.opts.GrantBot {
 			return TargetResult{target, "skipped", fmt.Sprintf(
-				"%s cannot read it; grant %s %s in Bitbucket or run grant-bot",
+				"%s cannot write to it; grant %s %s in Bitbucket or run grant-bot",
 				bot, bot, target.BotPermission()), []string{}}, nil
 		}
 		if !o.opts.DryRun {

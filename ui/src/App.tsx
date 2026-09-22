@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { FaqPage } from "./FaqPage";
 import { LivePage } from "./LivePage";
 import { MetricsPage } from "./MetricsPage";
 import { RunsPage } from "./RunsPage";
@@ -10,6 +11,7 @@ const TITLES: Record<Page, string> = {
   runs: "Runs",
   metrics: "Metrics",
   teams: "Teams",
+  faq: "FAQ",
 };
 
 /** The shell: a fixed header over one scrolling page. No sidebar; the four
@@ -57,6 +59,17 @@ export default function App() {
               {TITLES[p]}
             </button>
           ))}
+          {/* An <a>, not a button: /api/docs is served by Go, outside this
+              SPA, so it is a real navigation rather than a route switch. It
+              is therefore not in PAGES, not in routing.ts and not in the
+              embed allowlist, and it never carries aria-current. Same tab:
+              it is part of the same service. */}
+          <a
+            href="/api/docs"
+            className="rounded-ui-sm px-3 py-1.5 text-sm text-muted transition-colors hover:bg-active hover:text-ink"
+          >
+            API
+          </a>
         </nav>
       </header>
 
@@ -65,6 +78,7 @@ export default function App() {
         {route === "runs" && <RunsPage />}
         {route === "metrics" && <MetricsPage />}
         {route === "teams" && <TeamsPage />}
+        {route === "faq" && <FaqPage />}
       </main>
     </div>
   );

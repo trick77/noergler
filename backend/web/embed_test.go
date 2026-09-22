@@ -29,7 +29,12 @@ func req(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
 func TestKnownRoutesGetTheShellAndUnknownOnesA404(t *testing.T) {
 	h := handler(built())
 
-	for _, path := range []string{"/", "/live", "/runs", "/metrics", "/teams"} {
+	// Driven off routes itself, not a copy of it: a hardcoded list stops
+	// covering a page the moment one is added to the allowlist.
+	if len(routes) < 5 {
+		t.Fatalf("routes has %d entries, expected the dashboard's pages", len(routes))
+	}
+	for path := range routes {
 		w := req(t, h, path)
 		if w.Code != http.StatusOK {
 			t.Errorf("%s: status = %d, want 200", path, w.Code)

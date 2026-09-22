@@ -1,5 +1,6 @@
+import { Fragment, type ReactNode } from "react";
 import type { Team } from "./api";
-import { ago, scope, teamStateLabel, teamTone } from "./format";
+import { ago, byName, scope, teamStateLabel, teamTone } from "./format";
 import { usePoll, useNow } from "./usePoll";
 import {
   Card,
@@ -7,6 +8,7 @@ import {
   Failed,
   Note,
   Pill,
+  Sep,
   column,
   h2,
   lede,
@@ -18,27 +20,42 @@ import {
   thNum,
 } from "./ui";
 
-function List({ label, items }: { label: string; items: string[] }) {
-  if (items.length === 0) return null;
-  return (
-    <>
-      {" "}
-      {label}: <code className="font-mono text-[12px] text-muted">{items.join(", ")}</code>
-    </>
-  );
-}
-
-/** Count renders an author list's size. The names are not served here: this
- *  page is unauthenticated, and a roster of who works where is not the same
- *  question as "is this team configured". */
-function Count({ label, n }: { label: string; n: number }) {
-  if (n === 0) return null;
-  return (
-    <>
-      {" "}
-      {label}: <span className="text-muted">{n}</span>
-    </>
-  );
+/** settingsParts is the team's non-empty settings, in display order.
+ *
+ *  The author lists are COUNTS, never names: this page is unauthenticated,
+ *  and a roster of who works where is a different question from "is this
+ *  team configured".
+ *
+ *  Built as a LIST rather than as conditional elements joined by a
+ *  separator: an element that renders null is still an element, so
+ *  Children.toArray would keep it and put a dot around nothing. Deciding
+ *  here what exists means the separator only ever sits between two things
+ *  the reader can see. */
+function settingsParts(t: Team) {
+  const parts: ReactNode[] = [];
+  if (t.exclude_repos.length > 0) {
+    parts.push(
+      <>
+        Excluded repos:{" "}
+        <code className="font-mono text-[12px] text-muted">{t.exclude_repos.join(", ")}</code>
+      </>,
+    );
+  }
+  if (t.auto_review_authors > 0) {
+    parts.push(
+      <>
+        Auto-review authors: <span className="text-muted">{t.auto_review_authors}</span>
+      </>,
+    );
+  }
+  if (t.ignore_authors > 0) {
+    parts.push(
+      <>
+        Ignored authors: <span className="text-muted">{t.ignore_authors}</span>
+      </>,
+    );
+  }
+  return parts;
 }
 
 export function TeamsPage() {
@@ -65,11 +82,24 @@ export function TeamsPage() {
           it has claimed.
         </p>
 
-        {data.teams.map((t) => (
+        {byName(data.teams).map((t) => (
           <Card
             key={t.slug}
-            title={t.slug}
-            note={`${t.enabled ? scope(t.repos) : "not started"} · ${t.prs} PRs · last run ${ago(t.last_run, now)}`}
+            title={t.name}
+            // The slug leads the note: it is the webhook path, the team= log
+            // field and the settings route, so it has to stay on the page
+            // once the heading shows the display name instead.
+            note={
+              <>
+                {t.slug}
+                <Sep />
+                {t.enabled ? scope(t.repos) : "not started"}
+                <Sep />
+                {t.prs} PRs
+                <Sep />
+                last run {ago(t.last_run, now)}
+              </>
+            }
             right={<Pill tone={teamTone(t.state)}>{teamStateLabel(t.state)}</Pill>}
           >
             {t.claims.length === 0 ? (
@@ -94,20 +124,21 @@ export function TeamsPage() {
                 </tbody>
               </table>
             )}
-            {(t.exclude_repos.length > 0 ||
-              t.ignore_authors > 0 ||
-              t.auto_review_authors > 0) && (
+            {settingsParts(t).length > 0 && (
               <Note>
-                <List label="Excluded repos" items={t.exclude_repos} />
-                <Count label="Auto-review authors" n={t.auto_review_authors} />
-                <Count label="Ignored authors" n={t.ignore_authors} />
+                {settingsParts(t).map((part, i) => (
+                  <Fragment key={i}>
+                    {i > 0 && <Sep />}
+                    {part}
+                  </Fragment>
+                ))}
               </Note>
             )}
             {!t.enabled && (
               <Note>
-                The reason a team is disabled is not shown here and not served by the API: it can
-                name an environment variable. It is in the pod log, on the{" "}
-                <code className="font-mono text-[12px]">team_disabled</code> line.
+                Look in the pod log for the{" "}
+                <code className="font-mono text-[12px]">team_disabled</code> line to see why. It is
+                not shown here because the reason can name an environment variable.
               </Note>
             )}
           </Card>

@@ -89,6 +89,23 @@ func jsonReply(status int, body string) func(http.ResponseWriter, *http.Request)
 	}
 }
 
+// replies serves one canned response per call, in order, and repeats the last
+// one after that. For the endpoints this client reads more than once in a
+// single operation.
+func replies(bodies ...string) func(http.ResponseWriter, *http.Request) {
+	var n int
+	return func(w http.ResponseWriter, _ *http.Request) {
+		body := bodies[len(bodies)-1]
+		if n < len(bodies) {
+			body = bodies[n]
+		}
+		n++
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, body)
+	}
+}
+
 // --- connectivity ------------------------------------------------------------
 
 func TestCheckConnectivity(t *testing.T) {
@@ -729,6 +746,132 @@ func TestGrantUserPermissionUsesQueryParams(t *testing.T) {
 	}
 	if f.last().Body != nil {
 		t.Errorf("body = %v, want none", f.last().Body)
+	}
+}
+
+// Bitbucket's `filter` is a substring match over users, so the response can
+// carry several rows and the wanted one need not be first. Taking values[0]
+// would read another user's permission as the bot's.
+func TestUserPermissionOnMatchesTheUserExactly(t *testing.T) {
+	body := `{"values":[
+		{"user":{"name":"noergler-ci"},"permission":"REPO_ADMIN"},
+		{"user":{"name":"NOERGLER"},"permission":"REPO_WRITE"}
+	]}`
+	f, c := newFake(t, jsonReply(200, body))
+
+	got, err := c.UserPermissionOn(context.Background(), "PROJ", "r", "noergler")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "REPO_WRITE" {
+		t.Errorf("permission = %q, want REPO_WRITE", got)
+	}
+	if want := "/rest/api/1.0/projects/PROJ/repos/r/permissions/users"; f.last().Path != want {
+		t.Errorf("path = %q, want %q", f.last().Path, want)
+	}
+	if f.last().Query.Get("filter") != "noergler" {
+		t.Errorf("query = %v", f.last().Query)
+	}
+}
+
+// No row for the user is the answer, not a failure: the bot simply has no
+// permission of its own there.
+func TestUserPermissionOnAbsentUserIsEmpty(t *testing.T) {
+	_, c := newFake(t, jsonReply(200, `{"values":[],"isLastPage":true}`))
+	got, err := c.UserPermissionOn(context.Background(), "PROJ", "", "noergler")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "" {
+		t.Errorf("permission = %q, want empty", got)
+	}
+}
+
+// A repository's own listing carries only what was granted ON it. A bot with
+// PROJECT_WRITE can comment on every repo under the project and appears in
+// none of their listings, so checking the repo alone reports "cannot write"
+// for a bot that can - and grant-bot grants PROJECT_WRITE for a whole-project
+// target, which makes that the normal setup rather than a corner.
+func TestUserPermissionOnFallsBackToTheProject(t *testing.T) {
+	f, c := newFake(t, replies(
+		`{"values":[],"isLastPage":true}`,
+		`{"values":[{"user":{"name":"noergler"},"permission":"PROJECT_WRITE"}],"isLastPage":true}`,
+	))
+
+	got, err := c.UserPermissionOn(context.Background(), "PROJ", "my-repo", "noergler")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "PROJECT_WRITE" {
+		t.Errorf("permission = %q, want PROJECT_WRITE inherited from the project", got)
+	}
+	if len(f.seen) != 2 {
+		t.Fatalf("made %d calls, want the repo then the project", len(f.seen))
+	}
+	if want := "/rest/api/1.0/projects/PROJ/repos/my-repo/permissions/users"; f.seen[0].Path != want {
+		t.Errorf("first call = %q, want %q", f.seen[0].Path, want)
+	}
+	if want := "/rest/api/1.0/projects/PROJ/permissions/users"; f.seen[1].Path != want {
+		t.Errorf("second call = %q, want %q", f.seen[1].Path, want)
+	}
+}
+
+// A permission on the repository itself wins and costs one call: the project
+// is only consulted when the repository has nothing.
+func TestUserPermissionOnPrefersTheRepo(t *testing.T) {
+	f, c := newFake(t, replies(
+		`{"values":[{"user":{"name":"noergler"},"permission":"REPO_READ"}],"isLastPage":true}`,
+	))
+
+	got, err := c.UserPermissionOn(context.Background(), "PROJ", "my-repo", "noergler")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "REPO_READ" {
+		t.Errorf("permission = %q, want the repo's own REPO_READ", got)
+	}
+	if len(f.seen) != 1 {
+		t.Errorf("made %d calls, want only the repo's", len(f.seen))
+	}
+}
+
+// filter is a substring match, so the wanted row can sit past the first page.
+// Stopping at page one would report "no permission" for a bot that has one.
+func TestUserPermissionOnFollowsPages(t *testing.T) {
+	f, c := newFake(t, replies(
+		`{"values":[{"user":{"name":"noergler-ci"},"permission":"REPO_READ"}],"isLastPage":false,"nextPageStart":100}`,
+		`{"values":[{"user":{"name":"noergler"},"permission":"REPO_WRITE"}],"isLastPage":true}`,
+	))
+
+	got, err := c.UserPermissionOn(context.Background(), "PROJ", "my-repo", "noergler")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "REPO_WRITE" {
+		t.Errorf("permission = %q, want the match on page two", got)
+	}
+	if len(f.seen) != 2 || f.seen[1].Query.Get("start") != "100" {
+		t.Errorf("second call query = %v", f.seen[1].Query)
+	}
+}
+
+func TestUserPermissionCanWrite(t *testing.T) {
+	for _, c := range []struct {
+		perm UserPermission
+		want bool
+	}{
+		{"REPO_WRITE", true},
+		{"PROJECT_WRITE", true},
+		// ADMIN includes WRITE.
+		{"REPO_ADMIN", true},
+		{"PROJECT_ADMIN", true},
+		{"REPO_READ", false},
+		{"PROJECT_READ", false},
+		{"", false},
+	} {
+		if got := c.perm.CanWrite(); got != c.want {
+			t.Errorf("%q.CanWrite() = %v, want %v", c.perm, got, c.want)
+		}
 	}
 }
 

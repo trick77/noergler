@@ -9,6 +9,18 @@ function Probe({ interval }: { interval?: number }) {
   return <p>n={data.n}</p>;
 }
 
+/** PathProbe reports the data AND whether it still belongs to the path being
+ *  asked for, so a path change can be observed mid-flight. */
+function PathProbe({ path }: { path: string }) {
+  const { data, stale } = usePoll<{ n: number }>(path);
+  if (!data) return <p>loading</p>;
+  return (
+    <p>
+      n={data.n} {stale ? "stale" : "fresh"}
+    </p>
+  );
+}
+
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
@@ -100,5 +112,47 @@ describe("usePoll", () => {
     await waitFor(() => expect(calls).toBeGreaterThan(1));
     // Still the reading, not a blank.
     expect(screen.queryByText("loading")).toBeNull();
+  });
+  // Switching a filter asks a different question. The old answer stays on
+  // screen (blanking swaps the whole page for a skeleton) but must not be
+  // presented as the answer to the new one: ok rows under a Failed filter.
+  it("marks data stale while the path it came from is no longer the one asked for", async () => {
+    let release!: (v: unknown) => void;
+    const held = new Promise((r) => {
+      release = r;
+    });
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        calls += 1;
+        if (calls === 1) return { ok: true, status: 200, json: async () => ({ n: 1 }) };
+        await held;
+        return { ok: true, status: 200, json: async () => ({ n: 2 }) };
+      }),
+    );
+
+    const { rerender } = render(<PathProbe path="runs" />);
+    await waitFor(() => expect(screen.getByText(/n=1 fresh/)).toBeDefined());
+
+    // Ask a different question; the second response has not landed yet.
+    rerender(<PathProbe path="runs?outcome=failed" />);
+    await waitFor(() => expect(screen.getByText(/n=1 stale/)).toBeDefined());
+
+    release(null);
+    await waitFor(() => expect(screen.getByText(/n=2 fresh/)).toBeDefined());
+  });
+
+  // A refresh of the SAME path is not stale: it is the same question, and
+  // dimming the table on every tick would be a flicker.
+  it("does not mark a plain refresh stale", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ n: 7 }) })),
+    );
+
+    render(<PathProbe path="runs" />);
+    await waitFor(() => expect(screen.getByText(/n=7 fresh/)).toBeDefined());
+    expect(screen.queryByText(/stale/)).toBeNull();
   });
 });

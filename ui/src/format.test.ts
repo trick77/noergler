@@ -1,20 +1,106 @@
 import { describe, expect, it } from "vitest";
-import { ago, duration, money, outcomeTone, scope, teamStateLabel, teamTone, tokens } from "./format";
+import {
+  ago,
+  byName,
+  duration,
+  money,
+  outcomeTone,
+  prUrl,
+  scope,
+  teamStateLabel,
+  teamTone,
+  tokens,
+} from "./format";
 
 describe("money", () => {
   // The whole reason cost travels as a string: an unpriced run is not a free
-  // run, and rendering it as $0.000 invents a fact the gateway never gave.
+  // run, and rendering it as $0.00 invents a fact the gateway never gave.
+  // A priced run that really did cost almost nothing still reads $0.00 --
+  // the two stay apart because only one of them says "unpriced".
   it("says unpriced rather than zero", () => {
     expect(money(null)).toBe("unpriced");
-    expect(money("0.000")).toBe("$0.000");
+    expect(money("0.000")).toBe("$0.00");
   });
 
-  // Passed through, never parsed: Number("0.218") back to a string is where
-  // the exactness the backend preserved would be lost.
-  it("preserves the exact decimal it was given", () => {
-    expect(money("0.218")).toBe("$0.218");
-    expect(money("31.470")).toBe("$31.470");
-    expect(money("0.000000001")).toBe("$0.000000001");
+  it("rounds to cents", () => {
+    expect(money("0.218")).toBe("$0.22");
+    expect(money("31.470")).toBe("$31.47");
+    expect(money("0.004")).toBe("$0.00");
+  });
+
+  // Half-up on the third decimal, done on the digits. Number("0.005") is
+  // 0.00499..., so a float round here would answer $0.00 for every one of
+  // these -- and a 3-decimal string ending in 5 is the common case, not a
+  // corner.
+  it("rounds half up without going through a float", () => {
+    expect(money("0.005")).toBe("$0.01");
+    expect(money("1.005")).toBe("$1.01");
+    expect(money("9.995")).toBe("$10.00");
+    expect(money("0.015")).toBe("$0.02");
+  });
+
+  // More precision than the wire promises must not become garbage: the
+  // third decimal has already settled the rounding.
+  it("ignores digits past the third decimal", () => {
+    expect(money("0.000000001")).toBe("$0.00");
+    expect(money("0.0049999")).toBe("$0.00");
+    expect(money("2")).toBe("$2.00");
+    expect(money("2.1")).toBe("$2.10");
+  });
+
+  // The string came from the API. Showing it unchanged beats inventing a
+  // number for it.
+  it("passes a non-decimal through rather than mangling it", () => {
+    expect(money("n/a")).toBe("$n/a");
+  });
+});
+
+describe("prUrl", () => {
+  // The browser URL, so no /rest/api/1.0: the Go client's prPath builds the
+  // REST path for the same PR and is deliberately a different shape.
+  it("builds the Bitbucket pull-request URL from a tag", () => {
+    expect(prUrl("PAY/ledger#42", "https://bitbucket.example.com")).toBe(
+      "https://bitbucket.example.com/projects/PAY/repos/ledger/pull-requests/42",
+    );
+  });
+
+  // The tag is produced by string formatting on the server, not by a
+  // parser, so this one must not assume it parses.
+  it("gives up rather than guessing", () => {
+    expect(prUrl("PAY/ledger#42", "")).toBeNull();
+    expect(prUrl("not-a-tag", "https://b.example.com")).toBeNull();
+    expect(prUrl("PAY/ledger#notanumber", "https://b.example.com")).toBeNull();
+    expect(prUrl("", "https://b.example.com")).toBeNull();
+  });
+
+  it("escapes a repo slug that would break the path", () => {
+    expect(prUrl("PAY/my repo#7", "https://b.example.com")).toBe(
+      "https://b.example.com/projects/PAY/repos/my%20repo/pull-requests/7",
+    );
+  });
+});
+
+describe("byName", () => {
+  it("sorts by display name, not by the slug underneath", () => {
+    const teams = [
+      { slug: "payments", name: "Zahlungen" },
+      { slug: "mobile", name: "Mobile" },
+      { slug: "alpha", name: "Ausgaben" },
+    ];
+    expect(byName(teams).map((t) => t.slug)).toEqual(["alpha", "mobile", "payments"]);
+  });
+
+  // "Diecibärg" files under D, not after Z.
+  it("folds case and accents", () => {
+    const teams = [{ name: "Zulu" }, { name: "ärger" }, { name: "Alpha" }];
+    expect(byName(teams).map((t) => t.name)).toEqual(["Alpha", "ärger", "Zulu"]);
+  });
+
+  // The array comes from the poller and is reused between renders.
+  it("does not sort the caller's array in place", () => {
+    const teams = [{ name: "Zulu" }, { name: "Alpha" }];
+    byName(teams);
+    expect(teams.map((t) => t.name)).toEqual(["Zulu", "Alpha"]);
   });
 });
 

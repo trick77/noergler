@@ -1,14 +1,40 @@
 // Formatters. Every number a person reads passes through one of these, so
 // the page never decides locally how money or a duration looks.
 
-/** money renders the API's decimal string. null is "unpriced", never $0.000:
- *  a run the gateway did not price is not a free run, and showing a zero
- *  invents a fact. The string is passed through rather than parsed, because
- *  parsing it to a float would round the money the backend took care to keep
- *  exact. */
+/** money renders the API's decimal string, rounded to cents.
+ *
+ *  null is "unpriced", never $0.00: a run the gateway did not price is not a
+ *  free run, and showing a zero invents a fact. A priced sub-cent run does
+ *  read $0.00, which is what rounding to cents means; the two stay
+ *  distinguishable because only one of them says "unpriced".
+ *
+ *  Rounding happens HERE, at render, and nowhere else: the wire keeps its
+ *  exact decimal string, the DB stays BIGINT nano-USD and the riptide edge
+ *  keeps every digit. The string is rounded AS a string rather than parsed,
+ *  because a float cannot hold it: Number("1.005") is 1.00499..., so
+ *  toFixed(2) answers $1.00. A 3-decimal string ending in 5 is the common
+ *  case here, not a corner. */
 export function money(usd: string | null): string {
   if (usd === null) return "unpriced";
-  return `$${usd}`;
+  return `$${roundToCents(usd)}`;
+}
+
+/** roundToCents rounds a decimal string half-up, on the digits. A string that
+ *  is not a plain decimal is returned unchanged rather than mangled: it came
+ *  from the API, and inventing a number for it would be worse than showing
+ *  what arrived. */
+function roundToCents(usd: string): string {
+  const m = /^(-?)(\d+)(?:\.(\d*))?$/.exec(usd.trim());
+  if (m === null) return usd;
+  const [, sign, whole, frac = ""] = m;
+
+  // The third decimal decides. A digit beyond it cannot change a half-up
+  // rounding the third has already settled, so the rest is not consulted.
+  const cents = BigInt(whole) * 100n + BigInt((frac + "00").slice(0, 2));
+  const rounded = frac.charCodeAt(2) >= 53 ? cents + 1n : cents;
+
+  const digits = rounded.toString().padStart(3, "0");
+  return `${sign}${digits.slice(0, -2)}.${digits.slice(-2)}`;
 }
 
 /** duration is a wall-clock span for a table cell. */
@@ -87,6 +113,55 @@ export function teamStateLabel(state: string): string {
   if (state === "no_repos") return "no repos";
   if (state === "disabled") return "disabled";
   return state;
+}
+
+/** prUrl turns a PROJECT/repo#id tag into its Bitbucket URL, or null when it
+ *  cannot: an empty base (BITBUCKET_URL unset) or a tag that does not have
+ *  that shape. The caller renders plain text for a null rather than a broken
+ *  href.
+ *
+ *  The tag is built by string formatting on the server, not by a parser, so
+ *  this one must not assume it parses.
+ *
+ *  This is the BROWSER url, which is why it carries no /rest/api/1.0: the
+ *  Go client's prPath builds the REST path for the same pull request and is
+ *  deliberately a different shape. */
+export function prUrl(tag: string, base: string): string | null {
+  if (base === "") return null;
+  const m = /^([^/]+)\/([^#]+)#(\d+)$/.exec(tag);
+  if (m === null) return null;
+  const [, project, repo, id] = m;
+  return `${base}/projects/${encodeURIComponent(project)}/repos/${encodeURIComponent(repo)}/pull-requests/${id}`;
+}
+
+/** byName sorts teams the way the page reads them: by display name, folding
+ *  case and accents, so "Diecibärg" files under D rather than after Z.
+ *
+ *  A COPY, never in place: the array comes from the poller and is reused
+ *  between renders, so sorting it where it lies mutates state React is
+ *  holding. The server's own order is by slug, which looks arbitrary once
+ *  the page stops printing slugs. */
+export function byName<T extends { name: string }>(teams: T[]): T[] {
+  return [...teams].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+}
+
+/** byLastRun sorts teams most-recently-active first, which is the order the
+ *  live page wants: it answers "what is happening", and a team that ran a
+ *  minute ago is more interesting than one that starts with an A.
+ *
+ *  A team that has never run sorts last rather than first: null is "no
+ *  activity", not "infinitely old". Ties fall back to the name, so the order
+ *  is stable across polls instead of wandering with whatever the server
+ *  happened to emit first.
+ *
+ *  A COPY, as byName: the array belongs to the poller. */
+export function byLastRun<T extends { name: string; last_run: string | null }>(teams: T[]): T[] {
+  const at = (t: T) => (t.last_run === null ? -Infinity : new Date(t.last_run).getTime());
+  return [...teams].sort((a, b) => {
+    const diff = at(b) - at(a);
+    if (diff !== 0 && !Number.isNaN(diff)) return diff;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  });
 }
 
 /** scope renders a team's repository count, keeping "every repo in the

@@ -76,32 +76,54 @@ func (o *Onboarder) WebhookName() string { return o.opts.WebhookName }
 // -- claim and access -- //
 
 // claim decides whether the team holds the target and, when it does, whether
-// the bot can read it.
+// the bot can WRITE to it.
 //
-// The bot check swallows every error — 401, 403, 404, 500, a timeout, DNS,
-// TLS: all of them mean "cannot read", and none of them is the caller's fault.
-// This is the exact opposite of HasAdmin, which only forgives 401/403.
+// Write, not read: noergler posts review comments, and grant-bot grants
+// PROJECT_WRITE / REPO_WRITE for exactly that reason. Proving the bot can GET
+// the repository proves nothing about whether it can comment on a pull
+// request there, so a bot whose write access was revoked used to keep
+// reporting healthy until a review silently failed to post.
+//
+// Both checks still run. Reaching the target at all is the bot's own token
+// answering, and it separates "no access whatsoever" from "read-only"; the
+// permission read needs admin rights, so it goes through the caller's token.
+//
+// Every error is swallowed — 401, 403, 404, 500, a timeout, DNS, TLS: all of
+// them mean "cannot write", and none of them is the caller's fault. This is
+// the exact opposite of HasAdmin, which only forgives 401/403.
 func (o *Onboarder) claim(ctx context.Context, target Target) Claim {
 	kind := claimKind(o.team, target.Project)
 	owned := kind == "whole"
 	if target.Repo != "" {
 		owned = o.team.Owns(target.Project, target.Repo)
 	}
-	botCanRead := false
-	if owned {
-		var err error
-		if target.Repo == "" {
-			_, err = o.bot.GetProject(ctx, target.Project)
-		} else {
-			_, err = o.bot.GetRepo(ctx, target.Project, target.Repo)
-		}
-		if err != nil {
-			o.log.InfoContext(ctx, fmt.Sprintf("bot cannot read %s: %s", target.Key(), err))
-		} else {
-			botCanRead = true
-		}
+	if !owned {
+		return Claim{Owned: false, Kind: kind}
 	}
-	return Claim{Owned: owned, Kind: kind, BotCanRead: botCanRead}
+
+	var err error
+	if target.Repo == "" {
+		_, err = o.bot.GetProject(ctx, target.Project)
+	} else {
+		_, err = o.bot.GetRepo(ctx, target.Project, target.Repo)
+	}
+	if err != nil {
+		o.log.InfoContext(ctx, fmt.Sprintf("bot cannot reach %s: %s", target.Key(), err))
+		return Claim{Owned: true, Kind: kind}
+	}
+
+	perm, err := o.admin.UserPermissionOn(ctx, target.Project, target.Repo, o.bot.BotUsername())
+	if err != nil {
+		o.log.InfoContext(ctx, fmt.Sprintf("cannot read the bot's permission on %s: %s", target.Key(), err))
+		return Claim{Owned: true, Kind: kind}
+	}
+	if !perm.CanWrite() {
+		o.log.InfoContext(ctx, fmt.Sprintf(
+			"bot cannot write to %s: permission is %q, needs %s",
+			target.Key(), perm, target.BotPermission()))
+		return Claim{Owned: true, Kind: kind}
+	}
+	return Claim{Owned: true, Kind: kind, BotCanWrite: true}
 }
 
 // isOurs reports whether a hook belongs to this noergler instance. The

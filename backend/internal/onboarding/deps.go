@@ -15,11 +15,16 @@ type AdminClient interface {
 	UpdateWebhook(ctx context.Context, project, repo string, webhookID int, body bitbucket.Webhook) (*bitbucket.Webhook, error)
 	DeleteWebhook(ctx context.Context, project, repo string, webhookID int) error
 	GrantUserPermission(ctx context.Context, project, repo, username, permission string) error
+	// UserPermissionOn reads the bot's effective permission on a target.
+	// On the ADMIN client, not the bot's: reading another user's permissions
+	// needs admin rights there, which is exactly what the caller's token has
+	// and the bot's deliberately does not.
+	UserPermissionOn(ctx context.Context, project, repo, username string) (bitbucket.UserPermission, error)
 	ListRepos(ctx context.Context, project string) ([]map[string]any, error)
 }
 
 // BotClient is Bitbucket on the bot's own token, used for one thing only:
-// proving the bot can read a target.
+// proving the bot can reach a target at all.
 type BotClient interface {
 	GetProject(ctx context.Context, project string) (map[string]any, error)
 	GetRepo(ctx context.Context, project, repo string) (map[string]any, error)

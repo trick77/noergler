@@ -30,7 +30,7 @@ func TestRecentAttemptsReturnsFailuresAndSkips(t *testing.T) {
 	attempt(t, s, key, "timed_out", "", nil)
 	attempt(t, s, key, "skipped", "head_unchanged", nil)
 
-	rows, err := s.RecentAttempts(ctx, "", 50)
+	rows, err := s.RecentAttempts(ctx, "", AttemptsAll, 50)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestRecentAttemptsFiltersByTeam(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows, err := s.RecentAttempts(ctx, "payments", 50)
+	rows, err := s.RecentAttempts(ctx, "payments", AttemptsAll, 50)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestRecentAttemptsFiltersByTeam(t *testing.T) {
 		t.Fatalf("rows = %+v, want just the payments one", rows)
 	}
 
-	all, err := s.RecentAttempts(ctx, "", 50)
+	all, err := s.RecentAttempts(ctx, "", AttemptsAll, 50)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +280,7 @@ func TestAttemptSurvivesItsRun(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows, err := s.RecentAttempts(ctx, "", 50)
+	rows, err := s.RecentAttempts(ctx, "", AttemptsAll, 50)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +300,7 @@ func TestDashboardReadsPropagateErrors(t *testing.T) {
 	ctx := context.Background()
 	s.pool.Close()
 
-	if _, err := s.RecentAttempts(ctx, "", 10); err == nil {
+	if _, err := s.RecentAttempts(ctx, "", AttemptsAll, 10); err == nil {
 		t.Error("RecentAttempts must report a dead pool")
 	}
 	if _, err := s.OutcomeBreakdown(ctx, time.Now()); err == nil {
@@ -328,6 +328,73 @@ func TestDashboardReadsPropagateErrors(t *testing.T) {
 
 // The limit is clamped, so a caller cannot ask for the whole table and a
 // zero still means "a sensible page" rather than no rows at all.
+// 100 is a ceiling, not a default a caller can raise: the rows are served
+// unauthenticated and the page shows a window, not an archive.
+func TestRecentAttemptsCapsTheLimitAtAHundred(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	upsert(t, s, key, "c1")
+	for i := 0; i < 120; i++ {
+		attempt(t, s, key, "ok", "", nil)
+	}
+
+	for _, limit := range []int{0, -1, 101, 500, 10000} {
+		rows, err := s.RecentAttempts(ctx, "", AttemptsAll, limit)
+		if err != nil {
+			t.Fatalf("limit %d: %v", limit, err)
+		}
+		if len(rows) != maxAttempts {
+			t.Errorf("limit %d returned %d rows, want %d", limit, len(rows), maxAttempts)
+		}
+	}
+
+	// Under the cap is still honoured.
+	rows, err := s.RecentAttempts(ctx, "", AttemptsAll, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 7 {
+		t.Errorf("limit 7 returned %d rows", len(rows))
+	}
+}
+
+// Failed is "not ok and not skipped", so an outcome a newer binary writes is
+// still a failure here rather than silently missing from the filter.
+func TestRecentAttemptsFiltersByOutcome(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	upsert(t, s, key, "c1")
+	attempt(t, s, key, "ok", "", nil)
+	attempt(t, s, key, "skipped", "head_unchanged", nil)
+	attempt(t, s, key, "timed_out", "", nil)
+	attempt(t, s, key, "unparseable", "", nil)
+
+	for _, tc := range []struct {
+		filter AttemptFilter
+		want   int
+	}{
+		{AttemptsAll, 4},
+		{AttemptsFailed, 2},
+		{AttemptsSkipped, 1},
+	} {
+		rows, err := s.RecentAttempts(ctx, "", tc.filter, 50)
+		if err != nil {
+			t.Fatalf("%q: %v", tc.filter, err)
+		}
+		if len(rows) != tc.want {
+			t.Errorf("%q returned %d rows, want %d", tc.filter, len(rows), tc.want)
+		}
+		for _, r := range rows {
+			if tc.filter == AttemptsFailed && (r.Outcome == "ok" || r.Outcome == "skipped") {
+				t.Errorf("failed filter returned %q", r.Outcome)
+			}
+			if tc.filter == AttemptsSkipped && r.Outcome != "skipped" {
+				t.Errorf("skipped filter returned %q", r.Outcome)
+			}
+		}
+	}
+}
+
 func TestRecentAttemptsClampsTheLimit(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
@@ -335,7 +402,7 @@ func TestRecentAttemptsClampsTheLimit(t *testing.T) {
 	attempt(t, s, key, "ok", "", nil)
 
 	for _, limit := range []int{0, -1, 10000} {
-		rows, err := s.RecentAttempts(ctx, "", limit)
+		rows, err := s.RecentAttempts(ctx, "", AttemptsAll, limit)
 		if err != nil {
 			t.Fatalf("limit %d: %v", limit, err)
 		}

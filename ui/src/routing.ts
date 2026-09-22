@@ -1,8 +1,8 @@
 // Hand-rolled, like ../rongo's: four pages do not need a router.
 
-export type Page = "live" | "runs" | "metrics" | "teams";
+export type Page = "live" | "runs" | "metrics" | "teams" | "faq";
 
-export const PAGES: Page[] = ["live", "runs", "metrics", "teams"];
+export const PAGES: Page[] = ["live", "runs", "metrics", "teams", "faq"];
 
 export function pageFromPath(path: string): Page {
   const slug = path.replace(/^\/+/, "").split("/")[0];

@@ -34,6 +34,7 @@ var routes = map[string]bool{
 	"/runs":    true,
 	"/metrics": true,
 	"/teams":   true,
+	"/faq":     true,
 }
 
 // HasBuiltIndex reports whether the embedded dist/ holds a real build rather
@@ -72,6 +73,10 @@ func handler(sub fs.FS) http.Handler {
 		// caller expecting JSON should see the error, not a page. The bare
 		// form needs its own check, because a prefix test on "/api/" lets
 		// "/api" fall through to the shell.
+		//
+		// /api/docs is HTML and is served by its own mux pattern, which is
+		// more specific than this catch-all and so never reaches here. What
+		// this rejects is only the paths nothing claimed.
 		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
 			http.NotFound(w, r)
 			return

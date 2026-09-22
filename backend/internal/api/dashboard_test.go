@@ -34,13 +34,14 @@ type fakeDashStore struct {
 	activity  []store.TeamActivity
 
 	err error
-	// lastTeam and lastLimit record what the handler asked for.
-	lastTeam  string
-	lastLimit int
+	// lastTeam, lastOutcome and lastLimit record what the handler asked for.
+	lastTeam    string
+	lastOutcome store.AttemptFilter
+	lastLimit   int
 }
 
-func (f *fakeDashStore) RecentAttempts(_ context.Context, team string, limit int) ([]store.AttemptRow, error) {
-	f.lastTeam, f.lastLimit = team, limit
+func (f *fakeDashStore) RecentAttempts(_ context.Context, team string, outcome store.AttemptFilter, limit int) ([]store.AttemptRow, error) {
+	f.lastTeam, f.lastOutcome, f.lastLimit = team, outcome, limit
 	return f.attempts, f.err
 }
 func (f *fakeDashStore) OutcomeBreakdown(context.Context, time.Time) ([]store.OutcomeCount, error) {
@@ -72,6 +73,7 @@ func newDashHarness(t *testing.T) *dashHarness {
 	t.Helper()
 	team := &config.Team{
 		Slug:     "platform",
+		Name:     "Platform Engineering",
 		Projects: []config.ProjectScope{{Key: "INF"}, {Key: "SHARED", Repos: []string{"lib"}}},
 	}
 	team.Review.ExcludeRepos = []string{"*-infra"}
@@ -90,7 +92,8 @@ func newDashHarness(t *testing.T) *dashHarness {
 	srv := httpapi.New(reg.Status, log)
 	Register(srv, Deps{
 		Teams: reg, Queue: &fakeQueue{}, Log: log,
-		Dashboard: q, DashboardStore: st,
+		BitbucketURL: "https://bitbucket.example.com",
+		Dashboard:    q, DashboardStore: st,
 	})
 	return &dashHarness{srv: srv, q: q, st: st}
 }
@@ -238,6 +241,110 @@ func TestRunsPassesTeamAndLimitThrough(t *testing.T) {
 	h.get(t, "/api/dashboard/runs?team=payments&limit=25")
 	if h.st.lastTeam != "payments" || h.st.lastLimit != 25 {
 		t.Errorf("store asked for team=%q limit=%d", h.st.lastTeam, h.st.lastLimit)
+	}
+}
+
+func TestRunsPassesTheOutcomeFilterThrough(t *testing.T) {
+	h := newDashHarness(t)
+	for _, tc := range []struct {
+		query string
+		want  store.AttemptFilter
+	}{
+		{"", store.AttemptsAll},
+		{"?outcome=failed", store.AttemptsFailed},
+		{"?outcome=skipped", store.AttemptsSkipped},
+		// Unknown values are the whole feed, not a 4xx: the route is
+		// unauthenticated and read-only, and a mistyped query string should
+		// show the runs rather than an error the page cannot explain.
+		{"?outcome=nonsense", store.AttemptsAll},
+		{"?outcome=OK", store.AttemptsAll},
+	} {
+		h.get(t, "/api/dashboard/runs"+tc.query)
+		if h.st.lastOutcome != tc.want {
+			t.Errorf("%q asked the store for %q, want %q", tc.query, h.st.lastOutcome, tc.want)
+		}
+	}
+}
+
+// The name is what the page prints, the slug is what the logs and the webhook
+// path use, so both ride the wire. A team the registry cannot name - disabled,
+// or dropped from teams.yaml while its rows live on - falls back to the slug
+// rather than serving a blank cell.
+func TestDashboardNamesTeamsAndFallsBackToTheSlug(t *testing.T) {
+	h := newDashHarness(t)
+	h.st.attempts = []store.AttemptRow{
+		{
+			Attempt:   store.Attempt{TeamSlug: "platform", Key: store.PRKey{Project: "INF", Repo: "api", PRID: 1}, Outcome: "ok"},
+			CreatedAt: time.Now(),
+		},
+		{
+			// A team with rows but no live config: gone from teams.yaml.
+			Attempt:   store.Attempt{TeamSlug: "retired", Key: store.PRKey{Project: "OLD", Repo: "x", PRID: 2}, Outcome: "ok"},
+			CreatedAt: time.Now(),
+		},
+	}
+
+	var runs runsBody
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/runs").Body.Bytes(), &runs); err != nil {
+		t.Fatal(err)
+	}
+	if runs.Runs[0].TeamName != "Platform Engineering" || runs.Runs[0].Team != "platform" {
+		t.Errorf("configured team = %q/%q", runs.Runs[0].Team, runs.Runs[0].TeamName)
+	}
+	if runs.Runs[1].TeamName != "retired" {
+		t.Errorf("unknown team named %q, want the slug", runs.Runs[1].TeamName)
+	}
+
+	var live liveBody
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/live").Body.Bytes(), &live); err != nil {
+		t.Fatal(err)
+	}
+	for _, team := range live.Teams {
+		want := "Platform Engineering"
+		// mobile is disabled, so it has no Runtime and therefore no name.
+		if team.Slug != "platform" {
+			want = team.Slug
+		}
+		if team.Name != want {
+			t.Errorf("live team %q named %q, want %q", team.Slug, team.Name, want)
+		}
+	}
+
+	var roster teamsBody
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/teams").Body.Bytes(), &roster); err != nil {
+		t.Fatal(err)
+	}
+	for _, team := range roster.Teams {
+		want := "Platform Engineering"
+		if team.Slug != "platform" {
+			want = team.Slug
+		}
+		if team.Name != want {
+			t.Errorf("roster team %q named %q, want %q", team.Slug, team.Name, want)
+		}
+	}
+}
+
+// The browser has no other way to learn the Bitbucket base: BITBUCKET_URL is
+// read in this process and the SPA ships as static files. Both pages poll
+// their own endpoint, so both bodies carry it.
+func TestDashboardServesTheBitbucketBase(t *testing.T) {
+	h := newDashHarness(t)
+
+	var live liveBody
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/live").Body.Bytes(), &live); err != nil {
+		t.Fatal(err)
+	}
+	if live.BitbucketURL != "https://bitbucket.example.com" {
+		t.Errorf("live bitbucket_url = %q", live.BitbucketURL)
+	}
+
+	var runs runsBody
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/runs").Body.Bytes(), &runs); err != nil {
+		t.Fatal(err)
+	}
+	if runs.BitbucketURL != "https://bitbucket.example.com" {
+		t.Errorf("runs bitbucket_url = %q", runs.BitbucketURL)
 	}
 }
 

@@ -338,7 +338,11 @@ Ready-made requests for the IntelliJ HTTP client are in [`http/`](http/), one fi
 | `name` | `noergler` | Webhook name; use another name to onboard a second instance next to an existing one |
 | `prune` | `true` | Under a project webhook, delete this instance's leftover repo-level hooks (they would deliver every event twice) |
 
-The answer is JSON: `healthy` (`status`: every target owned, bot can read, hook `ok`, no strays; actions: no target `failed`), `rows` per target, `text` (the same as a table), and with `projects` also `claimed` / `unclaimed` and `purged_prs`. `401` without the team secret or without `X-Bitbucket-Token`, `404` unknown team, `503` team disabled or `NOERGLER_PUBLIC_URL` unset, `400` unknown target. Hooks are created or updated idempotently (a second run reports `already up to date`). A failure on one target is reported and the rest continue. `remove` without `projects` only removes hooks; claims and data stay.
+The answer is JSON: `healthy` (`status`: every target owned, bot can **write**, hook `ok`, no strays; actions: no target `failed`), `rows` per target, `text` (the same as a table), and with `projects` also `claimed` / `unclaimed` and `purged_prs`. `401` without the team secret or without `X-Bitbucket-Token`, `404` unknown team, `503` team disabled or `NOERGLER_PUBLIC_URL` unset, `400` unknown target, `409` the target belongs to another team, `413` body over 1 MiB, `422` malformed body or unknown field, `502` Bitbucket failed. Hooks are created or updated idempotently (a second run reports `already up to date`). A failure on one target is reported and the rest continue. `remove` without `projects` only removes hooks; claims and data stay.
+
+Write, not read: noergler posts review comments, so `grant-bot` grants `PROJECT_WRITE` / `REPO_WRITE` and the status check verifies that permission rather than the bot's ability to read the repository.
+
+**The full contract is served by the instance itself, at `/api/docs`** (the spec alone at `/api/openapi.yaml`), and is reachable from the dashboard's nav.
 
 `GET /teams/<team>` returns the claims, the two author lists and the excluded repos. `PUT /teams/<team>/settings` updates any of `auto_review_authors` (only these authors get automatic reviews, empty = everyone), `ignore_authors` (never an automatic review, wins over the first list; an @mention still reviews) and `exclude_repos` (repo slug globs, case-insensitive, default `*-infra`: a project webhook delivers for every repo in the project, these never get a review, @mentions included, while merge/decline/delete of a PR reviewed earlier is still recorded; a repo named explicitly in a `repos:` claim is never excluded); a field left out stays, a list given replaces the whole list, `[]` clears it. Both need only the team secret. Changes take effect immediately, no redeploy.
 
@@ -446,6 +450,7 @@ deployment's business.
   (init container or equivalent). Nothing creates the schema at runtime, and
   `serve` never migrates.
 - `POST /onboard/{team}`, `GET /teams/{team}`, `PUT /teams/{team}/settings` are the team self-service (see [Webhook setup](#webhook-setup)); onboarding needs `NOERGLER_PUBLIC_URL`.
+- `GET /api/docs` is that API's reference page, `GET /api/openapi.yaml` the spec behind it. Both are unauthenticated: the contract is not a secret, and it exists whether or not the dashboard is wired.
 - `TEAMS_CONFIG` points at the mounted `teams.yaml`; secrets arrive as environment variables named in that file.
 - Corporate CA: mount the trusted bundle and point `SSL_CERT_FILE` at it. No
   setting of ours is involved: Go's `crypto/x509` reads it when building the
