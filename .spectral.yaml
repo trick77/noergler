@@ -1,0 +1,15 @@
+extends: ["spectral:oas"]
+
+rules:
+  # There is no contact to give. The API is served by whichever noergler
+  # instance a team was pointed at, and the person to ask is that instance's
+  # admin: a name or address baked in here would be wrong for everyone but
+  # the one deployment it was written for.
+  info-contact: off
+# NOTE for whoever compares this with ../lens-gateway's ruleset: that one also
+# disables `duplicated-entry-in-enum`, because Spectral's nimma engine crashes
+# on OAS 3.1 nullable enums written as a `oneOf` with a `{type: "null"}`
+# branch, taking the whole lint down with exit 2. This spec writes its
+# nullable types as `type: [string, "null"]` instead, which nimma handles, so
+# the rule is left ON here. If a `oneOf`-style nullable enum is ever added and
+# the lint starts exiting 2, that is why.

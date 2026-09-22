@@ -1,0 +1,545 @@
+openapi: 3.1.0
+
+info:
+  title: noergler team self-service API
+  # The CONTRACT's version, not the binary's. The two move independently:
+  # a release that changes no route leaves this alone.
+  version: 1.0.0
+  description: |
+    What a team admin can do without going through the noergler admin: see what
+    the team owns, claim and release projects and repositories, and change the
+    three review author lists.
+
+    Every route is scoped to one team by the `{team}` path parameter, which is
+    always the team's **slug** — the same identifier that appears in the webhook
+    path, in the `team=` log field and in `pull_requests.team_slug`. A team may
+    also carry a display name in `teams.yaml`, but that name is a dashboard
+    concern and never addresses anything here.
+
+    ## Not in this document
+
+    - `POST /webhook/{team}` is Bitbucket's. It is HMAC-signed with the team's
+      webhook secret and is not a human surface.
+    - `/api/dashboard/*` is the operator dashboard: read-only, unauthenticated
+      and cross-team. It is the ingress's job to decide who reaches it.
+    - `/health` and `/ready` are probes.
+
+    ## Authentication
+
+    Every route takes the team's **webhook secret** as a bearer token. It is
+    compared in constant time, and the scheme is case-insensitive.
+
+    `POST /onboard/{team}` additionally needs `X-Bitbucket-Token`: the caller's
+    OWN Bitbucket HTTP access token, with project admin on whatever is being
+    claimed. noergler proves the caller's admin rights with it per target, and
+    never logs or stores it. It is not the bot's token — the bot deliberately
+    has no admin rights.
+
+    ## Status codes worth knowing about
+
+    `404` (unknown team) and `503` (team disabled) are answered BEFORE the 401
+    on every route: neither leaks anything the webhook path does not already.
+    The body is decoded only AFTER authentication, so an unauthenticated caller
+    cannot probe the request schema by watching validation errors.
+
+    ## Compatibility
+
+    Fields may be added to a response and codes may be added to an error; none
+    will be removed or renamed without a version change. `additionalProperties:
+    false` documents the shape as it is today — it is a description, not a
+    freeze.
+
+servers:
+  - url: /
+    description: This noergler instance.
+
+security:
+  - teamSecret: []
+
+tags:
+  - name: team
+    description: What the team owns and how it reviews.
+  - name: onboarding
+    description: Claiming and releasing targets, and their webhooks.
+
+paths:
+  /teams/{team}:
+    get:
+      tags: [team]
+      operationId: getTeam
+      summary: What the team owns and how it reviews
+      description: |
+        Answered from the running configuration, not the database, so it shows
+        what this instance is acting on right now.
+      parameters:
+        - $ref: "#/components/parameters/TeamSlug"
+      responses:
+        "200":
+          description: The team's claims and author lists.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TeamView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/UnknownTeam" }
+        "503": { $ref: "#/components/responses/TeamUnavailable" }
+
+  /teams/{team}/settings:
+    put:
+      tags: [team]
+      operationId: putTeamSettings
+      summary: Change the review author lists
+      description: |
+        A PARTIAL update. A field left out, or sent as `null`, keeps the list it
+        has; a field sent as `[]` clears it. Entries are trimmed and blanks are
+        dropped.
+
+        The change takes effect immediately, on the running reviewer, and is
+        persisted: it survives a restart and outranks the seed values in
+        `teams.yaml`.
+      parameters:
+        - $ref: "#/components/parameters/TeamSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SettingsRequest" }
+            examples:
+              clearAutoReview:
+                summary: Review everybody, but never the bots
+                value:
+                  auto_review_authors: []
+                  ignore_authors: [ci-bot, renovate]
+              excludeRepos:
+                summary: Leave the infra repos alone
+                value:
+                  exclude_repos: ["*-infra", "sandbox-*"]
+      responses:
+        "200":
+          description: The team as it is after the change.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TeamView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/UnknownTeam" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "503":
+          description: |
+            The team is disabled, or the database is not ready. Nothing was
+            applied: the settings are written before the running reviewer is
+            touched, so a failed write changes neither.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /onboard/{team}:
+    post:
+      tags: [onboarding]
+      operationId: onboard
+      summary: Inspect, claim, release, or re-hook the team's targets
+      description: |
+        One route, four actions, chosen by `action`:
+
+        - `status` (the default) reports on every target the team holds and
+          writes nothing.
+        - `onboard` claims the given targets and creates their webhooks.
+        - `grant-bot` does the same and additionally grants the bot the write
+          permission it needs to post review comments.
+        - `remove` deletes the webhooks; with `projects` it also releases the
+          claims and purges that target's review records.
+
+        A **target** is a whole project (every repository under it, including
+        ones added later, through one project-level webhook) or a single
+        repository. A project or repository belongs to exactly one team.
+
+        `projects` and `targets` are mutually exclusive. `projects` is the full
+        form and is the only one that may change claims; `targets` narrows an
+        action to some of what the team already holds. Neither means every
+        target the team holds.
+
+        One target failing is reported in its row and does not stop the others.
+      parameters:
+        - $ref: "#/components/parameters/TeamSlug"
+        - name: X-Bitbucket-Token
+          in: header
+          required: true
+          description: |
+            The caller's own Bitbucket HTTP access token, with project admin on
+            the targets. Never logged, never stored.
+          schema: { type: string }
+      requestBody:
+        required: false
+        description: 'An absent body is `{"action": "status"}`.'
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OnboardRequest" }
+            examples:
+              status:
+                summary: Report on everything the team holds
+                value: { action: status }
+              claim:
+                summary: Claim a project and two repositories of a shared one
+                value:
+                  action: grant-bot
+                  projects:
+                    - key: PLAT
+                    - key: INFRA
+                      repos: [terraform-core, ansible]
+              dryRun:
+                summary: Say what claiming would do, and do none of it
+                value:
+                  action: grant-bot
+                  dry_run: true
+                  projects: [{ key: PLAT }]
+              rehook:
+                summary: Re-apply the webhooks over the current claims
+                value: { action: grant-bot }
+              release:
+                summary: Give a repository up, records and all
+                value:
+                  action: remove
+                  projects: [{ key: INFRA, repos: [ansible] }]
+      responses:
+        "200":
+          description: |
+            The action ran. Individual targets may still have failed; `healthy`
+            and the per-target rows say so.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OnboardResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401":
+          description: |
+            No bearer token, the wrong team secret, or no `X-Bitbucket-Token`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404": { $ref: "#/components/responses/UnknownTeam" }
+        "409": { $ref: "#/components/responses/ClaimConflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+        "503":
+          description: |
+            The team is disabled, or this instance has no public URL configured
+            and so cannot tell Bitbucket where to send webhooks.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+components:
+  securitySchemes:
+    teamSecret:
+      type: http
+      scheme: bearer
+      description: The team's webhook secret, as issued by the noergler admin.
+
+  parameters:
+    TeamSlug:
+      name: team
+      in: path
+      required: true
+      description: The team's slug, as in the webhook path.
+      schema:
+        type: string
+        pattern: "^[a-z0-9-]+$"
+      example: platform
+
+  responses:
+    Unauthorized:
+      description: No bearer token, or the wrong team secret.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    UnknownTeam:
+      description: |
+        No team with that slug. Answered before any auth check.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    TeamUnavailable:
+      description: |
+        The team is configured but disabled. The reason stays in the startup
+        log: it can name an environment variable, and these routes are reachable
+        without proving anything first.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    BadRequest:
+      description: |
+        The request parsed but asks for something impossible: a target the team
+        does not hold, a target with no claim to remove, `projects` together
+        with `targets`, or `projects` on a `status` action.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unprocessable:
+      description: |
+        The body is not a single JSON object, carries an unknown field, or names
+        an action or project scope that is not valid. Unknown fields are
+        refused rather than ignored, so a typo in a field name is reported
+        instead of silently doing nothing.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    PayloadTooLarge:
+      description: The request body is over 1 MiB.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ClaimConflict:
+      description: |
+        Another team already holds the target. The only response whose `detail`
+        is an object rather than a string, because the conflicting team is worth
+        reporting in a field rather than inside a sentence.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ConflictError" }
+    UpstreamError:
+      description: |
+        Bitbucket answered with something other than success, and it was not the
+        caller's rights. The detail names the status.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      required: [detail]
+      properties:
+        detail:
+          type: string
+          description: |
+            A sentence for a person. Nothing parses it, and its wording is not
+            part of the contract.
+      example: { detail: unknown team }
+
+    ConflictError:
+      type: object
+      additionalProperties: false
+      required: [detail]
+      properties:
+        detail:
+          type: object
+          additionalProperties: false
+          required: [message, conflict]
+          properties:
+            message: { type: string }
+            conflict:
+              type: object
+              additionalProperties: false
+              required: [target, team]
+              properties:
+                target:
+                  type: string
+                  description: The target that is already claimed.
+                team:
+                  type: string
+                  description: The slug of the team holding it.
+
+    ProjectScope:
+      type: object
+      additionalProperties: false
+      required: [key]
+      properties:
+        key:
+          type: string
+          description: The Bitbucket project key.
+        repos:
+          type: array
+          description: |
+            The repositories claimed inside the project. ABSENT means the whole
+            project: every repository under it, now and in future, through one
+            project-level webhook. Present and empty is refused.
+          minItems: 1
+          items: { type: string }
+
+    TeamView:
+      type: object
+      additionalProperties: false
+      required: [team, projects, auto_review_authors, ignore_authors, exclude_repos]
+      properties:
+        team:
+          type: string
+          description: The team's slug.
+        projects:
+          type: array
+          items: { $ref: "#/components/schemas/ProjectScope" }
+        auto_review_authors:
+          type: array
+          description: |
+            Whose pull requests are reviewed automatically. EMPTY MEANS
+            EVERYBODY, not nobody.
+          items: { type: string }
+        ignore_authors:
+          type: array
+          description: |
+            Never auto-reviewed, whatever the list above says. An @mention still
+            works. This is where CI and dependency bots go.
+          items: { type: string }
+        exclude_repos:
+          type: array
+          description: |
+            Repository-slug globs that are ignored for every event, even though
+            the project webhook delivers them. Case-insensitive.
+          items: { type: string }
+
+    SettingsRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        A partial update: a field left out or null keeps its current list, and
+        `[]` clears it.
+      properties:
+        auto_review_authors:
+          type: [array, "null"]
+          items: { type: string }
+        ignore_authors:
+          type: [array, "null"]
+          items: { type: string }
+        exclude_repos:
+          type: [array, "null"]
+          items: { type: string }
+
+    OnboardRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        action:
+          type: [string, "null"]
+          description: Defaults to `status`.
+          enum: [status, onboard, grant-bot, remove, null]
+        projects:
+          type: [array, "null"]
+          description: |
+            The full form: what the team should hold. The only form that may
+            change claims, and not allowed with `status`. Mutually exclusive
+            with `targets`.
+          items: { $ref: "#/components/schemas/ProjectScope" }
+        targets:
+          type: [array, "null"]
+          description: |
+            Narrows the action to some of what the team already holds, as `KEY`
+            or `KEY/repo`. Mutually exclusive with `projects`.
+          items: { type: string }
+        dry_run:
+          type: [boolean, "null"]
+          description: Report what would happen and change nothing.
+        name:
+          type: [string, "null"]
+          description: |
+            The webhook's name in Bitbucket. Defaults to `noergler`. Worth
+            setting only when two noergler instances share a Bitbucket.
+        prune:
+          type: [boolean, "null"]
+          description: |
+            Remove this instance's stray repository-level hooks under a
+            project target. ON by default; send `false` to leave them.
+
+    Target:
+      type: object
+      additionalProperties: false
+      required: [project, repo]
+      properties:
+        project: { type: string }
+        repo:
+          type: string
+          description: Empty for a whole-project target.
+
+    StatusRow:
+      type: object
+      additionalProperties: false
+      required: [target, owned, bot_can_write, webhook, stray, foreign]
+      description: "One target, as `action: status` reports it."
+      properties:
+        target: { $ref: "#/components/schemas/Target" }
+        owned:
+          type: boolean
+          description: Whether this team holds the target.
+        bot_can_write:
+          type: boolean
+          description: |
+            Whether the bot may post comments there. WRITE, not read: a bot that
+            can only read the repository cannot review it.
+        webhook:
+          type: string
+          description: |
+            `ok`, `missing`, `stale: <what differs>`, `foreign: <url>`,
+            `HTTP <code>`, or why the target is not owned.
+        stray:
+          type: array
+          description: |
+            This instance's repository-level hooks sitting under a
+            whole-project target, which would deliver every event twice.
+          items: { type: string }
+        foreign:
+          type: array
+          description: Same-named hooks pointing at a different noergler.
+          items: { type: string }
+
+    TargetResult:
+      type: object
+      additionalProperties: false
+      required: [target, status, detail, diff]
+      description: One target, as an action that writes reports it.
+      properties:
+        target: { $ref: "#/components/schemas/Target" }
+        status:
+          type: string
+          enum: [ok, failed, skipped]
+        detail:
+          type: string
+          description: What happened, or why it did not.
+        diff:
+          type: [array, "null"]
+          description: What changed on the webhook, field by field.
+          items: { type: string }
+
+    OnboardResponse:
+      type: object
+      additionalProperties: false
+      required: [team, action, webhook_url, rows, text, healthy]
+      properties:
+        team: { type: string }
+        action:
+          type: string
+          enum: [status, onboard, grant-bot, remove]
+        webhook_url:
+          type: string
+          description: The URL the team's webhooks are pointed at.
+        rows:
+          type: array
+          description: |
+            One entry per target. `StatusRow` for `action: status`,
+            `TargetResult` for every other action.
+          items:
+            oneOf:
+              - $ref: "#/components/schemas/StatusRow"
+              - $ref: "#/components/schemas/TargetResult"
+        text:
+          type: string
+          description: |
+            The same rows as a fixed-width table. Meant to be printed as-is;
+            this is the field to read from a script that only wants to show a
+            human the result.
+        healthy:
+          type: boolean
+          description: |
+            For `status`: every target owned, writable by the bot, hooked, with
+            no stray hooks. For the other actions: no target failed. Foreign
+            hooks deliberately do not count against it.
+        claimed:
+          type: array
+          description: Targets newly claimed. Only on a claiming action.
+          items: { type: string }
+        unclaimed:
+          type: array
+          description: Targets released. Only on `remove` with `projects`.
+          items: { type: string }
+        purged_prs:
+          type: integer
+          description: |
+            Review records deleted with the released claims. Only on `remove`
+            with `projects`.

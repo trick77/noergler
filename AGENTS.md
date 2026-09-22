@@ -236,6 +236,14 @@ footnote's file-content figure.
 
 ## HTTP surface
 
+The self-service contract is `backend/api/openapi.yaml`, embedded and served
+at `/api/docs` (spec at `/api/openapi.yaml`), registered OUTSIDE the dashboard
+block: the API exists without the dashboard. A kin-openapi test drives the
+real mux and validates every response against it, so changing one of those
+three handlers means changing the spec in the same commit. Nullable types are
+`type: [string, "null"]`, never a `oneOf` with a null branch: the latter
+crashes Spectral's nimma and takes the whole lint down.
+
 The webhook check order is fixed and is NOT what a Go author would write, so
 do not "tidy" it: path-bound team (never the payload's `project.key`) -> ping
 before the body is read -> raw body -> test-connection shortcut -> HMAC ->

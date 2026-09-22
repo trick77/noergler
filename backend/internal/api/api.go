@@ -85,6 +85,12 @@ func Register(srv *httpapi.Server, d Deps) {
 	srv.HandleFunc("PUT /teams/{team}/settings", d.putTeamSettings)
 	srv.HandleFunc("POST /onboard/{team}", d.onboard)
 
+	// The contract for the four routes above, and the page that renders it.
+	// NOT inside the dashboard block: the self-service API exists without the
+	// dashboard, so its documentation has to as well.
+	srv.HandleFunc("GET /api/openapi.yaml", d.openapiSpec)
+	srv.HandleFunc("GET /api/docs", d.docs)
+
 	// Read-only, unauthenticated, cross-team. Registered only when the
 	// dashboard's dependencies are wired, so an instance that does not want
 	// it simply does not pass them and the routes do not exist.
