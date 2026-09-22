@@ -35,7 +35,7 @@ type DashboardQueue interface {
 // DashboardStore is the read half of the store the dashboard uses. Every
 // method is read-only; nothing here writes.
 type DashboardStore interface {
-	RecentAttempts(ctx context.Context, team string, limit int) ([]store.AttemptRow, error)
+	RecentAttempts(ctx context.Context, team string, outcome store.AttemptFilter, limit int) ([]store.AttemptRow, error)
 	OutcomeBreakdown(ctx context.Context, since time.Time) ([]store.OutcomeCount, error)
 	TotalsSince(ctx context.Context, since time.Time) (store.Totals, error)
 	TotalsByTeam(ctx context.Context, since time.Time) ([]store.TeamTotals, error)
@@ -62,6 +62,37 @@ func usd(nano *int64) *string {
 	return &s
 }
 
+// teamNamer answers a slug with the team's display name, for the pages that
+// build their rows from the store and so know only the slug.
+//
+// It resolves once per request rather than per row: Runtime is copy-on-write
+// behind an atomic.Pointer, so looking a slug up again mid-response could
+// land after a concurrent settings write and report two different rosters in
+// one body.
+//
+// Every miss answers with the slug. A disabled team has no Runtime at all,
+// and a team dropped from teams.yaml still owns review_runs rows forever, so
+// the rows outlive the config that names them. The slug is what the logs,
+// the webhook path and team= already print, which makes it the right thing
+// to fall back to rather than a blank cell.
+func (d Deps) teamNamer() func(slug string) string {
+	names := map[string]string{}
+	enabled, _ := d.Teams.Status()
+	for _, slug := range enabled {
+		if rt, _, ok := d.Teams.Lookup(slug); ok && rt != nil {
+			if team := rt.Team(); team != nil && team.Name != "" {
+				names[slug] = team.Name
+			}
+		}
+	}
+	return func(slug string) string {
+		if name, ok := names[slug]; ok {
+			return name
+		}
+		return slug
+	}
+}
+
 // Team states. "ready" is not the same claim as "configured": a team can
 // pass every startup check and still review nothing, because it owns no
 // repositories. Nothing else reports that, and an operator reading a green
@@ -74,6 +105,11 @@ const (
 
 type liveTeam struct {
 	Slug string `json:"slug"`
+	// Name is the display name from teams.yaml, defaulted to the slug when
+	// the team has none or is no longer configured. The slug stays on the
+	// wire beside it: it is the identity the logs and the webhook path use,
+	// and the page keys and links off it.
+	Name string `json:"name"`
 	// Enabled is the startup verdict: the team's config, secret and model
 	// all resolved. Kept separate from State, because a team with no repos
 	// is enabled and still doing nothing.
@@ -118,8 +154,10 @@ func teamState(enabled bool, repos int) string {
 }
 
 type liveItem struct {
-	Tag      string    `json:"tag"`
+	Tag string `json:"tag"`
+	// Team is the slug; TeamName is what the page prints.
 	Team     string    `json:"team"`
+	TeamName string    `json:"team_name"`
 	Kind     string    `json:"kind,omitempty"`
 	Since    time.Time `json:"since"`
 	WaitedMS int64     `json:"waited_ms,omitempty"`
@@ -138,6 +176,7 @@ type liveBody struct {
 // live is the "what is going on right now" panel.
 func (d Deps) live(w http.ResponseWriter, r *http.Request) {
 	snap := d.Dashboard.Snapshot()
+	nameOf := d.teamNamer()
 
 	body := liveBody{
 		PoolCapacity: snap.Capacity,
@@ -149,13 +188,13 @@ func (d Deps) live(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, it := range snap.Running {
 		body.Running = append(body.Running, liveItem{
-			Tag: it.Key.Tag(), Team: it.Team, Kind: it.Kind,
+			Tag: it.Key.Tag(), Team: it.Team, TeamName: nameOf(it.Team), Kind: it.Kind,
 			Since: it.Since, WaitedMS: it.Waited.Milliseconds(),
 		})
 	}
 	for _, it := range snap.Waiting {
 		body.Waiting = append(body.Waiting, liveItem{
-			Tag: it.Key.Tag(), Team: it.Team, Since: it.Since,
+			Tag: it.Key.Tag(), Team: it.Team, TeamName: nameOf(it.Team), Since: it.Since,
 		})
 	}
 
@@ -164,7 +203,7 @@ func (d Deps) live(w http.ResponseWriter, r *http.Request) {
 
 	body.Teams = make([]liveTeam, 0, len(enabled)+len(disabled))
 	addTeam := func(slug string, isEnabled bool) {
-		t := liveTeam{Slug: slug, Enabled: isEnabled, Repos: 0}
+		t := liveTeam{Slug: slug, Name: nameOf(slug), Enabled: isEnabled, Repos: 0}
 		if isEnabled {
 			// ONE Runtime snapshot: it is copy-on-write behind an
 			// atomic.Pointer, so a second read could land after a
@@ -193,8 +232,11 @@ func (d Deps) live(w http.ResponseWriter, r *http.Request) {
 }
 
 type runRow struct {
-	Tag       string    `json:"tag"`
+	Tag string `json:"tag"`
+	// Team is the slug the row was stored under; TeamName is what the page
+	// prints. These rows outlive teams.yaml, so a name is not always there.
 	Team      string    `json:"team"`
+	TeamName  string    `json:"team_name"`
 	Kind      string    `json:"kind"`
 	Outcome   string    `json:"outcome"`
 	Reason    string    `json:"reason,omitempty"`
@@ -209,20 +251,38 @@ type runsBody struct {
 	Runs []runRow `json:"runs"`
 }
 
+// attemptFilter reads ?outcome=. An unknown value is every row rather than an
+// error: the route is unauthenticated and read-only, and a mistyped query
+// string should show the feed, not a 4xx the page has no way to explain.
+func attemptFilter(v string) store.AttemptFilter {
+	switch store.AttemptFilter(v) {
+	case store.AttemptsFailed:
+		return store.AttemptsFailed
+	case store.AttemptsSkipped:
+		return store.AttemptsSkipped
+	default:
+		return store.AttemptsAll
+	}
+}
+
 // runs is the feed: every attempt, including the ones that produced no run.
 func (d Deps) runs(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	rows, err := d.DashboardStore.RecentAttempts(r.Context(), r.URL.Query().Get("team"), limit)
+	rows, err := d.DashboardStore.RecentAttempts(
+		r.Context(), r.URL.Query().Get("team"),
+		attemptFilter(r.URL.Query().Get("outcome")), limit,
+	)
 	if err != nil {
 		d.Log.ErrorContext(r.Context(), "dashboard: RecentAttempts failed: "+err.Error())
 		httpapi.WriteDetail(w, http.StatusInternalServerError, "could not read runs")
 		return
 	}
 
+	nameOf := d.teamNamer()
 	body := runsBody{Runs: make([]runRow, 0, len(rows))}
 	for _, a := range rows {
 		body.Runs = append(body.Runs, runRow{
-			Tag: a.Key.Tag(), Team: a.TeamSlug, Kind: string(a.Kind),
+			Tag: a.Key.Tag(), Team: a.TeamSlug, TeamName: nameOf(a.TeamSlug), Kind: string(a.Kind),
 			Outcome: a.Outcome, Reason: a.Reason,
 			ReasonMsg: review.SkipReason(a.Reason).Label(),
 			ElapsedMS: a.ElapsedMS, Findings: a.Findings,
@@ -245,7 +305,8 @@ type totalsBody struct {
 }
 
 type teamTotalsBody struct {
-	Team string `json:"team"`
+	Team     string `json:"team"`
+	TeamName string `json:"team_name"`
 	totalsBody
 }
 
@@ -398,8 +459,11 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 		Attempts:  make([]outcomeDayBody, 0, len(attempts)),
 		Breakdown: make([]breakdownBody, 0, len(breakdown)),
 	}
+	nameOf := d.teamNamer()
 	for _, t := range byTeam {
-		body.ByTeam = append(body.ByTeam, teamTotalsBody{Team: t.TeamSlug, totalsBody: toTotals(t.Totals)})
+		body.ByTeam = append(body.ByTeam, teamTotalsBody{
+			Team: t.TeamSlug, TeamName: nameOf(t.TeamSlug), totalsBody: toTotals(t.Totals),
+		})
 	}
 	for _, b := range daily {
 		body.Daily = append(body.Daily, dayBody{
@@ -429,6 +493,7 @@ type claimBody struct {
 
 type teamBody struct {
 	Slug    string      `json:"slug"`
+	Name    string      `json:"name"`
 	Enabled bool        `json:"enabled"`
 	State   string      `json:"state"`
 	Repos   int         `json:"repos"`
@@ -463,7 +528,9 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 	body := teamsBody{Teams: make([]teamBody, 0, len(enabled)+len(disabled))}
 	add := func(slug string, isEnabled bool) {
 		t := teamBody{
-			Slug: slug, Enabled: isEnabled,
+			// Name defaults to the slug; the snapshot below overwrites it
+			// when the team is configured and carries one.
+			Slug: slug, Name: slug, Enabled: isEnabled,
 			Claims:       []claimBody{},
 			ExcludeRepos: []string{},
 		}
@@ -476,6 +543,9 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 		// report a team that never existed in that combination.
 		if rt, _, ok := d.Teams.Lookup(slug); ok && rt != nil {
 			if team := rt.Team(); team != nil {
+				if team.Name != "" {
+					t.Name = team.Name
+				}
 				t.AutoReviewAuthors = len(team.Review.AutoReviewAuthors)
 				t.IgnoreAuthors = len(team.Review.IgnoreAuthors)
 				t.ExcludeRepos = append(t.ExcludeRepos, team.Review.ExcludeRepos...)

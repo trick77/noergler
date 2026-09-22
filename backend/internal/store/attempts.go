@@ -53,10 +53,34 @@ type AttemptRow struct {
 	CostNanoUSD *int64
 }
 
+// AttemptFilter narrows the feed by outcome. The zero value is every row.
+//
+// Failures are "not ok and not skipped" rather than a list of the failing
+// outcomes: the set grows (timed_out, too_large, unparseable, error), and a
+// filter that enumerates them silently drops whatever a newer binary writes.
+type AttemptFilter string
+
+const (
+	// AttemptsAll is every outcome.
+	AttemptsAll AttemptFilter = ""
+	// AttemptsFailed is every outcome that is neither ok nor skipped.
+	AttemptsFailed AttemptFilter = "failed"
+	// AttemptsSkipped is the pre-flight exits.
+	AttemptsSkipped AttemptFilter = "skipped"
+)
+
+// maxAttempts caps the feed. A request may ask for less, never for more: the
+// rows are unauthenticated and the page shows a window, not an archive.
+const maxAttempts = 100
+
 // RecentAttempts is the feed, newest first. team empty means every team.
-func (s *Store) RecentAttempts(ctx context.Context, team string, limit int) ([]AttemptRow, error) {
-	if limit <= 0 || limit > 500 {
-		limit = 100
+//
+// The outcome filter runs in SQL, not over the returned page: filtering a
+// 100-row window client-side can come back empty while failures sit just
+// past its edge, which reads as "nothing failed" rather than "look further".
+func (s *Store) RecentAttempts(ctx context.Context, team string, outcome AttemptFilter, limit int) ([]AttemptRow, error) {
+	if limit <= 0 || limit > maxAttempts {
+		limit = maxAttempts
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT a.team_slug, a.project_key, a.repo_slug, a.pr_id, a.kind,
@@ -65,8 +89,11 @@ func (s *Store) RecentAttempts(ctx context.Context, team string, limit int) ([]A
 		  FROM review_attempts a
 		  LEFT JOIN review_runs r ON r.id = a.review_run_id
 		 WHERE ($1 = '' OR a.team_slug = $1)
+		   AND ($2 = ''
+		        OR ($2 = 'skipped' AND a.outcome = 'skipped')
+		        OR ($2 = 'failed' AND a.outcome NOT IN ('ok', 'skipped')))
 		 ORDER BY a.created_at DESC
-		 LIMIT $2`, team, limit)
+		 LIMIT $3`, team, string(outcome), limit)
 	if err != nil {
 		return nil, err
 	}
