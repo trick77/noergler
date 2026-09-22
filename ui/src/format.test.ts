@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   ago,
+  byName,
   duration,
   money,
   outcomeTone,
+  prUrl,
   scope,
   teamStateLabel,
   teamTone,
@@ -50,6 +52,55 @@ describe("money", () => {
   // number for it.
   it("passes a non-decimal through rather than mangling it", () => {
     expect(money("n/a")).toBe("$n/a");
+  });
+});
+
+describe("prUrl", () => {
+  // The browser URL, so no /rest/api/1.0: the Go client's prPath builds the
+  // REST path for the same PR and is deliberately a different shape.
+  it("builds the Bitbucket pull-request URL from a tag", () => {
+    expect(prUrl("PAY/ledger#42", "https://bitbucket.example.com")).toBe(
+      "https://bitbucket.example.com/projects/PAY/repos/ledger/pull-requests/42",
+    );
+  });
+
+  // The tag is produced by string formatting on the server, not by a
+  // parser, so this one must not assume it parses.
+  it("gives up rather than guessing", () => {
+    expect(prUrl("PAY/ledger#42", "")).toBeNull();
+    expect(prUrl("not-a-tag", "https://b.example.com")).toBeNull();
+    expect(prUrl("PAY/ledger#notanumber", "https://b.example.com")).toBeNull();
+    expect(prUrl("", "https://b.example.com")).toBeNull();
+  });
+
+  it("escapes a repo slug that would break the path", () => {
+    expect(prUrl("PAY/my repo#7", "https://b.example.com")).toBe(
+      "https://b.example.com/projects/PAY/repos/my%20repo/pull-requests/7",
+    );
+  });
+});
+
+describe("byName", () => {
+  it("sorts by display name, not by the slug underneath", () => {
+    const teams = [
+      { slug: "payments", name: "Zahlungen" },
+      { slug: "mobile", name: "Mobile" },
+      { slug: "alpha", name: "Ausgaben" },
+    ];
+    expect(byName(teams).map((t) => t.slug)).toEqual(["alpha", "mobile", "payments"]);
+  });
+
+  // "Diecibärg" files under D, not after Z.
+  it("folds case and accents", () => {
+    const teams = [{ name: "Zulu" }, { name: "ärger" }, { name: "Alpha" }];
+    expect(byName(teams).map((t) => t.name)).toEqual(["Alpha", "ärger", "Zulu"]);
+  });
+
+  // The array comes from the poller and is reused between renders.
+  it("does not sort the caller's array in place", () => {
+    const teams = [{ name: "Zulu" }, { name: "Alpha" }];
+    byName(teams);
+    expect(teams.map((t) => t.name)).toEqual(["Zulu", "Alpha"]);
   });
 });
 

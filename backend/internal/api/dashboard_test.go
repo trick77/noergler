@@ -92,7 +92,8 @@ func newDashHarness(t *testing.T) *dashHarness {
 	srv := httpapi.New(reg.Status, log)
 	Register(srv, Deps{
 		Teams: reg, Queue: &fakeQueue{}, Log: log,
-		Dashboard: q, DashboardStore: st,
+		BitbucketURL: "https://bitbucket.example.com",
+		Dashboard:    q, DashboardStore: st,
 	})
 	return &dashHarness{srv: srv, q: q, st: st}
 }
@@ -321,6 +322,29 @@ func TestDashboardNamesTeamsAndFallsBackToTheSlug(t *testing.T) {
 		if team.Name != want {
 			t.Errorf("roster team %q named %q, want %q", team.Slug, team.Name, want)
 		}
+	}
+}
+
+// The browser has no other way to learn the Bitbucket base: BITBUCKET_URL is
+// read in this process and the SPA ships as static files. Both pages poll
+// their own endpoint, so both bodies carry it.
+func TestDashboardServesTheBitbucketBase(t *testing.T) {
+	h := newDashHarness(t)
+
+	var live liveBody
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/live").Body.Bytes(), &live); err != nil {
+		t.Fatal(err)
+	}
+	if live.BitbucketURL != "https://bitbucket.example.com" {
+		t.Errorf("live bitbucket_url = %q", live.BitbucketURL)
+	}
+
+	var runs runsBody
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/runs").Body.Bytes(), &runs); err != nil {
+		t.Fatal(err)
+	}
+	if runs.BitbucketURL != "https://bitbucket.example.com" {
+		t.Errorf("runs bitbucket_url = %q", runs.BitbucketURL)
 	}
 }
 

@@ -64,6 +64,10 @@ type Deps struct {
 	Bitbucket BotClient
 	// PublicURL is this instance.s base URL. Empty disables /onboard.
 	PublicURL string
+	// BitbucketURL is the Bitbucket base the dashboard links PR tags to.
+	// Serving it is the only way the browser can learn it: it is read from
+	// BITBUCKET_URL in this process and the SPA ships as static files.
+	BitbucketURL string
 	// BotUsername is the instance's Bitbucket account, read from
 	// BITBUCKET_USERNAME. The @mention trigger is instance-wide, not
 	// per-team.

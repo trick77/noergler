@@ -1,11 +1,13 @@
-import type { Metrics, Run } from "./api";
+import type { Metrics, Runs } from "./api";
 import { ago, duration, money, outcomeTone } from "./format";
+import { useState } from "react";
 import { usePoll, useNow } from "./usePoll";
 import {
   Card,
   Empty,
   Failed,
   Pill,
+  PrTag,
   TeamPill,
   Tile,
   Tiles,
@@ -40,8 +42,20 @@ function counts(m: Metrics | null): Counts {
   return c;
 }
 
+/** The outcome filter. Server-side, not over the fetched page: the feed is a
+ *  window, so filtering what came back can show nothing while failures sit
+ *  just past its edge - which reads as "nothing failed". */
+type Filter = "" | "failed" | "skipped";
+const FILTERS: { value: Filter; label: string }[] = [
+  { value: "", label: "All" },
+  { value: "failed", label: "Failed" },
+  { value: "skipped", label: "Skipped" },
+];
+
 export function RunsPage() {
-  const { data, failed } = usePoll<{ runs: Run[] }>("runs?limit=50", 10000);
+  const [filter, setFilter] = useState<Filter>("");
+  const query = `runs?limit=50${filter === "" ? "" : `&outcome=${filter}`}`;
+  const { data, failed } = usePoll<Runs>(query, 10000);
   const metrics = usePoll<Metrics>("metrics");
   const now = useNow(10000);
 
@@ -84,9 +98,32 @@ export function RunsPage() {
         </Tiles>
 
         <p className={eyebrow}>Recent attempts</p>
-        <Card>
+        <Card
+          right={
+            <span className="flex gap-0.5">
+              {FILTERS.map((f) => (
+                <button
+                  key={f.value}
+                  type="button"
+                  onClick={() => setFilter(f.value)}
+                  aria-pressed={filter === f.value}
+                  className={
+                    "rounded-ui-sm px-2 py-0.5 text-[12px] transition-colors " +
+                    (filter === f.value
+                      ? "bg-panel text-ink"
+                      : "text-muted hover:bg-panel hover:text-ink")
+                  }
+                >
+                  {f.label}
+                </button>
+              ))}
+            </span>
+          }
+        >
           {data.runs.length === 0 ? (
-            <Empty>No attempts recorded yet.</Empty>
+            <Empty>
+              {filter === "" ? "No attempts recorded yet." : `No ${filter} attempts recorded yet.`}
+            </Empty>
           ) : (
             <div className="overflow-x-auto overscroll-x-contain">
               <table className={table}>
@@ -104,14 +141,24 @@ export function RunsPage() {
                 <tbody>
                   {data.runs.map((r, i) => (
                     <tr key={`${r.tag}-${r.created_at}-${i}`}>
-                      <td className={tdTag}>{r.tag}</td>
-                      <td className={td + " w-px"}>
-                        <TeamPill slug={r.team} />
+                      <td className={tdTag}>
+                        <PrTag tag={r.tag} base={data.bitbucket_url} />
                       </td>
                       <td className={td + " w-px"}>
+                        <TeamPill name={r.team_name} slug={r.team} />
+                      </td>
+                      <td className={td}>
                         <Pill tone={outcomeTone(r.outcome)}>
                           {r.outcome === "skipped" ? "skipped" : r.outcome}
                         </Pill>
+                        {/* A red pill that only says "failed" sends the
+                            reader to the logs for something the row already
+                            knows. */}
+                        {r.outcome !== "ok" && (r.reason_label || r.reason) && (
+                          <span className="ml-2 text-[12px] text-faint">
+                            {r.reason_label || r.reason}
+                          </span>
+                        )}
                       </td>
                       <td className={tdNum}>{r.findings ?? "—"}</td>
                       <td className={tdNum}>{duration(r.elapsed_ms)}</td>

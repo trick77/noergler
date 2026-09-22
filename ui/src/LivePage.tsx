@@ -1,5 +1,5 @@
 import type { Live } from "./api";
-import { ago, elapsedSince, scope, teamStateLabel, teamTone } from "./format";
+import { ago, byName, elapsedSince, teamStateLabel, teamTone } from "./format";
 import { usePoll, useNow } from "./usePoll";
 import {
   Card,
@@ -7,6 +7,7 @@ import {
   Failed,
   Note,
   Pill,
+  PrTag,
   SEP,
   TeamPill,
   column,
@@ -85,9 +86,11 @@ export function LivePage() {
               <tbody>
                 {data.running.map((it) => (
                   <tr key={it.tag}>
-                    <td className={tdTag}>{it.tag}</td>
+                    <td className={tdTag}>
+                      <PrTag tag={it.tag} base={data.bitbucket_url} />
+                    </td>
                     <td className={td + " w-px"}>
-                      <TeamPill slug={it.team} />
+                      <TeamPill name={it.team_name} slug={it.team} />
                     </td>
                     <td className={tdNum}>{elapsedSince(it.since, now)}</td>
                   </tr>
@@ -112,9 +115,11 @@ export function LivePage() {
               <tbody>
                 {data.waiting.map((it) => (
                   <tr key={it.tag}>
-                    <td className={tdTag}>{it.tag}</td>
+                    <td className={tdTag}>
+                      <PrTag tag={it.tag} base={data.bitbucket_url} />
+                    </td>
                     <td className={td + " w-px"}>
-                      <TeamPill slug={it.team} />
+                      <TeamPill name={it.team_name} slug={it.team} />
                     </td>
                     <td className={tdNum}>{elapsedSince(it.since, now)}</td>
                   </tr>
@@ -130,19 +135,19 @@ export function LivePage() {
               <tr>
                 <th className={th}>Team</th>
                 <th className={th + " w-px"}>State</th>
-                <th className={thNum}>Scope</th>
                 <th className={thNum}>PRs</th>
                 <th className={thNum}>Last run</th>
               </tr>
             </thead>
             <tbody>
-              {data.teams.map((t) => (
+              {byName(data.teams).map((t) => (
                 <tr key={t.slug}>
-                  <td className={tdTag}>{t.slug}</td>
+                  <td className={td} title={t.slug}>
+                    {t.name}
+                  </td>
                   <td className={td + " w-px"}>
                     <Pill tone={teamTone(t.state)}>{teamStateLabel(t.state)}</Pill>
                   </td>
-                  <td className={tdNum}>{t.enabled ? scope(t.repos) : "—"}</td>
                   <td className={tdNum}>{t.prs}</td>
                   <td className={tdNum}>{ago(t.last_run, now)}</td>
                 </tr>

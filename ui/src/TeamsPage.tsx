@@ -1,5 +1,5 @@
 import type { Team } from "./api";
-import { ago, scope, teamStateLabel, teamTone } from "./format";
+import { ago, byName, scope, teamStateLabel, teamTone } from "./format";
 import { usePoll, useNow } from "./usePoll";
 import {
   Card,
@@ -66,11 +66,14 @@ export function TeamsPage() {
           it has claimed.
         </p>
 
-        {data.teams.map((t) => (
+        {byName(data.teams).map((t) => (
           <Card
             key={t.slug}
-            title={t.slug}
-            note={`${t.enabled ? scope(t.repos) : "not started"}${SEP}${t.prs} PRs${SEP}last run ${ago(t.last_run, now)}`}
+            title={t.name}
+            // The slug leads the note: it is the webhook path, the team= log
+            // field and the settings route, so it has to stay on the page
+            // once the heading shows the display name instead.
+            note={`${t.slug}${SEP}${t.enabled ? scope(t.repos) : "not started"}${SEP}${t.prs} PRs${SEP}last run ${ago(t.last_run, now)}`}
             right={<Pill tone={teamTone(t.state)}>{teamStateLabel(t.state)}</Pill>}
           >
             {t.claims.length === 0 ? (

@@ -16,8 +16,8 @@ import {
   lede,
   page,
   table,
+  td,
   tdNum,
-  tdTag,
   th,
   thNum,
 } from "./ui";
@@ -129,13 +129,18 @@ export function MetricsPage() {
   const charted = ranked.slice(0, SERIES_COLORS.length - 1);
   const rest = ranked.slice(SERIES_COLORS.length - 1);
 
+  // Series are matched by SLUG and labelled by name: data.daily is keyed by
+  // slug, and two teams may well display the same name.
+  const nameOf = (slug: string) =>
+    data.by_team.find((t) => t.team === slug)?.team_name ?? slug;
+
   const spendOn = (day: string, team: string) => {
     const row = data.daily.find((b) => b.day === day && b.team === team);
     return row?.cost_usd ? Number(row.cost_usd) : 0;
   };
 
   const costSeries: Series[] = charted.map((team, i) => ({
-    name: team,
+    name: nameOf(team),
     color: SERIES_COLORS[i],
     values: window.map((day) => spendOn(day, team)),
   }));
@@ -144,7 +149,7 @@ export function MetricsPage() {
   // showing the server's full, non-zero total.
   if (rest.length > 0) {
     costSeries.push({
-      name: rest.length === 1 ? rest[0] : `${rest.length} more`,
+      name: rest.length === 1 ? nameOf(rest[0]) : `${rest.length} more`,
       color: SERIES_COLORS[SERIES_COLORS.length - 1],
       values: window.map((day) => rest.reduce((sum, team) => sum + spendOn(day, team), 0)),
     });
@@ -279,8 +284,12 @@ export function MetricsPage() {
                 </thead>
                 <tbody>
                   {data.by_team.map((t) => (
+                    // Ranked by spend, deliberately: this table answers
+                    // "who is spending", so it is not sorted by name.
                     <tr key={t.team}>
-                      <td className={tdTag}>{t.team}</td>
+                      <td className={td} title={t.team}>
+                        {t.team_name}
+                      </td>
                       <td className={tdNum}>{t.runs}</td>
                       <td className={tdNum}>{tokens(t.prompt_tokens)}</td>
                       <td className={tdNum}>{tokens(t.completion_tokens)}</td>

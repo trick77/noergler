@@ -183,6 +183,8 @@ func serve(log *slog.Logger) error {
 		Log:         log,
 		BotUsername: bb.BotUsername(),
 		PublicURL:   app.Server.PublicURL,
+		// Trimmed once, here, so the page never joins a double slash.
+		BitbucketURL: strings.TrimRight(app.Bitbucket.BaseURL, "/"),
 		// The operator dashboard. Read-only and unauthenticated, so the
 		// ingress is the boundary.
 		Dashboard:      q,

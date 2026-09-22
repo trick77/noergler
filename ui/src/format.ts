@@ -115,6 +115,36 @@ export function teamStateLabel(state: string): string {
   return state;
 }
 
+/** prUrl turns a PROJECT/repo#id tag into its Bitbucket URL, or null when it
+ *  cannot: an empty base (BITBUCKET_URL unset) or a tag that does not have
+ *  that shape. The caller renders plain text for a null rather than a broken
+ *  href.
+ *
+ *  The tag is built by string formatting on the server, not by a parser, so
+ *  this one must not assume it parses.
+ *
+ *  This is the BROWSER url, which is why it carries no /rest/api/1.0: the
+ *  Go client's prPath builds the REST path for the same pull request and is
+ *  deliberately a different shape. */
+export function prUrl(tag: string, base: string): string | null {
+  if (base === "") return null;
+  const m = /^([^/]+)\/([^#]+)#(\d+)$/.exec(tag);
+  if (m === null) return null;
+  const [, project, repo, id] = m;
+  return `${base}/projects/${encodeURIComponent(project)}/repos/${encodeURIComponent(repo)}/pull-requests/${id}`;
+}
+
+/** byName sorts teams the way the page reads them: by display name, folding
+ *  case and accents, so "Diecibärg" files under D rather than after Z.
+ *
+ *  A COPY, never in place: the array comes from the poller and is reused
+ *  between renders, so sorting it where it lies mutates state React is
+ *  holding. The server's own order is by slug, which looks arbitrary once
+ *  the page stops printing slugs. */
+export function byName<T extends { name: string }>(teams: T[]): T[] {
+  return [...teams].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+}
+
 /** scope renders a team's repository count, keeping "every repo in the
  *  project" distinct from any particular number. */
 export function scope(repos: number): string {

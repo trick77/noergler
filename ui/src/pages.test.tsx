@@ -26,14 +26,18 @@ const live: Live = {
   pool_per_team: 2,
   staged: 2,
   depth: 1,
-  running: [{ tag: "PAY/ledger#1", team: "payments", kind: "review", since: new Date().toISOString() }],
-  waiting: [{ tag: "PAY/ledger#2", team: "payments", since: new Date().toISOString() }],
+  running: [{ tag: "PAY/ledger#1", team: "payments", team_name: "Payments", kind: "review", since: new Date().toISOString() }],
+  waiting: [{ tag: "PAY/ledger#2", team: "payments", team_name: "Payments", since: new Date().toISOString() }],
   teams: [
-    { slug: "payments", enabled: true, state: "ready", repos: -1, prs: 4, last_run: new Date().toISOString() },
-    { slug: "mobile", enabled: false, state: "disabled", repos: 0, prs: 0, last_run: null },
+    // Named so that slug order (mobile, payments, search) and name order
+    // (Ausgaben, Mobile, Search) differ: the page's own sort is what has to
+    // put them right.
+    { slug: "payments", name: "Ausgaben", enabled: true, state: "ready", repos: -1, prs: 4, last_run: new Date().toISOString() },
+    { slug: "mobile", name: "Mobile", enabled: false, state: "disabled", repos: 0, prs: 0, last_run: null },
     // Configured, started, owns nothing: the state the green pill used to hide.
-    { slug: "search", enabled: true, state: "no_repos", repos: 0, prs: 0, last_run: null },
+    { slug: "search", name: "Search", enabled: true, state: "no_repos", repos: 0, prs: 0, last_run: null },
   ],
+  bitbucket_url: "https://bitbucket.example.com",
 };
 
 const metrics: Metrics = {
@@ -52,6 +56,7 @@ const metrics: Metrics = {
   by_team: [
     {
       team: "payments",
+      team_name: "Payments",
       runs: 12,
       prompt_tokens: 1000,
       cached_tokens: 0,
@@ -98,9 +103,25 @@ describe("LivePage", () => {
     serve({ live });
     render(<LivePage />);
 
-    expect(await screen.findByText("mobile")).toBeDefined();
+    // The display name leads; the slug stays reachable on hover, because
+    // it is what team= and the webhook path use.
+    const row = await screen.findByText("Mobile");
+    expect(row.getAttribute("title")).toBe("mobile");
     expect(await screen.findByText("disabled")).toBeDefined();
     expect(screen.queryByText(/OPENAI_API_KEY/)).toBeNull();
+  });
+
+  it("orders teams by display name, not by slug", async () => {
+    serve({ live });
+    render(<LivePage />);
+
+    // Scoped to the Teams table: the running and queue cards carry team
+    // pills with the same title attribute.
+    const table = (await screen.findByText("Mobile")).closest("table");
+    const names = Array.from(table?.querySelectorAll("tbody tr td:first-child") ?? []).map(
+      (el) => el.textContent,
+    );
+    expect(names).toEqual(["Ausgaben", "Mobile", "Search"]);
   });
 
   // A team that owns nothing passes every startup check and reviews
@@ -110,12 +131,21 @@ describe("LivePage", () => {
     serve({ live });
     render(<LivePage />);
 
-    // Twice: the pill and the scope column. Both say it, because the pill
-    // is the verdict and the column is the evidence.
-    expect(await screen.findAllByText("no repos")).toHaveLength(2);
-    expect(await screen.findByText("whole project")).toBeDefined();
+    expect(await screen.findByText("no repos")).toBeDefined();
     expect(await screen.findByText("ready")).toBeDefined();
     expect(await screen.findByText("disabled")).toBeDefined();
+  });
+
+  // What a team claims is configuration read once at boot, not something
+  // that moves while you watch. It belongs on the teams page, which shows
+  // the claims themselves rather than a sentinel word for them.
+  it("does not carry the scope column", async () => {
+    serve({ live });
+    render(<LivePage />);
+
+    await screen.findByText("Ausgaben");
+    expect(screen.queryByText("Scope")).toBeNull();
+    expect(screen.queryByText("whole project")).toBeNull();
   });
 
   it("says so when the panel cannot be loaded", async () => {
@@ -130,6 +160,7 @@ describe("RunsPage", () => {
     {
       tag: "PAY/ledger#1",
       team: "payments",
+      team_name: "Payments",
       kind: "auto",
       outcome: "ok",
       elapsed_ms: 72400,
@@ -140,6 +171,7 @@ describe("RunsPage", () => {
     {
       tag: "PAY/ledger#2",
       team: "payments",
+      team_name: "Payments",
       kind: "auto",
       outcome: "ok",
       elapsed_ms: 41000,
@@ -150,6 +182,7 @@ describe("RunsPage", () => {
     {
       tag: "PAY/ledger#3",
       team: "payments",
+      team_name: "Payments",
       kind: "auto",
       outcome: "skipped",
       reason: "head_unchanged",
@@ -162,6 +195,7 @@ describe("RunsPage", () => {
     {
       tag: "PAY/ledger#4",
       team: "payments",
+      team_name: "Payments",
       kind: "auto",
       outcome: "timed_out",
       elapsed_ms: 300000,
@@ -205,7 +239,41 @@ describe("RunsPage", () => {
   it("ranks the skip reasons by their label", async () => {
     serve({ runs: { runs }, metrics });
     render(<RunsPage />);
-    expect(await screen.findByText("HEAD unchanged since last review")).toBeDefined();
+    // Twice: on the skipped row itself and in the breakdown below it.
+    expect(await screen.findAllByText("HEAD unchanged since last review")).toHaveLength(2);
+  });
+
+  // A red pill that only says "failed" sends the reader to the logs for
+  // something the row already knows.
+  it("says why a run did not produce a review", async () => {
+    serve({ runs: { runs }, metrics });
+    render(<RunsPage />);
+
+    await screen.findByText("timed_out");
+    // The label rides the row, so the reason is beside the outcome rather
+    // than only in the aggregate below.
+    const reasons = screen.getAllByText("HEAD unchanged since last review");
+    expect(reasons.length).toBeGreaterThan(1);
+  });
+
+  it("links a PR tag to Bitbucket", async () => {
+    serve({ runs: { runs, bitbucket_url: "https://bitbucket.example.com" }, metrics });
+    render(<RunsPage />);
+
+    const link = await screen.findByText("PAY/ledger#1");
+    expect(link.getAttribute("href")).toBe(
+      "https://bitbucket.example.com/projects/PAY/repos/ledger/pull-requests/1",
+    );
+  });
+
+  // BITBUCKET_URL unset: the tag is still the row's identity, so it stays
+  // readable rather than becoming a link that goes nowhere.
+  it("leaves the tag as text when the instance has no Bitbucket base", async () => {
+    serve({ runs: { runs, bitbucket_url: "" }, metrics });
+    render(<RunsPage />);
+
+    const tag = await screen.findByText("PAY/ledger#1");
+    expect(tag.getAttribute("href")).toBeNull();
   });
 });
 
@@ -271,6 +339,9 @@ describe("TeamsPage", () => {
   const teams: Team[] = [
     {
       slug: "payments",
+      // Deliberately out of slug order against "mobile" below, so the page's
+      // own sort is what puts them right.
+      name: "Zahlungen",
       enabled: true,
       state: "ready",
       repos: -1,
@@ -283,6 +354,7 @@ describe("TeamsPage", () => {
     },
     {
       slug: "mobile",
+      name: "Mobile",
       enabled: false,
       state: "disabled",
       repos: 0,

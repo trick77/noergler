@@ -2,7 +2,7 @@
 // rather than wrapped in components where a component would add nothing: the
 // page reads as markup, and a change lands in one place.
 import type { ReactNode } from "react";
-import type { Tone } from "./format";
+import { prUrl, type Tone } from "./format";
 
 /** SEP joins the clauses of a note. The dot is flanked by thin spaces
  *  (U+2009), not ordinary ones: at the 12.5px muted size a note renders at, a
@@ -47,10 +47,33 @@ export function Pill({ tone, children }: { tone: Tone; children: ReactNode }) {
   );
 }
 
-export function TeamPill({ slug }: { slug: string }) {
+/** PrTag renders a PROJECT/repo#id tag, as a link to the pull request when
+ *  the instance told us its Bitbucket base. Same tab: the dashboard and
+ *  Bitbucket are the same service to the person reading this.
+ *
+ *  A tag that does not parse, or a missing base, renders as plain text
+ *  rather than a link that goes nowhere. */
+export function PrTag({ tag, base }: { tag: string; base: string }) {
+  const href = prUrl(tag, base);
+  if (href === null) return <>{tag}</>;
   return (
-    <span className="rounded-full bg-active px-2.5 py-0.5 font-mono text-[11.5px] text-ink-dim">
-      {slug}
+    <a href={href} rel="noopener" className="hover:text-ink hover:underline">
+      {tag}
+    </a>
+  );
+}
+
+/** TeamPill prints the team's display name and keeps the slug on hover: the
+ *  slug is what the logs, the webhook path and every team= line use, so it
+ *  has to stay reachable even once the page stops leading with it. Not mono
+ *  any more - a name is prose, and a proportional face sets it better. */
+export function TeamPill({ name, slug }: { name: string; slug: string }) {
+  return (
+    <span
+      title={slug}
+      className="rounded-full bg-active px-2.5 py-0.5 text-[11.5px] whitespace-nowrap text-ink-dim"
+    >
+      {name}
     </span>
   );
 }
@@ -68,11 +91,15 @@ export function Card({
 }) {
   return (
     <section className="mb-5 overflow-hidden rounded-ui border border-border bg-panel">
-      {title && (
+      {/* A card with only `right` still gets the header bar: a control
+          belongs on the rule above the table, not floating in the body. */}
+      {(title || right) && (
         <header className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 border-b border-border bg-active px-3.5 py-2.5">
-          <h3 className="font-serif text-[18px] leading-tight font-medium tracking-tight text-ink">
-            {title}
-          </h3>
+          {title && (
+            <h3 className="font-serif text-[18px] leading-tight font-medium tracking-tight text-ink">
+              {title}
+            </h3>
+          )}
           {note && <span className="text-[12.5px] text-muted">{note}</span>}
           {right && <span className="ml-auto">{right}</span>}
         </header>

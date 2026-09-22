@@ -5,7 +5,10 @@
 
 export interface LiveItem {
   tag: string;
+  /** The slug: what the logs and the webhook path use, and what the page
+   *  keys off. team_name is what it prints. */
   team: string;
+  team_name: string;
   kind?: string;
   since: string;
   waited_ms?: number;
@@ -17,6 +20,8 @@ export type TeamState = "ready" | "no_repos" | "disabled";
 
 export interface LiveTeam {
   slug: string;
+  /** Display name from teams.yaml, defaulted to the slug by the server. */
+  name: string;
   enabled: boolean;
   state: TeamState;
   /** -1 means at least one whole-project claim: unbounded, not a count. */
@@ -33,11 +38,15 @@ export interface Live {
   running: LiveItem[];
   waiting: LiveItem[];
   teams: LiveTeam[];
+  /** The instance's Bitbucket base, for linking a PR tag. Empty when
+   *  BITBUCKET_URL is unset; the page then shows the tag as plain text. */
+  bitbucket_url: string;
 }
 
 export interface Run {
   tag: string;
   team: string;
+  team_name: string;
   kind: string;
   outcome: string;
   reason?: string;
@@ -48,6 +57,13 @@ export interface Run {
   // unpriced run is not a free one, and a float would round the money.
   cost_usd: string | null;
   created_at: string;
+}
+
+export interface Runs {
+  runs: Run[];
+  /** As on Live: this page polls its own endpoint, so it cannot read the
+   *  Bitbucket base off the live response. */
+  bitbucket_url: string;
 }
 
 export interface Totals {
@@ -67,7 +83,7 @@ export interface Metrics {
   /** "month" for the current calendar month, "rolling" for a ?days= window. */
   window: string;
   totals: Totals;
-  by_team: (Totals & { team: string })[];
+  by_team: (Totals & { team: string; team_name: string })[];
   daily: { day: string; team: string; runs: number; cost_usd: string | null }[];
   daily_attempts: { day: string; outcome: string; count: number }[];
   breakdown: { outcome: string; reason?: string; label?: string; count: number }[];
@@ -75,6 +91,7 @@ export interface Metrics {
 
 export interface Team {
   slug: string;
+  name: string;
   enabled: boolean;
   state: TeamState;
   repos: number;

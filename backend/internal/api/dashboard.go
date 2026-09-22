@@ -171,6 +171,11 @@ type liveBody struct {
 	Running      []liveItem `json:"running"`
 	Waiting      []liveItem `json:"waiting"`
 	Teams        []liveTeam `json:"teams"`
+	// BitbucketURL is the instance's Bitbucket base, so the page can turn a
+	// PROJECT/repo#id tag into a link. The browser has no other way to know
+	// it: BITBUCKET_URL is read in this process and the SPA is static files.
+	// Empty when unset, and the page then renders the tag as plain text.
+	BitbucketURL string `json:"bitbucket_url"`
 }
 
 // live is the "what is going on right now" panel.
@@ -185,6 +190,7 @@ func (d Deps) live(w http.ResponseWriter, r *http.Request) {
 		Depth:        snap.Depth,
 		Running:      make([]liveItem, 0, len(snap.Running)),
 		Waiting:      make([]liveItem, 0, len(snap.Waiting)),
+		BitbucketURL: d.BitbucketURL,
 	}
 	for _, it := range snap.Running {
 		body.Running = append(body.Running, liveItem{
@@ -249,6 +255,9 @@ type runRow struct {
 
 type runsBody struct {
 	Runs []runRow `json:"runs"`
+	// BitbucketURL as on liveBody: this page polls its own endpoint, so it
+	// cannot read the base off the live response.
+	BitbucketURL string `json:"bitbucket_url"`
 }
 
 // attemptFilter reads ?outcome=. An unknown value is every row rather than an
@@ -279,7 +288,7 @@ func (d Deps) runs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	nameOf := d.teamNamer()
-	body := runsBody{Runs: make([]runRow, 0, len(rows))}
+	body := runsBody{Runs: make([]runRow, 0, len(rows)), BitbucketURL: d.BitbucketURL}
 	for _, a := range rows {
 		body.Runs = append(body.Runs, runRow{
 			Tag: a.Key.Tag(), Team: a.TeamSlug, TeamName: nameOf(a.TeamSlug), Kind: string(a.Kind),
