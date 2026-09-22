@@ -7,7 +7,7 @@ import {
   Empty,
   Failed,
   Note,
-  SEP,
+  Sep,
   Tile,
   Tiles,
   column,
@@ -192,12 +192,13 @@ export function MetricsPage() {
             card says the same thing five times and crowds out what each
             card actually measures. */}
         <h2 className={h2}>
-          Metrics <span className="text-muted">{SEP}{title}</span>
+          Metrics
+          <Sep />
+          <span className="text-muted">{title}</span>
         </h2>
         <p className={lede}>
-          Spend and throughput for the current month, the period a key's spend is budgeted in. Cost
-          is summed from priced runs only; an unpriced run is counted separately and never folded in
-          as zero.
+          What this month cost and how much got reviewed. Runs the gateway never priced are counted
+          on their own rather than added in as zero, so the total is not quietly too low.
         </p>
 
         <Tiles>
@@ -301,7 +302,7 @@ export function MetricsPage() {
               </table>
             </div>
           )}
-          <Note>Key spend is a gauge: shown, never summed across teams.</Note>
+          <Note>Ordered by spend. Costs the gateway never reported are missing from this table.</Note>
         </Card>
       </div>
     </div>

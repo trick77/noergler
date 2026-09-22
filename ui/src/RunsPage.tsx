@@ -82,9 +82,8 @@ export function RunsPage() {
       <div className={column}>
         <h2 className={h2}>Runs</h2>
         <p className={lede}>
-          Every attempt this month, not only the ones that produced a review. A skip is a decision
-          the pipeline made before inference; a failure is one the gateway or the parser made after
-          it.
+          Every PR noergler looked at this month, including the ones it decided not to review.
+          Skipped means it never asked the model. Failed means it asked and something went wrong.
         </p>
 
         {/* A dash, not a zero, when the counts could not be read: the feed

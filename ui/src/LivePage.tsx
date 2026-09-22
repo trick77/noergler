@@ -1,5 +1,5 @@
 import type { Live } from "./api";
-import { ago, byName, elapsedSince, teamStateLabel, teamTone } from "./format";
+import { ago, byLastRun, elapsedSince, teamStateLabel, teamTone } from "./format";
 import { usePoll, useNow } from "./usePoll";
 import {
   Card,
@@ -8,7 +8,7 @@ import {
   Note,
   Pill,
   PrTag,
-  SEP,
+  Sep,
   TeamPill,
   column,
   h2,
@@ -67,8 +67,8 @@ export function LivePage() {
       <div className={column}>
         <h2 className={h2}>Live</h2>
         <p className={lede}>
-          What is running right now. The inference pool overlaps the gateway calls; every Bitbucket
-          fetch and every comment posted still happens one at a time on the single review worker.
+          What is running right now. Several reviews can be waiting on the model at once, but only
+          one at a time talks to Bitbucket, so a busy queue drains in order.
         </p>
 
         <Card
@@ -76,7 +76,13 @@ export function LivePage() {
           // "max N per team", not "N per team": the per-team figure is a
           // ceiling nested inside the global one, not a reservation. A team
           // is not owed two slots, it is stopped from taking more than two.
-          note={`${busy} of ${data.pool_capacity} slots busy${SEP}max ${data.pool_per_team} per team`}
+          note={
+            <>
+              {busy} of {data.pool_capacity} slots busy
+              <Sep />
+              max {data.pool_per_team} per team
+            </>
+          }
         >
           <Slots capacity={data.pool_capacity} busy={busy} />
           {data.running.length === 0 ? (
@@ -100,7 +106,16 @@ export function LivePage() {
           )}
         </Card>
 
-        <Card title="Queue" note={`${data.depth} waiting${SEP}in-flight excluded`}>
+        <Card
+          title="Queue"
+          note={
+            <>
+              {data.depth} waiting
+              <Sep />
+              in-flight excluded
+            </>
+          }
+        >
           {data.waiting.length === 0 ? (
             <Empty>Queue is empty.</Empty>
           ) : (
@@ -140,7 +155,7 @@ export function LivePage() {
               </tr>
             </thead>
             <tbody>
-              {byName(data.teams).map((t) => (
+              {byLastRun(data.teams).map((t) => (
                 <tr key={t.slug}>
                   <td className={td} title={t.slug}>
                     {t.name}
@@ -155,9 +170,8 @@ export function LivePage() {
             </tbody>
           </table>
           <Note>
-            A team with no repositories is configured and running and reviewing nothing: it owns no
-            project and no repo. Why a team is disabled stays in the logs, because the reason can
-            name an env var.
+            A team with no repos is running fine and has simply claimed nothing yet. If a team is
+            disabled, the pod log says why.
           </Note>
         </Card>
       </div>

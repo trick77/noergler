@@ -28,47 +28,26 @@ function Code({ children }: { children: React.ReactNode }) {
 // The eleven pre-flight exits, worded as review.SkipReason.Label() words
 // them. Kept in that order: it is the order prepare reaches them.
 const SKIPS: { label: string; why: string }[] = [
-  {
-    label: "AGENTS.md missing",
-    why: "The repository has no AGENTS.md. noergler reviews against the conventions that file states, so without one there is nothing to review against.",
-  },
-  {
-    label: "AGENTS.md over the token cap",
-    why: "The file is too large to carry in the prompt. There is a warning threshold below the cap, so a summary usually says so before reviews stop.",
-  },
+  { label: "AGENTS.md missing", why: "See below." },
+  { label: "AGENTS.md over the token cap", why: "See below." },
   {
     label: "Author not in auto-review authors",
-    why: "The team restricts automatic reviews to a list of authors and yours is not on it. An @mention still works.",
+    why: "Ask your team admin to add you, or @mention the bot on the PR.",
   },
-  {
-    label: "Ignored author",
-    why: "The author is on the team's ignore list, which is normally where CI and dependency bots go.",
-  },
-  {
-    label: "Branch opt-out keyword",
-    why: "The source branch name contains the opt-out keyword. See below.",
-  },
+  { label: "Ignored author", why: "Usually a bot account. Ask your team admin if it is not." },
+  { label: "Branch opt-out keyword", why: "Your branch name contains it. See below." },
   {
     label: "PR ignored (summary comment removed)",
-    why: "Somebody deleted noergler's summary comment on this PR, which is how you tell it to leave the PR alone.",
+    why: "Somebody deleted the summary comment. Nothing brings it back on this PR.",
   },
-  {
-    label: "PR cost cap reached",
-    why: "This PR has already spent its budget. See below.",
-  },
+  { label: "PR cost cap reached", why: "@mention the bot to review anyway." },
   {
     label: "No reviewable files",
-    why: "Everything that changed is a file type noergler skips: lockfiles, vendored code, generated output, binaries.",
+    why: "Only lockfiles, vendored code, generated output or binaries changed.",
   },
-  { label: "Empty diff", why: "Nothing changed, as far as Bitbucket reports." },
-  {
-    label: "HEAD unchanged since last review",
-    why: "The commit was already reviewed. Pushing the same HEAD again does not re-run it.",
-  },
-  {
-    label: "Diff too large",
-    why: "Only when the operator set a diff cap. It is off by default.",
-  },
+  { label: "Empty diff", why: "Bitbucket reports no changes." },
+  { label: "HEAD unchanged since last review", why: "Push something." },
+  { label: "Diff too large", why: "Only if your admin set a diff cap. Off by default." },
 ];
 
 export function FaqPage() {
@@ -77,15 +56,14 @@ export function FaqPage() {
       <div className={column}>
         <h2 className={h2}>FAQ</h2>
         <p className={lede}>
-          Why noergler did, or did not, review your pull request. Most of the numbers below are
-          per-team defaults; your team may have changed them.
+          Why noergler did or did not review your pull request. Defaults below; your team may have
+          changed them.
         </p>
 
         <Q q="Why wasn't my PR reviewed?">
           <p>
-            Every attempt is recorded, including the ones that produced no review, and the reason is
-            on the row. Open <strong>Runs</strong> and filter to Skipped or Failed: the reason is
-            beside the outcome. These are the reasons a review is skipped before it starts:
+            Open <strong>Runs</strong>, filter to Skipped or Failed, and find your PR. The reason is
+            next to the outcome. What each one means:
           </p>
           <ul className="mt-1 space-y-1.5">
             {SKIPS.map((s) => (
@@ -95,94 +73,83 @@ export function FaqPage() {
               </li>
             ))}
           </ul>
-          <Note>
-            A failure is different from a skip: a skip is a decision noergler made before asking the
-            model, a failure is the gateway or the parser going wrong afterwards.
-          </Note>
+          <Note>Skipped means it never asked the model. Failed means it asked and something broke.</Note>
+        </Q>
+
+        <Q q="AGENTS.md">
+          <p>
+            It is what the review checks your code against: the conventions and constraints a new
+            reviewer on your team would have to be told. Put it at the repo root.
+          </p>
+          <p>
+            No AGENTS.md, no review. The summary comment says so rather than staying silent, so an
+            unreviewed PR is never a mystery.
+          </p>
+          <p>
+            Keep it short. The summary starts warning well before the size limit, and past the limit
+            reviews stop entirely.
+          </p>
         </Q>
 
         <Q q="How do I stop noergler reviewing a PR?">
           <p>
-            Put the opt-out keyword in the <strong>source branch name</strong>. By default that
-            keyword is <Code>noergloff</Code>, so <Code>feature/noergloff-spike</Code> is never
-            auto-reviewed. It is a substring match on the branch name, and your team can change the
-            word.
+            Put <Code>noergloff</Code> anywhere in the source branch name:
+            <Code>feature/noergloff-spike</Code> is never auto-reviewed.
           </p>
           <p>
-            For a PR that is already open, delete noergler's summary comment. It takes that as "stop
-            touching this one" and will not come back to it.
+            On a PR that is already open, delete noergler's summary comment instead. It stays away
+            after that, and nothing brings it back on that PR.
           </p>
         </Q>
 
         <Q q="How do I ask noergler something?">
           <p>
-            Mention the bot by its Bitbucket username in a PR comment. A question gets an answer; a
-            comment asking for a review runs a full one, even when the PR would not have been
-            auto-reviewed — the person asking is the authorization.
+            Mention the bot by its Bitbucket username in a PR comment. Ask a question and it
+            answers; ask for a review and it runs one.
           </p>
           <p>
-            An @mention also works after the PR hit its cost cap, and for an author who is not on
-            the auto-review list.
-          </p>
-        </Q>
-
-        <Q q="Why does my repo need an AGENTS.md?">
-          <p>
-            It is what noergler reviews against: the conventions, constraints and decisions that a
-            reviewer would otherwise have to already know. Without one, a review has nothing to hold
-            the code to, so by default the review is skipped and the summary says so.
-          </p>
-          <p>
-            Size matters too. Past a warning threshold the summary starts warning; past the maximum
-            the review stops. Both are token counts and both are per-team.
+            Mentioning it overrides the auto-review list and the cost cap, so it works on PRs that
+            would never be reviewed on their own.
           </p>
         </Q>
 
         <Q q="Why did the second review say less than the first?">
           <p>
-            Re-reviews are incremental: pushing a new commit reviews what changed since the last
-            reviewed commit, not the whole PR again. Findings already posted are not repeated.
+            A new commit is reviewed against the last reviewed commit, not the whole PR, and
+            findings already posted are not repeated.
           </p>
-          <p>
-            Pushing nothing new changes nothing — an unchanged HEAD is skipped. A declined PR that is
-            reopened starts fresh.
-          </p>
+          <p>Reopening a declined PR starts over from scratch.</p>
         </Q>
 
         <Q q="Why did reviews stop halfway through my PR?">
           <p>
-            Each PR has a cost cap. Once the reviews on it have spent that much, automatic reviews
-            stop, and the per-PR total is on the summary. An @mention still runs a review past the
-            cap.
+            The PR hit its cost cap; the running total is on the summary comment. Mention the bot to
+            review anyway.
           </p>
         </Q>
 
         <Q q="Which files get reviewed?">
           <p>
             Source files that changed in the PR. Lockfiles, vendored directories, generated output
-            and binaries are skipped: a diff full of them is mostly noise, and they are not what a
-            reviewer reads.
+            and binaries are skipped.
           </p>
           <p>
-            Whole repositories can be excluded too. A team claims a project, and its exclude list
-            then drops repositories inside it — <Code>*-infra</Code> by default — so a repo can be
-            covered by the webhook and still never be reviewed.
+            Your team can also exclude whole repos by name — <Code>*-infra</Code> by default. Those
+            never get reviewed, even though the webhook still fires for them.
           </p>
         </Q>
 
         <Q q="Where is the API?">
           <p>
-            The team self-service API — claiming projects and repositories, and the review settings
-            (auto-review authors, ignored authors, excluded repositories) — is documented at{" "}
             <a href="/api/docs" className="text-ink underline hover:no-underline">
               /api/docs
             </a>
-            .
+            . Claim and release repos, and change the author lists, without going through your
+            noergler admin.
           </p>
           <p>
-            It authenticates with your team's webhook secret, which your noergler admin has.
-            Claiming or releasing repositories additionally needs your own Bitbucket token, with
-            project admin on the target.
+            You need your team's webhook secret, which the admin has. Claiming also needs your own
+            Bitbucket token with project admin.
           </p>
         </Q>
       </div>

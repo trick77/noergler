@@ -536,18 +536,51 @@ func main() {
 	mux.HandleFunc("DELETE /rest/api/1.0/projects/{project}/webhooks/{webhookID}", deleteHook)
 	mux.HandleFunc("DELETE /rest/api/1.0/projects/{project}/repos/{repo}/webhooks/{webhookID}", deleteHook)
 
-	// Granting the bot read access. Bitbucket takes this as query parameters,
+	// Granting the bot write access. Bitbucket takes this as query parameters,
 	// not a body, so the log line records them for the smoke run to assert on.
+	//
+	// The grant is also REMEMBERED, because the status check reads it back:
+	// answering a canned permission would let the onboarder claim the bot can
+	// comment on a target nothing ever granted.
+	var permMu sync.Mutex
+	granted := map[string]string{}
 	grantPerm := func(w http.ResponseWriter, r *http.Request) {
 		if denyNonAdmin(w, r) {
 			return
 		}
+		name, perm := r.URL.Query().Get("name"), r.URL.Query().Get("permission")
+		permMu.Lock()
+		granted[target(r)+"\x00"+name] = perm
+		permMu.Unlock()
 		log.Printf("onboarding: permission granted target=%s name=%s permission=%s",
-			target(r), r.URL.Query().Get("name"), r.URL.Query().Get("permission"))
+			target(r), name, perm)
 		w.WriteHeader(http.StatusNoContent)
 	}
 	mux.HandleFunc("PUT /rest/api/1.0/projects/{project}/permissions/users", grantPerm)
 	mux.HandleFunc("PUT /rest/api/1.0/projects/{project}/repos/{repo}/permissions/users", grantPerm)
+
+	// Reading a user's effective permission, which is how the status check
+	// proves the bot can post a review comment. Bitbucket's `filter` is a
+	// substring match, so this answers with a page of users rather than one.
+	readPerm := func(w http.ResponseWriter, r *http.Request) {
+		if denyNonAdmin(w, r) {
+			return
+		}
+		filter := r.URL.Query().Get("filter")
+		permMu.Lock()
+		perm, ok := granted[target(r)+"\x00"+filter]
+		permMu.Unlock()
+		values := []any{}
+		if ok {
+			values = append(values, map[string]any{
+				"user":       map[string]any{"name": filter},
+				"permission": perm,
+			})
+		}
+		writeJSON(w, r, map[string]any{"values": values, "size": len(values), "isLastPage": true})
+	}
+	mux.HandleFunc("GET /rest/api/1.0/projects/{project}/permissions/users", readPerm)
+	mux.HandleFunc("GET /rest/api/1.0/projects/{project}/repos/{repo}/permissions/users", readPerm)
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("unhandled: %s %s", r.Method, r.URL.Path)

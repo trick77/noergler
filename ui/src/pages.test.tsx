@@ -33,10 +33,28 @@ const live: Live = {
     // Named so that slug order (mobile, payments, search) and name order
     // (Ausgaben, Mobile, Search) differ: the page's own sort is what has to
     // put them right.
-    { slug: "payments", name: "Ausgaben", enabled: true, state: "ready", repos: -1, prs: 4, last_run: new Date().toISOString() },
+    {
+      slug: "payments",
+      name: "Ausgaben",
+      enabled: true,
+      state: "ready",
+      repos: -1,
+      prs: 4,
+      last_run: new Date(Date.now() - 600_000).toISOString(),
+    },
     { slug: "mobile", name: "Mobile", enabled: false, state: "disabled", repos: 0, prs: 0, last_run: null },
-    // Configured, started, owns nothing: the state the green pill used to hide.
-    { slug: "search", name: "Search", enabled: true, state: "no_repos", repos: 0, prs: 0, last_run: null },
+    // Configured, started, owns nothing: the state the green pill used to
+    // hide. Its last_run is the most recent, so the live page's sort puts it
+    // first while an alphabetical one would put it last.
+    {
+      slug: "search",
+      name: "Search",
+      enabled: true,
+      state: "no_repos",
+      repos: 0,
+      prs: 0,
+      last_run: new Date(Date.now() - 60_000).toISOString(),
+    },
   ],
   bitbucket_url: "https://bitbucket.example.com",
 };
@@ -112,7 +130,11 @@ describe("LivePage", () => {
     expect(screen.queryByText(/OPENAI_API_KEY/)).toBeNull();
   });
 
-  it("orders teams by display name, not by slug", async () => {
+  // Most recently active first: the page answers "what is happening", so a
+  // team that ran a minute ago outranks one whose name starts with an A. A
+  // team that never ran sorts last, because null is "no activity" rather
+  // than "infinitely old".
+  it("orders teams by last run, not by name", async () => {
     serve({ live });
     render(<LivePage />);
 
@@ -122,7 +144,9 @@ describe("LivePage", () => {
     const names = Array.from(table?.querySelectorAll("tbody tr td:first-child") ?? []).map(
       (el) => el.textContent,
     );
-    expect(names).toEqual(["Ausgaben", "Mobile", "Search"]);
+    // Search ran most recently, Ausgaben before it, Mobile never. By name
+    // this would read Ausgaben, Mobile, Search.
+    expect(names).toEqual(["Search", "Ausgaben", "Mobile"]);
   });
 
   // A team that owns nothing passes every startup check and reviews
@@ -391,8 +415,10 @@ describe("TeamsPage", () => {
     serve({ teams: { teams } });
     render(<TeamsPage />);
 
-    expect(await screen.findByText(/not served by the API/)).toBeDefined();
+    // The log line to look at, not the reason itself: a disable reason can
+    // name an environment variable and this page is unauthenticated.
     expect(await screen.findByText("team_disabled")).toBeDefined();
+    expect(screen.queryByText(/OPENAI_API_KEY|WEBHOOK_SECRET/)).toBeNull();
   });
 });
 

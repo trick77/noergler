@@ -145,6 +145,25 @@ export function byName<T extends { name: string }>(teams: T[]): T[] {
   return [...teams].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 }
 
+/** byLastRun sorts teams most-recently-active first, which is the order the
+ *  live page wants: it answers "what is happening", and a team that ran a
+ *  minute ago is more interesting than one that starts with an A.
+ *
+ *  A team that has never run sorts last rather than first: null is "no
+ *  activity", not "infinitely old". Ties fall back to the name, so the order
+ *  is stable across polls instead of wandering with whatever the server
+ *  happened to emit first.
+ *
+ *  A COPY, as byName: the array belongs to the poller. */
+export function byLastRun<T extends { name: string; last_run: string | null }>(teams: T[]): T[] {
+  const at = (t: T) => (t.last_run === null ? -Infinity : new Date(t.last_run).getTime());
+  return [...teams].sort((a, b) => {
+    const diff = at(b) - at(a);
+    if (diff !== 0 && !Number.isNaN(diff)) return diff;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  });
+}
+
 /** scope renders a team's repository count, keeping "every repo in the
  *  project" distinct from any particular number. */
 export function scope(repos: number): string {

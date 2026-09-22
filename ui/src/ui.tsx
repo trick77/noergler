@@ -4,11 +4,27 @@
 import type { ReactNode } from "react";
 import { prUrl, type Tone } from "./format";
 
-/** SEP joins the clauses of a note. The dot is flanked by thin spaces
- *  (U+2009), not ordinary ones: at the 12.5px muted size a note renders at, a
- *  single space either side of a glyph this narrow reads as no space at all.
- *  One const, so the places that join clauses cannot drift apart. */
-export const SEP = " · ";
+/** Sep is the dot between the clauses of a note or a heading.
+ *
+ *  An ELEMENT with CSS margins, not a string with Unicode spaces around it.
+ *  U+2009 and U+2002 were both tried and neither is enough: a Unicode space
+ *  is a fraction of the font size, so at the 12.5px a note renders at the
+ *  gap comes out barely wider than the ordinary space it replaced, and the
+ *  dot still reads as jammed against the words.
+ *
+ *  max() of a floor and a ratio: 7px is generous in a 12.5px note and tight
+ *  beside a 28px heading, so the gap grows with the text but never collapses
+ *  below what the small case needs.
+ *
+ *  aria-hidden: it is punctuation. A screen reader announcing "middle dot"
+ *  between every clause is worse than the pause it already takes there. */
+export function Sep() {
+  return (
+    <span aria-hidden className="mx-[max(7px,0.32em)] text-faint">
+      ·
+    </span>
+  );
+}
 
 export const page = "h-full overflow-auto";
 export const column = "mx-auto max-w-[900px] px-4 py-7 sm:px-6 lg:px-10";
@@ -85,7 +101,7 @@ export function Card({
   children,
 }: {
   title?: string;
-  note?: string;
+  note?: ReactNode;
   right?: ReactNode;
   children: ReactNode;
 }) {

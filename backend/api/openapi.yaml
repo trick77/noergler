@@ -6,48 +6,28 @@ info:
   # a release that changes no route leaves this alone.
   version: 1.0.0
   description: |
-    What a team admin can do without going through the noergler admin: see what
-    the team owns, claim and release projects and repositories, and change the
-    three review author lists.
-
-    Every route is scoped to one team by the `{team}` path parameter, which is
-    always the team's **slug** — the same identifier that appears in the webhook
-    path, in the `team=` log field and in `pull_requests.team_slug`. A team may
-    also carry a display name in `teams.yaml`, but that name is a dashboard
-    concern and never addresses anything here.
-
-    ## Not in this document
-
-    - `POST /webhook/{team}` is Bitbucket's. It is HMAC-signed with the team's
-      webhook secret and is not a human surface.
-    - `/api/dashboard/*` is the operator dashboard: read-only, unauthenticated
-      and cross-team. It is the ingress's job to decide who reaches it.
-    - `/health` and `/ready` are probes.
+    Claim and release projects and repositories for your team, and change who
+    gets reviewed. `{team}` is always the team's slug, the same one in the
+    webhook path.
 
     ## Authentication
 
-    Every route takes the team's **webhook secret** as a bearer token. It is
-    compared in constant time, and the scheme is case-insensitive.
+    Every route takes the team's webhook secret as a bearer token.
 
-    `POST /onboard/{team}` additionally needs `X-Bitbucket-Token`: the caller's
-    OWN Bitbucket HTTP access token, with project admin on whatever is being
-    claimed. noergler proves the caller's admin rights with it per target, and
-    never logs or stores it. It is not the bot's token — the bot deliberately
-    has no admin rights.
+    `POST /onboard/{team}` also needs `X-Bitbucket-Token`: your own Bitbucket
+    HTTP access token, with project admin on whatever you are claiming. It
+    proves your admin rights per target and is never logged or stored. Not the
+    bot's token, which has no admin rights.
 
-    ## Status codes worth knowing about
+    ## Status codes
 
-    `404` (unknown team) and `503` (team disabled) are answered BEFORE the 401
-    on every route: neither leaks anything the webhook path does not already.
-    The body is decoded only AFTER authentication, so an unauthenticated caller
-    cannot probe the request schema by watching validation errors.
+    `404` (unknown team) and `503` (team disabled) come before the `401` on
+    every route. The body is only decoded after you authenticate, so the
+    request schema cannot be probed without the secret.
 
-    ## Compatibility
-
-    Fields may be added to a response and codes may be added to an error; none
-    will be removed or renamed without a version change. `additionalProperties:
-    false` documents the shape as it is today — it is a description, not a
-    freeze.
+    Fields and error codes may be added; nothing is removed or renamed without
+    a version change. `additionalProperties: false` describes today's shape
+    rather than freezing it.
 
 servers:
   - url: /
