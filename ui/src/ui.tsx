@@ -4,6 +4,12 @@
 import type { ReactNode } from "react";
 import type { Tone } from "./format";
 
+/** SEP joins the clauses of a note. The dot is flanked by thin spaces
+ *  (U+2009), not ordinary ones: at the 12.5px muted size a note renders at, a
+ *  single space either side of a glyph this narrow reads as no space at all.
+ *  One const, so the places that join clauses cannot drift apart. */
+export const SEP = " · ";
+
 export const page = "h-full overflow-auto";
 export const column = "mx-auto max-w-[900px] px-4 py-7 sm:px-6 lg:px-10";
 export const h2 =

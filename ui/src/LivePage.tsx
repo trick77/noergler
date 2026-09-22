@@ -7,6 +7,7 @@ import {
   Failed,
   Note,
   Pill,
+  SEP,
   TeamPill,
   column,
   h2,
@@ -74,7 +75,7 @@ export function LivePage() {
           // "max N per team", not "N per team": the per-team figure is a
           // ceiling nested inside the global one, not a reservation. A team
           // is not owed two slots, it is stopped from taking more than two.
-          note={`${busy} of ${data.pool_capacity} slots busy · max ${data.pool_per_team} per team`}
+          note={`${busy} of ${data.pool_capacity} slots busy${SEP}max ${data.pool_per_team} per team`}
         >
           <Slots capacity={data.pool_capacity} busy={busy} />
           {data.running.length === 0 ? (
@@ -96,7 +97,7 @@ export function LivePage() {
           )}
         </Card>
 
-        <Card title="Queue" note={`${data.depth} waiting · in-flight excluded`}>
+        <Card title="Queue" note={`${data.depth} waiting${SEP}in-flight excluded`}>
           {data.waiting.length === 0 ? (
             <Empty>Queue is empty.</Empty>
           ) : (

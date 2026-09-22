@@ -7,6 +7,7 @@ import {
   Empty,
   Failed,
   Note,
+  SEP,
   Tile,
   Tiles,
   column,
@@ -186,7 +187,7 @@ export function MetricsPage() {
             card says the same thing five times and crowds out what each
             card actually measures. */}
         <h2 className={h2}>
-          Metrics <span className="text-muted">· {title}</span>
+          Metrics <span className="text-muted">{SEP}{title}</span>
         </h2>
         <p className={lede}>
           Spend and throughput for the current month, the period a key's spend is budgeted in. Cost

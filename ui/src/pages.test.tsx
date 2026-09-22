@@ -184,10 +184,10 @@ describe("RunsPage", () => {
     serve({ runs: { runs }, metrics });
     render(<RunsPage />);
 
-    expect(await screen.findByText("$0.218")).toBeDefined();
+    expect(await screen.findByText("$0.22")).toBeDefined();
     expect(await screen.findByText("unpriced")).toBeDefined();
-    // The failures have no cost at all, which is a dash, not $0.000.
-    expect(screen.queryByText("$0.000")).toBeNull();
+    // The failures have no cost at all, which is a dash, not $0.00.
+    expect(screen.queryByText("$0.00")).toBeNull();
   });
 
   // /metrics can fail while /runs succeeds. Four tiles reading 0 above a
@@ -216,7 +216,7 @@ describe("MetricsPage", () => {
 
     // Twice on purpose: the headline tile and the by-team row. The point
     // is that the figure is the priced sum in both places.
-    expect(await screen.findAllByText("$1.250")).toHaveLength(2);
+    expect(await screen.findAllByText("$1.25")).toHaveLength(2);
     expect(await screen.findByText("Unpriced")).toBeDefined();
     // The unpriced count stands on its own rather than being folded in.
     expect(await screen.findAllByText("3")).not.toHaveLength(0);

@@ -7,6 +7,7 @@ import {
   Failed,
   Note,
   Pill,
+  SEP,
   column,
   h2,
   lede,
@@ -69,7 +70,7 @@ export function TeamsPage() {
           <Card
             key={t.slug}
             title={t.slug}
-            note={`${t.enabled ? scope(t.repos) : "not started"} · ${t.prs} PRs · last run ${ago(t.last_run, now)}`}
+            note={`${t.enabled ? scope(t.repos) : "not started"}${SEP}${t.prs} PRs${SEP}last run ${ago(t.last_run, now)}`}
             right={<Pill tone={teamTone(t.state)}>{teamStateLabel(t.state)}</Pill>}
           >
             {t.claims.length === 0 ? (

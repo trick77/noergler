@@ -1,20 +1,55 @@
 import { describe, expect, it } from "vitest";
-import { ago, duration, money, outcomeTone, scope, teamStateLabel, teamTone, tokens } from "./format";
+import {
+  ago,
+  duration,
+  money,
+  outcomeTone,
+  scope,
+  teamStateLabel,
+  teamTone,
+  tokens,
+} from "./format";
 
 describe("money", () => {
   // The whole reason cost travels as a string: an unpriced run is not a free
-  // run, and rendering it as $0.000 invents a fact the gateway never gave.
+  // run, and rendering it as $0.00 invents a fact the gateway never gave.
+  // A priced run that really did cost almost nothing still reads $0.00 --
+  // the two stay apart because only one of them says "unpriced".
   it("says unpriced rather than zero", () => {
     expect(money(null)).toBe("unpriced");
-    expect(money("0.000")).toBe("$0.000");
+    expect(money("0.000")).toBe("$0.00");
   });
 
-  // Passed through, never parsed: Number("0.218") back to a string is where
-  // the exactness the backend preserved would be lost.
-  it("preserves the exact decimal it was given", () => {
-    expect(money("0.218")).toBe("$0.218");
-    expect(money("31.470")).toBe("$31.470");
-    expect(money("0.000000001")).toBe("$0.000000001");
+  it("rounds to cents", () => {
+    expect(money("0.218")).toBe("$0.22");
+    expect(money("31.470")).toBe("$31.47");
+    expect(money("0.004")).toBe("$0.00");
+  });
+
+  // Half-up on the third decimal, done on the digits. Number("0.005") is
+  // 0.00499..., so a float round here would answer $0.00 for every one of
+  // these -- and a 3-decimal string ending in 5 is the common case, not a
+  // corner.
+  it("rounds half up without going through a float", () => {
+    expect(money("0.005")).toBe("$0.01");
+    expect(money("1.005")).toBe("$1.01");
+    expect(money("9.995")).toBe("$10.00");
+    expect(money("0.015")).toBe("$0.02");
+  });
+
+  // More precision than the wire promises must not become garbage: the
+  // third decimal has already settled the rounding.
+  it("ignores digits past the third decimal", () => {
+    expect(money("0.000000001")).toBe("$0.00");
+    expect(money("0.0049999")).toBe("$0.00");
+    expect(money("2")).toBe("$2.00");
+    expect(money("2.1")).toBe("$2.10");
+  });
+
+  // The string came from the API. Showing it unchanged beats inventing a
+  // number for it.
+  it("passes a non-decimal through rather than mangling it", () => {
+    expect(money("n/a")).toBe("$n/a");
   });
 });
 

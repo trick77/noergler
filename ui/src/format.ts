@@ -1,14 +1,40 @@
 // Formatters. Every number a person reads passes through one of these, so
 // the page never decides locally how money or a duration looks.
 
-/** money renders the API's decimal string. null is "unpriced", never $0.000:
- *  a run the gateway did not price is not a free run, and showing a zero
- *  invents a fact. The string is passed through rather than parsed, because
- *  parsing it to a float would round the money the backend took care to keep
- *  exact. */
+/** money renders the API's decimal string, rounded to cents.
+ *
+ *  null is "unpriced", never $0.00: a run the gateway did not price is not a
+ *  free run, and showing a zero invents a fact. A priced sub-cent run does
+ *  read $0.00, which is what rounding to cents means; the two stay
+ *  distinguishable because only one of them says "unpriced".
+ *
+ *  Rounding happens HERE, at render, and nowhere else: the wire keeps its
+ *  exact decimal string, the DB stays BIGINT nano-USD and the riptide edge
+ *  keeps every digit. The string is rounded AS a string rather than parsed,
+ *  because a float cannot hold it: Number("1.005") is 1.00499..., so
+ *  toFixed(2) answers $1.00. A 3-decimal string ending in 5 is the common
+ *  case here, not a corner. */
 export function money(usd: string | null): string {
   if (usd === null) return "unpriced";
-  return `$${usd}`;
+  return `$${roundToCents(usd)}`;
+}
+
+/** roundToCents rounds a decimal string half-up, on the digits. A string that
+ *  is not a plain decimal is returned unchanged rather than mangled: it came
+ *  from the API, and inventing a number for it would be worse than showing
+ *  what arrived. */
+function roundToCents(usd: string): string {
+  const m = /^(-?)(\d+)(?:\.(\d*))?$/.exec(usd.trim());
+  if (m === null) return usd;
+  const [, sign, whole, frac = ""] = m;
+
+  // The third decimal decides. A digit beyond it cannot change a half-up
+  // rounding the third has already settled, so the rest is not consulted.
+  const cents = BigInt(whole) * 100n + BigInt((frac + "00").slice(0, 2));
+  const rounded = frac.charCodeAt(2) >= 53 ? cents + 1n : cents;
+
+  const digits = rounded.toString().padStart(3, "0");
+  return `${sign}${digits.slice(0, -2)}.${digits.slice(-2)}`;
 }
 
 /** duration is a wall-clock span for a table cell. */
