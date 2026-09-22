@@ -55,7 +55,7 @@ const FILTERS: { value: Filter; label: string }[] = [
 export function RunsPage() {
   const [filter, setFilter] = useState<Filter>("");
   const query = `runs?limit=50${filter === "" ? "" : `&outcome=${filter}`}`;
-  const { data, failed } = usePoll<Runs>(query, 10000);
+  const { data, failed, stale } = usePoll<Runs>(query, 10000);
   const metrics = usePoll<Metrics>("metrics");
   const now = useNow(10000);
 
@@ -124,7 +124,14 @@ export function RunsPage() {
               {filter === "" ? "No attempts recorded yet." : `No ${filter} attempts recorded yet.`}
             </Empty>
           ) : (
-            <div className="overflow-x-auto overscroll-x-contain">
+            <div
+              className={
+                "overflow-x-auto overscroll-x-contain transition-opacity " +
+                // Still the previous filter's rows: shown on their way out
+                // rather than presented as the answer to what was just asked.
+                (stale ? "opacity-40" : "")
+              }
+            >
               <table className={table}>
                 <thead>
                   <tr>

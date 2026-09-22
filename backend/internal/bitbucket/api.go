@@ -344,36 +344,79 @@ func (p UserPermission) CanWrite() bool {
 	return strings.HasSuffix(string(p), "_WRITE") || strings.HasSuffix(string(p), "_ADMIN")
 }
 
-// UserPermissionOn reads username's effective permission on the target.
+// UserPermissionOn reads username's EFFECTIVE permission on the target: the
+// one granted on the target itself, or inherited from the project when the
+// target is a repository.
 //
 // noergler needs WRITE, not read: it posts review comments. Proving the bot
 // can GET the repository proves nothing about that, which is why this exists
 // beside GetRepo rather than instead of it.
 //
-// Bitbucket's `filter` is a substring match over users, so the response can
-// carry several rows and the one asked for may not be first. The username is
-// compared exactly, case-insensitively, and anything else is ignored.
+// The project fallback is the part that is easy to get wrong. Bitbucket's
+// per-repository permission listing returns only what was granted ON THAT
+// REPOSITORY. A bot holding PROJECT_WRITE can comment on every repository
+// under the project and appears in none of their listings, so checking the
+// repository alone reports "cannot write" for a bot that can - and
+// grant-bot grants PROJECT_WRITE for a whole-project target, which makes
+// that the normal setup rather than a corner.
+//
+// A permission granted to a GROUP the bot belongs to is still not visible
+// here; that needs /permissions/groups and the bot's group membership,
+// which the caller's token may not be able to read. A false "cannot write"
+// remains possible for a group-granted bot, and shows up as an unhealthy
+// status rather than as a silent failure to post.
 func (c *Client) UserPermissionOn(ctx context.Context, project, repo, username string) (UserPermission, error) {
-	var out struct {
-		Values []struct {
-			User struct {
-				Name string `json:"name"`
-			} `json:"user"`
-			Permission string `json:"permission"`
-		} `json:"values"`
-	}
-	query := url.Values{"filter": {username}, "limit": {"100"}}
-	path := targetPath(project, repo) + "/permissions/users"
-	if err := c.do(ctx, http.MethodGet, path, query, nil, &out); err != nil {
-		return "", err
-	}
-	for _, v := range out.Values {
-		if strings.EqualFold(v.User.Name, username) {
-			return UserPermission(v.Permission), nil
+	if repo != "" {
+		perm, err := c.userPermissionAt(ctx, targetPath(project, repo), username)
+		if err != nil || perm != "" {
+			return perm, err
 		}
+		// Nothing on the repository itself: the project may still carry it.
+	}
+	return c.userPermissionAt(ctx, targetPath(project, ""), username)
+}
+
+// userPermissionAt reads one permission listing, following its pages.
+//
+// `filter` is a SUBSTRING match over users, so the wanted row need not be
+// first and need not even be on the first page: a bot sharing a prefix with
+// enough other accounts pushes its own row past the limit. Paging until the
+// match is found, or until Bitbucket says the page is the last one, is what
+// keeps that from reading as "no permission".
+func (c *Client) userPermissionAt(ctx context.Context, path, username string) (UserPermission, error) {
+	start := 0
+	// Bounded: a listing that never sets isLastPage and never advances must
+	// not spin the review worker.
+	for page := 0; page < 20; page++ {
+		var out struct {
+			Values []struct {
+				User struct {
+					Name string `json:"name"`
+				} `json:"user"`
+				Permission string `json:"permission"`
+			} `json:"values"`
+			IsLastPage    bool `json:"isLastPage"`
+			NextPageStart int  `json:"nextPageStart"`
+		}
+		query := url.Values{"filter": {username}, "limit": {strconv.Itoa(pageLimit)}}
+		if start > 0 {
+			query.Set("start", strconv.Itoa(start))
+		}
+		if err := c.do(ctx, http.MethodGet, path+"/permissions/users", query, nil, &out); err != nil {
+			return "", err
+		}
+		for _, v := range out.Values {
+			if strings.EqualFold(v.User.Name, username) {
+				return UserPermission(v.Permission), nil
+			}
+		}
+		if out.IsLastPage || out.NextPageStart <= start || len(out.Values) == 0 {
+			break
+		}
+		start = out.NextPageStart
 	}
 	// No row for this user is not an error: it is the answer, and it means
-	// the bot has no permission of its own on the target.
+	// the bot has no permission of its own here.
 	return "", nil
 }
 

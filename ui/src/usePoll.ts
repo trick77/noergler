@@ -4,6 +4,10 @@ import { get } from "./api";
 export interface Poll<T> {
   data: T | null;
   failed: boolean;
+  /** True while data belongs to a path the caller has since changed away
+   *  from, so the caller can show it as on its way out rather than as the
+   *  answer to what is now being asked. */
+  stale: boolean;
 }
 
 /** usePoll fetches one endpoint and, when intervalMs is given, keeps it
@@ -22,6 +26,17 @@ export function usePoll<T>(path: string, intervalMs?: number): Poll<T> {
   // Held in a ref so the effect does not re-run when data arrives, which
   // would restart the interval on every tick.
   const alive = useRef(true);
+
+  // Which path the data on screen came from. A caller that changes the path
+  // - a filter, say - is asking a different question, and the old answer is
+  // no longer an answer to it.
+  //
+  // The data is NOT cleared: a page renders its skeleton for a null, so
+  // clearing would swap the whole page, tiles and controls included, on
+  // every filter click. It is reported as stale instead, and the caller
+  // dims what it is still showing.
+  const [dataPath, setDataPath] = useState<string | null>(null);
+  const stale = data !== null && dataPath !== path;
 
   useEffect(() => {
     alive.current = true;
@@ -42,6 +57,7 @@ export function usePoll<T>(path: string, intervalMs?: number): Poll<T> {
         const next = await get<T>(path, controller.signal);
         if (!alive.current) return;
         setData(next);
+        setDataPath(path);
         setFailed(false);
       } catch (err) {
         if ((err as Error).name === "AbortError" || !alive.current) return;
@@ -61,7 +77,7 @@ export function usePoll<T>(path: string, intervalMs?: number): Poll<T> {
     };
   }, [path, intervalMs]);
 
-  return { data, failed };
+  return { data, failed, stale };
 }
 
 /** useNow ticks a clock so an elapsed display advances without refetching.

@@ -568,6 +568,10 @@ func main() {
 		}
 		filter := r.URL.Query().Get("filter")
 		permMu.Lock()
+		// Only what was granted on THIS target, as Bitbucket does: a
+		// project-level grant does not appear in a repository's listing.
+		// The client is the one that falls back to the project, and a fake
+		// that answered for both would hide it if that stopped working.
 		perm, ok := granted[target(r)+"\x00"+filter]
 		permMu.Unlock()
 		values := []any{}

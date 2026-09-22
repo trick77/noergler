@@ -65,10 +65,15 @@ func usd(nano *int64) *string {
 // teamNamer answers a slug with the team's display name, for the pages that
 // build their rows from the store and so know only the slug.
 //
-// It resolves once per request rather than per row: Runtime is copy-on-write
-// behind an atomic.Pointer, so looking a slug up again mid-response could
-// land after a concurrent settings write and report two different rosters in
-// one body.
+// The map is built ONCE per request and read per row, so a name cannot
+// change halfway down a response. It is built with one Lookup per enabled
+// team, not from a single Runtime snapshot: Name comes from teams.yaml and
+// ApplySettings never touches it, so two teams read a moment apart cannot
+// disagree about it.
+//
+// That is the invariant to keep. Make a display name settable through
+// PUT /teams/{slug}/settings and this loop starts reading N independent
+// copy-on-write snapshots, and a concurrent write lands between two of them.
 //
 // Every miss answers with the slug. A disabled team has no Runtime at all,
 // and a team dropped from teams.yaml still owns review_runs rows forever, so
