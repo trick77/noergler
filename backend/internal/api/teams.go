@@ -168,6 +168,15 @@ func decodeStrict(w http.ResponseWriter, r *http.Request, into any) bool {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxAPIBodyBytes))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(into); err != nil {
+		// An over-cap body is 413, the same as the webhook route answers.
+		// Folded into the 422 it reported Go's own "http: request body too
+		// large" as if the JSON had been malformed, which is both the wrong
+		// status and an internal string on the wire.
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			httpapi.WriteDetail(w, http.StatusRequestEntityTooLarge, "payload too large")
+			return false
+		}
 		httpapi.WriteDetail(w, http.StatusUnprocessableEntity, decodeDetail(err))
 		return false
 	}

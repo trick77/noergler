@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/trick77/noergler/internal/config"
@@ -227,6 +228,27 @@ func TestTeams_StoreFailureDoesNotApply(t *testing.T) {
 
 // Auth runs before the body is decoded, so an unauthenticated caller cannot
 // probe the schema: a bad body behind a bad secret answers 401, never 422.
+// An over-cap body is 413, not a 422 carrying Go's own "http: request body
+// too large". The webhook route has always answered 413; these did not, so
+// the status said "your JSON is malformed" and the detail leaked an
+// internal string.
+func TestTeams_OverCapBodyIs413(t *testing.T) {
+	h := newHarness(t, nil)
+	h.setStore(t, &fakeSettingsStore{})
+	big := `{"auto_review_authors":["` + strings.Repeat("a", 1<<20) + `"]}`
+
+	// The settings route: /onboard shares decodeStrict but answers 503 here
+	// first, because this harness sets no PublicURL and that guard runs
+	// before the body is read.
+	w := h.do(t, http.MethodPut, "/teams/"+testSlug+"/settings", "Bearer "+testSecret, big)
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("status = %d, want 413", w.Code)
+	}
+	if strings.Contains(w.Body.String(), "request body too large") {
+		t.Errorf("detail leaks the Go error: %s", w.Body)
+	}
+}
+
 func TestTeams_AuthPrecedesBodyValidation(t *testing.T) {
 	h := newHarness(t, nil)
 	h.setStore(t, &fakeSettingsStore{})

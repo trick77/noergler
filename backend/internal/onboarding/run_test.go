@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/trick77/noergler/internal/bitbucket"
 )
 
 func TestStatusOkWithStrayAndForeign(t *testing.T) {
@@ -14,7 +16,7 @@ func TestStatusOkWithStrayAndForeign(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}
-	if !row.Owned || !row.BotCanRead || row.Webhook != "ok" {
+	if !row.Owned || !row.BotCanWrite || row.Webhook != "ok" {
 		t.Errorf("row = %+v", row)
 	}
 	if strings.Join(row.Stray, ",") != "PROJ/my-repo" {
@@ -109,7 +111,7 @@ func TestStatusNotOwnedAndWholeClaimBlock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}
-	if other.Owned || other.BotCanRead || !strings.Contains(other.Webhook, "ask the noergler admin") {
+	if other.Owned || other.BotCanWrite || !strings.Contains(other.Webhook, "ask the noergler admin") {
 		t.Errorf("unowned row = %+v", other)
 	}
 
@@ -181,7 +183,7 @@ func TestTransportFailureInTheGuardEscapesToRun(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("rows = %v", rows)
 	}
-	if rows[0].Owned || rows[0].BotCanRead {
+	if rows[0].Owned || rows[0].BotCanWrite {
 		t.Errorf("the error row kept its claim: %+v", rows[0])
 	}
 	if rows[0].Webhook != "error: dial tcp: no route to host" {
@@ -260,12 +262,77 @@ func TestOnboardWithoutGrantBotIsSkipped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Onboard: %v", err)
 	}
-	want := "noergler cannot read it; grant noergler PROJECT_WRITE in Bitbucket or run grant-bot"
+	want := "noergler cannot write to it; grant noergler PROJECT_WRITE in Bitbucket or run grant-bot"
 	if res.Status != "skipped" || res.Detail != want {
 		t.Errorf("detail = %q, want %q", res.Detail, want)
 	}
 	if len(admin.created) != 0 {
 		t.Error("a skipped target was hooked anyway")
+	}
+}
+
+// The bug this check exists for: a bot that can READ the target but has no
+// write permission used to report healthy, and the failure only surfaced
+// when a review could not post its comments.
+func TestReadOnlyBotIsNotOnboarded(t *testing.T) {
+	admin := &fakeAdmin{
+		hooks: map[string][]map[string]any{"PROJ": {}},
+		perms: map[string]bitbucket.UserPermission{"PROJ": "PROJECT_READ"},
+	}
+	res, err := newOnboarder(t, newTeam(whole("PROJ")), admin, botReading("PROJ"), Options{}).
+		Onboard(context.Background(), Target{Project: "PROJ"})
+	if err != nil {
+		t.Fatalf("Onboard: %v", err)
+	}
+	if res.Status != "skipped" || !strings.Contains(res.Detail, "cannot write to it") {
+		t.Errorf("result = %+v, want skipped for a read-only bot", res)
+	}
+
+	row, err := newOnboarder(t, newTeam(whole("PROJ")), admin, botReading("PROJ"), Options{}).
+		Status(context.Background(), Target{Project: "PROJ"})
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if row.BotCanWrite {
+		t.Error("a read-only bot reported as able to write")
+	}
+	if StatusHealthy([]StatusRow{row}) {
+		t.Error("an instance whose bot cannot comment reported healthy")
+	}
+}
+
+// ADMIN includes WRITE, so an admin bot is not reported as unable to post.
+func TestAdminBotCanWrite(t *testing.T) {
+	admin := &fakeAdmin{
+		hooks: map[string][]map[string]any{"PROJ": {}},
+		perms: map[string]bitbucket.UserPermission{"PROJ": "PROJECT_ADMIN"},
+	}
+	row, err := newOnboarder(t, newTeam(whole("PROJ")), admin, botReading("PROJ"), Options{}).
+		Status(context.Background(), Target{Project: "PROJ"})
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if !row.BotCanWrite {
+		t.Error("PROJECT_ADMIN reported as unable to write")
+	}
+}
+
+// Reading the permission is done with the CALLER's token, which has admin
+// rights on the target; the bot's own deliberately does not. A failure there
+// means "cannot confirm", which is reported as cannot-write rather than
+// aborting the whole status.
+func TestUnreadablePermissionIsNotAWrite(t *testing.T) {
+	admin := &fakeAdmin{
+		hooks:   map[string][]map[string]any{"PROJ": {}},
+		permErr: map[string]error{"PROJ": statusErr(403, "no admin")},
+	}
+	row, err := newOnboarder(t, newTeam(whole("PROJ")), admin, botReading("PROJ"), Options{}).
+		Status(context.Background(), Target{Project: "PROJ"})
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if row.BotCanWrite {
+		t.Error("an unreadable permission reported as writable")
 	}
 }
 

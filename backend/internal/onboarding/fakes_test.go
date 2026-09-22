@@ -79,10 +79,17 @@ type fakeAdmin struct {
 	repos    map[string][]map[string]any
 	reposErr map[string]error
 
-	created  []bitbucket.Webhook
-	updated  []int
-	deleted  []string
-	grants   []string
+	created []bitbucket.Webhook
+	updated []int
+	deleted []string
+	grants  []string
+	// perms is the bot's effective permission per target, and permErr the
+	// failure to read it. A grant writes into perms, so grant-bot behaves
+	// the way Bitbucket does: after granting, the bot can write.
+	perms   map[string]bitbucket.UserPermission
+	permErr map[string]error
+	// noPerm makes every unset target answer "no permission at all".
+	noPerm   bool
 	createFn func() (*bitbucket.Webhook, error)
 	deleteFn func(project, repo string, id int) error
 
@@ -156,7 +163,33 @@ func (f *fakeAdmin) GrantUserPermission(_ context.Context, project, repo, userna
 		return err
 	}
 	f.grants = append(f.grants, fmt.Sprintf("%s:%s:%s", hookKey(project, repo), username, permission))
+	if f.perms == nil {
+		f.perms = map[string]bitbucket.UserPermission{}
+	}
+	f.perms[hookKey(project, repo)] = bitbucket.UserPermission(permission)
 	return nil
+}
+
+// UserPermissionOn answers WRITE unless a test says otherwise, so the flows
+// that are not about permissions read the way they did before the check
+// existed. A test that cares sets perms (or noPerm) explicitly.
+func (f *fakeAdmin) UserPermissionOn(_ context.Context, project, repo, _ string) (bitbucket.UserPermission, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := hookKey(project, repo)
+	if err, ok := f.permErr[key]; ok {
+		return "", err
+	}
+	if p, ok := f.perms[key]; ok {
+		return p, nil
+	}
+	if f.noPerm {
+		return "", nil
+	}
+	if repo == "" {
+		return "PROJECT_WRITE", nil
+	}
+	return "REPO_WRITE", nil
 }
 
 func (f *fakeAdmin) ListRepos(_ context.Context, project string) ([]map[string]any, error) {

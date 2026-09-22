@@ -33,7 +33,7 @@ func TestRenderResultsGolden(t *testing.T) {
 // An empty table falls back to a target-column width of 10.
 func TestRenderEmptyTablesUseWidthTen(t *testing.T) {
 	cases := []struct{ got, want string }{
-		{RenderStatus(nil), "target      owned  bot   webhook\n--------------------------------"},
+		{RenderStatus(nil), "target      owned  write  webhook\n---------------------------------"},
 		{RenderResults(nil), "target      status   detail\n---------------------------"},
 	}
 	for _, c := range cases {

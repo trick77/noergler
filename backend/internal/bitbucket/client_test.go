@@ -732,6 +732,64 @@ func TestGrantUserPermissionUsesQueryParams(t *testing.T) {
 	}
 }
 
+// Bitbucket's `filter` is a substring match over users, so the response can
+// carry several rows and the wanted one need not be first. Taking values[0]
+// would read another user's permission as the bot's.
+func TestUserPermissionOnMatchesTheUserExactly(t *testing.T) {
+	body := `{"values":[
+		{"user":{"name":"noergler-ci"},"permission":"REPO_ADMIN"},
+		{"user":{"name":"NOERGLER"},"permission":"REPO_WRITE"}
+	]}`
+	f, c := newFake(t, jsonReply(200, body))
+
+	got, err := c.UserPermissionOn(context.Background(), "PROJ", "r", "noergler")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "REPO_WRITE" {
+		t.Errorf("permission = %q, want REPO_WRITE", got)
+	}
+	if want := "/rest/api/1.0/projects/PROJ/repos/r/permissions/users"; f.last().Path != want {
+		t.Errorf("path = %q, want %q", f.last().Path, want)
+	}
+	if f.last().Query.Get("filter") != "noergler" {
+		t.Errorf("query = %v", f.last().Query)
+	}
+}
+
+// No row for the user is the answer, not a failure: the bot simply has no
+// permission of its own there.
+func TestUserPermissionOnAbsentUserIsEmpty(t *testing.T) {
+	_, c := newFake(t, jsonReply(200, `{"values":[]}`))
+	got, err := c.UserPermissionOn(context.Background(), "PROJ", "", "noergler")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "" {
+		t.Errorf("permission = %q, want empty", got)
+	}
+}
+
+func TestUserPermissionCanWrite(t *testing.T) {
+	for _, c := range []struct {
+		perm UserPermission
+		want bool
+	}{
+		{"REPO_WRITE", true},
+		{"PROJECT_WRITE", true},
+		// ADMIN includes WRITE.
+		{"REPO_ADMIN", true},
+		{"PROJECT_ADMIN", true},
+		{"REPO_READ", false},
+		{"PROJECT_READ", false},
+		{"", false},
+	} {
+		if got := c.perm.CanWrite(); got != c.want {
+			t.Errorf("%q.CanWrite() = %v, want %v", c.perm, got, c.want)
+		}
+	}
+}
+
 func TestGetProjectGetRepo(t *testing.T) {
 	f, c := newFake(t, jsonReply(200, `{"key":"PROJ","values":[]}`))
 

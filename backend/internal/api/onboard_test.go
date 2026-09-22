@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/trick77/noergler/internal/bitbucket"
@@ -18,6 +19,10 @@ type fakeBB struct {
 	lastToken  string
 	hooks      []map[string]any
 	grantCalls int
+	// botPerm overrides the bot's effective permission; permErr fails the
+	// read of it.
+	botPerm bitbucket.UserPermission
+	permErr error
 }
 
 func (f *fakeBB) GetProject(context.Context, string) (map[string]any, error) {
@@ -48,9 +53,25 @@ func (f *fakeBB) UpdateWebhook(_ context.Context, _, _ string, id int, b bitbuck
 	return &b, nil
 }
 func (f *fakeBB) DeleteWebhook(context.Context, string, string, int) error { return nil }
-func (f *fakeBB) GrantUserPermission(context.Context, string, string, string, string) error {
+func (f *fakeBB) GrantUserPermission(_ context.Context, _, _, _, permission string) error {
 	f.grantCalls++
+	f.botPerm = bitbucket.UserPermission(permission)
 	return nil
+}
+
+// The bot can write unless a test says otherwise, so onboarding flows that
+// are not about permissions read as they did before the check existed.
+func (f *fakeBB) UserPermissionOn(_ context.Context, _, repo, _ string) (bitbucket.UserPermission, error) {
+	if f.permErr != nil {
+		return "", f.permErr
+	}
+	if f.botPerm != "" {
+		return f.botPerm, nil
+	}
+	if repo == "" {
+		return "PROJECT_WRITE", nil
+	}
+	return "REPO_WRITE", nil
 }
 func (f *fakeBB) ListRepos(context.Context, string) ([]map[string]any, error) { return nil, nil }
 
@@ -115,6 +136,18 @@ func TestOnboard_RequiresPublicURL(t *testing.T) {
 	w := h.onboardPost(t, bearer(), "tok", `{}`)
 	if w.StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want 503", w.StatusCode)
+	}
+}
+
+// The other half of TestTeams_OverCapBodyIs413: /onboard shares decodeStrict
+// and needs a PublicURL before the body is read, so it is covered here.
+func TestOnboard_OverCapBodyIs413(t *testing.T) {
+	h := newHarness(t, nil)
+	h.setOnboard(t, &fakeBB{}, &fakeClaims{}, "https://n.example.com")
+	big := `{"targets":["` + strings.Repeat("a", 1<<20) + `"]}`
+	w := h.onboardPost(t, bearer(), "tok", big)
+	if w.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Errorf("status = %d, want 413", w.StatusCode)
 	}
 }
 

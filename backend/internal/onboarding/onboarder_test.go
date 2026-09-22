@@ -137,7 +137,7 @@ func TestClaimSwallowsEveryBotFailure(t *testing.T) {
 	} {
 		o := newOnboarder(t, newTeam(whole("PROJ")), &fakeAdmin{}, &fakeBot{err: err}, Options{})
 		claim := o.claim(context.Background(), Target{Project: "PROJ"})
-		if !claim.Owned || claim.BotCanRead {
+		if !claim.Owned || claim.BotCanWrite {
 			t.Errorf("%v: claim = %+v, want owned without bot read", err, claim)
 		}
 	}
@@ -166,7 +166,7 @@ func TestClaimOwnershipAndKind(t *testing.T) {
 			t.Errorf("%s: claim = %+v, want owned=%t kind=%q", c.name, claim, c.owned, c.kind)
 		}
 		// The bot is only ever asked about a target the team owns.
-		if !c.owned && claim.BotCanRead {
+		if !c.owned && claim.BotCanWrite {
 			t.Errorf("%s: bot checked on an unowned target", c.name)
 		}
 	}

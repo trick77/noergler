@@ -41,8 +41,8 @@ const (
 
 // Target is a project (Repo == "": one project webhook) or a single repo.
 type Target struct {
-	Project string
-	Repo    string
+	Project string `json:"project"`
+	Repo    string `json:"repo"`
 }
 
 // IsProject reports whether this is a whole-project target.
@@ -73,12 +73,14 @@ func (t Target) BotPermission() string {
 }
 
 // Claim is how `teams.yaml` claims a target for the team, and whether the bot
-// can read it.
+// can write to it.
 type Claim struct {
 	Owned bool
 	// Kind is "whole", "repos" or "none": how the team holds the *project*.
-	Kind       string
-	BotCanRead bool
+	Kind string
+	// BotCanWrite is what noergler actually needs: it posts review comments.
+	// Being able to READ the target says nothing about that.
+	BotCanWrite bool
 }
 
 // TargetResult is the outcome of one onboard/grant-bot/remove step.
@@ -86,26 +88,30 @@ type Claim struct {
 // Detail is appended to after Run returns: RemoveAndUnclaim adds the purged-PR
 // count to every hook result, so these must be handled by pointer or index,
 // never by value copy.
+//
+// The json tags are load-bearing: these go out on /onboard's `rows`, and
+// without them the fields serialize as Go names while every other field on
+// the wire is snake_case.
 type TargetResult struct {
-	Target Target
+	Target Target `json:"target"`
 	// Status is "ok", "failed" or "skipped".
-	Status string
-	Detail string
-	Diff   []string
+	Status string   `json:"status"`
+	Detail string   `json:"detail"`
+	Diff   []string `json:"diff"`
 }
 
 // StatusRow is one line of the status table.
 type StatusRow struct {
-	Target     Target
-	Owned      bool
-	BotCanRead bool
+	Target      Target `json:"target"`
+	Owned       bool   `json:"owned"`
+	BotCanWrite bool   `json:"bot_can_write"`
 	// Webhook is "ok", "missing", "stale: …", "foreign: …", "HTTP <code>",
 	// or why the target is not owned.
-	Webhook string
+	Webhook string `json:"webhook"`
 	// Stray are this instance's repo-level hooks under a project target.
-	Stray []string
+	Stray []string `json:"stray"`
 	// Foreign are same-named hooks pointing at another noergler instance.
-	Foreign []string
+	Foreign []string `json:"foreign"`
 }
 
 // TargetsFor returns the team's targets, optionally narrowed to subset

@@ -331,6 +331,52 @@ func (c *Client) GrantUserPermission(ctx context.Context, project, repo, usernam
 	return c.do(ctx, http.MethodPut, targetPath(project, repo)+"/permissions/users", query, nil, nil)
 }
 
+// UserPermission is a user's effective permission on a target, "" when the
+// user has none there.
+//
+// The names are Bitbucket's: PROJECT_READ / PROJECT_WRITE / PROJECT_ADMIN on
+// a project, REPO_READ / REPO_WRITE / REPO_ADMIN on a repository.
+type UserPermission string
+
+// CanWrite reports whether the permission allows posting a comment. ADMIN
+// includes WRITE, so both pass; READ and "" do not.
+func (p UserPermission) CanWrite() bool {
+	return strings.HasSuffix(string(p), "_WRITE") || strings.HasSuffix(string(p), "_ADMIN")
+}
+
+// UserPermissionOn reads username's effective permission on the target.
+//
+// noergler needs WRITE, not read: it posts review comments. Proving the bot
+// can GET the repository proves nothing about that, which is why this exists
+// beside GetRepo rather than instead of it.
+//
+// Bitbucket's `filter` is a substring match over users, so the response can
+// carry several rows and the one asked for may not be first. The username is
+// compared exactly, case-insensitively, and anything else is ignored.
+func (c *Client) UserPermissionOn(ctx context.Context, project, repo, username string) (UserPermission, error) {
+	var out struct {
+		Values []struct {
+			User struct {
+				Name string `json:"name"`
+			} `json:"user"`
+			Permission string `json:"permission"`
+		} `json:"values"`
+	}
+	query := url.Values{"filter": {username}, "limit": {"100"}}
+	path := targetPath(project, repo) + "/permissions/users"
+	if err := c.do(ctx, http.MethodGet, path, query, nil, &out); err != nil {
+		return "", err
+	}
+	for _, v := range out.Values {
+		if strings.EqualFold(v.User.Name, username) {
+			return UserPermission(v.Permission), nil
+		}
+	}
+	// No row for this user is not an error: it is the answer, and it means
+	// the bot has no permission of its own on the target.
+	return "", nil
+}
+
 // GetProject reads a project, to prove it exists and is readable.
 func (c *Client) GetProject(ctx context.Context, project string) (map[string]any, error) {
 	var out map[string]any

@@ -31,7 +31,10 @@ func ljust(s string, n int) string {
 // past it.
 func RenderStatus(rows []StatusRow) string {
 	width := labelWidth(rows, func(r StatusRow) string { return r.Target.Label() })
-	header := ljust("target", width) + "  owned  bot   webhook"
+	// "write", not "bot": the column answers whether the bot can POST a
+	// comment, which is what a review needs. It used to say "bot" while
+	// only proving the bot could read.
+	header := ljust("target", width) + "  owned  write  webhook"
 	lines := []string{header, strings.Repeat("-", len([]rune(header)))}
 	for _, r := range rows {
 		owned := "no"
@@ -41,11 +44,11 @@ func RenderStatus(rows []StatusRow) string {
 		bot := "-"
 		if r.Owned {
 			bot = "no"
-			if r.BotCanRead {
+			if r.BotCanWrite {
 				bot = "yes"
 			}
 		}
-		line := ljust(r.Target.Label(), width) + "  " + ljust(owned, 5) + "  " + ljust(bot, 4) + "  " + r.Webhook
+		line := ljust(r.Target.Label(), width) + "  " + ljust(owned, 5) + "  " + ljust(bot, 5) + "  " + r.Webhook
 		if len(r.Stray) > 0 {
 			line += "  stray repo hooks: " + strings.Join(r.Stray, ", ")
 		}
@@ -68,11 +71,14 @@ func RenderResults(results []TargetResult) string {
 	return strings.Join(lines, "\n")
 }
 
-// StatusHealthy reports whether every row is owned, readable by the bot, has a working webhook,
+// StatusHealthy reports whether every row is owned, WRITABLE by the bot, has a working webhook,
 // and has no stray repo hooks. Foreign hooks are deliberately not part of it.
+//
+// Writable, not readable: the bot posts review comments. An instance whose
+// bot lost write access is not healthy, and used to say it was.
 func StatusHealthy(rows []StatusRow) bool {
 	for _, r := range rows {
-		if !r.Owned || !r.BotCanRead || r.Webhook != "ok" || len(r.Stray) > 0 {
+		if !r.Owned || !r.BotCanWrite || r.Webhook != "ok" || len(r.Stray) > 0 {
 			return false
 		}
 	}
