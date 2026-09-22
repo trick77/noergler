@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FaqPage } from "./FaqPage";
 import { LivePage } from "./LivePage";
 import { MetricsPage } from "./MetricsPage";
 import { RunsPage } from "./RunsPage";
@@ -392,5 +393,35 @@ describe("TeamsPage", () => {
 
     expect(await screen.findByText(/not served by the API/)).toBeDefined();
     expect(await screen.findByText("team_disabled")).toBeDefined();
+  });
+});
+
+// Static prose: no endpoint, nothing per-instance. What it must not do is
+// drift from the reasons the pipeline actually reports.
+describe("FaqPage", () => {
+  it("answers the question the runs page raises", async () => {
+    render(<FaqPage />);
+
+    expect(screen.getByText("Why wasn't my PR reviewed?")).toBeDefined();
+    // Worded as review.SkipReason.Label() words them, so the FAQ and a runs
+    // row say the same thing.
+    expect(screen.getByText("AGENTS.md missing")).toBeDefined();
+    expect(screen.getByText("HEAD unchanged since last review")).toBeDefined();
+    expect(screen.getByText("PR cost cap reached")).toBeDefined();
+  });
+
+  it("names the opt-out keyword and points at the API docs", () => {
+    render(<FaqPage />);
+
+    expect(screen.getByText("noergloff")).toBeDefined();
+    expect(screen.getByText("/api/docs").getAttribute("href")).toBe("/api/docs");
+  });
+
+  // The page is for developers, not operators: a reader here cannot set env
+  // vars, and naming them would send them to the wrong person.
+  it("does not hand out env var names", () => {
+    const { container } = render(<FaqPage />);
+    expect(container.textContent).not.toMatch(/REVIEW_[A-Z_]+/);
+    expect(container.textContent).not.toMatch(/BITBUCKET_[A-Z_]+/);
   });
 });

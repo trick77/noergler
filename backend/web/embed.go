@@ -34,6 +34,7 @@ var routes = map[string]bool{
 	"/runs":    true,
 	"/metrics": true,
 	"/teams":   true,
+	"/faq":     true,
 }
 
 // HasBuiltIndex reports whether the embedded dist/ holds a real build rather

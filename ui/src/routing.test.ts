@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { navigate, pageFromPath, pathFor } from "./routing";
+import { PAGES, navigate, pageFromPath, pathFor } from "./routing";
 
 describe("routing", () => {
   it("maps paths to pages", () => {
@@ -7,6 +7,7 @@ describe("routing", () => {
     expect(pageFromPath("/runs")).toBe("runs");
     expect(pageFromPath("/metrics")).toBe("metrics");
     expect(pageFromPath("/teams")).toBe("teams");
+    expect(pageFromPath("/faq")).toBe("faq");
   });
 
   // The Go handler serves the shell only for the paths in its own allowlist,
@@ -17,8 +18,10 @@ describe("routing", () => {
     expect(pageFromPath("")).toBe("live");
   });
 
-  it("round-trips", () => {
-    for (const page of ["live", "runs", "metrics", "teams"] as const) {
+  // Driven off PAGES, not a copy of it: a hardcoded list silently stops
+  // covering a page the moment one is added.
+  it("round-trips every page", () => {
+    for (const page of PAGES) {
       expect(pageFromPath(pathFor(page))).toBe(page);
     }
   });
