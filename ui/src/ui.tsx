@@ -174,7 +174,8 @@ export const th =
   "border-b border-border pb-1.5 pr-2.5 text-left text-[11px] font-medium tracking-[.1em] text-faint uppercase";
 export const thNum = th + " text-right";
 export const td = "border-b border-border-soft py-1.5 pr-2.5 text-ink-dim";
-export const tdNum = td + " text-right font-mono tabular-nums text-muted";
+// nowrap: "12m ago" or "1.2s" split over two lines reads as two values.
+export const tdNum = td + " text-right font-mono tabular-nums text-muted whitespace-nowrap";
 export const tdTag = td + " font-mono text-[12.5px] whitespace-nowrap";
 
 /** Empty is what a panel says when there is nothing, which is a real state
