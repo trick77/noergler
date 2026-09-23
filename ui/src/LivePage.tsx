@@ -1,5 +1,5 @@
 import type { Live } from "./api";
-import { ago, byLastRun, elapsedSince, teamStateLabel, teamTone } from "./format";
+import { ago, byLastRun, elapsedSince, outcomeTone, outcomeWord } from "./format";
 import { usePoll, useNow } from "./usePoll";
 import {
   Card,
@@ -144,34 +144,52 @@ export function LivePage() {
           )}
         </Card>
 
+        {/* Enabled teams that have run, and nothing else: the server filters.
+            No State column, it is configuration, not live; the Teams page
+            has it. The outcome pill sits in its own column, never after a
+            time: a pill trailing "1m ago" reads as a label on the time. */}
         <Card title="Teams">
-          <table className={table}>
-            <thead>
-              <tr>
-                <th className={th}>Team</th>
-                <th className={th + " w-px"}>State</th>
-                <th className={thNum}>PRs</th>
-                <th className={thNum}>Last run</th>
-              </tr>
-            </thead>
-            <tbody>
-              {byLastRun(data.teams).map((t) => (
-                <tr key={t.slug}>
-                  <td className={td} title={t.slug}>
-                    {t.name}
-                  </td>
-                  <td className={td + " w-px"}>
-                    <Pill tone={teamTone(t.state)}>{teamStateLabel(t.state)}</Pill>
-                  </td>
-                  <td className={tdNum}>{t.prs}</td>
-                  <td className={tdNum}>{ago(t.last_run, now)}</td>
+          {data.teams.length === 0 ? (
+            <Empty>No runs yet.</Empty>
+          ) : (
+            <table className={table}>
+              <thead>
+                <tr>
+                  <th className={th}>Team</th>
+                  {/* nowrap: w-px shrinks the column to its widest word. */}
+                  <th className={th + " w-px whitespace-nowrap"}>Last outcome</th>
+                  <th className={thNum}>PRs</th>
+                  <th className={thNum}>Last reviewed</th>
+                  <th className={thNum}>Last run</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {byLastRun(data.teams).map((t) => (
+                  <tr key={t.slug}>
+                    <td className={td} title={t.slug}>
+                      {t.name}
+                    </td>
+                    <td className={td + " w-px"}>
+                      <Pill
+                        tone={outcomeTone(t.last_outcome)}
+                        title={
+                          t.last_outcome !== "ok" ? t.last_reason_label || t.last_reason : undefined
+                        }
+                      >
+                        {outcomeWord(t.last_outcome, t.last_reason)}
+                      </Pill>
+                    </td>
+                    <td className={tdNum}>{t.prs}</td>
+                    <td className={tdNum}>{ago(t.last_reviewed, now)}</td>
+                    <td className={tdNum}>{ago(t.last_run, now)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
           <Note>
-            A team with no repos is running fine and has simply claimed nothing yet. If a team is
-            disabled, the pod log says why.
+            Last run counts every outcome, skipped and failed included. Last reviewed is the last
+            one that succeeded.
           </Note>
         </Card>
       </div>

@@ -153,23 +153,44 @@ type AttemptBucket struct {
 	Count   int
 }
 
-// TeamActivity is the per-team roster figure the dashboard shows beside a
-// team's state: when it last produced a run, and how many PRs it has touched.
+// TeamActivity is the per-team roster figure: how many PRs a team has
+// touched, when it last produced a review, and when and how its last run of
+// any outcome ended.
 type TeamActivity struct {
 	TeamSlug string
 	PRs      int
-	LastRun  *time.Time
+	// LastReviewed is the last SUCCESS: review_runs holds nothing else.
+	LastReviewed *time.Time
+	// LastRun is the last run of any outcome, skips and failures included,
+	// with that run's outcome and skip reason. Nil when the team has none.
+	LastRun     *time.Time
+	LastOutcome string
+	LastReason  string
 }
 
 // ActivityByTeam is one row per team that has ever been seen, whether or not
 // it is currently enabled: a team disabled an hour ago still has history.
+//
+// FULL OUTER over both tables: a skip can be decided before any
+// pull_requests row exists, so a team whose every run was skipped has
+// attempts and no PRs, and must still report its last run.
 func (s *Store) ActivityByTeam(ctx context.Context) ([]TeamActivity, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT p.team_slug, COUNT(DISTINCT p.id), MAX(r.created_at)
-		  FROM pull_requests p
-		  LEFT JOIN review_runs r ON r.pull_request_id = p.id
-		 GROUP BY p.team_slug
-		 ORDER BY p.team_slug`)
+		WITH prs AS (
+			SELECT p.team_slug, COUNT(DISTINCT p.id) AS prs, MAX(r.created_at) AS last_reviewed
+			  FROM pull_requests p
+			  LEFT JOIN review_runs r ON r.pull_request_id = p.id
+			 GROUP BY p.team_slug
+		), last AS (
+			SELECT DISTINCT ON (team_slug) team_slug, created_at, outcome, COALESCE(reason, '') AS reason
+			  FROM review_attempts
+			 ORDER BY team_slug, created_at DESC, id DESC
+		)
+		SELECT COALESCE(prs.team_slug, last.team_slug), COALESCE(prs.prs, 0), prs.last_reviewed,
+		       last.created_at, COALESCE(last.outcome, ''), COALESCE(last.reason, '')
+		  FROM prs
+		  FULL OUTER JOIN last ON last.team_slug = prs.team_slug
+		 ORDER BY 1`)
 	if err != nil {
 		return nil, err
 	}
@@ -178,8 +199,15 @@ func (s *Store) ActivityByTeam(ctx context.Context) ([]TeamActivity, error) {
 	var out []TeamActivity
 	for rows.Next() {
 		var a TeamActivity
-		if err := rows.Scan(&a.TeamSlug, &a.PRs, &a.LastRun); err != nil {
+		if err := rows.Scan(&a.TeamSlug, &a.PRs, &a.LastReviewed, &a.LastRun, &a.LastOutcome, &a.LastReason); err != nil {
 			return nil, err
+		}
+		// A success newer than every attempt row IS the last run: the
+		// attempt write fails open, and runs older than review_attempts
+		// have none. Without this a team shows a last run older than its
+		// last review.
+		if a.LastReviewed != nil && (a.LastRun == nil || a.LastReviewed.After(*a.LastRun)) {
+			a.LastRun, a.LastOutcome, a.LastReason = a.LastReviewed, "ok", ""
 		}
 		out = append(out, a)
 	}

@@ -116,7 +116,9 @@ func TestDashboardNeverServesADisableReason(t *testing.T) {
 		if strings.Contains(body, "TEAM_MOBILE_OPENAI_API_KEY") {
 			t.Errorf("%s leaked the disable reason: %s", path, body)
 		}
-		if !strings.Contains(body, "mobile") {
+		// Live lists only enabled teams that have run; the roster is where
+		// a disabled team must still show up.
+		if path == "/api/dashboard/teams" && !strings.Contains(body, "mobile") {
 			t.Errorf("%s must still list the disabled team, got %s", path, body)
 		}
 	}
@@ -158,13 +160,12 @@ func TestLiveReportsThePoolAndBothLists(t *testing.T) {
 }
 
 // Empty LISTS must serialise as [] rather than null, so a page can map over
-// them unguarded. A null scalar is a different thing and stays: last_run is
-// genuinely absent for a team that has never run, and "never" must not
-// render as a date.
+// them unguarded. The harness store has no activity, so no team has run and
+// teams is empty too.
 func TestLiveSerialisesEmptyListsAsArrays(t *testing.T) {
 	h := newDashHarness(t)
 	body := h.get(t, "/api/dashboard/live").Body.String()
-	for _, field := range []string{`"running":[]`, `"waiting":[]`} {
+	for _, field := range []string{`"running":[]`, `"waiting":[]`, `"teams":[]`} {
 		if !strings.Contains(body, field) {
 			t.Errorf("want %s in %s", field, body)
 		}
@@ -459,8 +460,10 @@ func TestLiveStillAnswersWhenTheStoreIsDown(t *testing.T) {
 	if got.PoolCapacity != 6 {
 		t.Errorf("pool = %d, want the queue's answer regardless of the store", got.PoolCapacity)
 	}
-	if len(got.Teams) != 2 {
-		t.Errorf("teams = %d, want the roster from the registry", len(got.Teams))
+	// No history means no team has a run to show, so the list is empty
+	// rather than the request failing.
+	if len(got.Teams) != 0 {
+		t.Errorf("teams = %d, want none without history", len(got.Teams))
 	}
 }
 
@@ -673,37 +676,46 @@ func TestTeamStateFoldsStartupAndScope(t *testing.T) {
 	}
 }
 
-// The harness team owns a whole project plus a named repo, so it is ready
-// and its scope is unbounded.
-func TestLiveReportsTeamScope(t *testing.T) {
+// Live lists enabled teams that have run, nothing else: mobile is disabled
+// and is left out although it has history. The last run is a skip newer than
+// the last success, so the two times differ and the outcome is the skip's.
+func TestLiveListsOnlyEnabledTeamsThatRan(t *testing.T) {
 	h := newDashHarness(t)
+	reviewed := time.Date(2026, 9, 23, 8, 0, 0, 0, time.UTC)
+	ran := reviewed.Add(time.Hour)
+	h.st.activity = []store.TeamActivity{
+		{TeamSlug: "mobile", PRs: 2, LastReviewed: &reviewed, LastRun: &ran, LastOutcome: "ok"},
+		{TeamSlug: "platform", PRs: 4, LastReviewed: &reviewed, LastRun: &ran,
+			LastOutcome: "skipped", LastReason: "head_unchanged"},
+	}
 
 	var got liveBody
 	if err := json.Unmarshal(h.get(t, "/api/dashboard/live").Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	var platform, mobile liveTeam
-	for _, tm := range got.Teams {
-		switch tm.Slug {
-		case "platform":
-			platform = tm
-		case "mobile":
-			mobile = tm
-		}
+	if len(got.Teams) != 1 || got.Teams[0].Slug != "platform" {
+		t.Fatalf("teams = %+v, want platform alone", got.Teams)
 	}
-	if platform.State != teamReady {
-		t.Errorf("platform state = %q, want ready", platform.State)
+	p := got.Teams[0]
+	if p.PRs != 4 || p.LastReviewed == nil || !p.LastReviewed.Equal(reviewed) || !p.LastRun.Equal(ran) {
+		t.Errorf("platform = %+v, want 4 PRs, reviewed %s, ran %s", p, reviewed, ran)
 	}
-	if platform.Repos != -1 {
-		t.Errorf("platform repos = %d, want -1 for a whole-project claim", platform.Repos)
+	if p.LastOutcome != "skipped" || p.LastReason != "head_unchanged" || p.LastReasonMsg == "" {
+		t.Errorf("platform outcome = %q/%q/%q, want the skip and its label", p.LastOutcome, p.LastReason, p.LastReasonMsg)
 	}
-	if mobile.State != teamDisabled {
-		t.Errorf("mobile state = %q, want disabled", mobile.State)
+}
+
+// An enabled team with PRs but no run at all has nothing live to show.
+func TestLiveOmitsTeamsThatNeverRan(t *testing.T) {
+	h := newDashHarness(t)
+	h.st.activity = []store.TeamActivity{{TeamSlug: "platform", PRs: 1}}
+
+	var got liveBody
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/live").Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
 	}
-	// A disabled team's scope is never looked up: it takes no traffic, and
-	// the lookup would report on a Runtime that was never built.
-	if mobile.Repos != 0 {
-		t.Errorf("mobile repos = %d, want 0", mobile.Repos)
+	if len(got.Teams) != 0 {
+		t.Errorf("teams = %+v, want none", got.Teams)
 	}
 }
 

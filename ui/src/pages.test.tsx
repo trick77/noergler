@@ -29,31 +29,38 @@ const live: Live = {
   depth: 1,
   running: [{ tag: "PAY/ledger#1", team: "payments", team_name: "Payments", kind: "review", since: new Date().toISOString() }],
   waiting: [{ tag: "PAY/ledger#2", team: "payments", team_name: "Payments", since: new Date().toISOString() }],
+  // Only teams that have run: the server leaves out disabled and idle ones.
+  // Named so that name order (Ausgaben, Mobile, Search) and last-run order
+  // (Search, Mobile, Ausgaben) differ: the page's own sort has to put them
+  // right.
   teams: [
-    // Named so that slug order (mobile, payments, search) and name order
-    // (Ausgaben, Mobile, Search) differ: the page's own sort is what has to
-    // put them right.
     {
       slug: "payments",
       name: "Ausgaben",
-      enabled: true,
-      state: "ready",
-      repos: -1,
       prs: 4,
+      last_reviewed: new Date(Date.now() - 600_000).toISOString(),
       last_run: new Date(Date.now() - 600_000).toISOString(),
+      last_outcome: "ok",
     },
-    { slug: "mobile", name: "Mobile", enabled: false, state: "disabled", repos: 0, prs: 0, last_run: null },
-    // Configured, started, owns nothing: the state the green pill used to
-    // hide. Its last_run is the most recent, so the live page's sort puts it
-    // first while an alphabetical one would put it last.
+    // Failed and never reviewed: last run set, last reviewed "never".
+    {
+      slug: "mobile",
+      name: "Mobile",
+      prs: 1,
+      last_reviewed: null,
+      last_run: new Date(Date.now() - 300_000).toISOString(),
+      last_outcome: "timed_out",
+    },
+    // A skip newer than its last success: the case one time for both hid.
     {
       slug: "search",
       name: "Search",
-      enabled: true,
-      state: "no_repos",
-      repos: 0,
-      prs: 0,
+      prs: 2,
+      last_reviewed: new Date(Date.now() - 7_200_000).toISOString(),
       last_run: new Date(Date.now() - 60_000).toISOString(),
+      last_outcome: "skipped",
+      last_reason: "head_unchanged",
+      last_reason_label: "HEAD unchanged since last review",
     },
   ],
   bitbucket_url: "https://bitbucket.example.com",
@@ -118,7 +125,7 @@ describe("LivePage", () => {
     expect(await screen.findByText("PAY/ledger#2")).toBeDefined();
   });
 
-  it("lists a disabled team without saying why", async () => {
+  it("names a team, with the slug on hover", async () => {
     serve({ live });
     render(<LivePage />);
 
@@ -126,14 +133,11 @@ describe("LivePage", () => {
     // it is what team= and the webhook path use.
     const row = await screen.findByText("Mobile");
     expect(row.getAttribute("title")).toBe("mobile");
-    expect(await screen.findByText("disabled")).toBeDefined();
-    expect(screen.queryByText(/OPENAI_API_KEY/)).toBeNull();
   });
 
-  // Most recently active first: the page answers "what is happening", so a
-  // team that ran a minute ago outranks one whose name starts with an A. A
-  // team that never ran sorts last, because null is "no activity" rather
-  // than "infinitely old".
+  // Most recently run first, skips and failures included: the page answers
+  // "what is happening", so a team that ran a minute ago outranks one whose
+  // name starts with an A.
   it("orders teams by last run, not by name", async () => {
     serve({ live });
     render(<LivePage />);
@@ -144,21 +148,42 @@ describe("LivePage", () => {
     const names = Array.from(table?.querySelectorAll("tbody tr td:first-child") ?? []).map(
       (el) => el.textContent,
     );
-    // Search ran most recently, Ausgaben before it, Mobile never. By name
-    // this would read Ausgaben, Mobile, Search.
-    expect(names).toEqual(["Search", "Ausgaben", "Mobile"]);
+    expect(names).toEqual(["Search", "Mobile", "Ausgaben"]);
   });
 
-  // A team that owns nothing passes every startup check and reviews
-  // nothing. It used to show the same green pill as a working team, which
-  // is the case an operator opens this page to find.
-  it("separates a team with no repos from a ready one", async () => {
+  // "Last run" once showed the last SUCCESS, so a team whose latest run was
+  // skipped or failed looked idle since its last review. The outcome gets
+  // its own column: a pill trailing a time reads as a label on the time.
+  it("splits last reviewed from last run, outcome in its own column", async () => {
     serve({ live });
     render(<LivePage />);
 
-    expect(await screen.findByText("no repos")).toBeDefined();
-    expect(await screen.findByText("ready")).toBeDefined();
-    expect(await screen.findByText("disabled")).toBeDefined();
+    const row = (await screen.findByText("Search")).closest("tr");
+    const cells = Array.from(row?.querySelectorAll("td") ?? []).map((el) => el.textContent);
+    expect(cells).toEqual(["Search", "unchanged", "2", "2h ago", "1m ago"]);
+    expect(screen.getByText("unchanged").getAttribute("title")).toBe(
+      "HEAD unchanged since last review",
+    );
+
+    const mobile = (await screen.findByText("Mobile")).closest("tr");
+    const mobileCells = Array.from(mobile?.querySelectorAll("td") ?? []).map((el) => el.textContent);
+    expect(mobileCells).toEqual(["Mobile", "timed_out", "1", "never", "5m ago"]);
+  });
+
+  // State is configuration, not live: the Teams page carries it.
+  it("does not carry the state column", async () => {
+    serve({ live });
+    render(<LivePage />);
+
+    await screen.findByText("Ausgaben");
+    expect(screen.queryByText("State")).toBeNull();
+    expect(screen.queryByText("ready")).toBeNull();
+  });
+
+  it("says so when no team has run", async () => {
+    serve({ live: { ...live, teams: [] } });
+    render(<LivePage />);
+    expect(await screen.findByText("No runs yet.")).toBeDefined();
   });
 
   // What a team claims is configuration read once at boot, not something
@@ -370,6 +395,7 @@ describe("TeamsPage", () => {
       state: "ready",
       repos: -1,
       prs: 9,
+      last_reviewed: new Date().toISOString(),
       last_run: new Date().toISOString(),
       claims: [{ project: "PAY" }, { project: "SHARED", repo: "billing-lib" }],
       auto_review_authors: 3,
@@ -383,6 +409,7 @@ describe("TeamsPage", () => {
       state: "disabled",
       repos: 0,
       prs: 0,
+      last_reviewed: null,
       last_run: null,
       claims: [],
       auto_review_authors: 0,
