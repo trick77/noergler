@@ -195,7 +195,7 @@ describe("LivePage", () => {
 
     await screen.findByText("Ausgaben");
     expect(screen.queryByText("Scope")).toBeNull();
-    expect(screen.queryByText("whole project")).toBeNull();
+    expect(screen.queryByText("project")).toBeNull();
   });
 
   it("says so when the panel cannot be loaded", async () => {
@@ -423,7 +423,7 @@ describe("TeamsPage", () => {
     render(<TeamsPage />);
 
     expect(await screen.findByText("PAY")).toBeDefined();
-    expect(await screen.findByText("whole project")).toBeDefined();
+    expect(await screen.findByText("project")).toBeDefined();
     expect(await screen.findByText("SHARED/billing-lib")).toBeDefined();
   });
 
@@ -435,7 +435,7 @@ describe("TeamsPage", () => {
     render(<TeamsPage />);
 
     // Once: the PAY row. Not a second time beside the slug.
-    expect(await screen.findAllByText("whole project")).toHaveLength(1);
+    expect(await screen.findAllByText("project")).toHaveLength(1);
     expect(screen.queryByText(/not started/)).toBeNull();
   });
 
