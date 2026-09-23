@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode } from "react";
 import type { Team } from "./api";
-import { ago, byName, scope, teamStateLabel, teamTone } from "./format";
+import { ago, byName, teamStateLabel, teamTone } from "./format";
 import { usePoll, useNow } from "./usePoll";
 import {
   Card,
@@ -88,12 +88,12 @@ export function TeamsPage() {
             title={t.name}
             // The slug leads the note: it is the webhook path, the team= log
             // field and the settings route, so it has to stay on the page
-            // once the heading shows the display name instead.
+            // once the heading shows the display name instead. No scope here:
+            // the claims table below lists it, and a project's repo count is
+            // never known, so a summary could only repeat or guess.
             note={
               <>
                 {t.slug}
-                <Sep />
-                {t.enabled ? scope(t.repos) : "not started"}
                 <Sep />
                 {t.prs} PRs
                 <Sep />

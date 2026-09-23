@@ -86,7 +86,7 @@ func newDashHarness(t *testing.T) *dashHarness {
 		map[string]*teams.Runtime{"platform": rt},
 		map[string]string{"mobile": "TEAM_MOBILE_OPENAI_API_KEY is unset"},
 		log,
-	)
+	).WithNames(map[string]string{"mobile": "Mobile Apps"})
 	q := &fakeDashQueue{}
 	st := &fakeDashStore{}
 	srv := httpapi.New(reg.Status, log)
@@ -267,8 +267,8 @@ func TestRunsPassesTheOutcomeFilterThrough(t *testing.T) {
 }
 
 // The name is what the page prints, the slug is what the logs and the webhook
-// path use, so both ride the wire. A team the registry cannot name - disabled,
-// or dropped from teams.yaml while its rows live on - falls back to the slug
+// path use, so both ride the wire. A disabled team keeps its teams.yaml name.
+// A team dropped from teams.yaml while its rows live on falls back to the slug
 // rather than serving a blank cell.
 func TestDashboardNamesTeamsAndFallsBackToTheSlug(t *testing.T) {
 	h := newDashHarness(t)
@@ -300,11 +300,9 @@ func TestDashboardNamesTeamsAndFallsBackToTheSlug(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, team := range live.Teams {
-		want := "Platform Engineering"
-		// mobile is disabled, so it has no Runtime and therefore no name.
-		if team.Slug != "platform" {
-			want = team.Slug
-		}
+		// mobile is disabled and has no Runtime: its name comes from
+		// teams.yaml via the registry, not the slug.
+		want := map[string]string{"platform": "Platform Engineering", "mobile": "Mobile Apps"}[team.Slug]
 		if team.Name != want {
 			t.Errorf("live team %q named %q, want %q", team.Slug, team.Name, want)
 		}
@@ -315,10 +313,7 @@ func TestDashboardNamesTeamsAndFallsBackToTheSlug(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, team := range roster.Teams {
-		want := "Platform Engineering"
-		if team.Slug != "platform" {
-			want = team.Slug
-		}
+		want := map[string]string{"platform": "Platform Engineering", "mobile": "Mobile Apps"}[team.Slug]
 		if team.Name != want {
 			t.Errorf("roster team %q named %q, want %q", team.Slug, team.Name, want)
 		}

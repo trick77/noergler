@@ -83,16 +83,28 @@ func rawSlug(block *yaml.Node) string {
 	return n.Value
 }
 
+// rawName is the block's display name as written, or "" when absent or not a
+// scalar. Read off the raw block so a team that fails validation keeps its
+// name: the dashboard lists disabled teams too.
+func rawName(block *yaml.Node) string {
+	n := mappingGet(block, "name")
+	if n == nil || n.Kind != yaml.ScalarNode {
+		return ""
+	}
+	return n.Value
+}
+
 // LoadTeams resolves every team in the file. Returns enabled teams, their
-// file order, and disabled slugs with the reason.
+// file order, disabled slugs with the reason, and the display name of every
+// team that has one, disabled teams included.
 //
 // Duplicate slugs abort (the fault has no single owner). Ownership of
 // projects is not checked here: claims live in the DB. Every disabled team
 // is logged as `team_disabled team=<slug> reason=...` with the team bound.
-func LoadTeams(path string, instance *App, lookup func(string) (string, bool)) (map[string]*Team, []string, map[string]string, error) {
+func LoadTeams(path string, instance *App, lookup func(string) (string, bool)) (enabled map[string]*Team, order []string, disabled, names map[string]string, err error) {
 	blocks, err := readTeamsFile(path)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	counts := map[string]int{}
 	for _, b := range blocks {
@@ -108,17 +120,20 @@ func LoadTeams(path string, instance *App, lookup func(string) (string, bool)) (
 	}
 	if len(dupes) > 0 {
 		sort.Strings(dupes)
-		return nil, nil, nil, &TeamsFileError{Msg: fmt.Sprintf("teams file %s: duplicate slug(s) %v", path, dupes)}
+		return nil, nil, nil, nil, &TeamsFileError{Msg: fmt.Sprintf("teams file %s: duplicate slug(s) %v", path, dupes)}
 	}
 
-	enabled := map[string]*Team{}
-	var order []string
-	disabled := map[string]string{}
+	enabled = map[string]*Team{}
+	disabled = map[string]string{}
+	names = map[string]string{}
 	var disabledOrder []string
 	for i, b := range blocks {
 		slug := rawSlug(b)
 		if slug == "" {
 			slug = fmt.Sprintf("teams[%d]", i)
+		}
+		if name := rawName(b); name != "" {
+			names[slug] = name
 		}
 		team, err := ResolveTeam(b, instance, lookup)
 		if err != nil {
@@ -133,7 +148,7 @@ func LoadTeams(path string, instance *App, lookup func(string) (string, bool)) (
 		// Bound, not just in the message: Splunk extracts `team` as a field.
 		slog.Error("team_disabled team="+slug+" reason="+disabled[slug], "team", slug)
 	}
-	return enabled, order, disabled, nil
+	return enabled, order, disabled, names, nil
 }
 
 // --- block validation --------------------------------------------------------

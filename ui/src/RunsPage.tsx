@@ -1,5 +1,5 @@
 import type { Metrics, Runs } from "./api";
-import { ago, duration, money, outcomeTone } from "./format";
+import { ago, duration, money, outcomeTone, outcomeWord } from "./format";
 import { useState } from "react";
 import { usePoll, useNow } from "./usePoll";
 import {
@@ -90,13 +90,13 @@ export function RunsPage() {
             below may be full, and four tiles reading 0 beside it would be a
             claim rather than an absence. */}
         <Tiles>
-          <Tile label="Attempts" value={metrics.failed ? "—" : c.total} />
+          <Tile label="Runs" value={metrics.failed ? "—" : c.total} />
           <Tile label="Reviewed" value={metrics.failed ? "—" : c.reviewed} />
           <Tile label="Skipped" value={metrics.failed ? "—" : c.skipped} />
           <Tile label="Failed" value={metrics.failed ? "—" : c.failed} />
         </Tiles>
 
-        <p className={eyebrow}>Recent attempts</p>
+        <p className={eyebrow}>Recent runs</p>
         <Card
           right={
             <span className="flex gap-0.5">
@@ -121,7 +121,7 @@ export function RunsPage() {
         >
           {data.runs.length === 0 ? (
             <Empty>
-              {filter === "" ? "No attempts recorded yet." : `No ${filter} attempts recorded yet.`}
+              {filter === "" ? "No runs recorded yet." : `No ${filter} runs recorded yet.`}
             </Empty>
           ) : (
             <div
@@ -154,17 +154,15 @@ export function RunsPage() {
                         <TeamPill name={r.team_name} slug={r.team} />
                       </td>
                       <td className={td}>
-                        <Pill tone={outcomeTone(r.outcome)}>
-                          {r.outcome === "skipped" ? "skipped" : r.outcome}
+                        {/* The reason is the pill's word, its long label the
+                            tooltip: a label beside the pill wrapped the cell
+                            into three or four lines. */}
+                        <Pill
+                          tone={outcomeTone(r.outcome)}
+                          title={r.outcome !== "ok" ? r.reason_label || r.reason : undefined}
+                        >
+                          {outcomeWord(r.outcome, r.reason)}
                         </Pill>
-                        {/* A red pill that only says "failed" sends the
-                            reader to the logs for something the row already
-                            knows. */}
-                        {r.outcome !== "ok" && (r.reason_label || r.reason) && (
-                          <span className="ml-2 text-[12px] text-faint">
-                            {r.reason_label || r.reason}
-                          </span>
-                        )}
                       </td>
                       <td className={tdNum}>{r.findings ?? "—"}</td>
                       <td className={tdNum}>{duration(r.elapsed_ms)}</td>

@@ -18,7 +18,10 @@ import (
 type Registry struct {
 	enabled  map[string]*Runtime
 	disabled map[string]string
-	log      *slog.Logger
+	// names is the teams.yaml display name by slug, disabled teams included:
+	// a disabled team has no Runtime to ask.
+	names map[string]string
+	log   *slog.Logger
 }
 
 // NewRegistry builds a registry directly, for tests and for callers that
@@ -30,7 +33,30 @@ func NewRegistry(enabled map[string]*Runtime, disabled map[string]string, log *s
 	if disabled == nil {
 		disabled = map[string]string{}
 	}
-	return &Registry{enabled: enabled, disabled: disabled, log: log}
+	return &Registry{enabled: enabled, disabled: disabled, names: map[string]string{}, log: log}
+}
+
+// WithNames sets the display names of teams without a Runtime. Call it before
+// the registry is shared, like everything else that writes it.
+func (g *Registry) WithNames(names map[string]string) *Registry {
+	for slug, name := range names {
+		g.names[slug] = name
+	}
+	return g
+}
+
+// Name is the team's display name, the slug when it has none. An enabled
+// team answers from its Runtime, a disabled one from teams.yaml.
+func (g *Registry) Name(slug string) string {
+	if rt, ok := g.enabled[slug]; ok && rt != nil {
+		if team := rt.Team(); team != nil && team.Name != "" {
+			return team.Name
+		}
+	}
+	if name := g.names[slug]; name != "" {
+		return name
+	}
+	return slug
 }
 
 // Lookup resolves a slug.

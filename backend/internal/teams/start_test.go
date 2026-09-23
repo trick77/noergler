@@ -105,6 +105,24 @@ func TestBoot_CarriesConfigDisabledTeams(t *testing.T) {
 	}
 }
 
+// A disabled team has no Runtime, so its display name must come from the
+// config; the dashboard otherwise shows its slug beside other teams' names.
+func TestBoot_DisabledTeamKeepsItsName(t *testing.T) {
+	log, _ := bufLogger()
+	app := appWith(map[string]*config.Team{}, nil, map[string]string{"payments": "unknown key: base_url"})
+	app.Names = map[string]string{"payments": "Payments"}
+	g, err := Boot(context.Background(), app, Deps{Claims: emptyStore(), Log: log})
+	if err != nil {
+		t.Fatalf("Boot: %v", err)
+	}
+	if got := g.Name("payments"); got != "Payments" {
+		t.Errorf("Name(payments) = %q, want Payments", got)
+	}
+	if got := g.Name("gone"); got != "gone" {
+		t.Errorf("Name(gone) = %q, want the slug", got)
+	}
+}
+
 // A seed conflict disables the team without ever calling Start.
 func TestBoot_SeedConflictDisablesBeforeStartup(t *testing.T) {
 	db := emptyStore()

@@ -5,8 +5,8 @@ import {
   duration,
   money,
   outcomeTone,
+  outcomeWord,
   prUrl,
-  scope,
   teamStateLabel,
   teamTone,
   tokens,
@@ -162,6 +162,27 @@ describe("outcomeTone", () => {
   });
 });
 
+describe("outcomeWord", () => {
+  // A skip names its reason in one or two words, so the pill never needs a
+  // long label beside it that wraps the cell.
+  it("names a skip by its reason", () => {
+    expect(outcomeWord("skipped", "ignored_author")).toBe("ignored");
+    expect(outcomeWord("skipped", "head_unchanged")).toBe("unchanged");
+    expect(outcomeWord("skipped", "not_auto_review_author")).toBe("not opted in");
+  });
+
+  // A reason from a newer binary, or none at all, still reads as a skip.
+  it("falls back to skipped for an unknown or missing reason", () => {
+    expect(outcomeWord("skipped", "invented_later")).toBe("skipped");
+    expect(outcomeWord("skipped")).toBe("skipped");
+  });
+
+  it("leaves every other outcome as its own word", () => {
+    expect(outcomeWord("ok")).toBe("ok");
+    expect(outcomeWord("timed_out")).toBe("timed_out");
+  });
+});
+
 describe("tokens", () => {
   it("abbreviates", () => {
     expect(tokens(950)).toBe("950");
@@ -189,17 +210,5 @@ describe("team state", () => {
     expect(teamStateLabel("ready")).toBe("ready");
     expect(teamStateLabel("no_repos")).toBe("no repos");
     expect(teamStateLabel("disabled")).toBe("disabled");
-  });
-});
-
-describe("scope", () => {
-  // A whole-project claim covers every repo in that project, now and every
-  // one added later. Printing a number for it would be a guess that goes
-  // stale the moment a repo is added.
-  it("keeps a whole-project claim distinct from a count", () => {
-    expect(scope(-1)).toBe("whole project");
-    expect(scope(0)).toBe("no repos");
-    expect(scope(1)).toBe("1 repo");
-    expect(scope(9)).toBe("9 repos");
   });
 });

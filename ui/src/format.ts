@@ -94,6 +94,33 @@ export function outcomeTone(outcome: string): Tone {
   return "fail";
 }
 
+/** The pill word for each skip reason. Short, because the long label beside
+ *  a pill wrapped the Outcome cell into three or four lines; the long label
+ *  moves to the pill's tooltip. Keys are review.SkipReason values, which are
+ *  stored and stable. */
+const skipWords: Record<string, string> = {
+  not_auto_review_author: "not opted in",
+  ignored_author: "ignored",
+  pr_ignored: "PR ignored",
+  branch_opt_out: "opted out",
+  agents_md_missing: "no AGENTS.md",
+  agents_md_too_large: "AGENTS.md too big",
+  pr_cost_cap: "cost cap",
+  no_reviewable_files: "nothing to review",
+  empty_diff: "empty diff",
+  head_unchanged: "unchanged",
+  diff_too_large: "too large",
+};
+
+/** outcomeWord is the word on a run's outcome pill. A skip names its reason;
+ *  a skip whose reason this build does not know still says "skipped", so a
+ *  row written by a newer binary never renders blank. Every skip keeps the
+ *  skip tone, so the Skipped filter and counts still read as one group. */
+export function outcomeWord(outcome: string, reason?: string): string {
+  if (outcome !== "skipped") return outcome;
+  return (reason && skipWords[reason]) || "skipped";
+}
+
 /** teamTone maps a team's state to its pill.
  *
  *  no_repos is ochre, not green and not red: the team is configured and
@@ -162,12 +189,4 @@ export function byLastRun<T extends { name: string; last_run: string | null }>(t
     if (diff !== 0 && !Number.isNaN(diff)) return diff;
     return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
   });
-}
-
-/** scope renders a team's repository count, keeping "every repo in the
- *  project" distinct from any particular number. */
-export function scope(repos: number): string {
-  if (repos < 0) return "whole project";
-  if (repos === 0) return "no repos";
-  return `${repos} repo${repos === 1 ? "" : "s"}`;
 }
