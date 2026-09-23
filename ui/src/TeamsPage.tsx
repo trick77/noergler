@@ -97,6 +97,8 @@ export function TeamsPage() {
                 <Sep />
                 {t.prs} PRs
                 <Sep />
+                last reviewed {ago(t.last_reviewed, now)}
+                <Sep />
                 last run {ago(t.last_run, now)}
               </>
             }

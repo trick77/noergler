@@ -112,18 +112,16 @@ type liveTeam struct {
 	// wire beside it: it is the identity the logs and the webhook path use,
 	// and the page keys and links off it.
 	Name string `json:"name"`
-	// Enabled is the startup verdict: the team's config, secret and model
-	// all resolved. Kept separate from State, because a team with no repos
-	// is enabled and still doing nothing.
-	Enabled bool `json:"enabled"`
-	// State is ready | no_repos | disabled, the pill the dashboard shows.
-	State string `json:"state"`
-	// Repos is how many repositories the team owns. A whole-project claim
-	// counts as -1: it is unbounded coverage, not a repo count, and
-	// reporting it as some number would be a guess.
-	Repos   int        `json:"repos"`
-	PRs     int        `json:"prs"`
-	LastRun *time.Time `json:"last_run"`
+	PRs  int    `json:"prs"`
+	// LastReviewed is the last success. LastRun is the last run of any
+	// outcome, which is what "run" means on every page; the two differ
+	// exactly when the latest run was skipped or failed, and showing only
+	// the success under "last run" hid that.
+	LastReviewed  *time.Time `json:"last_reviewed"`
+	LastRun       time.Time  `json:"last_run"`
+	LastOutcome   string     `json:"last_outcome"`
+	LastReason    string     `json:"last_reason,omitempty"`
+	LastReasonMsg string     `json:"last_reason_label,omitempty"`
 }
 
 // scopeSize counts the repositories a team owns.
@@ -206,34 +204,24 @@ func (d Deps) live(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	enabled, disabled := d.Teams.Status()
+	// Enabled teams with at least one run, nothing else. A disabled team
+	// and one that has never run have nothing live to show; the Teams page
+	// lists every team with its state.
+	enabled, _ := d.Teams.Status()
 	activity := d.activityByTeam(r.Context())
 
-	body.Teams = make([]liveTeam, 0, len(enabled)+len(disabled))
-	addTeam := func(slug string, isEnabled bool) {
-		t := liveTeam{Slug: slug, Name: nameOf(slug), Enabled: isEnabled, Repos: 0}
-		if isEnabled {
-			// ONE Runtime snapshot: it is copy-on-write behind an
-			// atomic.Pointer, so a second read could land after a
-			// concurrent claim and report a team that never existed.
-			if rt, _, ok := d.Teams.Lookup(slug); ok && rt != nil {
-				if team := rt.Team(); team != nil {
-					t.Repos = scopeSize(team.Projects)
-				}
-			}
-		}
-		t.State = teamState(isEnabled, t.Repos)
-		if a, ok := activity[slug]; ok {
-			t.PRs, t.LastRun = a.PRs, a.LastRun
-		}
-		body.Teams = append(body.Teams, t)
-	}
+	body.Teams = make([]liveTeam, 0, len(enabled))
 	for _, slug := range enabled {
-		addTeam(slug, true)
-	}
-	for _, slug := range disabled {
-		// State only. The reason stays in the log; see the note above.
-		addTeam(slug, false)
+		a, ok := activity[slug]
+		if !ok || a.LastRun == nil {
+			continue
+		}
+		body.Teams = append(body.Teams, liveTeam{
+			Slug: slug, Name: nameOf(slug), PRs: a.PRs,
+			LastReviewed: a.LastReviewed, LastRun: *a.LastRun,
+			LastOutcome: a.LastOutcome, LastReason: a.LastReason,
+			LastReasonMsg: review.SkipReason(a.LastReason).Label(),
+		})
 	}
 
 	httpapi.WriteJSON(w, http.StatusOK, body)
@@ -503,14 +491,16 @@ type claimBody struct {
 }
 
 type teamBody struct {
-	Slug    string      `json:"slug"`
-	Name    string      `json:"name"`
-	Enabled bool        `json:"enabled"`
-	State   string      `json:"state"`
-	Repos   int         `json:"repos"`
-	PRs     int         `json:"prs"`
-	LastRun *time.Time  `json:"last_run"`
-	Claims  []claimBody `json:"claims"`
+	Slug    string `json:"slug"`
+	Name    string `json:"name"`
+	Enabled bool   `json:"enabled"`
+	State   string `json:"state"`
+	Repos   int    `json:"repos"`
+	PRs     int    `json:"prs"`
+	// Same split as liveTeam: last success, and last run of any outcome.
+	LastReviewed *time.Time  `json:"last_reviewed"`
+	LastRun      *time.Time  `json:"last_run"`
+	Claims       []claimBody `json:"claims"`
 	// COUNTS, not names. The author lists are Bitbucket usernames, and this
 	// route is unauthenticated and cross-team: serving them here would hand
 	// out a roster of who works on what, on the same response that
@@ -546,7 +536,7 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 			ExcludeRepos: []string{},
 		}
 		if a, ok := activity[slug]; ok {
-			t.PRs, t.LastRun = a.PRs, a.LastRun
+			t.PRs, t.LastReviewed, t.LastRun = a.PRs, a.LastReviewed, a.LastRun
 		}
 		// ONE Runtime snapshot per team per request: Runtime is
 		// copy-on-write behind an atomic.Pointer, so reading Team() twice

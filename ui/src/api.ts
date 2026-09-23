@@ -22,12 +22,15 @@ export interface LiveTeam {
   slug: string;
   /** Display name from teams.yaml, defaulted to the slug by the server. */
   name: string;
-  enabled: boolean;
-  state: TeamState;
-  /** -1 means at least one whole-project claim: unbounded, not a count. */
-  repos: number;
   prs: number;
-  last_run: string | null;
+  /** The last success. */
+  last_reviewed: string | null;
+  /** The last run of any outcome. Never null: live lists only teams that
+   *  have run. */
+  last_run: string;
+  last_outcome: string;
+  last_reason?: string;
+  last_reason_label?: string;
 }
 
 export interface Live {
@@ -96,6 +99,8 @@ export interface Team {
   state: TeamState;
   repos: number;
   prs: number;
+  /** Last success, and last run of any outcome. */
+  last_reviewed: string | null;
   last_run: string | null;
   claims: { project: string; repo?: string }[];
   /** COUNTS, not names: this route is unauthenticated and cross-team, and

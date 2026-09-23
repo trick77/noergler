@@ -229,6 +229,8 @@ func TestDailySeriesBucketByDay(t *testing.T) {
 	}
 }
 
+// A success with no attempt row (the write fails open, and runs predate the
+// table) is still the team's last run, as an ok.
 func TestActivityByTeamReportsLastRun(t *testing.T) {
 	s := testStore(t)
 	prID := upsert(t, s, key, "c1")
@@ -241,11 +243,61 @@ func TestActivityByTeamReportsLastRun(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("rows = %d, want 1", len(rows))
 	}
-	if rows[0].TeamSlug != "platform" || rows[0].PRs != 1 {
-		t.Errorf("row = %+v, want platform with 1 PR", rows[0])
+	a := rows[0]
+	if a.TeamSlug != "platform" || a.PRs != 1 {
+		t.Errorf("row = %+v, want platform with 1 PR", a)
 	}
-	if rows[0].LastRun == nil {
-		t.Error("last run must be set once a run exists")
+	if a.LastReviewed == nil || a.LastRun == nil || !a.LastRun.Equal(*a.LastReviewed) || a.LastOutcome != "ok" {
+		t.Errorf("row = %+v, want the success as both last reviewed and last run", a)
+	}
+}
+
+// A skip newer than the last success is the last run; the success stays the
+// last reviewed. This split is the whole point: one time for both hid it.
+func TestActivityByTeamLastRunIncludesSkips(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	prID := upsert(t, s, key, "c1")
+	runID := run(t, s, prID, "c1", nano(1_000_000_000), "gpt-5.5")
+	attempt(t, s, key, "ok", "", &runID)
+	attempt(t, s, key, "skipped", "head_unchanged", nil)
+	// Pinned apart: two inserts in a row can share a timestamp.
+	if _, err := s.pool.Exec(ctx, `UPDATE review_attempts SET created_at = now() + interval '1 minute' WHERE outcome = 'skipped'`); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := s.ActivityByTeam(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want 1", len(rows))
+	}
+	a := rows[0]
+	if a.LastReviewed == nil || a.LastRun == nil || !a.LastRun.After(*a.LastReviewed) {
+		t.Fatalf("row = %+v, want a last run newer than the last review", a)
+	}
+	if a.LastOutcome != "skipped" || a.LastReason != "head_unchanged" {
+		t.Errorf("last outcome = %q/%q, want the skip", a.LastOutcome, a.LastReason)
+	}
+}
+
+// A skip can be decided before any pull_requests row exists, so a team whose
+// every run was skipped has attempts and no PRs. It still has a last run.
+func TestActivityByTeamReportsSkipOnlyTeams(t *testing.T) {
+	s := testStore(t)
+	attempt(t, s, key, "skipped", "not_auto_review_author", nil)
+
+	rows, err := s.ActivityByTeam(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want 1", len(rows))
+	}
+	a := rows[0]
+	if a.TeamSlug != "platform" || a.PRs != 0 || a.LastReviewed != nil || a.LastRun == nil || a.LastOutcome != "skipped" {
+		t.Errorf("row = %+v, want platform, 0 PRs, never reviewed, last run a skip", a)
 	}
 }
 
@@ -262,8 +314,8 @@ func TestActivityByTeamIncludesTeamsWithNoRuns(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("rows = %d, want 1", len(rows))
 	}
-	if rows[0].LastRun != nil {
-		t.Errorf("last run = %v, want nil with no runs", rows[0].LastRun)
+	if rows[0].LastRun != nil || rows[0].LastReviewed != nil {
+		t.Errorf("row = %+v, want no last run and no last review", rows[0])
 	}
 }
 
