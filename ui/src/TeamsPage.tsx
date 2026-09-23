@@ -120,7 +120,7 @@ export function TeamsPage() {
                   {t.claims.map((c) => (
                     <tr key={`${c.project}/${c.repo ?? ""}`}>
                       <td className={tdTag}>{c.repo ? `${c.project}/${c.repo}` : c.project}</td>
-                      <td className={tdNum}>{c.repo ? "repo" : "whole project"}</td>
+                      <td className={tdNum}>{c.repo ? "repo" : "project"}</td>
                     </tr>
                   ))}
                 </tbody>
