@@ -47,9 +47,19 @@ const dotClass: Record<Tone, string> = {
 
 /** Pill always carries its word. The ok/skip/fail hues sit at dE 7.6 under
  *  protanopia, so the dot is a second cue and never the only one. */
-export function Pill({ tone, children }: { tone: Tone; children: ReactNode }) {
+export function Pill({
+  tone,
+  title,
+  children,
+}: {
+  tone: Tone;
+  /** The long form, on hover, when the word on the pill is a short one. */
+  title?: string;
+  children: ReactNode;
+}) {
   return (
     <span
+      title={title}
       className={
         // nowrap: a two-word label ("no repos") otherwise wraps inside the
         // pill and stretches its row taller than every other one.

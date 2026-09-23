@@ -75,20 +75,17 @@ func usd(nano *int64) *string {
 // PUT /teams/{slug}/settings and this loop starts reading N independent
 // copy-on-write snapshots, and a concurrent write lands between two of them.
 //
-// Every miss answers with the slug. A disabled team has no Runtime at all,
-// and a team dropped from teams.yaml still owns review_runs rows forever, so
-// the rows outlive the config that names them. The slug is what the logs,
-// the webhook path and team= already print, which makes it the right thing
-// to fall back to rather than a blank cell.
+// A disabled team has no Runtime, so its name comes from teams.yaml via the
+// registry; without that the roster mixes names and slugs. A team dropped
+// from teams.yaml still owns review_runs rows forever, so the rows outlive
+// the config that names them: that miss answers with the slug, which is what
+// the logs, the webhook path and team= already print, rather than a blank
+// cell.
 func (d Deps) teamNamer() func(slug string) string {
 	names := map[string]string{}
-	enabled, _ := d.Teams.Status()
-	for _, slug := range enabled {
-		if rt, _, ok := d.Teams.Lookup(slug); ok && rt != nil {
-			if team := rt.Team(); team != nil && team.Name != "" {
-				names[slug] = team.Name
-			}
-		}
+	enabled, disabled := d.Teams.Status()
+	for _, slug := range append(enabled, disabled...) {
+		names[slug] = d.Teams.Name(slug)
 	}
 	return func(slug string) string {
 		if name, ok := names[slug]; ok {
@@ -542,9 +539,9 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 	body := teamsBody{Teams: make([]teamBody, 0, len(enabled)+len(disabled))}
 	add := func(slug string, isEnabled bool) {
 		t := teamBody{
-			// Name defaults to the slug; the snapshot below overwrites it
-			// when the team is configured and carries one.
-			Slug: slug, Name: slug, Enabled: isEnabled,
+			// Name comes from the registry for a disabled team, which has no
+			// snapshot; the snapshot below overwrites it for an enabled one.
+			Slug: slug, Name: d.Teams.Name(slug), Enabled: isEnabled,
 			Claims:       []claimBody{},
 			ExcludeRepos: []string{},
 		}

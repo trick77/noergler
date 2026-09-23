@@ -321,6 +321,20 @@ func TestTeamsFile_SluglessBlocksAreDisabledNotDuplicates(t *testing.T) {
 	}
 }
 
+// A team that fails validation keeps its display name: the dashboard lists
+// disabled teams and would otherwise print the slug for this one only.
+func TestTeamsFile_DisabledTeamKeepsItsName(t *testing.T) {
+	e := newEnv(t)
+	e.teams("teams:\n  - {slug: hotspot, name: Hotspot, bogus: 1}\n")
+	app := e.mustLoad()
+	if _, ok := app.Disabled["hotspot"]; !ok {
+		t.Fatalf("disabled = %v, want hotspot", app.Disabled)
+	}
+	if got := app.Names["hotspot"]; got != "Hotspot" {
+		t.Errorf("Names[hotspot] = %q, want Hotspot", got)
+	}
+}
+
 // --- teams.yaml: team-level faults disable that team only --------------------
 
 func TestTeams_FullBlockResolvesOverridesOnTopOfInstanceDefaults(t *testing.T) {

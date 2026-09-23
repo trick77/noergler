@@ -235,7 +235,8 @@ describe("RunsPage", () => {
     render(<RunsPage />);
 
     expect(await screen.findByText("timed_out")).toBeDefined();
-    expect(await screen.findByText("skipped")).toBeDefined();
+    // A skip's pill names its reason, not the bare outcome.
+    expect(await screen.findByText("unchanged")).toBeDefined();
     expect(screen.getAllByText("ok")).toHaveLength(2);
   });
 
@@ -264,21 +265,19 @@ describe("RunsPage", () => {
   it("ranks the skip reasons by their label", async () => {
     serve({ runs: { runs }, metrics });
     render(<RunsPage />);
-    // Twice: on the skipped row itself and in the breakdown below it.
-    expect(await screen.findAllByText("HEAD unchanged since last review")).toHaveLength(2);
+    // Once, in the breakdown: on the row the label is the pill's tooltip.
+    expect(await screen.findAllByText("HEAD unchanged since last review")).toHaveLength(1);
   });
 
-  // A red pill that only says "failed" sends the reader to the logs for
-  // something the row already knows.
-  it("says why a run did not produce a review", async () => {
+  // The long label beside the pill wrapped the Outcome cell into three or
+  // four lines. The pill says it in a word and keeps the label on hover, so
+  // the row still knows why without sending the reader to the logs.
+  it("says why a run was skipped in the pill, with the label on hover", async () => {
     serve({ runs: { runs }, metrics });
     render(<RunsPage />);
 
-    await screen.findByText("timed_out");
-    // The label rides the row, so the reason is beside the outcome rather
-    // than only in the aggregate below.
-    const reasons = screen.getAllByText("HEAD unchanged since last review");
-    expect(reasons.length).toBeGreaterThan(1);
+    const pill = await screen.findByText("unchanged");
+    expect(pill.getAttribute("title")).toBe("HEAD unchanged since last review");
   });
 
   it("links a PR tag to Bitbucket", async () => {
@@ -341,7 +340,7 @@ describe("MetricsPage", () => {
     render(<MetricsPage />);
 
     expect(await screen.findByLabelText(/Cost per day/)).toBeDefined();
-    expect(await screen.findByLabelText(/Attempts per day/)).toBeDefined();
+    expect(await screen.findByLabelText(/Runs per day/)).toBeDefined();
   });
 
   it("says a window is empty rather than drawing an empty chart", async () => {
@@ -356,7 +355,7 @@ describe("MetricsPage", () => {
     render(<MetricsPage />);
 
     await waitFor(() => expect(screen.getByText(/No priced runs/)).toBeDefined());
-    expect(screen.getByText(/No attempts in this window/)).toBeDefined();
+    expect(screen.getByText(/No runs in this window/)).toBeDefined();
   });
 });
 
@@ -399,6 +398,18 @@ describe("TeamsPage", () => {
     expect(await screen.findByText("PAY")).toBeDefined();
     expect(await screen.findByText("whole project")).toBeDefined();
     expect(await screen.findByText("SHARED/billing-lib")).toBeDefined();
+  });
+
+  // Scope lives in the claims table only. The title line repeated it, and
+  // for a whole-project claim a count would be a guess: noergler never learns
+  // how many repos a project holds.
+  it("keeps scope out of the title line", async () => {
+    serve({ teams: { teams } });
+    render(<TeamsPage />);
+
+    // Once: the PAY row. Not a second time beside the slug.
+    expect(await screen.findAllByText("whole project")).toHaveLength(1);
+    expect(screen.queryByText(/not started/)).toBeNull();
   });
 
   // Unauthenticated and cross-team, so it reports that authors are

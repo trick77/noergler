@@ -50,11 +50,7 @@ func Boot(ctx context.Context, app *config.App, d Deps) (*Registry, error) {
 		return nil, err
 	}
 
-	g := &Registry{
-		enabled:  map[string]*Runtime{},
-		disabled: map[string]string{},
-		log:      d.Log,
-	}
+	g := NewRegistry(nil, nil, d.Log).WithNames(app.Names)
 	for slug, reason := range app.Disabled {
 		g.disabled[slug] = reason
 	}

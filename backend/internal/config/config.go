@@ -297,6 +297,9 @@ type App struct {
 	Teams    map[string]*Team
 	Order    []string
 	Disabled map[string]string
+	// Names is the display name of every team that has one, disabled teams
+	// included, by slug.
+	Names map[string]string
 }
 
 // --- instance env ------------------------------------------------------------
@@ -498,11 +501,11 @@ func Load(lookup func(string) (string, bool)) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	teams, order, disabled, err := LoadTeams(app.TeamsConfigPath, app, lookup)
+	teams, order, disabled, names, err := LoadTeams(app.TeamsConfigPath, app, lookup)
 	if err != nil {
 		return nil, err
 	}
-	app.Teams, app.Order, app.Disabled = teams, order, disabled
+	app.Teams, app.Order, app.Disabled, app.Names = teams, order, disabled, names
 	return app, nil
 }
 

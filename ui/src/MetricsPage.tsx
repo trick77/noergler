@@ -213,11 +213,11 @@ export function MetricsPage() {
               </div>
             )}
           </Tile>
-          <Tile label="Runs" value={data.totals.runs.toLocaleString()}>
+          <Tile label="Reviewed" value={data.totals.runs.toLocaleString()}>
             {/* A flat line of zeros is a line that says nothing. */}
             {data.totals.runs > 0 && (
               <div className="mt-2">
-                <Sparkline values={runSeries[0].values} label="Run count trend" />
+                <Sparkline values={runSeries[0].values} label="Reviewed trend" />
               </div>
             )}
           </Tile>
@@ -247,9 +247,9 @@ export function MetricsPage() {
         </Card>
 
         <p className={eyebrow}>Runs per day</p>
-        <Card title="Throughput" note="reviewed, skipped and failed attempts">
+        <Card title="Throughput" note="reviewed, skipped and failed runs">
           {runTop === 0 ? (
-            <Empty>No attempts in this window.</Empty>
+            <Empty>No runs in this window.</Empty>
           ) : (
             <>
               <Chart
@@ -259,7 +259,7 @@ export function MetricsPage() {
                 mark="bar"
                 ticks={niceTicks(runTop)}
                 xLabels={window.map(label)}
-                label={`Attempts per day for ${title}`}
+                label={`Runs per day for ${title}`}
               />
               <Legend series={runSeries} />
             </>
@@ -269,14 +269,14 @@ export function MetricsPage() {
         <p className={eyebrow}>By team</p>
         <Card>
           {data.by_team.length === 0 ? (
-            <Empty>No runs in this window.</Empty>
+            <Empty>Nothing reviewed in this window.</Empty>
           ) : (
             <div className="overflow-x-auto overscroll-x-contain">
               <table className={table}>
                 <thead>
                   <tr>
                     <th className={th}>Team</th>
-                    <th className={thNum}>Runs</th>
+                    <th className={thNum}>Reviewed</th>
                     <th className={thNum}>Tokens in</th>
                     <th className={thNum}>Tokens out</th>
                     <th className={thNum}>Findings</th>
