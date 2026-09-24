@@ -310,6 +310,117 @@ func TestRun_CleanCaseCountsEveryFindingAsExtra(t *testing.T) {
 	}
 }
 
+// A byte-identical repeat pins nothing new, so it is not invention. The
+// fixture is the real pair from run2's lock-not-released, optional pointer
+// fields included: findingKey dereferences them, and comparing the pointers
+// instead would make every finding unique and collapse nothing.
+func TestRun_ByteIdenticalDuplicateIsNotExtra(t *testing.T) {
+	conf, head, sugg := 100, "Deadlock on unknown team", "r.mu.Unlock()"
+	dup := inference.ReviewFinding{
+		File: "a/b.go", Line: 11, Severity: "issue",
+		Comment:    "the early return leaves the mutex held, a nil guard would panic",
+		Confidence: &conf, Headline: &head, Suggestion: &sugg,
+	}
+	client := stubReviewer{findings: []inference.ReviewFinding{dup, dup}}
+	score := Run(context.Background(), client, "{files}", oneCase(seeded), countStub)
+	if score.Caught != 1 {
+		t.Fatalf("caught %d, want 1", score.Caught)
+	}
+	if score.Extra != 0 {
+		t.Errorf("extra = %d, want 0: the copy is a stutter, not an invented finding", score.Extra)
+	}
+	if got := score.Results[0].Duplicates; got != 1 {
+		t.Errorf("duplicates = %d, want 1: a repeat is collapsed but still reported", got)
+	}
+	// The raw list is the record of what the model said, so it keeps both.
+	if got := len(score.Results[0].Findings); got != 2 {
+		t.Errorf("findings = %d, want 2: the JSON records what was emitted", got)
+	}
+}
+
+// Two DISTINCT findings on one expectation stay Extra. Separating "second
+// honest finding about the same bug" from "unrelated remark that lands in the
+// window" needs semantics, which the bluntness rule rules out.
+func TestRun_SecondDistinctFindingOnOneExpectationIsExtra(t *testing.T) {
+	client := stubReviewer{findings: []inference.ReviewFinding{
+		finding("a/b.go", 11, "nil deref here"),
+		finding("a/b.go", 12, "this will panic too"),
+	}}
+	score := Run(context.Background(), client, "{files}", oneCase(seeded), countStub)
+	if score.Caught != 1 {
+		t.Fatalf("caught %d, want 1", score.Caught)
+	}
+	if score.Extra != 1 {
+		t.Errorf("extra = %d, want 1: one expectation consumes one finding", score.Extra)
+	}
+	if got := score.Results[0].Duplicates; got != 0 {
+		t.Errorf("duplicates = %d, want 0: the two differ", got)
+	}
+}
+
+// The clean controls are the false-positive floor, and until ErrInvented they
+// reached no exit code: a run inventing a finding on every one of them exited 0.
+func TestScore_InventedFindingOnACleanControlFails(t *testing.T) {
+	client := stubReviewer{findings: []inference.ReviewFinding{finding("a/b.go", 3, "nit")}}
+	score := Run(context.Background(), client, "{files}", oneCase(), countStub)
+	err := score.ErrInvented()
+	if err == nil {
+		t.Fatal("want an error: a finding on a case that seeds nothing is a false positive")
+	}
+	if !strings.Contains(err.Error(), "c: 1") {
+		t.Errorf("error does not name the case and count: %v", err)
+	}
+	if score.ErrMissed() != nil {
+		t.Errorf("ErrMissed should stay nil: nothing was seeded to miss")
+	}
+}
+
+// Absent and present must not encode alike. A Suggestion of nil and a
+// Suggestion of the literal "nil" are different findings, and a sentinel
+// marker would render them identically and collapse one away.
+func TestRun_AbsentFieldDoesNotCollideWithItsSentinel(t *testing.T) {
+	lit := "nil"
+	a := finding("a/b.go", 11, "nil deref")
+	b := a
+	b.Suggestion = &lit
+	score := Run(context.Background(),
+		stubReviewer{findings: []inference.ReviewFinding{a, b}},
+		"{files}", oneCase(seeded), countStub)
+	if got := score.Results[0].Duplicates; got != 0 {
+		t.Errorf("duplicates = %d, want 0: the two differ in Suggestion", got)
+	}
+	if score.Extra != 1 {
+		t.Errorf("extra = %d, want 1: the second is a real second finding", score.Extra)
+	}
+}
+
+// A control whose only findings are a stutter of one another is ONE invented
+// finding, not two, and the gate and the message must agree on that: the
+// message is the number the operator reads off the failure.
+func TestScore_InventedCountOnACleanControlCollapsesStutters(t *testing.T) {
+	dup := finding("a/b.go", 3, "nit")
+	score := Run(context.Background(),
+		stubReviewer{findings: []inference.ReviewFinding{dup, dup}},
+		"{files}", oneCase(), countStub)
+	err := score.ErrInvented()
+	if err == nil {
+		t.Fatal("want an error: one real finding on a case that seeds nothing")
+	}
+	if !strings.Contains(err.Error(), "c: 1") {
+		t.Errorf("error = %v, want it to count the stutter once", err)
+	}
+	if score.Extra != 1 {
+		t.Errorf("extra = %d, want 1", score.Extra)
+	}
+}
+
+func TestScore_QuietCleanControlPasses(t *testing.T) {
+	score := Run(context.Background(), stubReviewer{}, "{files}", oneCase(), countStub)
+	if err := score.ErrInvented(); err != nil {
+		t.Errorf("ErrInvented = %v, want nil on a control with no findings", err)
+	}
+}
+
 func TestRun_RecordsTheOutcomeName(t *testing.T) {
 	score := Run(context.Background(),
 		stubReviewer{outcome: inference.OutcomeUnparseable}, "{files}", oneCase(), countStub)

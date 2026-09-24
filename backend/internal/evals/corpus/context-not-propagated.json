@@ -1,0 +1,37 @@
+{
+  "name": "context-not-propagated",
+  "description": "The caller's ctx is accepted but dropped at both call sites: the request and the capped body read each use context.Background(), so cancellation and the deadline no longer reach the fetch and a hung Bitbucket server blocks the worker indefinitely. ONE expectation over a window spanning both substitutions, on purpose: across runs the model sometimes reports them as two findings and sometimes as one finding naming both, and either is a correct review. Two expectations score the folded report as a miss; one narrow window scores the split report as Extra. The window starts at the func declaration: a whole-function defect is honestly anchored there, and resource-leak lost a correct review to exactly that, one line above the first statement.",
+  "files": [
+    {
+      "path": "internal/bitbucket/diff.go",
+      "diff": "@@ -10,10 +10,10 @@ import (\n // The caller's context bounds the whole operation, including the body read.\n func (c *Client) FetchDiff(ctx context.Context, project, repo string, pr int) (string, error) {\n \tu := fmt.Sprintf(\"%s/projects/%s/repos/%s/pull-requests/%d/diff\", c.base, project, repo, pr)\n-\treq, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)\n+\treq, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u, nil)\n \tif err != nil {\n \t\treturn \"\", fmt.Errorf(\"build diff request: %w\", err)\n \t}\n \treq.Header.Set(\"Authorization\", \"Bearer \"+c.token)\n-\treturn c.getTextCapped(ctx, req, maxDiffBytes)\n+\treturn c.getTextCapped(context.Background(), req, maxDiffBytes)\n }",
+      "content": "package bitbucket\n\nimport (\n\t\"context\"\n\t\"fmt\"\n\t\"net/http\"\n)\n\n// FetchDiff retrieves the unified diff for a pull request.\n// The caller's context bounds the whole operation, including the body read.\nfunc (c *Client) FetchDiff(ctx context.Context, project, repo string, pr int) (string, error) {\n\tu := fmt.Sprintf(\"%s/projects/%s/repos/%s/pull-requests/%d/diff\", c.base, project, repo, pr)\n\treq, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u, nil)\n\tif err != nil {\n\t\treturn \"\", fmt.Errorf(\"build diff request: %w\", err)\n\t}\n\treq.Header.Set(\"Authorization\", \"Bearer \"+c.token)\n\treturn c.getTextCapped(context.Background(), req, maxDiffBytes)\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": [
+    {
+      "id": "caller-context-dropped",
+      "file": "internal/bitbucket/diff.go",
+      "lines": [
+        11,
+        18
+      ],
+      "keywords": [
+        "context.Background",
+        "background context",
+        "ctx is ignored",
+        "ignores ctx",
+        "ignores the ctx",
+        "ignores caller",
+        "not propagated",
+        "cancellation",
+        "cancelation",
+        "deadline",
+        "caller's context",
+        "callers context"
+      ],
+      "why": "ctx is a parameter but never used; context.Background() is passed to both NewRequestWithContext and getTextCapped, so the caller's timeout and cancellation cannot stop the request or the body read. Bitbucket has no Client.Timeout by design, which makes the caller's ctx the only bound on a 10 MiB diff."
+    }
+  ]
+}

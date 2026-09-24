@@ -55,10 +55,21 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   gateway call leaves it, onto a bounded pool (`REVIEW_INFERENCE_CONCURRENCY`
   6 global, `..._PER_TEAM` 2 nested inside it). Prepare and post keep the
   worker: serialization was for Bitbucket, never for inference.
-- **Editing `prompts/review.txt` means re-running the evals**:
-  `EVAL_BASE_URL=... EVAL_API_KEY=... go run ./cmd/evals` from `backend/`.
+- After editing `prompts/review.txt`, re-running the evals is worth it but is
+  not a gate: `EVAL_BASE_URL=... EVAL_API_KEY=... go run ./cmd/evals` from
+  `backend/`. Nothing enforces it, on purpose - a pin would redden every
+  work-in-progress prompt edit until tokens are spent.
   Seeded-bug corpus in `internal/evals/corpus/`; exit 1 = a bug went
-  unreported. The unit tests pin assembly only, never review quality.
+  unreported OR a finding was invented on a clean control, exit 2 = the run
+  could not happen. The unit tests pin assembly only, never review quality.
+- **A finding on a case that seeds nothing fails the run** (`ErrInvented`).
+  The clean controls are the false-positive floor; before this they reached
+  no exit code, so a run inventing findings on all of them exited 0. Severity
+  is not consulted: production posts `suggestion` findings too, so one is a
+  comment on the PR either way.
+- Exit 1 has fired on two of three runs with the prompt unchanged. One red is
+  model noise; two consecutive is the signal. Not encoded - the exit code
+  stays strict so CI could gate on it without a threshold to tune.
 - Evals default to **`mimo-v2.5-pro`, effort `high`** and stay there: a
   weaker model or less thinking scores worse on the same prompt, so a mixed
   history cannot be compared and a regression reads as a model change.

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,14 +21,69 @@ import (
 
 type stubClient struct {
 	findings []inference.ReviewFinding
-	outcome  inference.Outcome
+	// owner[i] is a snippet unique to the case findings[i] belongs to. Empty
+	// means "answer on every case", which is what the hand-built stubs want.
+	owner   []string
+	outcome inference.Outcome
 }
 
-func (s stubClient) Review(context.Context, inference.ReviewRequest) inference.ReviewResult {
+// Review answers only the findings belonging to the case being reviewed.
+// A stub that returned every finding for every case would report eight
+// findings on each clean control, which is the invention ErrInvented exists
+// to fail - and it would fail on the stub's own sloppiness rather than on
+// anything the orchestration did.
+//
+// Keyed on the case's own diff, not on the file path: unchecked-error and
+// wrong-error-wrapped are both on internal/store/claims.go, so a path match
+// hands each of them the other's finding as Extra.
+func (s stubClient) Review(_ context.Context, req inference.ReviewRequest) inference.ReviewResult {
+	var out []inference.ReviewFinding
+	for i, f := range s.findings {
+		mark := ""
+		if i < len(s.owner) {
+			mark = s.owner[i]
+		}
+		if mark == "" || strings.Contains(req.Prompt, mark) {
+			out = append(out, f)
+		}
+	}
 	return inference.ReviewResult{
 		Outcome: s.outcome,
-		Review:  inference.ParsedReview{Findings: s.findings, Summary: inference.NewReviewSummary()},
+		Review:  inference.ParsedReview{Findings: out, Summary: inference.NewReviewSummary()},
 	}
+}
+
+// perfectFindings answers every seeded bug in the corpus exactly: the first
+// line of each expected window, with the expectation's first keyword as the
+// comment. Derived from the corpus rather than written out, because a
+// hardcoded list silently stops being a clean sweep the moment a case is
+// added, and the failure reads as a broken orchestration instead of a stale
+// fixture.
+func perfectFindings(t *testing.T) (stubClient, int) {
+	t.Helper()
+	cases, err := evals.LoadCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s stubClient
+	seeded := 0
+	for _, c := range cases {
+		// The case's own diff, which is unique per case and reaches the
+		// prompt verbatim. A path would not be: two cases share claims.go.
+		mark := ""
+		if len(c.Files) > 0 {
+			mark = c.Files[0].Diff
+		}
+		for _, e := range c.Expected {
+			seeded++
+			s.findings = append(s.findings, inference.ReviewFinding{
+				File: e.File, Line: e.Lines[0], Severity: "issue",
+				Comment: e.Keywords[0],
+			})
+			s.owner = append(s.owner, mark)
+		}
+	}
+	return s, seeded
 }
 
 func env(extra map[string]string) func(string) string {
@@ -61,12 +117,7 @@ func baseOptions(t *testing.T, client evals.Reviewer) options {
 // green run would be reported as a regression.
 func TestRun_CleanSweepIsNotAMiss(t *testing.T) {
 	// The corpus' own seeded bugs, answered exactly.
-	client := stubClient{findings: []inference.ReviewFinding{
-		{File: "internal/review/summary.go", Line: 19, Severity: "issue",
-			Comment: "r.Ticket is nil here, so this dereference will panic"},
-		{File: "internal/store/claims.go", Line: 21, Severity: "issue",
-			Comment: "the Commit error is ignored, so a failed commit reports success"},
-	}}
+	client, _ := perfectFindings(t)
 	missed, err := run(context.Background(), baseOptions(t, client))
 	if err != nil || missed {
 		t.Fatalf("run = (%v, %v), want (false, nil) on a clean sweep", missed, err)
@@ -148,12 +199,7 @@ func TestRun_ClientBuilderErrorSurvives(t *testing.T) {
 // The -json report is the committed artifact, so it has to be written and
 // to carry the score.
 func TestRun_WritesTheJSONReport(t *testing.T) {
-	client := stubClient{findings: []inference.ReviewFinding{
-		{File: "internal/review/summary.go", Line: 19, Severity: "issue",
-			Comment: "nil dereference panics here"},
-		{File: "internal/store/claims.go", Line: 21, Severity: "issue",
-			Comment: "the Commit error is ignored"},
-	}}
+	client, seeded := perfectFindings(t)
 	opt := baseOptions(t, client)
 	opt.jsonOut = filepath.Join(t.TempDir(), "run.json")
 	if _, err := run(context.Background(), opt); err != nil {
@@ -167,21 +213,49 @@ func TestRun_WritesTheJSONReport(t *testing.T) {
 	if err := json.Unmarshal(blob, &score); err != nil {
 		t.Fatal(err)
 	}
-	if score.Seeded != 2 || score.Caught != 2 {
-		t.Errorf("report says caught %d of %d, want 2 of 2", score.Caught, score.Seeded)
+	if score.Seeded != seeded || score.Caught != seeded {
+		t.Errorf("report says caught %d of %d, want %d of %d",
+			score.Caught, score.Seeded, seeded, seeded)
+	}
+	// A perfect review invents nothing. This also pins the stub: keyed on
+	// the path instead of the case, the two claims.go cases would each
+	// receive the other's finding and this would read 2.
+	if score.Extra != 0 {
+		t.Errorf("extra = %d, want 0 on a perfect review", score.Extra)
 	}
 	if out := opt.stdout.(*strings.Builder).String(); !strings.Contains(out, "wrote ") {
 		t.Errorf("stdout does not mention the report:\n%s", out)
 	}
 }
 
+// An invented finding on a clean control is exit 1, the same code a miss
+// gets: both mean the prompt got worse. Covers the errors.Join wiring, which
+// TestRun_MissedBugReportsMissed only reaches through ErrMissed.
+func TestRun_InventedFindingOnACleanControlIsExitOne(t *testing.T) {
+	client, _ := perfectFindings(t)
+	// Answer every case, including the ones that seed nothing.
+	client.owner = nil
+	missed, err := run(context.Background(), baseOptions(t, client))
+	if err == nil {
+		t.Fatal("want an error when a clean control gets a finding")
+	}
+	if !missed {
+		t.Error("missed = false, want true: invention shares exit 1 with a miss")
+	}
+	if !strings.Contains(err.Error(), "invented finding(s)") {
+		t.Errorf("error does not name the invention: %v", err)
+	}
+}
+
 func TestRun_ReportsEveryCaseOnStdout(t *testing.T) {
+	_, seeded := perfectFindings(t)
 	opt := baseOptions(t, stubClient{})
 	if _, err := run(context.Background(), opt); err == nil {
 		t.Fatal("want the missed-bug error")
 	}
 	out := opt.stdout.(*strings.Builder).String()
-	for _, want := range []string{"mimo-v2.5-pro", "effort high", "MISS", "seeded 2"} {
+	for _, want := range []string{"mimo-v2.5-pro", "effort high", "MISS",
+		fmt.Sprintf("seeded %d", seeded)} {
 		if !strings.Contains(out, want) {
 			t.Errorf("stdout does not mention %q:\n%s", want, out)
 		}
