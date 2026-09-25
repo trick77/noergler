@@ -50,6 +50,3 @@ http/http-client.env.json
 
 # tsc -b incremental state, regenerated on every build.
 ui/tsconfig.tsbuildinfo
-
-# Local git worktrees
-.agents/worktrees/
