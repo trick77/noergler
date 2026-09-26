@@ -90,6 +90,7 @@ func env(extra map[string]string) func(string) string {
 	base := map[string]string{
 		"EVAL_BASE_URL": "https://example/v1",
 		"EVAL_API_KEY":  "k",
+		"EVAL_MODEL":    "some-model",
 	}
 	for k, v := range extra {
 		base[k] = v
@@ -103,7 +104,7 @@ func baseOptions(t *testing.T, client evals.Reviewer) options {
 		// The real template: an eval that scores a toy prompt says nothing
 		// about the one that ships.
 		promptPath: "../../../prompts/review.txt",
-		effort:     "high",
+		effort:     "some-level",
 		timeout:    time.Minute,
 		getenv:     env(nil),
 		stdout:     &strings.Builder{},
@@ -254,7 +255,7 @@ func TestRun_ReportsEveryCaseOnStdout(t *testing.T) {
 		t.Fatal("want the missed-bug error")
 	}
 	out := opt.stdout.(*strings.Builder).String()
-	for _, want := range []string{"mimo-v2.5-pro", "effort high", "MISS",
+	for _, want := range []string{"some-model", "effort some-level", "MISS",
 		fmt.Sprintf("seeded %d", seeded)} {
 		if !strings.Contains(out, want) {
 			t.Errorf("stdout does not mention %q:\n%s", want, out)
@@ -268,3 +269,14 @@ var errNotServed = errorString("gateway unreachable or profile not served: " +
 type errorString string
 
 func (e errorString) Error() string { return string(e) }
+
+// Unset, the effort line says the model's balanced level applies rather than
+// printing an empty level.
+func TestRun_UnsetEffortSaysBalanced(t *testing.T) {
+	opt := baseOptions(t, stubClient{})
+	opt.effort = ""
+	_, _ = run(context.Background(), opt)
+	if out := opt.stdout.(*strings.Builder).String(); !strings.Contains(out, "effort model balanced") {
+		t.Errorf("stdout does not say the balanced level applies:\n%s", out)
+	}
+}

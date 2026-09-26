@@ -22,9 +22,12 @@ was that duplicate. The JSONs are left as they are; they record what the tool
 emitted at the time.
 
     cd backend
-    EVAL_BASE_URL=... EVAL_API_KEY=... \
-      go run ./cmd/evals -context-window 1000000 \
+    EVAL_BASE_URL=... EVAL_API_KEY=... EVAL_MODEL=<model> \
+      go run ./cmd/evals -effort <effort> -context-window 1000000 \
       -json internal/evals/results/<date>-<model>-<effort>.json
+
+Neither model nor effort has a default: take both from the series' rows below
+to extend it.
 
 | Date | Model | Effort | Cases | Seeded | Caught | Extra | Prompt | Notes |
 |---|---|---|---|---|---|---|---|---|
