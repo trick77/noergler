@@ -6,7 +6,7 @@ require (
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/tiktoken-go/tokenizer v0.8.1
-	github.com/trick77/llmwire v0.0.38
+	github.com/trick77/llmwire v0.0.39
 	gopkg.in/yaml.v3 v3.0.1
 )
 
