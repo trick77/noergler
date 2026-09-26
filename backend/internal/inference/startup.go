@@ -38,7 +38,7 @@ func (c *Client) Startup(ctx context.Context) error {
 	if err := c.resolveWindow(ctx, profile); err != nil {
 		return err
 	}
-	return c.ping(ctx)
+	return c.ping(ctx, profile)
 }
 
 // reviewNeeds is what a review asks of a model: strict JSON-schema output,
@@ -74,6 +74,12 @@ func (c *Client) profile() (*llmwire.Profile, error) {
 	if c.effort == "none" {
 		return nil, fmt.Errorf("reasoning_effort=%q switches reasoning off on %s, and noergler needs reasoning; pick another level or unset it",
 			c.effort, c.model)
+	}
+	// Unset sends the balanced intent. A model that names no balanced level
+	// and reasons only when asked then gets nothing, and runs without it.
+	if c.effort == "" && p.Reasoning.Balanced == "" && !p.Reasoning.EnabledByDefault {
+		return nil, fmt.Errorf("model %q reasons only when asked and names no balanced level; set reasoning_effort (accepted: %s) or pick another model",
+			c.model, strings.Join(p.Reasoning.EffortValues, ", "))
 	}
 	return p, nil
 }
@@ -205,7 +211,7 @@ func (c *Client) checkWindowFloor() error {
 
 // ping proves the route, the key and that the model answers. It carries the
 // reviews' reasoning setting, so what llmwire sent is the label's.
-func (c *Client) ping(ctx context.Context) error {
+func (c *Client) ping(ctx context.Context, profile *llmwire.Profile) error {
 	resp, _, err := c.wire.Chat(ctx, llmwire.ChatRequest{
 		Model:     c.model,
 		Reasoning: c.reasoning(),
@@ -216,8 +222,9 @@ func (c *Client) ping(ctx context.Context) error {
 	}
 	c.sent = resp.ReasoningSent
 	// The backstop for any other route to "off": reviews send the same
-	// setting, so they would run without reasoning.
-	if c.sent == "off" {
+	// setting, so they would run without reasoning. Nothing sent to a model
+	// that reasons only when asked is off too.
+	if c.sent == "off" || (c.sent == "" && !profile.Reasoning.EnabledByDefault) {
 		return fmt.Errorf("ping: the model ran with reasoning off, and noergler needs reasoning")
 	}
 	if strings.TrimSpace(resp.Content) == "" {
