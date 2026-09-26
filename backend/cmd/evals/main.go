@@ -117,6 +117,19 @@ func dialGateway(s evals.Settings, effort string) (evals.Reviewer, error) {
 	return client, nil
 }
 
+// header names the model and the level the run used. A started client's label
+// carries the level llmwire actually sent, so two runs at different resolved
+// levels read differently even with -effort unset.
+func header(client evals.Reviewer, model, effort string) string {
+	if l, ok := client.(interface{ Label() string }); ok {
+		return l.Label()
+	}
+	if effort == "" {
+		effort = "model balanced"
+	}
+	return model + ", effort " + effort
+}
+
 // run returns (missed, err): missed distinguishes a prompt regression from a
 // run that could not happen, which the exit code has to tell apart.
 func run(ctx context.Context, opt options) (bool, error) {
@@ -146,12 +159,8 @@ func run(ctx context.Context, opt options) (bool, error) {
 
 	// Write errors are dropped: this is the progress line on stdout, and a
 	// report that cannot be printed changes nothing about the verdict.
-	effort := opt.effort
-	if effort == "" {
-		effort = "model balanced"
-	}
-	_, _ = fmt.Fprintf(opt.stdout, "model %s via %s, effort %s, %d case(s)\n\n",
-		settings.Model, settings.BaseURL, effort, len(cases))
+	_, _ = fmt.Fprintf(opt.stdout, "model %s via %s, %d case(s)\n\n",
+		header(client, settings.Model, opt.effort), settings.BaseURL, len(cases))
 	score := evals.Run(ctx, client, string(template), cases, counter.Count)
 	score.Report(opt.stdout)
 

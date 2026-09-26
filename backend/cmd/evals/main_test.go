@@ -270,13 +270,23 @@ type errorString string
 
 func (e errorString) Error() string { return string(e) }
 
-// Unset, the effort line says the model's balanced level applies rather than
-// printing an empty level.
-func TestRun_UnsetEffortSaysBalanced(t *testing.T) {
-	opt := baseOptions(t, stubClient{})
+// labelledClient is a reviewer that reports the label a started client has:
+// the model plus the level llmwire actually sent.
+type labelledClient struct {
+	stubClient
+	label string
+}
+
+func (c labelledClient) Label() string { return c.label }
+
+// The header names the level that was sent, so two runs on one model at
+// different resolved levels can be told apart.
+func TestRun_HeaderNamesTheLevelSent(t *testing.T) {
+	opt := baseOptions(t, labelledClient{label: "some-model-resolved"})
 	opt.effort = ""
 	_, _ = run(context.Background(), opt)
-	if out := opt.stdout.(*strings.Builder).String(); !strings.Contains(out, "effort model balanced") {
-		t.Errorf("stdout does not say the balanced level applies:\n%s", out)
+	out := opt.stdout.(*strings.Builder).String()
+	if !strings.Contains(out, "model some-model-resolved via") {
+		t.Errorf("stdout does not name the resolved label:\n%s", out)
 	}
 }
