@@ -74,7 +74,7 @@ func Boot(ctx context.Context, app *config.App, d Deps) (*Registry, error) {
 		g.enabled[slug] = rt
 		d.Log.InfoContext(teamCtx, fmt.Sprintf("team_ready team=%s model=%s riptide=%s",
 			slug,
-			config.ModelLabel(team.LLM.Model, team.LLM.ReasoningEffort),
+			modelLabel(rt, team),
 			onOff(rt.Riptide != nil && rt.Riptide.Enabled())))
 	}
 
@@ -125,6 +125,15 @@ func quotedList(items []string) string {
 		out += "'" + s + "'"
 	}
 	return out + "]"
+}
+
+// modelLabel is the started client's label, which names the reasoning level
+// llmwire resolved: an unset level would otherwise print as the bare model.
+func modelLabel(rt *Runtime, team *config.Team) string {
+	if rt != nil && rt.LLM != nil {
+		return rt.LLM.Label()
+	}
+	return config.ModelLabel(team.LLM.Model, team.LLM.ReasoningEffort)
 }
 
 func onOff(b bool) string {

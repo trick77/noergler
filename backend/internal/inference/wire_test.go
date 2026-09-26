@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/trick77/llmwire"
+	"github.com/trick77/llmwire/llmwiretest"
 )
 
 // wireBody is the shape noergler cares about in an outgoing request.
@@ -15,9 +16,8 @@ type wireBody struct {
 		Role    string `json:"role"`
 		Content any    `json:"content"`
 	} `json:"messages"`
-	ReasoningEffort string          `json:"reasoning_effort"`
-	ResponseFormat  json.RawMessage `json:"response_format"`
-	Stream          *bool           `json:"stream"`
+	ResponseFormat json.RawMessage `json:"response_format"`
+	Stream         *bool           `json:"stream"`
 }
 
 // The prompt is the only thing the model sees, so what reaches the wire is
@@ -38,7 +38,7 @@ func TestReviewRequestOnTheWire(t *testing.T) {
 	}
 
 	// The gateway alias goes on the wire, not the profile id.
-	if body.Model != "ai-gateway-gpt-5.5" {
+	if body.Model != "gateway-alias" {
 		t.Errorf("model = %q, want the gateway alias", body.Model)
 	}
 	if len(body.Messages) != 2 {
@@ -56,8 +56,10 @@ func TestReviewRequestOnTheWire(t *testing.T) {
 	if s, _ := body.Messages[1].Content.(string); s != "PLEASE REVIEW" {
 		t.Errorf("user content = %q, want the prompt", s)
 	}
-	if body.ReasoningEffort != "medium" {
-		t.Errorf("reasoning_effort = %q, want medium", body.ReasoningEffort)
+	// Code review is analysis a reader keeps: never the minimal setting,
+	// which on some models is thinking switched off.
+	if got := sentReasoning(t, f.lastChatBody); got != llmwiretest.BalancedSent {
+		t.Errorf("reasoning = %q, want the balanced level %q", got, llmwiretest.BalancedSent)
 	}
 	// Chat only, never streaming: a LiteLLM stream carries no cost header.
 	if body.Stream != nil && *body.Stream {
@@ -131,6 +133,9 @@ func TestMentionRequestOnTheWire(t *testing.T) {
 	}
 	if len(body.Messages) != 2 {
 		t.Fatalf("got %d messages, want system + user", len(body.Messages))
+	}
+	if got := sentReasoning(t, f.lastChatBody); got != llmwiretest.BalancedSent {
+		t.Errorf("reasoning = %q, want the balanced level %q", got, llmwiretest.BalancedSent)
 	}
 	if s, _ := body.Messages[0].Content.(string); s != MentionSystemMessage {
 		t.Error("a mention must carry the mention system message, not the review one")

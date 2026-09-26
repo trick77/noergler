@@ -11,7 +11,7 @@ import (
 // failing, so a pre-flight check run too early would reject every prompt.
 // Ready is the guard.
 func TestReadyBeforeAndAfterStartup(t *testing.T) {
-	const alias = "ai-gateway-gpt-5.5"
+	const alias = "gateway-alias"
 	f := &fakeGateway{}
 	srv := f.start(t, alias)
 	c := newTestClient(t, srv, alias)
@@ -36,7 +36,7 @@ func TestReadyBeforeAndAfterStartup(t *testing.T) {
 
 // An explicit window means the client is usable before Startup resolves one.
 func TestReadyWithExplicitWindow(t *testing.T) {
-	const alias = "ai-gateway-gpt-5.5"
+	const alias = "gateway-alias"
 	f := &fakeGateway{}
 	srv := f.start(t, alias)
 	c := newTestClient(t, srv, alias, func(o *Options) { o.ContextWindow = 1_000_000 })
@@ -48,18 +48,18 @@ func TestReadyWithExplicitWindow(t *testing.T) {
 
 // A pre-flight check on an unresolved window must not reject the prompt.
 func TestPreflightSkippedWhenNotReady(t *testing.T) {
-	const alias = "ai-gateway-gpt-5.5"
+	const alias = "gateway-alias"
 	f := &fakeGateway{chatBody: chatBody(`{"overview": "ok"}`)}
 	srv := f.start(t, alias)
 	c, err := New(Options{
-		Model:           testProfile,
-		ReasoningEffort: "medium",
-		APIKey:          "team-key",
-		HeadroomTokens:  defHeadroom,
-		Threshold:       defThreshold,
-		Tail:            defTail,
-		Env:             env(srv.URL, alias, nil),
-		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Model:          testProfile,
+		Registry:       testRegistry,
+		APIKey:         "team-key",
+		HeadroomTokens: defHeadroom,
+		Threshold:      defThreshold,
+		Tail:           defTail,
+		Env:            env(srv.URL, alias, nil),
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

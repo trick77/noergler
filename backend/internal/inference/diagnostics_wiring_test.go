@@ -17,7 +17,7 @@ import (
 // every completion with body.
 func capturingClient(t *testing.T, body string) (*Client, *bytes.Buffer) {
 	t.Helper()
-	const alias = "ai-gateway-gpt-5.5"
+	const alias = "gateway-alias"
 	f := &fakeGateway{chatBody: body}
 	srv := f.start(t, alias)
 
@@ -124,7 +124,7 @@ func TestReviewIsSilentOnACleanResponse(t *testing.T) {
 
 // A nil logger must not panic: New substitutes a discarding one.
 func TestReviewWithoutALoggerDoesNotPanic(t *testing.T) {
-	const alias = "ai-gateway-gpt-5.5"
+	const alias = "gateway-alias"
 	f := &fakeGateway{chatBody: chatWith(`{"overview":""}`)}
 	srv := f.start(t, alias)
 	c := newTestClient(t, srv, alias, func(o *Options) { o.Logger = nil })

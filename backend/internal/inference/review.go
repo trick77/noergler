@@ -96,7 +96,7 @@ func (c *Client) Review(ctx context.Context, req ReviewRequest) ReviewResult {
 
 	chat := llmwire.ChatRequest{
 		Model:     c.model,
-		Reasoning: llmwire.ReasoningEffort(c.effort),
+		Reasoning: c.reasoning(),
 		Messages: []llmwire.Message{
 			llmwire.System(ReviewSystemMessage),
 			llmwire.User(req.Prompt),
@@ -160,7 +160,7 @@ func (c *Client) Mention(ctx context.Context, req MentionRequest) MentionResult 
 
 	resp, _, err := c.wire.Chat(ctx, llmwire.ChatRequest{
 		Model:     c.model,
-		Reasoning: llmwire.ReasoningEffort(c.effort),
+		Reasoning: c.reasoning(),
 		Messages: []llmwire.Message{
 			llmwire.System(MentionSystemMessage),
 			llmwire.User(req.Prompt),

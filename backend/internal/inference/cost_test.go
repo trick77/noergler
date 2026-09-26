@@ -144,16 +144,16 @@ func TestCostFrom(t *testing.T) {
 
 // The cost header the gateway sends must survive as a priced call end to end.
 func TestCostFromLiveResponse(t *testing.T) {
-	const alias = "ai-gateway-gpt-5.5"
+	const alias = "gateway-alias"
 	f := &fakeGateway{costHeader: "0.0000925"}
 	srv := f.start(t, alias)
 
 	c, err := New(Options{
-		Model:           testProfile,
-		ReasoningEffort: "medium",
-		APIKey:          "team-key",
-		Env:             env(srv.URL, alias, nil),
-		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Model:    testProfile,
+		Registry: testRegistry,
+		APIKey:   "team-key",
+		Env:      env(srv.URL, alias, nil),
+		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -161,7 +161,7 @@ func TestCostFromLiveResponse(t *testing.T) {
 
 	resp, _, err := c.wire.Chat(context.Background(), llmwire.ChatRequest{
 		Model:     testProfile,
-		Reasoning: llmwire.ReasoningEffort("medium"),
+		Reasoning: llmwire.ReasoningBalanced(),
 		Messages:  []llmwire.Message{llmwire.User("hi")},
 	})
 	if err != nil {

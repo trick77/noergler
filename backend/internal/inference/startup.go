@@ -17,15 +17,11 @@ const pingPrompt = "Reply with: ok"
 // Startup runs the per-team checks. Any error disables that team only; it
 // never aborts the process (AGENTS.md).
 //
-// Order matters: the registry lookup and route check are local and cheap, the
+// Order matters: the profile and route checks are local and cheap, the
 // window resolve is one HTTP call, and the ping is an inference call. A team
-// misconfigured in an obvious way fails before it costs anything.
-//
-// There is no local reasoning-effort set. A hardcoded
-// {minimal, low, medium, high} would be wrong for the configured model in
-// both directions: it would reject a valid xhigh and accept an invalid
-// minimal. llmwire validates the level against the profile before sending,
-// and the gateway's 400 covers the rest; both are mapped in mapPingError.
+// misconfigured in an obvious way fails before it costs anything. What the
+// profile knows (capabilities, reasoning levels) is asked of the profile,
+// never probed over the network.
 func (c *Client) Startup(ctx context.Context) error {
 	profile, err := c.profile()
 	if err != nil {
@@ -33,7 +29,7 @@ func (c *Client) Startup(ctx context.Context) error {
 	}
 	// A profile not listed in LLMWIRE_LITELLM_MODELS is not gateway-routed, so
 	// FromEnv would send it to the vendor's own host. Disable the team rather
-	// than talk to api.openai.com with a gateway key.
+	// than send a gateway key there.
 	if profile.Gateway == "" {
 		return fmt.Errorf("model %q is not routed through the gateway: add it to %s",
 			c.model, llmwire.GatewayModelsEnv)
@@ -45,14 +41,45 @@ func (c *Client) Startup(ctx context.Context) error {
 	return c.ping(ctx)
 }
 
+// reviewNeeds is what a review asks of a model: strict JSON-schema output,
+// which is what makes the answer parseable.
+var reviewNeeds = llmwire.Needs{JSONSchema: true}
+
 // profile looks the model up in the client's registry, which FromEnv has
-// already rewritten with the gateway routes.
+// already rewritten with the gateway routes, and checks it can do the job:
+// review output, reasoning, and the configured level if there is one.
 func (c *Client) profile() (*llmwire.Profile, error) {
-	p, err := c.wire.Registry().Lookup(c.model)
+	reg := c.wire.Registry()
+	p, err := reg.Require(c.model, reviewNeeds)
 	if err != nil {
 		return nil, fmt.Errorf("model %q: %w", c.model, err)
 	}
+	// Policy, not a model fact: a review is analysis a reader keeps, and a
+	// model that cannot reason is not good enough at it.
+	if !p.Reasoning.Supported {
+		return nil, fmt.Errorf("model %q does not reason, and noergler needs a reasoning-capable model; valid choices are %s",
+			c.model, strings.Join(reasoningModels(reg), ", "))
+	}
+	if c.effort != "" && !p.Reasoning.Accepts(c.effort) {
+		if len(p.Reasoning.EffortValues) == 0 {
+			return nil, fmt.Errorf("reasoning_effort=%q: model %q takes no named level; unset it to use the model's default",
+				c.effort, c.model)
+		}
+		return nil, fmt.Errorf("reasoning_effort=%q is not accepted by %s (accepted: %s; unset it for the model's balanced level)",
+			c.effort, c.model, strings.Join(p.Reasoning.EffortValues, ", "))
+	}
 	return p, nil
+}
+
+// reasoningModels lists the registry's models that could run a review.
+func reasoningModels(reg *llmwire.Registry) []string {
+	var out []string
+	for _, id := range reg.ChatModels(reviewNeeds) {
+		if p, err := reg.Lookup(id); err == nil && p.Reasoning.Supported {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // listedIDs names what the gateway did list, for the error that says an alias
@@ -169,16 +196,18 @@ func (c *Client) checkWindowFloor() error {
 	return nil
 }
 
-// ping proves the route, the key and that the model answers.
+// ping proves the route, the key and that the model answers. It carries the
+// reviews' reasoning setting, so what llmwire sent is the label's.
 func (c *Client) ping(ctx context.Context) error {
 	resp, _, err := c.wire.Chat(ctx, llmwire.ChatRequest{
 		Model:     c.model,
-		Reasoning: llmwire.ReasoningEffort(c.effort),
+		Reasoning: c.reasoning(),
 		Messages:  []llmwire.Message{llmwire.User(pingPrompt)},
 	})
 	if err != nil {
-		return mapPingError(err, c.effort)
+		return fmt.Errorf("ping: %w", err)
 	}
+	c.sent = resp.ReasoningSent
 	if strings.TrimSpace(resp.Content) == "" {
 		return errors.New("empty response from model")
 	}
@@ -193,35 +222,3 @@ func (c *Client) ping(ctx context.Context) error {
 // only after Startup. An unpriced ping means summaries carry no cost and the
 // per-PR cap never fires for this model.
 func (c *Client) PingCost() CallCost { return c.pingCost }
-
-// mapPingError turns a rejection into something an operator can act on.
-//
-// Two shapes reach here for a bad effort level. llmwire refuses a level the
-// profile does not list before sending, carrying the accepted set; a gateway
-// that rejects it anyway answers 400 naming the parameter. Both mean the same
-// thing to an operator.
-func mapPingError(err error, effort string) error {
-	var unsupported *llmwire.UnsupportedError
-	if errors.As(err, &unsupported) {
-		if len(unsupported.Accepted) > 0 {
-			return fmt.Errorf("reasoning_effort=%q is not accepted by %s (accepted: %s)",
-				effort, unsupported.Model, strings.Join(unsupported.Accepted, ", "))
-		}
-		return fmt.Errorf("requires a reasoning-capable model (reasoning_effort=%q): %w", effort, err)
-	}
-
-	var api *llmwire.APIError
-	if errors.As(err, &api) && api.StatusCode == 400 && mentionsReasoningEffort(api) {
-		return fmt.Errorf("requires a reasoning-capable model (reasoning_effort=%q rejected): %w", effort, err)
-	}
-	return fmt.Errorf("ping: %w", err)
-}
-
-// mentionsReasoningEffort reports whether a 400 blamed the reasoning parameter,
-// by the field the endpoint names or by its message.
-func mentionsReasoningEffort(api *llmwire.APIError) bool {
-	if strings.Contains(strings.ToLower(api.Param), "reasoning") {
-		return true
-	}
-	return strings.Contains(strings.ToLower(api.Message), "reasoning_effort")
-}

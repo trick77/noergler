@@ -16,7 +16,7 @@ import (
 // and the default knobs the budget is 628k and the ceiling 936k, and
 // compression legitimately produces prompts between the two.
 func TestFitCeilingIsNotTheCompressionBudget(t *testing.T) {
-	const alias = "ai-gateway-gpt-5.5"
+	const alias = "gateway-alias"
 	f := &fakeGateway{}
 	srv := f.start(t, alias)
 	c := newTestClient(t, srv, alias, func(o *Options) { o.ContextWindow = 1_000_000 })

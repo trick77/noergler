@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/logging"
 	"github.com/trick77/noergler/internal/store"
 )
@@ -209,5 +210,20 @@ func TestBoot_UnreadableClaimsTableAbortsBoot(t *testing.T) {
 
 	if _, err := Boot(context.Background(), appWith(nil, nil, nil), Deps{Claims: db, Log: log}); err == nil {
 		t.Error("want boot to abort when the claims table is unreadable")
+	}
+}
+
+// Without a started client the label falls back to the configured values.
+func TestModelLabel_FallsBackToConfig(t *testing.T) {
+	team := &config.Team{LLM: config.LLM{Model: "m", ReasoningEffort: "lvl"}}
+	if got := modelLabel(nil, team); got != "m-lvl" {
+		t.Errorf("label = %q, want m-lvl", got)
+	}
+	if got := modelLabel(&Runtime{}, team); got != "m-lvl" {
+		t.Errorf("label = %q, want m-lvl", got)
+	}
+	// A started client's label wins: it names the level actually sent.
+	if got := modelLabel(&Runtime{LLM: &inference.Client{}}, team); got != "" {
+		t.Errorf("label = %q, want the client's (empty on a zero client)", got)
 	}
 }
