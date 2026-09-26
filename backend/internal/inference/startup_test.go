@@ -467,6 +467,53 @@ func TestStartupChecksTheProfileBeforeTheNetwork(t *testing.T) {
 		}
 	})
 
+	// With no level set, a model that reasons only when asked and names no
+	// balanced level would get nothing sent and run without reasoning.
+	t.Run("no level on a model that reasons only when asked", func(t *testing.T) {
+		f := &fakeGateway{}
+		srv := f.start(t, alias)
+		c := newTestClient(t, srv, alias, func(o *Options) {
+			o.Model = "noergler-optin"
+			o.Env = routed(srv.URL, "noergler-optin", alias)
+		})
+		err := c.Startup(context.Background())
+		if err == nil {
+			t.Fatal("want an error")
+		}
+		msg := err.Error()
+		// Only levels that would pass: "none" is refused as reasoning off.
+		if !strings.Contains(msg, "set reasoning_effort (accepted: low, high)") {
+			t.Errorf("err = %v, want it to offer only the levels that pass", err)
+		}
+		if !strings.Contains(msg, pickAnotherModel) {
+			t.Errorf("err = %v, want it to name the other remedy", err)
+		}
+		if f.gotModels+f.gotChat != 0 {
+			t.Errorf("%d request(s) sent, want none", f.gotModels+f.gotChat)
+		}
+	})
+
+	// No named level to offer: picking another model is the only remedy.
+	t.Run("no level on an opt-in model that takes no named level", func(t *testing.T) {
+		f := &fakeGateway{}
+		srv := f.start(t, alias)
+		c := newTestClient(t, srv, alias, func(o *Options) {
+			o.Model = "noergler-optin-budget"
+			o.Env = routed(srv.URL, "noergler-optin-budget", alias)
+		})
+		err := c.Startup(context.Background())
+		if err == nil {
+			t.Fatal("want an error")
+		}
+		msg := err.Error()
+		if strings.Contains(msg, "accepted") || strings.Contains(msg, "set reasoning_effort") {
+			t.Errorf("err = %v, want no level offered", err)
+		}
+		if !strings.Contains(msg, pickAnotherModel) {
+			t.Errorf("err = %v, want it to name the other remedy", err)
+		}
+	})
+
 	t.Run("a model that does not reason", func(t *testing.T) {
 		f := &fakeGateway{}
 		srv := f.start(t, alias)
@@ -498,8 +545,9 @@ var testRegistry = func() *llmwire.Registry {
 	return reg
 }()
 
-// plainProfile adds two chat models with strict JSON output: one that does
-// not reason, and one that reasons by token budget and so has no named level.
+// plainProfile adds chat models with strict JSON output: one that does not
+// reason, one that reasons by token budget and so has no named level, and one
+// that reasons only when asked and names no balanced level.
 const plainProfile = `
   - id: noergler-plain
     display_name: noergler plain
@@ -522,7 +570,37 @@ const plainProfile = `
       min_budget: 1024
     output: {json_object: true, json_schema: true, strict_schema: true}
     limits: {context: 128000, max_output: 16384}
+  - id: noergler-optin-budget
+    display_name: noergler opt-in budget
+    provider: llmwiretest
+    verified: source-derived
+    max_tokens_param: max_tokens
+    reasoning:
+      supported: true
+      enabled_by_default: false
+      can_be_disabled: true
+      control: budget_tokens
+      budget_param: thinking_budget
+      min_budget: 1024
+    output: {json_object: true, json_schema: true, strict_schema: true}
+    limits: {context: 128000, max_output: 16384}
+  - id: noergler-optin
+    display_name: noergler opt-in
+    provider: llmwiretest
+    verified: source-derived
+    max_tokens_param: max_tokens
+    reasoning:
+      supported: true
+      enabled_by_default: false
+      can_be_disabled: true
+      control: effort
+      effort_values: [none, low, high]
+    output: {json_object: true, json_schema: true, strict_schema: true}
+    limits: {context: 128000, max_output: 16384}
 `
+
+// pickAnotherModel is the remedy every opt-in refusal names.
+const pickAnotherModel = "pick a model that reasons by default or names a balanced level"
 
 // routed is env for a model other than testProfile.
 func routed(base, model, alias string) func(string) (string, bool) {
@@ -545,8 +623,43 @@ func TestPingRefusesReasoningOff(t *testing.T) {
 	srv := f.start(t, alias)
 	// Straight to ping, past the profile check that would refuse the level.
 	c := newTestClient(t, srv, alias, func(o *Options) { o.ReasoningEffort = "none" })
-	err := c.ping(context.Background())
+	p, _ := testRegistry.Lookup(testProfile)
+	err := c.ping(context.Background(), p)
 	if err == nil || !strings.Contains(err.Error(), "reasoning off") {
 		t.Fatalf("err = %v, want the reasoning-off refusal", err)
+	}
+}
+
+// Nothing sent to a model that reasons only when asked is reasoning off too.
+func TestPingRefusesNothingSentOnAnOptInModel(t *testing.T) {
+	const alias = "gateway-alias"
+	f := &fakeGateway{}
+	srv := f.start(t, alias)
+	c := newTestClient(t, srv, alias, func(o *Options) {
+		o.Model = "noergler-optin"
+		o.Env = routed(srv.URL, "noergler-optin", alias)
+	})
+	p, _ := testRegistry.Lookup("noergler-optin")
+	err := c.ping(context.Background(), p)
+	if err == nil || !strings.Contains(err.Error(), "reasoning off") {
+		t.Fatalf("err = %v, want the reasoning-off refusal", err)
+	}
+}
+
+// A configured level on such a model is fine: it asks for reasoning.
+func TestStartupAcceptsALevelOnAnOptInModel(t *testing.T) {
+	const alias = "gateway-alias"
+	f := &fakeGateway{}
+	srv := f.start(t, alias)
+	c := newTestClient(t, srv, alias, func(o *Options) {
+		o.Model = "noergler-optin"
+		o.ReasoningEffort = "high"
+		o.Env = routed(srv.URL, "noergler-optin", alias)
+	})
+	if err := c.Startup(context.Background()); err != nil {
+		t.Fatalf("Startup: %v", err)
+	}
+	if got := c.Label(); got != "noergler-optin-high" {
+		t.Errorf("Label = %q, want noergler-optin-high", got)
 	}
 }

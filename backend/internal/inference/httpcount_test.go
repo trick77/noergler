@@ -98,7 +98,8 @@ func TestInferenceCountsIntoTheCallersScope(t *testing.T) {
 	}
 
 	ctx, counter := httpstats.WithScope(context.Background())
-	if err := c.ping(ctx); err != nil {
+	p, _ := testRegistry.Lookup(testProfile)
+	if err := c.ping(ctx, p); err != nil {
 		t.Fatalf("ping: %v", err)
 	}
 	if got := counter.Summarize()["inference"]; got != 1 {
