@@ -5,15 +5,16 @@
 // command. Re-run it after any edit to prompts/review.txt, to the assembly
 // in internal/inference, or when changing model or reasoning effort.
 //
-//	EVAL_BASE_URL=https://mimo.example/v1 \
-//	EVAL_API_KEY=... \
-//	  go run ./cmd/evals -prompt ../prompts/review.txt -context-window 1000000
+//	EVAL_BASE_URL=https://llm.example/v1 \
+//	EVAL_API_KEY=... EVAL_MODEL=<profile id> \
+//	  go run ./cmd/evals -prompt ../prompts/review.txt -effort <level>
 //
-// Defaults: model mimo-v2.5-pro, reasoning effort high. llmwire validates the
-// effort against the profile, so an unsupported level is the gateway's 400,
-// not a local enum.
+// No model or level is a default in code: a series is only comparable at
+// one pair, which internal/evals/results/README.md records. -effort unset
+// means the model's balanced level; a set one is checked against the profile
+// at startup, before any request.
 //
-// EVAL_MODEL must be an llmwire PROFILE id, not whatever name the endpoint
+// EVAL_MODEL is required and must be an llmwire PROFILE id, not whatever name the endpoint
 // answers to: llmwire's registry is fixed and rejects an unknown id before
 // any request is sent. The gateway alias defaults to that id, which is what
 // a plain OpenAI-compatible host serves; EVAL_ALIAS covers one that renames.
@@ -70,10 +71,9 @@ type options struct {
 func main() {
 	opt := options{getenv: os.Getenv, stdout: os.Stdout, newClient: dialGateway}
 	flag.StringVar(&opt.promptPath, "prompt", "../prompts/review.txt", "review prompt template")
-	// high, not the review path's default: an eval measures what the prompt
-	// can do, so the model should not be the limiting factor. Lower it
-	// deliberately to see how the prompt holds up with less thinking.
-	flag.StringVar(&opt.effort, "effort", "high", "reasoning effort")
+	// Empty is the model's balanced level. Keep a series at the level its
+	// earlier runs used: less thinking scores worse on the same prompt.
+	flag.StringVar(&opt.effort, "effort", "", "reasoning level (empty: the model's balanced level)")
 	flag.StringVar(&opt.jsonOut, "json", "", "also write the full result as JSON to this path")
 	flag.IntVar(&opt.window, "context-window", 0, "override the gateway's max_input_tokens (0 = resolve it)")
 	flag.DurationVar(&opt.timeout, "timeout", 10*time.Minute, "whole-run timeout")
@@ -117,6 +117,19 @@ func dialGateway(s evals.Settings, effort string) (evals.Reviewer, error) {
 	return client, nil
 }
 
+// header names the model and the level the run used. A started client's label
+// carries the level llmwire actually sent, so two runs at different resolved
+// levels read differently even with -effort unset.
+func header(client evals.Reviewer, model, effort string) string {
+	if l, ok := client.(interface{ Label() string }); ok {
+		return l.Label()
+	}
+	if effort == "" {
+		effort = "model balanced"
+	}
+	return model + ", effort " + effort
+}
+
 // run returns (missed, err): missed distinguishes a prompt regression from a
 // run that could not happen, which the exit code has to tell apart.
 func run(ctx context.Context, opt options) (bool, error) {
@@ -146,8 +159,8 @@ func run(ctx context.Context, opt options) (bool, error) {
 
 	// Write errors are dropped: this is the progress line on stdout, and a
 	// report that cannot be printed changes nothing about the verdict.
-	_, _ = fmt.Fprintf(opt.stdout, "model %s via %s, effort %s, %d case(s)\n\n",
-		settings.Model, settings.BaseURL, opt.effort, len(cases))
+	_, _ = fmt.Fprintf(opt.stdout, "model %s via %s, %d case(s)\n\n",
+		header(client, settings.Model, opt.effort), settings.BaseURL, len(cases))
 	score := evals.Run(ctx, client, string(template), cases, counter.Count)
 	score.Report(opt.stdout)
 

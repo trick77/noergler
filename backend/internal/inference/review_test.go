@@ -15,18 +15,18 @@ import (
 // skipping Startup so a test can drive one call in isolation.
 func reviewClient(t *testing.T, f *fakeGateway) *Client {
 	t.Helper()
-	const alias = "ai-gateway-gpt-5.5"
+	const alias = "gateway-alias"
 	srv := f.start(t, alias)
 	c, err := New(Options{
-		Model:           testProfile,
-		ReasoningEffort: "medium",
-		APIKey:          "team-key",
-		ContextWindow:   1_000_000,
-		HeadroomTokens:  defHeadroom,
-		Threshold:       defThreshold,
-		Tail:            defTail,
-		Env:             env(srv.URL, alias, nil),
-		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Model:          testProfile,
+		Registry:       testRegistry,
+		APIKey:         "team-key",
+		ContextWindow:  1_000_000,
+		HeadroomTokens: defHeadroom,
+		Threshold:      defThreshold,
+		Tail:           defTail,
+		Env:            env(srv.URL, alias, nil),
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

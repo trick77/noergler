@@ -28,6 +28,9 @@ type Client struct {
 	wire   *llmwire.Client
 	model  string
 	effort string
+	// sent is the reasoning setting llmwire put on the wire for the startup
+	// ping, which is the one every review sends too. Empty before Startup.
+	sent string
 
 	// window is the context window resolved at startup, 0 until Startup runs.
 	// An explicit OPENAI_CONTEXT_WINDOW wins and is set here directly.
@@ -47,13 +50,15 @@ type Client struct {
 
 // Options is what a team's client needs beyond its llmwire profile.
 type Options struct {
-	// Model is an llmwire profile id (gpt-5.5), never a gateway alias.
+	// Model is an llmwire profile id, never a gateway alias.
 	Model string
-	// ReasoningEffort is sent on every call. Not validated locally: an
-	// unusable value is the gateway's 400, which Startup maps to a readable
-	// error. A hardcoded allowed set would be wrong for the configured model
-	// in both directions, so there is none.
+	// ReasoningEffort is the operator's reasoning level for every call. Empty
+	// means the model's balanced level. A set level is checked against the
+	// profile's levels by Startup, before any request.
 	ReasoningEffort string
+	// Registry holds the profiles. Nil means llmwire's built-in one; tests
+	// pass llmwiretest's.
+	Registry *llmwire.Registry
 	// APIKey is the team's key, answered to llmwire through Lookup rather than
 	// Config.APIKey: FromEnv refuses a key set directly on a gateway-routed
 	// model.
@@ -75,7 +80,7 @@ type Options struct {
 //
 // Config.BaseURL is deliberately left empty. FromEnv short-circuits when it is
 // set, skipping gateway routing entirely, which would send a profile missing
-// from LLMWIRE_LITELLM_MODELS to api.openai.com with whatever key is around.
+// from LLMWIRE_LITELLM_MODELS to its vendor's host with whatever key is around.
 // Leaving it empty makes that case an error instead.
 func New(opt Options) (*Client, error) {
 	if strings.TrimSpace(opt.Model) == "" {
@@ -110,6 +115,7 @@ func New(opt Options) (*Client, error) {
 		Logger:      opt.Logger,
 		Lookup:      teamLookup(opt.APIKey, env),
 		HTTPClient:  countingClient(),
+		Registry:    opt.Registry,
 		// APIKey stays empty: the team's key is answered through Lookup.
 	})
 	if err != nil {
@@ -173,15 +179,32 @@ const gatewayAPIKeyEnv = "LLMWIRE_LITELLM_API_KEY"
 func (c *Client) Model() string { return c.model }
 
 // Label is the model string a reader sees: the profile id with the reasoning
-// effort appended. It is what the summary footnote shows and what a run row
+// setting appended. It is what the summary footnote shows and what a run row
 // stores.
 //
-// Not Model(): that one names the profile llmwire routes on, and the effort is
-// part of what produced a review, so a run recorded without it cannot be told
-// apart from the same model at another effort. The profile id rather than the
-// gateway alias is deliberate: the alias is the operator's private naming and
-// has no business in a PR comment.
-func (c *Client) Label() string { return config.ModelLabel(c.model, c.effort) }
+// Not Model(): that one names the profile llmwire routes on, and the reasoning
+// setting is part of what produced a review, so a run recorded without it
+// cannot be told apart from the same model at another level. After Startup it
+// is what llmwire actually sent, so an unset level still records the one the
+// model's balanced default resolved to. The profile id rather than the gateway
+// alias is deliberate: the alias is the operator's private naming and has no
+// business in a PR comment.
+func (c *Client) Label() string {
+	if c.sent != "" {
+		return config.ModelLabel(c.model, c.sent)
+	}
+	return config.ModelLabel(c.model, c.effort)
+}
+
+// reasoning is the reasoning request every call carries. Code review is
+// analysis a reader keeps, so the default is the model's balanced level,
+// never the minimal one: on some models that is thinking switched off.
+func (c *Client) reasoning() llmwire.ReasoningRequest {
+	if c.effort == "" {
+		return llmwire.ReasoningBalanced()
+	}
+	return llmwire.ReasoningEffort(c.effort)
+}
 
 // ContextWindow is the resolved window in tokens, 0 before Startup.
 func (c *Client) ContextWindow() int { return c.window }

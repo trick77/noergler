@@ -210,13 +210,6 @@ type Settings struct {
 	ContextWindow int
 }
 
-// DefaultModel is the profile evals are scored on.
-//
-// Overridable for a deliberate comparison, never by accident: a weaker model
-// or less thinking scores worse on the same prompt, so a mixed history cannot
-// be read as a prompt history.
-const DefaultModel = "mimo-v2.5-pro"
-
 // ResolveSettings reads the run's settings, naming what is missing.
 //
 // getenv rather than os.Getenv so this is testable without touching the
@@ -229,9 +222,9 @@ func ResolveSettings(getenv func(string) string, windowFlag int) (Settings, erro
 		Alias:         strings.TrimSpace(getenv("EVAL_ALIAS")),
 		ContextWindow: windowFlag,
 	}
-	if s.Model == "" {
-		s.Model = DefaultModel
-	}
+	// No default model: a weaker model or less thinking scores worse on the
+	// same prompt, so a run on a model nobody named cannot be read as a point
+	// in the prompt's history. The committed series names its model.
 	var missing []string
 	if s.BaseURL == "" {
 		missing = append(missing, "EVAL_BASE_URL")
@@ -239,8 +232,11 @@ func ResolveSettings(getenv func(string) string, windowFlag int) (Settings, erro
 	if s.APIKey == "" {
 		missing = append(missing, "EVAL_API_KEY")
 	}
+	if s.Model == "" {
+		missing = append(missing, "EVAL_MODEL")
+	}
 	if len(missing) > 0 {
-		return s, fmt.Errorf("set %s to point at an OpenAI-compatible endpoint",
+		return s, fmt.Errorf("set %s to point at an OpenAI-compatible endpoint and an llmwire profile",
 			strings.Join(missing, ", "))
 	}
 	// resolveWindow's error tells the operator to set OPENAI_CONTEXT_WINDOW,

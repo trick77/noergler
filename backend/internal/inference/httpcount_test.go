@@ -14,7 +14,7 @@ import (
 // inference=0 on every review while the call plainly happened, so the one
 // upstream that costs money was the one the log said nothing about.
 func TestInferenceRequestsAreCounted(t *testing.T) {
-	const alias = "ai-gateway-gpt-5.5"
+	const alias = "gateway-alias"
 	f := &fakeGateway{}
 	srv := f.start(t, alias)
 	c := newTestClient(t, srv, alias)
@@ -88,7 +88,7 @@ func TestCountingClientKeepsLLMWiresTimeoutShape(t *testing.T) {
 // A counter is per review. A client built once and used across reviews must
 // count into whichever scope the call runs in, not the one it was built in.
 func TestInferenceCountsIntoTheCallersScope(t *testing.T) {
-	const alias = "ai-gateway-gpt-5.5"
+	const alias = "gateway-alias"
 	f := &fakeGateway{}
 	srv := f.start(t, alias)
 	c := newTestClient(t, srv, alias)

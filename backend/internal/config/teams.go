@@ -476,11 +476,7 @@ func ResolveTeam(block *yaml.Node, instance *App, lookup func(string) (string, b
 		llm.Model = *tb.inference.model
 	}
 	if tb.inference.reasoningEffort != nil {
-		effort, err := normalizeEffort(*tb.inference.reasoningEffort)
-		if err != nil {
-			return nil, teamErrorf("inference: reasoning_effort: Value error, %s", err.Error())
-		}
-		llm.ReasoningEffort = effort
+		llm.ReasoningEffort = normalizeEffort(*tb.inference.reasoningEffort)
 	}
 	if tb.inference.contextWindow != nil {
 		llm.ContextWindow = *tb.inference.contextWindow

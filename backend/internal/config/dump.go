@@ -108,6 +108,16 @@ func contextWindow(n int) string {
 	return fmt.Sprint(n)
 }
 
+// reasoningEffort renders a level. Empty is not "no reasoning": the model's
+// balanced level applies, resolved per team at startup and shown in its
+// model label.
+func reasoningEffort(s string) string {
+	if s == "" {
+		return "model balanced"
+	}
+	return s
+}
+
 // byteCap renders a byte cap. 0 is not a cap of zero, which would refuse every
 // body; it means no cap at all, which is the diff default.
 func byteCap(n int) string {
@@ -120,7 +130,7 @@ func byteCap(n int) string {
 func llmSection(log *slog.Logger, label string, l LLM) {
 	section(log, label,
 		kv{"model", l.Model}, kv{"api_key", mask}, kv{"base_url", l.BaseURL},
-		kv{"gateway_models", l.GatewayModels}, kv{"reasoning_effort", l.ReasoningEffort},
+		kv{"gateway_models", l.GatewayModels}, kv{"reasoning_effort", reasoningEffort(l.ReasoningEffort)},
 		kv{"context_window", contextWindow(l.ContextWindow)})
 }
 

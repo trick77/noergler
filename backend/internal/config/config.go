@@ -53,8 +53,8 @@ type Bitbucket struct {
 
 // LLM is the inference setup: instance-wide gateway, per-team key and model.
 type LLM struct {
-	// Model is an llmwire profile id (gpt-5.5), never a gateway alias: the
-	// alias is the operator's, in LLMWIRE_LITELLM_MODELS.
+	// Model is an llmwire profile id, never a gateway alias: the alias is the
+	// operator's, in LLMWIRE_LITELLM_MODELS.
 	Model string
 	// APIKey is empty on the instance: every team brings its own.
 	APIKey string
@@ -62,11 +62,10 @@ type LLM struct {
 	BaseURL string
 	// GatewayModels is LLMWIRE_LITELLM_MODELS verbatim.
 	GatewayModels string
-	// ReasoningEffort is mandatory: noergler needs a reasoning-capable model.
-	// Normalised (trimmed, lower-cased) and not otherwise validated here. The
-	// allowed set is the profile's, which llmwire checks before sending; a
-	// gateway that rejects the level anyway answers 400 and the startup ping
-	// reports it.
+	// ReasoningEffort is the operator's reasoning level, a product knob shown
+	// in every run's model label. Empty means the model's balanced level.
+	// Normalised (trimmed, lower-cased) and not otherwise validated here: the
+	// allowed set is the profile's, checked at team startup.
 	ReasoningEffort string
 	// ContextWindow in tokens; 0 = read max_input_tokens from the gateway.
 	ContextWindow int
@@ -402,15 +401,10 @@ func parseFloat(s string) (float64, error) {
 	return v, nil
 }
 
-// normalizeEffort trims and lower-cases; empty is refused because noergler
-// needs a reasoning-capable model and an empty value would silently disable
-// reasoning.
-func normalizeEffort(v string) (string, error) {
-	s := strings.ToLower(strings.TrimSpace(v))
-	if s == "" {
-		return "", fmt.Errorf("reasoning_effort is required (noergler needs a reasoning-capable model); set the profile's effort level")
-	}
-	return s, nil
+// normalizeEffort trims and lower-cases. Empty is the unset level: the
+// model's balanced one, not reasoning switched off.
+func normalizeEffort(v string) string {
+	return strings.ToLower(strings.TrimSpace(v))
 }
 
 // LoadInstance reads layer 1 from lookup (os.LookupEnv in production). Every
@@ -476,11 +470,7 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 		Teams:           map[string]*Team{},
 		Disabled:        map[string]string{},
 	}
-	effort, err := normalizeEffort(e.str("OPENAI_REASONING_EFFORT", "high"))
-	if err != nil {
-		e.errs = append(e.errs, "OPENAI_REASONING_EFFORT: "+err.Error())
-	}
-	app.LLM.ReasoningEffort = effort
+	app.LLM.ReasoningEffort = normalizeEffort(e.str("OPENAI_REASONING_EFFORT", ""))
 	// A per-team cap above the global one never binds, so it reads as a
 	// setting that does nothing. Fail rather than let the misconfiguration
 	// survive to production unnoticed.

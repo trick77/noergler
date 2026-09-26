@@ -104,8 +104,10 @@ func (e *env) mustLoad() *App {
 func TestInstance_RequiredVarsAndDefaults(t *testing.T) {
 	e := newEnv(t)
 	app := e.mustLoad()
-	if app.LLM.ReasoningEffort != "high" || app.Teams["platform"].LLM.ReasoningEffort != "high" {
-		t.Errorf("reasoning effort default: %q", app.LLM.ReasoningEffort)
+	// Unset means the model's balanced level: no level name is a default
+	// in code, since which ones exist is the model's profile's business.
+	if app.LLM.ReasoningEffort != "" || app.Teams["platform"].LLM.ReasoningEffort != "" {
+		t.Errorf("reasoning effort default: %q, want unset", app.LLM.ReasoningEffort)
 	}
 	if app.Review.OptOutBranchKeyword != "noergloff" || app.Review.MaxComments != 25 || app.Review.MaxPRCostUSD != 5.0 {
 		t.Errorf("review defaults: %+v", app.Review)
@@ -235,11 +237,32 @@ func TestInstance_NegativeDiffCapAbortsBoot(t *testing.T) {
 	}
 }
 
-func TestInstance_EmptyReasoningEffortRejected(t *testing.T) {
+// A team's blank level overrides an instance level back to the model's
+// balanced one.
+func TestTeams_BlankEffortOverridesToUnset(t *testing.T) {
+	e := newEnv(t)
+	e.set("OPENAI_REASONING_EFFORT", "high")
+	e.teams(strings.Replace(twoTeams, "reasoning_effort: medium", "reasoning_effort: ''", 1))
+	e.payments()
+	app := e.mustLoad()
+	if got := app.Teams["payments"].LLM.ReasoningEffort; got != "" {
+		t.Errorf("payments effort = %q, want unset", got)
+	}
+	if got := app.Teams["platform"].LLM.ReasoningEffort; got != "high" {
+		t.Errorf("platform effort = %q, want the instance's", got)
+	}
+}
+
+// A blank level is the unset one, not an error: the model's balanced level.
+func TestInstance_BlankReasoningEffortIsUnset(t *testing.T) {
 	e := newEnv(t)
 	e.set("OPENAI_REASONING_EFFORT", "  ")
-	if _, err := e.load(); err == nil || !strings.Contains(err.Error(), "reasoning_effort is required") {
-		t.Errorf("err = %v", err)
+	app, err := e.load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if app.LLM.ReasoningEffort != "" {
+		t.Errorf("ReasoningEffort = %q, want unset", app.LLM.ReasoningEffort)
 	}
 }
 
@@ -423,10 +446,6 @@ func TestTeams_FaultDisablesOnlyThatTeam(t *testing.T) {
 		{"review typo", func(s string) string {
 			return strings.Replace(s, "      max_pr_cost_usd: 8.5\n", "      max_pr_cost_usd: 8.5\n      max_comment: 3\n", 1)
 		}, "review.max_comment: Extra inputs are not permitted"},
-		{"empty effort", func(s string) string {
-			return strings.Replace(s, "reasoning_effort: medium", "reasoning_effort: ''", 1)
-		},
-			"inference: reasoning_effort: Value error, reasoning_effort is required"},
 		{"riptide without token_env", func(s string) string {
 			return strings.Replace(s, "      token_env: TEAM_PAYMENTS_RIPTIDE_TOKEN\n", "", 1)
 		}, "riptide.token_env: Field required"},

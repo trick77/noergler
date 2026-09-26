@@ -67,6 +67,9 @@ func TestDump_ContextWindowZeroSaysWhereTheWindowComesFrom(t *testing.T) {
 	if strings.Contains(text, "context_window = 0") {
 		t.Error("a bare 0 reads as no window at all")
 	}
+	if !strings.Contains(text, "reasoning_effort = model balanced") {
+		t.Error("an unset level should say the model's balanced level applies")
+	}
 }
 
 // The diff cap defaults to 0, and a bare 0 reads as "refuses every diff" -

@@ -198,8 +198,9 @@ order:
 
 There is no effort score and no "What changed" section.
 
-The footnote's model line shows the llmwire profile id with the reasoning effort
-appended (`gpt-5.5-high`), not the operator's gateway alias.
+The footnote's model line shows the llmwire profile id with the reasoning level
+that was sent appended (`<profile>-<level>`), not the operator's gateway alias.
+With no level configured, that is what the model's balanced level resolved to.
 
 ## 11. Cost
 

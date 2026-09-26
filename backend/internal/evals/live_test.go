@@ -10,6 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/trick77/llmwire"
+	"github.com/trick77/llmwire/llmwiretest"
+
 	"github.com/trick77/noergler/internal/evals"
 	"github.com/trick77/noergler/internal/inference"
 )
@@ -23,9 +26,14 @@ import (
 // a prompt shipped with a literal {files} in it would score whatever the
 // model made of the placeholder.
 func TestEvalRunReachesAGatewayAndScoresTheResponse(t *testing.T) {
-	// A real llmwire profile: the registry is fixed, so an invented id is
-	// rejected before any request. This is the profile cmd/evals defaults to.
-	const profile, alias = "mimo-v2.5-pro", "eval-target"
+	// llmwiretest's synthetic chat model, routed through the gateway the
+	// way cmd/evals routes the configured one.
+	const profile, alias = llmwiretest.ChatModel, "eval-target"
+	reg, err := llmwire.NewRegistry([]byte(strings.Replace(string(llmwiretest.Profiles()),
+		"providers:\n", "providers:\n  litellm: {}\n", 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	var sawPrompt string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +73,7 @@ func TestEvalRunReachesAGatewayAndScoresTheResponse(t *testing.T) {
 		"LLMWIRE_LITELLM_API_KEY":  "k",
 	}
 	client, err := inference.New(inference.Options{
-		Model: profile, ReasoningEffort: "medium", APIKey: "k",
+		Model: profile, Registry: reg, APIKey: "k",
 		Logger: slog.New(slog.NewTextHandler(discard{}, nil)),
 		Env: func(n string) (string, bool) {
 			v, ok := env[n]
