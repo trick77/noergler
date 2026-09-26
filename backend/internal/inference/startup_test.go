@@ -452,6 +452,21 @@ func TestStartupChecksTheProfileBeforeTheNetwork(t *testing.T) {
 		}
 	})
 
+	// A level the model lists but that switches reasoning off would bypass
+	// the reasoning-capable check.
+	t.Run("a level that switches reasoning off", func(t *testing.T) {
+		f := &fakeGateway{}
+		srv := f.start(t, alias)
+		c := newTestClient(t, srv, alias, func(o *Options) { o.ReasoningEffort = "none" })
+		err := c.Startup(context.Background())
+		if err == nil || !strings.Contains(err.Error(), "switches reasoning off") {
+			t.Fatalf("err = %v, want the reasoning-off refusal", err)
+		}
+		if f.gotModels+f.gotChat != 0 {
+			t.Errorf("%d request(s) sent, want none", f.gotModels+f.gotChat)
+		}
+	})
+
 	t.Run("a model that does not reason", func(t *testing.T) {
 		f := &fakeGateway{}
 		srv := f.start(t, alias)
@@ -519,5 +534,19 @@ func routed(base, model, alias string) func(string) (string, bool) {
 	return func(name string) (string, bool) {
 		v, ok := vars[name]
 		return v, ok
+	}
+}
+
+// Whatever the configuration, a ping that went out with reasoning off fails
+// startup: reviews would run the same way.
+func TestPingRefusesReasoningOff(t *testing.T) {
+	const alias = "gateway-alias"
+	f := &fakeGateway{}
+	srv := f.start(t, alias)
+	// Straight to ping, past the profile check that would refuse the level.
+	c := newTestClient(t, srv, alias, func(o *Options) { o.ReasoningEffort = "none" })
+	err := c.ping(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "reasoning off") {
+		t.Fatalf("err = %v, want the reasoning-off refusal", err)
 	}
 }

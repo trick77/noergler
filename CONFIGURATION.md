@@ -160,7 +160,7 @@ the service.**
 | Unknown key in a team block | That team is disabled. `team_disabled team=<slug> reason=...` |
 | Team's model missing from `LLMWIRE_LITELLM_MODELS` | That team is disabled, rather than being routed to the vendor's own host. |
 | Gateway lists a window below 1M for the alias | That team is disabled. Set `OPENAI_CONTEXT_WINDOW` if the gateway understates it. |
-| Model cannot reason, lacks strict JSON-schema output, or does not list the configured `reasoning_effort` | That team is disabled, from its llmwire profile and before any request. The error names the valid choices. |
+| Model cannot reason, lacks strict JSON-schema output, or does not list the configured `reasoning_effort`, or that level switches reasoning off | That team is disabled, from its llmwire profile and before any request. The error names the valid choices. |
 | Team's riptide ping returns 401 | That team is disabled. Any other riptide error is a warning. |
 | Missing per-team secret env var | That team is disabled. |
 | Database, Bitbucket or Jira unreachable at startup | Startup aborts, after reporting every failing check rather than only the first. |

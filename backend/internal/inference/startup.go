@@ -68,6 +68,13 @@ func (c *Client) profile() (*llmwire.Profile, error) {
 		return nil, fmt.Errorf("reasoning_effort=%q is not accepted by %s (accepted: %s; unset it for the model's balanced level)",
 			c.effort, c.model, strings.Join(p.Reasoning.EffortValues, ", "))
 	}
+	// A listed level can still be the off switch, which would run reviews
+	// without reasoning past the check above. "none" is how llmwire spells
+	// that level.
+	if c.effort == "none" {
+		return nil, fmt.Errorf("reasoning_effort=%q switches reasoning off on %s, and noergler needs reasoning; pick another level or unset it",
+			c.effort, c.model)
+	}
 	return p, nil
 }
 
@@ -208,6 +215,11 @@ func (c *Client) ping(ctx context.Context) error {
 		return fmt.Errorf("ping: %w", err)
 	}
 	c.sent = resp.ReasoningSent
+	// The backstop for any other route to "off": reviews send the same
+	// setting, so they would run without reasoning.
+	if c.sent == "off" {
+		return fmt.Errorf("ping: the model ran with reasoning off, and noergler needs reasoning")
+	}
 	if strings.TrimSpace(resp.Content) == "" {
 		return errors.New("empty response from model")
 	}
