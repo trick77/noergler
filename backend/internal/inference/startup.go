@@ -78,8 +78,18 @@ func (c *Client) profile() (*llmwire.Profile, error) {
 	// Unset sends the balanced intent. A model that names no balanced level
 	// and reasons only when asked then gets nothing, and runs without it.
 	if c.effort == "" && p.Reasoning.Balanced == "" && !p.Reasoning.EnabledByDefault {
-		return nil, fmt.Errorf("model %q reasons only when asked and names no balanced level; set reasoning_effort (accepted: %s) or pick another model",
-			c.model, strings.Join(p.Reasoning.EffortValues, ", "))
+		remedy := "pick a model that reasons by default or names a balanced level"
+		// Offer only levels the checks above would pass: "none" is off.
+		var levels []string
+		for _, l := range p.Reasoning.EffortValues {
+			if l != "none" {
+				levels = append(levels, l)
+			}
+		}
+		if len(levels) > 0 {
+			remedy = fmt.Sprintf("set reasoning_effort (accepted: %s), or %s", strings.Join(levels, ", "), remedy)
+		}
+		return nil, fmt.Errorf("model %q reasons only when asked and names no balanced level; %s", c.model, remedy)
 	}
 	return p, nil
 }

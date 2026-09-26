@@ -477,11 +477,40 @@ func TestStartupChecksTheProfileBeforeTheNetwork(t *testing.T) {
 			o.Env = routed(srv.URL, "noergler-optin", alias)
 		})
 		err := c.Startup(context.Background())
-		if err == nil || !strings.Contains(err.Error(), "set reasoning_effort") {
-			t.Fatalf("err = %v, want it to ask for a level", err)
+		if err == nil {
+			t.Fatal("want an error")
+		}
+		msg := err.Error()
+		// Only levels that would pass: "none" is refused as reasoning off.
+		if !strings.Contains(msg, "set reasoning_effort (accepted: low, high)") {
+			t.Errorf("err = %v, want it to offer only the levels that pass", err)
+		}
+		if !strings.Contains(msg, pickAnotherModel) {
+			t.Errorf("err = %v, want it to name the other remedy", err)
 		}
 		if f.gotModels+f.gotChat != 0 {
 			t.Errorf("%d request(s) sent, want none", f.gotModels+f.gotChat)
+		}
+	})
+
+	// No named level to offer: picking another model is the only remedy.
+	t.Run("no level on an opt-in model that takes no named level", func(t *testing.T) {
+		f := &fakeGateway{}
+		srv := f.start(t, alias)
+		c := newTestClient(t, srv, alias, func(o *Options) {
+			o.Model = "noergler-optin-budget"
+			o.Env = routed(srv.URL, "noergler-optin-budget", alias)
+		})
+		err := c.Startup(context.Background())
+		if err == nil {
+			t.Fatal("want an error")
+		}
+		msg := err.Error()
+		if strings.Contains(msg, "accepted") || strings.Contains(msg, "set reasoning_effort") {
+			t.Errorf("err = %v, want no level offered", err)
+		}
+		if !strings.Contains(msg, pickAnotherModel) {
+			t.Errorf("err = %v, want it to name the other remedy", err)
 		}
 	})
 
@@ -541,6 +570,20 @@ const plainProfile = `
       min_budget: 1024
     output: {json_object: true, json_schema: true, strict_schema: true}
     limits: {context: 128000, max_output: 16384}
+  - id: noergler-optin-budget
+    display_name: noergler opt-in budget
+    provider: llmwiretest
+    verified: source-derived
+    max_tokens_param: max_tokens
+    reasoning:
+      supported: true
+      enabled_by_default: false
+      can_be_disabled: true
+      control: budget_tokens
+      budget_param: thinking_budget
+      min_budget: 1024
+    output: {json_object: true, json_schema: true, strict_schema: true}
+    limits: {context: 128000, max_output: 16384}
   - id: noergler-optin
     display_name: noergler opt-in
     provider: llmwiretest
@@ -555,6 +598,9 @@ const plainProfile = `
     output: {json_object: true, json_schema: true, strict_schema: true}
     limits: {context: 128000, max_output: 16384}
 `
+
+// pickAnotherModel is the remedy every opt-in refusal names.
+const pickAnotherModel = "pick a model that reasons by default or names a balanced level"
 
 // routed is env for a model other than testProfile.
 func routed(base, model, alias string) func(string) (string, bool) {
