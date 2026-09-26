@@ -203,7 +203,7 @@ The proxy also reports `x-litellm-key-spend`, the running total already spent on
 
 If the endpoint reports nothing usable, the run is recorded unpriced and the per-PR cap fails open for it. This matters in practice: a LiteLLM deployment whose cost map lacks the model sends the literal string `None` (older versions) or no header at all, and a proxy worker that started before its catalog was servable does this for every call it handles while its siblings price normally. Every call therefore logs the raw pricing headers plus the gateway's `x-litellm-call-id`; an unpriced call is a warning listing the `x-litellm-*` headers that did arrive, and the startup ping warns once when the model is not priced at all. The `key total` figure is still shown on an unpriced run. A reported `0` on a call that consumed tokens is recorded as `$0.00` and logged as a warning, since it usually means the gateway prices that deployment at zero.
 
-**Requirements:** the model needs a context window of at least 1,000,000 tokens (each PR is reviewed in a single call) and must accept `reasoning_effort`. Both are checked at startup.
+**Requirements:** the model needs a context window of at least 1,000,000 tokens (each PR is reviewed in a single call) and, per its llmwire profile, must reason and support strict JSON-schema output. All are checked at startup.
 
 ### Optional: forward review-cost events to riptide
 

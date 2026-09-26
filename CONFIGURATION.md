@@ -68,7 +68,7 @@ Everything here is a default a team block may replace.
 | `REVIEW_OPT_OUT_BRANCH_KEYWORD` | `noergloff` | Substring in the source branch name that skips the review. Empty disables it. |
 | `REVIEW_MAX_PR_COST_USD` | `5.00` | Once a PR's accumulated cost reaches this, auto-review stops. An `@mention` still works. |
 | `JIRA_ACCEPTANCE_CRITERIA_PREFIXES` | `AC,AK,Acceptance Criteria,Acceptance Criterion,Akzeptanzkriterium,Akzeptanzkriterien,DoD,Req` | Prefixes that mark an acceptance-criteria line in a ticket. Matched at a word boundary. |
-| `OPENAI_REASONING_EFFORT` | `high` | One of the profile's effort levels (`gpt-5.5`: none, low, medium, high, xhigh). noergler needs a reasoning-capable model; a team whose model rejects the parameter is disabled at startup. |
+| `OPENAI_REASONING_EFFORT` | unset | Unset: the model's balanced level, from its llmwire profile. Set: a level the profile lists, checked at team startup before any request; one it does not list disables the team and the error names the accepted ones. The level sent is part of every run's model label. |
 | `OPENAI_CONTEXT_WINDOW` | `0` | `0` takes `max_input_tokens` from the gateway's `/v1/models`. Set it when the gateway lists no window, or enforces a lower cap than it advertises. |
 
 ### Instance only
@@ -158,9 +158,9 @@ the service.**
 | --- | --- |
 | Unreadable or invalid `teams.yaml` | Startup aborts. It is the shared layer. |
 | Unknown key in a team block | That team is disabled. `team_disabled team=<slug> reason=...` |
-| Team's model missing from `LLMWIRE_LITELLM_MODELS` | That team is disabled, rather than being routed to `api.openai.com`. |
+| Team's model missing from `LLMWIRE_LITELLM_MODELS` | That team is disabled, rather than being routed to the vendor's own host. |
 | Gateway lists a window below 1M for the alias | That team is disabled. Set `OPENAI_CONTEXT_WINDOW` if the gateway understates it. |
-| Model rejects `reasoning_effort` | That team is disabled: noergler needs a reasoning-capable model. |
+| Model cannot reason, lacks strict JSON-schema output, or does not list the configured `reasoning_effort` | That team is disabled, from its llmwire profile and before any request. The error names the valid choices. |
 | Team's riptide ping returns 401 | That team is disabled. Any other riptide error is a warning. |
 | Missing per-team secret env var | That team is disabled. |
 | Database, Bitbucket or Jira unreachable at startup | Startup aborts, after reporting every failing check rather than only the first. |

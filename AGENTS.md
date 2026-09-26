@@ -70,17 +70,19 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
 - Exit 1 has fired on two of three runs with the prompt unchanged. One red is
   model noise; two consecutive is the signal. Not encoded - the exit code
   stays strict so CI could gate on it without a threshold to tune.
-- Evals default to **`mimo-v2.5-pro`, effort `high`** and stay there: a
-  weaker model or less thinking scores worse on the same prompt, so a mixed
-  history cannot be compared and a regression reads as a model change.
+- Evals have **no model or level default in code**: `EVAL_MODEL` is
+  required, `-effort` empty = the model's balanced level. A series stays at
+  one pair (`results/README.md` names it): a weaker model or less thinking
+  scores worse on the same prompt, so a mixed history cannot be compared and
+  a regression reads as a model change.
   `EVAL_MODEL` is an llmwire profile id, not the endpoint's own name; the
   gateway alias defaults to that id, which is what a plain
   OpenAI-compatible host serves (`EVAL_ALIAS` for one that renames).
 - **Every eval run is committed** to `internal/evals/results/` with a row in
   its README, worse scores included: an uncommitted number cannot be
   compared with the next one, and a regression nobody recorded is invisible.
-- The mimo endpoint lists no `max_input_tokens`, so a run needs
-  `-context-window 1000000`; without it Startup fails and nothing is scored.
+- An endpoint that lists no `max_input_tokens` needs `-context-window`
+  (e.g. `1000000`); without it Startup fails and nothing is scored.
 - Eval scoring must stay blunt (file + line window + keyword). A judge model
   would make a moved number two non-deterministic things to explain.
   The corpus keeps a case with NO expected findings: without it, "caught
@@ -88,9 +90,18 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
 
 ## llmwire
 
-- Models are llmwire profile ids (`gpt-5.5`). The gateway alias is the
-  operator's (`LLMWIRE_LITELLM_MODELS`); a profile missing there disables the
-  team, else FromEnv routes it to api.openai.com.
+- Models are llmwire profile ids, config only: no model id, level name or
+  model fact in code. The gateway alias is the operator's
+  (`LLMWIRE_LITELLM_MODELS`); a profile missing there disables the team, else
+  FromEnv routes it to the vendor's own host.
+- Reasoning level is a product knob (`OPENAI_REASONING_EFFORT`, team
+  `reasoning_effort`, part of the run label); unset = `ReasoningBalanced()`.
+  Never `ReasoningMinimal()` on a review or mention: analysis a reader keeps,
+  and on some models minimal is thinking off.
+- What the profile knows is checked at team startup against the profile
+  (`Registry.Require` + `Reasoning.Accepts`), never probed over the network.
+  Tests use `llmwiretest` models: assert intent, never a vendor's wire
+  spelling, level name or rate.
 - Per-team key via `Config.Lookup` answering with `TEAM_<SLUG>_OPENAI_API_KEY`;
   `Config.APIKey` stays empty. An empty team key falls through to the env; both
   empty and `FromEnv` returns `MissingEnvError`, `New` fails, team disabled.
