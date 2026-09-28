@@ -18,7 +18,7 @@ jobs:
   test:
     name: Build + test
     runs-on: ubuntu-latest
-    # The Go module lives in backend/; hack/ and coverage/ stay at the root, so
+    # The Go module lives in backend/; scripts/ and coverage/ stay at the root, so
     # the two gate steps below override this back to the repo root.
     defaults:
       run:
@@ -37,7 +37,7 @@ jobs:
           --health-timeout 3s
           --health-retries 10
     steps:
-      # fetch-depth: 0 - hack/patch-coverage.sh diffs the branch against the PR
+      # fetch-depth: 0 - scripts/patch-coverage.sh diffs the branch against the PR
       # base, which needs real history. The default shallow checkout leaves the
       # base ref unresolvable and the gate exits 2.
       - uses: actions/checkout@v7
@@ -52,16 +52,16 @@ jobs:
           # setup-go resolves the cache key from go.sum at the WORKSPACE root
           # by default, which no longer has one.
           cache-dependency-path: backend/go.sum
-      # hack/patch-coverage.sh drives diff-cover; without it the patch gate
+      # scripts/patch-coverage.sh drives diff-cover; without it the patch gate
       # fails with "command not found" after the tests have already run.
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install diff-cover==10.3.0
         working-directory: .
-      # From the repo root, so hack/*.go is covered too: it is outside the
+      # From the repo root, so scripts/*.go is covered too: it is outside the
       # module, so `go vet ./...` in backend/ never sees it, and CI itself runs
-      # hack/strip-comment-lines.go.
+      # scripts/strip-comment-lines.go.
       - name: gofmt
         run: |
           unformatted="$(gofmt -l .)"
@@ -99,18 +99,18 @@ jobs:
       # trusted. Ordering matters: a fail-closed regression in coverage-gate.sh
       # aborts the job at the gate step, and a self-test placed after it would
       # never run to explain why.
-      - run: ./hack/coverage-gate.test.sh
+      - run: ./scripts/coverage-gate.test.sh
         working-directory: .
-      - run: ./hack/strip-comment-lines.test.sh
+      - run: ./scripts/strip-comment-lines.test.sh
         working-directory: .
       # The floor gate runs first: when a PR drops the project below the floor
       # the absolute number is the more actionable failure, and reporting it
       # before patch coverage keeps the log readable.
       # Both gates resolve paths from the repo root, not backend/.
-      - run: ./hack/coverage-gate.sh backend
+      - run: ./scripts/coverage-gate.sh backend
         working-directory: .
       - name: Backend patch coverage
-        run: ./hack/patch-coverage.sh "origin/${{ github.base_ref || 'master' }}"
+        run: ./scripts/patch-coverage.sh "origin/${{ github.base_ref || 'master' }}"
         working-directory: .
 
   lint:
@@ -132,7 +132,7 @@ jobs:
     name: Build + test the dashboard
     runs-on: ubuntu-latest
     steps:
-      # fetch-depth: 0 - hack/patch-coverage.sh diffs against the PR base.
+      # fetch-depth: 0 - scripts/patch-coverage.sh diffs against the PR base.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -154,7 +154,7 @@ jobs:
         working-directory: ui
       - run: make fe-coverage
       - name: UI patch coverage
-        run: ./hack/patch-coverage.sh "origin/${{ github.base_ref || 'master' }}"
+        run: ./scripts/patch-coverage.sh "origin/${{ github.base_ref || 'master' }}"
 
   openapi-lint:
     name: OpenAPI lint

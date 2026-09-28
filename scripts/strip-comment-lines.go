@@ -1,6 +1,6 @@
 //go:build ignore
 
-// hack/strip-comment-lines.go <module-dir> < in.xml > out.xml
+// scripts/strip-comment-lines.go <module-dir> < in.xml > out.xml
 //
 // Removes <line> entries for source lines that carry no code, so the patch
 // coverage gate stops counting comments as untested.

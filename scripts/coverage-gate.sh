@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# hack/coverage-gate.sh <backend|ui>
+# scripts/coverage-gate.sh <backend|ui>
 #
-# Fails when line coverage falls below the hard floor in hack/coverage-floors.
+# Fails when line coverage falls below the hard floor in scripts/coverage-floors.
 #
 # Backend coverage comes from a Cobertura XML conversion of the coverprofile,
 # not from `go tool cover -func`: that prints only per-function statement
@@ -17,7 +17,7 @@ export LC_ALL=C
 export LC_NUMERIC=C
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FLOORS="${COVERAGE_FLOORS:-$ROOT/hack/coverage-floors}"
+FLOORS="${COVERAGE_FLOORS:-$ROOT/scripts/coverage-floors}"
 SIDE="${1:-}"
 
 die() { echo "coverage-gate: $*" >&2; exit 2; }

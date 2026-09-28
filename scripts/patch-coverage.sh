@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# hack/patch-coverage.sh [base-ref]
+# scripts/patch-coverage.sh [base-ref]
 #
 # Patch coverage: the lines this branch adds or changes must be at least
-# PATCH_MIN% covered. Complements hack/coverage-gate.sh, which enforces the
+# PATCH_MIN% covered. Complements scripts/coverage-gate.sh, which enforces the
 # absolute project floor — the two answer different questions:
 #
 #   coverage-gate.sh   "is the codebase as a whole tested enough?"   (75% floor)
@@ -51,14 +51,14 @@ fi
 #
 # Opt out with [skip patch-coverage] in a commit message on the branch.
 #
-# This skips ONLY patch coverage. hack/coverage-gate.sh still enforces the
+# This skips ONLY patch coverage. scripts/coverage-gate.sh still enforces the
 # absolute floor in the same CI job, so overall coverage can never silently
 # fall — the worst this can do is let already-untested lines stay untested.
 if git log --format='%B' "$(git merge-base "$BASE_REF" HEAD)"..HEAD 2>/dev/null |
   grep -qF '[skip patch-coverage]'; then
   echo "::warning::patch-coverage SKIPPED — a commit on this branch carries [skip patch-coverage]."
   echo "patch-coverage: SKIPPED by [skip patch-coverage] in a commit message." >&2
-  echo "  The absolute floor (hack/coverage-gate.sh) still applies and is" >&2
+  echo "  The absolute floor (scripts/coverage-gate.sh) still applies and is" >&2
   echo "  enforced separately, so total coverage cannot fall unnoticed." >&2
   exit 0
 fi
@@ -139,7 +139,7 @@ assert_matched() {
 }
 
 # --- backend ------------------------------------------------------------------
-# CI already converts the coverprofile to Cobertura for hack/coverage-gate.sh;
+# CI already converts the coverprofile to Cobertura for scripts/coverage-gate.sh;
 # reuse that artifact rather than regenerating it.
 if [[ -f coverage/backend.xml ]]; then
   checked=1
@@ -189,7 +189,7 @@ if [[ -f coverage/backend.xml ]]; then
   # carries no non-comment token, so a trailing `// why` and a string holding
   # "http://x" both stay counted. It is deliberately conservative: a file it
   # cannot read or parse keeps every line it had.
-  go run hack/strip-comment-lines.go "$MODULE_DIR" \
+  go run scripts/strip-comment-lines.go "$MODULE_DIR" \
     < coverage/backend-rooted.xml > coverage/backend-code-only.xml
 
   diff-cover coverage/backend-code-only.xml \

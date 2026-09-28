@@ -398,7 +398,7 @@ The review summary reports how many tokens `AGENTS.md` consumes against a config
 
 ## Running tests
 
-The Go module lives in `backend/`; `hack/` and the docs stay at the repo root.
+The Go module lives in `backend/`; `scripts/` and the docs stay at the repo root.
 
 ```bash
 cd backend
@@ -420,7 +420,7 @@ End to end against fake Bitbucket, Jira, gateway and riptide, from the repo
 root:
 
 ```bash
-./hack/smoke.sh      # boots serve, replays a signed webhook, reports what was posted
+./scripts/smoke.sh      # boots serve, replays a signed webhook, reports what was posted
 ```
 
 Coverage floor and per-PR patch coverage:
@@ -430,7 +430,7 @@ cd backend
 go test -race -covermode=atomic -coverpkg=./... -coverprofile=../coverage/backend.out ./...
 go run github.com/boumenot/gocover-cobertura@v1.5.0 < ../coverage/backend.out > ../coverage/backend.xml
 cd ..
-./hack/coverage-gate.sh backend
+./scripts/coverage-gate.sh backend
 ```
 
 CI runs the same on every pull request.
@@ -457,7 +457,7 @@ deployment's business.
   system pool.
 - One replica only: the review queue is a single in-process worker behind an inference lock.
 - `GOMEMLIMIT=1500MiB` is set in the image against a 2 Gi pod. RSS after
-  startup and tokenizer warm-up is around 40 MiB; `hack/smoke.sh` prints it.
+  startup and tokenizer warm-up is around 40 MiB; `scripts/smoke.sh` prints it.
 
 ## Health check
 
@@ -494,7 +494,7 @@ backend/
 prompts/
   review.txt           # review prompt template
   mention.txt          # mention Q&A prompt template
-hack/                  # smoke and coverage scripts (outside the module)
+scripts/               # smoke and coverage scripts (outside the module)
 http/                  # IntelliJ HTTP client requests for the team self-service
 archive/               # the previous implementation, kept for reference
 ```

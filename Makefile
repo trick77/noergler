@@ -1,4 +1,4 @@
-# The Go module lives in backend/; hack/, ui/ and docs/ are at the root.
+# The Go module lives in backend/; scripts/, ui/ and docs/ are at the root.
 VERSION ?= dev
 
 .PHONY: fe-build fe-test fe-coverage build test backend-coverage coverage
@@ -18,7 +18,7 @@ fe-test:
 
 fe-coverage:
 	cd ui && npm run test -- --run --coverage
-	./hack/coverage-gate.sh ui
+	./scripts/coverage-gate.sh ui
 
 build: fe-build
 	cd backend && CGO_ENABLED=0 go build \
@@ -34,6 +34,6 @@ backend-coverage:
 		-coverprofile=../coverage/backend.out -count=1 ./...
 	cd backend && go run github.com/boumenot/gocover-cobertura@v1.5.0 \
 		< ../coverage/backend.out > ../coverage/backend.xml
-	./hack/coverage-gate.sh backend
+	./scripts/coverage-gate.sh backend
 
 coverage: backend-coverage fe-coverage

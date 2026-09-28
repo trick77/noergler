@@ -17,7 +17,7 @@ on:
       - "teams.example.yaml"
       - "compose.yaml"
       - "http/**"
-      - "hack/**"
+      - "scripts/**"
   workflow_dispatch:
     inputs:
       bump:

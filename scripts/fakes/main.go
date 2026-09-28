@@ -93,7 +93,7 @@ var (
 	projRepo = map[string][]string{}
 )
 
-// adminToken is the token hack/smoke.sh sends for the calls that are supposed
+// adminToken is the token scripts/smoke.sh sends for the calls that are supposed
 // to succeed. Onboarding proves admin rights by listing webhooks, so the
 // listing has to refuse a non-admin token too, not just the writes: were only
 // the writes gated, a non-admin `status` would read "ok" and the negative case
@@ -589,7 +589,7 @@ func main() {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("unhandled: %s %s", r.Method, r.URL.Path)
 		w.WriteHeader(http.StatusNotFound)
-		writeJSON(w, r, map[string]any{"errors": []any{map[string]any{"message": "not implemented by hack/fakes"}}})
+		writeJSON(w, r, map[string]any{"errors": []any{map[string]any{"message": "not implemented by scripts/fakes"}}})
 	})
 
 	log.Printf("fakes listening on %s (bitbucket, jira, riptide, gateway)", *addr)
@@ -668,7 +668,7 @@ def trailing():
 }
 
 // gatewayAlias is what LLMWIRE_LITELLM_MODELS maps the profile id onto in
-// hack/smoke.sh. The listing is keyed by the alias, not the profile.
+// scripts/smoke.sh. The listing is keyed by the alias, not the profile.
 const gatewayAlias = "ai-gateway-gpt-5.5"
 
 // cannedReview is the built-in default: one schema-valid review, so a replayed
@@ -676,7 +676,7 @@ const gatewayAlias = "ai-gateway-gpt-5.5"
 // unparseable-response notice. It is what smoke.sh gets, and one finding is all
 // smoke.sh asserts on.
 //
-// Not the same bytes as hack/testdata/review.json, deliberately: -review
+// Not the same bytes as scripts/testdata/review.json, deliberately: -review
 // serves that file to two runs being diffed, and it carries a finding per file
 // in sampleDiff so the posting order of several comments is compared too.
 // Keeping the default here means the fakes still work with no flags.
