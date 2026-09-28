@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# hack/coverage-gate.test.sh — self-test for coverage-gate.sh
+# scripts/coverage-gate.test.sh — self-test for coverage-gate.sh
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -55,30 +55,30 @@ printf 'backend=79.0\nui=50.0\n' > "$TMP/floors-under"
 printf 'backend=81.0\nui=50.0\n' > "$TMP/floors-over"
 
 COVERAGE_FLOORS="$TMP/floors-under" COVERAGE_FILE="$TMP/backend.xml" \
-  ./hack/coverage-gate.sh backend >/dev/null 2>&1
+  ./scripts/coverage-gate.sh backend >/dev/null 2>&1
 check "passes when above floor" 0 $?
 
 COVERAGE_FLOORS="$TMP/floors-over" COVERAGE_FILE="$TMP/backend.xml" \
-  ./hack/coverage-gate.sh backend >/dev/null 2>&1
+  ./scripts/coverage-gate.sh backend >/dev/null 2>&1
 check "fails when below floor" 1 $?
 
 out=$(COVERAGE_FLOORS="$TMP/floors-under" COVERAGE_FILE="$TMP/backend.xml" \
-  ./hack/coverage-gate.sh backend 2>&1)
+  ./scripts/coverage-gate.sh backend 2>&1)
 case "$out" in
   *80.0*) echo "  ok   excludes cmd/ (reports 80.0%, not 40.0%)" ;;
   *)      echo "  FAIL excludes cmd/ - got: $out"; fail=1 ;;
 esac
 
 COVERAGE_FLOORS="$TMP/floors-under" COVERAGE_FILE="$TMP/backend-malformed.xml" \
-  ./hack/coverage-gate.sh backend >/dev/null 2>&1
+  ./scripts/coverage-gate.sh backend >/dev/null 2>&1
 check "rejects malformed backend XML" 2 $?
 
-./hack/coverage-gate.sh bogus >/dev/null 2>&1
+./scripts/coverage-gate.sh bogus >/dev/null 2>&1
 check "rejects unknown side" 2 $?
 
 printf 'backend=79.0\nui=abc\n' > "$TMP/floors-nonnumeric"
 COVERAGE_FLOORS="$TMP/floors-nonnumeric" COVERAGE_FILE="$TMP/backend.xml" \
-  ./hack/coverage-gate.sh ui >/dev/null 2>&1
+  ./scripts/coverage-gate.sh ui >/dev/null 2>&1
 check "rejects non-numeric floor" 2 $?
 
 # --- proves LINES, not statements, are measured ---
@@ -102,7 +102,7 @@ cat > "$TMP/backend-lines.xml" <<XML
 XML
 
 out=$(COVERAGE_FLOORS="$TMP/floors-under" COVERAGE_FILE="$TMP/backend-lines.xml" \
-  ./hack/coverage-gate.sh backend 2>&1)
+  ./scripts/coverage-gate.sh backend 2>&1)
 case "$out" in
   *50.0*) echo "  ok   measures lines, not statements (reports 50.0%)" ;;
   *)      echo "  FAIL measures lines, not statements — got: $out"; fail=1 ;;
@@ -125,15 +125,15 @@ JSON
 printf 'backend=79.0\nui=50.0\n' > "$TMP/floors-ui-under"
 
 COVERAGE_FLOORS="$TMP/floors-ui-under" COVERAGE_FILE="$TMP/ui-summary-good.json" \
-  ./hack/coverage-gate.sh ui >/dev/null 2>&1
+  ./scripts/coverage-gate.sh ui >/dev/null 2>&1
 check "ui passes when above floor" 0 $?
 
 COVERAGE_FLOORS="$TMP/floors-ui-under" COVERAGE_FILE="$TMP/ui-summary-malformed.json" \
-  ./hack/coverage-gate.sh ui >/dev/null 2>&1
+  ./scripts/coverage-gate.sh ui >/dev/null 2>&1
 check "ui rejects malformed JSON" 2 $?
 
 COVERAGE_FLOORS="$TMP/floors-ui-under" COVERAGE_FILE="$TMP/ui-summary-missing-field.json" \
-  ./hack/coverage-gate.sh ui >/dev/null 2>&1
+  ./scripts/coverage-gate.sh ui >/dev/null 2>&1
 check "ui rejects missing total.lines.pct" 2 $?
 
 [ "$fail" = 0 ] && echo "coverage-gate: all checks passed"

@@ -4,7 +4,7 @@
 teams.yaml
 docs
 http
-hack
+scripts
 *.md
 *.png
 coverage

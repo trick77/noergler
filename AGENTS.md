@@ -5,15 +5,15 @@ Bitbucket Server PR auto-review bridge, inference through
 
 ## Commands
 
-**The module is in `backend/`; `hack/`, `ui/`, docs and `prompts/` are at the
+**The module is in `backend/`; `scripts/`, `ui/`, docs and `prompts/` are at the
 root.** Go commands run from `backend/`, scripts and `make` from the root.
 `gofmt -l .` must print nothing. `go vet ./...`, `go test -race ./...`.
 Store tests skip without `NOERGLER_TEST_DSN`; `docker compose up -d postgres`,
 then DSN `postgres://noergler:changeme@localhost:5432/noergler?sslmode=disable`.
-`./hack/smoke.sh` boots `serve` against `hack/fakes`.
-Coverage floor 75% (`hack/coverage-floors`),
-gate `./hack/coverage-gate.sh backend` over `coverage/backend.xml`; `cmd/` is
-excluded and `hack/` is outside the module.
+`./scripts/smoke.sh` boots `serve` against `scripts/fakes`.
+Coverage floor 75% (`scripts/coverage-floors`),
+gate `./scripts/coverage-gate.sh backend` over `coverage/backend.xml`; `cmd/` is
+excluded and `scripts/` is outside the module.
 No web framework, no ORM, no logging library in the Go module. Do not add
 one. The dashboard SPA is `ui/` (React + Vite + Tailwind); `make fe-build`
 writes it into `backend/web/dist`, which `//go:embed` reads.

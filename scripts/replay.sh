@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# hack/replay.sh: sign a webhook payload with a team's secret and POST it.
+# scripts/replay.sh: sign a webhook payload with a team's secret and POST it.
 #
 # The signature is what the webhook route checks first, so this is the only way
-# to reach the review pipeline from outside. hack/smoke.sh calls it
+# to reach the review pipeline from outside. scripts/smoke.sh calls it
 # rather than keeping its own copy of the HMAC.
 #
 # Usage: replay.sh <payload-file> [event-key]

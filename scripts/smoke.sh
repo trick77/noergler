@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# hack/smoke.sh: build, migrate, start serve with a two-team config (one bad
+# scripts/smoke.sh: build, migrate, start serve with a two-team config (one bad
 # block), hit the probes, the teams API and a signed webhook replay, stop,
 # print the log lines.
 # Needs a Postgres: `docker compose up -d postgres` or DATABASE_URL.
@@ -20,10 +20,10 @@ cleanup() {
 trap cleanup EXIT
 
 go build -C backend -o "$tmp/noergler" ./cmd/noergler
-# By file, not by package: hack/ is outside the module now, so `./hack/fakes`
+# By file, not by package: scripts/ is outside the module now, so `./scripts/fakes`
 # finds no go.mod on a fresh clone. It is a single stdlib-only file, which go
-# builds without a module, the same way hack/strip-comment-lines.go runs.
-go build -o "$tmp/fakes" hack/fakes/main.go
+# builds without a module, the same way scripts/strip-comment-lines.go runs.
+go build -o "$tmp/fakes" scripts/fakes/main.go
 
 # serve now checks Bitbucket and Jira at startup, so both have to answer.
 fakes_port=${FAKES_PORT:-18099}
@@ -80,7 +80,7 @@ echo "GET /teams/$team: $(curl -s -H 'Authorization: Bearer s' "localhost:$port/
 
 # A signed replay of the sample delivery: the only end-to-end proof that the
 # route, the HMAC, the ownership check and the queue are wired together.
-echo "POST /webhook/$team (signed): $(PORT="$port" TEAM="$team" SECRET=s hack/replay.sh "$payload" pr:opened)"
+echo "POST /webhook/$team (signed): $(PORT="$port" TEAM="$team" SECRET=s scripts/replay.sh "$payload" pr:opened)"
 echo "POST /webhook/$team (bad signature): HTTP $(curl -s -o /dev/null -w '%{http_code}' -X POST \
   -H 'X-Hub-Signature: sha256=deadbeef' --data-binary "@$payload" "localhost:$port/webhook/$team")"
 
@@ -138,5 +138,5 @@ echo "--- review posted"
 grep -c "comment posted" "$tmp/fakes.log" || true
 echo "--- onboarding writes seen by bitbucket (want a create, a grant and a refusal)"
 grep "onboarding:" "$tmp/fakes.log" || true
-echo "--- endpoints hack/fakes does not serve (want none)"
+echo "--- endpoints scripts/fakes does not serve (want none)"
 grep "unhandled:" "$tmp/fakes.log" | sed 's/.*unhandled: //' | sort -u || true

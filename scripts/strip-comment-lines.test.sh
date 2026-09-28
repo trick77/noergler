@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# hack/strip-comment-lines.test.sh — self-test for strip-comment-lines.go
+# scripts/strip-comment-lines.test.sh — self-test for strip-comment-lines.go
 #
 # The cases that matter are the two a regex gets wrong in opposite directions:
 # a string literal containing "//" (code that LOOKS like a comment) and a
@@ -60,7 +60,7 @@ report() { # report <line-numbers...>
 }
 
 kept() { # kept <line-numbers...> -> the line numbers that survived, comma-joined
-  report "$@" | go run hack/strip-comment-lines.go "$TMP" 2>/dev/null |
+  report "$@" | go run scripts/strip-comment-lines.go "$TMP" 2>/dev/null |
     sed -nE 's/.*<line number="([0-9]+)".*/\1/p' | paste -sd, -
 }
 
@@ -82,7 +82,7 @@ func G() string {
 GO
 check "keeps a string that contains //" "4" "$(
   report 4 | sed 's|src/sample.go|src/urls.go|' |
-    go run hack/strip-comment-lines.go "$TMP" 2>/dev/null |
+    go run scripts/strip-comment-lines.go "$TMP" 2>/dev/null |
     sed -nE 's/.*<line number="([0-9]+)".*/\1/p' | paste -sd, -
 )"
 
@@ -99,7 +99,7 @@ var s = "unterminated
 GO
 check "keeps every line of an unscannable file" "1,2,3" "$(
   report 1 2 3 | sed 's|src/sample.go|src/broken.go|' |
-    go run hack/strip-comment-lines.go "$TMP" 2>/dev/null |
+    go run scripts/strip-comment-lines.go "$TMP" 2>/dev/null |
     sed -nE 's/.*<line number="([0-9]+)".*/\1/p' | paste -sd, -
 )"
 
@@ -113,12 +113,12 @@ func H( {
 GO
 check "still strips comments from a file that only fails to PARSE" "1,4" "$(
   report 1 3 4 | sed 's|src/sample.go|src/unparsed.go|' |
-    go run hack/strip-comment-lines.go "$TMP" 2>/dev/null |
+    go run scripts/strip-comment-lines.go "$TMP" 2>/dev/null |
     sed -nE 's/.*<line number="([0-9]+)".*/\1/p' | paste -sd, -
 )"
 check "keeps every line of a missing file" "1,2" "$(
   report 1 2 | sed 's|src/sample.go|src/gone.go|' |
-    go run hack/strip-comment-lines.go "$TMP" 2>/dev/null |
+    go run scripts/strip-comment-lines.go "$TMP" 2>/dev/null |
     sed -nE 's/.*<line number="([0-9]+)".*/\1/p' | paste -sd, -
 )"
 

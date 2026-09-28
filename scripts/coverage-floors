@@ -1,0 +1,3 @@
+# Line-coverage floors. Hard floor, not a ratchet - see scripts/coverage-gate.sh.
+backend=75.0
+ui=75.0
