@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -116,6 +117,30 @@ func baseOptions(t *testing.T, client evals.Reviewer) options {
 
 // Every seeded bug caught: exit 0, no error, and missed must be false or a
 // green run would be reported as a regression.
+// An explicit empty -effort is set; an absent one is not. That difference is
+// the balanced level against the series level.
+func TestWasSet(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want bool
+	}{
+		{nil, false},
+		{[]string{"-json", "x"}, false},
+		{[]string{"-effort", ""}, true},
+		{[]string{"-effort=high"}, true},
+	} {
+		fs := flag.NewFlagSet("evals", flag.ContinueOnError)
+		fs.String("effort", "", "")
+		fs.String("json", "", "")
+		if err := fs.Parse(tc.args); err != nil {
+			t.Fatal(err)
+		}
+		if got := wasSet(fs, "effort"); got != tc.want {
+			t.Errorf("wasSet(%q) = %v, want %v", tc.args, got, tc.want)
+		}
+	}
+}
+
 func TestRun_CleanSweepIsNotAMiss(t *testing.T) {
 	// The corpus' own seeded bugs, answered exactly.
 	client, _ := perfectFindings(t)

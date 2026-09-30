@@ -84,11 +84,7 @@ func main() {
 	flag.IntVar(&opt.window, "context-window", 0, "override the gateway's max_input_tokens (0 = resolve it)")
 	flag.DurationVar(&opt.timeout, "timeout", 10*time.Minute, "whole-run timeout")
 	flag.Parse()
-	flag.Visit(func(f *flag.Flag) {
-		if f.Name == "effort" {
-			opt.effortSet = true
-		}
-	})
+	opt.effortSet = wasSet(flag.CommandLine, "effort")
 
 	missed, err := run(context.Background(), opt)
 	if err != nil {
@@ -98,6 +94,18 @@ func main() {
 		}
 		os.Exit(2)
 	}
+}
+
+// wasSet reports whether the flag was passed at all, which is what tells an
+// explicit `-effort ""` (the balanced level) from no flag (the series level).
+func wasSet(fs *flag.FlagSet, name string) bool {
+	set := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			set = true
+		}
+	})
+	return set
 }
 
 // dialGateway builds the real client and proves the gateway serves the
@@ -148,11 +156,7 @@ func run(ctx context.Context, opt options) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	series, err := evals.DefaultSeries()
-	if err != nil {
-		return false, err
-	}
-	opt.effort = series.EffortFor(settings.Model, opt.effort, opt.effortSet)
+	opt.effort = evals.DefaultSeries().EffortFor(settings.Model, opt.effort, opt.effortSet)
 	template, err := os.ReadFile(opt.promptPath) //nolint:gosec // G304: an operator-supplied flag in a dev tool
 	if err != nil {
 		return false, fmt.Errorf("read prompt: %w", err)
