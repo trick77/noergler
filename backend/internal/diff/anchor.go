@@ -80,9 +80,15 @@ func pad(n, width int) string {
 }
 
 // ShownLine is one new-side line the prompt showed for a file: its text
-// reduced to a hash, and whether the diff added it.
+// reduced to two hashes, and whether the diff added it.
+//
+// Hash is whitespace-loose, for matching a quote. Exact keeps the leading
+// whitespace, for judging a suggestion: in Python, YAML or a Makefile a
+// re-indented line is a different line, and a fix that only changes the
+// indent is a real fix.
 type ShownLine struct {
 	Hash  uint64
+	Exact uint64
 	Added bool
 }
 
@@ -134,7 +140,7 @@ func BuildAnchorIndex(files []FileReviewData) AnchorIndex {
 					if text != "" {
 						text = text[1:]
 					}
-					fa.Shown[n] = ShownLine{Hash: HashLine(text), Added: strings.HasPrefix(line, "+")}
+					fa.Shown[n] = ShownLine{Hash: HashLine(text), Exact: HashExact(text), Added: strings.HasPrefix(line, "+")}
 					n++
 				case line[0] == '-':
 					fa.Removed[HashLine(line[1:])] = true
@@ -160,5 +166,13 @@ func BuildAnchorIndex(files []FileReviewData) AnchorIndex {
 func HashLine(text string) uint64 {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(strings.Join(strings.Fields(text), " ")))
+	return h.Sum64()
+}
+
+// HashExact hashes a line as written, trailing whitespace and a CR aside:
+// the indent counts. See ShownLine.
+func HashExact(text string) uint64 {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(strings.TrimRight(text, " \t\r")))
 	return h.Sum64()
 }

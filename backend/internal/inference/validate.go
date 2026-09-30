@@ -2,6 +2,7 @@ package inference
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/trick77/noergler/internal/diff"
@@ -126,7 +127,18 @@ func validateOne(f ReviewFinding, idx diff.AnchorIndex) (DropReason, int) {
 		if _, shown := fa.Shown[line]; !shown {
 			return DropAnchorMismatch, 0
 		}
-	case !nearAny(line, anchors, fa.Shown):
+	default:
+		_, shown := fa.Shown[line]
+		if shown && nearAny(line, anchors, fa.Shown) {
+			break
+		}
+		// Near its evidence but on a line the diff did not show (past a
+		// hunk's end, or past EOF): Bitbucket refuses both anchors there,
+		// so the finding moves to the closest evidence line.
+		if n, ok := nearestAnchor(line, anchors, fa.Shown); ok {
+			line = n
+			break
+		}
 		at := linesWithHash(anchors[0], fa.Shown)
 		if len(at) != 1 {
 			return DropAnchorMismatch, 0
@@ -171,6 +183,19 @@ func matchEvidence(quote string, fa diff.FileAnchors) (hash uint64, onNewSide, f
 		}
 	}
 	return 0, false, false
+}
+
+// nearestAnchor is the shown line within anchorSlack of line that carries an
+// evidence hash, closest first, the lower line on a tie.
+func nearestAnchor(line int, hashes []uint64, shown map[int]diff.ShownLine) (int, bool) {
+	for d := 0; d <= anchorSlack; d++ {
+		for _, n := range []int{line - d, line + d} {
+			if s, ok := shown[n]; ok && slices.Contains(hashes, s.Hash) {
+				return n, true
+			}
+		}
+	}
+	return 0, false
 }
 
 func nearAny(line int, hashes []uint64, shown map[int]diff.ShownLine) bool {
@@ -222,7 +247,10 @@ func isNoopSuggestion(suggestion string, line int, shown map[int]diff.ShownLine)
 		return false
 	}
 	// The existing lines the suggestion would replace, skipping blank ones
-	// the way the suggestion's blank lines were skipped.
+	// the way the suggestion's blank lines were skipped. Compared by Exact,
+	// not Hash: a suggestion that only re-indents a line changes the code in
+	// Python or YAML, so it is never a no-op. A model that re-indents a
+	// genuine no-op keeps its finding; that is the cheaper mistake.
 	blank := diff.HashLine("")
 	var have []uint64
 	for n := line; len(have) < len(sug); n++ {
@@ -231,7 +259,7 @@ func isNoopSuggestion(suggestion string, line int, shown map[int]diff.ShownLine)
 			return false
 		}
 		if s.Hash != blank {
-			have = append(have, s.Hash)
+			have = append(have, s.Exact)
 		}
 	}
 
@@ -240,7 +268,7 @@ func isNoopSuggestion(suggestion string, line int, shown map[int]diff.ShownLine)
 		counts[h]++
 	}
 	for i, l := range sug {
-		h := diff.HashLine(l)
+		h := diff.HashExact(l)
 		if counts[h] == 0 {
 			return false
 		}

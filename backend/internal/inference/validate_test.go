@@ -72,6 +72,9 @@ func TestValidateFindings(t *testing.T) {
 		{"copied diff marker is tolerated", vf("src/labels.ts", 17, "+    a()"), "", 17},
 		{"line within slack stays", vf("src/labels.ts", 16, "a()"), "", 16},
 		{"line far off moves to unique evidence", vf("src/labels.ts", 40, "b()"), "", 18},
+		// Line 21 is past the hunk: Bitbucket would refuse it. Within slack
+		// of the quoted line 20, so the finding moves there instead.
+		{"near evidence but past the hunk moves onto it", vf("src/labels.ts", 21, "b()", "return"), "", 20},
 		{"line far off, evidence ambiguous", vf("src/labels.ts", 40, "return"), DropAnchorMismatch, 0},
 		{"removed line is evidence, anchor shown", vf("src/labels.ts", 11, "defer mu.Unlock()"), "", 11},
 		{"removed line quoted with its marker", vf("src/labels.ts", 11, "-    defer mu.Unlock()"), "", 11},
@@ -105,6 +108,13 @@ func TestValidateFindings(t *testing.T) {
 			// a real suggestion.
 			"suggestion reorders statements",
 			withSuggestion(vf("src/labels.ts", 17, "a()", "b()"), "    b()\n    a()"),
+			"", 17,
+		},
+		{
+			// In Python or YAML the indent is the code. A fix that only
+			// dedents a line changes what the program does.
+			"suggestion that only re-indents is a real fix",
+			withSuggestion(vf("src/labels.ts", 17, "a()"), "a()"),
 			"", 17,
 		},
 		{
@@ -183,11 +193,12 @@ func TestParseReview_Evidence(t *testing.T) {
 		raw  string
 		want []string
 	}{
-		"array":         {`["a()", "b()"]`, []string{"a()", "b()"}},
-		"single string": {`"a()\nb()"`, []string{"a()", "b()"}},
-		"absent":        {``, nil},
-		"null":          {`null`, nil},
-		"wrong type":    {`42`, nil},
+		"array":           {`["a()", "b()"]`, []string{"a()", "b()"}},
+		"multi-line item": {`["a()\nb()", "c()"]`, []string{"a()", "b()", "c()"}},
+		"single string":   {`"a()\nb()"`, []string{"a()", "b()"}},
+		"absent":          {``, nil},
+		"null":            {`null`, nil},
+		"wrong type":      {`42`, nil},
 	} {
 		t.Run(name, func(t *testing.T) {
 			ev := ""

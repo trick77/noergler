@@ -125,8 +125,9 @@ func okResultWith(findings ...inference.ReviewFinding) inference.ReviewResult {
 }
 
 // finding quotes sampleDiff's added line (line 2) as evidence, so a finding
-// on lines 1 to 3 passes inference.ValidateFindings unmoved and a test
-// exercises what it names, not the validator.
+// on line 1 or 2, the lines the diff shows, passes inference.ValidateFindings
+// unmoved and a test exercises what it names, not the validator. Line 3 is
+// not shown and moves to 2.
 func finding(file string, line int, severity, comment string) inference.ReviewFinding {
 	return inference.ReviewFinding{File: file, Line: line, Severity: severity, Comment: comment,
 		Evidence: []string{"func new() {}"}}
@@ -587,7 +588,7 @@ func TestDedupeAgainstExistingFindings(t *testing.T) {
 	}
 	h.llm.review = okResultWith(
 		finding("a.go", 2, "issue", "already raised"), // same key: dropped
-		finding("a.go", 3, "issue", "new one"),        // different line: kept
+		finding("a.go", 1, "issue", "new one"),        // different line: kept
 		finding("a.go", 2, "suggestion", "other"),     // different severity: kept
 	)
 

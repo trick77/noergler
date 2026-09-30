@@ -70,9 +70,9 @@ func TestBuildAnchorIndex(t *testing.T) {
 		t.Fatal("a.go not indexed")
 	}
 	want := map[int]ShownLine{
-		9:  {Hash: HashLine("ctx")},
-		10: {Hash: HashLine("new line"), Added: true},
-		11: {Hash: HashLine("tail")},
+		9:  {Hash: HashLine("ctx"), Exact: HashExact("ctx")},
+		10: {Hash: HashLine("new line"), Exact: HashExact("new   line"), Added: true},
+		11: {Hash: HashLine("tail"), Exact: HashExact("tail")},
 	}
 	if len(fa.Shown) != len(want) {
 		t.Fatalf("shown = %v, want %v", fa.Shown, want)
@@ -98,5 +98,12 @@ func TestHashLine(t *testing.T) {
 	}
 	if HashLine("a b") == HashLine("ab") {
 		t.Error("a word break is not whitespace to drop")
+	}
+	// Exact keeps the indent and drops only trailing space and a CR.
+	if HashExact("  x") == HashExact("x") {
+		t.Error("HashExact must keep the indent")
+	}
+	if HashExact("x \t\r") != HashExact("x") {
+		t.Error("HashExact must drop trailing whitespace")
 	}
 }

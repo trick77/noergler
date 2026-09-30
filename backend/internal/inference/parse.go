@@ -206,19 +206,25 @@ func parseFinding(raw json.RawMessage) (ReviewFinding, bool) {
 	return out, true
 }
 
-// coerceEvidence reads the evidence array. A single string is tolerated and
-// split into lines: a model that quotes three lines as one string still
-// quoted them. Anything else is absent, and ValidateFindings drops it.
+// coerceEvidence reads the evidence array, one line per element. An element
+// holding several lines, or a single string instead of an array, is split:
+// a model that quotes three lines as one string still quoted them, and
+// hashed whole they would match no line at all. Anything else is absent,
+// and ValidateFindings drops it.
 func coerceEvidence(raw json.RawMessage) []string {
+	var items []string
+	if json.Unmarshal(raw, &items) != nil || items == nil {
+		var s string
+		if json.Unmarshal(raw, &s) != nil {
+			return nil
+		}
+		items = []string{s}
+	}
 	var lines []string
-	if json.Unmarshal(raw, &lines) == nil && lines != nil {
-		return lines
+	for _, it := range items {
+		lines = append(lines, strings.Split(it, "\n")...)
 	}
-	var s string
-	if json.Unmarshal(raw, &s) == nil {
-		return strings.Split(s, "\n")
-	}
-	return nil
+	return lines
 }
 
 // isJSONNull reports whether raw is the JSON literal null. Needed because Go
