@@ -209,10 +209,7 @@ func envOf(m map[string]string) func(string) string {
 // The default model is the series file's, never one written in code: a run
 // on a model nobody chose cannot be compared with the series it lands in.
 func TestResolveSettings_ModelDefaultsToTheSeries(t *testing.T) {
-	series, err := DefaultSeries()
-	if err != nil {
-		t.Fatal(err)
-	}
+	series := DefaultSeries()
 	env := map[string]string{"EVAL_BASE_URL": "https://x/v1", "EVAL_API_KEY": "k"}
 	s, err := ResolveSettings(envOf(env), 0)
 	if err != nil || s.Model != series.Model {
@@ -245,11 +242,37 @@ func TestSeries_EffortFor(t *testing.T) {
 	}
 }
 
+// The committed file parses. This is what makes DefaultSeries' panic a build
+// defect: it cannot reach a run without failing here first.
 func TestDefaultSeries_NamesBothFields(t *testing.T) {
-	s, err := DefaultSeries()
-	if err != nil || s.Model == "" || s.Effort == "" {
-		t.Fatalf("series = %+v, err = %v", s, err)
+	if s := DefaultSeries(); s.Model == "" || s.Effort == "" {
+		t.Fatalf("series = %+v", s)
 	}
+}
+
+func TestParseSeries(t *testing.T) {
+	if s, err := parseSeries([]byte("model: ' m '\neffort: high\n")); err != nil || s != (Series{"m", "high"}) {
+		t.Errorf("series = %+v, err = %v, want trimmed fields", s, err)
+	}
+	for name, raw := range map[string]string{
+		"not yaml":    "model: [",
+		"no effort":   "model: m\n",
+		"blank model": "model: '  '\neffort: high\n",
+		"wrong keys":  "name: m\nlevel: high\n",
+	} {
+		if _, err := parseSeries([]byte(raw)); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+}
+
+func TestMustSeriesPanicsOnABadFile(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("want a panic: a malformed embedded series is a build defect")
+		}
+	}()
+	mustSeries([]byte("model: m\n"))
 }
 
 func TestResolveSettings_NamesEveryMissingVariable(t *testing.T) {

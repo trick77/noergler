@@ -36,8 +36,14 @@ import (
 	"github.com/trick77/noergler/internal/inference"
 )
 
-//go:embed corpus/*.json corpus/series.yaml
+//go:embed corpus/*.json
 var corpusFS embed.FS
+
+// seriesYAML is embedded on its own: a missing file fails the build, so
+// there is no read error to handle.
+//
+//go:embed corpus/series.yaml
+var seriesYAML []byte
 
 // Series is the model and level a run scores at when EVAL_MODEL and -effort
 // leave them unset. Data beside the corpus, not code: no model id lives in Go,
@@ -47,14 +53,24 @@ type Series struct {
 	Effort string `yaml:"effort"`
 }
 
-// DefaultSeries reads corpus/series.yaml. Both fields are required: a
-// half-filled file would default the model but not its level, and a run at
-// the wrong level reads as a prompt regression.
-func DefaultSeries() (Series, error) {
-	raw, err := corpusFS.ReadFile("corpus/series.yaml")
+// DefaultSeries is corpus/series.yaml. The file is embedded and pinned by
+// TestDefaultSeries_NamesBothFields, so a malformed one is a build defect,
+// not a run-time condition: it panics rather than threading an error no
+// operator could act on through every caller.
+func DefaultSeries() Series { return mustSeries(seriesYAML) }
+
+func mustSeries(raw []byte) Series {
+	s, err := parseSeries(raw)
 	if err != nil {
-		return Series{}, err
+		panic(err)
 	}
+	return s
+}
+
+// parseSeries requires both fields: a half-filled file would default the
+// model but not its level, and a run at the wrong level reads as a prompt
+// regression.
+func parseSeries(raw []byte) (Series, error) {
 	var s Series
 	if err := yaml.Unmarshal(raw, &s); err != nil {
 		return Series{}, fmt.Errorf("corpus/series.yaml: %w", err)
@@ -271,11 +287,7 @@ func ResolveSettings(getenv func(string) string, windowFlag int) (Settings, erro
 	// nobody chose cannot be read as a point in the prompt's history, so the
 	// default is the one pair the committed series is scored at.
 	if s.Model == "" {
-		series, err := DefaultSeries()
-		if err != nil {
-			return s, err
-		}
-		s.Model = series.Model
+		s.Model = DefaultSeries().Model
 	}
 	var missing []string
 	if s.BaseURL == "" {
