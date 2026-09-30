@@ -52,7 +52,7 @@ Reason silently in four steps:
 
 If your `suggestion` would be the code already there, or only reorders entries, there is no bug → drop.
 
-Do NOT include reasoning in output — only the finding. Step 3 fails → say nothing: false positive worse than missed nit; noisy reviews get ignored.
+Do NOT include reasoning in output — only the finding. Step 2 or 4 fails → say nothing: false positive worse than missed nit; noisy reviews get ignored.
 
 ## Comment construction
 

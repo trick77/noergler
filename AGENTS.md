@@ -58,7 +58,8 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   evidence line, and no suggestion that is the existing code (indent
   counts) or only reorders comma-terminated literal entries (annotated
   assignments, dataclass fields, CSS are order-sensitive). A drop lowers
-  the verdict to what the kept findings support. A removed or full-file-only line is
+  the verdict to what the kept findings support. Full-file lines alone are
+  dropped: one diff line must be quoted. A removed or full-file-only line is
   evidence, never an anchor: a real finding quoted the call outside the
   diff, and rejecting that dropped it. Blunt rules, never
   a judge model. Drops are logged by reason, never silent.

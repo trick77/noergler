@@ -82,8 +82,10 @@ func TestValidateFindings(t *testing.T) {
 		// The resource-leak shape from the evals: the call the bug hangs on
 		// is quoted from the full file, the anchor from the diff.
 		{"full-file line plus a diff line", vf("src/labels.ts", 11, "resp, err := client.Do(req)", "mu.Lock()"), "", 11},
-		{"full-file line only, anchor shown", vf("src/labels.ts", 11, "resp, err := client.Do(req)"), "", 11},
-		{"full-file line only, anchor not shown", vf("src/labels.ts", 3, "resp, err := client.Do(req)"), DropAnchorMismatch, 0},
+		// Full-file lines alone tie the finding to nothing the diff changed:
+		// without this, line 11 would pass on any unrelated shown line.
+		{"full-file line only", vf("src/labels.ts", 11, "resp, err := client.Do(req)"), DropEvidenceOutsideDiff, 0},
+		{"full-file line plus a removed line", vf("src/labels.ts", 11, "resp, err := client.Do(req)", "defer mu.Unlock()"), "", 11},
 		{
 			"suggestion identical to the code there",
 			withSuggestion(vf("src/labels.ts", 17, "a()"), "    a()"),

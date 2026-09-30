@@ -21,6 +21,10 @@ const (
 	// DropEvidenceNotFound means a quoted line is in neither the file's diff
 	// nor its full content. The model quoted code that is not there.
 	DropEvidenceNotFound DropReason = "evidence_not_found"
+	// DropEvidenceOutsideDiff means every quoted line comes from the full
+	// file, none from the diff: the finding is about code the PR did not
+	// touch, or quoted around the change instead of at it.
+	DropEvidenceOutsideDiff DropReason = "evidence_outside_diff"
 	// DropAnchorMismatch means the evidence exists, but not near `line`, and
 	// the first evidence line matches several shown lines, so there is no
 	// single line to move the finding to.
@@ -135,29 +139,38 @@ func validateOne(f ReviewFinding, idx diff.AnchorIndex) (DropReason, int) {
 	// quoted removed line, or a full-file line outside the diff, is valid
 	// evidence, but nothing can be posted on it.
 	var anchors []uint64
-	quoted := 0
+	quoted, inDiff := 0, false
 	for _, e := range f.Evidence {
 		if strings.TrimSpace(e) == "" {
 			continue
 		}
-		h, onNewSide, found := matchEvidence(e, fa)
-		if !found {
+		h, where := matchEvidence(e, fa)
+		switch where {
+		case notFound:
 			return DropEvidenceNotFound, 0
+		case onNewSide:
+			anchors = append(anchors, h)
+			inDiff = true
+		case onRemovedSide:
+			inDiff = true
 		}
 		quoted++
-		if onNewSide {
-			anchors = append(anchors, h)
-		}
 	}
 	if quoted == 0 {
 		return DropNoEvidence, 0
+	}
+	// Full-file lines alone tie the finding to nothing the diff changed, and
+	// the line check below would then accept any shown line at all.
+	if !inDiff {
+		return DropEvidenceOutsideDiff, 0
 	}
 
 	line := f.Line
 	switch {
 	case len(anchors) == 0:
-		// Only removed lines quoted: the anchor cannot be checked against
-		// them, so it must at least be a line the diff showed.
+		// Only removed lines (plus, maybe, full-file ones) quoted: the anchor
+		// cannot be checked against them, so it must at least be a line the
+		// diff showed.
 		if _, shown := fa.Shown[line]; !shown {
 			return DropAnchorMismatch, 0
 		}
@@ -192,12 +205,21 @@ func validateOne(f ReviewFinding, idx diff.AnchorIndex) (DropReason, int) {
 // purpose: the gutter is ours, never the file's text.
 var gutterRE = regexp.MustCompile(`^\s*[0-9]+ [ +]`)
 
+// evidenceSource says where a quoted line was found.
+type evidenceSource int
+
+const (
+	notFound      evidenceSource = iota
+	onNewSide                    // an added or context line the diff showed
+	onRemovedSide                // a line the diff removed
+	inContentOnly                // a full-file line outside the diff
+)
+
 // matchEvidence finds a quoted line among the shown, removed or full-file
-// ones, and says whether it is on the diff's new side. The quote as given is
-// tried first, then with a copied gutter or a leading diff marker taken off:
-// code can itself start with `+`, `-` or a digit, so a stripped form is only
-// a fallback.
-func matchEvidence(quote string, fa diff.FileAnchors) (hash uint64, onNewSide, found bool) {
+// ones, and says which. The quote as given is tried first, then with a
+// copied gutter or a leading diff marker taken off: code can itself start
+// with `+`, `-` or a digit, so a stripped form is only a fallback.
+func matchEvidence(quote string, fa diff.FileAnchors) (uint64, evidenceSource) {
 	candidates := []string{quote}
 	if loc := gutterRE.FindStringIndex(quote); loc != nil {
 		candidates = append(candidates, quote[loc[1]:])
@@ -211,14 +233,16 @@ func matchEvidence(quote string, fa diff.FileAnchors) (hash uint64, onNewSide, f
 	// line ` run: x`.
 	for _, c := range candidates {
 		h := diff.HashLine(c)
-		if len(linesWithHash(h, fa.Shown)) > 0 {
-			return h, true, true
-		}
-		if fa.Removed[h] || fa.InContent(h) {
-			return h, false, true
+		switch {
+		case len(linesWithHash(h, fa.Shown)) > 0:
+			return h, onNewSide
+		case fa.Removed[h]:
+			return h, onRemovedSide
+		case fa.InContent(h):
+			return h, inContentOnly
 		}
 	}
-	return 0, false, false
+	return 0, notFound
 }
 
 // nearestAnchor is the shown line within anchorSlack of line that carries an
