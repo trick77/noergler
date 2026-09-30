@@ -15,36 +15,54 @@ import (
 // Added and context lines carry their number; a removed line and a
 // `\ No newline` marker carry a blank gutter of the same width, since neither
 // exists in the new file. Header lines (diff --git, ---, +++) and `@@` lines
-// pass through unchanged. The gutter width is the widest number in the file,
-// so columns line up.
+// pass through unchanged. The gutter width is the widest number actually
+// written, so columns line up.
+//
+// The width is NOT taken from the `@@` counts: a body can hold more new-side
+// lines than its header claims (context expansion does not count
+// space-stripped blank lines), and a width sized from the header would be one
+// digit short the moment the real count crosses 9, 99, 999.
 //
 // Splits on "\n" only, like ParseHunks: this is the diff the prompt shows,
 // and its own terminators are the only ones that may split it.
 func NumberDiff(fileDiff string) string {
 	lines := strings.Split(fileDiff, "\n")
-	width := len(strconv.Itoa(maxNewLine(lines)))
-	blank := strings.Repeat(" ", width)
 
-	out := make([]string, 0, len(lines))
-	next, inHunk := 0, false
+	// Pass one: the number each line carries, 0 for none.
+	nums := make([]int, len(lines))
+	highest, next, inHunk := 0, 0, false
 	for i, line := range lines {
 		if m := hunkHeaderRE.FindStringSubmatch(line); m != nil {
 			next, inHunk = atoiOr(m[3], 0), true
-			out = append(out, line)
 			continue
 		}
 		// The trailing "" of a diff ending in a newline stays as it was, so
 		// the rejoin reproduces that newline and nothing more.
-		if !inHunk || (i == len(lines)-1 && line == "") {
+		if !inHunk || (i == len(lines)-1 && line == "") || !newSideLine(line) {
+			continue
+		}
+		nums[i] = next
+		highest = max(highest, next)
+		next++
+	}
+
+	// Pass two: render with the width the numbers need.
+	width := len(strconv.Itoa(highest))
+	blank := strings.Repeat(" ", width)
+	out := make([]string, 0, len(lines))
+	inHunk = false
+	for i, line := range lines {
+		switch {
+		case hunkHeaderRE.MatchString(line):
+			inHunk = true
 			out = append(out, line)
-			continue
+		case !inHunk || (i == len(lines)-1 && line == ""):
+			out = append(out, line)
+		case newSideLine(line):
+			out = append(out, pad(nums[i], width)+" "+line)
+		default:
+			out = append(out, blank+" "+line)
 		}
-		if newSideLine(line) {
-			out = append(out, pad(next, width)+" "+line)
-			next++
-			continue
-		}
-		out = append(out, blank+" "+line)
 	}
 	return strings.Join(out, "\n")
 }
@@ -54,19 +72,6 @@ func NumberDiff(fileDiff string) string {
 // leading space was stripped in transit).
 func newSideLine(line string) bool {
 	return line == "" || line[0] == '+' || line[0] == ' '
-}
-
-// maxNewLine is the largest new-file line number any hunk reaches.
-func maxNewLine(lines []string) int {
-	highest := 0
-	for _, line := range lines {
-		if m := hunkHeaderRE.FindStringSubmatch(line); m != nil {
-			if end := atoiOr(m[3], 0) + atoiOr(m[4], 1) - 1; end > highest {
-				highest = end
-			}
-		}
-	}
-	return highest
 }
 
 func pad(n, width int) string {

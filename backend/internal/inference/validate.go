@@ -12,19 +12,19 @@ import (
 type DropReason string
 
 const (
-	// DropUnknownFile: the finding names a file the prompt did not show.
+	// DropUnknownFile means the finding names a file the prompt did not show.
 	DropUnknownFile DropReason = "unknown_file"
-	// DropNoEvidence: no non-blank evidence line was quoted.
+	// DropNoEvidence means no non-blank evidence line was quoted.
 	DropNoEvidence DropReason = "no_evidence"
-	// DropEvidenceNotFound: a quoted line is in neither the file's diff nor
-	// its full content. The model quoted code that is not there.
+	// DropEvidenceNotFound means a quoted line is in neither the file's diff
+	// nor its full content. The model quoted code that is not there.
 	DropEvidenceNotFound DropReason = "evidence_not_found"
-	// DropAnchorMismatch: the evidence exists, but not near `line`, and the
-	// first evidence line matches several shown lines, so there is no single
-	// line to move the finding to.
+	// DropAnchorMismatch means the evidence exists, but not near `line`, and
+	// the first evidence line matches several shown lines, so there is no
+	// single line to move the finding to.
 	DropAnchorMismatch DropReason = "anchor_mismatch"
-	// DropNoopSuggestion: the suggested fix is the code already there, or
-	// only reorders `key: value` entries. The finding argues a change that
+	// DropNoopSuggestion means the suggested fix is the code already there,
+	// or only reorders `key: value` entries. The finding argues a change that
 	// changes nothing.
 	DropNoopSuggestion DropReason = "noop_suggestion"
 )

@@ -37,6 +37,15 @@ func TestNumberDiffIsPinned(t *testing.T) {
 			"@@ -1,3 +1,3 @@\n1 +a\n2 \n3 +b",
 		},
 		{
+			// The body holds more new-side lines than the header claims (a
+			// space-stripped blank line the header did not count), and the
+			// real count crosses into two digits. A width sized from the
+			// header panicked here with a negative Repeat count.
+			"body longer than its header",
+			"@@ -1,8 +1,8 @@\n+a\n\n+b\n+c\n+d\n+e\n+f\n+g\n+h\n+i",
+			"@@ -1,8 +1,8 @@\n 1 +a\n 2 \n 3 +b\n 4 +c\n 5 +d\n 6 +e\n 7 +f\n 8 +g\n 9 +h\n10 +i",
+		},
+		{
 			"no hunks",
 			"+++ /dev/null\n-x",
 			"+++ /dev/null\n-x",
