@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/trick77/noergler/internal/diff"
 	"github.com/trick77/noergler/internal/evals"
 	"github.com/trick77/noergler/internal/inference"
 )
@@ -68,22 +69,51 @@ func perfectFindings(t *testing.T) (stubClient, int) {
 	var s stubClient
 	seeded := 0
 	for _, c := range cases {
-		// The case's own diff, which is unique per case and reaches the
-		// prompt verbatim. A path would not be: two cases share claims.go.
+		// The case's own diff as the prompt renders it, which is unique per
+		// case. A path would not be: two cases share claims.go.
 		mark := ""
 		if len(c.Files) > 0 {
-			mark = c.Files[0].Diff
+			mark = diff.NumberDiff(c.Files[0].Diff)
 		}
 		for _, e := range c.Expected {
 			seeded++
+			line, text := firstShownLine(t, c, e)
 			s.findings = append(s.findings, inference.ReviewFinding{
-				File: e.File, Line: e.Lines[0], Severity: "issue",
-				Comment: e.Keywords[0],
+				File: e.File, Line: line, Severity: "issue",
+				Comment: e.Keywords[0], Evidence: []string{text},
 			})
 			s.owner = append(s.owner, mark)
 		}
 	}
 	return s, seeded
+}
+
+// firstShownLine is the first non-blank new-side line of the expected window
+// the case's diff shows, with its text: the anchor and evidence a correct
+// finding carries, so it survives inference.ValidateFindings.
+func firstShownLine(t *testing.T, c evals.Case, e evals.Expected) (int, string) {
+	t.Helper()
+	for _, f := range c.Files {
+		if f.Path != e.File {
+			continue
+		}
+		_, hunks := diff.ParseHunks(f.Diff)
+		for _, h := range hunks {
+			n := h.NewStart
+			for _, l := range h.BodyLines {
+				if l != "" && l[0] != '+' && l[0] != ' ' {
+					continue // removed line or `\ No newline`: not in the new file
+				}
+				text := strings.TrimPrefix(strings.TrimPrefix(l, "+"), " ")
+				if n >= e.Lines[0] && n <= e.Lines[1] && strings.TrimSpace(text) != "" {
+					return n, text
+				}
+				n++
+			}
+		}
+	}
+	t.Fatalf("%s: no shown line in %s:%d-%d", c.Name, e.File, e.Lines[0], e.Lines[1])
+	return 0, ""
 }
 
 func env(extra map[string]string) func(string) string {
@@ -234,8 +264,26 @@ func TestRun_WritesTheJSONReport(t *testing.T) {
 // TestRun_MissedBugReportsMissed only reaches through ErrMissed.
 func TestRun_InventedFindingOnACleanControlIsExitOne(t *testing.T) {
 	client, _ := perfectFindings(t)
-	// Answer every case, including the ones that seed nothing.
-	client.owner = nil
+	// One well-formed finding on a clean control: a real file and a line its
+	// diff shows, quoted. A stray finding on a file the case never showed
+	// would not do: ValidateFindings drops it before scoring, as production
+	// drops it before posting.
+	cases, err := evals.LoadCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cases {
+		if c.Name != "clean-refactor" {
+			continue
+		}
+		f := c.Files[0]
+		line, text := firstShownLine(t, c, evals.Expected{File: f.Path, Lines: [2]int{1, 1 << 20}})
+		client.findings = append(client.findings, inference.ReviewFinding{
+			File: f.Path, Line: line, Severity: "suggestion",
+			Comment: "invented", Evidence: []string{text},
+		})
+		client.owner = append(client.owner, diff.NumberDiff(f.Diff))
+	}
 	missed, err := run(context.Background(), baseOptions(t, client))
 	if err == nil {
 		t.Fatal("want an error when a clean control gets a finding")

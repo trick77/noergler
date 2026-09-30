@@ -69,8 +69,11 @@ func FormatFileEntry(f diff.FileReviewData) string {
 	default:
 		b.WriteString("_(full file content omitted — review diff only)_\n")
 	}
-	b.WriteString("### Changes (diff: lines with `-` are REMOVED, lines with `+` are ADDED):\n```diff\n" +
-		f.Diff + "\n```")
+	// The diff carries its new-file line numbers in a left gutter
+	// (diff.NumberDiff): a finding's line is read, not counted.
+	b.WriteString("### Changes (diff: left column is the new-file line number, blank on removed lines; " +
+		"lines with `-` are REMOVED, lines with `+` are ADDED):\n```diff\n" +
+		diff.NumberDiff(f.Diff) + "\n```")
 	return b.String()
 }
 

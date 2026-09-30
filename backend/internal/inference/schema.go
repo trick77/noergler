@@ -13,7 +13,7 @@ const ReviewSchemaName = "review_response"
 //
 // It is also token-counted as part of the pre-flight fit check, because the
 // gateway bills it as input like everything else. The counted form uses ", "
-// and ": " separators, which brings the serialization to 1492 bytes. Go's
+// and ": " separators, which brings the serialization to 1594 bytes. Go's
 // json.Marshal is compact and would count fewer tokens for the same schema,
 // moving every pinned total in testdata/assemble_golden.json, so SchemaJSON
 // re-inserts the separators rather than marshalling.
@@ -48,10 +48,14 @@ func ReviewResponseSchema() map[string]any {
 				"items": map[string]any{
 					"type":                 "object",
 					"additionalProperties": false,
-					"required":             []any{"file", "line", "severity", "confidence", "headline", "comment", "suggestion"},
+					"required":             []any{"file", "line", "evidence", "severity", "confidence", "headline", "comment", "suggestion"},
 					"properties": map[string]any{
-						"file":       map[string]any{"type": "string"},
-						"line":       map[string]any{"type": "integer"},
+						"file": map[string]any{"type": "string"},
+						"line": map[string]any{"type": "integer"},
+						"evidence": map[string]any{
+							"type": "array", "minItems": 1, "maxItems": 5,
+							"items": map[string]any{"type": "string"},
+						},
 						"severity":   map[string]any{"type": "string", "enum": []any{"issue", "suggestion"}},
 						"confidence": map[string]any{"type": "integer", "minimum": 80, "maximum": 100},
 						"headline":   map[string]any{"type": "string", "minLength": 1},
@@ -91,9 +95,10 @@ func ReviewResponseFormat() *llmwire.ResponseFormat {
 // written below, with ", " and ": " separators.
 //
 // It is a literal rather than a marshal of ReviewResponseSchema because Go's
-// encoder sorts map keys, and the tokenizer is sensitive to that: the same
-// 1492 bytes tokenize to 432 in sorted order against 435 in this order. The
-// fit check compares against the model's real ceiling, so a three-token
+// encoder sorts map keys, and the tokenizer is sensitive to that: when the
+// schema was 1492 bytes, it tokenized to 432 in sorted order against 435 in
+// this order. The fit check compares against the model's real ceiling, so a
+// few-token
 // under-count is a (small) permissive drift; pinning the string keeps the
 // counted form stable. TestSchemaStringAndMapAgree asserts this stays in
 // sync with ReviewResponseSchema.
@@ -107,8 +112,9 @@ const schemaJSON = `{"type": "object", "additionalProperties": false, "required"
 	`"properties": {"decision": {"type": "string", "enum": ["approve", "approve_with_followups", ` +
 	`"request_changes"]}, "rationale": {"type": "string", "minLength": 1}}}, ` +
 	`"findings": {"type": "array", "items": {"type": "object", "additionalProperties": false, ` +
-	`"required": ["file", "line", "severity", "confidence", "headline", "comment", "suggestion"], ` +
+	`"required": ["file", "line", "evidence", "severity", "confidence", "headline", "comment", "suggestion"], ` +
 	`"properties": {"file": {"type": "string"}, "line": {"type": "integer"}, ` +
+	`"evidence": {"type": "array", "minItems": 1, "maxItems": 5, "items": {"type": "string"}}, ` +
 	`"severity": {"type": "string", "enum": ["issue", "suggestion"]}, ` +
 	`"confidence": {"type": "integer", "minimum": 80, "maximum": 100}, ` +
 	`"headline": {"type": "string", "minLength": 1}, "comment": {"type": "string"}, ` +

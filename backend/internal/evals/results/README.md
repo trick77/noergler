@@ -21,6 +21,12 @@ Only one committed row would read differently under it, run2's Extra 1, which
 was that duplicate. The JSONs are left as they are; they record what the tool
 emitted at the time.
 
+It changed again with anchored findings. Every finding now passes
+`inference.ValidateFindings` before it is scored, the same check production
+runs before posting. A dropped finding is neither caught nor Extra, and the
+JSON lists it under `Dropped` with its reason, and a moved one under `Moved`.
+Duplicates now also compare `evidence`.
+
     cd backend
     EVAL_BASE_URL=... EVAL_API_KEY=... \
       go run ./cmd/evals -context-window 1000000 \
@@ -44,6 +50,9 @@ seen in production may not reproduce here.
 | 2026-09-30 | mimo-v2.6-flash | high | 12 rev5 | 8 | 7 | 2 | `prompts/review.txt` @ d576c13 | run2. Exit 1. All four controls clean, `clean-i18n-key-order` again. The miss is `lock-not-released` at line 26, past its 16-24 window. The second Extra is `context-not-propagated` reported as two findings, one per call site (lines 14 and 18), the rev1 shape. |
 | 2026-09-30 | mimo-v2.5-pro | high | 12 rev5 | 8 | 6 | 0 | `prompts/review.txt` @ d576c13 | **First rev5 run of the default series**, and the first run at the `corpus/series.yaml` default (no `EVAL_MODEL`, no `-effort`). Exit 2: `context-not-propagated` and `lock-not-released` died on `stream idle for 1m30s`, so both "misses" are transport failures and the score is incomplete. All four controls clean, `clean-i18n-key-order` included. |
 | 2026-09-30 | mimo-v2.5-pro | high | 12 rev5 | 8 | 6 | 0 | `prompts/review.txt` @ d576c13 | run2. Exit 1. Two real misses, no finding at all on `off-by-one` or `struct-field-race`, both caught in every rev4 run. All four controls clean. By the baseline rule a 6 is a signal. The prompt is unchanged and rev5 only adds a control, so the change is on the model or gateway side, not in the prompt. |
+| 2026-09-30 | mimo-v2.5-pro | high | 12 rev5 | 8 | 7 | 0 | `prompts/review.txt`, anchored-findings WIP | **run3, scored by a validator that never landed.** It accepted evidence only from the diff, so it dropped the correct `resource-leak` finding for quoting `resp, err := c.http.Do(req)` from the full file. The miss is that bug, not the model's; the validator was fixed before commit. Not part of any series. |
+| 2026-09-30 | mimo-v2.5-pro | high | 12 rev5 | 8 | 8 | 1 | `prompts/review.txt`, anchored findings | **New baseline: line-numbered diff, required `evidence`, `ValidateFindings` before scoring.** The prompt, the schema and the scorer all changed, so the rows above are not comparable. Exit 1: one finding on `clean-guard-clause` whose own text says "a style refactor with no behavior change". It carries no suggestion, so the no-op check cannot see it. Nothing dropped, nothing moved. |
+| 2026-09-30 | mimo-v2.5-pro | high | 12 rev5 | 8 | 7 | 0 | `prompts/review.txt`, anchored findings | run5, baseline pair. Exit 1: `context-not-propagated` got no finding at all. All four controls clean. Nothing dropped, nothing moved, and in both runs every finding landed inside its window. Before this, 3 of the 4 misses on rev5 were a right bug on a wrong line. |
 
 ## What the columns mean
 

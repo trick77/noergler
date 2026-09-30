@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/trick77/noergler/internal/diff"
 	"github.com/trick77/noergler/internal/httpstats"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/jira"
@@ -54,6 +55,10 @@ type reviewPlan struct {
 
 	prompt       string
 	promptTokens int
+	// anchors is what the prompt's diffs showed, as line hashes, so post can
+	// check each finding's evidence and line. Hashes, not text: the rule
+	// above still holds.
+	anchors diff.AnchorIndex
 
 	existing       []store.Finding
 	contentSkipped []string

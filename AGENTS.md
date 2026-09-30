@@ -50,6 +50,16 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
 - `prompts/review.txt` order: `{files}` BEFORE `{cumulative_pr_diff}` and
   `{previously_posted_findings}`. Prefix cache depends on it.
 - File order to the LLM is content-independent (group, language, path).
+- **Diff lines carry their new-file number** (`diff.NumberDiff`): the model
+  reads `line`, never counts it. Counting put findings past EOF in the evals.
+- **Every finding is validated before posting** (`inference.ValidateFindings`,
+  same call in `post` and in evals): shown file, verbatim `evidence` from the
+  file's diff or full content, `line` within 2 of it or moved to a unique
+  evidence line, and no suggestion that is the existing code or only
+  reorders `key: value` entries. A removed or full-file-only line is
+  evidence, never an anchor: a real finding quoted the call outside the
+  diff, and rejecting that dropped it. Blunt rules, never
+  a judge model. Drops are logged by reason, never silent.
 - `strings.ReplaceAll`, never `text/template`: the files contain JSON braces.
 - **Single worker for every Bitbucket call**, per-PR supersede. Only the
   gateway call leaves it, onto a bounded pool (`REVIEW_INFERENCE_CONCURRENCY`
@@ -322,7 +332,8 @@ path.
   carries `team=` but no `pr_tag` and no httpstats scope. The queue passes
   the review's through structurally; do not "simplify" it to the parameter.
 - The plan crossing the stages holds counts and names, never file bodies,
-  the raw diff or anything but the one prompt string. `render.SummaryInput`
+  the raw diff or anything but the one prompt string (plus the anchor
+  index: line hashes, never text). `render.SummaryInput`
   has no content-bearing field, and `post`'s only use of the files is
   `len(files)`.
 - `Queue.Stop` is a **fixpoint**: a review spawns inference which submits a
