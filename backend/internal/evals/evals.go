@@ -30,12 +30,51 @@ import (
 	"strconv"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/trick77/noergler/internal/diff"
 	"github.com/trick77/noergler/internal/inference"
 )
 
-//go:embed corpus/*.json
+//go:embed corpus/*.json corpus/series.yaml
 var corpusFS embed.FS
+
+// Series is the model and level a run scores at when EVAL_MODEL and -effort
+// leave them unset. Data beside the corpus, not code: no model id lives in Go,
+// and changing the pair is a visible edit that starts a new series.
+type Series struct {
+	Model  string `yaml:"model"`
+	Effort string `yaml:"effort"`
+}
+
+// DefaultSeries reads corpus/series.yaml. Both fields are required: a
+// half-filled file would default the model but not its level, and a run at
+// the wrong level reads as a prompt regression.
+func DefaultSeries() (Series, error) {
+	raw, err := corpusFS.ReadFile("corpus/series.yaml")
+	if err != nil {
+		return Series{}, err
+	}
+	var s Series
+	if err := yaml.Unmarshal(raw, &s); err != nil {
+		return Series{}, fmt.Errorf("corpus/series.yaml: %w", err)
+	}
+	s.Model, s.Effort = strings.TrimSpace(s.Model), strings.TrimSpace(s.Effort)
+	if s.Model == "" || s.Effort == "" {
+		return Series{}, fmt.Errorf("corpus/series.yaml: model and effort are both required")
+	}
+	return s, nil
+}
+
+// EffortFor is the level a run on model uses. A passed -effort always wins,
+// empty included (the model's balanced level). Unset, the series level
+// applies to the series model only: another model's levels are its own.
+func (s Series) EffortFor(model, flagValue string, flagSet bool) string {
+	if flagSet || model != s.Model {
+		return flagValue
+	}
+	return s.Effort
+}
 
 // Expected is one bug a reviewer must report.
 type Expected struct {
@@ -222,9 +261,16 @@ func ResolveSettings(getenv func(string) string, windowFlag int) (Settings, erro
 		Alias:         strings.TrimSpace(getenv("EVAL_ALIAS")),
 		ContextWindow: windowFlag,
 	}
-	// No default model: a weaker model or less thinking scores worse on the
-	// same prompt, so a run on a model nobody named cannot be read as a point
-	// in the prompt's history. The committed series names its model.
+	// Unset, the model is the series' (corpus/series.yaml): a run on a model
+	// nobody chose cannot be read as a point in the prompt's history, so the
+	// default is the one pair the committed series is scored at.
+	if s.Model == "" {
+		series, err := DefaultSeries()
+		if err != nil {
+			return s, err
+		}
+		s.Model = series.Model
+	}
 	var missing []string
 	if s.BaseURL == "" {
 		missing = append(missing, "EVAL_BASE_URL")
@@ -232,11 +278,8 @@ func ResolveSettings(getenv func(string) string, windowFlag int) (Settings, erro
 	if s.APIKey == "" {
 		missing = append(missing, "EVAL_API_KEY")
 	}
-	if s.Model == "" {
-		missing = append(missing, "EVAL_MODEL")
-	}
 	if len(missing) > 0 {
-		return s, fmt.Errorf("set %s to point at an OpenAI-compatible endpoint and an llmwire profile",
+		return s, fmt.Errorf("set %s to point at an OpenAI-compatible endpoint",
 			strings.Join(missing, ", "))
 	}
 	// resolveWindow's error tells the operator to set OPENAI_CONTEXT_WINDOW,

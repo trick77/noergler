@@ -5,16 +5,17 @@
 // command. Re-run it after any edit to prompts/review.txt, to the assembly
 // in internal/inference, or when changing model or reasoning effort.
 //
-//	EVAL_BASE_URL=https://llm.example/v1 \
-//	EVAL_API_KEY=... EVAL_MODEL=<profile id> \
-//	  go run ./cmd/evals -prompt ../prompts/review.txt -effort <level>
+//	EVAL_BASE_URL=https://llm.example/v1 EVAL_API_KEY=... \
+//	  go run ./cmd/evals -prompt ../prompts/review.txt
 //
 // No model or level is a default in code: a series is only comparable at
-// one pair, which internal/evals/results/README.md records. -effort unset
-// means the model's balanced level; a set one is checked against the profile
-// at startup, before any request.
+// one pair, which internal/evals/corpus/series.yaml names and
+// internal/evals/results/README.md records. EVAL_MODEL unset is the series
+// model; -effort unset is the series level on that model and the balanced
+// level on any other. A passed -effort, empty included, always wins, and is
+// checked against the profile at startup, before any request.
 //
-// EVAL_MODEL is required and must be an llmwire PROFILE id, not whatever name the endpoint
+// EVAL_MODEL must be an llmwire PROFILE id, not whatever name the endpoint
 // answers to: llmwire's registry is fixed and rejects an unknown id before
 // any request is sent. The gateway alias defaults to that id, which is what
 // a plain OpenAI-compatible host serves; EVAL_ALIAS covers one that renames.
@@ -55,9 +56,12 @@ import (
 type options struct {
 	promptPath string
 	effort     string
-	jsonOut    string
-	timeout    time.Duration
-	window     int
+	// effortSet is whether -effort was passed at all, so an explicit empty
+	// (the balanced level) is told apart from no flag (the series level).
+	effortSet bool
+	jsonOut   string
+	timeout   time.Duration
+	window    int
 
 	// getenv and stdout are injected so a test does not have to mutate the
 	// process environment or capture os.Stdout.
@@ -71,13 +75,20 @@ type options struct {
 func main() {
 	opt := options{getenv: os.Getenv, stdout: os.Stdout, newClient: dialGateway}
 	flag.StringVar(&opt.promptPath, "prompt", "../prompts/review.txt", "review prompt template")
-	// Empty is the model's balanced level. Keep a series at the level its
-	// earlier runs used: less thinking scores worse on the same prompt.
-	flag.StringVar(&opt.effort, "effort", "", "reasoning level (empty: the model's balanced level)")
+	// Unset is the series level (corpus/series.yaml) on the series model.
+	// Keep a series at the level its earlier runs used: less thinking scores
+	// worse on the same prompt.
+	flag.StringVar(&opt.effort, "effort", "",
+		"reasoning level (unset: the series level on the series model; empty: the model's balanced level)")
 	flag.StringVar(&opt.jsonOut, "json", "", "also write the full result as JSON to this path")
 	flag.IntVar(&opt.window, "context-window", 0, "override the gateway's max_input_tokens (0 = resolve it)")
 	flag.DurationVar(&opt.timeout, "timeout", 10*time.Minute, "whole-run timeout")
 	flag.Parse()
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "effort" {
+			opt.effortSet = true
+		}
+	})
 
 	missed, err := run(context.Background(), opt)
 	if err != nil {
@@ -137,6 +148,11 @@ func run(ctx context.Context, opt options) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	series, err := evals.DefaultSeries()
+	if err != nil {
+		return false, err
+	}
+	opt.effort = series.EffortFor(settings.Model, opt.effort, opt.effortSet)
 	template, err := os.ReadFile(opt.promptPath) //nolint:gosec // G304: an operator-supplied flag in a dev tool
 	if err != nil {
 		return false, fmt.Errorf("read prompt: %w", err)

@@ -70,9 +70,12 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
 - Exit 1 has fired on two of three runs with the prompt unchanged. One red is
   model noise; two consecutive is the signal. Not encoded - the exit code
   stays strict so CI could gate on it without a threshold to tune.
-- Evals have **no model or level default in code**: `EVAL_MODEL` is
-  required, `-effort` empty = the model's balanced level. A series stays at
-  one pair (`results/README.md` names it): a weaker model or less thinking
+- Evals have **no model or level default in code**: the default pair is
+  data, `internal/evals/corpus/series.yaml` (mimo-v2.5-pro, high). Unset
+  `EVAL_MODEL` = that model; unset `-effort` = that level on that model,
+  balanced on any other; passed `-effort ""` = balanced. Production runs a
+  model too costly to eval on; the series is a stand-in, so a prod false
+  positive may not reproduce. A series stays at one pair: a weaker model or less thinking
   scores worse on the same prompt, so a mixed history cannot be compared and
   a regression reads as a model change.
   `EVAL_MODEL` is an llmwire profile id, not the endpoint's own name; the
