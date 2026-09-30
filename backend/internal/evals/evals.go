@@ -190,6 +190,11 @@ type Result struct {
 	// nothing, but they are reported: a model repeating itself is worth
 	// seeing rather than silently collapsing.
 	Duplicates int `json:"Duplicates,omitempty"`
+	// Dropped and Moved are what inference.ValidateFindings did before
+	// scoring, exactly as production does before posting. A dropped finding
+	// is neither scored nor Extra: it would never have reached the PR.
+	Dropped []inference.DroppedFinding `json:"Dropped,omitempty"`
+	Moved   []inference.Reanchor       `json:"Moved,omitempty"`
 	// Err is excluded from JSON: encoding/json renders an error as {}, so a
 	// committed report would record THAT a case failed but not why, making a
 	// 401 and a timeout look identical in history. ErrMsg carries the text.
@@ -243,7 +248,8 @@ func Run(ctx context.Context, client Reviewer, template string, cases []Case, co
 			ResponseSchema: inference.ReviewResponseFormat(),
 		})
 		res.Outcome = out.Outcome.String()
-		res.Findings = out.Review.Findings
+		v := inference.ValidateFindings(out.Review.Findings, diff.BuildAnchorIndex(c.Files))
+		res.Findings, res.Dropped, res.Moved = v.Kept, v.Dropped, v.Reanchored
 		if out.Err != nil {
 			res.Err, res.ErrMsg = out.Err, out.Err.Error()
 		}
@@ -583,6 +589,10 @@ func findingKey(f inference.ReviewFinding) string {
 	}
 	opt(f.Headline)
 	opt(f.Suggestion)
+	put(strconv.Itoa(len(f.Evidence)))
+	for _, e := range f.Evidence {
+		put(e)
+	}
 	return b.String()
 }
 

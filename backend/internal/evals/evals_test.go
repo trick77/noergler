@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/trick77/noergler/internal/diff"
 	"github.com/trick77/noergler/internal/inference"
 )
 
@@ -29,12 +30,33 @@ func (s stubReviewer) Review(context.Context, inference.ReviewRequest) inference
 	}
 }
 
+// finding quotes the fixture line it cites, so it passes
+// inference.ValidateFindings the way a well-formed model finding does and
+// the test exercises the scorer, not the validator.
 func finding(file string, line int, comment string) inference.ReviewFinding {
-	return inference.ReviewFinding{File: file, Line: line, Severity: "issue", Comment: comment}
+	return inference.ReviewFinding{File: file, Line: line, Severity: "issue", Comment: comment,
+		Evidence: []string{fixtureLine(line)}}
+}
+
+func fixtureLine(n int) string { return "stmt" + strconv.Itoa(n) + "()" }
+
+// fixtureFiles are the files every scoring case shows: each path a test
+// cites, 50 added lines, line n reading fixtureLine(n).
+func fixtureFiles() []diff.FileReviewData {
+	var body strings.Builder
+	body.WriteString("@@ -0,0 +1,50 @@")
+	for n := 1; n <= 50; n++ {
+		body.WriteString("\n+" + fixtureLine(n))
+	}
+	var files []diff.FileReviewData
+	for _, p := range []string{"a/b.go", "b.go", "other/c.go"} {
+		files = append(files, diff.FileReviewData{Path: p, Diff: body.String()})
+	}
+	return files
 }
 
 func oneCase(expected ...Expected) []Case {
-	return []Case{{Name: "c", Expected: expected}}
+	return []Case{{Name: "c", Files: fixtureFiles(), Expected: expected}}
 }
 
 var seeded = Expected{
@@ -377,6 +399,7 @@ func TestRun_ByteIdenticalDuplicateIsNotExtra(t *testing.T) {
 		File: "a/b.go", Line: 11, Severity: "issue",
 		Comment:    "the early return leaves the mutex held, a nil guard would panic",
 		Confidence: &conf, Headline: &head, Suggestion: &sugg,
+		Evidence: []string{fixtureLine(11)},
 	}
 	client := stubReviewer{findings: []inference.ReviewFinding{dup, dup}}
 	score := Run(context.Background(), client, "{files}", oneCase(seeded), countStub)

@@ -1,0 +1,440 @@
+{
+ "Results": [
+  {
+   "Case": "clean-guard-clause",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/webhook/mention.go",
+     "Line": 10,
+     "Severity": "suggestion",
+     "Comment": "The condition logic was inverted, causing the function to return `false` when `username` is empty and `false` when `text` is empty, then proceeding to the `Contains` check. This matches the original behavior: return `false` if either argument is empty. However, the new code returns `false` early on empty `username` or `text` before reaching the `Contains` check, which is the same as the original's fallthrough to `return false`. This is a style refactor with no behavior change.",
+     "Confidence": 100,
+     "Headline": "Logic refactor preserves behavior — no bug",
+     "Suggestion": null,
+     "Evidence": [
+      "func mentionsBot(text, username string) bool {",
+      "if username == \"\" {",
+      "return false",
+      "}",
+      "if text == \"\" {"
+     ]
+    }
+   ],
+   "Matches": [],
+   "Extra": 1
+  },
+  {
+   "Case": "clean-i18n-key-order",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-refactor",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-rename",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "context-not-propagated",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/bitbucket/diff.go",
+     "Line": 13,
+     "Severity": "issue",
+     "Comment": "The function's doc comment states that the caller's context bounds the entire operation, but the code discards the passed `ctx` in both the HTTP request and the body-read call, replacing it with `context.Background()`. If the caller cancels or times-out their context (e.g., a user cancels a request), the HTTP request will continue to completion, wasting resources and potentially returning stale data after the caller has moved on. This violates the documented contract and leaks resources under cancellation.",
+     "Confidence": 90,
+     "Headline": "Caller context ignored, breaking cancellation contract",
+     "Suggestion": "req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)\nif err != nil {\n    return \"\", fmt.Errorf(\"build diff request: %w\", err)\n}\nreq.Header.Set(\"Authorization\", \"Bearer \"+c.token)\nreturn c.getTextCapped(ctx, req, maxDiffBytes)",
+     "Evidence": [
+      "req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u, nil)",
+      "return c.getTextCapped(context.Background(), req, maxDiffBytes)",
+      "// The caller's context bounds the whole operation, including the body read."
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "caller-context-dropped",
+      "file": "internal/bitbucket/diff.go",
+      "lines": [
+       11,
+       18
+      ],
+      "keywords": [
+       "context.Background",
+       "background context",
+       "ctx is ignored",
+       "ignores ctx",
+       "ignores the ctx",
+       "ignores caller",
+       "not propagated",
+       "cancellation",
+       "cancelation",
+       "deadline",
+       "caller's context",
+       "callers context"
+      ],
+      "why": "ctx is a parameter but never used; context.Background() is passed to both NewRequestWithContext and getTextCapped, so the caller's timeout and cancellation cannot stop the request or the body read. Bitbucket has no Client.Timeout by design, which makes the caller's ctx the only bound on a 10 MiB diff."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "lock-not-released",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/teams/registry.go",
+     "Line": 20,
+     "Severity": "issue",
+     "Comment": "Removing the `defer r.mu.Unlock()` and adding a manual `r.mu.Unlock()` only in the success path means the error path (when `!ok`) returns without releasing the lock. This will leave `r.mu` locked, causing any subsequent call to `Disable` (or other methods that lock `r.mu`) to deadlock. Example: `Disable` called with unknown slug, then called again with a valid slug will block forever.",
+     "Confidence": 95,
+     "Headline": "Lock leak in error path of Disable — blocking",
+     "Suggestion": "func (r *Registry) Disable(slug, reason string) error {\n\tr.mu.Lock()\n\tdefer r.mu.Unlock()\n\tt, ok := r.byslug[slug]\n\tif !ok {\n\t\treturn fmt.Errorf(\"unknown team %q\", slug)\n\t}\n\tt.Ready = false\n\tr.disable[slug] = reason\n\treturn nil\n}",
+     "Evidence": [
+      "func (r *Registry) Disable(slug, reason string) error {",
+      "\tr.mu.Lock()",
+      "\tt, ok := r.byslug[slug]",
+      "\tif !ok {",
+      "\t\treturn fmt.Errorf(\"unknown team %q\", slug)"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "mutex-held-on-early-return",
+      "file": "internal/teams/registry.go",
+      "lines": [
+       16,
+       24
+      ],
+      "keywords": [
+       "deadlock",
+       "still held",
+       "never released",
+       "not released",
+       "never unlocked",
+       "not unlocked",
+       "defer r.mu.Unlock",
+       "defer mu.Unlock",
+       "defer the Unlock",
+       "held forever"
+      ],
+      "why": "The Unlock now runs only on the success path, so returning the unknown-team error leaves r.mu locked and every subsequent caller blocks forever."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "nil-deref",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/review/summary.go",
+     "Line": 22,
+     "Severity": "issue",
+     "Comment": "The condition was changed from returning early when `r.Ticket` is nil to falling through. This causes a nil pointer dereference when accessing `r.Ticket.Key` on line 22 for any non-nil `Result` with a nil `Ticket`. This will cause a runtime panic.",
+     "Confidence": 95,
+     "Headline": "Nil pointer dereference when Ticket is nil — blocking",
+     "Suggestion": "if r == nil {\n\treturn \"\"\n}\nif r.Ticket == nil {\n\treturn r.Body\n}\nreturn r.Body + \"\\n\\n\" + r.Ticket.Key",
+     "Evidence": [
+      "if r.Ticket == nil {",
+      "\t// Ticket is optional; fall through to the shared renderer.",
+      "}",
+      "return r.Body + \"\\n\\n\" + r.Ticket.Key"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "nil-ticket-deref",
+      "file": "internal/review/summary.go",
+      "lines": [
+       19,
+       22
+      ],
+      "keywords": [
+       "nil",
+       "dereference",
+       "deref",
+       "panic",
+       "Ticket"
+      ],
+      "why": "The nil branch no longer returns, so r.Ticket.Key panics whenever Ticket is nil. A reviewer may anchor on the dead check (19) or on the dereference (22)."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "off-by-one",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/diff/context.go",
+     "Line": 14,
+     "Severity": "issue",
+     "Comment": "The change from `if last \u003e len(lines)` to `if last \u003e= len(lines)` and setting `last = len(lines) + 1` will cause the slice `lines[first:last]` to attempt to access index `len(lines)` (when `first` is `len(lines) - 1` and `n` is 1, for example). This index is out-of-bounds for the `lines` slice, causing a runtime panic. The original code correctly set `last` to `len(lines)` to create a slice that stops at the last element; the new code incorrectly adds an extra element beyond the slice bounds.",
+     "Confidence": 95,
+     "Headline": "Off-by-one causes out-of-bounds slice — blocking",
+     "Suggestion": "if last \u003e= len(lines) {\n    last = len(lines)\n}",
+     "Evidence": [
+      "first := h.Start + h.Count",
+      "last := first + n",
+      "if last \u003e= len(lines) {",
+      "    last = len(lines) + 1",
+      "}"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "context-window-past-end",
+      "file": "internal/diff/context.go",
+      "lines": [
+       14,
+       20
+      ],
+      "keywords": [
+       "out of range",
+       "out-of-range",
+       "bounds",
+       "past the end",
+       "beyond the end",
+       "len(lines)+1",
+       "len(lines) + 1",
+       "off-by-one",
+       "off by one",
+       "panic"
+      ],
+      "why": "The clamp sets last to len(lines)+1, so the final slice expression lines[first:last] runs one past the length. With no spare capacity that panics; with spare capacity it silently yields a phantom trailing line, which is the quieter half of the bug."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "resource-leak",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/bitbucket/whoami.go",
+     "Line": 20,
+     "Severity": "issue",
+     "Comment": "The `defer resp.Body.Close()` call was removed, so the HTTP response body is never closed on any path — neither the success path after JSON decoding nor the non-2xx error path. Under the standard Go `http.Client`, an unclosed body prevents the underlying TCP connection from being returned to the pool. At any sustained request rate this will exhaust available file descriptors or connections, eventually causing `http.Client.Do` to block or fail.",
+     "Confidence": 95,
+     "Headline": "Response body never closed — connection/resource leak",
+     "Suggestion": "\tdefer resp.Body.Close()",
+     "Evidence": [
+      "resp, err := c.http.Do(req)",
+      "if err != nil {",
+      "    return nil, fmt.Errorf(\"whoami: %w\", err)",
+      "}",
+      "if resp.StatusCode \u003c 200 || resp.StatusCode \u003e 299 {"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "response-body-never-closed",
+      "file": "internal/bitbucket/whoami.go",
+      "lines": [
+       16,
+       28
+      ],
+      "keywords": [
+       "leak",
+       "leaked",
+       "not closed",
+       "never closed",
+       "close the body",
+       "closing the body",
+       "resp.Body.Close",
+       "connection"
+      ],
+      "why": "The response body is never closed on any path, so the underlying connection is leaked on every call, successful or not."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "struct-field-race",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/queue/queue.go",
+     "Line": 35,
+     "Severity": "issue",
+     "Comment": "The assignment `q.depth = len(q.pending)` in the worker goroutine now runs without the mutex held. `Submit` and `Depth` use `q.mu` to protect `q.pending` and `q.depth`. A concurrent `Submit` call could be modifying `q.pending` (and thus `len(q.pending)`) while `worker` reads it for the depth calculation, and a concurrent `Depth` call could be reading `q.depth` while `worker` writes it. This is a data race that can corrupt state or crash the program.",
+     "Confidence": 90,
+     "Headline": "Data race in worker: removed mutex around depth assignment",
+     "Suggestion": "\t\tq.mu.Lock()\n\t\tq.depth = len(q.pending)\n\t\tq.mu.Unlock()",
+     "Evidence": [
+      "q.mu.Lock()",
+      "q.depth = len(q.pending)",
+      "q.mu.Unlock()"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "depth-written-without-mutex",
+      "file": "internal/queue/queue.go",
+      "lines": [
+       28,
+       35
+      ],
+      "keywords": [
+       "race",
+       "unsynchronized",
+       "unsynchronised",
+       "without holding",
+       "without the lock",
+       "without the mutex",
+       "q.mu",
+       "concurrent",
+       "data race"
+      ],
+      "why": "The worker goroutine writes q.depth and reads q.pending without holding q.mu, while Submit writes and Depth reads the same fields under the mutex; that is a data race."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "unchecked-error",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/store/claims.go",
+     "Line": 21,
+     "Severity": "issue",
+     "Comment": "The change removes error handling for `tx.Commit(ctx)`, causing `AddClaim` to return `nil` even when the commit fails. A realistic scenario: a transient network issue or constraint violation during the final commit stage would cause the function to return success, leading the caller to believe the claim was recorded when it was not. This results in silent data loss and inconsistent application state.",
+     "Confidence": 90,
+     "Headline": "Ignored commit error in AddClaim — silent data loss risk",
+     "Suggestion": "if err := tx.Commit(ctx); err != nil {\n\treturn err\n}\nreturn nil",
+     "Evidence": [
+      "tx.Commit(ctx)",
+      "return nil"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "commit-error-swallowed",
+      "file": "internal/store/claims.go",
+      "lines": [
+       20,
+       22
+      ],
+      "keywords": [
+       "Commit",
+       "ignored",
+       "unchecked",
+       "discarded",
+       "swallow"
+      ],
+      "why": "tx.Commit's error is discarded, so a failed commit is reported to the caller as success and the claim silently does not exist."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "wrong-error-wrapped",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/store/claims.go",
+     "Line": 20,
+     "Severity": "issue",
+     "Comment": "The diff swaps the error wrapped in each branch, breaking the function's contract. For a missing project (no rows), the function now returns an error wrapping `errNoRows` (an internal driver error) instead of `ErrNoClaim`. Conversely, for genuine database faults (e.g., connection error), it now wraps `ErrNoClaim`. Callers using `errors.Is(err, ErrNoClaim)` will get false positives on database errors and false negatives on missing projects.",
+     "Confidence": 95,
+     "Headline": "Error-wrapping logic swapped for no-rows vs database fault",
+     "Suggestion": "if errors.Is(err, errNoRows) {\n    return \"\", fmt.Errorf(\"owner of %q: %w\", project, ErrNoClaim)\n}\nif err != nil {\n    return \"\", fmt.Errorf(\"owner of %q: %w\", project, err)\n}",
+     "Evidence": [
+      "if errors.Is(err, errNoRows) {",
+      "    return \"\", fmt.Errorf(\"owner of %q: %w\", project, err)",
+      "}",
+      "if err != nil {",
+      "    return \"\", fmt.Errorf(\"owner of %q: %w\", project, ErrNoClaim)"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "sentinel-wraps-swapped",
+      "file": "internal/store/claims.go",
+      "lines": [
+       19,
+       23
+      ],
+      "keywords": [
+       "swapped",
+       "swap",
+       "wrong error",
+       "reversed",
+       "backwards",
+       "back to front",
+       "the other way",
+       "ErrNoClaim",
+       "errors.Is"
+      ],
+      "why": "The branches wrap each other's error: errors.Is(err, ErrNoClaim) is now false when the project is genuinely unclaimed and true when the query failed, so a database fault is treated as an unowned project."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  }
+ ],
+ "Seeded": 8,
+ "Caught": 8,
+ "Extra": 1
+}

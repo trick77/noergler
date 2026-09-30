@@ -9,7 +9,7 @@ import (
 
 // The rendered file entry is pinned byte for byte: it is model-facing text.
 func TestFormatFileEntryIsPinned(t *testing.T) {
-	const changes = "### Changes (diff: lines with `-` are REMOVED, lines with `+` are ADDED):\n```diff\n@@ -1 +1 @@\n+x\n```"
+	const changes = "### Changes (diff: left column is the new-file line number, blank on removed lines; lines with `-` are REMOVED, lines with `+` are ADDED):\n```diff\n@@ -1 +1 @@\n1 +x\n```"
 
 	cases := []struct {
 		name string
@@ -36,7 +36,7 @@ func TestFormatFileEntryIsPinned(t *testing.T) {
 		{
 			"deleted file",
 			diff.FileReviewData{Path: "a.py", Diff: "+++ /dev/null\n-x"},
-			"## File: a.py\n_(file deleted)_\n### Changes (diff: lines with `-` are REMOVED, lines with `+` are ADDED):\n```diff\n+++ /dev/null\n-x\n```",
+			"## File: a.py\n_(file deleted)_\n### Changes (diff: left column is the new-file line number, blank on removed lines; lines with `-` are REMOVED, lines with `+` are ADDED):\n```diff\n+++ /dev/null\n-x\n```",
 		},
 		{
 			// No extension means an unlabelled fence.

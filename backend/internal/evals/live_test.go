@@ -56,6 +56,7 @@ func TestEvalRunReachesAGatewayAndScoresTheResponse(t *testing.T) {
 			"summary": map[string]any{"overview": "one real bug"},
 			"findings": []map[string]any{{
 				"file": "internal/review/summary.go", "line": 20,
+				"evidence": []string{`return r.Body + "\n\n" + r.Ticket.Key`},
 				"severity": "issue",
 				"comment":  "r.Ticket is nil here, so this dereference will panic",
 			}},

@@ -273,6 +273,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		counter:         httpCounter,
 		prompt:          assembled.Prompt,
 		promptTokens:    assembled.PromptTokens,
+		anchors:         diff.BuildAnchorIndex(files),
 		existing:        existing,
 		contentSkipped:  contentSkipped,
 		ticket:          ticket,
@@ -326,8 +327,12 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		return
 	}
 
-	// 20. Dedup against what earlier runs already posted.
-	findings := dedupe(result.Review.Findings, existing)
+	// 20. Drop findings whose evidence or line the prompt's diffs do not
+	// bear out, then dedup against what earlier runs already posted.
+	v := r.validateFindings(ctx, prTag, result.Review.Findings, plan.anchors)
+	// The model's verdict argued from findings some of which are now gone.
+	reviewSummary := inference.AdjustVerdict(result.Review.Summary, v.Kept, len(v.Dropped))
+	findings := dedupe(v.Kept, existing)
 	// 21. Sort by severity and cap.
 	findings, truncated := sortAndLimit(findings, r.cfg.MaxComments)
 
@@ -373,7 +378,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	summary := render.Summary(render.SummaryInput{
 		Findings:                   findings,
 		Truncated:                  truncated,
-		Summary:                    result.Review.Summary,
+		Summary:                    reviewSummary,
 		AgentsMDFound:              plan.agentsMDFound,
 		ContentSkippedFiles:        plan.contentSkipped,
 		TokenUsage:                 tokenUsage(result),
@@ -669,6 +674,30 @@ func (r *Reviewer) trimPreviouslyPosted(existing []store.Finding, budget int) []
 		posted = posted[drop:]
 	}
 	return posted
+}
+
+// validateFindings applies inference.ValidateFindings and logs every drop and
+// every moved line, one line each, plus a count line when anything changed.
+// A drop is Info, not Warn: it is the check working, not a fault.
+func (r *Reviewer) validateFindings(ctx context.Context, prTag string, findings []inference.ReviewFinding, anchors diff.AnchorIndex) inference.Validation {
+	v := inference.ValidateFindings(findings, anchors)
+	for _, d := range v.Dropped {
+		headline := ""
+		if d.Finding.Headline != nil {
+			headline = *d.Finding.Headline
+		}
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: dropped finding on %s:%d (%s): %s",
+			prTag, d.Finding.File, d.Finding.Line, d.Reason, headline))
+	}
+	for _, m := range v.Reanchored {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: moved finding on %s from line %d to %d, where its evidence is",
+			prTag, m.File, m.From, m.To))
+	}
+	if len(v.Dropped) > 0 || len(v.Reanchored) > 0 {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: findings validated: %d kept (%d moved), %d dropped",
+			prTag, len(v.Kept), len(v.Reanchored), len(v.Dropped)))
+	}
+	return v
 }
 
 // dedupe drops findings an earlier run already posted, keyed on file, line

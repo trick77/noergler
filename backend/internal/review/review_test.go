@@ -1,8 +1,10 @@
 package review
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"os"
 	"strings"
 	"testing"
@@ -122,8 +124,40 @@ func okResultWith(findings ...inference.ReviewFinding) inference.ReviewResult {
 	}
 }
 
+// finding quotes sampleDiff's added line (line 2) as evidence, so a finding
+// on line 1 or 2, the lines the diff shows, passes inference.ValidateFindings
+// unmoved and a test exercises what it names, not the validator. Line 3 is
+// not shown and moves to 2.
 func finding(file string, line int, severity, comment string) inference.ReviewFinding {
-	return inference.ReviewFinding{File: file, Line: line, Severity: severity, Comment: comment}
+	return inference.ReviewFinding{File: file, Line: line, Severity: severity, Comment: comment,
+		Evidence: []string{"func new() {}"}}
+}
+
+// A finding quoting code the diff never showed is dropped before posting,
+// and a finding cited on the wrong line moves to its evidence. Both are
+// logged; neither reaches Bitbucket as it came from the model.
+func TestFindingsAreValidatedBeforePosting(t *testing.T) {
+	h := newHarness(t, nil)
+	var logs bytes.Buffer
+	h.r.log = slog.New(slog.NewTextHandler(&logs, nil))
+	invented := finding("a.go", 2, "issue", "invented")
+	invented.Evidence = []string{"func missing() {}"}
+	moved := finding("a.go", 40, "issue", "real, wrong line")
+	h.llm.review = okResultWith(invented, moved)
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if len(h.bb.Inline) != 1 {
+		t.Fatalf("posted %d comments, want 1: the invented finding must be dropped", len(h.bb.Inline))
+	}
+	if got := h.bb.Inline[0].Line; got != 2 {
+		t.Errorf("posted on line %d, want 2: the finding moves to its evidence", got)
+	}
+	for _, want := range []string{"(evidence_not_found)", "from line 40 to 2", "1 kept (1 moved), 1 dropped"} {
+		if !strings.Contains(logs.String(), want) {
+			t.Errorf("log lacks %q:\n%s", want, logs.String())
+		}
+	}
 }
 
 // --- Guard order -----------------------------------------------------------
@@ -554,7 +588,7 @@ func TestDedupeAgainstExistingFindings(t *testing.T) {
 	}
 	h.llm.review = okResultWith(
 		finding("a.go", 2, "issue", "already raised"), // same key: dropped
-		finding("a.go", 3, "issue", "new one"),        // different line: kept
+		finding("a.go", 1, "issue", "new one"),        // different line: kept
 		finding("a.go", 2, "suggestion", "other"),     // different severity: kept
 	)
 

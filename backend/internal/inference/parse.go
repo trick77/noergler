@@ -143,6 +143,11 @@ type ReviewFinding struct {
 	Confidence *int
 	Headline   *string
 	Suggestion *string
+
+	// Evidence is the diff lines the finding rests on, copied verbatim.
+	// Nil when absent; ValidateFindings drops such a finding, the parser
+	// does not, so the drop is logged with its reason like every other.
+	Evidence []string
 }
 
 // parseFinding validates one finding, reporting whether it survives.
@@ -163,6 +168,7 @@ func parseFinding(raw json.RawMessage) (ReviewFinding, bool) {
 		Confidence *json.RawMessage `json:"confidence"`
 		Headline   *string          `json:"headline"`
 		Suggestion *string          `json:"suggestion"`
+		Evidence   *json.RawMessage `json:"evidence"`
 	}
 	if json.Unmarshal(raw, &probe) != nil {
 		return ReviewFinding{}, false
@@ -185,6 +191,9 @@ func parseFinding(raw json.RawMessage) (ReviewFinding, bool) {
 		Headline:   probe.Headline,
 		Suggestion: probe.Suggestion,
 	}
+	if probe.Evidence != nil {
+		out.Evidence = coerceEvidence(*probe.Evidence)
+	}
 	// confidence is optional, so an explicit null is absent rather than
 	// invalid. Any other unusable value drops the finding.
 	if probe.Confidence != nil && !isJSONNull(*probe.Confidence) {
@@ -195,6 +204,27 @@ func parseFinding(raw json.RawMessage) (ReviewFinding, bool) {
 		out.Confidence = &n
 	}
 	return out, true
+}
+
+// coerceEvidence reads the evidence array, one line per element. An element
+// holding several lines, or a single string instead of an array, is split:
+// a model that quotes three lines as one string still quoted them, and
+// hashed whole they would match no line at all. Anything else is absent,
+// and ValidateFindings drops it.
+func coerceEvidence(raw json.RawMessage) []string {
+	var items []string
+	if json.Unmarshal(raw, &items) != nil || items == nil {
+		var s string
+		if json.Unmarshal(raw, &s) != nil {
+			return nil
+		}
+		items = []string{s}
+	}
+	var lines []string
+	for _, it := range items {
+		lines = append(lines, strings.Split(it, "\n")...)
+	}
+	return lines
 }
 
 // isJSONNull reports whether raw is the JSON literal null. Needed because Go
