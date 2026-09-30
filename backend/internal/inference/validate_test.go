@@ -123,6 +123,13 @@ func TestValidateFindings(t *testing.T) {
 			"", 17,
 		},
 		{
+			// The suggestion keeps a() and stops before b(), which the
+			// finding quoted: applied, it deletes b(). Not a no-op.
+			"suggestion that stops short of a quoted line deletes it",
+			withSuggestion(vf("src/labels.ts", 17, "a()", "b()"), "    a()"),
+			"", 17,
+		},
+		{
 			// Line 21 was never shown, so nothing can be said about it.
 			"suggestion reaching past the shown lines is not judged",
 			withSuggestion(vf("src/labels.ts", 20, "return"), "    return\n    x()"),
@@ -151,6 +158,77 @@ func TestValidateFindings(t *testing.T) {
 	}
 }
 
+// Order-sensitive lines that look like `key: value` keep a reorder finding:
+// swapping two annotated assignments changes which value the second reads.
+func TestValidateFindings_AnnotatedAssignmentReorderIsARealFix(t *testing.T) {
+	idx := diff.BuildAnchorIndex([]diff.FileReviewData{{
+		Path: "calc.py",
+		Diff: "@@ -1,2 +1,2 @@\n" +
+			"+total: int = base + tax\n" +
+			"+tax: int = compute()\n",
+	}})
+	f := vf("calc.py", 1, "total: int = base + tax")
+	f.Suggestion = sptr("tax: int = compute()\ntotal: int = base + tax")
+	if v := ValidateFindings([]ReviewFinding{f}, idx); len(v.Kept) != 1 {
+		t.Errorf("dropped %+v: reordering statements is a real fix", v.Dropped)
+	}
+}
+
+// The quote as written is tried everywhere before a stripped form is tried
+// anywhere. A removed YAML list item must not match an unrelated shown line
+// once its leading `-` is stripped, and so must not move the finding there.
+func TestValidateFindings_VerbatimQuoteBeatsStrippedForm(t *testing.T) {
+	idx := diff.BuildAnchorIndex([]diff.FileReviewData{{
+		Path: "ci.yaml",
+		Diff: "@@ -1,4 +1,13 @@\n" +
+			" steps:\n" +
+			"-- run: make test\n" +
+			"+- run: make lint\n" +
+			"+  a: 1\n+  b: 2\n+  c: 3\n+  d: 4\n+  e: 5\n+  f: 6\n+  g: 7\n+  h: 8\n+  i: 9\n" +
+			"+  run: make test\n",
+	}})
+	v := ValidateFindings([]ReviewFinding{vf("ci.yaml", 2, "- run: make test")}, idx)
+	if len(v.Kept) != 1 || v.Kept[0].Line != 2 {
+		t.Errorf("kept = %+v, dropped = %+v: the removed line is the evidence, line 2 stays", v.Kept, v.Dropped)
+	}
+}
+
+func TestAdjustVerdict(t *testing.T) {
+	issue := ReviewFinding{Severity: "issue"}
+	sugg := ReviewFinding{Severity: "suggestion"}
+	strict := ReviewSummary{VerdictDecision: "request_changes", VerdictRationale: "the dropped bug"}
+	cases := []struct {
+		name     string
+		in       ReviewSummary
+		kept     []ReviewFinding
+		dropped  int
+		decision string
+		lowered  bool
+	}{
+		{"nothing dropped leaves it alone", strict, nil, 0, "request_changes", false},
+		{"every finding dropped", strict, nil, 2, "approve", true},
+		{"only a suggestion survives", strict, []ReviewFinding{sugg}, 1, "approve_with_followups", true},
+		{"an issue survives", strict, []ReviewFinding{issue, sugg}, 1, "request_changes", false},
+		{
+			// A drop never makes a review stricter.
+			"never raises",
+			ReviewSummary{VerdictDecision: "approve", VerdictRationale: "fine"},
+			[]ReviewFinding{issue}, 1, "approve", false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := AdjustVerdict(tc.in, tc.kept, tc.dropped)
+			if got.VerdictDecision != tc.decision {
+				t.Errorf("decision = %q, want %q", got.VerdictDecision, tc.decision)
+			}
+			if lowered := got.VerdictRationale != tc.in.VerdictRationale; lowered != tc.lowered {
+				t.Errorf("rationale = %q, lowered = %v, want %v", got.VerdictRationale, lowered, tc.lowered)
+			}
+		})
+	}
+}
+
 // Kept findings keep their input order, and one bad finding does not take
 // the others down with it.
 func TestValidateFindings_KeepsOrderAndIsPerFinding(t *testing.T) {
@@ -167,13 +245,18 @@ func TestValidateFindings_KeepsOrderAndIsPerFinding(t *testing.T) {
 	}
 }
 
-// `:=`, `else:` and a label are not `key: value` entries.
+// Only a comma-terminated literal entry reorders freely. Annotated
+// assignments, dataclass fields and CSS declarations read `key: value` too,
+// and their order matters.
 func TestKeyValueRE(t *testing.T) {
 	for s, want := range map[string]bool{
 		"de: 'x',":                  true,
 		`"retries": 3,`:             true,
 		"Timeout: 5 * time.Second,": true,
-		"'a.b.c': {":                true,
+		"'a.b.c': {":                false,
+		"total: int = base + tax":   false,
+		"name: str":                 false,
+		"color: red;":               false,
 		"x := 1":                    false,
 		"else:":                     false,
 		"loop:":                     false,

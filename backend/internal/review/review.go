@@ -329,8 +329,10 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 
 	// 20. Drop findings whose evidence or line the prompt's diffs do not
 	// bear out, then dedup against what earlier runs already posted.
-	findings := r.validateFindings(ctx, prTag, result.Review.Findings, plan.anchors)
-	findings = dedupe(findings, existing)
+	v := r.validateFindings(ctx, prTag, result.Review.Findings, plan.anchors)
+	// The model's verdict argued from findings some of which are now gone.
+	reviewSummary := inference.AdjustVerdict(result.Review.Summary, v.Kept, len(v.Dropped))
+	findings := dedupe(v.Kept, existing)
 	// 21. Sort by severity and cap.
 	findings, truncated := sortAndLimit(findings, r.cfg.MaxComments)
 
@@ -376,7 +378,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	summary := render.Summary(render.SummaryInput{
 		Findings:                   findings,
 		Truncated:                  truncated,
-		Summary:                    result.Review.Summary,
+		Summary:                    reviewSummary,
 		AgentsMDFound:              plan.agentsMDFound,
 		ContentSkippedFiles:        plan.contentSkipped,
 		TokenUsage:                 tokenUsage(result),
@@ -677,7 +679,7 @@ func (r *Reviewer) trimPreviouslyPosted(existing []store.Finding, budget int) []
 // validateFindings applies inference.ValidateFindings and logs every drop and
 // every moved line, one line each, plus a count line when anything changed.
 // A drop is Info, not Warn: it is the check working, not a fault.
-func (r *Reviewer) validateFindings(ctx context.Context, prTag string, findings []inference.ReviewFinding, anchors diff.AnchorIndex) []inference.ReviewFinding {
+func (r *Reviewer) validateFindings(ctx context.Context, prTag string, findings []inference.ReviewFinding, anchors diff.AnchorIndex) inference.Validation {
 	v := inference.ValidateFindings(findings, anchors)
 	for _, d := range v.Dropped {
 		headline := ""
@@ -695,7 +697,7 @@ func (r *Reviewer) validateFindings(ctx context.Context, prTag string, findings 
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: findings validated: %d kept (%d moved), %d dropped",
 			prTag, len(v.Kept), len(v.Reanchored), len(v.Dropped)))
 	}
-	return v.Kept
+	return v
 }
 
 // dedupe drops findings an earlier run already posted, keyed on file, line

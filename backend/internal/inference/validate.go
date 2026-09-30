@@ -1,6 +1,7 @@
 package inference
 
 import (
+	"fmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -69,6 +70,39 @@ func ValidateFindings(findings []ReviewFinding, idx diff.AnchorIndex) Validation
 		v.Kept = append(v.Kept, f)
 	}
 	return v
+}
+
+// AdjustVerdict lowers the model's verdict to what the kept findings support,
+// when validation dropped any. The prompt ties the decision to the findings
+// (request_changes needs an `issue`, approve_with_followups a `suggestion`);
+// a verdict argued from a dropped finding would otherwise say "request
+// changes" beside zero posted comments. Only ever lowers: a drop cannot make
+// a review stricter. The rationale is replaced, since the model's names the
+// finding that is gone.
+func AdjustVerdict(s ReviewSummary, kept []ReviewFinding, dropped int) ReviewSummary {
+	if dropped == 0 {
+		return s
+	}
+	supported := "approve"
+	for _, f := range kept {
+		if f.Severity == "issue" {
+			supported = "request_changes"
+			break
+		}
+		supported = "approve_with_followups"
+	}
+	if verdictRank(supported) >= verdictRank(s.VerdictDecision) {
+		return s
+	}
+	s.VerdictDecision = supported
+	s.VerdictRationale = fmt.Sprintf("Verdict lowered: %d finding(s) whose evidence the diff did not bear out were withheld.", dropped)
+	return s
+}
+
+// verdictRank orders the decisions by strictness; an unknown one ranks as
+// approve, the parser's default.
+func verdictRank(d string) int {
+	return max(0, slices.Index(VerdictDecisions, d))
 }
 
 // Validation is ValidateFindings' verdict on one review's findings.
@@ -146,7 +180,7 @@ func validateOne(f ReviewFinding, idx diff.AnchorIndex) (DropReason, int) {
 		line = at[0]
 	}
 
-	if f.Suggestion != nil && isNoopSuggestion(*f.Suggestion, line, fa.Shown) {
+	if f.Suggestion != nil && isNoopSuggestion(*f.Suggestion, line, fa.Shown, anchors) {
 		return DropNoopSuggestion, 0
 	}
 	return "", line
@@ -171,14 +205,16 @@ func matchEvidence(quote string, fa diff.FileAnchors) (hash uint64, onNewSide, f
 	if t := strings.TrimLeft(quote, " \t"); strings.HasPrefix(t, "+") || strings.HasPrefix(t, "-") {
 		candidates = append(candidates, t[1:])
 	}
+	// Candidate first, then where it is found: the quote as written wins
+	// anywhere before a stripped form is tried anywhere. Stripping first
+	// would let a removed YAML line `- run: x` match the unrelated shown
+	// line ` run: x`.
 	for _, c := range candidates {
 		h := diff.HashLine(c)
 		if len(linesWithHash(h, fa.Shown)) > 0 {
 			return h, true, true
 		}
-	}
-	for _, c := range candidates {
-		if h := diff.HashLine(c); fa.Removed[h] || fa.InContent(h) {
+		if fa.Removed[h] || fa.InContent(h) {
 			return h, false, true
 		}
 	}
@@ -223,20 +259,25 @@ func linesWithHash(h uint64, shown map[int]diff.ShownLine) []int {
 	return at
 }
 
-// keyValueRE is one `key: value` entry of an object, map, dict or struct
-// literal, whose order does not change what the code does. A value is
-// required and `:=` is excluded, so `else:`, a label and a Go short variable
-// declaration are not entries. `[\pL\pN_.$-]`, not `\w`: RE2's `\w` is ASCII.
-var keyValueRE = regexp.MustCompile(`^['"]?[\pL\pN_.$-]+['"]?[ \t]*:[ \t]*[^=\s]`)
+// keyValueRE is one comma-terminated `key: value` entry of an object, map,
+// dict or struct literal, whose order does not change what the code does.
+// The trailing comma is what makes it an entry: a Python annotated
+// assignment, a dataclass field or a CSS declaration also reads `key: value`,
+// and in each of those order matters. A value is required and `:=` is
+// excluded. `[\pL\pN_.$-]`, not `\w`: RE2's `\w` is ASCII. Group 1 is the key.
+var keyValueRE = regexp.MustCompile(`^['"]?([\pL\pN_.$-]+)['"]?[ \t]*:[ \t]*[^=\s].*,$`)
 
 // isNoopSuggestion reports whether applying the suggestion at line would
 // leave the code as it is: the same lines in the same order, or the same
-// lines where every one that moved is a `key: value` entry. Reordering
-// statements can be a real fix, so a moved statement keeps the finding.
+// lines where every one that moved is a literal entry with its own key.
+// Reordering statements can be a real fix, so a moved statement keeps the
+// finding.
 //
 // Only lines the diff showed can be compared. If any line the suggestion
-// would replace was not shown, the suggestion is not judged.
-func isNoopSuggestion(suggestion string, line int, shown map[int]diff.ShownLine) bool {
+// would replace was not shown, the suggestion is not judged. Nor is one that
+// stops short of an evidence line right after the lines it replaces: the
+// finding quoted that line, so the suggestion deletes it.
+func isNoopSuggestion(suggestion string, line int, shown map[int]diff.ShownLine, evidence []uint64) bool {
 	var sug []string
 	for _, l := range strings.Split(suggestion, "\n") {
 		if strings.TrimSpace(l) != "" {
@@ -253,7 +294,8 @@ func isNoopSuggestion(suggestion string, line int, shown map[int]diff.ShownLine)
 	// genuine no-op keeps its finding; that is the cheaper mistake.
 	blank := diff.HashLine("")
 	var have []uint64
-	for n := line; len(have) < len(sug); n++ {
+	n := line
+	for ; len(have) < len(sug); n++ {
 		s, ok := shown[n]
 		if !ok {
 			return false
@@ -262,20 +304,29 @@ func isNoopSuggestion(suggestion string, line int, shown map[int]diff.ShownLine)
 			have = append(have, s.Exact)
 		}
 	}
+	if next, ok := shown[n]; ok && slices.Contains(evidence, next.Hash) {
+		return false
+	}
 
 	counts := map[uint64]int{}
 	for _, h := range have {
 		counts[h]++
 	}
+	movedKeys := map[string]bool{}
 	for i, l := range sug {
 		h := diff.HashExact(l)
 		if counts[h] == 0 {
 			return false
 		}
 		counts[h]--
-		if h != have[i] && !keyValueRE.MatchString(strings.TrimSpace(l)) {
+		if h == have[i] {
+			continue
+		}
+		m := keyValueRE.FindStringSubmatch(strings.TrimSpace(l))
+		if m == nil || movedKeys[m[1]] {
 			return false
 		}
+		movedKeys[m[1]] = true
 	}
 	return true
 }

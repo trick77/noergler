@@ -55,8 +55,10 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
 - **Every finding is validated before posting** (`inference.ValidateFindings`,
   same call in `post` and in evals): shown file, verbatim `evidence` from the
   file's diff or full content, `line` within 2 of it or moved to a unique
-  evidence line, and no suggestion that is the existing code or only
-  reorders `key: value` entries. A removed or full-file-only line is
+  evidence line, and no suggestion that is the existing code (indent
+  counts) or only reorders comma-terminated literal entries (annotated
+  assignments, dataclass fields, CSS are order-sensitive). A drop lowers
+  the verdict to what the kept findings support. A removed or full-file-only line is
   evidence, never an anchor: a real finding quoted the call outside the
   diff, and rejecting that dropped it. Blunt rules, never
   a judge model. Drops are logged by reason, never silent.
