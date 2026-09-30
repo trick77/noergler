@@ -1,0 +1,375 @@
+{
+ "Results": [
+  {
+   "Case": "clean-guard-clause",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-i18n-key-order",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-refactor",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-rename",
+   "Outcome": "unparseable",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "context-not-propagated",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/bitbucket/diff.go",
+     "Line": 13,
+     "Severity": "issue",
+     "Comment": "`FetchDiff` now builds the request and reads the response body with `context.Background()` instead of the caller's `ctx`, so cancellation and deadlines passed by the caller are silently ignored. A caller that wraps this in a timeout (e.g. `context.WithTimeout(ctx, 5*time.Second)`) and hits a slow or hung Bitbucket connection will never return — the HTTP request and the capped body read run until the TCP connection itself fails or the server responds. The doc comment directly above still states \"The caller's context bounds the whole operation, including the body read\", which no longer matches the code.",
+     "Confidence": 95,
+     "Headline": "FetchDiff drops caller context in favor of context.Background() — blocking",
+     "Suggestion": "req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil); if err != nil {\n\t\treturn \"\", fmt.Errorf(\"build diff request: %w\", err)\n\t}\n\treq.Header.Set(\"Authorization\", \"Bearer \"+c.token)\n\treturn c.getTextCapped(ctx, req, maxDiffBytes)"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "caller-context-dropped",
+      "file": "internal/bitbucket/diff.go",
+      "lines": [
+       11,
+       18
+      ],
+      "keywords": [
+       "context.Background",
+       "background context",
+       "ctx is ignored",
+       "ignores ctx",
+       "ignores the ctx",
+       "ignores caller",
+       "not propagated",
+       "cancellation",
+       "cancelation",
+       "deadline",
+       "caller's context",
+       "callers context"
+      ],
+      "why": "ctx is a parameter but never used; context.Background() is passed to both NewRequestWithContext and getTextCapped, so the caller's timeout and cancellation cannot stop the request or the body read. Bitbucket has no Client.Timeout by design, which makes the caller's ctx the only bound on a 10 MiB diff."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "lock-not-released",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/teams/registry.go",
+     "Line": 22,
+     "Severity": "issue",
+     "Comment": "Replacing `defer r.mu.Unlock()` with an explicit unlock skips the unlock on the early error return: when `r.byslug[slug]` misses, the function returns with `r.mu` still held. On any realistic path that disables or reads a team after one failed `Disable(slug, ...)` call (e.g. a typo'd slug from config), every subsequent method on this `Registry` blocks forever — a permanent deadlock of the goroutine and anything contending on `r.mu`. Restore deferred unlock, or unlock before the error return as well.",
+     "Confidence": 97,
+     "Headline": "Disable leaks mutex on unknown-team error path — deadlock",
+     "Suggestion": "\tif !ok {\n\t\tr.mu.Unlock()\n\t\treturn fmt.Errorf(\"unknown team %q\", slug)\n\t}"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "mutex-held-on-early-return",
+      "file": "internal/teams/registry.go",
+      "lines": [
+       16,
+       24
+      ],
+      "keywords": [
+       "deadlock",
+       "still held",
+       "never released",
+       "not released",
+       "never unlocked",
+       "not unlocked",
+       "defer r.mu.Unlock",
+       "defer mu.Unlock",
+       "defer the Unlock",
+       "held forever"
+      ],
+      "why": "The Unlock now runs only on the success path, so returning the unknown-team error leaves r.mu locked and every subsequent caller blocks forever."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "nil-deref",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/review/summary.go",
+     "Line": 20,
+     "Severity": "issue",
+     "Comment": "The `r.Ticket == nil` branch no longer returns, so execution falls through to `r.Ticket.Key` and dereferences a nil pointer. Any `Result` without a ticket (the case the guard was written for) panics with `runtime error: invalid memory address or nil pointer dereference` instead of returning `r.Body`. Restore a return in that branch.",
+     "Confidence": 98,
+     "Headline": "Nil `r.Ticket` falls through to `r.Ticket.Key` — panic on ticketless results",
+     "Suggestion": "if r.Ticket == nil {\n\t\treturn r.Body\n\t}"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "nil-ticket-deref",
+      "file": "internal/review/summary.go",
+      "lines": [
+       19,
+       22
+      ],
+      "keywords": [
+       "nil",
+       "dereference",
+       "deref",
+       "panic",
+       "Ticket"
+      ],
+      "why": "The nil branch no longer returns, so r.Ticket.Key panics whenever Ticket is nil. A reviewer may anchor on the dead check (19) or on the dereference (22)."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "off-by-one",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/diff/context.go",
+     "Line": 13,
+     "Severity": "issue",
+     "Comment": "`lines[first:last]` with `last = len(lines) + 1` is out of range: Go slice indexing requires `last \u003c= len(lines)`, so any hunk whose trailing context reaches or passes the end of the file panics with `slice bounds out of range [:N+1] with length N`. For example, with `lines` of length 10, a hunk at `Start=8, Count=1`, `n=5` gives `first=9`, `last=14` → clamped to 11 → `lines[9:11]` panics. The old `last = len(lines)` was correct; this off-by-one turns a routine clamp into a crash on every end-of-file hunk.",
+     "Confidence": 97,
+     "Headline": "Off-by-one clamp panics on trailing context at end of file — blocking",
+     "Suggestion": "last = len(lines)"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "context-window-past-end",
+      "file": "internal/diff/context.go",
+      "lines": [
+       14,
+       20
+      ],
+      "keywords": [
+       "out of range",
+       "out-of-range",
+       "bounds",
+       "past the end",
+       "beyond the end",
+       "len(lines)+1",
+       "len(lines) + 1",
+       "off-by-one",
+       "off by one",
+       "panic"
+      ],
+      "why": "The clamp sets last to len(lines)+1, so the final slice expression lines[first:last] runs one past the length. With no spare capacity that panics; with spare capacity it silently yields a phantom trailing line, which is the quieter half of the bug."
+     },
+     "Found": false,
+     "Finding": -1,
+     "Why": "finding on internal/diff/context.go:13, outside 14-20"
+    }
+   ],
+   "Extra": 1
+  },
+  {
+   "Case": "resource-leak",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/bitbucket/whoami.go",
+     "Line": 20,
+     "Severity": "issue",
+     "Comment": "`defer resp.Body.Close()` was removed from `WhoAmI`, so the HTTP response body is never closed on any path: success, non-2xx status, or decode error. Every call to `WhoAmI` now leaks a connection — the transport cannot reuse it, and under repeated token-identity checks this exhausts the connection pool and open file descriptors. Restore the defer immediately after the `c.http.Do` error check.",
+     "Confidence": 98,
+     "Headline": "WhoAmI no longer closes response body, leaking connections",
+     "Suggestion": "\tdefer resp.Body.Close()"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "response-body-never-closed",
+      "file": "internal/bitbucket/whoami.go",
+      "lines": [
+       16,
+       28
+      ],
+      "keywords": [
+       "leak",
+       "leaked",
+       "not closed",
+       "never closed",
+       "close the body",
+       "closing the body",
+       "resp.Body.Close",
+       "connection"
+      ],
+      "why": "The response body is never closed on any path, so the underlying connection is leaked on every call, successful or not."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "struct-field-race",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/queue/queue.go",
+     "Line": 35,
+     "Severity": "issue",
+     "Comment": "The lock around `q.depth = len(q.pending)` in `worker` was removed, so the worker now writes `q.depth` and reads `q.pending` with no synchronization while `Submit` and `Depth` run concurrently under `q.mu`. On any realistic use — a job finishing while another goroutine calls `Submit` or `Depth` — this is a data race on `depth` (unsynchronized write vs. locked read) and on the `pending` slice header. It can make `Depth()` return a stale or torn value and is a straight race-detector failure under `-race`. Restore the mutex around this update, or set `depth` inside `take` while the lock is already held.",
+     "Confidence": 95,
+     "Headline": "Unsynchronized write to q.depth in worker after dropping mutex — blocking",
+     "Suggestion": "\t\tq.run(j)\n\t\tq.mu.Lock()\n\t\tq.depth = len(q.pending)\n\t\tq.mu.Unlock()"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "depth-written-without-mutex",
+      "file": "internal/queue/queue.go",
+      "lines": [
+       28,
+       35
+      ],
+      "keywords": [
+       "race",
+       "unsynchronized",
+       "unsynchronised",
+       "without holding",
+       "without the lock",
+       "without the mutex",
+       "q.mu",
+       "concurrent",
+       "data race"
+      ],
+      "why": "The worker goroutine writes q.depth and reads q.pending without holding q.mu, while Submit writes and Depth reads the same fields under the mutex; that is a data race."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "unchecked-error",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/store/claims.go",
+     "Line": 21,
+     "Severity": "issue",
+     "Comment": "`tx.Commit(ctx)` returns an error and it is now discarded, so `AddClaim` returns `nil` even when the transaction never committed. On a realistic failure — connection drop at commit time, or a commit-time error such as a deferred constraint or serialization failure — the caller believes the team claim was recorded while `team_claims` has no row, silently losing the write and desynchronizing any state derived from it. Restore the checked commit (the surrounding code also wrapped it with context, which the `fmt` import was for).",
+     "Confidence": 95,
+     "Headline": "AddClaim swallows tx.Commit error and reports success on failed write — blocking",
+     "Suggestion": "if err := tx.Commit(ctx); err != nil {\n\t\treturn fmt.Errorf(\"commit claim: %w\", err)\n\t}\n\treturn nil"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "commit-error-swallowed",
+      "file": "internal/store/claims.go",
+      "lines": [
+       20,
+       22
+      ],
+      "keywords": [
+       "Commit",
+       "ignored",
+       "unchecked",
+       "discarded",
+       "swallow"
+      ],
+      "why": "tx.Commit's error is discarded, so a failed commit is reported to the caller as success and the claim silently does not exist."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "wrong-error-wrapped",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/store/claims.go",
+     "Line": 19,
+     "Severity": "issue",
+     "Comment": "The two error branches were swapped: `errNoRows` (project has no claim) now returns the raw driver error, while every other error — connection failures, context timeouts, constraint faults — is returned wrapped as `ErrNoClaim`. Per the doc comments on `ErrNoClaim` and `Owner`, callers use `errors.Is(err, ErrNoClaim)` to mean \"nobody owns it yet\". On a realistic lookup of an unclaimed project, `errors.Is(err, ErrNoClaim)` is now false and the caller treats a normal empty result as a database fault; conversely a transient database outage is reported as \"no claim\", so a caller deciding whether to allow a claim will treat an outage as \"unowned\" and can hand the project to the wrong team. Restore the original assignment: `errNoRows` → `ErrNoClaim`, everything else → wrapped `err`.",
+     "Confidence": 100,
+     "Headline": "ErrNoClaim and raw error swapped in Owner, inverting callers' no-owner detection — blocking",
+     "Suggestion": "\tif errors.Is(err, errNoRows) {\n\t\treturn \"\", fmt.Errorf(\"owner of %q: %w\", project, ErrNoClaim)\n\t}\n\tif err != nil {\n\t\treturn \"\", fmt.Errorf(\"owner of %q: %w\", project, err)\n\t}"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "sentinel-wraps-swapped",
+      "file": "internal/store/claims.go",
+      "lines": [
+       19,
+       23
+      ],
+      "keywords": [
+       "swapped",
+       "swap",
+       "wrong error",
+       "reversed",
+       "backwards",
+       "back to front",
+       "the other way",
+       "ErrNoClaim",
+       "errors.Is"
+      ],
+      "why": "The branches wrap each other's error: errors.Is(err, ErrNoClaim) is now false when the project is genuinely unclaimed and true when the query failed, so a database fault is treated as an unowned project."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  }
+ ],
+ "Seeded": 8,
+ "Caught": 7,
+ "Extra": 1
+}
