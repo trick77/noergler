@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -111,6 +112,30 @@ func baseOptions(t *testing.T, client evals.Reviewer) options {
 		newClient: func(evals.Settings, string) (evals.Reviewer, error) {
 			return client, nil
 		},
+	}
+}
+
+// An explicit empty -effort is set; an absent one is not. That difference is
+// the balanced level against the series level.
+func TestWasSet(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want bool
+	}{
+		{nil, false},
+		{[]string{"-json", "x"}, false},
+		{[]string{"-effort", ""}, true},
+		{[]string{"-effort=high"}, true},
+	} {
+		fs := flag.NewFlagSet("evals", flag.ContinueOnError)
+		fs.String("effort", "", "")
+		fs.String("json", "", "")
+		if err := fs.Parse(tc.args); err != nil {
+			t.Fatal(err)
+		}
+		if got := wasSet(fs, "effort"); got != tc.want {
+			t.Errorf("wasSet(%q) = %v, want %v", tc.args, got, tc.want)
+		}
 	}
 }
 

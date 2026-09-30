@@ -184,15 +184,73 @@ func envOf(m map[string]string) func(string) string {
 	return func(k string) string { return m[k] }
 }
 
-// The model is configuration, never a default in code: a run scored on a
-// model nobody named cannot be compared with the series it lands in.
-func TestResolveSettings_RequiresTheModel(t *testing.T) {
-	_, err := ResolveSettings(envOf(map[string]string{
-		"EVAL_BASE_URL": "https://x/v1", "EVAL_API_KEY": "k",
-	}), 0)
-	if err == nil || !strings.Contains(err.Error(), "EVAL_MODEL") {
-		t.Fatalf("err = %v, want it to name EVAL_MODEL", err)
+// The default model is the series file's, never one written in code: a run
+// on a model nobody chose cannot be compared with the series it lands in.
+func TestResolveSettings_ModelDefaultsToTheSeries(t *testing.T) {
+	series := DefaultSeries()
+	env := map[string]string{"EVAL_BASE_URL": "https://x/v1", "EVAL_API_KEY": "k"}
+	s, err := ResolveSettings(envOf(env), 0)
+	if err != nil || s.Model != series.Model {
+		t.Fatalf("model = %q, err = %v, want the series model %q", s.Model, err, series.Model)
 	}
+	env["EVAL_MODEL"] = "m"
+	if s, _ := ResolveSettings(envOf(env), 0); s.Model != "m" {
+		t.Errorf("EVAL_MODEL set: model = %q, want m", s.Model)
+	}
+}
+
+// The series level belongs to the series model. A passed -effort always
+// wins, and an explicit empty one is the balanced level, not the series'.
+func TestSeries_EffortFor(t *testing.T) {
+	s := Series{Model: "pro", Effort: "high"}
+	for _, tc := range []struct {
+		model, flag string
+		set         bool
+		want        string
+	}{
+		{"pro", "", false, "high"},
+		{"pro", "low", true, "low"},
+		{"pro", "", true, ""},
+		{"flash", "", false, ""},
+		{"flash", "medium", true, "medium"},
+	} {
+		if got := s.EffortFor(tc.model, tc.flag, tc.set); got != tc.want {
+			t.Errorf("EffortFor(%q, %q, %v) = %q, want %q", tc.model, tc.flag, tc.set, got, tc.want)
+		}
+	}
+}
+
+// The committed file parses. This is what makes DefaultSeries' panic a build
+// defect: it cannot reach a run without failing here first.
+func TestDefaultSeries_NamesBothFields(t *testing.T) {
+	if s := DefaultSeries(); s.Model == "" || s.Effort == "" {
+		t.Fatalf("series = %+v", s)
+	}
+}
+
+func TestParseSeries(t *testing.T) {
+	if s, err := parseSeries([]byte("model: ' m '\neffort: high\n")); err != nil || s != (Series{"m", "high"}) {
+		t.Errorf("series = %+v, err = %v, want trimmed fields", s, err)
+	}
+	for name, raw := range map[string]string{
+		"not yaml":    "model: [",
+		"no effort":   "model: m\n",
+		"blank model": "model: '  '\neffort: high\n",
+		"wrong keys":  "name: m\nlevel: high\n",
+	} {
+		if _, err := parseSeries([]byte(raw)); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+}
+
+func TestMustSeriesPanicsOnABadFile(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("want a panic: a malformed embedded series is a build defect")
+		}
+	}()
+	mustSeries([]byte("model: m\n"))
 }
 
 func TestResolveSettings_NamesEveryMissingVariable(t *testing.T) {
@@ -200,7 +258,7 @@ func TestResolveSettings_NamesEveryMissingVariable(t *testing.T) {
 	if err == nil {
 		t.Fatal("want an error when nothing is set")
 	}
-	for _, want := range []string{"EVAL_BASE_URL", "EVAL_API_KEY", "EVAL_MODEL"} {
+	for _, want := range []string{"EVAL_BASE_URL", "EVAL_API_KEY"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not name %s", err, want)
 		}

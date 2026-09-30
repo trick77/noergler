@@ -1,0 +1,13 @@
+{
+  "name": "clean-i18n-key-order",
+  "description": "A correct translation entry whose language keys are in de, it, fr order while every other entry uses de, fr, it. Nothing to report: key order in an object literal changes nothing, and each key carries its own language. A model that reads translations by position instead of by key reports this entry as a French/Italian swap; that exact false positive was posted on a real PR.",
+  "files": [
+    {
+      "path": "src/i18n/messages.ts",
+      "diff": "@@ -8,16 +8,21 @@\n     de: 'Lieferadresse',\n     fr: 'Adresse de livraison',\n     it: 'Indirizzo di consegna',\n   },\n+  'checkout.address.label.INVOICE': {\n+    de: 'Rechnungsadresse',\n+    it: 'Indirizzo di fatturazione',\n+    fr: 'Adresse de facturation',\n+  },\n   'checkout.address.hint': {\n     de: 'Strasse und Hausnummer',\n     fr: 'Rue et numéro',\n     it: 'Via e numero civico',\n   },\n };\n \n-export type AddressType = 'DEFAULT';\n+export type AddressType = 'DEFAULT' | 'INVOICE';\n \n export function addressLabel(type: AddressType, lang: 'de' | 'fr' | 'it'): string {\n   return messages[`checkout.address.label.${type}`][lang];\n }",
+      "content": "export const messages = {\n  'checkout.address.title': {\n    de: 'Adresse',\n    fr: 'Adresse',\n    it: 'Indirizzo',\n  },\n  'checkout.address.label.DEFAULT': {\n    de: 'Lieferadresse',\n    fr: 'Adresse de livraison',\n    it: 'Indirizzo di consegna',\n  },\n  'checkout.address.label.INVOICE': {\n    de: 'Rechnungsadresse',\n    it: 'Indirizzo di fatturazione',\n    fr: 'Adresse de facturation',\n  },\n  'checkout.address.hint': {\n    de: 'Strasse und Hausnummer',\n    fr: 'Rue et numéro',\n    it: 'Via e numero civico',\n  },\n};\n\nexport type AddressType = 'DEFAULT' | 'INVOICE';\n\nexport function addressLabel(type: AddressType, lang: 'de' | 'fr' | 'it'): string {\n  return messages[`checkout.address.label.${type}`][lang];\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": []
+}

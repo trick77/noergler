@@ -1,0 +1,6 @@
+# The pair a run scores at when EVAL_MODEL and -effort are unset. Production
+# runs a model too expensive to eval on; this is the affordable stand-in, so a
+# review false positive may not reproduce here. Changing either value starts a
+# new series in results/.
+model: mimo-v2.5-pro
+effort: high

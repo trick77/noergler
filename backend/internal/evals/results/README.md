@@ -22,12 +22,15 @@ was that duplicate. The JSONs are left as they are; they record what the tool
 emitted at the time.
 
     cd backend
-    EVAL_BASE_URL=... EVAL_API_KEY=... EVAL_MODEL=<model> \
-      go run ./cmd/evals -effort <effort> -context-window 1000000 \
+    EVAL_BASE_URL=... EVAL_API_KEY=... \
+      go run ./cmd/evals -context-window 1000000 \
       -json internal/evals/results/<date>-<model>-<effort>.json
 
-Neither model nor effort has a default: take both from the series' rows below
-to extend it.
+Model and effort default to the pair in `../corpus/series.yaml`
+(mimo-v2.5-pro, high), the series the rows below extend. `EVAL_MODEL` and
+`-effort` score another pair; that is a different series. Production runs a
+model too costly to eval on, so this series is a stand-in: a false positive
+seen in production may not reproduce here.
 
 | Date | Model | Effort | Cases | Seeded | Caught | Extra | Prompt | Notes |
 |---|---|---|---|---|---|---|---|---|
@@ -37,6 +40,10 @@ to extend it.
 | 2026-09-20 | mimo-v2.5-pro | high | 11 rev4 | 8 | 8 | 0 | `prompts/review.txt` @ d576c13 | **run4, baseline.** Clean sweep, nothing invented on the three controls. |
 | 2026-09-20 | mimo-v2.5-pro | high | 11 rev4 | 8 | 7 | 1 | `prompts/review.txt` @ d576c13 | **run5, baseline pair.** Same corpus and settings as run4. One miss: the race was reported correctly but at line 39 of a 37-line file. Model defect, not a corpus bug. |
 | 2026-09-21 | mimo-v2.5-pro | high | 11 rev4 | 8 | 7 | 3 | `prompts/review.txt` @ d576c13 | **run6, first under the new scorer.** Exit 1 twice over: `resource-leak` cited line 32 of a 29-line file, and the gate fired on `clean-refactor`, the first control finding in six runs. Corpus untouched; see the notes. |
+| 2026-09-30 | mimo-v2.6-flash | high | 12 rev5 | 8 | 7 | 1 | `prompts/review.txt` @ d576c13 | **New series: model and corpus both changed.** Exit 2: `clean-rename` came back unparseable, so the score is incomplete. `clean-i18n-key-order` clean. The miss is `off-by-one` anchored at line 13, one above its 14-20 window. |
+| 2026-09-30 | mimo-v2.6-flash | high | 12 rev5 | 8 | 7 | 2 | `prompts/review.txt` @ d576c13 | run2. Exit 1. All four controls clean, `clean-i18n-key-order` again. The miss is `lock-not-released` at line 26, past its 16-24 window. The second Extra is `context-not-propagated` reported as two findings, one per call site (lines 14 and 18), the rev1 shape. |
+| 2026-09-30 | mimo-v2.5-pro | high | 12 rev5 | 8 | 6 | 0 | `prompts/review.txt` @ d576c13 | **First rev5 run of the default series**, and the first run at the `corpus/series.yaml` default (no `EVAL_MODEL`, no `-effort`). Exit 2: `context-not-propagated` and `lock-not-released` died on `stream idle for 1m30s`, so both "misses" are transport failures and the score is incomplete. All four controls clean, `clean-i18n-key-order` included. |
+| 2026-09-30 | mimo-v2.5-pro | high | 12 rev5 | 8 | 6 | 0 | `prompts/review.txt` @ d576c13 | run2. Exit 1. Two real misses, no finding at all on `off-by-one` or `struct-field-race`, both caught in every rev4 run. All four controls clean. By the baseline rule a 6 is a signal. The prompt is unchanged and rev5 only adds a control, so the change is on the model or gateway side, not in the prompt. |
 
 ## What the columns mean
 
@@ -46,7 +53,8 @@ to extend it.
   to 11, with one expectation on `context-not-propagated`; `rev2` splits
   that into two, one per `context.Background()` call site; `rev3` folds
   them back into one over a window spanning both; `rev4` starts the four
-  whole-function windows at the func declaration. Bump the number when a
+  whole-function windows at the func declaration; `rev5` adds
+  `clean-i18n-key-order`, a fourth clean control, taking the corpus to 12. Bump the number when a
   **scored** field changes: `file`, `lines`, `keywords`, `diff`, `content`.
   Prose does not move a score, so an edit to `description` or `why` is not a
   new revision, and rev4 covers such an edit made after run5.
