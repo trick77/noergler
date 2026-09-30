@@ -233,10 +233,10 @@ func TestParseSeries(t *testing.T) {
 		t.Errorf("series = %+v, err = %v, want trimmed fields", s, err)
 	}
 	for name, raw := range map[string]string{
-		"not yaml":        "model: [",
-		"no effort":       "model: m\n",
-		"blank model":     "model: '  '\neffort: high\n",
-		"misspelled keys": "modle: m\neffrot: high\n",
+		"not yaml":    "model: [",
+		"no effort":   "model: m\n",
+		"blank model": "model: '  '\neffort: high\n",
+		"wrong keys":  "name: m\nlevel: high\n",
 	} {
 		if _, err := parseSeries([]byte(raw)); err == nil {
 			t.Errorf("%s: want an error", name)

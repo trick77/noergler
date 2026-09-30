@@ -115,8 +115,6 @@ func baseOptions(t *testing.T, client evals.Reviewer) options {
 	}
 }
 
-// Every seeded bug caught: exit 0, no error, and missed must be false or a
-// green run would be reported as a regression.
 // An explicit empty -effort is set; an absent one is not. That difference is
 // the balanced level against the series level.
 func TestWasSet(t *testing.T) {
@@ -141,6 +139,8 @@ func TestWasSet(t *testing.T) {
 	}
 }
 
+// Every seeded bug caught: exit 0, no error, and missed must be false or a
+// green run would be reported as a regression.
 func TestRun_CleanSweepIsNotAMiss(t *testing.T) {
 	// The corpus' own seeded bugs, answered exactly.
 	client, _ := perfectFindings(t)
