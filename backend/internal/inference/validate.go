@@ -70,6 +70,11 @@ func ValidateFindings(findings []ReviewFinding, idx diff.AnchorIndex) Validation
 		if line != f.Line {
 			v.Reanchored = append(v.Reanchored, Reanchor{File: f.File, From: f.Line, To: line})
 			f.Line = line
+			// The suggestion was written for the line the model cited.
+			// Bitbucket's Apply replaces the line the comment sits on, so
+			// keeping it would overwrite the new line with another line's
+			// fix. The comment still says what is wrong.
+			f.Suggestion = nil
 		}
 		v.Kept = append(v.Kept, f)
 	}
@@ -193,7 +198,10 @@ func validateOne(f ReviewFinding, idx diff.AnchorIndex) (DropReason, int) {
 		line = at[0]
 	}
 
-	if f.Suggestion != nil && isNoopSuggestion(*f.Suggestion, line, fa.Shown, anchors) {
+	// Judged only where the model put it: a moved finding loses its
+	// suggestion, and comparing it against the new line would compare it
+	// with code it was never written for.
+	if f.Suggestion != nil && line == f.Line && isNoopSuggestion(*f.Suggestion, line, fa.Shown, anchors) {
 		return DropNoopSuggestion, 0
 	}
 	return "", line

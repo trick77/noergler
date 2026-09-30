@@ -231,6 +231,26 @@ func TestAdjustVerdict(t *testing.T) {
 	}
 }
 
+// A moved finding loses its suggestion: Bitbucket's Apply replaces the line
+// the comment sits on, and the fix was written for the line the model cited.
+// An unmoved one keeps it.
+func TestValidateFindings_MovedFindingDropsItsSuggestion(t *testing.T) {
+	moved := vf("src/labels.ts", 40, "b()")
+	moved.Suggestion = sptr("    b(ctx)")
+	stays := vf("src/labels.ts", 18, "b()")
+	stays.Suggestion = sptr("    b(ctx)")
+	v := ValidateFindings([]ReviewFinding{moved, stays}, validateFixture())
+	if len(v.Kept) != 2 {
+		t.Fatalf("kept = %+v, dropped = %+v", v.Kept, v.Dropped)
+	}
+	if v.Kept[0].Line != 18 || v.Kept[0].Suggestion != nil {
+		t.Errorf("moved finding: line %d, suggestion %v; want 18 and none", v.Kept[0].Line, v.Kept[0].Suggestion)
+	}
+	if v.Kept[1].Suggestion == nil {
+		t.Error("an unmoved finding keeps its suggestion")
+	}
+}
+
 // Kept findings keep their input order, and one bad finding does not take
 // the others down with it.
 func TestValidateFindings_KeepsOrderAndIsPerFinding(t *testing.T) {
