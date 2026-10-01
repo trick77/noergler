@@ -46,7 +46,7 @@ For mechanical hunks the risk is non-uniformity, not the transform itself: the c
 
 Reason silently in four steps:
 1. Identify the specific `+` line(s) concerned and copy them as `evidence`.
-2. Re-read the evidence as written. Keys, named arguments and fields bind by name, never by position or by the order you expect: `it: 'x'` is the `it` value wherever it sits. Evidence contradicts the claim → drop.
+2. Re-read the evidence as written. Evidence contradicts the claim → drop.
 3. Trace execution on realistic input — values, state, external calls.
 4. Confirm bug is reachable. No concrete execution path → drop.
 
@@ -132,8 +132,8 @@ Illustrative only — do not treat as code under review.
       "severity": "suggestion",
       "confidence": 90,
       "headline": "N+1 query in /users/batch handler — fix before merge",
-      "comment": "Iterating `user_repo.fetch(id)` inside the request loop issues one SQL query per id. For a 200-id payload this is 200 round trips on the hot path and will dominate latency under load. `user_repo` already exposes `fetch_many`, which batches into a single `IN (...)` query.",
-      "suggestion": "users = await user_repo.fetch_many(ids)"
+      "comment": "Iterating `user_repo.fetch(id)` inside the request loop issues one SQL query per id. For a 200-id payload this is 200 round trips on the hot path and will dominate latency under load.",
+      "suggestion": null
     }
   ],
   "compliance_requirements": null

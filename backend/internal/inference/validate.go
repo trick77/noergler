@@ -150,13 +150,19 @@ func validateOne(f ReviewFinding, idx diff.AnchorIndex) (DropReason, int) {
 			continue
 		}
 		h, where := matchEvidence(e, fa)
-		switch where {
-		case notFound:
+		switch {
+		case where == notFound && isAnnotation(e):
+			// The model's own note or an elision between quoted lines
+			// ("// close is missing here", "..."). Seen in the evals on a
+			// correct finding; it is not code, so it proves nothing either
+			// way. Skipped like a blank line.
+			continue
+		case where == notFound:
 			return DropEvidenceNotFound, 0
-		case onNewSide:
+		case where == onNewSide:
 			anchors = append(anchors, h)
 			inDiff = true
-		case onRemovedSide:
+		case where == onRemovedSide:
 			inDiff = true
 		}
 		quoted++
@@ -212,6 +218,32 @@ func validateOne(f ReviewFinding, idx diff.AnchorIndex) (DropReason, int) {
 // form has a blank gutter, so it is the marker alone. ASCII digits on
 // purpose: the gutter is ours, never the file's text.
 var gutterRE = regexp.MustCompile(`^\s*[0-9]+ [ +]`)
+
+// isAnnotation reports whether a quoted line is a note or an elision rather
+// than code: `//` or `#` followed by a space (or alone), a `/* … */` with
+// nothing after it, or an ellipsis and nothing else. Only an evidence line
+// that matches nothing is tested: a real comment in the diff matches and
+// counts as evidence.
+//
+// The shapes are narrow so code stays checked: bare `*`, `--`, `#` and `...`
+// start a pointer write, a decrement, `#include`/`#[derive]` and a JS spread,
+// and `/* nolint */ err = nil` carries code after its comment. Known limit,
+// accepted: an invented comment line still passes, so a finding resting on a
+// made-up comment plus one real diff line gets through.
+func isAnnotation(quote string) bool {
+	t := strings.TrimSpace(quote)
+	switch {
+	case t == "..." || t == "…":
+		return true
+	case t == "//" || strings.HasPrefix(t, "// "), t == "#" || strings.HasPrefix(t, "# "):
+		return true
+	case strings.HasPrefix(t, "/* ") || t == "/*":
+		// Unclosed, or closed at the very end: no code after the comment.
+		end := strings.Index(t, "*/")
+		return end < 0 || end == len(t)-2
+	}
+	return false
+}
 
 // evidenceSource says where a quoted line was found.
 type evidenceSource int
