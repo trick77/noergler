@@ -46,7 +46,7 @@ For mechanical hunks the risk is non-uniformity, not the transform itself: the c
 
 Reason silently in four steps:
 1. Identify the specific `+` line(s) concerned and copy them as `evidence`.
-2. Re-read the evidence as written. Keys, named arguments and fields bind by name, never by position or by the order you expect: `it: 'x'` is the `it` value wherever it sits. Evidence contradicts the claim → drop.
+2. Re-read the evidence as written. Evidence contradicts the claim → drop.
 3. Trace execution on realistic input — values, state, external calls.
 4. Confirm bug is reachable. No concrete execution path → drop.
 
