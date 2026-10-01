@@ -219,21 +219,18 @@ func validateOne(f ReviewFinding, idx diff.AnchorIndex) (DropReason, int) {
 // purpose: the gutter is ours, never the file's text.
 var gutterRE = regexp.MustCompile(`^\s*[0-9]+ [ +]`)
 
-// annotationPrefixes start a line that is a comment or an elision marker in
-// the common languages. Only an evidence line that matches nothing is tested
-// against them: a real comment in the diff matches and counts as evidence.
-var annotationPrefixes = []string{"//", "#", "/*", "*", "--", "...", "…"}
+// annotationRE is a line that is a comment or an elision, never code: a
+// comment marker followed by a space (or alone), or an ellipsis and nothing
+// else. The space is what keeps code out: bare `*`, `--`, `#` and `...`
+// start a pointer write, a decrement, `#include`/`#[derive]` and a JS spread.
+// Only an evidence line that matches nothing is tested against it: a real
+// comment in the diff matches and counts as evidence.
+var annotationRE = regexp.MustCompile(`^(?:(?://|#|/\*|--)(?:[ \t].*)?|\.\.\.|…)$`)
 
 // isAnnotation reports whether a quoted line is a note or an elision rather
 // than code.
 func isAnnotation(quote string) bool {
-	t := strings.TrimSpace(quote)
-	for _, p := range annotationPrefixes {
-		if strings.HasPrefix(t, p) {
-			return true
-		}
-	}
-	return false
+	return annotationRE.MatchString(strings.TrimSpace(quote))
 }
 
 // evidenceSource says where a quoted line was found.
