@@ -150,13 +150,19 @@ func validateOne(f ReviewFinding, idx diff.AnchorIndex) (DropReason, int) {
 			continue
 		}
 		h, where := matchEvidence(e, fa)
-		switch where {
-		case notFound:
+		switch {
+		case where == notFound && isAnnotation(e):
+			// The model's own note or an elision between quoted lines
+			// ("// close is missing here", "..."). Seen in the evals on a
+			// correct finding; it is not code, so it proves nothing either
+			// way. Skipped like a blank line.
+			continue
+		case where == notFound:
 			return DropEvidenceNotFound, 0
-		case onNewSide:
+		case where == onNewSide:
 			anchors = append(anchors, h)
 			inDiff = true
-		case onRemovedSide:
+		case where == onRemovedSide:
 			inDiff = true
 		}
 		quoted++
@@ -212,6 +218,23 @@ func validateOne(f ReviewFinding, idx diff.AnchorIndex) (DropReason, int) {
 // form has a blank gutter, so it is the marker alone. ASCII digits on
 // purpose: the gutter is ours, never the file's text.
 var gutterRE = regexp.MustCompile(`^\s*[0-9]+ [ +]`)
+
+// annotationPrefixes start a line that is a comment or an elision marker in
+// the common languages. Only an evidence line that matches nothing is tested
+// against them: a real comment in the diff matches and counts as evidence.
+var annotationPrefixes = []string{"//", "#", "/*", "*", "--", "...", "…"}
+
+// isAnnotation reports whether a quoted line is a note or an elision rather
+// than code.
+func isAnnotation(quote string) bool {
+	t := strings.TrimSpace(quote)
+	for _, p := range annotationPrefixes {
+		if strings.HasPrefix(t, p) {
+			return true
+		}
+	}
+	return false
+}
 
 // evidenceSource says where a quoted line was found.
 type evidenceSource int

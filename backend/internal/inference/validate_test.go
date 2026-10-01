@@ -67,6 +67,11 @@ func TestValidateFindings(t *testing.T) {
 		{"no evidence", vf("src/labels.ts", 11), DropNoEvidence, 0},
 		{"blank evidence only", vf("src/labels.ts", 11, "  ", ""), DropNoEvidence, 0},
 		{"quoted code that is not there", vf("src/labels.ts", 11, "mu.Lock()", "db.Close()"), DropEvidenceNotFound, 0},
+		// From the evals: a correct resource-leak finding added its own note
+		// between quoted lines. A note or an elision is not code; skipped.
+		{"model's own comment line is skipped", vf("src/labels.ts", 11, "mu.Lock()", "// defer is missing here"), "", 11},
+		{"elision marker is skipped", vf("src/labels.ts", 17, "a()", "...", "b()"), "", 17},
+		{"annotation alone is no evidence", vf("src/labels.ts", 11, "// note", "…"), DropNoEvidence, 0},
 		{"re-indented quote matches", vf("src/labels.ts", 13, "de:   'Rechnungsadresse',"), "", 13},
 		{"copied gutter and marker are tolerated", vf("src/labels.ts", 17, "17 +    a()"), "", 17},
 		{"copied diff marker is tolerated", vf("src/labels.ts", 17, "+    a()"), "", 17},

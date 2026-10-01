@@ -132,8 +132,8 @@ Illustrative only — do not treat as code under review.
       "severity": "suggestion",
       "confidence": 90,
       "headline": "N+1 query in /users/batch handler — fix before merge",
-      "comment": "Iterating `user_repo.fetch(id)` inside the request loop issues one SQL query per id. For a 200-id payload this is 200 round trips on the hot path and will dominate latency under load. `user_repo` already exposes `fetch_many`, which batches into a single `IN (...)` query.",
-      "suggestion": "users = await user_repo.fetch_many(ids)"
+      "comment": "Iterating `user_repo.fetch(id)` inside the request loop issues one SQL query per id. For a 200-id payload this is 200 round trips on the hot path and will dominate latency under load.",
+      "suggestion": null
     }
   ],
   "compliance_requirements": null
