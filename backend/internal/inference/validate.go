@@ -219,18 +219,30 @@ func validateOne(f ReviewFinding, idx diff.AnchorIndex) (DropReason, int) {
 // purpose: the gutter is ours, never the file's text.
 var gutterRE = regexp.MustCompile(`^\s*[0-9]+ [ +]`)
 
-// annotationRE is a line that is a comment or an elision, never code: a
-// comment marker followed by a space (or alone), or an ellipsis and nothing
-// else. The space is what keeps code out: bare `*`, `--`, `#` and `...`
-// start a pointer write, a decrement, `#include`/`#[derive]` and a JS spread.
-// Only an evidence line that matches nothing is tested against it: a real
-// comment in the diff matches and counts as evidence.
-var annotationRE = regexp.MustCompile(`^(?:(?://|#|/\*|--)(?:[ \t].*)?|\.\.\.|…)$`)
-
 // isAnnotation reports whether a quoted line is a note or an elision rather
-// than code.
+// than code: `//` or `#` followed by a space (or alone), a `/* … */` with
+// nothing after it, or an ellipsis and nothing else. Only an evidence line
+// that matches nothing is tested: a real comment in the diff matches and
+// counts as evidence.
+//
+// The shapes are narrow so code stays checked: bare `*`, `--`, `#` and `...`
+// start a pointer write, a decrement, `#include`/`#[derive]` and a JS spread,
+// and `/* nolint */ err = nil` carries code after its comment. Known limit,
+// accepted: an invented comment line still passes, so a finding resting on a
+// made-up comment plus one real diff line gets through.
 func isAnnotation(quote string) bool {
-	return annotationRE.MatchString(strings.TrimSpace(quote))
+	t := strings.TrimSpace(quote)
+	switch {
+	case t == "..." || t == "…":
+		return true
+	case t == "//" || strings.HasPrefix(t, "// "), t == "#" || strings.HasPrefix(t, "# "):
+		return true
+	case strings.HasPrefix(t, "/* ") || t == "/*":
+		// Unclosed, or closed at the very end: no code after the comment.
+		end := strings.Index(t, "*/")
+		return end < 0 || end == len(t)-2
+	}
+	return false
 }
 
 // evidenceSource says where a quoted line was found.
