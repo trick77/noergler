@@ -48,6 +48,32 @@ input-heavy (mini's input price is 6.67x lower) or a cheaper 1M model appears.
 A second model merging findings is acceptable; one judging whether a finding
 is true is not.
 
+Why the cost came out equal: mini writes ~1,900 output tokens a review
+(reasoning included), gpt-5.5 high ~600. Output is ~85% of a call's cost on
+these diffs, so mini's 6.67x lower price shrinks to ~3x per call: ~$0.010
+against $0.028 (15 calls over the corpus) to $0.037 (the five hardest cases).
+Caching barely matters at this prompt size.
+
+What the sample size can show: 5 samples a case sees a rate move by ~15
+points, not by 5. The 10 triples per case share those 5 samples; precision is
+the sample count's, never the group count's. The corpus is the bottleneck:
+before rev6, 6 of 8 seeded cases were never missed.
+
+Before the experiment, from the six anchored-scorer runs on rev5
+(mimo-v2.5-pro high), per completed sample:
+
+- seeded: 38 of 41 caught. All 3 misses on two cases:
+  `context-not-propagated` 4 of 6, `struct-field-race` 4 of 5.
+- controls: 2 invented findings in 24 samples, on two different controls.
+- With independent runs a 2-of-3 vote is `3p^2 - 2p^3`: it helps above a 50%
+  catch rate and hurts below. That threshold is why the vote fails on the
+  hard bug.
+
+Models allowed for eval runs: mimo and `gpt-5.4-mini`. No call on `gpt-5.5`,
+`gpt-5.4` or anything above without the owner's okay for that run, with a
+stated call count and budget. Use `-cases` and `-usage` to buy only the cases
+that answer the question.
+
 ## Known gaps
 
 - `lock-not-released` keywords miss correct findings; inflates `extra`.
