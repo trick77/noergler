@@ -69,7 +69,9 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   the verdict to what the kept findings support. Full-file lines alone are
   dropped: one diff line must be quoted. A removed or full-file-only line is
   evidence, never an anchor: a real finding quoted the call outside the
-  diff, and rejecting that dropped it. Blunt rules, never
+  diff, and rejecting that dropped it. Same for a line of ANOTHER shown
+  file: a cross-file finding quotes the changed contract beside the stale
+  caller, and matching the own file only dropped 6 of 7. Blunt rules, never
   a judge model. Drops are logged by reason, never silent.
 - `strings.ReplaceAll`, never `text/template`: the files contain JSON braces.
 - **Single worker for every Bitbucket call**, per-PR supersede. Only the

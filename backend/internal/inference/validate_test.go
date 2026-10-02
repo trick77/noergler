@@ -190,6 +190,58 @@ func TestValidateFindings_AnnotatedAssignmentReorderIsARealFix(t *testing.T) {
 	}
 }
 
+// The cross-file shape from the evals: store.go changes Touch's unit, and the
+// finding on manager.go quotes the changed signature beside the stale call.
+// A line of another shown file is evidence, in whichever of its three places
+// it sits, but it never stands in for a diff line of the finding's own file.
+func TestValidateFindings_EvidenceFromAnotherShownFile(t *testing.T) {
+	idx := diff.BuildAnchorIndex([]diff.FileReviewData{
+		{
+			Path: "session/store.go",
+			Diff: "@@ -1,3 +1,3 @@\n" +
+				"-func (s *Store) Touch(id string, ttlSeconds int64) error {\n" +
+				"+func (s *Store) Touch(id string, ttlMillis int64) error {\n" +
+				" \treturn s.rdb.PExpire(id, ttlMillis)\n" +
+				" }\n",
+			Content:        "var ErrNotFound = errors.New(\"session: not found\")\n",
+			ContentFetched: true,
+		},
+		{
+			Path: "session/manager.go",
+			Diff: "@@ -7,2 +7,3 @@\n" +
+				" func (m *Manager) Hold(id string, d time.Duration) error {\n" +
+				"+\treturn m.store.Touch(id, int64(d.Seconds()))\n" +
+				" }\n",
+		},
+	})
+	call := "return m.store.Touch(id, int64(d.Seconds()))"
+	cases := []struct {
+		name     string
+		evidence []string
+		reason   DropReason
+	}{
+		{"added line of the other file", []string{call, "func (s *Store) Touch(id string, ttlMillis int64) error {"}, ""},
+		{"removed line of the other file", []string{call, "func (s *Store) Touch(id string, ttlSeconds int64) error {"}, ""},
+		{"full-content line of the other file", []string{call, "var ErrNotFound = errors.New(\"session: not found\")"}, ""},
+		{"a line in no shown file still drops", []string{call, "if err := s.rdb.PExpire(id, ttlMillis); err != nil {"}, DropEvidenceNotFound},
+		{"other file's lines alone tie to nothing here", []string{"func (s *Store) Touch(id string, ttlMillis int64) error {"}, DropEvidenceOutsideDiff},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			v := ValidateFindings([]ReviewFinding{vf("session/manager.go", 8, tc.evidence...)}, idx)
+			if tc.reason != "" {
+				if len(v.Dropped) != 1 || v.Dropped[0].Reason != tc.reason {
+					t.Fatalf("dropped = %+v, want one %s", v.Dropped, tc.reason)
+				}
+				return
+			}
+			if len(v.Kept) != 1 || v.Kept[0].Line != 8 || len(v.Reanchored) != 0 {
+				t.Fatalf("kept = %+v, dropped = %+v, reanchored = %+v: want line 8 kept unmoved", v.Kept, v.Dropped, v.Reanchored)
+			}
+		})
+	}
+}
+
 // The quote as written is tried everywhere before a stripped form is tried
 // anywhere. A removed YAML list item must not match an unrelated shown line
 // once its leading `-` is stripped, and so must not move the finding there.
