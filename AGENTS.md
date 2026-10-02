@@ -92,7 +92,7 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   model noise; two consecutive is the signal. Not encoded - the exit code
   stays strict so CI could gate on it without a threshold to tune.
 - Evals have **no model or level default in code**: the default pair is
-  data, `internal/evals/corpus/series.yaml` (mimo-v2.5-pro, high). Unset
+  data, `internal/evals/corpus/series.yaml` (mimo-v2.6-pro, high). Unset
   `EVAL_MODEL` = that model; unset `-effort` = that level on that model,
   balanced on any other; passed `-effort ""` = balanced. Production runs a
   model too costly to eval on; the series is a stand-in, so a prod false
