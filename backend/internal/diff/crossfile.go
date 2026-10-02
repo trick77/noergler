@@ -35,6 +35,8 @@ const (
 	// refLineTextRunes caps a reference line's text. Counted in runes, not
 	// bytes: a byte cap would cut a line of umlauts at 60 characters.
 	refLineTextRunes = 120
+	// maxReferencingSymbols bounds the symbols ReferencingPaths looks for.
+	maxReferencingSymbols = 100
 )
 
 // SymbolReference is one reference to a symbol in another file.
@@ -179,6 +181,53 @@ func BuildRelationships(files []FileReviewData) []CrossFileRelationship {
 		}
 	}
 	return relationships
+}
+
+// ReferencingPaths returns the candidates whose diff mentions a symbol that
+// sources define or change, keyed by path.
+//
+// It ranks the cumulative PR diff for an incremental review: sources are the
+// push, candidates the rest of the PR. Only diffs are read, since no content
+// is fetched for a file the push did not touch. A source never references
+// itself. Same extraction as BuildRelationships, so a push that adds no
+// definition line yields nothing.
+//
+// One alternation over all symbols, capped, so each candidate is scanned
+// once whatever the push defines: the PR diff is uncapped and this runs on
+// the single review worker. A part with no parseable path is neither a
+// source nor a result: it has no name to key on.
+func ReferencingPaths(sources, candidates []FileReviewData) map[string]bool {
+	var symbols []string
+	seen := map[string]bool{}
+	sourcePaths := map[string]bool{}
+	for _, src := range sources {
+		if src.Path != "" {
+			sourcePaths[src.Path] = true
+		}
+		for _, symbol := range extractChangedSymbols(src) {
+			if !seen[symbol] && len(symbols) < maxReferencingSymbols {
+				seen[symbol] = true
+				symbols = append(symbols, regexp.QuoteMeta(symbol))
+			}
+		}
+	}
+
+	out := map[string]bool{}
+	if len(symbols) == 0 {
+		return out
+	}
+	// Same Unicode-aware boundary as symbolBoundaryRE.
+	const notWord = `[^\pL\pN_]`
+	re := regexp.MustCompile(`(?:^|` + notWord + `)(?:` + strings.Join(symbols, "|") + `)(?:$|` + notWord + `)`)
+	for _, c := range candidates {
+		if c.Path == "" || sourcePaths[c.Path] {
+			continue
+		}
+		if re.MatchString(c.Diff) {
+			out[c.Path] = true
+		}
+	}
+	return out
 }
 
 // RenderRelationships renders the relationships as a prompt section.

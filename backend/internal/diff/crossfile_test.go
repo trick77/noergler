@@ -453,3 +453,26 @@ func TestRenderRelationshipsCases(t *testing.T) {
 		}
 	})
 }
+
+// ReferencingPaths ranks the rest of a PR against a push: a candidate whose
+// diff names a symbol the push defines is related, the push's own file never
+// is, and a push that defines nothing relates to nothing.
+func TestReferencingPaths(t *testing.T) {
+	push := []FileReviewData{{Path: "svc.go", Diff: "@@ -1 +1 @@\n+func prüfeKonto() {}\n"}}
+	candidates := []FileReviewData{
+		{Path: "svc.go", Diff: "@@ -1 +1 @@\n+func prüfeKonto() {}\n"},
+		{Path: "caller.go", Diff: "@@ -1 +1 @@\n+\tprüfeKonto()\n"},
+		{Path: "near.go", Diff: "@@ -1 +1 @@\n+\tprüfeKontoAlt()\n"},
+		{Path: "other.go", Diff: "@@ -1 +1 @@\n+var x = 1\n"},
+	}
+
+	got := ReferencingPaths(push, candidates)
+	if len(got) != 1 || !got["caller.go"] {
+		t.Errorf("got %v, want only caller.go: the boundary is Unicode-aware and a source never references itself", got)
+	}
+
+	body := []FileReviewData{{Path: "svc.go", Diff: "@@ -1 +1 @@\n+\treturn x + 1\n"}}
+	if got := ReferencingPaths(body, candidates); len(got) != 0 {
+		t.Errorf("a push defining no symbol related to %v", got)
+	}
+}

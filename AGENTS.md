@@ -50,6 +50,14 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
 - `prompts/review.txt` order: `{files}` BEFORE `{cumulative_pr_diff}` and
   `{previously_posted_findings}`. Prefix cache depends on it.
 - File order to the LLM is content-independent (group, language, path).
+- **Cumulative PR diff is filtered, scaled, filled** (`review/cumulative.go`):
+  `IsReviewable` parts only, budget 20x the push (floor 4,000, ceiling
+  `CumulativeDiffBudget`), push-touched files first, whole files or none.
+  Raw and unscaled, a 1-line suggestion apply paid for the whole PR. A partial
+  block never says "entire PR". Constants unmeasured: tune from the log line.
+- **A decision that changes what is reviewed, posted or billed gets a log
+  line**: full vs incremental and why, prompt tokens per part, files left
+  unreviewed by name, findings deduped or cut, verdict lowered.
 - **Diff lines carry their new-file number** (`diff.NumberDiff`): the model
   reads `line`, never counts it. Counting put findings past EOF in the evals.
 - **Every finding is validated before posting** (`inference.ValidateFindings`,

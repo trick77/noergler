@@ -189,7 +189,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	lastReviewed := r.priorCommit(ctx, key)
 
 	// 9. Incremental review when the event is a push and we have a pointer.
-	rawDiff, cumulativePRDiff, incrementalFrom, diffWhy, ok := r.resolveDiff(ctx, payload, key, prTag, sourceCommit, lastReviewed, upsert)
+	rawDiff, cumulativePR, incrementalFrom, diffWhy, ok := r.resolveDiff(ctx, payload, key, prTag, sourceCommit, lastReviewed, upsert)
 	if !ok {
 		return nil, ctx, r.abort(ctx, key, kind, diffWhy, prTag, httpCounter)
 	}
@@ -220,6 +220,11 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		r.log.InfoContext(ctx, fmt.Sprintf(
 			"%s: large PR - compression applied: %d included, %d other_modified, %d deleted, %d renamed",
 			prTag, len(files), len(otherModified), len(deletedPaths), len(renamedPaths)))
+		if len(otherModified) > 0 {
+			// Named only in the prompt, so not reviewed: a count hides which.
+			r.log.WarnContext(ctx, fmt.Sprintf("%s: %d file(s) over the %d-token budget are NOT reviewed, named to the model only: %s",
+				prTag, len(otherModified), budget, capPaths(otherModified)))
+		}
 	}
 	files = diff.ExpandAllFiles(files, r.cfg.DiffExtraLinesBefore, r.cfg.DiffExtraLinesAfter,
 		r.cfg.DiffMaxExtraLinesDynamicContext, r.cfg.DiffAllowDynamicContext)
@@ -243,7 +248,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	existing := safeDB(ctx, r.log, "ExistingFindings", func() ([]store.Finding, error) {
 		return r.store.ExistingFindings(ctx, key)
 	})
-	posted := r.trimPreviouslyPosted(existing, budget)
+	posted := r.trimPreviouslyPosted(ctx, prTag, existing, budget)
 
 	assembled := inference.AssembleReviewPrompt(inference.AssembleRequest{
 		Template:              r.template,
@@ -255,9 +260,12 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		TicketContext:         ticketContext,
 		TicketComplianceCheck: r.cfg.TicketComplianceCheck,
 		CrossFileContext:      crossFile,
-		CumulativePRDiff:      cumulativePRDiff,
+		CumulativePRDiff:      cumulativePR.diff,
+		CumulativePartial:     cumulativePR.partial,
+		CumulativeOmitted:     cumulativePR.omitted,
 		PreviouslyPosted:      posted,
 	}, r.tokens.Count)
+	r.logPromptComposition(ctx, prTag, assembled, incrementalFrom != "")
 
 	return &reviewPlan{
 		key:             key,
@@ -332,9 +340,25 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	v := r.validateFindings(ctx, prTag, result.Review.Findings, plan.anchors)
 	// The model's verdict argued from findings some of which are now gone.
 	reviewSummary := inference.AdjustVerdict(result.Review.Summary, v.Kept, len(v.Dropped))
-	findings := dedupe(v.Kept, existing)
+	if was := result.Review.Summary.VerdictDecision; was != reviewSummary.VerdictDecision {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: verdict lowered %s -> %s after %d dropped finding(s)",
+			prTag, was, reviewSummary.VerdictDecision, len(v.Dropped)))
+	}
+	deduped, repeats := dedupe(v.Kept, existing)
+	for _, f := range repeats {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: finding on %s:%d (%s) already posted by an earlier run, not posted again",
+			prTag, f.File, f.Line, f.Severity))
+	}
 	// 21. Sort by severity and cap.
-	findings, truncated := sortAndLimit(findings, r.cfg.MaxComments)
+	findings, truncated := sortAndLimit(deduped, r.cfg.MaxComments)
+	if truncated {
+		// Sorting with no cap gives the same order, so the tail is the cut.
+		all, _ := sortAndLimit(deduped, len(deduped))
+		for _, f := range all[len(findings):] {
+			r.log.InfoContext(ctx, fmt.Sprintf("%s: finding on %s:%d (%s) over the %d-comment cap, not posted",
+				prTag, f.File, f.Line, f.Severity, r.cfg.MaxComments))
+		}
+	}
 
 	// 22. The pointer finally advances.
 	prReviewID := r.upsert(ctx, upsert, sourceCommit)
@@ -484,7 +508,7 @@ func (r *Reviewer) checkSkipState(ctx context.Context, key store.PRKey, prTag st
 // and one is a fault (the diff would not fetch). A single bare false told
 // the caller only that it had to return, so the two commonest skips in the
 // whole pipeline were invisible to anything but the log.
-func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, key store.PRKey, prTag, sourceCommit, lastReviewed string, upsert store.PRUpsert) (rawDiff, cumulative, incrementalFrom string, why SkipReason, ok bool) {
+func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, key store.PRKey, prTag, sourceCommit, lastReviewed string, upsert store.PRUpsert) (rawDiff string, cumulative cumulativeContext, incrementalFrom string, why SkipReason, ok bool) {
 	project, repo, prID := key.Project, key.Repo, key.PRID
 	isIncremental := false
 
@@ -493,7 +517,7 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 		if sourceCommit == lastReviewed {
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: HEAD unchanged since last review (%s), skipping",
 				prTag, shortSHA(sourceCommit, 10)))
-			return "", "", "", SkipHeadUnchanged, false
+			return "", cumulativeContext{}, "", SkipHeadUnchanged, false
 		}
 		incDiff, err := r.bitbucket.FetchCommitDiff(ctx, project, repo, lastReviewed, sourceCommit)
 		switch {
@@ -520,6 +544,19 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 		}
 	}
 
+	// A fallback above has said why already. Without this line a push
+	// reviewed in full for want of a pointer (a first run, or a failed one
+	// that kept the prior commit) looks like an incremental run that cost
+	// as much as the whole PR.
+	switch {
+	case payload.EventKey != webhook.EventFromRefUpdated:
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: full review (event %s is not a push)", prTag, payload.EventKey))
+	case lastReviewed == "":
+		r.log.InfoContext(ctx, prTag+": full review (no prior reviewed commit)")
+	case sourceCommit == "":
+		r.log.InfoContext(ctx, prTag+": full review (payload carries no source commit)")
+	}
+
 	if !isIncremental {
 		full, err := r.bitbucket.FetchPRDiff(ctx, project, repo, prID, 0)
 		var tooLarge *bitbucket.ContentTooLarge
@@ -530,57 +567,25 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 			prior := r.priorCommit(ctx, key)
 			prReviewID := r.upsert(ctx, upsert, prior)
 			r.postOrUpdateSummary(ctx, project, repo, prID, prReviewID, render.DiffTooLargeSummary(tooLarge.Limit))
-			return "", "", "", SkipDiffTooLarge, false
+			return "", cumulativeContext{}, "", SkipDiffTooLarge, false
 		}
 		if err != nil {
 			r.log.ErrorContext(ctx, fmt.Sprintf("%s: failed to fetch PR diff: %v", prTag, err))
-			return "", "", "", SkipNone, false
+			return "", cumulativeContext{}, "", SkipNone, false
 		}
 		// 11. An empty diff is nothing to review.
 		if strings.TrimSpace(full) == "" {
 			r.log.InfoContext(ctx, prTag+" has empty diff, skipping")
-			return "", "", "", SkipEmptyDiff, false
+			return "", cumulativeContext{}, "", SkipEmptyDiff, false
 		}
-		return full, "", "", SkipNone, true
+		return full, cumulativeContext{}, "", SkipNone, true
 	}
 
 	// 12. The cumulative PR diff is cross-file context for an incremental
 	// review, so the model can check invariants split across commits. Best
 	// effort: a failure here must not block the review.
-	cumulative = r.fetchCumulativeDiff(ctx, key, prTag)
+	cumulative = r.fetchCumulativeDiff(ctx, key, prTag, rawDiff)
 	return rawDiff, cumulative, incrementalFrom, SkipNone, true
-}
-
-// fetchCumulativeDiff returns the whole-PR diff for cross-file context, or
-// "" when it is unavailable or over budget.
-func (r *Reviewer) fetchCumulativeDiff(ctx context.Context, key store.PRKey, prTag string) string {
-	full, err := r.bitbucket.FetchPRDiff(ctx, key.Project, key.Repo, key.PRID, 0)
-	var tooLarge *bitbucket.ContentTooLarge
-	switch {
-	case errors.As(err, &tooLarge):
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: cumulative PR diff dropped (%v)", prTag, err))
-		return ""
-	case err != nil:
-		r.log.WarnContext(ctx, fmt.Sprintf("%s: failed to fetch cumulative PR diff for context: %v", prTag, err))
-		return ""
-	case full == "":
-		return ""
-	}
-
-	budget := inference.CumulativeDiffBudget(r.llm.InputTokenBudget())
-	// Tokenizing expands the text in RAM, so a diff hopelessly over budget
-	// by byte count alone is dropped without ever being tokenized.
-	size, unit := len(full), "bytes"
-	if size <= budget*bytesPerTokenCeiling {
-		size, unit = r.tokens.Count(full), "tokens"
-	}
-	if size > budget {
-		r.log.WarnContext(ctx, fmt.Sprintf(
-			"%s: cumulative PR diff %d %s exceeds budget %d tokens (model context %d), dropping",
-			prTag, size, unit, budget, r.llm.ContextWindow()))
-		return ""
-	}
-	return full
 }
 
 // handleNonOK posts the notice for a non-ok outcome.
@@ -638,6 +643,7 @@ func (r *Reviewer) fetchTicket(ctx context.Context, branch, title, prTag string)
 	}
 	id := extractTicketID(branch, title)
 	if id == "" {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: no Jira key in branch %q or title, reviewing without ticket context", prTag, branch))
 		return nil, nil
 	}
 	ticket, parent, err := r.jira.FetchTicketWithParent(ctx, id)
@@ -647,6 +653,9 @@ func (r *Reviewer) fetchTicket(ctx context.Context, branch, title, prTag string)
 	}
 	if ticket != nil {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: linked Jira ticket %s", prTag, id))
+	} else {
+		// Not an error: the key came off a branch name and may be noise.
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: Jira ticket %s not readable, reviewing without ticket context", prTag, id))
 	}
 	return ticket, parent
 }
@@ -656,7 +665,7 @@ func (r *Reviewer) fetchTicket(ctx context.Context, branch, title, prTag string)
 //
 // The tail is the most recent (the store returns oldest first). Dropping the
 // oldest in 25% chunks avoids re-rendering once per item.
-func (r *Reviewer) trimPreviouslyPosted(existing []store.Finding, budget int) []inference.PostedFinding {
+func (r *Reviewer) trimPreviouslyPosted(ctx context.Context, prTag string, existing []store.Finding, budget int) []inference.PostedFinding {
 	posted := make([]inference.PostedFinding, 0, len(existing))
 	for _, f := range existing {
 		line := f.LineNumber
@@ -673,7 +682,32 @@ func (r *Reviewer) trimPreviouslyPosted(existing []store.Finding, budget int) []
 		drop := max(1, len(posted)/4)
 		posted = posted[drop:]
 	}
+	// The model is told not to re-raise what is listed; a finding trimmed
+	// here can come back as a duplicate comment.
+	if len(posted) < len(existing) {
+		r.log.InfoContext(ctx, fmt.Sprintf(
+			"%s: previously posted findings trimmed: %d of %d shown to the model, oldest dropped (caps: %d findings, %d tokens)",
+			prTag, len(posted), len(existing), maxPreviouslyPostedFindings, limit))
+	}
 	return posted
+}
+
+// logPromptComposition attributes the prompt's input tokens to its parts.
+//
+// The run's cost follows the prompt, and the prompt hardly follows the diff:
+// a one-line push carries the same template, AGENTS.md and whole file. The
+// rest is whatever the named parts do not cover: template, system message,
+// schema and the cross-file notes.
+func (r *Reviewer) logPromptComposition(ctx context.Context, prTag string, a inference.AssembledPrompt, incremental bool) {
+	mode := "full"
+	if incremental {
+		mode = "incremental"
+	}
+	b := a.Breakdown
+	rest := a.PromptTokens - b.RepoInstructions - b.Files - b.CumulativeDiff - b.PreviouslyPosted - b.Ticket
+	r.log.InfoContext(ctx, fmt.Sprintf(
+		"%s: prompt %d tokens (%s review) - files %d, cumulative PR diff %d, AGENTS.md %d, previously posted %d, ticket %d, template and rest %d",
+		prTag, a.PromptTokens, mode, b.Files, b.CumulativeDiff, b.RepoInstructions, b.PreviouslyPosted, b.Ticket, rest))
 }
 
 // validateFindings applies inference.ValidateFindings and logs every drop and
@@ -701,8 +735,8 @@ func (r *Reviewer) validateFindings(ctx context.Context, prTag string, findings 
 }
 
 // dedupe drops findings an earlier run already posted, keyed on file, line
-// and severity.
-func dedupe(findings []inference.ReviewFinding, existing []store.Finding) []inference.ReviewFinding {
+// and severity. repeats are the dropped ones, for the log.
+func dedupe(findings []inference.ReviewFinding, existing []store.Finding) (out, repeats []inference.ReviewFinding) {
 	type dedupeKey struct {
 		file     string
 		line     int
@@ -712,13 +746,15 @@ func dedupe(findings []inference.ReviewFinding, existing []store.Finding) []infe
 	for _, f := range existing {
 		seen[dedupeKey{f.FilePath, f.LineNumber, f.Severity}] = true
 	}
-	out := make([]inference.ReviewFinding, 0, len(findings))
+	out = make([]inference.ReviewFinding, 0, len(findings))
 	for _, f := range findings {
-		if !seen[dedupeKey{f.File, f.Line, f.Severity}] {
-			out = append(out, f)
+		if seen[dedupeKey{f.File, f.Line, f.Severity}] {
+			repeats = append(repeats, f)
+			continue
 		}
+		out = append(out, f)
 	}
-	return out
+	return out, repeats
 }
 
 // severityOrder ranks a severity for sorting; an unknown value sorts last.

@@ -64,6 +64,12 @@ type PromptBreakdown struct {
 	Template         int
 	RepoInstructions int
 	Files            int
+	// The three below are log-only: the footnote does not render them, the
+	// prompt-composition line does. Without them a run's input cost could
+	// not be attributed past the files.
+	CumulativeDiff   int
+	PreviouslyPosted int
+	Ticket           int
 }
 
 // AssembleRequest is everything the review prompt is built from.
@@ -80,7 +86,12 @@ type AssembleRequest struct {
 	TicketComplianceCheck bool
 	CrossFileContext      string
 	CumulativePRDiff      string
-	PreviouslyPosted      []PostedFinding
+	// CumulativePartial: part of the PR is missing from CumulativePRDiff.
+	CumulativePartial bool
+	// CumulativeOmitted names PR files left out of CumulativePRDiff for
+	// budget.
+	CumulativeOmitted []string
+	PreviouslyPosted  []PostedFinding
 }
 
 // AssembledPrompt is the rendered prompt plus what the caller needs for the
@@ -126,10 +137,13 @@ func AssembleReviewPrompt(req AssembleRequest, count CountFunc) AssembledPrompt 
 		files = files + "\n\n" + supplementary
 	}
 
+	cumulative := RenderCumulativePRDiff(req.CumulativePRDiff, req.CumulativePartial, req.CumulativeOmitted)
+	posted := RenderPreviouslyPostedFindings(req.PreviouslyPosted)
+
 	prompt := strings.NewReplacer(
 		PlaceholderFiles, files,
-		PlaceholderCumulativePRDiff, RenderCumulativePRDiff(req.CumulativePRDiff),
-		PlaceholderPreviouslyPosted, RenderPreviouslyPostedFindings(req.PreviouslyPosted),
+		PlaceholderCumulativePRDiff, cumulative,
+		PlaceholderPreviouslyPosted, posted,
 		PlaceholderRepoInstructions, req.RepoInstructions,
 		PlaceholderTicketContext, ticketContext,
 		PlaceholderComplianceInstructions, compliance,
@@ -147,6 +161,15 @@ func AssembleReviewPrompt(req AssembleRequest, count CountFunc) AssembledPrompt 
 	}
 	for _, f := range req.Files {
 		breakdown.Files += count(FormatFileEntry(f))
+	}
+	if cumulative != "" {
+		breakdown.CumulativeDiff = count(cumulative)
+	}
+	if posted != "" {
+		breakdown.PreviouslyPosted = count(posted)
+	}
+	if req.TicketContext != "" {
+		breakdown.Ticket = count(req.TicketContext)
 	}
 
 	// Count everything the request actually carries: the system message, the

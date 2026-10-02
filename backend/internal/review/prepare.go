@@ -20,14 +20,23 @@ import (
 // the same thing and is not reported to the reader.
 func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sourceCommit, prTag string) (files []diff.FileReviewData, contentSkipped []string) {
 	all := diff.SplitByFile(rawDiff)
-	var reviewable []string
+	var reviewable, skipped []string
 	for _, fd := range all {
 		if diff.IsReviewable(fd) {
 			reviewable = append(reviewable, fd)
+			continue
 		}
+		path := diff.ExtractPath(fd)
+		if path == "" {
+			path = "<unparsed>"
+		}
+		skipped = append(skipped, path)
 	}
 	r.log.InfoContext(ctx, fmt.Sprintf("%s: %d file(s) in diff, %d reviewable, %d skipped (binary/non-reviewable)",
 		prTag, len(all), len(reviewable), len(all)-len(reviewable)))
+	if len(skipped) > 0 {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: skipped as binary/non-reviewable: %s", prTag, capPaths(skipped)))
+	}
 	if len(reviewable) == 0 {
 		return nil, nil
 	}

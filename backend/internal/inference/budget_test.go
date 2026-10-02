@@ -111,6 +111,32 @@ func TestPreviouslyPostedBudget(t *testing.T) {
 	}
 }
 
+// The cumulative budget follows the push: a multiple of it, never under the
+// floor, never over the ceiling, and the ceiling wins when the two cross.
+func TestScaledCumulativeDiffBudget(t *testing.T) {
+	cases := []struct {
+		push, input int
+		want        int
+		bound       string
+	}{
+		{0, 628_000, 4_000, CumulativeBoundFloor},
+		{12, 628_000, 4_000, CumulativeBoundFloor},  // a one-line push
+		{199, 628_000, 4_000, CumulativeBoundFloor}, // 3,980, still under
+		{200, 628_000, 4_000, CumulativeBoundScaled},
+		{1_000, 628_000, 20_000, CumulativeBoundScaled},
+		{4_000, 628_000, 80_000, CumulativeBoundCeiling},
+		{50_000, 628_000, 80_000, CumulativeBoundCeiling},
+		{12, 6_000, 2_000, CumulativeBoundCeiling}, // a ceiling under the floor wins
+	}
+	for _, tc := range cases {
+		got, bound := ScaledCumulativeDiffBudget(tc.push, tc.input)
+		if got != tc.want || bound != tc.bound {
+			t.Errorf("ScaledCumulativeDiffBudget(%d, %d) = %d (%s), want %d (%s)",
+				tc.push, tc.input, got, bound, tc.want, tc.bound)
+		}
+	}
+}
+
 // Both budgets use min(hi, max(lo, v)), so the upper bound wins when the
 // bounds conflict.
 func TestClampUpperBoundWins(t *testing.T) {
