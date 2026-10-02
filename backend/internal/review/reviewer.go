@@ -22,7 +22,7 @@ const fileFetchConcurrency = 4
 const maxPreviouslyPostedFindings = 50
 
 // bytesPerTokenCeiling is an upper bound on bytes per token for diff text;
-// real code diffs sit at 3-4. Used to reject a cumulative diff by length
+// real code diffs sit at 3-4. Used to reject a cumulative-diff part by length
 // before paying to tokenize it, since tokenizing expands the text in RAM.
 const bytesPerTokenCeiling = 8
 

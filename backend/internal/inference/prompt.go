@@ -126,23 +126,55 @@ func bullets(items []string) string {
 	return strings.Join(lines, "\n")
 }
 
-// RenderCumulativePRDiff wraps the whole-PR diff as cross-file context only.
-func RenderCumulativePRDiff(cumulative string) string {
-	if strings.TrimSpace(cumulative) == "" {
+// maxCumulativeOmittedListed caps the omitted-path list under the cumulative
+// block; the rest is a count.
+const maxCumulativeOmittedListed = 50
+
+// RenderCumulativePRDiff wraps the PR diff as cross-file context only.
+//
+// partial says anything of the PR is missing from cumulative, filtered or
+// over budget; omitted names the over-budget files. A whole block says so; a
+// partial one must not, or the model reads a missing counterpart as a rename
+// nobody finished. With no diff at all the names still render: the largest
+// PRs are where nothing fits.
+func RenderCumulativePRDiff(cumulative string, partial bool, omitted []string) string {
+	hasDiff := strings.TrimSpace(cumulative) != ""
+	if !hasDiff && len(omitted) == 0 {
 		return ""
 	}
-	return "## Cumulative PR diff (cross-file context only)\n" +
-		"\n" +
-		"The diff below is the **entire PR** as it currently stands. " +
-		"Use it ONLY to verify cross-file invariants (e.g. that a renamed entity field " +
-		"also has its repository methods/queries renamed elsewhere in the PR). " +
-		"DO NOT raise findings about lines that are not in the focused review files above. " +
-		"Treat any change shown only in this cumulative diff (and not in the focused files) " +
-		"as already-resolved context — the focused review files are the sole subject of review.\n" +
-		"\n" +
-		"<cumulative_pr_diff>\n" +
-		cumulative + "\n" +
-		"</cumulative_pr_diff>"
+
+	block := "## Cumulative PR diff (cross-file context only)\n\n"
+	if hasDiff {
+		scope := "The diff below is the **entire PR** as it currently stands. "
+		if partial || len(omitted) > 0 {
+			scope = "The diff below is **part of the PR** as it currently stands: " +
+				"the reviewable files closest to the focused changes. "
+		}
+		block += scope +
+			"Use it ONLY to verify cross-file invariants (e.g. that a renamed entity field " +
+			"also has its repository methods/queries renamed elsewhere in the PR). " +
+			"DO NOT raise findings about lines that are not in the focused review files above. " +
+			"Treat any change shown only in this cumulative diff (and not in the focused files) " +
+			"as already-resolved context — the focused review files are the sole subject of review.\n" +
+			"\n" +
+			"<cumulative_pr_diff>\n" +
+			cumulative + "\n" +
+			"</cumulative_pr_diff>"
+	} else {
+		block += "The rest of this PR is too large to show. The focused review files are the sole subject of review."
+	}
+	if len(omitted) == 0 {
+		return block
+	}
+	listed := omitted
+	if len(listed) > maxCumulativeOmittedListed {
+		listed = listed[:maxCumulativeOmittedListed]
+	}
+	block += "\n\nAlso changed in this PR, diff not shown — do not assume what these contain:\n" + bullets(listed)
+	if more := len(omitted) - len(listed); more > 0 {
+		block += "\n- … and " + itoa(more) + " more"
+	}
+	return block
 }
 
 // PostedFinding is one finding an earlier review already posted.

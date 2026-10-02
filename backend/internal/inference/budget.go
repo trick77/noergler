@@ -63,6 +63,40 @@ func CumulativeDiffBudget(inputBudget int) int {
 	return clamp(inputBudget/3, 2_000, MaxCumulativeContextTokens)
 }
 
+// The cumulative block follows the size of the push it is context for: a
+// one-line push once carried the same 80k tokens of PR diff as a 500-line
+// one. Neither constant is measured; the selection log line reports which
+// bound set a run's budget, which is what to tune them from.
+const (
+	cumulativePushMultiplier = 20
+	cumulativeScaledFloor    = 4_000
+)
+
+// Which bound set a scaled cumulative budget.
+const (
+	CumulativeBoundScaled  = "scaled"
+	CumulativeBoundFloor   = "floor"
+	CumulativeBoundCeiling = "ceiling"
+)
+
+// ScaledCumulativeDiffBudget is the cumulative-diff budget for a push of
+// pushTokens: a multiple of the push, at least the floor, never over
+// CumulativeDiffBudget. bound names which of the three decided.
+//
+// The ceiling wins over the floor, so a budget too small for the floor still
+// leaves the focused files their two thirds.
+func ScaledCumulativeDiffBudget(pushTokens, inputBudget int) (budget int, bound string) {
+	ceiling := CumulativeDiffBudget(inputBudget)
+	budget, bound = pushTokens*cumulativePushMultiplier, CumulativeBoundScaled
+	if budget < cumulativeScaledFloor {
+		budget, bound = cumulativeScaledFloor, CumulativeBoundFloor
+	}
+	if budget >= ceiling {
+		budget, bound = ceiling, CumulativeBoundCeiling
+	}
+	return budget, bound
+}
+
 // PreviouslyPostedBudget is roughly 5% of the input budget: the block is
 // cross-context, not the focus of review, so the focused files dominate.
 func PreviouslyPostedBudget(inputBudget int) int {

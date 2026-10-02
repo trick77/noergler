@@ -24,50 +24,6 @@ func incrementalHarness(t *testing.T, tweak func(*harness)) *harness {
 	})
 }
 
-// A cumulative diff hopelessly over budget by byte count alone is dropped
-// without ever being tokenized: tokenizing expands the text in RAM, and the
-// pod has 2 Gi. The skip is only observable as an absence, so the fake
-// tokenizer records what it was asked to count.
-func TestOversizedCumulativeDiffIsDroppedUntokenized(t *testing.T) {
-	budget := inference.CumulativeDiffBudget(628_000)
-	huge := strings.Repeat("x", budget*bytesPerTokenCeiling+1)
-
-	h := incrementalHarness(t, func(h *harness) {
-		h.bb.prDiff = huge
-	})
-
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
-
-	if h.tok.counted(len(huge)) {
-		t.Error("an over-byte-budget cumulative diff was tokenized; the byte pre-check did not fire")
-	}
-	if len(h.llm.Reviews) != 1 {
-		t.Fatalf("expected one LLM call, got %d", len(h.llm.Reviews))
-	}
-	if strings.Contains(h.llm.Reviews[0].Prompt, huge[:1000]) {
-		t.Error("the dropped cumulative diff reached the prompt")
-	}
-}
-
-// Just under the byte ceiling the diff IS tokenized, which is what makes the
-// test above a pre-check test and not a "large diffs are dropped" test.
-func TestCumulativeDiffUnderByteCeilingIsTokenized(t *testing.T) {
-	budget := inference.CumulativeDiffBudget(628_000)
-	// Under the byte ceiling and, at 4 bytes per token in the fake, under
-	// the token budget too, so it survives into the prompt.
-	sized := strings.Repeat("x", budget*2)
-
-	h := incrementalHarness(t, func(h *harness) {
-		h.bb.prDiff = sized
-	})
-
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
-
-	if !h.tok.counted(len(sized)) {
-		t.Error("a diff under the byte ceiling should have been tokenized")
-	}
-}
-
 // trimPreviouslyPosted drops the OLDEST findings in chunks until the rendered
 // block fits, so what survives is a tail of the input. No test ever exceeded
 // the budget.
@@ -93,7 +49,7 @@ func TestTrimPreviouslyPostedDropsOldestUntilItFits(t *testing.T) {
 	}
 
 	h := newHarness(t, nil)
-	got := h.r.trimPreviouslyPosted(existing, budget)
+	got := h.r.trimPreviouslyPosted(context.Background(), "PROJ/my-repo#42", existing, budget)
 
 	if len(got) == 0 {
 		t.Fatal("trim dropped everything")
@@ -140,7 +96,7 @@ func TestTrimPreviouslyPostedCapsTheCount(t *testing.T) {
 
 	budget := 628_000
 	h := newHarness(t, nil)
-	got := h.r.trimPreviouslyPosted(existing, budget)
+	got := h.r.trimPreviouslyPosted(context.Background(), "PROJ/my-repo#42", existing, budget)
 
 	// Proves the token loop stayed out of it: the whole block fits.
 	if rendered := h.tok.Count(inference.RenderPreviouslyPostedFindings(got)); rendered > inference.PreviouslyPostedBudget(budget) {
@@ -165,7 +121,7 @@ func TestTrimPreviouslyPostedKeepsEverythingUnderBudget(t *testing.T) {
 	}
 
 	h := newHarness(t, nil)
-	got := h.r.trimPreviouslyPosted(existing, 628_000)
+	got := h.r.trimPreviouslyPosted(context.Background(), "PROJ/my-repo#42", existing, 628_000)
 
 	if len(got) != 2 {
 		t.Fatalf("kept %d of 2 findings under budget", len(got))

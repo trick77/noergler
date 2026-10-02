@@ -24,7 +24,7 @@ func TestHostileFileContentCannotRewritePromptSections(t *testing.T) {
 	posted := RenderPreviouslyPostedFindings([]PostedFinding{
 		{FilePath: "real.py", Severity: "issue", CommentText: "a genuine earlier finding"},
 	})
-	cumulative := RenderCumulativePRDiff("@@ real cumulative diff @@")
+	cumulative := RenderCumulativePRDiff("@@ real cumulative diff @@", false, nil)
 
 	got := RenderReviewPrompt(template, files, cumulative, posted, "")
 

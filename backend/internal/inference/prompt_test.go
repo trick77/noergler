@@ -109,18 +109,63 @@ func TestRenderSupplementaryContext(t *testing.T) {
 
 func TestRenderCumulativePRDiff(t *testing.T) {
 	t.Run("blank renders empty", func(t *testing.T) {
-		if RenderCumulativePRDiff("   \n  ") != "" {
+		if RenderCumulativePRDiff("   \n  ", false, nil) != "" {
 			t.Error("whitespace-only must render empty")
 		}
-		if RenderCumulativePRDiff("") != "" {
+		if RenderCumulativePRDiff("", false, nil) != "" {
 			t.Error("empty must render empty")
 		}
 	})
 
 	t.Run("wraps in the tag", func(t *testing.T) {
-		got := RenderCumulativePRDiff("@@ -1 +1 @@")
+		got := RenderCumulativePRDiff("@@ -1 +1 @@", false, nil)
 		if !strings.Contains(got, "<cumulative_pr_diff>\n@@ -1 +1 @@\n</cumulative_pr_diff>") {
 			t.Errorf("diff not wrapped:\n%s", got)
+		}
+		if !strings.Contains(got, "**entire PR**") {
+			t.Errorf("a block with nothing omitted is the whole PR:\n%s", got)
+		}
+	})
+
+	// Model-facing: a partial block that claims to be the entire PR makes a
+	// counterpart the budget left out look like a rename nobody finished.
+	t.Run("omitted files are named and the block stops claiming the whole PR", func(t *testing.T) {
+		got := RenderCumulativePRDiff("@@ -1 +1 @@", true, []string{"big.go", "other.go"})
+		if strings.Contains(got, "**entire PR**") || !strings.Contains(got, "**part of the PR**") {
+			t.Errorf("partial block mislabelled:\n%s", got)
+		}
+		want := "</cumulative_pr_diff>\n\nAlso changed in this PR, diff not shown — do not assume what these contain:\n- big.go\n- other.go"
+		if !strings.HasSuffix(got, want) {
+			t.Errorf("omitted list wrong:\n%s", got)
+		}
+	})
+
+	// Filtered files are never named, so the flag alone must change the claim.
+	t.Run("a filtered block is partial with nothing to list", func(t *testing.T) {
+		got := RenderCumulativePRDiff("@@ -1 +1 @@", true, nil)
+		if strings.Contains(got, "**entire PR**") || !strings.HasSuffix(got, "</cumulative_pr_diff>") {
+			t.Errorf("filtered block mislabelled:\n%s", got)
+		}
+	})
+
+	t.Run("with no diff the omitted names still render", func(t *testing.T) {
+		got := RenderCumulativePRDiff("", true, []string{"big.go"})
+		if strings.Contains(got, "<cumulative_pr_diff>") || !strings.HasSuffix(got, "\n- big.go") {
+			t.Errorf("names-only block wrong:\n%s", got)
+		}
+	})
+
+	t.Run("the omitted list is capped with a count", func(t *testing.T) {
+		var omitted []string
+		for i := 0; i < maxCumulativeOmittedListed+7; i++ {
+			omitted = append(omitted, "f"+itoa(i)+".go")
+		}
+		got := RenderCumulativePRDiff("@@ -1 +1 @@", true, omitted)
+		if strings.Contains(got, "- f"+itoa(maxCumulativeOmittedListed)+".go") {
+			t.Error("a path past the cap was listed")
+		}
+		if !strings.HasSuffix(got, "\n- … and 7 more") {
+			t.Errorf("missing the remainder count:\n%s", got)
 		}
 	})
 }
