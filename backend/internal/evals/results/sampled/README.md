@@ -108,8 +108,5 @@ gpt-5.4-mini high:
 | `...-rev6-merge-run1` | `merge.txt` | 3.69 | 11.30 / 0.40 | Before the lone-candidate rule: one `java-seeded` group, handed a single candidate, returned nothing. |
 | `...-rev6-merge` | `merge.txt` | 3.62 | 11.40 / 0.40 | With the rule. Matches the union on every case; the remaining 0.40/0.40 is `lock-not-released` wording outside its keywords, one correct finding per group. Consolidation input 92% cached. |
 
-Read together with `../2026-10-02-gpt-5.5-high-5cases.json`: gpt-5.5 high,
-one review each on the five cases mini finds hardest, caught 4 of 5 for
-about $0.037 a case; three mini reviews plus the merge cost about $0.035 and
-expect about 4.8. On these small diffs that is no saving, which is why
-production stays single-pass.
+What these runs mean, and the decision taken on them, is in `EVALS.md` at
+the repo root.

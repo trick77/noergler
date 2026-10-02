@@ -1,7 +1,13 @@
 # EVALS.md
 
-What the eval experiments found. Rules for running evals stay in `AGENTS.md`;
-numbers and run tables stay in `backend/internal/evals/results/`.
+The one place for what the evals FOUND: about the model, the prompt, the
+corpus and the scorer. A new finding goes here, not into a results README,
+a code comment or `AGENTS.md`.
+
+- Rules for running evals: `AGENTS.md`.
+- Run tables, one row per run: `backend/internal/evals/results/README.md`
+  and `results/sampled/README.md`. Run names below (run4, rev5, ...) refer
+  to those rows.
 
 ## Multi-review experiment (2026-10-02)
 
@@ -49,3 +55,76 @@ is true is not.
   diagnosed.
 - Direct mimo host: any review thinking past ~98 s dies on llmwire's 90 s
   idle bound (`stream idle for 1m30s`). Not a gateway stall.
+
+## Single-run series (2026-09-20 to 2026-10-01, mimo-v2.5-pro high)
+
+### The baseline
+
+run4 and run5 are the pair. Same prompt, same model, same effort, same
+corpus revision, **8 caught and 7 caught**. That spread is the baseline: a
+single later run scoring 7 is inside the noise, and only a run scoring 6 or
+less, or a second consecutive 7 after a prompt edit, is a signal.
+
+Every run scored the same prompt text: `prompts/review.txt` has one commit in
+its entire history. Every difference between these rows is model
+non-determinism, a corpus change or a scorer change, never a prompt change.
+
+**Exit 1 has fired on two of the three rev4 runs with the prompt unchanged.**
+It therefore does not mean "the prompt regressed"; it means the model had an
+off run, and the cause is named in the row. Treat a single red as noise and a
+second consecutive one as the signal, which is the same rule the caught count
+already follows. Nothing in the tool enforces that: the exit code stays strict
+so a CI job could gate on it later without a threshold to tune.
+
+The three clean controls scored **0 findings in runs 1 through 5** (run1
+predates two of them and had only `clean-refactor`). **run6 broke that**: one
+finding on `clean-refactor`, the first in six runs, which is what the new gate
+exists to catch. The controls are the honest false-positive floor and are what
+makes Caught mean anything, so the run is red and stays red in the record.
+
+### Extra is not the false-positive count
+
+Extra has been inflated on a seeded case twice, neither time by invention:
+
+- **`lock-not-released`, run2**: the model emitted the same finding twice,
+  byte for byte, both at line 22. The duplicate pins nothing new and counts
+  Extra. run5's single Extra is not this; it is the line-39 miss below.
+- **`context-not-propagated`, on rev1**: the model reported the two
+  `context.Background()` substitutions as two separate findings. rev1 had
+  one expectation, which absorbs one of them, so the second honest finding
+  scored Extra. rev2 split the expectation in two, and run2 then scored a
+  *miss*, because that time the model emitted one finding naming both call
+  sites. Both shapes are correct reviews, so rev3 settled on one
+  expectation over a window spanning both. That rev1 run is not in the
+  results directory: it was scored against a corpus state no committed row uses,
+  and keeping it would have implied a comparison it cannot support.
+
+Neither is a false positive. The clean controls are.
+
+run6's third Extra is the control finding, and it is counted as invention on
+purpose. Its text argues the refactor is *correct* ("No bug is introduced by
+the extraction"), which is tempting to excuse. It is not excused: production
+posts `severity: suggestion` findings, `severityOrder` only sorts them below
+`issue` and nothing drops them, so that paragraph would have been a comment on
+the PR. Filtering it out by reading what it says is the judge model the
+bluntness rule forbids.
+
+### Anchoring and line numbers
+
+- `nil-deref` was found at line 19 in runs 1, 2 and 5, at 22 in run3 and at
+  20 in run4:
+  the dead `if r.Ticket == nil` check, the comment inside it, and the
+  dereference. All are honest anchors for the same bug, which is why the
+  window spans them. A narrower window scores a correct review as a miss.
+- **A whole-function defect is anchored at the func declaration** about as
+  often as at the first statement. run3 lost `resource-leak` that way. The
+  four whole-function windows now start at the declaration; the
+  narrow-statement cases do not, because widening `unchecked-error` to its
+  func line would span the entire body and stop being falsifiable.
+- **The model can cite a line past the end of the file.** Twice in six runs,
+  on two different cases: run5 put the data race at line 39 of a 37-line
+  file, run6 put the body leak at line 32 of a 29-line one. Both reviews were
+  correct; no window can catch either, and widening one to reach a
+  nonexistent line would only make the case unwinnable in the other
+  direction. run6's finding also cites "line 24" for a call on line 17 in its
+  own prose, so the number is unreliable rather than merely offset.
