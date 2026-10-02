@@ -91,18 +91,23 @@ room to show one: 10 of 12 seeded cases were caught in every sample without the
 edits. 5 samples see a 15-point move, so "slightly worse" is not shown either.
 
 Side finding: on `cross-file-stale-caller` the model reported the bug in 7 of
-10 samples and 6 were dropped. See the first known gap.
+10 samples and 6 were dropped as `evidence_not_found`. The finding on
+`manager.go` quoted the changed `Touch` signature from `store.go`, and the
+validator matched evidence against the finding's own file only. Fixed: a line
+of another shown file is evidence, never an anchor, and one diff line of the
+finding's own file is still required. Re-validated, 5 of the 6 are kept at
+line 78 (57 and 55 of 60); the sixth quotes a line that is in no file. The
+two JSONs are left as scored.
 
 ## Known gaps
 
-- `ValidateFindings` matches evidence against the finding's own file only. A
-  cross-file finding that quotes the changed contract from the other file is
-  dropped as `evidence_not_found`: 6 of 7 correct `cross-file-stale-caller`
-  findings on 2.6-pro.
-
 - `lock-not-released` keywords miss correct findings; inflates `extra`.
-- Validator dropped 3 correct mini findings (`evidence_not_found`), not
-  diagnosed.
+- Validator dropped 3 correct mini findings (`evidence_not_found`): two
+  lines joined into one evidence string, or prose appended to a quoted line.
+  The quote is not verbatim, so the drop stands.
+- A doc comment line quoted without its `//` is `evidence_not_found`: the
+  2.6-pro series row lost a correct `buried-behavioural-hunk` finding to it.
+  Not fixed.
 - Direct mimo host: any review thinking past ~98 s dies on llmwire's 90 s
   idle bound (`stream idle for 1m30s`). Not a gateway stall.
 

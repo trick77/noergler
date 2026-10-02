@@ -18,8 +18,9 @@ const (
 	DropUnknownFile DropReason = "unknown_file"
 	// DropNoEvidence means no non-blank evidence line was quoted.
 	DropNoEvidence DropReason = "no_evidence"
-	// DropEvidenceNotFound means a quoted line is in neither the file's diff
-	// nor its full content. The model quoted code that is not there.
+	// DropEvidenceNotFound means a quoted line is in no shown file: neither
+	// the finding's own diff or full content, nor another file's. The model
+	// quoted code that is not there.
 	DropEvidenceNotFound DropReason = "evidence_not_found"
 	// DropEvidenceOutsideDiff means every quoted line comes from the full
 	// file, none from the diff: the finding is about code the PR did not
@@ -53,7 +54,9 @@ const anchorSlack = 2
 // re-anchored one carries its corrected line.
 //
 //   - the file must be one the prompt showed;
-//   - every non-blank evidence line must be a shown line of that file;
+//   - every non-blank evidence line must be a shown line, and at least one
+//     of them a diff line of that file; a line quoted from another shown
+//     file supports the finding but ties it to nothing;
 //   - an evidence line must sit within anchorSlack of `line`, else the
 //     finding moves to the first evidence line when that line is unique in
 //     the file, else it is dropped;
@@ -155,8 +158,17 @@ func validateOne(f ReviewFinding, idx diff.AnchorIndex) (DropReason, int) {
 			// The model's own note or an elision between quoted lines
 			// ("// close is missing here", "..."). Seen in the evals on a
 			// correct finding; it is not code, so it proves nothing either
-			// way. Skipped like a blank line.
+			// way. Skipped like a blank line. Before the next case: a note
+			// that happens to read like a comment in another file is still
+			// a note.
 			continue
+		case where == notFound && shownElsewhere(e, idx):
+			// A cross-file finding quotes the contract the diff changed in
+			// one file beside the caller that breaks in this one. The other
+			// file's line is real evidence, but neither an anchor nor a diff
+			// line of this file: the inDiff rule below still wants one of
+			// those. Seen in the evals: the right bug on the right line,
+			// dropped for quoting the changed signature next to it.
 		case where == notFound:
 			return DropEvidenceNotFound, 0
 		case where == onNewSide:
@@ -283,6 +295,18 @@ func matchEvidence(quote string, fa diff.FileAnchors) (uint64, evidenceSource) {
 		}
 	}
 	return 0, notFound
+}
+
+// shownElsewhere reports whether a quoted line is in any indexed file or in
+// the context diff. Asked only once the finding's own file has no such line,
+// so a hit is another file's.
+func shownElsewhere(quote string, idx diff.AnchorIndex) bool {
+	for _, fa := range idx {
+		if _, where := matchEvidence(quote, fa); where != notFound {
+			return true
+		}
+	}
+	return false
 }
 
 // nearestAnchor is the shown line within anchorSlack of line that carries an
