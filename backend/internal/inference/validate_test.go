@@ -242,6 +242,78 @@ func TestValidateFindings_EvidenceFromAnotherShownFile(t *testing.T) {
 	}
 }
 
+// From the evals: a correct finding quoted a doc comment line without its
+// `//` and was dropped whole. A quote that is a shown comment line minus its
+// marker is that line. Code that merely starts with a marker character is
+// not a comment, so its tail alone is still an invented line.
+func TestValidateFindings_CommentLineQuotedWithoutItsMarker(t *testing.T) {
+	idx := diff.BuildAnchorIndex([]diff.FileReviewData{
+		{
+			Path: "notify/dispatcher.go",
+			Diff: "@@ -1,4 +1,13 @@\n" +
+				" // Deliver posts the event. A transient failure is retried with\n" +
+				"-// backoff, a permanent one is dropped.\n" +
+				"+// backoff, a permanent one is returned at once.\n" +
+				"+if retryable(lastErr) {\n" +
+				"+\t*cfg = Config{}\n" +
+				"+\t--count;\n" +
+				"+\t#include <stdio.h>\n" +
+				"+\t# retried by the caller\n" +
+				"+\t * @param attempts upper bound\n" +
+				"+\t-- newest first\n" +
+				"+\t//nolint:errcheck\n" +
+				"+\t// return nil\n" +
+				" }\n",
+			Content:        "// ErrPermanent marks a rejection.\n",
+			ContentFetched: true,
+		},
+		{
+			Path: "notify/policy.go",
+			Diff: "@@ -1,1 +1,2 @@\n" +
+				"+// Policy decides what is retried.\n" +
+				" type Policy struct{}\n",
+		},
+	})
+	const code = "if retryable(lastErr) {"
+	cases := []struct {
+		name     string
+		line     int
+		evidence []string
+		reason   DropReason
+	}{
+		{"doc comment line beside a code line", 3, []string{code, "backoff, a permanent one is returned at once."}, ""},
+		{"comment line alone, anchored on it", 2, []string{"backoff, a permanent one is returned at once."}, ""},
+		{"removed comment line", 3, []string{code, "backoff, a permanent one is dropped."}, ""},
+		{"full-file comment line", 3, []string{code, "ErrPermanent marks a rejection."}, ""},
+		{"comment line of another shown file", 3, []string{code, "Policy decides what is retried."}, ""},
+		{"hash comment", 7, []string{"retried by the caller"}, ""},
+		{"block comment continuation", 8, []string{"@param attempts upper bound"}, ""},
+		{"dash comment", 9, []string{"newest first"}, ""},
+		{"comment with no space after the slashes", 10, []string{"nolint:errcheck"}, ""},
+		// Known limit, pinned: the marker rule cannot tell a comment from
+		// commented-out code. The text is in the file either way.
+		{"commented-out code quoted as code passes", 11, []string{"return nil"}, ""},
+		{"comment text that is in no file", 3, []string{code, "backoff, a permanent one is retried."}, DropEvidenceNotFound},
+		{"tail of a pointer write is not a comment", 3, []string{code, "cfg = Config{}"}, DropEvidenceNotFound},
+		{"tail of a decrement is not a comment", 3, []string{code, "count;"}, DropEvidenceNotFound},
+		{"tail of a directive is not a comment", 3, []string{code, "include <stdio.h>"}, DropEvidenceNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			v := ValidateFindings([]ReviewFinding{vf("notify/dispatcher.go", tc.line, tc.evidence...)}, idx)
+			if tc.reason != "" {
+				if len(v.Dropped) != 1 || v.Dropped[0].Reason != tc.reason {
+					t.Fatalf("dropped = %+v, want one %s", v.Dropped, tc.reason)
+				}
+				return
+			}
+			if len(v.Kept) != 1 || v.Kept[0].Line != tc.line || len(v.Reanchored) != 0 {
+				t.Fatalf("kept = %+v, dropped = %+v, reanchored = %+v: want line %d kept unmoved", v.Kept, v.Dropped, v.Reanchored, tc.line)
+			}
+		})
+	}
+}
+
 // An incremental review: an earlier push changed Touch, this push only adds
 // the stale call. The signature is shown in the cumulative PR diff alone.
 // Quotable, but a file shown only there is still not a file to post on.

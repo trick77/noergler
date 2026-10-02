@@ -71,7 +71,10 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   evidence, never an anchor: a real finding quoted the call outside the
   diff, and rejecting that dropped it. Same for a line of ANOTHER shown
   file or of the cumulative diff: a cross-file finding quotes the changed contract beside the stale
-  caller, and matching the own file only dropped 6 of 7. Blunt rules, never
+  caller, and matching the own file only dropped 6 of 7. A comment line
+  quoted without its marker (`//`, `# `, `* `, `-- `) is that line; the
+  marker keeps its space, so the tail of `*cfg = x` or `--count` stays
+  invented. Blunt rules, never
   a judge model. Drops are logged by reason, never silent.
 - `strings.ReplaceAll`, never `text/template`: the files contain JSON braces.
 - **Single worker for every Bitbucket call**, per-PR supersede. Only the

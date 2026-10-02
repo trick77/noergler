@@ -56,7 +56,8 @@ const anchorSlack = 2
 //   - the file must be one the prompt showed;
 //   - every non-blank evidence line must be a shown line, and at least one
 //     of them a diff line of that file; a line quoted from another shown
-//     file supports the finding but ties it to nothing;
+//     file supports the finding but ties it to nothing; a comment line may
+//     be quoted without its marker;
 //   - an evidence line must sit within anchorSlack of `line`, else the
 //     finding moves to the first evidence line when that line is unique in
 //     the file, else it is dropped;
@@ -270,7 +271,8 @@ const (
 // matchEvidence finds a quoted line among the shown, removed or full-file
 // ones, and says which. The quote as given is tried first, then with a
 // copied gutter or a leading diff marker taken off: code can itself start
-// with `+`, `-` or a digit, so a stripped form is only a fallback.
+// with `+`, `-` or a digit, so a stripped form is only a fallback. A comment
+// marker put back on is the last one.
 func matchEvidence(quote string, fa diff.FileAnchors) (uint64, evidenceSource) {
 	candidates := []string{quote}
 	if loc := gutterRE.FindStringIndex(quote); loc != nil {
@@ -278,6 +280,15 @@ func matchEvidence(quote string, fa diff.FileAnchors) (uint64, evidenceSource) {
 	}
 	if t := strings.TrimLeft(quote, " \t"); strings.HasPrefix(t, "+") || strings.HasPrefix(t, "-") {
 		candidates = append(candidates, t[1:])
+	}
+	// Last, the quote as a comment line copied without its marker. Seen in
+	// the evals: a doc comment line quoted minus its `//` matched nothing and
+	// took a correct finding down. The index holds hashes, not text, so the
+	// marker is put back on and the result must be a whole shown line.
+	if t := strings.TrimSpace(quote); t != "" {
+		for _, m := range commentMarkers {
+			candidates = append(candidates, m+t)
+		}
 	}
 	// Candidate first, then where it is found: the quote as written wins
 	// anywhere before a stripped form is tried anywhere. Stripping first
@@ -296,6 +307,17 @@ func matchEvidence(quote string, fa diff.FileAnchors) (uint64, evidenceSource) {
 	}
 	return 0, notFound
 }
+
+// commentMarkers are the line-comment openers a quote may have lost. Every
+// one but `//` carries its space: `*cfg = x`, `#include` and `--count` are
+// code, and without the space a quoted `cfg = x` would match the pointer
+// write. HashLine collapses the space run, so `//  text` matches too.
+//
+// Known limit, accepted: commented-out code quoted as live code passes
+// (`// return nil` shown, `return nil` quoted), and so does the tail of a
+// Markdown bullet or heading. The text is in the file either way; what is
+// refused is a line that is nowhere.
+var commentMarkers = []string{"// ", "//", "/// ", "# ", "* ", "-- "}
 
 // shownElsewhere reports whether a quoted line is in any indexed file or in
 // the context diff. Asked only once the finding's own file has no such line,

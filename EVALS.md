@@ -105,9 +105,11 @@ two JSONs are left as scored.
 - Validator dropped 3 correct mini findings (`evidence_not_found`): two
   lines joined into one evidence string, or prose appended to a quoted line.
   The quote is not verbatim, so the drop stands.
-- A doc comment line quoted without its `//` is `evidence_not_found`: the
+- A doc comment line quoted without its `//` was `evidence_not_found`: the
   2.6-pro series row lost a correct `buried-behavioural-hunk` finding to it.
-  Not fixed.
+  Fixed: a quote that is a shown comment line minus its marker is that line.
+  Re-validated, the finding is kept at line 64 and scores. The JSON is left
+  as scored. Still open: a quote that is only PART of a comment line.
 - Direct mimo host: any review thinking past ~98 s dies on llmwire's 90 s
   idle bound (`stream idle for 1m30s`). Not a gateway stall.
 
