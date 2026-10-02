@@ -1,0 +1,227 @@
+{
+ "Results": [
+  {
+   "Case": "java-seeded",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "src/main/java/com/acme/payments/transfer/TransferService.java",
+     "Line": 102,
+     "Severity": "issue",
+     "Comment": "Using `!=` compares the two boxed `Long` object references, not their numeric account ids. When the persisted source account id and the requester id are equal values represented by different `Long` instances, which is common for ids outside the JVM cache range, the rightful source account is rejected with `TransferAccessDeniedException` and cannot cancel its own pending transfer.",
+     "Confidence": 95,
+     "Headline": "Compare account ids by value when authorizing cancellation",
+     "Suggestion": "        if (!transfer.sourceAccountId().equals(requesterAccountId)) {",
+     "Evidence": [
+      "if (transfer.sourceAccountId() != requesterAccountId) {",
+      "    throw new TransferAccessDeniedException(transferId, requesterAccountId);"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "boxed-long-compared-by-reference",
+      "file": "src/main/java/com/acme/payments/transfer/TransferService.java",
+      "lines": [
+       97,
+       104
+      ],
+      "keywords": [
+       "equals",
+       "boxed",
+       "reference",
+       "identity",
+       "127",
+       "unbox"
+      ],
+      "why": "Boxed Longs are compared by reference, so for any account id above 127 the owner's own cancellation is rejected as access denied."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "resource-leak",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [
+    {
+     "Expected": {
+      "id": "response-body-never-closed",
+      "file": "internal/bitbucket/whoami.go",
+      "lines": [
+       16,
+       28
+      ],
+      "keywords": [
+       "leak",
+       "leaked",
+       "not closed",
+       "never closed",
+       "close the body",
+       "closing the body",
+       "resp.Body.Close",
+       "connection"
+      ],
+      "why": "The response body is never closed on any path, so the underlying connection is leaked on every call, successful or not."
+     },
+     "Found": false,
+     "Finding": -1,
+     "Why": "no finding on internal/bitbucket/whoami.go"
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "struct-field-race",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/queue/queue.go",
+     "Line": 35,
+     "Severity": "issue",
+     "Comment": "`worker` now reads `q.pending` and writes `q.depth` without holding `q.mu`, while `Submit` can concurrently append to `q.pending` and `Depth` reads `q.depth` under the mutex. A submit arriving just as a job finishes creates a Go data race on the slice header and depth field, and can report a stale or inconsistent backlog.",
+     "Confidence": 95,
+     "Headline": "Restore locking around worker depth update",
+     "Suggestion": "q.mu.Lock()\n\t\tq.depth = len(q.pending)\n\t\tq.mu.Unlock()",
+     "Evidence": [
+      "q.pending = append(q.pending, j)",
+      "return q.depth",
+      "q.depth = len(q.pending)"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "depth-written-without-mutex",
+      "file": "internal/queue/queue.go",
+      "lines": [
+       28,
+       35
+      ],
+      "keywords": [
+       "race",
+       "unsynchronized",
+       "unsynchronised",
+       "without holding",
+       "without the lock",
+       "without the mutex",
+       "q.mu",
+       "concurrent",
+       "data race"
+      ],
+      "why": "The worker goroutine writes q.depth and reads q.pending without holding q.mu, while Submit writes and Depth reads the same fields under the mutex; that is a data race."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "lock-not-released",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/teams/registry.go",
+     "Line": 24,
+     "Severity": "issue",
+     "Comment": "When `Disable` is called with an unknown slug, it returns before reaching the new unlock, leaving `r.mu` locked. The next registry operation that needs this mutex blocks forever, so a single bad slug can deadlock the registry.",
+     "Confidence": 95,
+     "Headline": "Unlock mutex on the unknown-team path",
+     "Suggestion": null,
+     "Evidence": [
+      "r.mu.Lock()",
+      "if !ok {",
+      "return fmt.Errorf(\"unknown team %q\", slug)",
+      "r.mu.Unlock()"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "mutex-held-on-early-return",
+      "file": "internal/teams/registry.go",
+      "lines": [
+       16,
+       24
+      ],
+      "keywords": [
+       "deadlock",
+       "still held",
+       "never released",
+       "not released",
+       "never unlocked",
+       "not unlocked",
+       "defer r.mu.Unlock",
+       "defer mu.Unlock",
+       "defer the Unlock",
+       "held forever"
+      ],
+      "why": "The Unlock now runs only on the success path, so returning the unknown-team error leaves r.mu locked and every subsequent caller blocks forever."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "buried-behavioural-hunk",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/notify/dispatcher.go",
+     "Line": 64,
+     "Severity": "issue",
+     "Comment": "The retry predicate is inverted: for a 500 or 429 response `post` returns a transient error, `retryable(lastErr)` is true, and `Deliver` returns on the first attempt instead of backing off. For a permanent 4xx it falls through and retries up to `maxAttempts`, contradicting the documented behavior.",
+     "Confidence": 95,
+     "Headline": "Transient failures return immediately instead of retrying",
+     "Suggestion": "if !retryable(lastErr) {",
+     "Evidence": [
+      "if retryable(lastErr) {",
+      "return lastErr",
+      "func retryable(err error) bool {",
+      "return !errors.Is(err, ErrPermanent)"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "retryable-check-inverted",
+      "file": "internal/notify/dispatcher.go",
+      "lines": [
+       60,
+       66
+      ],
+      "keywords": [
+       "!retryable",
+       "inverted",
+       "negat",
+       "flipped",
+       "non-retryable",
+       "permanent"
+      ],
+      "why": "Transient failures such as a 503 are now returned on the first attempt without any retry, while permanently rejected deliveries are retried five times with backoff."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  }
+ ],
+ "Seeded": 5,
+ "Caught": 4,
+ "Extra": 0
+}

@@ -38,6 +38,9 @@ Model and effort default to the pair in `../corpus/series.yaml`
 model too costly to eval on, so this series is a stand-in: a false positive
 seen in production may not reproduce here.
 
+`-samples N` and `-mix` produce a different report, an experiment on merging
+several reviews. Those live in `sampled/` and are never rows here.
+
 | Date | Model | Effort | Cases | Seeded | Caught | Extra | Prompt | Notes |
 |---|---|---|---|---|---|---|---|---|
 | 2026-09-20 | mimo-v2.5-pro | high | 3 @ efc7bf8 | 2 | 2 | 0 | `prompts/review.txt` @ d576c13 | First run. Both seeded bugs found, nothing invented on the clean control. Originally recorded as d45d47c, which resolves to nothing: the prompt has exactly one commit in its history and every run so far scored that same text. |
@@ -57,6 +60,7 @@ seen in production may not reproduce here.
 | 2026-10-01 | mimo-v2.5-pro | high | 12 rev5 | 8 | 7 | 1 | `prompts/review.txt`, key-order sentence removed | run2, `-timeout 25m`. Exit 2: `resource-leak` stalled again. The Extra is on `clean-i18n-key-order`, but it is not the FR/IT swap: it speculates that a future `AddressType` value could break `addressLabel`, quoting only unchanged context lines, and TypeScript type-checks that key. `struct-field-race` moved from line 35 to 32, its evidence. |
 | 2026-10-01 | mimo-v2.5-pro | high | 12 rev5 | 8 | 5 | 0 | `prompts/review.txt`, Example 1 no longer invents `fetch_many` | run3: both prompt edits. Exit 2: `lock-not-released`, `resource-leak` and `struct-field-race` stalled on the gateway, so the score is incomplete. All four controls clean. |
 | 2026-10-01 | mimo-v2.5-pro | high | 12 rev5 | 8 | 7 | 0 | `prompts/review.txt`, Example 1 no longer invents `fetch_many` | run4, the first complete run on this prompt. Exit 1, and the miss is the validator's: the correct `resource-leak` finding put its own note `// defer resp.Body.Close() is missing here.` among the quoted lines, which matched nothing and dropped it as `evidence_not_found`. Fixed in the same PR (a note or elision line that matches nothing is skipped, like a blank one); scored before the fix, so it is recorded as it ran. All four controls clean. |
+| 2026-10-02 | gpt-5.5 | high | 5 of 17 rev6 (`-cases`) | 5 | 4 | 0 | `prompts/review.txt` @ 89e128c | **Different model, partial corpus: not a row of any series.** The one production-model reference, bought case by case: `java-seeded`, `resource-leak`, `struct-field-race`, `lock-not-released`, `buried-behavioural-hunk`, one review each, $0.19 at list price. `resource-leak` got no finding at all. The file is five one-case runs joined. Read next to `sampled/`. |
 
 ## What the columns mean
 
@@ -67,7 +71,10 @@ seen in production may not reproduce here.
   that into two, one per `context.Background()` call site; `rev3` folds
   them back into one over a window spanning both; `rev4` starts the four
   whole-function windows at the func declaration; `rev5` adds
-  `clean-i18n-key-order`, a fourth clean control, taking the corpus to 12. Bump the number when a
+  `clean-i18n-key-order`, a fourth clean control, taking the corpus to 12;
+  `rev6` adds five harder cases (a cross-file stale caller, a behavioural
+  change buried among mechanical hunks, one Java and one TypeScript bug, a
+  clean two-file signature change), taking it to 17 with 12 seeded. Bump the number when a
   **scored** field changes: `file`, `lines`, `keywords`, `diff`, `content`.
   Prose does not move a score, so an edit to `description` or `why` is not a
   new revision, and rev4 covers such an edit made after run5.
@@ -76,78 +83,17 @@ seen in production may not reproduce here.
 - **Extra**: findings that pinned no seeded bug. Byte-identical repeats are
   collapsed before counting, so a model stuttering does not read as
   invention; the per-case line reports how many were collapsed. Read the
-  notes before reading Extra as a false-positive count; see below.
+  notes before reading Extra as a false-positive count; see `EVALS.md`.
 
-## The baseline
+## Findings
 
-run4 and run5 are the pair. Same prompt, same model, same effort, same
-corpus revision, **8 caught and 7 caught**. That spread is the baseline: a
-single later run scoring 7 is inside the noise, and only a run scoring 6 or
-less, or a second consecutive 7 after a prompt edit, is a signal.
+What the runs showed (the baseline spread, why Extra is not the
+false-positive count, how models anchor and mis-cite lines) is in
+`EVALS.md` at the repo root. This file keeps the run tables and how to
+read their columns.
 
-Every run scored the same prompt text: `prompts/review.txt` has one commit in
-its entire history. Every difference between these rows is model
-non-determinism, a corpus change or a scorer change, never a prompt change.
+## Running
 
-**Exit 1 has fired on two of the three rev4 runs with the prompt unchanged.**
-It therefore does not mean "the prompt regressed"; it means the model had an
-off run, and the cause is named in the row. Treat a single red as noise and a
-second consecutive one as the signal, which is the same rule the caught count
-already follows. Nothing in the tool enforces that: the exit code stays strict
-so a CI job could gate on it later without a threshold to tune.
-
-The three clean controls scored **0 findings in runs 1 through 5** (run1
-predates two of them and had only `clean-refactor`). **run6 broke that**: one
-finding on `clean-refactor`, the first in six runs, which is what the new gate
-exists to catch. The controls are the honest false-positive floor and are what
-makes Caught mean anything, so the run is red and stays red in the record.
-
-## Extra is not the false-positive count
-
-Extra has been inflated on a seeded case twice, neither time by invention:
-
-- **`lock-not-released`, run2**: the model emitted the same finding twice,
-  byte for byte, both at line 22. The duplicate pins nothing new and counts
-  Extra. run5's single Extra is not this; it is the line-39 miss below.
-- **`context-not-propagated`, on rev1**: the model reported the two
-  `context.Background()` substitutions as two separate findings. rev1 had
-  one expectation, which absorbs one of them, so the second honest finding
-  scored Extra. rev2 split the expectation in two, and run2 then scored a
-  *miss*, because that time the model emitted one finding naming both call
-  sites. Both shapes are correct reviews, so rev3 settled on one
-  expectation over a window spanning both. That rev1 run is not in this
-  directory: it was scored against a corpus state no committed row uses,
-  and keeping it would have implied a comparison it cannot support.
-
-Neither is a false positive. The clean controls are.
-
-run6's third Extra is the control finding, and it is counted as invention on
-purpose. Its text argues the refactor is *correct* ("No bug is introduced by
-the extraction"), which is tempting to excuse. It is not excused: production
-posts `severity: suggestion` findings, `severityOrder` only sorts them below
-`issue` and nothing drops them, so that paragraph would have been a comment on
-the PR. Filtering it out by reading what it says is the judge model the
-bluntness rule forbids.
-
-## Notes worth keeping
-
-- `nil-deref` was found at line 19 in runs 1, 2 and 5, at 22 in run3 and at
-  20 in run4:
-  the dead `if r.Ticket == nil` check, the comment inside it, and the
-  dereference. All are honest anchors for the same bug, which is why the
-  window spans them. A narrower window scores a correct review as a miss.
-- **A whole-function defect is anchored at the func declaration** about as
-  often as at the first statement. run3 lost `resource-leak` that way. The
-  four whole-function windows now start at the declaration; the
-  narrow-statement cases do not, because widening `unchecked-error` to its
-  func line would span the entire body and stop being falsifiable.
-- **The model can cite a line past the end of the file.** Twice in six runs,
-  on two different cases: run5 put the data race at line 39 of a 37-line
-  file, run6 put the body leak at line 32 of a 29-line one. Both reviews were
-  correct; no window can catch either, and widening one to reach a
-  nonexistent line would only make the case unwinnable in the other
-  direction. run6's finding also cites "line 24" for a call on line 17 in its
-  own prose, so the number is unreliable rather than merely offset.
 - This endpoint lists no `max_input_tokens`, so a run needs
   `-context-window 1000000`. Without it `Startup` fails and the tool exits 2
   rather than reporting a score.
