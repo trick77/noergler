@@ -38,6 +38,9 @@ Model and effort default to the pair in `../corpus/series.yaml`
 model too costly to eval on, so this series is a stand-in: a false positive
 seen in production may not reproduce here.
 
+`-samples N` and `-mix` produce a different report, an experiment on merging
+several reviews. Those live in `sampled/` and are never rows here.
+
 | Date | Model | Effort | Cases | Seeded | Caught | Extra | Prompt | Notes |
 |---|---|---|---|---|---|---|---|---|
 | 2026-09-20 | mimo-v2.5-pro | high | 3 @ efc7bf8 | 2 | 2 | 0 | `prompts/review.txt` @ d576c13 | First run. Both seeded bugs found, nothing invented on the clean control. Originally recorded as d45d47c, which resolves to nothing: the prompt has exactly one commit in its history and every run so far scored that same text. |
@@ -57,6 +60,7 @@ seen in production may not reproduce here.
 | 2026-10-01 | mimo-v2.5-pro | high | 12 rev5 | 8 | 7 | 1 | `prompts/review.txt`, key-order sentence removed | run2, `-timeout 25m`. Exit 2: `resource-leak` stalled again. The Extra is on `clean-i18n-key-order`, but it is not the FR/IT swap: it speculates that a future `AddressType` value could break `addressLabel`, quoting only unchanged context lines, and TypeScript type-checks that key. `struct-field-race` moved from line 35 to 32, its evidence. |
 | 2026-10-01 | mimo-v2.5-pro | high | 12 rev5 | 8 | 5 | 0 | `prompts/review.txt`, Example 1 no longer invents `fetch_many` | run3: both prompt edits. Exit 2: `lock-not-released`, `resource-leak` and `struct-field-race` stalled on the gateway, so the score is incomplete. All four controls clean. |
 | 2026-10-01 | mimo-v2.5-pro | high | 12 rev5 | 8 | 7 | 0 | `prompts/review.txt`, Example 1 no longer invents `fetch_many` | run4, the first complete run on this prompt. Exit 1, and the miss is the validator's: the correct `resource-leak` finding put its own note `// defer resp.Body.Close() is missing here.` among the quoted lines, which matched nothing and dropped it as `evidence_not_found`. Fixed in the same PR (a note or elision line that matches nothing is skipped, like a blank one); scored before the fix, so it is recorded as it ran. All four controls clean. |
+| 2026-10-02 | gpt-5.5 | high | 5 of 17 rev6 (`-cases`) | 5 | 4 | 0 | `prompts/review.txt` @ 89e128c | **Different model, partial corpus: not a row of any series.** The one production-model reference, bought case by case: `java-seeded`, `resource-leak`, `struct-field-race`, `lock-not-released`, `buried-behavioural-hunk`, one review each, $0.19 at list price. `resource-leak` got no finding at all. The file is five one-case runs joined. Read next to `sampled/`. |
 
 ## What the columns mean
 
@@ -67,7 +71,10 @@ seen in production may not reproduce here.
   that into two, one per `context.Background()` call site; `rev3` folds
   them back into one over a window spanning both; `rev4` starts the four
   whole-function windows at the func declaration; `rev5` adds
-  `clean-i18n-key-order`, a fourth clean control, taking the corpus to 12. Bump the number when a
+  `clean-i18n-key-order`, a fourth clean control, taking the corpus to 12;
+  `rev6` adds five harder cases (a cross-file stale caller, a behavioural
+  change buried among mechanical hunks, one Java and one TypeScript bug, a
+  clean two-file signature change), taking it to 17 with 12 seeded. Bump the number when a
   **scored** field changes: `file`, `lines`, `keywords`, `diff`, `content`.
   Prose does not move a score, so an edit to `description` or `why` is not a
   new revision, and rev4 covers such an edit made after run5.

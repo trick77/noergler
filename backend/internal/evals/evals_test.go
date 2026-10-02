@@ -572,54 +572,61 @@ func TestCorpus_HunkHeadersAgreeWithContent(t *testing.T) {
 	for _, c := range cases {
 		for _, f := range c.Files {
 			lines := strings.Split(strings.TrimRight(f.Diff, "\n"), "\n")
-			m := header.FindStringSubmatch(lines[0])
-			if m == nil {
+			if header.FindStringSubmatch(lines[0]) == nil {
 				t.Errorf("%s: %s has no hunk header: %q", c.Name, f.Path, lines[0])
 				continue
 			}
-			// One hunk per file. A second @@ would fall into this hunk's body
-			// and be compared against content, so the guard would fail on a
-			// valid case; splitting per hunk is the fix when one needs two.
-			for _, l := range lines[1:] {
+			// Split per hunk: a later @@ left in the previous hunk's body
+			// would be compared against content and fail a valid case.
+			var hunks [][]string
+			for _, l := range lines {
 				if strings.HasPrefix(l, "@@") {
-					t.Errorf("%s: %s has more than one hunk; this check handles one",
-						c.Name, f.Path)
+					hunks = append(hunks, nil)
 				}
+				hunks[len(hunks)-1] = append(hunks[len(hunks)-1], l)
 			}
-			start, _ := strconv.Atoi(m[1])
-
-			// The hunk's whole new side must sit at `start` in the content.
-			// Comparing only the first line would pass on a hunk whose body
-			// diverges later, and a blank context line matches anywhere.
-			var newSide []string
-			for _, l := range lines[1:] {
-				if strings.HasPrefix(l, "-") {
-					continue
-				}
-				// Strip exactly one marker byte, not "+" then " ": a line
-				// added as "+ foo" would otherwise lose its real leading
-				// space and never match the content.
-				if l == "" {
-					newSide = append(newSide, "")
-					continue
-				}
-				newSide = append(newSide, l[1:])
-			}
-			newCount := len(newSide)
 			content := strings.Split(f.Content, "\n")
-			if start < 1 || start+newCount-1 > len(content) {
-				t.Errorf("%s: %s hunk claims new lines %d-%d, content has %d",
-					c.Name, f.Path, start, start+newCount-1, len(content))
-				continue
-			}
-			if got := content[start-1 : start-1+newCount]; !slices.Equal(got, newSide) {
-				t.Errorf("%s: %s header says new line %d, but content there is\n%q\nnot the hunk's new side\n%q",
-					c.Name, f.Path, start, got, newSide)
-			}
-			if m[2] != "" {
-				if want, _ := strconv.Atoi(m[2]); want != newCount {
-					t.Errorf("%s: %s header counts %d new-side lines, hunk body has %d",
-						c.Name, f.Path, want, newCount)
+			for _, h := range hunks {
+				m := header.FindStringSubmatch(h[0])
+				if m == nil {
+					t.Errorf("%s: %s has a malformed hunk header: %q", c.Name, f.Path, h[0])
+					continue
+				}
+				start, _ := strconv.Atoi(m[1])
+
+				// The hunk's whole new side must sit at `start` in the
+				// content. Comparing only the first line would pass on a hunk
+				// whose body diverges later, and a blank context line matches
+				// anywhere.
+				var newSide []string
+				for _, l := range h[1:] {
+					if strings.HasPrefix(l, "-") {
+						continue
+					}
+					// Strip exactly one marker byte, not "+" then " ": a line
+					// added as "+ foo" would otherwise lose its real leading
+					// space and never match the content.
+					if l == "" {
+						newSide = append(newSide, "")
+						continue
+					}
+					newSide = append(newSide, l[1:])
+				}
+				newCount := len(newSide)
+				if start < 1 || start+newCount-1 > len(content) {
+					t.Errorf("%s: %s hunk claims new lines %d-%d, content has %d",
+						c.Name, f.Path, start, start+newCount-1, len(content))
+					continue
+				}
+				if got := content[start-1 : start-1+newCount]; !slices.Equal(got, newSide) {
+					t.Errorf("%s: %s header says new line %d, but content there is\n%q\nnot the hunk's new side\n%q",
+						c.Name, f.Path, start, got, newSide)
+				}
+				if m[2] != "" {
+					if want, _ := strconv.Atoi(m[2]); want != newCount {
+						t.Errorf("%s: %s header counts %d new-side lines, hunk body has %d",
+							c.Name, f.Path, want, newCount)
+					}
 				}
 			}
 		}

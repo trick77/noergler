@@ -1,0 +1,3319 @@
+{
+ "Model": "mimo-v2.5-pro",
+ "Effort": "medium",
+ "Samples": 5,
+ "Seeded": 8,
+ "Cases": [
+  {
+   "Case": "clean-guard-clause",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "clean-guard-clause",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3392,
+      "CachedTokens": 3072,
+      "CompletionTokens": 546,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "clean-guard-clause",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3392,
+      "CachedTokens": 3328,
+      "CompletionTokens": 1774,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "clean-guard-clause",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3392,
+      "CachedTokens": 3328,
+      "CompletionTokens": 699,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "clean-guard-clause",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3392,
+      "CachedTokens": 3328,
+      "CompletionTokens": 907,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "clean-guard-clause",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3392,
+      "CachedTokens": 3328,
+      "CompletionTokens": 1089,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  },
+  {
+   "Case": "clean-i18n-key-order",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "clean-i18n-key-order",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3600,
+      "CachedTokens": 3072,
+      "CompletionTokens": 1025,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "clean-i18n-key-order",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3600,
+      "CachedTokens": 3584,
+      "CompletionTokens": 1802,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "clean-i18n-key-order",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3600,
+      "CachedTokens": 3584,
+      "CompletionTokens": 844,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "clean-i18n-key-order",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3600,
+      "CachedTokens": 3584,
+      "CompletionTokens": 1178,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "clean-i18n-key-order",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3600,
+      "CachedTokens": 3584,
+      "CompletionTokens": 1389,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  },
+  {
+   "Case": "clean-refactor",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "clean-refactor",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3361,
+      "CachedTokens": 3072,
+      "CompletionTokens": 493,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "clean-refactor",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3361,
+      "CachedTokens": 3328,
+      "CompletionTokens": 702,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "clean-refactor",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3361,
+      "CachedTokens": 3328,
+      "CompletionTokens": 790,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "clean-refactor",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3361,
+      "CachedTokens": 3328,
+      "CompletionTokens": 617,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "clean-refactor",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/render/footnote.go",
+       "Line": 15,
+       "Severity": "suggestion",
+       "Comment": "The `tokenLine` helper is only called once within the same package, extracting it adds an unnecessary layer of indirection without providing reuse or clarity. However, this is a minor style observation, not a bug.",
+       "Confidence": 80,
+       "Headline": "Unnecessary function extraction — minor indirection",
+       "Suggestion": null,
+       "Evidence": [
+        "func Footnote(in Input) string {",
+        "\treturn tokenLine(in.Tokens, in.Cached)",
+        "}",
+        "",
+        "func tokenLine(total, cached int) string {"
+       ]
+      }
+     ],
+     "Matches": [],
+     "Extra": 1,
+     "Cost": {
+      "PromptTokens": 3361,
+      "CachedTokens": 3328,
+      "CompletionTokens": 837,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 0.2,
+     "Full": 1,
+     "Clean": 0.8,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 0.4,
+     "Full": 1,
+     "Clean": 0.6,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 0.6,
+     "Full": 1,
+     "Clean": 0.4,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2.4
+    }
+   ]
+  },
+  {
+   "Case": "clean-rename",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "clean-rename",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3480,
+      "CachedTokens": 3072,
+      "CompletionTokens": 1558,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "clean-rename",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3480,
+      "CachedTokens": 3456,
+      "CompletionTokens": 895,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "clean-rename",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3480,
+      "CachedTokens": 3456,
+      "CompletionTokens": 480,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "clean-rename",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3480,
+      "CachedTokens": 3456,
+      "CompletionTokens": 1209,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "clean-rename",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3480,
+      "CachedTokens": 3456,
+      "CompletionTokens": 1231,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  },
+  {
+   "Case": "context-not-propagated",
+   "Seeded": 1,
+   "Samples": [
+    {
+     "Case": "context-not-propagated",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/bitbucket/diff.go",
+       "Line": 13,
+       "Severity": "issue",
+       "Comment": "The function signature accepts a context `ctx` and its documentation states it bounds the operation, but the diff replaces all uses with `context.Background()`. This ignores caller-provided cancellation, timeouts, and deadlines, which can cause unresponsive operations and resource leaks in applications that rely on context propagation for lifecycle management.",
+       "Confidence": 90,
+       "Headline": "Context passed by caller ignored in FetchDiff",
+       "Suggestion": "req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)",
+       "Evidence": [
+        "req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u, nil)",
+        "return c.getTextCapped(context.Background(), req, maxDiffBytes)"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "caller-context-dropped",
+        "file": "internal/bitbucket/diff.go",
+        "lines": [
+         11,
+         18
+        ],
+        "keywords": [
+         "context.Background",
+         "background context",
+         "ctx is ignored",
+         "ignores ctx",
+         "ignores the ctx",
+         "ignores caller",
+         "not propagated",
+         "cancellation",
+         "cancelation",
+         "deadline",
+         "caller's context",
+         "callers context"
+        ],
+        "why": "ctx is a parameter but never used; context.Background() is passed to both NewRequestWithContext and getTextCapped, so the caller's timeout and cancellation cannot stop the request or the body read. Bitbucket has no Client.Timeout by design, which makes the caller's ctx the only bound on a 10 MiB diff."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3542,
+      "CachedTokens": 3072,
+      "CompletionTokens": 2400,
+      "NanoUSD": null
+     },
+     "Redraws": 1
+    },
+    {
+     "Case": "context-not-propagated",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/bitbucket/diff.go",
+       "Line": 13,
+       "Severity": "issue",
+       "Comment": "The function accepts `ctx context.Context` from the caller — and the doc comment explicitly states \"The caller's context bounds the whole operation, including the body read\" — but both `NewRequestWithContext` and `getTextCapped` now receive `context.Background()`, which ignores cancellation and deadlines entirely. If the caller's context times out (e.g., a parent HTTP request cancelled), the Bitbucket API call and body read will continue running to completion, wasting resources and holding connections open.",
+       "Confidence": 95,
+       "Headline": "Caller context ignored — FetchDiff cannot be cancelled",
+       "Suggestion": "req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)",
+       "Evidence": [
+        "func (c *Client) FetchDiff(ctx context.Context, project, repo string, pr int) (string, error) {",
+        "req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u, nil)",
+        "return c.getTextCapped(context.Background(), req, maxDiffBytes)"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "caller-context-dropped",
+        "file": "internal/bitbucket/diff.go",
+        "lines": [
+         11,
+         18
+        ],
+        "keywords": [
+         "context.Background",
+         "background context",
+         "ctx is ignored",
+         "ignores ctx",
+         "ignores the ctx",
+         "ignores caller",
+         "not propagated",
+         "cancellation",
+         "cancelation",
+         "deadline",
+         "caller's context",
+         "callers context"
+        ],
+        "why": "ctx is a parameter but never used; context.Background() is passed to both NewRequestWithContext and getTextCapped, so the caller's timeout and cancellation cannot stop the request or the body read. Bitbucket has no Client.Timeout by design, which makes the caller's ctx the only bound on a 10 MiB diff."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3542,
+      "CachedTokens": 3456,
+      "CompletionTokens": 643,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "context-not-propagated",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/bitbucket/diff.go",
+       "Line": 13,
+       "Severity": "issue",
+       "Comment": "The function ignores its `ctx` parameter, using `context.Background()` for both the HTTP request and body read. This breaks the contract stated in the comment that the caller's context bounds the operation. If a caller passes a context with a deadline or cancellation, the request will not be cancelled and the body read will not be bounded, leading to potential resource leaks and unresponsive cancellation.",
+       "Confidence": 90,
+       "Headline": "FetchDiff ignores caller's context, breaking cancellation contract",
+       "Suggestion": "\treq, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)",
+       "Evidence": [
+        "func (c *Client) FetchDiff(ctx context.Context, project, repo string, pr int) (string, error) {",
+        "\treq, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u, nil)",
+        "\treturn c.getTextCapped(context.Background(), req, maxDiffBytes)"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "caller-context-dropped",
+        "file": "internal/bitbucket/diff.go",
+        "lines": [
+         11,
+         18
+        ],
+        "keywords": [
+         "context.Background",
+         "background context",
+         "ctx is ignored",
+         "ignores ctx",
+         "ignores the ctx",
+         "ignores caller",
+         "not propagated",
+         "cancellation",
+         "cancelation",
+         "deadline",
+         "caller's context",
+         "callers context"
+        ],
+        "why": "ctx is a parameter but never used; context.Background() is passed to both NewRequestWithContext and getTextCapped, so the caller's timeout and cancellation cannot stop the request or the body read. Bitbucket has no Client.Timeout by design, which makes the caller's ctx the only bound on a 10 MiB diff."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3542,
+      "CachedTokens": 3456,
+      "CompletionTokens": 1904,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "context-not-propagated",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [
+      {
+       "Expected": {
+        "id": "caller-context-dropped",
+        "file": "internal/bitbucket/diff.go",
+        "lines": [
+         11,
+         18
+        ],
+        "keywords": [
+         "context.Background",
+         "background context",
+         "ctx is ignored",
+         "ignores ctx",
+         "ignores the ctx",
+         "ignores caller",
+         "not propagated",
+         "cancellation",
+         "cancelation",
+         "deadline",
+         "caller's context",
+         "callers context"
+        ],
+        "why": "ctx is a parameter but never used; context.Background() is passed to both NewRequestWithContext and getTextCapped, so the caller's timeout and cancellation cannot stop the request or the body read. Bitbucket has no Client.Timeout by design, which makes the caller's ctx the only bound on a 10 MiB diff."
+       },
+       "Found": false,
+       "Finding": -1,
+       "Why": "no finding on internal/bitbucket/diff.go"
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3542,
+      "CachedTokens": 3456,
+      "CompletionTokens": 633,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "context-not-propagated",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/bitbucket/diff.go",
+       "Line": 13,
+       "Severity": "issue",
+       "Comment": "The function explicitly documents that the caller's context bounds the entire operation, but the diff replaces both uses of `ctx` with `context.Background()`. This means the HTTP request and body read will ignore cancellation and deadline signals from the caller's context, potentially causing unbounded hangs if the server is unresponsive and violating the stated contract.",
+       "Confidence": 95,
+       "Headline": "Caller's context ignored in FetchDiff — violates documented contract",
+       "Suggestion": "  req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)",
+       "Evidence": [
+        "func (c *Client) FetchDiff(ctx context.Context, project, repo string, pr int) (string, error) {",
+        "  u := fmt.Sprintf(\"%s/projects/%s/repos/%s/pull-requests/%d/diff\", c.base, project, repo, pr)",
+        "  req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u, nil)",
+        "  ...",
+        "  return c.getTextCapped(context.Background(), req, maxDiffBytes)"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "caller-context-dropped",
+        "file": "internal/bitbucket/diff.go",
+        "lines": [
+         11,
+         18
+        ],
+        "keywords": [
+         "context.Background",
+         "background context",
+         "ctx is ignored",
+         "ignores ctx",
+         "ignores the ctx",
+         "ignores caller",
+         "not propagated",
+         "cancellation",
+         "cancelation",
+         "deadline",
+         "caller's context",
+         "callers context"
+        ],
+        "why": "ctx is a parameter but never used; context.Background() is passed to both NewRequestWithContext and getTextCapped, so the caller's timeout and cancellation cannot stop the request or the body read. Bitbucket has no Client.Timeout by design, which makes the caller's ctx the only bound on a 10 MiB diff."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3542,
+      "CachedTokens": 3456,
+      "CompletionTokens": 1105,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0.8,
+     "Extra": 0,
+     "Full": 0.8,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0.6,
+     "Extra": 0,
+     "Full": 0.6,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2.4
+    }
+   ]
+  },
+  {
+   "Case": "lock-not-released",
+   "Seeded": 1,
+   "Samples": [
+    {
+     "Case": "lock-not-released",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/teams/registry.go",
+       "Line": 20,
+       "Severity": "issue",
+       "Comment": "The change removes `defer r.mu.Unlock()` and adds an explicit unlock at line 24. However, the early return at line 20 (when the team is unknown) now exits without unlocking the mutex. This will cause a deadlock on the next call to `Disable` or any other method of `Registry` that acquires `mu`.",
+       "Confidence": 95,
+       "Headline": "Mutex not unlocked on early return — will deadlock",
+       "Suggestion": "r.mu.Unlock()\nreturn fmt.Errorf(\"unknown team %q\", slug)",
+       "Evidence": [
+        "r.mu.Lock()",
+        "t, ok := r.byslug[slug]",
+        "if !ok {",
+        "  return fmt.Errorf(\"unknown team %q\", slug)",
+        "}"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "mutex-held-on-early-return",
+        "file": "internal/teams/registry.go",
+        "lines": [
+         16,
+         24
+        ],
+        "keywords": [
+         "deadlock",
+         "still held",
+         "never released",
+         "not released",
+         "never unlocked",
+         "not unlocked",
+         "defer r.mu.Unlock",
+         "defer mu.Unlock",
+         "defer the Unlock",
+         "held forever"
+        ],
+        "why": "The Unlock now runs only on the success path, so returning the unknown-team error leaves r.mu locked and every subsequent caller blocks forever."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3431,
+      "CachedTokens": 3072,
+      "CompletionTokens": 843,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "lock-not-released",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/teams/registry.go",
+       "Line": 20,
+       "Severity": "issue",
+       "Comment": "The `Disable` method locks the mutex at entry and now unlocks it only on the normal return path. The early return when the team is not found (line 20) exits without unlocking, leaving the mutex locked. Any subsequent attempt to acquire the mutex will deadlock.",
+       "Confidence": 95,
+       "Headline": "Mutex left locked on error path — deadlocks on missing team",
+       "Suggestion": "r.mu.Unlock()\nreturn fmt.Errorf(\"unknown team %q\", slug)",
+       "Evidence": [
+        "r.mu.Lock()",
+        "if !ok {",
+        "    return fmt.Errorf(\"unknown team %q\", slug)",
+        "}",
+        "r.mu.Unlock()"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "mutex-held-on-early-return",
+        "file": "internal/teams/registry.go",
+        "lines": [
+         16,
+         24
+        ],
+        "keywords": [
+         "deadlock",
+         "still held",
+         "never released",
+         "not released",
+         "never unlocked",
+         "not unlocked",
+         "defer r.mu.Unlock",
+         "defer mu.Unlock",
+         "defer the Unlock",
+         "held forever"
+        ],
+        "why": "The Unlock now runs only on the success path, so returning the unknown-team error leaves r.mu locked and every subsequent caller blocks forever."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3431,
+      "CachedTokens": 3328,
+      "CompletionTokens": 1728,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "lock-not-released",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/teams/registry.go",
+       "Line": 20,
+       "Severity": "issue",
+       "Comment": "Replacing `defer r.mu.Unlock()` with a single `r.mu.Unlock()` at the end of the function means the early return when the team slug is unknown exits with the mutex still held. Any subsequent lock attempt by any goroutine (including the same one in a re-entrant scenario) will deadlock. This is a direct regression from the original code, which correctly unlocked on every exit path via `defer`.",
+       "Confidence": 95,
+       "Headline": "Mutex left locked on early return causes deadlock",
+       "Suggestion": "\tr.defer r.mu.Unlock()",
+       "Evidence": [
+        "r.mu.Lock()",
+        "t, ok := r.byslug[slug]",
+        "if !ok {",
+        "return fmt.Errorf(\"unknown team %q\", slug)",
+        "}"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "mutex-held-on-early-return",
+        "file": "internal/teams/registry.go",
+        "lines": [
+         16,
+         24
+        ],
+        "keywords": [
+         "deadlock",
+         "still held",
+         "never released",
+         "not released",
+         "never unlocked",
+         "not unlocked",
+         "defer r.mu.Unlock",
+         "defer mu.Unlock",
+         "defer the Unlock",
+         "held forever"
+        ],
+        "why": "The Unlock now runs only on the success path, so returning the unknown-team error leaves r.mu locked and every subsequent caller blocks forever."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3431,
+      "CachedTokens": 3328,
+      "CompletionTokens": 1191,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "lock-not-released",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/teams/registry.go",
+       "Line": 20,
+       "Severity": "issue",
+       "Comment": "The `Disable` method locks `r.mu` but returns early when the team is unknown without unlocking, leaving the mutex locked. The explicit unlock on line 24 is skipped on this path. Any subsequent call that attempts to lock `r.mu` will deadlock.",
+       "Confidence": 90,
+       "Headline": "Missing unlock on early return in Disable method — deadlock bug",
+       "Suggestion": "func (r *Registry) Disable(slug, reason string) error {\n\tr.mu.Lock()\n\tt, ok := r.byslug[slug]\n\tif !ok {\n\t\tr.mu.Unlock()\n\t\treturn fmt.Errorf(\"unknown team %q\", slug)\n\t}\n\tt.Ready = false\n\tr.disable[slug] = reason\n\tr.mu.Unlock()\n\treturn nil\n}",
+       "Evidence": [
+        "r.mu.Lock()",
+        "t, ok := r.byslug[slug]",
+        "if !ok {",
+        "return fmt.Errorf(\"unknown team %q\", slug)",
+        "}"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "mutex-held-on-early-return",
+        "file": "internal/teams/registry.go",
+        "lines": [
+         16,
+         24
+        ],
+        "keywords": [
+         "deadlock",
+         "still held",
+         "never released",
+         "not released",
+         "never unlocked",
+         "not unlocked",
+         "defer r.mu.Unlock",
+         "defer mu.Unlock",
+         "defer the Unlock",
+         "held forever"
+        ],
+        "why": "The Unlock now runs only on the success path, so returning the unknown-team error leaves r.mu locked and every subsequent caller blocks forever."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3431,
+      "CachedTokens": 3328,
+      "CompletionTokens": 2807,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "lock-not-released",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [
+      {
+       "Expected": {
+        "id": "mutex-held-on-early-return",
+        "file": "internal/teams/registry.go",
+        "lines": [
+         16,
+         24
+        ],
+        "keywords": [
+         "deadlock",
+         "still held",
+         "never released",
+         "not released",
+         "never unlocked",
+         "not unlocked",
+         "defer r.mu.Unlock",
+         "defer mu.Unlock",
+         "defer the Unlock",
+         "held forever"
+        ],
+        "why": "The Unlock now runs only on the success path, so returning the unknown-team error leaves r.mu locked and every subsequent caller blocks forever."
+       },
+       "Found": false,
+       "Finding": -1,
+       "Why": "no finding on internal/teams/registry.go"
+      }
+     ],
+     "Extra": 0,
+     "Dropped": [
+      {
+       "Finding": {
+        "File": "internal/teams/registry.go",
+        "Line": 20,
+        "Severity": "issue",
+        "Comment": "Removing `defer r.mu.Unlock()` without adding it before the early return on line 20 leaves the mutex permanently locked when `Disable` is called with an unknown slug. Any subsequent call to `Disable` or other `r.mu`-guarded method will deadlock. This is a regression from the previous working implementation.",
+        "Confidence": 95,
+        "Headline": "Mutex left locked on error path — deadlock",
+        "Suggestion": "\tdefer r.mu.Unlock()\n\tt, ok := r.byslug[slug]\n\tif !ok {\n\t\treturn fmt.Errorf(\"unknown team %q\", slug)\n\t}\n\tt.Ready = false\n\tr.disable[slug] = reason\n\treturn nil",
+        "Evidence": [
+         "func (r *Registry) Disable(slug, reason string) error {",
+         "r.mu.Lock()",
+         "t, ok := r.byslug[slug]",
+         "if !ok {",
+         "return fmt.Errorf(\"unknown team %q\", slug) // early return without unlocking"
+        ]
+       },
+       "Reason": "evidence_not_found"
+      }
+     ],
+     "Cost": {
+      "PromptTokens": 3431,
+      "CachedTokens": 3328,
+      "CompletionTokens": 3582,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0.8,
+     "Extra": 0,
+     "Full": 0.8,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0.6,
+     "Extra": 0,
+     "Full": 0.6,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2.4
+    }
+   ]
+  },
+  {
+   "Case": "nil-deref",
+   "Seeded": 1,
+   "Samples": [
+    {
+     "Case": "nil-deref",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/review/summary.go",
+       "Line": 19,
+       "Severity": "issue",
+       "Comment": "The diff removes the early return when `r.Ticket` is nil, causing the function to unconditionally access `r.Ticket.Key` in the return statement. When `r.Ticket` is nil, this will panic with a nil pointer dereference, crashing the program.",
+       "Confidence": 95,
+       "Headline": "Nil pointer dereference when Ticket is nil",
+       "Suggestion": "if r.Ticket == nil {\n\treturn r.Body\n}\nreturn r.Body + \"\\n\\n\" + r.Ticket.Key",
+       "Evidence": [
+        "if r.Ticket == nil {",
+        "\t// Ticket is optional; fall through to the shared renderer.",
+        "}",
+        "return r.Body + \"\\n\\n\" + r.Ticket.Key"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "nil-ticket-deref",
+        "file": "internal/review/summary.go",
+        "lines": [
+         19,
+         22
+        ],
+        "keywords": [
+         "nil",
+         "dereference",
+         "deref",
+         "panic",
+         "Ticket"
+        ],
+        "why": "The nil branch no longer returns, so r.Ticket.Key panics whenever Ticket is nil. A reviewer may anchor on the dead check (19) or on the dereference (22)."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3381,
+      "CachedTokens": 3072,
+      "CompletionTokens": 997,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "nil-deref",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/review/summary.go",
+       "Line": 22,
+       "Severity": "issue",
+       "Comment": "Removing the early return when `r.Ticket == nil` causes execution to fall through to `r.Ticket.Key`, which dereferences a nil pointer and panics. Every caller that passes a `Result` with a nil `Ticket` — a case the code explicitly guards against — will now crash at runtime.",
+       "Confidence": 98,
+       "Headline": "Nil-pointer dereference when Ticket is nil — panic on every call",
+       "Suggestion": "if r.Ticket == nil {\n\treturn r.Body\n}",
+       "Evidence": [
+        "if r.Ticket == nil {",
+        "\t// Ticket is optional; fall through to the shared renderer.",
+        "}",
+        "return r.Body + \"\\n\\n\" + r.Ticket.Key"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "nil-ticket-deref",
+        "file": "internal/review/summary.go",
+        "lines": [
+         19,
+         22
+        ],
+        "keywords": [
+         "nil",
+         "dereference",
+         "deref",
+         "panic",
+         "Ticket"
+        ],
+        "why": "The nil branch no longer returns, so r.Ticket.Key panics whenever Ticket is nil. A reviewer may anchor on the dead check (19) or on the dereference (22)."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3381,
+      "CachedTokens": 3328,
+      "CompletionTokens": 564,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "nil-deref",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/review/summary.go",
+       "Line": 22,
+       "Severity": "issue",
+       "Comment": "The change removes the early return when `r.Ticket` is nil and falls through to the line that dereferences `r.Ticket.Key`. This will cause a nil pointer dereference runtime panic whenever `Summarize` is called with a non-nil `Result` but a nil `Ticket`. The original code correctly handled this case by returning `r.Body` without appending the ticket key.",
+       "Confidence": 95,
+       "Headline": "Nil pointer dereference when Ticket is nil",
+       "Suggestion": "if r.Ticket == nil {\n    return r.Body\n}\nreturn r.Body + \"\\n\\n\" + r.Ticket.Key",
+       "Evidence": [
+        "if r.Ticket == nil {",
+        "    // Ticket is optional; fall through to the shared renderer.",
+        "}",
+        "return r.Body + \"\\n\\n\" + r.Ticket.Key"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "nil-ticket-deref",
+        "file": "internal/review/summary.go",
+        "lines": [
+         19,
+         22
+        ],
+        "keywords": [
+         "nil",
+         "dereference",
+         "deref",
+         "panic",
+         "Ticket"
+        ],
+        "why": "The nil branch no longer returns, so r.Ticket.Key panics whenever Ticket is nil. A reviewer may anchor on the dead check (19) or on the dereference (22)."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3381,
+      "CachedTokens": 3328,
+      "CompletionTokens": 1119,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "nil-deref",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/review/summary.go",
+       "Line": 19,
+       "Severity": "issue",
+       "Comment": "The old code returned early with `r.Body` when `r.Ticket` was nil. The replacement removes that early return, so when `r.Ticket == nil` the function falls through to `return r.Body + \"\\n\\n\" + r.Ticket.Key`, which dereferences a nil `*Ticket` and panics. Any call to `Summarize` with a nil ticket triggers this crash.",
+       "Confidence": 95,
+       "Headline": "Nil-pointer panic when Ticket is nil",
+       "Suggestion": "if r.Ticket == nil {\n\treturn r.Body\n}",
+       "Evidence": [
+        "if r.Ticket == nil {",
+        "\t// Ticket is optional; fall through to the shared renderer.",
+        "}",
+        "return r.Body + \"\\n\\n\" + r.Ticket.Key"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "nil-ticket-deref",
+        "file": "internal/review/summary.go",
+        "lines": [
+         19,
+         22
+        ],
+        "keywords": [
+         "nil",
+         "dereference",
+         "deref",
+         "panic",
+         "Ticket"
+        ],
+        "why": "The nil branch no longer returns, so r.Ticket.Key panics whenever Ticket is nil. A reviewer may anchor on the dead check (19) or on the dereference (22)."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3381,
+      "CachedTokens": 3328,
+      "CompletionTokens": 593,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "nil-deref",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/review/summary.go",
+       "Line": 19,
+       "Severity": "issue",
+       "Comment": "When `r.Ticket` is nil the early-return was removed, so execution falls through to `r.Body + \"\\n\\n\" + r.Ticket.Key`, which dereferences a nil `*Ticket` and panics at runtime. Any call to `Summarize` with a `Result` whose `Ticket` field is `nil` will crash.",
+       "Confidence": 95,
+       "Headline": "Nil-pointer dereference when Ticket is nil — runtime panic",
+       "Suggestion": "if r.Ticket == nil {\n\treturn r.Body\n}",
+       "Evidence": [
+        "if r.Ticket == nil {",
+        "\t// Ticket is optional; fall through to the shared renderer.",
+        "}",
+        "return r.Body + \"\\n\\n\" + r.Ticket.Key"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "nil-ticket-deref",
+        "file": "internal/review/summary.go",
+        "lines": [
+         19,
+         22
+        ],
+        "keywords": [
+         "nil",
+         "dereference",
+         "deref",
+         "panic",
+         "Ticket"
+        ],
+        "why": "The nil branch no longer returns, so r.Ticket.Key panics whenever Ticket is nil. A reviewer may anchor on the dead check (19) or on the dereference (22)."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3381,
+      "CachedTokens": 3328,
+      "CompletionTokens": 538,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0.4,
+     "Extra": 0,
+     "Full": 0.4,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 1,
+     "Extra": 0.6,
+     "Full": 1,
+     "Clean": 0.4,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 1,
+     "Extra": 0.9,
+     "Full": 1,
+     "Clean": 0.1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 1,
+     "Extra": 0.9,
+     "Full": 1,
+     "Clean": 0.1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2.6
+    }
+   ]
+  },
+  {
+   "Case": "off-by-one",
+   "Seeded": 1,
+   "Samples": [
+    {
+     "Case": "off-by-one",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/diff/context.go",
+       "Line": 15,
+       "Severity": "issue",
+       "Comment": "The condition and assignment introduce an off-by-one that will cause a panic when a hunk is at the end of the file. For a slice of length L, the valid exclusive upper bound is L, not L+1. Setting `last = len(lines) + 1` when `last \u003e= len(lines)` makes the subsequent `lines[first:last]` slice expression out of bounds when `first` is `len(lines)` (the hunk is at the end and context is requested).",
+       "Confidence": 95,
+       "Headline": "Out-of-bounds slice access in ContextAfter",
+       "Suggestion": "if last \u003e len(lines) {\n    last = len(lines)\n}",
+       "Evidence": [
+        "if last \u003e= len(lines) {",
+        "    last = len(lines) + 1",
+        "}"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "context-window-past-end",
+        "file": "internal/diff/context.go",
+        "lines": [
+         14,
+         20
+        ],
+        "keywords": [
+         "out of range",
+         "out-of-range",
+         "bounds",
+         "past the end",
+         "beyond the end",
+         "len(lines)+1",
+         "len(lines) + 1",
+         "off-by-one",
+         "off by one",
+         "panic"
+        ],
+        "why": "The clamp sets last to len(lines)+1, so the final slice expression lines[first:last] runs one past the length. With no spare capacity that panics; with spare capacity it silently yields a phantom trailing line, which is the quieter half of the bug."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3394,
+      "CachedTokens": 3072,
+      "CompletionTokens": 4289,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "off-by-one",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/diff/context.go",
+       "Line": 15,
+       "Severity": "issue",
+       "Comment": "The change replaces a `last \u003e len(lines)` check with `last \u003e= len(lines)` and sets `last` to `len(lines) + 1`. This introduces an off-by-one error: when `first + n` exactly equals the slice length (i.e., the requested context reaches the end of the file), the new code sets `last` to an out-of-range index, causing `lines[first:last]` to panic. The original code set `last` to `len(lines)` to stop at the last line, which is correct. The change to `\u003e=` is unnecessary and the assigned value is wrong.",
+       "Confidence": 95,
+       "Headline": "Off-by-one error in ContextAfter causes slice panic when context reaches end of file — blocking",
+       "Suggestion": "last = len(lines)",
+       "Evidence": [
+        "if last \u003e= len(lines) {",
+        "    last = len(lines) + 1"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "context-window-past-end",
+        "file": "internal/diff/context.go",
+        "lines": [
+         14,
+         20
+        ],
+        "keywords": [
+         "out of range",
+         "out-of-range",
+         "bounds",
+         "past the end",
+         "beyond the end",
+         "len(lines)+1",
+         "len(lines) + 1",
+         "off-by-one",
+         "off by one",
+         "panic"
+        ],
+        "why": "The clamp sets last to len(lines)+1, so the final slice expression lines[first:last] runs one past the length. With no spare capacity that panics; with spare capacity it silently yields a phantom trailing line, which is the quieter half of the bug."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3394,
+      "CachedTokens": 3328,
+      "CompletionTokens": 2700,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "off-by-one",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/diff/context.go",
+       "Line": 14,
+       "Severity": "issue",
+       "Comment": "The condition `if last \u003e= len(lines)` sets `last` to `len(lines) + 1`, which will cause an out-of-bounds slice panic when calling `lines[first:last]` because `last` exceeds the slice length. For example, if `lines` has 10 items and `first` is 8 with `n` = 3, `last` becomes 11, then 12, and slicing `lines[8:12]` panics. The original condition `if last \u003e len(lines)` with assignment `last = len(lines)` was correct, as it clips the slice to the end of the file.",
+       "Confidence": 90,
+       "Headline": "Out-of-bounds slice panic in ContextAfter — blocking",
+       "Suggestion": "if last \u003e len(lines) {\n    last = len(lines)\n}",
+       "Evidence": [
+        "if last \u003e= len(lines) {",
+        "    last = len(lines) + 1",
+        "}"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "context-window-past-end",
+        "file": "internal/diff/context.go",
+        "lines": [
+         14,
+         20
+        ],
+        "keywords": [
+         "out of range",
+         "out-of-range",
+         "bounds",
+         "past the end",
+         "beyond the end",
+         "len(lines)+1",
+         "len(lines) + 1",
+         "off-by-one",
+         "off by one",
+         "panic"
+        ],
+        "why": "The clamp sets last to len(lines)+1, so the final slice expression lines[first:last] runs one past the length. With no spare capacity that panics; with spare capacity it silently yields a phantom trailing line, which is the quieter half of the bug."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3394,
+      "CachedTokens": 3328,
+      "CompletionTokens": 3415,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "off-by-one",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/diff/context.go",
+       "Line": 14,
+       "Severity": "issue",
+       "Comment": "The boundary-clamping logic was changed from `last \u003e len(lines)` / `last = len(lines)` to `last \u003e= len(lines)` / `last = len(lines) + 1`. When `first + n` equals `len(lines)` (i.e., the hunk ends at the last line of the file and n equals the number of remaining lines), `last` is set to `len(lines) + 1`. The subsequent slice `lines[first:last]` then panics with an index-out-of-range because the maximum valid upper bound of a Go slice is `len(lines)`, not `len(lines) + 1`. Concrete example: `lines` has 10 elements, hunk `{Start:8, Count:2}`, `n=2` → `first=10`, `last=12`, clamped to `11`, slice `[10:11]` panics. The old code clamped to `10`, producing `[10:10]` which is a valid empty slice.",
+       "Confidence": 95,
+       "Headline": "Out-of-bounds slice panic in ContextAfter — blocking",
+       "Suggestion": "if last \u003e len(lines) {\n\tlast = len(lines)\n}",
+       "Evidence": [
+        "if last \u003e= len(lines) {",
+        "    last = len(lines) + 1",
+        "}",
+        "return lines[first:last]"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "context-window-past-end",
+        "file": "internal/diff/context.go",
+        "lines": [
+         14,
+         20
+        ],
+        "keywords": [
+         "out of range",
+         "out-of-range",
+         "bounds",
+         "past the end",
+         "beyond the end",
+         "len(lines)+1",
+         "len(lines) + 1",
+         "off-by-one",
+         "off by one",
+         "panic"
+        ],
+        "why": "The clamp sets last to len(lines)+1, so the final slice expression lines[first:last] runs one past the length. With no spare capacity that panics; with spare capacity it silently yields a phantom trailing line, which is the quieter half of the bug."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3394,
+      "CachedTokens": 3328,
+      "CompletionTokens": 999,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "off-by-one",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/diff/context.go",
+       "Line": 15,
+       "Severity": "issue",
+       "Comment": "When `last` (first + n) is greater than or equal to `len(lines)`, the new code sets `last` to `len(lines) + 1`. The slice operation `lines[first:last]` then uses an upper bound that is one beyond the slice length, causing a runtime panic. This occurs whenever the requested context runs to or past the end of the file.",
+       "Confidence": 95,
+       "Headline": "Off-by-one error in ContextAfter causes panic when context reaches end of file",
+       "Suggestion": "last = len(lines)",
+       "Evidence": [
+        "if last \u003e= len(lines) {",
+        "    last = len(lines) + 1",
+        "}",
+        "if first \u003e= last {",
+        "    return nil"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "context-window-past-end",
+        "file": "internal/diff/context.go",
+        "lines": [
+         14,
+         20
+        ],
+        "keywords": [
+         "out of range",
+         "out-of-range",
+         "bounds",
+         "past the end",
+         "beyond the end",
+         "len(lines)+1",
+         "len(lines) + 1",
+         "off-by-one",
+         "off by one",
+         "panic"
+        ],
+        "why": "The clamp sets last to len(lines)+1, so the final slice expression lines[first:last] runs one past the length. With no spare capacity that panics; with spare capacity it silently yields a phantom trailing line, which is the quieter half of the bug."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3394,
+      "CachedTokens": 3328,
+      "CompletionTokens": 3076,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  },
+  {
+   "Case": "resource-leak",
+   "Seeded": 1,
+   "Samples": [
+    {
+     "Case": "resource-leak",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/bitbucket/whoami.go",
+       "Line": 18,
+       "Severity": "issue",
+       "Comment": "The function `WhoAmI` makes an HTTP request but the removal of `defer resp.Body.Close()` means the response body is never closed on any code path. This leaks the underlying TCP connection and file descriptor, which under repeated calls can exhaust resources and cause failures. The defer should be restored immediately after the successful error check from `c.http.Do`.",
+       "Confidence": 90,
+       "Headline": "Response body not closed — connection leak",
+       "Suggestion": "\tresp, err := c.http.Do(req)\n\tif err != nil {\n\t\treturn nil, fmt.Errorf(\"whoami: %w\", err)\n\t}\n\tdefer resp.Body.Close()",
+       "Evidence": [
+        "\tresp, err := c.http.Do(req)",
+        "\tif err != nil {",
+        "\t\treturn nil, fmt.Errorf(\"whoami: %w\", err)",
+        "\t}"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "response-body-never-closed",
+        "file": "internal/bitbucket/whoami.go",
+        "lines": [
+         16,
+         28
+        ],
+        "keywords": [
+         "leak",
+         "leaked",
+         "not closed",
+         "never closed",
+         "close the body",
+         "closing the body",
+         "resp.Body.Close",
+         "connection"
+        ],
+        "why": "The response body is never closed on any path, so the underlying connection is leaked on every call, successful or not."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3467,
+      "CachedTokens": 3072,
+      "CompletionTokens": 3551,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "resource-leak",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/bitbucket/whoami.go",
+       "Line": 18,
+       "Severity": "issue",
+       "Comment": "Removing `defer resp.Body.Close()` means the response body is never closed. Every successful or failed HTTP call leaks an open file descriptor. Under sustained load this exhausts the connection pool or OS file descriptor limit, causing subsequent requests to fail or the process to crash.",
+       "Confidence": 95,
+       "Headline": "Response body never closed — resource leak",
+       "Suggestion": null,
+       "Evidence": [
+        "resp, err := c.http.Do(req)",
+        "if err != nil {",
+        "\treturn nil, fmt.Errorf(\"whoami: %w\", err)",
+        "}",
+        "if resp.StatusCode \u003c 200 || resp.StatusCode \u003e 299 {"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "response-body-never-closed",
+        "file": "internal/bitbucket/whoami.go",
+        "lines": [
+         16,
+         28
+        ],
+        "keywords": [
+         "leak",
+         "leaked",
+         "not closed",
+         "never closed",
+         "close the body",
+         "closing the body",
+         "resp.Body.Close",
+         "connection"
+        ],
+        "why": "The response body is never closed on any path, so the underlying connection is leaked on every call, successful or not."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Moved": [
+      {
+       "File": "internal/bitbucket/whoami.go",
+       "From": 16,
+       "To": 18
+      }
+     ],
+     "Cost": {
+      "PromptTokens": 3467,
+      "CachedTokens": 3456,
+      "CompletionTokens": 3743,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "resource-leak",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/bitbucket/whoami.go",
+       "Line": 18,
+       "Severity": "issue",
+       "Comment": "Removing the `defer resp.Body.Close()` call means the response body is never closed in any code path. When `WhoAmI` returns, the caller has no access to `resp.Body` to close it. This causes an HTTP connection/resource leak on every call, which will accumulate under realistic usage patterns.",
+       "Confidence": 90,
+       "Headline": "Response body never closed — HTTP connection leak",
+       "Suggestion": "defer resp.Body.Close()",
+       "Evidence": [
+        "resp, err := c.http.Do(req)",
+        "if err != nil {",
+        "    return nil, fmt.Errorf(\"whoami: %w\", err)",
+        "}",
+        "if resp.StatusCode \u003c 200 || resp.StatusCode \u003e 299 {"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "response-body-never-closed",
+        "file": "internal/bitbucket/whoami.go",
+        "lines": [
+         16,
+         28
+        ],
+        "keywords": [
+         "leak",
+         "leaked",
+         "not closed",
+         "never closed",
+         "close the body",
+         "closing the body",
+         "resp.Body.Close",
+         "connection"
+        ],
+        "why": "The response body is never closed on any path, so the underlying connection is leaked on every call, successful or not."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3467,
+      "CachedTokens": 3456,
+      "CompletionTokens": 3767,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "resource-leak",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [
+      {
+       "Expected": {
+        "id": "response-body-never-closed",
+        "file": "internal/bitbucket/whoami.go",
+        "lines": [
+         16,
+         28
+        ],
+        "keywords": [
+         "leak",
+         "leaked",
+         "not closed",
+         "never closed",
+         "close the body",
+         "closing the body",
+         "resp.Body.Close",
+         "connection"
+        ],
+        "why": "The response body is never closed on any path, so the underlying connection is leaked on every call, successful or not."
+       },
+       "Found": false,
+       "Finding": -1,
+       "Why": "no finding on internal/bitbucket/whoami.go"
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3467,
+      "CachedTokens": 3456,
+      "CompletionTokens": 2620,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "resource-leak",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/bitbucket/whoami.go",
+       "Line": 18,
+       "Severity": "issue",
+       "Comment": "The removal of `defer resp.Body.Close()` on line 20 (deleted in the diff) means the function no longer closes the response body on any successful return path (status error, decode error, or success). This leaks file descriptors and prevents connection reuse, which will cause resource exhaustion under sustained load.",
+       "Confidence": 95,
+       "Headline": "Remove response body close leaks file descriptors",
+       "Suggestion": null,
+       "Evidence": [
+        "resp, err := c.http.Do(req)",
+        "if err != nil {",
+        "    return nil, fmt.Errorf(\"whoami: %w\", err)",
+        "}",
+        "if resp.StatusCode \u003c 200 || resp.StatusCode \u003e 299 {"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "response-body-never-closed",
+        "file": "internal/bitbucket/whoami.go",
+        "lines": [
+         16,
+         28
+        ],
+        "keywords": [
+         "leak",
+         "leaked",
+         "not closed",
+         "never closed",
+         "close the body",
+         "closing the body",
+         "resp.Body.Close",
+         "connection"
+        ],
+        "why": "The response body is never closed on any path, so the underlying connection is leaked on every call, successful or not."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Moved": [
+      {
+       "File": "internal/bitbucket/whoami.go",
+       "From": 17,
+       "To": 18
+      }
+     ],
+     "Cost": {
+      "PromptTokens": 3467,
+      "CachedTokens": 3456,
+      "CompletionTokens": 2044,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0.8,
+     "Extra": 0,
+     "Full": 0.8,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0.6,
+     "Extra": 0,
+     "Full": 0.6,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2.4
+    }
+   ]
+  },
+  {
+   "Case": "struct-field-race",
+   "Seeded": 1,
+   "Samples": [
+    {
+     "Case": "struct-field-race",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/queue/queue.go",
+       "Line": 35,
+       "Severity": "issue",
+       "Comment": "Removing the mutex locks around the assignment to `q.depth` in `worker()` creates a data race. While `q.pending` is read under the mutex in `Submit` and `Depth`, the `take` method is not shown, but the removal of the lock means concurrent calls to `Submit` can modify `q.pending` and `q.depth` while `worker` is reading `q.pending` and writing `q.depth` without synchronization, violating Go's memory model and causing undefined behavior.",
+       "Confidence": 95,
+       "Headline": "Data race on queue depth and pending slice due to removed mutex",
+       "Suggestion": "q.mu.Lock()\n\t\tq.depth = len(q.pending)\n\t\tq.mu.Unlock()",
+       "Evidence": [
+        "q.depth = len(q.pending)"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "depth-written-without-mutex",
+        "file": "internal/queue/queue.go",
+        "lines": [
+         28,
+         35
+        ],
+        "keywords": [
+         "race",
+         "unsynchronized",
+         "unsynchronised",
+         "without holding",
+         "without the lock",
+         "without the mutex",
+         "q.mu",
+         "concurrent",
+         "data race"
+        ],
+        "why": "The worker goroutine writes q.depth and reads q.pending without holding q.mu, while Submit writes and Depth reads the same fields under the mutex; that is a data race."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3411,
+      "CachedTokens": 3072,
+      "CompletionTokens": 3211,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "struct-field-race",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/queue/queue.go",
+       "Line": 35,
+       "Severity": "issue",
+       "Comment": "The `worker` method updates `q.depth` without holding the mutex, while `Submit` and `Depth` both use the mutex when accessing `q.pending` and `q.depth`. This is a data race. Under concurrent access, the worker's update of `q.depth` may interleave with `Submit` or `Depth`, leading to an inconsistent view of the queue depth. Re-add the mutex lock and unlock around the update of `q.depth`.",
+       "Confidence": 95,
+       "Headline": "Data race in worker's update of q.depth without mutex lock",
+       "Suggestion": "\t\tq.run(j)\n\t\tq.mu.Lock()\n\t\tq.depth = len(q.pending)\n\t\tq.mu.Unlock()",
+       "Evidence": [
+        "q.run(j)",
+        "q.depth = len(q.pending)"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "depth-written-without-mutex",
+        "file": "internal/queue/queue.go",
+        "lines": [
+         28,
+         35
+        ],
+        "keywords": [
+         "race",
+         "unsynchronized",
+         "unsynchronised",
+         "without holding",
+         "without the lock",
+         "without the mutex",
+         "q.mu",
+         "concurrent",
+         "data race"
+        ],
+        "why": "The worker goroutine writes q.depth and reads q.pending without holding q.mu, while Submit writes and Depth reads the same fields under the mutex; that is a data race."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3411,
+      "CachedTokens": 3328,
+      "CompletionTokens": 3058,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "struct-field-race",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [
+      {
+       "Expected": {
+        "id": "depth-written-without-mutex",
+        "file": "internal/queue/queue.go",
+        "lines": [
+         28,
+         35
+        ],
+        "keywords": [
+         "race",
+         "unsynchronized",
+         "unsynchronised",
+         "without holding",
+         "without the lock",
+         "without the mutex",
+         "q.mu",
+         "concurrent",
+         "data race"
+        ],
+        "why": "The worker goroutine writes q.depth and reads q.pending without holding q.mu, while Submit writes and Depth reads the same fields under the mutex; that is a data race."
+       },
+       "Found": false,
+       "Finding": -1,
+       "Why": "no finding on internal/queue/queue.go"
+      }
+     ],
+     "Extra": 0,
+     "Dropped": [
+      {
+       "Finding": {
+        "File": "internal/queue/queue.go",
+        "Line": 35,
+        "Severity": "issue",
+        "Comment": "The `worker` goroutine writes `q.depth` without holding the mutex, while `Depth` reads it under the mutex. `Submit` also writes `q.depth` under the mutex. This creates a data race: a concurrent `Submit` can change `q.pending` and `q.depth` while the worker is in the middle of `q.depth = len(q.pending)`, causing the depth to become inconsistent with the pending list.",
+        "Confidence": 95,
+        "Headline": "Data race on `q.depth` in worker — missing lock",
+        "Suggestion": "q.mu.Lock()\n\t\tq.depth = len(q.pending)\n\t\tq.mu.Unlock()",
+        "Evidence": [
+         "func (q *Queue) worker() {",
+         "    for {",
+         "        j, ok := q.take()",
+         "        if !ok {",
+         "            return    // drained and shutdown signaled    // return means only one worker is running at a time    // take() signals when no more jobs    // after running a job, the worker needs to know the new depth    // but depth is a simple counter that can be read by other goroutines    // via Depth() and written by Submit()    // must hold lock when modifying shared state    // removed lock/unlock    // this is unsafe"
+        ]
+       },
+       "Reason": "evidence_not_found"
+      }
+     ],
+     "Cost": {
+      "PromptTokens": 3411,
+      "CachedTokens": 3328,
+      "CompletionTokens": 2924,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "struct-field-race",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/queue/queue.go",
+       "Line": 35,
+       "Severity": "issue",
+       "Comment": "The `worker` goroutine updates `q.depth` without holding `q.mu`, while `Submit` and `Depth` (called from other goroutines) access `depth` under the mutex. This creates a data race: a concurrent call to `Submit` or `Depth` while the worker is writing to `depth` results in unsynchronized memory access, which is undefined behavior in Go and can cause crashes or corrupted reads.",
+       "Confidence": 95,
+       "Headline": "Data race on `depth` field in `worker` method — blocking",
+       "Suggestion": "q.mu.Lock()\n\t\tq.depth = len(q.pending)\n\t\tq.mu.Unlock()",
+       "Evidence": [
+        "q.run(j)",
+        "q.depth = len(q.pending)"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "depth-written-without-mutex",
+        "file": "internal/queue/queue.go",
+        "lines": [
+         28,
+         35
+        ],
+        "keywords": [
+         "race",
+         "unsynchronized",
+         "unsynchronised",
+         "without holding",
+         "without the lock",
+         "without the mutex",
+         "q.mu",
+         "concurrent",
+         "data race"
+        ],
+        "why": "The worker goroutine writes q.depth and reads q.pending without holding q.mu, while Submit writes and Depth reads the same fields under the mutex; that is a data race."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3411,
+      "CachedTokens": 3328,
+      "CompletionTokens": 3260,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "struct-field-race",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/queue/queue.go",
+       "Line": 35,
+       "Severity": "issue",
+       "Comment": "Removing the mutex around `q.depth = len(q.pending)` in the `worker` goroutine creates a data race. `Submit` and `Depth` both acquire `q.mu` to read/write `q.depth` and `q.pending`, but the worker now updates `q.depth` without locking while other goroutines may be modifying `q.pending` or reading `q.depth`. This can cause torn reads/writes of `q.depth` or incorrect values being returned by `Depth()`.",
+       "Confidence": 90,
+       "Headline": "Data race on q.depth after mutex removal — blocking",
+       "Suggestion": "q.mu.Lock()\n\t\tq.depth = len(q.pending)\n\t\tq.mu.Unlock()",
+       "Evidence": [
+        "q.run(j)",
+        "q.depth = len(q.pending)"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "depth-written-without-mutex",
+        "file": "internal/queue/queue.go",
+        "lines": [
+         28,
+         35
+        ],
+        "keywords": [
+         "race",
+         "unsynchronized",
+         "unsynchronised",
+         "without holding",
+         "without the lock",
+         "without the mutex",
+         "q.mu",
+         "concurrent",
+         "data race"
+        ],
+        "why": "The worker goroutine writes q.depth and reads q.pending without holding q.mu, while Submit writes and Depth reads the same fields under the mutex; that is a data race."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3411,
+      "CachedTokens": 3328,
+      "CompletionTokens": 1810,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0.8,
+     "Extra": 0,
+     "Full": 0.8,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0.6,
+     "Extra": 0,
+     "Full": 0.6,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2.4
+    }
+   ]
+  },
+  {
+   "Case": "unchecked-error",
+   "Seeded": 1,
+   "Samples": [
+    {
+     "Case": "unchecked-error",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/store/claims.go",
+       "Line": 21,
+       "Severity": "issue",
+       "Comment": "The `tx.Commit(ctx)` error is ignored and the function returns `nil` even if the commit fails. This can lead the caller to believe the claim was added successfully when the transaction was actually rolled back by the deferred `tx.Rollback`. This is a data-loss risk because the caller might proceed as if the claim exists.",
+       "Confidence": 90,
+       "Headline": "Commit error silently ignored in AddClaim — blocking",
+       "Suggestion": "\tif err := tx.Commit(ctx); err != nil {\n\t\treturn err\n\t}\n\treturn nil",
+       "Evidence": [
+        "tx.Commit(ctx)",
+        "return nil"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "commit-error-swallowed",
+        "file": "internal/store/claims.go",
+        "lines": [
+         20,
+         22
+        ],
+        "keywords": [
+         "Commit",
+         "ignored",
+         "unchecked",
+         "discarded",
+         "swallow"
+        ],
+        "why": "tx.Commit's error is discarded, so a failed commit is reported to the caller as success and the claim silently does not exist."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3381,
+      "CachedTokens": 3072,
+      "CompletionTokens": 1984,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "unchecked-error",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/store/claims.go",
+       "Line": 21,
+       "Severity": "issue",
+       "Comment": "The code now calls `tx.Commit(ctx)` without checking the returned error. If the commit fails (e.g., due to a deferred constraint violation or a transient database error), the function returns `nil` and the caller assumes success, while the data was not actually persisted. This is a data loss risk.",
+       "Confidence": 90,
+       "Headline": "Commit error not handled in AddClaim",
+       "Suggestion": "if err := tx.Commit(ctx); err != nil {\n\treturn err\n}\nreturn nil",
+       "Evidence": [
+        "tx.Commit(ctx)",
+        "return nil"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "commit-error-swallowed",
+        "file": "internal/store/claims.go",
+        "lines": [
+         20,
+         22
+        ],
+        "keywords": [
+         "Commit",
+         "ignored",
+         "unchecked",
+         "discarded",
+         "swallow"
+        ],
+        "why": "tx.Commit's error is discarded, so a failed commit is reported to the caller as success and the claim silently does not exist."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3381,
+      "CachedTokens": 3328,
+      "CompletionTokens": 2103,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "unchecked-error",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/store/claims.go",
+       "Line": 21,
+       "Severity": "issue",
+       "Comment": "The `AddClaim` function ignores the error from `tx.Commit(ctx)`. If the commit fails (e.g., due to a constraint violation or connection issue), the deferred `tx.Rollback` will run, but the function returns `nil` as if the claim was successfully added. This misleads callers into believing the operation succeeded, leading to data inconsistency and silent failure. The commit error must be checked and returned to the caller.",
+       "Confidence": 95,
+       "Headline": "Commit error ignored in AddClaim — silent failure",
+       "Suggestion": "if err := tx.Commit(ctx); err != nil {\n    return err\n}\nreturn nil",
+       "Evidence": [
+        "tx.Commit(ctx)",
+        "return nil"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "commit-error-swallowed",
+        "file": "internal/store/claims.go",
+        "lines": [
+         20,
+         22
+        ],
+        "keywords": [
+         "Commit",
+         "ignored",
+         "unchecked",
+         "discarded",
+         "swallow"
+        ],
+        "why": "tx.Commit's error is discarded, so a failed commit is reported to the caller as success and the claim silently does not exist."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3381,
+      "CachedTokens": 3328,
+      "CompletionTokens": 2376,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "unchecked-error",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/store/claims.go",
+       "Line": 21,
+       "Severity": "issue",
+       "Comment": "The commit error is ignored, so if the commit fails, the function returns nil (success) even though the transaction was rolled back. This can lead to data loss and caller confusion.",
+       "Confidence": 95,
+       "Headline": "Ignored error from transaction commit in AddClaim",
+       "Suggestion": "if err := tx.Commit(ctx); err != nil {\n\treturn err\n}\nreturn nil",
+       "Evidence": [
+        "tx.Commit(ctx)",
+        "return nil"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "commit-error-swallowed",
+        "file": "internal/store/claims.go",
+        "lines": [
+         20,
+         22
+        ],
+        "keywords": [
+         "Commit",
+         "ignored",
+         "unchecked",
+         "discarded",
+         "swallow"
+        ],
+        "why": "tx.Commit's error is discarded, so a failed commit is reported to the caller as success and the claim silently does not exist."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3381,
+      "CachedTokens": 3328,
+      "CompletionTokens": 1858,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "unchecked-error",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/store/claims.go",
+       "Line": 21,
+       "Severity": "issue",
+       "Comment": "Commit error is now silently discarded, causing the function to return `nil` (success) even when the transaction fails to commit. A realistic failure scenario is a network partition or constraint violation during commit; the caller proceeds as if the claim was recorded, leading to data loss or inconsistent state.",
+       "Confidence": 95,
+       "Headline": "Commit error ignored — data loss risk",
+       "Suggestion": "\tif err := tx.Commit(ctx); err != nil {\n\t\treturn fmt.Errorf(\"commit claim: %w\", err)\n\t}\n\treturn nil",
+       "Evidence": [
+        "\ttx.Commit(ctx)",
+        "\treturn nil"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "commit-error-swallowed",
+        "file": "internal/store/claims.go",
+        "lines": [
+         20,
+         22
+        ],
+        "keywords": [
+         "Commit",
+         "ignored",
+         "unchecked",
+         "discarded",
+         "swallow"
+        ],
+        "why": "tx.Commit's error is discarded, so a failed commit is reported to the caller as success and the claim silently does not exist."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3381,
+      "CachedTokens": 3328,
+      "CompletionTokens": 3379,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  },
+  {
+   "Case": "wrong-error-wrapped",
+   "Seeded": 1,
+   "Samples": [
+    {
+     "Case": "wrong-error-wrapped",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/store/claims.go",
+       "Line": 20,
+       "Severity": "issue",
+       "Comment": "The change swaps the error wrapping in the two error conditions. Now, when the database returns no row, the error wraps the raw `errNoRows` (instead of `ErrNoClaim`), and on other database errors it wraps `ErrNoClaim` (instead of the raw error). This breaks the function's contract: callers using `errors.Is(err, ErrNoClaim)` to detect no claim will now see `ErrNoClaim` on any database error and miss the no-claim case because the error no longer wraps `ErrNoClaim`.",
+       "Confidence": 95,
+       "Headline": "Error wrapping swapped for no-row vs database errors",
+       "Suggestion": "return \"\", fmt.Errorf(\"owner of %q: %w\", project, ErrNoClaim)",
+       "Evidence": [
+        "return \"\", fmt.Errorf(\"owner of %q: %w\", project, err)",
+        "return \"\", fmt.Errorf(\"owner of %q: %w\", project, ErrNoClaim)"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "sentinel-wraps-swapped",
+        "file": "internal/store/claims.go",
+        "lines": [
+         19,
+         23
+        ],
+        "keywords": [
+         "swapped",
+         "swap",
+         "wrong error",
+         "reversed",
+         "backwards",
+         "back to front",
+         "the other way",
+         "ErrNoClaim",
+         "errors.Is"
+        ],
+        "why": "The branches wrap each other's error: errors.Is(err, ErrNoClaim) is now false when the project is genuinely unclaimed and true when the query failed, so a database fault is treated as an unowned project."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3540,
+      "CachedTokens": 3072,
+      "CompletionTokens": 2715,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "wrong-error-wrapped",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/store/claims.go",
+       "Line": 20,
+       "Severity": "issue",
+       "Comment": "The error handling for the no-row and other-database-error conditions has been swapped. When there are no rows, the error now wraps `errNoRows` instead of `ErrNoClaim`, breaking the contract that callers can use `errors.Is(err, ErrNoClaim)` to detect a missing claim. For any other database error, the error now wraps `ErrNoClaim` instead of the original error, losing the underlying cause and making it impossible for callers to distinguish a database fault from a missing claim. Revert the two return statements so that the no-row case uses `ErrNoClaim` and the other-error case uses the original `err`.",
+       "Confidence": 95,
+       "Headline": "Swapped error wrapping breaks no-row vs other-error distinction",
+       "Suggestion": null,
+       "Evidence": [
+        "if errors.Is(err, errNoRows) {",
+        "return \"\", fmt.Errorf(\"owner of %q: %w\", project, err)",
+        "if err != nil {",
+        "return \"\", fmt.Errorf(\"owner of %q: %w\", project, ErrNoClaim)"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "sentinel-wraps-swapped",
+        "file": "internal/store/claims.go",
+        "lines": [
+         19,
+         23
+        ],
+        "keywords": [
+         "swapped",
+         "swap",
+         "wrong error",
+         "reversed",
+         "backwards",
+         "back to front",
+         "the other way",
+         "ErrNoClaim",
+         "errors.Is"
+        ],
+        "why": "The branches wrap each other's error: errors.Is(err, ErrNoClaim) is now false when the project is genuinely unclaimed and true when the query failed, so a database fault is treated as an unowned project."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3540,
+      "CachedTokens": 3456,
+      "CompletionTokens": 2381,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "wrong-error-wrapped",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/store/claims.go",
+       "Line": 20,
+       "Severity": "issue",
+       "Comment": "The diff swaps the error values in the two `return` statements, inverting the function’s contract. When the database returns `errNoRows` (no claim exists), the new code wraps the raw database error instead of `ErrNoClaim`; conversely, on a genuine database fault it wraps `ErrNoClaim`. This means callers using `errors.Is(err, ErrNoClaim)` will mis-classify a missing claim as a database error and vice-versa, breaking the documented distinction.",
+       "Confidence": 95,
+       "Headline": "Error values swapped in Owner — breaks contract",
+       "Suggestion": null,
+       "Evidence": [
+        "if errors.Is(err, errNoRows) {",
+        "    return \"\", fmt.Errorf(\"owner of %q: %w\", project, err)",
+        "}",
+        "if err != nil {",
+        "    return \"\", fmt.Errorf(\"owner of %q: %w\", project, ErrNoClaim)"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "sentinel-wraps-swapped",
+        "file": "internal/store/claims.go",
+        "lines": [
+         19,
+         23
+        ],
+        "keywords": [
+         "swapped",
+         "swap",
+         "wrong error",
+         "reversed",
+         "backwards",
+         "back to front",
+         "the other way",
+         "ErrNoClaim",
+         "errors.Is"
+        ],
+        "why": "The branches wrap each other's error: errors.Is(err, ErrNoClaim) is now false when the project is genuinely unclaimed and true when the query failed, so a database fault is treated as an unowned project."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3540,
+      "CachedTokens": 3456,
+      "CompletionTokens": 3568,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "wrong-error-wrapped",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/store/claims.go",
+       "Line": 20,
+       "Severity": "issue",
+       "Comment": "The diff swaps the error wrapping in the two error branches. When the query returns `errNoRows` (project not claimed), the function now returns the raw `err` (which is `errNoRows`) instead of wrapping `ErrNoClaim`. This breaks the contract that callers match on `ErrNoClaim` to detect an unclaimed project. Conversely, for other database errors, the function now returns `ErrNoClaim`, incorrectly indicating the project is not claimed when there is actually a database fault.",
+       "Confidence": 90,
+       "Headline": "Swapped error wrapping in Owner function — misreports database errors as no claim",
+       "Suggestion": "if errors.Is(err, errNoRows) {\n    return \"\", fmt.Errorf(\"owner of %q: %w\", project, ErrNoClaim)\n}\nif err != nil {\n    return \"\", fmt.Errorf(\"owner of %q: %w\", project, err)\n}",
+       "Evidence": [
+        "if errors.Is(err, errNoRows) {",
+        "    return \"\", fmt.Errorf(\"owner of %q: %w\", project, err)",
+        "}",
+        "if err != nil {",
+        "    return \"\", fmt.Errorf(\"owner of %q: %w\", project, ErrNoClaim)"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "sentinel-wraps-swapped",
+        "file": "internal/store/claims.go",
+        "lines": [
+         19,
+         23
+        ],
+        "keywords": [
+         "swapped",
+         "swap",
+         "wrong error",
+         "reversed",
+         "backwards",
+         "back to front",
+         "the other way",
+         "ErrNoClaim",
+         "errors.Is"
+        ],
+        "why": "The branches wrap each other's error: errors.Is(err, ErrNoClaim) is now false when the project is genuinely unclaimed and true when the query failed, so a database fault is treated as an unowned project."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3540,
+      "CachedTokens": 3456,
+      "CompletionTokens": 2572,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "wrong-error-wrapped",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "internal/store/claims.go",
+       "Line": 20,
+       "Severity": "issue",
+       "Comment": "The error wrapping is swapped between the two branches. The `errNoRows` path should wrap `ErrNoClaim` (no row = no claim) and the general-error path should wrap the raw `err` (database fault). After this diff, `errNoRows` wraps the internal `err` so callers checking `errors.Is(err, ErrNoClaim)` as the docstring instructs will miss it, and a genuine database fault incorrectly matches `ErrNoClaim`.",
+       "Confidence": 95,
+       "Headline": "Error wrapping swapped — ErrNoClaim inverted for no-row vs db-fault",
+       "Suggestion": "\tif errors.Is(err, errNoRows) {\n\t\treturn \"\", fmt.Errorf(\"owner of %q: %w\", project, ErrNoClaim)\n\t}\n\tif err != nil {\n\t\treturn \"\", fmt.Errorf(\"owner of %q: %w\", project, err)\n\t}",
+       "Evidence": [
+        "\tif errors.Is(err, errNoRows) {",
+        "\t\treturn \"\", fmt.Errorf(\"owner of %q: %w\", project, err)",
+        "\t}",
+        "\tif err != nil {",
+        "\t\treturn \"\", fmt.Errorf(\"owner of %q: %w\", project, ErrNoClaim)"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "sentinel-wraps-swapped",
+        "file": "internal/store/claims.go",
+        "lines": [
+         19,
+         23
+        ],
+        "keywords": [
+         "swapped",
+         "swap",
+         "wrong error",
+         "reversed",
+         "backwards",
+         "back to front",
+         "the other way",
+         "ErrNoClaim",
+         "errors.Is"
+        ],
+        "why": "The branches wrap each other's error: errors.Is(err, ErrNoClaim) is now false when the project is genuinely unclaimed and true when the query failed, so a database fault is treated as an unowned project."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 3540,
+      "CachedTokens": 3456,
+      "CompletionTokens": 892,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  }
+ ],
+ "Views": [
+  {
+   "Name": "single",
+   "Calls": 1,
+   "Caught": 7.2,
+   "Extra": 0.2,
+   "AllCaught": 0.40960000000000013,
+   "ControlsClean": 0.8,
+   "CostMultiple": null
+  },
+  {
+   "Name": "agree2",
+   "Calls": 2,
+   "Caught": 5.800000000000001,
+   "Extra": 0,
+   "AllCaught": 0.05183999999999999,
+   "ControlsClean": 1,
+   "CostMultiple": null
+  },
+  {
+   "Name": "either2",
+   "Calls": 2,
+   "Caught": 8,
+   "Extra": 1,
+   "AllCaught": 1,
+   "ControlsClean": 0.6,
+   "CostMultiple": null
+  },
+  {
+   "Name": "vote3",
+   "Calls": 3,
+   "Caught": 8,
+   "Extra": 0,
+   "AllCaught": 1,
+   "ControlsClean": 1,
+   "CostMultiple": null
+  },
+  {
+   "Name": "tiered3",
+   "Calls": 3,
+   "Caught": 8,
+   "Extra": 0.9,
+   "AllCaught": 1,
+   "ControlsClean": 1,
+   "CostMultiple": null
+  },
+  {
+   "Name": "union3",
+   "Calls": 3,
+   "Caught": 8,
+   "Extra": 1.5,
+   "AllCaught": 1,
+   "ControlsClean": 0.4,
+   "CostMultiple": null
+  },
+  {
+   "Name": "adaptive",
+   "Calls": 2.2166666666666663,
+   "Caught": 8,
+   "Extra": 0,
+   "AllCaught": 1,
+   "ControlsClean": 1,
+   "CostMultiple": null
+  }
+ ],
+ "Agreement": [
+  {
+   "Votes": 1,
+   "Real": 0,
+   "RealIssue": 0,
+   "Invented": 1,
+   "InventedIssue": 0
+  },
+  {
+   "Votes": 2,
+   "Real": 1,
+   "RealIssue": 1,
+   "Invented": 0,
+   "InventedIssue": 0
+  },
+  {
+   "Votes": 3,
+   "Real": 1,
+   "RealIssue": 1,
+   "Invented": 0,
+   "InventedIssue": 0
+  },
+  {
+   "Votes": 4,
+   "Real": 4,
+   "RealIssue": 4,
+   "Invented": 0,
+   "InventedIssue": 0
+  },
+  {
+   "Votes": 5,
+   "Real": 3,
+   "RealIssue": 3,
+   "Invented": 0,
+   "InventedIssue": 0
+  }
+ ],
+ "Tokens": {
+  "ColdPrompt": 3448.3333333333335,
+  "ColdCached": 3072,
+  "ColdCompletion": 1967.6666666666667,
+  "WarmPrompt": 3448.3333333333335,
+  "WarmCached": 3392,
+  "WarmCompletion": 1779.0625
+ }
+}

@@ -63,6 +63,13 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   evidence, never an anchor: a real finding quoted the call outside the
   diff, and rejecting that dropped it. Blunt rules, never
   a judge model. Drops are logged by reason, never silent.
+- **A second model may MERGE findings, never judge them.** Allowed: one
+  merge-only call over the union of several reviews (duplicates into one,
+  drop nothing, add nothing), its output validated like any review. Not
+  allowed: a model that decides whether a finding is true. Measured on the
+  evals: a keep-by-default judge dropped a real bug in 4 of 9 groups; a 2-of-3
+  vote dropped every bug found in under half the runs. Fewer than two
+  candidates = no merge call, the lone finding stands.
 - `strings.ReplaceAll`, never `text/template`: the files contain JSON braces.
 - **Single worker for every Bitbucket call**, per-PR supersede. Only the
   gateway call leaves it, onto a bounded pool (`REVIEW_INFERENCE_CONCURRENCY`
@@ -97,6 +104,11 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
 - **Every eval run is committed** to `internal/evals/results/` with a row in
   its README, worse scores included: an uncommitted number cannot be
   compared with the next one, and a regression nobody recorded is invisible.
+- `-samples N`, `-confirm`, `-mix` are an experiment (N reviews merged),
+  committed under `results/sampled/`, never a series row. First sample
+  alone, the rest after: together they all miss the prefix cache. Result
+  2026-10-02: union + merge-only call beats vote and judge; production stays
+  single-pass (no saving on small diffs).
 - An endpoint that lists no `max_input_tokens` needs `-context-window`
   (e.g. `1000000`); without it Startup fails and nothing is scored.
 - Eval scoring must stay blunt (file + line window + keyword). A judge model

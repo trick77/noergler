@@ -236,30 +236,39 @@ type Reviewer interface {
 func Run(ctx context.Context, client Reviewer, template string, cases []Case, count inference.CountFunc) Score {
 	var score Score
 	for _, c := range cases {
-		res := Result{Case: c.Name}
-		assembled := inference.AssembleReviewPrompt(inference.AssembleRequest{
-			Template: template,
-			Files:    c.Files,
-		}, count)
-
-		out := client.Review(ctx, inference.ReviewRequest{
-			Prompt:         assembled.Prompt,
-			PromptTokens:   assembled.PromptTokens,
-			ResponseSchema: inference.ReviewResponseFormat(),
-		})
-		res.Outcome = out.Outcome.String()
-		v := inference.ValidateFindings(out.Review.Findings, diff.BuildAnchorIndex(c.Files))
-		res.Findings, res.Dropped, res.Moved = v.Kept, v.Dropped, v.Reanchored
-		if out.Err != nil {
-			res.Err, res.ErrMsg = out.Err, out.Err.Error()
-		}
-		res.Matches, res.Extra, res.Duplicates = match(c.Expected, res.Findings)
+		res, _ := reviewCase(ctx, client, c, assemble(template, c, count))
 		score.Seeded += len(c.Expected)
 		score.Caught += res.Found()
 		score.Extra += res.Extra
 		score.Results = append(score.Results, res)
 	}
 	return score
+}
+
+func assemble(template string, c Case, count inference.CountFunc) inference.AssembledPrompt {
+	return inference.AssembleReviewPrompt(inference.AssembleRequest{
+		Template: template,
+		Files:    c.Files,
+	}, count)
+}
+
+// reviewCase is one review of one case, validated and scored. Run and
+// RunSampled both go through it, so a sample is scored exactly like a run.
+func reviewCase(ctx context.Context, client Reviewer, c Case, assembled inference.AssembledPrompt) (Result, inference.CallCost) {
+	res := Result{Case: c.Name}
+	out := client.Review(ctx, inference.ReviewRequest{
+		Prompt:         assembled.Prompt,
+		PromptTokens:   assembled.PromptTokens,
+		ResponseSchema: inference.ReviewResponseFormat(),
+	})
+	res.Outcome = out.Outcome.String()
+	v := inference.ValidateFindings(out.Review.Findings, diff.BuildAnchorIndex(c.Files))
+	res.Findings, res.Dropped, res.Moved = v.Kept, v.Dropped, v.Reanchored
+	if out.Err != nil {
+		res.Err, res.ErrMsg = out.Err, out.Err.Error()
+	}
+	res.Matches, res.Extra, res.Duplicates = match(c.Expected, res.Findings)
+	return res, out.Cost
 }
 
 // Settings is what a run needs from the environment.
