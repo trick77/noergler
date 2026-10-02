@@ -154,6 +154,14 @@ func validateOne(f ReviewFinding, idx diff.AnchorIndex) (DropReason, int) {
 		}
 		h, where := matchEvidence(e, fa)
 		switch {
+		case where == notFound && isAnnotation(e):
+			// The model's own note or an elision between quoted lines
+			// ("// close is missing here", "..."). Seen in the evals on a
+			// correct finding; it is not code, so it proves nothing either
+			// way. Skipped like a blank line. Before the next case: a note
+			// that happens to read like a comment in another file is still
+			// a note.
+			continue
 		case where == notFound && shownElsewhere(e, idx):
 			// A cross-file finding quotes the contract the diff changed in
 			// one file beside the caller that breaks in this one. The other
@@ -161,12 +169,6 @@ func validateOne(f ReviewFinding, idx diff.AnchorIndex) (DropReason, int) {
 			// line of this file: the inDiff rule below still wants one of
 			// those. Seen in the evals: the right bug on the right line,
 			// dropped for quoting the changed signature next to it.
-		case where == notFound && isAnnotation(e):
-			// The model's own note or an elision between quoted lines
-			// ("// close is missing here", "..."). Seen in the evals on a
-			// correct finding; it is not code, so it proves nothing either
-			// way. Skipped like a blank line.
-			continue
 		case where == notFound:
 			return DropEvidenceNotFound, 0
 		case where == onNewSide:
@@ -295,9 +297,9 @@ func matchEvidence(quote string, fa diff.FileAnchors) (uint64, evidenceSource) {
 	return 0, notFound
 }
 
-// shownElsewhere reports whether a quoted line is in any indexed file. Asked
-// only once the finding's own file has no such line, so a hit is another
-// file's.
+// shownElsewhere reports whether a quoted line is in any indexed file or in
+// the context diff. Asked only once the finding's own file has no such line,
+// so a hit is another file's.
 func shownElsewhere(quote string, idx diff.AnchorIndex) bool {
 	for _, fa := range idx {
 		if _, where := matchEvidence(quote, fa); where != notFound {

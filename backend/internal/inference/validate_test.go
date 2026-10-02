@@ -242,6 +242,39 @@ func TestValidateFindings_EvidenceFromAnotherShownFile(t *testing.T) {
 	}
 }
 
+// An incremental review: an earlier push changed Touch, this push only adds
+// the stale call. The signature is shown in the cumulative PR diff alone.
+// Quotable, but a file shown only there is still not a file to post on.
+func TestValidateFindings_EvidenceFromTheContextDiff(t *testing.T) {
+	idx := diff.BuildAnchorIndex([]diff.FileReviewData{{
+		Path: "session/manager.go",
+		Diff: "@@ -7,2 +7,3 @@\n" +
+			" func (m *Manager) Hold(id string, d time.Duration) error {\n" +
+			"+\treturn m.store.Touch(id, int64(d.Seconds()))\n" +
+			" }\n",
+	}})
+	idx.AddContextDiff("diff --git a/session/store.go b/session/store.go\n" +
+		"@@ -1,3 +1,3 @@\n" +
+		"-func (s *Store) Touch(id string, ttlSeconds int64) error {\n" +
+		"+func (s *Store) Touch(id string, ttlMillis int64) error {\n" +
+		" \treturn s.rdb.PExpire(id, ttlMillis)\n")
+	call := "return m.store.Touch(id, int64(d.Seconds()))"
+	sig := "func (s *Store) Touch(id string, ttlMillis int64) error {"
+
+	v := ValidateFindings([]ReviewFinding{vf("session/manager.go", 8, call, sig)}, idx)
+	if len(v.Kept) != 1 || v.Kept[0].Line != 8 {
+		t.Errorf("kept = %+v, dropped = %+v: the context diff's line is evidence", v.Kept, v.Dropped)
+	}
+	v = ValidateFindings([]ReviewFinding{vf("session/manager.go", 8, sig)}, idx)
+	if len(v.Dropped) != 1 || v.Dropped[0].Reason != DropEvidenceOutsideDiff {
+		t.Errorf("dropped = %+v, want evidence_outside_diff: no diff line of the file quoted", v.Dropped)
+	}
+	v = ValidateFindings([]ReviewFinding{vf("session/store.go", 1, sig)}, idx)
+	if len(v.Dropped) != 1 || v.Dropped[0].Reason != DropUnknownFile {
+		t.Errorf("dropped = %+v, want unknown_file: store.go is context, not a reviewed file", v.Dropped)
+	}
+}
+
 // The quote as written is tried everywhere before a stripped form is tried
 // anywhere. A removed YAML list item must not match an unrelated shown line
 // once its leading `-` is stripped, and so must not move the finding there.

@@ -159,6 +159,32 @@ func BuildAnchorIndex(files []FileReviewData) AnchorIndex {
 	return idx
 }
 
+// contextKey files the lines the prompt showed outside any reviewed file. NUL
+// cannot be in a path, so no finding names it as its file.
+const contextKey = "\x00context"
+
+// AddContextDiff indexes a diff the prompt showed as context only (the
+// cumulative PR diff of an incremental review), with each line's marker taken
+// off. Its lines can be quoted as evidence and nothing else: no finding is
+// posted on them, and a finding still needs a diff line of its own file. On
+// an incremental review the contract a push breaks may have changed in an
+// earlier push, and is then shown here and nowhere else.
+func (idx AnchorIndex) AddContextDiff(d string) {
+	if strings.TrimSpace(d) == "" {
+		return
+	}
+	fa := idx[contextKey]
+	for _, line := range strings.Split(d, "\n") {
+		if line != "" && strings.ContainsRune("+- ", rune(line[0])) {
+			line = line[1:]
+		}
+		fa.Content = append(fa.Content, HashLine(line))
+	}
+	slices.Sort(fa.Content)
+	fa.Content = slices.Compact(fa.Content)
+	idx[contextKey] = fa
+}
+
 // HashLine is the hash a shown line and a quoted evidence line are compared
 // by. Whitespace runs collapse to one space and the ends are trimmed, so a
 // quote that re-indents or re-spaces the code still matches it. strings.Fields

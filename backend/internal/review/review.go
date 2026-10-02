@@ -267,6 +267,11 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	}, r.tokens.Count)
 	r.logPromptComposition(ctx, prTag, assembled, incrementalFrom != "")
 
+	// The cumulative diff is quotable too: on an incremental review it is
+	// the only place an earlier push's change is shown.
+	anchors := diff.BuildAnchorIndex(files)
+	anchors.AddContextDiff(cumulativePR.diff)
+
 	return &reviewPlan{
 		key:             key,
 		project:         project,
@@ -281,7 +286,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		counter:         httpCounter,
 		prompt:          assembled.Prompt,
 		promptTokens:    assembled.PromptTokens,
-		anchors:         diff.BuildAnchorIndex(files),
+		anchors:         anchors,
 		existing:        existing,
 		contentSkipped:  contentSkipped,
 		ticket:          ticket,
