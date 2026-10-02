@@ -157,7 +157,7 @@ func TestCumulativeDiffRanksTouchedThenRelatedThenRest(t *testing.T) {
 	if touched < 0 || related < 0 || other < 0 {
 		t.Fatalf("a file is missing from the cumulative block:\n%s", block)
 	}
-	if !(touched < related && related < other) {
+	if touched >= related || related >= other {
 		t.Errorf("order is touched=%d related=%d other=%d, want ascending", touched, related, other)
 	}
 	if !strings.Contains(logs, "(1 touched by the push, 1 related, 1 other)") {
