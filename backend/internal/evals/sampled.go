@@ -25,12 +25,15 @@ import (
 // reports of one bug sit within that distance of the same evidence.
 const mergeSlack = 2
 
-// maxRedraws is how often a sample that did not complete is drawn again. A
-// sampled run makes five times the calls of a series run, so one transport
-// failure would void nearly every run. Production never retries; this is the
-// eval tool filling a hole in its own data, and it has a cost: a call cut off
-// for thinking too long is replaced by one that thought less, so redrawn
-// samples lean towards the quick answer. Each sample records its count.
+// maxRedraws is how often a review that did not complete is drawn again, in
+// a sampled run and in a series run alike. A sampled run makes five times
+// the calls of a series run, so one transport failure would void nearly
+// every run; on the 17-case corpus a series run rarely got through either,
+// and each void one is a committed row that scores nothing. Production never
+// retries; this is the eval tool filling a hole in its own data, and it has
+// a cost: a call cut off for thinking too long is replaced by one that
+// thought less, so redrawn results lean towards the quick answer. Each
+// result records its count.
 const maxRedraws = 2
 
 // MinSamples is the fewest samples a sampled run takes: the vote needs three.
@@ -162,8 +165,6 @@ type SampleCost struct {
 type Sample struct {
 	Result
 	Cost SampleCost
-	// Redraws is how many failed attempts came before this one.
-	Redraws int `json:",omitempty"`
 }
 
 // CaseView is one view's score on one case, averaged over every group of
@@ -280,13 +281,8 @@ func RunSampled(ctx context.Context, client Reviewer, template string, cases []C
 		assembled := assemble(template, c, count)
 		sc := SampledCase{Case: c.Name, Seeded: len(c.Expected), Samples: make([]Sample, samples)}
 		draw := func(i int) {
-			res, cost := reviewCase(ctx, client, c, assembled)
-			redraws := 0
-			for !completed(res) && redraws < maxRedraws && ctx.Err() == nil {
-				redraws++
-				res, cost = reviewCase(ctx, client, c, assembled)
-			}
-			sc.Samples[i] = Sample{Result: res, Redraws: redraws, Cost: SampleCost{
+			res, cost := drawCase(ctx, client, c, assembled)
+			sc.Samples[i] = Sample{Result: res, Cost: SampleCost{
 				PromptTokens:     cost.PromptTokens,
 				CachedTokens:     cost.CachedTokens,
 				CompletionTokens: cost.CompletionTokens,

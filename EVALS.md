@@ -111,7 +111,9 @@ two JSONs are left as scored.
   Re-validated, the finding is kept at line 64 and scores. The JSON is left
   as scored. Still open: a quote that is only PART of a comment line.
 - Direct mimo host: any review thinking past ~98 s dies on llmwire's 90 s
-  idle bound (`stream idle for 1m30s`). Not a gateway stall.
+  idle bound (`stream idle for 1m30s`). Not a gateway stall. A series run
+  now redraws such a case like a sampled run does (twice at most, counted
+  as `Redraws`); the redraw is the one that thought less.
 
 ## Single-run series (2026-09-20 to 2026-10-01, mimo-v2.5-pro high)
 

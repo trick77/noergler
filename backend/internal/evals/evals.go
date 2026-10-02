@@ -195,6 +195,9 @@ type Result struct {
 	// is neither scored nor Extra: it would never have reached the PR.
 	Dropped []inference.DroppedFinding `json:"Dropped,omitempty"`
 	Moved   []inference.Reanchor       `json:"Moved,omitempty"`
+	// Redraws is how many attempts that did not complete came before this
+	// one. A redrawn result leans towards the quick answer; see maxRedraws.
+	Redraws int `json:",omitempty"`
 	// Err is excluded from JSON: encoding/json renders an error as {}, so a
 	// committed report would record THAT a case failed but not why, making a
 	// 401 and a timeout look identical in history. ErrMsg carries the text.
@@ -236,7 +239,7 @@ type Reviewer interface {
 func Run(ctx context.Context, client Reviewer, template string, cases []Case, count inference.CountFunc) Score {
 	var score Score
 	for _, c := range cases {
-		res, _ := reviewCase(ctx, client, c, assemble(template, c, count))
+		res, _ := drawCase(ctx, client, c, assemble(template, c, count))
 		score.Seeded += len(c.Expected)
 		score.Caught += res.Found()
 		score.Extra += res.Extra
@@ -269,6 +272,20 @@ func reviewCase(ctx context.Context, client Reviewer, c Case, assembled inferenc
 	}
 	res.Matches, res.Extra, res.Duplicates = match(c.Expected, res.Findings)
 	return res, out.Cost
+}
+
+// drawCase is reviewCase, drawn again while the call does not complete, up
+// to maxRedraws times. The count is on the result. Run and RunSampled both
+// draw through it.
+func drawCase(ctx context.Context, client Reviewer, c Case, assembled inference.AssembledPrompt) (Result, inference.CallCost) {
+	res, cost := reviewCase(ctx, client, c, assembled)
+	redraws := 0
+	for !completed(res) && redraws < maxRedraws && ctx.Err() == nil {
+		redraws++
+		res, cost = reviewCase(ctx, client, c, assembled)
+	}
+	res.Redraws = redraws
+	return res, cost
 }
 
 // Settings is what a run needs from the environment.
@@ -423,6 +440,9 @@ func (s Score) Report(w io.Writer) {
 		dup := ""
 		if r.Duplicates > 0 {
 			dup = fmt.Sprintf(", %d duplicate", r.Duplicates)
+		}
+		if r.Redraws > 0 {
+			dup += fmt.Sprintf(", %d redraw(s)", r.Redraws)
 		}
 		p("%-18s %-10s %d finding(s), %d seeded, %d caught, %d extra%s  %s\n",
 			r.Case, r.Outcome, len(r.Findings), len(r.Matches), r.Found(), r.Extra, dup, status)
