@@ -33,8 +33,9 @@ Duplicates now also compare `evidence`.
       -json internal/evals/results/<date>-<model>-<effort>.json
 
 Model and effort default to the pair in `../corpus/series.yaml`
-(mimo-v2.6-pro, high). The rows up to 2026-10-01 are the mimo-v2.5-pro
-series; the 2.6-pro rows start a new one. `EVAL_MODEL` and
+(mimo-v2.6-pro, high). That series starts with the 2026-10-02 mimo-v2.6-pro
+row; the mimo-v2.5-pro rows above it are the previous default series, and the
+Model column says which row is which. `EVAL_MODEL` and
 `-effort` score another pair; that is a different series. Production runs a
 model too costly to eval on, so this series is a stand-in: a false positive
 seen in production may not reproduce here.
@@ -62,6 +63,7 @@ several reviews. Those live in `sampled/` and are never rows here.
 | 2026-10-01 | mimo-v2.5-pro | high | 12 rev5 | 8 | 5 | 0 | `prompts/review.txt`, Example 1 no longer invents `fetch_many` | run3: both prompt edits. Exit 2: `lock-not-released`, `resource-leak` and `struct-field-race` stalled on the gateway, so the score is incomplete. All four controls clean. |
 | 2026-10-01 | mimo-v2.5-pro | high | 12 rev5 | 8 | 7 | 0 | `prompts/review.txt`, Example 1 no longer invents `fetch_many` | run4, the first complete run on this prompt. Exit 1, and the miss is the validator's: the correct `resource-leak` finding put its own note `// defer resp.Body.Close() is missing here.` among the quoted lines, which matched nothing and dropped it as `evidence_not_found`. Fixed in the same PR (a note or elision line that matches nothing is skipped, like a blank one); scored before the fix, so it is recorded as it ran. All four controls clean. |
 | 2026-10-02 | gpt-5.5 | high | 5 of 17 rev6 (`-cases`) | 5 | 4 | 0 | `prompts/review.txt` @ 89e128c | **Different model, partial corpus: not a row of any series.** The one production-model reference, bought case by case: `java-seeded`, `resource-leak`, `struct-field-race`, `lock-not-released`, `buried-behavioural-hunk`, one review each, $0.19 at list price. `resource-leak` got no finding at all. The file is five one-case runs joined. Read next to `sampled/`. |
+| 2026-10-02 | mimo-v2.6-pro | high | 17 rev6 | 12 | 7 | 0 | `prompts/review.txt`, severity and confidence untangled | **New series: model, corpus and prompt all changed.** First run at the new `corpus/series.yaml` default. Exit 2: `ts-seeded` and `wrong-error-wrapped` died on `stream idle for 1m30s`, so the score is incomplete. Of the 10 seeded cases that completed, 7 caught and one real miss, no finding at all on `off-by-one`. The other two were reported correctly and dropped by the validator (`evidence_not_found`): `cross-file-stale-caller` quoted `store.go` lines in a finding on `manager.go`, and `buried-behavioural-hunk` quoted a doc comment line without its `//`. All five controls clean. Per-case rates for this prompt are in `sampled/`. |
 
 ## What the columns mean
 
