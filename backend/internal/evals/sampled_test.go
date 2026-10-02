@@ -383,3 +383,35 @@ func TestRunSampled_RedrawsAFailedSample(t *testing.T) {
 		t.Errorf("progress line: %q", progress.String())
 	}
 }
+
+// A series run redraws too: one cut-off call no longer voids the row. The
+// count is on the result and in the report, and a case that never completes
+// still leaves the run incomplete.
+func TestRun_RedrawsAFailedCase(t *testing.T) {
+	client := &scriptedReviewer{
+		script:  [][]inference.ReviewFinding{nil, bug(12)},
+		outcome: []inference.Outcome{inference.OutcomeTimedOut, inference.OutcomeOK},
+	}
+	got := Run(context.Background(), client, "{files}", oneCase(seeded), countStub)
+	if err := got.ErrIncomplete(); err != nil {
+		t.Fatalf("the redraw completed the case: %v", err)
+	}
+	if r := got.Results[0]; r.Redraws != 1 || got.Caught != 1 {
+		t.Errorf("redraws = %d, caught = %d, want 1 and 1", r.Redraws, got.Caught)
+	}
+	var report strings.Builder
+	got.Report(&report)
+	if !strings.Contains(report.String(), ", 1 redraw(s)") {
+		t.Errorf("report: %q", report.String())
+	}
+
+	never := &scriptedReviewer{
+		script:  make([][]inference.ReviewFinding, 1+maxRedraws),
+		outcome: []inference.Outcome{inference.OutcomeTimedOut, inference.OutcomeTimedOut, inference.OutcomeTimedOut},
+	}
+	got = Run(context.Background(), never, "{files}", oneCase(seeded), countStub)
+	if got.ErrIncomplete() == nil || never.calls != 1+maxRedraws || got.Results[0].Redraws != maxRedraws {
+		t.Errorf("calls = %d, redraws = %d, incomplete = %v: want %d calls and an incomplete run",
+			never.calls, got.Results[0].Redraws, got.ErrIncomplete(), 1+maxRedraws)
+	}
+}

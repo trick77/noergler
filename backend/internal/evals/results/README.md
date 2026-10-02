@@ -27,6 +27,12 @@ runs before posting. A dropped finding is neither caught nor Extra, and the
 JSON lists it under `Dropped` with its reason, and a moved one under `Moved`.
 Duplicates now also compare `evidence`.
 
+From 2026-10-02 run2 on, a case whose call does not complete is drawn again,
+twice at most, as a sampled run always did. The JSON records the count per
+case (`Redraws`) and the row's notes name the cases. A redrawn case replaced
+a call cut off for thinking too long, so it leans towards the quick answer:
+a row with redraws is complete, not unbiased.
+
     cd backend
     EVAL_BASE_URL=... EVAL_API_KEY=... \
       go run ./cmd/evals -context-window 1000000 \
@@ -64,6 +70,7 @@ several reviews. Those live in `sampled/` and are never rows here.
 | 2026-10-01 | mimo-v2.5-pro | high | 12 rev5 | 8 | 7 | 0 | `prompts/review.txt`, Example 1 no longer invents `fetch_many` | run4, the first complete run on this prompt. Exit 1, and the miss is the validator's: the correct `resource-leak` finding put its own note `// defer resp.Body.Close() is missing here.` among the quoted lines, which matched nothing and dropped it as `evidence_not_found`. Fixed in the same PR (a note or elision line that matches nothing is skipped, like a blank one); scored before the fix, so it is recorded as it ran. All four controls clean. |
 | 2026-10-02 | gpt-5.5 | high | 5 of 17 rev6 (`-cases`) | 5 | 4 | 0 | `prompts/review.txt` @ 89e128c | **Different model, partial corpus: not a row of any series.** The one production-model reference, bought case by case: `java-seeded`, `resource-leak`, `struct-field-race`, `lock-not-released`, `buried-behavioural-hunk`, one review each, $0.19 at list price. `resource-leak` got no finding at all. The file is five one-case runs joined. Read next to `sampled/`. |
 | 2026-10-02 | mimo-v2.6-pro | high | 17 rev6 | 12 | 7 | 0 | `prompts/review.txt`, severity and confidence untangled | **New series: model, corpus and prompt all changed.** First run at the new `corpus/series.yaml` default. Exit 2: `ts-seeded` and `wrong-error-wrapped` died on `stream idle for 1m30s`, so the score is incomplete. Of the 10 seeded cases that completed, 7 caught and one real miss, no finding at all on `off-by-one`. The other two were reported correctly and dropped by the validator (`evidence_not_found`): `cross-file-stale-caller` quoted `store.go` lines in a finding on `manager.go`, and `buried-behavioural-hunk` quoted a doc comment line without its `//`. All five controls clean. Per-case rates for this prompt are in `sampled/`. |
+| 2026-10-02 | mimo-v2.6-pro | high | 17 rev6 | 12 | 12 | 0 | `prompts/review.txt`, severity and confidence untangled | **run2, the first complete row of this series.** Exit 0: every seeded bug caught, all five controls clean, nothing dropped, nothing moved, no redraw needed. Same prompt as the row above; the validator differs, it now accepts evidence from another shown file and a comment line quoted without its marker, the two drops that row lost. `off-by-one`, the one real miss there, is caught here at line 15. One run: 5-sample runs on this prompt miss `off-by-one` and `cross-file-stale-caller` in some samples, so a later 11 is inside the noise. |
 
 ## What the columns mean
 
