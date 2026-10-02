@@ -33,7 +33,8 @@ Duplicates now also compare `evidence`.
       -json internal/evals/results/<date>-<model>-<effort>.json
 
 Model and effort default to the pair in `../corpus/series.yaml`
-(mimo-v2.5-pro, high), the series the rows below extend. `EVAL_MODEL` and
+(mimo-v2.6-pro, high). The rows up to 2026-10-01 are the mimo-v2.5-pro
+series; the 2.6-pro rows start a new one. `EVAL_MODEL` and
 `-effort` score another pair; that is a different series. Production runs a
 model too costly to eval on, so this series is a stand-in: a false positive
 seen in production may not reproduce here.

@@ -37,7 +37,7 @@ For mechanical hunks the risk is non-uniformity, not the transform itself: the c
 - **Suppressed findings** — respect explicit silencing (lint-ignore, `noqa`, `@SuppressWarnings`). Do not flag.
 - **Intentional co-changes** — mechanical consequences of broader intent are not findings. Examples: rename propagation (if `-oldName` / `+newName` applied consistently, refactor complete), signature updates at call sites, test updates mirroring code.
 - **Test coverage / docs / generic quality** — no missing-tests, missing-docstrings, or generic "consider adding X" unless guidelines require.
-- **Pedantic nitpicks** — if senior engineer would not hold up merge, drop. Style not the only nit; "minor improvement" counts.
+- **Pedantic nitpicks** — if senior engineer would not bother to comment, drop. Style not the only nit; "minor improvement" counts.
 - **Bug on unmodified lines** — root cause on a line the diff did not change → drop. `+` line merely exposing a pre-existing bug is still pre-existing.
 - **Looks-like-a-bug that is not** — if you can imagine a failure but cannot construct a concrete failing input, drop.
 - **Praise / sarcasm** — no findings that praise correct code. If only honest `suggestion` is "no fix needed", drop.
@@ -66,18 +66,18 @@ Each `comment` must:
 ## Severity and confidence
 
 Assign each finding:
-- **severity** — by impact:
-  - "issue": runtime bug, security vulnerability, data loss risk.
-  - "suggestion": likely bug, error handling gap, perf problem at scale.
-- **confidence** — integer 0–100:
+- **severity** — impact if the finding is true. Not how sure you are:
+  - "issue": wrong result, crash, security vulnerability or data loss on a realistic path. Blocks merge.
+  - "suggestion": real defect with limited impact — error handling gap, perf problem at scale, failure only under specific inputs or environments. Follow-up; does not block merge.
+- **confidence** — integer 0–100, how sure you are the defect is real and introduced by this diff. Not how severe it is:
   - 0 = doesn't stand up to light scrutiny; pre-existing; false positive.
-  - 50 = real but nitpick, or only fires in rare configuration.
-  - 75 = verified real, likely to hit in practice, but senior engineer might let it through.
-  - 80 = careful senior reviewer would require a fix before merge.
+  - 50 = plausible, but the failing path depends on code not shown.
+  - 75 = likely real; one step of the failing path is assumed, not read.
+  - 80 = every step of the failing path read in the files shown.
   - 90 = exact line identified, failing input describable.
   - 95+ = failure reproducible from files shown alone.
 
-Only report confidence >= 80. Every reported issue must be something a senior engineer would insist on fixing before merge. When in doubt, withhold — false positives cost more than false negatives.
+Only report confidence >= 80. Every reported finding must be a real defect a senior engineer would want fixed: before merge (`issue`) or as a follow-up (`suggestion`). A nitpick is dropped at any confidence. When in doubt, withhold — false positives cost more than false negatives.
 
 ## Output format
 
@@ -97,7 +97,7 @@ Each "findings" item:
 - "evidence": 1–5 lines copied exactly from the file's diff or full content that the finding rests on, at least one of them a diff line — the code only, without the line number and without the leading `+`, `-` or space. A finding whose evidence is not in the file is discarded.
 - "severity": "issue" or "suggestion"
 - "confidence": integer 80–100
-- "headline": one-line title (≤ 80 chars) summarizing the finding for the numbered Issues list in the review summary. Imperative or noun-phrase form, plain text only (no markdown, no leading number). Optionally end with " — minor" / " — blocking" / similar to communicate severity at a glance. Example: `"RATE_LIMIT_BURST default vs PR description — minor inconsistency"`.
+- "headline": one-line title (≤ 80 chars) summarizing the finding for the numbered Issues list in the review summary. Imperative or noun-phrase form, plain text only (no markdown, no leading number). No severity wording: `severity` carries it. Example: `"Retry loop never resets the backoff after a success"`.
 - "comment": full body of the inline comment posted on the line — concise paragraph. Markdown OK: code refs in backticks. No fix code (use `suggestion`). This is the detail; do NOT duplicate it in the headline.
 - "suggestion": corrected code — raw code only (no fencing, no comments, no instructions — just replacement). Prefer a **single-line** replacement of exactly the line at `line` so Bitbucket can render an "Apply suggestion" button (multi-line suggestions are allowed but won't be one-click-applicable). Set to `null` if no concrete fix applies, fix is trivial/obvious from comment (typos, renames, missing chars), or you cannot provide actual replacement. Only honest value would be "no fix needed" / "this is correct" / "no change" → drop the finding entirely.
 
@@ -119,7 +119,7 @@ Illustrative only — do not treat as code under review.
   "test_coverage": "New handler test covers the happy path; no test for the empty-list or oversized-payload cases.",
   "verdict": {
     "decision": "approve_with_followups",
-    "rationale": "Endpoint works but the per-id query loop will dominate latency on realistic payloads; switch to batched fetch before merge."
+    "rationale": "The `/users/batch` endpoint is correct; its per-id query loop will dominate latency on large payloads and should be batched in a follow-up."
   },
   "findings": [
     {
@@ -131,7 +131,7 @@ Illustrative only — do not treat as code under review.
       ],
       "severity": "suggestion",
       "confidence": 90,
-      "headline": "N+1 query in /users/batch handler — fix before merge",
+      "headline": "N+1 query in /users/batch handler",
       "comment": "Iterating `user_repo.fetch(id)` inside the request loop issues one SQL query per id. For a 200-id payload this is 200 round trips on the hot path and will dominate latency under load.",
       "suggestion": null
     }

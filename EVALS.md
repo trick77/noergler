@@ -74,7 +74,31 @@ Models allowed for eval runs: mimo and `gpt-5.4-mini`. No call on `gpt-5.5`,
 stated call count and budget. Use `-cases` and `-usage` to buy only the cases
 that answer the question.
 
+## Prompt experiment: completeness and newly broken lines (2026-10-02)
+
+Question: do two edits taken from other review prompts raise recall? (1) "do
+not stop at the first finding, a narrow trigger is still a bug"; (2) removed
+lines and unmodified lines the diff breaks are in scope.
+
+mimo-v2.6-pro high, 17 cases, 5 samples each, both prompts with severity and
+confidence already untangled:
+
+- without the edits: 54 of 60 seeded samples caught, controls clean in 25 of 25.
+- with both: 52 of 60, controls clean in 25 of 25.
+
+Decision: neither edit landed. No gain, and 2.6-pro leaves the corpus little
+room to show one: 10 of 12 seeded cases were caught in every sample without the
+edits. 5 samples see a 15-point move, so "slightly worse" is not shown either.
+
+Side finding: on `cross-file-stale-caller` the model reported the bug in 7 of
+10 samples and 6 were dropped. See the first known gap.
+
 ## Known gaps
+
+- `ValidateFindings` matches evidence against the finding's own file only. A
+  cross-file finding that quotes the changed contract from the other file is
+  dropped as `evidence_not_found`: 6 of 7 correct `cross-file-stale-caller`
+  findings on 2.6-pro.
 
 - `lock-not-released` keywords miss correct findings; inflates `extra`.
 - Validator dropped 3 correct mini findings (`evidence_not_found`), not
