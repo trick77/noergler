@@ -56,10 +56,20 @@ func main() {
 	}
 }
 
+// logVersion names the build at boot. The release stamps the commit too; it
+// was linked into the binary and never read.
+func logVersion(log *slog.Logger) {
+	if c := buildinfo.Commit(); c != "" {
+		log.Info("noergler version: "+buildinfo.Version(), "commit", c)
+		return
+	}
+	log.Info("noergler version: " + buildinfo.Version())
+}
+
 // migrate applies pending migrations and exits: the init container's job.
 // Only DATABASE_URL is needed, so a teams.yaml is not required here.
 func migrate(log *slog.Logger) error {
-	log.Info("noergler version: " + buildinfo.Version())
+	logVersion(log)
 	dsn, ok := os.LookupEnv("DATABASE_URL")
 	if !ok || strings.TrimSpace(dsn) == "" {
 		return errors.New("environment variable DATABASE_URL is not set")
@@ -79,7 +89,7 @@ func migrate(log *slog.Logger) error {
 }
 
 func serve(log *slog.Logger) error {
-	log.Info("noergler version: " + buildinfo.Version())
+	logVersion(log)
 	app, err := config.Load(config.OSLookup)
 	if err != nil {
 		return err
