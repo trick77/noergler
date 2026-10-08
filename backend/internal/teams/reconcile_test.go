@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/trick77/noergler/internal/config"
@@ -136,8 +137,9 @@ func TestReconcile_RemovedClaimsStayRemoved(t *testing.T) {
 		settings: map[string]store.TeamSettings{"platform": {ExcludeRepos: []string{"*-infra"}}},
 	}
 	team := teamWith("platform", []config.ProjectScope{{Key: "PLAT"}}, config.Review{})
+	log, buf := bufLogger()
 
-	if _, err := Reconcile(context.Background(), db, map[string]*config.Team{"platform": team}, []string{"platform"}, quietLogger()); err != nil {
+	if _, err := Reconcile(context.Background(), db, map[string]*config.Team{"platform": team}, []string{"platform"}, log); err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
 	if len(db.added) != 0 {
@@ -145,6 +147,10 @@ func TestReconcile_RemovedClaimsStayRemoved(t *testing.T) {
 	}
 	if len(team.Projects) != 0 {
 		t.Errorf("projects = %+v, want none", team.Projects)
+	}
+	// The ignored teams.yaml projects are said out loud, not dropped.
+	if !strings.Contains(buf.String(), "teams.yaml projects ignored") {
+		t.Errorf("log = %q, want the ignored projects named", buf.String())
 	}
 }
 

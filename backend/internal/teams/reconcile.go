@@ -80,6 +80,12 @@ func Reconcile(ctx context.Context, db ClaimStore, teams map[string]*config.Team
 // rather than contested.
 func reconcileClaims(ctx context.Context, db ClaimStore, slug string, team *config.Team, claims map[string][]config.ProjectScope, log *slog.Logger) (string, error) {
 	if scopes, known := claims[slug]; known {
+		// Seeded once and since emptied: teams.yaml projects are not a
+		// seed any more, and dropping them silently left an operator
+		// staring at ownership 403s.
+		if len(scopes) == 0 && len(team.Projects) > 0 {
+			log.WarnContext(ctx, "teams.yaml projects ignored: claims were seeded before and since removed (claim via POST /onboard)", "team", slug)
+		}
 		team.Projects = scopes
 		return "", nil
 	}
