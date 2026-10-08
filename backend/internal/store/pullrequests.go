@@ -342,8 +342,10 @@ func (s *Store) FreezeFinalCost(ctx context.Context, k PRKey) (*int64, error) {
 }
 
 // RollupFinal is the final diff refresh taken at the terminal outcome; nil
-// fields keep what the last run recorded.
+// fields keep what the last run recorded. SourceCommit only fills a PR no
+// run recorded one for: one billed for unparseable responses alone.
 type RollupFinal struct {
+	SourceCommit *string
 	MergeCommit  *string
 	LinesAdded   *int
 	LinesRemoved *int
@@ -370,7 +372,9 @@ type RollupSnapshot struct {
 
 // ClaimRollup atomically stamps riptide_emitted_at and returns the snapshot.
 // nil when already emitted (a redelivered pr:merged must not produce a second
-// event) or when the PR has no run (nothing to forward). The claim happens
+// event) or when the PR has neither a run nor a billed run-less attempt
+// (nothing to forward). Attempt-only spend is in the cap and the frozen cost,
+// so it must reach FinOps too. The claim happens
 // BEFORE the POST, so a failed emission is never retried.
 func (s *Store) ClaimRollup(ctx context.Context, k PRKey, final RollupFinal) (*RollupSnapshot, error) {
 	var snap RollupSnapshot
@@ -378,6 +382,7 @@ func (s *Store) ClaimRollup(ctx context.Context, k PRKey, final RollupFinal) (*R
 		WITH claimed AS (
 			UPDATE pull_requests p SET
 				riptide_emitted_at = now(),
+				final_source_commit = COALESCE(p.final_source_commit, $8),
 				final_merge_commit = COALESCE($4, p.final_merge_commit),
 				final_lines_added = COALESCE($5, p.final_lines_added),
 				final_lines_removed = COALESCE($6, p.final_lines_removed),
@@ -385,17 +390,21 @@ func (s *Store) ClaimRollup(ctx context.Context, k PRKey, final RollupFinal) (*R
 				updated_at = now()
 			WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3
 			  AND p.riptide_emitted_at IS NULL
-			  AND EXISTS (SELECT 1 FROM review_runs r WHERE r.pull_request_id = p.id)
-			RETURNING p.id, p.final_source_commit, p.final_merge_commit, p.final_lines_added, p.final_lines_removed, p.final_files_changed
+			  AND (EXISTS (SELECT 1 FROM review_runs r WHERE r.pull_request_id = p.id)
+			    OR EXISTS (SELECT 1 FROM review_attempts a
+			      WHERE a.project_key = p.project_key AND a.repo_slug = p.repo_slug AND a.pr_id = p.pr_id
+			        AND a.review_run_id IS NULL AND a.cost_nano_usd IS NOT NULL AND a.created_at >= p.created_at))
+			RETURNING p.id, p.created_at, p.final_source_commit, p.final_merge_commit, p.final_lines_added, p.final_lines_removed, p.final_files_changed
 		)
 		SELECT COUNT(r.id), COALESCE(SUM(r.prompt_tokens), 0), COALESCE(SUM(r.completion_tokens), 0),
 			COALESCE(SUM(r.elapsed_ms), 0), COALESCE(SUM(r.findings_posted), 0),
 			(SELECT `+prCostSQL+` FROM pull_requests p WHERE p.id = c.id),
-			ARRAY(SELECT DISTINCT m FROM unnest(array_agg(r.model_label)) AS m ORDER BY m), MIN(r.created_at),
+			ARRAY(SELECT DISTINCT m FROM unnest(array_agg(r.model_label)) AS m WHERE m IS NOT NULL ORDER BY m),
+			COALESCE(MIN(r.created_at), c.created_at),
 			c.final_source_commit, c.final_merge_commit, c.final_lines_added, c.final_lines_removed, c.final_files_changed
-		FROM claimed c JOIN review_runs r ON r.pull_request_id = c.id
-		GROUP BY c.id, c.final_source_commit, c.final_merge_commit, c.final_lines_added, c.final_lines_removed, c.final_files_changed`,
-		k.Project, k.Repo, k.PRID, final.MergeCommit, final.LinesAdded, final.LinesRemoved, final.FilesChanged,
+		FROM claimed c LEFT JOIN review_runs r ON r.pull_request_id = c.id
+		GROUP BY c.id, c.created_at, c.final_source_commit, c.final_merge_commit, c.final_lines_added, c.final_lines_removed, c.final_files_changed`,
+		k.Project, k.Repo, k.PRID, final.MergeCommit, final.LinesAdded, final.LinesRemoved, final.FilesChanged, final.SourceCommit,
 	).Scan(&snap.Runs, &snap.PromptTokens, &snap.CompletionTokens, &snap.ElapsedMS, &snap.Findings, &snap.CostNanoUSD,
 		&snap.Models, &snap.FirstReviewAt, &snap.SourceCommit, &snap.MergeCommit, &snap.LinesAdded, &snap.LinesRemoved, &snap.FilesChanged)
 	if errors.Is(err, pgx.ErrNoRows) {

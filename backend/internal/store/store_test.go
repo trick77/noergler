@@ -586,6 +586,35 @@ func TestPRCost_IncludesBilledAttempts(t *testing.T) {
 	}
 }
 
+// A PR billed only for unparseable responses tripped the cap and froze a
+// cost, yet its rollup needed a run row, so FinOps never saw the spend.
+func TestRollup_AttemptOnlySpendIsClaimed(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	upsert(t, s, key, "a")
+	unpriced := Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "error"}
+	if err := s.InsertAttempt(ctx, unpriced); err != nil {
+		t.Fatal(err)
+	}
+	if snap, _ := s.ClaimRollup(ctx, key, RollupFinal{}); snap != nil {
+		t.Fatalf("nothing billed: snapshot = %+v, want nil", snap)
+	}
+	billed := Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "unparseable", CostNanoUSD: nano(400)}
+	if err := s.InsertAttempt(ctx, billed); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := s.ClaimRollup(ctx, key, RollupFinal{SourceCommit: str("head")})
+	if err != nil || snap == nil {
+		t.Fatalf("claim: %v %v", snap, err)
+	}
+	if snap.Runs != 0 || snap.CostNanoUSD == nil || *snap.CostNanoUSD != 400 || len(snap.Models) != 0 {
+		t.Errorf("snapshot = %+v, want 0 runs, cost 400, no models", snap)
+	}
+	if snap.SourceCommit == nil || *snap.SourceCommit != "head" || snap.FirstReviewAt.IsZero() {
+		t.Errorf("source = %v, first = %v", snap.SourceCommit, snap.FirstReviewAt)
+	}
+}
+
 // KeepPointer leaves the stored pointer alone; without it nil writes NULL.
 func TestPullRequest_KeepPointer(t *testing.T) {
 	s := testStore(t)

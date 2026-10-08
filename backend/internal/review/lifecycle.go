@@ -61,7 +61,7 @@ func (r *Reviewer) HandlePRMerged(ctx context.Context, payload *webhook.Payload)
 			prTag, inference.FormatUSD3(*frozen)))
 	}
 
-	r.emitRollup(ctx, key, prTag, "merged", payload.MergeCommitSHA())
+	r.emitRollup(ctx, key, prTag, "merged", payload.MergeCommitSHA(), payload.PullRequest.FromRef.LatestCommit)
 }
 
 // HandlePRDeclined marks the PR declined and emits the rollup. The data is
@@ -73,7 +73,7 @@ func (r *Reviewer) HandlePRDeclined(ctx context.Context, payload *webhook.Payloa
 	}
 	safeDBErr(ctx, r.log, "MarkDeclined", func() error { return r.store.MarkDeclined(ctx, key) })
 	r.log.InfoContext(ctx, prTag+" declined - marked, data retained")
-	r.emitRollup(ctx, key, prTag, "declined", "")
+	r.emitRollup(ctx, key, prTag, "declined", "", payload.PullRequest.FromRef.LatestCommit)
 }
 
 // HandlePRDeleted marks the PR deleted and emits the rollup.
@@ -84,7 +84,7 @@ func (r *Reviewer) HandlePRDeleted(ctx context.Context, payload *webhook.Payload
 	}
 	safeDBErr(ctx, r.log, "MarkDeleted", func() error { return r.store.MarkDeleted(ctx, key) })
 	r.log.InfoContext(ctx, prTag+" deleted - marked, data retained")
-	r.emitRollup(ctx, key, prTag, "deleted", "")
+	r.emitRollup(ctx, key, prTag, "deleted", "", payload.PullRequest.FromRef.LatestCommit)
 }
 
 // prContext resolves the key and binds the log context, reporting whether
@@ -103,12 +103,12 @@ func prContext(ctx context.Context, payload *webhook.Payload) (context.Context, 
 
 // emitRollup aggregates the per-run stats and posts one pr_completed event.
 //
-// A no-op when riptide is off, when no review ever ran, or when the rollup
+// A no-op when riptide is off, when nothing was billed, or when the rollup
 // was already emitted: ClaimRollup stamps riptide_emitted_at in the same
 // statement that reads the snapshot, so a redelivered pr:merged produces no
 // second event. The claim happens BEFORE the POST, so a failed emission is
 // never retried.
-func (r *Reviewer) emitRollup(ctx context.Context, key store.PRKey, prTag, outcome, mergeCommit string) {
+func (r *Reviewer) emitRollup(ctx context.Context, key store.PRKey, prTag, outcome, mergeCommit, sourceCommit string) {
 	if r.riptide == nil || !r.riptide.Enabled() {
 		return
 	}
@@ -120,6 +120,9 @@ func (r *Reviewer) emitRollup(ctx context.Context, key store.PRKey, prTag, outco
 	final := store.RollupFinal{}
 	if mergeCommit != "" {
 		final.MergeCommit = &mergeCommit
+	}
+	if sourceCommit != "" {
+		final.SourceCommit = &sourceCommit
 	}
 	if outcome != "deleted" {
 		if fullDiff, err := r.bitbucket.FetchPRDiff(ctx, key.Project, key.Repo, key.PRID, 0); err != nil {
@@ -138,7 +141,7 @@ func (r *Reviewer) emitRollup(ctx context.Context, key store.PRKey, prTag, outco
 		return r.store.ClaimRollup(ctx, key, final)
 	})
 	if snapshot == nil {
-		r.log.DebugContext(ctx, prTag+": rollup not emitted (already emitted or no review runs)")
+		r.log.DebugContext(ctx, prTag+": rollup not emitted (already emitted or nothing billed)")
 		return
 	}
 	if snapshot.SourceCommit == nil || *snapshot.SourceCommit == "" {
