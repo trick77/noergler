@@ -106,28 +106,37 @@ func (r *Runtime) ApplyClaims(scopes []config.ProjectScope) {
 // (nil persist skips that), swaps it in, then mirrors the two author lists
 // onto the live Reviewer. A persist error swaps nothing.
 //
-// All of it under writeMu: two partial PUTs merging outside the lock each
-// built on the same baseline, so one field was lost and the DB and the
-// runtime could keep different requests' lists.
+// Optimistic: the persist runs outside writeMu, so a slow DB never blocks an
+// /onboard claim write behind it. The swap happens only if no other writer
+// swapped meanwhile; otherwise the merge runs again on the newer snapshot
+// and persists that. Merging once on a stale baseline lost one of two
+// concurrent partial PUTs, and the DB and runtime could disagree.
 //
 // The Reviewer copies config.Review by value at construction, so without the
 // mirror a team's author routing would stay stale until restart. ExcludeRepos
 // is deliberately not mirrored: its only reader is the webhook route, which
 // reads it off the snapshot.
 func (r *Runtime) UpdateSettings(merge func(store.TeamSettings) store.TeamSettings, persist func(store.TeamSettings) error) error {
-	r.writeMu.Lock()
-	defer r.writeMu.Unlock()
-	next := *r.team.Load()
-	s := merge(settingsOf(&next))
-	if persist != nil {
-		if err := persist(s); err != nil {
-			return err
+	for {
+		cur := r.team.Load()
+		s := merge(settingsOf(cur))
+		if persist != nil {
+			if err := persist(s); err != nil {
+				return err
+			}
 		}
+		r.writeMu.Lock()
+		if r.team.Load() != cur {
+			r.writeMu.Unlock()
+			continue
+		}
+		next := *cur
+		applySettings(&next, s)
+		r.team.Store(&next)
+		r.Reviewer.SetAuthorLists(s.AutoReviewAuthors, s.IgnoreAuthors)
+		r.writeMu.Unlock()
+		return nil
 	}
-	applySettings(&next, s)
-	r.team.Store(&next)
-	r.Reviewer.SetAuthorLists(s.AutoReviewAuthors, s.IgnoreAuthors)
-	return nil
 }
 
 // settingsOf and applySettings are the one mapping between a team's three

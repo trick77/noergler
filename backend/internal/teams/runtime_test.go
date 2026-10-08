@@ -127,18 +127,22 @@ func TestRuntime_ConcurrentPartialUpdatesKeepBothFields(t *testing.T) {
 	}
 
 	done := make(chan struct{})
+	var race sync.Once
 	err := rt.UpdateSettings(func(cur store.TeamSettings) store.TeamSettings {
 		cur.AutoReviewAuthors = []string{"alice"}
 		return cur
 	}, func(s store.TeamSettings) error {
-		go func() {
-			defer close(done)
-			_ = rt.UpdateSettings(func(cur store.TeamSettings) store.TeamSettings {
-				cur.IgnoreAuthors = []string{"ci-bot"}
-				return cur
-			}, persist)
-		}()
-		time.Sleep(20 * time.Millisecond) // the second update is now racing this one
+		// Once: a retry persists again and must not start a third writer.
+		race.Do(func() {
+			go func() {
+				defer close(done)
+				_ = rt.UpdateSettings(func(cur store.TeamSettings) store.TeamSettings {
+					cur.IgnoreAuthors = []string{"ci-bot"}
+					return cur
+				}, persist)
+			}()
+			time.Sleep(20 * time.Millisecond) // the second update is now racing this one
+		})
 		return persist(s)
 	})
 	if err != nil {
@@ -152,6 +156,42 @@ func TestRuntime_ConcurrentPartialUpdatesKeepBothFields(t *testing.T) {
 	}
 	if last := persisted[len(persisted)-1]; !reflect.DeepEqual(last, want) {
 		t.Errorf("last persisted = %+v, want %+v", last, want)
+	}
+}
+
+// The DB write happens outside writeMu: a hung PUT must not block the team's
+// /onboard claim writes behind it. The claim that lands meanwhile survives.
+func TestRuntime_PersistDoesNotHoldTheWriteLock(t *testing.T) {
+	rt := newTestRuntime(&config.Team{Slug: "platform"})
+	var claim sync.Once
+	err := rt.UpdateSettings(func(cur store.TeamSettings) store.TeamSettings {
+		cur.IgnoreAuthors = []string{"ci-bot"}
+		return cur
+	}, func(store.TeamSettings) error {
+		// Once: the claim swaps the snapshot, so the update retries and
+		// persists again.
+		claim.Do(func() {
+			done := make(chan struct{})
+			go func() {
+				rt.ApplyClaims([]config.ProjectScope{{Key: "PLAT"}})
+				close(done)
+			}()
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+				t.Error("ApplyClaims blocked behind the settings persist")
+			}
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rt.Team().Owns("PLAT", "svc") {
+		t.Error("the claim written during the persist was lost")
+	}
+	if got := rt.Team().Review.IgnoreAuthors; !reflect.DeepEqual(got, []string{"ci-bot"}) {
+		t.Errorf("ignore_authors = %v, want the update", got)
 	}
 }
 
