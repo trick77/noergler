@@ -389,7 +389,11 @@ func parseBlock(m *yaml.Node) (*teamBlock, error) {
 					}
 				case "int":
 					if p := e.intField(rv, "review", key); p != nil {
-						v = *p
+						if key == "max_comments" && *p < 0 {
+							e.add(joinPath("review", key), "Input should be greater than or equal to 0")
+						} else {
+							v = *p
+						}
 					}
 				case "bool":
 					if p := e.boolField(rv, "review", key); p != nil {

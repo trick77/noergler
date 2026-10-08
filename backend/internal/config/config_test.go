@@ -237,6 +237,21 @@ func TestInstance_NegativeDiffCapAbortsBoot(t *testing.T) {
 	}
 }
 
+// A negative comment cap boots clean and then panics every review in post,
+// after inference is paid. 0 stays legal: summary only, no inline comments.
+func TestInstance_NegativeMaxCommentsAbortsBoot(t *testing.T) {
+	e := newEnv(t)
+	e.set("REVIEW_MAX_COMMENTS", "-1")
+	_, err := e.load()
+	if err == nil || !strings.Contains(err.Error(), "REVIEW_MAX_COMMENTS") {
+		t.Errorf("err = %v, want a load failure", err)
+	}
+	e.set("REVIEW_MAX_COMMENTS", "0")
+	if app := e.mustLoad(); app.Review.MaxComments != 0 {
+		t.Errorf("max_comments = %d, want 0", app.Review.MaxComments)
+	}
+}
+
 // A team's blank level overrides an instance level back to the model's
 // balanced one.
 func TestTeams_BlankEffortOverridesToUnset(t *testing.T) {
@@ -457,6 +472,9 @@ func TestTeams_FaultDisablesOnlyThatTeam(t *testing.T) {
 		}, "riptide.url must be non-empty"},
 		{"bad slug", func(s string) string { return strings.Replace(s, "slug: payments", "slug: Payments", 1) },
 			"slug: Value error, slug 'Payments' must match"},
+		{"negative max_comments", func(s string) string {
+			return strings.Replace(s, "      max_pr_cost_usd: 8.5\n", "      max_pr_cost_usd: 8.5\n      max_comments: -1\n", 1)
+		}, "review.max_comments: Input should be greater than or equal to 0"},
 		{"bad int", func(s string) string { return strings.Replace(s, "context_window: 1200000", "context_window: lots", 1) },
 			"inference.context_window: Input should be a valid integer"},
 	}

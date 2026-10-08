@@ -479,6 +479,10 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 			"REVIEW_INFERENCE_CONCURRENCY_PER_TEAM (%d) must not exceed REVIEW_INFERENCE_CONCURRENCY (%d)",
 			q.InferenceConcurrencyPerTeam, q.InferenceConcurrency))
 	}
+	// sortAndLimit slices to it: negative panics every review in post.
+	if app.Review.MaxComments < 0 {
+		e.errs = append(e.errs, fmt.Sprintf("REVIEW_MAX_COMMENTS: must be zero or a positive integer, got %d", app.Review.MaxComments))
+	}
 	if len(e.errs) > 0 {
 		return nil, fmt.Errorf("%s", strings.Join(e.errs, "; "))
 	}
