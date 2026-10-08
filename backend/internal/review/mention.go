@@ -10,7 +10,6 @@ import (
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/httpstats"
 	"github.com/trick77/noergler/internal/inference"
-	"github.com/trick77/noergler/internal/logging"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
@@ -44,13 +43,12 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		return false
 	}
 
-	project, repo := payload.ProjectRepo()
-	if project == "" || repo == "" {
+	ctx, key, prTag, ok := prContext(ctx, payload)
+	if !ok {
 		r.log.ErrorContext(ctx, "Could not extract project/repo from webhook payload")
 		return false
 	}
-	prTag := fmt.Sprintf("%s/%s#%d", project, repo, pr.ID)
-	ctx = logging.With(ctx, "pr_tag", prTag, "repo", project+"/"+repo, "pr_id", pr.ID)
+	project, repo := key.Project, key.Repo
 
 	// The Q&A path fetches a diff and posts a reply of its own, so it gets the
 	// same accounting as a review. A keyword mention stages a review, which
@@ -59,8 +57,6 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	// two units of work reported separately rather than merged.
 	ctx, httpCounter := httpstats.WithScope(ctx)
 	defer r.logHTTPTotals(ctx, prTag, httpCounter)
-
-	key := prKey(project, repo, pr.ID)
 
 	// Any mention reactivates a PR ignored after its summary was removed.
 	// Clearing the state (and the stale summary id, which Reactivate does)

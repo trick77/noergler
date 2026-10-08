@@ -26,14 +26,10 @@ func (r *Reviewer) HandleCommentDeleted(ctx context.Context, payload *webhook.Pa
 	if comment == nil {
 		return
 	}
-	project, repo := payload.ProjectRepo()
-	if project == "" || repo == "" {
+	ctx, key, prTag, ok := prContext(ctx, payload)
+	if !ok {
 		return
 	}
-	prID := payload.PullRequest.ID
-	prTag := fmt.Sprintf("%s/%s#%d", project, repo, prID)
-	ctx = logging.With(ctx, "pr_tag", prTag, "repo", project+"/"+repo, "pr_id", prID)
-	key := prKey(project, repo, prID)
 
 	state := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
 		return r.store.GetSkipState(ctx, key)
@@ -50,7 +46,7 @@ func (r *Reviewer) HandleCommentDeleted(ctx context.Context, payload *webhook.Pa
 
 // HandlePRMerged marks the PR merged, freezes its cost and emits the rollup.
 func (r *Reviewer) HandlePRMerged(ctx context.Context, payload *webhook.Payload) {
-	ctx, key, prTag, ok := r.lifecycleContext(ctx, payload)
+	ctx, key, prTag, ok := prContext(ctx, payload)
 	if !ok {
 		return
 	}
@@ -71,7 +67,7 @@ func (r *Reviewer) HandlePRMerged(ctx context.Context, payload *webhook.Payload)
 // HandlePRDeclined marks the PR declined and emits the rollup. The data is
 // retained for metrics.
 func (r *Reviewer) HandlePRDeclined(ctx context.Context, payload *webhook.Payload) {
-	ctx, key, prTag, ok := r.lifecycleContext(ctx, payload)
+	ctx, key, prTag, ok := prContext(ctx, payload)
 	if !ok {
 		return
 	}
@@ -82,7 +78,7 @@ func (r *Reviewer) HandlePRDeclined(ctx context.Context, payload *webhook.Payloa
 
 // HandlePRDeleted marks the PR deleted and emits the rollup.
 func (r *Reviewer) HandlePRDeleted(ctx context.Context, payload *webhook.Payload) {
-	ctx, key, prTag, ok := r.lifecycleContext(ctx, payload)
+	ctx, key, prTag, ok := prContext(ctx, payload)
 	if !ok {
 		return
 	}
@@ -91,17 +87,18 @@ func (r *Reviewer) HandlePRDeleted(ctx context.Context, payload *webhook.Payload
 	r.emitRollup(ctx, key, prTag, "deleted", "")
 }
 
-// lifecycleContext resolves the key and binds the log context, reporting
-// whether the payload names a usable PR.
-func (r *Reviewer) lifecycleContext(ctx context.Context, payload *webhook.Payload) (context.Context, store.PRKey, string, bool) {
+// prContext resolves the key and binds the log context, reporting whether
+// the payload names a usable PR. Every entry point uses it, so the log's
+// pr_tag and the dashboard's tag are the one PRKey.Tag().
+func prContext(ctx context.Context, payload *webhook.Payload) (context.Context, store.PRKey, string, bool) {
 	project, repo := payload.ProjectRepo()
 	if project == "" || repo == "" {
 		return ctx, store.PRKey{}, "", false
 	}
-	prID := payload.PullRequest.ID
-	prTag := fmt.Sprintf("%s/%s#%d", project, repo, prID)
-	ctx = logging.With(ctx, "pr_tag", prTag, "repo", project+"/"+repo, "pr_id", prID)
-	return ctx, prKey(project, repo, prID), prTag, true
+	key := store.PRKey{Project: project, Repo: repo, PRID: payload.PullRequest.ID}
+	prTag := key.Tag()
+	ctx = logging.With(ctx, "pr_tag", prTag, "repo", project+"/"+repo, "pr_id", key.PRID)
+	return ctx, key, prTag, true
 }
 
 // emitRollup aggregates the per-run stats and posts one pr_completed event.

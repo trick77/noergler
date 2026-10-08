@@ -15,7 +15,6 @@ import (
 	"github.com/trick77/noergler/internal/httpstats"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/jira"
-	"github.com/trick77/noergler/internal/logging"
 	"github.com/trick77/noergler/internal/render"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
@@ -61,15 +60,13 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 // such exit has already logged its own HTTP totals.
 func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAuthorCheck bool) (*reviewPlan, context.Context, bool) {
 	pr := payload.PullRequest
-	project, repo := payload.ProjectRepo()
-	if project == "" || repo == "" {
+	ctx, key, prTag, ok := prContext(ctx, payload)
+	if !ok {
 		r.log.ErrorContext(ctx, "Could not extract project/repo from webhook payload")
 		return nil, ctx, false
 	}
-
-	prTag := fmt.Sprintf("%s/%s#%d", project, repo, pr.ID)
+	project, repo := key.Project, key.Repo
 	kind := runKind(skipAuthorCheck)
-	ctx = logging.With(ctx, "pr_tag", prTag, "repo", project+"/"+repo, "pr_id", pr.ID)
 
 	// Per-review HTTP accounting. The bitbucket and jira transports already
 	// record into the scope; without one opened here every count was dropped
@@ -80,7 +77,6 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// calls. Each exit below logs its own; the full path logs in post.
 	ctx, httpCounter := httpstats.WithScope(ctx)
 
-	key := prKey(project, repo, pr.ID)
 	author := pr.Author.User.Name
 
 	// 1b. The team may have given the repo up while this sat in the queue.

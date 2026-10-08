@@ -11,7 +11,6 @@ import (
 
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/jira"
-	"github.com/trick77/noergler/internal/store"
 )
 
 // fileFetchConcurrency bounds how many full file bodies are in flight at
@@ -254,11 +253,6 @@ func (r *Reviewer) fetchRepoInstructions(ctx context.Context, project, repo, fro
 		}
 	}
 	return ""
-}
-
-// prKey builds the store key.
-func prKey(project, repo string, prID int) store.PRKey {
-	return store.PRKey{Project: project, Repo: repo, PRID: prID}
 }
 
 // shortSHA truncates a commit for log lines and notices.
