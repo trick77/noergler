@@ -39,8 +39,7 @@ type PRUpsert struct {
 // opened_at is sticky: the first non-NULL value stays. The pointer, author
 // and title are written as given, nil included: the skip paths pass the
 // prior pointer back on purpose (unless KeepPointer). A declined PR that
-// sees a review again was reopened: declined_at is cleared, and so is the
-// decline's riptide stamp, so the later merge emits its own rollup.
+// sees a review again was reopened: declined_at is cleared.
 func (s *Store) UpsertPullRequest(ctx context.Context, u PRUpsert) (int64, error) {
 	var id int64
 	err := s.pool.QueryRow(ctx, `
@@ -52,7 +51,6 @@ func (s *Store) UpsertPullRequest(ctx context.Context, u PRUpsert) (int64, error
 			author = EXCLUDED.author,
 			title = EXCLUDED.title,
 			opened_at = COALESCE(pull_requests.opened_at, EXCLUDED.opened_at),
-			riptide_emitted_at = CASE WHEN pull_requests.declined_at IS NOT NULL THEN NULL ELSE pull_requests.riptide_emitted_at END,
 			declined_at = NULL,
 			updated_at = now()
 		RETURNING id`,

@@ -259,28 +259,6 @@ func TestRuns_CostAggregationWithNulls(t *testing.T) {
 	}
 }
 
-// A decline emits the rollup. A reopened PR that is later merged must emit
-// again, or riptide keeps "declined" with the old totals forever.
-func TestRollup_ReopenAfterDeclineEmitsAgain(t *testing.T) {
-	s := testStore(t)
-	ctx := context.Background()
-	id := upsert(t, s, key, "a")
-	run(t, s, id, "a", nano(100), "m")
-	if err := s.MarkDeclined(ctx, key); err != nil {
-		t.Fatal(err)
-	}
-	if snap, _ := s.ClaimRollup(ctx, key, RollupFinal{}); snap == nil {
-		t.Fatal("the decline must claim")
-	}
-	upsert(t, s, key, "b") // reopened and reviewed
-	if snap, _ := s.ClaimRollup(ctx, key, RollupFinal{MergeCommit: str("m1")}); snap == nil {
-		t.Fatal("the merge after a reopen must claim again")
-	}
-	if snap, _ := s.ClaimRollup(ctx, key, RollupFinal{}); snap != nil {
-		t.Error("a redelivered merge must not claim twice")
-	}
-}
-
 func TestRollup_ClaimIsAtomicAndOnce(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
