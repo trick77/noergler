@@ -533,6 +533,20 @@ func TestPullRequest_ReopenedAfterDeclineStartsFreshButDedups(t *testing.T) {
 	}
 }
 
+// The daily queries bucket with date_trunc('day'), which uses the session
+// TimeZone. The session is pinned to UTC, so a server configured for another
+// zone cannot shift every bucket a day away from its label.
+func TestSessionTimeZoneIsUTC(t *testing.T) {
+	s := testStore(t)
+	var tz string
+	if err := s.pool.QueryRow(context.Background(), `SHOW timezone`).Scan(&tz); err != nil {
+		t.Fatal(err)
+	}
+	if tz != "UTC" {
+		t.Errorf("session timezone = %q, want UTC", tz)
+	}
+}
+
 // PRCost is what the PR spent: priced runs plus the run-less attempts that
 // were billed (an unparseable response). Nil only when neither is priced.
 func TestPRCost_IncludesBilledAttempts(t *testing.T) {

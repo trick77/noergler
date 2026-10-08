@@ -374,12 +374,13 @@ func TestMetricsDefaultsToTheCurrentMonth(t *testing.T) {
 	if got.Window != "month" {
 		t.Errorf("window = %q, want month", got.Window)
 	}
-	now := time.Now()
+	// UTC, matching the DB session the daily buckets are truncated in.
+	now := time.Now().UTC()
 	if got.Since.Day() != 1 || got.Since.Month() != now.Month() || got.Since.Year() != now.Year() {
 		t.Errorf("since = %s, want the first of this month", got.Since)
 	}
-	if got.Since.Hour() != 0 || got.Since.Minute() != 0 {
-		t.Errorf("since = %s, want midnight", got.Since)
+	if _, off := got.Since.Zone(); got.Since.Hour() != 0 || got.Since.Minute() != 0 || off != 0 {
+		t.Errorf("since = %s, want UTC midnight", got.Since)
 	}
 	// Exclusive end, so the page can lay out the month without deciding
 	// where it ends itself.
@@ -388,10 +389,8 @@ func TestMetricsDefaultsToTheCurrentMonth(t *testing.T) {
 	}
 }
 
-// monthStart is local, not UTC: an operator reading a spend figure means
-// their month, and a UTC boundary moves the figure for anyone west of it on
-// the first.
-func TestMonthStartIsLocalMidnight(t *testing.T) {
+// monthStart stays in the location it is given (the handler passes UTC).
+func TestMonthStartKeepsTheLocation(t *testing.T) {
 	at := time.Date(2026, 3, 17, 14, 30, 0, 0, time.Local)
 	got := monthStart(at)
 	want := time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)
@@ -505,7 +504,7 @@ func TestMetricsRendersTheSeries(t *testing.T) {
 	if err := json.Unmarshal(h.get(t, "/api/dashboard/metrics").Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Daily) != 2 || got.Daily[0].Day != day.Format(time.DateOnly) {
+	if len(got.Daily) != 2 || got.Daily[0].Day != day.UTC().Format(time.DateOnly) {
 		t.Errorf("daily = %+v", got.Daily)
 	}
 	if got.Daily[0].Cost == nil || *got.Daily[0].Cost != "1.250" {
@@ -719,12 +718,10 @@ func TestLiveOmitsTeamsThatNeverRan(t *testing.T) {
 	}
 }
 
-// Every boundary this handler computes is LOCAL midnight, matching
-// date_trunc('day') in the daily queries. time.Truncate(24h) works on
-// absolute time, so it lands on UTC midnight instead: on a Europe/Zurich pod
-// that is 02:00 local, and the window then disagrees with the buckets the
-// page lays out.
-func TestWindowBoundariesAreLocalMidnight(t *testing.T) {
+// Both helpers work in t's own location. time.Truncate(24h) works on
+// absolute time, so it lands on UTC midnight whatever the location, and the
+// two boundaries would then disagree for any location but UTC.
+func TestWindowBoundariesAreMidnightInTheirLocation(t *testing.T) {
 	at := time.Date(2026, 3, 17, 14, 30, 0, 0, time.Local)
 
 	if got := dayStart(at); got.Hour() != 0 || got.Minute() != 0 || got.Day() != 17 {
@@ -746,7 +743,7 @@ func TestWindowBoundariesAreLocalMidnight(t *testing.T) {
 
 // A rolling window's ends are day starts too, not whatever moment the
 // request happened to arrive at.
-func TestRollingWindowStartsAtLocalMidnight(t *testing.T) {
+func TestRollingWindowStartsAtMidnight(t *testing.T) {
 	h := newDashHarness(t)
 
 	var got metricsBody
@@ -754,10 +751,10 @@ func TestRollingWindowStartsAtLocalMidnight(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got.Since.Hour() != 0 || got.Since.Minute() != 0 || got.Since.Second() != 0 {
-		t.Errorf("since = %s, want local midnight", got.Since)
+		t.Errorf("since = %s, want midnight", got.Since)
 	}
 	if got.Until.Hour() != 0 {
-		t.Errorf("until = %s, want local midnight", got.Until)
+		t.Errorf("until = %s, want midnight", got.Until)
 	}
 }
 
