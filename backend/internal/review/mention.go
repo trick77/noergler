@@ -33,7 +33,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		return false
 	}
 	// Self-loop prevention: our own comments are not mentions.
-	if comment.Author.Name == r.bitbucket.BotUsername() {
+	if strings.EqualFold(comment.Author.Name, r.bitbucket.BotUsername()) {
 		r.log.DebugContext(ctx, "Ignoring own comment (bot)")
 		return false
 	}

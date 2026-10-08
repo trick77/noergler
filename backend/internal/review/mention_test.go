@@ -26,6 +26,17 @@ func TestMentionIgnoresOwnCommentAndNonOpenPR(t *testing.T) {
 		}
 	})
 
+	// The gate matches the trigger case-insensitively, so the self check must
+	// too: otherwise a BITBUCKET_USERNAME cased differently from Bitbucket's
+	// name turns every bot notice (they all mention the bot) into a paid call.
+	t.Run("the bot's own comment, cased differently", func(t *testing.T) {
+		h := newHarness(t, nil)
+		h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "Noergler"), "platform", nil)
+		if len(h.llm.Reviews)+len(h.llm.Mentions) != 0 {
+			t.Error("the bot must not answer itself")
+		}
+	})
+
 	t.Run("a non-open PR", func(t *testing.T) {
 		h := newHarness(t, nil)
 		p := mentionPayload("@noergler what is this?", "alice")
