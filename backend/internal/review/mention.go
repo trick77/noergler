@@ -11,6 +11,7 @@ import (
 	"github.com/trick77/noergler/internal/httpstats"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/logging"
+	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
 
@@ -65,13 +66,9 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	// Clearing the state (and the stale summary id, which Reactivate does)
 	// lets the next review post a fresh summary and stops the review guard
 	// from re-ignoring the PR.
-	if state := safeDB(ctx, r.log, "GetSkipState", func() (*storeSkipState, error) {
-		s, err := r.store.GetSkipState(ctx, key)
-		if s == nil {
-			return nil, err
-		}
-		return &storeSkipState{Ignored: s.IgnoredAt != nil}, err
-	}); state != nil && state.Ignored {
+	if state := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
+		return r.store.GetSkipState(ctx, key)
+	}); state != nil && state.IgnoredAt != nil {
 		safeDBErr(ctx, r.log, "Reactivate", func() error { return r.store.Reactivate(ctx, key) })
 		r.log.InfoContext(ctx, prTag+": reactivating ignored PR via @mention")
 	}
@@ -170,9 +167,6 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	}
 	return false
 }
-
-// storeSkipState is the part of the skip state the mention path reads.
-type storeSkipState struct{ Ignored bool }
 
 // reply posts a threaded reply, logging a failure rather than propagating it:
 // a mention that cannot be answered must not fail the webhook.

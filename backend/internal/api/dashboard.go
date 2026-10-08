@@ -406,34 +406,33 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	totals, err := d.DashboardStore.TotalsSince(ctx, since)
-	if err != nil {
-		d.Log.ErrorContext(ctx, "dashboard: TotalsSince failed: "+err.Error())
+	failed := func(what string, err error) bool {
+		if err == nil {
+			return false
+		}
+		d.Log.ErrorContext(ctx, "dashboard: "+what+" failed: "+err.Error())
 		httpapi.WriteDetail(w, http.StatusInternalServerError, "could not read metrics")
+		return true
+	}
+	st := d.DashboardStore
+	totals, err := st.TotalsSince(ctx, since)
+	if failed("TotalsSince", err) {
 		return
 	}
-	byTeam, err := d.DashboardStore.TotalsByTeam(ctx, since)
-	if err != nil {
-		d.Log.ErrorContext(ctx, "dashboard: TotalsByTeam failed: "+err.Error())
-		httpapi.WriteDetail(w, http.StatusInternalServerError, "could not read metrics")
+	byTeam, err := st.TotalsByTeam(ctx, since)
+	if failed("TotalsByTeam", err) {
 		return
 	}
-	daily, err := d.DashboardStore.DailyByTeam(ctx, since)
-	if err != nil {
-		d.Log.ErrorContext(ctx, "dashboard: DailyByTeam failed: "+err.Error())
-		httpapi.WriteDetail(w, http.StatusInternalServerError, "could not read metrics")
+	daily, err := st.DailyByTeam(ctx, since)
+	if failed("DailyByTeam", err) {
 		return
 	}
-	attempts, err := d.DashboardStore.DailyAttempts(ctx, since)
-	if err != nil {
-		d.Log.ErrorContext(ctx, "dashboard: DailyAttempts failed: "+err.Error())
-		httpapi.WriteDetail(w, http.StatusInternalServerError, "could not read metrics")
+	attempts, err := st.DailyAttempts(ctx, since)
+	if failed("DailyAttempts", err) {
 		return
 	}
-	breakdown, err := d.DashboardStore.OutcomeBreakdown(ctx, since)
-	if err != nil {
-		d.Log.ErrorContext(ctx, "dashboard: OutcomeBreakdown failed: "+err.Error())
-		httpapi.WriteDetail(w, http.StatusInternalServerError, "could not read metrics")
+	breakdown, err := st.OutcomeBreakdown(ctx, since)
+	if failed("OutcomeBreakdown", err) {
 		return
 	}
 
