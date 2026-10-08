@@ -422,7 +422,7 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 		},
 		LLM: LLM{
 			Model:         e.required("OPENAI_MODEL"),
-			BaseURL:       stripChatSuffix(e.required(GatewayBaseURLEnv)),
+			BaseURL:       e.required(GatewayBaseURLEnv),
 			GatewayModels: e.required(GatewayModelsEnv),
 			ContextWindow: e.integer("OPENAI_CONTEXT_WINDOW", "0"),
 		},
@@ -505,11 +505,3 @@ func Load(lookup func(string) (string, bool)) (*App, error) {
 
 // OSLookup is os.LookupEnv, the production lookup.
 func OSLookup(name string) (string, bool) { return os.LookupEnv(name) }
-
-// stripChatSuffix removes a user-supplied /chat/completions (llmwire appends
-// it) and trailing slashes on either side of it.
-func stripChatSuffix(u string) string {
-	u = strings.TrimRight(u, "/")
-	u = strings.TrimSuffix(u, "/chat/completions")
-	return strings.TrimRight(u, "/")
-}

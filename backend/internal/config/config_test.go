@@ -160,7 +160,7 @@ func TestInstance_ParseRules(t *testing.T) {
 		"REVIEW_TICKET_COMPLIANCE_CHECK", "False", "REVIEW_REQUIRE_AGENTS_MD", "YES", "REVIEW_DIFF_ALLOW_DYNAMIC_CONTEXT", "1",
 		"REVIEW_IGNORE_AUTHORS", "os-jenkins-bb, renovate,,", "REVIEW_MAX_PR_COST_USD", "8.50",
 		"OPENAI_REASONING_EFFORT", "HIGH", "REVIEW_OPT_OUT_BRANCH_KEYWORD", "skipme",
-		"LLMWIRE_LITELLM_BASE_URL", "https://llm.example.com/v1/chat/completions", "NOERGLER_PUBLIC_URL", "https://n.example.com/")
+		"NOERGLER_PUBLIC_URL", "https://n.example.com/")
 	app := e.mustLoad()
 	r := app.Review
 	if r.DiffExtraLinesBefore != 5 || r.DiffExtraLinesAfter != 4 || r.TicketComplianceCheck || !r.RequireAgentsMD || !r.DiffAllowDynamicContext {
