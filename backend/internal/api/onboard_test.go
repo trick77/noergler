@@ -25,13 +25,9 @@ type fakeBB struct {
 	permErr error
 }
 
-func (f *fakeBB) GetProject(context.Context, string) (map[string]any, error) {
-	return map[string]any{"key": "PLAT"}, nil
-}
-func (f *fakeBB) GetRepo(context.Context, string, string) (map[string]any, error) {
-	return map[string]any{"slug": "svc"}, nil
-}
-func (f *fakeBB) BotUsername() string { return testBot }
+func (f *fakeBB) GetProject(context.Context, string) error      { return nil }
+func (f *fakeBB) GetRepo(context.Context, string, string) error { return nil }
+func (f *fakeBB) BotUsername() string                           { return testBot }
 
 func (f *fakeBB) WithToken(token string) onboarding.AdminClient {
 	f.lastToken = token

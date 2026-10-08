@@ -8,6 +8,7 @@ import (
 
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/httpapi"
+	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/queue"
 	"github.com/trick77/noergler/internal/review"
 	"github.com/trick77/noergler/internal/store"
@@ -44,11 +45,8 @@ type DashboardStore interface {
 	ActivityByTeam(ctx context.Context) ([]store.TeamActivity, error)
 }
 
-// nanoPerUSD converts the store's BIGINT nano-USD to the USD the edge shows.
-const nanoPerUSD = 1_000_000_000
-
-// usd renders nano-USD as a fixed-point decimal string with 3 decimals, the
-// same precision the cost log lines carry.
+// usd renders nano-USD as a fixed-point decimal string with 3 decimals,
+// through the same integer formatter as the cost log lines (no float step).
 //
 // A string, never a float: a JSON number would hand the browser a binary
 // float of a decimal amount. Never an exponent either - 1E-9 breaks strict
@@ -58,7 +56,7 @@ func usd(nano *int64) *string {
 	if nano == nil {
 		return nil
 	}
-	s := strconv.FormatFloat(float64(*nano)/nanoPerUSD, 'f', 3, 64)
+	s := inference.FormatUSD3(*nano)
 	return &s
 }
 
@@ -68,7 +66,7 @@ func usd(nano *int64) *string {
 // The map is built ONCE per request and read per row, so a name cannot
 // change halfway down a response. It is built with one Lookup per enabled
 // team, not from a single Runtime snapshot: Name comes from teams.yaml and
-// ApplySettings never touches it, so two teams read a moment apart cannot
+// UpdateSettings never touches it, so two teams read a moment apart cannot
 // disagree about it.
 //
 // That is the invariant to keep. Make a display name settable through
@@ -352,21 +350,19 @@ func toTotals(t store.Totals) totalsBody {
 	}
 }
 
-// monthStart is midnight on the first of the month that t falls in, in the
-// instance's own location. Local, not UTC: an operator reading a spend figure
-// means their month, and a UTC boundary would move the figure for anyone west
-// of it on the first of the month.
+// monthStart is midnight on the first of the month that t falls in, in t's
+// location. The metrics handler passes UTC: the DB session is pinned to UTC
+// (store.openConfig), so date_trunc buckets and these windows agree. The
+// image ships no tzdata, so a "local" month was UTC in production anyway.
 func monthStart(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, t.Location())
 }
 
-// dayStart is local midnight on t's own day.
+// dayStart is midnight on t's own day, in t's location.
 //
 // NOT time.Truncate(24h): that works on absolute time since the epoch, so it
-// lands on UTC midnight whatever the location. On a TZ=Europe/Zurich pod that
-// is 02:00 local, putting two hours of the day inside a window that claims to
-// start at midnight, and it disagrees with both monthStart above and the
-// date_trunc('day') the daily queries bucket by.
+// lands on UTC midnight whatever the location, which disagrees with
+// monthStart above for any location but UTC.
 func dayStart(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 }
@@ -399,7 +395,7 @@ func (d Deps) activityByTeam(ctx context.Context) map[string]store.TeamActivity 
 // ?days=N overrides it with a rolling window, clamped: an unbounded one would
 // seq-scan however much history exists. Absent means the month.
 func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
-	now := time.Now()
+	now := time.Now().UTC()
 	since := monthStart(now)
 	if raw := r.URL.Query().Get("days"); raw != "" {
 		days, _ := strconv.Atoi(raw)
@@ -410,34 +406,33 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	totals, err := d.DashboardStore.TotalsSince(ctx, since)
-	if err != nil {
-		d.Log.ErrorContext(ctx, "dashboard: TotalsSince failed: "+err.Error())
+	failed := func(what string, err error) bool {
+		if err == nil {
+			return false
+		}
+		d.Log.ErrorContext(ctx, "dashboard: "+what+" failed: "+err.Error())
 		httpapi.WriteDetail(w, http.StatusInternalServerError, "could not read metrics")
+		return true
+	}
+	st := d.DashboardStore
+	totals, err := st.TotalsSince(ctx, since)
+	if failed("TotalsSince", err) {
 		return
 	}
-	byTeam, err := d.DashboardStore.TotalsByTeam(ctx, since)
-	if err != nil {
-		d.Log.ErrorContext(ctx, "dashboard: TotalsByTeam failed: "+err.Error())
-		httpapi.WriteDetail(w, http.StatusInternalServerError, "could not read metrics")
+	byTeam, err := st.TotalsByTeam(ctx, since)
+	if failed("TotalsByTeam", err) {
 		return
 	}
-	daily, err := d.DashboardStore.DailyByTeam(ctx, since)
-	if err != nil {
-		d.Log.ErrorContext(ctx, "dashboard: DailyByTeam failed: "+err.Error())
-		httpapi.WriteDetail(w, http.StatusInternalServerError, "could not read metrics")
+	daily, err := st.DailyByTeam(ctx, since)
+	if failed("DailyByTeam", err) {
 		return
 	}
-	attempts, err := d.DashboardStore.DailyAttempts(ctx, since)
-	if err != nil {
-		d.Log.ErrorContext(ctx, "dashboard: DailyAttempts failed: "+err.Error())
-		httpapi.WriteDetail(w, http.StatusInternalServerError, "could not read metrics")
+	attempts, err := st.DailyAttempts(ctx, since)
+	if failed("DailyAttempts", err) {
 		return
 	}
-	breakdown, err := d.DashboardStore.OutcomeBreakdown(ctx, since)
-	if err != nil {
-		d.Log.ErrorContext(ctx, "dashboard: OutcomeBreakdown failed: "+err.Error())
-		httpapi.WriteDetail(w, http.StatusInternalServerError, "could not read metrics")
+	breakdown, err := st.OutcomeBreakdown(ctx, since)
+	if failed("OutcomeBreakdown", err) {
 		return
 	}
 
@@ -466,13 +461,13 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, b := range daily {
 		body.Daily = append(body.Daily, dayBody{
-			Day: b.Day.Format(time.DateOnly), Team: b.TeamSlug,
+			Day: b.Day.UTC().Format(time.DateOnly), Team: b.TeamSlug,
 			Runs: b.Runs, Cost: usd(b.CostNanoUSD),
 		})
 	}
 	for _, b := range attempts {
 		body.Attempts = append(body.Attempts, outcomeDayBody{
-			Day: b.Day.Format(time.DateOnly), Outcome: b.Outcome, Count: b.Count,
+			Day: b.Day.UTC().Format(time.DateOnly), Outcome: b.Outcome, Count: b.Count,
 		})
 	}
 	for _, c := range breakdown {

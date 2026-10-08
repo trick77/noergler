@@ -15,7 +15,6 @@ import (
 	"github.com/trick77/noergler/internal/httpstats"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/jira"
-	"github.com/trick77/noergler/internal/logging"
 	"github.com/trick77/noergler/internal/render"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
@@ -61,28 +60,30 @@ func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Paylo
 // such exit has already logged its own HTTP totals.
 func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAuthorCheck bool) (*reviewPlan, context.Context, bool) {
 	pr := payload.PullRequest
-	project, repo := payload.ProjectRepo()
-	if project == "" || repo == "" {
+	ctx, key, prTag, ok := prContext(ctx, payload)
+	if !ok {
 		r.log.ErrorContext(ctx, "Could not extract project/repo from webhook payload")
 		return nil, ctx, false
 	}
-
-	prTag := fmt.Sprintf("%s/%s#%d", project, repo, pr.ID)
+	project, repo := key.Project, key.Repo
 	kind := runKind(skipAuthorCheck)
-	ctx = logging.With(ctx, "pr_tag", prTag, "repo", project+"/"+repo, "pr_id", pr.ID)
 
 	// Per-review HTTP accounting. The bitbucket and jira transports already
 	// record into the scope; without one opened here every count was dropped
-	// and the totals line never existed. Deferred, so a review that skips or
-	// fails still reports what it spent.
+	// and the totals line never existed.
 	// NOT deferred: with the inference call staged off the worker, a defer
 	// here fires before the gateway call and before posting, so the totals
 	// line would report inference=0 and none of the post stage's Bitbucket
 	// calls. Each exit below logs its own; the full path logs in post.
 	ctx, httpCounter := httpstats.WithScope(ctx)
 
-	key := prKey(project, repo, pr.ID)
 	author := pr.Author.User.Name
+
+	// 1b. The team may have given the repo up while this sat in the queue.
+	if r.owns != nil && !r.owns(project, repo) {
+		r.log.InfoContext(ctx, prTag+": repo no longer claimed by the team, skipping")
+		return nil, ctx, r.abort(ctx, key, kind, SkipRepoNotClaimed, prTag, httpCounter)
+	}
 
 	// 2. Author gate. The ignore list wins over the allow list inside
 	// IsAutoReviewAuthor, so a bare false cannot say which list decided.
@@ -173,9 +174,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 				r.log.InfoContext(ctx, fmt.Sprintf(
 					"%s: PR cost $%.2f >= limit $%.2f - skipping auto-review (@%s to review manually, or raise REVIEW_MAX_PR_COST_USD)",
 					prTag, cumulative, r.cfg.MaxPRCostUSD, r.bitbucket.BotUsername()))
-				// This push was not reviewed, so the prior commit stands.
-				prior := r.priorCommit(ctx, key)
-				prReviewID := r.upsert(ctx, upsert, prior)
+				prReviewID, _ := r.upsertKeepingPrior(ctx, upsert, key)
 				r.costLimitNotice(ctx, project, repo, pr.ID, prReviewID, cumulative, r.cfg.MaxPRCostUSD)
 				return nil, ctx, r.abort(ctx, key, kind, SkipCostCap, prTag, httpCounter)
 			}
@@ -186,23 +185,31 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	started := time.Now()
 
 	sourceCommit := pr.FromRef.LatestCommit
-	lastReviewed := r.priorCommit(ctx, key)
+	lastReviewed, _ := r.priorCommit(ctx, key)
 
 	// 9. Incremental review when the event is a push and we have a pointer.
-	rawDiff, cumulativePR, incrementalFrom, diffWhy, ok := r.resolveDiff(ctx, payload, key, prTag, sourceCommit, lastReviewed, upsert)
-	if !ok {
+	rawDiff, cumulativePR, incrementalFrom, diffWhy, err := r.resolveDiff(ctx, payload, key, prTag, sourceCommit, lastReviewed, upsert)
+	if err != nil || diffWhy != SkipNone {
+		// A diff that would not fetch is a fault, recorded as an error like
+		// an inference one, so an outage is visible. A cancelled ctx is a
+		// shutdown, not an outage.
+		if err != nil && ctx.Err() == nil {
+			r.recordAttempt(ctx, store.Attempt{
+				Key: key, TeamSlug: r.TeamSlug, Kind: kind,
+				Outcome: inference.OutcomeError.String(),
+			})
+		}
 		return nil, ctx, r.abort(ctx, key, kind, diffWhy, prTag, httpCounter)
 	}
 
-	files, contentSkipped := r.prepareFiles(ctx, project, repo, rawDiff, sourceCommit, prTag)
+	// The line counts are the whole PR's scope, taken before compression.
+	files, contentSkipped, diffAdded, diffRemoved := r.prepareFiles(ctx, project, repo, rawDiff, sourceCommit, prTag)
 	// 13. Nothing reviewable after the content fetch.
 	if len(files) == 0 {
 		r.log.InfoContext(ctx, prTag+" has no reviewable files after content fetch, skipping")
 		return nil, ctx, r.abort(ctx, key, kind, SkipNoReviewable, prTag, httpCounter)
 	}
 
-	// Counted before compression: this is the whole PR's scope.
-	diffAdded, diffRemoved := countDiffLines(rawDiff)
 	totalFiles := len(files)
 
 	// 14. Small PRs get context expansion; large ones are compressed first.
@@ -330,6 +337,19 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		r.logCost(ctx, prTag, result.Cost)
 	}
 
+	// Given up during inference: posting would comment on a repo the team
+	// left and re-create the PR row its removal purged. The call was paid
+	// for, so the attempt carries its cost.
+	if r.owns != nil && !r.owns(project, repo) {
+		r.log.InfoContext(ctx, prTag+": repo no longer claimed by the team, not posting")
+		r.recordAttempt(ctx, store.Attempt{
+			Key: key, TeamSlug: r.TeamSlug, Kind: runKind(plan.mention),
+			Outcome: "skipped", Reason: string(SkipRepoNotClaimed),
+			CostNanoUSD: result.Cost.NanoUSD,
+		})
+		return
+	}
+
 	// 17-19. Terminal branches. Each preserves the prior commit, posts a
 	// notice and writes no run row.
 	//
@@ -349,7 +369,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: verdict lowered %s -> %s after %d dropped finding(s)",
 			prTag, was, reviewSummary.VerdictDecision, len(v.Dropped)))
 	}
-	deduped, repeats := dedupe(v.Kept, existing)
+	deduped, repeats := dedupe(v.Kept, existing, plan.anchors)
 	for _, f := range repeats {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: finding on %s:%d (%s) already posted by an earlier run, not posted again",
 			prTag, f.File, f.Line, f.Severity))
@@ -506,14 +526,14 @@ func (r *Reviewer) checkSkipState(ctx context.Context, key store.PRKey, prTag st
 }
 
 // resolveDiff decides between an incremental and a full review and fetches
-// the diff. ok is false when the review must stop.
+// the diff. The review stops on a why other than SkipNone or on err.
 //
-// why names which of the four stops it was, because they are not the same
-// event: three are decisions (nothing changed, nothing to review, too big)
-// and one is a fault (the diff would not fetch). A single bare false told
-// the caller only that it had to return, so the two commonest skips in the
-// whole pipeline were invisible to anything but the log.
-func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, key store.PRKey, prTag, sourceCommit, lastReviewed string, upsert store.PRUpsert) (rawDiff string, cumulative cumulativeContext, incrementalFrom string, why SkipReason, ok bool) {
+// why names which of the three decisions it was (nothing changed, nothing to
+// review, too big); err is the fault (the diff would not fetch). A single
+// bare false told the caller only that it had to return, so the two
+// commonest skips in the whole pipeline were invisible to anything but the
+// log, and a zero why could not tell a fault from any other stop.
+func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, key store.PRKey, prTag, sourceCommit, lastReviewed string, upsert store.PRUpsert) (rawDiff string, cumulative cumulativeContext, incrementalFrom string, why SkipReason, err error) {
 	project, repo, prID := key.Project, key.Repo, key.PRID
 	isIncremental := false
 
@@ -522,7 +542,7 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 		if sourceCommit == lastReviewed {
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: HEAD unchanged since last review (%s), skipping",
 				prTag, shortSHA(sourceCommit, 10)))
-			return "", cumulativeContext{}, "", SkipHeadUnchanged, false
+			return "", cumulativeContext{}, "", SkipHeadUnchanged, nil
 		}
 		incDiff, err := r.bitbucket.FetchCommitDiff(ctx, project, repo, lastReviewed, sourceCommit)
 		switch {
@@ -569,28 +589,27 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 			// 10. Nothing in this push was reviewed, so the next push must
 			// not go incremental from it.
 			r.logDiffTooLarge(ctx, prTag, project, repo, prID, err, tooLarge)
-			prior := r.priorCommit(ctx, key)
-			prReviewID := r.upsert(ctx, upsert, prior)
+			prReviewID, _ := r.upsertKeepingPrior(ctx, upsert, key)
 			r.postOrUpdateSummary(ctx, project, repo, prID, prReviewID, render.DiffTooLargeSummary(tooLarge.Limit))
-			return "", cumulativeContext{}, "", SkipDiffTooLarge, false
+			return "", cumulativeContext{}, "", SkipDiffTooLarge, nil
 		}
 		if err != nil {
 			r.log.ErrorContext(ctx, fmt.Sprintf("%s: failed to fetch PR diff: %v", prTag, err))
-			return "", cumulativeContext{}, "", SkipNone, false
+			return "", cumulativeContext{}, "", SkipNone, err
 		}
 		// 11. An empty diff is nothing to review.
 		if strings.TrimSpace(full) == "" {
 			r.log.InfoContext(ctx, prTag+" has empty diff, skipping")
-			return "", cumulativeContext{}, "", SkipEmptyDiff, false
+			return "", cumulativeContext{}, "", SkipEmptyDiff, nil
 		}
-		return full, cumulativeContext{}, "", SkipNone, true
+		return full, cumulativeContext{}, "", SkipNone, nil
 	}
 
 	// 12. The cumulative PR diff is cross-file context for an incremental
 	// review, so the model can check invariants split across commits. Best
 	// effort: a failure here must not block the review.
 	cumulative = r.fetchCumulativeDiff(ctx, key, prTag, rawDiff)
-	return rawDiff, cumulative, incrementalFrom, SkipNone, true
+	return rawDiff, cumulative, incrementalFrom, SkipNone, nil
 }
 
 // handleNonOK posts the notice for a non-ok outcome.
@@ -617,8 +636,7 @@ func (r *Reviewer) handleNonOK(ctx context.Context, result inference.ReviewResul
 
 	// Read the prior commit BEFORE the upsert, which would otherwise
 	// overwrite it with this failed commit.
-	prior := r.priorCommit(ctx, key)
-	prReviewID := r.upsert(ctx, upsert, prior)
+	prReviewID, prior := r.upsertKeepingPrior(ctx, upsert, key)
 
 	switch result.Outcome {
 	case inference.OutcomeTimedOut:
@@ -635,9 +653,11 @@ func (r *Reviewer) handleNonOK(ctx context.Context, result inference.ReviewResul
 		r.tooLargeNotice(ctx, project, repo, prID, prReviewID, sourceCommit, prior)
 	}
 
+	// No run row, so a billed call's cost rides here, where PRCost reads it.
 	r.recordAttempt(ctx, store.Attempt{
 		Key: key, TeamSlug: r.TeamSlug, Kind: kind,
-		Outcome: result.Outcome.String(),
+		Outcome:     result.Outcome.String(),
+		CostNanoUSD: result.Cost.NanoUSD,
 	})
 }
 
@@ -740,8 +760,9 @@ func (r *Reviewer) validateFindings(ctx context.Context, prTag string, findings 
 }
 
 // dedupe drops findings an earlier run already posted, keyed on file, line
-// and severity. repeats are the dropped ones, for the log.
-func dedupe(findings []inference.ReviewFinding, existing []store.Finding) (out, repeats []inference.ReviewFinding) {
+// and severity. repeats are the dropped ones, for the log. A stored path is
+// resolved like a new one: older rows kept the model's a/ or b/ prefix.
+func dedupe(findings []inference.ReviewFinding, existing []store.Finding, idx diff.AnchorIndex) (out, repeats []inference.ReviewFinding) {
 	type dedupeKey struct {
 		file     string
 		line     int
@@ -749,7 +770,7 @@ func dedupe(findings []inference.ReviewFinding, existing []store.Finding) (out, 
 	}
 	seen := make(map[dedupeKey]bool, len(existing))
 	for _, f := range existing {
-		seen[dedupeKey{f.FilePath, f.LineNumber, f.Severity}] = true
+		seen[dedupeKey{inference.ShownPath(f.FilePath, idx), f.LineNumber, f.Severity}] = true
 	}
 	out = make([]inference.ReviewFinding, 0, len(findings))
 	for _, f := range findings {
@@ -912,16 +933,29 @@ func (r *Reviewer) upsert(ctx context.Context, u store.PRUpsert, lastReviewedCom
 	})
 }
 
-// priorCommit is the last successfully reviewed commit, or "".
-func (r *Reviewer) priorCommit(ctx context.Context, key store.PRKey) string {
-	commit := safeDB(ctx, r.log, "GetLastReviewedCommit", func() (string, error) {
+// upsertKeepingPrior writes the PR row for a push that was not reviewed, so
+// the prior commit stands, and returns the row id and that commit. A failed
+// read keeps the stored pointer: passing "" back would NULL it and make the
+// next push a full, paid review.
+func (r *Reviewer) upsertKeepingPrior(ctx context.Context, u store.PRUpsert, key store.PRKey) (int64, string) {
+	prior, readOK := r.priorCommit(ctx, key)
+	u.KeepPointer = !readOK
+	return r.upsert(ctx, u, prior), prior
+}
+
+// priorCommit is the last successfully reviewed commit, or "". readOK is
+// false only when the read failed.
+func (r *Reviewer) priorCommit(ctx context.Context, key store.PRKey) (commit string, readOK bool) {
+	readOK = true
+	commit = safeDB(ctx, r.log, "GetLastReviewedCommit", func() (string, error) {
 		c, ok, err := r.store.GetLastReviewedCommit(ctx, key)
+		readOK = err == nil
 		if !ok {
 			return "", err
 		}
 		return c, err
 	})
-	return commit
+	return commit, readOK
 }
 
 func tokenUsage(result inference.ReviewResult) render.TokenUsage {

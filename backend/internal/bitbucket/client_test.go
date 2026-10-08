@@ -448,15 +448,17 @@ func TestPostInlineCommentAnchor(t *testing.T) {
 	}
 }
 
-// A git diff path keeps its a/ or b/ prefix; the anchor needs the repo path.
-func TestPostInlineCommentStripsDiffPrefix(t *testing.T) {
+// The path arrives as the repo path (the diff parser and the validator have
+// already resolved any a/ or b/ prefix). Stripping again moved a comment on a
+// real top-level b/ directory onto a different file.
+func TestPostInlineCommentSendsThePathVerbatim(t *testing.T) {
 	f, c := newFake(t, jsonReply(201, `{"id":1}`))
-	if _, err := c.PostInlineComment(context.Background(), "PROJ", "r", 1, "b/src/main.py", 3, "x"); err != nil {
+	if _, err := c.PostInlineComment(context.Background(), "PROJ", "r", 1, "b/main.go", 3, "x"); err != nil {
 		t.Fatal(err)
 	}
 	anchor, _ := f.last().Body["anchor"].(map[string]any)
-	if anchor["path"] != "src/main.py" {
-		t.Errorf("path = %v, want src/main.py", anchor["path"])
+	if anchor["path"] != "b/main.go" {
+		t.Errorf("path = %v, want b/main.go", anchor["path"])
 	}
 }
 
@@ -878,14 +880,14 @@ func TestUserPermissionCanWrite(t *testing.T) {
 func TestGetProjectGetRepo(t *testing.T) {
 	f, c := newFake(t, jsonReply(200, `{"key":"PROJ","values":[]}`))
 
-	if _, err := c.GetProject(context.Background(), "PROJ"); err != nil {
+	if err := c.GetProject(context.Background(), "PROJ"); err != nil {
 		t.Fatal(err)
 	}
 	if want := "/rest/api/1.0/projects/PROJ"; f.last().Path != want {
 		t.Errorf("path = %q, want %q", f.last().Path, want)
 	}
 
-	if _, err := c.GetRepo(context.Background(), "PROJ", "r"); err != nil {
+	if err := c.GetRepo(context.Background(), "PROJ", "r"); err != nil {
 		t.Fatal(err)
 	}
 	if want := "/rest/api/1.0/projects/PROJ/repos/r"; f.last().Path != want {
@@ -917,13 +919,13 @@ func TestWithTokenSwapsAuthorization(t *testing.T) {
 	f, c := newFake(t, jsonReply(200, `{}`))
 	admin := c.WithToken("admin-token")
 
-	if _, err := admin.GetProject(context.Background(), "PROJ"); err != nil {
+	if err := admin.GetProject(context.Background(), "PROJ"); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.last().Header.Get("Authorization"); got != "Bearer admin-token" {
 		t.Errorf("Authorization = %q, want the admin token", got)
 	}
-	if _, err := c.GetProject(context.Background(), "PROJ"); err != nil {
+	if err := c.GetProject(context.Background(), "PROJ"); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.last().Header.Get("Authorization"); got != "Bearer test-token" {

@@ -208,21 +208,21 @@ type fakeBot struct {
 	err      error
 }
 
-func (f *fakeBot) answer(key string) (map[string]any, error) {
+func (f *fakeBot) answer(key string) error {
 	if f.readable[key] {
-		return map[string]any{"key": key}, nil
+		return nil
 	}
 	if f.err != nil {
-		return nil, f.err
+		return f.err
 	}
-	return nil, statusErr(404, "not found")
+	return statusErr(404, "not found")
 }
 
-func (f *fakeBot) GetProject(_ context.Context, project string) (map[string]any, error) {
+func (f *fakeBot) GetProject(_ context.Context, project string) error {
 	return f.answer(project)
 }
 
-func (f *fakeBot) GetRepo(_ context.Context, project, repo string) (map[string]any, error) {
+func (f *fakeBot) GetRepo(_ context.Context, project, repo string) error {
 	return f.answer(project + "/" + repo)
 }
 

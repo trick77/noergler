@@ -56,7 +56,9 @@ export function RunsPage() {
   const [filter, setFilter] = useState<Filter>("");
   const query = `runs?limit=50${filter === "" ? "" : `&outcome=${filter}`}`;
   const { data, failed, stale } = usePoll<Runs>(query, 10000);
-  const metrics = usePoll<Metrics>("metrics");
+  // Same cadence as the feed: read once, the tiles drifted from the rows
+  // beneath them for as long as the page stayed open.
+  const metrics = usePoll<Metrics>("metrics", 10000);
   const now = useNow(10000);
 
   if (!data) {
@@ -70,6 +72,9 @@ export function RunsPage() {
     );
   }
 
+  // A failing refresh dashes the counts too: kept on screen, the last
+  // reading read as current while the feed beneath moved on.
+  const counted = metrics.data !== null && !metrics.failed;
   const c = counts(metrics.data);
   // The skip breakdown, ranked. Only skips carry a reason; an outcome that
   // is not a skip is already named by its own word.
@@ -82,21 +87,22 @@ export function RunsPage() {
       <div className={column}>
         <h2 className={h2}>Runs</h2>
         <p className={lede}>
-          Every PR noergler looked at this month, including the ones it decided not to review.
-          Skipped means it never asked the model. Failed means it asked and something went wrong.
+          What noergler did with every PR this month, including the ones it decided not to review,
+          and the latest 50 runs below. Skipped means it never asked the model. Failed means it
+          asked and something went wrong.
         </p>
 
-        {/* A dash, not a zero, when the counts could not be read: the feed
-            below may be full, and four tiles reading 0 beside it would be a
-            claim rather than an absence. */}
+        {/* A dash, not a zero, until the counts are read, failed or still
+            loading: the feed below may be full, and four tiles reading 0
+            beside it would be a claim rather than an absence. */}
         <Tiles>
-          <Tile label="Runs" value={metrics.failed ? "—" : c.total} />
-          <Tile label="Reviewed" value={metrics.failed ? "—" : c.reviewed} />
-          <Tile label="Skipped" value={metrics.failed ? "—" : c.skipped} />
-          <Tile label="Failed" value={metrics.failed ? "—" : c.failed} />
+          <Tile label="Runs" value={counted ? c.total : "—"} />
+          <Tile label="Reviewed" value={counted ? c.reviewed : "—"} />
+          <Tile label="Skipped" value={counted ? c.skipped : "—"} />
+          <Tile label="Failed" value={counted ? c.failed : "—"} />
         </Tiles>
 
-        <p className={eyebrow}>Recent runs</p>
+        <p className={eyebrow}>Latest 50 runs</p>
         <Card
           right={
             <span className="flex gap-0.5">
@@ -186,6 +192,8 @@ export function RunsPage() {
         <Card>
           {metrics.failed ? (
             <Empty>Counts unavailable.</Empty>
+          ) : metrics.data === null ? (
+            <div className="skeleton h-12 rounded-ui" />
           ) : skips.length === 0 ? (
             <Empty>Nothing was skipped.</Empty>
           ) : (

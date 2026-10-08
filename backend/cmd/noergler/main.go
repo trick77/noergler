@@ -28,7 +28,6 @@ import (
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/teams"
 	"github.com/trick77/noergler/internal/tokens"
-	"github.com/trick77/noergler/internal/webhook"
 )
 
 func main() {
@@ -56,10 +55,20 @@ func main() {
 	}
 }
 
+// logVersion names the build at boot. The release stamps the commit too; it
+// was linked into the binary and never read.
+func logVersion(log *slog.Logger) {
+	if c := buildinfo.Commit(); c != "" {
+		log.Info("noergler version: "+buildinfo.Version(), "commit", c)
+		return
+	}
+	log.Info("noergler version: " + buildinfo.Version())
+}
+
 // migrate applies pending migrations and exits: the init container's job.
 // Only DATABASE_URL is needed, so a teams.yaml is not required here.
 func migrate(log *slog.Logger) error {
-	log.Info("noergler version: " + buildinfo.Version())
+	logVersion(log)
 	dsn, ok := os.LookupEnv("DATABASE_URL")
 	if !ok || strings.TrimSpace(dsn) == "" {
 		return errors.New("environment variable DATABASE_URL is not set")
@@ -79,7 +88,7 @@ func migrate(log *slog.Logger) error {
 }
 
 func serve(log *slog.Logger) error {
-	log.Info("noergler version: " + buildinfo.Version())
+	logVersion(log)
 	app, err := config.Load(config.OSLookup)
 	if err != nil {
 		return err
@@ -163,14 +172,7 @@ func serve(log *slog.Logger) error {
 	// httpapi.Run makes the same separation for its own shutdown.
 	queueCtx, stopQueue := context.WithCancel(context.WithoutCancel(ctx))
 	defer stopQueue()
-	// queue.Scheduler and review.Scheduler are identical but separately
-	// declared, so neither package imports the other. Go unifies interfaces
-	// structurally when assigning a value, but not when matching a func
-	// type, so the bridge is explicit here.
-	reviewFn := func(ctx context.Context, team string, p *webhook.Payload, sched queue.Scheduler) bool {
-		return reg.Review(ctx, team, p, sched)
-	}
-	q := queue.New(reviewFn, app.Queue.InferenceConcurrency, app.Queue.InferenceConcurrencyPerTeam, log)
+	q := queue.New(reg.Review, app.Queue.InferenceConcurrency, app.Queue.InferenceConcurrencyPerTeam, log)
 	q.Start(queueCtx)
 
 	srv := httpapi.New(reg.Status, log)

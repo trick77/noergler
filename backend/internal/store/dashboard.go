@@ -13,6 +13,22 @@ import (
 // Cost is BIGINT nano-USD throughout and NULL means unpriced. SUM() skips
 // NULLs, so Unpriced is counted separately and NEVER folded in as zero: a
 // run the gateway did not price is not a free run.
+//
+// Spend is runs plus billed run-less attempts (an unparseable response, a
+// review stopped by a removed claim): the same money prCostSQL counts per PR.
+// Read off runs alone, the monthly figure fell short of the key's real spend.
+// The attempts add cost only, never a run, a token or a finding.
+const spendCTE = `
+	WITH spend AS (
+		SELECT p.team_slug, r.created_at, r.cost_nano_usd, 1 AS run, r.prompt_tokens,
+		       r.cached_tokens, r.completion_tokens, r.findings_posted
+		  FROM review_runs r
+		  JOIN pull_requests p ON p.id = r.pull_request_id
+		UNION ALL
+		SELECT a.team_slug, a.created_at, a.cost_nano_usd, 0, 0, 0, 0, 0
+		  FROM review_attempts a
+		 WHERE a.review_run_id IS NULL AND a.cost_nano_usd IS NOT NULL
+	)`
 
 // Totals is the headline figure set over a time window.
 type Totals struct {
@@ -21,7 +37,8 @@ type Totals struct {
 	CachedTokens     int64
 	CompletionTokens int64
 	FindingsPosted   int64
-	// CostNanoUSD sums the priced runs only. Nil when none were priced.
+	// CostNanoUSD sums the priced runs and billed run-less attempts. Nil
+	// when none were priced.
 	CostNanoUSD *int64
 	// Unpriced is how many runs carried no cost. Shown beside the total,
 	// never added to it.
@@ -29,20 +46,20 @@ type Totals struct {
 }
 
 const totalsCols = `
-	COUNT(*),
+	COALESCE(SUM(run), 0),
 	COALESCE(SUM(prompt_tokens), 0),
 	COALESCE(SUM(cached_tokens), 0),
 	COALESCE(SUM(completion_tokens), 0),
 	COALESCE(SUM(findings_posted), 0),
 	SUM(cost_nano_usd),
-	COUNT(*) FILTER (WHERE cost_nano_usd IS NULL)`
+	COUNT(*) FILTER (WHERE run = 1 AND cost_nano_usd IS NULL)`
 
 // TotalsSince aggregates every team's runs in the window.
 func (s *Store) TotalsSince(ctx context.Context, since time.Time) (Totals, error) {
 	var t Totals
-	err := s.pool.QueryRow(ctx, `
+	err := s.pool.QueryRow(ctx, spendCTE+`
 		SELECT`+totalsCols+`
-		  FROM review_runs
+		  FROM spend
 		 WHERE created_at >= $1`, since).
 		Scan(&t.Runs, &t.PromptTokens, &t.CachedTokens, &t.CompletionTokens,
 			&t.FindingsPosted, &t.CostNanoUSD, &t.Unpriced)
@@ -58,13 +75,12 @@ type TeamTotals struct {
 // TotalsByTeam is TotalsSince grouped by the team that owns the PR. The slug
 // comes off pull_requests, which the webhook route authenticated.
 func (s *Store) TotalsByTeam(ctx context.Context, since time.Time) ([]TeamTotals, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT p.team_slug,`+totalsCols+`
-		  FROM review_runs r
-		  JOIN pull_requests p ON p.id = r.pull_request_id
-		 WHERE r.created_at >= $1
-		 GROUP BY p.team_slug
-		 ORDER BY SUM(r.cost_nano_usd) DESC NULLS LAST`, since)
+	rows, err := s.pool.Query(ctx, spendCTE+`
+		SELECT team_slug,`+totalsCols+`
+		  FROM spend
+		 WHERE created_at >= $1
+		 GROUP BY team_slug
+		 ORDER BY SUM(cost_nano_usd) DESC NULLS LAST`, since)
 	if err != nil {
 		return nil, err
 	}
@@ -94,15 +110,14 @@ type Bucket struct {
 // runs are absent rather than zero-filled: the caller knows the window it
 // asked for and fills the gaps, which keeps this query from inventing rows.
 func (s *Store) DailyByTeam(ctx context.Context, since time.Time) ([]Bucket, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT date_trunc('day', r.created_at) AS day,
-		       p.team_slug,
-		       COUNT(*),
-		       SUM(r.cost_nano_usd)
-		  FROM review_runs r
-		  JOIN pull_requests p ON p.id = r.pull_request_id
-		 WHERE r.created_at >= $1
-		 GROUP BY day, p.team_slug
+	rows, err := s.pool.Query(ctx, spendCTE+`
+		SELECT date_trunc('day', created_at) AS day,
+		       team_slug,
+		       COALESCE(SUM(run), 0),
+		       SUM(cost_nano_usd)
+		  FROM spend
+		 WHERE created_at >= $1
+		 GROUP BY day, team_slug
 		 ORDER BY day`, since)
 	if err != nil {
 		return nil, err

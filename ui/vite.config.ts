@@ -23,7 +23,6 @@ export default defineConfig({
     // afterEach hook; without globals each render stacks on the previous
     // test's DOM and every findByText hits duplicates.
     globals: true,
-    setupFiles: ["./src/test-setup.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text-summary", "json-summary", "lcov"],

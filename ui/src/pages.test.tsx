@@ -203,6 +203,28 @@ describe("LivePage", () => {
     render(<LivePage />);
     expect(await screen.findByText(/Could not load/)).toBeDefined();
   });
+
+  // Once the panel has loaded, a dead instance kept its last running rows
+  // and their elapsed clocks counting up: a review "stuck" for 40 minutes.
+  it("says so when the refresh fails, and stops the clocks", async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        calls += 1;
+        if (calls > 1) return { ok: false, status: 503, json: async () => ({}) };
+        return { ok: true, status: 200, json: async () => live };
+      }),
+    );
+    render(<LivePage />);
+    await screen.findByText("PAY/ledger#1");
+
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(await screen.findByText(/Refresh failing/)).toBeDefined();
+    const elapsed = screen.getByText("PAY/ledger#1").closest("tr")?.lastElementChild?.textContent;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(screen.getByText("PAY/ledger#1").closest("tr")?.lastElementChild?.textContent).toBe(elapsed);
+  });
 });
 
 describe("RunsPage", () => {
@@ -285,6 +307,58 @@ describe("RunsPage", () => {
     expect(screen.queryByText("Counts unavailable.")).toBeDefined();
     // The feed is there; the tiles do not claim a number.
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  });
+
+  // Still loading is not zero either: four 0 tiles and "Nothing was skipped"
+  // on a slow /metrics are the same false claim as on a failed one.
+  it("dashes the counts while metrics are still loading", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        url.includes("/metrics")
+          ? new Promise(() => {})
+          : Promise.resolve({ ok: true, status: 200, json: async () => ({ runs }) }),
+      ),
+    );
+    render(<RunsPage />);
+
+    await waitFor(() => expect(screen.getByText("PAY/ledger#1")).toBeDefined());
+    expect(screen.getByText("Reviewed").nextElementSibling?.textContent).toBe("—");
+    expect(screen.queryByText("Nothing was skipped.")).toBeNull();
+  });
+
+  // The tiles were read once while the feed beneath refreshed every 10s, so
+  // the counts drifted from the rows for as long as the page stayed open.
+  it("refreshes the counts with the feed", async () => {
+    serve({ runs: { runs }, metrics });
+    render(<RunsPage />);
+    await screen.findByText("PAY/ledger#1");
+    const metricsCalls = () =>
+      (fetch as unknown as { mock: { calls: string[][] } }).mock.calls.filter(([u]) => u.includes("/metrics")).length;
+    expect(metricsCalls()).toBe(1);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(metricsCalls()).toBe(2);
+  });
+
+  // Polled, a /metrics that starts failing kept its first reading on the
+  // tiles beside a feed that moved on. Failing is unknown, not the old count.
+  it("dashes the counts when a metrics refresh fails", async () => {
+    let metricsCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("/metrics") && ++metricsCalls > 1) {
+          return { ok: false, status: 500, json: async () => ({}) };
+        }
+        return { ok: true, status: 200, json: async () => (url.includes("/metrics") ? metrics : { runs }) };
+      }),
+    );
+    render(<RunsPage />);
+    await waitFor(() => expect(screen.getByText("Reviewed").nextElementSibling?.textContent).not.toBe("—"));
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await waitFor(() => expect(screen.getByText("Reviewed").nextElementSibling?.textContent).toBe("—"));
+    expect(screen.getByText("Counts unavailable.")).toBeDefined();
   });
 
   it("ranks the skip reasons by their label", async () => {

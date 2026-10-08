@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/trick77/noergler/internal/config"
@@ -123,6 +124,51 @@ func TestReconcile_NoSettingsSeedWhenEverythingEmpty(t *testing.T) {
 	}
 	if len(db.put) != 0 || len(db.added) != 0 {
 		t.Errorf("wrote for a team with nothing to seed: added=%v put=%v", db.added, db.put)
+	}
+}
+
+// A team that removed its last claim via /onboard is still named by
+// ListAllClaims, with no scopes. That is the team's own removal: a restart
+// must not hand the teams.yaml projects back, or another team claiming them
+// gets a 409.
+func TestReconcile_RemovedClaimsStayRemoved(t *testing.T) {
+	db := &fakeClaimStore{
+		claims:   map[string][]config.ProjectScope{"platform": nil},
+		settings: map[string]store.TeamSettings{"platform": {ExcludeRepos: []string{"*-infra"}}},
+	}
+	team := teamWith("platform", []config.ProjectScope{{Key: "PLAT"}}, config.Review{})
+	log, buf := bufLogger()
+
+	if _, err := Reconcile(context.Background(), db, map[string]*config.Team{"platform": team}, []string{"platform"}, log); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if len(db.added) != 0 {
+		t.Errorf("added = %v, want no re-seed", db.added)
+	}
+	if len(team.Projects) != 0 {
+		t.Errorf("projects = %+v, want none", team.Projects)
+	}
+	// The ignored teams.yaml projects are said out loud, not dropped.
+	if !strings.Contains(buf.String(), "teams.yaml projects ignored") {
+		t.Errorf("log = %q, want the ignored projects named", buf.String())
+	}
+}
+
+// A settings row is not a seed marker: the exclude_repos default gives a team
+// with no projects one on its first boot. Projects added to teams.yaml later
+// still seed.
+func TestReconcile_SettingsRowAloneStillSeeds(t *testing.T) {
+	db := &fakeClaimStore{
+		claims:   map[string][]config.ProjectScope{},
+		settings: map[string]store.TeamSettings{"platform": {ExcludeRepos: []string{"*-infra"}}},
+	}
+	team := teamWith("platform", []config.ProjectScope{{Key: "PLAT"}}, config.Review{})
+
+	if _, err := Reconcile(context.Background(), db, map[string]*config.Team{"platform": team}, []string{"platform"}, quietLogger()); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if !reflect.DeepEqual(db.added, []string{"platform:teams.yaml"}) {
+		t.Errorf("added = %v, want the seed", db.added)
 	}
 }
 

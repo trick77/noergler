@@ -152,46 +152,6 @@ func TestIsSmall(t *testing.T) {
 	}
 }
 
-func TestCountDiffLines(t *testing.T) {
-	cases := []struct {
-		name           string
-		diff           string
-		added, removed int
-	}{
-		{
-			"counts + and - only",
-			"diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1,2 +1,2 @@\n-old\n+new\n context\n",
-			1, 1,
-		},
-		{
-			// The +++ and --- headers are not changes.
-			"file headers excluded",
-			"diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1,1 +1,1 @@\n+only\n",
-			1, 0,
-		},
-		{
-			"unreviewable file skipped",
-			"diff --git a/logo.png b/logo.png\n--- a/logo.png\n+++ b/logo.png\n@@ -1,1 +1,1 @@\n+binary\n",
-			0, 0,
-		},
-		{
-			"reviewable and unreviewable mixed",
-			"diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1,1 +1,1 @@\n+kept\n" +
-				"diff --git a/p.png b/p.png\n--- a/p.png\n+++ b/p.png\n@@ -1,1 +1,1 @@\n+skipped\n",
-			1, 0,
-		},
-		{"empty diff", "", 0, 0},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			added, removed := CountDiffLines(tc.diff)
-			if added != tc.added || removed != tc.removed {
-				t.Errorf("got (+%d, -%d), want (+%d, -%d)", added, removed, tc.added, tc.removed)
-			}
-		})
-	}
-}
-
 // fakeEntry is a stand-in formatter, with an empty-string fallback for absent
 // content.
 func fakeEntry(f FileReviewData) string {

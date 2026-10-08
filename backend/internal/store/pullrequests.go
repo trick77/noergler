@@ -27,16 +27,19 @@ type PRUpsert struct {
 	// different slug means the file moved the repo: the row follows.
 	TeamSlug           string
 	LastReviewedCommit *string
-	Author             *string
-	Title              *string
-	OpenedAt           *time.Time
+	// KeepPointer leaves an existing row's pointer as it is: the skip path
+	// could not read the prior one, and passing "" back would NULL it.
+	KeepPointer bool
+	Author      *string
+	Title       *string
+	OpenedAt    *time.Time
 }
 
 // UpsertPullRequest inserts or updates the PR row and returns its id.
 // opened_at is sticky: the first non-NULL value stays. The pointer, author
 // and title are written as given, nil included: the skip paths pass the
-// prior pointer back on purpose. A declined PR that sees a
-// review again was reopened: declined_at is cleared.
+// prior pointer back on purpose (unless KeepPointer). A declined PR that
+// sees a review again was reopened: declined_at is cleared.
 func (s *Store) UpsertPullRequest(ctx context.Context, u PRUpsert) (int64, error) {
 	var id int64
 	err := s.pool.QueryRow(ctx, `
@@ -44,14 +47,14 @@ func (s *Store) UpsertPullRequest(ctx context.Context, u PRUpsert) (int64, error
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (project_key, repo_slug, pr_id) DO UPDATE SET
 			team_slug = EXCLUDED.team_slug,
-			last_reviewed_commit = EXCLUDED.last_reviewed_commit,
+			last_reviewed_commit = CASE WHEN $9 THEN pull_requests.last_reviewed_commit ELSE EXCLUDED.last_reviewed_commit END,
 			author = EXCLUDED.author,
 			title = EXCLUDED.title,
 			opened_at = COALESCE(pull_requests.opened_at, EXCLUDED.opened_at),
 			declined_at = NULL,
 			updated_at = now()
 		RETURNING id`,
-		u.Key.Project, u.Key.Repo, u.Key.PRID, u.TeamSlug, u.LastReviewedCommit, u.Author, u.Title, u.OpenedAt,
+		u.Key.Project, u.Key.Repo, u.Key.PRID, u.TeamSlug, u.LastReviewedCommit, u.Author, u.Title, u.OpenedAt, u.KeepPointer,
 	).Scan(&id)
 	return id, err
 }
@@ -296,27 +299,40 @@ func (s *Store) ExistingFindings(ctx context.Context, k PRKey) ([]Finding, error
 	return out, rows.Err()
 }
 
-// PRCost is the sum of priced runs in nano-USD, or nil when no run was
-// priced (no row, no runs, or every run unpriced). Callers treat nil as "no
-// known cost" and never block on it. Unpriced runs contribute nothing, so
-// the total is a floor, not the bill.
+// PRCost is the sum of priced runs plus billed run-less attempts (an
+// unparseable response) in nano-USD, or nil when nothing was priced. Callers
+// treat nil as "no known cost" and never block on it. Unpriced calls
+// contribute nothing, so the total is a floor, not the bill.
 func (s *Store) PRCost(ctx context.Context, k PRKey) (*int64, error) {
 	var cost *int64
-	err := s.pool.QueryRow(ctx, `
-		SELECT SUM(r.cost_nano_usd) FROM review_runs r JOIN pull_requests p ON r.pull_request_id = p.id
+	err := s.pool.QueryRow(ctx, `SELECT `+prCostSQL+` FROM pull_requests p
 		WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3`,
 		k.Project, k.Repo, k.PRID).Scan(&cost)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
 	return cost, err
 }
+
+// prCostSQL is PR row p's cost: its priced runs plus the billed run-less
+// attempts made during this row's life, NULL when nothing was priced. PRCost,
+// the frozen final cost and the riptide rollup all read it, so the figure
+// that tripped the cap is the one recorded. created_at bounds the attempts:
+// a purged repo claimed again starts from zero, as its runs do.
+const prCostSQL = `(SELECT CASE WHEN runs IS NULL AND attempts IS NULL THEN NULL
+		ELSE COALESCE(runs, 0) + COALESCE(attempts, 0) END
+	FROM (SELECT
+		(SELECT SUM(r.cost_nano_usd) FROM review_runs r WHERE r.pull_request_id = p.id) AS runs,
+		(SELECT SUM(a.cost_nano_usd) FROM review_attempts a
+		  WHERE a.project_key = p.project_key AND a.repo_slug = p.repo_slug AND a.pr_id = p.pr_id
+		    AND a.review_run_id IS NULL AND a.created_at >= p.created_at) AS attempts) t)`
 
 // FreezeFinalCost copies the PR's cost total into final_cost_nano_usd at the
 // terminal outcome and returns it (nil when unpriced).
 func (s *Store) FreezeFinalCost(ctx context.Context, k PRKey) (*int64, error) {
 	var cost *int64
 	err := s.pool.QueryRow(ctx, `
-		UPDATE pull_requests p SET final_cost_nano_usd = (
-			SELECT SUM(cost_nano_usd) FROM review_runs WHERE pull_request_id = p.id
-		), updated_at = now()
+		UPDATE pull_requests p SET final_cost_nano_usd = `+prCostSQL+`, updated_at = now()
 		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
 		RETURNING final_cost_nano_usd`, k.Project, k.Repo, k.PRID).Scan(&cost)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -326,8 +342,10 @@ func (s *Store) FreezeFinalCost(ctx context.Context, k PRKey) (*int64, error) {
 }
 
 // RollupFinal is the final diff refresh taken at the terminal outcome; nil
-// fields keep what the last run recorded.
+// fields keep what the last run recorded. SourceCommit only fills a PR no
+// run recorded one for: one billed for unparseable responses alone.
 type RollupFinal struct {
+	SourceCommit *string
 	MergeCommit  *string
 	LinesAdded   *int
 	LinesRemoved *int
@@ -354,7 +372,9 @@ type RollupSnapshot struct {
 
 // ClaimRollup atomically stamps riptide_emitted_at and returns the snapshot.
 // nil when already emitted (a redelivered pr:merged must not produce a second
-// event) or when the PR has no run (nothing to forward). The claim happens
+// event) or when the PR has neither a run nor a billed run-less attempt
+// (nothing to forward). Attempt-only spend is in the cap and the frozen cost,
+// so it must reach FinOps too. The claim happens
 // BEFORE the POST, so a failed emission is never retried.
 func (s *Store) ClaimRollup(ctx context.Context, k PRKey, final RollupFinal) (*RollupSnapshot, error) {
 	var snap RollupSnapshot
@@ -362,6 +382,7 @@ func (s *Store) ClaimRollup(ctx context.Context, k PRKey, final RollupFinal) (*R
 		WITH claimed AS (
 			UPDATE pull_requests p SET
 				riptide_emitted_at = now(),
+				final_source_commit = COALESCE(p.final_source_commit, $8),
 				final_merge_commit = COALESCE($4, p.final_merge_commit),
 				final_lines_added = COALESCE($5, p.final_lines_added),
 				final_lines_removed = COALESCE($6, p.final_lines_removed),
@@ -369,16 +390,21 @@ func (s *Store) ClaimRollup(ctx context.Context, k PRKey, final RollupFinal) (*R
 				updated_at = now()
 			WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3
 			  AND p.riptide_emitted_at IS NULL
-			  AND EXISTS (SELECT 1 FROM review_runs r WHERE r.pull_request_id = p.id)
-			RETURNING p.id, p.final_source_commit, p.final_merge_commit, p.final_lines_added, p.final_lines_removed, p.final_files_changed
+			  AND (EXISTS (SELECT 1 FROM review_runs r WHERE r.pull_request_id = p.id)
+			    OR EXISTS (SELECT 1 FROM review_attempts a
+			      WHERE a.project_key = p.project_key AND a.repo_slug = p.repo_slug AND a.pr_id = p.pr_id
+			        AND a.review_run_id IS NULL AND a.cost_nano_usd IS NOT NULL AND a.created_at >= p.created_at))
+			RETURNING p.id, p.created_at, p.final_source_commit, p.final_merge_commit, p.final_lines_added, p.final_lines_removed, p.final_files_changed
 		)
 		SELECT COUNT(r.id), COALESCE(SUM(r.prompt_tokens), 0), COALESCE(SUM(r.completion_tokens), 0),
-			COALESCE(SUM(r.elapsed_ms), 0), COALESCE(SUM(r.findings_posted), 0), SUM(r.cost_nano_usd),
-			ARRAY(SELECT DISTINCT m FROM unnest(array_agg(r.model_label)) AS m ORDER BY m), MIN(r.created_at),
+			COALESCE(SUM(r.elapsed_ms), 0), COALESCE(SUM(r.findings_posted), 0),
+			(SELECT `+prCostSQL+` FROM pull_requests p WHERE p.id = c.id),
+			ARRAY(SELECT DISTINCT m FROM unnest(array_agg(r.model_label)) AS m WHERE m IS NOT NULL ORDER BY m),
+			COALESCE(MIN(r.created_at), c.created_at),
 			c.final_source_commit, c.final_merge_commit, c.final_lines_added, c.final_lines_removed, c.final_files_changed
-		FROM claimed c JOIN review_runs r ON r.pull_request_id = c.id
-		GROUP BY c.id, c.final_source_commit, c.final_merge_commit, c.final_lines_added, c.final_lines_removed, c.final_files_changed`,
-		k.Project, k.Repo, k.PRID, final.MergeCommit, final.LinesAdded, final.LinesRemoved, final.FilesChanged,
+		FROM claimed c LEFT JOIN review_runs r ON r.pull_request_id = c.id
+		GROUP BY c.id, c.created_at, c.final_source_commit, c.final_merge_commit, c.final_lines_added, c.final_lines_removed, c.final_files_changed`,
+		k.Project, k.Repo, k.PRID, final.MergeCommit, final.LinesAdded, final.LinesRemoved, final.FilesChanged, final.SourceCommit,
 	).Scan(&snap.Runs, &snap.PromptTokens, &snap.CompletionTokens, &snap.ElapsedMS, &snap.Findings, &snap.CostNanoUSD,
 		&snap.Models, &snap.FirstReviewAt, &snap.SourceCommit, &snap.MergeCommit, &snap.LinesAdded, &snap.LinesRemoved, &snap.FilesChanged)
 	if errors.Is(err, pgx.ErrNoRows) {

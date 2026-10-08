@@ -79,11 +79,11 @@ func (c CallCost) LogLine() (line string, warn bool) {
 	// string. A sub-milli-dollar call therefore reads $0.000 here.
 	cost := "absent"
 	if c.NanoUSD != nil {
-		cost = fmt.Sprintf("$%.3f", float64(*c.NanoUSD)/1e9)
+		cost = "$" + FormatUSD3(*c.NanoUSD)
 	}
 	spend := "absent"
 	if c.KeySpendNanoUSD != nil {
-		spend = fmt.Sprintf("$%.3f", float64(*c.KeySpendNanoUSD)/1e9)
+		spend = "$" + FormatUSD3(*c.KeySpendNanoUSD)
 	}
 	callID := c.CallID
 	if callID == "" {
@@ -100,6 +100,19 @@ func (c CallCost) LogLine() (line string, warn bool) {
 		return line + "; unpriced call", true
 	}
 	return line, false
+}
+
+// FormatUSD3 renders nano-USD as USD with 3 decimals, rounded half up in
+// integer arithmetic. Every 3-decimal figure (log lines, the dashboard JSON)
+// goes through it: through float64 a half tie rounded either way depending on
+// its binary value. Riptide keeps its own exact, unrounded string.
+func FormatUSD3(nano int64) string {
+	sign := ""
+	if nano < 0 {
+		sign, nano = "-", -nano
+	}
+	milli := (nano + 500_000) / 1_000_000
+	return fmt.Sprintf("%s%d.%03d", sign, milli/1000, milli%1000)
 }
 
 // totalTokens is the prompt plus completion count, used only to tell a real

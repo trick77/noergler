@@ -90,7 +90,7 @@ type reviewPlan struct {
 //
 // why names the pre-flight exit. SkipNone means the exit was a hard failure
 // rather than a decision (an unparseable payload, a diff that would not
-// fetch), and writes no attempt row: the dashboard's skip breakdown counts
+// fetch), and writes no "skipped" row: the dashboard's skip breakdown counts
 // choices the pipeline made, not faults it hit.
 func (r *Reviewer) abort(ctx context.Context, key store.PRKey, kind store.RunKind, why SkipReason, prTag string, counter *httpstats.Counter) bool {
 	r.logHTTPTotals(ctx, prTag, counter)

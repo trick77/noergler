@@ -167,6 +167,53 @@ func TestTotalsCostIsNilWhenNothingWasPriced(t *testing.T) {
 	}
 }
 
+// A billed call with no run row (unparseable, or stopped by a removed claim)
+// is real spend: read off runs alone, the month fell short of the key's
+// bill. It adds cost, never a run or an unpriced count.
+func TestSpendIncludesBilledRunlessAttempts(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	prID := upsert(t, s, key, "c1")
+	run(t, s, prID, "c1", nano(600), "gpt-5.5")
+	for _, a := range []Attempt{
+		{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "unparseable", CostNanoUSD: nano(400)},
+		{Key: key, TeamSlug: "payments", Kind: RunAuto, Outcome: "skipped", Reason: "repo_not_claimed", CostNanoUSD: nano(50)},
+		{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "error"},
+	} {
+		if err := s.InsertAttempt(ctx, a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	since := time.Now().Add(-time.Hour)
+
+	got, err := s.TotalsSince(ctx, since)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Runs != 1 || got.Unpriced != 0 || got.CostNanoUSD == nil || *got.CostNanoUSD != 1050 {
+		t.Errorf("totals = %+v, want 1 run, 0 unpriced, cost 1050", got)
+	}
+	teams, err := s.TotalsByTeam(ctx, since)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(teams) != 2 || teams[0].TeamSlug != "platform" || *teams[0].CostNanoUSD != 1000 ||
+		teams[1].TeamSlug != "payments" || teams[1].Runs != 0 || *teams[1].CostNanoUSD != 50 {
+		t.Errorf("by team = %+v", teams)
+	}
+	daily, err := s.DailyByTeam(ctx, since)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sum int64
+	for _, b := range daily {
+		sum += *b.CostNanoUSD
+	}
+	if sum != 1050 {
+		t.Errorf("daily cost = %d, want 1050", sum)
+	}
+}
+
 func TestTotalsByTeamGroupsOnTheAuthenticatedSlug(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

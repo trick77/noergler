@@ -239,32 +239,3 @@ func TestRenderPreviouslyPostedFindings(t *testing.T) {
 		}
 	})
 }
-
-// {files} is substituted before the other blocks so the cached prefix stays
-// stable, and substitution is literal: file content carrying a JSON brace or
-// another placeholder's name must not be reinterpreted.
-func TestRenderReviewPromptSubstitution(t *testing.T) {
-	tpl := "A{files}B{cumulative_pr_diff}C{previously_posted_findings}D{repo_instructions}E"
-	got := RenderReviewPrompt(tpl, "F", "C1", "P1", "R1")
-	if got != "AFBC1CP1DR1E" {
-		t.Errorf("got %q", got)
-	}
-
-	// One pass, so replacement text is never rescanned: PR file content
-	// spelling another placeholder's name stays that text rather than being
-	// expanded into the real block. Attacker-controlled file content must
-	// not rewrite another section of the prompt.
-	t.Run("a placeholder inside file content is left alone", func(t *testing.T) {
-		got := RenderReviewPrompt("{files}|{cumulative_pr_diff}", "{cumulative_pr_diff}", "REAL", "", "")
-		if got != "{cumulative_pr_diff}|REAL" {
-			t.Errorf("got %q, want the file's text left alone", got)
-		}
-	})
-
-	t.Run("JSON braces survive", func(t *testing.T) {
-		got := RenderReviewPrompt("{files}", `{"a": {"b": 1}}`, "", "", "")
-		if got != `{"a": {"b": 1}}` {
-			t.Errorf("got %q", got)
-		}
-	})
-}

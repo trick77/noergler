@@ -9,7 +9,6 @@ package httpstats
 import (
 	"context"
 	"net/http"
-	"sort"
 	"strings"
 	"sync"
 )
@@ -77,16 +76,6 @@ func (c *Counter) Summarize() map[string]int {
 		}
 	}
 	return totals
-}
-
-// Labels returns the keys of a Summarize result sorted, for a stable log line.
-func Labels(totals map[string]int) []string {
-	out := make([]string, 0, len(totals))
-	for k := range totals {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
 
 // Transport counts every request it forwards under label. It fires per request

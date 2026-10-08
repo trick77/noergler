@@ -119,8 +119,9 @@ defaults for every team-overridable knob. The required variables are:
 | `BITBUCKET_URL` | Bitbucket Server base URL |
 | `BITBUCKET_TOKEN` | Bitbucket Server API token of the shared service account |
 | `BITBUCKET_USERNAME` | Bitbucket service account username (used to identify bot comments and as the `@mention` trigger) |
-| `OPENAI_BASE_URL` | Base URL of the OpenAI-compatible endpoint (the SDK appends `/chat/completions`). Instance-wide, not team-overridable |
-| `OPENAI_MODEL` | Model id exactly as the gateway's `/v1/models` lists it for the team's key — see [Model resolution](#model-resolution). Instance default, overridable per team |
+| `LLMWIRE_LITELLM_BASE_URL` | Host of the OpenAI-compatible gateway (llmwire appends `/chat/completions`). Instance-wide, not team-overridable |
+| `LLMWIRE_LITELLM_MODELS` | `<profile>=<alias>,...`: the llmwire profiles the gateway serves and the alias each is listed under — see [Model resolution](#model-resolution) |
+| `OPENAI_MODEL` | Default model as an llmwire **profile id** (`gpt-5.5`), never a gateway alias. Must appear in `LLMWIRE_LITELLM_MODELS`. Instance default, overridable per team |
 | `JIRA_URL` | Jira Server/Cloud base URL |
 | `JIRA_TOKEN` | Jira API token of the single (read-only) Jira user |
 | `DATABASE_URL` | PostgreSQL connection string (see [Database](#database) below) |
@@ -158,7 +159,7 @@ Rules:
   the loader rejects a missing or empty one.
 - **Resolution:** team value → instance default → built-in default. Only
   `inference.api_key_env` and `webhook_secret_env` have no fallback.
-- **Instance-only knobs** (`OPENAI_BASE_URL`,
+- **Instance-only knobs** (`LLMWIRE_LITELLM_BASE_URL`, `LLMWIRE_LITELLM_MODELS`,
   `REVIEW_PROMPT_TEMPLATE`, `REVIEW_MENTION_PROMPT_TEMPLATE`) cannot appear in a team
   block; naming them disables the team.
 - **Claims and author lists are the team's own.** Which projects and repos a team owns
@@ -195,7 +196,7 @@ that the PR's project/repo is claimed by the team (`403` otherwise).
 
 At startup every team asks the gateway `GET /v1/models` with its own key. LiteLLM answers with exactly the models that key may use, each with `max_input_tokens`. noergler takes the team's model from that list: the entry's `max_input_tokens` becomes the **context window** the review is sized against. Nothing is cached locally or in the database, and there is no catalog or baked-in table to keep in sync with the gateway's names.
 
-`OPENAI_MODEL` (or the team's `inference.model`) must be spelled exactly as the gateway lists it (`ai-gateway-gpt-5.5`). A model the key may not use is simply not in the list, so the team is **disabled** with a message naming what the key does list; other teams are unaffected. A listed model without `max_input_tokens` also disables the team unless `OPENAI_CONTEXT_WINDOW` states the window; that override also wins when the gateway understates what the endpoint actually accepts.
+`OPENAI_MODEL` (or the team's `inference.model`) is an llmwire profile id (`gpt-5.5`); `LLMWIRE_LITELLM_MODELS` maps it to the alias the gateway lists (`gpt-5.5=ai-gateway-gpt-5.5`), and a profile missing there disables the team. An alias the key may not use is simply not in the list, so the team is **disabled** with a message naming what the key does list; other teams are unaffected. A listed model without `max_input_tokens` also disables the team unless `OPENAI_CONTEXT_WINDOW` states the window; that override also wins when the gateway understates what the endpoint actually accepts.
 
 **Costs come from the endpoint where possible.** The `x-litellm-response-cost` response header carries the actual cost of each call, produced by the same code that bills — already accounting for tiered rates, prompt-cache read rates, service tier and any gateway margin. noergler records that number verbatim and labels it `Cost:` on the summary.
 

@@ -19,6 +19,9 @@ type Attempt struct {
 	ElapsedMS *int64
 	// RunID is set only when the attempt produced a run row.
 	RunID *int64
+	// CostNanoUSD is a billed call that wrote no run row (unparseable). A
+	// successful attempt leaves it nil: its cost is on the run.
+	CostNanoUSD *int64
 }
 
 // InsertAttempt records one attempt.
@@ -34,10 +37,10 @@ func (s *Store) InsertAttempt(ctx context.Context, a Attempt) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO review_attempts
 		    (team_slug, project_key, repo_slug, pr_id, kind,
-		     outcome, reason, elapsed_ms, review_run_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		     outcome, reason, elapsed_ms, review_run_id, cost_nano_usd)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		a.TeamSlug, a.Key.Project, a.Key.Repo, a.Key.PRID, a.Kind,
-		a.Outcome, reason, a.ElapsedMS, a.RunID)
+		a.Outcome, reason, a.ElapsedMS, a.RunID, a.CostNanoUSD)
 	return err
 }
 

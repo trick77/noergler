@@ -142,18 +142,20 @@ func (d Deps) putTeamSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	current := rt.Settings()
-	next := store.TeamSettings{
-		AutoReviewAuthors: clean(body.AutoReviewAuthors, current.AutoReviewAuthors),
-		IgnoreAuthors:     clean(body.IgnoreAuthors, current.IgnoreAuthors),
-		ExcludeRepos:      clean(body.ExcludeRepos, current.ExcludeRepos),
-	}
-	if err := d.Store.PutSettings(ctx, slug, next, "team:"+slug); err != nil {
+	err := rt.UpdateSettings(func(current store.TeamSettings) store.TeamSettings {
+		return store.TeamSettings{
+			AutoReviewAuthors: clean(body.AutoReviewAuthors, current.AutoReviewAuthors),
+			IgnoreAuthors:     clean(body.IgnoreAuthors, current.IgnoreAuthors),
+			ExcludeRepos:      clean(body.ExcludeRepos, current.ExcludeRepos),
+		}
+	}, func(next store.TeamSettings) error {
+		return d.Store.PutSettings(ctx, slug, next, "team:"+slug)
+	})
+	if err != nil {
 		d.Log.ErrorContext(ctx, "settings update failed", "error", err)
 		httpapi.WriteDetail(w, http.StatusServiceUnavailable, "database not ready")
 		return
 	}
-	rt.ApplySettings(next)
 	httpapi.WriteJSON(w, http.StatusOK, viewOf(rt.Team()))
 }
 

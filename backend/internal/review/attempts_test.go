@@ -59,6 +59,28 @@ func TestAttemptRecordedForEveryOutcome(t *testing.T) {
 	}
 }
 
+// An unparseable response was paid for but writes no run row. Its cost rides
+// on the attempt, where PRCost reads it, or a PR the model keeps refusing
+// spends past the cap without limit.
+func TestUnparseableAttemptCarriesItsCost(t *testing.T) {
+	h := newHarness(t, nil)
+	cost := int64(1_500_000)
+	h.llm.review = inference.ReviewResult{
+		Outcome: inference.OutcomeUnparseable,
+		Review:  inference.ParsedReview{Summary: inference.NewReviewSummary()},
+		Cost:    inference.CallCost{NanoUSD: &cost},
+	}
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if len(h.st.Attempts) != 1 {
+		t.Fatalf("expected one attempt, got %d", len(h.st.Attempts))
+	}
+	if got := h.st.Attempts[0].CostNanoUSD; got == nil || *got != cost {
+		t.Errorf("attempt cost = %v, want %d", got, cost)
+	}
+}
+
 // A successful attempt links its run row, so the feed can show that run's
 // findings and cost without guessing which run an attempt produced.
 func TestSuccessfulAttemptLinksItsRun(t *testing.T) {
@@ -158,17 +180,40 @@ func TestHeadUnchangedRecordsItsReason(t *testing.T) {
 	}
 }
 
-// A diff that would not fetch is a FAULT, not a decision: it writes no
-// attempt row, so the skip breakdown counts only what the pipeline chose.
-func TestDiffFetchFailureIsNotASkip(t *testing.T) {
+// A diff that would not fetch is a FAULT, not a decision: it writes an
+// "error" attempt like an inference error does, never a "skipped" one, so the
+// skip breakdown still counts only what the pipeline chose while a Bitbucket
+// outage shows on the dashboard instead of as an absence of runs.
+func TestDiffFetchFailureIsAnErrorNotASkip(t *testing.T) {
 	h := newHarness(t, func(h *harness) {
 		h.bb.prDiffErr = errors.New("bitbucket is down")
 	})
 
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
 
-	if len(h.st.Attempts) != 0 {
-		t.Errorf("a fetch fault must write no attempt, got %+v", h.st.Attempts)
+	if len(h.st.Attempts) != 1 {
+		t.Fatalf("attempts = %+v, want one", h.st.Attempts)
+	}
+	if got := h.st.Attempts[0]; got.Outcome != "error" || got.Reason != "" {
+		t.Errorf("attempt = %+v, want outcome error with no reason", got)
+	}
+}
+
+// A fetch cut by shutdown is no outage: keying the error attempt off a zero
+// SkipReason recorded every pod rollout as a failed run.
+func TestDiffFetchCancelledIsNotAnError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	h := newHarness(t, func(h *harness) {
+		h.bb.prDiffErr = context.Canceled
+		h.bb.onPRDiff = cancel
+	})
+
+	h.r.ReviewPullRequest(ctx, prPayload(webhook.EventOpened), false)
+
+	for _, a := range h.st.Attempts {
+		if a.Outcome == "error" {
+			t.Errorf("attempt = %+v, want no error attempt for a cancelled fetch", a)
+		}
 	}
 }
 

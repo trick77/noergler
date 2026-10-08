@@ -105,12 +105,4 @@ func PreviouslyPostedBudget(inputBudget int) int {
 
 // clamp applies the lower bound first, so when the bounds conflict the upper
 // bound wins. TestClampUpperBoundWins pins that order.
-func clamp(v, lo, hi int) int {
-	if v < lo {
-		v = lo
-	}
-	if v > hi {
-		v = hi
-	}
-	return v
-}
+func clamp(v, lo, hi int) int { return min(max(v, lo), hi) }

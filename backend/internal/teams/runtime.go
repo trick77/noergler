@@ -65,11 +65,14 @@ type Runtime struct {
 	// (a settings PUT against an /onboard claim) would otherwise each build
 	// on the same snapshot and the later Store would drop the earlier
 	// change. Readers never take it.
-	writeMu  sync.Mutex
-	Reviewer Reviewer
-	LLM      *inference.Client
-	Jira     *jira.Client
-	Riptide  *riptide.Emitter
+	writeMu sync.Mutex
+	// settingsMu serialises settings writers across their persist; see
+	// UpdateSettings.
+	settingsMu sync.Mutex
+	Reviewer   Reviewer
+	LLM        *inference.Client
+	Jira       *jira.Client
+	Riptide    *riptide.Emitter
 }
 
 // NewRuntime publishes the first snapshot. The team is copied, so a later
@@ -102,31 +105,52 @@ func (r *Runtime) ApplyClaims(scopes []config.ProjectScope) {
 	r.team.Store(&next)
 }
 
-// ApplySettings swaps in the three lists, then mirrors the two author lists
-// onto the live Reviewer.
+// UpdateSettings merges onto the current three lists, persists the result
+// (nil persist skips that), swaps it in, then mirrors the two author lists
+// onto the live Reviewer. A persist error swaps nothing.
+//
+// settingsMu serialises settings writers from merge to swap, so a partial
+// PUT always merges onto the previous one's result: merging on a stale
+// baseline lost one of two concurrent PUTs, and an optimistic retry could
+// leave the DB holding a stale row when its second persist failed. The
+// persist runs outside writeMu, so a slow DB never blocks an /onboard claim
+// write; the swap takes the latest snapshot, keeping a claim that landed
+// meanwhile. Claims are the only other writer and never touch these lists.
 //
 // The Reviewer copies config.Review by value at construction, so without the
 // mirror a team's author routing would stay stale until restart. ExcludeRepos
 // is deliberately not mirrored: its only reader is the webhook route, which
 // reads it off the snapshot.
-func (r *Runtime) ApplySettings(s store.TeamSettings) {
+func (r *Runtime) UpdateSettings(merge func(store.TeamSettings) store.TeamSettings, persist func(store.TeamSettings) error) error {
+	r.settingsMu.Lock()
+	defer r.settingsMu.Unlock()
+	s := merge(settingsOf(r.team.Load()))
+	if persist != nil {
+		if err := persist(s); err != nil {
+			return err
+		}
+	}
 	r.writeMu.Lock()
 	defer r.writeMu.Unlock()
 	next := *r.team.Load()
-	next.Review.AutoReviewAuthors = s.AutoReviewAuthors
-	next.Review.IgnoreAuthors = s.IgnoreAuthors
-	next.Review.ExcludeRepos = s.ExcludeRepos
+	applySettings(&next, s)
 	r.team.Store(&next)
 	r.Reviewer.SetAuthorLists(s.AutoReviewAuthors, s.IgnoreAuthors)
+	return nil
 }
 
-// Settings is the current three lists: the baseline a partial PUT merges
-// into. Derived, never stored.
-func (r *Runtime) Settings() store.TeamSettings {
-	t := r.team.Load()
+// settingsOf and applySettings are the one mapping between a team's three
+// lists and the DB row, in each direction.
+func settingsOf(t *config.Team) store.TeamSettings {
 	return store.TeamSettings{
 		AutoReviewAuthors: t.Review.AutoReviewAuthors,
 		IgnoreAuthors:     t.Review.IgnoreAuthors,
 		ExcludeRepos:      t.Review.ExcludeRepos,
 	}
+}
+
+func applySettings(t *config.Team, s store.TeamSettings) {
+	t.Review.AutoReviewAuthors = s.AutoReviewAuthors
+	t.Review.IgnoreAuthors = s.IgnoreAuthors
+	t.Review.ExcludeRepos = s.ExcludeRepos
 }

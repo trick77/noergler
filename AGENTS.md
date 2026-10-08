@@ -43,7 +43,6 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   (it would round the money), never an exponent (`1E-9` breaks strict
   parsers). `null` means unpriced and must never render as `$0.000`.
 - `Usage.Cost.Provenance == Reported` is the only priced case.
-  never a float, and never an exponent (`1E-9` breaks strict parsers).
 
 ## Prompt
 
@@ -168,6 +167,10 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   skip is a `review_attempts` row (`review.SkipReason`), written fail-open. A
   separate table, so "a non-ok outcome writes no run row" stays true.
 - A mention writes no attempt: it is a Q&A answer, not a review.
+- Billed call with no run row (unparseable, removed claim): cost on the
+  attempt. `prCostSQL` (cap, frozen cost, rollup) and `spendCTE` (dashboard)
+  both sum runs + those attempts. One figure everywhere.
+- DB session `timezone=UTC` (`store.openConfig`): windows match `date_trunc`.
 - Tokens, fonts and page shell come from `../rongo`, charts from `../netra`.
   No sidebar. Every page 900px, centred. Scrollbar thumb opaque, never
   `rgba()`. The series ramp was validated for CVD against the panel surface;
@@ -312,7 +315,7 @@ queues them.
 404/503 for a slug come BEFORE the 401 on every route.
 `teams.Runtime` is copy-on-write (`atomic.Pointer`): take ONE snapshot per
 request, or a concurrent settings write lands between the ownership check and
-the exclude check. `ApplySettings` must also mirror the two author lists onto
+the exclude check. `UpdateSettings` must also mirror the two author lists onto
 the live Reviewer, which copies `config.Review` by value; `exclude_repos` is
 not mirrored. `teams.Reconcile` runs BEFORE any Reviewer is built, for the same
 reason. The onboarding orchestrators never mutate the team they are given.
@@ -324,6 +327,11 @@ gateway call, the only stage off the worker) -> `post` (outcomes, comments,
 rows, summary). `ReviewPullRequest` composes all three inline and is what
 `HandleMention` and the tests use; `ReviewPullRequestStaged` is the queued
 path.
+
+- **`Options.Owns` re-asked at start of `prepare` and `post`**: a repo given
+  up mid-review re-created its purged PR row.
+- `team_claims_seeded` = slug ever claimed; `Reconcile` never re-seeds it.
+  Not the settings row: every team gets one on first boot.
 
 - **A keyword mention is a review**, so it takes the staged path with
   `skipAuthorCheck` true (the person asking is the authorization). Running it

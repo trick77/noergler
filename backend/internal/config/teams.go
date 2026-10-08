@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
@@ -169,7 +171,7 @@ type teamBlock struct {
 		reasoningEffort *string
 		contextWindow   *int
 	}
-	review  map[string]any // validated key -> typed value
+	review  []func(*Review) // one setter per validated key
 	jira    *[]string
 	riptide *struct{ url, tokenEnv string }
 }
@@ -287,17 +289,66 @@ func (b *blockErrors) listField(m *yaml.Node, path, key string) *[]string {
 	return &v
 }
 
-// reviewOverrideKeys are the team-overridable review knobs: every Review
-// field minus the two prompt templates (instance-only by decision).
-var reviewOverrideKeys = map[string]string{
-	"auto_review_authors": "list", "ignore_authors": "list", "exclude_repos": "list",
-	"max_comments": "int", "max_file_lines": "int",
-	"diff_extra_lines_before": "int", "diff_extra_lines_after": "int",
-	"diff_max_extra_lines_dynamic_context": "int", "diff_allow_dynamic_context": "bool",
-	"ticket_compliance_check": "bool", "require_agents_md": "bool",
-	"agents_md_warn_tokens": "int", "agents_md_max_tokens": "int",
-	"agents_md_custom_link": "string", "opt_out_branch_keyword": "string",
-	"max_pr_cost_usd": "float",
+// reviewOverride parses one review key and returns its setter, nil when the
+// value was absent or invalid (the error is already recorded).
+type reviewOverride func(e *blockErrors, m *yaml.Node, key string) func(*Review)
+
+// field builds a reviewOverride from a typed parser and the Review field it
+// sets. One entry per key, so a key cannot be accepted and then dropped.
+func field[T any](parse func(*blockErrors, *yaml.Node, string, string) *T, set func(*Review, T)) reviewOverride {
+	return func(e *blockErrors, m *yaml.Node, key string) func(*Review) {
+		p := parse(e, m, "review", key)
+		if p == nil {
+			return nil
+		}
+		v := *p
+		return func(r *Review) { set(r, v) }
+	}
+}
+
+// nonNegativeIntField: max_comments slices findings, so negative panics
+// every review in post.
+func (b *blockErrors) nonNegativeIntField(m *yaml.Node, path, key string) *int {
+	p := b.intField(m, path, key)
+	if p != nil && *p < 0 {
+		b.add(joinPath(path, key), "Input should be greater than or equal to 0")
+		return nil
+	}
+	return p
+}
+
+// positiveFloatField: the cost cap check is cumulative >= limit, so 0 skips
+// every auto-review after the first priced run. !(v > 0) catches NaN too.
+func (b *blockErrors) positiveFloatField(m *yaml.Node, path, key string) *float64 {
+	p := b.floatField(m, path, key)
+	if p != nil && !(*p > 0) {
+		b.add(joinPath(path, key), "Input should be greater than 0")
+		return nil
+	}
+	return p
+}
+
+// reviewOverrides are the team-overridable review knobs: every Review field
+// minus the two prompt templates (instance-only by decision).
+var reviewOverrides = map[string]reviewOverride{
+	"auto_review_authors":     field((*blockErrors).listField, func(r *Review, v []string) { r.AutoReviewAuthors = v }),
+	"ignore_authors":          field((*blockErrors).listField, func(r *Review, v []string) { r.IgnoreAuthors = v }),
+	"exclude_repos":           field((*blockErrors).listField, func(r *Review, v []string) { r.ExcludeRepos = v }),
+	"max_comments":            field((*blockErrors).nonNegativeIntField, func(r *Review, v int) { r.MaxComments = v }),
+	"max_file_lines":          field((*blockErrors).intField, func(r *Review, v int) { r.MaxFileLines = v }),
+	"diff_extra_lines_before": field((*blockErrors).intField, func(r *Review, v int) { r.DiffExtraLinesBefore = v }),
+	"diff_extra_lines_after":  field((*blockErrors).intField, func(r *Review, v int) { r.DiffExtraLinesAfter = v }),
+	"diff_max_extra_lines_dynamic_context": field((*blockErrors).intField, func(r *Review, v int) {
+		r.DiffMaxExtraLinesDynamicContext = v
+	}),
+	"diff_allow_dynamic_context": field((*blockErrors).boolField, func(r *Review, v bool) { r.DiffAllowDynamicContext = v }),
+	"ticket_compliance_check":    field((*blockErrors).boolField, func(r *Review, v bool) { r.TicketComplianceCheck = v }),
+	"require_agents_md":          field((*blockErrors).boolField, func(r *Review, v bool) { r.RequireAgentsMD = v }),
+	"agents_md_warn_tokens":      field((*blockErrors).intField, func(r *Review, v int) { r.AgentsMDWarnTokens = v }),
+	"agents_md_max_tokens":       field((*blockErrors).intField, func(r *Review, v int) { r.AgentsMDMaxTokens = v }),
+	"agents_md_custom_link":      field((*blockErrors).stringField, func(r *Review, v string) { r.AgentsMDCustomLink = v }),
+	"opt_out_branch_keyword":     field((*blockErrors).stringField, func(r *Review, v string) { r.OptOutBranchKeyword = v }),
+	"max_pr_cost_usd":            field((*blockErrors).positiveFloatField, func(r *Review, v float64) { r.MaxPRCostUSD = v }),
 }
 
 func parseBlock(m *yaml.Node) (*teamBlock, error) {
@@ -369,43 +420,13 @@ func parseBlock(m *yaml.Node) (*teamBlock, error) {
 		if rv.Kind != yaml.MappingNode {
 			e.add("review", "Input should be a valid dictionary")
 		} else {
-			tb.review = map[string]any{}
-			reviewKeys := make([]string, 0, len(reviewOverrideKeys))
-			for k := range reviewOverrideKeys {
-				reviewKeys = append(reviewKeys, k)
-			}
-			e.checkKeys(rv, "review", reviewKeys...)
+			e.checkKeys(rv, "review", slices.Collect(maps.Keys(reviewOverrides))...)
 			for i := 0; i+1 < len(rv.Content); i += 2 {
 				key := rv.Content[i].Value
-				kind, ok := reviewOverrideKeys[key]
-				if !ok {
-					continue
-				}
-				var v any
-				switch kind {
-				case "list":
-					if p := e.listField(rv, "review", key); p != nil {
-						v = *p
+				if parse, ok := reviewOverrides[key]; ok {
+					if set := parse(&e, rv, key); set != nil {
+						tb.review = append(tb.review, set)
 					}
-				case "int":
-					if p := e.intField(rv, "review", key); p != nil {
-						v = *p
-					}
-				case "bool":
-					if p := e.boolField(rv, "review", key); p != nil {
-						v = *p
-					}
-				case "float":
-					if p := e.floatField(rv, "review", key); p != nil {
-						v = *p
-					}
-				case "string":
-					if p := e.stringField(rv, "review", key); p != nil {
-						v = *p
-					}
-				}
-				if v != nil {
-					tb.review[key] = v
 				}
 			}
 		}
@@ -486,41 +507,8 @@ func ResolveTeam(block *yaml.Node, instance *App, lookup func(string) (string, b
 	review.AutoReviewAuthors = append([]string{}, instance.Review.AutoReviewAuthors...)
 	review.IgnoreAuthors = append([]string{}, instance.Review.IgnoreAuthors...)
 	review.ExcludeRepos = append([]string{}, instance.Review.ExcludeRepos...)
-	for key, v := range tb.review {
-		switch key {
-		case "auto_review_authors":
-			review.AutoReviewAuthors = v.([]string)
-		case "ignore_authors":
-			review.IgnoreAuthors = v.([]string)
-		case "exclude_repos":
-			review.ExcludeRepos = v.([]string)
-		case "max_comments":
-			review.MaxComments = v.(int)
-		case "max_file_lines":
-			review.MaxFileLines = v.(int)
-		case "diff_extra_lines_before":
-			review.DiffExtraLinesBefore = v.(int)
-		case "diff_extra_lines_after":
-			review.DiffExtraLinesAfter = v.(int)
-		case "diff_max_extra_lines_dynamic_context":
-			review.DiffMaxExtraLinesDynamicContext = v.(int)
-		case "diff_allow_dynamic_context":
-			review.DiffAllowDynamicContext = v.(bool)
-		case "ticket_compliance_check":
-			review.TicketComplianceCheck = v.(bool)
-		case "require_agents_md":
-			review.RequireAgentsMD = v.(bool)
-		case "agents_md_warn_tokens":
-			review.AgentsMDWarnTokens = v.(int)
-		case "agents_md_max_tokens":
-			review.AgentsMDMaxTokens = v.(int)
-		case "agents_md_custom_link":
-			review.AgentsMDCustomLink = v.(string)
-		case "opt_out_branch_keyword":
-			review.OptOutBranchKeyword = v.(string)
-		case "max_pr_cost_usd":
-			review.MaxPRCostUSD = v.(float64)
-		}
+	for _, set := range tb.review {
+		set(&review)
 	}
 
 	jira := Jira{

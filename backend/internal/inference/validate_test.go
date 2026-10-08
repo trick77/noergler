@@ -51,6 +51,20 @@ func vf(file string, line int, evidence ...string) ReviewFinding {
 	return ReviewFinding{File: file, Line: line, Severity: "issue", Comment: "c", Evidence: evidence}
 }
 
+// The a/ or b/ fallback rewrites File to the shown path, so the poster can
+// send File verbatim. A real top-level b/ directory keeps its name.
+func TestValidateFindings_SidePrefixResolvesToTheShownPath(t *testing.T) {
+	idx := validateFixture()
+	if got := ValidateFindings([]ReviewFinding{vf("a/src/labels.ts", 11, "mu.Lock()")}, idx).Kept; len(got) != 1 || got[0].File != "src/labels.ts" {
+		t.Errorf("kept = %+v, want File src/labels.ts", got)
+	}
+
+	idx = diff.BuildAnchorIndex([]diff.FileReviewData{{Path: "b/main.go", Diff: "@@ -1,1 +1,1 @@\n+x := 1\n"}})
+	if got := ValidateFindings([]ReviewFinding{vf("b/main.go", 1, "x := 1")}, idx).Kept; len(got) != 1 || got[0].File != "b/main.go" {
+		t.Errorf("kept = %+v, want File b/main.go", got)
+	}
+}
+
 func TestValidateFindings(t *testing.T) {
 	withSuggestion := func(f ReviewFinding, s string) ReviewFinding {
 		f.Suggestion = sptr(s)

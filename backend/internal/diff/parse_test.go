@@ -147,12 +147,3 @@ func TestParseHunks(t *testing.T) {
 		}
 	})
 }
-
-func TestHasContent(t *testing.T) {
-	if (FileReviewData{Content: ""}).HasContent() {
-		t.Error("empty content should report false")
-	}
-	if !(FileReviewData{Content: "x"}).HasContent() {
-		t.Error("non-empty content should report true")
-	}
-}

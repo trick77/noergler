@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"os"
 	"strings"
@@ -492,6 +493,81 @@ func TestCostCap(t *testing.T) {
 // Every non-ok outcome but OutcomeError posts a notice, preserves the prior
 // commit and writes no run row. OutcomeError writes and posts nothing at
 // all; it is only logged.
+// A team can give a repo up while a review of it is queued or in inference.
+// Neither stage may then call the gateway, post, or re-create the PR row the
+// removal just purged.
+func TestRemovedClaimStopsTheReview(t *testing.T) {
+	t.Run("before prepare", func(t *testing.T) {
+		h := newHarness(t, nil)
+		h.r.owns = func(string, string) bool { return false }
+		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		if len(h.llm.Reviews) != 0 || len(h.st.Upserts) != 0 || len(h.bb.Posted) != 0 {
+			t.Errorf("reviews=%d upserts=%d posted=%d, want none", len(h.llm.Reviews), len(h.st.Upserts), len(h.bb.Posted))
+		}
+	})
+	t.Run("before post", func(t *testing.T) {
+		h := newHarness(t, nil)
+		h.llm.review = inference.ReviewResult{Outcome: inference.OutcomeOK, Review: inference.ParsedReview{Summary: inference.NewReviewSummary()}}
+		owned := true
+		h.r.owns = func(string, string) bool { return owned }
+		h.llm.onReview = func() { owned = false } // removed during inference
+		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		if len(h.llm.Reviews) != 1 {
+			t.Fatalf("reviews = %d, want the one already in flight", len(h.llm.Reviews))
+		}
+		if len(h.st.Upserts) != 0 || len(h.st.Runs) != 0 || len(h.bb.Posted) != 0 {
+			t.Errorf("upserts=%d runs=%d posted=%d, want none", len(h.st.Upserts), len(h.st.Runs), len(h.bb.Posted))
+		}
+	})
+	// Both exits are decisions, so both leave a skipped attempt; the late one
+	// carries the call it already paid for.
+	t.Run("both record why, the late one its cost", func(t *testing.T) {
+		h := newHarness(t, nil)
+		cost := int64(800_000_000)
+		h.llm.review = inference.ReviewResult{Outcome: inference.OutcomeOK, Review: inference.ParsedReview{Summary: inference.NewReviewSummary()},
+			Cost: inference.CallCost{NanoUSD: &cost}}
+		owned := true
+		h.r.owns = func(string, string) bool { return owned }
+		h.llm.onReview = func() { owned = false }
+		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		if len(h.st.Attempts) != 2 {
+			t.Fatalf("attempts = %+v, want two", h.st.Attempts)
+		}
+		for _, a := range h.st.Attempts {
+			if a.Outcome != "skipped" || a.Reason != string(SkipRepoNotClaimed) {
+				t.Errorf("attempt = %+v, want skipped/%s", a, SkipRepoNotClaimed)
+			}
+		}
+		if c := h.st.Attempts[0].CostNanoUSD; c == nil || *c != cost {
+			t.Errorf("late attempt cost = %v, want %d", c, cost)
+		}
+		if h.st.Attempts[1].CostNanoUSD != nil {
+			t.Error("the pre-flight skip called nothing and costs nothing")
+		}
+	})
+}
+
+// A skip path passes the prior pointer back. When reading it failed, writing
+// "" NULLed the stored pointer, and the next push became a full, paid review.
+func TestFailedPriorReadKeepsThePointer(t *testing.T) {
+	h := newHarness(t, nil)
+	h.st.lastErr = errors.New("connection reset")
+	h.llm.review = inference.ReviewResult{
+		Outcome: inference.OutcomeTimedOut,
+		Review:  inference.ParsedReview{Summary: inference.NewReviewSummary()},
+	}
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if len(h.st.Upserts) != 1 {
+		t.Fatalf("expected one upsert, got %d", len(h.st.Upserts))
+	}
+	if u := h.st.Upserts[0]; !u.KeepPointer || u.LastReviewedCommit != nil {
+		t.Errorf("upsert = %+v, want KeepPointer and no pointer", u)
+	}
+}
+
 func TestTerminalOutcomes(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -601,6 +677,22 @@ func TestDedupeAgainstExistingFindings(t *testing.T) {
 		if strings.Contains(c.Text, "already raised") {
 			t.Error("a finding already posted must not be posted again")
 		}
+	}
+}
+
+// Rows stored before validation resolved paths kept the model's b/ prefix;
+// the same finding, now resolved to the shown path, must still match one.
+func TestDedupeResolvesStoredDiffPrefix(t *testing.T) {
+	h := newHarness(t, nil)
+	h.st.existing = []store.Finding{
+		{FilePath: "b/a.go", LineNumber: 2, Severity: "issue", CommentText: "already raised"},
+	}
+	h.llm.review = okResultWith(finding("a.go", 2, "issue", "already raised"))
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if len(h.bb.Inline) != 0 {
+		t.Errorf("inline = %+v, want the repeat dropped", h.bb.Inline)
 	}
 }
 

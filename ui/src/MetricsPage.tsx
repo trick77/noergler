@@ -1,6 +1,6 @@
 import type { Metrics } from "./api";
 import { Chart, Sparkline, type Series } from "./Chart";
-import { money, tokens } from "./format";
+import { money, moneyTick, tokens } from "./format";
 import { usePoll } from "./usePoll";
 import {
   Card,
@@ -140,6 +140,7 @@ export function MetricsPage() {
   };
 
   const costSeries: Series[] = charted.map((team, i) => ({
+    id: team,
     name: nameOf(team),
     color: SERIES_COLORS[i],
     values: window.map((day) => spendOn(day, team)),
@@ -149,6 +150,8 @@ export function MetricsPage() {
   // showing the server's full, non-zero total.
   if (rest.length > 0) {
     costSeries.push({
+      // Not a slug: TeamSlugRE cannot start with "_", so no team collides.
+      id: "__rest",
       name: rest.length === 1 ? nameOf(rest[0]) : `${rest.length} more`,
       color: SERIES_COLORS[SERIES_COLORS.length - 1],
       values: window.map((day) => rest.reduce((sum, team) => sum + spendOn(day, team), 0)),
@@ -158,6 +161,7 @@ export function MetricsPage() {
     ...window.map((_, i) => costSeries.reduce((sum, s) => sum + s.values[i], 0)),
     0,
   );
+  const costTicks = niceTicks(costTop);
 
   // Attempts per day, by outcome. Skipped and failed use the status hues,
   // not the series ramp: they are states, not categories.
@@ -168,9 +172,10 @@ export function MetricsPage() {
         .reduce((n, b) => n + b.count, 0),
     );
   const runSeries: Series[] = [
-    { name: "reviewed", color: "var(--color-s1)", values: bucket((o) => o === "ok") },
-    { name: "skipped", color: "var(--color-ochre)", values: bucket((o) => o === "skipped") },
+    { id: "reviewed", name: "reviewed", color: "var(--color-s1)", values: bucket((o) => o === "ok") },
+    { id: "skipped", name: "skipped", color: "var(--color-ochre)", values: bucket((o) => o === "skipped") },
     {
+      id: "failed",
       name: "failed",
       color: "var(--color-danger)",
       values: bucket((o) => o !== "ok" && o !== "skipped"),
@@ -236,9 +241,9 @@ export function MetricsPage() {
                 width={856}
                 height={200}
                 mark="stack"
-                ticks={niceTicks(costTop)}
+                ticks={costTicks}
                 xLabels={window.map(label)}
-                format={(v) => `$${v.toFixed(2)}`}
+                format={moneyTick(costTicks)}
                 label={`Cost per day for ${title}, by team`}
               />
               <Legend series={costSeries} />
@@ -316,7 +321,7 @@ function Legend({ series }: { series: Series[] }) {
   return (
     <div className="mt-2.5 flex flex-wrap gap-4 text-[12.5px] text-muted">
       {series.map((s) => (
-        <span key={s.name} className="inline-flex items-center gap-1.5">
+        <span key={s.id} className="inline-flex items-center gap-1.5">
           <i
             aria-hidden
             className="inline-block h-2.5 w-2.5 rounded-[2px]"

@@ -129,14 +129,13 @@ func (c *Client) FetchFileContent(ctx context.Context, project, repo, commit, pa
 // once as CONTEXT. Only a 400 retries; anything else fails on the first try.
 func (c *Client) PostInlineComment(ctx context.Context, project, repo string, prID int, file string, line int, body string) (int, error) {
 	path := prPath(project, repo, prID) + "/comments"
-	anchorPath := stripDiffPrefix(file)
 
 	var lastErr error
 	for _, lineType := range [...]string{"ADDED", "CONTEXT"} {
 		payload := map[string]any{
 			"text": body,
 			"anchor": map[string]any{
-				"path":     anchorPath,
+				"path":     file,
 				"line":     line,
 				"fileType": "TO",
 				"lineType": lineType,
@@ -159,15 +158,6 @@ func (c *Client) PostInlineComment(ctx context.Context, project, repo string, pr
 	// caller counts the miss and carries on with the other findings.
 	c.log.WarnContext(ctx, fmt.Sprintf("Inline comment rejected for %s:%d: %v", file, line, lastErr))
 	return 0, lastErr
-}
-
-// stripDiffPrefix removes one leading "a/" or "b/" from a diff path. Only the
-// first is removed: a real file called "b/thing" under "a/" keeps its name.
-func stripDiffPrefix(p string) string {
-	if strings.HasPrefix(p, "a/") || strings.HasPrefix(p, "b/") {
-		return p[2:]
-	}
-	return p
 }
 
 // PostPRComment posts a top-level comment and returns its id and version. The
@@ -420,20 +410,13 @@ func (c *Client) userPermissionAt(ctx context.Context, path, username string) (U
 	return "", nil
 }
 
-// GetProject reads a project, to prove it exists and is readable.
-func (c *Client) GetProject(ctx context.Context, project string) (map[string]any, error) {
-	var out map[string]any
-	if err := c.do(ctx, http.MethodGet, apiBase+"/projects/"+project, nil, nil, &out); err != nil {
-		return nil, err
-	}
-	return out, nil
+// GetProject reads a project, to prove it exists and is readable. The body
+// is not decoded: the answer is the status alone.
+func (c *Client) GetProject(ctx context.Context, project string) error {
+	return c.do(ctx, http.MethodGet, apiBase+"/projects/"+project, nil, nil, nil)
 }
 
-// GetRepo reads one repository.
-func (c *Client) GetRepo(ctx context.Context, project, repo string) (map[string]any, error) {
-	var out map[string]any
-	if err := c.do(ctx, http.MethodGet, apiBase+"/projects/"+project+"/repos/"+repo, nil, nil, &out); err != nil {
-		return nil, err
-	}
-	return out, nil
+// GetRepo reads one repository, to prove the same.
+func (c *Client) GetRepo(ctx context.Context, project, repo string) error {
+	return c.do(ctx, http.MethodGet, apiBase+"/projects/"+project+"/repos/"+repo, nil, nil, nil)
 }

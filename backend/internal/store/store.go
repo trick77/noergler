@@ -45,6 +45,10 @@ func Open(ctx context.Context, dsn string, log *slog.Logger) (*Store, error) {
 }
 
 func openConfig(ctx context.Context, cfg *pgxpool.Config, log *slog.Logger) (*Store, error) {
+	// date_trunc('day') buckets in the session TimeZone. Pinned, so a server
+	// configured for another zone cannot label every daily bucket a day off;
+	// the dashboard computes its windows in UTC to match.
+	cfg.ConnConfig.RuntimeParams["timezone"] = "UTC"
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create pool: %w", err)

@@ -66,6 +66,7 @@ const anchorSlack = 2
 func ValidateFindings(findings []ReviewFinding, idx diff.AnchorIndex) Validation {
 	var v Validation
 	for _, f := range findings {
+		f.File = ShownPath(f.File, idx)
 		reason, line := validateOne(f, idx)
 		if reason != "" {
 			v.Dropped = append(v.Dropped, DroppedFinding{Finding: f, Reason: reason})
@@ -136,10 +137,6 @@ type Reanchor struct {
 
 func validateOne(f ReviewFinding, idx diff.AnchorIndex) (DropReason, int) {
 	fa, ok := idx[f.File]
-	if !ok {
-		// Bitbucket strips an a/ or b/ prefix when anchoring; so does this.
-		fa, ok = idx[stripSidePrefix(f.File)]
-	}
 	if !ok {
 		return DropUnknownFile, 0
 	}
@@ -439,6 +436,22 @@ func isNoopSuggestion(suggestion string, line int, shown map[int]diff.ShownLine,
 		movedKeys[m[1]] = true
 	}
 	return true
+}
+
+// ShownPath resolves a git diff path (a/x, b/x) to the shown file x, so the
+// poster sends File verbatim. An exact match wins, so a real top-level a/ or
+// b/ directory keeps its name. Dedupe resolves stored paths the same way:
+// rows written before this kept the model's prefix.
+func ShownPath(p string, idx diff.AnchorIndex) string {
+	if _, ok := idx[p]; ok {
+		return p
+	}
+	if s := stripSidePrefix(p); s != p {
+		if _, ok := idx[s]; ok {
+			return s
+		}
+	}
+	return p
 }
 
 func stripSidePrefix(p string) string {

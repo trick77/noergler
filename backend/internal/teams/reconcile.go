@@ -25,8 +25,9 @@ const seededBy = "teams.yaml"
 // exists.
 //
 // The DB wins: a slug it knows carries the claims and the three lists, and
-// teams.yaml's projects: block is ignored entirely. A slug it does not know
-// is seeded from teams.yaml once. A seed that collides with another team's
+// teams.yaml's projects: block is ignored entirely. A slug ListAllClaims
+// does not name is seeded from teams.yaml once; one that had claims and
+// removed them all is still named, with none. A seed that collides with another team's
 // claims disables that team alone and skips its settings step.
 //
 // It MUST run before the per-team loop builds any Reviewer: review.New
@@ -79,6 +80,12 @@ func Reconcile(ctx context.Context, db ClaimStore, teams map[string]*config.Team
 // rather than contested.
 func reconcileClaims(ctx context.Context, db ClaimStore, slug string, team *config.Team, claims map[string][]config.ProjectScope, log *slog.Logger) (string, error) {
 	if scopes, known := claims[slug]; known {
+		// Seeded once and since emptied: teams.yaml projects are not a
+		// seed any more, and dropping them silently left an operator
+		// staring at ownership 403s.
+		if len(scopes) == 0 && len(team.Projects) > 0 {
+			log.WarnContext(ctx, "teams.yaml projects ignored: claims were seeded before and since removed (claim via POST /onboard)", "team", slug)
+		}
 		team.Projects = scopes
 		return "", nil
 	}
@@ -108,19 +115,12 @@ func reconcileClaims(ctx context.Context, db ClaimStore, slug string, team *conf
 // fault, not one team's.
 func reconcileSettings(ctx context.Context, db ClaimStore, slug string, team *config.Team, settings map[string]store.TeamSettings) error {
 	if s, known := settings[slug]; known {
-		team.Review.AutoReviewAuthors = s.AutoReviewAuthors
-		team.Review.IgnoreAuthors = s.IgnoreAuthors
-		team.Review.ExcludeRepos = s.ExcludeRepos
+		applySettings(team, s)
 		return nil
 	}
-	r := team.Review
-	if len(r.AutoReviewAuthors) == 0 && len(r.IgnoreAuthors) == 0 && len(r.ExcludeRepos) == 0 {
+	s := settingsOf(team)
+	if len(s.AutoReviewAuthors) == 0 && len(s.IgnoreAuthors) == 0 && len(s.ExcludeRepos) == 0 {
 		return nil
-	}
-	s := store.TeamSettings{
-		AutoReviewAuthors: r.AutoReviewAuthors,
-		IgnoreAuthors:     r.IgnoreAuthors,
-		ExcludeRepos:      r.ExcludeRepos,
 	}
 	if err := db.PutSettings(ctx, slug, s, seededBy); err != nil {
 		return fmt.Errorf("seed settings for team %s: %w", slug, err)

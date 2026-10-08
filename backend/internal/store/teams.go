@@ -42,11 +42,6 @@ type TeamSettings struct {
 	ExcludeRepos      []string
 }
 
-// Excludes is the case-insensitive glob match of a repo slug.
-func (t TeamSettings) Excludes(repoSlug string) bool {
-	return config.ExcludesRepo(t.ExcludeRepos, repoSlug)
-}
-
 type claimRow struct {
 	team string
 	key  string
@@ -104,7 +99,9 @@ func (s *Store) ListClaims(ctx context.Context, teamSlug string) ([]config.Proje
 	return scopesFromRows(out), rows.Err()
 }
 
-// ListAllClaims returns every team's scopes keyed by slug.
+// ListAllClaims returns every team's scopes keyed by slug. A slug that ever
+// held a claim is named even with none left (nil scopes): that is what tells
+// reconcile "removed", not "never seeded".
 func (s *Store) ListAllClaims(ctx context.Context) (map[string][]config.ProjectScope, error) {
 	rows, err := s.pool.Query(ctx, `SELECT team_slug, project_key, repo_slug FROM team_claims ORDER BY id`)
 	if err != nil {
@@ -126,7 +123,22 @@ func (s *Store) ListAllClaims(ctx context.Context) (map[string][]config.ProjectS
 	for slug, rs := range byTeam {
 		out[slug] = scopesFromRows(rs)
 	}
-	return out, nil
+
+	seeded, err := s.pool.Query(ctx, `SELECT team_slug FROM team_claims_seeded`)
+	if err != nil {
+		return nil, err
+	}
+	defer seeded.Close()
+	for seeded.Next() {
+		var slug string
+		if err := seeded.Scan(&slug); err != nil {
+			return nil, err
+		}
+		if _, ok := out[slug]; !ok {
+			out[slug] = nil
+		}
+	}
+	return out, seeded.Err()
 }
 
 // AddClaims claims scopes for the team. All or nothing: a conflict with
@@ -142,6 +154,11 @@ func (s *Store) AddClaims(ctx context.Context, teamSlug string, scopes []config.
 	defer func() { _ = tx.Rollback(ctx) }()
 	added := []string{}
 	if err := s.addClaims(ctx, tx, teamSlug, scopes, claimedBy, &added); err != nil {
+		return nil, err
+	}
+	// The slug stays marked after its last claim is removed: ListAllClaims
+	// keeps naming it, so reconcile never seeds teams.yaml back over it.
+	if _, err := tx.Exec(ctx, `INSERT INTO team_claims_seeded (team_slug) VALUES ($1) ON CONFLICT DO NOTHING`, teamSlug); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -350,20 +367,6 @@ func (s *Store) CountProjectPRs(ctx context.Context, teamSlug, projectKey string
 		err = s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM pull_requests WHERE team_slug = $1 AND project_key = $2 AND repo_slug = $3`, teamSlug, projectKey, *repoSlug).Scan(&n)
 	}
 	return n, err
-}
-
-// GetSettings returns the team's row, or nil when the DB has none.
-func (s *Store) GetSettings(ctx context.Context, teamSlug string) (*TeamSettings, error) {
-	var t TeamSettings
-	err := s.pool.QueryRow(ctx, `SELECT auto_review_authors, ignore_authors, exclude_repos FROM team_settings WHERE team_slug = $1`, teamSlug).
-		Scan(&t.AutoReviewAuthors, &t.IgnoreAuthors, &t.ExcludeRepos)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &t, nil
 }
 
 // GetAllSettings returns every team's row keyed by slug.

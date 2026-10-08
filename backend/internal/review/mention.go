@@ -10,7 +10,7 @@ import (
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/httpstats"
 	"github.com/trick77/noergler/internal/inference"
-	"github.com/trick77/noergler/internal/logging"
+	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
 
@@ -33,7 +33,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		return false
 	}
 	// Self-loop prevention: our own comments are not mentions.
-	if comment.Author.Name == r.bitbucket.BotUsername() {
+	if strings.EqualFold(comment.Author.Name, r.bitbucket.BotUsername()) {
 		r.log.DebugContext(ctx, "Ignoring own comment (bot)")
 		return false
 	}
@@ -43,13 +43,12 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		return false
 	}
 
-	project, repo := payload.ProjectRepo()
-	if project == "" || repo == "" {
+	ctx, key, prTag, ok := prContext(ctx, payload)
+	if !ok {
 		r.log.ErrorContext(ctx, "Could not extract project/repo from webhook payload")
 		return false
 	}
-	prTag := fmt.Sprintf("%s/%s#%d", project, repo, pr.ID)
-	ctx = logging.With(ctx, "pr_tag", prTag, "repo", project+"/"+repo, "pr_id", pr.ID)
+	project, repo := key.Project, key.Repo
 
 	// The Q&A path fetches a diff and posts a reply of its own, so it gets the
 	// same accounting as a review. A keyword mention stages a review, which
@@ -59,19 +58,13 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	ctx, httpCounter := httpstats.WithScope(ctx)
 	defer r.logHTTPTotals(ctx, prTag, httpCounter)
 
-	key := prKey(project, repo, pr.ID)
-
 	// Any mention reactivates a PR ignored after its summary was removed.
 	// Clearing the state (and the stale summary id, which Reactivate does)
 	// lets the next review post a fresh summary and stops the review guard
 	// from re-ignoring the PR.
-	if state := safeDB(ctx, r.log, "GetSkipState", func() (*storeSkipState, error) {
-		s, err := r.store.GetSkipState(ctx, key)
-		if s == nil {
-			return nil, err
-		}
-		return &storeSkipState{Ignored: s.IgnoredAt != nil}, err
-	}); state != nil && state.Ignored {
+	if state := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
+		return r.store.GetSkipState(ctx, key)
+	}); state != nil && state.IgnoredAt != nil {
 		safeDBErr(ctx, r.log, "Reactivate", func() error { return r.store.Reactivate(ctx, key) })
 		r.log.InfoContext(ctx, prTag+": reactivating ignored PR via @mention")
 	}
@@ -111,7 +104,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		return false
 	}
 
-	files, _ := r.prepareFiles(ctx, project, repo, rawDiff, pr.FromRef.LatestCommit, prTag)
+	files, _, _, _ := r.prepareFiles(ctx, project, repo, rawDiff, pr.FromRef.LatestCommit, prTag)
 	if len(files) == 0 {
 		r.log.InfoContext(ctx, prTag+": mention not answered by the model - no reviewable files")
 		r.reply(ctx, project, repo, pr.ID, comment.ID, "No reviewable files in this PR.")
@@ -170,9 +163,6 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	}
 	return false
 }
-
-// storeSkipState is the part of the skip state the mention path reads.
-type storeSkipState struct{ Ignored bool }
 
 // reply posts a threaded reply, logging a failure rather than propagating it:
 // a mention that cannot be answered must not fail the webhook.

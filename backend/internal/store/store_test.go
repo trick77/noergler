@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"os"
 	"reflect"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -435,6 +437,30 @@ func TestClaims_AddRules(t *testing.T) {
 	}
 }
 
+// A team that removed its last claim is still named, with no scopes, so a
+// restart's reconcile does not seed teams.yaml's projects back. A team that
+// never claimed anything is not named at all.
+func TestClaims_RemovingTheLastClaimKeepsTheSlug(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	if _, err := s.AddClaims(ctx, "platform", []config.ProjectScope{{Key: "PLAT"}}, "jan"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RemoveClaims(ctx, "platform", []config.ProjectScope{{Key: "PLAT"}}); err != nil {
+		t.Fatal(err)
+	}
+	all, err := s.ListAllClaims(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scopes, known := all["platform"]; !known || len(scopes) != 0 {
+		t.Errorf("platform = %v (named %v), want named with no scopes", scopes, known)
+	}
+	if _, known := all["payments"]; known {
+		t.Error("a slug that never claimed must not be named")
+	}
+}
+
 func TestClaims_RemoveReportsWhatWent(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
@@ -511,24 +537,155 @@ func TestPullRequest_ReopenedAfterDeclineStartsFreshButDedups(t *testing.T) {
 	}
 }
 
+// The daily queries bucket with date_trunc('day'), which uses the session
+// TimeZone. The session is pinned to UTC, so a server configured for another
+// zone cannot shift every bucket a day away from its label.
+func TestSessionTimeZoneIsUTC(t *testing.T) {
+	s := testStore(t)
+	var tz string
+	if err := s.pool.QueryRow(context.Background(), `SHOW timezone`).Scan(&tz); err != nil {
+		t.Fatal(err)
+	}
+	if tz != "UTC" {
+		t.Errorf("session timezone = %q, want UTC", tz)
+	}
+}
+
+// PRCost is what the PR spent: priced runs plus the run-less attempts that
+// were billed (an unparseable response). Nil only when neither is priced.
+func TestPRCost_IncludesBilledAttempts(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	id := upsert(t, s, key, "a")
+	attempt := Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "unparseable", CostNanoUSD: nano(400)}
+	if err := s.InsertAttempt(ctx, attempt); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := s.PRCost(ctx, key); c == nil || *c != 400 {
+		t.Errorf("attempt only: cost = %v, want 400", c)
+	}
+	run(t, s, id, "a", nano(600), "m")
+	if c, _ := s.PRCost(ctx, key); c == nil || *c != 1000 {
+		t.Errorf("run + attempt: cost = %v, want 1000", c)
+	}
+	// The frozen merge cost is the same figure the cap enforced.
+	if c, _ := s.FreezeFinalCost(ctx, key); c == nil || *c != 1000 {
+		t.Errorf("frozen = %v, want 1000", c)
+	}
+	other := PRKey{Project: key.Project, Repo: key.Repo, PRID: key.PRID + 1}
+	if c, _ := s.PRCost(ctx, other); c != nil {
+		t.Errorf("nothing priced: cost = %v, want nil", *c)
+	}
+
+	// Giving the repo up purges the row and its runs. Claimed again, the PR
+	// starts from zero: the old row's attempts must not come back.
+	if _, err := s.PurgeProject(ctx, "platform", key.Project, nil); err != nil {
+		t.Fatal(err)
+	}
+	upsert(t, s, key, "b")
+	if c, _ := s.PRCost(ctx, key); c != nil {
+		t.Errorf("after purge and re-claim: cost = %v, want nil", *c)
+	}
+}
+
+// A PR billed only for unparseable responses tripped the cap and froze a
+// cost, yet its rollup needed a run row, so FinOps never saw the spend.
+func TestRollup_AttemptOnlySpendIsClaimed(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	upsert(t, s, key, "a")
+	unpriced := Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "error"}
+	if err := s.InsertAttempt(ctx, unpriced); err != nil {
+		t.Fatal(err)
+	}
+	if snap, _ := s.ClaimRollup(ctx, key, RollupFinal{}); snap != nil {
+		t.Fatalf("nothing billed: snapshot = %+v, want nil", snap)
+	}
+	billed := Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "unparseable", CostNanoUSD: nano(400)}
+	if err := s.InsertAttempt(ctx, billed); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := s.ClaimRollup(ctx, key, RollupFinal{SourceCommit: str("head")})
+	if err != nil || snap == nil {
+		t.Fatalf("claim: %v %v", snap, err)
+	}
+	if snap.Runs != 0 || snap.CostNanoUSD == nil || *snap.CostNanoUSD != 400 || len(snap.Models) != 0 {
+		t.Errorf("snapshot = %+v, want 0 runs, cost 400, no models", snap)
+	}
+	if snap.SourceCommit == nil || *snap.SourceCommit != "head" || snap.FirstReviewAt.IsZero() {
+		t.Errorf("source = %v, first = %v", snap.SourceCommit, snap.FirstReviewAt)
+	}
+}
+
+// 0004's backfill marks every slug that ever held a claim it can still see:
+// claim rows, PR rows, attempt rows. Claim rows alone missed a team that had
+// removed its last claim before the upgrade, and its first boot re-seeded it.
+func TestMigrate0004_BackfillsEverySlugThatHeldAClaim(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	if _, err := s.pool.Exec(ctx, `DROP TABLE team_claims_seeded;
+		DELETE FROM schema_migrations WHERE name = '0004_claims_seeded.sql'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.pool.Exec(ctx, `INSERT INTO team_claims (team_slug, project_key, claimed_by) VALUES ('platform', 'PLAT', 'x')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.UpsertPullRequest(ctx, PRUpsert{Key: key, TeamSlug: "ops"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "payments", Kind: RunAuto, Outcome: "error"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutSettings(ctx, "idle", TeamSettings{ExcludeRepos: []string{"*-infra"}}, "x"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	all, err := s.ListAllClaims(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := slices.Sorted(maps.Keys(all))
+	if want := []string{"ops", "payments", "platform"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("known slugs = %v, want %v (a settings row alone is no claim)", got, want)
+	}
+}
+
+// KeepPointer leaves the stored pointer alone; without it nil writes NULL.
+func TestPullRequest_KeepPointer(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	upsert(t, s, key, "a")
+	if _, err := s.UpsertPullRequest(ctx, PRUpsert{Key: key, TeamSlug: "platform", KeepPointer: true}); err != nil {
+		t.Fatal(err)
+	}
+	if c, ok, _ := s.GetLastReviewedCommit(ctx, key); !ok || c != "a" {
+		t.Errorf("pointer = %q %v, want a kept", c, ok)
+	}
+	if _, err := s.UpsertPullRequest(ctx, PRUpsert{Key: key, TeamSlug: "platform"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := s.GetLastReviewedCommit(ctx, key); ok {
+		t.Error("nil without KeepPointer must NULL the pointer")
+	}
+}
+
 func TestSettings_RoundTrip(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
-	if got, err := s.GetSettings(ctx, "platform"); err != nil || got != nil {
-		t.Fatalf("missing row = %v %v", got, err)
+	if all, err := s.GetAllSettings(ctx); err != nil || len(all) != 0 {
+		t.Fatalf("no rows = %v %v", all, err)
 	}
 	if err := s.PutSettings(ctx, "platform", TeamSettings{AutoReviewAuthors: []string{"a"}, IgnoreAuthors: nil, ExcludeRepos: []string{"*-infra"}}, "jan"); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := s.GetSettings(ctx, "platform")
-	if !reflect.DeepEqual(got, &TeamSettings{AutoReviewAuthors: []string{"a"}, IgnoreAuthors: []string{}, ExcludeRepos: []string{"*-infra"}}) {
-		t.Errorf("settings = %+v", got)
-	}
-	if !got.Excludes("Platform-INFRA") || got.Excludes("infra-tools") {
-		t.Error("exclude glob")
+	all, _ := s.GetAllSettings(ctx)
+	if !reflect.DeepEqual(all["platform"], TeamSettings{AutoReviewAuthors: []string{"a"}, IgnoreAuthors: []string{}, ExcludeRepos: []string{"*-infra"}}) {
+		t.Errorf("settings = %+v", all["platform"])
 	}
 	_ = s.PutSettings(ctx, "platform", TeamSettings{AutoReviewAuthors: []string{"b"}, ExcludeRepos: []string{}}, "jan")
-	all, _ := s.GetAllSettings(ctx)
+	all, _ = s.GetAllSettings(ctx)
 	if !reflect.DeepEqual(all["platform"].AutoReviewAuthors, []string{"b"}) || len(all["platform"].ExcludeRepos) != 0 {
 		t.Errorf("all = %+v", all)
 	}

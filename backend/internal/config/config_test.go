@@ -160,7 +160,7 @@ func TestInstance_ParseRules(t *testing.T) {
 		"REVIEW_TICKET_COMPLIANCE_CHECK", "False", "REVIEW_REQUIRE_AGENTS_MD", "YES", "REVIEW_DIFF_ALLOW_DYNAMIC_CONTEXT", "1",
 		"REVIEW_IGNORE_AUTHORS", "os-jenkins-bb, renovate,,", "REVIEW_MAX_PR_COST_USD", "8.50",
 		"OPENAI_REASONING_EFFORT", "HIGH", "REVIEW_OPT_OUT_BRANCH_KEYWORD", "skipme",
-		"LLMWIRE_LITELLM_BASE_URL", "https://llm.example.com/v1/chat/completions", "NOERGLER_PUBLIC_URL", "https://n.example.com/")
+		"NOERGLER_PUBLIC_URL", "https://n.example.com/")
 	app := e.mustLoad()
 	r := app.Review
 	if r.DiffExtraLinesBefore != 5 || r.DiffExtraLinesAfter != 4 || r.TicketComplianceCheck || !r.RequireAgentsMD || !r.DiffAllowDynamicContext {
@@ -237,6 +237,34 @@ func TestInstance_NegativeDiffCapAbortsBoot(t *testing.T) {
 	}
 }
 
+// A negative comment cap boots clean and then panics every review in post,
+// after inference is paid. 0 stays legal: summary only, no inline comments.
+func TestInstance_NegativeMaxCommentsAbortsBoot(t *testing.T) {
+	e := newEnv(t)
+	e.set("REVIEW_MAX_COMMENTS", "-1")
+	_, err := e.load()
+	if err == nil || !strings.Contains(err.Error(), "REVIEW_MAX_COMMENTS") {
+		t.Errorf("err = %v, want a load failure", err)
+	}
+	e.set("REVIEW_MAX_COMMENTS", "0")
+	if app := e.mustLoad(); app.Review.MaxComments != 0 {
+		t.Errorf("max_comments = %d, want 0", app.Review.MaxComments)
+	}
+}
+
+// A cap of 0 reads as "no cap" but skips every auto-review after the first
+// priced run; negative is a typo. Both fail at load.
+func TestInstance_NonPositiveCostCapAbortsBoot(t *testing.T) {
+	for _, bad := range []string{"0", "-1", "NaN"} {
+		e := newEnv(t)
+		e.set("REVIEW_MAX_PR_COST_USD", bad)
+		_, err := e.load()
+		if err == nil || !strings.Contains(err.Error(), "REVIEW_MAX_PR_COST_USD") {
+			t.Errorf("%s: err = %v, want a load failure", bad, err)
+		}
+	}
+}
+
 // A team's blank level overrides an instance level back to the model's
 // balanced one.
 func TestTeams_BlankEffortOverridesToUnset(t *testing.T) {
@@ -272,15 +300,6 @@ func TestInstance_TeamsConfigPathDefault(t *testing.T) {
 	app, err := LoadInstance(e.lookup)
 	if err != nil || app.TeamsConfigPath != "teams.yaml" {
 		t.Errorf("path = %v, err = %v", app, err)
-	}
-}
-
-func TestUsableContextBudget(t *testing.T) {
-	tr := Trust{HeadroomTokens: 16000, Threshold: 256000, Tail: 0.5}
-	for window, want := range map[int]int{128000: 112000, 272000: 264000, 512000: 384000, 1050000: 653000, 1000: 2000} {
-		if got := tr.UsableContextBudget(window); got != want {
-			t.Errorf("budget(%d) = %d, want %d", window, got, want)
-		}
 	}
 }
 
@@ -457,6 +476,12 @@ func TestTeams_FaultDisablesOnlyThatTeam(t *testing.T) {
 		}, "riptide.url must be non-empty"},
 		{"bad slug", func(s string) string { return strings.Replace(s, "slug: payments", "slug: Payments", 1) },
 			"slug: Value error, slug 'Payments' must match"},
+		{"negative max_comments", func(s string) string {
+			return strings.Replace(s, "      max_pr_cost_usd: 8.5\n", "      max_pr_cost_usd: 8.5\n      max_comments: -1\n", 1)
+		}, "review.max_comments: Input should be greater than or equal to 0"},
+		{"zero max_pr_cost_usd", func(s string) string {
+			return strings.Replace(s, "max_pr_cost_usd: 8.5", "max_pr_cost_usd: 0", 1)
+		}, "review.max_pr_cost_usd: Input should be greater than 0"},
 		{"bad int", func(s string) string { return strings.Replace(s, "context_window: 1200000", "context_window: lots", 1) },
 			"inference.context_window: Input should be a valid integer"},
 	}
@@ -553,10 +578,7 @@ func TestFnMatch(t *testing.T) {
 	}
 }
 
-func TestTeamEnvPrefixAndModelLabel(t *testing.T) {
-	if TeamEnvPrefix("data-platform") != "TEAM_DATA_PLATFORM_" {
-		t.Error("prefix")
-	}
+func TestModelLabel(t *testing.T) {
 	if ModelLabel("gpt-5.5", "high") != "gpt-5.5-high" || ModelLabel("m", "") != "m" {
 		t.Error("label")
 	}

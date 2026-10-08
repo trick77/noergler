@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/jira"
-	"github.com/trick77/noergler/internal/store"
 )
 
 // fileFetchConcurrency bounds how many full file bodies are in flight at
@@ -67,6 +67,9 @@ type Reviewer struct {
 	template    string
 	mentionTmpl string
 	log         *slog.Logger
+	// owns is the live claim check: a repo can be given up while its
+	// review is queued or in inference.
+	owns func(project, repo string) bool
 }
 
 // Options builds a Reviewer. Bitbucket, the store, the inference client, the
@@ -85,6 +88,8 @@ type Options struct {
 	Template        string
 	MentionTemplate string
 	Log             *slog.Logger
+	// Owns reports whether the team still claims the repo; nil claims all.
+	Owns func(project, repo string) bool
 }
 
 // New builds a Reviewer for one team.
@@ -103,6 +108,7 @@ func New(opt Options) *Reviewer {
 		template:          opt.Template,
 		mentionTmpl:       opt.MentionTemplate,
 		log:               opt.Log,
+		owns:              opt.Owns,
 	}
 }
 
@@ -146,7 +152,7 @@ func (r *Reviewer) IsAutoReviewAuthor(author string) bool {
 
 func (r *Reviewer) isIgnoredAuthor(name string) bool {
 	_, ignore := r.authorLists()
-	return contains(ignore, name)
+	return slices.Contains(ignore, name)
 }
 
 // autoReviewDecision answers both "is this author auto-reviewed" and "which
@@ -158,22 +164,13 @@ func (r *Reviewer) isIgnoredAuthor(name string) bool {
 // is meant to remove. Same rule as teams.Runtime: one snapshot per request.
 func (r *Reviewer) autoReviewDecision(author string) (autoReview, ignored bool) {
 	auto, ignore := r.authorLists()
-	if contains(ignore, author) {
+	if slices.Contains(ignore, author) {
 		return false, true
 	}
 	if len(auto) == 0 {
 		return true, false
 	}
-	return contains(auto, author), false
-}
-
-func contains(list []string, name string) bool {
-	for _, s := range list {
-		if s == name {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(auto, author), false
 }
 
 // extractTicketID reads a Jira key off the branch name, then the PR title.
@@ -256,11 +253,6 @@ func (r *Reviewer) fetchRepoInstructions(ctx context.Context, project, repo, fro
 		}
 	}
 	return ""
-}
-
-// prKey builds the store key.
-func prKey(project, repo string, prID int) store.PRKey {
-	return store.PRKey{Project: project, Repo: repo, PRID: prID}
 }
 
 // shortSHA truncates a commit for log lines and notices.

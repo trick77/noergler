@@ -9,11 +9,6 @@ import (
 	"github.com/tiktoken-go/tokenizer"
 )
 
-// BytesPerTokenCeiling bounds tokens by byte length.
-// The cumulative PR diff is dropped by byte length
-// before anything is tokenized, so no encoder runs over a diff that cannot fit.
-const BytesPerTokenCeiling = 8
-
 // Counter wraps one o200k_base codec. Build it once at boot and share it; the
 // codec is safe for concurrent use and the vocabulary is the expensive part.
 type Counter struct {

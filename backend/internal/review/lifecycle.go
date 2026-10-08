@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/trick77/noergler/internal/diff"
+	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/logging"
 	"github.com/trick77/noergler/internal/riptide"
 	"github.com/trick77/noergler/internal/store"
@@ -25,14 +26,10 @@ func (r *Reviewer) HandleCommentDeleted(ctx context.Context, payload *webhook.Pa
 	if comment == nil {
 		return
 	}
-	project, repo := payload.ProjectRepo()
-	if project == "" || repo == "" {
+	ctx, key, prTag, ok := prContext(ctx, payload)
+	if !ok {
 		return
 	}
-	prID := payload.PullRequest.ID
-	prTag := fmt.Sprintf("%s/%s#%d", project, repo, prID)
-	ctx = logging.With(ctx, "pr_tag", prTag, "repo", project+"/"+repo, "pr_id", prID)
-	key := prKey(project, repo, prID)
 
 	state := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
 		return r.store.GetSkipState(ctx, key)
@@ -49,7 +46,7 @@ func (r *Reviewer) HandleCommentDeleted(ctx context.Context, payload *webhook.Pa
 
 // HandlePRMerged marks the PR merged, freezes its cost and emits the rollup.
 func (r *Reviewer) HandlePRMerged(ctx context.Context, payload *webhook.Payload) {
-	ctx, key, prTag, ok := r.lifecycleContext(ctx, payload)
+	ctx, key, prTag, ok := prContext(ctx, payload)
 	if !ok {
 		return
 	}
@@ -60,57 +57,58 @@ func (r *Reviewer) HandlePRMerged(ctx context.Context, payload *webhook.Payload)
 	}); frozen != nil {
 		// The sum of what the endpoint reported per run. Unpriced runs
 		// contributed nothing, so the total is a floor, not the bill.
-		r.log.InfoContext(ctx, fmt.Sprintf("%s merged - frozen LLM cost $%.3f",
-			prTag, float64(*frozen)/nanoPerUSD))
+		r.log.InfoContext(ctx, fmt.Sprintf("%s merged - frozen LLM cost $%s",
+			prTag, inference.FormatUSD3(*frozen)))
 	}
 
-	r.emitRollup(ctx, key, prTag, "merged", payload.MergeCommitSHA())
+	r.emitRollup(ctx, key, prTag, "merged", payload.MergeCommitSHA(), payload.PullRequest.FromRef.LatestCommit)
 }
 
 // HandlePRDeclined marks the PR declined and emits the rollup. The data is
 // retained for metrics.
 func (r *Reviewer) HandlePRDeclined(ctx context.Context, payload *webhook.Payload) {
-	ctx, key, prTag, ok := r.lifecycleContext(ctx, payload)
+	ctx, key, prTag, ok := prContext(ctx, payload)
 	if !ok {
 		return
 	}
 	safeDBErr(ctx, r.log, "MarkDeclined", func() error { return r.store.MarkDeclined(ctx, key) })
 	r.log.InfoContext(ctx, prTag+" declined - marked, data retained")
-	r.emitRollup(ctx, key, prTag, "declined", "")
+	r.emitRollup(ctx, key, prTag, "declined", "", payload.PullRequest.FromRef.LatestCommit)
 }
 
 // HandlePRDeleted marks the PR deleted and emits the rollup.
 func (r *Reviewer) HandlePRDeleted(ctx context.Context, payload *webhook.Payload) {
-	ctx, key, prTag, ok := r.lifecycleContext(ctx, payload)
+	ctx, key, prTag, ok := prContext(ctx, payload)
 	if !ok {
 		return
 	}
 	safeDBErr(ctx, r.log, "MarkDeleted", func() error { return r.store.MarkDeleted(ctx, key) })
 	r.log.InfoContext(ctx, prTag+" deleted - marked, data retained")
-	r.emitRollup(ctx, key, prTag, "deleted", "")
+	r.emitRollup(ctx, key, prTag, "deleted", "", payload.PullRequest.FromRef.LatestCommit)
 }
 
-// lifecycleContext resolves the key and binds the log context, reporting
-// whether the payload names a usable PR.
-func (r *Reviewer) lifecycleContext(ctx context.Context, payload *webhook.Payload) (context.Context, store.PRKey, string, bool) {
+// prContext resolves the key and binds the log context, reporting whether
+// the payload names a usable PR. Every entry point uses it, so the log's
+// pr_tag and the dashboard's tag are the one PRKey.Tag().
+func prContext(ctx context.Context, payload *webhook.Payload) (context.Context, store.PRKey, string, bool) {
 	project, repo := payload.ProjectRepo()
 	if project == "" || repo == "" {
 		return ctx, store.PRKey{}, "", false
 	}
-	prID := payload.PullRequest.ID
-	prTag := fmt.Sprintf("%s/%s#%d", project, repo, prID)
-	ctx = logging.With(ctx, "pr_tag", prTag, "repo", project+"/"+repo, "pr_id", prID)
-	return ctx, prKey(project, repo, prID), prTag, true
+	key := store.PRKey{Project: project, Repo: repo, PRID: payload.PullRequest.ID}
+	prTag := key.Tag()
+	ctx = logging.With(ctx, "pr_tag", prTag, "repo", project+"/"+repo, "pr_id", key.PRID)
+	return ctx, key, prTag, true
 }
 
 // emitRollup aggregates the per-run stats and posts one pr_completed event.
 //
-// A no-op when riptide is off, when no review ever ran, or when the rollup
+// A no-op when riptide is off, when nothing was billed, or when the rollup
 // was already emitted: ClaimRollup stamps riptide_emitted_at in the same
 // statement that reads the snapshot, so a redelivered pr:merged produces no
 // second event. The claim happens BEFORE the POST, so a failed emission is
 // never retried.
-func (r *Reviewer) emitRollup(ctx context.Context, key store.PRKey, prTag, outcome, mergeCommit string) {
+func (r *Reviewer) emitRollup(ctx context.Context, key store.PRKey, prTag, outcome, mergeCommit, sourceCommit string) {
 	if r.riptide == nil || !r.riptide.Enabled() {
 		return
 	}
@@ -122,6 +120,9 @@ func (r *Reviewer) emitRollup(ctx context.Context, key store.PRKey, prTag, outco
 	final := store.RollupFinal{}
 	if mergeCommit != "" {
 		final.MergeCommit = &mergeCommit
+	}
+	if sourceCommit != "" {
+		final.SourceCommit = &sourceCommit
 	}
 	if outcome != "deleted" {
 		if fullDiff, err := r.bitbucket.FetchPRDiff(ctx, key.Project, key.Repo, key.PRID, 0); err != nil {
@@ -140,7 +141,7 @@ func (r *Reviewer) emitRollup(ctx context.Context, key store.PRKey, prTag, outco
 		return r.store.ClaimRollup(ctx, key, final)
 	})
 	if snapshot == nil {
-		r.log.DebugContext(ctx, prTag+": rollup not emitted (already emitted or no review runs)")
+		r.log.DebugContext(ctx, prTag+": rollup not emitted (already emitted or nothing billed)")
 		return
 	}
 	if snapshot.SourceCommit == nil || *snapshot.SourceCommit == "" {

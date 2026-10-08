@@ -8,6 +8,9 @@
 import { useId } from "react";
 
 export interface Series {
+  /** Stable identity (a slug, an outcome). Never the name: two teams may
+   *  display the same one. */
+  id: string;
   name: string;
   /** A CSS variable string, never a hex literal. */
   color: string;
@@ -145,7 +148,7 @@ export function Chart({
           ? series.map((s, si) => {
               const bw = Math.min(26, band * 0.62);
               return (
-                <g key={s.name}>
+                <g key={s.id}>
                   {s.values.map((v, i) => {
                     if (!v) return null;
                     const base = si === 0 ? 0 : tops[si - 1][i];
@@ -182,7 +185,7 @@ export function Chart({
                       .join(" L ")
                   : `${xAt(n - 1)},${yAt(dataMin)} L ${xAt(0)},${yAt(dataMin)}`;
               return (
-                <g key={s.name}>
+                <g key={s.id}>
                   {filled && (
                     <path
                       d={`M ${up} L ${floor} Z`}
@@ -241,7 +244,7 @@ export function Sparkline({
 }) {
   return (
     <Chart
-      series={[{ name: label, color, values }]}
+      series={[{ id: label, name: label, color, values }]}
       width={width}
       height={height}
       mark="area"

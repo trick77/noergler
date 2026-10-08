@@ -134,22 +134,6 @@ type Trust struct {
 	Tail           float64
 }
 
-// UsableContextBudget turns an advertised window into a per-call budget.
-// Below the threshold: the window minus a flat headroom. Above it: the
-// threshold plus only Tail of the excess, because large advertised windows
-// are the least trustworthy (many endpoints 413 below them). Examples with
-// T=256k, Tail=0.5, headroom 16k: 128k->112k, 272k->264k, 512k->384k,
-// 1.05M->653k. Never below 2000.
-func (t Trust) UsableContextBudget(window int) int {
-	var usable int
-	if window <= t.Threshold {
-		usable = window - t.HeadroomTokens
-	} else {
-		usable = t.Threshold + int(float64(window-t.Threshold)*t.Tail)
-	}
-	return max(2000, usable)
-}
-
 // Team is a fully resolved team: secrets read, defaults merged.
 //
 // Projects and the author/exclude lists are the team's own to change through
@@ -254,12 +238,6 @@ func ModelLabel(model, effort string) string {
 // TeamSlugRE is the slug format; the path segment, the DB key and the log
 // field are all this string.
 var TeamSlugRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
-
-// TeamEnvPrefix is `TEAM_<SLUG>_`, the naming convention for a team's secret
-// env vars. Not enforced by the loader.
-func TeamEnvPrefix(slug string) string {
-	return "TEAM_" + strings.ReplaceAll(strings.ToUpper(slug), "-", "_") + "_"
-}
 
 // Queue sizes the review queue's inference pool.
 //
@@ -422,7 +400,7 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 		},
 		LLM: LLM{
 			Model:         e.required("OPENAI_MODEL"),
-			BaseURL:       stripChatSuffix(e.required(GatewayBaseURLEnv)),
+			BaseURL:       e.required(GatewayBaseURLEnv),
 			GatewayModels: e.required(GatewayModelsEnv),
 			ContextWindow: e.integer("OPENAI_CONTEXT_WINDOW", "0"),
 		},
@@ -479,6 +457,15 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 			"REVIEW_INFERENCE_CONCURRENCY_PER_TEAM (%d) must not exceed REVIEW_INFERENCE_CONCURRENCY (%d)",
 			q.InferenceConcurrencyPerTeam, q.InferenceConcurrency))
 	}
+	// sortAndLimit slices to it: negative panics every review in post.
+	if app.Review.MaxComments < 0 {
+		e.errs = append(e.errs, fmt.Sprintf("REVIEW_MAX_COMMENTS: must be zero or a positive integer, got %d", app.Review.MaxComments))
+	}
+	// The cap check is cumulative >= limit: 0 reads as "no cap" but skips
+	// every auto-review after the first priced run. !(v > 0) catches NaN too.
+	if v := app.Review.MaxPRCostUSD; !(v > 0) {
+		e.errs = append(e.errs, fmt.Sprintf("REVIEW_MAX_PR_COST_USD: must be greater than 0, got %v", v))
+	}
 	if len(e.errs) > 0 {
 		return nil, fmt.Errorf("%s", strings.Join(e.errs, "; "))
 	}
@@ -501,11 +488,3 @@ func Load(lookup func(string) (string, bool)) (*App, error) {
 
 // OSLookup is os.LookupEnv, the production lookup.
 func OSLookup(name string) (string, bool) { return os.LookupEnv(name) }
-
-// stripChatSuffix removes a user-supplied /chat/completions (llmwire appends
-// it) and trailing slashes on either side of it.
-func stripChatSuffix(u string) string {
-	u = strings.TrimRight(u, "/")
-	u = strings.TrimSuffix(u, "/chat/completions")
-	return strings.TrimRight(u, "/")
-}

@@ -45,8 +45,11 @@ export function LivePage() {
   // 3s: fast enough that a review starting is visible while you watch,
   // slow enough that the access log stays quiet (these paths are silenced
   // server-side for exactly this reason).
-  const { data, failed } = usePoll<Live>("live", 3000);
-  const now = useNow(1000);
+  const { data, failed, updatedAt } = usePoll<Live>("live", 3000);
+  const wall = useNow(1000);
+  // A failing refresh freezes the clocks at the last reading: counting on
+  // against frozen rows showed a dead instance as a review stuck for ages.
+  const now = failed && updatedAt !== null ? updatedAt : wall;
 
   if (!data) {
     return (
@@ -70,6 +73,12 @@ export function LivePage() {
           What is running right now. Several reviews can be waiting on the model at once, but only
           one at a time talks to Bitbucket, so a busy queue drains in order.
         </p>
+
+        {failed && updatedAt !== null && (
+          <div className="mb-3.5 rounded-ui border border-border bg-panel px-3.5 py-3 text-[13.5px] text-muted">
+            Refresh failing. Showing the reading from {ago(new Date(updatedAt).toISOString(), wall)}.
+          </div>
+        )}
 
         <Card
           title="Inference pool"

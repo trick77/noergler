@@ -34,6 +34,7 @@ type fakeBitbucket struct {
 
 	prDiff     string
 	prDiffErr  error
+	onPRDiff   func() // runs inside FetchPRDiff, e.g. a shutdown landing mid-fetch
 	commitDiff string
 	commitErr  error
 	changes    []string
@@ -73,6 +74,9 @@ func newFakeBitbucket() *fakeBitbucket {
 func (f *fakeBitbucket) BotUsername() string { return f.bot }
 
 func (f *fakeBitbucket) FetchPRDiff(_ context.Context, _, _ string, _, _ int) (string, error) {
+	if f.onPRDiff != nil {
+		f.onPRDiff()
+	}
 	return f.prDiff, f.prDiffErr
 }
 
@@ -165,6 +169,7 @@ type fakeStore struct {
 	skipState  *store.SkipState
 	lastCommit string
 	hasLast    bool
+	lastErr    error
 	summary    *store.SummaryComment
 	existing   []store.Finding
 	prCost     *int64
@@ -215,6 +220,9 @@ func (f *fakeStore) UpsertPullRequest(_ context.Context, u store.PRUpsert) (int6
 func (f *fakeStore) GetLastReviewedCommit(context.Context, store.PRKey) (string, bool, error) {
 	if err := f.err(); err != nil {
 		return "", false, err
+	}
+	if f.lastErr != nil {
+		return "", false, f.lastErr
 	}
 	return f.lastCommit, f.hasLast, nil
 }
@@ -389,6 +397,8 @@ type fakeLLM struct {
 	budget  int
 	review  inference.ReviewResult
 	mention inference.MentionResult
+	// onReview runs during the gateway call, between prepare and post.
+	onReview func()
 
 	Reviews  []inference.ReviewRequest
 	Mentions []inference.MentionRequest
@@ -420,6 +430,9 @@ func (f *fakeLLM) InputTokenBudget() int { return f.budget }
 
 func (f *fakeLLM) Review(_ context.Context, req inference.ReviewRequest) inference.ReviewResult {
 	f.Reviews = append(f.Reviews, req)
+	if f.onReview != nil {
+		f.onReview()
+	}
 	return f.review
 }
 

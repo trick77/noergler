@@ -35,12 +35,3 @@ func TestContentFetchedSurvivesRebuilds(t *testing.T) {
 		}
 	})
 }
-
-// HasContent reports on the content string alone, never the flag: a fetched
-// empty file still falls through to the diff for reference finding.
-func TestHasContentIsTruthiness(t *testing.T) {
-	f := FileReviewData{Content: "", ContentFetched: true}
-	if f.HasContent() {
-		t.Error("an empty string must report no usable content, whatever the flag")
-	}
-}

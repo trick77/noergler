@@ -195,8 +195,8 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 	// the per-PR cap never fires. Cost fails open, so this
 	// log line is the only signal an operator gets.
 	if pc := llm.PingCost(); pc.Priced() {
-		d.Log.InfoContext(ctx, fmt.Sprintf("Model %s ping priced by the gateway: $%.3f",
-			llm.Label(), float64(*pc.NanoUSD)/1e9))
+		d.Log.InfoContext(ctx, fmt.Sprintf("Model %s ping priced by the gateway: $%s",
+			llm.Label(), inference.FormatUSD3(*pc.NanoUSD)))
 	} else {
 		d.Log.WarnContext(ctx, fmt.Sprintf("Model %s is not priced by the gateway "+
 			"(no usable cost on the ping): summaries will carry no cost and the "+
@@ -240,7 +240,11 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 		riptideDep = rt
 	}
 
+	// The Reviewer asks the live snapshot, which exists only once the
+	// Runtime does; nothing reviews before Start returns.
+	var runtime *Runtime
 	reviewer := review.New(review.Options{
+		Owns:            func(project, repo string) bool { return runtime.Team().Owns(project, repo) },
 		TeamSlug:        team.Slug,
 		Bitbucket:       d.Bitbucket,
 		LLM:             llm,
@@ -253,5 +257,6 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 		MentionTemplate: string(mentionTmpl),
 		Log:             d.Log,
 	})
-	return NewRuntime(team, reviewer, llm, jr, rt), ""
+	runtime = NewRuntime(team, reviewer, llm, jr, rt)
+	return runtime, ""
 }

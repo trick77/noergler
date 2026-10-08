@@ -16,8 +16,8 @@ type SkipReason string
 // The pre-flight exits, in the order prepare reaches them.
 //
 // SkipNone is the zero value: the exit was not a skip but a hard failure (an
-// unparseable payload, a diff that would not fetch), and no attempt row is
-// written for it. Every other value is a decision the pipeline made before
+// unparseable payload, a diff that would not fetch), and no "skipped" row is
+// written for it (a diff fetch failure writes an "error" one). Every other value is a decision the pipeline made before
 // the gateway was called, stored in review_attempts.reason and grouped on,
 // so renaming one silently rewrites history.
 const (
@@ -33,6 +33,9 @@ const (
 	SkipEmptyDiff        SkipReason = "empty_diff"
 	SkipHeadUnchanged    SkipReason = "head_unchanged"
 	SkipDiffTooLarge     SkipReason = "diff_too_large"
+	// SkipRepoNotClaimed: the team gave the repo up while the review was
+	// queued or in inference. The late one carries the call it paid for.
+	SkipRepoNotClaimed SkipReason = "repo_not_claimed"
 )
 
 // Label is the reason as a dashboard prints it. Unknown values print
@@ -61,6 +64,8 @@ func (s SkipReason) Label() string {
 		return "HEAD unchanged since last review"
 	case SkipDiffTooLarge:
 		return "Diff too large"
+	case SkipRepoNotClaimed:
+		return "Repo no longer claimed by the team"
 	}
 	return string(s)
 }

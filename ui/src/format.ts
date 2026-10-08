@@ -19,6 +19,17 @@ export function money(usd: string | null): string {
   return `$${roundToCents(usd)}`;
 }
 
+/** moneyTick formats a cost axis with the fewest decimals (at least two, at
+ *  most six) that print every tick exactly: a fixed toFixed(2) printed every
+ *  tick of a sub-cent axis as $0.00, and a step of 0.0075 needs four.
+ *  Ticks are axis positions, not amounts, so a float is fine. */
+export function moneyTick(ticks: number[]): (v: number) => string {
+  let decimals = 2;
+  const exact = (v: number) => Math.abs(Number(v.toFixed(decimals)) - v) < 1e-12;
+  while (decimals < 6 && !ticks.every(exact)) decimals++;
+  return (v) => `$${v.toFixed(decimals)}`;
+}
+
 /** roundToCents rounds a decimal string half-up, on the digits. A string that
  *  is not a plain decimal is returned unchanged rather than mangled: it came
  *  from the API, and inventing a number for it would be worse than showing
@@ -110,6 +121,7 @@ const skipWords: Record<string, string> = {
   empty_diff: "empty diff",
   head_unchanged: "unchanged",
   diff_too_large: "too large",
+  repo_not_claimed: "unclaimed",
 };
 
 /** outcomeWord is the word on a run's outcome pill. A skip names its reason;
