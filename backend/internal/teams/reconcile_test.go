@@ -126,6 +126,41 @@ func TestReconcile_NoSettingsSeedWhenEverythingEmpty(t *testing.T) {
 	}
 }
 
+// A team that removed its last claim via /onboard has no claim rows but a
+// settings row. That is the team's own removal: a restart must not hand the
+// teams.yaml projects back, or another team claiming them gets a 409.
+func TestReconcile_RemovedClaimsStayRemoved(t *testing.T) {
+	db := &fakeClaimStore{
+		claims:   map[string][]config.ProjectScope{},
+		settings: map[string]store.TeamSettings{"platform": {ExcludeRepos: []string{"*-infra"}}},
+	}
+	team := teamWith("platform", []config.ProjectScope{{Key: "PLAT"}}, config.Review{})
+
+	if _, err := Reconcile(context.Background(), db, map[string]*config.Team{"platform": team}, []string{"platform"}, quietLogger()); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if len(db.added) != 0 {
+		t.Errorf("added = %v, want no re-seed", db.added)
+	}
+	if len(team.Projects) != 0 {
+		t.Errorf("projects = %+v, want none", team.Projects)
+	}
+}
+
+// Seeding claims always leaves the settings row behind, even with three empty
+// lists: the row is what marks the slug as seeded.
+func TestReconcile_ClaimSeedWritesSettingsRow(t *testing.T) {
+	db := &fakeClaimStore{claims: map[string][]config.ProjectScope{}, settings: map[string]store.TeamSettings{}}
+	team := teamWith("platform", []config.ProjectScope{{Key: "PLAT"}}, config.Review{})
+
+	if _, err := Reconcile(context.Background(), db, map[string]*config.Team{"platform": team}, []string{"platform"}, quietLogger()); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if !reflect.DeepEqual(db.put, []string{"platform:teams.yaml"}) {
+		t.Errorf("put = %v, want the marker row", db.put)
+	}
+}
+
 // A seed conflict disables that team alone AND skips its settings step.
 func TestReconcile_SeedConflictDisablesOneTeamAndSkipsItsSettings(t *testing.T) {
 	repo := "svc"
