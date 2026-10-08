@@ -1,9 +1,9 @@
 import { render } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Chart, Sparkline } from "./Chart";
 import { _days, _niceTicks, _windowTitle } from "./MetricsPage";
 
-const s1 = (values: number[]) => [{ name: "a", color: "var(--color-s1)", values }];
+const s1 = (values: number[]) => [{ id: "a", name: "a", color: "var(--color-s1)", values }];
 
 function svg(el: HTMLElement) {
   const node = el.querySelector("svg");
@@ -12,6 +12,26 @@ function svg(el: HTMLElement) {
 }
 
 describe("Chart", () => {
+  // Two teams may display the same name. Keyed by name, React saw duplicate
+  // keys and could reuse the wrong band's element on the next poll.
+  it("keys series by id, not by the name two teams can share", () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(
+      <Chart
+        series={[
+          { id: "payments", name: "Payments", color: "var(--color-s1)", values: [1, 2] },
+          { id: "payments-eu", name: "Payments", color: "var(--color-s2)", values: [2, 1] },
+        ]}
+        width={100}
+        height={40}
+        mark="stack"
+        label="cost"
+      />,
+    );
+    expect(err.mock.calls.flat().join(" ")).not.toMatch(/same key/);
+    err.mockRestore();
+  });
+
   it("renders nothing drawable for an empty series rather than throwing", () => {
     const { container } = render(<Chart series={[]} width={100} height={40} label="empty" />);
     expect(svg(container).querySelectorAll("path")).toHaveLength(0);
@@ -58,8 +78,8 @@ describe("Chart", () => {
     const { container } = render(
       <Chart
         series={[
-          { name: "a", color: "var(--color-s1)", values: [1, 2] },
-          { name: "b", color: "var(--color-s2)", values: [1, 1] },
+          { id: "a", name: "a", color: "var(--color-s1)", values: [1, 2] },
+          { id: "b", name: "b", color: "var(--color-s2)", values: [1, 1] },
         ]}
         width={200}
         height={100}
