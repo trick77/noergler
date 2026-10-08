@@ -287,6 +287,24 @@ describe("RunsPage", () => {
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
+  // Still loading is not zero either: four 0 tiles and "Nothing was skipped"
+  // on a slow /metrics are the same false claim as on a failed one.
+  it("dashes the counts while metrics are still loading", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        url.includes("/metrics")
+          ? new Promise(() => {})
+          : Promise.resolve({ ok: true, status: 200, json: async () => ({ runs }) }),
+      ),
+    );
+    render(<RunsPage />);
+
+    await waitFor(() => expect(screen.getByText("PAY/ledger#1")).toBeDefined());
+    expect(screen.getByText("Reviewed").nextElementSibling?.textContent).toBe("—");
+    expect(screen.queryByText("Nothing was skipped.")).toBeNull();
+  });
+
   it("ranks the skip reasons by their label", async () => {
     serve({ runs: { runs }, metrics });
     render(<RunsPage />);

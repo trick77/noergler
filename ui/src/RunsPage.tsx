@@ -86,14 +86,14 @@ export function RunsPage() {
           Skipped means it never asked the model. Failed means it asked and something went wrong.
         </p>
 
-        {/* A dash, not a zero, when the counts could not be read: the feed
-            below may be full, and four tiles reading 0 beside it would be a
-            claim rather than an absence. */}
+        {/* A dash, not a zero, until the counts are read, failed or still
+            loading: the feed below may be full, and four tiles reading 0
+            beside it would be a claim rather than an absence. */}
         <Tiles>
-          <Tile label="Runs" value={metrics.failed ? "—" : c.total} />
-          <Tile label="Reviewed" value={metrics.failed ? "—" : c.reviewed} />
-          <Tile label="Skipped" value={metrics.failed ? "—" : c.skipped} />
-          <Tile label="Failed" value={metrics.failed ? "—" : c.failed} />
+          <Tile label="Runs" value={metrics.data === null ? "—" : c.total} />
+          <Tile label="Reviewed" value={metrics.data === null ? "—" : c.reviewed} />
+          <Tile label="Skipped" value={metrics.data === null ? "—" : c.skipped} />
+          <Tile label="Failed" value={metrics.data === null ? "—" : c.failed} />
         </Tiles>
 
         <p className={eyebrow}>Recent runs</p>
@@ -184,8 +184,12 @@ export function RunsPage() {
 
         <p className={eyebrow}>Why runs were skipped</p>
         <Card>
-          {metrics.failed ? (
-            <Empty>Counts unavailable.</Empty>
+          {metrics.data === null ? (
+            metrics.failed ? (
+              <Empty>Counts unavailable.</Empty>
+            ) : (
+              <div className="skeleton h-12 rounded-ui" />
+            )
           ) : skips.length === 0 ? (
             <Empty>Nothing was skipped.</Empty>
           ) : (
