@@ -159,20 +159,11 @@ body {
   }
 }
 
-/* A chart is redrawn at its measured width rather than CSS-scaled, so the
-   axis text keeps its size; this only lets it shrink below that width. */
+/* A chart is drawn at a fixed width and scaled down to fit a narrower
+   column, so on a phone the axis text shrinks with it. */
 svg.chart {
   display: block;
   max-width: 100%;
-}
-
-@keyframes pulse-dot {
-  50% {
-    opacity: 0.35;
-  }
-}
-.pulse-dot {
-  animation: pulse-dot 1.6s ease-in-out infinite;
 }
 
 @keyframes skeleton-fade {
@@ -186,7 +177,6 @@ svg.chart {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pulse-dot,
   .skeleton {
     animation: none;
   }
