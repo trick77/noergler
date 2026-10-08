@@ -240,7 +240,11 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 		riptideDep = rt
 	}
 
+	// The Reviewer asks the live snapshot, which exists only once the
+	// Runtime does; nothing reviews before Start returns.
+	var runtime *Runtime
 	reviewer := review.New(review.Options{
+		Owns:            func(project, repo string) bool { return runtime.Team().Owns(project, repo) },
 		TeamSlug:        team.Slug,
 		Bitbucket:       d.Bitbucket,
 		LLM:             llm,
@@ -253,5 +257,6 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 		MentionTemplate: string(mentionTmpl),
 		Log:             d.Log,
 	})
-	return NewRuntime(team, reviewer, llm, jr, rt), ""
+	runtime = NewRuntime(team, reviewer, llm, jr, rt)
+	return runtime, ""
 }

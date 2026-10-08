@@ -493,6 +493,34 @@ func TestCostCap(t *testing.T) {
 // Every non-ok outcome but OutcomeError posts a notice, preserves the prior
 // commit and writes no run row. OutcomeError writes and posts nothing at
 // all; it is only logged.
+// A team can give a repo up while a review of it is queued or in inference.
+// Neither stage may then call the gateway, post, or re-create the PR row the
+// removal just purged.
+func TestRemovedClaimStopsTheReview(t *testing.T) {
+	t.Run("before prepare", func(t *testing.T) {
+		h := newHarness(t, nil)
+		h.r.owns = func(string, string) bool { return false }
+		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		if len(h.llm.Reviews) != 0 || len(h.st.Upserts) != 0 || len(h.bb.Posted) != 0 {
+			t.Errorf("reviews=%d upserts=%d posted=%d, want none", len(h.llm.Reviews), len(h.st.Upserts), len(h.bb.Posted))
+		}
+	})
+	t.Run("before post", func(t *testing.T) {
+		h := newHarness(t, nil)
+		h.llm.review = inference.ReviewResult{Outcome: inference.OutcomeOK, Review: inference.ParsedReview{Summary: inference.NewReviewSummary()}}
+		owned := true
+		h.r.owns = func(string, string) bool { return owned }
+		h.llm.onReview = func() { owned = false } // removed during inference
+		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		if len(h.llm.Reviews) != 1 {
+			t.Fatalf("reviews = %d, want the one already in flight", len(h.llm.Reviews))
+		}
+		if len(h.st.Upserts) != 0 || len(h.st.Runs) != 0 || len(h.bb.Posted) != 0 {
+			t.Errorf("upserts=%d runs=%d posted=%d, want none", len(h.st.Upserts), len(h.st.Runs), len(h.bb.Posted))
+		}
+	})
+}
+
 // A skip path passes the prior pointer back. When reading it failed, writing
 // "" NULLed the stored pointer, and the next push became a full, paid review.
 func TestFailedPriorReadKeepsThePointer(t *testing.T) {

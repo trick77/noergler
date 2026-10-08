@@ -393,6 +393,8 @@ type fakeLLM struct {
 	budget  int
 	review  inference.ReviewResult
 	mention inference.MentionResult
+	// onReview runs during the gateway call, between prepare and post.
+	onReview func()
 
 	Reviews  []inference.ReviewRequest
 	Mentions []inference.MentionRequest
@@ -424,6 +426,9 @@ func (f *fakeLLM) InputTokenBudget() int { return f.budget }
 
 func (f *fakeLLM) Review(_ context.Context, req inference.ReviewRequest) inference.ReviewResult {
 	f.Reviews = append(f.Reviews, req)
+	if f.onReview != nil {
+		f.onReview()
+	}
 	return f.review
 }
 

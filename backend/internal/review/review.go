@@ -84,6 +84,12 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	key := prKey(project, repo, pr.ID)
 	author := pr.Author.User.Name
 
+	// 1b. The team may have given the repo up while this sat in the queue.
+	if r.owns != nil && !r.owns(project, repo) {
+		r.log.InfoContext(ctx, prTag+": repo no longer claimed by the team, skipping")
+		return nil, ctx, r.abort(ctx, key, kind, SkipNone, prTag, httpCounter)
+	}
+
 	// 2. Author gate. The ignore list wins over the allow list inside
 	// IsAutoReviewAuthor, so a bare false cannot say which list decided.
 	// Name the ignore list when it is the reason: reporting every skip as an
@@ -326,6 +332,13 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	// absent cost for a call the gateway never answered.
 	if result.Outcome == inference.OutcomeOK || result.Outcome == inference.OutcomeUnparseable {
 		r.logCost(ctx, prTag, result.Cost)
+	}
+
+	// Given up during inference: posting would comment on a repo the team
+	// left and re-create the PR row its removal purged.
+	if r.owns != nil && !r.owns(project, repo) {
+		r.log.InfoContext(ctx, prTag+": repo no longer claimed by the team, not posting")
+		return
 	}
 
 	// 17-19. Terminal branches. Each preserves the prior commit, posts a

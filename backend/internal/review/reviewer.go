@@ -67,6 +67,9 @@ type Reviewer struct {
 	template    string
 	mentionTmpl string
 	log         *slog.Logger
+	// owns is the live claim check: a repo can be given up while its
+	// review is queued or in inference.
+	owns func(project, repo string) bool
 }
 
 // Options builds a Reviewer. Bitbucket, the store, the inference client, the
@@ -85,6 +88,8 @@ type Options struct {
 	Template        string
 	MentionTemplate string
 	Log             *slog.Logger
+	// Owns reports whether the team still claims the repo; nil claims all.
+	Owns func(project, repo string) bool
 }
 
 // New builds a Reviewer for one team.
@@ -103,6 +108,7 @@ func New(opt Options) *Reviewer {
 		template:          opt.Template,
 		mentionTmpl:       opt.MentionTemplate,
 		log:               opt.Log,
+		owns:              opt.Owns,
 	}
 }
 
