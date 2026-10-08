@@ -73,8 +73,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 
 	// Per-review HTTP accounting. The bitbucket and jira transports already
 	// record into the scope; without one opened here every count was dropped
-	// and the totals line never existed. Deferred, so a review that skips or
-	// fails still reports what it spent.
+	// and the totals line never existed.
 	// NOT deferred: with the inference call staged off the worker, a defer
 	// here fires before the gateway call and before posting, so the totals
 	// line would report inference=0 and none of the post stage's Bitbucket

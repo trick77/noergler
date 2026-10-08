@@ -44,7 +44,7 @@ type Client struct {
 
 	// log emits the parser's diagnostics, which ParseReview returns as data
 	// rather than logging itself. Never nil; New substitutes a discarding
-	// logger, as review.New does.
+	// logger.
 	log *slog.Logger
 }
 

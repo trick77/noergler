@@ -50,9 +50,8 @@ const (
 // finishes it releases the key. Returning false releases it here.
 type ReviewFunc func(ctx context.Context, team string, payload *webhook.Payload, sched Scheduler) (handedOff bool)
 
-// Scheduler is the pool as a review uses it, so the review package never
-// imports the queue back. Stage runs infer on the inference pool and then
-// puts post back on the single worker.
+// Scheduler is the pool as a review uses it. Stage runs infer on the
+// inference pool and then puts post back on the single worker.
 type Scheduler interface {
 	Stage(ctx context.Context, key store.PRKey, team string, infer, post func(context.Context))
 }
@@ -138,11 +137,10 @@ type Queue struct {
 
 	// inflight holds the keys of PRs whose work has been dequeued but is not
 	// finished yet. A keyed item whose key is in flight is not runnable: the
-	// worker skips over it and leaves it in items. Today a review finishes
-	// before run loops, so nothing is ever held; the set exists for the
-	// staged pipeline, where the inference call outlives the worker turn and
-	// a second run of the same PR would race on the prior-commit pointer,
-	// the summary and the inline comments.
+	// worker skips over it and leaves it in items. A staged review's
+	// inference call outlives the worker turn, and a second run of the same
+	// PR would race it on the prior-commit pointer, the summary and the
+	// inline comments.
 	inflight map[store.PRKey]heldEntry
 
 	started bool
