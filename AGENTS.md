@@ -43,7 +43,6 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   (it would round the money), never an exponent (`1E-9` breaks strict
   parsers). `null` means unpriced and must never render as `$0.000`.
 - `Usage.Cost.Provenance == Reported` is the only priced case.
-  never a float, and never an exponent (`1E-9` breaks strict parsers).
 
 ## Prompt
 
@@ -168,14 +167,10 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   skip is a `review_attempts` row (`review.SkipReason`), written fail-open. A
   separate table, so "a non-ok outcome writes no run row" stays true.
 - A mention writes no attempt: it is a Q&A answer, not a review.
-- A billed call with no run row (unparseable) carries its cost on the attempt
-  (`review_attempts.cost_nano_usd`). `prCostSQL` sums runs + run-less
-  attempts of the current PR row, and `PRCost`, the frozen final cost and
-  the riptide rollup all read it: one figure for cap, record and FinOps.
-  Dashboard totals still read runs only.
-- DB session pinned `timezone=UTC` (`store.openConfig`); metrics windows and
-  day labels are UTC to match `date_trunc`. The image has no tzdata, so
-  "local" was UTC anyway.
+- Billed call with no run row (unparseable, removed claim): cost on the
+  attempt. `prCostSQL` (cap, frozen cost, rollup) and `spendCTE` (dashboard)
+  both sum runs + those attempts. One figure everywhere.
+- DB session `timezone=UTC` (`store.openConfig`): windows match `date_trunc`.
 - Tokens, fonts and page shell come from `../rongo`, charts from `../netra`.
   No sidebar. Every page 900px, centred. Scrollbar thumb opaque, never
   `rgba()`. The series ramp was validated for CVD against the panel surface;
@@ -333,14 +328,10 @@ rows, summary). `ReviewPullRequest` composes all three inline and is what
 `HandleMention` and the tests use; `ReviewPullRequestStaged` is the queued
 path.
 
-- **Ownership is re-asked at the start of `prepare` and of `post`**
-  (`Options.Owns`, the live snapshot): a repo can be given up while its
-  review is queued or in inference, and posting then re-created the PR row
-  the removal purged.
-- `team_claims_seeded` marks a slug that ever held a claim; `ListAllClaims`
-  names it even with none left, so `Reconcile` never re-seeds over a
-  removal. Not the settings row: the `exclude_repos` default gives every
-  team one on first boot.
+- **`Options.Owns` re-asked at start of `prepare` and `post`**: a repo given
+  up mid-review re-created its purged PR row.
+- `team_claims_seeded` = slug ever claimed; `Reconcile` never re-seeds it.
+  Not the settings row: every team gets one on first boot.
 
 - **A keyword mention is a review**, so it takes the staged path with
   `skipAuthorCheck` true (the person asking is the authorization). Running it
