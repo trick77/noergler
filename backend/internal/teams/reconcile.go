@@ -24,9 +24,10 @@ const seededBy = "teams.yaml"
 // Reconcile settles teams.yaml against the DB, in place, before any Runtime
 // exists.
 //
-// The DB wins: a slug it knows (a claim or a settings row) carries the claims and the three lists, and
-// teams.yaml's projects: block is ignored entirely. A slug it does not know
-// is seeded from teams.yaml once. A seed that collides with another team's
+// The DB wins: a slug it knows carries the claims and the three lists, and
+// teams.yaml's projects: block is ignored entirely. A slug ListAllClaims
+// does not name is seeded from teams.yaml once; one that had claims and
+// removed them all is still named, with none. A seed that collides with another team's
 // claims disables that team alone and skips its settings step.
 //
 // It MUST run before the per-team loop builds any Reviewer: review.New
@@ -56,8 +57,7 @@ func Reconcile(ctx context.Context, db ClaimStore, teams map[string]*config.Team
 		if !ok {
 			continue
 		}
-		_, seeded := settings[slug]
-		reason, err := reconcileClaims(ctx, db, slug, team, claims, seeded, log)
+		reason, err := reconcileClaims(ctx, db, slug, team, claims, log)
 		if err != nil {
 			return nil, err
 		}
@@ -78,16 +78,9 @@ func Reconcile(ctx context.Context, db ClaimStore, teams map[string]*config.Team
 // Only a ClaimConflict disables one team. Any other AddClaims failure comes
 // back as err and aborts boot, because it means the claims table is unusable
 // rather than contested.
-func reconcileClaims(ctx context.Context, db ClaimStore, slug string, team *config.Team, claims map[string][]config.ProjectScope, seeded bool, log *slog.Logger) (string, error) {
+func reconcileClaims(ctx context.Context, db ClaimStore, slug string, team *config.Team, claims map[string][]config.ProjectScope, log *slog.Logger) (string, error) {
 	if scopes, known := claims[slug]; known {
 		team.Projects = scopes
-		return "", nil
-	}
-	// No claim rows but a settings row: the team removed its last claim via
-	// /onboard. Seeding again would hand the projects back on every restart.
-	if seeded {
-		team.Projects = nil
-		log.InfoContext(ctx, "no claims (claim via POST /onboard)", "team", slug)
 		return "", nil
 	}
 	if len(team.Projects) == 0 {
@@ -109,8 +102,9 @@ func reconcileClaims(ctx context.Context, db ClaimStore, slug string, team *conf
 // reconcileSettings writes the config's lists to the DB the first time a
 // team is seen and reads them back on every later boot.
 //
-// The row is also the "seeded" marker reconcileClaims reads, so a team with
-// projects to seed always gets one, even with three empty lists.
+// The seed branch effectively always fires on a team's first boot, because
+// exclude_repos defaults to ["*-infra"]. That is how the default row comes to
+// exist, independently of the column default.
 // A failed write aborts boot: an unusable settings table is a shared-layer
 // fault, not one team's.
 func reconcileSettings(ctx context.Context, db ClaimStore, slug string, team *config.Team, settings map[string]store.TeamSettings) error {
@@ -119,7 +113,7 @@ func reconcileSettings(ctx context.Context, db ClaimStore, slug string, team *co
 		return nil
 	}
 	s := settingsOf(team)
-	if len(team.Projects) == 0 && len(s.AutoReviewAuthors) == 0 && len(s.IgnoreAuthors) == 0 && len(s.ExcludeRepos) == 0 {
+	if len(s.AutoReviewAuthors) == 0 && len(s.IgnoreAuthors) == 0 && len(s.ExcludeRepos) == 0 {
 		return nil
 	}
 	if err := db.PutSettings(ctx, slug, s, seededBy); err != nil {

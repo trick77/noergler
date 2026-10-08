@@ -126,12 +126,13 @@ func TestReconcile_NoSettingsSeedWhenEverythingEmpty(t *testing.T) {
 	}
 }
 
-// A team that removed its last claim via /onboard has no claim rows but a
-// settings row. That is the team's own removal: a restart must not hand the
-// teams.yaml projects back, or another team claiming them gets a 409.
+// A team that removed its last claim via /onboard is still named by
+// ListAllClaims, with no scopes. That is the team's own removal: a restart
+// must not hand the teams.yaml projects back, or another team claiming them
+// gets a 409.
 func TestReconcile_RemovedClaimsStayRemoved(t *testing.T) {
 	db := &fakeClaimStore{
-		claims:   map[string][]config.ProjectScope{},
+		claims:   map[string][]config.ProjectScope{"platform": nil},
 		settings: map[string]store.TeamSettings{"platform": {ExcludeRepos: []string{"*-infra"}}},
 	}
 	team := teamWith("platform", []config.ProjectScope{{Key: "PLAT"}}, config.Review{})
@@ -147,17 +148,21 @@ func TestReconcile_RemovedClaimsStayRemoved(t *testing.T) {
 	}
 }
 
-// Seeding claims always leaves the settings row behind, even with three empty
-// lists: the row is what marks the slug as seeded.
-func TestReconcile_ClaimSeedWritesSettingsRow(t *testing.T) {
-	db := &fakeClaimStore{claims: map[string][]config.ProjectScope{}, settings: map[string]store.TeamSettings{}}
+// A settings row is not a seed marker: the exclude_repos default gives a team
+// with no projects one on its first boot. Projects added to teams.yaml later
+// still seed.
+func TestReconcile_SettingsRowAloneStillSeeds(t *testing.T) {
+	db := &fakeClaimStore{
+		claims:   map[string][]config.ProjectScope{},
+		settings: map[string]store.TeamSettings{"platform": {ExcludeRepos: []string{"*-infra"}}},
+	}
 	team := teamWith("platform", []config.ProjectScope{{Key: "PLAT"}}, config.Review{})
 
 	if _, err := Reconcile(context.Background(), db, map[string]*config.Team{"platform": team}, []string{"platform"}, quietLogger()); err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	if !reflect.DeepEqual(db.put, []string{"platform:teams.yaml"}) {
-		t.Errorf("put = %v, want the marker row", db.put)
+	if !reflect.DeepEqual(db.added, []string{"platform:teams.yaml"}) {
+		t.Errorf("added = %v, want the seed", db.added)
 	}
 }
 

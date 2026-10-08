@@ -336,9 +336,10 @@ path.
   (`Options.Owns`, the live snapshot): a repo can be given up while its
   review is queued or in inference, and posting then re-created the PR row
   the removal purged.
-- A settings row marks a slug as seeded: `Reconcile` never re-seeds claims
-  for a slug that has one, or a team that removed its last project got the
-  teams.yaml projects back on restart.
+- `team_claims_seeded` marks a slug that ever held a claim; `ListAllClaims`
+  names it even with none left, so `Reconcile` never re-seeds over a
+  removal. Not the settings row: the `exclude_repos` default gives every
+  team one on first boot.
 
 - **A keyword mention is a review**, so it takes the staged path with
   `skipAuthorCheck` true (the person asking is the authorization). Running it

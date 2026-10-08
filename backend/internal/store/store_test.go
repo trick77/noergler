@@ -435,6 +435,30 @@ func TestClaims_AddRules(t *testing.T) {
 	}
 }
 
+// A team that removed its last claim is still named, with no scopes, so a
+// restart's reconcile does not seed teams.yaml's projects back. A team that
+// never claimed anything is not named at all.
+func TestClaims_RemovingTheLastClaimKeepsTheSlug(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	if _, err := s.AddClaims(ctx, "platform", []config.ProjectScope{{Key: "PLAT"}}, "jan"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RemoveClaims(ctx, "platform", []config.ProjectScope{{Key: "PLAT"}}); err != nil {
+		t.Fatal(err)
+	}
+	all, err := s.ListAllClaims(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scopes, known := all["platform"]; !known || len(scopes) != 0 {
+		t.Errorf("platform = %v (named %v), want named with no scopes", scopes, known)
+	}
+	if _, known := all["payments"]; known {
+		t.Error("a slug that never claimed must not be named")
+	}
+}
+
 func TestClaims_RemoveReportsWhatWent(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
