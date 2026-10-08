@@ -327,6 +327,19 @@ describe("RunsPage", () => {
     expect(screen.queryByText("Nothing was skipped.")).toBeNull();
   });
 
+  // The tiles were read once while the feed beneath refreshed every 10s, so
+  // the counts drifted from the rows for as long as the page stayed open.
+  it("refreshes the counts with the feed", async () => {
+    serve({ runs: { runs }, metrics });
+    render(<RunsPage />);
+    await screen.findByText("PAY/ledger#1");
+    const metricsCalls = () =>
+      (fetch as unknown as { mock: { calls: string[][] } }).mock.calls.filter(([u]) => u.includes("/metrics")).length;
+    expect(metricsCalls()).toBe(1);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(metricsCalls()).toBe(2);
+  });
+
   it("ranks the skip reasons by their label", async () => {
     serve({ runs: { runs }, metrics });
     render(<RunsPage />);

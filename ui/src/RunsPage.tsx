@@ -56,7 +56,9 @@ export function RunsPage() {
   const [filter, setFilter] = useState<Filter>("");
   const query = `runs?limit=50${filter === "" ? "" : `&outcome=${filter}`}`;
   const { data, failed, stale } = usePoll<Runs>(query, 10000);
-  const metrics = usePoll<Metrics>("metrics");
+  // Same cadence as the feed: read once, the tiles drifted from the rows
+  // beneath them for as long as the page stayed open.
+  const metrics = usePoll<Metrics>("metrics", 10000);
   const now = useNow(10000);
 
   if (!data) {
@@ -82,8 +84,9 @@ export function RunsPage() {
       <div className={column}>
         <h2 className={h2}>Runs</h2>
         <p className={lede}>
-          Every PR noergler looked at this month, including the ones it decided not to review.
-          Skipped means it never asked the model. Failed means it asked and something went wrong.
+          What noergler did with every PR this month, including the ones it decided not to review,
+          and the latest 50 runs below. Skipped means it never asked the model. Failed means it
+          asked and something went wrong.
         </p>
 
         {/* A dash, not a zero, until the counts are read, failed or still
@@ -96,7 +99,7 @@ export function RunsPage() {
           <Tile label="Failed" value={metrics.data === null ? "—" : c.failed} />
         </Tiles>
 
-        <p className={eyebrow}>Recent runs</p>
+        <p className={eyebrow}>Latest 50 runs</p>
         <Card
           right={
             <span className="flex gap-0.5">
