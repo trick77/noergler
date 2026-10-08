@@ -39,9 +39,7 @@ type PRUpsert struct {
 // opened_at is sticky: the first non-NULL value stays. The pointer, author
 // and title are written as given, nil included: the skip paths pass the
 // prior pointer back on purpose (unless KeepPointer). A declined PR that
-// sees a review again was reopened: declined_at is cleared, and so is the
-// decline's riptide_emitted_at, so the next outcome emits a second,
-// cumulative rollup (riptide reads the newest per PR).
+// sees a review again was reopened: declined_at is cleared.
 func (s *Store) UpsertPullRequest(ctx context.Context, u PRUpsert) (int64, error) {
 	var id int64
 	err := s.pool.QueryRow(ctx, `
@@ -54,7 +52,6 @@ func (s *Store) UpsertPullRequest(ctx context.Context, u PRUpsert) (int64, error
 			title = EXCLUDED.title,
 			opened_at = COALESCE(pull_requests.opened_at, EXCLUDED.opened_at),
 			declined_at = NULL,
-			riptide_emitted_at = CASE WHEN pull_requests.declined_at IS NULL THEN pull_requests.riptide_emitted_at END,
 			updated_at = now()
 		RETURNING id`,
 		u.Key.Project, u.Key.Repo, u.Key.PRID, u.TeamSlug, u.LastReviewedCommit, u.Author, u.Title, u.OpenedAt, u.KeepPointer,
@@ -165,9 +162,14 @@ func (s *Store) Reactivate(ctx context.Context, k PRKey) error {
 		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3`, k)
 }
 
-// MarkMerged stamps merged_at once.
+// MarkMerged stamps merged_at once. The first merge also clears
+// riptide_emitted_at: set before a merge, it is a decline's, and Bitbucket
+// cannot merge a declined PR, so the PR was reopened and its merge emits a
+// second, cumulative rollup (riptide reads the newest per PR). Hanging this
+// on the reopen's review missed every path that writes no PR row. A
+// redelivered pr:merged matches nothing and keeps the stamp.
 func (s *Store) MarkMerged(ctx context.Context, k PRKey) error {
-	return s.exec(ctx, `UPDATE pull_requests SET merged_at = now(), updated_at = now()
+	return s.exec(ctx, `UPDATE pull_requests SET merged_at = now(), riptide_emitted_at = NULL, updated_at = now()
 		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3 AND merged_at IS NULL`, k)
 }
 

@@ -538,8 +538,9 @@ func TestPullRequest_ReopenedAfterDeclineStartsFreshButDedups(t *testing.T) {
 }
 
 // The decline's rollup stamps riptide_emitted_at. A reopened PR's later merge
-// must emit again, cumulative, or its outcome and spend never reach riptide.
-func TestRollup_ReopenedAfterDeclineEmitsAgain(t *testing.T) {
+// must emit again, cumulative, or its outcome and spend never reach riptide;
+// the reopen need not write a PR row (its review may be skipped or fail).
+func TestRollup_MergeAfterDeclineEmitsAgain(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	id := upsert(t, s, key, "a")
@@ -550,20 +551,45 @@ func TestRollup_ReopenedAfterDeclineEmitsAgain(t *testing.T) {
 	if snap, _ := s.ClaimRollup(ctx, key, RollupFinal{}); snap == nil || snap.Runs != 1 {
 		t.Fatalf("declined rollup = %+v, want 1 run", snap)
 	}
-	upsert(t, s, key, "b")
+	// Reopened: a billed mention run lands, but no review upserts the row.
 	run(t, s, id, "b", nil, "m")
-	if err := s.MarkMerged(ctx, key); err != nil {
+	merged := func() *RollupSnapshot {
+		t.Helper()
+		if err := s.MarkMerged(ctx, key); err != nil {
+			t.Fatal(err)
+		}
+		snap, err := s.ClaimRollup(ctx, key, RollupFinal{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return snap
+	}
+	if snap := merged(); snap == nil || snap.Runs != 2 {
+		t.Fatalf("merged rollup after reopen = %+v, want 2 runs (cumulative)", snap)
+	}
+	if again := merged(); again != nil {
+		t.Error("a redelivered pr:merged emitted twice")
+	}
+}
+
+// Bitbucket deletes a declined PR without reopening it: the decline stays
+// the PR's only rollup.
+func TestRollup_DeleteAfterDeclineEmitsNothing(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	id := upsert(t, s, key, "a")
+	run(t, s, id, "a", nil, "m")
+	if err := s.MarkDeclined(ctx, key); err != nil {
 		t.Fatal(err)
 	}
-	snap, err := s.ClaimRollup(ctx, key, RollupFinal{})
-	if err != nil || snap == nil {
-		t.Fatalf("merged rollup after reopen = %+v, %v; want a snapshot", snap, err)
+	if snap, _ := s.ClaimRollup(ctx, key, RollupFinal{}); snap == nil {
+		t.Fatal("declined rollup missing")
 	}
-	if snap.Runs != 2 {
-		t.Errorf("runs = %d, want 2 (cumulative over the PR's life)", snap.Runs)
+	if err := s.MarkDeleted(ctx, key); err != nil {
+		t.Fatal(err)
 	}
-	if again, _ := s.ClaimRollup(ctx, key, RollupFinal{}); again != nil {
-		t.Error("a redelivered pr:merged emitted twice")
+	if snap, _ := s.ClaimRollup(ctx, key, RollupFinal{}); snap != nil {
+		t.Errorf("deleted after decline emitted %+v", snap)
 	}
 }
 
