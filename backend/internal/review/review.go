@@ -201,15 +201,14 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		return nil, ctx, r.abort(ctx, key, kind, diffWhy, prTag, httpCounter)
 	}
 
-	files, contentSkipped := r.prepareFiles(ctx, project, repo, rawDiff, sourceCommit, prTag)
+	// The line counts are the whole PR's scope, taken before compression.
+	files, contentSkipped, diffAdded, diffRemoved := r.prepareFiles(ctx, project, repo, rawDiff, sourceCommit, prTag)
 	// 13. Nothing reviewable after the content fetch.
 	if len(files) == 0 {
 		r.log.InfoContext(ctx, prTag+" has no reviewable files after content fetch, skipping")
 		return nil, ctx, r.abort(ctx, key, kind, SkipNoReviewable, prTag, httpCounter)
 	}
 
-	// Counted before compression: this is the whole PR's scope.
-	diffAdded, diffRemoved := countDiffLines(rawDiff)
 	totalFiles := len(files)
 
 	// 14. Small PRs get context expansion; large ones are compressed first.

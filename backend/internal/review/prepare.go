@@ -18,12 +18,17 @@ import (
 // (ContentTooLarge) or over max_file_lines. A fetch that failed for any other
 // reason is logged and the file is reviewed from its diff alone, which is not
 // the same thing and is not reported to the reader.
-func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sourceCommit, prTag string) (files []diff.FileReviewData, contentSkipped []string) {
+//
+// added and removed count the reviewable files' diff lines, in the same pass
+// that classifies them: the raw diff is uncapped, so it is split once.
+func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sourceCommit, prTag string) (files []diff.FileReviewData, contentSkipped []string, added, removed int) {
 	all := diff.SplitByFile(rawDiff)
 	var reviewable, skipped []string
 	for _, fd := range all {
 		if diff.IsReviewable(fd) {
 			reviewable = append(reviewable, fd)
+			a, d := countFileLines(fd)
+			added, removed = added+a, removed+d
 			continue
 		}
 		path := diff.ExtractPath(fd)
@@ -38,7 +43,7 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: skipped as binary/non-reviewable: %s", prTag, capPaths(skipped)))
 	}
 	if len(reviewable) == 0 {
-		return nil, nil
+		return nil, nil, 0, 0
 	}
 
 	type result struct {
@@ -150,7 +155,7 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 		"%s: %d file(s) for review - %d diff lines, %d content lines, %d with full content, %d diff-only",
 		prTag, len(files), totalDiffLines, totalContentLines, withContent, len(files)-withContent))
 
-	return files, contentSkipped
+	return files, contentSkipped, added, removed
 }
 
 // countDiffLines counts added and removed lines, skipping files the reviewer
@@ -158,17 +163,23 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 // JSON or vendored bundles.
 func countDiffLines(rawDiff string) (added, removed int) {
 	for _, fd := range diff.SplitByFile(rawDiff) {
-		if !diff.IsReviewable(fd) {
-			continue
+		if diff.IsReviewable(fd) {
+			a, d := countFileLines(fd)
+			added, removed = added+a, removed+d
 		}
-		for _, line := range strings.Split(fd, "\n") {
-			switch {
-			case strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"):
-			case strings.HasPrefix(line, "+"):
-				added++
-			case strings.HasPrefix(line, "-"):
-				removed++
-			}
+	}
+	return added, removed
+}
+
+// countFileLines is countDiffLines for one file's diff.
+func countFileLines(fileDiff string) (added, removed int) {
+	for _, line := range strings.Split(fileDiff, "\n") {
+		switch {
+		case strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"):
+		case strings.HasPrefix(line, "+"):
+			added++
+		case strings.HasPrefix(line, "-"):
+			removed++
 		}
 	}
 	return added, removed
