@@ -121,6 +121,7 @@ const skipWords: Record<string, string> = {
   empty_diff: "empty diff",
   head_unchanged: "unchanged",
   diff_too_large: "too large",
+  repo_not_claimed: "unclaimed",
 };
 
 /** outcomeWord is the word on a run's outcome pill. A skip names its reason;

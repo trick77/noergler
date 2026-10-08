@@ -82,7 +82,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// 1b. The team may have given the repo up while this sat in the queue.
 	if r.owns != nil && !r.owns(project, repo) {
 		r.log.InfoContext(ctx, prTag+": repo no longer claimed by the team, skipping")
-		return nil, ctx, r.abort(ctx, key, kind, SkipNone, prTag, httpCounter)
+		return nil, ctx, r.abort(ctx, key, kind, SkipRepoNotClaimed, prTag, httpCounter)
 	}
 
 	// 2. Author gate. The ignore list wins over the allow list inside
@@ -337,9 +337,15 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	}
 
 	// Given up during inference: posting would comment on a repo the team
-	// left and re-create the PR row its removal purged.
+	// left and re-create the PR row its removal purged. The call was paid
+	// for, so the attempt carries its cost.
 	if r.owns != nil && !r.owns(project, repo) {
 		r.log.InfoContext(ctx, prTag+": repo no longer claimed by the team, not posting")
+		r.recordAttempt(ctx, store.Attempt{
+			Key: key, TeamSlug: r.TeamSlug, Kind: runKind(plan.mention),
+			Outcome: "skipped", Reason: string(SkipRepoNotClaimed),
+			CostNanoUSD: result.Cost.NanoUSD,
+		})
 		return
 	}
 

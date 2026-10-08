@@ -33,6 +33,9 @@ const (
 	SkipEmptyDiff        SkipReason = "empty_diff"
 	SkipHeadUnchanged    SkipReason = "head_unchanged"
 	SkipDiffTooLarge     SkipReason = "diff_too_large"
+	// SkipRepoNotClaimed: the team gave the repo up while the review was
+	// queued or in inference. The late one carries the call it paid for.
+	SkipRepoNotClaimed SkipReason = "repo_not_claimed"
 )
 
 // Label is the reason as a dashboard prints it. Unknown values print
@@ -61,6 +64,8 @@ func (s SkipReason) Label() string {
 		return "HEAD unchanged since last review"
 	case SkipDiffTooLarge:
 		return "Diff too large"
+	case SkipRepoNotClaimed:
+		return "Repo no longer claimed by the team"
 	}
 	return string(s)
 }

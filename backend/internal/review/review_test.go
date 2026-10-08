@@ -519,6 +519,33 @@ func TestRemovedClaimStopsTheReview(t *testing.T) {
 			t.Errorf("upserts=%d runs=%d posted=%d, want none", len(h.st.Upserts), len(h.st.Runs), len(h.bb.Posted))
 		}
 	})
+	// Both exits are decisions, so both leave a skipped attempt; the late one
+	// carries the call it already paid for.
+	t.Run("both record why, the late one its cost", func(t *testing.T) {
+		h := newHarness(t, nil)
+		cost := int64(800_000_000)
+		h.llm.review = inference.ReviewResult{Outcome: inference.OutcomeOK, Review: inference.ParsedReview{Summary: inference.NewReviewSummary()},
+			Cost: inference.CallCost{NanoUSD: &cost}}
+		owned := true
+		h.r.owns = func(string, string) bool { return owned }
+		h.llm.onReview = func() { owned = false }
+		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		if len(h.st.Attempts) != 2 {
+			t.Fatalf("attempts = %+v, want two", h.st.Attempts)
+		}
+		for _, a := range h.st.Attempts {
+			if a.Outcome != "skipped" || a.Reason != string(SkipRepoNotClaimed) {
+				t.Errorf("attempt = %+v, want skipped/%s", a, SkipRepoNotClaimed)
+			}
+		}
+		if c := h.st.Attempts[0].CostNanoUSD; c == nil || *c != cost {
+			t.Errorf("late attempt cost = %v, want %d", c, cost)
+		}
+		if h.st.Attempts[1].CostNanoUSD != nil {
+			t.Error("the pre-flight skip called nothing and costs nothing")
+		}
+	})
 }
 
 // A skip path passes the prior pointer back. When reading it failed, writing

@@ -8,7 +8,7 @@ func TestEverySkipReasonHasALabel(t *testing.T) {
 	all := []SkipReason{
 		SkipNotAutoAuthor, SkipIgnoredAuthor, SkipIgnoredPR, SkipBranchOptOut,
 		SkipNoAgentsMD, SkipAgentsMDTooLarge, SkipCostCap, SkipNoReviewable,
-		SkipEmptyDiff, SkipHeadUnchanged, SkipDiffTooLarge,
+		SkipEmptyDiff, SkipHeadUnchanged, SkipDiffTooLarge, SkipRepoNotClaimed,
 	}
 	seen := map[string]SkipReason{}
 	for _, r := range all {
