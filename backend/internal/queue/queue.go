@@ -77,7 +77,6 @@ type item struct {
 }
 
 type job struct {
-	tag  string
 	team string
 	run  JobFunc
 	at   time.Time
@@ -284,7 +283,7 @@ func (q *Queue) SubmitJob(key store.PRKey, team string, fn JobFunc) string {
 	defer q.mu.Unlock()
 
 	tag := key.Tag()
-	q.put(item{key: key, job: &job{tag: tag, team: team, run: fn, at: time.Now()}}, tag)
+	q.put(item{key: key, job: &job{team: team, run: fn, at: time.Now()}}, tag)
 	return StatusQueued
 }
 
@@ -477,7 +476,7 @@ func (q *Queue) submitInternal(key store.PRKey, team string, fn JobFunc) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	tag := key.Tag()
-	q.put(item{key: key, job: &job{tag: tag, team: team, run: fn, at: time.Now(), internal: true}}, tag)
+	q.put(item{key: key, job: &job{team: team, run: fn, at: time.Now(), internal: true}}, tag)
 }
 
 // done1 releases a key's hold and wakes the worker, which may have parked
@@ -506,31 +505,16 @@ func (q *Queue) run(ctx context.Context) {
 		q.items = append(q.items[:idx], q.items[idx+1:]...)
 		q.running = true
 
-		var tag, team string
+		key, tag := it.key, it.key.Tag()
+		var team string
 		var at time.Time
-		var run func(context.Context)
+		var fn JobFunc
 		kind := "review"
 
 		if it.job != nil {
 			kind = "job"
-			tag, team, at = it.job.tag, it.job.team, it.job.at
-			q.inflight[it.key] = heldEntry{team: team, kind: kind, since: time.Now(), waited: time.Since(at)}
-			key := it.key
-			fn := it.job.run
-			run = func(ctx context.Context) {
-				// Same shape as the review path below: a defer guarded by
-				// the result, so a panicking job cannot leave its key held
-				// and a staged one keeps it.
-				handedOff := false
-				defer func() {
-					if !handedOff {
-						q.done1(key)
-					}
-				}()
-				handedOff = fn(ctx, q)
-			}
+			team, at, fn = it.job.team, it.job.at, it.job.run
 		} else {
-			tag = it.key.Tag()
 			e, ok := q.pending[it.key]
 			if !ok {
 				// Reset running, or Stop waits on it forever: it has no
@@ -543,22 +527,23 @@ func (q *Queue) run(ctx context.Context) {
 				continue
 			}
 			delete(q.pending, it.key)
-			key := it.key
 			team, at = e.team, e.at
-			q.inflight[it.key] = heldEntry{team: team, kind: kind, since: time.Now(), waited: time.Since(at)}
 			payload := e.payload
-			run = func(ctx context.Context) {
-				// The defer, not a tail call: a panicking review must not
-				// leave its key held forever. runOne recovers above, and
-				// handedOff stays false, so the hold is released here.
-				handedOff := false
-				defer func() {
-					if !handedOff {
-						q.done1(key)
-					}
-				}()
-				handedOff = q.review(ctx, team, payload, q)
-			}
+			fn = func(ctx context.Context, sched Scheduler) bool { return q.review(ctx, team, payload, sched) }
+		}
+		q.inflight[key] = heldEntry{team: team, kind: kind, since: time.Now(), waited: time.Since(at)}
+		run := func(ctx context.Context) {
+			// The defer, not a tail call: a panicking job or review must not
+			// leave its key held forever. runOne recovers above, and
+			// handedOff stays false, so the hold is released here; a staged
+			// one keeps it.
+			handedOff := false
+			defer func() {
+				if !handedOff {
+					q.done1(key)
+				}
+			}()
+			handedOff = fn(ctx, q)
 		}
 		depth := len(q.items)
 		q.mu.Unlock()
