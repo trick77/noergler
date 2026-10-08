@@ -537,6 +537,36 @@ func TestPullRequest_ReopenedAfterDeclineStartsFreshButDedups(t *testing.T) {
 	}
 }
 
+// The decline's rollup stamps riptide_emitted_at. A reopened PR's later merge
+// must emit again, cumulative, or its outcome and spend never reach riptide.
+func TestRollup_ReopenedAfterDeclineEmitsAgain(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	id := upsert(t, s, key, "a")
+	run(t, s, id, "a", nil, "m")
+	if err := s.MarkDeclined(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	if snap, _ := s.ClaimRollup(ctx, key, RollupFinal{}); snap == nil || snap.Runs != 1 {
+		t.Fatalf("declined rollup = %+v, want 1 run", snap)
+	}
+	upsert(t, s, key, "b")
+	run(t, s, id, "b", nil, "m")
+	if err := s.MarkMerged(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := s.ClaimRollup(ctx, key, RollupFinal{})
+	if err != nil || snap == nil {
+		t.Fatalf("merged rollup after reopen = %+v, %v; want a snapshot", snap, err)
+	}
+	if snap.Runs != 2 {
+		t.Errorf("runs = %d, want 2 (cumulative over the PR's life)", snap.Runs)
+	}
+	if again, _ := s.ClaimRollup(ctx, key, RollupFinal{}); again != nil {
+		t.Error("a redelivered pr:merged emitted twice")
+	}
+}
+
 // The daily queries bucket with date_trunc('day'), which uses the session
 // TimeZone. The session is pinned to UTC, so a server configured for another
 // zone cannot shift every bucket a day away from its label.

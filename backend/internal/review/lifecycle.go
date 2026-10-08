@@ -106,8 +106,9 @@ func prContext(ctx context.Context, payload *webhook.Payload) (context.Context, 
 // A no-op when riptide is off, when nothing was billed, or when the rollup
 // was already emitted: ClaimRollup stamps riptide_emitted_at in the same
 // statement that reads the snapshot, so a redelivered pr:merged produces no
-// second event. The claim happens BEFORE the POST, so a failed emission is
-// never retried.
+// second event. A reopened PR's next review clears the stamp, so its next
+// outcome emits again. The claim happens BEFORE the POST, so a failed
+// emission is never retried.
 func (r *Reviewer) emitRollup(ctx context.Context, key store.PRKey, prTag, outcome, mergeCommit, sourceCommit string) {
 	if r.riptide == nil || !r.riptide.Enabled() {
 		return

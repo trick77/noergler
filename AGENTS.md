@@ -183,7 +183,10 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
 - Never edit an applied migration; add the next number.
 - Schema is runs, not accumulators: totals aggregate over `review_runs`.
 - `ClaimRollup` stamps `riptide_emitted_at` in the statement that reads the
-  snapshot, so a crash cannot emit twice.
+  snapshot, so a crash cannot emit twice. A reopen (review after decline)
+  clears it: the next outcome emits a second, cumulative rollup; riptide
+  reads the newest per PR (`noergler_pr_rollups`). Without the clear, a
+  declined-then-merged PR never reported its merge.
 - `serve` never migrates. `migrate` is the init container.
 
 ## Ops
