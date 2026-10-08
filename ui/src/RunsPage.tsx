@@ -72,6 +72,9 @@ export function RunsPage() {
     );
   }
 
+  // A failing refresh dashes the counts too: kept on screen, the last
+  // reading read as current while the feed beneath moved on.
+  const counted = metrics.data !== null && !metrics.failed;
   const c = counts(metrics.data);
   // The skip breakdown, ranked. Only skips carry a reason; an outcome that
   // is not a skip is already named by its own word.
@@ -93,10 +96,10 @@ export function RunsPage() {
             loading: the feed below may be full, and four tiles reading 0
             beside it would be a claim rather than an absence. */}
         <Tiles>
-          <Tile label="Runs" value={metrics.data === null ? "—" : c.total} />
-          <Tile label="Reviewed" value={metrics.data === null ? "—" : c.reviewed} />
-          <Tile label="Skipped" value={metrics.data === null ? "—" : c.skipped} />
-          <Tile label="Failed" value={metrics.data === null ? "—" : c.failed} />
+          <Tile label="Runs" value={counted ? c.total : "—"} />
+          <Tile label="Reviewed" value={counted ? c.reviewed : "—"} />
+          <Tile label="Skipped" value={counted ? c.skipped : "—"} />
+          <Tile label="Failed" value={counted ? c.failed : "—"} />
         </Tiles>
 
         <p className={eyebrow}>Latest 50 runs</p>
@@ -187,12 +190,10 @@ export function RunsPage() {
 
         <p className={eyebrow}>Why runs were skipped</p>
         <Card>
-          {metrics.data === null ? (
-            metrics.failed ? (
-              <Empty>Counts unavailable.</Empty>
-            ) : (
-              <div className="skeleton h-12 rounded-ui" />
-            )
+          {metrics.failed ? (
+            <Empty>Counts unavailable.</Empty>
+          ) : metrics.data === null ? (
+            <div className="skeleton h-12 rounded-ui" />
           ) : skips.length === 0 ? (
             <Empty>Nothing was skipped.</Empty>
           ) : (

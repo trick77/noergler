@@ -340,6 +340,27 @@ describe("RunsPage", () => {
     expect(metricsCalls()).toBe(2);
   });
 
+  // Polled, a /metrics that starts failing kept its first reading on the
+  // tiles beside a feed that moved on. Failing is unknown, not the old count.
+  it("dashes the counts when a metrics refresh fails", async () => {
+    let metricsCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("/metrics") && ++metricsCalls > 1) {
+          return { ok: false, status: 500, json: async () => ({}) };
+        }
+        return { ok: true, status: 200, json: async () => (url.includes("/metrics") ? metrics : { runs }) };
+      }),
+    );
+    render(<RunsPage />);
+    await waitFor(() => expect(screen.getByText("Reviewed").nextElementSibling?.textContent).not.toBe("—"));
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await waitFor(() => expect(screen.getByText("Reviewed").nextElementSibling?.textContent).toBe("—"));
+    expect(screen.getByText("Counts unavailable.")).toBeDefined();
+  });
+
   it("ranks the skip reasons by their label", async () => {
     serve({ runs: { runs }, metrics });
     render(<RunsPage />);
