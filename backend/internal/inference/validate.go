@@ -66,6 +66,16 @@ const anchorSlack = 2
 func ValidateFindings(findings []ReviewFinding, idx diff.AnchorIndex) Validation {
 	var v Validation
 	for _, f := range findings {
+		// The model may cite a git diff path; resolve it to the shown one
+		// here, so the poster sends File verbatim. An exact match wins, so a
+		// real top-level a/ or b/ directory keeps its name.
+		if _, ok := idx[f.File]; !ok {
+			if p := stripSidePrefix(f.File); p != f.File {
+				if _, ok := idx[p]; ok {
+					f.File = p
+				}
+			}
+		}
 		reason, line := validateOne(f, idx)
 		if reason != "" {
 			v.Dropped = append(v.Dropped, DroppedFinding{Finding: f, Reason: reason})
@@ -136,10 +146,6 @@ type Reanchor struct {
 
 func validateOne(f ReviewFinding, idx diff.AnchorIndex) (DropReason, int) {
 	fa, ok := idx[f.File]
-	if !ok {
-		// Bitbucket strips an a/ or b/ prefix when anchoring; so does this.
-		fa, ok = idx[stripSidePrefix(f.File)]
-	}
 	if !ok {
 		return DropUnknownFile, 0
 	}
