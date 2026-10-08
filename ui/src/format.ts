@@ -19,12 +19,14 @@ export function money(usd: string | null): string {
   return `$${roundToCents(usd)}`;
 }
 
-/** moneyTick formats a cost axis with as many decimals as its step needs,
- *  never fewer than two: a fixed toFixed(2) printed every tick of a sub-cent
- *  axis as $0.00. Ticks are axis positions, not amounts, so a float is fine. */
+/** moneyTick formats a cost axis with the fewest decimals (at least two, at
+ *  most six) that print every tick exactly: a fixed toFixed(2) printed every
+ *  tick of a sub-cent axis as $0.00, and a step of 0.0075 needs four.
+ *  Ticks are axis positions, not amounts, so a float is fine. */
 export function moneyTick(ticks: number[]): (v: number) => string {
-  const step = ticks.length > 1 ? ticks[1] - ticks[0] : 0;
-  const decimals = step > 0 ? Math.max(2, Math.ceil(-Math.log10(step) - 1e-9)) : 2;
+  let decimals = 2;
+  const exact = (v: number) => Math.abs(Number(v.toFixed(decimals)) - v) < 1e-12;
+  while (decimals < 6 && !ticks.every(exact)) decimals++;
   return (v) => `$${v.toFixed(decimals)}`;
 }
 

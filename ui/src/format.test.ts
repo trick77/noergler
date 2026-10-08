@@ -20,6 +20,9 @@ describe("moneyTick", () => {
     const f = moneyTick([0, 0.002, 0.004]);
     expect([0, 0.002, 0.004].map(f)).toEqual(["$0.000", "$0.002", "$0.004"]);
   });
+  it("prints every tick exactly, not just the step's magnitude", () => {
+    expect(moneyTick([0, 0.0075, 0.015])(0.0075)).toBe("$0.0075");
+  });
   it("keeps cents for a cent step and above", () => {
     expect(moneyTick([0, 0.5, 1])(0.5)).toBe("$0.50");
     expect(moneyTick([0, 0.01, 0.02])(0.02)).toBe("$0.02");
