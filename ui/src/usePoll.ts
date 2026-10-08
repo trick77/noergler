@@ -8,6 +8,9 @@ export interface Poll<T> {
    *  from, so the caller can show it as on its way out rather than as the
    *  answer to what is now being asked. */
   stale: boolean;
+  /** When data last arrived (ms epoch), null before the first. A caller
+   *  showing a clock against stale data reads it off this, not the wall. */
+  updatedAt: number | null;
 }
 
 /** usePoll fetches one endpoint and, when intervalMs is given, keeps it
@@ -23,6 +26,7 @@ export interface Poll<T> {
 export function usePoll<T>(path: string, intervalMs?: number): Poll<T> {
   const [data, setData] = useState<T | null>(null);
   const [failed, setFailed] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   // Held in a ref so the effect does not re-run when data arrives, which
   // would restart the interval on every tick.
   const alive = useRef(true);
@@ -58,6 +62,7 @@ export function usePoll<T>(path: string, intervalMs?: number): Poll<T> {
         if (!alive.current) return;
         setData(next);
         setDataPath(path);
+        setUpdatedAt(Date.now());
         setFailed(false);
       } catch (err) {
         if ((err as Error).name === "AbortError" || !alive.current) return;
@@ -77,7 +82,7 @@ export function usePoll<T>(path: string, intervalMs?: number): Poll<T> {
     };
   }, [path, intervalMs]);
 
-  return { data, failed, stale };
+  return { data, failed, stale, updatedAt };
 }
 
 /** useNow ticks a clock so an elapsed display advances without refetching.

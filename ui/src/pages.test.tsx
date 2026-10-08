@@ -203,6 +203,28 @@ describe("LivePage", () => {
     render(<LivePage />);
     expect(await screen.findByText(/Could not load/)).toBeDefined();
   });
+
+  // Once the panel has loaded, a dead instance kept its last running rows
+  // and their elapsed clocks counting up: a review "stuck" for 40 minutes.
+  it("says so when the refresh fails, and stops the clocks", async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        calls += 1;
+        if (calls > 1) return { ok: false, status: 503, json: async () => ({}) };
+        return { ok: true, status: 200, json: async () => live };
+      }),
+    );
+    render(<LivePage />);
+    await screen.findByText("PAY/ledger#1");
+
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(await screen.findByText(/Refresh failing/)).toBeDefined();
+    const elapsed = screen.getByText("PAY/ledger#1").closest("tr")?.lastElementChild?.textContent;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(screen.getByText("PAY/ledger#1").closest("tr")?.lastElementChild?.textContent).toBe(elapsed);
+  });
 });
 
 describe("RunsPage", () => {
