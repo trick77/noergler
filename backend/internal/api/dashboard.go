@@ -68,7 +68,7 @@ func usd(nano *int64) *string {
 // The map is built ONCE per request and read per row, so a name cannot
 // change halfway down a response. It is built with one Lookup per enabled
 // team, not from a single Runtime snapshot: Name comes from teams.yaml and
-// ApplySettings never touches it, so two teams read a moment apart cannot
+// UpdateSettings never touches it, so two teams read a moment apart cannot
 // disagree about it.
 //
 // That is the invariant to keep. Make a display name settable through

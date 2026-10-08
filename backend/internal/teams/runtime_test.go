@@ -1,9 +1,11 @@
 package teams
 
 import (
+	"errors"
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/review"
@@ -40,7 +42,7 @@ func TestRuntime_SnapshotIsRaceFreeUnderConcurrentWrites(_ *testing.T) {
 		defer wg.Done()
 		for j := 0; j < 200; j++ {
 			rt.ApplyClaims([]config.ProjectScope{{Key: "OTHER"}})
-			rt.ApplySettings(store.TeamSettings{ExcludeRepos: []string{"*-test"}})
+			applySettings(rt, store.TeamSettings{ExcludeRepos: []string{"*-test"}})
 		}
 	}()
 	wg.Wait()
@@ -66,10 +68,10 @@ func TestRuntime_SnapshotIsStable(t *testing.T) {
 	}
 }
 
-// ApplySettings swaps the three lists AND mirrors the two author lists onto
+// UpdateSettings swaps the three lists AND mirrors the two author lists onto
 // the live Reviewer. Forgetting the mirror leaves author routing stale until
 // restart, which is the bug this test exists for.
-func TestRuntime_ApplySettingsMirrorsAuthorListsOntoReviewer(t *testing.T) {
+func TestRuntime_UpdateSettingsMirrorsAuthorListsOntoReviewer(t *testing.T) {
 	rt := newTestRuntime(&config.Team{
 		Slug:   "platform",
 		Review: config.Review{AutoReviewAuthors: []string{"bob"}},
@@ -78,7 +80,7 @@ func TestRuntime_ApplySettingsMirrorsAuthorListsOntoReviewer(t *testing.T) {
 		t.Fatal("alice is not in the initial allow list")
 	}
 
-	rt.ApplySettings(store.TeamSettings{
+	applySettings(rt, store.TeamSettings{
 		AutoReviewAuthors: []string{"alice"},
 		IgnoreAuthors:     []string{"ci-bot"},
 		ExcludeRepos:      []string{"*-test"},
@@ -102,10 +104,73 @@ func TestRuntime_SettingsRoundTripsTheSnapshot(t *testing.T) {
 		IgnoreAuthors:     []string{"ci-bot"},
 		ExcludeRepos:      []string{"*-infra"},
 	}
-	rt.ApplySettings(want)
-	if got := rt.Settings(); !reflect.DeepEqual(got, want) {
-		t.Errorf("Settings() = %+v, want %+v", got, want)
+	applySettings(rt, want)
+	var got store.TeamSettings
+	_ = rt.UpdateSettings(func(cur store.TeamSettings) store.TeamSettings { got = cur; return cur }, nil)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("baseline = %+v, want %+v", got, want)
 	}
+}
+
+// Two partial PUTs: the second merges onto the first's result, not onto the
+// baseline both started from. Merging outside the lock dropped one field,
+// and the DB and the runtime could keep different requests' lists.
+func TestRuntime_ConcurrentPartialUpdatesKeepBothFields(t *testing.T) {
+	rt := newTestRuntime(&config.Team{Slug: "platform"})
+	var persisted []store.TeamSettings
+	var mu sync.Mutex
+	persist := func(s store.TeamSettings) error {
+		mu.Lock()
+		persisted = append(persisted, s)
+		mu.Unlock()
+		return nil
+	}
+
+	done := make(chan struct{})
+	err := rt.UpdateSettings(func(cur store.TeamSettings) store.TeamSettings {
+		cur.AutoReviewAuthors = []string{"alice"}
+		return cur
+	}, func(s store.TeamSettings) error {
+		go func() {
+			defer close(done)
+			_ = rt.UpdateSettings(func(cur store.TeamSettings) store.TeamSettings {
+				cur.IgnoreAuthors = []string{"ci-bot"}
+				return cur
+			}, persist)
+		}()
+		time.Sleep(20 * time.Millisecond) // the second update is now racing this one
+		return persist(s)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-done
+
+	want := store.TeamSettings{AutoReviewAuthors: []string{"alice"}, IgnoreAuthors: []string{"ci-bot"}}
+	if got := settingsOf(rt.Team()); !reflect.DeepEqual(got, want) {
+		t.Errorf("runtime = %+v, want %+v", got, want)
+	}
+	if last := persisted[len(persisted)-1]; !reflect.DeepEqual(last, want) {
+		t.Errorf("last persisted = %+v, want %+v", last, want)
+	}
+}
+
+// A failed persist leaves the snapshot alone.
+func TestRuntime_FailedPersistDoesNotSwap(t *testing.T) {
+	rt := newTestRuntime(&config.Team{Slug: "platform", Review: config.Review{ExcludeRepos: []string{"*-infra"}}})
+	err := rt.UpdateSettings(func(store.TeamSettings) store.TeamSettings {
+		return store.TeamSettings{ExcludeRepos: []string{"*-test"}}
+	}, func(store.TeamSettings) error { return errors.New("db down") })
+	if err == nil {
+		t.Fatal("want the persist error")
+	}
+	if got := rt.Team().Review.ExcludeRepos; !reflect.DeepEqual(got, []string{"*-infra"}) {
+		t.Errorf("exclude_repos = %v, want the old list", got)
+	}
+}
+
+func applySettings(rt *Runtime, s store.TeamSettings) {
+	_ = rt.UpdateSettings(func(store.TeamSettings) store.TeamSettings { return s }, nil)
 }
 
 func TestRegistry_LookupDistinguishesUnknownFromDisabled(t *testing.T) {

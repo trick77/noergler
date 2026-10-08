@@ -102,28 +102,38 @@ func (r *Runtime) ApplyClaims(scopes []config.ProjectScope) {
 	r.team.Store(&next)
 }
 
-// ApplySettings swaps in the three lists, then mirrors the two author lists
-// onto the live Reviewer.
+// UpdateSettings merges onto the current three lists, persists the result
+// (nil persist skips that), swaps it in, then mirrors the two author lists
+// onto the live Reviewer. A persist error swaps nothing.
+//
+// All of it under writeMu: two partial PUTs merging outside the lock each
+// built on the same baseline, so one field was lost and the DB and the
+// runtime could keep different requests' lists.
 //
 // The Reviewer copies config.Review by value at construction, so without the
 // mirror a team's author routing would stay stale until restart. ExcludeRepos
 // is deliberately not mirrored: its only reader is the webhook route, which
 // reads it off the snapshot.
-func (r *Runtime) ApplySettings(s store.TeamSettings) {
+func (r *Runtime) UpdateSettings(merge func(store.TeamSettings) store.TeamSettings, persist func(store.TeamSettings) error) error {
 	r.writeMu.Lock()
 	defer r.writeMu.Unlock()
 	next := *r.team.Load()
+	s := merge(settingsOf(&next))
+	if persist != nil {
+		if err := persist(s); err != nil {
+			return err
+		}
+	}
 	next.Review.AutoReviewAuthors = s.AutoReviewAuthors
 	next.Review.IgnoreAuthors = s.IgnoreAuthors
 	next.Review.ExcludeRepos = s.ExcludeRepos
 	r.team.Store(&next)
 	r.Reviewer.SetAuthorLists(s.AutoReviewAuthors, s.IgnoreAuthors)
+	return nil
 }
 
-// Settings is the current three lists: the baseline a partial PUT merges
-// into. Derived, never stored.
-func (r *Runtime) Settings() store.TeamSettings {
-	t := r.team.Load()
+// settingsOf is a snapshot's three lists.
+func settingsOf(t *config.Team) store.TeamSettings {
 	return store.TeamSettings{
 		AutoReviewAuthors: t.Review.AutoReviewAuthors,
 		IgnoreAuthors:     t.Review.IgnoreAuthors,

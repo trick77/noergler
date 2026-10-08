@@ -312,7 +312,7 @@ queues them.
 404/503 for a slug come BEFORE the 401 on every route.
 `teams.Runtime` is copy-on-write (`atomic.Pointer`): take ONE snapshot per
 request, or a concurrent settings write lands between the ownership check and
-the exclude check. `ApplySettings` must also mirror the two author lists onto
+the exclude check. `UpdateSettings` must also mirror the two author lists onto
 the live Reviewer, which copies `config.Review` by value; `exclude_repos` is
 not mirrored. `teams.Reconcile` runs BEFORE any Reviewer is built, for the same
 reason. The onboarding orchestrators never mutate the team they are given.
