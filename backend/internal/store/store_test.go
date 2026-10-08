@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"os"
 	"reflect"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -612,6 +614,41 @@ func TestRollup_AttemptOnlySpendIsClaimed(t *testing.T) {
 	}
 	if snap.SourceCommit == nil || *snap.SourceCommit != "head" || snap.FirstReviewAt.IsZero() {
 		t.Errorf("source = %v, first = %v", snap.SourceCommit, snap.FirstReviewAt)
+	}
+}
+
+// 0004's backfill marks every slug that ever held a claim it can still see:
+// claim rows, PR rows, attempt rows. Claim rows alone missed a team that had
+// removed its last claim before the upgrade, and its first boot re-seeded it.
+func TestMigrate0004_BackfillsEverySlugThatHeldAClaim(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	if _, err := s.pool.Exec(ctx, `DROP TABLE team_claims_seeded;
+		DELETE FROM schema_migrations WHERE name = '0004_claims_seeded.sql'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.pool.Exec(ctx, `INSERT INTO team_claims (team_slug, project_key, claimed_by) VALUES ('platform', 'PLAT', 'x')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.UpsertPullRequest(ctx, PRUpsert{Key: key, TeamSlug: "ops"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "payments", Kind: RunAuto, Outcome: "error"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutSettings(ctx, "idle", TeamSettings{ExcludeRepos: []string{"*-infra"}}, "x"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	all, err := s.ListAllClaims(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := slices.Sorted(maps.Keys(all))
+	if want := []string{"ops", "payments", "platform"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("known slugs = %v, want %v (a settings row alone is no claim)", got, want)
 	}
 }
 
