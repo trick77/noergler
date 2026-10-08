@@ -158,17 +158,22 @@ func TestHeadUnchangedRecordsItsReason(t *testing.T) {
 	}
 }
 
-// A diff that would not fetch is a FAULT, not a decision: it writes no
-// attempt row, so the skip breakdown counts only what the pipeline chose.
-func TestDiffFetchFailureIsNotASkip(t *testing.T) {
+// A diff that would not fetch is a FAULT, not a decision: it writes an
+// "error" attempt like an inference error does, never a "skipped" one, so the
+// skip breakdown still counts only what the pipeline chose while a Bitbucket
+// outage shows on the dashboard instead of as an absence of runs.
+func TestDiffFetchFailureIsAnErrorNotASkip(t *testing.T) {
 	h := newHarness(t, func(h *harness) {
 		h.bb.prDiffErr = errors.New("bitbucket is down")
 	})
 
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
 
-	if len(h.st.Attempts) != 0 {
-		t.Errorf("a fetch fault must write no attempt, got %+v", h.st.Attempts)
+	if len(h.st.Attempts) != 1 {
+		t.Fatalf("attempts = %+v, want one", h.st.Attempts)
+	}
+	if got := h.st.Attempts[0]; got.Outcome != "error" || got.Reason != "" {
+		t.Errorf("attempt = %+v, want outcome error with no reason", got)
 	}
 }
 

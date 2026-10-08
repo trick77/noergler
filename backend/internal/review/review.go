@@ -195,6 +195,14 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// 9. Incremental review when the event is a push and we have a pointer.
 	rawDiff, cumulativePR, incrementalFrom, diffWhy, ok := r.resolveDiff(ctx, payload, key, prTag, sourceCommit, lastReviewed, upsert)
 	if !ok {
+		// SkipNone here is the diff that would not fetch: a fault, recorded
+		// as an error like an inference one, so an outage is visible.
+		if diffWhy == SkipNone {
+			r.recordAttempt(ctx, store.Attempt{
+				Key: key, TeamSlug: r.TeamSlug, Kind: kind,
+				Outcome: inference.OutcomeError.String(),
+			})
+		}
 		return nil, ctx, r.abort(ctx, key, kind, diffWhy, prTag, httpCounter)
 	}
 
