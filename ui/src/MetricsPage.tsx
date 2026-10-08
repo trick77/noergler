@@ -150,7 +150,8 @@ export function MetricsPage() {
   // showing the server's full, non-zero total.
   if (rest.length > 0) {
     costSeries.push({
-      id: "rest",
+      // Not a slug: TeamSlugRE cannot start with "_", so no team collides.
+      id: "__rest",
       name: rest.length === 1 ? nameOf(rest[0]) : `${rest.length} more`,
       color: SERIES_COLORS[SERIES_COLORS.length - 1],
       values: window.map((day) => rest.reduce((sum, team) => sum + spendOn(day, team), 0)),
