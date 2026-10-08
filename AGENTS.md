@@ -169,9 +169,10 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   separate table, so "a non-ok outcome writes no run row" stays true.
 - A mention writes no attempt: it is a Q&A answer, not a review.
 - A billed call with no run row (unparseable) carries its cost on the attempt
-  (`review_attempts.cost_nano_usd`). `PRCost` sums runs + run-less attempts,
-  or the cap never trips on a PR the model keeps refusing. Dashboard totals
-  and riptide still read runs only.
+  (`review_attempts.cost_nano_usd`). `prCostSQL` sums runs + run-less
+  attempts of the current PR row, and `PRCost`, the frozen final cost and
+  the riptide rollup all read it: one figure for cap, record and FinOps.
+  Dashboard totals still read runs only.
 - DB session pinned `timezone=UTC` (`store.openConfig`); metrics windows and
   day labels are UTC to match `date_trunc`. The image has no tzdata, so
   "local" was UTC anyway.

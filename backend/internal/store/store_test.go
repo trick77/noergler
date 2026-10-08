@@ -554,6 +554,7 @@ func TestSessionTimeZoneIsUTC(t *testing.T) {
 func TestPRCost_IncludesBilledAttempts(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
+	id := upsert(t, s, key, "a")
 	attempt := Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "unparseable", CostNanoUSD: nano(400)}
 	if err := s.InsertAttempt(ctx, attempt); err != nil {
 		t.Fatal(err)
@@ -561,14 +562,27 @@ func TestPRCost_IncludesBilledAttempts(t *testing.T) {
 	if c, _ := s.PRCost(ctx, key); c == nil || *c != 400 {
 		t.Errorf("attempt only: cost = %v, want 400", c)
 	}
-	id := upsert(t, s, key, "a")
 	run(t, s, id, "a", nano(600), "m")
 	if c, _ := s.PRCost(ctx, key); c == nil || *c != 1000 {
 		t.Errorf("run + attempt: cost = %v, want 1000", c)
 	}
+	// The frozen merge cost is the same figure the cap enforced.
+	if c, _ := s.FreezeFinalCost(ctx, key); c == nil || *c != 1000 {
+		t.Errorf("frozen = %v, want 1000", c)
+	}
 	other := PRKey{Project: key.Project, Repo: key.Repo, PRID: key.PRID + 1}
 	if c, _ := s.PRCost(ctx, other); c != nil {
 		t.Errorf("nothing priced: cost = %v, want nil", *c)
+	}
+
+	// Giving the repo up purges the row and its runs. Claimed again, the PR
+	// starts from zero: the old row's attempts must not come back.
+	if _, err := s.PurgeProject(ctx, "platform", key.Project, nil); err != nil {
+		t.Fatal(err)
+	}
+	upsert(t, s, key, "b")
+	if c, _ := s.PRCost(ctx, key); c != nil {
+		t.Errorf("after purge and re-claim: cost = %v, want nil", *c)
 	}
 }
 

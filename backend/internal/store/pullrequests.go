@@ -305,27 +305,34 @@ func (s *Store) ExistingFindings(ctx context.Context, k PRKey) ([]Finding, error
 // contribute nothing, so the total is a floor, not the bill.
 func (s *Store) PRCost(ctx context.Context, k PRKey) (*int64, error) {
 	var cost *int64
-	err := s.pool.QueryRow(ctx, `
-		SELECT CASE WHEN runs IS NULL AND attempts IS NULL THEN NULL
-		            ELSE COALESCE(runs, 0) + COALESCE(attempts, 0) END
-		FROM (SELECT
-			(SELECT SUM(r.cost_nano_usd) FROM review_runs r JOIN pull_requests p ON r.pull_request_id = p.id
-			  WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3) AS runs,
-			(SELECT SUM(a.cost_nano_usd) FROM review_attempts a
-			  WHERE a.project_key = $1 AND a.repo_slug = $2 AND a.pr_id = $3 AND a.review_run_id IS NULL) AS attempts
-		) t`,
+	err := s.pool.QueryRow(ctx, `SELECT `+prCostSQL+` FROM pull_requests p
+		WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3`,
 		k.Project, k.Repo, k.PRID).Scan(&cost)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
 	return cost, err
 }
+
+// prCostSQL is PR row p's cost: its priced runs plus the billed run-less
+// attempts made during this row's life, NULL when nothing was priced. PRCost,
+// the frozen final cost and the riptide rollup all read it, so the figure
+// that tripped the cap is the one recorded. created_at bounds the attempts:
+// a purged repo claimed again starts from zero, as its runs do.
+const prCostSQL = `(SELECT CASE WHEN runs IS NULL AND attempts IS NULL THEN NULL
+		ELSE COALESCE(runs, 0) + COALESCE(attempts, 0) END
+	FROM (SELECT
+		(SELECT SUM(r.cost_nano_usd) FROM review_runs r WHERE r.pull_request_id = p.id) AS runs,
+		(SELECT SUM(a.cost_nano_usd) FROM review_attempts a
+		  WHERE a.project_key = p.project_key AND a.repo_slug = p.repo_slug AND a.pr_id = p.pr_id
+		    AND a.review_run_id IS NULL AND a.created_at >= p.created_at) AS attempts) t)`
 
 // FreezeFinalCost copies the PR's cost total into final_cost_nano_usd at the
 // terminal outcome and returns it (nil when unpriced).
 func (s *Store) FreezeFinalCost(ctx context.Context, k PRKey) (*int64, error) {
 	var cost *int64
 	err := s.pool.QueryRow(ctx, `
-		UPDATE pull_requests p SET final_cost_nano_usd = (
-			SELECT SUM(cost_nano_usd) FROM review_runs WHERE pull_request_id = p.id
-		), updated_at = now()
+		UPDATE pull_requests p SET final_cost_nano_usd = `+prCostSQL+`, updated_at = now()
 		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
 		RETURNING final_cost_nano_usd`, k.Project, k.Repo, k.PRID).Scan(&cost)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -382,7 +389,8 @@ func (s *Store) ClaimRollup(ctx context.Context, k PRKey, final RollupFinal) (*R
 			RETURNING p.id, p.final_source_commit, p.final_merge_commit, p.final_lines_added, p.final_lines_removed, p.final_files_changed
 		)
 		SELECT COUNT(r.id), COALESCE(SUM(r.prompt_tokens), 0), COALESCE(SUM(r.completion_tokens), 0),
-			COALESCE(SUM(r.elapsed_ms), 0), COALESCE(SUM(r.findings_posted), 0), SUM(r.cost_nano_usd),
+			COALESCE(SUM(r.elapsed_ms), 0), COALESCE(SUM(r.findings_posted), 0),
+			(SELECT `+prCostSQL+` FROM pull_requests p WHERE p.id = c.id),
 			ARRAY(SELECT DISTINCT m FROM unnest(array_agg(r.model_label)) AS m ORDER BY m), MIN(r.created_at),
 			c.final_source_commit, c.final_merge_commit, c.final_lines_added, c.final_lines_removed, c.final_files_changed
 		FROM claimed c JOIN review_runs r ON r.pull_request_id = c.id
