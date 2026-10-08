@@ -652,9 +652,11 @@ func (r *Reviewer) handleNonOK(ctx context.Context, result inference.ReviewResul
 		r.tooLargeNotice(ctx, project, repo, prID, prReviewID, sourceCommit, prior)
 	}
 
+	// No run row, so a billed call's cost rides here, where PRCost reads it.
 	r.recordAttempt(ctx, store.Attempt{
 		Key: key, TeamSlug: r.TeamSlug, Kind: kind,
-		Outcome: result.Outcome.String(),
+		Outcome:     result.Outcome.String(),
+		CostNanoUSD: result.Cost.NanoUSD,
 	})
 }
 

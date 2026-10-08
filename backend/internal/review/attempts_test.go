@@ -59,6 +59,28 @@ func TestAttemptRecordedForEveryOutcome(t *testing.T) {
 	}
 }
 
+// An unparseable response was paid for but writes no run row. Its cost rides
+// on the attempt, where PRCost reads it, or a PR the model keeps refusing
+// spends past the cap without limit.
+func TestUnparseableAttemptCarriesItsCost(t *testing.T) {
+	h := newHarness(t, nil)
+	cost := int64(1_500_000)
+	h.llm.review = inference.ReviewResult{
+		Outcome: inference.OutcomeUnparseable,
+		Review:  inference.ParsedReview{Summary: inference.NewReviewSummary()},
+		Cost:    inference.CallCost{NanoUSD: &cost},
+	}
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if len(h.st.Attempts) != 1 {
+		t.Fatalf("expected one attempt, got %d", len(h.st.Attempts))
+	}
+	if got := h.st.Attempts[0].CostNanoUSD; got == nil || *got != cost {
+		t.Errorf("attempt cost = %v, want %d", got, cost)
+	}
+}
+
 // A successful attempt links its run row, so the feed can show that run's
 // findings and cost without guessing which run an attempt produced.
 func TestSuccessfulAttemptLinksItsRun(t *testing.T) {

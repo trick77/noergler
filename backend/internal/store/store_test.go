@@ -533,6 +533,29 @@ func TestPullRequest_ReopenedAfterDeclineStartsFreshButDedups(t *testing.T) {
 	}
 }
 
+// PRCost is what the PR spent: priced runs plus the run-less attempts that
+// were billed (an unparseable response). Nil only when neither is priced.
+func TestPRCost_IncludesBilledAttempts(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	attempt := Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "unparseable", CostNanoUSD: nano(400)}
+	if err := s.InsertAttempt(ctx, attempt); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := s.PRCost(ctx, key); c == nil || *c != 400 {
+		t.Errorf("attempt only: cost = %v, want 400", c)
+	}
+	id := upsert(t, s, key, "a")
+	run(t, s, id, "a", nano(600), "m")
+	if c, _ := s.PRCost(ctx, key); c == nil || *c != 1000 {
+		t.Errorf("run + attempt: cost = %v, want 1000", c)
+	}
+	other := PRKey{Project: key.Project, Repo: key.Repo, PRID: key.PRID + 1}
+	if c, _ := s.PRCost(ctx, other); c != nil {
+		t.Errorf("nothing priced: cost = %v, want nil", *c)
+	}
+}
+
 // KeepPointer leaves the stored pointer alone; without it nil writes NULL.
 func TestPullRequest_KeepPointer(t *testing.T) {
 	s := testStore(t)

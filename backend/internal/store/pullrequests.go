@@ -301,15 +301,21 @@ func (s *Store) ExistingFindings(ctx context.Context, k PRKey) ([]Finding, error
 	return out, rows.Err()
 }
 
-// PRCost is the sum of priced runs in nano-USD, or nil when no run was
-// priced (no row, no runs, or every run unpriced). Callers treat nil as "no
-// known cost" and never block on it. Unpriced runs contribute nothing, so
-// the total is a floor, not the bill.
+// PRCost is the sum of priced runs plus billed run-less attempts (an
+// unparseable response) in nano-USD, or nil when nothing was priced. Callers
+// treat nil as "no known cost" and never block on it. Unpriced calls
+// contribute nothing, so the total is a floor, not the bill.
 func (s *Store) PRCost(ctx context.Context, k PRKey) (*int64, error) {
 	var cost *int64
 	err := s.pool.QueryRow(ctx, `
-		SELECT SUM(r.cost_nano_usd) FROM review_runs r JOIN pull_requests p ON r.pull_request_id = p.id
-		WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3`,
+		SELECT CASE WHEN runs IS NULL AND attempts IS NULL THEN NULL
+		            ELSE COALESCE(runs, 0) + COALESCE(attempts, 0) END
+		FROM (SELECT
+			(SELECT SUM(r.cost_nano_usd) FROM review_runs r JOIN pull_requests p ON r.pull_request_id = p.id
+			  WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3) AS runs,
+			(SELECT SUM(a.cost_nano_usd) FROM review_attempts a
+			  WHERE a.project_key = $1 AND a.repo_slug = $2 AND a.pr_id = $3 AND a.review_run_id IS NULL) AS attempts
+		) t`,
 		k.Project, k.Repo, k.PRID).Scan(&cost)
 	return cost, err
 }
