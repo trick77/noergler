@@ -1,6 +1,6 @@
 import type { Metrics } from "./api";
 import { Chart, Sparkline, type Series } from "./Chart";
-import { money, tokens } from "./format";
+import { money, moneyTick, tokens } from "./format";
 import { usePoll } from "./usePoll";
 import {
   Card,
@@ -160,6 +160,7 @@ export function MetricsPage() {
     ...window.map((_, i) => costSeries.reduce((sum, s) => sum + s.values[i], 0)),
     0,
   );
+  const costTicks = niceTicks(costTop);
 
   // Attempts per day, by outcome. Skipped and failed use the status hues,
   // not the series ramp: they are states, not categories.
@@ -239,9 +240,9 @@ export function MetricsPage() {
                 width={856}
                 height={200}
                 mark="stack"
-                ticks={niceTicks(costTop)}
+                ticks={costTicks}
                 xLabels={window.map(label)}
-                format={(v) => `$${v.toFixed(2)}`}
+                format={moneyTick(costTicks)}
                 label={`Cost per day for ${title}, by team`}
               />
               <Legend series={costSeries} />
