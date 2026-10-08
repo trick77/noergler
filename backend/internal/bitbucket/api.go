@@ -410,20 +410,13 @@ func (c *Client) userPermissionAt(ctx context.Context, path, username string) (U
 	return "", nil
 }
 
-// GetProject reads a project, to prove it exists and is readable.
-func (c *Client) GetProject(ctx context.Context, project string) (map[string]any, error) {
-	var out map[string]any
-	if err := c.do(ctx, http.MethodGet, apiBase+"/projects/"+project, nil, nil, &out); err != nil {
-		return nil, err
-	}
-	return out, nil
+// GetProject reads a project, to prove it exists and is readable. The body
+// is not decoded: the answer is the status alone.
+func (c *Client) GetProject(ctx context.Context, project string) error {
+	return c.do(ctx, http.MethodGet, apiBase+"/projects/"+project, nil, nil, nil)
 }
 
-// GetRepo reads one repository.
-func (c *Client) GetRepo(ctx context.Context, project, repo string) (map[string]any, error) {
-	var out map[string]any
-	if err := c.do(ctx, http.MethodGet, apiBase+"/projects/"+project+"/repos/"+repo, nil, nil, &out); err != nil {
-		return nil, err
-	}
-	return out, nil
+// GetRepo reads one repository, to prove the same.
+func (c *Client) GetRepo(ctx context.Context, project, repo string) error {
+	return c.do(ctx, http.MethodGet, apiBase+"/projects/"+project+"/repos/"+repo, nil, nil, nil)
 }

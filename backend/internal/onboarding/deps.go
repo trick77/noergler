@@ -26,8 +26,8 @@ type AdminClient interface {
 // BotClient is Bitbucket on the bot's own token, used for one thing only:
 // proving the bot can reach a target at all.
 type BotClient interface {
-	GetProject(ctx context.Context, project string) (map[string]any, error)
-	GetRepo(ctx context.Context, project, repo string) (map[string]any, error)
+	GetProject(ctx context.Context, project string) error
+	GetRepo(ctx context.Context, project, repo string) error
 	BotUsername() string
 }
 

@@ -134,22 +134,6 @@ type Trust struct {
 	Tail           float64
 }
 
-// UsableContextBudget turns an advertised window into a per-call budget.
-// Below the threshold: the window minus a flat headroom. Above it: the
-// threshold plus only Tail of the excess, because large advertised windows
-// are the least trustworthy (many endpoints 413 below them). Examples with
-// T=256k, Tail=0.5, headroom 16k: 128k->112k, 272k->264k, 512k->384k,
-// 1.05M->653k. Never below 2000.
-func (t Trust) UsableContextBudget(window int) int {
-	var usable int
-	if window <= t.Threshold {
-		usable = window - t.HeadroomTokens
-	} else {
-		usable = t.Threshold + int(float64(window-t.Threshold)*t.Tail)
-	}
-	return max(2000, usable)
-}
-
 // Team is a fully resolved team: secrets read, defaults merged.
 //
 // Projects and the author/exclude lists are the team's own to change through
@@ -254,12 +238,6 @@ func ModelLabel(model, effort string) string {
 // TeamSlugRE is the slug format; the path segment, the DB key and the log
 // field are all this string.
 var TeamSlugRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
-
-// TeamEnvPrefix is `TEAM_<SLUG>_`, the naming convention for a team's secret
-// env vars. Not enforced by the loader.
-func TeamEnvPrefix(slug string) string {
-	return "TEAM_" + strings.ReplaceAll(strings.ToUpper(slug), "-", "_") + "_"
-}
 
 // Queue sizes the review queue's inference pool.
 //

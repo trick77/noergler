@@ -303,15 +303,6 @@ func TestInstance_TeamsConfigPathDefault(t *testing.T) {
 	}
 }
 
-func TestUsableContextBudget(t *testing.T) {
-	tr := Trust{HeadroomTokens: 16000, Threshold: 256000, Tail: 0.5}
-	for window, want := range map[int]int{128000: 112000, 272000: 264000, 512000: 384000, 1050000: 653000, 1000: 2000} {
-		if got := tr.UsableContextBudget(window); got != want {
-			t.Errorf("budget(%d) = %d, want %d", window, got, want)
-		}
-	}
-}
-
 // --- teams.yaml: file-level faults abort -------------------------------------
 
 func fileError(t *testing.T, e *env, want string) {
@@ -587,10 +578,7 @@ func TestFnMatch(t *testing.T) {
 	}
 }
 
-func TestTeamEnvPrefixAndModelLabel(t *testing.T) {
-	if TeamEnvPrefix("data-platform") != "TEAM_DATA_PLATFORM_" {
-		t.Error("prefix")
-	}
+func TestModelLabel(t *testing.T) {
 	if ModelLabel("gpt-5.5", "high") != "gpt-5.5-high" || ModelLabel("m", "") != "m" {
 		t.Error("label")
 	}

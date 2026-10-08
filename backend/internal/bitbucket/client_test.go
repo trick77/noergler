@@ -880,14 +880,14 @@ func TestUserPermissionCanWrite(t *testing.T) {
 func TestGetProjectGetRepo(t *testing.T) {
 	f, c := newFake(t, jsonReply(200, `{"key":"PROJ","values":[]}`))
 
-	if _, err := c.GetProject(context.Background(), "PROJ"); err != nil {
+	if err := c.GetProject(context.Background(), "PROJ"); err != nil {
 		t.Fatal(err)
 	}
 	if want := "/rest/api/1.0/projects/PROJ"; f.last().Path != want {
 		t.Errorf("path = %q, want %q", f.last().Path, want)
 	}
 
-	if _, err := c.GetRepo(context.Background(), "PROJ", "r"); err != nil {
+	if err := c.GetRepo(context.Background(), "PROJ", "r"); err != nil {
 		t.Fatal(err)
 	}
 	if want := "/rest/api/1.0/projects/PROJ/repos/r"; f.last().Path != want {
@@ -919,13 +919,13 @@ func TestWithTokenSwapsAuthorization(t *testing.T) {
 	f, c := newFake(t, jsonReply(200, `{}`))
 	admin := c.WithToken("admin-token")
 
-	if _, err := admin.GetProject(context.Background(), "PROJ"); err != nil {
+	if err := admin.GetProject(context.Background(), "PROJ"); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.last().Header.Get("Authorization"); got != "Bearer admin-token" {
 		t.Errorf("Authorization = %q, want the admin token", got)
 	}
-	if _, err := c.GetProject(context.Background(), "PROJ"); err != nil {
+	if err := c.GetProject(context.Background(), "PROJ"); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.last().Header.Get("Authorization"); got != "Bearer test-token" {

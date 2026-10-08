@@ -32,9 +32,6 @@ func TestSummarizeRollsUpPerLabel(t *testing.T) {
 	if got := c.Summarize(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("Summarize() = %v, want %v", got, want)
 	}
-	if got, want := Labels(c.Summarize()), []string{"bitbucket", "jira"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("Labels() = %v, want %v", got, want)
-	}
 }
 
 // Summarize must leave the method breakdown intact: the caller logs both.

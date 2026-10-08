@@ -151,28 +151,3 @@ func IsSmall(
 	// a scaled total of exactly `available` still counts as small.
 	return float64(total)*contextExpansionRatio <= float64(available)
 }
-
-// CountDiffLines counts added and removed lines in a whole unified diff.
-//
-// Files the reviewer ignores (lockfiles, generated or minified files, binaries,
-// build output) are skipped, so the count reflects real code changes rather
-// than reformatted JSON or vendored bundles.
-//
-// Uses splitLines, the wider boundary set: this only counts lines and never
-// rejoins them, so a form feed starting a new line is harmless here.
-func CountDiffLines(diff string) (added, removed int) {
-	for _, fileDiff := range SplitByFile(diff) {
-		if !IsReviewable(fileDiff) {
-			continue
-		}
-		for _, line := range splitLines(fileDiff) {
-			switch {
-			case strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++"):
-				added++
-			case strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---"):
-				removed++
-			}
-		}
-	}
-	return added, removed
-}

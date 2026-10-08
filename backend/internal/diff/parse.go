@@ -26,12 +26,6 @@ type FileReviewData struct {
 	ContentFetched bool
 }
 
-// HasContent reports whether content is usable as text: an empty string
-// falls through to the diff exactly like an unfetched file does. Use
-// ContentFetched, not this, when the distinction between unfetched and
-// fetched-but-empty matters.
-func (f FileReviewData) HasContent() bool { return f.Content != "" }
-
 var diffPathRE = regexp.MustCompile(`(?m)^diff --git (?:a/.+ b/|src://.+ dst://)(.+)$`)
 
 var plusPlusPlusRE = regexp.MustCompile(`(?m)^\+\+\+ (?:b/|dst://)(.+)$`)

@@ -70,9 +70,6 @@ func instanceURL(webhookURL string) string {
 	return webhookURL
 }
 
-// WebhookName is the name this Onboarder matches and writes.
-func (o *Onboarder) WebhookName() string { return o.opts.WebhookName }
-
 // -- claim and access -- //
 
 // claim decides whether the team holds the target and, when it does, whether
@@ -103,9 +100,9 @@ func (o *Onboarder) claim(ctx context.Context, target Target) Claim {
 
 	var err error
 	if target.Repo == "" {
-		_, err = o.bot.GetProject(ctx, target.Project)
+		err = o.bot.GetProject(ctx, target.Project)
 	} else {
-		_, err = o.bot.GetRepo(ctx, target.Project, target.Repo)
+		err = o.bot.GetRepo(ctx, target.Project, target.Repo)
 	}
 	if err != nil {
 		o.log.InfoContext(ctx, fmt.Sprintf("bot cannot reach %s: %s", target.Key(), err))

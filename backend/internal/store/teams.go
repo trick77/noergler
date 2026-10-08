@@ -42,11 +42,6 @@ type TeamSettings struct {
 	ExcludeRepos      []string
 }
 
-// Excludes is the case-insensitive glob match of a repo slug.
-func (t TeamSettings) Excludes(repoSlug string) bool {
-	return config.ExcludesRepo(t.ExcludeRepos, repoSlug)
-}
-
 type claimRow struct {
 	team string
 	key  string
@@ -350,20 +345,6 @@ func (s *Store) CountProjectPRs(ctx context.Context, teamSlug, projectKey string
 		err = s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM pull_requests WHERE team_slug = $1 AND project_key = $2 AND repo_slug = $3`, teamSlug, projectKey, *repoSlug).Scan(&n)
 	}
 	return n, err
-}
-
-// GetSettings returns the team's row, or nil when the DB has none.
-func (s *Store) GetSettings(ctx context.Context, teamSlug string) (*TeamSettings, error) {
-	var t TeamSettings
-	err := s.pool.QueryRow(ctx, `SELECT auto_review_authors, ignore_authors, exclude_repos FROM team_settings WHERE team_slug = $1`, teamSlug).
-		Scan(&t.AutoReviewAuthors, &t.IgnoreAuthors, &t.ExcludeRepos)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &t, nil
 }
 
 // GetAllSettings returns every team's row keyed by slug.

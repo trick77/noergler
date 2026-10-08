@@ -592,21 +592,18 @@ func TestPullRequest_KeepPointer(t *testing.T) {
 func TestSettings_RoundTrip(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
-	if got, err := s.GetSettings(ctx, "platform"); err != nil || got != nil {
-		t.Fatalf("missing row = %v %v", got, err)
+	if all, err := s.GetAllSettings(ctx); err != nil || len(all) != 0 {
+		t.Fatalf("no rows = %v %v", all, err)
 	}
 	if err := s.PutSettings(ctx, "platform", TeamSettings{AutoReviewAuthors: []string{"a"}, IgnoreAuthors: nil, ExcludeRepos: []string{"*-infra"}}, "jan"); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := s.GetSettings(ctx, "platform")
-	if !reflect.DeepEqual(got, &TeamSettings{AutoReviewAuthors: []string{"a"}, IgnoreAuthors: []string{}, ExcludeRepos: []string{"*-infra"}}) {
-		t.Errorf("settings = %+v", got)
-	}
-	if !got.Excludes("Platform-INFRA") || got.Excludes("infra-tools") {
-		t.Error("exclude glob")
+	all, _ := s.GetAllSettings(ctx)
+	if !reflect.DeepEqual(all["platform"], TeamSettings{AutoReviewAuthors: []string{"a"}, IgnoreAuthors: []string{}, ExcludeRepos: []string{"*-infra"}}) {
+		t.Errorf("settings = %+v", all["platform"])
 	}
 	_ = s.PutSettings(ctx, "platform", TeamSettings{AutoReviewAuthors: []string{"b"}, ExcludeRepos: []string{}}, "jan")
-	all, _ := s.GetAllSettings(ctx)
+	all, _ = s.GetAllSettings(ctx)
 	if !reflect.DeepEqual(all["platform"].AutoReviewAuthors, []string{"b"}) || len(all["platform"].ExcludeRepos) != 0 {
 		t.Errorf("all = %+v", all)
 	}
