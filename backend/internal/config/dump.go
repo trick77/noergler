@@ -3,7 +3,8 @@ package config
 import (
 	"fmt"
 	"log/slog"
-	"sort"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -47,7 +48,7 @@ func Dump(app *App, log *slog.Logger) {
 			log.Info(fmt.Sprintf("[config.teams.%s.riptide] disabled", slug))
 		}
 	}
-	for _, slug := range sortedKeys(app.Disabled) {
+	for _, slug := range slices.Sorted(maps.Keys(app.Disabled)) {
 		log.Error(fmt.Sprintf("[config.teams.%s] DISABLED: %s", slug, app.Disabled[slug]))
 	}
 }
@@ -151,13 +152,4 @@ func reviewSection(log *slog.Logger, label string, r Review) {
 
 func jiraSection(log *slog.Logger, label string, j Jira) {
 	section(log, label, kv{"url", j.URL}, kv{"token", mask}, kv{"acceptance_criteria_prefixes", j.AcceptanceCriteriaPrefixes})
-}
-
-func sortedKeys(m map[string]string) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }

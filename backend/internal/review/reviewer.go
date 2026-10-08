@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 
@@ -152,7 +153,7 @@ func (r *Reviewer) IsAutoReviewAuthor(author string) bool {
 
 func (r *Reviewer) isIgnoredAuthor(name string) bool {
 	_, ignore := r.authorLists()
-	return contains(ignore, name)
+	return slices.Contains(ignore, name)
 }
 
 // autoReviewDecision answers both "is this author auto-reviewed" and "which
@@ -164,22 +165,13 @@ func (r *Reviewer) isIgnoredAuthor(name string) bool {
 // is meant to remove. Same rule as teams.Runtime: one snapshot per request.
 func (r *Reviewer) autoReviewDecision(author string) (autoReview, ignored bool) {
 	auto, ignore := r.authorLists()
-	if contains(ignore, author) {
+	if slices.Contains(ignore, author) {
 		return false, true
 	}
 	if len(auto) == 0 {
 		return true, false
 	}
-	return contains(auto, author), false
-}
-
-func contains(list []string, name string) bool {
-	for _, s := range list {
-		if s == name {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(auto, author), false
 }
 
 // extractTicketID reads a Jira key off the branch name, then the PR title.
