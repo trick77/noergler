@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/trick77/noergler/internal/diff"
+	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/logging"
 	"github.com/trick77/noergler/internal/riptide"
 	"github.com/trick77/noergler/internal/store"
@@ -60,8 +61,8 @@ func (r *Reviewer) HandlePRMerged(ctx context.Context, payload *webhook.Payload)
 	}); frozen != nil {
 		// The sum of what the endpoint reported per run. Unpriced runs
 		// contributed nothing, so the total is a floor, not the bill.
-		r.log.InfoContext(ctx, fmt.Sprintf("%s merged - frozen LLM cost $%.3f",
-			prTag, float64(*frozen)/nanoPerUSD))
+		r.log.InfoContext(ctx, fmt.Sprintf("%s merged - frozen LLM cost $%s",
+			prTag, inference.FormatUSD3(*frozen)))
 	}
 
 	r.emitRollup(ctx, key, prTag, "merged", payload.MergeCommitSHA())

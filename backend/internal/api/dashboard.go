@@ -8,6 +8,7 @@ import (
 
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/httpapi"
+	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/queue"
 	"github.com/trick77/noergler/internal/review"
 	"github.com/trick77/noergler/internal/store"
@@ -44,11 +45,8 @@ type DashboardStore interface {
 	ActivityByTeam(ctx context.Context) ([]store.TeamActivity, error)
 }
 
-// nanoPerUSD converts the store's BIGINT nano-USD to the USD the edge shows.
-const nanoPerUSD = 1_000_000_000
-
-// usd renders nano-USD as a fixed-point decimal string with 3 decimals, the
-// same precision the cost log lines carry.
+// usd renders nano-USD as a fixed-point decimal string with 3 decimals,
+// through the same integer formatter as the cost log lines (no float step).
 //
 // A string, never a float: a JSON number would hand the browser a binary
 // float of a decimal amount. Never an exponent either - 1E-9 breaks strict
@@ -58,7 +56,7 @@ func usd(nano *int64) *string {
 	if nano == nil {
 		return nil
 	}
-	s := strconv.FormatFloat(float64(*nano)/nanoPerUSD, 'f', 3, 64)
+	s := inference.FormatUSD3(*nano)
 	return &s
 }
 

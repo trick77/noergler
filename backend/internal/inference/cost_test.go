@@ -63,6 +63,27 @@ func TestCallCostLogLine(t *testing.T) {
 	}
 }
 
+// Integer rounding, half up. Through float64 a half tie rounded either way
+// depending on its binary value: 4_500_000 nano printed 0.004, 3_500_000
+// printed 0.004 too.
+func TestFormatUSD3(t *testing.T) {
+	for nano, want := range map[int64]string{
+		0:              "0.000",
+		499_999:        "0.000",
+		500_000:        "0.001",
+		2_500_000:      "0.003",
+		3_500_000:      "0.004",
+		4_500_000:      "0.005",
+		1_250_000_000:  "1.250",
+		12_345_500_000: "12.346",
+		-4_500_000:     "-0.005",
+	} {
+		if got := FormatUSD3(nano); got != want {
+			t.Errorf("FormatUSD3(%d) = %q, want %q", nano, got, want)
+		}
+	}
+}
+
 func TestCostFrom(t *testing.T) {
 	n := func(v int64) *int64 { return &v }
 
