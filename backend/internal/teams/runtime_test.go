@@ -132,7 +132,6 @@ func TestRuntime_ConcurrentPartialUpdatesKeepBothFields(t *testing.T) {
 		cur.AutoReviewAuthors = []string{"alice"}
 		return cur
 	}, func(s store.TeamSettings) error {
-		// Once: a retry persists again and must not start a third writer.
 		race.Do(func() {
 			go func() {
 				defer close(done)
@@ -168,8 +167,6 @@ func TestRuntime_PersistDoesNotHoldTheWriteLock(t *testing.T) {
 		cur.IgnoreAuthors = []string{"ci-bot"}
 		return cur
 	}, func(store.TeamSettings) error {
-		// Once: the claim swaps the snapshot, so the update retries and
-		// persists again.
 		claim.Do(func() {
 			done := make(chan struct{})
 			go func() {
@@ -192,6 +189,56 @@ func TestRuntime_PersistDoesNotHoldTheWriteLock(t *testing.T) {
 	}
 	if got := rt.Team().Review.IgnoreAuthors; !reflect.DeepEqual(got, []string{"ci-bot"}) {
 		t.Errorf("ignore_authors = %v, want the update", got)
+	}
+}
+
+// A second PUT waits for the first's persist. An optimistic retry let it
+// persist its own row meanwhile, so a first PUT that failed on retry left
+// the DB holding a row merged on a stale baseline.
+func TestRuntime_SettingsWritersDoNotInterleave(t *testing.T) {
+	rt := newTestRuntime(&config.Team{Slug: "platform"})
+	var mu sync.Mutex
+	var rows []store.TeamSettings
+	persist := func(s store.TeamSettings) error {
+		mu.Lock()
+		rows = append(rows, s)
+		mu.Unlock()
+		return nil
+	}
+
+	done := make(chan struct{})
+	calls := 0
+	err := rt.UpdateSettings(func(cur store.TeamSettings) store.TeamSettings {
+		cur.AutoReviewAuthors = []string{"alice"}
+		return cur
+	}, func(store.TeamSettings) error {
+		calls++
+		go func() {
+			defer close(done)
+			_ = rt.UpdateSettings(func(cur store.TeamSettings) store.TeamSettings {
+				cur.IgnoreAuthors = []string{"ci-bot"}
+				return cur
+			}, persist)
+		}()
+		time.Sleep(20 * time.Millisecond)
+		mu.Lock()
+		defer mu.Unlock()
+		if len(rows) != 0 {
+			t.Errorf("second PUT persisted %+v during the first's persist", rows)
+		}
+		return errors.New("db down")
+	})
+	if err == nil || calls != 1 {
+		t.Fatalf("err = %v, persist calls = %d; want the error after one call", err, calls)
+	}
+	<-done
+
+	want := store.TeamSettings{IgnoreAuthors: []string{"ci-bot"}}
+	if got := settingsOf(rt.Team()); !reflect.DeepEqual(got, want) {
+		t.Errorf("runtime = %+v, want %+v", got, want)
+	}
+	if !reflect.DeepEqual(rows, []store.TeamSettings{want}) {
+		t.Errorf("rows = %+v, want only the second PUT's", rows)
 	}
 }
 
