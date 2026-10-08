@@ -173,9 +173,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 				r.log.InfoContext(ctx, fmt.Sprintf(
 					"%s: PR cost $%.2f >= limit $%.2f - skipping auto-review (@%s to review manually, or raise REVIEW_MAX_PR_COST_USD)",
 					prTag, cumulative, r.cfg.MaxPRCostUSD, r.bitbucket.BotUsername()))
-				// This push was not reviewed, so the prior commit stands.
-				prior := r.priorCommit(ctx, key)
-				prReviewID := r.upsert(ctx, upsert, prior)
+				prReviewID, _ := r.upsertKeepingPrior(ctx, upsert, key)
 				r.costLimitNotice(ctx, project, repo, pr.ID, prReviewID, cumulative, r.cfg.MaxPRCostUSD)
 				return nil, ctx, r.abort(ctx, key, kind, SkipCostCap, prTag, httpCounter)
 			}
@@ -186,7 +184,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	started := time.Now()
 
 	sourceCommit := pr.FromRef.LatestCommit
-	lastReviewed := r.priorCommit(ctx, key)
+	lastReviewed, _ := r.priorCommit(ctx, key)
 
 	// 9. Incremental review when the event is a push and we have a pointer.
 	rawDiff, cumulativePR, incrementalFrom, diffWhy, ok := r.resolveDiff(ctx, payload, key, prTag, sourceCommit, lastReviewed, upsert)
@@ -569,8 +567,7 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 			// 10. Nothing in this push was reviewed, so the next push must
 			// not go incremental from it.
 			r.logDiffTooLarge(ctx, prTag, project, repo, prID, err, tooLarge)
-			prior := r.priorCommit(ctx, key)
-			prReviewID := r.upsert(ctx, upsert, prior)
+			prReviewID, _ := r.upsertKeepingPrior(ctx, upsert, key)
 			r.postOrUpdateSummary(ctx, project, repo, prID, prReviewID, render.DiffTooLargeSummary(tooLarge.Limit))
 			return "", cumulativeContext{}, "", SkipDiffTooLarge, false
 		}
@@ -617,8 +614,7 @@ func (r *Reviewer) handleNonOK(ctx context.Context, result inference.ReviewResul
 
 	// Read the prior commit BEFORE the upsert, which would otherwise
 	// overwrite it with this failed commit.
-	prior := r.priorCommit(ctx, key)
-	prReviewID := r.upsert(ctx, upsert, prior)
+	prReviewID, prior := r.upsertKeepingPrior(ctx, upsert, key)
 
 	switch result.Outcome {
 	case inference.OutcomeTimedOut:
@@ -912,16 +908,29 @@ func (r *Reviewer) upsert(ctx context.Context, u store.PRUpsert, lastReviewedCom
 	})
 }
 
-// priorCommit is the last successfully reviewed commit, or "".
-func (r *Reviewer) priorCommit(ctx context.Context, key store.PRKey) string {
-	commit := safeDB(ctx, r.log, "GetLastReviewedCommit", func() (string, error) {
+// upsertKeepingPrior writes the PR row for a push that was not reviewed, so
+// the prior commit stands, and returns the row id and that commit. A failed
+// read keeps the stored pointer: passing "" back would NULL it and make the
+// next push a full, paid review.
+func (r *Reviewer) upsertKeepingPrior(ctx context.Context, u store.PRUpsert, key store.PRKey) (int64, string) {
+	prior, readOK := r.priorCommit(ctx, key)
+	u.KeepPointer = !readOK
+	return r.upsert(ctx, u, prior), prior
+}
+
+// priorCommit is the last successfully reviewed commit, or "". readOK is
+// false only when the read failed.
+func (r *Reviewer) priorCommit(ctx context.Context, key store.PRKey) (commit string, readOK bool) {
+	readOK = true
+	commit = safeDB(ctx, r.log, "GetLastReviewedCommit", func() (string, error) {
 		c, ok, err := r.store.GetLastReviewedCommit(ctx, key)
+		readOK = err == nil
 		if !ok {
 			return "", err
 		}
 		return c, err
 	})
-	return commit
+	return commit, readOK
 }
 
 func tokenUsage(result inference.ReviewResult) render.TokenUsage {

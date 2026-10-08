@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"os"
 	"strings"
@@ -492,6 +493,26 @@ func TestCostCap(t *testing.T) {
 // Every non-ok outcome but OutcomeError posts a notice, preserves the prior
 // commit and writes no run row. OutcomeError writes and posts nothing at
 // all; it is only logged.
+// A skip path passes the prior pointer back. When reading it failed, writing
+// "" NULLed the stored pointer, and the next push became a full, paid review.
+func TestFailedPriorReadKeepsThePointer(t *testing.T) {
+	h := newHarness(t, nil)
+	h.st.lastErr = errors.New("connection reset")
+	h.llm.review = inference.ReviewResult{
+		Outcome: inference.OutcomeTimedOut,
+		Review:  inference.ParsedReview{Summary: inference.NewReviewSummary()},
+	}
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if len(h.st.Upserts) != 1 {
+		t.Fatalf("expected one upsert, got %d", len(h.st.Upserts))
+	}
+	if u := h.st.Upserts[0]; !u.KeepPointer || u.LastReviewedCommit != nil {
+		t.Errorf("upsert = %+v, want KeepPointer and no pointer", u)
+	}
+}
+
 func TestTerminalOutcomes(t *testing.T) {
 	cases := []struct {
 		name        string

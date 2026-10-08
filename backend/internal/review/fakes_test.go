@@ -165,6 +165,7 @@ type fakeStore struct {
 	skipState  *store.SkipState
 	lastCommit string
 	hasLast    bool
+	lastErr    error
 	summary    *store.SummaryComment
 	existing   []store.Finding
 	prCost     *int64
@@ -215,6 +216,9 @@ func (f *fakeStore) UpsertPullRequest(_ context.Context, u store.PRUpsert) (int6
 func (f *fakeStore) GetLastReviewedCommit(context.Context, store.PRKey) (string, bool, error) {
 	if err := f.err(); err != nil {
 		return "", false, err
+	}
+	if f.lastErr != nil {
+		return "", false, f.lastErr
 	}
 	return f.lastCommit, f.hasLast, nil
 }

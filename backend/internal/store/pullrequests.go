@@ -27,16 +27,19 @@ type PRUpsert struct {
 	// different slug means the file moved the repo: the row follows.
 	TeamSlug           string
 	LastReviewedCommit *string
-	Author             *string
-	Title              *string
-	OpenedAt           *time.Time
+	// KeepPointer leaves an existing row's pointer as it is: the skip path
+	// could not read the prior one, and passing "" back would NULL it.
+	KeepPointer bool
+	Author      *string
+	Title       *string
+	OpenedAt    *time.Time
 }
 
 // UpsertPullRequest inserts or updates the PR row and returns its id.
 // opened_at is sticky: the first non-NULL value stays. The pointer, author
 // and title are written as given, nil included: the skip paths pass the
-// prior pointer back on purpose. A declined PR that sees a
-// review again was reopened: declined_at is cleared.
+// prior pointer back on purpose (unless KeepPointer). A declined PR that
+// sees a review again was reopened: declined_at is cleared.
 func (s *Store) UpsertPullRequest(ctx context.Context, u PRUpsert) (int64, error) {
 	var id int64
 	err := s.pool.QueryRow(ctx, `
@@ -44,14 +47,14 @@ func (s *Store) UpsertPullRequest(ctx context.Context, u PRUpsert) (int64, error
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (project_key, repo_slug, pr_id) DO UPDATE SET
 			team_slug = EXCLUDED.team_slug,
-			last_reviewed_commit = EXCLUDED.last_reviewed_commit,
+			last_reviewed_commit = CASE WHEN $9 THEN pull_requests.last_reviewed_commit ELSE EXCLUDED.last_reviewed_commit END,
 			author = EXCLUDED.author,
 			title = EXCLUDED.title,
 			opened_at = COALESCE(pull_requests.opened_at, EXCLUDED.opened_at),
 			declined_at = NULL,
 			updated_at = now()
 		RETURNING id`,
-		u.Key.Project, u.Key.Repo, u.Key.PRID, u.TeamSlug, u.LastReviewedCommit, u.Author, u.Title, u.OpenedAt,
+		u.Key.Project, u.Key.Repo, u.Key.PRID, u.TeamSlug, u.LastReviewedCommit, u.Author, u.Title, u.OpenedAt, u.KeepPointer,
 	).Scan(&id)
 	return id, err
 }

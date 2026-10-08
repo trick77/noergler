@@ -511,6 +511,25 @@ func TestPullRequest_ReopenedAfterDeclineStartsFreshButDedups(t *testing.T) {
 	}
 }
 
+// KeepPointer leaves the stored pointer alone; without it nil writes NULL.
+func TestPullRequest_KeepPointer(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	upsert(t, s, key, "a")
+	if _, err := s.UpsertPullRequest(ctx, PRUpsert{Key: key, TeamSlug: "platform", KeepPointer: true}); err != nil {
+		t.Fatal(err)
+	}
+	if c, ok, _ := s.GetLastReviewedCommit(ctx, key); !ok || c != "a" {
+		t.Errorf("pointer = %q %v, want a kept", c, ok)
+	}
+	if _, err := s.UpsertPullRequest(ctx, PRUpsert{Key: key, TeamSlug: "platform"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := s.GetLastReviewedCommit(ctx, key); ok {
+		t.Error("nil without KeepPointer must NULL the pointer")
+	}
+}
+
 func TestSettings_RoundTrip(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
