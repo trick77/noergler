@@ -401,7 +401,12 @@ func parseBlock(m *yaml.Node) (*teamBlock, error) {
 					}
 				case "float":
 					if p := e.floatField(rv, "review", key); p != nil {
-						v = *p
+						// max_pr_cost_usd is the only float: see LoadInstance.
+						if !(*p > 0) {
+							e.add(joinPath("review", key), "Input should be greater than 0")
+						} else {
+							v = *p
+						}
 					}
 				case "string":
 					if p := e.stringField(rv, "review", key); p != nil {

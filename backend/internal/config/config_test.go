@@ -252,6 +252,19 @@ func TestInstance_NegativeMaxCommentsAbortsBoot(t *testing.T) {
 	}
 }
 
+// A cap of 0 reads as "no cap" but skips every auto-review after the first
+// priced run; negative is a typo. Both fail at load.
+func TestInstance_NonPositiveCostCapAbortsBoot(t *testing.T) {
+	for _, bad := range []string{"0", "-1", "NaN"} {
+		e := newEnv(t)
+		e.set("REVIEW_MAX_PR_COST_USD", bad)
+		_, err := e.load()
+		if err == nil || !strings.Contains(err.Error(), "REVIEW_MAX_PR_COST_USD") {
+			t.Errorf("%s: err = %v, want a load failure", bad, err)
+		}
+	}
+}
+
 // A team's blank level overrides an instance level back to the model's
 // balanced one.
 func TestTeams_BlankEffortOverridesToUnset(t *testing.T) {
@@ -475,6 +488,9 @@ func TestTeams_FaultDisablesOnlyThatTeam(t *testing.T) {
 		{"negative max_comments", func(s string) string {
 			return strings.Replace(s, "      max_pr_cost_usd: 8.5\n", "      max_pr_cost_usd: 8.5\n      max_comments: -1\n", 1)
 		}, "review.max_comments: Input should be greater than or equal to 0"},
+		{"zero max_pr_cost_usd", func(s string) string {
+			return strings.Replace(s, "max_pr_cost_usd: 8.5", "max_pr_cost_usd: 0", 1)
+		}, "review.max_pr_cost_usd: Input should be greater than 0"},
 		{"bad int", func(s string) string { return strings.Replace(s, "context_window: 1200000", "context_window: lots", 1) },
 			"inference.context_window: Input should be a valid integer"},
 	}

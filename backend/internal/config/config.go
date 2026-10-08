@@ -483,6 +483,11 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 	if app.Review.MaxComments < 0 {
 		e.errs = append(e.errs, fmt.Sprintf("REVIEW_MAX_COMMENTS: must be zero or a positive integer, got %d", app.Review.MaxComments))
 	}
+	// The cap check is cumulative >= limit: 0 reads as "no cap" but skips
+	// every auto-review after the first priced run. !(v > 0) catches NaN too.
+	if v := app.Review.MaxPRCostUSD; !(v > 0) {
+		e.errs = append(e.errs, fmt.Sprintf("REVIEW_MAX_PR_COST_USD: must be greater than 0, got %v", v))
+	}
 	if len(e.errs) > 0 {
 		return nil, fmt.Errorf("%s", strings.Join(e.errs, "; "))
 	}
