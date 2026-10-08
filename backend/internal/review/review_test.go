@@ -680,6 +680,22 @@ func TestDedupeAgainstExistingFindings(t *testing.T) {
 	}
 }
 
+// Rows stored before validation resolved paths kept the model's b/ prefix;
+// the same finding, now resolved to the shown path, must still match one.
+func TestDedupeResolvesStoredDiffPrefix(t *testing.T) {
+	h := newHarness(t, nil)
+	h.st.existing = []store.Finding{
+		{FilePath: "b/a.go", LineNumber: 2, Severity: "issue", CommentText: "already raised"},
+	}
+	h.llm.review = okResultWith(finding("a.go", 2, "issue", "already raised"))
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if len(h.bb.Inline) != 0 {
+		t.Errorf("inline = %+v, want the repeat dropped", h.bb.Inline)
+	}
+}
+
 func TestSortAndLimit(t *testing.T) {
 	t.Run("issues sort before suggestions, stably", func(t *testing.T) {
 		in := []inference.ReviewFinding{

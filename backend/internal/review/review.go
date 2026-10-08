@@ -369,7 +369,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: verdict lowered %s -> %s after %d dropped finding(s)",
 			prTag, was, reviewSummary.VerdictDecision, len(v.Dropped)))
 	}
-	deduped, repeats := dedupe(v.Kept, existing)
+	deduped, repeats := dedupe(v.Kept, existing, plan.anchors)
 	for _, f := range repeats {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: finding on %s:%d (%s) already posted by an earlier run, not posted again",
 			prTag, f.File, f.Line, f.Severity))
@@ -760,8 +760,9 @@ func (r *Reviewer) validateFindings(ctx context.Context, prTag string, findings 
 }
 
 // dedupe drops findings an earlier run already posted, keyed on file, line
-// and severity. repeats are the dropped ones, for the log.
-func dedupe(findings []inference.ReviewFinding, existing []store.Finding) (out, repeats []inference.ReviewFinding) {
+// and severity. repeats are the dropped ones, for the log. A stored path is
+// resolved like a new one: older rows kept the model's a/ or b/ prefix.
+func dedupe(findings []inference.ReviewFinding, existing []store.Finding, idx diff.AnchorIndex) (out, repeats []inference.ReviewFinding) {
 	type dedupeKey struct {
 		file     string
 		line     int
@@ -769,7 +770,7 @@ func dedupe(findings []inference.ReviewFinding, existing []store.Finding) (out, 
 	}
 	seen := make(map[dedupeKey]bool, len(existing))
 	for _, f := range existing {
-		seen[dedupeKey{f.FilePath, f.LineNumber, f.Severity}] = true
+		seen[dedupeKey{inference.ShownPath(f.FilePath, idx), f.LineNumber, f.Severity}] = true
 	}
 	out = make([]inference.ReviewFinding, 0, len(findings))
 	for _, f := range findings {
