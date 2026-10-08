@@ -199,6 +199,24 @@ func TestDiffFetchFailureIsAnErrorNotASkip(t *testing.T) {
 	}
 }
 
+// A fetch cut by shutdown is no outage: keying the error attempt off a zero
+// SkipReason recorded every pod rollout as a failed run.
+func TestDiffFetchCancelledIsNotAnError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	h := newHarness(t, func(h *harness) {
+		h.bb.prDiffErr = context.Canceled
+		h.bb.onPRDiff = cancel
+	})
+
+	h.r.ReviewPullRequest(ctx, prPayload(webhook.EventOpened), false)
+
+	for _, a := range h.st.Attempts {
+		if a.Outcome == "error" {
+			t.Errorf("attempt = %+v, want no error attempt for a cancelled fetch", a)
+		}
+	}
+}
+
 // The attempt row is a record of what happened; it must never change what
 // happened. A store that refuses every write still produces a full review.
 func TestAttemptWriteFailsOpen(t *testing.T) {

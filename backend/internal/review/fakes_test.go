@@ -34,6 +34,7 @@ type fakeBitbucket struct {
 
 	prDiff     string
 	prDiffErr  error
+	onPRDiff   func() // runs inside FetchPRDiff, e.g. a shutdown landing mid-fetch
 	commitDiff string
 	commitErr  error
 	changes    []string
@@ -73,6 +74,9 @@ func newFakeBitbucket() *fakeBitbucket {
 func (f *fakeBitbucket) BotUsername() string { return f.bot }
 
 func (f *fakeBitbucket) FetchPRDiff(_ context.Context, _, _ string, _, _ int) (string, error) {
+	if f.onPRDiff != nil {
+		f.onPRDiff()
+	}
 	return f.prDiff, f.prDiffErr
 }
 
