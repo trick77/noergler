@@ -124,19 +124,24 @@ func (r *Runtime) UpdateSettings(merge func(store.TeamSettings) store.TeamSettin
 			return err
 		}
 	}
-	next.Review.AutoReviewAuthors = s.AutoReviewAuthors
-	next.Review.IgnoreAuthors = s.IgnoreAuthors
-	next.Review.ExcludeRepos = s.ExcludeRepos
+	applySettings(&next, s)
 	r.team.Store(&next)
 	r.Reviewer.SetAuthorLists(s.AutoReviewAuthors, s.IgnoreAuthors)
 	return nil
 }
 
-// settingsOf is a snapshot's three lists.
+// settingsOf and applySettings are the one mapping between a team's three
+// lists and the DB row, in each direction.
 func settingsOf(t *config.Team) store.TeamSettings {
 	return store.TeamSettings{
 		AutoReviewAuthors: t.Review.AutoReviewAuthors,
 		IgnoreAuthors:     t.Review.IgnoreAuthors,
 		ExcludeRepos:      t.Review.ExcludeRepos,
 	}
+}
+
+func applySettings(t *config.Team, s store.TeamSettings) {
+	t.Review.AutoReviewAuthors = s.AutoReviewAuthors
+	t.Review.IgnoreAuthors = s.IgnoreAuthors
+	t.Review.ExcludeRepos = s.ExcludeRepos
 }

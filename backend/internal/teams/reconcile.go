@@ -115,19 +115,12 @@ func reconcileClaims(ctx context.Context, db ClaimStore, slug string, team *conf
 // fault, not one team's.
 func reconcileSettings(ctx context.Context, db ClaimStore, slug string, team *config.Team, settings map[string]store.TeamSettings) error {
 	if s, known := settings[slug]; known {
-		team.Review.AutoReviewAuthors = s.AutoReviewAuthors
-		team.Review.IgnoreAuthors = s.IgnoreAuthors
-		team.Review.ExcludeRepos = s.ExcludeRepos
+		applySettings(team, s)
 		return nil
 	}
-	r := team.Review
-	if len(team.Projects) == 0 && len(r.AutoReviewAuthors) == 0 && len(r.IgnoreAuthors) == 0 && len(r.ExcludeRepos) == 0 {
+	s := settingsOf(team)
+	if len(team.Projects) == 0 && len(s.AutoReviewAuthors) == 0 && len(s.IgnoreAuthors) == 0 && len(s.ExcludeRepos) == 0 {
 		return nil
-	}
-	s := store.TeamSettings{
-		AutoReviewAuthors: r.AutoReviewAuthors,
-		IgnoreAuthors:     r.IgnoreAuthors,
-		ExcludeRepos:      r.ExcludeRepos,
 	}
 	if err := db.PutSettings(ctx, slug, s, seededBy); err != nil {
 		return fmt.Errorf("seed settings for team %s: %w", slug, err)

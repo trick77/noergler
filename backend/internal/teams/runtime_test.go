@@ -42,7 +42,7 @@ func TestRuntime_SnapshotIsRaceFreeUnderConcurrentWrites(_ *testing.T) {
 		defer wg.Done()
 		for j := 0; j < 200; j++ {
 			rt.ApplyClaims([]config.ProjectScope{{Key: "OTHER"}})
-			applySettings(rt, store.TeamSettings{ExcludeRepos: []string{"*-test"}})
+			setSettings(rt, store.TeamSettings{ExcludeRepos: []string{"*-test"}})
 		}
 	}()
 	wg.Wait()
@@ -80,7 +80,7 @@ func TestRuntime_UpdateSettingsMirrorsAuthorListsOntoReviewer(t *testing.T) {
 		t.Fatal("alice is not in the initial allow list")
 	}
 
-	applySettings(rt, store.TeamSettings{
+	setSettings(rt, store.TeamSettings{
 		AutoReviewAuthors: []string{"alice"},
 		IgnoreAuthors:     []string{"ci-bot"},
 		ExcludeRepos:      []string{"*-test"},
@@ -104,7 +104,7 @@ func TestRuntime_SettingsRoundTripsTheSnapshot(t *testing.T) {
 		IgnoreAuthors:     []string{"ci-bot"},
 		ExcludeRepos:      []string{"*-infra"},
 	}
-	applySettings(rt, want)
+	setSettings(rt, want)
 	var got store.TeamSettings
 	_ = rt.UpdateSettings(func(cur store.TeamSettings) store.TeamSettings { got = cur; return cur }, nil)
 	if !reflect.DeepEqual(got, want) {
@@ -169,7 +169,7 @@ func TestRuntime_FailedPersistDoesNotSwap(t *testing.T) {
 	}
 }
 
-func applySettings(rt *Runtime, s store.TeamSettings) {
+func setSettings(rt *Runtime, s store.TeamSettings) {
 	_ = rt.UpdateSettings(func(store.TeamSettings) store.TeamSettings { return s }, nil)
 }
 
