@@ -247,20 +247,3 @@ const (
 	PlaceholderTicketContext          = "{ticket_context}"
 	PlaceholderComplianceInstructions = "{compliance_instructions}"
 )
-
-// RenderReviewPrompt substitutes the rendered blocks into the template.
-//
-// One pass, so replacement text is never rescanned: PR file content spelling
-// "{previously_posted_findings}" stays that text rather than being expanded
-// into the real block. A sequential substitution would only shift which block
-// is exposed; a single pass removes the ordering question entirely.
-//
-// Never text/template: file content contains JSON braces.
-func RenderReviewPrompt(template, files, cumulative, previouslyPosted, repoInstructions string) string {
-	return strings.NewReplacer(
-		PlaceholderFiles, files,
-		PlaceholderCumulativePRDiff, cumulative,
-		PlaceholderPreviouslyPosted, previouslyPosted,
-		PlaceholderRepoInstructions, repoInstructions,
-	).Replace(template)
-}

@@ -116,7 +116,8 @@ type CountFunc func(string) int
 // with {files} last would protect file content from being rescanned but would
 // leave an earlier block, a ticket description or an AGENTS.md containing
 // "{files}", expanded into the real file group. One pass protects every block
-// equally, and PromptInjectionLiteral pins it.
+// equally; TestPlaceholderInABlockStaysLiteral and injection_test.go pin it.
+// Never text/template: file content contains JSON braces.
 func AssembleReviewPrompt(req AssembleRequest, count CountFunc) AssembledPrompt {
 	ticketContext := req.TicketContext
 	if ticketContext == "" {
