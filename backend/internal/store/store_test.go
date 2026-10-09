@@ -537,6 +537,62 @@ func TestPullRequest_ReopenedAfterDeclineStartsFreshButDedups(t *testing.T) {
 	}
 }
 
+// The decline's rollup stamps riptide_emitted_at. A reopened PR's later merge
+// must emit again, cumulative, or its outcome and spend never reach riptide;
+// the reopen need not write a PR row (its review may be skipped or fail).
+func TestRollup_MergeAfterDeclineEmitsAgain(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	id := upsert(t, s, key, "a")
+	run(t, s, id, "a", nil, "m")
+	if err := s.MarkDeclined(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	if snap, _ := s.ClaimRollup(ctx, key, RollupFinal{}); snap == nil || snap.Runs != 1 {
+		t.Fatalf("declined rollup = %+v, want 1 run", snap)
+	}
+	// Reopened: a billed mention run lands, but no review upserts the row.
+	run(t, s, id, "b", nil, "m")
+	merged := func() *RollupSnapshot {
+		t.Helper()
+		if err := s.MarkMerged(ctx, key); err != nil {
+			t.Fatal(err)
+		}
+		snap, err := s.ClaimRollup(ctx, key, RollupFinal{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return snap
+	}
+	if snap := merged(); snap == nil || snap.Runs != 2 {
+		t.Fatalf("merged rollup after reopen = %+v, want 2 runs (cumulative)", snap)
+	}
+	if again := merged(); again != nil {
+		t.Error("a redelivered pr:merged emitted twice")
+	}
+}
+
+// Bitbucket deletes a declined PR without reopening it: the decline stays
+// the PR's only rollup.
+func TestRollup_DeleteAfterDeclineEmitsNothing(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	id := upsert(t, s, key, "a")
+	run(t, s, id, "a", nil, "m")
+	if err := s.MarkDeclined(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	if snap, _ := s.ClaimRollup(ctx, key, RollupFinal{}); snap == nil {
+		t.Fatal("declined rollup missing")
+	}
+	if err := s.MarkDeleted(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	if snap, _ := s.ClaimRollup(ctx, key, RollupFinal{}); snap != nil {
+		t.Errorf("deleted after decline emitted %+v", snap)
+	}
+}
+
 // The daily queries bucket with date_trunc('day'), which uses the session
 // TimeZone. The session is pinned to UTC, so a server configured for another
 // zone cannot shift every bucket a day away from its label.

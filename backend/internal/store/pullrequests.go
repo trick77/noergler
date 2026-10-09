@@ -162,9 +162,14 @@ func (s *Store) Reactivate(ctx context.Context, k PRKey) error {
 		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3`, k)
 }
 
-// MarkMerged stamps merged_at once.
+// MarkMerged stamps merged_at once. The first merge also clears
+// riptide_emitted_at: set before a merge, it is a decline's, and Bitbucket
+// cannot merge a declined PR, so the PR was reopened and its merge emits a
+// second, cumulative rollup (riptide reads the newest per PR). Hanging this
+// on the reopen's review missed every path that writes no PR row. A
+// redelivered pr:merged matches nothing and keeps the stamp.
 func (s *Store) MarkMerged(ctx context.Context, k PRKey) error {
-	return s.exec(ctx, `UPDATE pull_requests SET merged_at = now(), updated_at = now()
+	return s.exec(ctx, `UPDATE pull_requests SET merged_at = now(), riptide_emitted_at = NULL, updated_at = now()
 		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3 AND merged_at IS NULL`, k)
 }
 
