@@ -66,7 +66,11 @@ export function RunsPage() {
       <div className={page}>
         <div className={column}>
           <h2 className={h2}>Runs</h2>
-          {failed ? <Failed what="the runs feed" /> : <div className="skeleton h-24 rounded-ui" />}
+          {failed ? (
+            <Failed what="the runs feed" />
+          ) : (
+            <div className="skeleton h-24 rounded-ui" />
+          )}
         </div>
       </div>
     );
@@ -87,9 +91,9 @@ export function RunsPage() {
       <div className={column}>
         <h2 className={h2}>Runs</h2>
         <p className={lede}>
-          What noergler did with every PR this month, including the ones it decided not to review,
-          and the latest 50 runs below. Skipped means it never asked the model. Failed means it
-          asked and something went wrong.
+          What noergler did with every PR this month, including the ones it
+          decided not to review, and the latest 50 runs below. Skipped means it
+          never asked the model. Failed means it asked and something went wrong.
         </p>
 
         {/* A dash, not a zero, until the counts are read, failed or still
@@ -127,7 +131,9 @@ export function RunsPage() {
         >
           {data.runs.length === 0 ? (
             <Empty>
-              {filter === "" ? "No runs recorded yet." : `No ${filter} runs recorded yet.`}
+              {filter === ""
+                ? "No runs recorded yet."
+                : `No ${filter} runs recorded yet.`}
             </Empty>
           ) : (
             <div
@@ -165,7 +171,11 @@ export function RunsPage() {
                             into three or four lines. */}
                         <Pill
                           tone={outcomeTone(r.outcome)}
-                          title={r.outcome !== "ok" ? r.reason_label || r.reason : undefined}
+                          title={
+                            r.outcome !== "ok"
+                              ? r.reason_label || r.reason
+                              : undefined
+                          }
                         >
                           {outcomeWord(r.outcome, r.reason)}
                         </Pill>
@@ -174,12 +184,17 @@ export function RunsPage() {
                       <td className={tdNum}>{duration(r.elapsed_ms)}</td>
                       <td
                         className={
-                          tdNum + (r.cost_usd === null && r.outcome === "ok" ? " text-faint italic" : "")
+                          tdNum +
+                          (r.cost_usd === null && r.outcome === "ok"
+                            ? " text-faint italic"
+                            : "")
                         }
                       >
                         {r.outcome === "ok" ? money(r.cost_usd) : "—"}
                       </td>
-                      <td className={tdNum + " text-faint"}>{ago(r.created_at, now)}</td>
+                      <td className={tdNum + " text-faint"}>
+                        {ago(r.created_at, now)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

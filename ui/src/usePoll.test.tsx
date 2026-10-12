@@ -46,7 +46,8 @@ describe("usePoll", () => {
       vi.fn(async (_url: string, init?: { signal?: AbortSignal }) => {
         calls += 1;
         await slow;
-        if (init?.signal?.aborted) throw Object.assign(new Error("aborted"), { name: "AbortError" });
+        if (init?.signal?.aborted)
+          throw Object.assign(new Error("aborted"), { name: "AbortError" });
         return { ok: true, status: 200, json: async () => ({ n: calls }) };
       }),
     );
@@ -100,7 +101,8 @@ describe("usePoll", () => {
       "fetch",
       vi.fn(async () => {
         calls += 1;
-        if (calls === 1) return { ok: true, status: 200, json: async () => ({ n: 1 }) };
+        if (calls === 1)
+          return { ok: true, status: 200, json: async () => ({ n: 1 }) };
         return { ok: false, status: 500, json: async () => ({}) };
       }),
     );
@@ -126,7 +128,8 @@ describe("usePoll", () => {
       "fetch",
       vi.fn(async () => {
         calls += 1;
-        if (calls === 1) return { ok: true, status: 200, json: async () => ({ n: 1 }) };
+        if (calls === 1)
+          return { ok: true, status: 200, json: async () => ({ n: 1 }) };
         await held;
         return { ok: true, status: 200, json: async () => ({ n: 2 }) };
       }),
@@ -148,7 +151,11 @@ describe("usePoll", () => {
   it("does not mark a plain refresh stale", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ n: 7 }) })),
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ n: 7 }),
+      })),
     );
 
     render(<PathProbe path="runs" />);

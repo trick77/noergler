@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "format": "prettier --write 'src/**/*.{ts,tsx,css}' '*.ts'",
+    "format:check": "prettier --check 'src/**/*.{ts,tsx,css}' '*.ts'",
     "test": "vitest run"
   },
   "dependencies": {
@@ -19,6 +21,7 @@
     "@vitejs/plugin-react": "^6.0.5",
     "@vitest/coverage-v8": "^5.0.0",
     "jsdom": "^30.0.1",
+    "prettier": "3.9.9",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.2.1",

@@ -67,7 +67,10 @@ export function Pill({
         toneClass[tone]
       }
     >
-      <span aria-hidden className={"h-1.5 w-1.5 rounded-full " + dotClass[tone]} />
+      <span
+        aria-hidden
+        className={"h-1.5 w-1.5 rounded-full " + dotClass[tone]}
+      />
       {children}
     </span>
   );
@@ -141,7 +144,9 @@ export function Card({
 export function Tiles({ children }: { children: ReactNode }) {
   return (
     <div className="overflow-hidden rounded-ui border border-border bg-panel">
-      <div className="-mr-px -mb-px grid grid-cols-2 sm:grid-cols-4">{children}</div>
+      <div className="-mr-px -mb-px grid grid-cols-2 sm:grid-cols-4">
+        {children}
+      </div>
     </div>
   );
 }
@@ -159,10 +164,16 @@ export function Tile({
 }) {
   return (
     <div className="border-r border-b border-border px-3.5 py-3">
-      <div className="text-[11px] font-medium tracking-[.12em] text-faint uppercase">{label}</div>
+      <div className="text-[11px] font-medium tracking-[.12em] text-faint uppercase">
+        {label}
+      </div>
       <div className="mt-1 font-serif text-[21px] leading-tight tabular-nums text-ink sm:text-[26px]">
         {value}
-        {note && <small className="ml-1.5 font-sans text-[12.5px] text-muted">{note}</small>}
+        {note && (
+          <small className="ml-1.5 font-sans text-[12.5px] text-muted">
+            {note}
+          </small>
+        )}
       </div>
       {children}
     </div>
@@ -175,7 +186,8 @@ export const th =
 export const thNum = th + " text-right";
 export const td = "border-b border-border-soft py-1.5 pr-2.5 text-ink-dim";
 // nowrap: "12m ago" or "1.2s" split over two lines reads as two values.
-export const tdNum = td + " text-right font-mono tabular-nums text-muted whitespace-nowrap";
+export const tdNum =
+  td + " text-right font-mono tabular-nums text-muted whitespace-nowrap";
 export const tdTag = td + " font-mono text-[12.5px] whitespace-nowrap";
 
 /** Empty is what a panel says when there is nothing, which is a real state
@@ -191,7 +203,8 @@ export function Note({ children }: { children: ReactNode }) {
 export function Failed({ what }: { what: string }) {
   return (
     <div className="rounded-ui border border-border bg-panel px-3.5 py-3 text-[13.5px] text-muted">
-      Could not load {what}. The instance may be starting, or the database may be unreachable.
+      Could not load {what}. The instance may be starting, or the database may
+      be unreachable.
     </div>
   );
 }

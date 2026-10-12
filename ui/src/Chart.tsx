@@ -60,15 +60,21 @@ export function Chart({
 }: ChartProps) {
   const clipId = useId();
   const bare = ticks === undefined;
-  const box = bare
-    ? { l: 0, r: 0, t: pad, b: pad }
-    : PAD;
+  const box = bare ? { l: 0, r: 0, t: pad, b: pad } : PAD;
 
   const plotW = width - box.l - box.r;
   const plotH = height - box.t - box.b;
   const n = series[0]?.values.length ?? 0;
   if (n === 0 || plotW <= 0 || plotH <= 0) {
-    return <svg className="chart" width={width} height={height} role="img" aria-label={label} />;
+    return (
+      <svg
+        className="chart"
+        width={width}
+        height={height}
+        role="img"
+        aria-label={label}
+      />
+    );
   }
 
   const stacked = mark === "stack" || mark === "bar";
@@ -86,10 +92,13 @@ export function Chart({
   // plot; a line runs endpoint to endpoint so it spans the full width.
   const band = plotW / n;
   const xAt = (i: number) =>
-    mark === "bar" ? box.l + band * (i + 0.5) : box.l + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+    mark === "bar"
+      ? box.l + band * (i + 0.5)
+      : box.l + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
   const yAt = (v: number) => box.t + plotH - ((v - dataMin) / span) * plotH;
 
-  const linePath = (vals: number[]) => vals.map((v, i) => `${xAt(i)},${yAt(v)}`).join(" L ");
+  const linePath = (vals: number[]) =>
+    vals.map((v, i) => `${xAt(i)},${yAt(v)}`).join(" L ");
 
   return (
     <svg
@@ -156,7 +165,9 @@ export function Chart({
                     const yBot = yAt(base);
                     // The topmost visible segment gets the rounded end; a
                     // 2px gap keeps two segments from reading as one shape.
-                    const isTop = series.slice(si + 1).every((o) => !o.values[i]);
+                    const isTop = series
+                      .slice(si + 1)
+                      .every((o) => !o.values[i]);
                     return (
                       <rect
                         key={i}

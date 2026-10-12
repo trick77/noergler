@@ -18,7 +18,9 @@ const TITLES: Record<Page, string> = {
  *  pages sit in the header as a top nav, which is where ../rongo's rail rows
  *  would have been. */
 export default function App() {
-  const [route, setRoute] = useState<Page>(() => pageFromPath(window.location.pathname));
+  const [route, setRoute] = useState<Page>(() =>
+    pageFromPath(window.location.pathname),
+  );
 
   useEffect(() => {
     const onPop = () => setRoute(pageFromPath(window.location.pathname));

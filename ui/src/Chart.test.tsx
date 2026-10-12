@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import { Chart, Sparkline } from "./Chart";
 import { _days, _niceTicks, _windowTitle } from "./MetricsPage";
 
-const s1 = (values: number[]) => [{ id: "a", name: "a", color: "var(--color-s1)", values }];
+const s1 = (values: number[]) => [
+  { id: "a", name: "a", color: "var(--color-s1)", values },
+];
 
 function svg(el: HTMLElement) {
   const node = el.querySelector("svg");
@@ -19,8 +21,18 @@ describe("Chart", () => {
     render(
       <Chart
         series={[
-          { id: "payments", name: "Payments", color: "var(--color-s1)", values: [1, 2] },
-          { id: "payments-eu", name: "Payments", color: "var(--color-s2)", values: [2, 1] },
+          {
+            id: "payments",
+            name: "Payments",
+            color: "var(--color-s1)",
+            values: [1, 2],
+          },
+          {
+            id: "payments-eu",
+            name: "Payments",
+            color: "var(--color-s2)",
+            values: [2, 1],
+          },
         ]}
         width={100}
         height={40}
@@ -33,7 +45,9 @@ describe("Chart", () => {
   });
 
   it("renders nothing drawable for an empty series rather than throwing", () => {
-    const { container } = render(<Chart series={[]} width={100} height={40} label="empty" />);
+    const { container } = render(
+      <Chart series={[]} width={100} height={40} label="empty" />,
+    );
     expect(svg(container).querySelectorAll("path")).toHaveLength(0);
   });
 
@@ -96,16 +110,25 @@ describe("Chart", () => {
   // code is how a palette stops being the one that was validated.
   it("never invents a hue", () => {
     const { container } = render(
-      <Chart series={s1([1, 2])} width={100} height={40} mark="area" label="x" />,
+      <Chart
+        series={s1([1, 2])}
+        width={100}
+        height={40}
+        mark="area"
+        label="x"
+      />,
     );
     for (const path of Array.from(svg(container).querySelectorAll("path"))) {
-      const paint = path.getAttribute("fill") ?? path.getAttribute("stroke") ?? "";
+      const paint =
+        path.getAttribute("fill") ?? path.getAttribute("stroke") ?? "";
       expect(paint.startsWith("#")).toBe(false);
     }
   });
 
   it("renders a sparkline with no axis or grid", () => {
-    const { container } = render(<Sparkline values={[1, 3, 2]} label="spark" />);
+    const { container } = render(
+      <Sparkline values={[1, 3, 2]} label="spark" />,
+    );
     expect(svg(container).querySelectorAll("text")).toHaveLength(0);
     expect(svg(container).querySelectorAll("line")).toHaveLength(0);
   });
@@ -131,15 +154,23 @@ describe("days", () => {
 
   // A month is 28 to 31 days, so nothing may assume a fixed width.
   it("handles months of every length, February included", () => {
-    expect(_days("2026-02-01T00:00:00+02:00", "2026-03-01T00:00:00+02:00")).toHaveLength(28);
-    expect(_days("2028-02-01T00:00:00+02:00", "2028-03-01T00:00:00+02:00")).toHaveLength(29);
-    expect(_days("2026-07-01T00:00:00+02:00", "2026-08-01T00:00:00+02:00")).toHaveLength(31);
+    expect(
+      _days("2026-02-01T00:00:00+02:00", "2026-03-01T00:00:00+02:00"),
+    ).toHaveLength(28);
+    expect(
+      _days("2028-02-01T00:00:00+02:00", "2028-03-01T00:00:00+02:00"),
+    ).toHaveLength(29);
+    expect(
+      _days("2026-07-01T00:00:00+02:00", "2026-08-01T00:00:00+02:00"),
+    ).toHaveLength(31);
   });
 
   // The first of the month, mid-month: the window starts on the 1st and
   // stops at today rather than running to a month that has not happened.
   it("is empty when the window has not started", () => {
-    expect(_days("2026-09-01T00:00:00+02:00", "2026-09-01T00:00:00+02:00")).toHaveLength(0);
+    expect(
+      _days("2026-09-01T00:00:00+02:00", "2026-09-01T00:00:00+02:00"),
+    ).toHaveLength(0);
   });
 });
 
@@ -176,7 +207,13 @@ describe("the server's month, whatever the viewer's zone", () => {
 });
 
 describe("windowTitle", () => {
-  const base = { totals: {}, by_team: [], daily: [], daily_attempts: [], breakdown: [] };
+  const base = {
+    totals: {},
+    by_team: [],
+    daily: [],
+    daily_attempts: [],
+    breakdown: [],
+  };
 
   it("names the month for the default window", () => {
     const m = {

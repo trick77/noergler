@@ -1,6 +1,5 @@
-# Built with the REPO ROOT as context, not backend/: the image also ships
-# prompts/, which lives at the root beside backend/, and ui/, which the first
-# stage builds. Hence the backend/ prefix on every source path here.
+# Built with the repo root as context: the image also ships prompts/ and
+# builds ui/, both beside backend/. Hence the backend/ prefix on Go paths.
 
 # The dashboard SPA, built first: the Go stage embeds its output, so it has
 # to exist on disk before `go build` reads it.
@@ -20,12 +19,12 @@ COPY backend/ ./
 # is /build/web/dist. Copied AFTER the source, or the COPY above would put
 # the tracked .gitkeep back over it.
 COPY --from=ui /backend/web/dist ./web/dist
-ARG NOERGLER_VERSION=dev
-ARG NOERGLER_COMMIT=
+# ship release passes VERSION.
+ARG VERSION=dev
 # Static binary, no cgo: the tokenizer vocabulary is compiled in, so the
 # image needs no runtime besides the CA bundle.
 RUN CGO_ENABLED=0 go build -trimpath \
-    -ldflags "-s -w -X github.com/trick77/noergler/internal/buildinfo.version=${NOERGLER_VERSION} -X github.com/trick77/noergler/internal/buildinfo.commit=${NOERGLER_COMMIT}" \
+    -ldflags "-s -w -X github.com/trick77/noergler/internal/buildinfo.version=${VERSION}" \
     -o /out/noergler ./cmd/noergler
 
 FROM alpine:3.23
@@ -38,8 +37,8 @@ COPY --from=builder /out/noergler /noergler
 COPY prompts/ /app/prompts/
 RUN adduser -D -u 1000 noergler && chown -R noergler:noergler /app
 USER noergler
-ARG NOERGLER_VERSION=dev
-ENV NOERGLER_VERSION=${NOERGLER_VERSION}
+ARG VERSION=dev
+ENV NOERGLER_VERSION=${VERSION}
 # Soft heap ceiling under the pod limit (2 Gi in prod): the runtime collects
 # harder as it approaches this instead of letting a 1M-token prompt push RSS
 # into the limit. Raise the pod limit together with this.

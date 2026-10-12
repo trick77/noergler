@@ -11,7 +11,9 @@ import { Card, Note, column, h2, lede, page } from "./ui";
 function Q({ q, children }: { q: string; children: React.ReactNode }) {
   return (
     <Card title={q}>
-      <div className="space-y-2.5 text-[13.5px] leading-relaxed text-ink-dim">{children}</div>
+      <div className="space-y-2.5 text-[13.5px] leading-relaxed text-ink-dim">
+        {children}
+      </div>
     </Card>
   );
 }
@@ -34,8 +36,14 @@ const SKIPS: { label: string; why: string }[] = [
     label: "Author not in auto-review authors",
     why: "Ask your team admin to add you, or @mention the bot on the PR.",
   },
-  { label: "Ignored author", why: "Usually a bot account. Ask your team admin if it is not." },
-  { label: "Branch opt-out keyword", why: "Your branch name contains it. See below." },
+  {
+    label: "Ignored author",
+    why: "Usually a bot account. Ask your team admin if it is not.",
+  },
+  {
+    label: "Branch opt-out keyword",
+    why: "Your branch name contains it. See below.",
+  },
   {
     label: "PR ignored (summary comment removed)",
     why: "Somebody deleted the summary comment. Nothing brings it back on this PR.",
@@ -47,7 +55,10 @@ const SKIPS: { label: string; why: string }[] = [
   },
   { label: "Empty diff", why: "Bitbucket reports no changes." },
   { label: "HEAD unchanged since last review", why: "Push something." },
-  { label: "Diff too large", why: "Only if your admin set a diff cap. Off by default." },
+  {
+    label: "Diff too large",
+    why: "Only if your admin set a diff cap. Off by default.",
+  },
 ];
 
 export function FaqPage() {
@@ -56,14 +67,14 @@ export function FaqPage() {
       <div className={column}>
         <h2 className={h2}>FAQ</h2>
         <p className={lede}>
-          Why noergler did or did not review your pull request. Defaults below; your team may have
-          changed them.
+          Why noergler did or did not review your pull request. Defaults below;
+          your team may have changed them.
         </p>
 
         <Q q="Why wasn't my PR reviewed?">
           <p>
-            Open <strong>Runs</strong>, filter to Skipped or Failed, and find your PR. The reason is
-            next to the outcome. What each one means:
+            Open <strong>Runs</strong>, filter to Skipped or Failed, and find
+            your PR. The reason is next to the outcome. What each one means:
           </p>
           <ul className="mt-1 space-y-1.5">
             {SKIPS.map((s) => (
@@ -73,21 +84,25 @@ export function FaqPage() {
               </li>
             ))}
           </ul>
-          <Note>Skipped means it never asked the model. Failed means it asked and something broke.</Note>
+          <Note>
+            Skipped means it never asked the model. Failed means it asked and
+            something broke.
+          </Note>
         </Q>
 
         <Q q="AGENTS.md">
           <p>
-            It is what the review checks your code against: the conventions and constraints a new
-            reviewer on your team would have to be told. Put it at the repo root.
+            It is what the review checks your code against: the conventions and
+            constraints a new reviewer on your team would have to be told. Put
+            it at the repo root.
           </p>
           <p>
-            No AGENTS.md, no review. The summary comment says so rather than staying silent, so an
-            unreviewed PR is never a mystery.
+            No AGENTS.md, no review. The summary comment says so rather than
+            staying silent, so an unreviewed PR is never a mystery.
           </p>
           <p>
-            Keep it short. The summary starts warning well before the size limit, and past the limit
-            reviews stop entirely.
+            Keep it short. The summary starts warning well before the size
+            limit, and past the limit reviews stop entirely.
           </p>
         </Q>
 
@@ -97,59 +112,64 @@ export function FaqPage() {
             <Code>feature/noergloff-spike</Code> is never auto-reviewed.
           </p>
           <p>
-            On a PR that is already open, delete noergler's summary comment instead. It stays away
-            after that, and nothing brings it back on that PR.
+            On a PR that is already open, delete noergler's summary comment
+            instead. It stays away after that, and nothing brings it back on
+            that PR.
           </p>
         </Q>
 
         <Q q="How do I ask noergler something?">
           <p>
-            Mention the bot by its Bitbucket username in a PR comment. Ask a question and it
-            answers; ask for a review and it runs one.
+            Mention the bot by its Bitbucket username in a PR comment. Ask a
+            question and it answers; ask for a review and it runs one.
           </p>
           <p>
-            Mentioning it overrides the auto-review list and the cost cap, so it works on PRs that
-            would never be reviewed on their own.
+            Mentioning it overrides the auto-review list and the cost cap, so it
+            works on PRs that would never be reviewed on their own.
           </p>
         </Q>
 
         <Q q="Why did the second review say less than the first?">
           <p>
-            A new commit is reviewed against the last reviewed commit, not the whole PR, and
-            findings already posted are not repeated.
+            A new commit is reviewed against the last reviewed commit, not the
+            whole PR, and findings already posted are not repeated.
           </p>
           <p>Reopening a declined PR starts over from scratch.</p>
         </Q>
 
         <Q q="Why did reviews stop halfway through my PR?">
           <p>
-            The PR hit its cost cap; the running total is on the summary comment. Mention the bot to
-            review anyway.
+            The PR hit its cost cap; the running total is on the summary
+            comment. Mention the bot to review anyway.
           </p>
         </Q>
 
         <Q q="Which files get reviewed?">
           <p>
-            Source files that changed in the PR. Lockfiles, vendored directories, generated output
-            and binaries are skipped.
+            Source files that changed in the PR. Lockfiles, vendored
+            directories, generated output and binaries are skipped.
           </p>
           <p>
-            Your team can also exclude whole repos by name — <Code>*-infra</Code> by default. Those
-            never get reviewed, even though the webhook still fires for them.
+            Your team can also exclude whole repos by name —{" "}
+            <Code>*-infra</Code> by default. Those never get reviewed, even
+            though the webhook still fires for them.
           </p>
         </Q>
 
         <Q q="Where is the API?">
           <p>
-            <a href="/api/docs" className="text-ink underline hover:no-underline">
+            <a
+              href="/api/docs"
+              className="text-ink underline hover:no-underline"
+            >
               /api/docs
             </a>
-            . Claim and release repos, and change the author lists, without going through your
-            noergler admin.
+            . Claim and release repos, and change the author lists, without
+            going through your noergler admin.
           </p>
           <p>
-            You need your team's webhook secret, which the admin has. Claiming also needs your own
-            Bitbucket token with project admin.
+            You need your team's webhook secret, which the admin has. Claiming
+            also needs your own Bitbucket token with project admin.
           </p>
         </Q>
       </div>

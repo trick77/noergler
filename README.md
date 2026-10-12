@@ -82,7 +82,7 @@ On every `pr:from_ref_updated` the existing comment is updated in place rather t
    Or manually. `migrate` is a separate step and never runs from `serve`:
 
    ```bash
-   docker build -t noergler -f backend/Containerfile .
+   docker build -t noergler -f Containerfile .
    docker run --rm --env-file .env noergler migrate
    docker run -p 8080:8080 --env-file .env \
      -e TEAMS_CONFIG=/app/teams.yaml \
@@ -424,14 +424,12 @@ root:
 ./scripts/smoke.sh      # boots serve, replays a signed webhook, reports what was posted
 ```
 
-Coverage floor and per-PR patch coverage:
+The gate (build, lint, tests, coverage floor and patch coverage), configured in
+`ship.yaml` and run by [ship](https://github.com/trick77/ship):
 
 ```bash
-cd backend
-go test -race -covermode=atomic -coverpkg=./... -coverprofile=../coverage/backend.out ./...
-go run github.com/boumenot/gocover-cobertura@v1.5.0 < ../coverage/backend.out > ../coverage/backend.xml
-cd ..
-./scripts/coverage-gate.sh backend
+make hooks   # once per clone: the pre-push hook runs the gate
+make check   # the gate by hand
 ```
 
 CI runs the same on every pull request.
@@ -495,7 +493,7 @@ backend/
 prompts/
   review.txt           # review prompt template
   mention.txt          # mention Q&A prompt template
-scripts/               # smoke and coverage scripts (outside the module)
+scripts/               # smoke script and fakes (outside the module)
 http/                  # IntelliJ HTTP client requests for the team self-service
 archive/               # the previous implementation, kept for reference
 ```

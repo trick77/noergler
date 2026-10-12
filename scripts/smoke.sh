@@ -22,7 +22,7 @@ trap cleanup EXIT
 go build -C backend -o "$tmp/noergler" ./cmd/noergler
 # By file, not by package: scripts/ is outside the module now, so `./scripts/fakes`
 # finds no go.mod on a fresh clone. It is a single stdlib-only file, which go
-# builds without a module, the same way scripts/strip-comment-lines.go runs.
+# builds without a module.
 go build -o "$tmp/fakes" scripts/fakes/main.go
 
 # serve now checks Bitbucket and Jira at startup, so both have to answer.
