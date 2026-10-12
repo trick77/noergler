@@ -13,7 +13,7 @@ root.** Go commands run from `backend/`, scripts and `make` from the root.
 - Commit subjects + PR titles: Go style `area: what` (`review: …`, `store: …`), gated by ship; release notes list them by area.
 - Merge ships nothing: `gh workflow run Release` → tag, image, GitHub-hosted runners only, never a laptop.
 - `./scripts/smoke.sh` boots `serve` against `scripts/fakes`.
-No web framework, no ORM, no logging library in the Go module. Do not add
+No web framework, no ORM, no logging library beyond ship's kit. Do not add
 one. The dashboard SPA is `ui/` (React + Vite + Tailwind); `make fe-build`
 writes it into `backend/web/dist`, which `//go:embed` reads.
 
