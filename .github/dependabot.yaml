@@ -44,10 +44,10 @@ updates:
       prettier:
         patterns: ["prettier"]
       # A new rule or recommended-set change can fail the gate's lint: its own
-      # PR, findings fixed there. typescript-eslint and @eslint/js track
-      # eslint's major.
+      # PR, findings fixed there. typescript-eslint, @eslint/js and the
+      # eslint-config-*/eslint-plugin-* packages track eslint's major.
       eslint:
-        patterns: ["eslint", "typescript-eslint", "eslint-config-prettier", "@eslint/*"]
+        patterns: ["eslint", "eslint-*", "typescript-eslint", "@eslint/*"]
       npm-non-major:
         patterns:
           - "*"
