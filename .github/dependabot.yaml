@@ -91,6 +91,29 @@ updates:
         update-types:
           - major
 
+  # Images the compose files pin by tag.
+  - package-ecosystem: docker-compose
+    directory: /
+    commit-message: { prefix: deps }   # Go style: "deps: bump …"
+    schedule:
+      interval: weekly
+      day: sunday
+      time: "07:00"
+      timezone: Europe/Zurich
+    open-pull-requests-limit: 5
+    groups:
+      compose-non-major:
+        patterns:
+          - "*"
+        update-types:
+          - patch
+          - minor
+      compose-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
+
   - package-ecosystem: github-actions
     directory: /
     commit-message: { prefix: deps }   # Go style: "deps: bump …"
