@@ -191,7 +191,7 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
 
 - `team_disabled`, `team_ready`, `teams_ready` are alerted on. Do not reword.
 - **A disable reason never leaves the logs.** It can name an env var, and
-  `/health` and every `/api/dashboard` route are unauthenticated. Slug and
+  `/readyz` and every `/api/dashboard` route are unauthenticated. Slug and
   state only.
 - Splunk-reserved keys renamed `splunk_<key>`, `timestamp` first (Splunk's auto
   timestamp guesses wrong otherwise).
