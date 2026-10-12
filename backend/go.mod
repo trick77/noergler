@@ -1,6 +1,6 @@
 module github.com/trick77/noergler
 
-go 1.26
+go 1.27.2
 
 require (
 	github.com/getkin/kin-openapi v0.149.0
@@ -21,6 +21,7 @@ require (
 	github.com/oasdiff/yaml3 v0.0.14 // indirect
 	github.com/rogpeppe/go-internal v1.16.0 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
+	github.com/trick77/ship/kit v0.1.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/text v0.29.0 // indirect
 )

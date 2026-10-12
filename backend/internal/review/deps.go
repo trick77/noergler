@@ -15,6 +15,7 @@ import (
 	"github.com/trick77/noergler/internal/jira"
 	"github.com/trick77/noergler/internal/riptide"
 	"github.com/trick77/noergler/internal/store"
+	"github.com/trick77/ship/kit/logging"
 )
 
 // The interfaces below are declared consumer-side, as AGENTS.md requires: the
@@ -101,7 +102,7 @@ func safeDB[T any](ctx context.Context, log *slog.Logger, what string, fn func()
 	v, err := fn()
 	if err != nil {
 		var zero T
-		log.WarnContext(ctx, "DB operation failed, using fallback: "+what, slog.String("error", err.Error()))
+		log.WarnContext(ctx, "DB operation failed, using fallback: "+what, logging.Err(err))
 		return zero
 	}
 	return v
@@ -110,7 +111,7 @@ func safeDB[T any](ctx context.Context, log *slog.Logger, what string, fn func()
 // safeDBErr is safeDB for a call that returns only an error.
 func safeDBErr(ctx context.Context, log *slog.Logger, what string, fn func() error) {
 	if err := fn(); err != nil {
-		log.WarnContext(ctx, "DB operation failed, using fallback: "+what, slog.String("error", err.Error()))
+		log.WarnContext(ctx, "DB operation failed, using fallback: "+what, logging.Err(err))
 	}
 }
 

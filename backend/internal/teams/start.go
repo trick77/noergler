@@ -10,9 +10,9 @@ import (
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/jira"
-	"github.com/trick77/noergler/internal/logging"
 	"github.com/trick77/noergler/internal/review"
 	"github.com/trick77/noergler/internal/riptide"
+	"github.com/trick77/ship/kit/logging"
 )
 
 // Deps are the shared objects every team is built on. They outlive any one
@@ -61,7 +61,7 @@ func Boot(ctx context.Context, app *config.App, d Deps) (*Registry, error) {
 			continue
 		}
 		// Per-team startup is a boundary: every line it emits carries the slug.
-		teamCtx := logging.WithTeam(ctx, slug)
+		teamCtx := logging.With(ctx, "team", slug)
 		if reason, seeded := seedErrors[slug]; seeded {
 			g.disable(teamCtx, slug, reason)
 			continue
@@ -89,7 +89,7 @@ func Boot(ctx context.Context, app *config.App, d Deps) (*Registry, error) {
 		d.Log.InfoContext(ctx, summary)
 	}
 	if len(enabled) == 0 {
-		d.Log.ErrorContext(ctx, "no team is enabled; /ready reports 503 until the config is fixed")
+		d.Log.ErrorContext(ctx, "no team is enabled; /readyz reports 503 until the config is fixed")
 	}
 	return g, nil
 }
@@ -222,7 +222,7 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 				if errors.Is(err, riptide.ErrAuth) {
 					return nil, fmt.Sprintf("riptide check failed: %v", err)
 				}
-				d.Log.WarnContext(ctx, "riptide ping failed, team stays enabled", "team", team.Slug, "error", err)
+				d.Log.WarnContext(ctx, "riptide ping failed, team stays enabled", "team", team.Slug, logging.Err(err))
 			}
 		} else {
 			d.Log.InfoContext(ctx, "riptide disabled for this team; event forwarding off", "team", team.Slug)

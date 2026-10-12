@@ -269,16 +269,16 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
     ClaimConflict:
       description: |
-        Another team already holds the target. The only response whose `detail`
-        is an object rather than a string, because the conflicting team is worth
-        reporting in a field rather than inside a sentence.
+        Another team already holds the target. The only error body with a field
+        beside `error`, because the conflicting team is worth reporting in a
+        field rather than inside a sentence.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ConflictError" }
     UpstreamError:
       description: |
         Bitbucket answered with something other than success, and it was not the
-        caller's rights. The detail names the status.
+        caller's rights. The error names the status.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -287,37 +287,32 @@ components:
     Error:
       type: object
       additionalProperties: false
-      required: [detail]
+      required: [error]
       properties:
-        detail:
+        error:
           type: string
           description: |
             A sentence for a person. Nothing parses it, and its wording is not
             part of the contract.
-      example: { detail: unknown team }
+      example: { error: unknown team }
 
     ConflictError:
       type: object
       additionalProperties: false
-      required: [detail]
+      required: [error, conflict]
       properties:
-        detail:
+        error: { type: string }
+        conflict:
           type: object
           additionalProperties: false
-          required: [message, conflict]
+          required: [target, team]
           properties:
-            message: { type: string }
-            conflict:
-              type: object
-              additionalProperties: false
-              required: [target, team]
-              properties:
-                target:
-                  type: string
-                  description: The target that is already claimed.
-                team:
-                  type: string
-                  description: The slug of the team holding it.
+            target:
+              type: string
+              description: The target that is already claimed.
+            team:
+              type: string
+              description: The slug of the team holding it.
 
     ProjectScope:
       type: object

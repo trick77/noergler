@@ -242,8 +242,8 @@ func TestOnboard_NoAdminIsAFailedRowNotAnError(t *testing.T) {
 	}
 }
 
-// The 409 is the one response whose detail is an object rather than a string.
-func TestOnboard_ClaimConflictIs409WithAnObjectDetail(t *testing.T) {
+// The 409 is the one error body with more than the message: who holds it.
+func TestOnboard_ClaimConflictIs409NamingTheHolder(t *testing.T) {
 	h := newHarness(t, nil)
 	repo := "svc"
 	cl := &fakeClaims{addErr: &store.ClaimConflict{Project: "PLAT", Repo: &repo, OtherTeam: "payments"}}
@@ -254,13 +254,12 @@ func TestOnboard_ClaimConflictIs409WithAnObjectDetail(t *testing.T) {
 		t.Fatalf("status = %d, want 409 (body %s)", w.StatusCode, h.body(w))
 	}
 	got := h.decode(t, w)
-	detail, ok := got["detail"].(map[string]any)
-	if !ok {
-		t.Fatalf("detail = %#v, want an object", got["detail"])
+	if msg, _ := got["error"].(string); msg == "" {
+		t.Errorf("error = %#v, want the message", got["error"])
 	}
-	conflict, ok := detail["conflict"].(map[string]any)
+	conflict, ok := got["conflict"].(map[string]any)
 	if !ok {
-		t.Fatalf("conflict = %#v, want an object", detail["conflict"])
+		t.Fatalf("conflict = %#v, want an object", got["conflict"])
 	}
 	if conflict["target"] != "PLAT/svc" || conflict["team"] != "payments" {
 		t.Errorf("conflict = %v, want PLAT/svc held by payments", conflict)

@@ -10,11 +10,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/trick77/noergler/internal/httpapi"
-	"github.com/trick77/noergler/internal/logging"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/teams"
 	"github.com/trick77/noergler/internal/webhook"
+	"github.com/trick77/ship/kit/httpx"
+	"github.com/trick77/ship/kit/logging"
 )
 
 // maxWebhookBodyBytes bounds an unauthenticated read. A real delivery is well
@@ -51,7 +51,7 @@ type ignored struct {
 // load-bearing for. Do not reorder.
 func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("team")
-	ctx := logging.WithTeam(r.Context(), slug)
+	ctx := logging.With(r.Context(), "team", slug)
 
 	// 1. Team identity comes from the path. Never from the payload.
 	rt, ok := d.runtimeFor(ctx, w, slug)
@@ -63,7 +63,7 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 	// 2. The diagnostics ping is answered before the body is read: Bitbucket
 	// sends it to check the endpoint is alive, without a signature.
 	if r.Header.Get("X-Event-Key") == "diagnostics:ping" {
-		httpapi.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 		return
 	}
 
@@ -80,10 +80,10 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
 			d.Log.WarnContext(ctx, "webhook body over the cap", "limit", maxWebhookBodyBytes)
-			httpapi.WriteDetail(w, http.StatusRequestEntityTooLarge, "payload too large")
+			httpx.WriteError(w, http.StatusRequestEntityTooLarge, "payload too large")
 			return
 		}
-		httpapi.WriteDetail(w, http.StatusBadRequest, "could not read body")
+		httpx.WriteError(w, http.StatusBadRequest, "could not read body")
 		return
 	}
 
@@ -96,16 +96,16 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 	if signature == "" {
 		if eventKeyHeader == "" && !bytes.Contains(body, []byte("eventKey")) {
 			d.Log.InfoContext(ctx, "Test connection received (no signature, no event key)")
-			httpapi.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+			httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 			return
 		}
-		httpapi.WriteDetail(w, http.StatusUnauthorized, "Missing signature")
+		httpx.WriteError(w, http.StatusUnauthorized, "Missing signature")
 		return
 	}
 
 	// 5. The signature proves the sender holds THIS team's secret.
 	if !verifySignature(body, signature, team.WebhookSecret) {
-		httpapi.WriteDetail(w, http.StatusUnauthorized, "Invalid signature")
+		httpx.WriteError(w, http.StatusUnauthorized, "Invalid signature")
 		return
 	}
 
@@ -116,19 +116,19 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 		EventKey string `json:"eventKey"`
 	}
 	if err := json.Unmarshal(body, &peek); err != nil {
-		httpapi.WriteDetail(w, http.StatusBadRequest, "Invalid payload")
+		httpx.WriteError(w, http.StatusBadRequest, "Invalid payload")
 		return
 	}
 	if !strings.HasPrefix(peek.EventKey, "pr:") {
-		httpapi.WriteJSON(w, http.StatusOK, ignored{"ignored", "not a PR event: " + peek.EventKey})
+		httpx.WriteJSON(w, http.StatusOK, ignored{"ignored", "not a PR event: " + peek.EventKey})
 		return
 	}
 
 	// 7. Now the full payload, with every required field checked.
 	payload, err := webhook.Decode(body)
 	if err != nil {
-		d.Log.ErrorContext(ctx, "Failed to parse webhook payload", "error", err)
-		httpapi.WriteDetail(w, http.StatusBadRequest, "Invalid payload")
+		d.Log.ErrorContext(ctx, "Failed to parse webhook payload", logging.Err(err))
+		httpx.WriteError(w, http.StatusBadRequest, "Invalid payload")
 		return
 	}
 	eventKey := payload.EventKey
@@ -139,7 +139,7 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 	if project == "" && repo == "" {
 		d.Log.ErrorContext(ctx, "event missing repository info",
 			"event", eventKey, "pr_id", payload.PullRequest.ID)
-		httpapi.WriteJSON(w, http.StatusOK, ignored{"ignored", "missing repository"})
+		httpx.WriteJSON(w, http.StatusOK, ignored{"ignored", "missing repository"})
 		return
 	}
 
@@ -150,7 +150,7 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 	if !team.Owns(project, repo) {
 		d.Log.WarnContext(ctx, "webhook rejected: repository is not owned by this team",
 			"project", project, "repo", repo)
-		httpapi.WriteDetail(w, http.StatusForbidden,
+		httpx.WriteError(w, http.StatusForbidden,
 			fmt.Sprintf("repository %s/%s is not owned by team %s", project, repo, slug))
 		return
 	}
@@ -163,7 +163,7 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 		(reviewEventKeys[eventKey] || eventKey == webhook.EventCommentAdded) {
 		d.Log.InfoContext(ctx, "webhook ignored: repo matches exclude_repos",
 			"project", project, "repo", repo)
-		httpapi.WriteJSON(w, http.StatusOK, ignored{"ignored", "repo excluded by the team's exclude_repos"})
+		httpx.WriteJSON(w, http.StatusOK, ignored{"ignored", "repo excluded by the team's exclude_repos"})
 		return
 	}
 
@@ -187,19 +187,19 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 	switch p.EventKey {
 	case webhook.EventMerged:
 		d.Queue.SubmitJob(key, slug, func(ctx context.Context, _ teams.Scheduler) bool { rv.HandlePRMerged(ctx, p); return false })
-		httpapi.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "merged-rollup", Queue: "queued"})
+		httpx.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "merged-rollup", Queue: "queued"})
 
 	case webhook.EventDeclined:
 		d.Queue.SubmitJob(key, slug, func(ctx context.Context, _ teams.Scheduler) bool { rv.HandlePRDeclined(ctx, p); return false })
-		httpapi.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "declined-rollup", Queue: "queued"})
+		httpx.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "declined-rollup", Queue: "queued"})
 
 	case webhook.EventDeleted:
 		d.Queue.SubmitJob(key, slug, func(ctx context.Context, _ teams.Scheduler) bool { rv.HandlePRDeleted(ctx, p); return false })
-		httpapi.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "deleted-purge"})
+		httpx.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "deleted-purge"})
 
 	case webhook.EventCommentDeleted:
 		d.Queue.SubmitJob(key, slug, func(ctx context.Context, _ teams.Scheduler) bool { rv.HandleCommentDeleted(ctx, p); return false })
-		httpapi.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "comment-deleted"})
+		httpx.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "comment-deleted"})
 
 	case webhook.EventCommentAdded:
 		// The mention gate. HandleMention does NOT check that the comment
@@ -213,7 +213,7 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 		d.Log.InfoContext(ctx, "Comment event", "comment_id", commentID)
 		trigger := "@" + d.BotUsername
 		if !strings.Contains(strings.ToLower(text), strings.ToLower(trigger)) {
-			httpapi.WriteJSON(w, http.StatusOK, ignored{"ignored", "comment without mention"})
+			httpx.WriteJSON(w, http.StatusOK, ignored{"ignored", "comment without mention"})
 			return
 		}
 		d.Queue.SubmitJob(key, slug, func(ctx context.Context, sched teams.Scheduler) bool {
@@ -221,17 +221,17 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 			// outlive this job: the staged posting releases it.
 			return rv.HandleMention(ctx, p, slug, sched)
 		})
-		httpapi.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "mention", Queue: "queued"})
+		httpx.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "mention", Queue: "queued"})
 
 	default:
 		if !reviewEventKeys[p.EventKey] {
 			// The signal that a Bitbucket hook is configured with events we
 			// ignore. Warning level on purpose.
 			d.Log.WarnContext(ctx, fmt.Sprintf("Unhandled event %q; check your Bitbucket webhook configuration", p.EventKey))
-			httpapi.WriteJSON(w, http.StatusOK, ignored{"ignored", "unhandled event: " + p.EventKey})
+			httpx.WriteJSON(w, http.StatusOK, ignored{"ignored", "unhandled event: " + p.EventKey})
 			return
 		}
 		outcome := d.Queue.Submit(key, p, slug)
-		httpapi.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", PRID: p.PullRequest.ID, Queue: outcome})
+		httpx.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", PRID: p.PullRequest.ID, Queue: outcome})
 	}
 }

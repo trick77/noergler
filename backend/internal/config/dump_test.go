@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/noergler/internal/logging"
+	"github.com/trick77/ship/kit/logging"
 )
 
 func TestDump_MasksSecretsAndKeepsTheSectionHeaders(t *testing.T) {
@@ -21,7 +21,7 @@ func TestDump_MasksSecretsAndKeepsTheSectionHeaders(t *testing.T) {
 	app.Disabled["broken"] = "TEAM_BROKEN_OPENAI_API_KEY is not set"
 
 	var buf bytes.Buffer
-	Dump(app, slog.New(logging.NewHandler(&buf, slog.LevelInfo, "test")))
+	Dump(app, slog.New(logging.NewSplunkHandler(&buf, slog.LevelInfo, "noergler", "test")))
 	text := buf.String()
 
 	for _, secret := range []string{"secret-bb-token", "secret-webhook", "secret-api-key", "secret-jira-token",
@@ -58,7 +58,7 @@ func TestDump_ContextWindowZeroSaysWhereTheWindowComesFrom(t *testing.T) {
 	app := e.mustLoad()
 
 	var buf bytes.Buffer
-	Dump(app, slog.New(logging.NewHandler(&buf, slog.LevelInfo, "test")))
+	Dump(app, slog.New(logging.NewSplunkHandler(&buf, slog.LevelInfo, "noergler", "test")))
 	text := buf.String()
 
 	if !strings.Contains(text, "context_window = from gateway") {
@@ -81,7 +81,7 @@ func TestDump_ZeroDiffCapSaysUnlimited(t *testing.T) {
 	app := e.mustLoad()
 
 	var buf bytes.Buffer
-	Dump(app, slog.New(logging.NewHandler(&buf, slog.LevelInfo, "test")))
+	Dump(app, slog.New(logging.NewSplunkHandler(&buf, slog.LevelInfo, "noergler", "test")))
 	text := buf.String()
 
 	if !strings.Contains(text, "max_diff_bytes = unlimited") {
@@ -104,7 +104,7 @@ func TestDump_ExplicitDiffCapIsPrintedAsTheNumber(t *testing.T) {
 	app := e.mustLoad()
 
 	var buf bytes.Buffer
-	Dump(app, slog.New(logging.NewHandler(&buf, slog.LevelInfo, "test")))
+	Dump(app, slog.New(logging.NewSplunkHandler(&buf, slog.LevelInfo, "noergler", "test")))
 
 	if !strings.Contains(buf.String(), "max_diff_bytes = 2048") {
 		t.Error("an explicit cap should print its value")
@@ -119,7 +119,7 @@ func TestDump_ExplicitContextWindowIsPrintedAsTheNumber(t *testing.T) {
 	app := e.mustLoad()
 
 	var buf bytes.Buffer
-	Dump(app, slog.New(logging.NewHandler(&buf, slog.LevelInfo, "test")))
+	Dump(app, slog.New(logging.NewSplunkHandler(&buf, slog.LevelInfo, "noergler", "test")))
 
 	if text := buf.String(); !strings.Contains(text, "context_window = 2000000") {
 		t.Error("an explicit window is printed as the number it is")

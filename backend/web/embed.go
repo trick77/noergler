@@ -51,7 +51,7 @@ func HasBuiltIndex() bool {
 
 // Handler serves the SPA. It is registered on "/" as the catch-all; Go's
 // ServeMux prefers the most specific pattern, so every explicit route
-// (/webhook/{team}, /health, /ready, /api/...) still wins over it.
+// (/webhook/{team}, /healthz, /readyz, /api/...) still wins over it.
 func Handler() http.Handler {
 	sub, err := fs.Sub(distFS, "dist")
 	if err != nil {

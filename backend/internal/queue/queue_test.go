@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/noergler/internal/logging"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
+	"github.com/trick77/ship/kit/logging"
 )
 
 func quietLogger() *slog.Logger {

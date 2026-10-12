@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/trick77/noergler/internal/httpapi"
 	"github.com/trick77/noergler/internal/teams"
+	"github.com/trick77/ship/kit/httpx"
 )
 
 // runtimeFor resolves the slug in the path and answers 404 or 503 itself.
@@ -30,11 +30,11 @@ func (d Deps) runtimeFor(ctx context.Context, w http.ResponseWriter, slug string
 	}
 	if reason != "" {
 		d.Log.WarnContext(ctx, "request rejected: team is disabled", "reason", reason)
-		httpapi.WriteDetail(w, http.StatusServiceUnavailable,
+		httpx.WriteError(w, http.StatusServiceUnavailable,
 			"team "+slug+" is disabled, see the noergler startup log")
 		return nil, false
 	}
-	httpapi.WriteDetail(w, http.StatusNotFound, "unknown team")
+	httpx.WriteError(w, http.StatusNotFound, "unknown team")
 	return nil, false
 }
 

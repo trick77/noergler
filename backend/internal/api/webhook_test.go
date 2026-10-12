@@ -18,12 +18,12 @@ import (
 
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/httpapi"
-	"github.com/trick77/noergler/internal/logging"
 	"github.com/trick77/noergler/internal/queue"
 	"github.com/trick77/noergler/internal/review"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/teams"
 	"github.com/trick77/noergler/internal/webhook"
+	"github.com/trick77/ship/kit/logging"
 )
 
 const (
@@ -154,7 +154,7 @@ func newHarness(t *testing.T, tweak func(*config.Team)) *harness {
 	rt := teams.NewRuntime(team, rv, nil, nil, nil)
 
 	var buf bytes.Buffer
-	log := slog.New(logging.NewHandler(&buf, slog.LevelDebug, "test"))
+	log := slog.New(logging.NewSplunkHandler(&buf, slog.LevelDebug, "noergler", "test"))
 	reg := teams.NewRegistry(
 		map[string]*teams.Runtime{testSlug: rt},
 		map[string]string{"payments": "LLM check failed"},
@@ -230,11 +230,11 @@ func TestWebhook_UnknownTeamIs404AndDisabledIs503(t *testing.T) {
 	body := payloadJSON(webhook.EventOpened, "")
 
 	w := h.post(t, "nope", body, map[string]string{"X-Hub-Signature": sign(body, testSecret)})
-	wantBody(t, w, http.StatusNotFound, map[string]any{"detail": "unknown team"})
+	wantBody(t, w, http.StatusNotFound, map[string]any{"error": "unknown team"})
 
 	w = h.post(t, "payments", body, map[string]string{"X-Hub-Signature": sign(body, testSecret)})
 	wantBody(t, w, http.StatusServiceUnavailable, map[string]any{
-		"detail": "team payments is disabled, see the noergler startup log",
+		"error": "team payments is disabled, see the noergler startup log",
 	})
 }
 
@@ -267,13 +267,13 @@ func TestWebhook_TestConnectionWithoutSignatureOrEventKey(t *testing.T) {
 func TestWebhook_MissingSignatureIs401WhenTheBodyLooksLikeADelivery(t *testing.T) {
 	h := newHarness(t, nil)
 	w := h.post(t, testSlug, payloadJSON(webhook.EventOpened, ""), nil)
-	wantBody(t, w, http.StatusUnauthorized, map[string]any{"detail": "Missing signature"})
+	wantBody(t, w, http.StatusUnauthorized, map[string]any{"error": "Missing signature"})
 }
 
 func TestWebhook_MissingSignatureWithAnEventKeyHeaderIs401(t *testing.T) {
 	h := newHarness(t, nil)
 	w := h.post(t, testSlug, []byte(`{}`), map[string]string{"X-Event-Key": "pr:opened"})
-	wantBody(t, w, http.StatusUnauthorized, map[string]any{"detail": "Missing signature"})
+	wantBody(t, w, http.StatusUnauthorized, map[string]any{"error": "Missing signature"})
 }
 
 // --- signature verification -------------------------------------------------
@@ -338,7 +338,7 @@ func TestWebhook_UnparseablePRPayloadIs400(t *testing.T) {
 	h := newHarness(t, nil)
 	// A pr: event missing every required field.
 	w := h.signedPost(t, []byte(`{"eventKey":"pr:opened"}`))
-	wantBody(t, w, http.StatusBadRequest, map[string]any{"detail": "Invalid payload"})
+	wantBody(t, w, http.StatusBadRequest, map[string]any{"error": "Invalid payload"})
 }
 
 func TestWebhook_MissingRepositoryIsIgnored(t *testing.T) {
@@ -367,7 +367,7 @@ func TestWebhook_SignedPayloadForAnotherTeamsRepoIs403(t *testing.T) {
 
 	w := h.signedPost(t, body)
 	wantBody(t, w, http.StatusForbidden, map[string]any{
-		"detail": "repository PAY/wallet is not owned by team platform",
+		"error": "repository PAY/wallet is not owned by team platform",
 	})
 	if len(h.q.keys) != 0 || len(h.q.tags) != 0 {
 		t.Error("a rejected payload must not reach the queue")

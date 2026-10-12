@@ -3,6 +3,7 @@
 //	noergler serve     run the service (default)
 //	noergler migrate   apply pending database migrations and exit
 //	noergler version   print the version and exit
+//	noergler -healthcheck  probe /healthz, exit 0 on a 2xx (the container healthcheck)
 package main
 
 import (
@@ -12,18 +13,19 @@ import (
 	"log/slog"
 	"net"
 	"os"
-	"os/signal"
 	"strconv"
 	"strings"
-	"syscall"
+	"time"
+
+	"github.com/trick77/ship/kit/httpx"
+	"github.com/trick77/ship/kit/logging"
+	"github.com/trick77/ship/kit/version"
 
 	"github.com/trick77/noergler/internal/api"
 	"github.com/trick77/noergler/internal/bitbucket"
-	"github.com/trick77/noergler/internal/buildinfo"
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/httpapi"
 	"github.com/trick77/noergler/internal/jira"
-	"github.com/trick77/noergler/internal/logging"
 	"github.com/trick77/noergler/internal/queue"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/teams"
@@ -38,43 +40,69 @@ func main() {
 	var err error
 	switch cmd {
 	case "serve":
-		err = serve(logging.Setup())
+		err = withLog(serve)
 	case "migrate":
-		err = migrate(logging.Setup())
+		err = withLog(migrate)
 	case "version":
-		fmt.Println(buildinfo.Version())
+		fmt.Println(version.String())
+	case "-healthcheck":
+		// The container probe: the distroless image has no shell and no wget.
+		os.Exit(httpx.Healthcheck(httpx.LocalURL(listenAddr(), "/healthz")))
 	case "-h", "--help", "help":
-		fmt.Fprintln(os.Stderr, "usage: noergler [serve|migrate|version]")
+		fmt.Fprintln(os.Stderr, usage)
 	default:
-		fmt.Fprintf(os.Stderr, "noergler: unknown command %q\nusage: noergler [serve|migrate|version]\n", cmd)
+		fmt.Fprintf(os.Stderr, "noergler: unknown command %q\n%s\n", cmd, usage)
 		os.Exit(2)
 	}
 	if err != nil {
-		slog.Error("startup aborted", "error", err)
+		slog.Error("startup aborted", logging.Err(err))
 		os.Exit(1)
 	}
 }
 
-// logVersion names the build at boot. The release stamps the commit too; it
-// was linked into the binary and never read.
-func logVersion(log *slog.Logger) {
-	if c := buildinfo.Commit(); c != "" {
-		log.Info("noergler version: "+buildinfo.Version(), "commit", c)
-		return
+const usage = "usage: noergler [serve|migrate|version|-healthcheck]"
+
+// withLog sets up logging before anything logs (config loading does), names
+// the build, then runs. An unknown LOG_LEVEL fails startup: a logging knob
+// that quietly falls back to info is a setting that does nothing.
+func withLog(run func(*slog.Logger) error) error {
+	env := os.Getenv("NOERGLER_ENV")
+	if env == "" {
+		env = "dev"
 	}
-	log.Info("noergler version: " + buildinfo.Version())
+	log, err := logging.Setup(logging.Options{
+		Level:   os.Getenv("LOG_LEVEL"),
+		Format:  logging.Splunk,
+		Writer:  os.Stdout,
+		Service: "noergler",
+		Env:     env,
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "noergler:", err)
+		os.Exit(1)
+	}
+	log.Info("noergler version: " + version.String())
+	return run(log)
+}
+
+// listenAddr is SERVER_HOST:SERVER_PORT as serve binds it, read without the
+// rest of the config: the healthcheck needs nothing else.
+func listenAddr() string {
+	port := os.Getenv("SERVER_PORT")
+	if port == "" {
+		port = "8080"
+	}
+	return net.JoinHostPort(os.Getenv("SERVER_HOST"), port)
 }
 
 // migrate applies pending migrations and exits: the init container's job.
 // Only DATABASE_URL is needed, so a teams.yaml is not required here.
 func migrate(log *slog.Logger) error {
-	logVersion(log)
 	dsn, ok := os.LookupEnv("DATABASE_URL")
 	if !ok || strings.TrimSpace(dsn) == "" {
 		return errors.New("environment variable DATABASE_URL is not set")
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
+	ctx := context.Background()
 	db, err := store.Open(ctx, dsn, log)
 	if err != nil {
 		return err
@@ -88,15 +116,13 @@ func migrate(log *slog.Logger) error {
 }
 
 func serve(log *slog.Logger) error {
-	logVersion(log)
 	app, err := config.Load(config.OSLookup)
 	if err != nil {
 		return err
 	}
 	config.Dump(app, log)
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
+	ctx := context.Background()
 
 	// Shared layer: any failure here aborts boot, because none of it belongs to
 	// one team. Every check runs before the abort so the log names all the
@@ -163,14 +189,13 @@ func serve(log *slog.Logger) error {
 		return err
 	}
 
-	// The worker runs on its own context, NOT the signal one. queue.run
-	// derives every job's context from what Start was given, so handing it
-	// ctx would cancel the review that Stop then waits for: its diff fetch,
-	// its LLM call and its store writes would all fail with context
+	// The worker runs on its own context, never one a signal cancels.
+	// queue.run derives every job's context from what Start was given, so a
+	// cancelled one would fail the review that Stop then waits for: its diff
+	// fetch, its LLM call and its store writes would all fail with context
 	// canceled, and safeDB would swallow them, losing the run row and its
 	// cost. Cancellation reaches the worker through Stop alone.
-	// httpapi.Run makes the same separation for its own shutdown.
-	queueCtx, stopQueue := context.WithCancel(context.WithoutCancel(ctx))
+	queueCtx, stopQueue := context.WithCancel(ctx)
 	defer stopQueue()
 	q := queue.New(reg.Review, app.Queue.InferenceConcurrency, app.Queue.InferenceConcurrencyPerTeam, log)
 	q.Start(queueCtx)
@@ -196,7 +221,9 @@ func serve(log *slog.Logger) error {
 	enabled, _ := reg.Status()
 	addr := net.JoinHostPort(app.Server.Host, strconv.Itoa(app.Server.Port))
 	log.Info("Bridge service started", "base_url", app.LLM.BaseURL, "teams", len(enabled))
-	runErr := httpapi.Run(ctx, addr, srv.Handler(), log)
+	log.Info("listening", "addr", addr)
+	// Serve returns on SIGINT/SIGTERM once in-flight requests have drained.
+	runErr := httpx.Serve(ctx, httpx.NewServer(addr, srv.Handler()), 15*time.Second)
 
 	// Drain in order: the server has already stopped accepting, so the queue
 	// finishes the review in flight before the pool closes under it. Not a
