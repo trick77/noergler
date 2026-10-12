@@ -25,7 +25,8 @@ export function money(usd: string | null): string {
  *  Ticks are axis positions, not amounts, so a float is fine. */
 export function moneyTick(ticks: number[]): (v: number) => string {
   let decimals = 2;
-  const exact = (v: number) => Math.abs(Number(v.toFixed(decimals)) - v) < 1e-12;
+  const exact = (v: number) =>
+    Math.abs(Number(v.toFixed(decimals)) - v) < 1e-12;
   while (decimals < 6 && !ticks.every(exact)) decimals++;
   return (v) => `$${v.toFixed(decimals)}`;
 }
@@ -181,7 +182,9 @@ export function prUrl(tag: string, base: string): string | null {
  *  holding. The server's own order is by slug, which looks arbitrary once
  *  the page stops printing slugs. */
 export function byName<T extends { name: string }>(teams: T[]): T[] {
-  return [...teams].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  return [...teams].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+  );
 }
 
 /** byLastRun sorts teams most-recently-active first, which is the order the
@@ -194,8 +197,11 @@ export function byName<T extends { name: string }>(teams: T[]): T[] {
  *  happened to emit first.
  *
  *  A COPY, as byName: the array belongs to the poller. */
-export function byLastRun<T extends { name: string; last_run: string | null }>(teams: T[]): T[] {
-  const at = (t: T) => (t.last_run === null ? -Infinity : new Date(t.last_run).getTime());
+export function byLastRun<T extends { name: string; last_run: string | null }>(
+  teams: T[],
+): T[] {
+  const at = (t: T) =>
+    t.last_run === null ? -Infinity : new Date(t.last_run).getTime();
   return [...teams].sort((a, b) => {
     const diff = at(b) - at(a);
     if (diff !== 0 && !Number.isNaN(diff)) return diff;

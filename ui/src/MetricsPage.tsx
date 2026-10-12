@@ -24,7 +24,12 @@ import {
 
 // Fixed order, never cycled: a team keeps its colour as teams come and go,
 // so a filter that drops one does not repaint the others.
-const SERIES_COLORS = ["var(--color-s1)", "var(--color-s2)", "var(--color-s3)", "var(--color-s4)"];
+const SERIES_COLORS = [
+  "var(--color-s1)",
+  "var(--color-s2)",
+  "var(--color-s3)",
+  "var(--color-s4)",
+];
 
 /** days lists every date in [since, until), so a day with no runs is a zero
  *  rather than a gap the chart closes over. The API returns only days that
@@ -68,14 +73,25 @@ function calendarDay(iso: string): number | null {
 }
 
 const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
 /** windowTitle names the window the API actually answered with, rather than
  *  the one the page assumed it asked for. */
 function windowTitle(m: Metrics): string {
-  if (m.window !== "month") return `the last ${days(m.since, m.until).length} days`;
+  if (m.window !== "month")
+    return `the last ${days(m.since, m.until).length} days`;
   // The server's month, read off the string: through the viewer's clock a
   // +02:00 server's September titles itself "August" in New York.
   const start = calendarDay(m.since);
@@ -103,7 +119,11 @@ export function MetricsPage() {
       <div className={page}>
         <div className={column}>
           <h2 className={h2}>Metrics</h2>
-          {failed ? <Failed what="metrics" /> : <div className="skeleton h-24 rounded-ui" />}
+          {failed ? (
+            <Failed what="metrics" />
+          ) : (
+            <div className="skeleton h-24 rounded-ui" />
+          )}
         </div>
       </div>
     );
@@ -154,11 +174,15 @@ export function MetricsPage() {
       id: "__rest",
       name: rest.length === 1 ? nameOf(rest[0]) : `${rest.length} more`,
       color: SERIES_COLORS[SERIES_COLORS.length - 1],
-      values: window.map((day) => rest.reduce((sum, team) => sum + spendOn(day, team), 0)),
+      values: window.map((day) =>
+        rest.reduce((sum, team) => sum + spendOn(day, team), 0),
+      ),
     });
   }
   const costTop = Math.max(
-    ...window.map((_, i) => costSeries.reduce((sum, s) => sum + s.values[i], 0)),
+    ...window.map((_, i) =>
+      costSeries.reduce((sum, s) => sum + s.values[i], 0),
+    ),
     0,
   );
   const costTicks = niceTicks(costTop);
@@ -172,8 +196,18 @@ export function MetricsPage() {
         .reduce((n, b) => n + b.count, 0),
     );
   const runSeries: Series[] = [
-    { id: "reviewed", name: "reviewed", color: "var(--color-s1)", values: bucket((o) => o === "ok") },
-    { id: "skipped", name: "skipped", color: "var(--color-ochre)", values: bucket((o) => o === "skipped") },
+    {
+      id: "reviewed",
+      name: "reviewed",
+      color: "var(--color-s1)",
+      values: bucket((o) => o === "ok"),
+    },
+    {
+      id: "skipped",
+      name: "skipped",
+      color: "var(--color-ochre)",
+      values: bucket((o) => o === "skipped"),
+    },
     {
       id: "failed",
       name: "failed",
@@ -202,8 +236,9 @@ export function MetricsPage() {
           <span className="text-muted">{title}</span>
         </h2>
         <p className={lede}>
-          What this month cost and how much got reviewed. Runs the gateway never priced are counted
-          on their own rather than added in as zero, so the total is not quietly too low.
+          What this month cost and how much got reviewed. Runs the gateway never
+          priced are counted on their own rather than added in as zero, so the
+          total is not quietly too low.
         </p>
 
         <Tiles>
@@ -211,7 +246,10 @@ export function MetricsPage() {
               gateway declined to price something. Nothing ran; that is a
               dash. "unpriced" is reserved for runs that actually happened
               and came back without a price. */}
-          <Tile label="Cost" value={data.totals.runs === 0 ? "—" : money(data.totals.cost_usd)}>
+          <Tile
+            label="Cost"
+            value={data.totals.runs === 0 ? "—" : money(data.totals.cost_usd)}
+          >
             {costTop > 0 && (
               <div className="mt-2">
                 <Sparkline values={costTotals} label="Cost trend" />
@@ -222,12 +260,22 @@ export function MetricsPage() {
             {/* A flat line of zeros is a line that says nothing. */}
             {data.totals.runs > 0 && (
               <div className="mt-2">
-                <Sparkline values={runSeries[0].values} label="Reviewed trend" />
+                <Sparkline
+                  values={runSeries[0].values}
+                  label="Reviewed trend"
+                />
               </div>
             )}
           </Tile>
-          <Tile label="Findings" value={data.totals.findings_posted.toLocaleString()} />
-          <Tile label="Unpriced" value={data.totals.unpriced_runs} note="runs" />
+          <Tile
+            label="Findings"
+            value={data.totals.findings_posted.toLocaleString()}
+          />
+          <Tile
+            label="Unpriced"
+            value={data.totals.unpriced_runs}
+            note="runs"
+          />
         </Tiles>
 
         <p className={eyebrow}>Cost per day</p>
@@ -307,7 +355,10 @@ export function MetricsPage() {
               </table>
             </div>
           )}
-          <Note>Ordered by spend. Costs the gateway never reported are missing from this table.</Note>
+          <Note>
+            Ordered by spend. Costs the gateway never reported are missing from
+            this table.
+          </Note>
         </Card>
       </div>
     </div>

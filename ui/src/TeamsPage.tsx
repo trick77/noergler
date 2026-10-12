@@ -37,14 +37,17 @@ function settingsParts(t: Team) {
     parts.push(
       <>
         Excluded repos:{" "}
-        <code className="font-mono text-[12px] text-muted">{t.exclude_repos.join(", ")}</code>
+        <code className="font-mono text-[12px] text-muted">
+          {t.exclude_repos.join(", ")}
+        </code>
       </>,
     );
   }
   if (t.auto_review_authors > 0) {
     parts.push(
       <>
-        Auto-review authors: <span className="text-muted">{t.auto_review_authors}</span>
+        Auto-review authors:{" "}
+        <span className="text-muted">{t.auto_review_authors}</span>
       </>,
     );
   }
@@ -67,7 +70,11 @@ export function TeamsPage() {
       <div className={page}>
         <div className={column}>
           <h2 className={h2}>Teams</h2>
-          {failed ? <Failed what="the team roster" /> : <div className="skeleton h-24 rounded-ui" />}
+          {failed ? (
+            <Failed what="the team roster" />
+          ) : (
+            <div className="skeleton h-24 rounded-ui" />
+          )}
         </div>
       </div>
     );
@@ -78,8 +85,8 @@ export function TeamsPage() {
       <div className={column}>
         <h2 className={h2}>Teams</h2>
         <p className={lede}>
-          Read-only. A team is a webhook path, its own HMAC secret and the projects and repositories
-          it has claimed.
+          Read-only. A team is a webhook path, its own HMAC secret and the
+          projects and repositories it has claimed.
         </p>
 
         {byName(data.teams).map((t) => (
@@ -102,11 +109,14 @@ export function TeamsPage() {
                 last run {ago(t.last_run, now)}
               </>
             }
-            right={<Pill tone={teamTone(t.state)}>{teamStateLabel(t.state)}</Pill>}
+            right={
+              <Pill tone={teamTone(t.state)}>{teamStateLabel(t.state)}</Pill>
+            }
           >
             {t.claims.length === 0 ? (
               <Empty>
-                No projects and no repositories claimed, so this team reviews nothing.
+                No projects and no repositories claimed, so this team reviews
+                nothing.
               </Empty>
             ) : (
               <table className={table}>
@@ -119,7 +129,9 @@ export function TeamsPage() {
                 <tbody>
                   {t.claims.map((c) => (
                     <tr key={`${c.project}/${c.repo ?? ""}`}>
-                      <td className={tdTag}>{c.repo ? `${c.project}/${c.repo}` : c.project}</td>
+                      <td className={tdTag}>
+                        {c.repo ? `${c.project}/${c.repo}` : c.project}
+                      </td>
                       <td className={tdNum}>{c.repo ? "repo" : "project"}</td>
                     </tr>
                   ))}
@@ -139,8 +151,9 @@ export function TeamsPage() {
             {!t.enabled && (
               <Note>
                 Look in the pod log for the{" "}
-                <code className="font-mono text-[12px]">team_disabled</code> line to see why. It is
-                not shown here because the reason can name an environment variable.
+                <code className="font-mono text-[12px]">team_disabled</code>{" "}
+                line to see why. It is not shown here because the reason can
+                name an environment variable.
               </Note>
             )}
           </Card>

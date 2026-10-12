@@ -1,5 +1,11 @@
 import type { Live } from "./api";
-import { ago, byLastRun, elapsedSince, outcomeTone, outcomeWord } from "./format";
+import {
+  ago,
+  byLastRun,
+  elapsedSince,
+  outcomeTone,
+  outcomeWord,
+} from "./format";
 import { usePoll, useNow } from "./usePoll";
 import {
   Card,
@@ -27,13 +33,18 @@ import {
  *  misreport the instance as doing one thing at a time. */
 function Slots({ capacity, busy }: { capacity: number; busy: number }) {
   return (
-    <div className="mb-3.5 flex gap-1.5" aria-label={`${busy} of ${capacity} slots busy`}>
+    <div
+      className="mb-3.5 flex gap-1.5"
+      aria-label={`${busy} of ${capacity} slots busy`}
+    >
       {Array.from({ length: capacity }, (_, i) => (
         <div
           key={i}
           className={
             "h-6.5 flex-1 rounded-[5px] border " +
-            (i < busy ? "border-accent bg-accent-dim" : "border-border bg-panel")
+            (i < busy
+              ? "border-accent bg-accent-dim"
+              : "border-border bg-panel")
           }
         />
       ))}
@@ -57,7 +68,11 @@ export function LivePage() {
         <div className={column}>
           <h2 className={h2}>Live</h2>
           <p className={lede}>What is running right now.</p>
-          {failed ? <Failed what="the live panel" /> : <div className="skeleton h-24 rounded-ui" />}
+          {failed ? (
+            <Failed what="the live panel" />
+          ) : (
+            <div className="skeleton h-24 rounded-ui" />
+          )}
         </div>
       </div>
     );
@@ -70,13 +85,15 @@ export function LivePage() {
       <div className={column}>
         <h2 className={h2}>Live</h2>
         <p className={lede}>
-          What is running right now. Several reviews can be waiting on the model at once, but only
-          one at a time talks to Bitbucket, so a busy queue drains in order.
+          What is running right now. Several reviews can be waiting on the model
+          at once, but only one at a time talks to Bitbucket, so a busy queue
+          drains in order.
         </p>
 
         {failed && updatedAt !== null && (
           <div className="mb-3.5 rounded-ui border border-border bg-panel px-3.5 py-3 text-[13.5px] text-muted">
-            Refresh failing. Showing the reading from {ago(new Date(updatedAt).toISOString(), wall)}.
+            Refresh failing. Showing the reading from{" "}
+            {ago(new Date(updatedAt).toISOString(), wall)}.
           </div>
         )}
 
@@ -166,7 +183,9 @@ export function LivePage() {
                 <tr>
                   <th className={th}>Team</th>
                   {/* nowrap: w-px shrinks the column to its widest word. */}
-                  <th className={th + " w-px whitespace-nowrap"}>Last outcome</th>
+                  <th className={th + " w-px whitespace-nowrap"}>
+                    Last outcome
+                  </th>
                   <th className={thNum}>PRs</th>
                   <th className={thNum}>Last reviewed</th>
                   <th className={thNum}>Last run</th>
@@ -182,7 +201,9 @@ export function LivePage() {
                       <Pill
                         tone={outcomeTone(t.last_outcome)}
                         title={
-                          t.last_outcome !== "ok" ? t.last_reason_label || t.last_reason : undefined
+                          t.last_outcome !== "ok"
+                            ? t.last_reason_label || t.last_reason
+                            : undefined
                         }
                       >
                         {outcomeWord(t.last_outcome, t.last_reason)}
@@ -197,8 +218,8 @@ export function LivePage() {
             </table>
           )}
           <Note>
-            Last run counts every outcome, skipped and failed included. Last reviewed is the last
-            one that succeeded.
+            Last run counts every outcome, skipped and failed included. Last
+            reviewed is the last one that succeeded.
           </Note>
         </Card>
       </div>

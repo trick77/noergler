@@ -89,7 +89,12 @@ export interface Metrics {
   by_team: (Totals & { team: string; team_name: string })[];
   daily: { day: string; team: string; runs: number; cost_usd: string | null }[];
   daily_attempts: { day: string; outcome: string; count: number }[];
-  breakdown: { outcome: string; reason?: string; label?: string; count: number }[];
+  breakdown: {
+    outcome: string;
+    reason?: string;
+    label?: string;
+    count: number;
+  }[];
 }
 
 export interface Team {

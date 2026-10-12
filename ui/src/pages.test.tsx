@@ -27,8 +27,23 @@ const live: Live = {
   pool_per_team: 2,
   staged: 2,
   depth: 1,
-  running: [{ tag: "PAY/ledger#1", team: "payments", team_name: "Payments", kind: "review", since: new Date().toISOString() }],
-  waiting: [{ tag: "PAY/ledger#2", team: "payments", team_name: "Payments", since: new Date().toISOString() }],
+  running: [
+    {
+      tag: "PAY/ledger#1",
+      team: "payments",
+      team_name: "Payments",
+      kind: "review",
+      since: new Date().toISOString(),
+    },
+  ],
+  waiting: [
+    {
+      tag: "PAY/ledger#2",
+      team: "payments",
+      team_name: "Payments",
+      since: new Date().toISOString(),
+    },
+  ],
   // Only teams that have run: the server leaves out disabled and idle ones.
   // Named so that name order (Ausgaben, Mobile, Search) and last-run order
   // (Search, Mobile, Ausgaben) differ: the page's own sort has to put them
@@ -99,7 +114,12 @@ const metrics: Metrics = {
   ],
   breakdown: [
     { outcome: "ok", count: 2 },
-    { outcome: "skipped", reason: "head_unchanged", label: "HEAD unchanged since last review", count: 4 },
+    {
+      outcome: "skipped",
+      reason: "head_unchanged",
+      label: "HEAD unchanged since last review",
+      count: 4,
+    },
     { outcome: "error", count: 1 },
   ],
 };
@@ -145,9 +165,9 @@ describe("LivePage", () => {
     // Scoped to the Teams table: the running and queue cards carry team
     // pills with the same title attribute.
     const table = (await screen.findByText("Mobile")).closest("table");
-    const names = Array.from(table?.querySelectorAll("tbody tr td:first-child") ?? []).map(
-      (el) => el.textContent,
-    );
+    const names = Array.from(
+      table?.querySelectorAll("tbody tr td:first-child") ?? [],
+    ).map((el) => el.textContent);
     expect(names).toEqual(["Search", "Mobile", "Ausgaben"]);
   });
 
@@ -159,15 +179,25 @@ describe("LivePage", () => {
     render(<LivePage />);
 
     const row = (await screen.findByText("Search")).closest("tr");
-    const cells = Array.from(row?.querySelectorAll("td") ?? []).map((el) => el.textContent);
+    const cells = Array.from(row?.querySelectorAll("td") ?? []).map(
+      (el) => el.textContent,
+    );
     expect(cells).toEqual(["Search", "unchanged", "2", "2h ago", "1m ago"]);
     expect(screen.getByText("unchanged").getAttribute("title")).toBe(
       "HEAD unchanged since last review",
     );
 
     const mobile = (await screen.findByText("Mobile")).closest("tr");
-    const mobileCells = Array.from(mobile?.querySelectorAll("td") ?? []).map((el) => el.textContent);
-    expect(mobileCells).toEqual(["Mobile", "timed_out", "1", "never", "5m ago"]);
+    const mobileCells = Array.from(mobile?.querySelectorAll("td") ?? []).map(
+      (el) => el.textContent,
+    );
+    expect(mobileCells).toEqual([
+      "Mobile",
+      "timed_out",
+      "1",
+      "never",
+      "5m ago",
+    ]);
   });
 
   // State is configuration, not live: the Teams page carries it.
@@ -212,7 +242,8 @@ describe("LivePage", () => {
       "fetch",
       vi.fn(async () => {
         calls += 1;
-        if (calls > 1) return { ok: false, status: 503, json: async () => ({}) };
+        if (calls > 1)
+          return { ok: false, status: 503, json: async () => ({}) };
         return { ok: true, status: 200, json: async () => live };
       }),
     );
@@ -221,9 +252,13 @@ describe("LivePage", () => {
 
     await vi.advanceTimersByTimeAsync(3000);
     expect(await screen.findByText(/Refresh failing/)).toBeDefined();
-    const elapsed = screen.getByText("PAY/ledger#1").closest("tr")?.lastElementChild?.textContent;
+    const elapsed = screen.getByText("PAY/ledger#1").closest("tr")
+      ?.lastElementChild?.textContent;
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(screen.getByText("PAY/ledger#1").closest("tr")?.lastElementChild?.textContent).toBe(elapsed);
+    expect(
+      screen.getByText("PAY/ledger#1").closest("tr")?.lastElementChild
+        ?.textContent,
+    ).toBe(elapsed);
   });
 });
 
@@ -317,13 +352,19 @@ describe("RunsPage", () => {
       vi.fn((url: string) =>
         url.includes("/metrics")
           ? new Promise(() => {})
-          : Promise.resolve({ ok: true, status: 200, json: async () => ({ runs }) }),
+          : Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({ runs }),
+            }),
       ),
     );
     render(<RunsPage />);
 
     await waitFor(() => expect(screen.getByText("PAY/ledger#1")).toBeDefined());
-    expect(screen.getByText("Reviewed").nextElementSibling?.textContent).toBe("—");
+    expect(screen.getByText("Reviewed").nextElementSibling?.textContent).toBe(
+      "—",
+    );
     expect(screen.queryByText("Nothing was skipped.")).toBeNull();
   });
 
@@ -334,7 +375,9 @@ describe("RunsPage", () => {
     render(<RunsPage />);
     await screen.findByText("PAY/ledger#1");
     const metricsCalls = () =>
-      (fetch as unknown as { mock: { calls: string[][] } }).mock.calls.filter(([u]) => u.includes("/metrics")).length;
+      (fetch as unknown as { mock: { calls: string[][] } }).mock.calls.filter(
+        ([u]) => u.includes("/metrics"),
+      ).length;
     expect(metricsCalls()).toBe(1);
     await vi.advanceTimersByTimeAsync(10_000);
     expect(metricsCalls()).toBe(2);
@@ -350,14 +393,26 @@ describe("RunsPage", () => {
         if (url.includes("/metrics") && ++metricsCalls > 1) {
           return { ok: false, status: 500, json: async () => ({}) };
         }
-        return { ok: true, status: 200, json: async () => (url.includes("/metrics") ? metrics : { runs }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => (url.includes("/metrics") ? metrics : { runs }),
+        };
       }),
     );
     render(<RunsPage />);
-    await waitFor(() => expect(screen.getByText("Reviewed").nextElementSibling?.textContent).not.toBe("—"));
+    await waitFor(() =>
+      expect(
+        screen.getByText("Reviewed").nextElementSibling?.textContent,
+      ).not.toBe("—"),
+    );
 
     await vi.advanceTimersByTimeAsync(10_000);
-    await waitFor(() => expect(screen.getByText("Reviewed").nextElementSibling?.textContent).toBe("—"));
+    await waitFor(() =>
+      expect(screen.getByText("Reviewed").nextElementSibling?.textContent).toBe(
+        "—",
+      ),
+    );
     expect(screen.getByText("Counts unavailable.")).toBeDefined();
   });
 
@@ -365,7 +420,9 @@ describe("RunsPage", () => {
     serve({ runs: { runs }, metrics });
     render(<RunsPage />);
     // Once, in the breakdown: on the row the label is the pill's tooltip.
-    expect(await screen.findAllByText("HEAD unchanged since last review")).toHaveLength(1);
+    expect(
+      await screen.findAllByText("HEAD unchanged since last review"),
+    ).toHaveLength(1);
   });
 
   // The long label beside the pill wrapped the Outcome cell into three or
@@ -380,7 +437,10 @@ describe("RunsPage", () => {
   });
 
   it("links a PR tag to Bitbucket", async () => {
-    serve({ runs: { runs, bitbucket_url: "https://bitbucket.example.com" }, metrics });
+    serve({
+      runs: { runs, bitbucket_url: "https://bitbucket.example.com" },
+      metrics,
+    });
     render(<RunsPage />);
 
     const link = await screen.findByText("PAY/ledger#1");
@@ -420,7 +480,12 @@ describe("MetricsPage", () => {
     serve({
       metrics: {
         ...metrics,
-        totals: { ...metrics.totals, runs: 0, cost_usd: null, unpriced_runs: 0 },
+        totals: {
+          ...metrics.totals,
+          runs: 0,
+          cost_usd: null,
+          unpriced_runs: 0,
+        },
         by_team: [],
         daily: [],
         daily_attempts: [],
@@ -453,7 +518,9 @@ describe("MetricsPage", () => {
     });
     render(<MetricsPage />);
 
-    await waitFor(() => expect(screen.getByText(/No priced runs/)).toBeDefined());
+    await waitFor(() =>
+      expect(screen.getByText(/No priced runs/)).toBeDefined(),
+    );
     expect(screen.getByText(/No runs in this window/)).toBeDefined();
   });
 });
@@ -552,7 +619,9 @@ describe("FaqPage", () => {
     render(<FaqPage />);
 
     expect(screen.getByText("noergloff")).toBeDefined();
-    expect(screen.getByText("/api/docs").getAttribute("href")).toBe("/api/docs");
+    expect(screen.getByText("/api/docs").getAttribute("href")).toBe(
+      "/api/docs",
+    );
   });
 
   // The page is for developers, not operators: a reader here cannot set env

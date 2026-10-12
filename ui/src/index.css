@@ -61,7 +61,9 @@
   --color-s3: #9085e9;
   --color-s4: #d55181;
 
-  --font-sans: "Anthropic Sans", system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-sans:
+    "Anthropic Sans", system-ui, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
   --font-serif: "Anthropic Serif", Georgia, "Times New Roman", Times, serif;
   --font-mono: "Anthropic Mono", ui-monospace, "SF Mono", Menlo, monospace;
 

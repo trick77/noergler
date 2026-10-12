@@ -104,13 +104,21 @@ describe("byName", () => {
       { slug: "mobile", name: "Mobile" },
       { slug: "alpha", name: "Ausgaben" },
     ];
-    expect(byName(teams).map((t) => t.slug)).toEqual(["alpha", "mobile", "payments"]);
+    expect(byName(teams).map((t) => t.slug)).toEqual([
+      "alpha",
+      "mobile",
+      "payments",
+    ]);
   });
 
   // "Diecibärg" files under D, not after Z.
   it("folds case and accents", () => {
     const teams = [{ name: "Zulu" }, { name: "ärger" }, { name: "Alpha" }];
-    expect(byName(teams).map((t) => t.name)).toEqual(["Alpha", "ärger", "Zulu"]);
+    expect(byName(teams).map((t) => t.name)).toEqual([
+      "Alpha",
+      "ärger",
+      "Zulu",
+    ]);
   });
 
   // The array comes from the poller and is reused between renders.
@@ -185,7 +193,9 @@ describe("outcomeWord", () => {
   it("names a skip by its reason", () => {
     expect(outcomeWord("skipped", "ignored_author")).toBe("ignored");
     expect(outcomeWord("skipped", "head_unchanged")).toBe("unchanged");
-    expect(outcomeWord("skipped", "not_auto_review_author")).toBe("not opted in");
+    expect(outcomeWord("skipped", "not_auto_review_author")).toBe(
+      "not opted in",
+    );
   });
 
   // A reason from a newer binary, or none at all, still reads as a skip.
