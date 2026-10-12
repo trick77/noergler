@@ -17,6 +17,7 @@ import (
 	"github.com/trick77/noergler/internal/queue"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/teams"
+	"github.com/trick77/noergler/web"
 	"github.com/trick77/ship/kit/logging"
 )
 
@@ -586,11 +587,12 @@ func TestDashboardRoutesAbsentWithoutDeps(t *testing.T) {
 func TestSPACatchAllNeverShadowsTheRealRoutes(t *testing.T) {
 	h := newDashHarness(t)
 
-	for _, path := range []string{"/healthz", "/readyz"} {
-		w := h.get(t, path)
-		if ct := w.Header().Get("Content-Type"); strings.Contains(ct, "html") {
-			t.Errorf("%s served %q, want the probe's own body", path, ct)
-		}
+	// The probes' own bodies: liveness a plain "ok", readiness JSON either way.
+	if w := h.get(t, "/healthz"); w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != "ok" {
+		t.Errorf("/healthz = %d %q, want the probe's 200 ok", w.Code, w.Body.String())
+	}
+	if ct := h.get(t, "/readyz").Header().Get("Content-Type"); !strings.Contains(ct, "json") {
+		t.Errorf("/readyz served %q, want the probe's JSON", ct)
 	}
 
 	// The webhook is POST-only, so a GET must not be answered by the shell
@@ -606,9 +608,14 @@ func TestSPACatchAllNeverShadowsTheRealRoutes(t *testing.T) {
 		t.Errorf("a mistyped API path received the shell: %s", body)
 	}
 
-	// A real client route does get the SPA.
-	if code := h.get(t, "/metrics").Code; code != http.StatusOK {
-		t.Errorf("/metrics = %d, want the SPA to answer 200", code)
+	// A real client route does get the SPA: the shell when built, the
+	// placeholder's 503 in a binary without one (a fresh clone).
+	want := http.StatusServiceUnavailable
+	if web.HasBuiltIndex() {
+		want = http.StatusOK
+	}
+	if code := h.get(t, "/metrics").Code; code != want {
+		t.Errorf("/metrics = %d, want %d (built: %v)", code, want, web.HasBuiltIndex())
 	}
 }
 
