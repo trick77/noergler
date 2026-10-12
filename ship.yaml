@@ -4,8 +4,8 @@ go:
   # Attributes coverage across package boundaries (the api tests drive review, store and render) and keeps cmd/
   # (entry points, evals orchestration) out of both gates.
   coverpkg: ./internal/...
-# The store tests' Postgres, the major the deployment runs (compose.yaml too).
-postgres: "17"
+# The store tests' Postgres: compose.yaml's image, the major the deployment runs.
+postgres: compose:postgres
 ui:
   # make fe-build clears the stale dist first: a file removed from ui/ never stays embedded.
   build: cd .. && make fe-build
