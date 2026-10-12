@@ -99,12 +99,16 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 			httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 			return
 		}
+		// Logged here: the access log keeps a 401 at debug, and a team whose
+		// secret drifted would otherwise stop being reviewed without a trace.
+		d.Log.WarnContext(ctx, "webhook refused: missing signature")
 		httpx.WriteError(w, http.StatusUnauthorized, "Missing signature")
 		return
 	}
 
 	// 5. The signature proves the sender holds THIS team's secret.
 	if !verifySignature(body, signature, team.WebhookSecret) {
+		d.Log.WarnContext(ctx, "webhook refused: invalid signature")
 		httpx.WriteError(w, http.StatusUnauthorized, "Invalid signature")
 		return
 	}
