@@ -82,7 +82,7 @@ On every `pr:from_ref_updated` the existing comment is updated in place rather t
    Or manually. `migrate` is a separate step and never runs from `serve`:
 
    ```bash
-   docker build -t noergler .
+   docker build -t noergler -f Containerfile .
    docker run --rm --env-file .env noergler migrate
    docker run -p 8080:8080 --env-file .env \
      -e TEAMS_CONFIG=/app/teams.yaml \
