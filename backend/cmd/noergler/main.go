@@ -19,6 +19,7 @@ import (
 
 	"github.com/trick77/ship/kit/httpx"
 	"github.com/trick77/ship/kit/logging"
+	"github.com/trick77/ship/kit/run"
 	"github.com/trick77/ship/kit/version"
 
 	"github.com/trick77/noergler/internal/api"
@@ -88,11 +89,11 @@ func withLog(run func(*slog.Logger) error) error {
 // listenAddr is SERVER_HOST:SERVER_PORT as serve binds it, read without the
 // rest of the config: the healthcheck needs nothing else.
 func listenAddr() string {
-	port := os.Getenv("SERVER_PORT")
+	port := strings.TrimSpace(os.Getenv("SERVER_PORT"))
 	if port == "" {
 		port = "8080"
 	}
-	return net.JoinHostPort(os.Getenv("SERVER_HOST"), port)
+	return net.JoinHostPort(strings.TrimSpace(os.Getenv("SERVER_HOST")), port)
 }
 
 // migrate applies pending migrations and exits: the init container's job.
@@ -122,7 +123,10 @@ func serve(log *slog.Logger) error {
 	}
 	config.Dump(app, log)
 
-	ctx := context.Background()
+	// SIGINT/SIGTERM end startup and then serving, and stay caught through the
+	// queue drain below: a second signal must not kill a review in flight.
+	ctx, stop := run.Context(context.Background())
+	defer stop()
 
 	// Shared layer: any failure here aborts boot, because none of it belongs to
 	// one team. Every check runs before the abort so the log names all the
@@ -195,7 +199,7 @@ func serve(log *slog.Logger) error {
 	// fetch, its LLM call and its store writes would all fail with context
 	// canceled, and safeDB would swallow them, losing the run row and its
 	// cost. Cancellation reaches the worker through Stop alone.
-	queueCtx, stopQueue := context.WithCancel(ctx)
+	queueCtx, stopQueue := context.WithCancel(context.WithoutCancel(ctx))
 	defer stopQueue()
 	q := queue.New(reg.Review, app.Queue.InferenceConcurrency, app.Queue.InferenceConcurrencyPerTeam, log)
 	q.Start(queueCtx)
