@@ -1,0 +1,18 @@
+# The gate (make check, and ship pre-push in the hook) and the release, see github.com/trick77/ship.
+go:
+  dir: backend
+  # Attributes coverage across package boundaries (the api tests drive review, store and render) and keeps cmd/
+  # (entry points, evals orchestration) out of both gates.
+  coverpkg: ./internal/...
+ui:
+  # make fe-build clears the stale dist first: a file removed from ui/ never stays embedded.
+  build: cd .. && make fe-build
+  lint: npm run format:check
+  # Reporters from ui/vite.config.ts (lcov into ../coverage/ui), not overridden on the command line.
+  test: npm run test -- --coverage
+  lcov: coverage/ui/lcov.info
+steps:
+  # Pinned: an upstream release must not fail the gate on a spec nobody touched. .spectral.yaml says what is off.
+  - { name: openapi lint, run: npx --yes @stoplight/spectral-cli@6.15.0 lint backend/api/openapi.yaml --ruleset .spectral.yaml }
+images:
+  - {}

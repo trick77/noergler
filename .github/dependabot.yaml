@@ -2,16 +2,95 @@ version: 2
 updates:
   - package-ecosystem: gomod
     directory: /backend
+    commit-message: { prefix: deps }   # Go style: "deps: bump …"
     schedule:
       interval: weekly
+      day: sunday
+      time: "07:00"
+    open-pull-requests-limit: 5
     groups:
-      go-minor-and-patch:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
+      gomod-non-major:
+        patterns:
+          - "*"
+        update-types:
+          - patch
+          - minor
+      gomod-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
+
+  - package-ecosystem: npm
+    directory: /ui
+    commit-message: { prefix: deps }   # Go style: "deps: bump …"
+    schedule:
+      interval: weekly
+      day: sunday
+      time: "07:00"
+    open-pull-requests-limit: 5
+    groups:
+      # First matching group wins, so the specific group comes first and the
+      # catch-all stays last. vite, its react plugin, vitest and its coverage
+      # provider are one dependency family: vitest pins a vite major range and
+      # @vitest/coverage-v8 pins vitest's exact version, so bumping any one
+      # alone fails npm ci on ERESOLVE (or nests a second vite). They always
+      # travel together. @tailwindcss/vite peer-depends on vite's major too.
+      vite-and-vitest:
+        patterns: ["vite", "@vitejs/*", "vitest", "@vitest/*", "@tailwindcss/vite"]
+      # Pinned exact; a release may format differently and fail the gate's format:check, so it never blocks the
+      # other bumps: its own PR, reformatted there.
+      prettier:
+        patterns: ["prettier"]
+      npm-non-major:
+        patterns:
+          - "*"
+        update-types:
+          - patch
+          - minor
+      npm-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
+
+  # Base images in Containerfile.
+  - package-ecosystem: docker
+    directory: /
+    commit-message: { prefix: deps }   # Go style: "deps: bump …"
+    schedule:
+      interval: weekly
+      day: sunday
+      time: "07:00"
+    groups:
+      docker-non-major:
+        patterns:
+          - "*"
+        update-types:
+          - patch
+          - minor
+      docker-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
+
   - package-ecosystem: github-actions
     directory: /
+    commit-message: { prefix: deps }   # Go style: "deps: bump …"
     schedule:
       interval: weekly
+      day: sunday
+      time: "07:00"
     groups:
-      actions:
-        patterns: ["*"]
+      actions-non-major:
+        patterns:
+          - "*"
+        update-types:
+          - patch
+          - minor
+      actions-major:
+        patterns:
+          - "*"
+        update-types:
+          - major

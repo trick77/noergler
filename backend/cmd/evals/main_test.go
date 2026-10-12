@@ -16,8 +16,7 @@ import (
 	"github.com/trick77/noergler/internal/inference"
 )
 
-// The orchestration is what the patch-coverage gate objects to being
-// untested, and it is worth testing on its own terms: the exit code CI reads
+// The orchestration is worth testing on its own terms: the exit code CI reads
 // is decided here, and a run that could not happen must not read as a prompt
 // regression.
 
