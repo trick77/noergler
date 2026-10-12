@@ -30,18 +30,24 @@ updates:
       time: "07:00"
     open-pull-requests-limit: 5
     groups:
-      # First matching group wins, so the specific group comes first and the
-      # catch-all stays last. vite, its react plugin, vitest and its coverage
+      # First matching group wins, so the specific groups come first and the
+      # catch-alls stay last. vite, its react plugin, vitest and its coverage
       # provider are one dependency family: vitest pins a vite major range and
       # @vitest/coverage-v8 pins vitest's exact version, so bumping any one
       # alone fails npm ci on ERESOLVE (or nests a second vite). They always
       # travel together. @tailwindcss/vite peer-depends on vite's major too.
       vite-and-vitest:
         patterns: ["vite", "@vitejs/*", "vitest", "@vitest/*", "@tailwindcss/vite"]
-      # Pinned exact; a release may format differently and fail the gate's format:check, so it never blocks the
-      # other bumps: its own PR, reformatted there.
+      # Pinned exact; a release may format differently and fail the gate's
+      # format:check, so it never blocks the other bumps: its own PR,
+      # reformatted there.
       prettier:
         patterns: ["prettier"]
+      # A new rule or recommended-set change can fail the gate's lint: its own
+      # PR, findings fixed there. typescript-eslint and @eslint/js track
+      # eslint's major.
+      eslint:
+        patterns: ["eslint", "typescript-eslint", "eslint-config-prettier", "@eslint/*"]
       npm-non-major:
         patterns:
           - "*"
@@ -53,6 +59,12 @@ updates:
           - "*"
         update-types:
           - major
+    ignore:
+      # typescript-eslint has no release supporting TypeScript 7.x yet
+      # (peer dependency caps at <6.1.0); re-enable once it does.
+      - dependency-name: "typescript"
+        update-types:
+          - "version-update:semver-major"
 
   # Base images in Containerfile.
   - package-ecosystem: docker
