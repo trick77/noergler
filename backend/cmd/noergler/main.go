@@ -64,15 +64,20 @@ func main() {
 const usage = "usage: noergler [serve|migrate|version|-healthcheck]"
 
 // withLog sets up logging before anything logs (config loading does), names
-// the build, then runs. An unknown LOG_LEVEL fails startup: a logging knob
-// that quietly falls back to info is a setting that does nothing.
+// the build, then runs. An unknown LOG_LEVEL still fails startup: logging
+// starts at info so the fault surfaces with the rest of the config's (serve)
+// or on its own (migrate), never as a knob that quietly does nothing.
 func withLog(run func(*slog.Logger) error) error {
 	env := os.Getenv("NOERGLER_ENV")
 	if env == "" {
 		env = "dev"
 	}
+	level := os.Getenv("LOG_LEVEL")
+	if _, err := logging.ParseLevel(level); err != nil {
+		level = ""
+	}
 	log, err := logging.Setup(logging.Options{
-		Level:   os.Getenv("LOG_LEVEL"),
+		Level:   level,
 		Format:  logging.Splunk,
 		Writer:  os.Stdout,
 		Service: "noergler",
@@ -99,6 +104,9 @@ func listenAddr() string {
 // migrate applies pending migrations and exits: the init container's job.
 // Only DATABASE_URL is needed, so a teams.yaml is not required here.
 func migrate(log *slog.Logger) error {
+	if _, err := logging.ParseLevel(os.Getenv("LOG_LEVEL")); err != nil {
+		return fmt.Errorf("LOG_LEVEL: %w", err)
+	}
 	dsn, ok := os.LookupEnv("DATABASE_URL")
 	if !ok || strings.TrimSpace(dsn) == "" {
 		return errors.New("environment variable DATABASE_URL is not set")

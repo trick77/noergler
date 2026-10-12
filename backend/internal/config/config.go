@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	kitenv "github.com/trick77/ship/kit/env"
+	"github.com/trick77/ship/kit/logging"
 )
 
 // RequiredWebhookEvents are the Bitbucket events the webhook dispatches on.
@@ -397,6 +398,12 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 		Disabled:        map[string]string{},
 	}
 	app.LLM.ReasoningEffort = normalizeEffort(r.String("OPENAI_REASONING_EFFORT", ""))
+	// Logging is set up before this runs (at info on a bad value, see
+	// withLog); the level is checked here so its fault is reported with the
+	// rest rather than one restart earlier.
+	if _, err := logging.ParseLevel(r.String("LOG_LEVEL", "")); err != nil {
+		r.Fail("LOG_LEVEL: %v", err)
+	}
 	// A per-team cap above the global one never binds, so it reads as a
 	// setting that does nothing. Fail rather than let the misconfiguration
 	// survive to production unnoticed.

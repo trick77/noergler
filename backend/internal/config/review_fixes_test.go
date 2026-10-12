@@ -26,6 +26,19 @@ func TestInstance_BadBooleanIsFatal(t *testing.T) {
 	}
 }
 
+// A bad LOG_LEVEL is one more fault in the same report, not a startup of its
+// own before the rest are read.
+func TestInstance_BadLogLevelReportedWithTheRest(t *testing.T) {
+	e := newEnv(t)
+	e.set("LOG_LEVEL", "verbose", "REVIEW_REQUIRE_AGENTS_MD", "ture")
+	_, err := e.load()
+	if err == nil || !strings.Contains(err.Error(), "LOG_LEVEL") || !strings.Contains(err.Error(), "REVIEW_REQUIRE_AGENTS_MD") {
+		t.Errorf("err = %v, want both faults", err)
+	}
+	e.set("LOG_LEVEL", "WARNING", "REVIEW_REQUIRE_AGENTS_MD", "on")
+	e.mustLoad()
+}
+
 // Blank is a setting for these: no opt-out keyword, no excluded repos, no AC
 // prefixes. Unset keeps the default.
 func TestInstance_BlankTurnsOffWhatBlankMeansOff(t *testing.T) {
