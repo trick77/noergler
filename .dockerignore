@@ -1,10 +1,17 @@
-.git
-.claude
-.env
-teams.yaml
-docs
-http
-scripts
-*.md
-*.png
-coverage
+# ship:begin (owned by ship init; repo-specific lines go below the end marker)
+# Allowlist: the images build from the dirs below only. A new root-level file stays out of the context without anyone
+# having to remember this list. BuildKit reads the -f Containerfile outside these rules.
+*
+!backend
+!ui
+# The host's node_modules (darwin native binaries) would land on top of the image's own install; the image builds
+# dist itself.
+ui/node_modules
+ui/dist
+ui/coverage
+# ship:end
+
+# The prompt templates ship with the image (COPY prompts/).
+!prompts
+# vite's output from a host build: the image builds it itself in the ui stage.
+backend/web/dist
