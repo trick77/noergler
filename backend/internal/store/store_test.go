@@ -20,8 +20,8 @@ import (
 )
 
 // testStore opens a store on a fresh schema, migrates it and drops the
-// schema at cleanup. Gated on NOERGLER_TEST_DSN; CI provides a Postgres
-// service container, locally `docker compose up -d postgres` and
+// schema at cleanup. Gated on NOERGLER_TEST_DSN; CI has no Postgres, so
+// they run locally only: `docker compose up -d postgres` and
 // NOERGLER_TEST_DSN=postgres://noergler:changeme@localhost:5432/noergler?sslmode=disable.
 func testStore(t *testing.T) *Store {
 	t.Helper()

@@ -9,7 +9,7 @@ Bitbucket Server PR auto-review bridge, inference through
 root.** Go commands run from `backend/`, scripts and `make` from the root.
 - Gate = `make check` (ship master, unpinned; `ship.yaml`; local ship: `SHIP_CMD=<binary>`, hook too). Hook: `make hooks` once per clone, again when ship says it is stale. GitHub never first to find a failure. Dependabot PR: `make check` before merge.
 - Coverage 75% floor + patch over `./internal/...`, `[skip patch-coverage]` skips patch only.
-- Store tests skip without `NOERGLER_TEST_DSN`, and ship's CI has no Postgres: export it for every `make check`, or a store edit fails the patch gate. `docker compose up -d postgres`, DSN `postgres://noergler:changeme@localhost:5432/noergler?sslmode=disable`.
+- Store tests skip without `NOERGLER_TEST_DSN`, and ship's CI has no Postgres: a skipped store edit fails the patch gate. `make check` and push: `docker compose up -d postgres`, `NOERGLER_TEST_DSN=postgres://noergler:changeme@localhost:5432/noergler?sslmode=disable` on that command only, never in a shell profile (set and Postgres down, the store tests fail and block every push).
 - Commit subjects + PR titles: Go style `area: what` (`review: …`, `store: …`), gated by ship; release notes list them by area.
 - Merge ships nothing: `gh workflow run Release` → tag, image, GitHub-hosted runners only, never a laptop.
 - `./scripts/smoke.sh` boots `serve` against `scripts/fakes`.
