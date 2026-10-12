@@ -7,7 +7,7 @@ go:
 ui:
   # make fe-build clears the stale dist first: a file removed from ui/ never stays embedded.
   build: cd .. && make fe-build
-  lint: npm run format:check
+  lint: npm run lint
   # Reporters from ui/vite.config.ts (lcov into ../coverage/ui), not overridden on the command line.
   test: npm run test -- --coverage
   lcov: coverage/ui/lcov.info
