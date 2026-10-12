@@ -27,7 +27,7 @@ RUN CGO_ENABLED=0 go build -trimpath \
     -ldflags "-s -w -X github.com/trick77/noergler/internal/buildinfo.version=${VERSION}" \
     -o /out/noergler ./cmd/noergler
 
-FROM alpine:3.23
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=builder /out/noergler /noergler
