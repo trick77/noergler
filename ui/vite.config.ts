@@ -1,5 +1,4 @@
-/// <reference types="vitest/config" />
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -23,6 +22,7 @@ export default defineConfig({
     // afterEach hook; without globals each render stacks on the previous
     // test's DOM and every findByText hits duplicates.
     globals: true,
+    setupFiles: ["./src/test/setup.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text-summary", "json-summary", "lcov"],
@@ -30,7 +30,7 @@ export default defineConfig({
       // Explicit, so an untested module is not silently invisible to the
       // ratio the gate reads.
       include: ["src/**/*.{ts,tsx}"],
-      exclude: ["src/main.tsx", "src/**/*.d.ts"],
+      exclude: ["src/main.tsx", "src/test/**", "src/**/*.d.ts"],
     },
   },
 });
