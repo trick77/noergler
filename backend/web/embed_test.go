@@ -94,13 +94,14 @@ func TestAPIPathsNeverReceiveTheShell(t *testing.T) {
 }
 
 // A binary built without running the frontend build still starts and still
-// answers: it says what to run rather than 404ing its own pages.
+// answers: it says what to run rather than 404ing its own pages, with a 503
+// so no check reads an unbuilt dashboard as fine.
 func TestUnbuiltBinaryServesThePlaceholder(t *testing.T) {
 	h := handler(fstest.MapFS{".gitkeep": {Data: []byte("")}})
 
 	w := req(t, h, "/")
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", w.Code)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", w.Code)
 	}
 	if !strings.Contains(w.Body.String(), "make fe-build") {
 		t.Errorf("placeholder should name the build command, got %q", w.Body.String())
@@ -117,10 +118,10 @@ func TestUnbuiltBinaryServesThePlaceholder(t *testing.T) {
 }
 
 // The shell names hashed assets, so a cached shell outlives what it points
-// at.
-func TestShellIsNotCached(t *testing.T) {
-	if got := req(t, handler(built()), "/").Header().Get("Cache-Control"); got != "no-store" {
-		t.Errorf("Cache-Control = %q, want no-store", got)
+// at: revalidated on every load.
+func TestShellIsRevalidated(t *testing.T) {
+	if got := req(t, handler(built()), "/").Header().Get("Cache-Control"); got != "no-cache" {
+		t.Errorf("Cache-Control = %q, want no-cache", got)
 	}
 }
 
@@ -132,10 +133,14 @@ func TestEmbedResolves(t *testing.T) {
 	// HasBuiltIndex is whichever the working tree is; it must not panic and
 	// must agree with what the handler does.
 	w := req(t, Handler(), "/")
-	if w.Code != http.StatusOK {
-		t.Errorf("/ status = %d, want 200 in either state", w.Code)
+	want := http.StatusServiceUnavailable
+	if HasBuiltIndex() {
+		want = http.StatusOK
 	}
-	if HasBuiltIndex() && strings.Contains(w.Body.String(), "make fe-build") {
-		t.Error("a built tree served the placeholder")
+	if w.Code != want {
+		t.Errorf("/ status = %d, want %d (built: %v)", w.Code, want, HasBuiltIndex())
+	}
+	if HasBuiltIndex() == strings.Contains(w.Body.String(), "make fe-build") {
+		t.Error("the placeholder must answer exactly when the tree is unbuilt")
 	}
 }
