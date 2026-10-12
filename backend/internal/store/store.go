@@ -6,13 +6,13 @@ package store
 import (
 	"context"
 	"embed"
-	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
-	"sort"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/trick77/ship/kit/migrate"
 )
 
 //go:embed migrations/*.sql
@@ -22,10 +22,15 @@ var migrationFS embed.FS
 // pg_advisory_lock namespaces by value alone. From "noer".
 const migrateLockID int64 = 0x6E6F6572
 
-// migrateLockTimeout bounds how long one migrate waits for another's.
-// pg_advisory_lock blocks forever; a wedged holder would otherwise leave the
-// init container hanging with no log line.
-var migrateLockTimeout = 5 * time.Minute
+// migrations is the embedded SQL with the directory stripped, as kit's
+// migrate reads it.
+func migrations() fs.FS {
+	sub, err := fs.Sub(migrationFS, "migrations")
+	if err != nil {
+		panic(err) // unreachable: the embed pattern guarantees the directory
+	}
+	return sub
+}
 
 // Store owns the pool.
 type Store struct {
@@ -68,76 +73,19 @@ func (s *Store) Close() {
 	s.log.Info("PostgreSQL connection pool closed")
 }
 
-// Migrate applies every pending migration in filename order, exactly once,
-// each in its own transaction, serialised by a session advisory lock on a
-// dedicated connection. Idempotent: a second run applies nothing.
+// Migrate applies every pending migration in file order, exactly once, each
+// in its own transaction, serialised by a session advisory lock on a
+// dedicated connection. Idempotent: a second run applies nothing. Same
+// schema_migrations table as before kit, so no data step.
 func (s *Store) Migrate(ctx context.Context) error {
-	conn, err := s.pool.Acquire(ctx)
-	if err != nil {
-		return fmt.Errorf("acquire migration connection: %w", err)
-	}
-	defer conn.Release()
+	db := stdlib.OpenDBFromPool(s.pool)
+	defer func() { _ = db.Close() }()
+	_, err := migrate.Up(ctx, db, migrations(), s.migrateOptions())
+	return err
+}
 
-	lockCtx, cancelLock := context.WithTimeout(ctx, migrateLockTimeout)
-	defer cancelLock()
-	if _, err := conn.Exec(lockCtx, `SELECT pg_advisory_lock($1)`, migrateLockID); err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("timed out after %s waiting for the migration lock (key %d in pg_locks): %w",
-				migrateLockTimeout, migrateLockID, err)
-		}
-		return fmt.Errorf("acquire migration lock: %w", err)
-	}
-	defer func() {
-		_, _ = conn.Exec(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock($1)`, migrateLockID)
-	}()
-
-	if _, err := conn.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
-		name TEXT PRIMARY KEY,
-		applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-	)`); err != nil {
-		return fmt.Errorf("create schema_migrations: %w", err)
-	}
-
-	entries, err := migrationFS.ReadDir("migrations")
-	if err != nil {
-		return fmt.Errorf("read migrations: %w", err)
-	}
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		names = append(names, e.Name())
-	}
-	sort.Strings(names)
-
-	for _, name := range names {
-		var applied bool
-		if err := conn.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE name = $1)`, name).Scan(&applied); err != nil {
-			return fmt.Errorf("check %s: %w", name, err)
-		}
-		if applied {
-			continue
-		}
-		body, err := migrationFS.ReadFile("migrations/" + name)
-		if err != nil {
-			return fmt.Errorf("read %s: %w", name, err)
-		}
-		tx, err := conn.Begin(ctx)
-		if err != nil {
-			return fmt.Errorf("begin %s: %w", name, err)
-		}
-		if _, err := tx.Exec(ctx, string(body)); err != nil {
-			_ = tx.Rollback(ctx)
-			return fmt.Errorf("apply %s: %w", name, err)
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO schema_migrations (name) VALUES ($1)`, name); err != nil {
-			_ = tx.Rollback(ctx)
-			return fmt.Errorf("record %s: %w", name, err)
-		}
-		if err := tx.Commit(ctx); err != nil {
-			return fmt.Errorf("commit %s: %w", name, err)
-		}
-		s.log.Info("migration applied: " + name)
-	}
-	return nil
+func (s *Store) migrateOptions() migrate.Options {
+	return migrate.Options{Dialect: migrate.Postgres(migrateLockID), Log: s.log}
 }
 
 // Ping is the startup connectivity check.
@@ -149,29 +97,14 @@ func (s *Store) Ping(ctx context.Context) error {
 // The startup gate uses it so a deploy that skipped the migrate init
 // container fails at boot with a name, not at the first query.
 func (s *Store) SchemaCurrent(ctx context.Context) error {
-	entries, err := migrationFS.ReadDir("migrations")
+	db := stdlib.OpenDBFromPool(s.pool)
+	defer func() { _ = db.Close() }()
+	pending, err := migrate.Pending(ctx, db, migrations(), s.migrateOptions())
 	if err != nil {
 		return err
 	}
-	var exists bool
-	if err := s.pool.QueryRow(ctx, `SELECT to_regclass('schema_migrations') IS NOT NULL`).Scan(&exists); err != nil {
-		return err
-	}
-	if !exists {
-		return errors.New("database schema is empty: run `noergler migrate` first")
-	}
-	var missing []string
-	for _, e := range entries {
-		var applied bool
-		if err := s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE name = $1)`, e.Name()).Scan(&applied); err != nil {
-			return err
-		}
-		if !applied {
-			missing = append(missing, e.Name())
-		}
-	}
-	if len(missing) > 0 {
-		return fmt.Errorf("database schema is behind, pending %v: run `noergler migrate` first", missing)
+	if len(pending) > 0 {
+		return fmt.Errorf("database schema is behind, pending %v: run `noergler migrate` first", pending)
 	}
 	return nil
 }
