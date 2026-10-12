@@ -10,10 +10,10 @@ import (
 	"strings"
 
 	"github.com/trick77/noergler/internal/config"
-	"github.com/trick77/noergler/internal/httpapi"
-	"github.com/trick77/noergler/internal/logging"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/teams"
+	"github.com/trick77/ship/kit/httpx"
+	"github.com/trick77/ship/kit/logging"
 )
 
 // maxAPIBodyBytes bounds the authenticated request bodies.
@@ -35,14 +35,14 @@ func (d Deps) teamAuth(ctx context.Context, w http.ResponseWriter, slug, authori
 		return nil, false
 	}
 	if !strings.HasPrefix(strings.ToLower(authorization), "bearer ") {
-		httpapi.WriteDetail(w, http.StatusUnauthorized,
+		httpx.WriteError(w, http.StatusUnauthorized,
 			"Authorization: Bearer <the team's webhook secret> required")
 		return nil, false
 	}
 	secret := strings.TrimSpace(authorization[len("bearer "):])
 	want := rt.Team().WebhookSecret
 	if secret == "" || subtle.ConstantTimeCompare([]byte(secret), []byte(want)) != 1 {
-		httpapi.WriteDetail(w, http.StatusUnauthorized, "wrong team secret")
+		httpx.WriteError(w, http.StatusUnauthorized, "wrong team secret")
 		return nil, false
 	}
 	return rt, true
@@ -90,12 +90,12 @@ func nonNil(s []string) []string {
 // it never touches the DB.
 func (d Deps) getTeam(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("team")
-	ctx := logging.WithTeam(r.Context(), slug)
+	ctx := logging.With(r.Context(), "team", slug)
 	rt, ok := d.teamAuth(ctx, w, slug, r.Header.Get("Authorization"))
 	if !ok {
 		return
 	}
-	httpapi.WriteJSON(w, http.StatusOK, viewOf(rt.Team()))
+	httpx.WriteJSON(w, http.StatusOK, viewOf(rt.Team()))
 }
 
 // settingsRequest is a PARTIAL update.
@@ -128,7 +128,7 @@ func clean(items *[]string, current []string) []string {
 // putTeamSettings updates the team's three lists. Takes effect immediately.
 func (d Deps) putTeamSettings(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("team")
-	ctx := logging.WithTeam(r.Context(), slug)
+	ctx := logging.With(r.Context(), "team", slug)
 	// Auth before the body is decoded, so an unauthenticated caller cannot
 	// probe the schema: a bad body behind a bad secret answers 401, never 422.
 	// Pinned by TestTeams_AuthPrecedesBodyValidation.
@@ -152,11 +152,11 @@ func (d Deps) putTeamSettings(w http.ResponseWriter, r *http.Request) {
 		return d.Store.PutSettings(ctx, slug, next, "team:"+slug)
 	})
 	if err != nil {
-		d.Log.ErrorContext(ctx, "settings update failed", "error", err)
-		httpapi.WriteDetail(w, http.StatusServiceUnavailable, "database not ready")
+		d.Log.ErrorContext(ctx, "settings update failed", logging.Err(err))
+		httpx.WriteError(w, http.StatusServiceUnavailable, "database not ready")
 		return
 	}
-	httpapi.WriteJSON(w, http.StatusOK, viewOf(rt.Team()))
+	httpx.WriteJSON(w, http.StatusOK, viewOf(rt.Team()))
 }
 
 // decodeStrict rejects an unknown field with a 422.
@@ -176,15 +176,15 @@ func decodeStrict(w http.ResponseWriter, r *http.Request, into any) bool {
 		// status and an internal string on the wire.
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			httpapi.WriteDetail(w, http.StatusRequestEntityTooLarge, "payload too large")
+			httpx.WriteError(w, http.StatusRequestEntityTooLarge, "payload too large")
 			return false
 		}
-		httpapi.WriteDetail(w, http.StatusUnprocessableEntity, decodeDetail(err))
+		httpx.WriteError(w, http.StatusUnprocessableEntity, decodeDetail(err))
 		return false
 	}
 	// A second value in the stream is as malformed as a bad first one.
 	if err := dec.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
-		httpapi.WriteDetail(w, http.StatusUnprocessableEntity, "body must be a single JSON object")
+		httpx.WriteError(w, http.StatusUnprocessableEntity, "body must be a single JSON object")
 		return false
 	}
 	return true

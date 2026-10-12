@@ -14,10 +14,11 @@ import (
 
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/httpapi"
-	"github.com/trick77/noergler/internal/logging"
 	"github.com/trick77/noergler/internal/queue"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/teams"
+	"github.com/trick77/noergler/web"
+	"github.com/trick77/ship/kit/logging"
 )
 
 type fakeDashQueue struct{ snap queue.Snapshot }
@@ -81,7 +82,7 @@ func newDashHarness(t *testing.T) *dashHarness {
 	rt := teams.NewRuntime(team, &fakeReviewer{}, nil, nil, nil)
 
 	var buf bytes.Buffer
-	log := slog.New(logging.NewHandler(&buf, slog.LevelDebug, "test"))
+	log := slog.New(logging.NewSplunkHandler(&buf, slog.LevelDebug, "noergler", "test"))
 	reg := teams.NewRegistry(
 		map[string]*teams.Runtime{"platform": rt},
 		map[string]string{"mobile": "TEAM_MOBILE_OPENAI_API_KEY is unset"},
@@ -106,7 +107,7 @@ func (h *dashHarness) get(t *testing.T, path string) *httptest.ResponseRecorder 
 }
 
 // The dashboard is unauthenticated, so anything it serves is public. A
-// disable reason can name an env var, which is why /health withholds them
+// disable reason can name an env var, which is why /readyz withholds them
 // and why this must too.
 func TestDashboardNeverServesADisableReason(t *testing.T) {
 	h := newDashHarness(t)
@@ -567,7 +568,7 @@ func TestTeamsListsClaimsAndSettings(t *testing.T) {
 // that does not want a dashboard does not serve one.
 func TestDashboardRoutesAbsentWithoutDeps(t *testing.T) {
 	var buf bytes.Buffer
-	log := slog.New(logging.NewHandler(&buf, slog.LevelDebug, "test"))
+	log := slog.New(logging.NewSplunkHandler(&buf, slog.LevelDebug, "noergler", "test"))
 	reg := teams.NewRegistry(nil, nil, log)
 	srv := httpapi.New(reg.Status, log)
 	Register(srv, Deps{Teams: reg, Queue: &fakeQueue{}, Log: log})
@@ -586,11 +587,12 @@ func TestDashboardRoutesAbsentWithoutDeps(t *testing.T) {
 func TestSPACatchAllNeverShadowsTheRealRoutes(t *testing.T) {
 	h := newDashHarness(t)
 
-	for _, path := range []string{"/health", "/ready"} {
-		w := h.get(t, path)
-		if ct := w.Header().Get("Content-Type"); !strings.Contains(ct, "json") {
-			t.Errorf("%s served %q, want JSON", path, ct)
-		}
+	// The probes' own bodies: liveness a plain "ok", readiness JSON either way.
+	if w := h.get(t, "/healthz"); w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != "ok" {
+		t.Errorf("/healthz = %d %q, want the probe's 200 ok", w.Code, w.Body.String())
+	}
+	if ct := h.get(t, "/readyz").Header().Get("Content-Type"); !strings.Contains(ct, "json") {
+		t.Errorf("/readyz served %q, want the probe's JSON", ct)
 	}
 
 	// The webhook is POST-only, so a GET must not be answered by the shell
@@ -606,9 +608,14 @@ func TestSPACatchAllNeverShadowsTheRealRoutes(t *testing.T) {
 		t.Errorf("a mistyped API path received the shell: %s", body)
 	}
 
-	// A real client route does get the SPA.
-	if code := h.get(t, "/metrics").Code; code != http.StatusOK {
-		t.Errorf("/metrics = %d, want the SPA to answer 200", code)
+	// A real client route does get the SPA: the shell when built, the
+	// placeholder's 503 in a binary without one (a fresh clone).
+	want := http.StatusServiceUnavailable
+	if web.HasBuiltIndex() {
+		want = http.StatusOK
+	}
+	if code := h.get(t, "/metrics").Code; code != want {
+		t.Errorf("/metrics = %d, want %d (built: %v)", code, want, web.HasBuiltIndex())
 	}
 }
 

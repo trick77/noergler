@@ -8,6 +8,7 @@ import (
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/ship/kit/logging"
 )
 
 // HasAdmin proves the caller's token has project admin on the target by
@@ -106,7 +107,7 @@ func ClaimAndOnboard(
 		fresh, err := st.ListClaims(ctx, team.Slug)
 		if err != nil {
 			log.WarnContext(ctx, "claims written but could not be read back; applying the written scopes",
-				"team", team.Slug, "error", err)
+				"team", team.Slug, logging.Err(err))
 			fresh = append(append([]config.ProjectScope(nil), team.Projects...), proven...)
 		}
 		out.Claims = fresh
@@ -287,7 +288,7 @@ func RemoveAndUnclaim(
 		fresh, err := st.ListClaims(ctx, team.Slug)
 		if err != nil {
 			log.WarnContext(ctx, "claims removed but could not be read back; applying the remainder",
-				"team", team.Slug, "error", err)
+				"team", team.Slug, logging.Err(err))
 			fresh = withoutTargets(team.Projects, proven)
 		}
 		out.Claims = fresh

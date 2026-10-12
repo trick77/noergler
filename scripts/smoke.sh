@@ -63,7 +63,7 @@ env -i PATH="$PATH" \
   OPENAI_MODEL=gpt-5.5 JIRA_URL="http://localhost:$fakes_port" JIRA_TOKEN=t \
   DATABASE_URL="$dsn" TEAMS_CONFIG="$tmp/teams.yaml" \
   TEAM_SMOKE_WEBHOOK_SECRET=s TEAM_SMOKE_OPENAI_API_KEY=k \
-  SERVER_PORT="$port" NOERGLER_VERSION=smoke NOERGLER_PUBLIC_URL="http://localhost:$port" \
+  SERVER_PORT="$port" NOERGLER_PUBLIC_URL="http://localhost:$port" \
   "$tmp/noergler" serve > "$tmp/serve.log" 2>&1 &
 pid=$!
 sleep 1
@@ -73,8 +73,8 @@ sleep 1
 # the floor a deployment starts from, before any PR is reviewed.
 echo "RSS after warm-up: $(ps -o rss= -p "$pid" | tr -d ' ') KiB"
 
-echo "GET /health: $(curl -s "localhost:$port/health")"
-echo "GET /ready: HTTP $(curl -s -o /dev/null -w '%{http_code}' "localhost:$port/ready")"
+echo "GET /healthz: $(curl -s "localhost:$port/healthz")"
+echo "GET /readyz: HTTP $(curl -s -o /dev/null -w '%{http_code}' "localhost:$port/readyz")"
 echo "GET /nope: $(curl -s -H 'X-Request-Id: req-1' "localhost:$port/nope")"
 echo "GET /teams/$team: $(curl -s -H 'Authorization: Bearer s' "localhost:$port/teams/$team")"
 

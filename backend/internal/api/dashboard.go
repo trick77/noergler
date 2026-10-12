@@ -7,22 +7,21 @@ import (
 	"time"
 
 	"github.com/trick77/noergler/internal/config"
-	"github.com/trick77/noergler/internal/httpapi"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/queue"
 	"github.com/trick77/noergler/internal/review"
 	"github.com/trick77/noergler/internal/store"
+	"github.com/trick77/ship/kit/httpx"
 )
 
 // The dashboard is read-only and cross-team by nature: it answers "what is
 // this instance doing", which no per-team route can. It carries no auth of
 // its own, so the ingress is the boundary.
 //
-// What it therefore must NOT serve: a team's disable reason. /health withholds
-// those deliberately, because a reason can name an env var
+// What it therefore must NOT serve: a team's disable reason. The probes
+// withhold those deliberately, because a reason can name an env var
 // (TEAM_X_OPENAI_API_KEY), and an unauthenticated route that leaks the name of
-// a secret is worse than one that says nothing. Slugs and states only, same as
-// /health.
+// a secret is worse than one that says nothing. Slugs and states only.
 //
 // Every body here is a struct, never a map: encoding/json sorts map keys, and
 // this repo pins struct bodies.
@@ -222,7 +221,7 @@ func (d Deps) live(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	httpapi.WriteJSON(w, http.StatusOK, body)
+	httpx.WriteJSON(w, http.StatusOK, body)
 }
 
 type runRow struct {
@@ -271,7 +270,7 @@ func (d Deps) runs(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		d.Log.ErrorContext(r.Context(), "dashboard: RecentAttempts failed: "+err.Error())
-		httpapi.WriteDetail(w, http.StatusInternalServerError, "could not read runs")
+		httpx.WriteError(w, http.StatusInternalServerError, "could not read runs")
 		return
 	}
 
@@ -286,7 +285,7 @@ func (d Deps) runs(w http.ResponseWriter, r *http.Request) {
 			Cost: usd(a.CostNanoUSD), CreatedAt: a.CreatedAt,
 		})
 	}
-	httpapi.WriteJSON(w, http.StatusOK, body)
+	httpx.WriteJSON(w, http.StatusOK, body)
 }
 
 type totalsBody struct {
@@ -411,7 +410,7 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 			return false
 		}
 		d.Log.ErrorContext(ctx, "dashboard: "+what+" failed: "+err.Error())
-		httpapi.WriteDetail(w, http.StatusInternalServerError, "could not read metrics")
+		httpx.WriteError(w, http.StatusInternalServerError, "could not read metrics")
 		return true
 	}
 	st := d.DashboardStore
@@ -477,7 +476,7 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 		}
 		body.Breakdown = append(body.Breakdown, e)
 	}
-	httpapi.WriteJSON(w, http.StatusOK, body)
+	httpx.WriteJSON(w, http.StatusOK, body)
 }
 
 type claimBody struct {
@@ -569,5 +568,5 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 	for _, slug := range disabled {
 		add(slug, false)
 	}
-	httpapi.WriteJSON(w, http.StatusOK, body)
+	httpx.WriteJSON(w, http.StatusOK, body)
 }

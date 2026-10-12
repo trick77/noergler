@@ -7,6 +7,7 @@ updates:
       interval: weekly
       day: sunday
       time: "07:00"
+      timezone: Europe/Zurich
     open-pull-requests-limit: 5
     groups:
       gomod-non-major:
@@ -28,20 +29,27 @@ updates:
       interval: weekly
       day: sunday
       time: "07:00"
+      timezone: Europe/Zurich
     open-pull-requests-limit: 5
     groups:
-      # First matching group wins, so the specific group comes first and the
-      # catch-all stays last. vite, its react plugin, vitest and its coverage
+      # First matching group wins, so the specific groups come first and the
+      # catch-alls stay last. vite, its react plugin, vitest and its coverage
       # provider are one dependency family: vitest pins a vite major range and
       # @vitest/coverage-v8 pins vitest's exact version, so bumping any one
       # alone fails npm ci on ERESOLVE (or nests a second vite). They always
       # travel together. @tailwindcss/vite peer-depends on vite's major too.
       vite-and-vitest:
         patterns: ["vite", "@vitejs/*", "vitest", "@vitest/*", "@tailwindcss/vite"]
-      # Pinned exact; a release may format differently and fail the gate's format:check, so it never blocks the
-      # other bumps: its own PR, reformatted there.
+      # Pinned exact; a release may format differently and fail the gate's
+      # format:check, so it never blocks the other bumps: its own PR,
+      # reformatted there.
       prettier:
         patterns: ["prettier"]
+      # A new rule or recommended-set change can fail the gate's lint: its own
+      # PR, findings fixed there. typescript-eslint, @eslint/js and the
+      # eslint-config-*/eslint-plugin-* packages track eslint's major.
+      eslint:
+        patterns: ["eslint", "eslint-*", "typescript-eslint", "@eslint/*"]
       npm-non-major:
         patterns:
           - "*"
@@ -53,8 +61,14 @@ updates:
           - "*"
         update-types:
           - major
+    ignore:
+      # typescript-eslint's peer dependency takes typescript <6.1.0: any newer
+      # one, minor included, fails npm ci on ERESOLVE. Lift this (and
+      # conform's typescriptCap) once typescript-eslint supports newer TS.
+      - dependency-name: "typescript"
+        versions: [">=6.1.0"]
 
-  # Base images in Containerfile.
+  # Base images in the Containerfile.
   - package-ecosystem: docker
     directory: /
     commit-message: { prefix: deps }   # Go style: "deps: bump …"
@@ -62,6 +76,8 @@ updates:
       interval: weekly
       day: sunday
       time: "07:00"
+      timezone: Europe/Zurich
+    open-pull-requests-limit: 5
     groups:
       docker-non-major:
         patterns:
@@ -75,6 +91,29 @@ updates:
         update-types:
           - major
 
+  # Images the compose files pin by tag.
+  - package-ecosystem: docker-compose
+    directory: /
+    commit-message: { prefix: deps }   # Go style: "deps: bump …"
+    schedule:
+      interval: weekly
+      day: sunday
+      time: "07:00"
+      timezone: Europe/Zurich
+    open-pull-requests-limit: 5
+    groups:
+      compose-non-major:
+        patterns:
+          - "*"
+        update-types:
+          - patch
+          - minor
+      compose-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
+
   - package-ecosystem: github-actions
     directory: /
     commit-message: { prefix: deps }   # Go style: "deps: bump …"
@@ -82,6 +121,8 @@ updates:
       interval: weekly
       day: sunday
       time: "07:00"
+      timezone: Europe/Zurich
+    open-pull-requests-limit: 5
     groups:
       actions-non-major:
         patterns:

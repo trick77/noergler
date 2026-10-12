@@ -10,11 +10,12 @@
 package config
 
 import (
-	"fmt"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
+
+	kitenv "github.com/trick77/ship/kit/env"
+	"github.com/trick77/ship/kit/logging"
 )
 
 // RequiredWebhookEvents are the Bitbucket events the webhook dispatches on.
@@ -281,102 +282,49 @@ type App struct {
 
 // --- instance env ------------------------------------------------------------
 
-type envReader struct {
-	lookup func(string) (string, bool)
-	errs   []string
-}
-
-func (e *envReader) get(name, def string, required bool) string {
-	v, ok := e.lookup(name)
-	if !ok {
-		if required {
-			e.errs = append(e.errs, fmt.Sprintf("Environment variable %s is not set", name))
-		}
-		return def
-	}
-	// A required var set to nothing (an unfilled .env.example line) is the
-	// same misconfiguration as an unset one, caught at boot rather than at
-	// the first API call.
-	if required && strings.TrimSpace(v) == "" {
-		e.errs = append(e.errs, fmt.Sprintf("Environment variable %s is empty", name))
-	}
-	return v
-}
-
-func (e *envReader) str(name, def string) string    { return e.get(name, def, false) }
-func (e *envReader) required(name string) string    { return e.get(name, "", true) }
-func (e *envReader) list(name, def string) []string { return commaList(e.get(name, def, false)) }
-func (e *envReader) boolean(name, def string) bool  { return parseBool(e.get(name, def, false)) }
-func (e *envReader) integer(name, def string) int   { return e.intOr(name, e.get(name, def, false)) }
-
-// positive is integer plus a floor of 1. A zero or negative per-file byte cap
+// positive is an int with a floor of 1. A zero or negative per-file byte cap
 // would boot clean and then refuse every file, so it has to fail at load.
-func (e *envReader) positive(name, def string) int {
-	v := e.integer(name, def)
+func positive(r *kitenv.Reader, name string, def int) int {
+	v := r.Int(name, def)
 	if v < 1 {
-		e.errs = append(e.errs, fmt.Sprintf("%s: must be a positive integer, got %d", name, v))
+		r.Fail("%s: must be a positive integer, got %d", name, v)
 	}
 	return v
 }
 
-// nonNegative is integer plus a floor of 0, for a cap where 0 means unlimited
+// nonNegative is an int with a floor of 0, for a cap where 0 means unlimited
 // rather than "refuse everything". Negative still fails at load: it is a typo,
 // not a third meaning.
-func (e *envReader) nonNegative(name, def string) int {
-	v := e.integer(name, def)
+func nonNegative(r *kitenv.Reader, name string, def int) int {
+	v := r.Int(name, def)
 	if v < 0 {
-		e.errs = append(e.errs, fmt.Sprintf("%s: must be zero (unlimited) or a positive integer, got %d", name, v))
+		r.Fail("%s: must be zero (unlimited) or a positive integer, got %d", name, v)
 	}
 	return v
 }
 
-func (e *envReader) float(name, def string) float64 { return e.floatOr(name, e.get(name, def, false)) }
-func (e *envReader) intOr(name, raw string) int     { v, err := parseInt(raw); e.fail(name, err); return v }
-func (e *envReader) floatOr(name, raw string) float64 {
-	v, err := parseFloat(raw)
-	e.fail(name, err)
-	return v
-}
-func (e *envReader) fail(name string, err error) {
-	if err != nil {
-		e.errs = append(e.errs, name+": "+err.Error())
-	}
+// setEmpty reports a variable set to blank. kit's reader takes blank as unset
+// (the default); for the few knobs whose blank is a setting of its own (no
+// opt-out keyword, no excluded repos) the caller turns that back into "off".
+func setEmpty(lookup func(string) (string, bool), name string) bool {
+	v, ok := lookup(name)
+	return ok && strings.TrimSpace(v) == ""
 }
 
-func commaList(s string) []string {
-	out := []string{}
-	for _, p := range strings.Split(s, ",") {
-		if p = strings.TrimSpace(p); p != "" {
-			out = append(out, p)
-		}
+// blankOff is r.String, but blank set explicitly is "", not def.
+func blankOff(r *kitenv.Reader, lookup func(string) (string, bool), name, def string) string {
+	if setEmpty(lookup, name) {
+		return ""
 	}
-	return out
+	return r.String(name, def)
 }
 
-// parseBool accepts true/1/yes, case-insensitive; anything else is false,
-// never an error.
-func parseBool(s string) bool {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "true", "1", "yes":
-		return true
+// blankNone is r.List, but blank set explicitly is the empty list, not def.
+func blankNone(r *kitenv.Reader, lookup func(string) (string, bool), name string, def []string) []string {
+	if setEmpty(lookup, name) {
+		return []string{}
 	}
-	return false
-}
-
-func parseInt(s string) (int, error) {
-	v, err := strconv.Atoi(strings.TrimSpace(s))
-	if err != nil {
-		return 0, fmt.Errorf("invalid literal for int(): %q", s)
-	}
-	return v, nil
-}
-
-func parseFloat(s string) (float64, error) {
-	v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
-	if err != nil {
-		return 0, fmt.Errorf("could not convert string to float: %q", s)
-	}
-	return v, nil
+	return r.List(name, def)
 }
 
 // normalizeEffort trims and lower-cases. Empty is the unset level: the
@@ -387,87 +335,93 @@ func normalizeEffort(v string) string {
 
 // LoadInstance reads layer 1 from lookup (os.LookupEnv in production). Every
 // fault is collected and reported at once: a bad int and a missing var are
-// both boot failures.
+// both boot failures, and so is a boolean that is not one.
 func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
-	e := &envReader{lookup: lookup}
+	r := kitenv.New(func(name string) string { v, _ := lookup(name); return v })
 	app := &App{
 		Bitbucket: Bitbucket{
-			BaseURL:      e.required("BITBUCKET_URL"),
-			Token:        e.required("BITBUCKET_TOKEN"),
-			Username:     e.required("BITBUCKET_USERNAME"),
-			MaxDiffBytes: e.nonNegative("BITBUCKET_MAX_DIFF_BYTES", "0"),
-			MaxFileBytes: e.positive("BITBUCKET_MAX_FILE_BYTES", "1048576"),
+			BaseURL:      r.Required("BITBUCKET_URL"),
+			Token:        r.Required("BITBUCKET_TOKEN"),
+			Username:     r.Required("BITBUCKET_USERNAME"),
+			MaxDiffBytes: nonNegative(r, "BITBUCKET_MAX_DIFF_BYTES", 0),
+			MaxFileBytes: positive(r, "BITBUCKET_MAX_FILE_BYTES", 1048576),
 		},
 		LLM: LLM{
-			Model:         e.required("OPENAI_MODEL"),
-			BaseURL:       e.required(GatewayBaseURLEnv),
-			GatewayModels: e.required(GatewayModelsEnv),
-			ContextWindow: e.integer("OPENAI_CONTEXT_WINDOW", "0"),
+			Model:         r.Required("OPENAI_MODEL"),
+			BaseURL:       r.Required(GatewayBaseURLEnv),
+			GatewayModels: r.Required(GatewayModelsEnv),
+			ContextWindow: r.Int("OPENAI_CONTEXT_WINDOW", 0),
 		},
 		Review: Review{
-			AutoReviewAuthors:               e.list("REVIEW_AUTO_REVIEW_AUTHORS", ""),
-			IgnoreAuthors:                   e.list("REVIEW_IGNORE_AUTHORS", ""),
-			ExcludeRepos:                    e.list("REVIEW_EXCLUDE_REPOS", "*-infra"),
-			MaxComments:                     e.integer("REVIEW_MAX_COMMENTS", "25"),
-			MaxFileLines:                    e.integer("REVIEW_MAX_FILE_LINES", "1000"),
-			DiffExtraLinesBefore:            e.integer("REVIEW_DIFF_EXTRA_LINES_BEFORE", "3"),
-			DiffExtraLinesAfter:             e.integer("REVIEW_DIFF_EXTRA_LINES_AFTER", "2"),
-			DiffMaxExtraLinesDynamicContext: e.integer("REVIEW_DIFF_MAX_EXTRA_LINES_DYNAMIC_CONTEXT", "10"),
-			DiffAllowDynamicContext:         e.boolean("REVIEW_DIFF_ALLOW_DYNAMIC_CONTEXT", "true"),
-			ReviewPromptTemplate:            e.str("REVIEW_PROMPT_TEMPLATE", "prompts/review.txt"),
-			MentionPromptTemplate:           e.str("REVIEW_MENTION_PROMPT_TEMPLATE", "prompts/mention.txt"),
-			TicketComplianceCheck:           e.boolean("REVIEW_TICKET_COMPLIANCE_CHECK", "true"),
-			RequireAgentsMD:                 e.boolean("REVIEW_REQUIRE_AGENTS_MD", "true"),
-			AgentsMDWarnTokens:              e.integer("REVIEW_AGENTS_MD_WARN_TOKENS", "4000"),
-			AgentsMDMaxTokens:               e.integer("REVIEW_AGENTS_MD_MAX_TOKENS", "7000"),
-			AgentsMDCustomLink:              e.str("REVIEW_AGENTS_MD_CUSTOM_LINK", ""),
-			OptOutBranchKeyword:             e.str("REVIEW_OPT_OUT_BRANCH_KEYWORD", "noergloff"),
-			MaxPRCostUSD:                    e.float("REVIEW_MAX_PR_COST_USD", "5.00"),
+			AutoReviewAuthors:               r.List("REVIEW_AUTO_REVIEW_AUTHORS", []string{}),
+			IgnoreAuthors:                   r.List("REVIEW_IGNORE_AUTHORS", []string{}),
+			ExcludeRepos:                    blankNone(r, lookup, "REVIEW_EXCLUDE_REPOS", []string{"*-infra"}),
+			MaxComments:                     r.Int("REVIEW_MAX_COMMENTS", 25),
+			MaxFileLines:                    r.Int("REVIEW_MAX_FILE_LINES", 1000),
+			DiffExtraLinesBefore:            r.Int("REVIEW_DIFF_EXTRA_LINES_BEFORE", 3),
+			DiffExtraLinesAfter:             r.Int("REVIEW_DIFF_EXTRA_LINES_AFTER", 2),
+			DiffMaxExtraLinesDynamicContext: r.Int("REVIEW_DIFF_MAX_EXTRA_LINES_DYNAMIC_CONTEXT", 10),
+			DiffAllowDynamicContext:         r.Bool("REVIEW_DIFF_ALLOW_DYNAMIC_CONTEXT", true),
+			ReviewPromptTemplate:            r.String("REVIEW_PROMPT_TEMPLATE", "prompts/review.txt"),
+			MentionPromptTemplate:           r.String("REVIEW_MENTION_PROMPT_TEMPLATE", "prompts/mention.txt"),
+			TicketComplianceCheck:           r.Bool("REVIEW_TICKET_COMPLIANCE_CHECK", true),
+			RequireAgentsMD:                 r.Bool("REVIEW_REQUIRE_AGENTS_MD", true),
+			AgentsMDWarnTokens:              r.Int("REVIEW_AGENTS_MD_WARN_TOKENS", 4000),
+			AgentsMDMaxTokens:               r.Int("REVIEW_AGENTS_MD_MAX_TOKENS", 7000),
+			AgentsMDCustomLink:              r.String("REVIEW_AGENTS_MD_CUSTOM_LINK", ""),
+			OptOutBranchKeyword:             blankOff(r, lookup, "REVIEW_OPT_OUT_BRANCH_KEYWORD", "noergloff"),
+			MaxPRCostUSD:                    r.Float("REVIEW_MAX_PR_COST_USD", 5.00),
 		},
 		Jira: Jira{
-			URL:                        e.required("JIRA_URL"),
-			Token:                      e.required("JIRA_TOKEN"),
-			AcceptanceCriteriaPrefixes: e.list("JIRA_ACCEPTANCE_CRITERIA_PREFIXES", strings.Join(DefaultAcceptanceCriteriaPrefixes, ",")),
+			URL:   r.Required("JIRA_URL"),
+			Token: r.Required("JIRA_TOKEN"),
+			AcceptanceCriteriaPrefixes: blankNone(r, lookup, "JIRA_ACCEPTANCE_CRITERIA_PREFIXES",
+				DefaultAcceptanceCriteriaPrefixes),
 		},
 		Server: Server{
-			Host:      e.str("SERVER_HOST", "0.0.0.0"),
-			Port:      e.integer("SERVER_PORT", "8080"),
-			PublicURL: strings.TrimRight(e.str("NOERGLER_PUBLIC_URL", ""), "/"),
+			Host:      r.String("SERVER_HOST", "0.0.0.0"),
+			Port:      r.Int("SERVER_PORT", 8080),
+			PublicURL: strings.TrimRight(r.String("NOERGLER_PUBLIC_URL", ""), "/"),
 		},
-		Database: Database{URL: e.required("DATABASE_URL")},
+		Database: Database{URL: r.Required("DATABASE_URL")},
 		Trust: Trust{
-			HeadroomTokens: e.integer("CONTEXT_WINDOW_HEADROOM_TOKENS", "16000"),
-			Threshold:      e.integer("CONTEXT_TRUST_THRESHOLD", "256000"),
-			Tail:           e.float("CONTEXT_TRUST_TAIL", "0.5"),
+			HeadroomTokens: r.Int("CONTEXT_WINDOW_HEADROOM_TOKENS", 16000),
+			Threshold:      r.Int("CONTEXT_TRUST_THRESHOLD", 256000),
+			Tail:           r.Float("CONTEXT_TRUST_TAIL", 0.5),
 		},
 		Queue: Queue{
-			InferenceConcurrency:        e.positive("REVIEW_INFERENCE_CONCURRENCY", "6"),
-			InferenceConcurrencyPerTeam: e.positive("REVIEW_INFERENCE_CONCURRENCY_PER_TEAM", "2"),
+			InferenceConcurrency:        positive(r, "REVIEW_INFERENCE_CONCURRENCY", 6),
+			InferenceConcurrencyPerTeam: positive(r, "REVIEW_INFERENCE_CONCURRENCY_PER_TEAM", 2),
 		},
-		TeamsConfigPath: e.str("TEAMS_CONFIG", "teams.yaml"),
+		TeamsConfigPath: r.String("TEAMS_CONFIG", "teams.yaml"),
 		Teams:           map[string]*Team{},
 		Disabled:        map[string]string{},
 	}
-	app.LLM.ReasoningEffort = normalizeEffort(e.str("OPENAI_REASONING_EFFORT", ""))
+	app.LLM.ReasoningEffort = normalizeEffort(r.String("OPENAI_REASONING_EFFORT", ""))
+	// Logging is set up before this runs (at info on a bad value, see
+	// withLog); the level is checked here so its fault is reported with the
+	// rest rather than one restart earlier.
+	if _, err := logging.ParseLevel(r.String("LOG_LEVEL", "")); err != nil {
+		r.Fail("LOG_LEVEL: %v", err)
+	}
 	// A per-team cap above the global one never binds, so it reads as a
 	// setting that does nothing. Fail rather than let the misconfiguration
 	// survive to production unnoticed.
 	if q := app.Queue; q.InferenceConcurrencyPerTeam > q.InferenceConcurrency {
-		e.errs = append(e.errs, fmt.Sprintf(
-			"REVIEW_INFERENCE_CONCURRENCY_PER_TEAM (%d) must not exceed REVIEW_INFERENCE_CONCURRENCY (%d)",
-			q.InferenceConcurrencyPerTeam, q.InferenceConcurrency))
+		r.Fail("REVIEW_INFERENCE_CONCURRENCY_PER_TEAM (%d) must not exceed REVIEW_INFERENCE_CONCURRENCY (%d)",
+			q.InferenceConcurrencyPerTeam, q.InferenceConcurrency)
 	}
 	// sortAndLimit slices to it: negative panics every review in post.
 	if app.Review.MaxComments < 0 {
-		e.errs = append(e.errs, fmt.Sprintf("REVIEW_MAX_COMMENTS: must be zero or a positive integer, got %d", app.Review.MaxComments))
+		r.Fail("REVIEW_MAX_COMMENTS: must be zero or a positive integer, got %d", app.Review.MaxComments)
 	}
 	// The cap check is cumulative >= limit: 0 reads as "no cap" but skips
-	// every auto-review after the first priced run. !(v > 0) catches NaN too.
-	if v := app.Review.MaxPRCostUSD; !(v > 0) {
-		e.errs = append(e.errs, fmt.Sprintf("REVIEW_MAX_PR_COST_USD: must be greater than 0, got %v", v))
+	// every auto-review after the first priced run.
+	if v := app.Review.MaxPRCostUSD; v <= 0 {
+		r.Fail("REVIEW_MAX_PR_COST_USD: must be greater than 0, got %v", v)
 	}
-	if len(e.errs) > 0 {
-		return nil, fmt.Errorf("%s", strings.Join(e.errs, "; "))
+	if err := r.Err(); err != nil {
+		return nil, err
 	}
 	return app, nil
 }

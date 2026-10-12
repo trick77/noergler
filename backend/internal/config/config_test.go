@@ -148,7 +148,7 @@ func TestInstance_MissingRequiredIsFatalAndNamesTheVariable(t *testing.T) {
 		e := newEnv(t)
 		e.unset(name)
 		_, err := e.load()
-		if err == nil || !strings.Contains(err.Error(), "Environment variable "+name+" is not set") {
+		if err == nil || !strings.Contains(err.Error(), name+" is required") {
 			t.Errorf("%s: err = %v", name, err)
 		}
 	}

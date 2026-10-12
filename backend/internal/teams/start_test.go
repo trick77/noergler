@@ -10,15 +10,15 @@ import (
 
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/inference"
-	"github.com/trick77/noergler/internal/logging"
 	"github.com/trick77/noergler/internal/store"
+	"github.com/trick77/ship/kit/logging"
 )
 
 // bufLogger captures the alerted startup lines so their exact shape can be
 // asserted; Splunk matches on the rendered message.
 func bufLogger() (*slog.Logger, *bytes.Buffer) {
 	var buf bytes.Buffer
-	return slog.New(logging.NewHandler(&buf, slog.LevelDebug, "test")), &buf
+	return slog.New(logging.NewSplunkHandler(&buf, slog.LevelDebug, "noergler", "test")), &buf
 }
 
 // appWith builds a one-team App whose templates resolve and whose LLM would

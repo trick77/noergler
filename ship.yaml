@@ -4,10 +4,12 @@ go:
   # Attributes coverage across package boundaries (the api tests drive review, store and render) and keeps cmd/
   # (entry points, evals orchestration) out of both gates.
   coverpkg: ./internal/...
+# The store tests' Postgres: compose.yaml's image, the major the deployment runs.
+postgres: compose:postgres
 ui:
   # make fe-build clears the stale dist first: a file removed from ui/ never stays embedded.
   build: cd .. && make fe-build
-  lint: npm run format:check
+  lint: npm run lint
   # Reporters from ui/vite.config.ts (lcov into ../coverage/ui), not overridden on the command line.
   test: npm run test -- --coverage
   lcov: coverage/ui/lcov.info

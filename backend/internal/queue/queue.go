@@ -23,9 +23,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/trick77/noergler/internal/logging"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
+	"github.com/trick77/ship/kit/logging"
 )
 
 // BacklogWarnThreshold is the depth at which the queue starts warning.
@@ -554,7 +554,7 @@ func (q *Queue) run(ctx context.Context) {
 
 		// The worker is one long-lived goroutine, so the team binding is
 		// explicit per item: nothing else would ever clear it.
-		jobCtx := logging.WithTeam(ctx, team)
+		jobCtx := logging.With(ctx, "team", team)
 		started := time.Now()
 		q.runOne(jobCtx, run, tag, kind)
 		q.log.Info(fmt.Sprintf("queue[%s]: completed in %.1fs", tag, time.Since(started).Seconds()))

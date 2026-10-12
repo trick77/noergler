@@ -16,6 +16,12 @@ explains what the values mean and what happens when they are wrong.
 
 ## 1. Instance layer (environment variables)
 
+Every fault is collected and reported at once, and any one aborts startup. A
+variable set to blank counts as unset (its default), except where a row says
+blank turns the setting off. Booleans take `true`/`false`, `1`/`0`, `yes`/`no`
+or `on`/`off` in any case; anything else is a startup error, never a silent
+`false`. Numbers likewise.
+
 ### Required
 
 | Variable | Meaning |
@@ -53,7 +59,7 @@ Everything here is a default a team block may replace.
 | --- | --- | --- |
 | `REVIEW_AUTO_REVIEW_AUTHORS` | *(empty)* | Comma-separated author names. Empty reviews every author. |
 | `REVIEW_IGNORE_AUTHORS` | *(empty)* | Never auto-reviewed (CI and dependency bots). Wins over the list above. |
-| `REVIEW_EXCLUDE_REPOS` | `*-infra` | Repo-slug globs a team's project webhook delivers but noergler ignores. Seeds each team once. |
+| `REVIEW_EXCLUDE_REPOS` | `*-infra` | Repo-slug globs a team's project webhook delivers but noergler ignores. Seeds each team once. Blank turns it off. |
 | `REVIEW_MAX_COMMENTS` | `25` | Cap on inline comments per review. |
 | `REVIEW_MAX_FILE_LINES` | `1000` | Files longer than this are reviewed without full file content. |
 | `REVIEW_DIFF_EXTRA_LINES_BEFORE` | `3` | Context lines added before each hunk. |
@@ -65,9 +71,9 @@ Everything here is a default a team block may replace.
 | `REVIEW_AGENTS_MD_WARN_TOKENS` | `4000` | Warn in the summary above this size. |
 | `REVIEW_AGENTS_MD_MAX_TOKENS` | `7000` | Skip the review above this size. |
 | `REVIEW_AGENTS_MD_CUSTOM_LINK` | *(empty)* | Extra link in the "too large" summary: `[Title](URL)` or a bare URL. |
-| `REVIEW_OPT_OUT_BRANCH_KEYWORD` | `noergloff` | Substring in the source branch name that skips the review. Empty disables it. |
+| `REVIEW_OPT_OUT_BRANCH_KEYWORD` | `noergloff` | Substring in the source branch name that skips the review. Blank turns it off. |
 | `REVIEW_MAX_PR_COST_USD` | `5.00` | Once a PR's accumulated cost reaches this, auto-review stops. An `@mention` still works. Must be greater than 0. |
-| `JIRA_ACCEPTANCE_CRITERIA_PREFIXES` | `AC,AK,Acceptance Criteria,Acceptance Criterion,Akzeptanzkriterium,Akzeptanzkriterien,DoD,Req` | Prefixes that mark an acceptance-criteria line in a ticket. Matched at a word boundary. |
+| `JIRA_ACCEPTANCE_CRITERIA_PREFIXES` | `AC,AK,Acceptance Criteria,Acceptance Criterion,Akzeptanzkriterium,Akzeptanzkriterien,DoD,Req` | Prefixes that mark an acceptance-criteria line in a ticket. Matched at a word boundary. Blank turns it off. |
 | `OPENAI_REASONING_EFFORT` | unset | Unset: the model's balanced level, from its llmwire profile. Set: a level the profile lists, checked at team startup before any request; one it does not list disables the team and the error names the accepted ones. The level sent is part of every run's model label. |
 | `OPENAI_CONTEXT_WINDOW` | `0` | `0` takes `max_input_tokens` from the gateway's `/v1/models`. Set it when the gateway lists no window, or enforces a lower cap than it advertises. |
 
@@ -89,9 +95,8 @@ Not overridable in a team block. Naming one there disables the team.
 | `SERVER_HOST` | `0.0.0.0` | Listen address. |
 | `SERVER_PORT` | `8080` | Listen port. |
 | `NOERGLER_PUBLIC_URL` | *(empty)* | How Bitbucket reaches this instance. Needed by `POST /onboard/{team}` only, to write the webhook URL. |
-| `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` (or `WARN`), `ERROR`, any case. |
+| `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` (or `WARN`), `ERROR`, any case. Anything else aborts startup. |
 | `NOERGLER_ENV` | `dev` | The `env` field on every log record. |
-| `NOERGLER_VERSION` | *(build stamp)* | Fallback version string when the binary carries no build info. |
 
 The two body caps are enforced while streaming, not after the body is in
 memory: one diff is held several times over (raw, split per file, rendered into
@@ -215,6 +220,7 @@ noergler migrate
 
 It is the init container in a deployment and never runs from `serve`. It is
 idempotent, guarded by an advisory lock, and applies files in filename order.
+`serve` refuses to start while any migration is pending.
 
 The schema records **runs**, not accumulators: per-PR totals are aggregates over
 `review_runs`, and a PR's cost is NULL until at least one run is priced.

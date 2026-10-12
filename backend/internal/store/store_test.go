@@ -10,6 +10,7 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -20,14 +21,23 @@ import (
 )
 
 // testStore opens a store on a fresh schema, migrates it and drops the
-// schema at cleanup. Gated on NOERGLER_TEST_DSN; CI has no Postgres, so
-// they run locally only: `docker compose up -d postgres` and
-// NOERGLER_TEST_DSN=postgres://noergler:changeme@localhost:5432/noergler?sslmode=disable.
+// schema at cleanup. SHIP_TEST_DSN comes from ship check, which starts the
+// Postgres of ship.yaml; a plain go test without it skips.
 func testStore(t *testing.T) *Store {
 	t.Helper()
-	dsn := os.Getenv("NOERGLER_TEST_DSN")
+	s := emptyStore(t)
+	if err := s.Migrate(context.Background()); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	return s
+}
+
+// emptyStore is testStore before any migration ran.
+func emptyStore(t *testing.T) *Store {
+	t.Helper()
+	dsn := os.Getenv("SHIP_TEST_DSN")
 	if dsn == "" {
-		t.Skip("NOERGLER_TEST_DSN not set")
+		t.Skip("SHIP_TEST_DSN not set")
 	}
 	ctx := context.Background()
 	schema := fmt.Sprintf("t_%d_%d", time.Now().UnixNano(), os.Getpid())
@@ -53,10 +63,24 @@ func testStore(t *testing.T) *Store {
 		t.Fatal(err)
 	}
 	t.Cleanup(s.Close)
-	if err := s.Migrate(ctx); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
 	return s
+}
+
+// The startup gate: an unmigrated schema names what is pending, a migrated
+// one passes.
+func TestSchemaCurrent_FailsUntilMigrated(t *testing.T) {
+	s := emptyStore(t)
+	ctx := context.Background()
+	err := s.SchemaCurrent(ctx)
+	if err == nil || !strings.Contains(err.Error(), "0001_initial.sql") {
+		t.Fatalf("unmigrated: err = %v, want the pending files named", err)
+	}
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SchemaCurrent(ctx); err != nil {
+		t.Errorf("migrated: %v", err)
+	}
 }
 
 func str(s string) *string { return &s }

@@ -7,10 +7,10 @@ import (
 	"strings"
 
 	"github.com/trick77/noergler/internal/config"
-	"github.com/trick77/noergler/internal/httpapi"
-	"github.com/trick77/noergler/internal/logging"
 	"github.com/trick77/noergler/internal/onboarding"
 	"github.com/trick77/noergler/internal/store"
+	"github.com/trick77/ship/kit/httpx"
+	"github.com/trick77/ship/kit/logging"
 )
 
 // onboardRequest is the /onboard body. Decoded strictly: an unknown field is
@@ -35,14 +35,14 @@ var validActions = map[string]bool{"status": true, "onboard": true, "grant-bot":
 // project admin on the target, proven with that token.
 func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("team")
-	ctx := logging.WithTeam(r.Context(), slug)
+	ctx := logging.With(r.Context(), "team", slug)
 
 	rt, ok := d.teamAuth(ctx, w, slug, r.Header.Get("Authorization"))
 	if !ok {
 		return
 	}
 	if d.PublicURL == "" {
-		httpapi.WriteDetail(w, http.StatusServiceUnavailable,
+		httpx.WriteError(w, http.StatusServiceUnavailable,
 			"NOERGLER_PUBLIC_URL is not set on this instance; onboarding via API is disabled")
 		return
 	}
@@ -56,16 +56,16 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 		action = *body.Action
 	}
 	if !validActions[action] {
-		httpapi.WriteDetail(w, http.StatusUnprocessableEntity,
+		httpx.WriteError(w, http.StatusUnprocessableEntity,
 			"action must be one of status, onboard, grant-bot, remove")
 		return
 	}
 	if body.Projects != nil && action == "status" {
-		httpapi.WriteDetail(w, http.StatusBadRequest, "projects only with onboard, grant-bot or remove")
+		httpx.WriteError(w, http.StatusBadRequest, "projects only with onboard, grant-bot or remove")
 		return
 	}
 	if body.Projects != nil && body.Targets != nil {
-		httpapi.WriteDetail(w, http.StatusBadRequest, "projects and targets are exclusive")
+		httpx.WriteError(w, http.StatusBadRequest, "projects and targets are exclusive")
 		return
 	}
 
@@ -73,7 +73,7 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 	// never stored: it proves itself per target.
 	token := strings.TrimSpace(r.Header.Get("X-Bitbucket-Token"))
 	if token == "" {
-		httpapi.WriteDetail(w, http.StatusUnauthorized,
+		httpx.WriteError(w, http.StatusUnauthorized,
 			"X-Bitbucket-Token: <your Bitbucket HTTP access token with project admin> required")
 		return
 	}
@@ -104,7 +104,7 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 	case body.Projects != nil && action != "remove":
 		scopes, err := scopesOf(*body.Projects)
 		if err != nil {
-			httpapi.WriteDetail(w, http.StatusUnprocessableEntity, err.Error())
+			httpx.WriteError(w, http.StatusUnprocessableEntity, err.Error())
 			return
 		}
 		res, err := onboarding.ClaimAndOnboard(ctx, admin, d.Bitbucket, d.Claims,
@@ -122,7 +122,7 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 	case body.Projects != nil:
 		scopes, err := scopesOf(*body.Projects)
 		if err != nil {
-			httpapi.WriteDetail(w, http.StatusUnprocessableEntity, err.Error())
+			httpx.WriteError(w, http.StatusUnprocessableEntity, err.Error())
 			return
 		}
 		res, err := onboarding.RemoveAndUnclaim(ctx, admin, d.Bitbucket, d.Claims,
@@ -149,7 +149,7 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if len(targets) == 0 {
-			httpapi.WriteDetail(w, http.StatusBadRequest,
+			httpx.WriteError(w, http.StatusBadRequest,
 				"no targets: claim a project first (projects in the body)")
 			return
 		}
@@ -162,11 +162,11 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 		}
 		resp["text"] = text
 		resp["healthy"] = healthy
-		httpapi.WriteJSON(w, http.StatusOK, resp)
+		httpx.WriteJSON(w, http.StatusOK, resp)
 		return
 	}
 
-	httpapi.WriteJSON(w, http.StatusOK, resp)
+	httpx.WriteJSON(w, http.StatusOK, resp)
 }
 
 func fill(resp map[string]any, results []onboarding.TargetResult, text string, healthy bool) {
@@ -212,25 +212,34 @@ func (d Deps) writeError(ctx context.Context, w http.ResponseWriter, err error) 
 	var conflict *store.ClaimConflict
 	switch {
 	case errors.As(err, &unknown):
-		httpapi.WriteDetail(w, http.StatusBadRequest, unknown.Error())
+		httpx.WriteError(w, http.StatusBadRequest, unknown.Error())
 	case errors.As(err, &noClaim):
-		httpapi.WriteDetail(w, http.StatusBadRequest, noClaim.Error())
+		httpx.WriteError(w, http.StatusBadRequest, noClaim.Error())
 	case errors.As(err, &upstream):
-		httpapi.WriteDetail(w, http.StatusBadGateway, upstream.Error())
+		httpx.WriteError(w, http.StatusBadGateway, upstream.Error())
 	case errors.As(err, &conflict):
 		target := conflict.Project
 		if conflict.Repo != nil {
 			target += "/" + *conflict.Repo
 		}
-		// The one place the detail is an object rather than a string.
-		httpapi.WriteJSON(w, http.StatusConflict, map[string]any{
-			"detail": map[string]any{
-				"message":  conflict.Error(),
-				"conflict": map[string]any{"target": target, "team": conflict.OtherTeam},
-			},
+		// The one error body with more than the message: who holds the target.
+		httpx.WriteJSON(w, http.StatusConflict, conflictBody{
+			Error:    conflict.Error(),
+			Conflict: conflictHolder{Target: target, Team: conflict.OtherTeam},
 		})
 	default:
-		d.Log.ErrorContext(ctx, "onboard failed", "error", err)
-		httpapi.WriteDetail(w, http.StatusInternalServerError, "Internal Server Error")
+		d.Log.ErrorContext(ctx, "onboard failed", logging.Err(err))
+		httpx.WriteError(w, http.StatusInternalServerError, "Internal Server Error")
 	}
+}
+
+// conflictBody is the 409: the canonical {"error"} plus the holder.
+type conflictBody struct {
+	Error    string         `json:"error"`
+	Conflict conflictHolder `json:"conflict"`
+}
+
+type conflictHolder struct {
+	Target string `json:"target"`
+	Team   string `json:"team"`
 }
