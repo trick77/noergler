@@ -7,7 +7,7 @@ require (
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/tiktoken-go/tokenizer v0.8.1
 	github.com/trick77/llmwire v0.0.43
-	github.com/trick77/ship/kit v0.1.0
+	github.com/trick77/ship/kit v0.2.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
