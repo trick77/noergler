@@ -48,11 +48,10 @@ func (s *Server) Handle(pattern string, h http.Handler) { s.mux.Handle(pattern, 
 func (s *Server) HandleFunc(pattern string, h http.HandlerFunc) { s.mux.HandleFunc(pattern, h) }
 
 // quietPaths are polled on a timer and would otherwise be the bulk of the
-// access log; a failing one is still logged. The probes are polled by the
-// platform; the dashboard's pages poll themselves while anyone has one open.
+// access log; a failing one is still logged. The dashboard's pages poll
+// themselves while anyone has one open. The probes are kit's ProbePaths:
+// never access-logged, Health logs readiness when it changes.
 var quietPaths = []string{
-	"/healthz",
-	"/readyz",
 	"/api/dashboard/live",
 	"/api/dashboard/runs",
 	"/api/dashboard/metrics",
