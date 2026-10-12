@@ -1,6 +1,6 @@
 name: Cleanup images
 
-# By hand only: keep the 10 newest tagged versions of the image, delete the rest.
+# By hand only (Actions minutes): keep the 10 newest tagged versions of each image, delete the rest.
 on:
   workflow_dispatch:
     inputs:

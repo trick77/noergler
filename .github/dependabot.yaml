@@ -7,6 +7,7 @@ updates:
       interval: weekly
       day: sunday
       time: "07:00"
+      timezone: Europe/Zurich
     open-pull-requests-limit: 5
     groups:
       gomod-non-major:
@@ -28,6 +29,7 @@ updates:
       interval: weekly
       day: sunday
       time: "07:00"
+      timezone: Europe/Zurich
     open-pull-requests-limit: 5
     groups:
       # First matching group wins, so the specific groups come first and the
@@ -60,13 +62,13 @@ updates:
         update-types:
           - major
     ignore:
-      # typescript-eslint has no release supporting TypeScript 7.x yet
-      # (peer dependency caps at <6.1.0); re-enable once it does.
+      # typescript-eslint's peer dependency takes typescript <6.1.0: any newer
+      # one, minor included, fails npm ci on ERESOLVE. Lift this (and
+      # conform's typescriptCap) once typescript-eslint supports newer TS.
       - dependency-name: "typescript"
-        update-types:
-          - "version-update:semver-major"
+        versions: [">=6.1.0"]
 
-  # Base images in Containerfile.
+  # Base images in the Containerfile.
   - package-ecosystem: docker
     directory: /
     commit-message: { prefix: deps }   # Go style: "deps: bump …"
@@ -74,6 +76,8 @@ updates:
       interval: weekly
       day: sunday
       time: "07:00"
+      timezone: Europe/Zurich
+    open-pull-requests-limit: 5
     groups:
       docker-non-major:
         patterns:
@@ -94,6 +98,8 @@ updates:
       interval: weekly
       day: sunday
       time: "07:00"
+      timezone: Europe/Zurich
+    open-pull-requests-limit: 5
     groups:
       actions-non-major:
         patterns:
