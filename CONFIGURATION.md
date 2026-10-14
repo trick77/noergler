@@ -75,7 +75,7 @@ Everything here is a default a team block may replace.
 | `REVIEW_MAX_PR_COST_USD` | `5.00` | Once a PR's accumulated cost reaches this, auto-review stops. An `@mention` still works. Must be greater than 0. |
 | `JIRA_ACCEPTANCE_CRITERIA_PREFIXES` | `AC,AK,Acceptance Criteria,Acceptance Criterion,Akzeptanzkriterium,Akzeptanzkriterien,DoD,Req` | Prefixes that mark an acceptance-criteria line in a ticket. Matched at a word boundary. Blank turns it off. |
 | `OPENAI_REASONING_EFFORT` | unset | Unset: the model's balanced level, from its llmwire profile. Set: a level the profile lists, checked at team startup before any request; one it does not list disables the team and the error names the accepted ones. The level sent is part of every run's model label. |
-| `OPENAI_CONTEXT_WINDOW` | `0` | `0` takes `max_input_tokens` from the gateway's `/v1/models`. Set it when the gateway lists no window, or enforces a lower cap than it advertises. |
+| `OPENAI_CONTEXT_WINDOW` | `0` | `0` takes `max_input_tokens` from the gateway's `/v1/models`, else the llmwire profile's context. Set it when the endpoint enforces a lower cap than either says. |
 
 ### Instance only
 
@@ -119,7 +119,8 @@ llmwire would otherwise route it to `api.openai.com` instead of your gateway.
 
 The context window is resolved per team from the gateway's `/v1/models`, read
 for the **alias**, and must be at least 1,000,000 tokens. noergler reviews a PR
-in a single call. `OPENAI_CONTEXT_WINDOW` overrides the gateway's answer.
+in a single call. A gateway that lists no usable `max_input_tokens` leaves it
+to the llmwire profile's context. `OPENAI_CONTEXT_WINDOW` overrides both.
 
 ## 2. Team layer (`teams.yaml`)
 
@@ -164,7 +165,7 @@ the service.**
 | Unreadable or invalid `teams.yaml` | Startup aborts. It is the shared layer. |
 | Unknown key in a team block | That team is disabled. `team_disabled team=<slug> reason=...` |
 | Team's model missing from `LLMWIRE_LITELLM_MODELS` | That team is disabled, rather than being routed to the vendor's own host. |
-| Gateway lists a window below 1M for the alias | That team is disabled. Set `OPENAI_CONTEXT_WINDOW` if the gateway understates it. |
+| Gateway lists a window below 1M for the alias, or lists none and the profile's context is below 1M or unset | That team is disabled. Set `OPENAI_CONTEXT_WINDOW` if the real limit is higher. |
 | Model cannot reason, lacks strict JSON-schema output, or does not list the configured `reasoning_effort`, or that level switches reasoning off, or no level is set on a model that reasons only when asked and names no balanced level | That team is disabled, from its llmwire profile and before any request. The error names the valid choices. |
 | Team's riptide ping returns 401 | That team is disabled. Any other riptide error is a warning. |
 | Missing per-team secret env var | That team is disabled. |

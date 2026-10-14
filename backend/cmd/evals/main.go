@@ -132,7 +132,7 @@ func main() {
 	flag.StringVar(&opt.effort, "effort", "",
 		"reasoning level (unset: the series level on the series model; empty: the model's balanced level)")
 	flag.StringVar(&opt.jsonOut, "json", "", "also write the full result as JSON to this path")
-	flag.IntVar(&opt.window, "context-window", 0, "override the gateway's max_input_tokens (0 = resolve it)")
+	flag.IntVar(&opt.window, "context-window", 0, "override the window (0 = gateway max_input_tokens, else the profile's context)")
 	flag.DurationVar(&opt.timeout, "timeout", 10*time.Minute, "whole-run timeout")
 	flag.IntVar(&opt.samples, "samples", 1,
 		"reviews per case; above 1 scores merged views (vote, union, adaptive) instead of the series run, and needs a longer -timeout")

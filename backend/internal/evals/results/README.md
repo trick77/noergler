@@ -104,6 +104,6 @@ read their columns.
 
 ## Running
 
-- This endpoint lists no `max_input_tokens`, so a run needs
-  `-context-window 1000000`. Without it `Startup` fails and the tool exits 2
-  rather than reporting a score.
+- This endpoint lists no `max_input_tokens`, so the window is the profile's
+  context. The runs below predate that fallback and passed
+  `-context-window 1000000`; a profile without a context still needs it.

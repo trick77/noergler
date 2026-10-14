@@ -112,8 +112,8 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
 - **Every eval run is committed** to `internal/evals/results/` with a row in
   its README, worse scores included: an uncommitted number cannot be
   compared with the next one, and a regression nobody recorded is invisible.
-- An endpoint that lists no `max_input_tokens` needs `-context-window`
-  (e.g. `1000000`); without it Startup fails and nothing is scored.
+- An endpoint that lists no `max_input_tokens` takes the profile's
+  `limits.context`; only a profile without one needs `-context-window`.
 - Eval scoring must stay blunt (file + line window + keyword). A judge model
   would make a moved number two non-deterministic things to explain.
   The corpus keeps a case with NO expected findings: without it, "caught
@@ -140,8 +140,12 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
 - `Chat` only, never streaming: a LiteLLM stream carries no cost header
   (in-band chunk cost is opt-in gateway-side and unread here).
 - Never retry.
-- Context window comes from the gateway's `ListModels` `max_input_tokens` for the
-  alias, `OPENAI_CONTEXT_WINDOW` overrides, `>= 1_000_000` required.
+- Context window: `OPENAI_CONTEXT_WINDOW` if set, else the gateway's
+  `ListModels` `max_input_tokens` for the alias, else the profile's
+  `limits.context`; `>= 1_000_000` required. A gateway limit is never
+  overridden by the profile (it can cap below the vendor). The field is
+  LiteLLM `model_info`, often unset: without the fallback prod needed a
+  hand-set override.
   `ListModels` warnings are kept: a present-but-unusable limit reads as a nil
   limit, so dropping them reports a garbage value as a missing field.
 
