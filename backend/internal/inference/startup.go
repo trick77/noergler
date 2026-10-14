@@ -197,7 +197,7 @@ func (c *Client) resolveWindow(ctx context.Context, profile *llmwire.Profile) er
 			source := "llmwire profile, context less max output; gateway listed no usable max_input_tokens" +
 				aliasWarnings(warnings, alias)
 			if err := checkWindowFloor(n, source); err != nil {
-				return err
+				return fmt.Errorf("%w. Set OPENAI_CONTEXT_WINDOW (or the team's inference.context_window) if the real limit is higher", err)
 			}
 			c.window = n
 			c.logWindow(ctx, source)
@@ -205,7 +205,7 @@ func (c *Client) resolveWindow(ctx context.Context, profile *llmwire.Profile) er
 		}
 		// A warning about this alias means the field was there and unusable,
 		// which is a different fix from the field being absent.
-		return fmt.Errorf("model %q is listed by the gateway without a usable `max_input_tokens`%s, and its profile names no context. "+
+		return fmt.Errorf("model %q is listed by the gateway without a usable `max_input_tokens`%s, and its profile gives no input limit (context and max_output). "+
 			"Set OPENAI_CONTEXT_WINDOW (or the team's inference.context_window) to the real limit",
 			c.model, aliasWarnings(warnings, alias))
 	}
@@ -226,11 +226,12 @@ func (c *Client) logWindow(ctx context.Context, source string) {
 }
 
 // profileInputLimit is the most input the profile's model accepts, 0 when the
-// profile names no context. limits.context is input and output together;
+// profile cannot say. limits.context is input and output together;
 // max_input_tokens, which this stands in for, is input alone, and the vendor
-// holds the full output cap back (gpt-5: 400K context, 128K output, 272K in).
+// holds the full output cap back. Without a max_output the context alone would
+// overstate the window, so both are required.
 func profileInputLimit(l llmwire.Limits) int {
-	if l.Context <= 0 {
+	if l.Context <= 0 || l.MaxOutput <= 0 || l.MaxOutput >= l.Context {
 		return 0
 	}
 	return int(l.Context - l.MaxOutput)
@@ -238,8 +239,9 @@ func profileInputLimit(l llmwire.Limits) int {
 
 // checkWindowFloor refuses a window too small to hold a real PR. A whole PR is
 // reviewed in one call, so a small-context model cannot hold it coherently.
-// It runs before the window is stored, so a refused one never reads as
-// resolved; source names where the number came from.
+// On the gateway and profile paths it runs before the window is stored, so a
+// refused one never reads as resolved; source names where the number came
+// from.
 func checkWindowFloor(n int, source string) error {
 	if n < MinContextWindow {
 		return fmt.Errorf("context window %d (%s) is below the %d minimum: a whole PR is reviewed in one call",

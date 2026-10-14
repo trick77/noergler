@@ -142,12 +142,10 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
 - Never retry.
 - Context window: `OPENAI_CONTEXT_WINDOW` if set, else the gateway's
   `ListModels` `max_input_tokens` for the alias, else the profile's
-  `limits.context` LESS `max_output`; `>= 900_000` required. Context is
-  input+output, `max_input_tokens` input only: the vendor holds the whole
-  output cap back (gpt-5.5: 1.05M - 128K = 922K, under the old 1M floor).
-  A gateway limit is never overridden by the profile (it can cap below the
-  vendor). The field is LiteLLM `model_info`, often unset: without the
-  fallback prod needed a hand-set override, which overstated the window.
+  `context` LESS `max_output` (context is input+output; both required);
+  `>= 900_000`. Gateway limit never overridden by the profile (it can cap
+  below the vendor). The field is LiteLLM `model_info`, often unset: prod
+  once needed a hand-set override.
   `ListModels` warnings are kept: a present-but-unusable limit reads as a nil
   limit, so dropping them reports a garbage value as a missing field.
 

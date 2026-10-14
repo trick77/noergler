@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -180,21 +181,28 @@ func TestStartupRecordsPingPricing(t *testing.T) {
 	})
 }
 
-// An explicit OPENAI_CONTEXT_WINDOW wins over the gateway's figure.
-// The floor is what a 1.05M model accepts as input, not 1M.
-func TestStartupAcceptsAWindowAtTheFloor(t *testing.T) {
+// The floor is what a 1.05M model accepts as input, not 1M: the floor itself
+// passes, one token under it does not.
+func TestStartupWindowFloorBoundary(t *testing.T) {
 	const alias = "gateway-alias"
-	f := &fakeGateway{models: `{"data":[{"id":"gateway-alias","max_input_tokens":922000}]}`}
-	srv := f.start(t, alias)
-	c := newTestClient(t, srv, alias)
-	if err := c.Startup(context.Background()); err != nil {
-		t.Fatalf("Startup: %v", err)
-	}
-	if got := c.ContextWindow(); got != 922_000 {
-		t.Errorf("ContextWindow = %d, want 922000", got)
+	for _, tc := range []struct {
+		window int
+		ok     bool
+	}{{MinContextWindow, true}, {MinContextWindow - 1, false}} {
+		f := &fakeGateway{models: fmt.Sprintf(`{"data":[{"id":"gateway-alias","max_input_tokens":%d}]}`, tc.window)}
+		srv := f.start(t, alias)
+		c := newTestClient(t, srv, alias)
+		err := c.Startup(context.Background())
+		if tc.ok && err != nil {
+			t.Errorf("window %d: Startup: %v", tc.window, err)
+		}
+		if !tc.ok && (err == nil || !strings.Contains(err.Error(), "below the")) {
+			t.Errorf("window %d: err = %v, want a window-floor error", tc.window, err)
+		}
 	}
 }
 
+// An explicit OPENAI_CONTEXT_WINDOW wins over the gateway's figure.
 func TestStartupExplicitWindowWins(t *testing.T) {
 	const alias = "gateway-alias"
 	f := &fakeGateway{
@@ -778,5 +786,24 @@ func TestStartupAcceptsALevelOnAnOptInModel(t *testing.T) {
 	}
 	if got := c.Label(); got != "noergler-optin-high" {
 		t.Errorf("Label = %q, want noergler-optin-high", got)
+	}
+}
+
+// The profile's input limit needs both numbers: a context alone would read
+// the output share as input, and an output cap at or over the context is no
+// input at all.
+func TestProfileInputLimit(t *testing.T) {
+	for _, tc := range []struct {
+		l    llmwire.Limits
+		want int
+	}{
+		{llmwire.Limits{Context: 1_050_000, MaxOutput: 128_000}, 922_000},
+		{llmwire.Limits{Context: 1_000_000}, 0},
+		{llmwire.Limits{Context: 128_000, MaxOutput: 128_000}, 0},
+		{llmwire.Limits{}, 0},
+	} {
+		if got := profileInputLimit(tc.l); got != tc.want {
+			t.Errorf("profileInputLimit(%+v) = %d, want %d", tc.l, got, tc.want)
+		}
 	}
 }

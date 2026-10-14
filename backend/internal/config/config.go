@@ -68,7 +68,8 @@ type LLM struct {
 	// Normalised (trimmed, lower-cased) and not otherwise validated here: the
 	// allowed set is the profile's, checked at team startup.
 	ReasoningEffort string
-	// ContextWindow in tokens; 0 = read max_input_tokens from the gateway.
+	// ContextWindow in tokens; 0 = the gateway's max_input_tokens, else the
+	// llmwire profile's input limit.
 	ContextWindow int
 }
 
