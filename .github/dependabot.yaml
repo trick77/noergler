@@ -10,6 +10,10 @@ updates:
       timezone: Europe/Zurich
     open-pull-requests-limit: 5
     groups:
+      # kit is v0.x: a minor may break. Its own PR, never inside the
+      # catch-all (first matching group wins).
+      kit:
+        patterns: ["github.com/trick77/ship/kit", "github.com/trick77/ship/kit/*"]
       gomod-non-major:
         patterns:
           - "*"
