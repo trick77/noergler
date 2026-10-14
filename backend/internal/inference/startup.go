@@ -178,7 +178,7 @@ func (c *Client) resolveWindow(ctx context.Context, profile *llmwire.Profile) er
 	// An explicit window wins: it is the escape hatch for an endpoint whose
 	// real cap differs from what it advertises.
 	if c.window > 0 {
-		if err := c.checkWindowFloor(); err != nil {
+		if err := checkWindowFloor(c.window, "configured override"); err != nil {
 			return err
 		}
 		// Not "OPENAI_CONTEXT_WINDOW": a team's inference.context_window lands
@@ -189,18 +189,18 @@ func (c *Client) resolveWindow(ctx context.Context, profile *llmwire.Profile) er
 	}
 	if found.MaxInputTokens == nil || *found.MaxInputTokens <= 0 {
 		// max_input_tokens is a LiteLLM extension, present only when the
-		// gateway's model_info sets it. Without it the profile's context is
-		// the window: a vendor fact llmwire already holds, so a gateway that
-		// says nothing does not disable the team. A gateway that does report
-		// a limit is never overridden: it is the one that can cap below the
-		// vendor.
-		if profile.Limits.Context > 0 {
-			c.window = int(profile.Limits.Context)
-			if err := c.checkWindowFloor(); err != nil {
+		// gateway's model_info sets it. Without it the profile is the window:
+		// a vendor fact llmwire already holds, so a gateway that says nothing
+		// does not disable the team. A gateway that does report a limit is
+		// never overridden: it is the one that can cap below the vendor.
+		if n := profileInputLimit(profile.Limits); n > 0 {
+			source := "llmwire profile, context less max output; gateway listed no usable max_input_tokens" +
+				aliasWarnings(warnings, alias)
+			if err := checkWindowFloor(n, source); err != nil {
 				return err
 			}
-			c.logWindow(ctx, "llmwire profile; gateway listed no usable max_input_tokens"+
-				aliasWarnings(warnings, alias))
+			c.window = n
+			c.logWindow(ctx, source)
 			return nil
 		}
 		// A warning about this alias means the field was there and unusable,
@@ -209,10 +209,11 @@ func (c *Client) resolveWindow(ctx context.Context, profile *llmwire.Profile) er
 			"Set OPENAI_CONTEXT_WINDOW (or the team's inference.context_window) to the real limit",
 			c.model, aliasWarnings(warnings, alias))
 	}
-	c.window = int(*found.MaxInputTokens)
-	if err := c.checkWindowFloor(); err != nil {
+	n := int(*found.MaxInputTokens)
+	if err := checkWindowFloor(n, "gateway max_input_tokens"); err != nil {
 		return err
 	}
+	c.window = n
 	c.logWindow(ctx, "gateway max_input_tokens")
 	return nil
 }
@@ -224,12 +225,25 @@ func (c *Client) logWindow(ctx context.Context, source string) {
 	c.log.InfoContext(ctx, fmt.Sprintf("context window %d for %s (%s)", c.window, c.Label(), source))
 }
 
+// profileInputLimit is the most input the profile's model accepts, 0 when the
+// profile names no context. limits.context is input and output together;
+// max_input_tokens, which this stands in for, is input alone, and the vendor
+// holds the full output cap back (gpt-5: 400K context, 128K output, 272K in).
+func profileInputLimit(l llmwire.Limits) int {
+	if l.Context <= 0 {
+		return 0
+	}
+	return int(l.Context - l.MaxOutput)
+}
+
 // checkWindowFloor refuses a window too small to hold a real PR. A whole PR is
 // reviewed in one call, so a small-context model cannot hold it coherently.
-func (c *Client) checkWindowFloor() error {
-	if c.window < MinContextWindow {
-		return fmt.Errorf("context window %d is below the %d minimum: a whole PR is reviewed in one call",
-			c.window, MinContextWindow)
+// It runs before the window is stored, so a refused one never reads as
+// resolved; source names where the number came from.
+func checkWindowFloor(n int, source string) error {
+	if n < MinContextWindow {
+		return fmt.Errorf("context window %d (%s) is below the %d minimum: a whole PR is reviewed in one call",
+			n, source, MinContextWindow)
 	}
 	return nil
 }

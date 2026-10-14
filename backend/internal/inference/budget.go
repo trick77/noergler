@@ -10,8 +10,9 @@ const OutputTokenReserve = 64_000
 
 // MinContextWindow is the smallest window noergler will run on. A whole PR is
 // reviewed in a single call, so a small-context model cannot hold a real PR
-// coherently: refuse startup rather than review a partial view.
-const MinContextWindow = 1_000_000
+// coherently: refuse startup rather than review a partial view. 900K, not 1M:
+// a 1.05M model holds back its 128K output cap and accepts ~922K of input.
+const MinContextWindow = 900_000
 
 // budgetFloor is the smallest usable budget the curve will return.
 const budgetFloor = 2000
