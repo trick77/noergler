@@ -109,6 +109,27 @@ func TestCumulativeDiffDropsNonReviewableFiles(t *testing.T) {
 	}
 }
 
+// A .properties diff over its size gate is not sent in the push, so it is not
+// context either: kept, it would rank first as touched by the push.
+func TestCumulativeDiffDropsOversizedFiles(t *testing.T) {
+	lines := make([]string, 51)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("bundlekey%d=v", i)
+	}
+	bundle := addedFileDiff("messages.properties", lines...)
+	prompt, logs := runIncremental(t, sampleDiff+bundle)
+
+	if strings.Contains(prompt, "bundlekey") {
+		t.Error("an oversized .properties hunk reached the prompt")
+	}
+	if !strings.Contains(logs, "1 oversized (messages.properties)") {
+		t.Errorf("the selection line does not name the oversized file:\n%s", logs)
+	}
+	if strings.Contains(prompt, "**entire PR**") {
+		t.Error("a block with an oversized file dropped must not claim to be the entire PR")
+	}
+}
+
 // When no file fits, the model still learns which files the PR changes. The
 // largest PRs are where nothing fits, and they used to get no context at all.
 func TestCumulativeDiffNamesFilesWhenNothingFits(t *testing.T) {

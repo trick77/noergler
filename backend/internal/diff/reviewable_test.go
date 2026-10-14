@@ -124,31 +124,39 @@ func propertiesDiff(path string, n int) string {
 	return b.String()
 }
 
-// .properties is reviewed up to 50 changed lines and skipped whole past it: a
-// hand edit is worth a look, a regenerated i18n bundle is not.
+// .properties is sent up to 50 changed lines and skipped whole past it: a hand
+// edit is worth a look, a regenerated i18n bundle is not.
 func TestPropertiesSizeGate(t *testing.T) {
 	cases := []struct {
 		name string
+		path string
 		fd   string
-		want bool
+		over bool
 	}{
-		{"small diff reviewed", propertiesDiff("src/main/resources/application.properties", 3), true},
-		{"at the limit reviewed", propertiesDiff("messages.properties", 50), true},
-		{"one over skipped", propertiesDiff("messages.properties", 51), false},
-		{"uppercase extension gated", propertiesDiff("MESSAGES.PROPERTIES", 51), false},
-		{"removals count", strings.Replace(propertiesDiff("messages.properties", 51), "+key=value\n", "-key=value\n", 26), false},
-		{"other types not gated", propertiesDiff("src/app.go", 500), true},
+		{"small diff", "src/main/resources/application.properties", propertiesDiff("src/main/resources/application.properties", 3), false},
+		{"at the limit", "messages.properties", propertiesDiff("messages.properties", 50), false},
+		{"one over", "messages.properties", propertiesDiff("messages.properties", 51), true},
+		{"uppercase extension", "MESSAGES.PROPERTIES", propertiesDiff("MESSAGES.PROPERTIES", 51), true},
+		{"removals count", "messages.properties", strings.Replace(propertiesDiff("messages.properties", 51), "+key=value\n", "-key=value\n", 26), true},
+		// Inside a hunk, a removed "-- x" reads "--- x" and is a change.
+		{"removed line starting --", "messages.properties", strings.ReplaceAll(propertiesDiff("messages.properties", 51), "\n+key=value", "\n--- key"), true},
+		{"other types not gated", "src/app.go", propertiesDiff("src/app.go", 500), false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := IsReviewable(tc.fd); got != tc.want {
-				t.Errorf("IsReviewable() = %v, want %v", got, tc.want)
+			if _, _, over := ExceedsSizeGate(tc.path, tc.fd); over != tc.over {
+				t.Errorf("ExceedsSizeGate() over = %v, want %v", over, tc.over)
+			}
+			// The gate is not reviewability: the close-time rollup still
+			// counts a file reviewed over several small pushes.
+			if !IsReviewable(tc.fd) {
+				t.Error("IsReviewable() = false; the size gate must not live in it")
 			}
 		})
 	}
 
-	changed, limit, over := ExceedsSizeGate(propertiesDiff("messages.properties", 51))
-	if changed != 51 || limit != 50 || !over {
-		t.Errorf("ExceedsSizeGate = (%d, %d, %v), want (51, 50, true): headers must not count", changed, limit, over)
+	changed, limit, _ := ExceedsSizeGate("messages.properties", propertiesDiff("messages.properties", 51))
+	if changed != 51 || limit != 50 {
+		t.Errorf("ExceedsSizeGate = (%d, %d), want (51, 50): headers must not count", changed, limit)
 	}
 }

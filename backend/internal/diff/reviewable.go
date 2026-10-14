@@ -33,12 +33,17 @@ var skipExtensions = map[string]bool{
 	".bat": true, ".cmd": true,
 }
 
-// sizeGatedExtensions are reviewed only while their diff stays small: the
-// value is the most changed (+/-) lines a file's diff may carry. A hand edit to
-// Spring config or a few i18n keys is worth a look; a regenerated or bulk
-// translation bundle is not. Unmeasured: tune from the "skipped as oversized"
-// log line.
-var sizeGatedExtensions = map[string]int{".properties": 50}
+// sizeGatedExtensions are sent to the model only while their diff stays
+// small: maxChanged is the most changed (+/-) lines a file's diff may carry. A
+// hand edit to Spring config or a few i18n keys is worth a look; a regenerated
+// or bulk translation bundle is not. Unmeasured: tune from the "skipped as
+// oversized" log line. A slice, not a map: first match wins, in this order.
+var sizeGatedExtensions = []struct {
+	ext        string
+	maxChanged int
+}{
+	{".properties", 50},
+}
 
 // skipFiles are lockfiles whose names carry no extension we can filter on:
 // .lock misses both go.sum and pnpm-lock.yaml, and .yaml/.sum are legitimate
@@ -96,37 +101,38 @@ func IsReviewable(fileDiff string) bool {
 	if path == "" {
 		return true
 	}
-	if !PathIsReviewable(path) {
-		return false
-	}
-	_, _, over := ExceedsSizeGate(fileDiff)
-	return !over
+	return PathIsReviewable(path)
 }
 
-// ExceedsSizeGate reports whether a file diff of a sizeGatedExtensions type
-// changes more lines than its limit. A diff whose path does not parse, or of
-// any other type, is never over.
-func ExceedsSizeGate(fileDiff string) (changed, limit int, over bool) {
-	path := strings.ToLower(ExtractPath(fileDiff))
-	if path == "" {
-		return 0, 0, false
-	}
+// ExceedsSizeGate reports whether a sizeGatedExtensions file's diff changes
+// more lines than its limit; any other path is never over.
+//
+// Not part of IsReviewable: it gates what one review sends (the push diff and
+// the cumulative context), not what counts as reviewable. A file reviewed over
+// several small pushes stays reviewable in the close-time rollup, and the
+// too-large report, holding paths only, cannot count lines anyway.
+func ExceedsSizeGate(path, fileDiff string) (changed, limit int, over bool) {
+	path = strings.ToLower(path)
 	basename := path[strings.LastIndexByte(path, '/')+1:]
-	for ext, max := range sizeGatedExtensions {
-		if strings.HasSuffix(basename, ext) {
+	for _, g := range sizeGatedExtensions {
+		if strings.HasSuffix(basename, g.ext) {
 			added, removed := CountChangedLines(fileDiff)
-			return added + removed, max, added+removed > max
+			return added + removed, g.maxChanged, added+removed > g.maxChanged
 		}
 	}
 	return 0, 0, false
 }
 
-// CountChangedLines counts one file diff's added and removed lines, not its
-// ---/+++ headers.
+// CountChangedLines counts one file diff's added and removed lines. The
+// ---/+++ file headers are skipped only before the first hunk: inside one, a
+// removed "-- x" reads "--- x" and is a change.
 func CountChangedLines(fileDiff string) (added, removed int) {
+	inHunk := false
 	for _, line := range strings.Split(fileDiff, "\n") {
 		switch {
-		case strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"):
+		case strings.HasPrefix(line, "@@"):
+			inHunk = true
+		case !inHunk:
 		case strings.HasPrefix(line, "+"):
 			added++
 		case strings.HasPrefix(line, "-"):
@@ -143,8 +149,6 @@ func CountChangedLines(fileDiff string) (added, removed int) {
 // socket. The extension heuristic and the binary-marker scan in IsReviewable
 // both need the diff header, so a path-only verdict is the weaker of the two
 // and may call a binary file reviewable when its extension is not listed.
-// Likewise a sizeGatedExtensions file reads reviewable here: there is no diff
-// to count.
 //
 // Shares the skip lists with IsReviewable: one source of truth, so a list
 // edit cannot make the two disagree.

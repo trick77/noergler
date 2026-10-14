@@ -24,26 +24,28 @@ import (
 func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sourceCommit, prTag string) (files []diff.FileReviewData, contentSkipped []string, added, removed int) {
 	all := diff.SplitByFile(rawDiff)
 	var reviewable, skipped []string
+	oversized := 0
 	for _, fd := range all {
+		path := diff.ExtractPath(fd)
 		if diff.IsReviewable(fd) {
+			if changed, limit, over := diff.ExceedsSizeGate(path, fd); over {
+				r.log.InfoContext(ctx, fmt.Sprintf("%s: skipped as oversized: %s (%d changed lines > %d)",
+					prTag, path, changed, limit))
+				oversized++
+				continue
+			}
 			reviewable = append(reviewable, fd)
 			a, d := diff.CountChangedLines(fd)
 			added, removed = added+a, removed+d
 			continue
 		}
-		path := diff.ExtractPath(fd)
 		if path == "" {
 			path = "<unparsed>"
 		}
-		if changed, limit, over := diff.ExceedsSizeGate(fd); over {
-			r.log.InfoContext(ctx, fmt.Sprintf("%s: skipped as oversized: %s (%d changed lines > %d)",
-				prTag, path, changed, limit))
-			continue
-		}
 		skipped = append(skipped, path)
 	}
-	r.log.InfoContext(ctx, fmt.Sprintf("%s: %d file(s) in diff, %d reviewable, %d skipped (binary/non-reviewable)",
-		prTag, len(all), len(reviewable), len(all)-len(reviewable)))
+	r.log.InfoContext(ctx, fmt.Sprintf("%s: %d file(s) in diff, %d reviewable, %d skipped (binary/non-reviewable), %d oversized",
+		prTag, len(all), len(reviewable), len(skipped), oversized))
 	if len(skipped) > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: skipped as binary/non-reviewable: %s", prTag, capPaths(skipped)))
 	}
