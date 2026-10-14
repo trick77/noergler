@@ -140,8 +140,8 @@ func aliasWarnings(warnings []llmwire.Warning, alias string) string {
 	return " (the gateway sent one, and it was unusable: " + strings.Join(hits, "; ") + ")"
 }
 
-// resolveWindow sets the context window from the gateway, unless an explicit
-// OPENAI_CONTEXT_WINDOW already did.
+// resolveWindow sets the context window: an explicit OPENAI_CONTEXT_WINDOW
+// wins, else the gateway's max_input_tokens, else the profile's context.
 //
 // GET /models with the team's key is both the access check (a model the key
 // may not use is simply not listed) and the source of the window, so there is
@@ -188,9 +188,24 @@ func (c *Client) resolveWindow(ctx context.Context, profile *llmwire.Profile) er
 		return nil
 	}
 	if found.MaxInputTokens == nil || *found.MaxInputTokens <= 0 {
+		// max_input_tokens is a LiteLLM extension, present only when the
+		// gateway's model_info sets it. Without it the profile's context is
+		// the window: a vendor fact llmwire already holds, so a gateway that
+		// says nothing does not disable the team. A gateway that does report
+		// a limit is never overridden: it is the one that can cap below the
+		// vendor.
+		if profile.Limits.Context > 0 {
+			c.window = int(profile.Limits.Context)
+			if err := c.checkWindowFloor(); err != nil {
+				return err
+			}
+			c.logWindow(ctx, "llmwire profile; gateway listed no usable max_input_tokens"+
+				aliasWarnings(warnings, alias))
+			return nil
+		}
 		// A warning about this alias means the field was there and unusable,
 		// which is a different fix from the field being absent.
-		return fmt.Errorf("model %q is listed by the gateway without a usable `max_input_tokens`%s. "+
+		return fmt.Errorf("model %q is listed by the gateway without a usable `max_input_tokens`%s, and its profile names no context. "+
 			"Set OPENAI_CONTEXT_WINDOW (or the team's inference.context_window) to the real limit",
 			c.model, aliasWarnings(warnings, alias))
 	}

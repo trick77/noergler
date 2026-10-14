@@ -1,6 +1,7 @@
 package inference
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -196,6 +197,43 @@ func TestStartupExplicitWindowWins(t *testing.T) {
 	}
 }
 
+// A gateway that lists the alias without a usable max_input_tokens leaves the
+// window to the profile's context, and the log says where it came from. The
+// gateway's model_info is optional; the profile is a vendor fact llmwire holds.
+func TestStartupFallsBackToProfileContext(t *testing.T) {
+	const alias = "gateway-alias"
+	for _, tc := range []struct{ name, models, wantLog string }{
+		{"absent", `{"data":[{"id":"gateway-alias"}]}`, "llmwire profile"},
+		{"unusable", `{"data":[{"id":"gateway-alias","max_input_tokens":"lots"}]}`, "unusable"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeGateway{models: tc.models}
+			srv := f.start(t, alias)
+			var buf bytes.Buffer
+			c := newTestClient(t, srv, alias, onModel(srv, wideModel, alias), func(o *Options) {
+				o.Logger = slog.New(slog.NewTextHandler(&buf, nil))
+			})
+			if err := c.Startup(context.Background()); err != nil {
+				t.Fatalf("Startup: %v", err)
+			}
+			if got := c.ContextWindow(); got != wideContext {
+				t.Errorf("ContextWindow = %d, want the profile's %d", got, wideContext)
+			}
+			if !strings.Contains(buf.String(), tc.wantLog) {
+				t.Errorf("log = %q, want it to contain %q", buf.String(), tc.wantLog)
+			}
+		})
+	}
+}
+
+// onModel runs the client on model, routed through srv under alias.
+func onModel(srv *httptest.Server, model, alias string) func(*Options) {
+	return func(o *Options) {
+		o.Model = model
+		o.Env = routed(srv.URL, model, alias)
+	}
+}
+
 func TestStartupRejects(t *testing.T) {
 	const alias = "gateway-alias"
 
@@ -212,13 +250,39 @@ func TestStartupRejects(t *testing.T) {
 		}
 	})
 
-	t.Run("missing max_input_tokens", func(t *testing.T) {
+	t.Run("missing max_input_tokens, profile names no context", func(t *testing.T) {
+		f := &fakeGateway{models: `{"data":[{"id":"gateway-alias"}]}`}
+		srv := f.start(t, alias)
+		c := newTestClient(t, srv, alias, onModel(srv, noLimitModel, alias))
+		err := c.Startup(context.Background())
+		if err == nil || !strings.Contains(err.Error(), "OPENAI_CONTEXT_WINDOW") {
+			t.Errorf("err = %v, want the set-the-window error", err)
+		}
+	})
+
+	// The profile's context is held to the same floor as the gateway's.
+	t.Run("missing max_input_tokens, profile context below the floor", func(t *testing.T) {
 		f := &fakeGateway{models: `{"data":[{"id":"gateway-alias"}]}`}
 		srv := f.start(t, alias)
 		c := newTestClient(t, srv, alias)
 		err := c.Startup(context.Background())
-		if err == nil || !strings.Contains(err.Error(), "OPENAI_CONTEXT_WINDOW") {
-			t.Errorf("err = %v, want the set-the-window error", err)
+		if err == nil || !strings.Contains(err.Error(), "below the") {
+			t.Errorf("err = %v, want a window-floor error", err)
+		}
+		if f.gotChat != 0 {
+			t.Error("ping must not run after the window check fails")
+		}
+	})
+
+	// A limit the gateway does report is never overridden by the profile:
+	// the gateway is the one that can cap below the vendor.
+	t.Run("gateway limit below the floor beats a wide profile", func(t *testing.T) {
+		f := &fakeGateway{models: `{"data":[{"id":"gateway-alias","max_input_tokens":128000}]}`}
+		srv := f.start(t, alias)
+		c := newTestClient(t, srv, alias, onModel(srv, wideModel, alias))
+		err := c.Startup(context.Background())
+		if err == nil || !strings.Contains(err.Error(), "below the") {
+			t.Errorf("err = %v, want a window-floor error", err)
 		}
 	})
 
@@ -228,7 +292,7 @@ func TestStartupRejects(t *testing.T) {
 	t.Run("unusable max_input_tokens says so", func(t *testing.T) {
 		f := &fakeGateway{models: `{"data":[{"id":"gateway-alias","max_input_tokens":"lots"}]}`}
 		srv := f.start(t, alias)
-		c := newTestClient(t, srv, alias)
+		c := newTestClient(t, srv, alias, onModel(srv, noLimitModel, alias))
 		err := c.Startup(context.Background())
 		if err == nil {
 			t.Fatal("want an error for an unusable max_input_tokens")
@@ -547,7 +611,8 @@ var testRegistry = func() *llmwire.Registry {
 
 // plainProfile adds chat models with strict JSON output: one that does not
 // reason, one that reasons by token budget and so has no named level, and one
-// that reasons only when asked and names no balanced level.
+// that reasons only when asked and names no balanced level; and two that reason
+// like testProfile, one with a context above the window floor, one with none.
 const plainProfile = `
   - id: noergler-plain
     display_name: noergler plain
@@ -597,7 +662,41 @@ const plainProfile = `
       effort_values: [none, low, high]
     output: {json_object: true, json_schema: true, strict_schema: true}
     limits: {context: 128000, max_output: 16384}
+  - id: noergler-wide
+    display_name: noergler wide
+    provider: llmwiretest
+    verified: source-derived
+    max_tokens_param: max_tokens
+    reasoning:
+      supported: true
+      enabled_by_default: true
+      can_be_disabled: true
+      control: effort
+      effort_values: [none, low, medium, high]
+      balanced: medium
+    output: {json_object: true, json_schema: true, strict_schema: true}
+    limits: {context: 1050000, max_output: 16384}
+  - id: noergler-nolimit
+    display_name: noergler no limit
+    provider: llmwiretest
+    verified: source-derived
+    max_tokens_param: max_tokens
+    reasoning:
+      supported: true
+      enabled_by_default: true
+      can_be_disabled: true
+      control: effort
+      effort_values: [none, low, medium, high]
+      balanced: medium
+    output: {json_object: true, json_schema: true, strict_schema: true}
 `
+
+// wideModel carries a context at the floor or above, noLimitModel none.
+const (
+	wideModel    = "noergler-wide"
+	noLimitModel = "noergler-nolimit"
+	wideContext  = 1_050_000
+)
 
 // pickAnotherModel is the remedy every opt-in refusal names.
 const pickAnotherModel = "pick a model that reasons by default or names a balanced level"
