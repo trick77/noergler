@@ -26,9 +26,19 @@ func get(h http.Handler, path string) *httptest.ResponseRecorder {
 	return rec
 }
 
+// probe GETs a probe path as a direct local caller: kit's probes answer no
+// one else.
+func probe(h http.Handler, path string) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.RemoteAddr = "127.0.0.1:40000"
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
 func TestHealthz_Always200(t *testing.T) {
 	s, buf := newTestServer(t, nil, []string{"payments"})
-	rec := get(s.Handler(), "/healthz")
+	rec := probe(s.Handler(), "/healthz")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -43,14 +53,14 @@ func TestHealthz_Always200(t *testing.T) {
 
 func TestReadyz_503WhileNoTeamEnabled(t *testing.T) {
 	s, _ := newTestServer(t, nil, []string{"payments"})
-	rec := get(s.Handler(), "/readyz")
+	rec := probe(s.Handler(), "/readyz")
 	var m map[string]string
 	_ = json.Unmarshal(rec.Body.Bytes(), &m)
 	if rec.Code != 503 || m["check"] != "teams" {
 		t.Errorf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
 	s, _ = newTestServer(t, []string{"platform"}, nil)
-	if rec := get(s.Handler(), "/readyz"); rec.Code != 200 {
+	if rec := probe(s.Handler(), "/readyz"); rec.Code != 200 {
 		t.Errorf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
 }
