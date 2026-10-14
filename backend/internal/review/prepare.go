@@ -27,13 +27,18 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 	for _, fd := range all {
 		if diff.IsReviewable(fd) {
 			reviewable = append(reviewable, fd)
-			a, d := countFileLines(fd)
+			a, d := diff.CountChangedLines(fd)
 			added, removed = added+a, removed+d
 			continue
 		}
 		path := diff.ExtractPath(fd)
 		if path == "" {
 			path = "<unparsed>"
+		}
+		if changed, limit, over := diff.ExceedsSizeGate(fd); over {
+			r.log.InfoContext(ctx, fmt.Sprintf("%s: skipped as oversized: %s (%d changed lines > %d)",
+				prTag, path, changed, limit))
+			continue
 		}
 		skipped = append(skipped, path)
 	}
@@ -164,22 +169,8 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 func countDiffLines(rawDiff string) (added, removed int) {
 	for _, fd := range diff.SplitByFile(rawDiff) {
 		if diff.IsReviewable(fd) {
-			a, d := countFileLines(fd)
+			a, d := diff.CountChangedLines(fd)
 			added, removed = added+a, removed+d
-		}
-	}
-	return added, removed
-}
-
-// countFileLines is countDiffLines for one file's diff.
-func countFileLines(fileDiff string) (added, removed int) {
-	for _, line := range strings.Split(fileDiff, "\n") {
-		switch {
-		case strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"):
-		case strings.HasPrefix(line, "+"):
-			added++
-		case strings.HasPrefix(line, "-"):
-			removed++
 		}
 	}
 	return added, removed

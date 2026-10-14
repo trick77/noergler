@@ -30,8 +30,15 @@ var skipExtensions = map[string]bool{
 	".snap": true, ".ambr": true,
 	".po": true, ".mo": true, ".xlf": true,
 	// Build / config files
-	".bat": true, ".cmd": true, ".properties": true,
+	".bat": true, ".cmd": true,
 }
+
+// sizeGatedExtensions are reviewed only while their diff stays small: the
+// value is the most changed (+/-) lines a file's diff may carry. A hand edit to
+// Spring config or a few i18n keys is worth a look; a regenerated or bulk
+// translation bundle is not. Unmeasured: tune from the "skipped as oversized"
+// log line.
+var sizeGatedExtensions = map[string]int{".properties": 50}
 
 // skipFiles are lockfiles whose names carry no extension we can filter on:
 // .lock misses both go.sum and pnpm-lock.yaml, and .yaml/.sum are legitimate
@@ -89,7 +96,44 @@ func IsReviewable(fileDiff string) bool {
 	if path == "" {
 		return true
 	}
-	return PathIsReviewable(path)
+	if !PathIsReviewable(path) {
+		return false
+	}
+	_, _, over := ExceedsSizeGate(fileDiff)
+	return !over
+}
+
+// ExceedsSizeGate reports whether a file diff of a sizeGatedExtensions type
+// changes more lines than its limit. A diff whose path does not parse, or of
+// any other type, is never over.
+func ExceedsSizeGate(fileDiff string) (changed, limit int, over bool) {
+	path := strings.ToLower(ExtractPath(fileDiff))
+	if path == "" {
+		return 0, 0, false
+	}
+	basename := path[strings.LastIndexByte(path, '/')+1:]
+	for ext, max := range sizeGatedExtensions {
+		if strings.HasSuffix(basename, ext) {
+			added, removed := CountChangedLines(fileDiff)
+			return added + removed, max, added+removed > max
+		}
+	}
+	return 0, 0, false
+}
+
+// CountChangedLines counts one file diff's added and removed lines, not its
+// ---/+++ headers.
+func CountChangedLines(fileDiff string) (added, removed int) {
+	for _, line := range strings.Split(fileDiff, "\n") {
+		switch {
+		case strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"):
+		case strings.HasPrefix(line, "+"):
+			added++
+		case strings.HasPrefix(line, "-"):
+			removed++
+		}
+	}
+	return added, removed
 }
 
 // PathIsReviewable applies the name-based half of IsReviewable to a bare path.
@@ -99,6 +143,8 @@ func IsReviewable(fileDiff string) bool {
 // socket. The extension heuristic and the binary-marker scan in IsReviewable
 // both need the diff header, so a path-only verdict is the weaker of the two
 // and may call a binary file reviewable when its extension is not listed.
+// Likewise a sizeGatedExtensions file reads reviewable here: there is no diff
+// to count.
 //
 // Shares the skip lists with IsReviewable: one source of truth, so a list
 // edit cannot make the two disagree.
