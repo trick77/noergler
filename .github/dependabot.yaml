@@ -37,9 +37,10 @@ updates:
       # provider are one dependency family: vitest pins a vite major range and
       # @vitest/coverage-v8 pins vitest's exact version, so bumping any one
       # alone fails npm ci on ERESOLVE (or nests a second vite). They always
-      # travel together. @tailwindcss/vite peer-depends on vite's major too.
+      # travel together. @tailwindcss/vite peer-depends on vite's major too,
+      # and pins tailwindcss exactly: split, the plugin nests its own core.
       vite-and-vitest:
-        patterns: ["vite", "@vitejs/*", "vitest", "@vitest/*", "@tailwindcss/vite"]
+        patterns: ["vite", "@vitejs/*", "vitest", "@vitest/*", "@tailwindcss/vite", "tailwindcss"]
       # Pinned exact; a release may format differently and fail the gate's
       # format:check, so it never blocks the other bumps: its own PR,
       # reformatted there.
