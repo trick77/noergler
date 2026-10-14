@@ -14,7 +14,7 @@ import (
 
 // TeamStatus reports the enabled and disabled slugs. Slugs only: the disable
 // reasons carry internal detail (gateway URLs, error bodies, env var names)
-// and belong in the log, not on an unauthenticated probe.
+// and belong in the log, not in a probe's body.
 type TeamStatus func() (enabled, disabled []string)
 
 // errNoTeams fails readiness while no team can take traffic.
@@ -49,8 +49,9 @@ func (s *Server) HandleFunc(pattern string, h http.HandlerFunc) { s.mux.HandleFu
 
 // quietPaths are polled on a timer and would otherwise be the bulk of the
 // access log; a failing one is still logged. The dashboard's pages poll
-// themselves while anyone has one open. The probes are kit's ProbePaths:
-// never access-logged, Health logs readiness when it changes.
+// themselves while anyone has one open. The probes are kit's ProbePaths: a
+// probe is never access-logged, Health logs readiness when it changes; one
+// kit refused (not a local caller) logs as any 404.
 var quietPaths = []string{
 	"/api/dashboard/live",
 	"/api/dashboard/runs",
