@@ -106,6 +106,17 @@ func (h *dashHarness) get(t *testing.T, path string) *httptest.ResponseRecorder 
 	return w
 }
 
+// probe GETs a probe path as a direct local caller: kit's probes answer no
+// one else.
+func (h *dashHarness) probe(t *testing.T, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.RemoteAddr = "127.0.0.1:40000"
+	h.srv.Handler().ServeHTTP(w, req)
+	return w
+}
+
 // The dashboard is unauthenticated, so anything it serves is public. A
 // disable reason can name an env var, which is why /readyz withholds them
 // and why this must too.
@@ -588,10 +599,10 @@ func TestSPACatchAllNeverShadowsTheRealRoutes(t *testing.T) {
 	h := newDashHarness(t)
 
 	// The probes' own bodies: liveness a plain "ok", readiness JSON either way.
-	if w := h.get(t, "/healthz"); w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != "ok" {
+	if w := h.probe(t, "/healthz"); w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != "ok" {
 		t.Errorf("/healthz = %d %q, want the probe's 200 ok", w.Code, w.Body.String())
 	}
-	if ct := h.get(t, "/readyz").Header().Get("Content-Type"); !strings.Contains(ct, "json") {
+	if ct := h.probe(t, "/readyz").Header().Get("Content-Type"); !strings.Contains(ct, "json") {
 		t.Errorf("/readyz served %q, want the probe's JSON", ct)
 	}
 
