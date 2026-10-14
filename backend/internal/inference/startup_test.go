@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -180,6 +181,27 @@ func TestStartupRecordsPingPricing(t *testing.T) {
 	})
 }
 
+// The floor is what a 1.05M model accepts as input, not 1M: the floor itself
+// passes, one token under it does not.
+func TestStartupWindowFloorBoundary(t *testing.T) {
+	const alias = "gateway-alias"
+	for _, tc := range []struct {
+		window int
+		ok     bool
+	}{{MinContextWindow, true}, {MinContextWindow - 1, false}} {
+		f := &fakeGateway{models: fmt.Sprintf(`{"data":[{"id":"gateway-alias","max_input_tokens":%d}]}`, tc.window)}
+		srv := f.start(t, alias)
+		c := newTestClient(t, srv, alias)
+		err := c.Startup(context.Background())
+		if tc.ok && err != nil {
+			t.Errorf("window %d: Startup: %v", tc.window, err)
+		}
+		if !tc.ok && (err == nil || !strings.Contains(err.Error(), "below the")) {
+			t.Errorf("window %d: err = %v, want a window-floor error", tc.window, err)
+		}
+	}
+}
+
 // An explicit OPENAI_CONTEXT_WINDOW wins over the gateway's figure.
 func TestStartupExplicitWindowWins(t *testing.T) {
 	const alias = "gateway-alias"
@@ -216,8 +238,8 @@ func TestStartupFallsBackToProfileContext(t *testing.T) {
 			if err := c.Startup(context.Background()); err != nil {
 				t.Fatalf("Startup: %v", err)
 			}
-			if got := c.ContextWindow(); got != wideContext {
-				t.Errorf("ContextWindow = %d, want the profile's %d", got, wideContext)
+			if got := c.ContextWindow(); got != wideInput {
+				t.Errorf("ContextWindow = %d, want the profile's input %d", got, wideInput)
 			}
 			if !strings.Contains(buf.String(), tc.wantLog) {
 				t.Errorf("log = %q, want it to contain %q", buf.String(), tc.wantLog)
@@ -260,17 +282,28 @@ func TestStartupRejects(t *testing.T) {
 		}
 	})
 
-	// The profile's context is held to the same floor as the gateway's.
-	t.Run("missing max_input_tokens, profile context below the floor", func(t *testing.T) {
-		f := &fakeGateway{models: `{"data":[{"id":"gateway-alias"}]}`}
+	// The profile's input, not its context, is held to the floor: the
+	// context alone would pass. The error says the number is the profile's
+	// and keeps what the gateway sent, so the operator does not go looking
+	// for it on the gateway.
+	t.Run("unusable max_input_tokens, profile input below the floor", func(t *testing.T) {
+		f := &fakeGateway{models: `{"data":[{"id":"gateway-alias","max_input_tokens":"lots"}]}`}
 		srv := f.start(t, alias)
-		c := newTestClient(t, srv, alias)
+		c := newTestClient(t, srv, alias, onModel(srv, tightModel, alias))
 		err := c.Startup(context.Background())
 		if err == nil || !strings.Contains(err.Error(), "below the") {
-			t.Errorf("err = %v, want a window-floor error", err)
+			t.Fatalf("err = %v, want a window-floor error", err)
+		}
+		for _, want := range []string{"llmwire profile", "unusable"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("err = %v, want it to contain %q", err, want)
+			}
 		}
 		if f.gotChat != 0 {
 			t.Error("ping must not run after the window check fails")
+		}
+		if c.ContextWindow() != 0 {
+			t.Errorf("ContextWindow = %d after a refused window, want 0", c.ContextWindow())
 		}
 	})
 
@@ -485,10 +518,7 @@ func TestStartupChecksTheProfileBeforeTheNetwork(t *testing.T) {
 	t.Run("a model without strict JSON output", func(t *testing.T) {
 		f := &fakeGateway{}
 		srv := f.start(t, alias)
-		c := newTestClient(t, srv, alias, func(o *Options) {
-			o.Model = llmwiretest.BudgetModel
-			o.Env = routed(srv.URL, llmwiretest.BudgetModel, alias)
-		})
+		c := newTestClient(t, srv, alias, onModel(srv, llmwiretest.BudgetModel, alias))
 		err := c.Startup(context.Background())
 		if err == nil || !strings.Contains(err.Error(), "valid choices are") ||
 			!strings.Contains(err.Error(), llmwiretest.ChatModel) {
@@ -502,11 +532,7 @@ func TestStartupChecksTheProfileBeforeTheNetwork(t *testing.T) {
 	t.Run("a level on a model that takes none", func(t *testing.T) {
 		f := &fakeGateway{}
 		srv := f.start(t, alias)
-		c := newTestClient(t, srv, alias, func(o *Options) {
-			o.Model = "noergler-budget"
-			o.ReasoningEffort = "some-level"
-			o.Env = routed(srv.URL, "noergler-budget", alias)
-		})
+		c := newTestClient(t, srv, alias, onModel(srv, "noergler-budget", alias), func(o *Options) { o.ReasoningEffort = "some-level" })
 		err := c.Startup(context.Background())
 		if err == nil || !strings.Contains(err.Error(), "takes no named level") {
 			t.Fatalf("err = %v, want it to say the model takes no named level", err)
@@ -536,10 +562,7 @@ func TestStartupChecksTheProfileBeforeTheNetwork(t *testing.T) {
 	t.Run("no level on a model that reasons only when asked", func(t *testing.T) {
 		f := &fakeGateway{}
 		srv := f.start(t, alias)
-		c := newTestClient(t, srv, alias, func(o *Options) {
-			o.Model = "noergler-optin"
-			o.Env = routed(srv.URL, "noergler-optin", alias)
-		})
+		c := newTestClient(t, srv, alias, onModel(srv, "noergler-optin", alias))
 		err := c.Startup(context.Background())
 		if err == nil {
 			t.Fatal("want an error")
@@ -561,10 +584,7 @@ func TestStartupChecksTheProfileBeforeTheNetwork(t *testing.T) {
 	t.Run("no level on an opt-in model that takes no named level", func(t *testing.T) {
 		f := &fakeGateway{}
 		srv := f.start(t, alias)
-		c := newTestClient(t, srv, alias, func(o *Options) {
-			o.Model = "noergler-optin-budget"
-			o.Env = routed(srv.URL, "noergler-optin-budget", alias)
-		})
+		c := newTestClient(t, srv, alias, onModel(srv, "noergler-optin-budget", alias))
 		err := c.Startup(context.Background())
 		if err == nil {
 			t.Fatal("want an error")
@@ -581,10 +601,7 @@ func TestStartupChecksTheProfileBeforeTheNetwork(t *testing.T) {
 	t.Run("a model that does not reason", func(t *testing.T) {
 		f := &fakeGateway{}
 		srv := f.start(t, alias)
-		c := newTestClient(t, srv, alias, func(o *Options) {
-			o.Model = "noergler-plain"
-			o.Env = routed(srv.URL, "noergler-plain", alias)
-		})
+		c := newTestClient(t, srv, alias, onModel(srv, "noergler-plain", alias))
 		err := c.Startup(context.Background())
 		if err == nil || !strings.Contains(err.Error(), "reasoning") ||
 			!strings.Contains(err.Error(), llmwiretest.ChatModel) {
@@ -611,8 +628,8 @@ var testRegistry = func() *llmwire.Registry {
 
 // plainProfile adds chat models with strict JSON output: one that does not
 // reason, one that reasons by token budget and so has no named level, and one
-// that reasons only when asked and names no balanced level; and two that reason
-// like testProfile, one with a context above the window floor, one with none.
+// that reasons only when asked and names no balanced level; and three that
+// reason like testProfile and differ only in limits (see wideModel).
 const plainProfile = `
   - id: noergler-plain
     display_name: noergler plain
@@ -675,7 +692,21 @@ const plainProfile = `
       effort_values: [none, low, medium, high]
       balanced: medium
     output: {json_object: true, json_schema: true, strict_schema: true}
-    limits: {context: 1050000, max_output: 16384}
+    limits: {context: 1050000, max_output: 128000}
+  - id: noergler-tight
+    display_name: noergler tight
+    provider: llmwiretest
+    verified: source-derived
+    max_tokens_param: max_tokens
+    reasoning:
+      supported: true
+      enabled_by_default: true
+      can_be_disabled: true
+      control: effort
+      effort_values: [none, low, medium, high]
+      balanced: medium
+    output: {json_object: true, json_schema: true, strict_schema: true}
+    limits: {context: 1000000, max_output: 128000}
   - id: noergler-nolimit
     display_name: noergler no limit
     provider: llmwiretest
@@ -691,11 +722,13 @@ const plainProfile = `
     output: {json_object: true, json_schema: true, strict_schema: true}
 `
 
-// wideModel carries a context at the floor or above, noLimitModel none.
+// wideModel's input (context less max output) clears the window floor;
+// tightModel's context would, its input does not; noLimitModel names none.
 const (
 	wideModel    = "noergler-wide"
+	tightModel   = "noergler-tight"
 	noLimitModel = "noergler-nolimit"
-	wideContext  = 1_050_000
+	wideInput    = 1_050_000 - 128_000
 )
 
 // pickAnotherModel is the remedy every opt-in refusal names.
@@ -734,10 +767,7 @@ func TestPingRefusesNothingSentOnAnOptInModel(t *testing.T) {
 	const alias = "gateway-alias"
 	f := &fakeGateway{}
 	srv := f.start(t, alias)
-	c := newTestClient(t, srv, alias, func(o *Options) {
-		o.Model = "noergler-optin"
-		o.Env = routed(srv.URL, "noergler-optin", alias)
-	})
+	c := newTestClient(t, srv, alias, onModel(srv, "noergler-optin", alias))
 	p, _ := testRegistry.Lookup("noergler-optin")
 	err := c.ping(context.Background(), p)
 	if err == nil || !strings.Contains(err.Error(), "reasoning off") {
@@ -750,15 +780,30 @@ func TestStartupAcceptsALevelOnAnOptInModel(t *testing.T) {
 	const alias = "gateway-alias"
 	f := &fakeGateway{}
 	srv := f.start(t, alias)
-	c := newTestClient(t, srv, alias, func(o *Options) {
-		o.Model = "noergler-optin"
-		o.ReasoningEffort = "high"
-		o.Env = routed(srv.URL, "noergler-optin", alias)
-	})
+	c := newTestClient(t, srv, alias, onModel(srv, "noergler-optin", alias), func(o *Options) { o.ReasoningEffort = "high" })
 	if err := c.Startup(context.Background()); err != nil {
 		t.Fatalf("Startup: %v", err)
 	}
 	if got := c.Label(); got != "noergler-optin-high" {
 		t.Errorf("Label = %q, want noergler-optin-high", got)
+	}
+}
+
+// The profile's input limit needs both numbers: a context alone would read
+// the output share as input, and an output cap at or over the context is no
+// input at all.
+func TestProfileInputLimit(t *testing.T) {
+	for _, tc := range []struct {
+		l    llmwire.Limits
+		want int
+	}{
+		{llmwire.Limits{Context: 1_050_000, MaxOutput: 128_000}, 922_000},
+		{llmwire.Limits{Context: 1_000_000}, 0},
+		{llmwire.Limits{Context: 128_000, MaxOutput: 128_000}, 0},
+		{llmwire.Limits{}, 0},
+	} {
+		if got := profileInputLimit(tc.l); got != tc.want {
+			t.Errorf("profileInputLimit(%+v) = %d, want %d", tc.l, got, tc.want)
+		}
 	}
 }

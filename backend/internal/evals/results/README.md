@@ -105,5 +105,5 @@ read their columns.
 ## Running
 
 - This endpoint lists no `max_input_tokens`, so the window is the profile's
-  context. The runs below predate that fallback and passed
+  context less its max output. The runs below predate that fallback and passed
   `-context-window 1000000`; a profile without a context still needs it.

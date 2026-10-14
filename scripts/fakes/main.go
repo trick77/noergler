@@ -331,7 +331,7 @@ func main() {
 
 	// Gateway: the model listing per-team startup reads the context window
 	// from. The id is the gateway alias, not the llmwire profile id, and
-	// max_input_tokens must clear the 1M floor or the team is disabled.
+	// max_input_tokens must clear the 900K floor or the team is disabled.
 	mux.HandleFunc("GET /models", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, r, map[string]any{"object": "list", "data": []any{
 			map[string]any{
