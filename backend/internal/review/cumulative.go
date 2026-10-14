@@ -62,7 +62,7 @@ func (r *Reviewer) fetchCumulativeDiff(ctx context.Context, key store.PRKey, prT
 		return cumulativeContext{}
 	}
 
-	push, _ := reviewableParts(pushDiff)
+	push, _, _ := reviewableParts(pushDiff)
 	pushBytes := 0
 	touched := map[string]bool{}
 	for _, f := range push {
@@ -76,7 +76,7 @@ func (r *Reviewer) fetchCumulativeDiff(ctx context.Context, key store.PRKey, prT
 	pushTokens := pushBytes / bytesPerTokenEstimate
 	budget, bound := inference.ScaledCumulativeDiffBudget(pushTokens, r.llm.InputTokenBudget())
 
-	candidates, filtered := reviewableParts(full)
+	candidates, filtered, oversized := reviewableParts(full)
 	related := diff.ReferencingPaths(push, candidates)
 	tier := func(f diff.FileReviewData) int {
 		switch {
@@ -120,12 +120,12 @@ func (r *Reviewer) fetchCumulativeDiff(ctx context.Context, key store.PRKey, prT
 
 	r.log.InfoContext(ctx, fmt.Sprintf(
 		"%s: cumulative PR diff: push ~%d tokens, budget %d (%s), kept %d of %d file(s) in %d tokens "+
-			"(%d touched by the push, %d related, %d other), %d filtered as non-reviewable, %d omitted for budget%s",
+			"(%d touched by the push, %d related, %d other), %d filtered as non-reviewable, %d oversized%s, %d omitted for budget%s",
 		prTag, pushTokens, budget, bound, len(ranked)-len(omitted), len(ranked), used,
 		keptPerTier[tierTouched], keptPerTier[tierRelated], keptPerTier[tierOther],
-		filtered, len(omitted), largestOmitted(omitted)))
+		filtered, len(oversized), oversizedNames(oversized), len(omitted), largestOmitted(omitted)))
 
-	out := cumulativeContext{diff: kept.String(), partial: filtered > 0 || len(omitted) > 0}
+	out := cumulativeContext{diff: kept.String(), partial: filtered > 0 || len(oversized) > 0 || len(omitted) > 0}
 	for _, f := range omitted {
 		if f.Path != "" {
 			out.omitted = append(out.omitted, f.Path)
@@ -135,16 +135,31 @@ func (r *Reviewer) fetchCumulativeDiff(ctx context.Context, key store.PRKey, prT
 }
 
 // reviewableParts splits a combined diff into its reviewable per-file parts,
-// carrying path and diff only, and counts the parts filtered out.
-func reviewableParts(rawDiff string) (parts []diff.FileReviewData, filtered int) {
+// carrying path and diff only, counts the parts filtered out and names the
+// ones over their size gate. An oversized part is dropped, not ranked: in the
+// push it would rank itself first as touched.
+func reviewableParts(rawDiff string) (parts []diff.FileReviewData, filtered int, oversized []string) {
 	for _, fd := range diff.SplitByFile(rawDiff) {
 		if !diff.IsReviewable(fd) {
 			filtered++
 			continue
 		}
-		parts = append(parts, diff.FileReviewData{Path: diff.ExtractPath(fd), Diff: fd})
+		path := diff.ExtractPath(fd)
+		if _, _, over := diff.ExceedsSizeGate(path, fd); over {
+			oversized = append(oversized, path)
+			continue
+		}
+		parts = append(parts, diff.FileReviewData{Path: path, Diff: fd})
 	}
-	return parts, filtered
+	return parts, filtered, oversized
+}
+
+// oversizedNames renders the oversized paths for the cumulative log line.
+func oversizedNames(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	return " (" + capPaths(paths) + ")"
 }
 
 // largestOmitted names the three biggest omitted files, in bytes: a part
