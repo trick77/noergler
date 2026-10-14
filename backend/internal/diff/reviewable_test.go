@@ -73,6 +73,8 @@ func TestPathIsReviewable(t *testing.T) {
 	}{
 		{"src/app.go", true},
 		{"src/app/schadenmeldung.component.ts", true},
+		// Size-gated, not skipped: there is no diff here to count.
+		{"src/main/resources/application.properties", true},
 		{"README.md", true},
 		// The case this was written for: e2e fixtures dominating a diff.
 		{"apps/e2e/fixtures/fallartwechsel.json", false},
@@ -101,11 +103,52 @@ func TestPathIsReviewableAgreesWithIsReviewable(t *testing.T) {
 	paths := []string{
 		"src/app.go", "fixtures/big.json", "docs/flow.puml", "assets/logo.png",
 		"go.sum", "node_modules/pkg/index.js", "README.md", "src/app.ts",
+		"src/main/resources/application.properties",
 	}
 	for _, p := range paths {
 		fd := "diff --git a/" + p + " b/" + p + "\n--- a/" + p + "\n+++ b/" + p + "\n@@ -0,0 +1 @@\n+x\n"
 		if got, want := PathIsReviewable(p), IsReviewable(fd); got != want {
 			t.Errorf("%q: PathIsReviewable=%v but IsReviewable=%v", p, got, want)
 		}
+	}
+}
+
+// propertiesDiff builds a diff of path with n added lines, behind the ---/+++
+// headers that must not count.
+func propertiesDiff(path string, n int) string {
+	var b strings.Builder
+	b.WriteString("diff --git a/" + path + " b/" + path + "\n--- a/" + path + "\n+++ b/" + path + "\n@@ -0,0 +1 @@\n")
+	for i := 0; i < n; i++ {
+		b.WriteString("+key=value\n")
+	}
+	return b.String()
+}
+
+// .properties is reviewed up to 50 changed lines and skipped whole past it: a
+// hand edit is worth a look, a regenerated i18n bundle is not.
+func TestPropertiesSizeGate(t *testing.T) {
+	cases := []struct {
+		name string
+		fd   string
+		want bool
+	}{
+		{"small diff reviewed", propertiesDiff("src/main/resources/application.properties", 3), true},
+		{"at the limit reviewed", propertiesDiff("messages.properties", 50), true},
+		{"one over skipped", propertiesDiff("messages.properties", 51), false},
+		{"uppercase extension gated", propertiesDiff("MESSAGES.PROPERTIES", 51), false},
+		{"removals count", strings.Replace(propertiesDiff("messages.properties", 51), "+key=value\n", "-key=value\n", 26), false},
+		{"other types not gated", propertiesDiff("src/app.go", 500), true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := IsReviewable(tc.fd); got != tc.want {
+				t.Errorf("IsReviewable() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+
+	changed, limit, over := ExceedsSizeGate(propertiesDiff("messages.properties", 51))
+	if changed != 51 || limit != 50 || !over {
+		t.Errorf("ExceedsSizeGate = (%d, %d, %v), want (51, 50, true): headers must not count", changed, limit, over)
 	}
 }

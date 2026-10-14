@@ -74,6 +74,9 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   marker keeps its space, so the tail of `*cfg = x` or `--count` stays
   invented. Blunt rules, never
   a judge model. Drops are logged by reason, never silent.
+- `.properties` is reviewed, but skipped whole past 50 changed lines
+  (`diff.sizeGatedExtensions`, inside `IsReviewable`): hand edits yes,
+  regenerated i18n bundles no. Unmeasured; tune from `skipped as oversized`.
 - `strings.ReplaceAll`, never `text/template`: the files contain JSON braces.
 - **Single worker for every Bitbucket call**, per-PR supersede. Only the
   gateway call leaves it, onto a bounded pool (`REVIEW_INFERENCE_CONCURRENCY`

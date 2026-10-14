@@ -126,3 +126,15 @@ func TestCapPaths(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+// An oversized .properties file is unreviewed for its size, not its type, so
+// it gets its own line with the count and is not lumped in with the binaries.
+func TestOversizedPropertiesLoggedByName(t *testing.T) {
+	big := "diff --git a/messages.properties b/messages.properties\n--- a/messages.properties\n+++ b/messages.properties\n@@ -0,0 +1,51 @@\n" +
+		strings.Repeat("+key=value\n", 51)
+	logs := reviewLogs(t, func(h *harness) { h.bb.prDiff = sampleDiff + big }, nil)
+	wantLogged(t, logs, "skipped as oversized: messages.properties (51 changed lines > 50)")
+	if strings.Contains(logs, "skipped as binary/non-reviewable: messages.properties") {
+		t.Errorf("oversized file reported as binary/non-reviewable:\n%s", logs)
+	}
+}
