@@ -131,8 +131,9 @@ func serve(log *slog.Logger) error {
 	}
 	config.Dump(app, log)
 
-	// SIGINT/SIGTERM end startup and then serving, and stay caught through the
-	// queue drain below: a second signal must not kill a review in flight.
+	// SIGINT/SIGTERM end startup and then serving; the queue drain below runs
+	// on. run.Context releases the handler shortly after ctx ends, so a second
+	// signal kills the process mid-drain, review in flight included.
 	ctx, stop := run.Context(context.Background())
 	defer stop()
 
@@ -206,7 +207,8 @@ func serve(log *slog.Logger) error {
 	// cancelled one would fail the review that Stop then waits for: its diff
 	// fetch, its LLM call and its store writes would all fail with context
 	// canceled, and safeDB would swallow them, losing the run row and its
-	// cost. Cancellation reaches the worker through Stop alone.
+	// cost. Cancellation reaches the worker through Stop alone; killing the
+	// process (SIGKILL, or a second signal) ends it sooner.
 	queueCtx, stopQueue := context.WithCancel(context.WithoutCancel(ctx))
 	defer stopQueue()
 	q := queue.New(reg.Review, app.Queue.InferenceConcurrency, app.Queue.InferenceConcurrencyPerTeam, log)
@@ -234,16 +236,18 @@ func serve(log *slog.Logger) error {
 	addr := net.JoinHostPort(app.Server.Host, strconv.Itoa(app.Server.Port))
 	log.Info("Bridge service started", "base_url", app.LLM.BaseURL, "teams", len(enabled))
 	log.Info("listening", "addr", addr)
-	// Serve returns on SIGINT/SIGTERM once in-flight requests have drained.
+	// Serve returns on SIGINT/SIGTERM once in-flight requests have drained; a
+	// second signal kills that drain too.
 	runErr := httpx.Serve(ctx, httpx.NewServer(addr, srv.Handler()), 15*time.Second)
 
 	// Drain in order: the server has already stopped accepting, so the queue
 	// finishes the review in flight before the pool closes under it. Not a
 	// defer, because `defer db.Close()` above is registered earlier and would
 	// otherwise run first. Stop has no timeout: a long review holds shutdown,
-	// which the pod's termination grace period has to allow for. With the
-	// inference pool that budget is now prepare + pool wait + the gateway's
-	// 300s call timeout + posting, for every review still in flight.
+	// which the pod's termination grace period has to allow for: its SIGKILL
+	// ends the drain, and so does any second SIGINT/SIGTERM, pod or not. With
+	// the inference pool that budget is now prepare + pool wait + the
+	// gateway's 300s call timeout + posting, for every review still in flight.
 	q.Stop()
 	if runErr != nil {
 		return runErr
