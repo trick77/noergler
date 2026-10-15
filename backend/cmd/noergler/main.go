@@ -245,7 +245,7 @@ func serve(log *slog.Logger) error {
 	// defer, because `defer db.Close()` above is registered earlier and would
 	// otherwise run first. Stop has no timeout: a long review holds shutdown,
 	// which the pod's termination grace period has to allow for: its SIGKILL
-	// ends the drain (outside a pod, so does any second SIGINT/SIGTERM). With
+	// ends the drain, and so does any second SIGINT/SIGTERM, pod or not. With
 	// the inference pool that budget is now prepare + pool wait + the
 	// gateway's 300s call timeout + posting, for every review still in flight.
 	q.Stop()

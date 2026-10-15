@@ -197,7 +197,8 @@ func (q *Queue) Start(ctx context.Context) {
 //
 // No timeout, deliberately: the drain now spans prepare, the pool wait, the
 // gateway's own call timeout and posting, for every review in flight. The
-// pod's termination grace period has to allow for it.
+// pod's termination grace period has to allow for it. Its SIGKILL, or a
+// second shutdown signal (cmd/noergler), kills the process mid-drain.
 func (q *Queue) Stop() {
 	q.mu.Lock()
 	if !q.started || q.stopped {
