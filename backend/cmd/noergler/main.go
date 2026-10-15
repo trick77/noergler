@@ -131,8 +131,9 @@ func serve(log *slog.Logger) error {
 	}
 	config.Dump(app, log)
 
-	// SIGINT/SIGTERM end startup and then serving, and stay caught through the
-	// queue drain below: a second signal must not kill a review in flight.
+	// SIGINT/SIGTERM end startup and then serving; the queue drain below runs
+	// on. run.Context releases the handler once ctx ends, so a second signal
+	// kills the process mid-drain, review in flight included.
 	ctx, stop := run.Context(context.Background())
 	defer stop()
 
@@ -241,7 +242,8 @@ func serve(log *slog.Logger) error {
 	// finishes the review in flight before the pool closes under it. Not a
 	// defer, because `defer db.Close()` above is registered earlier and would
 	// otherwise run first. Stop has no timeout: a long review holds shutdown,
-	// which the pod's termination grace period has to allow for. With the
+	// which the pod's termination grace period has to allow for (its SIGKILL,
+	// or a second SIGINT/SIGTERM, ends the drain). With the
 	// inference pool that budget is now prepare + pool wait + the gateway's
 	// 300s call timeout + posting, for every review still in flight.
 	q.Stop()
