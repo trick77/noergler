@@ -132,8 +132,8 @@ func serve(log *slog.Logger) error {
 	config.Dump(app, log)
 
 	// SIGINT/SIGTERM end startup and then serving; the queue drain below runs
-	// on. run.Context releases the handler once ctx ends, so a second signal
-	// kills the process mid-drain, review in flight included.
+	// on. run.Context releases the handler shortly after ctx ends, so a second
+	// signal kills the process mid-drain, review in flight included.
 	ctx, stop := run.Context(context.Background())
 	defer stop()
 
@@ -207,8 +207,8 @@ func serve(log *slog.Logger) error {
 	// cancelled one would fail the review that Stop then waits for: its diff
 	// fetch, its LLM call and its store writes would all fail with context
 	// canceled, and safeDB would swallow them, losing the run row and its
-	// cost. Cancellation reaches the worker through Stop alone; only a second
-	// signal, killing the process, ends it sooner.
+	// cost. Cancellation reaches the worker through Stop alone; killing the
+	// process (SIGKILL, or a second signal) ends it sooner.
 	queueCtx, stopQueue := context.WithCancel(context.WithoutCancel(ctx))
 	defer stopQueue()
 	q := queue.New(reg.Review, app.Queue.InferenceConcurrency, app.Queue.InferenceConcurrencyPerTeam, log)
@@ -245,7 +245,7 @@ func serve(log *slog.Logger) error {
 	// defer, because `defer db.Close()` above is registered earlier and would
 	// otherwise run first. Stop has no timeout: a long review holds shutdown,
 	// which the pod's termination grace period has to allow for: its SIGKILL
-	// ends the drain (outside a pod, so does a second Ctrl-C or SIGTERM). With
+	// ends the drain (outside a pod, so does any second SIGINT/SIGTERM). With
 	// the inference pool that budget is now prepare + pool wait + the
 	// gateway's 300s call timeout + posting, for every review still in flight.
 	q.Stop()
