@@ -12,8 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/trick77/llmwire"
+	"github.com/trick77/llmwire/llmwiretest"
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/httpapi"
+	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/queue"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/teams"
@@ -68,6 +71,34 @@ type dashHarness struct {
 	srv *httpapi.Server
 	q   *fakeDashQueue
 	st  *fakeDashStore
+	llm *inference.Client
+}
+
+// newDashLLM builds a team client that is never started: the roster reads its
+// label, which needs no gateway.
+func newDashLLM(t *testing.T) *inference.Client {
+	t.Helper()
+	reg, err := llmwire.NewRegistry([]byte(strings.Replace(string(llmwiretest.Profiles()),
+		"providers:\n", "providers:\n  litellm: {}\n", 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{
+		"LLMWIRE_LITELLM_MODELS":   llmwiretest.ChatModel + "=gateway-alias",
+		"LLMWIRE_LITELLM_BASE_URL": "https://gateway.invalid",
+	}
+	c, err := inference.New(inference.Options{
+		Model: llmwiretest.ChatModel, Registry: reg, APIKey: "k",
+		Logger: slog.New(slog.DiscardHandler),
+		Env: func(n string) (string, bool) {
+			v, ok := env[n]
+			return v, ok
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
 }
 
 func newDashHarness(t *testing.T) *dashHarness {
@@ -79,7 +110,8 @@ func newDashHarness(t *testing.T) *dashHarness {
 	}
 	team.Review.ExcludeRepos = []string{"*-infra"}
 	team.Review.IgnoreAuthors = []string{"renovate"}
-	rt := teams.NewRuntime(team, &fakeReviewer{}, nil, nil, nil)
+	llm := newDashLLM(t)
+	rt := teams.NewRuntime(team, &fakeReviewer{}, llm, nil, nil)
 
 	var buf bytes.Buffer
 	log := slog.New(logging.NewSplunkHandler(&buf, slog.LevelDebug, "noergler", "test"))
@@ -96,7 +128,7 @@ func newDashHarness(t *testing.T) *dashHarness {
 		BitbucketURL: "https://bitbucket.example.com",
 		Dashboard:    q, DashboardStore: st,
 	})
-	return &dashHarness{srv: srv, q: q, st: st}
+	return &dashHarness{srv: srv, q: q, st: st, llm: llm}
 }
 
 func (h *dashHarness) get(t *testing.T, path string) *httptest.ResponseRecorder {
@@ -572,6 +604,37 @@ func TestTeamsListsClaimsAndSettings(t *testing.T) {
 	}
 	if len(platform.ExcludeRepos) != 1 || platform.ExcludeRepos[0] != "*-infra" {
 		t.Errorf("exclude repos = %+v", platform.ExcludeRepos)
+	}
+}
+
+// The roster names the model a team reviews with: the client's own label,
+// the one its runs record. Never the gateway alias, and nothing for a
+// disabled team, whose configured model may be why it is disabled.
+func TestTeamsNamesTheModel(t *testing.T) {
+	h := newDashHarness(t)
+
+	raw := h.get(t, "/api/dashboard/teams").Body.String()
+	var got teamsBody
+	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, tm := range got.Teams {
+		switch tm.Slug {
+		case "platform":
+			if tm.Model == "" || tm.Model != h.llm.Label() {
+				t.Errorf("model = %q, want the client's label %q", tm.Model, h.llm.Label())
+			}
+		case "mobile":
+			if tm.Model != "" {
+				t.Errorf("disabled team model = %q, want none", tm.Model)
+			}
+		}
+	}
+	if strings.Contains(raw, "gateway-alias") {
+		t.Error("the gateway alias is the operator's naming and must not be served")
+	}
+	if strings.Count(raw, `"model"`) != 1 {
+		t.Errorf("want one model key, for the enabled team only: %s", raw)
 	}
 }
 

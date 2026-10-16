@@ -101,6 +101,12 @@ export function TeamsPage() {
             note={
               <>
                 {t.slug}
+                {t.model && (
+                  <>
+                    <Sep />
+                    <code className="font-mono text-[12px]">{t.model}</code>
+                  </>
+                )}
                 <Sep />
                 {t.prs} PRs
                 <Sep />

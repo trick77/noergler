@@ -542,6 +542,7 @@ describe("TeamsPage", () => {
       auto_review_authors: 3,
       ignore_authors: 1,
       exclude_repos: ["*-infra"],
+      model: "gpt-5.5-high",
     },
     {
       slug: "mobile",
@@ -588,6 +589,15 @@ describe("TeamsPage", () => {
 
     expect(await screen.findByText(/Auto-review authors/)).toBeDefined();
     expect(screen.queryByText(/renovate/)).toBeNull();
+  });
+
+  // Only an enabled team has a started client, so only it names a model.
+  it("names the model of a team that has one", async () => {
+    serve({ teams: { teams } });
+    render(<TeamsPage />);
+
+    expect(await screen.findByText("gpt-5.5-high")).toBeDefined();
+    expect(screen.getAllByText(/-high$/)).toHaveLength(1);
   });
 
   it("points at the log for a disable reason instead of showing one", async () => {

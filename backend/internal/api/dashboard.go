@@ -505,6 +505,12 @@ type teamBody struct {
 	IgnoreAuthors     int `json:"ignore_authors"`
 	// exclude_repos stays whole: a repo glob is not a person.
 	ExcludeRepos []string `json:"exclude_repos"`
+	// Model is the started client's label, `<profile>-<effort>`, the string
+	// every run records and the PR summary prints, so it is public already.
+	// The profile id, never the gateway alias: that is the operator's private
+	// naming. Absent for a disabled team, which has no client: its configured
+	// model may be the very thing that disabled it.
+	Model string `json:"model,omitempty"`
 }
 
 type teamsBody struct {
@@ -544,6 +550,9 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 				t.AutoReviewAuthors = len(team.Review.AutoReviewAuthors)
 				t.IgnoreAuthors = len(team.Review.IgnoreAuthors)
 				t.ExcludeRepos = append(t.ExcludeRepos, team.Review.ExcludeRepos...)
+				if rt.LLM != nil {
+					t.Model = rt.LLM.Label()
+				}
 				// A scope with no repo list is the whole project; one repo
 				// per claim row otherwise, so the page can show what a team
 				// actually owns rather than a project it half-owns.
