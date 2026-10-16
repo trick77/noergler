@@ -9,9 +9,10 @@
 ui/node_modules
 ui/dist
 ui/coverage
+# The host's UI build in the Go tree: the image builds dist in its own stage, a stale one must not come in with the
+# context.
+backend/web/dist
 # ship:end
 
 # The prompt templates ship with the image (COPY prompts/).
 !prompts
-# vite's output from a host build: the image builds it itself in the ui stage.
-backend/web/dist

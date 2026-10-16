@@ -10,7 +10,6 @@ docs/plans/
 /backend/noergler
 fakes
 /bin/
-coverage/
 
 # Bytecode caches. The retired implementation's directories still sit
 # untracked at the root, so these must be ignored here, not only under
@@ -41,12 +40,12 @@ __pycache__/
 # IntelliJ HTTP client: host, team secret and admin token, filled in locally (template: .example)
 http/http-client.env.json
 
-# The built SPA. dist/.gitkeep is tracked on purpose: //go:embed all:dist
-# fails to compile on a missing or empty directory, so a fresh clone must
-# still have one.
-/backend/web/dist/*
-!/backend/web/dist/.gitkeep
-/ui/node_modules/
-
-# tsc -b incremental state, regenerated on every build.
-ui/tsconfig.tsbuildinfo
+# ship:begin (owned by ship init; the repo's own lines go above the begin marker)
+# What the gate and the UI build write into the tree.
+coverage/ui/
+ui/node_modules/
+ui/*.tsbuildinfo
+# The UI build the Go binary embeds; .gitkeep stays tracked so go:embed's dir exists in a fresh clone.
+backend/web/dist/*
+!backend/web/dist/.gitkeep
+# ship:end
