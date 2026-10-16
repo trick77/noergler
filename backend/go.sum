@@ -46,8 +46,8 @@ github.com/tiktoken-go/tokenizer v0.8.1 h1:4obDoB6/dhdBt9xMweX4nww5cjdOq/nYF4ecw
 github.com/tiktoken-go/tokenizer v0.8.1/go.mod h1:eLA0t6nGvn9mDc7gt90qt7pMat+gE9ViqwQ6l9B+tA4=
 github.com/trick77/llmwire v0.1.3 h1:VZ2OF8NaXAekYvFIBOPBf/7AHWP6zj7KOh4NO6ls6ik=
 github.com/trick77/llmwire v0.1.3/go.mod h1:pIqr5CIH1ULPRg8LvMRZzN5QR3GFRkLClMqW7tQxEFA=
-github.com/trick77/ship/kit v0.13.0 h1:xC5LKlAkFX7ipSEcvJJO/mOlbiYRUL27A4OpiXshPt4=
-github.com/trick77/ship/kit v0.13.0/go.mod h1:cE+kQhN2nb5j2ML174YKdGrC41M2GxnILzQLqFupsHE=
+github.com/trick77/ship/kit v0.16.0 h1:A+cA+nPa/a10393+p1BFrLS9gJr/UnDkTZ2UN/H0HJQ=
+github.com/trick77/ship/kit v0.16.0/go.mod h1:cE+kQhN2nb5j2ML174YKdGrC41M2GxnILzQLqFupsHE=
 golang.org/x/sync v0.24.0 h1:iqiDrGoDgyuvAKrhLQthUEzU/R378N78gXbBjxed7oA=
 golang.org/x/sync v0.24.0/go.mod h1:sUUOizhqBxiL6pEWpqNLUiaJn1ShEbZ6BBqskPbjZm0=
 golang.org/x/text v0.43.0 h1:1QivrlhwAsnMOcqgOdl9my7s9OyZl8O5/UGUTJVXoWc=
