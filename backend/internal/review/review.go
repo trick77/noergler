@@ -254,6 +254,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 
 	ticket, parentTicket := r.fetchTicket(ctx, pr.FromRef.DisplayID, pr.Title, prTag)
 	ticketContext := renderTicketContext(ticket, parentTicket)
+	prDescription := r.prDescription(ctx, prTag, pr)
 
 	existing := safeDB(ctx, r.log, "ExistingFindings", func() ([]store.Finding, error) {
 		return r.store.ExistingFindings(ctx, key)
@@ -269,6 +270,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		RenamedFilePaths:      renamedPaths,
 		TicketContext:         ticketContext,
 		TicketComplianceCheck: r.cfg.TicketComplianceCheck,
+		PRDescription:         prDescription,
 		CrossFileContext:      crossFile,
 		CumulativePRDiff:      cumulativePR.diff,
 		CumulativePartial:     cumulativePR.partial,
@@ -732,12 +734,12 @@ func (r *Reviewer) logPromptComposition(ctx context.Context, prTag string, a inf
 		mode = "incremental"
 	}
 	b := a.Breakdown
-	rest := a.PromptTokens - b.RepoInstructions - b.Files - b.CumulativeDiff - b.PreviouslyPosted - b.Ticket
+	rest := a.PromptTokens - b.RepoInstructions - b.Files - b.CumulativeDiff - b.PreviouslyPosted - b.Ticket - b.PRDescription
 	r.log.InfoContext(ctx, fmt.Sprintf(
 		// A sum, not a list: the parts add up to the total and share its
 		// unit. Listed after a dash they read as bytes or KB.
-		"%s: prompt %d tokens (%s review) = files %d + cumulative PR diff %d + AGENTS.md %d + previously posted %d + ticket %d + template and rest %d",
-		prTag, a.PromptTokens, mode, b.Files, b.CumulativeDiff, b.RepoInstructions, b.PreviouslyPosted, b.Ticket, rest))
+		"%s: prompt %d tokens (%s review) = files %d + cumulative PR diff %d + AGENTS.md %d + previously posted %d + ticket %d + PR description %d + template and rest %d",
+		prTag, a.PromptTokens, mode, b.Files, b.CumulativeDiff, b.RepoInstructions, b.PreviouslyPosted, b.Ticket, b.PRDescription, rest))
 }
 
 // validateFindings applies inference.ValidateFindings and logs every drop and

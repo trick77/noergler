@@ -67,11 +67,11 @@ paths:
     put:
       tags: [team]
       operationId: putTeamSettings
-      summary: Change the review author lists
+      summary: Change the team's review settings
       description: |
-        A PARTIAL update. A field left out, or sent as `null`, keeps the list it
-        has; a field sent as `[]` clears it. Entries are trimmed and blanks are
-        dropped.
+        A PARTIAL update. A field left out, or sent as `null`, keeps the value
+        it has; a list sent as `[]` is cleared. Entries are trimmed and blanks
+        are dropped.
 
         The change takes effect immediately, on the running reviewer, and is
         persisted: it survives a restart and outranks the seed values in
@@ -93,6 +93,10 @@ paths:
                 summary: Leave the infra repos alone
                 value:
                   exclude_repos: ["*-infra", "sandbox-*"]
+              noPRDescription:
+                summary: Review without the PR title and description
+                value:
+                  use_pr_description: false
       responses:
         "200":
           description: The team as it is after the change.
@@ -334,7 +338,7 @@ components:
     TeamView:
       type: object
       additionalProperties: false
-      required: [team, projects, auto_review_authors, ignore_authors, exclude_repos]
+      required: [team, projects, auto_review_authors, ignore_authors, exclude_repos, use_pr_description]
       properties:
         team:
           type: string
@@ -360,13 +364,18 @@ components:
             Repository-slug globs that are ignored for every event, even though
             the project webhook delivers them. Case-insensitive.
           items: { type: string }
+        use_pr_description:
+          type: boolean
+          description: |
+            Whether the PR title and description are given to the model as
+            context for reviews and @mentions. Defaults to true.
 
     SettingsRequest:
       type: object
       additionalProperties: false
       description: |
-        A partial update: a field left out or null keeps its current list, and
-        `[]` clears it.
+        A partial update: a field left out or null keeps its current value,
+        and `[]` clears a list.
       properties:
         auto_review_authors:
           type: [array, "null"]
@@ -377,6 +386,8 @@ components:
         exclude_repos:
           type: [array, "null"]
           items: { type: string }
+        use_pr_description:
+          type: [boolean, "null"]
 
     OnboardRequest:
       type: object

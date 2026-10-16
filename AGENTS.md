@@ -78,6 +78,10 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   (`diff.ExceedsSizeGate`, in prepare and the cumulative diff): hand edits
   yes, regenerated i18n bundles no. NOT in `IsReviewable`: the rollup must
   count a file reviewed over small pushes. Unmeasured; tune from the log.
+- PR title + description (`{pr_description}`, off the webhook payload, 5000
+  runes) are untrusted author text: intent context, never evidence, a
+  description/code gap is no finding. Team switch `use_pr_description`, API
+  only (no teams.yaml key, no env), default on, DB row authoritative.
 - `strings.ReplaceAll`, never `text/template`: the files contain JSON braces.
 - **Single worker for every Bitbucket call**, per-PR supersede. Only the
   gateway call leaves it, onto a bounded pool (`REVIEW_INFERENCE_CONCURRENCY`

@@ -72,6 +72,7 @@ type Properties struct {
 type PullRequest struct {
 	ID          int         `json:"id"`
 	Title       string      `json:"title"`
+	Description string      `json:"description"` // absent when the author left it empty
 	State       string      `json:"state"`
 	FromRef     Ref         `json:"fromRef"`
 	ToRef       Ref         `json:"toRef"`

@@ -33,7 +33,11 @@ const (
 )
 
 // fakeReviewer records which handler the dispatch table picked.
-type fakeReviewer struct{ calls []string }
+type fakeReviewer struct {
+	calls []string
+	// usePRDescription is the last value mirrored by a settings write.
+	usePRDescription *bool
+}
 
 func (f *fakeReviewer) ReviewPullRequest(context.Context, *webhook.Payload, bool) {
 	f.calls = append(f.calls, "review")
@@ -60,6 +64,7 @@ func (f *fakeReviewer) HandlePRDeleted(context.Context, *webhook.Payload) {
 }
 func (f *fakeReviewer) IsAutoReviewAuthor(string) bool { return true }
 func (f *fakeReviewer) SetAuthorLists(_, _ []string)   {}
+func (f *fakeReviewer) SetUsePRDescription(on bool)    { f.usePRDescription = &on }
 func (f *fakeReviewer) String() string                 { return strings.Join(f.calls, ",") }
 
 // fakeQueue captures submissions without running a worker. Jobs are run on
@@ -146,6 +151,8 @@ func newHarness(t *testing.T, tweak func(*config.Team)) *harness {
 		Slug:          testSlug,
 		WebhookSecret: testSecret,
 		Projects:      []config.ProjectScope{{Key: "PLAT"}},
+		// The instance default, as LoadInstance sets it.
+		Review: config.Review{UsePRDescription: true},
 	}
 	if tweak != nil {
 		tweak(team)

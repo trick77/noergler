@@ -60,6 +60,7 @@ type teamView struct {
 	AutoReviewAuthors []string           `json:"auto_review_authors"`
 	IgnoreAuthors     []string           `json:"ignore_authors"`
 	ExcludeRepos      []string           `json:"exclude_repos"`
+	UsePRDescription  bool               `json:"use_pr_description"`
 }
 
 func viewOf(t *config.Team) teamView {
@@ -73,6 +74,7 @@ func viewOf(t *config.Team) teamView {
 		AutoReviewAuthors: nonNil(t.Review.AutoReviewAuthors),
 		IgnoreAuthors:     nonNil(t.Review.IgnoreAuthors),
 		ExcludeRepos:      nonNil(t.Review.ExcludeRepos),
+		UsePRDescription:  t.Review.UsePRDescription,
 	}
 }
 
@@ -100,13 +102,14 @@ func (d Deps) getTeam(w http.ResponseWriter, r *http.Request) {
 // settingsRequest is a PARTIAL update.
 //
 // Pointers, not slices, because a field left out must stay as it is while an
-// empty list clears it. An explicit null behaves exactly like an absent
+// empty list clears it (and false switches the PR description off). An explicit null behaves exactly like an absent
 // field, so a nil pointer covers both; pinned by
 // TestTeams_PutIsAPartialUpdate.
 type settingsRequest struct {
 	AutoReviewAuthors *[]string `json:"auto_review_authors"`
 	IgnoreAuthors     *[]string `json:"ignore_authors"`
 	ExcludeRepos      *[]string `json:"exclude_repos"`
+	UsePRDescription  *bool     `json:"use_pr_description"`
 }
 
 // clean resolves one partial-update field: nil keeps the current list,
@@ -124,7 +127,15 @@ func clean(items *[]string, current []string) []string {
 	return out
 }
 
-// putTeamSettings updates the team's three lists. Takes effect immediately.
+// keep resolves a partial-update switch: nil keeps the current value.
+func keep(v *bool, current bool) bool {
+	if v == nil {
+		return current
+	}
+	return *v
+}
+
+// putTeamSettings updates the team's lists and the PR description switch. Takes effect immediately.
 func (d Deps) putTeamSettings(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("team")
 	ctx := logging.With(r.Context(), "team", slug)
@@ -146,6 +157,7 @@ func (d Deps) putTeamSettings(w http.ResponseWriter, r *http.Request) {
 			AutoReviewAuthors: clean(body.AutoReviewAuthors, current.AutoReviewAuthors),
 			IgnoreAuthors:     clean(body.IgnoreAuthors, current.IgnoreAuthors),
 			ExcludeRepos:      clean(body.ExcludeRepos, current.ExcludeRepos),
+			UsePRDescription:  keep(body.UsePRDescription, current.UsePRDescription),
 		}
 	}, func(next store.TeamSettings) error {
 		return d.Store.PutSettings(ctx, slug, next, "team:"+slug)

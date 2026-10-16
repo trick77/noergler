@@ -35,11 +35,12 @@ func (c *ClaimConflict) Error() string {
 	return fmt.Sprintf("%s is claimed by team %s", target, c.OtherTeam)
 }
 
-// TeamSettings are the per-team review lists held in the DB.
+// TeamSettings are the per-team review settings held in the DB.
 type TeamSettings struct {
 	AutoReviewAuthors []string
 	IgnoreAuthors     []string
 	ExcludeRepos      []string
+	UsePRDescription  bool
 }
 
 type claimRow struct {
@@ -371,7 +372,7 @@ func (s *Store) CountProjectPRs(ctx context.Context, teamSlug, projectKey string
 
 // GetAllSettings returns every team's row keyed by slug.
 func (s *Store) GetAllSettings(ctx context.Context) (map[string]TeamSettings, error) {
-	rows, err := s.pool.Query(ctx, `SELECT team_slug, auto_review_authors, ignore_authors, exclude_repos FROM team_settings`)
+	rows, err := s.pool.Query(ctx, `SELECT team_slug, auto_review_authors, ignore_authors, exclude_repos, use_pr_description FROM team_settings`)
 	if err != nil {
 		return nil, err
 	}
@@ -380,7 +381,7 @@ func (s *Store) GetAllSettings(ctx context.Context) (map[string]TeamSettings, er
 	for rows.Next() {
 		var slug string
 		var t TeamSettings
-		if err := rows.Scan(&slug, &t.AutoReviewAuthors, &t.IgnoreAuthors, &t.ExcludeRepos); err != nil {
+		if err := rows.Scan(&slug, &t.AutoReviewAuthors, &t.IgnoreAuthors, &t.ExcludeRepos, &t.UsePRDescription); err != nil {
 			return nil, err
 		}
 		out[slug] = t
@@ -388,23 +389,24 @@ func (s *Store) GetAllSettings(ctx context.Context) (map[string]TeamSettings, er
 	return out, rows.Err()
 }
 
-// PutSettings upserts the team's lists.
+// PutSettings upserts the team's settings.
 func (s *Store) PutSettings(ctx context.Context, teamSlug string, t TeamSettings, updatedBy string) error {
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO team_settings (team_slug, auto_review_authors, ignore_authors, exclude_repos, updated_by, updated_at)
-		VALUES ($1, $2, $3, $4, $5, now())
+		INSERT INTO team_settings (team_slug, auto_review_authors, ignore_authors, exclude_repos, use_pr_description, updated_by, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, now())
 		ON CONFLICT (team_slug) DO UPDATE SET
 			auto_review_authors = EXCLUDED.auto_review_authors,
 			ignore_authors = EXCLUDED.ignore_authors,
 			exclude_repos = EXCLUDED.exclude_repos,
+			use_pr_description = EXCLUDED.use_pr_description,
 			updated_by = EXCLUDED.updated_by,
 			updated_at = now()`,
-		teamSlug, nonNil(t.AutoReviewAuthors), nonNil(t.IgnoreAuthors), nonNil(t.ExcludeRepos), updatedBy)
+		teamSlug, nonNil(t.AutoReviewAuthors), nonNil(t.IgnoreAuthors), nonNil(t.ExcludeRepos), t.UsePRDescription, updatedBy)
 	if err != nil {
 		return err
 	}
-	s.log.Info(fmt.Sprintf("settings updated team=%s by=%s auto_review_authors=%v ignore_authors=%v exclude_repos=%v",
-		teamSlug, updatedBy, t.AutoReviewAuthors, t.IgnoreAuthors, t.ExcludeRepos), "team", teamSlug)
+	s.log.Info(fmt.Sprintf("settings updated team=%s by=%s auto_review_authors=%v ignore_authors=%v exclude_repos=%v use_pr_description=%t",
+		teamSlug, updatedBy, t.AutoReviewAuthors, t.IgnoreAuthors, t.ExcludeRepos, t.UsePRDescription), "team", teamSlug)
 	return nil
 }
 

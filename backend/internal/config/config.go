@@ -93,6 +93,9 @@ type Review struct {
 	AgentsMDCustomLink              string
 	OptOutBranchKeyword             string
 	MaxPRCostUSD                    float64
+	// UsePRDescription feeds the PR title and description to the model.
+	// Team API only (no env var, no teams.yaml key); the DB row wins.
+	UsePRDescription bool
 }
 
 // DefaultAcceptanceCriteriaPrefixes is the built-in prefix list.
@@ -366,6 +369,7 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 			ReviewPromptTemplate:            r.String("REVIEW_PROMPT_TEMPLATE", "prompts/review.txt"),
 			MentionPromptTemplate:           r.String("REVIEW_MENTION_PROMPT_TEMPLATE", "prompts/mention.txt"),
 			TicketComplianceCheck:           r.Bool("REVIEW_TICKET_COMPLIANCE_CHECK", true),
+			UsePRDescription:                true,
 			RequireAgentsMD:                 r.Bool("REVIEW_REQUIRE_AGENTS_MD", true),
 			AgentsMDWarnTokens:              r.Int("REVIEW_AGENTS_MD_WARN_TOKENS", 4000),
 			AgentsMDMaxTokens:               r.Int("REVIEW_AGENTS_MD_MAX_TOKENS", 7000),

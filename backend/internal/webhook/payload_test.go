@@ -27,6 +27,9 @@ func TestDecodeRealWebhookPayload(t *testing.T) {
 	if p.PullRequest.Title != "Add new feature" {
 		t.Errorf("title = %q", p.PullRequest.Title)
 	}
+	if p.PullRequest.Description != "Adds the feature.\n\nThe retry is deliberate." {
+		t.Errorf("description = %q", p.PullRequest.Description)
+	}
 	if p.PullRequest.Author.User.Name != "jan.username" {
 		t.Errorf("author = %q", p.PullRequest.Author.User.Name)
 	}

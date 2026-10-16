@@ -246,4 +246,7 @@ const (
 	// ticket is present and the compliance check is on.
 	PlaceholderTicketContext          = "{ticket_context}"
 	PlaceholderComplianceInstructions = "{compliance_instructions}"
+	// PlaceholderPRDescription takes NoPRDescription when the PR has none
+	// or the team switched it off. Shared with the mention template.
+	PlaceholderPRDescription = "{pr_description}"
 )
