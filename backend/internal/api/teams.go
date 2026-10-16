@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"io"
@@ -14,6 +13,7 @@ import (
 	"github.com/trick77/noergler/internal/teams"
 	"github.com/trick77/ship/kit/httpx"
 	"github.com/trick77/ship/kit/logging"
+	"github.com/trick77/ship/kit/secret"
 )
 
 // maxAPIBodyBytes bounds the authenticated request bodies.
@@ -29,19 +29,18 @@ type SettingsStore interface {
 // The team's webhook secret is its credential everywhere: Bitbucket signs
 // events with it, the team admin authenticates API calls with it. 404 and
 // 503 for the slug come first; they leak nothing the webhook route does not.
-func (d Deps) teamAuth(ctx context.Context, w http.ResponseWriter, slug, authorization string) (*teams.Runtime, bool) {
+func (d Deps) teamAuth(ctx context.Context, w http.ResponseWriter, r *http.Request, slug string) (*teams.Runtime, bool) {
 	rt, ok := d.runtimeFor(ctx, w, slug)
 	if !ok {
 		return nil, false
 	}
-	if !strings.HasPrefix(strings.ToLower(authorization), "bearer ") {
+	presented, ok := httpx.Bearer(r)
+	if !ok {
 		httpx.WriteError(w, http.StatusUnauthorized,
 			"Authorization: Bearer <the team's webhook secret> required")
 		return nil, false
 	}
-	secret := strings.TrimSpace(authorization[len("bearer "):])
-	want := rt.Team().WebhookSecret
-	if secret == "" || subtle.ConstantTimeCompare([]byte(secret), []byte(want)) != 1 {
+	if !secret.Match(presented, rt.Team().WebhookSecret) {
 		httpx.WriteError(w, http.StatusUnauthorized, "wrong team secret")
 		return nil, false
 	}
@@ -91,7 +90,7 @@ func nonNil(s []string) []string {
 func (d Deps) getTeam(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("team")
 	ctx := logging.With(r.Context(), "team", slug)
-	rt, ok := d.teamAuth(ctx, w, slug, r.Header.Get("Authorization"))
+	rt, ok := d.teamAuth(ctx, w, r, slug)
 	if !ok {
 		return
 	}
@@ -132,7 +131,7 @@ func (d Deps) putTeamSettings(w http.ResponseWriter, r *http.Request) {
 	// Auth before the body is decoded, so an unauthenticated caller cannot
 	// probe the schema: a bad body behind a bad secret answers 401, never 422.
 	// Pinned by TestTeams_AuthPrecedesBodyValidation.
-	rt, ok := d.teamAuth(ctx, w, slug, r.Header.Get("Authorization"))
+	rt, ok := d.teamAuth(ctx, w, r, slug)
 	if !ok {
 		return
 	}
