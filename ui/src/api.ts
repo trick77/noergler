@@ -113,6 +113,9 @@ export interface Team {
   auto_review_authors: number;
   ignore_authors: number;
   exclude_repos: string[];
+  /** `<profile>-<effort>`, the label every run records. Absent for a
+   *  disabled team: it has no started client. */
+  model?: string;
 }
 
 /** get fetches one dashboard endpoint. Relative, so vite proxies it in dev
