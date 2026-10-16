@@ -16,6 +16,10 @@ const (
 	NoTicketContextMention = "No ticket context available."
 )
 
+// NoPRDescription is what {pr_description} becomes when the PR has no
+// description or the team switched it off. One text for both templates.
+const NoPRDescription = "No PR description provided."
+
 // Mention prompt placeholders. The file group goes into {diff} here, not
 // {files} as in the review template.
 const (
@@ -38,6 +42,7 @@ type MentionPromptRequest struct {
 	Files            []diff.FileReviewData
 	RepoInstructions string
 	TicketContext    string
+	PRDescription    string
 }
 
 // RenderMentionPrompt assembles the Q&A prompt.
@@ -54,6 +59,7 @@ func RenderMentionPrompt(req MentionPromptRequest) string {
 		PlaceholderQuestion, req.Question,
 		PlaceholderRepoInstructions, req.RepoInstructions,
 		PlaceholderTicketContext, ticketContext,
+		PlaceholderPRDescription, orNoPRDescription(req.PRDescription),
 		PlaceholderDiff, RenderFileGroup(req.Files),
 	).Replace(req.Template)
 }
@@ -70,6 +76,7 @@ type PromptBreakdown struct {
 	CumulativeDiff   int
 	PreviouslyPosted int
 	Ticket           int
+	PRDescription    int
 }
 
 // AssembleRequest is everything the review prompt is built from.
@@ -84,8 +91,11 @@ type AssembleRequest struct {
 
 	TicketContext         string
 	TicketComplianceCheck bool
-	CrossFileContext      string
-	CumulativePRDiff      string
+	// PRDescription is the rendered title and description; empty renders
+	// NoPRDescription.
+	PRDescription    string
+	CrossFileContext string
+	CumulativePRDiff string
 	// CumulativePartial: part of the PR is missing from CumulativePRDiff.
 	CumulativePartial bool
 	// CumulativeOmitted names PR files left out of CumulativePRDiff for
@@ -148,6 +158,7 @@ func AssembleReviewPrompt(req AssembleRequest, count CountFunc) AssembledPrompt 
 		PlaceholderRepoInstructions, req.RepoInstructions,
 		PlaceholderTicketContext, ticketContext,
 		PlaceholderComplianceInstructions, compliance,
+		PlaceholderPRDescription, orNoPRDescription(req.PRDescription),
 	).Replace(req.Template)
 
 	breakdown := PromptBreakdown{
@@ -172,6 +183,9 @@ func AssembleReviewPrompt(req AssembleRequest, count CountFunc) AssembledPrompt 
 	if req.TicketContext != "" {
 		breakdown.Ticket = count(req.TicketContext)
 	}
+	if req.PRDescription != "" {
+		breakdown.PRDescription = count(req.PRDescription)
+	}
 
 	// Count everything the request actually carries: the system message, the
 	// user prompt and the strict JSON schema bound via response_format. All
@@ -179,4 +193,11 @@ func AssembleReviewPrompt(req AssembleRequest, count CountFunc) AssembledPrompt 
 	total := count(ReviewSystemMessage) + count(prompt) + count(SchemaJSON())
 
 	return AssembledPrompt{Prompt: prompt, Breakdown: breakdown, PromptTokens: total}
+}
+
+func orNoPRDescription(s string) string {
+	if s == "" {
+		return NoPRDescription
+	}
+	return s
 }

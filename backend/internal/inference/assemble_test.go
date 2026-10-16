@@ -122,6 +122,10 @@ func assembleCases(template string) map[string]AssembleRequest {
 	cum.CumulativePRDiff = "diff --git a/z b/z\n@@ -1 +1 @@\n-1\n+2"
 	cases["with_cumulative"] = cum
 
+	withDesc := base(files1)
+	withDesc.PRDescription = "**Title:** T\n**Description:**\nWhy it changes."
+	cases["with_pr_description"] = withDesc
+
 	every := base(files2)
 	every.RepoInstructions = "# Rules\nBe terse.\n"
 	every.OtherModifiedPaths = []string{"x/y.go"}
@@ -130,6 +134,7 @@ func assembleCases(template string) map[string]AssembleRequest {
 	every.TicketContext = "### Jira ticket: [ABC-1](u)\n**Title:** T"
 	every.CrossFileContext = "## Cross-file\n- Foo used in a.go"
 	every.CumulativePRDiff = "diff --git a/z b/z\n@@ -1 +1 @@\n-1\n+2"
+	every.PRDescription = "**Title:** T\n**Description:**\nWhy it changes."
 	line := 3
 	every.PreviouslyPosted = []PostedFinding{
 		{FilePath: "a.go", LineNumber: &line, Severity: "issue", CommentText: "old finding"},
@@ -239,11 +244,12 @@ func TestReviewResponseFormatIsTheRealSchema(t *testing.T) {
 func TestPlaceholderInABlockStaysLiteral(t *testing.T) {
 	count := counter(t)
 	req := AssembleRequest{
-		Template:              "FILES:{files}\nRULES:{repo_instructions}\nTICKET:{ticket_context}",
+		Template:              "FILES:{files}\nRULES:{repo_instructions}\nTICKET:{ticket_context}\nPR:{pr_description}",
 		Files:                 []diff.FileReviewData{{Path: "a.go", Diff: "@@"}},
 		RepoInstructions:      "do not expand {files} here",
 		TicketContext:         "nor {previously_posted_findings} here",
 		TicketComplianceCheck: true,
+		PRDescription:         "nor {ticket_context} in the description",
 	}
 	got := AssembleReviewPrompt(req, count).Prompt
 
@@ -252,6 +258,37 @@ func TestPlaceholderInABlockStaysLiteral(t *testing.T) {
 	}
 	if !strings.Contains(got, "nor {previously_posted_findings} here") {
 		t.Errorf("a placeholder inside ticket_context was expanded:\n%s", got)
+	}
+	if !strings.Contains(got, "nor {ticket_context} in the description") {
+		t.Errorf("a placeholder inside pr_description was expanded:\n%s", got)
+	}
+}
+
+// No description renders the sentinel in both templates, and a description
+// is counted on its own in the breakdown.
+func TestPRDescriptionDefault(t *testing.T) {
+	count := counter(t)
+	tmpl := "D:{pr_description}|F:{files}"
+
+	got := AssembleReviewPrompt(AssembleRequest{Template: tmpl}, count)
+	if !strings.Contains(got.Prompt, "D:"+NoPRDescription+"|") {
+		t.Errorf("missing the no-description default: %q", got.Prompt)
+	}
+	if got.Breakdown.PRDescription != 0 {
+		t.Errorf("sentinel counted as a description: %d", got.Breakdown.PRDescription)
+	}
+
+	with := AssembleReviewPrompt(AssembleRequest{Template: tmpl, PRDescription: "why"}, count)
+	if !strings.Contains(with.Prompt, "D:why|") || with.Breakdown.PRDescription == 0 {
+		t.Errorf("description not rendered or not counted: %q, %d", with.Prompt, with.Breakdown.PRDescription)
+	}
+
+	mention := RenderMentionPrompt(MentionPromptRequest{Template: "D:{pr_description}"})
+	if mention != "D:"+NoPRDescription {
+		t.Errorf("mention default = %q", mention)
+	}
+	if got := RenderMentionPrompt(MentionPromptRequest{Template: "D:{pr_description}", PRDescription: "why {diff}"}); got != "D:why {diff}" {
+		t.Errorf("mention description = %q", got)
 	}
 }
 

@@ -98,11 +98,12 @@ func TestTeams_GetRendersTheSnapshot(t *testing.T) {
 		"auto_review_authors": []any{},
 		"ignore_authors":      []any{},
 		"exclude_repos":       []any{"*-infra"},
+		"use_pr_description":  true,
 	})
 }
 
-// The partial update: absent keeps, a list replaces, [] clears, and an
-// explicit null behaves exactly like absent.
+// The partial update: absent keeps, a list replaces, [] clears, false turns
+// the PR description off, and an explicit null behaves exactly like absent.
 func TestTeams_PutIsAPartialUpdate(t *testing.T) {
 	cases := []struct {
 		name string
@@ -113,32 +114,38 @@ func TestTeams_PutIsAPartialUpdate(t *testing.T) {
 			AutoReviewAuthors: []string{"alice"},
 			IgnoreAuthors:     []string{"ci-bot"},
 			ExcludeRepos:      []string{"*-infra"},
+			UsePRDescription:  true,
 		}},
 		{"explicit null keeps", `{"auto_review_authors":null}`, store.TeamSettings{
 			AutoReviewAuthors: []string{"alice"},
 			IgnoreAuthors:     []string{"ci-bot"},
 			ExcludeRepos:      []string{"*-infra"},
+			UsePRDescription:  true,
 		}},
 		{"a list replaces", `{"auto_review_authors":["bob"]}`, store.TeamSettings{
 			AutoReviewAuthors: []string{"bob"},
 			IgnoreAuthors:     []string{"ci-bot"},
 			ExcludeRepos:      []string{"*-infra"},
+			UsePRDescription:  true,
 		}},
 		{"empty list clears", `{"exclude_repos":[]}`, store.TeamSettings{
 			AutoReviewAuthors: []string{"alice"},
 			IgnoreAuthors:     []string{"ci-bot"},
 			ExcludeRepos:      []string{},
+			UsePRDescription:  true,
 		}},
 		{"entries are trimmed and blanks dropped", `{"ignore_authors":["  bob  ","","   "]}`, store.TeamSettings{
 			AutoReviewAuthors: []string{"alice"},
 			IgnoreAuthors:     []string{"bob"},
 			ExcludeRepos:      []string{"*-infra"},
+			UsePRDescription:  true,
 		}},
 		{"all three at once", `{"auto_review_authors":["x"],"ignore_authors":[],"exclude_repos":["*-test"]}`,
 			store.TeamSettings{
 				AutoReviewAuthors: []string{"x"},
 				IgnoreAuthors:     []string{},
 				ExcludeRepos:      []string{"*-test"},
+				UsePRDescription:  true,
 			}},
 	}
 	for _, c := range cases {
@@ -181,6 +188,27 @@ func TestTeams_PutAppliesToTheRuntime(t *testing.T) {
 	// And the response is the updated view, not the old one.
 	if got := decodeBody(t, w)["exclude_repos"]; !reflect.DeepEqual(got, []any{"*-infra"}) {
 		t.Errorf("exclude_repos = %v, want the new list", got)
+	}
+}
+
+// The PR description switch reaches the snapshot, the response and the live
+// reviewer, which copied config.Review at construction.
+func TestTeams_PutSwitchesThePRDescriptionOff(t *testing.T) {
+	h := newHarness(t, nil)
+	h.setStore(t, &fakeSettingsStore{})
+
+	w := h.do(t, http.MethodPut, "/teams/"+testSlug+"/settings", bearer(), `{"use_pr_description":false}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if h.rt.Team().Review.UsePRDescription {
+		t.Error("the switch did not reach the snapshot")
+	}
+	if got := decodeBody(t, w)["use_pr_description"]; got != false {
+		t.Errorf("use_pr_description = %v, want false", got)
+	}
+	if h.rv.usePRDescription == nil || *h.rv.usePRDescription {
+		t.Errorf("reviewer not mirrored: %v", h.rv.usePRDescription)
 	}
 }
 

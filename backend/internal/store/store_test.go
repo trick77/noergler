@@ -769,4 +769,26 @@ func TestSettings_RoundTrip(t *testing.T) {
 	if !reflect.DeepEqual(all["platform"].AutoReviewAuthors, []string{"b"}) || len(all["platform"].ExcludeRepos) != 0 {
 		t.Errorf("all = %+v", all)
 	}
+	_ = s.PutSettings(ctx, "platform", TeamSettings{UsePRDescription: true}, "jan")
+	all, _ = s.GetAllSettings(ctx)
+	if !all["platform"].UsePRDescription {
+		t.Errorf("use_pr_description not stored: %+v", all["platform"])
+	}
+}
+
+// A row written without the column, as every row before 0005 was, reads
+// the PR description switch as on.
+func TestSettings_PRDescriptionDefaultsOn(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	if _, err := s.pool.Exec(ctx, `INSERT INTO team_settings (team_slug) VALUES ('old')`); err != nil {
+		t.Fatal(err)
+	}
+	all, err := s.GetAllSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !all["old"].UsePRDescription {
+		t.Errorf("use_pr_description = false on a row that never set it")
+	}
 }

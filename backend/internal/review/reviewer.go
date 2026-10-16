@@ -8,9 +8,11 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/jira"
+	"github.com/trick77/noergler/internal/webhook"
 )
 
 // fileFetchConcurrency bounds how many full file bodies are in flight at
@@ -62,6 +64,8 @@ type Reviewer struct {
 	authorsMu         sync.RWMutex
 	autoReviewAuthors []string
 	ignoreAuthors     []string
+	// usePRDescription is rewritten by the same API, so it is atomic too.
+	usePRDescription atomic.Bool
 	// template is the review prompt, mentionTmpl the Q&A prompt. Both are
 	// loaded once at startup and resident for the team.
 	template    string
@@ -94,7 +98,7 @@ type Options struct {
 
 // New builds a Reviewer for one team.
 func New(opt Options) *Reviewer {
-	return &Reviewer{
+	r := &Reviewer{
 		TeamSlug:          opt.TeamSlug,
 		bitbucket:         opt.Bitbucket,
 		llm:               opt.LLM,
@@ -110,7 +114,13 @@ func New(opt Options) *Reviewer {
 		log:               opt.Log,
 		owns:              opt.Owns,
 	}
+	r.usePRDescription.Store(opt.Config.UsePRDescription)
+	return r
 }
+
+// SetUsePRDescription switches the PR title and description in or out of
+// the prompt for every later review and mention.
+func (r *Reviewer) SetUsePRDescription(on bool) { r.usePRDescription.Store(on) }
 
 // SetAuthorLists replaces the two author lists.
 //
@@ -233,6 +243,44 @@ func renderTicketContext(ticket, parent *jira.Ticket) string {
 		blocks = append(blocks, formatTicketBlock(ticket, "Jira ticket")...)
 	}
 	return strings.Join(blocks, "\n")
+}
+
+// maxPRDescriptionRunes caps the PR description in the prompt, the same
+// figure as the Jira description cap: long ones are mostly templates and
+// changelogs, and Bitbucket allows several times this.
+const maxPRDescriptionRunes = 5000
+
+// renderPRDescription builds the prompt block for the PR's own title and
+// description. No description renders nothing: the title alone restates
+// what the branch and the ticket already say.
+func renderPRDescription(title, description string) string {
+	description = strings.TrimSpace(description)
+	if description == "" {
+		return ""
+	}
+	if capped := truncateRunes(description, maxPRDescriptionRunes); capped != description {
+		description = capped + "..."
+	}
+	return "**Title:** " + title + "\n**Description:**\n" + description
+}
+
+// prDescription is the PR description block for this run, or "" when the
+// team switched it off or the PR has none. Logged either way: it changes
+// what the model is told the PR is for.
+func (r *Reviewer) prDescription(ctx context.Context, prTag string, pr webhook.PullRequest) string {
+	if !r.usePRDescription.Load() {
+		r.log.InfoContext(ctx, prTag+": PR description not sent (disabled by team)")
+		return ""
+	}
+	block := renderPRDescription(pr.Title, pr.Description)
+	if block == "" {
+		r.log.InfoContext(ctx, prTag+": PR description not sent (empty)")
+		return ""
+	}
+	// Runes, not tokens: the review's composition line already counts it,
+	// and a second tokenizer pass here would run on the single worker.
+	r.log.InfoContext(ctx, fmt.Sprintf("%s: PR description sent (%d runes)", prTag, len([]rune(block))))
+	return block
 }
 
 // fetchRepoInstructions reads AGENTS.md from the PR branch, falling back to

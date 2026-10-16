@@ -41,6 +41,7 @@ type Reviewer interface {
 	HandlePRDeleted(ctx context.Context, p *webhook.Payload)
 	IsAutoReviewAuthor(author string) bool
 	SetAuthorLists(auto, ignore []string)
+	SetUsePRDescription(on bool)
 }
 
 // Runtime is one enabled team at request time.
@@ -105,9 +106,9 @@ func (r *Runtime) ApplyClaims(scopes []config.ProjectScope) {
 	r.team.Store(&next)
 }
 
-// UpdateSettings merges onto the current three lists, persists the result
+// UpdateSettings merges onto the current settings, persists the result
 // (nil persist skips that), swaps it in, then mirrors the two author lists
-// onto the live Reviewer. A persist error swaps nothing.
+// and the PR description switch onto the live Reviewer. A persist error swaps nothing.
 //
 // settingsMu serialises settings writers from merge to swap, so a partial
 // PUT always merges onto the previous one's result: merging on a stale
@@ -136,16 +137,18 @@ func (r *Runtime) UpdateSettings(merge func(store.TeamSettings) store.TeamSettin
 	applySettings(&next, s)
 	r.team.Store(&next)
 	r.Reviewer.SetAuthorLists(s.AutoReviewAuthors, s.IgnoreAuthors)
+	r.Reviewer.SetUsePRDescription(s.UsePRDescription)
 	return nil
 }
 
-// settingsOf and applySettings are the one mapping between a team's three
-// lists and the DB row, in each direction.
+// settingsOf and applySettings are the one mapping between a team's
+// settings and the DB row, in each direction.
 func settingsOf(t *config.Team) store.TeamSettings {
 	return store.TeamSettings{
 		AutoReviewAuthors: t.Review.AutoReviewAuthors,
 		IgnoreAuthors:     t.Review.IgnoreAuthors,
 		ExcludeRepos:      t.Review.ExcludeRepos,
+		UsePRDescription:  t.Review.UsePRDescription,
 	}
 }
 
@@ -153,4 +156,5 @@ func applySettings(t *config.Team, s store.TeamSettings) {
 	t.Review.AutoReviewAuthors = s.AutoReviewAuthors
 	t.Review.IgnoreAuthors = s.IgnoreAuthors
 	t.Review.ExcludeRepos = s.ExcludeRepos
+	t.Review.UsePRDescription = s.UsePRDescription
 }

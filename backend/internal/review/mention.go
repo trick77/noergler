@@ -120,6 +120,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		Files:            files,
 		RepoInstructions: repoInstructions,
 		TicketContext:    renderTicketContext(ticket, parent),
+		PRDescription:    r.prDescription(ctx, prTag, pr),
 	})
 
 	result := r.llm.Mention(ctx, inference.MentionRequest{

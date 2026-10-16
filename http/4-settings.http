@@ -33,3 +33,12 @@ Content-Type: application/json
 {
   "exclude_repos": []
 }
+
+### Review without the PR title and description as context (default: true, they are sent)
+PUT {{host}}/teams/{{team}}/settings
+Authorization: Bearer {{secret}}
+Content-Type: application/json
+
+{
+  "use_pr_description": false
+}

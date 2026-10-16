@@ -78,6 +78,9 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   (`diff.ExceedsSizeGate`, in prepare and the cumulative diff): hand edits
   yes, regenerated i18n bundles no. NOT in `IsReviewable`: the rollup must
   count a file reviewed over small pushes. Unmeasured; tune from the log.
+- `{pr_description}` (payload title + description, 5000 runes) is author
+  text: intent only, never evidence, never drops a finding. Team switch
+  `use_pr_description`, API only, default on.
 - `strings.ReplaceAll`, never `text/template`: the files contain JSON braces.
 - **Single worker for every Bitbucket call**, per-PR supersede. Only the
   gateway call leaves it, onto a bounded pool (`REVIEW_INFERENCE_CONCURRENCY`

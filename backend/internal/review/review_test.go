@@ -62,6 +62,7 @@ func newHarness(t *testing.T, tweak func(*harness)) *harness {
 		AgentsMDWarnTokens:    4000,
 		MaxPRCostUSD:          5.0,
 		TicketComplianceCheck: true,
+		UsePRDescription:      true,
 	}
 
 	if tweak != nil {
@@ -86,8 +87,8 @@ func newHarness(t *testing.T, tweak func(*harness)) *harness {
 		Riptide:         rt,
 		Tokens:          h.tok,
 		Config:          cfg,
-		Template:        "REVIEW {repo_instructions} {files} {cumulative_pr_diff} {previously_posted_findings} {ticket_context} {compliance_instructions}",
-		MentionTemplate: "ASK {question} {repo_instructions} {ticket_context} {diff}",
+		Template:        "REVIEW {repo_instructions} {files} {cumulative_pr_diff} {previously_posted_findings} {ticket_context} {compliance_instructions} {pr_description}",
+		MentionTemplate: "ASK {question} {repo_instructions} {ticket_context} {pr_description} {diff}",
 		Log:             quietLogger(),
 	})
 	return h

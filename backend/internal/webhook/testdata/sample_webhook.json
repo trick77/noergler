@@ -3,6 +3,7 @@
   "pullRequest": {
     "id": 42,
     "title": "Add new feature",
+    "description": "Adds the feature.\n\nThe retry is deliberate.",
     "fromRef": {
       "id": "refs/heads/feature/cool-stuff",
       "displayId": "feature/cool-stuff",

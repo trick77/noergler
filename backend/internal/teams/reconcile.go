@@ -24,7 +24,7 @@ const seededBy = "teams.yaml"
 // Reconcile settles teams.yaml against the DB, in place, before any Runtime
 // exists.
 //
-// The DB wins: a slug it knows carries the claims and the three lists, and
+// The DB wins: a slug it knows carries the claims and the settings, and
 // teams.yaml's projects: block is ignored entirely. A slug ListAllClaims
 // does not name is seeded from teams.yaml once; one that had claims and
 // removed them all is still named, with none. A seed that collides with another team's
@@ -33,7 +33,8 @@ const seededBy = "teams.yaml"
 // It MUST run before the per-team loop builds any Reviewer: review.New
 // copies config.Review by value into an unexported field, so a Reviewer
 // constructed first would hold the teams.yaml author lists for the life of
-// the process, with no setter for anything but the two author lists.
+// the process, with no setter for anything but the two author lists and
+// the PR description switch.
 //
 // A failure to read either table is a shared-layer fault and comes back as
 // err: nothing works without them, and it aborts boot. A per-team seed
