@@ -79,7 +79,7 @@ func (q *fakeQueue) Submit(key store.PRKey, _ *webhook.Payload, _ string) string
 	return "queued"
 }
 
-func (q *fakeQueue) SubmitJob(key store.PRKey, _ string, fn queue.JobFunc) string {
+func (q *fakeQueue) SubmitJob(key store.PRKey, _, _ string, fn queue.JobFunc) string {
 	q.tags = append(q.tags, key.Tag())
 	q.jobs = append(q.jobs, fn)
 	return "queued"

@@ -97,7 +97,7 @@ func TestJobRunsWhileAnotherPRIsHeld(t *testing.T) {
 
 	hold(q, key(1))
 	q.Submit(key(1), payload("one"), "t")
-	q.SubmitJob(key(2), "t", func(context.Context, Scheduler) bool { close(done); return false })
+	q.SubmitJob(key(2), "t", "job", func(context.Context, Scheduler) bool { close(done); return false })
 
 	q.Start(context.Background())
 	defer q.Stop()
@@ -268,11 +268,11 @@ func TestJobForHeldPRWaitsForTheReview(t *testing.T) {
 
 	hold(q, key(1))
 	q.Submit(key(1), payload("one"), "t")
-	q.SubmitJob(key(1), "t", record("merge-1"))
+	q.SubmitJob(key(1), "t", "job", record("merge-1"))
 	// A job for an unheld PR behind them both. It must overtake, which is
 	// what proves the worker really skipped the held pair instead of just
 	// running everything in order.
-	q.SubmitJob(key(2), "t", record("merge-2"))
+	q.SubmitJob(key(2), "t", "job", record("merge-2"))
 
 	q.Start(context.Background())
 	defer q.Stop()

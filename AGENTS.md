@@ -250,7 +250,12 @@ space or `#`); adjacent hunks merge without losing diff lines (trimming hunk
 expanded bodies (the `split("\n")` artifact must not survive mid-body); the
 dynamic scope search skips lines past the end of truncated content instead of
 indexing past it (indexing past it panics and takes the queue worker down);
-`findings_posted` counts comments actually posted, not attempted; an author
+the queue never logs `completed`: a worker turn ends `<kind> prepared in Xs,
+inference running`, `review ended in Xs, no inference` (a review that did not
+hand off exited in prepare), `<kind> done in Xs` or `<kind> failed in Xs` after a
+recovered panic, every line with `team=`; the review's own line at the end of
+`post` is the one completion per run (a staged review's turn once logged
+`completed in 0.2s` and read as a review that ran no inference); `findings_posted` counts comments actually posted, not attempted; an author
 skipped by `ignore_authors` is logged as `(ignored author)`, never a blanket
 `(not in auto-review authors)` (the ignore check lives inside
 `IsAutoReviewAuthor`, so the caller re-asks `isIgnoredAuthor`; the precedence

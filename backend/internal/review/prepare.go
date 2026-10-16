@@ -119,10 +119,6 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 					results[i].skipped = path
 					mu.Unlock()
 					content, fetched = "", false
-				} else {
-					mu.Lock()
-					r.log.InfoContext(ctx, fmt.Sprintf("Including %s with full file content (%d lines)", path, lines))
-					mu.Unlock()
 				}
 			}
 
@@ -151,16 +147,24 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 	files = diff.SortByLanguagePriority(files)
 
 	totalDiffLines, totalContentLines, withContent := 0, 0, 0
+	var full []string
 	for _, f := range files {
 		totalDiffLines += strings.Count(f.Diff, "\n") + 1
 		if f.ContentFetched {
-			totalContentLines += strings.Count(f.Content, "\n") + 1
+			lines := strings.Count(f.Content, "\n") + 1
+			totalContentLines += lines
 			withContent++
+			full = append(full, fmt.Sprintf("%s (%d lines)", f.Path, lines))
 		}
 	}
 	r.log.InfoContext(ctx, fmt.Sprintf(
 		"%s: %d file(s) for review - %d diff lines, %d content lines, %d with full content, %d diff-only",
 		prTag, len(files), totalDiffLines, totalContentLines, withContent, len(files)-withContent))
+	// One line, not one per file: a 7-file PR logged 7 "Including" lines
+	// between the diff summary and this one.
+	if len(full) > 0 {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: full content: %s", prTag, capPaths(full)))
+	}
 
 	return files, contentSkipped, added, removed
 }
