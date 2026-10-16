@@ -241,6 +241,9 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		r.log.InfoContext(ctx, prTag+" has no reviewable files after compression, skipping")
 		return nil, ctx, r.abort(ctx, key, kind, SkipNoReviewable, prTag, httpCounter)
 	}
+	// What the prompt carries, file by file, after compression and
+	// expansion: the one place the per-file cost is visible.
+	r.log.InfoContext(ctx, prTag+": "+renderFilesSent(files, r.tokens.Count))
 
 	// 16. Cross-file context, Jira, previously-posted findings.
 	relationships := diff.BuildRelationships(files)

@@ -147,24 +147,18 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 	files = diff.SortByLanguagePriority(files)
 
 	totalDiffLines, totalContentLines, withContent := 0, 0, 0
-	var full []string
 	for _, f := range files {
 		totalDiffLines += strings.Count(f.Diff, "\n") + 1
 		if f.ContentFetched {
-			lines := strings.Count(f.Content, "\n") + 1
-			totalContentLines += lines
+			totalContentLines += strings.Count(f.Content, "\n") + 1
 			withContent++
-			full = append(full, fmt.Sprintf("%s (%d lines)", f.Path, lines))
 		}
 	}
+	// Per-file sizes are logged once the prompt's file set is final
+	// (renderFilesSent, after compression and expansion), not here.
 	r.log.InfoContext(ctx, fmt.Sprintf(
 		"%s: %d file(s) for review - %d diff lines, %d content lines, %d with full content, %d diff-only",
 		prTag, len(files), totalDiffLines, totalContentLines, withContent, len(files)-withContent))
-	// One line, not one per file: a 7-file PR logged 7 "Including" lines
-	// between the diff summary and this one.
-	if len(full) > 0 {
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: full content: %s", prTag, capPaths(full)))
-	}
 
 	return files, contentSkipped, added, removed
 }
