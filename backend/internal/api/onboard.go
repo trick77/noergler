@@ -37,7 +37,7 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("team")
 	ctx := logging.With(r.Context(), "team", slug)
 
-	rt, ok := d.teamAuth(ctx, w, slug, r.Header.Get("Authorization"))
+	rt, ok := d.teamAuth(ctx, w, r, slug)
 	if !ok {
 		return
 	}
