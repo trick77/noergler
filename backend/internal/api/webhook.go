@@ -190,19 +190,19 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 
 	switch p.EventKey {
 	case webhook.EventMerged:
-		d.Queue.SubmitJob(key, slug, func(ctx context.Context, _ teams.Scheduler) bool { rv.HandlePRMerged(ctx, p); return false })
+		d.Queue.SubmitJob(key, slug, "merge-rollup", func(ctx context.Context, _ teams.Scheduler) bool { rv.HandlePRMerged(ctx, p); return false })
 		httpx.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "merged-rollup", Queue: "queued"})
 
 	case webhook.EventDeclined:
-		d.Queue.SubmitJob(key, slug, func(ctx context.Context, _ teams.Scheduler) bool { rv.HandlePRDeclined(ctx, p); return false })
+		d.Queue.SubmitJob(key, slug, "decline", func(ctx context.Context, _ teams.Scheduler) bool { rv.HandlePRDeclined(ctx, p); return false })
 		httpx.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "declined-rollup", Queue: "queued"})
 
 	case webhook.EventDeleted:
-		d.Queue.SubmitJob(key, slug, func(ctx context.Context, _ teams.Scheduler) bool { rv.HandlePRDeleted(ctx, p); return false })
+		d.Queue.SubmitJob(key, slug, "purge", func(ctx context.Context, _ teams.Scheduler) bool { rv.HandlePRDeleted(ctx, p); return false })
 		httpx.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "deleted-purge"})
 
 	case webhook.EventCommentDeleted:
-		d.Queue.SubmitJob(key, slug, func(ctx context.Context, _ teams.Scheduler) bool { rv.HandleCommentDeleted(ctx, p); return false })
+		d.Queue.SubmitJob(key, slug, "comment-deleted", func(ctx context.Context, _ teams.Scheduler) bool { rv.HandleCommentDeleted(ctx, p); return false })
 		httpx.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "comment-deleted"})
 
 	case webhook.EventCommentAdded:
@@ -220,7 +220,7 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 			httpx.WriteJSON(w, http.StatusOK, ignored{"ignored", "comment without mention"})
 			return
 		}
-		d.Queue.SubmitJob(key, slug, func(ctx context.Context, sched teams.Scheduler) bool {
+		d.Queue.SubmitJob(key, slug, "mention", func(ctx context.Context, sched teams.Scheduler) bool {
 			// A keyword mention stages a review, so the PR's hold has to
 			// outlive this job: the staged posting releases it.
 			return rv.HandleMention(ctx, p, slug, sched)

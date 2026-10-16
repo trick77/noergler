@@ -78,6 +78,9 @@ type item struct {
 
 type job struct {
 	team string
+	// name is what the queue logs for the job: the webhook event it serves
+	// (merge-rollup, mention) or post for the tail of a staged review.
+	name string
 	run  JobFunc
 	at   time.Time
 	// internal marks work submitted by the pipeline itself rather than a
@@ -99,7 +102,7 @@ type entry struct {
 // after that moment neither the team nor the start time survived anywhere.
 type heldEntry struct {
 	team string
-	// kind is "review" or "job", the same word the queue logs.
+	// kind is "review" or "job" for the dashboard; the log names the job.
 	kind  string
 	since time.Time
 	// waited is how long this item sat in the queue before it started.
@@ -263,13 +266,19 @@ func (q *Queue) Submit(key store.PRKey, payload *webhook.Payload, team string) s
 		e.team = team
 		e.payload = payload
 		e.at = time.Now()
-		q.log.Info(fmt.Sprintf("queue[%s]: superseded pending payload (depth=%d)", key.Tag(), len(q.items)))
+		q.log.InfoContext(teamCtx(team), fmt.Sprintf("queue[%s]: superseded pending payload (depth=%d)", key.Tag(), len(q.items)))
 		return StatusSuperseded
 	}
 
 	q.pending[key] = &entry{team: team, payload: payload, at: time.Now()}
-	q.put(item{key: key}, key.Tag())
+	q.put(teamCtx(team), item{key: key}, key.Tag(), "enqueued")
 	return StatusQueued
+}
+
+// teamCtx binds team= for a line logged off a webhook request, which hands
+// the queue a slug and no context.
+func teamCtx(team string) context.Context {
+	return logging.With(context.Background(), "team", team)
 }
 
 // SubmitJob enqueues a non-review job for a PR. Never deduped.
@@ -279,20 +288,21 @@ func (q *Queue) Submit(key store.PRKey, payload *webhook.Payload, team string) s
 // overtook its review would claim the snapshot before the run row existed
 // and miss that run's cost, and it is never retried. A decline that
 // overtook one would reset the state the review then re-advances.
-func (q *Queue) SubmitJob(key store.PRKey, team string, fn JobFunc) string {
+func (q *Queue) SubmitJob(key store.PRKey, team, name string, fn JobFunc) string {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	tag := key.Tag()
-	q.put(item{key: key, job: &job{team: team, run: fn, at: time.Now()}}, tag)
+	q.put(teamCtx(team), item{key: key, job: &job{team: team, name: name, run: fn, at: time.Now()}}, tag, name+" enqueued")
 	return StatusQueued
 }
 
-// put appends an item and logs the depth. Caller holds the lock.
-func (q *Queue) put(it item, tag string) {
+// put appends an item and logs what happened with the depth. Caller holds
+// the lock. ctx carries team=, and for a staged tail the review's pr_tag.
+func (q *Queue) put(ctx context.Context, it item, tag, what string) {
 	q.items = append(q.items, it)
 	depth := len(q.items)
-	q.log.Info(fmt.Sprintf("queue[%s]: enqueued (depth=%d)", tag, depth))
+	q.log.InfoContext(ctx, fmt.Sprintf("queue[%s]: %s (depth=%d)", tag, what, depth))
 	if depth >= BacklogWarnThreshold {
 		q.log.Warn(fmt.Sprintf("ReviewQueue backlog: %d entries pending", depth))
 	}
@@ -413,10 +423,12 @@ func (q *Queue) Stage(ctx context.Context, key store.PRKey, team string, infer, 
 			q.log.InfoContext(ctx, fmt.Sprintf("queue[%s]: inference waited %.1fs for a pool slot",
 				key.Tag(), waited.Seconds()))
 		}
+		inferStarted := time.Now()
 		func() {
 			defer q.release(team)
 			infer(ctx)
 		}()
+		inferred := time.Since(inferStarted)
 
 		// The pool slot is already released above; the PR's hold is not.
 		// It ends when this job completes, or in the outer defer if the
@@ -428,7 +440,7 @@ func (q *Queue) Stage(ctx context.Context, key store.PRKey, team string, infer, 
 		// httpstats scope, so everything after the handoff would log
 		// without them and record no HTTP counts.
 		posted = true
-		q.submitInternal(key, team, func(context.Context, Scheduler) bool {
+		q.submitInternal(ctx, key, team, inferred, func(context.Context, Scheduler) bool {
 			post(ctx)
 			return false
 		})
@@ -473,11 +485,15 @@ func (q *Queue) teamSemFor(team string) chan struct{} {
 // submitInternal queues the tail of a staged review. It runs despite that
 // PR's hold, which the review itself is holding, and its completion is what
 // releases the key.
-func (q *Queue) submitInternal(key store.PRKey, team string, fn JobFunc) {
+//
+// inferred is how long the gateway call took; this is the only place that
+// knows it, so the enqueue line reports it.
+func (q *Queue) submitInternal(ctx context.Context, key store.PRKey, team string, inferred time.Duration, fn JobFunc) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	tag := key.Tag()
-	q.put(item{key: key, job: &job{team: team, run: fn, at: time.Now(), internal: true}}, tag)
+	q.put(ctx, item{key: key, job: &job{team: team, name: "post", run: fn, at: time.Now(), internal: true}}, tag,
+		fmt.Sprintf("inference done in %.1fs, post enqueued", inferred.Seconds()))
 }
 
 // done1 releases a key's hold and wakes the worker, which may have parked
@@ -512,8 +528,12 @@ func (q *Queue) run(ctx context.Context) {
 		var fn JobFunc
 		kind := "review"
 
+		// what is the word the log uses for the item; kind is the
+		// dashboard's coarser one.
+		what := kind
 		if it.job != nil {
 			kind = "job"
+			what = it.job.name
 			team, at, fn = it.job.team, it.job.at, it.job.run
 		} else {
 			e, ok := q.pending[it.key]
@@ -533,12 +553,14 @@ func (q *Queue) run(ctx context.Context) {
 			fn = func(ctx context.Context, sched Scheduler) bool { return q.review(ctx, team, payload, sched) }
 		}
 		q.inflight[key] = heldEntry{team: team, kind: kind, since: time.Now(), waited: time.Since(at)}
+		// Outside the closure: the end-of-turn line below reads it. A panic
+		// leaves it false, which is the right answer there too.
+		handedOff := false
 		run := func(ctx context.Context) {
 			// The defer, not a tail call: a panicking job or review must not
 			// leave its key held forever. runOne recovers above, and
 			// handedOff stays false, so the hold is released here; a staged
 			// one keeps it.
-			handedOff := false
 			defer func() {
 				if !handedOff {
 					q.done1(key)
@@ -549,16 +571,32 @@ func (q *Queue) run(ctx context.Context) {
 		depth := len(q.items)
 		q.mu.Unlock()
 
-		waited := time.Since(at)
-		q.log.Info(fmt.Sprintf("queue[%s]: starting %s (waited %.1fs, depth=%d)",
-			tag, kind, waited.Seconds(), depth))
-
 		// The worker is one long-lived goroutine, so the team binding is
 		// explicit per item: nothing else would ever clear it.
 		jobCtx := logging.With(ctx, "team", team)
+		waited := time.Since(at)
+		q.log.InfoContext(jobCtx, fmt.Sprintf("queue[%s]: starting %s (waited %.1fs, depth=%d)",
+			tag, what, waited.Seconds(), depth))
+
 		started := time.Now()
-		q.runOne(jobCtx, run, tag, kind)
-		q.log.Info(fmt.Sprintf("queue[%s]: completed in %.1fs", tag, time.Since(started).Seconds()))
+		recovered := q.runOne(jobCtx, run, tag, what)
+		// Never "completed" here: a staged review has only been prepared, and
+		// its inference and posting follow under the same tag. The review
+		// logs its own completion at the end of post; this line says only
+		// what the worker turn did. A review that did not hand off exited
+		// in prepare (production stages every review), so it ran no
+		// inference, and the reason is on the review's own line above.
+		secs := time.Since(started).Seconds()
+		switch {
+		case recovered:
+			q.log.InfoContext(jobCtx, fmt.Sprintf("queue[%s]: %s failed in %.1fs (panic above)", tag, what, secs))
+		case handedOff:
+			q.log.InfoContext(jobCtx, fmt.Sprintf("queue[%s]: %s prepared in %.1fs, inference running", tag, what, secs))
+		case it.job == nil:
+			q.log.InfoContext(jobCtx, fmt.Sprintf("queue[%s]: review ended in %.1fs, no inference", tag, secs))
+		default:
+			q.log.InfoContext(jobCtx, fmt.Sprintf("queue[%s]: %s done in %.1fs", tag, what, secs))
+		}
 
 		// Wake Stop: it alternates between an empty queue and an idle
 		// worker, and this is the only place the second becomes true.
@@ -569,20 +607,23 @@ func (q *Queue) run(ctx context.Context) {
 	}
 }
 
-// runOne executes one item and contains its failures.
+// runOne executes one item and contains its failures. It reports whether it
+// recovered a panic, so the end-of-turn line can say the item failed.
 //
 // The recover is deliberate. Without it a single bad PR takes the only worker
 // down for every team: Phase 4 hit exactly that with a slice index in the
-// scope search. Recovering per item means a panicking PR loses itself and nothing
-// else, and the completed line below is still emitted.
-func (q *Queue) runOne(ctx context.Context, run func(context.Context), tag, kind string) {
+// scope search. Recovering per item means a panicking PR loses itself and
+// nothing else, and the worker's end-of-turn line is still emitted.
+func (q *Queue) runOne(ctx context.Context, run func(context.Context), tag, what string) (recovered bool) {
 	defer func() {
 		if r := recover(); r != nil {
-			q.log.ErrorContext(ctx, fmt.Sprintf("queue[%s]: %s panicked: %v", tag, kind, r),
+			recovered = true
+			q.log.ErrorContext(ctx, fmt.Sprintf("queue[%s]: %s panicked: %v", tag, what, r),
 				slog.String("stack", string(debug.Stack())))
 		}
 	}()
 	run(ctx)
+	return false
 }
 
 // Snapshot is the queue as the dashboard reads it: one lock, one copy, no

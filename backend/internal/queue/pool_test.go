@@ -548,7 +548,7 @@ func TestJobCannotOvertakeAReviewSkippedBySaturation(t *testing.T) {
 	// skips it. Its merge job must not run ahead of it.
 	last := 99
 	q.Submit(key(last), prFor(last), "t")
-	q.SubmitJob(key(last), "t", func(context.Context, Scheduler) bool {
+	q.SubmitJob(key(last), "t", "job", func(context.Context, Scheduler) bool {
 		mu.Lock()
 		order = append(order, "merge-99")
 		mu.Unlock()
@@ -599,7 +599,7 @@ func TestJobThatStagesKeepsTheHold(t *testing.T) {
 	defer g.releaseAll()
 
 	// A job that stages, the way a keyword mention does.
-	q.SubmitJob(key(1), "t", func(ctx context.Context, sched Scheduler) bool {
+	q.SubmitJob(key(1), "t", "job", func(ctx context.Context, sched Scheduler) bool {
 		sched.Stage(ctx, key(1), "t",
 			func(context.Context) { g.enter("t") },
 			func(context.Context) {
@@ -702,7 +702,7 @@ func TestSaturatedPoolStopsPreparingReviews(t *testing.T) {
 	}
 
 	// A job is still runnable despite the saturated pool.
-	q.SubmitJob(key(99), "t", func(context.Context, Scheduler) bool { close(jobRan); return false })
+	q.SubmitJob(key(99), "t", "job", func(context.Context, Scheduler) bool { close(jobRan); return false })
 	select {
 	case <-jobRan:
 	case <-time.After(2 * time.Second):
