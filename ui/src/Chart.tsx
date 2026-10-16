@@ -17,7 +17,7 @@ export interface Series {
   values: number[];
 }
 
-export type Mark = "line" | "area" | "stack" | "bar";
+export type Mark = "line" | "area" | "bar";
 
 export interface ChartProps {
   series: Series[];
@@ -35,7 +35,7 @@ export interface ChartProps {
 
 const PAD = { l: 52, r: 14, t: 12, b: 22 };
 
-/** stackTops turns a series list into cumulative bands. */
+/** stackTops turns a series list into cumulative bar segments. */
 function stackTops(series: Series[]): number[][] {
   const tops: number[][] = [];
   let below: number[] = [];
@@ -77,8 +77,7 @@ export function Chart({
     );
   }
 
-  const stacked = mark === "stack" || mark === "bar";
-  const tops = stacked ? stackTops(series) : series.map((s) => s.values);
+  const tops = mark === "bar" ? stackTops(series) : series.map((s) => s.values);
   const dataMax = Math.max(...tops.flat(), 0);
   const axisMax = ticks && ticks.length > 0 ? Math.max(...ticks) : dataMax || 1;
   // A sparkline baselines at zero, not at the series' own minimum. Against
@@ -187,23 +186,15 @@ export function Chart({
           : series.map((s, si) => {
               const top = tops[si];
               const up = linePath(top);
-              const filled = mark === "area" || mark === "stack";
-              const floor =
-                mark === "stack" && si > 0
-                  ? tops[si - 1]
-                      .map((v, i) => `${xAt(i)},${yAt(v)}`)
-                      .reverse()
-                      .join(" L ")
-                  : `${xAt(n - 1)},${yAt(dataMin)} L ${xAt(0)},${yAt(dataMin)}`;
+              const filled = mark === "area";
+              const floor = `${xAt(n - 1)},${yAt(dataMin)} L ${xAt(0)},${yAt(dataMin)}`;
               return (
                 <g key={s.id}>
                   {filled && (
                     <path
                       d={`M ${up} L ${floor} Z`}
                       fill={s.color}
-                      // Thinner as a panel draws more, so a four-series
-                      // stack does not read as one dark mass.
-                      fillOpacity={series.length > 1 ? 0.22 : 0.15}
+                      fillOpacity={0.15}
                     />
                   )}
                   <path

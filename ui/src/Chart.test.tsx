@@ -36,7 +36,7 @@ describe("Chart", () => {
         ]}
         width={100}
         height={40}
-        mark="stack"
+        mark="line"
         label="cost"
       />,
     );
@@ -88,22 +88,25 @@ describe("Chart", () => {
     }
   });
 
-  it("draws one band per series when stacked", () => {
+  // Each line sits at its own value. Stacked, the last series traced the
+  // sum and read as the biggest spender on the Spend chart.
+  it("draws each line at its own value, never cumulated", () => {
     const { container } = render(
       <Chart
         series={[
-          { id: "a", name: "a", color: "var(--color-s1)", values: [1, 2] },
-          { id: "b", name: "b", color: "var(--color-s2)", values: [1, 1] },
+          { id: "a", name: "a", color: "var(--color-s1)", values: [2, 2] },
+          { id: "b", name: "b", color: "var(--color-s2)", values: [2, 2] },
         ]}
         width={200}
         height={100}
-        mark="stack"
-        ticks={[0, 3]}
-        label="stack"
+        ticks={[0, 4]}
+        label="lines"
       />,
     );
-    // Two fills and two strokes.
-    expect(svg(container).querySelectorAll("path")).toHaveLength(4);
+    const [a, b] = Array.from(svg(container).querySelectorAll("path")).map(
+      (p) => p.getAttribute("d"),
+    );
+    expect(b).toBe(a);
   });
 
   // A colour is always the caller's var() string. A hex literal in chart
