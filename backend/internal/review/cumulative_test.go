@@ -238,12 +238,12 @@ func TestCumulativeBudgetFollowsThePush(t *testing.T) {
 func TestPromptCompositionAndReviewModeAreLogged(t *testing.T) {
 	t.Run("incremental", func(t *testing.T) {
 		_, logs := runIncremental(t, sampleDiff)
-		for _, want := range []string{"(incremental review) - files ", "cumulative PR diff ", "AGENTS.md ", "template and rest "} {
+		for _, want := range []string{"(incremental review) = files ", "+ cumulative PR diff ", "+ AGENTS.md ", "+ template and rest "} {
 			if !strings.Contains(logs, want) {
 				t.Errorf("log lacks %q:\n%s", want, logs)
 			}
 		}
-		if strings.Contains(logs, "cumulative PR diff 0,") {
+		if strings.Contains(logs, "cumulative PR diff 0 +") {
 			t.Errorf("the cumulative block was sent but counted as 0:\n%s", logs)
 		}
 	})
@@ -253,7 +253,7 @@ func TestPromptCompositionAndReviewModeAreLogged(t *testing.T) {
 		var buf bytes.Buffer
 		h.r.log = slog.New(slog.NewTextHandler(&buf, nil))
 		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
-		for _, want := range []string{"full review (no prior reviewed commit)", "(full review) - files ", "cumulative PR diff 0,"} {
+		for _, want := range []string{"full review (no prior reviewed commit)", "(full review) = files ", "cumulative PR diff 0 +"} {
 			if !strings.Contains(buf.String(), want) {
 				t.Errorf("log lacks %q:\n%s", want, buf.String())
 			}

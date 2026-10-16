@@ -734,7 +734,9 @@ func (r *Reviewer) logPromptComposition(ctx context.Context, prTag string, a inf
 	b := a.Breakdown
 	rest := a.PromptTokens - b.RepoInstructions - b.Files - b.CumulativeDiff - b.PreviouslyPosted - b.Ticket
 	r.log.InfoContext(ctx, fmt.Sprintf(
-		"%s: prompt %d tokens (%s review) - files %d, cumulative PR diff %d, AGENTS.md %d, previously posted %d, ticket %d, template and rest %d",
+		// A sum, not a list: the parts add up to the total and share its
+		// unit. Listed after a dash they read as bytes or KB.
+		"%s: prompt %d tokens (%s review) = files %d + cumulative PR diff %d + AGENTS.md %d + previously posted %d + ticket %d + template and rest %d",
 		prTag, a.PromptTokens, mode, b.Files, b.CumulativeDiff, b.RepoInstructions, b.PreviouslyPosted, b.Ticket, rest))
 }
 
