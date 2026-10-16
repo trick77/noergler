@@ -3,7 +3,12 @@
 //	noergler serve     run the service (default)
 //	noergler migrate   apply pending database migrations and exit
 //	noergler version   print the version and exit
-//	noergler -healthcheck  probe /healthz, exit 0 on a 2xx (the container healthcheck)
+//	noergler -healthcheck  probe /healthz, exit 0 on a 2xx (liveness: the container healthcheck)
+//	noergler -readycheck   probe /readyz, exit 0 on a 2xx (readiness: 503 while no team is enabled)
+//
+// Both probes run inside the container: kit's /healthz and /readyz answer a
+// loopback caller only and 404 anyone else, so an orchestrator's HTTP probe
+// from the node never passes. Deploy them as exec probes.
 package main
 
 import (
@@ -47,8 +52,10 @@ func main() {
 	case "version":
 		fmt.Println(version.String())
 	case "-healthcheck":
-		// The container probe: the distroless image has no shell and no wget.
+		// The container probes: the distroless image has no shell and no wget.
 		os.Exit(httpx.Healthcheck(httpx.LocalURL(listenAddr(), "/healthz")))
+	case "-readycheck":
+		os.Exit(httpx.Healthcheck(httpx.LocalURL(listenAddr(), "/readyz")))
 	case "-h", "--help", "help":
 		fmt.Fprintln(os.Stderr, usage)
 	default:
@@ -61,7 +68,7 @@ func main() {
 	}
 }
 
-const usage = "usage: noergler [serve|migrate|version|-healthcheck]"
+const usage = "usage: noergler [serve|migrate|version|-healthcheck|-readycheck]"
 
 // withLog sets up logging before anything logs (config loading does), names
 // the build, then runs. An unknown LOG_LEVEL still fails startup: logging
