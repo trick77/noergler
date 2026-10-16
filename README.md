@@ -186,7 +186,9 @@ Rules:
   `teams_ready enabled=[...] disabled=[...]` (at `WARNING` when any team is disabled).
 - **Probes:** `/healthz` is liveness and always `200` while the process is up;
   `/readyz` is readiness and answers `503` while no team is enabled. Neither names a
-  team: the dashboard's teams page and the startup log do.
+  team: the dashboard's teams page and the startup log do. Both answer a loopback
+  caller only and `404` anyone else, so they are probed from inside the container:
+  `/noergler -healthcheck` and `/noergler -readycheck` (see [Deployment notes](#deployment-notes)).
 
 Team identity comes from the webhook path plus the team's secret, never from the
 payload: `/webhook/<slug>` verifies the HMAC against that team's secret, then checks
@@ -445,7 +447,16 @@ The image is `ghcr.io/trick77/noergler`, built and pushed on merge to master.
 It is the whole deployment contract; how the environment reaches it is the
 deployment's business.
 
-- `CMD` serves on port 8080. `/healthz` is the liveness probe (always 200), `/readyz` the readiness probe (503 while no team is enabled). The image is distroless and runs as nonroot (uid 65532); its `HEALTHCHECK` is `/noergler -healthcheck`, which probes `/healthz`.
+- `CMD` serves on port 8080. `/healthz` is the liveness probe (always 200), `/readyz` the readiness probe (503 while no team is enabled). Both answer a loopback caller only: an HTTP probe from the kubelet gets `404` and the pod never becomes ready. Probe with the binary instead, which dials its own listener. The image is distroless and runs as nonroot (uid 65532); its `HEALTHCHECK` is `/noergler -healthcheck`.
+
+  ```yaml
+  livenessProbe:
+    exec:
+      command: ["/noergler", "-healthcheck"]
+  readinessProbe:
+    exec:
+      command: ["/noergler", "-readycheck"]
+  ```
 - Every error body is `{"error": "..."}`; the `409` of `POST /onboard/{team}` adds `conflict` (`target`, `team`).
 - `["/noergler","migrate"]` runs the migrations; run it before the app starts
   (init container or equivalent). Nothing creates the schema at runtime, and

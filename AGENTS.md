@@ -198,6 +198,9 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
 ## Ops
 
 - `team_disabled`, `team_ready`, `teams_ready` are alerted on. Do not reword.
+- **Probes are exec, never httpGet.** kit's `/healthz` and `/readyz` answer
+  loopback only, 404 to the kubelet: 0.2.42 never became ready and restart-looped
+  on an httpGet probe. `-healthcheck` and `-readycheck` dial the own listener.
 - **A disable reason never leaves the logs.** It can name an env var, and
   `/readyz` and every `/api/dashboard` route are unauthenticated. Slug and
   state only.
