@@ -119,6 +119,7 @@ func TestEvalRunReachesAGatewayAndScoresTheResponse(t *testing.T) {
 		inference.PlaceholderFiles, inference.PlaceholderCumulativePRDiff,
 		inference.PlaceholderPreviouslyPosted, inference.PlaceholderRepoInstructions,
 		inference.PlaceholderTicketContext, inference.PlaceholderComplianceInstructions,
+		inference.PlaceholderPRDescription,
 	} {
 		if strings.Contains(sawPrompt, ph) {
 			t.Errorf("prompt still contains %s: the eval would score the placeholder", ph)

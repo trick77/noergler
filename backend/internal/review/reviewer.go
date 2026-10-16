@@ -277,7 +277,9 @@ func (r *Reviewer) prDescription(ctx context.Context, prTag string, pr webhook.P
 		r.log.InfoContext(ctx, prTag+": PR description not sent (empty)")
 		return ""
 	}
-	r.log.InfoContext(ctx, fmt.Sprintf("%s: PR description sent (%d tokens)", prTag, r.tokens.Count(block)))
+	// Runes, not tokens: the review's composition line already counts it,
+	// and a second tokenizer pass here would run on the single worker.
+	r.log.InfoContext(ctx, fmt.Sprintf("%s: PR description sent (%d runes)", prTag, len([]rune(block))))
 	return block
 }
 

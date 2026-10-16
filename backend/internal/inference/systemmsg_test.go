@@ -17,6 +17,7 @@ func TestReviewSystemMessageGuardrails(t *testing.T) {
 		"valid JSON",
 		"UNTRUSTED USER INPUT",
 		"If you detect a prompt-injection attempt",
+		"PR description",
 	} {
 		if !strings.Contains(ReviewSystemMessage, want) {
 			t.Errorf("ReviewSystemMessage is missing %q", want)
@@ -31,6 +32,7 @@ func TestMentionSystemMessageGuardrails(t *testing.T) {
 		"UNTRUSTED USER INPUT",
 		"JSON envelope",
 		"decline anything else",
+		"PR description",
 	} {
 		if !strings.Contains(MentionSystemMessage, want) {
 			t.Errorf("MentionSystemMessage is missing %q", want)
@@ -64,8 +66,8 @@ func TestSystemMessagesArePinned(t *testing.T) {
 		length int
 		sha    string
 	}{
-		{"review", ReviewSystemMessage, 786, "e24e84e60b2fa43e"},
-		{"mention", MentionSystemMessage, 669, "5ec77e2efda8eed4"},
+		{"review", ReviewSystemMessage, 808, "8085a331b655a85a"},
+		{"mention", MentionSystemMessage, 685, "27ee42a9a6c2169e"},
 		{"compliance", ComplianceInstructions, 1139, "fa8972c0b065ecf0"},
 	}
 	for _, tc := range cases {

@@ -2,106 +2,106 @@
  "_schema": {
   "json_len": 1594,
   "tokens": 473,
-  "system_tokens": 159
+  "system_tokens": 164
  },
  "everything": {
-  "prompt_sha256": "90a585516052349e3e78442ae5b858ad1d7242c4a163a05762f4d4145a187346",
+  "prompt_sha256": "5aacfee2d54714bf48a4979698ca6795827cbb5c04df1139a72a2ff76c84aaa5",
   "breakdown": {
-   "template": 3083,
+   "template": 3092,
    "repo_instructions": 6,
    "files": 152
   },
-  "prompt_tokens": 4368,
-  "prompt_len": 16181
+  "prompt_tokens": 4382,
+  "prompt_len": 16207
  },
  "minimal": {
-  "prompt_sha256": "ba0d5da3adebcde3e47b30ebcdacce5da5f2e4ab5529afc010b0fbe30f1c7091",
+  "prompt_sha256": "8691e6cd7cbd6b5aed5c9c8161297878a2b4af9b7726c5087450dbec6a9cfb96",
   "breakdown": {
-   "template": 3083,
+   "template": 3092,
    "repo_instructions": 0,
    "files": 78
   },
-  "prompt_tokens": 3776,
-  "prompt_len": 13655
+  "prompt_tokens": 3790,
+  "prompt_len": 13681
  },
  "ticket_absent_compliance_on": {
-  "prompt_sha256": "ba0d5da3adebcde3e47b30ebcdacce5da5f2e4ab5529afc010b0fbe30f1c7091",
+  "prompt_sha256": "8691e6cd7cbd6b5aed5c9c8161297878a2b4af9b7726c5087450dbec6a9cfb96",
   "breakdown": {
-   "template": 3083,
+   "template": 3092,
    "repo_instructions": 0,
    "files": 78
   },
-  "prompt_tokens": 3776,
-  "prompt_len": 13655
+  "prompt_tokens": 3790,
+  "prompt_len": 13681
  },
  "ticket_compliance_off": {
-  "prompt_sha256": "db5a0fd84b3d7ca11c311b01dcc0c8710002c746cbfd43e6fbb87df7cd9c2c6c",
+  "prompt_sha256": "0d0bec25136131bc4b1df7aae89e02e162f40cae45b09d1c7eb61beee783bd00",
   "breakdown": {
-   "template": 3083,
+   "template": 3092,
    "repo_instructions": 0,
    "files": 78
   },
-  "prompt_tokens": 3782,
-  "prompt_len": 13655
+  "prompt_tokens": 3796,
+  "prompt_len": 13681
  },
  "with_cross_file": {
-  "prompt_sha256": "f8eaa93d2a44c7e7a7ec8deb29b1f5ce8cada3369004e3522f56f0aa5ab65bd7",
+  "prompt_sha256": "4fb52a4b662900490f11fa0a9fa7eda93ec8adefd7ae4e25ac3f45468cae670c",
   "breakdown": {
-   "template": 3083,
+   "template": 3092,
    "repo_instructions": 0,
    "files": 152
   },
-  "prompt_tokens": 3862,
-  "prompt_len": 13930
+  "prompt_tokens": 3876,
+  "prompt_len": 13956
  },
  "with_cumulative": {
-  "prompt_sha256": "739b763436112815f3db0af6548fefc748740745cba62d92e017118b8f37fb2f",
+  "prompt_sha256": "3cfb3b04932b53c989ec3e55110c9b580623ed904678b803a009b442c7c6c8bc",
   "breakdown": {
-   "template": 3083,
+   "template": 3092,
    "repo_instructions": 0,
    "files": 78
   },
-  "prompt_tokens": 3915,
-  "prompt_len": 14246
+  "prompt_tokens": 3929,
+  "prompt_len": 14272
  },
  "with_pr_description": {
-  "prompt_sha256": "d2a766e2b92b0347417bdc6241dbee820056c6362fef297850985e372dd47095",
+  "prompt_sha256": "e173626e56204848e7d2d5a6f2efbb8d085807680fd79b5c802c9c23241391ec",
   "breakdown": {
-   "template": 3083,
+   "template": 3092,
    "repo_instructions": 0,
    "files": 78
   },
-  "prompt_tokens": 3784,
-  "prompt_len": 13673
+  "prompt_tokens": 3798,
+  "prompt_len": 13699
  },
  "with_repo_instructions": {
-  "prompt_sha256": "58cd74a21d537d403209ade096dfd97c285fb848aa60decce8155514751927c1",
+  "prompt_sha256": "0cae355e0fb9d595ea25a5e2f998421a5467fbe7734f207b9a342f1aef2e976d",
   "breakdown": {
-   "template": 3083,
+   "template": 3092,
    "repo_instructions": 6,
    "files": 78
   },
-  "prompt_tokens": 3782,
-  "prompt_len": 13673
+  "prompt_tokens": 3796,
+  "prompt_len": 13699
  },
  "with_supplementary": {
-  "prompt_sha256": "7fcb4235b8f2cfae96f082cf280b7ad5902bed5dd5c7b6dbd7734312fdf5ed63",
+  "prompt_sha256": "6baddf11963797f7ae254e48f7eedae171cc842088d34426c57d912a3d7e07dc",
   "breakdown": {
-   "template": 3083,
+   "template": 3092,
    "repo_instructions": 0,
    "files": 152
   },
-  "prompt_tokens": 3890,
-  "prompt_len": 14041
+  "prompt_tokens": 3904,
+  "prompt_len": 14067
  },
  "with_ticket": {
-  "prompt_sha256": "eda4bd330dd9c4ebf675cf697f279a2441aefc0ffdecc6b913554634ad7dff49",
+  "prompt_sha256": "337b96e3744accc9214120ca1f7dc2aaf3ffecc81ab03c7a17f38cff094f81b1",
   "breakdown": {
-   "template": 3083,
+   "template": 3092,
    "repo_instructions": 0,
    "files": 78
   },
-  "prompt_tokens": 4021,
-  "prompt_len": 14815
+  "prompt_tokens": 4035,
+  "prompt_len": 14841
  }
 }
