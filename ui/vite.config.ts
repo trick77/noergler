@@ -7,8 +7,8 @@ export default defineConfig({
   build: {
     // Straight into the Go embed directory. emptyOutDir stays false so the
     // tracked dist/.gitkeep survives a build: //go:embed all:dist needs a
-    // non-empty directory in a fresh clone. The Makefile does the stale-asset
-    // cleanup instead.
+    // non-empty directory in a fresh clone. ship check (ui.embed) and make
+    // fe-build do the stale-asset cleanup instead.
     outDir: "../backend/web/dist",
     emptyOutDir: false,
   },
@@ -25,7 +25,7 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     coverage: {
       provider: "v8",
-      reporter: ["text-summary", "json-summary", "lcov"],
+      reporter: ["text-summary", "lcov"],
       reportsDirectory: "../coverage/ui",
       // Explicit, so an untested module is not silently invisible to the
       // ratio the gate reads.
