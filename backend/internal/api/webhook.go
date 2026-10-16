@@ -214,12 +214,13 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 		if p.Comment != nil {
 			text, commentID = p.Comment.Text, p.Comment.ID
 		}
-		d.Log.InfoContext(ctx, "Comment event", "comment_id", commentID)
 		trigger := "@" + d.BotUsername
 		if !strings.Contains(strings.ToLower(text), strings.ToLower(trigger)) {
+			d.Log.InfoContext(ctx, "comment ignored: no "+trigger, "comment_id", commentID)
 			httpx.WriteJSON(w, http.StatusOK, ignored{"ignored", "comment without mention"})
 			return
 		}
+		d.Log.InfoContext(ctx, "comment mentions "+trigger, "comment_id", commentID)
 		d.Queue.SubmitJob(key, slug, "mention", func(ctx context.Context, sched teams.Scheduler) bool {
 			// A keyword mention stages a review, so the PR's hold has to
 			// outlive this job: the staged posting releases it.
