@@ -185,7 +185,12 @@ export function MetricsPage() {
     ),
     0,
   );
-  const costTicks = niceTicks(costTop);
+  // Lines, not a stack: each team at its own value. Stacked, every stroke
+  // sat on the cumulative top, so the last team traced the daily total and
+  // read as the biggest spender. The axis fits the highest team, not the sum.
+  const costTicks = niceTicks(
+    Math.max(...costSeries.flatMap((s) => s.values), 0),
+  );
 
   // Attempts per day, by outcome. Skipped and failed use the status hues,
   // not the series ramp: they are states, not categories.
@@ -288,7 +293,7 @@ export function MetricsPage() {
                 series={costSeries}
                 width={856}
                 height={200}
-                mark="stack"
+                mark="line"
                 ticks={costTicks}
                 xLabels={window.map(label)}
                 format={moneyTick(costTicks)}
