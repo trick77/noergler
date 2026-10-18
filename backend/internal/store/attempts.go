@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -32,19 +33,19 @@ type Attempt struct {
 //
 // The caller swallows the error: an attempt row is a dashboard record, and
 // failing a review over one would trade a working review for a log line.
+//
+// Two writes, not one transaction: the attempt carries billed cost that
+// PRCost and the cap read, and a call row the database refuses (a header
+// it cannot store) must never take that cost down with it. A failed call
+// write returns the attempt id AND an error, so the caller logs it.
 func (s *Store) InsertAttempt(ctx context.Context, a Attempt) (int64, error) {
 	var reason *string
 	if a.Reason != "" {
 		r := a.Reason
 		reason = &r
 	}
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
 	var id int64
-	if err := tx.QueryRow(ctx, `
+	if err := s.pool.QueryRow(ctx, `
 		INSERT INTO review_attempts
 		    (team_slug, project_key, repo_slug, pr_id, kind,
 		     outcome, reason, elapsed_ms, review_run_id, cost_nano_usd)
@@ -55,11 +56,11 @@ func (s *Store) InsertAttempt(ctx context.Context, a Attempt) (int64, error) {
 		return 0, err
 	}
 	if a.Call != nil {
-		if err := insertLLMCall(ctx, tx, id, a, *a.Call); err != nil {
-			return 0, err
+		if err := s.insertLLMCall(ctx, id, a, *a.Call); err != nil {
+			return id, fmt.Errorf("attempt %d recorded, its gateway call not: %w", id, err)
 		}
 	}
-	return id, tx.Commit(ctx)
+	return id, nil
 }
 
 // AttemptRow is one row of the dashboard's feed: the attempt, plus the run

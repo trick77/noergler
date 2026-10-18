@@ -77,3 +77,32 @@ func TestCallCostNeverReachesThePRTotal(t *testing.T) {
 		t.Errorf("PRCost = %v, want 600 (the run only)", c)
 	}
 }
+
+// A call row the database would refuse (gateway header bytes that are not
+// UTF-8, a NUL) is cleaned up and stored; and a refused call write never
+// takes the attempt, or the billed cost on it, down with it.
+func TestCallWriteNeverCostsTheAttempt(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	upsert(t, s, key, "a")
+	id, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "unparseable",
+		CostNanoUSD: nano(400), Call: &LLMCall{Profile: "p", Deployment: "azure/\xff\xfe-model", CallID: "a\x00b",
+			Warnings: []string{"bad \xff"}}})
+	if err != nil {
+		t.Fatalf("a dirty header must be stored, not refused: %v", err)
+	}
+	got, ok, err := s.AttemptCall(ctx, id)
+	if err != nil || !ok || got.CallID != "ab" || got.Deployment != "azure/�-model" {
+		t.Errorf("stored call = %+v, %v, %v", got, ok, err)
+	}
+
+	// The unique index refuses a second call for one attempt. Here the
+	// attempt is written first, so its cost survives the refusal.
+	if _, err := s.pool.Exec(ctx, `INSERT INTO llm_calls (attempt_id, team_slug, project_key, repo_slug, pr_id, kind, profile)
+		VALUES ($1, 'platform', 'PLAT', 'api', 7, 'review', 'p')`, id); err == nil {
+		t.Error("two calls for one attempt were accepted")
+	}
+	if c, _ := s.PRCost(ctx, key); c == nil || *c != 400 {
+		t.Errorf("PRCost = %v, want the attempt's 400", c)
+	}
+}

@@ -15,7 +15,8 @@
 -- unauthenticated and the operator's margin is not its business. NULL in a
 -- lane means the gateway did not send it, which is not zero.
 --
--- Written fail-open, like the attempt it belongs to.
+-- Written fail-open, after its attempt and apart from it: a refused call row
+-- never costs the attempt (and the billed cost on it) its own write.
 
 CREATE TABLE llm_calls (
     id BIGSERIAL PRIMARY KEY,
@@ -64,5 +65,6 @@ CREATE TABLE llm_calls (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_llm_calls_attempt ON llm_calls (attempt_id);
+-- One call per attempt: a review makes a single gateway call.
+CREATE UNIQUE INDEX idx_llm_calls_attempt ON llm_calls (attempt_id) WHERE attempt_id IS NOT NULL;
 CREATE INDEX idx_llm_calls_pr ON llm_calls (project_key, repo_slug, pr_id);

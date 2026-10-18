@@ -368,7 +368,9 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 			Key: key, TeamSlug: r.TeamSlug, Kind: runKind(plan.mention),
 			Outcome: "skipped", Reason: string(SkipRepoNotClaimed),
 			CostNanoUSD: result.Cost.NanoUSD,
-			Call:        r.llmCall(result.Cost),
+			// No Call: the team just gave this repo up, and its purge has
+			// already run. The cost stays (it was billed); the call's
+			// detail is not kept for a repo nobody claims.
 		})
 		return
 	}

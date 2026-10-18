@@ -222,6 +222,12 @@ func TestCostFrom(t *testing.T) {
 			t.Errorf("timing = %+v", got.Timing)
 		}
 	})
+
+	t.Run("absent token lanes count as zero", func(t *testing.T) {
+		if got := totalTokens(llmwire.Usage{}); got != 0 {
+			t.Errorf("totalTokens = %d, want 0", got)
+		}
+	})
 }
 
 func TestWarningLines(t *testing.T) {
@@ -232,12 +238,6 @@ func TestWarningLines(t *testing.T) {
 	if len(got) != 1 || got[0] != "compatibility reasoning: mapped to effort" {
 		t.Errorf("WarningLines = %q", got)
 	}
-
-	t.Run("absent token lanes count as zero", func(t *testing.T) {
-		if got := totalTokens(llmwire.Usage{}); got != 0 {
-			t.Errorf("totalTokens = %d, want 0", got)
-		}
-	})
 }
 
 // The cost header the gateway sends must survive as a priced call end to end.
