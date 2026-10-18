@@ -209,11 +209,17 @@ order:
 5. Test coverage
 6. Ticket or Requirement compliance
 7. Recommendation
-8. A footnote with scope, token and cost figures
+8. A footer: a bullet for each thing the author can act on (no AGENTS.md or
+   one over its warn size, no ticket while Jira is on, files not reviewed or
+   reviewed without full context), then one line of model, files, lines,
+   elapsed time and cost, ending in a link to the run's dashboard page when
+   `NOERGLER_PUBLIC_URL` is set
 
-There is no effort score and no "What changed" section.
+There is no effort score and no "What changed" section. Tokens, prompt parts,
+cross-file symbols, the gateway's cost split and the key spend are on the run
+page, not in the PR.
 
-The footnote's model line shows the llmwire profile id with the reasoning level
+The footer's model shows the llmwire profile id with the reasoning level
 that was sent appended (`<profile>-<level>`), not the operator's gateway alias.
 With no level configured, that is what the model's balanced level resolved to.
 

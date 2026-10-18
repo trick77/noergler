@@ -208,14 +208,18 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	}
 
 	// The line counts are the whole PR's scope, taken before compression.
-	files, contentSkipped, diffAdded, diffRemoved := r.prepareFiles(ctx, project, repo, rawDiff, sourceCommit, prTag)
+	files, contentSkipped, oversized, diffAdded, diffRemoved := r.prepareFiles(ctx, project, repo, rawDiff, sourceCommit, prTag)
 	// 13. Nothing reviewable after the content fetch.
 	if len(files) == 0 {
 		r.log.InfoContext(ctx, prTag+" has no reviewable files after content fetch, skipping")
 		return nil, ctx, r.abort(ctx, key, kind, SkipNoReviewable, prTag, httpCounter)
 	}
 
-	totalFiles := len(files)
+	// Every reviewable changed file, size-gated ones included: the set the
+	// +/- lines cover and the merge-time rollup counts
+	// (countReviewableFiles), so the run row, the footer and the rollup
+	// agree. What was not reviewed is a subset, named on its own lines.
+	totalFiles := len(files) + len(oversized)
 
 	// 14. Small PRs get context expansion; large ones are compressed first.
 	var otherModified, deletedPaths, renamedPaths []string
@@ -317,17 +321,18 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		anchors:         anchors,
 		existing:        existing,
 		listed:          listed,
-		contentSkipped:  contentSkipped,
-		ticket:          ticket,
-		parentTicket:    parentTicket,
-		breakdown:       breakdown(assembled),
-		crossFileSyms:   symbolsOf(relationships),
-		agentsMDFound:   repoInstructions != "",
-		budget:          budget,
-		filesReviewed:   len(files),
-		totalFiles:      totalFiles + len(deletedPaths) + len(renamedPaths),
-		diffAdded:       diffAdded,
-		diffRemoved:     diffRemoved,
+		// Read from what the prompt carries (notFullContext): a deleted file
+		// is never fetched, so it is never content-skipped to begin with.
+		contentSkipped: notFullContext(contentSkipped, files),
+		oversized:      oversized,
+		overBudget:     otherModified,
+		ticket:         ticket,
+		parentTicket:   parentTicket,
+		breakdown:      breakdown(assembled),
+		agentsMDFound:  repoInstructions != "",
+		totalFiles:     totalFiles,
+		diffAdded:      diffAdded,
+		diffRemoved:    diffRemoved,
 	}, ctx, true
 }
 
@@ -450,7 +455,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	if runID != 0 {
 		attempt.RunID = &runID
 	}
-	r.recordAttempt(ctx, attempt)
+	attemptID := r.recordAttempt(ctx, attempt)
 
 	runCost, cumulativeCost := r.resolveCost(ctx, key, result)
 
@@ -463,8 +468,9 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		Dropped:                    len(v.Dropped),
 		Summary:                    reviewSummary,
 		AgentsMDFound:              plan.agentsMDFound,
+		SkippedFiles:               plan.oversized,
+		OverBudgetFiles:            plan.overBudget,
 		ContentSkippedFiles:        plan.contentSkipped,
-		TokenUsage:                 tokenUsage(result),
 		PromptBreakdown:            plan.breakdown,
 		Ticket:                     plan.ticket,
 		ParentTicket:               plan.parentTicket,
@@ -476,18 +482,14 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		ElapsedPresent:             true,
 		ReviewedCommit:             sourceCommit,
 		IncrementalFrom:            plan.incrementalFrom,
-		FilesReviewed:              plan.filesReviewed,
 		TotalFiles:                 plan.totalFiles,
 		FilesCountsSet:             true,
 		DiffAdded:                  plan.diffAdded,
 		DiffRemoved:                plan.diffRemoved,
-		CrossFileSymbols:           plan.crossFileSyms,
-		InputBudget:                plan.budget,
-		ContextWindow:              r.llm.ContextWindow(),
 		ModelLabel:                 r.llm.Label(),
+		RunURL:                     r.runURL(attemptID),
 		RunCostUSD:                 runCost,
 		CumulativeCostUSD:          cumulativeCost,
-		KeySpendUSD:                keySpendUSD(result),
 		MaxPRCostUSD:               r.cfg.MaxPRCostUSD,
 		AgentsMDWarnTokens:         r.cfg.AgentsMDWarnTokens,
 	})
@@ -1001,14 +1003,6 @@ func (r *Reviewer) priorCommit(ctx context.Context, key store.PRKey) (commit str
 	return commit, readOK
 }
 
-func tokenUsage(result inference.ReviewResult) render.TokenUsage {
-	return render.TokenUsage{
-		Prompt:     int(result.Cost.PromptTokens),
-		Completion: int(result.Cost.CompletionTokens),
-		Present:    true,
-	}
-}
-
 func breakdown(a inference.AssembledPrompt) render.PromptBreakdown {
 	return render.PromptBreakdown{
 		Template:         a.Breakdown.Template,
@@ -1018,20 +1012,23 @@ func breakdown(a inference.AssembledPrompt) render.PromptBreakdown {
 	}
 }
 
-func keySpendUSD(result inference.ReviewResult) float64 {
-	if result.Cost.KeySpendNanoUSD == nil {
-		return 0
+// notFullContext is the "reviewed without full file context" list: a
+// content-skipped file that the prompt carries as an entry of its own (the
+// set compression kept, after it), without its body. A file the prompt does
+// not carry was not reviewed at all, and a rename-only one has no body to
+// miss. Read from what was sent, so both review paths agree.
+func notFullContext(contentSkipped []string, sent []diff.FileReviewData) []string {
+	entry := map[string]bool{}
+	for _, f := range sent {
+		if !f.ContentFetched && !diff.IsRenameOnly(f.Diff) {
+			entry[f.Path] = true
+		}
 	}
-	return float64(*result.Cost.KeySpendNanoUSD) / nanoPerUSD
-}
-
-func symbolsOf(rels []diff.CrossFileRelationship) []string {
-	if len(rels) == 0 {
-		return nil
-	}
-	out := make([]string, len(rels))
-	for i, rel := range rels {
-		out[i] = rel.Symbol
+	var out []string
+	for _, p := range contentSkipped {
+		if entry[p] {
+			out = append(out, p)
+		}
 	}
 	return out
 }

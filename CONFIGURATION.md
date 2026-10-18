@@ -94,7 +94,7 @@ Not overridable in a team block. Naming one there disables the team.
 | `REVIEW_INFERENCE_CONCURRENCY_PER_TEAM` | `2` | Inference calls in flight for one team, nested inside the global cap so one team's burst cannot take every slot. Must not exceed it. |
 | `SERVER_HOST` | `0.0.0.0` | Listen address. |
 | `SERVER_PORT` | `8080` | Listen port. |
-| `NOERGLER_PUBLIC_URL` | *(empty)* | How Bitbucket reaches this instance. Needed by `POST /onboard/{team}` only, to write the webhook URL. |
+| `NOERGLER_PUBLIC_URL` | *(empty)* | This instance's base URL, reachable by Bitbucket and by reviewers' browsers. `POST /onboard/{team}` writes webhooks to it, and each summary footer links the run's dashboard page under it. Empty disables both. |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` (or `WARN`), `ERROR`, any case. Anything else aborts startup. |
 | `NOERGLER_ENV` | `dev` | The `env` field on every log record. |
 

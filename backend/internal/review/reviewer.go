@@ -82,6 +82,9 @@ type Reviewer struct {
 	owns func(project, repo string) bool
 	// team is the live snapshot behind owns, for what team_config shows.
 	team func() *config.Team
+	// publicURL is the instance's base URL (NOERGLER_PUBLIC_URL), for the
+	// footer's link to the run page; empty prints no link.
+	publicURL string
 }
 
 // Options builds a Reviewer. Bitbucket, the store, the inference client and
@@ -110,6 +113,8 @@ type Options struct {
 	// Team is the live team snapshot (claims, exclude_repos, Jira, riptide),
 	// read by team_config only; nil leaves those fields out.
 	Team func() *config.Team
+	// PublicURL is config.Server.PublicURL, trailing slash already trimmed.
+	PublicURL string
 }
 
 // New builds a Reviewer for one team.
@@ -132,6 +137,7 @@ func New(opt Options) *Reviewer {
 		log:               opt.Log,
 		owns:              opt.Owns,
 		team:              opt.Team,
+		publicURL:         opt.PublicURL,
 	}
 	r.usePRDescription.Store(opt.Config.UsePRDescription)
 	return r

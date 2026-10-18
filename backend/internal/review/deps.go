@@ -9,6 +9,7 @@ package review
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -63,7 +64,6 @@ type InferenceClient interface {
 	// summary and what a run row stores.
 	Label() string
 	Ready() bool
-	ContextWindow() int
 	InputTokenBudget() int
 	Review(ctx context.Context, req inference.ReviewRequest) inference.ReviewResult
 	Mention(ctx context.Context, req inference.MentionRequest) inference.MentionResult
@@ -131,26 +131,41 @@ func safeDBErr(ctx context.Context, log *slog.Logger, what string, fn func() err
 // Fails open, like every other store call here: the row is a record of what
 // happened, and losing it must never change what happened. A returned error
 // would turn a successful review into a failed one.
-func (r *Reviewer) recordAttempt(ctx context.Context, a store.Attempt) {
+//
+// Returns the attempt id, 0 when nothing was written; the run's dashboard
+// link is built from it.
+func (r *Reviewer) recordAttempt(ctx context.Context, a store.Attempt) int64 {
 	// A Reviewer with no store is a legitimate configuration, not a fault:
 	// the author and actor gates decide before anything is wired, and the
 	// logging tests drive exactly that shape. Every other store call in this
 	// package sits behind a path that has already reached the DB, so this is
 	// the only one that has to ask.
 	if r.store == nil {
-		return
+		return 0
 	}
 	// ErrCallNotRecorded means the attempt (and any billed cost on it) is
 	// written and only the call's detail is not: logged as that, with the
 	// PR, so nobody reads a lost llm_calls row as a lost attempt.
 	// team= rides on ctx (the queue binds it per job).
-	_, err := r.store.InsertAttempt(ctx, a)
+	id, err := r.store.InsertAttempt(ctx, a)
 	switch {
 	case errors.Is(err, store.ErrCallNotRecorded):
 		r.log.WarnContext(ctx, a.Key.Tag()+": gateway call detail not recorded; the attempt was written", logging.Err(err))
 	case err != nil:
 		r.log.WarnContext(ctx, "DB operation failed, using fallback: InsertAttempt", logging.Err(err))
+		return 0
 	}
+	return id
+}
+
+// runURL is the attempt's run detail page, for the summary's footer. Empty
+// (no link) without a public URL or an attempt id: the footer never points
+// at a host or a run that does not exist.
+func (r *Reviewer) runURL(attemptID int64) string {
+	if r.publicURL == "" || attemptID == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s/runs/%d", r.publicURL, attemptID)
 }
 
 // llmCall is the llm_calls row for a review's gateway call, nil when the

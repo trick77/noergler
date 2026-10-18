@@ -34,14 +34,14 @@ func TestGermanSummary(t *testing.T) {
 	h := "Fehlende Prüfung"
 	in.Findings = []inference.ReviewFinding{{Severity: "issue", Comment: "Das Maß fehlt.", Headline: &h}}
 	in.Summary.Overview = "Der Code ist groß."
-	in.FilesCountsSet, in.FilesReviewed, in.TotalFiles = true, 1, 1
+	in.FilesCountsSet, in.TotalFiles = true, 1
 	in.Ticket = &jira.Ticket{Key: "ABC-1", URL: "u", Title: "T"}
 	in.ComplianceRequirements = []inference.ComplianceRequirement{{Requirement: "Maße werden geprüft", Met: true}}
 
 	got := Summary(in)
 	for _, want := range []string{
 		"### Überblick\nDer Code ist gross.", "### Probleme und Vorschläge", "1. Fehlende Prüfung",
-		"### Empfehlung\n**Freigeben ✅**", "_1 Datei geprüft_",
+		"### Empfehlung\n**Freigeben ✅**", " · 1 Datei · Kosten nicht gemeldet_",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("summary lacks %q:\n%s", want, got)

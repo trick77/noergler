@@ -36,20 +36,8 @@ func Fmt(n int) string {
 	return b.String()
 }
 
-// FmtK renders a token count compactly: "628k", "1.5M", "2M".
-//
-// Rounding is half-to-even: 2500 renders "2k", not "3k". math.RoundToEven
-// does that; math.Round would not (TestFmtKUsesBankersRounding).
-func FmtK(n int) string {
-	if n >= 1_000_000 {
-		s := fmt.Sprintf("%.1fM", float64(n)/1_000_000)
-		return strings.Replace(s, ".0M", "M", 1)
-	}
-	return fmt.Sprintf("%dk", int(math.RoundToEven(float64(n)/1000)))
-}
-
-// pct is the percentage sites in the summary, on the same half-to-even
-// rounding rule as FmtK (TestPctUsesBankersRounding).
+// pct is the percentage sites in the summary, rounded half-to-even
+// (TestPctUsesBankersRounding).
 func pct(part, whole int) int {
 	if whole == 0 {
 		return 0

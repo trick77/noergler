@@ -78,13 +78,13 @@ func summaryCases() map[string]SummaryInput {
 		SecurityPerformance: "Nothing notable.", TestCoverage: "Good.",
 		VerdictDecision: "approve", VerdictRationale: "Fine.",
 	}
-	mixed.TokenUsage = TokenUsage{Prompt: 1000, Completion: 200, Present: true}
 	mixed.PromptBreakdown = PromptBreakdown{Template: 500, RepoInstructions: 300, Files: 200, Present: true}
 	mixed.ElapsedSeconds, mixed.ElapsedPresent = 12.34, true
-	mixed.InputBudget, mixed.ContextWindow = 628000, 1000000
-	mixed.FilesReviewed, mixed.TotalFiles, mixed.FilesCountsSet = 3, 5, true
+	mixed.ModelLabel = "gpt-5.5-medium"
+	mixed.TotalFiles, mixed.FilesCountsSet = 5, true
 	mixed.DiffAdded, mixed.DiffRemoved = 40, 7
-	mixed.RunCostUSD, mixed.CumulativeCostUSD, mixed.KeySpendUSD = ptrf(0.1234), ptrf(1.5), 42.0
+	mixed.RunCostUSD, mixed.CumulativeCostUSD, mixed.MaxPRCostUSD = ptrf(0.1234), ptrf(1.5), 5.0
+	mixed.RunURL = "https://noergler.example.com/runs/18233"
 	cases["mixed"] = mixed
 
 	truncated := base()
@@ -117,7 +117,6 @@ func summaryCases() map[string]SummaryInput {
 	agentsFound := base()
 	agentsFound.AgentsMDFound = true
 	agentsFound.PromptBreakdown = PromptBreakdown{Template: 1, RepoInstructions: 3000, Files: 1, Present: true}
-	agentsFound.TokenUsage = TokenUsage{Prompt: 1, Completion: 1, Present: true}
 	cases["no_findings_agents_found"] = agentsFound
 
 	accounting := base()
@@ -236,41 +235,54 @@ func summaryCases() map[string]SummaryInput {
 
 	sk := base()
 	sk.SkippedFiles = []string{"src/big.go", "x/y/huge.ts"}
+	sk.OverBudgetFiles = []string{"docs/README.md"}
 	sk.ContentSkippedFiles = []string{"z/med.py"}
 	cases["skipped_files"] = sk
 
-	cf := base()
-	cf.CrossFileSymbols = []string{"Foo", "Bar"}
-	cases["cross_file_few"] = cf
-
-	cf1 := base()
-	cf1.CrossFileSymbols = []string{"Foo"}
-	cases["cross_file_one"] = cf1
-
-	cfm := base()
-	cfm.CrossFileSymbols = []string{"A", "B", "C", "D", "E", "F", "G"}
-	cases["cross_file_many"] = cfm
-
+	// An unpriced run says so, and shows no PR total.
 	unpriced := base()
-	unpriced.TokenUsage = TokenUsage{Prompt: 10, Completion: 2, Present: true}
-	unpriced.KeySpendUSD = 7.0
+	unpriced.ElapsedSeconds, unpriced.ElapsedPresent = 73.1, true
 	cases["cost_unpriced"] = unpriced
 
-	zeroKey := base()
-	zeroKey.TokenUsage = TokenUsage{Prompt: 10, Completion: 2, Present: true}
-	zeroKey.RunCostUSD, zeroKey.CumulativeCostUSD = ptrf(0.5), ptrf(0.5)
-	cases["cost_zero_keyspend"] = zeroKey
+	withPR := base()
+	withPR.ElapsedSeconds, withPR.ElapsedPresent = 73.1, true
+	withPR.RunCostUSD, withPR.CumulativeCostUSD, withPR.MaxPRCostUSD = ptrf(0.5), ptrf(0.5), 5.0
+	cases["cost_with_pr_total"] = withPR
 
 	noCost := base()
-	noCost.TokenUsage = TokenUsage{Prompt: 10, Completion: 2, Present: true}
 	cases["cost_none_at_all"] = noCost
 
 	runOnly := noCost
 	runOnly.RunCostUSD = ptrf(0.5)
 	cases["cost_run_no_cumulative"] = runOnly
 
+	// No public URL: the same line, no link to a host that does not exist.
+	noLink := base()
+	noLink.ModelLabel = "gpt-5.5-medium"
+	noLink.ElapsedSeconds, noLink.ElapsedPresent = 0.85, true
+	noLink.RunCostUSD = ptrf(0.01)
+	cases["no_run_url"] = noLink
+
+	link := noLink
+	link.RunURL = "https://noergler.example.com/runs/7"
+	cases["run_url"] = link
+
+	linkDE := link
+	linkDE.Lang = lang.DE
+	linkDE.TotalFiles, linkDE.FilesCountsSet = 9, true
+	cases["run_url_de"] = linkDE
+
+	// Files not reviewed (size gate, token budget) are counted on the line
+	// itself, so the count never reads as "all of them reviewed".
+	overBudget := base()
+	overBudget.TotalFiles, overBudget.FilesCountsSet = 40, true
+	overBudget.SkippedFiles = []string{"bundle.properties"}
+	overBudget.OverBudgetFiles = []string{"a.go", "b.go"}
+	overBudget.DiffAdded = 10
+	cases["files_over_budget"] = overBudget
+
 	allFiles := base()
-	allFiles.FilesReviewed, allFiles.TotalFiles, allFiles.FilesCountsSet = 4, 4, true
+	allFiles.TotalFiles, allFiles.FilesCountsSet = 4, true
 	allFiles.DiffAdded = 10
 	cases["files_all_reviewed"] = allFiles
 
@@ -278,12 +290,19 @@ func summaryCases() map[string]SummaryInput {
 	diffOnly.DiffAdded, diffOnly.DiffRemoved = 5, 3
 	cases["diff_only"] = diffOnly
 
-	noWindow := base()
-	noWindow.TokenUsage = TokenUsage{Prompt: 1000, Completion: 10, Present: true}
-	noWindow.InputBudget = 628000
-	cases["budget_no_window"] = noWindow
-
 	return cases
+}
+
+// Elapsed reads like the dashboard's duration, so the footer and the run
+// page agree; seconds round before splitting, never "1m 60s".
+func TestElapsed(t *testing.T) {
+	for in, want := range map[float64]string{
+		0.85: "850ms", 12.34: "12.3s", 59.94: "59.9s", 59.96: "1m 0s", 73.1: "1m 13s", 119.5: "2m 0s",
+	} {
+		if got := Elapsed(in); got != want {
+			t.Errorf("Elapsed(%v) = %q, want %q", in, got, want)
+		}
+	}
 }
 
 // TestSummaryIsPinned drives the builder over the whole case corpus and
