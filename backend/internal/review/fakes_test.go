@@ -347,20 +347,20 @@ func (f *fakeStore) InsertRun(_ context.Context, r store.Run) (int64, error) {
 	return int64(len(f.Runs)), nil
 }
 
-func (f *fakeStore) InsertAttempt(_ context.Context, a store.Attempt) error {
+func (f *fakeStore) InsertAttempt(_ context.Context, a store.Attempt) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	// attemptErr is separate from failAll: the point of the fail-open test
 	// is a store where ONLY the attempt write is broken, so everything else
 	// must still succeed around it.
 	if f.attemptErr != nil {
-		return f.attemptErr
+		return 0, f.attemptErr
 	}
 	if err := f.err(); err != nil {
-		return err
+		return 0, err
 	}
 	f.Attempts = append(f.Attempts, a)
-	return nil
+	return int64(len(f.Attempts)), nil
 }
 
 func (f *fakeStore) InsertFinding(_ context.Context, fi store.Finding) error {

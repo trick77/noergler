@@ -45,6 +45,21 @@ type CallCost struct {
 	PromptTokens     int64
 	CachedTokens     int64
 	CompletionTokens int64
+
+	// What the call was, as the gateway described it, carried through for
+	// the llm_calls row and the run detail page. Answered is false when no
+	// response came back (a timeout, a transport error): then nothing below
+	// was reported. Usage keeps llmwire's nilable lanes, so a lane the
+	// gateway did not send stays absent rather than becoming zero.
+	Answered      bool
+	Model         string
+	Deployment    string
+	ReasoningSent string
+	FinishReason  string
+	Usage         llmwire.Usage
+	Timing        llmwire.Timing
+	// Warnings are llmwire's, "<kind> <feature>: <details>".
+	Warnings []string
 }
 
 // CostFrom extracts the cost fields from a chat response.
@@ -60,6 +75,13 @@ func CostFrom(resp *llmwire.ChatResponse) CallCost {
 		PromptTokens:     deref(resp.Usage.Input.Total),
 		CachedTokens:     deref(resp.Usage.Input.CacheRead),
 		CompletionTokens: deref(resp.Usage.Output.Total),
+		Answered:         true,
+		Model:            resp.Model,
+		Deployment:       resp.Gateway.ModelName,
+		ReasoningSent:    resp.ReasoningSent,
+		FinishReason:     resp.FinishReason,
+		Usage:            resp.Usage,
+		Timing:           resp.Timing,
 	}
 	if resp.Usage.Cost.Provenance != llmwire.Reported {
 		return out
@@ -68,6 +90,16 @@ func CostFrom(resp *llmwire.ChatResponse) CallCost {
 	out.NanoUSD = &n
 	if n == 0 && totalTokens(resp.Usage) > 0 {
 		out.ZeroWithTokens = true
+	}
+	return out
+}
+
+// WarningLines renders llmwire's warnings for the llm_calls row. Nil for
+// none, so a clean call stores an empty list rather than a list of blanks.
+func WarningLines(ws []llmwire.Warning) []string {
+	var out []string
+	for _, w := range ws {
+		out = append(out, fmt.Sprintf("%s %s: %s", w.Kind, w.Feature, w.Details))
 	}
 	return out
 }

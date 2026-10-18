@@ -30,7 +30,7 @@ func TestPRStatus_BoundedToTheRowAndTeam(t *testing.T) {
 	if _, err := s.UpsertPullRequest(ctx, PRUpsert{Key: k, TeamSlug: "payments", Author: &author}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.InsertAttempt(ctx, Attempt{Key: k, TeamSlug: "payments", Kind: RunAuto, Outcome: "skipped", Reason: "pr_cost_cap"}); err != nil {
+	if _, err := s.InsertAttempt(ctx, Attempt{Key: k, TeamSlug: "payments", Kind: RunAuto, Outcome: "skipped", Reason: "pr_cost_cap"}); err != nil {
 		t.Fatal(err)
 	}
 	st, err := s.PRStatus(ctx, k, "payments")

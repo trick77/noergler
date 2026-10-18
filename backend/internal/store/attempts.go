@@ -22,26 +22,44 @@ type Attempt struct {
 	// CostNanoUSD is a billed call that wrote no run row (unparseable). A
 	// successful attempt leaves it nil: its cost is on the run.
 	CostNanoUSD *int64
+	// Call is the gateway call this attempt made, written to llm_calls in
+	// the same transaction. Nil when it made none (a skip, a timeout).
+	Call *LLMCall
 }
 
-// InsertAttempt records one attempt.
+// InsertAttempt records one attempt, and its gateway call when it made one.
+// Returns the attempt id, which the run detail page is keyed by.
 //
 // The caller swallows the error: an attempt row is a dashboard record, and
 // failing a review over one would trade a working review for a log line.
-func (s *Store) InsertAttempt(ctx context.Context, a Attempt) error {
+func (s *Store) InsertAttempt(ctx context.Context, a Attempt) (int64, error) {
 	var reason *string
 	if a.Reason != "" {
 		r := a.Reason
 		reason = &r
 	}
-	_, err := s.pool.Exec(ctx, `
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var id int64
+	if err := tx.QueryRow(ctx, `
 		INSERT INTO review_attempts
 		    (team_slug, project_key, repo_slug, pr_id, kind,
 		     outcome, reason, elapsed_ms, review_run_id, cost_nano_usd)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		RETURNING id`,
 		a.TeamSlug, a.Key.Project, a.Key.Repo, a.Key.PRID, a.Kind,
-		a.Outcome, reason, a.ElapsedMS, a.RunID, a.CostNanoUSD)
-	return err
+		a.Outcome, reason, a.ElapsedMS, a.RunID, a.CostNanoUSD).Scan(&id); err != nil {
+		return 0, err
+	}
+	if a.Call != nil {
+		if err := insertLLMCall(ctx, tx, id, a, *a.Call); err != nil {
+			return 0, err
+		}
+	}
+	return id, tx.Commit(ctx)
 }
 
 // AttemptRow is one row of the dashboard's feed: the attempt, plus the run

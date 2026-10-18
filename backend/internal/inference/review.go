@@ -106,7 +106,7 @@ func (c *Client) Review(ctx context.Context, req ReviewRequest) ReviewResult {
 		chat.ResponseFormat = *req.ResponseSchema
 	}
 
-	resp, _, err := c.wire.Chat(ctx, chat)
+	resp, warnings, err := c.wire.Chat(ctx, chat)
 	if err != nil {
 		return ReviewResult{
 			Outcome: classifyCallError(ctx, err),
@@ -116,6 +116,7 @@ func (c *Client) Review(ctx context.Context, req ReviewRequest) ReviewResult {
 	}
 
 	out := ReviewResult{Review: ParseReview(resp.Content), Cost: CostFrom(resp)}
+	out.Cost.Warnings = WarningLines(warnings)
 	// The parser is pure, so its operator-facing lines surface here, where the
 	// caller's context carries team and pr_tag. Emitting them inside the
 	// parser would leave them unbound.
