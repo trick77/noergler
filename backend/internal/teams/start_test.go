@@ -58,6 +58,43 @@ func TestStart_MissingTemplateDisablesTheTeam(t *testing.T) {
 	}
 }
 
+// The finding-reply template may be missing at its default path: a
+// deployment's own prompts/ without it keeps the team, replies off. A path
+// the operator set and got wrong still disables the team.
+func TestStart_FindingReplyTemplate(t *testing.T) {
+	onlyReplyMissing := func(path string) ([]byte, error) {
+		if path == reviewCfg().ReviewPromptTemplate || path == reviewCfg().MentionPromptTemplate {
+			return []byte("tmpl"), nil
+		}
+		return nil, errors.New("no such file")
+	}
+
+	t.Run("default path missing", func(t *testing.T) {
+		cfg := reviewCfg()
+		cfg.FindingReplyPromptTemplate = config.DefaultFindingReplyPromptTemplate
+		log, buf := bufLogger()
+		_, reason := Start(context.Background(), appWith(nil, nil, nil),
+			&config.Team{Slug: "platform", Review: cfg}, Deps{Log: log, ReadFile: onlyReplyMissing})
+		if strings.Contains(reason, "prompt template not found") {
+			t.Errorf("reason = %q: a missing default reply template must not disable the team", reason)
+		}
+		if !strings.Contains(buf.String(), "finding replies off") {
+			t.Errorf("log lacks the warning:\n%s", buf.String())
+		}
+	})
+
+	t.Run("operator path missing", func(t *testing.T) {
+		cfg := reviewCfg()
+		cfg.FindingReplyPromptTemplate = "/etc/noergler/reply.txt"
+		log, _ := bufLogger()
+		_, reason := Start(context.Background(), appWith(nil, nil, nil),
+			&config.Team{Slug: "platform", Review: cfg}, Deps{Log: log, ReadFile: onlyReplyMissing})
+		if !strings.Contains(reason, "prompt template not found: /etc/noergler/reply.txt") {
+			t.Errorf("reason = %q, want the misconfigured path disabling the team", reason)
+		}
+	})
+}
+
 // One team's failure never takes the instance down, and never stops the next
 // team from starting.
 func TestBoot_OneTeamsFaultDisablesThatTeamOnly(t *testing.T) {

@@ -41,7 +41,6 @@ func (c *Client) answer(ctx context.Context, prompt string, promptTokens int, fo
 const (
 	PlaceholderFinding     = "{finding}"
 	PlaceholderFileExcerpt = "{file_excerpt}"
-	PlaceholderReplyBy     = "{reply_by}"
 	PlaceholderReply       = "{reply}"
 )
 
@@ -59,9 +58,7 @@ type FindingReplyPromptRequest struct {
 	// FileExcerpt is the file around the finding's line at the PR head,
 	// numbered, or empty when it could not be read.
 	FileExcerpt string
-	// ReplyBy says who wrote the reply: the PR author or someone else.
-	ReplyBy string
-	// Reply is the replier's text: intent only, never evidence.
+	// Reply is the PR author's text: intent only, never evidence.
 	Reply string
 }
 
@@ -76,7 +73,6 @@ func RenderFindingReplyPrompt(req FindingReplyPromptRequest) string {
 		PlaceholderRepoInstructions, req.RepoInstructions,
 		PlaceholderFinding, req.Finding,
 		PlaceholderFileExcerpt, excerpt,
-		PlaceholderReplyBy, req.ReplyBy,
 		PlaceholderReply, req.Reply,
 	).Replace(req.Template)
 }

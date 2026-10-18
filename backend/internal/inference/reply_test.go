@@ -11,14 +11,13 @@ import (
 // expanding into the file diff.
 func TestRenderFindingReplyPromptIsOnePass(t *testing.T) {
 	got := RenderFindingReplyPrompt(FindingReplyPromptRequest{
-		Template:         "G={repo_instructions} F={finding} X={file_excerpt} B={reply_by} R={reply}",
+		Template:         "G={repo_instructions} F={finding} X={file_excerpt} R={reply}",
 		RepoInstructions: "rules",
 		Finding:          "a.go:2 [issue]",
 		FileExcerpt:      "2  x",
-		ReplyBy:          "the PR author",
 		Reply:            "see {file_excerpt}",
 	})
-	if got != "G=rules F=a.go:2 [issue] X=2  x B=the PR author R=see {file_excerpt}" {
+	if got != "G=rules F=a.go:2 [issue] X=2  x R=see {file_excerpt}" {
 		t.Errorf("got %q", got)
 	}
 	if empty := RenderFindingReplyPrompt(FindingReplyPromptRequest{Template: "{file_excerpt}"}); !strings.Contains(empty, "could not be read") {

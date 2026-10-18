@@ -22,36 +22,41 @@ const (
 	disputeTextRunes = 300
 )
 
-// HandleFindingReply answers a reply on the thread of one of noergler's
-// inline findings: one call, one reply, once per finding.
+// HandleFindingReply answers the PR author's reply on the thread of one of
+// noergler's inline findings: one call, one reply, once per finding.
 //
-// handled is false when the reply is not this handler's: not on a stored,
-// unfixed finding of this PR, the feature is off (no template), or the reply
-// is an @mention asking for a review. The route then hands an @mention to
+// Only the author's: the feature is the author's case for or against a
+// finding, and a reviewer's reply used up the one answer before the author
+// could make it. Anyone else's @mention goes to the Q&A.
+//
+// handled is false when the reply is not this handler's: the feature is off
+// (no template), the thread is no finding's, or an @mention is better
+// answered by the mention path (a review keyword, another replier, a closed
+// PR, a thread answered already). The route then hands an @mention to
 // HandleMention. handedOff reports, like the staged review, that the gateway
 // call went to the inference pool and the posting comes back to the worker,
 // so the PR's queue hold must outlive this job.
 //
 // A dispute never resolves or withdraws the finding: the author resolves the
-// thread. Only the PR author's dispute is stored, and later prompts show it
-// beside the finding so the issue is not raised again. The reply is author
-// text: intent, never evidence, never a reason to drop a finding.
+// thread. It is stored, and later prompts show it beside the finding so the
+// issue is not raised again. The reply is author text: intent, never
+// evidence, never a reason to drop a finding.
 func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payload, team string, sched Scheduler) (handled, handedOff bool) {
 	comment := payload.Comment
 	if r.replyTmpl == "" || comment == nil || payload.CommentParentID == 0 {
 		return false, false
 	}
 	bot := r.bitbucket.BotUsername()
-	// Our own replies ("Fixed in ...") come back as comment events too.
-	if strings.EqualFold(comment.Author.Name, bot) {
-		return true, false
-	}
-	pr := payload.PullRequest
-	if pr.State != "" && pr.State != "OPEN" {
-		return true, false
-	}
 	text := strings.TrimSpace(comment.Text)
 	mentioned := strings.Contains(strings.ToLower(text), "@"+strings.ToLower(bot))
+	pr := payload.PullRequest
+	// Not this handler's. Without a mention there is nothing else to do, so
+	// it is handled (ignored); a mention goes on, and its own guards log.
+	// Our own replies ("Fixed in ...") come back as comment events too.
+	if strings.EqualFold(comment.Author.Name, bot) || (pr.State != "" && pr.State != "OPEN") ||
+		!strings.EqualFold(comment.Author.Name, pr.Author.User.Name) {
+		return !mentioned, false
+	}
 	if mentioned {
 		// "@bot review" on a finding thread is still a review.
 		text = extractQuestion(text, bot)
@@ -83,11 +88,15 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on finding %s not answered: the thread was answered already", prTag, where))
 		return true, false
 	}
-	// The per-PR cap holds here as on an auto review: a reply is automatic.
-	// Fail open: an unpriced PR never blocks.
-	if cost := safeDB(ctx, r.log, "PRCost", func() (*int64, error) {
+	if mentioned {
+		// A mention, here as on the Q&A path: it reactivates an ignored PR
+		// and is the explicit override of the cost cap.
+		r.reactivateIfIgnored(ctx, key, prTag)
+	} else if cost := safeDB(ctx, r.log, "PRCost", func() (*int64, error) {
 		return r.store.PRCost(ctx, key)
 	}); cost != nil && float64(*cost)/nanoPerUSD >= r.cfg.MaxPRCostUSD {
+		// A plain reply is automatic, so the per-PR cap holds. Fail open: an
+		// unpriced PR never blocks.
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on finding %s not answered: PR cost at the $%.2f cap",
 			prTag, where, r.cfg.MaxPRCostUSD))
 		return true, false
@@ -95,27 +104,23 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 
 	ctx, counter := httpstats.WithScope(ctx)
 	project, repo := key.Project, key.Repo
-	byAuthor := strings.EqualFold(comment.Author.Name, pr.Author.User.Name)
 
 	// Without the file the finding still stands on its own text: a failed
 	// fetch narrows the context, it does not skip the answer.
 	excerpt := ""
-	if content, err := r.bitbucket.FetchFileContent(ctx, project, repo, pr.FromRef.LatestCommit, f.FilePath); err != nil {
+	if content, err := r.fetchFindingFile(ctx, project, repo, pr.FromRef.LatestCommit, f.FilePath); err != nil {
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: file for the finding reply unavailable: %v", prTag, err))
+	} else if excerpt = excerptAround(content, f.LineNumber, replyExcerptLines); excerpt == "" {
+		excerpt = fmt.Sprintf("_Line %d is past the end of the file at the PR head._", f.LineNumber)
 	} else {
-		excerpt = truncateRunes(excerptAround(content, f.LineNumber, replyExcerptLines), replyExcerptRunes)
+		excerpt = truncateRunes(excerpt, replyExcerptRunes)
 	}
 	agentsMD := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.DisplayID)
-	replyBy := "a reviewer, not the PR author"
-	if byAuthor {
-		replyBy = "the PR author"
-	}
 	prompt := inference.RenderFindingReplyPrompt(inference.FindingReplyPromptRequest{
 		Template:         r.replyTmpl,
 		RepoInstructions: agentsMD,
 		Finding:          fmt.Sprintf("%s [%s]\n\n%s", where, f.Severity, f.CommentText),
 		FileExcerpt:      excerpt,
-		ReplyBy:          replyBy,
 		Reply:            truncateRunes(text, replyTextRunes),
 	})
 	req := inference.FindingReplyRequest{
@@ -124,7 +129,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	}
 	job := &replyJob{
 		project: project, repo: repo, prID: pr.ID, prTag: prTag, where: where,
-		findingID: f.ID, replyTo: comment.ID, text: text, byAuthor: byAuthor,
+		findingID: f.ID, replyTo: comment.ID, text: text,
 		agentsMD: agentsMD, counter: counter,
 	}
 	infer := func(inferCtx context.Context) { job.res = r.llm.FindingReply(inferCtx, req) }
@@ -148,7 +153,6 @@ type replyJob struct {
 	findingID     int64
 	replyTo       int
 	text          string
-	byAuthor      bool
 	agentsMD      string
 	counter       *httpstats.Counter
 	res           inference.FindingReplyResult
@@ -167,14 +171,14 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: reply on finding %s not answered: %s %v", j.prTag, j.where, res.Outcome, res.Err))
 		return
 	}
-	dispute := res.Reply.Intent == "disputes" && j.byAuthor
+	dispute := res.Reply.Intent == "disputes"
 
 	body := truncateRunes(res.Reply.Reply, replyPostRunes)
 	agentsLine := "none"
 	if line := res.Reply.AgentsMDLine; line != "" {
 		switch reason := inference.CheckAgentsMDLine(line, j.agentsMD); {
 		case !dispute:
-			agentsLine = "dropped (not the author's dispute)"
+			agentsLine = "dropped (not a dispute)"
 		case reason != "":
 			agentsLine = "dropped (" + reason + ")"
 		default:
@@ -194,8 +198,19 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 		stored = &d
 	}
 	safeDBErr(ctx, r.log, "MarkFindingReplied", func() error { return r.store.MarkFindingReplied(ctx, j.findingID, stored) })
-	r.log.InfoContext(ctx, fmt.Sprintf("%s: answered reply on finding %s: intent %s, by author %s, AGENTS.md line %s",
-		j.prTag, j.where, res.Reply.Intent, yesNo(j.byAuthor), agentsLine))
+	r.log.InfoContext(ctx, fmt.Sprintf("%s: answered reply on finding %s: intent %s, AGENTS.md line %s",
+		j.prTag, j.where, res.Reply.Intent, agentsLine))
+}
+
+// fetchFindingFile reads the finding's file at the PR head. A row stored
+// before paths were resolved may carry the model's a/ or b/; a real a/ or
+// b/ directory is tried as written first.
+func (r *Reviewer) fetchFindingFile(ctx context.Context, project, repo, commit, path string) (string, error) {
+	content, err := r.bitbucket.FetchFileContent(ctx, project, repo, commit, path)
+	if err != nil && (strings.HasPrefix(path, "a/") || strings.HasPrefix(path, "b/")) {
+		return r.bitbucket.FetchFileContent(ctx, project, repo, commit, path[2:])
+	}
+	return content, err
 }
 
 // codeFence is a backtick fence longer than any backtick run in s, so model

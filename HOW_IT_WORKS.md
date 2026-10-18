@@ -233,19 +233,20 @@ the review gates and without compression, reads the PR diff and the ticket, and
 replies in the comment's own thread. Keywords route the question; anything else
 is answered as a question about the PR.
 
-A reply on one of noergler's finding threads needs no mention. The route queues
-any non-empty reply not written by the bot (Bitbucket's `commentParentId`); the
-worker answers only when the parent is a stored, unfixed finding of that PR,
-the finding has no answer yet and the PR is under its cost cap. An `@bot` reply
-on such a thread is answered as a reply too, unless it asks for a review. The
-call (`prompts/finding_reply.txt`) is staged like a review, and sees the
-finding, the file around it, AGENTS.md, who replied, and the reply. A dispute,
-explicit or not ("we do this in the UI"), is acknowledged; when it is the PR
-author's and its reason is a project-wide rule AGENTS.md lacks, the answer
-suggests a one-line AGENTS.md bullet. The author's dispute is stored and later
-prompts show it beside the finding so the issue is not raised again. The
-thread stays open: the author resolves it. Without the template file the
-feature is off and the team keeps reviewing.
+The PR author's reply on one of noergler's finding threads needs no mention.
+The route queues any non-empty reply not written by the bot (Bitbucket's
+`commentParentId`); the worker answers only the author, only when the parent is
+a stored, unfixed finding of that PR without an answer yet, and, for a plain
+reply, only under the PR's cost cap. An `@bot` reply on such a thread is
+answered as a reply too, unless it asks for a review or comes from someone
+else, which the Q&A answers. The call (`prompts/finding_reply.txt`) is staged
+like a review, and sees the finding, the file around it, AGENTS.md and the
+reply. A dispute, explicit or not ("we do this in the UI"), is acknowledged;
+when its reason is a project-wide rule AGENTS.md lacks, the answer suggests a
+one-line AGENTS.md bullet. The dispute is stored and later prompts show it
+beside the finding so the issue is not raised again. The thread stays open:
+the author resolves it. Without the template at its default path the feature
+is off and the team keeps reviewing; reply costs are logged, not recorded.
 
 ## 13. Terminal events and the riptide rollup
 

@@ -74,17 +74,19 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   marker keeps its space, so the tail of `*cfg = x` or `--count` stays
   invented. Blunt rules, never
   a judge model. Drops are logged by reason, never silent.
-- **A reply on a finding thread is answered once, never resolves it**
-  (`HandleFindingReply`). Parent = top-level `commentParentId`, never
-  `comment.parent`. Route: non-empty, non-bot reply -> job (DB-free route);
-  an `@bot` reply tries the finding first, review keyword or no finding ->
-  mention. Job: stored unfixed finding of THIS PR, `replied_at` unset, under
-  the cost cap; staged like a review (pool, post on worker). Only the PR
-  author's dispute is stored and shown beside the finding (intent, never
-  evidence). AGENTS.md line: author's dispute only, one `- ` bullet <= 200
-  runes, not already there, fenced longer than its backticks. Template
-  optional: missing = feature off, team stays up. Nothing posted = nothing
-  stamped. Cost is logged, not recorded, like a Q&A mention.
+- **The PR author's reply on a finding thread is answered once, never
+  resolves it** (`HandleFindingReply`). Parent = top-level
+  `commentParentId`, never `comment.parent`. Route: non-empty, non-bot reply
+  -> job (DB-free route); an `@bot` reply tries the finding first, falls to
+  the Q&A on a review keyword, another replier, no finding or one answered
+  already. Author only: a reviewer's reply used up the author's one answer.
+  Job: stored unfixed finding of THIS PR, `replied_at` unset; a plain reply
+  under the cost cap, a mention overrides it and reactivates; staged like a
+  review. The dispute is stored and shown beside the finding (intent, never
+  evidence). AGENTS.md line: disputes only, one `- ` bullet <= 200 runes, not
+  already there, fenced longer than its backticks. Template missing at its
+  DEFAULT path = feature off, team up; an operator path missing disables the
+  team. Nothing posted = nothing stamped. Cost logged, not recorded (decided).
 - **Fixed = a changed line, incremental runs only** (`inference.ValidateFixed`):
   listed `F<id>`, file in the push diff, one quoted line added or removed,
   none moved (in any shown file). A full review's diff is all `+`, so it

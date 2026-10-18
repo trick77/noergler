@@ -18,6 +18,10 @@ import (
 	"github.com/trick77/ship/kit/logging"
 )
 
+// DefaultFindingReplyPromptTemplate is the only finding-reply template path
+// allowed to be missing at startup.
+const DefaultFindingReplyPromptTemplate = "prompts/finding_reply.txt"
+
 // RequiredWebhookEvents are the Bitbucket events the webhook dispatches on.
 // Shared with onboarding, which registers exactly these.
 var RequiredWebhookEvents = []string{
@@ -86,14 +90,16 @@ type Review struct {
 	DiffAllowDynamicContext         bool
 	ReviewPromptTemplate            string
 	MentionPromptTemplate           string
-	FindingReplyPromptTemplate      string
-	TicketComplianceCheck           bool
-	RequireAgentsMD                 bool
-	AgentsMDWarnTokens              int
-	AgentsMDMaxTokens               int
-	AgentsMDCustomLink              string
-	OptOutBranchKeyword             string
-	MaxPRCostUSD                    float64
+	// FindingReplyPromptTemplate may be missing only at its default path:
+	// a deployment's own prompts/ without it keeps the team, replies off.
+	FindingReplyPromptTemplate string
+	TicketComplianceCheck      bool
+	RequireAgentsMD            bool
+	AgentsMDWarnTokens         int
+	AgentsMDMaxTokens          int
+	AgentsMDCustomLink         string
+	OptOutBranchKeyword        string
+	MaxPRCostUSD               float64
 	// UsePRDescription feeds the PR title and description to the model.
 	// Team API only (no env var, no teams.yaml key); the DB row wins.
 	UsePRDescription bool
@@ -369,7 +375,7 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 			DiffAllowDynamicContext:         r.Bool("REVIEW_DIFF_ALLOW_DYNAMIC_CONTEXT", true),
 			ReviewPromptTemplate:            r.String("REVIEW_PROMPT_TEMPLATE", "prompts/review.txt"),
 			MentionPromptTemplate:           r.String("REVIEW_MENTION_PROMPT_TEMPLATE", "prompts/mention.txt"),
-			FindingReplyPromptTemplate:      r.String("REVIEW_FINDING_REPLY_PROMPT_TEMPLATE", "prompts/finding_reply.txt"),
+			FindingReplyPromptTemplate:      r.String("REVIEW_FINDING_REPLY_PROMPT_TEMPLATE", DefaultFindingReplyPromptTemplate),
 			TicketComplianceCheck:           r.Bool("REVIEW_TICKET_COMPLIANCE_CHECK", true),
 			UsePRDescription:                true,
 			RequireAgentsMD:                 r.Bool("REVIEW_REQUIRE_AGENTS_MD", true),

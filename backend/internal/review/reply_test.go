@@ -43,7 +43,7 @@ func TestFindingReplyAnswersADisputeWithAnAgentsMDLine(t *testing.T) {
 	}
 	prompt := h.llm.Replies[0].Prompt
 	for _, want := range []string{"a.go:2 [issue]", "does not validate the business rule", "We do this in the UI",
-		"    2  func new() {}", "the PR author"} {
+		"    2  func new() {}"} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("prompt lacks %q:\n%s", want, prompt)
 		}
@@ -168,22 +168,22 @@ func TestDisputeReachesTheNextReview(t *testing.T) {
 	}
 }
 
-// Someone other than the PR author is answered, but their dispute is not
-// stored: only the author's case keeps the issue out of later reviews.
-func TestFindingReplyStoresOnlyTheAuthorsDispute(t *testing.T) {
+// Only the PR author's reply is the feature's: a reviewer's plain reply is
+// not answered and does not use up the author's one answer; a reviewer's
+// @mention is the Q&A's.
+func TestFindingReplyIsTheAuthorsOnly(t *testing.T) {
 	h, p := replyHarness(t)
 	p.Comment.Author.Name = "carol"
 
-	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
-
-	if !strings.Contains(h.llm.Replies[0].Prompt, "a reviewer, not the PR author") {
-		t.Errorf("the prompt must say who replied:\n%s", h.llm.Replies[0].Prompt)
+	if handled, _ := h.r.HandleFindingReply(context.Background(), p, "payments", nil); !handled {
+		t.Error("a plain reply by someone else is handled: ignored, nothing else to do")
 	}
-	if len(h.bb.Replies) != 1 || strings.Contains(h.bb.Replies[0].Text, "AGENTS.md") {
-		t.Errorf("replies = %+v, want an answer without a suggested line", h.bb.Replies)
+	p.Comment.Text = "@noergler why?"
+	if handled, _ := h.r.HandleFindingReply(context.Background(), p, "payments", nil); handled {
+		t.Error("someone else's @mention belongs to the Q&A")
 	}
-	if len(h.st.Replied) != 1 || h.st.Replied[0].Dispute != nil {
-		t.Errorf("replied = %+v, want answered, no dispute stored", h.st.Replied)
+	if len(h.llm.Replies) != 0 || len(h.st.Replied) != 0 {
+		t.Errorf("model %d, marked %d: a reviewer must not use up the author's answer", len(h.llm.Replies), len(h.st.Replied))
 	}
 }
 
@@ -220,8 +220,9 @@ func TestFindingReplyWithAMention(t *testing.T) {
 	}
 }
 
-// A reply is automatic, so the per-PR cost cap holds; an unpriced PR never
-// blocks.
+// A plain reply is automatic, so the per-PR cost cap holds. An @mention is
+// the explicit override, here as on the Q&A path, and reactivates an ignored
+// PR.
 func TestFindingReplyRespectsTheCostCap(t *testing.T) {
 	h, p := replyHarness(t)
 	h.st.prCost = ptri(6_000_000_000)
@@ -229,8 +230,45 @@ func TestFindingReplyRespectsTheCostCap(t *testing.T) {
 	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
 
 	if len(h.llm.Replies) != 0 {
-		t.Error("a PR at the cap must not buy a reply")
+		t.Error("a PR at the cap must not buy a plain reply")
 	}
+
+	at := time.Now()
+	h.st.skipState = &store.SkipState{IgnoredAt: &at}
+	p.Comment.Text = "@noergler we do this in the UI"
+	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+
+	if len(h.llm.Replies) != 1 {
+		t.Error("a mention overrides the cap")
+	}
+	if h.st.Reactived != 1 {
+		t.Errorf("reactivated = %d, want the ignored PR back", h.st.Reactived)
+	}
+}
+
+// A row stored with the model's b/ still finds its file; a line the push
+// cut off says so instead of claiming the file is unreadable.
+func TestFindingReplyFileExcerpt(t *testing.T) {
+	t.Run("side prefix", func(t *testing.T) {
+		h, p := replyHarness(t)
+		h.st.byComment[501].FilePath = "b/a.go"
+
+		h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+
+		if !strings.Contains(h.llm.Replies[0].Prompt, "    2  func new() {}") {
+			t.Errorf("prompt lacks the file:\n%s", h.llm.Replies[0].Prompt)
+		}
+	})
+	t.Run("line past the end", func(t *testing.T) {
+		h, p := replyHarness(t)
+		h.st.byComment[501].LineNumber = 400
+
+		h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+
+		if !strings.Contains(h.llm.Replies[0].Prompt, "Line 400 is past the end") {
+			t.Errorf("prompt:\n%s", h.llm.Replies[0].Prompt)
+		}
+	})
 }
 
 // No template, no feature: the team keeps reviewing.
