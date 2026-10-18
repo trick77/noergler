@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { FaqPage } from "./FaqPage";
 import { LivePage } from "./LivePage";
 import { MetricsPage } from "./MetricsPage";
@@ -6,18 +7,11 @@ import { RunsPage } from "./RunsPage";
 import { TeamsPage } from "./TeamsPage";
 import { PAGES, navigate, pageFromPath, type Page } from "./routing";
 
-const TITLES: Record<Page, string> = {
-  live: "Live",
-  runs: "Runs",
-  metrics: "Metrics",
-  teams: "Teams",
-  faq: "FAQ",
-};
-
 /** The shell: a fixed header over one scrolling page. No sidebar; the four
  *  pages sit in the header as a top nav, which is where ../rongo's rail rows
  *  would have been. */
 export default function App() {
+  const { t } = useTranslation();
   const [route, setRoute] = useState<Page>(() =>
     pageFromPath(window.location.pathname),
   );
@@ -29,8 +23,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    document.title = `${TITLES[route]} · noergler`;
-  }, [route]);
+    document.title = `${t(`nav.${route}`)} · noergler`;
+  }, [route, t]);
 
   const go = (page: Page) => {
     navigate(page);
@@ -44,7 +38,10 @@ export default function App() {
         <h1 className="font-serif text-[21px] leading-7 font-medium whitespace-nowrap text-wordmark">
           noergler
         </h1>
-        <nav className="flex flex-1 items-center gap-0.5" aria-label="Pages">
+        <nav
+          className="flex flex-1 items-center gap-0.5"
+          aria-label={t("nav.label")}
+        >
           {PAGES.map((p) => (
             <button
               key={p}
@@ -58,7 +55,7 @@ export default function App() {
                   : "text-muted hover:bg-active hover:text-ink")
               }
             >
-              {TITLES[p]}
+              {t(`nav.${p}`)}
             </button>
           ))}
           {/* An <a>, not a button: /api/docs is served by Go, outside this
@@ -70,7 +67,7 @@ export default function App() {
             href="/api/docs"
             className="rounded-ui-sm px-3 py-1.5 text-sm text-muted transition-colors hover:bg-active hover:text-ink"
           >
-            API
+            {t("nav.api")}
           </a>
         </nav>
       </header>

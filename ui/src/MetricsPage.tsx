@@ -1,6 +1,8 @@
+import { useTranslation } from "react-i18next";
 import type { Metrics } from "./api";
 import { Chart, Sparkline, type Series } from "./Chart";
 import { money, moneyTick, tokens } from "./format";
+import i18n from "./i18n";
 import { usePoll } from "./usePoll";
 import {
   Card,
@@ -72,32 +74,24 @@ function calendarDay(iso: string): number | null {
   return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
 }
 
-const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
-
 /** windowTitle names the window the API actually answered with, rather than
  *  the one the page assumed it asked for. */
 function windowTitle(m: Metrics): string {
   if (m.window !== "month")
-    return `the last ${days(m.since, m.until).length} days`;
+    return i18n.t("metrics.lastDays", {
+      count: days(m.since, m.until).length,
+    });
   // The server's month, read off the string: through the viewer's clock a
   // +02:00 server's September titles itself "August" in New York.
   const start = calendarDay(m.since);
-  if (start === null) return "this month";
-  const d = new Date(start);
-  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  if (start === null) return i18n.t("metrics.thisMonth");
+  // timeZone UTC: `start` is the server's calendar day as a UTC timestamp,
+  // so formatting it in the viewer's zone would shift it back a day.
+  return new Intl.DateTimeFormat(i18n.language, {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(start));
 }
 
 /** niceTicks picks 0 / half / max, rounded up so the top tick is a round
@@ -110,6 +104,7 @@ function niceTicks(max: number): number[] {
 }
 
 export function MetricsPage() {
+  const { t } = useTranslation();
   // No ?days=: the default window is the current calendar month, which is
   // the period a key's spend is budgeted and invoiced in.
   const { data, failed } = usePoll<Metrics>("metrics", 60000);
@@ -118,9 +113,9 @@ export function MetricsPage() {
     return (
       <div className={page}>
         <div className={column}>
-          <h2 className={h2}>Metrics</h2>
+          <h2 className={h2}>{t("nav.metrics")}</h2>
           {failed ? (
-            <Failed what="metrics" />
+            <Failed what={t("metrics.failedWhat")} />
           ) : (
             <div className="skeleton h-24 rounded-ui" />
           )}
@@ -145,14 +140,14 @@ export function MetricsPage() {
   // it from data.daily instead ordered by whichever team happened to appear
   // first on the earliest day, which is unspecified within a day: the same
   // data could repaint every series a different colour between two polls.
-  const ranked = data.by_team.map((t) => t.team);
+  const ranked = data.by_team.map((row) => row.team);
   const charted = ranked.slice(0, SERIES_COLORS.length - 1);
   const rest = ranked.slice(SERIES_COLORS.length - 1);
 
   // Series are matched by SLUG and labelled by name: data.daily is keyed by
   // slug, and two teams may well display the same name.
   const nameOf = (slug: string) =>
-    data.by_team.find((t) => t.team === slug)?.team_name ?? slug;
+    data.by_team.find((row) => row.team === slug)?.team_name ?? slug;
 
   const spendOn = (day: string, team: string) => {
     const row = data.daily.find((b) => b.day === day && b.team === team);
@@ -172,7 +167,10 @@ export function MetricsPage() {
     costSeries.push({
       // Not a slug: TeamSlugRE cannot start with "_", so no team collides.
       id: "__rest",
-      name: rest.length === 1 ? nameOf(rest[0]) : `${rest.length} more`,
+      name:
+        rest.length === 1
+          ? nameOf(rest[0])
+          : t("metrics.more", { count: rest.length }),
       color: SERIES_COLORS[SERIES_COLORS.length - 1],
       values: window.map((day) =>
         rest.reduce((sum, team) => sum + spendOn(day, team), 0),
@@ -203,19 +201,19 @@ export function MetricsPage() {
   const runSeries: Series[] = [
     {
       id: "reviewed",
-      name: "reviewed",
+      name: t("metrics.seriesReviewed"),
       color: "var(--color-s1)",
       values: bucket((o) => o === "ok"),
     },
     {
       id: "skipped",
-      name: "skipped",
+      name: t("metrics.seriesSkipped"),
       color: "var(--color-ochre)",
       values: bucket((o) => o === "skipped"),
     },
     {
       id: "failed",
-      name: "failed",
+      name: t("metrics.seriesFailed"),
       color: "var(--color-danger)",
       values: bucket((o) => o !== "ok" && o !== "skipped"),
     },
@@ -236,15 +234,11 @@ export function MetricsPage() {
             card says the same thing five times and crowds out what each
             card actually measures. */}
         <h2 className={h2}>
-          Metrics
+          {t("nav.metrics")}
           <Sep />
           <span className="text-muted">{title}</span>
         </h2>
-        <p className={lede}>
-          What this month cost and how much got reviewed. Runs the gateway never
-          priced are counted on their own rather than added in as zero, so the
-          total is not quietly too low.
-        </p>
+        <p className={lede}>{t("metrics.lede")}</p>
 
         <Tiles>
           {/* On an instance that has not run yet, "unpriced" would claim the
@@ -252,41 +246,44 @@ export function MetricsPage() {
               dash. "unpriced" is reserved for runs that actually happened
               and came back without a price. */}
           <Tile
-            label="Cost"
+            label={t("metrics.cost")}
             value={data.totals.runs === 0 ? "—" : money(data.totals.cost_usd)}
           >
             {costTop > 0 && (
               <div className="mt-2">
-                <Sparkline values={costTotals} label="Cost trend" />
+                <Sparkline values={costTotals} label={t("metrics.costTrend")} />
               </div>
             )}
           </Tile>
-          <Tile label="Reviewed" value={data.totals.runs.toLocaleString()}>
+          <Tile
+            label={t("metrics.reviewed")}
+            value={data.totals.runs.toLocaleString()}
+          >
             {/* A flat line of zeros is a line that says nothing. */}
             {data.totals.runs > 0 && (
               <div className="mt-2">
                 <Sparkline
                   values={runSeries[0].values}
-                  label="Reviewed trend"
+                  label={t("metrics.reviewedTrend")}
                 />
               </div>
             )}
           </Tile>
           <Tile
-            label="Findings"
+            label={t("metrics.findings")}
             value={data.totals.findings_posted.toLocaleString()}
           />
           <Tile
-            label="Unpriced"
+            label={t("metrics.unpriced")}
             value={data.totals.unpriced_runs}
-            note="runs"
+            note={t("metrics.runsNote")}
           />
         </Tiles>
 
-        <p className={eyebrow}>Cost per day</p>
-        <Card title="Spend" note="USD, priced runs only">
+        <p className={eyebrow}>{t("metrics.costPerDay")}</p>
+        <Card title={t("metrics.spend")} note={t("metrics.spendNote")}>
           {costTop === 0 ? (
-            <Empty>No priced runs in this window.</Empty>
+            <Empty>{t("metrics.noPriced")}</Empty>
           ) : (
             <>
               <Chart
@@ -297,17 +294,20 @@ export function MetricsPage() {
                 ticks={costTicks}
                 xLabels={window.map(label)}
                 format={moneyTick(costTicks)}
-                label={`Cost per day for ${title}, by team`}
+                label={t("metrics.costChart", { title })}
               />
               <Legend series={costSeries} />
             </>
           )}
         </Card>
 
-        <p className={eyebrow}>Runs per day</p>
-        <Card title="Throughput" note="reviewed, skipped and failed runs">
+        <p className={eyebrow}>{t("metrics.runsPerDay")}</p>
+        <Card
+          title={t("metrics.throughput")}
+          note={t("metrics.throughputNote")}
+        >
           {runTop === 0 ? (
-            <Empty>No runs in this window.</Empty>
+            <Empty>{t("metrics.noRuns")}</Empty>
           ) : (
             <>
               <Chart
@@ -317,53 +317,50 @@ export function MetricsPage() {
                 mark="bar"
                 ticks={niceTicks(runTop)}
                 xLabels={window.map(label)}
-                label={`Runs per day for ${title}`}
+                label={t("metrics.runsChart", { title })}
               />
               <Legend series={runSeries} />
             </>
           )}
         </Card>
 
-        <p className={eyebrow}>By team</p>
+        <p className={eyebrow}>{t("metrics.byTeam")}</p>
         <Card>
           {data.by_team.length === 0 ? (
-            <Empty>Nothing reviewed in this window.</Empty>
+            <Empty>{t("metrics.nothingReviewed")}</Empty>
           ) : (
             <div className="overflow-x-auto overscroll-x-contain">
               <table className={table}>
                 <thead>
                   <tr>
-                    <th className={th}>Team</th>
-                    <th className={thNum}>Reviewed</th>
-                    <th className={thNum}>Tokens in</th>
-                    <th className={thNum}>Tokens out</th>
-                    <th className={thNum}>Findings</th>
-                    <th className={thNum}>Cost</th>
+                    <th className={th}>{t("metrics.team")}</th>
+                    <th className={thNum}>{t("metrics.reviewed")}</th>
+                    <th className={thNum}>{t("metrics.tokensIn")}</th>
+                    <th className={thNum}>{t("metrics.tokensOut")}</th>
+                    <th className={thNum}>{t("metrics.findings")}</th>
+                    <th className={thNum}>{t("metrics.cost")}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {data.by_team.map((t) => (
+                  {data.by_team.map((row) => (
                     // Ranked by spend, deliberately: this table answers
                     // "who is spending", so it is not sorted by name.
-                    <tr key={t.team}>
-                      <td className={td} title={t.team}>
-                        {t.team_name}
+                    <tr key={row.team}>
+                      <td className={td} title={row.team}>
+                        {row.team_name}
                       </td>
-                      <td className={tdNum}>{t.runs}</td>
-                      <td className={tdNum}>{tokens(t.prompt_tokens)}</td>
-                      <td className={tdNum}>{tokens(t.completion_tokens)}</td>
-                      <td className={tdNum}>{t.findings_posted}</td>
-                      <td className={tdNum}>{money(t.cost_usd)}</td>
+                      <td className={tdNum}>{row.runs}</td>
+                      <td className={tdNum}>{tokens(row.prompt_tokens)}</td>
+                      <td className={tdNum}>{tokens(row.completion_tokens)}</td>
+                      <td className={tdNum}>{row.findings_posted}</td>
+                      <td className={tdNum}>{money(row.cost_usd)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-          <Note>
-            Ordered by spend. Costs the gateway never reported are missing from
-            this table.
-          </Note>
+          <Note>{t("metrics.byTeamNote")}</Note>
         </Card>
       </div>
     </div>

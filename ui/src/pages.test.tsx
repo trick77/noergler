@@ -193,7 +193,7 @@ describe("LivePage", () => {
     );
     expect(mobileCells).toEqual([
       "Mobile",
-      "timed_out",
+      "timed out",
       "1",
       "never",
       "5m ago",
@@ -316,7 +316,7 @@ describe("RunsPage", () => {
     serve({ runs: { runs }, metrics });
     render(<RunsPage />);
 
-    expect(await screen.findByText("timed_out")).toBeDefined();
+    expect(await screen.findByText("timed out")).toBeDefined();
     // A skip's pill names its reason, not the bare outcome.
     expect(await screen.findByText("unchanged")).toBeDefined();
     expect(screen.getAllByText("ok")).toHaveLength(2);

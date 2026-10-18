@@ -106,6 +106,11 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - Dashboard: unauthenticated by design (the ingress is the boundary).
   `ui/src/routing.ts` and the `web/embed.go` allowlist are one list. The
   chart series ramp is CVD-validated: never re-picked by eye.
+- Dashboard text only through `ui/src/i18n` (i18next): `de` mirrors `en`
+  (`satisfies Catalog`, same placeholders), Swiss German, no `ß`. Language =
+  browser only, `de*` -> German, else English; no switch, no stored choice
+  (decided). Review text (findings, replies) stays in the language it was
+  produced in; the UI labels skip reasons by code, the server's label only as fallback.
 
 ## Review pipeline
 

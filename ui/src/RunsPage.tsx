@@ -1,6 +1,15 @@
 import type { Metrics, Runs } from "./api";
-import { ago, duration, money, outcomeTone, outcomeWord } from "./format";
+import {
+  ago,
+  duration,
+  money,
+  outcomeTone,
+  outcomeTitle,
+  outcomeWord,
+  reasonLabel,
+} from "./format";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { usePoll, useNow } from "./usePoll";
 import {
   Card,
@@ -46,13 +55,14 @@ function counts(m: Metrics | null): Counts {
  *  window, so filtering what came back can show nothing while failures sit
  *  just past its edge - which reads as "nothing failed". */
 type Filter = "" | "failed" | "skipped";
-const FILTERS: { value: Filter; label: string }[] = [
-  { value: "", label: "All" },
-  { value: "failed", label: "Failed" },
-  { value: "skipped", label: "Skipped" },
-];
+const FILTERS = [
+  { value: "", label: "runs.filterAll" },
+  { value: "failed", label: "runs.filterFailed" },
+  { value: "skipped", label: "runs.filterSkipped" },
+] as const satisfies readonly { value: Filter; label: string }[];
 
 export function RunsPage() {
+  const { t } = useTranslation();
   const [filter, setFilter] = useState<Filter>("");
   const query = `runs?limit=50${filter === "" ? "" : `&outcome=${filter}`}`;
   const { data, failed, stale } = usePoll<Runs>(query, 10000);
@@ -65,9 +75,9 @@ export function RunsPage() {
     return (
       <div className={page}>
         <div className={column}>
-          <h2 className={h2}>Runs</h2>
+          <h2 className={h2}>{t("nav.runs")}</h2>
           {failed ? (
-            <Failed what="the runs feed" />
+            <Failed what={t("runs.failedWhat")} />
           ) : (
             <div className="skeleton h-24 rounded-ui" />
           )}
@@ -89,24 +99,26 @@ export function RunsPage() {
   return (
     <div className={page}>
       <div className={column}>
-        <h2 className={h2}>Runs</h2>
-        <p className={lede}>
-          What noergler did with every PR this month, including the ones it
-          decided not to review, and the latest 50 runs below. Skipped means it
-          never asked the model. Failed means it asked and something went wrong.
-        </p>
+        <h2 className={h2}>{t("nav.runs")}</h2>
+        <p className={lede}>{t("runs.lede")}</p>
 
         {/* A dash, not a zero, until the counts are read, failed or still
             loading: the feed below may be full, and four tiles reading 0
             beside it would be a claim rather than an absence. */}
         <Tiles>
-          <Tile label="Runs" value={counted ? c.total : "—"} />
-          <Tile label="Reviewed" value={counted ? c.reviewed : "—"} />
-          <Tile label="Skipped" value={counted ? c.skipped : "—"} />
-          <Tile label="Failed" value={counted ? c.failed : "—"} />
+          <Tile label={t("runs.tileRuns")} value={counted ? c.total : "—"} />
+          <Tile
+            label={t("runs.tileReviewed")}
+            value={counted ? c.reviewed : "—"}
+          />
+          <Tile
+            label={t("runs.tileSkipped")}
+            value={counted ? c.skipped : "—"}
+          />
+          <Tile label={t("runs.tileFailed")} value={counted ? c.failed : "—"} />
         </Tiles>
 
-        <p className={eyebrow}>Latest 50 runs</p>
+        <p className={eyebrow}>{t("runs.latest")}</p>
         <Card
           right={
             <span className="flex gap-0.5">
@@ -123,7 +135,7 @@ export function RunsPage() {
                       : "text-muted hover:bg-panel hover:text-ink")
                   }
                 >
-                  {f.label}
+                  {t(f.label)}
                 </button>
               ))}
             </span>
@@ -132,8 +144,10 @@ export function RunsPage() {
           {data.runs.length === 0 ? (
             <Empty>
               {filter === ""
-                ? "No runs recorded yet."
-                : `No ${filter} runs recorded yet.`}
+                ? t("runs.empty")
+                : filter === "failed"
+                  ? t("runs.emptyFailed")
+                  : t("runs.emptySkipped")}
             </Empty>
           ) : (
             <div
@@ -147,13 +161,13 @@ export function RunsPage() {
               <table className={table}>
                 <thead>
                   <tr>
-                    <th className={th}>Pull request</th>
-                    <th className={th + " w-px"}>Team</th>
-                    <th className={th + " w-px"}>Outcome</th>
-                    <th className={thNum}>Findings</th>
-                    <th className={thNum}>Elapsed</th>
-                    <th className={thNum}>Cost</th>
-                    <th className={thNum}>When</th>
+                    <th className={th}>{t("runs.pullRequest")}</th>
+                    <th className={th + " w-px"}>{t("runs.team")}</th>
+                    <th className={th + " w-px"}>{t("runs.outcome")}</th>
+                    <th className={thNum}>{t("runs.findings")}</th>
+                    <th className={thNum}>{t("runs.elapsed")}</th>
+                    <th className={thNum}>{t("runs.cost")}</th>
+                    <th className={thNum}>{t("runs.when")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -171,11 +185,11 @@ export function RunsPage() {
                             into three or four lines. */}
                         <Pill
                           tone={outcomeTone(r.outcome)}
-                          title={
-                            r.outcome !== "ok"
-                              ? r.reason_label || r.reason
-                              : undefined
-                          }
+                          title={outcomeTitle(
+                            r.outcome,
+                            r.reason,
+                            r.reason_label,
+                          )}
                         >
                           {outcomeWord(r.outcome, r.reason)}
                         </Pill>
@@ -203,26 +217,26 @@ export function RunsPage() {
           )}
         </Card>
 
-        <p className={eyebrow}>Why runs were skipped</p>
+        <p className={eyebrow}>{t("runs.whySkipped")}</p>
         <Card>
           {metrics.failed ? (
-            <Empty>Counts unavailable.</Empty>
+            <Empty>{t("runs.countsUnavailable")}</Empty>
           ) : metrics.data === null ? (
             <div className="skeleton h-12 rounded-ui" />
           ) : skips.length === 0 ? (
-            <Empty>Nothing was skipped.</Empty>
+            <Empty>{t("runs.nothingSkipped")}</Empty>
           ) : (
             <table className={table}>
               <thead>
                 <tr>
-                  <th className={th}>Reason</th>
-                  <th className={thNum}>Count</th>
+                  <th className={th}>{t("runs.reason")}</th>
+                  <th className={thNum}>{t("runs.count")}</th>
                 </tr>
               </thead>
               <tbody>
                 {skips.map((b) => (
                   <tr key={b.reason}>
-                    <td className={td}>{b.label ?? b.reason}</td>
+                    <td className={td}>{reasonLabel(b.reason, b.label)}</td>
                     <td className={tdNum}>{b.count}</td>
                   </tr>
                 ))}

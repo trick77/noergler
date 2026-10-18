@@ -2,6 +2,7 @@
 // rather than wrapped in components where a component would add nothing: the
 // page reads as markup, and a change lands in one place.
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { prUrl, type Tone } from "./format";
 
 /** Sep is the dot between the clauses of a note or a heading.
@@ -38,15 +39,20 @@ const toneClass: Record<Tone, string> = {
   ok: "bg-online/15 text-[#82c491]",
   skip: "bg-ochre-wash text-ochre",
   fail: "bg-danger/15 text-danger-ink",
+  none: "bg-elevated text-ink-dim",
 };
 const dotClass: Record<Tone, string> = {
   ok: "bg-online",
   skip: "bg-ochre",
   fail: "bg-danger",
+  none: "bg-muted",
 };
 
 /** Pill always carries its word. The ok/skip/fail hues sit at dE 7.6 under
- *  protanopia, so the dot is a second cue and never the only one. */
+ *  protanopia, so the dot is a second cue and never the only one. none sits
+ *  on the elevated fill: bg-active is already a card header, a chip and the
+ *  loading skeleton. Its text is ink-dim, because muted on that fill misses
+ *  AA (4.31:1). */
 export function Pill({
   tone,
   title,
@@ -200,11 +206,13 @@ export function Note({ children }: { children: ReactNode }) {
   return <p className="mt-2.5 text-[12.5px] text-faint">{children}</p>;
 }
 
+/** Failed takes `what` already translated, in the case the sentence needs
+ *  ("the live panel", "das Live-Panel"). */
 export function Failed({ what }: { what: string }) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-ui border border-border bg-panel px-3.5 py-3 text-[13.5px] text-muted">
-      Could not load {what}. The instance may be starting, or the database may
-      be unreachable.
+      {t("common.failed", { what })}
     </div>
   );
 }

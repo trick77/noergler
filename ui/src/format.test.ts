@@ -5,10 +5,12 @@ import {
   duration,
   money,
   moneyTick,
+  outcomeTitle,
   outcomeTone,
   outcomeWord,
   prUrl,
   teamStateLabel,
+  teamStateTitle,
   teamTone,
   tokens,
 } from "./format";
@@ -204,9 +206,23 @@ describe("outcomeWord", () => {
     expect(outcomeWord("skipped")).toBe("skipped");
   });
 
-  it("leaves every other outcome as its own word", () => {
+  it("words every other outcome for a reader, not as its code", () => {
     expect(outcomeWord("ok")).toBe("ok");
-    expect(outcomeWord("timed_out")).toBe("timed_out");
+    expect(outcomeWord("timed_out")).toBe("timed out");
+    // Written by a newer binary: its code, readable.
+    expect(outcomeWord("rate_limited")).toBe("rate limited");
+  });
+
+  // The pill shows a reader's word; the stored code an operator greps the
+  // log and the database for stays on the tooltip.
+  it("keeps a failure's stored code on the tooltip", () => {
+    expect(outcomeTitle("too_large")).toBe("Code: too_large");
+    // A team that never ran has no outcome: a dash, no tooltip, never blank.
+    expect(outcomeWord("")).toBe("—");
+    expect(outcomeTitle("")).toBeUndefined();
+    expect(outcomeTone("")).toBe("none");
+    expect(outcomeTitle("ok")).toBeUndefined();
+    expect(outcomeTitle("skipped", "empty_diff")).toBe("Empty diff");
   });
 });
 
@@ -230,7 +246,14 @@ describe("team state", () => {
 
   it("reads an unknown state as a fault rather than as success", () => {
     expect(teamTone("invented_later")).toBe("fail");
-    expect(teamStateLabel("invented_later")).toBe("invented_later");
+    expect(teamStateLabel("invented_later")).toBe("invented later");
+    // Its stored code stays on the tooltip; a known state needs none.
+    expect(teamStateTitle("invented_later")).toBe("Code: invented_later");
+    expect(teamStateTitle("ready")).toBeUndefined();
+    // Empty is a broken contract, not "no value": red, like any unknown,
+    // with a tooltip naming the empty value.
+    expect(teamTone("")).toBe("fail");
+    expect(teamStateTitle("")).toBe('Code: ""');
   });
 
   it("labels each state", () => {

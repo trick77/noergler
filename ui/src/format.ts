@@ -1,5 +1,8 @@
 // Formatters. Every number a person reads passes through one of these, so
-// the page never decides locally how money or a duration looks.
+// the page never decides locally how money or a duration looks. Their words
+// come from the i18n catalog; the shapes of numbers do not change with it.
+import i18n from "./i18n";
+import { en, type Catalog } from "./i18n/en";
 
 /** money renders the API's decimal string, rounded to cents.
  *
@@ -15,7 +18,7 @@
  *  toFixed(2) answers $1.00. A 3-decimal string ending in 5 is the common
  *  case here, not a corner. */
 export function money(usd: string | null): string {
-  if (usd === null) return "unpriced";
+  if (usd === null) return i18n.t("common.unpriced");
   return `$${roundToCents(usd)}`;
 }
 
@@ -66,17 +69,17 @@ export function duration(ms: number | null): string {
  *  re-renders a seconds counter every tick draws the eye to the clock rather
  *  than to what changed. */
 export function ago(iso: string | null, now: number = Date.now()): string {
-  if (iso === null) return "never";
+  if (iso === null) return i18n.t("common.never");
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return "—";
   const s = Math.max(0, Math.round((now - then) / 1000));
-  if (s < 10) return "just now";
-  if (s < 60) return `${s}s ago`;
+  if (s < 10) return i18n.t("common.justNow");
+  if (s < 60) return i18n.t("common.secondsAgo", { count: s });
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return i18n.t("common.minutesAgo", { count: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+  if (h < 24) return i18n.t("common.hoursAgo", { count: h });
+  return i18n.t("common.daysAgo", { count: Math.floor(h / 24) });
 }
 
 /** elapsedSince is the live "running for" figure. */
@@ -94,44 +97,99 @@ export function tokens(n: number): string {
   return `${(n / 1_000_000).toFixed(1)}M`;
 }
 
-/** outcomeTone maps an outcome to its pill. Three tones, not one per
- *  outcome: ok, a decision the pipeline made, and something that went wrong.
- *  The pill always carries the word too, because the ok/skip/fail hues sit at
- *  dE 7.6 under protanopia and colour alone would not separate them. */
-export type Tone = "ok" | "skip" | "fail";
+/** outcomeTone maps an outcome to its pill. Four tones, not one per
+ *  outcome: ok, a decision the pipeline made, something that went wrong, and
+ *  none for no value at all (a team that never ran), grey because it is none
+ *  of the three. Only outcomeTone uses none: teamTone keeps an empty state
+ *  red on purpose, since the server always names one. The pill always
+ *  carries the word too, because the
+ *  ok/skip/fail hues sit at dE 7.6 under protanopia and colour alone would
+ *  not separate them. */
+export type Tone = "ok" | "skip" | "fail" | "none";
 
 export function outcomeTone(outcome: string): Tone {
   if (outcome === "ok") return "ok";
+  if (outcome === "") return "none";
   if (outcome === "skipped") return "skip";
   return "fail";
 }
-
-/** The pill word for each skip reason. Short, because the long label beside
- *  a pill wrapped the Outcome cell into three or four lines; the long label
- *  moves to the pill's tooltip. Keys are review.SkipReason values, which are
- *  stored and stable. */
-const skipWords: Record<string, string> = {
-  not_auto_review_author: "not opted in",
-  ignored_author: "ignored",
-  pr_ignored: "PR ignored",
-  branch_opt_out: "opted out",
-  agents_md_missing: "no AGENTS.md",
-  agents_md_too_large: "AGENTS.md too big",
-  pr_cost_cap: "cost cap",
-  no_reviewable_files: "nothing to review",
-  empty_diff: "empty diff",
-  head_unchanged: "unchanged",
-  diff_too_large: "too large",
-  repo_not_claimed: "unclaimed",
-};
 
 /** outcomeWord is the word on a run's outcome pill. A skip names its reason;
  *  a skip whose reason this build does not know still says "skipped", so a
  *  row written by a newer binary never renders blank. Every skip keeps the
  *  skip tone, so the Skipped filter and counts still read as one group. */
 export function outcomeWord(outcome: string, reason?: string): string {
-  if (outcome !== "skipped") return outcome;
-  return (reason && skipWords[reason]) || "skipped";
+  if (outcome !== "skipped") {
+    return known("outcome", outcome)
+      ? i18n.t(`outcome.${outcome}`)
+      : readable(outcome);
+  }
+  return reason && known("skipWord", reason)
+    ? i18n.t(`skipWord.${reason}`)
+    : i18n.t("outcome.skipped");
+}
+
+/** readable is the one fallback for a code this build has no word for (a
+ *  newer binary wrote it): the code with spaces for underscores, and a dash
+ *  for no code at all, so a pill is never blank. */
+function readable(code: string): string {
+  return code === "" ? "—" : code.replaceAll("_", " ");
+}
+
+/** outcomeTitle is the pill's tooltip: a skip's long reason, and for a
+ *  failure the stored code (too_large), which is what the log and the
+ *  database say. The pill shows a reader's word; the code an operator greps
+ *  for stays one hover away, marked as a code so a German reader does not
+ *  take it for a missed translation. */
+export function outcomeTitle(
+  outcome: string,
+  reason?: string,
+  serverLabel?: string,
+): string | undefined {
+  if (outcome === "ok" || outcome === "") return undefined;
+  if (outcome === "skipped") return reasonLabel(reason, serverLabel);
+  return codeText(outcome);
+}
+
+/** codeText marks a stored code as one ("Code: too_large") wherever the UI
+ *  shows a code: on a failure's tooltip next to its word, or in place of a
+ *  word this build lacks. The thing to grep for, never mistaken for a missed
+ *  translation. */
+function codeText(code: string): string {
+  return i18n.t("common.code", { code });
+}
+
+/** known narrows a stored code to a key of its catalog group, so the lookup
+ *  below it stays type-checked: a renamed group or a misspelt prefix fails
+ *  the build instead of every pill quietly falling back. A code the catalog
+ *  does not know (a newer binary wrote it) answers false and takes the
+ *  caller's fallback. Asked of en: de mirrors its keys exactly (satisfies
+ *  Catalog), so the answer holds for either language.
+ *
+ *  Only the plain code -> word groups qualify. A nested group (faq) or one
+ *  with {{placeholders}} (common) would let a caller render an object or a
+ *  raw template. */
+type CodeGroup = "outcome" | "skipWord" | "reason" | "teamState";
+
+function known<G extends CodeGroup>(
+  group: G,
+  code: string,
+): code is Extract<keyof Catalog[G], string> {
+  return Object.hasOwn(en[group], code);
+}
+
+/** reasonLabel is the long form of a skip reason, for a tooltip or a
+ *  table. Keys are review.SkipReason values, stored and stable; a code this
+ *  build does not know falls back to the label the server sent, then to the
+ *  code, marked as one (codeText): what an operator greps for. */
+export function reasonLabel(
+  reason?: string,
+  serverLabel?: string,
+): string | undefined {
+  if (!reason) return serverLabel || undefined;
+  return known("reason", reason)
+    ? i18n.t(`reason.${reason}`)
+    : serverLabel || codeText(reason);
 }
 
 /** teamTone maps a team's state to its pill.
@@ -141,18 +199,29 @@ export function outcomeWord(outcome: string, reason?: string): string {
  *  working; red would claim it is broken. Ochre is "your move", which is
  *  exactly right, because somebody has to claim a repository. */
 export function teamTone(state: string): Tone {
+  // No "" case: the server always names the state, so an empty one is a
+  // broken contract and stays red like any unknown state. (An empty outcome
+  // is different: a team that never ran really has none.)
   if (state === "ready") return "ok";
   if (state === "no_repos") return "skip";
   return "fail";
 }
 
-/** teamStateLabel is the word on the pill. An unknown state prints itself
- *  rather than rendering blank. */
+/** teamStateLabel is the word on the pill. An unknown state prints readably
+ *  (readable) rather than rendering blank, and teamStateTitle keeps its
+ *  stored code on the tooltip. */
 export function teamStateLabel(state: string): string {
-  if (state === "ready") return "ready";
-  if (state === "no_repos") return "no repos";
-  if (state === "disabled") return "disabled";
-  return state;
+  return known("teamState", state)
+    ? i18n.t(`teamState.${state}`)
+    : readable(state);
+}
+
+/** teamStateTitle is the code of a state this build has no word for, the
+ *  thing to grep for; a known state needs no tooltip. */
+export function teamStateTitle(state: string): string | undefined {
+  // An empty state is a broken contract (teamTone paints it red), so it
+  // gets a tooltip too, naming the empty value.
+  return known("teamState", state) ? undefined : codeText(state || '""');
 }
 
 /** prUrl turns a PROJECT/repo#id tag into its Bitbucket URL, or null when it
