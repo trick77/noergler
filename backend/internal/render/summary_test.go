@@ -275,10 +275,16 @@ func summaryCases() map[string]SummaryInput {
 	// Files over the token budget are counted on the line itself, so the
 	// count never reads as "all of them reviewed".
 	overBudget := base()
-	overBudget.TotalFiles, overBudget.FilesCountsSet, overBudget.FilesOverBudget = 40, true, 25
+	overBudget.TotalFiles, overBudget.FilesCountsSet = 40, true
+	overBudget.SkippedFiles = []string{"bundle.properties"}
 	overBudget.OverBudgetFiles = []string{"a.go", "b.go"}
 	overBudget.DiffAdded = 10
 	cases["files_over_budget"] = overBudget
+
+	allFiles := base()
+	allFiles.TotalFiles, allFiles.FilesCountsSet = 4, true
+	allFiles.DiffAdded = 10
+	cases["files_all_reviewed"] = allFiles
 
 	diffOnly := base()
 	diffOnly.DiffAdded, diffOnly.DiffRemoved = 5, 3

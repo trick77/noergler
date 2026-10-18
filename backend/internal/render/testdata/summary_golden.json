@@ -38,8 +38,11 @@
  "empty": {
   "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues and suggestions\nNone.\n\n### Security and performance\nNone notable.\n\n### Test coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n\n_`gpt-5.5-medium` · cost not reported_"
  },
+ "files_all_reviewed": {
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues and suggestions\nNone.\n\n### Security and performance\nNone notable.\n\n### Test coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n\n_`gpt-5.5-medium` · 4 files · +10 · cost not reported_"
+ },
  "files_over_budget": {
-  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues and suggestions\nNone.\n\n### Security and performance\nNone notable.\n\n### Test coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Not reviewed (PR over the model's token budget): `a.go`, `b.go` ⚠️_\n\n_`gpt-5.5-medium` · 40 files, 25 not reviewed · +10 · cost not reported_"
+  "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues and suggestions\nNone.\n\n### Security and performance\nNone notable.\n\n### Test coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n- _Not reviewed (too large): `bundle.properties` ⚠️_\n- _Not reviewed (PR over the model's token budget): `a.go`, `b.go` ⚠️_\n\n_`gpt-5.5-medium` · 40 files, 3 not reviewed · +10 · cost not reported_"
  },
  "headline_empty_string": {
   "out": "### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues and suggestions\n1. Body here.\n\n### Security and performance\nNone notable.\n\n### Test coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n\n_`gpt-5.5-medium` · cost not reported_"

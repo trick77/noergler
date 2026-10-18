@@ -87,9 +87,6 @@ type SummaryInput struct {
 	ReviewedCommit  string
 	IncrementalFrom string
 	TotalFiles      int
-	// FilesOverBudget is how many of TotalFiles compression left out of
-	// the prompt: counted, so "40 files" never reads as all reviewed.
-	FilesOverBudget int
 	FilesCountsSet  bool
 	DiffAdded       int
 	DiffRemoved     int
@@ -433,12 +430,13 @@ func telemetryLine(in SummaryInput) string {
 	if in.ModelLabel != "" {
 		parts = append(parts, "`"+in.ModelLabel+"`")
 	}
-	// One count, over the same files as the +/- lines; what was not
-	// reviewed is named on the warning lines above, not netted out here.
+	// Every reviewable file, over the same set as the +/- lines. How many of
+	// them were not reviewed is counted from the warning lines above, so the
+	// two never disagree and "40 files" never reads as all reviewed.
 	if in.FilesCountsSet {
 		files := PluralIn(in.Lang, in.TotalFiles, "Datei", "Dateien", "file", "files")
-		if in.FilesOverBudget > 0 {
-			files += fmt.Sprintf(p(", %d nicht geprüft", ", %d not reviewed"), in.FilesOverBudget)
+		if n := len(in.SkippedFiles) + len(in.OverBudgetFiles); n > 0 {
+			files += fmt.Sprintf(p(", %d nicht geprüft", ", %d not reviewed"), n)
 		}
 		parts = append(parts, files)
 	}

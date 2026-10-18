@@ -19,10 +19,9 @@ import (
 // reason is logged and the file is reviewed from its diff alone, which is not
 // the same thing and is not reported to the reader.
 //
-// added and removed count the reviewable files' diff lines (not the
-// size-gated ones: the run row stores these, and a regenerated bundle would
-// swamp them), in the same pass that classifies them: the raw diff is
-// uncapped, so it is split once.
+// added and removed count every reviewable file's diff lines, size-gated
+// ones included, exactly as the merge-time rollup does, in the same pass that
+// classifies them: the raw diff is uncapped, so it is split once.
 //
 // oversized names the files the size gate kept out of the review, for the
 // summary's "not reviewed" line.
@@ -36,6 +35,11 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 				r.log.InfoContext(ctx, fmt.Sprintf("%s: skipped as oversized: %s (%d changed lines > %d)",
 					prTag, path, changed, limit))
 				oversized = append(oversized, path)
+				// Counted like any reviewable file, as the merge-time
+				// rollup (countDiffLines) counts it: not reviewed, but
+				// changed.
+				a, d := diff.CountChangedLines(fd)
+				added, removed = added+a, removed+d
 				continue
 			}
 			reviewable = append(reviewable, fd)

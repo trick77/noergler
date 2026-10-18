@@ -215,9 +215,6 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		return nil, ctx, r.abort(ctx, key, kind, SkipNoReviewable, prTag, httpCounter)
 	}
 
-	// The footer's file count: every file that entered the review (deleted
-	// and renamed ones included), the same set its +/- lines are counted
-	// over. Files that were then not reviewed are named on their own lines.
 	totalFiles := len(files)
 
 	// 14. Small PRs get context expansion; large ones are compressed first.
@@ -329,9 +326,13 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		parentTicket:   parentTicket,
 		breakdown:      breakdown(assembled),
 		agentsMDFound:  repoInstructions != "",
-		totalFiles:     totalFiles,
-		diffAdded:      diffAdded,
-		diffRemoved:    diffRemoved,
+		// Every reviewable changed file, size-gated ones included: the set
+		// the +/- lines cover and the merge-time rollup counts
+		// (countReviewableFiles), so the run row, the footer and the rollup
+		// agree. What was not reviewed is a subset, named on its own lines.
+		totalFiles:  totalFiles + len(oversized),
+		diffAdded:   diffAdded,
+		diffRemoved: diffRemoved,
 	}, ctx, true
 }
 
@@ -435,9 +436,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	// by this point, so a crash before InsertRun leaves them there with no
 	// finding row.
 	runID := r.recordRun(ctx, prReviewID, result, sourceCommit, plan.incrementalFrom, plan.mention,
-		// files_changed counts the size-gated files too, as the merge-time
-		// rollup (countReviewableFiles) does; the footer's count does not.
-		elapsed, postedCount, plan.diffAdded, plan.diffRemoved, plan.totalFiles+len(plan.oversized))
+		elapsed, postedCount, plan.diffAdded, plan.diffRemoved, plan.totalFiles)
 	r.recordFindings(ctx, prReviewID, runID, findings, postedIDs)
 	r.retireFixed(ctx, plan, fixed, runID)
 
@@ -485,7 +484,6 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		IncrementalFrom:            plan.incrementalFrom,
 		TotalFiles:                 plan.totalFiles,
 		FilesCountsSet:             true,
-		FilesOverBudget:            len(plan.overBudget),
 		DiffAdded:                  plan.diffAdded,
 		DiffRemoved:                plan.diffRemoved,
 		ModelLabel:                 r.llm.Label(),

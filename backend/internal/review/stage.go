@@ -78,9 +78,9 @@ type reviewPlan struct {
 	parentTicket  *jira.Ticket
 	breakdown     render.PromptBreakdown
 	agentsMDFound bool
-	// totalFiles is every file that entered the review, deleted and renamed
-	// ones included: the set diffAdded and diffRemoved count. Files not then
-	// reviewed (oversized never entered; overBudget did) are named apart.
+	// totalFiles is every reviewable changed file, size-gated ones included:
+	// the set diffAdded and diffRemoved count, and the run row stores. The
+	// unreviewed ones (oversized, overBudget) are a subset of it.
 	totalFiles  int
 	diffAdded   int
 	diffRemoved int
