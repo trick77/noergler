@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -45,13 +46,17 @@ type LLMCall struct {
 }
 
 // insertLLMCall writes one review call under its attempt, inside the
-// attempt's transaction.
-func insertLLMCall(ctx context.Context, tx pgx.Tx, attemptID int64, a Attempt, c LLMCall) error {
-	warnings := c.Warnings
-	if warnings == nil {
-		warnings = []string{}
+// attempt, after the attempt is committed.
+//
+// The strings are the gateway's own (header values, the response's model,
+// llmwire's warning text), so they are made storable first: Postgres refuses
+// invalid UTF-8 and NUL bytes, and a refused row would lose the whole call.
+func (s *Store) insertLLMCall(ctx context.Context, attemptID int64, a Attempt, c LLMCall) error {
+	warnings := make([]string, 0, len(c.Warnings))
+	for _, w := range c.Warnings {
+		warnings = append(warnings, storable(w))
 	}
-	_, err := tx.Exec(ctx, `
+	_, err := s.pool.Exec(ctx, `
 		INSERT INTO llm_calls
 		    (attempt_id, team_slug, project_key, repo_slug, pr_id, kind,
 		     profile, model, deployment, reasoning_sent, finish_reason, call_id, litellm_version,
@@ -66,13 +71,20 @@ func insertLLMCall(ctx context.Context, tx pgx.Tx, attemptID int64, a Attempt, c
 		        $19, $20, $21, $22, $23, $24, $25,
 		        $26, $27, $28, $29)`,
 		attemptID, a.TeamSlug, a.Key.Project, a.Key.Repo, a.Key.PRID,
-		c.Profile, c.Model, c.Deployment, c.ReasoningSent, c.FinishReason, c.CallID, c.GatewayVer,
+		storable(c.Profile), storable(c.Model), storable(c.Deployment), storable(c.ReasoningSent),
+		storable(c.FinishReason), storable(c.CallID), storable(c.GatewayVer),
 		c.InputTokens, c.InputUncachedTokens, c.CacheReadTokens, c.CacheWriteTokens,
 		c.OutputTokens, c.ReasoningTokens,
 		c.CostNanoUSD, c.CostInputNanoUSD, c.CostCacheReadNanoUSD, c.CostCacheWriteNanoUSD,
 		c.CostOutputNanoUSD, c.CostReasoningNanoUSD, c.CostToolUsageNanoUSD,
 		c.KeySpendNanoUSD, c.HeadersMS, c.TotalMS, warnings)
 	return err
+}
+
+// storable is s as Postgres TEXT accepts it: invalid UTF-8 replaced, NUL
+// bytes dropped.
+func storable(s string) string {
+	return strings.ReplaceAll(strings.ToValidUTF8(s, "�"), "\x00", "")
 }
 
 // AttemptCall reads the gateway call recorded under an attempt. ok is false
@@ -87,9 +99,7 @@ func (s *Store) AttemptCall(ctx context.Context, attemptID int64) (c LLMCall, ok
 		       cost_output_nano_usd, cost_reasoning_nano_usd, cost_tool_usage_nano_usd,
 		       key_spend_nano_usd, headers_ms, total_ms, warnings
 		  FROM llm_calls
-		 WHERE attempt_id = $1
-		 ORDER BY id
-		 LIMIT 1`, attemptID).Scan(
+		 WHERE attempt_id = $1`, attemptID).Scan(
 		&c.Profile, &c.Model, &c.Deployment, &c.ReasoningSent, &c.FinishReason, &c.CallID, &c.GatewayVer,
 		&c.InputTokens, &c.InputUncachedTokens, &c.CacheReadTokens, &c.CacheWriteTokens,
 		&c.OutputTokens, &c.ReasoningTokens,
