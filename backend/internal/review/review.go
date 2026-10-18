@@ -215,11 +215,10 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		return nil, ctx, r.abort(ctx, key, kind, SkipNoReviewable, prTag, httpCounter)
 	}
 
+	// The footer's file count: every file that entered the review (deleted
+	// and renamed ones included), the same set its +/- lines are counted
+	// over. Files that were then not reviewed are named on their own lines.
 	totalFiles := len(files)
-	// The prepared set before compression sorts it: the file counts and the
-	// "without full context" line are decided per file from these diffs, so
-	// the small-PR and the compression path give the same answer.
-	preparedFiles := files
 
 	// 14. Small PRs get context expansion; large ones are compressed first.
 	var otherModified, deletedPaths, renamedPaths []string
@@ -323,22 +322,16 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		listed:          listed,
 		// A file not sent as a reviewed entry (left out by compression, or
 		// only deleted or renamed) is never "reviewed without full context".
-		contentSkipped: notFullContext(contentSkipped, preparedFiles, otherModified),
+		contentSkipped: notFullContext(contentSkipped, files),
 		oversized:      oversized,
 		overBudget:     otherModified,
 		ticket:         ticket,
 		parentTicket:   parentTicket,
 		breakdown:      breakdown(assembled),
 		agentsMDFound:  repoInstructions != "",
-		// One rule on both paths: a prepared file is reviewed unless compression
-		// left it out of the prompt (over budget). Deleted and rename-only
-		// files count as reviewed: the model is told of them.
-		filesReviewed: totalFiles - len(otherModified),
-		// Every changed file: the prepared ones (deleted and renamed among
-		// them) plus the ones the size gate kept out.
-		totalFiles:  totalFiles + len(oversized),
-		diffAdded:   diffAdded,
-		diffRemoved: diffRemoved,
+		totalFiles:     totalFiles,
+		diffAdded:      diffAdded,
+		diffRemoved:    diffRemoved,
 	}, ctx, true
 }
 
@@ -488,7 +481,6 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		ElapsedPresent:             true,
 		ReviewedCommit:             sourceCommit,
 		IncrementalFrom:            plan.incrementalFrom,
-		FilesReviewed:              plan.filesReviewed,
 		TotalFiles:                 plan.totalFiles,
 		FilesCountsSet:             true,
 		DiffAdded:                  plan.diffAdded,
@@ -1019,24 +1011,21 @@ func breakdown(a inference.AssembledPrompt) render.PromptBreakdown {
 	}
 }
 
-// notFullContext is the "reviewed without full file context" list: the
-// content-skipped files that were reviewed at all and had something to
-// review. A file left out of the prompt (overBudget) was not reviewed, and a
-// deleted or rename-only one has no body to miss; each is decided from its
-// own diff, never from what compression did with it.
-func notFullContext(contentSkipped []string, prepared []diff.FileReviewData, overBudget []string) []string {
-	gone := map[string]bool{}
-	for _, p := range overBudget {
-		gone[p] = true
-	}
-	for _, f := range prepared {
-		if diff.IsDeleted(f.Diff) || diff.IsRenameOnly(f.Diff) {
-			gone[f.Path] = true
+// notFullContext is the "reviewed without full file context" list: a
+// content-skipped file that the prompt carries as an entry of its own (the
+// set compression kept, after it), without its body. A file the prompt does
+// not carry was not reviewed at all, and a rename-only one has no body to
+// miss. Read from what was sent, so both review paths agree.
+func notFullContext(contentSkipped []string, sent []diff.FileReviewData) []string {
+	entry := map[string]bool{}
+	for _, f := range sent {
+		if !f.ContentFetched && !diff.IsRenameOnly(f.Diff) {
+			entry[f.Path] = true
 		}
 	}
 	var out []string
 	for _, p := range contentSkipped {
-		if !gone[p] {
+		if entry[p] {
 			out = append(out, p)
 		}
 	}

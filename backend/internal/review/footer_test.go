@@ -45,10 +45,10 @@ func TestFooterNamesTheOversizedFile(t *testing.T) {
 	if !strings.Contains(s, "Not reviewed (too large): `messages.properties` ⚠️") {
 		t.Errorf("footer does not name the oversized file:\n%s", s)
 	}
-	// The count agrees with that line: the gated file is one of the PR's
-	// files, not reviewed.
-	if !strings.Contains(s, " · 1 of 2 files · ") {
-		t.Errorf("footer count disagrees with the not-reviewed line:\n%s", s)
+	// The count is the files that entered the review, the same set as the
+	// +/- lines: the gated file never did, and is named above instead.
+	if !strings.Contains(s, " · 1 file · +1 / -1 · ") {
+		t.Errorf("footer count or lines include the gated file:\n%s", s)
 	}
 }
 

@@ -86,7 +86,6 @@ type SummaryInput struct {
 	ElapsedPresent  bool
 	ReviewedCommit  string
 	IncrementalFrom string
-	FilesReviewed   int
 	TotalFiles      int
 	FilesCountsSet  bool
 	DiffAdded       int
@@ -431,12 +430,10 @@ func telemetryLine(in SummaryInput) string {
 	if in.ModelLabel != "" {
 		parts = append(parts, "`"+in.ModelLabel+"`")
 	}
+	// One count, over the same files as the +/- lines; what was not
+	// reviewed is named on the warning lines above, not netted out here.
 	if in.FilesCountsSet {
-		if in.FilesReviewed == in.TotalFiles {
-			parts = append(parts, PluralIn(in.Lang, in.TotalFiles, "Datei", "Dateien", "file", "files"))
-		} else {
-			parts = append(parts, fmt.Sprintf(p("%d von %d Dateien", "%d of %d files"), in.FilesReviewed, in.TotalFiles))
-		}
+		parts = append(parts, PluralIn(in.Lang, in.TotalFiles, "Datei", "Dateien", "file", "files"))
 	}
 	if d := diffParts(in.DiffAdded, in.DiffRemoved); d != "" {
 		parts = append(parts, d)

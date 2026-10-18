@@ -34,7 +34,7 @@ func TestGermanSummary(t *testing.T) {
 	h := "Fehlende Prüfung"
 	in.Findings = []inference.ReviewFinding{{Severity: "issue", Comment: "Das Maß fehlt.", Headline: &h}}
 	in.Summary.Overview = "Der Code ist groß."
-	in.FilesCountsSet, in.FilesReviewed, in.TotalFiles = true, 1, 1
+	in.FilesCountsSet, in.TotalFiles = true, 1
 	in.Ticket = &jira.Ticket{Key: "ABC-1", URL: "u", Title: "T"}
 	in.ComplianceRequirements = []inference.ComplianceRequirement{{Requirement: "Maße werden geprüft", Met: true}}
 

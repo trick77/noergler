@@ -81,7 +81,7 @@ func summaryCases() map[string]SummaryInput {
 	mixed.PromptBreakdown = PromptBreakdown{Template: 500, RepoInstructions: 300, Files: 200, Present: true}
 	mixed.ElapsedSeconds, mixed.ElapsedPresent = 12.34, true
 	mixed.ModelLabel = "gpt-5.5-medium"
-	mixed.FilesReviewed, mixed.TotalFiles, mixed.FilesCountsSet = 3, 5, true
+	mixed.TotalFiles, mixed.FilesCountsSet = 5, true
 	mixed.DiffAdded, mixed.DiffRemoved = 40, 7
 	mixed.RunCostUSD, mixed.CumulativeCostUSD, mixed.MaxPRCostUSD = ptrf(0.1234), ptrf(1.5), 5.0
 	mixed.RunURL = "https://noergler.example.com/runs/18233"
@@ -269,11 +269,11 @@ func summaryCases() map[string]SummaryInput {
 
 	linkDE := link
 	linkDE.Lang = lang.DE
-	linkDE.FilesReviewed, linkDE.TotalFiles, linkDE.FilesCountsSet = 7, 9, true
+	linkDE.TotalFiles, linkDE.FilesCountsSet = 9, true
 	cases["run_url_de"] = linkDE
 
 	allFiles := base()
-	allFiles.FilesReviewed, allFiles.TotalFiles, allFiles.FilesCountsSet = 4, 4, true
+	allFiles.TotalFiles, allFiles.FilesCountsSet = 4, true
 	allFiles.DiffAdded = 10
 	cases["files_all_reviewed"] = allFiles
 
