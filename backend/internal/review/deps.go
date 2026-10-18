@@ -147,7 +147,7 @@ func (r *Reviewer) recordAttempt(ctx context.Context, a store.Attempt) {
 	_, err := r.store.InsertAttempt(ctx, a)
 	switch {
 	case errors.Is(err, store.ErrCallNotRecorded):
-		r.log.WarnContext(ctx, a.Key.Tag()+": gateway call detail not recorded, the attempt was", logging.Err(err))
+		r.log.WarnContext(ctx, a.Key.Tag()+": gateway call detail not recorded; the attempt was written", logging.Err(err))
 	case err != nil:
 		r.log.WarnContext(ctx, "DB operation failed, using fallback: InsertAttempt", logging.Err(err))
 	}
