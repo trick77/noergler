@@ -29,6 +29,15 @@ func TestCallCostLogLine(t *testing.T) {
 			contains: []string{"response-cost=$0.012", "key-spend=$5.000", "call-id=abc"},
 		},
 		{
+			name: "the gateway's split and version ride on the line",
+			cost: CallCost{NanoUSD: n(4_200_000), CallID: "abc", GatewayVersion: "1.107.0",
+				Split: llmwire.GatewayCost{InputNanoUSD: n(1_000_000), CacheReadNanoUSD: n(100_000),
+					CacheWriteNanoUSD: n(1_100_000), OutputNanoUSD: n(2_000_000), ReasoningNanoUSD: n(1_500_000)}},
+			wantWarn: false,
+			contains: []string{"input=$0.001", "cache-read=$0.000", "cache-write=$0.001", "output=$0.002",
+				"reasoning=$0.002", "tool-usage=absent", "litellm-version=1.107.0"},
+		},
+		{
 			name:     "no headers at all is not a LiteLLM proxy, so no warning",
 			cost:     CallCost{},
 			wantWarn: false,
@@ -146,10 +155,14 @@ func TestCostFrom(t *testing.T) {
 	// Key spend is a gauge: carried through for display, never summed.
 	t.Run("gateway fields are carried through", func(t *testing.T) {
 		got := CostFrom(&llmwire.ChatResponse{
-			Gateway: llmwire.Gateway{CallID: "call-123", KeySpendNanoUSD: n(42)},
+			Gateway: llmwire.Gateway{CallID: "call-123", KeySpendNanoUSD: n(42), Version: "1.107.0",
+				Cost: llmwire.GatewayCost{CacheReadNanoUSD: n(7)}},
 		})
 		if got.CallID != "call-123" {
 			t.Errorf("CallID = %q, want call-123", got.CallID)
+		}
+		if got.GatewayVersion != "1.107.0" || got.Split.CacheReadNanoUSD == nil || *got.Split.CacheReadNanoUSD != 7 {
+			t.Errorf("version = %q, split = %+v, want both carried", got.GatewayVersion, got.Split)
 		}
 		if got.KeySpendNanoUSD == nil || *got.KeySpendNanoUSD != 42 {
 			t.Errorf("KeySpendNanoUSD = %v, want 42", got.KeySpendNanoUSD)

@@ -22,6 +22,14 @@ type CallCost struct {
 	// CallID is the id the gateway logged the call under: the handle for
 	// matching an unpriced or failed review to the gateway's own log.
 	CallID string
+	// Split is the gateway's own breakdown of the cost by component, empty
+	// when it sent none (an older LiteLLM). Logged only: Input excludes the
+	// cache lanes and Reasoning is inside Output, so never sum it, and the
+	// total stays NanoUSD.
+	Split llmwire.GatewayCost
+	// GatewayVersion is the LiteLLM version that answered, which explains an
+	// empty Split.
+	GatewayVersion string
 	// ZeroWithTokens records a priced call that reported zero cost despite
 	// consuming tokens. Suspicious enough to warn about, not wrong enough to
 	// fail a review.
@@ -47,6 +55,8 @@ func CostFrom(resp *llmwire.ChatResponse) CallCost {
 	out := CallCost{
 		CallID:           resp.Gateway.CallID,
 		KeySpendNanoUSD:  resp.Gateway.KeySpendNanoUSD,
+		Split:            resp.Gateway.Cost,
+		GatewayVersion:   resp.Gateway.Version,
 		PromptTokens:     deref(resp.Usage.Input.Total),
 		CachedTokens:     deref(resp.Usage.Input.CacheRead),
 		CompletionTokens: deref(resp.Usage.Output.Total),
@@ -91,6 +101,16 @@ func (c CallCost) LogLine() (line string, warn bool) {
 	}
 	line = fmt.Sprintf("LLM cost headers: response-cost=%s key-spend=%s call-id=%s",
 		cost, spend, callID)
+	if s := c.Split; s.Reported() {
+		// The cache lanes say what prompt caching saved or a cache write
+		// cost; reasoning is the part of output spent thinking.
+		line += fmt.Sprintf(" input=%s cache-read=%s cache-write=%s output=%s reasoning=%s tool-usage=%s",
+			usdOrAbsent(s.InputNanoUSD), usdOrAbsent(s.CacheReadNanoUSD), usdOrAbsent(s.CacheWriteNanoUSD),
+			usdOrAbsent(s.OutputNanoUSD), usdOrAbsent(s.ReasoningNanoUSD), usdOrAbsent(s.ToolUsageNanoUSD))
+	}
+	if c.GatewayVersion != "" {
+		line += " litellm-version=" + c.GatewayVersion
+	}
 	switch {
 	case c.ZeroWithTokens:
 		return line + "; gateway reported zero cost for a call that consumed " +
@@ -113,6 +133,15 @@ func FormatUSD3(nano int64) string {
 	}
 	milli := (nano + 500_000) / 1_000_000
 	return fmt.Sprintf("%s%d.%03d", sign, milli/1000, milli%1000)
+}
+
+// usdOrAbsent renders a nilable nano-USD lane for the log line. The gateway
+// sends a lane only when it is nonzero, so absent usually means none.
+func usdOrAbsent(nano *int64) string {
+	if nano == nil {
+		return "absent"
+	}
+	return "$" + FormatUSD3(*nano)
 }
 
 // totalTokens is the prompt plus completion count, used only to tell a real
