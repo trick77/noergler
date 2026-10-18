@@ -293,6 +293,8 @@ export const en = {
     prTotal: "PR total",
     prCap: "PR cap",
     prOf: "{{cost}} of {{cap}}",
+    moreBefore: "Older runs of this pull request are not listed here.",
+    moreAfter: "Newer runs of this pull request are not listed here.",
     prTotalNote:
       "The total is the figure the cost cap counts: this pull request since it was last claimed, so it can differ from the rows above.",
   },

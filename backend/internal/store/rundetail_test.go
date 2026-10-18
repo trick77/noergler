@@ -112,5 +112,12 @@ func TestRunDetailHistoryWindow(t *testing.T) {
 		if at > 0 && at < len(ids)-1 && (found == 0 || found == len(d.PRAttempts)-1) {
 			t.Errorf("attempt %d lost a neighbour", at)
 		}
+		// The page is told when rows are cut, on the side they are cut.
+		if wantBefore := at > prAttemptsEachSide; d.MoreBefore != wantBefore {
+			t.Errorf("attempt %d: MoreBefore = %v, want %v", at, d.MoreBefore, wantBefore)
+		}
+		if wantAfter := len(ids)-1-at > prAttemptsEachSide; d.MoreAfter != wantAfter {
+			t.Errorf("attempt %d: MoreAfter = %v, want %v", at, d.MoreAfter, wantAfter)
+		}
 	}
 }

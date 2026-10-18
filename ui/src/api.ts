@@ -154,6 +154,9 @@ export interface RunDetail {
   fixed: RunFinding[];
   pr: {
     attempts: PRAttempt[];
+    /** The history around this run is cut on that side. */
+    more_before: boolean;
+    more_after: boolean;
     cost_usd: string | null;
     cap_usd: string | null;
   };

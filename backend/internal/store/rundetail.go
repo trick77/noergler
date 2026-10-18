@@ -39,6 +39,10 @@ type RunDetail struct {
 	// this one always included: up to prAttemptsEachSide before and after
 	// it. The page's previous/next and its pull request tab.
 	PRAttempts []PRAttempt
+	// MoreBefore and MoreAfter say the window cut older or newer attempts,
+	// so the page can say rows are missing instead of looking complete.
+	MoreBefore bool
+	MoreAfter  bool
 }
 
 // RunFacts is the review_runs row behind a successful attempt.
@@ -130,10 +134,10 @@ func (s *Store) RunDetail(ctx context.Context, attemptID int64) (d RunDetail, ok
 				r.ToCommit = *to
 			}
 			d.Run = &r
-			if d.Findings, err = s.findingHeadlines(ctx, `f.review_run_id = $1`, r.ID); err != nil {
+			if d.Findings, err = s.findingHeadlines(ctx, `f.review_run_id = $1`, r.ID, ""); err != nil {
 				return RunDetail{}, false, err
 			}
-			if d.Fixed, err = s.findingHeadlines(ctx, `f.fixed_run_id = $1`, r.ID); err != nil {
+			if d.Fixed, err = s.findingHeadlines(ctx, `f.fixed_run_id = $1`, r.ID, d.TeamSlug); err != nil {
 				return RunDetail{}, false, err
 			}
 		}
@@ -147,7 +151,7 @@ func (s *Store) RunDetail(ctx context.Context, attemptID int64) (d RunDetail, ok
 		d.Call = &call
 	}
 
-	if d.PRAttempts, err = s.prAttempts(ctx, d); err != nil {
+	if d.PRAttempts, d.MoreBefore, d.MoreAfter, err = s.prAttempts(ctx, d); err != nil {
 		return RunDetail{}, false, err
 	}
 	return d, true, nil
@@ -155,14 +159,21 @@ func (s *Store) RunDetail(ctx context.Context, attemptID int64) (d RunDetail, ok
 
 // findingHeadlines reads the page's columns of the findings matching where
 // (one placeholder, $1). Never comment_text, suggestion or dispute_text.
-func (s *Store) findingHeadlines(ctx context.Context, where string, arg int64) ([]FindingHeadline, error) {
+//
+// fromTeam non-empty also looks up the attempt of the run that posted each
+// finding, within that team (the page's history is scoped to it), for the
+// fixed table's link; empty skips the lookup, which the run's own findings
+// never show.
+func (s *Store) findingHeadlines(ctx context.Context, where string, arg int64, fromTeam string) ([]FindingHeadline, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT f.severity, f.confidence, f.file_path, f.line_number, COALESCE(f.headline, ''),
 		       f.bitbucket_comment_id, f.replied_at IS NOT NULL, f.fixed_at IS NOT NULL,
-		       (SELECT MIN(a.id) FROM review_attempts a WHERE a.review_run_id = f.review_run_id)
+		       CASE WHEN $2 = '' THEN NULL ELSE
+		         (SELECT MIN(a.id) FROM review_attempts a
+		           WHERE a.review_run_id = f.review_run_id AND a.team_slug = $2) END
 		  FROM findings f
 		 WHERE `+where+`
-		 ORDER BY f.id`, arg)
+		 ORDER BY f.id`, arg, fromTeam)
 	if err != nil {
 		return nil, err
 	}
@@ -189,35 +200,71 @@ func (s *Store) findingHeadlines(ctx context.Context, where string, arg int64) (
 // the attempt being viewed and its neighbours are always in it.
 const prAttemptsEachSide = 100
 
-// prAttempts is the PR's history around d, oldest first. Scoped to the team
-// as well as the PR: a repo that changed hands keeps its old rows under the
-// old team.
-func (s *Store) prAttempts(ctx context.Context, d RunDetail) ([]PRAttempt, error) {
-	const cols = `a.id, a.kind, a.outcome, COALESCE(a.reason, ''), a.elapsed_ms, a.created_at,
-		       r.findings_posted, COALESCE(r.cost_nano_usd, a.cost_nano_usd)`
+// prAttempts is the PR's history around d, oldest first, and whether the
+// window cut older or newer attempts. Scoped to the team as well as the PR:
+// a repo that changed hands keeps its old rows under the old team. Each side
+// fetches one row more than it keeps (the older side also holds d itself),
+// to tell "cut" from "all there".
+func (s *Store) prAttempts(ctx context.Context, d RunDetail) (out []PRAttempt, moreBefore, moreAfter bool, err error) {
+	const cols = `a.id, a.kind, a.outcome, COALESCE(a.reason, '') AS reason, a.elapsed_ms, a.created_at,
+		       r.findings_posted, COALESCE(r.cost_nano_usd, a.cost_nano_usd) AS cost,
+		       (a.created_at, a.id) <= ($5, $6) AS before`
 	const from = `FROM review_attempts a
 		  LEFT JOIN review_runs r ON r.id = a.review_run_id
 		 WHERE a.team_slug = $1 AND a.project_key = $2 AND a.repo_slug = $3 AND a.pr_id = $4`
 	rows, err := s.pool.Query(ctx, `
-		(SELECT `+cols+` `+from+` AND (a.created_at, a.id) <= ($5, $6)
-		  ORDER BY a.created_at DESC, a.id DESC LIMIT $7)
-		UNION ALL
-		(SELECT `+cols+` `+from+` AND (a.created_at, a.id) > ($5, $6)
-		  ORDER BY a.created_at, a.id LIMIT $7)
-		ORDER BY 6, 1`,
+		SELECT id, kind, outcome, reason, elapsed_ms, created_at, findings_posted, cost, before FROM (
+		  (SELECT `+cols+` `+from+` AND (a.created_at, a.id) <= ($5, $6)
+		    ORDER BY a.created_at DESC, a.id DESC LIMIT $7 + 2)
+		  UNION ALL
+		  (SELECT `+cols+` `+from+` AND (a.created_at, a.id) > ($5, $6)
+		    ORDER BY a.created_at, a.id LIMIT $7)
+		) h
+		ORDER BY created_at, id`,
 		d.TeamSlug, d.Key.Project, d.Key.Repo, d.Key.PRID, d.CreatedAt, d.ID, prAttemptsEachSide)
 	if err != nil {
-		return nil, err
+		return nil, false, false, err
 	}
 	defer rows.Close()
-	out := []PRAttempt{}
+	var before, after []PRAttempt
 	for rows.Next() {
 		var a PRAttempt
+		var isBefore bool
 		if err := rows.Scan(&a.ID, &a.Kind, &a.Outcome, &a.Reason, &a.ElapsedMS, &a.CreatedAt,
-			&a.Findings, &a.CostNanoUSD); err != nil {
-			return nil, err
+			&a.Findings, &a.CostNanoUSD, &isBefore); err != nil {
+			return nil, false, false, err
 		}
-		out = append(out, a)
+		if isBefore {
+			before = append(before, a)
+		} else {
+			after = append(after, a)
+		}
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, false, false, err
+	}
+	// The before side holds the attempt itself plus up to prAttemptsEachSide
+	// older ones; one more than that means older rows exist.
+	if len(before) > prAttemptsEachSide+1 {
+		before, moreBefore = before[1:], true
+	}
+	// The after side asked for exactly prAttemptsEachSide: a full side may
+	// have more beyond it.
+	if len(after) == prAttemptsEachSide {
+		moreAfter = s.hasAttemptAfter(ctx, d, after[len(after)-1])
+	}
+	return append(before, after...), moreBefore, moreAfter, nil
+}
+
+// hasAttemptAfter reports whether the PR has an attempt newer than last.
+func (s *Store) hasAttemptAfter(ctx context.Context, d RunDetail, last PRAttempt) bool {
+	var exists bool
+	if err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM review_attempts a
+		 WHERE a.team_slug = $1 AND a.project_key = $2 AND a.repo_slug = $3 AND a.pr_id = $4
+		   AND (a.created_at, a.id) > ($5, $6))`,
+		d.TeamSlug, d.Key.Project, d.Key.Repo, d.Key.PRID, last.CreatedAt, last.ID).Scan(&exists); err != nil {
+		return false
+	}
+	return exists
 }
