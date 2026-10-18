@@ -271,6 +271,9 @@ type Finding struct {
 	// finding. Read back, never written by InsertFinding.
 	RepliedAt   *time.Time
 	DisputeText *string
+	// RunCommit is the source commit of the run that posted the finding: its
+	// line number belongs to that commit. Read by FindingByComment only.
+	RunCommit string
 }
 
 // InsertFinding stores a posted finding.
@@ -318,13 +321,15 @@ func (s *Store) FindingByComment(ctx context.Context, k PRKey, commentID int) (*
 	var f Finding
 	err := s.pool.QueryRow(ctx, `
 		SELECT f.id, f.pull_request_id, f.review_run_id, f.file_path, f.line_number, f.severity, f.confidence,
-			f.headline, f.comment_text, f.suggestion, f.bitbucket_comment_id, f.replied_at, f.dispute_text
+			f.headline, f.comment_text, f.suggestion, f.bitbucket_comment_id, f.replied_at, f.dispute_text,
+			r.to_commit
 		FROM findings f JOIN pull_requests p ON f.pull_request_id = p.id
+			JOIN review_runs r ON f.review_run_id = r.id
 		WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3 AND p.`+activeFilter+`
 			AND f.fixed_at IS NULL AND f.bitbucket_comment_id = $4`,
 		k.Project, k.Repo, k.PRID, commentID).Scan(&f.ID, &f.PullRequestID, &f.RunID, &f.FilePath, &f.LineNumber,
 		&f.Severity, &f.Confidence, &f.Headline, &f.CommentText, &f.Suggestion, &f.BitbucketCommentID,
-		&f.RepliedAt, &f.DisputeText)
+		&f.RepliedAt, &f.DisputeText, &f.RunCommit)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}

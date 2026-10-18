@@ -276,7 +276,7 @@ func TestFindingReplyFileExcerpt(t *testing.T) {
 
 		h.r.HandleFindingReply(context.Background(), p, "payments", nil)
 
-		if !strings.Contains(h.llm.Replies[0].Prompt, "Line 5 is past the end of the file at the PR head (2 lines)") {
+		if !strings.Contains(h.llm.Replies[0].Prompt, "Line 5 is past the end of the file (2 lines)") {
 			t.Errorf("prompt:\n%s", h.llm.Replies[0].Prompt)
 		}
 	})
@@ -311,6 +311,61 @@ func TestFindingReplyIsStaged(t *testing.T) {
 	}
 }
 
+// The excerpt reads the file at the commit the finding was posted at: a later
+// push moves the lines its number names.
+func TestFindingReplyReadsTheFileAsReviewed(t *testing.T) {
+	h, p := replyHarness(t)
+	h.st.byComment[501].RunCommit = "old1"
+	h.bb.files["old1:a.go"] = "package a\nfunc old() {}\n"
+
+	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+
+	if pr := h.llm.Replies[0].Prompt; !strings.Contains(pr, "    2  func old() {}") || strings.Contains(pr, "func new()") {
+		t.Errorf("prompt shows the head, not the reviewed file:\n%s", pr)
+	}
+}
+
+// The reviewed commit is gone (a rebase): the head stands in, labelled.
+func TestFindingReplyFallsBackToTheHead(t *testing.T) {
+	h, p := replyHarness(t)
+	h.st.byComment[501].RunCommit = "gone1"
+
+	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+
+	if pr := h.llm.Replies[0].Prompt; !strings.Contains(pr, "reviewed commit is gone") || !strings.Contains(pr, "    2  func new() {}") {
+		t.Errorf("prompt:\n%s", pr)
+	}
+}
+
+// Outside the allow-list, a plain reply is not automatic either.
+func TestFindingReplyRespectsAutoReviewAuthors(t *testing.T) {
+	h, p := replyHarness(t)
+	h.r.SetAuthorLists([]string{"bob"}, nil)
+
+	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+
+	if len(h.llm.Replies) != 0 {
+		t.Error("an author outside auto_review_authors must not buy a plain reply")
+	}
+}
+
+// A plain reply on an ignored author's PR buys no call; a mention still does.
+func TestFindingReplyRespectsIgnoreAuthors(t *testing.T) {
+	h, p := replyHarness(t)
+	h.r.SetAuthorLists(nil, []string{"alice"})
+
+	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+	if len(h.llm.Replies) != 0 {
+		t.Error("an ignored author's plain reply must not buy a call")
+	}
+
+	p.Comment.Text = "@noergler we do this in the UI"
+	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+	if len(h.llm.Replies) != 1 {
+		t.Error("a mention overrides the author lists")
+	}
+}
+
 func TestCodeFenceOutlastsTheLine(t *testing.T) {
 	cases := map[string]string{
 		"- plain":                          "```",
@@ -332,5 +387,9 @@ func TestExcerptAroundNumbersTheWindow(t *testing.T) {
 	}
 	if got := excerptAround("a", 9, 2); got != "" {
 		t.Errorf("a line past the end: %q", got)
+	}
+	// A final newline ends the last line; it is no phantom line 3.
+	if got := excerptAround("a\nb\n", 2, 5); got != "    1  a\n    2  b\n" {
+		t.Errorf("trailing newline: %q", got)
 	}
 }

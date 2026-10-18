@@ -439,6 +439,9 @@ func TestFindings_ReplyIsFoundScopedAndRecordedOnce(t *testing.T) {
 	if err != nil || f == nil || f.CommentText != "unchecked" || f.RepliedAt != nil {
 		t.Fatalf("finding = %+v, err = %v", f, err)
 	}
+	if f.RunCommit != "a" {
+		t.Errorf("RunCommit = %q, want the posting run's to_commit", f.RunCommit)
+	}
 	other := key
 	other.PRID++
 	if f, err := s.FindingByComment(ctx, other, 501); err != nil || f != nil {

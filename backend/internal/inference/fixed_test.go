@@ -108,6 +108,19 @@ func TestValidateFixedKeepsTheFirstClaimOnly(t *testing.T) {
 	}
 }
 
+// A refused claim stays refused: repeating the id with other evidence is a
+// duplicate, not a second chance.
+func TestValidateFixedRefusedClaimIsNotRetried(t *testing.T) {
+	idx, sent := fixedFixture()
+	v := ValidateFixed([]FixedClaim{
+		{"F1", []string{"if in == nil {"}},
+		{"F1", []string{"defer mu.Unlock()"}},
+	}, sent, idx)
+	if len(v.Kept) != 0 || len(v.Dropped) != 2 || v.Dropped[0].Reason != FixedEvidenceMoved || v.Dropped[1].Reason != FixedDuplicate {
+		t.Errorf("kept %+v dropped %+v, want moved then duplicate", v.Kept, v.Dropped)
+	}
+}
+
 // A finding the prompt did not list (trimmed by budget) cannot be retired by
 // its id: the model never saw it.
 func TestValidateFixedOnlyKnowsWhatWasSent(t *testing.T) {

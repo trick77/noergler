@@ -55,8 +55,8 @@ type FindingReplyPromptRequest struct {
 	RepoInstructions string
 	// Finding is the finding as posted: location, severity and its comment.
 	Finding string
-	// FileExcerpt is the file around the finding's line at the PR head,
-	// numbered, or empty when it could not be read.
+	// FileExcerpt is the file around the finding's line at the commit it was
+	// posted at, numbered, or empty when it could not be read.
 	FileExcerpt string
 	// Reply is the PR author's text: intent only, never evidence.
 	Reply string
@@ -67,7 +67,7 @@ type FindingReplyPromptRequest struct {
 func RenderFindingReplyPrompt(req FindingReplyPromptRequest) string {
 	excerpt := req.FileExcerpt
 	if strings.TrimSpace(excerpt) == "" {
-		excerpt = "_The file could not be read at the PR head._"
+		excerpt = "_The file could not be read._"
 	}
 	return strings.NewReplacer(
 		PlaceholderRepoInstructions, req.RepoInstructions,

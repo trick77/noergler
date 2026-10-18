@@ -49,16 +49,49 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		return false, false
 	}
 	bot := r.bitbucket.BotUsername()
+	// Our own replies ("Fixed in ...") come back as comment events too.
+	if strings.EqualFold(comment.Author.Name, bot) {
+		return true, false
+	}
 	text := strings.TrimSpace(comment.Text)
 	mentioned := strings.Contains(strings.ToLower(text), "@"+strings.ToLower(bot))
-	pr := payload.PullRequest
-	// Not this handler's. Without a mention there is nothing else to do, so
-	// it is handled (ignored); a mention goes on, and its own guards log.
-	// Our own replies ("Fixed in ...") come back as comment events too.
-	author := pr.Author.User.Name
-	if strings.EqualFold(comment.Author.Name, bot) || (pr.State != "" && pr.State != "OPEN") ||
-		author == "" || !strings.EqualFold(comment.Author.Name, author) {
+	ctx, key, prTag, ok := prContext(ctx, payload)
+	if !ok {
+		r.log.ErrorContext(ctx, "Could not extract project/repo from webhook payload")
 		return !mentioned, false
+	}
+	pr := payload.PullRequest
+	author := pr.Author.User.Name
+	// The cheap checks first, before a DB lookup on the single worker. These
+	// replies are excluded by design, not refused, so they log at Debug: a
+	// reviewer-to-reviewer exchange under a finding is no event.
+	if (pr.State != "" && pr.State != "OPEN") || author == "" || !strings.EqualFold(comment.Author.Name, author) {
+		r.log.DebugContext(ctx, prTag+": reply not answered: not the open PR's author")
+		return !mentioned, false
+	}
+	// Only a reply directly under a finding's comment is found: Bitbucket
+	// sends the immediate parent, and a reply nested under another reply
+	// names that reply. Known limit, accepted: walking the thread for every
+	// reply costs a fetch per comment.
+	f := safeDB(ctx, r.log, "FindingByComment", func() (*store.Finding, error) {
+		return r.store.FindingByComment(ctx, key, payload.CommentParentID)
+	})
+	if f == nil {
+		r.log.DebugContext(ctx, prTag+": reply is not on a finding thread")
+		return false, false
+	}
+	where := fmt.Sprintf("%s:%d", f.FilePath, f.LineNumber)
+	// Refused on a finding thread: without a mention the reply goes
+	// unanswered and says why; a mention goes on to the Q&A.
+	notAnswered := func(why string) (bool, bool) {
+		if mentioned {
+			return false, false
+		}
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on finding %s not answered: %s", prTag, where, why))
+		return true, false
+	}
+	if f.RepliedAt != nil {
+		return notAnswered("the thread was answered already")
 	}
 	if mentioned {
 		// "@bot review" on a finding thread is still a review.
@@ -70,62 +103,55 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	if text == "" {
 		return true, false
 	}
-	ctx, key, prTag, ok := prContext(ctx, payload)
-	if !ok {
-		r.log.ErrorContext(ctx, "Could not extract project/repo from webhook payload")
-		return !mentioned, false
-	}
-	f := safeDB(ctx, r.log, "FindingByComment", func() (*store.Finding, error) {
-		return r.store.FindingByComment(ctx, key, payload.CommentParentID)
-	})
-	if f == nil {
-		r.log.DebugContext(ctx, prTag+": reply is not on a finding thread")
-		return false, false
-	}
-	where := fmt.Sprintf("%s:%d", f.FilePath, f.LineNumber)
-	if f.RepliedAt != nil {
-		// An @mention asked the bot something: the Q&A answers it.
-		if mentioned {
-			return false, false
-		}
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on finding %s not answered: the thread was answered already", prTag, where))
-		return true, false
-	}
 	if mentioned {
 		// A mention, here as on the Q&A path: it reactivates an ignored PR
-		// and is the explicit override of the cost cap.
+		// and is the explicit override of the cost cap and the author lists.
 		r.reactivateIfIgnored(ctx, key, prTag)
+	} else if auto, ignored := r.autoReviewDecision(author); !auto {
+		// A plain reply is automatic: it obeys the author lists like an
+		// auto-review does, from one snapshot.
+		if ignored {
+			return notAnswered("ignored author")
+		}
+		return notAnswered("not in auto-review authors")
 	} else if state := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
 		return r.store.GetSkipState(ctx, key)
 	}); state != nil && state.IgnoredAt != nil {
 		// The author removed the summary: the bot leaves the PR alone until
 		// a mention brings it back.
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on finding %s not answered: PR is ignored", prTag, where))
-		return true, false
+		return notAnswered("PR is ignored")
 	} else if cost := safeDB(ctx, r.log, "PRCost", func() (*int64, error) {
 		return r.store.PRCost(ctx, key)
 	}); cost != nil && float64(*cost)/nanoPerUSD >= r.cfg.MaxPRCostUSD {
-		// A plain reply is automatic, so the per-PR cap holds. Fail open: an
-		// unpriced PR never blocks.
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on finding %s not answered: PR cost at the $%.2f cap",
-			prTag, where, r.cfg.MaxPRCostUSD))
-		return true, false
+		// The per-PR cap holds for a plain reply. Fail open: an unpriced PR
+		// never blocks.
+		return notAnswered(fmt.Sprintf("PR cost at the $%.2f cap", r.cfg.MaxPRCostUSD))
 	}
 
 	ctx, counter := httpstats.WithScope(ctx)
 	project, repo := key.Project, key.Repo
 
-	// Without the file the finding still stands on its own text: a failed
+	// The file as the finding saw it: its line number belongs to the commit
+	// it was posted at, and a later push moves the lines. A rebase can take
+	// that commit away; the head is then the best there is, and says so.
+	// Without any file the finding still stands on its own text: a failed
 	// fetch narrows the context, it does not skip the answer.
-	excerpt := ""
-	if content, err := r.fetchFindingFile(ctx, project, repo, pr.FromRef.LatestCommit, f.FilePath); err != nil {
-		r.log.WarnContext(ctx, fmt.Sprintf("%s: file for the finding reply unavailable: %v", prTag, err))
-	} else if n := strings.Count(strings.TrimSuffix(content, "\n"), "\n") + 1; f.LineNumber > n {
-		excerpt = fmt.Sprintf("_Line %d is past the end of the file at the PR head (%d lines)._", f.LineNumber, n)
-	} else {
-		excerpt = truncateRunes(excerptAround(content, f.LineNumber, replyExcerptLines), replyExcerptRunes)
+	at, note := f.RunCommit, ""
+	content, err := r.fetchFindingFile(ctx, project, repo, at, f.FilePath)
+	if err != nil {
+		at, note = pr.FromRef.LatestCommit, "_The reviewed commit is gone; this is the PR head, its lines may have moved._\n\n"
+		content, err = r.fetchFindingFile(ctx, project, repo, at, f.FilePath)
 	}
-	agentsMD := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.DisplayID)
+	excerpt := ""
+	if err != nil {
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: file for the finding reply unavailable: %v", prTag, err))
+	} else if n := len(fileLines(content)); f.LineNumber > n {
+		excerpt = note + fmt.Sprintf("_Line %d is past the end of the file (%d lines)._", f.LineNumber, n)
+	} else {
+		excerpt = note + truncateRunes(excerptAround(content, f.LineNumber, replyExcerptLines), replyExcerptRunes)
+	}
+	// AGENTS.md from the same commit, so code and guidelines match.
+	agentsMD := r.fetchRepoInstructions(ctx, project, repo, at, pr.ToRef.DisplayID)
 	prompt := inference.RenderFindingReplyPrompt(inference.FindingReplyPromptRequest{
 		Template:         r.replyTmpl,
 		RepoInstructions: agentsMD,
@@ -238,10 +264,16 @@ func codeFence(s string) string {
 	return strings.Repeat("`", max(3, longest+1))
 }
 
+// fileLines splits a file into its lines; a final newline ends the last
+// line, it does not start a phantom one.
+func fileLines(content string) []string {
+	return strings.Split(strings.TrimSuffix(content, "\n"), "\n")
+}
+
 // excerptAround is the file's lines within n of line, numbered like the
 // review's diff, so the model reads the line it is asked about.
 func excerptAround(content string, line, n int) string {
-	lines := strings.Split(content, "\n")
+	lines := fileLines(content)
 	from, to := max(1, line-n), min(len(lines), line+n)
 	var b strings.Builder
 	for i := from; i <= to; i++ {

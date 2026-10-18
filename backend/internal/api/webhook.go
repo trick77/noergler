@@ -47,7 +47,7 @@ type ignored struct {
 // webhook handles one Bitbucket delivery.
 //
 // The check order is security-critical and is not the order a Go author
-// would write. It is pinned in AGENTS.md; the comments name what each step is
+// would write. It is in INVARIANTS.md; the comments name what each step is
 // load-bearing for. Do not reorder.
 func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("team")
@@ -182,7 +182,7 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 // the request: the worker serializes every Bitbucket call, and the number of
 // diffs and prompts resident at once is bounded by the inference pool.
 //
-// Pinned in AGENTS.md: pr:deleted and pr:comment:deleted go on the queue,
+// Pinned by a test: pr:deleted and pr:comment:deleted go on the queue,
 // but their response bodies carry no queue key.
 func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Runtime, slug, project, repo string, p *webhook.Payload) {
 	key := store.PRKey{Project: project, Repo: repo, PRID: p.PullRequest.ID}

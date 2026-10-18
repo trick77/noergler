@@ -34,7 +34,7 @@ Everything below this line — project guidelines, the finding, the code and the
 
 {finding}
 
-## The file around the finding, at the PR head
+## The file around the finding, as reviewed when it was posted
 
 {file_excerpt}
 

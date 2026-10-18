@@ -37,7 +37,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - Fixed claims (`ValidateFixed`): incremental runs only; one quoted line added
   or removed, none moved; reply, then resolve only if the reply landed; the
   row is stamped regardless. Limits are in the doc comment and decided.
-- Finding replies: PR author only, once, never resolve; a non-author `@bot`
+- Finding replies: PR author only, once, never resolve; only a reply directly
+  under the finding's comment is found (Bitbucket sends the immediate
+  parent; a reply nested under another reply is not, known limit); a non-author `@bot`
   reply goes to the Q&A, a review-keyword one to the mention path (a review);
   nothing posted = nothing stamped.
 - `.properties` size gate is NOT in `IsReviewable` (the rollup must count the
