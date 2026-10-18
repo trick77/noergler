@@ -169,7 +169,7 @@ function codeText(code: string): string {
  *  Only the plain code -> word groups qualify. A nested group (faq) or one
  *  with {{placeholders}} (common) would let a caller render an object or a
  *  raw template. */
-type CodeGroup = "outcome" | "skipWord" | "reason" | "teamState";
+type CodeGroup = "outcome" | "skipWord" | "reason" | "teamState" | "severity";
 
 function known<G extends CodeGroup>(
   group: G,
@@ -190,6 +190,21 @@ export function reasonLabel(
   return known("reason", reason)
     ? i18n.t(`reason.${reason}`)
     : serverLabel || codeText(reason);
+}
+
+/** severityWord is a finding's severity as the reader's word. The stored
+ *  value is the model's own, so an unexpected one prints readably. */
+export function severityWord(severity: string): string {
+  return known("severity", severity)
+    ? i18n.t(`severity.${severity}`)
+    : readable(severity);
+}
+
+/** severityTone: red for an issue, grey for a suggestion (the model's two
+ *  severities, review.txt) and for anything else. The word on the pill keeps
+ *  it from being colour alone. */
+export function severityTone(severity: string): Tone {
+  return severity === "issue" ? "fail" : "none";
 }
 
 /** teamTone maps a team's state to its pill.

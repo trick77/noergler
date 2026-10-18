@@ -31,7 +31,8 @@ decision, not a cleanup.
 - No secrets in `teams.yaml`, logs, `/readyz` or the dashboard; a disable
   reason never leaves the logs.
 - Cost fails open (unpriced = NULL, review proceeds). DB nano-USD `BIGINT`;
-  JSON USD = 3-decimal string, never float. Key spend shown, never summed.
+  JSON USD = 3-decimal string, never float (the run page's cost lanes: 6,
+  decided). Key spend shown, never summed.
 - Single worker for every Bitbucket call; only the gateway call leaves it,
   staged onto the bounded pool. Anything staged reports `handedOff`.
 - Every finding passes `ValidateFindings` before posting; validation is blunt

@@ -1,21 +1,69 @@
-// Hand-rolled, like ../rongo's: four pages do not need a router.
+// Hand-rolled, like ../rongo's: a handful of pages do not need a router.
 
-export type Page = "live" | "runs" | "metrics" | "teams" | "faq";
+export type Page = "live" | "runs" | "metrics" | "teams" | "faq" | "run";
 
-export const PAGES: Page[] = ["live", "runs", "metrics", "teams", "faq"];
+/** PAGES is the nav. "run" is not in it: a run detail page is reached from
+ *  a row, never from the header, and it highlights Runs while open. */
+export const PAGES: Exclude<Page, "run">[] = [
+  "live",
+  "runs",
+  "metrics",
+  "teams",
+  "faq",
+];
+
+// Mirrors runPath in backend/web/embed.go: a positive id, no leading zero,
+// at most 15 digits, so Number() holds it exactly (2^53 has 16).
+const RUN_PATH = /^\/runs\/([1-9][0-9]{0,14})$/;
 
 export function pageFromPath(path: string): Page {
+  if (RUN_PATH.test(path)) return "run";
   const slug = path.replace(/^\/+/, "").split("/")[0];
   return (PAGES as string[]).includes(slug) ? (slug as Page) : "live";
 }
 
-export function pathFor(page: Page): string {
+/** runIdFromPath is the attempt id of a run detail path, null otherwise. */
+export function runIdFromPath(path: string): number | null {
+  const m = RUN_PATH.exec(path);
+  return m === null ? null : Number(m[1]);
+}
+
+export function pathFor(page: Exclude<Page, "run">): string {
   return page === "live" ? "/" : `/${page}`;
 }
 
-export function navigate(page: Page) {
-  const path = pathFor(page);
-  // No duplicate history entry for the page you are already on.
+/** runPath is the run detail page of one attempt. */
+export function runPath(id: number): string {
+  return `/runs/${id}`;
+}
+
+export function navigate(page: Exclude<Page, "run">) {
+  navigateTo(pathFor(page));
+}
+
+/** onNav is an in-app link's click handler: a plain click stays in the SPA,
+ *  a modified one (new tab, new window) is left to the browser. */
+export function onNav(path: string) {
+  return (e: {
+    metaKey: boolean;
+    ctrlKey: boolean;
+    shiftKey: boolean;
+    altKey: boolean;
+    button: number;
+    preventDefault: () => void;
+  }) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0)
+      return;
+    e.preventDefault();
+    navigateTo(path);
+  };
+}
+
+/** navigateTo pushes any app path. No duplicate history entry for the page
+ *  you are already on. */
+export function navigateTo(path: string) {
   if (window.location.pathname === path) return;
   window.history.pushState({}, "", path);
+  // Tell the shell, which otherwise only hears back/forward (popstate).
+  window.dispatchEvent(new PopStateEvent("popstate"));
 }

@@ -3,9 +3,16 @@ import { useTranslation } from "react-i18next";
 import { FaqPage } from "./FaqPage";
 import { LivePage } from "./LivePage";
 import { MetricsPage } from "./MetricsPage";
+import { RunPage } from "./RunPage";
 import { RunsPage } from "./RunsPage";
 import { TeamsPage } from "./TeamsPage";
-import { PAGES, navigate, pageFromPath, type Page } from "./routing";
+import {
+  PAGES,
+  navigate,
+  pageFromPath,
+  runIdFromPath,
+  type Page,
+} from "./routing";
 
 /** The shell: a fixed header over one scrolling page. No sidebar; the four
  *  pages sit in the header as a top nav, which is where ../rongo's rail rows
@@ -15,18 +22,27 @@ export default function App() {
   const [route, setRoute] = useState<Page>(() =>
     pageFromPath(window.location.pathname),
   );
+  const [runId, setRunId] = useState<number | null>(() =>
+    runIdFromPath(window.location.pathname),
+  );
 
   useEffect(() => {
-    const onPop = () => setRoute(pageFromPath(window.location.pathname));
+    const onPop = () => {
+      setRoute(pageFromPath(window.location.pathname));
+      setRunId(runIdFromPath(window.location.pathname));
+    };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
   useEffect(() => {
-    document.title = `${t(`nav.${route}`)} · noergler`;
-  }, [route, t]);
+    document.title =
+      route === "run"
+        ? `${t("run.title", { id: runId })} · noergler`
+        : `${t(`nav.${route}`)} · noergler`;
+  }, [route, runId, t]);
 
-  const go = (page: Page) => {
+  const go = (page: Exclude<Page, "run">) => {
     navigate(page);
     setRoute(page);
   };
@@ -50,7 +66,8 @@ export default function App() {
               aria-current={p === route ? "page" : undefined}
               className={
                 "rounded-ui-sm px-3 py-1.5 text-sm transition-colors " +
-                (p === route
+                // A run detail page belongs to Runs: highlighted, not current.
+                (p === route || (p === "runs" && route === "run")
                   ? "bg-active text-ink"
                   : "text-muted hover:bg-active hover:text-ink")
               }
@@ -75,6 +92,11 @@ export default function App() {
       <main className="min-h-0 min-w-0">
         {route === "live" && <LivePage />}
         {route === "runs" && <RunsPage />}
+        {route === "run" && runId !== null && (
+          // keyed: a new run is a new page, never the previous one's data
+          // under the next URL while it loads (or after it fails).
+          <RunPage key={runId} id={runId} />
+        )}
         {route === "metrics" && <MetricsPage />}
         {route === "teams" && <TeamsPage />}
         {route === "faq" && <FaqPage />}

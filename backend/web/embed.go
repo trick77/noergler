@@ -5,6 +5,7 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"regexp"
 
 	"github.com/trick77/ship/kit/spa"
 )
@@ -28,7 +29,7 @@ var placeholderHTML []byte
 
 // routes mirrors ui/src/routing.ts. An explicit allowlist, so an unknown
 // path is a real 404 rather than 200 plus the shell: a soft 404 makes a typo
-// look like an empty page.
+// look like an empty page. One pattern beside it: /runs/{attempt id}.
 var routes = map[string]bool{
 	"/":        true,
 	"/live":    true,
@@ -37,6 +38,11 @@ var routes = map[string]bool{
 	"/teams":   true,
 	"/faq":     true,
 }
+
+// runPath is the run detail page, /runs/ and a positive attempt id. Digits
+// only, at most 15 (the SPA reads the id with Number(), exact below 2^53):
+// /runs/abc stays the 404 an unknown path is.
+var runPath = regexp.MustCompile(`^/runs/[1-9][0-9]{0,14}$`)
 
 func dist() fs.FS {
 	sub, err := fs.Sub(distFS, "dist")
@@ -60,7 +66,7 @@ func Handler() http.Handler { return handler(dist()) }
 // unbuilt binary answers its routes with the placeholder and a 503.
 func handler(sub fs.FS) http.Handler {
 	return spa.Handler(sub, spa.Options{
-		Routes:      func(p string) bool { return routes[p] },
+		Routes:      func(p string) bool { return routes[p] || runPath.MatchString(p) },
 		Placeholder: placeholderHTML,
 	})
 }

@@ -104,7 +104,8 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - Self-service handlers and `api/openapi.yaml` change together. Nullable =
   `type: [x, "null"]`, never `oneOf` with null.
 - Dashboard: unauthenticated by design (the ingress is the boundary).
-  `ui/src/routing.ts` and the `web/embed.go` allowlist are one list. The
+  `ui/src/routing.ts` and the `web/embed.go` allowlist are one list, plus one
+  pattern (`/runs/{attempt id}`, the same regex on both sides). The
   chart series ramp is CVD-validated: never re-picked by eye.
 - Dashboard text only through `ui/src/i18n` (i18next): `de` mirrors `en`
   (`satisfies Catalog`, same placeholders), Swiss German, no `ß`. Language =

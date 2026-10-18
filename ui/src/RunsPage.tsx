@@ -10,6 +10,7 @@ import {
 } from "./format";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { onNav, runPath } from "./routing";
 import { usePoll, useNow } from "./usePoll";
 import {
   Card,
@@ -182,17 +183,24 @@ export function RunsPage() {
                       <td className={td}>
                         {/* The reason is the pill's word, its long label the
                             tooltip: a label beside the pill wrapped the cell
-                            into three or four lines. */}
-                        <Pill
-                          tone={outcomeTone(r.outcome)}
-                          title={outcomeTitle(
-                            r.outcome,
-                            r.reason,
-                            r.reason_label,
-                          )}
+                            into three or four lines. The pill is the link to
+                            the run's detail page: every outcome has one. */}
+                        <a
+                          href={runPath(r.id)}
+                          onClick={onNav(runPath(r.id))}
+                          className="inline-block rounded-full hover:brightness-125"
                         >
-                          {outcomeWord(r.outcome, r.reason)}
-                        </Pill>
+                          <Pill
+                            tone={outcomeTone(r.outcome)}
+                            title={outcomeTitle(
+                              r.outcome,
+                              r.reason,
+                              r.reason_label,
+                            )}
+                          >
+                            {outcomeWord(r.outcome, r.reason)}
+                          </Pill>
+                        </a>
                       </td>
                       <td className={tdNum}>{r.findings ?? "—"}</td>
                       <td className={tdNum}>{duration(r.elapsed_ms)}</td>

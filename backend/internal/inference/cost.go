@@ -131,9 +131,9 @@ func (c CallCost) LogLine() (line string, warn bool) {
 		// nothing". Reasoning is named as part of output so a reader summing
 		// the lanes does not count it twice.
 		line += fmt.Sprintf(" input=%s cache-read=%s cache-write=%s output=%s reasoning-in-output=%s tool-usage=%s",
-			usdOrAbsent(s.InputNanoUSD, formatUSD6), usdOrAbsent(s.CacheReadNanoUSD, formatUSD6),
-			usdOrAbsent(s.CacheWriteNanoUSD, formatUSD6), usdOrAbsent(s.OutputNanoUSD, formatUSD6),
-			usdOrAbsent(s.ReasoningNanoUSD, formatUSD6), usdOrAbsent(s.ToolUsageNanoUSD, formatUSD6))
+			usdOrAbsent(s.InputNanoUSD, FormatUSD6), usdOrAbsent(s.CacheReadNanoUSD, FormatUSD6),
+			usdOrAbsent(s.CacheWriteNanoUSD, FormatUSD6), usdOrAbsent(s.OutputNanoUSD, FormatUSD6),
+			usdOrAbsent(s.ReasoningNanoUSD, FormatUSD6), usdOrAbsent(s.ToolUsageNanoUSD, FormatUSD6))
 	}
 	if s := c.Split; s.DiscountAmount != "" || s.MarginAmount != "" || s.MarginPercent != "" {
 		// An operator discount or margin moves response-cost off the list
@@ -169,8 +169,10 @@ func FormatUSD3(nano int64) string {
 	return fmt.Sprintf("%s%d.%03d", sign, milli/1000, milli%1000)
 }
 
-// formatUSD6 is FormatUSD3 at micro-dollar precision, for the split lanes.
-func formatUSD6(nano int64) string {
+// FormatUSD6 is FormatUSD3 at micro-dollar precision, for the split lanes
+// (the log line and the run detail page): a cache read on a small call is a
+// tenth of a milli-dollar and reads $0.000 at three decimals.
+func FormatUSD6(nano int64) string {
 	sign := ""
 	if nano < 0 {
 		sign, nano = "-", -nano
