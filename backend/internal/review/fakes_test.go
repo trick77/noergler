@@ -193,6 +193,7 @@ type fakeStore struct {
 
 	upsertErr  error
 	attemptErr error
+	runErr     error
 	failAll    bool
 
 	Upserts   []store.PRUpsert
@@ -324,6 +325,9 @@ func (f *fakeStore) InsertRun(_ context.Context, r store.Run) (int64, error) {
 	defer f.mu.Unlock()
 	if err := f.err(); err != nil {
 		return 0, err
+	}
+	if f.runErr != nil {
+		return 0, f.runErr
 	}
 	f.Runs = append(f.Runs, r)
 	return int64(len(f.Runs)), nil

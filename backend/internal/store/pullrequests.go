@@ -307,10 +307,12 @@ func (s *Store) ExistingFindings(ctx context.Context, k PRKey) ([]Finding, error
 }
 
 // MarkFindingFixed retires a finding a later run found fixed. The first
-// stamp wins: a finding is fixed once.
+// stamp wins: a finding is fixed once. A zero runID (the run row failed)
+// stamps NULL: the thread is resolved either way, and an unstamped row
+// would be listed, claimed and resolved again.
 func (s *Store) MarkFindingFixed(ctx context.Context, findingID, runID int64) error {
 	_, err := s.pool.Exec(ctx, `
-		UPDATE findings SET fixed_at = now(), fixed_run_id = $2
+		UPDATE findings SET fixed_at = now(), fixed_run_id = NULLIF($2, 0)
 		WHERE id = $1 AND fixed_at IS NULL`, findingID, runID)
 	return err
 }

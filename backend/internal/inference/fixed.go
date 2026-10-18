@@ -2,6 +2,7 @@ package inference
 
 import (
 	"encoding/json"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -53,8 +54,9 @@ const (
 	FixedNoEvidence FixedDropReason = "no_evidence"
 	// FixedEvidenceNotFound means a quoted line is nowhere in that file.
 	FixedEvidenceNotFound FixedDropReason = "evidence_not_found"
-	// FixedEvidenceUnchanged means every quoted line is context or full-file:
-	// none was added or removed, so the diff did not touch what it quotes.
+	// FixedEvidenceUnchanged means every quoted line is context, full-file
+	// or moved (removed and added back): the diff did not change what it
+	// quotes.
 	FixedEvidenceUnchanged FixedDropReason = "evidence_unchanged"
 )
 
@@ -85,8 +87,13 @@ type FixedValidation struct {
 //   - the id must be one the prompt listed, and claimed once;
 //   - the finding's file must be one the focused diff changed;
 //   - every non-blank evidence line must be in that file (a note or an
-//     elision is skipped, as for findings), and at least one of them an
-//     added or removed line.
+//     elision is skipped, as for findings), and at least one of them added
+//     or removed, but not both: a line removed and added back moved, and
+//     moved code still has its bug.
+//
+// Only an incremental review may claim a fix. On a full one the focused
+// diff is the whole PR, every line of it added, the buggy one included;
+// the caller lists no ids there, so every claim is an unknown id.
 func ValidateFixed(claims []FixedClaim, sent []PostedFinding, idx diff.AnchorIndex) FixedValidation {
 	byID := make(map[int64]PostedFinding, len(sent))
 	for _, f := range sent {
@@ -109,7 +116,12 @@ func ValidateFixed(claims []FixedClaim, sent []PostedFinding, idx diff.AnchorInd
 }
 
 func validateFixedOne(c FixedClaim, byID map[int64]PostedFinding, seen map[int64]bool, idx diff.AnchorIndex) (PostedFinding, FixedDropReason) {
-	id, err := strconv.ParseInt(strings.TrimPrefix(c.ID, FixedIDPrefix), 10, 64)
+	// The id as rendered ("[F12]") or lowercased is still the id.
+	raw := strings.TrimSpace(strings.Trim(c.ID, "[] "))
+	if len(raw) > 0 && strings.EqualFold(raw[:1], FixedIDPrefix) {
+		raw = raw[1:]
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil {
 		return PostedFinding{}, FixedUnknownID
 	}
@@ -137,8 +149,9 @@ func validateFixedOne(c FixedClaim, byID map[int64]PostedFinding, seen map[int64
 		case where == notFound:
 			return PostedFinding{}, FixedEvidenceNotFound
 		case where == onRemovedSide:
+			// Shown lines are matched first, so this line was not added back.
 			changed = true
-		case where == onNewSide && addedLine(h, fa.Shown):
+		case where == onNewSide && addedLine(h, fa.Shown) && !fa.Removed[h]:
 			changed = true
 		}
 		quoted++
@@ -155,10 +168,5 @@ func validateFixedOne(c FixedClaim, byID map[int64]PostedFinding, seen map[int64
 // addedLine reports whether a shown line with hash h is an added one, not
 // context.
 func addedLine(h uint64, shown map[int]diff.ShownLine) bool {
-	for _, s := range shown {
-		if s.Hash == h && s.Added {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(linesWithHash(h, shown), func(n int) bool { return shown[n].Added })
 }

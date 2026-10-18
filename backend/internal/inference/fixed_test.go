@@ -7,17 +7,19 @@ import (
 	"github.com/trick77/noergler/internal/diff"
 )
 
-// The push adds the missing unlock in svc.go and leaves other.go's context
-// alone. Earlier findings: 1 on svc.go (the leak), 2 on other.go, 3 on a file
+// The push adds the missing unlock in svc.go, moves its nil check down a
+// line, and leaves other.go's context alone. Earlier findings: 1 on svc.go (the leak), 2 on other.go, 3 on a file
 // the push did not touch.
 func fixedFixture() (diff.AnchorIndex, []PostedFinding) {
 	idx := diff.BuildAnchorIndex([]diff.FileReviewData{
 		{
 			Path: "svc.go",
-			Diff: "@@ -10,3 +10,4 @@\n" +
+			Diff: "@@ -10,4 +10,5 @@\n" +
 				" \tmu.Lock()\n" +
+				"-\tif in == nil {\n" +
 				"+\tdefer mu.Unlock()\n" +
 				"-\treturn load()\n" +
+				"+\tif in == nil {\n" +
 				"+\treturn load(ctx)\n" +
 				" }\n",
 			Content:        "func f() {\n\tmu.Lock()\n\tdefer mu.Unlock()\n\treturn load(ctx)\n}\n",
@@ -47,6 +49,11 @@ func TestValidateFixed(t *testing.T) {
 		{"model's note is skipped", FixedClaim{"F1", []string{"defer mu.Unlock()", "// released now"}}, ""},
 		{"a/ b/ prefix on the stored path", FixedClaim{"F2", []string{"y := 2"}}, ""},
 		{"id without the prefix", FixedClaim{"1", []string{"defer mu.Unlock()"}}, ""},
+		{"id copied with its brackets", FixedClaim{"[F1]", []string{"defer mu.Unlock()"}}, ""},
+		{"lowercase id", FixedClaim{"f1", []string{"defer mu.Unlock()"}}, ""},
+		// Removed and added back: the code moved, its bug with it.
+		{"moved line", FixedClaim{"F1", []string{"if in == nil {"}}, FixedEvidenceUnchanged},
+		{"moved line copied as removed", FixedClaim{"F1", []string{"-\tif in == nil {"}}, FixedEvidenceUnchanged},
 		{"id never listed", FixedClaim{"F9", []string{"defer mu.Unlock()"}}, FixedUnknownID},
 		{"id not a number", FixedClaim{"Fx", []string{"defer mu.Unlock()"}}, FixedUnknownID},
 		{"file the push did not touch", FixedClaim{"F3", []string{"defer mu.Unlock()"}}, FixedFileNotInDiff},
@@ -130,6 +137,24 @@ func TestParseReviewReadsFixed(t *testing.T) {
 	}
 	if skipped != 2 {
 		t.Errorf("diagnostics = %+v, want 2 skipped fixed entries", got.Diagnostics)
+	}
+}
+
+// A `fixed` that is not an array is said, not dropped in silence: a run that
+// claimed something malformed must not read like one that claimed nothing.
+func TestParseReviewWarnsOnAMalformedFixedList(t *testing.T) {
+	for _, v := range []string{`null`, `{"id": "F3"}`, `"F3"`} {
+		got := ParseReview(`{"overview": "o", "findings": [], "fixed": ` + v + `}`)
+		warned := false
+		for _, d := range got.Diagnostics {
+			warned = warned || strings.HasPrefix(d.Message, "Skipping malformed fixed list")
+		}
+		if len(got.Fixed) != 0 || !warned {
+			t.Errorf("fixed %s: claims %+v, diagnostics %+v", v, got.Fixed, got.Diagnostics)
+		}
+	}
+	if got := ParseReview(`{"overview": "o", "findings": [], "fixed": []}`); len(got.Diagnostics) != 0 {
+		t.Errorf("an empty list is no fault: %+v", got.Diagnostics)
 	}
 }
 

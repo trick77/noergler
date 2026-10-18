@@ -168,11 +168,13 @@ Findings already posted by earlier runs are filtered out by reading the
 **database**, not by fetching and parsing Bitbucket comments. What is left is
 sorted by severity and capped at `REVIEW_MAX_COMMENTS`.
 
-Each earlier finding is listed to the model with an id (`F12`). When the
-model names one under `fixed`, quoting an added or removed line of that
-finding's file, the finding's thread gets a "Fixed in `<sha>`." reply and is
-then resolved, and the finding leaves dedup. A claim that quotes only
-unchanged lines is dropped and logged.
+On an incremental review each earlier finding is listed to the model with an
+id (`F12`). When the model names one under `fixed`, quoting a line of that
+finding's file the push added or removed (not one it moved), the thread gets
+a "Fixed in `<sha>`." reply and is then resolved, and the finding leaves
+dedup. A claim that quotes only unchanged or moved lines is dropped and
+logged. A full review lists no ids: its diff is the whole PR, so every line
+reads as added.
 
 Each finding becomes one inline comment on its line:
 

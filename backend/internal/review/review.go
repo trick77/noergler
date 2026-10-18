@@ -260,6 +260,17 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		return r.store.ExistingFindings(ctx, key)
 	})
 	posted := r.trimPreviouslyPosted(ctx, prTag, existing, budget)
+	// Only an incremental review may retire a finding: on a full one every
+	// PR line is an added line, the buggy one too, so nothing would prove a
+	// fix. No id listed, nothing to claim.
+	listed := map[int64]bool{}
+	for i := range posted {
+		if incrementalFrom == "" {
+			posted[i].ID = 0
+			continue
+		}
+		listed[posted[i].ID] = true
+	}
 
 	assembled := inference.AssembleReviewPrompt(inference.AssembleRequest{
 		Template:              r.template,
@@ -300,7 +311,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		promptTokens:    assembled.PromptTokens,
 		anchors:         anchors,
 		existing:        existing,
-		posted:          posted,
+		listed:          listed,
 		contentSkipped:  contentSkipped,
 		ticket:          ticket,
 		parentTicket:    parentTicket,
@@ -375,7 +386,10 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: verdict lowered %s -> %s after %d dropped finding(s)",
 			prTag, was, reviewSummary.VerdictDecision, len(v.Dropped)))
 	}
-	deduped, repeats := dedupe(v.Kept, existing, plan.anchors)
+	// Fixed claims first: a finding this run retires is no reason to drop a
+	// new one on the same line as a repeat.
+	fixed := r.validateFixed(ctx, plan, result.Review.Fixed)
+	deduped, repeats := dedupe(v.Kept, withoutFixed(existing, fixed), plan.anchors)
 	for _, f := range repeats {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: finding on %s:%d (%s) already posted by an earlier run, not posted again",
 			prTag, f.File, f.Line, f.Severity))
@@ -411,7 +425,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	runID := r.recordRun(ctx, prReviewID, result, sourceCommit, plan.incrementalFrom, plan.mention,
 		elapsed, postedCount, plan.diffAdded, plan.diffRemoved, plan.totalFiles)
 	r.recordFindings(ctx, prReviewID, runID, findings, postedIDs)
-	r.retireFixed(ctx, plan, result.Review.Fixed, runID)
+	r.retireFixed(ctx, plan, fixed, runID)
 
 	// The attempt row carries the run's id, so the feed can show this run's
 	// findings and cost without the dashboard having to guess which run a

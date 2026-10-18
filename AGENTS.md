@@ -74,13 +74,11 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   marker keeps its space, so the tail of `*cfg = x` or `--count` stays
   invented. Blunt rules, never
   a judge model. Drops are logged by reason, never silent.
-- **An earlier finding is retired only on a changed line** (`inference.ValidateFixed`):
-  its `F<id>` was listed this run, its file is in the focused diff, and the
-  `fixed` evidence quotes an added or removed line of that file; context,
-  full-file and cumulative-diff lines prove nothing. A wrong "fixed" resolves
-  a live bug's thread. Reply, THEN resolve: Bitbucket takes no reply on a
-  resolved thread. A fixed row leaves the prompt block and dedup, so a
-  regression is posted again.
+- **Fixed = a changed line, incremental runs only** (`inference.ValidateFixed`):
+  listed `F<id>`, file in the push diff, evidence added or removed but not
+  both (moved). A full review's diff is all `+`, so it lists no ids. Reply,
+  then resolve only if the reply landed (Bitbucket refuses replies on a
+  resolved thread). Retired rows leave dedup, before dedup runs.
 - `.properties` is reviewable, but not sent past 50 changed lines
   (`diff.ExceedsSizeGate`, in prepare and the cumulative diff): hand edits
   yes, regenerated i18n bundles no. NOT in `IsReviewable`: the rollup must
@@ -281,7 +279,7 @@ keeps its exact decimal string); the summary headings are sentence case with no
 slash form: `Issues and suggestions`, `Security and performance`, `Test
 coverage`, `Requirement compliance` (`summary_golden.json` carries the names;
 the prompt is unaffected, it names JSON keys like `security_performance`); the
-parser's six diagnostics are RETURNED as `ParsedReview.Diagnostics` and emitted
+parser's diagnostics are RETURNED as `ParsedReview.Diagnostics` and emitted
 by `Client.Review`, so they bind `team=`/`pr_tag` from the call ctx
 (`ParseReview` stays pure); a skipped item is logged as raw JSON, so
 `{"requirement":"r"}`; placeholders substituted in ONE pass, so a `{files}`

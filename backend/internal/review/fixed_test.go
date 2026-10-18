@@ -12,11 +12,14 @@ import (
 	"github.com/trick77/noergler/internal/webhook"
 )
 
-// fixedHarness has one earlier finding (row 11, comment 501) on a.go, which
-// sampleDiff changes, and a model claiming it fixed with the given evidence.
+// fixedHarness is an incremental review of sampleDiff with one earlier
+// finding (row 11, comment 501) on a.go, and a model claiming it fixed with
+// the given evidence.
 func fixedHarness(t *testing.T, evidence ...string) *harness {
 	t.Helper()
 	h := newHarness(t, nil)
+	h.st.lastCommit, h.st.hasLast = "older", true
+	h.bb.commitDiff = sampleDiff
 	cid := 501
 	h.st.existing = []store.Finding{{
 		ID: 11, FilePath: "a.go", LineNumber: 2, Severity: "issue",
@@ -48,6 +51,22 @@ func TestFixedFindingIsRepliedToThenResolved(t *testing.T) {
 	}
 }
 
+// A full review's diff is the whole PR, every line of it added, the buggy one
+// too: no id is listed, and a claim retires nothing.
+func TestFullReviewRetiresNothing(t *testing.T) {
+	h := fixedHarness(t, "func new() {}")
+	h.st.lastCommit, h.st.hasLast = "", false
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	if p := h.llm.Reviews[0].Prompt; strings.Contains(p, "[F11]") || !strings.Contains(p, "a.go:2 [issue]") {
+		t.Errorf("a full review lists the finding without its id:\n%s", p)
+	}
+	if len(h.bb.Calls) != 0 || len(h.st.Fixed) != 0 {
+		t.Errorf("calls = %v, fixed = %v", h.bb.Calls, h.st.Fixed)
+	}
+}
+
 // Context only: the diff did not change what the claim quotes. Nothing
 // reaches Bitbucket and the row stays open.
 func TestUnprovenFixedClaimTouchesNothing(t *testing.T) {
@@ -60,23 +79,62 @@ func TestUnprovenFixedClaimTouchesNothing(t *testing.T) {
 	}
 }
 
-// Neither Bitbucket call failing fails the run, and the fix is recorded
-// either way: it is what the diff shows.
-func TestFixedFindingSurvivesBitbucketFailures(t *testing.T) {
+// A push that half-fixes a finding: the model retires it and reports what is
+// left on the same line. The new finding is not a repeat of the one retired.
+func TestRetiredFindingDoesNotDedupANewOne(t *testing.T) {
 	h := fixedHarness(t, "func new() {}")
-	h.bb.replyErr = errors.New("boom")
-	h.bb.resolveErr = errors.New("boom")
+	h.llm.review.Review.Findings = []inference.ReviewFinding{finding("a.go", 2, "issue", "still leaks on error")}
 
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
-	if want := []string{"reply:501", "resolve:501"}; !slices.Equal(h.bb.Calls, want) {
-		t.Errorf("calls = %v, want %v: a failed reply still tries the resolve", h.bb.Calls, want)
+	if len(h.bb.Inline) != 1 {
+		t.Errorf("inline = %+v, want the new finding posted", h.bb.Inline)
+	}
+	if len(h.st.Fixed) != 1 {
+		t.Errorf("fixed = %v, want the old one retired", h.st.Fixed)
+	}
+}
+
+// A failed reply leaves the thread open: a thread is never closed without
+// saying why. The row is stamped anyway, or the next run claims it again.
+func TestFailedReplyLeavesTheThreadOpen(t *testing.T) {
+	h := fixedHarness(t, "func new() {}")
+	h.bb.replyErr = errors.New("boom")
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	if want := []string{"reply:501"}; !slices.Equal(h.bb.Calls, want) {
+		t.Errorf("calls = %v, want %v", h.bb.Calls, want)
 	}
 	if len(h.st.Fixed) != 1 {
 		t.Errorf("fixed = %v, want the row stamped", h.st.Fixed)
 	}
 	if len(h.bb.Posted) != 1 {
 		t.Errorf("summary posts = %d, want the run to finish", len(h.bb.Posted))
+	}
+}
+
+func TestFailedResolveDoesNotFailTheRun(t *testing.T) {
+	h := fixedHarness(t, "func new() {}")
+	h.bb.resolveErr = errors.New("boom")
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	if len(h.st.Fixed) != 1 || len(h.bb.Posted) != 1 {
+		t.Errorf("fixed = %v, summary posts = %d", h.st.Fixed, len(h.bb.Posted))
+	}
+}
+
+// No run row: the thread is resolved, so the row is stamped with no run
+// rather than left to be claimed again.
+func TestFixedIsStampedWithoutARunRow(t *testing.T) {
+	h := fixedHarness(t, "func new() {}")
+	h.st.runErr = errors.New("db down")
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	if len(h.st.Fixed) != 1 || h.st.Fixed[0] != [2]int64{11, 0} {
+		t.Errorf("fixed = %v, want row 11 stamped with run 0", h.st.Fixed)
 	}
 }
 

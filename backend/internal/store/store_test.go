@@ -411,6 +411,15 @@ func TestFindings_FixedLeavesExisting(t *testing.T) {
 	if fixedRun != second {
 		t.Errorf("fixed_run_id = %d, want the first fixing run %d", fixedRun, second)
 	}
+	// No run row: stamped all the same, with no run.
+	if err := s.MarkFindingFixed(ctx, after[0].ID, 0); err != nil {
+		t.Fatal(err)
+	}
+	var noRun *int64
+	_ = s.pool.QueryRow(ctx, `SELECT fixed_run_id FROM findings WHERE id = $1`, after[0].ID).Scan(&noRun)
+	if left, _ := s.ExistingFindings(ctx, key); len(left) != 0 || noRun != nil {
+		t.Errorf("left = %+v, fixed_run_id = %v, want stamped with NULL", left, noRun)
+	}
 }
 
 func TestClaims_ListGroupsRepoClaimsAndKeepsWholeProjectsFirst(t *testing.T) {

@@ -420,7 +420,9 @@ func ParseReview(content string) ParsedReview {
 
 	if rawFixed, ok := raw["fixed"]; ok {
 		var items []json.RawMessage
-		if err := json.Unmarshal(rawFixed, &items); err == nil {
+		if err := json.Unmarshal(rawFixed, &items); err != nil || isJSONNull(rawFixed) {
+			out.warn("Skipping malformed fixed list: %s", truncateRunes(string(rawFixed), 200))
+		} else {
 			for _, item := range items {
 				c, ok := parseFixedClaim(item)
 				if !ok {
