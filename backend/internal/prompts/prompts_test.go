@@ -11,6 +11,7 @@ func TestPromptsAreEmbedded(t *testing.T) {
 		"review":        {Review, "{files}"},
 		"mention":       {Mention, "{question}"},
 		"finding_reply": {FindingReply, "{reply}"},
+		"reply name":    {FindingReply, "{author_first_name}"},
 	} {
 		if !strings.Contains(c.text, c.placeholder) {
 			t.Errorf("%s prompt lacks %s: the embed is broken or the prompt lost it", name, c.placeholder)

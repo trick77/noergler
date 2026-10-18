@@ -73,7 +73,10 @@ type Reviewer struct {
 	mentionTmpl string
 	// replyTmpl answers a reply on a finding's thread.
 	replyTmpl string
-	log       *slog.Logger
+	// displayName extracts the author's first name for a finding reply;
+	// nil = names off.
+	displayName *regexp.Regexp
+	log         *slog.Logger
 	// owns is the live claim check: a repo can be given up while its
 	// review is queued or in inference.
 	owns func(project, repo string) bool
@@ -97,7 +100,9 @@ type Options struct {
 	Template             string
 	MentionTemplate      string
 	FindingReplyTemplate string
-	Log                  *slog.Logger
+	// DisplayNamePattern is config.Bitbucket's; nil = names off.
+	DisplayNamePattern *regexp.Regexp
+	Log                *slog.Logger
 	// Owns reports whether the team still claims the repo; nil claims all.
 	Owns func(project, repo string) bool
 }
@@ -118,6 +123,7 @@ func New(opt Options) *Reviewer {
 		template:          orDefault(opt.Template, prompts.Review),
 		mentionTmpl:       orDefault(opt.MentionTemplate, prompts.Mention),
 		replyTmpl:         orDefault(opt.FindingReplyTemplate, prompts.FindingReply),
+		displayName:       opt.DisplayNamePattern,
 		log:               opt.Log,
 		owns:              opt.Owns,
 	}

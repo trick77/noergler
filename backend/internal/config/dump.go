@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -20,7 +21,8 @@ import (
 // zero would refuse every diff, which is what the field used to mean).
 func Dump(app *App, log *slog.Logger) {
 	section(log, "config.bitbucket", kv{"base_url", app.Bitbucket.BaseURL}, kv{"token", mask}, kv{"username", app.Bitbucket.Username},
-		kv{"max_diff_bytes", byteCap(app.Bitbucket.MaxDiffBytes)}, kv{"max_file_bytes", app.Bitbucket.MaxFileBytes})
+		kv{"max_diff_bytes", byteCap(app.Bitbucket.MaxDiffBytes)}, kv{"max_file_bytes", app.Bitbucket.MaxFileBytes},
+		kv{"display_name_pattern", patternOrOff(app.Bitbucket.DisplayNamePattern)})
 	llmSection(log, "config.llm", app.LLM)
 	reviewSection(log, "config.review", app.Review)
 	jiraSection(log, "config.jira", app.Jira)
@@ -126,6 +128,14 @@ func byteCap(n int) string {
 		return "unlimited"
 	}
 	return fmt.Sprint(n)
+}
+
+// patternOrOff is the pattern as configured, or "off" when names are off.
+func patternOrOff(re *regexp.Regexp) string {
+	if re == nil {
+		return "off"
+	}
+	return re.String()
 }
 
 func llmSection(log *slog.Logger, label string, l LLM) {

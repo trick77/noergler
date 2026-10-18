@@ -247,6 +247,13 @@ one-line AGENTS.md bullet. The dispute is stored and later prompts show it
 beside the finding so the issue is not raised again. The thread stays open:
 the author resolves it. Reply costs are logged, not recorded.
 
+The answer may address the author by first name ("Ok Jan - ..."), never
+always. `BITBUCKET_DISPLAY_NAME_PATTERN` extracts it from the Bitbucket
+`displayName` (default `Last First`, rest ignored); no match, no name. The model
+is told to use it only when acknowledging or accepting a dispute; on a question
+or any other intent code cuts a leading address from the answer. The name is
+never stored or logged. Q&A answers and reviews carry no name.
+
 ## 13. Terminal events and the riptide rollup
 
 `pr:merged`, `pr:declined` and `pr:deleted` close the PR out. Except for a
