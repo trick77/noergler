@@ -215,7 +215,11 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		return nil, ctx, r.abort(ctx, key, kind, SkipNoReviewable, prTag, httpCounter)
 	}
 
-	totalFiles := len(files)
+	// Every reviewable changed file, size-gated ones included: the set the
+	// +/- lines cover and the merge-time rollup counts
+	// (countReviewableFiles), so the run row, the footer and the rollup
+	// agree. What was not reviewed is a subset, named on its own lines.
+	totalFiles := len(files) + len(oversized)
 
 	// 14. Small PRs get context expansion; large ones are compressed first.
 	var otherModified, deletedPaths, renamedPaths []string
@@ -326,13 +330,9 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		parentTicket:   parentTicket,
 		breakdown:      breakdown(assembled),
 		agentsMDFound:  repoInstructions != "",
-		// Every reviewable changed file, size-gated ones included: the set
-		// the +/- lines cover and the merge-time rollup counts
-		// (countReviewableFiles), so the run row, the footer and the rollup
-		// agree. What was not reviewed is a subset, named on its own lines.
-		totalFiles:  totalFiles + len(oversized),
-		diffAdded:   diffAdded,
-		diffRemoved: diffRemoved,
+		totalFiles:     totalFiles,
+		diffAdded:      diffAdded,
+		diffRemoved:    diffRemoved,
 	}, ctx, true
 }
 

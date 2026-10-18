@@ -31,20 +31,18 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 	for _, fd := range all {
 		path := diff.ExtractPath(fd)
 		if diff.IsReviewable(fd) {
+			// Counted for every reviewable file, size-gated ones included,
+			// as the merge-time rollup (countDiffLines) counts them: not
+			// reviewed, but changed.
+			a, d := diff.CountChangedLines(fd)
+			added, removed = added+a, removed+d
 			if changed, limit, over := diff.ExceedsSizeGate(path, fd); over {
 				r.log.InfoContext(ctx, fmt.Sprintf("%s: skipped as oversized: %s (%d changed lines > %d)",
 					prTag, path, changed, limit))
 				oversized = append(oversized, path)
-				// Counted like any reviewable file, as the merge-time
-				// rollup (countDiffLines) counts it: not reviewed, but
-				// changed.
-				a, d := diff.CountChangedLines(fd)
-				added, removed = added+a, removed+d
 				continue
 			}
 			reviewable = append(reviewable, fd)
-			a, d := diff.CountChangedLines(fd)
-			added, removed = added+a, removed+d
 			continue
 		}
 		if path == "" {
@@ -58,7 +56,7 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: skipped as binary/non-reviewable: %s", prTag, capPaths(skipped)))
 	}
 	if len(reviewable) == 0 {
-		return nil, nil, oversized, 0, 0
+		return nil, nil, oversized, added, removed
 	}
 
 	type result struct {

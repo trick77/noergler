@@ -272,8 +272,8 @@ func summaryCases() map[string]SummaryInput {
 	linkDE.TotalFiles, linkDE.FilesCountsSet = 9, true
 	cases["run_url_de"] = linkDE
 
-	// Files over the token budget are counted on the line itself, so the
-	// count never reads as "all of them reviewed".
+	// Files not reviewed (size gate, token budget) are counted on the line
+	// itself, so the count never reads as "all of them reviewed".
 	overBudget := base()
 	overBudget.TotalFiles, overBudget.FilesCountsSet = 40, true
 	overBudget.SkippedFiles = []string{"bundle.properties"}

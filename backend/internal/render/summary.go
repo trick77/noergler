@@ -431,8 +431,8 @@ func telemetryLine(in SummaryInput) string {
 		parts = append(parts, "`"+in.ModelLabel+"`")
 	}
 	// Every reviewable file, over the same set as the +/- lines. How many of
-	// them were not reviewed is counted from the warning lines above, so the
-	// two never disagree and "40 files" never reads as all reviewed.
+	// them were not reviewed is counted from the warning lines above (size
+	// gate and token budget), so the two never disagree.
 	if in.FilesCountsSet {
 		files := PluralIn(in.Lang, in.TotalFiles, "Datei", "Dateien", "file", "files")
 		if n := len(in.SkippedFiles) + len(in.OverBudgetFiles); n > 0 {
