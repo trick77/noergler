@@ -63,7 +63,7 @@ func findEnclosingScopeLine(fileLines []string, fromLine, maxLines int, path str
 		if idx < 0 {
 			break
 		}
-		// Pinned (AGENTS.md): skip lines past the end of content instead of
+		// Pinned by a test: skip lines past the end of content instead of
 		// indexing past it. Content is byte-capped at the socket while the diff
 		// is not, so a truncated large file plus a late hunk reaches here.
 		// Indexing past the end would panic and take down the single queue
@@ -84,7 +84,7 @@ func findEnclosingScopeLine(fileLines []string, fromLine, maxLines int, path str
 // content is the full new-side file; when empty the diff is returned unchanged,
 // when empty the diff is returned unchanged.
 //
-// Pinned (AGENTS.md): adjacent hunks merge without losing diff lines. The
+// Pinned by a test: adjacent hunks merge without losing diff lines. The
 // overlap comes off the first hunk's added context, never off the second
 // hunk's body; trimming the body silently drops removal lines whenever the
 // overlap exceeds that hunk's before-context.

@@ -18,7 +18,7 @@ import (
 	"github.com/trick77/ship/kit/logging"
 )
 
-// The interfaces below are declared consumer-side, as AGENTS.md requires: the
+// The interfaces below are declared consumer-side, deliberately: the
 // adapters export concrete types and this package states what it needs of
 // them. That keeps the fakes in the tests small and the dependency arrow
 // pointing one way.
@@ -42,7 +42,7 @@ type BitbucketClient interface {
 //
 // FetchTicketWithParent is the only entry point, so the ticket is fetched
 // once per review and never a second time while rendering the prompt block.
-// AGENTS.md pins this ("Jira fetched once per review").
+// A test pins this ("Jira fetched once per review").
 type JiraClient interface {
 	FetchTicketWithParent(ctx context.Context, key string) (ticket, parent *jira.Ticket, err error)
 }
@@ -99,7 +99,7 @@ type TokenCounter interface {
 
 // safeDB runs a store call and swallows its failure.
 //
-// AGENTS.md: every store call in the review path goes through a warn-and-
+// Every store call in the review path goes through a warn-and-
 // fallback wrapper, because a DB fault must never fail a review. The zero
 // value of T is the fallback, which for the pointer and slice returns here is
 // the same "not found" the callers already handle.
