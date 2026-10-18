@@ -36,6 +36,10 @@ type fakeDashStore struct {
 	daily     []store.Bucket
 	dailyAtt  []store.AttemptBucket
 	activity  []store.TeamActivity
+	// detail is served for detailID; any other id is "no such run".
+	detail   store.RunDetail
+	detailID int64
+	prCost   *int64
 
 	err error
 	// lastTeam, lastOutcome and lastLimit record what the handler asked for.
@@ -47,6 +51,15 @@ type fakeDashStore struct {
 func (f *fakeDashStore) RecentAttempts(_ context.Context, team string, outcome store.AttemptFilter, limit int) ([]store.AttemptRow, error) {
 	f.lastTeam, f.lastOutcome, f.lastLimit = team, outcome, limit
 	return f.attempts, f.err
+}
+func (f *fakeDashStore) RunDetail(_ context.Context, id int64) (store.RunDetail, bool, error) {
+	if f.err != nil {
+		return store.RunDetail{}, false, f.err
+	}
+	return f.detail, id == f.detailID, nil
+}
+func (f *fakeDashStore) PRCost(context.Context, store.PRKey) (*int64, error) {
+	return f.prCost, f.err
 }
 func (f *fakeDashStore) OutcomeBreakdown(context.Context, time.Time) ([]store.OutcomeCount, error) {
 	return f.breakdown, f.err

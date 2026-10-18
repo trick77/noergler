@@ -76,6 +76,8 @@ var ErrCallNotRecorded = errors.New("gateway call not recorded (attempt written)
 // figures where the attempt produced a run.
 type AttemptRow struct {
 	Attempt
+	// ID is the attempt's row id, which the run detail page is keyed by.
+	ID        int64
 	CreatedAt time.Time
 	// Findings and CostNanoUSD come from the joined run. Both nil when the
 	// attempt produced none, and CostNanoUSD is nil for an unpriced run
@@ -114,7 +116,7 @@ func (s *Store) RecentAttempts(ctx context.Context, team string, outcome Attempt
 		limit = maxAttempts
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT a.team_slug, a.project_key, a.repo_slug, a.pr_id, a.kind,
+		SELECT a.id, a.team_slug, a.project_key, a.repo_slug, a.pr_id, a.kind,
 		       a.outcome, COALESCE(a.reason, ''), a.elapsed_ms, a.created_at,
 		       r.findings_posted, r.cost_nano_usd
 		  FROM review_attempts a
@@ -133,7 +135,7 @@ func (s *Store) RecentAttempts(ctx context.Context, team string, outcome Attempt
 	var out []AttemptRow
 	for rows.Next() {
 		var a AttemptRow
-		if err := rows.Scan(&a.TeamSlug, &a.Key.Project, &a.Key.Repo, &a.Key.PRID,
+		if err := rows.Scan(&a.ID, &a.TeamSlug, &a.Key.Project, &a.Key.Repo, &a.Key.PRID,
 			&a.Kind, &a.Outcome, &a.Reason, &a.ElapsedMS, &a.CreatedAt,
 			&a.Findings, &a.CostNanoUSD); err != nil {
 			return nil, err

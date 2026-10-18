@@ -51,6 +51,22 @@ func TestKnownRoutesGetTheShellAndUnknownOnesA404(t *testing.T) {
 	}
 }
 
+// The run detail page is the one route with a parameter: a positive attempt
+// id gets the shell, anything else under /runs/ stays a 404.
+func TestRunDetailRoute(t *testing.T) {
+	h := handler(built())
+	for _, path := range []string{"/runs/1", "/runs/18233"} {
+		if w := req(t, h, path); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "id=root") {
+			t.Errorf("%s: status = %d, want the shell", path, w.Code)
+		}
+	}
+	for _, path := range []string{"/runs/", "/runs/0", "/runs/abc", "/runs/1/2", "/runs/-1", "/runs/01"} {
+		if code := req(t, h, path).Code; code != http.StatusNotFound {
+			t.Errorf("%s: status = %d, want 404", path, code)
+		}
+	}
+}
+
 // A browser holding a stale index asks for a chunk that no longer exists.
 // Answering text/html for a JS module request turns a reload-on-stale
 // heuristic into a syntax error, so a missing asset must 404.
