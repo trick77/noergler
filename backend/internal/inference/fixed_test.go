@@ -56,6 +56,10 @@ func TestValidateFixed(t *testing.T) {
 		{"id without the prefix", FixedClaim{"1", []string{"defer mu.Unlock()"}}, ""},
 		{"id copied with its brackets", FixedClaim{"[F1]", []string{"defer mu.Unlock()"}}, ""},
 		{"lowercase id", FixedClaim{"f1", []string{"defer mu.Unlock()"}}, ""},
+		{"spaces inside the brackets", FixedClaim{"[ F1 ]", []string{"defer mu.Unlock()"}}, ""},
+		// Invented beats moved, in either order: the log says what happened.
+		{"moved then invented", FixedClaim{"F1", []string{"if in == nil {", "mu = nil"}}, FixedEvidenceNotFound},
+		{"invented then moved", FixedClaim{"F1", []string{"mu = nil", "if in == nil {"}}, FixedEvidenceNotFound},
 		// Removed and added back: the code moved, its bug with it.
 		{"moved line", FixedClaim{"F1", []string{"if in == nil {"}}, FixedEvidenceMoved},
 		{"moved line copied as removed", FixedClaim{"F1", []string{"-\tif in == nil {"}}, FixedEvidenceMoved},

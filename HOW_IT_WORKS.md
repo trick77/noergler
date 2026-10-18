@@ -173,8 +173,8 @@ id (`F12`). When the model names one under `fixed`, quoting a line of that
 finding's file the push added or removed and no line it moved (across the
 files the review showed), the thread gets a "Fixed in `<sha>`." reply and is
 then resolved, and the finding leaves dedup. A claim quoting only unchanged
-lines, or any moved one, is dropped and logged. A full review lists no ids: its diff is the whole PR, so every line
-reads as added.
+lines, or any moved one, is dropped and logged. A full review lists no ids:
+its diff is the whole PR, so every line reads as added.
 
 Each finding becomes one inline comment on its line:
 

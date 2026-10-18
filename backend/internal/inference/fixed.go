@@ -143,9 +143,8 @@ func ValidateFixed(claims []FixedClaim, sent []PostedFinding, idx diff.AnchorInd
 }
 
 func validateFixedOne(c FixedClaim, byID map[int64]PostedFinding, seen map[int64]bool, idx diff.AnchorIndex, added, removed map[uint64]bool) (PostedFinding, FixedDropReason) {
-	// The id as rendered ("[F12]") or lowercased is still the id. The parser
-	// trimmed its whitespace.
-	raw := strings.Trim(c.ID, "[]")
+	// The id as rendered ("[F12]", "[ F12 ]") or lowercased is still the id.
+	raw := strings.TrimSpace(strings.Trim(c.ID, "[] \t"))
 	if len(raw) > 0 && strings.EqualFold(raw[:1], FixedIDPrefix) {
 		raw = raw[1:]
 	}
@@ -164,7 +163,9 @@ func validateFixedOne(c FixedClaim, byID map[int64]PostedFinding, seen map[int64
 	if !ok {
 		return PostedFinding{}, FixedFileNotInDiff
 	}
-	quoted, changed := 0, false
+	// A moved line refuses the claim, but only once every line was looked
+	// up: an invented line reports as that, whatever order it came in.
+	quoted, changed, moved := 0, false, false
 	for _, e := range c.Evidence {
 		if strings.TrimSpace(e) == "" {
 			continue
@@ -178,20 +179,19 @@ func validateFixedOne(c FixedClaim, byID map[int64]PostedFinding, seen map[int64
 		case where == onRemovedSide:
 			// Shown lines match first, so it is not on this file's new side;
 			// added anywhere else, it moved.
-			if added[h] {
-				return PostedFinding{}, FixedEvidenceMoved
-			}
+			moved = moved || added[h]
 			changed = true
 		case where == onNewSide && addedLine(h, fa.Shown):
-			if removed[h] {
-				return PostedFinding{}, FixedEvidenceMoved
-			}
+			moved = moved || removed[h]
 			changed = true
 		}
 		quoted++
 	}
 	if quoted == 0 {
 		return PostedFinding{}, FixedNoEvidence
+	}
+	if moved {
+		return PostedFinding{}, FixedEvidenceMoved
 	}
 	if !changed {
 		return PostedFinding{}, FixedEvidenceUnchanged
