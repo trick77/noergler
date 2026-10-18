@@ -265,6 +265,7 @@ describe("LivePage", () => {
 describe("RunsPage", () => {
   const runs: Run[] = [
     {
+      id: 1,
       tag: "PAY/ledger#1",
       team: "payments",
       team_name: "Payments",
@@ -276,6 +277,7 @@ describe("RunsPage", () => {
       created_at: new Date().toISOString(),
     },
     {
+      id: 2,
       tag: "PAY/ledger#2",
       team: "payments",
       team_name: "Payments",
@@ -287,6 +289,7 @@ describe("RunsPage", () => {
       created_at: new Date().toISOString(),
     },
     {
+      id: 3,
       tag: "PAY/ledger#3",
       team: "payments",
       team_name: "Payments",
@@ -300,6 +303,7 @@ describe("RunsPage", () => {
       created_at: new Date().toISOString(),
     },
     {
+      id: 4,
       tag: "PAY/ledger#4",
       team: "payments",
       team_name: "Payments",

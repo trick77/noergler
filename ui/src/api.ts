@@ -47,6 +47,8 @@ export interface Live {
 }
 
 export interface Run {
+  /** The attempt id, the key of its run detail page. */
+  id: number;
   tag: string;
   team: string;
   team_name: string;
@@ -116,6 +118,99 @@ export interface Team {
   /** `<profile>-<effort>`, the label every run records. Absent for a
    *  disabled team: it has no started client. */
   model?: string;
+}
+
+/** RunDetail is GET runs/{id}: one attempt and what was recorded about it.
+ *  Headlines only, never a finding's text; money as decimal strings, null
+ *  for unpriced or "the gateway did not send it", never a zero. */
+export interface RunDetail {
+  id: number;
+  tag: string;
+  title: string;
+  team: string;
+  team_name: string;
+  kind: string;
+  outcome: string;
+  reason?: string;
+  reason_label?: string;
+  elapsed_ms: number | null;
+  created_at: string;
+  cost_usd: string | null;
+  run: {
+    incremental: boolean;
+    from_commit?: string;
+    to_commit?: string;
+    model: string;
+    prompt_tokens: number;
+    cached_tokens: number;
+    completion_tokens: number;
+    findings_posted: number;
+    lines_added: number;
+    lines_removed: number;
+    files_changed: number;
+  } | null;
+  call: RunCall | null;
+  findings: RunFinding[];
+  fixed: RunFinding[];
+  pr: {
+    attempts: PRAttempt[];
+    cost_usd: string | null;
+    cap_usd: string | null;
+  };
+  bitbucket_url: string;
+}
+
+/** RunCall is what the AI Gateway reported about the call. Lanes at six
+ *  decimals; output_tokens includes reasoning_tokens. */
+export interface RunCall {
+  profile: string;
+  model?: string;
+  deployment?: string;
+  reasoning_sent?: string;
+  finish_reason?: string;
+  call_id?: string;
+  litellm_version?: string;
+  input_tokens: number | null;
+  input_uncached_tokens: number | null;
+  cache_read_tokens: number | null;
+  cache_write_tokens: number | null;
+  output_tokens: number | null;
+  reasoning_tokens: number | null;
+  cost_usd: string | null;
+  cost_input_usd: string | null;
+  cost_cache_read_usd: string | null;
+  cost_cache_write_usd: string | null;
+  cost_output_usd: string | null;
+  cost_reasoning_usd: string | null;
+  cost_tool_usage_usd: string | null;
+  key_spend_usd: string | null;
+  headers_ms: number | null;
+  total_ms: number | null;
+  warnings: string[];
+}
+
+export interface RunFinding {
+  severity: string;
+  confidence: number | null;
+  file: string;
+  line: number;
+  headline: string;
+  comment_id: number | null;
+  replied: boolean;
+  fixed: boolean;
+  from_run_id: number;
+}
+
+export interface PRAttempt {
+  id: number;
+  kind: string;
+  outcome: string;
+  reason?: string;
+  reason_label?: string;
+  elapsed_ms: number | null;
+  created_at: string;
+  findings: number | null;
+  cost_usd: string | null;
 }
 
 /** get fetches one dashboard endpoint. Relative, so vite proxies it in dev

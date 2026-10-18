@@ -42,6 +42,8 @@ type DashboardStore interface {
 	DailyByTeam(ctx context.Context, since time.Time) ([]store.Bucket, error)
 	DailyAttempts(ctx context.Context, since time.Time) ([]store.AttemptBucket, error)
 	ActivityByTeam(ctx context.Context) ([]store.TeamActivity, error)
+	RunDetail(ctx context.Context, attemptID int64) (store.RunDetail, bool, error)
+	PRCost(ctx context.Context, key store.PRKey) (*int64, error)
 }
 
 // usd renders nano-USD as a fixed-point decimal string with 3 decimals,
@@ -225,6 +227,8 @@ func (d Deps) live(w http.ResponseWriter, r *http.Request) {
 }
 
 type runRow struct {
+	// ID is the attempt id, the run detail page's key.
+	ID  int64  `json:"id"`
 	Tag string `json:"tag"`
 	// Team is the slug the row was stored under; TeamName is what the page
 	// prints. These rows outlive teams.yaml, so a name is not always there.
@@ -278,7 +282,7 @@ func (d Deps) runs(w http.ResponseWriter, r *http.Request) {
 	body := runsBody{Runs: make([]runRow, 0, len(rows)), BitbucketURL: d.BitbucketURL}
 	for _, a := range rows {
 		body.Runs = append(body.Runs, runRow{
-			Tag: a.Key.Tag(), Team: a.TeamSlug, TeamName: nameOf(a.TeamSlug), Kind: string(a.Kind),
+			ID: a.ID, Tag: a.Key.Tag(), Team: a.TeamSlug, TeamName: nameOf(a.TeamSlug), Kind: string(a.Kind),
 			Outcome: a.Outcome, Reason: a.Reason,
 			ReasonMsg: review.SkipReason(a.Reason).Label(),
 			ElapsedMS: a.ElapsedMS, Findings: a.Findings,
