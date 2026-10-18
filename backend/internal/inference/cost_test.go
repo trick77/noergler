@@ -10,6 +10,22 @@ import (
 	"github.com/trick77/llmwire"
 )
 
+// A direct route, or a gateway sending only margin text, prints no lanes:
+// six "absent" lanes would read as a split that came back empty.
+func TestCallCostLogLineOmitsAnUnsentSplit(t *testing.T) {
+	for name, cost := range map[string]CallCost{
+		"nothing":     {CallID: "abc"},
+		"margin only": {CallID: "abc", Split: llmwire.GatewayCost{Original: "0.0035"}},
+	} {
+		line, _ := cost.LogLine()
+		for _, unwanted := range []string{"input=", "cache-read=", "litellm-version="} {
+			if strings.Contains(line, unwanted) {
+				t.Errorf("%s: line %q carries %q", name, line, unwanted)
+			}
+		}
+	}
+}
+
 // LogLine is the per-call cost record. It warns only where the gateway owed a
 // price and did not give one: an endpoint that never prices must not warn on
 // every call, or the warning stops meaning anything.
@@ -34,8 +50,21 @@ func TestCallCostLogLine(t *testing.T) {
 				Split: llmwire.GatewayCost{InputNanoUSD: n(1_000_000), CacheReadNanoUSD: n(100_000),
 					CacheWriteNanoUSD: n(1_100_000), OutputNanoUSD: n(2_000_000), ReasoningNanoUSD: n(1_500_000)}},
 			wantWarn: false,
-			contains: []string{"input=$0.001", "cache-read=$0.000", "cache-write=$0.001", "output=$0.002",
-				"reasoning=$0.002", "tool-usage=absent", "litellm-version=1.107.0"},
+			contains: []string{"input=$0.001000", "cache-read=$0.000100", "cache-write=$0.001100", "output=$0.002000",
+				"reasoning-in-output=$0.001500", "tool-usage=absent", `litellm-version="1.107.0"`},
+		},
+		{
+			name: "a margin is named beside the total it moved",
+			cost: CallCost{NanoUSD: n(4_200_000), CallID: "abc",
+				Split: llmwire.GatewayCost{MarginPercent: "0.2", Original: "0.0035"}},
+			wantWarn: false,
+			contains: []string{`margin-percent="0.2"`, `original="0.0035"`},
+		},
+		{
+			name:     "a forged version cannot add fields",
+			cost:     CallCost{NanoUSD: n(1), CallID: "abc", GatewayVersion: "1 call-id=forged"},
+			wantWarn: false,
+			contains: []string{`litellm-version="1 call-id=forged"`},
 		},
 		{
 			name:     "no headers at all is not a LiteLLM proxy, so no warning",
