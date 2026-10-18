@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 )
@@ -114,8 +115,8 @@ func TestCallWriteNeverCostsTheAttempt(t *testing.T) {
 	}
 	id, err = s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "unparseable",
 		CostNanoUSD: nano(100), Call: &LLMCall{Profile: "p"}})
-	if err == nil || id == 0 {
-		t.Fatalf("InsertAttempt = %d, %v; want the attempt id and the call's error", id, err)
+	if !errors.Is(err, ErrCallNotRecorded) || id == 0 {
+		t.Fatalf("InsertAttempt = %d, %v; want the attempt id and ErrCallNotRecorded", id, err)
 	}
 	if c, _ := s.PRCost(ctx, key); c == nil || *c != 500 {
 		t.Errorf("PRCost = %v, want 500: the second attempt's cost survived its call", c)

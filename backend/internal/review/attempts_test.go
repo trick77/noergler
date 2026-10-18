@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -168,8 +169,7 @@ func TestRefusedCallWriteIsLoggedAsSuch(t *testing.T) {
 
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
 
-	if !strings.Contains(logs.String(), "gateway call detail not recorded, the attempt was") ||
-		!strings.Contains(logs.String(), "#") {
+	if !regexp.MustCompile(`\S+/\S+#\d+: gateway call detail not recorded, the attempt was`).MatchString(logs.String()) {
 		t.Errorf("log lacks the call-not-recorded line with the PR:\n%s", logs.String())
 	}
 	if strings.Contains(logs.String(), "DB operation failed, using fallback: InsertAttempt") {
