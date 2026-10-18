@@ -100,7 +100,9 @@ export function tokens(n: number): string {
 /** outcomeTone maps an outcome to its pill. Four tones, not one per
  *  outcome: ok, a decision the pipeline made, something that went wrong, and
  *  none for no value at all (a team that never ran), grey because it is none
- *  of the three. The pill always carries the word too, because the
+ *  of the three. Only outcomeTone uses none: teamTone keeps an empty state
+ *  red on purpose, since the server always names one. The pill always
+ *  carries the word too, because the
  *  ok/skip/fail hues sit at dE 7.6 under protanopia and colour alone would
  *  not separate them. */
 export type Tone = "ok" | "skip" | "fail" | "none";
@@ -217,9 +219,9 @@ export function teamStateLabel(state: string): string {
 /** teamStateTitle is the code of a state this build has no word for, the
  *  thing to grep for; a known state needs no tooltip. */
 export function teamStateTitle(state: string): string | undefined {
-  return known("teamState", state) || state === ""
-    ? undefined
-    : codeText(state);
+  // An empty state is a broken contract (teamTone paints it red), so it
+  // gets a tooltip too, naming the empty value.
+  return known("teamState", state) ? undefined : codeText(state || '""');
 }
 
 /** prUrl turns a PROJECT/repo#id tag into its Bitbucket URL, or null when it

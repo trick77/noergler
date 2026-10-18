@@ -250,8 +250,10 @@ describe("team state", () => {
     // Its stored code stays on the tooltip; a known state needs none.
     expect(teamStateTitle("invented_later")).toBe("Code: invented_later");
     expect(teamStateTitle("ready")).toBeUndefined();
-    // Empty is a broken contract, not "no value": red, like any unknown.
+    // Empty is a broken contract, not "no value": red, like any unknown,
+    // with a tooltip naming the empty value.
     expect(teamTone("")).toBe("fail");
+    expect(teamStateTitle("")).toBe('Code: ""');
   });
 
   it("labels each state", () => {
