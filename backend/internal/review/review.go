@@ -332,7 +332,12 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	anchors.AddContextDiff(cumulativePR.diff)
 	var prAdded map[string]map[uint64]bool
 	if incrementalFrom != "" {
-		prAdded = diff.AddedLines(cumulativePR.diff)
+		// No history read (a failed fetch): an empty map, so every claim
+		// drops as unknown rather than passing on a push's diff alone.
+		prAdded = cumulativePR.added
+		if prAdded == nil {
+			prAdded = map[string]map[uint64]bool{}
+		}
 	}
 	// The last of prepare's own work: what follows is the wait for a slot.
 	sw.lap(stagePrompt)

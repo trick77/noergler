@@ -251,17 +251,6 @@ export function teamStateTitle(state: string): string | undefined {
   return known("teamState", state) ? undefined : codeText(state || '""');
 }
 
-/** prUrl turns a PROJECT/repo#id tag into its Bitbucket URL, or null when it
- *  cannot: an empty base (BITBUCKET_URL unset) or a tag that does not have
- *  that shape. The caller renders plain text for a null rather than a broken
- *  href.
- *
- *  The tag is built by string formatting on the server, not by a parser, so
- *  this one must not assume it parses.
- *
- *  This is the BROWSER url, which is why it carries no /rest/api/1.0: the
- *  Go client's prPath builds the REST path for the same pull request and is
- *  deliberately a different shape. */
 /** repoUrl is the repo a PR tag names, and the PR's id; null without a
  *  Bitbucket base or a parseable tag. prUrl and sourceUrl both build on it. */
 function repoUrl(
@@ -278,6 +267,17 @@ function repoUrl(
   };
 }
 
+/** prUrl turns a PROJECT/repo#id tag into its Bitbucket URL, or null when it
+ *  cannot: an empty base (BITBUCKET_URL unset) or a tag that does not have
+ *  that shape. The caller renders plain text for a null rather than a broken
+ *  href.
+ *
+ *  The tag is built by string formatting on the server, not by a parser, so
+ *  this one must not assume it parses.
+ *
+ *  This is the BROWSER url, which is why it carries no /rest/api/1.0: the
+ *  Go client's prPath builds the REST path for the same pull request and is
+ *  deliberately a different shape. */
 export function prUrl(tag: string, base: string): string | null {
   const r = repoUrl(tag, base);
   return r === null ? null : `${r.repo}/pull-requests/${r.id}`;

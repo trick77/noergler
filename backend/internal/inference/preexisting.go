@@ -111,16 +111,31 @@ func ValidatePreExisting(bugs []PreExistingBug, idx diff.AnchorIndex, prAdded ma
 	return kept, dropped
 }
 
-// codeOrSecretRE is a backtick, or a run of 24 or more token characters with
-// no space: an API key, a hash, a base64 blob. Prose has neither.
-var codeOrSecretRE = regexp.MustCompile("`|[A-Za-z0-9_+/=-]{24,}")
+// tokenRunRE is a run of 24 or more token characters with no space. With a
+// digit or an underscore in it, it is an API key, a hash or a base64 blob;
+// without, it can be a German compound ("Verbindungswiederherstellung") or a
+// hyphenated phrase, which are prose.
+var tokenRunRE = regexp.MustCompile(`[A-Za-z0-9_+/=-]{24,}`)
+
+// hasCodeOrSecret reports a backtick or a secret-like token in model prose.
+func hasCodeOrSecret(s string) bool {
+	if strings.ContainsRune(s, '`') {
+		return true
+	}
+	for _, run := range tokenRunRE.FindAllString(s, -1) {
+		if strings.ContainsAny(run, "0123456789_") {
+			return true
+		}
+	}
+	return false
+}
 
 func validatePreExisting(b PreExistingBug, idx diff.AnchorIndex, prAdded map[string]map[uint64]bool) (string, int) {
 	fa, ok := idx[b.File]
 	if !ok {
 		return string(DropUnknownFile), 0
 	}
-	if codeOrSecretRE.MatchString(b.Headline) || codeOrSecretRE.MatchString(b.Explanation) {
+	if hasCodeOrSecret(b.Headline) || hasCodeOrSecret(b.Explanation) {
 		return "code_in_prose", 0
 	}
 	var history map[uint64]bool
@@ -169,7 +184,7 @@ func validatePreExisting(b PreExistingBug, idx diff.AnchorIndex, prAdded map[str
 	if line < 1 {
 		return "bad_line", 0
 	}
-	if s, ok := fa.Shown[line]; ok && s.Added {
+	if s, ok := fa.Shown[line]; ok && (s.Added || history[s.Hash]) {
 		return "line_added_by_pr", 0
 	}
 	return "", line

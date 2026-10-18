@@ -55,6 +55,8 @@ func TestValidatePreExisting(t *testing.T) {
 		{"no line", bug(0, "resp, err := client.Do(req)"), "bad_line", 0},
 		{"code in the explanation", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "h",
 			Explanation: "calls `mu.Lock()` twice", Evidence: []string{"mu.Lock()"}}, "code_in_prose", 0},
+		{"german compound is prose", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "h",
+			Explanation: "Die Verbindungswiederherstellung schlaegt fehl", Evidence: []string{"mu.Lock()"}}, "", 11},
 		{"secret in the explanation", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "h",
 			Explanation: "key 0123456789abcdef0123456789abcdef is committed", Evidence: []string{"mu.Lock()"}}, "code_in_prose", 0},
 	}
@@ -108,6 +110,15 @@ func TestValidatePreExistingIncremental(t *testing.T) {
 	if kept, _ := ValidatePreExisting([]PreExistingBug{bug}, idx,
 		map[string]map[uint64]bool{"src/labels.ts": {}}); len(kept) != 1 {
 		t.Error("an old line in a known file must stand")
+	}
+	// Cited on line 10, which an earlier push added; the evidence (line 11)
+	// is old and near enough that the line is not moved.
+	cited := bug
+	cited.Line = 10
+	earlier10 := map[string]map[uint64]bool{"src/labels.ts": {diff.HashLine("func load() {"): true}}
+	if _, dropped := ValidatePreExisting([]PreExistingBug{cited}, idx, earlier10); len(dropped) != 1 ||
+		dropped[0].Reason != "line_added_by_pr" {
+		t.Errorf("dropped = %+v, want the earlier push's line refused as the cited line", dropped)
 	}
 }
 
