@@ -74,6 +74,13 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   marker keeps its space, so the tail of `*cfg = x` or `--count` stays
   invented. Blunt rules, never
   a judge model. Drops are logged by reason, never silent.
+- **Fixed = a changed line, incremental runs only** (`inference.ValidateFixed`):
+  listed `F<id>`, file in the push diff, one quoted line added or removed,
+  none moved (in any shown file). A full review's diff is all `+`, so it
+  lists no ids. Reply, then resolve only if the reply landed (Bitbucket
+  refuses replies on a resolved thread). The row is stamped regardless and
+  leaves dedup before dedup runs. Decided policies, limits in the doc
+  comments: re-litigating them is a decision, not a fix.
 - `.properties` is reviewable, but not sent past 50 changed lines
   (`diff.ExceedsSizeGate`, in prepare and the cumulative diff): hand edits
   yes, regenerated i18n bundles no. NOT in `IsReviewable`: the rollup must
@@ -274,7 +281,7 @@ keeps its exact decimal string); the summary headings are sentence case with no
 slash form: `Issues and suggestions`, `Security and performance`, `Test
 coverage`, `Requirement compliance` (`summary_golden.json` carries the names;
 the prompt is unaffected, it names JSON keys like `security_performance`); the
-parser's six diagnostics are RETURNED as `ParsedReview.Diagnostics` and emitted
+parser's diagnostics are RETURNED as `ParsedReview.Diagnostics` and emitted
 by `Client.Review`, so they bind `team=`/`pr_tag` from the call ctx
 (`ParseReview` stays pure); a skipped item is logged as raw JSON, so
 `{"requirement":"r"}`; placeholders substituted in ONE pass, so a `{files}`

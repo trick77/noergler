@@ -1,0 +1,635 @@
+{
+ "Results": [
+  {
+   "Case": "buried-behavioural-hunk",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/notify/dispatcher.go",
+     "Line": 64,
+     "Severity": "issue",
+     "Comment": "The retry decision is inverted relative to the documented contract (\"a permanent one is returned at once\") and to the old `if !retryable(err) { return err }` form. With this condition, a transient failure (e.g. a 503 from `post`) satisfies `retryable` and is returned immediately at attempt 1, so no retry ever happens; conversely a permanent failure (e.g. `ErrPermanent` from a 4xx) fails the condition and falls through into the backoff loop, so it is retried `maxAttempts` times with sleeps before the final \"giving up\" error. The log line \"notification delivery failed, will retry\" then fires exactly for the errors that are not retried.",
+     "Confidence": 97,
+     "Headline": "Retry predicate inverted: transient errors return immediately, permanent ones retried",
+     "Suggestion": "if !retryable(lastErr) {",
+     "Evidence": [
+      "if retryable(lastErr) {",
+      "return lastErr",
+      "}",
+      "d.log.Warn(\"notification delivery failed, will retry\",",
+      "\"endpoint\", ep.ID, \"attempt\", attempt, \"error\", lastErr)"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "retryable-check-inverted",
+      "file": "internal/notify/dispatcher.go",
+      "lines": [
+       60,
+       66
+      ],
+      "keywords": [
+       "!retryable",
+       "inverted",
+       "negat",
+       "flipped",
+       "non-retryable",
+       "permanent"
+      ],
+      "why": "Transient failures such as a 503 are now returned on the first attempt without any retry, while permanently rejected deliveries are retried five times with backoff."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-guard-clause",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-i18n-key-order",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-multi-file-signature",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0,
+   "Dropped": [
+    {
+     "Finding": {
+      "File": "internal/metrics/http.go",
+      "Line": 54,
+      "Severity": "suggestion",
+      "Comment": "`methodLabel` reduces methods to a fixed allowlist of 7, and the doc comment says the label is \"reduced to a fixed set, so neither label grows with what clients send\". However, `Instrument` passes the raw `r.Method` through unchanged (e.g. `rec.ObserveRequest(r.Method, route, ...)`), and `metrics.HTTP.ObserveRequest` only bounds the value inside the metrics package. Any non-standard method — including methods the gateway itself accepts or proxies, such as `TRACE` or `CONNECT` — is recorded as `OTHER`, so the new method label cannot distinguish them. Given the stated purpose of the change is to break requests down by method, losing every method outside the hardcoded list (including legitimate HTTP methods the gateway may serve) makes the label misleading for those routes.",
+      "Confidence": 80,
+      "Headline": "Method label collapses TRACE/CONNECT and other valid methods into OTHER",
+      "Suggestion": null,
+      "Evidence": [
+       "\t\trec.ObserveRequest(r.Method, route, http.StatusTooManyRequests, time.Since(start))",
+       "\trec.ObserveRequest(r.Method, route, sw.status, time.Since(start))",
+       "func methodLabel(method string) string {",
+       "\tswitch method {",
+       "\tcase http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut,\",",
+       "\t\thttp.MethodPatch, http.MethodDelete, http.MethodOptions:"
+      ]
+     },
+     "Reason": "evidence_not_found"
+    }
+   ]
+  },
+  {
+   "Case": "clean-refactor",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-rename",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "context-not-propagated",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/bitbucket/diff.go",
+     "Line": 13,
+     "Severity": "issue",
+     "Comment": "Replacing `ctx` with `context.Background()` in both `http.NewRequestWithContext` and the `getTextCapped` call detaches this request from the caller's context entirely, which directly contradicts the function's own doc comment on line 10 (\"The caller's context bounds the whole operation, including the body read\"). A realistic path: a server handler with a request-scoped `ctx` (with deadline or cancellation) calls `FetchDiff`; the client cancels or the deadline expires, but the HTTP request and the capped body read keep running to completion, holding the connection and the response body open past the request's lifetime. This is both a resource leak and a hang risk on a slow upstream. Both call sites need the caller's `ctx` restored: line 13 (`http.NewRequestWithContext(ctx, ...)`) and line 18 (`c.getTextCapped(ctx, req, ...)`).",
+     "Confidence": 95,
+     "Headline": "FetchDiff drops the caller's context in favor of context.Background()",
+     "Suggestion": "req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)",
+     "Evidence": [
+      "// The caller's context bounds the whole operation, including the body read.",
+      "req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u, nil)",
+      "req.Header.Set(\"Authorization\", \"Bearer \"+c.token)",
+      "return c.getTextCapped(context.Background(), req, maxDiffBytes)"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "caller-context-dropped",
+      "file": "internal/bitbucket/diff.go",
+      "lines": [
+       11,
+       18
+      ],
+      "keywords": [
+       "context.Background",
+       "background context",
+       "ctx is ignored",
+       "ignores ctx",
+       "ignores the ctx",
+       "ignores caller",
+       "not propagated",
+       "cancellation",
+       "cancelation",
+       "deadline",
+       "caller's context",
+       "callers context"
+      ],
+      "why": "ctx is a parameter but never used; context.Background() is passed to both NewRequestWithContext and getTextCapped, so the caller's timeout and cancellation cannot stop the request or the body read. Bitbucket has no Client.Timeout by design, which makes the caller's ctx the only bound on a 10 MiB diff."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "cross-file-stale-caller",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/session/manager.go",
+     "Line": 78,
+     "Severity": "issue",
+     "Comment": "`Hold` computes the TTL with `int64(d.Seconds())`, but `Store.Touch` now takes `ttlMillis` (the same unit used for `m.idleTTL`, which `NewManager` sets via `idle.Milliseconds()`). Passing `d = 30 * time.Second` therefore touches the key with a TTL of 30 milliseconds: the session vanishes almost immediately during the long-running export `Hold` exists to protect, and `Resume` then returns `ErrNotFound`. Worse, any hold shorter than one second (e.g. `500 * time.Millisecond`) truncates to `0` and is rejected by `Touch`'s non-positive-TTL guard, so `Hold` fails outright.",
+     "Confidence": 95,
+     "Headline": "Hold passes seconds where Touch now expects milliseconds",
+     "Suggestion": "\treturn m.store.Touch(ctx, id, d.Milliseconds())",
+     "Evidence": [
+      "idleTTL: idle.Milliseconds(),",
+      "if err := m.store.Touch(ctx, id, m.idleTTL); err != nil {",
+      "return m.store.Touch(ctx, id, int64(d.Seconds()))"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "hold-passes-seconds-as-millis",
+      "file": "internal/session/manager.go",
+      "lines": [
+       71,
+       79
+      ],
+      "keywords": [
+       "millisecond",
+       "ttlmillis",
+       "pexpire",
+       "1000"
+      ],
+      "why": "Touch now takes milliseconds, so a hold of two hours sets a lifetime of 7.2 seconds and the session expires while the export it was meant to cover is still running."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "java-seeded",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "src/main/java/com/acme/payments/transfer/TransferService.java",
+     "Line": 102,
+     "Severity": "issue",
+     "Comment": "`transfer.sourceAccountId() != requesterAccountId` compares two `Long` objects by reference identity, not by value. Both are boxed `Long`s, so for account ids outside the cached range (roughly \u003e 127) two distinct `Long` instances holding the same id compare unequal. A legitimate owner cancelling their own transfer then gets `TransferAccessDeniedException`, while the intended authorization check is silently defeated for larger ids. Compare with `.equals(...)`, as the rest of this class does (`sourceAccountId.equals(targetAccountId)` in `create`).",
+     "Confidence": 95,
+     "Headline": "Long id compared with != instead of equals in cancel authorization check",
+     "Suggestion": "        if (!transfer.sourceAccountId().equals(requesterAccountId)) {",
+     "Evidence": [
+      "if (transfer.sourceAccountId() != requesterAccountId) {",
+      "    throw new TransferAccessDeniedException(transferId, requesterAccountId);",
+      "}"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "boxed-long-compared-by-reference",
+      "file": "src/main/java/com/acme/payments/transfer/TransferService.java",
+      "lines": [
+       97,
+       104
+      ],
+      "keywords": [
+       "equals",
+       "boxed",
+       "reference",
+       "identity",
+       "127",
+       "unbox"
+      ],
+      "why": "Boxed Longs are compared by reference, so for any account id above 127 the owner's own cancellation is rejected as access denied."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "lock-not-released",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/teams/registry.go",
+     "Line": 20,
+     "Severity": "issue",
+     "Comment": "Replacing `defer r.mu.Unlock()` with an explicit unlock at the end leaves the mutex locked on the early-return path. When `Disable` is called with a slug not present in `r.byslug`, it returns `fmt.Errorf(\"unknown team %q\", slug)` while still holding `r.mu`, so the next caller of any `Registry` method that takes the lock blocks forever. Any caller that probes a not-yet-registered team (e.g. a config check or admin endpoint) will deadlock the registry.",
+     "Confidence": 95,
+     "Headline": "Early return in Disable leaves the registry mutex locked",
+     "Suggestion": "if !ok {\n\t\tr.mu.Unlock()\n\t\treturn fmt.Errorf(\"unknown team %q\", slug)\n\t}",
+     "Evidence": [
+      "if !ok {",
+      "return fmt.Errorf(\"unknown team %q\", slug)",
+      "}",
+      "r.disable[slug] = reason",
+      "r.mu.Unlock()"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "mutex-held-on-early-return",
+      "file": "internal/teams/registry.go",
+      "lines": [
+       16,
+       24
+      ],
+      "keywords": [
+       "deadlock",
+       "still held",
+       "never released",
+       "not released",
+       "never unlocked",
+       "not unlocked",
+       "defer r.mu.Unlock",
+       "defer mu.Unlock",
+       "defer the Unlock",
+       "held forever"
+      ],
+      "why": "The Unlock now runs only on the success path, so returning the unknown-team error leaves r.mu locked and every subsequent caller blocks forever."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "nil-deref",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/review/summary.go",
+     "Line": 22,
+     "Severity": "issue",
+     "Comment": "The nil check on `r.Ticket` no longer returns early — the guard body is empty and execution falls through to `r.Ticket.Key`. With `r.Ticket == nil` (which the comment itself says is an optional/allowed state), this dereferences a nil pointer and panics on any Result that has a Body but no linked ticket. The previous code returned `r.Body` in exactly this case.",
+     "Confidence": 98,
+     "Headline": "Nil `r.Ticket` falls through to a nil-pointer dereference in Summarize",
+     "Suggestion": "\tif r.Ticket == nil {\n\t\treturn r.Body\n\t}\n\treturn r.Body + \"\\n\\n\" + r.Ticket.Key",
+     "Evidence": [
+      "if r.Ticket == nil {",
+      "\t\t// Ticket is optional; fall through to the shared renderer.",
+      "\t}",
+      "\treturn r.Body + \"\\n\\n\" + r.Ticket.Key"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "nil-ticket-deref",
+      "file": "internal/review/summary.go",
+      "lines": [
+       19,
+       22
+      ],
+      "keywords": [
+       "nil",
+       "dereference",
+       "deref",
+       "panic",
+       "Ticket"
+      ],
+      "why": "The nil branch no longer returns, so r.Ticket.Key panics whenever Ticket is nil. A reviewer may anchor on the dead check (19) or on the dereference (22)."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "off-by-one",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/diff/context.go",
+     "Line": 15,
+     "Severity": "issue",
+     "Comment": "The clamp now sets `last = len(lines) + 1`, so `lines[first:last]` runs with an upper bound one past the end of the slice whenever the requested context reaches EOF. For `lines` of length 3, `h = {Start: 1, Count: 1}`, `n = 5`: `first = 2`, `last = 7 \u003e= 3` → `last = 4`, `first \u003c last`, so `lines[2:4]` panics with slice bounds out of range. The prior code clamped to `len(lines)`, which is the only bound Go slicing permits, and the comment on `ContextAfter` states the window \"must stop at the last line of the file\" — the `+ 1` violates that invariant. Any caller asking for trailing context on the final hunk of a file will crash.",
+     "Confidence": 98,
+     "Headline": "ContextAfter slices one past end of lines and panics at EOF",
+     "Suggestion": "last = len(lines)",
+     "Evidence": [
+      "if last \u003e= len(lines) {",
+      "last = len(lines) + 1",
+      "}",
+      "return lines[first:last]"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "context-window-past-end",
+      "file": "internal/diff/context.go",
+      "lines": [
+       14,
+       20
+      ],
+      "keywords": [
+       "out of range",
+       "out-of-range",
+       "bounds",
+       "past the end",
+       "beyond the end",
+       "len(lines)+1",
+       "len(lines) + 1",
+       "off-by-one",
+       "off by one",
+       "panic"
+      ],
+      "why": "The clamp sets last to len(lines)+1, so the final slice expression lines[first:last] runs one past the length. With no spare capacity that panics; with spare capacity it silently yields a phantom trailing line, which is the quieter half of the bug."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "resource-leak",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/bitbucket/whoami.go",
+     "Line": 20,
+     "Severity": "issue",
+     "Comment": "`WhoAmI` now never closes the response body. On every call — success, non-2xx status, or decode failure — `resp.Body` is left open, so the underlying TCP connection is never returned to the transport's pool. Under any repeated use (e.g. resolving the caller per request) this leaks connections and file descriptors until the process hits its fd limit or the remote end stops accepting new connections.",
+     "Confidence": 97,
+     "Headline": "WhoAmI drops the resp.Body.Close() defer, leaking HTTP connections",
+     "Suggestion": "defer resp.Body.Close()\n\tif resp.StatusCode \u003c 200 || resp.StatusCode \u003e 299 {",
+     "Evidence": [
+      "resp, err := c.http.Do(req)",
+      "if err != nil {",
+      "    return nil, fmt.Errorf(\"whoami: %w\", err)",
+      "}",
+      "defer resp.Body.Close()"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "response-body-never-closed",
+      "file": "internal/bitbucket/whoami.go",
+      "lines": [
+       16,
+       28
+      ],
+      "keywords": [
+       "leak",
+       "leaked",
+       "not closed",
+       "never closed",
+       "close the body",
+       "closing the body",
+       "resp.Body.Close",
+       "connection"
+      ],
+      "why": "The response body is never closed on any path, so the underlying connection is leaked on every call, successful or not."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "struct-field-race",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/queue/queue.go",
+     "Line": 35,
+     "Severity": "issue",
+     "Comment": "This change removes `q.mu.Lock()`/`q.mu.Unlock()` around the worker's `q.depth = len(q.pending)` update, while `Submit` and `Depth` both read and write `q.depth` under `q.mu`. Once a review is in flight and a second job is submitted (or `Depth` is polled for the backlog), the worker writes `q.depth` concurrently with those mutex-protected accesses — an unsynchronized read/write on the same int, which Go's race detector will flag and which is undefined behavior in the Go memory model. The write also races with `len(q.pending)` being observed while `Submit` appends to the slice header. Re-acquire `q.mu` around the assignment as before.",
+     "Confidence": 95,
+     "Headline": "Worker updates q.depth without holding q.mu",
+     "Suggestion": "\t\tq.mu.Lock()\n\t\tq.depth = len(q.pending)\n\t\tq.mu.Unlock()",
+     "Evidence": [
+      "\t\tq.run(j)",
+      "\t\tq.depth = len(q.pending)",
+      "\t}",
+      "}"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "depth-written-without-mutex",
+      "file": "internal/queue/queue.go",
+      "lines": [
+       28,
+       35
+      ],
+      "keywords": [
+       "race",
+       "unsynchronized",
+       "unsynchronised",
+       "without holding",
+       "without the lock",
+       "without the mutex",
+       "q.mu",
+       "concurrent",
+       "data race"
+      ],
+      "why": "The worker goroutine writes q.depth and reads q.pending without holding q.mu, while Submit writes and Depth reads the same fields under the mutex; that is a data race."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "ts-seeded",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "src/rates/rate-service.ts",
+     "Line": 72,
+     "Severity": "issue",
+     "Comment": "`getRates` wraps the refresh in `try/catch`, but `this.refresh(base)` is an async call whose result is returned without `await`. A rejected `provider.fetch` (or `cache.set`) rejects the promise that `getRates` hands to its caller; a `try/catch` around a bare `return` of a promise never observes that rejection. Consequence: whenever the provider is down and an expired table exists, the request still fails instead of serving the stale table, `staleServed` is never incremented, and the `rate provider failed, serving expired rates` warning never fires — the entire fallback path added here is unreachable. Awaiting the refresh inside the `try` makes the `catch` handle both sync throws and rejections.",
+     "Confidence": 97,
+     "Headline": "Stale-fallback catch never fires: refresh is returned without await",
+     "Suggestion": "      return await this.refresh(base);",
+     "Evidence": [
+      "    try {",
+      "      return this.refresh(base);",
+      "    } catch (err) {",
+      "      if (!cached) {",
+      "        throw err;"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "try-returns-promise-without-await",
+      "file": "src/rates/rate-service.ts",
+      "lines": [
+       70,
+       74
+      ],
+      "keywords": [
+       "await",
+       "never catch",
+       "not caught",
+       "never run",
+       "rejection",
+       "unreachable"
+      ],
+      "why": "The rejected promise leaves the try block before it settles, so the catch never runs and a provider outage fails every request instead of serving the expired table."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "unchecked-error",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/store/claims.go",
+     "Line": 21,
+     "Severity": "issue",
+     "Comment": "The commit error is now discarded: `tx.Commit(ctx)`'s result is never inspected before `return nil`. If the commit fails (connection dropped mid-transaction, constraint deferred to commit time, serialization failure), `AddClaim` reports success to the caller while no row exists in `team_claims`, so a claim that the caller believes is recorded is silently lost. The pre-change code returned the wrapped commit error, so this is a behavior regression introduced by the diff.",
+     "Confidence": 95,
+     "Headline": "AddClaim ignores tx.Commit error and reports false success",
+     "Suggestion": "\tif err := tx.Commit(ctx); err != nil {\n\t\treturn err\n\t}\n\treturn nil",
+     "Evidence": [
+      "\ttx.Commit(ctx)",
+      "\treturn nil"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "commit-error-swallowed",
+      "file": "internal/store/claims.go",
+      "lines": [
+       20,
+       22
+      ],
+      "keywords": [
+       "Commit",
+       "ignored",
+       "unchecked",
+       "discarded",
+       "swallow"
+      ],
+      "why": "tx.Commit's error is discarded, so a failed commit is reported to the caller as success and the claim silently does not exist."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "wrong-error-wrapped",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/store/claims.go",
+     "Line": 20,
+     "Severity": "issue",
+     "Comment": "The two error-wrapping branches are swapped relative to the previous behavior and to the documented contract. With this code, a `Scan` failure caused by a lost connection or schema error returns an error wrapping `ErrNoClaim`, so a caller doing `errors.Is(err, ErrNoClaim)` concludes \"nobody owns this project\" and may let an unrelated team claim it. Conversely, the genuinely unowned case (`errNoRows`) now returns an error wrapping the raw pgx error, so `errors.Is(err, ErrNoClaim)` is false exactly when the project has no owner — the one case `ErrNoClaim` exists for, per the comment above the declaration.",
+     "Confidence": 95,
+     "Headline": "ErrNoClaim wrapping inverted: DB faults look like unclaimed projects",
+     "Suggestion": "\tif errors.Is(err, errNoRows) {\n\t\treturn \"\", fmt.Errorf(\"owner of %q: %w\", project, ErrNoClaim)\n\t}\n\tif err != nil {\n\t\treturn \"\", fmt.Errorf(\"owner of %q: %w\", project, err)\n\t}",
+     "Evidence": [
+      "// ErrNoClaim is what callers match on when a project has no owner yet.",
+      "if errors.Is(err, errNoRows) {",
+      "return \"\", fmt.Errorf(\"owner of %q: %w\", project, err)",
+      "}",
+      "if err != nil {"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "sentinel-wraps-swapped",
+      "file": "internal/store/claims.go",
+      "lines": [
+       19,
+       23
+      ],
+      "keywords": [
+       "swapped",
+       "swap",
+       "wrong error",
+       "reversed",
+       "backwards",
+       "back to front",
+       "the other way",
+       "ErrNoClaim",
+       "errors.Is"
+      ],
+      "why": "The branches wrap each other's error: errors.Is(err, ErrNoClaim) is now false when the project is genuinely unclaimed and true when the query failed, so a database fault is treated as an unowned project."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  }
+ ],
+ "Seeded": 12,
+ "Caught": 12,
+ "Extra": 0
+}

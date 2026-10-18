@@ -280,13 +280,15 @@ func (s *Store) InsertFinding(ctx context.Context, f Finding) error {
 }
 
 // ExistingFindings returns the findings posted on an open PR, oldest first,
-// for the previously-posted block of the prompt and for dedup.
+// for the previously-posted block of the prompt and for dedup. A fixed one is
+// left out of both, so the same bug coming back is posted again.
 func (s *Store) ExistingFindings(ctx context.Context, k PRKey) ([]Finding, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT f.id, f.pull_request_id, f.review_run_id, f.file_path, f.line_number, f.severity, f.confidence,
 			f.headline, f.comment_text, f.suggestion, f.bitbucket_comment_id
 		FROM findings f JOIN pull_requests p ON f.pull_request_id = p.id
 		WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3 AND p.`+activeFilter+`
+			AND f.fixed_at IS NULL
 		ORDER BY f.id ASC`, k.Project, k.Repo, k.PRID)
 	if err != nil {
 		return nil, err
@@ -302,6 +304,17 @@ func (s *Store) ExistingFindings(ctx context.Context, k PRKey) ([]Finding, error
 		out = append(out, f)
 	}
 	return out, rows.Err()
+}
+
+// MarkFindingFixed retires a finding a later run found fixed. The first
+// stamp wins: a finding is fixed once. A zero runID (the run row failed)
+// stamps NULL: the thread is resolved either way, and an unstamped row
+// would be listed, claimed and resolved again.
+func (s *Store) MarkFindingFixed(ctx context.Context, findingID, runID int64) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE findings SET fixed_at = now(), fixed_run_id = NULLIF($2::bigint, 0)
+		WHERE id = $1 AND fixed_at IS NULL`, findingID, runID)
+	return err
 }
 
 // PRCost is the sum of priced runs plus billed run-less attempts (an

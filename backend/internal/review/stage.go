@@ -60,7 +60,11 @@ type reviewPlan struct {
 	// above still holds.
 	anchors diff.AnchorIndex
 
-	existing       []store.Finding
+	existing []store.Finding
+	// listed are the ids the prompt showed, trimmed by budget: the only
+	// findings a `fixed` claim may name. Empty on a full review. Ids, not
+	// the findings: existing already holds them.
+	listed         map[int64]bool
 	contentSkipped []string
 	ticket         *jira.Ticket
 	parentTicket   *jira.Ticket

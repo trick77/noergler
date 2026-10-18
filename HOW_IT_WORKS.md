@@ -160,13 +160,21 @@ what is left.
 
 A response is required to match a JSON schema with exactly these keys:
 `overview`, `strengths`, `security_performance`, `test_coverage`, `verdict`,
-`findings`, `compliance_requirements`.
+`findings`, `fixed`, `compliance_requirements`.
 
 ## 10. Dedup, ordering and posting
 
 Findings already posted by earlier runs are filtered out by reading the
 **database**, not by fetching and parsing Bitbucket comments. What is left is
 sorted by severity and capped at `REVIEW_MAX_COMMENTS`.
+
+On an incremental review each earlier finding is listed to the model with an
+id (`F12`). When the model names one under `fixed`, quoting a line of that
+finding's file the push added or removed and no line it moved (across the
+files the review showed), the thread gets a "Fixed in `<sha>`." reply and is
+then resolved, and the finding leaves dedup. A claim quoting only unchanged
+lines, or any moved one, is dropped and logged. A full review lists no ids:
+its diff is the whole PR, so every line reads as added.
 
 Each finding becomes one inline comment on its line:
 

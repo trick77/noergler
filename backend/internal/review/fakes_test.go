@@ -54,6 +54,11 @@ type fakeBitbucket struct {
 	Updates  []postedComment
 	Replies  []postedComment
 	FetchedC []int
+	// Calls is every reply and resolve in order, "reply:<id>" and
+	// "resolve:<id>", for the tests that pin which comes first.
+	Calls      []string
+	replyErr   error
+	resolveErr error
 
 	// UpdateVersions records the version each UpdatePRComment was sent
 	// with; the optimistic-locking version is otherwise invisible to a
@@ -125,8 +130,19 @@ func (f *fakeBitbucket) PostPRComment(_ context.Context, _, _ string, prID int, 
 func (f *fakeBitbucket) ReplyToComment(_ context.Context, _, _ string, prID, parent int, text string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.Calls = append(f.Calls, fmt.Sprintf("reply:%d", parent))
+	if f.replyErr != nil {
+		return f.replyErr
+	}
 	f.Replies = append(f.Replies, postedComment{PRID: prID, Text: text, Line: parent})
 	return nil
+}
+
+func (f *fakeBitbucket) ResolveCommentThread(_ context.Context, _, _ string, _, commentID int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.Calls = append(f.Calls, fmt.Sprintf("resolve:%d", commentID))
+	return f.resolveErr
 }
 
 func (f *fakeBitbucket) FetchPRComment(_ context.Context, _, _ string, _, commentID int) (*bitbucket.Comment, error) {
@@ -177,6 +193,7 @@ type fakeStore struct {
 
 	upsertErr  error
 	attemptErr error
+	runErr     error
 	failAll    bool
 
 	Upserts   []store.PRUpsert
@@ -191,6 +208,8 @@ type fakeStore struct {
 	Summaries []store.SummaryComment
 	Claims    []store.RollupFinal
 	Frozen    int
+	// Fixed is every MarkFindingFixed call as [findingID, runID].
+	Fixed [][2]int64
 }
 
 func newFakeStore() *fakeStore {
@@ -307,6 +326,9 @@ func (f *fakeStore) InsertRun(_ context.Context, r store.Run) (int64, error) {
 	if err := f.err(); err != nil {
 		return 0, err
 	}
+	if f.runErr != nil {
+		return 0, f.runErr
+	}
 	f.Runs = append(f.Runs, r)
 	return int64(len(f.Runs)), nil
 }
@@ -334,6 +356,16 @@ func (f *fakeStore) InsertFinding(_ context.Context, fi store.Finding) error {
 		return err
 	}
 	f.Findings = append(f.Findings, fi)
+	return nil
+}
+
+func (f *fakeStore) MarkFindingFixed(_ context.Context, findingID, runID int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return err
+	}
+	f.Fixed = append(f.Fixed, [2]int64{findingID, runID})
 	return nil
 }
 

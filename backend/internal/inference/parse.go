@@ -58,7 +58,10 @@ type ComplianceRequirement struct {
 // none. The timeout and 413 paths also emit the nil sentinel, so ParseFailed is
 // what identifies a refusal or unparseable output specifically.
 type ParsedReview struct {
-	Findings               []ReviewFinding
+	Findings []ReviewFinding
+	// Fixed are the earlier findings the model says the focused diff fixes,
+	// unchecked: ValidateFixed decides which stand.
+	Fixed                  []FixedClaim
 	ComplianceRequirements []ComplianceRequirement
 	Summary                ReviewSummary
 	ParseFailed            bool
@@ -411,6 +414,24 @@ func ParseReview(content string) ParsedReview {
 					continue
 				}
 				out.Findings = append(out.Findings, f)
+			}
+		}
+	}
+
+	// null is how models often spell an empty list; anything else that is
+	// not an array is said, so a malformed claim never reads as none.
+	if rawFixed, ok := raw["fixed"]; ok && !isJSONNull(rawFixed) {
+		var items []json.RawMessage
+		if err := json.Unmarshal(rawFixed, &items); err != nil {
+			out.warn("Skipping malformed fixed list: %s", truncateRunes(string(rawFixed), 200))
+		} else {
+			for _, item := range items {
+				c, ok := parseFixedClaim(item)
+				if !ok {
+					out.warn("Skipping malformed fixed entry: %s", item)
+					continue
+				}
+				out.Fixed = append(out.Fixed, c)
 			}
 		}
 	}

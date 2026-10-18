@@ -2,6 +2,7 @@ package inference
 
 import (
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/trick77/noergler/internal/diff"
@@ -179,6 +180,9 @@ func RenderCumulativePRDiff(cumulative string, partial bool, omitted []string) s
 
 // PostedFinding is one finding an earlier review already posted.
 type PostedFinding struct {
+	// ID is the store row, rendered as F<id> so the model can name it in
+	// `fixed`. Zero renders no id: nothing can be retired by it.
+	ID       int64
 	FilePath string
 	// LineNumber is nil when the finding is file-level.
 	LineNumber  *int
@@ -199,7 +203,9 @@ func RenderPreviouslyPostedFindings(findings []PostedFinding) string {
 		return ""
 	}
 	lines := make([]string, 0, len(findings))
+	withIDs := false
 	for _, f := range findings {
+		withIDs = withIDs || f.ID > 0
 		filePath := f.FilePath
 		if filePath == "" {
 			filePath = "<unknown>"
@@ -218,7 +224,20 @@ func RenderPreviouslyPostedFindings(findings []PostedFinding) string {
 		if f.LineNumber != nil {
 			loc = filePath + ":" + itoa(*f.LineNumber)
 		}
-		lines = append(lines, "- "+loc+" ["+severity+"] "+text)
+		id := ""
+		if f.ID > 0 {
+			id = "[" + FixedIDPrefix + strconv.FormatInt(f.ID, 10) + "] "
+		}
+		lines = append(lines, "- "+id+loc+" ["+severity+"] "+text)
+	}
+	// The fixed instruction only where there is an id to name: a full
+	// review lists none, and asking there buys guessed ids.
+	fixed := ""
+	if withIDs {
+		fixed = "If the focused diff removes the defect one of them describes, list it under `fixed` " +
+			"by its id. Only when added or removed lines of that finding's file visibly fix it, " +
+			"never because the code merely moved or the finding looks stale.\n" +
+			"\n"
 	}
 	return "## Already-posted findings on this PR\n" +
 		"\n" +
@@ -227,6 +246,7 @@ func RenderPreviouslyPostedFindings(findings []PostedFinding) string {
 		"even if line numbers have shifted because of new commits. " +
 		"Only flag genuinely new issues introduced by the focused diff.\n" +
 		"\n" +
+		fixed +
 		strings.Join(lines, "\n")
 }
 
