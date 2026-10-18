@@ -210,7 +210,7 @@ export const en = {
     repo_instructions: "AGENTS.md",
     ticket: "Jira ticket",
     pr_description: "PR description",
-    rest: "Rest (system message, schema, compliance, cross-file context)",
+    rest: "Rest (system message, schema, smaller sections)",
   },
   sent: {
     full: "full content",

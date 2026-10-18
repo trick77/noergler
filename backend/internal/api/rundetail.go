@@ -10,6 +10,7 @@ import (
 	"github.com/trick77/noergler/internal/review"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/ship/kit/httpx"
+	"github.com/trick77/ship/kit/logging"
 )
 
 // runDetailBody is GET /api/dashboard/runs/{id}: one attempt and everything
@@ -171,8 +172,10 @@ func (d Deps) runDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	body.Detail = det.Detail
 	if det.DetailErr != nil {
-		d.Log.WarnContext(r.Context(), fmt.Sprintf("dashboard: run %d detail record not decoded, page shown without it: %v",
-			det.ID, det.DetailErr))
+		// Debug: a record an older binary wrote stays undecodable, and every
+		// view of its page would log again.
+		d.Log.DebugContext(logging.With(r.Context(), "team", det.TeamSlug), fmt.Sprintf(
+			"dashboard: run %d detail record not decoded, page shown without it: %v", det.ID, det.DetailErr))
 	}
 	if f := det.Run; f != nil {
 		body.Cost = usd(f.CostNanoUSD)

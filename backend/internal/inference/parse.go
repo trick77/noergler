@@ -153,10 +153,10 @@ type ReviewFinding struct {
 	Evidence []string
 
 	// MovedFrom is the line the model cited when ValidateFindings moved the
-	// finding to its evidence; 0 = not moved. Set by validation, never
-	// parsed, so it travels with the finding through dedupe, the cap and
-	// the post.
-	MovedFrom int
+	// finding to its evidence; nil = not moved (a pointer: the model can
+	// cite line 0). Set by validation, never parsed or serialized, so it
+	// travels with the finding through dedupe, the cap and the post.
+	MovedFrom *int `json:"-"`
 }
 
 // parseFinding validates one finding, reporting whether it survives.

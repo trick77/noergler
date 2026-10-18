@@ -99,13 +99,14 @@ func TestRunDetailOnFailure(t *testing.T) {
 // then not posted leaves nothing, even when another finding was posted on
 // the line it moved to.
 func TestPostedMoves(t *testing.T) {
+	at := func(n int) *int { return &n }
 	moved := finding("a.go", 2, "issue", "x")
-	moved.MovedFrom = 40
+	moved.MovedFrom = at(0) // line 0 is a line the model can cite
 	notPostedMove := finding("a.go", 2, "issue", "y")
-	notPostedMove.MovedFrom = 9
+	notPostedMove.MovedFrom = at(9)
 	unmoved := finding("a.go", 2, "issue", "z")
 	got := postedMoves([]inference.ReviewFinding{moved, notPostedMove, unmoved}, []int{101, 0, 102})
-	if len(got) != 1 || got[0].From != 40 || got[0].To != 2 {
+	if len(got) != 1 || got[0].From != 0 || got[0].To != 2 {
 		t.Errorf("moves = %+v, want only the posted, moved one", got)
 	}
 }

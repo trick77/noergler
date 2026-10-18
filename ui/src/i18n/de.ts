@@ -200,7 +200,7 @@ export const de = {
     repo_instructions: "AGENTS.md",
     ticket: "Jira-Ticket",
     pr_description: "PR-Beschreibung",
-    rest: "Rest (Systemnachricht, Schema, Compliance, Querbezüge)",
+    rest: "Rest (Systemnachricht, Schema, kleinere Abschnitte)",
   },
   sent: {
     full: "voller Inhalt",

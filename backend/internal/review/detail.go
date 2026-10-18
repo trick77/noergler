@@ -150,8 +150,8 @@ func httpCounts(m map[string]int) []store.HTTPCount {
 func postedMoves(findings []inference.ReviewFinding, postedIDs []int) []store.MovedFinding {
 	out := []store.MovedFinding{}
 	for i, id := range postedIDs {
-		if f := findings[i]; id != 0 && f.MovedFrom != 0 {
-			out = append(out, store.MovedFinding{File: f.File, From: f.MovedFrom, To: f.Line})
+		if f := findings[i]; id != 0 && f.MovedFrom != nil {
+			out = append(out, store.MovedFinding{File: f.File, From: *f.MovedFrom, To: f.Line})
 		}
 	}
 	return out
