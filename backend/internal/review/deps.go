@@ -139,10 +139,16 @@ func (r *Reviewer) recordAttempt(ctx context.Context, a store.Attempt) {
 	if r.store == nil {
 		return
 	}
-	safeDBErr(ctx, r.log, "InsertAttempt", func() error {
-		_, err := r.store.InsertAttempt(ctx, a)
-		return err
-	})
+	// An id with an error means the attempt (and any billed cost on it) is
+	// written and only the call's detail is not: logged as that, so nobody
+	// reads a lost llm_calls row as a lost attempt.
+	id, err := r.store.InsertAttempt(ctx, a)
+	switch {
+	case err != nil && id != 0:
+		r.log.WarnContext(ctx, "Gateway call detail not recorded, the attempt was", logging.Err(err))
+	case err != nil:
+		r.log.WarnContext(ctx, "DB operation failed, using fallback: InsertAttempt", logging.Err(err))
+	}
 }
 
 // llmCall is the llm_calls row for a review's gateway call, nil when the

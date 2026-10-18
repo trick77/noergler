@@ -23,8 +23,10 @@ type Attempt struct {
 	// CostNanoUSD is a billed call that wrote no run row (unparseable). A
 	// successful attempt leaves it nil: its cost is on the run.
 	CostNanoUSD *int64
-	// Call is the gateway call this attempt made, written to llm_calls in
-	// the same transaction. Nil when it made none (a skip, a timeout).
+	// Call is the gateway call this attempt made, written to llm_calls right
+	// after the attempt and apart from it, so a missing call row can mean a
+	// refused write, not only no call. Nil when it made none (a skip, a
+	// timeout).
 	Call *LLMCall
 }
 
