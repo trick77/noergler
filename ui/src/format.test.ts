@@ -220,7 +220,8 @@ describe("outcomeWord", () => {
     // A team that never ran has no outcome: a dash, no tooltip, never blank.
     expect(outcomeWord("")).toBe("—");
     expect(outcomeTitle("")).toBeUndefined();
-    expect(outcomeTone("")).toBe("skip");
+    expect(outcomeTone("")).toBe("none");
+    expect(teamTone("")).toBe("none");
     expect(outcomeTitle("ok")).toBeUndefined();
     expect(outcomeTitle("skipped", "empty_diff")).toBe("Empty diff");
   });

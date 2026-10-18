@@ -31,7 +31,7 @@ export const de = {
     skipped: "übersprungen",
     timed_out: "Zeitüberschreitung",
     unparseable: "unlesbar",
-    too_large: "über Grössenlimit",
+    too_large: "Modell-Limit überschritten",
     error: "Fehler",
   },
   skipWord: {

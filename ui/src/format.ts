@@ -100,14 +100,16 @@ export function tokens(n: number): string {
 /** outcomeTone maps an outcome to its pill. Three tones, not one per
  *  outcome: ok, a decision the pipeline made, and something that went wrong.
  *  The pill always carries the word too, because the ok/skip/fail hues sit at
- *  dE 7.6 under protanopia and colour alone would not separate them. */
-export type Tone = "ok" | "skip" | "fail";
+ *  dE 7.6 under protanopia and colour alone would not separate them.
+ *
+ *  none is the fourth, for no value at all (a team that never ran): grey,
+ *  because it is neither a success, nor a decision, nor a fault. */
+export type Tone = "ok" | "skip" | "fail" | "none";
 
 export function outcomeTone(outcome: string): Tone {
   if (outcome === "ok") return "ok";
-  // No outcome at all is not a failure: the dash sits on the neutral-ish
-  // skip tone, not on red.
-  if (outcome === "skipped" || outcome === "") return "skip";
+  if (outcome === "") return "none";
+  if (outcome === "skipped") return "skip";
   return "fail";
 }
 
@@ -145,7 +147,14 @@ export function outcomeTitle(
 ): string | undefined {
   if (outcome === "ok" || outcome === "") return undefined;
   if (outcome === "skipped") return reasonLabel(reason, serverLabel);
-  return i18n.t("common.code", { code: outcome });
+  return codeText(outcome);
+}
+
+/** codeText marks a stored code as one ("Code: too_large"), wherever a code
+ *  stands in for a word this build lacks: the thing to grep for, never
+ *  mistaken for a missed translation. */
+function codeText(code: string): string {
+  return i18n.t("common.code", { code });
 }
 
 /** known narrows a stored code to a key of its catalog group, so the lookup
@@ -170,7 +179,7 @@ function known<G extends CodeGroup>(
 /** reasonLabel is the long form of a skip reason, for a tooltip or a
  *  table. Keys are review.SkipReason values, stored and stable; a code this
  *  build does not know falls back to the label the server sent, then to the
- *  raw code, which is also what an operator greps for. */
+ *  code, marked as one (codeText): what an operator greps for. */
 export function reasonLabel(
   reason?: string,
   serverLabel?: string,
@@ -178,7 +187,7 @@ export function reasonLabel(
   if (!reason) return serverLabel || undefined;
   return known("reason", reason)
     ? i18n.t(`reason.${reason}`)
-    : serverLabel || reason;
+    : serverLabel || codeText(reason);
 }
 
 /** teamTone maps a team's state to its pill.
@@ -188,6 +197,7 @@ export function reasonLabel(
  *  working; red would claim it is broken. Ochre is "your move", which is
  *  exactly right, because somebody has to claim a repository. */
 export function teamTone(state: string): Tone {
+  if (state === "") return "none";
   if (state === "ready") return "ok";
   if (state === "no_repos") return "skip";
   return "fail";
@@ -207,7 +217,7 @@ export function teamStateLabel(state: string): string {
 export function teamStateTitle(state: string): string | undefined {
   return known("teamState", state) || state === ""
     ? undefined
-    : i18n.t("common.code", { code: state });
+    : codeText(state);
 }
 
 /** prUrl turns a PROJECT/repo#id tag into its Bitbucket URL, or null when it

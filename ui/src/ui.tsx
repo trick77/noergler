@@ -39,11 +39,13 @@ const toneClass: Record<Tone, string> = {
   ok: "bg-online/15 text-[#82c491]",
   skip: "bg-ochre-wash text-ochre",
   fail: "bg-danger/15 text-danger-ink",
+  none: "bg-active text-muted",
 };
 const dotClass: Record<Tone, string> = {
   ok: "bg-online",
   skip: "bg-ochre",
   fail: "bg-danger",
+  none: "bg-faint",
 };
 
 /** Pill always carries its word. The ok/skip/fail hues sit at dE 7.6 under
