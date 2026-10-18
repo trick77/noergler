@@ -935,7 +935,7 @@ function PRTab({ d }: { d: RunDetail }) {
           </span>
         </div>
       )}
-      {cost !== null && cap !== null && <Note>{t("run.prTotalNote")}</Note>}
+      {cost !== null && <Note>{t("run.prTotalNote")}</Note>}
     </Card>
   );
 }

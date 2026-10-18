@@ -81,6 +81,34 @@ func strp(s string) *string { return &s }
 
 // A long PR's history is a window around the attempt shown, so the attempt
 // and its neighbours are always in it, whichever end of the PR it is at.
+// A fixed finding whose run was recorded under another team gets no link:
+// that page's history belongs to the other team.
+func TestFixedLinkStaysInTheTeam(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	prID := upsert(t, s, key, "a")
+	earlier := run(t, s, prID, "a", nil, "m")
+	if err := s.InsertFinding(ctx, Finding{PullRequestID: prID, RunID: earlier, FilePath: "a.go", LineNumber: 1,
+		Severity: "issue", Headline: strp("old"), CommentText: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "previous-owner", Kind: RunAuto, Outcome: "ok", RunID: &earlier}); err != nil {
+		t.Fatal(err)
+	}
+	now := run(t, s, prID, "b", nil, "m")
+	if _, err := s.pool.Exec(ctx, `UPDATE findings SET fixed_at = now(), fixed_run_id = $1 WHERE review_run_id = $2`, now, earlier); err != nil {
+		t.Fatal(err)
+	}
+	id, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "ok", RunID: &now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, _, err := s.RunDetail(ctx, id)
+	if err != nil || len(d.Fixed) != 1 || d.Fixed[0].FromAttemptID != nil {
+		t.Errorf("fixed = %+v, %v; want no cross-team link", d.Fixed, err)
+	}
+}
+
 func TestRunDetailHistoryWindow(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
@@ -92,7 +120,10 @@ func TestRunDetailHistoryWindow(t *testing.T) {
 		}
 		ids = append(ids, id)
 	}
-	for _, at := range []int{2, len(ids) - 1, len(ids) / 2} {
+	// The ends, the middle, and both sides of each cut-off boundary.
+	n := len(ids)
+	for _, at := range []int{0, 2, prAttemptsEachSide, prAttemptsEachSide + 1, n / 2,
+		n - 1 - prAttemptsEachSide, n - 2 - prAttemptsEachSide, n - 1} {
 		d, ok, err := s.RunDetail(ctx, ids[at])
 		if err != nil || !ok {
 			t.Fatalf("RunDetail = %v, %v", ok, err)
