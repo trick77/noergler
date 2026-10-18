@@ -118,7 +118,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		return false
 	}
 
-	files, _, _, _, _ := r.prepareFiles(ctx, project, repo, rawDiff, pr.FromRef.LatestCommit, prTag)
+	files := r.prepareFiles(ctx, project, repo, rawDiff, pr.FromRef.LatestCommit, prTag).files
 	if len(files) == 0 {
 		r.log.InfoContext(ctx, prTag+": mention not answered by the model - no reviewable files")
 		r.reply(ctx, project, repo, pr.ID, comment.ID, l.Pick("Dieser PR enthält keine prüfbaren Dateien.",

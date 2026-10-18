@@ -179,6 +179,16 @@ svg.chart {
   );
 }
 
+/* A wait in a timeline: hatched, so it reads as time spent queued rather
+   than as work. */
+.texture-wait {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--color-axis) 0 3px,
+    transparent 3px 6px
+  );
+}
+
 @keyframes skeleton-fade {
   50% {
     opacity: 0.45;

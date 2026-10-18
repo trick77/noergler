@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -43,6 +44,11 @@ type RunDetail struct {
 	// so the page can say rows are missing instead of looking complete.
 	MoreBefore bool
 	MoreAfter  bool
+	// Detail is the run_details record; nil when none was written (an
+	// attempt from before it existed, or a skip) or it no longer decodes,
+	// which DetailErr then says.
+	Detail    *Pipeline
+	DetailErr error
 }
 
 // RunFacts is the review_runs row behind a successful attempt.
@@ -140,6 +146,22 @@ func (s *Store) RunDetail(ctx context.Context, attemptID int64) (d RunDetail, ok
 			if d.Fixed, err = s.findingHeadlines(ctx, `f.fixed_run_id = $1`, r.ID, d.TeamSlug, true); err != nil {
 				return RunDetail{}, false, err
 			}
+		}
+	}
+
+	var raw []byte
+	if err := s.pool.QueryRow(ctx, `SELECT detail FROM run_details WHERE attempt_id = $1`, attemptID).
+		Scan(&raw); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return RunDetail{}, false, err
+	}
+	if len(raw) > 0 {
+		// Display-only: a record an older binary wrote in another shape
+		// leaves the detail tabs empty, it does not fail the page.
+		var p Pipeline
+		if err := json.Unmarshal(raw, &p); err != nil {
+			d.DetailErr = err
+		} else {
+			d.Detail = &p
 		}
 	}
 
@@ -251,4 +273,17 @@ func (s *Store) prAttempts(ctx context.Context, d RunDetail) (out []PRAttempt, m
 		after, moreAfter = after[:prAttemptsEachSide], true
 	}
 	return append(before, after...), moreBefore, moreAfter, nil
+}
+
+// InsertRunDetail writes one attempt's detail record. The caller swallows
+// the error: the record is display-only.
+func (s *Store) InsertRunDetail(ctx context.Context, attemptID int64, p Pipeline) error {
+	detail, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(ctx, `
+		INSERT INTO run_details (attempt_id, detail) VALUES ($1, $2)
+		ON CONFLICT (attempt_id) DO UPDATE SET detail = EXCLUDED.detail`, attemptID, detail)
+	return err
 }

@@ -89,6 +89,10 @@ type reviewPlan struct {
 	// Only one goroutine touches it at a time: the pool goroutine writes it,
 	// and the queue submits post only after that write has returned.
 	result inference.ReviewResult
+	// sw times the stages and detail collects the run page's record, from
+	// prepare through post.
+	sw     *stopwatch
+	detail *store.Pipeline
 }
 
 // abort logs a prepare exit's HTTP totals and reports "not ok", so each of

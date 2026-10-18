@@ -161,6 +161,49 @@ export interface RunDetail {
     cap_usd: string | null;
   };
   bitbucket_url: string;
+  /** The review's pipeline record; null for a run from before it existed,
+   *  or a skip. */
+  detail: RunPipeline | null;
+}
+
+/** RunPipeline is the review's own record of the run: headlines only. */
+export interface RunPipeline {
+  stages: { name: string; ms: number }[];
+  prompt: {
+    template: number;
+    files: number;
+    cumulative_diff: number;
+    previously_posted: number;
+    repo_instructions: number;
+    ticket: number;
+    pr_description: number;
+    total: number;
+    budget: number;
+  };
+  files: {
+    path: string;
+    sent: string;
+    added: number;
+    removed: number;
+    tokens: number;
+  }[];
+  cross_file: string[];
+  agents_md: { found: boolean; tokens: number; warn_tokens: number };
+  ticket?: string;
+  parent_ticket?: string;
+  previously_posted: { shown: number; total: number };
+  decisions: {
+    file: string;
+    line: number;
+    severity: string;
+    headline: string;
+    decision: string;
+    reason?: string;
+  }[];
+  moved: { file: string; from: number; to: number }[];
+  verdict?: { model: string; posted: string };
+  /** Requests per upstream, by name. */
+  http: { upstream: string; calls: number }[];
 }
 
 /** RunCall is what the AI Gateway reported about the call. Lanes at six

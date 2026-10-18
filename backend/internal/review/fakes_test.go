@@ -2,6 +2,7 @@ package review
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -204,6 +205,9 @@ type fakeStore struct {
 	runErr  error
 	failAll bool
 
+	// Details are the run detail records, by attempt id.
+	Details map[int64][]byte
+
 	Upserts   []store.PRUpsert
 	Runs      []store.Run
 	Attempts  []store.Attempt
@@ -366,6 +370,24 @@ func (f *fakeStore) InsertAttempt(_ context.Context, a store.Attempt) (int64, er
 		return int64(len(f.Attempts)), fmt.Errorf("attempt %d: %w: %w", len(f.Attempts), store.ErrCallNotRecorded, f.callErr)
 	}
 	return int64(len(f.Attempts)), nil
+}
+
+func (f *fakeStore) InsertRunDetail(_ context.Context, attemptID int64, p store.Pipeline) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return err
+	}
+	// Kept as the JSON the real store writes, so a test can grep it.
+	detail, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	if f.Details == nil {
+		f.Details = map[int64][]byte{}
+	}
+	f.Details[attemptID] = detail
+	return nil
 }
 
 func (f *fakeStore) InsertFinding(_ context.Context, fi store.Finding) error {

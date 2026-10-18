@@ -136,7 +136,8 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - The plan across stages carries no file bodies and no raw diff.
 - Team semaphore before the global one, released in reverse.
 - `Queue.Stop` settles on "nothing runnable", not "no key held".
-- `OutcomeError` posts no notice and writes no row.
+- `OutcomeError` posts no notice and writes no run row (its attempt and run
+  detail are written).
 
 ## Store
 

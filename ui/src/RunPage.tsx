@@ -14,6 +14,12 @@ import {
   severityWord,
 } from "./format";
 import { onNav, runPath } from "./routing";
+import {
+  ContextCard,
+  InputTab,
+  NotPostedCard,
+  StageTimeline,
+} from "./RunPipeline";
 import { usePoll } from "./usePoll";
 import {
   Card,
@@ -36,8 +42,8 @@ import {
   thNum,
 } from "./ui";
 
-type Tab = "overview" | "findings" | "cost" | "pr";
-const TABS: Tab[] = ["overview", "findings", "cost", "pr"];
+type Tab = "overview" | "findings" | "cost" | "input" | "pr";
+const TABS: Tab[] = ["overview", "findings", "cost", "input", "pr"];
 
 /** The tab lives in the hash (#findings), so a link can open one and a
  *  reload keeps it. */
@@ -109,12 +115,14 @@ export function RunPage({ id }: { id: number }) {
     overview: null,
     findings: d.run ? d.findings.length : null,
     cost: null,
+    input: d.detail ? d.detail.files.length : null,
     pr: t("run.calls", { count: d.pr.attempts.length }),
   };
   const labels: Record<Tab, string> = {
     overview: t("run.tabOverview"),
     findings: t("run.tabFindings"),
     cost: t("run.tabCost"),
+    input: t("run.tabInput"),
     pr: t("run.tabPR"),
   };
 
@@ -277,6 +285,7 @@ export function RunPage({ id }: { id: number }) {
           {tab === "overview" && <Overview d={d} />}
           {tab === "findings" && <Findings d={d} pr={pr} />}
           {tab === "cost" && <CostTab call={call} />}
+          {tab === "input" && <InputTab p={d.detail} />}
           {tab === "pr" && <PRTab d={d} />}
         </div>
       </div>
@@ -334,6 +343,10 @@ function Overview({ d }: { d: RunDetail }) {
   const { t } = useTranslation();
   const total = d.elapsed_ms;
   const gw = d.call?.total_ms ?? null;
+  const stages = d.detail?.stages ?? [];
+  // The stages run past the elapsed time (recording comes after it), so a
+  // timeline is captioned with its own sum.
+  const stagesMs = stages.reduce((s, x) => s + x.ms, 0);
 
   if (d.outcome === "skipped") {
     return (
@@ -351,12 +364,16 @@ function Overview({ d }: { d: RunDetail }) {
       <Card
         title={t("run.timeTitle")}
         note={
-          total !== null
-            ? t("run.timeNote", { time: duration(total) })
-            : undefined
+          d.detail && stagesMs > 0
+            ? t("run.stagesTime", { time: duration(stagesMs) })
+            : total !== null
+              ? t("run.timeNote", { time: duration(total) })
+              : undefined
         }
       >
-        {total !== null && gw !== null && gw <= total ? (
+        {d.detail && stagesMs > 0 ? (
+          <StageTimeline p={d.detail} />
+        ) : total !== null && gw !== null && gw <= total ? (
           <>
             <TimeBar
               label={t("run.timeNoergler")}
@@ -376,6 +393,7 @@ function Overview({ d }: { d: RunDetail }) {
           <Empty>{t("run.noCallTime")}</Empty>
         )}
       </Card>
+      {d.detail && <ContextCard p={d.detail} />}
       {d.run && (
         <Card title={t("run.factsTitle")}>
           <dl className={kvGrid}>
@@ -444,10 +462,13 @@ function FindingRows({
   rows,
   pr,
   fixedTable,
+  moved = [],
 }: {
   rows: RunFinding[];
   pr: string | null;
   fixedTable?: boolean;
+  /** Validation's moves, matched to a posted finding by file and new line. */
+  moved?: { file: string; from: number; to: number }[];
 }) {
   const { t } = useTranslation();
   return (
@@ -507,6 +528,13 @@ function FindingRows({
                       {f.fixed && (
                         <div className="text-faint">{t("run.fixedLater")}</div>
                       )}
+                      {moved
+                        .filter((m) => m.file === f.file && m.to === f.line)
+                        .map((m, i) => (
+                          <div key={i} className="text-faint">
+                            {t("run.movedFrom", { line: m.from })}
+                          </div>
+                        ))}
                     </>
                   )}
                 </td>
@@ -534,10 +562,24 @@ function Findings({ d, pr }: { d: RunDetail; pr: string | null }) {
         {d.findings.length === 0 ? (
           <Empty>{t("run.noFindings")}</Empty>
         ) : (
-          <FindingRows rows={d.findings} pr={pr} />
+          <FindingRows
+            rows={d.findings}
+            pr={pr}
+            moved={d.detail?.moved ?? []}
+          />
         )}
+        {d.detail?.verdict &&
+          d.detail.verdict.model !== d.detail.verdict.posted && (
+            <Note>
+              {t("run.verdictLowered", {
+                model: d.detail.verdict.model,
+                posted: d.detail.verdict.posted,
+              })}
+            </Note>
+          )}
         <Note>{t("run.headlinesOnly")}</Note>
       </Card>
+      {d.detail && <NotPostedCard p={d.detail} />}
       {d.fixed.length > 0 && (
         <Card title={t("run.fixedTitle")}>
           <FindingRows rows={d.fixed} pr={pr} fixedTable />

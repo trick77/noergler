@@ -107,6 +107,7 @@ const detail: RunDetail = {
     more_after: false,
   },
   bitbucket_url: "https://bb.example.com",
+  detail: null,
 };
 
 describe("onNav", () => {
@@ -205,6 +206,86 @@ describe("RunPage", () => {
     expect(screen.getAllByText("not sent").length).toBeGreaterThan(0);
     expect(screen.queryByText("$0.000000")).toBeNull();
     expect(window.location.hash).toBe("#cost");
+  });
+
+  // The review's own record: stages on the timeline, the findings that
+  // were not posted with why, and the prompt and files tab.
+  it("shows the pipeline record", async () => {
+    serve("runs/7", {
+      ...detail,
+      detail: {
+        stages: [
+          { name: "diff", ms: 1400 },
+          { name: "gateway", ms: 58420 },
+          { name: "queued", ms: 3100 },
+        ],
+        prompt: {
+          template: 4520,
+          files: 22480,
+          cumulative_diff: 9870,
+          previously_posted: 2150,
+          repo_instructions: 1240,
+          ticket: 610,
+          pr_description: 340,
+          total: 41210,
+          budget: 628000,
+        },
+        files: [
+          {
+            path: "retry.go",
+            sent: "full",
+            added: 142,
+            removed: 18,
+            tokens: 6820,
+          },
+          {
+            path: "go.sum",
+            sent: "not_reviewable",
+            added: 2,
+            removed: 0,
+            tokens: 0,
+          },
+        ],
+        cross_file: ["CaptureClient"],
+        agents_md: { found: true, tokens: 1240, warn_tokens: 4000 },
+        ticket: "PAY-2291",
+        previously_posted: { shown: 6, total: 8 },
+        decisions: [
+          {
+            file: "config.go",
+            line: 203,
+            severity: "issue",
+            headline: "MaxRetries can go negative",
+            decision: "dropped",
+            reason: "evidence_not_found",
+          },
+        ],
+        moved: [{ file: "retry.go", from: 85, to: 88 }],
+        verdict: { model: "request_changes", posted: "comment" },
+        http: [{ upstream: "bitbucket", calls: 14 }],
+      },
+    });
+    render(<RunPage id={7} />);
+
+    expect((await screen.findAllByText("AI Gateway call")).length).toBe(2);
+    expect(screen.getByText("Waiting for the AI Gateway")).toBeDefined();
+    // Captioned with the stages' own sum, not the run's elapsed time.
+    expect(screen.getByText("the stages, 1m 3s")).toBeDefined();
+    expect(screen.getByText("PAY-2291")).toBeDefined();
+    expect(screen.getByText("1,240 of 4,000 tokens (31%)")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("tab", { name: /Findings/ }));
+    expect(screen.getByText("MaxRetries can go negative")).toBeDefined();
+    // A drop reason reads as words, not its code.
+    expect(screen.getByText("quoted code that is not there")).toBeDefined();
+    expect(screen.getByText("moved from :85")).toBeDefined();
+    expect(
+      screen.getByText(/Verdict lowered from request_changes to comment/),
+    ).toBeDefined();
+
+    fireEvent.click(screen.getByRole("tab", { name: /Prompt and files/ }));
+    expect(screen.getByText("Cumulative PR diff")).toBeDefined();
+    expect(screen.getByText("not reviewed, binary or generated")).toBeDefined();
   });
 
   it("says why a skipped run has nothing else", async () => {

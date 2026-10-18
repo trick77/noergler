@@ -112,6 +112,29 @@ func TestRunDetailFailsOnPRCostError(t *testing.T) {
 	}
 }
 
+// The detail record goes out as the review wrote it, under "detail"; none
+// is null.
+func TestRunDetailPassesTheRecordThrough(t *testing.T) {
+	h := newDashHarness(t)
+	h.st.detailID = 3
+	h.st.detail = store.RunDetail{ID: 3, Outcome: "ok", Detail: &store.Pipeline{Stages: []store.StageTime{{Name: "diff", MS: 3}}}}
+	var body map[string]any
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/runs/3").Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	stages := body["detail"].(map[string]any)["stages"].([]any)
+	if len(stages) != 1 || stages[0].(map[string]any)["name"] != "diff" {
+		t.Errorf("detail = %v", body["detail"])
+	}
+	h.st.detail.Detail = nil
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/runs/3").Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["detail"] != nil {
+		t.Errorf("no record: detail = %v, want null", body["detail"])
+	}
+}
+
 // An unparseable answer wrote no run, but was billed: the page shows the
 // attempt's cost instead of nothing.
 func TestRunDetailBilledWithoutRun(t *testing.T) {

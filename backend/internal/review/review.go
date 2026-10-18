@@ -188,12 +188,14 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 
 	r.log.InfoContext(ctx, fmt.Sprintf("Starting review of %s by %s (branch: %s)", prTag, author, pr.FromRef.DisplayID))
 	started := time.Now()
+	sw := newStopwatch(started)
 
 	sourceCommit := pr.FromRef.LatestCommit
 	lastReviewed, _ := r.priorCommit(ctx, key)
 
 	// 9. Incremental review when the event is a push and we have a pointer.
 	rawDiff, cumulativePR, incrementalFrom, diffWhy, err := r.resolveDiff(ctx, payload, key, prTag, sourceCommit, lastReviewed, upsert, l)
+	sw.lap(stageDiff)
 	if err != nil || diffWhy != SkipNone {
 		// A diff that would not fetch is a fault, recorded as an error like
 		// an inference one, so an outage is visible. A cancelled ctx is a
@@ -208,7 +210,8 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	}
 
 	// The line counts are the whole PR's scope, taken before compression.
-	files, contentSkipped, oversized, diffAdded, diffRemoved := r.prepareFiles(ctx, project, repo, rawDiff, sourceCommit, prTag)
+	prep := r.prepareFiles(ctx, project, repo, rawDiff, sourceCommit, prTag)
+	files, contentSkipped, oversized, diffAdded, diffRemoved := prep.files, prep.contentSkipped, prep.oversized, prep.added, prep.removed
 	// 13. Nothing reviewable after the content fetch.
 	if len(files) == 0 {
 		r.log.InfoContext(ctx, prTag+" has no reviewable files after content fetch, skipping")
@@ -252,7 +255,9 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	}
 	// What the prompt carries, file by file, after compression and
 	// expansion: the one place the per-file cost is visible.
-	r.log.InfoContext(ctx, prTag+": "+renderFilesSent(files, r.tokens.Count))
+	sentLine, fileTokens := renderFilesSent(files, r.tokens.Count)
+	r.log.InfoContext(ctx, prTag+": "+sentLine)
+	sw.lap(stageFiles)
 
 	// 16. Cross-file context, Jira, previously-posted findings.
 	relationships := diff.BuildRelationships(files)
@@ -272,6 +277,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// PR line is an added line, the buggy one too, so nothing would prove a
 	// fix. No id listed, nothing to claim.
 	posted := r.trimPreviouslyPosted(ctx, prTag, existing, budget, incrementalFrom != "")
+	sw.lap(stageContext)
 	listed := map[int64]bool{}
 	for _, p := range posted {
 		if p.ID > 0 {
@@ -298,12 +304,42 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	}, r.tokens.Count)
 	r.logPromptComposition(ctx, prTag, assembled, incrementalFrom != "")
 
+	detail := &store.Pipeline{
+		Prompt:    promptPartsOf(assembled, budget),
+		Files:     filesSent(prep, files, deletedPaths, renamedPaths, otherModified, fileTokens),
+		CrossFile: []string{},
+		AgentsMD: store.AgentsMDFacts{Found: repoInstructions != "", Tokens: assembled.Breakdown.RepoInstructions,
+			WarnTokens: r.cfg.AgentsMDWarnTokens},
+		PreviouslyPosted: store.PreviouslyPosted{Shown: len(posted), Total: len(existing)},
+		Decisions:        []store.FindingDecision{},
+		Moved:            []store.MovedFinding{},
+	}
+	// Names only: BuildRelationships emits one relationship per defining
+	// file, and the card lists a name once even when two files define it.
+	symbols := map[string]bool{}
+	for _, rel := range relationships {
+		if !symbols[rel.Symbol] {
+			symbols[rel.Symbol] = true
+			detail.CrossFile = append(detail.CrossFile, rel.Symbol)
+		}
+	}
+	if ticket != nil {
+		detail.Ticket = ticket.Key
+	}
+	if parentTicket != nil {
+		detail.ParentTicket = parentTicket.Key
+	}
+
 	// The cumulative diff is quotable too: on an incremental review it is
 	// the only place an earlier push's change is shown.
 	anchors := diff.BuildAnchorIndex(files)
 	anchors.AddContextDiff(cumulativePR.diff)
+	// The last of prepare's own work: what follows is the wait for a slot.
+	sw.lap(stagePrompt)
 
 	return &reviewPlan{
+		sw:              sw,
+		detail:          detail,
 		key:             key,
 		project:         project,
 		repo:            repo,
@@ -339,6 +375,10 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 // infer is the gateway call, and nothing else. It is the only stage that may
 // run off the review worker.
 func (r *Reviewer) infer(ctx context.Context, plan *reviewPlan) inference.ReviewResult {
+	// Since prepare: the wait for a slot on the inference pool (near zero
+	// when the call runs inline).
+	plan.sw.lap(stageQueued)
+	defer plan.sw.lap(stageGateway)
 	return r.llm.Review(ctx, inference.ReviewRequest{
 		Prompt:         plan.prompt,
 		PromptTokens:   plan.promptTokens,
@@ -351,6 +391,8 @@ func (r *Reviewer) infer(ctx context.Context, plan *reviewPlan) inference.Review
 // Bitbucket call here is still one at a time.
 func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.ReviewResult) {
 	defer r.logHTTPTotals(ctx, plan.prTag, plan.counter)
+	// Since the call: the wait to get back onto the review worker.
+	plan.sw.lap(stageToPost)
 
 	key, prTag, upsert := plan.key, plan.prTag, plan.upsert
 	project, repo, sourceCommit := plan.project, plan.repo, plan.sourceCommit
@@ -384,7 +426,8 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	// 19b. OutcomeError is NOT one of them: a non-overflow API error is only
 	// logged. No upsert, no notice, no run row.
 	if result.Outcome != inference.OutcomeOK {
-		r.handleNonOK(ctx, plan.lang, result, key, runKind(plan.mention), prTag, sourceCommit, upsert)
+		attemptID := r.handleNonOK(ctx, plan.lang, result, key, runKind(plan.mention), prTag, sourceCommit, upsert)
+		r.finishDetail(ctx, plan, attemptID, stageRecordSum)
 		return
 	}
 
@@ -393,6 +436,10 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	v := r.validateFindings(ctx, prTag, result.Review.Findings, plan.anchors)
 	// The model's verdict argued from findings some of which are now gone.
 	reviewSummary := inference.AdjustVerdict(result.Review.Summary, v.Kept, len(v.Dropped))
+	for _, d := range v.Dropped {
+		plan.detail.Decisions = append(plan.detail.Decisions, decision(d.Finding, "dropped", string(d.Reason)))
+	}
+	plan.detail.Verdict = &store.VerdictChange{Model: result.Review.Summary.VerdictDecision, Posted: reviewSummary.VerdictDecision}
 	if was := result.Review.Summary.VerdictDecision; was != reviewSummary.VerdictDecision {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: verdict lowered %s -> %s after %d dropped finding(s)",
 			prTag, was, reviewSummary.VerdictDecision, len(v.Dropped)))
@@ -404,6 +451,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	fixed := r.validateFixed(ctx, plan, result.Review.Fixed)
 	deduped, repeats := dedupe(v.Kept, withoutFixed(existing, fixed), plan.anchors)
 	for _, f := range repeats {
+		plan.detail.Decisions = append(plan.detail.Decisions, decision(f, "repeat", ""))
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: finding on %s:%d (%s) already posted by an earlier run, not posted again",
 			prTag, f.File, f.Line, f.Severity))
 	}
@@ -413,10 +461,13 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		// Sorting with no cap gives the same order, so the tail is the cut.
 		all, _ := sortAndLimit(deduped, len(deduped))
 		for _, f := range all[len(findings):] {
+			plan.detail.Decisions = append(plan.detail.Decisions, decision(f, "cut", ""))
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: finding on %s:%d (%s) over the %d-comment cap, not posted",
 				prTag, f.File, f.Line, f.Severity, r.cfg.MaxComments))
 		}
 	}
+
+	plan.sw.lap(stageValidate)
 
 	// 22. The pointer finally advances.
 	prReviewID := r.upsert(ctx, upsert, sourceCommit)
@@ -425,6 +476,13 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	// a zero where the post failed, so the count of successes is separate
 	// from the slice length.
 	postedIDs, postedCount, failed := r.postInlineComments(ctx, plan.lang, project, repo, plan.prID, findings)
+	for i, id := range postedIDs {
+		if id == 0 {
+			plan.detail.Decisions = append(plan.detail.Decisions, decision(findings[i], "failed", ""))
+		}
+	}
+	plan.detail.Moved = postedMoves(findings, postedIDs)
+	plan.sw.lap(stageComments)
 
 	elapsed := time.Since(started)
 
@@ -503,6 +561,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	}
 
 	r.postOrUpdateSummary(ctx, project, repo, plan.prID, prReviewID, summary)
+	r.finishDetail(ctx, plan, attemptID, stageRecordSum)
 
 	parts := []string{
 		fmt.Sprintf("Review of %s completed in %.1fs", prTag, elapsed.Seconds()),
@@ -657,17 +716,18 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 // All four write a review_attempts row, which is a separate table precisely
 // so those pins stay true: the dashboard needs to show a failure, and
 // review_runs must keep meaning "a review that produced a result".
-func (r *Reviewer) handleNonOK(ctx context.Context, l lang.Lang, result inference.ReviewResult, key store.PRKey, kind store.RunKind, prTag, sourceCommit string, upsert store.PRUpsert) {
+//
+// Returns the attempt id, for the run's detail record.
+func (r *Reviewer) handleNonOK(ctx context.Context, l lang.Lang, result inference.ReviewResult, key store.PRKey, kind store.RunKind, prTag, sourceCommit string, upsert store.PRUpsert) int64 {
 	short := shortOrUnknown(sourceCommit)
 	project, repo, prID := key.Project, key.Repo, key.PRID
 
 	if result.Outcome == inference.OutcomeError {
 		r.log.ErrorContext(ctx, fmt.Sprintf("Review of %s failed: %v", prTag, result.Err))
-		r.recordAttempt(ctx, store.Attempt{
+		return r.recordAttempt(ctx, store.Attempt{
 			Key: key, TeamSlug: r.TeamSlug, Kind: kind,
 			Outcome: result.Outcome.String(),
 		})
-		return
 	}
 
 	// Read the prior commit BEFORE the upsert, which would otherwise
@@ -692,7 +752,7 @@ func (r *Reviewer) handleNonOK(ctx context.Context, l lang.Lang, result inferenc
 	// No run row, so a billed call's cost rides here, where PRCost reads it.
 	// The call itself is kept too: an unparseable answer is exactly the run
 	// someone opens the detail page for.
-	r.recordAttempt(ctx, store.Attempt{
+	return r.recordAttempt(ctx, store.Attempt{
 		Key: key, TeamSlug: r.TeamSlug, Kind: kind,
 		Outcome:     result.Outcome.String(),
 		CostNanoUSD: result.Cost.NanoUSD,

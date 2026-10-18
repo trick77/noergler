@@ -169,9 +169,20 @@ function codeText(code: string): string {
  *  Only the plain code -> word groups qualify. A nested group (faq) or one
  *  with {{placeholders}} (common) would let a caller render an object or a
  *  raw template. */
-type CodeGroup = "outcome" | "skipWord" | "reason" | "teamState" | "severity";
+type CodeGroup =
+  | "outcome"
+  | "skipWord"
+  | "reason"
+  | "teamState"
+  | "severity"
+  | "stage"
+  | "sent"
+  | "decision"
+  | "dropReason";
 
-function known<G extends CodeGroup>(
+/** known tells a code the catalog has from one a newer binary wrote, which
+ *  the page prints as it came. */
+export function known<G extends CodeGroup>(
   group: G,
   code: string,
 ): code is Extract<keyof Catalog[G], string> {
