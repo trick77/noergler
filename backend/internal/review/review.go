@@ -208,7 +208,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	}
 
 	// The line counts are the whole PR's scope, taken before compression.
-	files, contentSkipped, diffAdded, diffRemoved := r.prepareFiles(ctx, project, repo, rawDiff, sourceCommit, prTag)
+	files, contentSkipped, oversized, diffAdded, diffRemoved := r.prepareFiles(ctx, project, repo, rawDiff, sourceCommit, prTag)
 	// 13. Nothing reviewable after the content fetch.
 	if len(files) == 0 {
 		r.log.InfoContext(ctx, prTag+" has no reviewable files after content fetch, skipping")
@@ -318,16 +318,18 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		existing:        existing,
 		listed:          listed,
 		contentSkipped:  contentSkipped,
-		ticket:          ticket,
-		parentTicket:    parentTicket,
-		breakdown:       breakdown(assembled),
-		crossFileSyms:   symbolsOf(relationships),
-		agentsMDFound:   repoInstructions != "",
-		budget:          budget,
-		filesReviewed:   len(files),
-		totalFiles:      totalFiles + len(deletedPaths) + len(renamedPaths),
-		diffAdded:       diffAdded,
-		diffRemoved:     diffRemoved,
+		// Not reviewed: over the size gate, or named to the model only
+		// because compression left them out of the prompt.
+		notReviewed:   append(append([]string(nil), oversized...), otherModified...),
+		ticket:        ticket,
+		parentTicket:  parentTicket,
+		breakdown:     breakdown(assembled),
+		agentsMDFound: repoInstructions != "",
+		budget:        budget,
+		filesReviewed: len(files),
+		totalFiles:    totalFiles + len(deletedPaths) + len(renamedPaths),
+		diffAdded:     diffAdded,
+		diffRemoved:   diffRemoved,
 	}, ctx, true
 }
 
@@ -450,7 +452,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	if runID != 0 {
 		attempt.RunID = &runID
 	}
-	r.recordAttempt(ctx, attempt)
+	attemptID := r.recordAttempt(ctx, attempt)
 
 	runCost, cumulativeCost := r.resolveCost(ctx, key, result)
 
@@ -463,8 +465,8 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		Dropped:                    len(v.Dropped),
 		Summary:                    reviewSummary,
 		AgentsMDFound:              plan.agentsMDFound,
+		SkippedFiles:               plan.notReviewed,
 		ContentSkippedFiles:        plan.contentSkipped,
-		TokenUsage:                 tokenUsage(result),
 		PromptBreakdown:            plan.breakdown,
 		Ticket:                     plan.ticket,
 		ParentTicket:               plan.parentTicket,
@@ -481,13 +483,10 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		FilesCountsSet:             true,
 		DiffAdded:                  plan.diffAdded,
 		DiffRemoved:                plan.diffRemoved,
-		CrossFileSymbols:           plan.crossFileSyms,
-		InputBudget:                plan.budget,
-		ContextWindow:              r.llm.ContextWindow(),
 		ModelLabel:                 r.llm.Label(),
+		RunURL:                     r.runURL(attemptID),
 		RunCostUSD:                 runCost,
 		CumulativeCostUSD:          cumulativeCost,
-		KeySpendUSD:                keySpendUSD(result),
 		MaxPRCostUSD:               r.cfg.MaxPRCostUSD,
 		AgentsMDWarnTokens:         r.cfg.AgentsMDWarnTokens,
 	})
@@ -1001,14 +1000,6 @@ func (r *Reviewer) priorCommit(ctx context.Context, key store.PRKey) (commit str
 	return commit, readOK
 }
 
-func tokenUsage(result inference.ReviewResult) render.TokenUsage {
-	return render.TokenUsage{
-		Prompt:     int(result.Cost.PromptTokens),
-		Completion: int(result.Cost.CompletionTokens),
-		Present:    true,
-	}
-}
-
 func breakdown(a inference.AssembledPrompt) render.PromptBreakdown {
 	return render.PromptBreakdown{
 		Template:         a.Breakdown.Template,
@@ -1016,24 +1007,6 @@ func breakdown(a inference.AssembledPrompt) render.PromptBreakdown {
 		Files:            a.Breakdown.Files,
 		Present:          true,
 	}
-}
-
-func keySpendUSD(result inference.ReviewResult) float64 {
-	if result.Cost.KeySpendNanoUSD == nil {
-		return 0
-	}
-	return float64(*result.Cost.KeySpendNanoUSD) / nanoPerUSD
-}
-
-func symbolsOf(rels []diff.CrossFileRelationship) []string {
-	if len(rels) == 0 {
-		return nil
-	}
-	out := make([]string, len(rels))
-	for i, rel := range rels {
-		out[i] = rel.Symbol
-	}
-	return out
 }
 
 func epochMSToTime(ms int64) *time.Time {

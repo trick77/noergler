@@ -237,6 +237,7 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 		Log:       d.Log,
 
 		DisplayNamePattern: app.Bitbucket.DisplayNamePattern,
+		PublicURL:          app.Server.PublicURL,
 	})
 	runtime = NewRuntime(team, reviewer, llm, jr, rt)
 	return runtime, ""

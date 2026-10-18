@@ -70,10 +70,10 @@ type reviewPlan struct {
 	// the findings: existing already holds them.
 	listed         map[int64]bool
 	contentSkipped []string
+	notReviewed    []string
 	ticket         *jira.Ticket
 	parentTicket   *jira.Ticket
 	breakdown      render.PromptBreakdown
-	crossFileSyms  []string
 	agentsMDFound  bool
 	budget         int
 	filesReviewed  int

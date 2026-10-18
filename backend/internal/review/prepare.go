@@ -21,17 +21,19 @@ import (
 //
 // added and removed count the reviewable files' diff lines, in the same pass
 // that classifies them: the raw diff is uncapped, so it is split once.
-func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sourceCommit, prTag string) (files []diff.FileReviewData, contentSkipped []string, added, removed int) {
+//
+// oversized names the files the size gate kept out of the review, for the
+// summary's "not reviewed" line.
+func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sourceCommit, prTag string) (files []diff.FileReviewData, contentSkipped, oversized []string, added, removed int) {
 	all := diff.SplitByFile(rawDiff)
 	var reviewable, skipped []string
-	oversized := 0
 	for _, fd := range all {
 		path := diff.ExtractPath(fd)
 		if diff.IsReviewable(fd) {
 			if changed, limit, over := diff.ExceedsSizeGate(path, fd); over {
 				r.log.InfoContext(ctx, fmt.Sprintf("%s: skipped as oversized: %s (%d changed lines > %d)",
 					prTag, path, changed, limit))
-				oversized++
+				oversized = append(oversized, path)
 				continue
 			}
 			reviewable = append(reviewable, fd)
@@ -45,12 +47,12 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 		skipped = append(skipped, path)
 	}
 	r.log.InfoContext(ctx, fmt.Sprintf("%s: %d file(s) in diff, %d reviewable, %d skipped (binary/non-reviewable), %d oversized",
-		prTag, len(all), len(reviewable), len(skipped), oversized))
+		prTag, len(all), len(reviewable), len(skipped), len(oversized)))
 	if len(skipped) > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: skipped as binary/non-reviewable: %s", prTag, capPaths(skipped)))
 	}
 	if len(reviewable) == 0 {
-		return nil, nil, 0, 0
+		return nil, nil, oversized, 0, 0
 	}
 
 	type result struct {
@@ -160,7 +162,7 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 		"%s: %d file(s) for review - %d diff lines, %d content lines, %d with full content, %d diff-only",
 		prTag, len(files), totalDiffLines, totalContentLines, withContent, len(files)-withContent))
 
-	return files, contentSkipped, added, removed
+	return files, contentSkipped, oversized, added, removed
 }
 
 // countDiffLines counts added and removed lines, skipping files the reviewer

@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"math"
 	"path"
 	"strings"
 
@@ -34,13 +35,6 @@ type PromptBreakdown struct {
 	Present          bool
 }
 
-// TokenUsage is the model's reported prompt and completion token counts.
-type TokenUsage struct {
-	Prompt     int
-	Completion int
-	Present    bool
-}
-
 // SummaryInput is everything the summary comment renders.
 //
 // Pointer fields are the ones where absent and zero differ: a nil cost means
@@ -69,12 +63,12 @@ type SummaryInput struct {
 	Dropped int
 
 	AgentsMDFound bool
-	// SkippedFiles were too large for the model; ContentSkippedFiles were
-	// reviewed from their diff without full file context.
+	// SkippedFiles were not reviewed: over the size gate, or left out of the
+	// prompt by compression. ContentSkippedFiles were reviewed from their
+	// diff without full file context.
 	SkippedFiles        []string
 	ContentSkippedFiles []string
 
-	TokenUsage      TokenUsage
 	PromptBreakdown PromptBreakdown
 
 	Ticket       *jira.Ticket
@@ -85,30 +79,26 @@ type SummaryInput struct {
 	TicketComplianceCheck      bool
 	JiraEnabled                bool
 
-	ElapsedSeconds   float64
-	ElapsedPresent   bool
-	ReviewedCommit   string
-	IncrementalFrom  string
-	FilesReviewed    int
-	TotalFiles       int
-	FilesCountsSet   bool
-	DiffAdded        int
-	DiffRemoved      int
-	CrossFileSymbols []string
-
-	InputBudget   int
-	ContextWindow int
-	ModelLabel    string
+	ElapsedSeconds  float64
+	ElapsedPresent  bool
+	ReviewedCommit  string
+	IncrementalFrom string
+	FilesReviewed   int
+	TotalFiles      int
+	FilesCountsSet  bool
+	DiffAdded       int
+	DiffRemoved     int
+	ModelLabel      string
+	// RunURL is this run's page on the dashboard; empty (no public URL
+	// configured) prints no link rather than one to nowhere.
+	RunURL string
 
 	// RunCostUSD is nil when the gateway did not price the run.
 	RunCostUSD *float64
 	// CumulativeCostUSD is the PR total including this run; only read when
 	// RunCostUSD is set, so an unpriced run shows no total.
 	CumulativeCostUSD *float64
-	// KeySpendUSD is the gateway's own gauge for the whole API key. Shown,
-	// never summed, suppressed when zero.
-	KeySpendUSD  float64
-	MaxPRCostUSD float64
+	MaxPRCostUSD      float64
 
 	// AgentsMDWarnTokens is the soft threshold the scope line reports
 	// against; 0 or less disables the stats entirely.
@@ -377,156 +367,122 @@ func renderRecommendation(in SummaryInput) string {
 	return fmt.Sprintf(p("### Empfehlung\n**%s** — %s", "### Recommendation\n**%s** — %s"), label, rationale)
 }
 
-// renderFootnote builds the scope lines then the telemetry lines, each as an
-// italic bullet under a horizontal rule.
+// renderFootnote is the footer under a rule: a bullet for each thing the
+// author can act on, then one telemetry line ending in the run's dashboard
+// page. Everything else (tokens, prompt parts, cross-file symbols, key
+// spend) lives on that page, not in the PR (decided).
 func renderFootnote(in SummaryInput) string {
-	var scope []string
 	p := in.Lang.Pick
+	var warn []string
 
-	if in.AgentsMDFound {
-		scope = append(scope, agentsMDScopeLine(in))
-	} else {
-		scope = append(scope, p(
+	if !in.AgentsMDFound {
+		warn = append(warn, p(
 			"Tipp: Eine `AGENTS.md` mit projektspezifischen Review-Richtlinien im Repo-Root sorgt "+
 				"für gezielteres Feedback. 💡",
 			"Tip: Add an `AGENTS.md` to your repository root with project-specific "+
 				"review guidelines for more targeted feedback. 💡"))
+	} else if line := agentsMDBloatLine(in); line != "" {
+		warn = append(warn, line)
 	}
-
-	if in.Ticket == nil {
-		if in.JiraEnabled {
-			scope = append(scope, p("Kein Ticket in Branch-Name oder PR-Titel gefunden ℹ️",
-				"No ticket found in branch name or PR title ℹ️"))
-		} else {
-			scope = append(scope, p("Jira ist nicht aktiviert ℹ️", "Jira is not enabled ℹ️"))
-		}
+	// Only when Jira is on: "Jira is not enabled" is true of every PR of the
+	// team and gives the author nothing to do.
+	if in.Ticket == nil && in.JiraEnabled {
+		warn = append(warn, p("Kein Ticket in Branch-Name oder PR-Titel gefunden ℹ️",
+			"No ticket found in branch name or PR title ℹ️"))
 	}
-
-	lines := p(" Zeilen", " lines")
-	if in.FilesCountsSet {
-		files := PluralIn(in.Lang, in.FilesReviewed, "Datei", "Dateien", "file", "files")
-		filesStr := p(files+" geprüft", "Reviewed "+files)
-		if in.FilesReviewed != in.TotalFiles {
-			filesStr = fmt.Sprintf(p("%d von %d Dateien geprüft (%d übersprungen: Lock-Files, Binaries, Config)",
-				"Reviewed %d of %d files (%d skipped: lock files, binaries, config)"),
-				in.FilesReviewed, in.TotalFiles, in.TotalFiles-in.FilesReviewed)
-		}
-		if diff := diffParts(in.DiffAdded, in.DiffRemoved); diff != "" {
-			filesStr += ", " + diff + lines
-		}
-		scope = append(scope, filesStr)
-	} else if in.DiffAdded != 0 || in.DiffRemoved != 0 {
-		if diff := diffParts(in.DiffAdded, in.DiffRemoved); diff != "" {
-			scope = append(scope, "Diff: "+diff+lines)
-		}
-	}
-
-	if n := len(in.CrossFileSymbols); n > 0 {
-		shown := in.CrossFileSymbols
-		suffix := ""
-		if n > 5 {
-			shown = shown[:5]
-			suffix = fmt.Sprintf(p(" und %d weitere", " and %d more"), n-5)
-		}
-		quoted := make([]string, len(shown))
-		for i, s := range shown {
-			quoted[i] = "`" + s + "`"
-		}
-		deps := PluralIn(in.Lang, n, "dateiübergreifende Abhängigkeit", "dateiübergreifende Abhängigkeiten",
-			"cross-file dependency", "cross-file dependencies")
-		scope = append(scope, fmt.Sprintf(p("%s analysiert (%s%s)", "%s analyzed (%s%s)"),
-			deps, strings.Join(quoted, ", "), suffix))
-	}
-
 	if len(in.SkippedFiles) > 0 {
-		scope = append(scope, p("Nicht geprüft (zu gross): ", "Not reviewed (too large): ")+baseNames(in.SkippedFiles)+" ⚠️")
+		warn = append(warn, p("Nicht geprüft (zu gross): ", "Not reviewed (too large): ")+baseNames(in.SkippedFiles)+" ⚠️")
 	}
 	if len(in.ContentSkippedFiles) > 0 {
-		scope = append(scope, p("Ohne vollen Datei-Kontext geprüft (zu gross): ",
+		warn = append(warn, p("Ohne vollen Datei-Kontext geprüft (zu gross): ",
 			"Reviewed without full file context (too large): ")+baseNames(in.ContentSkippedFiles)+" ⚠️")
 	}
 
-	var telemetry []string
-	if in.InputBudget > 0 && in.TokenUsage.Present {
-		windowSuffix := ""
-		if in.ContextWindow > 0 {
-			windowSuffix = fmt.Sprintf(p(", Modell-Max. %s", ", model max %s"), FmtK(in.ContextWindow))
-		}
-		telemetry = append(telemetry, fmt.Sprintf(p("Tokens: %s von %s verfügbar (%d%% genutzt%s)",
-			"Tokens used: %s of %s available (%d%% used%s)"),
-			FmtK(in.TokenUsage.Prompt), FmtK(in.InputBudget),
-			pct(in.TokenUsage.Prompt, in.InputBudget), windowSuffix))
-	}
-
-	if in.TokenUsage.Present {
-		if in.PromptBreakdown.Present {
-			telemetry = append(telemetry, fmt.Sprintf(p(
-				"Input-Tokens: ~%s Review-Prompt · ~%s AGENTS.md · ~%s Dateiinhalt",
-				"Input tokens: ~%s review prompt · ~%s AGENTS.md · ~%s file content"),
-				Fmt(in.PromptBreakdown.Template), Fmt(in.PromptBreakdown.RepoInstructions),
-				Fmt(in.PromptBreakdown.Files)))
-		}
-		total := in.TokenUsage.Prompt + in.TokenUsage.Completion
-		stats := fmt.Sprintf(p("Modell: `%s` · ↑ %s · ↓ %s (%s total)", "Model: `%s` · ↑ %s · ↓ %s (%s total)"),
-			in.ModelLabel, Fmt(in.TokenUsage.Prompt), Fmt(in.TokenUsage.Completion), Fmt(total))
-		if in.ElapsedPresent {
-			stats += fmt.Sprintf(" · ⏱️ %.1fs", in.ElapsedSeconds)
-		}
-		telemetry = append(telemetry, stats)
-	}
-
-	// The run cost is omitted when the endpoint did not price the run, which
-	// beats a misleading "$0.00". The key total is shown regardless: it is
-	// the gateway's own gauge and stays valid while one run goes unpriced.
-	var costParts []string
-	if in.RunCostUSD != nil {
-		costParts = append(costParts, fmt.Sprintf(p("$%.2f dieser Lauf", "$%.2f this run"), *in.RunCostUSD))
-		if in.CumulativeCostUSD != nil {
-			costParts = append(costParts, fmt.Sprintf(p("$%.2f PR gesamt / $%.2f Limit", "$%.2f PR total / $%.2f limit"),
-				*in.CumulativeCostUSD, in.MaxPRCostUSD))
-		}
-	}
-	// Zero is suppressed: a proxy that does not track key spend reports 0,
-	// and "$0.00 key total" reads as a broken integration.
-	if in.KeySpendUSD != 0 {
-		costParts = append(costParts, fmt.Sprintf(p("$%.2f Key gesamt", "$%.2f key total"), in.KeySpendUSD))
-	}
-	if len(costParts) > 0 {
-		telemetry = append(telemetry, p("Kosten: ", "Cost: ")+strings.Join(costParts, ", "))
-	}
-
-	all := append(scope, telemetry...)
-	if len(all) == 0 {
+	tele := telemetryLine(in)
+	if len(warn) == 0 && tele == "" {
 		return ""
 	}
 	var b strings.Builder
 	b.WriteString("---")
-	for _, line := range all {
+	for _, line := range warn {
 		b.WriteString("\n- _" + line + "_")
+	}
+	if tele != "" {
+		if len(warn) > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("\n_" + tele + "_")
 	}
 	return b.String()
 }
 
-// agentsMDScopeLine reports AGENTS.md usage and, when a warn threshold is
-// configured and a token count is known, how close it is to that threshold.
-func agentsMDScopeLine(in SummaryInput) string {
+// telemetryLine is the footer's one line of figures: model, files, lines,
+// elapsed, cost, and the link to the run's page.
+func telemetryLine(in SummaryInput) string {
 	p := in.Lang.Pick
-	base := p("Projektspezifische Review-Richtlinien aus `AGENTS.md` verwendet",
-		"Using project-specific review guidelines from `AGENTS.md`")
-	tokens := 0
-	if in.PromptBreakdown.Present {
-		tokens = in.PromptBreakdown.RepoInstructions
+	var parts []string
+	if in.ModelLabel != "" {
+		parts = append(parts, "`"+in.ModelLabel+"`")
 	}
-	if tokens == 0 || in.AgentsMDWarnTokens <= 0 {
-		return base + " ✅"
+	if in.FilesCountsSet {
+		if in.FilesReviewed == in.TotalFiles {
+			parts = append(parts, PluralIn(in.Lang, in.TotalFiles, "Datei", "Dateien", "file", "files"))
+		} else {
+			parts = append(parts, fmt.Sprintf(p("%d von %d Dateien", "%d of %d files"), in.FilesReviewed, in.TotalFiles))
+		}
 	}
-	stats := fmt.Sprintf(p("(~%d / %d Tokens, %d%%)", "(~%d / %d tokens, %d%%)"), tokens, in.AgentsMDWarnTokens,
-		pct(tokens, in.AgentsMDWarnTokens))
-	if tokens > in.AgentsMDWarnTokens {
-		return fmt.Sprintf(p("%s %s — droht den Kontext aufzublähen, besser kürzen ⚠️",
-			"%s %s — risk of context bloat, consider trimming ⚠️"), base, stats)
+	if d := diffParts(in.DiffAdded, in.DiffRemoved); d != "" {
+		parts = append(parts, d)
 	}
-	return fmt.Sprintf("%s %s ✅", base, stats)
+	if in.ElapsedPresent {
+		parts = append(parts, Elapsed(in.ElapsedSeconds))
+	}
+	// An unpriced run says so instead of printing $0.00, and shows no PR
+	// total: that is only read when this run is priced.
+	if in.RunCostUSD != nil {
+		cost := fmt.Sprintf("$%.2f", *in.RunCostUSD)
+		if in.CumulativeCostUSD != nil {
+			cost += fmt.Sprintf(p(", PR $%.2f von $%.2f", ", PR $%.2f of $%.2f"), *in.CumulativeCostUSD, in.MaxPRCostUSD)
+		}
+		parts = append(parts, cost)
+	} else if in.ElapsedPresent {
+		parts = append(parts, p("Kosten nicht gemeldet", "cost not reported"))
+	}
+	if in.RunURL != "" {
+		parts = append(parts, fmt.Sprintf(p("[Details zum Run](%s)", "[Run details](%s)"), in.RunURL))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// Elapsed is a run's wall clock as the dashboard prints it: 850ms, 12.3s,
+// 1m 13s. Seconds are rounded first, so 119.5s reads 2m 0s, never 1m 60s.
+func Elapsed(seconds float64) string {
+	ms := int64(math.Round(seconds * 1000))
+	switch {
+	case ms < 1000:
+		return fmt.Sprintf("%dms", ms)
+	case ms < 60_000:
+		return fmt.Sprintf("%.1fs", float64(ms)/1000)
+	}
+	total := int64(math.Round(float64(ms) / 1000))
+	return fmt.Sprintf("%dm %ds", total/60, total%60)
+}
+
+// agentsMDBloatLine warns when AGENTS.md is over the soft threshold, and is
+// empty otherwise: "AGENTS.md was used" is true of every reviewed PR and
+// moved to the run page.
+func agentsMDBloatLine(in SummaryInput) string {
+	p := in.Lang.Pick
+	if !in.PromptBreakdown.Present || in.AgentsMDWarnTokens <= 0 {
+		return ""
+	}
+	tokens := in.PromptBreakdown.RepoInstructions
+	if tokens <= in.AgentsMDWarnTokens {
+		return ""
+	}
+	return fmt.Sprintf(p("`AGENTS.md` belegt ~%d von %d Tokens (%d%%) — droht den Kontext aufzublähen, besser kürzen ⚠️",
+		"`AGENTS.md` takes ~%d of %d tokens (%d%%) — risk of context bloat, consider trimming ⚠️"),
+		tokens, in.AgentsMDWarnTokens, pct(tokens, in.AgentsMDWarnTokens))
 }
 
 func diffParts(added, removed int) string {
