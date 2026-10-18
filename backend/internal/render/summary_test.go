@@ -120,14 +120,20 @@ func summaryCases() map[string]SummaryInput {
 
 	accounting := base()
 	accounting.Findings = []inference.ReviewFinding{finding("issue", "c", ptrs("New one"))}
-	accounting.FixedEarlier, accounting.OpenEarlier = 2, 3
-	accounting.NotPosted = NotPosted{Repeat: 2, OverCap: 1, Unsupported: 1, Failed: 1}
+	accounting.FixedEarlier, accounting.OpenEarlier, accounting.Dropped = 2, 3, 2
 	cases["accounting"] = accounting
 
 	accountingNone := base()
-	accountingNone.FixedEarlier = 1
-	accountingNone.NotPosted = NotPosted{Repeat: 1}
+	accountingNone.FixedEarlier, accountingNone.Dropped = 1, 1
 	cases["accounting_no_findings"] = accountingNone
+
+	// A capped run keeps its own bullet; the line beside it never counts the
+	// cut a second time.
+	accountingCapped := base()
+	accountingCapped.Findings = []inference.ReviewFinding{finding("issue", "c", ptrs("Kept"))}
+	accountingCapped.Truncated = true
+	accountingCapped.OpenEarlier = 1
+	cases["accounting_truncated"] = accountingCapped
 
 	openOnly := base()
 	openOnly.OpenEarlier = 4

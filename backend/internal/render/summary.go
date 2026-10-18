@@ -43,12 +43,15 @@ type SummaryInput struct {
 	Truncated bool
 	Summary   inference.ReviewSummary
 
-	// FixedEarlier and OpenEarlier account for what earlier runs posted:
-	// retired by this run, and still not seen fixed after it.
+	// FixedEarlier and OpenEarlier are the earlier findings this run listed
+	// to the model, retired by it and still open after it. Zero on a full
+	// review: it can retire nothing, so it can say nothing about them.
 	FixedEarlier int
 	OpenEarlier  int
-	// NotPosted is what this run found and kept off the PR, by reason.
-	NotPosted NotPosted
+	// Dropped is what validation kept off the PR. Repeats, the cap and
+	// refused posts are not here: the repeat is an open earlier finding,
+	// the cap has its own bullet, and a refused post is still in the list.
+	Dropped int
 
 	AgentsMDFound bool
 	// SkippedFiles were too large for the model; ContentSkippedFiles were
@@ -157,53 +160,22 @@ func renderStrengths(in SummaryInput) string {
 	return b.String()
 }
 
-// NotPosted counts the findings a run held back, one field per reason.
-type NotPosted struct {
-	// Repeat were already posted by an earlier run.
-	Repeat int
-	// OverCap were cut by the comment cap.
-	OverCap int
-	// Unsupported failed validation: evidence or line the diff did not bear
-	// out.
-	Unsupported int
-	// Failed were refused by Bitbucket as inline comments.
-	Failed int
-}
-
-func (n NotPosted) total() int { return n.Repeat + n.OverCap + n.Unsupported + n.Failed }
-
 // renderAccounting is the line under the issues that says what the list
-// leaves out: earlier findings and held-back ones. Empty when there is
-// nothing to say, so a first review reads as before.
+// leaves out: earlier findings and dropped ones. Empty when there is nothing
+// to say, so a first review reads as before.
 func renderAccounting(in SummaryInput) string {
-	var parts []string
-	var earlier []string
+	var parts, earlier []string
 	if in.FixedEarlier > 0 {
 		earlier = append(earlier, fmt.Sprintf("%d fixed by this push", in.FixedEarlier))
 	}
 	if in.OpenEarlier > 0 {
-		earlier = append(earlier, fmt.Sprintf("%d not yet fixed", in.OpenEarlier))
+		earlier = append(earlier, fmt.Sprintf("%d still open", in.OpenEarlier))
 	}
 	if len(earlier) > 0 {
 		parts = append(parts, "Earlier findings: "+strings.Join(earlier, ", ")+".")
 	}
-	n := in.NotPosted
-	if n.total() > 0 {
-		var why []string
-		for _, r := range []struct {
-			n    int
-			text string
-		}{
-			{n.Repeat, "already posted"},
-			{n.OverCap, "over the comment cap"},
-			{n.Unsupported, "not borne out by the diff"},
-			{n.Failed, "refused by Bitbucket"},
-		} {
-			if r.n > 0 {
-				why = append(why, fmt.Sprintf("%d %s", r.n, r.text))
-			}
-		}
-		parts = append(parts, fmt.Sprintf("Found and not posted: %d (%s).", n.total(), strings.Join(why, ", ")))
+	if in.Dropped > 0 {
+		parts = append(parts, Plural(in.Dropped, "finding")+" dropped by validation.")
 	}
 	if len(parts) == 0 {
 		return ""
