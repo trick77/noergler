@@ -48,9 +48,13 @@ type SummaryInput struct {
 	// review: it can retire nothing, so it can say nothing about them.
 	FixedEarlier int
 	OpenEarlier  int
-	// Dropped is what validation kept off the PR. Repeats, the cap and
-	// refused posts are not here: the repeat is an open earlier finding,
-	// the cap has its own bullet, and a refused post is still in the list.
+	// Dropped is what validation kept off the PR.
+	//
+	// Decided, not complete: the line counts only what this run checked.
+	// Repeats of earlier findings, findings trimmed from the prompt, the cap
+	// and refused inline posts are logged, not counted here. A repeat of a
+	// listed finding is already in OpenEarlier and would count twice; the
+	// cap has its own bullet; a refused post is still in the list.
 	Dropped int
 
 	AgentsMDFound bool
