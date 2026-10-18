@@ -296,7 +296,7 @@ export const en = {
     moreBefore: "Older runs of this pull request are not listed here.",
     moreAfter: "Newer runs of this pull request are not listed here.",
     prTotalNote:
-      "The total is the figure the cost cap counts: this pull request since it was last claimed, so it can differ from the rows above.",
+      "The total is what this pull request has cost since it was last claimed, which is also what a cost cap counts, so it can differ from the rows above.",
   },
   faq: {
     lede: "Why noergler did or did not review your pull request. Defaults below; your team may have changed them.",
