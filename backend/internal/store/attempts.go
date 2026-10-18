@@ -70,7 +70,7 @@ func (s *Store) InsertAttempt(ctx context.Context, a Attempt) (int64, error) {
 
 // ErrCallNotRecorded is InsertAttempt's error when the attempt (and any
 // billed cost on it) was written and only its gateway call was not.
-var ErrCallNotRecorded = errors.New("gateway call not recorded, attempt written")
+var ErrCallNotRecorded = errors.New("call not recorded")
 
 // AttemptRow is one row of the dashboard's feed: the attempt, plus the run
 // figures where the attempt produced a run.

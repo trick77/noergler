@@ -9,7 +9,6 @@ package review
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -144,13 +143,14 @@ func (r *Reviewer) recordAttempt(ctx context.Context, a store.Attempt) {
 	// ErrCallNotRecorded means the attempt (and any billed cost on it) is
 	// written and only the call's detail is not: logged as that, with the
 	// PR, so nobody reads a lost llm_calls row as a lost attempt.
+	// team= rides on ctx (the queue binds it per job).
 	_, err := r.store.InsertAttempt(ctx, a)
-	if errors.Is(err, store.ErrCallNotRecorded) {
-		r.log.WarnContext(ctx, fmt.Sprintf("%s/%s#%d: gateway call detail not recorded, the attempt was",
-			a.Key.Project, a.Key.Repo, a.Key.PRID), logging.Err(err))
-		return
+	switch {
+	case errors.Is(err, store.ErrCallNotRecorded):
+		r.log.WarnContext(ctx, a.Key.Tag()+": gateway call detail not recorded, the attempt was", logging.Err(err))
+	case err != nil:
+		r.log.WarnContext(ctx, "DB operation failed, using fallback: InsertAttempt", logging.Err(err))
 	}
-	safeDBErr(ctx, r.log, "InsertAttempt", func() error { return err })
 }
 
 // llmCall is the llm_calls row for a review's gateway call, nil when the
