@@ -320,8 +320,8 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		anchors:         anchors,
 		existing:        existing,
 		listed:          listed,
-		// A file not sent as a reviewed entry (left out by compression, or
-		// only deleted or renamed) is never "reviewed without full context".
+		// Read from what the prompt carries (notFullContext): a deleted file
+		// is never fetched, so it is never content-skipped to begin with.
 		contentSkipped: notFullContext(contentSkipped, files),
 		oversized:      oversized,
 		overBudget:     otherModified,
@@ -435,7 +435,9 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	// by this point, so a crash before InsertRun leaves them there with no
 	// finding row.
 	runID := r.recordRun(ctx, prReviewID, result, sourceCommit, plan.incrementalFrom, plan.mention,
-		elapsed, postedCount, plan.diffAdded, plan.diffRemoved, plan.totalFiles)
+		// files_changed counts the size-gated files too, as the merge-time
+		// rollup (countReviewableFiles) does; the footer's count does not.
+		elapsed, postedCount, plan.diffAdded, plan.diffRemoved, plan.totalFiles+len(plan.oversized))
 	r.recordFindings(ctx, prReviewID, runID, findings, postedIDs)
 	r.retireFixed(ctx, plan, fixed, runID)
 
@@ -483,6 +485,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		IncrementalFrom:            plan.incrementalFrom,
 		TotalFiles:                 plan.totalFiles,
 		FilesCountsSet:             true,
+		FilesOverBudget:            len(plan.overBudget),
 		DiffAdded:                  plan.diffAdded,
 		DiffRemoved:                plan.diffRemoved,
 		ModelLabel:                 r.llm.Label(),
