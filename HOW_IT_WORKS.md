@@ -249,7 +249,7 @@ the author resolves it. Reply costs are logged, not recorded.
 
 The answer may address the author by first name ("Ok Jan - ..."), not
 always. `BITBUCKET_DISPLAY_NAME_PATTERN` extracts it from the Bitbucket
-`displayName` (default `Last First`, rest ignored); no match, no name. The model
+`displayName` (default `Last First (CODE)`: the last word before the bracket); no match, no name. The model
 is told to use it only when acknowledging or accepting a dispute; on a question
 or any other intent code cuts a leading address from the answer. The name is
 never stored or logged. Q&A answers and reviews carry no name.

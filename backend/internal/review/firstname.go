@@ -16,8 +16,9 @@ const firstNameMaxRunes = 40
 // when names are off, the pattern does not match, or the capture is not a
 // name. The display name is author-controlled and the operator's pattern may
 // capture anything, so only letters, marks, inner spaces, ' and - pass, with
-// at least two letters: an initial ("J.") or a lone "-" is no name. NFC, so
-// it compares with what the model writes.
+// at least two letters and no ' or - at either end: an initial ("J."), a lone
+// "-" or "Jan-" is no name. A part written in one case is title-cased
+// (normalizeCase). NFC, so it compares with what the model writes.
 func firstName(re *regexp.Regexp, displayName string) string {
 	if re == nil {
 		return ""
@@ -40,10 +41,38 @@ func firstName(re *regexp.Regexp, displayName string) string {
 			return ""
 		}
 	}
-	if letters < 2 {
+	if letters < 2 || strings.ContainsAny(name[:1]+name[len(name)-1:], "'-") {
 		return ""
 	}
-	return name
+	return normalizeCase(name)
+}
+
+// normalizeCase title-cases each part between spaces, - and ' that is in one
+// case: "SANER JAN" reads as shouting, "jan" as a login. A mixed-case part
+// is the person's own and kept, so "JAN-peter" is Jan-Peter and "McKay"
+// stays. An all-caps "MCKAY" becomes Mckay: the capital inside is lost,
+// accepted.
+func normalizeCase(s string) string {
+	var b, part strings.Builder
+	flush := func() {
+		p := part.String()
+		if p != strings.ToUpper(p) && p != strings.ToLower(p) {
+			b.WriteString(p)
+		} else if c, size := utf8.DecodeRuneInString(p); size > 0 {
+			b.WriteString(string(unicode.ToUpper(c)) + strings.ToLower(p[size:]))
+		}
+		part.Reset()
+	}
+	for _, c := range s {
+		if c == ' ' || c == '-' || c == '\'' {
+			flush()
+			b.WriteRune(c)
+			continue
+		}
+		part.WriteRune(c)
+	}
+	flush()
+	return b.String()
 }
 
 // nameIntents are the reply intents that may address the author by name; a
