@@ -197,9 +197,9 @@ export function reasonLabel(
  *  working; red would claim it is broken. Ochre is "your move", which is
  *  exactly right, because somebody has to claim a repository. */
 export function teamTone(state: string): Tone {
-  // An empty state is no value, like an empty outcome: grey, no tooltip,
-  // never a red fault (teamStateTitle agrees).
-  if (state === "") return "none";
+  // No "" case: the server always names the state, so an empty one is a
+  // broken contract and stays red like any unknown state. (An empty outcome
+  // is different: a team that never ran really has none.)
   if (state === "ready") return "ok";
   if (state === "no_repos") return "skip";
   return "fail";

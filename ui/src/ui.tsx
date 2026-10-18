@@ -39,7 +39,7 @@ const toneClass: Record<Tone, string> = {
   ok: "bg-online/15 text-[#82c491]",
   skip: "bg-ochre-wash text-ochre",
   fail: "bg-danger/15 text-danger-ink",
-  none: "bg-active text-muted",
+  none: "bg-elevated text-ink-dim",
 };
 const dotClass: Record<Tone, string> = {
   ok: "bg-online",
@@ -49,9 +49,10 @@ const dotClass: Record<Tone, string> = {
 };
 
 /** Pill always carries its word. The ok/skip/fail hues sit at dE 7.6 under
- *  protanopia, so the dot is a second cue and never the only one. none is
- *  muted text on bg-active (4.96:1, AA at this size; the elevated fill drops
- *  it to 4.31:1) with a muted dot, which faint was too dim for. */
+ *  protanopia, so the dot is a second cue and never the only one. none sits
+ *  on the elevated fill: bg-active is already a card header, a chip and the
+ *  loading skeleton. Its text is ink-dim, because muted on that fill misses
+ *  AA (4.31:1). */
 export function Pill({
   tone,
   title,

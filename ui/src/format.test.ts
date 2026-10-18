@@ -221,8 +221,6 @@ describe("outcomeWord", () => {
     expect(outcomeWord("")).toBe("—");
     expect(outcomeTitle("")).toBeUndefined();
     expect(outcomeTone("")).toBe("none");
-    expect(teamTone("")).toBe("none");
-    expect(teamStateTitle("")).toBeUndefined();
     expect(outcomeTitle("ok")).toBeUndefined();
     expect(outcomeTitle("skipped", "empty_diff")).toBe("Empty diff");
   });
@@ -252,6 +250,8 @@ describe("team state", () => {
     // Its stored code stays on the tooltip; a known state needs none.
     expect(teamStateTitle("invented_later")).toBe("Code: invented_later");
     expect(teamStateTitle("ready")).toBeUndefined();
+    // Empty is a broken contract, not "no value": red, like any unknown.
+    expect(teamTone("")).toBe("fail");
   });
 
   it("labels each state", () => {
