@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -20,37 +21,51 @@ var allSkipReasons = []SkipReason{
 }
 
 // allSkipReasons is a hand-kept list the label tests below lean on. This
-// reads the const block itself, so a reason added there and forgotten here
-// fails instead of escaping every test that ranges over the list.
+// reads the package's own declarations, so a reason added there and
+// forgotten here fails instead of escaping every test that ranges over the
+// list. Typed constants only (`X SkipReason = "x"`, grouped or not), which
+// is how every reason is declared.
 func TestAllSkipReasonsIsComplete(t *testing.T) {
-	f, err := parser.ParseFile(token.NewFileSet(), "skipreason.go", nil, 0)
+	entries, err := os.ReadDir(".")
 	if err != nil {
 		t.Fatal(err)
 	}
+	fset := token.NewFileSet()
 	var declared []SkipReason
-	ast.Inspect(f, func(n ast.Node) bool {
-		vs, ok := n.(*ast.ValueSpec)
-		if !ok || len(vs.Values) != 1 {
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, name, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			vs, ok := n.(*ast.ValueSpec)
+			if !ok {
+				return true
+			}
+			if id, ok := vs.Type.(*ast.Ident); !ok || id.Name != "SkipReason" {
+				return true
+			}
+			for _, val := range vs.Values {
+				lit, ok := val.(*ast.BasicLit)
+				if !ok {
+					continue
+				}
+				if v, err := strconv.Unquote(lit.Value); err == nil && v != "" {
+					declared = append(declared, SkipReason(v))
+				}
+			}
 			return true
-		}
-		if id, ok := vs.Type.(*ast.Ident); !ok || id.Name != "SkipReason" {
-			return true
-		}
-		lit, ok := vs.Values[0].(*ast.BasicLit)
-		if !ok {
-			return true
-		}
-		v, err := strconv.Unquote(lit.Value)
-		if err == nil && v != "" {
-			declared = append(declared, SkipReason(v))
-		}
-		return true
-	})
+		})
+	}
 	got := slices.Clone(allSkipReasons)
 	slices.Sort(got)
 	slices.Sort(declared)
 	if !slices.Equal(got, declared) {
-		t.Errorf("allSkipReasons = %v, skipreason.go declares %v", got, declared)
+		t.Errorf("allSkipReasons = %v, the package declares %v", got, declared)
 	}
 }
 
@@ -78,12 +93,13 @@ func TestEverySkipReasonHasALabel(t *testing.T) {
 // word for word. Reworded here and not there, the dashboard keeps the old
 // text for every known code and nothing else notices.
 func TestSkipReasonLabelsMatchTheUICatalog(t *testing.T) {
-	src, err := os.ReadFile("../../../ui/src/i18n/en.ts")
-	if errors.Is(err, fs.ErrNotExist) {
-		// A backend-only tree (the Containerfile's Go stage) has no UI to
-		// compare against; the repo checkout ship check runs on always does.
-		t.Skip("ui/ not present next to backend/")
+	// Skipped only when there is no ui/ at all (a backend-only copy of the
+	// module). With ui/ present a missing catalog fails: a renamed or moved
+	// en.ts must not turn this check into a silent skip.
+	if _, err := os.Stat("../../../ui"); errors.Is(err, fs.ErrNotExist) {
+		t.Skip("no ui/ next to backend/")
 	}
+	src, err := os.ReadFile("../../../ui/src/i18n/en.ts")
 	if err != nil {
 		t.Fatal(err)
 	}

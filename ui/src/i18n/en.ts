@@ -3,9 +3,9 @@
 // build. Grouped by page. Review text (findings, comments, replies) is never
 // in here: it keeps the language it was produced in.
 //
-// Outcome words stay the stored codes in English ("timed_out"), as the pill
-// has always printed them. German translates them for the reader; the code
-// to grep the log for is what the English UI shows.
+// Outcome words are reader words in both languages ("timed out", not the
+// stored code timed_out). A failure and a skip must never share a word:
+// the word is the cue that does not depend on colour.
 //
 // The `reason` block repeats review.SkipReason.Label() word for word, and
 // TestSkipReasonLabelsMatchTheUICatalog fails when the two drift.
@@ -34,9 +34,9 @@ export const en = {
   outcome: {
     ok: "ok",
     skipped: "skipped",
-    timed_out: "timed_out",
+    timed_out: "timed out",
     unparseable: "unparseable",
-    too_large: "too_large",
+    too_large: "prompt too large",
     error: "error",
   },
   // The pill word per review.SkipReason. Short: the long label beside a pill

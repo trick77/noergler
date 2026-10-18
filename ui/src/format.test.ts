@@ -204,9 +204,9 @@ describe("outcomeWord", () => {
     expect(outcomeWord("skipped")).toBe("skipped");
   });
 
-  it("leaves every other outcome as its own word", () => {
+  it("words every other outcome for a reader, not as its code", () => {
     expect(outcomeWord("ok")).toBe("ok");
-    expect(outcomeWord("timed_out")).toBe("timed_out");
+    expect(outcomeWord("timed_out")).toBe("timed out");
   });
 });
 

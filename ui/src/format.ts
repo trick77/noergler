@@ -126,9 +126,16 @@ export function outcomeWord(outcome: string, reason?: string): string {
  *  below it stays type-checked: a renamed group or a misspelt prefix fails
  *  the build instead of every pill quietly falling back. A code the catalog
  *  does not know (a newer binary wrote it) answers false and takes the
- *  caller's fallback. Asked of en, the shape every catalog mirrors, and the
- *  only resources i18n loads, so it cannot disagree with what t resolves. */
-function known<G extends keyof Catalog>(
+ *  caller's fallback. Asked of en: de mirrors its keys exactly (satisfies
+ *  Catalog), so the answer holds for either language.
+ *
+ *  Only flat groups (code -> word) qualify: a nested group like faq would
+ *  narrow to a key whose value is an object, which t renders as an error. */
+type FlatGroup = {
+  [G in keyof Catalog]: Catalog[G] extends Record<string, string> ? G : never;
+}[keyof Catalog];
+
+function known<G extends FlatGroup>(
   group: G,
   code: string,
 ): code is Extract<keyof Catalog[G], string> {
