@@ -363,7 +363,7 @@ func (f *fakeStore) InsertAttempt(_ context.Context, a store.Attempt) (int64, er
 	}
 	f.Attempts = append(f.Attempts, a)
 	if f.callErr != nil && a.Call != nil {
-		return int64(len(f.Attempts)), fmt.Errorf("%w: %w", store.ErrCallNotRecorded, f.callErr)
+		return int64(len(f.Attempts)), fmt.Errorf("attempt %d: %w: %w", len(f.Attempts), store.ErrCallNotRecorded, f.callErr)
 	}
 	return int64(len(f.Attempts)), nil
 }
