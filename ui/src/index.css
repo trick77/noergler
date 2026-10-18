@@ -168,6 +168,17 @@ svg.chart {
   max-width: 100%;
 }
 
+/* A sub-series drawn inside its parent (reasoning inside output): the
+   parent's own hue, striped, rather than a new colour the validated ramp
+   never covered. */
+.texture-s4 {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--color-s4) 0 4px,
+    transparent 4px 7px
+  );
+}
+
 @keyframes skeleton-fade {
   50% {
     opacity: 0.45;

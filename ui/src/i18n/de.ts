@@ -284,6 +284,8 @@ export const de = {
     prTotal: "PR total",
     prCap: "PR-Limit",
     prOf: "{{cost}} von {{cap}}",
+    prTotalNote:
+      "Das Total ist der Betrag, den das Kostenlimit zählt: dieser Pull Request seit er zuletzt beansprucht wurde. Es kann deshalb von den Zeilen oben abweichen.",
   },
   faq: {
     lede: "Warum noergler deinen Pull Request reviewt hat oder nicht. Unten stehen die Standardwerte; dein Team hat sie vielleicht geändert.",

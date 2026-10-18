@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -37,7 +38,7 @@ func TestRunDetailBody(t *testing.T) {
 			CacheReadTokens: n64(28416), CostNanoUSD: n64(47_845_000),
 			CostCacheReadNanoUSD: n64(3_552_000), KeySpendNanoUSD: n64(812_400_000_000)},
 		Findings: []store.FindingHeadline{{Severity: "high", FilePath: "retry.go", Line: 88,
-			Headline: "Capture wird wiederholt", CommentID: n64(555), FromRunID: 3}},
+			Headline: "Capture wird wiederholt", CommentID: n64(555), FromAttemptID: n64(7)}},
 		PRAttempts: []store.PRAttempt{{ID: 6, Kind: store.RunAuto, Outcome: "skipped", Reason: "head_unchanged",
 			CreatedAt: time.Unix(0, 0).UTC()}, {ID: 7, Kind: store.RunAuto, Outcome: "ok",
 			CreatedAt: time.Unix(1, 0).UTC(), CostNanoUSD: n64(47_845_000)}},
@@ -96,6 +97,18 @@ func TestRunDetailCarriesNoFindingTextOrMargin(t *testing.T) {
 		if strings.Contains(body, banned) {
 			t.Errorf("body has %q: %s", banned, body)
 		}
+	}
+}
+
+// A failed PR total is a failed page, never a null that reads "unpriced"
+// and hides a PR at its cap.
+func TestRunDetailFailsOnPRCostError(t *testing.T) {
+	h := newDashHarness(t)
+	h.st.detailID = 1
+	h.st.detail = store.RunDetail{ID: 1, Outcome: "ok"}
+	h.st.prCostErr = errors.New("db down")
+	if code := h.get(t, "/api/dashboard/runs/1").Code; code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", code)
 	}
 }
 

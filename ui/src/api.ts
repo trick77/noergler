@@ -198,7 +198,8 @@ export interface RunFinding {
   comment_id: number | null;
   replied: boolean;
   fixed: boolean;
-  from_run_id: number;
+  /** The page of the run that posted it; null when that attempt is gone. */
+  from_attempt_id: number | null;
 }
 
 export interface PRAttempt {

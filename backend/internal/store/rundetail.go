@@ -35,8 +35,9 @@ type RunDetail struct {
 	// marked fixed.
 	Findings []FindingHeadline
 	Fixed    []FindingHeadline
-	// PRAttempts is every attempt on the same PR, oldest first, this one
-	// included: the page's previous/next and its pull request tab.
+	// PRAttempts is the PR's history around this attempt, oldest first and
+	// this one always included: up to prAttemptsEachSide before and after
+	// it. The page's previous/next and its pull request tab.
 	PRAttempts []PRAttempt
 }
 
@@ -68,9 +69,10 @@ type FindingHeadline struct {
 	CommentID  *int64
 	Replied    bool
 	Fixed      bool
-	// FromRunID is the run that posted it; set on Fixed, where it is an
+	// FromAttemptID is the attempt whose run posted it, the key of that
+	// run's page; nil when that attempt row is gone. On Fixed it is an
 	// earlier run.
-	FromRunID int64
+	FromAttemptID *int64
 }
 
 // PRAttempt is one row of the PR's history.
@@ -145,7 +147,7 @@ func (s *Store) RunDetail(ctx context.Context, attemptID int64) (d RunDetail, ok
 		d.Call = &call
 	}
 
-	if d.PRAttempts, err = s.prAttempts(ctx, d.TeamSlug, d.Key); err != nil {
+	if d.PRAttempts, err = s.prAttempts(ctx, d); err != nil {
 		return RunDetail{}, false, err
 	}
 	return d, true, nil
@@ -156,7 +158,8 @@ func (s *Store) RunDetail(ctx context.Context, attemptID int64) (d RunDetail, ok
 func (s *Store) findingHeadlines(ctx context.Context, where string, arg int64) ([]FindingHeadline, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT f.severity, f.confidence, f.file_path, f.line_number, COALESCE(f.headline, ''),
-		       f.bitbucket_comment_id, f.replied_at IS NOT NULL, f.fixed_at IS NOT NULL, f.review_run_id
+		       f.bitbucket_comment_id, f.replied_at IS NOT NULL, f.fixed_at IS NOT NULL,
+		       (SELECT MIN(a.id) FROM review_attempts a WHERE a.review_run_id = f.review_run_id)
 		  FROM findings f
 		 WHERE `+where+`
 		 ORDER BY f.id`, arg)
@@ -169,7 +172,7 @@ func (s *Store) findingHeadlines(ctx context.Context, where string, arg int64) (
 		var f FindingHeadline
 		var comment *int32
 		if err := rows.Scan(&f.Severity, &f.Confidence, &f.FilePath, &f.Line, &f.Headline,
-			&comment, &f.Replied, &f.Fixed, &f.FromRunID); err != nil {
+			&comment, &f.Replied, &f.Fixed, &f.FromAttemptID); err != nil {
 			return nil, err
 		}
 		if comment != nil {
@@ -181,21 +184,28 @@ func (s *Store) findingHeadlines(ctx context.Context, where string, arg int64) (
 	return out, rows.Err()
 }
 
-// maxPRAttempts bounds a PR's history on the page; a PR with more has been
-// pushed to far past what one page should list.
-const maxPRAttempts = 200
+// prAttemptsEachSide bounds the PR's history on the page: that many runs
+// before the one shown and that many after. A window, not the oldest N, so
+// the attempt being viewed and its neighbours are always in it.
+const prAttemptsEachSide = 100
 
-// prAttempts is the PR's history, oldest first. Scoped to the team as well
-// as the PR: a repo that changed hands keeps its old rows under the old team.
-func (s *Store) prAttempts(ctx context.Context, team string, k PRKey) ([]PRAttempt, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT a.id, a.kind, a.outcome, COALESCE(a.reason, ''), a.elapsed_ms, a.created_at,
-		       r.findings_posted, COALESCE(r.cost_nano_usd, a.cost_nano_usd)
-		  FROM review_attempts a
+// prAttempts is the PR's history around d, oldest first. Scoped to the team
+// as well as the PR: a repo that changed hands keeps its old rows under the
+// old team.
+func (s *Store) prAttempts(ctx context.Context, d RunDetail) ([]PRAttempt, error) {
+	const cols = `a.id, a.kind, a.outcome, COALESCE(a.reason, ''), a.elapsed_ms, a.created_at,
+		       r.findings_posted, COALESCE(r.cost_nano_usd, a.cost_nano_usd)`
+	const from = `FROM review_attempts a
 		  LEFT JOIN review_runs r ON r.id = a.review_run_id
-		 WHERE a.team_slug = $1 AND a.project_key = $2 AND a.repo_slug = $3 AND a.pr_id = $4
-		 ORDER BY a.created_at, a.id
-		 LIMIT $5`, team, k.Project, k.Repo, k.PRID, maxPRAttempts)
+		 WHERE a.team_slug = $1 AND a.project_key = $2 AND a.repo_slug = $3 AND a.pr_id = $4`
+	rows, err := s.pool.Query(ctx, `
+		(SELECT `+cols+` `+from+` AND (a.created_at, a.id) <= ($5, $6)
+		  ORDER BY a.created_at DESC, a.id DESC LIMIT $7)
+		UNION ALL
+		(SELECT `+cols+` `+from+` AND (a.created_at, a.id) > ($5, $6)
+		  ORDER BY a.created_at, a.id LIMIT $7)
+		ORDER BY 6, 1`,
+		d.TeamSlug, d.Key.Project, d.Key.Repo, d.Key.PRID, d.CreatedAt, d.ID, prAttemptsEachSide)
 	if err != nil {
 		return nil, err
 	}

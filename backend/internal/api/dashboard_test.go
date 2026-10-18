@@ -40,6 +40,8 @@ type fakeDashStore struct {
 	detail   store.RunDetail
 	detailID int64
 	prCost   *int64
+	// prCostErr fails only the PR total, after the detail read worked.
+	prCostErr error
 
 	err error
 	// lastTeam, lastOutcome and lastLimit record what the handler asked for.
@@ -59,6 +61,9 @@ func (f *fakeDashStore) RunDetail(_ context.Context, id int64) (store.RunDetail,
 	return f.detail, id == f.detailID, nil
 }
 func (f *fakeDashStore) PRCost(context.Context, store.PRKey) (*int64, error) {
+	if f.prCostErr != nil {
+		return nil, f.prCostErr
+	}
 	return f.prCost, f.err
 }
 func (f *fakeDashStore) OutcomeBreakdown(context.Context, time.Time) ([]store.OutcomeCount, error) {

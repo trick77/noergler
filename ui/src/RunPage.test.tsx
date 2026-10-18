@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RunDetail } from "./api";
 import { RunPage } from "./RunPage";
-import { pageFromPath, runIdFromPath, runPath } from "./routing";
+import { onNav, pageFromPath, runIdFromPath, runPath } from "./routing";
 
 function serve(path: string, body: unknown) {
   vi.stubGlobal(
@@ -76,7 +76,7 @@ const detail: RunDetail = {
       comment_id: 555,
       replied: true,
       fixed: false,
-      from_run_id: 7,
+      from_attempt_id: 7,
     },
   ],
   fixed: [],
@@ -106,6 +106,31 @@ const detail: RunDetail = {
   },
   bitbucket_url: "https://bb.example.com",
 };
+
+describe("onNav", () => {
+  // A modified click is the browser's (new tab, new window); only a plain
+  // one stays in the SPA.
+  it("leaves modified clicks to the browser", () => {
+    window.history.replaceState({}, "", "/runs");
+    const click = (mods: Partial<MouseEvent>) => {
+      const e = {
+        metaKey: false,
+        ctrlKey: false,
+        shiftKey: false,
+        altKey: false,
+        button: 0,
+        preventDefault: vi.fn(),
+        ...mods,
+      };
+      onNav("/runs/7")(e);
+      return e.preventDefault;
+    };
+    expect(click({ metaKey: true })).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe("/runs");
+    expect(click({})).toHaveBeenCalled();
+    expect(window.location.pathname).toBe("/runs/7");
+  });
+});
 
 describe("routing to a run", () => {
   it("reads the attempt id off the path", () => {
@@ -150,6 +175,20 @@ describe("RunPage", () => {
       "https://bb.example.com/projects/PAY/repos/checkout/pull-requests/1482/overview?commentId=555",
     );
     expect(screen.getByText("author replied")).toBeDefined();
+  });
+
+  // A fixed finding links to the page of the run that posted it, keyed by
+  // that run's ATTEMPT id.
+  it("links a fixed finding to its earlier run's page", async () => {
+    window.history.replaceState({}, "", "/runs/7#findings");
+    serve("runs/7", {
+      ...detail,
+      fixed: [{ ...detail.findings[0], fixed: true, from_attempt_id: 4 }],
+    });
+    render(<RunPage id={7} />);
+    expect((await screen.findByText("from run 4")).getAttribute("href")).toBe(
+      "/runs/4",
+    );
   });
 
   // A lane the gateway did not send reads "not sent", never $0.

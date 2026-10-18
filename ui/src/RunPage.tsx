@@ -13,7 +13,7 @@ import {
   severityTone,
   severityWord,
 } from "./format";
-import { navigateTo, runPath } from "./routing";
+import { onNav, runPath } from "./routing";
 import { usePoll } from "./usePoll";
 import {
   Card,
@@ -133,10 +133,7 @@ export function RunPage({ id }: { id: number }) {
         <nav className="text-[13px] text-faint" aria-label="breadcrumb">
           <a
             href="/runs"
-            onClick={(e) => {
-              e.preventDefault();
-              navigateTo("/runs");
-            }}
+            onClick={onNav("/runs")}
             className="text-muted hover:text-ink hover:underline"
           >
             {t("nav.runs")}
@@ -306,10 +303,7 @@ function RunLink({
   return (
     <a
       href={runPath(attempt.id)}
-      onClick={(e) => {
-        e.preventDefault();
-        navigateTo(runPath(attempt.id));
-      }}
+      onClick={onNav(runPath(attempt.id))}
       className={cls + "hover:bg-active hover:text-ink"}
     >
       {label}
@@ -493,15 +487,20 @@ function FindingRows({
                 <td className={td}>{f.headline || "—"}</td>
                 <td className={td + " whitespace-nowrap text-[12.5px]"}>
                   {fixedTable ? (
-                    <a
-                      href={runPath(f.from_run_id)}
-                      className="text-muted hover:text-ink hover:underline"
-                    >
-                      {t("run.fromRun", { id: f.from_run_id })}
-                    </a>
+                    f.from_attempt_id !== null ? (
+                      <a
+                        href={runPath(f.from_attempt_id)}
+                        onClick={onNav(runPath(f.from_attempt_id))}
+                        className="text-muted hover:text-ink hover:underline"
+                      >
+                        {t("run.fromRun", { id: f.from_attempt_id })}
+                      </a>
+                    ) : (
+                      "—"
+                    )
                   ) : (
                     <>
-                      <span className="text-[#82c491]">{t("run.posted")}</span>
+                      <span className="text-online">{t("run.posted")}</span>
                       {f.replied && (
                         <div className="text-faint">{t("run.replied")}</div>
                       )}
@@ -657,7 +656,7 @@ function CostTab({ call }: { call: RunCall | null }) {
             total: output,
             segs: [
               { v: outText, cls: "bg-s4", n: t("run.outputText") },
-              { v: reasoning, cls: "bg-s4/55", n: t("run.reasoning") },
+              { v: reasoning, cls: "texture-s4", n: t("run.reasoning") },
             ],
           },
         ].map((row) => (
@@ -700,7 +699,7 @@ function CostTab({ call }: { call: RunCall | null }) {
               v: call.cache_write_tokens,
             },
             { cls: "bg-s4", n: t("run.outputText"), v: outText },
-            { cls: "bg-s4/55", n: t("run.reasoning"), v: reasoning },
+            { cls: "texture-s4", n: t("run.reasoning"), v: reasoning },
           ].map((l) => (
             <span key={l.n} className="inline-flex items-center gap-1.5">
               <i
@@ -873,10 +872,7 @@ function PRTab({ d }: { d: RunDetail }) {
                 <td className={td}>
                   <a
                     href={runPath(a.id)}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      navigateTo(runPath(a.id));
-                    }}
+                    onClick={onNav(runPath(a.id))}
                     className="inline-flex items-center gap-2 hover:underline"
                   >
                     <Pill
@@ -926,6 +922,7 @@ function PRTab({ d }: { d: RunDetail }) {
           </span>
         </div>
       )}
+      <Note>{t("run.prTotalNote")}</Note>
     </Card>
   );
 }

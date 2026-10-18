@@ -22,6 +22,10 @@ func TestRunDetail(t *testing.T) {
 	if _, err := s.pool.Exec(ctx, `UPDATE findings SET fixed_at = now(), fixed_run_id = $1 WHERE review_run_id = $2`, runID, earlier); err != nil {
 		t.Fatal(err)
 	}
+	earlierAttempt, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "ok", RunID: &earlier})
+	if err != nil {
+		t.Fatal(err)
+	}
 	skip, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "skipped", Reason: "head_unchanged"})
 	if err != nil {
 		t.Fatal(err)
@@ -49,13 +53,16 @@ func TestRunDetail(t *testing.T) {
 	if len(d.Findings) != 1 || d.Findings[0].Headline != "new one" || d.Findings[0].Line != 7 {
 		t.Errorf("findings = %+v", d.Findings)
 	}
-	if len(d.Fixed) != 1 || d.Fixed[0].Headline != "old one" || d.Fixed[0].FromRunID != earlier {
-		t.Errorf("fixed = %+v", d.Fixed)
+	// The earlier run's own page is keyed by its ATTEMPT id, not its run
+	// id: the link must open the attempt that produced the finding.
+	if len(d.Fixed) != 1 || d.Fixed[0].Headline != "old one" || d.Fixed[0].FromAttemptID == nil ||
+		*d.Fixed[0].FromAttemptID != earlierAttempt {
+		t.Errorf("fixed = %+v, want from attempt %d", d.Fixed, earlierAttempt)
 	}
-	if len(d.PRAttempts) != 2 || d.PRAttempts[0].ID != skip || d.PRAttempts[1].ID != id {
+	if len(d.PRAttempts) != 3 || d.PRAttempts[0].ID != earlierAttempt || d.PRAttempts[1].ID != skip || d.PRAttempts[2].ID != id {
 		t.Errorf("pr attempts = %+v", d.PRAttempts)
 	}
-	if c := d.PRAttempts[1].CostNanoUSD; c == nil || *c != 900 {
+	if c := d.PRAttempts[2].CostNanoUSD; c == nil || *c != 900 {
 		t.Errorf("the ok attempt's cost = %v, want its run's 900", c)
 	}
 
@@ -71,3 +78,39 @@ func TestRunDetail(t *testing.T) {
 }
 
 func strp(s string) *string { return &s }
+
+// A long PR's history is a window around the attempt shown, so the attempt
+// and its neighbours are always in it, whichever end of the PR it is at.
+func TestRunDetailHistoryWindow(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	var ids []int64
+	for i := 0; i < 2*prAttemptsEachSide+10; i++ {
+		id, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "skipped", Reason: "head_unchanged"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	for _, at := range []int{2, len(ids) - 1, len(ids) / 2} {
+		d, ok, err := s.RunDetail(ctx, ids[at])
+		if err != nil || !ok {
+			t.Fatalf("RunDetail = %v, %v", ok, err)
+		}
+		found := -1
+		for i, a := range d.PRAttempts {
+			if a.ID == ids[at] {
+				found = i
+			}
+			if i > 0 && d.PRAttempts[i-1].ID >= a.ID {
+				t.Fatalf("history not oldest first at %d", i)
+			}
+		}
+		if found < 0 || len(d.PRAttempts) > 2*prAttemptsEachSide+1 {
+			t.Errorf("attempt %d: found at %d of %d", at, found, len(d.PRAttempts))
+		}
+		if at > 0 && at < len(ids)-1 && (found == 0 || found == len(d.PRAttempts)-1) {
+			t.Errorf("attempt %d lost a neighbour", at)
+		}
+	}
+}
