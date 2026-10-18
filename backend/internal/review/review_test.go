@@ -79,17 +79,18 @@ func newHarness(t *testing.T, tweak func(*harness)) *harness {
 	}
 
 	h.r = New(Options{
-		TeamSlug:        "payments",
-		Bitbucket:       h.bb,
-		LLM:             h.llm,
-		Store:           h.st,
-		Jira:            jira,
-		Riptide:         rt,
-		Tokens:          h.tok,
-		Config:          cfg,
-		Template:        "REVIEW {repo_instructions} {files} {cumulative_pr_diff} {previously_posted_findings} {ticket_context} {compliance_instructions} {pr_description}",
-		MentionTemplate: "ASK {question} {repo_instructions} {ticket_context} {pr_description} {diff}",
-		Log:             quietLogger(),
+		TeamSlug:             "payments",
+		Bitbucket:            h.bb,
+		LLM:                  h.llm,
+		Store:                h.st,
+		Jira:                 jira,
+		Riptide:              rt,
+		Tokens:               h.tok,
+		Config:               cfg,
+		Template:             "REVIEW {repo_instructions} {files} {cumulative_pr_diff} {previously_posted_findings} {ticket_context} {compliance_instructions} {pr_description}",
+		MentionTemplate:      "ASK {question} {repo_instructions} {ticket_context} {pr_description} {diff}",
+		FindingReplyTemplate: "REPLY {repo_instructions} {finding} {file_excerpt} by {reply_by}\n## The reply\n{reply}",
+		Log:                  quietLogger(),
 	})
 	return h
 }

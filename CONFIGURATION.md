@@ -85,6 +85,7 @@ Not overridable in a team block. Naming one there disables the team.
 | --- | --- | --- |
 | `REVIEW_PROMPT_TEMPLATE` | `prompts/review.txt` | Review prompt template. |
 | `REVIEW_MENTION_PROMPT_TEMPLATE` | `prompts/mention.txt` | Q&A prompt template. |
+| `REVIEW_FINDING_REPLY_PROMPT_TEMPLATE` | `prompts/finding_reply.txt` | Prompt for answering a reply on a finding's thread. |
 | `BITBUCKET_MAX_DIFF_BYTES` | `0` | Bytes per PR or compare diff; `0` is unlimited. Over it the PR is skipped, so set it only on a pod too small to rely on `GOMEMLIMIT`. A diff's size is mostly files the review discards. |
 | `BITBUCKET_MAX_FILE_BYTES` | `1048576` | 1 MiB per file fetched for context. |
 | `CONTEXT_WINDOW_HEADROOM_TOKENS` | `16000` | Trust-curve headroom. |
@@ -208,7 +209,7 @@ in `X-Bitbucket-Token`, never logged and never stored.
 | Path | What |
 | --- | --- |
 | `teams.yaml` | Team layer. Mounted read-only at `/app/teams.yaml` in the container. |
-| `prompts/review.txt`, `prompts/mention.txt` | Prompt templates. Mounted read-only at `/app/prompts`. |
+| `prompts/review.txt`, `prompts/mention.txt`, `prompts/finding_reply.txt` | Prompt templates. Mounted read-only at `/app/prompts`. |
 | `.env` | Instance layer for compose. Never committed. |
 
 ## 7. Database

@@ -62,12 +62,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	// Clearing the state (and the stale summary id, which Reactivate does)
 	// lets the next review post a fresh summary and stops the review guard
 	// from re-ignoring the PR.
-	if state := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
-		return r.store.GetSkipState(ctx, key)
-	}); state != nil && state.IgnoredAt != nil {
-		safeDBErr(ctx, r.log, "Reactivate", func() error { return r.store.Reactivate(ctx, key) })
-		r.log.InfoContext(ctx, prTag+": reactivating ignored PR via @mention")
-	}
+	r.reactivateIfIgnored(ctx, key, prTag)
 
 	question := extractQuestion(comment.Text, r.bitbucket.BotUsername())
 
@@ -163,6 +158,17 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		r.log.ErrorContext(ctx, fmt.Sprintf("Mention Q&A on %s failed: %v", prTag, result.Err))
 	}
 	return false
+}
+
+// reactivateIfIgnored clears the ignored state a removed summary left, so a
+// mention brings the PR back. Shared by every path an @mention takes.
+func (r *Reviewer) reactivateIfIgnored(ctx context.Context, key store.PRKey, prTag string) {
+	if state := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
+		return r.store.GetSkipState(ctx, key)
+	}); state != nil && state.IgnoredAt != nil {
+		safeDBErr(ctx, r.log, "Reactivate", func() error { return r.store.Reactivate(ctx, key) })
+		r.log.InfoContext(ctx, prTag+": reactivating ignored PR via @mention")
+	}
 }
 
 // reply posts a threaded reply, logging a failure rather than propagating it:

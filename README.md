@@ -160,7 +160,8 @@ Rules:
 - **Resolution:** team value → instance default → built-in default. Only
   `inference.api_key_env` and `webhook_secret_env` have no fallback.
 - **Instance-only knobs** (`LLMWIRE_LITELLM_BASE_URL`, `LLMWIRE_LITELLM_MODELS`,
-  `REVIEW_PROMPT_TEMPLATE`, `REVIEW_MENTION_PROMPT_TEMPLATE`) cannot appear in a team
+  `REVIEW_PROMPT_TEMPLATE`, `REVIEW_MENTION_PROMPT_TEMPLATE`,
+  `REVIEW_FINDING_REPLY_PROMPT_TEMPLATE`) cannot appear in a team
   block; naming them disables the team.
 - **Claims and author lists are the team's own.** Which projects and repos a team owns
   (`projects`), its `review.auto_review_authors` / `review.ignore_authors` and its `review.exclude_repos` live in the
@@ -507,6 +508,7 @@ backend/
 prompts/
   review.txt           # review prompt template
   mention.txt          # mention Q&A prompt template
+  finding_reply.txt    # answer to a reply on a finding's thread
 scripts/               # smoke script and fakes (outside the module)
 http/                  # IntelliJ HTTP client requests for the team self-service
 archive/               # the previous implementation, kept for reference

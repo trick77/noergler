@@ -64,6 +64,7 @@ type InferenceClient interface {
 	InputTokenBudget() int
 	Review(ctx context.Context, req inference.ReviewRequest) inference.ReviewResult
 	Mention(ctx context.Context, req inference.MentionRequest) inference.MentionResult
+	FindingReply(ctx context.Context, req inference.FindingReplyRequest) inference.FindingReplyResult
 }
 
 // Store is the part of the store the pipeline uses. Every call goes through
@@ -84,6 +85,8 @@ type Store interface {
 	InsertFinding(ctx context.Context, f store.Finding) error
 	ExistingFindings(ctx context.Context, k store.PRKey) ([]store.Finding, error)
 	MarkFindingFixed(ctx context.Context, findingID, runID int64) error
+	FindingByComment(ctx context.Context, k store.PRKey, commentID int) (*store.Finding, error)
+	MarkFindingReplied(ctx context.Context, findingID int64, dispute *string) error
 	PRCost(ctx context.Context, k store.PRKey) (*int64, error)
 	FreezeFinalCost(ctx context.Context, k store.PRKey) (*int64, error)
 	ClaimRollup(ctx context.Context, k store.PRKey, final store.RollupFinal) (*store.RollupSnapshot, error)

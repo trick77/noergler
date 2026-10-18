@@ -74,6 +74,12 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   marker keeps its space, so the tail of `*cfg = x` or `--count` stays
   invented. Blunt rules, never
   a judge model. Drops are logged by reason, never silent.
+- **Finding replies: the PR author's, once, never resolve** (`HandleFindingReply`,
+  HOW_IT_WORKS 12). Parent is top-level `commentParentId`. Route DB-free; an
+  `@bot` reply that is not the author's finding reply falls to the Q&A. A
+  plain reply obeys ignored state and the cost cap; a mention overrides
+  both. Dispute = intent, never evidence. Template optional at its default
+  path only. Nothing posted = nothing stamped. Cost logged, not recorded.
 - **Fixed = a changed line, incremental runs only** (`inference.ValidateFixed`):
   listed `F<id>`, file in the push diff, one quoted line added or removed,
   none moved (in any shown file). A full review's diff is all `+`, so it

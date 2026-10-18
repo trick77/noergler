@@ -149,25 +149,9 @@ type MentionResult struct {
 // parser falls back to the raw text, so a model that ignores the envelope
 // still produces a usable reply.
 func (c *Client) Mention(ctx context.Context, req MentionRequest) MentionResult {
-	if req.PromptTokens > 0 && c.Ready() {
-		if ceiling := c.FitCeiling(); req.PromptTokens > ceiling {
-			return MentionResult{
-				Outcome: OutcomeTooLarge,
-				Err:     &TooLargeError{PromptTokens: req.PromptTokens, Ceiling: ceiling},
-			}
-		}
-	}
-
-	resp, _, err := c.wire.Chat(ctx, llmwire.ChatRequest{
-		Model:     c.model,
-		Reasoning: c.reasoning(),
-		Messages: []llmwire.Message{
-			llmwire.System(MentionSystemMessage),
-			llmwire.User(req.Prompt),
-		},
-	})
-	if err != nil {
-		return MentionResult{Outcome: classifyCallError(ctx, err), Err: err}
+	resp, outcome, err := c.answer(ctx, req.Prompt, req.PromptTokens, nil)
+	if outcome != OutcomeOK {
+		return MentionResult{Outcome: outcome, Err: err}
 	}
 	return MentionResult{Answer: ParseMention(resp.Content), Cost: CostFrom(resp)}
 }
