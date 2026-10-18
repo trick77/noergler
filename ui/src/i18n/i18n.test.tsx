@@ -102,12 +102,12 @@ describe("German UI", () => {
   });
 
   // A row written by a newer binary: the code is unknown here, so the
-  // server's label shows, and the code itself, readable, if there is none.
+  // server's label shows, and the raw code (the grep key) if there is none.
   it("falls back for a skip reason this build does not know", () => {
     expect(reasonLabel("brand_new", "Brand new reason")).toBe(
       "Brand new reason",
     );
-    expect(reasonLabel("brand_new")).toBe("brand new");
+    expect(reasonLabel("brand_new")).toBe("brand_new");
     expect(outcomeWord("skipped", "brand_new")).toBe("übersprungen");
   });
 

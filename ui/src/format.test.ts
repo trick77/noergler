@@ -10,6 +10,7 @@ import {
   outcomeWord,
   prUrl,
   teamStateLabel,
+  teamStateTitle,
   teamTone,
   tokens,
 } from "./format";
@@ -219,6 +220,7 @@ describe("outcomeWord", () => {
     // A team that never ran has no outcome: a dash, no tooltip, never blank.
     expect(outcomeWord("")).toBe("—");
     expect(outcomeTitle("")).toBeUndefined();
+    expect(outcomeTone("")).toBe("skip");
     expect(outcomeTitle("ok")).toBeUndefined();
     expect(outcomeTitle("skipped", "empty_diff")).toBe("Empty diff");
   });
@@ -245,6 +247,9 @@ describe("team state", () => {
   it("reads an unknown state as a fault rather than as success", () => {
     expect(teamTone("invented_later")).toBe("fail");
     expect(teamStateLabel("invented_later")).toBe("invented later");
+    // Its stored code stays on the tooltip; a known state needs none.
+    expect(teamStateTitle("invented_later")).toBe("Code: invented_later");
+    expect(teamStateTitle("ready")).toBeUndefined();
   });
 
   it("labels each state", () => {

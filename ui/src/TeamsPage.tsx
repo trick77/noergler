@@ -2,7 +2,13 @@ import type { TFunction } from "i18next";
 import { Fragment, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import type { Team } from "./api";
-import { ago, byName, teamStateLabel, teamTone } from "./format";
+import {
+  ago,
+  byName,
+  teamStateLabel,
+  teamStateTitle,
+  teamTone,
+} from "./format";
 import { usePoll, useNow } from "./usePoll";
 import {
   Card,
@@ -117,7 +123,10 @@ export function TeamsPage() {
               </>
             }
             right={
-              <Pill tone={teamTone(team.state)}>
+              <Pill
+                tone={teamTone(team.state)}
+                title={teamStateTitle(team.state)}
+              >
                 {teamStateLabel(team.state)}
               </Pill>
             }

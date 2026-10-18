@@ -105,7 +105,9 @@ export type Tone = "ok" | "skip" | "fail";
 
 export function outcomeTone(outcome: string): Tone {
   if (outcome === "ok") return "ok";
-  if (outcome === "skipped") return "skip";
+  // No outcome at all is not a failure: the dash sits on the neutral-ish
+  // skip tone, not on red.
+  if (outcome === "skipped" || outcome === "") return "skip";
   return "fail";
 }
 
@@ -168,7 +170,7 @@ function known<G extends CodeGroup>(
 /** reasonLabel is the long form of a skip reason, for a tooltip or a
  *  table. Keys are review.SkipReason values, stored and stable; a code this
  *  build does not know falls back to the label the server sent, then to the
- *  code itself, so a row from a newer binary never renders blank. */
+ *  raw code, which is also what an operator greps for. */
 export function reasonLabel(
   reason?: string,
   serverLabel?: string,
@@ -176,7 +178,7 @@ export function reasonLabel(
   if (!reason) return serverLabel || undefined;
   return known("reason", reason)
     ? i18n.t(`reason.${reason}`)
-    : serverLabel || readable(reason);
+    : serverLabel || reason;
 }
 
 /** teamTone maps a team's state to its pill.
@@ -191,12 +193,21 @@ export function teamTone(state: string): Tone {
   return "fail";
 }
 
-/** teamStateLabel is the word on the pill. An unknown state prints itself
- *  rather than rendering blank. */
+/** teamStateLabel is the word on the pill. An unknown state prints readably
+ *  (readable) rather than rendering blank, and teamStateTitle keeps its
+ *  stored code on the tooltip. */
 export function teamStateLabel(state: string): string {
   return known("teamState", state)
     ? i18n.t(`teamState.${state}`)
     : readable(state);
+}
+
+/** teamStateTitle is the code of a state this build has no word for, the
+ *  thing to grep for; a known state needs no tooltip. */
+export function teamStateTitle(state: string): string | undefined {
+  return known("teamState", state) || state === ""
+    ? undefined
+    : i18n.t("common.code", { code: state });
 }
 
 /** prUrl turns a PROJECT/repo#id tag into its Bitbucket URL, or null when it

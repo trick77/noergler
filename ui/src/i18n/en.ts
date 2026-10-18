@@ -37,7 +37,7 @@ export const en = {
     skipped: "skipped",
     timed_out: "timed out",
     unparseable: "unparseable",
-    too_large: "prompt oversized",
+    too_large: "over size limit",
     error: "error",
   },
   // The pill word per review.SkipReason. Short: the long label beside a pill
