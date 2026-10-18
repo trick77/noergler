@@ -452,6 +452,9 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	summary := render.Summary(render.SummaryInput{
 		Findings:                   findings,
 		Truncated:                  truncated,
+		FixedEarlier:               len(fixed),
+		OpenEarlier:                len(plan.listed) - len(fixed),
+		Dropped:                    len(v.Dropped),
 		Summary:                    reviewSummary,
 		AgentsMDFound:              plan.agentsMDFound,
 		ContentSkippedFiles:        plan.contentSkipped,

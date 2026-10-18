@@ -43,6 +43,20 @@ type SummaryInput struct {
 	Truncated bool
 	Summary   inference.ReviewSummary
 
+	// FixedEarlier and OpenEarlier are the earlier findings this run listed
+	// to the model, retired by it and still open after it. Zero on a full
+	// review: it can retire nothing, so it can say nothing about them.
+	FixedEarlier int
+	OpenEarlier  int
+	// Dropped is what validation kept off the PR.
+	//
+	// Decided, not complete: the line counts only what this run checked.
+	// Repeats of earlier findings, findings trimmed from the prompt, the cap
+	// and refused inline posts are logged, not counted here. A repeat of a
+	// listed finding is already in OpenEarlier and would count twice; the
+	// cap has its own bullet; a refused post is still in the list.
+	Dropped int
+
 	AgentsMDFound bool
 	// SkippedFiles were too large for the model; ContentSkippedFiles were
 	// reviewed from their diff without full file context.
@@ -150,11 +164,38 @@ func renderStrengths(in SummaryInput) string {
 	return b.String()
 }
 
+// renderAccounting is the line under the issues that says what the list
+// leaves out: earlier findings and dropped ones. Empty when there is nothing
+// to say, so a first review reads as before.
+func renderAccounting(in SummaryInput) string {
+	var parts, earlier []string
+	if in.FixedEarlier > 0 {
+		earlier = append(earlier, fmt.Sprintf("%d fixed by this push", in.FixedEarlier))
+	}
+	if in.OpenEarlier > 0 {
+		earlier = append(earlier, fmt.Sprintf("%d still open", in.OpenEarlier))
+	}
+	if len(earlier) > 0 {
+		parts = append(parts, "Earlier findings: "+strings.Join(earlier, ", ")+".")
+	}
+	if in.Dropped > 0 {
+		parts = append(parts, Plural(in.Dropped, "finding")+" dropped by validation.")
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "_" + strings.Join(parts, " ") + "_"
+}
+
 // renderIssues lists numbered headlines only; the detail lives on the inline
 // comments.
 func renderIssues(in SummaryInput) string {
 	lines := []string{"### Issues and suggestions"}
+	accounting := renderAccounting(in)
 	if len(in.Findings) == 0 {
+		if accounting != "" {
+			return lines[0] + "\nNone.\n\n" + accounting
+		}
 		return lines[0] + "\nNone."
 	}
 
@@ -188,6 +229,9 @@ func renderIssues(in SummaryInput) string {
 			}
 		}
 		lines = append(lines, fmt.Sprintf("%d. %s", i+1, headline))
+	}
+	if accounting != "" {
+		lines = append(lines, "", accounting)
 	}
 	return strings.Join(lines, "\n")
 }
