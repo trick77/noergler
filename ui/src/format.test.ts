@@ -215,7 +215,10 @@ describe("outcomeWord", () => {
   // The pill shows a reader's word; the stored code an operator greps the
   // log and the database for stays on the tooltip.
   it("keeps a failure's stored code on the tooltip", () => {
-    expect(outcomeTitle("too_large")).toBe("too_large");
+    expect(outcomeTitle("too_large")).toBe("Code: too_large");
+    // A team that never ran has no outcome: a dash, no tooltip, never blank.
+    expect(outcomeWord("")).toBe("—");
+    expect(outcomeTitle("")).toBeUndefined();
     expect(outcomeTitle("ok")).toBeUndefined();
     expect(outcomeTitle("skipped", "empty_diff")).toBe("Empty diff");
   });
@@ -241,7 +244,7 @@ describe("team state", () => {
 
   it("reads an unknown state as a fault rather than as success", () => {
     expect(teamTone("invented_later")).toBe("fail");
-    expect(teamStateLabel("invented_later")).toBe("invented_later");
+    expect(teamStateLabel("invented_later")).toBe("invented later");
   });
 
   it("labels each state", () => {

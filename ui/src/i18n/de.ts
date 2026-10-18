@@ -17,6 +17,7 @@ export const de = {
     failed:
       "Konnte {{what}} nicht laden. Die Instanz startet vielleicht gerade, oder die Datenbank ist nicht erreichbar.",
     unpriced: "nicht bepreist",
+    code: "Code: {{code}}",
     never: "nie",
     justNow: "gerade eben",
     secondsAgo: "vor {{count}} s",
@@ -30,7 +31,7 @@ export const de = {
     skipped: "übersprungen",
     timed_out: "Zeitüberschreitung",
     unparseable: "unlesbar",
-    too_large: "Kontext überschritten",
+    too_large: "Prompt übergross",
     error: "Fehler",
   },
   skipWord: {

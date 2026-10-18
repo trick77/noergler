@@ -24,8 +24,8 @@ var allSkipReasons = []SkipReason{
 // reads the package's own declarations, so a reason added there and
 // forgotten here fails instead of escaping every test that ranges over the
 // list. File-scope typed constants only (`X SkipReason = "x"`, grouped or
-// not), which is how every reason is declared; a value two names share
-// counts once.
+// not), which is how every reason is declared; two names sharing a value
+// fail.
 func TestAllSkipReasonsIsComplete(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	if err != nil {
@@ -67,6 +67,14 @@ func TestAllSkipReasonsIsComplete(t *testing.T) {
 	got := slices.Clone(allSkipReasons)
 	slices.Sort(got)
 	slices.Sort(declared)
+	// Two reasons writing one stored code would merge in the skip breakdown,
+	// the labels and the FAQ, so a shared value fails rather than counting
+	// once.
+	for i := 1; i < len(declared); i++ {
+		if declared[i] == declared[i-1] {
+			t.Errorf("two SkipReason constants write the same code %q", declared[i])
+		}
+	}
 	declared = slices.Compact(declared)
 	if !slices.Equal(got, declared) {
 		t.Errorf("allSkipReasons = %v, the package declares %v", got, declared)

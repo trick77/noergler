@@ -23,6 +23,7 @@ export const en = {
     failed:
       "Could not load {{what}}. The instance may be starting, or the database may be unreachable.",
     unpriced: "unpriced",
+    code: "Code: {{code}}",
     never: "never",
     justNow: "just now",
     secondsAgo: "{{count}}s ago",
@@ -36,7 +37,7 @@ export const en = {
     skipped: "skipped",
     timed_out: "timed out",
     unparseable: "unparseable",
-    too_large: "context exceeded",
+    too_large: "prompt oversized",
     error: "error",
   },
   // The pill word per review.SkipReason. Short: the long label beside a pill

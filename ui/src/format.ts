@@ -115,28 +115,35 @@ export function outcomeTone(outcome: string): Tone {
  *  skip tone, so the Skipped filter and counts still read as one group. */
 export function outcomeWord(outcome: string, reason?: string): string {
   if (outcome !== "skipped") {
-    // An outcome a newer binary wrote: its code, readable, rather than blank.
     return known("outcome", outcome)
       ? i18n.t(`outcome.${outcome}`)
-      : outcome.replaceAll("_", " ");
+      : readable(outcome);
   }
   return reason && known("skipWord", reason)
     ? i18n.t(`skipWord.${reason}`)
     : i18n.t("outcome.skipped");
 }
 
+/** readable is the one fallback for a code this build has no word for (a
+ *  newer binary wrote it): the code with spaces for underscores, and a dash
+ *  for no code at all, so a pill is never blank. */
+function readable(code: string): string {
+  return code === "" ? "—" : code.replaceAll("_", " ");
+}
+
 /** outcomeTitle is the pill's tooltip: a skip's long reason, and for a
  *  failure the stored code (too_large), which is what the log and the
  *  database say. The pill shows a reader's word; the code an operator greps
- *  for stays one hover away. */
+ *  for stays one hover away, marked as a code so a German reader does not
+ *  take it for a missed translation. */
 export function outcomeTitle(
   outcome: string,
   reason?: string,
   serverLabel?: string,
 ): string | undefined {
-  if (outcome === "ok") return undefined;
+  if (outcome === "ok" || outcome === "") return undefined;
   if (outcome === "skipped") return reasonLabel(reason, serverLabel);
-  return outcome;
+  return i18n.t("common.code", { code: outcome });
 }
 
 /** known narrows a stored code to a key of its catalog group, so the lookup
@@ -169,7 +176,7 @@ export function reasonLabel(
   if (!reason) return serverLabel || undefined;
   return known("reason", reason)
     ? i18n.t(`reason.${reason}`)
-    : serverLabel || reason;
+    : serverLabel || readable(reason);
 }
 
 /** teamTone maps a team's state to its pill.
@@ -187,7 +194,9 @@ export function teamTone(state: string): Tone {
 /** teamStateLabel is the word on the pill. An unknown state prints itself
  *  rather than rendering blank. */
 export function teamStateLabel(state: string): string {
-  return known("teamState", state) ? i18n.t(`teamState.${state}`) : state;
+  return known("teamState", state)
+    ? i18n.t(`teamState.${state}`)
+    : readable(state);
 }
 
 /** prUrl turns a PROJECT/repo#id tag into its Bitbucket URL, or null when it
