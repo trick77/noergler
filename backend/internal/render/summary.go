@@ -63,10 +63,13 @@ type SummaryInput struct {
 	Dropped int
 
 	AgentsMDFound bool
-	// SkippedFiles were not reviewed: over the size gate, or left out of the
-	// prompt by compression. ContentSkippedFiles were reviewed from their
-	// diff without full file context.
+	// SkippedFiles were too large for the size gate; OverBudgetFiles were
+	// left out of the prompt because the PR is over the model's token budget
+	// (named to the model only), whatever their own size. Both are not
+	// reviewed. ContentSkippedFiles were reviewed from their diff without
+	// full file context, and are never in either list.
 	SkippedFiles        []string
+	OverBudgetFiles     []string
 	ContentSkippedFiles []string
 
 	PromptBreakdown PromptBreakdown
@@ -393,6 +396,10 @@ func renderFootnote(in SummaryInput) string {
 	if len(in.SkippedFiles) > 0 {
 		warn = append(warn, p("Nicht geprüft (zu gross): ", "Not reviewed (too large): ")+baseNames(in.SkippedFiles)+" ⚠️")
 	}
+	if len(in.OverBudgetFiles) > 0 {
+		warn = append(warn, p("Nicht geprüft (PR über dem Token-Budget des Modells): ",
+			"Not reviewed (PR over the model's token budget): ")+baseNames(in.OverBudgetFiles)+" ⚠️")
+	}
 	if len(in.ContentSkippedFiles) > 0 {
 		warn = append(warn, p("Ohne vollen Datei-Kontext geprüft (zu gross): ",
 			"Reviewed without full file context (too large): ")+baseNames(in.ContentSkippedFiles)+" ⚠️")
@@ -437,15 +444,16 @@ func telemetryLine(in SummaryInput) string {
 	if in.ElapsedPresent {
 		parts = append(parts, Elapsed(in.ElapsedSeconds))
 	}
-	// An unpriced run says so instead of printing $0.00, and shows no PR
-	// total: that is only read when this run is priced.
+	// A summary is always a review that called the model, so a missing cost
+	// is an unpriced call: said so, never $0.00, and with no PR total, which
+	// is only read when this run is priced.
 	if in.RunCostUSD != nil {
 		cost := fmt.Sprintf("$%.2f", *in.RunCostUSD)
 		if in.CumulativeCostUSD != nil {
 			cost += fmt.Sprintf(p(", PR $%.2f von $%.2f", ", PR $%.2f of $%.2f"), *in.CumulativeCostUSD, in.MaxPRCostUSD)
 		}
 		parts = append(parts, cost)
-	} else if in.ElapsedPresent {
+	} else {
 		parts = append(parts, p("Kosten nicht gemeldet", "cost not reported"))
 	}
 	if in.RunURL != "" {
@@ -455,14 +463,16 @@ func telemetryLine(in SummaryInput) string {
 }
 
 // Elapsed is a run's wall clock as the dashboard prints it: 850ms, 12.3s,
-// 1m 13s. Seconds are rounded first, so 119.5s reads 2m 0s, never 1m 60s.
+// 1m 13s. Each form is rounded before it is chosen, so 59.96s reads 1m 0s,
+// never 60.0s, and 119.5s reads 2m 0s, never 1m 60s.
 func Elapsed(seconds float64) string {
 	ms := int64(math.Round(seconds * 1000))
+	tenths := int64(math.Round(float64(ms) / 100))
 	switch {
 	case ms < 1000:
 		return fmt.Sprintf("%dms", ms)
-	case ms < 60_000:
-		return fmt.Sprintf("%.1fs", float64(ms)/1000)
+	case tenths < 600:
+		return fmt.Sprintf("%d.%ds", tenths/10, tenths%10)
 	}
 	total := int64(math.Round(float64(ms) / 1000))
 	return fmt.Sprintf("%dm %ds", total/60, total%60)

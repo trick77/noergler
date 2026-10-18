@@ -41,8 +41,14 @@ func TestFooterNamesTheOversizedFile(t *testing.T) {
 	}
 	h.bb.prDiff = sampleDiff + props.String()
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
-	if s := h.bb.Posted[0].Text; !strings.Contains(s, "Not reviewed (too large): `messages.properties` ⚠️") {
+	s := h.bb.Posted[0].Text
+	if !strings.Contains(s, "Not reviewed (too large): `messages.properties` ⚠️") {
 		t.Errorf("footer does not name the oversized file:\n%s", s)
+	}
+	// The count agrees with that line: the gated file is one of the PR's
+	// files, not reviewed.
+	if !strings.Contains(s, " · 1 of 2 files · ") {
+		t.Errorf("footer count disagrees with the not-reviewed line:\n%s", s)
 	}
 }
 

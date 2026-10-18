@@ -129,8 +129,10 @@ type Jira struct {
 type Server struct {
 	Host string
 	Port int
-	// PublicURL is how Bitbucket reaches this instance. Only POST /onboard
-	// needs it; empty disables that endpoint, nothing else. Never guessed
+	// PublicURL is this instance's base URL, reachable by Bitbucket (POST
+	// /onboard writes webhooks to it) and by reviewers' browsers (the
+	// summary footer links each run's dashboard page under it). Empty
+	// disables /onboard and the footer link, nothing else. Never guessed
 	// from Host headers.
 	PublicURL string
 }

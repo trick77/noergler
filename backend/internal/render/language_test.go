@@ -41,7 +41,7 @@ func TestGermanSummary(t *testing.T) {
 	got := Summary(in)
 	for _, want := range []string{
 		"### Überblick\nDer Code ist gross.", "### Probleme und Vorschläge", "1. Fehlende Prüfung",
-		"### Empfehlung\n**Freigeben ✅**", " · 1 Datei_",
+		"### Empfehlung\n**Freigeben ✅**", " · 1 Datei · Kosten nicht gemeldet_",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("summary lacks %q:\n%s", want, got)

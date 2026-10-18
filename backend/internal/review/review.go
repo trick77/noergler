@@ -317,19 +317,23 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		anchors:         anchors,
 		existing:        existing,
 		listed:          listed,
-		contentSkipped:  contentSkipped,
-		// Not reviewed: over the size gate, or named to the model only
-		// because compression left them out of the prompt.
-		notReviewed:   append(append([]string(nil), oversized...), otherModified...),
-		ticket:        ticket,
-		parentTicket:  parentTicket,
-		breakdown:     breakdown(assembled),
-		agentsMDFound: repoInstructions != "",
-		budget:        budget,
-		filesReviewed: len(files),
-		totalFiles:    totalFiles + len(deletedPaths) + len(renamedPaths),
-		diffAdded:     diffAdded,
-		diffRemoved:   diffRemoved,
+		// A file not reviewed at all is never also "reviewed without full
+		// context": the stronger statement wins.
+		contentSkipped: without(contentSkipped, oversized, otherModified),
+		oversized:      oversized,
+		overBudget:     otherModified,
+		ticket:         ticket,
+		parentTicket:   parentTicket,
+		breakdown:      breakdown(assembled),
+		agentsMDFound:  repoInstructions != "",
+		filesReviewed:  len(files),
+		// Every file the review looked at: the prepared ones (deleted and
+		// renamed included, compression only sorts them) plus the ones the
+		// size gate kept out. Adding deletedPaths and renamedPaths again
+		// counted those files twice.
+		totalFiles:  totalFiles + len(oversized),
+		diffAdded:   diffAdded,
+		diffRemoved: diffRemoved,
 	}, ctx, true
 }
 
@@ -465,7 +469,8 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		Dropped:                    len(v.Dropped),
 		Summary:                    reviewSummary,
 		AgentsMDFound:              plan.agentsMDFound,
-		SkippedFiles:               plan.notReviewed,
+		SkippedFiles:               plan.oversized,
+		OverBudgetFiles:            plan.overBudget,
 		ContentSkippedFiles:        plan.contentSkipped,
 		PromptBreakdown:            plan.breakdown,
 		Ticket:                     plan.ticket,
@@ -1007,6 +1012,24 @@ func breakdown(a inference.AssembledPrompt) render.PromptBreakdown {
 		Files:            a.Breakdown.Files,
 		Present:          true,
 	}
+}
+
+// without returns the paths of xs that are in none of the drop lists, in
+// order.
+func without(xs []string, drop ...[]string) []string {
+	gone := map[string]bool{}
+	for _, d := range drop {
+		for _, p := range d {
+			gone[p] = true
+		}
+	}
+	var out []string
+	for _, x := range xs {
+		if !gone[x] {
+			out = append(out, x)
+		}
+	}
+	return out
 }
 
 func epochMSToTime(ms int64) *time.Time {

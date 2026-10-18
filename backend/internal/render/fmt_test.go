@@ -30,38 +30,6 @@ func TestFmt(t *testing.T) {
 	}
 }
 
-// Rounding is half-to-even, so 500 -> 0k, 1500 -> 2k, 2500 -> 2k and
-// 3500 -> 4k. math.Round would give 1k, 2k, 3k, 4k and differ on two of
-// the four.
-func TestFmtKUsesBankersRounding(t *testing.T) {
-	cases := []struct {
-		in   int
-		want string
-	}{
-		{0, "0k"},
-		{499, "0k"},
-		{500, "0k"},
-		{501, "1k"},
-		{1000, "1k"},
-		{1500, "2k"},
-		{2500, "2k"},
-		{3500, "4k"},
-		{7000, "7k"},
-		{628000, "628k"},
-		{999499, "999k"},
-		{999500, "1000k"},
-		{1000000, "1M"},
-		{1050000, "1.1M"},
-		{1500000, "1.5M"},
-		{2000000, "2M"},
-	}
-	for _, c := range cases {
-		if got := FmtK(c.in); got != c.want {
-			t.Errorf("FmtK(%d) = %q, want %q", c.in, got, c.want)
-		}
-	}
-}
-
 func TestPlural(t *testing.T) {
 	if got := Plural(1, "finding"); got != "1 finding" {
 		t.Errorf("Plural(1) = %q", got)

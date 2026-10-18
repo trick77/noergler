@@ -70,13 +70,15 @@ type reviewPlan struct {
 	// the findings: existing already holds them.
 	listed         map[int64]bool
 	contentSkipped []string
-	notReviewed    []string
-	ticket         *jira.Ticket
-	parentTicket   *jira.Ticket
-	breakdown      render.PromptBreakdown
-	agentsMDFound  bool
-	budget         int
-	filesReviewed  int
+	// oversized were kept out by the size gate; overBudget were left out of
+	// the prompt by compression (named to the model only).
+	oversized     []string
+	overBudget    []string
+	ticket        *jira.Ticket
+	parentTicket  *jira.Ticket
+	breakdown     render.PromptBreakdown
+	agentsMDFound bool
+	filesReviewed int
 	// totalFiles already includes the deleted and renamed paths.
 	totalFiles  int
 	diffAdded   int

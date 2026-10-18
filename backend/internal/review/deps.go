@@ -64,7 +64,6 @@ type InferenceClient interface {
 	// summary and what a run row stores.
 	Label() string
 	Ready() bool
-	ContextWindow() int
 	InputTokenBudget() int
 	Review(ctx context.Context, req inference.ReviewRequest) inference.ReviewResult
 	Mention(ctx context.Context, req inference.MentionRequest) inference.MentionResult

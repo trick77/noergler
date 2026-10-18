@@ -235,6 +235,7 @@ func summaryCases() map[string]SummaryInput {
 
 	sk := base()
 	sk.SkippedFiles = []string{"src/big.go", "x/y/huge.ts"}
+	sk.OverBudgetFiles = []string{"docs/README.md"}
 	sk.ContentSkippedFiles = []string{"z/med.py"}
 	cases["skipped_files"] = sk
 
@@ -287,7 +288,7 @@ func summaryCases() map[string]SummaryInput {
 // page agree; seconds round before splitting, never "1m 60s".
 func TestElapsed(t *testing.T) {
 	for in, want := range map[float64]string{
-		0.85: "850ms", 12.34: "12.3s", 59.94: "59.9s", 73.1: "1m 13s", 119.5: "2m 0s",
+		0.85: "850ms", 12.34: "12.3s", 59.94: "59.9s", 59.96: "1m 0s", 73.1: "1m 13s", 119.5: "2m 0s",
 	} {
 		if got := Elapsed(in); got != want {
 			t.Errorf("Elapsed(%v) = %q, want %q", in, got, want)
