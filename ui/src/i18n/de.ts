@@ -284,6 +284,8 @@ export const de = {
     prTotal: "PR total",
     prCap: "PR-Limit",
     prOf: "{{cost}} von {{cap}}",
+    moreBefore: "Ältere Runs dieses Pull Requests sind hier nicht aufgeführt.",
+    moreAfter: "Neuere Runs dieses Pull Requests sind hier nicht aufgeführt.",
     prTotalNote:
       "Das Total ist der Betrag, den das Kostenlimit zählt: dieser Pull Request seit er zuletzt beansprucht wurde. Es kann deshalb von den Zeilen oben abweichen.",
   },

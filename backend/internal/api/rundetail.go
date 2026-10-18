@@ -106,7 +106,10 @@ type findingBody struct {
 // against the team's cap.
 type PRBody struct {
 	Attempts []prAttemptBody `json:"attempts"`
-	Cost     *string         `json:"cost_usd"`
+	// MoreBefore and MoreAfter: the history around this run is cut there.
+	MoreBefore bool    `json:"more_before"`
+	MoreAfter  bool    `json:"more_after"`
+	Cost       *string `json:"cost_usd"`
 	// Cap is the team's per-PR cost cap, nil when the team is no longer
 	// configured.
 	Cap *string `json:"cap_usd"`
@@ -189,6 +192,7 @@ func (d Deps) runDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	body.PR.MoreBefore, body.PR.MoreAfter = det.MoreBefore, det.MoreAfter
 	body.PR.Attempts = make([]prAttemptBody, 0, len(det.PRAttempts))
 	for _, a := range det.PRAttempts {
 		body.PR.Attempts = append(body.PR.Attempts, prAttemptBody{

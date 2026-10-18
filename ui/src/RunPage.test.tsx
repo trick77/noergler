@@ -103,6 +103,8 @@ const detail: RunDetail = {
     ],
     cost_usd: "0.109",
     cap_usd: "5.000",
+    more_before: false,
+    more_after: false,
   },
   bitbucket_url: "https://bb.example.com",
 };

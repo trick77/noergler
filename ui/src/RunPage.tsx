@@ -837,6 +837,17 @@ function CostTab({ call }: { call: RunCall | null }) {
   );
 }
 
+/** MoreRow marks where the PR's history around this run was cut. */
+function MoreRow({ text }: { text: string }) {
+  return (
+    <tr>
+      <td className={td + " text-[12.5px] text-faint italic"} colSpan={5}>
+        {text}
+      </td>
+    </tr>
+  );
+}
+
 function PRTab({ d }: { d: RunDetail }) {
   const { t } = useTranslation();
   const unpriced = t("common.unpriced");
@@ -856,6 +867,7 @@ function PRTab({ d }: { d: RunDetail }) {
             </tr>
           </thead>
           <tbody>
+            {d.pr.more_before && <MoreRow text={t("run.moreBefore")} />}
             {d.pr.attempts.map((a) => (
               <tr key={a.id} className={a.id === d.id ? "bg-active" : ""}>
                 <td
@@ -894,6 +906,7 @@ function PRTab({ d }: { d: RunDetail }) {
                 </td>
               </tr>
             ))}
+            {d.pr.more_after && <MoreRow text={t("run.moreAfter")} />}
             <tr>
               <td className={td + " font-medium text-ink"} colSpan={4}>
                 {t("run.prTotal")}
@@ -922,7 +935,7 @@ function PRTab({ d }: { d: RunDetail }) {
           </span>
         </div>
       )}
-      <Note>{t("run.prTotalNote")}</Note>
+      {cost !== null && cap !== null && <Note>{t("run.prTotalNote")}</Note>}
     </Card>
   );
 }
