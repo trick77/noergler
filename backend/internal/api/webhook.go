@@ -216,6 +216,21 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 		}
 		trigger := "@" + d.BotUsername
 		if !strings.Contains(strings.ToLower(text), strings.ToLower(trigger)) {
+			// A reply may be on one of our finding threads. Whether it is
+			// takes a DB lookup, which the job does on the worker: the
+			// route stays DB-free, and a reply that is not on a finding
+			// returns there before any Bitbucket or gateway call.
+			// An empty reply stays "comment without mention", as pinned.
+			if p.CommentParentID != 0 && strings.TrimSpace(text) != "" {
+				d.Log.InfoContext(ctx, "reply without "+trigger+", checked for a finding thread",
+					"comment_id", commentID, "parent_id", p.CommentParentID)
+				d.Queue.SubmitJob(key, slug, "finding-reply", func(ctx context.Context, _ teams.Scheduler) bool {
+					rv.HandleFindingReply(ctx, p)
+					return false
+				})
+				httpx.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "reply", Queue: "queued"})
+				return
+			}
 			d.Log.InfoContext(ctx, "comment ignored: no "+trigger, "comment_id", commentID)
 			httpx.WriteJSON(w, http.StatusOK, ignored{"ignored", "comment without mention"})
 			return

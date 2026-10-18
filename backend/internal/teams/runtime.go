@@ -36,6 +36,9 @@ type Reviewer interface {
 	// mention stages one, so the PR's hold must outlive the job.
 	HandleMention(ctx context.Context, p *webhook.Payload, team string, sched Scheduler) bool
 	HandleCommentDeleted(ctx context.Context, p *webhook.Payload)
+	// HandleFindingReply answers a reply on one of the bot's finding threads,
+	// once per finding. It decides itself whether the reply qualifies.
+	HandleFindingReply(ctx context.Context, p *webhook.Payload)
 	HandlePRMerged(ctx context.Context, p *webhook.Payload)
 	HandlePRDeclined(ctx context.Context, p *webhook.Payload)
 	HandlePRDeleted(ctx context.Context, p *webhook.Payload)

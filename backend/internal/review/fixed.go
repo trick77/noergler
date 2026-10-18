@@ -13,9 +13,13 @@ import (
 // what the prompt showed and what a claim is checked against must not drift.
 func asPosted(f store.Finding) inference.PostedFinding {
 	line := f.LineNumber
-	return inference.PostedFinding{
+	p := inference.PostedFinding{
 		ID: f.ID, FilePath: f.FilePath, LineNumber: &line, Severity: f.Severity, CommentText: f.CommentText,
 	}
+	if f.DisputeText != nil {
+		p.Dispute = *f.DisputeText
+	}
+	return p
 }
 
 // validateFixed checks the model's `fixed` claims against the findings the

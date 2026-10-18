@@ -86,6 +86,7 @@ type Review struct {
 	DiffAllowDynamicContext         bool
 	ReviewPromptTemplate            string
 	MentionPromptTemplate           string
+	FindingReplyPromptTemplate      string
 	TicketComplianceCheck           bool
 	RequireAgentsMD                 bool
 	AgentsMDWarnTokens              int
@@ -368,6 +369,7 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 			DiffAllowDynamicContext:         r.Bool("REVIEW_DIFF_ALLOW_DYNAMIC_CONTEXT", true),
 			ReviewPromptTemplate:            r.String("REVIEW_PROMPT_TEMPLATE", "prompts/review.txt"),
 			MentionPromptTemplate:           r.String("REVIEW_MENTION_PROMPT_TEMPLATE", "prompts/mention.txt"),
+			FindingReplyPromptTemplate:      r.String("REVIEW_FINDING_REPLY_PROMPT_TEMPLATE", "prompts/finding_reply.txt"),
 			TicketComplianceCheck:           r.Bool("REVIEW_TICKET_COMPLIANCE_CHECK", true),
 			UsePRDescription:                true,
 			RequireAgentsMD:                 r.Bool("REVIEW_REQUIRE_AGENTS_MD", true),

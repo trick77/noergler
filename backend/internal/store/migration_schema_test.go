@@ -327,6 +327,16 @@ func TestSchema_FindingsKeepsTheDedupIndex(t *testing.T) {
 	}
 }
 
+// The reply job looks a finding up by the comment a reply hangs under; without
+// its own index that is a seq scan per reply.
+func TestSchema_FindingsIndexTheirComment(t *testing.T) {
+	s := testStore(t)
+	want := []string{"bitbucket_comment_id"}
+	if got := indexColumns(t, s, "idx_findings_comment"); !slices.Equal(got, want) {
+		t.Errorf("idx_findings_comment = %v, want %v", got, want)
+	}
+}
+
 // One owner per repo, one per whole project. Both indexes are PARTIAL: a
 // plain unique index cannot express the NULL repo_slug case, so a
 // whole-project claim and a repo claim on the same project would collide.

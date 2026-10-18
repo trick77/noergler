@@ -81,17 +81,11 @@ type PullRequest struct {
 	Properties  *Properties `json:"properties"`
 }
 
-// CommentParent is the comment a reply hangs under.
-type CommentParent struct {
-	ID int `json:"id"`
-}
-
 // Comment is the comment on a pr:comment:* event.
 type Comment struct {
-	ID     int            `json:"id"`
-	Text   string         `json:"text"`
-	Author User           `json:"author"`
-	Parent *CommentParent `json:"parent"`
+	ID     int    `json:"id"`
+	Text   string `json:"text"`
+	Author User   `json:"author"`
 }
 
 // Payload is one Bitbucket webhook delivery.
@@ -99,7 +93,10 @@ type Payload struct {
 	EventKey    string      `json:"eventKey"`
 	PullRequest PullRequest `json:"pullRequest"`
 	Comment     *Comment    `json:"comment"`
-	Actor       *User       `json:"actor"`
+	// CommentParentID is the comment a reply hangs under, 0 on a top-level
+	// comment. Bitbucket sends it beside the comment, not inside it.
+	CommentParentID int   `json:"commentParentId"`
+	Actor           *User `json:"actor"`
 }
 
 // ErrInvalidPayload is returned when a required field is missing.

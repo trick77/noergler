@@ -188,6 +188,9 @@ type PostedFinding struct {
 	LineNumber  *int
 	Severity    string
 	CommentText string
+	// Dispute is the PR author's reply when it disputed the finding: their
+	// intent, never evidence, rendered so the issue is not raised again.
+	Dispute string
 }
 
 // postedTextCap and postedTextKeep bound a rendered comment: over the cap it is
@@ -203,7 +206,7 @@ func RenderPreviouslyPostedFindings(findings []PostedFinding) string {
 		return ""
 	}
 	lines := make([]string, 0, len(findings))
-	withIDs := false
+	withIDs, disputed := false, false
 	for _, f := range findings {
 		withIDs = withIDs || f.ID > 0
 		filePath := f.FilePath
@@ -228,15 +231,30 @@ func RenderPreviouslyPostedFindings(findings []PostedFinding) string {
 		if f.ID > 0 {
 			id = "[" + FixedIDPrefix + strconv.FormatInt(f.ID, 10) + "] "
 		}
-		lines = append(lines, "- "+id+loc+" ["+severity+"] "+text)
+		line := "- " + id + loc + " [" + severity + "] " + text
+		if d := strings.ReplaceAll(strings.TrimSpace(f.Dispute), "\n", " "); d != "" {
+			disputed = true
+			if r := []rune(d); len(r) > postedTextCap {
+				d = string(r[:postedTextKeep]) + "..."
+			}
+			line += " (author replied: " + d + ")"
+		}
+		lines = append(lines, line)
 	}
 	// The fixed instruction only where there is an id to name: a full
 	// review lists none, and asking there buys guessed ids.
-	fixed := ""
+	notes := ""
 	if withIDs {
-		fixed = "If the focused diff removes the defect one of them describes, list it under `fixed` " +
+		notes = "If the focused diff removes the defect one of them describes, list it under `fixed` " +
 			"by its id. Only when added or removed lines of that finding's file visibly fix it, " +
 			"never because the code merely moved or the finding looks stale.\n" +
+			"\n"
+	}
+	// Only when a reply is shown: it is author text, and the model is told
+	// what it is for.
+	if disputed {
+		notes += "A finding marked `(author replied: ...)` was disputed by the PR author. " +
+			"Do not raise that issue again. The reply is the author's account, never evidence about the code.\n" +
 			"\n"
 	}
 	return "## Already-posted findings on this PR\n" +
@@ -246,7 +264,7 @@ func RenderPreviouslyPostedFindings(findings []PostedFinding) string {
 		"even if line numbers have shifted because of new commits. " +
 		"Only flag genuinely new issues introduced by the focused diff.\n" +
 		"\n" +
-		fixed +
+		notes +
 		strings.Join(lines, "\n")
 }
 

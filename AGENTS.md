@@ -74,6 +74,14 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   marker keeps its space, so the tail of `*cfg = x` or `--count` stays
   invented. Blunt rules, never
   a judge model. Drops are logged by reason, never silent.
+- **A reply on a finding thread is answered once, never resolves it**
+  (`HandleFindingReply`). Bitbucket's parent is top-level `commentParentId`,
+  not `comment.parent`. The route queues every non-empty reply without a
+  mention; the job checks parent = stored unfixed finding of THIS PR, author
+  not the bot, `replied_at` unset. A dispute is stored and shown beside the
+  finding (author intent, never evidence); the author resolves. A suggested
+  AGENTS.md line: disputes only, one `- ` bullet <= 200 runes, not already in
+  AGENTS.md. Nothing posted = nothing stamped.
 - **Fixed = a changed line, incremental runs only** (`inference.ValidateFixed`):
   listed `F<id>`, file in the push diff, one quoted line added or removed,
   none moved (in any shown file). A full review's diff is all `+`, so it

@@ -422,6 +422,57 @@ func TestFindings_FixedLeavesExisting(t *testing.T) {
 	}
 }
 
+// The reply job finds a finding by its comment on the authenticated PR only,
+// answers it once, and a dispute rides along into the previously-posted
+// block.
+func TestFindings_ReplyIsFoundScopedAndRecordedOnce(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	id := upsert(t, s, key, "a")
+	runID := run(t, s, id, "a", nil, "m")
+	if err := s.InsertFinding(ctx, Finding{PullRequestID: id, RunID: runID, FilePath: "a.go", LineNumber: 2,
+		Severity: "issue", CommentText: "unchecked", BitbucketCommentID: num(501)}); err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := s.FindingByComment(ctx, key, 501)
+	if err != nil || f == nil || f.CommentText != "unchecked" || f.RepliedAt != nil {
+		t.Fatalf("finding = %+v, err = %v", f, err)
+	}
+	other := key
+	other.PRID++
+	if f, err := s.FindingByComment(ctx, other, 501); err != nil || f != nil {
+		t.Errorf("another PR's lookup = %+v, %v: the comment id is scoped to its PR", f, err)
+	}
+	if f, err := s.FindingByComment(ctx, key, 999); err != nil || f != nil {
+		t.Errorf("unknown comment = %+v, %v", f, err)
+	}
+
+	dispute := "we do this in the UI"
+	if err := s.MarkFindingReplied(ctx, f.ID, &dispute); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MarkFindingReplied(ctx, f.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.FindingByComment(ctx, key, 501)
+	if got.RepliedAt == nil || got.DisputeText == nil || *got.DisputeText != dispute {
+		t.Errorf("after replies = %+v, want the first answer and its dispute kept", got)
+	}
+	existing, _ := s.ExistingFindings(ctx, key)
+	if len(existing) != 1 || existing[0].DisputeText == nil || *existing[0].DisputeText != dispute {
+		t.Errorf("existing = %+v, want the dispute for the prompt", existing)
+	}
+
+	// Fixed findings are not answered: the thread is resolved.
+	if err := s.MarkFindingFixed(ctx, f.ID, runID); err != nil {
+		t.Fatal(err)
+	}
+	if f, _ := s.FindingByComment(ctx, key, 501); f != nil {
+		t.Errorf("a fixed finding is still found: %+v", f)
+	}
+}
+
 func TestClaims_ListGroupsRepoClaimsAndKeepsWholeProjectsFirst(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

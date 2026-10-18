@@ -266,6 +266,11 @@ type Finding struct {
 	CommentText        string
 	Suggestion         *string
 	BitbucketCommentID *int
+	// RepliedAt is set once noergler answered a reply on this finding's
+	// thread; DisputeText is the author's reply when it disputed the
+	// finding. Read back, never written by InsertFinding.
+	RepliedAt   *time.Time
+	DisputeText *string
 }
 
 // InsertFinding stores a posted finding.
@@ -285,7 +290,7 @@ func (s *Store) InsertFinding(ctx context.Context, f Finding) error {
 func (s *Store) ExistingFindings(ctx context.Context, k PRKey) ([]Finding, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT f.id, f.pull_request_id, f.review_run_id, f.file_path, f.line_number, f.severity, f.confidence,
-			f.headline, f.comment_text, f.suggestion, f.bitbucket_comment_id
+			f.headline, f.comment_text, f.suggestion, f.bitbucket_comment_id, f.replied_at, f.dispute_text
 		FROM findings f JOIN pull_requests p ON f.pull_request_id = p.id
 		WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3 AND p.`+activeFilter+`
 			AND f.fixed_at IS NULL
@@ -298,12 +303,47 @@ func (s *Store) ExistingFindings(ctx context.Context, k PRKey) ([]Finding, error
 	for rows.Next() {
 		var f Finding
 		if err := rows.Scan(&f.ID, &f.PullRequestID, &f.RunID, &f.FilePath, &f.LineNumber, &f.Severity, &f.Confidence,
-			&f.Headline, &f.CommentText, &f.Suggestion, &f.BitbucketCommentID); err != nil {
+			&f.Headline, &f.CommentText, &f.Suggestion, &f.BitbucketCommentID, &f.RepliedAt, &f.DisputeText); err != nil {
 			return nil, err
 		}
 		out = append(out, f)
 	}
 	return out, rows.Err()
+}
+
+// FindingByComment is the open, unfixed finding whose inline comment is
+// commentID on that PR, or nil. Scoped to the PR key the webhook
+// authenticated, so a comment id from another team's PR finds nothing.
+func (s *Store) FindingByComment(ctx context.Context, k PRKey, commentID int) (*Finding, error) {
+	var f Finding
+	err := s.pool.QueryRow(ctx, `
+		SELECT f.id, f.pull_request_id, f.review_run_id, f.file_path, f.line_number, f.severity, f.confidence,
+			f.headline, f.comment_text, f.suggestion, f.bitbucket_comment_id, f.replied_at, f.dispute_text
+		FROM findings f JOIN pull_requests p ON f.pull_request_id = p.id
+		WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3 AND p.`+activeFilter+`
+			AND f.fixed_at IS NULL AND f.bitbucket_comment_id = $4`,
+		k.Project, k.Repo, k.PRID, commentID).Scan(&f.ID, &f.PullRequestID, &f.RunID, &f.FilePath, &f.LineNumber,
+		&f.Severity, &f.Confidence, &f.Headline, &f.CommentText, &f.Suggestion, &f.BitbucketCommentID,
+		&f.RepliedAt, &f.DisputeText)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &f, nil
+}
+
+// MarkFindingReplied records the one answer on a finding's thread. A
+// non-nil dispute is the author's case against the finding. The first
+// answer wins: a finding is answered once.
+func (s *Store) MarkFindingReplied(ctx context.Context, findingID int64, dispute *string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE findings SET replied_at = now(),
+			disputed_at = CASE WHEN $2::text IS NULL THEN NULL ELSE now() END,
+			dispute_text = $2::text
+		WHERE id = $1 AND replied_at IS NULL`, findingID, dispute)
+	return err
 }
 
 // MarkFindingFixed retires a finding a later run found fixed. The first

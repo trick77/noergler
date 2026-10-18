@@ -155,7 +155,7 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 		readFile = os.ReadFile
 	}
 
-	// Both templates are loaded before anything else, so a missing file
+	// Every template is loaded before anything else, so a missing file
 	// disables this team rather than aborting boot for all of them.
 	reviewTmpl, err := readFile(team.Review.ReviewPromptTemplate)
 	if err != nil {
@@ -164,6 +164,10 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 	mentionTmpl, err := readFile(team.Review.MentionPromptTemplate)
 	if err != nil {
 		return nil, fmt.Sprintf("prompt template not found: %s", team.Review.MentionPromptTemplate)
+	}
+	replyTmpl, err := readFile(team.Review.FindingReplyPromptTemplate)
+	if err != nil {
+		return nil, fmt.Sprintf("prompt template not found: %s", team.Review.FindingReplyPromptTemplate)
 	}
 
 	llm, err := inference.New(inference.Options{
@@ -244,18 +248,19 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 	// Runtime does; nothing reviews before Start returns.
 	var runtime *Runtime
 	reviewer := review.New(review.Options{
-		Owns:            func(project, repo string) bool { return runtime.Team().Owns(project, repo) },
-		TeamSlug:        team.Slug,
-		Bitbucket:       d.Bitbucket,
-		LLM:             llm,
-		Store:           d.ReviewStore,
-		Jira:            jiraDep,
-		Riptide:         riptideDep,
-		Tokens:          d.Tokens,
-		Config:          team.Review,
-		Template:        string(reviewTmpl),
-		MentionTemplate: string(mentionTmpl),
-		Log:             d.Log,
+		Owns:                 func(project, repo string) bool { return runtime.Team().Owns(project, repo) },
+		TeamSlug:             team.Slug,
+		Bitbucket:            d.Bitbucket,
+		LLM:                  llm,
+		Store:                d.ReviewStore,
+		Jira:                 jiraDep,
+		Riptide:              riptideDep,
+		Tokens:               d.Tokens,
+		Config:               team.Review,
+		Template:             string(reviewTmpl),
+		MentionTemplate:      string(mentionTmpl),
+		FindingReplyTemplate: string(replyTmpl),
+		Log:                  d.Log,
 	})
 	runtime = NewRuntime(team, reviewer, llm, jr, rt)
 	return runtime, ""

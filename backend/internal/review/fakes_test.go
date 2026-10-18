@@ -210,6 +210,14 @@ type fakeStore struct {
 	Frozen    int
 	// Fixed is every MarkFindingFixed call as [findingID, runID].
 	Fixed [][2]int64
+	// byComment serves FindingByComment; Replied records MarkFindingReplied.
+	byComment map[int]*store.Finding
+	Replied   []repliedCall
+}
+
+type repliedCall struct {
+	FindingID int64
+	Dispute   *string
 }
 
 func newFakeStore() *fakeStore {
@@ -369,6 +377,25 @@ func (f *fakeStore) MarkFindingFixed(_ context.Context, findingID, runID int64) 
 	return nil
 }
 
+func (f *fakeStore) FindingByComment(_ context.Context, _ store.PRKey, commentID int) (*store.Finding, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return nil, err
+	}
+	return f.byComment[commentID], nil
+}
+
+func (f *fakeStore) MarkFindingReplied(_ context.Context, findingID int64, dispute *string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return err
+	}
+	f.Replied = append(f.Replied, repliedCall{findingID, dispute})
+	return nil
+}
+
 func (f *fakeStore) ExistingFindings(context.Context, store.PRKey) ([]store.Finding, error) {
 	if err := f.err(); err != nil {
 		return nil, err
@@ -429,11 +456,13 @@ type fakeLLM struct {
 	budget  int
 	review  inference.ReviewResult
 	mention inference.MentionResult
+	reply   inference.FindingReplyResult
 	// onReview runs during the gateway call, between prepare and post.
 	onReview func()
 
 	Reviews  []inference.ReviewRequest
 	Mentions []inference.MentionRequest
+	Replies  []inference.FindingReplyRequest
 }
 
 func newFakeLLM() *fakeLLM {
@@ -471,6 +500,11 @@ func (f *fakeLLM) Review(_ context.Context, req inference.ReviewRequest) inferen
 func (f *fakeLLM) Mention(_ context.Context, req inference.MentionRequest) inference.MentionResult {
 	f.Mentions = append(f.Mentions, req)
 	return f.mention
+}
+
+func (f *fakeLLM) FindingReply(_ context.Context, req inference.FindingReplyRequest) inference.FindingReplyResult {
+	f.Replies = append(f.Replies, req)
+	return f.reply
 }
 
 // fakeJira serves one ticket and optionally its parent.

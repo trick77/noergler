@@ -32,8 +32,8 @@ FROM gcr.io/distroless/static-debian13:nonroot
 WORKDIR /app
 COPY --from=builder /out/noergler /noergler
 # Prompt templates ship with the image; the deployment may mount its own
-# over /app/prompts (REVIEW_PROMPT_TEMPLATE, REVIEW_MENTION_PROMPT_TEMPLATE
-# are relative to the working directory). Read-only to the service.
+# over /app/prompts (REVIEW_PROMPT_TEMPLATE, REVIEW_MENTION_PROMPT_TEMPLATE,
+# REVIEW_FINDING_REPLY_PROMPT_TEMPLATE are relative to the working directory). Read-only to the service.
 COPY prompts/ /app/prompts/
 # Soft heap ceiling under the pod limit (2 Gi in prod): the runtime collects
 # harder as it approaches this instead of letting a 1M-token prompt push RSS

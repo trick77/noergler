@@ -53,6 +53,9 @@ func (f *fakeReviewer) HandleMention(context.Context, *webhook.Payload, string, 
 func (f *fakeReviewer) HandleCommentDeleted(context.Context, *webhook.Payload) {
 	f.calls = append(f.calls, "comment-deleted")
 }
+func (f *fakeReviewer) HandleFindingReply(context.Context, *webhook.Payload) {
+	f.calls = append(f.calls, "finding-reply")
+}
 func (f *fakeReviewer) HandlePRMerged(context.Context, *webhook.Payload) {
 	f.calls = append(f.calls, "merged")
 }
@@ -547,6 +550,35 @@ func TestWebhook_MentionGate(t *testing.T) {
 			}
 			if len(h.q.tags) != 0 {
 				t.Error("a comment without a mention must not reach the queue")
+			}
+		})
+	}
+}
+
+// A reply without a mention may be on a finding thread: it is queued for the
+// worker to check, and the route itself touches no store. A top-level
+// comment, or an empty reply, stays "comment without mention"; a mention in
+// a reply is still a mention.
+func TestWebhook_ReplyWithoutMentionIsQueuedForTheFindingCheck(t *testing.T) {
+	cases := []struct {
+		name, extra, reason string
+		call                string
+	}{
+		{"reply", `,"commentParentId":501,"comment":{"id":7,"text":"we do this in the UI","author":{"name":"bob"}}`, "reply", "finding-reply"},
+		{"empty reply", `,"commentParentId":501,"comment":{"id":7,"text":" ","author":{"name":"bob"}}`, "comment without mention", ""},
+		{"top-level", `,"comment":{"id":7,"text":"we do this in the UI","author":{"name":"bob"}}`, "comment without mention", ""},
+		{"reply with a mention", `,"commentParentId":501,"comment":{"id":7,"text":"@noergler why?","author":{"name":"bob"}}`, "mention", "mention"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			h := newHarness(t, nil)
+			got := decodeBody(t, h.signedPost(t, payloadJSON(webhook.EventCommentAdded, c.extra)))
+			if got["reason"] != c.reason {
+				t.Fatalf("body = %v, want reason %q", got, c.reason)
+			}
+			h.q.runAll()
+			if call := h.rv.String(); call != c.call {
+				t.Errorf("handler = %q, want %q", call, c.call)
 			}
 		})
 	}

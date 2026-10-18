@@ -233,6 +233,17 @@ the review gates and without compression, reads the PR diff and the ticket, and
 replies in the comment's own thread. Keywords route the question; anything else
 is answered as a question about the PR.
 
+A reply on one of noergler's finding threads needs no mention. The route queues
+any reply (Bitbucket's `commentParentId`); the worker answers only when the
+parent is a stored, unfixed finding of that PR, the author is not the bot, and
+the finding has no answer yet. One call (`prompts/finding_reply.txt`) sees the
+finding, that file's diff, AGENTS.md and the reply, and classifies it. A
+dispute, explicit or not ("we do this in the UI"), is acknowledged; when its
+reason is a project-wide rule AGENTS.md lacks, the answer suggests a one-line
+AGENTS.md bullet. The finding is marked disputed and later prompts show the
+reply beside it so the issue is not raised again. The thread stays open: the
+author resolves it.
+
 ## 13. Terminal events and the riptide rollup
 
 `pr:merged`, `pr:declined` and `pr:deleted` close the PR out. Except for a

@@ -70,7 +70,9 @@ type Reviewer struct {
 	// loaded once at startup and resident for the team.
 	template    string
 	mentionTmpl string
-	log         *slog.Logger
+	// replyTmpl answers a reply on a finding's thread.
+	replyTmpl string
+	log       *slog.Logger
 	// owns is the live claim check: a repo can be given up while its
 	// review is queued or in inference.
 	owns func(project, repo string) bool
@@ -91,7 +93,9 @@ type Options struct {
 	// Template is the review prompt; MentionTemplate is the Q&A prompt.
 	Template        string
 	MentionTemplate string
-	Log             *slog.Logger
+	// FindingReplyTemplate answers a reply on a finding's thread.
+	FindingReplyTemplate string
+	Log                  *slog.Logger
 	// Owns reports whether the team still claims the repo; nil claims all.
 	Owns func(project, repo string) bool
 }
@@ -111,6 +115,7 @@ func New(opt Options) *Reviewer {
 		ignoreAuthors:     opt.Config.IgnoreAuthors,
 		template:          opt.Template,
 		mentionTmpl:       opt.MentionTemplate,
+		replyTmpl:         opt.FindingReplyTemplate,
 		log:               opt.Log,
 		owns:              opt.Owns,
 	}
