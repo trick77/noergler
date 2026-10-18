@@ -55,6 +55,12 @@ func TestValidatePreExisting(t *testing.T) {
 		{"no line", bug(0, "resp, err := client.Do(req)"), "bad_line", 0},
 		{"code in the explanation", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "h",
 			Explanation: "calls `mu.Lock()` twice", Evidence: []string{"mu.Lock()"}}, "code_in_prose", 0},
+		{"camelCase is code", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "h",
+			Explanation: "handleConnectionRecoveryTimeout never unlocks", Evidence: []string{"mu.Lock()"}}, "code_in_prose", 0},
+		{"a path is code", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "h",
+			Explanation: "see backend/internal/review/cumulative", Evidence: []string{"mu.Lock()"}}, "code_in_prose", 0},
+		{"hyphenated phrase is prose", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "h",
+			Explanation: "a classic check-then-act-race-condition here", Evidence: []string{"mu.Lock()"}}, "", 11},
 		{"german compound is prose", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "h",
 			Explanation: "Die Verbindungswiederherstellung schlaegt fehl", Evidence: []string{"mu.Lock()"}}, "", 11},
 		{"secret in the explanation", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "h",
@@ -103,9 +109,10 @@ func TestValidatePreExistingIncremental(t *testing.T) {
 		dropped[0].Reason != "evidence_on_added_line" {
 		t.Errorf("dropped = %+v, want an earlier push's line refused", dropped)
 	}
-	if _, dropped := ValidatePreExisting([]PreExistingBug{bug}, idx, map[string]map[uint64]bool{}); len(dropped) != 1 ||
-		dropped[0].Reason != "pr_history_unknown" {
-		t.Errorf("dropped = %+v, want an unknown history refused", dropped)
+	// A file the whole PR adds nothing to (a push reverted an earlier
+	// one's edit): every line in it is old.
+	if kept, _ := ValidatePreExisting([]PreExistingBug{bug}, idx, map[string]map[uint64]bool{}); len(kept) != 1 {
+		t.Error("a file the PR adds nothing to must keep its old bug")
 	}
 	if kept, _ := ValidatePreExisting([]PreExistingBug{bug}, idx,
 		map[string]map[uint64]bool{"src/labels.ts": {}}); len(kept) != 1 {

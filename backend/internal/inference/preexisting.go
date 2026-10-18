@@ -75,11 +75,11 @@ type DroppedPreExisting struct {
 // and a finding, not this. There is no in-diff rule: unchanged code is the
 // point.
 //
-// prAdded is every line the whole PR added, by file, on an incremental
-// review (the focused diff is one push there, and an earlier push's lines
-// read as unchanged); nil on a full review, whose diff is the whole PR. A
-// file missing from it on an incremental review is dropped: its history is
-// not known, so nothing proves the code is old.
+// prAdded is every line the whole PR added, by file, read off the full PR
+// diff on an incremental review (the focused diff is one push there, and an
+// earlier push's lines read as unchanged); nil on a full review, whose diff
+// is the whole PR. A file missing from it is one the PR adds nothing to. The
+// caller drops every claim when that diff could not be read.
 //
 // Known limit, accepted: lines compare by normalised text, so a real old bug
 // whose line reads exactly like a line the PR added is dropped. The other
@@ -111,19 +111,24 @@ func ValidatePreExisting(bugs []PreExistingBug, idx diff.AnchorIndex, prAdded ma
 	return kept, dropped
 }
 
-// tokenRunRE is a run of 24 or more token characters with no space. With a
-// digit or an underscore in it, it is an API key, a hash or a base64 blob;
-// without, it can be a German compound ("Verbindungswiederherstellung") or a
-// hyphenated phrase, which are prose.
+// tokenRunRE is a run of 24 or more token characters with no space.
 var tokenRunRE = regexp.MustCompile(`[A-Za-z0-9_+/=-]{24,}`)
 
-// hasCodeOrSecret reports a backtick or a secret-like token in model prose.
-func hasCodeOrSecret(s string) bool {
+// innerUpperRE is a lower-case letter followed by an upper-case one: camelCase
+// and random tokens have it, a capitalised German compound does not.
+var innerUpperRE = regexp.MustCompile(`[a-z][A-Z]`)
+
+// HasCodeOrSecret reports a backtick or a code- or secret-like token in model
+// prose: a long run with a digit, an underscore, a slash, `+` or `=`, or an
+// inner capital (an API key, a hash, base64, a path, an identifier). A
+// German compound ("Verbindungswiederherstellung") or a lower-case
+// hyphenated phrase is prose. Blunt, like every validation rule.
+func HasCodeOrSecret(s string) bool {
 	if strings.ContainsRune(s, '`') {
 		return true
 	}
 	for _, run := range tokenRunRE.FindAllString(s, -1) {
-		if strings.ContainsAny(run, "0123456789_") {
+		if strings.ContainsAny(run, "0123456789_/+=") || innerUpperRE.MatchString(run) {
 			return true
 		}
 	}
@@ -135,15 +140,10 @@ func validatePreExisting(b PreExistingBug, idx diff.AnchorIndex, prAdded map[str
 	if !ok {
 		return string(DropUnknownFile), 0
 	}
-	if hasCodeOrSecret(b.Headline) || hasCodeOrSecret(b.Explanation) {
+	if HasCodeOrSecret(b.Headline) || HasCodeOrSecret(b.Explanation) {
 		return "code_in_prose", 0
 	}
-	var history map[uint64]bool
-	if prAdded != nil {
-		if history, ok = prAdded[b.File]; !ok {
-			return "pr_history_unknown", 0
-		}
-	}
+	history := prAdded[b.File]
 	var shown []uint64
 	quoted := 0
 	for _, e := range b.Evidence {

@@ -331,13 +331,11 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	anchors := diff.BuildAnchorIndex(files)
 	anchors.AddContextDiff(cumulativePR.diff)
 	var prAdded map[string]map[uint64]bool
+	preUnknown := false
 	if incrementalFrom != "" {
-		// No history read (a failed fetch): an empty map, so every claim
-		// drops as unknown rather than passing on a push's diff alone.
-		prAdded = cumulativePR.added
-		if prAdded == nil {
-			prAdded = map[string]map[uint64]bool{}
-		}
+		// No history read (a failed fetch): every pre-existing claim drops,
+		// rather than passing on one push's diff alone.
+		prAdded, preUnknown = cumulativePR.added, cumulativePR.added == nil
 	}
 	// The last of prepare's own work: what follows is the wait for a slot.
 	sw.lap(stagePrompt)
@@ -361,6 +359,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		promptTokens:    assembled.PromptTokens,
 		anchors:         anchors,
 		prAdded:         prAdded,
+		preUnknown:      preUnknown,
 		existing:        existing,
 		listed:          listed,
 		// Read from what the prompt carries (notFullContext): a deleted file
@@ -448,6 +447,10 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	// Bugs in code the PR did not change: validated like findings, minus
 	// the in-diff rule, and only ever shown on the run page.
 	pre, preDropped := inference.ValidatePreExisting(result.Review.PreExisting, plan.anchors, plan.prAdded)
+	if plan.preUnknown && len(pre) > 0 {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d pre-existing bug(s) dropped: the PR's history could not be read", prTag, len(pre)))
+		pre = nil
+	}
 	for _, d := range preDropped {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: pre-existing bug on %s:%d dropped: %s",
 			prTag, d.Bug.File, d.Bug.Line, d.Reason))
