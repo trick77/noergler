@@ -287,7 +287,7 @@ export const de = {
     moreBefore: "Ältere Runs dieses Pull Requests sind hier nicht aufgeführt.",
     moreAfter: "Neuere Runs dieses Pull Requests sind hier nicht aufgeführt.",
     prTotalNote:
-      "Das Total ist der Betrag, den das Kostenlimit zählt: dieser Pull Request seit er zuletzt beansprucht wurde. Es kann deshalb von den Zeilen oben abweichen.",
+      "Das Total ist, was dieser Pull Request seit seiner letzten Beanspruchung gekostet hat, und damit auch, was ein Kostenlimit zählt. Es kann deshalb von den Zeilen oben abweichen.",
   },
   faq: {
     lede: "Warum noergler deinen Pull Request reviewt hat oder nicht. Unten stehen die Standardwerte; dein Team hat sie vielleicht geändert.",

@@ -79,8 +79,6 @@ func TestRunDetail(t *testing.T) {
 
 func strp(s string) *string { return &s }
 
-// A long PR's history is a window around the attempt shown, so the attempt
-// and its neighbours are always in it, whichever end of the PR it is at.
 // A fixed finding whose run was recorded under another team gets no link:
 // that page's history belongs to the other team.
 func TestFixedLinkStaysInTheTeam(t *testing.T) {
@@ -103,12 +101,25 @@ func TestFixedLinkStaysInTheTeam(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d, _, err := s.RunDetail(ctx, id)
-	if err != nil || len(d.Fixed) != 1 || d.Fixed[0].FromAttemptID != nil {
+	d, ok, err := s.RunDetail(ctx, id)
+	if err != nil || !ok || len(d.Fixed) != 1 || d.Fixed[0].FromAttemptID != nil {
 		t.Errorf("fixed = %+v, %v; want no cross-team link", d.Fixed, err)
+	}
+
+	// The same run recorded under this team as well: that attempt is the
+	// one linked, never the other team's.
+	mine, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "ok", RunID: &earlier})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, _, err = s.RunDetail(ctx, id)
+	if err != nil || len(d.Fixed) != 1 || d.Fixed[0].FromAttemptID == nil || *d.Fixed[0].FromAttemptID != mine {
+		t.Errorf("fixed = %+v, %v; want the link to this team's attempt %d", d.Fixed, err, mine)
 	}
 }
 
+// A long PR's history is a window around the attempt shown, so the attempt
+// and its neighbours are always in it, whichever end of the PR it is at.
 func TestRunDetailHistoryWindow(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
