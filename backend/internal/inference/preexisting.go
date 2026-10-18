@@ -2,6 +2,7 @@ package inference
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 
 	"github.com/trick77/noergler/internal/diff"
@@ -70,20 +71,33 @@ type DroppedPreExisting struct {
 
 // ValidatePreExisting keeps the claims whose evidence is real: in the file
 // the prompt showed (its diff, its context or its full content), and none of
-// it on a line the PR added, which would make it the PR's own bug and a
-// finding, not this. There is no in-diff rule: unchanged code is the point.
+// it on a line the PR added or removed, which would make it the PR's own bug
+// and a finding, not this. There is no in-diff rule: unchanged code is the
+// point.
+//
+// prAdded is every line the whole PR added, by file, on an incremental
+// review (the focused diff is one push there, and an earlier push's lines
+// read as unchanged); nil on a full review, whose diff is the whole PR. A
+// file missing from it on an incremental review is dropped: its history is
+// not known, so nothing proves the code is old.
+//
+// Known limit, accepted: lines compare by normalised text, so a real old bug
+// whose line reads exactly like a line the PR added is dropped. The other
+// way round, an author's own bug shown as old, is the worse mistake.
 //
 // The line is moved to the evidence when the evidence is a shown line and
-// the cited one is not near it. Evidence found only in the full content has
-// no line number in the index (hashes only), so the cited line stands: the
-// page links to it, and the evidence at least proves the code exists.
+// the cited one is not near it; the final line must be 1 or more and not a
+// line the PR added. Evidence found only in the full content has no line
+// number in the index (hashes only), so the cited line stands.
 //
-// Blunt rules, like ValidateFindings, never a judge model. At most
-// maxPreExisting are kept, in the model's order.
-func ValidatePreExisting(bugs []PreExistingBug, idx diff.AnchorIndex) (kept []PreExistingBug, dropped []DroppedPreExisting) {
+// The headline and explanation go on an unauthenticated page, so one that
+// carries code or a secret-looking token is dropped: blunt rules, like
+// ValidateFindings, never a judge model. At most maxPreExisting are kept, in
+// the model's order.
+func ValidatePreExisting(bugs []PreExistingBug, idx diff.AnchorIndex, prAdded map[string]map[uint64]bool) (kept []PreExistingBug, dropped []DroppedPreExisting) {
 	for _, b := range bugs {
 		b.File = ShownPath(b.File, idx)
-		reason, line := validatePreExisting(b, idx)
+		reason, line := validatePreExisting(b, idx, prAdded)
 		if reason == "" && len(kept) >= maxPreExisting {
 			reason = "over_limit"
 		}
@@ -97,31 +111,49 @@ func ValidatePreExisting(bugs []PreExistingBug, idx diff.AnchorIndex) (kept []Pr
 	return kept, dropped
 }
 
-func validatePreExisting(b PreExistingBug, idx diff.AnchorIndex) (string, int) {
+// codeOrSecretRE is a backtick, or a run of 24 or more token characters with
+// no space: an API key, a hash, a base64 blob. Prose has neither.
+var codeOrSecretRE = regexp.MustCompile("`|[A-Za-z0-9_+/=-]{24,}")
+
+func validatePreExisting(b PreExistingBug, idx diff.AnchorIndex, prAdded map[string]map[uint64]bool) (string, int) {
 	fa, ok := idx[b.File]
 	if !ok {
 		return string(DropUnknownFile), 0
 	}
+	if codeOrSecretRE.MatchString(b.Headline) || codeOrSecretRE.MatchString(b.Explanation) {
+		return "code_in_prose", 0
+	}
+	var history map[uint64]bool
+	if prAdded != nil {
+		if history, ok = prAdded[b.File]; !ok {
+			return "pr_history_unknown", 0
+		}
+	}
 	var shown []uint64
 	quoted := 0
 	for _, e := range b.Evidence {
-		if strings.TrimSpace(e) == "" || isAnnotation(e) {
+		if strings.TrimSpace(e) == "" {
 			continue
 		}
 		h, where := matchEvidence(e, fa)
-		switch where {
-		case notFound:
+		if where == onRemovedSide && fa.InContent(h) {
+			// The PR removed a line that reads the same, but this one is
+			// still in the file.
+			where = inContentOnly
+		}
+		switch {
+		case where == notFound && isAnnotation(e):
+			// The model's own note or an elision, as in ValidateFindings.
+			continue
+		case where == notFound:
 			return string(DropEvidenceNotFound), 0
-		case onNewSide:
-			for _, n := range linesWithHash(h, fa.Shown) {
-				if fa.Shown[n].Added {
-					return "evidence_on_added_line", 0
-				}
-			}
-			shown = append(shown, h)
-		case onRemovedSide:
+		case where == onRemovedSide:
 			// The PR deleted it: whatever was wrong there is gone.
 			return "evidence_removed_by_pr", 0
+		case addedLine(h, fa.Shown) || history[h]:
+			return "evidence_on_added_line", 0
+		case where == onNewSide:
+			shown = append(shown, h)
 		}
 		quoted++
 	}
@@ -133,6 +165,12 @@ func validatePreExisting(b PreExistingBug, idx diff.AnchorIndex) (string, int) {
 		if at := linesWithHash(shown[0], fa.Shown); len(at) == 1 {
 			line = at[0]
 		}
+	}
+	if line < 1 {
+		return "bad_line", 0
+	}
+	if s, ok := fa.Shown[line]; ok && s.Added {
+		return "line_added_by_pr", 0
 	}
 	return "", line
 }

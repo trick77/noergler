@@ -199,7 +199,8 @@ type Result struct {
 	// PreExisting are the bugs in unchanged code the model reported, as
 	// validation kept them: never scored (production never posts them), but
 	// recorded, so a run shows what the run page would.
-	PreExisting []inference.PreExistingBug `json:"PreExisting,omitempty"`
+	PreExisting        []inference.PreExistingBug     `json:"PreExisting,omitempty"`
+	PreExistingDropped []inference.DroppedPreExisting `json:"PreExistingDropped,omitempty"`
 	// Redraws is how many attempts that did not complete came before this
 	// one. A redrawn result leans towards the quick answer; see maxRedraws.
 	Redraws int `json:",omitempty"`
@@ -272,9 +273,11 @@ func reviewCase(ctx context.Context, client Reviewer, c Case, assembled inferenc
 		ResponseSchema: inference.ReviewResponseFormat(),
 	})
 	res.Outcome = out.Outcome.String()
-	v := inference.ValidateFindings(out.Review.Findings, diff.BuildAnchorIndex(c.Files))
+	idx := diff.BuildAnchorIndex(c.Files)
+	v := inference.ValidateFindings(out.Review.Findings, idx)
 	res.Findings, res.Dropped, res.Moved = v.Kept, v.Dropped, v.Reanchored
-	res.PreExisting, _ = inference.ValidatePreExisting(out.Review.PreExisting, diff.BuildAnchorIndex(c.Files))
+	// A case is one full diff: its own added lines are the PR's.
+	res.PreExisting, res.PreExistingDropped = inference.ValidatePreExisting(out.Review.PreExisting, idx, nil)
 	if out.Err != nil {
 		res.Err, res.ErrMsg = out.Err, out.Err.Error()
 	}

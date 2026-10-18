@@ -330,6 +330,10 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// the only place an earlier push's change is shown.
 	anchors := diff.BuildAnchorIndex(files)
 	anchors.AddContextDiff(cumulativePR.diff)
+	var prAdded map[string]map[uint64]bool
+	if incrementalFrom != "" {
+		prAdded = diff.AddedLines(cumulativePR.diff)
+	}
 	// The last of prepare's own work: what follows is the wait for a slot.
 	sw.lap(stagePrompt)
 
@@ -351,6 +355,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		prompt:          assembled.Prompt,
 		promptTokens:    assembled.PromptTokens,
 		anchors:         anchors,
+		prAdded:         prAdded,
 		existing:        existing,
 		listed:          listed,
 		// Read from what the prompt carries (notFullContext): a deleted file
@@ -437,7 +442,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	}
 	// Bugs in code the PR did not change: validated like findings, minus
 	// the in-diff rule, and only ever shown on the run page.
-	pre, preDropped := inference.ValidatePreExisting(result.Review.PreExisting, plan.anchors)
+	pre, preDropped := inference.ValidatePreExisting(result.Review.PreExisting, plan.anchors, plan.prAdded)
 	for _, d := range preDropped {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: pre-existing bug on %s:%d dropped: %s",
 			prTag, d.Bug.File, d.Bug.Line, d.Reason))

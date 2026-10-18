@@ -63,6 +63,9 @@ type reviewPlan struct {
 	// check each finding's evidence and line. Hashes, not text: the rule
 	// above still holds.
 	anchors diff.AnchorIndex
+	// prAdded is every line the whole PR added, by file, on an incremental
+	// review; nil on a full one. Hashes only.
+	prAdded map[string]map[uint64]bool
 
 	existing []store.Finding
 	// listed are the ids the prompt showed, trimmed by budget: the only

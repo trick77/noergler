@@ -33,8 +33,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 
 - `pre_existing` (bugs in unchanged code): never posted, never moves the
   verdict, never scored. `ValidatePreExisting`: evidence in the shown file,
-  none on an added or removed line, no in-diff rule; at most 5. Run page
-  only, prose + link, no code.
+  none on a line the PR (all pushes, on an incremental review) added or
+  removed, no in-diff rule; prose with code or a secret-like token dropped;
+  at most 5. Run page only, prose + link, no code.
 - File order to the model depends on path only, never content.
 - Cumulative diff: `IsReviewable` parts, push-touched files first, whole files
   or none; a partial block never says "entire PR".
