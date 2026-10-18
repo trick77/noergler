@@ -221,6 +221,8 @@ describe("outcomeWord", () => {
     expect(outcomeWord("")).toBe("—");
     expect(outcomeTitle("")).toBeUndefined();
     expect(outcomeTone("")).toBe("none");
+    expect(teamTone("")).toBe("none");
+    expect(teamStateTitle("")).toBeUndefined();
     expect(outcomeTitle("ok")).toBeUndefined();
     expect(outcomeTitle("skipped", "empty_diff")).toBe("Empty diff");
   });
