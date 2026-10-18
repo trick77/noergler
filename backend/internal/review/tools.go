@@ -158,7 +158,7 @@ type prStatusAttempt struct {
 // "never seen": the model would tell the user noergler has no record.
 func (r *Reviewer) prStatus(ctx context.Context, key store.PRKey) any {
 	v := prStatusView{CapUSD: usd3(r.cfg.MaxPRCostUSD), Attempts: []prStatusAttempt{}}
-	st, err := r.store.PRStatus(ctx, key)
+	st, err := r.store.PRStatus(ctx, key, r.TeamSlug)
 	if err != nil || st == nil {
 		r.log.WarnContext(ctx, "DB operation failed: PRStatus", logging.Err(err))
 		return map[string]string{"error": "noergler's records are unavailable right now; say so, do not guess"}
@@ -191,6 +191,15 @@ func usd3(usd float64) string { return inference.FormatUSD3(int64(math.Round(usd
 // word only. "en" and "de" are path segments and locale tags ("i18n/en/",
 // "de-DE") far more often than a request, so they count only as the exact
 // keyword, never here. Unicode boundaries: RE2's \b is ASCII.
+// switchWords is the other half of a request: a word about answering, the
+// language or a change. "Does the German locale fallback work?" names a
+// language but asks for nothing, so a call the model was steered into by
+// the diff, or misread the question for, changes nothing.
+var switchWords = regexp.MustCompile(`(?i)(?:^|[^\pL\pN_])(?:` +
+	`answers?|answering|reply|replies|respond|write|writes|talk|speak|switch|language|from now on|` +
+	`antwort\pL*|schreib\pL*|sprich|rede|wechsl?\pL*|umstell\pL*|sprache|ab jetzt|künftig` +
+	`)(?:[^\pL\pN_]|$)`)
+
 var languageWord = map[lang.Lang]*regexp.Regexp{
 	lang.EN: regexp.MustCompile(`(?i)(?:^|[^\pL\pN_])(?:english|englisch|englische[mn]?)(?:[^\pL\pN_]|$)`),
 	lang.DE: regexp.MustCompile(`(?i)(?:^|[^\pL\pN_])(?:deutsch|deutsche[mn]?|german)(?:[^\pL\pN_]|$)`),
@@ -208,16 +217,14 @@ func (r *Reviewer) setMyLanguage(ctx context.Context, ask *mentionAsk, args stri
 	if json.Unmarshal([]byte(args), &in) == nil {
 		l, ok = lang.Parse(in.Language)
 	}
-	if !ok || !languageWord[l].MatchString(ask.text) {
+	if !ok || !languageWord[l].MatchString(ask.text) || !switchWords.MatchString(ask.text) {
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: language switch for %s rejected: the comment does not ask for %q",
 			ask.prTag, ask.user, strings.TrimSpace(in.Language)))
 		return map[string]string{"result": "rejected: the user's comment does not ask for this language"}
 	}
-	if err := r.store.SetUserLanguage(ctx, ask.user, l); err != nil {
-		r.log.WarnContext(ctx, fmt.Sprintf("%s: language for %s not stored: %v", ask.prTag, ask.user, err))
+	if r.storeLanguage(ctx, ask.prTag, ask.user, l) != nil {
 		return map[string]string{"result": "failed: could not be saved, tell the user to try again later"}
 	}
-	r.log.InfoContext(ctx, fmt.Sprintf("%s: language set to %s for %s", ask.prTag, l, ask.user))
 	ask.switched = l
 	return map[string]string{"result": "ok", "write_the_answer_in": string(l)}
 }

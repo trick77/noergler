@@ -7,6 +7,7 @@ import (
 
 	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/render"
+	"github.com/trick77/ship/kit/logging"
 )
 
 // languageKeywords are the exact comment texts (after the @mention is
@@ -47,29 +48,49 @@ func sharpS(l lang.Lang, s string) string {
 // languageFor is the language noergler writes to user in: their own choice,
 // else the team's default. Fails open to the team default: a DB fault must
 // never fail a review, and a wrong language is not worth one.
+//
+// It decides what is posted, so it says which language and why.
 func (r *Reviewer) languageFor(ctx context.Context, user string) lang.Lang {
 	def := r.cfg.Language.Or(lang.Default)
 	if r.store == nil || user == "" {
 		return def
 	}
-	return safeDB(ctx, r.log, "UserLanguage", func() (lang.Lang, error) {
-		return r.store.UserLanguage(ctx, user)
-	}).Or(def)
+	own, err := r.store.UserLanguage(ctx, user)
+	switch {
+	case err != nil:
+		r.log.WarnContext(ctx, fmt.Sprintf("writing %s to %s: team default, the user's language is unreadable", def, user),
+			logging.Err(err))
+		return def
+	case own != "":
+		r.log.InfoContext(ctx, fmt.Sprintf("writing %s to %s: their own choice", own, user))
+		return own
+	}
+	r.log.InfoContext(ctx, fmt.Sprintf("writing %s to %s: team default", def, user))
+	return def
+}
+
+// storeLanguage writes the user's language and logs it: the one write both
+// the keyword and set_my_language go through. Only ever the commenter's
+// own row: the webhook names who wrote the comment, nothing in the text can
+// name anyone else.
+func (r *Reviewer) storeLanguage(ctx context.Context, prTag, user string, l lang.Lang) error {
+	if err := r.store.SetUserLanguage(ctx, user, l); err != nil {
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: language for %s not stored: %v", prTag, user, err))
+		return err
+	}
+	r.log.InfoContext(ctx, fmt.Sprintf("%s: language set to %s for %s", prTag, l, user))
+	return nil
 }
 
 // setLanguage stores the commenter's language and confirms it, in that
-// language, under their comment. Only ever the commenter's own row: the
-// webhook names who wrote the comment, nothing in the text can name anyone
-// else.
+// language, under their comment.
 func (r *Reviewer) setLanguage(ctx context.Context, project, repo string, prID, commentID int, prTag, user string, l lang.Lang) {
-	if err := r.store.SetUserLanguage(ctx, user, l); err != nil {
-		r.log.WarnContext(ctx, fmt.Sprintf("%s: language for %s not stored: %v", prTag, user, err))
+	if r.storeLanguage(ctx, prTag, user, l) != nil {
 		r.reply(ctx, project, repo, prID, commentID, l.Pick(
 			"Die Sprache konnte gerade nicht gespeichert werden. Bitte später nochmals versuchen.",
 			"The language could not be saved right now. Please try again later."))
 		return
 	}
-	r.log.InfoContext(ctx, fmt.Sprintf("%s: language set to %s for %s", prTag, l, user))
 	r.reply(ctx, project, repo, prID, commentID, languageConfirmation(l))
 }
 

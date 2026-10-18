@@ -124,6 +124,9 @@ func TestSetMyLanguageNeedsTheCommentersWords(t *testing.T) {
 		// keyword "@bot en" takes the short form.
 		{"what does i18n/en/messages.json change?", `{"language":"en"}`, ""},
 		{"is de-DE the right locale?", `{"language":"de"}`, ""},
+		// Naming a language is not asking to be written to in it.
+		{"does the German locale fallback in this PR work?", `{"language":"de"}`, ""},
+		{"ist die englische Übersetzung vollständig?", `{"language":"en"}`, ""},
 		{"english", `not json`, ""},
 	}
 	for _, c := range cases {

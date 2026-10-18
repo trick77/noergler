@@ -144,6 +144,34 @@ func TestMentionWithoutToolSupportIsOneCall(t *testing.T) {
 	}
 }
 
+// A prompt near the ceiling has no room for the loop's growth: one plain
+// call, not a refusal in round two.
+func TestMentionNearTheCeilingSkipsTheTools(t *testing.T) {
+	f := &fakeGateway{chatBody: chatBody(`{"answer": "hi"}`)}
+	c := toolClient(t, f)
+	runs := 0
+
+	got := c.Mention(context.Background(), MentionRequest{Prompt: "x", PromptTokens: c.FitCeiling() - ToolHeadroomTokens/2,
+		Tools: []MentionTool{countingTool("t", &runs)}})
+
+	if got.Outcome != OutcomeOK || strings.Contains(string(f.lastChatBody), `"tools"`) {
+		t.Errorf("outcome %v, body %s", got.Outcome, f.lastChatBody)
+	}
+}
+
+// A failed later round keeps the billed rounds' total.
+func TestMentionToolLoopErrorKeepsTheCost(t *testing.T) {
+	f := &fakeGateway{costHeader: "0.001", chatBodies: []string{toolCallBody("t"), `not json`}}
+	c := toolClient(t, f)
+	runs := 0
+
+	got := c.Mention(context.Background(), MentionRequest{Prompt: "x", Tools: []MentionTool{countingTool("t", &runs)}})
+
+	if got.Outcome == OutcomeOK || len(got.Rounds) != 1 || got.Cost.NanoUSD == nil || *got.Cost.NanoUSD != 1_000_000 {
+		t.Errorf("outcome %v, rounds %d, cost %v", got.Outcome, len(got.Rounds), got.Cost.NanoUSD)
+	}
+}
+
 func TestSumCostsUnpricedIfAnyIs(t *testing.T) {
 	one, two := int64(1), int64(2)
 	if c := SumCosts([]CallCost{{NanoUSD: &one}, {NanoUSD: &two}}); c.NanoUSD == nil || *c.NanoUSD != 3 {

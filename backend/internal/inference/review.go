@@ -159,7 +159,8 @@ type MentionResult struct {
 // parser falls back to the raw text, so a model that ignores the envelope
 // still produces a usable reply.
 func (c *Client) Mention(ctx context.Context, req MentionRequest) MentionResult {
-	if len(req.Tools) > 0 && c.tools {
+	roomForTools := !c.Ready() || req.PromptTokens+ToolHeadroomTokens <= c.FitCeiling()
+	if len(req.Tools) > 0 && c.tools && roomForTools {
 		return c.mentionWithTools(ctx, req)
 	}
 	resp, outcome, err := c.answer(ctx, req.Prompt, req.PromptTokens, nil)

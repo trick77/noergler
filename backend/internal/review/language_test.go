@@ -52,6 +52,26 @@ func TestMentionKeywordSetsTheCommentersLanguage(t *testing.T) {
 	}
 }
 
+// A plain reply obeys the author lists and the ignored state: the bot
+// posts nothing on a PR it was told to leave alone. A mention overrides.
+func TestPlainReplySwitchObeysTheGates(t *testing.T) {
+	h, p := replyHarness(t)
+	p.Comment.Text = "english"
+	now := time.Now()
+	h.st.skipState = &store.SkipState{IgnoredAt: &now}
+
+	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+	if len(h.bb.Replies) != 0 || h.st.languages["alice"] != "" {
+		t.Errorf("an ignored PR got a reply %+v, language %q", h.bb.Replies, h.st.languages["alice"])
+	}
+
+	p.Comment.Text = "@noergler english"
+	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+	if h.st.languages["alice"] != lang.EN || h.st.Reactived != 0 {
+		t.Errorf("a mentioned switch: language %q, reactivated %d", h.st.languages["alice"], h.st.Reactived)
+	}
+}
+
 // A switch is a setting, not engagement: an author who removed the summary
 // keeps the PR ignored.
 func TestMentionKeywordLeavesAnIgnoredPRIgnored(t *testing.T) {

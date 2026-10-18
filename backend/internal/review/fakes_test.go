@@ -392,7 +392,7 @@ func (f *fakeStore) FindingByComment(_ context.Context, _ store.PRKey, commentID
 	return f.byComment[commentID], nil
 }
 
-func (f *fakeStore) PRStatus(context.Context, store.PRKey) (*store.PRStatus, error) {
+func (f *fakeStore) PRStatus(context.Context, store.PRKey, string) (*store.PRStatus, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err := f.err(); err != nil {

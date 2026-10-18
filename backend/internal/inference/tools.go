@@ -29,6 +29,12 @@ const (
 	MaxToolCallsPerTurn = 4
 )
 
+// ToolHeadroomTokens is what a tool loop may add to the prompt: the tool
+// schemas, the assistant's calls and the JSON results, a few hundred tokens
+// a round. A prompt without this much room under the fit ceiling is
+// answered in one plain call, rather than refused mid-loop as too large.
+const ToolHeadroomTokens = 4_000
+
 // toolCapResult is what a call past MaxToolCallsPerTurn gets: every call id
 // needs a tool message, or the next request is refused.
 const toolCapResult = `{"error": "too many tool calls in one turn; answer with what you have"}`
@@ -68,7 +74,8 @@ func (c *Client) mentionWithTools(ctx context.Context, req MentionRequest) Menti
 		}
 		resp, _, err := c.wire.Chat(ctx, chat)
 		if err != nil {
-			res.Outcome, res.Err = classifyCallError(ctx, err), err
+			// The rounds before were billed: their total stands.
+			res.Outcome, res.Err, res.Cost = classifyCallError(ctx, err), err, SumCosts(res.Rounds)
 			return res
 		}
 		res.Rounds = append(res.Rounds, CostFrom(resp))
@@ -107,8 +114,11 @@ func (c *Client) mentionWithTools(ctx context.Context, req MentionRequest) Menti
 // call was: a partial sum would undercount and read as priced. The key spend
 // is a gauge, so the last reading stands; the split is never summed.
 func SumCosts(rounds []CallCost) CallCost {
-	if len(rounds) == 0 {
+	switch len(rounds) {
+	case 0:
 		return CallCost{}
+	case 1:
+		return rounds[0]
 	}
 	last := rounds[len(rounds)-1]
 	out := CallCost{
@@ -128,9 +138,6 @@ func SumCosts(rounds []CallCost) CallCost {
 			continue
 		}
 		total += *r.NanoUSD
-	}
-	if len(rounds) == 1 {
-		return rounds[0]
 	}
 	if priced {
 		out.NanoUSD = &total

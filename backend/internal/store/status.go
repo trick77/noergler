@@ -48,14 +48,18 @@ type AttemptBrief struct {
 // latest push, not a history.
 const statusAttempts = 5
 
-// PRStatus reads the PR's state, its runs and its latest attempts.
-func (s *Store) PRStatus(ctx context.Context, k PRKey) (*PRStatus, error) {
+// PRStatus reads the PR's state, its runs and its latest attempts, the
+// team's only and from this row's life only, as prCostSQL bounds them: a
+// purged repo claimed again, maybe by another team, starts from nothing.
+func (s *Store) PRStatus(ctx context.Context, k PRKey, team string) (*PRStatus, error) {
 	st := &PRStatus{}
 	var id int64
+	// No row: every attempt of the team's on this key counts.
+	since := time.Time{}
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, last_reviewed_commit, ignored_at, merged_at, declined_at FROM pull_requests
+		SELECT id, created_at, last_reviewed_commit, ignored_at, merged_at, declined_at FROM pull_requests
 		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3`,
-		k.Project, k.Repo, k.PRID).Scan(&id, &st.LastReviewedCommit, &st.IgnoredAt, &st.MergedAt, &st.DeclinedAt)
+		k.Project, k.Repo, k.PRID).Scan(&id, &since, &st.LastReviewedCommit, &st.IgnoredAt, &st.MergedAt, &st.DeclinedAt)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 	case err != nil:
@@ -81,9 +85,9 @@ func (s *Store) PRStatus(ctx context.Context, k PRKey) (*PRStatus, error) {
 
 	rows, err := s.pool.Query(ctx, `
 		SELECT created_at, kind, outcome, COALESCE(reason, '') FROM review_attempts
-		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
-		ORDER BY created_at DESC, id DESC LIMIT $4`,
-		k.Project, k.Repo, k.PRID, statusAttempts)
+		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3 AND team_slug = $4 AND created_at >= $5
+		ORDER BY created_at DESC, id DESC LIMIT $6`,
+		k.Project, k.Repo, k.PRID, team, since, statusAttempts)
 	if err != nil {
 		return nil, err
 	}

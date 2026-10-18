@@ -197,6 +197,12 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: Q&A took %d calls, tools %v (%d refused over the cap), total %s",
 			prTag, len(result.Rounds), result.ToolCalls, result.CappedCalls, costTotal(result.Cost)))
 	}
+	// A tool loop can run for minutes: the team may have given the repo up
+	// meanwhile, as in a review's post.
+	if r.owns != nil && !r.owns(project, repo) {
+		r.log.InfoContext(ctx, prTag+": repo no longer claimed by the team, Q&A not posted")
+		return
+	}
 
 	// No review_attempts row on THIS path, deliberately. A mention asking
 	// for a review delegates to ReviewPullRequestStaged above and is

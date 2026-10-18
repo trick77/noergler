@@ -404,10 +404,8 @@ func renderFootnote(in SummaryInput) string {
 
 	lines := p(" Zeilen", " lines")
 	if in.FilesCountsSet {
-		filesStr := fmt.Sprintf("Reviewed %d files", in.FilesReviewed)
-		if in.Lang != lang.EN {
-			filesStr = PluralIn(in.Lang, in.FilesReviewed, "Datei", "Dateien", "", "") + " geprüft"
-		}
+		files := PluralIn(in.Lang, in.FilesReviewed, "Datei", "Dateien", "file", "files")
+		filesStr := p(files+" geprüft", "Reviewed "+files)
 		if in.FilesReviewed != in.TotalFiles {
 			filesStr = fmt.Sprintf(p("%d von %d Dateien geprüft (%d übersprungen: Lock-Files, Binaries, Config)",
 				"Reviewed %d of %d files (%d skipped: lock files, binaries, config)"),

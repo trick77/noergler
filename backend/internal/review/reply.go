@@ -96,7 +96,19 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	}
 	// "english" under a finding sets the author's language, even on a
 	// thread answered already: a command, not a reply, so it stamps nothing.
+	// Without a mention it obeys what a plain reply obeys: the bot does not
+	// post on a PR it was told to leave alone.
 	if l, ok := languageKeyword(text); ok {
+		if !mentioned {
+			if auto, _ := r.autoReviewDecision(author); !auto {
+				return notAnswered("language switch from an author not auto-reviewed")
+			}
+			if state := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
+				return r.store.GetSkipState(ctx, key)
+			}); state != nil && state.IgnoredAt != nil {
+				return notAnswered("language switch on an ignored PR")
+			}
+		}
 		r.setLanguage(ctx, key.Project, key.Repo, pr.ID, comment.ID, prTag, comment.Author.Name, l)
 		return true, false
 	}
