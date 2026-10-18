@@ -132,7 +132,7 @@ func (r *Reviewer) SetUsePRDescription(on bool) { r.usePRDescription.Store(on) }
 // The team API writes them while the review worker may be reading them, so
 // they live behind a lock instead of in cfg
 // (TestSetAuthorListsIsSafeUnderConcurrentReads). Only these two fields are
-// mirrored onto the live Reviewer; AGENTS.md pins that exclude_repos is not.
+// mirrored onto the live Reviewer; INVARIANTS.md: exclude_repos is not.
 func (r *Reviewer) SetAuthorLists(auto, ignore []string) {
 	r.authorsMu.Lock()
 	defer r.authorsMu.Unlock()
@@ -234,7 +234,7 @@ func formatTicketBlock(t *jira.Ticket, heading string) []string {
 //
 // The caller already holds the ticket and its parent, so this only formats
 // them. Re-fetching here would double the Jira traffic per review, which
-// AGENTS.md pins against ("Jira fetched once per review").
+// a test pins against ("Jira fetched once per review").
 func renderTicketContext(ticket, parent *jira.Ticket) string {
 	if ticket == nil {
 		return ""

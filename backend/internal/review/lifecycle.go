@@ -130,7 +130,7 @@ func (r *Reviewer) emitRollup(ctx context.Context, key store.PRKey, prTag, outco
 			r.log.InfoContext(ctx, prTag+": final PR diff unavailable at close - using last-known per-run stats")
 		} else if strings.TrimSpace(fullDiff) != "" {
 			added, removed := countDiffLines(fullDiff)
-			// files_changed counts the reviewable files, as AGENTS.md pins:
+			// files_changed counts the reviewable files, as a test pins:
 			// counting every "diff --git" header would put files that were
 			// never reviewed into the rollup.
 			changed := countReviewableFiles(fullDiff)
@@ -181,7 +181,7 @@ func (r *Reviewer) emitRollup(ctx context.Context, key store.PRKey, prTag, outco
 // countReviewableFiles counts the files in a diff the reviewer would look at.
 //
 // Counting every "diff --git" header would include lock files and vendored
-// bundles that were never reviewed. AGENTS.md pins counting the reviewable
+// bundles that were never reviewed. A test pins counting the reviewable
 // ones, so the number riptide records matches the number the summary reports
 // (TestRollupCountsReviewableFilesOnly).
 func countReviewableFiles(rawDiff string) int {

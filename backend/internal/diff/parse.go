@@ -94,7 +94,7 @@ func IsDeleted(fileDiff string) bool {
 // Splits on "\n" rather than by Unicode line boundaries: a diff's own line
 // terminators are the only ones that may split a hunk.
 //
-// Pinned (AGENTS.md): a trailing empty body line, the artifact of splitting a
+// Pinned by a test: a trailing empty body line, the artifact of splitting a
 // diff that ends in a newline, is dropped here. Keeping it leaves a phantom
 // blank line mid-body whenever after-context follows.
 func ParseHunks(fileDiff string) (headerLines []string, hunks []*Hunk) {
