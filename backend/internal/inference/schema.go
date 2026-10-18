@@ -27,7 +27,7 @@ func ReviewResponseSchema() map[string]any {
 		"additionalProperties": false,
 		"required": []any{
 			"overview", "strengths", "security_performance", "test_coverage",
-			"verdict", "findings", "fixed", "compliance_requirements",
+			"verdict", "findings", "fixed", "pre_existing", "compliance_requirements",
 		},
 		"properties": map[string]any{
 			"overview":             map[string]any{"type": "string", "minLength": 1},
@@ -79,6 +79,24 @@ func ReviewResponseSchema() map[string]any {
 					},
 				},
 			},
+			"pre_existing": map[string]any{
+				"type": "array", "maxItems": 5,
+				"items": map[string]any{
+					"type":                 "object",
+					"additionalProperties": false,
+					"required":             []any{"file", "line", "evidence", "headline", "explanation"},
+					"properties": map[string]any{
+						"file": map[string]any{"type": "string"},
+						"line": map[string]any{"type": "integer"},
+						"evidence": map[string]any{
+							"type": "array", "minItems": 1, "maxItems": 5,
+							"items": map[string]any{"type": "string"},
+						},
+						"headline":    map[string]any{"type": "string", "minLength": 1},
+						"explanation": map[string]any{"type": "string", "minLength": 1},
+					},
+				},
+			},
 			"compliance_requirements": map[string]any{
 				"type": []any{"array", "null"},
 				"items": map[string]any{
@@ -119,7 +137,7 @@ func ReviewResponseFormat() *llmwire.ResponseFormat {
 // sync with ReviewResponseSchema.
 const schemaJSON = `{"type": "object", "additionalProperties": false, "required": ` +
 	`["overview", "strengths", "security_performance", "test_coverage", "verdict", "findings", ` +
-	`"fixed", "compliance_requirements"], "properties": {"overview": {"type": "string", "minLength": 1}, ` +
+	`"fixed", "pre_existing", "compliance_requirements"], "properties": {"overview": {"type": "string", "minLength": 1}, ` +
 	`"strengths": {"type": "array", "maxItems": 4, "items": {"type": "string"}}, ` +
 	`"security_performance": {"type": "string", "minLength": 1}, ` +
 	`"test_coverage": {"type": "string", "minLength": 1}, ` +
@@ -137,6 +155,11 @@ const schemaJSON = `{"type": "object", "additionalProperties": false, "required"
 	`"fixed": {"type": "array", "items": {"type": "object", "additionalProperties": false, ` +
 	`"required": ["id", "evidence"], "properties": {"id": {"type": "string"}, ` +
 	`"evidence": {"type": "array", "minItems": 1, "maxItems": 5, "items": {"type": "string"}}}}}, ` +
+	`"pre_existing": {"type": "array", "maxItems": 5, "items": {"type": "object", "additionalProperties": false, ` +
+	`"required": ["file", "line", "evidence", "headline", "explanation"], ` +
+	`"properties": {"file": {"type": "string"}, "line": {"type": "integer"}, ` +
+	`"evidence": {"type": "array", "minItems": 1, "maxItems": 5, "items": {"type": "string"}}, ` +
+	`"headline": {"type": "string", "minLength": 1}, "explanation": {"type": "string", "minLength": 1}}}}, ` +
 	`"compliance_requirements": {"type": ["array", "null"], "items": {"type": "object", ` +
 	`"additionalProperties": false, "required": ["requirement", "met", "evidence"], ` +
 	`"properties": {"requirement": {"type": "string"}, "met": {"type": "boolean"}, ` +

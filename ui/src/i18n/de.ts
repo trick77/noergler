@@ -372,6 +372,9 @@ export const de = {
     moreAfter: "Neuere Runs dieses Pull Requests sind hier nicht aufgeführt.",
     prTotalNote:
       "Das Total ist, was dieser Pull Request seit seiner letzten Beanspruchung gekostet hat, und damit auch, was ein Kostenlimit zählt. Es kann deshalb von den Zeilen oben abweichen.",
+    preExistingTitle: "Schon vor diesem PR kaputt",
+    preExistingNote:
+      "Fehler, die das Modell in Code gesehen hat, den dieser PR nicht ändert; nicht im PR gepostet, darum nur hier",
     callsTitle: "Antworten",
     callsNote:
       "Jede zählt zum PR-Total und zu seinem Limit. Am Limit antwortet der Bot nicht mehr, auch nicht auf Erwähnungen.",

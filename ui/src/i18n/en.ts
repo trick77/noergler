@@ -381,6 +381,9 @@ export const en = {
     moreAfter: "Newer runs of this pull request are not listed here.",
     prTotalNote:
       "The total is what this pull request has cost since it was last claimed, which is also what a cost cap counts, so it can differ from the rows above.",
+    preExistingTitle: "Already broken before this PR",
+    preExistingNote:
+      "bugs the model saw in code this PR did not change; not posted to the PR, so they are only here",
     callsTitle: "Replies and answers",
     callsNote:
       "Each one counts toward the PR total and its cap. At the cap the bot stops answering, mentions included.",

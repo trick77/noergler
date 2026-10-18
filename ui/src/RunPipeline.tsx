@@ -4,7 +4,13 @@
 // Headlines only, like everything on the page.
 import { useTranslation } from "react-i18next";
 import type { RunPipeline } from "./api";
-import { duration, known, severityTone, severityWord } from "./format";
+import {
+  duration,
+  known,
+  severityTone,
+  severityWord,
+  sourceUrl,
+} from "./format";
 import {
   Card,
   Empty,
@@ -337,6 +343,58 @@ export function NotPostedCard({ p }: { p: RunPipeline }) {
           </tbody>
         </table>
       </div>
+    </Card>
+  );
+}
+
+/** PreExistingCard lists the bugs the model saw in code this PR did not
+ *  change. Never posted to the PR, so this is the only place they are said:
+ *  the explanation in prose and a link to the line, no code. */
+export function PreExistingCard({
+  p,
+  tag,
+  base,
+}: {
+  p: RunPipeline;
+  tag: string;
+  base: string;
+}) {
+  const { t } = useTranslation();
+  const bugs = p.pre_existing ?? [];
+  if (bugs.length === 0) return null;
+  return (
+    <Card title={t("run.preExistingTitle")} note={t("run.preExistingNote")}>
+      <ul className="flex flex-col gap-3">
+        {bugs.map((b, i) => {
+          const href = sourceUrl(tag, base, b.file, b.line, p.commit);
+          const where = `${b.file}:${b.line}`;
+          return (
+            <li
+              key={i}
+              className="border-b border-border-soft pb-3 last:border-0 last:pb-0"
+            >
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span className="text-[14px] text-ink">{b.headline}</span>
+                {href ? (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-mono text-[12.5px] text-muted hover:underline"
+                  >
+                    {where} ↗
+                  </a>
+                ) : (
+                  <span className="font-mono text-[12.5px] text-muted">
+                    {where}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-[13.5px] text-ink-dim">{b.explanation}</p>
+            </li>
+          );
+        })}
+      </ul>
     </Card>
   );
 }

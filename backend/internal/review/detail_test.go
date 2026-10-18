@@ -121,3 +121,35 @@ func TestHTTPCountsSorted(t *testing.T) {
 		t.Error("no counts must be an empty list, not null")
 	}
 }
+
+// A bug in code the PR did not change goes on the run page, never the PR:
+// recorded with the reviewed commit for its link, no inline comment, no
+// effect on the verdict. One quoting the PR's own added line is dropped.
+func TestPreExistingBugsGoToThePageOnly(t *testing.T) {
+	h := newHarness(t, nil)
+	res := okResultWith()
+	res.Review.PreExisting = []inference.PreExistingBug{
+		{File: "a.go", Line: 1, Headline: "Package name shadows the stdlib", Explanation: "Imports break.",
+			Evidence: []string{"package a"}},
+		{File: "a.go", Line: 2, Headline: "really the PR's", Explanation: "x",
+			Evidence: []string{"func new() {}"}},
+	}
+	h.llm.review = res
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+	d := decodeDetail(t, h)
+	if len(d.PreExisting) != 1 || d.PreExisting[0].Headline != "Package name shadows the stdlib" ||
+		d.PreExisting[0].Explanation != "Imports break." || d.PreExisting[0].Line != 1 {
+		t.Errorf("pre_existing = %+v, want the one in unchanged code", d.PreExisting)
+	}
+	if d.Commit == "" {
+		t.Error("no commit recorded for the link")
+	}
+	if len(h.bb.Inline) != 0 {
+		t.Errorf("inline comments = %d: a pre-existing bug is never posted", len(h.bb.Inline))
+	}
+	if d.Verdict == nil || d.Verdict.Posted != "approve" {
+		t.Errorf("verdict = %+v: pre-existing bugs never move it", d.Verdict)
+	}
+}

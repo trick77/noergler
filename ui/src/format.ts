@@ -270,6 +270,23 @@ export function prUrl(tag: string, base: string): string | null {
   return `${base}/projects/${encodeURIComponent(project)}/repos/${encodeURIComponent(repo)}/pull-requests/${id}`;
 }
 
+/** sourceUrl is a file at a commit, scrolled to a line, in Bitbucket's
+ *  browser; null without a Bitbucket base, a parseable tag or a commit. */
+export function sourceUrl(
+  tag: string,
+  base: string,
+  file: string,
+  line: number,
+  commit: string | undefined,
+): string | null {
+  if (base === "" || !commit) return null;
+  const m = /^([^/]+)\/([^#]+)#(\d+)$/.exec(tag);
+  if (m === null) return null;
+  const [, project, repo] = m;
+  const path = file.split("/").map(encodeURIComponent).join("/");
+  return `${base}/projects/${encodeURIComponent(project)}/repos/${encodeURIComponent(repo)}/browse/${path}?at=${encodeURIComponent(commit)}#${line}`;
+}
+
 /** byName sorts teams the way the page reads them: by display name, folding
  *  case and accents, so "Diecibärg" files under D rather than after Z.
  *

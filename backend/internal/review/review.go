@@ -307,6 +307,8 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		PreviouslyPosted: store.PreviouslyPosted{Shown: len(posted), Total: len(existing)},
 		Decisions:        []store.FindingDecision{},
 		Moved:            []store.MovedFinding{},
+		PreExisting:      []store.PreExistingBug{},
+		Commit:           sourceCommit,
 	}
 	// Names only: BuildRelationships emits one relationship per defining
 	// file, and the card lists a name once even when two files define it.
@@ -432,6 +434,20 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	reviewSummary := inference.AdjustVerdict(result.Review.Summary, v.Kept, len(v.Dropped))
 	for _, d := range v.Dropped {
 		plan.detail.Decisions = append(plan.detail.Decisions, decision(d.Finding, "dropped", string(d.Reason)))
+	}
+	// Bugs in code the PR did not change: validated like findings, minus
+	// the in-diff rule, and only ever shown on the run page.
+	pre, preDropped := inference.ValidatePreExisting(result.Review.PreExisting, plan.anchors)
+	for _, d := range preDropped {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: pre-existing bug on %s:%d dropped: %s",
+			prTag, d.Bug.File, d.Bug.Line, d.Reason))
+	}
+	for _, b := range pre {
+		plan.detail.PreExisting = append(plan.detail.PreExisting, store.PreExistingBug{
+			File: b.File, Line: b.Line, Headline: b.Headline, Explanation: b.Explanation})
+	}
+	if len(pre) > 0 {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d pre-existing bug(s) recorded for the run page, not posted", prTag, len(pre)))
 	}
 	plan.detail.Verdict = &store.VerdictChange{Model: result.Review.Summary.VerdictDecision, Posted: reviewSummary.VerdictDecision}
 	if was := result.Review.Summary.VerdictDecision; was != reviewSummary.VerdictDecision {

@@ -264,6 +264,15 @@ describe("RunPage", () => {
           },
         ],
         moved: [{ file: "retry.go", from: 85, to: 88 }],
+        commit: "3c41a0bbbbbbbbbb",
+        pre_existing: [
+          {
+            file: "client/pool.go",
+            line: 42,
+            headline: "Pool never closes idle connections",
+            explanation: "Idle connections pile up until the process restarts.",
+          },
+        ],
         verdict: { model: "request_changes", posted: "comment" },
         http: [{ upstream: "bitbucket", calls: 14 }],
       },
@@ -279,6 +288,14 @@ describe("RunPage", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: /Findings/ }));
     expect(screen.getByText("MaxRetries can go negative")).toBeDefined();
+    // Not posted, so the page says it: prose and a link to the line at the
+    // reviewed commit.
+    expect(screen.getByText("client/pool.go:42 ↗").getAttribute("href")).toBe(
+      "https://bb.example.com/projects/PAY/repos/checkout/browse/client/pool.go?at=3c41a0bbbbbbbbbb#42",
+    );
+    expect(
+      screen.getByText("Idle connections pile up until the process restarts."),
+    ).toBeDefined();
     // A drop reason reads as words, not its code.
     expect(screen.getByText("quoted code that is not there")).toBeDefined();
     expect(screen.getByText("moved from :85")).toBeDefined();
