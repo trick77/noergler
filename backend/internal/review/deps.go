@@ -85,7 +85,7 @@ type Store interface {
 	MarkDeleted(ctx context.Context, k store.PRKey) error
 	InsertRun(ctx context.Context, r store.Run) (int64, error)
 	InsertAttempt(ctx context.Context, a store.Attempt) (int64, error)
-	InsertRunDetail(ctx context.Context, attemptID int64, detail []byte) error
+	InsertRunDetail(ctx context.Context, attemptID int64, p store.Pipeline) error
 	InsertFinding(ctx context.Context, f store.Finding) error
 	ExistingFindings(ctx context.Context, k store.PRKey) ([]store.Finding, error)
 	MarkFindingFixed(ctx context.Context, findingID, runID int64) error

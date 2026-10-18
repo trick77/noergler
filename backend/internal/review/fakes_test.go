@@ -2,6 +2,7 @@ package review
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -371,10 +372,15 @@ func (f *fakeStore) InsertAttempt(_ context.Context, a store.Attempt) (int64, er
 	return int64(len(f.Attempts)), nil
 }
 
-func (f *fakeStore) InsertRunDetail(_ context.Context, attemptID int64, detail []byte) error {
+func (f *fakeStore) InsertRunDetail(_ context.Context, attemptID int64, p store.Pipeline) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err := f.err(); err != nil {
+		return err
+	}
+	// Kept as the JSON the real store writes, so a test can grep it.
+	detail, err := json.Marshal(p)
+	if err != nil {
 		return err
 	}
 	if f.Details == nil {

@@ -62,6 +62,12 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 		}
 		if path == "" {
 			path = "<unparsed>"
+		} else {
+			// For the page's file table only: a binary or generated file is
+			// not in the totals, which count reviewable files like the
+			// rollup does.
+			a, d := diff.CountChangedLines(fd)
+			p.lines[path] = lineCount{a, d}
 		}
 		skipped = append(skipped, path)
 	}

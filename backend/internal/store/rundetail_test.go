@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"strings"
 	"testing"
 )
 
@@ -80,10 +79,9 @@ func TestRunDetail(t *testing.T) {
 
 func strp(s string) *string { return &s }
 
-// A fixed finding whose run was recorded under another team gets no link:
-// that page's history belongs to the other team.
 // The detail record round-trips as the review wrote it; an attempt without
-// one reads none, and a second write replaces the first.
+// one reads none, a second write replaces the first, and a record in a shape
+// this binary cannot read leaves the detail empty instead of failing.
 func TestRunDetailRecordRoundTrip(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
@@ -92,19 +90,28 @@ func TestRunDetailRecordRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if d, _, err := s.RunDetail(ctx, id); err != nil || d.Detail != nil {
-		t.Fatalf("no record yet: %s, %v", d.Detail, err)
+		t.Fatalf("no record yet: %+v, %v", d.Detail, err)
 	}
-	for _, rec := range []string{`{"stages":[]}`, `{"stages":[{"name":"diff","ms":3}]}`} {
-		if err := s.InsertRunDetail(ctx, id, []byte(rec)); err != nil {
+	for _, rec := range []Pipeline{{}, {Stages: []StageTime{{Name: "diff", MS: 3}},
+		HTTP: []HTTPCount{{Upstream: "bitbucket", Calls: 4}}}} {
+		if err := s.InsertRunDetail(ctx, id, rec); err != nil {
 			t.Fatal(err)
 		}
 	}
 	d, _, err := s.RunDetail(ctx, id)
-	if err != nil || !strings.Contains(string(d.Detail), `"diff"`) {
-		t.Errorf("detail = %s, %v; want the second record", d.Detail, err)
+	if err != nil || d.Detail == nil || len(d.Detail.Stages) != 1 || d.Detail.HTTP[0].Calls != 4 {
+		t.Errorf("detail = %+v, %v; want the second record", d.Detail, err)
+	}
+	if _, err := s.pool.Exec(ctx, `UPDATE run_details SET detail = '{"http":{"bitbucket":4}}' WHERE attempt_id = $1`, id); err != nil {
+		t.Fatal(err)
+	}
+	if d, ok, err := s.RunDetail(ctx, id); err != nil || !ok || d.Detail != nil {
+		t.Errorf("old shape = %+v, %v, %v; want the page without the record", d.Detail, ok, err)
 	}
 }
 
+// A fixed finding whose run was recorded under another team gets no link:
+// that page's history belongs to the other team.
 func TestFixedLinkStaysInTheTeam(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

@@ -2,100 +2,13 @@ package review
 
 import (
 	"context"
-	"encoding/json"
 	"sort"
 	"time"
 
 	"github.com/trick77/noergler/internal/diff"
 	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/store"
 )
-
-// runDetail is what the run detail page shows beyond the run and call rows:
-// where the time went, what the prompt was made of, how each file was sent,
-// and what happened to every finding the model proposed. Written as one
-// JSON record per attempt, fail-open, after the summary is posted.
-//
-// Headlines only (decided): a finding's comment, suggestion and evidence
-// never go in here. The dashboard is unauthenticated.
-type runDetail struct {
-	Stages           []stageTime       `json:"stages"`
-	Prompt           promptParts       `json:"prompt"`
-	Files            []fileSent        `json:"files"`
-	CrossFile        []string          `json:"cross_file"`
-	AgentsMD         agentsMDFacts     `json:"agents_md"`
-	Ticket           string            `json:"ticket,omitempty"`
-	ParentTicket     string            `json:"parent_ticket,omitempty"`
-	PreviouslyPosted previouslyPosted  `json:"previously_posted"`
-	Decisions        []findingDecision `json:"decisions"`
-	Moved            []movedFinding    `json:"moved"`
-	Verdict          *verdictChange    `json:"verdict,omitempty"`
-	HTTP             map[string]int    `json:"http"`
-}
-
-type stageTime struct {
-	Name string `json:"name"`
-	MS   int64  `json:"ms"`
-}
-
-// promptParts is inference.PromptBreakdown plus the whole and the budget it
-// was sized against.
-type promptParts struct {
-	Template         int `json:"template"`
-	Files            int `json:"files"`
-	CumulativeDiff   int `json:"cumulative_diff"`
-	PreviouslyPosted int `json:"previously_posted"`
-	RepoInstructions int `json:"repo_instructions"`
-	Ticket           int `json:"ticket"`
-	PRDescription    int `json:"pr_description"`
-	Total            int `json:"total"`
-	Budget           int `json:"budget"`
-}
-
-// fileSent is one changed file and how the review treated it. Sent is one
-// of full, diff, content_skipped, deleted, renamed, oversized, over_budget,
-// not_reviewable. Tokens are the prompt entry's, zero for a file not sent.
-type fileSent struct {
-	Path    string `json:"path"`
-	Sent    string `json:"sent"`
-	Added   int    `json:"added"`
-	Removed int    `json:"removed"`
-	Tokens  int    `json:"tokens"`
-}
-
-type agentsMDFacts struct {
-	Found      bool `json:"found"`
-	Tokens     int  `json:"tokens"`
-	WarnTokens int  `json:"warn_tokens"`
-}
-
-type previouslyPosted struct {
-	Shown int `json:"shown"`
-	Total int `json:"total"`
-}
-
-// findingDecision is a proposed finding that did NOT end up posted, and
-// why: dropped by validation (Reason is the DropReason), a repeat of one
-// already posted, cut by the comment cap, or refused by Bitbucket. Posted
-// findings are the findings table's.
-type findingDecision struct {
-	File     string `json:"file"`
-	Line     int    `json:"line"`
-	Severity string `json:"severity"`
-	Headline string `json:"headline"`
-	Decision string `json:"decision"`
-	Reason   string `json:"reason,omitempty"`
-}
-
-type movedFinding struct {
-	File string `json:"file"`
-	From int    `json:"from"`
-	To   int    `json:"to"`
-}
-
-type verdictChange struct {
-	Model  string `json:"model"`
-	Posted string `json:"posted"`
-}
 
 // stopwatch times the stages of one review: each lap is the time since the
 // previous one. The plan carries it from prepare through infer to post, on
@@ -103,7 +16,7 @@ type verdictChange struct {
 // lock.
 type stopwatch struct {
 	last   time.Time
-	stages []stageTime
+	stages []store.StageTime
 }
 
 func newStopwatch(start time.Time) *stopwatch { return &stopwatch{last: start} }
@@ -113,7 +26,7 @@ func (s *stopwatch) lap(name string) {
 		return
 	}
 	now := time.Now()
-	s.stages = append(s.stages, stageTime{Name: name, MS: now.Sub(s.last).Milliseconds()})
+	s.stages = append(s.stages, store.StageTime{Name: name, MS: now.Sub(s.last).Milliseconds()})
 	s.last = now
 }
 
@@ -135,8 +48,8 @@ const (
 // final file set; the other lists are the ones the review left out, each
 // for its own reason.
 func filesSent(prep prepared, sent []diff.FileReviewData, deleted, renamed, overBudget []string,
-	count func(string) int) []fileSent {
-	out := []fileSent{}
+	count func(string) int) []store.FileSent {
+	out := []store.FileSent{}
 	seen := map[string]bool{}
 	add := func(path, how string, tokens int) {
 		if seen[path] {
@@ -144,7 +57,7 @@ func filesSent(prep prepared, sent []diff.FileReviewData, deleted, renamed, over
 		}
 		seen[path] = true
 		lc := prep.lines[path]
-		out = append(out, fileSent{Path: path, Sent: how, Added: lc.Added, Removed: lc.Removed, Tokens: tokens})
+		out = append(out, store.FileSent{Path: path, Sent: how, Added: lc.Added, Removed: lc.Removed, Tokens: tokens})
 	}
 	skipped := map[string]bool{}
 	for _, p := range prep.contentSkipped {
@@ -184,9 +97,9 @@ func filesSent(prep prepared, sent []diff.FileReviewData, deleted, renamed, over
 	return out
 }
 
-func promptPartsOf(a inference.AssembledPrompt, budget int) promptParts {
+func promptPartsOf(a inference.AssembledPrompt, budget int) store.PromptParts {
 	b := a.Breakdown
-	return promptParts{
+	return store.PromptParts{
 		Template: b.Template, Files: b.Files, CumulativeDiff: b.CumulativeDiff,
 		PreviouslyPosted: b.PreviouslyPosted, RepoInstructions: b.RepoInstructions,
 		Ticket: b.Ticket, PRDescription: b.PRDescription, Total: a.PromptTokens, Budget: budget,
@@ -200,8 +113,8 @@ func headlineOf(f inference.ReviewFinding) string {
 	return *f.Headline
 }
 
-func decision(f inference.ReviewFinding, what, reason string) findingDecision {
-	return findingDecision{File: f.File, Line: f.Line, Severity: f.Severity,
+func decision(f inference.ReviewFinding, what, reason string) store.FindingDecision {
+	return store.FindingDecision{File: f.File, Line: f.Line, Severity: f.Severity,
 		Headline: headlineOf(f), Decision: what, Reason: reason}
 }
 
@@ -215,15 +128,56 @@ func (r *Reviewer) finishDetail(ctx context.Context, plan *reviewPlan, attemptID
 	}
 	plan.sw.lap(last)
 	d.Stages = plan.sw.stages
-	d.HTTP = plan.counter.Summarize()
-	if d.HTTP == nil {
-		d.HTTP = map[string]int{}
-	}
-	blob, err := json.Marshal(d)
-	if err != nil {
-		return
-	}
+	d.HTTP = httpCounts(plan.counter.Summarize())
 	safeDBErr(ctx, r.log, "InsertRunDetail", func() error {
-		return r.store.InsertRunDetail(ctx, attemptID, blob)
+		return r.store.InsertRunDetail(ctx, attemptID, *d)
 	})
+}
+
+// httpCounts is the counter's per-upstream totals, by name.
+func httpCounts(m map[string]int) []store.HTTPCount {
+	out := make([]store.HTTPCount, 0, len(m))
+	for k, n := range m {
+		out = append(out, store.HTTPCount{Upstream: k, Calls: n})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Upstream < out[j].Upstream })
+	return out
+}
+
+// postedMoves keeps the moves of findings that were posted: validation moves
+// a finding before dedupe, the cap and the post decide whether it is shown,
+// and the findings table matches a move by file and posted line.
+func postedMoves(moves []inference.Reanchor, findings []inference.ReviewFinding, postedIDs []int) []store.MovedFinding {
+	type at struct {
+		file string
+		line int
+	}
+	posted := map[at]bool{}
+	for i, id := range postedIDs {
+		if id != 0 {
+			posted[at{findings[i].File, findings[i].Line}] = true
+		}
+	}
+	out := []store.MovedFinding{}
+	for _, m := range moves {
+		if posted[at{m.File, m.To}] {
+			out = append(out, store.MovedFinding{File: m.File, From: m.From, To: m.To})
+		}
+	}
+	return out
+}
+
+// memoCount counts each distinct text once: the files-sent log line and the
+// page's file table both count every prompt entry, and the second pass would
+// otherwise run the tokenizer over every file body again on the worker.
+func memoCount(count func(string) int) func(string) int {
+	seen := map[string]int{}
+	return func(s string) int {
+		if n, ok := seen[s]; ok {
+			return n
+		}
+		n := count(s)
+		seen[s] = n
+		return n
+	}
 }

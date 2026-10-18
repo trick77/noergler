@@ -218,6 +218,14 @@ export const de = {
     cut: "über dem Kommentar-Limit",
     failed: "Posten fehlgeschlagen",
   },
+  dropReason: {
+    unknown_file: "nennt eine Datei, die der Prompt nicht zeigte",
+    no_evidence: "zitiert keinen Code",
+    evidence_not_found: "zitiert Code, den es nicht gibt",
+    evidence_outside_diff: "zitiert nur Code, den der PR nicht ändert",
+    anchor_mismatch: "Beleg nicht auf seiner Zeile, und mehrdeutig",
+    noop_suggestion: "schlägt den Code vor, der schon dasteht",
+  },
   run: {
     legendWait: "Warten",
     stagesNote:

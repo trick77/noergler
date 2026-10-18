@@ -255,7 +255,8 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	}
 	// What the prompt carries, file by file, after compression and
 	// expansion: the one place the per-file cost is visible.
-	r.log.InfoContext(ctx, prTag+": "+renderFilesSent(files, r.tokens.Count))
+	count := memoCount(r.tokens.Count)
+	r.log.InfoContext(ctx, prTag+": "+renderFilesSent(files, count))
 	sw.lap(stageFiles)
 
 	// 16. Cross-file context, Jira, previously-posted findings.
@@ -302,20 +303,25 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		Language:              l,
 	}, r.tokens.Count)
 	r.logPromptComposition(ctx, prTag, assembled, incrementalFrom != "")
-	sw.lap(stagePrompt)
 
-	detail := &runDetail{
+	detail := &store.Pipeline{
 		Prompt:    promptPartsOf(assembled, budget),
-		Files:     filesSent(prep, files, deletedPaths, renamedPaths, otherModified, r.tokens.Count),
+		Files:     filesSent(prep, files, deletedPaths, renamedPaths, otherModified, count),
 		CrossFile: []string{},
-		AgentsMD: agentsMDFacts{Found: repoInstructions != "", Tokens: assembled.Breakdown.RepoInstructions,
+		AgentsMD: store.AgentsMDFacts{Found: repoInstructions != "", Tokens: assembled.Breakdown.RepoInstructions,
 			WarnTokens: r.cfg.AgentsMDWarnTokens},
-		PreviouslyPosted: previouslyPosted{Shown: len(posted), Total: len(existing)},
-		Decisions:        []findingDecision{},
-		Moved:            []movedFinding{},
+		PreviouslyPosted: store.PreviouslyPosted{Shown: len(posted), Total: len(existing)},
+		Decisions:        []store.FindingDecision{},
+		Moved:            []store.MovedFinding{},
 	}
+	// One relationship per defining file: a symbol several files define
+	// is still one symbol.
+	symbols := map[string]bool{}
 	for _, rel := range relationships {
-		detail.CrossFile = append(detail.CrossFile, rel.Symbol)
+		if !symbols[rel.Symbol] {
+			symbols[rel.Symbol] = true
+			detail.CrossFile = append(detail.CrossFile, rel.Symbol)
+		}
 	}
 	if ticket != nil {
 		detail.Ticket = ticket.Key
@@ -328,6 +334,8 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// the only place an earlier push's change is shown.
 	anchors := diff.BuildAnchorIndex(files)
 	anchors.AddContextDiff(cumulativePR.diff)
+	// The last of prepare's own work: what follows is the wait for a slot.
+	sw.lap(stagePrompt)
 
 	return &reviewPlan{
 		sw:              sw,
@@ -431,10 +439,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	for _, d := range v.Dropped {
 		plan.detail.Decisions = append(plan.detail.Decisions, decision(d.Finding, "dropped", string(d.Reason)))
 	}
-	for _, m := range v.Reanchored {
-		plan.detail.Moved = append(plan.detail.Moved, movedFinding{File: m.File, From: m.From, To: m.To})
-	}
-	plan.detail.Verdict = &verdictChange{Model: result.Review.Summary.VerdictDecision, Posted: reviewSummary.VerdictDecision}
+	plan.detail.Verdict = &store.VerdictChange{Model: result.Review.Summary.VerdictDecision, Posted: reviewSummary.VerdictDecision}
 	if was := result.Review.Summary.VerdictDecision; was != reviewSummary.VerdictDecision {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: verdict lowered %s -> %s after %d dropped finding(s)",
 			prTag, was, reviewSummary.VerdictDecision, len(v.Dropped)))
@@ -476,6 +481,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 			plan.detail.Decisions = append(plan.detail.Decisions, decision(findings[i], "failed", ""))
 		}
 	}
+	plan.detail.Moved = postedMoves(v.Reanchored, findings, postedIDs)
 	plan.sw.lap(stageComments)
 
 	elapsed := time.Since(started)

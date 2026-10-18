@@ -4,7 +4,7 @@
 // Headlines only, like everything on the page.
 import { useTranslation } from "react-i18next";
 import type { RunPipeline } from "./api";
-import { duration, severityTone, severityWord } from "./format";
+import { duration, known, severityTone, severityWord } from "./format";
 import {
   Card,
   Empty,
@@ -18,21 +18,8 @@ import {
   thNum,
 } from "./ui";
 
-/** Stages the page knows by name; one it does not (a newer binary) still
- *  draws, under its own name. */
-const STAGE_KEYS = new Set([
-  "diff",
-  "files",
-  "context",
-  "prompt",
-  "queued",
-  "gateway",
-  "to_post",
-  "validate",
-  "comments",
-  "record",
-]);
-// Waits are hatched, the gateway call has its own hue, the rest is
+// A stage the page does not know (a newer binary) still draws, under its
+// own name. Waits are hatched, the gateway call has its own hue, the rest is
 // noergler and Bitbucket.
 const WAITS = new Set(["queued", "to_post"]);
 
@@ -49,9 +36,7 @@ export function StageTimeline({ p }: { p: RunPipeline }) {
       {p.stages.map((s, i) => {
         const left = (starts[i] / total) * 100;
         const width = Math.max(0.4, (s.ms / total) * 100);
-        const label = STAGE_KEYS.has(s.name)
-          ? t(`stage.${s.name}` as "stage.diff")
-          : s.name;
+        const label = known("stage", s.name) ? t(`stage.${s.name}`) : s.name;
         const cls = WAITS.has(s.name)
           ? "texture-wait"
           : s.name === "gateway"
@@ -131,12 +116,11 @@ function KV({ k, v, mono }: { k: string; v: React.ReactNode; mono?: boolean }) {
 export function ContextCard({ p }: { p: RunPipeline }) {
   const { t } = useTranslation();
   const a = p.agents_md;
-  const http = Object.entries(p.http).sort(([x], [y]) => x.localeCompare(y));
   return (
     <Card title={t("run.contextTitle")}>
       <dl className="grid grid-cols-1 gap-x-7 sm:grid-cols-2">
         <KV
-          k="AGENTS.md"
+          k={t("promptPart.repo_instructions")}
           v={
             !a.found
               ? t("run.agentsMissing")
@@ -165,35 +149,31 @@ export function ContextCard({ p }: { p: RunPipeline }) {
           mono
           v={p.cross_file.length === 0 ? "—" : p.cross_file.join(", ")}
         />
-        {http.map(([k, n]) => (
-          <KV key={k} k={t("run.httpCalls", { upstream: k })} mono v={n} />
+        {p.http.map((h) => (
+          <KV
+            key={h.upstream}
+            k={t("run.httpCalls", { upstream: h.upstream })}
+            mono
+            v={h.calls}
+          />
         ))}
       </dl>
     </Card>
   );
 }
 
-/** The prompt's parts in the order the prompt carries them. */
+/** The prompt's parts in the order review.txt carries them, the template's
+ *  own text first: the stable context, then the files, then what changes
+ *  run to run. */
 const PARTS = [
   "template",
-  "files",
-  "cumulative_diff",
-  "previously_posted",
   "repo_instructions",
   "ticket",
   "pr_description",
+  "files",
+  "cumulative_diff",
+  "previously_posted",
 ] as const;
-
-const SENT = new Set([
-  "full",
-  "diff",
-  "content_skipped",
-  "deleted",
-  "renamed",
-  "oversized",
-  "over_budget",
-  "not_reviewable",
-]);
 
 export function InputTab({ p }: { p: RunPipeline | null }) {
   const { t } = useTranslation();
@@ -287,9 +267,7 @@ export function InputTab({ p }: { p: RunPipeline | null }) {
                         {f.path}
                       </td>
                       <td className={td + (out ? " text-faint" : "")}>
-                        {SENT.has(f.sent)
-                          ? t(`sent.${f.sent}` as "sent.full")
-                          : f.sent}
+                        {known("sent", f.sent) ? t(`sent.${f.sent}`) : f.sent}
                       </td>
                       <td className={tdNum}>{f.added}</td>
                       <td className={tdNum}>{f.removed}</td>
@@ -307,8 +285,6 @@ export function InputTab({ p }: { p: RunPipeline | null }) {
     </>
   );
 }
-
-const DECISIONS = new Set(["dropped", "repeat", "cut", "failed"]);
 
 export function NotPostedCard({ p }: { p: RunPipeline }) {
   const { t } = useTranslation();
@@ -343,13 +319,15 @@ export function NotPostedCard({ p }: { p: RunPipeline }) {
                       f.decision === "repeat" ? "text-muted" : "text-danger-ink"
                     }
                   >
-                    {DECISIONS.has(f.decision)
-                      ? t(`decision.${f.decision}` as "decision.dropped")
+                    {known("decision", f.decision)
+                      ? t(`decision.${f.decision}`)
                       : f.decision}
                   </span>
                   {f.reason && (
-                    <div className="font-mono text-[11.5px] text-faint">
-                      {f.reason}
+                    <div className="text-[11.5px] text-faint">
+                      {known("dropReason", f.reason)
+                        ? t(`dropReason.${f.reason}`)
+                        : f.reason}
                     </div>
                   )}
                 </td>

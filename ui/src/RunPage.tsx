@@ -530,8 +530,8 @@ function FindingRows({
                       )}
                       {moved
                         .filter((m) => m.file === f.file && m.to === f.line)
-                        .map((m) => (
-                          <div key={m.from} className="text-faint">
+                        .map((m, i) => (
+                          <div key={i} className="text-faint">
                             {t("run.movedFrom", { line: m.from })}
                           </div>
                         ))}

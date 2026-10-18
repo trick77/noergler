@@ -92,7 +92,7 @@ type reviewPlan struct {
 	// sw times the stages and detail collects the run page's record, from
 	// prepare through post.
 	sw     *stopwatch
-	detail *runDetail
+	detail *store.Pipeline
 }
 
 // abort logs a prepare exit's HTTP totals and reports "not ok", so each of

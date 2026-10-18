@@ -228,6 +228,15 @@ export const en = {
     cut: "over the comment cap",
     failed: "post failed",
   },
+  // Validation's drop reasons, by the code ValidateFindings writes.
+  dropReason: {
+    unknown_file: "names a file the prompt did not show",
+    no_evidence: "quoted no code",
+    evidence_not_found: "quoted code that is not there",
+    evidence_outside_diff: "quoted only code the PR did not change",
+    anchor_mismatch: "evidence not at its line, and ambiguous",
+    noop_suggestion: "suggested the code already there",
+  },
   run: {
     legendWait: "waiting",
     stagesNote:

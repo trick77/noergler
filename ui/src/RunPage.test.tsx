@@ -262,7 +262,7 @@ describe("RunPage", () => {
         ],
         moved: [{ file: "retry.go", from: 85, to: 88 }],
         verdict: { model: "request_changes", posted: "comment" },
-        http: { bitbucket: 14 },
+        http: [{ upstream: "bitbucket", calls: 14 }],
       },
     });
     render(<RunPage id={7} />);
@@ -276,7 +276,8 @@ describe("RunPage", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: /Findings/ }));
     expect(screen.getByText("MaxRetries can go negative")).toBeDefined();
-    expect(screen.getByText("evidence_not_found")).toBeDefined();
+    // A drop reason reads as words, not its code.
+    expect(screen.getByText("quoted code that is not there")).toBeDefined();
     expect(screen.getByText("moved from :85")).toBeDefined();
     expect(
       screen.getByText(/Verdict lowered from request_changes to comment/),

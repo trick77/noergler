@@ -7,16 +7,17 @@ import (
 	"testing"
 
 	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
 
-func decodeDetail(t *testing.T, h *harness) runDetail {
+func decodeDetail(t *testing.T, h *harness) store.Pipeline {
 	t.Helper()
 	blob, ok := h.st.Details[1]
 	if !ok {
 		t.Fatalf("no detail record for attempt 1: %v", h.st.Details)
 	}
-	var d runDetail
+	var d store.Pipeline
 	if err := json.Unmarshal(blob, &d); err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +65,7 @@ func TestRunDetailRecord(t *testing.T) {
 		t.Errorf("verdict = %+v", d.Verdict)
 	}
 	// The fakes bypass the HTTP counter, so the counts are empty here; the
-	// record still carries the map, never null.
+	// record still carries the list, never null.
 	if d.HTTP == nil {
 		t.Error("http counts missing")
 	}
@@ -91,5 +92,39 @@ func TestRunDetailOnFailure(t *testing.T) {
 	}
 	if d.Prompt.Total == 0 || len(d.Decisions) != 0 || d.Verdict != nil {
 		t.Errorf("detail = %+v", d)
+	}
+}
+
+// Only a posted finding's move is shown: one moved and then dropped as a
+// repeat, cut or refused leaves nothing for the findings table to match.
+func TestPostedMoves(t *testing.T) {
+	moves := []inference.Reanchor{{File: "a.go", From: 40, To: 2}, {File: "a.go", From: 9, To: 5}}
+	findings := []inference.ReviewFinding{finding("a.go", 2, "issue", "x"), finding("a.go", 5, "issue", "y")}
+	got := postedMoves(moves, findings, []int{101, 0})
+	if len(got) != 1 || got[0].From != 40 {
+		t.Errorf("moves = %+v, want only the posted one", got)
+	}
+}
+
+// Every distinct text is counted once, however often it is asked for.
+func TestMemoCount(t *testing.T) {
+	calls := 0
+	count := memoCount(func(s string) int { calls++; return len(s) })
+	for _, s := range []string{"ab", "abc", "ab", "abc"} {
+		count(s)
+	}
+	if calls != 2 {
+		t.Errorf("tokenizer ran %d times, want 2", calls)
+	}
+}
+
+// Upstreams come out by name, so the page's order never depends on a map.
+func TestHTTPCountsSorted(t *testing.T) {
+	got := httpCounts(map[string]int{"jira": 1, "bitbucket": 6, "inference": 1})
+	if len(got) != 3 || got[0].Upstream != "bitbucket" || got[2].Upstream != "jira" {
+		t.Errorf("counts = %+v", got)
+	}
+	if httpCounts(nil) == nil {
+		t.Error("no counts must be an empty list, not null")
 	}
 }

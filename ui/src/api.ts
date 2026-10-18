@@ -202,7 +202,8 @@ export interface RunPipeline {
   }[];
   moved: { file: string; from: number; to: number }[];
   verdict?: { model: string; posted: string };
-  http: Record<string, number>;
+  /** Requests per upstream, by name. */
+  http: { upstream: string; calls: number }[];
 }
 
 /** RunCall is what the AI Gateway reported about the call. Lanes at six
