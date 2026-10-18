@@ -30,7 +30,7 @@ export const de = {
     skipped: "übersprungen",
     timed_out: "Zeitüberschreitung",
     unparseable: "unlesbar",
-    too_large: "Prompt zu gross",
+    too_large: "Kontext überschritten",
     error: "Fehler",
   },
   skipWord: {

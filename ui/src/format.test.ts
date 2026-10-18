@@ -5,6 +5,7 @@ import {
   duration,
   money,
   moneyTick,
+  outcomeTitle,
   outcomeTone,
   outcomeWord,
   prUrl,
@@ -207,6 +208,16 @@ describe("outcomeWord", () => {
   it("words every other outcome for a reader, not as its code", () => {
     expect(outcomeWord("ok")).toBe("ok");
     expect(outcomeWord("timed_out")).toBe("timed out");
+    // Written by a newer binary: its code, readable.
+    expect(outcomeWord("rate_limited")).toBe("rate limited");
+  });
+
+  // The pill shows a reader's word; the stored code an operator greps the
+  // log and the database for stays on the tooltip.
+  it("keeps a failure's stored code on the tooltip", () => {
+    expect(outcomeTitle("too_large")).toBe("too_large");
+    expect(outcomeTitle("ok")).toBeUndefined();
+    expect(outcomeTitle("skipped", "empty_diff")).toBe("Empty diff");
   });
 });
 

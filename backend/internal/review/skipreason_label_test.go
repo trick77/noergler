@@ -23,8 +23,9 @@ var allSkipReasons = []SkipReason{
 // allSkipReasons is a hand-kept list the label tests below lean on. This
 // reads the package's own declarations, so a reason added there and
 // forgotten here fails instead of escaping every test that ranges over the
-// list. Typed constants only (`X SkipReason = "x"`, grouped or not), which
-// is how every reason is declared.
+// list. File-scope typed constants only (`X SkipReason = "x"`, grouped or
+// not), which is how every reason is declared; a value two names share
+// counts once.
 func TestAllSkipReasonsIsComplete(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	if err != nil {
@@ -41,29 +42,32 @@ func TestAllSkipReasonsIsComplete(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		ast.Inspect(f, func(n ast.Node) bool {
-			vs, ok := n.(*ast.ValueSpec)
-			if !ok {
-				return true
+		for _, decl := range f.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.CONST {
+				continue
 			}
-			if id, ok := vs.Type.(*ast.Ident); !ok || id.Name != "SkipReason" {
-				return true
-			}
-			for _, val := range vs.Values {
-				lit, ok := val.(*ast.BasicLit)
-				if !ok {
+			for _, spec := range gd.Specs {
+				vs := spec.(*ast.ValueSpec)
+				if id, ok := vs.Type.(*ast.Ident); !ok || id.Name != "SkipReason" {
 					continue
 				}
-				if v, err := strconv.Unquote(lit.Value); err == nil && v != "" {
-					declared = append(declared, SkipReason(v))
+				for _, val := range vs.Values {
+					lit, ok := val.(*ast.BasicLit)
+					if !ok {
+						continue
+					}
+					if v, err := strconv.Unquote(lit.Value); err == nil && v != "" {
+						declared = append(declared, SkipReason(v))
+					}
 				}
 			}
-			return true
-		})
+		}
 	}
 	got := slices.Clone(allSkipReasons)
 	slices.Sort(got)
 	slices.Sort(declared)
+	declared = slices.Compact(declared)
 	if !slices.Equal(got, declared) {
 		t.Errorf("allSkipReasons = %v, the package declares %v", got, declared)
 	}

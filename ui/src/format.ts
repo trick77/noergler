@@ -115,11 +115,28 @@ export function outcomeTone(outcome: string): Tone {
  *  skip tone, so the Skipped filter and counts still read as one group. */
 export function outcomeWord(outcome: string, reason?: string): string {
   if (outcome !== "skipped") {
-    return known("outcome", outcome) ? i18n.t(`outcome.${outcome}`) : outcome;
+    // An outcome a newer binary wrote: its code, readable, rather than blank.
+    return known("outcome", outcome)
+      ? i18n.t(`outcome.${outcome}`)
+      : outcome.replaceAll("_", " ");
   }
   return reason && known("skipWord", reason)
     ? i18n.t(`skipWord.${reason}`)
     : i18n.t("outcome.skipped");
+}
+
+/** outcomeTitle is the pill's tooltip: a skip's long reason, and for a
+ *  failure the stored code (too_large), which is what the log and the
+ *  database say. The pill shows a reader's word; the code an operator greps
+ *  for stays one hover away. */
+export function outcomeTitle(
+  outcome: string,
+  reason?: string,
+  serverLabel?: string,
+): string | undefined {
+  if (outcome === "ok") return undefined;
+  if (outcome === "skipped") return reasonLabel(reason, serverLabel);
+  return outcome;
 }
 
 /** known narrows a stored code to a key of its catalog group, so the lookup
@@ -129,13 +146,12 @@ export function outcomeWord(outcome: string, reason?: string): string {
  *  caller's fallback. Asked of en: de mirrors its keys exactly (satisfies
  *  Catalog), so the answer holds for either language.
  *
- *  Only flat groups (code -> word) qualify: a nested group like faq would
- *  narrow to a key whose value is an object, which t renders as an error. */
-type FlatGroup = {
-  [G in keyof Catalog]: Catalog[G] extends Record<string, string> ? G : never;
-}[keyof Catalog];
+ *  Only the plain code -> word groups qualify. A nested group (faq) or one
+ *  with {{placeholders}} (common) would let a caller render an object or a
+ *  raw template. */
+type CodeGroup = "outcome" | "skipWord" | "reason" | "teamState";
 
-function known<G extends FlatGroup>(
+function known<G extends CodeGroup>(
   group: G,
   code: string,
 ): code is Extract<keyof Catalog[G], string> {

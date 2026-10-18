@@ -89,7 +89,11 @@ describe("German UI", () => {
       const failures = Object.entries(cat.outcome)
         .filter(([code]) => code !== "ok" && code !== "skipped")
         .map(([, word]) => norm(word));
-      for (const word of Object.values(cat.skipWord)) {
+      // The generic "skipped" too: it is what an unknown skip reason shows.
+      for (const word of [
+        ...Object.values(cat.skipWord),
+        cat.outcome.skipped,
+      ]) {
         expect(failures, `${lng}: skip word "${word}"`).not.toContain(
           norm(word),
         );

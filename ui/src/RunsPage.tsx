@@ -4,6 +4,7 @@ import {
   duration,
   money,
   outcomeTone,
+  outcomeTitle,
   outcomeWord,
   reasonLabel,
 } from "./format";
@@ -184,11 +185,11 @@ export function RunsPage() {
                             into three or four lines. */}
                         <Pill
                           tone={outcomeTone(r.outcome)}
-                          title={
-                            r.outcome !== "ok"
-                              ? reasonLabel(r.reason, r.reason_label)
-                              : undefined
-                          }
+                          title={outcomeTitle(
+                            r.outcome,
+                            r.reason,
+                            r.reason_label,
+                          )}
                         >
                           {outcomeWord(r.outcome, r.reason)}
                         </Pill>

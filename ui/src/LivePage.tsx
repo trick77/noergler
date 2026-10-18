@@ -6,7 +6,7 @@ import {
   elapsedSince,
   outcomeTone,
   outcomeWord,
-  reasonLabel,
+  outcomeTitle,
 } from "./format";
 import { usePoll, useNow } from "./usePoll";
 import {
@@ -201,11 +201,11 @@ export function LivePage() {
                     <td className={td + " w-px"}>
                       <Pill
                         tone={outcomeTone(tm.last_outcome)}
-                        title={
-                          tm.last_outcome !== "ok"
-                            ? reasonLabel(tm.last_reason, tm.last_reason_label)
-                            : undefined
-                        }
+                        title={outcomeTitle(
+                          tm.last_outcome,
+                          tm.last_reason,
+                          tm.last_reason_label,
+                        )}
                       >
                         {outcomeWord(tm.last_outcome, tm.last_reason)}
                       </Pill>
