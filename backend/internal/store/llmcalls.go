@@ -45,8 +45,8 @@ type LLMCall struct {
 	Warnings  []string
 }
 
-// insertLLMCall writes one review call under its attempt, inside the
-// attempt, after the attempt is committed.
+// insertLLMCall writes one review call for an attempt that is already
+// committed, as a write of its own.
 //
 // The strings are the gateway's own (header values, the response's model,
 // llmwire's warning text), so they are made storable first: Postgres refuses
