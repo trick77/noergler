@@ -42,6 +42,8 @@ type fakeDashStore struct {
 	prCost   *int64
 	// prCostErr fails only the PR total, after the detail read worked.
 	prCostErr error
+	// calls are the PR's reply and question calls.
+	calls []store.CommentCall
 
 	err error
 	// lastTeam, lastOutcome and lastLimit record what the handler asked for.
@@ -65,6 +67,9 @@ func (f *fakeDashStore) PRCost(context.Context, store.PRKey) (*int64, error) {
 		return nil, f.prCostErr
 	}
 	return f.prCost, f.err
+}
+func (f *fakeDashStore) PRCommentCalls(context.Context, store.PRKey) ([]store.CommentCall, bool, error) {
+	return f.calls, false, f.err
 }
 func (f *fakeDashStore) OutcomeBreakdown(context.Context, time.Time) ([]store.OutcomeCount, error) {
 	return f.breakdown, f.err

@@ -124,9 +124,17 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	if text == "" {
 		return true, false
 	}
+	// The per-PR cap holds for every reply, mention or not. A mention over it
+	// goes on to the Q&A, which refuses it with the banner, before anything
+	// reactivates the PR; a plain reply passes its cheap checks first.
+	atCap := fmt.Sprintf("PR cost at the $%.2f cap", r.cfg.MaxPRCostUSD)
 	if mentioned {
+		if _, _, over := r.overCap(ctx, key); over {
+			return notAnswered(atCap)
+		}
 		// A mention, here as on the Q&A path: it reactivates an ignored PR
-		// and is the explicit override of the cost cap and the author lists.
+		// and is the explicit override of the author lists, not of the
+		// cost cap.
 		r.reactivateIfIgnored(ctx, key, prTag)
 	} else if auto, ignored := r.autoReviewDecision(author); !auto {
 		// A plain reply is automatic: it obeys the author lists like an
@@ -141,12 +149,13 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		// The author removed the summary: the bot leaves the PR alone until
 		// a mention brings it back.
 		return notAnswered("PR is ignored")
-	} else if cost := safeDB(ctx, r.log, "PRCost", func() (*int64, error) {
-		return r.store.PRCost(ctx, key)
-	}); cost != nil && float64(*cost)/nanoPerUSD >= r.cfg.MaxPRCostUSD {
-		// The per-PR cap holds for a plain reply. Fail open: an unpriced PR
-		// never blocks.
-		return notAnswered(fmt.Sprintf("PR cost at the $%.2f cap", r.cfg.MaxPRCostUSD))
+	}
+	// A plain reply at the cap: the banner, no answer. Fail open.
+	if !mentioned {
+		if rowID, cumulative, over := r.overCap(ctx, key); over {
+			r.refuseOverCap(ctx, key, prTag, author, "reply on finding "+where, rowID, cumulative, false)
+			return notAnswered(atCap)
+		}
 	}
 
 	ctx, counter := httpstats.WithScope(ctx)
@@ -189,7 +198,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		PromptTokens: r.tokens.Count(inference.MentionSystemMessage) + r.tokens.Count(prompt),
 	}
 	job := &replyJob{
-		project: project, repo: repo, prID: pr.ID, prTag: prTag, where: where,
+		key: key, project: project, repo: repo, prID: pr.ID, prTag: prTag, where: where,
 		findingID: f.ID, replyTo: comment.ID, text: text,
 		agentsMD: agentsMD, counter: counter,
 		name: name, namesOn: r.displayName != nil, lang: l,
@@ -209,6 +218,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 // replyJob is what the posting stage needs from the reply's prepare. The
 // prompt does not cross: inference holds it.
 type replyJob struct {
+	key           store.PRKey
 	project, repo string
 	prID          int
 	prTag, where  string
@@ -234,6 +244,8 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 	if res.Outcome == inference.OutcomeOK || res.Outcome == inference.OutcomeUnparseable {
 		r.logCost(ctx, j.prTag, res.Cost)
 	}
+	// Billed whether or not it is posted: the PR's cost counts it.
+	r.recordCommentCall(ctx, j.key, store.CallReply, j.replyTo, res.Cost)
 	if res.Outcome != inference.OutcomeOK {
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: reply on finding %s not answered: %s %v", j.prTag, j.where, res.Outcome, res.Err))
 		return

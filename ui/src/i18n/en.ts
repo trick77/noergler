@@ -222,6 +222,10 @@ export const en = {
     over_budget: "not reviewed, over the token budget",
     not_reviewable: "not reviewed, binary or generated",
   },
+  callKind: {
+    reply: "reply to a finding",
+    question: "answer to a mention",
+  },
   decision: {
     dropped: "dropped",
     repeat: "already posted",
@@ -377,6 +381,14 @@ export const en = {
     moreAfter: "Newer runs of this pull request are not listed here.",
     prTotalNote:
       "The total is what this pull request has cost since it was last claimed, which is also what a cost cap counts, so it can differ from the rows above.",
+    callsTitle: "Replies and answers",
+    callsNote:
+      "Each one counts toward the PR total and its cap. At the cap the bot stops answering, mentions included.",
+    callKind: "Kind",
+    model: "Model",
+    moreCalls: "Older replies and answers are not listed here.",
+    callsFailed:
+      "Replies and answers could not be read. The PR total above still counts them.",
   },
   faq: {
     lede: "Why noergler did or did not review your pull request. Defaults below; your team may have changed them.",
@@ -391,7 +403,8 @@ export const en = {
       branch_opt_out: "Your branch name contains it. See below.",
       pr_ignored:
         "Somebody deleted the summary comment. Nothing brings it back on this PR.",
-      pr_cost_cap: "@mention the bot to review anyway.",
+      pr_cost_cap:
+        "Nothing more runs on this PR, mentions included. Ask your admin to raise the limit.",
       no_reviewable_files:
         "Only lockfiles, vendored code, generated output or binaries changed.",
       empty_diff: "Bitbucket reports no changes.",
@@ -419,14 +432,14 @@ export const en = {
     askA1:
       "Mention the bot by its Bitbucket username in a PR comment. Ask a question and it answers; ask for a review and it runs one.",
     askA2:
-      "Mentioning it overrides the auto-review list and the cost cap, so it works on PRs that would never be reviewed on their own.",
+      "Mentioning it overrides the auto-review list, so it works on PRs that would never be reviewed on their own. It does not override the cost cap: every reply and answer counts toward it, and at the cap the bot stops answering too.",
     lessQ: "Why did the second review say less than the first?",
     lessA1:
       "A new commit is reviewed against the last reviewed commit, not the whole PR, and findings already posted are not repeated.",
     lessA2: "Reopening a declined PR starts over from scratch.",
     stoppedQ: "Why did reviews stop halfway through my PR?",
     stoppedA:
-      "The PR hit its cost cap; the running total is on the summary comment. Mention the bot to review anyway.",
+      "The PR hit its cost cap; the running total is on the summary comment. Reviews, replies and answers all count toward it. Ask your admin to raise the limit.",
     filesQ: "Which files get reviewed?",
     filesA1:
       "Source files that changed in the PR. Lockfiles, vendored directories, generated output and binaries are skipped.",

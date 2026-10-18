@@ -178,7 +178,8 @@ type CodeGroup =
   | "stage"
   | "sent"
   | "decision"
-  | "dropReason";
+  | "dropReason"
+  | "callKind";
 
 /** known tells a code the catalog has from one a newer binary wrote, which
  *  the page prints as it came. */

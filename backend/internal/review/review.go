@@ -163,27 +163,21 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		}
 	}
 
-	// 8. Per-PR cost cap, on the auto path only. A mention is the explicit
-	// override and always runs. Fail open: an unpriced PR never blocks.
-	if !skipAuthorCheck {
-		if cost := safeDB(ctx, r.log, "PRCost", func() (*int64, error) {
-			return r.store.PRCost(ctx, key)
-		}); cost != nil {
-			cumulative := float64(*cost) / nanoPerUSD
-			if cumulative >= r.cfg.MaxPRCostUSD {
-				// 2 decimals, not the 3 the cost log lines use: these are the
-				// same two figures costLimitNotice renders into the banner
-				// below, and a log that disagrees with the posted comment
-				// about the number that paused reviews is worse than a log
-				// that is less precise than its neighbours.
-				r.log.InfoContext(ctx, fmt.Sprintf(
-					"%s: PR cost $%.2f >= limit $%.2f - skipping auto-review (@%s to review manually, or raise REVIEW_MAX_PR_COST_USD)",
-					prTag, cumulative, r.cfg.MaxPRCostUSD, r.bitbucket.BotUsername()))
-				prReviewID, _ := r.upsertKeepingPrior(ctx, upsert, key)
-				r.costLimitNotice(ctx, l, project, repo, pr.ID, prReviewID, cumulative, r.cfg.MaxPRCostUSD)
-				return nil, ctx, r.abort(ctx, key, kind, SkipCostCap, prTag, httpCounter)
-			}
-		}
+	// 8. Per-PR cost cap, mention or not (decided: a mention no longer
+	// overrides it; raising the limit is the way on). Fail open: an
+	// unpriced PR never blocks.
+	if _, cumulative, over := r.overCap(ctx, key); over {
+		// 2 decimals, not the 3 the cost log lines use: these are the
+		// same two figures costLimitNotice renders into the banner
+		// below, and a log that disagrees with the posted comment
+		// about the number that paused reviews is worse than a log
+		// that is less precise than its neighbours.
+		r.log.InfoContext(ctx, fmt.Sprintf(
+			"%s: PR cost $%.2f >= limit $%.2f - skipping review (raise REVIEW_MAX_PR_COST_USD to go on)",
+			prTag, cumulative, r.cfg.MaxPRCostUSD))
+		prReviewID, _ := r.upsertKeepingPrior(ctx, upsert, key)
+		r.costLimitNotice(ctx, l, project, repo, pr.ID, prReviewID, cumulative, r.cfg.MaxPRCostUSD, true)
+		return nil, ctx, r.abort(ctx, key, kind, SkipCostCap, prTag, httpCounter)
 	}
 
 	r.log.InfoContext(ctx, fmt.Sprintf("Starting review of %s by %s (branch: %s)", prTag, author, pr.FromRef.DisplayID))
@@ -556,7 +550,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	// over-budget state stays loud. The summary is freshly built each run, so
 	// no strip is needed.
 	if cumulativeCost != nil && *cumulativeCost >= r.cfg.MaxPRCostUSD {
-		summary = render.CostLimitBanner(plan.lang, *cumulativeCost, r.cfg.MaxPRCostUSD, r.bitbucket.BotUsername(), false) +
+		summary = render.CostLimitBanner(plan.lang, *cumulativeCost, r.cfg.MaxPRCostUSD, false) +
 			"\n\n" + summary
 	}
 

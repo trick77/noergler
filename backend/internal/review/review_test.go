@@ -430,20 +430,23 @@ func TestCostCap(t *testing.T) {
 		if len(h.bb.Posted) != 1 || !strings.Contains(h.bb.Posted[0].Text, "Cost limit exceeded") {
 			t.Errorf("expected the cost banner, got %+v", h.bb.Posted)
 		}
-		if !strings.Contains(h.bb.Posted[0].Text, "not** reviewed automatically") {
+		if !strings.Contains(h.bb.Posted[0].Text, "not** reviewed") {
 			t.Error("a blocked push must say so")
+		}
+		if strings.Contains(h.bb.Posted[0].Text, "@") {
+			t.Error("the banner must not offer a mention as a way around the cap")
 		}
 	})
 
-	t.Run("a mention bypasses the cap", func(t *testing.T) {
+	t.Run("a mention stops at the cap too", func(t *testing.T) {
 		h := newHarness(t, nil)
 		h.st.prCost = ptri(6_000_000_000)
 		h.llm.review = okResultWith()
 
 		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventCommentAdded), true)
 
-		if len(h.llm.Reviews) != 1 {
-			t.Error("a mention must run even over the cap")
+		if len(h.llm.Reviews) != 0 {
+			t.Error("a mention must not run over the cap")
 		}
 	})
 

@@ -207,6 +207,8 @@ type fakeStore struct {
 
 	// Details are the run detail records, by attempt id.
 	Details map[int64][]byte
+	// CommentCalls are the reply and question calls recorded.
+	CommentCalls []commentCall
 
 	Upserts   []store.PRUpsert
 	Runs      []store.Run
@@ -491,10 +493,46 @@ func (f *fakeStore) PRCost(context.Context, store.PRKey) (*int64, error) {
 			priced = true
 		}
 	}
+	// Replies and questions count, as prCostSQL counts them.
+	for _, c := range f.CommentCalls {
+		if c.Call.CostNanoUSD != nil {
+			total += *c.Call.CostNanoUSD
+			priced = true
+		}
+	}
 	if !priced {
 		return nil, nil
 	}
 	return &total, nil
+}
+
+// PRCapState is PRCost plus the fake's one PR row: id 1 once anything wrote
+// or seeded it, 0 before.
+func (f *fakeStore) PRCapState(ctx context.Context, k store.PRKey) (int64, *int64, error) {
+	cost, err := f.PRCost(ctx, k)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.Upserts) == 0 && f.prCost == nil && len(f.Runs) == 0 && f.summary == nil && f.skipState == nil {
+		return 0, cost, err
+	}
+	return 1, cost, err
+}
+
+// commentCall is one InsertCommentCall.
+type commentCall struct {
+	Kind      string
+	CommentID int64
+	Call      store.LLMCall
+}
+
+func (f *fakeStore) InsertCommentCall(_ context.Context, _ string, _ store.PRKey, kind string, commentID int64, c store.LLMCall) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return err
+	}
+	f.CommentCalls = append(f.CommentCalls, commentCall{Kind: kind, CommentID: commentID, Call: c})
+	return nil
 }
 
 func (f *fakeStore) FreezeFinalCost(ctx context.Context, k store.PRKey) (*int64, error) {

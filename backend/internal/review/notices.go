@@ -187,8 +187,19 @@ func staleBanner(l lang.Lang, lead, priorCommit string) string {
 //
 // Same shape as failureNotice but with the cost banner and its own stripper,
 // so repeated blocked pushes replace the banner instead of stacking it.
-func (r *Reviewer) costLimitNotice(ctx context.Context, l lang.Lang, project, repo string, prID int, prReviewID int64, cumulativeUSD, limitUSD float64) {
-	banner := render.CostLimitBanner(l, cumulativeUSD, limitUSD, r.bitbucket.BotUsername(), true)
+func (r *Reviewer) costLimitNotice(ctx context.Context, l lang.Lang, project, repo string, prID int, prReviewID int64, cumulativeUSD, limitUSD float64, blocked bool) {
+	r.writeCostBanner(ctx, l, project, repo, prID, prReviewID, cumulativeUSD, limitUSD, blocked, false)
+}
+
+// costLimitNoticeOnce is costLimitNotice that leaves a summary already
+// carrying a cost banner untouched, unless this one must add that a review
+// was not run and the old one does not say so.
+func (r *Reviewer) costLimitNoticeOnce(ctx context.Context, l lang.Lang, project, repo string, prID int, prReviewID int64, cumulativeUSD, limitUSD float64, blocked bool) {
+	r.writeCostBanner(ctx, l, project, repo, prID, prReviewID, cumulativeUSD, limitUSD, blocked, true)
+}
+
+func (r *Reviewer) writeCostBanner(ctx context.Context, l lang.Lang, project, repo string, prID int, prReviewID int64, cumulativeUSD, limitUSD float64, blocked, once bool) {
+	banner := render.CostLimitBanner(l, cumulativeUSD, limitUSD, blocked)
 
 	var existing *store.SummaryComment
 	if prReviewID != 0 {
@@ -221,7 +232,11 @@ func (r *Reviewer) costLimitNotice(ctx context.Context, l lang.Lang, project, re
 		liveVersion = existing.Version
 	}
 
-	newBody := banner + "\n\n" + render.StripCostBanner(comment.Text)
+	stripped := render.StripCostBanner(comment.Text)
+	if once && stripped != comment.Text && (!blocked || render.CostBannerSaysBlocked(comment.Text)) {
+		return
+	}
+	newBody := banner + "\n\n" + stripped
 	newVersion, err := r.bitbucket.UpdatePRComment(ctx, project, repo, prID, existing.ID, liveVersion, newBody)
 	if err != nil {
 		r.log.ErrorContext(ctx, "Failed to update existing summary with cost-limit banner: "+err.Error())

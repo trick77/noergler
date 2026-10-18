@@ -52,8 +52,8 @@ The pipeline refuses early and cheaply. In order:
 5. The source branch does not contain the opt-out keyword.
 6. `AGENTS.md` exists, when it is required.
 7. `AGENTS.md` is under the hard token limit.
-8. The PR's accumulated cost is under the cap. Auto path only; an `@mention` is
-   the explicit override.
+8. The PR's accumulated cost is under the cap. An `@mention` does not override
+   it.
 
 A skip that did not review the new commit writes the **prior** commit back as
 the reviewed pointer, so raising a limit later re-reviews the accumulated range
@@ -226,8 +226,11 @@ With no level configured, that is what the model's balanced level resolved to.
 ## 11. Cost
 
 Only a cost the gateway **reports** counts. An unpriced run is stored with a
-NULL cost and the review proceeds: cost fails open. The per-PR cap only stops
-later automatic runs; an `@mention` always runs.
+NULL cost and the review proceeds: cost fails open. Reviews, finding replies
+and Q&A answers all count toward the PR's cost, and at the per-PR cap all of
+them stop, mentions included. The PR gets one notice, the cost banner on its
+summary; the comment that was not answered gets no reply of its own. Raising
+the limit is the only way on.
 
 Costs are stored as nano-USD integers and rendered as USD at the edges. The
 gateway key's total spend is shown as a gauge where available, never summed.
@@ -246,7 +249,9 @@ lists; a settings answer is a Markdown table),
 and `set_my_language` (the asker's language, only when their own comment names
 it). Up to three tool rounds, four calls each, then a final round without
 tools. The gateway calls are staged off the worker like a review; the reply is
-posted back on it.
+posted back on it. Every call is recorded and counts toward the PR's cost; at
+the cap a question is not answered. A mention writes the PR's row first (its
+review pointer untouched), so a PR only ever asked about is capped too.
 
 The PR author's reply on one of noergler's finding threads needs no mention.
 The route queues any non-empty reply not written by the bot (Bitbucket's
@@ -260,7 +265,8 @@ reply. A dispute, explicit or not ("we do this in the UI"), is acknowledged;
 when its reason is a project-wide rule AGENTS.md lacks, the answer suggests a
 one-line AGENTS.md bullet. The dispute is stored and later prompts show it
 beside the finding so the issue is not raised again. The thread stays open:
-the author resolves it. Reply costs are logged, not recorded.
+the author resolves it. A reply's call is recorded and counts toward the
+PR's cost; at the cap, replies stop.
 
 The answer may address the author by first name ("Ok Jan - ..."), not
 always. `BITBUCKET_DISPLAY_NAME_PATTERN` extracts it from the Bitbucket

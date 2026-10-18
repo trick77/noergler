@@ -75,6 +75,29 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		return false
 	}
 
+	// At the cap a mention stops like everything else, review or question:
+	// the banner, no answer, and the PR stays as it was (an ignored one is
+	// not reactivated for nothing). Under the cap, a Q&A on a PR with no row
+	// writes one, so its calls are counted and capped from the first on.
+	isReview := question == "" || reviewKeywords[strings.ToLower(question)]
+	rowID, cumulative, over := r.overCap(ctx, key)
+	if over {
+		r.refuseOverCap(ctx, key, prTag, pr.Author.User.Name, "mention", rowID, cumulative, isReview)
+		if isReview {
+			// The dashboard shows a blocked mention review like a blocked
+			// push: a skipped attempt with its reason. Not abort: the
+			// deferred totals line above already logs this scope.
+			r.recordAttempt(ctx, store.Attempt{Key: key, TeamSlug: r.TeamSlug, Kind: store.RunMention,
+				Outcome: "skipped", Reason: string(SkipCostCap)})
+		}
+		return false
+	}
+	if rowID == 0 && !isReview {
+		// The review path writes its own row; a Q&A on a PR never reviewed
+		// writes one here, once.
+		r.ensurePRRow(ctx, key, pr.Author.User.Name, pr.Title, pr.CreatedDate)
+	}
+
 	// Any other mention reactivates a PR ignored after its summary was
 	// removed. Clearing the state (and the stale summary id, which
 	// Reactivate does) lets the next review post a fresh summary and stops
@@ -86,7 +109,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	// gateway call goes to the inference pool instead of holding the worker,
 	// and the PR's queue hold covers it, so it cannot run alongside a review
 	// of the same PR already in flight.
-	if question == "" || reviewKeywords[strings.ToLower(question)] {
+	if isReview {
 		r.log.InfoContext(ctx, fmt.Sprintf("Mention triggers full review (question=%q)", question))
 		if sched != nil {
 			// The caller must keep the PR held: the staged posting is what
@@ -186,11 +209,13 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 	// The asker's language until a switch is stored, which happens only
 	// with an answer to post: a failed loop leaves the language alone.
 	l := j.lang
-	// One line per call, and only when one happened: the too-large branch
-	// decides before any request, and a transport error returns with no
-	// cost. A tool loop adds its total, never stored (decided).
+	// One line and one row per call, and only when one happened: the
+	// too-large branch decides before any request, and a transport error
+	// returns with no cost. A tool loop logs its total too; the rows sum to
+	// it, so the total itself is never stored.
 	for _, c := range result.Rounds {
 		r.logCost(ctx, prTag, c)
+		r.recordCommentCall(ctx, j.ask.key, store.CallQuestion, replyTo, c)
 	}
 	if len(result.Rounds) > 1 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: Q&A took %d calls, tools %v (%d refused over the cap), total %s",

@@ -159,6 +159,12 @@ export interface RunDetail {
     more_after: boolean;
     cost_usd: string | null;
     cap_usd: string | null;
+    /** The PR's reply and Q&A calls, newest first. They count toward
+     *  cost_usd and the cap. */
+    calls: CommentCall[];
+    more_calls: boolean;
+    /** The list could not be read: empty means unknown, not none. */
+    calls_failed: boolean;
   };
   bitbucket_url: string;
   /** The review's pipeline record; null for a run from before it existed,
@@ -246,6 +252,15 @@ export interface RunFinding {
   fixed: boolean;
   /** The page of the run that posted it; null when that attempt is gone. */
   from_attempt_id: number | null;
+}
+
+export interface CommentCall {
+  /** reply | question */
+  kind: string;
+  comment_id: number | null;
+  model: string;
+  cost_usd: string | null;
+  created_at: string;
 }
 
 export interface PRAttempt {

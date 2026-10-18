@@ -105,6 +105,9 @@ const detail: RunDetail = {
     cap_usd: "5.000",
     more_before: false,
     more_after: false,
+    calls: [],
+    more_calls: false,
+    calls_failed: false,
   },
   bitbucket_url: "https://bb.example.com",
   detail: null,
@@ -286,6 +289,43 @@ describe("RunPage", () => {
     fireEvent.click(screen.getByRole("tab", { name: /Prompt and files/ }));
     expect(screen.getByText("Cumulative PR diff")).toBeDefined();
     expect(screen.getByText("not reviewed, binary or generated")).toBeDefined();
+  });
+
+  // Replies and answers have no run page, but they are money the PR total
+  // counts: listed under the runs, linked to their thread.
+  it("lists the PR's replies and answers", async () => {
+    window.history.replaceState({}, "", "/runs/7#pr");
+    serve("runs/7", {
+      ...detail,
+      pr: {
+        ...detail.pr,
+        calls: [
+          {
+            kind: "reply",
+            comment_id: 501,
+            model: "gpt-5.5",
+            cost_usd: "0.004",
+            created_at: "2026-10-18T14:00:00Z",
+          },
+          {
+            kind: "question",
+            comment_id: null,
+            model: "gpt-5.5",
+            cost_usd: null,
+            created_at: "2026-10-18T14:05:00Z",
+          },
+        ],
+      },
+    });
+    render(<RunPage id={7} />);
+
+    expect(
+      (await screen.findByText("reply to a finding ↗")).getAttribute("href"),
+    ).toBe(
+      "https://bb.example.com/projects/PAY/repos/checkout/pull-requests/1482/overview?commentId=501",
+    );
+    expect(screen.getByText("answer to a mention")).toBeDefined();
+    expect(screen.getByText("$0.004")).toBeDefined();
   });
 
   it("says why a skipped run has nothing else", async () => {

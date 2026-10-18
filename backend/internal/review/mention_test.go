@@ -6,7 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/lang"
+	"github.com/trick77/noergler/internal/render"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
@@ -233,5 +236,111 @@ func TestMentionPromptCarriesTheQuestion(t *testing.T) {
 	}
 	if !strings.Contains(prompt, "a.go") {
 		t.Errorf("prompt is missing the file group: %q", prompt)
+	}
+}
+
+// At the cap a question gets no answer and no gateway call: the PR gets the
+// cap banner, its one notice (decided: a mention no longer overrides the
+// cap).
+func TestMentionQAStopsAtTheCap(t *testing.T) {
+	h := newHarness(t, nil)
+	h.st.prCost = ptri(6_000_000_000)
+
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler is the lock held?", "alice"), "platform", nil)
+
+	if len(h.llm.Mentions) != 0 || len(h.bb.Replies) != 0 {
+		t.Errorf("calls = %d, replies = %d: want neither at the cap", len(h.llm.Mentions), len(h.bb.Replies))
+	}
+	if len(h.bb.Posted) != 1 || !strings.Contains(h.bb.Posted[0].Text, "Cost limit exceeded") {
+		t.Errorf("want the cap banner, got %+v", h.bb.Posted)
+	}
+}
+
+// Every round of a Q&A tool loop is recorded as a question call under the
+// comment it answers; the rows sum to the loop's total.
+func TestMentionQARecordsEveryRound(t *testing.T) {
+	h := newHarness(t, nil)
+	a, b := int64(1_000_000), int64(3_000_000)
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "ok",
+		Rounds: []inference.CallCost{{Answered: true, NanoUSD: &a}, {Answered: true, NanoUSD: &b}}}
+
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler why?", "alice"), "platform", nil)
+
+	if len(h.st.CommentCalls) != 2 {
+		t.Fatalf("comment calls = %+v, want one per round", h.st.CommentCalls)
+	}
+	for _, c := range h.st.CommentCalls {
+		if c.Kind != store.CallQuestion || c.CommentID != 77 {
+			t.Errorf("call = %+v, want a question under comment 77", c)
+		}
+	}
+	if total, _ := h.st.PRCost(context.Background(), store.PRKey{}); total == nil || *total != a+b {
+		t.Errorf("PR cost = %v, want the rounds summed", total)
+	}
+}
+
+// A summary that already carries the cap banner is left alone: no second
+// Bitbucket write per refused comment, and a blocked push's "not reviewed"
+// sentence stays.
+func TestCapBannerIsWrittenOnce(t *testing.T) {
+	h := newHarness(t, nil)
+	h.st.prCost = ptri(6_000_000_000)
+	body := render.CostLimitBanner(lang.EN, 6, 5, true) + "\n\nsummary"
+	h.st.summary = &store.SummaryComment{ID: 900, Version: 1}
+	h.bb.comments = map[int]*bitbucket.Comment{900: {ID: 900, Version: 1, Text: body}}
+
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler why?", "alice"), "platform", nil)
+
+	if len(h.bb.Updates) != 0 || len(h.bb.Posted) != 0 {
+		t.Errorf("updates = %d, posts = %d: the banner was there already", len(h.bb.Updates), len(h.bb.Posted))
+	}
+}
+
+// An ignored PR (its author removed the summary) gets nothing posted at the
+// cap, and stays ignored.
+func TestCapOnAnIgnoredPRPostsNothing(t *testing.T) {
+	h := newHarness(t, nil)
+	h.st.prCost = ptri(6_000_000_000)
+	at := time.Now()
+	h.st.skipState = &store.SkipState{IgnoredAt: &at}
+
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "alice"), "platform", nil)
+
+	if len(h.bb.Posted) != 0 || len(h.bb.Updates) != 0 || h.st.Reactived != 0 || len(h.llm.Reviews) != 0 {
+		t.Errorf("posts = %d, updates = %d, reactivated = %d, reviews = %d; want nothing",
+			len(h.bb.Posted), len(h.bb.Updates), h.st.Reactived, len(h.llm.Reviews))
+	}
+}
+
+// A Q&A on a PR never reviewed writes its row first, keeping any pointer, so
+// its calls are counted and capped from the first one on.
+func TestMentionQAWritesThePRRow(t *testing.T) {
+	h := newHarness(t, nil)
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "ok"}
+
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler why?", "alice"), "platform", nil)
+
+	if len(h.st.Upserts) != 1 || !h.st.Upserts[0].KeepPointer || h.st.Upserts[0].LastReviewedCommit != nil {
+		t.Errorf("upserts = %+v, want one that keeps the pointer", h.st.Upserts)
+	}
+}
+
+// A review asked for at the cap is a skipped attempt on the dashboard, like a
+// blocked push, and a banner from a refused reply gains the "not reviewed"
+// sentence it did not have.
+func TestCapRefusedMentionReviewIsRecorded(t *testing.T) {
+	h := newHarness(t, nil)
+	h.st.prCost = ptri(6_000_000_000)
+	body := render.CostLimitBanner(lang.EN, 6, 5, false) + "\n\nsummary"
+	h.st.summary = &store.SummaryComment{ID: 900, Version: 1}
+	h.bb.comments = map[int]*bitbucket.Comment{900: {ID: 900, Version: 1, Text: body}}
+
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "alice"), "platform", nil)
+
+	if len(h.st.Attempts) != 1 || h.st.Attempts[0].Reason != string(SkipCostCap) || h.st.Attempts[0].Kind != store.RunMention {
+		t.Errorf("attempts = %+v, want one skipped mention attempt", h.st.Attempts)
+	}
+	if len(h.bb.Updates) != 1 || !render.CostBannerSaysBlocked(h.bb.Updates[0].Text) {
+		t.Errorf("updates = %+v, want the banner to say the review was not run", h.bb.Updates)
 	}
 }

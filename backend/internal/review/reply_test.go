@@ -229,9 +229,9 @@ func TestFindingReplyWithAMention(t *testing.T) {
 	}
 }
 
-// A plain reply is automatic, so the per-PR cost cap holds. An @mention is
-// the explicit override, here as on the Q&A path, and reactivates an ignored
-// PR.
+// At the cap a reply gets no answer, mention or not (decided): the PR gets
+// the cap banner instead, its one notice. A mention is left to the Q&A path,
+// which refuses it the same way, and reactivates nothing on the way.
 func TestFindingReplyRespectsTheCostCap(t *testing.T) {
 	h, p := replyHarness(t)
 	h.st.prCost = ptri(6_000_000_000)
@@ -241,17 +241,41 @@ func TestFindingReplyRespectsTheCostCap(t *testing.T) {
 	if len(h.llm.Replies) != 0 {
 		t.Error("a PR at the cap must not buy a plain reply")
 	}
+	if len(h.bb.Posted) != 1 || !strings.Contains(h.bb.Posted[0].Text, "Cost limit exceeded") {
+		t.Errorf("want the cap banner as the one notice, got %+v", h.bb.Posted)
+	}
+	if strings.Contains(h.bb.Posted[0].Text, "not** reviewed") {
+		t.Error("a refused reply blocked no review; the banner must not say one was")
+	}
 
 	at := time.Now()
 	h.st.skipState = &store.SkipState{IgnoredAt: &at}
 	p.Comment.Text = "@noergler we do this in the UI"
+	handled, _ := h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+
+	if handled || len(h.llm.Replies) != 0 {
+		t.Errorf("handled = %v, replies = %d: a mention at the cap is no reply either", handled, len(h.llm.Replies))
+	}
+	if h.st.Reactived != 0 {
+		t.Errorf("reactivated = %d: a mention at the cap must leave an ignored PR ignored", h.st.Reactived)
+	}
+}
+
+// A reply's call is recorded, and the PR's cost counts it: the next reply
+// at the cap is refused because of the replies before it.
+func TestFindingReplyIsRecordedAndCounted(t *testing.T) {
+	h, p := replyHarness(t)
+	cost := int64(2_000_000)
+	h.llm.reply.Cost = inference.CallCost{Answered: true, NanoUSD: &cost}
 	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
 
-	if len(h.llm.Replies) != 1 {
-		t.Error("a mention overrides the cap")
+	if len(h.st.CommentCalls) != 1 || h.st.CommentCalls[0].Kind != store.CallReply ||
+		h.st.CommentCalls[0].CommentID != int64(p.Comment.ID) {
+		t.Fatalf("comment calls = %+v, want the reply's", h.st.CommentCalls)
 	}
-	if h.st.Reactived != 1 {
-		t.Errorf("reactivated = %d, want the ignored PR back", h.st.Reactived)
+	total, _ := h.st.PRCost(context.Background(), store.PRKey{})
+	if total == nil || *total != cost {
+		t.Errorf("PR cost = %v, want the reply counted", total)
 	}
 }
 

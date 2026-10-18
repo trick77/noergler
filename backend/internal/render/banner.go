@@ -105,26 +105,45 @@ func StaleBanner(line string) string {
 
 // CostLimitBanner builds the sentinel-marked over-limit banner block.
 //
-// blocked reports whether an automatic review was skipped entirely (the
-// pushed commit was not reviewed); false is a completed run that overshot the
-// cap, or a manual mention review while already over.
-func CostLimitBanner(l lang.Lang, cumulativeUSD, limitUSD float64, botUsername string, blocked bool) string {
+// At the cap everything stops, mentions included (decided), so the banner
+// names no way around it but a higher limit. blocked reports whether a
+// review was skipped entirely (the latest commit was not reviewed); false is
+// a completed run that overshot the cap, or a reply or question refused.
+func CostLimitBanner(l lang.Lang, cumulativeUSD, limitUSD float64, blocked bool) string {
 	if l != lang.EN {
 		msg := fmt.Sprintf(
-			"%s — PR gesamt **$%.2f**, über dem Limit von **$%.2f**. Automatische Reviews sind pausiert. "+
-				"`@%s` für ein manuelles Review, oder einen Admin bitten, `REVIEW_MAX_PR_COST_USD` zu erhöhen.",
-			costBannerVisibleDE, cumulativeUSD, limitUSD, botUsername)
+			"%s — PR gesamt **$%.2f**, über dem Limit von **$%.2f**. Reviews und Antworten sind pausiert. "+
+				"Einen Admin bitten, `REVIEW_MAX_PR_COST_USD` zu erhöhen.",
+			costBannerVisibleDE, cumulativeUSD, limitUSD)
 		if blocked {
-			msg += " Dieser Push wurde **nicht** automatisch geprüft."
+			msg += costBlockedDE
 		}
 		return CostBannerSentinel + "\n" + msg
 	}
 	msg := fmt.Sprintf(
-		"%s — PR total **$%.2f**, over the **$%.2f** limit. Automatic reviews are paused. "+
-			"`@%s` to review manually, or ask an admin to raise `REVIEW_MAX_PR_COST_USD`.",
-		costBannerVisiblePrefix, cumulativeUSD, limitUSD, botUsername)
+		"%s — PR total **$%.2f**, over the **$%.2f** limit. Reviews and answers are paused. "+
+			"Ask an admin to raise `REVIEW_MAX_PR_COST_USD`.",
+		costBannerVisiblePrefix, cumulativeUSD, limitUSD)
 	if blocked {
-		msg += " This push was **not** reviewed automatically."
+		msg += costBlockedEN
 	}
 	return CostBannerSentinel + "\n" + msg
+}
+
+// The blocked sentence, in both languages: CostBannerSaysBlocked looks for it.
+const (
+	costBlockedEN = " The latest commit was **not** reviewed."
+	costBlockedDE = " Der neueste Commit wurde **nicht** geprüft."
+)
+
+// CostBannerSaysBlocked reports whether body carries a cost banner that says
+// a review was not run.
+func CostBannerSaysBlocked(body string) bool {
+	rest := StripCostBanner(body)
+	if rest == body {
+		return false
+	}
+	// The banner alone: summary text below it may quote the sentence.
+	banner := strings.TrimSuffix(body, rest)
+	return strings.Contains(banner, costBlockedEN) || strings.Contains(banner, costBlockedDE)
 }

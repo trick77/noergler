@@ -92,6 +92,8 @@ type Store interface {
 	FindingByComment(ctx context.Context, k store.PRKey, commentID int) (*store.Finding, error)
 	MarkFindingReplied(ctx context.Context, findingID int64, dispute *string) error
 	PRCost(ctx context.Context, k store.PRKey) (*int64, error)
+	PRCapState(ctx context.Context, k store.PRKey) (int64, *int64, error)
+	InsertCommentCall(ctx context.Context, team string, k store.PRKey, kind string, commentID int64, c store.LLMCall) error
 	FreezeFinalCost(ctx context.Context, k store.PRKey) (*int64, error)
 	ClaimRollup(ctx context.Context, k store.PRKey, final store.RollupFinal) (*store.RollupSnapshot, error)
 	PRStatus(ctx context.Context, k store.PRKey, team string) (*store.PRStatus, error)

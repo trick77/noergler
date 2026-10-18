@@ -3,9 +3,16 @@
 // full text of a finding is one click away in Bitbucket, which guards it.
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { PRAttempt, RunCall, RunDetail, RunFinding } from "./api";
+import type {
+  CommentCall,
+  PRAttempt,
+  RunCall,
+  RunDetail,
+  RunFinding,
+} from "./api";
 import {
   duration,
+  known,
   outcomeTitle,
   outcomeTone,
   outcomeWord,
@@ -286,7 +293,12 @@ export function RunPage({ id }: { id: number }) {
           {tab === "findings" && <Findings d={d} pr={pr} />}
           {tab === "cost" && <CostTab call={call} />}
           {tab === "input" && <InputTab p={d.detail} />}
-          {tab === "pr" && <PRTab d={d} />}
+          {tab === "pr" && (
+            <>
+              <PRTab d={d} />
+              <CallsCard d={d} />
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -453,7 +465,10 @@ function TimeBar({
   );
 }
 
-function commentUrl(pr: string | null, f: RunFinding): string | null {
+function commentUrl(
+  pr: string | null,
+  f: { comment_id: number | null },
+): string | null {
   if (pr === null || f.comment_id === null) return null;
   return `${pr}/overview?commentId=${f.comment_id}`;
 }
@@ -978,6 +993,79 @@ function PRTab({ d }: { d: RunDetail }) {
         </div>
       )}
       {cost !== null && <Note>{t("run.prTotalNote")}</Note>}
+    </Card>
+  );
+}
+
+/** CallsCard lists the PR's replies and Q&A answers: no attempt and no run
+ *  page each, but money the PR total and its cap count. */
+function CallsCard({ d }: { d: RunDetail }) {
+  const { t } = useTranslation();
+  if (d.pr.calls_failed) {
+    return (
+      <Card title={t("run.callsTitle")}>
+        <Empty>{t("run.callsFailed")}</Empty>
+      </Card>
+    );
+  }
+  if (d.pr.calls.length === 0) return null;
+  const pr = prUrl(d.tag, d.bitbucket_url);
+  return (
+    <Card title={t("run.callsTitle")} note={t("run.callsNote")}>
+      <div className="overflow-x-auto overscroll-x-contain">
+        <table className={table}>
+          <thead>
+            <tr>
+              <th className={th}>{t("run.when")}</th>
+              <th className={th}>{t("run.callKind")}</th>
+              <th className={th}>{t("run.model")}</th>
+              <th className={thNum}>{t("run.cost")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {d.pr.calls.map((c: CommentCall, i) => {
+              const href = commentUrl(pr, c);
+              const kind = known("callKind", c.kind)
+                ? t(`callKind.${c.kind}`)
+                : c.kind;
+              return (
+                <tr key={i}>
+                  <td
+                    className={
+                      td +
+                      " font-mono text-[13px] whitespace-nowrap text-muted tabular-nums"
+                    }
+                  >
+                    {new Date(c.created_at).toLocaleString(undefined, {
+                      dateStyle: "short",
+                      timeStyle: "short",
+                    })}
+                  </td>
+                  <td className={td}>
+                    {href ? (
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="hover:underline"
+                      >
+                        {kind} ↗
+                      </a>
+                    ) : (
+                      kind
+                    )}
+                  </td>
+                  <td className={tdTag + " text-muted"}>{c.model}</td>
+                  <td className={tdNum}>
+                    {c.cost_usd === null ? "—" : `$${c.cost_usd}`}
+                  </td>
+                </tr>
+              );
+            })}
+            {d.pr.more_calls && <MoreRow text={t("run.moreCalls")} />}
+          </tbody>
+        </table>
+      </div>
     </Card>
   );
 }
