@@ -42,6 +42,7 @@ const (
 	PlaceholderFinding     = "{finding}"
 	PlaceholderFileExcerpt = "{file_excerpt}"
 	PlaceholderReply       = "{reply}"
+	PlaceholderAuthorName  = "{author_first_name}"
 )
 
 // ReplyIntents are what a reply on a finding's thread can be. "disputes"
@@ -60,6 +61,8 @@ type FindingReplyPromptRequest struct {
 	FileExcerpt string
 	// Reply is the PR author's text: intent only, never evidence.
 	Reply string
+	// AuthorFirstName is the author's first name, or empty when unknown.
+	AuthorFirstName string
 }
 
 // RenderFindingReplyPrompt assembles the prompt in one substitution pass,
@@ -69,11 +72,16 @@ func RenderFindingReplyPrompt(req FindingReplyPromptRequest) string {
 	if strings.TrimSpace(excerpt) == "" {
 		excerpt = "_The file could not be read._"
 	}
+	authorName := req.AuthorFirstName
+	if authorName == "" {
+		authorName = "_Unknown._"
+	}
 	return strings.NewReplacer(
 		PlaceholderRepoInstructions, req.RepoInstructions,
 		PlaceholderFinding, req.Finding,
 		PlaceholderFileExcerpt, excerpt,
 		PlaceholderReply, req.Reply,
+		PlaceholderAuthorName, authorName,
 	).Replace(req.Template)
 }
 

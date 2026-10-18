@@ -143,6 +143,29 @@ func TestInstance_RequiredVarsAndDefaults(t *testing.T) {
 	}
 }
 
+// Unset is "Last First"; blank set explicitly is off; a bad or first-less
+// pattern aborts boot rather than never naming anyone.
+func TestInstance_DisplayNamePattern(t *testing.T) {
+	e := newEnv(t)
+	if re := e.mustLoad().Bitbucket.DisplayNamePattern; re == nil || re.String() != DefaultDisplayNamePattern {
+		t.Errorf("default = %v", re)
+	}
+	e.set("BITBUCKET_DISPLAY_NAME_PATTERN", " ")
+	if re := e.mustLoad().Bitbucket.DisplayNamePattern; re != nil {
+		t.Errorf("blank = %v, want off", re)
+	}
+	e.set("BITBUCKET_DISPLAY_NAME_PATTERN", `^(?P<first>\S+) (?P<last>\S+)$`)
+	if re := e.mustLoad().Bitbucket.DisplayNamePattern; re == nil || re.FindStringSubmatch("Jan Saner")[1] != "Jan" {
+		t.Errorf("override = %v", re)
+	}
+	for _, bad := range []string{`(?P<first>`, `^(\S+)`} {
+		e.set("BITBUCKET_DISPLAY_NAME_PATTERN", bad)
+		if _, err := e.load(); err == nil || !strings.Contains(err.Error(), "BITBUCKET_DISPLAY_NAME_PATTERN") {
+			t.Errorf("%q: err = %v", bad, err)
+		}
+	}
+}
+
 func TestInstance_MissingRequiredIsFatalAndNamesTheVariable(t *testing.T) {
 	for _, name := range []string{"OPENAI_MODEL", "LLMWIRE_LITELLM_BASE_URL", "LLMWIRE_LITELLM_MODELS", "DATABASE_URL", "BITBUCKET_URL"} {
 		e := newEnv(t)

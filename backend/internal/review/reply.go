@@ -152,12 +152,14 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	}
 	// AGENTS.md from the same commit, so code and guidelines match.
 	agentsMD := r.fetchRepoInstructions(ctx, project, repo, at, pr.ToRef.DisplayID)
+	name := firstName(r.displayName, comment.Author.DisplayName)
 	prompt := inference.RenderFindingReplyPrompt(inference.FindingReplyPromptRequest{
 		Template:         r.replyTmpl,
 		RepoInstructions: agentsMD,
 		Finding:          fmt.Sprintf("%s [%s]\n\n%s", where, f.Severity, f.CommentText),
 		FileExcerpt:      excerpt,
 		Reply:            truncateRunes(text, replyTextRunes),
+		AuthorFirstName:  name,
 	})
 	req := inference.FindingReplyRequest{
 		Prompt:       prompt,
@@ -167,6 +169,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		project: project, repo: repo, prID: pr.ID, prTag: prTag, where: where,
 		findingID: f.ID, replyTo: comment.ID, text: text,
 		agentsMD: agentsMD, counter: counter,
+		name: name, namesOn: r.displayName != nil,
 	}
 	infer := func(inferCtx context.Context) { job.res = r.llm.FindingReply(inferCtx, req) }
 	post := func(postCtx context.Context) { r.postFindingReply(postCtx, job) }
@@ -190,8 +193,12 @@ type replyJob struct {
 	replyTo       int
 	text          string
 	agentsMD      string
-	counter       *httpstats.Counter
-	res           inference.FindingReplyResult
+	// name is the author's first name, "" when unknown; namesOn tells that
+	// from names off, so a drifted directory format shows in the log.
+	name    string
+	namesOn bool
+	counter *httpstats.Counter
+	res     inference.FindingReplyResult
 }
 
 // postFindingReply is the reply's posting stage, on the worker: the answer,
@@ -209,7 +216,8 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 	}
 	dispute := res.Reply.Intent == "disputes"
 
-	body := truncateRunes(res.Reply.Reply, replyPostRunes)
+	reply, nameState := guardName(res.Reply.Reply, j.name, res.Reply.Intent, j.namesOn)
+	body := truncateRunes(reply, replyPostRunes)
 	agentsLine := "none"
 	if line := res.Reply.AgentsMDLine; line != "" {
 		switch reason := inference.CheckAgentsMDLine(line, j.agentsMD); {
@@ -234,8 +242,8 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 		stored = &d
 	}
 	safeDBErr(ctx, r.log, "MarkFindingReplied", func() error { return r.store.MarkFindingReplied(ctx, j.findingID, stored) })
-	r.log.InfoContext(ctx, fmt.Sprintf("%s: answered reply on finding %s: intent %s, AGENTS.md line %s",
-		j.prTag, j.where, res.Reply.Intent, agentsLine))
+	r.log.InfoContext(ctx, fmt.Sprintf("%s: answered reply on finding %s: intent %s, AGENTS.md line %s, name %s",
+		j.prTag, j.where, res.Reply.Intent, agentsLine, nameState))
 }
 
 // fetchFindingFile reads the finding's file at the PR head. A row stored

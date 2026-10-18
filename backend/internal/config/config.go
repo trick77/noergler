@@ -50,7 +50,16 @@ type Bitbucket struct {
 	// bounds the process; this only exists for a pod too small to trust it.
 	MaxDiffBytes int
 	MaxFileBytes int
+	// DisplayNamePattern extracts a commenter's first name from their
+	// displayName (group "first", "last" optional) for finding replies; nil
+	// = off. Instance-wide: one Bitbucket, one directory format.
+	DisplayNamePattern *regexp.Regexp
 }
+
+// DefaultDisplayNamePattern reads "Last First", the rest ignored:
+// "Saner Jan (SJH)" is Jan. A "First Last" directory overrides it, or blanks
+// it to switch names off. Unicode-aware: RE2's \s and \w are ASCII.
+const DefaultDisplayNamePattern = `^[\s\p{Zs}]*(?P<last>[\pL\pM'-]+)[\s\p{Zs}]+(?P<first>[\pL\pM'-]+)(?:[\s\p{Zs}(]|$)`
 
 // LLM is the inference setup: instance-wide gateway, per-team key and model.
 type LLM struct {
@@ -329,6 +338,27 @@ func blankNone(r *kitenv.Reader, lookup func(string) (string, bool), name string
 	return r.List(name, def)
 }
 
+// displayNamePattern compiles BITBUCKET_DISPLAY_NAME_PATTERN; blank set
+// explicitly is off (nil). A pattern without a "first" group would boot clean
+// and never name anyone, so it fails at load.
+func displayNamePattern(r *kitenv.Reader, lookup func(string) (string, bool)) *regexp.Regexp {
+	const name = "BITBUCKET_DISPLAY_NAME_PATTERN"
+	v := blankOff(r, lookup, name, DefaultDisplayNamePattern)
+	if v == "" {
+		return nil
+	}
+	re, err := regexp.Compile(v)
+	if err != nil {
+		r.Fail("%s: %v", name, err)
+		return nil
+	}
+	if re.SubexpIndex("first") < 0 {
+		r.Fail("%s: needs a named group (?P<first>...)", name)
+		return nil
+	}
+	return re
+}
+
 // normalizeEffort trims and lower-cases. Empty is the unset level: the
 // model's balanced one, not reasoning switched off.
 func normalizeEffort(v string) string {
@@ -398,6 +428,7 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 		Teams:           map[string]*Team{},
 		Disabled:        map[string]string{},
 	}
+	app.Bitbucket.DisplayNamePattern = displayNamePattern(r, lookup)
 	app.LLM.ReasoningEffort = normalizeEffort(r.String("OPENAI_REASONING_EFFORT", ""))
 	// Logging is set up before this runs (at info on a bad value, see
 	// withLog); the level is checked here so its fault is reported with the

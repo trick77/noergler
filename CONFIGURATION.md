@@ -85,6 +85,7 @@ Not overridable in a team block. Naming one there disables the team.
 | --- | --- | --- |
 | `BITBUCKET_MAX_DIFF_BYTES` | `0` | Bytes per PR or compare diff; `0` is unlimited. Over it the PR is skipped, so set it only on a pod too small to rely on `GOMEMLIMIT`. A diff's size is mostly files the review discards. |
 | `BITBUCKET_MAX_FILE_BYTES` | `1048576` | 1 MiB per file fetched for context. |
+| `BITBUCKET_DISPLAY_NAME_PATTERN` | `Last First` | RE2 pattern on the Bitbucket `displayName` with a named group `first` (`last` optional); a finding reply may address the author by it. The default, `^[\s\p{Zs}]*(?P<last>[\pL\pM'-]+)[\s\p{Zs}]+(?P<first>[\pL\pM'-]+)(?:[\s\p{Zs}(]|$)`, reads `Saner Jan (SJH)` as Jan; a multi-word surname (`von Gunten Hans`) gets the wrong word. A `First Last` directory overrides it, e.g. `^[\s\p{Zs}]*(?P<first>[\pL\pM'-]+)`. Blank = off. A bad pattern or one without `first` aborts boot. |
 | `CONTEXT_WINDOW_HEADROOM_TOKENS` | `16000` | Trust-curve headroom. |
 | `CONTEXT_TRUST_THRESHOLD` | `256000` | Window size trusted in full. |
 | `CONTEXT_TRUST_TAIL` | `0.5` | Fraction of the window beyond the threshold that counts. |
