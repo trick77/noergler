@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { Live } from "./api";
 import {
   ago,
@@ -5,6 +6,7 @@ import {
   elapsedSince,
   outcomeTone,
   outcomeWord,
+  reasonLabel,
 } from "./format";
 import { usePoll, useNow } from "./usePoll";
 import {
@@ -32,10 +34,11 @@ import {
  *  pool is six wide by default, so a single "currently reviewing" row would
  *  misreport the instance as doing one thing at a time. */
 function Slots({ capacity, busy }: { capacity: number; busy: number }) {
+  const { t } = useTranslation();
   return (
     <div
       className="mb-3.5 flex gap-1.5"
-      aria-label={`${busy} of ${capacity} slots busy`}
+      aria-label={t("live.slotsBusy", { busy, capacity })}
     >
       {Array.from({ length: capacity }, (_, i) => (
         <div
@@ -53,6 +56,7 @@ function Slots({ capacity, busy }: { capacity: number; busy: number }) {
 }
 
 export function LivePage() {
+  const { t } = useTranslation();
   // 3s: fast enough that a review starting is visible while you watch,
   // slow enough that the access log stays quiet (these paths are silenced
   // server-side for exactly this reason).
@@ -66,10 +70,10 @@ export function LivePage() {
     return (
       <div className={page}>
         <div className={column}>
-          <h2 className={h2}>Live</h2>
-          <p className={lede}>What is running right now.</p>
+          <h2 className={h2}>{t("nav.live")}</h2>
+          <p className={lede}>{t("live.lede")}</p>
           {failed ? (
-            <Failed what="the live panel" />
+            <Failed what={t("live.failedWhat")} />
           ) : (
             <div className="skeleton h-24 rounded-ui" />
           )}
@@ -83,36 +87,33 @@ export function LivePage() {
   return (
     <div className={page}>
       <div className={column}>
-        <h2 className={h2}>Live</h2>
-        <p className={lede}>
-          What is running right now. Several reviews can be waiting on the model
-          at once, but only one at a time talks to Bitbucket, so a busy queue
-          drains in order.
-        </p>
+        <h2 className={h2}>{t("nav.live")}</h2>
+        <p className={lede}>{t("live.ledeLong")}</p>
 
         {failed && updatedAt !== null && (
           <div className="mb-3.5 rounded-ui border border-border bg-panel px-3.5 py-3 text-[13.5px] text-muted">
-            Refresh failing. Showing the reading from{" "}
-            {ago(new Date(updatedAt).toISOString(), wall)}.
+            {t("live.refreshFailing", {
+              ago: ago(new Date(updatedAt).toISOString(), wall),
+            })}
           </div>
         )}
 
         <Card
-          title="Inference pool"
+          title={t("live.pool")}
           // "max N per team", not "N per team": the per-team figure is a
           // ceiling nested inside the global one, not a reservation. A team
           // is not owed two slots, it is stopped from taking more than two.
           note={
             <>
-              {busy} of {data.pool_capacity} slots busy
+              {t("live.slotsBusy", { busy, capacity: data.pool_capacity })}
               <Sep />
-              max {data.pool_per_team} per team
+              {t("live.maxPerTeam", { count: data.pool_per_team })}
             </>
           }
         >
           <Slots capacity={data.pool_capacity} busy={busy} />
           {data.running.length === 0 ? (
-            <Empty>Nothing running.</Empty>
+            <Empty>{t("live.nothingRunning")}</Empty>
           ) : (
             <table className={table}>
               <tbody>
@@ -133,24 +134,24 @@ export function LivePage() {
         </Card>
 
         <Card
-          title="Queue"
+          title={t("live.queue")}
           note={
             <>
-              {data.depth} waiting
+              {t("live.waitingCount", { count: data.depth })}
               <Sep />
-              in-flight excluded
+              {t("live.inFlightExcluded")}
             </>
           }
         >
           {data.waiting.length === 0 ? (
-            <Empty>Queue is empty.</Empty>
+            <Empty>{t("live.queueEmpty")}</Empty>
           ) : (
             <table className={table}>
               <thead>
                 <tr>
-                  <th className={th}>Pull request</th>
-                  <th className={th + " w-px"}>Team</th>
-                  <th className={thNum}>Waiting</th>
+                  <th className={th}>{t("live.pullRequest")}</th>
+                  <th className={th + " w-px"}>{t("live.team")}</th>
+                  <th className={thNum}>{t("live.waiting")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -174,53 +175,50 @@ export function LivePage() {
             No State column, it is configuration, not live; the Teams page
             has it. The outcome pill sits in its own column, never after a
             time: a pill trailing "1m ago" reads as a label on the time. */}
-        <Card title="Teams">
+        <Card title={t("live.teams")}>
           {data.teams.length === 0 ? (
-            <Empty>No runs yet.</Empty>
+            <Empty>{t("live.noRuns")}</Empty>
           ) : (
             <table className={table}>
               <thead>
                 <tr>
-                  <th className={th}>Team</th>
+                  <th className={th}>{t("live.team")}</th>
                   {/* nowrap: w-px shrinks the column to its widest word. */}
                   <th className={th + " w-px whitespace-nowrap"}>
-                    Last outcome
+                    {t("live.lastOutcome")}
                   </th>
-                  <th className={thNum}>PRs</th>
-                  <th className={thNum}>Last reviewed</th>
-                  <th className={thNum}>Last run</th>
+                  <th className={thNum}>{t("live.prs")}</th>
+                  <th className={thNum}>{t("live.lastReviewed")}</th>
+                  <th className={thNum}>{t("live.lastRun")}</th>
                 </tr>
               </thead>
               <tbody>
-                {byLastRun(data.teams).map((t) => (
-                  <tr key={t.slug}>
-                    <td className={td} title={t.slug}>
-                      {t.name}
+                {byLastRun(data.teams).map((tm) => (
+                  <tr key={tm.slug}>
+                    <td className={td} title={tm.slug}>
+                      {tm.name}
                     </td>
                     <td className={td + " w-px"}>
                       <Pill
-                        tone={outcomeTone(t.last_outcome)}
+                        tone={outcomeTone(tm.last_outcome)}
                         title={
-                          t.last_outcome !== "ok"
-                            ? t.last_reason_label || t.last_reason
+                          tm.last_outcome !== "ok"
+                            ? reasonLabel(tm.last_reason, tm.last_reason_label)
                             : undefined
                         }
                       >
-                        {outcomeWord(t.last_outcome, t.last_reason)}
+                        {outcomeWord(tm.last_outcome, tm.last_reason)}
                       </Pill>
                     </td>
-                    <td className={tdNum}>{t.prs}</td>
-                    <td className={tdNum}>{ago(t.last_reviewed, now)}</td>
-                    <td className={tdNum}>{ago(t.last_run, now)}</td>
+                    <td className={tdNum}>{tm.prs}</td>
+                    <td className={tdNum}>{ago(tm.last_reviewed, now)}</td>
+                    <td className={tdNum}>{ago(tm.last_run, now)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
-          <Note>
-            Last run counts every outcome, skipped and failed included. Last
-            reviewed is the last one that succeeded.
-          </Note>
+          <Note>{t("live.teamsNote")}</Note>
         </Card>
       </div>
     </div>

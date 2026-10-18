@@ -6,6 +6,8 @@
 // Static prose, no endpoint: none of it is per-instance data. Where a value
 // is a per-team default it says so, because teams.yaml can override almost
 // all of it and a flat number here would be wrong for somebody.
+import { Trans, useTranslation } from "react-i18next";
+import { reasonLabel } from "./format";
 import { Card, Note, column, h2, lede, page } from "./ui";
 
 function Q({ q, children }: { q: string; children: React.ReactNode }) {
@@ -19,7 +21,8 @@ function Q({ q, children }: { q: string; children: React.ReactNode }) {
 }
 
 /** Code is a literal a reader might type or search for. */
-function Code({ children }: { children: React.ReactNode }) {
+// children optional: <Trans> fills it from the catalog.
+function Code({ children }: { children?: React.ReactNode }) {
   return (
     <code className="rounded-ui-sm bg-active px-1 py-0.5 font-mono text-[12.5px] text-ink">
       {children}
@@ -27,150 +30,112 @@ function Code({ children }: { children: React.ReactNode }) {
   );
 }
 
-// The eleven pre-flight exits, worded as review.SkipReason.Label() words
-// them. Kept in that order: it is the order prepare reaches them.
-const SKIPS: { label: string; why: string }[] = [
-  { label: "AGENTS.md missing", why: "See below." },
-  { label: "AGENTS.md over the token cap", why: "See below." },
-  {
-    label: "Author not in auto-review authors",
-    why: "Ask your team admin to add you, or @mention the bot on the PR.",
-  },
-  {
-    label: "Ignored author",
-    why: "Usually a bot account. Ask your team admin if it is not.",
-  },
-  {
-    label: "Branch opt-out keyword",
-    why: "Your branch name contains it. See below.",
-  },
-  {
-    label: "PR ignored (summary comment removed)",
-    why: "Somebody deleted the summary comment. Nothing brings it back on this PR.",
-  },
-  { label: "PR cost cap reached", why: "@mention the bot to review anyway." },
-  {
-    label: "No reviewable files",
-    why: "Only lockfiles, vendored code, generated output or binaries changed.",
-  },
-  { label: "Empty diff", why: "Bitbucket reports no changes." },
-  { label: "HEAD unchanged since last review", why: "Push something." },
-  {
-    label: "Diff too large",
-    why: "Only if your admin set a diff cap. Off by default.",
-  },
-];
+// The eleven pre-flight exits, as review.SkipReason codes, in the order
+// prepare reaches them. The label is the reason catalog's; the why is
+// faq.skipWhy.
+const SKIPS = [
+  "agents_md_missing",
+  "agents_md_too_large",
+  "not_auto_review_author",
+  "ignored_author",
+  "branch_opt_out",
+  "pr_ignored",
+  "pr_cost_cap",
+  "no_reviewable_files",
+  "empty_diff",
+  "head_unchanged",
+  "diff_too_large",
+] as const;
+
+type MarkupKey = "faq.whyNotA" | "faq.stopA1" | "faq.filesA2" | "faq.apiA1";
+
+/** T renders a catalog entry that carries markup: <code>, <strong> and
+ *  <docs> map to the page's own elements, so a translation can move them
+ *  around the sentence without touching JSX. <docs>, not <link>: Trans
+ *  parses <link> as a void HTML tag and drops its text. */
+function T({ k }: { k: MarkupKey }) {
+  return (
+    <Trans
+      i18nKey={k}
+      components={{
+        code: <Code />,
+        strong: <strong />,
+        docs: (
+          <a
+            href="/api/docs"
+            className="text-ink underline hover:no-underline"
+          />
+        ),
+      }}
+    />
+  );
+}
 
 export function FaqPage() {
+  const { t } = useTranslation();
   return (
     <div className={page}>
       <div className={column}>
-        <h2 className={h2}>FAQ</h2>
-        <p className={lede}>
-          Why noergler did or did not review your pull request. Defaults below;
-          your team may have changed them.
-        </p>
+        <h2 className={h2}>{t("nav.faq")}</h2>
+        <p className={lede}>{t("faq.lede")}</p>
 
-        <Q q="Why wasn't my PR reviewed?">
+        <Q q={t("faq.whyNotQ")}>
           <p>
-            Open <strong>Runs</strong>, filter to Skipped or Failed, and find
-            your PR. The reason is next to the outcome. What each one means:
+            <T k="faq.whyNotA" />
           </p>
           <ul className="mt-1 space-y-1.5">
-            {SKIPS.map((s) => (
-              <li key={s.label}>
-                <span className="text-ink">{s.label}</span>
-                <span className="text-muted"> — {s.why}</span>
+            {SKIPS.map((code) => (
+              <li key={code}>
+                <span className="text-ink">{reasonLabel(code)}</span>
+                <span className="text-muted">
+                  {" "}
+                  — {t(`faq.skipWhy.${code}`)}
+                </span>
               </li>
             ))}
           </ul>
-          <Note>
-            Skipped means it never asked the model. Failed means it asked and
-            something broke.
-          </Note>
+          <Note>{t("faq.whyNotNote")}</Note>
         </Q>
 
-        <Q q="AGENTS.md">
-          <p>
-            It is what the review checks your code against: the conventions and
-            constraints a new reviewer on your team would have to be told. Put
-            it at the repo root.
-          </p>
-          <p>
-            No AGENTS.md, no review. The summary comment says so rather than
-            staying silent, so an unreviewed PR is never a mystery.
-          </p>
-          <p>
-            Keep it short. The summary starts warning well before the size
-            limit, and past the limit reviews stop entirely.
-          </p>
+        <Q q={t("faq.agentsQ")}>
+          <p>{t("faq.agentsA1")}</p>
+          <p>{t("faq.agentsA2")}</p>
+          <p>{t("faq.agentsA3")}</p>
         </Q>
 
-        <Q q="How do I stop noergler reviewing a PR?">
+        <Q q={t("faq.stopQ")}>
           <p>
-            Put <Code>noergloff</Code> anywhere in the source branch name:
-            <Code>feature/noergloff-spike</Code> is never auto-reviewed.
+            <T k="faq.stopA1" />
           </p>
-          <p>
-            On a PR that is already open, delete noergler's summary comment
-            instead. It stays away after that, and nothing brings it back on
-            that PR.
-          </p>
+          <p>{t("faq.stopA2")}</p>
         </Q>
 
-        <Q q="How do I ask noergler something?">
+        <Q q={t("faq.askQ")}>
+          <p>{t("faq.askA1")}</p>
+          <p>{t("faq.askA2")}</p>
+        </Q>
+
+        <Q q={t("faq.lessQ")}>
+          <p>{t("faq.lessA1")}</p>
+          <p>{t("faq.lessA2")}</p>
+        </Q>
+
+        <Q q={t("faq.stoppedQ")}>
+          <p>{t("faq.stoppedA")}</p>
+        </Q>
+
+        <Q q={t("faq.filesQ")}>
+          <p>{t("faq.filesA1")}</p>
           <p>
-            Mention the bot by its Bitbucket username in a PR comment. Ask a
-            question and it answers; ask for a review and it runs one.
-          </p>
-          <p>
-            Mentioning it overrides the auto-review list and the cost cap, so it
-            works on PRs that would never be reviewed on their own.
+            <T k="faq.filesA2" />
           </p>
         </Q>
 
-        <Q q="Why did the second review say less than the first?">
+        <Q q={t("faq.apiQ")}>
           <p>
-            A new commit is reviewed against the last reviewed commit, not the
-            whole PR, and findings already posted are not repeated.
+            <T k="faq.apiA1" />
           </p>
-          <p>Reopening a declined PR starts over from scratch.</p>
-        </Q>
-
-        <Q q="Why did reviews stop halfway through my PR?">
-          <p>
-            The PR hit its cost cap; the running total is on the summary
-            comment. Mention the bot to review anyway.
-          </p>
-        </Q>
-
-        <Q q="Which files get reviewed?">
-          <p>
-            Source files that changed in the PR. Lockfiles, vendored
-            directories, generated output and binaries are skipped.
-          </p>
-          <p>
-            Your team can also exclude whole repos by name —{" "}
-            <Code>*-infra</Code> by default. Those never get reviewed, even
-            though the webhook still fires for them.
-          </p>
-        </Q>
-
-        <Q q="Where is the API?">
-          <p>
-            <a
-              href="/api/docs"
-              className="text-ink underline hover:no-underline"
-            >
-              /api/docs
-            </a>
-            . Claim and release repos, and change the author lists, without
-            going through your noergler admin.
-          </p>
-          <p>
-            You need your team's webhook secret, which the admin has. Claiming
-            also needs your own Bitbucket token with project admin.
-          </p>
+          <p>{t("faq.apiA2")}</p>
         </Q>
       </div>
     </div>

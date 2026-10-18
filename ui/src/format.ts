@@ -1,5 +1,7 @@
 // Formatters. Every number a person reads passes through one of these, so
-// the page never decides locally how money or a duration looks.
+// the page never decides locally how money or a duration looks. Their words
+// come from the i18n catalog; the shapes of numbers do not change with it.
+import i18n from "./i18n";
 
 /** money renders the API's decimal string, rounded to cents.
  *
@@ -15,7 +17,7 @@
  *  toFixed(2) answers $1.00. A 3-decimal string ending in 5 is the common
  *  case here, not a corner. */
 export function money(usd: string | null): string {
-  if (usd === null) return "unpriced";
+  if (usd === null) return i18n.t("common.unpriced");
   return `$${roundToCents(usd)}`;
 }
 
@@ -66,17 +68,17 @@ export function duration(ms: number | null): string {
  *  re-renders a seconds counter every tick draws the eye to the clock rather
  *  than to what changed. */
 export function ago(iso: string | null, now: number = Date.now()): string {
-  if (iso === null) return "never";
+  if (iso === null) return i18n.t("common.never");
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return "—";
   const s = Math.max(0, Math.round((now - then) / 1000));
-  if (s < 10) return "just now";
-  if (s < 60) return `${s}s ago`;
+  if (s < 10) return i18n.t("common.justNow");
+  if (s < 60) return i18n.t("common.secondsAgo", { count: s });
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return i18n.t("common.minutesAgo", { count: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+  if (h < 24) return i18n.t("common.hoursAgo", { count: h });
+  return i18n.t("common.daysAgo", { count: Math.floor(h / 24) });
 }
 
 /** elapsedSince is the live "running for" figure. */
@@ -106,32 +108,35 @@ export function outcomeTone(outcome: string): Tone {
   return "fail";
 }
 
-/** The pill word for each skip reason. Short, because the long label beside
- *  a pill wrapped the Outcome cell into three or four lines; the long label
- *  moves to the pill's tooltip. Keys are review.SkipReason values, which are
- *  stored and stable. */
-const skipWords: Record<string, string> = {
-  not_auto_review_author: "not opted in",
-  ignored_author: "ignored",
-  pr_ignored: "PR ignored",
-  branch_opt_out: "opted out",
-  agents_md_missing: "no AGENTS.md",
-  agents_md_too_large: "AGENTS.md too big",
-  pr_cost_cap: "cost cap",
-  no_reviewable_files: "nothing to review",
-  empty_diff: "empty diff",
-  head_unchanged: "unchanged",
-  diff_too_large: "too large",
-  repo_not_claimed: "unclaimed",
-};
-
 /** outcomeWord is the word on a run's outcome pill. A skip names its reason;
  *  a skip whose reason this build does not know still says "skipped", so a
  *  row written by a newer binary never renders blank. Every skip keeps the
  *  skip tone, so the Skipped filter and counts still read as one group. */
 export function outcomeWord(outcome: string, reason?: string): string {
-  if (outcome !== "skipped") return outcome;
-  return (reason && skipWords[reason]) || "skipped";
+  if (outcome !== "skipped") {
+    return i18n.t(`outcome.${outcome}` as "outcome.ok", {
+      defaultValue: outcome,
+    });
+  }
+  const skipped = i18n.t("outcome.skipped");
+  if (!reason) return skipped;
+  return i18n.t(`skipWord.${reason}` as "skipWord.empty_diff", {
+    defaultValue: skipped,
+  });
+}
+
+/** reasonLabel is the long form of a skip reason, for a tooltip or a
+ *  table. Keys are review.SkipReason values, stored and stable; a code this
+ *  build does not know falls back to the label the server sent, then to the
+ *  code itself, so a row from a newer binary never renders blank. */
+export function reasonLabel(
+  reason?: string,
+  serverLabel?: string,
+): string | undefined {
+  if (!reason) return serverLabel || undefined;
+  return i18n.t(`reason.${reason}` as "reason.empty_diff", {
+    defaultValue: serverLabel || reason,
+  });
 }
 
 /** teamTone maps a team's state to its pill.
@@ -149,10 +154,9 @@ export function teamTone(state: string): Tone {
 /** teamStateLabel is the word on the pill. An unknown state prints itself
  *  rather than rendering blank. */
 export function teamStateLabel(state: string): string {
-  if (state === "ready") return "ready";
-  if (state === "no_repos") return "no repos";
-  if (state === "disabled") return "disabled";
-  return state;
+  return i18n.t(`teamState.${state}` as "teamState.ready", {
+    defaultValue: state,
+  });
 }
 
 /** prUrl turns a PROJECT/repo#id tag into its Bitbucket URL, or null when it

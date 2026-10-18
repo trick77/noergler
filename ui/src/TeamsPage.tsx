@@ -1,4 +1,6 @@
+import type { TFunction } from "i18next";
 import { Fragment, type ReactNode } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import type { Team } from "./api";
 import { ago, byName, teamStateLabel, teamTone } from "./format";
 import { usePoll, useNow } from "./usePoll";
@@ -31,30 +33,31 @@ import {
  *  Children.toArray would keep it and put a dot around nothing. Deciding
  *  here what exists means the separator only ever sits between two things
  *  the reader can see. */
-function settingsParts(t: Team) {
+function settingsParts(team: Team, t: TFunction) {
   const parts: ReactNode[] = [];
-  if (t.exclude_repos.length > 0) {
+  if (team.exclude_repos.length > 0) {
     parts.push(
       <>
-        Excluded repos:{" "}
+        {t("teams.excludedRepos")}{" "}
         <code className="font-mono text-[12px] text-muted">
-          {t.exclude_repos.join(", ")}
+          {team.exclude_repos.join(", ")}
         </code>
       </>,
     );
   }
-  if (t.auto_review_authors > 0) {
+  if (team.auto_review_authors > 0) {
     parts.push(
       <>
-        Auto-review authors:{" "}
-        <span className="text-muted">{t.auto_review_authors}</span>
+        {t("teams.autoReviewAuthors")}{" "}
+        <span className="text-muted">{team.auto_review_authors}</span>
       </>,
     );
   }
-  if (t.ignore_authors > 0) {
+  if (team.ignore_authors > 0) {
     parts.push(
       <>
-        Ignored authors: <span className="text-muted">{t.ignore_authors}</span>
+        {t("teams.ignoredAuthors")}{" "}
+        <span className="text-muted">{team.ignore_authors}</span>
       </>,
     );
   }
@@ -62,6 +65,7 @@ function settingsParts(t: Team) {
 }
 
 export function TeamsPage() {
+  const { t } = useTranslation();
   const { data, failed } = usePoll<{ teams: Team[] }>("teams", 30000);
   const now = useNow(30000);
 
@@ -69,9 +73,9 @@ export function TeamsPage() {
     return (
       <div className={page}>
         <div className={column}>
-          <h2 className={h2}>Teams</h2>
+          <h2 className={h2}>{t("nav.teams")}</h2>
           {failed ? (
-            <Failed what="the team roster" />
+            <Failed what={t("teams.failedWhat")} />
           ) : (
             <div className="skeleton h-24 rounded-ui" />
           )}
@@ -83,16 +87,13 @@ export function TeamsPage() {
   return (
     <div className={page}>
       <div className={column}>
-        <h2 className={h2}>Teams</h2>
-        <p className={lede}>
-          Read-only. A team is a webhook path, its own HMAC secret and the
-          projects and repositories it has claimed.
-        </p>
+        <h2 className={h2}>{t("nav.teams")}</h2>
+        <p className={lede}>{t("teams.lede")}</p>
 
-        {byName(data.teams).map((t) => (
+        {byName(data.teams).map((team) => (
           <Card
-            key={t.slug}
-            title={t.name}
+            key={team.slug}
+            title={team.name}
             // The slug leads the note: it is the webhook path, the team= log
             // field and the settings route, so it has to stay on the page
             // once the heading shows the display name instead. No scope here:
@@ -100,53 +101,56 @@ export function TeamsPage() {
             // never known, so a summary could only repeat or guess.
             note={
               <>
-                {t.slug}
-                {t.model && (
+                {team.slug}
+                {team.model && (
                   <>
                     <Sep />
-                    <code className="font-mono text-[12px]">{t.model}</code>
+                    <code className="font-mono text-[12px]">{team.model}</code>
                   </>
                 )}
                 <Sep />
-                {t.prs} PRs
+                {t("teams.prs", { count: team.prs })}
                 <Sep />
-                last reviewed {ago(t.last_reviewed, now)}
+                {t("teams.lastReviewed", { ago: ago(team.last_reviewed, now) })}
                 <Sep />
-                last run {ago(t.last_run, now)}
+                {t("teams.lastRun", { ago: ago(team.last_run, now) })}
               </>
             }
             right={
-              <Pill tone={teamTone(t.state)}>{teamStateLabel(t.state)}</Pill>
+              <Pill tone={teamTone(team.state)}>
+                {teamStateLabel(team.state)}
+              </Pill>
             }
           >
-            {t.claims.length === 0 ? (
-              <Empty>
-                No projects and no repositories claimed, so this team reviews
-                nothing.
-              </Empty>
+            {team.claims.length === 0 ? (
+              <Empty>{t("teams.noClaims")}</Empty>
             ) : (
               <table className={table}>
                 <thead>
                   <tr>
-                    <th className={th}>Claim</th>
-                    <th className={thNum}>Scope</th>
+                    <th className={th}>{t("teams.claim")}</th>
+                    <th className={thNum}>{t("teams.scope")}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {t.claims.map((c) => (
+                  {team.claims.map((c) => (
                     <tr key={`${c.project}/${c.repo ?? ""}`}>
                       <td className={tdTag}>
                         {c.repo ? `${c.project}/${c.repo}` : c.project}
                       </td>
-                      <td className={tdNum}>{c.repo ? "repo" : "project"}</td>
+                      <td className={tdNum}>
+                        {c.repo
+                          ? t("teams.scopeRepo")
+                          : t("teams.scopeProject")}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             )}
-            {settingsParts(t).length > 0 && (
+            {settingsParts(team, t).length > 0 && (
               <Note>
-                {settingsParts(t).map((part, i) => (
+                {settingsParts(team, t).map((part, i) => (
                   <Fragment key={i}>
                     {i > 0 && <Sep />}
                     {part}
@@ -154,17 +158,19 @@ export function TeamsPage() {
                 ))}
               </Note>
             )}
-            {!t.enabled && (
+            {!team.enabled && (
               <Note>
-                Look in the pod log for the{" "}
-                <code className="font-mono text-[12px]">team_disabled</code>{" "}
-                line to see why. It is not shown here because the reason can
-                name an environment variable.
+                <Trans
+                  i18nKey="teams.disabledNote"
+                  components={{
+                    code: <code className="font-mono text-[12px]" />,
+                  }}
+                />
               </Note>
             )}
           </Card>
         ))}
-        {data.teams.length === 0 && <Empty>No teams configured.</Empty>}
+        {data.teams.length === 0 && <Empty>{t("teams.none")}</Empty>}
       </div>
     </div>
   );
