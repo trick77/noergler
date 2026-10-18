@@ -13,7 +13,7 @@ const ReviewSchemaName = "review_response"
 //
 // It is also token-counted as part of the pre-flight fit check, because the
 // gateway bills it as input like everything else. The counted form uses ", "
-// and ": " separators, which brings the serialization to 1594 bytes. Go's
+// and ": " separators, which brings the serialization to 1855 bytes. Go's
 // json.Marshal is compact and would count fewer tokens for the same schema,
 // moving every pinned total in testdata/assemble_golden.json, so SchemaJSON
 // re-inserts the separators rather than marshalling.
@@ -27,7 +27,7 @@ func ReviewResponseSchema() map[string]any {
 		"additionalProperties": false,
 		"required": []any{
 			"overview", "strengths", "security_performance", "test_coverage",
-			"verdict", "findings", "compliance_requirements",
+			"verdict", "findings", "fixed", "compliance_requirements",
 		},
 		"properties": map[string]any{
 			"overview":             map[string]any{"type": "string", "minLength": 1},
@@ -61,6 +61,21 @@ func ReviewResponseSchema() map[string]any {
 						"headline":   map[string]any{"type": "string", "minLength": 1},
 						"comment":    map[string]any{"type": "string"},
 						"suggestion": map[string]any{"type": []any{"string", "null"}},
+					},
+				},
+			},
+			"fixed": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type":                 "object",
+					"additionalProperties": false,
+					"required":             []any{"id", "evidence"},
+					"properties": map[string]any{
+						"id": map[string]any{"type": "string"},
+						"evidence": map[string]any{
+							"type": "array", "minItems": 1, "maxItems": 5,
+							"items": map[string]any{"type": "string"},
+						},
 					},
 				},
 			},
@@ -104,7 +119,7 @@ func ReviewResponseFormat() *llmwire.ResponseFormat {
 // sync with ReviewResponseSchema.
 const schemaJSON = `{"type": "object", "additionalProperties": false, "required": ` +
 	`["overview", "strengths", "security_performance", "test_coverage", "verdict", "findings", ` +
-	`"compliance_requirements"], "properties": {"overview": {"type": "string", "minLength": 1}, ` +
+	`"fixed", "compliance_requirements"], "properties": {"overview": {"type": "string", "minLength": 1}, ` +
 	`"strengths": {"type": "array", "maxItems": 4, "items": {"type": "string"}}, ` +
 	`"security_performance": {"type": "string", "minLength": 1}, ` +
 	`"test_coverage": {"type": "string", "minLength": 1}, ` +
@@ -119,6 +134,9 @@ const schemaJSON = `{"type": "object", "additionalProperties": false, "required"
 	`"confidence": {"type": "integer", "minimum": 80, "maximum": 100}, ` +
 	`"headline": {"type": "string", "minLength": 1}, "comment": {"type": "string"}, ` +
 	`"suggestion": {"type": ["string", "null"]}}}}, ` +
+	`"fixed": {"type": "array", "items": {"type": "object", "additionalProperties": false, ` +
+	`"required": ["id", "evidence"], "properties": {"id": {"type": "string"}, ` +
+	`"evidence": {"type": "array", "minItems": 1, "maxItems": 5, "items": {"type": "string"}}}}}, ` +
 	`"compliance_requirements": {"type": ["array", "null"], "items": {"type": "object", ` +
 	`"additionalProperties": false, "required": ["requirement", "met", "evidence"], ` +
 	`"properties": {"requirement": {"type": "string"}, "met": {"type": "boolean"}, ` +

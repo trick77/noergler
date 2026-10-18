@@ -160,13 +160,19 @@ what is left.
 
 A response is required to match a JSON schema with exactly these keys:
 `overview`, `strengths`, `security_performance`, `test_coverage`, `verdict`,
-`findings`, `compliance_requirements`.
+`findings`, `fixed`, `compliance_requirements`.
 
 ## 10. Dedup, ordering and posting
 
 Findings already posted by earlier runs are filtered out by reading the
 **database**, not by fetching and parsing Bitbucket comments. What is left is
 sorted by severity and capped at `REVIEW_MAX_COMMENTS`.
+
+Each earlier finding is listed to the model with an id (`F12`). When the
+model names one under `fixed`, quoting an added or removed line of that
+finding's file, the finding's thread gets a "Fixed in `<sha>`." reply and is
+then resolved, and the finding leaves dedup. A claim that quotes only
+unchanged lines is dropped and logged.
 
 Each finding becomes one inline comment on its line:
 

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -592,6 +593,84 @@ func TestUpdatePRComment409IsTyped(t *testing.T) {
 	_, err := c.UpdatePRComment(context.Background(), "PROJ", "r", 1, 42, 3, "t")
 	if !errors.Is(err, ErrVersionConflict) {
 		t.Fatalf("err = %v, want ErrVersionConflict", err)
+	}
+}
+
+// sequence serves one status and body per call, in order.
+func sequence(t *testing.T, steps ...[2]string) func(http.ResponseWriter, *http.Request) {
+	var n int
+	return func(w http.ResponseWriter, _ *http.Request) {
+		if n >= len(steps) {
+			t.Errorf("unexpected call %d", n+1)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		status, _ := strconv.Atoi(steps[n][0])
+		n++
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = io.WriteString(w, steps[n-1][1])
+	}
+}
+
+// The UI's Resolve: PUT the root comment with its fresh version and
+// threadResolved, never the text.
+func TestResolveCommentThread(t *testing.T) {
+	f, c := newFake(t, sequence(t,
+		[2]string{"200", `{"id":42,"version":3,"text":"**Issue:** x"}`},
+		[2]string{"200", `{"id":42,"version":4}`},
+	))
+	if err := c.ResolveCommentThread(context.Background(), "PROJ", "r", 1, 42); err != nil {
+		t.Fatal(err)
+	}
+	if f.calls() != 2 || f.seen[0].Method != http.MethodGet {
+		t.Fatalf("calls = %+v, want GET then PUT", f.seen)
+	}
+	put := f.last()
+	if put.Method != http.MethodPut || put.Path != "/rest/api/1.0/projects/PROJ/repos/r/pull-requests/1/comments/42" {
+		t.Errorf("put = %s %s", put.Method, put.Path)
+	}
+	if put.Body["version"] != float64(3) || put.Body["threadResolved"] != true {
+		t.Errorf("body = %v, want version 3 and threadResolved", put.Body)
+	}
+	if _, ok := put.Body["text"]; ok {
+		t.Errorf("body = %v: resolving must not rewrite the text", put.Body)
+	}
+}
+
+// A reply landing between the read and the PUT bumps the version: read it
+// again and retry once.
+func TestResolveCommentThreadRetriesOneConflict(t *testing.T) {
+	f, c := newFake(t, sequence(t,
+		[2]string{"200", `{"id":42,"version":3}`},
+		[2]string{"409", `{"errors":[{"message":"version conflict"}]}`},
+		[2]string{"200", `{"id":42,"version":5}`},
+		[2]string{"200", `{"id":42,"version":6}`},
+	))
+	if err := c.ResolveCommentThread(context.Background(), "PROJ", "r", 1, 42); err != nil {
+		t.Fatal(err)
+	}
+	if f.calls() != 4 || f.last().Body["version"] != float64(5) {
+		t.Errorf("calls = %d, last body = %v, want the re-read version 5", f.calls(), f.last().Body)
+	}
+}
+
+func TestResolveCommentThreadGivesUpAfterTwoConflicts(t *testing.T) {
+	conflict := [2]string{"409", `{"errors":[{"message":"version conflict"}]}`}
+	read := [2]string{"200", `{"id":42,"version":3}`}
+	_, c := newFake(t, sequence(t, read, conflict, read, conflict))
+	if err := c.ResolveCommentThread(context.Background(), "PROJ", "r", 1, 42); Status(err) != http.StatusConflict {
+		t.Errorf("err = %v, want the second 409", err)
+	}
+}
+
+func TestResolveCommentThreadReportsAMissingComment(t *testing.T) {
+	f, c := newFake(t, sequence(t, [2]string{"404", `{"errors":[{"message":"no such comment"}]}`}))
+	if err := c.ResolveCommentThread(context.Background(), "PROJ", "r", 1, 42); Status(err) != http.StatusNotFound {
+		t.Errorf("err = %v, want 404", err)
+	}
+	if f.calls() != 1 {
+		t.Errorf("calls = %d, want no PUT after a failed read", f.calls())
 	}
 }
 

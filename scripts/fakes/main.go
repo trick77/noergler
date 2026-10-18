@@ -309,14 +309,17 @@ func main() {
 			id := r.PathValue("commentID")
 			body := rec.readAndRecord("comment-update", r)
 			var c struct {
-				Text    string `json:"text"`
-				Version int    `json:"version"`
+				Text           *string `json:"text"`
+				Version        int     `json:"version"`
+				ThreadResolved bool    `json:"threadResolved"`
 			}
 			_ = json.Unmarshal(body, &c)
 			postedMu.Lock()
-			_, known := posted[id]
-			if known {
-				posted[id] = c.Text
+			text, known := posted[id]
+			// A resolve sends no text: the comment keeps the one it had.
+			if known && c.Text != nil {
+				text = *c.Text
+				posted[id] = text
 			}
 			postedMu.Unlock()
 			if !known {
@@ -324,9 +327,9 @@ func main() {
 				writeJSON(w, r, map[string]any{"errors": []any{map[string]any{"message": "no such comment"}}})
 				return
 			}
-			log.Printf("comment updated id=%s", id)
+			log.Printf("comment updated id=%s resolved=%t", id, c.ThreadResolved)
 			n, _ := strconv.Atoi(id)
-			writeJSON(w, r, map[string]any{"id": n, "text": c.Text, "version": c.Version + 1})
+			writeJSON(w, r, map[string]any{"id": n, "text": text, "version": c.Version + 1})
 		})
 
 	// Gateway: the model listing per-team startup reads the context window
@@ -691,6 +694,7 @@ const cannedReview = `{
     "confidence": 90, "headline": "Name the constant",
     "comment": "A literal here would read better as a named constant.",
     "suggestion": null}],
+  "fixed": [],
   "compliance_requirements": null
 }`
 

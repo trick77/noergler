@@ -74,6 +74,13 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   marker keeps its space, so the tail of `*cfg = x` or `--count` stays
   invented. Blunt rules, never
   a judge model. Drops are logged by reason, never silent.
+- **An earlier finding is retired only on a changed line** (`inference.ValidateFixed`):
+  its `F<id>` was listed this run, its file is in the focused diff, and the
+  `fixed` evidence quotes an added or removed line of that file; context,
+  full-file and cumulative-diff lines prove nothing. A wrong "fixed" resolves
+  a live bug's thread. Reply, THEN resolve: Bitbucket takes no reply on a
+  resolved thread. A fixed row leaves the prompt block and dedup, so a
+  regression is posted again.
 - `.properties` is reviewable, but not sent past 50 changed lines
   (`diff.ExceedsSizeGate`, in prepare and the cumulative diff): hand edits
   yes, regenerated i18n bundles no. NOT in `IsReviewable`: the rollup must

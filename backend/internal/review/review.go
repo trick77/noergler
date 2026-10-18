@@ -300,6 +300,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		promptTokens:    assembled.PromptTokens,
 		anchors:         anchors,
 		existing:        existing,
+		posted:          posted,
 		contentSkipped:  contentSkipped,
 		ticket:          ticket,
 		parentTicket:    parentTicket,
@@ -410,6 +411,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	runID := r.recordRun(ctx, prReviewID, result, sourceCommit, plan.incrementalFrom, plan.mention,
 		elapsed, postedCount, plan.diffAdded, plan.diffRemoved, plan.totalFiles)
 	r.recordFindings(ctx, prReviewID, runID, findings, postedIDs)
+	r.retireFixed(ctx, plan, result.Review.Fixed, runID)
 
 	// The attempt row carries the run's id, so the feed can show this run's
 	// findings and cost without the dashboard having to guess which run a
@@ -700,7 +702,7 @@ func (r *Reviewer) trimPreviouslyPosted(ctx context.Context, prTag string, exist
 	for _, f := range existing {
 		line := f.LineNumber
 		posted = append(posted, inference.PostedFinding{
-			FilePath: f.FilePath, LineNumber: &line, Severity: f.Severity, CommentText: f.CommentText,
+			ID: f.ID, FilePath: f.FilePath, LineNumber: &line, Severity: f.Severity, CommentText: f.CommentText,
 		})
 	}
 	if len(posted) > maxPreviouslyPostedFindings {

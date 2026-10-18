@@ -137,7 +137,7 @@ func assembleCases(template string) map[string]AssembleRequest {
 	every.PRDescription = "**Title:** T\n**Description:**\nWhy it changes."
 	line := 3
 	every.PreviouslyPosted = []PostedFinding{
-		{FilePath: "a.go", LineNumber: &line, Severity: "issue", CommentText: "old finding"},
+		{ID: 7, FilePath: "a.go", LineNumber: &line, Severity: "issue", CommentText: "old finding"},
 	}
 	cases["everything"] = every
 

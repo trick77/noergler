@@ -224,6 +224,34 @@ func (c *Client) UpdatePRComment(ctx context.Context, project, repo string, prID
 	return updated.Version, nil
 }
 
+// ResolveCommentThread resolves the thread a root comment starts, as the
+// UI's Resolve does: PUT the comment with its version and threadResolved.
+// A reply's id is refused (400), so it takes the root's.
+//
+// A resolved thread takes no replies: a caller with something to say posts
+// it first. The version is read fresh, and a 409 (a reply or edit landed in
+// between) is retried once with the version read again.
+func (c *Client) ResolveCommentThread(ctx context.Context, project, repo string, prID, commentID int) error {
+	path := fmt.Sprintf("%s/comments/%d", prPath(project, repo, prID), commentID)
+	var err error
+	for range 2 {
+		var cur *Comment
+		if cur, err = c.FetchPRComment(ctx, project, repo, prID, commentID); err != nil {
+			return err
+		}
+		err = c.do(ctx, http.MethodPut, path, nil,
+			map[string]any{"version": cur.Version, "threadResolved": true}, nil)
+		if Status(err) != http.StatusConflict {
+			break
+		}
+	}
+	if err != nil {
+		return err
+	}
+	c.log.InfoContext(ctx, fmt.Sprintf("Resolved comment thread %d on PR %d", commentID, prID))
+	return nil
+}
+
 // targetPath addresses a project (repo == "") or one repo inside it. Project
 // webhooks (Bitbucket DC 8.8+) share body shape and paging with repo webhooks;
 // only the path differs.

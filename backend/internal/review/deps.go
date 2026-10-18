@@ -35,6 +35,7 @@ type BitbucketClient interface {
 	ReplyToComment(ctx context.Context, project, repo string, prID, parentCommentID int, text string) error
 	FetchPRComment(ctx context.Context, project, repo string, prID, commentID int) (*bitbucket.Comment, error)
 	UpdatePRComment(ctx context.Context, project, repo string, prID, commentID, version int, text string) (int, error)
+	ResolveCommentThread(ctx context.Context, project, repo string, prID, commentID int) error
 }
 
 // JiraClient is the part of the Jira adapter the pipeline uses.
@@ -82,6 +83,7 @@ type Store interface {
 	InsertAttempt(ctx context.Context, a store.Attempt) error
 	InsertFinding(ctx context.Context, f store.Finding) error
 	ExistingFindings(ctx context.Context, k store.PRKey) ([]store.Finding, error)
+	MarkFindingFixed(ctx context.Context, findingID, runID int64) error
 	PRCost(ctx context.Context, k store.PRKey) (*int64, error)
 	FreezeFinalCost(ctx context.Context, k store.PRKey) (*int64, error)
 	ClaimRollup(ctx context.Context, k store.PRKey, final store.RollupFinal) (*store.RollupSnapshot, error)

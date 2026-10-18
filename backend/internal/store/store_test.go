@@ -377,6 +377,42 @@ func TestFindings_ExistingOnlyForOpenPR(t *testing.T) {
 	}
 }
 
+// A fixed finding leaves the previously-posted block and dedup, so the same
+// bug coming back is posted again. The first stamp wins.
+func TestFindings_FixedLeavesExisting(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	id := upsert(t, s, key, "a")
+	first := run(t, s, id, "a", nil, "m")
+	for _, text := range []string{"fixed later", "still open"} {
+		f := Finding{PullRequestID: id, RunID: first, FilePath: "a.go", LineNumber: 1, Severity: "issue", CommentText: text}
+		if err := s.InsertFinding(ctx, f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.ExistingFindings(ctx, key)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("findings = %+v, err = %v", got, err)
+	}
+	second := run(t, s, id, "b", nil, "m")
+	if err := s.MarkFindingFixed(ctx, got[0].ID, second); err != nil {
+		t.Fatal(err)
+	}
+	third := run(t, s, id, "c", nil, "m")
+	if err := s.MarkFindingFixed(ctx, got[0].ID, third); err != nil {
+		t.Fatal(err)
+	}
+	after, err := s.ExistingFindings(ctx, key)
+	if err != nil || len(after) != 1 || after[0].CommentText != "still open" {
+		t.Fatalf("after fix = %+v, err = %v", after, err)
+	}
+	var fixedRun int64
+	_ = s.pool.QueryRow(ctx, `SELECT fixed_run_id FROM findings WHERE id = $1`, got[0].ID).Scan(&fixedRun)
+	if fixedRun != second {
+		t.Errorf("fixed_run_id = %d, want the first fixing run %d", fixedRun, second)
+	}
+}
+
 func TestClaims_ListGroupsRepoClaimsAndKeepsWholeProjectsFirst(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

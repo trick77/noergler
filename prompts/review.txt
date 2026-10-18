@@ -81,7 +81,7 @@ Only report confidence >= 80. Every reported finding must be a real defect a sen
 
 ## Output format
 
-Respond with a JSON object containing exactly these top-level keys: `overview`, `strengths`, `security_performance`, `test_coverage`, `verdict`, `findings`, `compliance_requirements`. The first five drive a fixed-skeleton review summary — every section renders in the posted comment, every time. **Sentinel rule:** when a section has nothing to report, emit the exact sentinel string (`"None."` or `"None notable."`) — do not pad, do not invent.
+Respond with a JSON object containing exactly these top-level keys: `overview`, `strengths`, `security_performance`, `test_coverage`, `verdict`, `findings`, `fixed`, `compliance_requirements`. The first five drive a fixed-skeleton review summary — every section renders in the posted comment, every time. **Sentinel rule:** when a section has nothing to report, emit the exact sentinel string (`"None."` or `"None notable."`) — do not pad, do not invent.
 
 - "overview": one tight paragraph (1–3 sentences) naming what the diff does and why. Functional read of the code, not a restatement of the ticket. Required, non-empty. Trivial diff is fine ("Renames `_format_ts` to `_format_timestamp` across N files; behavior unchanged.").
 - "strengths": array of 0–4 short bullets pointing at things the diff does well (clean abstraction, good test, correct invariant preserved, etc.). May be empty — do not pad. Empty array renders as `None.` in the posted comment.
@@ -89,6 +89,7 @@ Respond with a JSON object containing exactly these top-level keys: `overview`, 
 - "test_coverage": one short string describing the state of test coverage for this change (tests added/updated, untested edge case, etc.). Required, non-empty. If you cannot tell from the diff alone, say so (`"Test coverage not assessable from diff alone."`).
 - "verdict": object `{"decision": "approve" | "approve_with_followups" | "request_changes", "rationale": "<one sentence>"}`. The rationale **must name the actual change** — not "looks good" or "no issues found". `decision` follows the findings: `approve` when `findings` is empty, `approve_with_followups` when only `suggestion`-severity findings exist, `request_changes` when any `issue`-severity finding exists.
 - "findings": array of issues (may be empty).
+- "fixed": array of already-posted findings (listed at the end, each with an `F<n>` id) that the focused diff fixes. Usually empty. Each item: `{"id": "F<n>", "evidence": [...]}`, where `evidence` is 1–5 lines copied exactly from that finding's file in the focused diff, at least one an added or removed line, without the line number or the leading `+`, `-` or space. Only when the change visibly removes the defect; a finding whose code merely moved, or that you merely doubt, is not fixed. No already-posted findings → `[]`.
 - "compliance_requirements": as described in the compliance instructions (may be null when not requested).
 
 Each "findings" item:
@@ -136,6 +137,7 @@ Illustrative only — do not treat as code under review.
       "suggestion": null
     }
   ],
+  "fixed": [],
   "compliance_requirements": null
 }
 ```
@@ -155,6 +157,7 @@ Illustrative only — do not treat as code under review.
     "rationale": "Pure rename of `_format_ts` to `_format_timestamp`; call sites updated consistently and behavior preserved."
   },
   "findings": [],
+  "fixed": [],
   "compliance_requirements": null
 }
 ```

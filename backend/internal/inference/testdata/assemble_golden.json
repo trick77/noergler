@@ -1,107 +1,107 @@
 {
  "_schema": {
-  "json_len": 1594,
-  "tokens": 473,
+  "json_len": 1855,
+  "tokens": 557,
   "system_tokens": 164
  },
  "everything": {
-  "prompt_sha256": "5aacfee2d54714bf48a4979698ca6795827cbb5c04df1139a72a2ff76c84aaa5",
+  "prompt_sha256": "19d549f6684cb2860569f740463cd723578d041e8b8d750fbc551f905d0da454",
   "breakdown": {
-   "template": 3092,
+   "template": 3239,
    "repo_instructions": 6,
    "files": 152
   },
-  "prompt_tokens": 4382,
-  "prompt_len": 16207
+  "prompt_tokens": 4667,
+  "prompt_len": 17018
  },
  "minimal": {
-  "prompt_sha256": "8691e6cd7cbd6b5aed5c9c8161297878a2b4af9b7726c5087450dbec6a9cfb96",
+  "prompt_sha256": "b67c322fd0b9c2cb3b6f8dea9ab3f7370bd76325a91a1763c4233d5a36cc301e",
   "breakdown": {
-   "template": 3092,
+   "template": 3239,
    "repo_instructions": 0,
    "files": 78
   },
-  "prompt_tokens": 3790,
-  "prompt_len": 13681
+  "prompt_tokens": 4021,
+  "prompt_len": 14251
  },
  "ticket_absent_compliance_on": {
-  "prompt_sha256": "8691e6cd7cbd6b5aed5c9c8161297878a2b4af9b7726c5087450dbec6a9cfb96",
+  "prompt_sha256": "b67c322fd0b9c2cb3b6f8dea9ab3f7370bd76325a91a1763c4233d5a36cc301e",
   "breakdown": {
-   "template": 3092,
+   "template": 3239,
    "repo_instructions": 0,
    "files": 78
   },
-  "prompt_tokens": 3790,
-  "prompt_len": 13681
+  "prompt_tokens": 4021,
+  "prompt_len": 14251
  },
  "ticket_compliance_off": {
-  "prompt_sha256": "0d0bec25136131bc4b1df7aae89e02e162f40cae45b09d1c7eb61beee783bd00",
+  "prompt_sha256": "5daf8bb97264304293ce9d27414316f843b6f3a9c3bfc859d2a282ee70185ee3",
   "breakdown": {
-   "template": 3092,
+   "template": 3239,
    "repo_instructions": 0,
    "files": 78
   },
-  "prompt_tokens": 3796,
-  "prompt_len": 13681
+  "prompt_tokens": 4027,
+  "prompt_len": 14251
  },
  "with_cross_file": {
-  "prompt_sha256": "4fb52a4b662900490f11fa0a9fa7eda93ec8adefd7ae4e25ac3f45468cae670c",
+  "prompt_sha256": "7a468d94f599a3be564a7abba97791bb864f06ee1d3b38e6c76e8723dc446103",
   "breakdown": {
-   "template": 3092,
+   "template": 3239,
    "repo_instructions": 0,
    "files": 152
   },
-  "prompt_tokens": 3876,
-  "prompt_len": 13956
+  "prompt_tokens": 4107,
+  "prompt_len": 14526
  },
  "with_cumulative": {
-  "prompt_sha256": "3cfb3b04932b53c989ec3e55110c9b580623ed904678b803a009b442c7c6c8bc",
+  "prompt_sha256": "2fd574d0de334eeae844d9da4baff9e09faabd905c4419aef8f3d026ac70ee80",
   "breakdown": {
-   "template": 3092,
+   "template": 3239,
    "repo_instructions": 0,
    "files": 78
   },
-  "prompt_tokens": 3929,
-  "prompt_len": 14272
+  "prompt_tokens": 4160,
+  "prompt_len": 14842
  },
  "with_pr_description": {
-  "prompt_sha256": "e173626e56204848e7d2d5a6f2efbb8d085807680fd79b5c802c9c23241391ec",
+  "prompt_sha256": "281b8a80b4b1ecbe78c0deb52bb66fba98851897a4191a176b981b0c59e1ddd9",
   "breakdown": {
-   "template": 3092,
+   "template": 3239,
    "repo_instructions": 0,
    "files": 78
   },
-  "prompt_tokens": 3798,
-  "prompt_len": 13699
+  "prompt_tokens": 4029,
+  "prompt_len": 14269
  },
  "with_repo_instructions": {
-  "prompt_sha256": "0cae355e0fb9d595ea25a5e2f998421a5467fbe7734f207b9a342f1aef2e976d",
+  "prompt_sha256": "9a2919e737c92e14d6160e49be82fae9506343bbe8e332e410a59596227d5d74",
   "breakdown": {
-   "template": 3092,
+   "template": 3239,
    "repo_instructions": 6,
    "files": 78
   },
-  "prompt_tokens": 3796,
-  "prompt_len": 13699
+  "prompt_tokens": 4027,
+  "prompt_len": 14269
  },
  "with_supplementary": {
-  "prompt_sha256": "6baddf11963797f7ae254e48f7eedae171cc842088d34426c57d912a3d7e07dc",
+  "prompt_sha256": "beeb3bcf3ecf4dfd65a2f53bb500f63196a879fe39377323ed0989fddc35e40d",
   "breakdown": {
-   "template": 3092,
+   "template": 3239,
    "repo_instructions": 0,
    "files": 152
   },
-  "prompt_tokens": 3904,
-  "prompt_len": 14067
+  "prompt_tokens": 4135,
+  "prompt_len": 14637
  },
  "with_ticket": {
-  "prompt_sha256": "337b96e3744accc9214120ca1f7dc2aaf3ffecc81ab03c7a17f38cff094f81b1",
+  "prompt_sha256": "78ab0f0bae9359ac928abdd303295d0db966c2abe48afcbbd48e03794f7e0fa3",
   "breakdown": {
-   "template": 3092,
+   "template": 3239,
    "repo_instructions": 0,
    "files": 78
   },
-  "prompt_tokens": 4035,
-  "prompt_len": 14841
+  "prompt_tokens": 4266,
+  "prompt_len": 15411
  }
 }

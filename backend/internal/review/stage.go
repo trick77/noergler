@@ -60,7 +60,10 @@ type reviewPlan struct {
 	// above still holds.
 	anchors diff.AnchorIndex
 
-	existing       []store.Finding
+	existing []store.Finding
+	// posted is the part of existing the prompt listed, trimmed by budget:
+	// the only findings a `fixed` claim may name.
+	posted         []inference.PostedFinding
 	contentSkipped []string
 	ticket         *jira.Ticket
 	parentTicket   *jira.Ticket
