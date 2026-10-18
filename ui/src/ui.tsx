@@ -39,17 +39,19 @@ const toneClass: Record<Tone, string> = {
   ok: "bg-online/15 text-[#82c491]",
   skip: "bg-ochre-wash text-ochre",
   fail: "bg-danger/15 text-danger-ink",
-  none: "bg-active text-muted",
+  none: "bg-elevated text-muted",
 };
 const dotClass: Record<Tone, string> = {
   ok: "bg-online",
   skip: "bg-ochre",
   fail: "bg-danger",
-  none: "bg-faint",
+  none: "bg-muted",
 };
 
 /** Pill always carries its word. The ok/skip/fail hues sit at dE 7.6 under
- *  protanopia, so the dot is a second cue and never the only one. */
+ *  protanopia, so the dot is a second cue and never the only one. none is
+ *  grey on the elevated fill, not bg-active, so it does not melt into a card
+ *  header or read as a loading skeleton. */
 export function Pill({
   tone,
   title,

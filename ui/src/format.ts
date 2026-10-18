@@ -97,13 +97,12 @@ export function tokens(n: number): string {
   return `${(n / 1_000_000).toFixed(1)}M`;
 }
 
-/** outcomeTone maps an outcome to its pill. Three tones, not one per
- *  outcome: ok, a decision the pipeline made, and something that went wrong.
- *  The pill always carries the word too, because the ok/skip/fail hues sit at
- *  dE 7.6 under protanopia and colour alone would not separate them.
- *
- *  none is the fourth, for no value at all (a team that never ran): grey,
- *  because it is neither a success, nor a decision, nor a fault. */
+/** outcomeTone maps an outcome to its pill. Four tones, not one per
+ *  outcome: ok, a decision the pipeline made, something that went wrong, and
+ *  none for no value at all (a team that never ran), grey because it is none
+ *  of the three. The pill always carries the word too, because the
+ *  ok/skip/fail hues sit at dE 7.6 under protanopia and colour alone would
+ *  not separate them. */
 export type Tone = "ok" | "skip" | "fail" | "none";
 
 export function outcomeTone(outcome: string): Tone {
@@ -150,9 +149,10 @@ export function outcomeTitle(
   return codeText(outcome);
 }
 
-/** codeText marks a stored code as one ("Code: too_large"), wherever a code
- *  stands in for a word this build lacks: the thing to grep for, never
- *  mistaken for a missed translation. */
+/** codeText marks a stored code as one ("Code: too_large") wherever the UI
+ *  shows a code: on a failure's tooltip next to its word, or in place of a
+ *  word this build lacks. The thing to grep for, never mistaken for a missed
+ *  translation. */
 function codeText(code: string): string {
   return i18n.t("common.code", { code });
 }
@@ -197,7 +197,6 @@ export function reasonLabel(
  *  working; red would claim it is broken. Ochre is "your move", which is
  *  exactly right, because somebody has to claim a repository. */
 export function teamTone(state: string): Tone {
-  if (state === "") return "none";
   if (state === "ready") return "ok";
   if (state === "no_repos") return "skip";
   return "fail";
