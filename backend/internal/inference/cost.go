@@ -87,29 +87,31 @@ func (c CallCost) LogLine() (line string, warn bool) {
 	// figure a reader wants in trailing zeros. This is the log only; the DB
 	// keeps BIGINT nano-USD and the riptide edge keeps its exact decimal
 	// string. A sub-milli-dollar call therefore reads $0.000 here.
-	cost := "absent"
-	if c.NanoUSD != nil {
-		cost = "$" + FormatUSD3(*c.NanoUSD)
-	}
-	spend := "absent"
-	if c.KeySpendNanoUSD != nil {
-		spend = "$" + FormatUSD3(*c.KeySpendNanoUSD)
-	}
 	callID := c.CallID
 	if callID == "" {
 		callID = "absent"
 	}
 	line = fmt.Sprintf("LLM cost headers: response-cost=%s key-spend=%s call-id=%s",
-		cost, spend, callID)
-	if s := c.Split; s.Reported() {
-		// The cache lanes say what prompt caching saved or a cache write
-		// cost; reasoning is the part of output spent thinking.
-		line += fmt.Sprintf(" input=%s cache-read=%s cache-write=%s output=%s reasoning=%s tool-usage=%s",
-			usdOrAbsent(s.InputNanoUSD), usdOrAbsent(s.CacheReadNanoUSD), usdOrAbsent(s.CacheWriteNanoUSD),
-			usdOrAbsent(s.OutputNanoUSD), usdOrAbsent(s.ReasoningNanoUSD), usdOrAbsent(s.ToolUsageNanoUSD))
+		usdOrAbsent(c.NanoUSD, FormatUSD3), usdOrAbsent(c.KeySpendNanoUSD, FormatUSD3), callID)
+	if s := c.Split; splitSent(s) {
+		// Six decimals here, not three: a cache read on a small call is a
+		// tenth of a milli-dollar, and $0.000 would read as "caching saved
+		// nothing". Reasoning is named as part of output so a reader summing
+		// the lanes does not count it twice.
+		line += fmt.Sprintf(" input=%s cache-read=%s cache-write=%s output=%s reasoning-in-output=%s tool-usage=%s",
+			usdOrAbsent(s.InputNanoUSD, formatUSD6), usdOrAbsent(s.CacheReadNanoUSD, formatUSD6),
+			usdOrAbsent(s.CacheWriteNanoUSD, formatUSD6), usdOrAbsent(s.OutputNanoUSD, formatUSD6),
+			usdOrAbsent(s.ReasoningNanoUSD, formatUSD6), usdOrAbsent(s.ToolUsageNanoUSD, formatUSD6))
+	}
+	if s := c.Split; s.DiscountAmount != "" || s.MarginAmount != "" || s.MarginPercent != "" {
+		// An operator discount or margin moves response-cost off the list
+		// rate; original is the figure before it. Raw text: undocumented headers.
+		line += fmt.Sprintf(" discount=%q margin=%q margin-percent=%q original=%q",
+			s.DiscountAmount, s.MarginAmount, s.MarginPercent, s.Original)
 	}
 	if c.GatewayVersion != "" {
-		line += " litellm-version=" + c.GatewayVersion
+		// Quoted: a header value must not forge key=value tokens on this line.
+		line += fmt.Sprintf(" litellm-version=%q", c.GatewayVersion)
 	}
 	switch {
 	case c.ZeroWithTokens:
@@ -135,13 +137,31 @@ func FormatUSD3(nano int64) string {
 	return fmt.Sprintf("%s%d.%03d", sign, milli/1000, milli%1000)
 }
 
-// usdOrAbsent renders a nilable nano-USD lane for the log line. The gateway
-// sends a lane only when it is nonzero, so absent usually means none.
-func usdOrAbsent(nano *int64) string {
+// formatUSD6 is FormatUSD3 at micro-dollar precision, for the split lanes.
+func formatUSD6(nano int64) string {
+	sign := ""
+	if nano < 0 {
+		sign, nano = "-", -nano
+	}
+	micro := (nano + 500) / 1_000
+	return fmt.Sprintf("%s%d.%06d", sign, micro/1_000_000, micro%1_000_000)
+}
+
+// usdOrAbsent renders a nilable nano-USD figure for the log line. Absent is
+// "not sent": a priced call sends the cache, reasoning and tool lanes only
+// when nonzero, so there it usually means none.
+func usdOrAbsent(nano *int64, format func(int64) string) string {
 	if nano == nil {
 		return "absent"
 	}
-	return "$" + FormatUSD3(*nano)
+	return "$" + format(*nano)
+}
+
+// splitSent says whether any cost lane arrived. GatewayCost.Reported also
+// counts the raw discount/margin text, which alone is no split to print.
+func splitSent(s llmwire.GatewayCost) bool {
+	return s.InputNanoUSD != nil || s.CacheReadNanoUSD != nil || s.CacheWriteNanoUSD != nil ||
+		s.OutputNanoUSD != nil || s.ReasoningNanoUSD != nil || s.ToolUsageNanoUSD != nil
 }
 
 // totalTokens is the prompt plus completion count, used only to tell a real
