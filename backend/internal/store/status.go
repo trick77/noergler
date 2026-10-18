@@ -58,8 +58,8 @@ func (s *Store) PRStatus(ctx context.Context, k PRKey, team string) (*PRStatus, 
 	since := time.Time{}
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, created_at, last_reviewed_commit, ignored_at, merged_at, declined_at FROM pull_requests
-		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3`,
-		k.Project, k.Repo, k.PRID).Scan(&id, &since, &st.LastReviewedCommit, &st.IgnoredAt, &st.MergedAt, &st.DeclinedAt)
+		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3 AND team_slug = $4`,
+		k.Project, k.Repo, k.PRID, team).Scan(&id, &since, &st.LastReviewedCommit, &st.IgnoredAt, &st.MergedAt, &st.DeclinedAt)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 	case err != nil:

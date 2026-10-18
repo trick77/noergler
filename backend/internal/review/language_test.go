@@ -15,6 +15,7 @@ func TestLanguageKeywordIsExact(t *testing.T) {
 	for text, want := range map[string]lang.Lang{
 		"english": lang.EN, "English!": lang.EN, "  EN ": lang.EN, "auf Englisch": lang.EN,
 		"deutsch": lang.DE, "Deutsch.": lang.DE, "de": lang.DE, "in German": lang.DE,
+		", english": lang.EN, ": deutsch": lang.DE,
 	} {
 		if got, ok := languageKeyword(text); !ok || got != want {
 			t.Errorf("languageKeyword(%q) = %q, %v, want %q", text, got, ok, want)

@@ -28,10 +28,11 @@ var languageKeywords = map[string]lang.Lang{
 	"answer in english": lang.EN,
 }
 
-// languageKeyword reports whether text is a language switch. Trailing
-// punctuation is forgiven ("English!", "deutsch.").
+// languageKeyword reports whether text is a language switch. Punctuation
+// around it is forgiven ("English!", "deutsch.", the ", " that
+// extractQuestion leaves of "@bot, english").
 func languageKeyword(text string) (lang.Lang, bool) {
-	t := strings.ToLower(strings.TrimRight(strings.TrimSpace(text), ".!? "))
+	t := strings.ToLower(strings.Trim(text, ".,:;!? \t\n"))
 	l, ok := languageKeywords[t]
 	return l, ok
 }

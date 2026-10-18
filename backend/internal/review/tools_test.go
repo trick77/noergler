@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/store"
 )
@@ -147,16 +148,37 @@ func TestSetMyLanguageNeedsTheCommentersWords(t *testing.T) {
 		// Naming a language is not asking to be written to in it.
 		{"does the German locale fallback in this PR work?", `{"language":"de"}`, ""},
 		{"ist die englische Übersetzung vollständig?", `{"language":"en"}`, ""},
+		// A short comment naming the language is a request.
+		{"English please", `{"language":"en"}`, lang.EN},
+		{"auf Englisch bitte", `{"language":"en"}`, lang.EN},
 		{"english", `not json`, ""},
 	}
 	for _, c := range cases {
 		h := newHarness(t, nil)
 		ask := testAsk("Dana", c.text)
 		out := toolByName(t, h, ask, "set_my_language")(c.args)
-		got := h.st.languages["dana"]
-		if got != c.want || ask.switched != c.want {
-			t.Errorf("%q %s: stored %q, switched %q, want %q (%s)", c.text, c.args, got, ask.switched, c.want, out)
+		// The tool only accepts; the posting stage stores.
+		if ask.switched != c.want || h.st.languages["dana"] != "" {
+			t.Errorf("%q %s: switched %q, stored %q, want %q and nothing stored (%s)",
+				c.text, c.args, ask.switched, h.st.languages["dana"], c.want, out)
 		}
+	}
+}
+
+// A switch accepted in a loop that then fails is never stored: the user
+// would get no confirmation.
+func TestMentionLanguageSwitchNotStoredWhenTheLoopFails(t *testing.T) {
+	h := newHarness(t, nil)
+	h.llm.onMention = func(_ context.Context, _ []string, run func(name, args string) string) string {
+		run("set_my_language", `{"language":"en"}`)
+		return ""
+	}
+	h.llm.mentionOutcome = inference.OutcomeTimedOut
+
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler bitte ab jetzt auf Englisch", "erin"), "payments", nil)
+
+	if h.st.languages["erin"] != "" {
+		t.Errorf("stored %q after a failed loop", h.st.languages["erin"])
 	}
 }
 

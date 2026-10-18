@@ -35,6 +35,13 @@ func MentionTooLargeReply(l lang.Lang) string {
 		"This PR is too large to answer within the model's context window.")
 }
 
+// MentionToolOverflowReply is what a mention gets when the PR fitted but the
+// tool loop's history outgrew the window.
+func MentionToolOverflowReply(l lang.Lang) string {
+	return l.Pick("Für diese Frage reicht der Kontext nicht, sobald noerglers Einstellungen und Status dazukommen. Bitte enger fassen.",
+		"This question needs more context than fits once noergler's settings and status are added. Please narrow it down.")
+}
+
 // MentionEmptyReply is what an empty model answer becomes, so a mention is
 // never silently unanswered.
 func MentionEmptyReply(l lang.Lang) string {

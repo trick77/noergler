@@ -502,6 +502,8 @@ type fakeLLM struct {
 	// onMention plays the model in a tool loop: it may run the offered
 	// tools and returns the answer.
 	onMention func(ctx context.Context, tools []string, run func(name, args string) string) string
+	// mentionOutcome, when set, is what an onMention loop ends in.
+	mentionOutcome inference.Outcome
 
 	Reviews  []inference.ReviewRequest
 	Mentions []inference.MentionRequest
@@ -555,7 +557,11 @@ func (f *fakeLLM) Mention(ctx context.Context, req inference.MentionRequest) inf
 			}
 			return ""
 		}
-		return inference.MentionResult{Outcome: inference.OutcomeOK, Answer: f.onMention(ctx, names, run)}
+		answer := f.onMention(ctx, names, run)
+		if f.mentionOutcome != inference.OutcomeOK {
+			return inference.MentionResult{Outcome: f.mentionOutcome}
+		}
+		return inference.MentionResult{Outcome: inference.OutcomeOK, Answer: answer}
 	}
 	return f.mention
 }

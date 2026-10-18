@@ -25,8 +25,10 @@ type mentionAsk struct {
 	// user is the commenter's Bitbucket name, text their comment with the
 	// mention stripped.
 	user, text string
-	// switched is set when set_my_language stored a language this turn:
-	// the posting stage confirms it in that language.
+	// lang is the asker's language as resolved for this answer.
+	lang lang.Lang
+	// switched is set when set_my_language accepted a switch this turn:
+	// the posting stage stores and confirms it.
 	switched lang.Lang
 }
 
@@ -39,7 +41,7 @@ func (r *Reviewer) mentionTools(ask *mentionAsk) []inference.MentionTool {
 			Name: "team_config",
 			Description: "noergler's effective review settings for this team, and whether the asking user " +
 				"is on the auto-review or ignore list. Use it for questions about how noergler is configured.",
-			Run: func(ctx context.Context, _ string) string { return toolJSON(r.teamConfig(ctx, ask.user)) },
+			Run: func(context.Context, string) string { return toolJSON(r.teamConfig(ask)) },
 		},
 		{
 			Name: "pr_status",
@@ -126,7 +128,7 @@ type teamConfigView struct {
 	} `json:"asking_user"`
 }
 
-func (r *Reviewer) teamConfig(ctx context.Context, user string) teamConfigView {
+func (r *Reviewer) teamConfig(ask *mentionAsk) teamConfigView {
 	auto, ignore := r.authorLists()
 	v := teamConfigView{
 		Team:                  r.TeamSlug,
@@ -166,8 +168,9 @@ func (r *Reviewer) teamConfig(ctx context.Context, user string) teamConfigView {
 	skip := diff.BuiltinSkipRules()
 	v.NeverReviewed.Dirs, v.NeverReviewed.Files = skip.Dirs, skip.Files
 	v.NeverReviewed.Extensions, v.NeverReviewed.SizeGated = skip.Extensions, skip.SizeGated
-	v.Asker.Language = string(r.languageFor(ctx, user))
-	v.Asker.AutoReviewed, v.Asker.Ignored = r.autoReviewDecision(user)
+	// Resolved once for the answer: no second read, no second log line.
+	v.Asker.Language = string(ask.lang.Or(r.cfg.Language.Or(lang.Default)))
+	v.Asker.AutoReviewed, v.Asker.Ignored = r.autoReviewDecision(ask.user)
 	return v
 }
 
@@ -271,14 +274,24 @@ func (r *Reviewer) setMyLanguage(ctx context.Context, ask *mentionAsk, args stri
 	if json.Unmarshal([]byte(args), &in) == nil {
 		l, ok = lang.Parse(in.Language)
 	}
-	if !ok || !languageWord[l].MatchString(ask.text) || !switchWords.MatchString(ask.text) {
+	if !ok || !languageWord[l].MatchString(ask.text) || !asksForSwitch(ask.text) {
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: language switch for %s rejected: the comment does not ask for %q",
 			ask.prTag, ask.user, strings.TrimSpace(in.Language)))
 		return map[string]string{"result": "rejected: the user's comment does not ask for this language"}
 	}
-	if r.storeLanguage(ctx, ask.prTag, ask.user, l) != nil {
-		return map[string]string{"result": "failed: could not be saved, tell the user to try again later"}
-	}
+	// Stored by the posting stage, with the confirmation: a later round
+	// that fails, or a repo given up meanwhile, must not switch a user's
+	// language without telling them.
 	ask.switched = l
 	return map[string]string{"result": "ok", "write_the_answer_in": string(l)}
+}
+
+// shortRequestWords is how short a comment naming a language may be and
+// still count as asking for it without a switch word: "English please",
+// "auf Englisch bitte". A question about a language is longer than that.
+const shortRequestWords = 4
+
+// asksForSwitch is the request half of the guard.
+func asksForSwitch(text string) bool {
+	return switchWords.MatchString(text) || len(strings.Fields(text)) <= shortRequestWords
 }

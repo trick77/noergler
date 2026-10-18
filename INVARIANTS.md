@@ -117,9 +117,12 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   decided; never env names, keys, tokens, hosts, riptide URL, disable
   reasons); claims and exclude_repos from the live snapshot, never the
   Reviewer's `cfg` copy; `Run` never calls Bitbucket.
-  `set_my_language` writes only when the commenter's own text names the
-  language. At most `MaxToolRounds` rounds of `MaxToolCallsPerTurn` calls,
-  then one round without tools; every call id gets a result. Tool support
+  `set_my_language` accepts only when the commenter's own text names the
+  language and asks (a switch word, or a comment of four words or fewer);
+  the posting stage stores it, with the confirmation, only when an answer
+  posts. At most `MaxToolRounds` rounds of `MaxToolCallsPerTurn` calls, then
+  one round with `tool_choice: none`, tools still defined; every call id
+  gets a result. Tool support
   is read off the profile at startup, never required: without it a Q&A is
   one plain call.
 - HTTP totals logged once at the end of `post`, never deferred in the entry.

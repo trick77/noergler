@@ -17,6 +17,9 @@ func TestSwissSSLeavesCodeAlone(t *testing.T) {
 		"```go\nx := \"ß\"\n```\nfließt":  "```go\nx := \"ß\"\n```\nfliesst",
 		"offen ` bis Zeilenende ß\nund ß": "offen ` bis Zeilenende ß\nund ss",
 		"keine Änderung":                  "keine Änderung",
+		"~~~\ns := \"Straße\"\n~~~\nGroß": "~~~\ns := \"Straße\"\n~~~\nGross",
+		"``a`ß`` und ß":                   "``a`ß`` und ss",
+		"Text:\n\n    x := \"ß\"\nEnde ß": "Text:\n\n    x := \"ß\"\nEnde ss",
 	}
 	for in, want := range cases {
 		if got := SwissSS(in); got != want {
@@ -80,7 +83,8 @@ func TestBannersStripInBothLanguages(t *testing.T) {
 }
 
 func TestGermanSecurityKeywords(t *testing.T) {
-	for _, c := range []string{"Hier droht eine SQL-Injektion.", "Die Zugangsdaten landen im Log.", "Eine Sicherheitslücke"} {
+	for _, c := range []string{"Hier droht eine SQL-Injektion.", "Die Zugangsdaten landen im Log.", "Eine Sicherheitslücke",
+		"Injektionen über den Query-Parameter", "fehlende Autorisierungsprüfung"} {
 		if !IsSecurityFinding(c) {
 			t.Errorf("IsSecurityFinding(%q) = false", c)
 		}

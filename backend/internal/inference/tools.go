@@ -12,7 +12,8 @@ import (
 //
 // Run answers one call from the model's raw JSON arguments. It must never
 // call Bitbucket (the loop runs off the worker) and must return only what a
-// commenter may read: no secret, no author list, no disable reason.
+// commenter may read: an explicit allowlist, never a secret or a disable
+// reason (what is allowed is the caller's decision, see INVARIANTS).
 type MentionTool struct {
 	Name        string
 	Description string
@@ -76,6 +77,9 @@ func (c *Client) mentionWithTools(ctx context.Context, req MentionRequest) Menti
 		if err != nil {
 			// The rounds before were billed: their total stands.
 			res.Outcome, res.Err, res.Cost = classifyCallError(ctx, err), err, SumCosts(res.Rounds)
+			// Past the first round the PR fitted: what overflowed is the
+			// tool history, and "the PR is too large" would be untrue.
+			res.ToolOverflow = res.Outcome == OutcomeTooLarge && round > 0
 			return res
 		}
 		res.Rounds = append(res.Rounds, CostFrom(resp))

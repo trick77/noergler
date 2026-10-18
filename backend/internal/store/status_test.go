@@ -40,4 +40,8 @@ func TestPRStatus_BoundedToTheRowAndTeam(t *testing.T) {
 	if len(st.Attempts) != 1 || st.Attempts[0].Reason != "pr_cost_cap" {
 		t.Errorf("attempts = %+v, want only the one from this row's life", st.Attempts)
 	}
+	// Another team asking sees neither the row nor its attempts.
+	if other, err := s.PRStatus(ctx, k, "platform"); err != nil || other.Known || len(other.Attempts) != 1 {
+		t.Errorf("another team = %+v, %v, want no row and only its own attempt", other, err)
+	}
 }

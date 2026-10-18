@@ -141,7 +141,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 
 	job := &mentionJob{
 		project: project, repo: repo, prID: pr.ID, replyTo: comment.ID, lang: l, counter: httpCounter,
-		ask: &mentionAsk{key: key, prTag: prTag, user: comment.Author.Name, text: question},
+		ask: &mentionAsk{key: key, prTag: prTag, user: comment.Author.Name, text: question, lang: l},
 	}
 	req := inference.MentionRequest{
 		Prompt:       prompt,
@@ -183,10 +183,9 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 	defer r.logHTTPTotals(ctx, prTag, j.counter)
 	project, repo, prID, replyTo := j.project, j.repo, j.prID, j.replyTo
 	result := j.res
+	// The asker's language until a switch is stored, which happens only
+	// with an answer to post: a failed loop leaves the language alone.
 	l := j.lang
-	if j.ask.switched != "" {
-		l = j.ask.switched
-	}
 	// One line per call, and only when one happened: the too-large branch
 	// decides before any request, and a transport error returns with no
 	// cost. A tool loop adds its total, never stored (decided).
@@ -222,19 +221,30 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 				"if it requires a lot of context."), timeoutMinutes))
 	case inference.OutcomeTooLarge:
 		r.log.WarnContext(ctx, prTag+": mention prompt too large for the model's context window")
-		r.reply(ctx, project, repo, prID, replyTo, inference.MentionTooLargeReply(l))
+		reply := inference.MentionTooLargeReply(l)
+		if result.ToolOverflow {
+			reply = inference.MentionToolOverflowReply(l)
+		}
+		r.reply(ctx, project, repo, prID, replyTo, reply)
 	case inference.OutcomeOK:
 		// An empty answer still gets a reply: a mention is never left
 		// silently unanswered.
+		// The switch is stored here and confirmed by code, in the new
+		// language, whatever the model wrote about it.
+		prefix := ""
+		if s := j.ask.switched; s != "" {
+			if r.storeLanguage(ctx, prTag, j.ask.user, s) == nil {
+				l, prefix = s, languageConfirmation(s)+"\n\n"
+			} else {
+				prefix = l.Pick("Die Sprache konnte gerade nicht gespeichert werden. Bitte später nochmals versuchen.",
+					"The language could not be saved right now. Please try again later.") + "\n\n"
+			}
+		}
 		answer := sharpS(l, result.Answer)
 		if answer == "" {
 			answer = inference.MentionEmptyReply(l)
 		}
-		// The switch is confirmed by code, in the new language, whatever
-		// the model wrote about it.
-		if j.ask.switched != "" {
-			answer = languageConfirmation(l) + "\n\n" + answer
-		}
+		answer = prefix + answer
 		r.reply(ctx, project, repo, prID, replyTo, answer)
 		r.log.InfoContext(ctx, "Posted Q&A reply on "+prTag)
 	default:

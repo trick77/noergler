@@ -150,7 +150,10 @@ type MentionResult struct {
 	// past MaxToolCallsPerTurn that were refused.
 	ToolCalls   []string
 	CappedCalls int
-	Err         error
+	// ToolOverflow is OutcomeTooLarge caused by the tool history, not by
+	// the PR: the first round fitted.
+	ToolOverflow bool
+	Err          error
 }
 
 // Mention answers a developer's question about a PR.

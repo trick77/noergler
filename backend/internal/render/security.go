@@ -20,15 +20,18 @@ var securityKeywords = regexp.MustCompile(
 		`authorization|credentials?|secret[s ]?leak|csrf|ssrf|` +
 		`path[_ -]?traversal|insecure|vulnerability|sanitiz(?:e|ation)|` +
 		`privilege[_ -]?escalation|deserialization|token[_ -]?leak|` +
-		`exposed?[_ -]?(?:secret|credential|key|token)|` +
-		// German findings: the same concepts, spelled the way a German
-		// comment writes them when it does not borrow the English term.
-		`injektion|sicherheitslücken?|schwachstellen?|authentifizierung|` +
-		`autorisierung|zugangsdaten|anmeldedaten|rechteausweitung|` +
-		`deserialisierung)(?:[^\pL\pN_]|$)`)
+		`exposed?[_ -]?(?:secret|credential|key|token))(?:[^\pL\pN_]|$)`)
+
+// securityKeywordsDE are the same concepts as a German comment writes them
+// when it does not borrow the English term. Stems with a leading boundary
+// only: German inflects and compounds ("Injektionen",
+// "Autorisierungsprüfung"), so a trailing boundary misses most real uses.
+var securityKeywordsDE = regexp.MustCompile(
+	`(?i)(?:^|[^\pL\pN_])(?:injektion|sicherheitslück|schwachstell|authentifizier|` +
+		`autorisier|zugangsdat|anmeldedat|rechteausweit|deserialisier)`)
 
 // IsSecurityFinding reports whether a finding's comment mentions a security
 // keyword.
 func IsSecurityFinding(comment string) bool {
-	return securityKeywords.MatchString(comment)
+	return securityKeywords.MatchString(comment) || securityKeywordsDE.MatchString(comment)
 }
