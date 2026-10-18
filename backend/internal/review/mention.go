@@ -66,6 +66,13 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 
 	question := extractQuestion(comment.Text, r.bitbucket.BotUsername())
 
+	// "@bot english" sets the commenter's own language: a keyword, decided
+	// by code, never by the model, and no inference call.
+	if l, ok := languageKeyword(question); ok {
+		r.setLanguage(ctx, project, repo, pr.ID, comment.ID, prTag, comment.Author.Name, l)
+		return false
+	}
+
 	// An empty question, or one of the review keywords, means "review this".
 	// It is a review like any other, so it takes the staged path: the
 	// gateway call goes to the inference pool instead of holding the worker,
@@ -84,14 +91,18 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		return false
 	}
 	r.log.InfoContext(ctx, fmt.Sprintf("Handling mention Q&A on %s: %q", prTag, question))
+	// The answer is the asker's, so it is in their language, not the
+	// PR author's.
+	l := r.languageFor(ctx, comment.Author.Name)
 
 	// Q&A runs without the review's gates and without compression.
 	rawDiff, err := r.bitbucket.FetchPRDiff(ctx, project, repo, pr.ID, 0)
 	var tooLarge *bitbucket.ContentTooLarge
 	if errors.As(err, &tooLarge) {
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: %v - mention not answered", prTag, err))
-		r.reply(ctx, project, repo, pr.ID, comment.ID, fmt.Sprintf(
-			"This PR's diff exceeds %d MiB, too large to answer questions about.", tooLarge.Limit/(1024*1024)))
+		r.reply(ctx, project, repo, pr.ID, comment.ID, fmt.Sprintf(l.Pick(
+			"Der Diff dieses PRs ist grösser als %d MiB, zu gross, um Fragen dazu zu beantworten.",
+			"This PR's diff exceeds %d MiB, too large to answer questions about."), tooLarge.Limit/(1024*1024)))
 		return false
 	}
 	if err != nil {
@@ -102,7 +113,8 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	files, _, _, _ := r.prepareFiles(ctx, project, repo, rawDiff, pr.FromRef.LatestCommit, prTag)
 	if len(files) == 0 {
 		r.log.InfoContext(ctx, prTag+": mention not answered by the model - no reviewable files")
-		r.reply(ctx, project, repo, pr.ID, comment.ID, "No reviewable files in this PR.")
+		r.reply(ctx, project, repo, pr.ID, comment.ID, l.Pick("Dieser PR enthält keine prüfbaren Dateien.",
+			"No reviewable files in this PR."))
 		return false
 	}
 
@@ -116,6 +128,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		RepoInstructions: repoInstructions,
 		TicketContext:    renderTicketContext(ticket, parent),
 		PRDescription:    r.prDescription(ctx, prTag, pr),
+		Language:         l,
 	})
 
 	result := r.llm.Mention(ctx, inference.MentionRequest{
@@ -139,18 +152,20 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	case inference.OutcomeTimedOut:
 		r.log.ErrorContext(ctx, fmt.Sprintf("Mention Q&A on %s aborted - no response within %.0fs",
 			prTag, inference.CallTimeout.Seconds()))
-		r.reply(ctx, project, repo, pr.ID, comment.ID, fmt.Sprintf(
+		r.reply(ctx, project, repo, pr.ID, comment.ID, fmt.Sprintf(l.Pick(
+			"⚠️ Keine Antwort vom Modell innerhalb von %d Minuten. Bitte nochmals versuchen, oder die Frage "+
+				"vereinfachen, falls sie viel Kontext braucht.",
 			"⚠️ No response from the model within %d minutes. Please try again, or simplify the question "+
-				"if it requires a lot of context.", timeoutMinutes))
+				"if it requires a lot of context."), timeoutMinutes))
 	case inference.OutcomeTooLarge:
 		r.log.WarnContext(ctx, prTag+": mention prompt too large for the model's context window")
-		r.reply(ctx, project, repo, pr.ID, comment.ID, inference.MentionTooLargeReply)
+		r.reply(ctx, project, repo, pr.ID, comment.ID, inference.MentionTooLargeReply(l))
 	case inference.OutcomeOK:
 		// An empty answer still gets a reply: a mention is never left
 		// silently unanswered.
-		answer := result.Answer
+		answer := sharpS(l, result.Answer)
 		if answer == "" {
-			answer = inference.MentionEmptyReply
+			answer = inference.MentionEmptyReply(l)
 		}
 		r.reply(ctx, project, repo, pr.ID, comment.ID, answer)
 		r.log.InfoContext(ctx, "Posted Q&A reply on "+prTag)

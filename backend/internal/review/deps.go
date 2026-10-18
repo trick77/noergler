@@ -13,6 +13,7 @@ import (
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/jira"
+	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/riptide"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/ship/kit/logging"
@@ -90,6 +91,8 @@ type Store interface {
 	PRCost(ctx context.Context, k store.PRKey) (*int64, error)
 	FreezeFinalCost(ctx context.Context, k store.PRKey) (*int64, error)
 	ClaimRollup(ctx context.Context, k store.PRKey, final store.RollupFinal) (*store.RollupSnapshot, error)
+	UserLanguage(ctx context.Context, userName string) (lang.Lang, error)
+	SetUserLanguage(ctx context.Context, userName string, l lang.Lang) error
 }
 
 // TokenCounter counts tokens in a string.

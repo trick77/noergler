@@ -46,6 +46,12 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   (prompt asks, `guardName` cuts a leading one otherwise); extracted by code
   from the operator pattern, single-case parts title-cased; never stored or
   logged.
+- Language: a review is the PR author's, a Q&A the asker's; resolved user ->
+  team -> `de`, failing open to the team. Set only by an exact keyword, by
+  code, for the commenter alone; never stamps a finding. Prompts, enums,
+  keys and logs stay English; `{output_language}` above "## Untrusted
+  input"; `SwissSS` on model prose only, never code or `suggestion`. Evals
+  pin `en`. Every banner marker exists per language.
 - `.properties` size gate is NOT in `IsReviewable` (the rollup must count the
   file).
 

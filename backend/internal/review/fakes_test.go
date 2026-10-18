@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/jira"
+	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/riptide"
 	"github.com/trick77/noergler/internal/store"
 )
@@ -191,6 +193,8 @@ type fakeStore struct {
 	existing   []store.Finding
 	prCost     *int64
 	rollup     *store.RollupSnapshot
+	// languages is user_settings, keyed by lower-cased user name.
+	languages map[string]lang.Lang
 
 	upsertErr  error
 	attemptErr error
@@ -385,6 +389,28 @@ func (f *fakeStore) FindingByComment(_ context.Context, _ store.PRKey, commentID
 		return nil, err
 	}
 	return f.byComment[commentID], nil
+}
+
+func (f *fakeStore) UserLanguage(_ context.Context, userName string) (lang.Lang, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return "", err
+	}
+	return f.languages[strings.ToLower(userName)], nil
+}
+
+func (f *fakeStore) SetUserLanguage(_ context.Context, userName string, l lang.Lang) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return err
+	}
+	if f.languages == nil {
+		f.languages = map[string]lang.Lang{}
+	}
+	f.languages[strings.ToLower(userName)] = l
+	return nil
 }
 
 func (f *fakeStore) MarkFindingReplied(_ context.Context, findingID int64, dispute *string) error {

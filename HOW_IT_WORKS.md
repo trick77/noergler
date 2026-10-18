@@ -254,6 +254,23 @@ is told to use it only when acknowledging or accepting a dispute; on a question
 or any other intent code cuts a leading address from the answer. The name is
 never stored or logged. Q&A answers and reviews carry no name.
 
+## 12a. Language
+
+noergler writes German by default (Swiss spelling, generic masculine),
+English on request. `REVIEW_LANGUAGE` / teams.yaml `language` set the team
+default; a user's own choice wins. `@noergler english` (or `deutsch`, `de`,
+`en`, `auf Englisch`, ...), or the same word alone as a reply under a
+finding, sets the commenter's language: an exact keyword, matched by code,
+no model call, confirmed in the new language. It is stored per Bitbucket user
+name, instance-wide, and kept across PRs.
+
+Whose language: a review (summary, inline findings, notices, banners, the
+"Fixed in" reply) is the PR author's, whoever triggered it; a Q&A answer is
+the asker's; a finding reply is the author's. Prompts, enums, JSON keys, logs
+and alert names stay English. The prompt's language block sits above the
+untrusted input, so the cache prefix forks once per language. A `ß` the model
+writes is turned into `ss` outside code. Evals always run in English.
+
 ## 13. Terminal events and the riptide rollup
 
 `pr:merged`, `pr:declined` and `pr:deleted` close the PR out. Except for a

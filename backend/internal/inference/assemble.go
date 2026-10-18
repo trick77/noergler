@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/trick77/noergler/internal/diff"
+	"github.com/trick77/noergler/internal/lang"
 )
 
 // NoTicketContext is what {ticket_context} becomes when no ticket is linked.
@@ -29,11 +30,17 @@ const (
 
 // MentionTooLargeReply is what a mention gets when the PR does not fit,
 // whether the pre-flight or the endpoint said so.
-const MentionTooLargeReply = "This PR is too large to answer within the model's context window."
+func MentionTooLargeReply(l lang.Lang) string {
+	return l.Pick("Dieser PR ist zu gross, um die Frage im Kontextfenster des Modells zu beantworten.",
+		"This PR is too large to answer within the model's context window.")
+}
 
 // MentionEmptyReply is what an empty model answer becomes, so a mention is
 // never silently unanswered.
-const MentionEmptyReply = "I couldn't process this PR to answer your question."
+func MentionEmptyReply(l lang.Lang) string {
+	return l.Pick("Ich konnte diesen PR nicht verarbeiten, um deine Frage zu beantworten.",
+		"I couldn't process this PR to answer your question.")
+}
 
 // MentionPromptRequest is one mention prompt's inputs.
 type MentionPromptRequest struct {
@@ -43,6 +50,8 @@ type MentionPromptRequest struct {
 	RepoInstructions string
 	TicketContext    string
 	PRDescription    string
+	// Language is the asker's; the zero value writes German.
+	Language lang.Lang
 }
 
 // RenderMentionPrompt assembles the Q&A prompt.
@@ -61,6 +70,7 @@ func RenderMentionPrompt(req MentionPromptRequest) string {
 		PlaceholderTicketContext, ticketContext,
 		PlaceholderPRDescription, orNoPRDescription(req.PRDescription),
 		PlaceholderDiff, RenderFileGroup(req.Files),
+		PlaceholderOutputLanguage, OutputLanguageBlock(req.Language),
 	).Replace(req.Template)
 }
 
@@ -102,6 +112,9 @@ type AssembleRequest struct {
 	// budget.
 	CumulativeOmitted []string
 	PreviouslyPosted  []PostedFinding
+	// Language is the PR author's; the zero value writes German. Evals pin
+	// English: their scoring matches English keywords.
+	Language lang.Lang
 }
 
 // AssembledPrompt is the rendered prompt plus what the caller needs for the
@@ -159,6 +172,7 @@ func AssembleReviewPrompt(req AssembleRequest, count CountFunc) AssembledPrompt 
 		PlaceholderTicketContext, ticketContext,
 		PlaceholderComplianceInstructions, compliance,
 		PlaceholderPRDescription, orNoPRDescription(req.PRDescription),
+		PlaceholderOutputLanguage, OutputLanguageBlock(req.Language),
 	).Replace(req.Template)
 
 	breakdown := PromptBreakdown{

@@ -1,6 +1,10 @@
 package render
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/trick77/noergler/internal/lang"
+)
 
 // Expected values are written out case by case, not derived from the code
 // under test.
@@ -137,11 +141,11 @@ func TestCostLimitBanner(t *testing.T) {
 	const want = CostBannerSentinel + "\n⚠️ **Cost limit exceeded** — PR total **$1.23**, over the **$0.50** limit. " +
 		"Automatic reviews are paused. `@noergler` to review manually, or ask an admin to raise `REVIEW_MAX_PR_COST_USD`."
 
-	if got := CostLimitBanner(1.2345, 0.5, "noergler", false); got != want {
+	if got := CostLimitBanner(lang.EN, 1.2345, 0.5, "noergler", false); got != want {
 		t.Errorf("completed-run banner\n got:  %q\n want: %q", got, want)
 	}
 	blocked := want + " This push was **not** reviewed automatically."
-	if got := CostLimitBanner(1.2345, 0.5, "noergler", true); got != blocked {
+	if got := CostLimitBanner(lang.EN, 1.2345, 0.5, "noergler", true); got != blocked {
 		t.Errorf("blocked banner\n got:  %q\n want: %q", got, blocked)
 	}
 }
@@ -150,7 +154,7 @@ func TestCostLimitBanner(t *testing.T) {
 // repeated blocked pushes stack.
 func TestCostBannerRoundTrips(t *testing.T) {
 	body := "### Overview\nBody."
-	withBanner := CostLimitBanner(1.0, 0.5, "noergler", true) + "\n\n" + body
+	withBanner := CostLimitBanner(lang.EN, 1.0, 0.5, "noergler", true) + "\n\n" + body
 	if got := StripCostBanner(withBanner); got != body {
 		t.Errorf("round trip failed: %q", got)
 	}

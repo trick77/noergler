@@ -9,6 +9,7 @@ import (
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/httpstats"
 	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
@@ -90,6 +91,16 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on finding %s not answered: %s", prTag, where, why))
 		return true, false
 	}
+	// "english" under a finding sets the author's language, even on a
+	// thread answered already: a command, not a reply, so it stamps nothing.
+	switchText := text
+	if mentioned {
+		switchText = extractQuestion(text, bot)
+	}
+	if l, ok := languageKeyword(switchText); ok {
+		r.setLanguage(ctx, key.Project, key.Repo, pr.ID, comment.ID, prTag, comment.Author.Name, l)
+		return true, false
+	}
 	if f.RepliedAt != nil {
 		return notAnswered("the thread was answered already")
 	}
@@ -153,7 +164,9 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	// AGENTS.md from the same commit, so code and guidelines match.
 	agentsMD := r.fetchRepoInstructions(ctx, project, repo, at, pr.ToRef.DisplayID)
 	name := firstName(r.displayName, comment.Author.DisplayName)
+	l := r.languageFor(ctx, author)
 	prompt := inference.RenderFindingReplyPrompt(inference.FindingReplyPromptRequest{
+		Language:         l,
 		Template:         r.replyTmpl,
 		RepoInstructions: agentsMD,
 		Finding:          fmt.Sprintf("%s [%s]\n\n%s", where, f.Severity, f.CommentText),
@@ -169,7 +182,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		project: project, repo: repo, prID: pr.ID, prTag: prTag, where: where,
 		findingID: f.ID, replyTo: comment.ID, text: text,
 		agentsMD: agentsMD, counter: counter,
-		name: name, namesOn: r.displayName != nil,
+		name: name, namesOn: r.displayName != nil, lang: l,
 	}
 	infer := func(inferCtx context.Context) { job.res = r.llm.FindingReply(inferCtx, req) }
 	post := func(postCtx context.Context) { r.postFindingReply(postCtx, job) }
@@ -197,6 +210,7 @@ type replyJob struct {
 	// from names off, so a drifted directory format shows in the log.
 	name    string
 	namesOn bool
+	lang    lang.Lang
 	counter *httpstats.Counter
 	res     inference.FindingReplyResult
 }
@@ -217,7 +231,7 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 	dispute := res.Reply.Intent == "disputes"
 
 	reply, nameState := guardName(res.Reply.Reply, j.name, res.Reply.Intent, j.namesOn)
-	body := truncateRunes(reply, replyPostRunes)
+	body := truncateRunes(sharpS(j.lang, reply), replyPostRunes)
 	agentsLine := "none"
 	if line := res.Reply.AgentsMDLine; line != "" {
 		switch reason := inference.CheckAgentsMDLine(line, j.agentsMD); {
@@ -228,7 +242,8 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 		default:
 			agentsLine = "suggested"
 			fence := codeFence(line)
-			body += "\n\nIf this holds project-wide, consider adding to `AGENTS.md`:\n\n" +
+			body += j.lang.Pick("\n\nFalls das projektweit gilt, lohnt sich ein Eintrag in `AGENTS.md`:\n\n",
+				"\n\nIf this holds project-wide, consider adding to `AGENTS.md`:\n\n") +
 				fence + "markdown\n" + line + "\n" + fence
 		}
 	}

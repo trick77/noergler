@@ -3,6 +3,8 @@ package render
 import (
 	"fmt"
 	"strings"
+
+	"github.com/trick77/noergler/internal/lang"
 )
 
 // Sentinel markers for the two banners we prepend to an existing summary
@@ -23,10 +25,15 @@ const (
 // two. staleBannerMarker is the phrase all six variants share, checked as a
 // substring of the banner row rather than a prefix
 // (TestStaleBannerFallbackCoversAllThreeNoticeKinds).
+//
+// Each marker exists once per language: a PR author who switches language
+// leaves a banner in the old one, and missing it would stack the next.
 const (
 	staleBannerVisiblePrefix = "⚠️"
 	staleBannerMarker        = "findings below reflect"
+	StaleBannerMarkerDE      = "Findings unten zeigen"
 	costBannerVisiblePrefix  = "⚠️ **Cost limit exceeded**"
+	costBannerVisibleDE      = "⚠️ **Kostenlimit überschritten**"
 )
 
 // StripStaleBanner removes a leading staleness banner block. Idempotent.
@@ -37,7 +44,7 @@ func StripStaleBanner(body string) string {
 // StripCostBanner removes a leading cost-limit banner block. Idempotent.
 func StripCostBanner(body string) string {
 	return stripBanner(body, CostBannerSentinel, func(line string) bool {
-		return strings.HasPrefix(line, costBannerVisiblePrefix)
+		return strings.HasPrefix(line, costBannerVisiblePrefix) || strings.HasPrefix(line, costBannerVisibleDE)
 	})
 }
 
@@ -46,7 +53,7 @@ func StripCostBanner(body string) string {
 // required, so an unrelated warning the model wrote is left alone.
 func isStaleBannerRow(line string) bool {
 	return strings.HasPrefix(line, staleBannerVisiblePrefix) &&
-		strings.Contains(line, staleBannerMarker)
+		(strings.Contains(line, staleBannerMarker) || strings.Contains(line, StaleBannerMarkerDE))
 }
 
 // stripBanner implements both strippers, which are the same algorithm.
@@ -101,7 +108,17 @@ func StaleBanner(line string) string {
 // blocked reports whether an automatic review was skipped entirely (the
 // pushed commit was not reviewed); false is a completed run that overshot the
 // cap, or a manual mention review while already over.
-func CostLimitBanner(cumulativeUSD, limitUSD float64, botUsername string, blocked bool) string {
+func CostLimitBanner(l lang.Lang, cumulativeUSD, limitUSD float64, botUsername string, blocked bool) string {
+	if l != lang.EN {
+		msg := fmt.Sprintf(
+			"%s — PR gesamt **$%.2f**, über dem Limit von **$%.2f**. Automatische Reviews sind pausiert. "+
+				"`@%s` für ein manuelles Review, oder einen Admin bitten, `REVIEW_MAX_PR_COST_USD` zu erhöhen.",
+			costBannerVisibleDE, cumulativeUSD, limitUSD, botUsername)
+		if blocked {
+			msg += " Dieser Push wurde **nicht** automatisch geprüft."
+		}
+		return CostBannerSentinel + "\n" + msg
+	}
 	msg := fmt.Sprintf(
 		"%s — PR total **$%.2f**, over the **$%.2f** limit. Automatic reviews are paused. "+
 			"`@%s` to review manually, or ask an admin to raise `REVIEW_MAX_PR_COST_USD`.",

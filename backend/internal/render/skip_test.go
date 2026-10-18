@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
+
+	"github.com/trick77/noergler/internal/lang"
 )
 
 // skipGolden is the expected output of the skip-summary builders. These
@@ -36,13 +38,13 @@ func loadSkipGolden(t *testing.T) skipGolden {
 func TestSkipSummariesIsPinned(t *testing.T) {
 	g := loadSkipGolden(t)
 
-	if got := OptOutBranchSummary("noergloff", "feature/noergloff-thing"); got != g.OptOut {
+	if got := OptOutBranchSummary(lang.EN, "noergloff", "feature/noergloff-thing"); got != g.OptOut {
 		t.Errorf("OptOutBranchSummary\n got:  %q\n want: %q", got, g.OptOut)
 	}
-	if got := AgentsMDMissingSummary(); got != g.AgentsMissing {
+	if got := AgentsMDMissingSummary(lang.EN); got != g.AgentsMissing {
 		t.Errorf("AgentsMDMissingSummary\n got:  %q\n want: %q", got, g.AgentsMissing)
 	}
-	if got := DiffTooLargeSummary(10 * 1024 * 1024); got != g.DiffTooLarge {
+	if got := DiffTooLargeSummary(lang.EN, 10*1024*1024); got != g.DiffTooLarge {
 		t.Errorf("DiffTooLargeSummary\n got:  %q\n want: %q", got, g.DiffTooLarge)
 	}
 }
@@ -61,7 +63,7 @@ func TestAgentsMDTooLargeSummaryIsPinned(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := AgentsMDTooLargeSummary(12345, 7000, c.custom); got != c.want {
+			if got := AgentsMDTooLargeSummary(lang.EN, 12345, 7000, c.custom); got != c.want {
 				t.Errorf("\n got:  %q\n want: %q", got, c.want)
 			}
 		})

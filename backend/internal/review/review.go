@@ -15,6 +15,7 @@ import (
 	"github.com/trick77/noergler/internal/httpstats"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/jira"
+	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/render"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
@@ -116,6 +117,10 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		return nil, ctx, r.abort(ctx, key, kind, SkipIgnoredPR, prTag, httpCounter)
 	}
 
+	// Everything this run posts is in the author's language, whoever
+	// triggered it: the summary and the findings are the author's.
+	l := r.languageFor(ctx, author)
+
 	upsert := store.PRUpsert{
 		Key: key, TeamSlug: r.TeamSlug,
 		Author: &author, Title: &pr.Title, OpenedAt: epochMSToTime(pr.CreatedDate),
@@ -130,7 +135,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		// the PR, not a transient failure.
 		prReviewID := r.upsert(ctx, upsert, pr.FromRef.LatestCommit)
 		r.postOrUpdateSummary(ctx, project, repo, pr.ID, prReviewID,
-			render.OptOutBranchSummary(keyword, pr.FromRef.DisplayID))
+			render.OptOutBranchSummary(l, keyword, pr.FromRef.DisplayID))
 		return nil, ctx, r.abort(ctx, key, kind, SkipBranchOptOut, prTag, httpCounter)
 	}
 
@@ -141,7 +146,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		r.log.InfoContext(ctx, fmt.Sprintf(
 			"%s: no AGENTS.md found on PR or target branch, skipping review (set REVIEW_REQUIRE_AGENTS_MD=false to override)", prTag))
 		prReviewID := r.upsert(ctx, upsert, pr.FromRef.LatestCommit)
-		r.postOrUpdateSummary(ctx, project, repo, pr.ID, prReviewID, render.AgentsMDMissingSummary())
+		r.postOrUpdateSummary(ctx, project, repo, pr.ID, prReviewID, render.AgentsMDMissingSummary(l))
 		return nil, ctx, r.abort(ctx, key, kind, SkipNoAgentsMD, prTag, httpCounter)
 	}
 
@@ -153,7 +158,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 				prTag, n, r.cfg.AgentsMDMaxTokens))
 			prReviewID := r.upsert(ctx, upsert, pr.FromRef.LatestCommit)
 			r.postOrUpdateSummary(ctx, project, repo, pr.ID, prReviewID,
-				render.AgentsMDTooLargeSummary(n, r.cfg.AgentsMDMaxTokens, r.cfg.AgentsMDCustomLink))
+				render.AgentsMDTooLargeSummary(l, n, r.cfg.AgentsMDMaxTokens, r.cfg.AgentsMDCustomLink))
 			return nil, ctx, r.abort(ctx, key, kind, SkipAgentsMDTooLarge, prTag, httpCounter)
 		}
 	}
@@ -175,7 +180,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 					"%s: PR cost $%.2f >= limit $%.2f - skipping auto-review (@%s to review manually, or raise REVIEW_MAX_PR_COST_USD)",
 					prTag, cumulative, r.cfg.MaxPRCostUSD, r.bitbucket.BotUsername()))
 				prReviewID, _ := r.upsertKeepingPrior(ctx, upsert, key)
-				r.costLimitNotice(ctx, project, repo, pr.ID, prReviewID, cumulative, r.cfg.MaxPRCostUSD)
+				r.costLimitNotice(ctx, l, project, repo, pr.ID, prReviewID, cumulative, r.cfg.MaxPRCostUSD)
 				return nil, ctx, r.abort(ctx, key, kind, SkipCostCap, prTag, httpCounter)
 			}
 		}
@@ -188,7 +193,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	lastReviewed, _ := r.priorCommit(ctx, key)
 
 	// 9. Incremental review when the event is a push and we have a pointer.
-	rawDiff, cumulativePR, incrementalFrom, diffWhy, err := r.resolveDiff(ctx, payload, key, prTag, sourceCommit, lastReviewed, upsert)
+	rawDiff, cumulativePR, incrementalFrom, diffWhy, err := r.resolveDiff(ctx, payload, key, prTag, sourceCommit, lastReviewed, upsert, l)
 	if err != nil || diffWhy != SkipNone {
 		// A diff that would not fetch is a fault, recorded as an error like
 		// an inference one, so an outage is visible. A cancelled ctx is a
@@ -285,6 +290,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		CumulativePartial:     cumulativePR.partial,
 		CumulativeOmitted:     cumulativePR.omitted,
 		PreviouslyPosted:      posted,
+		Language:              l,
 	}, r.tokens.Count)
 	r.logPromptComposition(ctx, prTag, assembled, incrementalFrom != "")
 
@@ -303,6 +309,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		sourceCommit:    sourceCommit,
 		incrementalFrom: incrementalFrom,
 		mention:         skipAuthorCheck,
+		lang:            l,
 		started:         started,
 		counter:         httpCounter,
 		prompt:          assembled.Prompt,
@@ -371,7 +378,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	// 19b. OutcomeError is NOT one of them: a non-overflow API error is only
 	// logged. No upsert, no notice, no run row.
 	if result.Outcome != inference.OutcomeOK {
-		r.handleNonOK(ctx, result, key, runKind(plan.mention), prTag, sourceCommit, upsert)
+		r.handleNonOK(ctx, plan.lang, result, key, runKind(plan.mention), prTag, sourceCommit, upsert)
 		return
 	}
 
@@ -411,7 +418,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	// 23. Post the inline comments. postedIDs is parallel to findings, with
 	// a zero where the post failed, so the count of successes is separate
 	// from the slice length.
-	postedIDs, postedCount, failed := r.postInlineComments(ctx, project, repo, plan.prID, findings)
+	postedIDs, postedCount, failed := r.postInlineComments(ctx, plan.lang, project, repo, plan.prID, findings)
 
 	elapsed := time.Since(started)
 
@@ -446,6 +453,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	runCost, cumulativeCost := r.resolveCost(ctx, key, result)
 
 	summary := render.Summary(render.SummaryInput{
+		Lang:                       plan.lang,
 		Findings:                   findings,
 		Truncated:                  truncated,
 		FixedEarlier:               len(fixed),
@@ -486,7 +494,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	// over-budget state stays loud. The summary is freshly built each run, so
 	// no strip is needed.
 	if cumulativeCost != nil && *cumulativeCost >= r.cfg.MaxPRCostUSD {
-		summary = render.CostLimitBanner(*cumulativeCost, r.cfg.MaxPRCostUSD, r.bitbucket.BotUsername(), false) +
+		summary = render.CostLimitBanner(plan.lang, *cumulativeCost, r.cfg.MaxPRCostUSD, r.bitbucket.BotUsername(), false) +
 			"\n\n" + summary
 	}
 
@@ -557,7 +565,7 @@ func (r *Reviewer) checkSkipState(ctx context.Context, key store.PRKey, prTag st
 // bare false told the caller only that it had to return, so the two
 // commonest skips in the whole pipeline were invisible to anything but the
 // log, and a zero why could not tell a fault from any other stop.
-func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, key store.PRKey, prTag, sourceCommit, lastReviewed string, upsert store.PRUpsert) (rawDiff string, cumulative cumulativeContext, incrementalFrom string, why SkipReason, err error) {
+func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, key store.PRKey, prTag, sourceCommit, lastReviewed string, upsert store.PRUpsert, l lang.Lang) (rawDiff string, cumulative cumulativeContext, incrementalFrom string, why SkipReason, err error) {
 	project, repo, prID := key.Project, key.Repo, key.PRID
 	isIncremental := false
 
@@ -614,7 +622,7 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 			// not go incremental from it.
 			r.logDiffTooLarge(ctx, prTag, project, repo, prID, err, tooLarge)
 			prReviewID, _ := r.upsertKeepingPrior(ctx, upsert, key)
-			r.postOrUpdateSummary(ctx, project, repo, prID, prReviewID, render.DiffTooLargeSummary(tooLarge.Limit))
+			r.postOrUpdateSummary(ctx, project, repo, prID, prReviewID, render.DiffTooLargeSummary(l, tooLarge.Limit))
 			return "", cumulativeContext{}, "", SkipDiffTooLarge, nil
 		}
 		if err != nil {
@@ -645,7 +653,7 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 // All four write a review_attempts row, which is a separate table precisely
 // so those pins stay true: the dashboard needs to show a failure, and
 // review_runs must keep meaning "a review that produced a result".
-func (r *Reviewer) handleNonOK(ctx context.Context, result inference.ReviewResult, key store.PRKey, kind store.RunKind, prTag, sourceCommit string, upsert store.PRUpsert) {
+func (r *Reviewer) handleNonOK(ctx context.Context, l lang.Lang, result inference.ReviewResult, key store.PRKey, kind store.RunKind, prTag, sourceCommit string, upsert store.PRUpsert) {
 	short := shortOrUnknown(sourceCommit)
 	project, repo, prID := key.Project, key.Repo, key.PRID
 
@@ -666,15 +674,15 @@ func (r *Reviewer) handleNonOK(ctx context.Context, result inference.ReviewResul
 	case inference.OutcomeTimedOut:
 		r.log.ErrorContext(ctx, fmt.Sprintf("Review of %s aborted - no response within %.0fs (commit %s)",
 			prTag, inference.CallTimeout.Seconds(), short))
-		r.timeoutNotice(ctx, project, repo, prID, prReviewID, sourceCommit, prior)
+		r.timeoutNotice(ctx, l, project, repo, prID, prReviewID, sourceCommit, prior)
 	case inference.OutcomeUnparseable:
 		r.log.ErrorContext(ctx, fmt.Sprintf(
 			"Review of %s aborted - model returned an unparseable/refused response (commit %s)", prTag, short))
-		r.unparseableNotice(ctx, project, repo, prID, prReviewID, sourceCommit, prior)
+		r.unparseableNotice(ctx, l, project, repo, prID, prReviewID, sourceCommit, prior)
 	case inference.OutcomeTooLarge:
 		r.log.ErrorContext(ctx, fmt.Sprintf(
 			"Review of %s skipped - PR too large for the model's context window (commit %s)", prTag, short))
-		r.tooLargeNotice(ctx, project, repo, prID, prReviewID, sourceCommit, prior)
+		r.tooLargeNotice(ctx, l, project, repo, prID, prReviewID, sourceCommit, prior)
 	}
 
 	// No run row, so a billed call's cost rides here, where PRCost reads it.
@@ -851,10 +859,10 @@ func sortAndLimit(findings []inference.ReviewFinding, maxComments int) ([]infere
 // A failure is counted and logged but never stored: a finding row exists
 // only for a comment that is actually on the PR
 // (TestFailedInlineCommentIsNotStored).
-func (r *Reviewer) postInlineComments(ctx context.Context, project, repo string, prID int, findings []inference.ReviewFinding) (ids []int, posted, failed int) {
+func (r *Reviewer) postInlineComments(ctx context.Context, l lang.Lang, project, repo string, prID int, findings []inference.ReviewFinding) (ids []int, posted, failed int) {
 	ids = make([]int, len(findings))
 	for i, f := range findings {
-		id, err := r.bitbucket.PostInlineComment(ctx, project, repo, prID, f.File, f.Line, render.InlineComment(f))
+		id, err := r.bitbucket.PostInlineComment(ctx, project, repo, prID, f.File, f.Line, render.InlineComment(f, l))
 		if err != nil {
 			failed++
 			r.log.ErrorContext(ctx, fmt.Sprintf("Failed to post inline comment on %s:%d: %v", f.File, f.Line, err))

@@ -29,6 +29,14 @@ an incident or an eval run: read the reason before relaxing a rule.
   recurrence.
 - Finding replies author-only: a reviewer's reply used up the one answer
   before the author could make their case.
+- Language block above the untrusted input: below it the prompt calls
+  everything data, so an instruction there is one the model may ignore; and
+  the prefix up to it is the same for every PR in that language.
+- Language by keyword, not by the model: the model reads the diff, so an
+  injection could flip a user's language; code reads only the commenter's text.
+- Language per user, instance-wide: it is the person's, whichever team
+  reviews them. A review is the author's, so a reviewer's switch cannot
+  change the author's PR.
 - One-pass placeholders: sequential substitution would expand a `{files}`
   inside user text.
 - `.properties` gate outside `IsReviewable`: hand edits yes, regenerated i18n

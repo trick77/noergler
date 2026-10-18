@@ -156,7 +156,7 @@ func reviewSection(log *slog.Logger, label string, r Review) {
 		kv{"ticket_compliance_check", r.TicketComplianceCheck}, kv{"require_agents_md", r.RequireAgentsMD},
 		kv{"agents_md_warn_tokens", r.AgentsMDWarnTokens}, kv{"agents_md_max_tokens", r.AgentsMDMaxTokens},
 		kv{"agents_md_custom_link", r.AgentsMDCustomLink}, kv{"opt_out_branch_keyword", r.OptOutBranchKeyword},
-		kv{"max_pr_cost_usd", r.MaxPRCostUSD})
+		kv{"max_pr_cost_usd", r.MaxPRCostUSD}, kv{"language", string(r.Language)})
 }
 
 func jiraSection(log *slog.Logger, label string, j Jira) {

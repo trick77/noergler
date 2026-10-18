@@ -8,6 +8,7 @@ import (
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/render"
 	"github.com/trick77/noergler/internal/store"
 )
@@ -129,56 +130,65 @@ func (r *Reviewer) failureNotice(ctx context.Context, project, repo string, prID
 }
 
 // timeoutNotice surfaces a deadline-exceeded run on the summary comment.
-func (r *Reviewer) timeoutNotice(ctx context.Context, project, repo string, prID int, prReviewID int64, newCommit, priorCommit string) {
+func (r *Reviewer) timeoutNotice(ctx context.Context, l lang.Lang, project, repo string, prID int, prReviewID int64, newCommit, priorCommit string) {
 	short := shortOrUnknown(newCommit)
-	fresh := fmt.Sprintf("⚠️ **Review skipped** — no response from the model within %d minutes for commit `%s`. "+
-		"The review did not complete. Push a new commit or `@%s` to retry.",
+	fresh := fmt.Sprintf(l.Pick(
+		"⚠️ **Review übersprungen** — keine Antwort vom Modell innerhalb von %d Minuten für Commit `%s`. "+
+			"Das Review wurde nicht abgeschlossen. Neuen Commit pushen oder `@%s` für einen neuen Versuch.",
+		"⚠️ **Review skipped** — no response from the model within %d minutes for commit `%s`. "+
+			"The review did not complete. Push a new commit or `@%s` to retry."),
 		timeoutMinutes, short, r.bitbucket.BotUsername())
-
-	banner := fmt.Sprintf("⚠️ No response from the model within %d minutes on commit `%s` — findings below reflect an earlier commit.",
-		timeoutMinutes, short)
-	if priorCommit != "" {
-		banner = fmt.Sprintf("⚠️ No response from the model within %d minutes on commit `%s` — findings below reflect the earlier commit `%s`.",
-			timeoutMinutes, short, shortSHA(priorCommit, 8))
-	}
-	r.failureNotice(ctx, project, repo, prID, prReviewID, fresh, banner, "timeout notice")
+	lead := fmt.Sprintf(l.Pick("Keine Antwort vom Modell innerhalb von %d Minuten auf Commit `%s`",
+		"No response from the model within %d minutes on commit `%s`"), timeoutMinutes, short)
+	r.failureNotice(ctx, project, repo, prID, prReviewID, fresh, staleBanner(l, lead, priorCommit), "timeout notice")
 }
 
 // unparseableNotice surfaces a refused or unparseable model response.
-func (r *Reviewer) unparseableNotice(ctx context.Context, project, repo string, prID int, prReviewID int64, newCommit, priorCommit string) {
+func (r *Reviewer) unparseableNotice(ctx context.Context, l lang.Lang, project, repo string, prID int, prReviewID int64, newCommit, priorCommit string) {
 	short := shortOrUnknown(newCommit)
-	fresh := fmt.Sprintf("⚠️ **Review skipped** — the model returned a response that could not be processed "+
-		"(it may have refused this diff) for commit `%s`. The review did not complete. "+
-		"Push a new commit or `@%s` to retry.", short, r.bitbucket.BotUsername())
-
-	banner := fmt.Sprintf("⚠️ The model returned an unprocessable response on commit `%s` — findings below reflect an earlier commit.", short)
-	if priorCommit != "" {
-		banner = fmt.Sprintf("⚠️ The model returned an unprocessable response on commit `%s` — findings below reflect the earlier commit `%s`.",
-			short, shortSHA(priorCommit, 8))
-	}
-	r.failureNotice(ctx, project, repo, prID, prReviewID, fresh, banner, "unparseable-response notice")
+	fresh := fmt.Sprintf(l.Pick(
+		"⚠️ **Review übersprungen** — das Modell hat eine Antwort geliefert, die nicht verarbeitet werden konnte "+
+			"(eventuell hat es diesen Diff abgelehnt), für Commit `%s`. Das Review wurde nicht abgeschlossen. "+
+			"Neuen Commit pushen oder `@%s` für einen neuen Versuch.",
+		"⚠️ **Review skipped** — the model returned a response that could not be processed "+
+			"(it may have refused this diff) for commit `%s`. The review did not complete. "+
+			"Push a new commit or `@%s` to retry."), short, r.bitbucket.BotUsername())
+	lead := fmt.Sprintf(l.Pick("Das Modell hat auf Commit `%s` eine unverarbeitbare Antwort geliefert",
+		"The model returned an unprocessable response on commit `%s`"), short)
+	r.failureNotice(ctx, project, repo, prID, prReviewID, fresh, staleBanner(l, lead, priorCommit), "unparseable-response notice")
 }
 
 // tooLargeNotice surfaces a PR that does not fit the model's context window.
-func (r *Reviewer) tooLargeNotice(ctx context.Context, project, repo string, prID int, prReviewID int64, newCommit, priorCommit string) {
+func (r *Reviewer) tooLargeNotice(ctx context.Context, l lang.Lang, project, repo string, prID int, prReviewID int64, newCommit, priorCommit string) {
 	short := shortOrUnknown(newCommit)
-	fresh := fmt.Sprintf("⚠️ **Review skipped** — this PR is too large to review within the model's context window "+
-		"(commit `%s`). Split it into smaller PRs, then `@%s` to retry.", short, r.bitbucket.BotUsername())
+	fresh := fmt.Sprintf(l.Pick(
+		"⚠️ **Review übersprungen** — dieser PR ist zu gross für das Kontextfenster des Modells "+
+			"(Commit `%s`). In kleinere PRs aufteilen, dann `@%s` für einen neuen Versuch.",
+		"⚠️ **Review skipped** — this PR is too large to review within the model's context window "+
+			"(commit `%s`). Split it into smaller PRs, then `@%s` to retry."), short, r.bitbucket.BotUsername())
+	lead := fmt.Sprintf(l.Pick("Commit `%s` ist zu gross für das Kontextfenster des Modells",
+		"Commit `%s` is too large to review within the model's context window"), short)
+	r.failureNotice(ctx, project, repo, prID, prReviewID, fresh, staleBanner(l, lead, priorCommit), "too-large notice")
+}
 
-	banner := fmt.Sprintf("⚠️ Commit `%s` is too large to review within the model's context window — findings below reflect an earlier commit.", short)
-	if priorCommit != "" {
-		banner = fmt.Sprintf("⚠️ Commit `%s` is too large to review within the model's context window — findings below reflect the earlier commit `%s`.",
-			short, shortSHA(priorCommit, 8))
+// staleBanner is the banner row every failure notice shares. Each language
+// carries its marker phrase (render.StaleBannerMarkerDE, "findings below
+// reflect"), which the stripper falls back on when the sentinel is gone.
+func staleBanner(l lang.Lang, lead, priorCommit string) string {
+	if priorCommit == "" {
+		return "⚠️ " + lead + l.Pick(" — "+render.StaleBannerMarkerDE+" einen früheren Commit.",
+			" — findings below reflect an earlier commit.")
 	}
-	r.failureNotice(ctx, project, repo, prID, prReviewID, fresh, banner, "too-large notice")
+	return fmt.Sprintf(l.Pick("⚠️ %s — "+render.StaleBannerMarkerDE+" den früheren Commit `%s`.",
+		"⚠️ %s — findings below reflect the earlier commit `%s`."), lead, shortSHA(priorCommit, 8))
 }
 
 // costLimitNotice surfaces a blocked auto-review on the summary comment.
 //
 // Same shape as failureNotice but with the cost banner and its own stripper,
 // so repeated blocked pushes replace the banner instead of stacking it.
-func (r *Reviewer) costLimitNotice(ctx context.Context, project, repo string, prID int, prReviewID int64, cumulativeUSD, limitUSD float64) {
-	banner := render.CostLimitBanner(cumulativeUSD, limitUSD, r.bitbucket.BotUsername(), true)
+func (r *Reviewer) costLimitNotice(ctx context.Context, l lang.Lang, project, repo string, prID int, prReviewID int64, cumulativeUSD, limitUSD float64) {
+	banner := render.CostLimitBanner(l, cumulativeUSD, limitUSD, r.bitbucket.BotUsername(), true)
 
 	var existing *store.SummaryComment
 	if prReviewID != 0 {

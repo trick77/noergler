@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/trick77/noergler/internal/lang"
 )
 
 const minimalTeams = `
@@ -111,6 +113,9 @@ func TestInstance_RequiredVarsAndDefaults(t *testing.T) {
 	}
 	if app.Review.OptOutBranchKeyword != "noergloff" || app.Review.MaxComments != 25 || app.Review.MaxPRCostUSD != 5.0 {
 		t.Errorf("review defaults: %+v", app.Review)
+	}
+	if app.Review.Language != lang.DE || app.Teams["platform"].Review.Language != lang.DE {
+		t.Errorf("language default = %q, want de", app.Review.Language)
 	}
 	if !app.Review.TicketComplianceCheck || !app.Review.DiffAllowDynamicContext || !app.Review.RequireAgentsMD {
 		t.Errorf("bool defaults: %+v", app.Review)
@@ -285,6 +290,32 @@ func TestInstance_NonPositiveCostCapAbortsBoot(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "REVIEW_MAX_PR_COST_USD") {
 			t.Errorf("%s: err = %v, want a load failure", bad, err)
 		}
+	}
+}
+
+func TestInstance_LanguageIsDeOrEn(t *testing.T) {
+	e := newEnv(t)
+	e.set("REVIEW_LANGUAGE", "EN")
+	if app := e.mustLoad(); app.Review.Language != lang.EN {
+		t.Errorf("language = %q, want en", app.Review.Language)
+	}
+	e = newEnv(t)
+	e.set("REVIEW_LANGUAGE", "fr")
+	if _, err := e.load(); err == nil || !strings.Contains(err.Error(), "REVIEW_LANGUAGE") {
+		t.Errorf("err = %v, want a load failure", err)
+	}
+}
+
+func TestTeam_LanguageOverride(t *testing.T) {
+	e := newEnv(t)
+	e.teams(strings.Replace(twoTeams, "      max_pr_cost_usd: 8.5\n", "      max_pr_cost_usd: 8.5\n      language: en\n", 1))
+	e.payments()
+	app := e.mustLoad()
+	if got := app.Teams["payments"].Review.Language; got != lang.EN {
+		t.Errorf("payments language = %q, want en", got)
+	}
+	if got := app.Teams["platform"].Review.Language; got != lang.DE {
+		t.Errorf("platform language = %q, want the instance de", got)
 	}
 }
 
@@ -505,6 +536,9 @@ func TestTeams_FaultDisablesOnlyThatTeam(t *testing.T) {
 		{"zero max_pr_cost_usd", func(s string) string {
 			return strings.Replace(s, "max_pr_cost_usd: 8.5", "max_pr_cost_usd: 0", 1)
 		}, "review.max_pr_cost_usd: Input should be greater than 0"},
+		{"unsupported language", func(s string) string {
+			return strings.Replace(s, "      max_pr_cost_usd: 8.5\n", "      max_pr_cost_usd: 8.5\n      language: fr\n", 1)
+		}, "review.language: Input should be 'de' or 'en'"},
 		{"bad int", func(s string) string { return strings.Replace(s, "context_window: 1200000", "context_window: lots", 1) },
 			"inference.context_window: Input should be a valid integer"},
 	}

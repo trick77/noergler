@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"math"
 	"strings"
+
+	"github.com/trick77/noergler/internal/lang"
 )
 
 // Fmt renders a count with an apostrophe as the thousands separator.
@@ -53,6 +55,14 @@ func pct(part, whole int) int {
 		return 0
 	}
 	return int(math.RoundToEven(float64(part) / float64(whole) * 100))
+}
+
+// PluralIn renders the count with the singular or plural word of l.
+func PluralIn(l lang.Lang, n int, deOne, deMany, enOne, enMany string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, l.Pick(deOne, enOne))
+	}
+	return fmt.Sprintf("%d %s", n, l.Pick(deMany, enMany))
 }
 
 // Plural renders "1 finding" / "2 findings".

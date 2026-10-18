@@ -34,6 +34,7 @@ import (
 
 	"github.com/trick77/noergler/internal/diff"
 	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/lang"
 )
 
 //go:embed corpus/*.json
@@ -252,6 +253,8 @@ func assemble(template string, c Case, count inference.CountFunc) inference.Asse
 	return inference.AssembleReviewPrompt(inference.AssembleRequest{
 		Template: template,
 		Files:    c.Files,
+		// The scoring matches English corpus keywords.
+		Language: lang.EN,
 	}, count)
 }
 

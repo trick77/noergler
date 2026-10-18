@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/lang"
 )
 
 // Expected bodies are the golden corpus in testdata, compared byte for byte:
@@ -33,7 +34,7 @@ func TestInlineCommentIsPinned(t *testing.T) {
 			Comment:    c.Comment,
 			Suggestion: c.Suggestion,
 		}
-		if got := InlineComment(f); got != c.Out {
+		if got := InlineComment(f, lang.EN); got != c.Out {
 			t.Errorf("case %d\n got:  %q\n want: %q", i, got, c.Out)
 		}
 	}
@@ -46,12 +47,12 @@ func TestSuggestionFenceOnlyForSingleLine(t *testing.T) {
 	one := "foo := bar()"
 	many := "if x {\n\treturn y\n}"
 
-	got := InlineComment(inference.ReviewFinding{Severity: "issue", Comment: "c", Suggestion: &one})
+	got := InlineComment(inference.ReviewFinding{Severity: "issue", Comment: "c", Suggestion: &one}, lang.EN)
 	if !strings.Contains(got, "```suggestion\n") {
 		t.Errorf("single-line suggestion lost its fence: %q", got)
 	}
 
-	got = InlineComment(inference.ReviewFinding{Severity: "issue", Comment: "c", Suggestion: &many})
+	got = InlineComment(inference.ReviewFinding{Severity: "issue", Comment: "c", Suggestion: &many}, lang.EN)
 	if strings.Contains(got, "```suggestion") {
 		t.Errorf("multi-line suggestion must not use the suggestion fence: %q", got)
 	}
@@ -61,11 +62,11 @@ func TestSuggestionFenceOnlyForSingleLine(t *testing.T) {
 // appended.
 func TestEmptySuggestionOmitsTheBlock(t *testing.T) {
 	empty := ""
-	got := InlineComment(inference.ReviewFinding{Severity: "issue", Comment: "c", Suggestion: &empty})
+	got := InlineComment(inference.ReviewFinding{Severity: "issue", Comment: "c", Suggestion: &empty}, lang.EN)
 	if got != "**Issue:** c" {
 		t.Errorf("empty suggestion rendered a block: %q", got)
 	}
-	got = InlineComment(inference.ReviewFinding{Severity: "issue", Comment: "c"})
+	got = InlineComment(inference.ReviewFinding{Severity: "issue", Comment: "c"}, lang.EN)
 	if got != "**Issue:** c" {
 		t.Errorf("nil suggestion rendered a block: %q", got)
 	}
