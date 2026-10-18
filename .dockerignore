@@ -14,5 +14,3 @@ ui/coverage
 backend/web/dist
 # ship:end
 
-# The prompt templates ship with the image (COPY prompts/).
-!prompts

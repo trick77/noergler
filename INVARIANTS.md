@@ -11,8 +11,8 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   writes use the caller's `X-Bitbucket-Token` (never logged or stored), proven
   per target by admin rights; claims written only after; uniqueness is the
   DB's.
-- Gateway host/models and prompt templates are instance-only; an unknown
-  `teams.yaml` key disables the team.
+- Gateway host/models are instance-only; an unknown `teams.yaml` key
+  disables the team.
 
 ## Money
 
@@ -39,8 +39,7 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   row is stamped regardless. Limits are in the doc comment and decided.
 - Finding replies: PR author only, once, never resolve; a non-author `@bot`
   reply goes to the Q&A, a review-keyword one to the mention path (a review);
-  nothing posted = nothing stamped; template optional at its default path
-  only.
+  nothing posted = nothing stamped.
 - `.properties` size gate is NOT in `IsReviewable` (the rollup must count the
   file).
 

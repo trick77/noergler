@@ -10,8 +10,9 @@ decision, not a cleanup.
 
 ## Commands
 
-- Module in `backend/` (go commands there); `scripts/`, `ui/`, `prompts/`,
-  docs and `make` at the root.
+- Module in `backend/` (go commands there); `scripts/`, `ui/`, docs and
+  `make` at the root. Prompts are `backend/internal/prompts/*.txt`, compiled
+  in (go:embed), never configurable.
 - Gate = `make check` (ship master; `SHIP_CMD=<binary>` locally). `make hooks`
   per clone. GitHub is never first to find a failure; a Dependabot PR gets
   `make check` before merge.
@@ -38,7 +39,7 @@ decision, not a cleanup.
   reviewed, posted or billed get a log line.
 - Author text (PR description, replies, disputes) is intent, never evidence,
   never drops a finding.
-- `prompts/review.txt`: `{files}` before `{cumulative_pr_diff}` and
+- `review.txt`: `{files}` before `{cumulative_pr_diff}` and
   `{previously_posted_findings}` (prefix cache). One-pass placeholders, never
   `text/template`.
 - RE2 classes are ASCII: write Unicode-aware patterns (INVARIANTS: adapters).

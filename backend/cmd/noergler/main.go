@@ -137,6 +137,9 @@ func serve(log *slog.Logger) error {
 		return err
 	}
 	config.Dump(app, log)
+	for _, name := range config.RemovedPromptSettings(config.OSLookup) {
+		log.Warn(name + " is " + config.RemovedPromptReason)
+	}
 
 	// SIGINT/SIGTERM end startup and then serving; the queue drain below runs
 	// on. run.Context releases the handler shortly after ctx ends, so a second

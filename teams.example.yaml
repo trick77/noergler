@@ -15,10 +15,10 @@
 #     "instance ..." means the value is inherited from that env var
 #
 # Team-overridable: model, reasoning effort, context window, every REVIEW_*
-# knob except the two prompt templates, the Jira acceptance-criteria prefixes,
-# riptide. NOT overridable (instance-wide, naming them here disables the
-# team): LLMWIRE_LITELLM_BASE_URL, LLMWIRE_LITELLM_MODELS,
-# REVIEW_PROMPT_TEMPLATE, REVIEW_MENTION_PROMPT_TEMPLATE.
+# knob, the Jira acceptance-criteria prefixes, riptide. NOT overridable
+# (instance-wide, naming them here disables the team):
+# LLMWIRE_LITELLM_BASE_URL, LLMWIRE_LITELLM_MODELS. The prompts are compiled
+# into the binary.
 
 teams:
   # --- A team using every optional block ------------------------------------

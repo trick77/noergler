@@ -143,8 +143,6 @@ func reviewSection(log *slog.Logger, label string, r Review) {
 		kv{"diff_extra_lines_after", r.DiffExtraLinesAfter},
 		kv{"diff_max_extra_lines_dynamic_context", r.DiffMaxExtraLinesDynamicContext},
 		kv{"diff_allow_dynamic_context", r.DiffAllowDynamicContext},
-		kv{"review_prompt_template", r.ReviewPromptTemplate}, kv{"mention_prompt_template", r.MentionPromptTemplate},
-		kv{"finding_reply_prompt_template", r.FindingReplyPromptTemplate},
 		kv{"ticket_compliance_check", r.TicketComplianceCheck}, kv{"require_agents_md", r.RequireAgentsMD},
 		kv{"agents_md_warn_tokens", r.AgentsMDWarnTokens}, kv{"agents_md_max_tokens", r.AgentsMDMaxTokens},
 		kv{"agents_md_custom_link", r.AgentsMDCustomLink}, kv{"opt_out_branch_keyword", r.OptOutBranchKeyword},

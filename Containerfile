@@ -1,5 +1,6 @@
-# Built with the repo root as context: the image also ships prompts/ and
-# builds ui/, both beside backend/. Hence the backend/ prefix on Go paths.
+# Built with the repo root as context: the image also builds ui/, beside
+# backend/. Hence the backend/ prefix on Go paths. The prompts are compiled
+# into the binary.
 
 # The dashboard SPA, built first: the Go stage embeds its output, so it has
 # to exist on disk before `go build` reads it.
@@ -31,10 +32,6 @@ RUN CGO_ENABLED=0 go build -trimpath \
 FROM gcr.io/distroless/static-debian13:nonroot
 WORKDIR /app
 COPY --from=builder /out/noergler /noergler
-# Prompt templates ship with the image; the deployment may mount its own
-# over /app/prompts (REVIEW_PROMPT_TEMPLATE, REVIEW_MENTION_PROMPT_TEMPLATE,
-# REVIEW_FINDING_REPLY_PROMPT_TEMPLATE are relative to the working directory). Read-only to the service.
-COPY prompts/ /app/prompts/
 # Soft heap ceiling under the pod limit (2 Gi in prod): the runtime collects
 # harder as it approaches this instead of letting a 1M-token prompt push RSS
 # into the limit. Raise the pod limit together with this.

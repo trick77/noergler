@@ -124,8 +124,9 @@ corpus revision, **8 caught and 7 caught**. That spread is the baseline: a
 single later run scoring 7 is inside the noise, and only a run scoring 6 or
 less, or a second consecutive 7 after a prompt edit, is a signal.
 
-Every run scored the same prompt text: `prompts/review.txt` has one commit in
-its entire history. Every difference between these rows is model
+Every run scored the same prompt text: the review prompt (then
+`prompts/review.txt`, now `backend/internal/prompts/review.txt`) had one
+commit at the time. Every difference between these rows is model
 non-determinism, a corpus change or a scorer change, never a prompt change.
 
 **Exit 1 has fired on two of the three rev4 runs with the prompt unchanged.**

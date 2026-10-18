@@ -1,12 +1,14 @@
-// Command evals scores prompts/review.txt against the seeded-bug corpus.
+// Command evals scores the review prompt (internal/prompts) against the
+// seeded-bug corpus.
 //
 // It is part of the product, not a throwaway: the corpus is embedded, the
 // scoring lives in internal/evals with its own tests, and a run is one
-// command. Re-run it after any edit to prompts/review.txt, to the assembly
+// command. Re-run it after any edit to internal/prompts/review.txt, to the assembly
 // in internal/inference, or when changing model or reasoning effort.
 //
 //	EVAL_BASE_URL=https://llm.example/v1 EVAL_API_KEY=... \
-//	  go run ./cmd/evals -prompt ../prompts/review.txt
+//	  go run ./cmd/evals                      # the compiled-in prompt
+//	  go run ./cmd/evals -prompt draft.txt    # a draft instead
 //
 // No model or level is a default in code: a series is only comparable at
 // one pair, which internal/evals/corpus/series.yaml names and
@@ -64,6 +66,7 @@ import (
 
 	"github.com/trick77/noergler/internal/evals"
 	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/prompts"
 	"github.com/trick77/noergler/internal/tokens"
 )
 
@@ -125,7 +128,7 @@ func main() {
 		"sampled.json: union its reviews in groups of three and consolidate each with one call on this run's model")
 	flag.StringVar(&opt.consolidatePath, "consolidate", "internal/evals/briefs/merge.txt", "consolidation brief appended to the review prompt")
 	flag.IntVar(&opt.confirmGroups, "confirm-groups", 3, "groups of three consolidated per case")
-	flag.StringVar(&opt.promptPath, "prompt", "../prompts/review.txt", "review prompt template")
+	flag.StringVar(&opt.promptPath, "prompt", "", "review prompt template to score instead of the compiled-in one")
 	// Unset is the series level (corpus/series.yaml) on the series model.
 	// Keep a series at the level its earlier runs used: less thinking scores
 	// worse on the same prompt.
@@ -236,9 +239,13 @@ func run(ctx context.Context, opt options) (bool, error) {
 		return false, err
 	}
 	opt.effort = evals.DefaultSeries().EffortFor(settings.Model, opt.effort, opt.effortSet)
-	template, err := os.ReadFile(opt.promptPath) //nolint:gosec // G304: an operator-supplied flag in a dev tool
-	if err != nil {
-		return false, fmt.Errorf("read prompt: %w", err)
+	// The compiled-in prompt unless -prompt names a draft to score.
+	template := []byte(prompts.Review)
+	if opt.promptPath != "" {
+		template, err = os.ReadFile(opt.promptPath) //nolint:gosec // G304: an operator-supplied flag in a dev tool
+		if err != nil {
+			return false, fmt.Errorf("read prompt: %w", err)
+		}
 	}
 	cases, err := evals.LoadCorpus()
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/trick77/noergler/internal/diff"
+	"github.com/trick77/noergler/internal/prompts"
 	"github.com/trick77/noergler/internal/tokens"
 )
 
@@ -54,17 +55,6 @@ func loadAssembleGolden(t *testing.T) (map[string]assembleGolden, schemaGolden) 
 		cases[name] = g
 	}
 	return cases, schema
-}
-
-func testTemplate(t *testing.T) string {
-	t.Helper()
-	// prompts/ lives at the REPO root, beside backend/, not inside the module:
-	// the image mounts it and a deployment may swap it. Hence the third level.
-	blob, err := os.ReadFile("../../../prompts/review.txt")
-	if err != nil {
-		t.Fatalf("read template: %v", err)
-	}
-	return string(blob)
 }
 
 func counter(t *testing.T) CountFunc {
@@ -149,7 +139,7 @@ func assembleCases(template string) map[string]AssembleRequest {
 // fit-check token total.
 func TestAssembleReviewPromptIsPinned(t *testing.T) {
 	golden, _ := loadAssembleGolden(t)
-	template := testTemplate(t)
+	template := prompts.Review
 	count := counter(t)
 	cases := assembleCases(template)
 

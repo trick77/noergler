@@ -40,7 +40,6 @@ services:
       - DATABASE_URL=${DATABASE_URL:-postgresql://noergler:changeme@postgres:5432/noergler}
       - TEAMS_CONFIG=/app/teams.yaml
     volumes:
-      - ./prompts:/app/prompts:ro
       # One entry per team; secrets stay in .env (see teams.example.yaml).
       - ./teams.yaml:/app/teams.yaml:ro
     depends_on:
