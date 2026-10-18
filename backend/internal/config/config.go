@@ -56,10 +56,13 @@ type Bitbucket struct {
 	DisplayNamePattern *regexp.Regexp
 }
 
-// DefaultDisplayNamePattern reads "Last First", the rest ignored:
-// "Saner Jan (SJH)" is Jan. A "First Last" directory overrides it, or blanks
-// it to switch names off. Unicode-aware: RE2's \s and \w are ASCII.
-const DefaultDisplayNamePattern = `^[\s\p{Zs}]*(?P<last>[\pL\pM'-]+)[\s\p{Zs}]+(?P<first>[\pL\pM'-]+)(?:[\s\p{Zs}(]|$)`
+// DefaultDisplayNamePattern reads "Last First (CODE)": the first name is the
+// last word before the bracket, so a multi-word surname works ("Van Simpson
+// Brian-David (BFD)" is Brian-David) and an unhyphenated double first name
+// does not ("Saner Jan Peter (SJP)" is Peter, accepted). No bracket, no name.
+// A "First Last" directory overrides it, or blanks it to switch names off.
+// Unicode-aware: RE2's \s and \w are ASCII.
+const DefaultDisplayNamePattern = `^(?P<last>.+?)[\s\p{Zs}]+(?P<first>[\pL\pM'-]+)[\s\p{Zs}]*\(`
 
 // LLM is the inference setup: instance-wide gateway, per-team key and model.
 type LLM struct {

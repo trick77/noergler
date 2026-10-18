@@ -40,10 +40,31 @@ func firstName(re *regexp.Regexp, displayName string) string {
 			return ""
 		}
 	}
-	if letters < 2 {
+	if letters < 2 || strings.ContainsAny(name[:1]+name[len(name)-1:], "'-") {
 		return ""
 	}
+	// A directory in one case ("SANER JAN", "saner jan") reads as shouting or
+	// a login: title-case each part. Mixed case is the person's own, kept.
+	if name == strings.ToUpper(name) || name == strings.ToLower(name) {
+		return titleCase(name)
+	}
 	return name
+}
+
+// titleCase upper-cases the first letter of each part between spaces, - and
+// ', and lower-cases the rest: "HANS-JÖRG" is Hans-Jörg.
+func titleCase(s string) string {
+	var b strings.Builder
+	start := true
+	for _, c := range s {
+		if start {
+			b.WriteRune(unicode.ToUpper(c))
+		} else {
+			b.WriteRune(unicode.ToLower(c))
+		}
+		start = c == ' ' || c == '-' || c == '\''
+	}
+	return b.String()
 }
 
 // nameIntents are the reply intents that may address the author by name; a
