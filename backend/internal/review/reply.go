@@ -3,8 +3,10 @@ package review
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 
+	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/httpstats"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/store"
@@ -53,8 +55,9 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	// Not this handler's. Without a mention there is nothing else to do, so
 	// it is handled (ignored); a mention goes on, and its own guards log.
 	// Our own replies ("Fixed in ...") come back as comment events too.
+	author := pr.Author.User.Name
 	if strings.EqualFold(comment.Author.Name, bot) || (pr.State != "" && pr.State != "OPEN") ||
-		!strings.EqualFold(comment.Author.Name, pr.Author.User.Name) {
+		author == "" || !strings.EqualFold(comment.Author.Name, author) {
 		return !mentioned, false
 	}
 	if mentioned {
@@ -70,7 +73,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	ctx, key, prTag, ok := prContext(ctx, payload)
 	if !ok {
 		r.log.ErrorContext(ctx, "Could not extract project/repo from webhook payload")
-		return true, false
+		return !mentioned, false
 	}
 	f := safeDB(ctx, r.log, "FindingByComment", func() (*store.Finding, error) {
 		return r.store.FindingByComment(ctx, key, payload.CommentParentID)
@@ -92,6 +95,13 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		// A mention, here as on the Q&A path: it reactivates an ignored PR
 		// and is the explicit override of the cost cap.
 		r.reactivateIfIgnored(ctx, key, prTag)
+	} else if state := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
+		return r.store.GetSkipState(ctx, key)
+	}); state != nil && state.IgnoredAt != nil {
+		// The author removed the summary: the bot leaves the PR alone until
+		// a mention brings it back.
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on finding %s not answered: PR is ignored", prTag, where))
+		return true, false
 	} else if cost := safeDB(ctx, r.log, "PRCost", func() (*int64, error) {
 		return r.store.PRCost(ctx, key)
 	}); cost != nil && float64(*cost)/nanoPerUSD >= r.cfg.MaxPRCostUSD {
@@ -110,10 +120,10 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	excerpt := ""
 	if content, err := r.fetchFindingFile(ctx, project, repo, pr.FromRef.LatestCommit, f.FilePath); err != nil {
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: file for the finding reply unavailable: %v", prTag, err))
-	} else if excerpt = excerptAround(content, f.LineNumber, replyExcerptLines); excerpt == "" {
-		excerpt = fmt.Sprintf("_Line %d is past the end of the file at the PR head._", f.LineNumber)
+	} else if n := strings.Count(strings.TrimSuffix(content, "\n"), "\n") + 1; f.LineNumber > n {
+		excerpt = fmt.Sprintf("_Line %d is past the end of the file at the PR head (%d lines)._", f.LineNumber, n)
 	} else {
-		excerpt = truncateRunes(excerpt, replyExcerptRunes)
+		excerpt = truncateRunes(excerptAround(content, f.LineNumber, replyExcerptLines), replyExcerptRunes)
 	}
 	agentsMD := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.DisplayID)
 	prompt := inference.RenderFindingReplyPrompt(inference.FindingReplyPromptRequest{
@@ -204,11 +214,11 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 
 // fetchFindingFile reads the finding's file at the PR head. A row stored
 // before paths were resolved may carry the model's a/ or b/; a real a/ or
-// b/ directory is tried as written first.
+// b/ directory is tried as written first, and only a 404 falls back.
 func (r *Reviewer) fetchFindingFile(ctx context.Context, project, repo, commit, path string) (string, error) {
 	content, err := r.bitbucket.FetchFileContent(ctx, project, repo, commit, path)
-	if err != nil && (strings.HasPrefix(path, "a/") || strings.HasPrefix(path, "b/")) {
-		return r.bitbucket.FetchFileContent(ctx, project, repo, commit, path[2:])
+	if stripped := inference.StripSidePrefix(path); stripped != path && bitbucket.Status(err) == http.StatusNotFound {
+		return r.bitbucket.FetchFileContent(ctx, project, repo, commit, stripped)
 	}
 	return content, err
 }

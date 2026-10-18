@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io/fs"
 	"log/slog"
 	"strings"
 	"testing"
@@ -66,12 +67,12 @@ func TestStart_FindingReplyTemplate(t *testing.T) {
 		if path == reviewCfg().ReviewPromptTemplate || path == reviewCfg().MentionPromptTemplate {
 			return []byte("tmpl"), nil
 		}
-		return nil, errors.New("no such file")
+		return nil, fs.ErrNotExist
 	}
 
 	t.Run("default path missing", func(t *testing.T) {
 		cfg := reviewCfg()
-		cfg.FindingReplyPromptTemplate = config.DefaultFindingReplyPromptTemplate
+		cfg.FindingReplyPromptTemplate = "./" + config.DefaultFindingReplyPromptTemplate
 		log, buf := bufLogger()
 		_, reason := Start(context.Background(), appWith(nil, nil, nil),
 			&config.Team{Slug: "platform", Review: cfg}, Deps{Log: log, ReadFile: onlyReplyMissing})

@@ -72,6 +72,15 @@ func TestFindingReplyIgnores(t *testing.T) {
 		"the bot's own reply":      func(h *harness, p *webhook.Payload) { p.Comment.Author.Name = h.bb.bot },
 		"an empty reply":           func(_ *harness, p *webhook.Payload) { p.Comment.Text = "  " },
 		"a closed PR":              func(_ *harness, p *webhook.Payload) { p.PullRequest.State = "MERGED" },
+		// No author name on either side is no proof of authorship.
+		"no author to compare": func(_ *harness, p *webhook.Payload) {
+			p.PullRequest.Author.User.Name, p.Comment.Author.Name = "", ""
+		},
+		// The summary was removed: only a mention brings the PR back.
+		"an ignored PR": func(h *harness, _ *webhook.Payload) {
+			at := time.Now()
+			h.st.skipState = &store.SkipState{IgnoredAt: &at}
+		},
 		"a finding answered already": func(h *harness, _ *webhook.Payload) {
 			at := time.Now()
 			h.st.byComment[501].RepliedAt = &at
@@ -257,6 +266,18 @@ func TestFindingReplyFileExcerpt(t *testing.T) {
 
 		if !strings.Contains(h.llm.Replies[0].Prompt, "    2  func new() {}") {
 			t.Errorf("prompt lacks the file:\n%s", h.llm.Replies[0].Prompt)
+		}
+	})
+	// Just past the end, inside the window: still said, never the file's
+	// tail passed off as the finding's context.
+	t.Run("line just past the end", func(t *testing.T) {
+		h, p := replyHarness(t)
+		h.st.byComment[501].LineNumber = 5
+
+		h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+
+		if !strings.Contains(h.llm.Replies[0].Prompt, "Line 5 is past the end of the file at the PR head (2 lines)") {
+			t.Errorf("prompt:\n%s", h.llm.Replies[0].Prompt)
 		}
 	})
 	t.Run("line past the end", func(t *testing.T) {

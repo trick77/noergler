@@ -101,7 +101,8 @@ func (f *fakeBitbucket) FetchFileContent(_ context.Context, _, _, commit, path s
 	if content, ok := f.files[key]; ok {
 		return content, nil
 	}
-	return "", fmt.Errorf("no such file %q", key)
+	// A 404, as the real client reports a missing file.
+	return "", &bitbucket.StatusError{Method: "GET", Path: "/raw/" + path, Status: 404}
 }
 
 func (f *fakeBitbucket) PostInlineComment(_ context.Context, _, _ string, prID int, file string, line int, body string) (int, error) {

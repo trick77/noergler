@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/inference"
@@ -171,7 +173,10 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 	// misconfiguration and disables the team, alerted on like the others.
 	replyTmpl, err := readFile(team.Review.FindingReplyPromptTemplate)
 	if err != nil {
-		if team.Review.FindingReplyPromptTemplate != config.DefaultFindingReplyPromptTemplate {
+		// Only absent at the default path; an unreadable file or another
+		// path is a real misconfiguration.
+		if !errors.Is(err, fs.ErrNotExist) ||
+			filepath.Clean(team.Review.FindingReplyPromptTemplate) != config.DefaultFindingReplyPromptTemplate {
 			return nil, fmt.Sprintf("prompt template not found: %s", team.Review.FindingReplyPromptTemplate)
 		}
 		d.Log.WarnContext(ctx, "finding replies off: prompt template not found: "+team.Review.FindingReplyPromptTemplate)

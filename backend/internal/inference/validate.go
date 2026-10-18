@@ -446,7 +446,7 @@ func ShownPath(p string, idx diff.AnchorIndex) string {
 	if _, ok := idx[p]; ok {
 		return p
 	}
-	if s := stripSidePrefix(p); s != p {
+	if s := StripSidePrefix(p); s != p {
 		if _, ok := idx[s]; ok {
 			return s
 		}
@@ -454,7 +454,8 @@ func ShownPath(p string, idx diff.AnchorIndex) string {
 	return p
 }
 
-func stripSidePrefix(p string) string {
+// StripSidePrefix drops a git diff side prefix (a/ or b/), if any.
+func StripSidePrefix(p string) string {
 	if strings.HasPrefix(p, "a/") || strings.HasPrefix(p, "b/") {
 		return p[2:]
 	}
