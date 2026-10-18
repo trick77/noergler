@@ -450,8 +450,16 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	runCost, cumulativeCost := r.resolveCost(ctx, key, result)
 
 	summary := render.Summary(render.SummaryInput{
-		Findings:                   findings,
-		Truncated:                  truncated,
+		Findings:     findings,
+		Truncated:    truncated,
+		FixedEarlier: len(fixed),
+		OpenEarlier:  len(existing) - len(fixed),
+		NotPosted: render.NotPosted{
+			Repeat:      len(repeats),
+			OverCap:     len(deduped) - len(findings),
+			Unsupported: len(v.Dropped),
+			Failed:      failed,
+		},
 		Summary:                    reviewSummary,
 		AgentsMDFound:              plan.agentsMDFound,
 		ContentSkippedFiles:        plan.contentSkipped,

@@ -118,6 +118,21 @@ func summaryCases() map[string]SummaryInput {
 	agentsFound.TokenUsage = TokenUsage{Prompt: 1, Completion: 1, Present: true}
 	cases["no_findings_agents_found"] = agentsFound
 
+	accounting := base()
+	accounting.Findings = []inference.ReviewFinding{finding("issue", "c", ptrs("New one"))}
+	accounting.FixedEarlier, accounting.OpenEarlier = 2, 3
+	accounting.NotPosted = NotPosted{Repeat: 2, OverCap: 1, Unsupported: 1, Failed: 1}
+	cases["accounting"] = accounting
+
+	accountingNone := base()
+	accountingNone.FixedEarlier = 1
+	accountingNone.NotPosted = NotPosted{Repeat: 1}
+	cases["accounting_no_findings"] = accountingNone
+
+	openOnly := base()
+	openOnly.OpenEarlier = 4
+	cases["accounting_open_only"] = openOnly
+
 	agentsOver := agentsFound
 	agentsOver.PromptBreakdown = PromptBreakdown{Template: 1, RepoInstructions: 9000, Files: 1, Present: true}
 	cases["agents_over_warn"] = agentsOver

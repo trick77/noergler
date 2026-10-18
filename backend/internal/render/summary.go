@@ -43,6 +43,13 @@ type SummaryInput struct {
 	Truncated bool
 	Summary   inference.ReviewSummary
 
+	// FixedEarlier and OpenEarlier account for what earlier runs posted:
+	// retired by this run, and still not seen fixed after it.
+	FixedEarlier int
+	OpenEarlier  int
+	// NotPosted is what this run found and kept off the PR, by reason.
+	NotPosted NotPosted
+
 	AgentsMDFound bool
 	// SkippedFiles were too large for the model; ContentSkippedFiles were
 	// reviewed from their diff without full file context.
@@ -150,11 +157,69 @@ func renderStrengths(in SummaryInput) string {
 	return b.String()
 }
 
+// NotPosted counts the findings a run held back, one field per reason.
+type NotPosted struct {
+	// Repeat were already posted by an earlier run.
+	Repeat int
+	// OverCap were cut by the comment cap.
+	OverCap int
+	// Unsupported failed validation: evidence or line the diff did not bear
+	// out.
+	Unsupported int
+	// Failed were refused by Bitbucket as inline comments.
+	Failed int
+}
+
+func (n NotPosted) total() int { return n.Repeat + n.OverCap + n.Unsupported + n.Failed }
+
+// renderAccounting is the line under the issues that says what the list
+// leaves out: earlier findings and held-back ones. Empty when there is
+// nothing to say, so a first review reads as before.
+func renderAccounting(in SummaryInput) string {
+	var parts []string
+	var earlier []string
+	if in.FixedEarlier > 0 {
+		earlier = append(earlier, fmt.Sprintf("%d fixed by this push", in.FixedEarlier))
+	}
+	if in.OpenEarlier > 0 {
+		earlier = append(earlier, fmt.Sprintf("%d not yet fixed", in.OpenEarlier))
+	}
+	if len(earlier) > 0 {
+		parts = append(parts, "Earlier findings: "+strings.Join(earlier, ", ")+".")
+	}
+	n := in.NotPosted
+	if n.total() > 0 {
+		var why []string
+		for _, r := range []struct {
+			n    int
+			text string
+		}{
+			{n.Repeat, "already posted"},
+			{n.OverCap, "over the comment cap"},
+			{n.Unsupported, "not borne out by the diff"},
+			{n.Failed, "refused by Bitbucket"},
+		} {
+			if r.n > 0 {
+				why = append(why, fmt.Sprintf("%d %s", r.n, r.text))
+			}
+		}
+		parts = append(parts, fmt.Sprintf("Found and not posted: %d (%s).", n.total(), strings.Join(why, ", ")))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "_" + strings.Join(parts, " ") + "_"
+}
+
 // renderIssues lists numbered headlines only; the detail lives on the inline
 // comments.
 func renderIssues(in SummaryInput) string {
 	lines := []string{"### Issues and suggestions"}
+	accounting := renderAccounting(in)
 	if len(in.Findings) == 0 {
+		if accounting != "" {
+			return lines[0] + "\nNone.\n\n" + accounting
+		}
 		return lines[0] + "\nNone."
 	}
 
@@ -188,6 +253,9 @@ func renderIssues(in SummaryInput) string {
 			}
 		}
 		lines = append(lines, fmt.Sprintf("%d. %s", i+1, headline))
+	}
+	if accounting != "" {
+		lines = append(lines, "", accounting)
 	}
 	return strings.Join(lines, "\n")
 }

@@ -176,6 +176,11 @@ then resolved, and the finding leaves dedup. A claim quoting only unchanged
 lines, or any moved one, is dropped and logged. A full review lists no ids:
 its diff is the whole PR, so every line reads as added.
 
+The summary lists only this run's findings. Under them one line accounts for
+the rest, when there is any: earlier findings fixed by this push and those not
+yet fixed, and what this run found but did not post (already posted, over the
+comment cap, not borne out by the diff, refused by Bitbucket).
+
 Each finding becomes one inline comment on its line:
 
 ```
