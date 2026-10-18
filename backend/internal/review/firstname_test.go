@@ -26,6 +26,9 @@ func TestFirstNameWithTheDefaultPattern(t *testing.T) {
 		"Saner Jan- (SJH)":              "",
 		"Saner 'Jan (SJH)":              "",
 		"de la Cruz McKay (DCM)":        "McKay",
+		"Saner JAN-peter (SJP)":         "Jan-Peter",
+		"O'NEILL SEÁN (ONS)":            "Seán",
+		"Saner MCKAY (SMK)":             "Mckay",
 		// Known limit: an unhyphenated double first name gives the second.
 		"Saner Jan Peter (SJP)": "Peter",
 		"Saner Jan":             "",
