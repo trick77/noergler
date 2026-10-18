@@ -24,10 +24,24 @@ import (
 // classifies them: the raw diff is uncapped, so it is split once.
 //
 // oversized names the files the size gate kept out of the review, for the
-// summary's "not reviewed" line.
-func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sourceCommit, prTag string) (files []diff.FileReviewData, contentSkipped, oversized []string, added, removed int) {
+// summary's "not reviewed" line; notReviewable the binary and generated ones
+// the review never looks at; lines each reviewable or gated file's +/-, for
+// the run page.
+type prepared struct {
+	files                                    []diff.FileReviewData
+	contentSkipped, oversized, notReviewable []string
+	added, removed                           int
+	lines                                    map[string]lineCount
+}
+
+// lineCount is one file's added and removed lines.
+type lineCount struct{ Added, Removed int }
+
+func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sourceCommit, prTag string) prepared {
 	all := diff.SplitByFile(rawDiff)
 	var reviewable, skipped []string
+	var p prepared
+	p.lines = map[string]lineCount{}
 	for _, fd := range all {
 		path := diff.ExtractPath(fd)
 		if diff.IsReviewable(fd) {
@@ -35,11 +49,12 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 			// as the merge-time rollup (countDiffLines) counts them: not
 			// reviewed, but changed.
 			a, d := diff.CountChangedLines(fd)
-			added, removed = added+a, removed+d
+			p.added, p.removed = p.added+a, p.removed+d
+			p.lines[path] = lineCount{a, d}
 			if changed, limit, over := diff.ExceedsSizeGate(path, fd); over {
 				r.log.InfoContext(ctx, fmt.Sprintf("%s: skipped as oversized: %s (%d changed lines > %d)",
 					prTag, path, changed, limit))
-				oversized = append(oversized, path)
+				p.oversized = append(p.oversized, path)
 				continue
 			}
 			reviewable = append(reviewable, fd)
@@ -51,12 +66,13 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 		skipped = append(skipped, path)
 	}
 	r.log.InfoContext(ctx, fmt.Sprintf("%s: %d file(s) in diff, %d reviewable, %d skipped (binary/non-reviewable), %d oversized",
-		prTag, len(all), len(reviewable), len(skipped), len(oversized)))
+		prTag, len(all), len(reviewable), len(skipped), len(p.oversized)))
+	p.notReviewable = skipped
 	if len(skipped) > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: skipped as binary/non-reviewable: %s", prTag, capPaths(skipped)))
 	}
 	if len(reviewable) == 0 {
-		return nil, nil, oversized, added, removed
+		return p
 	}
 
 	type result struct {
@@ -139,9 +155,10 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 	}
 	wg.Wait()
 
+	var files []diff.FileReviewData
 	for _, res := range results {
 		if res.skipped != "" {
-			contentSkipped = append(contentSkipped, res.skipped)
+			p.contentSkipped = append(p.contentSkipped, res.skipped)
 		}
 		if res.ok {
 			files = append(files, res.file)
@@ -151,6 +168,7 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 	// Stable ordering across re-reviews keeps unchanged files in the LLM's
 	// prefix cache.
 	files = diff.SortByLanguagePriority(files)
+	p.files = files
 
 	totalDiffLines, totalContentLines, withContent := 0, 0, 0
 	for _, f := range files {
@@ -166,7 +184,7 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 		"%s: %d file(s) for review - %d diff lines, %d content lines, %d with full content, %d diff-only",
 		prTag, len(files), totalDiffLines, totalContentLines, withContent, len(files)-withContent))
 
-	return files, contentSkipped, oversized, added, removed
+	return p
 }
 
 // countDiffLines counts added and removed lines, skipping files the reviewer

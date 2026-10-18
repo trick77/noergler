@@ -43,6 +43,9 @@ type RunDetail struct {
 	// so the page can say rows are missing instead of looking complete.
 	MoreBefore bool
 	MoreAfter  bool
+	// Detail is the run_details record, raw JSON; nil when none was
+	// written (an attempt from before it existed, or a skip).
+	Detail []byte
 }
 
 // RunFacts is the review_runs row behind a successful attempt.
@@ -141,6 +144,11 @@ func (s *Store) RunDetail(ctx context.Context, attemptID int64) (d RunDetail, ok
 				return RunDetail{}, false, err
 			}
 		}
+	}
+
+	if err := s.pool.QueryRow(ctx, `SELECT detail FROM run_details WHERE attempt_id = $1`, attemptID).
+		Scan(&d.Detail); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return RunDetail{}, false, err
 	}
 
 	call, has, err := s.AttemptCall(ctx, attemptID)
@@ -251,4 +259,13 @@ func (s *Store) prAttempts(ctx context.Context, d RunDetail) (out []PRAttempt, m
 		after, moreAfter = after[:prAttemptsEachSide], true
 	}
 	return append(before, after...), moreBefore, moreAfter, nil
+}
+
+// InsertRunDetail writes one attempt's detail record. The caller swallows
+// the error: the record is display-only.
+func (s *Store) InsertRunDetail(ctx context.Context, attemptID int64, detail []byte) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO run_details (attempt_id, detail) VALUES ($1, $2)
+		ON CONFLICT (attempt_id) DO UPDATE SET detail = EXCLUDED.detail`, attemptID, detail)
+	return err
 }

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
@@ -42,6 +43,10 @@ type runDetailBody struct {
 	Fixed    []findingBody `json:"fixed"`
 
 	PR PRBody `json:"pr"`
+	// Detail is the run's pipeline record (stages, prompt parts, files,
+	// unposted findings, verdict, HTTP counts) as the review wrote it; null
+	// when none was written.
+	Detail json.RawMessage `json:"detail"`
 	// BitbucketURL as on the other bodies, for the PR and comment links.
 	BitbucketURL string `json:"bitbucket_url"`
 }
@@ -164,6 +169,9 @@ func (d Deps) runDetail(w http.ResponseWriter, r *http.Request) {
 		Findings:     findingBodies(det.Findings),
 		Fixed:        findingBodies(det.Fixed),
 		BitbucketURL: d.BitbucketURL,
+	}
+	if len(det.Detail) > 0 {
+		body.Detail = json.RawMessage(det.Detail)
 	}
 	if f := det.Run; f != nil {
 		body.Cost = usd(f.CostNanoUSD)

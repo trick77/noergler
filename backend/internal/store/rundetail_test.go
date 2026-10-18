@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -81,6 +82,29 @@ func strp(s string) *string { return &s }
 
 // A fixed finding whose run was recorded under another team gets no link:
 // that page's history belongs to the other team.
+// The detail record round-trips as the review wrote it; an attempt without
+// one reads none, and a second write replaces the first.
+func TestRunDetailRecordRoundTrip(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	id, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "ok"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d, _, err := s.RunDetail(ctx, id); err != nil || d.Detail != nil {
+		t.Fatalf("no record yet: %s, %v", d.Detail, err)
+	}
+	for _, rec := range []string{`{"stages":[]}`, `{"stages":[{"name":"diff","ms":3}]}`} {
+		if err := s.InsertRunDetail(ctx, id, []byte(rec)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	d, _, err := s.RunDetail(ctx, id)
+	if err != nil || !strings.Contains(string(d.Detail), `"diff"`) {
+		t.Errorf("detail = %s, %v; want the second record", d.Detail, err)
+	}
+}
+
 func TestFixedLinkStaysInTheTeam(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
