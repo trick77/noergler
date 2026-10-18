@@ -79,7 +79,9 @@ type reviewPlan struct {
 	breakdown     render.PromptBreakdown
 	agentsMDFound bool
 	filesReviewed int
-	// totalFiles already includes the deleted and renamed paths.
+	// totalFiles is every changed file the review saw: the prepared ones,
+	// deleted and renamed included, plus the size-gated (oversized) ones.
+	// filesReviewed is totalFiles minus oversized and overBudget.
 	totalFiles  int
 	diffAdded   int
 	diffRemoved int

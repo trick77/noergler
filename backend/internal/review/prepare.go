@@ -19,8 +19,9 @@ import (
 // reason is logged and the file is reviewed from its diff alone, which is not
 // the same thing and is not reported to the reader.
 //
-// added and removed count the reviewable files' diff lines, in the same pass
-// that classifies them: the raw diff is uncapped, so it is split once.
+// added and removed count the reviewable and the size-gated files' diff
+// lines, in the same pass that classifies them: the raw diff is uncapped, so
+// it is split once.
 //
 // oversized names the files the size gate kept out of the review, for the
 // summary's "not reviewed" line.
@@ -34,6 +35,10 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 				r.log.InfoContext(ctx, fmt.Sprintf("%s: skipped as oversized: %s (%d changed lines > %d)",
 					prTag, path, changed, limit))
 				oversized = append(oversized, path)
+				// Its lines count toward the PR's +/-: the footer pairs
+				// them with a file count that includes it.
+				a, d := diff.CountChangedLines(fd)
+				added, removed = added+a, removed+d
 				continue
 			}
 			reviewable = append(reviewable, fd)

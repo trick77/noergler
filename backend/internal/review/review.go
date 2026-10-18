@@ -317,20 +317,22 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		anchors:         anchors,
 		existing:        existing,
 		listed:          listed,
-		// A file not reviewed at all is never also "reviewed without full
-		// context": the stronger statement wins.
-		contentSkipped: without(contentSkipped, oversized, otherModified),
+		// A file not sent as a reviewed entry (left out by compression, or
+		// only deleted or renamed) is never "reviewed without full context".
+		contentSkipped: without(contentSkipped, otherModified, deletedPaths, renamedPaths),
 		oversized:      oversized,
 		overBudget:     otherModified,
 		ticket:         ticket,
 		parentTicket:   parentTicket,
 		breakdown:      breakdown(assembled),
 		agentsMDFound:  repoInstructions != "",
-		filesReviewed:  len(files),
-		// Every file the review looked at: the prepared ones (deleted and
-		// renamed included, compression only sorts them) plus the ones the
-		// size gate kept out. Adding deletedPaths and renamedPaths again
-		// counted those files twice.
+		// Deleted and rename-only files count as reviewed on both paths: the
+		// model is told of them and there is nothing else to review. On the
+		// small-PR path they are in files already; compression moves them
+		// out, so they are added back here.
+		filesReviewed: len(files) + len(deletedPaths) + len(renamedPaths),
+		// Every changed file: the prepared ones (deleted and renamed among
+		// them) plus the ones the size gate kept out.
 		totalFiles:  totalFiles + len(oversized),
 		diffAdded:   diffAdded,
 		diffRemoved: diffRemoved,
