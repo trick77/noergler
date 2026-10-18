@@ -40,8 +40,9 @@ var routes = map[string]bool{
 }
 
 // runPath is the run detail page, /runs/ and a positive attempt id. Digits
-// only: /runs/abc stays the 404 an unknown path is.
-var runPath = regexp.MustCompile(`^/runs/[1-9][0-9]{0,18}$`)
+// only, at most 15 (the SPA reads the id with Number(), exact below 2^53):
+// /runs/abc stays the 404 an unknown path is.
+var runPath = regexp.MustCompile(`^/runs/[1-9][0-9]{0,14}$`)
 
 func dist() fs.FS {
 	sub, err := fs.Sub(distFS, "dist")

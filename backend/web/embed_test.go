@@ -60,7 +60,7 @@ func TestRunDetailRoute(t *testing.T) {
 			t.Errorf("%s: status = %d, want the shell", path, w.Code)
 		}
 	}
-	for _, path := range []string{"/runs/", "/runs/0", "/runs/abc", "/runs/1/2", "/runs/-1", "/runs/01"} {
+	for _, path := range []string{"/runs/", "/runs/0", "/runs/abc", "/runs/1/2", "/runs/-1", "/runs/01", "/runs/1234567890123456"} {
 		if code := req(t, h, path).Code; code != http.StatusNotFound {
 			t.Errorf("%s: status = %d, want 404", path, code)
 		}

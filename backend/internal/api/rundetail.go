@@ -98,7 +98,8 @@ type findingBody struct {
 	CommentID  *int64 `json:"comment_id"`
 	Replied    bool   `json:"replied"`
 	Fixed      bool   `json:"fixed"`
-	FromRunID  int64  `json:"from_run_id"`
+	// FromAttempt is the page of the run that posted it.
+	FromAttempt *int64 `json:"from_attempt_id"`
 }
 
 // PRBody is the PR's side of the page: its history and what it has cost
@@ -197,12 +198,15 @@ func (d Deps) runDetail(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	// The PR total is the same figure the cap enforces (PRCost), not a sum
-	// of the rows above, which a history longer than the page would cut.
-	if c, err := d.DashboardStore.PRCost(r.Context(), det.Key); err != nil {
-		d.Log.WarnContext(r.Context(), "dashboard: PRCost failed: "+err.Error())
-	} else {
-		body.PR.Cost = usd(c)
+	// of the rows above, which a history longer than the page would cut. A
+	// failed read is a failed page: null here would read as "unpriced".
+	c, err := d.DashboardStore.PRCost(r.Context(), det.Key)
+	if err != nil {
+		d.Log.ErrorContext(r.Context(), "dashboard: PRCost failed: "+err.Error())
+		httpx.WriteError(w, http.StatusInternalServerError, "could not read the run")
+		return
 	}
+	body.PR.Cost = usd(c)
 	if rt, _, ok := d.Teams.Lookup(det.TeamSlug); ok && rt != nil {
 		if team := rt.Team(); team != nil && team.Review.MaxPRCostUSD > 0 {
 			nano := int64(team.Review.MaxPRCostUSD*1e9 + 0.5)
@@ -218,7 +222,7 @@ func findingBodies(fs []store.FindingHeadline) []findingBody {
 		out = append(out, findingBody{
 			Severity: f.Severity, Confidence: f.Confidence, File: f.FilePath, Line: f.Line,
 			Headline: f.Headline, CommentID: f.CommentID, Replied: f.Replied, Fixed: f.Fixed,
-			FromRunID: f.FromRunID,
+			FromAttempt: f.FromAttemptID,
 		})
 	}
 	return out

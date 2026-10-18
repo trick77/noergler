@@ -12,8 +12,9 @@ export const PAGES: Exclude<Page, "run">[] = [
   "faq",
 ];
 
-// Mirrors runPath in backend/web/embed.go: a positive id, no leading zero.
-const RUN_PATH = /^\/runs\/([1-9][0-9]{0,18})$/;
+// Mirrors runPath in backend/web/embed.go: a positive id, no leading zero,
+// at most 15 digits, so Number() holds it exactly (2^53 has 16).
+const RUN_PATH = /^\/runs\/([1-9][0-9]{0,14})$/;
 
 export function pageFromPath(path: string): Page {
   if (RUN_PATH.test(path)) return "run";
@@ -38,6 +39,24 @@ export function runPath(id: number): string {
 
 export function navigate(page: Exclude<Page, "run">) {
   navigateTo(pathFor(page));
+}
+
+/** onNav is an in-app link's click handler: a plain click stays in the SPA,
+ *  a modified one (new tab, new window) is left to the browser. */
+export function onNav(path: string) {
+  return (e: {
+    metaKey: boolean;
+    ctrlKey: boolean;
+    shiftKey: boolean;
+    altKey: boolean;
+    button: number;
+    preventDefault: () => void;
+  }) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0)
+      return;
+    e.preventDefault();
+    navigateTo(path);
+  };
 }
 
 /** navigateTo pushes any app path. No duplicate history entry for the page

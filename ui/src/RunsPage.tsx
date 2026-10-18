@@ -10,7 +10,7 @@ import {
 } from "./format";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { navigateTo, runPath } from "./routing";
+import { onNav, runPath } from "./routing";
 import { usePoll, useNow } from "./usePoll";
 import {
   Card,
@@ -187,13 +187,7 @@ export function RunsPage() {
                             the run's detail page: every outcome has one. */}
                         <a
                           href={runPath(r.id)}
-                          onClick={(e) => {
-                            // A plain click stays in the SPA; a modified one
-                            // (new tab) is the browser's.
-                            if (e.metaKey || e.ctrlKey || e.shiftKey) return;
-                            e.preventDefault();
-                            navigateTo(runPath(r.id));
-                          }}
+                          onClick={onNav(runPath(r.id))}
                           className="inline-block rounded-full hover:brightness-125"
                         >
                           <Pill

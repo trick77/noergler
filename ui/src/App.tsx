@@ -92,7 +92,11 @@ export default function App() {
       <main className="min-h-0 min-w-0">
         {route === "live" && <LivePage />}
         {route === "runs" && <RunsPage />}
-        {route === "run" && runId !== null && <RunPage id={runId} />}
+        {route === "run" && runId !== null && (
+          // keyed: a new run is a new page, never the previous one's data
+          // under the next URL while it loads (or after it fails).
+          <RunPage key={runId} id={runId} />
+        )}
         {route === "metrics" && <MetricsPage />}
         {route === "teams" && <TeamsPage />}
         {route === "faq" && <FaqPage />}
