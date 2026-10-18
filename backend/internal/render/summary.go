@@ -344,7 +344,7 @@ func renderTicket(in SummaryInput) string {
 	var reason string
 	switch {
 	case !in.TicketComplianceCheck:
-		reason = p("_Compliance-Prüfung in der Konfiguration deaktiviert_", "_Compliance check disabled in config_")
+		reason = p("_Compliance-Prüfung in den Einstellungen deaktiviert_", "_Compliance check disabled in config_")
 	case in.Ticket.AcceptanceCriteria == "":
 		reason = p("_Keine Akzeptanzkriterien im Ticket gefunden_", "_No acceptance criteria found in ticket_")
 	case in.ComplianceExtractionFailed:

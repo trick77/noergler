@@ -150,7 +150,7 @@ type MentionResult struct {
 	// past MaxToolCallsPerTurn that were refused.
 	ToolCalls   []string
 	CappedCalls int
-	Err    error
+	Err         error
 }
 
 // Mention answers a developer's question about a PR.

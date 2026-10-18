@@ -389,9 +389,9 @@ func main() {
 			}
 		}
 		writeJSON(w, r, map[string]any{
-			"id":     "chatcmpl-fake",
-			"object": "chat.completion",
-			"model":  gatewayAlias,
+			"id":      "chatcmpl-fake",
+			"object":  "chat.completion",
+			"model":   gatewayAlias,
 			"choices": []any{map[string]any{"index": 0, "finish_reason": finish, "message": message}},
 			"usage":   map[string]any{"prompt_tokens": 1200, "completion_tokens": 300, "total_tokens": 1500},
 		})

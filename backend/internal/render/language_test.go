@@ -10,12 +10,12 @@ import (
 
 func TestSwissSSLeavesCodeAlone(t *testing.T) {
 	cases := map[string]string{
-		"Das Maß ist groß.":                "Das Mass ist gross.",
-		"GROẞ":                             "GROSS",
-		"`straße` bleibt, Straße nicht":    "`straße` bleibt, Strasse nicht",
-		"```go\nx := \"ß\"\n```\nfließt":   "```go\nx := \"ß\"\n```\nfliesst",
+		"Das Maß ist groß.":               "Das Mass ist gross.",
+		"GROẞ":                            "GROSS",
+		"`straße` bleibt, Straße nicht":   "`straße` bleibt, Strasse nicht",
+		"```go\nx := \"ß\"\n```\nfließt":  "```go\nx := \"ß\"\n```\nfliesst",
 		"offen ` bis Zeilenende ß\nund ß": "offen ` bis Zeilenende ß\nund ss",
-		"keine Änderung":                   "keine Änderung",
+		"keine Änderung":                  "keine Änderung",
 	}
 	for in, want := range cases {
 		if got := SwissSS(in); got != want {

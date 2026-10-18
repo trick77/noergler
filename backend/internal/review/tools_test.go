@@ -31,7 +31,7 @@ func testAsk(user, text string) *mentionAsk {
 // before it reaches a PR comment.
 func TestTeamConfigIsAnAllowlist(t *testing.T) {
 	var keys []string
-	walk := func(typ reflect.Type) {}
+	var walk func(reflect.Type)
 	walk = func(typ reflect.Type) {
 		for i := range typ.NumField() {
 			f := typ.Field(i)
@@ -138,7 +138,7 @@ func TestSetMyLanguageNeedsTheCommentersWords(t *testing.T) {
 // language, before the model's answer.
 func TestMentionLanguageSwitchIsConfirmed(t *testing.T) {
 	h := newHarness(t, nil)
-	h.llm.onMention = func(ctx context.Context, tools []string, run func(name, args string) string) string {
+	h.llm.onMention = func(_ context.Context, _ []string, run func(name, args string) string) string {
 		run("set_my_language", `{"language":"en"}`)
 		return "Sure, here it is."
 	}

@@ -25,7 +25,7 @@ func OptOutBranchSummary(l lang.Lang, keyword, branch string) string {
 		"nächste Webhook-Event löst ein volles Review aus.\n" +
 		"- Oder den Bot in einem Kommentar explizit @erwähnen, um auf diesem " +
 		"Branch einmalig ein Review zu bekommen — Mentions sind nicht stummgeschaltet.\n\n" +
-		"**Konfiguration**\n" +
+		"**Einstellungen**\n" +
 		"- Das Keyword wird über `REVIEW_OPT_OUT_BRANCH_KEYWORD` am " +
 		"noergler-Service gesetzt (leerer String schaltet die Funktion ab).\n"
 }
@@ -81,7 +81,7 @@ func agentsMDTooLargeSummaryDE(tokens, limit int, fr string) string {
 		"verlinken; die Hauptdatei schlank halten.\n" +
 		"- Die schlankere Datei pushen; das nächste Webhook-Event auf diesem PR " +
 		"löst ein volles Review aus.\n\n" +
-		"**Konfiguration**\n" +
+		"**Einstellungen**\n" +
 		"- Das Limit über `REVIEW_AGENTS_MD_MAX_TOKENS` am noergler-Service " +
 		"erhöhen, oder auf `0` setzen, um die harte Grenze ganz abzuschalten " +
 		"(die weiche Warnung über `REVIEW_AGENTS_MD_WARN_TOKENS` bleibt).\n\n" +
