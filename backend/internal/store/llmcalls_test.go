@@ -37,8 +37,8 @@ func TestAttemptCallRoundTrip(t *testing.T) {
 	}
 }
 
-// A skip, a timeout and a pre-flight too-large made no call: there is
-// nothing to show, and the page says so instead of rendering zeros.
+// A pre-flight skip, a timeout and a pre-flight too-large got no answer:
+// there is nothing to show, and the page says so instead of rendering zeros.
 func TestAttemptWithoutCall(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

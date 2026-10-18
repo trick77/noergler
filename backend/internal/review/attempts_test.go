@@ -1,8 +1,11 @@
 package review
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -147,6 +150,30 @@ func TestAttemptKeepsTheGatewayCall(t *testing.T) {
 				t.Errorf("warnings = %v", call.Warnings)
 			}
 		})
+	}
+}
+
+// A refused call write is logged as exactly that, with the PR: the attempt
+// and its cost were written, so the log must not read like a lost attempt.
+func TestRefusedCallWriteIsLoggedAsSuch(t *testing.T) {
+	h := newHarness(t, nil)
+	var logs bytes.Buffer
+	h.r.log = slog.New(slog.NewTextHandler(&logs, nil))
+	h.st.callErr = errors.New("invalid byte sequence")
+	h.llm.review = inference.ReviewResult{
+		Outcome: inference.OutcomeOK,
+		Review:  inference.ParsedReview{Summary: inference.NewReviewSummary()},
+		Cost:    inference.CallCost{Answered: true},
+	}
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if !strings.Contains(logs.String(), "gateway call detail not recorded, the attempt was") ||
+		!strings.Contains(logs.String(), "#") {
+		t.Errorf("log lacks the call-not-recorded line with the PR:\n%s", logs.String())
+	}
+	if strings.Contains(logs.String(), "DB operation failed, using fallback: InsertAttempt") {
+		t.Error("a refused call write was logged as a lost attempt")
 	}
 }
 
