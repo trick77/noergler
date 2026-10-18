@@ -74,12 +74,13 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   marker keeps its space, so the tail of `*cfg = x` or `--count` stays
   invented. Blunt rules, never
   a judge model. Drops are logged by reason, never silent.
-- **Fixed = changed lines, incremental runs only** (`inference.ValidateFixed`):
-  listed `F<id>`, file in the push diff, EVERY quoted line added or removed
-  and not moved (in any file of the push). A full review's diff is all `+`,
-  so it lists no ids. A response re-reporting the finding refutes its own
-  claim. Reply, then resolve only if the reply landed (Bitbucket refuses
-  replies on a resolved thread); stamp only if it landed.
+- **Fixed = a changed line, incremental runs only** (`inference.ValidateFixed`):
+  listed `F<id>`, file in the push diff, one quoted line added or removed,
+  none moved (in any shown file). A full review's diff is all `+`, so it
+  lists no ids. Reply, then resolve only if the reply landed (Bitbucket
+  refuses replies on a resolved thread). The row is stamped regardless and
+  leaves dedup before dedup runs. Decided policies, limits in the doc
+  comments: re-litigating them is a decision, not a fix.
 - `.properties` is reviewable, but not sent past 50 changed lines
   (`diff.ExceedsSizeGate`, in prepare and the cumulative diff): hand edits
   yes, regenerated i18n bundles no. NOT in `IsReviewable`: the rollup must

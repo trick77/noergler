@@ -169,12 +169,11 @@ Findings already posted by earlier runs are filtered out by reading the
 sorted by severity and capped at `REVIEW_MAX_COMMENTS`.
 
 On an incremental review each earlier finding is listed to the model with an
-id (`F12`). When the model names one under `fixed`, quoting only lines of
-that finding's file the push added or removed (none it moved, in any file),
-the thread gets a "Fixed in `<sha>`." reply and is then resolved, and the
-finding leaves dedup. A claim quoting an unchanged or moved line, or one the
-same response contradicts by reporting the finding again, is dropped and
-logged. A full review lists no ids: its diff is the whole PR, so every line
+id (`F12`). When the model names one under `fixed`, quoting a line of that
+finding's file the push added or removed and no line it moved (across the
+files the review showed), the thread gets a "Fixed in `<sha>`." reply and is
+then resolved, and the finding leaves dedup. A claim quoting only unchanged
+lines, or any moved one, is dropped and logged. A full review lists no ids: its diff is the whole PR, so every line
 reads as added.
 
 Each finding becomes one inline comment on its line:

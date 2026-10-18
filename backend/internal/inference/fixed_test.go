@@ -45,11 +45,11 @@ func TestValidateFixed(t *testing.T) {
 	}{
 		{"added line fixes it", FixedClaim{"F1", []string{"defer mu.Unlock()"}}, ""},
 		{"removed line fixes it", FixedClaim{"F1", []string{"return load()"}}, ""},
-		// Every quoted line must be changed: context beside a change, or a
-		// moved line beside one, would let any edit carry an unchanged bug.
-		{"context beside a change", FixedClaim{"F1", []string{"mu.Lock()", "defer mu.Unlock()"}}, FixedEvidenceUnchanged},
-		{"moved line beside a change", FixedClaim{"F1", []string{"if in == nil {", "defer mu.Unlock()"}}, FixedEvidenceUnchanged},
-		{"line moved to another file", FixedClaim{"F1", []string{"cache.Drop()"}}, FixedEvidenceUnchanged},
+		// Context locates a fix; a moved line anywhere in the claim sinks it,
+		// or a move beside any edit would retire an unchanged bug.
+		{"context beside a change", FixedClaim{"F1", []string{"mu.Lock()", "defer mu.Unlock()"}}, ""},
+		{"moved line beside a change", FixedClaim{"F1", []string{"if in == nil {", "defer mu.Unlock()"}}, FixedEvidenceMoved},
+		{"line moved to another file", FixedClaim{"F1", []string{"cache.Drop()"}}, FixedEvidenceMoved},
 		{"copied marker is tolerated", FixedClaim{"F1", []string{"+\tdefer mu.Unlock()"}}, ""},
 		{"model's note is skipped", FixedClaim{"F1", []string{"defer mu.Unlock()", "// released now"}}, ""},
 		{"a/ b/ prefix on the stored path", FixedClaim{"F2", []string{"y := 2"}}, ""},
@@ -57,8 +57,8 @@ func TestValidateFixed(t *testing.T) {
 		{"id copied with its brackets", FixedClaim{"[F1]", []string{"defer mu.Unlock()"}}, ""},
 		{"lowercase id", FixedClaim{"f1", []string{"defer mu.Unlock()"}}, ""},
 		// Removed and added back: the code moved, its bug with it.
-		{"moved line", FixedClaim{"F1", []string{"if in == nil {"}}, FixedEvidenceUnchanged},
-		{"moved line copied as removed", FixedClaim{"F1", []string{"-\tif in == nil {"}}, FixedEvidenceUnchanged},
+		{"moved line", FixedClaim{"F1", []string{"if in == nil {"}}, FixedEvidenceMoved},
+		{"moved line copied as removed", FixedClaim{"F1", []string{"-\tif in == nil {"}}, FixedEvidenceMoved},
 		{"id never listed", FixedClaim{"F9", []string{"defer mu.Unlock()"}}, FixedUnknownID},
 		{"id not a number", FixedClaim{"Fx", []string{"defer mu.Unlock()"}}, FixedUnknownID},
 		{"file the push did not touch", FixedClaim{"F3", []string{"defer mu.Unlock()"}}, FixedFileNotInDiff},

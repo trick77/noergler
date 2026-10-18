@@ -263,9 +263,14 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// Only an incremental review may retire a finding: on a full one every
 	// PR line is an added line, the buggy one too, so nothing would prove a
 	// fix. No id listed, nothing to claim.
+	listed := map[int64]bool{}
 	if incrementalFrom == "" {
 		for i := range posted {
 			posted[i].ID = 0
+		}
+	} else {
+		for _, p := range posted {
+			listed[p.ID] = true
 		}
 	}
 
@@ -308,7 +313,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		promptTokens:    assembled.PromptTokens,
 		anchors:         anchors,
 		existing:        existing,
-		posted:          posted,
+		listed:          listed,
 		contentSkipped:  contentSkipped,
 		ticket:          ticket,
 		parentTicket:    parentTicket,
@@ -383,10 +388,12 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: verdict lowered %s -> %s after %d dropped finding(s)",
 			prTag, was, reviewSummary.VerdictDecision, len(v.Dropped)))
 	}
-	// A claim the same response contradicts, by reporting that finding
-	// again, is not retired: the report is then a repeat of an open thread.
-	fixed := r.validateFixed(ctx, plan, result.Review.Fixed, v.Kept)
-	deduped, repeats := dedupe(v.Kept, existing, plan.anchors)
+	// Fixed claims first: a finding this run retires is no reason to drop a
+	// new one on its line as a repeat. A half fix then posts what is left
+	// and resolves the old thread; a response that re-reports the very bug
+	// it claims fixed posts it again, so the bug stays flagged either way.
+	fixed := r.validateFixed(ctx, plan, result.Review.Fixed)
+	deduped, repeats := dedupe(v.Kept, withoutFixed(existing, fixed), plan.anchors)
 	for _, f := range repeats {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: finding on %s:%d (%s) already posted by an earlier run, not posted again",
 			prTag, f.File, f.Line, f.Severity))
@@ -711,10 +718,7 @@ func (r *Reviewer) fetchTicket(ctx context.Context, branch, title, prTag string)
 func (r *Reviewer) trimPreviouslyPosted(ctx context.Context, prTag string, existing []store.Finding, budget int) []inference.PostedFinding {
 	posted := make([]inference.PostedFinding, 0, len(existing))
 	for _, f := range existing {
-		line := f.LineNumber
-		posted = append(posted, inference.PostedFinding{
-			ID: f.ID, FilePath: f.FilePath, LineNumber: &line, Severity: f.Severity, CommentText: f.CommentText,
-		})
+		posted = append(posted, asPosted(f))
 	}
 	if len(posted) > maxPreviouslyPostedFindings {
 		posted = posted[len(posted)-maxPreviouslyPostedFindings:]
