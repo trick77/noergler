@@ -144,7 +144,7 @@ teams:
     inference:
       api_key_env: TEAM_PLATFORM_OPENAI_API_KEY       # env var holding the team's inference key
       # model / reasoning_effort / context_window: optional, default from OPENAI_*
-    # review:  any REVIEW_* knob (lowercase, no prefix) except the prompt templates
+    # review:  any REVIEW_* knob (lowercase, no prefix)
     # jira:    acceptance_criteria_prefixes
     # riptide: {url, token_env}, both or neither
 ```

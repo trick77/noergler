@@ -9,7 +9,6 @@ import (
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/jira"
-	"github.com/trick77/noergler/internal/prompts"
 	"github.com/trick77/noergler/internal/review"
 	"github.com/trick77/noergler/internal/riptide"
 	"github.com/trick77/ship/kit/logging"
@@ -225,19 +224,16 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 	// Runtime does; nothing reviews before Start returns.
 	var runtime *Runtime
 	reviewer := review.New(review.Options{
-		Owns:                 func(project, repo string) bool { return runtime.Team().Owns(project, repo) },
-		TeamSlug:             team.Slug,
-		Bitbucket:            d.Bitbucket,
-		LLM:                  llm,
-		Store:                d.ReviewStore,
-		Jira:                 jiraDep,
-		Riptide:              riptideDep,
-		Tokens:               d.Tokens,
-		Config:               team.Review,
-		Template:             prompts.Review,
-		MentionTemplate:      prompts.Mention,
-		FindingReplyTemplate: prompts.FindingReply,
-		Log:                  d.Log,
+		Owns:      func(project, repo string) bool { return runtime.Team().Owns(project, repo) },
+		TeamSlug:  team.Slug,
+		Bitbucket: d.Bitbucket,
+		LLM:       llm,
+		Store:     d.ReviewStore,
+		Jira:      jiraDep,
+		Riptide:   riptideDep,
+		Tokens:    d.Tokens,
+		Config:    team.Review,
+		Log:       d.Log,
 	})
 	runtime = NewRuntime(team, reviewer, llm, jr, rt)
 	return runtime, ""

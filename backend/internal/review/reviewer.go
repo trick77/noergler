@@ -12,6 +12,7 @@ import (
 
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/jira"
+	"github.com/trick77/noergler/internal/prompts"
 	"github.com/trick77/noergler/internal/webhook"
 )
 
@@ -113,14 +114,23 @@ func New(opt Options) *Reviewer {
 		cfg:               opt.Config,
 		autoReviewAuthors: opt.Config.AutoReviewAuthors,
 		ignoreAuthors:     opt.Config.IgnoreAuthors,
-		template:          opt.Template,
-		mentionTmpl:       opt.MentionTemplate,
-		replyTmpl:         opt.FindingReplyTemplate,
+		template:          orDefault(opt.Template, prompts.Review),
+		mentionTmpl:       orDefault(opt.MentionTemplate, prompts.Mention),
+		replyTmpl:         orDefault(opt.FindingReplyTemplate, prompts.FindingReply),
 		log:               opt.Log,
 		owns:              opt.Owns,
 	}
 	r.usePRDescription.Store(opt.Config.UsePRDescription)
 	return r
+}
+
+// orDefault is s, or the compiled-in prompt when s is empty: no Reviewer can
+// send a blank prompt.
+func orDefault(s, compiled string) string {
+	if s == "" {
+		return compiled
+	}
+	return s
 }
 
 // SetUsePRDescription switches the PR title and description in or out of

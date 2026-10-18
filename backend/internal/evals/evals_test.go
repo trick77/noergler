@@ -557,7 +557,7 @@ func TestLoadCorpus_EveryCaseIsUsable(t *testing.T) {
 	}
 }
 
-// A fabricated hunk header makes a case unwinnable. prompts/review.txt asks
+// A fabricated hunk header makes a case unwinnable. The review prompt asks
 // for the line in the NEW version and the file content is rendered
 // unnumbered, so the model anchors off the header: a header claiming a start
 // the content does not have scores a correct finding outside the window, and

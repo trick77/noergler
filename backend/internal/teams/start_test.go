@@ -32,6 +32,11 @@ func appWith(teams map[string]*config.Team, order []string, disabled map[string]
 
 func reviewCfg() config.Review { return config.Review{} }
 
+// noEnv keeps the developer's environment out of startup: with no model and
+// no LLMWIRE_* settings, every team fails its LLM check, the per-team fault
+// the Boot tests need.
+func noEnv(string) (string, bool) { return "", false }
+
 func emptyStore() *fakeClaimStore {
 	return &fakeClaimStore{
 		claims:   map[string][]config.ProjectScope{},
@@ -54,6 +59,7 @@ func TestBoot_OneTeamsFaultDisablesThatTeamOnly(t *testing.T) {
 	), Deps{
 		Claims: emptyStore(),
 		Log:    log,
+		Env:    noEnv,
 	})
 	if err != nil {
 		t.Fatalf("a per-team fault must not abort boot: %v", err)
@@ -142,6 +148,7 @@ func TestBoot_TeamsReadyLineRendering(t *testing.T) {
 	), Deps{
 		Claims: emptyStore(),
 		Log:    log,
+		Env:    noEnv,
 	}); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
@@ -155,8 +162,9 @@ func TestBoot_TeamsReadyLineRendering(t *testing.T) {
 }
 
 // A panic in one team's startup is contained, not fatal: Start on a nil
-// config panics, and safeStart turns it into that team's reason.
-func TestBoot_PanicInOneTeamIsContained(t *testing.T) {
+// config panics, and safeStart, which Boot runs every team through, turns
+// it into that team's reason.
+func TestSafeStart_ContainsAPanic(t *testing.T) {
 	log, _ := bufLogger()
 	team := &config.Team{Slug: "platform", Review: reviewCfg()}
 

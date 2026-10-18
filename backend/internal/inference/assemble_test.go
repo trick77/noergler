@@ -57,12 +57,6 @@ func loadAssembleGolden(t *testing.T) (map[string]assembleGolden, schemaGolden) 
 	return cases, schema
 }
 
-func testTemplate(t *testing.T) string {
-	t.Helper()
-	// The prompt that ships, compiled in.
-	return prompts.Review
-}
-
 func counter(t *testing.T) CountFunc {
 	t.Helper()
 	c, err := tokens.New()
@@ -145,7 +139,7 @@ func assembleCases(template string) map[string]AssembleRequest {
 // fit-check token total.
 func TestAssembleReviewPromptIsPinned(t *testing.T) {
 	golden, _ := loadAssembleGolden(t)
-	template := testTemplate(t)
+	template := prompts.Review
 	count := counter(t)
 	cases := assembleCases(template)
 

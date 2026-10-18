@@ -103,7 +103,7 @@ func TestEvalRunReachesAGatewayAndScoresTheResponse(t *testing.T) {
 		t.Fatalf("corpus has %d nil-deref case(s), want 1", len(only))
 	}
 
-	score := evals.Run(ctx, client, readTemplate(t), only, func(s string) int { return len(s) / 4 })
+	score := evals.Run(ctx, client, prompts.Review, only, func(s string) int { return len(s) / 4 })
 	if score.Seeded != 1 || score.Caught != 1 {
 		t.Errorf("caught %d of %d, want 1 of 1; findings=%+v",
 			score.Caught, score.Seeded, score.Results[0].Findings)
@@ -125,14 +125,6 @@ func TestEvalRunReachesAGatewayAndScoresTheResponse(t *testing.T) {
 			t.Errorf("prompt still contains %s: the eval would score the placeholder", ph)
 		}
 	}
-}
-
-func readTemplate(t *testing.T) string {
-	t.Helper()
-	// The real template, not a stand-in: an eval that scores a toy prompt
-	// says nothing about the one that ships.
-	t.Helper()
-	return prompts.Review
 }
 
 type discard struct{}
