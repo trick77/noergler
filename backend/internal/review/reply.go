@@ -31,8 +31,8 @@ const (
 // finding, and a reviewer's reply used up the one answer before the author
 // could make it. Anyone else's @mention goes to the Q&A.
 //
-// handled is false when the reply is not this handler's: the feature is off
-// (no template), the thread is no finding's, or an @mention is better
+// handled is false when the reply is not this handler's: the thread is no
+// finding's, or an @mention is better
 // answered by the mention path (a review keyword, another replier, a closed
 // PR, a thread answered already). The route then hands an @mention to
 // HandleMention. handedOff reports, like the staged review, that the gateway
@@ -45,7 +45,7 @@ const (
 // evidence, never a reason to drop a finding.
 func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payload, team string, sched Scheduler) (handled, handedOff bool) {
 	comment := payload.Comment
-	if r.replyTmpl == "" || comment == nil || payload.CommentParentID == 0 {
+	if comment == nil || payload.CommentParentID == 0 {
 		return false, false
 	}
 	bot := r.bitbucket.BotUsername()

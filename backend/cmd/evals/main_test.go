@@ -131,9 +131,9 @@ func env(extra map[string]string) func(string) string {
 func baseOptions(t *testing.T, client evals.Reviewer) options {
 	t.Helper()
 	return options{
-		// The real template: an eval that scores a toy prompt says nothing
-		// about the one that ships.
-		promptPath: "../../../prompts/review.txt",
+		// Empty = the compiled-in template: an eval that scores a toy prompt
+		// says nothing about the one that ships.
+		promptPath: "",
 		effort:     "some-level",
 		timeout:    time.Minute,
 		getenv:     env(nil),

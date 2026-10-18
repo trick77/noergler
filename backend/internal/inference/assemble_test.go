@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/trick77/noergler/internal/diff"
+	"github.com/trick77/noergler/internal/prompts"
 	"github.com/trick77/noergler/internal/tokens"
 )
 
@@ -58,13 +59,8 @@ func loadAssembleGolden(t *testing.T) (map[string]assembleGolden, schemaGolden) 
 
 func testTemplate(t *testing.T) string {
 	t.Helper()
-	// prompts/ lives at the REPO root, beside backend/, not inside the module:
-	// the image mounts it and a deployment may swap it. Hence the third level.
-	blob, err := os.ReadFile("../../../prompts/review.txt")
-	if err != nil {
-		t.Fatalf("read template: %v", err)
-	}
-	return string(blob)
+	// The prompt that ships, compiled in.
+	return prompts.Review
 }
 
 func counter(t *testing.T) CountFunc {

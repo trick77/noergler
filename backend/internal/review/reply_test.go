@@ -292,16 +292,6 @@ func TestFindingReplyFileExcerpt(t *testing.T) {
 	})
 }
 
-// No template, no feature: the team keeps reviewing.
-func TestFindingReplyIsOffWithoutATemplate(t *testing.T) {
-	h, p := replyHarness(t)
-	h.r.replyTmpl = ""
-
-	if handled, _ := h.r.HandleFindingReply(context.Background(), p, "payments", nil); handled || len(h.llm.Replies) != 0 {
-		t.Errorf("handled = %v with the feature off", handled)
-	}
-}
-
 // Staged like a review: the call goes to the pool, the post comes back.
 func TestFindingReplyIsStaged(t *testing.T) {
 	h, p := replyHarness(t)

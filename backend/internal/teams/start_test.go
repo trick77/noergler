@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io/fs"
 	"log/slog"
 	"strings"
 	"testing"
@@ -31,69 +30,13 @@ func appWith(teams map[string]*config.Team, order []string, disabled map[string]
 	return &config.App{Teams: teams, Order: order, Disabled: disabled}
 }
 
-func reviewCfg() config.Review {
-	return config.Review{
-		ReviewPromptTemplate:  "prompts/review.txt",
-		MentionPromptTemplate: "prompts/mention.txt",
-	}
-}
+func reviewCfg() config.Review { return config.Review{} }
 
 func emptyStore() *fakeClaimStore {
 	return &fakeClaimStore{
 		claims:   map[string][]config.ProjectScope{},
 		settings: map[string]store.TeamSettings{},
 	}
-}
-
-// A missing prompt template disables that team rather than aborting boot.
-func TestStart_MissingTemplateDisablesTheTeam(t *testing.T) {
-	team := &config.Team{Slug: "platform", Review: reviewCfg()}
-	log, _ := bufLogger()
-
-	_, reason := Start(context.Background(), appWith(nil, nil, nil), team, Deps{
-		Log:      log,
-		ReadFile: func(string) ([]byte, error) { return nil, errors.New("no such file") },
-	})
-	if !strings.Contains(reason, "prompt template not found") {
-		t.Errorf("reason = %q, want a missing-template disable", reason)
-	}
-}
-
-// The finding-reply template may be missing at its default path: a
-// deployment's own prompts/ without it keeps the team, replies off. A path
-// the operator set and got wrong still disables the team.
-func TestStart_FindingReplyTemplate(t *testing.T) {
-	onlyReplyMissing := func(path string) ([]byte, error) {
-		if path == reviewCfg().ReviewPromptTemplate || path == reviewCfg().MentionPromptTemplate {
-			return []byte("tmpl"), nil
-		}
-		return nil, fs.ErrNotExist
-	}
-
-	t.Run("default path missing", func(t *testing.T) {
-		cfg := reviewCfg()
-		cfg.FindingReplyPromptTemplate = "./" + config.DefaultFindingReplyPromptTemplate
-		log, buf := bufLogger()
-		_, reason := Start(context.Background(), appWith(nil, nil, nil),
-			&config.Team{Slug: "platform", Review: cfg}, Deps{Log: log, ReadFile: onlyReplyMissing})
-		if strings.Contains(reason, "prompt template not found") {
-			t.Errorf("reason = %q: a missing default reply template must not disable the team", reason)
-		}
-		if !strings.Contains(buf.String(), "finding replies off") {
-			t.Errorf("log lacks the warning:\n%s", buf.String())
-		}
-	})
-
-	t.Run("operator path missing", func(t *testing.T) {
-		cfg := reviewCfg()
-		cfg.FindingReplyPromptTemplate = "/etc/noergler/reply.txt"
-		log, _ := bufLogger()
-		_, reason := Start(context.Background(), appWith(nil, nil, nil),
-			&config.Team{Slug: "platform", Review: cfg}, Deps{Log: log, ReadFile: onlyReplyMissing})
-		if !strings.Contains(reason, "prompt template not found: /etc/noergler/reply.txt") {
-			t.Errorf("reason = %q, want the misconfigured path disabling the team", reason)
-		}
-	})
 }
 
 // One team's failure never takes the instance down, and never stops the next
@@ -109,9 +52,8 @@ func TestBoot_OneTeamsFaultDisablesThatTeamOnly(t *testing.T) {
 		map[string]*config.Team{"broken": broken, "other": other},
 		[]string{"broken", "other"}, nil,
 	), Deps{
-		Claims:   emptyStore(),
-		Log:      log,
-		ReadFile: func(string) ([]byte, error) { return nil, errors.New("no such file") },
+		Claims: emptyStore(),
+		Log:    log,
 	})
 	if err != nil {
 		t.Fatalf("a per-team fault must not abort boot: %v", err)
@@ -173,16 +115,10 @@ func TestBoot_SeedConflictDisablesBeforeStartup(t *testing.T) {
 	}
 	log, buf := bufLogger()
 
+	// Had Start run, its reason (the LLM check) would replace the seed's.
 	g, err := Boot(context.Background(), appWith(
 		map[string]*config.Team{"platform": team}, []string{"platform"}, nil,
-	), Deps{
-		Claims: db,
-		Log:    log,
-		ReadFile: func(string) ([]byte, error) {
-			t.Error("Start must not run for a team whose seed conflicted")
-			return nil, errors.New("unreachable")
-		},
-	})
+	), Deps{Claims: db, Log: log})
 	if err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
@@ -204,9 +140,8 @@ func TestBoot_TeamsReadyLineRendering(t *testing.T) {
 	if _, err := Boot(context.Background(), appWith(
 		map[string]*config.Team{"platform": team}, []string{"platform"}, nil,
 	), Deps{
-		Claims:   emptyStore(),
-		Log:      log,
-		ReadFile: func(string) ([]byte, error) { return nil, errors.New("no such file") },
+		Claims: emptyStore(),
+		Log:    log,
 	}); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
@@ -219,24 +154,15 @@ func TestBoot_TeamsReadyLineRendering(t *testing.T) {
 	}
 }
 
-// A panic in one team's startup is contained, not fatal.
+// A panic in one team's startup is contained, not fatal: Start on a nil
+// config panics, and safeStart turns it into that team's reason.
 func TestBoot_PanicInOneTeamIsContained(t *testing.T) {
 	log, _ := bufLogger()
 	team := &config.Team{Slug: "platform", Review: reviewCfg()}
 
-	g, err := Boot(context.Background(), appWith(
-		map[string]*config.Team{"platform": team}, []string{"platform"}, nil,
-	), Deps{
-		Claims:   emptyStore(),
-		Log:      log,
-		ReadFile: func(string) ([]byte, error) { panic("boom") },
-	})
-	if err != nil {
-		t.Fatalf("a panicking team must not abort boot: %v", err)
-	}
-	_, reason, _ := g.Lookup("platform")
-	if !strings.Contains(reason, "startup failed: panic: boom") {
-		t.Errorf("reason = %q, want the contained panic", reason)
+	rt, reason := safeStart(context.Background(), nil, team, Deps{Claims: emptyStore(), Log: log})
+	if rt != nil || !strings.Contains(reason, "startup failed: panic:") {
+		t.Errorf("runtime %v, reason %q: want the contained panic", rt, reason)
 	}
 }
 

@@ -4,14 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
-	"os"
-	"path/filepath"
 
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/jira"
+	"github.com/trick77/noergler/internal/prompts"
 	"github.com/trick77/noergler/internal/review"
 	"github.com/trick77/noergler/internal/riptide"
 	"github.com/trick77/ship/kit/logging"
@@ -29,9 +27,6 @@ type Deps struct {
 	Bitbucket   review.BitbucketClient
 	Tokens      review.TokenCounter
 	Log         *slog.Logger
-	// ReadFile loads a prompt template. Nil means os.ReadFile; tests pass a
-	// map-backed one.
-	ReadFile func(string) ([]byte, error)
 	// Env is where llmwire reads its settings. Nil means the process
 	// environment.
 	Env func(string) (string, bool)
@@ -152,37 +147,6 @@ func onOff(b bool) string {
 // take the instance down, which is why this returns a reason rather than an
 // error.
 func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Runtime, string) {
-	readFile := d.ReadFile
-	if readFile == nil {
-		readFile = os.ReadFile
-	}
-
-	// Every template is loaded before anything else, so a missing file
-	// disables this team rather than aborting boot for all of them.
-	reviewTmpl, err := readFile(team.Review.ReviewPromptTemplate)
-	if err != nil {
-		return nil, fmt.Sprintf("prompt template not found: %s", team.Review.ReviewPromptTemplate)
-	}
-	mentionTmpl, err := readFile(team.Review.MentionPromptTemplate)
-	if err != nil {
-		return nil, fmt.Sprintf("prompt template not found: %s", team.Review.MentionPromptTemplate)
-	}
-	// Optional at its default path, unlike the two above: a deployment that
-	// mounts its own prompts/ without this file keeps reviewing, with
-	// finding replies off. A path the operator set and got wrong is a
-	// misconfiguration and disables the team, alerted on like the others.
-	replyTmpl, err := readFile(team.Review.FindingReplyPromptTemplate)
-	if err != nil {
-		// Only absent at the default path; an unreadable file or another
-		// path is a real misconfiguration.
-		if !errors.Is(err, fs.ErrNotExist) ||
-			filepath.Clean(team.Review.FindingReplyPromptTemplate) != config.DefaultFindingReplyPromptTemplate {
-			return nil, fmt.Sprintf("prompt template not found: %s", team.Review.FindingReplyPromptTemplate)
-		}
-		d.Log.WarnContext(ctx, "finding replies off: prompt template not found: "+team.Review.FindingReplyPromptTemplate)
-		replyTmpl = nil
-	}
-
 	llm, err := inference.New(inference.Options{
 		Model:           team.LLM.Model,
 		ReasoningEffort: team.LLM.ReasoningEffort,
@@ -270,9 +234,9 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 		Riptide:              riptideDep,
 		Tokens:               d.Tokens,
 		Config:               team.Review,
-		Template:             string(reviewTmpl),
-		MentionTemplate:      string(mentionTmpl),
-		FindingReplyTemplate: string(replyTmpl),
+		Template:             prompts.Review,
+		MentionTemplate:      prompts.Mention,
+		FindingReplyTemplate: prompts.FindingReply,
 		Log:                  d.Log,
 	})
 	runtime = NewRuntime(team, reviewer, llm, jr, rt)

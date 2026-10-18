@@ -87,7 +87,6 @@ On every `pr:from_ref_updated` the existing comment is updated in place rather t
    docker run -p 8080:8080 --env-file .env \
      -e TEAMS_CONFIG=/app/teams.yaml \
      -v ./teams.yaml:/app/teams.yaml:ro \
-     -v ./prompts:/app/prompts:ro \
      noergler
    ```
 
@@ -99,11 +98,8 @@ On every `pr:from_ref_updated` the existing comment is updated in place rather t
    ./noergler serve
    ```
 
-   Build into the repo root and run from there: `REVIEW_PROMPT_TEMPLATE` and
-   `TEAMS_CONFIG` default to `prompts/review.txt` and `teams.yaml`, both
-   relative to the working directory, and both live at the root beside
-   `backend/`. Running from inside `backend/` disables every team with a
-   missing prompt template.
+   Run from the repo root: `TEAMS_CONFIG` defaults to `teams.yaml` relative
+   to the working directory. The prompts are compiled into the binary.
 
 3. [Configure the Bitbucket webhook](#webhook-setup).
 
@@ -159,10 +155,9 @@ Rules:
   the loader rejects a missing or empty one.
 - **Resolution:** team value → instance default → built-in default. Only
   `inference.api_key_env` and `webhook_secret_env` have no fallback.
-- **Instance-only knobs** (`LLMWIRE_LITELLM_BASE_URL`, `LLMWIRE_LITELLM_MODELS`,
-  `REVIEW_PROMPT_TEMPLATE`, `REVIEW_MENTION_PROMPT_TEMPLATE`,
-  `REVIEW_FINDING_REPLY_PROMPT_TEMPLATE`) cannot appear in a team
-  block; naming them disables the team.
+- **Instance-only knobs** (`LLMWIRE_LITELLM_BASE_URL`, `LLMWIRE_LITELLM_MODELS`)
+  cannot appear in a team block; naming them disables the team. The prompts
+  are compiled in and not configurable.
 - **Claims and author lists are the team's own.** Which projects and repos a team owns
   (`projects`), its `review.auto_review_authors` / `review.ignore_authors` and its `review.exclude_repos` live in the
   database (`team_claims`, `team_settings`) and are changed through the API
@@ -374,11 +369,11 @@ All webhook requests must include a valid `X-Hub-Signature` header (HMAC-SHA256)
 
 ### Review prompt
 
-Edit `prompts/review.txt` to change the review focus or output format. The prompt template uses `{files}` and `{repo_instructions}` as placeholders. The prompts directory is mounted as a volume, so changes take effect on the next review without rebuilding.
+Edit `backend/internal/prompts/review.txt` to change the review focus or output format. The prompt template uses `{files}` and `{repo_instructions}` as placeholders. The prompts are compiled into the binary, so a change ships with the next release; run the evals on it first.
 
 ### Prompt layout
 
-Both `prompts/review.txt` and `prompts/mention.txt` are ordered deliberately:
+Both `review.txt` and `mention.txt` in `backend/internal/prompts/` are ordered deliberately:
 
 1. **Stable prefix** — role, rules, output format, examples, and prompt-injection guardrails. No placeholders, identical on every call.
 2. **Per-repo block** — `{repo_instructions}` (the `AGENTS.md` content). Stable across all PRs in the same repo.
@@ -505,10 +500,7 @@ backend/
     teams/             # per-team config, claims, runtime
     riptide/           # optional outbound cost emitter
     render/            # summary and comment markdown
-prompts/
-  review.txt           # review prompt template
-  mention.txt          # mention Q&A prompt template
-  finding_reply.txt    # answer to a reply on a finding's thread
+    prompts/           # the model prompts, compiled in (go:embed)
 scripts/               # smoke script and fakes (outside the module)
 http/                  # IntelliJ HTTP client requests for the team self-service
 archive/               # the previous implementation, kept for reference

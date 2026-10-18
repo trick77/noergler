@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
@@ -15,6 +14,7 @@ import (
 
 	"github.com/trick77/noergler/internal/evals"
 	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/prompts"
 )
 
 // One run over the real client against a fake OpenAI-compatible endpoint.
@@ -131,11 +131,8 @@ func readTemplate(t *testing.T) string {
 	t.Helper()
 	// The real template, not a stand-in: an eval that scores a toy prompt
 	// says nothing about the one that ships.
-	b, err := os.ReadFile("../../../prompts/review.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(b)
+	t.Helper()
+	return prompts.Review
 }
 
 type discard struct{}

@@ -328,8 +328,8 @@ func (b *blockErrors) positiveFloatField(m *yaml.Node, path, key string) *float6
 	return p
 }
 
-// reviewOverrides are the team-overridable review knobs: every Review field
-// minus the two prompt templates (instance-only by decision).
+// reviewOverrides are the team-overridable review knobs: every Review field.
+// The prompts are compiled in and never configurable.
 var reviewOverrides = map[string]reviewOverride{
 	"auto_review_authors":     field((*blockErrors).listField, func(r *Review, v []string) { r.AutoReviewAuthors = v }),
 	"ignore_authors":          field((*blockErrors).listField, func(r *Review, v []string) { r.IgnoreAuthors = v }),
