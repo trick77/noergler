@@ -153,10 +153,6 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	// AGENTS.md from the same commit, so code and guidelines match.
 	agentsMD := r.fetchRepoInstructions(ctx, project, repo, at, pr.ToRef.DisplayID)
 	name := firstName(r.displayName, comment.Author.DisplayName)
-	nameState := ""
-	if r.displayName != nil && name == "" {
-		nameState = "unmatched"
-	}
 	prompt := inference.RenderFindingReplyPrompt(inference.FindingReplyPromptRequest{
 		Template:         r.replyTmpl,
 		RepoInstructions: agentsMD,
@@ -173,7 +169,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		project: project, repo: repo, prID: pr.ID, prTag: prTag, where: where,
 		findingID: f.ID, replyTo: comment.ID, text: text,
 		agentsMD: agentsMD, counter: counter,
-		name: name, nameState: nameState,
+		name: name, namesOn: r.displayName != nil,
 	}
 	infer := func(inferCtx context.Context) { job.res = r.llm.FindingReply(inferCtx, req) }
 	post := func(postCtx context.Context) { r.postFindingReply(postCtx, job) }
@@ -197,11 +193,12 @@ type replyJob struct {
 	replyTo       int
 	text          string
 	agentsMD      string
-	// name is the author's first name ("" unknown); nameState is "unmatched"
-	// when a pattern is set but found none, so a drifted directory format shows.
-	name, nameState string
-	counter         *httpstats.Counter
-	res             inference.FindingReplyResult
+	// name is the author's first name, "" when unknown; namesOn tells that
+	// from names off, so a drifted directory format shows in the log.
+	name    string
+	namesOn bool
+	counter *httpstats.Counter
+	res     inference.FindingReplyResult
 }
 
 // postFindingReply is the reply's posting stage, on the worker: the answer,
@@ -219,10 +216,7 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 	}
 	dispute := res.Reply.Intent == "disputes"
 
-	reply, nameState := guardName(res.Reply.Reply, j.name, res.Reply.Intent)
-	if j.nameState != "" {
-		nameState = j.nameState
-	}
+	reply, nameState := guardName(res.Reply.Reply, j.name, res.Reply.Intent, j.namesOn)
 	body := truncateRunes(reply, replyPostRunes)
 	agentsLine := "none"
 	if line := res.Reply.AgentsMDLine; line != "" {

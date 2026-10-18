@@ -8,6 +8,7 @@ require (
 	github.com/tiktoken-go/tokenizer v0.8.1
 	github.com/trick77/llmwire v0.1.4
 	github.com/trick77/ship/kit v0.16.0
+	golang.org/x/text v0.43.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -23,5 +24,4 @@ require (
 	github.com/rogpeppe/go-internal v1.16.0 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
 	golang.org/x/sync v0.24.0 // indirect
-	golang.org/x/text v0.43.0 // indirect
 )

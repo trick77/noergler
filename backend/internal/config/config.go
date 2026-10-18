@@ -59,7 +59,7 @@ type Bitbucket struct {
 // DefaultDisplayNamePattern reads "Last First", the rest ignored:
 // "Saner Jan (SJH)" is Jan. A "First Last" directory overrides it, or blanks
 // it to switch names off. Unicode-aware: RE2's \s and \w are ASCII.
-const DefaultDisplayNamePattern = `^[\s\p{Zs}]*(?P<last>[\pL\pM'-]+)[\s\p{Zs}]+(?P<first>[\pL\pM'-]+)`
+const DefaultDisplayNamePattern = `^[\s\p{Zs}]*(?P<last>[\pL\pM'-]+)[\s\p{Zs}]+(?P<first>[\pL\pM'-]+)(?:[\s\p{Zs}(]|$)`
 
 // LLM is the inference setup: instance-wide gateway, per-team key and model.
 type LLM struct {

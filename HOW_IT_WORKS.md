@@ -247,7 +247,7 @@ one-line AGENTS.md bullet. The dispute is stored and later prompts show it
 beside the finding so the issue is not raised again. The thread stays open:
 the author resolves it. Reply costs are logged, not recorded.
 
-The answer may address the author by first name ("Ok Jan - ..."), never
+The answer may address the author by first name ("Ok Jan - ..."), not
 always. `BITBUCKET_DISPLAY_NAME_PATTERN` extracts it from the Bitbucket
 `displayName` (default `Last First`, rest ignored); no match, no name. The model
 is told to use it only when acknowledging or accepting a dispute; on a question

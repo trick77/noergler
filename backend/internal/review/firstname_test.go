@@ -21,6 +21,14 @@ func TestFirstNameWithTheDefaultPattern(t *testing.T) {
 		"Saner":             "",
 		"":                  "",
 		"svc-jenkins":       "",
+		"Saner -":           "",
+		"Saner ''":          "",
+		"Saner Jan2":        "",
+		"Saner Jan_x":       "",
+		"O'Brien J.":        "",
+		"Saner J":           "",
+		// NFD in, NFC out: the model writes composed text.
+		"Müller Jürg": "Jürg",
 	} {
 		if got := firstName(defaultNameRE, in); got != want {
 			t.Errorf("firstName(%q) = %q, want %q", in, got, want)
@@ -48,21 +56,45 @@ func TestGuardName(t *testing.T) {
 	cases := []struct {
 		name, reply, who, intent, want, state string
 	}{
-		{"no name", "Noted.", "", "acknowledges", "Noted.", "none"},
 		{"not in the reply", "Noted.", "Jan", "acknowledges", "Noted.", "unused"},
 		{"acknowledges may", "Ok Jan - noted.", "Jan", "acknowledges", "Ok Jan - noted.", "used"},
 		{"disputes may", "Jan, understood.", "Jan", "disputes", "Jan, understood.", "used"},
 		{"question: leading cut", "Jan, the check is on line 2.", "Jan", "question", "The check is on line 2.", "cut"},
 		{"other: ok-lead cut", "Ok Jan - line 3 still reads it.", "Jan", "other", "Line 3 still reads it.", "cut"},
 		{"en dash", "Jan – see line 2.", "Jan", "question", "See line 2.", "cut"},
-		{"mid-reply kept", "As Jan said, line 2.", "Jan", "question", "As Jan said, line 2.", "kept (not leading)"},
+		{"ellipsis", "Jan… line 2.", "Jan", "question", "Line 2.", "cut"},
+		{"sure", "Sure Jan, line 2.", "Jan", "question", "Line 2.", "cut"},
+		{"hello", "Hello Jan, line 2.", "Jan", "question", "Line 2.", "cut"},
+		{"greeting without punctuation", "Hi Jan the check is on line 2.", "Jan", "question", "The check is on line 2.", "cut"},
+		{"identifier keeps its case", "Jan, x is nil on line 2.", "Jan", "question", "x is nil on line 2.", "cut"},
+		{"brand keeps its case", "Jan: iOS needs it.", "Jan", "question", "iOS needs it.", "cut"},
+		{"name alone is not cut to nothing", "Ok Jan.", "Jan", "question", "Ok Jan.", "kept"},
+		{"name as subject is no address", "Jan said line 2.", "Jan", "question", "Jan said line 2.", "kept"},
+		{"mid-reply kept", "As Jan said, line 2.", "Jan", "question", "As Jan said, line 2.", "kept"},
 		{"word boundary", "January release.", "Jan", "question", "January release.", "unused"},
 		{"umlaut boundary", "Jürgen, see.", "Jürg", "question", "Jürgen, see.", "unused"},
+		{"NFD reply", "Jürg, see line 2.", "Jürg", "question", "See line 2.", "cut"},
 	}
 	for _, c := range cases {
-		got, state := guardName(c.reply, c.who, c.intent)
+		got, state := guardName(c.reply, c.who, c.intent, true)
 		if got != c.want || state != c.state {
 			t.Errorf("%s: got %q (%s), want %q (%s)", c.name, got, state, c.want, c.state)
+		}
+	}
+	// No name: off, or the pattern found none (a drifted directory format).
+	for patternSet, want := range map[bool]string{false: "none", true: "unmatched"} {
+		if got, state := guardName("Noted.", "", "acknowledges", patternSet); got != "Noted." || state != want {
+			t.Errorf("patternSet=%v: %q (%s), want %s", patternSet, got, state, want)
+		}
+	}
+}
+
+func TestGuardNameLeavesCaseAlone(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"the check", "The check"}, {"x is", "x is"}, {"nil()", "nil()"}, {"`foo` is", "`foo` is"},
+	} {
+		if got := capitalizeWord(c.in); got != c.want {
+			t.Errorf("capitalizeWord(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }

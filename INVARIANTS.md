@@ -43,8 +43,8 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   reply goes to the Q&A, a review-keyword one to the mention path (a review);
   nothing posted = nothing stamped.
 - Author's first name: finding replies only, `acknowledges`/`disputes` only
-  (prompt asks, `guardName` cuts a leading one otherwise); from the operator
-  pattern, never guessed by the model; never stored or logged.
+  (prompt asks, `guardName` cuts a leading one otherwise); extracted by code
+  from the operator pattern; never stored or logged.
 - `.properties` size gate is NOT in `IsReviewable` (the rollup must count the
   file).
 
