@@ -737,7 +737,7 @@ func TestPRCost_IncludesBilledAttempts(t *testing.T) {
 	ctx := context.Background()
 	id := upsert(t, s, key, "a")
 	attempt := Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "unparseable", CostNanoUSD: nano(400)}
-	if err := s.InsertAttempt(ctx, attempt); err != nil {
+	if _, err := s.InsertAttempt(ctx, attempt); err != nil {
 		t.Fatal(err)
 	}
 	if c, _ := s.PRCost(ctx, key); c == nil || *c != 400 {
@@ -774,14 +774,14 @@ func TestRollup_AttemptOnlySpendIsClaimed(t *testing.T) {
 	ctx := context.Background()
 	upsert(t, s, key, "a")
 	unpriced := Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "error"}
-	if err := s.InsertAttempt(ctx, unpriced); err != nil {
+	if _, err := s.InsertAttempt(ctx, unpriced); err != nil {
 		t.Fatal(err)
 	}
 	if snap, _ := s.ClaimRollup(ctx, key, RollupFinal{}); snap != nil {
 		t.Fatalf("nothing billed: snapshot = %+v, want nil", snap)
 	}
 	billed := Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "unparseable", CostNanoUSD: nano(400)}
-	if err := s.InsertAttempt(ctx, billed); err != nil {
+	if _, err := s.InsertAttempt(ctx, billed); err != nil {
 		t.Fatal(err)
 	}
 	snap, err := s.ClaimRollup(ctx, key, RollupFinal{SourceCommit: str("head")})
@@ -812,7 +812,7 @@ func TestMigrate0004_BackfillsEverySlugThatHeldAClaim(t *testing.T) {
 	if _, err := s.UpsertPullRequest(ctx, PRUpsert{Key: key, TeamSlug: "ops"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "payments", Kind: RunAuto, Outcome: "error"}); err != nil {
+	if _, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "payments", Kind: RunAuto, Outcome: "error"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.PutSettings(ctx, "idle", TeamSettings{ExcludeRepos: []string{"*-infra"}}, "x"); err != nil {

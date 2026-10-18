@@ -368,6 +368,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 			Key: key, TeamSlug: r.TeamSlug, Kind: runKind(plan.mention),
 			Outcome: "skipped", Reason: string(SkipRepoNotClaimed),
 			CostNanoUSD: result.Cost.NanoUSD,
+			Call:        r.llmCall(result.Cost),
 		})
 		return
 	}
@@ -442,6 +443,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	attempt := store.Attempt{
 		Key: key, TeamSlug: r.TeamSlug, Kind: runKind(plan.mention),
 		Outcome: inference.OutcomeOK.String(),
+		Call:    r.llmCall(result.Cost),
 	}
 	ms := elapsed.Milliseconds()
 	attempt.ElapsedMS = &ms
@@ -686,10 +688,13 @@ func (r *Reviewer) handleNonOK(ctx context.Context, l lang.Lang, result inferenc
 	}
 
 	// No run row, so a billed call's cost rides here, where PRCost reads it.
+	// The call itself is kept too: an unparseable answer is exactly the run
+	// someone opens the detail page for.
 	r.recordAttempt(ctx, store.Attempt{
 		Key: key, TeamSlug: r.TeamSlug, Kind: kind,
 		Outcome:     result.Outcome.String(),
 		CostNanoUSD: result.Cost.NanoUSD,
+		Call:        r.llmCall(result.Cost),
 	})
 }
 

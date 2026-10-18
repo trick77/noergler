@@ -1,9 +1,15 @@
 package review
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/trick77/llmwire"
 
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/store"
@@ -78,6 +84,96 @@ func TestUnparseableAttemptCarriesItsCost(t *testing.T) {
 	}
 	if got := h.st.Attempts[0].CostNanoUSD; got == nil || *got != cost {
 		t.Errorf("attempt cost = %v, want %d", got, cost)
+	}
+}
+
+// What the AI Gateway reported about the call rides on the attempt, for the
+// run detail page: for a success and for a billed failure alike. A call the
+// gateway never answered (a timeout) has nothing to keep and writes no call.
+func TestAttemptKeepsTheGatewayCall(t *testing.T) {
+	read, uncached := int64(28416), int64(12794)
+	answered := inference.CallCost{
+		Answered: true, Model: "gpt-5.5-2026-08-06", Deployment: "azure/gpt-5.5-swc",
+		FinishReason: "stop", CallID: "b7e2", GatewayVersion: "1.80.0",
+		Usage:    llmwire.Usage{Input: llmwire.InputTokens{CacheRead: &read, NoCache: &uncached}},
+		Timing:   llmwire.Timing{Headers: 58310 * time.Millisecond, Total: 58420 * time.Millisecond},
+		Warnings: []string{"other x: y"},
+	}
+	for _, c := range []struct {
+		name    string
+		outcome inference.Outcome
+		cost    inference.CallCost
+		want    bool
+	}{
+		{"ok", inference.OutcomeOK, answered, true},
+		{"unparseable", inference.OutcomeUnparseable, answered, true},
+		{"timed out", inference.OutcomeTimedOut, inference.CallCost{}, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h := newHarness(t, nil)
+			h.llm.review = inference.ReviewResult{
+				Outcome: c.outcome,
+				Review:  inference.ParsedReview{Summary: inference.NewReviewSummary()},
+				Cost:    c.cost,
+			}
+
+			h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+			if len(h.st.Attempts) != 1 {
+				t.Fatalf("expected one attempt, got %d", len(h.st.Attempts))
+			}
+			call := h.st.Attempts[0].Call
+			if !c.want {
+				if call != nil {
+					t.Errorf("an unanswered call was recorded: %+v", call)
+				}
+				return
+			}
+			if call == nil {
+				t.Fatal("the gateway call was not recorded")
+			}
+			if call.Profile == "" || call.Model != "gpt-5.5-2026-08-06" || call.Deployment != "azure/gpt-5.5-swc" ||
+				call.CallID != "b7e2" || call.GatewayVer != "1.80.0" || call.FinishReason != "stop" {
+				t.Errorf("call identity = %+v", call)
+			}
+			if call.CacheReadTokens == nil || *call.CacheReadTokens != read ||
+				call.InputUncachedTokens == nil || *call.InputUncachedTokens != uncached {
+				t.Errorf("token lanes = %v / %v", call.CacheReadTokens, call.InputUncachedTokens)
+			}
+			if call.CacheWriteTokens != nil {
+				t.Error("an absent lane became a value")
+			}
+			if call.HeadersMS == nil || *call.HeadersMS != 58310 || call.TotalMS == nil || *call.TotalMS != 58420 {
+				t.Errorf("timing = %v / %v", call.HeadersMS, call.TotalMS)
+			}
+			if len(call.Warnings) != 1 {
+				t.Errorf("warnings = %v", call.Warnings)
+			}
+		})
+	}
+}
+
+// A refused call write is logged as exactly that, with the PR: the attempt
+// and its cost were written, so the log must not read like a lost attempt.
+func TestRefusedCallWriteIsLoggedAsSuch(t *testing.T) {
+	h := newHarness(t, nil)
+	var logs bytes.Buffer
+	h.r.log = slog.New(slog.NewTextHandler(&logs, nil))
+	h.st.callErr = errors.New("invalid byte sequence")
+	h.llm.review = inference.ReviewResult{
+		Outcome: inference.OutcomeOK,
+		Review:  inference.ParsedReview{Summary: inference.NewReviewSummary()},
+		Cost:    inference.CallCost{Answered: true},
+	}
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+	want := store.PRKey{Project: "PROJ", Repo: "my-repo", PRID: 42}.Tag() + ": gateway call detail not recorded; the attempt was written"
+	if !strings.Contains(logs.String(), want) {
+		t.Errorf("log lacks the call-not-recorded line with the PR:\n%s", logs.String())
+	}
+	if strings.Contains(logs.String(), "DB operation failed, using fallback: InsertAttempt") {
+		t.Error("a refused call write was logged as a lost attempt")
 	}
 }
 

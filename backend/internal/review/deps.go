@@ -8,7 +8,9 @@ package review
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/inference"
@@ -82,7 +84,7 @@ type Store interface {
 	MarkDeclined(ctx context.Context, k store.PRKey) error
 	MarkDeleted(ctx context.Context, k store.PRKey) error
 	InsertRun(ctx context.Context, r store.Run) (int64, error)
-	InsertAttempt(ctx context.Context, a store.Attempt) error
+	InsertAttempt(ctx context.Context, a store.Attempt) (int64, error)
 	InsertFinding(ctx context.Context, f store.Finding) error
 	ExistingFindings(ctx context.Context, k store.PRKey) ([]store.Finding, error)
 	MarkFindingFixed(ctx context.Context, findingID, runID int64) error
@@ -138,9 +140,59 @@ func (r *Reviewer) recordAttempt(ctx context.Context, a store.Attempt) {
 	if r.store == nil {
 		return
 	}
-	safeDBErr(ctx, r.log, "InsertAttempt", func() error {
-		return r.store.InsertAttempt(ctx, a)
-	})
+	// ErrCallNotRecorded means the attempt (and any billed cost on it) is
+	// written and only the call's detail is not: logged as that, with the
+	// PR, so nobody reads a lost llm_calls row as a lost attempt.
+	// team= rides on ctx (the queue binds it per job).
+	_, err := r.store.InsertAttempt(ctx, a)
+	switch {
+	case errors.Is(err, store.ErrCallNotRecorded):
+		r.log.WarnContext(ctx, a.Key.Tag()+": gateway call detail not recorded; the attempt was written", logging.Err(err))
+	case err != nil:
+		r.log.WarnContext(ctx, "DB operation failed, using fallback: InsertAttempt", logging.Err(err))
+	}
+}
+
+// llmCall is the llm_calls row for a review's gateway call, nil when the
+// gateway never answered (a timeout, a transport error, a pre-flight
+// too-large): there is nothing it reported to keep.
+func (r *Reviewer) llmCall(c inference.CallCost) *store.LLMCall {
+	if !c.Answered {
+		return nil
+	}
+	ms := func(d time.Duration) *int64 {
+		if d <= 0 {
+			return nil
+		}
+		v := d.Milliseconds()
+		return &v
+	}
+	return &store.LLMCall{
+		Profile:               r.llm.Label(),
+		Model:                 c.Model,
+		Deployment:            c.Deployment,
+		ReasoningSent:         c.ReasoningSent,
+		FinishReason:          c.FinishReason,
+		CallID:                c.CallID,
+		GatewayVer:            c.GatewayVersion,
+		InputTokens:           c.Usage.Input.Total,
+		InputUncachedTokens:   c.Usage.Input.NoCache,
+		CacheReadTokens:       c.Usage.Input.CacheRead,
+		CacheWriteTokens:      c.Usage.Input.CacheWrite,
+		OutputTokens:          c.Usage.Output.Total,
+		ReasoningTokens:       c.Usage.Output.Reasoning,
+		CostNanoUSD:           c.NanoUSD,
+		CostInputNanoUSD:      c.Split.InputNanoUSD,
+		CostCacheReadNanoUSD:  c.Split.CacheReadNanoUSD,
+		CostCacheWriteNanoUSD: c.Split.CacheWriteNanoUSD,
+		CostOutputNanoUSD:     c.Split.OutputNanoUSD,
+		CostReasoningNanoUSD:  c.Split.ReasoningNanoUSD,
+		CostToolUsageNanoUSD:  c.Split.ToolUsageNanoUSD,
+		KeySpendNanoUSD:       c.KeySpendNanoUSD,
+		HeadersMS:             ms(c.Timing.Headers),
+		TotalMS:               ms(c.Timing.Total),
+		Warnings:              c.Warnings,
+	}
 }
 
 // runKind spells the auto/mention choice once. prepare, post and recordRun

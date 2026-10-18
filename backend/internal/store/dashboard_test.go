@@ -9,7 +9,7 @@ import (
 func attempt(t *testing.T, s *Store, k PRKey, outcome, reason string, runID *int64) {
 	t.Helper()
 	ms := int64(1500)
-	err := s.InsertAttempt(context.Background(), Attempt{
+	_, err := s.InsertAttempt(context.Background(), Attempt{
 		Key: k, TeamSlug: "platform", Kind: RunAuto,
 		Outcome: outcome, Reason: reason, ElapsedMS: &ms, RunID: runID,
 	})
@@ -67,7 +67,7 @@ func TestRecentAttemptsFiltersByTeam(t *testing.T) {
 	attempt(t, s, key, "ok", "", nil)
 
 	other := PRKey{Project: "PAY", Repo: "ledger", PRID: 1}
-	if err := s.InsertAttempt(ctx, Attempt{
+	if _, err := s.InsertAttempt(ctx, Attempt{
 		Key: other, TeamSlug: "payments", Kind: RunAuto, Outcome: "ok",
 	}); err != nil {
 		t.Fatal(err)
@@ -180,7 +180,7 @@ func TestSpendIncludesBilledRunlessAttempts(t *testing.T) {
 		{Key: key, TeamSlug: "payments", Kind: RunAuto, Outcome: "skipped", Reason: "repo_not_claimed", CostNanoUSD: nano(50)},
 		{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "error"},
 	} {
-		if err := s.InsertAttempt(ctx, a); err != nil {
+		if _, err := s.InsertAttempt(ctx, a); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -420,7 +420,7 @@ func TestDashboardReadsPropagateErrors(t *testing.T) {
 	if _, err := s.ActivityByTeam(ctx); err == nil {
 		t.Error("ActivityByTeam must report a dead pool")
 	}
-	if err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "x", Kind: RunAuto, Outcome: "ok"}); err == nil {
+	if _, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "x", Kind: RunAuto, Outcome: "ok"}); err == nil {
 		t.Error("InsertAttempt must report a dead pool")
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/trick77/llmwire"
 )
@@ -198,11 +199,45 @@ func TestCostFrom(t *testing.T) {
 		}
 	})
 
+	// What answered, how and how long, for the run detail page. Usage keeps
+	// llmwire's nilable lanes: a lane the gateway did not send stays nil.
+	t.Run("the call's identity and lanes are carried through", func(t *testing.T) {
+		got := CostFrom(&llmwire.ChatResponse{
+			Model: "gpt-5.5-2026-08-06", FinishReason: "stop", ReasoningSent: "medium",
+			Gateway: llmwire.Gateway{ModelName: "azure/gpt-5.5-swc"},
+			Usage: llmwire.Usage{
+				Input:  llmwire.InputTokens{Total: n(100), NoCache: n(40), CacheRead: n(60)},
+				Output: llmwire.OutputTokens{Total: n(30), Reasoning: n(20)},
+			},
+			Timing: llmwire.Timing{Headers: 2 * time.Second, Total: 3 * time.Second},
+		})
+		if !got.Answered || got.Model != "gpt-5.5-2026-08-06" || got.Deployment != "azure/gpt-5.5-swc" ||
+			got.FinishReason != "stop" || got.ReasoningSent != "medium" {
+			t.Errorf("identity = %+v", got)
+		}
+		if got.Usage.Input.CacheWrite != nil || *got.Usage.Output.Reasoning != 20 || *got.Usage.Input.NoCache != 40 {
+			t.Errorf("lanes = %+v", got.Usage)
+		}
+		if got.Timing.Headers != 2*time.Second {
+			t.Errorf("timing = %+v", got.Timing)
+		}
+	})
+
 	t.Run("absent token lanes count as zero", func(t *testing.T) {
 		if got := totalTokens(llmwire.Usage{}); got != 0 {
 			t.Errorf("totalTokens = %d, want 0", got)
 		}
 	})
+}
+
+func TestWarningLines(t *testing.T) {
+	if got := WarningLines(nil); got != nil {
+		t.Errorf("no warnings = %#v, want nil", got)
+	}
+	got := WarningLines([]llmwire.Warning{{Kind: llmwire.WarnCompatibility, Feature: "reasoning", Details: "mapped to effort"}})
+	if len(got) != 1 || got[0] != "compatibility reasoning: mapped to effort" {
+		t.Errorf("WarningLines = %q", got)
+	}
 }
 
 // The cost header the gateway sends must survive as a priced call end to end.

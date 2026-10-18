@@ -199,8 +199,10 @@ type fakeStore struct {
 
 	upsertErr  error
 	attemptErr error
-	runErr     error
-	failAll    bool
+	// callErr: the attempt is written, its gateway call is not.
+	callErr error
+	runErr  error
+	failAll bool
 
 	Upserts   []store.PRUpsert
 	Runs      []store.Run
@@ -347,20 +349,23 @@ func (f *fakeStore) InsertRun(_ context.Context, r store.Run) (int64, error) {
 	return int64(len(f.Runs)), nil
 }
 
-func (f *fakeStore) InsertAttempt(_ context.Context, a store.Attempt) error {
+func (f *fakeStore) InsertAttempt(_ context.Context, a store.Attempt) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	// attemptErr is separate from failAll: the point of the fail-open test
 	// is a store where ONLY the attempt write is broken, so everything else
 	// must still succeed around it.
 	if f.attemptErr != nil {
-		return f.attemptErr
+		return 0, f.attemptErr
 	}
 	if err := f.err(); err != nil {
-		return err
+		return 0, err
 	}
 	f.Attempts = append(f.Attempts, a)
-	return nil
+	if f.callErr != nil && a.Call != nil {
+		return int64(len(f.Attempts)), fmt.Errorf("attempt %d: %w: %w", len(f.Attempts), store.ErrCallNotRecorded, f.callErr)
+	}
+	return int64(len(f.Attempts)), nil
 }
 
 func (f *fakeStore) InsertFinding(_ context.Context, fi store.Finding) error {
