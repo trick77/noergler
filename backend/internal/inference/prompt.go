@@ -203,7 +203,9 @@ func RenderPreviouslyPostedFindings(findings []PostedFinding) string {
 		return ""
 	}
 	lines := make([]string, 0, len(findings))
+	withIDs := false
 	for _, f := range findings {
+		withIDs = withIDs || f.ID > 0
 		filePath := f.FilePath
 		if filePath == "" {
 			filePath = "<unknown>"
@@ -228,6 +230,15 @@ func RenderPreviouslyPostedFindings(findings []PostedFinding) string {
 		}
 		lines = append(lines, "- "+id+loc+" ["+severity+"] "+text)
 	}
+	// The fixed instruction only where there is an id to name: a full
+	// review lists none, and asking there buys guessed ids.
+	fixed := ""
+	if withIDs {
+		fixed = "If the focused diff removes the defect one of them describes, list it under `fixed` " +
+			"by its id. Only when added or removed lines of that finding's file visibly fix it, " +
+			"never because the code merely moved or the finding looks stale.\n" +
+			"\n"
+	}
 	return "## Already-posted findings on this PR\n" +
 		"\n" +
 		"Previous reviews already posted the findings below on this PR. " +
@@ -235,10 +246,7 @@ func RenderPreviouslyPostedFindings(findings []PostedFinding) string {
 		"even if line numbers have shifted because of new commits. " +
 		"Only flag genuinely new issues introduced by the focused diff.\n" +
 		"\n" +
-		"If the focused diff removes the defect one of them describes, list it under `fixed` " +
-		"by its id. Only when an added or removed line of that finding's file visibly fixes it, " +
-		"never because the code merely moved or the finding looks stale.\n" +
-		"\n" +
+		fixed +
 		strings.Join(lines, "\n")
 }
 

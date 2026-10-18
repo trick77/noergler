@@ -2,7 +2,6 @@ package inference
 
 import (
 	"encoding/json"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -54,9 +53,9 @@ const (
 	FixedNoEvidence FixedDropReason = "no_evidence"
 	// FixedEvidenceNotFound means a quoted line is nowhere in that file.
 	FixedEvidenceNotFound FixedDropReason = "evidence_not_found"
-	// FixedEvidenceUnchanged means every quoted line is context, full-file
-	// or moved (removed and added back): the diff did not change what it
-	// quotes.
+	// FixedEvidenceUnchanged means a quoted line is context, full-file or
+	// moved (removed in one place and added in another, in any file of the
+	// push): the diff did not change it.
 	FixedEvidenceUnchanged FixedDropReason = "evidence_unchanged"
 )
 
@@ -86,10 +85,16 @@ type FixedValidation struct {
 //
 //   - the id must be one the prompt listed, and claimed once;
 //   - the finding's file must be one the focused diff changed;
-//   - every non-blank evidence line must be in that file (a note or an
-//     elision is skipped, as for findings), and at least one of them added
-//     or removed, but not both: a line removed and added back moved, and
-//     moved code still has its bug.
+//   - every non-blank evidence line (a note or an elision is skipped, as for
+//     findings) must be a line of that file the push added or removed, and
+//     not one it moved: a line removed and added back, in this file or
+//     another, carries its bug along.
+//
+// Known limits, accepted: nothing ties the quoted lines to the finding's
+// line, so a real change elsewhere in the same file passes; and a move is
+// told by the whitespace-loose hash, so a fix whose text equals an unrelated
+// removed line (`return err`) is refused. The second fails safe: the thread
+// stays open.
 //
 // Only an incremental review may claim a fix. On a full one the focused
 // diff is the whole PR, every line of it added, the buggy one included;
@@ -117,7 +122,7 @@ func ValidateFixed(claims []FixedClaim, sent []PostedFinding, idx diff.AnchorInd
 
 func validateFixedOne(c FixedClaim, byID map[int64]PostedFinding, seen map[int64]bool, idx diff.AnchorIndex) (PostedFinding, FixedDropReason) {
 	// The id as rendered ("[F12]") or lowercased is still the id.
-	raw := strings.TrimSpace(strings.Trim(c.ID, "[] "))
+	raw := strings.Trim(c.ID, "[] ")
 	if len(raw) > 0 && strings.EqualFold(raw[:1], FixedIDPrefix) {
 		raw = raw[1:]
 	}
@@ -132,12 +137,11 @@ func validateFixedOne(c FixedClaim, byID map[int64]PostedFinding, seen map[int64
 	if seen[id] {
 		return PostedFinding{}, FixedDuplicate
 	}
-	path := ShownPath(f.FilePath, idx)
-	fa, ok := idx[path]
+	fa, ok := idx[ShownPath(f.FilePath, idx)]
 	if !ok {
 		return PostedFinding{}, FixedFileNotInDiff
 	}
-	quoted, changed := 0, false
+	quoted := 0
 	for _, e := range c.Evidence {
 		if strings.TrimSpace(e) == "" {
 			continue
@@ -148,19 +152,16 @@ func validateFixedOne(c FixedClaim, byID map[int64]PostedFinding, seen map[int64
 			continue
 		case where == notFound:
 			return PostedFinding{}, FixedEvidenceNotFound
-		case where == onRemovedSide:
-			// Shown lines are matched first, so this line was not added back.
-			changed = true
-		case where == onNewSide && addedLine(h, fa.Shown) && !fa.Removed[h]:
-			changed = true
+		case where == onRemovedSide && !addedAnywhere(h, idx):
+			// Shown lines match first, so it is not on this file's new side.
+		case where == onNewSide && addedLine(h, fa.Shown) && !removedAnywhere(h, idx):
+		default:
+			return PostedFinding{}, FixedEvidenceUnchanged
 		}
 		quoted++
 	}
 	if quoted == 0 {
 		return PostedFinding{}, FixedNoEvidence
-	}
-	if !changed {
-		return PostedFinding{}, FixedEvidenceUnchanged
 	}
 	return f, ""
 }
@@ -168,5 +169,30 @@ func validateFixedOne(c FixedClaim, byID map[int64]PostedFinding, seen map[int64
 // addedLine reports whether a shown line with hash h is an added one, not
 // context.
 func addedLine(h uint64, shown map[int]diff.ShownLine) bool {
-	return slices.ContainsFunc(linesWithHash(h, shown), func(n int) bool { return shown[n].Added })
+	for _, s := range shown {
+		if s.Hash == h && s.Added {
+			return true
+		}
+	}
+	return false
+}
+
+// addedAnywhere and removedAnywhere ask the whole push, so a line moved to
+// another file still reads as moved.
+func addedAnywhere(h uint64, idx diff.AnchorIndex) bool {
+	for _, fa := range idx {
+		if addedLine(h, fa.Shown) {
+			return true
+		}
+	}
+	return false
+}
+
+func removedAnywhere(h uint64, idx diff.AnchorIndex) bool {
+	for _, fa := range idx {
+		if fa.Removed[h] {
+			return true
+		}
+	}
+	return false
 }

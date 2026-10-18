@@ -61,9 +61,10 @@ type reviewPlan struct {
 	anchors diff.AnchorIndex
 
 	existing []store.Finding
-	// listed are the ids of existing the prompt listed with an id: the only
-	// findings a `fixed` claim may name. Empty on a full review.
-	listed         map[int64]bool
+	// posted is existing as the prompt listed it, trimmed by budget: the
+	// only findings a `fixed` claim may name, and on a full review none
+	// carries an id.
+	posted         []inference.PostedFinding
 	contentSkipped []string
 	ticket         *jira.Ticket
 	parentTicket   *jira.Ticket

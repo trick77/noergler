@@ -312,7 +312,7 @@ func (s *Store) ExistingFindings(ctx context.Context, k PRKey) ([]Finding, error
 // would be listed, claimed and resolved again.
 func (s *Store) MarkFindingFixed(ctx context.Context, findingID, runID int64) error {
 	_, err := s.pool.Exec(ctx, `
-		UPDATE findings SET fixed_at = now(), fixed_run_id = NULLIF($2, 0)
+		UPDATE findings SET fixed_at = now(), fixed_run_id = NULLIF($2::bigint, 0)
 		WHERE id = $1 AND fixed_at IS NULL`, findingID, runID)
 	return err
 }

@@ -8,24 +8,25 @@ import (
 )
 
 // The push adds the missing unlock in svc.go, moves its nil check down a
-// line, and leaves other.go's context alone. Earlier findings: 1 on svc.go (the leak), 2 on other.go, 3 on a file
+// line, and moves cache.Drop() over to other.go. Earlier findings: 1 on svc.go (the leak), 2 on other.go, 3 on a file
 // the push did not touch.
 func fixedFixture() (diff.AnchorIndex, []PostedFinding) {
 	idx := diff.BuildAnchorIndex([]diff.FileReviewData{
 		{
 			Path: "svc.go",
-			Diff: "@@ -10,4 +10,5 @@\n" +
+			Diff: "@@ -10,5 +10,5 @@\n" +
 				" \tmu.Lock()\n" +
 				"-\tif in == nil {\n" +
 				"+\tdefer mu.Unlock()\n" +
 				"-\treturn load()\n" +
+				"-\tcache.Drop()\n" +
 				"+\tif in == nil {\n" +
 				"+\treturn load(ctx)\n" +
 				" }\n",
 			Content:        "func f() {\n\tmu.Lock()\n\tdefer mu.Unlock()\n\treturn load(ctx)\n}\n",
 			ContentFetched: true,
 		},
-		{Path: "other.go", Diff: "@@ -1,2 +1,2 @@\n x := 1\n+y := 2\n"},
+		{Path: "other.go", Diff: "@@ -1,2 +1,3 @@\n x := 1\n+y := 2\n+\tcache.Drop()\n"},
 	})
 	idx.AddContextDiff("+\tdefer cancel()\n")
 	line := 11
@@ -44,7 +45,11 @@ func TestValidateFixed(t *testing.T) {
 	}{
 		{"added line fixes it", FixedClaim{"F1", []string{"defer mu.Unlock()"}}, ""},
 		{"removed line fixes it", FixedClaim{"F1", []string{"return load()"}}, ""},
-		{"context beside a change", FixedClaim{"F1", []string{"mu.Lock()", "defer mu.Unlock()"}}, ""},
+		// Every quoted line must be changed: context beside a change, or a
+		// moved line beside one, would let any edit carry an unchanged bug.
+		{"context beside a change", FixedClaim{"F1", []string{"mu.Lock()", "defer mu.Unlock()"}}, FixedEvidenceUnchanged},
+		{"moved line beside a change", FixedClaim{"F1", []string{"if in == nil {", "defer mu.Unlock()"}}, FixedEvidenceUnchanged},
+		{"line moved to another file", FixedClaim{"F1", []string{"cache.Drop()"}}, FixedEvidenceUnchanged},
 		{"copied marker is tolerated", FixedClaim{"F1", []string{"+\tdefer mu.Unlock()"}}, ""},
 		{"model's note is skipped", FixedClaim{"F1", []string{"defer mu.Unlock()", "// released now"}}, ""},
 		{"a/ b/ prefix on the stored path", FixedClaim{"F2", []string{"y := 2"}}, ""},
@@ -143,7 +148,7 @@ func TestParseReviewReadsFixed(t *testing.T) {
 // A `fixed` that is not an array is said, not dropped in silence: a run that
 // claimed something malformed must not read like one that claimed nothing.
 func TestParseReviewWarnsOnAMalformedFixedList(t *testing.T) {
-	for _, v := range []string{`null`, `{"id": "F3"}`, `"F3"`} {
+	for _, v := range []string{`{"id": "F3"}`, `"F3"`} {
 		got := ParseReview(`{"overview": "o", "findings": [], "fixed": ` + v + `}`)
 		warned := false
 		for _, d := range got.Diagnostics {
@@ -153,8 +158,11 @@ func TestParseReviewWarnsOnAMalformedFixedList(t *testing.T) {
 			t.Errorf("fixed %s: claims %+v, diagnostics %+v", v, got.Fixed, got.Diagnostics)
 		}
 	}
-	if got := ParseReview(`{"overview": "o", "findings": [], "fixed": []}`); len(got.Diagnostics) != 0 {
-		t.Errorf("an empty list is no fault: %+v", got.Diagnostics)
+	// null is how models spell an empty list.
+	for _, v := range []string{`[]`, `null`} {
+		if got := ParseReview(`{"overview": "o", "findings": [], "fixed": ` + v + `}`); len(got.Diagnostics) != 0 {
+			t.Errorf("fixed %s is no fault: %+v", v, got.Diagnostics)
+		}
 	}
 }
 
@@ -169,5 +177,13 @@ func TestRenderPreviouslyPostedFindingsCarriesTheID(t *testing.T) {
 	}
 	if !strings.Contains(got, "\n- b.go [suggestion] d") {
 		t.Errorf("a finding without an id renders none:\n%s", got)
+	}
+	if !strings.Contains(got, "list it under `fixed`") {
+		t.Errorf("ids listed, so the fixed instruction is too:\n%s", got)
+	}
+	// A full review lists no ids: asking for `fixed` there buys guesses.
+	none := RenderPreviouslyPostedFindings([]PostedFinding{{FilePath: "b.go", Severity: "suggestion", CommentText: "d"}})
+	if strings.Contains(none, "`fixed`") {
+		t.Errorf("no id, no fixed instruction:\n%s", none)
 	}
 }

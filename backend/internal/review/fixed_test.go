@@ -79,24 +79,25 @@ func TestUnprovenFixedClaimTouchesNothing(t *testing.T) {
 	}
 }
 
-// A push that half-fixes a finding: the model retires it and reports what is
-// left on the same line. The new finding is not a repeat of the one retired.
-func TestRetiredFindingDoesNotDedupANewOne(t *testing.T) {
+// The response claims F11 fixed and reports it again at its file, line and
+// severity. It contradicts itself: the thread stays open, and the new report
+// is a repeat of it.
+func TestFixedClaimTheResponseContradictsIsRefused(t *testing.T) {
 	h := fixedHarness(t, "func new() {}")
-	h.llm.review.Review.Findings = []inference.ReviewFinding{finding("a.go", 2, "issue", "still leaks on error")}
+	h.llm.review.Review.Findings = []inference.ReviewFinding{finding("a.go", 2, "issue", "old() leaks")}
 
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
-	if len(h.bb.Inline) != 1 {
-		t.Errorf("inline = %+v, want the new finding posted", h.bb.Inline)
+	if len(h.bb.Calls) != 0 || len(h.st.Fixed) != 0 {
+		t.Errorf("calls = %v, fixed = %v, want the thread left alone", h.bb.Calls, h.st.Fixed)
 	}
-	if len(h.st.Fixed) != 1 {
-		t.Errorf("fixed = %v, want the old one retired", h.st.Fixed)
+	if len(h.bb.Inline) != 0 {
+		t.Errorf("inline = %+v, want the report deduped against the open thread", h.bb.Inline)
 	}
 }
 
-// A failed reply leaves the thread open: a thread is never closed without
-// saying why. The row is stamped anyway, or the next run claims it again.
+// A failed reply leaves the thread open, never closed without saying why,
+// and the row open with it, so the PR and the store agree.
 func TestFailedReplyLeavesTheThreadOpen(t *testing.T) {
 	h := fixedHarness(t, "func new() {}")
 	h.bb.replyErr = errors.New("boom")
@@ -106,8 +107,8 @@ func TestFailedReplyLeavesTheThreadOpen(t *testing.T) {
 	if want := []string{"reply:501"}; !slices.Equal(h.bb.Calls, want) {
 		t.Errorf("calls = %v, want %v", h.bb.Calls, want)
 	}
-	if len(h.st.Fixed) != 1 {
-		t.Errorf("fixed = %v, want the row stamped", h.st.Fixed)
+	if len(h.st.Fixed) != 0 {
+		t.Errorf("fixed = %v, want the row left open", h.st.Fixed)
 	}
 	if len(h.bb.Posted) != 1 {
 		t.Errorf("summary posts = %d, want the run to finish", len(h.bb.Posted))

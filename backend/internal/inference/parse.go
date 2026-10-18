@@ -418,9 +418,11 @@ func ParseReview(content string) ParsedReview {
 		}
 	}
 
-	if rawFixed, ok := raw["fixed"]; ok {
+	// null is how models often spell an empty list; anything else that is
+	// not an array is said, so a malformed claim never reads as none.
+	if rawFixed, ok := raw["fixed"]; ok && !isJSONNull(rawFixed) {
 		var items []json.RawMessage
-		if err := json.Unmarshal(rawFixed, &items); err != nil || isJSONNull(rawFixed) {
+		if err := json.Unmarshal(rawFixed, &items); err != nil {
 			out.warn("Skipping malformed fixed list: %s", truncateRunes(string(rawFixed), 200))
 		} else {
 			for _, item := range items {
