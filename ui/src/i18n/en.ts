@@ -52,7 +52,7 @@ export const en = {
     no_reviewable_files: "nothing to review",
     empty_diff: "empty diff",
     head_unchanged: "unchanged",
-    diff_too_large: "too large",
+    diff_too_large: "diff too large",
     repo_not_claimed: "unclaimed",
   },
   // The long form, worded as review.SkipReason.Label() words it. A code this

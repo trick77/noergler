@@ -126,8 +126,9 @@ export function outcomeWord(outcome: string, reason?: string): string {
  *  below it stays type-checked: a renamed group or a misspelt prefix fails
  *  the build instead of every pill quietly falling back. A code the catalog
  *  does not know (a newer binary wrote it) answers false and takes the
- *  caller's fallback. */
-function known<G extends "outcome" | "skipWord" | "reason" | "teamState">(
+ *  caller's fallback. Asked of en, the shape every catalog mirrors, and the
+ *  only resources i18n loads, so it cannot disagree with what t resolves. */
+function known<G extends keyof Catalog>(
   group: G,
   code: string,
 ): code is Extract<keyof Catalog[G], string> {

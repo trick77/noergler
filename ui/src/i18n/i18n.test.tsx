@@ -76,19 +76,23 @@ describe("German UI", () => {
   // The pill's word is the cue that does not depend on colour (ok, skip and
   // fail sit at dE 7.6 under protanopia), so a failure must never read like
   // a skip. German once printed "zu gross" for both too_large and
-  // diff_too_large.
+  // diff_too_large; English printed "too_large" and "too large". Compared
+  // normalised, because a reader does not see case or an underscore.
   it("never words a failure like a skip", () => {
+    const norm = (s: string) =>
+      s
+        .toLowerCase()
+        .replace(/[\s_\-.]+/g, " ")
+        .trim();
     for (const lng of ["en", "de"] as const) {
       const cat = lng === "en" ? en : de;
       const failures = Object.entries(cat.outcome)
         .filter(([code]) => code !== "ok" && code !== "skipped")
-        .map(([, word]) => word);
+        .map(([, word]) => norm(word));
       for (const word of Object.values(cat.skipWord)) {
-        expect([lng, word, failures.includes(word)]).toEqual([
-          lng,
-          word,
-          false,
-        ]);
+        expect(failures, `${lng}: skip word "${word}"`).not.toContain(
+          norm(word),
+        );
       }
     }
   });
