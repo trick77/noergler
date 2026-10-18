@@ -251,6 +251,22 @@ export function teamStateTitle(state: string): string | undefined {
   return known("teamState", state) ? undefined : codeText(state || '""');
 }
 
+/** repoUrl is the repo a PR tag names, and the PR's id; null without a
+ *  Bitbucket base or a parseable tag. prUrl and sourceUrl both build on it. */
+function repoUrl(
+  tag: string,
+  base: string,
+): { repo: string; id: string } | null {
+  if (base === "") return null;
+  const m = /^([^/]+)\/([^#]+)#(\d+)$/.exec(tag);
+  if (m === null) return null;
+  const [, project, repo, id] = m;
+  return {
+    repo: `${base}/projects/${encodeURIComponent(project)}/repos/${encodeURIComponent(repo)}`,
+    id,
+  };
+}
+
 /** prUrl turns a PROJECT/repo#id tag into its Bitbucket URL, or null when it
  *  cannot: an empty base (BITBUCKET_URL unset) or a tag that does not have
  *  that shape. The caller renders plain text for a null rather than a broken
@@ -263,11 +279,23 @@ export function teamStateTitle(state: string): string | undefined {
  *  Go client's prPath builds the REST path for the same pull request and is
  *  deliberately a different shape. */
 export function prUrl(tag: string, base: string): string | null {
-  if (base === "") return null;
-  const m = /^([^/]+)\/([^#]+)#(\d+)$/.exec(tag);
-  if (m === null) return null;
-  const [, project, repo, id] = m;
-  return `${base}/projects/${encodeURIComponent(project)}/repos/${encodeURIComponent(repo)}/pull-requests/${id}`;
+  const r = repoUrl(tag, base);
+  return r === null ? null : `${r.repo}/pull-requests/${r.id}`;
+}
+
+/** sourceUrl is a file at a commit, scrolled to a line, in Bitbucket's
+ *  browser; null without a Bitbucket base, a parseable tag or a commit. */
+export function sourceUrl(
+  tag: string,
+  base: string,
+  file: string,
+  line: number,
+  commit: string | undefined,
+): string | null {
+  const r = repoUrl(tag, base);
+  if (r === null || !commit) return null;
+  const path = file.split("/").map(encodeURIComponent).join("/");
+  return `${r.repo}/browse/${path}?at=${encodeURIComponent(commit)}#${line}`;
 }
 
 /** byName sorts teams the way the page reads them: by display name, folding

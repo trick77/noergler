@@ -235,6 +235,16 @@ the limit is the only way on.
 Costs are stored as nano-USD integers and rendered as USD at the edges. The
 gateway key's total spend is shown as a gauge where available, never summed.
 
+## 11b. Bugs that were already there
+
+The model may also list up to five real bugs it saw in code the PR did not
+change (`pre_existing`). They are not the author's, so they are never posted
+and never touch the verdict. Validation keeps one whose evidence is in the
+shown file and on no line the PR added or removed; the line moves to the
+evidence when that is a shown line. The run page lists them with the model's
+explanation and a link to the line at the reviewed commit, so someone can
+pick them up.
+
 ## 12. Q&A by mention
 
 A comment mentioning the bot is answered rather than reviewed. It runs without

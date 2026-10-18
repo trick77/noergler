@@ -25,6 +25,7 @@ import {
   ContextCard,
   InputTab,
   NotPostedCard,
+  PreExistingCard,
   StageTimeline,
 } from "./RunPipeline";
 import { usePoll } from "./usePoll";
@@ -595,6 +596,9 @@ function Findings({ d, pr }: { d: RunDetail; pr: string | null }) {
         <Note>{t("run.headlinesOnly")}</Note>
       </Card>
       {d.detail && <NotPostedCard p={d.detail} />}
+      {d.detail && (
+        <PreExistingCard p={d.detail} tag={d.tag} base={d.bitbucket_url} />
+      )}
       {d.fixed.length > 0 && (
         <Card title={t("run.fixedTitle")}>
           <FindingRows rows={d.fixed} pr={pr} fixedTable />

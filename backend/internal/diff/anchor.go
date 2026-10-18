@@ -202,3 +202,29 @@ func HashExact(text string) uint64 {
 	_, _ = h.Write([]byte(strings.TrimRight(text, " \t\r")))
 	return h.Sum64()
 }
+
+// AddedLines maps each file of a diff to the hashes of the lines it adds.
+// On an incremental review the focused diff is one push; this, built from the
+// cumulative PR diff, is every line the PR as a whole added, so a bug an
+// earlier push introduced is never taken for an old one. Hashes only: it
+// rides on the review plan, which carries no diff.
+func AddedLines(d string) map[string]map[uint64]bool {
+	out := map[string]map[uint64]bool{}
+	for _, fd := range SplitByFile(d) {
+		path := ExtractPath(fd)
+		if path == "" {
+			continue
+		}
+		set := map[uint64]bool{}
+		_, hunks := ParseHunks(fd)
+		for _, h := range hunks {
+			for _, line := range h.BodyLines {
+				if strings.HasPrefix(line, "+") {
+					set[HashLine(line[1:])] = true
+				}
+			}
+		}
+		out[path] = set
+	}
+	return out
+}

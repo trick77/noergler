@@ -7,8 +7,12 @@ package store
 // through this one struct, stored as JSONB per attempt.
 //
 // Headlines only (decided): a finding's comment, suggestion and evidence
-// never go in here. The dashboard is unauthenticated.
+// never go in here. The dashboard is unauthenticated. The one exception is
+// PreExisting, decided too: never posted, so the page is the only place its
+// explanation can be read; prose only, never code.
 type Pipeline struct {
+	// Commit is the reviewed source commit, for links into the code.
+	Commit           string            `json:"commit,omitempty"`
 	Stages           []StageTime       `json:"stages"`
 	Prompt           PromptParts       `json:"prompt"`
 	Files            []FileSent        `json:"files"`
@@ -20,6 +24,9 @@ type Pipeline struct {
 	Decisions        []FindingDecision `json:"decisions"`
 	Moved            []MovedFinding    `json:"moved"`
 	Verdict          *VerdictChange    `json:"verdict,omitempty"`
+	// PreExisting are bugs the model saw in code the PR did not change,
+	// as validation kept them. Never posted to the PR.
+	PreExisting []PreExistingBug `json:"pre_existing"`
 	// HTTP is a list, not a map: a response body is a struct with a fixed
 	// order, never map keys.
 	HTTP []HTTPCount `json:"http"`
@@ -99,4 +106,13 @@ type VerdictChange struct {
 type HTTPCount struct {
 	Upstream string `json:"upstream"`
 	Calls    int    `json:"calls"`
+}
+
+// PreExistingBug is one bug in unchanged code: where, a headline and the
+// model's explanation, capped in length, no code.
+type PreExistingBug struct {
+	File        string `json:"file"`
+	Line        int    `json:"line"`
+	Headline    string `json:"headline"`
+	Explanation string `json:"explanation"`
 }

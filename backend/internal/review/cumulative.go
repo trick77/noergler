@@ -37,6 +37,10 @@ type cumulativeContext struct {
 	// omitted part with no parseable path has no name, so omitted alone
 	// cannot say it.
 	partial bool
+	// added is every line the whole PR adds, by file, from the full diff
+	// (not the budgeted copy above). nil when the diff could not be read:
+	// no history known.
+	added map[string]map[uint64]bool
 }
 
 // fetchCumulativeDiff returns the part of the whole-PR diff worth sending as
@@ -125,7 +129,8 @@ func (r *Reviewer) fetchCumulativeDiff(ctx context.Context, key store.PRKey, prT
 		keptPerTier[tierTouched], keptPerTier[tierRelated], keptPerTier[tierOther],
 		filtered, len(oversized), oversizedNames(oversized), len(omitted), largestOmitted(omitted)))
 
-	out := cumulativeContext{diff: kept.String(), partial: filtered > 0 || len(oversized) > 0 || len(omitted) > 0}
+	out := cumulativeContext{diff: kept.String(), partial: filtered > 0 || len(oversized) > 0 || len(omitted) > 0,
+		added: diff.AddedLines(full)}
 	for _, f := range omitted {
 		if f.Path != "" {
 			out.omitted = append(out.omitted, f.Path)

@@ -196,6 +196,11 @@ type Result struct {
 	// is neither scored nor Extra: it would never have reached the PR.
 	Dropped []inference.DroppedFinding `json:"Dropped,omitempty"`
 	Moved   []inference.Reanchor       `json:"Moved,omitempty"`
+	// PreExisting are the bugs in unchanged code the model reported, as
+	// validation kept them: never scored (production never posts them), but
+	// recorded, so a run shows what the run page would.
+	PreExisting        []inference.PreExistingBug     `json:"PreExisting,omitempty"`
+	PreExistingDropped []inference.DroppedPreExisting `json:"PreExistingDropped,omitempty"`
 	// Redraws is how many attempts that did not complete came before this
 	// one. A redrawn result leans towards the quick answer; see maxRedraws.
 	Redraws int `json:",omitempty"`
@@ -268,8 +273,18 @@ func reviewCase(ctx context.Context, client Reviewer, c Case, assembled inferenc
 		ResponseSchema: inference.ReviewResponseFormat(),
 	})
 	res.Outcome = out.Outcome.String()
-	v := inference.ValidateFindings(out.Review.Findings, diff.BuildAnchorIndex(c.Files))
+	idx := diff.BuildAnchorIndex(c.Files)
+	v := inference.ValidateFindings(out.Review.Findings, idx)
 	res.Findings, res.Dropped, res.Moved = v.Kept, v.Dropped, v.Reanchored
+	// A case is one full diff: its own added lines are the PR's.
+	res.PreExisting, res.PreExistingDropped = inference.ValidatePreExisting(out.Review.PreExisting, idx, nil)
+	for i, d := range res.PreExistingDropped {
+		// Results are committed: prose carrying code or a secret-like token
+		// is not written down, whatever the claim was dropped for.
+		if inference.HasCodeOrSecret(d.Bug.Headline) || inference.HasCodeOrSecret(d.Bug.Explanation) {
+			res.PreExistingDropped[i].Bug.Headline, res.PreExistingDropped[i].Bug.Explanation = "", ""
+		}
+	}
 	if out.Err != nil {
 		res.Err, res.ErrMsg = out.Err, out.Err.Error()
 	}

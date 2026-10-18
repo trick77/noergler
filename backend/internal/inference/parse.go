@@ -61,7 +61,10 @@ type ParsedReview struct {
 	Findings []ReviewFinding
 	// Fixed are the earlier findings the model says the focused diff fixes,
 	// unchecked: ValidateFixed decides which stand.
-	Fixed                  []FixedClaim
+	Fixed []FixedClaim
+	// PreExisting are bugs in code the PR did not change, unchecked:
+	// ValidatePreExisting decides which stand. Never posted.
+	PreExisting            []PreExistingBug
 	ComplianceRequirements []ComplianceRequirement
 	Summary                ReviewSummary
 	ParseFailed            bool
@@ -438,6 +441,23 @@ func ParseReview(content string) ParsedReview {
 					continue
 				}
 				out.Fixed = append(out.Fixed, c)
+			}
+		}
+	}
+
+	// As `fixed`: null is an empty list, anything else not an array is said.
+	if rawPre, ok := raw["pre_existing"]; ok && !isJSONNull(rawPre) {
+		var items []json.RawMessage
+		if err := json.Unmarshal(rawPre, &items); err != nil {
+			out.warn("Skipping malformed pre_existing list: %s", truncateRunes(string(rawPre), 200))
+		} else {
+			for _, item := range items {
+				b, ok := parsePreExisting(item)
+				if !ok {
+					out.warn("Skipping malformed pre_existing entry: %s", truncateRunes(string(item), 200))
+					continue
+				}
+				out.PreExisting = append(out.PreExisting, b)
 			}
 		}
 	}

@@ -174,6 +174,8 @@ export interface RunDetail {
 
 /** RunPipeline is the review's own record of the run: headlines only. */
 export interface RunPipeline {
+  /** The reviewed commit, for links into the code. */
+  commit?: string;
   stages: { name: string; ms: number }[];
   prompt: {
     template: number;
@@ -208,6 +210,13 @@ export interface RunPipeline {
   }[];
   moved: { file: string; from: number; to: number }[];
   verdict?: { model: string; posted: string };
+  /** Bugs in code the PR did not change: never posted, shown only here. */
+  pre_existing: {
+    file: string;
+    line: number;
+    headline: string;
+    explanation: string;
+  }[];
   /** Requests per upstream, by name. */
   http: { upstream: string; calls: number }[];
 }
