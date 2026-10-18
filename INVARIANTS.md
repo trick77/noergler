@@ -141,6 +141,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 
 - `review_runs` = successes only; failures and skips are `review_attempts`,
   written fail-open. A mention writes no attempt.
+- `llm_calls` = what the AI Gateway reported per call, written with its
+  attempt. Its cost is detail, never summed beside runs/attempts. A lane the
+  gateway did not send is NULL, never 0. No discount/margin column (decided).
 - `ClaimRollup` stamps `riptide_emitted_at` in the statement that reads the
   snapshot. Never hang the decline-stamp clear on the reopen's review.
 
