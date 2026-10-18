@@ -75,6 +75,17 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		return false
 	}
 
+	// At the cap a mention stops like everything else, review or question:
+	// the banner, no answer, and the PR stays as it was (an ignored one is
+	// not reactivated for nothing). The row comes first, so a Q&A on a PR
+	// never reviewed is counted and capped from its first call on.
+	isReview := question == "" || reviewKeywords[strings.ToLower(question)]
+	rowID := r.ensurePRRow(ctx, key, pr.Author.User.Name, pr.Title, pr.CreatedDate)
+	if _, cumulative, over := r.overCap(ctx, key); over {
+		r.refuseOverCap(ctx, key, prTag, pr.Author.User.Name, "mention", rowID, cumulative, isReview)
+		return false
+	}
+
 	// Any other mention reactivates a PR ignored after its summary was
 	// removed. Clearing the state (and the stale summary id, which
 	// Reactivate does) lets the next review post a fresh summary and stops
@@ -86,7 +97,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	// gateway call goes to the inference pool instead of holding the worker,
 	// and the PR's queue hold covers it, so it cannot run alongside a review
 	// of the same PR already in flight.
-	if question == "" || reviewKeywords[strings.ToLower(question)] {
+	if isReview {
 		r.log.InfoContext(ctx, fmt.Sprintf("Mention triggers full review (question=%q)", question))
 		if sched != nil {
 			// The caller must keep the PR held: the staged posting is what
@@ -96,11 +107,6 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		}
 		// No scheduler (a direct caller, or a test): run it inline.
 		r.ReviewPullRequest(ctx, payload, true)
-		return false
-	}
-	// At the cap the Q&A stops like everything else: the banner, no answer.
-	if rowID, cumulative, over := r.overCap(ctx, key); over {
-		r.refuseOverCap(ctx, key, prTag, pr.Author.User.Name, "mention", rowID, cumulative)
 		return false
 	}
 	r.log.InfoContext(ctx, fmt.Sprintf("Handling mention Q&A on %s: %q", prTag, question))

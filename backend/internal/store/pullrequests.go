@@ -466,7 +466,10 @@ func (s *Store) ClaimRollup(ctx context.Context, k PRKey, final RollupFinal) (*R
 			  AND (EXISTS (SELECT 1 FROM review_runs r WHERE r.pull_request_id = p.id)
 			    OR EXISTS (SELECT 1 FROM review_attempts a
 			      WHERE a.project_key = p.project_key AND a.repo_slug = p.repo_slug AND a.pr_id = p.pr_id
-			        AND a.review_run_id IS NULL AND a.cost_nano_usd IS NOT NULL AND a.created_at >= p.created_at))
+			        AND a.review_run_id IS NULL AND a.cost_nano_usd IS NOT NULL AND a.created_at >= p.created_at)
+			    OR EXISTS (SELECT 1 FROM llm_calls c
+			      WHERE c.project_key = p.project_key AND c.repo_slug = p.repo_slug AND c.pr_id = p.pr_id
+			        AND c.attempt_id IS NULL AND c.cost_nano_usd IS NOT NULL AND c.created_at >= p.created_at))
 			RETURNING p.id, p.created_at, p.final_source_commit, p.final_merge_commit, p.final_lines_added, p.final_lines_removed, p.final_files_changed
 		)
 		SELECT COUNT(r.id), COALESCE(SUM(r.prompt_tokens), 0), COALESCE(SUM(r.completion_tokens), 0),

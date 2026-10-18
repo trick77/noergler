@@ -124,6 +124,14 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	if text == "" {
 		return true, false
 	}
+	// The per-PR cap holds for every reply, mention or not, read once. A
+	// mention over it goes on to the Q&A, which refuses it with the banner,
+	// before anything reactivates the PR. Fail open.
+	rowID, cumulative, over := r.overCap(ctx, key)
+	atCap := fmt.Sprintf("PR cost at the $%.2f cap", r.cfg.MaxPRCostUSD)
+	if mentioned && over {
+		return notAnswered(atCap)
+	}
 	if mentioned {
 		// A mention, here as on the Q&A path: it reactivates an ignored PR
 		// and is the explicit override of the author lists, not of the
@@ -143,14 +151,10 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		// a mention brings it back.
 		return notAnswered("PR is ignored")
 	}
-	// The per-PR cap holds for every reply, mention or not: at the cap the
-	// PR gets the one banner and no answer. A mention goes on to the Q&A,
-	// which refuses it the same way and keeps the banner. Fail open.
-	if rowID, cumulative, over := r.overCap(ctx, key); over {
-		if !mentioned {
-			r.refuseOverCap(ctx, key, prTag, author, "reply on finding "+where, rowID, cumulative)
-		}
-		return notAnswered(fmt.Sprintf("PR cost at the $%.2f cap", r.cfg.MaxPRCostUSD))
+	// A plain reply at the cap: the banner, no answer.
+	if over {
+		r.refuseOverCap(ctx, key, prTag, author, "reply on finding "+where, rowID, cumulative, false)
+		return notAnswered(atCap)
 	}
 
 	ctx, counter := httpstats.WithScope(ctx)

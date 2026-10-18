@@ -30,15 +30,36 @@ func (r *Reviewer) overCap(ctx context.Context, key store.PRKey) (rowID int64, c
 	return rowID, cumulativeUSD, cumulativeUSD >= r.cfg.MaxPRCostUSD
 }
 
-// refuseOverCap is a reply's or a Q&A's stop at the cap: one log line, and
-// the cap banner on the summary, which is the PR's one notice; the comment
-// itself gets no answer. The banner is in the PR author's language, as the
+// refuseOverCap is a reply's or a mention's stop at the cap: one log line,
+// and the cap banner on the summary, which is the PR's one notice; the
+// comment itself gets no answer. A summary that already carries a banner is
+// left as it is (its "not reviewed" sentence included, and no second
+// Bitbucket write per refused comment). An ignored PR gets nothing posted:
+// its author removed the summary to be left alone. blocked: a review was
+// asked for and not run. The banner is in the PR author's language, as the
 // summary is.
-func (r *Reviewer) refuseOverCap(ctx context.Context, key store.PRKey, prTag, prAuthor, what string, rowID int64, cumulativeUSD float64) {
+func (r *Reviewer) refuseOverCap(ctx context.Context, key store.PRKey, prTag, prAuthor, what string, rowID int64, cumulativeUSD float64, blocked bool) {
 	r.log.InfoContext(ctx, fmt.Sprintf("%s: PR cost $%.2f >= limit $%.2f - %s not answered",
 		prTag, cumulativeUSD, r.cfg.MaxPRCostUSD, what))
-	r.costLimitNotice(ctx, r.languageFor(ctx, prAuthor), key.Project, key.Repo, key.PRID, rowID,
-		cumulativeUSD, r.cfg.MaxPRCostUSD, false)
+	if state := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
+		return r.store.GetSkipState(ctx, key)
+	}); state != nil && state.IgnoredAt != nil {
+		return
+	}
+	r.costLimitNoticeOnce(ctx, r.languageFor(ctx, prAuthor), key.Project, key.Repo, key.PRID, rowID,
+		cumulativeUSD, r.cfg.MaxPRCostUSD, blocked)
+}
+
+// ensurePRRow writes the PR's row without touching its review pointer, so a
+// Q&A on a PR never reviewed has a row its calls are counted under from the
+// first one on (prCostSQL counts calls from the row's creation). Returns the
+// row id, 0 when the write failed.
+func (r *Reviewer) ensurePRRow(ctx context.Context, key store.PRKey, author, title string, openedAt int64) int64 {
+	if r.store == nil {
+		return 0
+	}
+	return r.upsert(ctx, store.PRUpsert{Key: key, TeamSlug: r.TeamSlug, KeepPointer: true,
+		Author: &author, Title: &title, OpenedAt: epochMSToTime(openedAt)}, "")
 }
 
 // recordCommentCall writes a reply's or a question's gateway call. It is the

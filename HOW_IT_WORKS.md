@@ -250,7 +250,8 @@ and `set_my_language` (the asker's language, only when their own comment names
 it). Up to three tool rounds, four calls each, then a final round without
 tools. The gateway calls are staged off the worker like a review; the reply is
 posted back on it. Every call is recorded and counts toward the PR's cost; at
-the cap a question is not answered.
+the cap a question is not answered. A mention writes the PR's row first (its
+review pointer untouched), so a PR only ever asked about is capped too.
 
 The PR author's reply on one of noergler's finding threads needs no mention.
 The route queues any non-empty reply not written by the bot (Bitbucket's

@@ -230,8 +230,8 @@ func TestFindingReplyWithAMention(t *testing.T) {
 }
 
 // At the cap a reply gets no answer, mention or not (decided): the PR gets
-// the cap banner instead, its one notice. A mention still reactivates an
-// ignored PR, and is left to the Q&A path, which refuses it the same way.
+// the cap banner instead, its one notice. A mention is left to the Q&A path,
+// which refuses it the same way, and reactivates nothing on the way.
 func TestFindingReplyRespectsTheCostCap(t *testing.T) {
 	h, p := replyHarness(t)
 	h.st.prCost = ptri(6_000_000_000)
@@ -256,8 +256,8 @@ func TestFindingReplyRespectsTheCostCap(t *testing.T) {
 	if handled || len(h.llm.Replies) != 0 {
 		t.Errorf("handled = %v, replies = %d: a mention at the cap is no reply either", handled, len(h.llm.Replies))
 	}
-	if h.st.Reactived != 1 {
-		t.Errorf("reactivated = %d, want the ignored PR back", h.st.Reactived)
+	if h.st.Reactived != 0 {
+		t.Errorf("reactivated = %d: a mention at the cap must leave an ignored PR ignored", h.st.Reactived)
 	}
 }
 

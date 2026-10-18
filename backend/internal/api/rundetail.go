@@ -236,11 +236,12 @@ func (d Deps) runDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body.PR.Cost = usd(c)
+	// Detail under the PR tab: a failed read leaves the list empty, the
+	// total above (which counts the calls) still stands.
 	calls, more, err := d.DashboardStore.PRCommentCalls(r.Context(), det.Key)
 	if err != nil {
 		d.Log.ErrorContext(r.Context(), "dashboard: PRCommentCalls failed: "+err.Error())
-		httpx.WriteError(w, http.StatusInternalServerError, "could not read the run")
-		return
+		calls, more = nil, false
 	}
 	body.PR.Calls, body.PR.MoreCalls = make([]commentCallBody, 0, len(calls)), more
 	for _, c := range calls {

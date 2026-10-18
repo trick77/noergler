@@ -6,7 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/lang"
+	"github.com/trick77/noergler/internal/render"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
@@ -273,5 +276,51 @@ func TestMentionQARecordsEveryRound(t *testing.T) {
 	}
 	if total, _ := h.st.PRCost(context.Background(), store.PRKey{}); total == nil || *total != a+b {
 		t.Errorf("PR cost = %v, want the rounds summed", total)
+	}
+}
+
+// A summary that already carries the cap banner is left alone: no second
+// Bitbucket write per refused comment, and a blocked push's "not reviewed"
+// sentence stays.
+func TestCapBannerIsWrittenOnce(t *testing.T) {
+	h := newHarness(t, nil)
+	h.st.prCost = ptri(6_000_000_000)
+	body := render.CostLimitBanner(lang.EN, 6, 5, true) + "\n\nsummary"
+	h.st.summary = &store.SummaryComment{ID: 900, Version: 1}
+	h.bb.comments = map[int]*bitbucket.Comment{900: {ID: 900, Version: 1, Text: body}}
+
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler why?", "alice"), "platform", nil)
+
+	if len(h.bb.Updates) != 0 || len(h.bb.Posted) != 0 {
+		t.Errorf("updates = %d, posts = %d: the banner was there already", len(h.bb.Updates), len(h.bb.Posted))
+	}
+}
+
+// An ignored PR (its author removed the summary) gets nothing posted at the
+// cap, and stays ignored.
+func TestCapOnAnIgnoredPRPostsNothing(t *testing.T) {
+	h := newHarness(t, nil)
+	h.st.prCost = ptri(6_000_000_000)
+	at := time.Now()
+	h.st.skipState = &store.SkipState{IgnoredAt: &at}
+
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "alice"), "platform", nil)
+
+	if len(h.bb.Posted) != 0 || len(h.bb.Updates) != 0 || h.st.Reactived != 0 || len(h.llm.Reviews) != 0 {
+		t.Errorf("posts = %d, updates = %d, reactivated = %d, reviews = %d; want nothing",
+			len(h.bb.Posted), len(h.bb.Updates), h.st.Reactived, len(h.llm.Reviews))
+	}
+}
+
+// A Q&A on a PR never reviewed writes its row first, keeping any pointer, so
+// its calls are counted and capped from the first one on.
+func TestMentionQAWritesThePRRow(t *testing.T) {
+	h := newHarness(t, nil)
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "ok"}
+
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler why?", "alice"), "platform", nil)
+
+	if len(h.st.Upserts) != 1 || !h.st.Upserts[0].KeepPointer || h.st.Upserts[0].LastReviewedCommit != nil {
+		t.Errorf("upserts = %+v, want one that keeps the pointer", h.st.Upserts)
 	}
 }
