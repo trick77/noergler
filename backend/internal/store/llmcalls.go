@@ -88,7 +88,10 @@ func storable(s string) string {
 }
 
 // AttemptCall reads the gateway call recorded under an attempt. ok is false
-// when the attempt made none: a skip, a timeout, a pre-flight too-large.
+// when there is no row: the gateway never answered (a pre-flight skip, a
+// timeout, a pre-flight too-large), or its call write was refused, which
+// was logged at the time. The page says "no call recorded", never "no call
+// made".
 func (s *Store) AttemptCall(ctx context.Context, attemptID int64) (c LLMCall, ok bool, err error) {
 	err = s.pool.QueryRow(ctx, `
 		SELECT profile, COALESCE(model, ''), COALESCE(deployment, ''), COALESCE(reasoning_sent, ''),

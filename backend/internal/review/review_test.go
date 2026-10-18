@@ -531,7 +531,7 @@ func TestRemovedClaimStopsTheReview(t *testing.T) {
 		h := newHarness(t, nil)
 		cost := int64(800_000_000)
 		h.llm.review = inference.ReviewResult{Outcome: inference.OutcomeOK, Review: inference.ParsedReview{Summary: inference.NewReviewSummary()},
-			Cost: inference.CallCost{NanoUSD: &cost}}
+			Cost: inference.CallCost{NanoUSD: &cost, Answered: true, CallID: "late"}}
 		owned := true
 		h.r.owns = func(string, string) bool { return owned }
 		h.llm.onReview = func() { owned = false }
@@ -548,7 +548,13 @@ func TestRemovedClaimStopsTheReview(t *testing.T) {
 		if c := h.st.Attempts[0].CostNanoUSD; c == nil || *c != cost {
 			t.Errorf("late attempt cost = %v, want %d", c, cost)
 		}
-		if h.st.Attempts[1].CostNanoUSD != nil {
+		// The late skip paid for a call, and its detail is kept with it
+		// (decided): the purge never touches attempts, so dropping only the
+		// call would leave a billed attempt the detail page cannot explain.
+		if call := h.st.Attempts[0].Call; call == nil || call.CallID != "late" {
+			t.Errorf("late attempt call = %+v, want the paid call", call)
+		}
+		if h.st.Attempts[1].CostNanoUSD != nil || h.st.Attempts[1].Call != nil {
 			t.Error("the pre-flight skip called nothing and costs nothing")
 		}
 	})

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -25,8 +26,9 @@ type Attempt struct {
 	CostNanoUSD *int64
 	// Call is the gateway call this attempt made, written to llm_calls right
 	// after the attempt and apart from it, so a missing call row can mean a
-	// refused write, not only no call. Nil when it made none (a skip, a
-	// timeout).
+	// refused write, not only no call. Nil when the gateway never answered (a
+	// pre-flight skip, a timeout); a late repo-unclaimed skip carries the call
+	// it paid for.
 	Call *LLMCall
 }
 
@@ -39,7 +41,8 @@ type Attempt struct {
 // Two writes, not one transaction: the attempt carries billed cost that
 // PRCost and the cap read, and a call row the database refuses (a header
 // it cannot store) must never take that cost down with it. A failed call
-// write returns the attempt id AND an error, so the caller logs it.
+// write returns the attempt id and ErrCallNotRecorded, so the caller logs it
+// as what it is.
 func (s *Store) InsertAttempt(ctx context.Context, a Attempt) (int64, error) {
 	var reason *string
 	if a.Reason != "" {
@@ -59,11 +62,15 @@ func (s *Store) InsertAttempt(ctx context.Context, a Attempt) (int64, error) {
 	}
 	if a.Call != nil {
 		if err := s.insertLLMCall(ctx, id, a, *a.Call); err != nil {
-			return id, fmt.Errorf("attempt %d recorded, its gateway call not: %w", id, err)
+			return id, fmt.Errorf("attempt %d: %w: %w", id, ErrCallNotRecorded, err)
 		}
 	}
 	return id, nil
 }
+
+// ErrCallNotRecorded is InsertAttempt's error when the attempt (and any
+// billed cost on it) was written and only its gateway call was not.
+var ErrCallNotRecorded = errors.New("gateway call not recorded, attempt written")
 
 // AttemptRow is one row of the dashboard's feed: the attempt, plus the run
 // figures where the attempt produced a run.

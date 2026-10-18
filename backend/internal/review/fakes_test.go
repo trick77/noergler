@@ -199,8 +199,10 @@ type fakeStore struct {
 
 	upsertErr  error
 	attemptErr error
-	runErr     error
-	failAll    bool
+	// callErr: the attempt is written, its gateway call is not.
+	callErr error
+	runErr  error
+	failAll bool
 
 	Upserts   []store.PRUpsert
 	Runs      []store.Run
@@ -360,6 +362,9 @@ func (f *fakeStore) InsertAttempt(_ context.Context, a store.Attempt) (int64, er
 		return 0, err
 	}
 	f.Attempts = append(f.Attempts, a)
+	if f.callErr != nil && a.Call != nil {
+		return int64(len(f.Attempts)), fmt.Errorf("%w: %w", store.ErrCallNotRecorded, f.callErr)
+	}
 	return int64(len(f.Attempts)), nil
 }
 
