@@ -48,7 +48,7 @@ const (
 // final file set; the other lists are the ones the review left out, each
 // for its own reason.
 func filesSent(prep prepared, sent []diff.FileReviewData, deleted, renamed, overBudget []string,
-	count func(string) int) []store.FileSent {
+	tokens map[string]int) []store.FileSent {
 	out := []store.FileSent{}
 	seen := map[string]bool{}
 	add := func(path, how string, tokens int) {
@@ -75,7 +75,7 @@ func filesSent(prep prepared, sent []diff.FileReviewData, deleted, renamed, over
 		case skipped[f.Path]:
 			how = "content_skipped"
 		}
-		add(f.Path, how, count(inference.FormatFileEntry(f)))
+		add(f.Path, how, tokens[f.Path])
 	}
 	for _, p := range deleted {
 		add(p, "deleted", 0)
@@ -144,40 +144,15 @@ func httpCounts(m map[string]int) []store.HTTPCount {
 	return out
 }
 
-// postedMoves keeps the moves of findings that were posted: validation moves
-// a finding before dedupe, the cap and the post decide whether it is shown,
-// and the findings table matches a move by file and posted line.
-func postedMoves(moves []inference.Reanchor, findings []inference.ReviewFinding, postedIDs []int) []store.MovedFinding {
-	type at struct {
-		file string
-		line int
-	}
-	posted := map[at]bool{}
-	for i, id := range postedIDs {
-		if id != 0 {
-			posted[at{findings[i].File, findings[i].Line}] = true
-		}
-	}
+// postedMoves is the moves of the findings that were posted, read off each
+// finding itself: one moved and then dropped as a repeat, cut or refused
+// leaves nothing for the findings table to show.
+func postedMoves(findings []inference.ReviewFinding, postedIDs []int) []store.MovedFinding {
 	out := []store.MovedFinding{}
-	for _, m := range moves {
-		if posted[at{m.File, m.To}] {
-			out = append(out, store.MovedFinding{File: m.File, From: m.From, To: m.To})
+	for i, id := range postedIDs {
+		if f := findings[i]; id != 0 && f.MovedFrom != 0 {
+			out = append(out, store.MovedFinding{File: f.File, From: f.MovedFrom, To: f.Line})
 		}
 	}
 	return out
-}
-
-// memoCount counts each distinct text once: the files-sent log line and the
-// page's file table both count every prompt entry, and the second pass would
-// otherwise run the tokenizer over every file body again on the worker.
-func memoCount(count func(string) int) func(string) int {
-	seen := map[string]int{}
-	return func(s string) int {
-		if n, ok := seen[s]; ok {
-			return n
-		}
-		n := count(s)
-		seen[s] = n
-		return n
-	}
 }

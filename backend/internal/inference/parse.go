@@ -151,6 +151,12 @@ type ReviewFinding struct {
 	// Nil when absent; ValidateFindings drops such a finding, the parser
 	// does not, so the drop is logged with its reason like every other.
 	Evidence []string
+
+	// MovedFrom is the line the model cited when ValidateFindings moved the
+	// finding to its evidence; 0 = not moved. Set by validation, never
+	// parsed, so it travels with the finding through dedupe, the cap and
+	// the post.
+	MovedFrom int
 }
 
 // parseFinding validates one finding, reporting whether it survives.

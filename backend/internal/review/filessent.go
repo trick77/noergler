@@ -18,7 +18,7 @@ import (
 // a 40-file PR. The per-file total is count(FormatFileEntry), the same figure
 // AssembleReviewPrompt sums into the prompt line's "files N", so the two
 // agree to the token.
-func renderFilesSent(files []diff.FileReviewData, count func(string) int) string {
+func renderFilesSent(files []diff.FileReviewData, count func(string) int) (string, map[string]int) {
 	type entry struct {
 		path        string
 		total, body int
@@ -26,6 +26,9 @@ func renderFilesSent(files []diff.FileReviewData, count func(string) int) string
 		full        bool
 	}
 	entries := make([]entry, 0, len(files))
+	// Each entry's tokens, by path, for the run page's file table: counted
+	// here once, never a second tokenizer pass on the worker.
+	totals := make(map[string]int, len(files))
 	sum := 0
 	for _, f := range files {
 		e := entry{
@@ -38,6 +41,7 @@ func renderFilesSent(files []diff.FileReviewData, count func(string) int) string
 			e.body = count(f.Content)
 		}
 		sum += e.total
+		totals[f.Path] = e.total
 		entries = append(entries, e)
 	}
 	sort.SliceStable(entries, func(i, j int) bool {
@@ -50,7 +54,7 @@ func renderFilesSent(files []diff.FileReviewData, count func(string) int) string
 	var b strings.Builder
 	fmt.Fprintf(&b, "files sent: %d, %d tokens", len(entries), sum)
 	if len(entries) == 0 {
-		return b.String()
+		return b.String(), totals
 	}
 	b.WriteString(" - ")
 	shown := entries
@@ -74,5 +78,5 @@ func renderFilesSent(files []diff.FileReviewData, count func(string) int) string
 		}
 		fmt.Fprintf(&b, ", +%d more, %d tokens", len(rest), tail)
 	}
-	return b.String()
+	return b.String(), totals
 }

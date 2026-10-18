@@ -255,8 +255,8 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	}
 	// What the prompt carries, file by file, after compression and
 	// expansion: the one place the per-file cost is visible.
-	count := memoCount(r.tokens.Count)
-	r.log.InfoContext(ctx, prTag+": "+renderFilesSent(files, count))
+	sentLine, fileTokens := renderFilesSent(files, r.tokens.Count)
+	r.log.InfoContext(ctx, prTag+": "+sentLine)
 	sw.lap(stageFiles)
 
 	// 16. Cross-file context, Jira, previously-posted findings.
@@ -306,7 +306,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 
 	detail := &store.Pipeline{
 		Prompt:    promptPartsOf(assembled, budget),
-		Files:     filesSent(prep, files, deletedPaths, renamedPaths, otherModified, count),
+		Files:     filesSent(prep, files, deletedPaths, renamedPaths, otherModified, fileTokens),
 		CrossFile: []string{},
 		AgentsMD: store.AgentsMDFacts{Found: repoInstructions != "", Tokens: assembled.Breakdown.RepoInstructions,
 			WarnTokens: r.cfg.AgentsMDWarnTokens},
@@ -314,8 +314,8 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		Decisions:        []store.FindingDecision{},
 		Moved:            []store.MovedFinding{},
 	}
-	// One relationship per defining file: a symbol several files define
-	// is still one symbol.
+	// Names only: BuildRelationships emits one relationship per defining
+	// file, and the card lists a name once even when two files define it.
 	symbols := map[string]bool{}
 	for _, rel := range relationships {
 		if !symbols[rel.Symbol] {
@@ -481,7 +481,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 			plan.detail.Decisions = append(plan.detail.Decisions, decision(findings[i], "failed", ""))
 		}
 	}
-	plan.detail.Moved = postedMoves(v.Reanchored, findings, postedIDs)
+	plan.detail.Moved = postedMoves(findings, postedIDs)
 	plan.sw.lap(stageComments)
 
 	elapsed := time.Since(started)

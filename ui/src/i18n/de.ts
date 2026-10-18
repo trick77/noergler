@@ -193,14 +193,14 @@ export const de = {
     record: "Speichern und Zusammenfassung",
   },
   promptPart: {
-    template: "Vorlage",
+    template: "Vorlagentext (verteilt)",
     files: "Dateien",
     cumulative_diff: "Kumulierter PR-Diff",
     previously_posted: "Frühere Findings",
     repo_instructions: "AGENTS.md",
     ticket: "Jira-Ticket",
     pr_description: "PR-Beschreibung",
-    rest: "Rest (Systemnachricht, Schema, Querbezüge)",
+    rest: "Rest (Systemnachricht, Schema, Compliance, Querbezüge)",
   },
   sent: {
     full: "voller Inhalt",
@@ -250,6 +250,8 @@ export const de = {
     promptOrderNote:
       "Dateien stehen vor dem kumulierten Diff und den früheren Findings, damit der stabile Teil des Prompts aus dem Cache kommen kann.",
     filesTitle: "Dateien",
+    filesNote:
+      "jede geänderte Datei; binäre und generierte stehen hier, zählen aber nicht zu den Zeilen des Runs",
     noFiles: "Keine Dateien erfasst.",
     file: "Datei",
     howSent: "Wie gesendet",

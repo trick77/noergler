@@ -203,14 +203,14 @@ export const en = {
     record: "Record and summary",
   },
   promptPart: {
-    template: "Template",
+    template: "Template text (throughout)",
     files: "Files",
     cumulative_diff: "Cumulative PR diff",
     previously_posted: "Earlier findings",
     repo_instructions: "AGENTS.md",
     ticket: "Jira ticket",
     pr_description: "PR description",
-    rest: "Rest (system message, schema, cross-file context)",
+    rest: "Rest (system message, schema, compliance, cross-file context)",
   },
   sent: {
     full: "full content",
@@ -261,6 +261,8 @@ export const en = {
     promptOrderNote:
       "Files come before the cumulative diff and the earlier findings, so the stable part of the prompt can be served from cache.",
     filesTitle: "Files",
+    filesNote:
+      "every changed file; binary and generated ones are listed but not in the run's line totals",
     noFiles: "No files recorded.",
     file: "File",
     howSent: "How it was sent",

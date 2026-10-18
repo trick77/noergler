@@ -162,9 +162,10 @@ export function ContextCard({ p }: { p: RunPipeline }) {
   );
 }
 
-/** The prompt's parts in the order review.txt carries them, the template's
- *  own text first: the stable context, then the files, then what changes
- *  run to run. */
+/** The prompt's variable parts in the order review.txt carries them: the
+ *  stable context, then the files, then what changes run to run. The
+ *  template's own text runs between them all and is listed first as one
+ *  sum; compliance instructions are in the rest. */
 const PARTS = [
   "template",
   "repo_instructions",
@@ -239,7 +240,7 @@ export function InputTab({ p }: { p: RunPipeline | null }) {
         <Note>{t("run.promptOrderNote")}</Note>
       </Card>
 
-      <Card title={t("run.filesTitle")}>
+      <Card title={t("run.filesTitle")} note={t("run.filesNote")}>
         {p.files.length === 0 ? (
           <Empty>{t("run.noFiles")}</Empty>
         ) : (

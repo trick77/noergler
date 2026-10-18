@@ -44,10 +44,21 @@ func TestDropReasonsAreInTheUICatalog(t *testing.T) {
 			}
 			for _, spec := range gd.Specs {
 				vs := spec.(*ast.ValueSpec)
-				if id, ok := vs.Type.(*ast.Ident); !ok || id.Name != "DropReason" {
-					continue
+				typed := false
+				if id, ok := vs.Type.(*ast.Ident); ok && id.Name == "DropReason" {
+					typed = true
 				}
 				for _, val := range vs.Values {
+					// `X DropReason = "x"` or `X = DropReason("x")`.
+					if call, ok := val.(*ast.CallExpr); ok && len(call.Args) == 1 {
+						if id, ok := call.Fun.(*ast.Ident); ok && id.Name == "DropReason" {
+							val = call.Args[0]
+						} else {
+							continue
+						}
+					} else if !typed {
+						continue
+					}
 					if lit, ok := val.(*ast.BasicLit); ok {
 						if v, err := strconv.Unquote(lit.Value); err == nil && v != "" {
 							declared = append(declared, v)

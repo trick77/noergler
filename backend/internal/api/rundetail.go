@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -169,6 +170,10 @@ func (d Deps) runDetail(w http.ResponseWriter, r *http.Request) {
 		BitbucketURL: d.BitbucketURL,
 	}
 	body.Detail = det.Detail
+	if det.DetailErr != nil {
+		d.Log.WarnContext(r.Context(), fmt.Sprintf("dashboard: run %d detail record not decoded, page shown without it: %v",
+			det.ID, det.DetailErr))
+	}
 	if f := det.Run; f != nil {
 		body.Cost = usd(f.CostNanoUSD)
 		body.Run = &runFactsBody{

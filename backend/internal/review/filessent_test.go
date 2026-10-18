@@ -31,7 +31,7 @@ func TestFilesSentLineIsBiggestFirstAndSumsToThePromptFigure(t *testing.T) {
 		sentFile("big.go", strings.Repeat("x\n", 40), 5),
 		sentFile("mid.go", strings.Repeat("y\n", 10), 3),
 	}
-	got := renderFilesSent(files, linesAsTokens)
+	got, _ := renderFilesSent(files, linesAsTokens)
 
 	want := 0
 	for _, f := range files {
@@ -61,7 +61,7 @@ func TestFilesSentLineCapsNamesAndSumsTheTail(t *testing.T) {
 	for i := 0; i < maxLoggedPaths+4; i++ {
 		files = append(files, sentFile(fmt.Sprintf("f%02d.go", i), "", 1+i))
 	}
-	got := renderFilesSent(files, linesAsTokens)
+	got, _ := renderFilesSent(files, linesAsTokens)
 
 	if strings.Count(got, ".go ") != maxLoggedPaths {
 		t.Errorf("want %d names, got: %s", maxLoggedPaths, got)
@@ -82,7 +82,16 @@ func TestFilesSentLineCapsNamesAndSumsTheTail(t *testing.T) {
 }
 
 func TestFilesSentLineWithNoFiles(t *testing.T) {
-	if got := renderFilesSent(nil, linesAsTokens); got != "files sent: 0, 0 tokens" {
+	if got, _ := renderFilesSent(nil, linesAsTokens); got != "files sent: 0, 0 tokens" {
 		t.Errorf("got %q", got)
+	}
+}
+
+// The per-path totals are the ones the line sums, for the run page's table.
+func TestRenderFilesSentTotals(t *testing.T) {
+	files := []diff.FileReviewData{{Path: "a.go", Diff: "+x\n"}, {Path: "b.go", Diff: "+y\n+z\n"}}
+	line, totals := renderFilesSent(files, linesAsTokens)
+	if len(totals) != 2 || totals["a.go"] == 0 || totals["b.go"] <= totals["a.go"] {
+		t.Errorf("totals = %v (line %q)", totals, line)
 	}
 }

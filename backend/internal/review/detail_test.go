@@ -95,26 +95,18 @@ func TestRunDetailOnFailure(t *testing.T) {
 	}
 }
 
-// Only a posted finding's move is shown: one moved and then dropped as a
-// repeat, cut or refused leaves nothing for the findings table to match.
+// Only a posted finding's move is shown, read off the finding: one moved and
+// then not posted leaves nothing, even when another finding was posted on
+// the line it moved to.
 func TestPostedMoves(t *testing.T) {
-	moves := []inference.Reanchor{{File: "a.go", From: 40, To: 2}, {File: "a.go", From: 9, To: 5}}
-	findings := []inference.ReviewFinding{finding("a.go", 2, "issue", "x"), finding("a.go", 5, "issue", "y")}
-	got := postedMoves(moves, findings, []int{101, 0})
-	if len(got) != 1 || got[0].From != 40 {
-		t.Errorf("moves = %+v, want only the posted one", got)
-	}
-}
-
-// Every distinct text is counted once, however often it is asked for.
-func TestMemoCount(t *testing.T) {
-	calls := 0
-	count := memoCount(func(s string) int { calls++; return len(s) })
-	for _, s := range []string{"ab", "abc", "ab", "abc"} {
-		count(s)
-	}
-	if calls != 2 {
-		t.Errorf("tokenizer ran %d times, want 2", calls)
+	moved := finding("a.go", 2, "issue", "x")
+	moved.MovedFrom = 40
+	notPostedMove := finding("a.go", 2, "issue", "y")
+	notPostedMove.MovedFrom = 9
+	unmoved := finding("a.go", 2, "issue", "z")
+	got := postedMoves([]inference.ReviewFinding{moved, notPostedMove, unmoved}, []int{101, 0, 102})
+	if len(got) != 1 || got[0].From != 40 || got[0].To != 2 {
+		t.Errorf("moves = %+v, want only the posted, moved one", got)
 	}
 }
 

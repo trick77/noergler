@@ -74,7 +74,7 @@ func ValidateFindings(findings []ReviewFinding, idx diff.AnchorIndex) Validation
 		}
 		if line != f.Line {
 			v.Reanchored = append(v.Reanchored, Reanchor{File: f.File, From: f.Line, To: line})
-			f.Line = line
+			f.MovedFrom, f.Line = f.Line, line
 			// The suggestion was written for the line the model cited.
 			// Bitbucket's Apply replaces the line the comment sits on, so
 			// keeping it would overwrite the new line with another line's

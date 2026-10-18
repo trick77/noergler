@@ -45,8 +45,10 @@ type RunDetail struct {
 	MoreBefore bool
 	MoreAfter  bool
 	// Detail is the run_details record; nil when none was written (an
-	// attempt from before it existed, or a skip) or it no longer decodes.
-	Detail *Pipeline
+	// attempt from before it existed, or a skip) or it no longer decodes,
+	// which DetailErr then says.
+	Detail    *Pipeline
+	DetailErr error
 }
 
 // RunFacts is the review_runs row behind a successful attempt.
@@ -156,7 +158,9 @@ func (s *Store) RunDetail(ctx context.Context, attemptID int64) (d RunDetail, ok
 		// Display-only: a record an older binary wrote in another shape
 		// leaves the detail tabs empty, it does not fail the page.
 		var p Pipeline
-		if json.Unmarshal(raw, &p) == nil {
+		if err := json.Unmarshal(raw, &p); err != nil {
+			d.DetailErr = err
+		} else {
 			d.Detail = &p
 		}
 	}
