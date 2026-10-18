@@ -35,6 +35,9 @@ const (
 // fakeReviewer records which handler the dispatch table picked.
 type fakeReviewer struct {
 	calls []string
+	// replyHandled is what HandleFindingReply reports: true keeps an
+	// @mention reply away from HandleMention.
+	replyHandled bool
 	// usePRDescription is the last value mirrored by a settings write.
 	usePRDescription *bool
 }
@@ -53,8 +56,9 @@ func (f *fakeReviewer) HandleMention(context.Context, *webhook.Payload, string, 
 func (f *fakeReviewer) HandleCommentDeleted(context.Context, *webhook.Payload) {
 	f.calls = append(f.calls, "comment-deleted")
 }
-func (f *fakeReviewer) HandleFindingReply(context.Context, *webhook.Payload) {
+func (f *fakeReviewer) HandleFindingReply(context.Context, *webhook.Payload, string, teams.Scheduler) (bool, bool) {
 	f.calls = append(f.calls, "finding-reply")
+	return f.replyHandled, false
 }
 func (f *fakeReviewer) HandlePRMerged(context.Context, *webhook.Payload) {
 	f.calls = append(f.calls, "merged")
@@ -567,7 +571,11 @@ func TestWebhook_ReplyWithoutMentionIsQueuedForTheFindingCheck(t *testing.T) {
 		{"reply", `,"commentParentId":501,"comment":{"id":7,"text":"we do this in the UI","author":{"name":"bob"}}`, "reply", "finding-reply"},
 		{"empty reply", `,"commentParentId":501,"comment":{"id":7,"text":" ","author":{"name":"bob"}}`, "comment without mention", ""},
 		{"top-level", `,"comment":{"id":7,"text":"we do this in the UI","author":{"name":"bob"}}`, "comment without mention", ""},
-		{"reply with a mention", `,"commentParentId":501,"comment":{"id":7,"text":"@noergler why?","author":{"name":"bob"}}`, "mention", "mention"},
+		// Tried as a finding reply first; not one (the fake says so), so a
+		// mention after all.
+		{"reply with a mention", `,"commentParentId":501,"comment":{"id":7,"text":"@noergler why?","author":{"name":"bob"}}`, "mention", "finding-reply,mention"},
+		// The bot's own "Fixed in" reply never becomes a job.
+		{"the bot's own reply", `,"commentParentId":501,"comment":{"id":7,"text":"Fixed in abc.","author":{"name":"noergler"}}`, "comment without mention", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -581,6 +589,19 @@ func TestWebhook_ReplyWithoutMentionIsQueuedForTheFindingCheck(t *testing.T) {
 				t.Errorf("handler = %q, want %q", call, c.call)
 			}
 		})
+	}
+}
+
+// An @mention on a finding thread that the finding handler takes never
+// reaches the Q&A.
+func TestWebhook_MentionReplyOnAFindingStaysWithTheFinding(t *testing.T) {
+	h := newHarness(t, nil)
+	h.rv.replyHandled = true
+	extra := `,"commentParentId":501,"comment":{"id":7,"text":"@noergler we do this in the UI","author":{"name":"bob"}}`
+	_ = h.signedPost(t, payloadJSON(webhook.EventCommentAdded, extra))
+	h.q.runAll()
+	if got := h.rv.String(); got != "finding-reply" {
+		t.Errorf("handlers = %q, want the finding reply alone", got)
 	}
 }
 

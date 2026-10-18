@@ -234,15 +234,18 @@ replies in the comment's own thread. Keywords route the question; anything else
 is answered as a question about the PR.
 
 A reply on one of noergler's finding threads needs no mention. The route queues
-any reply (Bitbucket's `commentParentId`); the worker answers only when the
-parent is a stored, unfixed finding of that PR, the author is not the bot, and
-the finding has no answer yet. One call (`prompts/finding_reply.txt`) sees the
-finding, that file's diff, AGENTS.md and the reply, and classifies it. A
-dispute, explicit or not ("we do this in the UI"), is acknowledged; when its
-reason is a project-wide rule AGENTS.md lacks, the answer suggests a one-line
-AGENTS.md bullet. The finding is marked disputed and later prompts show the
-reply beside it so the issue is not raised again. The thread stays open: the
-author resolves it.
+any non-empty reply not written by the bot (Bitbucket's `commentParentId`); the
+worker answers only when the parent is a stored, unfixed finding of that PR,
+the finding has no answer yet and the PR is under its cost cap. An `@bot` reply
+on such a thread is answered as a reply too, unless it asks for a review. The
+call (`prompts/finding_reply.txt`) is staged like a review, and sees the
+finding, the file around it, AGENTS.md, who replied, and the reply. A dispute,
+explicit or not ("we do this in the UI"), is acknowledged; when it is the PR
+author's and its reason is a project-wide rule AGENTS.md lacks, the answer
+suggests a one-line AGENTS.md bullet. The author's dispute is stored and later
+prompts show it beside the finding so the issue is not raised again. The
+thread stays open: the author resolves it. Without the template file the
+feature is off and the team keeps reviewing.
 
 ## 13. Terminal events and the riptide rollup
 

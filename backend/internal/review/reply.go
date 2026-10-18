@@ -5,140 +5,222 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/trick77/noergler/internal/diff"
 	"github.com/trick77/noergler/internal/httpstats"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
 
-// Caps on what a finding reply carries and posts. The file diff is context
-// for one finding, not a review: a PR-sized file is cut, not refused.
+// Caps on what a finding reply carries and posts. The excerpt is context for
+// one finding, not a review.
 const (
-	replyFileDiffRunes = 40_000
-	replyTextRunes     = 2_000
-	replyPostRunes     = 1_500
-	disputeTextRunes   = 500
+	replyExcerptLines = 40
+	replyExcerptRunes = 20_000
+	replyTextRunes    = 2_000
+	replyPostRunes    = 1_500
+	// disputeTextRunes is what the previously-posted block renders of it.
+	disputeTextRunes = 300
 )
 
 // HandleFindingReply answers a reply on the thread of one of noergler's
 // inline findings: one call, one reply, once per finding.
 //
-// The route sends every reply that names no bot; this decides. Only a reply
-// whose parent is a stored, unfixed finding of this PR, written by someone
-// other than the bot, with text, on an open PR, and the first such reply on
-// that finding, gets an answer. Everything else returns before any
-// Bitbucket or gateway call.
+// handled is false when the reply is not this handler's: not on a stored,
+// unfixed finding of this PR, the feature is off (no template), or the reply
+// is an @mention asking for a review. The route then hands an @mention to
+// HandleMention. handedOff reports, like the staged review, that the gateway
+// call went to the inference pool and the posting comes back to the worker,
+// so the PR's queue hold must outlive this job.
 //
-// A dispute never resolves or withdraws the finding: the author resolves
-// the thread. It is stored, and later prompts show it beside the finding so
-// the issue is not raised again. The reply is author text: intent, never
-// evidence, never a reason to drop a finding.
-func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payload) {
+// A dispute never resolves or withdraws the finding: the author resolves the
+// thread. Only the PR author's dispute is stored, and later prompts show it
+// beside the finding so the issue is not raised again. The reply is author
+// text: intent, never evidence, never a reason to drop a finding.
+func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payload, team string, sched Scheduler) (handled, handedOff bool) {
 	comment := payload.Comment
-	if comment == nil || payload.CommentParentID == 0 {
-		return
+	if r.replyTmpl == "" || comment == nil || payload.CommentParentID == 0 {
+		return false, false
 	}
+	bot := r.bitbucket.BotUsername()
 	// Our own replies ("Fixed in ...") come back as comment events too.
-	if strings.EqualFold(comment.Author.Name, r.bitbucket.BotUsername()) {
-		return
-	}
-	text := strings.TrimSpace(comment.Text)
-	if text == "" {
-		return
+	if strings.EqualFold(comment.Author.Name, bot) {
+		return true, false
 	}
 	pr := payload.PullRequest
 	if pr.State != "" && pr.State != "OPEN" {
-		return
+		return true, false
+	}
+	text := strings.TrimSpace(comment.Text)
+	mentioned := strings.Contains(strings.ToLower(text), "@"+strings.ToLower(bot))
+	if mentioned {
+		// "@bot review" on a finding thread is still a review.
+		text = extractQuestion(text, bot)
+		if text == "" || reviewKeywords[strings.ToLower(text)] {
+			return false, false
+		}
+	}
+	if text == "" {
+		return true, false
 	}
 	ctx, key, prTag, ok := prContext(ctx, payload)
 	if !ok {
 		r.log.ErrorContext(ctx, "Could not extract project/repo from webhook payload")
-		return
+		return true, false
 	}
 	f := safeDB(ctx, r.log, "FindingByComment", func() (*store.Finding, error) {
 		return r.store.FindingByComment(ctx, key, payload.CommentParentID)
 	})
 	if f == nil {
 		r.log.DebugContext(ctx, prTag+": reply is not on a finding thread")
-		return
+		return false, false
 	}
 	where := fmt.Sprintf("%s:%d", f.FilePath, f.LineNumber)
 	if f.RepliedAt != nil {
+		// An @mention asked the bot something: the Q&A answers it.
+		if mentioned {
+			return false, false
+		}
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on finding %s not answered: the thread was answered already", prTag, where))
-		return
+		return true, false
+	}
+	// The per-PR cap holds here as on an auto review: a reply is automatic.
+	// Fail open: an unpriced PR never blocks.
+	if cost := safeDB(ctx, r.log, "PRCost", func() (*int64, error) {
+		return r.store.PRCost(ctx, key)
+	}); cost != nil && float64(*cost)/nanoPerUSD >= r.cfg.MaxPRCostUSD {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on finding %s not answered: PR cost at the $%.2f cap",
+			prTag, where, r.cfg.MaxPRCostUSD))
+		return true, false
 	}
 
-	ctx, httpCounter := httpstats.WithScope(ctx)
-	defer r.logHTTPTotals(ctx, prTag, httpCounter)
+	ctx, counter := httpstats.WithScope(ctx)
 	project, repo := key.Project, key.Repo
+	byAuthor := strings.EqualFold(comment.Author.Name, pr.Author.User.Name)
 
-	// Without the diff the finding still stands on its own text: a failed
+	// Without the file the finding still stands on its own text: a failed
 	// fetch narrows the context, it does not skip the answer.
-	fileDiff := ""
-	if raw, err := r.bitbucket.FetchPRDiff(ctx, project, repo, pr.ID, 0); err != nil {
-		r.log.WarnContext(ctx, fmt.Sprintf("%s: diff for the finding reply unavailable: %v", prTag, err))
+	excerpt := ""
+	if content, err := r.bitbucket.FetchFileContent(ctx, project, repo, pr.FromRef.LatestCommit, f.FilePath); err != nil {
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: file for the finding reply unavailable: %v", prTag, err))
 	} else {
-		fileDiff = truncateRunes(fileDiffOf(raw, f.FilePath), replyFileDiffRunes)
+		excerpt = truncateRunes(excerptAround(content, f.LineNumber, replyExcerptLines), replyExcerptRunes)
 	}
 	agentsMD := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.DisplayID)
-
+	replyBy := "a reviewer, not the PR author"
+	if byAuthor {
+		replyBy = "the PR author"
+	}
 	prompt := inference.RenderFindingReplyPrompt(inference.FindingReplyPromptRequest{
 		Template:         r.replyTmpl,
 		RepoInstructions: agentsMD,
 		Finding:          fmt.Sprintf("%s [%s]\n\n%s", where, f.Severity, f.CommentText),
-		FileDiff:         fileDiff,
+		FileExcerpt:      excerpt,
+		ReplyBy:          replyBy,
 		Reply:            truncateRunes(text, replyTextRunes),
 	})
-	res := r.llm.FindingReply(ctx, inference.FindingReplyRequest{
+	req := inference.FindingReplyRequest{
 		Prompt:       prompt,
 		PromptTokens: r.tokens.Count(inference.MentionSystemMessage) + r.tokens.Count(prompt),
-	})
-	if res.Outcome == inference.OutcomeOK || res.Outcome == inference.OutcomeUnparseable {
-		r.logCost(ctx, prTag, res.Cost)
 	}
-	// Nothing posted, nothing stamped: a later reply on the thread may try
-	// again.
+	job := &replyJob{
+		project: project, repo: repo, prID: pr.ID, prTag: prTag, where: where,
+		findingID: f.ID, replyTo: comment.ID, text: text, byAuthor: byAuthor,
+		agentsMD: agentsMD, counter: counter,
+	}
+	infer := func(inferCtx context.Context) { job.res = r.llm.FindingReply(inferCtx, req) }
+	post := func(postCtx context.Context) { r.postFindingReply(postCtx, job) }
+	if sched == nil {
+		// A direct caller or a test: inline, as the mention does.
+		infer(ctx)
+		post(ctx)
+		return true, false
+	}
+	sched.Stage(ctx, key, team, infer, post)
+	return true, true
+}
+
+// replyJob is what the posting stage needs from the reply's prepare. The
+// prompt does not cross: inference holds it.
+type replyJob struct {
+	project, repo string
+	prID          int
+	prTag, where  string
+	findingID     int64
+	replyTo       int
+	text          string
+	byAuthor      bool
+	agentsMD      string
+	counter       *httpstats.Counter
+	res           inference.FindingReplyResult
+}
+
+// postFindingReply is the reply's posting stage, on the worker: the answer,
+// then the stamp. Nothing posted, nothing stamped, so a later reply on the
+// thread may try again.
+func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
+	defer r.logHTTPTotals(ctx, j.prTag, j.counter)
+	res := j.res
+	if res.Outcome == inference.OutcomeOK || res.Outcome == inference.OutcomeUnparseable {
+		r.logCost(ctx, j.prTag, res.Cost)
+	}
 	if res.Outcome != inference.OutcomeOK {
-		r.log.WarnContext(ctx, fmt.Sprintf("%s: reply on finding %s not answered: %s %v", prTag, where, res.Outcome, res.Err))
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: reply on finding %s not answered: %s %v", j.prTag, j.where, res.Outcome, res.Err))
 		return
 	}
+	dispute := res.Reply.Intent == "disputes" && j.byAuthor
 
 	body := truncateRunes(res.Reply.Reply, replyPostRunes)
 	agentsLine := "none"
 	if line := res.Reply.AgentsMDLine; line != "" {
-		switch reason := inference.CheckAgentsMDLine(line, agentsMD); {
-		case res.Reply.Intent != "disputes":
-			agentsLine = "dropped (not a dispute)"
+		switch reason := inference.CheckAgentsMDLine(line, j.agentsMD); {
+		case !dispute:
+			agentsLine = "dropped (not the author's dispute)"
 		case reason != "":
 			agentsLine = "dropped (" + reason + ")"
 		default:
 			agentsLine = "suggested"
-			body += "\n\nIf this holds project-wide, consider adding to `AGENTS.md`:\n\n```markdown\n" + line + "\n```"
+			fence := codeFence(line)
+			body += "\n\nIf this holds project-wide, consider adding to `AGENTS.md`:\n\n" +
+				fence + "markdown\n" + line + "\n" + fence
 		}
 	}
-	if err := r.bitbucket.ReplyToComment(ctx, project, repo, pr.ID, comment.ID, body); err != nil {
-		r.log.ErrorContext(ctx, fmt.Sprintf("%s: reply on finding %s failed to post: %v", prTag, where, err))
+	if err := r.bitbucket.ReplyToComment(ctx, j.project, j.repo, j.prID, j.replyTo, body); err != nil {
+		r.log.ErrorContext(ctx, fmt.Sprintf("%s: reply on finding %s failed to post: %v", j.prTag, j.where, err))
 		return
 	}
-	var dispute *string
-	if res.Reply.Intent == "disputes" {
-		d := truncateRunes(text, disputeTextRunes)
-		dispute = &d
+	var stored *string
+	if dispute {
+		d := truncateRunes(j.text, disputeTextRunes)
+		stored = &d
 	}
-	safeDBErr(ctx, r.log, "MarkFindingReplied", func() error { return r.store.MarkFindingReplied(ctx, f.ID, dispute) })
-	r.log.InfoContext(ctx, fmt.Sprintf("%s: answered reply on finding %s: intent %s, AGENTS.md line %s",
-		prTag, where, res.Reply.Intent, agentsLine))
+	safeDBErr(ctx, r.log, "MarkFindingReplied", func() error { return r.store.MarkFindingReplied(ctx, j.findingID, stored) })
+	r.log.InfoContext(ctx, fmt.Sprintf("%s: answered reply on finding %s: intent %s, by author %s, AGENTS.md line %s",
+		j.prTag, j.where, res.Reply.Intent, yesNo(j.byAuthor), agentsLine))
 }
 
-// fileDiffOf is the numbered diff of one file in a PR diff, or "" when the
-// PR no longer changes it. A stored path may carry the model's a/ or b/.
-func fileDiffOf(raw, path string) string {
-	want := strings.TrimPrefix(strings.TrimPrefix(path, "a/"), "b/")
-	for _, part := range diff.SplitByFile(raw) {
-		if p := diff.ExtractPath(part); p == path || p == want {
-			return diff.NumberDiff(part)
+// codeFence is a backtick fence longer than any backtick run in s, so model
+// text cannot close it early and post markdown as the bot's own.
+func codeFence(s string) string {
+	longest, run := 0, 0
+	for _, c := range s {
+		if c == '`' {
+			run++
+			longest = max(longest, run)
+			continue
 		}
+		run = 0
 	}
-	return ""
+	return strings.Repeat("`", max(3, longest+1))
+}
+
+// excerptAround is the file's lines within n of line, numbered like the
+// review's diff, so the model reads the line it is asked about.
+func excerptAround(content string, line, n int) string {
+	lines := strings.Split(content, "\n")
+	from, to := max(1, line-n), min(len(lines), line+n)
+	var b strings.Builder
+	for i := from; i <= to; i++ {
+		fmt.Fprintf(&b, "%5d  %s\n", i, lines[i-1])
+	}
+	return b.String()
 }

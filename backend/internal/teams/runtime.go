@@ -37,8 +37,10 @@ type Reviewer interface {
 	HandleMention(ctx context.Context, p *webhook.Payload, team string, sched Scheduler) bool
 	HandleCommentDeleted(ctx context.Context, p *webhook.Payload)
 	// HandleFindingReply answers a reply on one of the bot's finding threads,
-	// once per finding. It decides itself whether the reply qualifies.
-	HandleFindingReply(ctx context.Context, p *webhook.Payload)
+	// once per finding. It decides itself whether the reply qualifies:
+	// handled false hands an @mention on to HandleMention. handedOff is the
+	// staged review's contract.
+	HandleFindingReply(ctx context.Context, p *webhook.Payload, team string, sched Scheduler) (handled, handedOff bool)
 	HandlePRMerged(ctx context.Context, p *webhook.Payload)
 	HandlePRDeclined(ctx context.Context, p *webhook.Payload)
 	HandlePRDeleted(ctx context.Context, p *webhook.Payload)

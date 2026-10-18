@@ -9,12 +9,40 @@ import (
 	"github.com/trick77/llmwire"
 )
 
+// answer is the one call a mention and a finding reply share: the fit
+// pre-flight, the guarded system message, an optional strict schema, no
+// retry. A non-OK outcome carries no response.
+func (c *Client) answer(ctx context.Context, prompt string, promptTokens int, format *llmwire.ResponseFormat) (*llmwire.ChatResponse, Outcome, error) {
+	if promptTokens > 0 && c.Ready() {
+		if ceiling := c.FitCeiling(); promptTokens > ceiling {
+			return nil, OutcomeTooLarge, &TooLargeError{PromptTokens: promptTokens, Ceiling: ceiling}
+		}
+	}
+	chat := llmwire.ChatRequest{
+		Model:     c.model,
+		Reasoning: c.reasoning(),
+		Messages: []llmwire.Message{
+			llmwire.System(MentionSystemMessage),
+			llmwire.User(prompt),
+		},
+	}
+	if format != nil {
+		chat.ResponseFormat = *format
+	}
+	resp, _, err := c.wire.Chat(ctx, chat)
+	if err != nil {
+		return nil, classifyCallError(ctx, err), err
+	}
+	return resp, OutcomeOK, nil
+}
+
 // Placeholders of the finding-reply template, beside the shared
 // {repo_instructions}.
 const (
-	PlaceholderFinding  = "{finding}"
-	PlaceholderFileDiff = "{file_diff}"
-	PlaceholderReply    = "{reply}"
+	PlaceholderFinding     = "{finding}"
+	PlaceholderFileExcerpt = "{file_excerpt}"
+	PlaceholderReplyBy     = "{reply_by}"
+	PlaceholderReply       = "{reply}"
 )
 
 // ReplyIntents are what a reply on a finding's thread can be. "disputes"
@@ -28,24 +56,27 @@ type FindingReplyPromptRequest struct {
 	RepoInstructions string
 	// Finding is the finding as posted: location, severity and its comment.
 	Finding string
-	// FileDiff is that file's diff in the PR, numbered, or empty when the
-	// file is no longer in it.
-	FileDiff string
-	// Reply is the author's text: intent only, never evidence.
+	// FileExcerpt is the file around the finding's line at the PR head,
+	// numbered, or empty when it could not be read.
+	FileExcerpt string
+	// ReplyBy says who wrote the reply: the PR author or someone else.
+	ReplyBy string
+	// Reply is the replier's text: intent only, never evidence.
 	Reply string
 }
 
 // RenderFindingReplyPrompt assembles the prompt in one substitution pass,
-// so a reply containing "{file_diff}" stays literal.
+// so a reply containing "{file_excerpt}" stays literal.
 func RenderFindingReplyPrompt(req FindingReplyPromptRequest) string {
-	fileDiff := req.FileDiff
-	if strings.TrimSpace(fileDiff) == "" {
-		fileDiff = "_This file is no longer changed in the PR._"
+	excerpt := req.FileExcerpt
+	if strings.TrimSpace(excerpt) == "" {
+		excerpt = "_The file could not be read at the PR head._"
 	}
 	return strings.NewReplacer(
 		PlaceholderRepoInstructions, req.RepoInstructions,
 		PlaceholderFinding, req.Finding,
-		PlaceholderFileDiff, fileDiff,
+		PlaceholderFileExcerpt, excerpt,
+		PlaceholderReplyBy, req.ReplyBy,
 		PlaceholderReply, req.Reply,
 	).Replace(req.Template)
 }
@@ -147,25 +178,10 @@ type FindingReplyResult struct {
 // FindingReply answers a reply on a finding's thread: one call, a strict
 // schema, no retry, like a mention.
 func (c *Client) FindingReply(ctx context.Context, req FindingReplyRequest) FindingReplyResult {
-	if req.PromptTokens > 0 && c.Ready() {
-		if ceiling := c.FitCeiling(); req.PromptTokens > ceiling {
-			return FindingReplyResult{
-				Outcome: OutcomeTooLarge,
-				Err:     &TooLargeError{PromptTokens: req.PromptTokens, Ceiling: ceiling},
-			}
-		}
-	}
-	resp, _, err := c.wire.Chat(ctx, llmwire.ChatRequest{
-		Model:     c.model,
-		Reasoning: c.reasoning(),
-		Messages: []llmwire.Message{
-			llmwire.System(MentionSystemMessage),
-			llmwire.User(req.Prompt),
-		},
-		ResponseFormat: findingReplyFormat(),
-	})
-	if err != nil {
-		return FindingReplyResult{Outcome: classifyCallError(ctx, err), Err: err}
+	format := findingReplyFormat()
+	resp, outcome, err := c.answer(ctx, req.Prompt, req.PromptTokens, &format)
+	if outcome != OutcomeOK {
+		return FindingReplyResult{Outcome: outcome, Err: err}
 	}
 	out := FindingReplyResult{Cost: CostFrom(resp)}
 	reply, ok := ParseFindingReply(resp.Content)

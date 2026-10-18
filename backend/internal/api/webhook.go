@@ -215,18 +215,20 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 			text, commentID = p.Comment.Text, p.Comment.ID
 		}
 		trigger := "@" + d.BotUsername
-		if !strings.Contains(strings.ToLower(text), strings.ToLower(trigger)) {
-			// A reply may be on one of our finding threads. Whether it is
-			// takes a DB lookup, which the job does on the worker: the
-			// route stays DB-free, and a reply that is not on a finding
-			// returns there before any Bitbucket or gateway call.
-			// An empty reply stays "comment without mention", as pinned.
-			if p.CommentParentID != 0 && strings.TrimSpace(text) != "" {
+		mentioned := strings.Contains(strings.ToLower(text), strings.ToLower(trigger))
+		// A reply may be on one of our finding threads. Whether it is takes a
+		// DB lookup, which the job does on the worker: the route stays
+		// DB-free. The bot's own replies ("Fixed in ...") come back here
+		// too, and an empty reply stays "comment without mention", as pinned.
+		reply := p.CommentParentID != 0 && strings.TrimSpace(text) != "" &&
+			!strings.EqualFold(p.Comment.Author.Name, d.BotUsername)
+		if !mentioned {
+			if reply {
 				d.Log.InfoContext(ctx, "reply without "+trigger+", checked for a finding thread",
 					"comment_id", commentID, "parent_id", p.CommentParentID)
-				d.Queue.SubmitJob(key, slug, "finding-reply", func(ctx context.Context, _ teams.Scheduler) bool {
-					rv.HandleFindingReply(ctx, p)
-					return false
+				d.Queue.SubmitJob(key, slug, "finding-reply", func(ctx context.Context, sched teams.Scheduler) bool {
+					_, handedOff := rv.HandleFindingReply(ctx, p, slug, sched)
+					return handedOff
 				})
 				httpx.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "reply", Queue: "queued"})
 				return
@@ -237,6 +239,14 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 		}
 		d.Log.InfoContext(ctx, "comment mentions "+trigger, "comment_id", commentID)
 		d.Queue.SubmitJob(key, slug, "mention", func(ctx context.Context, sched teams.Scheduler) bool {
+			// An @mention in a finding thread is about that finding: it is
+			// answered with it, unless it asks for a review or the thread is
+			// no finding's.
+			if reply {
+				if handled, handedOff := rv.HandleFindingReply(ctx, p, slug, sched); handled {
+					return handedOff
+				}
+			}
 			// A keyword mention stages a review, so the PR's hold has to
 			// outlive this job: the staged posting releases it.
 			return rv.HandleMention(ctx, p, slug, sched)

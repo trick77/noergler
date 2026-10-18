@@ -27,6 +27,7 @@ func replyHarness(t *testing.T) (*harness, *webhook.Payload) {
 		AgentsMDLine: "- Business rule validations live in the UI; the backend does not re-validate them.",
 	}}
 	p := prPayload(webhook.EventCommentAdded)
+	// prPayload's author is alice: this reply is the author's.
 	p.Comment = &webhook.Comment{ID: 900, Text: "We do this in the UI", Author: webhook.User{Name: "alice"}}
 	p.CommentParentID = 501
 	return h, p
@@ -35,13 +36,14 @@ func replyHarness(t *testing.T) (*harness, *webhook.Payload) {
 func TestFindingReplyAnswersADisputeWithAnAgentsMDLine(t *testing.T) {
 	h, p := replyHarness(t)
 
-	h.r.HandleFindingReply(context.Background(), p)
+	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
 
 	if len(h.llm.Replies) != 1 {
 		t.Fatalf("model calls = %d", len(h.llm.Replies))
 	}
 	prompt := h.llm.Replies[0].Prompt
-	for _, want := range []string{"a.go:2 [issue]", "does not validate the business rule", "We do this in the UI", "func new() {}"} {
+	for _, want := range []string{"a.go:2 [issue]", "does not validate the business rule", "We do this in the UI",
+		"    2  func new() {}", "the PR author"} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("prompt lacks %q:\n%s", want, prompt)
 		}
@@ -80,7 +82,7 @@ func TestFindingReplyIgnores(t *testing.T) {
 			h, p := replyHarness(t)
 			tweak(h, p)
 
-			h.r.HandleFindingReply(context.Background(), p)
+			h.r.HandleFindingReply(context.Background(), p, "payments", nil)
 
 			if len(h.llm.Replies) != 0 || len(h.bb.Replies) != 0 || len(h.st.Replied) != 0 {
 				t.Errorf("model %d, replies %d, marked %d: want nothing", len(h.llm.Replies), len(h.bb.Replies), len(h.st.Replied))
@@ -96,7 +98,7 @@ func TestFindingReplyDropsTheAgentsMDLine(t *testing.T) {
 		h, p := replyHarness(t)
 		h.llm.reply.Reply.Intent = "acknowledges"
 
-		h.r.HandleFindingReply(context.Background(), p)
+		h.r.HandleFindingReply(context.Background(), p, "payments", nil)
 
 		if strings.Contains(h.bb.Replies[0].Text, "AGENTS.md") {
 			t.Errorf("reply suggests a line on an acknowledgement:\n%s", h.bb.Replies[0].Text)
@@ -109,7 +111,7 @@ func TestFindingReplyDropsTheAgentsMDLine(t *testing.T) {
 		h, p := replyHarness(t)
 		h.bb.files["src1:AGENTS.md"] = "# Rules\n- Business rule validations live in the UI; the backend does not re-validate them.\n"
 
-		h.r.HandleFindingReply(context.Background(), p)
+		h.r.HandleFindingReply(context.Background(), p, "payments", nil)
 
 		if strings.Contains(h.bb.Replies[0].Text, "consider adding") {
 			t.Errorf("reply repeats a line AGENTS.md has:\n%s", h.bb.Replies[0].Text)
@@ -123,7 +125,7 @@ func TestFindingReplyFailuresLeaveTheFindingUnanswered(t *testing.T) {
 		h, p := replyHarness(t)
 		h.llm.reply = inference.FindingReplyResult{Outcome: inference.OutcomeUnparseable}
 
-		h.r.HandleFindingReply(context.Background(), p)
+		h.r.HandleFindingReply(context.Background(), p, "payments", nil)
 
 		if len(h.bb.Replies) != 0 || len(h.st.Replied) != 0 {
 			t.Errorf("replies %d, marked %d", len(h.bb.Replies), len(h.st.Replied))
@@ -133,21 +135,21 @@ func TestFindingReplyFailuresLeaveTheFindingUnanswered(t *testing.T) {
 		h, p := replyHarness(t)
 		h.bb.replyErr = errors.New("boom")
 
-		h.r.HandleFindingReply(context.Background(), p)
+		h.r.HandleFindingReply(context.Background(), p, "payments", nil)
 
 		if len(h.st.Replied) != 0 {
 			t.Errorf("marked %+v after a failed post", h.st.Replied)
 		}
 	})
-	// The diff narrows the context; without it the finding still stands.
-	t.Run("diff unavailable", func(t *testing.T) {
+	// The file narrows the context; without it the finding still stands.
+	t.Run("file unavailable", func(t *testing.T) {
 		h, p := replyHarness(t)
-		h.bb.prDiffErr = errors.New("boom")
+		h.bb.fileErr["src1:a.go"] = errors.New("boom")
 
-		h.r.HandleFindingReply(context.Background(), p)
+		h.r.HandleFindingReply(context.Background(), p, "payments", nil)
 
-		if len(h.bb.Replies) != 1 || !strings.Contains(h.llm.Replies[0].Prompt, "no longer changed") {
-			t.Errorf("replies %d; want an answer without the diff", len(h.bb.Replies))
+		if len(h.bb.Replies) != 1 || !strings.Contains(h.llm.Replies[0].Prompt, "could not be read") {
+			t.Errorf("replies %d; want an answer without the file", len(h.bb.Replies))
 		}
 	})
 }
@@ -166,14 +168,120 @@ func TestDisputeReachesTheNextReview(t *testing.T) {
 	}
 }
 
-func TestFileDiffOfFindsTheFileByEitherPath(t *testing.T) {
-	two := sampleDiff + "diff --git a/b.go b/b.go\n--- a/b.go\n+++ b/b.go\n@@ -1 +1 @@\n-x\n+y\n"
-	for _, path := range []string{"b.go", "b/b.go"} {
-		if got := fileDiffOf(two, path); !strings.Contains(got, "+y") || strings.Contains(got, "func new()") {
-			t.Errorf("fileDiffOf(%q) = %q", path, got)
+// Someone other than the PR author is answered, but their dispute is not
+// stored: only the author's case keeps the issue out of later reviews.
+func TestFindingReplyStoresOnlyTheAuthorsDispute(t *testing.T) {
+	h, p := replyHarness(t)
+	p.Comment.Author.Name = "carol"
+
+	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+
+	if !strings.Contains(h.llm.Replies[0].Prompt, "a reviewer, not the PR author") {
+		t.Errorf("the prompt must say who replied:\n%s", h.llm.Replies[0].Prompt)
+	}
+	if len(h.bb.Replies) != 1 || strings.Contains(h.bb.Replies[0].Text, "AGENTS.md") {
+		t.Errorf("replies = %+v, want an answer without a suggested line", h.bb.Replies)
+	}
+	if len(h.st.Replied) != 1 || h.st.Replied[0].Dispute != nil {
+		t.Errorf("replied = %+v, want answered, no dispute stored", h.st.Replied)
+	}
+}
+
+// An @mention on a finding thread is about that finding; asking for a
+// review, or a thread that is no finding's, is the mention path's.
+func TestFindingReplyWithAMention(t *testing.T) {
+	t.Run("question about the finding", func(t *testing.T) {
+		h, p := replyHarness(t)
+		p.Comment.Text = "@noergler we do this in the UI"
+
+		handled, _ := h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+
+		if !handled || !strings.Contains(h.llm.Replies[0].Prompt, "## The reply") ||
+			strings.Contains(h.llm.Replies[0].Prompt, "@noergler") {
+			t.Errorf("handled = %v; the reply must reach the prompt without the mention", handled)
+		}
+	})
+	for name, tweak := range map[string]func(*harness, *webhook.Payload){
+		"asks for a review": func(_ *harness, p *webhook.Payload) { p.Comment.Text = "@noergler review" },
+		"not a finding":     func(_ *harness, p *webhook.Payload) { p.Comment.Text = "@noergler why?"; p.CommentParentID = 777 },
+		"answered already": func(h *harness, p *webhook.Payload) {
+			p.Comment.Text = "@noergler why?"
+			at := time.Now()
+			h.st.byComment[501].RepliedAt = &at
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h, p := replyHarness(t)
+			tweak(h, p)
+			if handled, _ := h.r.HandleFindingReply(context.Background(), p, "payments", nil); handled || len(h.llm.Replies) != 0 {
+				t.Errorf("handled = %v, calls = %d: want it left to the mention path", handled, len(h.llm.Replies))
+			}
+		})
+	}
+}
+
+// A reply is automatic, so the per-PR cost cap holds; an unpriced PR never
+// blocks.
+func TestFindingReplyRespectsTheCostCap(t *testing.T) {
+	h, p := replyHarness(t)
+	h.st.prCost = ptri(6_000_000_000)
+
+	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+
+	if len(h.llm.Replies) != 0 {
+		t.Error("a PR at the cap must not buy a reply")
+	}
+}
+
+// No template, no feature: the team keeps reviewing.
+func TestFindingReplyIsOffWithoutATemplate(t *testing.T) {
+	h, p := replyHarness(t)
+	h.r.replyTmpl = ""
+
+	if handled, _ := h.r.HandleFindingReply(context.Background(), p, "payments", nil); handled || len(h.llm.Replies) != 0 {
+		t.Errorf("handled = %v with the feature off", handled)
+	}
+}
+
+// Staged like a review: the call goes to the pool, the post comes back.
+func TestFindingReplyIsStaged(t *testing.T) {
+	h, p := replyHarness(t)
+	s := &deferredScheduler{}
+
+	handled, handedOff := h.r.HandleFindingReply(context.Background(), p, "payments", s)
+
+	if !handled || !handedOff || s.post == nil {
+		t.Fatalf("handled %v, handed off %v, staged %v", handled, handedOff, s.post != nil)
+	}
+	if len(h.bb.Replies) != 0 {
+		t.Error("nothing is posted before the staged post runs")
+	}
+	s.finish()
+	if len(h.bb.Replies) != 1 || len(h.st.Replied) != 1 {
+		t.Errorf("after the stages: replies %d, marked %d", len(h.bb.Replies), len(h.st.Replied))
+	}
+}
+
+func TestCodeFenceOutlastsTheLine(t *testing.T) {
+	cases := map[string]string{
+		"- plain":                          "```",
+		"- uses `%w`":                      "```",
+		"- x ``` [click](http://evil) ```": "````",
+		"- x ```` y":                       "`````",
+	}
+	for line, want := range cases {
+		if got := codeFence(line); got != want {
+			t.Errorf("codeFence(%q) = %q, want %q", line, got, want)
 		}
 	}
-	if got := fileDiffOf(two, "gone.go"); got != "" {
-		t.Errorf("a file the PR no longer changes: %q", got)
+}
+
+func TestExcerptAroundNumbersTheWindow(t *testing.T) {
+	got := excerptAround("a\nb\nc\nd\ne", 3, 1)
+	if got != "    2  b\n    3  c\n    4  d\n" {
+		t.Errorf("got %q", got)
+	}
+	if got := excerptAround("a", 9, 2); got != "" {
+		t.Errorf("a line past the end: %q", got)
 	}
 }

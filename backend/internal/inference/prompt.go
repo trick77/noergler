@@ -232,7 +232,7 @@ func RenderPreviouslyPostedFindings(findings []PostedFinding) string {
 			id = "[" + FixedIDPrefix + strconv.FormatInt(f.ID, 10) + "] "
 		}
 		line := "- " + id + loc + " [" + severity + "] " + text
-		if d := strings.ReplaceAll(strings.TrimSpace(f.Dispute), "\n", " "); d != "" {
+		if d := strings.Join(strings.Fields(f.Dispute), " "); d != "" {
 			disputed = true
 			if r := []rune(d); len(r) > postedTextCap {
 				d = string(r[:postedTextKeep]) + "..."

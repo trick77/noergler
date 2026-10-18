@@ -165,9 +165,12 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 	if err != nil {
 		return nil, fmt.Sprintf("prompt template not found: %s", team.Review.MentionPromptTemplate)
 	}
+	// Optional, unlike the two above: a deployment that mounts its own
+	// prompts/ without this file keeps reviewing, with finding replies off.
 	replyTmpl, err := readFile(team.Review.FindingReplyPromptTemplate)
 	if err != nil {
-		return nil, fmt.Sprintf("prompt template not found: %s", team.Review.FindingReplyPromptTemplate)
+		d.Log.WarnContext(ctx, "finding replies off: prompt template not found: "+team.Review.FindingReplyPromptTemplate)
+		replyTmpl = nil
 	}
 
 	llm, err := inference.New(inference.Options{

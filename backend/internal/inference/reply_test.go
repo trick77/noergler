@@ -11,17 +11,18 @@ import (
 // expanding into the file diff.
 func TestRenderFindingReplyPromptIsOnePass(t *testing.T) {
 	got := RenderFindingReplyPrompt(FindingReplyPromptRequest{
-		Template:         "G={repo_instructions} F={finding} D={file_diff} R={reply}",
+		Template:         "G={repo_instructions} F={finding} X={file_excerpt} B={reply_by} R={reply}",
 		RepoInstructions: "rules",
 		Finding:          "a.go:2 [issue]",
-		FileDiff:         "+x",
-		Reply:            "see {file_diff}",
+		FileExcerpt:      "2  x",
+		ReplyBy:          "the PR author",
+		Reply:            "see {file_excerpt}",
 	})
-	if got != "G=rules F=a.go:2 [issue] D=+x R=see {file_diff}" {
+	if got != "G=rules F=a.go:2 [issue] X=2  x B=the PR author R=see {file_excerpt}" {
 		t.Errorf("got %q", got)
 	}
-	if empty := RenderFindingReplyPrompt(FindingReplyPromptRequest{Template: "{file_diff}"}); !strings.Contains(empty, "no longer changed") {
-		t.Errorf("a file the PR no longer changes says so: %q", empty)
+	if empty := RenderFindingReplyPrompt(FindingReplyPromptRequest{Template: "{file_excerpt}"}); !strings.Contains(empty, "could not be read") {
+		t.Errorf("an unreadable file says so: %q", empty)
 	}
 }
 
@@ -113,7 +114,7 @@ func TestFindingReplyCall(t *testing.T) {
 func TestRenderPreviouslyPostedFindingsCarriesTheDispute(t *testing.T) {
 	line := 3
 	got := RenderPreviouslyPostedFindings([]PostedFinding{
-		{FilePath: "a.go", LineNumber: &line, Severity: "issue", CommentText: "unchecked", Dispute: "we do this\nin the UI"},
+		{FilePath: "a.go", LineNumber: &line, Severity: "issue", CommentText: "unchecked", Dispute: "we do this\r\nin the UI"},
 	})
 	if !strings.Contains(got, "- a.go:3 [issue] unchecked (author replied: we do this in the UI)") {
 		t.Errorf("dispute missing:\n%s", got)

@@ -75,13 +75,16 @@ writes it into `backend/web/dist`, which `//go:embed` reads.
   invented. Blunt rules, never
   a judge model. Drops are logged by reason, never silent.
 - **A reply on a finding thread is answered once, never resolves it**
-  (`HandleFindingReply`). Bitbucket's parent is top-level `commentParentId`,
-  not `comment.parent`. The route queues every non-empty reply without a
-  mention; the job checks parent = stored unfixed finding of THIS PR, author
-  not the bot, `replied_at` unset. A dispute is stored and shown beside the
-  finding (author intent, never evidence); the author resolves. A suggested
-  AGENTS.md line: disputes only, one `- ` bullet <= 200 runes, not already in
-  AGENTS.md. Nothing posted = nothing stamped.
+  (`HandleFindingReply`). Parent = top-level `commentParentId`, never
+  `comment.parent`. Route: non-empty, non-bot reply -> job (DB-free route);
+  an `@bot` reply tries the finding first, review keyword or no finding ->
+  mention. Job: stored unfixed finding of THIS PR, `replied_at` unset, under
+  the cost cap; staged like a review (pool, post on worker). Only the PR
+  author's dispute is stored and shown beside the finding (intent, never
+  evidence). AGENTS.md line: author's dispute only, one `- ` bullet <= 200
+  runes, not already there, fenced longer than its backticks. Template
+  optional: missing = feature off, team stays up. Nothing posted = nothing
+  stamped. Cost is logged, not recorded, like a Q&A mention.
 - **Fixed = a changed line, incremental runs only** (`inference.ValidateFixed`):
   listed `F<id>`, file in the push diff, one quoted line added or removed,
   none moved (in any shown file). A full review's diff is all `+`, so it

@@ -339,9 +339,7 @@ func (s *Store) FindingByComment(ctx context.Context, k PRKey, commentID int) (*
 // answer wins: a finding is answered once.
 func (s *Store) MarkFindingReplied(ctx context.Context, findingID int64, dispute *string) error {
 	_, err := s.pool.Exec(ctx, `
-		UPDATE findings SET replied_at = now(),
-			disputed_at = CASE WHEN $2::text IS NULL THEN NULL ELSE now() END,
-			dispute_text = $2::text
+		UPDATE findings SET replied_at = now(), dispute_text = $2::text
 		WHERE id = $1 AND replied_at IS NULL`, findingID, dispute)
 	return err
 }
