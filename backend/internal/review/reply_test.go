@@ -276,7 +276,7 @@ func TestFindingReplyFileExcerpt(t *testing.T) {
 
 		h.r.HandleFindingReply(context.Background(), p, "payments", nil)
 
-		if !strings.Contains(h.llm.Replies[0].Prompt, "Line 5 is past the end of the file as reviewed (2 lines)") {
+		if !strings.Contains(h.llm.Replies[0].Prompt, "Line 5 is past the end of the file (2 lines)") {
 			t.Errorf("prompt:\n%s", h.llm.Replies[0].Prompt)
 		}
 	})
@@ -322,6 +322,30 @@ func TestFindingReplyReadsTheFileAsReviewed(t *testing.T) {
 
 	if pr := h.llm.Replies[0].Prompt; !strings.Contains(pr, "    2  func old() {}") || strings.Contains(pr, "func new()") {
 		t.Errorf("prompt shows the head, not the reviewed file:\n%s", pr)
+	}
+}
+
+// The reviewed commit is gone (a rebase): the head stands in, labelled.
+func TestFindingReplyFallsBackToTheHead(t *testing.T) {
+	h, p := replyHarness(t)
+	h.st.byComment[501].RunCommit = "gone1"
+
+	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+
+	if pr := h.llm.Replies[0].Prompt; !strings.Contains(pr, "reviewed commit is gone") || !strings.Contains(pr, "    2  func new() {}") {
+		t.Errorf("prompt:\n%s", pr)
+	}
+}
+
+// Outside the allow-list, a plain reply is not automatic either.
+func TestFindingReplyRespectsAutoReviewAuthors(t *testing.T) {
+	h, p := replyHarness(t)
+	h.r.SetAuthorLists([]string{"bob"}, nil)
+
+	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+
+	if len(h.llm.Replies) != 0 {
+		t.Error("an author outside auto_review_authors must not buy a plain reply")
 	}
 }
 

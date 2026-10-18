@@ -60,6 +60,15 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		r.log.ErrorContext(ctx, "Could not extract project/repo from webhook payload")
 		return !mentioned, false
 	}
+	pr := payload.PullRequest
+	author := pr.Author.User.Name
+	// The cheap checks first, before a DB lookup on the single worker. These
+	// replies are excluded by design, not refused, so they log at Debug: a
+	// reviewer-to-reviewer exchange under a finding is no event.
+	if (pr.State != "" && pr.State != "OPEN") || author == "" || !strings.EqualFold(comment.Author.Name, author) {
+		r.log.DebugContext(ctx, prTag+": reply not answered: not the open PR's author")
+		return !mentioned, false
+	}
 	// Only a reply directly under a finding's comment is found: Bitbucket
 	// sends the immediate parent, and a reply nested under another reply
 	// names that reply. Known limit, accepted: walking the thread for every
@@ -72,10 +81,8 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		return false, false
 	}
 	where := fmt.Sprintf("%s:%d", f.FilePath, f.LineNumber)
-	pr := payload.PullRequest
-	author := pr.Author.User.Name
-	// Not this handler's. Without a mention the reply goes unanswered, and
-	// says why; a mention goes on to the Q&A, which logs for itself.
+	// Refused on a finding thread: without a mention the reply goes
+	// unanswered and says why; a mention goes on to the Q&A.
 	notAnswered := func(why string) (bool, bool) {
 		if mentioned {
 			return false, false
@@ -83,12 +90,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on finding %s not answered: %s", prTag, where, why))
 		return true, false
 	}
-	switch {
-	case pr.State != "" && pr.State != "OPEN":
-		return notAnswered("PR is " + strings.ToLower(pr.State))
-	case author == "" || !strings.EqualFold(comment.Author.Name, author):
-		return notAnswered("not the PR author")
-	case f.RepliedAt != nil:
+	if f.RepliedAt != nil {
 		return notAnswered("the thread was answered already")
 	}
 	if mentioned {
@@ -105,9 +107,13 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		// A mention, here as on the Q&A path: it reactivates an ignored PR
 		// and is the explicit override of the cost cap and the author lists.
 		r.reactivateIfIgnored(ctx, key, prTag)
-	} else if r.isIgnoredAuthor(author) {
-		// A plain reply is automatic: an author the team ignores buys none.
-		return notAnswered("ignored author")
+	} else if auto, ignored := r.autoReviewDecision(author); !auto {
+		// A plain reply is automatic: it obeys the author lists like an
+		// auto-review does, from one snapshot.
+		if ignored {
+			return notAnswered("ignored author")
+		}
+		return notAnswered("not in auto-review authors")
 	} else if state := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
 		return r.store.GetSkipState(ctx, key)
 	}); state != nil && state.IgnoredAt != nil {
@@ -126,22 +132,26 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	project, repo := key.Project, key.Repo
 
 	// The file as the finding saw it: its line number belongs to the commit
-	// it was posted at, and a later push moves the lines. Without the file
-	// the finding still stands on its own text: a failed fetch narrows the
-	// context, it does not skip the answer.
-	at := f.RunCommit
-	if at == "" {
-		at = pr.FromRef.LatestCommit
+	// it was posted at, and a later push moves the lines. A rebase can take
+	// that commit away; the head is then the best there is, and says so.
+	// Without any file the finding still stands on its own text: a failed
+	// fetch narrows the context, it does not skip the answer.
+	at, note := f.RunCommit, ""
+	content, err := r.fetchFindingFile(ctx, project, repo, at, f.FilePath)
+	if err != nil {
+		at, note = pr.FromRef.LatestCommit, "_The reviewed commit is gone; this is the PR head, its lines may have moved._\n\n"
+		content, err = r.fetchFindingFile(ctx, project, repo, at, f.FilePath)
 	}
 	excerpt := ""
-	if content, err := r.fetchFindingFile(ctx, project, repo, at, f.FilePath); err != nil {
+	if err != nil {
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: file for the finding reply unavailable: %v", prTag, err))
 	} else if n := len(fileLines(content)); f.LineNumber > n {
-		excerpt = fmt.Sprintf("_Line %d is past the end of the file as reviewed (%d lines)._", f.LineNumber, n)
+		excerpt = note + fmt.Sprintf("_Line %d is past the end of the file (%d lines)._", f.LineNumber, n)
 	} else {
-		excerpt = truncateRunes(excerptAround(content, f.LineNumber, replyExcerptLines), replyExcerptRunes)
+		excerpt = note + truncateRunes(excerptAround(content, f.LineNumber, replyExcerptLines), replyExcerptRunes)
 	}
-	agentsMD := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.DisplayID)
+	// AGENTS.md from the same commit, so code and guidelines match.
+	agentsMD := r.fetchRepoInstructions(ctx, project, repo, at, pr.ToRef.DisplayID)
 	prompt := inference.RenderFindingReplyPrompt(inference.FindingReplyPromptRequest{
 		Template:         r.replyTmpl,
 		RepoInstructions: agentsMD,
