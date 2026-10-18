@@ -22,6 +22,8 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - Read the PR total only when this run is priced.
 - `null` = unpriced, never rendered `$0.000`. Only
   `Usage.Cost.Provenance == Reported` is priced. Reply and Q&A cost is logged, not recorded (decided).
+  A tool loop logs each call and one total (`SumCosts`): unpriced if any
+  call is, the key spend its last reading.
 
 ## Prompt and findings
 
@@ -46,6 +48,14 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   (prompt asks, `guardName` cuts a leading one otherwise); extracted by code
   from the operator pattern, single-case parts title-cased; never stored or
   logged.
+- Language: a review is the PR author's, a Q&A the asker's; resolved user ->
+  team -> `de`, failing open to the team. Set for the commenter alone, by an
+  exact keyword or by `set_my_language` when their own text names the
+  language as a full word (never "en"/"de" there); a switch never stamps a
+  finding or reactivates an ignored PR. Prompts, enums,
+  keys and logs stay English; `{output_language}` above "## Untrusted
+  input"; `SwissSS` on model prose only, never code or `suggestion`. Evals
+  pin `en`. Every banner marker exists per language.
 - `.properties` size gate is NOT in `IsReviewable` (the rollup must count the
   file).
 
@@ -100,7 +110,21 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 ## Review pipeline
 
 - `Options.Owns` re-asked at the start of `prepare` and `post`.
-- A keyword mention is a staged review; a Q&A mention stays inline.
+- A keyword mention is a staged review; a Q&A mention stages its gateway
+  call (a tool loop) and posts back on the worker. Neither writes a run.
+- Mention tools: the PR, team and user come from the webhook, never a model
+  argument; output is an explicit allowlist struct (author lists by name,
+  decided; never env names, keys, tokens, hosts, riptide URL, disable
+  reasons); claims and exclude_repos from the live snapshot, never the
+  Reviewer's `cfg` copy; `Run` never calls Bitbucket.
+  `set_my_language` accepts only when the commenter's own text names the
+  language and asks (a switch word, or a comment of four words or fewer);
+  the posting stage stores it, with the confirmation, only when an answer
+  posts. At most `MaxToolRounds` rounds of `MaxToolCallsPerTurn` calls, then
+  one round with `tool_choice: none`, tools still defined; every call id
+  gets a result. Tool support
+  is read off the profile at startup, never required: without it a Q&A is
+  one plain call.
 - HTTP totals logged once at the end of `post`, never deferred in the entry.
   `post` runs on the review's ctx, never the job's.
 - The plan across stages carries no file bodies and no raw diff.

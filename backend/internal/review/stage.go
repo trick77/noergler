@@ -8,6 +8,7 @@ import (
 	"github.com/trick77/noergler/internal/httpstats"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/jira"
+	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/queue"
 	"github.com/trick77/noergler/internal/render"
 	"github.com/trick77/noergler/internal/store"
@@ -46,6 +47,9 @@ type reviewPlan struct {
 	// mention is the old skipAuthorCheck: this run answers a mention rather
 	// than passing the author gate.
 	mention bool
+	// lang is the PR author's language, resolved once in prepare: every
+	// text this run posts is in it.
+	lang lang.Lang
 	// started is when the review began, so the elapsed time the summary and
 	// the run row report is the author's wall clock, pool wait included.
 	started time.Time

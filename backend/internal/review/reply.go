@@ -9,6 +9,7 @@ import (
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/httpstats"
 	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
@@ -90,12 +91,32 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on finding %s not answered: %s", prTag, where, why))
 		return true, false
 	}
+	if mentioned {
+		text = extractQuestion(text, bot)
+	}
+	// "english" under a finding sets the author's language, even on a
+	// thread answered already: a command, not a reply, so it stamps nothing.
+	// Without a mention it obeys what a plain reply obeys: the bot does not
+	// post on a PR it was told to leave alone.
+	if l, ok := languageKeyword(text); ok {
+		if !mentioned {
+			if auto, _ := r.autoReviewDecision(author); !auto {
+				return notAnswered("language switch from an author not auto-reviewed")
+			}
+			if state := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
+				return r.store.GetSkipState(ctx, key)
+			}); state != nil && state.IgnoredAt != nil {
+				return notAnswered("language switch on an ignored PR")
+			}
+		}
+		r.setLanguage(ctx, key.Project, key.Repo, pr.ID, comment.ID, prTag, comment.Author.Name, l)
+		return true, false
+	}
 	if f.RepliedAt != nil {
 		return notAnswered("the thread was answered already")
 	}
 	if mentioned {
 		// "@bot review" on a finding thread is still a review.
-		text = extractQuestion(text, bot)
 		if text == "" || reviewKeywords[strings.ToLower(text)] {
 			return false, false
 		}
@@ -153,7 +174,9 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	// AGENTS.md from the same commit, so code and guidelines match.
 	agentsMD := r.fetchRepoInstructions(ctx, project, repo, at, pr.ToRef.DisplayID)
 	name := firstName(r.displayName, comment.Author.DisplayName)
+	l := r.languageFor(ctx, author)
 	prompt := inference.RenderFindingReplyPrompt(inference.FindingReplyPromptRequest{
+		Language:         l,
 		Template:         r.replyTmpl,
 		RepoInstructions: agentsMD,
 		Finding:          fmt.Sprintf("%s [%s]\n\n%s", where, f.Severity, f.CommentText),
@@ -169,7 +192,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		project: project, repo: repo, prID: pr.ID, prTag: prTag, where: where,
 		findingID: f.ID, replyTo: comment.ID, text: text,
 		agentsMD: agentsMD, counter: counter,
-		name: name, namesOn: r.displayName != nil,
+		name: name, namesOn: r.displayName != nil, lang: l,
 	}
 	infer := func(inferCtx context.Context) { job.res = r.llm.FindingReply(inferCtx, req) }
 	post := func(postCtx context.Context) { r.postFindingReply(postCtx, job) }
@@ -197,6 +220,7 @@ type replyJob struct {
 	// from names off, so a drifted directory format shows in the log.
 	name    string
 	namesOn bool
+	lang    lang.Lang
 	counter *httpstats.Counter
 	res     inference.FindingReplyResult
 }
@@ -217,7 +241,7 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 	dispute := res.Reply.Intent == "disputes"
 
 	reply, nameState := guardName(res.Reply.Reply, j.name, res.Reply.Intent, j.namesOn)
-	body := truncateRunes(reply, replyPostRunes)
+	body := truncateRunes(sharpS(j.lang, reply), replyPostRunes)
 	agentsLine := "none"
 	if line := res.Reply.AgentsMDLine; line != "" {
 		switch reason := inference.CheckAgentsMDLine(line, j.agentsMD); {
@@ -228,7 +252,8 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 		default:
 			agentsLine = "suggested"
 			fence := codeFence(line)
-			body += "\n\nIf this holds project-wide, consider adding to `AGENTS.md`:\n\n" +
+			body += j.lang.Pick("\n\nFalls das projektweit gilt, lohnt sich ein Eintrag in `AGENTS.md`:\n\n",
+				"\n\nIf this holds project-wide, consider adding to `AGENTS.md`:\n\n") +
 				fence + "markdown\n" + line + "\n" + fence
 		}
 	}

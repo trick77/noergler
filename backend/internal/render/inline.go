@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/lang"
 )
 
 // InlineComment builds the body of one inline review comment.
@@ -16,9 +17,15 @@ import (
 // The severity label is capitalised ("Issue:", "Suggestion:") and the comment
 // is wrapped; the suggestion block is appended verbatim, never wrapped, since
 // it is code.
-func InlineComment(f inference.ReviewFinding) string {
-	label := capitalize(f.Severity)
-	parts := []string{WrapProse(fmt.Sprintf("**%s:** %s", label, f.Comment))}
+func InlineComment(f inference.ReviewFinding, l lang.Lang) string {
+	label, comment := capitalize(f.Severity), f.Comment
+	if l != lang.EN {
+		if de, ok := severityDE[f.Severity]; ok {
+			label = de
+		}
+		comment = SwissSS(comment)
+	}
+	parts := []string{WrapProse(fmt.Sprintf("**%s:** %s", label, comment))}
 
 	if f.Suggestion != nil && *f.Suggestion != "" {
 		body := strings.Trim(*f.Suggestion, "\n")
@@ -30,10 +37,15 @@ func InlineComment(f inference.ReviewFinding) string {
 		if strings.Contains(body, "\n") {
 			fence = ""
 		}
-		parts = append(parts, fmt.Sprintf("**Suggested change:**\n```%s\n%s\n```", fence, body))
+		parts = append(parts, fmt.Sprintf(l.Pick("**Vorgeschlagene Änderung:**\n```%s\n%s\n```",
+			"**Suggested change:**\n```%s\n%s\n```"), fence, body))
 	}
 	return strings.Join(parts, "\n\n")
 }
+
+// severityDE labels the severity enum in German; the enum itself stays
+// English everywhere else.
+var severityDE = map[string]string{"issue": "Problem", "suggestion": "Vorschlag"}
 
 // capitalize renders the severity enum as a label: upper the first
 // character, lower the rest, so "issue" becomes "Issue".

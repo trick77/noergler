@@ -132,15 +132,28 @@ func (c *Client) Review(ctx context.Context, req ReviewRequest) ReviewResult {
 type MentionRequest struct {
 	Prompt       string
 	PromptTokens int
+	// Tools the model may call. Ignored on a model whose profile has no
+	// tool support: the answer is then one plain call, as before.
+	Tools []MentionTool
 }
 
-// MentionResult is one mention call.
+// MentionResult is one mention, one call or a tool loop of several.
 type MentionResult struct {
 	Outcome Outcome
 	// Answer is the rendered markdown, empty unless the outcome is OK.
 	Answer string
-	Cost   CallCost
-	Err    error
+	// Cost is the whole answer's, SumCosts of Rounds.
+	Cost CallCost
+	// Rounds is each call's own cost, one per round, for the per-call log.
+	Rounds []CallCost
+	// ToolCalls names each tool run, in order; CappedCalls counts the calls
+	// past MaxToolCallsPerTurn that were refused.
+	ToolCalls   []string
+	CappedCalls int
+	// ToolOverflow is OutcomeTooLarge caused by the tool history, not by
+	// the PR: the first round fitted.
+	ToolOverflow bool
+	Err          error
 }
 
 // Mention answers a developer's question about a PR.
@@ -149,12 +162,21 @@ type MentionResult struct {
 // parser falls back to the raw text, so a model that ignores the envelope
 // still produces a usable reply.
 func (c *Client) Mention(ctx context.Context, req MentionRequest) MentionResult {
+	roomForTools := !c.Ready() || req.PromptTokens+ToolHeadroomTokens <= c.FitCeiling()
+	if len(req.Tools) > 0 && c.tools && roomForTools {
+		return c.mentionWithTools(ctx, req)
+	}
 	resp, outcome, err := c.answer(ctx, req.Prompt, req.PromptTokens, nil)
 	if outcome != OutcomeOK {
 		return MentionResult{Outcome: outcome, Err: err}
 	}
-	return MentionResult{Answer: ParseMention(resp.Content), Cost: CostFrom(resp)}
+	cost := CostFrom(resp)
+	return MentionResult{Answer: ParseMention(resp.Content), Cost: cost, Rounds: []CallCost{cost}}
 }
+
+// Tools reports whether the model's profile takes tool calls, as read at
+// startup. Asked of the profile, never probed.
+func (c *Client) Tools() bool { return c.tools }
 
 // TooLargeError is the pre-flight refusal: the assembled prompt exceeds the
 // context window less the reply reserve.

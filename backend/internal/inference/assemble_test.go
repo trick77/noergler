@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/trick77/noergler/internal/diff"
+	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/prompts"
 	"github.com/trick77/noergler/internal/tokens"
 )
@@ -130,6 +131,11 @@ func assembleCases(template string) map[string]AssembleRequest {
 		{ID: 7, FilePath: "a.go", LineNumber: &line, Severity: "issue", CommentText: "old finding"},
 	}
 	cases["everything"] = every
+
+	// The zero value is German, so every case above pins the German block.
+	english := base(files1)
+	english.Language = lang.EN
+	cases["english"] = english
 
 	return cases
 }

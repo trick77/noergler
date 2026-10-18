@@ -51,6 +51,7 @@ teams:
       # agents_md_warn_tokens: 4000                   # optional, default: instance REVIEW_AGENTS_MD_WARN_TOKENS
       # agents_md_max_tokens: 7000                    # optional, default: instance REVIEW_AGENTS_MD_MAX_TOKENS
       # opt_out_branch_keyword: noergloff             # optional, default: instance REVIEW_OPT_OUT_BRANCH_KEYWORD
+      # language: de                                  # optional, de|en, default: instance REVIEW_LANGUAGE; a user's own choice wins
     jira:                                             # optional block; the Jira URL and user are instance-wide
       acceptance_criteria_prefixes: [AC, AK, DoD]     # optional, default: instance JIRA_ACCEPTANCE_CRITERIA_PREFIXES
     riptide:                                          # optional block; present = forwarding on. Both fields required when present

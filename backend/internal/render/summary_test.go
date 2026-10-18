@@ -8,6 +8,7 @@ import (
 
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/jira"
+	"github.com/trick77/noergler/internal/lang"
 )
 
 // summaryGolden holds the expected summary for one case. The input for each
@@ -52,6 +53,7 @@ func testTicket(key, title, ac string) *jira.Ticket {
 // compliance check on, a 4000-token AGENTS.md warn threshold and a $5 cap.
 func base() SummaryInput {
 	return SummaryInput{
+		Lang:                  lang.EN,
 		Summary:               inference.NewReviewSummary(),
 		TicketComplianceCheck: true,
 		AgentsMDWarnTokens:    4000,

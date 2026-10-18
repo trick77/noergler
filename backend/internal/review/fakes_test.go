@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/jira"
+	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/riptide"
 	"github.com/trick77/noergler/internal/store"
 )
@@ -191,6 +193,9 @@ type fakeStore struct {
 	existing   []store.Finding
 	prCost     *int64
 	rollup     *store.RollupSnapshot
+	// languages is user_settings, keyed by lower-cased user name.
+	languages map[string]lang.Lang
+	status    *store.PRStatus
 
 	upsertErr  error
 	attemptErr error
@@ -387,6 +392,40 @@ func (f *fakeStore) FindingByComment(_ context.Context, _ store.PRKey, commentID
 	return f.byComment[commentID], nil
 }
 
+func (f *fakeStore) PRStatus(context.Context, store.PRKey, string) (*store.PRStatus, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return nil, err
+	}
+	if f.status == nil {
+		return &store.PRStatus{}, nil
+	}
+	return f.status, nil
+}
+
+func (f *fakeStore) UserLanguage(_ context.Context, userName string) (lang.Lang, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return "", err
+	}
+	return f.languages[strings.ToLower(userName)], nil
+}
+
+func (f *fakeStore) SetUserLanguage(_ context.Context, userName string, l lang.Lang) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return err
+	}
+	if f.languages == nil {
+		f.languages = map[string]lang.Lang{}
+	}
+	f.languages[strings.ToLower(userName)] = l
+	return nil
+}
+
 func (f *fakeStore) MarkFindingReplied(_ context.Context, findingID int64, dispute *string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -460,6 +499,11 @@ type fakeLLM struct {
 	reply   inference.FindingReplyResult
 	// onReview runs during the gateway call, between prepare and post.
 	onReview func()
+	// onMention plays the model in a tool loop: it may run the offered
+	// tools and returns the answer.
+	onMention func(ctx context.Context, tools []string, run func(name, args string) string) string
+	// mentionOutcome, when set, is what an onMention loop ends in.
+	mentionOutcome inference.Outcome
 
 	Reviews  []inference.ReviewRequest
 	Mentions []inference.MentionRequest
@@ -498,8 +542,27 @@ func (f *fakeLLM) Review(_ context.Context, req inference.ReviewRequest) inferen
 	return f.review
 }
 
-func (f *fakeLLM) Mention(_ context.Context, req inference.MentionRequest) inference.MentionResult {
+func (f *fakeLLM) Mention(ctx context.Context, req inference.MentionRequest) inference.MentionResult {
 	f.Mentions = append(f.Mentions, req)
+	if f.onMention != nil {
+		var names []string
+		for _, t := range req.Tools {
+			names = append(names, t.Name)
+		}
+		run := func(name, args string) string {
+			for _, t := range req.Tools {
+				if t.Name == name {
+					return t.Run(ctx, args)
+				}
+			}
+			return ""
+		}
+		answer := f.onMention(ctx, names, run)
+		if f.mentionOutcome != inference.OutcomeOK {
+			return inference.MentionResult{Outcome: f.mentionOutcome}
+		}
+		return inference.MentionResult{Outcome: inference.OutcomeOK, Answer: answer}
+	}
 	return f.mention
 }
 

@@ -10,6 +10,7 @@ import (
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/httpstats"
 	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
@@ -56,15 +57,29 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	// this one then reports only what the mention itself spent, which is
 	// two units of work reported separately rather than merged.
 	ctx, httpCounter := httpstats.WithScope(ctx)
-	defer r.logHTTPTotals(ctx, prTag, httpCounter)
-
-	// Any mention reactivates a PR ignored after its summary was removed.
-	// Clearing the state (and the stale summary id, which Reactivate does)
-	// lets the next review post a fresh summary and stops the review guard
-	// from re-ignoring the PR.
-	r.reactivateIfIgnored(ctx, key, prTag)
+	// A staged Q&A logs its totals when its posting finishes, like a review.
+	staged := false
+	defer func() {
+		if !staged {
+			r.logHTTPTotals(ctx, prTag, httpCounter)
+		}
+	}()
 
 	question := extractQuestion(comment.Text, r.bitbucket.BotUsername())
+
+	// "@bot english" sets the commenter's own language: a keyword, decided
+	// by code, never by the model, and no inference call. A setting, not
+	// engagement with the PR, so it does not reactivate an ignored one.
+	if l, ok := languageKeyword(question); ok {
+		r.setLanguage(ctx, project, repo, pr.ID, comment.ID, prTag, comment.Author.Name, l)
+		return false
+	}
+
+	// Any other mention reactivates a PR ignored after its summary was
+	// removed. Clearing the state (and the stale summary id, which
+	// Reactivate does) lets the next review post a fresh summary and stops
+	// the review guard from re-ignoring the PR.
+	r.reactivateIfIgnored(ctx, key, prTag)
 
 	// An empty question, or one of the review keywords, means "review this".
 	// It is a review like any other, so it takes the staged path: the
@@ -84,14 +99,18 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		return false
 	}
 	r.log.InfoContext(ctx, fmt.Sprintf("Handling mention Q&A on %s: %q", prTag, question))
+	// The answer is the asker's, so it is in their language, not the
+	// PR author's.
+	l := r.languageFor(ctx, comment.Author.Name)
 
 	// Q&A runs without the review's gates and without compression.
 	rawDiff, err := r.bitbucket.FetchPRDiff(ctx, project, repo, pr.ID, 0)
 	var tooLarge *bitbucket.ContentTooLarge
 	if errors.As(err, &tooLarge) {
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: %v - mention not answered", prTag, err))
-		r.reply(ctx, project, repo, pr.ID, comment.ID, fmt.Sprintf(
-			"This PR's diff exceeds %d MiB, too large to answer questions about.", tooLarge.Limit/(1024*1024)))
+		r.reply(ctx, project, repo, pr.ID, comment.ID, fmt.Sprintf(l.Pick(
+			"Der Diff dieses PRs ist grösser als %d MiB, zu gross, um Fragen dazu zu beantworten.",
+			"This PR's diff exceeds %d MiB, too large to answer questions about."), tooLarge.Limit/(1024*1024)))
 		return false
 	}
 	if err != nil {
@@ -102,7 +121,8 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	files, _, _, _ := r.prepareFiles(ctx, project, repo, rawDiff, pr.FromRef.LatestCommit, prTag)
 	if len(files) == 0 {
 		r.log.InfoContext(ctx, prTag+": mention not answered by the model - no reviewable files")
-		r.reply(ctx, project, repo, pr.ID, comment.ID, "No reviewable files in this PR.")
+		r.reply(ctx, project, repo, pr.ID, comment.ID, l.Pick("Dieser PR enthält keine prüfbaren Dateien.",
+			"No reviewable files in this PR."))
 		return false
 	}
 
@@ -116,16 +136,71 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		RepoInstructions: repoInstructions,
 		TicketContext:    renderTicketContext(ticket, parent),
 		PRDescription:    r.prDescription(ctx, prTag, pr),
+		Language:         l,
 	})
 
-	result := r.llm.Mention(ctx, inference.MentionRequest{
+	job := &mentionJob{
+		project: project, repo: repo, prID: pr.ID, replyTo: comment.ID, lang: l, counter: httpCounter,
+		ask: &mentionAsk{key: key, prTag: prTag, user: comment.Author.Name, text: question, lang: l},
+	}
+	req := inference.MentionRequest{
 		Prompt:       prompt,
 		PromptTokens: r.tokens.Count(inference.MentionSystemMessage) + r.tokens.Count(prompt),
-	})
-	// Only when a call actually happened: the too-large branch decides before
-	// any request, and a transport error returns with no cost.
-	if result.Outcome == inference.OutcomeOK {
-		r.logCost(ctx, prTag, result.Cost)
+		Tools:        r.mentionTools(job.ask),
+	}
+	infer := func(inferCtx context.Context) { job.res = r.llm.Mention(inferCtx, req) }
+	post := func(postCtx context.Context) { r.postMention(postCtx, job) }
+	if sched == nil {
+		// A direct caller or a test: inline, as before.
+		staged = true
+		infer(ctx)
+		post(ctx)
+		return false
+	}
+	// The gateway call, a tool loop of up to MaxToolRounds+1 calls, goes to
+	// the inference pool instead of holding the Bitbucket worker; the tools
+	// read the store only, never Bitbucket.
+	staged = true
+	sched.Stage(ctx, key, team, infer, post)
+	return true
+}
+
+// mentionJob is what a Q&A's posting stage needs from its prepare. The
+// prompt does not cross: inference holds it.
+type mentionJob struct {
+	project, repo string
+	prID, replyTo int
+	// lang is the asker's at the start; a switch this turn overrides it.
+	lang    lang.Lang
+	ask     *mentionAsk
+	counter *httpstats.Counter
+	res     inference.MentionResult
+}
+
+// postMention is the Q&A's posting stage, on the worker.
+func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
+	prTag := j.ask.prTag
+	defer r.logHTTPTotals(ctx, prTag, j.counter)
+	project, repo, prID, replyTo := j.project, j.repo, j.prID, j.replyTo
+	result := j.res
+	// The asker's language until a switch is stored, which happens only
+	// with an answer to post: a failed loop leaves the language alone.
+	l := j.lang
+	// One line per call, and only when one happened: the too-large branch
+	// decides before any request, and a transport error returns with no
+	// cost. A tool loop adds its total, never stored (decided).
+	for _, c := range result.Rounds {
+		r.logCost(ctx, prTag, c)
+	}
+	if len(result.Rounds) > 1 {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: Q&A took %d calls, tools %v (%d refused over the cap), total %s",
+			prTag, len(result.Rounds), result.ToolCalls, result.CappedCalls, costTotal(result.Cost)))
+	}
+	// A tool loop can run for minutes: the team may have given the repo up
+	// meanwhile, as in a review's post.
+	if r.owns != nil && !r.owns(project, repo) {
+		r.log.InfoContext(ctx, prTag+": repo no longer claimed by the team, Q&A not posted")
+		return
 	}
 
 	// No review_attempts row on THIS path, deliberately. A mention asking
@@ -139,25 +214,50 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	case inference.OutcomeTimedOut:
 		r.log.ErrorContext(ctx, fmt.Sprintf("Mention Q&A on %s aborted - no response within %.0fs",
 			prTag, inference.CallTimeout.Seconds()))
-		r.reply(ctx, project, repo, pr.ID, comment.ID, fmt.Sprintf(
+		r.reply(ctx, project, repo, prID, replyTo, fmt.Sprintf(l.Pick(
+			"⚠️ Keine Antwort vom Modell innerhalb von %d Minuten. Bitte nochmals versuchen, oder die Frage "+
+				"vereinfachen, falls sie viel Kontext braucht.",
 			"⚠️ No response from the model within %d minutes. Please try again, or simplify the question "+
-				"if it requires a lot of context.", timeoutMinutes))
+				"if it requires a lot of context."), timeoutMinutes))
 	case inference.OutcomeTooLarge:
 		r.log.WarnContext(ctx, prTag+": mention prompt too large for the model's context window")
-		r.reply(ctx, project, repo, pr.ID, comment.ID, inference.MentionTooLargeReply)
+		reply := inference.MentionTooLargeReply(l)
+		if result.ToolOverflow {
+			reply = inference.MentionToolOverflowReply(l)
+		}
+		r.reply(ctx, project, repo, prID, replyTo, reply)
 	case inference.OutcomeOK:
 		// An empty answer still gets a reply: a mention is never left
 		// silently unanswered.
-		answer := result.Answer
-		if answer == "" {
-			answer = inference.MentionEmptyReply
+		// The switch is stored here and confirmed by code, in the new
+		// language, whatever the model wrote about it.
+		prefix := ""
+		if s := j.ask.switched; s != "" {
+			if r.storeLanguage(ctx, prTag, j.ask.user, s) == nil {
+				l, prefix = s, languageConfirmation(s)+"\n\n"
+			} else {
+				prefix = l.Pick("Die Sprache konnte gerade nicht gespeichert werden. Bitte später nochmals versuchen.",
+					"The language could not be saved right now. Please try again later.") + "\n\n"
+			}
 		}
-		r.reply(ctx, project, repo, pr.ID, comment.ID, answer)
+		answer := sharpS(l, result.Answer)
+		if answer == "" {
+			answer = inference.MentionEmptyReply(l)
+		}
+		answer = prefix + answer
+		r.reply(ctx, project, repo, prID, replyTo, answer)
 		r.log.InfoContext(ctx, "Posted Q&A reply on "+prTag)
 	default:
 		r.log.ErrorContext(ctx, fmt.Sprintf("Mention Q&A on %s failed: %v", prTag, result.Err))
 	}
-	return false
+}
+
+// costTotal is a summed cost for the log: 3 decimals, or "unpriced".
+func costTotal(c inference.CallCost) string {
+	if c.NanoUSD == nil {
+		return "unpriced"
+	}
+	return "$" + inference.FormatUSD3(*c.NanoUSD)
 }
 
 // reactivateIfIgnored clears the ignored state a removed summary left, so a

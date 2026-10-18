@@ -29,6 +29,14 @@ an incident or an eval run: read the reason before relaxing a rule.
   recurrence.
 - Finding replies author-only: a reviewer's reply used up the one answer
   before the author could make their case.
+- Language block above the untrusted input: below it the prompt calls
+  everything data, so an instruction there is one the model may ignore; and
+  the prefix up to it is the same for every PR in that language.
+- Language by keyword, not by the model: the model reads the diff, so an
+  injection could flip a user's language; code reads only the commenter's text.
+- Language per user, instance-wide: it is the person's, whichever team
+  reviews them. A review is the author's, so a reviewer's switch cannot
+  change the author's PR.
 - One-pass placeholders: sequential substitution would expand a `{files}`
   inside user text.
 - `.properties` gate outside `IsReviewable`: hand edits yes, regenerated i18n
@@ -67,6 +75,17 @@ an incident or an eval run: read the reason before relaxing a rule.
 - `Owns` re-asked: a repo given up mid-review re-created its purged PR row.
 - Keyword mention staged: inline it held the worker and ran outside the pool,
   so inference could reach cap+1.
+- Q&A staged: a tool loop is up to four gateway calls of 300s each, which
+  inline would hold the Bitbucket worker for every team's PRs.
+- Mention tools read-only but the language: a write tool is a setting any
+  commenter, or any injection the model reads, could change. The one write
+  is the commenter's own language, and code checks their words first.
+- Author lists by name in `team_config`: they are Bitbucket user names any
+  commenter on the team's PRs sees in Bitbucket anyway, and "who is
+  auto-reviewed" is what a settings question asks (user, 2026-10-18). Counts
+  stay on the unauthenticated dashboard.
+- Tool support never required: `Require(Needs{Tools})` would disable a team
+  on a model without it, for a feature a Q&A can do without.
 - `handedOff`: the job path once released the key unconditionally, so a push
   or merge ran during a staged mention's inference.
 - HTTP totals not deferred: a defer fires before the staged call (`inference=0`).

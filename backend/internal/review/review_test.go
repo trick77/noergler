@@ -13,6 +13,7 @@ import (
 
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
@@ -63,6 +64,9 @@ func newHarness(t *testing.T, tweak func(*harness)) *harness {
 		MaxPRCostUSD:          5.0,
 		TicketComplianceCheck: true,
 		UsePRDescription:      true,
+		// The existing expectations are English; language_test.go covers
+		// the German default.
+		Language: lang.EN,
 	}
 
 	if tweak != nil {

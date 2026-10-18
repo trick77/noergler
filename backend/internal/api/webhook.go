@@ -247,8 +247,9 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 					return handedOff
 				}
 			}
-			// A keyword mention stages a review, so the PR's hold has to
-			// outlive this job: the staged posting releases it.
+			// A keyword mention stages a review and a Q&A its gateway call,
+			// so the PR's hold has to outlive this job: the staged posting
+			// releases it.
 			return rv.HandleMention(ctx, p, slug, sched)
 		})
 		httpx.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "mention", Queue: "queued"})

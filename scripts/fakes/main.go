@@ -356,6 +356,11 @@ func main() {
 		}
 		var req struct {
 			ResponseFormat json.RawMessage `json:"response_format"`
+			Tools          []json.RawMessage
+			Messages       []struct {
+				Role    string `json:"role"`
+				Content any    `json:"content"`
+			} `json:"messages"`
 		}
 		_ = json.Unmarshal(body, &req)
 
@@ -368,13 +373,27 @@ func main() {
 		}
 		// Priced, so the run stores a cost instead of falling open to NULL.
 		w.Header().Set("x-litellm-response-cost", "0.0123")
+		message := map[string]any{"role": "assistant", "content": content}
+		finish := "stop"
+		// A Q&A with tools on offer: one round asking for pr_status, then the
+		// answer quoting what the tool returned, so the log shows the loop.
+		if len(req.Tools) > 0 || hasToolResult(req.Messages) {
+			if result, ok := lastToolResult(req.Messages); ok {
+				answer, _ := json.Marshal(map[string]any{"answer": "pr_status said: " + result})
+				message["content"] = string(answer)
+			} else {
+				message["content"] = ""
+				message["tool_calls"] = []any{map[string]any{"id": "call_1", "type": "function",
+					"function": map[string]any{"name": "pr_status", "arguments": "{}"}}}
+				finish = "tool_calls"
+			}
+		}
 		writeJSON(w, r, map[string]any{
-			"id":     "chatcmpl-fake",
-			"object": "chat.completion",
-			"model":  gatewayAlias,
-			"choices": []any{map[string]any{"index": 0, "finish_reason": "stop",
-				"message": map[string]any{"role": "assistant", "content": content}}},
-			"usage": map[string]any{"prompt_tokens": 1200, "completion_tokens": 300, "total_tokens": 1500},
+			"id":      "chatcmpl-fake",
+			"object":  "chat.completion",
+			"model":   gatewayAlias,
+			"choices": []any{map[string]any{"index": 0, "finish_reason": finish, "message": message}},
+			"usage":   map[string]any{"prompt_tokens": 1200, "completion_tokens": 300, "total_tokens": 1500},
 		})
 	})
 
@@ -697,6 +716,28 @@ const cannedReview = `{
   "fixed": [],
   "compliance_requirements": null
 }`
+
+type chatMessage = struct {
+	Role    string `json:"role"`
+	Content any    `json:"content"`
+}
+
+func hasToolResult(msgs []chatMessage) bool {
+	_, ok := lastToolResult(msgs)
+	return ok
+}
+
+// lastToolResult is the content of the last tool message, if the history
+// has one: the fake answers a Q&A once its tool has run.
+func lastToolResult(msgs []chatMessage) (string, bool) {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role == "tool" {
+			s, _ := msgs[i].Content.(string)
+			return s, true
+		}
+	}
+	return "", false
+}
 
 func writeJSON(w http.ResponseWriter, r *http.Request, body any) {
 	w.Header().Set("Content-Type", "application/json")

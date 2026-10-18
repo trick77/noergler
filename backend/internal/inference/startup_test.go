@@ -29,6 +29,10 @@ type fakeGateway struct {
 	// chatStatus and chatBody override the completion response.
 	chatStatus int
 	chatBody   string
+	// chatBodies, when set, answer the completions in turn; the last one
+	// repeats. chatRequests holds every completion request.
+	chatBodies   []string
+	chatRequests [][]byte
 	// costHeader, when set, is sent as the per-call cost.
 	costHeader string
 	// delay stalls the completion route, for timeout tests.
@@ -71,6 +75,10 @@ func (f *fakeGateway) start(t *testing.T, alias string) *httptest.Server {
 				w.WriteHeader(f.chatStatus)
 			}
 			body := f.chatBody
+			if n := len(f.chatBodies); n > 0 {
+				body = f.chatBodies[min(f.gotChat, n)-1]
+			}
+			f.chatRequests = append(f.chatRequests, f.lastChatBody)
 			if body == "" {
 				body = `{"choices":[{"message":{"role":"assistant","content":"ok"}}],` +
 					`"usage":{"prompt_tokens":5,"completion_tokens":1,"total_tokens":6}}`
@@ -143,6 +151,10 @@ func TestStartupResolvesWindow(t *testing.T) {
 	}
 	if f.gotChat != 1 {
 		t.Errorf("ping ran %d times, want 1", f.gotChat)
+	}
+	// Read off the profile, never probed: the test model takes tools.
+	if !c.Tools() {
+		t.Error("Tools() = false for a profile with tool support")
 	}
 }
 

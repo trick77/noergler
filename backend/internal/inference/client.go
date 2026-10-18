@@ -32,6 +32,10 @@ type Client struct {
 	// ping, which is the one every review sends too. Empty before Startup.
 	sent string
 
+	// tools is the profile's tool support, read at startup. A model without
+	// it answers a mention in one plain call; it is never a startup fault.
+	tools bool
+
 	// window is the context window resolved at startup, 0 until Startup runs.
 	// An explicit OPENAI_CONTEXT_WINDOW wins and is set here directly.
 	window int

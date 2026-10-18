@@ -225,6 +225,7 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 	var runtime *Runtime
 	reviewer := review.New(review.Options{
 		Owns:      func(project, repo string) bool { return runtime.Team().Owns(project, repo) },
+		Team:      func() *config.Team { return runtime.Team() },
 		TeamSlug:  team.Slug,
 		Bitbucket: d.Bitbucket,
 		LLM:       llm,

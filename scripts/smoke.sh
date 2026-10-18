@@ -81,6 +81,13 @@ echo "GET /teams/$team: $(curl -s -H 'Authorization: Bearer s' "localhost:$port/
 # A signed replay of the sample delivery: the only end-to-end proof that the
 # route, the HMAC, the ownership check and the queue are wired together.
 echo "POST /webhook/$team (signed): $(PORT="$port" TEAM="$team" SECRET=s scripts/replay.sh "$payload" pr:opened)"
+# A Q&A mention: the fake gateway asks for pr_status once, then answers with
+# what the tool returned, so the log shows the staged tool loop end to end.
+mention="$tmp/mention.json"
+sed -e 's/"eventKey": "pr:opened"/"eventKey": "pr:comment:added"/' -e '$d' "$payload" > "$mention"
+printf '%s\n' ',  "comment": {"id": 900, "text": "@bot why was this PR reviewed?", "author": {"name": "jan.username", "slug": "jan.username", "displayName": "Jan"}}' '}' >> "$mention"
+sleep 1
+echo "POST /webhook/$team (mention): $(PORT="$port" TEAM="$team" SECRET=s scripts/replay.sh "$mention" pr:comment:added)"
 echo "POST /webhook/$team (bad signature): HTTP $(curl -s -o /dev/null -w '%{http_code}' -X POST \
   -H 'X-Hub-Signature: sha256=deadbeef' --data-binary "@$payload" "localhost:$port/webhook/$team")"
 
@@ -133,7 +140,7 @@ sleep 2
 kill -TERM "$pid"
 wait "$pid" || true
 echo "--- log"
-grep -E "version|Database|Bitbucket:|Jira:|team_disabled|team_ready|teams_ready|http_request|stopped|listening|DISABLED|queue\[|priced by the gateway|HTTP totals|cost headers|Review of |context_window |context window |PR description " "$tmp/serve.log"
+grep -E "version|Database|Bitbucket:|Jira:|team_disabled|team_ready|teams_ready|http_request|stopped|listening|DISABLED|queue\[|priced by the gateway|HTTP totals|cost headers|Review of |context_window |context window |PR description |calls, tools|A reply on" "$tmp/serve.log"
 echo "--- review posted"
 grep -c "comment posted" "$tmp/fakes.log" || true
 echo "--- onboarding writes seen by bitbucket (want a create, a grant and a refusal)"

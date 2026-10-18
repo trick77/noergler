@@ -80,6 +80,8 @@ type Reviewer struct {
 	// owns is the live claim check: a repo can be given up while its
 	// review is queued or in inference.
 	owns func(project, repo string) bool
+	// team is the live snapshot behind owns, for what team_config shows.
+	team func() *config.Team
 }
 
 // Options builds a Reviewer. Bitbucket, the store, the inference client and
@@ -105,6 +107,9 @@ type Options struct {
 	Log                *slog.Logger
 	// Owns reports whether the team still claims the repo; nil claims all.
 	Owns func(project, repo string) bool
+	// Team is the live team snapshot (claims, exclude_repos, Jira, riptide),
+	// read by team_config only; nil leaves those fields out.
+	Team func() *config.Team
 }
 
 // New builds a Reviewer for one team.
@@ -126,6 +131,7 @@ func New(opt Options) *Reviewer {
 		displayName:       opt.DisplayNamePattern,
 		log:               opt.Log,
 		owns:              opt.Owns,
+		team:              opt.Team,
 	}
 	r.usePRDescription.Store(opt.Config.UsePRDescription)
 	return r

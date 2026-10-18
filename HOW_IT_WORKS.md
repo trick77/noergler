@@ -231,7 +231,16 @@ gateway key's total spend is shown as a gauge where available, never summed.
 A comment mentioning the bot is answered rather than reviewed. It runs without
 the review gates and without compression, reads the PR diff and the ticket, and
 replies in the comment's own thread. Keywords route the question; anything else
-is answered as a question about the PR.
+is answered as a question about the PR, or about noergler on it. On a model
+that takes tools the answer may call `team_config` (the team's effective
+settings: claimed projects, excluded repos, both author lists by name, the
+built-in skipped dirs, files and extensions, and whether the asker is on the
+lists; a settings answer is a Markdown table),
+`pr_status` (runs, the latest outcomes and skip reasons, cost against the cap)
+and `set_my_language` (the asker's language, only when their own comment names
+it). Up to three tool rounds, four calls each, then a final round without
+tools. The gateway calls are staged off the worker like a review; the reply is
+posted back on it.
 
 The PR author's reply on one of noergler's finding threads needs no mention.
 The route queues any non-empty reply not written by the bot (Bitbucket's
@@ -253,6 +262,23 @@ always. `BITBUCKET_DISPLAY_NAME_PATTERN` extracts it from the Bitbucket
 is told to use it only when acknowledging or accepting a dispute; on a question
 or any other intent code cuts a leading address from the answer. The name is
 never stored or logged. Q&A answers and reviews carry no name.
+
+## 12a. Language
+
+noergler writes German by default (Swiss spelling, generic masculine),
+English on request. `REVIEW_LANGUAGE` / teams.yaml `language` set the team
+default; a user's own choice wins. `@noergler english` (or `deutsch`, `de`,
+`en`, `auf Englisch`, ...), or the same word alone as a reply under a
+finding, sets the commenter's language: an exact keyword, matched by code,
+no model call, confirmed in the new language. It is stored per Bitbucket user
+name, instance-wide, and kept across PRs.
+
+Whose language: a review (summary, inline findings, notices, banners, the
+"Fixed in" reply) is the PR author's, whoever triggered it; a Q&A answer is
+the asker's; a finding reply is the author's. Prompts, enums, JSON keys, logs
+and alert names stay English. The prompt's language block sits above the
+untrusted input, so the cache prefix forks once per language. A `ß` the model
+writes is turned into `ss` outside code. Evals always run in English.
 
 ## 13. Terminal events and the riptide rollup
 

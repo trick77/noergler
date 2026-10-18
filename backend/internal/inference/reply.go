@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/trick77/llmwire"
+	"github.com/trick77/noergler/internal/lang"
 )
 
 // answer is the one call a mention and a finding reply share: the fit
@@ -63,6 +64,8 @@ type FindingReplyPromptRequest struct {
 	Reply string
 	// AuthorFirstName is the author's first name, or empty when unknown.
 	AuthorFirstName string
+	// Language is the author's; the zero value writes German.
+	Language lang.Lang
 }
 
 // RenderFindingReplyPrompt assembles the prompt in one substitution pass,
@@ -82,6 +85,7 @@ func RenderFindingReplyPrompt(req FindingReplyPromptRequest) string {
 		PlaceholderFileExcerpt, excerpt,
 		PlaceholderReply, req.Reply,
 		PlaceholderAuthorName, authorName,
+		PlaceholderOutputLanguage, OutputLanguageBlock(req.Language),
 	).Replace(req.Template)
 }
 

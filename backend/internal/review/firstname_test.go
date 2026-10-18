@@ -86,6 +86,10 @@ func TestGuardName(t *testing.T) {
 		{"name as subject is no address", "Jan said line 2.", "Jan", "question", "Jan said line 2.", "kept"},
 		{"mid-reply kept", "As Jan said, line 2.", "Jan", "question", "As Jan said, line 2.", "kept"},
 		{"word boundary", "January release.", "Jan", "question", "January release.", "unused"},
+		{"German greeting", "Danke Jan, die Prüfung steht auf Zeile 2.", "Jan", "question", "Die Prüfung steht auf Zeile 2.", "cut"},
+		{"Swiss greeting", "Hoi Jan – siehe Zeile 2.", "Jan", "other", "Siehe Zeile 2.", "cut"},
+		{"two-word German greeting", "Gern geschehen Jan, die Prüfung steht auf Zeile 2.", "Jan", "question", "Die Prüfung steht auf Zeile 2.", "cut"},
+		{"German acknowledges may", "Alles klar Jan, ist notiert.", "Jan", "acknowledges", "Alles klar Jan, ist notiert.", "used"},
 		{"umlaut boundary", "Jürgen, see.", "Jürg", "question", "Jürgen, see.", "unused"},
 		{"NFD reply", "Jürg, see line 2.", "Jürg", "question", "See line 2.", "cut"},
 	}

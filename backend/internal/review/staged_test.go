@@ -175,20 +175,32 @@ func TestKeywordMentionSkipsTheAuthorGate(t *testing.T) {
 	}
 }
 
-// A Q&A mention is not a review and does not stage: it runs its single
-// gateway call and posts one reply inline.
-func TestQuestionMentionDoesNotStage(t *testing.T) {
+// A Q&A mention stages its gateway call, a tool loop of several calls, so it
+// does not hold the Bitbucket worker; the reply is posted back on it. It is
+// still no review: no run, no attempt.
+func TestQuestionMentionStagesItsCall(t *testing.T) {
 	h := newHarness(t, nil)
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "It parses."}
 
 	sched := &deferredScheduler{}
-	h.r.HandleMention(context.Background(),
+	handedOff := h.r.HandleMention(context.Background(),
 		mentionPayload("@noergler what does this do?", "alice"), "platform", sched)
 
-	if sched.infer != nil {
-		t.Error("a Q&A mention must not stage a review")
+	if !handedOff || sched.infer == nil {
+		t.Fatal("a Q&A mention must stage its gateway call and report handedOff")
 	}
-	if len(h.llm.Mentions) != 1 {
-		t.Errorf("mention calls = %d, want 1", len(h.llm.Mentions))
+	if len(h.llm.Mentions) != 0 || len(h.bb.Replies) != 0 {
+		t.Error("the call and the reply must wait for the staged stages")
+	}
+	sched.finish()
+	if len(h.llm.Mentions) != 1 || len(h.bb.Replies) != 1 || h.bb.Replies[0].Text != "It parses." {
+		t.Errorf("mention calls = %d, replies = %+v", len(h.llm.Mentions), h.bb.Replies)
+	}
+	if len(h.llm.Reviews) != 0 || len(h.st.Runs) != 0 || len(h.st.Attempts) != 0 {
+		t.Error("a Q&A must not review or record an attempt")
+	}
+	if len(h.llm.Mentions[0].Tools) != 3 {
+		t.Errorf("tools offered = %d, want 3", len(h.llm.Mentions[0].Tools))
 	}
 }
 

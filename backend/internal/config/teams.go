@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/trick77/noergler/internal/lang"
 )
 
 // TeamsFileError indicates that teams.yaml as a whole is unusable and startup must abort.
@@ -295,6 +297,20 @@ func (b *blockErrors) listField(m *yaml.Node, path, key string) *[]string {
 // value was absent or invalid (the error is already recorded).
 type reviewOverride func(e *blockErrors, m *yaml.Node, key string) func(*Review)
 
+// langField: only the two languages noergler writes.
+func (b *blockErrors) langField(m *yaml.Node, path, key string) *lang.Lang {
+	v, ok := b.scalar(m, path, key, false)
+	if !ok {
+		return nil
+	}
+	l, ok := lang.Parse(v)
+	if !ok {
+		b.add(joinPath(path, key), "Input should be 'de' or 'en'")
+		return nil
+	}
+	return &l
+}
+
 // field builds a reviewOverride from a typed parser and the Review field it
 // sets. One entry per key, so a key cannot be accepted and then dropped.
 func field[T any](parse func(*blockErrors, *yaml.Node, string, string) *T, set func(*Review, T)) reviewOverride {
@@ -351,6 +367,7 @@ var reviewOverrides = map[string]reviewOverride{
 	"agents_md_custom_link":      field((*blockErrors).stringField, func(r *Review, v string) { r.AgentsMDCustomLink = v }),
 	"opt_out_branch_keyword":     field((*blockErrors).stringField, func(r *Review, v string) { r.OptOutBranchKeyword = v }),
 	"max_pr_cost_usd":            field((*blockErrors).positiveFloatField, func(r *Review, v float64) { r.MaxPRCostUSD = v }),
+	"language":                   field((*blockErrors).langField, func(r *Review, v lang.Lang) { r.Language = v }),
 }
 
 func parseBlock(m *yaml.Node) (*teamBlock, error) {

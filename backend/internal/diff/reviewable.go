@@ -1,6 +1,9 @@
 package diff
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // skipExtensions are extensions never worth reviewing.
 var skipExtensions = map[string]bool{
@@ -64,6 +67,43 @@ var skipDirs = map[string]bool{
 // skipDirSuffixes are directory names carrying a project-specific prefix,
 // matched by suffix rather than exact name (e.g. myproject.egg-info).
 var skipDirSuffixes = []string{".egg-info"}
+
+// SkipRules are the built-in filters, the same for every team, as a reader
+// can be told them: never reviewed, plus the files reviewed only while
+// their diff stays small. Sorted, so an answer lists them in a stable order.
+type SkipRules struct {
+	Dirs       []string
+	Files      []string
+	Extensions []string
+	SizeGated  map[string]int
+}
+
+// BuiltinSkipRules reports the filters IsReviewable and ExceedsSizeGate apply.
+func BuiltinSkipRules() SkipRules {
+	r := SkipRules{SizeGated: map[string]int{}}
+	for d := range skipDirs {
+		r.Dirs = append(r.Dirs, d+"/")
+	}
+	for _, s := range skipDirSuffixes {
+		r.Dirs = append(r.Dirs, "*"+s+"/")
+	}
+	for f := range skipFiles {
+		r.Files = append(r.Files, f)
+	}
+	for _, s := range skipFileSuffixes {
+		r.Files = append(r.Files, "*"+s)
+	}
+	for e := range skipExtensions {
+		r.Extensions = append(r.Extensions, e)
+	}
+	for _, g := range sizeGatedExtensions {
+		r.SizeGated[g.ext] = g.maxChanged
+	}
+	slices.Sort(r.Dirs)
+	slices.Sort(r.Files)
+	slices.Sort(r.Extensions)
+	return r
+}
 
 // binaryMarkerScanRunes bounds the binary-marker scan. Counted in runes, not
 // bytes, so a multi-byte diff header does not shift the cut.

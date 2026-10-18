@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/trick77/noergler/internal/lang"
 	kitenv "github.com/trick77/ship/kit/env"
 	"github.com/trick77/ship/kit/logging"
 )
@@ -103,6 +104,9 @@ type Review struct {
 	AgentsMDCustomLink              string
 	OptOutBranchKeyword             string
 	MaxPRCostUSD                    float64
+	// Language is the default for the prose noergler posts; a user's own
+	// choice (user_settings) wins over it.
+	Language lang.Lang
 	// UsePRDescription feeds the PR title and description to the model.
 	// Team API only (no env var, no teams.yaml key); the DB row wins.
 	UsePRDescription bool
@@ -432,6 +436,11 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 		Disabled:        map[string]string{},
 	}
 	app.Bitbucket.DisplayNamePattern = displayNamePattern(r, lookup)
+	if l, ok := lang.Parse(r.String("REVIEW_LANGUAGE", string(lang.Default))); ok {
+		app.Review.Language = l
+	} else {
+		r.Fail("REVIEW_LANGUAGE: must be de or en")
+	}
 	app.LLM.ReasoningEffort = normalizeEffort(r.String("OPENAI_REASONING_EFFORT", ""))
 	// Logging is set up before this runs (at info on a bad value, see
 	// withLog); the level is checked here so its fault is reported with the

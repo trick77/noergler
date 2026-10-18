@@ -81,7 +81,7 @@ func (r *Reviewer) retireFixed(ctx context.Context, plan *reviewPlan, fixed []st
 	for _, f := range fixed {
 		replied, resolved := false, false
 		if cid := f.BitbucketCommentID; cid != nil {
-			reply := "Fixed in `" + shortSHA(plan.sourceCommit, 8) + "`."
+			reply := plan.lang.Pick("Behoben in `", "Fixed in `") + shortSHA(plan.sourceCommit, 8) + "`."
 			if err := r.bitbucket.ReplyToComment(ctx, plan.project, plan.repo, plan.prID, *cid, reply); err != nil {
 				// Usually the author resolved the thread already: Bitbucket
 				// takes no reply on a resolved one.

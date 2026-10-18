@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/trick77/noergler/internal/lang"
 )
 
 // Link is a title and URL pair for the further-reading list.
@@ -50,9 +52,9 @@ func ParseCustomLink(raw string) (Link, bool) {
 	return Link{Title: value, URL: value}, true
 }
 
-// OptOutBranchSummary is the skip summary for a branch carrying the opt-out
+// optOutBranchSummaryEN is the skip summary for a branch carrying the opt-out
 // keyword. No LLM or Jira call was made.
-func OptOutBranchSummary(keyword, branch string) string {
+func optOutBranchSummaryEN(keyword, branch string) string {
 	return "### Review skipped — opt-out keyword in branch name 🛑\n\n" +
 		fmt.Sprintf("The source branch `%s` contains the opt-out keyword ", branch) +
 		fmt.Sprintf("`%s`, so the auto-review was skipped. No LLM or Jira ", keyword) +
@@ -67,9 +69,9 @@ func OptOutBranchSummary(keyword, branch string) string {
 		"noergler service (empty string disables the feature).\n"
 }
 
-// AgentsMDMissingSummary is the skip summary when AGENTS.md is required and
+// agentsMDMissingSummaryEN is the skip summary when AGENTS.md is required and
 // absent from both the PR branch and the target branch.
-func AgentsMDMissingSummary() string {
+func agentsMDMissingSummaryEN() string {
 	return "### Review skipped — no `AGENTS.md` found 🛑\n\n" +
 		"This repository has no `AGENTS.md` on the PR branch or the target branch. " +
 		"Project-specific review guidelines are **vital** for producing targeted, " +
@@ -86,9 +88,9 @@ func AgentsMDMissingSummary() string {
 		"as the instance default) and restart.\n"
 }
 
-// DiffTooLargeSummary is the skip summary when the PR diff exceeds the byte
+// diffTooLargeSummaryEN is the skip summary when the PR diff exceeds the byte
 // cap. limit is in bytes.
-func DiffTooLargeSummary(limit int) string {
+func diffTooLargeSummaryEN(limit int) string {
 	return "### Review skipped — diff too large 🛑\n\n" +
 		fmt.Sprintf("The PR diff exceeds %d MiB, more than fits in one ", limit/(1024*1024)) +
 		"review even after compression, so the review was not run.\n\n" +
@@ -102,21 +104,27 @@ func DiffTooLargeSummary(limit int) string {
 // AgentsMDTooLargeSummary is the skip summary when AGENTS.md is over the hard
 // token limit. customLink, when non-empty, is prepended to the further
 // reading list.
-func AgentsMDTooLargeSummary(tokens, limit int, customLink string) string {
+func AgentsMDTooLargeSummary(l lang.Lang, tokens, limit int, customLink string) string {
 	links := make([]Link, 0, len(agentsMDFurtherReading)+1)
-	if l, ok := ParseCustomLink(customLink); ok {
-		links = append(links, l)
+	if cl, ok := ParseCustomLink(customLink); ok {
+		links = append(links, cl)
 	}
 	links = append(links, agentsMDFurtherReading...)
 
 	var fr strings.Builder
-	for i, l := range links {
+	for i, link := range links {
 		if i > 0 {
 			fr.WriteString("\n")
 		}
-		fmt.Fprintf(&fr, "- [%s](%s)", l.Title, l.URL)
+		fmt.Fprintf(&fr, "- [%s](%s)", link.Title, link.URL)
 	}
+	if l == lang.EN {
+		return agentsMDTooLargeSummaryEN(tokens, limit, fr.String())
+	}
+	return agentsMDTooLargeSummaryDE(tokens, limit, fr.String())
+}
 
+func agentsMDTooLargeSummaryEN(tokens, limit int, fr string) string {
 	return "### Review skipped — `AGENTS.md` too large 🛑\n\n" +
 		fmt.Sprintf("`AGENTS.md` weighs in at ~%s tokens, exceeding the configured ", Fmt(tokens)) +
 		fmt.Sprintf("hard limit of %s tokens. Oversized agent instructions crowd out ", Fmt(limit)) +
@@ -134,5 +142,5 @@ func AgentsMDTooLargeSummary(tokens, limit int, customLink string) string {
 		"service, or set it to `0` to disable the hard cut-off entirely " +
 		"(the soft warning via `REVIEW_AGENTS_MD_WARN_TOKENS` remains).\n\n" +
 		"**Further reading**\n" +
-		fr.String() + "\n"
+		fr + "\n"
 }
