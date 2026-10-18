@@ -175,4 +175,8 @@ func TestCostBannerSaysBlocked(t *testing.T) {
 	if CostBannerSaysBlocked("The latest commit was **not** reviewed.") {
 		t.Error("the sentence without a banner is not a banner")
 	}
+	quoted := CostLimitBanner(lang.EN, 6, 5, false) + "\n\nsomeone wrote: The latest commit was **not** reviewed."
+	if CostBannerSaysBlocked(quoted) {
+		t.Error("the sentence below a plain banner is not the banner's")
+	}
 }

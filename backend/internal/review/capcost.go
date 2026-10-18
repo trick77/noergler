@@ -33,8 +33,9 @@ func (r *Reviewer) overCap(ctx context.Context, key store.PRKey) (rowID int64, c
 // refuseOverCap is a reply's or a mention's stop at the cap: one log line,
 // and the cap banner on the summary, which is the PR's one notice; the
 // comment itself gets no answer. A summary that already carries a banner is
-// left as it is (its "not reviewed" sentence included, and no second
-// Bitbucket write per refused comment). An ignored PR gets nothing posted:
+// left as it is, so refused comments cost no further Bitbucket write, unless
+// a refused review must add the "not reviewed" sentence the banner lacks.
+// An ignored PR gets nothing posted:
 // its author removed the summary to be left alone. blocked: a review was
 // asked for and not run. The banner is in the PR author's language, as the
 // summary is.

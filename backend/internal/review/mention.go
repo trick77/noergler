@@ -77,16 +77,18 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 
 	// At the cap a mention stops like everything else, review or question:
 	// the banner, no answer, and the PR stays as it was (an ignored one is
-	// not reactivated for nothing). The row comes first, so a Q&A on a PR
-	// never reviewed is counted and capped from its first call on.
+	// not reactivated for nothing). Under the cap, a Q&A on a PR with no row
+	// writes one, so its calls are counted and capped from the first on.
 	isReview := question == "" || reviewKeywords[strings.ToLower(question)]
 	rowID, cumulative, over := r.overCap(ctx, key)
 	if over {
 		r.refuseOverCap(ctx, key, prTag, pr.Author.User.Name, "mention", rowID, cumulative, isReview)
 		if isReview {
 			// The dashboard shows a blocked mention review like a blocked
-			// push: a skipped attempt with its reason.
-			r.abort(ctx, key, store.RunMention, SkipCostCap, prTag, httpCounter)
+			// push: a skipped attempt with its reason. Not abort: the
+			// deferred totals line above already logs this scope.
+			r.recordAttempt(ctx, store.Attempt{Key: key, TeamSlug: r.TeamSlug, Kind: store.RunMention,
+				Outcome: "skipped", Reason: string(SkipCostCap)})
 		}
 		return false
 	}

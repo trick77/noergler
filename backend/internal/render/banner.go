@@ -139,8 +139,11 @@ const (
 // CostBannerSaysBlocked reports whether body carries a cost banner that says
 // a review was not run.
 func CostBannerSaysBlocked(body string) bool {
-	if StripCostBanner(body) == body {
+	rest := StripCostBanner(body)
+	if rest == body {
 		return false
 	}
-	return strings.Contains(body, costBlockedEN) || strings.Contains(body, costBlockedDE)
+	// The banner alone: summary text below it may quote the sentence.
+	banner := strings.TrimSuffix(body, rest)
+	return strings.Contains(banner, costBlockedEN) || strings.Contains(banner, costBlockedDE)
 }
