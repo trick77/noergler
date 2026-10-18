@@ -387,6 +387,8 @@ export const en = {
     callKind: "Kind",
     model: "Model",
     moreCalls: "Older replies and answers are not listed here.",
+    callsFailed:
+      "Replies and answers could not be read. The PR total above still counts them.",
   },
   faq: {
     lede: "Why noergler did or did not review your pull request. Defaults below; your team may have changed them.",

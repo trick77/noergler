@@ -506,9 +506,15 @@ func (f *fakeStore) PRCost(context.Context, store.PRKey) (*int64, error) {
 	return &total, nil
 }
 
-// PRCapState is PRCost with a fixed row id: the fake has one PR.
+// PRCapState is PRCost plus the fake's one PR row: id 1 once anything wrote
+// or seeded it, 0 before.
 func (f *fakeStore) PRCapState(ctx context.Context, k store.PRKey) (int64, *int64, error) {
 	cost, err := f.PRCost(ctx, k)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.Upserts) == 0 && f.prCost == nil && len(f.Runs) == 0 && f.summary == nil && f.skipState == nil {
+		return 0, cost, err
+	}
 	return 1, cost, err
 }
 

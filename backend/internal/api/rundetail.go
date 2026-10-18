@@ -122,6 +122,9 @@ type PRBody struct {
 	// toward Cost and the cap. MoreCalls: the list was cut.
 	Calls     []commentCallBody `json:"calls"`
 	MoreCalls bool              `json:"more_calls"`
+	// CallsFailed: the list could not be read, so an empty one means
+	// nothing; the total above still counts the calls.
+	CallsFailed bool `json:"calls_failed"`
 }
 
 type commentCallBody struct {
@@ -242,6 +245,7 @@ func (d Deps) runDetail(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		d.Log.ErrorContext(r.Context(), "dashboard: PRCommentCalls failed: "+err.Error())
 		calls, more = nil, false
+		body.PR.CallsFailed = true
 	}
 	body.PR.Calls, body.PR.MoreCalls = make([]commentCallBody, 0, len(calls)), more
 	for _, c := range calls {

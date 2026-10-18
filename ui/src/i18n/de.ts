@@ -378,6 +378,8 @@ export const de = {
     callKind: "Art",
     model: "Modell",
     moreCalls: "Ältere Antworten sind hier nicht aufgeführt.",
+    callsFailed:
+      "Die Antworten konnten nicht gelesen werden. Das PR-Total oben zählt sie trotzdem.",
   },
   faq: {
     lede: "Warum noergler deinen Pull Request reviewt hat oder nicht. Unten stehen die Standardwerte; dein Team hat sie vielleicht geändert.",

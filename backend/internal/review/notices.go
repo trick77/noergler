@@ -192,7 +192,8 @@ func (r *Reviewer) costLimitNotice(ctx context.Context, l lang.Lang, project, re
 }
 
 // costLimitNoticeOnce is costLimitNotice that leaves a summary already
-// carrying a cost banner untouched.
+// carrying a cost banner untouched, unless this one must add that a review
+// was not run and the old one does not say so.
 func (r *Reviewer) costLimitNoticeOnce(ctx context.Context, l lang.Lang, project, repo string, prID int, prReviewID int64, cumulativeUSD, limitUSD float64, blocked bool) {
 	r.writeCostBanner(ctx, l, project, repo, prID, prReviewID, cumulativeUSD, limitUSD, blocked, true)
 }
@@ -232,7 +233,7 @@ func (r *Reviewer) writeCostBanner(ctx context.Context, l lang.Lang, project, re
 	}
 
 	stripped := render.StripCostBanner(comment.Text)
-	if once && stripped != comment.Text {
+	if once && stripped != comment.Text && (!blocked || render.CostBannerSaysBlocked(comment.Text)) {
 		return
 	}
 	newBody := banner + "\n\n" + stripped

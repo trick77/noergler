@@ -163,6 +163,8 @@ export interface RunDetail {
      *  cost_usd and the cap. */
     calls: CommentCall[];
     more_calls: boolean;
+    /** The list could not be read: empty means unknown, not none. */
+    calls_failed: boolean;
   };
   bitbucket_url: string;
   /** The review's pipeline record; null for a run from before it existed,

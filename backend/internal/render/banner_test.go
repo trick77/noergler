@@ -160,3 +160,19 @@ func TestCostBannerRoundTrips(t *testing.T) {
 		t.Errorf("round trip failed: %q", got)
 	}
 }
+
+// Only a cost banner with the blocked sentence says blocked, in either
+// language.
+func TestCostBannerSaysBlocked(t *testing.T) {
+	for _, l := range []lang.Lang{lang.EN, lang.DE} {
+		if !CostBannerSaysBlocked(CostLimitBanner(l, 6, 5, true) + "\n\nx") {
+			t.Errorf("%s blocked banner not seen", l)
+		}
+		if CostBannerSaysBlocked(CostLimitBanner(l, 6, 5, false) + "\n\nx") {
+			t.Errorf("%s plain banner read as blocked", l)
+		}
+	}
+	if CostBannerSaysBlocked("The latest commit was **not** reviewed.") {
+		t.Error("the sentence without a banner is not a banner")
+	}
+}

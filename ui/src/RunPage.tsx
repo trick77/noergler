@@ -1001,6 +1001,13 @@ function PRTab({ d }: { d: RunDetail }) {
  *  page each, but money the PR total and its cap count. */
 function CallsCard({ d }: { d: RunDetail }) {
   const { t } = useTranslation();
+  if (d.pr.calls_failed) {
+    return (
+      <Card title={t("run.callsTitle")}>
+        <Empty>{t("run.callsFailed")}</Empty>
+      </Card>
+    );
+  }
   if (d.pr.calls.length === 0) return null;
   const pr = prUrl(d.tag, d.bitbucket_url);
   return (

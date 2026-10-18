@@ -107,6 +107,7 @@ const detail: RunDetail = {
     more_after: false,
     calls: [],
     more_calls: false,
+    calls_failed: false,
   },
   bitbucket_url: "https://bb.example.com",
   detail: null,

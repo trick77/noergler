@@ -116,7 +116,7 @@ func CostLimitBanner(l lang.Lang, cumulativeUSD, limitUSD float64, blocked bool)
 				"Einen Admin bitten, `REVIEW_MAX_PR_COST_USD` zu erhöhen.",
 			costBannerVisibleDE, cumulativeUSD, limitUSD)
 		if blocked {
-			msg += " Der neueste Commit wurde **nicht** geprüft."
+			msg += costBlockedDE
 		}
 		return CostBannerSentinel + "\n" + msg
 	}
@@ -125,7 +125,22 @@ func CostLimitBanner(l lang.Lang, cumulativeUSD, limitUSD float64, blocked bool)
 			"Ask an admin to raise `REVIEW_MAX_PR_COST_USD`.",
 		costBannerVisiblePrefix, cumulativeUSD, limitUSD)
 	if blocked {
-		msg += " The latest commit was **not** reviewed."
+		msg += costBlockedEN
 	}
 	return CostBannerSentinel + "\n" + msg
+}
+
+// The blocked sentence, in both languages: CostBannerSaysBlocked looks for it.
+const (
+	costBlockedEN = " The latest commit was **not** reviewed."
+	costBlockedDE = " Der neueste Commit wurde **nicht** geprüft."
+)
+
+// CostBannerSaysBlocked reports whether body carries a cost banner that says
+// a review was not run.
+func CostBannerSaysBlocked(body string) bool {
+	if StripCostBanner(body) == body {
+		return false
+	}
+	return strings.Contains(body, costBlockedEN) || strings.Contains(body, costBlockedDE)
 }

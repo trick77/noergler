@@ -324,3 +324,23 @@ func TestMentionQAWritesThePRRow(t *testing.T) {
 		t.Errorf("upserts = %+v, want one that keeps the pointer", h.st.Upserts)
 	}
 }
+
+// A review asked for at the cap is a skipped attempt on the dashboard, like a
+// blocked push, and a banner from a refused reply gains the "not reviewed"
+// sentence it did not have.
+func TestCapRefusedMentionReviewIsRecorded(t *testing.T) {
+	h := newHarness(t, nil)
+	h.st.prCost = ptri(6_000_000_000)
+	body := render.CostLimitBanner(lang.EN, 6, 5, false) + "\n\nsummary"
+	h.st.summary = &store.SummaryComment{ID: 900, Version: 1}
+	h.bb.comments = map[int]*bitbucket.Comment{900: {ID: 900, Version: 1, Text: body}}
+
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "alice"), "platform", nil)
+
+	if len(h.st.Attempts) != 1 || h.st.Attempts[0].Reason != string(SkipCostCap) || h.st.Attempts[0].Kind != store.RunMention {
+		t.Errorf("attempts = %+v, want one skipped mention attempt", h.st.Attempts)
+	}
+	if len(h.bb.Updates) != 1 || !render.CostBannerSaysBlocked(h.bb.Updates[0].Text) {
+		t.Errorf("updates = %+v, want the banner to say the review was not run", h.bb.Updates)
+	}
+}

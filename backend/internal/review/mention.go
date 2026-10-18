@@ -80,10 +80,20 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	// not reactivated for nothing). The row comes first, so a Q&A on a PR
 	// never reviewed is counted and capped from its first call on.
 	isReview := question == "" || reviewKeywords[strings.ToLower(question)]
-	rowID := r.ensurePRRow(ctx, key, pr.Author.User.Name, pr.Title, pr.CreatedDate)
-	if _, cumulative, over := r.overCap(ctx, key); over {
+	rowID, cumulative, over := r.overCap(ctx, key)
+	if over {
 		r.refuseOverCap(ctx, key, prTag, pr.Author.User.Name, "mention", rowID, cumulative, isReview)
+		if isReview {
+			// The dashboard shows a blocked mention review like a blocked
+			// push: a skipped attempt with its reason.
+			r.abort(ctx, key, store.RunMention, SkipCostCap, prTag, httpCounter)
+		}
 		return false
+	}
+	if rowID == 0 && !isReview {
+		// The review path writes its own row; a Q&A on a PR never reviewed
+		// writes one here, once.
+		r.ensurePRRow(ctx, key, pr.Author.User.Name, pr.Title, pr.CreatedDate)
 	}
 
 	// Any other mention reactivates a PR ignored after its summary was
