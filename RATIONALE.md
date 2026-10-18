@@ -80,6 +80,10 @@ an incident or an eval run: read the reason before relaxing a rule.
 - Mention tools read-only but the language: a write tool is a setting any
   commenter, or any injection the model reads, could change. The one write
   is the commenter's own language, and code checks their words first.
+- Author lists by name in `team_config`: they are Bitbucket user names any
+  commenter on the team's PRs sees in Bitbucket anyway, and "who is
+  auto-reviewed" is what a settings question asks (user, 2026-10-18). Counts
+  stay on the unauthenticated dashboard.
 - Tool support never required: `Require(Needs{Tools})` would disable a team
   on a model without it, for a feature a Q&A can do without.
 - `handedOff`: the job path once released the key unconditionally, so a push

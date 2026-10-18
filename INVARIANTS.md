@@ -113,8 +113,10 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - A keyword mention is a staged review; a Q&A mention stages its gateway
   call (a tool loop) and posts back on the worker. Neither writes a run.
 - Mention tools: the PR, team and user come from the webhook, never a model
-  argument; output is an explicit allowlist struct (author lists as counts,
-  no env names, keys, disable reasons); `Run` never calls Bitbucket.
+  argument; output is an explicit allowlist struct (author lists by name,
+  decided; never env names, keys, tokens, hosts, riptide URL, disable
+  reasons); claims and exclude_repos from the live snapshot, never the
+  Reviewer's `cfg` copy; `Run` never calls Bitbucket.
   `set_my_language` writes only when the commenter's own text names the
   language. At most `MaxToolRounds` rounds of `MaxToolCallsPerTurn` calls,
   then one round without tools; every call id gets a result. Tool support

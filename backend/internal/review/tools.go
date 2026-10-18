@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/trick77/noergler/internal/diff"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/store"
@@ -74,25 +75,51 @@ func toolJSON(v any) string {
 
 // teamConfigView is what team_config returns. An allowlist: a field added
 // to config.Review is not exposed until it is added here. The author lists
-// are counts, as on the public dashboard: the names sit behind the team
-// secret, and a commenter is not that.
+// carry the names (decided): Bitbucket user names, which any commenter on
+// the team's PRs can see in Bitbucket anyway, and "who is auto-reviewed"
+// is the question this tool exists for.
+//
+// Never in it: env var names, keys, tokens, the webhook secret, the gateway
+// host and alias, the riptide URL, disable reasons.
 type teamConfigView struct {
-	Team                  string `json:"team"`
-	Model                 string `json:"model"`
-	DefaultLanguage       string `json:"default_language"`
-	MaxPRCostUSD          string `json:"max_pr_cost_usd"`
-	MaxComments           int    `json:"max_comments"`
-	MaxFileLines          int    `json:"max_file_lines"`
-	RequireAgentsMD       bool   `json:"require_agents_md"`
-	AgentsMDWarnTokens    int    `json:"agents_md_warn_tokens"`
-	AgentsMDMaxTokens     int    `json:"agents_md_max_tokens"`
-	TicketComplianceCheck bool   `json:"ticket_compliance_check"`
-	JiraEnabled           bool   `json:"jira_enabled"`
-	UsePRDescription      bool   `json:"use_pr_description"`
-	OptOutBranchKeyword   string `json:"opt_out_branch_keyword"`
-	AutoReviewAuthors     int    `json:"auto_review_authors_count"`
-	IgnoreAuthors         int    `json:"ignore_authors_count"`
-	Asker                 struct {
+	Team            string `json:"team"`
+	Model           string `json:"model"`
+	DefaultLanguage string `json:"default_language"`
+	// Projects are the claims, "KEY" or "KEY/{repo,...}"; absent when the
+	// Reviewer has no live team view.
+	Projects     []string `json:"projects,omitempty"`
+	ExcludeRepos []string `json:"exclude_repos"`
+	// AutoReviewAuthors empty means every author is auto-reviewed; the
+	// ignore list wins over it.
+	AutoReviewAuthors     []string `json:"auto_review_authors"`
+	IgnoreAuthors         []string `json:"ignore_authors"`
+	OptOutBranchKeyword   string   `json:"opt_out_branch_keyword"`
+	MaxPRCostUSD          string   `json:"max_pr_cost_usd"`
+	MaxComments           int      `json:"max_comments"`
+	MaxFileLines          int      `json:"max_file_lines"`
+	RequireAgentsMD       bool     `json:"require_agents_md"`
+	AgentsMDWarnTokens    int      `json:"agents_md_warn_tokens"`
+	AgentsMDMaxTokens     int      `json:"agents_md_max_tokens"`
+	AgentsMDCustomLink    string   `json:"agents_md_custom_link,omitempty"`
+	UsePRDescription      bool     `json:"use_pr_description"`
+	TicketComplianceCheck bool     `json:"ticket_compliance_check"`
+	JiraEnabled           bool     `json:"jira_enabled"`
+	JiraACPrefixes        []string `json:"jira_acceptance_criteria_prefixes,omitempty"`
+	RiptideEnabled        bool     `json:"riptide_enabled"`
+	Diff                  struct {
+		ExtraLinesBefore       int  `json:"context_lines_before"`
+		ExtraLinesAfter        int  `json:"context_lines_after"`
+		DynamicContext         bool `json:"dynamic_context"`
+		MaxDynamicContextLines int  `json:"max_dynamic_context_lines"`
+	} `json:"diff_context"`
+	// NeverReviewed is built in, the same for every team.
+	NeverReviewed struct {
+		Dirs       []string       `json:"dirs"`
+		Files      []string       `json:"files"`
+		Extensions []string       `json:"extensions"`
+		SizeGated  map[string]int `json:"reviewed_only_up_to_changed_lines"`
+	} `json:"never_reviewed_builtin"`
+	Asker struct {
 		Language     string `json:"language"`
 		AutoReviewed bool   `json:"auto_reviewed"`
 		Ignored      bool   `json:"ignored"`
@@ -105,22 +132,49 @@ func (r *Reviewer) teamConfig(ctx context.Context, user string) teamConfigView {
 		Team:                  r.TeamSlug,
 		Model:                 r.llm.Label(),
 		DefaultLanguage:       string(r.cfg.Language.Or(lang.Default)),
+		ExcludeRepos:          nonNilNames(r.cfg.ExcludeRepos),
+		AutoReviewAuthors:     nonNilNames(auto),
+		IgnoreAuthors:         nonNilNames(ignore),
+		OptOutBranchKeyword:   r.cfg.OptOutBranchKeyword,
 		MaxPRCostUSD:          usd3(r.cfg.MaxPRCostUSD),
 		MaxComments:           r.cfg.MaxComments,
 		MaxFileLines:          r.cfg.MaxFileLines,
 		RequireAgentsMD:       r.cfg.RequireAgentsMD,
 		AgentsMDWarnTokens:    r.cfg.AgentsMDWarnTokens,
 		AgentsMDMaxTokens:     r.cfg.AgentsMDMaxTokens,
+		AgentsMDCustomLink:    r.cfg.AgentsMDCustomLink,
+		UsePRDescription:      r.usePRDescription.Load(),
 		TicketComplianceCheck: r.cfg.TicketComplianceCheck,
 		JiraEnabled:           r.jiraEnabled(),
-		UsePRDescription:      r.usePRDescription.Load(),
-		OptOutBranchKeyword:   r.cfg.OptOutBranchKeyword,
-		AutoReviewAuthors:     len(auto),
-		IgnoreAuthors:         len(ignore),
+		RiptideEnabled:        r.riptide != nil && r.riptide.Enabled(),
 	}
+	v.Diff.ExtraLinesBefore, v.Diff.ExtraLinesAfter = r.cfg.DiffExtraLinesBefore, r.cfg.DiffExtraLinesAfter
+	v.Diff.DynamicContext, v.Diff.MaxDynamicContextLines = r.cfg.DiffAllowDynamicContext, r.cfg.DiffMaxExtraLinesDynamicContext
+	// The claims and exclude_repos change at runtime (the team API); the
+	// live snapshot has them, the Reviewer's copy of cfg does not.
+	if r.team != nil {
+		if t := r.team(); t != nil {
+			for _, p := range t.Projects {
+				v.Projects = append(v.Projects, p.String())
+			}
+			v.ExcludeRepos = nonNilNames(t.Review.ExcludeRepos)
+			if v.JiraEnabled {
+				v.JiraACPrefixes = nonNilNames(t.Jira.AcceptanceCriteriaPrefixes)
+			}
+		}
+	}
+	skip := diff.BuiltinSkipRules()
+	v.NeverReviewed.Dirs, v.NeverReviewed.Files = skip.Dirs, skip.Files
+	v.NeverReviewed.Extensions, v.NeverReviewed.SizeGated = skip.Extensions, skip.SizeGated
 	v.Asker.Language = string(r.languageFor(ctx, user))
 	v.Asker.AutoReviewed, v.Asker.Ignored = r.autoReviewDecision(user)
 	return v
+}
+
+// nonNilNames is a copy of names that marshals as [], never null: an empty
+// list is "nobody", not "unknown".
+func nonNilNames(names []string) []string {
+	return append([]string{}, names...)
 }
 
 // prStatusView is what pr_status returns. Skip reasons are the stable enum

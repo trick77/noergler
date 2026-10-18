@@ -233,7 +233,9 @@ the review gates and without compression, reads the PR diff and the ticket, and
 replies in the comment's own thread. Keywords route the question; anything else
 is answered as a question about the PR, or about noergler on it. On a model
 that takes tools the answer may call `team_config` (the team's effective
-settings, author lists as counts, and whether the asker is on them),
+settings: claimed projects, excluded repos, both author lists by name, the
+built-in skipped dirs, files and extensions, and whether the asker is on the
+lists; a settings answer is a Markdown table),
 `pr_status` (runs, the latest outcomes and skip reasons, cost against the cap)
 and `set_my_language` (the asker's language, only when their own comment names
 it). Up to three tool rounds, four calls each, then a final round without

@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/store"
 )
@@ -42,31 +44,49 @@ func TestTeamConfigIsAnAllowlist(t *testing.T) {
 		}
 	}
 	walk(reflect.TypeOf(teamConfigView{}))
-	want := []string{"team", "model", "default_language", "max_pr_cost_usd", "max_comments", "max_file_lines",
-		"require_agents_md", "agents_md_warn_tokens", "agents_md_max_tokens", "ticket_compliance_check",
-		"jira_enabled", "use_pr_description", "opt_out_branch_keyword", "auto_review_authors_count",
-		"ignore_authors_count", "asking_user", "language", "auto_reviewed", "ignored"}
+	want := []string{"team", "model", "default_language", "projects", "exclude_repos", "auto_review_authors",
+		"ignore_authors", "opt_out_branch_keyword", "max_pr_cost_usd", "max_comments", "max_file_lines",
+		"require_agents_md", "agents_md_warn_tokens", "agents_md_max_tokens", "agents_md_custom_link",
+		"use_pr_description", "ticket_compliance_check", "jira_enabled", "jira_acceptance_criteria_prefixes",
+		"riptide_enabled", "diff_context", "context_lines_before", "context_lines_after", "dynamic_context",
+		"max_dynamic_context_lines", "never_reviewed_builtin", "dirs", "files", "extensions",
+		"reviewed_only_up_to_changed_lines", "asking_user", "language", "auto_reviewed", "ignored"}
 	if !reflect.DeepEqual(keys, want) {
 		t.Errorf("team_config keys = %v\nwant %v (review what a commenter may read before changing this)", keys, want)
 	}
 }
 
-func TestTeamConfigShowsCountsNotNames(t *testing.T) {
+// The live team view wins for what the team API changes at runtime; the
+// secrets in the same struct never reach the output.
+func TestTeamConfigShowsTheLiveTeam(t *testing.T) {
 	h := newHarness(t, nil)
 	h.r.SetAuthorLists([]string{"alice", "bob"}, []string{"renovate"})
 	h.st.languages = map[string]lang.Lang{"bob": lang.EN}
+	h.r.team = func() *config.Team {
+		return &config.Team{
+			Slug: "payments", WebhookSecret: "hook-secret",
+			Projects: []config.ProjectScope{{Key: "PAY"}, {Key: "OPS", Repos: []string{"ci"}}},
+			LLM:      config.LLM{APIKey: "sk-team", BaseURL: "https://gateway.internal"},
+			Review:   config.Review{ExcludeRepos: []string{"*-infra", "sandbox"}},
+			Riptide:  &config.Riptide{URL: "https://riptide.internal", Token: "rt-token"},
+		}
+	}
 
 	out := toolByName(t, h, testAsk("bob", "what are the settings?"), "team_config")("{}")
 
-	if strings.Contains(out, "alice") || strings.Contains(out, "renovate") {
-		t.Errorf("author names leaked: %s", out)
+	for _, secret := range []string{"hook-secret", "sk-team", "gateway.internal", "riptide.internal", "rt-token"} {
+		if strings.Contains(out, secret) {
+			t.Errorf("team_config leaks %q: %s", secret, out)
+		}
 	}
 	var v teamConfigView
 	if err := json.Unmarshal([]byte(out), &v); err != nil {
 		t.Fatal(err)
 	}
-	if v.AutoReviewAuthors != 2 || v.IgnoreAuthors != 1 || !v.Asker.AutoReviewed || v.Asker.Language != "en" ||
-		v.MaxPRCostUSD != "5.000" || v.Team != "payments" {
+	if !reflect.DeepEqual(v.AutoReviewAuthors, []string{"alice", "bob"}) || !reflect.DeepEqual(v.IgnoreAuthors, []string{"renovate"}) ||
+		!reflect.DeepEqual(v.Projects, []string{"PAY", "OPS/{ci}"}) || !reflect.DeepEqual(v.ExcludeRepos, []string{"*-infra", "sandbox"}) ||
+		!v.Asker.AutoReviewed || v.Asker.Language != "en" || v.MaxPRCostUSD != "5.000" || v.Team != "payments" ||
+		!slices.Contains(v.NeverReviewed.Dirs, "node_modules/") || v.NeverReviewed.SizeGated[".properties"] != 50 {
 		t.Errorf("team_config = %+v", v)
 	}
 }
