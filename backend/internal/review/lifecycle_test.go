@@ -199,7 +199,7 @@ func TestRollupIsANoOpWhenRiptideIsOff(t *testing.T) {
 	})
 }
 
-// files_changed counts the REVIEWABLE files, as AGENTS.md pins: counting
+// files_changed counts the REVIEWABLE files, pinned here: counting
 // every diff --git header would include files that were never reviewed.
 func TestRollupCountsReviewableFilesOnly(t *testing.T) {
 	h := newHarness(t, nil)

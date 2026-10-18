@@ -259,17 +259,13 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	existing := safeDB(ctx, r.log, "ExistingFindings", func() ([]store.Finding, error) {
 		return r.store.ExistingFindings(ctx, key)
 	})
-	posted := r.trimPreviouslyPosted(ctx, prTag, existing, budget)
 	// Only an incremental review may retire a finding: on a full one every
 	// PR line is an added line, the buggy one too, so nothing would prove a
 	// fix. No id listed, nothing to claim.
+	posted := r.trimPreviouslyPosted(ctx, prTag, existing, budget, incrementalFrom != "")
 	listed := map[int64]bool{}
-	if incrementalFrom == "" {
-		for i := range posted {
-			posted[i].ID = 0
-		}
-	} else {
-		for _, p := range posted {
+	for _, p := range posted {
+		if p.ID > 0 {
 			listed[p.ID] = true
 		}
 	}
@@ -718,10 +714,17 @@ func (r *Reviewer) fetchTicket(ctx context.Context, branch, title, prTag string)
 //
 // The tail is the most recent (the store returns oldest first). Dropping the
 // oldest in 25% chunks avoids re-rendering once per item.
-func (r *Reviewer) trimPreviouslyPosted(ctx context.Context, prTag string, existing []store.Finding, budget int) []inference.PostedFinding {
+//
+// withIDs says whether the ids are listed. They are dropped before
+// measuring: the block is trimmed as it is sent, never to a size it is not.
+func (r *Reviewer) trimPreviouslyPosted(ctx context.Context, prTag string, existing []store.Finding, budget int, withIDs bool) []inference.PostedFinding {
 	posted := make([]inference.PostedFinding, 0, len(existing))
 	for _, f := range existing {
-		posted = append(posted, asPosted(f))
+		p := asPosted(f)
+		if !withIDs {
+			p.ID = 0
+		}
+		posted = append(posted, p)
 	}
 	if len(posted) > maxPreviouslyPostedFindings {
 		posted = posted[len(posted)-maxPreviouslyPostedFindings:]

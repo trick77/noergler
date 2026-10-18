@@ -49,7 +49,7 @@ func TestTrimPreviouslyPostedDropsOldestUntilItFits(t *testing.T) {
 	}
 
 	h := newHarness(t, nil)
-	got := h.r.trimPreviouslyPosted(context.Background(), "PROJ/my-repo#42", existing, budget)
+	got := h.r.trimPreviouslyPosted(context.Background(), "PROJ/my-repo#42", existing, budget, false)
 
 	if len(got) == 0 {
 		t.Fatal("trim dropped everything")
@@ -96,7 +96,7 @@ func TestTrimPreviouslyPostedCapsTheCount(t *testing.T) {
 
 	budget := 628_000
 	h := newHarness(t, nil)
-	got := h.r.trimPreviouslyPosted(context.Background(), "PROJ/my-repo#42", existing, budget)
+	got := h.r.trimPreviouslyPosted(context.Background(), "PROJ/my-repo#42", existing, budget, false)
 
 	// Proves the token loop stayed out of it: the whole block fits.
 	if rendered := h.tok.Count(inference.RenderPreviouslyPostedFindings(got)); rendered > inference.PreviouslyPostedBudget(budget) {
@@ -121,7 +121,7 @@ func TestTrimPreviouslyPostedKeepsEverythingUnderBudget(t *testing.T) {
 	}
 
 	h := newHarness(t, nil)
-	got := h.r.trimPreviouslyPosted(context.Background(), "PROJ/my-repo#42", existing, 628_000)
+	got := h.r.trimPreviouslyPosted(context.Background(), "PROJ/my-repo#42", existing, 628_000, false)
 
 	if len(got) != 2 {
 		t.Fatalf("kept %d of 2 findings under budget", len(got))
@@ -151,5 +151,18 @@ func TestPreviouslyPostedFindingsReachThePrompt(t *testing.T) {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("prompt is missing the previously-posted %q", want)
 		}
+	}
+}
+
+// On a full review the ids are dropped before the block is measured, so the
+// budget is spent on what is sent.
+func TestTrimPreviouslyPostedDropsIDsBeforeMeasuring(t *testing.T) {
+	h := newHarness(t, nil)
+	existing := []store.Finding{{ID: 1, FilePath: "a.go", LineNumber: 1, Severity: "issue", CommentText: "c"}}
+	if got := h.r.trimPreviouslyPosted(context.Background(), "PROJ/my-repo#42", existing, 628_000, false); got[0].ID != 0 {
+		t.Errorf("full review keeps id %d", got[0].ID)
+	}
+	if got := h.r.trimPreviouslyPosted(context.Background(), "PROJ/my-repo#42", existing, 628_000, true); got[0].ID != 1 {
+		t.Errorf("incremental review lost the id: %d", got[0].ID)
 	}
 }

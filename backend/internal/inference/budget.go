@@ -1,8 +1,7 @@
 // Package inference wraps llmwire for per-team review and mention calls:
 // startup checks, token budgets, prompt assembly, response parsing and cost.
 //
-// Behaviour is pinned by this package's tests; AGENTS.md lists the
-// deliberate quirks.
+// Behaviour is pinned by this package's tests.
 package inference
 
 // OutputTokenReserve is held back from the context window for the reply.

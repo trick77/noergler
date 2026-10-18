@@ -176,7 +176,7 @@ func renderAccounting(in SummaryInput) string {
 		earlier = append(earlier, fmt.Sprintf("%d still open", in.OpenEarlier))
 	}
 	if len(earlier) > 0 {
-		parts = append(parts, "Earlier findings: "+strings.Join(earlier, ", ")+".")
+		parts = append(parts, "Earlier findings checked: "+strings.Join(earlier, ", ")+".")
 	}
 	if in.Dropped > 0 {
 		parts = append(parts, Plural(in.Dropped, "finding")+" dropped by validation.")

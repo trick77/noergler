@@ -27,7 +27,7 @@ func TestSummaryAccountsForWhatItDoesNotList(t *testing.T) {
 	if len(h.bb.Posted) != 1 {
 		t.Fatalf("summaries = %d", len(h.bb.Posted))
 	}
-	want := "_Earlier findings: 1 still open. 1 finding dropped by validation._"
+	want := "_Earlier findings checked: 1 still open. 1 finding dropped by validation._"
 	if s := h.bb.Posted[0].Text; !strings.Contains(s, want) {
 		t.Errorf("summary lacks %q:\n%s", want, s)
 	}
@@ -39,7 +39,7 @@ func TestSummaryCountsARetiredFinding(t *testing.T) {
 
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
-	want := "_Earlier findings: 1 fixed by this push._"
+	want := "_Earlier findings checked: 1 fixed by this push._"
 	if s := h.bb.Posted[0].Text; !strings.Contains(s, want) {
 		t.Errorf("summary lacks %q:\n%s", want, s)
 	}

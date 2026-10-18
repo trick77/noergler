@@ -44,7 +44,8 @@ type FixedDropReason string
 const (
 	// FixedUnknownID means the id names no finding the prompt listed.
 	FixedUnknownID FixedDropReason = "unknown_id"
-	// FixedDuplicate means the id was claimed fixed twice; the first stands.
+	// FixedDuplicate means the id was claimed fixed twice; the first claim
+	// decides, kept or refused.
 	FixedDuplicate FixedDropReason = "duplicate"
 	// FixedFileNotInDiff means the finding's file is not one this run's
 	// focused diff changed: nothing shown could have fixed it.
@@ -129,20 +130,24 @@ func ValidateFixed(claims []FixedClaim, sent []PostedFinding, idx diff.AnchorInd
 			removed[h] = true
 		}
 	}
+	// Every id claimed once, kept or refused: repeating a refused claim
+	// with other evidence would otherwise get round the refusal.
 	seen := map[int64]bool{}
 	for _, c := range claims {
-		f, reason := validateFixedOne(c, byID, seen, idx, added, removed)
+		f, id, reason := validateFixedOne(c, byID, seen, idx, added, removed)
+		if id != 0 {
+			seen[id] = true
+		}
 		if reason != "" {
 			v.Dropped = append(v.Dropped, DroppedFixed{Claim: c, Reason: reason})
 			continue
 		}
-		seen[f.ID] = true
 		v.Kept = append(v.Kept, FixedFinding{Finding: f})
 	}
 	return v
 }
 
-func validateFixedOne(c FixedClaim, byID map[int64]PostedFinding, seen map[int64]bool, idx diff.AnchorIndex, added, removed map[uint64]bool) (PostedFinding, FixedDropReason) {
+func validateFixedOne(c FixedClaim, byID map[int64]PostedFinding, seen map[int64]bool, idx diff.AnchorIndex, added, removed map[uint64]bool) (PostedFinding, int64, FixedDropReason) {
 	// The id as rendered ("[F12]", "[ F12 ]") or lowercased is still the id.
 	raw := strings.TrimSpace(strings.Trim(c.ID, "[] \t"))
 	if len(raw) > 0 && strings.EqualFold(raw[:1], FixedIDPrefix) {
@@ -150,18 +155,18 @@ func validateFixedOne(c FixedClaim, byID map[int64]PostedFinding, seen map[int64
 	}
 	id, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil {
-		return PostedFinding{}, FixedUnknownID
+		return PostedFinding{}, 0, FixedUnknownID
 	}
 	f, ok := byID[id]
 	if !ok {
-		return PostedFinding{}, FixedUnknownID
+		return PostedFinding{}, 0, FixedUnknownID
 	}
 	if seen[id] {
-		return PostedFinding{}, FixedDuplicate
+		return PostedFinding{}, id, FixedDuplicate
 	}
 	fa, ok := idx[ShownPath(f.FilePath, idx)]
 	if !ok {
-		return PostedFinding{}, FixedFileNotInDiff
+		return PostedFinding{}, id, FixedFileNotInDiff
 	}
 	// A moved line refuses the claim, but only once every line was looked
 	// up: an invented line reports as that, whatever order it came in.
@@ -175,7 +180,7 @@ func validateFixedOne(c FixedClaim, byID map[int64]PostedFinding, seen map[int64
 		case where == notFound && isAnnotation(e):
 			continue
 		case where == notFound:
-			return PostedFinding{}, FixedEvidenceNotFound
+			return PostedFinding{}, id, FixedEvidenceNotFound
 		case where == onRemovedSide:
 			// Shown lines match first, so it is not on this file's new side;
 			// added anywhere else, it moved.
@@ -188,15 +193,15 @@ func validateFixedOne(c FixedClaim, byID map[int64]PostedFinding, seen map[int64
 		quoted++
 	}
 	if quoted == 0 {
-		return PostedFinding{}, FixedNoEvidence
+		return PostedFinding{}, id, FixedNoEvidence
 	}
 	if moved {
-		return PostedFinding{}, FixedEvidenceMoved
+		return PostedFinding{}, id, FixedEvidenceMoved
 	}
 	if !changed {
-		return PostedFinding{}, FixedEvidenceUnchanged
+		return PostedFinding{}, id, FixedEvidenceUnchanged
 	}
-	return f, ""
+	return f, id, ""
 }
 
 // addedLine reports whether a shown line with hash h is an added one, not
