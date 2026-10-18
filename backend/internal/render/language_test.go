@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/jira"
 	"github.com/trick77/noergler/internal/lang"
 )
 
@@ -31,6 +32,8 @@ func TestGermanSummary(t *testing.T) {
 	in.Findings = []inference.ReviewFinding{{Severity: "issue", Comment: "Das Maß fehlt.", Headline: &h}}
 	in.Summary.Overview = "Der Code ist groß."
 	in.FilesCountsSet, in.FilesReviewed, in.TotalFiles = true, 1, 1
+	in.Ticket = &jira.Ticket{Key: "ABC-1", URL: "u", Title: "T"}
+	in.ComplianceRequirements = []inference.ComplianceRequirement{{Requirement: "Maße werden geprüft", Met: true}}
 
 	got := Summary(in)
 	for _, want := range []string{
@@ -84,5 +87,9 @@ func TestGermanSecurityKeywords(t *testing.T) {
 	}
 	if IsSecurityFinding("Überinjektion") {
 		t.Error("a keyword inside a word must not match")
+	}
+	// Bereinigung is any cleanup in German, not sanitization.
+	if IsSecurityFinding("Eine Bereinigung der ungenutzten Imports wäre sinnvoll.") {
+		t.Error("a cleanup suggestion counted as a security issue")
 	}
 }

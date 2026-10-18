@@ -183,6 +183,14 @@ func swissInput(in SummaryInput) SummaryInput {
 		findings[i] = f
 	}
 	in.Findings = findings
+	reqs := make([]inference.ComplianceRequirement, len(in.ComplianceRequirements))
+	for i, r := range in.ComplianceRequirements {
+		r.Requirement = SwissSS(r.Requirement)
+		reqs[i] = r
+	}
+	if in.ComplianceRequirements != nil {
+		in.ComplianceRequirements = reqs
+	}
 	return in
 }
 

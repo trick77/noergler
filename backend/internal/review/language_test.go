@@ -4,9 +4,11 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/lang"
+	"github.com/trick77/noergler/internal/store"
 )
 
 func TestLanguageKeywordIsExact(t *testing.T) {
@@ -47,6 +49,20 @@ func TestMentionKeywordSetsTheCommentersLanguage(t *testing.T) {
 	}
 	if len(h.bb.Replies) != 2 || !strings.Contains(h.bb.Replies[1].Text, "auf Deutsch") {
 		t.Errorf("replies = %+v, want a German confirmation", h.bb.Replies)
+	}
+}
+
+// A switch is a setting, not engagement: an author who removed the summary
+// keeps the PR ignored.
+func TestMentionKeywordLeavesAnIgnoredPRIgnored(t *testing.T) {
+	h := newHarness(t, nil)
+	now := time.Now()
+	h.st.skipState = &store.SkipState{IgnoredAt: &now}
+
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler english", "bob"), "payments", nil)
+
+	if h.st.Reactived != 0 {
+		t.Error("a language switch reactivated an ignored PR")
 	}
 }
 

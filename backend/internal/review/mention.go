@@ -65,20 +65,21 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		}
 	}()
 
-	// Any mention reactivates a PR ignored after its summary was removed.
-	// Clearing the state (and the stale summary id, which Reactivate does)
-	// lets the next review post a fresh summary and stops the review guard
-	// from re-ignoring the PR.
-	r.reactivateIfIgnored(ctx, key, prTag)
-
 	question := extractQuestion(comment.Text, r.bitbucket.BotUsername())
 
 	// "@bot english" sets the commenter's own language: a keyword, decided
-	// by code, never by the model, and no inference call.
+	// by code, never by the model, and no inference call. A setting, not
+	// engagement with the PR, so it does not reactivate an ignored one.
 	if l, ok := languageKeyword(question); ok {
 		r.setLanguage(ctx, project, repo, pr.ID, comment.ID, prTag, comment.Author.Name, l)
 		return false
 	}
+
+	// Any other mention reactivates a PR ignored after its summary was
+	// removed. Clearing the state (and the stale summary id, which
+	// Reactivate does) lets the next review post a fresh summary and stops
+	// the review guard from re-ignoring the PR.
+	r.reactivateIfIgnored(ctx, key, prTag)
 
 	// An empty question, or one of the review keywords, means "review this".
 	// It is a review like any other, so it takes the staged path: the
@@ -240,7 +241,7 @@ func costTotal(c inference.CallCost) string {
 	if c.NanoUSD == nil {
 		return "unpriced"
 	}
-	return fmt.Sprintf("$%.3f", float64(*c.NanoUSD)/nanoPerUSD)
+	return "$" + inference.FormatUSD3(*c.NanoUSD)
 }
 
 // reactivateIfIgnored clears the ignored state a removed summary left, so a

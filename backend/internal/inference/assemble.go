@@ -176,9 +176,12 @@ func AssembleReviewPrompt(req AssembleRequest, count CountFunc) AssembledPrompt 
 	).Replace(req.Template)
 
 	breakdown := PromptBreakdown{
+		// The language block is part of the template, not a section of
+		// its own: counted here at its real size, not as the placeholder.
 		Template: count(strings.NewReplacer(
 			PlaceholderFiles, "",
 			PlaceholderRepoInstructions, "",
+			PlaceholderOutputLanguage, OutputLanguageBlock(req.Language),
 		).Replace(req.Template)),
 		Files: 0,
 	}

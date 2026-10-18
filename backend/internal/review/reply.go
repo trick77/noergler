@@ -91,13 +91,12 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on finding %s not answered: %s", prTag, where, why))
 		return true, false
 	}
+	if mentioned {
+		text = extractQuestion(text, bot)
+	}
 	// "english" under a finding sets the author's language, even on a
 	// thread answered already: a command, not a reply, so it stamps nothing.
-	switchText := text
-	if mentioned {
-		switchText = extractQuestion(text, bot)
-	}
-	if l, ok := languageKeyword(switchText); ok {
+	if l, ok := languageKeyword(text); ok {
 		r.setLanguage(ctx, key.Project, key.Repo, pr.ID, comment.ID, prTag, comment.Author.Name, l)
 		return true, false
 	}
@@ -106,7 +105,6 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	}
 	if mentioned {
 		// "@bot review" on a finding thread is still a review.
-		text = extractQuestion(text, bot)
 		if text == "" || reviewKeywords[strings.ToLower(text)] {
 			return false, false
 		}

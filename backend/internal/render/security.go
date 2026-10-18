@@ -25,7 +25,7 @@ var securityKeywords = regexp.MustCompile(
 		// comment writes them when it does not borrow the English term.
 		`injektion|sicherheitslücken?|schwachstellen?|authentifizierung|` +
 		`autorisierung|zugangsdaten|anmeldedaten|rechteausweitung|` +
-		`deserialisierung|bereinigung)(?:[^\pL\pN_]|$)`)
+		`deserialisierung)(?:[^\pL\pN_]|$)`)
 
 // IsSecurityFinding reports whether a finding's comment mentions a security
 // keyword.

@@ -92,8 +92,7 @@ func TestPRStatusSaysWhyAndWhen(t *testing.T) {
 	}
 }
 
-// An unpriced PR has no cost, never "0.000"; a DB fault answers empty, not
-// an error the model would repeat.
+// An unpriced PR has no cost, never "0.000"; a DB fault says unavailable.
 func TestPRStatusUnpricedAndFailOpen(t *testing.T) {
 	h := newHarness(t, nil)
 	out := toolByName(t, h, testAsk("alice", "status?"), "pr_status")("{}")
@@ -102,8 +101,8 @@ func TestPRStatusUnpricedAndFailOpen(t *testing.T) {
 	}
 	h.st.failAll = true
 	out = toolByName(t, h, testAsk("alice", "status?"), "pr_status")("{}")
-	if !strings.Contains(out, `"known":false`) {
-		t.Errorf("DB fault: %s", out)
+	if !strings.Contains(out, `"error"`) || strings.Contains(out, `"known"`) {
+		t.Errorf("a DB fault must read as unavailable, not as never seen: %s", out)
 	}
 }
 
@@ -121,6 +120,10 @@ func TestSetMyLanguageNeedsTheCommentersWords(t *testing.T) {
 		{"set language to english", `{"language":"de"}`, ""},
 		{"am Ende der Datei, denen fehlt was", `{"language":"en"}`, ""},
 		{"english", `{"language":"fr"}`, ""},
+		// Locale tags and path segments are not a request: only the exact
+		// keyword "@bot en" takes the short form.
+		{"what does i18n/en/messages.json change?", `{"language":"en"}`, ""},
+		{"is de-DE the right locale?", `{"language":"de"}`, ""},
 		{"english", `not json`, ""},
 	}
 	for _, c := range cases {

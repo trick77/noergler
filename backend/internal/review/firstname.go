@@ -82,7 +82,7 @@ var nameIntents = map[string]bool{"acknowledges": true, "disputes": true}
 // leadGreeting is what may stand before a leading address ("Ok Jan - ",
 // "Danke Jan, "), in both output languages.
 const leadGreeting = `(?:ok(?:ay)?|sure|thanks|thank you|hi|hey|hello|right|got it|yes|no|alright|` +
-	`danke(?: dir)?|merci|hallo|hoi|sali|gern(?:e|geschehen)?|alles klar|klar|stimmt|genau|ja|nein|gut)`
+	`danke(?: dir)?|merci|hallo|hoi|sali|gerne?(?: geschehen)?|alles klar|klar|stimmt|genau|ja|nein|gut)`
 
 // guardName enforces nameIntents on the model's reply: the prompt asks for
 // it, this is the blunt rule behind it. A leading address ("Jan, ",

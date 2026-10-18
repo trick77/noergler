@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/store"
+	"github.com/trick77/ship/kit/logging"
 )
 
 // mentionAsk is who asked what on which PR: what the tools may act on. It
@@ -103,7 +105,7 @@ func (r *Reviewer) teamConfig(ctx context.Context, user string) teamConfigView {
 		Team:                  r.TeamSlug,
 		Model:                 r.llm.Label(),
 		DefaultLanguage:       string(r.cfg.Language.Or(lang.Default)),
-		MaxPRCostUSD:          fmt.Sprintf("%.3f", r.cfg.MaxPRCostUSD),
+		MaxPRCostUSD:          usd3(r.cfg.MaxPRCostUSD),
 		MaxComments:           r.cfg.MaxComments,
 		MaxFileLines:          r.cfg.MaxFileLines,
 		RequireAgentsMD:       r.cfg.RequireAgentsMD,
@@ -152,11 +154,14 @@ type prStatusAttempt struct {
 	SkipReason string `json:"skip_reason,omitempty"`
 }
 
-func (r *Reviewer) prStatus(ctx context.Context, key store.PRKey) prStatusView {
-	v := prStatusView{CapUSD: fmt.Sprintf("%.3f", r.cfg.MaxPRCostUSD), Attempts: []prStatusAttempt{}}
-	st := safeDB(ctx, r.log, "PRStatus", func() (*store.PRStatus, error) { return r.store.PRStatus(ctx, key) })
-	if st == nil {
-		return v
+// prStatus answers pr_status. A DB fault says so rather than reading as
+// "never seen": the model would tell the user noergler has no record.
+func (r *Reviewer) prStatus(ctx context.Context, key store.PRKey) any {
+	v := prStatusView{CapUSD: usd3(r.cfg.MaxPRCostUSD), Attempts: []prStatusAttempt{}}
+	st, err := r.store.PRStatus(ctx, key)
+	if err != nil || st == nil {
+		r.log.WarnContext(ctx, "DB operation failed: PRStatus", logging.Err(err))
+		return map[string]string{"error": "noergler's records are unavailable right now; say so, do not guess"}
 	}
 	v.Known, v.Runs = st.Known, st.Runs
 	if st.LastReviewedCommit != nil {
@@ -172,17 +177,23 @@ func (r *Reviewer) prStatus(ctx context.Context, key store.PRKey) prStatusView {
 			Outcome: a.Outcome, SkipReason: a.Reason})
 	}
 	if cost := safeDB(ctx, r.log, "PRCost", func() (*int64, error) { return r.store.PRCost(ctx, key) }); cost != nil {
-		s := fmt.Sprintf("%.3f", float64(*cost)/nanoPerUSD)
+		s := inference.FormatUSD3(*cost)
 		v.CostUSD = &s
 	}
 	return v
 }
 
-// languageWord is a language named in the commenter's own text. Unicode
-// boundaries: RE2's \b is ASCII.
+// usd3 is a configured dollar amount as the 3-decimal string every USD
+// figure uses, through the same rounding as the cost log and the dashboard.
+func usd3(usd float64) string { return inference.FormatUSD3(int64(math.Round(usd * nanoPerUSD))) }
+
+// languageWord is a language named in the commenter's own text: the full
+// word only. "en" and "de" are path segments and locale tags ("i18n/en/",
+// "de-DE") far more often than a request, so they count only as the exact
+// keyword, never here. Unicode boundaries: RE2's \b is ASCII.
 var languageWord = map[lang.Lang]*regexp.Regexp{
-	lang.EN: regexp.MustCompile(`(?i)(?:^|[^\pL\pN_])(?:english|englisch|en)(?:[^\pL\pN_]|$)`),
-	lang.DE: regexp.MustCompile(`(?i)(?:^|[^\pL\pN_])(?:deutsch|german|de)(?:[^\pL\pN_]|$)`),
+	lang.EN: regexp.MustCompile(`(?i)(?:^|[^\pL\pN_])(?:english|englisch|englische[mn]?)(?:[^\pL\pN_]|$)`),
+	lang.DE: regexp.MustCompile(`(?i)(?:^|[^\pL\pN_])(?:deutsch|deutsche[mn]?|german)(?:[^\pL\pN_]|$)`),
 }
 
 // setMyLanguage is the model proposing a switch and code deciding it: the

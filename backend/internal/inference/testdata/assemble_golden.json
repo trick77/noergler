@@ -7,7 +7,7 @@
  "english": {
   "prompt_sha256": "e6bb0d908b4e19839b4072724779ede025985dbabc181dc12c4890d74119e19d",
   "breakdown": {
-   "template": 3250,
+   "template": 3386,
    "repo_instructions": 0,
    "files": 78
   },
@@ -17,7 +17,7 @@
  "everything": {
   "prompt_sha256": "e0e05fcf5d9d3914e534db0497580e7561ed978006c988a5568b48cab6b5ea93",
   "breakdown": {
-   "template": 3250,
+   "template": 3435,
    "repo_instructions": 6,
    "files": 152
   },
@@ -27,7 +27,7 @@
  "minimal": {
   "prompt_sha256": "f554b551e8f8daed2f422c761289eee312f040658f0ebdfbb7fc50822c7a034d",
   "breakdown": {
-   "template": 3250,
+   "template": 3435,
    "repo_instructions": 0,
    "files": 78
   },
@@ -37,7 +37,7 @@
  "ticket_absent_compliance_on": {
   "prompt_sha256": "f554b551e8f8daed2f422c761289eee312f040658f0ebdfbb7fc50822c7a034d",
   "breakdown": {
-   "template": 3250,
+   "template": 3435,
    "repo_instructions": 0,
    "files": 78
   },
@@ -47,7 +47,7 @@
  "ticket_compliance_off": {
   "prompt_sha256": "e7d78ffb47a2a046cec6bc47e4f2f893db5c95bfab06e81d4022ba87ecaa103e",
   "breakdown": {
-   "template": 3250,
+   "template": 3435,
    "repo_instructions": 0,
    "files": 78
   },
@@ -57,7 +57,7 @@
  "with_cross_file": {
   "prompt_sha256": "211d8adb5fa4199f8838a3feb744dc37ca509e94382abdd35a128a932440293b",
   "breakdown": {
-   "template": 3250,
+   "template": 3435,
    "repo_instructions": 0,
    "files": 152
   },
@@ -67,7 +67,7 @@
  "with_cumulative": {
   "prompt_sha256": "73de86afa7fd3fbf722eab05c0309d81c667e0adfdae9bc586275fd056c3b678",
   "breakdown": {
-   "template": 3250,
+   "template": 3435,
    "repo_instructions": 0,
    "files": 78
   },
@@ -77,7 +77,7 @@
  "with_pr_description": {
   "prompt_sha256": "9c4f44cbd25566bdf2766355d64d41006b875e9d9608a2d789213e79ad1024e1",
   "breakdown": {
-   "template": 3250,
+   "template": 3435,
    "repo_instructions": 0,
    "files": 78
   },
@@ -87,7 +87,7 @@
  "with_repo_instructions": {
   "prompt_sha256": "9f6eac6246a81686266b69eb04d58d3a8cab45f822fd60b66a654d75e22480ff",
   "breakdown": {
-   "template": 3250,
+   "template": 3435,
    "repo_instructions": 6,
    "files": 78
   },
@@ -97,7 +97,7 @@
  "with_supplementary": {
   "prompt_sha256": "088828129f20508bec90304d5f6c641cdab0a4e3a6ff9266a2c7a23fa37fd6f6",
   "breakdown": {
-   "template": 3250,
+   "template": 3435,
    "repo_instructions": 0,
    "files": 152
   },
@@ -107,7 +107,7 @@
  "with_ticket": {
   "prompt_sha256": "0e4a80c7b55a0e3ab2a2cfa5076e8ddd90a76ce334761a0984059b3f6a580db4",
   "breakdown": {
-   "template": 3250,
+   "template": 3435,
    "repo_instructions": 0,
    "files": 78
   },

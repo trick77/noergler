@@ -34,7 +34,7 @@ const (
 const toolCapResult = `{"error": "too many tool calls in one turn; answer with what you have"}`
 
 // mentionWithTools is Mention's loop: up to MaxToolRounds rounds with the
-// tools on offer, then one without, which forces a text answer. Each round
+// tools on offer, then one asking for none, which forces a text answer. Each round
 // is a full Chat with the whole history; there is no streaming.
 func (c *Client) mentionWithTools(ctx context.Context, req MentionRequest) MentionResult {
 	if req.PromptTokens > 0 && c.Ready() {
@@ -56,11 +56,15 @@ func (c *Client) mentionWithTools(ctx context.Context, req MentionRequest) Menti
 
 	var res MentionResult
 	for round := 0; ; round++ {
-		chat := llmwire.ChatRequest{Model: c.model, Reasoning: c.reasoning(), Messages: messages}
+		// The tools stay defined in every round: a history holding tool
+		// calls without them is refused by some routes (Anthropic, Bedrock).
+		// The last round asks for none instead; a profile that only takes
+		// "auto" relaxes that, and a call it makes anyway is not run.
 		final := round == MaxToolRounds
-		if !final {
-			chat.Tools = tools
-			chat.ToolChoice = llmwire.ToolChoice{Mode: llmwire.ToolChoiceAuto}
+		chat := llmwire.ChatRequest{Model: c.model, Reasoning: c.reasoning(), Messages: messages, Tools: tools,
+			ToolChoice: llmwire.ToolChoice{Mode: llmwire.ToolChoiceAuto}}
+		if final {
+			chat.ToolChoice = llmwire.ToolChoice{Mode: llmwire.ToolChoiceNone}
 		}
 		resp, _, err := c.wire.Chat(ctx, chat)
 		if err != nil {

@@ -49,8 +49,10 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   from the operator pattern, single-case parts title-cased; never stored or
   logged.
 - Language: a review is the PR author's, a Q&A the asker's; resolved user ->
-  team -> `de`, failing open to the team. Set only by an exact keyword, by
-  code, for the commenter alone; never stamps a finding. Prompts, enums,
+  team -> `de`, failing open to the team. Set for the commenter alone, by an
+  exact keyword or by `set_my_language` when their own text names the
+  language as a full word (never "en"/"de" there); a switch never stamps a
+  finding or reactivates an ignored PR. Prompts, enums,
   keys and logs stay English; `{output_language}` above "## Untrusted
   input"; `SwissSS` on model prose only, never code or `suggestion`. Evals
   pin `en`. Every banner marker exists per language.

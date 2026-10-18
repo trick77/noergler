@@ -297,8 +297,6 @@ func (b *blockErrors) listField(m *yaml.Node, path, key string) *[]string {
 // value was absent or invalid (the error is already recorded).
 type reviewOverride func(e *blockErrors, m *yaml.Node, key string) func(*Review)
 
-// field builds a reviewOverride from a typed parser and the Review field it
-// sets. One entry per key, so a key cannot be accepted and then dropped.
 // langField: only the two languages noergler writes.
 func (b *blockErrors) langField(m *yaml.Node, path, key string) *lang.Lang {
 	v, ok := b.scalar(m, path, key, false)
@@ -313,6 +311,8 @@ func (b *blockErrors) langField(m *yaml.Node, path, key string) *lang.Lang {
 	return &l
 }
 
+// field builds a reviewOverride from a typed parser and the Review field it
+// sets. One entry per key, so a key cannot be accepted and then dropped.
 func field[T any](parse func(*blockErrors, *yaml.Node, string, string) *T, set func(*Review, T)) reviewOverride {
 	return func(e *blockErrors, m *yaml.Node, key string) func(*Review) {
 		p := parse(e, m, "review", key)

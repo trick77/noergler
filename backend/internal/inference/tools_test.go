@@ -68,8 +68,9 @@ func TestMentionToolLoop(t *testing.T) {
 	}
 }
 
-// A model that keeps calling gets MaxToolRounds rounds, then one without the
-// tools, which forces the answer.
+// A model that keeps calling gets MaxToolRounds rounds, then one asking for
+// no tool, which forces the answer. The tools stay defined: a history with
+// tool calls and no tools is refused by some routes.
 func TestMentionToolRoundsAreCapped(t *testing.T) {
 	f := &fakeGateway{chatBodies: []string{toolCallBody("t"), toolCallBody("t"), toolCallBody("t"), toolCallBody("t")}}
 	c := toolClient(t, f)
@@ -81,11 +82,12 @@ func TestMentionToolRoundsAreCapped(t *testing.T) {
 		t.Errorf("calls = %d, runs = %d, want %d, %d", f.gotChat, runs, MaxToolRounds+1, MaxToolRounds)
 	}
 	var last struct {
-		Tools []any `json:"tools"`
+		Tools      []any `json:"tools"`
+		ToolChoice any   `json:"tool_choice"`
 	}
 	_ = json.Unmarshal(f.chatRequests[len(f.chatRequests)-1], &last)
-	if len(last.Tools) != 0 {
-		t.Error("the last round must not offer the tools")
+	if len(last.Tools) == 0 || last.ToolChoice != "none" {
+		t.Errorf("last round tools = %d, tool_choice = %v, want the tools with none", len(last.Tools), last.ToolChoice)
 	}
 	if got.Outcome != OutcomeOK {
 		t.Errorf("outcome = %v", got.Outcome)
