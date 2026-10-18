@@ -194,6 +194,8 @@ func (b *blockErrors) checkKeys(m *yaml.Node, path string, allowed ...string) {
 		switch {
 		case seen[k]:
 			b.add(joinPath(path, k), "Duplicate key")
+		case !ok[k] && isRemovedPromptKey(k):
+			b.add(joinPath(path, k), RemovedPromptReason)
 		case !ok[k]:
 			b.add(joinPath(path, k), "Extra inputs are not permitted")
 		}

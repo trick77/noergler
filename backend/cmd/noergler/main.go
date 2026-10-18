@@ -137,13 +137,8 @@ func serve(log *slog.Logger) error {
 		return err
 	}
 	config.Dump(app, log)
-	// Removed: the prompts are compiled in. A deployment still setting one
-	// would otherwise believe its own prompt is live.
-	for _, name := range []string{"REVIEW_PROMPT_TEMPLATE", "REVIEW_MENTION_PROMPT_TEMPLATE",
-		"REVIEW_FINDING_REPLY_PROMPT_TEMPLATE"} {
-		if _, set := config.OSLookup(name); set {
-			log.Warn(name + " is no longer read: the prompts are compiled into the binary")
-		}
+	for _, name := range config.RemovedPromptSettings(config.OSLookup) {
+		log.Warn(name + " is " + config.RemovedPromptReason)
 	}
 
 	// SIGINT/SIGTERM end startup and then serving; the queue drain below runs

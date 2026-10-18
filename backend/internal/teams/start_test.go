@@ -124,7 +124,7 @@ func TestBoot_SeedConflictDisablesBeforeStartup(t *testing.T) {
 	// Had Start run, its reason (the LLM check) would replace the seed's.
 	g, err := Boot(context.Background(), appWith(
 		map[string]*config.Team{"platform": team}, []string{"platform"}, nil,
-	), Deps{Claims: db, Log: log})
+	), Deps{Claims: db, Log: log, Env: noEnv})
 	if err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
@@ -161,18 +161,28 @@ func TestBoot_TeamsReadyLineRendering(t *testing.T) {
 	}
 }
 
-// A panic in one team's startup is contained, not fatal: Start on a nil
-// config panics, and safeStart, which Boot runs every team through, turns
-// it into that team's reason.
-func TestSafeStart_ContainsAPanic(t *testing.T) {
+// A panic in one team's startup is contained, not fatal, at the Boot level:
+// the team is disabled and boot goes on. Start binds the team onto the
+// logger first, so a handler that panics on WithAttrs panics inside Start
+// and nowhere before it.
+func TestBoot_PanicInOneTeamIsContained(t *testing.T) {
 	log, _ := bufLogger()
 	team := &config.Team{Slug: "platform", Review: reviewCfg()}
 
-	rt, reason := safeStart(context.Background(), nil, team, Deps{Claims: emptyStore(), Log: log})
-	if rt != nil || !strings.Contains(reason, "startup failed: panic:") {
-		t.Errorf("runtime %v, reason %q: want the contained panic", rt, reason)
+	g, err := Boot(context.Background(), appWith(
+		map[string]*config.Team{"platform": team}, []string{"platform"}, nil,
+	), Deps{Claims: emptyStore(), Log: slog.New(panicOnWith{log.Handler()}), Env: noEnv})
+	if err != nil {
+		t.Fatalf("a panicking team must not abort boot: %v", err)
+	}
+	if _, reason, _ := g.Lookup("platform"); !strings.Contains(reason, "startup failed: panic:") {
+		t.Errorf("reason = %q, want the contained panic", reason)
 	}
 }
+
+type panicOnWith struct{ slog.Handler }
+
+func (panicOnWith) WithAttrs([]slog.Attr) slog.Handler { panic("boom") }
 
 // A shared-layer fault is not a per-team fault: it aborts boot.
 func TestBoot_UnreadableClaimsTableAbortsBoot(t *testing.T) {

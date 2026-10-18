@@ -458,10 +458,10 @@ func TestTeams_FaultDisablesOnlyThatTeam(t *testing.T) {
 		}, "inference.base_url: Extra inputs are not permitted"},
 		{"review template in team", func(s string) string {
 			return strings.Replace(s, "      max_pr_cost_usd: 8.5\n", "      max_pr_cost_usd: 8.5\n      review_prompt_template: x\n", 1)
-		}, "review.review_prompt_template: Extra inputs are not permitted"},
+		}, "review.review_prompt_template: no longer read: the prompts are compiled into the binary"},
 		{"mention template in team", func(s string) string {
 			return strings.Replace(s, "      max_pr_cost_usd: 8.5\n", "      max_pr_cost_usd: 8.5\n      mention_prompt_template: x\n", 1)
-		}, "review.mention_prompt_template: Extra inputs are not permitted"},
+		}, "review.mention_prompt_template: no longer read: the prompts are compiled into the binary"},
 		{"review typo", func(s string) string {
 			return strings.Replace(s, "      max_pr_cost_usd: 8.5\n", "      max_pr_cost_usd: 8.5\n      max_comment: 3\n", 1)
 		}, "review.max_comment: Extra inputs are not permitted"},

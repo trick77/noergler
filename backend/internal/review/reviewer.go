@@ -67,8 +67,8 @@ type Reviewer struct {
 	ignoreAuthors     []string
 	// usePRDescription is rewritten by the same API, so it is atomic too.
 	usePRDescription atomic.Bool
-	// template is the review prompt, mentionTmpl the Q&A prompt. Both are
-	// loaded once at startup and resident for the team.
+	// template is the review prompt, mentionTmpl the Q&A prompt; both the
+	// compiled-in ones unless a test overrides them.
 	template    string
 	mentionTmpl string
 	// replyTmpl answers a reply on a finding's thread.
@@ -79,9 +79,9 @@ type Reviewer struct {
 	owns func(project, repo string) bool
 }
 
-// Options builds a Reviewer. Bitbucket, the store, the inference client, the
-// token counter and the prompt template are required; Jira and riptide are
-// optional and nil disables that feature for the team.
+// Options builds a Reviewer. Bitbucket, the store, the inference client and
+// the token counter are required; Jira and riptide are optional and nil
+// disables that feature for the team.
 type Options struct {
 	TeamSlug  string
 	Bitbucket BitbucketClient
@@ -91,10 +91,11 @@ type Options struct {
 	Riptide   RiptideEmitter
 	Tokens    TokenCounter
 	Config    config.Review
-	// Template is the review prompt; MentionTemplate is the Q&A prompt.
-	Template        string
-	MentionTemplate string
-	// FindingReplyTemplate answers a reply on a finding's thread.
+	// Template, MentionTemplate and FindingReplyTemplate override the
+	// compiled-in prompts, for tests only: production leaves them empty and
+	// the prompts are never configurable.
+	Template             string
+	MentionTemplate      string
 	FindingReplyTemplate string
 	Log                  *slog.Logger
 	// Owns reports whether the team still claims the repo; nil claims all.
