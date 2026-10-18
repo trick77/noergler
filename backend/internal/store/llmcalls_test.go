@@ -5,6 +5,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestAttemptCallRoundTrip(t *testing.T) {
@@ -107,10 +108,10 @@ func TestCallWriteNeverCostsTheAttempt(t *testing.T) {
 		t.Errorf("PRCost = %v, want the attempt's 400", c)
 	}
 
-	// The call write itself failing (here: no table to write to) still
-	// returns the attempt's id with the error, and the attempt's cost is in
-	// the PR total.
-	if _, err := s.pool.Exec(ctx, `DROP TABLE llm_calls`); err != nil {
+	// The call write itself failing (here: a constraint no new row meets;
+	// the table stays, the PR total reads it) still returns the attempt's
+	// id with the error, and the attempt's cost is in the PR total.
+	if _, err := s.pool.Exec(ctx, `ALTER TABLE llm_calls ADD CONSTRAINT refuse_all CHECK (false) NOT VALID`); err != nil {
 		t.Fatal(err)
 	}
 	id, err = s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "unparseable",
@@ -120,5 +121,61 @@ func TestCallWriteNeverCostsTheAttempt(t *testing.T) {
 	}
 	if c, _ := s.PRCost(ctx, key); c == nil || *c != 500 {
 		t.Errorf("PRCost = %v, want 500: the second attempt's cost survived its call", c)
+	}
+}
+
+// A reply's and a question's call is the only record of it: the PR cost, the
+// cap check's id and the monthly spend count it, the review call (detail
+// beside its run) is never counted twice, and the page lists them newest
+// first.
+func TestCommentCallsCountTowardThePR(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	prID := upsert(t, s, key, "c1")
+	runID := run(t, s, prID, "c1", nano(600), "gpt-5.5")
+	// The review's call carries the same 600 as its run: detail, not money.
+	if _, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "ok",
+		RunID: &runID, Call: &LLMCall{Profile: "p", CostNanoUSD: nano(600)}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.InsertCommentCall(ctx, "platform", key, CallReply, 501, LLMCall{Profile: "p", Model: "m", CostNanoUSD: nano(30)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.InsertCommentCall(ctx, "platform", key, CallQuestion, 502, LLMCall{Profile: "p", CostNanoUSD: nano(70)}); err != nil {
+		t.Fatal(err)
+	}
+	// Unpriced: counted as nothing, never as zero cost or a failure.
+	if err := s.InsertCommentCall(ctx, "platform", key, CallQuestion, 502, LLMCall{Profile: "p"}); err != nil {
+		t.Fatal(err)
+	}
+
+	id, cost, err := s.PRCapState(ctx, key)
+	if err != nil || id != prID || cost == nil || *cost != 700 {
+		t.Errorf("PRCapState = %d, %v, %v; want row %d, 700", id, cost, err, prID)
+	}
+	tot, err := s.TotalsSince(ctx, time.Now().Add(-time.Hour))
+	if err != nil || tot.CostNanoUSD == nil || *tot.CostNanoUSD != 700 || tot.Runs != 1 {
+		t.Errorf("totals = %+v, %v; want 700 over 1 run", tot, err)
+	}
+	calls, more, err := s.PRCommentCalls(ctx, key)
+	if err != nil || more || len(calls) != 3 {
+		t.Fatalf("PRCommentCalls = %+v, %v, %v", calls, more, err)
+	}
+	if calls[2].Kind != CallReply || *calls[2].CommentID != 501 || calls[2].Model != "m" || calls[0].CostNanoUSD != nil {
+		t.Errorf("calls = %+v, want newest first, the reply last", calls)
+	}
+}
+
+// Only a reply or a question may be a comment call, and only a review call
+// hangs off an attempt: the ledger split rests on it.
+func TestCommentCallKinds(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	if err := s.InsertCommentCall(ctx, "platform", key, CallReview, 1, LLMCall{Profile: "p"}); err == nil {
+		t.Error("a review call written without its attempt")
+	}
+	if _, err := s.pool.Exec(ctx, `INSERT INTO llm_calls (team_slug, project_key, repo_slug, pr_id, kind, profile)
+		VALUES ('platform', 'P', 'r', 1, 'review', 'p')`); err == nil {
+		t.Error("the database took a review call with no attempt")
 	}
 }

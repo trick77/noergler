@@ -15,9 +15,10 @@ import (
 // run the gateway did not price is not a free run.
 //
 // Spend is runs plus billed run-less attempts (an unparseable response, a
-// review stopped by a removed claim): the same money prCostSQL counts per PR.
-// Read off runs alone, the monthly figure fell short of the key's real spend.
-// The attempts add cost only, never a run, a token or a finding.
+// review stopped by a removed claim) plus reply and question calls: the same
+// money prCostSQL counts per PR. Read off runs alone, the monthly figure fell
+// short of the key's real spend. The attempts and calls add cost only, never
+// a run, a token or a finding.
 const spendCTE = `
 	WITH spend AS (
 		SELECT p.team_slug, r.created_at, r.cost_nano_usd, 1 AS run, r.prompt_tokens,
@@ -28,6 +29,10 @@ const spendCTE = `
 		SELECT a.team_slug, a.created_at, a.cost_nano_usd, 0, 0, 0, 0, 0
 		  FROM review_attempts a
 		 WHERE a.review_run_id IS NULL AND a.cost_nano_usd IS NOT NULL
+		UNION ALL
+		SELECT c.team_slug, c.created_at, c.cost_nano_usd, 0, 0, 0, 0, 0
+		  FROM llm_calls c
+		 WHERE c.attempt_id IS NULL AND c.cost_nano_usd IS NOT NULL
 	)`
 
 // Totals is the headline figure set over a time window.

@@ -8,6 +8,10 @@ an incident or an eval run: read the reason before relaxing a rule.
 - USD as a string: a float rounds the money, `1E-9` breaks strict parsers.
 - PR total only when priced: an unconditional read shows a total for an
   unpriced run and can trip the cost banner.
+- Replies and Q&A count toward the cap, which a mention no longer overrides:
+  as log lines only, a PR could talk its way past its limit, and the money
+  was missing from the dashboard. One banner, not a reply per refusal: a
+  thread of "limit reached" answers is noise the summary already says.
 - Never streaming: a LiteLLM stream carries no cost header.
 - Never `ReasoningMinimal()`: on some models minimal is thinking off.
 - The gateway's window wins: it can cap below the vendor. LiteLLM often leaves

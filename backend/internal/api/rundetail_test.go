@@ -149,3 +149,34 @@ func TestRunDetailBilledWithoutRun(t *testing.T) {
 		t.Errorf("cost = %v, run = %v, call = %v", body["cost_usd"], body["run"], body["call"])
 	}
 }
+
+// The PR's reply and question calls go out with the run, each priced at three
+// decimals or null when unpriced, and an empty list is [], never null.
+func TestRunDetailListsCommentCalls(t *testing.T) {
+	h := newDashHarness(t)
+	h.st.detailID = 4
+	h.st.detail = store.RunDetail{ID: 4, Outcome: "ok"}
+	var body struct {
+		PR struct {
+			Calls []map[string]any `json:"calls"`
+		} `json:"pr"`
+	}
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/runs/4").Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.PR.Calls == nil {
+		t.Error("no calls must be [], not null")
+	}
+	cost, comment := int64(31_500_000), int64(501)
+	h.st.calls = []store.CommentCall{
+		{Kind: "reply", CommentID: &comment, Model: "m", CostNanoUSD: &cost, CreatedAt: time.Now()},
+		{Kind: "question", Model: "m", CreatedAt: time.Now()},
+	}
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/runs/4").Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.PR.Calls) != 2 || body.PR.Calls[0]["cost_usd"] != "0.032" || body.PR.Calls[1]["cost_usd"] != nil ||
+		body.PR.Calls[0]["comment_id"] != float64(501) {
+		t.Errorf("calls = %v", body.PR.Calls)
+	}
+}

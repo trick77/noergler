@@ -72,7 +72,7 @@ Everything here is a default a team block may replace.
 | `REVIEW_AGENTS_MD_MAX_TOKENS` | `7000` | Skip the review above this size. |
 | `REVIEW_AGENTS_MD_CUSTOM_LINK` | *(empty)* | Extra link in the "too large" summary: `[Title](URL)` or a bare URL. |
 | `REVIEW_OPT_OUT_BRANCH_KEYWORD` | `noergloff` | Substring in the source branch name that skips the review. Blank turns it off. |
-| `REVIEW_MAX_PR_COST_USD` | `5.00` | Once a PR's accumulated cost reaches this, auto-review stops. An `@mention` still works. Must be greater than 0. |
+| `REVIEW_MAX_PR_COST_USD` | `5.00` | Once a PR's accumulated cost (reviews, replies, Q&A) reaches this, everything stops on it, `@mention` included. Must be greater than 0. |
 | `REVIEW_LANGUAGE` | `de` | `de` or `en`: the language of everything noergler posts. A user's own choice (`@noergler english` / `@noergler deutsch`) wins for their PRs and their questions. Prompts, logs and enums stay English. |
 | `JIRA_ACCEPTANCE_CRITERIA_PREFIXES` | `AC,AK,Acceptance Criteria,Acceptance Criterion,Akzeptanzkriterium,Akzeptanzkriterien,DoD,Req` | Prefixes that mark an acceptance-criteria line in a ticket. Matched at a word boundary. Blank turns it off. |
 | `OPENAI_REASONING_EFFORT` | unset | Unset: the model's balanced level, from its llmwire profile. Set: a level the profile lists, checked at team startup before any request; one it does not list disables the team and the error names the accepted ones. The level sent is part of every run's model label. |

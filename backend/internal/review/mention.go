@@ -98,6 +98,11 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		r.ReviewPullRequest(ctx, payload, true)
 		return false
 	}
+	// At the cap the Q&A stops like everything else: the banner, no answer.
+	if rowID, cumulative, over := r.overCap(ctx, key); over {
+		r.refuseOverCap(ctx, key, prTag, pr.Author.User.Name, "mention", rowID, cumulative)
+		return false
+	}
 	r.log.InfoContext(ctx, fmt.Sprintf("Handling mention Q&A on %s: %q", prTag, question))
 	// The answer is the asker's, so it is in their language, not the
 	// PR author's.
@@ -186,11 +191,13 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 	// The asker's language until a switch is stored, which happens only
 	// with an answer to post: a failed loop leaves the language alone.
 	l := j.lang
-	// One line per call, and only when one happened: the too-large branch
-	// decides before any request, and a transport error returns with no
-	// cost. A tool loop adds its total, never stored (decided).
+	// One line and one row per call, and only when one happened: the
+	// too-large branch decides before any request, and a transport error
+	// returns with no cost. A tool loop logs its total too; the rows sum to
+	// it, so the total itself is never stored.
 	for _, c := range result.Rounds {
 		r.logCost(ctx, prTag, c)
+		r.recordCommentCall(ctx, j.ask.key, store.CallQuestion, replyTo, c)
 	}
 	if len(result.Rounds) > 1 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: Q&A took %d calls, tools %v (%d refused over the cap), total %s",

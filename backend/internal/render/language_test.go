@@ -70,7 +70,7 @@ func TestGermanInlineComment(t *testing.T) {
 func TestBannersStripInBothLanguages(t *testing.T) {
 	body := "summary body"
 	for _, l := range []lang.Lang{lang.DE, lang.EN} {
-		banner := CostLimitBanner(l, 6, 5, "noergler", true)
+		banner := CostLimitBanner(l, 6, 5, true)
 		noSentinel := strings.TrimPrefix(banner, CostBannerSentinel+"\n")
 		if got := StripCostBanner(noSentinel + "\n\n" + body); got != body {
 			t.Errorf("%s cost banner not stripped without its sentinel: %q", l, got)

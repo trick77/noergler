@@ -212,6 +212,10 @@ export const de = {
     over_budget: "nicht geprüft, über dem Token-Budget",
     not_reviewable: "nicht geprüft, binär oder generiert",
   },
+  callKind: {
+    reply: "Antwort auf ein Finding",
+    question: "Antwort auf eine Erwähnung",
+  },
   decision: {
     dropped: "verworfen",
     repeat: "schon gepostet",
@@ -368,6 +372,12 @@ export const de = {
     moreAfter: "Neuere Runs dieses Pull Requests sind hier nicht aufgeführt.",
     prTotalNote:
       "Das Total ist, was dieser Pull Request seit seiner letzten Beanspruchung gekostet hat, und damit auch, was ein Kostenlimit zählt. Es kann deshalb von den Zeilen oben abweichen.",
+    callsTitle: "Antworten",
+    callsNote:
+      "Jede zählt zum PR-Total und zu seinem Limit. Am Limit antwortet der Bot nicht mehr, auch nicht auf Erwähnungen.",
+    callKind: "Art",
+    model: "Modell",
+    moreCalls: "Ältere Antworten sind hier nicht aufgeführt.",
   },
   faq: {
     lede: "Warum noergler deinen Pull Request reviewt hat oder nicht. Unten stehen die Standardwerte; dein Team hat sie vielleicht geändert.",
@@ -381,7 +391,8 @@ export const de = {
       branch_opt_out: "Dein Branch-Name enthält es. Siehe unten.",
       pr_ignored:
         "Jemand hat die Zusammenfassung gelöscht. Danach reviewt noergler diesen PR nie mehr.",
-      pr_cost_cap: "Erwähne den Bot mit @, damit er trotzdem reviewt.",
+      pr_cost_cap:
+        "Auf diesem PR läuft nichts mehr, auch keine Erwähnung. Bitte deinen Admin, das Limit zu erhöhen.",
       no_reviewable_files:
         "Nur Lock-Files, Vendor-Code, generierte Dateien oder Binaries haben sich geändert.",
       empty_diff: "Bitbucket meldet keine Änderungen.",
@@ -410,14 +421,14 @@ export const de = {
     askA1:
       "Erwähne den Bot mit seinem Bitbucket-Benutzernamen in einem PR-Kommentar. Stell eine Frage, und er antwortet; verlang ein Review, und er macht eines.",
     askA2:
-      "Eine Erwähnung übergeht die Auto-Review-Liste und das Kostenlimit, deshalb funktioniert sie auch bei PRs, die sonst nie reviewt würden.",
+      "Eine Erwähnung übergeht die Auto-Review-Liste, deshalb funktioniert sie auch bei PRs, die sonst nie reviewt würden. Das Kostenlimit übergeht sie nicht: Jede Antwort zählt dazu, und am Limit antwortet der Bot auch nicht mehr.",
     lessQ: "Warum hat das zweite Review weniger gesagt als das erste?",
     lessA1:
       "Ein neuer Commit wird gegen den zuletzt reviewten Commit geprüft, nicht gegen den ganzen PR, und schon gepostete Findings werden nicht wiederholt.",
     lessA2: "Ein wieder geöffneter, abgelehnter PR fängt von vorne an.",
     stoppedQ: "Warum haben die Reviews mitten in meinem PR aufgehört?",
     stoppedA:
-      "Der PR hat sein Kostenlimit erreicht; der laufende Betrag steht in der Zusammenfassung. Erwähne den Bot, damit er trotzdem reviewt.",
+      "Der PR hat sein Kostenlimit erreicht; der laufende Betrag steht in der Zusammenfassung. Reviews und Antworten zählen alle dazu. Bitte deinen Admin, das Limit zu erhöhen.",
     filesQ: "Welche Dateien werden reviewt?",
     filesA1:
       "Quelldateien, die sich im PR geändert haben. Lock-Files, Vendor-Verzeichnisse, generierte Dateien und Binaries werden übersprungen.",

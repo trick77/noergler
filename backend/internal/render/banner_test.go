@@ -138,14 +138,15 @@ func TestStaleBannerFallbackIgnoresUnrelatedWarnings(t *testing.T) {
 }
 
 func TestCostLimitBanner(t *testing.T) {
+	// No "@mention to review anyway": at the cap a mention stops too.
 	const want = CostBannerSentinel + "\n⚠️ **Cost limit exceeded** — PR total **$1.23**, over the **$0.50** limit. " +
-		"Automatic reviews are paused. `@noergler` to review manually, or ask an admin to raise `REVIEW_MAX_PR_COST_USD`."
+		"Reviews and answers are paused. Ask an admin to raise `REVIEW_MAX_PR_COST_USD`."
 
-	if got := CostLimitBanner(lang.EN, 1.2345, 0.5, "noergler", false); got != want {
+	if got := CostLimitBanner(lang.EN, 1.2345, 0.5, false); got != want {
 		t.Errorf("completed-run banner\n got:  %q\n want: %q", got, want)
 	}
-	blocked := want + " This push was **not** reviewed automatically."
-	if got := CostLimitBanner(lang.EN, 1.2345, 0.5, "noergler", true); got != blocked {
+	blocked := want + " The latest commit was **not** reviewed."
+	if got := CostLimitBanner(lang.EN, 1.2345, 0.5, true); got != blocked {
 		t.Errorf("blocked banner\n got:  %q\n want: %q", got, blocked)
 	}
 }
@@ -154,7 +155,7 @@ func TestCostLimitBanner(t *testing.T) {
 // repeated blocked pushes stack.
 func TestCostBannerRoundTrips(t *testing.T) {
 	body := "### Overview\nBody."
-	withBanner := CostLimitBanner(lang.EN, 1.0, 0.5, "noergler", true) + "\n\n" + body
+	withBanner := CostLimitBanner(lang.EN, 1.0, 0.5, true) + "\n\n" + body
 	if got := StripCostBanner(withBanner); got != body {
 		t.Errorf("round trip failed: %q", got)
 	}

@@ -235,3 +235,43 @@ func TestMentionPromptCarriesTheQuestion(t *testing.T) {
 		t.Errorf("prompt is missing the file group: %q", prompt)
 	}
 }
+
+// At the cap a question gets no answer and no gateway call: the PR gets the
+// cap banner, its one notice (decided: a mention no longer overrides the
+// cap).
+func TestMentionQAStopsAtTheCap(t *testing.T) {
+	h := newHarness(t, nil)
+	h.st.prCost = ptri(6_000_000_000)
+
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler is the lock held?", "alice"), "platform", nil)
+
+	if len(h.llm.Mentions) != 0 || len(h.bb.Replies) != 0 {
+		t.Errorf("calls = %d, replies = %d: want neither at the cap", len(h.llm.Mentions), len(h.bb.Replies))
+	}
+	if len(h.bb.Posted) != 1 || !strings.Contains(h.bb.Posted[0].Text, "Cost limit exceeded") {
+		t.Errorf("want the cap banner, got %+v", h.bb.Posted)
+	}
+}
+
+// Every round of a Q&A tool loop is recorded as a question call under the
+// comment it answers; the rows sum to the loop's total.
+func TestMentionQARecordsEveryRound(t *testing.T) {
+	h := newHarness(t, nil)
+	a, b := int64(1_000_000), int64(3_000_000)
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "ok",
+		Rounds: []inference.CallCost{{Answered: true, NanoUSD: &a}, {Answered: true, NanoUSD: &b}}}
+
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler why?", "alice"), "platform", nil)
+
+	if len(h.st.CommentCalls) != 2 {
+		t.Fatalf("comment calls = %+v, want one per round", h.st.CommentCalls)
+	}
+	for _, c := range h.st.CommentCalls {
+		if c.Kind != store.CallQuestion || c.CommentID != 77 {
+			t.Errorf("call = %+v, want a question under comment 77", c)
+		}
+	}
+	if total, _ := h.st.PRCost(context.Background(), store.PRKey{}); total == nil || *total != a+b {
+		t.Errorf("PR cost = %v, want the rounds summed", total)
+	}
+}

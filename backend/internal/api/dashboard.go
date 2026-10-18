@@ -44,6 +44,7 @@ type DashboardStore interface {
 	ActivityByTeam(ctx context.Context) ([]store.TeamActivity, error)
 	RunDetail(ctx context.Context, attemptID int64) (store.RunDetail, bool, error)
 	PRCost(ctx context.Context, key store.PRKey) (*int64, error)
+	PRCommentCalls(ctx context.Context, key store.PRKey) ([]store.CommentCall, bool, error)
 }
 
 // usd renders nano-USD as a fixed-point decimal string with 3 decimals,

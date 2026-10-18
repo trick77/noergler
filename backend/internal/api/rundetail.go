@@ -118,6 +118,19 @@ type PRBody struct {
 	// Cap is the team's per-PR cost cap, nil when the team is no longer
 	// configured.
 	Cap *string `json:"cap_usd"`
+	// Calls are the PR's reply and Q&A calls, newest first: they count
+	// toward Cost and the cap. MoreCalls: the list was cut.
+	Calls     []commentCallBody `json:"calls"`
+	MoreCalls bool              `json:"more_calls"`
+}
+
+type commentCallBody struct {
+	// Kind is reply or question.
+	Kind      string    `json:"kind"`
+	CommentID *int64    `json:"comment_id"`
+	Model     string    `json:"model"`
+	Cost      *string   `json:"cost_usd"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type prAttemptBody struct {
@@ -223,6 +236,17 @@ func (d Deps) runDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body.PR.Cost = usd(c)
+	calls, more, err := d.DashboardStore.PRCommentCalls(r.Context(), det.Key)
+	if err != nil {
+		d.Log.ErrorContext(r.Context(), "dashboard: PRCommentCalls failed: "+err.Error())
+		httpx.WriteError(w, http.StatusInternalServerError, "could not read the run")
+		return
+	}
+	body.PR.Calls, body.PR.MoreCalls = make([]commentCallBody, 0, len(calls)), more
+	for _, c := range calls {
+		body.PR.Calls = append(body.PR.Calls, commentCallBody{Kind: c.Kind, CommentID: c.CommentID,
+			Model: c.Model, Cost: usd(c.CostNanoUSD), CreatedAt: c.CreatedAt})
+	}
 	if rt, _, ok := d.Teams.Lookup(det.TeamSlug); ok && rt != nil {
 		if team := rt.Team(); team != nil && team.Review.MaxPRCostUSD > 0 {
 			nano := int64(team.Review.MaxPRCostUSD*1e9 + 0.5)

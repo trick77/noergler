@@ -187,8 +187,8 @@ func staleBanner(l lang.Lang, lead, priorCommit string) string {
 //
 // Same shape as failureNotice but with the cost banner and its own stripper,
 // so repeated blocked pushes replace the banner instead of stacking it.
-func (r *Reviewer) costLimitNotice(ctx context.Context, l lang.Lang, project, repo string, prID int, prReviewID int64, cumulativeUSD, limitUSD float64) {
-	banner := render.CostLimitBanner(l, cumulativeUSD, limitUSD, r.bitbucket.BotUsername(), true)
+func (r *Reviewer) costLimitNotice(ctx context.Context, l lang.Lang, project, repo string, prID int, prReviewID int64, cumulativeUSD, limitUSD float64, blocked bool) {
+	banner := render.CostLimitBanner(l, cumulativeUSD, limitUSD, blocked)
 
 	var existing *store.SummaryComment
 	if prReviewID != 0 {

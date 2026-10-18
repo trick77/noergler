@@ -16,14 +16,18 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 
 ## Money
 
-- Per-PR cap skips only later auto-runs; a mention overrides it.
-- Billed call with no run row: cost on the attempt. `prCostSQL` and `spendCTE`
-  both sum runs + those attempts: one figure everywhere.
+- Per-PR cap stops everything: reviews, replies, Q&A, mention or not
+  (decided). One notice: the summary's cost banner.
+- Billed call with no run row: cost on the attempt. Reply and Q&A calls: an
+  `llm_calls` row, no attempt. `prCostSQL` and `spendCTE` both sum runs +
+  those attempts + `attempt_id IS NULL` calls: one figure everywhere. A
+  review's call row is detail; never sum it.
 - Read the PR total only when this run is priced.
 - `null` = unpriced, never rendered `$0.000`. Only
-  `Usage.Cost.Provenance == Reported` is priced. Reply and Q&A cost is logged, not recorded (decided).
-  A tool loop logs each call and one total (`SumCosts`): unpriced if any
-  call is, the key spend its last reading.
+  `Usage.Cost.Provenance == Reported` is priced. Reply and Q&A cost is recorded and counted (decided).
+  A tool loop logs and records each call, logs one total (`SumCosts`):
+  unpriced if any call is, the key spend its last reading. The total is
+  never stored; the rows sum to it.
 
 ## Prompt and findings
 

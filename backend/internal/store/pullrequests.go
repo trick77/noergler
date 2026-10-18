@@ -360,19 +360,26 @@ func (s *Store) MarkFindingFixed(ctx context.Context, findingID, runID int64) er
 	return err
 }
 
-// PRCost is the sum of priced runs plus billed run-less attempts (an
-// unparseable response) in nano-USD, or nil when nothing was priced. Callers
-// treat nil as "no known cost" and never block on it. Unpriced calls
-// contribute nothing, so the total is a floor, not the bill.
+// PRCost is the sum of priced runs, billed run-less attempts (an
+// unparseable response) and reply and question calls in nano-USD, or nil
+// when nothing was priced. Callers treat nil as "no known cost" and never
+// block on it. Unpriced calls contribute nothing, so the total is a floor,
+// not the bill.
 func (s *Store) PRCost(ctx context.Context, k PRKey) (*int64, error) {
-	var cost *int64
-	err := s.pool.QueryRow(ctx, `SELECT `+prCostSQL+` FROM pull_requests p
-		WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3`,
-		k.Project, k.Repo, k.PRID).Scan(&cost)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
+	_, cost, err := s.PRCapState(ctx, k)
 	return cost, err
+}
+
+// PRCapState is PRCost plus the PR row's id, which the cap notice needs on a
+// path that does not upsert the PR (a reply, a question). id 0 = no row.
+func (s *Store) PRCapState(ctx context.Context, k PRKey) (id int64, cost *int64, err error) {
+	err = s.pool.QueryRow(ctx, `SELECT p.id, `+prCostSQL+` FROM pull_requests p
+		WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3`,
+		k.Project, k.Repo, k.PRID).Scan(&id, &cost)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil, nil
+	}
+	return id, cost, err
 }
 
 // prCostSQL is PR row p's cost: its priced runs plus the billed run-less
@@ -380,13 +387,18 @@ func (s *Store) PRCost(ctx context.Context, k PRKey) (*int64, error) {
 // the frozen final cost and the riptide rollup all read it, so the figure
 // that tripped the cap is the one recorded. created_at bounds the attempts:
 // a purged repo claimed again starts from zero, as its runs do.
-const prCostSQL = `(SELECT CASE WHEN runs IS NULL AND attempts IS NULL THEN NULL
-		ELSE COALESCE(runs, 0) + COALESCE(attempts, 0) END
+const prCostSQL = `(SELECT CASE WHEN runs IS NULL AND attempts IS NULL AND calls IS NULL THEN NULL
+		ELSE COALESCE(runs, 0) + COALESCE(attempts, 0) + COALESCE(calls, 0) END
 	FROM (SELECT
 		(SELECT SUM(r.cost_nano_usd) FROM review_runs r WHERE r.pull_request_id = p.id) AS runs,
 		(SELECT SUM(a.cost_nano_usd) FROM review_attempts a
 		  WHERE a.project_key = p.project_key AND a.repo_slug = p.repo_slug AND a.pr_id = p.pr_id
-		    AND a.review_run_id IS NULL AND a.created_at >= p.created_at) AS attempts) t)`
+		    AND a.review_run_id IS NULL AND a.created_at >= p.created_at) AS attempts,
+		-- Replies and questions: no attempt, so their call row is the
+		-- ledger. Review calls (attempt_id set) are already in the two above.
+		(SELECT SUM(c.cost_nano_usd) FROM llm_calls c
+		  WHERE c.project_key = p.project_key AND c.repo_slug = p.repo_slug AND c.pr_id = p.pr_id
+		    AND c.attempt_id IS NULL AND c.created_at >= p.created_at) AS calls) t)`
 
 // FreezeFinalCost copies the PR's cost total into final_cost_nano_usd at the
 // terminal outcome and returns it (nil when unpriced).
