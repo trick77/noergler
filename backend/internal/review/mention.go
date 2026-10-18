@@ -10,6 +10,7 @@ import (
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/httpstats"
 	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
@@ -56,7 +57,13 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	// this one then reports only what the mention itself spent, which is
 	// two units of work reported separately rather than merged.
 	ctx, httpCounter := httpstats.WithScope(ctx)
-	defer r.logHTTPTotals(ctx, prTag, httpCounter)
+	// A staged Q&A logs its totals when its posting finishes, like a review.
+	staged := false
+	defer func() {
+		if !staged {
+			r.logHTTPTotals(ctx, prTag, httpCounter)
+		}
+	}()
 
 	// Any mention reactivates a PR ignored after its summary was removed.
 	// Clearing the state (and the stale summary id, which Reactivate does)
@@ -131,14 +138,63 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		Language:         l,
 	})
 
-	result := r.llm.Mention(ctx, inference.MentionRequest{
+	job := &mentionJob{
+		project: project, repo: repo, prID: pr.ID, replyTo: comment.ID, lang: l, counter: httpCounter,
+		ask: &mentionAsk{key: key, prTag: prTag, user: comment.Author.Name, text: question},
+	}
+	req := inference.MentionRequest{
 		Prompt:       prompt,
 		PromptTokens: r.tokens.Count(inference.MentionSystemMessage) + r.tokens.Count(prompt),
-	})
-	// Only when a call actually happened: the too-large branch decides before
-	// any request, and a transport error returns with no cost.
-	if result.Outcome == inference.OutcomeOK {
-		r.logCost(ctx, prTag, result.Cost)
+		Tools:        r.mentionTools(job.ask),
+	}
+	infer := func(inferCtx context.Context) { job.res = r.llm.Mention(inferCtx, req) }
+	post := func(postCtx context.Context) { r.postMention(postCtx, job) }
+	if sched == nil {
+		// A direct caller or a test: inline, as before.
+		staged = true
+		infer(ctx)
+		post(ctx)
+		return false
+	}
+	// The gateway call, a tool loop of up to MaxToolRounds+1 calls, goes to
+	// the inference pool instead of holding the Bitbucket worker; the tools
+	// read the store only, never Bitbucket.
+	staged = true
+	sched.Stage(ctx, key, team, infer, post)
+	return true
+}
+
+// mentionJob is what a Q&A's posting stage needs from its prepare. The
+// prompt does not cross: inference holds it.
+type mentionJob struct {
+	project, repo string
+	prID, replyTo int
+	// lang is the asker's at the start; a switch this turn overrides it.
+	lang    lang.Lang
+	ask     *mentionAsk
+	counter *httpstats.Counter
+	res     inference.MentionResult
+}
+
+// postMention is the Q&A's posting stage, on the worker.
+func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
+	prTag := j.ask.prTag
+	defer r.logHTTPTotals(ctx, prTag, j.counter)
+	project, repo, prID, replyTo := j.project, j.repo, j.prID, j.replyTo
+	result := j.res
+	l := j.lang
+	if j.ask.switched != "" {
+		l = j.ask.switched
+	}
+	// One line per call, and only when one happened: the too-large branch
+	// decides before any request, and a transport error returns with no
+	// cost. A tool loop adds its total, never stored (decided).
+	for _, c := range result.Rounds {
+		r.logCost(ctx, prTag, c)
+	}
+	if len(result.Rounds) > 1 {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: Q&A took %d calls, tools %v (%d refused over the cap), total %s",
+			prTag, len(result.Rounds), result.ToolCalls, result.CappedCalls, costTotal(result.Cost)))
 	}
 
 	// No review_attempts row on THIS path, deliberately. A mention asking
@@ -152,14 +208,14 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	case inference.OutcomeTimedOut:
 		r.log.ErrorContext(ctx, fmt.Sprintf("Mention Q&A on %s aborted - no response within %.0fs",
 			prTag, inference.CallTimeout.Seconds()))
-		r.reply(ctx, project, repo, pr.ID, comment.ID, fmt.Sprintf(l.Pick(
+		r.reply(ctx, project, repo, prID, replyTo, fmt.Sprintf(l.Pick(
 			"⚠️ Keine Antwort vom Modell innerhalb von %d Minuten. Bitte nochmals versuchen, oder die Frage "+
 				"vereinfachen, falls sie viel Kontext braucht.",
 			"⚠️ No response from the model within %d minutes. Please try again, or simplify the question "+
 				"if it requires a lot of context."), timeoutMinutes))
 	case inference.OutcomeTooLarge:
 		r.log.WarnContext(ctx, prTag+": mention prompt too large for the model's context window")
-		r.reply(ctx, project, repo, pr.ID, comment.ID, inference.MentionTooLargeReply(l))
+		r.reply(ctx, project, repo, prID, replyTo, inference.MentionTooLargeReply(l))
 	case inference.OutcomeOK:
 		// An empty answer still gets a reply: a mention is never left
 		// silently unanswered.
@@ -167,12 +223,24 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		if answer == "" {
 			answer = inference.MentionEmptyReply(l)
 		}
-		r.reply(ctx, project, repo, pr.ID, comment.ID, answer)
+		// The switch is confirmed by code, in the new language, whatever
+		// the model wrote about it.
+		if j.ask.switched != "" {
+			answer = languageConfirmation(l) + "\n\n" + answer
+		}
+		r.reply(ctx, project, repo, prID, replyTo, answer)
 		r.log.InfoContext(ctx, "Posted Q&A reply on "+prTag)
 	default:
 		r.log.ErrorContext(ctx, fmt.Sprintf("Mention Q&A on %s failed: %v", prTag, result.Err))
 	}
-	return false
+}
+
+// costTotal is a summed cost for the log: 3 decimals, or "unpriced".
+func costTotal(c inference.CallCost) string {
+	if c.NanoUSD == nil {
+		return "unpriced"
+	}
+	return fmt.Sprintf("$%.3f", float64(*c.NanoUSD)/nanoPerUSD)
 }
 
 // reactivateIfIgnored clears the ignored state a removed summary left, so a

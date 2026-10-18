@@ -231,7 +231,14 @@ gateway key's total spend is shown as a gauge where available, never summed.
 A comment mentioning the bot is answered rather than reviewed. It runs without
 the review gates and without compression, reads the PR diff and the ticket, and
 replies in the comment's own thread. Keywords route the question; anything else
-is answered as a question about the PR.
+is answered as a question about the PR, or about noergler on it. On a model
+that takes tools the answer may call `team_config` (the team's effective
+settings, author lists as counts, and whether the asker is on them),
+`pr_status` (runs, the latest outcomes and skip reasons, cost against the cap)
+and `set_my_language` (the asker's language, only when their own comment names
+it). Up to three tool rounds, four calls each, then a final round without
+tools. The gateway calls are staged off the worker like a review; the reply is
+posted back on it.
 
 The PR author's reply on one of noergler's finding threads needs no mention.
 The route queues any non-empty reply not written by the bot (Bitbucket's

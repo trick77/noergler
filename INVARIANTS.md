@@ -22,6 +22,8 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - Read the PR total only when this run is priced.
 - `null` = unpriced, never rendered `$0.000`. Only
   `Usage.Cost.Provenance == Reported` is priced. Reply and Q&A cost is logged, not recorded (decided).
+  A tool loop logs each call and one total (`SumCosts`): unpriced if any
+  call is, the key spend its last reading.
 
 ## Prompt and findings
 
@@ -106,7 +108,16 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 ## Review pipeline
 
 - `Options.Owns` re-asked at the start of `prepare` and `post`.
-- A keyword mention is a staged review; a Q&A mention stays inline.
+- A keyword mention is a staged review; a Q&A mention stages its gateway
+  call (a tool loop) and posts back on the worker. Neither writes a run.
+- Mention tools: the PR, team and user come from the webhook, never a model
+  argument; output is an explicit allowlist struct (author lists as counts,
+  no env names, keys, disable reasons); `Run` never calls Bitbucket.
+  `set_my_language` writes only when the commenter's own text names the
+  language. At most `MaxToolRounds` rounds of `MaxToolCallsPerTurn` calls,
+  then one round without tools; every call id gets a result. Tool support
+  is read off the profile at startup, never required: without it a Q&A is
+  one plain call.
 - HTTP totals logged once at the end of `post`, never deferred in the entry.
   `post` runs on the review's ctx, never the job's.
 - The plan across stages carries no file bodies and no raw diff.

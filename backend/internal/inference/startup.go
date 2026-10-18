@@ -27,6 +27,7 @@ func (c *Client) Startup(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	c.tools = profile.Tools.Supported
 	// A profile not listed in LLMWIRE_LITELLM_MODELS is not gateway-routed, so
 	// FromEnv would send it to the vendor's own host. Disable the team rather
 	// than send a gateway key there.

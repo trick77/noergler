@@ -70,7 +70,11 @@ func (r *Reviewer) setLanguage(ctx context.Context, project, repo string, prID, 
 		return
 	}
 	r.log.InfoContext(ctx, fmt.Sprintf("%s: language set to %s for %s", prTag, l, user))
-	r.reply(ctx, project, repo, prID, commentID, l.Pick(
-		"Alles klar: Reviews deiner PRs und Antworten an dich schreibe ich ab jetzt auf Deutsch.",
-		"Got it: from now on I write reviews of your PRs and replies to you in English."))
+	r.reply(ctx, project, repo, prID, commentID, languageConfirmation(l))
+}
+
+// languageConfirmation is the switch's confirmation, in the new language.
+func languageConfirmation(l lang.Lang) string {
+	return l.Pick("Alles klar: Reviews deiner PRs und Antworten an dich schreibe ich ab jetzt auf Deutsch.",
+		"Got it: from now on I write reviews of your PRs and replies to you in English.")
 }

@@ -91,6 +91,7 @@ type Store interface {
 	PRCost(ctx context.Context, k store.PRKey) (*int64, error)
 	FreezeFinalCost(ctx context.Context, k store.PRKey) (*int64, error)
 	ClaimRollup(ctx context.Context, k store.PRKey, final store.RollupFinal) (*store.RollupSnapshot, error)
+	PRStatus(ctx context.Context, k store.PRKey) (*store.PRStatus, error)
 	UserLanguage(ctx context.Context, userName string) (lang.Lang, error)
 	SetUserLanguage(ctx context.Context, userName string, l lang.Lang) error
 }

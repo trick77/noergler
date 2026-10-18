@@ -75,6 +75,13 @@ an incident or an eval run: read the reason before relaxing a rule.
 - `Owns` re-asked: a repo given up mid-review re-created its purged PR row.
 - Keyword mention staged: inline it held the worker and ran outside the pool,
   so inference could reach cap+1.
+- Q&A staged: a tool loop is up to four gateway calls of 300s each, which
+  inline would hold the Bitbucket worker for every team's PRs.
+- Mention tools read-only but the language: a write tool is a setting any
+  commenter, or any injection the model reads, could change. The one write
+  is the commenter's own language, and code checks their words first.
+- Tool support never required: `Require(Needs{Tools})` would disable a team
+  on a model without it, for a feature a Q&A can do without.
 - `handedOff`: the job path once released the key unconditionally, so a push
   or merge ran during a staged mention's inference.
 - HTTP totals not deferred: a defer fires before the staged call (`inference=0`).
