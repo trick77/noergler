@@ -70,7 +70,27 @@ describe("German UI", () => {
     expect(ago("2026-10-15T12:00:00Z", now)).toBe("vor 3 Tagen");
     expect(money(null)).toBe("nicht bepreist");
     expect(outcomeWord("timed_out")).toBe("Zeitüberschreitung");
-    expect(outcomeWord("skipped", "diff_too_large")).toBe("zu gross");
+    expect(outcomeWord("skipped", "diff_too_large")).toBe("Diff zu gross");
+  });
+
+  // The pill's word is the cue that does not depend on colour (ok, skip and
+  // fail sit at dE 7.6 under protanopia), so a failure must never read like
+  // a skip. German once printed "zu gross" for both too_large and
+  // diff_too_large.
+  it("never words a failure like a skip", () => {
+    for (const lng of ["en", "de"] as const) {
+      const cat = lng === "en" ? en : de;
+      const failures = Object.entries(cat.outcome)
+        .filter(([code]) => code !== "ok" && code !== "skipped")
+        .map(([, word]) => word);
+      for (const word of Object.values(cat.skipWord)) {
+        expect([lng, word, failures.includes(word)]).toEqual([
+          lng,
+          word,
+          false,
+        ]);
+      }
+    }
   });
 
   // A row written by a newer binary: the code is unknown here, so the

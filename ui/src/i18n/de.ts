@@ -30,21 +30,21 @@ export const de = {
     skipped: "übersprungen",
     timed_out: "Zeitüberschreitung",
     unparseable: "unlesbar",
-    too_large: "zu gross",
+    too_large: "Prompt zu gross",
     error: "Fehler",
   },
   skipWord: {
-    not_auto_review_author: "nicht angemeldet",
+    not_auto_review_author: "nicht auf der Liste",
     ignored_author: "ignoriert",
     pr_ignored: "PR ignoriert",
-    branch_opt_out: "abgemeldet",
+    branch_opt_out: "Opt-out im Branch",
     agents_md_missing: "kein AGENTS.md",
     agents_md_too_large: "AGENTS.md zu gross",
     pr_cost_cap: "Kostenlimit",
     no_reviewable_files: "nichts zu prüfen",
     empty_diff: "leerer Diff",
     head_unchanged: "unverändert",
-    diff_too_large: "zu gross",
+    diff_too_large: "Diff zu gross",
     repo_not_claimed: "nicht beansprucht",
   },
   reason: {
@@ -94,7 +94,7 @@ export const de = {
       "Letzter Run zählt jedes Ergebnis, auch übersprungene und fehlgeschlagene. Letztes Review ist der letzte erfolgreiche.",
   },
   runs: {
-    lede: "Was noergler diesen Monat mit jedem PR gemacht hat, auch mit denen, die es nicht reviewen wollte, und darunter die letzten 50 Runs. Übersprungen heisst, es hat das Modell nie gefragt. Fehlgeschlagen heisst, es hat gefragt und etwas ging schief.",
+    lede: "Was noergler diesen Monat mit jedem PR gemacht hat, auch mit denen, die er nicht reviewen wollte, und darunter die letzten 50 Runs. Übersprungen heisst, er hat das Modell nie gefragt. Fehlgeschlagen heisst, er hat gefragt und etwas ging schief.",
     failedWhat: "den Runs-Feed",
     tileRuns: "Runs",
     tileReviewed: "Reviewt",
@@ -122,7 +122,8 @@ export const de = {
   },
   metrics: {
     failedWhat: "die Metriken",
-    lastDays: "die letzten {{count}} Tage",
+    lastDays_one: "der letzte Tag",
+    lastDays_other: "die letzten {{count}} Tage",
     thisMonth: "dieser Monat",
     lede: "Was dieser Monat gekostet hat und wie viel reviewt wurde. Runs, die das AI Gateway nie bepreist hat, werden separat gezählt statt als null addiert, damit das Total nicht still zu tief ist.",
     cost: "Kosten",
@@ -185,7 +186,7 @@ export const de = {
         "Meistens ein Bot-Account. Frag deinen Team-Admin, falls nicht.",
       branch_opt_out: "Dein Branch-Name enthält es. Siehe unten.",
       pr_ignored:
-        "Jemand hat die Zusammenfassung gelöscht. In diesem PR bringt sie nichts zurück.",
+        "Jemand hat die Zusammenfassung gelöscht. Danach reviewt noergler diesen PR nie mehr.",
       pr_cost_cap: "Erwähne den Bot mit @, damit er trotzdem reviewt.",
       no_reviewable_files:
         "Nur Lock-Files, Vendor-Code, generierte Dateien oder Binaries haben sich geändert.",
@@ -198,19 +199,19 @@ export const de = {
     whyNotA:
       "Öffne <strong>Runs</strong>, filtere auf Übersprungen oder Fehlgeschlagen und such deinen PR. Der Grund steht neben dem Ergebnis. Was die Gründe bedeuten:",
     whyNotNote:
-      "Übersprungen heisst, es hat das Modell nie gefragt. Fehlgeschlagen heisst, es hat gefragt und etwas ging kaputt.",
+      "Übersprungen heisst, noergler hat das Modell nie gefragt. Fehlgeschlagen heisst, er hat gefragt und etwas ging kaputt.",
     agentsQ: "AGENTS.md",
     agentsA1:
       "Dagegen prüft das Review deinen Code: die Konventionen und Einschränkungen, die man einem neuen Reviewer in deinem Team erklären müsste. Leg die Datei ins Root des Repos.",
     agentsA2:
       "Kein AGENTS.md, kein Review. Die Zusammenfassung sagt das, statt zu schweigen, damit ein PR ohne Review nie ein Rätsel ist.",
     agentsA3:
-      "Halte sie kurz. Die Zusammenfassung warnt schon lange vor dem Grössenlimit, und über dem Limit hören Reviews ganz auf.",
+      "Halte es kurz. Die Zusammenfassung warnt schon lange vor dem Grössenlimit, und über dem Limit hören Reviews ganz auf.",
     stopQ: "Wie verhindere ich, dass noergler einen PR reviewt?",
     stopA1:
       "Schreib <code>noergloff</code> irgendwo in den Namen des Source-Branch: <code>feature/noergloff-spike</code> wird nie automatisch reviewt.",
     stopA2:
-      "Bei einem PR, der schon offen ist, lösch stattdessen die Zusammenfassung von noergler. Danach bleibt es weg, und in diesem PR bringt es nichts zurück.",
+      "Bei einem PR, der schon offen ist, lösch stattdessen die Zusammenfassung von noergler. Danach bleibt er diesem PR fern, und nichts holt ihn zurück.",
     askQ: "Wie frage ich noergler etwas?",
     askA1:
       "Erwähne den Bot mit seinem Bitbucket-Benutzernamen in einem PR-Kommentar. Stell eine Frage, und er antwortet; verlang ein Review, und er macht eines.",

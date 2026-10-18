@@ -3,8 +3,12 @@
 // build. Grouped by page. Review text (findings, comments, replies) is never
 // in here: it keeps the language it was produced in.
 //
-// Outcome words stay the stored codes in English ("timed_out"): that is what
-// the pill has always printed, and operators grep the logs for the same word.
+// Outcome words stay the stored codes in English ("timed_out"), as the pill
+// has always printed them. German translates them for the reader; the code
+// to grep the log for is what the English UI shows.
+//
+// The `reason` block repeats review.SkipReason.Label() word for word, and
+// TestSkipReasonLabelsMatchTheUICatalog fails when the two drift.
 export const en = {
   nav: {
     label: "Pages",
@@ -127,7 +131,8 @@ export const en = {
   },
   metrics: {
     failedWhat: "metrics",
-    lastDays: "the last {{count}} days",
+    lastDays_one: "the last day",
+    lastDays_other: "the last {{count}} days",
     thisMonth: "this month",
     lede: "What this month cost and how much got reviewed. Runs the AI Gateway never priced are counted on their own rather than added in as zero, so the total is not quietly too low.",
     cost: "Cost",

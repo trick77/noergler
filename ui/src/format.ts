@@ -2,6 +2,7 @@
 // the page never decides locally how money or a duration looks. Their words
 // come from the i18n catalog; the shapes of numbers do not change with it.
 import i18n from "./i18n";
+import { en, type Catalog } from "./i18n/en";
 
 /** money renders the API's decimal string, rounded to cents.
  *
@@ -114,15 +115,23 @@ export function outcomeTone(outcome: string): Tone {
  *  skip tone, so the Skipped filter and counts still read as one group. */
 export function outcomeWord(outcome: string, reason?: string): string {
   if (outcome !== "skipped") {
-    return i18n.t(`outcome.${outcome}` as "outcome.ok", {
-      defaultValue: outcome,
-    });
+    return known("outcome", outcome) ? i18n.t(`outcome.${outcome}`) : outcome;
   }
-  const skipped = i18n.t("outcome.skipped");
-  if (!reason) return skipped;
-  return i18n.t(`skipWord.${reason}` as "skipWord.empty_diff", {
-    defaultValue: skipped,
-  });
+  return reason && known("skipWord", reason)
+    ? i18n.t(`skipWord.${reason}`)
+    : i18n.t("outcome.skipped");
+}
+
+/** known narrows a stored code to a key of its catalog group, so the lookup
+ *  below it stays type-checked: a renamed group or a misspelt prefix fails
+ *  the build instead of every pill quietly falling back. A code the catalog
+ *  does not know (a newer binary wrote it) answers false and takes the
+ *  caller's fallback. */
+function known<G extends "outcome" | "skipWord" | "reason" | "teamState">(
+  group: G,
+  code: string,
+): code is Extract<keyof Catalog[G], string> {
+  return Object.hasOwn(en[group], code);
 }
 
 /** reasonLabel is the long form of a skip reason, for a tooltip or a
@@ -134,9 +143,9 @@ export function reasonLabel(
   serverLabel?: string,
 ): string | undefined {
   if (!reason) return serverLabel || undefined;
-  return i18n.t(`reason.${reason}` as "reason.empty_diff", {
-    defaultValue: serverLabel || reason,
-  });
+  return known("reason", reason)
+    ? i18n.t(`reason.${reason}`)
+    : serverLabel || reason;
 }
 
 /** teamTone maps a team's state to its pill.
@@ -154,9 +163,7 @@ export function teamTone(state: string): Tone {
 /** teamStateLabel is the word on the pill. An unknown state prints itself
  *  rather than rendering blank. */
 export function teamStateLabel(state: string): string {
-  return i18n.t(`teamState.${state}` as "teamState.ready", {
-    defaultValue: state,
-  });
+  return known("teamState", state) ? i18n.t(`teamState.${state}`) : state;
 }
 
 /** prUrl turns a PROJECT/repo#id tag into its Bitbucket URL, or null when it
