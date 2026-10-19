@@ -315,9 +315,9 @@ describe("RunPage", () => {
     fireEvent.click(screen.getByRole("tab", { name: /Prompt and files/ }));
     expect(screen.getByText("Cumulative PR diff")).toBeDefined();
     expect(screen.getByText("not reviewed, binary or generated")).toBeDefined();
-    expect(screen.getByText("go.sum").getAttribute("title")).toBe(
-      "services/payments/go.sum",
-    );
+    expect(
+      screen.getByText("go.sum").closest("td")?.getAttribute("title"),
+    ).toBe("services/payments/go.sum");
   });
 
   // Replies and answers have no run page, but they are money the PR total
