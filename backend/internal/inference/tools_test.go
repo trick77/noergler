@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/trick77/llmwire/llmwiretest"
 )
 
 // toolCallBody is a completion asking for the named tools, one call each.
@@ -65,6 +67,52 @@ func TestMentionToolLoop(t *testing.T) {
 	}
 	if got.Cost.PromptTokens != 20 {
 		t.Errorf("summed prompt tokens = %d", got.Cost.PromptTokens)
+	}
+}
+
+// On the Responses protocol the second round replays the assistant turn with
+// its reasoning item: a function_call sent back without it is refused.
+func TestMentionToolLoopReplaysReasoning(t *testing.T) {
+	const alias = "gateway-alias"
+	f := &fakeGateway{chatBodies: []string{
+		responsesBody(`{"type":"function_call","id":"fc_0","call_id":"call_0","name":"team_config","arguments":"{}"}`),
+		responsesBody(`{"type":"message","role":"assistant","content":[{"type":"output_text","text":"{\"answer\": \"5 dollars\"}"}]}`),
+	}}
+	srv := f.start(t, alias)
+	c := newTestClient(t, srv, alias, func(o *Options) {
+		o.Model = llmwiretest.ResponsesModel
+		o.ContextWindow = 1_000_000
+		o.Env = env(srv.URL, alias, map[string]string{"LLMWIRE_LITELLM_MODELS": llmwiretest.ResponsesModel + "=" + alias})
+	})
+	c.tools = true
+	runs := 0
+
+	got := c.Mention(context.Background(), MentionRequest{Prompt: "cap?", Tools: []MentionTool{countingTool("team_config", &runs)}})
+
+	if got.Outcome != OutcomeOK || got.Answer != "5 dollars" || runs != 1 || f.gotChat != 2 {
+		t.Fatalf("got %+v (err %v), runs = %d, calls = %d", got, got.Err, runs, f.gotChat)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(f.chatRequests[1], &body); err != nil {
+		t.Fatal(err)
+	}
+	if !(llmwiretest.Request{Body: body}).ReplayedReasoning() {
+		t.Errorf("second request input = %v, want the reasoning item replayed", body["input"])
+	}
+	// The call goes back with its result, paired by call_id, never the item id.
+	var call, output bool
+	input, _ := body["input"].([]any)
+	for _, raw := range input {
+		item, _ := raw.(map[string]any)
+		call = call || item["type"] == "function_call" && item["call_id"] == "call_0"
+		output = output || item["type"] == "function_call_output" && item["call_id"] == "call_0"
+	}
+	if !call || !output {
+		t.Errorf("second request input = %v, want the call and its output under call_0", input)
+	}
+	// Without it Azure sends the reasoning back unencrypted and it cannot be replayed.
+	if inc, _ := body["include"].([]any); len(inc) == 0 || inc[0] != "reasoning.encrypted_content" {
+		t.Errorf("include = %v, want reasoning.encrypted_content", body["include"])
 	}
 }
 

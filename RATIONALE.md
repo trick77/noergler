@@ -104,6 +104,10 @@ an incident or an eval run: read the reason before relaxing a rule.
 - Tools withheld get a log line: prod ran gpt-6.1-sol (profile: no tools)
   and every settings question came back "team_config steht mir nicht zur
   Verfügung", with nothing in the logs to say why.
+- Assistant turn replayed as `resp.Assistant()`: Azure refuses tools with
+  reasoning on /chat/completions for gpt-6.1-sol ("use /v1/responses"), so
+  llmwire speaks /responses there, and a function_call sent back without
+  its reasoning item is refused on round 2.
 - First name on every question (user, 2026-10-19), Q&A included; it was
   held back as talking down.
 - `handedOff`: the job path once released the key unconditionally, so a push
