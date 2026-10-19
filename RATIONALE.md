@@ -21,6 +21,11 @@ an incident or an eval run: read the reason before relaxing a rule.
 ## Findings
 
 - Numbered diff lines: when the model counted, findings landed past EOF.
+- Secrets carved out of the failing-input rule: `password = "admin123"` was
+  flagged in about half the runs; the remit, the "no failing input, drop"
+  rule and the failing-path confidence scale all argued for dropping it.
+  Evidence keeps the value: a masked quote matches nothing and is dropped.
+  A placeholder exclusion stays narrow, or it swallows `admin123`.
 - Evidence from outside the diff: a real finding quoted the call outside the
   diff; matching only the own file dropped 6 of 7 correct cross-file findings.
   One own diff line is still required, or the line check accepts any line.

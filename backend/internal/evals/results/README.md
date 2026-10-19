@@ -88,7 +88,9 @@ several reviews. Those live in `sampled/` and are never rows here.
   `clean-i18n-key-order`, a fourth clean control, taking the corpus to 12;
   `rev6` adds five harder cases (a cross-file stale caller, a behavioural
   change buried among mechanical hunks, one Java and one TypeScript bug, a
-  clean two-file signature change), taking it to 17 with 12 seeded. Bump the number when a
+  clean two-file signature change), taking it to 17 with 12 seeded; `rev7`
+  adds a hardcoded credential and two controls (the same pool reading the
+  environment, a `changeme` test fixture), taking it to 20 with 13 seeded. Bump the number when a
   **scored** field changes: `file`, `lines`, `keywords`, `diff`, `content`.
   Prose does not move a score, so an edit to `description` or `why` is not a
   new revision, and rev4 covers such an edit made after run5.
