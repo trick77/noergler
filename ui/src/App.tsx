@@ -97,8 +97,8 @@ export default function App() {
           // under the next URL while it loads (or after it fails).
           <RunPage key={runToken} token={runToken} />
         )}
-        {route === "metrics" && <MetricsPage />}
         {route === "teams" && <TeamsPage />}
+        {route === "metrics" && <MetricsPage />}
         {route === "faq" && <FaqPage />}
       </main>
     </div>
