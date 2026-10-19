@@ -223,7 +223,8 @@ func (c *Client) resolveWindow(ctx context.Context, profile *llmwire.Profile) er
 // runs before any team starts, so without this line the resolved value never
 // reaches the log and the operator only ever sees the configured one.
 func (c *Client) logWindow(ctx context.Context, source string) {
-	c.log.InfoContext(ctx, fmt.Sprintf("context window %d for %s (%s)", c.window, c.Label(), source))
+	c.log.InfoContext(ctx, fmt.Sprintf("context window %d for %s (%s), tools=%s", c.window, c.Label(), source,
+		map[bool]string{true: "yes", false: "no"}[c.tools]))
 }
 
 // profileInputLimit is the most input the profile's model accepts, 0 when the

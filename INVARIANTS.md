@@ -55,8 +55,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   parent; a reply nested under another reply is not, known limit); a non-author `@bot`
   reply goes to the Q&A, a review-keyword one to the mention path (a review);
   nothing posted = nothing stamped.
-- Author's first name: finding replies only, `acknowledges`/`disputes` only
-  (prompt asks, `guardName` cuts a leading one otherwise); extracted by code
+- Author's first name: every question (Q&A, `question` replies) always;
+  `acknowledges`/`disputes` may; `other` never (prompt asks, `guardName`
+  cuts a leading one on `other`); reviews never; extracted by code
   from the operator pattern, single-case parts title-cased; never stored or
   logged.
 - Language: a review is the PR author's, a Q&A the asker's; resolved user ->

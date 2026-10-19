@@ -24,8 +24,9 @@ const NoPRDescription = "No PR description provided."
 // Mention prompt placeholders. The file group goes into {diff} here, not
 // {files} as in the review template.
 const (
-	PlaceholderQuestion = "{question}"
-	PlaceholderDiff     = "{diff}"
+	PlaceholderQuestion  = "{question}"
+	PlaceholderDiff      = "{diff}"
+	PlaceholderAskerName = "{asker_first_name}"
 )
 
 // MentionTooLargeReply is what a mention gets when the PR does not fit,
@@ -57,6 +58,8 @@ type MentionPromptRequest struct {
 	RepoInstructions string
 	TicketContext    string
 	PRDescription    string
+	// AskerFirstName is the asker's first name, or empty when unknown.
+	AskerFirstName string
 	// Language is the asker's; the zero value writes German.
 	Language lang.Lang
 }
@@ -71,8 +74,13 @@ func RenderMentionPrompt(req MentionPromptRequest) string {
 	if ticketContext == "" {
 		ticketContext = NoTicketContextMention
 	}
+	askerName := req.AskerFirstName
+	if askerName == "" {
+		askerName = "_Unknown._"
+	}
 	return strings.NewReplacer(
 		PlaceholderQuestion, req.Question,
+		PlaceholderAskerName, askerName,
 		PlaceholderRepoInstructions, req.RepoInstructions,
 		PlaceholderTicketContext, ticketContext,
 		PlaceholderPRDescription, orNoPRDescription(req.PRDescription),

@@ -42,7 +42,7 @@ func TestMentionToolLoop(t *testing.T) {
 	if got.Outcome != OutcomeOK || got.Answer != "5 dollars" {
 		t.Fatalf("got %+v (err %v)", got, got.Err)
 	}
-	if runs != 1 || f.gotChat != 2 || len(got.Rounds) != 2 {
+	if runs != 1 || f.gotChat != 2 || len(got.Rounds) != 2 || got.ToolsOff != "" {
 		t.Errorf("runs = %d, calls = %d, rounds = %d, want 1, 2, 2", runs, f.gotChat, len(got.Rounds))
 	}
 	// The second request replays the call and carries its result.
@@ -142,6 +142,9 @@ func TestMentionWithoutToolSupportIsOneCall(t *testing.T) {
 	if got.Answer != "hi" || f.gotChat != 1 || runs != 0 || strings.Contains(string(f.lastChatBody), `"tools"`) {
 		t.Errorf("answer %q, calls %d, runs %d, body %s", got.Answer, f.gotChat, runs, f.lastChatBody)
 	}
+	if got.ToolsOff != "the model's profile has no tool support" {
+		t.Errorf("ToolsOff = %q", got.ToolsOff)
+	}
 }
 
 // A prompt near the ceiling has no room for the loop's growth: one plain
@@ -156,6 +159,9 @@ func TestMentionNearTheCeilingSkipsTheTools(t *testing.T) {
 
 	if got.Outcome != OutcomeOK || strings.Contains(string(f.lastChatBody), `"tools"`) {
 		t.Errorf("outcome %v, body %s", got.Outcome, f.lastChatBody)
+	}
+	if !strings.HasPrefix(got.ToolsOff, "no room: ") {
+		t.Errorf("ToolsOff = %q", got.ToolsOff)
 	}
 }
 
