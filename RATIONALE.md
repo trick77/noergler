@@ -26,6 +26,8 @@ an incident or an eval run: read the reason before relaxing a rule.
   One own diff line is still required, or the line check accepts any line.
 - Comment marker keeps its space: otherwise the tail of `*cfg = x` or
   `--count` matches an invented quote.
+- Unwrapping `"…"`: a correct 95-confidence catch quoted two doc comment
+  lines as JSON strings and was dropped, scoring the model's hit as a miss.
 - Fixed claims: a wrong "fixed" resolves a live bug's thread. Requiring every
   quoted line changed refused real fixes. Reply before resolve: Bitbucket
   refuses replies on a resolved thread. Stamping despite a failed reply: no

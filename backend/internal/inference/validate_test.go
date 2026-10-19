@@ -328,6 +328,55 @@ func TestValidateFindings_CommentLineQuotedWithoutItsMarker(t *testing.T) {
 	}
 }
 
+// From the evals: a correct finding quoted two doc comment lines wrapped in
+// double quotes, with their indent outside, and was dropped whole. The
+// unwrapped line is the shown one. Unwrapping is a fallback: a quote that is
+// in no file stays invented however it is wrapped.
+func TestValidateFindings_LineQuotedAsAString(t *testing.T) {
+	idx := diff.BuildAnchorIndex([]diff.FileReviewData{{
+		Path: "notify/dispatcher.go",
+		Diff: "@@ -1,4 +1,6 @@\n" +
+			" // Deliver posts body to ep. A transient failure is retried with exponential\n" +
+			" // backoff, a permanent one is returned at once. It returns nil as soon as\n" +
+			"-if !retryable(lastErr) {\n" +
+			"+if retryable(lastErr) {\n" +
+			"+\tlog(\"retry\\tlater\")\n" +
+			"+\tname := \"retry\"\n" +
+			" }\n",
+	}})
+	const code = "if retryable(lastErr) {"
+	cases := []struct {
+		name     string
+		line     int
+		evidence []string
+		reason   DropReason
+	}{
+		{"doc comment lines wrapped as strings", 4, []string{
+			`  "// Deliver posts body to ep. A transient failure is retried with exponential"`,
+			`  "// backoff, a permanent one is returned at once. It returns nil as soon as"`,
+			code,
+		}, ""},
+		{"escapes inside are undone", 5, []string{`"\tlog(\"retry\\tlater\")"`}, ""},
+		{"wrapped code line", 4, []string{`"if retryable(lastErr) {"`}, ""},
+		{"wrapped line that is in no file", 4, []string{code, `"// backoff, a permanent one is retried."`}, DropEvidenceNotFound},
+		{"string literal is not a line", 6, []string{`"retry"`}, DropEvidenceNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			v := ValidateFindings([]ReviewFinding{vf("notify/dispatcher.go", tc.line, tc.evidence...)}, idx)
+			if tc.reason != "" {
+				if len(v.Dropped) != 1 || v.Dropped[0].Reason != tc.reason {
+					t.Fatalf("dropped = %+v, want one %s", v.Dropped, tc.reason)
+				}
+				return
+			}
+			if len(v.Kept) != 1 || v.Kept[0].Line != tc.line || len(v.Reanchored) != 0 {
+				t.Fatalf("kept = %+v, dropped = %+v, reanchored = %+v: want line %d kept unmoved", v.Kept, v.Dropped, v.Reanchored, tc.line)
+			}
+		})
+	}
+}
+
 // An incremental review: an earlier push changed Touch, this push only adds
 // the stale call. The signature is shown in the cumulative PR diff alone.
 // Quotable, but a file shown only there is still not a file to post on.
