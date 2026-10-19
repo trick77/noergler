@@ -75,6 +75,8 @@ several reviews. Those live in `sampled/` and are never rows here.
 | 2026-10-19 | mimo-v2.6-pro | high | 17 rev6 | 12 | 11 | 0 | `prompts/review.txt`, `pre_existing` key | **Prompt and schema gain `pre_existing`** (bugs in unchanged code, run page only, never posted or scored). Exit 1, and the miss is the validator's: on `buried-behavioural-hunk`, drawn once more after the first call died on `stream idle for 1m30s`, the model reported `retryable-check-inverted` correctly at line 64 (confidence 95), but quoted two doc comment lines wrapped in `"…"`, which matched nothing and dropped it as `evidence_not_found`. Fixed afterwards (a quote wrapped as a string is unwrapped as a fallback); scored before the fix, so it is recorded as it ran. All five controls clean, nothing moved. No case seeds a pre-existing bug and none was reported: this checks that finding quality held, not the new key. |
 | 2026-10-19 | mimo-v2.6-pro | high | 17 rev6 | 12 | 7 | 0 | `prompts/review.txt`, `pre_existing` names code | **run2: `pre_existing` prose may name classes and code** (the run page is token-gated now). Exit 2: `wrong-error-wrapped` hit the 10-minute run timeout after a `stream idle for 1m30s` redraw, so the score is incomplete. Two misses are the validator's: `lock-not-released` reported correctly at line 20 (confidence 98), dropped `noop_suggestion` (its suggestion was the unchanged return line); `struct-field-race` reported correctly at line 35 (confidence 95), dropped `evidence_not_found` (three lines run together with tabs, no newlines). Two real misses, no finding at all: `cross-file-stale-caller`, `ts-seeded`. All five controls clean, no pre-existing reported. |
 | 2026-10-19 | mimo-v2.6-pro | high | 17 rev6 | 12 | 11 | 0 | `prompts/review.txt`, `pre_existing` names code | **run3, same prompt, `-timeout 25m`.** Exit 1, complete, no redraw. The one miss is `cross-file-stale-caller` with no finding, the case 5-sample runs already miss in some samples. Every other seeded bug caught, the four run2 lost among them, nothing dropped or moved. All five controls clean, no pre-existing reported. Same score as the row before the prompt change: finding quality held. |
+| 2026-10-19 | mimo-v2.6-pro | high | 20 rev7 | 13 | 11 | 0 | `prompts/review.txt`, committed secrets in remit | **run4: new revision, new baseline.** Exit 1, complete, one redraw (`buried-behavioural-hunk`, `stream idle for 1m30s`). `hardcoded-credential` caught at line 21. Two real misses, no finding at all: `ts-seeded` (missed before, run2) and `unchecked-error` (no earlier row names it as a real miss). All seven controls clean, the two new ones included. One run: a single red is noise until a second one follows. |
+| 2026-10-19 | mimo-v2.6-pro | high | 21 rev8 | 14 | 11 | 1 | `prompts/review.txt`, committed secrets after code review | **run5: new revision, new baseline.** Exit 1, complete, one redraw (`off-by-one`). `hardcoded-credential-yaml` caught. `hardcoded-credential` reported correctly at line 21, dropped `evidence_not_found`: the last evidence entry joined two lines into one (known gap); its comment also named the value, against the prompt. `lock-not-released` reported at line 20 in wording outside its keywords (known gap, the Extra). `off-by-one` no finding. All seven controls clean. |
 
 ## What the columns mean
 
@@ -88,7 +90,12 @@ several reviews. Those live in `sampled/` and are never rows here.
   `clean-i18n-key-order`, a fourth clean control, taking the corpus to 12;
   `rev6` adds five harder cases (a cross-file stale caller, a behavioural
   change buried among mechanical hunks, one Java and one TypeScript bug, a
-  clean two-file signature change), taking it to 17 with 12 seeded. Bump the number when a
+  clean two-file signature change), taking it to 17 with 12 seeded; `rev7`
+  adds a hardcoded credential and two controls (the same pool reading the
+  environment, a `changeme` test fixture), taking it to 20 with 13 seeded;
+  `rev8` narrows that window to the password line, makes the fixture a
+  non-placeholder value and adds the same password committed in
+  `application.yaml`, taking it to 21 with 14 seeded. Bump the number when a
   **scored** field changes: `file`, `lines`, `keywords`, `diff`, `content`.
   Prose does not move a score, so an edit to `description` or `why` is not a
   new revision, and rev4 covers such an edit made after run5.

@@ -99,6 +99,36 @@ finding's own file is still required. Re-validated, 5 of the 6 are kept at
 line 78 (57 and 55 of 60); the sixth quotes a line that is in no file. The
 two JSONs are left as scored.
 
+## Prompt experiment: committed secrets (2026-10-19)
+
+Question: a real PR adding `public String password = "admin123";` was flagged
+in about half its production runs. Does carving committed secrets out of the
+failing-input rule raise that?
+
+mimo-v2.6-pro high, `hardcoded-credential` + two controls (env read,
+`changeme` test fixture), 5 samples each:
+
+- before (`-prompt`, old template): caught 5 of 5, confidence 95-97, `issue`.
+- after: caught 4 of 5; the miss has no finding at all.
+- controls clean in 20 of 20 samples across both.
+- full rev7 series run after: 11 of 13, controls clean 7 of 7.
+
+The case does not reproduce the miss: the old prompt already catches it on
+mimo. The real PR runs on the production model and carries other changes
+("among other things"), neither of which the case has. With no room to
+improve, the run cannot show a gain, and 4 vs 5 of 5 is noise.
+
+After the code-review fixes (rev8: window on the password line, a
+non-placeholder test fixture, the same password in `application.yaml`):
+
+- Java case matched at line 21 in 5 of 5 samples, yaml case 5 of 5, both
+  controls clean in 10 of 10.
+- Series run: the Java finding was dropped `evidence_not_found` (two lines
+  joined into one evidence entry, the known gap) and its comment named the
+  value. The "never the value" rule holds most of the time, not always.
+
+Decision: landed on the prompt's own contradictions, not on a measured gain.
+
 ## Known gaps
 
 - `lock-not-released` keywords miss correct findings; inflates `extra`.
