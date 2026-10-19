@@ -61,6 +61,16 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		r.log.ErrorContext(ctx, "Could not extract project/repo from webhook payload")
 		return !mentioned, false
 	}
+	// A reply on the summary is addressed to the bot: answered like a mention,
+	// from anyone (user, 2026-10-19). A mention there is one already.
+	if !mentioned {
+		if st := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
+			return r.store.GetSkipState(ctx, key)
+		}); st != nil && st.Summary != nil && st.Summary.ID == payload.CommentParentID {
+			r.log.InfoContext(ctx, prTag+": reply on the summary, answered like a mention")
+			return true, r.HandleMention(ctx, payload, team, sched)
+		}
+	}
 	pr := payload.PullRequest
 	author := pr.Author.User.Name
 	// The cheap checks first, before a DB lookup on the single worker. These

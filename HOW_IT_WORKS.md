@@ -268,6 +268,10 @@ posted back on it. Every call is recorded and counts toward the PR's cost; at
 the cap a question is not answered. A mention writes the PR's row first (its
 review pointer untouched), so a PR only ever asked about is capped too.
 
+A reply directly under noergler's summary comment needs no mention either: the
+worker matches its parent against the stored summary id and answers it as a
+Q&A, whoever asks.
+
 The PR author's reply on one of noergler's finding threads needs no mention.
 The route queues any non-empty reply not written by the bot (Bitbucket's
 `commentParentId`); the worker answers only the author, only when the parent is
