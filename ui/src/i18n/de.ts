@@ -69,8 +69,6 @@ export const de = {
   },
   live: {
     lede: "Was gerade läuft.",
-    ledeLong:
-      "Was gerade läuft. Mehrere Reviews können gleichzeitig auf das Modell warten, aber nur eines aufs Mal spricht mit Bitbucket, deshalb leert sich eine volle Warteschlange der Reihe nach.",
     failedWhat: "das Live-Panel",
     refreshFailing:
       "Aktualisierung schlägt fehl. Angezeigt wird der Stand von {{ago}}.",
@@ -91,11 +89,9 @@ export const de = {
     prs: "PRs",
     lastReviewed: "Letztes Review",
     lastRun: "Letzter Run",
-    teamsNote:
-      "Letzter Run zählt jedes Ergebnis, auch übersprungene und fehlgeschlagene. Letztes Review ist der letzte erfolgreiche.",
   },
   runs: {
-    lede: "Was noergler diesen Monat mit jedem PR gemacht hat, auch mit denen, die er nicht reviewen wollte, und darunter die letzten 50 Runs. Übersprungen heisst, er hat das Modell nie gefragt. Fehlgeschlagen heisst, er hat gefragt und etwas ging schief.",
+    lede: "Was noergler diesen Monat mit jedem PR gemacht hat, und die letzten 50 Runs.",
     failedWhat: "den Runs-Feed",
     tileRuns: "Runs",
     tileReviewed: "Reviewt",
@@ -126,7 +122,7 @@ export const de = {
     lastDays_one: "der letzte Tag",
     lastDays_other: "die letzten {{count}} Tage",
     thisMonth: "dieser Monat",
-    lede: "Was dieser Monat gekostet hat und wie viel reviewt wurde. Runs, die das AI Gateway nie bepreist hat, werden separat gezählt statt als null addiert, damit das Total nicht still zu tief ist.",
+    lede: "Was dieser Monat gekostet hat und wie viel reviewt wurde.",
     cost: "Kosten",
     reviewed: "Reviewt",
     findings: "Findings",
@@ -136,7 +132,6 @@ export const de = {
     reviewedTrend: "Verlauf der Reviews",
     costPerDay: "Kosten pro Tag",
     spend: "Ausgaben",
-    spendNote: "USD, nur bepreiste Runs",
     noPriced: "Keine bepreisten Runs in diesem Zeitraum.",
     costChart: "Kosten pro Tag für {{title}}, nach Team",
     more: "{{count}} weitere",
@@ -152,12 +147,9 @@ export const de = {
     team: "Team",
     tokensIn: "Tokens rein",
     tokensOut: "Tokens raus",
-    byTeamNote:
-      "Nach Ausgaben sortiert. Kosten, die das AI Gateway nie gemeldet hat, fehlen in dieser Tabelle.",
   },
   teams: {
     failedWhat: "die Team-Liste",
-    lede: "Nur lesend. Ein Team ist ein Webhook-Pfad, ein eigenes HMAC-Secret und die Projekte und Repositories, die es beansprucht hat.",
     prs_one: "{{count}} PR",
     prs_other: "{{count}} PRs",
     lastReviewed: "letztes Review {{ago}}",
@@ -172,7 +164,7 @@ export const de = {
     autoReviewAuthors: "Auto-Review-Autoren:",
     ignoredAuthors: "Ignorierte Autoren:",
     disabledNote:
-      "Der Grund steht im Pod-Log in der Zeile <code>team_disabled</code>. Er wird hier nicht angezeigt, weil er eine Umgebungsvariable nennen kann.",
+      "Der Grund steht im Pod-Log in der Zeile <code>team_disabled</code>.",
     none: "Keine Teams konfiguriert.",
   },
   severity: {
@@ -231,8 +223,6 @@ export const de = {
   },
   run: {
     legendWait: "Warten",
-    stagesNote:
-      "Vom Start des Reviews (nach seinen Vorprüfungen) bis die Zusammenfassung gepostet und der Run gespeichert ist. Die Dauer des Runs endet vor dieser letzten Stufe, darum ergeben die Stufen zusammen mehr. Die Wartezeiten sind die Warteschlange: auf einen Platz im AI-Gateway-Pool und zurück auf den Review-Worker.",
     contextTitle: "Kontext",
     agentsMissing: "fehlt",
     agentsOf: "{{tokens}} von {{warn}} Tokens ({{pct}}%)",
@@ -249,11 +239,7 @@ export const de = {
     promptTitle: "Prompt",
     promptNote: "{{total}} Tokens von {{budget}} Budget, in Prompt-Reihenfolge",
     part: "Teil",
-    promptOrderNote:
-      "Dateien stehen vor dem kumulierten Diff und den früheren Findings, damit der stabile Teil des Prompts aus dem Cache kommen kann.",
     filesTitle: "Dateien",
-    filesNote:
-      "binäre und generierte Dateien zählen nicht zu den Zeilen des Runs",
     noFiles: "Keine Dateien erfasst.",
     file: "Datei",
     howSent: "Wie gesendet",
@@ -270,7 +256,6 @@ export const de = {
     incremental: "inkrementell",
     full: "voll",
     cost: "Kosten",
-    costReported: "vom AI Gateway gemeldet",
     elapsed: "Dauer",
     inModel: "{{time}} im Modell",
     findings: "Findings",
@@ -289,13 +274,9 @@ export const de = {
     timeNote: "vom Webhook bis zur Zusammenfassung, {{time}}",
     timeNoergler: "noergler und Bitbucket",
     timeGateway: "AI-Gateway-Aufruf",
-    timeOnlyTotal:
-      "Gemessen werden nur die Gesamtdauer und der AI-Gateway-Aufruf. Die Zeit des Aufrufs ist die des Gateways: vom Request bis zur Antwort.",
     noCallTime:
       "Für diesen Run wurde kein AI-Gateway-Aufruf gemacht oder erfasst.",
     skippedTitle: "Übersprungen",
-    skippedNote:
-      "noergler hat entschieden, das Modell nicht zu fragen. Deshalb gibt es keinen Aufruf, keine Kosten und kein Finding.",
     factsTitle: "Run",
     mode: "Review-Modus",
     commits: "Commits",
@@ -324,10 +305,7 @@ export const de = {
     outputText: "Output-Text",
     reasoning: "Reasoning",
     absent: "nicht gemeldet",
-    tokensNote:
-      "Beide Balken teilen eine Skala. Reasoning ist Teil des Outputs, wird im Output-Balken gezeichnet und nie obendrauf gezählt. «Nicht gemeldet» heisst, das AI Gateway hat keinen Wert geschickt, und das ist nicht dasselbe wie null.",
     costTitle: "Kosten",
-    costSplit: "aufgeteilt, wie das AI Gateway es gemeldet hat",
     lane: "Posten",
     usd: "USD",
     share: "Anteil",
@@ -339,11 +317,8 @@ export const de = {
     laneTool: "Tool-Nutzung",
     total: "Total",
     keySpend: "Key-Gesamtausgaben, laufende Periode",
-    costNote:
-      "Posten haben sechs Nachkommastellen, weil Cache-Posten bei einem kleinen Aufruf mit drei Stellen auf $0.000 runden. Key-Gesamtausgaben sind die Ausgaben des ganzen Keys in seiner laufenden Periode, beim Aufruf gelesen, und werden nie zu einem Run oder PR addiert.",
     noCall: "Für diesen Run wurde kein AI-Gateway-Aufruf erfasst.",
     gatewayTitle: "AI-Gateway-Aufruf",
-    gatewayNote: "LiteLLM-Response-Header und llmwire-Ergebnis",
     modelAnswered: "Modell, das geantwortet hat",
     deployment: "Deployment",
     reasoningSent: "Gesendeter Reasoning-Aufwand",
@@ -363,14 +338,8 @@ export const de = {
     prOf: "{{cost}} von {{cap}}",
     moreBefore: "Ältere Runs dieses Pull Requests sind hier nicht aufgeführt.",
     moreAfter: "Neuere Runs dieses Pull Requests sind hier nicht aufgeführt.",
-    prTotalNote:
-      "Das Total ist, was dieser Pull Request seit seiner letzten Beanspruchung gekostet hat, und damit auch, was ein Kostenlimit zählt. Es kann deshalb von den Zeilen oben abweichen.",
     preExistingTitle: "Schon vor diesem PR kaputt",
-    preExistingNote:
-      "Fehler, die das Modell in Code gesehen hat, den dieser PR nicht ändert; nicht im PR gepostet, darum nur hier",
     callsTitle: "Antworten",
-    callsNote:
-      "Jede zählt zum PR-Total und zu seinem Limit. Am Limit antwortet der Bot nicht mehr, auch nicht auf Erwähnungen.",
     callKind: "Art",
     model: "Modell",
     moreCalls: "Ältere Antworten sind hier nicht aufgeführt.",

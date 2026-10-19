@@ -8,7 +8,6 @@ import {
   Card,
   Empty,
   Failed,
-  Note,
   Sep,
   Tile,
   Tiles,
@@ -281,7 +280,7 @@ export function MetricsPage() {
         </Tiles>
 
         <p className={eyebrow}>{t("metrics.costPerDay")}</p>
-        <Card title={t("metrics.spend")} note={t("metrics.spendNote")}>
+        <Card title={t("metrics.spend")}>
           {costTop === 0 ? (
             <Empty>{t("metrics.noPriced")}</Empty>
           ) : (
@@ -357,7 +356,6 @@ export function MetricsPage() {
               </table>
             </div>
           )}
-          <Note>{t("metrics.byTeamNote")}</Note>
         </Card>
       </div>
     </div>

@@ -21,7 +21,7 @@ import (
 //
 // Money as on the rest of the dashboard: 3-decimal strings, nil for
 // unpriced. The cost lanes are 6-decimal, because a cache read on a small
-// call is a tenth of a milli-dollar.
+// call is a tenth of a milli-dollar. The page rounds all of it to cents.
 type runDetailBody struct {
 	ID          int64     `json:"id"`
 	Tag         string    `json:"tag"`

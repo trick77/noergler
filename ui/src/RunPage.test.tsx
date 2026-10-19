@@ -162,8 +162,8 @@ describe("RunPage", () => {
     expect(
       await screen.findByText("Retry captures on gateway timeout"),
     ).toBeDefined();
-    // The exact third decimal, not money()'s cents.
-    expect(screen.getAllByText("$0.048").length).toBeGreaterThan(0);
+    // Cents, like every amount on the dashboard.
+    expect(screen.getAllByText("$0.05").length).toBeGreaterThan(0);
     // A run's page is reached only from its summary comment.
     for (const a of container.querySelectorAll("a")) {
       expect(a.getAttribute("href") ?? "").not.toMatch(/^\/runs\/./);
@@ -205,16 +205,19 @@ describe("RunPage", () => {
   });
 
   // A lane the gateway did not send reads "not sent", never $0.
-  it("keeps absent lanes absent and lanes at six decimals", async () => {
+  it("keeps absent lanes absent and lanes in cents", async () => {
     serve(`runs/${TOK}`, detail);
     render(<RunPage token={TOK} />);
     fireEvent.click(
       await screen.findByRole("tab", { name: /Tokens and cost/ }),
     );
 
-    expect(screen.getByText("$0.003552")).toBeDefined();
-    expect(screen.getAllByText("not sent").length).toBeGreaterThan(0);
-    expect(screen.queryByText("$0.000000")).toBeNull();
+    const row = (lane: string) =>
+      screen.getByText(lane).closest("tr")?.textContent ?? "";
+    // 0.003552 rounds to cents like every other amount.
+    expect(row("Cache read")).toContain("$0.00");
+    expect(row("Cache write")).toContain("not sent");
+    expect(row("Cache write")).not.toContain("$");
     expect(window.location.hash).toBe("#cost");
   });
 
@@ -353,8 +356,12 @@ describe("RunPage", () => {
     ).toBe(
       "https://bb.example.com/projects/PAY/repos/checkout/pull-requests/1482/overview?commentId=501",
     );
-    expect(screen.getByText("answer to a mention")).toBeDefined();
-    expect(screen.getByText("$0.004")).toBeDefined();
+    const row = (kind: string) =>
+      screen.getByText(kind).closest("tr")?.textContent ?? "";
+    // Priced at 0.004: cents. Unpriced: a dash, never $0.00.
+    expect(row("reply to a finding ↗")).toContain("$0.00");
+    expect(row("answer to a mention")).toContain("—");
+    expect(row("answer to a mention")).not.toContain("$");
   });
 
   it("says why a skipped run has nothing else", async () => {

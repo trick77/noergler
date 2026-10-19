@@ -11,18 +11,7 @@ import {
   severityWord,
   sourceUrl,
 } from "./format";
-import {
-  Card,
-  Empty,
-  Note,
-  Pill,
-  table,
-  td,
-  tdNum,
-  tdTag,
-  th,
-  thNum,
-} from "./ui";
+import { Card, Empty, Pill, table, td, tdNum, tdTag, th, thNum } from "./ui";
 
 // A stage the page does not know (a newer binary) still draws, under its
 // own name. Waits are hatched, the gateway call has its own hue, the rest is
@@ -98,7 +87,6 @@ export function StageTimeline({ p }: { p: RunPipeline }) {
           {t("run.timeGateway")}
         </span>
       </div>
-      <Note>{t("run.stagesNote")}</Note>
     </>
   );
 }
@@ -243,10 +231,9 @@ export function InputTab({ p }: { p: RunPipeline | null }) {
             </tbody>
           </table>
         </div>
-        <Note>{t("run.promptOrderNote")}</Note>
       </Card>
 
-      <Card title={t("run.filesTitle")} note={t("run.filesNote")}>
+      <Card title={t("run.filesTitle")}>
         {p.files.length === 0 ? (
           <Empty>{t("run.noFiles")}</Empty>
         ) : (
@@ -426,7 +413,7 @@ export function PreExistingCard({
   const bugs = p.pre_existing ?? [];
   if (bugs.length === 0) return null;
   return (
-    <Card title={t("run.preExistingTitle")} note={t("run.preExistingNote")}>
+    <Card title={t("run.preExistingTitle")}>
       {/* The same table as the posted findings: where, linked to the line
           at the reviewed commit, and the finding in full. */}
       <div className="overflow-x-auto overscroll-x-contain">

@@ -19,7 +19,6 @@ import {
   Sep,
   column,
   h2,
-  lede,
   page,
   table,
   tdNum,
@@ -94,7 +93,6 @@ export function TeamsPage() {
     <div className={page}>
       <div className={column}>
         <h2 className={h2}>{t("nav.teams")}</h2>
-        <p className={lede}>{t("teams.lede")}</p>
 
         {byName(data.teams).map((team) => (
           <Card
