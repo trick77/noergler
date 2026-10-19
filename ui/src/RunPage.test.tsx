@@ -212,9 +212,12 @@ describe("RunPage", () => {
       await screen.findByRole("tab", { name: /Tokens and cost/ }),
     );
 
-    expect(screen.getAllByText("$0.02").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("not sent").length).toBeGreaterThan(0);
-    expect(screen.queryByText("$0.003552")).toBeNull();
+    const row = (lane: string) =>
+      screen.getByText(lane).closest("tr")?.textContent ?? "";
+    // 0.003552 rounds to cents like every other amount.
+    expect(row("Cache read")).toContain("$0.00");
+    expect(row("Cache write")).toContain("not sent");
+    expect(row("Cache write")).not.toContain("$");
     expect(window.location.hash).toBe("#cost");
   });
 
@@ -353,8 +356,12 @@ describe("RunPage", () => {
     ).toBe(
       "https://bb.example.com/projects/PAY/repos/checkout/pull-requests/1482/overview?commentId=501",
     );
-    expect(screen.getByText("answer to a mention")).toBeDefined();
-    expect(screen.getAllByText("$0.00").length).toBeGreaterThan(0);
+    const row = (kind: string) =>
+      screen.getByText(kind).closest("tr")?.textContent ?? "";
+    // Priced at 0.004: cents. Unpriced: a dash, never $0.00.
+    expect(row("reply to a finding ↗")).toContain("$0.00");
+    expect(row("answer to a mention")).toContain("—");
+    expect(row("answer to a mention")).not.toContain("$");
   });
 
   it("says why a skipped run has nothing else", async () => {

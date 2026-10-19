@@ -170,7 +170,7 @@ func FormatUSD3(nano int64) string {
 }
 
 // FormatUSD6 is FormatUSD3 at micro-dollar precision, for the split lanes
-// (the log line and the run detail page): a cache read on a small call is a
+// (the log line and the run detail JSON): a cache read on a small call is a
 // tenth of a milli-dollar and reads $0.000 at three decimals.
 func FormatUSD6(nano int64) string {
 	sign := ""
