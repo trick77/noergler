@@ -6,10 +6,9 @@ package store
 // the model proposed. The review writes it and the API serves it, both
 // through this one struct, stored as JSONB per attempt.
 //
-// Headlines only (decided): a finding's comment, suggestion and evidence
-// never go in here. The dashboard is unauthenticated. The one exception is
-// PreExisting, decided too: never posted, so the page is the only place its
-// explanation can be read; prose only, never code.
+// Everything, code included (decided): the page is reached only by its
+// link token from the PR's summary comment. Never a secret: pre-existing
+// prose with a secret-like token is dropped (inference.HasSecret).
 type Pipeline struct {
 	// Commit is the reviewed source commit, for links into the code.
 	Commit           string            `json:"commit,omitempty"`
@@ -81,12 +80,15 @@ type PreviouslyPosted struct {
 // already posted, cut by the comment cap, or refused by Bitbucket. Posted
 // findings are the findings table's.
 type FindingDecision struct {
-	File     string `json:"file"`
-	Line     int    `json:"line"`
-	Severity string `json:"severity"`
-	Headline string `json:"headline"`
-	Decision string `json:"decision"`
-	Reason   string `json:"reason,omitempty"`
+	File       string   `json:"file"`
+	Line       int      `json:"line"`
+	Severity   string   `json:"severity"`
+	Headline   string   `json:"headline"`
+	Comment    string   `json:"comment,omitempty"`
+	Suggestion string   `json:"suggestion,omitempty"`
+	Evidence   []string `json:"evidence,omitempty"`
+	Decision   string   `json:"decision"`
+	Reason     string   `json:"reason,omitempty"`
 }
 
 // MovedFinding is a POSTED finding validation moved to its evidence's line.
@@ -108,11 +110,12 @@ type HTTPCount struct {
 	Calls    int    `json:"calls"`
 }
 
-// PreExistingBug is one bug in unchanged code: where, a headline and the
-// model's explanation, capped in length, no code.
+// PreExistingBug is one bug in unchanged code: where, a headline, the
+// model's explanation (capped in length) and the lines it quoted.
 type PreExistingBug struct {
-	File        string `json:"file"`
-	Line        int    `json:"line"`
-	Headline    string `json:"headline"`
-	Explanation string `json:"explanation"`
+	File        string   `json:"file"`
+	Line        int      `json:"line"`
+	Headline    string   `json:"headline"`
+	Explanation string   `json:"explanation"`
+	Evidence    []string `json:"evidence,omitempty"`
 }

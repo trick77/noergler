@@ -212,8 +212,11 @@ order:
 8. A footer: a bullet for each thing the author can act on (no AGENTS.md or
    one over its warn size, no ticket while Jira is on, files not reviewed or
    reviewed without full context), then one line of model, files, lines,
-   elapsed time and cost, ending in a link to the run's dashboard page when
-   `NOERGLER_PUBLIC_URL` is set
+   elapsed time and cost, ending in a link to the run's page when
+   `NOERGLER_PUBLIC_URL` is set. The link carries the run's random token and
+   is the only way to the page: the dashboard never links to it. The page
+   shows each finding's full comment, suggestion and the author's dispute,
+   and the findings that were not posted with their quoted lines
 
 There is no effort score and no "What changed" section. Tokens, prompt parts,
 cross-file symbols, the gateway's cost split and the key spend are on the run
@@ -242,8 +245,8 @@ change (`pre_existing`). They are not the author's, so they are never posted
 and never touch the verdict. Validation keeps one whose evidence is in the
 shown file and on no line the PR added or removed; the line moves to the
 evidence when that is a shown line. The run page lists them with the model's
-explanation and a link to the line at the reviewed commit, so someone can
-pick them up.
+explanation, the quoted lines and a link to the line at the reviewed commit,
+so someone can pick them up.
 
 ## 12. Q&A by mention
 

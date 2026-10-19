@@ -21,7 +21,6 @@ type PreExistingBug struct {
 }
 
 // Limits on what a pre-existing bug may carry onto the page: a few, short.
-// The text is the model's, shown on an unauthenticated dashboard.
 const (
 	maxPreExisting         = 5
 	maxPreExistingHeadline = 200
@@ -90,10 +89,11 @@ type DroppedPreExisting struct {
 // line the PR added. Evidence found only in the full content has no line
 // number in the index (hashes only), so the cited line stands.
 //
-// The headline and explanation go on an unauthenticated page, so one that
-// carries code or a secret-looking token is dropped: blunt rules, like
-// ValidateFindings, never a judge model. At most maxPreExisting are kept, in
-// the model's order.
+// Code in the headline or explanation is fine (the page is reached only by
+// its link token); one whose text or evidence carries a secret-looking token
+// is dropped:
+// blunt rules, like ValidateFindings, never a judge model. At most
+// maxPreExisting are kept, in the model's order.
 func ValidatePreExisting(bugs []PreExistingBug, idx diff.AnchorIndex, prAdded map[string]map[uint64]bool) (kept []PreExistingBug, dropped []DroppedPreExisting) {
 	for _, b := range bugs {
 		b.File = ShownPath(b.File, idx)
@@ -111,24 +111,68 @@ func ValidatePreExisting(bugs []PreExistingBug, idx diff.AnchorIndex, prAdded ma
 	return kept, dropped
 }
 
-// tokenRunRE is a run of 24 or more token characters with no space.
-var tokenRunRE = regexp.MustCompile(`[A-Za-z0-9_+/=-]{24,}`)
+// tokenRunRE is a run of 20 or more token characters with no space or dot:
+// a dot ends a run, so dotted code (`base64.RawURLEncoding.EncodeToString`)
+// is judged by its names, each a word. ASCII on purpose, against the
+// adapters rule: credentials are ASCII, and a run that a non-ASCII letter
+// breaks is a word, not a key.
+var tokenRunRE = regexp.MustCompile(`[A-Za-z0-9_+/=-]{20,}`)
 
-// innerUpperRE is a lower-case letter followed by an upper-case one: camelCase
-// and random tokens have it, a capitalised German compound does not.
-var innerUpperRE = regexp.MustCompile(`[a-z][A-Z]`)
+// knownSecretRE is a credential by its shape: an AWS key id, a GitHub or
+// Slack token, an OpenAI or Stripe-style key, a PEM private key.
+var knownSecretRE = regexp.MustCompile(`AKIA[0-9A-Z]{16}|\bgh[pousr]_[A-Za-z0-9]{20,}|\bxox[abprs]-[A-Za-z0-9-]{10,}|\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}|\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY`)
 
-// HasCodeOrSecret reports a backtick or a code- or secret-like token in model
-// prose: a long run with a digit, an underscore, a slash, `+` or `=`, or an
-// inner capital (an API key, a hash, base64, a path, an identifier). A
-// German compound ("Verbindungswiederherstellung") or a lower-case
-// hyphenated phrase is prose. Blunt, like every validation rule.
-func HasCodeOrSecret(s string) bool {
-	if strings.ContainsRune(s, '`') {
+// minSecretAlnum and minSecretShifts make a long run secret-like: random
+// text (a key, a hash, base64) flips between upper case, lower case and
+// digits at almost every other character; an identifier, a path or a
+// German compound flips at its word boundaries only
+// ("handleConnectionRecoveryTimeout": 6 in 31, "Sha256DigestCalculator": 6 in
+// 22). Characters that are neither are skipped, so a path's slashes do not
+// count.
+const (
+	minSecretAlnum  = 20
+	minSecretShifts = 0.3
+)
+
+// HasSecret reports a secret-like token in model or author text: a known
+// credential shape, or a long run that shifts character class as random
+// text does. Blunt, like every validation rule: a commit hash or a UUID
+// counts too, and a short or unusually regular key passes.
+func HasSecret(s string) bool {
+	if knownSecretRE.MatchString(s) {
 		return true
 	}
 	for _, run := range tokenRunRE.FindAllString(s, -1) {
-		if strings.ContainsAny(run, "0123456789_/+=") || innerUpperRE.MatchString(run) {
+		alnum, shifts, prev := 0, 0, 0
+		for _, r := range run {
+			c := 0
+			switch {
+			case r >= 'a' && r <= 'z':
+				c = 1
+			case r >= 'A' && r <= 'Z':
+				c = 2
+			case r >= '0' && r <= '9':
+				c = 3
+			default:
+				continue
+			}
+			alnum++
+			if prev != 0 && c != prev {
+				shifts++
+			}
+			prev = c
+		}
+		if alnum >= minSecretAlnum && float64(shifts) >= minSecretShifts*float64(alnum) {
+			return true
+		}
+	}
+	return false
+}
+
+// AnySecret is HasSecret over several texts.
+func AnySecret(texts ...string) bool {
+	for _, t := range texts {
+		if HasSecret(t) {
 			return true
 		}
 	}
@@ -140,8 +184,8 @@ func validatePreExisting(b PreExistingBug, idx diff.AnchorIndex, prAdded map[str
 	if !ok {
 		return string(DropUnknownFile), 0
 	}
-	if HasCodeOrSecret(b.Headline) || HasCodeOrSecret(b.Explanation) {
-		return "code_in_prose", 0
+	if AnySecret(append([]string{b.Headline, b.Explanation}, b.Evidence...)...) {
+		return "secret_in_text", 0
 	}
 	history := prAdded[b.File]
 	var shown []uint64

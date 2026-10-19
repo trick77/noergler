@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"regexp"
 
 	"github.com/trick77/ship/kit/httpx"
 )
@@ -59,11 +60,22 @@ var quietPaths = []string{
 	"/api/dashboard/teams",
 }
 
+// runTokenRE is whatever follows /runs/ in a path (the SPA's /runs/{token}
+// and the API's /api/dashboard/runs/{token}, a trailing slash or a further
+// segment included): a run page's only key, so never written to a log.
+var runTokenRE = regexp.MustCompile(`/runs/.+`)
+
+// logPath is the path as the access log and a panic's line write it, a run
+// page's token masked.
+func logPath(r *http.Request) string {
+	return runTokenRE.ReplaceAllString(r.URL.Path, "/runs/{token}")
+}
+
 // Handler is the mux wrapped in the middleware chain: access log outermost,
 // so a panic's log line and its 500 carry the request id.
 func (s *Server) Handler() http.Handler {
 	return httpx.Chain(s.mux,
-		httpx.AccessLog(s.log, httpx.AccessLogOptions{Quiet: quietPaths}),
-		httpx.Recover(s.log),
+		httpx.AccessLog(s.log, httpx.AccessLogOptions{Quiet: quietPaths, Path: logPath}),
+		httpx.RecoverWith(s.log, httpx.RecoverOptions{Path: logPath}),
 	)
 }

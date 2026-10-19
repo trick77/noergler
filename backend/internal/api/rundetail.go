@@ -3,7 +3,6 @@ package api
 import (
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/trick77/noergler/internal/inference"
@@ -13,12 +12,12 @@ import (
 	"github.com/trick77/ship/kit/logging"
 )
 
-// runDetailBody is GET /api/dashboard/runs/{id}: one attempt and everything
-// recorded about it.
+// runDetailBody is GET /api/dashboard/runs/{token}: one attempt and
+// everything recorded about it.
 //
-// Headlines only (decided): no finding text, suggestion, quoted code or
-// dispute, and no gateway discount or margin. The dashboard is
-// unauthenticated; the full text is one link away in Bitbucket.
+// Full finding text, suggestion, dispute and quoted code (decided): the
+// token is handed out only in the PR's summary comment, so the page's
+// audience is the PR's. Never a gateway discount or margin.
 //
 // Money as on the rest of the dashboard: 3-decimal strings, nil for
 // unpriced. The cost lanes are 6-decimal, because a cache read on a small
@@ -95,16 +94,17 @@ type callBody struct {
 }
 
 type findingBody struct {
-	Severity   string `json:"severity"`
-	Confidence *int   `json:"confidence"`
-	File       string `json:"file"`
-	Line       int    `json:"line"`
-	Headline   string `json:"headline"`
-	CommentID  *int64 `json:"comment_id"`
-	Replied    bool   `json:"replied"`
-	Fixed      bool   `json:"fixed"`
-	// FromAttempt is the page of the run that posted it.
-	FromAttempt *int64 `json:"from_attempt_id"`
+	Severity   string  `json:"severity"`
+	Confidence *int    `json:"confidence"`
+	File       string  `json:"file"`
+	Line       int     `json:"line"`
+	Headline   string  `json:"headline"`
+	Comment    string  `json:"comment"`
+	Suggestion *string `json:"suggestion"`
+	Dispute    *string `json:"dispute"`
+	CommentID  *int64  `json:"comment_id"`
+	Replied    bool    `json:"replied"`
+	Fixed      bool    `json:"fixed"`
 }
 
 // PRBody is the PR's side of the page: its history and what it has cost
@@ -156,15 +156,16 @@ func usd6(nano *int64) *string {
 	return &s
 }
 
-// runDetail serves one attempt. 404 for an id that is not a number or not
-// an attempt: the page then says so rather than rendering an empty run.
+// runDetail serves the attempt behind a link token. One 404 for a malformed
+// token and an unknown one: no oracle, and the page says so rather than
+// rendering an empty run.
 func (d Deps) runDetail(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil || id <= 0 {
+	token := r.PathValue("token")
+	if !store.LinkTokenRE.MatchString(token) {
 		httpx.WriteError(w, http.StatusNotFound, "no such run")
 		return
 	}
-	det, ok, err := d.DashboardStore.RunDetail(r.Context(), id)
+	det, ok, err := d.DashboardStore.RunDetail(r.Context(), token)
 	if err != nil {
 		d.Log.ErrorContext(r.Context(), "dashboard: RunDetail failed: "+err.Error())
 		httpx.WriteError(w, http.StatusInternalServerError, "could not read the run")
@@ -258,17 +259,37 @@ func (d Deps) runDetail(w http.ResponseWriter, r *http.Request) {
 			body.PR.Cap = usd(&nano)
 		}
 	}
+	// Full finding text behind a token: no cache keeps a copy.
+	w.Header().Set("Cache-Control", "no-store")
 	httpx.WriteJSON(w, http.StatusOK, body)
 }
 
-func findingBodies(fs []store.FindingHeadline) []findingBody {
+// findingBodies are the posted findings with their text. A text with a
+// secret-like token (inference.HasSecret), the author's dispute included,
+// is withheld: never a secret on the page, though Bitbucket shows it.
+func findingBodies(fs []store.RunFinding) []findingBody {
 	out := make([]findingBody, 0, len(fs))
 	for _, f := range fs {
-		out = append(out, findingBody{
+		b := findingBody{
 			Severity: f.Severity, Confidence: f.Confidence, File: f.FilePath, Line: f.Line,
-			Headline: f.Headline, CommentID: f.CommentID, Replied: f.Replied, Fixed: f.Fixed,
-			FromAttempt: f.FromAttemptID,
-		})
+			Headline: withheld(f.Headline), Comment: withheld(f.CommentText),
+			CommentID: f.CommentID, Replied: f.Replied, Fixed: f.Fixed,
+		}
+		if f.Suggestion != nil && !inference.HasSecret(*f.Suggestion) {
+			b.Suggestion = f.Suggestion
+		}
+		if f.DisputeText != nil && !inference.HasSecret(*f.DisputeText) {
+			b.Dispute = f.DisputeText
+		}
+		out = append(out, b)
 	}
 	return out
+}
+
+// withheld is s, or empty when it carries a secret-like token.
+func withheld(s string) string {
+	if inference.HasSecret(s) {
+		return ""
+	}
+	return s
 }

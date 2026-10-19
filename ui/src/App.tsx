@@ -10,7 +10,7 @@ import {
   PAGES,
   navigate,
   pageFromPath,
-  runIdFromPath,
+  runTokenFromPath,
   type Page,
 } from "./routing";
 
@@ -22,14 +22,14 @@ export default function App() {
   const [route, setRoute] = useState<Page>(() =>
     pageFromPath(window.location.pathname),
   );
-  const [runId, setRunId] = useState<number | null>(() =>
-    runIdFromPath(window.location.pathname),
+  const [runToken, setRunToken] = useState<string | null>(() =>
+    runTokenFromPath(window.location.pathname),
   );
 
   useEffect(() => {
     const onPop = () => {
       setRoute(pageFromPath(window.location.pathname));
-      setRunId(runIdFromPath(window.location.pathname));
+      setRunToken(runTokenFromPath(window.location.pathname));
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -38,9 +38,9 @@ export default function App() {
   useEffect(() => {
     document.title =
       route === "run"
-        ? `${t("run.title", { id: runId })} · noergler`
+        ? `${t("run.title")} · noergler`
         : `${t(`nav.${route}`)} · noergler`;
-  }, [route, runId, t]);
+  }, [route, t]);
 
   const go = (page: Exclude<Page, "run">) => {
     navigate(page);
@@ -92,10 +92,10 @@ export default function App() {
       <main className="min-h-0 min-w-0">
         {route === "live" && <LivePage />}
         {route === "runs" && <RunsPage />}
-        {route === "run" && runId !== null && (
+        {route === "run" && runToken !== null && (
           // keyed: a new run is a new page, never the previous one's data
           // under the next URL while it loads (or after it fails).
-          <RunPage key={runId} id={runId} />
+          <RunPage key={runToken} token={runToken} />
         )}
         {route === "metrics" && <MetricsPage />}
         {route === "teams" && <TeamsPage />}

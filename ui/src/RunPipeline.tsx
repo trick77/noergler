@@ -293,6 +293,57 @@ export function InputTab({ p }: { p: RunPipeline | null }) {
   );
 }
 
+const prose = "mt-1 whitespace-pre-wrap break-words text-[13px] text-muted";
+
+/** FindingText is a finding's headline over its full text: the comment
+ *  (or explanation), the suggestion, the author's dispute and the quoted
+ *  lines. Plain text, never rendered markdown: it is the model's and the
+ *  author's. One renderer for every findings table on the run page. */
+export function FindingText({
+  headline,
+  comment,
+  suggestion,
+  dispute,
+  evidence,
+}: {
+  headline: string;
+  comment?: string | null;
+  suggestion?: string | null;
+  dispute?: string | null;
+  evidence?: string[];
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <div className="text-ink">{headline || "—"}</div>
+      {comment && <div className={prose}>{comment}</div>}
+      {suggestion && (
+        <div className={prose}>
+          <span className="text-faint">{t("run.suggestion")}: </span>
+          {suggestion}
+        </div>
+      )}
+      {dispute && (
+        <div className={prose}>
+          <span className="text-faint">{t("run.dispute")}: </span>
+          {dispute}
+        </div>
+      )}
+      <Evidence lines={evidence} />
+    </>
+  );
+}
+
+/** Evidence is the lines the model quoted, as code. */
+function Evidence({ lines }: { lines?: string[] }) {
+  if (!lines || lines.length === 0) return null;
+  return (
+    <pre className="mt-1.5 overflow-x-auto rounded-ui-sm border border-border-soft px-2 py-1 font-mono text-[12px] text-ink-dim">
+      {lines.join("\n")}
+    </pre>
+  );
+}
+
 export function NotPostedCard({ p }: { p: RunPipeline }) {
   const { t } = useTranslation();
   if (p.decisions.length === 0) return null;
@@ -319,7 +370,14 @@ export function NotPostedCard({ p }: { p: RunPipeline }) {
                 <td className={tdTag + " text-muted"}>
                   {f.file}:{f.line}
                 </td>
-                <td className={td + " text-muted"}>{f.headline || "—"}</td>
+                <td className={td}>
+                  <FindingText
+                    headline={f.headline}
+                    comment={f.comment}
+                    suggestion={f.suggestion}
+                    evidence={f.evidence}
+                  />
+                </td>
                 <td className={td + " whitespace-nowrap text-[12.5px]"}>
                   <span
                     className={
@@ -349,7 +407,7 @@ export function NotPostedCard({ p }: { p: RunPipeline }) {
 
 /** PreExistingCard lists the bugs the model saw in code this PR did not
  *  change. Never posted to the PR, so this is the only place they are said:
- *  the explanation in prose and a link to the line, no code. */
+ *  the explanation, the quoted lines and a link to the line. */
 export function PreExistingCard({
   p,
   tag,
@@ -364,37 +422,49 @@ export function PreExistingCard({
   if (bugs.length === 0) return null;
   return (
     <Card title={t("run.preExistingTitle")} note={t("run.preExistingNote")}>
-      <ul className="flex flex-col gap-3">
-        {bugs.map((b, i) => {
-          const href = sourceUrl(tag, base, b.file, b.line, p.commit);
-          const where = `${b.file}:${b.line}`;
-          return (
-            <li
-              key={i}
-              className="border-b border-border-soft pb-3 last:border-0 last:pb-0"
-            >
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <span className="text-[14px] text-ink">{b.headline}</span>
-                {href ? (
-                  <a
-                    href={href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-mono text-[12.5px] text-muted hover:underline"
-                  >
-                    {where} ↗
-                  </a>
-                ) : (
-                  <span className="font-mono text-[12.5px] text-muted">
-                    {where}
-                  </span>
-                )}
-              </div>
-              <p className="mt-1 text-[13.5px] text-ink-dim">{b.explanation}</p>
-            </li>
-          );
-        })}
-      </ul>
+      {/* The same table as the posted findings: where, linked to the line
+          at the reviewed commit, and the finding in full. */}
+      <div className="overflow-x-auto overscroll-x-contain">
+        <table className={table}>
+          <thead>
+            <tr>
+              <th className={th + " w-px"}>{t("run.where")}</th>
+              <th className={th}>{t("run.finding")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {bugs.map((b, i) => {
+              const href = sourceUrl(tag, base, b.file, b.line, p.commit);
+              const where = `${b.file}:${b.line}`;
+              return (
+                <tr key={`${where}:${i}`}>
+                  <td className={tdTag}>
+                    {href ? (
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="hover:text-ink hover:underline"
+                      >
+                        {where} ↗
+                      </a>
+                    ) : (
+                      where
+                    )}
+                  </td>
+                  <td className={td}>
+                    <FindingText
+                      headline={b.headline}
+                      comment={b.explanation}
+                      evidence={b.evidence}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </Card>
   );
 }

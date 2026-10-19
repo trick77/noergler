@@ -5,12 +5,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
 
-// The footer links the run's dashboard page, keyed by the attempt the run
-// just recorded, and prints no link without a public URL: never one to a
-// host that does not exist.
+// The footer links the run's page by the link token the attempt was just
+// recorded with, never by its id, and prints no link without a public URL:
+// never one to a host that does not exist.
 func TestFooterLinksTheRunPage(t *testing.T) {
 	h := newHarness(t, nil)
 	h.r.publicURL = "https://noergler.example.com"
@@ -18,7 +19,10 @@ func TestFooterLinksTheRunPage(t *testing.T) {
 	if len(h.bb.Posted) == 0 {
 		t.Fatal("no summary posted")
 	}
-	want := "https://noergler.example.com/runs/1)"
+	if len(h.st.Attempts) != 1 || !store.LinkTokenRE.MatchString(h.st.Attempts[0].LinkToken) {
+		t.Fatalf("attempts = %+v, want one with a link token", h.st.Attempts)
+	}
+	want := "https://noergler.example.com/runs/" + h.st.Attempts[0].LinkToken + ")"
 	if s := h.bb.Posted[0].Text; !strings.Contains(s, want) {
 		t.Errorf("summary lacks the run link %q:\n%s", want, s)
 	}

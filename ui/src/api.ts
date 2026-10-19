@@ -120,9 +120,9 @@ export interface Team {
   model?: string;
 }
 
-/** RunDetail is GET runs/{id}: one attempt and what was recorded about it.
- *  Headlines only, never a finding's text; money as decimal strings, null
- *  for unpriced or "the gateway did not send it", never a zero. */
+/** RunDetail is GET runs/{token}: one attempt and what was recorded about it.
+ *  Full finding text (secret-like text withheld); money as decimal strings,
+ *  null for unpriced or "the gateway did not send it", never a zero. */
 export interface RunDetail {
   id: number;
   tag: string;
@@ -172,7 +172,7 @@ export interface RunDetail {
   detail: RunPipeline | null;
 }
 
-/** RunPipeline is the review's own record of the run: headlines only. */
+/** RunPipeline is the review's own record of the run. */
 export interface RunPipeline {
   /** The reviewed commit, for links into the code. */
   commit?: string;
@@ -205,6 +205,9 @@ export interface RunPipeline {
     line: number;
     severity: string;
     headline: string;
+    comment?: string;
+    suggestion?: string;
+    evidence?: string[];
     decision: string;
     reason?: string;
   }[];
@@ -216,6 +219,7 @@ export interface RunPipeline {
     line: number;
     headline: string;
     explanation: string;
+    evidence?: string[];
   }[];
   /** Requests per upstream, by name. */
   http: { upstream: string; calls: number }[];
@@ -256,11 +260,13 @@ export interface RunFinding {
   file: string;
   line: number;
   headline: string;
+  /** The comment as posted, the suggestion and the author's dispute. */
+  comment: string;
+  suggestion: string | null;
+  dispute: string | null;
   comment_id: number | null;
   replied: boolean;
   fixed: boolean;
-  /** The page of the run that posted it; null when that attempt is gone. */
-  from_attempt_id: number | null;
 }
 
 export interface CommentCall {

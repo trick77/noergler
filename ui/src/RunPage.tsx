@@ -1,15 +1,10 @@
 // The run detail page: one attempt and everything recorded about it, in
-// tabs so the summary is never below a page of detail. Headlines only: the
-// full text of a finding is one click away in Bitbucket, which guards it.
+// tabs so the summary is never below a page of detail. Reached only by its
+// link token from the PR's summary comment, so it shows the full text and
+// never links to another run's page.
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type {
-  CommentCall,
-  PRAttempt,
-  RunCall,
-  RunDetail,
-  RunFinding,
-} from "./api";
+import type { CommentCall, RunCall, RunDetail, RunFinding } from "./api";
 import {
   duration,
   known,
@@ -20,9 +15,10 @@ import {
   severityTone,
   severityWord,
 } from "./format";
-import { onNav, runPath } from "./routing";
+import { onNav } from "./routing";
 import {
   ContextCard,
+  FindingText,
   InputTab,
   NotPostedCard,
   PreExistingCard,
@@ -70,11 +66,11 @@ function num(v: number | null | undefined): string {
   return v === null || v === undefined ? "—" : v.toLocaleString();
 }
 
-export function RunPage({ id }: { id: number }) {
+export function RunPage({ token }: { token: string }) {
   const { t } = useTranslation();
   // A finished run does not change; the slow poll only picks up a run that
   // was still being recorded when the page opened.
-  const { data, failed } = usePoll<RunDetail>(`runs/${id}`, 60000);
+  const { data, failed } = usePoll<RunDetail>(`runs/${token}`, 60000);
   const [tab, setTab] = useState<Tab>(tabFromHash);
 
   useEffect(() => {
@@ -96,7 +92,7 @@ export function RunPage({ id }: { id: number }) {
     return (
       <div className={page}>
         <div className={column}>
-          <h2 className={h2}>{t("run.title", { id })}</h2>
+          <h2 className={h2}>{t("run.title")}</h2>
           {failed ? (
             <Failed what={t("run.failedWhat")} />
           ) : (
@@ -109,10 +105,6 @@ export function RunPage({ id }: { id: number }) {
 
   const d = data;
   const unpriced = t("common.unpriced");
-  const at = d.pr.attempts.findIndex((a) => a.id === d.id);
-  const prev = at > 0 ? d.pr.attempts[at - 1] : null;
-  const next =
-    at >= 0 && at < d.pr.attempts.length - 1 ? d.pr.attempts[at + 1] : null;
   const pr = prUrl(d.tag, d.bitbucket_url);
   const call = d.call;
   const inTokens = call?.input_tokens ?? d.run?.prompt_tokens ?? null;
@@ -193,8 +185,6 @@ export function RunPage({ id }: { id: number }) {
             })}
           </span>
           <span className="flex gap-1 sm:ml-auto">
-            <RunLink attempt={prev} label={t("run.previous")} />
-            <RunLink attempt={next} label={t("run.next")} />
             {pr && (
               <a
                 href={pr}
@@ -303,33 +293,6 @@ export function RunPage({ id }: { id: number }) {
         </div>
       </div>
     </div>
-  );
-}
-
-function RunLink({
-  attempt,
-  label,
-}: {
-  attempt: PRAttempt | null;
-  label: string;
-}) {
-  const cls =
-    "rounded-ui-sm border border-border px-2 py-0.5 text-[12.5px] whitespace-nowrap ";
-  if (attempt === null) {
-    return (
-      <span aria-disabled className={cls + "text-faint"}>
-        {label}
-      </span>
-    );
-  }
-  return (
-    <a
-      href={runPath(attempt.id)}
-      onClick={onNav(runPath(attempt.id))}
-      className={cls + "hover:bg-active hover:text-ink"}
-    >
-      {label}
-    </a>
   );
 }
 
@@ -495,7 +458,7 @@ function FindingRows({
             <th className={th + " w-px"}>{t("run.severity")}</th>
             <th className={th + " w-px"}>{t("run.where")}</th>
             <th className={th}>{t("run.finding")}</th>
-            <th className={th + " w-px"}>{t("run.result")}</th>
+            {!fixedTable && <th className={th + " w-px"}>{t("run.result")}</th>}
           </tr>
         </thead>
         <tbody>
@@ -521,21 +484,19 @@ function FindingRows({
                     `${f.file}:${f.line}`
                   )}
                 </td>
-                <td className={td}>{f.headline || "—"}</td>
-                <td className={td + " whitespace-nowrap text-[12.5px]"}>
-                  {fixedTable ? (
-                    f.from_attempt_id !== null ? (
-                      <a
-                        href={runPath(f.from_attempt_id)}
-                        onClick={onNav(runPath(f.from_attempt_id))}
-                        className="text-muted hover:text-ink hover:underline"
-                      >
-                        {t("run.fromRun", { id: f.from_attempt_id })}
-                      </a>
-                    ) : (
-                      "—"
-                    )
-                  ) : (
+                <td className={td}>
+                  <FindingText
+                    headline={f.headline}
+                    comment={f.comment}
+                    suggestion={f.suggestion}
+                    dispute={f.dispute}
+                  />
+                </td>
+                {/* The fixed table has no result column: every row is
+                    fixed, and the run that posted it is not linked (a
+                    run page is linked only from its summary comment). */}
+                {!fixedTable && (
+                  <td className={td + " whitespace-nowrap text-[12.5px]"}>
                     <>
                       <span className="text-online">{t("run.posted")}</span>
                       {f.replied && (
@@ -552,8 +513,8 @@ function FindingRows({
                           </div>
                         ))}
                     </>
-                  )}
-                </td>
+                  </td>
+                )}
               </tr>
             );
           })}
@@ -593,7 +554,6 @@ function Findings({ d, pr }: { d: RunDetail; pr: string | null }) {
               })}
             </Note>
           )}
-        <Note>{t("run.headlinesOnly")}</Note>
       </Card>
       {d.detail && <NotPostedCard p={d.detail} />}
       {d.detail && (
@@ -943,11 +903,9 @@ function PRTab({ d }: { d: RunDetail }) {
                   })}
                 </td>
                 <td className={td}>
-                  <a
-                    href={runPath(a.id)}
-                    onClick={onNav(runPath(a.id))}
-                    className="inline-flex items-center gap-2 hover:underline"
-                  >
+                  {/* Rows, never links: each run's page is reached only
+                      from its own summary comment. */}
+                  <span className="inline-flex items-center gap-2">
                     <Pill
                       tone={outcomeTone(a.outcome)}
                       title={outcomeTitle(a.outcome, a.reason, a.reason_label)}
@@ -958,7 +916,7 @@ function PRTab({ d }: { d: RunDetail }) {
                       {t("run.crumb", { id: a.id })}
                       {a.id === d.id && ` · ${t("run.thisRun")}`}
                     </span>
-                  </a>
+                  </span>
                 </td>
                 <td className={tdNum}>{a.findings ?? "—"}</td>
                 <td className={tdNum}>{duration(a.elapsed_ms)}</td>

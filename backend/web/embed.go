@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"regexp"
 
+	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/ship/kit/spa"
 )
 
@@ -29,7 +30,7 @@ var placeholderHTML []byte
 
 // routes mirrors ui/src/routing.ts. An explicit allowlist, so an unknown
 // path is a real 404 rather than 200 plus the shell: a soft 404 makes a typo
-// look like an empty page. One pattern beside it: /runs/{attempt id}.
+// look like an empty page. One pattern beside it: /runs/{link token}.
 var routes = map[string]bool{
 	"/":        true,
 	"/live":    true,
@@ -39,10 +40,11 @@ var routes = map[string]bool{
 	"/faq":     true,
 }
 
-// runPath is the run detail page, /runs/ and a positive attempt id. Digits
-// only, at most 15 (the SPA reads the id with Number(), exact below 2^53):
-// /runs/abc stays the 404 an unknown path is.
-var runPath = regexp.MustCompile(`^/runs/[1-9][0-9]{0,14}$`)
+// runPath is the run detail page, /runs/ and a link token (store.NewLinkToken:
+// 22 base64url characters). A numeric attempt id stays the 404 an unknown
+// path is: the token, handed out only in the PR's summary comment, is the
+// page's one key.
+var runPath = regexp.MustCompile(`^/runs/` + store.LinkPattern + `$`)
 
 func dist() fs.FS {
 	sub, err := fs.Sub(distFS, "dist")
@@ -65,8 +67,44 @@ func Handler() http.Handler { return handler(dist()) }
 // /assets/ file stay 404s, the shell is revalidated on every load, and an
 // unbuilt binary answers its routes with the placeholder and a 503.
 func handler(sub fs.FS) http.Handler {
-	return spa.Handler(sub, spa.Options{
+	h := spa.Handler(sub, spa.Options{
 		Routes:      func(p string) bool { return routes[p] || runPath.MatchString(p) },
 		Placeholder: placeholderHTML,
 	})
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A run page's URL carries its key: keep it out of search indexes,
+		// out of the Referer of every link the page opens, and out of every
+		// cache. Set as the headers go out: spa.Handler sets its own
+		// Cache-Control for the shell, which would win if set before it.
+		if runPath.MatchString(r.URL.Path) {
+			w = &runPageWriter{ResponseWriter: w}
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+// runPageWriter stamps a run page's headers over whatever the SPA handler
+// set, right before they are written.
+type runPageWriter struct {
+	http.ResponseWriter
+	wrote bool
+}
+
+func (w *runPageWriter) WriteHeader(code int) {
+	if !w.wrote {
+		w.wrote = true
+		h := w.Header()
+		h.Set("X-Robots-Tag", "noindex, nofollow")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Cache-Control", "no-store")
+		h.Del("ETag")
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *runPageWriter) Write(b []byte) (int, error) {
+	if !w.wrote {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(b)
 }

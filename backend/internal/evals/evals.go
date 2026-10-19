@@ -279,10 +279,11 @@ func reviewCase(ctx context.Context, client Reviewer, c Case, assembled inferenc
 	// A case is one full diff: its own added lines are the PR's.
 	res.PreExisting, res.PreExistingDropped = inference.ValidatePreExisting(out.Review.PreExisting, idx, nil)
 	for i, d := range res.PreExistingDropped {
-		// Results are committed: prose carrying code or a secret-like token
+		// Results are committed: prose carrying a secret-like token
 		// is not written down, whatever the claim was dropped for.
-		if inference.HasCodeOrSecret(d.Bug.Headline) || inference.HasCodeOrSecret(d.Bug.Explanation) {
+		if inference.AnySecret(append([]string{d.Bug.Headline, d.Bug.Explanation}, d.Bug.Evidence...)...) {
 			res.PreExistingDropped[i].Bug.Headline, res.PreExistingDropped[i].Bug.Explanation = "", ""
+			res.PreExistingDropped[i].Bug.Evidence = nil
 		}
 	}
 	if out.Err != nil {

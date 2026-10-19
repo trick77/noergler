@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/trick77/noergler/internal/store"
 )
 
 func built() fstest.MapFS {
@@ -51,16 +53,32 @@ func TestKnownRoutesGetTheShellAndUnknownOnesA404(t *testing.T) {
 	}
 }
 
-// The run detail page is the one route with a parameter: a positive attempt
-// id gets the shell, anything else under /runs/ stays a 404.
+// The run detail page is the one route with a parameter: a link token gets
+// the shell, never indexed, never in a Referer; anything else under /runs/,
+// a numeric attempt id included, stays a 404.
 func TestRunDetailRoute(t *testing.T) {
 	h := handler(built())
-	for _, path := range []string{"/runs/1", "/runs/18233"} {
-		if w := req(t, h, path); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "id=root") {
+	// Real tokens, so a change to NewLinkToken that this route does not
+	// follow fails here rather than as a 404 on every new link.
+	paths := []string{"/runs/AAAAAAAAAAAAAAAAAAAAAA", "/runs/a-_0zZ9a-_0zZ9a-_0zZ9x"}
+	for range 20 {
+		paths = append(paths, "/runs/"+store.NewLinkToken())
+	}
+	for _, path := range paths {
+		w := req(t, h, path)
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "id=root") {
 			t.Errorf("%s: status = %d, want the shell", path, w.Code)
 		}
+		if w.Header().Get("Referrer-Policy") != "no-referrer" || w.Header().Get("X-Robots-Tag") == "" ||
+			w.Header().Get("Cache-Control") != "no-store" {
+			t.Errorf("%s: headers = %v, want no-referrer and noindex", path, w.Header())
+		}
 	}
-	for _, path := range []string{"/runs/", "/runs/0", "/runs/abc", "/runs/1/2", "/runs/-1", "/runs/01", "/runs/1234567890123456"} {
+	if w := req(t, h, "/runs"); w.Header().Get("Referrer-Policy") != "" {
+		t.Errorf("/runs: Referrer-Policy = %q, want none", w.Header().Get("Referrer-Policy"))
+	}
+	for _, path := range []string{"/runs/", "/runs/1", "/runs/18233", "/runs/abc",
+		"/runs/AAAAAAAAAAAAAAAAAAAAA", "/runs/AAAAAAAAAAAAAAAAAAAAAAA", "/runs/AAAAAAAAAAAAAAAAAAAAA=", "/runs/AAAAAAAAAAAAAAAAAAAAAA/x"} {
 		if code := req(t, h, path).Code; code != http.StatusNotFound {
 			t.Errorf("%s: status = %d, want 404", path, code)
 		}
