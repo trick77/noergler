@@ -8,6 +8,7 @@ import type { CommentCall, RunCall, RunDetail, RunFinding } from "./api";
 import {
   duration,
   known,
+  money,
   outcomeTitle,
   outcomeTone,
   outcomeWord,
@@ -56,12 +57,6 @@ function tabFromHash(): Tab {
   return (TABS as string[]).includes(h) ? (h as Tab) : "overview";
 }
 
-/** usd shows an exact dashboard amount ("0.048" -> "$0.048"). Not money(),
- *  which rounds to cents: on this page the third decimal is the point. */
-function usd(v: string | null | undefined, unpriced: string): string {
-  return v === null || v === undefined ? unpriced : `$${v}`;
-}
-
 function num(v: number | null | undefined): string {
   return v === null || v === undefined ? "—" : v.toLocaleString();
 }
@@ -104,7 +99,6 @@ export function RunPage({ token }: { token: string }) {
   }
 
   const d = data;
-  const unpriced = t("common.unpriced");
   const pr = prUrl(d.tag, d.bitbucket_url);
   const call = d.call;
   const inTokens = call?.input_tokens ?? d.run?.prompt_tokens ?? null;
@@ -199,7 +193,7 @@ export function RunPage({ token }: { token: string }) {
 
         <div className="mt-5">
           <Tiles>
-            <Tile label={t("run.cost")} value={usd(d.cost_usd, unpriced)} />
+            <Tile label={t("run.cost")} value={money(d.cost_usd ?? null)} />
             <Tile label={t("run.elapsed")} value={duration(d.elapsed_ms)}>
               {call?.headers_ms != null && (
                 <div className="mt-0.5 text-[12px] text-faint">
@@ -573,7 +567,6 @@ function Seg({
 
 function CostTab({ call }: { call: RunCall | null }) {
   const { t } = useTranslation();
-  const unpriced = t("common.unpriced");
   if (call === null) {
     return (
       <Card>
@@ -583,7 +576,7 @@ function CostTab({ call }: { call: RunCall | null }) {
   }
   const absent = t("run.absent");
   const tok = (v: number | null) => (v === null ? absent : v.toLocaleString());
-  const lane = (v: string | null) => (v === null ? absent : `$${v}`);
+  const lane = (v: string | null) => (v === null ? absent : money(v));
   const input = call.input_tokens ?? 0;
   const output = call.output_tokens ?? 0;
   const scale = Math.max(input, output, 1);
@@ -796,7 +789,7 @@ function CostTab({ call }: { call: RunCall | null }) {
                   )}
                 </td>
                 <td className={tdNum + " text-ink"}>
-                  {usd(call.cost_usd, unpriced)}
+                  {money(call.cost_usd ?? null)}
                 </td>
                 <td className={td} />
               </tr>
@@ -807,7 +800,7 @@ function CostTab({ call }: { call: RunCall | null }) {
           <KV
             k={t("run.keySpend")}
             mono
-            v={call.key_spend_usd ? `$${call.key_spend_usd}` : absent}
+            v={call.key_spend_usd ? money(call.key_spend_usd) : absent}
           />
         </dl>
       </Card>
@@ -858,7 +851,6 @@ function MoreRow({ text }: { text: string }) {
 
 function PRTab({ d }: { d: RunDetail }) {
   const { t } = useTranslation();
-  const unpriced = t("common.unpriced");
   const cost = d.pr.cost_usd !== null ? Number(d.pr.cost_usd) : null;
   const cap = d.pr.cap_usd !== null ? Number(d.pr.cap_usd) : null;
   return (
@@ -908,7 +900,7 @@ function PRTab({ d }: { d: RunDetail }) {
                 <td className={tdNum}>{a.findings ?? "—"}</td>
                 <td className={tdNum}>{duration(a.elapsed_ms)}</td>
                 <td className={tdNum}>
-                  {a.cost_usd === null ? "—" : `$${a.cost_usd}`}
+                  {a.cost_usd === null ? "—" : money(a.cost_usd)}
                 </td>
               </tr>
             ))}
@@ -918,7 +910,7 @@ function PRTab({ d }: { d: RunDetail }) {
                 {t("run.prTotal")}
               </td>
               <td className={tdNum + " text-ink"}>
-                {usd(d.pr.cost_usd, unpriced)}
+                {money(d.pr.cost_usd ?? null)}
               </td>
             </tr>
           </tbody>
@@ -935,8 +927,8 @@ function PRTab({ d }: { d: RunDetail }) {
           </div>
           <span className="text-right font-mono text-[12.5px] text-ink-dim">
             {t("run.prOf", {
-              cost: `$${d.pr.cost_usd}`,
-              cap: `$${d.pr.cap_usd}`,
+              cost: money(d.pr.cost_usd),
+              cap: money(d.pr.cap_usd),
             })}
           </span>
         </div>
@@ -1005,7 +997,7 @@ function CallsCard({ d }: { d: RunDetail }) {
                   </td>
                   <td className={tdTag + " text-muted"}>{c.model}</td>
                   <td className={tdNum}>
-                    {c.cost_usd === null ? "—" : `$${c.cost_usd}`}
+                    {c.cost_usd === null ? "—" : money(c.cost_usd)}
                   </td>
                 </tr>
               );
