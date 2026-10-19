@@ -43,7 +43,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - `ValidateFindings`, same call in `post` and evals: removed, full-file,
   other-file and cumulative-diff lines are evidence, never anchors, but one
   diff line of the finding's own file is required. A comment line may be
-  quoted without its marker; every marker but `//` keeps its space. Drops
+  quoted without its marker; every marker but `//` keeps its space. A quote
+  wrapped in `"…"` is unwrapped as the last fallback, never with a marker put
+  back on. One matcher for findings, fixed and pre-existing claims. Drops
   lower the verdict, never raise it.
 - Fixed claims (`ValidateFixed`): incremental runs only; one quoted line added
   or removed, none moved; reply, then resolve only if the reply landed; the
