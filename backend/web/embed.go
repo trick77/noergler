@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"regexp"
 
+	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/ship/kit/spa"
 )
 
@@ -43,7 +44,7 @@ var routes = map[string]bool{
 // 22 base64url characters). A numeric attempt id stays the 404 an unknown
 // path is: the token, handed out only in the PR's summary comment, is the
 // page's one key.
-var runPath = regexp.MustCompile(`^/runs/[A-Za-z0-9_-]{22}$`)
+var runPath = regexp.MustCompile(`^/runs/` + store.LinkPattern + `$`)
 
 func dist() fs.FS {
 	sub, err := fs.Sub(distFS, "dist")
@@ -76,6 +77,7 @@ func handler(sub fs.FS) http.Handler {
 		if runPath.MatchString(r.URL.Path) {
 			w.Header().Set("X-Robots-Tag", "noindex, nofollow")
 			w.Header().Set("Referrer-Policy", "no-referrer")
+			w.Header().Set("Cache-Control", "no-store")
 		}
 		h.ServeHTTP(w, r)
 	})

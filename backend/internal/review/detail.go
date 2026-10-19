@@ -115,19 +115,21 @@ func headlineOf(f inference.ReviewFinding) string {
 
 // decision is an unposted finding for the page. Its text goes with it, the
 // page being its only trace; never for a repeat (the posted one has it, and
-// it would be stored again on every push), and never one with a
-// secret-like token anywhere in it.
+// it would be stored again on every push), and none of it, headline
+// included, when a secret-like token is anywhere in it.
 func decision(f inference.ReviewFinding, what, reason string) store.FindingDecision {
-	d := store.FindingDecision{File: f.File, Line: f.Line, Severity: f.Severity,
-		Headline: headlineOf(f), Decision: what, Reason: reason}
+	d := store.FindingDecision{File: f.File, Line: f.Line, Severity: f.Severity, Decision: what, Reason: reason}
 	suggestion := ""
 	if f.Suggestion != nil {
 		suggestion = *f.Suggestion
 	}
-	if what == "repeat" || inference.AnySecret(append([]string{f.Comment, suggestion}, f.Evidence...)...) {
+	if inference.AnySecret(append([]string{headlineOf(f), f.Comment, suggestion}, f.Evidence...)...) {
 		return d
 	}
-	d.Comment, d.Suggestion, d.Evidence = f.Comment, suggestion, f.Evidence
+	d.Headline = headlineOf(f)
+	if what != "repeat" {
+		d.Comment, d.Suggestion, d.Evidence = f.Comment, suggestion, f.Evidence
+	}
 	return d
 }
 

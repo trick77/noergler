@@ -295,6 +295,45 @@ export function InputTab({ p }: { p: RunPipeline | null }) {
 
 const prose = "mt-1 whitespace-pre-wrap break-words text-[13px] text-muted";
 
+/** FindingText is a finding's headline over its full text: the comment
+ *  (or explanation), the suggestion, the author's dispute and the quoted
+ *  lines. Plain text, never rendered markdown: it is the model's and the
+ *  author's. One renderer for every findings table on the run page. */
+export function FindingText({
+  headline,
+  comment,
+  suggestion,
+  dispute,
+  evidence,
+}: {
+  headline: string;
+  comment?: string | null;
+  suggestion?: string | null;
+  dispute?: string | null;
+  evidence?: string[];
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <div className="text-ink">{headline || "—"}</div>
+      {comment && <div className={prose}>{comment}</div>}
+      {suggestion && (
+        <div className={prose}>
+          <span className="text-faint">{t("run.suggestion")}: </span>
+          {suggestion}
+        </div>
+      )}
+      {dispute && (
+        <div className={prose}>
+          <span className="text-faint">{t("run.dispute")}: </span>
+          {dispute}
+        </div>
+      )}
+      <Evidence lines={evidence} />
+    </>
+  );
+}
+
 /** Evidence is the lines the model quoted, as code. */
 function Evidence({ lines }: { lines?: string[] }) {
   if (!lines || lines.length === 0) return null;
@@ -331,18 +370,13 @@ export function NotPostedCard({ p }: { p: RunPipeline }) {
                 <td className={tdTag + " text-muted"}>
                   {f.file}:{f.line}
                 </td>
-                <td className={td + " text-muted"}>
-                  <div>{f.headline || "—"}</div>
-                  {f.comment && <div className={prose}>{f.comment}</div>}
-                  {f.suggestion && (
-                    <div className={prose}>
-                      <span className="text-faint">
-                        {t("run.suggestion")}:{" "}
-                      </span>
-                      {f.suggestion}
-                    </div>
-                  )}
-                  <Evidence lines={f.evidence} />
+                <td className={td}>
+                  <FindingText
+                    headline={f.headline}
+                    comment={f.comment}
+                    suggestion={f.suggestion}
+                    evidence={f.evidence}
+                  />
                 </td>
                 <td className={td + " whitespace-nowrap text-[12.5px]"}>
                   <span
@@ -419,9 +453,11 @@ export function PreExistingCard({
                     )}
                   </td>
                   <td className={td}>
-                    <div className="text-ink">{b.headline}</div>
-                    <div className={prose}>{b.explanation}</div>
-                    <Evidence lines={b.evidence} />
+                    <FindingText
+                      headline={b.headline}
+                      comment={b.explanation}
+                      evidence={b.evidence}
+                    />
                   </td>
                 </tr>
               );

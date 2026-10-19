@@ -111,33 +111,54 @@ func ValidatePreExisting(bugs []PreExistingBug, idx diff.AnchorIndex, prAdded ma
 	return kept, dropped
 }
 
-// tokenRunRE is a run of 24 or more token characters with no space.
-var tokenRunRE = regexp.MustCompile(`[A-Za-z0-9_+/=-]{24,}`)
+// tokenRunRE is a run of 20 or more token characters with no space.
+var tokenRunRE = regexp.MustCompile(`[A-Za-z0-9_+/=.-]{20,}`)
 
-// minSecretDigits and minSecretLetters make a long run secret-like: an API
-// key, a hash or base64 mixes many of both. An identifier or a path rarely
-// carries five digits ("Sha256DigestCalculator", "http2/Client"); a German
-// compound carries none.
+// knownSecretRE is a credential by its shape: an AWS key id, a GitHub or
+// Slack token, an OpenAI or Stripe-style key, a PEM private key.
+var knownSecretRE = regexp.MustCompile(`AKIA[0-9A-Z]{16}|\bgh[pousr]_[A-Za-z0-9]{20,}|\bxox[abprs]-|\b[sr]k[-_](?:live|test|proj)?[-_]?[A-Za-z0-9]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY`)
+
+// minSecretAlnum and minSecretShifts make a long run secret-like: random
+// text (a key, a hash, base64) flips between upper case, lower case and
+// digits at almost every other character; an identifier, a path or a
+// German compound flips at its word boundaries only
+// ("handleConnectionRecoveryTimeout": 6 in 31, "Sha256DigestCalculator": 6 in
+// 22). Characters that are neither are skipped, so a path's slashes do not
+// count.
 const (
-	minSecretDigits  = 5
-	minSecretLetters = 5
+	minSecretAlnum  = 20
+	minSecretShifts = 0.3
 )
 
-// HasSecret reports a secret-like token in model text: a long run with at
-// least minSecretDigits digits and minSecretLetters letters. Blunt, like
-// every validation rule: a commit hash or a UUID counts too.
+// HasSecret reports a secret-like token in model or author text: a known
+// credential shape, or a long run that shifts character class as random
+// text does. Blunt, like every validation rule: a commit hash or a UUID
+// counts too, and a short or unusually regular key passes.
 func HasSecret(s string) bool {
+	if knownSecretRE.MatchString(s) {
+		return true
+	}
 	for _, run := range tokenRunRE.FindAllString(s, -1) {
-		digits, letters := 0, 0
+		alnum, shifts, prev := 0, 0, 0
 		for _, r := range run {
+			c := 0
 			switch {
+			case r >= 'a' && r <= 'z':
+				c = 1
+			case r >= 'A' && r <= 'Z':
+				c = 2
 			case r >= '0' && r <= '9':
-				digits++
-			case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z':
-				letters++
+				c = 3
+			default:
+				continue
 			}
+			alnum++
+			if prev != 0 && c != prev {
+				shifts++
+			}
+			prev = c
 		}
-		if digits >= minSecretDigits && letters >= minSecretLetters {
+		if alnum >= minSecretAlnum && float64(shifts) >= minSecretShifts*float64(alnum) {
 			return true
 		}
 	}

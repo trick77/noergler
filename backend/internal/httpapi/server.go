@@ -60,10 +60,10 @@ var quietPaths = []string{
 	"/api/dashboard/teams",
 }
 
-// runTokenRE is a run page's link token in a path (the SPA's /runs/{token}
-// and the API's /api/dashboard/runs/{token}): the page's only key, so never
-// written to a log.
-var runTokenRE = regexp.MustCompile(`/runs/[A-Za-z0-9_-]{22}$`)
+// runTokenRE is whatever follows /runs/ in a path (the SPA's /runs/{token}
+// and the API's /api/dashboard/runs/{token}, a trailing slash or a further
+// segment included): a run page's only key, so never written to a log.
+var runTokenRE = regexp.MustCompile(`/runs/.+`)
 
 // logPath is the path as the access log and a panic's line write it, a run
 // page's token masked.

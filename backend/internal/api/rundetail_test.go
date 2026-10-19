@@ -104,6 +104,24 @@ func TestRunDetailBody(t *testing.T) {
 
 func strp(s string) *string { return &s }
 
+// Never a secret on the page: a posted finding's text with a secret-like
+// token is withheld, the author's dispute included, the rest still shown.
+// The body is never cached.
+func TestRunDetailWithholdsSecrets(t *testing.T) {
+	h := newDashHarness(t)
+	h.st.detailToken = tok
+	h.st.detail = store.RunDetail{ID: 1, Outcome: "ok", Run: &store.RunFacts{ID: 1},
+		Findings: []store.RunFinding{{Headline: "Key in config", CommentText: "the key leaks",
+			DisputeText: strp("it is AKIAIOSFODNN7EXAMPLE, rotated")}}} // ship:allow-secret: fixture for the secret check
+	w := h.get(t, "/api/dashboard/runs/"+tok)
+	if strings.Contains(w.Body.String(), "AKIA") || !strings.Contains(w.Body.String(), "the key leaks") {
+		t.Errorf("body = %s", w.Body.String())
+	}
+	if w.Header().Get("Cache-Control") != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", w.Header().Get("Cache-Control"))
+	}
+}
+
 // No gateway discount or margin (decided), and never a numeric run link.
 func TestRunDetailCarriesNoMargin(t *testing.T) {
 	h := newDashHarness(t)

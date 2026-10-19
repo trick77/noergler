@@ -112,6 +112,7 @@ func TestRunTokenNeverLogged(t *testing.T) {
 	s.HandleFunc("GET /api/dashboard/runs/{token}", func(http.ResponseWriter, *http.Request) { panic("kaboom") })
 	h := s.Handler()
 	get(h, "/runs/"+tok)
+	get(h, "/runs/"+tok+"/")
 	get(h, "/api/dashboard/runs/"+tok)
 	if seen != tok {
 		t.Errorf("handler saw %q, want the token", seen)

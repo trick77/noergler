@@ -14,5 +14,9 @@ func NewLinkToken() string {
 	return base64.RawURLEncoding.EncodeToString(b[:])
 }
 
-// LinkTokenRE is what NewLinkToken produces, nothing else.
-var LinkTokenRE = regexp.MustCompile(`^[A-Za-z0-9_-]{22}$`)
+// LinkPattern is what NewLinkToken produces, unanchored: the one
+// spelling the web route builds on (ui/src/routing.ts mirrors it).
+const LinkPattern = `[A-Za-z0-9_-]{22}`
+
+// LinkTokenRE matches a whole link token and nothing else.
+var LinkTokenRE = regexp.MustCompile(`^` + LinkPattern + `$`)

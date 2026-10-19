@@ -66,8 +66,11 @@ func TestValidatePreExisting(t *testing.T) {
 		{"german compound is prose", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "h",
 			Explanation: "Die Verbindungswiederherstellung schlaegt fehl", Evidence: []string{"mu.Lock()"}}, "", 11},
 		{"secret in the explanation", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "h",
-			Explanation: "key 0123456789abcdef0123456789abcdef is committed", Evidence: []string{"mu.Lock()"}}, "secret_in_text", 0},
+			Explanation: "key 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b is committed", Evidence: []string{"mu.Lock()"}}, "secret_in_text", 0},
 		{"secret in the evidence", bug(11, `const key = "Zq9X2mT7vR4kP8wL3nB6yH1c"`), "secret_in_text", 0},
+		{"aws example key in the evidence", bug(11, `aws_secret = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"`), "secret_in_text", 0},
+		{"a key by its shape", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "h",
+			Explanation: "uses sk-proj-AbCdEfGhIjKlMnOpQrStUvWx", Evidence: []string{"mu.Lock()"}}, "secret_in_text", 0}, // ship:allow-secret: fixture for the secret check
 		{"a digit in an identifier is fine", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "h",
 			Explanation: "Sha256DigestCalculatorFactory leaks; see src/main/java/com/acme/http2/Client", Evidence: []string{"mu.Lock()"}}, "", 11},
 		{"base64 in the headline", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "token q8Zr3vT1xK9mP2wN7bL5yH4cD6fG0jS= leaks",

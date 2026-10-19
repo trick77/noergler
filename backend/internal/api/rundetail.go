@@ -259,17 +259,37 @@ func (d Deps) runDetail(w http.ResponseWriter, r *http.Request) {
 			body.PR.Cap = usd(&nano)
 		}
 	}
+	// Full finding text behind a token: no cache keeps a copy.
+	w.Header().Set("Cache-Control", "no-store")
 	httpx.WriteJSON(w, http.StatusOK, body)
 }
 
+// findingBodies are the posted findings with their text. A text with a
+// secret-like token (inference.HasSecret), the author's dispute included,
+// is withheld: never a secret on the page, though Bitbucket shows it.
 func findingBodies(fs []store.RunFinding) []findingBody {
 	out := make([]findingBody, 0, len(fs))
 	for _, f := range fs {
-		out = append(out, findingBody{
+		b := findingBody{
 			Severity: f.Severity, Confidence: f.Confidence, File: f.FilePath, Line: f.Line,
-			Headline: f.Headline, Comment: f.CommentText, Suggestion: f.Suggestion, Dispute: f.DisputeText,
+			Headline: withheld(f.Headline), Comment: withheld(f.CommentText),
 			CommentID: f.CommentID, Replied: f.Replied, Fixed: f.Fixed,
-		})
+		}
+		if f.Suggestion != nil && !inference.HasSecret(*f.Suggestion) {
+			b.Suggestion = f.Suggestion
+		}
+		if f.DisputeText != nil && !inference.HasSecret(*f.DisputeText) {
+			b.Dispute = f.DisputeText
+		}
+		out = append(out, b)
 	}
 	return out
+}
+
+// withheld is s, or empty when it carries a secret-like token.
+func withheld(s string) string {
+	if inference.HasSecret(s) {
+		return ""
+	}
+	return s
 }

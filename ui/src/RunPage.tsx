@@ -18,6 +18,7 @@ import {
 import { onNav } from "./routing";
 import {
   ContextCard,
+  FindingText,
   InputTab,
   NotPostedCard,
   PreExistingCard,
@@ -484,7 +485,12 @@ function FindingRows({
                   )}
                 </td>
                 <td className={td}>
-                  <FindingText f={f} />
+                  <FindingText
+                    headline={f.headline}
+                    comment={f.comment}
+                    suggestion={f.suggestion}
+                    dispute={f.dispute}
+                  />
                 </td>
                 {/* The fixed table has no result column: every row is
                     fixed, and the run that posted it is not linked (a
@@ -515,32 +521,6 @@ function FindingRows({
         </tbody>
       </table>
     </div>
-  );
-}
-
-/** FindingText is a finding's headline over its full text: the comment as
- *  posted, the suggestion and the author's dispute. Plain text, never
- *  rendered markdown: it is the model's and the author's. */
-function FindingText({ f }: { f: RunFinding }) {
-  const { t } = useTranslation();
-  const prose = "mt-1 whitespace-pre-wrap break-words text-[13px] text-muted";
-  return (
-    <>
-      <div className="text-ink">{f.headline || "—"}</div>
-      {f.comment && <div className={prose}>{f.comment}</div>}
-      {f.suggestion && (
-        <div className={prose}>
-          <span className="text-faint">{t("run.suggestion")}: </span>
-          {f.suggestion}
-        </div>
-      )}
-      {f.dispute && (
-        <div className={prose}>
-          <span className="text-faint">{t("run.dispute")}: </span>
-          {f.dispute}
-        </div>
-      )}
-    </>
   );
 }
 

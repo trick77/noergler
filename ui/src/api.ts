@@ -120,7 +120,7 @@ export interface Team {
   model?: string;
 }
 
-/** RunDetail is GET runs/{id}: one attempt and what was recorded about it.
+/** RunDetail is GET runs/{token}: one attempt and what was recorded about it.
  *  Headlines only, never a finding's text; money as decimal strings, null
  *  for unpriced or "the gateway did not send it", never a zero. */
 export interface RunDetail {
