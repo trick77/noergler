@@ -173,8 +173,8 @@ describe("RunPage", () => {
     );
   });
 
-  // The full text: comment, suggestion and the author's dispute.
-  it("shows a finding's full text and links its comment", async () => {
+  // The headline only: the full text is on the PR, behind the link.
+  it("shows a finding's headline and links its comment", async () => {
     window.history.replaceState({}, "", `/runs/${TOK}#findings`);
     serve(`runs/${TOK}`, detail);
     render(<RunPage token={TOK} />);
@@ -182,13 +182,22 @@ describe("RunPage", () => {
     expect(
       await screen.findByText("Capture is retried without its idempotency key"),
     ).toBeDefined();
+    for (const text of [
+      "`RetryPolicy.run` retries the capture with a new key.",
+      "Reuse the key from the first attempt.",
+      "The gateway dedupes by order id.",
+    ]) {
+      expect(screen.queryByText(text, { exact: false })).toBeNull();
+    }
     expect(
-      screen.getByText("`RetryPolicy.run` retries the capture with a new key."),
-    ).toBeDefined();
-    expect(
-      screen.getByText("Reuse the key from the first attempt."),
-    ).toBeDefined();
-    expect(screen.getByText("The gateway dedupes by order id.")).toBeDefined();
+      screen.getAllByRole("tab").map((tab) => tab.textContent?.split(/\d/)[0]),
+    ).toEqual([
+      "Overview",
+      "Pull request",
+      "Findings",
+      "Tokens and cost",
+      "Prompt and files",
+    ]);
     expect(screen.getByText("retry.go:88 ↗").getAttribute("href")).toBe(
       "https://bb.example.com/projects/PAY/repos/checkout/pull-requests/1482/overview?commentId=555",
     );

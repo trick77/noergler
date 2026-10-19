@@ -215,8 +215,8 @@ order:
    elapsed time and cost, ending in a link to the run's page when
    `NOERGLER_PUBLIC_URL` is set. The link carries the run's random token and
    is the only way to the page: the dashboard never links to it. The page
-   shows each finding's full comment, suggestion and the author's dispute,
-   and the findings that were not posted with their quoted lines
+   shows each posted finding's headline, linked to its comment on the PR,
+   and the findings that were not posted with their text and quoted lines
 
 There is no effort score and no "What changed" section. Tokens, prompt parts,
 cross-file symbols, the gateway's cost split and the key spend are on the run

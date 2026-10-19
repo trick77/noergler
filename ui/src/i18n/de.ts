@@ -342,9 +342,9 @@ export const de = {
     laneReasoning: "davon Reasoning",
     laneTool: "Tool-Nutzung",
     total: "Total",
-    keySpend: "Key-Ausgaben beim Aufruf",
+    keySpend: "Key-Gesamtausgaben, laufende Periode",
     costNote:
-      "Posten haben sechs Nachkommastellen, weil Cache-Posten bei einem kleinen Aufruf mit drei Stellen auf $0.000 runden. Key-Ausgaben sind der Stand des ganzen Keys in diesem Moment und werden nie zu einem Run oder PR addiert.",
+      "Posten haben sechs Nachkommastellen, weil Cache-Posten bei einem kleinen Aufruf mit drei Stellen auf $0.000 runden. Key-Gesamtausgaben sind die Ausgaben des ganzen Keys in seiner laufenden Periode, beim Aufruf gelesen, und werden nie zu einem Run oder PR addiert.",
     noCall: "Für diesen Run wurde kein AI-Gateway-Aufruf erfasst.",
     gatewayTitle: "AI-Gateway-Aufruf",
     gatewayNote: "LiteLLM-Response-Header und llmwire-Ergebnis",

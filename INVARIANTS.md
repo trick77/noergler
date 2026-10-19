@@ -123,8 +123,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   numeric id route (old summaries' numeric links 404, decided), never linked
   from the dashboard or another run's page, no token in any response or app
   log (`httpapi.logPath` masks it; the ingress log sees the path). Malformed and
-  unknown token: one 404. It shows everything (comment, suggestion, dispute,
-  quoted code, pre-existing bugs with file:line), never a secret
+  unknown token: one 404. Posted and fixed findings: headline only, the text
+  is on the PR (user, 2026-10-19); unposted findings and pre-existing bugs
+  with their text, quoted code and file:line; never a secret
   (`inference.HasSecret`), discount or margin. Run pages a later summary edit
   no longer links are unreachable (accepted).
 - Dashboard text only through `ui/src/i18n` (i18next): `de` mirrors `en`
