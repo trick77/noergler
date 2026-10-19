@@ -3,6 +3,7 @@ import {
   ago,
   duration,
   money,
+  monthName,
   outcomeTone,
   outcomeTitle,
   outcomeWord,
@@ -100,7 +101,12 @@ export function RunsPage() {
     <div className={page}>
       <div className={column}>
         <h2 className={h2}>{t("nav.runs")}</h2>
-        <p className={lede}>{t("runs.lede")}</p>
+        <p className={lede}>
+          {/* The server's month once metrics answer; the viewer's until then. */}
+          {t("runs.lede", {
+            month: monthName(metrics.data?.since ?? new Date().toISOString()),
+          })}
+        </p>
 
         {/* A dash, not a zero, until the counts are read, failed or still
             loading: the feed below may be full, and four tiles reading 0

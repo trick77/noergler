@@ -4,6 +4,30 @@
 import i18n from "./i18n";
 import { en, type Catalog } from "./i18n/en";
 
+/** calendarDay reads the Y-M-D the server wrote, as a UTC timestamp, with no
+ *  reference to the viewer's zone. Returns null for anything unparseable, so
+ *  a bad pair renders an empty window rather than 400 wrong days. */
+export function calendarDay(iso: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (m === null) return null;
+  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+/** monthName names the month `since` falls in, e.g. "September 2026". */
+export function monthName(since: string): string {
+  // The server's month, read off the string: through the viewer's clock a
+  // +02:00 server's September titles itself "August" in New York.
+  const start = calendarDay(since);
+  // timeZone UTC: `start` is the server's calendar day as a UTC timestamp,
+  // so formatting it in the viewer's zone would shift it back a day. An
+  // unreadable `since` falls back to the viewer's own month.
+  return new Intl.DateTimeFormat(i18n.language, {
+    month: "long",
+    year: "numeric",
+    ...(start === null ? {} : { timeZone: "UTC" }),
+  }).format(start === null ? new Date() : new Date(start));
+}
+
 /** money renders the API's decimal string, rounded to cents.
  *
  *  null is "unpriced", never $0.00: a run the gateway did not price is not a

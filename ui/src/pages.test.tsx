@@ -348,6 +348,17 @@ describe("RunsPage", () => {
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
+  it("names the server's month rather than saying this month", async () => {
+    serve({ runs: { runs }, metrics });
+    render(<RunsPage />);
+
+    expect(
+      await screen.findByText(
+        "What noergler did with every PR in September 2026, and the latest 50 runs.",
+      ),
+    ).toBeDefined();
+  });
+
   // Still loading is not zero either: four 0 tiles and "Nothing was skipped"
   // on a slow /metrics are the same false claim as on a failed one.
   it("dashes the counts while metrics are still loading", async () => {

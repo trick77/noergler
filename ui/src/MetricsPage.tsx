@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import type { Metrics } from "./api";
 import { Chart, Sparkline, type Series } from "./Chart";
-import { money, moneyTick, tokens } from "./format";
+import { calendarDay, money, moneyTick, monthName, tokens } from "./format";
 import i18n from "./i18n";
 import { usePoll } from "./usePoll";
 import {
@@ -64,15 +64,6 @@ function days(since: string, until: string): string[] {
   return out;
 }
 
-/** calendarDay reads the Y-M-D the server wrote, as a UTC timestamp, with no
- *  reference to the viewer's zone. Returns null for anything unparseable, so
- *  a bad pair renders an empty window rather than 400 wrong days. */
-function calendarDay(iso: string): number | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-  if (m === null) return null;
-  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-}
-
 /** windowTitle names the window the API actually answered with, rather than
  *  the one the page assumed it asked for. */
 function windowTitle(m: Metrics): string {
@@ -80,17 +71,7 @@ function windowTitle(m: Metrics): string {
     return i18n.t("metrics.lastDays", {
       count: days(m.since, m.until).length,
     });
-  // The server's month, read off the string: through the viewer's clock a
-  // +02:00 server's September titles itself "August" in New York.
-  const start = calendarDay(m.since);
-  if (start === null) return i18n.t("metrics.thisMonth");
-  // timeZone UTC: `start` is the server's calendar day as a UTC timestamp,
-  // so formatting it in the viewer's zone would shift it back a day.
-  return new Intl.DateTimeFormat(i18n.language, {
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(start));
+  return monthName(m.since);
 }
 
 /** niceTicks picks 0 / half / max, rounded up so the top tick is a round
