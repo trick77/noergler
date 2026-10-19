@@ -79,8 +79,6 @@ export const en = {
   },
   live: {
     lede: "What is running right now.",
-    ledeLong:
-      "What is running right now. Several reviews can be waiting on the model at once, but only one at a time talks to Bitbucket, so a busy queue drains in order.",
     failedWhat: "the live panel",
     refreshFailing: "Refresh failing. Showing the reading from {{ago}}.",
     pool: "Inference pool",
@@ -100,11 +98,9 @@ export const en = {
     prs: "PRs",
     lastReviewed: "Last reviewed",
     lastRun: "Last run",
-    teamsNote:
-      "Last run counts every outcome, skipped and failed included. Last reviewed is the last one that succeeded.",
   },
   runs: {
-    lede: "What noergler did with every PR this month, including the ones it decided not to review, and the latest 50 runs below. Skipped means it never asked the model. Failed means it asked and something went wrong.",
+    lede: "What noergler did with every PR this month, and the latest 50 runs.",
     failedWhat: "the runs feed",
     tileRuns: "Runs",
     tileReviewed: "Reviewed",
@@ -135,7 +131,7 @@ export const en = {
     lastDays_one: "the last day",
     lastDays_other: "the last {{count}} days",
     thisMonth: "this month",
-    lede: "What this month cost and how much got reviewed. Runs the AI Gateway never priced are counted on their own rather than added in as zero, so the total is not quietly too low.",
+    lede: "What this month cost and how much got reviewed.",
     cost: "Cost",
     reviewed: "Reviewed",
     findings: "Findings",
@@ -145,7 +141,6 @@ export const en = {
     reviewedTrend: "Reviewed trend",
     costPerDay: "Cost per day",
     spend: "Spend",
-    spendNote: "USD, priced runs only",
     noPriced: "No priced runs in this window.",
     costChart: "Cost per day for {{title}}, by team",
     more: "{{count}} more",
@@ -161,12 +156,9 @@ export const en = {
     team: "Team",
     tokensIn: "Tokens in",
     tokensOut: "Tokens out",
-    byTeamNote:
-      "Ordered by spend. Costs the AI Gateway never reported are missing from this table.",
   },
   teams: {
     failedWhat: "the team roster",
-    lede: "Read-only. A team is a webhook path, its own HMAC secret and the projects and repositories it has claimed.",
     prs_one: "{{count}} PR",
     prs_other: "{{count}} PRs",
     lastReviewed: "last reviewed {{ago}}",
@@ -181,7 +173,7 @@ export const en = {
     autoReviewAuthors: "Auto-review authors:",
     ignoredAuthors: "Ignored authors:",
     disabledNote:
-      "Look in the pod log for the <code>team_disabled</code> line to see why. It is not shown here because the reason can name an environment variable.",
+      "The reason is in the pod log, on the <code>team_disabled</code> line.",
     none: "No teams configured.",
   },
   // The model's two severities (review.txt), as the pill words them.
@@ -242,8 +234,6 @@ export const en = {
   },
   run: {
     legendWait: "waiting",
-    stagesNote:
-      "From the start of the review (after its guards) until the summary is posted and the run recorded. The run's elapsed time stops before that last stage, so the stages add up to more. The waits are the queue: for a slot on the AI Gateway pool, and to get back onto the review worker.",
     contextTitle: "Context",
     agentsMissing: "missing",
     agentsOf: "{{tokens}} of {{warn}} tokens ({{pct}}%)",
@@ -260,10 +250,7 @@ export const en = {
     promptTitle: "Prompt",
     promptNote: "{{total}} tokens of a {{budget}} budget, in prompt order",
     part: "Part",
-    promptOrderNote:
-      "Files come before the cumulative diff and the earlier findings, so the stable part of the prompt can be served from cache.",
     filesTitle: "Files",
-    filesNote: "binary and generated files are not in the run's line totals",
     noFiles: "No files recorded.",
     file: "File",
     howSent: "How it was sent",
@@ -280,7 +267,6 @@ export const en = {
     incremental: "incremental",
     full: "full",
     cost: "Cost",
-    costReported: "reported by the AI Gateway",
     elapsed: "Elapsed",
     inModel: "{{time}} in the model",
     findings: "Findings",
@@ -299,12 +285,8 @@ export const en = {
     timeNote: "wall clock from webhook to summary, {{time}}",
     timeNoergler: "noergler and Bitbucket",
     timeGateway: "AI Gateway call",
-    timeOnlyTotal:
-      "Only the total and the AI Gateway call are timed. The call's time is the gateway's own: request to response.",
     noCallTime: "No AI Gateway call was made or recorded for this run.",
     skippedTitle: "Skipped",
-    skippedNote:
-      "noergler decided not to ask the model, so there is no call, no cost and no finding.",
     factsTitle: "Run",
     mode: "Review mode",
     commits: "Commits",
@@ -333,10 +315,7 @@ export const en = {
     outputText: "output text",
     reasoning: "reasoning",
     absent: "not sent",
-    tokensNote:
-      'Both bars share one scale. Reasoning is part of output, drawn inside the output bar and never added on top. "Not sent" means the AI Gateway reported no figure, which is not zero.',
     costTitle: "Cost",
-    costSplit: "split as the AI Gateway reported it",
     lane: "Lane",
     usd: "USD",
     share: "Share",
@@ -348,11 +327,8 @@ export const en = {
     laneTool: "Tool usage",
     total: "Total",
     keySpend: "Key total spend, current period",
-    costNote:
-      "Lanes have six decimals, because cache lanes on a small call round to $0.000 at three. Key total spend is the whole key's spend in its current period, read at the call, never added to a run or a PR.",
     noCall: "No AI Gateway call was recorded for this run.",
     gatewayTitle: "AI Gateway call",
-    gatewayNote: "LiteLLM response headers and llmwire result",
     modelAnswered: "Model that answered",
     deployment: "Deployment",
     reasoningSent: "Reasoning effort sent",
@@ -372,14 +348,8 @@ export const en = {
     prOf: "{{cost}} of {{cap}}",
     moreBefore: "Older runs of this pull request are not listed here.",
     moreAfter: "Newer runs of this pull request are not listed here.",
-    prTotalNote:
-      "The total is what this pull request has cost since it was last claimed, which is also what a cost cap counts, so it can differ from the rows above.",
     preExistingTitle: "Already broken before this PR",
-    preExistingNote:
-      "bugs the model saw in code this PR did not change; not posted to the PR, so they are only here",
     callsTitle: "Replies and answers",
-    callsNote:
-      "Each one counts toward the PR total and its cap. At the cap the bot stops answering, mentions included.",
     callKind: "Kind",
     model: "Model",
     moreCalls: "Older replies and answers are not listed here.",

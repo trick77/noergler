@@ -13,7 +13,6 @@ import {
   Card,
   Empty,
   Failed,
-  Note,
   Pill,
   PrTag,
   Sep,
@@ -88,7 +87,7 @@ export function LivePage() {
     <div className={page}>
       <div className={column}>
         <h2 className={h2}>{t("nav.live")}</h2>
-        <p className={lede}>{t("live.ledeLong")}</p>
+        <p className={lede}>{t("live.lede")}</p>
 
         {failed && updatedAt !== null && (
           <div className="mb-3.5 rounded-ui border border-border bg-panel px-3.5 py-3 text-[13.5px] text-muted">
@@ -218,7 +217,6 @@ export function LivePage() {
               </tbody>
             </table>
           )}
-          <Note>{t("live.teamsNote")}</Note>
         </Card>
       </div>
     </div>

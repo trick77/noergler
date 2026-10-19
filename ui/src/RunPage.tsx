@@ -199,13 +199,7 @@ export function RunPage({ token }: { token: string }) {
 
         <div className="mt-5">
           <Tiles>
-            <Tile label={t("run.cost")} value={usd(d.cost_usd, unpriced)}>
-              {d.cost_usd !== null && (
-                <div className="mt-0.5 text-[12px] text-faint">
-                  {t("run.costReported")}
-                </div>
-              )}
-            </Tile>
+            <Tile label={t("run.cost")} value={usd(d.cost_usd, unpriced)} />
             <Tile label={t("run.elapsed")} value={duration(d.elapsed_ms)}>
               {call?.headers_ms != null && (
                 <div className="mt-0.5 text-[12px] text-faint">
@@ -330,7 +324,6 @@ function Overview({ d }: { d: RunDetail }) {
         <p className="text-[14px] text-ink-dim">
           {outcomeTitle(d.outcome, d.reason, d.reason_label)}
         </p>
-        <Note>{t("run.skippedNote")}</Note>
       </Card>
     );
   }
@@ -363,7 +356,6 @@ function Overview({ d }: { d: RunDetail }) {
               total={total}
               cls="bg-s3"
             />
-            <Note>{t("run.timeOnlyTotal")}</Note>
           </>
         ) : (
           <Empty>{t("run.noCallTime")}</Empty>
@@ -736,10 +728,9 @@ function CostTab({ call }: { call: RunCall | null }) {
             </span>
           ))}
         </div>
-        <Note>{t("run.tokensNote")}</Note>
       </Card>
 
-      <Card title={t("run.costTitle")} note={t("run.costSplit")}>
+      <Card title={t("run.costTitle")}>
         <div className="overflow-x-auto overscroll-x-contain">
           <table className={table}>
             <thead>
@@ -819,10 +810,9 @@ function CostTab({ call }: { call: RunCall | null }) {
             v={call.key_spend_usd ? `$${call.key_spend_usd}` : absent}
           />
         </dl>
-        <Note>{t("run.costNote")}</Note>
       </Card>
 
-      <Card title={t("run.gatewayTitle")} note={t("run.gatewayNote")}>
+      <Card title={t("run.gatewayTitle")}>
         <dl className={kvGrid}>
           <KV k={t("run.profile")} mono v={call.profile} />
           <KV k={t("run.modelAnswered")} mono v={call.model || absent} />
@@ -951,7 +941,6 @@ function PRTab({ d }: { d: RunDetail }) {
           </span>
         </div>
       )}
-      {cost !== null && <Note>{t("run.prTotalNote")}</Note>}
     </Card>
   );
 }
@@ -970,7 +959,7 @@ function CallsCard({ d }: { d: RunDetail }) {
   if (d.pr.calls.length === 0) return null;
   const pr = prUrl(d.tag, d.bitbucket_url);
   return (
-    <Card title={t("run.callsTitle")} note={t("run.callsNote")}>
+    <Card title={t("run.callsTitle")}>
       <div className="overflow-x-auto overscroll-x-contain">
         <table className={table}>
           <thead>
