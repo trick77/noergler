@@ -47,7 +47,7 @@ import {
 } from "./ui";
 
 type Tab = "overview" | "findings" | "cost" | "input" | "pr";
-const TABS: Tab[] = ["overview", "findings", "cost", "input", "pr"];
+const TABS: Tab[] = ["overview", "pr", "findings", "cost", "input"];
 
 /** The tab lives in the hash (#findings), so a link can open one and a
  *  reload keeps it. */
@@ -484,13 +484,10 @@ function FindingRows({
                     `${f.file}:${f.line}`
                   )}
                 </td>
+                {/* The headline only: the full text is one click away on
+                    the PR, through the location link. */}
                 <td className={td}>
-                  <FindingText
-                    headline={f.headline}
-                    comment={f.comment}
-                    suggestion={f.suggestion}
-                    dispute={f.dispute}
-                  />
+                  <FindingText headline={f.headline} />
                 </td>
                 {/* The fixed table has no result column: every row is
                     fixed, and the run that posted it is not linked (a

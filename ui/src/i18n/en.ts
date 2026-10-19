@@ -351,9 +351,9 @@ export const en = {
     laneReasoning: "of which reasoning",
     laneTool: "Tool usage",
     total: "Total",
-    keySpend: "Key spend at call time",
+    keySpend: "Key total spend, current period",
     costNote:
-      "Lanes have six decimals, because cache lanes on a small call round to $0.000 at three. Key spend is a reading of the whole key at that moment, never added to a run or a PR.",
+      "Lanes have six decimals, because cache lanes on a small call round to $0.000 at three. Key total spend is the whole key's spend in its current period, read at the call, never added to a run or a PR.",
     noCall: "No AI Gateway call was recorded for this run.",
     gatewayTitle: "AI Gateway call",
     gatewayNote: "LiteLLM response headers and llmwire result",
