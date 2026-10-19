@@ -91,7 +91,10 @@ several reviews. Those live in `sampled/` and are never rows here.
   change buried among mechanical hunks, one Java and one TypeScript bug, a
   clean two-file signature change), taking it to 17 with 12 seeded; `rev7`
   adds a hardcoded credential and two controls (the same pool reading the
-  environment, a `changeme` test fixture), taking it to 20 with 13 seeded. Bump the number when a
+  environment, a `changeme` test fixture), taking it to 20 with 13 seeded;
+  `rev8` narrows that window to the password line, makes the fixture a
+  non-placeholder value and adds the same password committed in
+  `application.yaml`, taking it to 21 with 14 seeded. Bump the number when a
   **scored** field changes: `file`, `lines`, `keywords`, `diff`, `content`.
   Prose does not move a score, so an edit to `description` or `why` is not a
   new revision, and rev4 covers such an edit made after run5.

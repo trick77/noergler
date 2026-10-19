@@ -36,10 +36,13 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   none on a line the PR (all pushes, on an incremental review) added or
   removed, no in-diff rule; prose with a secret-like token dropped (code is
   fine); at most 5. Run page only.
-- A committed secret on a `+` line is a finding without a failing input;
-  default-looking values (`admin123`) count, env/config reads, empty or
-  templated values, `changeme` and test fixtures do not. Prose names the
-  field, never the value; `evidence` keeps the line verbatim, value included.
+- A secret literal the diff adds (code or config file, not moved) is a
+  finding without a failing input; default-looking values (`admin123`,
+  `changeme`) count, runtime lookups, empty or templated values and files
+  only for tests, examples or local runs do not. Prose (summary fields
+  included) names the field, never the value; `evidence` keeps it verbatim.
+  `HasSecret` matches a literal given to a secret-named key, so the run page
+  withholds that evidence.
 - File order to the model depends on path only, never content.
 - Cumulative diff: `IsReviewable` parts, push-touched files first, whole files
   or none; a partial block never says "entire PR".

@@ -122,6 +122,14 @@ var tokenRunRE = regexp.MustCompile(`[A-Za-z0-9_+/=-]{20,}`)
 // Slack token, an OpenAI or Stripe-style key, a PEM private key.
 var knownSecretRE = regexp.MustCompile(`AKIA[0-9A-Z]{16}|\bgh[pousr]_[A-Za-z0-9]{20,}|\bxox[abprs]-[A-Za-z0-9-]{10,}|\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}|\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY`)
 
+// credentialRE is a credential by where it sits: a secret-named key given a
+// quoted literal (`password = "admin123"`, `"token": "x"`), or a whole
+// properties/YAML line with an unquoted value (`db.password=admin123`). The
+// shapes above miss a short default password, the commonest committed one.
+// A value read at runtime (`getenv(...)`, `${...}` lines) or an empty one
+// does not match.
+var credentialRE = regexp.MustCompile(`(?i)(?:passw(?:or)?d|pwd|secret|token|api_?key)[\w.-]*["']?\s*(?::=|[:=])\s*(?:"[^"\s]+"|'[^'\s]+')|(?im)^\s*[\w.-]*(?:passw(?:or)?d|pwd|secret|token|api_?key)[\w.-]*\s*[:=]\s*[^\s"'$<{#;()]+\s*$`)
+
 // minSecretAlnum and minSecretShifts make a long run secret-like: random
 // text (a key, a hash, base64) flips between upper case, lower case and
 // digits at almost every other character; an identifier, a path or a
@@ -135,11 +143,12 @@ const (
 )
 
 // HasSecret reports a secret-like token in model or author text: a known
-// credential shape, or a long run that shifts character class as random
-// text does. Blunt, like every validation rule: a commit hash or a UUID
-// counts too, and a short or unusually regular key passes.
+// credential shape, a literal given to a secret-named key, or a long run
+// that shifts character class as random text does. Blunt, like every
+// validation rule: a commit hash or a UUID counts too, and a short or
+// unusually regular key outside a secret-named assignment passes.
 func HasSecret(s string) bool {
-	if knownSecretRE.MatchString(s) {
+	if knownSecretRE.MatchString(s) || credentialRE.MatchString(s) {
 		return true
 	}
 	for _, run := range tokenRunRE.FindAllString(s, -1) {
