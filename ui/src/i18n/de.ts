@@ -142,7 +142,6 @@ export const de = {
     more: "{{count}} weitere",
     runsPerDay: "Runs pro Tag",
     throughput: "Durchsatz",
-    throughputNote: "reviewte, übersprungene und fehlgeschlagene Runs",
     noRuns: "Keine Runs in diesem Zeitraum.",
     runsChart: "Runs pro Tag für {{title}}",
     seriesReviewed: "reviewt",
@@ -234,7 +233,6 @@ export const de = {
     legendWait: "Warten",
     stagesNote:
       "Vom Start des Reviews (nach seinen Vorprüfungen) bis die Zusammenfassung gepostet und der Run gespeichert ist. Die Dauer des Runs endet vor dieser letzten Stufe, darum ergeben die Stufen zusammen mehr. Die Wartezeiten sind die Warteschlange: auf einen Platz im AI-Gateway-Pool und zurück auf den Review-Worker.",
-    stagesTime: "die Stufen, {{time}}",
     contextTitle: "Kontext",
     agentsMissing: "fehlt",
     agentsOf: "{{tokens}} von {{warn}} Tokens ({{pct}}%)",
@@ -255,13 +253,11 @@ export const de = {
       "Dateien stehen vor dem kumulierten Diff und den früheren Findings, damit der stabile Teil des Prompts aus dem Cache kommen kann.",
     filesTitle: "Dateien",
     filesNote:
-      "jede geänderte Datei; binäre und generierte stehen hier, zählen aber nicht zu den Zeilen des Runs",
+      "binäre und generierte Dateien zählen nicht zu den Zeilen des Runs",
     noFiles: "Keine Dateien erfasst.",
     file: "Datei",
     howSent: "Wie gesendet",
     notPostedTitle: "Nicht gepostet",
-    notPostedNote:
-      "was das Modell vorgeschlagen hat und nicht im PR ankam, und warum",
     verdictLowered:
       "Verdikt von {{model}} auf {{posted}} herabgestuft, nachdem Findings verworfen wurden.",
     movedFrom: "verschoben von :{{line}}",

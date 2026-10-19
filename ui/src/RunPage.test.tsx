@@ -290,7 +290,7 @@ describe("RunPage", () => {
     expect((await screen.findAllByText("AI Gateway call")).length).toBe(2);
     expect(screen.getByText("Waiting for the AI Gateway")).toBeDefined();
     // Captioned with the stages' own sum, not the run's elapsed time.
-    expect(screen.getByText("the stages, 1m 3s")).toBeDefined();
+    expect(screen.getByText("1m 3s")).toBeDefined();
     expect(screen.getByText("PAY-2291")).toBeDefined();
     expect(screen.getByText("1,240 of 4,000 tokens (31%)")).toBeDefined();
 

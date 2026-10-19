@@ -302,10 +302,7 @@ export function MetricsPage() {
         </Card>
 
         <p className={eyebrow}>{t("metrics.runsPerDay")}</p>
-        <Card
-          title={t("metrics.throughput")}
-          note={t("metrics.throughputNote")}
-        >
+        <Card title={t("metrics.throughput")}>
           {runTop === 0 ? (
             <Empty>{t("metrics.noRuns")}</Empty>
           ) : (
