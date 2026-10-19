@@ -118,6 +118,17 @@ mimo. The real PR runs on the production model and carries other changes
 ("among other things"), neither of which the case has. With no room to
 improve, the run cannot show a gain, and 4 vs 5 of 5 is noise.
 
+After the code-review fixes (rev8: window on the password line, a
+non-placeholder test fixture, the same password in `application.yaml`):
+
+- Java case matched at line 21 in 5 of 5 samples, yaml case 5 of 5, both
+  controls clean in 10 of 10.
+- Series run: the Java finding was dropped `evidence_not_found` (two lines
+  joined into one evidence entry, the known gap) and its comment named the
+  value. The "never the value" rule holds most of the time, not always.
+
+Decision: landed on the prompt's own contradictions, not on a measured gain.
+
 ## Known gaps
 
 - `lock-not-released` keywords miss correct findings; inflates `extra`.
