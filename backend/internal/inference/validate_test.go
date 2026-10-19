@@ -335,13 +335,15 @@ func TestValidateFindings_CommentLineQuotedWithoutItsMarker(t *testing.T) {
 func TestValidateFindings_LineQuotedAsAString(t *testing.T) {
 	idx := diff.BuildAnchorIndex([]diff.FileReviewData{{
 		Path: "notify/dispatcher.go",
-		Diff: "@@ -1,4 +1,6 @@\n" +
+		Diff: "@@ -1,4 +1,8 @@\n" +
 			" // Deliver posts body to ep. A transient failure is retried with exponential\n" +
 			" // backoff, a permanent one is returned at once. It returns nil as soon as\n" +
 			"-if !retryable(lastErr) {\n" +
 			"+if retryable(lastErr) {\n" +
 			"+\tlog(\"retry\\tlater\")\n" +
 			"+\tname := \"retry\"\n" +
+			"+\t# retry\n" +
+			"+\turl := \"http://x\"\n" +
 			" }\n",
 	}})
 	const code = "if retryable(lastErr) {"
@@ -351,15 +353,18 @@ func TestValidateFindings_LineQuotedAsAString(t *testing.T) {
 		evidence []string
 		reason   DropReason
 	}{
-		{"doc comment lines wrapped as strings", 4, []string{
+		{"doc comment lines wrapped as strings", 3, []string{
 			`  "// Deliver posts body to ep. A transient failure is retried with exponential"`,
 			`  "// backoff, a permanent one is returned at once. It returns nil as soon as"`,
 			code,
 		}, ""},
-		{"escapes inside are undone", 5, []string{`"\tlog(\"retry\\tlater\")"`}, ""},
-		{"wrapped code line", 4, []string{`"if retryable(lastErr) {"`}, ""},
-		{"wrapped line that is in no file", 4, []string{code, `"// backoff, a permanent one is retried."`}, DropEvidenceNotFound},
-		{"string literal is not a line", 6, []string{`"retry"`}, DropEvidenceNotFound},
+		{"escapes inside are undone", 4, []string{`"\tlog(\"retry\\tlater\")"`}, ""},
+		{"JSON escapes Go refuses are undone", 7, []string{`"\turl := \"http:\/\/x\""`}, ""},
+		{"wrapped code line", 3, []string{`"if retryable(lastErr) {"`}, ""},
+		{"wrapped elision and note are skipped", 3, []string{code, `"..."`, `"// close is missing here"`}, ""},
+		{"wrapped line that is in no file", 3, []string{code, `"return lastErr, true"`}, DropEvidenceNotFound},
+		{"string literal is not a line", 5, []string{`"retry"`}, DropEvidenceNotFound},
+		{"string literal is not the comment it reads like", 6, []string{`"retry"`}, DropEvidenceNotFound},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -1,6 +1,7 @@
 package inference
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"slices"
@@ -243,6 +244,9 @@ var gutterRE = regexp.MustCompile(`^\s*[0-9]+ [ +]`)
 // accepted: an invented comment line still passes, so a finding resting on a
 // made-up comment plus one real diff line gets through.
 func isAnnotation(quote string) bool {
+	if inner, ok := unwrapQuoted(quote); ok {
+		quote = inner
+	}
 	t := strings.TrimSpace(quote)
 	switch {
 	case t == "..." || t == "…":
@@ -271,16 +275,18 @@ const (
 // ones, and says which. The quote as given is tried first, then with a
 // copied gutter or a leading diff marker taken off: code can itself start
 // with `+`, `-` or a digit, so a stripped form is only a fallback. A comment
-// marker put back on comes next, and the same forms of a quote unwrapped from
-// a string literal come last.
+// marker put back on comes next, and a quote unwrapped from a string literal
+// comes last.
 func matchEvidence(quote string, fa diff.FileAnchors) (uint64, evidenceSource) {
 	candidates := evidenceForms(quote)
 	// Last, the quote wrapped as a string literal, `"// Deliver …"`. Seen in
 	// the evals: two doc comment lines quoted that way matched nothing and
 	// took a correct finding down. A line that is itself a string literal
 	// matched as written above, so unwrapping only rescues one that did not.
+	// No comment marker is put back on the unwrapped text: a quoted literal
+	// `"retry"` would match the comment `# retry`.
 	if inner, ok := unwrapQuoted(quote); ok {
-		candidates = append(candidates, evidenceForms(inner)...)
+		candidates = append(candidates, strippedForms(inner)...)
 	}
 	// Candidate first, then where it is found: the quote as written wins
 	// anywhere before a stripped form is tried anywhere. Stripping first
@@ -300,16 +306,10 @@ func matchEvidence(quote string, fa diff.FileAnchors) (uint64, evidenceSource) {
 	return 0, notFound
 }
 
-// evidenceForms is a quote as written, then with a copied gutter or diff
-// marker taken off, then with a comment marker put back on, in that order.
+// evidenceForms is strippedForms, then the quote with a comment marker put
+// back on.
 func evidenceForms(quote string) []string {
-	candidates := []string{quote}
-	if loc := gutterRE.FindStringIndex(quote); loc != nil {
-		candidates = append(candidates, quote[loc[1]:])
-	}
-	if t := strings.TrimLeft(quote, " \t"); strings.HasPrefix(t, "+") || strings.HasPrefix(t, "-") {
-		candidates = append(candidates, t[1:])
-	}
+	candidates := strippedForms(quote)
 	// Last, the quote as a comment line copied without its marker. Seen in
 	// the evals: a doc comment line quoted minus its `//` matched nothing and
 	// took a correct finding down. The index holds hashes, not text, so the
@@ -322,18 +322,34 @@ func evidenceForms(quote string) []string {
 	return candidates
 }
 
+// strippedForms is a quote as written, then with a copied gutter or diff
+// marker taken off.
+func strippedForms(quote string) []string {
+	candidates := []string{quote}
+	if loc := gutterRE.FindStringIndex(quote); loc != nil {
+		candidates = append(candidates, quote[loc[1]:])
+	}
+	if t := strings.TrimLeft(quote, " \t"); strings.HasPrefix(t, "+") || strings.HasPrefix(t, "-") {
+		candidates = append(candidates, t[1:])
+	}
+	return candidates
+}
+
 // unwrapQuoted takes a quote out of the double quotes the model wrapped it
-// in, undoing the escapes inside (`\"`, `\t`). Not wrapped, or empty inside:
-// false.
+// in, undoing the escapes inside (`\"`, `\t`) as JSON, else as Go, else
+// keeping the inside as it is. Not wrapped, or empty inside: false.
 func unwrapQuoted(quote string) (string, bool) {
 	t := strings.TrimSpace(quote)
 	if len(t) < 3 || t[0] != '"' || t[len(t)-1] != '"' {
 		return "", false
 	}
-	if s, err := strconv.Unquote(t); err == nil {
-		return s, strings.TrimSpace(s) != ""
+	var s string
+	if json.Unmarshal([]byte(t), &s) != nil {
+		var err error
+		if s, err = strconv.Unquote(t); err != nil {
+			s = t[1 : len(t)-1]
+		}
 	}
-	s := t[1 : len(t)-1]
 	return s, strings.TrimSpace(s) != ""
 }
 
