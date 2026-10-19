@@ -249,7 +249,7 @@ describe("RunPage", () => {
             tokens: 6820,
           },
           {
-            path: "go.sum",
+            path: "services/payments/go.sum",
             sent: "not_reviewable",
             added: 2,
             removed: 0,
@@ -315,6 +315,9 @@ describe("RunPage", () => {
     fireEvent.click(screen.getByRole("tab", { name: /Prompt and files/ }));
     expect(screen.getByText("Cumulative PR diff")).toBeDefined();
     expect(screen.getByText("not reviewed, binary or generated")).toBeDefined();
+    expect(screen.getByText("go.sum").getAttribute("title")).toBe(
+      "services/payments/go.sum",
+    );
   });
 
   // Replies and answers have no run page, but they are money the PR total

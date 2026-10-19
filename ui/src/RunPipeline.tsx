@@ -270,8 +270,15 @@ export function InputTab({ p }: { p: RunPipeline | null }) {
                   ].includes(f.sent);
                   return (
                     <tr key={f.path}>
-                      <td className={tdTag + (out ? " text-faint" : "")}>
-                        {f.path}
+                      <td
+                        className={
+                          tdTag +
+                          " max-w-[24ch] truncate" +
+                          (out ? " text-faint" : "")
+                        }
+                        title={f.path}
+                      >
+                        {f.path.split("/").pop()}
                       </td>
                       <td className={td + (out ? " text-faint" : "")}>
                         {known("sent", f.sent) ? t(`sent.${f.sent}`) : f.sent}
