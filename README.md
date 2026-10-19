@@ -6,7 +6,7 @@
 
 Code review agent for typical private cloud corporate environments. The name is German for "Nörgler" (grumbler/complainer).
 
-Built for the realities of enterprise setups: self-hosted Bitbucket Server, on-prem Jira, an OpenAI-compatible LLM endpoint (e.g. a LiteLLM proxy), and corporate CA certificates. Receives PR webhooks, sends diffs to the LLM via the chat/completions API, and posts findings back as inline comments plus a summary comment on the PR.
+Built for the realities of enterprise setups: self-hosted Bitbucket Server, on-prem Jira, an OpenAI-compatible LLM endpoint (e.g. a LiteLLM proxy), and corporate CA certificates. Receives PR webhooks, sends diffs to the LLM via the chat/completions or Responses API, and posts findings back as inline comments plus a summary comment on the PR.
 
 ![noergler inline review comment](review.png)
 
@@ -115,7 +115,7 @@ defaults for every team-overridable knob. The required variables are:
 | `BITBUCKET_URL` | Bitbucket Server base URL |
 | `BITBUCKET_TOKEN` | Bitbucket Server API token of the shared service account |
 | `BITBUCKET_USERNAME` | Bitbucket service account username (used to identify bot comments and as the `@mention` trigger) |
-| `LLMWIRE_LITELLM_BASE_URL` | Host of the OpenAI-compatible gateway (llmwire appends `/chat/completions`). Instance-wide, not team-overridable |
+| `LLMWIRE_LITELLM_BASE_URL` | Host of the OpenAI-compatible gateway (llmwire appends `/chat/completions`, or `/responses` for a profile on that protocol). Instance-wide, not team-overridable |
 | `LLMWIRE_LITELLM_MODELS` | `<profile>=<alias>,...`: the llmwire profiles the gateway serves and the alias each is listed under — see [Model resolution](#model-resolution) |
 | `OPENAI_MODEL` | Default model as an llmwire **profile id** (`gpt-5.5`), never a gateway alias. Must appear in `LLMWIRE_LITELLM_MODELS`. Instance default, overridable per team |
 | `JIRA_URL` | Jira Server/Cloud base URL |

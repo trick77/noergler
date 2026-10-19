@@ -29,7 +29,7 @@ or `on`/`off` in any case; anything else is a startup error, never a silent
 | `BITBUCKET_URL` | Base URL of the Bitbucket Server instance. |
 | `BITBUCKET_TOKEN` | HTTP access token of the shared service account. Needs to read repositories and write comments; project admin is **not** needed (self-service onboarding uses the caller's own token instead). |
 | `BITBUCKET_USERNAME` | The service account's name. It doubles as the `@mention` trigger, instance-wide: a comment containing `@<BITBUCKET_USERNAME>` reaches noergler. |
-| `LLMWIRE_LITELLM_BASE_URL` | Host of the OpenAI-compatible gateway endpoint. llmwire appends `/chat/completions`. |
+| `LLMWIRE_LITELLM_BASE_URL` | Host of the OpenAI-compatible gateway endpoint. llmwire appends `/chat/completions`, or `/responses` for a profile on that protocol (gpt-6.1-sol). |
 | `LLMWIRE_LITELLM_MODELS` | `<profile>=<alias>,...`: which llmwire profiles the gateway serves, and the alias each is listed under. See "Models and aliases" below, it is the one setting most likely to be wrong. |
 | `OPENAI_MODEL` | Default model as an llmwire **profile id** (`gpt-5.5`), never a gateway alias. Must appear in `LLMWIRE_LITELLM_MODELS`. Teams may override it. |
 | `DATABASE_URL` | PostgreSQL DSN. |

@@ -99,6 +99,21 @@ func TestMentionToolLoopReplaysReasoning(t *testing.T) {
 	if !(llmwiretest.Request{Body: body}).ReplayedReasoning() {
 		t.Errorf("second request input = %v, want the reasoning item replayed", body["input"])
 	}
+	// The call goes back with its result, paired by call_id, never the item id.
+	var call, output bool
+	input, _ := body["input"].([]any)
+	for _, raw := range input {
+		item, _ := raw.(map[string]any)
+		call = call || item["type"] == "function_call" && item["call_id"] == "call_0"
+		output = output || item["type"] == "function_call_output" && item["call_id"] == "call_0"
+	}
+	if !call || !output {
+		t.Errorf("second request input = %v, want the call and its output under call_0", input)
+	}
+	// Without it Azure sends the reasoning back unencrypted and it cannot be replayed.
+	if inc, _ := body["include"].([]any); len(inc) == 0 || inc[0] != "reasoning.encrypted_content" {
+		t.Errorf("include = %v, want reasoning.encrypted_content", body["include"])
+	}
 }
 
 // A model that keeps calling gets MaxToolRounds rounds, then one asking for

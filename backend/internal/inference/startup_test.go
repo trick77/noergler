@@ -40,6 +40,8 @@ type fakeGateway struct {
 
 	gotChat   int
 	gotModels int
+	// lastChatPath is the route the most recent completion went to.
+	lastChatPath string
 	// lastChatBody is the most recent completion request, for asserting what
 	// actually reaches the wire.
 	lastChatBody []byte
@@ -59,6 +61,7 @@ func (f *fakeGateway) start(t *testing.T, alias string) *httptest.Server {
 			_, _ = w.Write([]byte(body))
 		case strings.HasSuffix(r.URL.Path, "/chat/completions"), strings.HasSuffix(r.URL.Path, "/responses"):
 			f.gotChat++
+			f.lastChatPath = r.URL.Path
 			f.lastChatBody, _ = io.ReadAll(r.Body)
 			if f.delay > 0 {
 				select {
@@ -185,8 +188,8 @@ func TestStartupResponsesProfileTakesTools(t *testing.T) {
 	if !c.Tools() {
 		t.Error("Tools() = false for a Responses profile with tool support")
 	}
-	if f.gotChat != 1 || !bytes.Contains(f.lastChatBody, []byte(`"input"`)) {
-		t.Errorf("ping ran %d times with body %s, want once on /responses", f.gotChat, f.lastChatBody)
+	if f.gotChat != 1 || !strings.HasSuffix(f.lastChatPath, "/responses") {
+		t.Errorf("ping ran %d times on %q, want once on /responses", f.gotChat, f.lastChatPath)
 	}
 }
 
