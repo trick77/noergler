@@ -5,6 +5,7 @@ import {
   duration,
   money,
   moneyTick,
+  monthName,
   outcomeTitle,
   outcomeTone,
   outcomeWord,
@@ -14,6 +15,20 @@ import {
   teamTone,
   tokens,
 } from "./format";
+
+// The ledes name the month instead of saying "this month".
+describe("monthName", () => {
+  it("names the server's month, whatever the viewer's zone", () => {
+    expect(monthName("2026-09-01T00:00:00+02:00")).toBe("September 2026");
+  });
+  it("falls back to the viewer's month, never to 'this month'", () => {
+    const now = new Intl.DateTimeFormat("en", {
+      month: "long",
+      year: "numeric",
+    }).format(new Date());
+    expect(monthName("not a date")).toBe(now);
+  });
+});
 
 // toFixed(2) printed every tick of a sub-cent axis as $0.00, on a chart of
 // priced runs. The decimals follow the step, never fewer than two.

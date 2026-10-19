@@ -100,7 +100,7 @@ export const en = {
     lastRun: "Last run",
   },
   runs: {
-    lede: "What noergler did with every PR this month, and the latest 50 runs.",
+    lede: "What noergler did with every PR in {{month}}, and the latest 50 runs.",
     failedWhat: "the runs feed",
     tileRuns: "Runs",
     tileReviewed: "Reviewed",
@@ -130,8 +130,7 @@ export const en = {
     failedWhat: "metrics",
     lastDays_one: "the last day",
     lastDays_other: "the last {{count}} days",
-    thisMonth: "this month",
-    lede: "What this month cost and how much got reviewed.",
+    lede: "What it cost and how much got reviewed.",
     cost: "Cost",
     reviewed: "Reviewed",
     findings: "Findings",

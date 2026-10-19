@@ -91,7 +91,7 @@ export const de = {
     lastRun: "Letzter Run",
   },
   runs: {
-    lede: "Was noergler diesen Monat mit jedem PR gemacht hat, und die letzten 50 Runs.",
+    lede: "Was noergler im {{month}} mit jedem PR gemacht hat, und die letzten 50 Runs.",
     failedWhat: "den Runs-Feed",
     tileRuns: "Runs",
     tileReviewed: "Reviewt",
@@ -121,8 +121,7 @@ export const de = {
     failedWhat: "die Metriken",
     lastDays_one: "der letzte Tag",
     lastDays_other: "die letzten {{count}} Tage",
-    thisMonth: "dieser Monat",
-    lede: "Was dieser Monat gekostet hat und wie viel reviewt wurde.",
+    lede: "Was es gekostet hat und wie viel reviewt wurde.",
     cost: "Kosten",
     reviewed: "Reviewt",
     findings: "Findings",
