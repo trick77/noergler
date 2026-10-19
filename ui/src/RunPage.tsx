@@ -341,7 +341,7 @@ function Overview({ d }: { d: RunDetail }) {
         title={t("run.timeTitle")}
         note={
           d.detail && stagesMs > 0
-            ? t("run.stagesTime", { time: duration(stagesMs) })
+            ? duration(stagesMs)
             : total !== null
               ? t("run.timeNote", { time: duration(total) })
               : undefined

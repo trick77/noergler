@@ -348,7 +348,7 @@ export function NotPostedCard({ p }: { p: RunPipeline }) {
   const { t } = useTranslation();
   if (p.decisions.length === 0) return null;
   return (
-    <Card title={t("run.notPostedTitle")} note={t("run.notPostedNote")}>
+    <Card title={t("run.notPostedTitle")}>
       <div className="overflow-x-auto overscroll-x-contain">
         <table className={table}>
           <thead>

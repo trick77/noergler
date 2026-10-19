@@ -151,7 +151,6 @@ export const en = {
     more: "{{count}} more",
     runsPerDay: "Runs per day",
     throughput: "Throughput",
-    throughputNote: "reviewed, skipped and failed runs",
     noRuns: "No runs in this window.",
     runsChart: "Runs per day for {{title}}",
     seriesReviewed: "reviewed",
@@ -245,7 +244,6 @@ export const en = {
     legendWait: "waiting",
     stagesNote:
       "From the start of the review (after its guards) until the summary is posted and the run recorded. The run's elapsed time stops before that last stage, so the stages add up to more. The waits are the queue: for a slot on the AI Gateway pool, and to get back onto the review worker.",
-    stagesTime: "the stages, {{time}}",
     contextTitle: "Context",
     agentsMissing: "missing",
     agentsOf: "{{tokens}} of {{warn}} tokens ({{pct}}%)",
@@ -265,13 +263,11 @@ export const en = {
     promptOrderNote:
       "Files come before the cumulative diff and the earlier findings, so the stable part of the prompt can be served from cache.",
     filesTitle: "Files",
-    filesNote:
-      "every changed file; binary and generated ones are listed but not in the run's line totals",
+    filesNote: "binary and generated files are not in the run's line totals",
     noFiles: "No files recorded.",
     file: "File",
     howSent: "How it was sent",
     notPostedTitle: "Not posted",
-    notPostedNote: "what the model proposed that did not reach the PR, and why",
     verdictLowered:
       "Verdict lowered from {{model}} to {{posted}} after findings were dropped.",
     movedFrom: "moved from :{{line}}",
