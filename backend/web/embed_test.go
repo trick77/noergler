@@ -69,7 +69,8 @@ func TestRunDetailRoute(t *testing.T) {
 		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "id=root") {
 			t.Errorf("%s: status = %d, want the shell", path, w.Code)
 		}
-		if w.Header().Get("Referrer-Policy") != "no-referrer" || w.Header().Get("X-Robots-Tag") == "" {
+		if w.Header().Get("Referrer-Policy") != "no-referrer" || w.Header().Get("X-Robots-Tag") == "" ||
+			w.Header().Get("Cache-Control") != "no-store" {
 			t.Errorf("%s: headers = %v, want no-referrer and noindex", path, w.Header())
 		}
 	}

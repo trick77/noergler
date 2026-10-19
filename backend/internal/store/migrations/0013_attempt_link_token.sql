@@ -8,8 +8,8 @@
 -- Every attempt has one. The store draws it (store.NewLinkToken); the
 -- default, a v4 UUID's random bits in the same alphabet (122 random bits,
 -- 22 characters), fills earlier rows (volatile, so one per row) and any
--- insert that names none. No link to those was ever handed out, so they
--- stay unreachable.
+-- insert that names none. Earlier rows' summaries link /runs/{attempt id},
+-- which is gone (decided): their pages stay unreachable.
 ALTER TABLE review_attempts ADD COLUMN link_token TEXT NOT NULL
     DEFAULT rtrim(translate(encode(uuid_send(gen_random_uuid()), 'base64'), '+/', '-_'), '=')
     CONSTRAINT review_attempts_link_token_key UNIQUE;

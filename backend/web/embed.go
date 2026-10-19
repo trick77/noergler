@@ -72,13 +72,39 @@ func handler(sub fs.FS) http.Handler {
 		Placeholder: placeholderHTML,
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// A run page's URL carries its key: keep it out of search indexes
-		// and out of the Referer of every link the page opens.
+		// A run page's URL carries its key: keep it out of search indexes,
+		// out of the Referer of every link the page opens, and out of every
+		// cache. Set as the headers go out: spa.Handler sets its own
+		// Cache-Control for the shell, which would win if set before it.
 		if runPath.MatchString(r.URL.Path) {
-			w.Header().Set("X-Robots-Tag", "noindex, nofollow")
-			w.Header().Set("Referrer-Policy", "no-referrer")
-			w.Header().Set("Cache-Control", "no-store")
+			w = &runPageWriter{ResponseWriter: w}
 		}
 		h.ServeHTTP(w, r)
 	})
+}
+
+// runPageWriter stamps a run page's headers over whatever the SPA handler
+// set, right before they are written.
+type runPageWriter struct {
+	http.ResponseWriter
+	wrote bool
+}
+
+func (w *runPageWriter) WriteHeader(code int) {
+	if !w.wrote {
+		w.wrote = true
+		h := w.Header()
+		h.Set("X-Robots-Tag", "noindex, nofollow")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Cache-Control", "no-store")
+		h.Del("ETag")
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *runPageWriter) Write(b []byte) (int, error) {
+	if !w.wrote {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(b)
 }

@@ -111,12 +111,16 @@ func ValidatePreExisting(bugs []PreExistingBug, idx diff.AnchorIndex, prAdded ma
 	return kept, dropped
 }
 
-// tokenRunRE is a run of 20 or more token characters with no space.
-var tokenRunRE = regexp.MustCompile(`[A-Za-z0-9_+/=.-]{20,}`)
+// tokenRunRE is a run of 20 or more token characters with no space or dot:
+// a dot ends a run, so dotted code (`base64.RawURLEncoding.EncodeToString`)
+// is judged by its names, each a word. ASCII on purpose, against the
+// adapters rule: credentials are ASCII, and a run that a non-ASCII letter
+// breaks is a word, not a key.
+var tokenRunRE = regexp.MustCompile(`[A-Za-z0-9_+/=-]{20,}`)
 
 // knownSecretRE is a credential by its shape: an AWS key id, a GitHub or
 // Slack token, an OpenAI or Stripe-style key, a PEM private key.
-var knownSecretRE = regexp.MustCompile(`AKIA[0-9A-Z]{16}|\bgh[pousr]_[A-Za-z0-9]{20,}|\bxox[abprs]-|\b[sr]k[-_](?:live|test|proj)?[-_]?[A-Za-z0-9]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY`)
+var knownSecretRE = regexp.MustCompile(`AKIA[0-9A-Z]{16}|\bgh[pousr]_[A-Za-z0-9]{20,}|\bxox[abprs]-[A-Za-z0-9-]{10,}|\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}|\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY`)
 
 // minSecretAlnum and minSecretShifts make a long run secret-like: random
 // text (a key, a hash, base64) flips between upper case, lower case and

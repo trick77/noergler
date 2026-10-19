@@ -121,8 +121,8 @@ export interface Team {
 }
 
 /** RunDetail is GET runs/{token}: one attempt and what was recorded about it.
- *  Headlines only, never a finding's text; money as decimal strings, null
- *  for unpriced or "the gateway did not send it", never a zero. */
+ *  Full finding text (secret-like text withheld); money as decimal strings,
+ *  null for unpriced or "the gateway did not send it", never a zero. */
 export interface RunDetail {
   id: number;
   tag: string;

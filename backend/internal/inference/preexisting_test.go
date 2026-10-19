@@ -71,6 +71,9 @@ func TestValidatePreExisting(t *testing.T) {
 		{"aws example key in the evidence", bug(11, `aws_secret = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"`), "secret_in_text", 0},
 		{"a key by its shape", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "h",
 			Explanation: "uses sk-proj-AbCdEfGhIjKlMnOpQrStUvWx", Evidence: []string{"mu.Lock()"}}, "secret_in_text", 0}, // ship:allow-secret: fixture for the secret check
+		{"dotted code is fine", bug(11, "mu.Lock()"), "", 11},
+		{"a slack prefix in prose is fine", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "h",
+			Explanation: "tokens start with xoxb- and sk_userpreferencescache is a table; base64.RawURLEncoding.EncodeToString(b[:]) is fine", Evidence: []string{"mu.Lock()"}}, "", 11},
 		{"a digit in an identifier is fine", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "h",
 			Explanation: "Sha256DigestCalculatorFactory leaks; see src/main/java/com/acme/http2/Client", Evidence: []string{"mu.Lock()"}}, "", 11},
 		{"base64 in the headline", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "token q8Zr3vT1xK9mP2wN7bL5yH4cD6fG0jS= leaks",
