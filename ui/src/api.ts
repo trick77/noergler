@@ -172,7 +172,7 @@ export interface RunDetail {
   detail: RunPipeline | null;
 }
 
-/** RunPipeline is the review's own record of the run: headlines only. */
+/** RunPipeline is the review's own record of the run. */
 export interface RunPipeline {
   /** The reviewed commit, for links into the code. */
   commit?: string;
@@ -205,6 +205,9 @@ export interface RunPipeline {
     line: number;
     severity: string;
     headline: string;
+    comment?: string;
+    suggestion?: string;
+    evidence?: string[];
     decision: string;
     reason?: string;
   }[];
@@ -216,6 +219,7 @@ export interface RunPipeline {
     line: number;
     headline: string;
     explanation: string;
+    evidence?: string[];
   }[];
   /** Requests per upstream, by name. */
   http: { upstream: string; calls: number }[];
@@ -256,11 +260,13 @@ export interface RunFinding {
   file: string;
   line: number;
   headline: string;
+  /** The comment as posted, the suggestion and the author's dispute. */
+  comment: string;
+  suggestion: string | null;
+  dispute: string | null;
   comment_id: number | null;
   replied: boolean;
   fixed: boolean;
-  /** The page of the run that posted it; null when that attempt is gone. */
-  from_attempt_id: number | null;
 }
 
 export interface CommentCall {

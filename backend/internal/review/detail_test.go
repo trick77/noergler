@@ -69,9 +69,9 @@ func TestRunDetailRecord(t *testing.T) {
 	if d.HTTP == nil {
 		t.Error("http counts missing")
 	}
-	// Headlines only: the comment body never reaches the record.
-	if strings.Contains(string(h.st.Details[1]), "SECRET COMMENT BODY") {
-		t.Error("the detail record carries a finding's comment text")
+	// An unposted finding keeps its text: the page is its only trace.
+	if d.Decisions[0].Comment == "" || len(d.Decisions[0].Evidence) == 0 {
+		t.Errorf("decision lost its text: %+v", d.Decisions[0])
 	}
 }
 

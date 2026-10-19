@@ -9,7 +9,6 @@ package review
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -161,14 +160,15 @@ func (r *Reviewer) recordAttempt(ctx context.Context, a store.Attempt) int64 {
 	return id
 }
 
-// runURL is the attempt's run detail page, for the summary's footer. Empty
-// (no link) without a public URL or an attempt id: the footer never points
-// at a host or a run that does not exist.
-func (r *Reviewer) runURL(attemptID int64) string {
-	if r.publicURL == "" || attemptID == 0 {
+// runURL is the attempt's run detail page, for the summary's footer: the
+// only place the link is ever handed out. Empty (no link) without a public
+// URL or a written attempt: the footer never points at a host or a run that
+// does not exist.
+func (r *Reviewer) runURL(attemptID int64, token string) string {
+	if r.publicURL == "" || attemptID == 0 || token == "" {
 		return ""
 	}
-	return fmt.Sprintf("%s/runs/%d", r.publicURL, attemptID)
+	return r.publicURL + "/runs/" + token
 }
 
 // llmCall is the llm_calls row for a review's gateway call, nil when the

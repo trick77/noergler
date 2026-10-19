@@ -112,6 +112,10 @@ an incident or an eval run: read the reason before relaxing a rule.
   never became ready and restart-looped on an httpGet probe.
 - Disable reasons stay in the logs: one can name an env var, and `/readyz` and
   the dashboard are unauthenticated.
+- Run page by token, from the summary only: numeric ids were enumerable on the
+  unauthenticated dashboard, which forced headlines only and prose without
+  code. A token handed out in the PR reaches the PR's audience, so the page
+  can show the finding text, the code and the classes and lines involved.
 - Diff uncapped: a diff is mostly files `IsReviewable` discards; a 19.4 MB PR
   with 5 KB of reviewable source was skipped. `GOMEMLIMIT` bounds the process.
 - `timestamp` first: Splunk's auto timestamp guesses wrong otherwise.

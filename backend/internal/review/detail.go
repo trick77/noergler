@@ -114,8 +114,12 @@ func headlineOf(f inference.ReviewFinding) string {
 }
 
 func decision(f inference.ReviewFinding, what, reason string) store.FindingDecision {
-	return store.FindingDecision{File: f.File, Line: f.Line, Severity: f.Severity,
-		Headline: headlineOf(f), Decision: what, Reason: reason}
+	d := store.FindingDecision{File: f.File, Line: f.Line, Severity: f.Severity,
+		Headline: headlineOf(f), Comment: f.Comment, Evidence: f.Evidence, Decision: what, Reason: reason}
+	if f.Suggestion != nil {
+		d.Suggestion = *f.Suggestion
+	}
+	return d
 }
 
 // finishDetail takes the last lap, reads the HTTP counts and writes the

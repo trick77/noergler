@@ -16,33 +16,24 @@ func TestRunDetail(t *testing.T) {
 	}
 	runID := run(t, s, prID, "b", nano(900), "m")
 	if err := s.InsertFinding(ctx, Finding{PullRequestID: prID, RunID: runID, FilePath: "b.go", LineNumber: 7,
-		Severity: "high", Headline: strp("new one"), CommentText: "SECRET BODY"}); err != nil {
+		Severity: "high", Headline: strp("new one"), CommentText: "the body", Suggestion: strp("do this")}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.pool.Exec(ctx, `UPDATE findings SET fixed_at = now(), fixed_run_id = $1 WHERE review_run_id = $2`, runID, earlier); err != nil {
 		t.Fatal(err)
 	}
-	earlierAttempt, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "ok", RunID: &earlier})
-	if err != nil {
-		t.Fatal(err)
-	}
-	skip, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "skipped", Reason: "head_unchanged"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	id, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "ok",
+	earlierAttempt, _ := tokenAttempt(t, s, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "ok", RunID: &earlier})
+	skip, skipToken := tokenAttempt(t, s, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "skipped", Reason: "head_unchanged"})
+	id, token := tokenAttempt(t, s, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "ok",
 		RunID: &runID, Call: &LLMCall{Profile: "m", CallID: "c1"}})
-	if err != nil {
-		t.Fatal(err)
-	}
 	// Another team's attempt on the same PR key is not this PR's history.
 	if _, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "other", Kind: RunAuto, Outcome: "error"}); err != nil {
 		t.Fatal(err)
 	}
 
-	d, ok, err := s.RunDetail(ctx, id)
-	if err != nil || !ok {
-		t.Fatalf("RunDetail = %v, %v", ok, err)
+	d, ok, err := s.RunDetail(ctx, token)
+	if err != nil || !ok || d.ID != id {
+		t.Fatalf("RunDetail = %d, %v, %v", d.ID, ok, err)
 	}
 	if d.Run == nil || d.Run.ID != runID || d.Run.CostNanoUSD == nil || *d.Run.CostNanoUSD != 900 {
 		t.Errorf("run = %+v", d.Run)
@@ -50,14 +41,13 @@ func TestRunDetail(t *testing.T) {
 	if d.Call == nil || d.Call.CallID != "c1" {
 		t.Errorf("call = %+v", d.Call)
 	}
-	if len(d.Findings) != 1 || d.Findings[0].Headline != "new one" || d.Findings[0].Line != 7 {
+	// The full text: the page is reached only by its token.
+	if len(d.Findings) != 1 || d.Findings[0].Headline != "new one" || d.Findings[0].Line != 7 ||
+		d.Findings[0].CommentText != "the body" || d.Findings[0].Suggestion == nil || *d.Findings[0].Suggestion != "do this" {
 		t.Errorf("findings = %+v", d.Findings)
 	}
-	// The earlier run's own page is keyed by its ATTEMPT id, not its run
-	// id: the link must open the attempt that produced the finding.
-	if len(d.Fixed) != 1 || d.Fixed[0].Headline != "old one" || d.Fixed[0].FromAttemptID == nil ||
-		*d.Fixed[0].FromAttemptID != earlierAttempt {
-		t.Errorf("fixed = %+v, want from attempt %d", d.Fixed, earlierAttempt)
+	if len(d.Fixed) != 1 || d.Fixed[0].Headline != "old one" || d.Fixed[0].CommentText != "SECRET BODY" {
+		t.Errorf("fixed = %+v", d.Fixed)
 	}
 	if len(d.PRAttempts) != 3 || d.PRAttempts[0].ID != earlierAttempt || d.PRAttempts[1].ID != skip || d.PRAttempts[2].ID != id {
 		t.Errorf("pr attempts = %+v", d.PRAttempts)
@@ -67,14 +57,29 @@ func TestRunDetail(t *testing.T) {
 	}
 
 	// A skip has no run, no call, no findings, and is still a page.
-	d, ok, err = s.RunDetail(ctx, skip)
-	if err != nil || !ok || d.Run != nil || d.Call != nil || len(d.Findings) != 0 || d.Reason != "head_unchanged" {
+	d, ok, err = s.RunDetail(ctx, skipToken)
+	if err != nil || !ok || d.ID != skip || d.Run != nil || d.Call != nil || len(d.Findings) != 0 || d.Reason != "head_unchanged" {
 		t.Errorf("skip detail = %+v, %v, %v", d, ok, err)
 	}
 
-	if _, ok, err := s.RunDetail(ctx, id+1000); ok || err != nil {
-		t.Errorf("unknown id = %v, %v; want not found", ok, err)
+	if _, ok, err := s.RunDetail(ctx, NewLinkToken()); ok || err != nil {
+		t.Errorf("unknown token = %v, %v; want not found", ok, err)
 	}
+	// An attempt without a token has no page; an empty token finds none.
+	if _, ok, err := s.RunDetail(ctx, ""); ok || err != nil {
+		t.Errorf("empty token = %v, %v; want not found", ok, err)
+	}
+}
+
+// tokenAttempt inserts a with a fresh link token and returns its id and token.
+func tokenAttempt(t *testing.T, s *Store, a Attempt) (int64, string) {
+	t.Helper()
+	a.LinkToken = NewLinkToken()
+	id, err := s.InsertAttempt(context.Background(), a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id, a.LinkToken
 }
 
 func strp(s string) *string { return &s }
@@ -85,11 +90,8 @@ func strp(s string) *string { return &s }
 func TestRunDetailRecordRoundTrip(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
-	id, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "ok"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if d, _, err := s.RunDetail(ctx, id); err != nil || d.Detail != nil {
+	id, token := tokenAttempt(t, s, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "ok"})
+	if d, _, err := s.RunDetail(ctx, token); err != nil || d.Detail != nil {
 		t.Fatalf("no record yet: %+v, %v", d.Detail, err)
 	}
 	for _, rec := range []Pipeline{{}, {Stages: []StageTime{{Name: "diff", MS: 3}},
@@ -98,54 +100,15 @@ func TestRunDetailRecordRoundTrip(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	d, _, err := s.RunDetail(ctx, id)
+	d, _, err := s.RunDetail(ctx, token)
 	if err != nil || d.Detail == nil || len(d.Detail.Stages) != 1 || d.Detail.HTTP[0].Calls != 4 {
 		t.Errorf("detail = %+v, %v; want the second record", d.Detail, err)
 	}
 	if _, err := s.pool.Exec(ctx, `UPDATE run_details SET detail = '{"http":{"bitbucket":4}}' WHERE attempt_id = $1`, id); err != nil {
 		t.Fatal(err)
 	}
-	if d, ok, err := s.RunDetail(ctx, id); err != nil || !ok || d.Detail != nil {
+	if d, ok, err := s.RunDetail(ctx, token); err != nil || !ok || d.Detail != nil {
 		t.Errorf("old shape = %+v, %v, %v; want the page without the record", d.Detail, ok, err)
-	}
-}
-
-// A fixed finding whose run was recorded under another team gets no link:
-// that page's history belongs to the other team.
-func TestFixedLinkStaysInTheTeam(t *testing.T) {
-	s := testStore(t)
-	ctx := context.Background()
-	prID := upsert(t, s, key, "a")
-	earlier := run(t, s, prID, "a", nil, "m")
-	if err := s.InsertFinding(ctx, Finding{PullRequestID: prID, RunID: earlier, FilePath: "a.go", LineNumber: 1,
-		Severity: "issue", Headline: strp("old"), CommentText: "x"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "previous-owner", Kind: RunAuto, Outcome: "ok", RunID: &earlier}); err != nil {
-		t.Fatal(err)
-	}
-	now := run(t, s, prID, "b", nil, "m")
-	if _, err := s.pool.Exec(ctx, `UPDATE findings SET fixed_at = now(), fixed_run_id = $1 WHERE review_run_id = $2`, now, earlier); err != nil {
-		t.Fatal(err)
-	}
-	id, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "ok", RunID: &now})
-	if err != nil {
-		t.Fatal(err)
-	}
-	d, ok, err := s.RunDetail(ctx, id)
-	if err != nil || !ok || len(d.Fixed) != 1 || d.Fixed[0].FromAttemptID != nil {
-		t.Errorf("fixed = %+v, %v; want no cross-team link", d.Fixed, err)
-	}
-
-	// The same run recorded under this team as well: that attempt is the
-	// one linked, never the other team's.
-	mine, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "ok", RunID: &earlier})
-	if err != nil {
-		t.Fatal(err)
-	}
-	d, _, err = s.RunDetail(ctx, id)
-	if err != nil || len(d.Fixed) != 1 || d.Fixed[0].FromAttemptID == nil || *d.Fixed[0].FromAttemptID != mine {
-		t.Errorf("fixed = %+v, %v; want the link to this team's attempt %d", d.Fixed, err, mine)
 	}
 }
 
@@ -155,18 +118,16 @@ func TestRunDetailHistoryWindow(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	var ids []int64
+	var tokens []string
 	for i := 0; i < 2*prAttemptsEachSide+10; i++ {
-		id, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "skipped", Reason: "head_unchanged"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		ids = append(ids, id)
+		id, token := tokenAttempt(t, s, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "skipped", Reason: "head_unchanged"})
+		ids, tokens = append(ids, id), append(tokens, token)
 	}
 	// The ends, the middle, and both sides of each cut-off boundary.
 	n := len(ids)
 	for _, at := range []int{0, 2, prAttemptsEachSide, prAttemptsEachSide + 1, n / 2,
 		n - 1 - prAttemptsEachSide, n - 2 - prAttemptsEachSide, n - 1} {
-		d, ok, err := s.RunDetail(ctx, ids[at])
+		d, ok, err := s.RunDetail(ctx, tokens[at])
 		if err != nil || !ok {
 			t.Fatalf("RunDetail = %v, %v", ok, err)
 		}

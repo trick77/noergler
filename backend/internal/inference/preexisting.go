@@ -21,7 +21,6 @@ type PreExistingBug struct {
 }
 
 // Limits on what a pre-existing bug may carry onto the page: a few, short.
-// The text is the model's, shown on an unauthenticated dashboard.
 const (
 	maxPreExisting         = 5
 	maxPreExistingHeadline = 200
@@ -90,10 +89,10 @@ type DroppedPreExisting struct {
 // line the PR added. Evidence found only in the full content has no line
 // number in the index (hashes only), so the cited line stands.
 //
-// The headline and explanation go on an unauthenticated page, so one that
-// carries code or a secret-looking token is dropped: blunt rules, like
-// ValidateFindings, never a judge model. At most maxPreExisting are kept, in
-// the model's order.
+// Code in the headline or explanation is fine (the page is reached only by
+// its link token); one that carries a secret-looking token is dropped:
+// blunt rules, like ValidateFindings, never a judge model. At most
+// maxPreExisting are kept, in the model's order.
 func ValidatePreExisting(bugs []PreExistingBug, idx diff.AnchorIndex, prAdded map[string]map[uint64]bool) (kept []PreExistingBug, dropped []DroppedPreExisting) {
 	for _, b := range bugs {
 		b.File = ShownPath(b.File, idx)
@@ -112,36 +111,30 @@ func ValidatePreExisting(bugs []PreExistingBug, idx diff.AnchorIndex, prAdded ma
 }
 
 // tokenRunRE is a run of 24 or more token characters with no space.
-var tokenRunRE = regexp.MustCompile(`[A-Za-z0-9_+/=-]{24,}`)
+var tokenRunRE = regexp.MustCompile(`[A-Za-z0-9+/=_-]{24,}`)
 
-// innerUpperRE is a lower-case letter followed by an upper-case one: camelCase
-// and random tokens have it, a capitalised German compound does not.
-var innerUpperRE = regexp.MustCompile(`[a-z][A-Z]`)
-
-// HasCodeOrSecret reports a backtick or a code- or secret-like token in model
-// prose: a long run with a digit, an underscore, a slash, `+` or `=`, or an
-// inner capital (an API key, a hash, base64, a path, an identifier). A
-// German compound ("Verbindungswiederherstellung") or a lower-case
-// hyphenated phrase is prose. Blunt, like every validation rule.
-func HasCodeOrSecret(s string) bool {
-	if strings.ContainsRune(s, '`') {
-		return true
-	}
+// HasSecret reports a secret-like token in model prose: a long run with a
+// digit AND a letter (an API key, a hash, base64). An identifier, a path or
+// a German compound ("Verbindungswiederherstellung") is not one; one with a
+// digit in it is, and is dropped. Blunt, like every validation rule.
+func HasSecret(s string) bool {
 	for _, run := range tokenRunRE.FindAllString(s, -1) {
-		if strings.ContainsAny(run, "0123456789_/+=") || innerUpperRE.MatchString(run) {
+		if strings.ContainsAny(run, "0123456789") && strings.ContainsFunc(run, isASCIILetter) {
 			return true
 		}
 	}
 	return false
 }
 
+func isASCIILetter(r rune) bool { return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' }
+
 func validatePreExisting(b PreExistingBug, idx diff.AnchorIndex, prAdded map[string]map[uint64]bool) (string, int) {
 	fa, ok := idx[b.File]
 	if !ok {
 		return string(DropUnknownFile), 0
 	}
-	if HasCodeOrSecret(b.Headline) || HasCodeOrSecret(b.Explanation) {
-		return "code_in_prose", 0
+	if HasSecret(b.Headline) || HasSecret(b.Explanation) {
+		return "secret_in_prose", 0
 	}
 	history := prAdded[b.File]
 	var shown []uint64

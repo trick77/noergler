@@ -293,6 +293,18 @@ export function InputTab({ p }: { p: RunPipeline | null }) {
   );
 }
 
+const prose = "mt-1 whitespace-pre-wrap break-words text-[13px] text-muted";
+
+/** Evidence is the lines the model quoted, as code. */
+function Evidence({ lines }: { lines?: string[] }) {
+  if (!lines || lines.length === 0) return null;
+  return (
+    <pre className="mt-1.5 overflow-x-auto rounded-ui-sm border border-border-soft px-2 py-1 font-mono text-[12px] text-ink-dim">
+      {lines.join("\n")}
+    </pre>
+  );
+}
+
 export function NotPostedCard({ p }: { p: RunPipeline }) {
   const { t } = useTranslation();
   if (p.decisions.length === 0) return null;
@@ -319,7 +331,19 @@ export function NotPostedCard({ p }: { p: RunPipeline }) {
                 <td className={tdTag + " text-muted"}>
                   {f.file}:{f.line}
                 </td>
-                <td className={td + " text-muted"}>{f.headline || "—"}</td>
+                <td className={td + " text-muted"}>
+                  <div>{f.headline || "—"}</div>
+                  {f.comment && <div className={prose}>{f.comment}</div>}
+                  {f.suggestion && (
+                    <div className={prose}>
+                      <span className="text-faint">
+                        {t("run.suggestion")}:{" "}
+                      </span>
+                      {f.suggestion}
+                    </div>
+                  )}
+                  <Evidence lines={f.evidence} />
+                </td>
                 <td className={td + " whitespace-nowrap text-[12.5px]"}>
                   <span
                     className={
@@ -349,7 +373,7 @@ export function NotPostedCard({ p }: { p: RunPipeline }) {
 
 /** PreExistingCard lists the bugs the model saw in code this PR did not
  *  change. Never posted to the PR, so this is the only place they are said:
- *  the explanation in prose and a link to the line, no code. */
+ *  the explanation, the quoted lines and a link to the line. */
 export function PreExistingCard({
   p,
   tag,
@@ -390,7 +414,10 @@ export function PreExistingCard({
                   </span>
                 )}
               </div>
-              <p className="mt-1 text-[13.5px] text-ink-dim">{b.explanation}</p>
+              <p className="mt-1 whitespace-pre-wrap break-words text-[13.5px] text-ink-dim">
+                {b.explanation}
+              </p>
+              <Evidence lines={b.evidence} />
             </li>
           );
         })}

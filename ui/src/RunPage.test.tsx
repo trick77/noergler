@@ -2,7 +2,9 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RunDetail } from "./api";
 import { RunPage } from "./RunPage";
-import { onNav, pageFromPath, runIdFromPath, runPath } from "./routing";
+import { onNav, pageFromPath, runTokenFromPath } from "./routing";
+
+const TOK = "AAAAAAAAAAAAAAAAAAAAAA";
 
 function serve(path: string, body: unknown) {
   vi.stubGlobal(
@@ -73,10 +75,12 @@ const detail: RunDetail = {
       file: "retry.go",
       line: 88,
       headline: "Capture is retried without its idempotency key",
+      comment: "`RetryPolicy.run` retries the capture with a new key.",
+      suggestion: "Reuse the key from the first attempt.",
+      dispute: "The gateway dedupes by order id.",
       comment_id: 555,
       replied: true,
       fixed: false,
-      from_attempt_id: 7,
     },
   ],
   fixed: [],
@@ -139,68 +143,62 @@ describe("onNav", () => {
 });
 
 describe("routing to a run", () => {
-  it("reads the attempt id off the path", () => {
-    expect(pageFromPath("/runs/18233")).toBe("run");
-    expect(runIdFromPath("/runs/18233")).toBe(18233);
-    expect(runIdFromPath("/runs")).toBeNull();
-    // Mirrors the Go allowlist: no zero, no leading zero, digits only.
-    expect(pageFromPath("/runs/0")).toBe("runs");
-    expect(runIdFromPath("/runs/01")).toBeNull();
-    expect(runPath(7)).toBe("/runs/7");
+  it("reads the link token off the path", () => {
+    expect(pageFromPath(`/runs/${TOK}`)).toBe("run");
+    expect(runTokenFromPath(`/runs/${TOK}`)).toBe(TOK);
+    expect(runTokenFromPath("/runs")).toBeNull();
+    // Mirrors the Go allowlist: a numeric attempt id is no run page.
+    expect(pageFromPath("/runs/18233")).toBe("runs");
+    expect(runTokenFromPath("/runs/18233")).toBeNull();
+    expect(runTokenFromPath(`/runs/${TOK}A`)).toBeNull();
   });
 });
 
 describe("RunPage", () => {
-  it("leads with the summary and links the PR's other runs", async () => {
-    serve("runs/7", detail);
-    render(<RunPage id={7} />);
+  it("leads with the summary and links no other run", async () => {
+    serve(`runs/${TOK}`, detail);
+    const { container } = render(<RunPage token={TOK} />);
 
     expect(
       await screen.findByText("Retry captures on gateway timeout"),
     ).toBeDefined();
     // The exact third decimal, not money()'s cents.
     expect(screen.getAllByText("$0.048").length).toBeGreaterThan(0);
-    expect(screen.getByText("← previous run").getAttribute("href")).toBe(
-      "/runs/6",
-    );
+    // A run's page is reached only from its summary comment.
+    for (const a of container.querySelectorAll("a")) {
+      expect(a.getAttribute("href") ?? "").not.toMatch(/^\/runs\/./);
+    }
     expect(screen.getByText("Open PR ↗").getAttribute("href")).toBe(
       "https://bb.example.com/projects/PAY/repos/checkout/pull-requests/1482",
     );
   });
 
-  // Headlines only: a finding links to its Bitbucket comment for the rest.
-  it("shows a finding's headline and links its comment", async () => {
-    window.history.replaceState({}, "", "/runs/7#findings");
-    serve("runs/7", detail);
-    render(<RunPage id={7} />);
+  // The full text: comment, suggestion and the author's dispute.
+  it("shows a finding's full text and links its comment", async () => {
+    window.history.replaceState({}, "", `/runs/${TOK}#findings`);
+    serve(`runs/${TOK}`, detail);
+    render(<RunPage token={TOK} />);
 
     expect(
       await screen.findByText("Capture is retried without its idempotency key"),
     ).toBeDefined();
+    expect(
+      screen.getByText("`RetryPolicy.run` retries the capture with a new key."),
+    ).toBeDefined();
+    expect(
+      screen.getByText("Reuse the key from the first attempt."),
+    ).toBeDefined();
+    expect(screen.getByText("The gateway dedupes by order id.")).toBeDefined();
     expect(screen.getByText("retry.go:88 ↗").getAttribute("href")).toBe(
       "https://bb.example.com/projects/PAY/repos/checkout/pull-requests/1482/overview?commentId=555",
     );
     expect(screen.getByText("author replied")).toBeDefined();
   });
 
-  // A fixed finding links to the page of the run that posted it, keyed by
-  // that run's ATTEMPT id.
-  it("links a fixed finding to its earlier run's page", async () => {
-    window.history.replaceState({}, "", "/runs/7#findings");
-    serve("runs/7", {
-      ...detail,
-      fixed: [{ ...detail.findings[0], fixed: true, from_attempt_id: 4 }],
-    });
-    render(<RunPage id={7} />);
-    expect((await screen.findByText("from run 4")).getAttribute("href")).toBe(
-      "/runs/4",
-    );
-  });
-
   // A lane the gateway did not send reads "not sent", never $0.
   it("keeps absent lanes absent and lanes at six decimals", async () => {
-    serve("runs/7", detail);
-    render(<RunPage id={7} />);
+    serve(`runs/${TOK}`, detail);
+    render(<RunPage token={TOK} />);
     fireEvent.click(
       await screen.findByRole("tab", { name: /Tokens and cost/ }),
     );
@@ -214,7 +212,7 @@ describe("RunPage", () => {
   // The review's own record: stages on the timeline, the findings that
   // were not posted with why, and the prompt and files tab.
   it("shows the pipeline record", async () => {
-    serve("runs/7", {
+    serve(`runs/${TOK}`, {
       ...detail,
       detail: {
         stages: [
@@ -277,7 +275,7 @@ describe("RunPage", () => {
         http: [{ upstream: "bitbucket", calls: 14 }],
       },
     });
-    render(<RunPage id={7} />);
+    render(<RunPage token={TOK} />);
 
     expect((await screen.findAllByText("AI Gateway call")).length).toBe(2);
     expect(screen.getByText("Waiting for the AI Gateway")).toBeDefined();
@@ -311,8 +309,8 @@ describe("RunPage", () => {
   // Replies and answers have no run page, but they are money the PR total
   // counts: listed under the runs, linked to their thread.
   it("lists the PR's replies and answers", async () => {
-    window.history.replaceState({}, "", "/runs/7#pr");
-    serve("runs/7", {
+    window.history.replaceState({}, "", `/runs/${TOK}#pr`);
+    serve(`runs/${TOK}`, {
       ...detail,
       pr: {
         ...detail.pr,
@@ -334,7 +332,7 @@ describe("RunPage", () => {
         ],
       },
     });
-    render(<RunPage id={7} />);
+    render(<RunPage token={TOK} />);
 
     expect(
       (await screen.findByText("reply to a finding ↗")).getAttribute("href"),
@@ -346,7 +344,7 @@ describe("RunPage", () => {
   });
 
   it("says why a skipped run has nothing else", async () => {
-    serve("runs/9", {
+    serve(`runs/${TOK}`, {
       ...detail,
       id: 9,
       outcome: "skipped",
@@ -356,7 +354,7 @@ describe("RunPage", () => {
       call: null,
       findings: [],
     });
-    render(<RunPage id={9} />);
+    render(<RunPage token={TOK} />);
     expect(
       await screen.findByText("HEAD unchanged since last review"),
     ).toBeDefined();

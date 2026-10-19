@@ -42,7 +42,7 @@ type DashboardStore interface {
 	DailyByTeam(ctx context.Context, since time.Time) ([]store.Bucket, error)
 	DailyAttempts(ctx context.Context, since time.Time) ([]store.AttemptBucket, error)
 	ActivityByTeam(ctx context.Context) ([]store.TeamActivity, error)
-	RunDetail(ctx context.Context, attemptID int64) (store.RunDetail, bool, error)
+	RunDetail(ctx context.Context, token string) (store.RunDetail, bool, error)
 	PRCost(ctx context.Context, key store.PRKey) (*int64, error)
 	PRCommentCalls(ctx context.Context, key store.PRKey) ([]store.CommentCall, bool, error)
 }

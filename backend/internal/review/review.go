@@ -457,7 +457,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	}
 	for _, b := range pre {
 		plan.detail.PreExisting = append(plan.detail.PreExisting, store.PreExistingBug{
-			File: b.File, Line: b.Line, Headline: b.Headline, Explanation: b.Explanation})
+			File: b.File, Line: b.Line, Headline: b.Headline, Explanation: b.Explanation, Evidence: b.Evidence})
 	}
 	if len(pre) > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d pre-existing bug(s) recorded for the run page, not posted", prTag, len(pre)))
@@ -530,6 +530,8 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		Key: key, TeamSlug: r.TeamSlug, Kind: runKind(plan.mention),
 		Outcome: inference.OutcomeOK.String(),
 		Call:    r.llmCall(result.Cost),
+		// The one attempt that posts a summary, so the one with a page.
+		LinkToken: store.NewLinkToken(),
 	}
 	ms := elapsed.Milliseconds()
 	attempt.ElapsedMS = &ms
@@ -568,7 +570,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		DiffAdded:                  plan.diffAdded,
 		DiffRemoved:                plan.diffRemoved,
 		ModelLabel:                 r.llm.Label(),
-		RunURL:                     r.runURL(attemptID),
+		RunURL:                     r.runURL(attemptID, attempt.LinkToken),
 		RunCostUSD:                 runCost,
 		CumulativeCostUSD:          cumulativeCost,
 		MaxPRCostUSD:               r.cfg.MaxPRCostUSD,

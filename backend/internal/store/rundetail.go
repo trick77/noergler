@@ -11,9 +11,9 @@ import (
 
 // RunDetail is everything the run detail page shows about one attempt.
 //
-// Headlines only (decided): the dashboard is unauthenticated, so no
-// comment text, suggestion, quoted code or dispute text is read here. The
-// full text stays behind Bitbucket's own access control, one link away.
+// Everything, comment text and dispute included (decided): the page is
+// reached only by its link token, handed out in the PR's summary comment,
+// so its audience is the PR's.
 type RunDetail struct {
 	ID        int64
 	Key       PRKey
@@ -34,11 +34,11 @@ type RunDetail struct {
 	Call *LLMCall
 	// Findings are the ones this run posted; Fixed the earlier ones this run
 	// marked fixed.
-	Findings []FindingHeadline
-	Fixed    []FindingHeadline
+	Findings []RunFinding
+	Fixed    []RunFinding
 	// PRAttempts is the PR's history around this attempt, oldest first and
 	// this one always included: up to prAttemptsEachSide before and after
-	// it. The page's previous/next and its pull request tab.
+	// it. The page's pull request tab; rows, never links.
 	PRAttempts []PRAttempt
 	// MoreBefore and MoreAfter say the window cut older or newer attempts,
 	// so the page can say rows are missing instead of looking complete.
@@ -68,21 +68,21 @@ type RunFacts struct {
 	FilesChanged     int
 }
 
-// FindingHeadline is a posted finding as the page may show it: where, how
-// bad, the one-line headline and the Bitbucket comment to open for the rest.
-type FindingHeadline struct {
-	Severity   string
-	Confidence *int
-	FilePath   string
-	Line       int
-	Headline   string
-	CommentID  *int64
-	Replied    bool
-	Fixed      bool
-	// FromAttemptID is the attempt whose run posted it, the key of that
-	// run's page. Set on Fixed only (an earlier run); nil there when that
-	// attempt is gone or was recorded under another team.
-	FromAttemptID *int64
+// RunFinding is a posted finding as the page shows it: where, how bad, its
+// text, and the Bitbucket comment it was posted as.
+type RunFinding struct {
+	Severity    string
+	Confidence  *int
+	FilePath    string
+	Line        int
+	Headline    string
+	CommentText string
+	Suggestion  *string
+	// DisputeText is the author's reply when it disputed the finding.
+	DisputeText *string
+	CommentID   *int64
+	Replied     bool
+	Fixed       bool
 }
 
 // PRAttempt is one row of the PR's history.
@@ -99,9 +99,9 @@ type PRAttempt struct {
 	CostNanoUSD *int64
 }
 
-// RunDetail reads one attempt for the page. ok is false when there is no
-// such attempt.
-func (s *Store) RunDetail(ctx context.Context, attemptID int64) (d RunDetail, ok bool, err error) {
+// RunDetail reads the attempt behind a link token for the page. ok is false
+// when no attempt has that token.
+func (s *Store) RunDetail(ctx context.Context, token string) (d RunDetail, ok bool, err error) {
 	var runID *int64
 	err = s.pool.QueryRow(ctx, `
 		SELECT a.id, a.team_slug, a.project_key, a.repo_slug, a.pr_id, a.kind, a.outcome,
@@ -110,7 +110,7 @@ func (s *Store) RunDetail(ctx context.Context, attemptID int64) (d RunDetail, ok
 		  FROM review_attempts a
 		  LEFT JOIN pull_requests p
 		    ON p.project_key = a.project_key AND p.repo_slug = a.repo_slug AND p.pr_id = a.pr_id
-		 WHERE a.id = $1`, attemptID).Scan(
+		 WHERE a.link_token = $1`, token).Scan(
 		&d.ID, &d.TeamSlug, &d.Key.Project, &d.Key.Repo, &d.Key.PRID, &d.Kind, &d.Outcome,
 		&d.Reason, &d.ElapsedMS, &d.CreatedAt, &d.AttemptCostNanoUSD, &runID, &d.PRTitle)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -140,17 +140,17 @@ func (s *Store) RunDetail(ctx context.Context, attemptID int64) (d RunDetail, ok
 				r.ToCommit = *to
 			}
 			d.Run = &r
-			if d.Findings, err = s.findingHeadlines(ctx, `f.review_run_id = $1`, r.ID, d.TeamSlug, false); err != nil {
+			if d.Findings, err = s.runFindings(ctx, `f.review_run_id = $1`, r.ID); err != nil {
 				return RunDetail{}, false, err
 			}
-			if d.Fixed, err = s.findingHeadlines(ctx, `f.fixed_run_id = $1`, r.ID, d.TeamSlug, true); err != nil {
+			if d.Fixed, err = s.runFindings(ctx, `f.fixed_run_id = $1`, r.ID); err != nil {
 				return RunDetail{}, false, err
 			}
 		}
 	}
 
 	var raw []byte
-	if err := s.pool.QueryRow(ctx, `SELECT detail FROM run_details WHERE attempt_id = $1`, attemptID).
+	if err := s.pool.QueryRow(ctx, `SELECT detail FROM run_details WHERE attempt_id = $1`, d.ID).
 		Scan(&raw); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return RunDetail{}, false, err
 	}
@@ -165,7 +165,7 @@ func (s *Store) RunDetail(ctx context.Context, attemptID int64) (d RunDetail, ok
 		}
 	}
 
-	call, has, err := s.AttemptCall(ctx, attemptID)
+	call, has, err := s.AttemptCall(ctx, d.ID)
 	if err != nil {
 		return RunDetail{}, false, err
 	}
@@ -179,32 +179,27 @@ func (s *Store) RunDetail(ctx context.Context, attemptID int64) (d RunDetail, ok
 	return d, true, nil
 }
 
-// findingHeadlines reads the page's columns of the findings matching where
-// (one placeholder, $1). Never comment_text, suggestion or dispute_text.
-//
-// withFrom also looks up the attempt of the run that posted each finding,
-// within team (the page's history is scoped to it), for the fixed table's
-// link. The run's own findings never show it, so they skip the lookup.
-func (s *Store) findingHeadlines(ctx context.Context, where string, arg int64, team string, withFrom bool) ([]FindingHeadline, error) {
+// runFindings reads the page's columns of the findings matching where (one
+// placeholder, $1).
+func (s *Store) runFindings(ctx context.Context, where string, arg int64) ([]RunFinding, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT f.severity, f.confidence, f.file_path, f.line_number, COALESCE(f.headline, ''),
-		       f.bitbucket_comment_id, f.replied_at IS NOT NULL, f.fixed_at IS NOT NULL,
-		       CASE WHEN $3 THEN
-		         (SELECT MIN(a.id) FROM review_attempts a
-		           WHERE a.review_run_id = f.review_run_id AND a.team_slug = $2) END
+		       f.comment_text, f.suggestion, f.dispute_text,
+		       f.bitbucket_comment_id, f.replied_at IS NOT NULL, f.fixed_at IS NOT NULL
 		  FROM findings f
 		 WHERE `+where+`
-		 ORDER BY f.id`, arg, team, withFrom)
+		 ORDER BY f.id`, arg)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := []FindingHeadline{}
+	out := []RunFinding{}
 	for rows.Next() {
-		var f FindingHeadline
+		var f RunFinding
 		var comment *int32
 		if err := rows.Scan(&f.Severity, &f.Confidence, &f.FilePath, &f.Line, &f.Headline,
-			&comment, &f.Replied, &f.Fixed, &f.FromAttemptID); err != nil {
+			&f.CommentText, &f.Suggestion, &f.DisputeText,
+			&comment, &f.Replied, &f.Fixed); err != nil {
 			return nil, err
 		}
 		if comment != nil {

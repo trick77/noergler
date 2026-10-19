@@ -34,8 +34,8 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - `pre_existing` (bugs in unchanged code): never posted, never moves the
   verdict, never scored. `ValidatePreExisting`: evidence in the shown file,
   none on a line the PR (all pushes, on an incremental review) added or
-  removed, no in-diff rule; prose with code or a secret-like token dropped;
-  at most 5. Run page only, prose + link, no code.
+  removed, no in-diff rule; prose with a secret-like token dropped (code is
+  fine); at most 5. Run page only.
 - File order to the model depends on path only, never content.
 - Cumulative diff: `IsReviewable` parts, push-touched files first, whole files
   or none; a partial block never says "entire PR".
@@ -116,8 +116,14 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   `type: [x, "null"]`, never `oneOf` with null.
 - Dashboard: unauthenticated by design (the ingress is the boundary).
   `ui/src/routing.ts` and the `web/embed.go` allowlist are one list, plus one
-  pattern (`/runs/{attempt id}`, the same regex on both sides). The
+  pattern (`/runs/{link token}`, the same regex on both sides). The
   chart series ramp is CVD-validated: never re-picked by eye.
+- Run page: keyed only by `review_attempts.link_token` (16 B crypto/rand,
+  base64url, 22 chars), linked only from the PR's summary comment; never a
+  numeric id route, never linked from the dashboard or another run's page,
+  no token in any other response. Malformed and unknown token: one 404. It
+  shows everything (comment, suggestion, dispute, quoted code), never a
+  secret, discount or margin.
 - Dashboard text only through `ui/src/i18n` (i18next): `de` mirrors `en`
   (`satisfies Catalog`, same placeholders), Swiss German, no `ß`. Language =
   browser only, `de*` -> German, else English; no switch, no stored choice
