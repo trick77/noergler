@@ -121,9 +121,11 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - Run page: keyed only by `review_attempts.link_token` (16 B crypto/rand,
   base64url, 22 chars), linked only from the PR's summary comment; never a
   numeric id route, never linked from the dashboard or another run's page,
-  no token in any other response. Malformed and unknown token: one 404. It
-  shows everything (comment, suggestion, dispute, quoted code), never a
-  secret, discount or margin.
+  no token in any response or log (`httpapi.logPath` masks it). Malformed and
+  unknown token: one 404. It shows everything (comment, suggestion, dispute,
+  quoted code, pre-existing bugs with file:line), never a secret
+  (`inference.HasSecret`), discount or margin. Run pages a later summary edit
+  no longer links are unreachable (accepted).
 - Dashboard text only through `ui/src/i18n` (i18next): `de` mirrors `en`
   (`satisfies Catalog`, same placeholders), Swiss German, no `ß`. Language =
   browser only, `de*` -> German, else English; no switch, no stored choice

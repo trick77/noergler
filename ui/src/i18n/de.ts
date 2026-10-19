@@ -316,7 +316,6 @@ export const de = {
     noFindings: "Dieser Run hat keine Findings gepostet.",
     noRun: "Es lief kein Review, deshalb gibt es keine Findings.",
     fixedTitle: "In diesem Run behoben",
-    fixedHere: "behoben",
     suggestion: "Vorschlag",
     dispute: "Antwort des Autors",
     tokensTitle: "Tokens",

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/trick77/noergler/internal/store"
 )
 
 func built() fstest.MapFS {
@@ -56,7 +58,13 @@ func TestKnownRoutesGetTheShellAndUnknownOnesA404(t *testing.T) {
 // a numeric attempt id included, stays a 404.
 func TestRunDetailRoute(t *testing.T) {
 	h := handler(built())
-	for _, path := range []string{"/runs/AAAAAAAAAAAAAAAAAAAAAA", "/runs/a-_0zZ9a-_0zZ9a-_0zZ9x"} {
+	// Real tokens, so a change to NewLinkToken that this route does not
+	// follow fails here rather than as a 404 on every new link.
+	paths := []string{"/runs/AAAAAAAAAAAAAAAAAAAAAA", "/runs/a-_0zZ9a-_0zZ9a-_0zZ9x"}
+	for range 20 {
+		paths = append(paths, "/runs/"+store.NewLinkToken())
+	}
+	for _, path := range paths {
 		w := req(t, h, path)
 		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "id=root") {
 			t.Errorf("%s: status = %d, want the shell", path, w.Code)

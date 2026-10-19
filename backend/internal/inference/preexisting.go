@@ -90,7 +90,8 @@ type DroppedPreExisting struct {
 // number in the index (hashes only), so the cited line stands.
 //
 // Code in the headline or explanation is fine (the page is reached only by
-// its link token); one that carries a secret-looking token is dropped:
+// its link token); one whose text or evidence carries a secret-looking token
+// is dropped:
 // blunt rules, like ValidateFindings, never a judge model. At most
 // maxPreExisting are kept, in the model's order.
 func ValidatePreExisting(bugs []PreExistingBug, idx diff.AnchorIndex, prAdded map[string]map[uint64]bool) (kept []PreExistingBug, dropped []DroppedPreExisting) {
@@ -111,30 +112,55 @@ func ValidatePreExisting(bugs []PreExistingBug, idx diff.AnchorIndex, prAdded ma
 }
 
 // tokenRunRE is a run of 24 or more token characters with no space.
-var tokenRunRE = regexp.MustCompile(`[A-Za-z0-9+/=_-]{24,}`)
+var tokenRunRE = regexp.MustCompile(`[A-Za-z0-9_+/=-]{24,}`)
 
-// HasSecret reports a secret-like token in model prose: a long run with a
-// digit AND a letter (an API key, a hash, base64). An identifier, a path or
-// a German compound ("Verbindungswiederherstellung") is not one; one with a
-// digit in it is, and is dropped. Blunt, like every validation rule.
+// minSecretDigits and minSecretLetters make a long run secret-like: an API
+// key, a hash or base64 mixes many of both. An identifier or a path rarely
+// carries five digits ("Sha256DigestCalculator", "http2/Client"); a German
+// compound carries none.
+const (
+	minSecretDigits  = 5
+	minSecretLetters = 5
+)
+
+// HasSecret reports a secret-like token in model text: a long run with at
+// least minSecretDigits digits and minSecretLetters letters. Blunt, like
+// every validation rule: a commit hash or a UUID counts too.
 func HasSecret(s string) bool {
 	for _, run := range tokenRunRE.FindAllString(s, -1) {
-		if strings.ContainsAny(run, "0123456789") && strings.ContainsFunc(run, isASCIILetter) {
+		digits, letters := 0, 0
+		for _, r := range run {
+			switch {
+			case r >= '0' && r <= '9':
+				digits++
+			case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z':
+				letters++
+			}
+		}
+		if digits >= minSecretDigits && letters >= minSecretLetters {
 			return true
 		}
 	}
 	return false
 }
 
-func isASCIILetter(r rune) bool { return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' }
+// AnySecret is HasSecret over several texts.
+func AnySecret(texts ...string) bool {
+	for _, t := range texts {
+		if HasSecret(t) {
+			return true
+		}
+	}
+	return false
+}
 
 func validatePreExisting(b PreExistingBug, idx diff.AnchorIndex, prAdded map[string]map[uint64]bool) (string, int) {
 	fa, ok := idx[b.File]
 	if !ok {
 		return string(DropUnknownFile), 0
 	}
-	if HasSecret(b.Headline) || HasSecret(b.Explanation) {
-		return "secret_in_prose", 0
+	if AnySecret(append([]string{b.Headline, b.Explanation}, b.Evidence...)...) {
+		return "secret_in_text", 0
 	}
 	history := prAdded[b.File]
 	var shown []uint64

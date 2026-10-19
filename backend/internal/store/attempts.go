@@ -30,8 +30,8 @@ type Attempt struct {
 	// pre-flight skip, a timeout); a late repo-unclaimed skip carries the call
 	// it paid for.
 	Call *LLMCall
-	// LinkToken is the run page's key (NewLinkToken). Empty when the
-	// attempt posts no summary to link it from: no token, no page.
+	// LinkToken is the run page's key; InsertAttempt draws one
+	// (NewLinkToken) when empty. A caller that links the page sets it first.
 	LinkToken string
 }
 
@@ -52,9 +52,8 @@ func (s *Store) InsertAttempt(ctx context.Context, a Attempt) (int64, error) {
 		r := a.Reason
 		reason = &r
 	}
-	var token *string
-	if a.LinkToken != "" {
-		token = &a.LinkToken
+	if a.LinkToken == "" {
+		a.LinkToken = NewLinkToken()
 	}
 	var id int64
 	if err := s.pool.QueryRow(ctx, `
@@ -64,7 +63,7 @@ func (s *Store) InsertAttempt(ctx context.Context, a Attempt) (int64, error) {
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING id`,
 		a.TeamSlug, a.Key.Project, a.Key.Repo, a.Key.PRID, a.Kind,
-		a.Outcome, reason, a.ElapsedMS, a.RunID, a.CostNanoUSD, token).Scan(&id); err != nil {
+		a.Outcome, reason, a.ElapsedMS, a.RunID, a.CostNanoUSD, a.LinkToken).Scan(&id); err != nil {
 		return 0, err
 	}
 	if a.Call != nil {

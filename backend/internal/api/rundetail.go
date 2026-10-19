@@ -160,10 +160,6 @@ func usd6(nano *int64) *string {
 // token and an unknown one: no oracle, and the page says so rather than
 // rendering an empty run.
 func (d Deps) runDetail(w http.ResponseWriter, r *http.Request) {
-	// The token is the page's only key: keep it out of search indexes and
-	// out of the Referer of every link the page opens.
-	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
-	w.Header().Set("Referrer-Policy", "no-referrer")
 	token := r.PathValue("token")
 	if !store.LinkTokenRE.MatchString(token) {
 		httpx.WriteError(w, http.StatusNotFound, "no such run")

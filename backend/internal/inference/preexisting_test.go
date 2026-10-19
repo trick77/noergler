@@ -66,9 +66,12 @@ func TestValidatePreExisting(t *testing.T) {
 		{"german compound is prose", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "h",
 			Explanation: "Die Verbindungswiederherstellung schlaegt fehl", Evidence: []string{"mu.Lock()"}}, "", 11},
 		{"secret in the explanation", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "h",
-			Explanation: "key 0123456789abcdef0123456789abcdef is committed", Evidence: []string{"mu.Lock()"}}, "secret_in_prose", 0},
-		{"base64 in the headline", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "token c2VjcmV0LXRva2VuLXZhbHVlLTEyMw== leaks",
-			Explanation: "e", Evidence: []string{"mu.Lock()"}}, "secret_in_prose", 0},
+			Explanation: "key 0123456789abcdef0123456789abcdef is committed", Evidence: []string{"mu.Lock()"}}, "secret_in_text", 0},
+		{"secret in the evidence", bug(11, `const key = "Zq9X2mT7vR4kP8wL3nB6yH1c"`), "secret_in_text", 0},
+		{"a digit in an identifier is fine", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "h",
+			Explanation: "Sha256DigestCalculatorFactory leaks; see src/main/java/com/acme/http2/Client", Evidence: []string{"mu.Lock()"}}, "", 11},
+		{"base64 in the headline", PreExistingBug{File: "src/labels.ts", Line: 11, Headline: "token q8Zr3vT1xK9mP2wN7bL5yH4cD6fG0jS= leaks",
+			Explanation: "e", Evidence: []string{"mu.Lock()"}}, "secret_in_text", 0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

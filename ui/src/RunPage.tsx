@@ -457,7 +457,7 @@ function FindingRows({
             <th className={th + " w-px"}>{t("run.severity")}</th>
             <th className={th + " w-px"}>{t("run.where")}</th>
             <th className={th}>{t("run.finding")}</th>
-            <th className={th + " w-px"}>{t("run.result")}</th>
+            {!fixedTable && <th className={th + " w-px"}>{t("run.result")}</th>}
           </tr>
         </thead>
         <tbody>
@@ -486,10 +486,11 @@ function FindingRows({
                 <td className={td}>
                   <FindingText f={f} />
                 </td>
-                <td className={td + " whitespace-nowrap text-[12.5px]"}>
-                  {fixedTable ? (
-                    <span className="text-online">{t("run.fixedHere")}</span>
-                  ) : (
+                {/* The fixed table has no result column: every row is
+                    fixed, and the run that posted it is not linked (a
+                    run page is linked only from its summary comment). */}
+                {!fixedTable && (
+                  <td className={td + " whitespace-nowrap text-[12.5px]"}>
                     <>
                       <span className="text-online">{t("run.posted")}</span>
                       {f.replied && (
@@ -506,8 +507,8 @@ function FindingRows({
                           </div>
                         ))}
                     </>
-                  )}
-                </td>
+                  </td>
+                )}
               </tr>
             );
           })}

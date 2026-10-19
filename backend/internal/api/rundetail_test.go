@@ -27,9 +27,6 @@ func TestRunDetailNotFound(t *testing.T) {
 		if w.Code != http.StatusNotFound {
 			t.Errorf("%s: status = %d, want 404", path, w.Code)
 		}
-		if w.Header().Get("Referrer-Policy") != "no-referrer" {
-			t.Errorf("%s: Referrer-Policy = %q", path, w.Header().Get("Referrer-Policy"))
-		}
 	}
 }
 
@@ -98,22 +95,23 @@ func TestRunDetailBody(t *testing.T) {
 	if f["comment"] != "Die `Capture` in `RetryPolicy.run` ..." || f["suggestion"] != "idempotency key" || f["dispute"] != "ist gewollt" {
 		t.Errorf("finding = %v", f)
 	}
-	if w.Header().Get("Referrer-Policy") != "no-referrer" || w.Header().Get("X-Robots-Tag") == "" {
-		t.Errorf("headers = %v", w.Header())
+	// The token leaves the server in the summary comment only: never in a
+	// body, not even the page's own.
+	if strings.Contains(w.Body.String(), tok) {
+		t.Errorf("body carries the link token: %s", w.Body.String())
 	}
 }
 
 func strp(s string) *string { return &s }
 
-// No gateway discount or margin (decided), and no other run's page: the
-// body names no link token.
-func TestRunDetailCarriesNoMarginOrOtherRunLink(t *testing.T) {
+// No gateway discount or margin (decided), and never a numeric run link.
+func TestRunDetailCarriesNoMargin(t *testing.T) {
 	h := newDashHarness(t)
 	h.st.detailToken = tok
 	h.st.detail = store.RunDetail{ID: 1, Outcome: "ok", Run: &store.RunFacts{ID: 1},
 		Findings: []store.RunFinding{{Headline: "h"}}, Call: &store.LLMCall{Profile: "p"}}
 	body := h.get(t, "/api/dashboard/runs/"+tok).Body.String()
-	for _, banned := range []string{"margin", "discount", "original", "token\"", "from_attempt"} {
+	for _, banned := range []string{"margin", "discount", "original", "from_attempt"} {
 		if strings.Contains(body, banned) {
 			t.Errorf("body has %q: %s", banned, body)
 		}

@@ -281,8 +281,9 @@ func reviewCase(ctx context.Context, client Reviewer, c Case, assembled inferenc
 	for i, d := range res.PreExistingDropped {
 		// Results are committed: prose carrying a secret-like token
 		// is not written down, whatever the claim was dropped for.
-		if inference.HasSecret(d.Bug.Headline) || inference.HasSecret(d.Bug.Explanation) {
+		if inference.AnySecret(append([]string{d.Bug.Headline, d.Bug.Explanation}, d.Bug.Evidence...)...) {
 			res.PreExistingDropped[i].Bug.Headline, res.PreExistingDropped[i].Bug.Explanation = "", ""
+			res.PreExistingDropped[i].Bug.Evidence = nil
 		}
 	}
 	if out.Err != nil {

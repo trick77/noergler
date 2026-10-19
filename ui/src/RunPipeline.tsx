@@ -388,40 +388,47 @@ export function PreExistingCard({
   if (bugs.length === 0) return null;
   return (
     <Card title={t("run.preExistingTitle")} note={t("run.preExistingNote")}>
-      <ul className="flex flex-col gap-3">
-        {bugs.map((b, i) => {
-          const href = sourceUrl(tag, base, b.file, b.line, p.commit);
-          const where = `${b.file}:${b.line}`;
-          return (
-            <li
-              key={i}
-              className="border-b border-border-soft pb-3 last:border-0 last:pb-0"
-            >
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <span className="text-[14px] text-ink">{b.headline}</span>
-                {href ? (
-                  <a
-                    href={href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-mono text-[12.5px] text-muted hover:underline"
-                  >
-                    {where} ↗
-                  </a>
-                ) : (
-                  <span className="font-mono text-[12.5px] text-muted">
-                    {where}
-                  </span>
-                )}
-              </div>
-              <p className="mt-1 whitespace-pre-wrap break-words text-[13.5px] text-ink-dim">
-                {b.explanation}
-              </p>
-              <Evidence lines={b.evidence} />
-            </li>
-          );
-        })}
-      </ul>
+      {/* The same table as the posted findings: where, linked to the line
+          at the reviewed commit, and the finding in full. */}
+      <div className="overflow-x-auto overscroll-x-contain">
+        <table className={table}>
+          <thead>
+            <tr>
+              <th className={th + " w-px"}>{t("run.where")}</th>
+              <th className={th}>{t("run.finding")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {bugs.map((b, i) => {
+              const href = sourceUrl(tag, base, b.file, b.line, p.commit);
+              const where = `${b.file}:${b.line}`;
+              return (
+                <tr key={`${where}:${i}`}>
+                  <td className={tdTag}>
+                    {href ? (
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="hover:text-ink hover:underline"
+                      >
+                        {where} ↗
+                      </a>
+                    ) : (
+                      where
+                    )}
+                  </td>
+                  <td className={td}>
+                    <div className="text-ink">{b.headline}</div>
+                    <div className={prose}>{b.explanation}</div>
+                    <Evidence lines={b.evidence} />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </Card>
   );
 }

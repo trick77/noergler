@@ -65,9 +65,49 @@ func TestRunDetail(t *testing.T) {
 	if _, ok, err := s.RunDetail(ctx, NewLinkToken()); ok || err != nil {
 		t.Errorf("unknown token = %v, %v; want not found", ok, err)
 	}
-	// An attempt without a token has no page; an empty token finds none.
 	if _, ok, err := s.RunDetail(ctx, ""); ok || err != nil {
 		t.Errorf("empty token = %v, %v; want not found", ok, err)
+	}
+}
+
+// An attempt inserted without a token gets one drawn, never a NULL or a
+// shared value.
+func TestInsertAttemptDrawsAToken(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	seen := map[string]bool{}
+	for range 3 {
+		id, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "error"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var tok string
+		if err := s.pool.QueryRow(ctx, `SELECT link_token FROM review_attempts WHERE id = $1`, id).Scan(&tok); err != nil {
+			t.Fatal(err)
+		}
+		if !LinkTokenRE.MatchString(tok) || seen[tok] {
+			t.Errorf("token %q: malformed or repeated", tok)
+		}
+		seen[tok] = true
+	}
+}
+
+// Migration 0013's column default fills an insert that names no token: it
+// must yield what the routes accept, distinct per row.
+func TestLinkTokenColumnDefault(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	seen := map[string]bool{}
+	for range 20 {
+		var tok string
+		if err := s.pool.QueryRow(ctx, `INSERT INTO review_attempts (team_slug, project_key, repo_slug, pr_id, kind, outcome)
+			VALUES ('t', 'P', 'r', 1, 'auto', 'error') RETURNING link_token`).Scan(&tok); err != nil {
+			t.Fatal(err)
+		}
+		if !LinkTokenRE.MatchString(tok) || seen[tok] {
+			t.Fatalf("default token %q: malformed or repeated", tok)
+		}
+		seen[tok] = true
 	}
 }
 
