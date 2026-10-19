@@ -1,14 +1,14 @@
 // Hand-rolled, like ../rongo's: a handful of pages do not need a router.
 
-export type Page = "live" | "runs" | "metrics" | "teams" | "faq" | "run";
+export type Page = "live" | "runs" | "teams" | "metrics" | "faq" | "run";
 
 /** PAGES is the nav. "run" is not in it: a run detail page is reached only
  *  from the PR's summary comment, and it highlights Runs while open. */
 export const PAGES: Exclude<Page, "run">[] = [
   "live",
   "runs",
-  "metrics",
   "teams",
+  "metrics",
   "faq",
 ];
 
