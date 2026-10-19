@@ -150,7 +150,8 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   the posting stage stores it, with the confirmation, only when an answer
   posts. At most `MaxToolRounds` rounds of `MaxToolCallsPerTurn` calls, then
   one round with `tool_choice: none`, tools still defined; every call id
-  gets a result. Tool support
+  gets a result. The assistant turn goes back as `resp.Assistant()`,
+  never rebuilt from content and tool calls. Tool support
   is read off the profile at startup, never required: without it a Q&A is
   one plain call.
 - HTTP totals logged once at the end of `post`, never deferred in the entry.

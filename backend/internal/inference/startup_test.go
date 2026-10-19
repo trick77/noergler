@@ -57,7 +57,7 @@ func (f *fakeGateway) start(t *testing.T, alias string) *httptest.Server {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(body))
-		case strings.HasSuffix(r.URL.Path, "/chat/completions"):
+		case strings.HasSuffix(r.URL.Path, "/chat/completions"), strings.HasSuffix(r.URL.Path, "/responses"):
 			f.gotChat++
 			f.lastChatBody, _ = io.ReadAll(r.Body)
 			if f.delay > 0 {
@@ -79,7 +79,9 @@ func (f *fakeGateway) start(t *testing.T, alias string) *httptest.Server {
 				body = f.chatBodies[min(f.gotChat, n)-1]
 			}
 			f.chatRequests = append(f.chatRequests, f.lastChatBody)
-			if body == "" {
+			if body == "" && strings.HasSuffix(r.URL.Path, "/responses") {
+				body = responsesBody(`{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}`)
+			} else if body == "" {
 				body = `{"choices":[{"message":{"role":"assistant","content":"ok"}}],` +
 					`"usage":{"prompt_tokens":5,"completion_tokens":1,"total_tokens":6}}`
 			}
@@ -90,6 +92,14 @@ func (f *fakeGateway) start(t *testing.T, alias string) *httptest.Server {
 	}))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// responsesBody is a Responses-protocol answer: a reasoning item, as
+// llmwiretest.ResponsesModel's always carries, then the given output items.
+func responsesBody(items ...string) string {
+	return `{"object":"response","status":"completed","output":[` +
+		`{"type":"reasoning","id":"` + llmwiretest.ReasoningItemID + `","summary":[],"encrypted_content":"x"},` +
+		strings.Join(items, ",") + `],"usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12}}`
 }
 
 // env builds the environment llmwire reads, routing testProfile through the
@@ -155,6 +165,28 @@ func TestStartupResolvesWindow(t *testing.T) {
 	// Read off the profile, never probed: the test model takes tools.
 	if !c.Tools() {
 		t.Error("Tools() = false for a profile with tool support")
+	}
+}
+
+// A profile on the Responses protocol (gpt-6.1-sol) takes tools there, and
+// the ping goes over that route: tools are on at boot.
+func TestStartupResponsesProfileTakesTools(t *testing.T) {
+	const alias = "gateway-alias"
+	f := &fakeGateway{}
+	srv := f.start(t, alias)
+	c := newTestClient(t, srv, alias, func(o *Options) {
+		o.Model = llmwiretest.ResponsesModel
+		o.Env = env(srv.URL, alias, map[string]string{"LLMWIRE_LITELLM_MODELS": llmwiretest.ResponsesModel + "=" + alias})
+	})
+
+	if err := c.Startup(context.Background()); err != nil {
+		t.Fatalf("Startup: %v", err)
+	}
+	if !c.Tools() {
+		t.Error("Tools() = false for a Responses profile with tool support")
+	}
+	if f.gotChat != 1 || !bytes.Contains(f.lastChatBody, []byte(`"input"`)) {
+		t.Errorf("ping ran %d times with body %s, want once on /responses", f.gotChat, f.lastChatBody)
 	}
 }
 

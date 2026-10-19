@@ -91,7 +91,9 @@ func (c *Client) mentionWithTools(ctx context.Context, req MentionRequest) Menti
 			res.Cost = SumCosts(res.Rounds)
 			return res
 		}
-		messages = append(messages, llmwire.Message{Role: llmwire.RoleAssistant, Text: resp.Content, ToolCalls: resp.ToolCalls})
+		// The turn as the model sent it: on the Responses protocol it carries
+		// the reasoning item, and a rebuilt turn without it is refused.
+		messages = append(messages, resp.Assistant())
 		answered := map[string]string{}
 		for i, call := range resp.ToolCalls {
 			result := toolCapResult

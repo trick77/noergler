@@ -44,8 +44,8 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/tiktoken-go/tokenizer v0.8.1 h1:4obDoB6/dhdBt9xMweX4nww5cjdOq/nYF4ecwPq2+mg=
 github.com/tiktoken-go/tokenizer v0.8.1/go.mod h1:eLA0t6nGvn9mDc7gt90qt7pMat+gE9ViqwQ6l9B+tA4=
-github.com/trick77/llmwire v0.1.4 h1:cZjqC3bdJeEpy9nQ/g8mghNJnLF0SDZSzGZaQe+TsXY=
-github.com/trick77/llmwire v0.1.4/go.mod h1:pIqr5CIH1ULPRg8LvMRZzN5QR3GFRkLClMqW7tQxEFA=
+github.com/trick77/llmwire v0.1.5-0.20261019125255-633716882625 h1:iWi4YNFttwFdeaPEngkj4s0ZXYWeQ1wcwEE15etEUNE=
+github.com/trick77/llmwire v0.1.5-0.20261019125255-633716882625/go.mod h1:pIqr5CIH1ULPRg8LvMRZzN5QR3GFRkLClMqW7tQxEFA=
 github.com/trick77/ship/kit v0.16.0 h1:A+cA+nPa/a10393+p1BFrLS9gJr/UnDkTZ2UN/H0HJQ=
 github.com/trick77/ship/kit v0.16.0/go.mod h1:cE+kQhN2nb5j2ML174YKdGrC41M2GxnILzQLqFupsHE=
 golang.org/x/sync v0.24.0 h1:iqiDrGoDgyuvAKrhLQthUEzU/R378N78gXbBjxed7oA=
