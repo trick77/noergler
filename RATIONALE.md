@@ -92,6 +92,11 @@ an incident or an eval run: read the reason before relaxing a rule.
   stay on the unauthenticated dashboard.
 - Tool support never required: `Require(Needs{Tools})` would disable a team
   on a model without it, for a feature a Q&A can do without.
+- Tools withheld get a log line: prod ran gpt-6.1-sol (profile: no tools)
+  and every settings question came back "team_config steht mir nicht zur
+  Verfügung", with nothing in the logs to say why.
+- First name on every question (user, 2026-10-19), Q&A included; it was
+  held back as talking down.
 - `handedOff`: the job path once released the key unconditionally, so a push
   or merge ran during a staged mention's inference.
 - HTTP totals not deferred: a defer fires before the staged call (`inference=0`).

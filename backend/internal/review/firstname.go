@@ -76,8 +76,9 @@ func normalizeCase(s string) string {
 }
 
 // nameIntents are the reply intents that may address the author by name; a
-// question or a rebuttal ("other") reads as talking down with one.
-var nameIntents = map[string]bool{"acknowledges": true, "disputes": true}
+// question always is (user, 2026-10-19), a rebuttal ("other") reads as
+// talking down with one.
+var nameIntents = map[string]bool{"acknowledges": true, "disputes": true, "question": true}
 
 // leadGreeting is what may stand before a leading address ("Ok Jan - ",
 // "Danke Jan, "), in both output languages. No German sentence openers

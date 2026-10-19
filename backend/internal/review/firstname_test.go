@@ -73,25 +73,26 @@ func TestGuardName(t *testing.T) {
 		{"not in the reply", "Noted.", "Jan", "acknowledges", "Noted.", "unused"},
 		{"acknowledges may", "Ok Jan - noted.", "Jan", "acknowledges", "Ok Jan - noted.", "used"},
 		{"disputes may", "Jan, understood.", "Jan", "disputes", "Jan, understood.", "used"},
-		{"question: leading cut", "Jan, the check is on line 2.", "Jan", "question", "The check is on line 2.", "cut"},
+		{"question may", "Jan, the check is on line 2.", "Jan", "question", "Jan, the check is on line 2.", "used"},
+		{"other: leading cut", "Jan, the check is on line 2.", "Jan", "other", "The check is on line 2.", "cut"},
 		{"other: ok-lead cut", "Ok Jan - line 3 still reads it.", "Jan", "other", "Line 3 still reads it.", "cut"},
-		{"en dash", "Jan – see line 2.", "Jan", "question", "See line 2.", "cut"},
-		{"ellipsis", "Jan… line 2.", "Jan", "question", "Line 2.", "cut"},
-		{"sure", "Sure Jan, line 2.", "Jan", "question", "Line 2.", "cut"},
-		{"hello", "Hello Jan, line 2.", "Jan", "question", "Line 2.", "cut"},
-		{"greeting without punctuation", "Hi Jan the check is on line 2.", "Jan", "question", "The check is on line 2.", "cut"},
-		{"identifier keeps its case", "Jan, x is nil on line 2.", "Jan", "question", "x is nil on line 2.", "cut"},
-		{"brand keeps its case", "Jan: iOS needs it.", "Jan", "question", "iOS needs it.", "cut"},
-		{"name alone is not cut to nothing", "Ok Jan.", "Jan", "question", "Ok Jan.", "kept"},
-		{"name as subject is no address", "Jan said line 2.", "Jan", "question", "Jan said line 2.", "kept"},
-		{"mid-reply kept", "As Jan said, line 2.", "Jan", "question", "As Jan said, line 2.", "kept"},
-		{"word boundary", "January release.", "Jan", "question", "January release.", "unused"},
-		{"German greeting", "Danke Jan, die Prüfung steht auf Zeile 2.", "Jan", "question", "Die Prüfung steht auf Zeile 2.", "cut"},
+		{"en dash", "Jan – see line 2.", "Jan", "other", "See line 2.", "cut"},
+		{"ellipsis", "Jan… line 2.", "Jan", "other", "Line 2.", "cut"},
+		{"sure", "Sure Jan, line 2.", "Jan", "other", "Line 2.", "cut"},
+		{"hello", "Hello Jan, line 2.", "Jan", "other", "Line 2.", "cut"},
+		{"greeting without punctuation", "Hi Jan the check is on line 2.", "Jan", "other", "The check is on line 2.", "cut"},
+		{"identifier keeps its case", "Jan, x is nil on line 2.", "Jan", "other", "x is nil on line 2.", "cut"},
+		{"brand keeps its case", "Jan: iOS needs it.", "Jan", "other", "iOS needs it.", "cut"},
+		{"name alone is not cut to nothing", "Ok Jan.", "Jan", "other", "Ok Jan.", "kept"},
+		{"name as subject is no address", "Jan said line 2.", "Jan", "other", "Jan said line 2.", "kept"},
+		{"mid-reply kept", "As Jan said, line 2.", "Jan", "other", "As Jan said, line 2.", "kept"},
+		{"word boundary", "January release.", "Jan", "other", "January release.", "unused"},
+		{"German greeting", "Danke Jan, die Prüfung steht auf Zeile 2.", "Jan", "other", "Die Prüfung steht auf Zeile 2.", "cut"},
 		{"Swiss greeting", "Hoi Jan – siehe Zeile 2.", "Jan", "other", "Siehe Zeile 2.", "cut"},
-		{"two-word German greeting", "Gern geschehen Jan, die Prüfung steht auf Zeile 2.", "Jan", "question", "Die Prüfung steht auf Zeile 2.", "cut"},
+		{"two-word German greeting", "Gern geschehen Jan, die Prüfung steht auf Zeile 2.", "Jan", "other", "Die Prüfung steht auf Zeile 2.", "cut"},
 		{"German acknowledges may", "Alles klar Jan, ist notiert.", "Jan", "acknowledges", "Alles klar Jan, ist notiert.", "used"},
-		{"umlaut boundary", "Jürgen, see.", "Jürg", "question", "Jürgen, see.", "unused"},
-		{"NFD reply", "Jürg, see line 2.", "Jürg", "question", "See line 2.", "cut"},
+		{"umlaut boundary", "Jürgen, see.", "Jürg", "other", "Jürgen, see.", "unused"},
+		{"NFD reply", "Jürg, see line 2.", "Jürg", "other", "See line 2.", "cut"},
 	}
 	for _, c := range cases {
 		got, state := guardName(c.reply, c.who, c.intent, true)
@@ -118,7 +119,7 @@ func TestGuardNameLeavesCaseAlone(t *testing.T) {
 }
 
 // End to end: the prompt carries the name, and a question's leading address
-// is cut from what is posted.
+// is posted as written.
 func TestFindingReplyNamesTheAuthor(t *testing.T) {
 	h, p := replyHarness(t)
 	h.r.displayName = defaultNameRE
@@ -132,8 +133,31 @@ func TestFindingReplyNamesTheAuthor(t *testing.T) {
 	if len(h.llm.Replies) != 1 || !strings.Contains(h.llm.Replies[0].Prompt, "## The author's first name\n\nJan\n") {
 		t.Fatalf("prompt lacks the name:\n%v", h.llm.Replies)
 	}
-	if len(h.bb.Replies) != 1 || h.bb.Replies[0].Text != "It means the input is never checked." {
+	if len(h.bb.Replies) != 1 || h.bb.Replies[0].Text != "Jan, it means the input is never checked." {
 		t.Errorf("posted = %+v", h.bb.Replies)
+	}
+}
+
+// A Q&A answer addresses the asker by name too; unknown says so.
+func TestMentionPromptNamesTheAsker(t *testing.T) {
+	h := newHarness(t, nil)
+	h.r.displayName = defaultNameRE
+	h.r.mentionTmpl = "## The developer's first name\n\n{asker_first_name}\n"
+	p := mentionPayload("@noergler what are the settings?", "jsaner")
+	p.Comment.Author.DisplayName = "Saner Jan (SJH)"
+
+	h.r.HandleMention(context.Background(), p, "platform", nil)
+	p.Comment.Author.DisplayName = "no match"
+	h.r.HandleMention(context.Background(), p, "platform", nil)
+
+	if len(h.llm.Mentions) != 2 {
+		t.Fatalf("expected two mention calls, got %d", len(h.llm.Mentions))
+	}
+	if !strings.Contains(h.llm.Mentions[0].Prompt, "## The developer's first name\n\nJan\n") {
+		t.Errorf("prompt lacks the name:\n%s", h.llm.Mentions[0].Prompt)
+	}
+	if !strings.Contains(h.llm.Mentions[1].Prompt, "## The developer's first name\n\n_Unknown._\n") {
+		t.Errorf("prompt lacks the unknown name:\n%s", h.llm.Mentions[1].Prompt)
 	}
 }
 

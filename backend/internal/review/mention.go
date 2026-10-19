@@ -151,6 +151,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 
 	repoInstructions := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.DisplayID)
 	ticket, parent := r.fetchTicket(ctx, pr.FromRef.DisplayID, pr.Title, prTag)
+	name := firstName(r.displayName, comment.Author.DisplayName)
 
 	prompt := inference.RenderMentionPrompt(inference.MentionPromptRequest{
 		Template:         r.mentionTmpl,
@@ -159,11 +160,13 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		RepoInstructions: repoInstructions,
 		TicketContext:    renderTicketContext(ticket, parent),
 		PRDescription:    r.prDescription(ctx, prTag, pr),
+		AskerFirstName:   name,
 		Language:         l,
 	})
 
 	job := &mentionJob{
 		project: project, repo: repo, prID: pr.ID, replyTo: comment.ID, lang: l, counter: httpCounter,
+		name: name, namesOn: r.displayName != nil,
 		ask: &mentionAsk{key: key, prTag: prTag, user: comment.Author.Name, text: question, lang: l},
 	}
 	req := inference.MentionRequest{
@@ -194,7 +197,11 @@ type mentionJob struct {
 	project, repo string
 	prID, replyTo int
 	// lang is the asker's at the start; a switch this turn overrides it.
-	lang    lang.Lang
+	lang lang.Lang
+	// name is the asker's first name, "" when unknown; namesOn as in
+	// replyJob.
+	name    string
+	namesOn bool
 	ask     *mentionAsk
 	counter *httpstats.Counter
 	res     inference.MentionResult
@@ -217,9 +224,16 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 		r.logCost(ctx, prTag, c)
 		r.recordCommentCall(ctx, j.ask.key, store.CallQuestion, replyTo, c)
 	}
-	if len(result.Rounds) > 1 {
+	// Which way the tools went: without them a settings question is
+	// answered with "cannot see", and prod once ran a model so unnoticed.
+	switch {
+	case result.ToolsOff != "":
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: Q&A tools withheld: %s", prTag, result.ToolsOff))
+	case len(result.Rounds) > 1:
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: Q&A took %d calls, tools %v (%d refused over the cap), total %s",
 			prTag, len(result.Rounds), result.ToolCalls, result.CappedCalls, costTotal(result.Cost)))
+	case len(result.Rounds) == 1:
+		r.log.InfoContext(ctx, prTag+": Q&A tools offered, none called")
 	}
 	// A tool loop can run for minutes: the team may have given the repo up
 	// meanwhile, as in a review's post.
@@ -269,9 +283,10 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 		if answer == "" {
 			answer = inference.MentionEmptyReply(l)
 		}
+		_, nameState := guardName(answer, j.name, "question", j.namesOn)
 		answer = prefix + answer
 		r.reply(ctx, project, repo, prID, replyTo, answer)
-		r.log.InfoContext(ctx, "Posted Q&A reply on "+prTag)
+		r.log.InfoContext(ctx, fmt.Sprintf("Posted Q&A reply on %s (name=%s)", prTag, nameState))
 	default:
 		r.log.ErrorContext(ctx, fmt.Sprintf("Mention Q&A on %s failed: %v", prTag, result.Err))
 	}

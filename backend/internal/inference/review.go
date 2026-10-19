@@ -154,7 +154,11 @@ type MentionResult struct {
 	// ToolOverflow is OutcomeTooLarge caused by the tool history, not by
 	// the PR: the first round fitted.
 	ToolOverflow bool
-	Err          error
+	// ToolsOff is why the tools were not offered, "" when they were or the
+	// request had none: a model without them answers settings questions
+	// with "cannot see", so the caller logs it.
+	ToolsOff string
+	Err      error
 }
 
 // Mention answers a developer's question about a PR.
@@ -163,16 +167,23 @@ type MentionResult struct {
 // parser falls back to the raw text, so a model that ignores the envelope
 // still produces a usable reply.
 func (c *Client) Mention(ctx context.Context, req MentionRequest) MentionResult {
-	roomForTools := !c.Ready() || req.PromptTokens+ToolHeadroomTokens <= c.FitCeiling()
-	if len(req.Tools) > 0 && c.tools && roomForTools {
+	toolsOff := ""
+	switch {
+	case len(req.Tools) == 0:
+	case !c.tools:
+		toolsOff = "the model's profile has no tool support"
+	case c.Ready() && req.PromptTokens+ToolHeadroomTokens > c.FitCeiling():
+		toolsOff = "no room: " + itoa(req.PromptTokens) + "+" + itoa(ToolHeadroomTokens) +
+			" tokens exceed the fit ceiling of " + itoa(c.FitCeiling())
+	default:
 		return c.mentionWithTools(ctx, req)
 	}
 	resp, outcome, err := c.answer(ctx, req.Prompt, req.PromptTokens, nil)
 	if outcome != OutcomeOK {
-		return MentionResult{Outcome: outcome, Err: err}
+		return MentionResult{Outcome: outcome, ToolsOff: toolsOff, Err: err}
 	}
 	cost := CostFrom(resp)
-	return MentionResult{Answer: ParseMention(resp.Content), Cost: cost, Rounds: []CallCost{cost}}
+	return MentionResult{Answer: ParseMention(resp.Content), Cost: cost, Rounds: []CallCost{cost}, ToolsOff: toolsOff}
 }
 
 // Tools reports whether the model's profile takes tool calls, as read at

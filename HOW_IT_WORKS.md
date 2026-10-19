@@ -261,7 +261,9 @@ lists; a settings answer is a Markdown table),
 `pr_status` (runs, the latest outcomes and skip reasons, cost against the cap)
 and `set_my_language` (the asker's language, only when their own comment names
 it). Up to three tool rounds, four calls each, then a final round without
-tools. The gateway calls are staged off the worker like a review; the reply is
+tools. Each answer logs whether the tools were offered, called or withheld and
+why, and team startup logs `tools=yes|no`: a model without them answers a
+settings question with "cannot see". The gateway calls are staged off the worker like a review; the reply is
 posted back on it. Every call is recorded and counts toward the PR's cost; at
 the cap a question is not answered. A mention writes the PR's row first (its
 review pointer untouched), so a PR only ever asked about is capped too.
@@ -284,9 +286,10 @@ PR's cost; at the cap, replies stop.
 The answer may address the author by first name ("Ok Jan - ..."), not
 always. `BITBUCKET_DISPLAY_NAME_PATTERN` extracts it from the Bitbucket
 `displayName` (default `Last First (CODE)`: the last word before the bracket); no match, no name. The model
-is told to use it only when acknowledging or accepting a dispute; on a question
-or any other intent code cuts a leading address from the answer. The name is
-never stored or logged. Q&A answers and reviews carry no name.
+is told to address a question by it, always, and may use it when acknowledging
+or accepting a dispute; on any other intent code cuts a leading address from
+the answer. A Q&A answer addresses the asker by the same name. The name is
+never stored or logged. Reviews carry no name.
 
 ## 12a. Language
 
