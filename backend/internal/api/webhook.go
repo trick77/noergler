@@ -216,7 +216,8 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 		}
 		trigger := "@" + d.BotUsername
 		mentioned := strings.Contains(strings.ToLower(text), strings.ToLower(trigger))
-		// A reply may be on one of our finding threads. Whether it is takes a
+		// A reply may be on one of our finding threads or on the summary,
+		// which is answered like a mention. Whether it is takes a
 		// DB lookup, which the job does on the worker: the route stays
 		// DB-free. The bot's own replies ("Fixed in ...") come back here
 		// too, and an empty reply stays "comment without mention", as pinned.
@@ -224,7 +225,7 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 			!strings.EqualFold(p.Comment.Author.Name, d.BotUsername)
 		if !mentioned {
 			if reply {
-				d.Log.InfoContext(ctx, "reply without "+trigger+", checked for a finding thread",
+				d.Log.InfoContext(ctx, "reply without "+trigger+", checked for a finding or summary thread",
 					"comment_id", commentID, "parent_id", p.CommentParentID)
 				d.Queue.SubmitJob(key, slug, "finding-reply", func(ctx context.Context, sched teams.Scheduler) bool {
 					_, handedOff := rv.HandleFindingReply(ctx, p, slug, sched)

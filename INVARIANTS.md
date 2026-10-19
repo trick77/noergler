@@ -112,7 +112,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   `pr:` prefix off the RAW json (never `Decode` first) -> validate -> repo
   from toRef then fromRef -> ownership -> exclude_repos (review-starting
   events only) -> dispatch.
-- The mention gate is the route's; `HandleMention` does not check.
+- The mention gate is the route's; `HandleMention` does not check. One
+  exception, on the worker: a reply directly under the stored summary is a
+  mention, from anyone (user, 2026-10-19); nested under it, not.
 - 404/503 for a slug before 401. `/onboard` and the settings PUT decode the
   body AFTER auth.
 - Response bodies are structs, never maps (`encoding/json` sorts map keys).

@@ -417,3 +417,37 @@ func TestExcerptAroundNumbersTheWindow(t *testing.T) {
 		t.Errorf("trailing newline: %q", got)
 	}
 }
+
+// A reply on the summary is addressed to the bot: a Q&A, whoever asks. A
+// reply elsewhere off a finding stays unanswered, and a mention on the
+// summary is left to the mention route.
+func TestReplyOnTheSummaryIsAnsweredLikeAMention(t *testing.T) {
+	summaryReply := func(text string, parent int) (*harness, *webhook.Payload) {
+		h := newHarness(t, nil)
+		h.st.skipState = &store.SkipState{Summary: &store.SummaryComment{ID: 555, Version: 1}}
+		h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "Three settings."}
+		p := prPayload(webhook.EventCommentAdded)
+		p.Comment = &webhook.Comment{ID: 900, Text: text, Author: webhook.User{Name: "bob"}}
+		p.CommentParentID = parent
+		return h, p
+	}
+
+	h, p := summaryReply("Was für Team-Einstellungen gibt es?", 555)
+	if handled, _ := h.r.HandleFindingReply(context.Background(), p, "platform", nil); !handled {
+		t.Error("a reply on the summary must be handled here")
+	}
+	if len(h.llm.Mentions) != 1 || len(h.bb.Replies) != 1 || h.bb.Replies[0].Line != 900 {
+		t.Fatalf("mentions = %d, replies = %+v, want one answer under comment 900", len(h.llm.Mentions), h.bb.Replies)
+	}
+
+	h, p = summaryReply("Was für Team-Einstellungen gibt es?", 777)
+	h.r.HandleFindingReply(context.Background(), p, "platform", nil)
+	if len(h.llm.Mentions)+len(h.bb.Replies) != 0 {
+		t.Error("a reply on another comment must stay unanswered")
+	}
+
+	h, p = summaryReply("@noergler Was für Team-Einstellungen gibt es?", 555)
+	if handled, _ := h.r.HandleFindingReply(context.Background(), p, "platform", nil); handled || len(h.llm.Mentions) != 0 {
+		t.Error("a mention on the summary goes to HandleMention from the route, not from here")
+	}
+}
