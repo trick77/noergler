@@ -288,7 +288,7 @@ export function MetricsPage() {
             <>
               <Chart
                 series={costSeries}
-                width={856}
+                width={1290}
                 height={200}
                 mark="line"
                 ticks={costTicks}
@@ -312,7 +312,7 @@ export function MetricsPage() {
             <>
               <Chart
                 series={runSeries}
-                width={856}
+                width={1290}
                 height={180}
                 mark="bar"
                 ticks={niceTicks(runTop)}

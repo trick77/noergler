@@ -28,7 +28,7 @@ export function Sep() {
 }
 
 export const page = "h-full overflow-auto";
-export const column = "mx-auto max-w-[900px] px-4 py-7 sm:px-6 lg:px-10";
+export const column = "mx-auto max-w-[1400px] px-4 py-7 sm:px-6 lg:px-10";
 export const h2 =
   "font-serif text-[22px] font-medium leading-tight tracking-tight text-ink sm:text-[28px]";
 export const lede = "mt-1 mb-6 max-w-[66ch] text-[14.5px] text-muted";
