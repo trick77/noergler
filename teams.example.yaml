@@ -38,8 +38,8 @@ teams:
       auto_review_authors: [alice, bob]               # seed only (team_settings in the DB, PUT /teams/<slug>/settings); default: instance REVIEW_AUTO_REVIEW_AUTHORS
       # ignore_authors: [renovate-bot]                # seed only, default: instance REVIEW_IGNORE_AUTHORS. Never auto-reviewed, @mention still works
       # exclude_repos: ["*-infra"]                    # seed only, default: instance REVIEW_EXCLUDE_REPOS. Repo slug globs ignored for every event
-      # exclude_source_branches: ["dependabot/*"]     # seed only, default: instance REVIEW_EXCLUDE_SOURCE_BRANCHES. Branch globs, never auto-reviewed, @mention still works
-      # exclude_target_branches: ["release/*"]        # seed only, default: instance REVIEW_EXCLUDE_TARGET_BRANCHES. The same on the PR's target branch
+      # exclude_source_branches: ["dependabot/*"]     # seed only (new teams), default: instance REVIEW_EXCLUDE_SOURCE_BRANCHES. Branch globs, never auto-reviewed, @mention still works
+      # exclude_target_branches: ["release/*"]        # seed only (new teams), default: instance REVIEW_EXCLUDE_TARGET_BRANCHES. The same on the PR's target branch
       max_pr_cost_usd: 8.00                           # optional, default: instance REVIEW_MAX_PR_COST_USD
       agents_md_custom_link: "[Platform AGENTS.md guide](https://wiki.example.com/platform/agents-md)"  # optional, default: instance REVIEW_AGENTS_MD_CUSTOM_LINK
       # max_comments: 25                              # optional, default: instance REVIEW_MAX_COMMENTS

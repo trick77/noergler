@@ -626,7 +626,7 @@ func TestTeam_Ownership(t *testing.T) {
 func TestTeam_ExcludedBranch(t *testing.T) {
 	team := &Team{Review: Review{
 		ExcludeSourceBranches: []string{"Dependabot/*", "wip-?"},
-		ExcludeTargetBranches: []string{"release/*"},
+		ExcludeTargetBranches: []string{"release/*", "refs/heads/hotfix/*"},
 	}}
 	cases := []struct{ from, to, want string }{
 		{"dependabot/npm/lodash", "master", "exclude_source_branches"},
@@ -636,6 +636,8 @@ func TestTeam_ExcludedBranch(t *testing.T) {
 		{"dependabot/x", "release/1", "exclude_source_branches"},
 		{"feature/dependabot", "master", ""},
 		{"wip-12", "releases", ""},
+		// A full-ref pattern matches as its short form.
+		{"feature/x", "hotfix/9", "exclude_target_branches"},
 	}
 	for _, c := range cases {
 		if got := team.ExcludedBranch(c.from, c.to); got != c.want {

@@ -191,7 +191,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		excerpt = note + truncateRunes(excerptAround(content, f.LineNumber, replyExcerptLines), replyExcerptRunes)
 	}
 	// AGENTS.md from the same commit, so code and guidelines match.
-	agentsMD := r.fetchRepoInstructions(ctx, project, repo, at, pr.ToRef.DisplayID)
+	agentsMD := r.fetchRepoInstructions(ctx, project, repo, at, pr.ToRef.Branch())
 	name := firstName(r.displayName, comment.Author.DisplayName)
 	l := r.languageFor(ctx, author)
 	prompt := inference.RenderFindingReplyPrompt(inference.FindingReplyPromptRequest{
