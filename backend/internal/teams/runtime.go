@@ -126,8 +126,8 @@ func (r *Runtime) ApplyClaims(scopes []config.ProjectScope) {
 //
 // The Reviewer copies config.Review by value at construction, so without the
 // mirror a team's author routing would stay stale until restart. ExcludeRepos
-// and the branch lists are deliberately not mirrored: their only reader is
-// the webhook route, which reads them off the snapshot.
+// and the branch lists are deliberately not mirrored: the webhook route and
+// the team_config tool read them off the snapshot, never the Reviewer's cfg.
 func (r *Runtime) UpdateSettings(merge func(store.TeamSettings) store.TeamSettings, persist func(store.TeamSettings) error) error {
 	r.settingsMu.Lock()
 	defer r.settingsMu.Unlock()

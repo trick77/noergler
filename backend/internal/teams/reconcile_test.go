@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -148,12 +149,36 @@ func TestReconcile_KnownTeamIgnoresYAMLBranchLists(t *testing.T) {
 		settings: map[string]store.TeamSettings{"platform": {ExcludeRepos: []string{"*-infra"}}},
 	}
 	team := teamWith("platform", []config.ProjectScope{{Key: "PLAT"}}, config.Review{ExcludeSourceBranches: []string{"dependabot/*"}})
+	log, buf := bufLogger()
 
-	if _, err := Reconcile(context.Background(), db, map[string]*config.Team{"platform": team}, []string{"platform"}, quietLogger()); err != nil {
+	if _, err := Reconcile(context.Background(), db, map[string]*config.Team{"platform": team}, []string{"platform"}, log); err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
 	if len(team.Review.ExcludeSourceBranches) != 0 || len(db.put) != 0 {
 		t.Errorf("source branches = %v, put = %v: the DB row must win", team.Review.ExcludeSourceBranches, db.put)
+	}
+	// Dropped, but not silently.
+	if !strings.Contains(buf.String(), "configured exclude_*_branches ignored") {
+		t.Errorf("no log line for the dropped config lists:\n%s", buf.String())
+	}
+}
+
+// No line when the config sets no branch lists: the common case stays quiet.
+func TestReconcile_KnownTeamNoBranchListsNoLine(t *testing.T) {
+	db := &fakeClaimStore{
+		claims:   map[string][]config.ProjectScope{"platform": {{Key: "PLAT"}}},
+		settings: map[string]store.TeamSettings{"platform": {ExcludeSourceBranches: []string{"wip/*"}}},
+	}
+	team := teamWith("platform", []config.ProjectScope{{Key: "PLAT"}}, config.Review{})
+	log, buf := bufLogger()
+	if _, err := Reconcile(context.Background(), db, map[string]*config.Team{"platform": team}, []string{"platform"}, log); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if strings.Contains(buf.String(), "exclude_*_branches") {
+		t.Errorf("unexpected line:\n%s", buf.String())
+	}
+	if !slices.Equal(team.Review.ExcludeSourceBranches, []string{"wip/*"}) {
+		t.Errorf("source branches = %v, want the DB's", team.Review.ExcludeSourceBranches)
 	}
 }
 

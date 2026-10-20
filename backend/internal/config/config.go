@@ -236,13 +236,7 @@ func (t *Team) ReviewsRepo(projectKey, repoSlug string) bool {
 	if t.ClaimsRepoExplicitly(projectKey, repoSlug) {
 		return true
 	}
-	return !ExcludesRepo(t.Review.ExcludeRepos, repoSlug)
-}
-
-// ExcludesRepo matches the slug against the globs, both lower-cased, with
-// FnMatch: `*` crosses `/`, so a pattern needs no path segments.
-func ExcludesRepo(patterns []string, repoSlug string) bool {
-	return MatchesAny(patterns, repoSlug)
+	return !MatchesAny(t.Review.ExcludeRepos, repoSlug)
 }
 
 // ExcludedBranch names the list that carves the PR out of auto-review by
@@ -258,7 +252,8 @@ func (t *Team) ExcludedBranch(fromBranch, toBranch string) string {
 	return ""
 }
 
-// MatchesAny reports whether any glob matches the name, both lower-cased.
+// MatchesAny reports whether any glob matches the name, both lower-cased,
+// with FnMatch: `*` crosses `/`, so a pattern needs no path segments.
 func MatchesAny(patterns []string, name string) bool {
 	name = strings.ToLower(name)
 	for _, p := range patterns {

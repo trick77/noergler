@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/store"
@@ -67,7 +68,7 @@ func Reconcile(ctx context.Context, db ClaimStore, teams map[string]*config.Team
 			// Disabled, so the team's settings are left alone.
 			continue
 		}
-		if err := reconcileSettings(ctx, db, slug, team, settings); err != nil {
+		if err := reconcileSettings(ctx, db, slug, team, settings, log); err != nil {
 			return nil, err
 		}
 	}
@@ -114,8 +115,15 @@ func reconcileClaims(ctx context.Context, db ClaimStore, slug string, team *conf
 // exist, independently of the column default.
 // A failed write aborts boot: an unusable settings table is a shared-layer
 // fault, not one team's.
-func reconcileSettings(ctx context.Context, db ClaimStore, slug string, team *config.Team, settings map[string]store.TeamSettings) error {
+func reconcileSettings(ctx context.Context, db ClaimStore, slug string, team *config.Team, settings map[string]store.TeamSettings, log *slog.Logger) error {
 	if s, known := settings[slug]; known {
+		// An existing team gets no branch exclude it did not set (user,
+		// 2026-10-20), so a teams.yaml or REVIEW_EXCLUDE_*_BRANCHES value
+		// for it is dropped: said once per boot, not silently.
+		if !slices.Equal(team.Review.ExcludeSourceBranches, s.ExcludeSourceBranches) && len(team.Review.ExcludeSourceBranches) > 0 ||
+			!slices.Equal(team.Review.ExcludeTargetBranches, s.ExcludeTargetBranches) && len(team.Review.ExcludeTargetBranches) > 0 {
+			log.InfoContext(ctx, "configured exclude_*_branches ignored: the team's settings row wins (set via PUT /teams/{team}/settings)", "team", slug)
+		}
 		applySettings(team, s)
 		return nil
 	}

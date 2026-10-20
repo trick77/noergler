@@ -128,14 +128,14 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 
 	// 5. Opt-out keyword in the branch name.
 	if keyword := r.cfg.OptOutBranchKeyword; keyword != "" &&
-		strings.Contains(strings.ToLower(pr.FromRef.DisplayID), strings.ToLower(keyword)) {
+		strings.Contains(strings.ToLower(pr.FromRef.Branch()), strings.ToLower(keyword)) {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: branch %q contains opt-out keyword %q, skipping review",
-			prTag, pr.FromRef.DisplayID, keyword))
+			prTag, pr.FromRef.Branch(), keyword))
 		// The pointer advances here: an opt-out branch is a stable state of
 		// the PR, not a transient failure.
 		prReviewID := r.upsert(ctx, upsert, pr.FromRef.LatestCommit)
 		r.postOrUpdateSummary(ctx, project, repo, pr.ID, prReviewID,
-			render.OptOutBranchSummary(l, keyword, pr.FromRef.DisplayID))
+			render.OptOutBranchSummary(l, keyword, pr.FromRef.Branch()))
 		return nil, ctx, r.abort(ctx, key, kind, SkipBranchOptOut, prTag, httpCounter)
 	}
 
