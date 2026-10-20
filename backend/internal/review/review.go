@@ -671,6 +671,11 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 			// INFO, no traceback, and fall through to the full review. We
 			// must NOT skip just because the optimization did not apply.
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: incremental diff unavailable (%v) - running full review", prTag, err))
+		case errors.As(err, new(*bitbucket.ContentTooLarge)):
+			// A decision, not a fault. The full diff is usually larger and
+			// takes the too-large path below, but not always: a push that
+			// deletes a big file the PR added nets out in the full diff.
+			r.log.InfoContext(ctx, fmt.Sprintf("%s: incremental diff too large (%v) - running full review", prTag, err))
 		case err != nil:
 			r.log.WarnContext(ctx, fmt.Sprintf("%s: incremental diff failed unexpectedly, falling back to full review: %v", prTag, err))
 		case strings.TrimSpace(incDiff) != "":
