@@ -115,6 +115,31 @@ func TestPRStatusSaysWhyAndWhen(t *testing.T) {
 	}
 }
 
+// The branch skip leaves no attempt, so pr_status names it from the live
+// team, with the branches the model compares.
+func TestPRStatusNamesTheBranchExclusion(t *testing.T) {
+	h := newHarness(t, nil)
+	h.st.status = &store.PRStatus{Known: true, Runs: 1}
+	h.r.team = func() *config.Team {
+		return &config.Team{Review: config.Review{ExcludeTargetBranches: []string{"release/*"}}}
+	}
+	ask := testAsk("alice", "why no review?")
+	ask.from, ask.to = "feature/x", "release/1"
+
+	out := toolByName(t, h, ask, "pr_status")("{}")
+	for _, want := range []string{`"source_branch":"feature/x"`, `"target_branch":"release/1"`,
+		`"auto_review_excluded_by":"exclude_target_branches"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("pr_status lacks %s:\n%s", want, out)
+		}
+	}
+
+	ask.to = "master"
+	if out := toolByName(t, h, ask, "pr_status")("{}"); strings.Contains(out, "auto_review_excluded_by") {
+		t.Errorf("no match must omit the field:\n%s", out)
+	}
+}
+
 // An unpriced PR has no cost, never "0.000"; a DB fault says unavailable.
 func TestPRStatusUnpricedAndFailOpen(t *testing.T) {
 	h := newHarness(t, nil)

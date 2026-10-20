@@ -139,7 +139,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		return nil, ctx, r.abort(ctx, key, kind, SkipBranchOptOut, prTag, httpCounter)
 	}
 
-	repoInstructions := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.DisplayID)
+	repoInstructions := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.Branch())
 
 	// 6. AGENTS.md required and absent.
 	if repoInstructions == "" && r.cfg.RequireAgentsMD {
@@ -180,7 +180,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		return nil, ctx, r.abort(ctx, key, kind, SkipCostCap, prTag, httpCounter)
 	}
 
-	r.log.InfoContext(ctx, fmt.Sprintf("Starting review of %s by %s (branch: %s)", prTag, author, pr.FromRef.DisplayID))
+	r.log.InfoContext(ctx, fmt.Sprintf("Starting review of %s by %s (branch: %s)", prTag, author, pr.FromRef.Branch()))
 	started := time.Now()
 	sw := newStopwatch(started)
 
@@ -260,7 +260,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: cross-file context: %d relationship(s)", prTag, len(relationships)))
 	}
 
-	ticket, parentTicket := r.fetchTicket(ctx, pr.FromRef.DisplayID, pr.Title, prTag)
+	ticket, parentTicket := r.fetchTicket(ctx, pr.FromRef.Branch(), pr.Title, prTag)
 	ticketContext := renderTicketContext(ticket, parentTicket)
 	prDescription := r.prDescription(ctx, prTag, pr)
 

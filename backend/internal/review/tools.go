@@ -25,6 +25,8 @@ type mentionAsk struct {
 	// user is the commenter's Bitbucket name, text their comment with the
 	// mention stripped.
 	user, text string
+	// from and to are the PR's source and target branch.
+	from, to string
 	// lang is the asker's language as resolved for this answer.
 	lang lang.Lang
 	// switched is set when set_my_language accepted a switch this turn:
@@ -48,7 +50,7 @@ func (r *Reviewer) mentionTools(ask *mentionAsk) []inference.MentionTool {
 			Description: "What noergler knows about this pull request: whether and when it was reviewed, the " +
 				"latest review outcomes with their skip reasons, and its cost against the cap. Use it for " +
 				"questions like why the PR was or was not reviewed.",
-			Run: func(ctx context.Context, _ string) string { return toolJSON(r.prStatus(ctx, ask.key)) },
+			Run: func(ctx context.Context, _ string) string { return toolJSON(r.prStatus(ctx, ask)) },
 		},
 		{
 			Name: "set_my_language",
@@ -202,6 +204,12 @@ type prStatusView struct {
 	// CostUSD is nil when unpriced: never "0.000" for an unknown.
 	CostUSD *string `json:"pr_cost_usd"`
 	CapUSD  string  `json:"pr_cost_cap_usd"`
+	// The branches, and the team list that keeps their pushes from being
+	// auto-reviewed: that skip is decided at the webhook and leaves no
+	// attempt, so this is the only place the model can learn of it.
+	SourceBranch         string `json:"source_branch"`
+	TargetBranch         string `json:"target_branch"`
+	AutoReviewExcludedBy string `json:"auto_review_excluded_by,omitempty"`
 }
 
 type prStatusRun struct {
@@ -221,8 +229,16 @@ type prStatusAttempt struct {
 
 // prStatus answers pr_status. A DB fault says so rather than reading as
 // "never seen": the model would tell the user noergler has no record.
-func (r *Reviewer) prStatus(ctx context.Context, key store.PRKey) any {
-	v := prStatusView{CapUSD: usd3(r.cfg.MaxPRCostUSD), Attempts: []prStatusAttempt{}}
+func (r *Reviewer) prStatus(ctx context.Context, ask *mentionAsk) any {
+	key := ask.key
+	v := prStatusView{CapUSD: usd3(r.cfg.MaxPRCostUSD), Attempts: []prStatusAttempt{},
+		SourceBranch: ask.from, TargetBranch: ask.to}
+	// The live snapshot: the lists change at runtime, cfg is a boot copy.
+	if r.team != nil {
+		if t := r.team(); t != nil {
+			v.AutoReviewExcludedBy = t.ExcludedBranch(ask.from, ask.to)
+		}
+	}
 	st, err := r.store.PRStatus(ctx, key, r.TeamSlug)
 	if err != nil || st == nil {
 		r.log.WarnContext(ctx, "DB operation failed: PRStatus", logging.Err(err))

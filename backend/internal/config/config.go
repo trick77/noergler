@@ -242,14 +242,26 @@ func (t *Team) ReviewsRepo(projectKey, repoSlug string) bool {
 // ExcludedBranch names the list that carves the PR out of auto-review by
 // its branches (displayId, e.g. `feature/x`), source first; "" = neither.
 // `*` crosses `/`, so `release/*` covers `release/a/b`.
+// A pattern written as a full ref (`refs/heads/release/*`, as toRef.id
+// shows it) matches as its short form.
 func (t *Team) ExcludedBranch(fromBranch, toBranch string) string {
-	if MatchesAny(t.Review.ExcludeSourceBranches, fromBranch) {
+	if matchesBranch(t.Review.ExcludeSourceBranches, fromBranch) {
 		return "exclude_source_branches"
 	}
-	if MatchesAny(t.Review.ExcludeTargetBranches, toBranch) {
+	if matchesBranch(t.Review.ExcludeTargetBranches, toBranch) {
 		return "exclude_target_branches"
 	}
 	return ""
+}
+
+func matchesBranch(patterns []string, branch string) bool {
+	branch = strings.ToLower(branch)
+	for _, p := range patterns {
+		if FnMatch(strings.TrimPrefix(strings.ToLower(p), "refs/heads/"), branch) {
+			return true
+		}
+	}
+	return false
 }
 
 // MatchesAny reports whether any glob matches the name, both lower-cased,

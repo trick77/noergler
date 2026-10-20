@@ -149,8 +149,8 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		return false
 	}
 
-	repoInstructions := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.DisplayID)
-	ticket, parent := r.fetchTicket(ctx, pr.FromRef.DisplayID, pr.Title, prTag)
+	repoInstructions := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.Branch())
+	ticket, parent := r.fetchTicket(ctx, pr.FromRef.Branch(), pr.Title, prTag)
 	name := firstName(r.displayName, comment.Author.DisplayName)
 
 	prompt := inference.RenderMentionPrompt(inference.MentionPromptRequest{
@@ -167,7 +167,8 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	job := &mentionJob{
 		project: project, repo: repo, prID: pr.ID, replyTo: comment.ID, lang: l, counter: httpCounter,
 		name: name, namesOn: r.displayName != nil,
-		ask: &mentionAsk{key: key, prTag: prTag, user: comment.Author.Name, text: question, lang: l},
+		ask: &mentionAsk{key: key, prTag: prTag, user: comment.Author.Name, text: question, lang: l,
+			from: pr.FromRef.Branch(), to: pr.ToRef.Branch()},
 	}
 	req := inference.MentionRequest{
 		Prompt:       prompt,
