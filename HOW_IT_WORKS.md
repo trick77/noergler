@@ -75,7 +75,8 @@ summary comment.
 On a push, noergler asks Bitbucket for the PR diff between the last reviewed
 commit and the new head (`sinceId`/`untilId`). Same SHA means nothing changed
 and the run stops. If the last reviewed commit is no longer one of the PR's
-commits (a rebase or force push), the run falls back to the full PR diff.
+commits (a rebase or force push), or a merge commit lies between it and the
+new head (the target branch merged in), the run falls back to the full PR diff.
 
 The review then sees the incremental diff as the subject and the cumulative PR
 diff as context.

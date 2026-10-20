@@ -170,25 +170,45 @@ func TestFetchPRDiffWithContextLines(t *testing.T) {
 	}
 }
 
-// prRoutes answers the PR's commit list with commits and its diff with diff.
-func prRoutes(commits, diff func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/commits") {
-			commits(w, r)
-			return
+// incr is a Bitbucket for FetchCommitDiff: the PR's commit list, the repo's
+// merge commits in the range, and the PR diff. A nil route answers 200 empty.
+type incr struct {
+	prCommits, merges, diff func(http.ResponseWriter, *http.Request)
+}
+
+func (i incr) handler() func(http.ResponseWriter, *http.Request) {
+	empty := jsonReply(200, `{"values":[],"isLastPage":true}`)
+	pick := func(h func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
+		if h == nil {
+			return empty
 		}
-		diff(w, r)
+		return h
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/pull-requests/7/commits"):
+			pick(i.prCommits)(w, r)
+		case strings.HasSuffix(r.URL.Path, "/repos/my-repo/commits"):
+			pick(i.merges)(w, r)
+		default:
+			pick(i.diff)(w, r)
+		}
 	}
 }
 
-const prCommits = `{"values":[{"id":"def4567890abcdef"},{"id":"abc1234567890abc"}],"isLastPage":true}`
+const (
+	oldHead = "abc1234567890abc1234567890abc1234567890a"
+	newHead = "def4567890abcdef4567890abcdef4567890abcd"
+)
+
+var prCommits = jsonReply(200, `{"values":[{"id":"`+newHead+`"},{"id":"`+oldHead+`"}],"isLastPage":true}`)
 
 // The push's diff comes from the PR diff endpoint as raw text. compare/diff
 // answers text/plain with 406 whatever the history, which made every push
 // in production a full review.
 func TestFetchCommitDiffAsksThePRDiffForTheRange(t *testing.T) {
-	f, c := newFake(t, prRoutes(jsonReply(200, prCommits), text("push-diff")))
-	got, err := c.FetchCommitDiff(context.Background(), "PROJ", "my-repo", 7, "abc1234567890", "def4567890abc")
+	f, c := newFake(t, incr{prCommits: prCommits, diff: text("push-diff")}.handler())
+	got, err := c.FetchCommitDiff(context.Background(), "PROJ", "my-repo", 7, oldHead, newHead)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,28 +219,85 @@ func TestFetchCommitDiffAsksThePRDiffForTheRange(t *testing.T) {
 	if last.Path != "/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/7/diff" {
 		t.Errorf("path = %q", last.Path)
 	}
-	if last.Query.Get("sinceId") != "abc1234567890" || last.Query.Get("untilId") != "def4567890abc" {
+	if last.Query.Get("sinceId") != oldHead || last.Query.Get("untilId") != newHead {
 		t.Errorf("query = %v", last.Query)
 	}
 	if last.Header.Get("Accept") != "text/plain" {
 		t.Errorf("Accept = %q", last.Header.Get("Accept"))
 	}
+	merges := f.seen[1]
+	if merges.Query.Get("since") != oldHead || merges.Query.Get("until") != newHead || merges.Query.Get("merges") != "only" {
+		t.Errorf("merge query = %v", merges.Query)
+	}
 }
 
 // A last reviewed commit the PR no longer has means a rebase or force push:
 // typed, so the reviewer falls back to a full review, and no diff fetched.
+// Exact match: a prefix of an unrelated commit is not the commit.
 func TestFetchCommitDiffRewrittenHistoryIsTyped(t *testing.T) {
-	f, c := newFake(t, prRoutes(jsonReply(200, prCommits), text("push-diff")))
-	_, err := c.FetchCommitDiff(context.Background(), "PROJ", "my-repo", 7, "0ld0ld0ld0ld0", "def4567890abc")
+	for name, from := range map[string]string{
+		"gone":   "0ld0ld0ld0ld0ld0ld0ld0ld0ld0ld0ld0ld0ld0",
+		"prefix": oldHead[:7],
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, c := newFake(t, incr{prCommits: prCommits, diff: text("push-diff")}.handler())
+			_, err := c.FetchCommitDiff(context.Background(), "PROJ", "my-repo", 7, from, newHead)
+			if !errors.Is(err, ErrIncrementalDiffUnavailable) {
+				t.Fatalf("err = %v, want ErrIncrementalDiffUnavailable", err)
+			}
+			// The message carries the shortened SHA the operator sees in the log.
+			if !strings.Contains(err.Error(), shortSHA(from)) {
+				t.Errorf("err = %v, want the short SHA", err)
+			}
+			if f.calls() != 1 {
+				t.Errorf("calls = %d, want only the commit list", f.calls())
+			}
+		})
+	}
+}
+
+// A merge commit in the range brings the target branch's lines in: typed,
+// full review, no diff fetched.
+func TestFetchCommitDiffMergeInRangeIsTyped(t *testing.T) {
+	f, c := newFake(t, incr{
+		prCommits: prCommits,
+		merges:    jsonReply(200, `{"values":[{"id":"feedface00000000"}],"isLastPage":false,"nextPageStart":1}`),
+		diff:      text("push-diff"),
+	}.handler())
+	_, err := c.FetchCommitDiff(context.Background(), "PROJ", "my-repo", 7, oldHead, newHead)
 	if !errors.Is(err, ErrIncrementalDiffUnavailable) {
 		t.Fatalf("err = %v, want ErrIncrementalDiffUnavailable", err)
 	}
-	// The message carries the shortened SHA the operator sees in the log.
-	if !strings.Contains(err.Error(), "0ld0ld0ld0") {
-		t.Errorf("err = %v, want the short SHA", err)
+	if !strings.Contains(err.Error(), "feedface00") {
+		t.Errorf("err = %v, want the merge's short SHA", err)
 	}
-	if f.calls() != 1 {
-		t.Errorf("calls = %d, want only the commit list", f.calls())
+	if f.calls() != 2 {
+		t.Errorf("calls = %d, want the commit list and one merge page", f.calls())
+	}
+}
+
+// The last reviewed commit on a later page is still on the PR, and the scan
+// stops at the page that has it.
+func TestFetchCommitDiffFindsTheCommitOnALaterPage(t *testing.T) {
+	pages := 0
+	commits := func(w http.ResponseWriter, r *http.Request) {
+		pages++
+		switch r.URL.Query().Get("start") {
+		case "0":
+			jsonReply(200, `{"values":[{"id":"`+newHead+`"}],"isLastPage":false,"nextPageStart":100}`)(w, r)
+		case "100":
+			jsonReply(200, `{"values":[{"id":"`+oldHead+`"}],"isLastPage":false,"nextPageStart":200}`)(w, r)
+		default:
+			t.Errorf("page past the match fetched: start=%s", r.URL.Query().Get("start"))
+			jsonReply(200, `{"values":[],"isLastPage":true}`)(w, r)
+		}
+	}
+	_, c := newFake(t, incr{prCommits: commits, diff: text("push-diff")}.handler())
+	if _, err := c.FetchCommitDiff(context.Background(), "PROJ", "my-repo", 7, oldHead, newHead); err != nil {
+		t.Fatal(err)
+	}
+	if pages != 2 {
+		t.Errorf("commit pages = %d, want 2", pages)
 	}
 }
 
@@ -228,13 +305,14 @@ func TestFetchCommitDiffRewrittenHistoryIsTyped(t *testing.T) {
 // signal: a fault is not a rebase.
 func TestFetchCommitDiffErrorsAreNotTyped(t *testing.T) {
 	gone := jsonReply(404, `{"errors":[{"message":"gone"}]}`)
-	for name, h := range map[string]func(http.ResponseWriter, *http.Request){
-		"commit list": prRoutes(gone, text("push-diff")),
-		"diff":        prRoutes(jsonReply(200, prCommits), gone),
+	for name, routes := range map[string]incr{
+		"commit list": {prCommits: gone},
+		"merges":      {prCommits: prCommits, merges: gone},
+		"diff":        {prCommits: prCommits, diff: gone},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, c := newFake(t, h)
-			_, err := c.FetchCommitDiff(context.Background(), "PROJ", "my-repo", 7, "abc1234567890", "def4567890abc")
+			_, c := newFake(t, routes.handler())
+			_, err := c.FetchCommitDiff(context.Background(), "PROJ", "my-repo", 7, oldHead, newHead)
 			if errors.Is(err, ErrIncrementalDiffUnavailable) {
 				t.Fatalf("404 reported as an incremental-diff failure: %v", err)
 			}

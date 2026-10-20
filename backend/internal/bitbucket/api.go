@@ -52,11 +52,13 @@ func (c *Client) FetchPRDiff(ctx context.Context, project, repo string, prID, co
 // FetchCommitDiff returns what one push changed on a PR: the PR diff from
 // fromCommit to toCommit, raw text like FetchPRDiff.
 //
-// fromCommit must still be one of the PR's commits. A rebase or force push
-// drops it, and a diff across the rewrite would pass upstream lines off as
-// this push's, so that comes back as ErrIncrementalDiffUnavailable and the
-// caller reviews the whole PR. Not compare/diff: it serves JSON only and
-// answers text/plain with 406, every time.
+// The diff holds this push's lines only while fromCommit is still one of the
+// PR's commits and no merge commit lies between the two. A rebase or force
+// push drops fromCommit; a merge of the target branch brings its lines in.
+// Either way a diff would pass upstream lines off as the push's, evidence
+// for a wrong "fixed", so both come back as ErrIncrementalDiffUnavailable
+// and the caller reviews the whole PR. Not compare/diff: it serves JSON only
+// and answers text/plain with 406, every time.
 func (c *Client) FetchCommitDiff(ctx context.Context, project, repo string, prID int, fromCommit, toCommit string) (string, error) {
 	onPR, err := c.prHasCommit(ctx, project, repo, prID, fromCommit)
 	if err != nil {
@@ -66,28 +68,49 @@ func (c *Client) FetchCommitDiff(ctx context.Context, project, repo string, prID
 		return "", fmt.Errorf("%s is no longer a commit of the PR (history rewritten): %w",
 			shortSHA(fromCommit), ErrIncrementalDiffUnavailable)
 	}
+	merge, err := c.firstMerge(ctx, project, repo, fromCommit, toCommit)
+	if err != nil {
+		return "", err
+	}
+	if merge != "" {
+		return "", fmt.Errorf("merge commit %s in %s..%s: %w",
+			shortSHA(merge), shortSHA(fromCommit), shortSHA(toCommit), ErrIncrementalDiffUnavailable)
+	}
 	query := url.Values{"sinceId": {fromCommit}, "untilId": {toCommit}}
 	what := fmt.Sprintf("%s/%s#%d diff %s..%s", project, repo, prID, shortSHA(fromCommit), shortSHA(toCommit))
 	return c.getTextCapped(ctx, prPath(project, repo, prID)+"/diff", query, "text/plain", what, c.maxDiffBytes)
 }
 
-// prHasCommit reports whether commit is among the PR's commits. Either SHA
-// may be abbreviated, so the prefix is matched both ways.
+// prHasCommit reports whether commit is among the PR's commits, reading no
+// page past the one that has it. Exact match: both sides are full SHAs, and
+// a prefix could match an unrelated commit.
 func (c *Client) prHasCommit(ctx context.Context, project, repo string, prID int, commit string) (bool, error) {
-	if commit == "" {
-		return false, nil
-	}
-	values, err := c.paged(ctx, prPath(project, repo, prID)+"/commits")
-	if err != nil {
-		return false, err
-	}
-	for _, v := range values {
+	onPR := false
+	err := c.scan(ctx, prPath(project, repo, prID)+"/commits", func(v map[string]any) bool {
 		id, _ := v["id"].(string)
-		if id != "" && (strings.HasPrefix(id, commit) || strings.HasPrefix(commit, id)) {
-			return true, nil
-		}
+		onPR = id == commit
+		return onPR
+	})
+	return onPR && err == nil, err
+}
+
+// firstMerge returns the id of a merge commit reachable from until but not
+// from since, or "" when there is none. One commit is enough, so one page of
+// one.
+func (c *Client) firstMerge(ctx context.Context, project, repo, since, until string) (string, error) {
+	var p page
+	query := url.Values{"since": {since}, "until": {until}, "merges": {"only"}, "limit": {"1"}}
+	if err := c.do(ctx, http.MethodGet, targetPath(project, repo)+"/commits", query, nil, &p); err != nil {
+		return "", err
 	}
-	return false, nil
+	if len(p.Values) == 0 {
+		return "", nil
+	}
+	id, _ := p.Values[0]["id"].(string)
+	if id == "" {
+		id = "?"
+	}
+	return id, nil
 }
 
 // FetchPRChanges returns the paths of every file in a PR, in the order
@@ -313,24 +336,41 @@ type page struct {
 	NextPageStart *int             `json:"nextPageStart"`
 }
 
-// paged walks every page of a collection. It stops on isLastPage (a response
-// without the field counts as the last), and also when nextPageStart fails to
-// advance, so a server echoing an offset cannot spin this forever.
+// paged walks every page of a collection.
 func (c *Client) paged(ctx context.Context, path string) ([]map[string]any, error) {
 	var out []map[string]any
+	err := c.scan(ctx, path, func(v map[string]any) bool {
+		out = append(out, v)
+		return false
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// scan walks a collection page by page until found returns true, fetching no
+// page past that one. It stops on isLastPage (a response without the field
+// counts as the last), and also when nextPageStart fails to advance, so a
+// server echoing an offset cannot spin this forever.
+func (c *Client) scan(ctx context.Context, path string, found func(map[string]any) bool) error {
 	start := 0
 	for {
 		var p page
 		query := url.Values{"start": {strconv.Itoa(start)}, "limit": {strconv.Itoa(pageLimit)}}
 		if err := c.do(ctx, http.MethodGet, path, query, nil, &p); err != nil {
-			return nil, err
+			return err
 		}
-		out = append(out, p.Values...)
+		for _, v := range p.Values {
+			if found(v) {
+				return nil
+			}
+		}
 		if p.IsLastPage == nil || *p.IsLastPage {
-			return out, nil
+			return nil
 		}
 		if p.NextPageStart == nil || *p.NextPageStart <= start {
-			return out, nil
+			return nil
 		}
 		start = *p.NextPageStart
 	}
