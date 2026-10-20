@@ -213,6 +213,17 @@ describe("PRPage", () => {
     expect(window.location.hash).toBe("#files");
   });
 
+  // A cut history: the whole-history count and time, no waits read from
+  // the listed runs beside them, and no start date it does not reach.
+  it("does not mix a cut history into whole-PR figures", async () => {
+    serve({ ...pr, more_runs: true, runs_total: 40 });
+    render(<PRPage token={TOK} />);
+    expect(await screen.findByText(/^40 runs/)).toBeDefined();
+    expect(screen.getByText(/2m 3s in review$/)).toBeDefined();
+    expect(screen.queryByText(/waiting/)).toBeNull();
+    expect(screen.queryByText(/→/)).toBeNull();
+  });
+
   // No run read the whole diff: a dash, never zeros or a run's increment.
   it("shows an unknown whole-PR scope as a dash", async () => {
     serve({ ...pr, scope: null });

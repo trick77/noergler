@@ -365,6 +365,7 @@ export const en = {
     tokens: "Tokens",
     fromCache: "{{pct}}% from cache",
     timeNote: "{{time}} in review, {{wait}} waiting",
+    timeOnly: "{{time}} in review",
     tabsLabel: "Pull request sections",
     tab: {
       findings: "Findings",

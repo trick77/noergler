@@ -108,7 +108,8 @@ export function PRPage({ token }: { token: string }) {
   const cost = d.cost_usd !== null ? Number(d.cost_usd) : null;
   const cap = d.cap_usd !== null ? Number(d.cap_usd) : null;
   const tokens = d.prompt_tokens + d.completion_tokens;
-  const first = d.runs[0]?.created_at;
+  // A cut history does not reach the PR's first run: no start date then.
+  const first = d.more_runs ? undefined : d.runs[0]?.created_at;
   const last = d.runs[d.runs.length - 1]?.created_at;
 
   const counts: Record<Tab, number | null> = {
@@ -159,12 +160,12 @@ export function PRPage({ token }: { token: string }) {
               </>
             )}
           </span>
-          {first && last && (
+          {last && (
             <>
               <Sep />
               <span>
-                {first === last
-                  ? when(first)
+                {!first || first === last
+                  ? when(last)
                   : `${when(first)} → ${when(last)}`}
               </span>
             </>
@@ -235,10 +236,15 @@ export function PRPage({ token }: { token: string }) {
                   t("pr.fromCache", {
                     pct: Math.round((d.cached_tokens / d.prompt_tokens) * 100),
                   }) + " · "}
-                {t("pr.timeNote", {
-                  time: duration(d.elapsed_ms),
-                  wait: duration(d.wait_ms),
-                })}
+                {/* The waits are read from the listed runs only: beside a
+                    whole-history time they would understate, so a cut
+                    history shows the time alone. */}
+                {d.more_runs
+                  ? t("pr.timeOnly", { time: duration(d.elapsed_ms) })
+                  : t("pr.timeNote", {
+                      time: duration(d.elapsed_ms),
+                      wait: duration(d.wait_ms),
+                    })}
               </div>
             </Tile>
           </Tiles>
@@ -549,7 +555,7 @@ function RunsTab({ d, token }: { d: PRPageData; token: string }) {
               <td className={tdNum + " text-ink"}>{fixed}</td>
               <td className={tdNum + " text-ink"}>
                 {duration(d.elapsed_ms)}
-                {d.wait_ms > 0 && (
+                {d.wait_ms > 0 && !d.more_runs && (
                   <div className="text-[12px] text-faint">
                     {t("pr.waiting", { time: duration(d.wait_ms) })}
                   </div>

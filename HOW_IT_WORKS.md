@@ -230,8 +230,8 @@ There is no effort score and no "What changed" section. Tokens, prompt parts,
 cross-file symbols, the gateway's cost split and the key spend are on the run
 pages, not in the PR. On the PR page cost is the cap's total, tokens and time
 add up over runs, the waits are one total, and the lines and files are the
-whole PR's at the latest run that read the whole diff, never a sum of
-increments.
+whole PR's as the latest review read them (a dash when it could not read
+the whole diff), never a sum of increments.
 
 The footer's model shows the llmwire profile id with the reasoning level
 that was sent appended (`<profile>-<level>`), not the operator's gateway alias.

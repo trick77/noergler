@@ -146,9 +146,10 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   (`inference.HasSecret`), discount or margin.
 - PR page sums only what adds up (user, 2026-10-20): cost = `PRCost`, tokens
   and time over runs, waits one total (the step timeline stays per run, never
-  summed). Lines and files = `Pipeline.PRScope` of the latest run that read
-  the whole diff, else null ("—"); never a sum of increments, and how it was
-  derived never reaches the page. Files tab = every file any run listed.
+  summed). Lines and files = `Pipeline.PRScope` of the latest review, null
+  ("—") when it did not read the whole diff; never an older run's (an
+  earlier commit), never a sum of increments, and how it was derived never
+  reaches the page. Files tab = every file any run listed.
 - Dashboard text only through `ui/src/i18n` (i18next): `de` mirrors `en`
   (`satisfies Catalog`, same placeholders), Swiss German, no `ß`. Language =
   browser only, `de*` -> German, else English; no switch, no stored choice

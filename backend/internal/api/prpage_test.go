@@ -45,8 +45,9 @@ func prFixture() store.PRPage {
 				Run:   &store.RunFacts{ID: 32, Incremental: true, PromptTokens: 41_000, CachedTokens: 24_000, CompletionTokens: 5_000, LinesAdded: 40, FilesChanged: 1},
 				Fixed: 1,
 				Detail: &store.Pipeline{
-					Stages: []store.StageTime{{Name: "queued", MS: 2_000}, {Name: "gateway", MS: 25_000}},
-					Files:  []store.FileSent{{Path: "a.go", Sent: "diff"}}}},
+					Stages:  []store.StageTime{{Name: "queued", MS: 2_000}, {Name: "gateway", MS: 25_000}},
+					Files:   []store.FileSent{{Path: "a.go", Sent: "diff"}},
+					PRScope: &store.PRScope{Added: 452, Removed: 100, Files: 12}}},
 		},
 		Findings: []store.RunFinding{
 			{Severity: "issue", FilePath: "a.go", Line: 3, Headline: "old one", CommentText: "SECRET BODY", RunID: 31, FixedRunID: n64(32), Fixed: true},
@@ -76,8 +77,8 @@ func TestPRPageBody(t *testing.T) {
 	if body.Cost == nil || *body.Cost != "0.207" {
 		t.Errorf("cost = %v, want PRCost's 0.207", body.Cost)
 	}
-	// The whole PR from the latest run that read it, not a sum of runs.
-	if body.Scope == nil || *body.Scope != (store.PRScope{Added: 412, Removed: 88, Files: 11}) {
+	// The whole PR from the latest review, not a sum of runs.
+	if body.Scope == nil || *body.Scope != (store.PRScope{Added: 452, Removed: 100, Files: 12}) {
 		t.Errorf("scope = %+v", body.Scope)
 	}
 	// Tokens, time and the count over the whole history; waits over the
@@ -122,12 +123,13 @@ func TestPRPageBody(t *testing.T) {
 	}
 }
 
-// No run that read the whole diff: the scope is null, never zeros and never
-// a run's own increment.
+// The latest review did not read the whole diff: the scope is null, never
+// zeros, a run's own increment or an older run's reading of an earlier
+// commit (run 1 has one here).
 func TestPRPageScopeUnknown(t *testing.T) {
 	h := newDashHarness(t)
 	pg := prFixture()
-	pg.Runs[0].Detail.PRScope = nil
+	pg.Runs[2].Detail.PRScope = nil
 	pg.MergedAt = &time.Time{}
 	h.st.prToken, h.st.page = tok, pg
 	var body map[string]any

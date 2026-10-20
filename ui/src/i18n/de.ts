@@ -355,6 +355,7 @@ export const de = {
     tokens: "Tokens",
     fromCache: "{{pct}}% aus dem Cache",
     timeNote: "{{time}} im Review, {{wait}} davon gewartet",
+    timeOnly: "{{time}} im Review",
     tabsLabel: "Bereiche des Pull Requests",
     tab: {
       findings: "Findings",

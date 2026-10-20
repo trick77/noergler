@@ -8,6 +8,7 @@ import (
 	"github.com/trick77/noergler/internal/review"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/ship/kit/httpx"
+	"github.com/trick77/ship/kit/logging"
 )
 
 // prPageBody is GET /api/dashboard/prs/{token}: the PR, every run of it,
@@ -16,8 +17,8 @@ import (
 //
 // Sums only where they add up (decided): cost is PRCost (the cap's figure,
 // never a sum of the rows), tokens and time add over runs, lines and files
-// are the whole PR's at the latest run that read the whole diff. Waits are
-// one total, never a summed timeline.
+// are the whole PR's as the latest review read it (null when it did not).
+// Waits are one total, never a summed timeline.
 type prPageBody struct {
 	Tag      string `json:"tag"`
 	Title    string `json:"title"`
@@ -159,16 +160,19 @@ func (d Deps) prPage(w http.ResponseWriter, r *http.Request) {
 		}
 		if f := run.Run; f != nil {
 			numberOf[f.ID] = run.N
+			// The latest review's reading of the whole diff, or none: an
+			// older run's would show an earlier commit's lines as current.
+			// Oldest first, so the last one set is the latest.
+			body.Scope = nil
+			if run.Detail != nil {
+				body.Scope = run.Detail.PRScope
+			}
 		}
 		if p := run.Detail; p != nil {
 			if len(p.Stages) > 0 {
 				work, wait, gw := review.StageSplit(p.Stages)
 				rb.Time = &stageSplitBody{WorkMS: work, WaitMS: wait, GatewayMS: gw}
 				body.WaitMS += wait
-			}
-			// Oldest first, so the last one read is the latest.
-			if p.PRScope != nil {
-				body.Scope = p.PRScope
 			}
 			for _, f := range p.Files {
 				fb := files[f.Path]
@@ -211,18 +215,19 @@ func (d Deps) prPage(w http.ResponseWriter, r *http.Request) {
 	// The PR total is the figure the cap enforces (PRCost), not a sum of
 	// the rows, which a cut history would undercount. A failed read is a
 	// failed page: null here would read as "unpriced".
-	c, err := d.DashboardStore.PRCost(r.Context(), pg.Key)
+	ctx := logging.With(r.Context(), "team", pg.TeamSlug)
+	c, err := d.DashboardStore.PRCost(ctx, pg.Key)
 	if err != nil {
-		d.Log.ErrorContext(r.Context(), "dashboard: PRCost failed: "+err.Error())
+		d.Log.ErrorContext(ctx, "dashboard: PRCost failed: "+err.Error())
 		httpx.WriteError(w, http.StatusInternalServerError, "could not read the pull request")
 		return
 	}
 	body.Cost = usd(c)
 	// A failed read leaves the list empty; the total above (which counts
 	// the calls) still stands.
-	calls, more, err := d.DashboardStore.PRCommentCalls(r.Context(), pg.Key)
+	calls, more, err := d.DashboardStore.PRCommentCalls(ctx, pg.Key)
 	if err != nil {
-		d.Log.ErrorContext(r.Context(), "dashboard: PRCommentCalls failed: "+err.Error())
+		d.Log.ErrorContext(ctx, "dashboard: PRCommentCalls failed: "+err.Error())
 		calls, more = nil, false
 		body.CallsFailed = true
 	}

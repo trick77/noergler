@@ -135,8 +135,8 @@ func safeDBErr(ctx context.Context, log *slog.Logger, what string, fn func() err
 // happened, and losing it must never change what happened. A returned error
 // would turn a successful review into a failed one.
 //
-// Returns the attempt id, 0 when nothing was written; the run's dashboard
-// link is built from it.
+// Returns the attempt id, 0 when nothing was written; the run detail record
+// is written under it.
 func (r *Reviewer) recordAttempt(ctx context.Context, a store.Attempt) int64 {
 	// A Reviewer with no store is a legitimate configuration, not a fault:
 	// the author and actor gates decide before anything is wired, and the
