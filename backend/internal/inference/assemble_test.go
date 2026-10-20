@@ -288,6 +288,18 @@ func TestPRDescriptionDefault(t *testing.T) {
 	}
 }
 
+// The parent comment defaults when absent and, being someone's text, never
+// expands a placeholder it quotes.
+func TestMentionParentComment(t *testing.T) {
+	if got := RenderMentionPrompt(MentionPromptRequest{Template: "P:{parent_comment}"}); got != "P:"+NoParentComment {
+		t.Errorf("parent default = %q", got)
+	}
+	got := RenderMentionPrompt(MentionPromptRequest{Template: "P:{parent_comment}|{diff}", ParentComment: "why {diff}?"})
+	if !strings.HasPrefix(got, "P:why {diff}?|") {
+		t.Errorf("parent = %q", got)
+	}
+}
+
 // Both halves of the compliance rule: instructions only when a ticket is
 // present AND the check is on, and the ticket default when no ticket linked.
 func TestComplianceAndTicketDefaults(t *testing.T) {

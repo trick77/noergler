@@ -565,8 +565,24 @@ func TestFetchPRComment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Version != 7 || got.Text != "### Review summary" {
+	if got.Version != 7 || got.Text != "### Review summary" || got.Anchor != nil {
 		t.Errorf("comment = %+v", got)
+	}
+}
+
+func TestFetchPRCommentReadsAuthorAndAnchor(t *testing.T) {
+	_, c := newFake(t, jsonReply(200, `{"id":43,"version":0,"text":"why 3?",`+
+		`"author":{"name":"pmuster","displayName":"Muster Peter (PMU)"},`+
+		`"anchor":{"path":"src/a.go","line":12,"lineType":"ADDED","fileType":"TO"}}`))
+	got, err := c.FetchPRComment(context.Background(), "PROJ", "r", 1, 43)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Author.Name != "pmuster" || got.Author.DisplayName != "Muster Peter (PMU)" {
+		t.Errorf("author = %+v", got.Author)
+	}
+	if got.Anchor == nil || got.Anchor.Path != "src/a.go" || got.Anchor.Line != 12 || got.Anchor.FileType != "TO" {
+		t.Errorf("anchor = %+v", got.Anchor)
 	}
 }
 

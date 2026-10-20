@@ -9,6 +9,7 @@ import (
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/lang"
+	"github.com/trick77/noergler/internal/prompts"
 	"github.com/trick77/noergler/internal/render"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
@@ -342,5 +343,233 @@ func TestCapRefusedMentionReviewIsRecorded(t *testing.T) {
 	}
 	if len(h.bb.Updates) != 1 || !render.CostBannerSaysBlocked(h.bb.Updates[0].Text) {
 		t.Errorf("updates = %+v, want the banner to say the review was not run", h.bb.Updates)
+	}
+}
+
+// A mention replying to someone's comment carries that comment, its author
+// and where it sits, so "answer Peter's question" has the question; the
+// answer then names no one.
+func TestMentionCarriesTheRepliedToComment(t *testing.T) {
+	h := newHarness(t, nil)
+	h.r.mentionTmpl = prompts.Mention
+	h.r.displayName = defaultNameRE
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "Three retries cap the backoff."}
+	parent := &bitbucket.Comment{ID: 41, Text: "Why is the retry loop capped at 3?",
+		Anchor: &bitbucket.CommentAnchor{Path: "a.go", Line: 2}}
+	parent.Author.Name, parent.Author.DisplayName = "pmuster", "Muster Peter (PMU)"
+	h.bb.comments[41] = parent
+	p := mentionPayload("@noergler can you answer Peter's question?", "jsaner")
+	p.Comment.Author.DisplayName = "Saner Jan (SJH)"
+	p.CommentParentID = 41
+
+	h.r.HandleMention(context.Background(), p, "platform", nil)
+
+	if len(h.llm.Mentions) != 1 {
+		t.Fatalf("expected one mention call, got %d", len(h.llm.Mentions))
+	}
+	prompt := h.llm.Mentions[0].Prompt
+	for _, want := range []string{"Author: Muster Peter (PMU)", "Location: a.go:2", "Why is the retry loop capped at 3?",
+		"## The developer's first name\n\n_Unknown._"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("prompt lacks %q:\n%s", want, prompt)
+		}
+	}
+	if len(h.bb.Replies) != 1 || h.bb.Replies[0].Line != 77 {
+		t.Fatalf("replies = %+v, want one under the mention", h.bb.Replies)
+	}
+}
+
+// Under one of the bot's finding comments the finding is the context, and
+// the asker is still named.
+func TestMentionUnderABotCommentKeepsTheAskersName(t *testing.T) {
+	h := newHarness(t, nil)
+	h.r.mentionTmpl = prompts.Mention
+	h.r.displayName = defaultNameRE
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "ok"}
+	parent := &bitbucket.Comment{ID: 41, Text: "**Bug**: nil map write"}
+	parent.Author.Name = "noergler"
+	h.bb.comments[41] = parent
+	p := mentionPayload("@noergler is this right?", "jsaner")
+	p.Comment.Author.DisplayName = "Saner Jan (SJH)"
+	p.CommentParentID = 41
+
+	h.r.HandleMention(context.Background(), p, "platform", nil)
+
+	prompt := h.llm.Mentions[0].Prompt
+	if !strings.Contains(prompt, "Author: noergler (this bot)") || !strings.Contains(prompt, "nil map write") {
+		t.Errorf("prompt lacks the finding:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "## The developer's first name\n\nJan\n") {
+		t.Errorf("prompt lacks the asker's name:\n%s", prompt)
+	}
+}
+
+// No parent to show: top-level, under the summary, or unreadable. The Q&A
+// runs as before.
+func TestMentionWithoutARepliedToComment(t *testing.T) {
+	for name, c := range map[string]struct {
+		parent  int
+		summary bool
+		fetched bool
+	}{
+		"top-level":   {parent: 0},
+		"summary":     {parent: 555, summary: true},
+		"fetch fails": {parent: 41, fetched: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t, nil)
+			h.r.mentionTmpl = prompts.Mention
+			if c.summary {
+				h.st.skipState = &store.SkipState{Summary: &store.SummaryComment{ID: 555, Version: 1}}
+			}
+			h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "ok"}
+			p := mentionPayload("@noergler why?", "alice")
+			p.CommentParentID = c.parent
+
+			h.r.HandleMention(context.Background(), p, "platform", nil)
+
+			if len(h.llm.Mentions) != 1 || !strings.Contains(h.llm.Mentions[0].Prompt, inference.NoParentComment) {
+				t.Fatalf("want one answer without a parent, got %+v", h.llm.Mentions)
+			}
+			if got := len(h.bb.FetchedC) > 0; got != c.fetched {
+				t.Errorf("fetched = %v (%v), want %v", got, h.bb.FetchedC, c.fetched)
+			}
+		})
+	}
+}
+
+func TestMentionCapsALongRepliedToComment(t *testing.T) {
+	h := newHarness(t, nil)
+	h.r.mentionTmpl = prompts.Mention
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "ok"}
+	parent := &bitbucket.Comment{ID: 41, Text: strings.Repeat("ü", maxParentRunes+10)}
+	parent.Author.Name = "pmuster"
+	h.bb.comments[41] = parent
+	p := mentionPayload("@noergler answer that", "alice")
+	p.CommentParentID = 41
+
+	h.r.HandleMention(context.Background(), p, "platform", nil)
+
+	prompt := h.llm.Mentions[0].Prompt
+	if strings.Contains(prompt, strings.Repeat("ü", maxParentRunes+1)) || !strings.Contains(prompt, "[... cut]") {
+		t.Error("the parent comment was not capped")
+	}
+}
+
+// Under the asker's own comment the asker is the one answered: named.
+func TestMentionUnderTheAskersOwnCommentKeepsTheName(t *testing.T) {
+	h := newHarness(t, nil)
+	h.r.mentionTmpl = prompts.Mention
+	h.r.displayName = defaultNameRE
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "ok"}
+	parent := &bitbucket.Comment{ID: 41, Text: "Why is the retry loop capped at 3?"}
+	parent.Author.Name, parent.Author.DisplayName = "JSaner", "Saner Jan (SJH)"
+	h.bb.comments[41] = parent
+	p := mentionPayload("@noergler see my question above", "jsaner")
+	p.Comment.Author.DisplayName = "Saner Jan (SJH)"
+	p.CommentParentID = 41
+
+	h.r.HandleMention(context.Background(), p, "platform", nil)
+
+	if prompt := h.llm.Mentions[0].Prompt; !strings.Contains(prompt, "## The developer's first name\n\nJan\n") {
+		t.Errorf("prompt lacks the asker's name:\n%s", prompt)
+	}
+}
+
+// A comment on the old side carries an old-file line number, which the
+// diff's new-file gutter would misplace: it says which side.
+func TestMentionParentOnTheOldSideSaysSo(t *testing.T) {
+	h := newHarness(t, nil)
+	h.r.mentionTmpl = prompts.Mention
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "ok"}
+	parent := &bitbucket.Comment{ID: 41, Text: "why was this removed?",
+		Anchor: &bitbucket.CommentAnchor{Path: "a.go", Line: 7, FileType: "FROM"}}
+	parent.Author.Name = "pmuster"
+	h.bb.comments[41] = parent
+	p := mentionPayload("@noergler answer that", "alice")
+	p.CommentParentID = 41
+
+	h.r.HandleMention(context.Background(), p, "platform", nil)
+
+	prompt := h.llm.Mentions[0].Prompt
+	if !strings.Contains(prompt, "Location: a.go, line 7 of the old version") || strings.Contains(prompt, "a.go:7") {
+		t.Errorf("prompt misplaces the old-side line:\n%s", prompt)
+	}
+}
+
+// A cut inside a code block closes it, so the question below is not code.
+func TestMentionCapClosesAnOpenFence(t *testing.T) {
+	h := newHarness(t, nil)
+	h.r.mentionTmpl = prompts.Mention
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "ok"}
+	parent := &bitbucket.Comment{ID: 41, Text: "see log:\n```\n" + strings.Repeat("x", maxParentRunes) + "\n```"}
+	parent.Author.Name = "pmuster"
+	h.bb.comments[41] = parent
+	p := mentionPayload("@noergler answer that", "alice")
+	p.CommentParentID = 41
+
+	h.r.HandleMention(context.Background(), p, "platform", nil)
+
+	if prompt := h.llm.Mentions[0].Prompt; !strings.Contains(prompt, "x\n```\n[... cut]") {
+		t.Errorf("the cut left the fence open:\n%s", prompt)
+	}
+}
+
+// Under someone else's comment the answer names no one: a leading address
+// to the parent's author is cut too.
+func TestMentionUnderAnotherCommentCutsTheParentAuthorsName(t *testing.T) {
+	h := newHarness(t, nil)
+	h.r.mentionTmpl = prompts.Mention
+	h.r.displayName = defaultNameRE
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "Peter, three retries cap the backoff."}
+	parent := &bitbucket.Comment{ID: 41, Text: "Why 3?"}
+	parent.Author.Name, parent.Author.DisplayName = "pmuster", "Muster Peter (PMU)"
+	h.bb.comments[41] = parent
+	p := mentionPayload("@noergler answer Peter", "jsaner")
+	p.CommentParentID = 41
+
+	h.r.HandleMention(context.Background(), p, "platform", nil)
+
+	if len(h.bb.Replies) != 1 || h.bb.Replies[0].Text != "Three retries cap the backoff." {
+		t.Errorf("replies = %+v, want the address cut", h.bb.Replies)
+	}
+}
+
+// An orphaned anchor's line is gone from the diff: no line number.
+func TestMentionParentOrphanedAnchorDropsTheLine(t *testing.T) {
+	h := newHarness(t, nil)
+	h.r.mentionTmpl = prompts.Mention
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "ok"}
+	parent := &bitbucket.Comment{ID: 41, Text: "why?",
+		Anchor: &bitbucket.CommentAnchor{Path: "a.go", Line: 7, FileType: "TO", Orphaned: true}}
+	parent.Author.Name = "pmuster"
+	h.bb.comments[41] = parent
+	p := mentionPayload("@noergler answer that", "alice")
+	p.CommentParentID = 41
+
+	h.r.HandleMention(context.Background(), p, "platform", nil)
+
+	prompt := h.llm.Mentions[0].Prompt
+	if !strings.Contains(prompt, "Location: a.go (a line since changed") || strings.Contains(prompt, "a.go:7") {
+		t.Errorf("prompt places the orphaned comment on a line:\n%s", prompt)
+	}
+}
+
+// A block its author left open is closed even uncut, with its own fence.
+func TestMentionClosesAnAuthorsOpenFence(t *testing.T) {
+	h := newHarness(t, nil)
+	h.r.mentionTmpl = prompts.Mention
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "ok"}
+	parent := &bitbucket.Comment{ID: 41, Text: "see:\n~~~\npanic: nil map"}
+	parent.Author.Name = "pmuster"
+	h.bb.comments[41] = parent
+	p := mentionPayload("@noergler answer that", "alice")
+	p.CommentParentID = 41
+
+	h.r.HandleMention(context.Background(), p, "platform", nil)
+
+	if prompt := h.llm.Mentions[0].Prompt; !strings.Contains(prompt, "panic: nil map\n~~~\n\n## The developer") ||
+		strings.Contains(prompt, "[... cut]") {
+		t.Errorf("the open fence was not closed:\n%s", prompt)
 	}
 }

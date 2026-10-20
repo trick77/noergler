@@ -191,6 +191,25 @@ type Comment struct {
 	ID      int    `json:"id"`
 	Version int    `json:"version"`
 	Text    string `json:"text"`
+	Author  struct {
+		Name        string `json:"name"`
+		DisplayName string `json:"displayName"`
+	} `json:"author"`
+	// Anchor is set on a file comment, nil on a general one. Bitbucket puts
+	// it on the thread's root only, not on its replies.
+	Anchor *CommentAnchor `json:"anchor"`
+}
+
+// CommentAnchor is where a file comment sits. Line is 0 on a comment on the
+// whole file. FileType "FROM" puts Line in the old file (a removed line, or
+// the left side of a side-by-side view), "TO" in the new one.
+type CommentAnchor struct {
+	Path     string `json:"path"`
+	Line     int    `json:"line"`
+	FileType string `json:"fileType"`
+	// Orphaned: the anchored line is gone from the PR's current diff, so
+	// Line points at code that has since changed.
+	Orphaned bool `json:"orphaned"`
 }
 
 // FetchPRComment reads one comment, for its current text and version.
