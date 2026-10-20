@@ -6,6 +6,7 @@ import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { RunCall, RunDetail, RunFinding } from "./api";
 import {
+  commentUrl,
   duration,
   money,
   outcomeTitle,
@@ -410,16 +411,6 @@ function TimeBar({
       </span>
     </div>
   );
-}
-
-/** commentUrl is a finding's or a call's comment on the PR, null without
- *  one. */
-export function commentUrl(
-  pr: string | null,
-  f: { comment_id: number | null },
-): string | null {
-  if (pr === null || f.comment_id === null) return null;
-  return `${pr}/overview?commentId=${f.comment_id}`;
 }
 
 function FindingRows({

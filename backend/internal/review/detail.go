@@ -46,7 +46,8 @@ const (
 
 // StageSplit is a run's stages in the PR page's three parts: the waits for
 // a gateway slot and for the worker to post, the gateway call, and the rest
-// (noergler and Bitbucket). The run page's timeline hatches the same waits.
+// (noergler and Bitbucket). The run page's timeline hatches the same waits:
+// WAITS in ui/src/RunPipeline.tsx is this set, change both.
 func StageSplit(stages []store.StageTime) (work, wait, gateway int64) {
 	for _, s := range stages {
 		switch s.Name {

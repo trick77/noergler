@@ -308,6 +308,16 @@ export function prUrl(tag: string, base: string): string | null {
   return r === null ? null : `${r.repo}/pull-requests/${r.id}`;
 }
 
+/** commentUrl is a finding's or a call's comment on the PR, null without
+ *  one or without the PR's URL. */
+export function commentUrl(
+  pr: string | null,
+  f: { comment_id: number | null },
+): string | null {
+  if (pr === null || f.comment_id === null) return null;
+  return `${pr}/overview?commentId=${f.comment_id}`;
+}
+
 /** sourceUrl is a file at a commit, scrolled to a line, in Bitbucket's
  *  browser; null without a Bitbucket base, a parseable tag or a commit. */
 export function sourceUrl(

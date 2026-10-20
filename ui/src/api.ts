@@ -180,12 +180,15 @@ export interface PRPage {
   cap_usd: string | null;
   /** The whole PR's reviewable diff; null when no run read it. */
   scope: { added: number; removed: number; files: number } | null;
+  /** Tokens and wall clock over every run, the unlisted ones included. */
   prompt_tokens: number;
   cached_tokens: number;
   completion_tokens: number;
-  /** The runs' wall clocks added up, and the part spent waiting. */
   elapsed_ms: number;
+  /** The waits in the recorded stages of the runs listed. */
   wait_ms: number;
+  /** Every run of the PR; runs lists the newest of them. */
+  runs_total: number;
   /** Oldest first, numbered over the whole history. */
   runs: PRRun[];
   /** Older runs are not listed. */

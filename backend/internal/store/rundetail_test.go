@@ -49,11 +49,12 @@ func TestPRPageAndRuns(t *testing.T) {
 	last := addAttempt(t, s, Attempt{Key: key, TeamSlug: "platform", Kind: RunMention, Outcome: "ok",
 		RunID: &runID, Call: &LLMCall{Profile: "m", CallID: "c1"}})
 	if err := s.InsertRunDetail(ctx, last, Pipeline{Stages: []StageTime{{Name: "gateway", MS: 40}},
-		PRScope: &PRScope{Added: 12, Removed: 4, Files: 3}}); err != nil {
+		HTTP: []HTTPCount{{Upstream: "bitbucket", Calls: 4}}, PRScope: &PRScope{Added: 12, Removed: 4, Files: 3}}); err != nil {
 		t.Fatal(err)
 	}
-	// Another team's attempt on the same PR key is not this PR's history.
-	addAttempt(t, s, Attempt{Key: key, TeamSlug: "other", Kind: RunAuto, Outcome: "error"})
+	// Another PR's attempt is not this PR's history.
+	addAttempt(t, s, Attempt{Key: PRKey{Project: key.Project, Repo: key.Repo, PRID: key.PRID + 1},
+		TeamSlug: "platform", Kind: RunAuto, Outcome: "error"})
 
 	pg, ok, err := s.PRPage(ctx, token)
 	if err != nil || !ok || pg.ID != prID || pg.Title != "t" || pg.TeamSlug != "platform" || pg.More {
@@ -61,6 +62,14 @@ func TestPRPageAndRuns(t *testing.T) {
 	}
 	if len(pg.Runs) != 3 || pg.Runs[0].N != 1 || pg.Runs[1].N != 2 || pg.Runs[2].N != 3 {
 		t.Fatalf("runs = %+v", pg.Runs)
+	}
+	// run() writes 100 prompt, 10 cached and 20 completion tokens a run.
+	if pg.Totals != (PRTotals{Runs: 3, PromptTokens: 200, CachedTokens: 20, CompletionTokens: 40}) {
+		t.Errorf("totals = %+v", pg.Totals)
+	}
+	// The record's three parts, never the rest of it.
+	if r := pg.Runs[2].Detail; r == nil || len(r.Stages) != 1 || r.HTTP != nil {
+		t.Errorf("run 3 record = %+v", r)
 	}
 	if r := pg.Runs[0]; r.Run == nil || r.Run.ID != earlier || r.Fixed != 0 || r.CostNanoUSD == nil || *r.CostNanoUSD != 600 {
 		t.Errorf("run 1 = %+v", r)
@@ -121,7 +130,8 @@ func TestPRPageAndRuns(t *testing.T) {
 
 // The history is the PR row's life: an attempt from before the row (a
 // repo purged and claimed again) is not this PR's, as prCostSQL does not
-// count it.
+// count it. One by another team during it is (the repo moved), as the row,
+// its findings and its cost moved with it.
 func TestPRPageStartsWithTheRow(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
@@ -131,8 +141,10 @@ func TestPRPageStartsWithTheRow(t *testing.T) {
 	}
 	prID := upsert(t, s, key, "a")
 	addAttempt(t, s, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "error"})
+	addAttempt(t, s, Attempt{Key: key, TeamSlug: "other", Kind: RunAuto, Outcome: "timed_out"})
 	pg, _, err := s.PRPage(ctx, prToken(t, s, prID))
-	if err != nil || len(pg.Runs) != 1 || pg.Runs[0].Outcome != "error" || pg.Runs[0].N != 1 {
+	if err != nil || len(pg.Runs) != 2 || pg.Runs[0].Outcome != "error" || pg.Runs[0].N != 1 ||
+		pg.Runs[1].Outcome != "timed_out" {
 		t.Errorf("runs = %+v, %v", pg.Runs, err)
 	}
 }

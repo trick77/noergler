@@ -132,9 +132,10 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   on both sides). The chart series ramp is CVD-validated: never re-picked by
   eye.
 - PR page and its run pages: keyed only by `pull_requests.link_token` (16 B
-  crypto/rand, base64url, 22 chars), linked only from the PR's summary
-  comment; a run is `/prs/{token}/runs/{n}`, n its number in the PR's
-  history (team + row life, as `prCostSQL`), never a database id. The PR
+  crypto/rand; rows from before 0015 a UUID's 122 bits; base64url, 22
+  chars), linked only from the PR's summary comment; a run is
+  `/prs/{token}/runs/{n}`, n its number in the PR's history (the row's life,
+  as `prCostSQL`, any team), never a database id. The PR
   page links its runs and a run page its PR; nothing else on the dashboard
   links either. No token in any response or app log (`httpapi.logPath` masks
   it; the ingress log sees the path). Malformed, unknown, out-of-range n: one

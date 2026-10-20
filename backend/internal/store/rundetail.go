@@ -99,6 +99,17 @@ type PRPage struct {
 	Runs     []PRRun
 	More     bool
 	Findings []RunFinding
+	// Totals are over the whole history, the runs More cut included.
+	Totals PRTotals
+}
+
+// PRTotals add up over every attempt of the PR.
+type PRTotals struct {
+	Runs             int
+	ElapsedMS        int64
+	PromptTokens     int64
+	CachedTokens     int64
+	CompletionTokens int64
 }
 
 // PRRun is one attempt as the PR page lists it.
@@ -116,8 +127,8 @@ type PRRun struct {
 	// findings it retired.
 	Run   *RunFacts
 	Fixed int
-	// Detail is the run_details record, nil when none decodes: the page
-	// reads its stages, files and PR scope.
+	// Detail is the run_details record's stages, files and PR scope (the
+	// rest is never read here); nil when there is none or it does not decode.
 	Detail *Pipeline
 }
 
@@ -146,11 +157,12 @@ func (s *Store) prByToken(ctx context.Context, token string) (p prRow, ok bool, 
 	return p, err == nil, err
 }
 
-// prAttemptsWhere is the PR's history: its team's attempts during the PR
-// row's life, as prCostSQL and PRCommentCalls bound it. A repo that changed
-// hands keeps its old rows under the old team.
-const prAttemptsWhere = `a.team_slug = $1 AND a.project_key = $2 AND a.repo_slug = $3 AND a.pr_id = $4
-	AND a.created_at >= $5`
+// prAttemptsWhere is the PR's history: its attempts during the PR row's
+// life, bounded as prCostSQL and PRCommentCalls bound theirs, so the page's
+// runs, findings and cost cover the same history. A repo whose claim was
+// released and claimed again has a new row, so a new life; one moved
+// between teams keeps its row, and so its runs, findings and cost.
+const prAttemptsWhere = `a.project_key = $1 AND a.repo_slug = $2 AND a.pr_id = $3 AND a.created_at >= $4`
 
 // PRPage reads the PR behind a link token for its page. ok is false when no
 // PR has that token.
@@ -162,26 +174,31 @@ func (s *Store) PRPage(ctx context.Context, token string) (pg PRPage, ok bool, e
 	pg = PRPage{ID: p.ID, Key: p.Key, TeamSlug: p.TeamSlug, Title: p.Title, MergedAt: p.Merged, DeclinedAt: p.Declined}
 
 	rows, err := s.pool.Query(ctx, `
-		SELECT n, total, kind, outcome, reason, elapsed_ms, created_at, cost,
+		SELECT n, total, all_elapsed, all_prompt, all_cached, all_completion,
+		       kind, outcome, reason, elapsed_ms, created_at, cost,
 		       run_id, incremental, from_commit, to_commit, model_label, prompt_tokens, cached_tokens,
-		       completion_tokens, run_cost, findings_posted, lines_added, lines_removed, files_changed,
-		       fixed, detail
+		       completion_tokens, run_cost, findings_posted, lines_added, lines_removed, files_changed, detail
 		  FROM (
 		SELECT row_number() OVER (ORDER BY a.created_at, a.id) AS n, count(*) OVER () AS total,
+		       COALESCE(sum(a.elapsed_ms) OVER (), 0) AS all_elapsed,
+		       COALESCE(sum(r.prompt_tokens) OVER (), 0) AS all_prompt,
+		       COALESCE(sum(r.cached_tokens) OVER (), 0) AS all_cached,
+		       COALESCE(sum(r.completion_tokens) OVER (), 0) AS all_completion,
 		       a.kind, a.outcome, COALESCE(a.reason, '') AS reason, a.elapsed_ms, a.created_at,
 		       COALESCE(r.cost_nano_usd, a.cost_nano_usd) AS cost,
 		       r.id AS run_id, r.incremental, r.from_commit, r.to_commit, r.model_label, r.prompt_tokens,
 		       r.cached_tokens, r.completion_tokens, r.cost_nano_usd AS run_cost, r.findings_posted,
 		       r.lines_added, r.lines_removed, r.files_changed,
-		       (SELECT count(*) FROM findings f WHERE f.fixed_run_id = r.id) AS fixed,
-		       d.detail
+		       -- The three parts the page reads, not the whole record.
+		       CASE WHEN d.detail IS NOT NULL THEN jsonb_build_object('stages', d.detail->'stages',
+		            'files', d.detail->'files', 'pr_scope', d.detail->'pr_scope') END AS detail
 		  FROM review_attempts a
 		  LEFT JOIN review_runs r ON r.id = a.review_run_id
 		  LEFT JOIN run_details d ON d.attempt_id = a.id
 		 WHERE `+prAttemptsWhere+`) h
-		 WHERE n > total - $6
+		 WHERE n > total - $5
 		 ORDER BY n`,
-		p.TeamSlug, p.Key.Project, p.Key.Repo, p.Key.PRID, p.CreatedAt, prRunsLimit)
+		p.Key.Project, p.Key.Repo, p.Key.PRID, p.CreatedAt, prRunsLimit)
 	if err != nil {
 		return PRPage{}, false, err
 	}
@@ -195,21 +212,25 @@ func (s *Store) PRPage(ctx context.Context, token string) (pg PRPage, ok bool, e
 		var prompt, cached, completion, runCost *int64
 		var posted, added, removed, files *int
 		var raw []byte
-		if err := rows.Scan(&r.N, &total, &r.Kind, &r.Outcome, &r.Reason, &r.ElapsedMS, &r.CreatedAt, &r.CostNanoUSD,
+		if err := rows.Scan(&r.N, &total, &pg.Totals.ElapsedMS, &pg.Totals.PromptTokens, &pg.Totals.CachedTokens,
+			&pg.Totals.CompletionTokens, &r.Kind, &r.Outcome, &r.Reason, &r.ElapsedMS, &r.CreatedAt, &r.CostNanoUSD,
 			&runID, &inc, &from, &to, &model, &prompt, &cached, &completion, &runCost, &posted,
-			&added, &removed, &files, &r.Fixed, &raw); err != nil {
+			&added, &removed, &files, &raw); err != nil {
 			return PRPage{}, false, err
 		}
-		pg.More = total > prRunsLimit
+		pg.More, pg.Totals.Runs = total > prRunsLimit, total
 		if runID != nil {
 			r.Run = &RunFacts{ID: *runID, Incremental: *inc, FromCommit: deref(from), ToCommit: deref(to),
 				ModelLabel: deref(model), PromptTokens: *prompt, CachedTokens: *cached, CompletionTokens: *completion,
 				CostNanoUSD: runCost, FindingsPosted: *posted, LinesAdded: *added, LinesRemoved: *removed,
 				FilesChanged: *files}
 		}
-		// An undecodable record leaves this row's bar and files out, as the
-		// run page leaves its tabs empty.
-		r.Detail, _ = decodeDetail(raw)
+		// No record, one without the three parts, or one that does not decode
+		// leaves this row's bar and files out, as the run page leaves its
+		// tabs empty.
+		if rec, _ := decodeDetail(raw); rec != nil && (rec.Stages != nil || rec.Files != nil || rec.PRScope != nil) {
+			r.Detail = rec
+		}
 		pg.Runs = append(pg.Runs, r)
 	}
 	if err := rows.Err(); err != nil {
@@ -217,6 +238,18 @@ func (s *Store) PRPage(ctx context.Context, token string) (pg PRPage, ok bool, e
 	}
 	if pg.Findings, err = s.runFindings(ctx, `f.pull_request_id = $1`, p.ID); err != nil {
 		return PRPage{}, false, err
+	}
+	// Each run's retired findings, from the PR's findings already read.
+	fixed := map[int64]int{}
+	for _, f := range pg.Findings {
+		if f.FixedRunID != nil {
+			fixed[*f.FixedRunID]++
+		}
+	}
+	for i, r := range pg.Runs {
+		if r.Run != nil {
+			pg.Runs[i].Fixed = fixed[r.Run.ID]
+		}
 	}
 	return pg, true, nil
 }
@@ -238,8 +271,8 @@ func (s *Store) PRRun(ctx context.Context, token string, n int) (d RunDetail, ok
 		  FROM review_attempts a
 		 WHERE `+prAttemptsWhere+`
 		 ORDER BY a.created_at, a.id
-		 OFFSET $6 LIMIT 1`,
-		p.TeamSlug, p.Key.Project, p.Key.Repo, p.Key.PRID, p.CreatedAt, n-1).Scan(
+		 OFFSET $5 LIMIT 1`,
+		p.Key.Project, p.Key.Repo, p.Key.PRID, p.CreatedAt, n-1).Scan(
 		&d.ID, &d.Kind, &d.Outcome, &d.Reason, &d.ElapsedMS, &d.CreatedAt, &d.AttemptCostNanoUSD, &runID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return RunDetail{}, false, nil

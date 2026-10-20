@@ -162,11 +162,11 @@ func (r *Reviewer) recordAttempt(ctx context.Context, a store.Attempt) int64 {
 }
 
 // prURL is the PR's page, for the summary's footer: the only place the link
-// is ever handed out. Empty (no link) without a public URL, a written
-// attempt or a readable token: the footer never points at a host or a page
-// that does not exist.
-func (r *Reviewer) prURL(ctx context.Context, prID, attemptID int64) string {
-	if r.publicURL == "" || prID == 0 || attemptID == 0 {
+// is ever handed out. Empty (no link) without a public URL, a PR row or a
+// readable token: the footer never points at a host or a page that does not
+// exist. The page is the PR row's, so a lost attempt row keeps the link.
+func (r *Reviewer) prURL(ctx context.Context, prID int64) string {
+	if r.publicURL == "" || prID == 0 {
 		return ""
 	}
 	token := safeDB(ctx, r.log, "PRLinkToken", func() (string, error) {

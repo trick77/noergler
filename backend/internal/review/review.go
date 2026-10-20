@@ -575,7 +575,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		DiffAdded:                  plan.diffAdded,
 		DiffRemoved:                plan.diffRemoved,
 		ModelLabel:                 r.llm.Label(),
-		PRURL:                      r.prURL(ctx, prReviewID, attemptID),
+		PRURL:                      r.prURL(ctx, prReviewID),
 		RunCostUSD:                 runCost,
 		CumulativeCostUSD:          cumulativeCost,
 		MaxPRCostUSD:               r.cfg.MaxPRCostUSD,

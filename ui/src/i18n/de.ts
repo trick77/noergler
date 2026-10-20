@@ -343,6 +343,7 @@ export const de = {
     runs_other: "{{count}} Runs",
     replies_one: "{{count}} Antwort",
     replies_other: "{{count}} Antworten",
+    repliesMore: "{{count}}+ Antworten",
     cost: "PR-Kosten",
     ofCap: "von {{cap}} Limit",
     findings: "Findings",

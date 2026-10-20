@@ -30,6 +30,9 @@ func prFixture() store.PRPage {
 	t0 := time.Unix(0, 0).UTC()
 	return store.PRPage{
 		ID: 9, Key: store.PRKey{Project: "PAY", Repo: "checkout", PRID: 1482}, TeamSlug: "platform", Title: "Retry",
+		// The store's sums over the whole history, not the three runs below.
+		Totals: store.PRTotals{Runs: 7, ElapsedMS: 223_400, PromptTokens: 188_000, CachedTokens: 24_000, CompletionTokens: 14_000},
+		More:   true,
 		Runs: []store.PRRun{
 			{N: 1, Kind: store.RunAuto, Outcome: "ok", ElapsedMS: n64(72_000), CreatedAt: t0, CostNanoUSD: n64(143_000_000),
 				Run: &store.RunFacts{ID: 31, PromptTokens: 47_000, CompletionTokens: 9_000, LinesAdded: 412, FilesChanged: 11},
@@ -77,11 +80,13 @@ func TestPRPageBody(t *testing.T) {
 	if body.Scope == nil || *body.Scope != (store.PRScope{Added: 412, Removed: 88, Files: 11}) {
 		t.Errorf("scope = %+v", body.Scope)
 	}
-	if body.PromptTokens != 88_000 || body.CachedTokens != 24_000 || body.CompletionTokens != 14_000 {
+	// Tokens, time and the count over the whole history; waits over the
+	// runs listed, the only ones with their stages read.
+	if body.PromptTokens != 188_000 || body.CachedTokens != 24_000 || body.CompletionTokens != 14_000 {
 		t.Errorf("tokens = %d / %d / %d", body.PromptTokens, body.CachedTokens, body.CompletionTokens)
 	}
-	if body.ElapsedMS != 123_400 || body.WaitMS != 15_000 {
-		t.Errorf("elapsed = %d, wait = %d", body.ElapsedMS, body.WaitMS)
+	if body.ElapsedMS != 223_400 || body.WaitMS != 15_000 || body.RunsTotal != 7 || !body.MoreRuns {
+		t.Errorf("elapsed = %d, wait = %d, runs = %d, more = %v", body.ElapsedMS, body.WaitMS, body.RunsTotal, body.MoreRuns)
 	}
 	if len(body.Runs) != 3 || body.Runs[1].Time != nil || body.Runs[1].ReasonLabel == "" {
 		t.Fatalf("runs = %+v", body.Runs)

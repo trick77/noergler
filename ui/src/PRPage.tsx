@@ -14,6 +14,7 @@ import type {
   PRRun,
 } from "./api";
 import {
+  commentUrl,
   duration,
   known,
   money,
@@ -26,7 +27,6 @@ import {
 } from "./format";
 import { onNav, prPath } from "./routing";
 import { FindingText } from "./RunPipeline";
-import { commentUrl } from "./RunPage";
 import { usePoll } from "./usePoll";
 import {
   Card,
@@ -113,7 +113,7 @@ export function PRPage({ token }: { token: string }) {
 
   const counts: Record<Tab, number | null> = {
     findings: d.findings.length,
-    runs: d.runs.length,
+    runs: d.runs_total,
     files: d.files.length,
     cost: null,
   };
@@ -147,11 +147,15 @@ export function PRPage({ token }: { token: string }) {
           </Pill>
           <TeamPill name={d.team_name} slug={d.team} />
           <span>
-            {t("pr.runs", { count: d.runs.length })}
+            {t("pr.runs", { count: d.runs_total })}
             {d.calls.length > 0 && (
               <>
                 <Sep />
-                {t("pr.replies", { count: d.calls.length })}
+                {/* The list is cut at its cap: "200+", never a count that
+                    reads as all of them. */}
+                {d.more_calls
+                  ? t("pr.repliesMore", { count: d.calls.length })
+                  : t("pr.replies", { count: d.calls.length })}
               </>
             )}
           </span>
@@ -293,9 +297,18 @@ export function PRPage({ token }: { token: string }) {
   );
 }
 
-function CapMeter({ cost, cap }: { cost: number; cap: number }) {
+/** CapMeter is the PR's cost against its cap, red at or over it. */
+function CapMeter({
+  cost,
+  cap,
+  className = "mt-2 h-1.5 rounded-[4px]",
+}: {
+  cost: number;
+  cap: number;
+  className?: string;
+}) {
   return (
-    <div className="mt-2 h-1.5 overflow-hidden rounded-[4px] bg-track">
+    <div className={"overflow-hidden bg-track " + className}>
       <div
         className={"h-full " + (cost >= cap ? "bg-danger" : "bg-s1")}
         style={{ width: `${Math.min(100, (cost / cap) * 100)}%` }}
@@ -455,8 +468,9 @@ function RunsTab({ d, token }: { d: PRPageData; token: string }) {
       r.time ? r.time.work_ms + r.time.wait_ms + r.time.gateway_ms : 0,
     ),
   );
-  const posted = d.runs.reduce((s, r) => s + (r.run?.findings_posted ?? 0), 0);
-  const fixed = d.runs.reduce((s, r) => s + r.fixed, 0);
+  // The whole PR's, like the total cost beside them, not the listed rows'.
+  const posted = d.findings.length;
+  const fixed = d.findings.filter((f) => f.fixed).length;
   // Newest first: the run a reader came for is usually the latest.
   const rows = [...d.runs].reverse();
   return (
@@ -645,6 +659,19 @@ function CallsCard({ d, pr }: { d: PRPageData; pr: string | null }) {
   );
 }
 
+/** PathText is a path with its directory faint; a path with no name after
+ *  its last slash prints whole. */
+function PathText({ path }: { path: string }) {
+  const cut = path.lastIndexOf("/") + 1;
+  if (cut === 0 || cut === path.length) return <>{path}</>;
+  return (
+    <>
+      <span className="text-faint">{path.slice(0, cut)}</span>
+      {path.slice(cut)}
+    </>
+  );
+}
+
 function FilesTab({ d, token }: { d: PRPageData; token: string }) {
   const { t } = useTranslation();
   if (d.files.length === 0) {
@@ -668,8 +695,10 @@ function FilesTab({ d, token }: { d: PRPageData; token: string }) {
           <tbody>
             {d.files.map((f) => (
               <tr key={f.path}>
-                <td className={tdTag} title={f.path}>
-                  {f.path.split("/").pop()}
+                {/* The whole path, faint up to the name: across all of a
+                    PR's runs two files sharing a name are likely. */}
+                <td className={td + " font-mono text-[12.5px] break-all"}>
+                  <PathText path={f.path} />
                 </td>
                 <td className={td + " text-[12.5px]"}>
                   <span className="flex flex-wrap gap-x-3 gap-y-0.5">
@@ -743,12 +772,8 @@ function CostTab({ d }: { d: PRPageData }) {
         {cost !== null && cap !== null && cap > 0 && (
           <div className="mt-4 grid grid-cols-[80px_1fr_150px] items-center gap-3 text-[13px]">
             <span className="text-faint">{t("run.prCap")}</span>
-            <div className="h-2.5 overflow-hidden rounded-[5px] bg-track">
-              <div
-                className={"h-full " + (cost >= cap ? "bg-danger" : "bg-s1")}
-                style={{ width: `${Math.min(100, (cost / cap) * 100)}%` }}
-              />
-            </div>
+            <CapMeter cost={cost} cap={cap} className="h-2.5 rounded-[5px]" />
+
             <span className="text-right font-mono text-[12.5px] text-ink-dim">
               {t("run.prOf", {
                 cost: money(d.cost_usd),

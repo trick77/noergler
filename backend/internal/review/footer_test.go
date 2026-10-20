@@ -2,6 +2,7 @@ package review
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -27,6 +28,15 @@ func TestFooterLinksThePRPage(t *testing.T) {
 	h2.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
 	if s := h2.bb.Posted[0].Text; strings.Contains(s, "/prs/") {
 		t.Errorf("no public URL, yet a PR link:\n%s", s)
+	}
+
+	// The page is the PR row's: a lost attempt row keeps the link.
+	h4 := newHarness(t, nil)
+	h4.r.publicURL = "https://noergler.example.com"
+	h4.st.attemptErr = errors.New("db down")
+	h4.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	if s := h4.bb.Posted[0].Text; !strings.Contains(s, "/prs/"+h4.st.prToken+")") {
+		t.Errorf("attempt not written, and the PR link went with it:\n%s", s)
 	}
 
 	h3 := newHarness(t, nil)

@@ -32,19 +32,20 @@ type prPageBody struct {
 	Cap *string `json:"cap_usd"`
 	// Scope is the whole PR's reviewable diff; null when no run read it.
 	Scope *store.PRScope `json:"scope"`
-	// Tokens add over the runs.
+	// Tokens and time add over every run, the ones not listed included.
 	PromptTokens     int64 `json:"prompt_tokens"`
 	CachedTokens     int64 `json:"cached_tokens"`
 	CompletionTokens int64 `json:"completion_tokens"`
-	// ElapsedMS adds the runs' wall clocks; WaitMS is the part of the
-	// recorded stages spent waiting.
-	ElapsedMS int64 `json:"elapsed_ms"`
-	WaitMS    int64 `json:"wait_ms"`
+	ElapsedMS        int64 `json:"elapsed_ms"`
+	// WaitMS is the waits in the recorded stages of the runs listed.
+	WaitMS int64 `json:"wait_ms"`
 
-	Runs     []prRunBody     `json:"runs"`
-	MoreRuns bool            `json:"more_runs"`
-	Findings []prFindingBody `json:"findings"`
-	Files    []prFileBody    `json:"files"`
+	// RunsTotal counts every run; Runs lists the newest of them.
+	RunsTotal int             `json:"runs_total"`
+	Runs      []prRunBody     `json:"runs"`
+	MoreRuns  bool            `json:"more_runs"`
+	Findings  []prFindingBody `json:"findings"`
+	Files     []prFileBody    `json:"files"`
 	// Calls are the PR's reply and Q&A calls, newest first: they count
 	// toward Cost and the cap. MoreCalls: the list was cut.
 	Calls     []commentCallBody `json:"calls"`
@@ -136,7 +137,9 @@ func (d Deps) prPage(w http.ResponseWriter, r *http.Request) {
 	body := prPageBody{
 		Tag: pg.Key.Tag(), Title: pg.Title, Team: pg.TeamSlug, TeamName: d.teamNamer()(pg.TeamSlug),
 		State: "open", BitbucketURL: d.BitbucketURL,
-		Runs: make([]prRunBody, 0, len(pg.Runs)), MoreRuns: pg.More,
+		RunsTotal: pg.Totals.Runs, Runs: make([]prRunBody, 0, len(pg.Runs)), MoreRuns: pg.More,
+		PromptTokens: pg.Totals.PromptTokens, CachedTokens: pg.Totals.CachedTokens,
+		CompletionTokens: pg.Totals.CompletionTokens, ElapsedMS: pg.Totals.ElapsedMS,
 	}
 	switch {
 	case pg.MergedAt != nil:
@@ -154,14 +157,8 @@ func (d Deps) prPage(w http.ResponseWriter, r *http.Request) {
 			ElapsedMS:   run.ElapsedMS, CreatedAt: run.CreatedAt, Cost: usd(run.CostNanoUSD),
 			Run: runFacts(run.Run), Fixed: run.Fixed,
 		}
-		if run.ElapsedMS != nil {
-			body.ElapsedMS += *run.ElapsedMS
-		}
 		if f := run.Run; f != nil {
 			numberOf[f.ID] = run.N
-			body.PromptTokens += f.PromptTokens
-			body.CachedTokens += f.CachedTokens
-			body.CompletionTokens += f.CompletionTokens
 		}
 		if p := run.Detail; p != nil {
 			if len(p.Stages) > 0 {

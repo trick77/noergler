@@ -46,6 +46,7 @@ const pr: PRPageData = {
   cached_tokens: 24000,
   completion_tokens: 14000,
   elapsed_ms: 123400,
+  runs_total: 3,
   wait_ms: 15000,
   runs: [
     {
@@ -203,9 +204,10 @@ describe("PRPage", () => {
     serve(pr);
     render(<PRPage token={TOK} />);
     fireEvent.click(await screen.findByRole("tab", { name: /Files/ }));
-    expect(screen.getByText("retry.go").getAttribute("title")).toBe(
-      "services/payments/retry.go",
-    );
+    // The whole path: two files sharing a name are likely across all runs.
+    expect(
+      screen.getByText("services/payments/").closest("td")?.textContent,
+    ).toBe("services/payments/retry.go");
     expect(screen.getByText("full content")).toBeDefined();
     expect(screen.getByText("diff only")).toBeDefined();
     expect(window.location.hash).toBe("#files");

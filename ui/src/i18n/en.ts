@@ -353,6 +353,7 @@ export const en = {
     runs_other: "{{count}} runs",
     replies_one: "{{count}} reply or answer",
     replies_other: "{{count}} replies and answers",
+    repliesMore: "{{count}}+ replies and answers",
     cost: "PR cost",
     ofCap: "of a {{cap}} cap",
     findings: "Findings",
