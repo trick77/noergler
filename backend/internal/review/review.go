@@ -664,10 +664,10 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 				prTag, shortSHA(sourceCommit, 10)))
 			return "", cumulativeContext{}, "", SkipHeadUnchanged, nil
 		}
-		incDiff, err := r.bitbucket.FetchCommitDiff(ctx, project, repo, lastReviewed, sourceCommit)
+		incDiff, err := r.bitbucket.FetchCommitDiff(ctx, project, repo, prID, lastReviewed, sourceCommit)
 		switch {
 		case errors.Is(err, bitbucket.ErrIncrementalDiffUnavailable):
-			// Expected control flow: the branch was rebased or squashed.
+			// Expected control flow: the branch was rebased or force-pushed.
 			// INFO, no traceback, and fall through to the full review. We
 			// must NOT skip just because the optimization did not apply.
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: incremental diff unavailable (%v) - running full review", prTag, err))
@@ -684,7 +684,7 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 			// tree, or a Bitbucket edge case. Never silently skip when the
 			// SHA actually changed.
 			r.log.WarnContext(ctx, fmt.Sprintf(
-				"%s: HEAD moved %s -> %s but compare/diff is empty - falling back to full review to avoid missing changes",
+				"%s: HEAD moved %s -> %s but the incremental diff is empty - falling back to full review to avoid missing changes",
 				prTag, shortSHA(lastReviewed, 10), shortSHA(sourceCommit, 10)))
 		}
 	}

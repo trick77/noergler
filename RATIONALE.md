@@ -42,6 +42,11 @@ an incident or an eval run: read the reason before relaxing a rule.
   refuses replies on a resolved thread. Stamping despite a failed reply: no
   later diff holds the fix to retry on, and an unstamped row would dedup a real
   recurrence.
+- Incremental diff: `compare/diff` serves JSON only and answered our
+  `text/plain` with 406 on every push (Bitbucket 9.4), read as "rebase", so
+  prod never ran an incremental review and never retired a finding. Rebase
+  check by commit list: a diff across a rewrite passes upstream lines off as
+  the push's, evidence for a wrong "fixed".
 - Finding replies author-only: a reviewer's reply used up the one answer
   before the author could make their case.
 - Language block above the untrusted input: below it the prompt calls

@@ -88,7 +88,7 @@ func (f *fakeBitbucket) FetchPRDiff(_ context.Context, _, _ string, _, _ int) (s
 	return f.prDiff, f.prDiffErr
 }
 
-func (f *fakeBitbucket) FetchCommitDiff(_ context.Context, _, _, _, _ string) (string, error) {
+func (f *fakeBitbucket) FetchCommitDiff(_ context.Context, _, _ string, _ int, _, _ string) (string, error) {
 	return f.commitDiff, f.commitErr
 }
 

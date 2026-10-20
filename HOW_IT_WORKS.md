@@ -72,10 +72,10 @@ Every skip that is a stable state of the PR (opt-out branch, missing or oversize
 The last reviewed commit lives in the **database**, not in a marker inside the
 summary comment.
 
-On a push, noergler asks Bitbucket for the diff between the last reviewed commit
-and the new head. Same SHA means nothing changed and the run stops. If Bitbucket
-cannot produce an incremental diff (it answers 406 for a rewritten range), the
-run falls back to the full PR diff.
+On a push, noergler asks Bitbucket for the PR diff between the last reviewed
+commit and the new head (`sinceId`/`untilId`). Same SHA means nothing changed
+and the run stops. If the last reviewed commit is no longer one of the PR's
+commits (a rebase or force push), the run falls back to the full PR diff.
 
 The review then sees the incremental diff as the subject and the cumulative PR
 diff as context.

@@ -49,21 +49,45 @@ func (c *Client) FetchPRDiff(ctx context.Context, project, repo string, prID, co
 	return c.getTextCapped(ctx, prPath(project, repo, prID)+"/diff", query, "text/plain", what, c.maxDiffBytes)
 }
 
-// FetchCommitDiff returns the diff between two commits, for an incremental
-// review. A 406 means the histories cannot be compared (usually a rebase) and
-// comes back as ErrIncrementalDiffUnavailable so the caller can fall back to a
-// full review instead of treating it as a transport failure.
-func (c *Client) FetchCommitDiff(ctx context.Context, project, repo, fromCommit, toCommit string) (string, error) {
-	path := fmt.Sprintf("%s/projects/%s/repos/%s/compare/diff", apiBase, project, repo)
-	query := url.Values{"from": {fromCommit}, "to": {toCommit}}
-	what := fmt.Sprintf("%s/%s compare %s..%s", project, repo, shortSHA(fromCommit), shortSHA(toCommit))
-
-	text, err := c.getTextCapped(ctx, path, query, "text/plain", what, c.maxDiffBytes)
-	if Status(err) == http.StatusNotAcceptable {
-		return "", fmt.Errorf("compare/diff 406 for %s..%s (unreachable history, likely a rebase): %w",
-			shortSHA(fromCommit), shortSHA(toCommit), ErrIncrementalDiffUnavailable)
+// FetchCommitDiff returns what one push changed on a PR: the PR diff from
+// fromCommit to toCommit, raw text like FetchPRDiff.
+//
+// fromCommit must still be one of the PR's commits. A rebase or force push
+// drops it, and a diff across the rewrite would pass upstream lines off as
+// this push's, so that comes back as ErrIncrementalDiffUnavailable and the
+// caller reviews the whole PR. Not compare/diff: it serves JSON only and
+// answers text/plain with 406, every time.
+func (c *Client) FetchCommitDiff(ctx context.Context, project, repo string, prID int, fromCommit, toCommit string) (string, error) {
+	onPR, err := c.prHasCommit(ctx, project, repo, prID, fromCommit)
+	if err != nil {
+		return "", err
 	}
-	return text, err
+	if !onPR {
+		return "", fmt.Errorf("%s is no longer a commit of the PR (history rewritten): %w",
+			shortSHA(fromCommit), ErrIncrementalDiffUnavailable)
+	}
+	query := url.Values{"sinceId": {fromCommit}, "untilId": {toCommit}}
+	what := fmt.Sprintf("%s/%s#%d diff %s..%s", project, repo, prID, shortSHA(fromCommit), shortSHA(toCommit))
+	return c.getTextCapped(ctx, prPath(project, repo, prID)+"/diff", query, "text/plain", what, c.maxDiffBytes)
+}
+
+// prHasCommit reports whether commit is among the PR's commits. Either SHA
+// may be abbreviated, so the prefix is matched both ways.
+func (c *Client) prHasCommit(ctx context.Context, project, repo string, prID int, commit string) (bool, error) {
+	if commit == "" {
+		return false, nil
+	}
+	values, err := c.paged(ctx, prPath(project, repo, prID)+"/commits")
+	if err != nil {
+		return false, err
+	}
+	for _, v := range values {
+		id, _ := v["id"].(string)
+		if id != "" && (strings.HasPrefix(id, commit) || strings.HasPrefix(commit, id)) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // FetchPRChanges returns the paths of every file in a PR, in the order

@@ -170,43 +170,78 @@ func TestFetchPRDiffWithContextLines(t *testing.T) {
 	}
 }
 
-func TestFetchCommitDiffSendsFromAndTo(t *testing.T) {
-	f, c := newFake(t, text("compare-diff"))
-	got, err := c.FetchCommitDiff(context.Background(), "PROJ", "my-repo", "abc123", "def456")
+// prRoutes answers the PR's commit list with commits and its diff with diff.
+func prRoutes(commits, diff func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/commits") {
+			commits(w, r)
+			return
+		}
+		diff(w, r)
+	}
+}
+
+const prCommits = `{"values":[{"id":"def4567890abcdef"},{"id":"abc1234567890abc"}],"isLastPage":true}`
+
+// The push's diff comes from the PR diff endpoint as raw text. compare/diff
+// answers text/plain with 406 whatever the history, which made every push
+// in production a full review.
+func TestFetchCommitDiffAsksThePRDiffForTheRange(t *testing.T) {
+	f, c := newFake(t, prRoutes(jsonReply(200, prCommits), text("push-diff")))
+	got, err := c.FetchCommitDiff(context.Background(), "PROJ", "my-repo", 7, "abc1234567890", "def4567890abc")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "compare-diff" {
+	if got != "push-diff" {
 		t.Errorf("diff = %q", got)
 	}
-	if f.last().Query.Get("from") != "abc123" || f.last().Query.Get("to") != "def456" {
-		t.Errorf("query = %v", f.last().Query)
+	last := f.last()
+	if last.Path != "/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/7/diff" {
+		t.Errorf("path = %q", last.Path)
+	}
+	if last.Query.Get("sinceId") != "abc1234567890" || last.Query.Get("untilId") != "def4567890abc" {
+		t.Errorf("query = %v", last.Query)
+	}
+	if last.Header.Get("Accept") != "text/plain" {
+		t.Errorf("Accept = %q", last.Header.Get("Accept"))
 	}
 }
 
-// 406 means the two commits have no comparable history, normally a rebase. It
-// must be distinguishable so the reviewer falls back to a full review.
-func TestFetchCommitDiff406IsTyped(t *testing.T) {
-	_, c := newFake(t, jsonReply(406, `{"errors":[{"message":"not acceptable"}]}`))
-	_, err := c.FetchCommitDiff(context.Background(), "PROJ", "my-repo", "abc1234567890", "def4567890abc")
+// A last reviewed commit the PR no longer has means a rebase or force push:
+// typed, so the reviewer falls back to a full review, and no diff fetched.
+func TestFetchCommitDiffRewrittenHistoryIsTyped(t *testing.T) {
+	f, c := newFake(t, prRoutes(jsonReply(200, prCommits), text("push-diff")))
+	_, err := c.FetchCommitDiff(context.Background(), "PROJ", "my-repo", 7, "0ld0ld0ld0ld0", "def4567890abc")
 	if !errors.Is(err, ErrIncrementalDiffUnavailable) {
 		t.Fatalf("err = %v, want ErrIncrementalDiffUnavailable", err)
 	}
-	// The message carries the shortened SHAs the operator sees in the log.
-	if !strings.Contains(err.Error(), "abc1234567") || !strings.Contains(err.Error(), "def4567890") {
-		t.Errorf("err = %v, want the short SHAs", err)
+	// The message carries the shortened SHA the operator sees in the log.
+	if !strings.Contains(err.Error(), "0ld0ld0ld0") {
+		t.Errorf("err = %v, want the short SHA", err)
+	}
+	if f.calls() != 1 {
+		t.Errorf("calls = %d, want only the commit list", f.calls())
 	}
 }
 
-// Any other status stays a plain status error, not the typed fallback signal.
-func TestFetchCommitDiff404IsNotTyped(t *testing.T) {
-	_, c := newFake(t, jsonReply(404, `{"errors":[{"message":"gone"}]}`))
-	_, err := c.FetchCommitDiff(context.Background(), "PROJ", "my-repo", "abc", "def")
-	if errors.Is(err, ErrIncrementalDiffUnavailable) {
-		t.Fatalf("404 reported as an incremental-diff failure: %v", err)
-	}
-	if Status(err) != 404 {
-		t.Fatalf("err = %v, want a 404 StatusError", err)
+// Any failing status stays a plain status error, not the typed fallback
+// signal: a fault is not a rebase.
+func TestFetchCommitDiffErrorsAreNotTyped(t *testing.T) {
+	gone := jsonReply(404, `{"errors":[{"message":"gone"}]}`)
+	for name, h := range map[string]func(http.ResponseWriter, *http.Request){
+		"commit list": prRoutes(gone, text("push-diff")),
+		"diff":        prRoutes(jsonReply(200, prCommits), gone),
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, c := newFake(t, h)
+			_, err := c.FetchCommitDiff(context.Background(), "PROJ", "my-repo", 7, "abc1234567890", "def4567890abc")
+			if errors.Is(err, ErrIncrementalDiffUnavailable) {
+				t.Fatalf("404 reported as an incremental-diff failure: %v", err)
+			}
+			if Status(err) != 404 {
+				t.Fatalf("err = %v, want a 404 StatusError", err)
+			}
+		})
 	}
 }
 

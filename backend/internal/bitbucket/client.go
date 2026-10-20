@@ -90,10 +90,9 @@ func (e *ContentTooLarge) Error() string {
 	return fmt.Sprintf("%s: %s exceeds cap of %d bytes", e.What, seen, e.Limit)
 }
 
-// ErrIncrementalDiffUnavailable means Bitbucket cannot diff two commits: the
-// source branch was rebased so the old commit is unreachable, or the two live
-// on unrelated histories. Signalled by 406 on compare/diff; the caller falls
-// back to a full review.
+// ErrIncrementalDiffUnavailable means a push has no incremental diff: the
+// last reviewed commit is no longer on the PR (rebase, force push). The
+// caller falls back to a full review.
 var ErrIncrementalDiffUnavailable = errors.New("incremental diff unavailable")
 
 // ErrVersionConflict means a comment was edited concurrently (HTTP 409). The
