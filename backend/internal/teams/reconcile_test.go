@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -124,6 +125,60 @@ func TestReconcile_NoSettingsSeedWhenEverythingEmpty(t *testing.T) {
 	}
 	if len(db.put) != 0 || len(db.added) != 0 {
 		t.Errorf("wrote for a team with nothing to seed: added=%v put=%v", db.added, db.put)
+	}
+}
+
+// A branch list alone is something to seed.
+func TestReconcile_BranchListSeeds(t *testing.T) {
+	db := &fakeClaimStore{claims: map[string][]config.ProjectScope{}, settings: map[string]store.TeamSettings{}}
+	team := teamWith("platform", nil, config.Review{ExcludeTargetBranches: []string{"release/*"}})
+
+	if _, err := Reconcile(context.Background(), db, map[string]*config.Team{"platform": team}, []string{"platform"}, quietLogger()); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if !reflect.DeepEqual(db.put, []string{"platform:teams.yaml"}) {
+		t.Errorf("put = %v, want one teams.yaml settings seed", db.put)
+	}
+}
+
+// A team the DB already knows keeps its row: a branch list in teams.yaml
+// does not reach it (existing teams get no excludes, user 2026-10-20).
+func TestReconcile_KnownTeamIgnoresYAMLBranchLists(t *testing.T) {
+	db := &fakeClaimStore{
+		claims:   map[string][]config.ProjectScope{"platform": {{Key: "PLAT"}}},
+		settings: map[string]store.TeamSettings{"platform": {ExcludeRepos: []string{"*-infra"}}},
+	}
+	team := teamWith("platform", []config.ProjectScope{{Key: "PLAT"}}, config.Review{ExcludeSourceBranches: []string{"dependabot/*"}})
+	log, buf := bufLogger()
+
+	if _, err := Reconcile(context.Background(), db, map[string]*config.Team{"platform": team}, []string{"platform"}, log); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if len(team.Review.ExcludeSourceBranches) != 0 || len(db.put) != 0 {
+		t.Errorf("source branches = %v, put = %v: the DB row must win", team.Review.ExcludeSourceBranches, db.put)
+	}
+	// Dropped, but not silently.
+	if !strings.Contains(buf.String(), "configured exclude_*_branches ignored") {
+		t.Errorf("no log line for the dropped config lists:\n%s", buf.String())
+	}
+}
+
+// No line when the config sets no branch lists: the common case stays quiet.
+func TestReconcile_KnownTeamNoBranchListsNoLine(t *testing.T) {
+	db := &fakeClaimStore{
+		claims:   map[string][]config.ProjectScope{"platform": {{Key: "PLAT"}}},
+		settings: map[string]store.TeamSettings{"platform": {ExcludeSourceBranches: []string{"wip/*"}}},
+	}
+	team := teamWith("platform", []config.ProjectScope{{Key: "PLAT"}}, config.Review{})
+	log, buf := bufLogger()
+	if _, err := Reconcile(context.Background(), db, map[string]*config.Team{"platform": team}, []string{"platform"}, log); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if strings.Contains(buf.String(), "exclude_*_branches") {
+		t.Errorf("unexpected line:\n%s", buf.String())
+	}
+	if !slices.Equal(team.Review.ExcludeSourceBranches, []string{"wip/*"}) {
+		t.Errorf("source branches = %v, want the DB's", team.Review.ExcludeSourceBranches)
 	}
 }
 

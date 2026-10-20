@@ -159,7 +159,8 @@ Rules:
   cannot appear in a team block; naming them disables the team. The prompts
   are compiled in and not configurable.
 - **Claims and author lists are the team's own.** Which projects and repos a team owns
-  (`projects`), its `review.auto_review_authors` / `review.ignore_authors` and its `review.exclude_repos` live in the
+  (`projects`), its `review.auto_review_authors` / `review.ignore_authors`, its `review.exclude_repos` and its
+  `review.exclude_source_branches` / `review.exclude_target_branches` live in the
   database (`team_claims`, `team_settings`) and are changed through the API
   (see [Webhook setup](#webhook-setup)); the values in `teams.yaml` only seed a slug the
   database does not know yet, and are ignored afterwards. The author lists seed with their
@@ -343,7 +344,7 @@ Write, not read: noergler posts review comments, so `grant-bot` grants `PROJECT_
 
 **The full contract is served by the instance itself, at `/api/docs`** (the spec alone at `/api/openapi.yaml`), and is reachable from the dashboard's nav.
 
-`GET /teams/<team>` returns the claims, the two author lists, the excluded repos and `use_pr_description`. `PUT /teams/<team>/settings` updates any of `use_pr_description` (default `true`: the PR title and description go to the model as context for reviews and @mentions; the code stays the source of truth, so a description the code does not match is never a finding by itself), `auto_review_authors` (only these authors get automatic reviews, empty = everyone), `ignore_authors` (never an automatic review, wins over the first list; an @mention still reviews) and `exclude_repos` (repo slug globs, case-insensitive, default `*-infra`: a project webhook delivers for every repo in the project, these never get a review, @mentions included, while merge/decline/delete of a PR reviewed earlier is still recorded; a repo named explicitly in a `repos:` claim is never excluded); a field left out stays, a list given replaces the whole list, `[]` clears it, `false` turns the PR description off. Both need only the team secret. Changes take effect immediately, no redeploy.
+`GET /teams/<team>` returns the claims, the two author lists, the excluded repos, the excluded source and target branches and `use_pr_description`. `PUT /teams/<team>/settings` updates any of `use_pr_description` (default `true`: the PR title and description go to the model as context for reviews and @mentions; the code stays the source of truth, so a description the code does not match is never a finding by itself), `auto_review_authors` (only these authors get automatic reviews, empty = everyone), `ignore_authors` (never an automatic review, wins over the first list; an @mention still reviews) and `exclude_repos` (repo slug globs, case-insensitive, default `*-infra`: a project webhook delivers for every repo in the project, these never get a review, @mentions included, while merge/decline/delete of a PR reviewed earlier is still recorded; a repo named explicitly in a `repos:` claim is never excluded), `exclude_source_branches` and `exclude_target_branches` (branch name globs, case-insensitive, `*` crosses `/`, default empty: a PR from a matching source branch, e.g. `dependabot/*`, or into a matching target branch, e.g. `release/*`, gets no automatic review and no comment, an @mention still works; an excluded repo wins); a field left out stays, a list given replaces the whole list, `[]` clears it, `false` turns the PR description off. Both need only the team secret. Changes take effect immediately, no redeploy.
 
 | Claim | Webhook | New repo in the project |
 |---|---|---|

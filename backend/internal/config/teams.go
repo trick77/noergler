@@ -352,6 +352,8 @@ var reviewOverrides = map[string]reviewOverride{
 	"auto_review_authors":     field((*blockErrors).listField, func(r *Review, v []string) { r.AutoReviewAuthors = v }),
 	"ignore_authors":          field((*blockErrors).listField, func(r *Review, v []string) { r.IgnoreAuthors = v }),
 	"exclude_repos":           field((*blockErrors).listField, func(r *Review, v []string) { r.ExcludeRepos = v }),
+	"exclude_source_branches": field((*blockErrors).listField, func(r *Review, v []string) { r.ExcludeSourceBranches = v }),
+	"exclude_target_branches": field((*blockErrors).listField, func(r *Review, v []string) { r.ExcludeTargetBranches = v }),
 	"max_comments":            field((*blockErrors).nonNegativeIntField, func(r *Review, v int) { r.MaxComments = v }),
 	"max_file_lines":          field((*blockErrors).intField, func(r *Review, v int) { r.MaxFileLines = v }),
 	"diff_extra_lines_before": field((*blockErrors).intField, func(r *Review, v int) { r.DiffExtraLinesBefore = v }),
@@ -526,6 +528,8 @@ func ResolveTeam(block *yaml.Node, instance *App, lookup func(string) (string, b
 	review.AutoReviewAuthors = append([]string{}, instance.Review.AutoReviewAuthors...)
 	review.IgnoreAuthors = append([]string{}, instance.Review.IgnoreAuthors...)
 	review.ExcludeRepos = append([]string{}, instance.Review.ExcludeRepos...)
+	review.ExcludeSourceBranches = append([]string{}, instance.Review.ExcludeSourceBranches...)
+	review.ExcludeTargetBranches = append([]string{}, instance.Review.ExcludeTargetBranches...)
 	for _, set := range tb.review {
 		set(&review)
 	}

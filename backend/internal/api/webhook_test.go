@@ -442,6 +442,89 @@ func infraPayload(event string) []byte {
 		"comment":{"id":7,"text":"@noergler hi","author":{"name":"alice"}}}`, event))
 }
 
+// --- exclude_source_branches / exclude_target_branches -----------------------
+
+func TestWebhook_ExcludedBranchGatesOnlyAutoReviews(t *testing.T) {
+	excluded := func(team *config.Team) {
+		team.Review.ExcludeSourceBranches = []string{"Dependabot/*"}
+		team.Review.ExcludeTargetBranches = []string{"release/*"}
+	}
+	cases := []struct {
+		name, from, to, reason string
+	}{
+		// Case-insensitive, and `*` crosses `/`.
+		{"source", "dependabot/npm/lodash", "master", "branch excluded by the team's exclude_source_branches"},
+		{"target", "feature/x", "release/2026.10", "branch excluded by the team's exclude_target_branches"},
+		{"both, source named", "dependabot/x", "release/1", "branch excluded by the team's exclude_source_branches"},
+	}
+	for _, c := range cases {
+		for _, event := range []string{webhook.EventOpened, webhook.EventFromRefUpdated} {
+			t.Run(c.name+" "+event, func(t *testing.T) {
+				h := newHarness(t, excluded)
+				w := h.signedPost(t, branchPayload(event, c.from, c.to))
+				wantBody(t, w, http.StatusOK, map[string]any{"status": "ignored", "reason": c.reason})
+				if len(h.q.keys) != 0 {
+					t.Error("an excluded branch must not reach the queue")
+				}
+			})
+		}
+	}
+
+	// A mention is still answered and lifecycle events still pass (user,
+	// 2026-10-20: only auto-reviews are carved out).
+	for _, event := range []string{webhook.EventCommentAdded, webhook.EventMerged, webhook.EventDeclined,
+		webhook.EventDeleted, webhook.EventCommentDeleted} {
+		t.Run("passes "+event, func(t *testing.T) {
+			h := newHarness(t, excluded)
+			w := h.signedPost(t, branchPayload(event, "dependabot/x", "release/1"))
+			if w.Code != http.StatusOK || decodeBody(t, w)["status"] != "accepted" {
+				t.Errorf("want accepted: %d %s", w.Code, w.Body.String())
+			}
+		})
+	}
+
+	t.Run("no match", func(t *testing.T) {
+		h := newHarness(t, excluded)
+		w := h.signedPost(t, branchPayload(webhook.EventOpened, "feature/dependabot", "master"))
+		if w.Code != http.StatusOK || decodeBody(t, w)["status"] != "accepted" {
+			t.Errorf("want accepted: %d %s", w.Code, w.Body.String())
+		}
+	})
+
+	// Validation needs only one of id and displayId; without a displayId the
+	// branch is the id minus refs/heads/.
+	t.Run("id only", func(t *testing.T) {
+		h := newHarness(t, excluded)
+		body := []byte(strings.Replace(string(branchPayload(webhook.EventOpened, "x", "master")),
+			`"id":"refs/heads/x","displayId":"x"`, `"id":"refs/heads/dependabot/y"`, 1))
+		w := h.signedPost(t, body)
+		if got := decodeBody(t, w)["status"]; got != "ignored" {
+			t.Errorf("status = %v, want ignored (body %s)", got, w.Body.String())
+		}
+	})
+}
+
+// An excluded repo wins over the branch lists (user, 2026-10-20).
+func TestWebhook_ExcludedRepoBeforeExcludedBranch(t *testing.T) {
+	h := newHarness(t, func(team *config.Team) {
+		team.Review.ExcludeRepos = []string{"*-infra"}
+		team.Review.ExcludeSourceBranches = []string{"*"}
+	})
+	w := h.signedPost(t, infraPayload(webhook.EventOpened))
+	wantBody(t, w, http.StatusOK, map[string]any{
+		"status": "ignored", "reason": "repo excluded by the team's exclude_repos",
+	})
+}
+
+func branchPayload(event, from, to string) []byte {
+	return []byte(fmt.Sprintf(`{"eventKey":%q,
+		"pullRequest":{"id":42,"title":"t",
+		"fromRef":{"id":"refs/heads/%s","displayId":%q,"repository":{"slug":"core","project":{"key":"PLAT"}}},
+		"toRef":{"id":"refs/heads/%s","displayId":%q,"repository":{"slug":"core","project":{"key":"PLAT"}}},
+		"author":{"user":{"name":"alice"}}},
+		"comment":{"id":7,"text":"@noergler hi","author":{"name":"alice"}}}`, event, from, from, to, to))
+}
+
 // --- dispatch ---------------------------------------------------------------
 
 func TestWebhook_DispatchTable(t *testing.T) {

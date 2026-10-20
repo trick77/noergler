@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // Event keys this service acts on.
@@ -44,6 +45,15 @@ type Ref struct {
 	DisplayID    string      `json:"displayId"`
 	LatestCommit string      `json:"latestCommit"`
 	Repository   *Repository `json:"repository"`
+}
+
+// Branch is the displayId, else the id without `refs/heads/`: validation
+// requires only one of the two.
+func (r Ref) Branch() string {
+	if r.DisplayID != "" {
+		return r.DisplayID
+	}
+	return strings.TrimPrefix(r.ID, "refs/heads/")
 }
 
 // User is a Bitbucket account. Only Name is required.

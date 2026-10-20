@@ -91,6 +91,10 @@ type teamConfigView struct {
 	// Reviewer has no live team view.
 	Projects     []string `json:"projects,omitempty"`
 	ExcludeRepos []string `json:"exclude_repos"`
+	// A PR from a matching source or into a matching target branch is not
+	// auto-reviewed; a mention still is.
+	ExcludeSourceBranches []string `json:"exclude_source_branches"`
+	ExcludeTargetBranches []string `json:"exclude_target_branches"`
 	// AutoReviewAuthors empty means every author is auto-reviewed; the
 	// ignore list wins over it.
 	AutoReviewAuthors     []string `json:"auto_review_authors"`
@@ -135,6 +139,8 @@ func (r *Reviewer) teamConfig(ask *mentionAsk) teamConfigView {
 		Model:                 r.llm.Label(),
 		DefaultLanguage:       string(r.cfg.Language.Or(lang.Default)),
 		ExcludeRepos:          nonNilNames(r.cfg.ExcludeRepos),
+		ExcludeSourceBranches: nonNilNames(r.cfg.ExcludeSourceBranches),
+		ExcludeTargetBranches: nonNilNames(r.cfg.ExcludeTargetBranches),
 		AutoReviewAuthors:     nonNilNames(auto),
 		IgnoreAuthors:         nonNilNames(ignore),
 		OptOutBranchKeyword:   r.cfg.OptOutBranchKeyword,
@@ -152,7 +158,7 @@ func (r *Reviewer) teamConfig(ask *mentionAsk) teamConfigView {
 	}
 	v.Diff.ExtraLinesBefore, v.Diff.ExtraLinesAfter = r.cfg.DiffExtraLinesBefore, r.cfg.DiffExtraLinesAfter
 	v.Diff.DynamicContext, v.Diff.MaxDynamicContextLines = r.cfg.DiffAllowDynamicContext, r.cfg.DiffMaxExtraLinesDynamicContext
-	// The claims and exclude_repos change at runtime (the team API); the
+	// The claims and the exclude lists change at runtime (the team API); the
 	// live snapshot has them, the Reviewer's copy of cfg does not.
 	if r.team != nil {
 		if t := r.team(); t != nil {
@@ -160,6 +166,8 @@ func (r *Reviewer) teamConfig(ask *mentionAsk) teamConfigView {
 				v.Projects = append(v.Projects, p.String())
 			}
 			v.ExcludeRepos = nonNilNames(t.Review.ExcludeRepos)
+			v.ExcludeSourceBranches = nonNilNames(t.Review.ExcludeSourceBranches)
+			v.ExcludeTargetBranches = nonNilNames(t.Review.ExcludeTargetBranches)
 			if v.JiraEnabled {
 				v.JiraACPrefixes = nonNilNames(t.Jira.AcceptanceCriteriaPrefixes)
 			}

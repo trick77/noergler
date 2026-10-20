@@ -171,7 +171,21 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 11. Dispatch.
+	// 11. Branch globs carve out auto-reviews only, silently: a mention on such
+	// a PR still reaches the worker and is answered or reviewed in full (the
+	// opt-out keyword, unlike this, also skips a mention-requested review).
+	// After exclude_repos: an excluded repo wins (user, 2026-10-20).
+	if reviewEventKeys[eventKey] {
+		from, to := payload.PullRequest.FromRef.Branch(), payload.PullRequest.ToRef.Branch()
+		if list := team.ExcludedBranch(from, to); list != "" {
+			d.Log.InfoContext(ctx, "webhook ignored: branch matches "+list,
+				"project", project, "repo", repo, "pr_id", payload.PullRequest.ID, "from", from, "to", to)
+			httpx.WriteJSON(w, http.StatusOK, ignored{"ignored", "branch excluded by the team's " + list})
+			return
+		}
+	}
+
+	// 12. Dispatch.
 	d.dispatch(ctx, w, rt, slug, project, repo, payload)
 }
 

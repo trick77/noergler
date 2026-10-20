@@ -115,6 +115,9 @@ export interface Team {
   auto_review_authors: number;
   ignore_authors: number;
   exclude_repos: string[];
+  /** Branch globs: a matching source or target branch is not auto-reviewed. */
+  exclude_source_branches: string[];
+  exclude_target_branches: string[];
   /** `<profile>-<effort>`, the label every run records. Absent for a
    *  disabled team: it has no started client. */
   model?: string;

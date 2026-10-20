@@ -856,11 +856,13 @@ func TestSettings_RoundTrip(t *testing.T) {
 	if all, err := s.GetAllSettings(ctx); err != nil || len(all) != 0 {
 		t.Fatalf("no rows = %v %v", all, err)
 	}
-	if err := s.PutSettings(ctx, "platform", TeamSettings{AutoReviewAuthors: []string{"a"}, IgnoreAuthors: nil, ExcludeRepos: []string{"*-infra"}}, "jan"); err != nil {
+	if err := s.PutSettings(ctx, "platform", TeamSettings{AutoReviewAuthors: []string{"a"}, IgnoreAuthors: nil, ExcludeRepos: []string{"*-infra"},
+		ExcludeSourceBranches: []string{"dependabot/*"}}, "jan"); err != nil {
 		t.Fatal(err)
 	}
 	all, _ := s.GetAllSettings(ctx)
-	if !reflect.DeepEqual(all["platform"], TeamSettings{AutoReviewAuthors: []string{"a"}, IgnoreAuthors: []string{}, ExcludeRepos: []string{"*-infra"}}) {
+	if !reflect.DeepEqual(all["platform"], TeamSettings{AutoReviewAuthors: []string{"a"}, IgnoreAuthors: []string{}, ExcludeRepos: []string{"*-infra"},
+		ExcludeSourceBranches: []string{"dependabot/*"}, ExcludeTargetBranches: []string{}}) {
 		t.Errorf("settings = %+v", all["platform"])
 	}
 	_ = s.PutSettings(ctx, "platform", TeamSettings{AutoReviewAuthors: []string{"b"}, ExcludeRepos: []string{}}, "jan")
