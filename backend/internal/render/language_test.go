@@ -97,3 +97,20 @@ func TestGermanSecurityKeywords(t *testing.T) {
 		t.Error("a cleanup suggestion counted as a security issue")
 	}
 }
+
+func TestOpenFence(t *testing.T) {
+	for in, want := range map[string]string{
+		"plain":                   "",
+		"```\nlog":                "```",
+		"```go\nx\n```\nmore":     "",
+		"~~~\nlog":                "~~~",
+		"````md\n```go\nx\n```\n": "````",
+		"```x``` inline\ntext":    "",
+		"```\nx\n``` not a close": "```",
+		"~~~\nx\n```\nstill open": "~~~",
+	} {
+		if got := OpenFence(in); got != want {
+			t.Errorf("OpenFence(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

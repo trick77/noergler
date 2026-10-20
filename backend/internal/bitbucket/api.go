@@ -207,6 +207,9 @@ type CommentAnchor struct {
 	Path     string `json:"path"`
 	Line     int    `json:"line"`
 	FileType string `json:"fileType"`
+	// Orphaned: the anchored line is gone from the PR's current diff, so
+	// Line points at code that has since changed.
+	Orphaned bool `json:"orphaned"`
 }
 
 // FetchPRComment reads one comment, for its current text and version.

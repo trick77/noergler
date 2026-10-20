@@ -514,3 +514,62 @@ func TestMentionCapClosesAnOpenFence(t *testing.T) {
 		t.Errorf("the cut left the fence open:\n%s", prompt)
 	}
 }
+
+// Under someone else's comment the answer names no one: a leading address
+// to the parent's author is cut too.
+func TestMentionUnderAnotherCommentCutsTheParentAuthorsName(t *testing.T) {
+	h := newHarness(t, nil)
+	h.r.mentionTmpl = prompts.Mention
+	h.r.displayName = defaultNameRE
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "Peter, three retries cap the backoff."}
+	parent := &bitbucket.Comment{ID: 41, Text: "Why 3?"}
+	parent.Author.Name, parent.Author.DisplayName = "pmuster", "Muster Peter (PMU)"
+	h.bb.comments[41] = parent
+	p := mentionPayload("@noergler answer Peter", "jsaner")
+	p.CommentParentID = 41
+
+	h.r.HandleMention(context.Background(), p, "platform", nil)
+
+	if len(h.bb.Replies) != 1 || h.bb.Replies[0].Text != "Three retries cap the backoff." {
+		t.Errorf("replies = %+v, want the address cut", h.bb.Replies)
+	}
+}
+
+// An orphaned anchor's line is gone from the diff: no line number.
+func TestMentionParentOrphanedAnchorDropsTheLine(t *testing.T) {
+	h := newHarness(t, nil)
+	h.r.mentionTmpl = prompts.Mention
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "ok"}
+	parent := &bitbucket.Comment{ID: 41, Text: "why?",
+		Anchor: &bitbucket.CommentAnchor{Path: "a.go", Line: 7, FileType: "TO", Orphaned: true}}
+	parent.Author.Name = "pmuster"
+	h.bb.comments[41] = parent
+	p := mentionPayload("@noergler answer that", "alice")
+	p.CommentParentID = 41
+
+	h.r.HandleMention(context.Background(), p, "platform", nil)
+
+	prompt := h.llm.Mentions[0].Prompt
+	if !strings.Contains(prompt, "Location: a.go (a line since changed") || strings.Contains(prompt, "a.go:7") {
+		t.Errorf("prompt places the orphaned comment on a line:\n%s", prompt)
+	}
+}
+
+// A block its author left open is closed even uncut, with its own fence.
+func TestMentionClosesAnAuthorsOpenFence(t *testing.T) {
+	h := newHarness(t, nil)
+	h.r.mentionTmpl = prompts.Mention
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "ok"}
+	parent := &bitbucket.Comment{ID: 41, Text: "see:\n~~~\npanic: nil map"}
+	parent.Author.Name = "pmuster"
+	h.bb.comments[41] = parent
+	p := mentionPayload("@noergler answer that", "alice")
+	p.CommentParentID = 41
+
+	h.r.HandleMention(context.Background(), p, "platform", nil)
+
+	if prompt := h.llm.Mentions[0].Prompt; !strings.Contains(prompt, "panic: nil map\n~~~\n\n## The developer") ||
+		strings.Contains(prompt, "[... cut]") {
+		t.Errorf("the open fence was not closed:\n%s", prompt)
+	}
+}

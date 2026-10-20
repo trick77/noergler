@@ -39,6 +39,28 @@ func SwissSS(s string) string {
 	return b.String()
 }
 
+// OpenFence is the fence of a code block s opens and leaves unclosed, or "".
+// A closing fence is the opener's character, at least as long, alone on its
+// line; a backtick opener whose rest holds a backtick is an inline span.
+func OpenFence(s string) string {
+	open := ""
+	for _, line := range strings.Split(s, "\n") {
+		trimmed := strings.TrimLeft(line, " \t")
+		f := fenceOf(trimmed)
+		switch {
+		case f == "":
+		case open == "":
+			if f[0] == '`' && strings.Contains(trimmed[len(f):], "`") {
+				continue
+			}
+			open = f
+		case f[0] == open[0] && len(f) >= len(open) && strings.TrimSpace(trimmed[len(f):]) == "":
+			open = ""
+		}
+	}
+	return open
+}
+
 // fenceOf is the opening fence of a line ("```", "~~~~", ...), or "".
 func fenceOf(trimmed string) string {
 	for _, c := range []byte{'`', '~'} {

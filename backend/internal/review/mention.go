@@ -11,6 +11,7 @@ import (
 	"github.com/trick77/noergler/internal/httpstats"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/lang"
+	"github.com/trick77/noergler/internal/render"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
@@ -152,7 +153,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	repoInstructions := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.Branch())
 	ticket, parent := r.fetchTicket(ctx, pr.FromRef.Branch(), pr.Title, prTag)
 	name := firstName(r.displayName, comment.Author.DisplayName)
-	replied, byOther := r.parentComment(ctx, key, prTag, payload.CommentParentID, state, comment.Author.Name)
+	replied, byOther, parentName := r.parentComment(ctx, key, prTag, payload.CommentParentID, state, comment.Author.Name)
 	if byOther {
 		// The answer is to someone else's comment: naming the asker would
 		// address the wrong person, so it names no one (user, 2026-10-20).
@@ -173,7 +174,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 
 	job := &mentionJob{
 		project: project, repo: repo, prID: pr.ID, replyTo: comment.ID, lang: l, counter: httpCounter,
-		name: name, namesOn: r.displayName != nil, nameWithheld: byOther,
+		name: name, namesOn: r.displayName != nil, nameWithheld: byOther, parentName: parentName,
 		ask: &mentionAsk{key: key, prTag: prTag, user: comment.Author.Name, text: question, lang: l,
 			from: pr.FromRef.Branch(), to: pr.ToRef.Branch()},
 	}
@@ -211,8 +212,10 @@ type mentionJob struct {
 	name    string
 	namesOn bool
 	// nameWithheld: the mention replies to someone else's comment, so the
-	// answer names no one.
+	// answer names no one; parentName is that comment's author's first name,
+	// "" when unknown.
 	nameWithheld bool
+	parentName   string
 	ask          *mentionAsk
 	counter      *httpstats.Counter
 	res          inference.MentionResult
@@ -294,8 +297,13 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 		if answer == "" {
 			answer = inference.MentionEmptyReply(l)
 		}
-		nameState := "withheld"
-		if !j.nameWithheld {
+		var nameState string
+		if j.nameWithheld {
+			// Nor the parent's author: a leading address to them is cut,
+			// as on `other`.
+			answer, nameState = guardName(answer, j.parentName, "other", j.namesOn)
+			nameState = "withheld-" + nameState
+		} else {
 			_, nameState = guardName(answer, j.name, "question", j.namesOn)
 		}
 		answer = prefix + answer
@@ -338,20 +346,21 @@ const maxParentRunes = 4096
 // the Q&A then runs without it. Bitbucket sends the immediate parent only,
 // and only a thread's root carries the file anchor, so a reply nested under
 // a reply comes without a location (known limit, as for finding replies).
-// byOther is a parent neither the bot nor the asker wrote. state is the
-// PR's skip state as HandleMention read it, nil when unread.
+// byOther is a parent neither the bot nor the asker wrote, otherName its
+// author's first name ("" when unknown). state is the PR's skip state as
+// HandleMention read it, nil when unread.
 func (r *Reviewer) parentComment(ctx context.Context, key store.PRKey, prTag string, parentID int,
-	state *store.SkipState, asker string) (text string, byOther bool) {
+	state *store.SkipState, asker string) (text string, byOther bool, otherName string) {
 	if parentID == 0 {
-		return "", false
+		return "", false, ""
 	}
 	if state != nil && state.Summary != nil && state.Summary.ID == parentID {
-		return "", false
+		return "", false, ""
 	}
 	c, err := r.bitbucket.FetchPRComment(ctx, key.Project, key.Repo, key.PRID, parentID)
 	if err != nil {
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: replied-to comment %d not fetched, answered without it: %v", prTag, parentID, err))
-		return "", false
+		return "", false, ""
 	}
 	bot := strings.EqualFold(c.Author.Name, r.bitbucket.BotUsername())
 	var b strings.Builder
@@ -365,6 +374,10 @@ func (r *Reviewer) parentComment(ctx context.Context, key store.PRKey, prTag str
 	}
 	if a := c.Anchor; a != nil && a.Path != "" {
 		switch {
+		case a.Orphaned:
+			// The line it sat on is gone from the current diff: its number
+			// would point at other code.
+			b.WriteString("Location: " + a.Path + " (a line since changed, no longer in the diff)\n")
 		case a.Line <= 0:
 			b.WriteString("Location: " + a.Path + "\n")
 		case a.FileType == "FROM":
@@ -375,30 +388,24 @@ func (r *Reviewer) parentComment(ctx context.Context, key store.PRKey, prTag str
 			fmt.Fprintf(&b, "Location: %s:%d\n", a.Path, a.Line)
 		}
 	}
-	body := strings.TrimSpace(c.Text)
-	if cut := truncateRunes(body, maxParentRunes); cut != body {
-		// A cut inside a code block would leave it open over the sections
-		// below, the question among them.
-		if fenceLines(cut)%2 == 1 {
-			cut += "\n```"
-		}
-		body = cut + "\n[... cut]"
+	full := strings.TrimSpace(c.Text)
+	body := truncateRunes(full, maxParentRunes)
+	cut := body != full
+	// A code block left open, by the cut or by its author, would run over
+	// the sections below, the question among them.
+	if f := render.OpenFence(body); f != "" {
+		body += "\n" + f
+	}
+	if cut {
+		body += "\n[... cut]"
 	}
 	b.WriteString("\n" + body)
 	r.log.InfoContext(ctx, fmt.Sprintf("%s: mention replies to comment %d (bot=%t, anchored=%t)",
 		prTag, parentID, bot, c.Anchor != nil && c.Anchor.Path != ""))
-	return b.String(), !bot && !strings.EqualFold(c.Author.Name, asker)
-}
-
-// fenceLines counts the lines of s that open or close a ``` code block.
-func fenceLines(s string) int {
-	n := 0
-	for _, line := range strings.Split(s, "\n") {
-		if strings.HasPrefix(strings.TrimLeft(line, " \t"), "```") {
-			n++
-		}
+	if bot || strings.EqualFold(c.Author.Name, asker) {
+		return b.String(), false, ""
 	}
-	return n
+	return b.String(), true, firstName(r.displayName, c.Author.DisplayName)
 }
 
 // reply posts a threaded reply, logging a failure rather than propagating it:
