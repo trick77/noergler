@@ -98,8 +98,9 @@ func (e *ContentTooLarge) Error() string {
 	return fmt.Sprintf("%s: %s exceeds cap of %d bytes", e.What, seen, e.Limit)
 }
 
-// ErrIncrementalDiffUnavailable means a push has no incremental diff: the
-// last reviewed commit is no longer on the PR (rebase, force push). The
+// ErrIncrementalDiffUnavailable means a push has no incremental diff of its
+// own: the last reviewed commit is no longer on the PR (rebase, force push),
+// or a merge commit lies in the range. The history may be intact; the
 // caller falls back to a full review.
 var ErrIncrementalDiffUnavailable = errors.New("incremental diff unavailable")
 
