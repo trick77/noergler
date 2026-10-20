@@ -60,6 +60,14 @@ func Status(err error) int {
 	return 0
 }
 
+// ThreadResolved reports whether err is Bitbucket refusing a reply because
+// the thread is resolved: a 400 whose message says so, nothing else.
+func ThreadResolved(err error) bool {
+	var se *StatusError
+	return errors.As(err, &se) && se.Status == http.StatusBadRequest &&
+		strings.Contains(se.Body, "Reply cannot be made to resolved thread")
+}
+
 // ContentTooLarge is a diff or file body over its byte cap. What names the
 // resource.
 //

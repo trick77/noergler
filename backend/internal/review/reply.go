@@ -280,6 +280,12 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 		}
 	}
 	if err := r.bitbucket.ReplyToComment(ctx, j.project, j.repo, j.prID, j.replyTo, body); err != nil {
+		// The author resolved the thread between replying and our answer:
+		// nothing is wrong, and nothing posted means nothing stamped.
+		if bitbucket.ThreadResolved(err) {
+			r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on finding %s not posted: thread resolved meanwhile", j.prTag, j.where))
+			return
+		}
 		r.log.ErrorContext(ctx, fmt.Sprintf("%s: reply on finding %s failed to post: %v", j.prTag, j.where, err))
 		return
 	}

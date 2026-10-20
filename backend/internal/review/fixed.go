@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/ship/kit/logging"
@@ -85,7 +86,11 @@ func (r *Reviewer) retireFixed(ctx context.Context, plan *reviewPlan, fixed []st
 			if err := r.bitbucket.ReplyToComment(ctx, plan.project, plan.repo, plan.prID, *cid, reply); err != nil {
 				// Usually the author resolved the thread already: Bitbucket
 				// takes no reply on a resolved one.
-				r.log.WarnContext(ctx, plan.prTag+": reply on a fixed finding failed (thread may be resolved already)", logging.Err(err))
+				if bitbucket.ThreadResolved(err) {
+					r.log.InfoContext(ctx, plan.prTag+": reply on a fixed finding not posted: thread resolved already")
+				} else {
+					r.log.WarnContext(ctx, plan.prTag+": reply on a fixed finding failed", logging.Err(err))
+				}
 			} else {
 				replied = true
 				if err := r.bitbucket.ResolveCommentThread(ctx, plan.project, plan.repo, plan.prID, *cid); err != nil {

@@ -170,6 +170,25 @@ func TestFetchPRDiffWithContextLines(t *testing.T) {
 	}
 }
 
+// Only Bitbucket's own refusal reads as a resolved thread; any other 400 or
+// status stays a failure.
+func TestThreadResolved(t *testing.T) {
+	refused := `{"errors":[{"message":"Reply cannot be made to resolved thread."}]}`
+	for name, tc := range map[string]struct {
+		err  error
+		want bool
+	}{
+		"refused":   {&StatusError{Status: 400, Body: refused}, true},
+		"other 400": {&StatusError{Status: 400, Body: `{"errors":[{"message":"bad"}]}`}, false},
+		"not 400":   {&StatusError{Status: 409, Body: refused}, false},
+		"plain":     {errors.New("boom"), false},
+	} {
+		if got := ThreadResolved(tc.err); got != tc.want {
+			t.Errorf("%s: ThreadResolved = %v, want %v", name, got, tc.want)
+		}
+	}
+}
+
 // incr is a Bitbucket for FetchCommitDiff: the PR's commit list, the repo's
 // merge commits in the range, and the PR diff. A nil route answers 200 empty.
 type incr struct {
