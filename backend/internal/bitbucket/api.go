@@ -201,10 +201,12 @@ type Comment struct {
 }
 
 // CommentAnchor is where a file comment sits. Line is 0 on a comment on the
-// whole file.
+// whole file. FileType "FROM" puts Line in the old file (a removed line, or
+// the left side of a side-by-side view), "TO" in the new one.
 type CommentAnchor struct {
-	Path string `json:"path"`
-	Line int    `json:"line"`
+	Path     string `json:"path"`
+	Line     int    `json:"line"`
+	FileType string `json:"fileType"`
 }
 
 // FetchPRComment reads one comment, for its current text and version.

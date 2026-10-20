@@ -455,3 +455,62 @@ func TestMentionCapsALongRepliedToComment(t *testing.T) {
 		t.Error("the parent comment was not capped")
 	}
 }
+
+// Under the asker's own comment the asker is the one answered: named.
+func TestMentionUnderTheAskersOwnCommentKeepsTheName(t *testing.T) {
+	h := newHarness(t, nil)
+	h.r.mentionTmpl = prompts.Mention
+	h.r.displayName = defaultNameRE
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "ok"}
+	parent := &bitbucket.Comment{ID: 41, Text: "Why is the retry loop capped at 3?"}
+	parent.Author.Name, parent.Author.DisplayName = "JSaner", "Saner Jan (SJH)"
+	h.bb.comments[41] = parent
+	p := mentionPayload("@noergler see my question above", "jsaner")
+	p.Comment.Author.DisplayName = "Saner Jan (SJH)"
+	p.CommentParentID = 41
+
+	h.r.HandleMention(context.Background(), p, "platform", nil)
+
+	if prompt := h.llm.Mentions[0].Prompt; !strings.Contains(prompt, "## The developer's first name\n\nJan\n") {
+		t.Errorf("prompt lacks the asker's name:\n%s", prompt)
+	}
+}
+
+// A comment on the old side carries an old-file line number, which the
+// diff's new-file gutter would misplace: it says which side.
+func TestMentionParentOnTheOldSideSaysSo(t *testing.T) {
+	h := newHarness(t, nil)
+	h.r.mentionTmpl = prompts.Mention
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "ok"}
+	parent := &bitbucket.Comment{ID: 41, Text: "why was this removed?",
+		Anchor: &bitbucket.CommentAnchor{Path: "a.go", Line: 7, FileType: "FROM"}}
+	parent.Author.Name = "pmuster"
+	h.bb.comments[41] = parent
+	p := mentionPayload("@noergler answer that", "alice")
+	p.CommentParentID = 41
+
+	h.r.HandleMention(context.Background(), p, "platform", nil)
+
+	prompt := h.llm.Mentions[0].Prompt
+	if !strings.Contains(prompt, "Location: a.go, line 7 of the old version") || strings.Contains(prompt, "a.go:7") {
+		t.Errorf("prompt misplaces the old-side line:\n%s", prompt)
+	}
+}
+
+// A cut inside a code block closes it, so the question below is not code.
+func TestMentionCapClosesAnOpenFence(t *testing.T) {
+	h := newHarness(t, nil)
+	h.r.mentionTmpl = prompts.Mention
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "ok"}
+	parent := &bitbucket.Comment{ID: 41, Text: "see log:\n```\n" + strings.Repeat("x", maxParentRunes) + "\n```"}
+	parent.Author.Name = "pmuster"
+	h.bb.comments[41] = parent
+	p := mentionPayload("@noergler answer that", "alice")
+	p.CommentParentID = 41
+
+	h.r.HandleMention(context.Background(), p, "platform", nil)
+
+	if prompt := h.llm.Mentions[0].Prompt; !strings.Contains(prompt, "x\n```\n[... cut]") {
+		t.Errorf("the cut left the fence open:\n%s", prompt)
+	}
+}

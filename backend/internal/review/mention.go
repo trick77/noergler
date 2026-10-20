@@ -102,7 +102,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	// removed. Clearing the state (and the stale summary id, which
 	// Reactivate does) lets the next review post a fresh summary and stops
 	// the review guard from re-ignoring the PR.
-	r.reactivateIfIgnored(ctx, key, prTag)
+	state := r.reactivateIfIgnored(ctx, key, prTag)
 
 	// An empty question, or one of the review keywords, means "review this".
 	// It is a review like any other, so it takes the staged path: the
@@ -152,8 +152,8 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	repoInstructions := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.Branch())
 	ticket, parent := r.fetchTicket(ctx, pr.FromRef.Branch(), pr.Title, prTag)
 	name := firstName(r.displayName, comment.Author.DisplayName)
-	replied, byPerson := r.parentComment(ctx, key, prTag, payload.CommentParentID)
-	if byPerson {
+	replied, byOther := r.parentComment(ctx, key, prTag, payload.CommentParentID, state, comment.Author.Name)
+	if byOther {
 		// The answer is to someone else's comment: naming the asker would
 		// address the wrong person, so it names no one (user, 2026-10-20).
 		name = ""
@@ -173,7 +173,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 
 	job := &mentionJob{
 		project: project, repo: repo, prID: pr.ID, replyTo: comment.ID, lang: l, counter: httpCounter,
-		name: name, namesOn: r.displayName != nil, nameWithheld: byPerson,
+		name: name, namesOn: r.displayName != nil, nameWithheld: byOther,
 		ask: &mentionAsk{key: key, prTag: prTag, user: comment.Author.Name, text: question, lang: l,
 			from: pr.FromRef.Branch(), to: pr.ToRef.Branch()},
 	}
@@ -294,7 +294,7 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 		if answer == "" {
 			answer = inference.MentionEmptyReply(l)
 		}
-		nameState := "thread"
+		nameState := "withheld"
 		if !j.nameWithheld {
 			_, nameState = guardName(answer, j.name, "question", j.namesOn)
 		}
@@ -316,13 +316,16 @@ func costTotal(c inference.CallCost) string {
 
 // reactivateIfIgnored clears the ignored state a removed summary left, so a
 // mention brings the PR back. Shared by every path an @mention takes.
-func (r *Reviewer) reactivateIfIgnored(ctx context.Context, key store.PRKey, prTag string) {
-	if state := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
+// It returns the state as read before any reactivation, nil when unread.
+func (r *Reviewer) reactivateIfIgnored(ctx context.Context, key store.PRKey, prTag string) *store.SkipState {
+	state := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
 		return r.store.GetSkipState(ctx, key)
-	}); state != nil && state.IgnoredAt != nil {
+	})
+	if state != nil && state.IgnoredAt != nil {
 		safeDBErr(ctx, r.log, "Reactivate", func() error { return r.store.Reactivate(ctx, key) })
 		r.log.InfoContext(ctx, prTag+": reactivating ignored PR via @mention")
 	}
+	return state
 }
 
 // maxParentRunes caps the replied-to comment in the prompt: a question is
@@ -335,14 +338,14 @@ const maxParentRunes = 4096
 // the Q&A then runs without it. Bitbucket sends the immediate parent only,
 // and only a thread's root carries the file anchor, so a reply nested under
 // a reply comes without a location (known limit, as for finding replies).
-// byPerson is a parent the bot did not write.
-func (r *Reviewer) parentComment(ctx context.Context, key store.PRKey, prTag string, parentID int) (text string, byPerson bool) {
+// byOther is a parent neither the bot nor the asker wrote. state is the
+// PR's skip state as HandleMention read it, nil when unread.
+func (r *Reviewer) parentComment(ctx context.Context, key store.PRKey, prTag string, parentID int,
+	state *store.SkipState, asker string) (text string, byOther bool) {
 	if parentID == 0 {
 		return "", false
 	}
-	if st := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
-		return r.store.GetSkipState(ctx, key)
-	}); st != nil && st.Summary != nil && st.Summary.ID == parentID {
+	if state != nil && state.Summary != nil && state.Summary.ID == parentID {
 		return "", false
 	}
 	c, err := r.bitbucket.FetchPRComment(ctx, key.Project, key.Repo, key.PRID, parentID)
@@ -361,20 +364,41 @@ func (r *Reviewer) parentComment(ctx context.Context, key store.PRKey, prTag str
 		b.WriteString("Author: " + c.Author.Name + "\n")
 	}
 	if a := c.Anchor; a != nil && a.Path != "" {
-		if a.Line > 0 {
-			fmt.Fprintf(&b, "Location: %s:%d\n", a.Path, a.Line)
-		} else {
+		switch {
+		case a.Line <= 0:
 			b.WriteString("Location: " + a.Path + "\n")
+		case a.FileType == "FROM":
+			// The diff's gutter numbers the new file: an old-side line
+			// number shown bare would point at other code.
+			fmt.Fprintf(&b, "Location: %s, line %d of the old version (before this PR)\n", a.Path, a.Line)
+		default:
+			fmt.Fprintf(&b, "Location: %s:%d\n", a.Path, a.Line)
 		}
 	}
 	body := strings.TrimSpace(c.Text)
 	if cut := truncateRunes(body, maxParentRunes); cut != body {
+		// A cut inside a code block would leave it open over the sections
+		// below, the question among them.
+		if fenceLines(cut)%2 == 1 {
+			cut += "\n```"
+		}
 		body = cut + "\n[... cut]"
 	}
 	b.WriteString("\n" + body)
 	r.log.InfoContext(ctx, fmt.Sprintf("%s: mention replies to comment %d (bot=%t, anchored=%t)",
 		prTag, parentID, bot, c.Anchor != nil && c.Anchor.Path != ""))
-	return b.String(), !bot
+	return b.String(), !bot && !strings.EqualFold(c.Author.Name, asker)
+}
+
+// fenceLines counts the lines of s that open or close a ``` code block.
+func fenceLines(s string) int {
+	n := 0
+	for _, line := range strings.Split(s, "\n") {
+		if strings.HasPrefix(strings.TrimLeft(line, " \t"), "```") {
+			n++
+		}
+	}
+	return n
 }
 
 // reply posts a threaded reply, logging a failure rather than propagating it:

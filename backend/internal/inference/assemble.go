@@ -33,7 +33,7 @@ const (
 
 // NoParentComment is what {parent_comment} becomes on a top-level mention,
 // a reply under the summary, or a parent that could not be read.
-const NoParentComment = "_None, the question is a top-level comment._"
+const NoParentComment = "_None._"
 
 // MentionTooLargeReply is what a mention gets when the PR does not fit,
 // whether the pre-flight or the endpoint said so.

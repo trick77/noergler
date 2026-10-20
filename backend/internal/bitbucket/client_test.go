@@ -581,7 +581,7 @@ func TestFetchPRCommentReadsAuthorAndAnchor(t *testing.T) {
 	if got.Author.Name != "pmuster" || got.Author.DisplayName != "Muster Peter (PMU)" {
 		t.Errorf("author = %+v", got.Author)
 	}
-	if got.Anchor == nil || got.Anchor.Path != "src/a.go" || got.Anchor.Line != 12 {
+	if got.Anchor == nil || got.Anchor.Path != "src/a.go" || got.Anchor.Line != 12 || got.Anchor.FileType != "TO" {
 		t.Errorf("anchor = %+v", got.Anchor)
 	}
 }
