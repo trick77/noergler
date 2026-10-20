@@ -99,26 +99,30 @@ func TestAccessLogAndRecoverAreWired(t *testing.T) {
 	}
 }
 
-// A run page's link token is its only key: the access log and a panic's
-// line carry the path with it masked, the handler sees it whole.
-func TestRunTokenNeverLogged(t *testing.T) {
+// A PR page's link token is its only key: the access log and a panic's
+// line carry the path with it masked, the handler sees it whole. An old
+// /runs/{token} link is masked too: it is a 404 now, but the token is real.
+func TestPageTokenNeverLogged(t *testing.T) {
 	s, buf := newTestServer(t, nil, nil)
-	tok := store.NewLinkToken()
+	tok, old := store.NewLinkToken(), store.NewLinkToken()
 	var seen string
-	s.HandleFunc("GET /runs/{token}", func(w http.ResponseWriter, r *http.Request) {
+	s.HandleFunc("GET /prs/{token}/runs/{n}", func(w http.ResponseWriter, r *http.Request) {
 		seen = r.PathValue("token")
 		w.WriteHeader(http.StatusNotFound)
 	})
-	s.HandleFunc("GET /api/dashboard/runs/{token}", func(http.ResponseWriter, *http.Request) { panic("kaboom") })
+	s.HandleFunc("GET /api/dashboard/prs/{token}", func(http.ResponseWriter, *http.Request) { panic("kaboom") })
 	h := s.Handler()
-	get(h, "/runs/"+tok)
-	get(h, "/runs/"+tok+"/")
-	get(h, "/api/dashboard/runs/"+tok)
+	get(h, "/prs/"+tok+"/runs/3")
+	get(h, "/prs/"+tok+"/")
+	get(h, "/api/dashboard/prs/"+tok)
+	get(h, "/runs/"+old)
 	if seen != tok {
 		t.Errorf("handler saw %q, want the token", seen)
 	}
-	if strings.Contains(buf.String(), tok) || !strings.Contains(buf.String(), "/runs/{token}") {
-		t.Errorf("token logged or path not masked: %s", buf.String())
+	out := buf.String()
+	if strings.Contains(out, tok) || strings.Contains(out, old) ||
+		!strings.Contains(out, "/prs/{token}") || !strings.Contains(out, "/runs/{token}") {
+		t.Errorf("token logged or path not masked: %s", out)
 	}
 }
 

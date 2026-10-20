@@ -134,6 +134,9 @@ an incident or an eval run: read the reason before relaxing a rule.
   unauthenticated dashboard, which forced headlines only and prose without
   code. A token handed out in the PR reaches the PR's audience, so the page
   can show the finding text, the code and the classes and lines involved.
+- One token per PR, not per run: a per-run link showed only the latest run and
+  every summary edit stranded the previous one's page. Every run of a PR has
+  the same audience, so one key for all of them gives nothing away.
 - Diff uncapped: a diff is mostly files `IsReviewable` discards; a 19.4 MB PR
   with 5 KB of reviewable source was skipped. `GOMEMLIMIT` bounds the process.
 - `timestamp` first: Splunk's auto timestamp guesses wrong otherwise.

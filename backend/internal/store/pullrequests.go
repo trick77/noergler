@@ -35,7 +35,8 @@ type PRUpsert struct {
 	OpenedAt    *time.Time
 }
 
-// UpsertPullRequest inserts or updates the PR row and returns its id.
+// UpsertPullRequest inserts or updates the PR row and returns its id. A new
+// row draws its page's link token; an update keeps the one it has.
 // opened_at is sticky: the first non-NULL value stays. The pointer, author
 // and title are written as given, nil included: the skip paths pass the
 // prior pointer back on purpose (unless KeepPointer). A declined PR that
@@ -43,8 +44,8 @@ type PRUpsert struct {
 func (s *Store) UpsertPullRequest(ctx context.Context, u PRUpsert) (int64, error) {
 	var id int64
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO pull_requests (project_key, repo_slug, pr_id, team_slug, last_reviewed_commit, author, title, opened_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO pull_requests (project_key, repo_slug, pr_id, team_slug, last_reviewed_commit, author, title, opened_at, link_token)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $10)
 		ON CONFLICT (project_key, repo_slug, pr_id) DO UPDATE SET
 			team_slug = EXCLUDED.team_slug,
 			last_reviewed_commit = CASE WHEN $9 THEN pull_requests.last_reviewed_commit ELSE EXCLUDED.last_reviewed_commit END,
@@ -55,6 +56,7 @@ func (s *Store) UpsertPullRequest(ctx context.Context, u PRUpsert) (int64, error
 			updated_at = now()
 		RETURNING id`,
 		u.Key.Project, u.Key.Repo, u.Key.PRID, u.TeamSlug, u.LastReviewedCommit, u.Author, u.Title, u.OpenedAt, u.KeepPointer,
+		NewLinkToken(),
 	).Scan(&id)
 	return id, err
 }
@@ -91,6 +93,13 @@ func (s *Store) SetSummaryComment(ctx context.Context, prID int64, commentID, ve
 		UPDATE pull_requests SET summary_comment_id = $2, summary_comment_version = $3, updated_at = now()
 		WHERE id = $1`, prID, commentID, version)
 	return err
+}
+
+// PRLinkToken is the PR page's link token, for the summary's link.
+func (s *Store) PRLinkToken(ctx context.Context, prID int64) (string, error) {
+	var tok string
+	err := s.pool.QueryRow(ctx, `SELECT link_token FROM pull_requests WHERE id = $1`, prID).Scan(&tok)
+	return tok, err
 }
 
 // SummaryComment is the stored comment reference.

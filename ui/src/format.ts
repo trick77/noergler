@@ -203,7 +203,8 @@ type CodeGroup =
   | "sent"
   | "decision"
   | "dropReason"
-  | "callKind";
+  | "callKind"
+  | "prState";
 
 /** known tells a code the catalog has from one a newer binary wrote, which
  *  the page prints as it came. */
@@ -305,6 +306,16 @@ function repoUrl(
 export function prUrl(tag: string, base: string): string | null {
   const r = repoUrl(tag, base);
   return r === null ? null : `${r.repo}/pull-requests/${r.id}`;
+}
+
+/** commentUrl is a finding's or a call's comment on the PR, null without
+ *  one or without the PR's URL. */
+export function commentUrl(
+  pr: string | null,
+  f: { comment_id: number | null },
+): string | null {
+  if (pr === null || f.comment_id === null) return null;
+  return `${pr}/overview?commentId=${f.comment_id}`;
 }
 
 /** sourceUrl is a file at a commit, scrolled to a line, in Bitbucket's

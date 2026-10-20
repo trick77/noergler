@@ -15,7 +15,8 @@ import { Card, Empty, Pill, table, td, tdNum, tdTag, th, thNum } from "./ui";
 
 // A stage the page does not know (a newer binary) still draws, under its
 // own name. Waits are hatched, the gateway call has its own hue, the rest is
-// noergler and Bitbucket.
+// noergler and Bitbucket. review.StageSplit counts the same set as waits for
+// the PR page: change both.
 const WAITS = new Set(["queued", "to_post"]);
 
 export function StageTimeline({ p }: { p: RunPipeline }) {

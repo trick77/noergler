@@ -217,15 +217,21 @@ order:
 8. A footer: a bullet for each thing the author can act on (no AGENTS.md or
    one over its warn size, no ticket while Jira is on, files not reviewed or
    reviewed without full context), then one line of model, files, lines,
-   elapsed time and cost, ending in a link to the run's page when
-   `NOERGLER_PUBLIC_URL` is set. The link carries the run's random token and
-   is the only way to the page: the dashboard never links to it. The page
-   shows each posted finding's headline, linked to its comment on the PR,
-   and the findings that were not posted with their text and quoted lines
+   elapsed time and cost, ending in a link to the PR's page when
+   `NOERGLER_PUBLIC_URL` is set. The link carries the PR's random token and
+   is the only way to the page: the dashboard never links to it. The PR page
+   lists every finding posted on the PR (headline, linked to its comment;
+   the run that posted it and the one that fixed it), every run, the files
+   the reviews saw, and the PR's cost against its cap. Each run has its own
+   page under it, with the findings that were not posted, their text and
+   quoted lines, the step timeline and the gateway call
 
 There is no effort score and no "What changed" section. Tokens, prompt parts,
 cross-file symbols, the gateway's cost split and the key spend are on the run
-page, not in the PR.
+pages, not in the PR. On the PR page cost is the cap's total, tokens and time
+add up over runs, the waits are one total, and the lines and files are the
+whole PR's as the latest review read them (a dash when it could not read
+the whole diff), never a sum of increments.
 
 The footer's model shows the llmwire profile id with the reasoning level
 that was sent appended (`<profile>-<level>`), not the operator's gateway alias.

@@ -91,9 +91,10 @@ type SummaryInput struct {
 	DiffAdded       int
 	DiffRemoved     int
 	ModelLabel      string
-	// RunURL is this run's page on the dashboard; empty (no public URL
-	// configured) prints no link rather than one to nowhere.
-	RunURL string
+	// PRURL is the PR's page on the dashboard, every run of it included;
+	// empty (no public URL configured) prints no link rather than one to
+	// nowhere.
+	PRURL string
 
 	// RunCostUSD is nil when the gateway did not price the run.
 	RunCostUSD *float64
@@ -370,9 +371,9 @@ func renderRecommendation(in SummaryInput) string {
 }
 
 // renderFootnote is the footer under a rule: a bullet for each thing the
-// author can act on, then one telemetry line ending in the run's dashboard
+// author can act on, then one telemetry line ending in the PR's dashboard
 // page. Everything else (tokens, prompt parts, cross-file symbols, key
-// spend) lives on that page, not in the PR (decided).
+// spend) lives on that page and its run pages, not in the PR (decided).
 func renderFootnote(in SummaryInput) string {
 	p := in.Lang.Pick
 	var warn []string
@@ -423,7 +424,7 @@ func renderFootnote(in SummaryInput) string {
 }
 
 // telemetryLine is the footer's one line of figures: model, files, lines,
-// elapsed, cost, and the link to the run's page.
+// elapsed, cost, and the link to the PR's page.
 func telemetryLine(in SummaryInput) string {
 	p := in.Lang.Pick
 	var parts []string
@@ -458,8 +459,8 @@ func telemetryLine(in SummaryInput) string {
 	} else {
 		parts = append(parts, p("Kosten nicht gemeldet", "cost not reported"))
 	}
-	if in.RunURL != "" {
-		parts = append(parts, fmt.Sprintf(p("[Details zum Run](%s)", "[Run details](%s)"), in.RunURL))
+	if in.PRURL != "" {
+		parts = append(parts, fmt.Sprintf(p("[Details zum Review](%s)", "[Review details](%s)"), in.PRURL))
 	}
 	return strings.Join(parts, " · ")
 }

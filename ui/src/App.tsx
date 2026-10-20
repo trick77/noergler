@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { FaqPage } from "./FaqPage";
 import { LivePage } from "./LivePage";
 import { MetricsPage } from "./MetricsPage";
+import { PRPage } from "./PRPage";
 import { RunPage } from "./RunPage";
 import { RunsPage } from "./RunsPage";
 import { TeamsPage } from "./TeamsPage";
@@ -10,7 +11,7 @@ import {
   PAGES,
   navigate,
   pageFromPath,
-  runTokenFromPath,
+  prRouteFromPath,
   type Page,
 } from "./routing";
 
@@ -22,14 +23,12 @@ export default function App() {
   const [route, setRoute] = useState<Page>(() =>
     pageFromPath(window.location.pathname),
   );
-  const [runToken, setRunToken] = useState<string | null>(() =>
-    runTokenFromPath(window.location.pathname),
-  );
+  const [pr, setPR] = useState(() => prRouteFromPath(window.location.pathname));
 
   useEffect(() => {
     const onPop = () => {
       setRoute(pageFromPath(window.location.pathname));
-      setRunToken(runTokenFromPath(window.location.pathname));
+      setPR(prRouteFromPath(window.location.pathname));
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -37,12 +36,12 @@ export default function App() {
 
   useEffect(() => {
     document.title =
-      route === "run"
-        ? `${t("run.title")} · noergler`
+      route === "pr"
+        ? `${pr?.n == null ? t("pr.title") : t("run.title")} · noergler`
         : `${t(`nav.${route}`)} · noergler`;
-  }, [route, t]);
+  }, [route, pr, t]);
 
-  const go = (page: Exclude<Page, "run">) => {
+  const go = (page: Exclude<Page, "pr">) => {
     navigate(page);
     setRoute(page);
   };
@@ -66,8 +65,8 @@ export default function App() {
               aria-current={p === route ? "page" : undefined}
               className={
                 "rounded-ui-sm px-3 py-1.5 text-sm transition-colors " +
-                // A run detail page belongs to Runs: highlighted, not current.
-                (p === route || (p === "runs" && route === "run")
+                // A PR page belongs to Runs: highlighted, not current.
+                (p === route || (p === "runs" && route === "pr")
                   ? "bg-active text-ink"
                   : "text-muted hover:bg-active hover:text-ink")
               }
@@ -92,10 +91,13 @@ export default function App() {
       <main className="min-h-0 min-w-0">
         {route === "live" && <LivePage />}
         {route === "runs" && <RunsPage />}
-        {route === "run" && runToken !== null && (
-          // keyed: a new run is a new page, never the previous one's data
-          // under the next URL while it loads (or after it fails).
-          <RunPage key={runToken} token={runToken} />
+        {/* keyed: a new PR or run is a new page, never the previous one's
+            data under the next URL while it loads (or after it fails). */}
+        {route === "pr" && pr !== null && pr.n === null && (
+          <PRPage key={pr.token} token={pr.token} />
+        )}
+        {route === "pr" && pr !== null && pr.n !== null && (
+          <RunPage key={`${pr.token}/${pr.n}`} token={pr.token} n={pr.n} />
         )}
         {route === "teams" && <TeamsPage />}
         {route === "metrics" && <MetricsPage />}

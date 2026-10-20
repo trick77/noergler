@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RunDetail } from "./api";
 import { RunPage } from "./RunPage";
-import { onNav, pageFromPath, runTokenFromPath } from "./routing";
+import { onNav, pageFromPath, prRouteFromPath } from "./routing";
 
 const TOK = "AAAAAAAAAAAAAAAAAAAAAA";
 
@@ -23,8 +23,10 @@ afterEach(() => {
   window.history.replaceState({}, "", "/");
 });
 
+const RUN = `prs/${TOK}/runs/2`;
+
 const detail: RunDetail = {
-  id: 7,
+  n: 2,
   tag: "PAY/checkout#1482",
   title: "Retry captures on gateway timeout",
   team: "payments",
@@ -84,35 +86,6 @@ const detail: RunDetail = {
     },
   ],
   fixed: [],
-  pr: {
-    attempts: [
-      {
-        id: 6,
-        kind: "auto",
-        outcome: "ok",
-        elapsed_ms: 94000,
-        created_at: "2026-10-18T12:02:00Z",
-        findings: 6,
-        cost_usd: "0.061",
-      },
-      {
-        id: 7,
-        kind: "auto",
-        outcome: "ok",
-        elapsed_ms: 73100,
-        created_at: "2026-10-18T13:48:12Z",
-        findings: 1,
-        cost_usd: "0.048",
-      },
-    ],
-    cost_usd: "0.109",
-    cap_usd: "5.000",
-    more_before: false,
-    more_after: false,
-    calls: [],
-    more_calls: false,
-    calls_failed: false,
-  },
   bitbucket_url: "https://bb.example.com",
   detail: null,
 };
@@ -142,29 +115,45 @@ describe("onNav", () => {
   });
 });
 
-describe("routing to a run", () => {
-  it("reads the link token off the path", () => {
-    expect(pageFromPath(`/runs/${TOK}`)).toBe("run");
-    expect(runTokenFromPath(`/runs/${TOK}`)).toBe(TOK);
-    expect(runTokenFromPath("/runs")).toBeNull();
-    // Mirrors the Go allowlist: a numeric attempt id is no run page.
-    expect(pageFromPath("/runs/18233")).toBe("runs");
-    expect(runTokenFromPath("/runs/18233")).toBeNull();
-    expect(runTokenFromPath(`/runs/${TOK}A`)).toBeNull();
+describe("routing to a PR and its runs", () => {
+  it("reads the link token and the run number off the path", () => {
+    expect(pageFromPath(`/prs/${TOK}`)).toBe("pr");
+    expect(prRouteFromPath(`/prs/${TOK}`)).toEqual({ token: TOK, n: null });
+    expect(prRouteFromPath(`/prs/${TOK}/runs/12`)).toEqual({
+      token: TOK,
+      n: 12,
+    });
+    // Mirrors the Go allowlist: no other spelling of a run, and an old
+    // /runs/{token} link is no page.
+    for (const path of [
+      "/prs",
+      `/prs/${TOK}A`,
+      `/prs/${TOK}/runs/0`,
+      `/prs/${TOK}/runs/01`,
+      `/prs/${TOK}/runs`,
+      `/runs/${TOK}`,
+    ]) {
+      expect(prRouteFromPath(path)).toBeNull();
+    }
+    expect(pageFromPath(`/runs/${TOK}`)).toBe("runs");
   });
 });
 
 describe("RunPage", () => {
-  it("leads with the summary and links no other run", async () => {
-    serve(`runs/${TOK}`, detail);
-    const { container } = render(<RunPage token={TOK} />);
+  it("leads with the summary and links back to its PR", async () => {
+    serve(RUN, detail);
+    const { container } = render(<RunPage token={TOK} n={2} />);
 
     expect(
       await screen.findByText("Retry captures on gateway timeout"),
     ).toBeDefined();
     // Cents, like every amount on the dashboard.
     expect(screen.getAllByText("$0.05").length).toBeGreaterThan(0);
-    // A run's page is reached only from its summary comment.
+    // The crumb is the PR's page, the only in-app link with the token.
+    expect(screen.getByText("Run 2")).toBeDefined();
+    expect(screen.getByText("PAY/checkout#1482").getAttribute("href")).toBe(
+      `/prs/${TOK}`,
+    );
     for (const a of container.querySelectorAll("a")) {
       expect(a.getAttribute("href") ?? "").not.toMatch(/^\/runs\/./);
     }
@@ -175,9 +164,9 @@ describe("RunPage", () => {
 
   // The headline only: the full text is on the PR, behind the link.
   it("shows a finding's headline and links its comment", async () => {
-    window.history.replaceState({}, "", `/runs/${TOK}#findings`);
-    serve(`runs/${TOK}`, detail);
-    render(<RunPage token={TOK} />);
+    window.history.replaceState({}, "", `/${RUN}#findings`);
+    serve(RUN, detail);
+    render(<RunPage token={TOK} n={2} />);
 
     expect(
       await screen.findByText("Capture is retried without its idempotency key"),
@@ -191,13 +180,7 @@ describe("RunPage", () => {
     }
     expect(
       screen.getAllByRole("tab").map((tab) => tab.textContent?.split(/\d/)[0]),
-    ).toEqual([
-      "Overview",
-      "Pull request",
-      "Findings",
-      "Tokens and cost",
-      "Prompt and files",
-    ]);
+    ).toEqual(["Overview", "Findings", "Tokens and cost", "Prompt and files"]);
     expect(screen.getByText("retry.go:88 ↗").getAttribute("href")).toBe(
       "https://bb.example.com/projects/PAY/repos/checkout/pull-requests/1482/overview?commentId=555",
     );
@@ -206,8 +189,8 @@ describe("RunPage", () => {
 
   // A lane the gateway did not send reads "not sent", never $0.
   it("keeps absent lanes absent and lanes in cents", async () => {
-    serve(`runs/${TOK}`, detail);
-    render(<RunPage token={TOK} />);
+    serve(RUN, detail);
+    render(<RunPage token={TOK} n={2} />);
     fireEvent.click(
       await screen.findByRole("tab", { name: /Tokens and cost/ }),
     );
@@ -224,7 +207,7 @@ describe("RunPage", () => {
   // The review's own record: stages on the timeline, the findings that
   // were not posted with why, and the prompt and files tab.
   it("shows the pipeline record", async () => {
-    serve(`runs/${TOK}`, {
+    serve(RUN, {
       ...detail,
       detail: {
         stages: [
@@ -288,7 +271,7 @@ describe("RunPage", () => {
         http: [{ upstream: "bitbucket", calls: 14 }],
       },
     });
-    render(<RunPage token={TOK} />);
+    render(<RunPage token={TOK} n={2} />);
 
     expect((await screen.findAllByText("AI Gateway call")).length).toBe(2);
     expect(screen.getByText("Waiting for the AI Gateway")).toBeDefined();
@@ -323,51 +306,10 @@ describe("RunPage", () => {
     ).toBe("services/payments/go.sum");
   });
 
-  // Replies and answers have no run page, but they are money the PR total
-  // counts: listed under the runs, linked to their thread.
-  it("lists the PR's replies and answers", async () => {
-    window.history.replaceState({}, "", `/runs/${TOK}#pr`);
-    serve(`runs/${TOK}`, {
-      ...detail,
-      pr: {
-        ...detail.pr,
-        calls: [
-          {
-            kind: "reply",
-            comment_id: 501,
-            model: "gpt-5.5",
-            cost_usd: "0.004",
-            created_at: "2026-10-18T14:00:00Z",
-          },
-          {
-            kind: "question",
-            comment_id: null,
-            model: "gpt-5.5",
-            cost_usd: null,
-            created_at: "2026-10-18T14:05:00Z",
-          },
-        ],
-      },
-    });
-    render(<RunPage token={TOK} />);
-
-    expect(
-      (await screen.findByText("reply to a finding ↗")).getAttribute("href"),
-    ).toBe(
-      "https://bb.example.com/projects/PAY/repos/checkout/pull-requests/1482/overview?commentId=501",
-    );
-    const row = (kind: string) =>
-      screen.getByText(kind).closest("tr")?.textContent ?? "";
-    // Priced at 0.004: cents. Unpriced: a dash, never $0.00.
-    expect(row("reply to a finding ↗")).toContain("$0.00");
-    expect(row("answer to a mention")).toContain("—");
-    expect(row("answer to a mention")).not.toContain("$");
-  });
-
   it("says why a skipped run has nothing else", async () => {
-    serve(`runs/${TOK}`, {
+    serve(RUN, {
       ...detail,
-      id: 9,
+      n: 3,
       outcome: "skipped",
       reason: "head_unchanged",
       cost_usd: null,
@@ -375,7 +317,7 @@ describe("RunPage", () => {
       call: null,
       findings: [],
     });
-    render(<RunPage token={TOK} />);
+    render(<RunPage token={TOK} n={2} />);
     expect(
       await screen.findByText("HEAD unchanged since last review"),
     ).toBeDefined();

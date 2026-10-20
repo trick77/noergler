@@ -1,13 +1,13 @@
-// The run detail page: one attempt and everything recorded about it, in
-// tabs so the summary is never below a page of detail. Reached only by its
-// link token from the PR's summary comment, so it shows the full text and
-// never links to another run's page.
+// The run page: one attempt of a PR and everything recorded about it, in
+// tabs so the summary is never below a page of detail. Reached only from its
+// PR's page, which the PR's summary comment links, so it shows the full text;
+// the PR's history, cost and calls are the PR page's.
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { CommentCall, RunCall, RunDetail, RunFinding } from "./api";
+import type { RunCall, RunDetail, RunFinding } from "./api";
 import {
+  commentUrl,
   duration,
-  known,
   money,
   outcomeTitle,
   outcomeTone,
@@ -16,7 +16,7 @@ import {
   severityTone,
   severityWord,
 } from "./format";
-import { onNav } from "./routing";
+import { onNav, prPath } from "./routing";
 import {
   ContextCard,
   FindingText,
@@ -47,8 +47,8 @@ import {
   thNum,
 } from "./ui";
 
-type Tab = "overview" | "findings" | "cost" | "input" | "pr";
-const TABS: Tab[] = ["overview", "pr", "findings", "cost", "input"];
+type Tab = "overview" | "findings" | "cost" | "input";
+const TABS: Tab[] = ["overview", "findings", "cost", "input"];
 
 /** The tab lives in the hash (#findings), so a link can open one and a
  *  reload keeps it. */
@@ -61,11 +61,11 @@ function num(v: number | null | undefined): string {
   return v === null || v === undefined ? "—" : v.toLocaleString();
 }
 
-export function RunPage({ token }: { token: string }) {
+export function RunPage({ token, n }: { token: string; n: number }) {
   const { t } = useTranslation();
   // A finished run does not change; the slow poll only picks up a run that
   // was still being recorded when the page opened.
-  const { data, failed } = usePoll<RunDetail>(`runs/${token}`, 60000);
+  const { data, failed } = usePoll<RunDetail>(`prs/${token}/runs/${n}`, 60000);
   const [tab, setTab] = useState<Tab>(tabFromHash);
 
   useEffect(() => {
@@ -110,14 +110,12 @@ export function RunPage({ token }: { token: string }) {
     findings: d.run ? d.findings.length : null,
     cost: null,
     input: d.detail ? d.detail.files.length : null,
-    pr: t("run.calls", { count: d.pr.attempts.length }),
   };
   const labels: Record<Tab, string> = {
     overview: t("run.tabOverview"),
     findings: t("run.tabFindings"),
     cost: t("run.tabCost"),
     input: t("run.tabInput"),
-    pr: t("run.tabPR"),
   };
 
   const onTabKey = (e: KeyboardEvent, i: number) => {
@@ -141,9 +139,15 @@ export function RunPage({ token }: { token: string }) {
             {t("nav.runs")}
           </a>
           <Sep />
-          <span className="font-mono">{d.tag}</span>
+          <a
+            href={prPath(token)}
+            onClick={onNav(prPath(token))}
+            className="font-mono text-muted hover:text-ink hover:underline"
+          >
+            {d.tag}
+          </a>
           <Sep />
-          {t("run.crumb", { id: d.id })}
+          {t("run.crumb", { n: d.n })}
         </nav>
         <h2 className={h2 + " mt-2"}>{d.title || d.tag}</h2>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[13.5px] text-muted">
@@ -272,12 +276,6 @@ export function RunPage({ token }: { token: string }) {
           {tab === "findings" && <Findings d={d} pr={pr} />}
           {tab === "cost" && <CostTab call={call} />}
           {tab === "input" && <InputTab p={d.detail} />}
-          {tab === "pr" && (
-            <>
-              <PRTab d={d} />
-              <CallsCard d={d} />
-            </>
-          )}
         </div>
       </div>
     </div>
@@ -415,14 +413,6 @@ function TimeBar({
   );
 }
 
-function commentUrl(
-  pr: string | null,
-  f: { comment_id: number | null },
-): string | null {
-  if (pr === null || f.comment_id === null) return null;
-  return `${pr}/overview?commentId=${f.comment_id}`;
-}
-
 function FindingRows({
   rows,
   pr,
@@ -476,8 +466,7 @@ function FindingRows({
                   <FindingText headline={f.headline} />
                 </td>
                 {/* The fixed table has no result column: every row is
-                    fixed, and the run that posted it is not linked (a
-                    run page is linked only from its summary comment). */}
+                    fixed. Which run posted it is the PR page's. */}
                 {!fixedTable && (
                   <td className={td + " whitespace-nowrap text-[12.5px]"}>
                     <>
@@ -835,177 +824,5 @@ function CostTab({ call }: { call: RunCall | null }) {
         </dl>
       </Card>
     </>
-  );
-}
-
-/** MoreRow marks where the PR's history around this run was cut. */
-function MoreRow({ text }: { text: string }) {
-  return (
-    <tr>
-      <td className={td + " text-[12.5px] text-faint italic"} colSpan={5}>
-        {text}
-      </td>
-    </tr>
-  );
-}
-
-function PRTab({ d }: { d: RunDetail }) {
-  const { t } = useTranslation();
-  const cost = d.pr.cost_usd !== null ? Number(d.pr.cost_usd) : null;
-  const cap = d.pr.cap_usd !== null ? Number(d.pr.cap_usd) : null;
-  return (
-    <Card title={t("run.prTitle")}>
-      <div className="overflow-x-auto overscroll-x-contain">
-        <table className={table}>
-          <thead>
-            <tr>
-              <th className={th}>{t("run.when")}</th>
-              <th className={th}>{t("run.what")}</th>
-              <th className={thNum}>{t("run.findings")}</th>
-              <th className={thNum}>{t("run.elapsed")}</th>
-              <th className={thNum}>{t("run.cost")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {d.pr.more_before && <MoreRow text={t("run.moreBefore")} />}
-            {d.pr.attempts.map((a) => (
-              <tr key={a.id} className={a.id === d.id ? "bg-active" : ""}>
-                <td
-                  className={
-                    td +
-                    " font-mono text-[13px] whitespace-nowrap text-muted tabular-nums"
-                  }
-                >
-                  {new Date(a.created_at).toLocaleString(undefined, {
-                    dateStyle: "short",
-                    timeStyle: "short",
-                  })}
-                </td>
-                <td className={td}>
-                  {/* Rows, never links: each run's page is reached only
-                      from its own summary comment. */}
-                  <span className="inline-flex items-center gap-2">
-                    <Pill
-                      tone={outcomeTone(a.outcome)}
-                      title={outcomeTitle(a.outcome, a.reason, a.reason_label)}
-                    >
-                      {outcomeWord(a.outcome, a.reason)}
-                    </Pill>
-                    <span className="text-muted">
-                      {t("run.crumb", { id: a.id })}
-                      {a.id === d.id && ` · ${t("run.thisRun")}`}
-                    </span>
-                  </span>
-                </td>
-                <td className={tdNum}>{a.findings ?? "—"}</td>
-                <td className={tdNum}>{duration(a.elapsed_ms)}</td>
-                <td className={tdNum}>
-                  {a.cost_usd === null ? "—" : money(a.cost_usd)}
-                </td>
-              </tr>
-            ))}
-            {d.pr.more_after && <MoreRow text={t("run.moreAfter")} />}
-            <tr>
-              <td className={td + " font-medium text-ink"} colSpan={4}>
-                {t("run.prTotal")}
-              </td>
-              <td className={tdNum + " text-ink"}>
-                {money(d.pr.cost_usd ?? null)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      {cost !== null && cap !== null && cap > 0 && (
-        <div className="mt-4 grid grid-cols-[80px_1fr_150px] items-center gap-3 text-[13px]">
-          <span className="text-faint">{t("run.prCap")}</span>
-          <div className="h-2.5 overflow-hidden rounded-[5px] bg-track">
-            <div
-              className={"h-full " + (cost >= cap ? "bg-danger" : "bg-s1")}
-              style={{ width: `${Math.min(100, (cost / cap) * 100)}%` }}
-            />
-          </div>
-          <span className="text-right font-mono text-[12.5px] text-ink-dim">
-            {t("run.prOf", {
-              cost: money(d.pr.cost_usd),
-              cap: money(d.pr.cap_usd),
-            })}
-          </span>
-        </div>
-      )}
-    </Card>
-  );
-}
-
-/** CallsCard lists the PR's replies and Q&A answers: no attempt and no run
- *  page each, but money the PR total and its cap count. */
-function CallsCard({ d }: { d: RunDetail }) {
-  const { t } = useTranslation();
-  if (d.pr.calls_failed) {
-    return (
-      <Card title={t("run.callsTitle")}>
-        <Empty>{t("run.callsFailed")}</Empty>
-      </Card>
-    );
-  }
-  if (d.pr.calls.length === 0) return null;
-  const pr = prUrl(d.tag, d.bitbucket_url);
-  return (
-    <Card title={t("run.callsTitle")}>
-      <div className="overflow-x-auto overscroll-x-contain">
-        <table className={table}>
-          <thead>
-            <tr>
-              <th className={th}>{t("run.when")}</th>
-              <th className={th}>{t("run.callKind")}</th>
-              <th className={th}>{t("run.model")}</th>
-              <th className={thNum}>{t("run.cost")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {d.pr.calls.map((c: CommentCall, i) => {
-              const href = commentUrl(pr, c);
-              const kind = known("callKind", c.kind)
-                ? t(`callKind.${c.kind}`)
-                : c.kind;
-              return (
-                <tr key={i}>
-                  <td
-                    className={
-                      td +
-                      " font-mono text-[13px] whitespace-nowrap text-muted tabular-nums"
-                    }
-                  >
-                    {new Date(c.created_at).toLocaleString(undefined, {
-                      dateStyle: "short",
-                      timeStyle: "short",
-                    })}
-                  </td>
-                  <td className={td}>
-                    {href ? (
-                      <a
-                        href={href}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="hover:underline"
-                      >
-                        {kind} ↗
-                      </a>
-                    ) : (
-                      kind
-                    )}
-                  </td>
-                  <td className={tdTag + " text-muted"}>{c.model}</td>
-                  <td className={tdNum}>
-                    {c.cost_usd === null ? "—" : money(c.cost_usd)}
-                  </td>
-                </tr>
-              );
-            })}
-            {d.pr.more_calls && <MoreRow text={t("run.moreCalls")} />}
-          </tbody>
-        </table>
-      </div>
-    </Card>
   );
 }

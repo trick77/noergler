@@ -84,7 +84,7 @@ func summaryCases() map[string]SummaryInput {
 	mixed.TotalFiles, mixed.FilesCountsSet = 5, true
 	mixed.DiffAdded, mixed.DiffRemoved = 40, 7
 	mixed.RunCostUSD, mixed.CumulativeCostUSD, mixed.MaxPRCostUSD = ptrf(0.1234), ptrf(1.5), 5.0
-	mixed.RunURL = "https://noergler.example.com/runs/18233"
+	mixed.PRURL = "https://noergler.example.com/prs/AAAAAAAAAAAAAAAAAAAAAA"
 	cases["mixed"] = mixed
 
 	truncated := base()
@@ -261,16 +261,16 @@ func summaryCases() map[string]SummaryInput {
 	noLink.ModelLabel = "gpt-5.5-medium"
 	noLink.ElapsedSeconds, noLink.ElapsedPresent = 0.85, true
 	noLink.RunCostUSD = ptrf(0.01)
-	cases["no_run_url"] = noLink
+	cases["no_pr_url"] = noLink
 
 	link := noLink
-	link.RunURL = "https://noergler.example.com/runs/7"
-	cases["run_url"] = link
+	link.PRURL = "https://noergler.example.com/prs/BBBBBBBBBBBBBBBBBBBBBB"
+	cases["pr_url"] = link
 
 	linkDE := link
 	linkDE.Lang = lang.DE
 	linkDE.TotalFiles, linkDE.FilesCountsSet = 9, true
-	cases["run_url_de"] = linkDE
+	cases["pr_url_de"] = linkDE
 
 	// Files not reviewed (size gate, token budget) are counted on the line
 	// itself, so the count never reads as "all of them reviewed".

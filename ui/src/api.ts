@@ -123,11 +123,28 @@ export interface Team {
   model?: string;
 }
 
-/** RunDetail is GET runs/{token}: one attempt and what was recorded about it.
- *  Full finding text (secret-like text withheld); money as decimal strings,
- *  null for unpriced or "the gateway did not send it", never a zero. */
+/** RunFacts is the review_runs row behind a successful attempt. */
+export interface RunFacts {
+  incremental: boolean;
+  from_commit?: string;
+  to_commit?: string;
+  model: string;
+  prompt_tokens: number;
+  cached_tokens: number;
+  completion_tokens: number;
+  findings_posted: number;
+  lines_added: number;
+  lines_removed: number;
+  files_changed: number;
+}
+
+/** RunDetail is GET prs/{token}/runs/{n}: one attempt of the PR and what was
+ *  recorded about it. Full finding text (secret-like text withheld); money
+ *  as decimal strings, null for unpriced or "the gateway did not send it",
+ *  never a zero. */
 export interface RunDetail {
-  id: number;
+  /** The run's number on its PR, 1 for the oldest. */
+  n: number;
   tag: string;
   title: string;
   team: string;
@@ -139,40 +156,89 @@ export interface RunDetail {
   elapsed_ms: number | null;
   created_at: string;
   cost_usd: string | null;
-  run: {
-    incremental: boolean;
-    from_commit?: string;
-    to_commit?: string;
-    model: string;
-    prompt_tokens: number;
-    cached_tokens: number;
-    completion_tokens: number;
-    findings_posted: number;
-    lines_added: number;
-    lines_removed: number;
-    files_changed: number;
-  } | null;
+  run: RunFacts | null;
   call: RunCall | null;
   findings: RunFinding[];
   fixed: RunFinding[];
-  pr: {
-    attempts: PRAttempt[];
-    /** The history around this run is cut on that side. */
-    more_before: boolean;
-    more_after: boolean;
-    cost_usd: string | null;
-    cap_usd: string | null;
-    /** The PR's reply and Q&A calls, newest first. They count toward
-     *  cost_usd and the cap. */
-    calls: CommentCall[];
-    more_calls: boolean;
-    /** The list could not be read: empty means unknown, not none. */
-    calls_failed: boolean;
-  };
   bitbucket_url: string;
   /** The review's pipeline record; null for a run from before it existed,
    *  or a skip. */
   detail: RunPipeline | null;
+}
+
+/** PRPage is GET prs/{token}: the PR, every run of it, every finding posted
+ *  on it, the files its reviews saw and what it cost. */
+export interface PRPage {
+  tag: string;
+  title: string;
+  team: string;
+  team_name: string;
+  /** open | merged | declined */
+  state: string;
+  /** The cap's figure, never a sum of the rows. */
+  cost_usd: string | null;
+  cap_usd: string | null;
+  /** The whole PR's reviewable diff; null when no run read it. */
+  scope: { added: number; removed: number; files: number } | null;
+  /** Tokens and wall clock over every run, the unlisted ones included. */
+  prompt_tokens: number;
+  cached_tokens: number;
+  completion_tokens: number;
+  elapsed_ms: number;
+  /** The waits in the recorded stages of the runs listed. */
+  wait_ms: number;
+  /** Every run of the PR; runs lists the newest of them. */
+  runs_total: number;
+  /** Oldest first, numbered over the whole history. */
+  runs: PRRun[];
+  /** Older runs are not listed. */
+  more_runs: boolean;
+  findings: PRFinding[];
+  files: PRFile[];
+  /** The PR's reply and Q&A calls, newest first. They count toward cost_usd
+   *  and the cap. */
+  calls: CommentCall[];
+  more_calls: boolean;
+  /** The list could not be read: empty means unknown, not none. */
+  calls_failed: boolean;
+  bitbucket_url: string;
+}
+
+export interface PRRun {
+  n: number;
+  kind: string;
+  outcome: string;
+  reason?: string;
+  reason_label?: string;
+  elapsed_ms: number | null;
+  created_at: string;
+  cost_usd: string | null;
+  run: RunFacts | null;
+  /** Earlier findings this run retired. */
+  fixed: number;
+  /** The recorded stages in three parts; null without a record. */
+  time: { work_ms: number; wait_ms: number; gateway_ms: number } | null;
+}
+
+/** PRFinding is a posted finding: headline only, the runs by number (null
+ *  when that run is not in the history listed). */
+export interface PRFinding {
+  severity: string;
+  file: string;
+  line: number;
+  headline: string;
+  comment_id: number | null;
+  replied: boolean;
+  fixed: boolean;
+  posted_in: number | null;
+  fixed_in: number | null;
+}
+
+/** PRFile is a file any run's record lists, with how each run sent it. */
+export interface PRFile {
+  path: string;
+  runs: { n: number; sent: string }[];
+  findings: number;
 }
 
 /** RunPipeline is the review's own record of the run. */
@@ -279,18 +345,6 @@ export interface CommentCall {
   model: string;
   cost_usd: string | null;
   created_at: string;
-}
-
-export interface PRAttempt {
-  id: number;
-  kind: string;
-  outcome: string;
-  reason?: string;
-  reason_label?: string;
-  elapsed_ms: number | null;
-  created_at: string;
-  findings: number | null;
-  cost_usd: string | null;
 }
 
 /** get fetches one dashboard endpoint. Relative, so vite proxies it in dev

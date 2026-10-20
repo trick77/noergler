@@ -41,6 +41,9 @@ type cumulativeContext struct {
 	// (not the budgeted copy above). nil when the diff could not be read:
 	// no history known.
 	added map[string]map[uint64]bool
+	// scope is the whole PR's reviewable files and lines, from the full
+	// diff; nil when it could not be read.
+	scope *store.PRScope
 }
 
 // fetchCumulativeDiff returns the part of the whole-PR diff worth sending as
@@ -131,6 +134,8 @@ func (r *Reviewer) fetchCumulativeDiff(ctx context.Context, key store.PRKey, prT
 
 	out := cumulativeContext{diff: kept.String(), partial: filtered > 0 || len(oversized) > 0 || len(omitted) > 0,
 		added: diff.AddedLines(full)}
+	a, d := countDiffLines(full)
+	out.scope = &store.PRScope{Added: a, Removed: d, Files: countReviewableFiles(full)}
 	for _, f := range omitted {
 		if f.Path != "" {
 			out.omitted = append(out.omitted, f.Path)

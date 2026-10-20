@@ -1,10 +1,10 @@
 // Hand-rolled, like ../rongo's: a handful of pages do not need a router.
 
-export type Page = "live" | "runs" | "teams" | "metrics" | "faq" | "run";
+export type Page = "live" | "runs" | "teams" | "metrics" | "faq" | "pr";
 
-/** PAGES is the nav. "run" is not in it: a run detail page is reached only
- *  from the PR's summary comment, and it highlights Runs while open. */
-export const PAGES: Exclude<Page, "run">[] = [
+/** PAGES is the nav. "pr" is not in it: a PR page and its runs are reached
+ *  only from the PR's summary comment, and highlight Runs while open. */
+export const PAGES: Exclude<Page, "pr">[] = [
   "live",
   "runs",
   "teams",
@@ -12,29 +12,41 @@ export const PAGES: Exclude<Page, "run">[] = [
   "faq",
 ];
 
-// Mirrors runPath in backend/web/embed.go: a link token, 22 base64url
-// characters. The page's only key, handed out in the PR's summary comment;
-// the dashboard never links to it.
-const RUN_PATH = /^\/runs\/([A-Za-z0-9_-]{22})$/;
+// Mirrors prPath in backend/web/embed.go: a link token, 22 base64url
+// characters, then optionally a run's number. The token is the pages' only
+// key, handed out in the PR's summary comment; the rest of the dashboard
+// never links to it.
+const PR_PATH = /^\/prs\/([A-Za-z0-9_-]{22})(?:\/runs\/([1-9][0-9]{0,8}))?$/;
+
+/** PRRoute is a PR page (n null) or run n of it. */
+export interface PRRoute {
+  token: string;
+  n: number | null;
+}
 
 export function pageFromPath(path: string): Page {
-  if (RUN_PATH.test(path)) return "run";
+  if (PR_PATH.test(path)) return "pr";
   const slug = path.replace(/^\/+/, "").split("/")[0];
   return (PAGES as string[]).includes(slug) ? (slug as Page) : "live";
 }
 
-/** runTokenFromPath is the link token of a run detail path, null
- *  otherwise. */
-export function runTokenFromPath(path: string): string | null {
-  const m = RUN_PATH.exec(path);
-  return m === null ? null : m[1];
+/** prRouteFromPath is the PR page or run a path names, null otherwise. */
+export function prRouteFromPath(path: string): PRRoute | null {
+  const m = PR_PATH.exec(path);
+  if (m === null) return null;
+  return { token: m[1], n: m[2] === undefined ? null : Number(m[2]) };
 }
 
-export function pathFor(page: Exclude<Page, "run">): string {
+/** prPath is the PR page's path, or run n's under it. */
+export function prPath(token: string, n?: number): string {
+  return n === undefined ? `/prs/${token}` : `/prs/${token}/runs/${n}`;
+}
+
+export function pathFor(page: Exclude<Page, "pr">): string {
   return page === "live" ? "/" : `/${page}`;
 }
 
-export function navigate(page: Exclude<Page, "run">) {
+export function navigate(page: Exclude<Page, "pr">) {
   navigateTo(pathFor(page));
 }
 

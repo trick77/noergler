@@ -30,13 +30,10 @@ type Attempt struct {
 	// pre-flight skip, a timeout); a late repo-unclaimed skip carries the call
 	// it paid for.
 	Call *LLMCall
-	// LinkToken is the run page's key; InsertAttempt draws one
-	// (NewLinkToken) when empty. A caller that links the page sets it first.
-	LinkToken string
 }
 
 // InsertAttempt records one attempt, and its gateway call when it made one.
-// Returns the attempt id; the run detail page is keyed by LinkToken.
+// Returns the attempt id.
 //
 // The caller swallows the error: an attempt row is a dashboard record, and
 // failing a review over one would trade a working review for a log line.
@@ -52,18 +49,15 @@ func (s *Store) InsertAttempt(ctx context.Context, a Attempt) (int64, error) {
 		r := a.Reason
 		reason = &r
 	}
-	if a.LinkToken == "" {
-		a.LinkToken = NewLinkToken()
-	}
 	var id int64
 	if err := s.pool.QueryRow(ctx, `
 		INSERT INTO review_attempts
 		    (team_slug, project_key, repo_slug, pr_id, kind,
-		     outcome, reason, elapsed_ms, review_run_id, cost_nano_usd, link_token)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		     outcome, reason, elapsed_ms, review_run_id, cost_nano_usd)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id`,
 		a.TeamSlug, a.Key.Project, a.Key.Repo, a.Key.PRID, a.Kind,
-		a.Outcome, reason, a.ElapsedMS, a.RunID, a.CostNanoUSD, a.LinkToken).Scan(&id); err != nil {
+		a.Outcome, reason, a.ElapsedMS, a.RunID, a.CostNanoUSD).Scan(&id); err != nil {
 		return 0, err
 	}
 	if a.Call != nil {

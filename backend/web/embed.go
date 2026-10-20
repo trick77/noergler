@@ -30,7 +30,7 @@ var placeholderHTML []byte
 
 // routes mirrors ui/src/routing.ts. An explicit allowlist, so an unknown
 // path is a real 404 rather than 200 plus the shell: a soft 404 makes a typo
-// look like an empty page. One pattern beside it: /runs/{link token}.
+// look like an empty page. One pattern beside it: a PR page and its runs.
 var routes = map[string]bool{
 	"/":        true,
 	"/live":    true,
@@ -40,11 +40,11 @@ var routes = map[string]bool{
 	"/faq":     true,
 }
 
-// runPath is the run detail page, /runs/ and a link token (store.NewLinkToken:
-// 22 base64url characters). A numeric attempt id stays the 404 an unknown
-// path is: the token, handed out only in the PR's summary comment, is the
-// page's one key.
-var runPath = regexp.MustCompile(`^/runs/` + store.LinkPattern + `$`)
+// prPath is the PR page, /prs/ and a link token (store.NewLinkToken: 22
+// base64url characters), and each of its runs under it by number. The
+// token, handed out only in the PR's summary comment, is the pages' one
+// key; an old /runs/{token} link is the 404 an unknown path is (decided).
+var prPath = regexp.MustCompile(`^/prs/` + store.LinkPattern + `(?:/runs/[1-9][0-9]{0,8})?$`)
 
 func dist() fs.FS {
 	sub, err := fs.Sub(distFS, "dist")
@@ -68,22 +68,22 @@ func Handler() http.Handler { return handler(dist()) }
 // unbuilt binary answers its routes with the placeholder and a 503.
 func handler(sub fs.FS) http.Handler {
 	h := spa.Handler(sub, spa.Options{
-		Routes:      func(p string) bool { return routes[p] || runPath.MatchString(p) },
+		Routes:      func(p string) bool { return routes[p] || prPath.MatchString(p) },
 		Placeholder: placeholderHTML,
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// A run page's URL carries its key: keep it out of search indexes,
+		// A PR or run page's URL carries its key: keep it out of search indexes,
 		// out of the Referer of every link the page opens, and out of every
 		// cache. Set as the headers go out: spa.Handler sets its own
 		// Cache-Control for the shell, which would win if set before it.
-		if runPath.MatchString(r.URL.Path) {
+		if prPath.MatchString(r.URL.Path) {
 			w = &runPageWriter{ResponseWriter: w}
 		}
 		h.ServeHTTP(w, r)
 	})
 }
 
-// runPageWriter stamps a run page's headers over whatever the SPA handler
+// runPageWriter stamps a PR or run page's headers over whatever the SPA handler
 // set, right before they are written.
 type runPageWriter struct {
 	http.ResponseWriter

@@ -6,8 +6,8 @@ import (
 	"regexp"
 )
 
-// NewLinkToken is a run page's link token: 16 random bytes, base64url, 22
-// characters. The only key to the page, so never derived from the attempt.
+// NewLinkToken is a PR page's link token: 16 random bytes, base64url, 22
+// characters. The only key to the page, so never derived from the PR.
 func NewLinkToken() string {
 	var b [16]byte
 	_, _ = rand.Read(b[:]) // never fails (crypto/rand panics instead)

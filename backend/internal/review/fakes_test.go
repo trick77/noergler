@@ -186,6 +186,7 @@ type fakeStore struct {
 	mu sync.Mutex
 
 	prID       int64
+	prToken    string
 	skipState  *store.SkipState
 	lastCommit string
 	hasLast    bool
@@ -235,7 +236,7 @@ type repliedCall struct {
 }
 
 func newFakeStore() *fakeStore {
-	return &fakeStore{prID: 7}
+	return &fakeStore{prID: 7, prToken: store.NewLinkToken()}
 }
 
 func (f *fakeStore) err() error {
@@ -256,6 +257,18 @@ func (f *fakeStore) UpsertPullRequest(_ context.Context, u store.PRUpsert) (int6
 	}
 	f.Upserts = append(f.Upserts, u)
 	return f.prID, nil
+}
+
+func (f *fakeStore) PRLinkToken(_ context.Context, prID int64) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return "", err
+	}
+	if prID != f.prID {
+		return "", fmt.Errorf("no PR row %d", prID)
+	}
+	return f.prToken, nil
 }
 
 func (f *fakeStore) GetLastReviewedCommit(context.Context, store.PRKey) (string, bool, error) {
