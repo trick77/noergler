@@ -29,6 +29,19 @@ type Pipeline struct {
 	// HTTP is a list, not a map: a response body is a struct with a fixed
 	// order, never map keys.
 	HTTP []HTTPCount `json:"http"`
+	// PRScope is the whole PR's reviewable diff at this run's commit, for the
+	// PR page; nil when the whole diff was not read (an incremental run whose
+	// cumulative fetch failed, or a record from before it existed). The run
+	// page never shows it.
+	PRScope *PRScope `json:"pr_scope,omitempty"`
+}
+
+// PRScope is the whole PR's reviewable files and lines, counted as the
+// merge-time rollup counts them.
+type PRScope struct {
+	Added   int `json:"added"`
+	Removed int `json:"removed"`
+	Files   int `json:"files"`
 }
 
 // StageTime is one stage's wall time, in the order the review ran them.

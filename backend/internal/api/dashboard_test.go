@@ -37,10 +37,13 @@ type fakeDashStore struct {
 	daily     []store.Bucket
 	dailyAtt  []store.AttemptBucket
 	activity  []store.TeamActivity
-	// detail is served for detailToken; any other token is "no such run".
-	detail      store.RunDetail
-	detailToken string
-	prCost      *int64
+	// page and run are served for prToken (run for runN only); any other
+	// token or number is "not found".
+	page    store.PRPage
+	run     store.RunDetail
+	prToken string
+	runN    int
+	prCost  *int64
 	// prCostErr fails only the PR total, after the detail read worked.
 	prCostErr error
 	// calls are the PR's reply and question calls.
@@ -57,11 +60,17 @@ func (f *fakeDashStore) RecentAttempts(_ context.Context, team string, outcome s
 	f.lastTeam, f.lastOutcome, f.lastLimit = team, outcome, limit
 	return f.attempts, f.err
 }
-func (f *fakeDashStore) RunDetail(_ context.Context, token string) (store.RunDetail, bool, error) {
+func (f *fakeDashStore) PRPage(_ context.Context, token string) (store.PRPage, bool, error) {
+	if f.err != nil {
+		return store.PRPage{}, false, f.err
+	}
+	return f.page, token == f.prToken, nil
+}
+func (f *fakeDashStore) PRRun(_ context.Context, token string, n int) (store.RunDetail, bool, error) {
 	if f.err != nil {
 		return store.RunDetail{}, false, f.err
 	}
-	return f.detail, token == f.detailToken, nil
+	return f.run, token == f.prToken && n == f.runN, nil
 }
 func (f *fakeDashStore) PRCost(context.Context, store.PRKey) (*int64, error) {
 	if f.prCostErr != nil {

@@ -128,18 +128,26 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   `type: [x, "null"]`, never `oneOf` with null.
 - Dashboard: unauthenticated by design (the ingress is the boundary).
   `ui/src/routing.ts` and the `web/embed.go` allowlist are one list, plus one
-  pattern (`/runs/{link token}`, the same regex on both sides). The
-  chart series ramp is CVD-validated: never re-picked by eye.
-- Run page: keyed only by `review_attempts.link_token` (16 B crypto/rand,
-  base64url, 22 chars), linked only from the PR's summary comment; never a
-  numeric id route (old summaries' numeric links 404, decided), never linked
-  from the dashboard or another run's page, no token in any response or app
-  log (`httpapi.logPath` masks it; the ingress log sees the path). Malformed and
-  unknown token: one 404. Posted and fixed findings: headline only, the text
-  is on the PR (user, 2026-10-19); unposted findings and pre-existing bugs
-  with their text, quoted code and file:line; never a secret
-  (`inference.HasSecret`), discount or margin. Run pages a later summary edit
-  no longer links are unreachable (accepted).
+  pattern (`/prs/{link token}` with an optional `/runs/{n}`, the same regex
+  on both sides). The chart series ramp is CVD-validated: never re-picked by
+  eye.
+- PR page and its run pages: keyed only by `pull_requests.link_token` (16 B
+  crypto/rand, base64url, 22 chars), linked only from the PR's summary
+  comment; a run is `/prs/{token}/runs/{n}`, n its number in the PR's
+  history (team + row life, as `prCostSQL`), never a database id. The PR
+  page links its runs and a run page its PR; nothing else on the dashboard
+  links either. No token in any response or app log (`httpapi.logPath` masks
+  it; the ingress log sees the path). Malformed, unknown, out-of-range n: one
+  404. Old `/runs/{attempt token}` links 404 (user, 2026-10-20); the attempt
+  column stays, unread. Posted and fixed findings: headline only, the text is
+  on the PR (user, 2026-10-19); unposted findings and pre-existing bugs with
+  their text, quoted code and file:line, on the run page only; never a secret
+  (`inference.HasSecret`), discount or margin.
+- PR page sums only what adds up (user, 2026-10-20): cost = `PRCost`, tokens
+  and time over runs, waits one total (the step timeline stays per run, never
+  summed). Lines and files = `Pipeline.PRScope` of the latest run that read
+  the whole diff, else null ("—"); never a sum of increments, and how it was
+  derived never reaches the page. Files tab = every file any run listed.
 - Dashboard text only through `ui/src/i18n` (i18next): `de` mirrors `en`
   (`satisfies Catalog`, same placeholders), Swiss German, no `ß`. Language =
   browser only, `de*` -> German, else English; no switch, no stored choice

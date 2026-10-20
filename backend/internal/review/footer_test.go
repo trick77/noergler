@@ -5,32 +5,36 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
 
-// The footer links the run's page by the link token the attempt was just
-// recorded with, never by its id, and prints no link without a public URL:
-// never one to a host that does not exist.
-func TestFooterLinksTheRunPage(t *testing.T) {
+// The footer links the PR's page by the PR row's link token, never by an
+// id, and prints no link without a public URL or a readable token: never
+// one to a host or a page that does not exist.
+func TestFooterLinksThePRPage(t *testing.T) {
 	h := newHarness(t, nil)
 	h.r.publicURL = "https://noergler.example.com"
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
 	if len(h.bb.Posted) == 0 {
 		t.Fatal("no summary posted")
 	}
-	if len(h.st.Attempts) != 1 || !store.LinkTokenRE.MatchString(h.st.Attempts[0].LinkToken) {
-		t.Fatalf("attempts = %+v, want one with a link token", h.st.Attempts)
-	}
-	want := "https://noergler.example.com/runs/" + h.st.Attempts[0].LinkToken + ")"
+	want := "https://noergler.example.com/prs/" + h.st.prToken + ")"
 	if s := h.bb.Posted[0].Text; !strings.Contains(s, want) {
-		t.Errorf("summary lacks the run link %q:\n%s", want, s)
+		t.Errorf("summary lacks the PR link %q:\n%s", want, s)
 	}
 
 	h2 := newHarness(t, nil)
 	h2.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
-	if s := h2.bb.Posted[0].Text; strings.Contains(s, "/runs/") {
-		t.Errorf("no public URL, yet a run link:\n%s", s)
+	if s := h2.bb.Posted[0].Text; strings.Contains(s, "/prs/") {
+		t.Errorf("no public URL, yet a PR link:\n%s", s)
+	}
+
+	h3 := newHarness(t, nil)
+	h3.r.publicURL = "https://noergler.example.com"
+	h3.st.prToken = ""
+	h3.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	if s := h3.bb.Posted[0].Text; strings.Contains(s, "/prs/") {
+		t.Errorf("no token, yet a PR link:\n%s", s)
 	}
 }
 

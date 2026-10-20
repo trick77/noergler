@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/trick77/noergler/internal/inference"
@@ -12,8 +13,9 @@ import (
 	"github.com/trick77/ship/kit/logging"
 )
 
-// runDetailBody is GET /api/dashboard/runs/{token}: one attempt and
-// everything recorded about it.
+// runDetailBody is GET /api/dashboard/prs/{token}/runs/{n}: one attempt of
+// the PR and everything recorded about it. The PR's history, cost and calls
+// are the PR page's (prPageBody).
 //
 // Full finding text, suggestion, dispute and quoted code (decided): the
 // token is handed out only in the PR's summary comment, so the page's
@@ -23,7 +25,7 @@ import (
 // unpriced. The cost lanes are 6-decimal, because a cache read on a small
 // call is a tenth of a milli-dollar. The page rounds all of it to cents.
 type runDetailBody struct {
-	ID          int64     `json:"id"`
+	N           int       `json:"n"`
 	Tag         string    `json:"tag"`
 	Title       string    `json:"title"`
 	Team        string    `json:"team"`
@@ -42,7 +44,6 @@ type runDetailBody struct {
 	Findings []findingBody `json:"findings"`
 	Fixed    []findingBody `json:"fixed"`
 
-	PR PRBody `json:"pr"`
 	// Detail is the run's pipeline record (stages, prompt parts, files,
 	// unposted findings, verdict, HTTP counts); null when none was written.
 	Detail *store.Pipeline `json:"detail"`
@@ -62,6 +63,18 @@ type runFactsBody struct {
 	LinesAdded       int    `json:"lines_added"`
 	LinesRemoved     int    `json:"lines_removed"`
 	FilesChanged     int    `json:"files_changed"`
+}
+
+func runFacts(f *store.RunFacts) *runFactsBody {
+	if f == nil {
+		return nil
+	}
+	return &runFactsBody{
+		Incremental: f.Incremental, FromCommit: f.FromCommit, ToCommit: f.ToCommit, Model: f.ModelLabel,
+		PromptTokens: f.PromptTokens, CachedTokens: f.CachedTokens, CompletionTokens: f.CompletionTokens,
+		FindingsPosted: f.FindingsPosted, LinesAdded: f.LinesAdded, LinesRemoved: f.LinesRemoved,
+		FilesChanged: f.FilesChanged,
+	}
 }
 
 // callBody is the llm_calls row. Every nil is "the gateway did not send it",
@@ -107,47 +120,6 @@ type findingBody struct {
 	Fixed      bool    `json:"fixed"`
 }
 
-// PRBody is the PR's side of the page: its history and what it has cost
-// against the team's cap.
-type PRBody struct {
-	Attempts []prAttemptBody `json:"attempts"`
-	// MoreBefore and MoreAfter: the history around this run is cut there.
-	MoreBefore bool    `json:"more_before"`
-	MoreAfter  bool    `json:"more_after"`
-	Cost       *string `json:"cost_usd"`
-	// Cap is the team's per-PR cost cap, nil when the team is no longer
-	// configured.
-	Cap *string `json:"cap_usd"`
-	// Calls are the PR's reply and Q&A calls, newest first: they count
-	// toward Cost and the cap. MoreCalls: the list was cut.
-	Calls     []commentCallBody `json:"calls"`
-	MoreCalls bool              `json:"more_calls"`
-	// CallsFailed: the list could not be read, so an empty one means
-	// nothing; the total above still counts the calls.
-	CallsFailed bool `json:"calls_failed"`
-}
-
-type commentCallBody struct {
-	// Kind is reply or question.
-	Kind      string    `json:"kind"`
-	CommentID *int64    `json:"comment_id"`
-	Model     string    `json:"model"`
-	Cost      *string   `json:"cost_usd"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-type prAttemptBody struct {
-	ID          int64     `json:"id"`
-	Kind        string    `json:"kind"`
-	Outcome     string    `json:"outcome"`
-	Reason      string    `json:"reason,omitempty"`
-	ReasonLabel string    `json:"reason_label,omitempty"`
-	ElapsedMS   *int64    `json:"elapsed_ms"`
-	CreatedAt   time.Time `json:"created_at"`
-	Findings    *int      `json:"findings"`
-	Cost        *string   `json:"cost_usd"`
-}
-
 func usd6(nano *int64) *string {
 	if nano == nil {
 		return nil
@@ -156,18 +128,32 @@ func usd6(nano *int64) *string {
 	return &s
 }
 
-// runDetail serves the attempt behind a link token. One 404 for a malformed
-// token and an unknown one: no oracle, and the page says so rather than
-// rendering an empty run.
-func (d Deps) runDetail(w http.ResponseWriter, r *http.Request) {
+// runNumber is a run's path segment: a plain positive decimal, nothing else
+// (no sign, no leading zero), so one run has one path.
+func runNumber(s string) (int, bool) {
+	if s == "" || len(s) > 9 || s[0] == '0' {
+		return 0, false
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 1 || strconv.Itoa(n) != s {
+		return 0, false
+	}
+	return n, true
+}
+
+// prRunDetail serves run n of the PR behind a link token. One 404 for a
+// malformed token, an unknown one and a run the PR does not have: no
+// oracle, and the page says so rather than rendering an empty run.
+func (d Deps) prRunDetail(w http.ResponseWriter, r *http.Request) {
 	token := r.PathValue("token")
-	if !store.LinkTokenRE.MatchString(token) {
+	n, okN := runNumber(r.PathValue("n"))
+	if !store.LinkTokenRE.MatchString(token) || !okN {
 		httpx.WriteError(w, http.StatusNotFound, "no such run")
 		return
 	}
-	det, ok, err := d.DashboardStore.RunDetail(r.Context(), token)
+	det, ok, err := d.DashboardStore.PRRun(r.Context(), token, n)
 	if err != nil {
-		d.Log.ErrorContext(r.Context(), "dashboard: RunDetail failed: "+err.Error())
+		d.Log.ErrorContext(r.Context(), "dashboard: PRRun failed: "+err.Error())
 		httpx.WriteError(w, http.StatusInternalServerError, "could not read the run")
 		return
 	}
@@ -178,30 +164,30 @@ func (d Deps) runDetail(w http.ResponseWriter, r *http.Request) {
 
 	nameOf := d.teamNamer()
 	body := runDetailBody{
-		ID: det.ID, Tag: det.Key.Tag(), Title: det.PRTitle,
+		N: det.N, Tag: det.Key.Tag(), Title: det.PRTitle,
 		Team: det.TeamSlug, TeamName: nameOf(det.TeamSlug), Kind: string(det.Kind),
 		Outcome: det.Outcome, Reason: det.Reason, ReasonLabel: review.SkipReason(det.Reason).Label(),
 		ElapsedMS: det.ElapsedMS, CreatedAt: det.CreatedAt,
 		Cost:         usd(det.AttemptCostNanoUSD),
+		Run:          runFacts(det.Run),
 		Findings:     findingBodies(det.Findings),
 		Fixed:        findingBodies(det.Fixed),
 		BitbucketURL: d.BitbucketURL,
 	}
-	body.Detail = det.Detail
+	if det.Detail != nil {
+		// The whole PR's counts are the PR page's figure, not this run's.
+		p := *det.Detail
+		p.PRScope = nil
+		body.Detail = &p
+	}
 	if det.DetailErr != nil {
 		// Debug: a record an older binary wrote stays undecodable, and every
 		// view of its page would log again.
 		d.Log.DebugContext(logging.With(r.Context(), "team", det.TeamSlug), fmt.Sprintf(
 			"dashboard: run %d detail record not decoded, page shown without it: %v", det.ID, det.DetailErr))
 	}
-	if f := det.Run; f != nil {
-		body.Cost = usd(f.CostNanoUSD)
-		body.Run = &runFactsBody{
-			Incremental: f.Incremental, FromCommit: f.FromCommit, ToCommit: f.ToCommit, Model: f.ModelLabel,
-			PromptTokens: f.PromptTokens, CachedTokens: f.CachedTokens, CompletionTokens: f.CompletionTokens,
-			FindingsPosted: f.FindingsPosted, LinesAdded: f.LinesAdded, LinesRemoved: f.LinesRemoved,
-			FilesChanged: f.FilesChanged,
-		}
+	if det.Run != nil {
+		body.Cost = usd(det.Run.CostNanoUSD)
 	}
 	if c := det.Call; c != nil {
 		body.Call = &callBody{
@@ -218,45 +204,6 @@ func (d Deps) runDetail(w http.ResponseWriter, r *http.Request) {
 		}
 		if body.Call.Warnings == nil {
 			body.Call.Warnings = []string{}
-		}
-	}
-
-	body.PR.MoreBefore, body.PR.MoreAfter = det.MoreBefore, det.MoreAfter
-	body.PR.Attempts = make([]prAttemptBody, 0, len(det.PRAttempts))
-	for _, a := range det.PRAttempts {
-		body.PR.Attempts = append(body.PR.Attempts, prAttemptBody{
-			ID: a.ID, Kind: string(a.Kind), Outcome: a.Outcome, Reason: a.Reason,
-			ReasonLabel: review.SkipReason(a.Reason).Label(),
-			ElapsedMS:   a.ElapsedMS, CreatedAt: a.CreatedAt, Findings: a.Findings, Cost: usd(a.CostNanoUSD),
-		})
-	}
-	// The PR total is the same figure the cap enforces (PRCost), not a sum
-	// of the rows above, which a history longer than the page would cut. A
-	// failed read is a failed page: null here would read as "unpriced".
-	c, err := d.DashboardStore.PRCost(r.Context(), det.Key)
-	if err != nil {
-		d.Log.ErrorContext(r.Context(), "dashboard: PRCost failed: "+err.Error())
-		httpx.WriteError(w, http.StatusInternalServerError, "could not read the run")
-		return
-	}
-	body.PR.Cost = usd(c)
-	// Detail under the PR tab: a failed read leaves the list empty, the
-	// total above (which counts the calls) still stands.
-	calls, more, err := d.DashboardStore.PRCommentCalls(r.Context(), det.Key)
-	if err != nil {
-		d.Log.ErrorContext(r.Context(), "dashboard: PRCommentCalls failed: "+err.Error())
-		calls, more = nil, false
-		body.PR.CallsFailed = true
-	}
-	body.PR.Calls, body.PR.MoreCalls = make([]commentCallBody, 0, len(calls)), more
-	for _, c := range calls {
-		body.PR.Calls = append(body.PR.Calls, commentCallBody{Kind: c.Kind, CommentID: c.CommentID,
-			Model: c.Model, Cost: usd(c.CostNanoUSD), CreatedAt: c.CreatedAt})
-	}
-	if rt, _, ok := d.Teams.Lookup(det.TeamSlug); ok && rt != nil {
-		if team := rt.Team(); team != nil && team.Review.MaxPRCostUSD > 0 {
-			nano := int64(team.Review.MaxPRCostUSD*1e9 + 0.5)
-			body.PR.Cap = usd(&nano)
 		}
 	}
 	// Full finding text behind a token: no cache keeps a copy.

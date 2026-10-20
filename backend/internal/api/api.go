@@ -97,7 +97,8 @@ func Register(srv *httpapi.Server, d Deps) {
 	if d.Dashboard != nil && d.DashboardStore != nil {
 		srv.HandleFunc("GET /api/dashboard/live", d.live)
 		srv.HandleFunc("GET /api/dashboard/runs", d.runs)
-		srv.HandleFunc("GET /api/dashboard/runs/{token}", d.runDetail)
+		srv.HandleFunc("GET /api/dashboard/prs/{token}", d.prPage)
+		srv.HandleFunc("GET /api/dashboard/prs/{token}/runs/{n}", d.prRunDetail)
 		srv.HandleFunc("GET /api/dashboard/metrics", d.metrics)
 		srv.HandleFunc("GET /api/dashboard/teams", d.teamsView)
 

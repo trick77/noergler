@@ -53,16 +53,18 @@ func TestKnownRoutesGetTheShellAndUnknownOnesA404(t *testing.T) {
 	}
 }
 
-// The run detail page is the one route with a parameter: a link token gets
-// the shell, never indexed, never in a Referer; anything else under /runs/,
-// a numeric attempt id included, stays a 404.
-func TestRunDetailRoute(t *testing.T) {
+// The PR page and its runs are the one route with parameters: a link
+// token, then optionally a run number, gets the shell, never indexed, never
+// in a Referer. Anything else under /prs/ stays a 404, and so does an old
+// /runs/{token} link (decided).
+func TestPRPageRoute(t *testing.T) {
 	h := handler(built())
 	// Real tokens, so a change to NewLinkToken that this route does not
 	// follow fails here rather than as a 404 on every new link.
-	paths := []string{"/runs/AAAAAAAAAAAAAAAAAAAAAA", "/runs/a-_0zZ9a-_0zZ9a-_0zZ9x"}
+	paths := []string{"/prs/AAAAAAAAAAAAAAAAAAAAAA", "/prs/a-_0zZ9a-_0zZ9a-_0zZ9x",
+		"/prs/AAAAAAAAAAAAAAAAAAAAAA/runs/1", "/prs/AAAAAAAAAAAAAAAAAAAAAA/runs/120"}
 	for range 20 {
-		paths = append(paths, "/runs/"+store.NewLinkToken())
+		paths = append(paths, "/prs/"+store.NewLinkToken())
 	}
 	for _, path := range paths {
 		w := req(t, h, path)
@@ -77,8 +79,11 @@ func TestRunDetailRoute(t *testing.T) {
 	if w := req(t, h, "/runs"); w.Header().Get("Referrer-Policy") != "" {
 		t.Errorf("/runs: Referrer-Policy = %q, want none", w.Header().Get("Referrer-Policy"))
 	}
-	for _, path := range []string{"/runs/", "/runs/1", "/runs/18233", "/runs/abc",
-		"/runs/AAAAAAAAAAAAAAAAAAAAA", "/runs/AAAAAAAAAAAAAAAAAAAAAAA", "/runs/AAAAAAAAAAAAAAAAAAAAA=", "/runs/AAAAAAAAAAAAAAAAAAAAAA/x"} {
+	tok := "AAAAAAAAAAAAAAAAAAAAAA"
+	for _, path := range []string{"/prs", "/prs/", "/prs/1", "/prs/abc", "/prs/AAAAAAAAAAAAAAAAAAAAA",
+		"/prs/AAAAAAAAAAAAAAAAAAAAAAA", "/prs/" + tok + "/", "/prs/" + tok + "/runs", "/prs/" + tok + "/runs/",
+		"/prs/" + tok + "/runs/0", "/prs/" + tok + "/runs/01", "/prs/" + tok + "/runs/x", "/prs/" + tok + "/x",
+		"/runs/" + tok, "/runs/" + store.NewLinkToken(), "/runs/18233"} {
 		if code := req(t, h, path).Code; code != http.StatusNotFound {
 			t.Errorf("%s: status = %d, want 404", path, code)
 		}

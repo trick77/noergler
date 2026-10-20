@@ -325,6 +325,13 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	if parentTicket != nil {
 		detail.ParentTicket = parentTicket.Key
 	}
+	// The whole PR at this commit: a full review's own counts, an incremental
+	// one's from the cumulative diff (nil when that fetch failed).
+	if incrementalFrom == "" {
+		detail.PRScope = &store.PRScope{Added: diffAdded, Removed: diffRemoved, Files: totalFiles}
+	} else {
+		detail.PRScope = cumulativePR.scope
+	}
 
 	// The cumulative diff is quotable too: on an incremental review it is
 	// the only place an earlier push's change is shown.
@@ -530,8 +537,6 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		Key: key, TeamSlug: r.TeamSlug, Kind: runKind(plan.mention),
 		Outcome: inference.OutcomeOK.String(),
 		Call:    r.llmCall(result.Cost),
-		// The one attempt that posts a summary, so the one with a page.
-		LinkToken: store.NewLinkToken(),
 	}
 	ms := elapsed.Milliseconds()
 	attempt.ElapsedMS = &ms
@@ -570,7 +575,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		DiffAdded:                  plan.diffAdded,
 		DiffRemoved:                plan.diffRemoved,
 		ModelLabel:                 r.llm.Label(),
-		RunURL:                     r.runURL(attemptID, attempt.LinkToken),
+		PRURL:                      r.prURL(ctx, prReviewID, attemptID),
 		RunCostUSD:                 runCost,
 		CumulativeCostUSD:          cumulativeCost,
 		MaxPRCostUSD:               r.cfg.MaxPRCostUSD,

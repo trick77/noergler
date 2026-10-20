@@ -203,7 +203,8 @@ type CodeGroup =
   | "sent"
   | "decision"
   | "dropReason"
-  | "callKind";
+  | "callKind"
+  | "prState";
 
 /** known tells a code the catalog has from one a newer binary wrote, which
  *  the page prints as it came. */

@@ -60,15 +60,16 @@ var quietPaths = []string{
 	"/api/dashboard/teams",
 }
 
-// runTokenRE is whatever follows /runs/ in a path (the SPA's /runs/{token}
-// and the API's /api/dashboard/runs/{token}, a trailing slash or a further
-// segment included): a run page's only key, so never written to a log.
-var runTokenRE = regexp.MustCompile(`/runs/.+`)
+// tokenRE is whatever follows /prs/ or /runs/ in a path (the SPA's
+// /prs/{token}/runs/{n} and the API's /api/dashboard/prs/{token}, an old
+// /runs/{token} link, a trailing slash or a further segment included): a
+// page's only key, so never written to a log.
+var tokenRE = regexp.MustCompile(`/(prs|runs)/.+`)
 
-// logPath is the path as the access log and a panic's line write it, a run
+// logPath is the path as the access log and a panic's line write it, a
 // page's token masked.
 func logPath(r *http.Request) string {
-	return runTokenRE.ReplaceAllString(r.URL.Path, "/runs/{token}")
+	return tokenRE.ReplaceAllString(r.URL.Path, "/$1/{token}")
 }
 
 // Handler is the mux wrapped in the middleware chain: access log outermost,

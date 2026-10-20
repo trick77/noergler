@@ -44,6 +44,23 @@ const (
 	stageRecordSum = "record"
 )
 
+// StageSplit is a run's stages in the PR page's three parts: the waits for
+// a gateway slot and for the worker to post, the gateway call, and the rest
+// (noergler and Bitbucket). The run page's timeline hatches the same waits.
+func StageSplit(stages []store.StageTime) (work, wait, gateway int64) {
+	for _, s := range stages {
+		switch s.Name {
+		case stageQueued, stageToPost:
+			wait += s.MS
+		case stageGateway:
+			gateway += s.MS
+		default:
+			work += s.MS
+		}
+	}
+	return work, wait, gateway
+}
+
 // filesSent classifies every changed file for the page. sent is the prompt's
 // final file set; the other lists are the ones the review left out, each
 // for its own reason.

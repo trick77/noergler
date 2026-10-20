@@ -3,6 +3,7 @@ package review
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -151,5 +152,35 @@ func TestPreExistingBugsGoToThePageOnly(t *testing.T) {
 	}
 	if d.Verdict == nil || d.Verdict.Posted != "approve" {
 		t.Errorf("verdict = %+v: pre-existing bugs never move it", d.Verdict)
+	}
+}
+
+// The record carries the whole PR's reviewable files and lines for the PR
+// page: a full review's own counts, an incremental one's from the
+// cumulative diff, and none when that diff could not be read.
+func TestRunDetailRecordsThePRScope(t *testing.T) {
+	h := newHarness(t, nil)
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	run := h.st.Runs[0]
+	if d := decodeDetail(t, h); d.PRScope == nil || *d.PRScope != (store.PRScope{Added: run.LinesAdded,
+		Removed: run.LinesRemoved, Files: run.FilesChanged}) {
+		t.Errorf("full review scope = %+v, want the run's own %+v", d.PRScope, run)
+	}
+
+	other := "diff --git a/b.go b/b.go\n--- a/b.go\n+++ b/b.go\n@@ -1,1 +1,3 @@\n-x\n+y\n+z\n+w\n"
+	h = incrementalHarness(t, func(h *harness) { h.bb.prDiff = sampleDiff + other })
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	added, removed := countDiffLines(sampleDiff + other)
+	if d := decodeDetail(t, h); d.PRScope == nil || *d.PRScope != (store.PRScope{Added: added, Removed: removed, Files: 2}) {
+		t.Errorf("incremental scope = %+v, want the whole PR's +%d/-%d in 2 files", d.PRScope, added, removed)
+	}
+	if run := h.st.Runs[0]; run.FilesChanged != 1 {
+		t.Errorf("run files = %d, want the push's 1", run.FilesChanged)
+	}
+
+	h = incrementalHarness(t, func(h *harness) { h.bb.prDiffErr = errors.New("bitbucket is down") })
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	if d := decodeDetail(t, h); d.PRScope != nil {
+		t.Errorf("no cumulative diff, yet scope = %+v", d.PRScope)
 	}
 }

@@ -75,6 +75,7 @@ type Store interface {
 	UpsertPullRequest(ctx context.Context, u store.PRUpsert) (int64, error)
 	GetLastReviewedCommit(ctx context.Context, k store.PRKey) (string, bool, error)
 	SetSummaryComment(ctx context.Context, prID int64, commentID, version int) error
+	PRLinkToken(ctx context.Context, prID int64) (string, error)
 	GetSummaryComment(ctx context.Context, prID int64) (*store.SummaryComment, error)
 	GetSkipState(ctx context.Context, k store.PRKey) (*store.SkipState, error)
 	MarkIgnored(ctx context.Context, k store.PRKey) error
@@ -160,15 +161,21 @@ func (r *Reviewer) recordAttempt(ctx context.Context, a store.Attempt) int64 {
 	return id
 }
 
-// runURL is the attempt's run detail page, for the summary's footer: the
-// only place the link is ever handed out. Empty (no link) without a public
-// URL or a written attempt: the footer never points at a host or a run that
-// does not exist.
-func (r *Reviewer) runURL(attemptID int64, token string) string {
-	if r.publicURL == "" || attemptID == 0 || token == "" {
+// prURL is the PR's page, for the summary's footer: the only place the link
+// is ever handed out. Empty (no link) without a public URL, a written
+// attempt or a readable token: the footer never points at a host or a page
+// that does not exist.
+func (r *Reviewer) prURL(ctx context.Context, prID, attemptID int64) string {
+	if r.publicURL == "" || prID == 0 || attemptID == 0 {
 		return ""
 	}
-	return r.publicURL + "/runs/" + token
+	token := safeDB(ctx, r.log, "PRLinkToken", func() (string, error) {
+		return r.store.PRLinkToken(ctx, prID)
+	})
+	if token == "" {
+		return ""
+	}
+	return r.publicURL + "/prs/" + token
 }
 
 // llmCall is the llm_calls row for a review's gateway call, nil when the
