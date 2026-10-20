@@ -1,12 +1,15 @@
 package review
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
@@ -111,6 +114,30 @@ func TestFailedReplyLeavesTheThreadOpen(t *testing.T) {
 	}
 	if len(h.bb.Posted) != 1 {
 		t.Errorf("summary posts = %d, want the run to finish", len(h.bb.Posted))
+	}
+}
+
+// A reply Bitbucket refuses because the author resolved the thread first is
+// not a failure: no resolve call, the row stamped, INFO not WARN.
+func TestReplyOnResolvedThreadStampsQuietly(t *testing.T) {
+	h := fixedHarness(t, "func new() {}")
+	h.bb.replyErr = &bitbucket.StatusError{Status: 400,
+		Body: `{"errors":[{"message":"Reply cannot be made to resolved thread."}]}`}
+	var buf bytes.Buffer
+	h.r.log = slog.New(slog.NewTextHandler(&buf, nil))
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	if want := []string{"reply:501"}; !slices.Equal(h.bb.Calls, want) {
+		t.Errorf("calls = %v, want %v", h.bb.Calls, want)
+	}
+	if len(h.st.Fixed) != 1 {
+		t.Errorf("fixed = %v, want the row stamped", h.st.Fixed)
+	}
+	logs := buf.String()
+	wantLogged(t, logs, "thread resolved already", "reply posted no, thread resolved no")
+	if strings.Contains(logs, "level=WARN") {
+		t.Errorf("logged as a warning:\n%s", logs)
 	}
 }
 

@@ -669,13 +669,18 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 				prTag, shortSHA(sourceCommit, 10)))
 			return "", cumulativeContext{}, "", SkipHeadUnchanged, nil
 		}
-		incDiff, err := r.bitbucket.FetchCommitDiff(ctx, project, repo, lastReviewed, sourceCommit)
+		incDiff, err := r.bitbucket.FetchCommitDiff(ctx, project, repo, prID, lastReviewed, sourceCommit)
 		switch {
 		case errors.Is(err, bitbucket.ErrIncrementalDiffUnavailable):
-			// Expected control flow: the branch was rebased or squashed.
+			// Expected control flow: a rebase, force push or merge in the range.
 			// INFO, no traceback, and fall through to the full review. We
 			// must NOT skip just because the optimization did not apply.
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: incremental diff unavailable (%v) - running full review", prTag, err))
+		case errors.As(err, new(*bitbucket.ContentTooLarge)):
+			// A decision, not a fault. The full diff is usually larger and
+			// takes the too-large path below, but not always: a push that
+			// deletes a big file the PR added nets out in the full diff.
+			r.log.InfoContext(ctx, fmt.Sprintf("%s: incremental diff too large (%v) - running full review", prTag, err))
 		case err != nil:
 			r.log.WarnContext(ctx, fmt.Sprintf("%s: incremental diff failed unexpectedly, falling back to full review: %v", prTag, err))
 		case strings.TrimSpace(incDiff) != "":
@@ -685,11 +690,11 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: incremental review %s..%s",
 				prTag, shortSHA(lastReviewed, 10), shortSHA(sourceCommit, 10)))
 		default:
-			// HEAD moved but the compare is empty: a rebase to an identical
+			// HEAD moved but the range diff is empty: a rebase to an identical
 			// tree, or a Bitbucket edge case. Never silently skip when the
 			// SHA actually changed.
 			r.log.WarnContext(ctx, fmt.Sprintf(
-				"%s: HEAD moved %s -> %s but compare/diff is empty - falling back to full review to avoid missing changes",
+				"%s: HEAD moved %s -> %s but the incremental diff is empty - falling back to full review to avoid missing changes",
 				prTag, shortSHA(lastReviewed, 10), shortSHA(sourceCommit, 10)))
 		}
 	}

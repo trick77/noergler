@@ -60,6 +60,14 @@ func Status(err error) int {
 	return 0
 }
 
+// ThreadResolved reports whether err is Bitbucket refusing a reply because
+// the thread is resolved: a 400 whose message says so, nothing else.
+func ThreadResolved(err error) bool {
+	var se *StatusError
+	return errors.As(err, &se) && se.Status == http.StatusBadRequest &&
+		strings.Contains(se.Body, "Reply cannot be made to resolved thread")
+}
+
 // ContentTooLarge is a diff or file body over its byte cap. What names the
 // resource.
 //
@@ -90,10 +98,10 @@ func (e *ContentTooLarge) Error() string {
 	return fmt.Sprintf("%s: %s exceeds cap of %d bytes", e.What, seen, e.Limit)
 }
 
-// ErrIncrementalDiffUnavailable means Bitbucket cannot diff two commits: the
-// source branch was rebased so the old commit is unreachable, or the two live
-// on unrelated histories. Signalled by 406 on compare/diff; the caller falls
-// back to a full review.
+// ErrIncrementalDiffUnavailable means a push has no incremental diff of its
+// own: the last reviewed commit is no longer on the PR (rebase, force push),
+// or a merge commit lies in the range. The history may be intact; the
+// caller falls back to a full review.
 var ErrIncrementalDiffUnavailable = errors.New("incremental diff unavailable")
 
 // ErrVersionConflict means a comment was edited concurrently (HTTP 409). The

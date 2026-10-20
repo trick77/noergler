@@ -15,7 +15,7 @@ var (
 	errPost   = errors.New("bitbucket rejected the comment")
 
 	// The pipeline matches this with errors.Is, as it does for a rebase.
-	errIncrementalUnavailable = fmt.Errorf("compare/diff 406: %w", bitbucket.ErrIncrementalDiffUnavailable)
+	errIncrementalUnavailable = fmt.Errorf("history rewritten: %w", bitbucket.ErrIncrementalDiffUnavailable)
 
 	// Matched with errors.As, so it must be the real type.
 	errDiffTooLarge error = &bitbucket.ContentTooLarge{

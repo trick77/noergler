@@ -106,6 +106,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 
 - Success = 2xx, not `< 400` (a redirect must not read as success).
 - `getTextCapped`: status before the cap, then Content-Length, then the read.
+- Incremental diff = PR `/diff?sinceId&untilId`, never `compare/diff`; only
+  while the last reviewed commit is still one of the PR's commits (exact SHA)
+  and no merge commit lies in the range, else full.
 - An unreadable Jira ticket is not an error; dial timeout and bad JSON are.
 - RE2: `\w \b \d \s` are ASCII. Use `[\pL\pN_]`, `(?:^|[^\pL\pN_])`,
   `\p{Nd}`, `[\s\p{Zs}]`, and check both directions. No lookaround: write
