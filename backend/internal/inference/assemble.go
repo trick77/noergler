@@ -27,7 +27,13 @@ const (
 	PlaceholderQuestion  = "{question}"
 	PlaceholderDiff      = "{diff}"
 	PlaceholderAskerName = "{asker_first_name}"
+	// PlaceholderParentComment is the comment a mention replies to.
+	PlaceholderParentComment = "{parent_comment}"
 )
+
+// NoParentComment is what {parent_comment} becomes on a top-level mention,
+// a reply under the summary, or a parent that could not be read.
+const NoParentComment = "_None, the question is a top-level comment._"
 
 // MentionTooLargeReply is what a mention gets when the PR does not fit,
 // whether the pre-flight or the endpoint said so.
@@ -58,6 +64,9 @@ type MentionPromptRequest struct {
 	RepoInstructions string
 	TicketContext    string
 	PRDescription    string
+	// ParentComment is the rendered comment the mention replies to, or
+	// empty.
+	ParentComment string
 	// AskerFirstName is the asker's first name, or empty when unknown.
 	AskerFirstName string
 	// Language is the asker's; the zero value writes German.
@@ -67,7 +76,8 @@ type MentionPromptRequest struct {
 // RenderMentionPrompt assembles the Q&A prompt.
 //
 // One substitution pass, for the same reason AssembleReviewPrompt uses one:
-// a question or a ticket description containing "{diff}" must stay literal
+// a question, a parent comment or a ticket description containing "{diff}"
+// must stay literal
 // rather than expanding into the file group.
 func RenderMentionPrompt(req MentionPromptRequest) string {
 	ticketContext := req.TicketContext
@@ -78,9 +88,14 @@ func RenderMentionPrompt(req MentionPromptRequest) string {
 	if askerName == "" {
 		askerName = "_Unknown._"
 	}
+	parentComment := req.ParentComment
+	if parentComment == "" {
+		parentComment = NoParentComment
+	}
 	return strings.NewReplacer(
 		PlaceholderQuestion, req.Question,
 		PlaceholderAskerName, askerName,
+		PlaceholderParentComment, parentComment,
 		PlaceholderRepoInstructions, req.RepoInstructions,
 		PlaceholderTicketContext, ticketContext,
 		PlaceholderPRDescription, orNoPRDescription(req.PRDescription),

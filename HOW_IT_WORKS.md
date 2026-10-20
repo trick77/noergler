@@ -273,6 +273,15 @@ posted back on it. Every call is recorded and counts toward the PR's cost; at
 the cap a question is not answered. A mention writes the PR's row first (its
 review pointer untouched), so a PR only ever asked about is capped too.
 
+A mention posted as a reply also sees the comment it replies to: its author,
+its file and line when it has them, and its text (capped at 4 KiB), so
+"@noergler can you answer Peter's question?" works. Bitbucket sends the
+immediate parent only and anchors only a thread's root, so a reply nested
+under a reply shows that reply, without a location. Under the summary there
+is none to show; a parent that cannot be read is logged and the question is
+answered without it. When the parent is a person's comment, the answer names
+no one.
+
 A reply directly under noergler's summary comment needs no mention either: the
 worker matches its parent against the stored summary id and answers it as a
 Q&A, whoever asks.

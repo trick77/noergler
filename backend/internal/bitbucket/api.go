@@ -191,6 +191,20 @@ type Comment struct {
 	ID      int    `json:"id"`
 	Version int    `json:"version"`
 	Text    string `json:"text"`
+	Author  struct {
+		Name        string `json:"name"`
+		DisplayName string `json:"displayName"`
+	} `json:"author"`
+	// Anchor is set on a file comment, nil on a general one. Bitbucket puts
+	// it on the thread's root only, not on its replies.
+	Anchor *CommentAnchor `json:"anchor"`
+}
+
+// CommentAnchor is where a file comment sits. Line is 0 on a comment on the
+// whole file.
+type CommentAnchor struct {
+	Path string `json:"path"`
+	Line int    `json:"line"`
 }
 
 // FetchPRComment reads one comment, for its current text and version.

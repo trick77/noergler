@@ -67,7 +67,7 @@ func TestSystemMessagesArePinned(t *testing.T) {
 		sha    string
 	}{
 		{"review", ReviewSystemMessage, 808, "8085a331b655a85a"},
-		{"mention", MentionSystemMessage, 925, "85a96df3c412a193"},
+		{"mention", MentionSystemMessage, 949, "5510c88bbc721c81"},
 		{"compliance", ComplianceInstructions, 1139, "fa8972c0b065ecf0"},
 	}
 	for _, tc := range cases {
