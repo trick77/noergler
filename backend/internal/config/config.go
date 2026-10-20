@@ -88,9 +88,13 @@ type LLM struct {
 
 // Review holds the per-team review knobs with the REVIEW_* defaults.
 type Review struct {
-	AutoReviewAuthors               []string
-	IgnoreAuthors                   []string
-	ExcludeRepos                    []string
+	AutoReviewAuthors []string
+	IgnoreAuthors     []string
+	ExcludeRepos      []string
+	// Branch-name globs: a PR from a matching source or into a matching
+	// target branch is never auto-reviewed; an @mention still is.
+	ExcludeSourceBranches           []string
+	ExcludeTargetBranches           []string
 	MaxComments                     int
 	MaxFileLines                    int
 	DiffExtraLinesBefore            int
@@ -238,9 +242,27 @@ func (t *Team) ReviewsRepo(projectKey, repoSlug string) bool {
 // ExcludesRepo matches the slug against the globs, both lower-cased, with
 // FnMatch: `*` crosses `/`, so a pattern needs no path segments.
 func ExcludesRepo(patterns []string, repoSlug string) bool {
-	slug := strings.ToLower(repoSlug)
+	return MatchesAny(patterns, repoSlug)
+}
+
+// ExcludedBranch names the list that carves the PR out of auto-review by
+// its branches (displayId, e.g. `feature/x`), source first; "" = neither.
+// `*` crosses `/`, so `release/*` covers `release/a/b`.
+func (t *Team) ExcludedBranch(fromBranch, toBranch string) string {
+	if MatchesAny(t.Review.ExcludeSourceBranches, fromBranch) {
+		return "exclude_source_branches"
+	}
+	if MatchesAny(t.Review.ExcludeTargetBranches, toBranch) {
+		return "exclude_target_branches"
+	}
+	return ""
+}
+
+// MatchesAny reports whether any glob matches the name, both lower-cased.
+func MatchesAny(patterns []string, name string) bool {
+	name = strings.ToLower(name)
 	for _, p := range patterns {
-		if FnMatch(strings.ToLower(p), slug) {
+		if FnMatch(strings.ToLower(p), name) {
 			return true
 		}
 	}
@@ -397,6 +419,8 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 			AutoReviewAuthors:               r.List("REVIEW_AUTO_REVIEW_AUTHORS", []string{}),
 			IgnoreAuthors:                   r.List("REVIEW_IGNORE_AUTHORS", []string{}),
 			ExcludeRepos:                    blankNone(r, lookup, "REVIEW_EXCLUDE_REPOS", []string{"*-infra"}),
+			ExcludeSourceBranches:           r.List("REVIEW_EXCLUDE_SOURCE_BRANCHES", []string{}),
+			ExcludeTargetBranches:           r.List("REVIEW_EXCLUDE_TARGET_BRANCHES", []string{}),
 			MaxComments:                     r.Int("REVIEW_MAX_COMMENTS", 25),
 			MaxFileLines:                    r.Int("REVIEW_MAX_FILE_LINES", 1000),
 			DiffExtraLinesBefore:            r.Int("REVIEW_DIFF_EXTRA_LINES_BEFORE", 3),

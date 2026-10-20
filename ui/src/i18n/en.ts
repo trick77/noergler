@@ -169,6 +169,8 @@ export const en = {
     scopeRepo: "repo",
     scopeProject: "project",
     excludedRepos: "Excluded repos:",
+    excludedSourceBranches: "Excluded source branches:",
+    excludedTargetBranches: "Excluded target branches:",
     autoReviewAuthors: "Auto-review authors:",
     ignoredAuthors: "Ignored authors:",
     disabledNote:
@@ -393,6 +395,8 @@ export const en = {
       "Put <code>noergloff</code> anywhere in the source branch name: <code>feature/noergloff-spike</code> is never auto-reviewed.",
     stopA2:
       "On a PR that is already open, delete noergler's summary comment instead. It stays away after that, and nothing brings it back on that PR.",
+    stopA3:
+      "Your team can also exclude branches by pattern, by source branch (<code>dependabot/*</code>) or by target branch (<code>release/*</code>). Those PRs are never auto-reviewed; an @mention still works.",
     askQ: "How do I ask noergler something?",
     askA1:
       "Mention the bot by its Bitbucket username in a PR comment. Ask a question and it answers; ask for a review and it runs one.",

@@ -47,7 +47,8 @@ const SKIPS = [
   "diff_too_large",
 ] as const;
 
-type MarkupKey = "faq.whyNotA" | "faq.stopA1" | "faq.filesA2" | "faq.apiA1";
+type MarkupKey =
+  "faq.whyNotA" | "faq.stopA1" | "faq.stopA3" | "faq.filesA2" | "faq.apiA1";
 
 /** T renders a catalog entry that carries markup: <code>, <strong> and
  *  <docs> map to the page's own elements, so a translation can move them
@@ -108,6 +109,9 @@ export function FaqPage() {
             <T k="faq.stopA1" />
           </p>
           <p>{t("faq.stopA2")}</p>
+          <p>
+            <T k="faq.stopA3" />
+          </p>
         </Q>
 
         <Q q={t("faq.askQ")}>

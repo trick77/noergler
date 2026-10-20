@@ -93,6 +93,11 @@ paths:
                 summary: Leave the infra repos alone
                 value:
                   exclude_repos: ["*-infra", "sandbox-*"]
+              excludeBranches:
+                summary: No auto-review for bot branches or PRs into release branches
+                value:
+                  exclude_source_branches: ["dependabot/*", "renovate/*"]
+                  exclude_target_branches: ["release/*"]
               noPRDescription:
                 summary: Review without the PR title and description
                 value:
@@ -338,7 +343,7 @@ components:
     TeamView:
       type: object
       additionalProperties: false
-      required: [team, projects, auto_review_authors, ignore_authors, exclude_repos, use_pr_description]
+      required: [team, projects, auto_review_authors, ignore_authors, exclude_repos, exclude_source_branches, exclude_target_branches, use_pr_description]
       properties:
         team:
           type: string
@@ -364,6 +369,19 @@ components:
             Repository-slug globs that are ignored for every event, even though
             the project webhook delivers them. Case-insensitive.
           items: { type: string }
+        exclude_source_branches:
+          type: array
+          description: |
+            Branch-name globs on the PR's source branch (e.g. `dependabot/*`).
+            A match is never auto-reviewed; an @mention still works, and
+            merge/decline still record. Case-insensitive, `*` crosses `/`.
+            An excluded repo wins.
+          items: { type: string }
+        exclude_target_branches:
+          type: array
+          description: |
+            The same on the PR's target branch (e.g. `release/*`).
+          items: { type: string }
         use_pr_description:
           type: boolean
           description: |
@@ -384,6 +402,12 @@ components:
           type: [array, "null"]
           items: { type: string }
         exclude_repos:
+          type: [array, "null"]
+          items: { type: string }
+        exclude_source_branches:
+          type: [array, "null"]
+          items: { type: string }
+        exclude_target_branches:
           type: [array, "null"]
           items: { type: string }
         use_pr_description:

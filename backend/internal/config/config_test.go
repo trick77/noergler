@@ -36,6 +36,8 @@ const twoTeams = minimalTeams + `
     review:
       auto_review_authors: [alice]
       ignore_authors: [renovate-bot]
+      exclude_source_branches: [dependabot/*]
+      exclude_target_branches: [release/*]
       max_pr_cost_usd: 8.5
     jira:
       acceptance_criteria_prefixes: [AC, DoD]
@@ -464,7 +466,9 @@ func TestTeams_FullBlockResolvesOverridesOnTopOfInstanceDefaults(t *testing.T) {
 		t.Errorf("payments llm: %+v", pay.LLM)
 	}
 	if !reflect.DeepEqual(pay.Review.AutoReviewAuthors, []string{"alice"}) || !reflect.DeepEqual(pay.Review.IgnoreAuthors, []string{"renovate-bot"}) ||
-		pay.Review.MaxPRCostUSD != 8.5 || pay.Review.MaxComments != 7 {
+		pay.Review.MaxPRCostUSD != 8.5 || pay.Review.MaxComments != 7 ||
+		!reflect.DeepEqual(pay.Review.ExcludeSourceBranches, []string{"dependabot/*"}) ||
+		!reflect.DeepEqual(pay.Review.ExcludeTargetBranches, []string{"release/*"}) {
 		t.Errorf("payments review: %+v", pay.Review)
 	}
 	if pay.Jira.URL != "https://jira.example.com" || pay.Jira.Token != "jira-tok" || !reflect.DeepEqual(pay.Jira.AcceptanceCriteriaPrefixes, []string{"AC", "DoD"}) {
@@ -615,6 +619,52 @@ func TestTeam_Ownership(t *testing.T) {
 	pay.Projects = []ProjectScope{{Key: "PAY", Repos: []string{"pay-infra"}}}
 	if !pay.ReviewsRepo("PAY", "pay-infra") || !pay.ClaimsRepoExplicitly("PAY", "pay-infra") || pay.ClaimsRepoExplicitly("PAY", "x") {
 		t.Error("an explicitly claimed repo is never carved out")
+	}
+}
+
+// Source first, case-insensitive, `*` crosses `/`; "" when nothing matches.
+func TestTeam_ExcludedBranch(t *testing.T) {
+	team := &Team{Review: Review{
+		ExcludeSourceBranches: []string{"Dependabot/*", "wip-?"},
+		ExcludeTargetBranches: []string{"release/*"},
+	}}
+	cases := []struct{ from, to, want string }{
+		{"dependabot/npm/lodash", "master", "exclude_source_branches"},
+		{"DEPENDABOT/x", "master", "exclude_source_branches"},
+		{"wip-1", "master", "exclude_source_branches"},
+		{"feature/x", "release/2026/10", "exclude_target_branches"},
+		{"dependabot/x", "release/1", "exclude_source_branches"},
+		{"feature/dependabot", "master", ""},
+		{"wip-12", "releases", ""},
+	}
+	for _, c := range cases {
+		if got := team.ExcludedBranch(c.from, c.to); got != c.want {
+			t.Errorf("ExcludedBranch(%q, %q) = %q, want %q", c.from, c.to, got, c.want)
+		}
+	}
+	if (&Team{}).ExcludedBranch("anything", "anything") != "" {
+		t.Error("empty lists exclude nothing")
+	}
+}
+
+// The instance lists seed a team that sets none; blank is empty.
+func TestReview_ExcludeBranchEnv(t *testing.T) {
+	e := newEnv(t)
+	e.teams(minimalTeams)
+	app := e.mustLoad()
+	if len(app.Review.ExcludeSourceBranches) != 0 || len(app.Review.ExcludeTargetBranches) != 0 {
+		t.Errorf("defaults = %v / %v, want empty", app.Review.ExcludeSourceBranches, app.Review.ExcludeTargetBranches)
+	}
+	e.set("REVIEW_EXCLUDE_SOURCE_BRANCHES", "dependabot/*,renovate/*", "REVIEW_EXCLUDE_TARGET_BRANCHES", "release/*")
+	app = e.mustLoad()
+	plat := app.Teams["platform"]
+	if !reflect.DeepEqual(plat.Review.ExcludeSourceBranches, []string{"dependabot/*", "renovate/*"}) ||
+		!reflect.DeepEqual(plat.Review.ExcludeTargetBranches, []string{"release/*"}) {
+		t.Errorf("team = %v / %v", plat.Review.ExcludeSourceBranches, plat.Review.ExcludeTargetBranches)
+	}
+	plat.Review.ExcludeSourceBranches[0] = "changed"
+	if app.Review.ExcludeSourceBranches[0] == "changed" {
+		t.Error("team branch lists alias the instance lists")
 	}
 }
 

@@ -34,6 +34,16 @@ Content-Type: application/json
   "exclude_repos": []
 }
 
+### No auto-review for bot branches or PRs into release branches (globs, case-insensitive; an @mention still works)
+PUT {{host}}/teams/{{team}}/settings
+Authorization: Bearer {{secret}}
+Content-Type: application/json
+
+{
+  "exclude_source_branches": ["dependabot/*", "renovate/*"],
+  "exclude_target_branches": ["release/*"]
+}
+
 ### Review without the PR title and description as context (default: true, they are sent)
 PUT {{host}}/teams/{{team}}/settings
 Authorization: Bearer {{secret}}

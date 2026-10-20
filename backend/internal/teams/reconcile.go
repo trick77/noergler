@@ -120,7 +120,8 @@ func reconcileSettings(ctx context.Context, db ClaimStore, slug string, team *co
 		return nil
 	}
 	s := settingsOf(team)
-	if len(s.AutoReviewAuthors) == 0 && len(s.IgnoreAuthors) == 0 && len(s.ExcludeRepos) == 0 {
+	if len(s.AutoReviewAuthors) == 0 && len(s.IgnoreAuthors) == 0 && len(s.ExcludeRepos) == 0 &&
+		len(s.ExcludeSourceBranches) == 0 && len(s.ExcludeTargetBranches) == 0 {
 		return nil
 	}
 	if err := db.PutSettings(ctx, slug, s, seededBy); err != nil {

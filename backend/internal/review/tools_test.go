@@ -45,8 +45,8 @@ func TestTeamConfigIsAnAllowlist(t *testing.T) {
 		}
 	}
 	walk(reflect.TypeOf(teamConfigView{}))
-	want := []string{"team", "model", "default_language", "projects", "exclude_repos", "auto_review_authors",
-		"ignore_authors", "opt_out_branch_keyword", "max_pr_cost_usd", "max_comments", "max_file_lines",
+	want := []string{"team", "model", "default_language", "projects", "exclude_repos", "exclude_source_branches",
+		"exclude_target_branches", "auto_review_authors", "ignore_authors", "opt_out_branch_keyword", "max_pr_cost_usd", "max_comments", "max_file_lines",
 		"require_agents_md", "agents_md_warn_tokens", "agents_md_max_tokens", "agents_md_custom_link",
 		"use_pr_description", "ticket_compliance_check", "jira_enabled", "jira_acceptance_criteria_prefixes",
 		"riptide_enabled", "diff_context", "context_lines_before", "context_lines_after", "dynamic_context",
@@ -68,8 +68,9 @@ func TestTeamConfigShowsTheLiveTeam(t *testing.T) {
 			Slug: "payments", WebhookSecret: "hook-secret",
 			Projects: []config.ProjectScope{{Key: "PAY"}, {Key: "OPS", Repos: []string{"ci"}}},
 			LLM:      config.LLM{APIKey: "sk-team", BaseURL: "https://gateway.internal"},
-			Review:   config.Review{ExcludeRepos: []string{"*-infra", "sandbox"}},
-			Riptide:  &config.Riptide{URL: "https://riptide.internal", Token: "rt-token"},
+			Review: config.Review{ExcludeRepos: []string{"*-infra", "sandbox"},
+				ExcludeSourceBranches: []string{"dependabot/*"}, ExcludeTargetBranches: []string{"release/*"}},
+			Riptide: &config.Riptide{URL: "https://riptide.internal", Token: "rt-token"},
 		}
 	}
 
@@ -86,6 +87,7 @@ func TestTeamConfigShowsTheLiveTeam(t *testing.T) {
 	}
 	if !reflect.DeepEqual(v.AutoReviewAuthors, []string{"alice", "bob"}) || !reflect.DeepEqual(v.IgnoreAuthors, []string{"renovate"}) ||
 		!reflect.DeepEqual(v.Projects, []string{"PAY", "OPS/{ci}"}) || !reflect.DeepEqual(v.ExcludeRepos, []string{"*-infra", "sandbox"}) ||
+		!reflect.DeepEqual(v.ExcludeSourceBranches, []string{"dependabot/*"}) || !reflect.DeepEqual(v.ExcludeTargetBranches, []string{"release/*"}) ||
 		!v.Asker.AutoReviewed || v.Asker.Language != "en" || v.MaxPRCostUSD != "5.000" || v.Team != "payments" ||
 		!slices.Contains(v.NeverReviewed.Dirs, "node_modules/") || v.NeverReviewed.SizeGated[".properties"] != 50 {
 		t.Errorf("team_config = %+v", v)

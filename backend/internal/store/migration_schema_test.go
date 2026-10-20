@@ -361,11 +361,11 @@ func TestSchema_TeamSettingsDefaultsExcludeInfraRepos(t *testing.T) {
 		`INSERT INTO team_settings (team_slug) VALUES ('platform')`); err != nil {
 		t.Fatal(err)
 	}
-	var excludes, autoAuthors, ignoreAuthors []string
+	var excludes, autoAuthors, ignoreAuthors, sourceBranches, targetBranches []string
 	err := s.pool.QueryRow(ctx, `
-		SELECT exclude_repos, auto_review_authors, ignore_authors
+		SELECT exclude_repos, auto_review_authors, ignore_authors, exclude_source_branches, exclude_target_branches
 		FROM team_settings WHERE team_slug = 'platform'`).
-		Scan(&excludes, &autoAuthors, &ignoreAuthors)
+		Scan(&excludes, &autoAuthors, &ignoreAuthors, &sourceBranches, &targetBranches)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -374,6 +374,10 @@ func TestSchema_TeamSettingsDefaultsExcludeInfraRepos(t *testing.T) {
 	}
 	if len(autoAuthors) != 0 || len(ignoreAuthors) != 0 {
 		t.Errorf("author lists default = %v / %v, want empty", autoAuthors, ignoreAuthors)
+	}
+	// No team gets a branch exclude it did not set (user, 2026-10-20).
+	if sourceBranches == nil || len(sourceBranches) != 0 || targetBranches == nil || len(targetBranches) != 0 {
+		t.Errorf("branch lists default = %v / %v, want empty, not NULL", sourceBranches, targetBranches)
 	}
 }
 

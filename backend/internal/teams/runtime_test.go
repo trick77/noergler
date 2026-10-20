@@ -81,9 +81,11 @@ func TestRuntime_UpdateSettingsMirrorsAuthorListsOntoReviewer(t *testing.T) {
 	}
 
 	setSettings(rt, store.TeamSettings{
-		AutoReviewAuthors: []string{"alice"},
-		IgnoreAuthors:     []string{"ci-bot"},
-		ExcludeRepos:      []string{"*-test"},
+		AutoReviewAuthors:     []string{"alice"},
+		IgnoreAuthors:         []string{"ci-bot"},
+		ExcludeRepos:          []string{"*-test"},
+		ExcludeSourceBranches: []string{"wip/*"},
+		ExcludeTargetBranches: []string{"release/*"},
 	})
 
 	if !rt.Reviewer.IsAutoReviewAuthor("alice") {
@@ -94,6 +96,12 @@ func TestRuntime_UpdateSettingsMirrorsAuthorListsOntoReviewer(t *testing.T) {
 	}
 	if got := rt.Team().Review.ExcludeRepos; !reflect.DeepEqual(got, []string{"*-test"}) {
 		t.Errorf("exclude_repos = %v, want the new list on the snapshot", got)
+	}
+	if got := rt.Team().ExcludedBranch("wip/x", "master"); got != "exclude_source_branches" {
+		t.Errorf("source branches not on the snapshot: %q", got)
+	}
+	if got := rt.Team().ExcludedBranch("feature/x", "release/1"); got != "exclude_target_branches" {
+		t.Errorf("target branches not on the snapshot: %q", got)
 	}
 }
 

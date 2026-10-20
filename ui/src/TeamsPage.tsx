@@ -50,6 +50,26 @@ function settingsParts(team: Team, t: TFunction) {
       </>,
     );
   }
+  if (team.exclude_source_branches.length > 0) {
+    parts.push(
+      <>
+        {t("teams.excludedSourceBranches")}{" "}
+        <code className="font-mono text-[12px] text-muted">
+          {team.exclude_source_branches.join(", ")}
+        </code>
+      </>,
+    );
+  }
+  if (team.exclude_target_branches.length > 0) {
+    parts.push(
+      <>
+        {t("teams.excludedTargetBranches")}{" "}
+        <code className="font-mono text-[12px] text-muted">
+          {team.exclude_target_branches.join(", ")}
+        </code>
+      </>,
+    );
+  }
   if (team.auto_review_authors > 0) {
     parts.push(
       <>

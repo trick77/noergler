@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -132,6 +133,7 @@ func newDashHarness(t *testing.T) *dashHarness {
 		Projects: []config.ProjectScope{{Key: "INF"}, {Key: "SHARED", Repos: []string{"lib"}}},
 	}
 	team.Review.ExcludeRepos = []string{"*-infra"}
+	team.Review.ExcludeSourceBranches = []string{"dependabot/*"}
 	team.Review.IgnoreAuthors = []string{"renovate"}
 	llm := newDashLLM(t)
 	rt := teams.NewRuntime(team, &fakeReviewer{}, llm, nil, nil)
@@ -627,6 +629,10 @@ func TestTeamsListsClaimsAndSettings(t *testing.T) {
 	}
 	if len(platform.ExcludeRepos) != 1 || platform.ExcludeRepos[0] != "*-infra" {
 		t.Errorf("exclude repos = %+v", platform.ExcludeRepos)
+	}
+	if !slices.Equal(platform.ExcludeSourceBranches, []string{"dependabot/*"}) ||
+		platform.ExcludeTargetBranches == nil || len(platform.ExcludeTargetBranches) != 0 {
+		t.Errorf("branches = %v / %v", platform.ExcludeSourceBranches, platform.ExcludeTargetBranches)
 	}
 }
 

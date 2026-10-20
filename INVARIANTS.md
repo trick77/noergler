@@ -111,7 +111,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   test-connection -> HMAC (hex strings, constant-time, uppercase fails) ->
   `pr:` prefix off the RAW json (never `Decode` first) -> validate -> repo
   from toRef then fromRef -> ownership -> exclude_repos (review-starting
-  events only) -> dispatch.
+  events and comments) -> exclude_source/target_branches (review-starting
+  events only, never comments: a mention still answers; an excluded repo
+  wins, user 2026-10-20) -> dispatch.
 - The mention gate is the route's; `HandleMention` does not check. One
   exception, on the worker: a reply directly under the stored summary is a
   mention, from anyone (user, 2026-10-19); nested under it, not.
@@ -120,7 +122,7 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - Response bodies are structs, never maps (`encoding/json` sorts map keys).
 - One `teams.Runtime` snapshot per request. `UpdateSettings` mirrors both
   author lists onto the live Reviewer (it copies `config.Review` by value),
-  not `exclude_repos`; `Reconcile` runs before any Reviewer is built; the
+  not `exclude_repos` or the branch lists; `Reconcile` runs before any Reviewer is built; the
   onboarding orchestrators never mutate their team.
 - Self-service handlers and `api/openapi.yaml` change together. Nullable =
   `type: [x, "null"]`, never `oneOf` with null.
@@ -152,7 +154,7 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - Mention tools: the PR, team and user come from the webhook, never a model
   argument; output is an explicit allowlist struct (author lists by name,
   decided; never env names, keys, tokens, hosts, riptide URL, disable
-  reasons); claims and exclude_repos from the live snapshot, never the
+  reasons); claims and the exclude lists from the live snapshot, never the
   Reviewer's `cfg` copy; `Run` never calls Bitbucket.
   `set_my_language` accepts only when the commenter's own text names the
   language and asks (a switch word, or a comment of four words or fewer);

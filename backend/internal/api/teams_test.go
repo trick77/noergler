@@ -87,6 +87,7 @@ func TestTeams_GetRendersTheSnapshot(t *testing.T) {
 	h := newHarness(t, func(team *config.Team) {
 		team.Projects = []config.ProjectScope{{Key: "PLAT"}, {Key: "OPS", Repos: []string{"a", "b"}}}
 		team.Review.ExcludeRepos = []string{"*-infra"}
+		team.Review.ExcludeSourceBranches = []string{"dependabot/*"}
 	})
 	w := h.do(t, http.MethodGet, "/teams/"+testSlug, bearer(), "")
 	wantBody(t, w, http.StatusOK, map[string]any{
@@ -95,10 +96,12 @@ func TestTeams_GetRendersTheSnapshot(t *testing.T) {
 			map[string]any{"key": "PLAT"},
 			map[string]any{"key": "OPS", "repos": []any{"a", "b"}},
 		},
-		"auto_review_authors": []any{},
-		"ignore_authors":      []any{},
-		"exclude_repos":       []any{"*-infra"},
-		"use_pr_description":  true,
+		"auto_review_authors":     []any{},
+		"ignore_authors":          []any{},
+		"exclude_repos":           []any{"*-infra"},
+		"exclude_source_branches": []any{"dependabot/*"},
+		"exclude_target_branches": []any{},
+		"use_pr_description":      true,
 	})
 }
 
@@ -188,6 +191,38 @@ func TestTeams_PutAppliesToTheRuntime(t *testing.T) {
 	// And the response is the updated view, not the old one.
 	if got := decodeBody(t, w)["exclude_repos"]; !reflect.DeepEqual(got, []any{"*-infra"}) {
 		t.Errorf("exclude_repos = %v, want the new list", got)
+	}
+}
+
+// The branch lists follow the same partial update: absent keeps, a list
+// replaces (trimmed), [] clears; the snapshot the webhook reads has them.
+func TestTeams_PutBranchLists(t *testing.T) {
+	h := newHarness(t, func(team *config.Team) {
+		team.Review.ExcludeSourceBranches = []string{"wip/*"}
+		team.Review.ExcludeTargetBranches = []string{"release/*"}
+	})
+	db := &fakeSettingsStore{}
+	h.setStore(t, db)
+
+	w := h.do(t, http.MethodPut, "/teams/"+testSlug+"/settings", bearer(),
+		`{"exclude_source_branches":[" dependabot/* ",""]}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %s)", w.Code, w.Body.String())
+	}
+	if !reflect.DeepEqual(db.last.ExcludeSourceBranches, []string{"dependabot/*"}) ||
+		!reflect.DeepEqual(db.last.ExcludeTargetBranches, []string{"release/*"}) {
+		t.Errorf("stored = %+v", db.last)
+	}
+	if h.rt.Team().ExcludedBranch("dependabot/x", "master") != "exclude_source_branches" {
+		t.Error("the new source list did not reach the snapshot")
+	}
+
+	w = h.do(t, http.MethodPut, "/teams/"+testSlug+"/settings", bearer(), `{"exclude_target_branches":[]}`)
+	if got := decodeBody(t, w)["exclude_target_branches"]; !reflect.DeepEqual(got, []any{}) {
+		t.Errorf("exclude_target_branches = %v, want cleared", got)
+	}
+	if h.rt.Team().ExcludedBranch("feature/x", "release/1") != "" {
+		t.Error("the cleared target list still excludes")
 	}
 }
 

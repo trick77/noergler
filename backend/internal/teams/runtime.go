@@ -126,8 +126,8 @@ func (r *Runtime) ApplyClaims(scopes []config.ProjectScope) {
 //
 // The Reviewer copies config.Review by value at construction, so without the
 // mirror a team's author routing would stay stale until restart. ExcludeRepos
-// is deliberately not mirrored: its only reader is the webhook route, which
-// reads it off the snapshot.
+// and the branch lists are deliberately not mirrored: their only reader is
+// the webhook route, which reads them off the snapshot.
 func (r *Runtime) UpdateSettings(merge func(store.TeamSettings) store.TeamSettings, persist func(store.TeamSettings) error) error {
 	r.settingsMu.Lock()
 	defer r.settingsMu.Unlock()
@@ -151,10 +151,12 @@ func (r *Runtime) UpdateSettings(merge func(store.TeamSettings) store.TeamSettin
 // settings and the DB row, in each direction.
 func settingsOf(t *config.Team) store.TeamSettings {
 	return store.TeamSettings{
-		AutoReviewAuthors: t.Review.AutoReviewAuthors,
-		IgnoreAuthors:     t.Review.IgnoreAuthors,
-		ExcludeRepos:      t.Review.ExcludeRepos,
-		UsePRDescription:  t.Review.UsePRDescription,
+		AutoReviewAuthors:     t.Review.AutoReviewAuthors,
+		IgnoreAuthors:         t.Review.IgnoreAuthors,
+		ExcludeRepos:          t.Review.ExcludeRepos,
+		ExcludeSourceBranches: t.Review.ExcludeSourceBranches,
+		ExcludeTargetBranches: t.Review.ExcludeTargetBranches,
+		UsePRDescription:      t.Review.UsePRDescription,
 	}
 }
 
@@ -162,5 +164,7 @@ func applySettings(t *config.Team, s store.TeamSettings) {
 	t.Review.AutoReviewAuthors = s.AutoReviewAuthors
 	t.Review.IgnoreAuthors = s.IgnoreAuthors
 	t.Review.ExcludeRepos = s.ExcludeRepos
+	t.Review.ExcludeSourceBranches = s.ExcludeSourceBranches
+	t.Review.ExcludeTargetBranches = s.ExcludeTargetBranches
 	t.Review.UsePRDescription = s.UsePRDescription
 }

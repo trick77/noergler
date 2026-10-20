@@ -40,7 +40,10 @@ type TeamSettings struct {
 	AutoReviewAuthors []string
 	IgnoreAuthors     []string
 	ExcludeRepos      []string
-	UsePRDescription  bool
+	// Branch-name globs on the source (fromRef) and target (toRef) branch.
+	ExcludeSourceBranches []string
+	ExcludeTargetBranches []string
+	UsePRDescription      bool
 }
 
 type claimRow struct {
@@ -372,7 +375,7 @@ func (s *Store) CountProjectPRs(ctx context.Context, teamSlug, projectKey string
 
 // GetAllSettings returns every team's row keyed by slug.
 func (s *Store) GetAllSettings(ctx context.Context) (map[string]TeamSettings, error) {
-	rows, err := s.pool.Query(ctx, `SELECT team_slug, auto_review_authors, ignore_authors, exclude_repos, use_pr_description FROM team_settings`)
+	rows, err := s.pool.Query(ctx, `SELECT team_slug, auto_review_authors, ignore_authors, exclude_repos, exclude_source_branches, exclude_target_branches, use_pr_description FROM team_settings`)
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +384,7 @@ func (s *Store) GetAllSettings(ctx context.Context) (map[string]TeamSettings, er
 	for rows.Next() {
 		var slug string
 		var t TeamSettings
-		if err := rows.Scan(&slug, &t.AutoReviewAuthors, &t.IgnoreAuthors, &t.ExcludeRepos, &t.UsePRDescription); err != nil {
+		if err := rows.Scan(&slug, &t.AutoReviewAuthors, &t.IgnoreAuthors, &t.ExcludeRepos, &t.ExcludeSourceBranches, &t.ExcludeTargetBranches, &t.UsePRDescription); err != nil {
 			return nil, err
 		}
 		out[slug] = t
@@ -392,21 +395,24 @@ func (s *Store) GetAllSettings(ctx context.Context) (map[string]TeamSettings, er
 // PutSettings upserts the team's settings.
 func (s *Store) PutSettings(ctx context.Context, teamSlug string, t TeamSettings, updatedBy string) error {
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO team_settings (team_slug, auto_review_authors, ignore_authors, exclude_repos, use_pr_description, updated_by, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, now())
+		INSERT INTO team_settings (team_slug, auto_review_authors, ignore_authors, exclude_repos, exclude_source_branches, exclude_target_branches, use_pr_description, updated_by, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
 		ON CONFLICT (team_slug) DO UPDATE SET
 			auto_review_authors = EXCLUDED.auto_review_authors,
 			ignore_authors = EXCLUDED.ignore_authors,
 			exclude_repos = EXCLUDED.exclude_repos,
+			exclude_source_branches = EXCLUDED.exclude_source_branches,
+			exclude_target_branches = EXCLUDED.exclude_target_branches,
 			use_pr_description = EXCLUDED.use_pr_description,
 			updated_by = EXCLUDED.updated_by,
 			updated_at = now()`,
-		teamSlug, nonNil(t.AutoReviewAuthors), nonNil(t.IgnoreAuthors), nonNil(t.ExcludeRepos), t.UsePRDescription, updatedBy)
+		teamSlug, nonNil(t.AutoReviewAuthors), nonNil(t.IgnoreAuthors), nonNil(t.ExcludeRepos),
+		nonNil(t.ExcludeSourceBranches), nonNil(t.ExcludeTargetBranches), t.UsePRDescription, updatedBy)
 	if err != nil {
 		return err
 	}
-	s.log.Info(fmt.Sprintf("settings updated team=%s by=%s auto_review_authors=%v ignore_authors=%v exclude_repos=%v use_pr_description=%t",
-		teamSlug, updatedBy, t.AutoReviewAuthors, t.IgnoreAuthors, t.ExcludeRepos, t.UsePRDescription), "team", teamSlug)
+	s.log.Info(fmt.Sprintf("settings updated team=%s by=%s auto_review_authors=%v ignore_authors=%v exclude_repos=%v exclude_source_branches=%v exclude_target_branches=%v use_pr_description=%t",
+		teamSlug, updatedBy, t.AutoReviewAuthors, t.IgnoreAuthors, t.ExcludeRepos, t.ExcludeSourceBranches, t.ExcludeTargetBranches, t.UsePRDescription), "team", teamSlug)
 	return nil
 }
 

@@ -148,7 +148,9 @@ func llmSection(log *slog.Logger, label string, l LLM) {
 func reviewSection(log *slog.Logger, label string, r Review) {
 	section(log, label,
 		kv{"auto_review_authors", r.AutoReviewAuthors}, kv{"ignore_authors", r.IgnoreAuthors},
-		kv{"exclude_repos", r.ExcludeRepos}, kv{"max_comments", r.MaxComments},
+		kv{"exclude_repos", r.ExcludeRepos},
+		kv{"exclude_source_branches", r.ExcludeSourceBranches}, kv{"exclude_target_branches", r.ExcludeTargetBranches},
+		kv{"max_comments", r.MaxComments},
 		kv{"max_file_lines", r.MaxFileLines}, kv{"diff_extra_lines_before", r.DiffExtraLinesBefore},
 		kv{"diff_extra_lines_after", r.DiffExtraLinesAfter},
 		kv{"diff_max_extra_lines_dynamic_context", r.DiffMaxExtraLinesDynamicContext},

@@ -557,6 +557,8 @@ describe("TeamsPage", () => {
       auto_review_authors: 3,
       ignore_authors: 1,
       exclude_repos: ["*-infra"],
+      exclude_source_branches: ["dependabot/*", "wip/*"],
+      exclude_target_branches: [],
       model: "gpt-5.5-high",
     },
     {
@@ -572,6 +574,8 @@ describe("TeamsPage", () => {
       auto_review_authors: 0,
       ignore_authors: 0,
       exclude_repos: [],
+      exclude_source_branches: [],
+      exclude_target_branches: [],
     },
   ];
 
@@ -604,6 +608,17 @@ describe("TeamsPage", () => {
 
     expect(await screen.findByText(/Auto-review authors/)).toBeDefined();
     expect(screen.queryByText(/renovate/)).toBeNull();
+  });
+
+  // Branch globs are shown whole, like the repo globs; an empty list is not
+  // shown at all.
+  it("shows the excluded branches", async () => {
+    serve({ teams: { teams } });
+    render(<TeamsPage />);
+
+    expect(await screen.findByText("dependabot/*, wip/*")).toBeDefined();
+    expect(screen.getByText(/Excluded source branches/)).toBeDefined();
+    expect(screen.queryByText(/Excluded target branches/)).toBeNull();
   });
 
   // Only an enabled team has a started client, so only it names a model.

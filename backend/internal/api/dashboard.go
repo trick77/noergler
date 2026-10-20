@@ -510,6 +510,9 @@ type teamBody struct {
 	IgnoreAuthors     int `json:"ignore_authors"`
 	// exclude_repos stays whole: a repo glob is not a person.
 	ExcludeRepos []string `json:"exclude_repos"`
+	// The branch globs likewise: names of branches, not of people.
+	ExcludeSourceBranches []string `json:"exclude_source_branches"`
+	ExcludeTargetBranches []string `json:"exclude_target_branches"`
 	// Model is the started client's label, `<profile>-<effort>`, the string
 	// every run records and the PR summary prints, so it is public already.
 	// The profile id, never the gateway alias: that is the operator's private
@@ -537,8 +540,10 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 			// Name comes from the registry for a disabled team, which has no
 			// snapshot; the snapshot below overwrites it for an enabled one.
 			Slug: slug, Name: d.Teams.Name(slug), Enabled: isEnabled,
-			Claims:       []claimBody{},
-			ExcludeRepos: []string{},
+			Claims:                []claimBody{},
+			ExcludeRepos:          []string{},
+			ExcludeSourceBranches: []string{},
+			ExcludeTargetBranches: []string{},
 		}
 		if a, ok := activity[slug]; ok {
 			t.PRs, t.LastReviewed, t.LastRun = a.PRs, a.LastReviewed, a.LastRun
@@ -555,6 +560,8 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 				t.AutoReviewAuthors = len(team.Review.AutoReviewAuthors)
 				t.IgnoreAuthors = len(team.Review.IgnoreAuthors)
 				t.ExcludeRepos = append(t.ExcludeRepos, team.Review.ExcludeRepos...)
+				t.ExcludeSourceBranches = append(t.ExcludeSourceBranches, team.Review.ExcludeSourceBranches...)
+				t.ExcludeTargetBranches = append(t.ExcludeTargetBranches, team.Review.ExcludeTargetBranches...)
 				if rt.LLM != nil {
 					t.Model = rt.LLM.Label()
 				}

@@ -171,8 +171,30 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 11. Dispatch.
+	// 11. Branch globs carve out auto-reviews only: a mention on such a PR is
+	// still answered, as with the opt-out keyword. After exclude_repos: an
+	// excluded repo wins (user, 2026-10-20).
+	if reviewEventKeys[eventKey] {
+		from, to := branchName(payload.PullRequest.FromRef), branchName(payload.PullRequest.ToRef)
+		if list := team.ExcludedBranch(from, to); list != "" {
+			d.Log.InfoContext(ctx, "webhook ignored: branch matches "+list,
+				"project", project, "repo", repo, "pr_id", payload.PullRequest.ID, "from", from, "to", to)
+			httpx.WriteJSON(w, http.StatusOK, ignored{"ignored", "branch excluded by the team's " + list})
+			return
+		}
+	}
+
+	// 12. Dispatch.
 	d.dispatch(ctx, w, rt, slug, project, repo, payload)
+}
+
+// branchName is the ref's displayId, else its id without `refs/heads/`:
+// validation requires only one of the two.
+func branchName(r webhook.Ref) string {
+	if r.DisplayID != "" {
+		return r.DisplayID
+	}
+	return strings.TrimPrefix(r.ID, "refs/heads/")
 }
 
 // dispatch routes an authenticated, owned PR event.

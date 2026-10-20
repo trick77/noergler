@@ -60,7 +60,10 @@ type teamView struct {
 	AutoReviewAuthors []string           `json:"auto_review_authors"`
 	IgnoreAuthors     []string           `json:"ignore_authors"`
 	ExcludeRepos      []string           `json:"exclude_repos"`
-	UsePRDescription  bool               `json:"use_pr_description"`
+	// Branch globs; a match skips auto-review only, a mention still works.
+	ExcludeSourceBranches []string `json:"exclude_source_branches"`
+	ExcludeTargetBranches []string `json:"exclude_target_branches"`
+	UsePRDescription      bool     `json:"use_pr_description"`
 }
 
 func viewOf(t *config.Team) teamView {
@@ -69,12 +72,14 @@ func viewOf(t *config.Team) teamView {
 		projects = append(projects, projectScopeView{Key: p.Key, Repos: p.Repos})
 	}
 	return teamView{
-		Team:              t.Slug,
-		Projects:          projects,
-		AutoReviewAuthors: nonNil(t.Review.AutoReviewAuthors),
-		IgnoreAuthors:     nonNil(t.Review.IgnoreAuthors),
-		ExcludeRepos:      nonNil(t.Review.ExcludeRepos),
-		UsePRDescription:  t.Review.UsePRDescription,
+		Team:                  t.Slug,
+		Projects:              projects,
+		AutoReviewAuthors:     nonNil(t.Review.AutoReviewAuthors),
+		IgnoreAuthors:         nonNil(t.Review.IgnoreAuthors),
+		ExcludeRepos:          nonNil(t.Review.ExcludeRepos),
+		ExcludeSourceBranches: nonNil(t.Review.ExcludeSourceBranches),
+		ExcludeTargetBranches: nonNil(t.Review.ExcludeTargetBranches),
+		UsePRDescription:      t.Review.UsePRDescription,
 	}
 }
 
@@ -106,10 +111,12 @@ func (d Deps) getTeam(w http.ResponseWriter, r *http.Request) {
 // field, so a nil pointer covers both; pinned by
 // TestTeams_PutIsAPartialUpdate.
 type settingsRequest struct {
-	AutoReviewAuthors *[]string `json:"auto_review_authors"`
-	IgnoreAuthors     *[]string `json:"ignore_authors"`
-	ExcludeRepos      *[]string `json:"exclude_repos"`
-	UsePRDescription  *bool     `json:"use_pr_description"`
+	AutoReviewAuthors     *[]string `json:"auto_review_authors"`
+	IgnoreAuthors         *[]string `json:"ignore_authors"`
+	ExcludeRepos          *[]string `json:"exclude_repos"`
+	ExcludeSourceBranches *[]string `json:"exclude_source_branches"`
+	ExcludeTargetBranches *[]string `json:"exclude_target_branches"`
+	UsePRDescription      *bool     `json:"use_pr_description"`
 }
 
 // clean resolves one partial-update field: nil keeps the current list,
@@ -154,10 +161,12 @@ func (d Deps) putTeamSettings(w http.ResponseWriter, r *http.Request) {
 
 	err := rt.UpdateSettings(func(current store.TeamSettings) store.TeamSettings {
 		return store.TeamSettings{
-			AutoReviewAuthors: clean(body.AutoReviewAuthors, current.AutoReviewAuthors),
-			IgnoreAuthors:     clean(body.IgnoreAuthors, current.IgnoreAuthors),
-			ExcludeRepos:      clean(body.ExcludeRepos, current.ExcludeRepos),
-			UsePRDescription:  keep(body.UsePRDescription, current.UsePRDescription),
+			AutoReviewAuthors:     clean(body.AutoReviewAuthors, current.AutoReviewAuthors),
+			IgnoreAuthors:         clean(body.IgnoreAuthors, current.IgnoreAuthors),
+			ExcludeRepos:          clean(body.ExcludeRepos, current.ExcludeRepos),
+			ExcludeSourceBranches: clean(body.ExcludeSourceBranches, current.ExcludeSourceBranches),
+			ExcludeTargetBranches: clean(body.ExcludeTargetBranches, current.ExcludeTargetBranches),
+			UsePRDescription:      keep(body.UsePRDescription, current.UsePRDescription),
 		}
 	}, func(next store.TeamSettings) error {
 		return d.Store.PutSettings(ctx, slug, next, "team:"+slug)

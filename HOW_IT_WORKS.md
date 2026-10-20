@@ -30,6 +30,11 @@ never trusted on its own.
 In order: the slug must be known, the signature must verify (constant time), the
 payload must be a `pr:` event, and the team must claim the repository. A signed
 delivery for a repository the team does not claim is ignored, not reviewed.
+Then the team's globs: a repo in `exclude_repos` gets no review and no mention
+answer; after that, a PR whose source branch matches `exclude_source_branches`
+or whose target branch matches `exclude_target_branches` gets no automatic
+review, silently (no summary, no DB row), while an `@mention` on it is still
+answered. Merge, decline and delete pass both.
 
 Ownership comes from the `team_claims` table, not from `teams.yaml`. The yaml's
 `projects:` only seeds it on first start.
@@ -255,7 +260,7 @@ the review gates and without compression, reads the PR diff and the ticket, and
 replies in the comment's own thread. Keywords route the question; anything else
 is answered as a question about the PR, or about noergler on it. On a model
 that takes tools the answer may call `team_config` (the team's effective
-settings: claimed projects, excluded repos, both author lists by name, the
+settings: claimed projects, excluded repos and branches, both author lists by name, the
 built-in skipped dirs, files and extensions, and whether the asker is on the
 lists; a settings answer is a Markdown table),
 `pr_status` (runs, the latest outcomes and skip reasons, cost against the cap)

@@ -160,6 +160,8 @@ export const de = {
     scopeRepo: "Repo",
     scopeProject: "Projekt",
     excludedRepos: "Ausgeschlossene Repos:",
+    excludedSourceBranches: "Ausgeschlossene Source-Branches:",
+    excludedTargetBranches: "Ausgeschlossene Target-Branches:",
     autoReviewAuthors: "Auto-Review-Autoren:",
     ignoredAuthors: "Ignorierte Autoren:",
     disabledNote:
@@ -383,6 +385,8 @@ export const de = {
       "Schreib <code>noergloff</code> irgendwo in den Namen des Source-Branch: <code>feature/noergloff-spike</code> wird nie automatisch reviewt.",
     stopA2:
       "Bei einem PR, der schon offen ist, lösch stattdessen die Zusammenfassung von noergler. Danach bleibt er diesem PR fern, und nichts holt ihn zurück.",
+    stopA3:
+      "Dein Team kann auch Branches per Muster ausschliessen, nach Source-Branch (<code>dependabot/*</code>) oder nach Target-Branch (<code>release/*</code>). Diese PRs werden nie automatisch reviewt; eine @Erwähnung funktioniert trotzdem.",
     askQ: "Wie frage ich noergler etwas?",
     askA1:
       "Erwähne den Bot mit seinem Bitbucket-Benutzernamen in einem PR-Kommentar. Stell eine Frage, und er antwortet; verlang ein Review, und er macht eines.",
