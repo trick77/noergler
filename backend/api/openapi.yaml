@@ -76,6 +76,17 @@ paths:
         The change takes effect immediately, on the running reviewer, and is
         persisted: it survives a restart and outranks the seed values in
         `teams.yaml`.
+
+        ## Matching
+
+        - Author lists hold Bitbucket usernames (the login, not the display
+          name), matched exactly and case-sensitively. No patterns.
+        - `exclude_*` lists hold globs, matched case-insensitively against the
+          whole name: `*` any run of characters, crossing `/`; `?` one
+          character; `[seq]` one of a set, ranges allowed; `[!seq]` one not in
+          it. No regex. An unclosed `[` is taken literally; patterns are not
+          validated. A branch glob may carry a `refs/heads/` prefix, no other
+          ref form.
       parameters:
         - $ref: "#/components/parameters/TeamSlug"
       requestBody:
@@ -350,28 +361,36 @@ components:
           description: The team's slug.
         projects:
           type: array
+          description: The projects and repositories the team claims.
           items: { $ref: "#/components/schemas/ProjectScope" }
         auto_review_authors:
           type: array
-          description: |
-            Whose pull requests are reviewed automatically. EMPTY MEANS
-            EVERYBODY, not nobody.
+          description: &autoReviewAuthors |
+            Bitbucket usernames whose pull requests are reviewed automatically.
+            EMPTY MEANS EVERYBODY, not nobody. A non-empty list also decides
+            whose plain replies on a finding thread are answered. Exact,
+            case-sensitive.
           items: { type: string }
         ignore_authors:
           type: array
-          description: |
-            Never auto-reviewed, whatever the list above says. An @mention still
-            works. This is where CI and dependency bots go.
+          description: &ignoreAuthors |
+            Bitbucket usernames never auto-reviewed, whatever the list above
+            says. A push by one of them to someone else's PR does not trigger a
+            re-review either, and their plain replies are not answered. An
+            @mention still works. This is where CI and dependency bots go.
+            Exact, case-sensitive.
           items: { type: string }
         exclude_repos:
           type: array
-          description: |
-            Repository-slug globs that are ignored for every event, even though
-            the project webhook delivers them. Case-insensitive.
+          description: &excludeRepos |
+            Repository-slug globs (e.g. `*-infra`) that a project webhook's
+            reviews and comments are ignored for; merge/decline still record. A
+            repository the team claims by name is never excluded.
+            Case-insensitive.
           items: { type: string }
         exclude_source_branches:
           type: array
-          description: |
+          description: &excludeSourceBranches |
             Branch-name globs on the PR's source branch (e.g. `dependabot/*`).
             A match is never auto-reviewed; an @mention still works, and
             merge/decline still record. Case-insensitive, `*` crosses `/`.
@@ -379,14 +398,14 @@ components:
           items: { type: string }
         exclude_target_branches:
           type: array
-          description: |
+          description: &excludeTargetBranches |
             The same on the PR's target branch (e.g. `release/*`).
           items: { type: string }
         use_pr_description:
           type: boolean
-          description: |
+          description: &usePRDescription |
             Whether the PR title and description are given to the model as
-            context for reviews and @mentions. Defaults to true.
+            context for reviews and @mentions. True for a new team.
 
     SettingsRequest:
       type: object
@@ -397,21 +416,27 @@ components:
       properties:
         auto_review_authors:
           type: [array, "null"]
+          description: *autoReviewAuthors
           items: { type: string }
         ignore_authors:
           type: [array, "null"]
+          description: *ignoreAuthors
           items: { type: string }
         exclude_repos:
           type: [array, "null"]
+          description: *excludeRepos
           items: { type: string }
         exclude_source_branches:
           type: [array, "null"]
+          description: *excludeSourceBranches
           items: { type: string }
         exclude_target_branches:
           type: [array, "null"]
+          description: *excludeTargetBranches
           items: { type: string }
         use_pr_description:
           type: [boolean, "null"]
+          description: *usePRDescription
 
     OnboardRequest:
       type: object
@@ -453,7 +478,9 @@ components:
       additionalProperties: false
       required: [project, repo]
       properties:
-        project: { type: string }
+        project:
+          type: string
+          description: The Bitbucket project key.
         repo:
           type: string
           description: Empty for a whole-project target.
@@ -498,6 +525,11 @@ components:
         target: { $ref: "#/components/schemas/Target" }
         status:
           type: string
+          description: |
+            `skipped` means the target was left as it is, without an error:
+            for example it is not owned, or the bot cannot write and the action
+            was not `grant-bot`. `detail` says why. Only `failed` counts
+            against `healthy`.
           enum: [ok, failed, skipped]
         detail:
           type: string
@@ -512,9 +544,12 @@ components:
       additionalProperties: false
       required: [team, action, webhook_url, rows, text, healthy]
       properties:
-        team: { type: string }
+        team:
+          type: string
+          description: The team's slug.
         action:
           type: string
+          description: The action that ran, `status` when none was sent.
           enum: [status, onboard, grant-bot, remove]
         webhook_url:
           type: string
