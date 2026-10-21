@@ -1,6 +1,6 @@
 module github.com/trick77/noergler
 
-go 1.27.2
+go 1.27.3
 
 require (
 	github.com/getkin/kin-openapi v0.150.0
