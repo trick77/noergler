@@ -37,7 +37,7 @@ func HandoffBanner(l lang.Lang, open []HandoffThread) string {
 		if t.Line > 0 {
 			where = fmt.Sprintf("%s:%d", t.File, t.Line)
 		}
-		links = append(links, fmt.Sprintf("[`%s`](%s)", where, t.URL))
+		links = append(links, fmt.Sprintf("[%s](%s)", inlineCode(where), t.URL))
 	}
 	list := strings.Join(links, ", ")
 	more := n - len(links)
@@ -72,33 +72,64 @@ func StripHandoffBanner(body string) string {
 }
 
 // PlaceHandoffBanner rewrites a summary body with banner in place of any
-// handoff banner it carries; an empty banner only removes the old one.
+// handoff banner it carries; an empty banner only removes the old one. A
+// body with no handoff banner and none to add comes back unchanged, byte
+// for byte, so the caller can skip the write.
 //
 // The cost and stale strippers look at the top of the body only, so the
 // handoff banner always goes below them: on top it would hide theirs from
 // their next run, and those would stack. Banners on top are peeled off in
 // order, kept, and put back above it.
 func PlaceHandoffBanner(body, banner string) string {
+	orig := body
 	var head []string
+	had := false
 	for {
 		if s := StripHandoffBanner(body); s != body {
+			had = true
 			body = s
 			continue
 		}
 		if s := StripCostBanner(body); s != body {
-			head = append(head, strings.TrimRight(body[:len(body)-len(s)], "\n"))
+			head = append(head, strings.TrimRight(body[:len(body)-len(s)], "\r\n"))
 			body = s
 			continue
 		}
 		if s := StripStaleBanner(body); s != body {
-			head = append(head, strings.TrimRight(body[:len(body)-len(s)], "\n"))
+			head = append(head, strings.TrimRight(body[:len(body)-len(s)], "\r\n"))
 			body = s
 			continue
 		}
 		break
 	}
+	if !had && banner == "" {
+		return orig
+	}
 	if banner != "" {
 		head = append(head, banner)
 	}
-	return strings.Join(append(head, body), "\n\n")
+	if body != "" {
+		head = append(head, body)
+	}
+	return strings.Join(head, "\n\n")
+}
+
+// inlineCode quotes s as inline code with a fence longer than any backtick
+// run inside it, so a path holding a backtick or "](" cannot break the
+// banner's markdown (code spans bind tighter than link brackets).
+func inlineCode(s string) string {
+	longest, run := 0, 0
+	for _, r := range s {
+		if r == '`' {
+			run++
+			longest = max(longest, run)
+		} else {
+			run = 0
+		}
+	}
+	if longest == 0 {
+		return "`" + s + "`"
+	}
+	fence := strings.Repeat("`", longest+1)
+	return fence + " " + s + " " + fence
 }

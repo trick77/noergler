@@ -28,6 +28,11 @@ func TestHandoffBannerCapsTheLinksAndCountsTheRest(t *testing.T) {
 	if !strings.HasSuffix(de, " und 1 weitere.") || !strings.Contains(de, "noch 6 offene noergler-Threads: ") {
 		t.Errorf("German banner = %s", de)
 	}
+	// A path cannot break the markdown: a backtick widens the fence.
+	odd := HandoffBanner(lang.EN, []HandoffThread{{File: "a`b](x).go", Line: 3, URL: "u"}})
+	if !strings.Contains(odd, "[`` a`b](x).go:3 ``](u)") {
+		t.Errorf("odd path banner = %s", odd)
+	}
 	// A whole-file comment has no line.
 	if got := HandoffBanner(lang.EN, []HandoffThread{{File: "a.go", URL: "u"}}); !strings.Contains(got, "[`a.go`](u).") {
 		t.Errorf("file-level banner = %s", got)
@@ -73,8 +78,18 @@ func TestPlaceHandoffBannerNeverStacksAndStaysBelowTheOthers(t *testing.T) {
 	if gone := PlaceHandoffBanner(got, ""); gone != cost+"\n\n"+stale+"\n\n"+body {
 		t.Errorf("removed =\n%s", gone)
 	}
-	if same := PlaceHandoffBanner(body, ""); same != body {
-		t.Errorf("no banner, none to remove: %q", same)
+	// Nothing to add or remove: the body comes back byte for byte, so the
+	// caller skips the write. A cost banner alone is such a body, and so is
+	// one with CRLF line ends from a UI edit.
+	for _, b := range []string{body, cost, cost + "\n\n" + body, "x\r\n\r\ny"} {
+		if same := PlaceHandoffBanner(b, ""); same != b {
+			t.Errorf("no banner, none to remove: %q -> %q", b, same)
+		}
+	}
+	crlf := strings.ReplaceAll(cost, "\n", "\r\n") + "\r\n\r\n" + body
+	once := PlaceHandoffBanner(crlf, hand)
+	if twice := PlaceHandoffBanner(once, hand); twice != once {
+		t.Errorf("CRLF body grows on every write:\n%q\n%q", once, twice)
 	}
 	// The next cost write still finds its banner on top.
 	if StripCostBanner(got) == got {

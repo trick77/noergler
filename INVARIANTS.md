@@ -195,7 +195,8 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   one plain call.
 - Draft -> ready handoff: no model call, no run, no attempt. Open = unfixed
   in the DB and the Bitbucket thread unresolved; unreadable counts open,
-  deleted closed. Banner below cost and stale (their strippers look only at
+  deleted closed; findings unreadable from the DB leave the summary as it
+  is (never safeDB there: its "none" reads as "all closed"). Banner below cost and stale (their strippers look only at
   the top); nothing open writes nothing but the removal of an old banner.
 - HTTP totals logged once at the end of `post`, never deferred in the entry.
   `post` runs on the review's ctx, never the job's.

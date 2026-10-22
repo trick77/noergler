@@ -741,6 +741,9 @@ func TestCommentURL(t *testing.T) {
 		strings.Contains(got, "/rest/") || strings.Contains(got, "//projects") {
 		t.Errorf("CommentURL = %q", got)
 	}
+	if got := c.CommentURL("PROJ", "a b", 7, 501); !strings.Contains(got, "/repos/a%20b/pull-requests/") {
+		t.Errorf("slug not escaped: %q", got)
+	}
 }
 
 func TestUpdatePRComment(t *testing.T) {

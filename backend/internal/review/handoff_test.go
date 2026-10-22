@@ -108,6 +108,38 @@ func TestReadyForReviewRemovesAnEarlierBannerOnceAllIsClosed(t *testing.T) {
 	}
 }
 
+// A DB fault is not "no findings": the banner from an earlier switch stays,
+// and no thread is read.
+func TestReadyForReviewLeavesTheSummaryWhenFindingsAreUnreadable(t *testing.T) {
+	h := handoffHarness(t, 501)
+	old := render.HandoffBanner(lang.EN, []render.HandoffThread{{File: "src/a.go", Line: 10, URL: "u"}})
+	h.bb.comments[handoffSummaryID].Text = old + "\n\n## Summary\n\nbody"
+	h.st.existingErr = errors.New("pool exhausted")
+
+	h.r.HandleReadyForReview(t.Context(), readyPayload())
+
+	if len(h.bb.Updates) != 0 {
+		t.Errorf("rewrote the summary on a DB fault: %+v", h.bb.Updates)
+	}
+	for _, id := range h.bb.FetchedC {
+		if id == 501 {
+			t.Error("read a thread although the findings were unreadable")
+		}
+	}
+}
+
+// The summary is read first: gone, no thread is fetched for nothing.
+func TestReadyForReviewReadsNoThreadWhenTheSummaryIsGone(t *testing.T) {
+	h := handoffHarness(t, 501, 502)
+	delete(h.bb.comments, handoffSummaryID)
+
+	h.r.HandleReadyForReview(t.Context(), readyPayload())
+
+	if len(h.bb.FetchedC) != 1 || h.bb.FetchedC[0] != handoffSummaryID {
+		t.Errorf("fetched %v, want only the summary", h.bb.FetchedC)
+	}
+}
+
 func TestReadyForReviewCountsAnUnreadableThreadAsOpen(t *testing.T) {
 	h := handoffHarness(t, 501)
 	h.bb.fetchErr = map[int]error{501: &bitbucket.StatusError{Method: "GET", Path: "/comments", Status: 500}}

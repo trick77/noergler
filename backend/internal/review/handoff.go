@@ -21,8 +21,10 @@ import (
 // No model call, no run, no attempt, no cost. Open = a stored finding that
 // is not fixed and whose Bitbucket thread is not resolved; a thread that
 // cannot be read counts as open (fail toward telling the humans), a
-// deleted one as closed. One GET per unfixed finding on the worker,
-// accepted: the event is rare and bounded by what was posted.
+// deleted one as closed; findings unreadable from the DB leave the summary
+// as it is. One GET per unfixed finding on the worker, accepted: the event
+// is rare and bounded by what was posted, as the fixed-thread retirement
+// already does per finding.
 func (r *Reviewer) HandleReadyForReview(ctx context.Context, payload *webhook.Payload) {
 	ctx, key, prTag, ok := prContext(ctx, payload)
 	if !ok {
@@ -45,9 +47,22 @@ func (r *Reviewer) HandleReadyForReview(ctx context.Context, payload *webhook.Pa
 		return
 	}
 
-	findings := safeDB(ctx, r.log, "ExistingFindings", func() ([]store.Finding, error) {
-		return r.store.ExistingFindings(ctx, key)
-	})
+	// The summary first: unreadable, there is nothing to annotate, and no
+	// thread needs reading.
+	summary, err := r.bitbucket.FetchPRComment(ctx, key.Project, key.Repo, key.PRID, st.Summary.ID)
+	if err != nil {
+		// A deleted summary is the comment-deleted handler's to act on.
+		r.log.ErrorContext(ctx, "Failed to fetch the summary for the handoff banner: "+err.Error())
+		return
+	}
+	// Not safeDB: its fallback is "no findings", which would read as "all
+	// closed" and remove a banner that is still true. A fault leaves the
+	// summary as it is.
+	findings, err := r.store.ExistingFindings(ctx, key)
+	if err != nil {
+		r.log.WarnContext(ctx, prTag+": draft -> ready, findings unreadable, summary left as it is", logging.Err(err))
+		return
+	}
 	var open []render.HandoffThread
 	posted := 0
 	for _, f := range findings {
@@ -75,12 +90,6 @@ func (r *Reviewer) HandleReadyForReview(ctx context.Context, payload *webhook.Pa
 	banner := ""
 	if len(open) > 0 {
 		banner = render.HandoffBanner(r.languageFor(ctx, pr.Author.User.Name), open)
-	}
-	summary, err := r.bitbucket.FetchPRComment(ctx, key.Project, key.Repo, key.PRID, st.Summary.ID)
-	if err != nil {
-		// A deleted summary is the comment-deleted handler's to act on.
-		r.log.ErrorContext(ctx, "Failed to fetch the summary for the handoff banner: "+err.Error())
-		return
 	}
 	body := render.PlaceHandoffBanner(summary.Text, banner)
 	if body == summary.Text {

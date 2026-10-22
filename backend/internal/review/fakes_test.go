@@ -209,6 +209,7 @@ type fakeStore struct {
 	lastErr      error
 	summary      *store.SummaryComment
 	existing     []store.Finding
+	existingErr  error // fails ExistingFindings alone
 	prCost       *int64
 	rollup       *store.RollupSnapshot
 	// languages is user_settings, keyed by lower-cased user name.
@@ -527,6 +528,9 @@ func (f *fakeStore) MarkFindingReplied(_ context.Context, findingID int64, dispu
 func (f *fakeStore) ExistingFindings(context.Context, store.PRKey) ([]store.Finding, error) {
 	if err := f.err(); err != nil {
 		return nil, err
+	}
+	if f.existingErr != nil {
+		return nil, f.existingErr
 	}
 	return f.existing, nil
 }
