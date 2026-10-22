@@ -145,8 +145,8 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   chars), linked only from the PR's summary comment; a run is
   `/prs/{token}/runs/{n}`, n its number in the PR's history (the row's life,
   as `prCostSQL`, any team), never a database id. The PR
-  page links its runs and a run page its PR; nothing else on the dashboard
-  links either. No token in any response or app log (`httpapi.logPath` masks
+  page is one shell: its rail links the PR and each run, and a run is a pane
+  in it; nothing else on the dashboard links either. No token in any response or app log (`httpapi.logPath` masks
   it; the ingress log sees the path). Malformed, unknown, out-of-range n: one
   404. Old `/runs/{attempt token}` links 404 (user, 2026-10-20); the attempt
   column stays, unread. Posted and fixed findings: headline only, the text is

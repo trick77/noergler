@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RunDetail } from "./api";
-import { RunPage } from "./RunPage";
+import { RunPane } from "./RunPane";
 import { onNav, pageFromPath, prRouteFromPath } from "./routing";
 
 const TOK = "AAAAAAAAAAAAAAAAAAAAAA";
@@ -139,34 +139,32 @@ describe("routing to a PR and its runs", () => {
   });
 });
 
-describe("RunPage", () => {
-  it("leads with the summary and links back to its PR", async () => {
+describe("RunPane", () => {
+  // The pane starts at the run's own line: the PR's title, team and link
+  // are the shell's around it.
+  it("leads with the run's summary", async () => {
     serve(RUN, detail);
-    const { container } = render(<RunPage token={TOK} n={2} />);
+    const { container } = render(<RunPane token={TOK} n={2} />);
 
-    expect(
-      await screen.findByText("Retry captures on gateway timeout"),
-    ).toBeDefined();
+    const head = await screen.findByRole("heading", { name: "Run 2" });
+    // The run's line: outcome, kind, mode, commits and when.
+    expect(head.parentElement?.textContent).toContain("ok");
+    expect(head.parentElement?.textContent).toContain("auto");
+    expect(head.parentElement?.textContent).toContain("incremental");
+    expect(head.parentElement?.textContent).toContain("9f8e7d6 → 3c41a0b");
     // Cents, like every amount on the dashboard.
     expect(screen.getAllByText("$0.05").length).toBeGreaterThan(0);
-    // The crumb is the PR's page, the only in-app link with the token.
-    expect(screen.getByText("Run 2")).toBeDefined();
-    expect(screen.getByText("PAY/checkout#1482").getAttribute("href")).toBe(
-      `/prs/${TOK}`,
-    );
+    expect(screen.queryByText("Retry captures on gateway timeout")).toBeNull();
     for (const a of container.querySelectorAll("a")) {
       expect(a.getAttribute("href") ?? "").not.toMatch(/^\/runs\/./);
     }
-    expect(screen.getByText("Open PR ↗").getAttribute("href")).toBe(
-      "https://bb.example.com/projects/PAY/repos/checkout/pull-requests/1482",
-    );
   });
 
   // The headline only: the full text is on the PR, behind the link.
   it("shows a finding's headline and links its comment", async () => {
     window.history.replaceState({}, "", `/${RUN}#findings`);
     serve(RUN, detail);
-    render(<RunPage token={TOK} n={2} />);
+    render(<RunPane token={TOK} n={2} />);
 
     expect(
       await screen.findByText("Capture is retried without its idempotency key"),
@@ -190,7 +188,7 @@ describe("RunPage", () => {
   // A lane the gateway did not send reads "not sent", never $0.
   it("keeps absent lanes absent and lanes in cents", async () => {
     serve(RUN, detail);
-    render(<RunPage token={TOK} n={2} />);
+    render(<RunPane token={TOK} n={2} />);
     fireEvent.click(
       await screen.findByRole("tab", { name: /Tokens and cost/ }),
     );
@@ -271,7 +269,7 @@ describe("RunPage", () => {
         http: [{ upstream: "bitbucket", calls: 14 }],
       },
     });
-    render(<RunPage token={TOK} n={2} />);
+    render(<RunPane token={TOK} n={2} />);
 
     expect((await screen.findAllByText("AI Gateway call")).length).toBe(2);
     expect(screen.getByText("Waiting for the AI Gateway")).toBeDefined();
@@ -317,7 +315,7 @@ describe("RunPage", () => {
       call: null,
       findings: [],
     });
-    render(<RunPage token={TOK} n={2} />);
+    render(<RunPane token={TOK} n={2} />);
     expect(
       await screen.findByText("HEAD unchanged since last review"),
     ).toBeDefined();

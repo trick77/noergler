@@ -221,11 +221,12 @@ order:
    elapsed time and cost, ending in a link to the PR's page when
    `NOERGLER_PUBLIC_URL` is set. The link carries the PR's random token and
    is the only way to the page: the dashboard never links to it. The PR page
-   lists every finding posted on the PR (headline, linked to its comment;
-   the run that posted it and the one that fixed it), every run, the files
-   the reviews saw, and the PR's cost against its cap. Each run has its own
-   page under it, with the findings that were not posted, their text and
-   quoted lines, the step timeline and the gateway call
+   keeps its runs in a rail beside whichever view is open: every finding
+   posted on the PR (headline, linked to its comment; the run that posted
+   it and the one that fixed it), the files the reviews saw, the PR's cost
+   against its cap, and its replies and answers. Each run has its own page
+   under it, in the same shell, with the findings that were not posted,
+   their text and quoted lines, the step timeline and the gateway call
 
 There is no effort score and no "What changed" section. Tokens, prompt parts,
 cross-file symbols, the gateway's cost split and the key spend are on the run

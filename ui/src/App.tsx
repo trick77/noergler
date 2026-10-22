@@ -4,7 +4,6 @@ import { FaqPage } from "./FaqPage";
 import { LivePage } from "./LivePage";
 import { MetricsPage } from "./MetricsPage";
 import { PRPage } from "./PRPage";
-import { RunPage } from "./RunPage";
 import { RunsPage } from "./RunsPage";
 import { TeamsPage } from "./TeamsPage";
 import {
@@ -91,13 +90,11 @@ export default function App() {
       <main className="min-h-0 min-w-0">
         {route === "live" && <LivePage />}
         {route === "runs" && <RunsPage />}
-        {/* keyed: a new PR or run is a new page, never the previous one's
-            data under the next URL while it loads (or after it fails). */}
-        {route === "pr" && pr !== null && pr.n === null && (
-          <PRPage key={pr.token} token={pr.token} />
-        )}
-        {route === "pr" && pr !== null && pr.n !== null && (
-          <RunPage key={`${pr.token}/${pr.n}`} token={pr.token} n={pr.n} />
+        {/* keyed by the token: a new PR is a new page, never the previous
+            one's data under the next URL while it loads (or after it
+            fails). A run of the same PR is a pane inside it. */}
+        {route === "pr" && pr !== null && (
+          <PRPage key={pr.token} token={pr.token} n={pr.n} />
         )}
         {route === "teams" && <TeamsPage />}
         {route === "metrics" && <MetricsPage />}
