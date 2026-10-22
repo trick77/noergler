@@ -1,31 +1,28 @@
-// The PR page: every run of one pull request, the findings posted on it, the
-// files its reviews saw and what it cost. Reached only by its link token from
-// the PR's summary comment, so it links each run's own page under it.
+// The PR page: one shell for a pull request and its runs. The runs sit in a
+// rail on the left on every view (RunRail), and the pane on the right is
+// what is selected: the PR's overview (findings, files, cost), its replies
+// and answers, or one run (RunPane, at /prs/{token}/runs/{n}). Reached only
+// by its link token from the PR's summary comment.
 //
 // Figures add up where they can (cost is the cap's total, tokens and time are
 // sums), and the whole PR's lines are the latest run's reading of the whole
-// diff. Steps stay on each run's page: across runs only the waits add up.
+// diff. Steps stay on each run's pane: across runs only the waits add up.
 import { useEffect, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import type {
-  CommentCall,
-  PRFinding,
-  PRPage as PRPageData,
-  PRRun,
-} from "./api";
+import type { CommentCall, PRFinding, PRPage as PRPageData } from "./api";
 import {
   commentUrl,
   duration,
   known,
   money,
-  outcomeTitle,
-  outcomeTone,
-  outcomeWord,
   prUrl,
   severityTone,
   severityWord,
+  when,
 } from "./format";
 import { onNav, prPath } from "./routing";
+import { RunPane } from "./RunPane";
+import { RunRail } from "./RunRail";
 import { FindingText } from "./RunPipeline";
 import { usePoll } from "./usePoll";
 import {
@@ -49,37 +46,45 @@ import {
   thNum,
 } from "./ui";
 
-type Tab = "findings" | "runs" | "files" | "cost";
-const TABS: Tab[] = ["findings", "runs", "files", "cost"];
+/** PRView is what the pane shows for the PR itself: three tabs of the
+ *  overview, or the replies and answers, which the rail selects. */
+export type PRView = "findings" | "files" | "cost" | "calls";
+type Tab = Exclude<PRView, "calls">;
+const TABS: Tab[] = ["findings", "files", "cost"];
+const VIEWS: PRView[] = [...TABS, "calls"];
 
-/** The tab lives in the hash (#runs), so a link can open one and a reload
- *  keeps it. Findings first: what is still open is what a reader brings
- *  from the PR. */
-function tabFromHash(): Tab {
+/** The view lives in the hash (#files, #calls), so a link can open one and
+ *  a reload keeps it. Findings first: what is still open is what a reader
+ *  brings from the PR. */
+function viewFromHash(): PRView {
   const h = window.location.hash.slice(1);
-  return (TABS as string[]).includes(h) ? (h as Tab) : "findings";
+  return (VIEWS as string[]).includes(h) ? (h as PRView) : "findings";
 }
 
-const when = (iso: string) =>
-  new Date(iso).toLocaleString(undefined, {
-    dateStyle: "short",
-    timeStyle: "short",
-  });
-
-export function PRPage({ token }: { token: string }) {
+export function PRPage({ token, n }: { token: string; n: number | null }) {
   const { t } = useTranslation();
   // A PR page changes with every run; the slow poll picks up the next one.
+  // The shell is keyed by the token alone, so the rail keeps its data while
+  // the pane switches between the PR and its runs.
   const { data, failed } = usePoll<PRPageData>(`prs/${token}`, 60000);
-  const [tab, setTab] = useState<Tab>(tabFromHash);
+  const [view, setView] = useState<PRView>(viewFromHash);
 
+  // The hash is the view. Read again whenever the path under the shell
+  // changes (a rail click, the back button): a run's own hash is the run
+  // pane's, and coming back to the PR starts from what the URL says.
+  const [viewN, setViewN] = useState(n);
+  if (viewN !== n) {
+    setViewN(n);
+    setView(viewFromHash());
+  }
   useEffect(() => {
-    const onHash = () => setTab(tabFromHash());
+    const onHash = () => setView(viewFromHash());
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
-  const pick = (next: Tab) => {
-    setTab(next);
+  const pickView = (next: PRView) => {
+    setView(next);
     window.history.replaceState(
       {},
       "",
@@ -87,34 +92,155 @@ export function PRPage({ token }: { token: string }) {
     );
   };
 
-  if (!data) {
+  const d = data;
+  // The calls view with nothing to list (a stale #calls link) is the
+  // overview: an empty card beside a rail with nothing selected says nothing.
+  const hasCalls = d !== null && (d.calls_failed || d.calls.length > 0);
+  const shown = view === "calls" && !hasCalls ? "findings" : view;
+  const pr = d === null ? null : prUrl(d.tag, d.bitbucket_url);
+  // A cut history does not reach the PR's first run: no start date then.
+  const first = d === null || d.more_runs ? undefined : d.runs[0]?.created_at;
+  const last = d?.runs[d.runs.length - 1]?.created_at;
+
+  if (d === null && failed) {
     return (
       <div className={page}>
         <div className={column}>
           <h2 className={h2}>{t("pr.title")}</h2>
-          {failed ? (
-            <Failed what={t("pr.failedWhat")} />
-          ) : (
-            <div className="skeleton h-24 rounded-ui" />
-          )}
+          <Failed what={t("pr.failedWhat")} />
         </div>
       </div>
     );
   }
 
-  const d = data;
-  const pr = prUrl(d.tag, d.bitbucket_url);
+  return (
+    <div className={page}>
+      <div className={column}>
+        {/* The run pane fetches on its own below, so a run link's two reads
+            run side by side: the PR's header and rail are a skeleton until
+            theirs lands. */}
+        {d === null ? (
+          <>
+            <h2 className={h2}>{t("pr.title")}</h2>
+            <div className="skeleton mt-2 h-7 rounded-ui" />
+          </>
+        ) : (
+          <>
+            <nav className="text-[13px] text-faint" aria-label="breadcrumb">
+              <a
+                href="/runs"
+                onClick={onNav("/runs")}
+                className="text-muted hover:text-ink hover:underline"
+              >
+                {t("nav.runs")}
+              </a>
+              <Sep />
+              <span className="font-mono">{d.tag}</span>
+            </nav>
+            <h2 className={h2 + " mt-2"}>{d.title || d.tag}</h2>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[13.5px] text-muted">
+              <Pill tone={d.state === "open" ? "ok" : "none"}>
+                {known("prState", d.state) ? t(`prState.${d.state}`) : d.state}
+              </Pill>
+              <TeamPill name={d.team_name} slug={d.team} />
+              <span>
+                {t("pr.runs", { count: d.runs_total })}
+                {d.calls.length > 0 && (
+                  <>
+                    <Sep />
+                    {/* The list is cut at its cap: "200+", never a count that
+                    reads as all of them. */}
+                    {d.more_calls
+                      ? t("pr.repliesMore", { count: d.calls.length })
+                      : t("pr.replies", { count: d.calls.length })}
+                  </>
+                )}
+              </span>
+              {last && (
+                <>
+                  <Sep />
+                  <span>
+                    {!first || first === last
+                      ? when(last)
+                      : `${when(first)} → ${when(last)}`}
+                  </span>
+                </>
+              )}
+              <span className="flex gap-1 sm:ml-auto">
+                {pr && (
+                  <a
+                    href={pr}
+                    rel="noopener"
+                    className="rounded-ui-sm border border-border px-2 py-0.5 text-[12.5px] whitespace-nowrap hover:bg-active hover:text-ink"
+                  >
+                    {t("run.openPR")}
+                  </a>
+                )}
+              </span>
+            </div>
+          </>
+        )}
+
+        {/* The rail is a strip above the pane until there is room for a
+            column beside it. */}
+        <div className="mt-6 flex flex-col gap-4 lg:grid lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start lg:gap-7">
+          {d === null ? (
+            <div className="skeleton h-40 rounded-ui" />
+          ) : (
+            <RunRail
+              d={d}
+              token={token}
+              n={n}
+              view={shown}
+              pickView={pickView}
+            />
+          )}
+          <div className="min-w-0">
+            {n !== null ? (
+              <RunPane key={n} token={token} n={n} />
+            ) : d === null ? (
+              <div className="skeleton h-24 rounded-ui" />
+            ) : shown === "calls" ? (
+              <CallsCard d={d} pr={pr} />
+            ) : (
+              <Overview
+                d={d}
+                pr={pr}
+                token={token}
+                tab={shown}
+                pick={pickView}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Overview is the PR's own pane: its totals, then findings, files and
+ *  cost in tabs. */
+function Overview({
+  d,
+  pr,
+  token,
+  tab,
+  pick,
+}: {
+  d: PRPageData;
+  pr: string | null;
+  token: string;
+  tab: Tab;
+  pick: (v: PRView) => void;
+}) {
+  const { t } = useTranslation();
   const fixed = d.findings.filter((f) => f.fixed).length;
   const cost = d.cost_usd !== null ? Number(d.cost_usd) : null;
   const cap = d.cap_usd !== null ? Number(d.cap_usd) : null;
   const tokens = d.prompt_tokens + d.completion_tokens;
-  // A cut history does not reach the PR's first run: no start date then.
-  const first = d.more_runs ? undefined : d.runs[0]?.created_at;
-  const last = d.runs[d.runs.length - 1]?.created_at;
 
   const counts: Record<Tab, number | null> = {
     findings: d.findings.length,
-    runs: d.runs_total,
     files: d.files.length,
     cost: null,
   };
@@ -128,178 +254,115 @@ export function PRPage({ token }: { token: string }) {
   };
 
   return (
-    <div className={page}>
-      <div className={column}>
-        <nav className="text-[13px] text-faint" aria-label="breadcrumb">
-          <a
-            href="/runs"
-            onClick={onNav("/runs")}
-            className="text-muted hover:text-ink hover:underline"
-          >
-            {t("nav.runs")}
-          </a>
-          <Sep />
-          <span className="font-mono">{d.tag}</span>
-        </nav>
-        <h2 className={h2 + " mt-2"}>{d.title || d.tag}</h2>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[13.5px] text-muted">
-          <Pill tone={d.state === "open" ? "ok" : "none"}>
-            {known("prState", d.state) ? t(`prState.${d.state}`) : d.state}
-          </Pill>
-          <TeamPill name={d.team_name} slug={d.team} />
-          <span>
-            {t("pr.runs", { count: d.runs_total })}
-            {d.calls.length > 0 && (
-              <>
-                <Sep />
-                {/* The list is cut at its cap: "200+", never a count that
-                    reads as all of them. */}
-                {d.more_calls
-                  ? t("pr.repliesMore", { count: d.calls.length })
-                  : t("pr.replies", { count: d.calls.length })}
-              </>
-            )}
-          </span>
-          {last && (
+    <>
+      <Tiles>
+        <Tile label={t("pr.cost")} value={money(d.cost_usd)}>
+          {cost !== null && cap !== null && cap > 0 && (
             <>
-              <Sep />
-              <span>
-                {!first || first === last
-                  ? when(last)
-                  : `${when(first)} → ${when(last)}`}
-              </span>
-            </>
-          )}
-          <span className="flex gap-1 sm:ml-auto">
-            {pr && (
-              <a
-                href={pr}
-                rel="noopener"
-                className="rounded-ui-sm border border-border px-2 py-0.5 text-[12.5px] whitespace-nowrap hover:bg-active hover:text-ink"
-              >
-                {t("run.openPR")}
-              </a>
-            )}
-          </span>
-        </div>
-
-        <div className="mt-5">
-          <Tiles>
-            <Tile label={t("pr.cost")} value={money(d.cost_usd)}>
-              {cost !== null && cap !== null && cap > 0 && (
-                <>
-                  <CapMeter cost={cost} cap={cap} />
-                  <div className="mt-1 text-[12px] text-faint">
-                    {t("pr.ofCap", { cap: money(d.cap_usd) })}
-                  </div>
-                </>
-              )}
-            </Tile>
-            <Tile
-              label={t("pr.findings")}
-              value={d.findings.length}
-              note={t("pr.posted")}
-            >
-              {d.findings.length > 0 && (
-                <div className="mt-0.5 text-[12px] text-faint">
-                  {t("pr.findingsNote", {
-                    fixed,
-                    open: d.findings.length - fixed,
-                  })}
-                </div>
-              )}
-            </Tile>
-            <Tile
-              label={t("pr.scope")}
-              value={
-                d.scope === null ? (
-                  "—"
-                ) : (
-                  <span className="font-mono text-[18px] sm:text-[21px]">
-                    +{d.scope.added} / −{d.scope.removed}
-                  </span>
-                )
-              }
-            >
-              {d.scope !== null && (
-                <div className="mt-0.5 text-[12px] text-faint">
-                  {t("pr.scopeFiles", { count: d.scope.files })}
-                </div>
-              )}
-            </Tile>
-            <Tile
-              label={t("pr.tokens")}
-              value={tokens === 0 ? "—" : tokens.toLocaleString()}
-            >
-              <div className="mt-0.5 text-[12px] text-faint">
-                {d.prompt_tokens > 0 &&
-                  t("pr.fromCache", {
-                    pct: Math.round((d.cached_tokens / d.prompt_tokens) * 100),
-                  }) + " · "}
-                {/* The waits are read from the listed runs only: beside a
-                    whole-history time they would understate, so a cut
-                    history shows the time alone. */}
-                {d.more_runs
-                  ? t("pr.timeOnly", { time: duration(d.elapsed_ms) })
-                  : t("pr.timeNote", {
-                      time: duration(d.elapsed_ms),
-                      wait: duration(d.wait_ms),
-                    })}
+              <CapMeter cost={cost} cap={cap} />
+              <div className="mt-1 text-[12px] text-faint">
+                {t("pr.ofCap", { cap: money(d.cap_usd) })}
               </div>
-            </Tile>
-          </Tiles>
-        </div>
-
-        <div
-          role="tablist"
-          aria-label={t("pr.tabsLabel")}
-          className="sticky top-0 z-10 mt-6 mb-4 flex gap-0.5 overflow-x-auto border-b border-border bg-bg [scrollbar-width:none]"
-        >
-          {TABS.map((k, i) => (
-            <button
-              key={k}
-              id={`pr-tab-${k}`}
-              type="button"
-              role="tab"
-              aria-selected={tab === k}
-              aria-controls={`pr-panel-${k}`}
-              tabIndex={tab === k ? 0 : -1}
-              onClick={() => pick(k)}
-              onKeyDown={(e) => onTabKey(e, i)}
-              className={
-                "-mb-px inline-flex items-baseline gap-1.5 border-b-2 px-3 pt-2 pb-2.5 text-sm whitespace-nowrap transition-colors " +
-                (tab === k
-                  ? "border-accent-strong text-ink"
-                  : "border-transparent text-muted hover:text-ink")
-              }
-            >
-              {t(`pr.tab.${k}`)}
-              {counts[k] !== null && (
-                <span className="rounded-full bg-active px-1.5 font-mono text-[12px] text-ink-dim">
-                  {counts[k]}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        <div
-          role="tabpanel"
-          id={`pr-panel-${tab}`}
-          aria-labelledby={`pr-tab-${tab}`}
-        >
-          {tab === "findings" && <FindingsTab d={d} pr={pr} token={token} />}
-          {tab === "runs" && (
-            <>
-              <RunsTab d={d} token={token} />
-              <CallsCard d={d} pr={pr} />
             </>
           )}
-          {tab === "files" && <FilesTab d={d} token={token} />}
-          {tab === "cost" && <CostTab d={d} />}
-        </div>
+        </Tile>
+        <Tile
+          label={t("pr.findings")}
+          value={d.findings.length}
+          note={t("pr.posted")}
+        >
+          {d.findings.length > 0 && (
+            <div className="mt-0.5 text-[12px] text-faint">
+              {t("pr.findingsNote", {
+                fixed,
+                open: d.findings.length - fixed,
+              })}
+            </div>
+          )}
+        </Tile>
+        <Tile
+          label={t("pr.scope")}
+          value={
+            d.scope === null ? (
+              "—"
+            ) : (
+              <span className="font-mono text-[18px] sm:text-[21px]">
+                +{d.scope.added} / −{d.scope.removed}
+              </span>
+            )
+          }
+        >
+          {d.scope !== null && (
+            <div className="mt-0.5 text-[12px] text-faint">
+              {t("pr.scopeFiles", { count: d.scope.files })}
+            </div>
+          )}
+        </Tile>
+        <Tile
+          label={t("pr.tokens")}
+          value={tokens === 0 ? "—" : tokens.toLocaleString()}
+        >
+          <div className="mt-0.5 text-[12px] text-faint">
+            {d.prompt_tokens > 0 &&
+              t("pr.fromCache", {
+                pct: Math.round((d.cached_tokens / d.prompt_tokens) * 100),
+              }) + " · "}
+            {/* The waits are read from the listed runs only: beside a
+                whole-history time they would understate, so a cut
+                history shows the time alone. */}
+            {d.more_runs
+              ? t("pr.timeOnly", { time: duration(d.elapsed_ms) })
+              : t("pr.timeNote", {
+                  time: duration(d.elapsed_ms),
+                  wait: duration(d.wait_ms),
+                })}
+          </div>
+        </Tile>
+      </Tiles>
+
+      <div
+        role="tablist"
+        aria-label={t("pr.tabsLabel")}
+        className="sticky top-0 z-10 mt-6 mb-4 flex gap-0.5 overflow-x-auto border-b border-border bg-bg [scrollbar-width:none]"
+      >
+        {TABS.map((k, i) => (
+          <button
+            key={k}
+            id={`pr-tab-${k}`}
+            type="button"
+            role="tab"
+            aria-selected={tab === k}
+            aria-controls={`pr-panel-${k}`}
+            tabIndex={tab === k ? 0 : -1}
+            onClick={() => pick(k)}
+            onKeyDown={(e) => onTabKey(e, i)}
+            className={
+              "-mb-px inline-flex items-baseline gap-1.5 border-b-2 px-3 pt-2 pb-2.5 text-sm whitespace-nowrap transition-colors " +
+              (tab === k
+                ? "border-accent-strong text-ink"
+                : "border-transparent text-muted hover:text-ink")
+            }
+          >
+            {t(`pr.tab.${k}`)}
+            {counts[k] !== null && (
+              <span className="rounded-full bg-active px-1.5 font-mono text-[12px] text-ink-dim">
+                {counts[k]}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
-    </div>
+
+      <div
+        role="tabpanel"
+        id={`pr-panel-${tab}`}
+        aria-labelledby={`pr-tab-${tab}`}
+      >
+        {tab === "findings" && <FindingsTab d={d} pr={pr} token={token} />}
+        {tab === "files" && <FilesTab d={d} token={token} />}
+        {tab === "cost" && <CostTab d={d} />}
+      </div>
+    </>
   );
 }
 
@@ -323,7 +386,8 @@ function CapMeter({
   );
 }
 
-/** RunLink is run n's page, under its PR's. */
+/** RunLink is run n's pane, under its PR's: the same path the rail selects
+ *  it by. */
 function RunLink({ token, n }: { token: string; n: number }) {
   const { t } = useTranslation();
   const href = prPath(token, n);
@@ -434,159 +498,6 @@ function FindingsTab({
   );
 }
 
-/** TimeBar is one run's recorded stages in three parts, on the scale of the
- *  slowest run listed: waits hatched, as on the run's own timeline. */
-function TimeBar({ run, scale }: { run: PRRun; scale: number }) {
-  const { t } = useTranslation();
-  const tm = run.time;
-  if (tm === null || scale <= 0) return null;
-  const total = tm.work_ms + tm.wait_ms + tm.gateway_ms;
-  const part = (ms: number, cls: string, label: string) =>
-    ms > 0 && (
-      <i
-        className={"block h-full rounded-[2px] " + cls}
-        style={{ flex: ms }}
-        title={`${label}: ${duration(ms)}`}
-      />
-    );
-  return (
-    <div
-      className="mt-1 ml-auto flex h-2 w-[140px] gap-px"
-      aria-label={t("pr.timeSplit", {
-        work: duration(tm.work_ms),
-        wait: duration(tm.wait_ms),
-        gateway: duration(tm.gateway_ms),
-      })}
-    >
-      {part(tm.work_ms, "bg-s1", t("run.timeNoergler"))}
-      {part(tm.wait_ms, "texture-wait", t("run.legendWait"))}
-      {part(tm.gateway_ms, "bg-s3", t("run.timeGateway"))}
-      {scale > total && <span style={{ flex: scale - total }} />}
-    </div>
-  );
-}
-
-function RunsTab({ d, token }: { d: PRPageData; token: string }) {
-  const { t } = useTranslation();
-  const scale = Math.max(
-    0,
-    ...d.runs.map((r) =>
-      r.time ? r.time.work_ms + r.time.wait_ms + r.time.gateway_ms : 0,
-    ),
-  );
-  // The whole PR's, like the total cost beside them, not the listed rows'.
-  const posted = d.findings.length;
-  const fixed = d.findings.filter((f) => f.fixed).length;
-  // Newest first: the run a reader came for is usually the latest.
-  const rows = [...d.runs].reverse();
-  return (
-    <Card title={t("pr.runsTitle")}>
-      <div className="overflow-x-auto overscroll-x-contain">
-        <table className={table}>
-          <thead>
-            <tr>
-              <th className={th}>{t("pr.when")}</th>
-              <th className={th}>{t("pr.what")}</th>
-              <th className={th}>{t("pr.changes")}</th>
-              <th className={thNum}>{t("pr.new")}</th>
-              <th className={thNum}>{t("pr.fixedCol")}</th>
-              <th className={thNum}>{t("pr.time")}</th>
-              <th className={thNum}>{t("run.cost")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.n}>
-                <td
-                  className={
-                    td +
-                    " font-mono text-[13px] whitespace-nowrap text-muted tabular-nums"
-                  }
-                >
-                  {when(r.created_at)}
-                </td>
-                <td className={td}>
-                  <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                    <Pill
-                      tone={outcomeTone(r.outcome)}
-                      title={outcomeTitle(r.outcome, r.reason, r.reason_label)}
-                    >
-                      {outcomeWord(r.outcome, r.reason)}
-                    </Pill>
-                    <RunLink token={token} n={r.n} />
-                    <span className="text-[12.5px] text-faint">
-                      {r.kind === "mention" ? t("run.mention") : t("run.auto")}
-                      {r.run &&
-                        ` · ${r.run.incremental ? t("run.incremental") : t("run.full")}`}
-                    </span>
-                  </span>
-                </td>
-                <td className={tdTag + " text-muted"}>
-                  {r.run
-                    ? `${t("pr.scopeFiles", { count: r.run.files_changed })} +${r.run.lines_added}/−${r.run.lines_removed}`
-                    : ""}
-                </td>
-                <td className={tdNum}>{r.run ? r.run.findings_posted : "—"}</td>
-                <td className={tdNum}>{r.run ? r.fixed : "—"}</td>
-                <td className={tdNum}>
-                  {duration(r.elapsed_ms)}
-                  <TimeBar run={r} scale={scale} />
-                </td>
-                <td className={tdNum}>
-                  {r.cost_usd === null ? "—" : money(r.cost_usd)}
-                </td>
-              </tr>
-            ))}
-            {d.more_runs && (
-              <tr>
-                <td
-                  className={td + " text-[12.5px] text-faint italic"}
-                  colSpan={7}
-                >
-                  {t("pr.moreRuns")}
-                </td>
-              </tr>
-            )}
-            <tr>
-              <td className={td + " font-medium text-ink"} colSpan={3}>
-                {t("pr.total")}
-              </td>
-              <td className={tdNum + " text-ink"}>{posted}</td>
-              <td className={tdNum + " text-ink"}>{fixed}</td>
-              <td className={tdNum + " text-ink"}>
-                {duration(d.elapsed_ms)}
-                {d.wait_ms > 0 && !d.more_runs && (
-                  <div className="text-[12px] text-faint">
-                    {t("pr.waiting", { time: duration(d.wait_ms) })}
-                  </div>
-                )}
-              </td>
-              <td className={tdNum + " text-ink"}>{money(d.cost_usd)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      {scale > 0 && (
-        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-muted">
-          {[
-            { cls: "bg-s1", n: t("run.timeNoergler") },
-            { cls: "texture-wait", n: t("pr.legendWait") },
-            { cls: "bg-s3", n: t("run.timeGateway") },
-          ].map((l) => (
-            <span key={l.n} className="inline-flex items-center gap-1.5">
-              <i
-                aria-hidden
-                className={"inline-block h-2.5 w-2.5 rounded-[2px] " + l.cls}
-              />
-              {l.n}
-            </span>
-          ))}
-        </div>
-      )}
-    </Card>
-  );
-}
-
 /** CallsCard lists the PR's replies and Q&A answers: no run and no page
  *  each, but money the PR total and its cap count. */
 function CallsCard({ d, pr }: { d: PRPageData; pr: string | null }) {
@@ -598,9 +509,8 @@ function CallsCard({ d, pr }: { d: PRPageData; pr: string | null }) {
       </Card>
     );
   }
-  if (d.calls.length === 0) return null;
   return (
-    <Card title={t("pr.callsTitle")}>
+    <Card title={t("pr.callsTitle")} note={t("pr.callsSub")}>
       <div className="overflow-x-auto overscroll-x-contain">
         <table className={table}>
           <thead>
@@ -730,8 +640,8 @@ function FilesTab({ d, token }: { d: PRPageData; token: string }) {
 
 /** CostTab is the PR total against its cap, each priced run on one scale,
  *  and the tokens summed over the runs. Replies and answers are in the
- *  total and listed with their cost under Runs: never re-added here, in
- *  floats, from a list that may be cut. */
+ *  total and listed with their cost in their own view: never re-added
+ *  here, in floats, from a list that may be cut. */
 function CostTab({ d }: { d: PRPageData }) {
   const { t } = useTranslation();
   const rows = d.runs

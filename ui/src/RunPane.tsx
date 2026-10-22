@@ -1,7 +1,9 @@
-// The run page: one attempt of a PR and everything recorded about it, in
-// tabs so the summary is never below a page of detail. Reached only from its
-// PR's page, which the PR's summary comment links, so it shows the full text;
-// the PR's history, cost and calls are the PR page's.
+// The run pane: one attempt of a PR and everything recorded about it, in
+// tabs so the summary is never below a page of detail. Shown inside the
+// PR's shell (PRPage), beside the rail of its runs, so the PR's title,
+// history, cost and calls are the shell's; the pane starts at the run's
+// own line. Reached only through the PR's summary comment, so it shows the
+// full text.
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { RunCall, RunDetail, RunFinding } from "./api";
@@ -16,7 +18,6 @@ import {
   severityTone,
   severityWord,
 } from "./format";
-import { onNav, prPath } from "./routing";
 import {
   ContextCard,
   FindingText,
@@ -33,12 +34,8 @@ import {
   Note,
   Pill,
   Sep,
-  TeamPill,
   Tile,
   Tiles,
-  column,
-  h2,
-  page,
   table,
   td,
   tdNum,
@@ -61,7 +58,7 @@ function num(v: number | null | undefined): string {
   return v === null || v === undefined ? "—" : v.toLocaleString();
 }
 
-export function RunPage({ token, n }: { token: string; n: number }) {
+export function RunPane({ token, n }: { token: string; n: number }) {
   const { t } = useTranslation();
   // A finished run does not change; the slow poll only picks up a run that
   // was still being recorded when the page opened.
@@ -84,17 +81,10 @@ export function RunPage({ token, n }: { token: string; n: number }) {
   };
 
   if (!data) {
-    return (
-      <div className={page}>
-        <div className={column}>
-          <h2 className={h2}>{t("run.title")}</h2>
-          {failed ? (
-            <Failed what={t("run.failedWhat")} />
-          ) : (
-            <div className="skeleton h-24 rounded-ui" />
-          )}
-        </div>
-      </div>
+    return failed ? (
+      <Failed what={t("run.failedWhat")} />
+    ) : (
+      <div className="skeleton h-24 rounded-ui" />
     );
   }
 
@@ -128,36 +118,18 @@ export function RunPage({ token, n }: { token: string; n: number }) {
   };
 
   return (
-    <div className={page}>
-      <div className={column}>
-        <nav className="text-[13px] text-faint" aria-label="breadcrumb">
-          <a
-            href="/runs"
-            onClick={onNav("/runs")}
-            className="text-muted hover:text-ink hover:underline"
-          >
-            {t("nav.runs")}
-          </a>
-          <Sep />
-          <a
-            href={prPath(token)}
-            onClick={onNav(prPath(token))}
-            className="font-mono text-muted hover:text-ink hover:underline"
-          >
-            {d.tag}
-          </a>
-          <Sep />
+    <>
+      <div className="flex flex-wrap items-baseline gap-x-3.5 gap-y-1">
+        <h3 className="font-serif text-[20px] leading-tight font-medium tracking-tight text-ink">
           {t("run.crumb", { n: d.n })}
-        </nav>
-        <h2 className={h2 + " mt-2"}>{d.title || d.tag}</h2>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[13.5px] text-muted">
+        </h3>
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[13.5px] text-muted">
           <Pill
             tone={outcomeTone(d.outcome)}
             title={outcomeTitle(d.outcome, d.reason, d.reason_label)}
           >
             {outcomeWord(d.outcome, d.reason)}
           </Pill>
-          <TeamPill name={d.team_name} slug={d.team} />
           <span>
             {d.kind === "mention" ? t("run.mention") : t("run.auto")}
             {d.run && (
@@ -182,103 +154,92 @@ export function RunPage({ token, n }: { token: string; n: number }) {
               timeStyle: "medium",
             })}
           </span>
-          <span className="flex gap-1 sm:ml-auto">
-            {pr && (
-              <a
-                href={pr}
-                rel="noopener"
-                className="rounded-ui-sm border border-border px-2 py-0.5 text-[12.5px] whitespace-nowrap hover:bg-active hover:text-ink"
-              >
-                {t("run.openPR")}
-              </a>
-            )}
-          </span>
-        </div>
-
-        <div className="mt-5">
-          <Tiles>
-            <Tile label={t("run.cost")} value={money(d.cost_usd ?? null)} />
-            <Tile label={t("run.elapsed")} value={duration(d.elapsed_ms)}>
-              {call?.headers_ms != null && (
-                <div className="mt-0.5 text-[12px] text-faint">
-                  {t("run.inModel", { time: duration(call.headers_ms) })}
-                </div>
-              )}
-            </Tile>
-            <Tile
-              label={t("run.findings")}
-              value={d.run ? d.run.findings_posted : "—"}
-            >
-              {d.fixed.length > 0 && (
-                <div className="mt-0.5 text-[12px] text-faint">
-                  {t("run.fixedEarlier", { count: d.fixed.length })}
-                </div>
-              )}
-            </Tile>
-            <Tile
-              label={t("run.tokens")}
-              value={
-                inTokens === null && outTokens === null
-                  ? "—"
-                  : ((inTokens ?? 0) + (outTokens ?? 0)).toLocaleString()
-              }
-            >
-              {inTokens ? (
-                <div className="mt-0.5 text-[12px] text-faint">
-                  {t("run.fromCache", {
-                    pct: Math.round(((cached ?? 0) / inTokens) * 100),
-                  })}
-                </div>
-              ) : null}
-            </Tile>
-          </Tiles>
-        </div>
-
-        <div
-          role="tablist"
-          aria-label={t("run.tabsLabel")}
-          className="sticky top-0 z-10 mt-6 mb-4 flex gap-0.5 overflow-x-auto border-b border-border bg-bg [scrollbar-width:none]"
-        >
-          {TABS.map((k, i) => (
-            <button
-              key={k}
-              id={`run-tab-${k}`}
-              type="button"
-              role="tab"
-              aria-selected={tab === k}
-              aria-controls={`run-panel-${k}`}
-              tabIndex={tab === k ? 0 : -1}
-              onClick={() => pick(k)}
-              onKeyDown={(e) => onTabKey(e, i)}
-              className={
-                "-mb-px inline-flex items-baseline gap-1.5 border-b-2 px-3 pt-2 pb-2.5 text-sm whitespace-nowrap transition-colors " +
-                (tab === k
-                  ? "border-accent-strong text-ink"
-                  : "border-transparent text-muted hover:text-ink")
-              }
-            >
-              {labels[k]}
-              {counts[k] !== null && (
-                <span className="rounded-full bg-active px-1.5 font-mono text-[12px] text-ink-dim">
-                  {counts[k]}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        <div
-          role="tabpanel"
-          id={`run-panel-${tab}`}
-          aria-labelledby={`run-tab-${tab}`}
-        >
-          {tab === "overview" && <Overview d={d} />}
-          {tab === "findings" && <Findings d={d} pr={pr} />}
-          {tab === "cost" && <CostTab call={call} />}
-          {tab === "input" && <InputTab p={d.detail} />}
         </div>
       </div>
-    </div>
+
+      <div className="mt-5">
+        <Tiles>
+          <Tile label={t("run.cost")} value={money(d.cost_usd ?? null)} />
+          <Tile label={t("run.elapsed")} value={duration(d.elapsed_ms)}>
+            {call?.headers_ms != null && (
+              <div className="mt-0.5 text-[12px] text-faint">
+                {t("run.inModel", { time: duration(call.headers_ms) })}
+              </div>
+            )}
+          </Tile>
+          <Tile
+            label={t("run.findings")}
+            value={d.run ? d.run.findings_posted : "—"}
+          >
+            {d.fixed.length > 0 && (
+              <div className="mt-0.5 text-[12px] text-faint">
+                {t("run.fixedEarlier", { count: d.fixed.length })}
+              </div>
+            )}
+          </Tile>
+          <Tile
+            label={t("run.tokens")}
+            value={
+              inTokens === null && outTokens === null
+                ? "—"
+                : ((inTokens ?? 0) + (outTokens ?? 0)).toLocaleString()
+            }
+          >
+            {inTokens ? (
+              <div className="mt-0.5 text-[12px] text-faint">
+                {t("run.fromCache", {
+                  pct: Math.round(((cached ?? 0) / inTokens) * 100),
+                })}
+              </div>
+            ) : null}
+          </Tile>
+        </Tiles>
+      </div>
+
+      <div
+        role="tablist"
+        aria-label={t("run.tabsLabel")}
+        className="sticky top-0 z-10 mt-6 mb-4 flex gap-0.5 overflow-x-auto border-b border-border bg-bg [scrollbar-width:none]"
+      >
+        {TABS.map((k, i) => (
+          <button
+            key={k}
+            id={`run-tab-${k}`}
+            type="button"
+            role="tab"
+            aria-selected={tab === k}
+            aria-controls={`run-panel-${k}`}
+            tabIndex={tab === k ? 0 : -1}
+            onClick={() => pick(k)}
+            onKeyDown={(e) => onTabKey(e, i)}
+            className={
+              "-mb-px inline-flex items-baseline gap-1.5 border-b-2 px-3 pt-2 pb-2.5 text-sm whitespace-nowrap transition-colors " +
+              (tab === k
+                ? "border-accent-strong text-ink"
+                : "border-transparent text-muted hover:text-ink")
+            }
+          >
+            {labels[k]}
+            {counts[k] !== null && (
+              <span className="rounded-full bg-active px-1.5 font-mono text-[12px] text-ink-dim">
+                {counts[k]}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      <div
+        role="tabpanel"
+        id={`run-panel-${tab}`}
+        aria-labelledby={`run-tab-${tab}`}
+      >
+        {tab === "overview" && <Overview d={d} />}
+        {tab === "findings" && <Findings d={d} pr={pr} />}
+        {tab === "cost" && <CostTab call={call} />}
+        {tab === "input" && <InputTab p={d.detail} />}
+      </div>
+    </>
   );
 }
 

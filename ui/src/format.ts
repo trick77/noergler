@@ -76,6 +76,14 @@ function roundToCents(usd: string): string {
   return `${sign}${digits.slice(0, -2)}.${digits.slice(-2)}`;
 }
 
+/** when is a timestamp in the viewer's short date and time, for a list. */
+export function when(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+}
+
 /** duration is a wall-clock span for a table cell. */
 export function duration(ms: number | null): string {
   if (ms === null) return "—";
