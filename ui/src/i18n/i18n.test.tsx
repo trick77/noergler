@@ -114,7 +114,7 @@ describe("German UI", () => {
   it("renders a page with its markup intact", () => {
     render(<FaqPage />);
     expect(
-      screen.getByText("Warum wurde mein PR nicht reviewt?"),
+      screen.getByText("Warum wurde mein PR nicht geprüft?"),
     ).toBeDefined();
     expect(screen.getByText("AGENTS.md fehlt")).toBeDefined();
     expect(screen.getByText("noergloff")).toBeDefined();
