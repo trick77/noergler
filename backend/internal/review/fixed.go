@@ -93,7 +93,7 @@ func (r *Reviewer) retireFixed(ctx context.Context, plan *reviewPlan, fixed []st
 				}
 			} else {
 				replied = true
-				r.recordBotReply(ctx, store.PRKey{Project: plan.project, Repo: plan.repo, PRID: plan.prID}, posted, store.BotReplyFixed)
+				r.recordBotReply(ctx, plan.key, posted, store.BotReplyFixed)
 				if err := r.bitbucket.ResolveCommentThread(ctx, plan.project, plan.repo, plan.prID, *cid); err != nil {
 					r.log.WarnContext(ctx, plan.prTag+": resolving a fixed finding's thread failed", logging.Err(err))
 				} else {

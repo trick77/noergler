@@ -191,16 +191,18 @@ func (f *fakeBitbucket) setComment(id int, text string, version int) {
 type fakeStore struct {
 	mu sync.Mutex
 
-	prID       int64
-	prToken    string
-	skipState  *store.SkipState
-	lastCommit string
-	hasLast    bool
-	lastErr    error
-	summary    *store.SummaryComment
-	existing   []store.Finding
-	prCost     *int64
-	rollup     *store.RollupSnapshot
+	prID      int64
+	prToken   string
+	skipState *store.SkipState
+	// skipStateErr fails GetSkipState alone, the other reads untouched.
+	skipStateErr error
+	lastCommit   string
+	hasLast      bool
+	lastErr      error
+	summary      *store.SummaryComment
+	existing     []store.Finding
+	prCost       *int64
+	rollup       *store.RollupSnapshot
 	// languages is user_settings, keyed by lower-cased user name.
 	languages map[string]lang.Lang
 	status    *store.PRStatus
@@ -311,6 +313,9 @@ func (f *fakeStore) GetSummaryComment(context.Context, int64) (*store.SummaryCom
 func (f *fakeStore) GetSkipState(context.Context, store.PRKey) (*store.SkipState, error) {
 	if err := f.err(); err != nil {
 		return nil, err
+	}
+	if f.skipStateErr != nil {
+		return nil, f.skipStateErr
 	}
 	return f.skipState, nil
 }

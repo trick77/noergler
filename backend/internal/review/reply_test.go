@@ -462,6 +462,8 @@ func TestReplyUnderNoerglersAnswerIsAnsweredLikeAMention(t *testing.T) {
 	under := func(kind, author string) (*harness, *webhook.Payload) {
 		h := newHarness(t, nil)
 		h.r.mentionTmpl = prompts.Mention
+		// A bot reply implies the PR's row: the mention path writes it first.
+		h.st.skipState = &store.SkipState{}
 		h.st.botReplies = map[int]*store.BotReply{600: {CommentID: 600, Kind: kind}}
 		answer := &bitbucket.Comment{ID: 600, Version: 1, Text: "Three settings: a, b and c."}
 		answer.Author.Name = "noergler"
@@ -514,5 +516,24 @@ func TestReplyUnderNoerglersAnswerIsAnsweredLikeAMention(t *testing.T) {
 	h.r.HandleFindingReply(context.Background(), p, "platform", nil)
 	if len(h.llm.Mentions)+len(h.bb.Replies) != 0 {
 		t.Error("with the store down a reply under the bot's answer stays unanswered")
+	}
+
+	// The skip state unread but the bot reply found: not answered, so an
+	// ignored PR cannot be reactivated behind a failed read.
+	h, p = under(store.BotReplyQuestion, "bob")
+	h.st.skipStateErr = errors.New("db hiccup")
+	if handled, _ := h.r.HandleFindingReply(context.Background(), p, "platform", nil); !handled {
+		t.Error("handled: refused, not passed on")
+	}
+	if len(h.llm.Mentions)+len(h.bb.Replies) != 0 || h.st.Reactived != 0 {
+		t.Error("with the skip state unread a reply under the bot's answer stays unanswered and reactivates nothing")
+	}
+
+	// A closed PR: nothing is read, nothing answered.
+	h, p = under(store.BotReplyQuestion, "bob")
+	p.PullRequest.State = "MERGED"
+	h.r.HandleFindingReply(context.Background(), p, "platform", nil)
+	if len(h.llm.Mentions)+len(h.bb.Replies) != 0 {
+		t.Error("a reply on a merged PR stays unanswered")
 	}
 }
