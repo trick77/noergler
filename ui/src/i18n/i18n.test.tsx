@@ -54,6 +54,15 @@ describe("catalogs", () => {
       expect([k, v.includes("ß")]).toEqual([k, false]);
     }
   });
+
+  // Words a sweep once had to hunt out of the catalog (user, 2026-10-22):
+  // Denglish verbs, colloquial contractions and slang.
+  it("keep the German professional", () => {
+    const banned = /\b(reviewt|gereviewt|Verdikt|kaputt|aufs|rein|raus)\b/i;
+    for (const [k, v] of Object.entries(deLeaves)) {
+      expect([k, banned.exec(v)?.[0] ?? null]).toEqual([k, null]);
+    }
+  });
 });
 
 describe("German UI", () => {
@@ -114,7 +123,7 @@ describe("German UI", () => {
   it("renders a page with its markup intact", () => {
     render(<FaqPage />);
     expect(
-      screen.getByText("Warum wurde mein PR nicht reviewt?"),
+      screen.getByText("Warum wurde mein PR nicht geprüft?"),
     ).toBeDefined();
     expect(screen.getByText("AGENTS.md fehlt")).toBeDefined();
     expect(screen.getByText("noergloff")).toBeDefined();
