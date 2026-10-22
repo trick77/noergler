@@ -299,7 +299,7 @@ export const de = {
     suggestion: "Vorschlag",
     dispute: "Antwort des Autors",
     tokensTitle: "Tokens",
-    tokensTotal: "{{total}} insgesamt",
+    tokensTotal: "Total {{total}}",
     input: "Input",
     output: "Output",
     uncached: "Input ohne Cache",
@@ -309,7 +309,7 @@ export const de = {
     reasoning: "Reasoning",
     absent: "nicht gemeldet",
     costTitle: "Kosten",
-    lane: "Posten",
+    lane: "Position",
     usd: "USD",
     share: "Anteil",
     laneInput: "Input ohne Cache",
@@ -422,7 +422,7 @@ export const de = {
       "Übersprungen heisst, noergler hat das Modell nie gefragt. Fehlgeschlagen heisst, er hat gefragt und dabei ist ein Fehler aufgetreten.",
     agentsQ: "AGENTS.md",
     agentsA1:
-      "Dagegen prüft das Review deinen Code: die Konventionen und Einschränkungen, die man einem neuen Reviewer in deinem Team erklären müsste. Lege die Datei in das Root des Repos.",
+      "Dagegen prüft das Review deinen Code: die Konventionen und Einschränkungen, die man einem neuen Reviewer in deinem Team erklären müsste. Lege die Datei ins Root des Repos.",
     agentsA2:
       "Kein AGENTS.md, kein Review. Die Zusammenfassung sagt das, statt zu schweigen, damit ein PR ohne Review nie ein Rätsel ist.",
     agentsA3:
