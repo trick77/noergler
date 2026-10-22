@@ -61,23 +61,37 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		r.log.ErrorContext(ctx, "Could not extract project/repo from webhook payload")
 		return !mentioned, false
 	}
-	// A reply on the summary is addressed to the bot: answered like a mention,
-	// from anyone (user, 2026-10-19). A mention there is one already.
+	// A reply on the summary, or directly under any reply the bot posted,
+	// is addressed to the bot: answered like a mention, from anyone (user,
+	// 2026-10-19 and 2026-10-22). A mention there is one already. Two DB
+	// reads on the worker for every plain reply, accepted: replies are rare
+	// next to reviews. Not on an ignored PR: a plain reply never brings a
+	// PR back, only an @mention does (decided).
 	if !mentioned {
-		if st := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
+		st := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
 			return r.store.GetSkipState(ctx, key)
-		}); st != nil && st.Summary != nil && st.Summary.ID == payload.CommentParentID {
+		})
+		if st != nil && st.Summary != nil && st.Summary.ID == payload.CommentParentID {
 			r.log.InfoContext(ctx, prTag+": reply on the summary, answered like a mention")
+			return true, r.HandleMention(ctx, payload, team, sched)
+		}
+		if b := safeDB(ctx, r.log, "BotReplyByComment", func() (*store.BotReply, error) {
+			return r.store.BotReplyByComment(ctx, key, payload.CommentParentID)
+		}); b != nil {
+			if st != nil && st.IgnoredAt != nil {
+				r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on noergler's %s answer not answered: PR is ignored", prTag, b.Kind))
+				return true, false
+			}
+			r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on noergler's %s answer, answered like a mention", prTag, b.Kind))
 			return true, r.HandleMention(ctx, payload, team, sched)
 		}
 	}
 	pr := payload.PullRequest
 	author := pr.Author.User.Name
-	// The cheap checks first, before a DB lookup on the single worker. These
-	// replies are excluded by design, not refused, so they log at Debug: a
-	// reviewer-to-reviewer exchange under a finding is no event.
+	// These replies are excluded by design, not refused, so they log at
+	// Debug: a reviewer-to-reviewer exchange under a finding is no event.
 	if (pr.State != "" && pr.State != "OPEN") || author == "" || !strings.EqualFold(comment.Author.Name, author) {
-		r.log.DebugContext(ctx, prTag+": reply not answered: not the open PR's author")
+		r.log.DebugContext(ctx, fmt.Sprintf("%s: reply under comment %d not answered: not the open PR's author", prTag, payload.CommentParentID))
 		return !mentioned, false
 	}
 	// Only a reply directly under a finding's comment is found: Bitbucket
@@ -88,7 +102,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		return r.store.FindingByComment(ctx, key, payload.CommentParentID)
 	})
 	if f == nil {
-		r.log.DebugContext(ctx, prTag+": reply is not on a finding thread")
+		r.log.DebugContext(ctx, fmt.Sprintf("%s: reply under comment %d is not on a finding thread", prTag, payload.CommentParentID))
 		return false, false
 	}
 	where := fmt.Sprintf("%s:%d", f.FilePath, f.LineNumber)
@@ -279,7 +293,8 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 				fence + "markdown\n" + line + "\n" + fence
 		}
 	}
-	if err := r.bitbucket.ReplyToComment(ctx, j.project, j.repo, j.prID, j.replyTo, body); err != nil {
+	posted, err := r.bitbucket.ReplyToComment(ctx, j.project, j.repo, j.prID, j.replyTo, body)
+	if err != nil {
 		// The author resolved the thread between replying and our answer:
 		// nothing is wrong, and nothing posted means nothing stamped.
 		if bitbucket.ThreadResolved(err) {
@@ -289,6 +304,7 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 		r.log.ErrorContext(ctx, fmt.Sprintf("%s: reply on finding %s failed to post: %v", j.prTag, j.where, err))
 		return
 	}
+	r.recordBotReply(ctx, j.key, posted, store.BotReplyReply)
 	var stored *string
 	if dispute {
 		d := truncateRunes(j.text, disputeTextRunes)

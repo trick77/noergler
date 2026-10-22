@@ -142,6 +142,11 @@ func TestMentionQAPostsAThreadedReply(t *testing.T) {
 	if len(h.st.Runs) != 0 || len(h.bb.Posted) != 0 || len(h.bb.Inline) != 0 {
 		t.Error("Q&A must not write a run row or post comments")
 	}
+	// The answer's own id is kept, so a plain reply under it finds the bot.
+	if len(h.st.BotReplies) != 1 || h.st.BotReplies[0].Kind != store.BotReplyQuestion ||
+		h.bb.comments[h.st.BotReplies[0].CommentID] == nil {
+		t.Errorf("bot replies = %+v, want the posted answer's id as a question", h.st.BotReplies)
+	}
 }
 
 func TestMentionQAFailureReplies(t *testing.T) {

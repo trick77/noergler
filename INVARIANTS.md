@@ -62,6 +62,11 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   parent; a reply nested under another reply is not, known limit); a non-author `@bot`
   reply goes to the Q&A, a review-keyword one to the mention path (a review);
   nothing posted = nothing stamped.
+- Every reply the bot posts is stored (`bot_replies`, by comment id, with
+  its PR). A plain reply directly under one is a Q&A from anyone, like a
+  reply under the summary (user, 2026-10-22), matched from the DB, never by
+  fetching the parent; the finding-thread answer included (decided). Never
+  on an ignored PR: a plain reply never reactivates, only an `@mention`.
 - Q&A on a reply: the immediate parent goes into the prompt as untrusted
   data, below the diff (prefix cache), capped; never the stored summary;
   a failed fetch answers without it. Another person's parent: no name, the
@@ -124,8 +129,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   events only, never comments: a mention still answers; an excluded repo
   wins, user 2026-10-20) -> dispatch.
 - The mention gate is the route's; `HandleMention` does not check. One
-  exception, on the worker: a reply directly under the stored summary is a
-  mention, from anyone (user, 2026-10-19); nested under it, not.
+  exception, on the worker: a reply directly under the stored summary or
+  under a stored bot reply is a mention, from anyone (user, 2026-10-19,
+  2026-10-22); nested under either, not.
 - 404/503 for a slug before 401. `/onboard` and the settings PUT decode the
   body AFTER auth.
 - Response bodies are structs, never maps (`encoding/json` sorts map keys).

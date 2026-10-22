@@ -223,14 +223,18 @@ func (c *Client) PostPRComment(ctx context.Context, project, repo string, prID i
 	return created.ID, created.Version, nil
 }
 
-// ReplyToComment answers one comment in its thread.
-func (c *Client) ReplyToComment(ctx context.Context, project, repo string, prID, parentCommentID int, text string) error {
+// ReplyToComment answers one comment in its thread and returns the new
+// comment's id, so a later reply under it can be told apart from any other.
+func (c *Client) ReplyToComment(ctx context.Context, project, repo string, prID, parentCommentID int, text string) (int, error) {
+	var created struct {
+		ID int `json:"id"`
+	}
 	payload := map[string]any{"text": text, "parent": map[string]any{"id": parentCommentID}}
-	if err := c.do(ctx, http.MethodPost, prPath(project, repo, prID)+"/comments", nil, payload, nil); err != nil {
-		return err
+	if err := c.do(ctx, http.MethodPost, prPath(project, repo, prID)+"/comments", nil, payload, &created); err != nil {
+		return 0, err
 	}
 	c.log.InfoContext(ctx, fmt.Sprintf("Replied to comment %d on PR %d", parentCommentID, prID))
-	return nil
+	return created.ID, nil
 }
 
 // Comment is one PR comment as Bitbucket returns it.

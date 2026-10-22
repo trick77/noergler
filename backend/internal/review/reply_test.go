@@ -7,7 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/prompts"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
@@ -449,5 +451,68 @@ func TestReplyOnTheSummaryIsAnsweredLikeAMention(t *testing.T) {
 	h, p = summaryReply("@noergler Was für Team-Einstellungen gibt es?", 555)
 	if handled, _ := h.r.HandleFindingReply(context.Background(), p, "platform", nil); handled || len(h.llm.Mentions) != 0 {
 		t.Error("a mention on the summary goes to HandleMention from the route, not from here")
+	}
+}
+
+// A plain reply directly under any reply the bot posted (a Q&A answer, a
+// finding-thread answer) is addressed to the bot: a Q&A, whoever asks, with
+// the bot's own answer as the parent the model sees. Not on an ignored PR:
+// only an @mention brings a PR back.
+func TestReplyUnderNoerglersAnswerIsAnsweredLikeAMention(t *testing.T) {
+	under := func(kind, author string) (*harness, *webhook.Payload) {
+		h := newHarness(t, nil)
+		h.r.mentionTmpl = prompts.Mention
+		h.st.botReplies = map[int]*store.BotReply{600: {CommentID: 600, Kind: kind}}
+		answer := &bitbucket.Comment{ID: 600, Version: 1, Text: "Three settings: a, b and c."}
+		answer.Author.Name = "noergler"
+		h.bb.comments[600] = answer
+		h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "b is the ignore list."}
+		p := prPayload(webhook.EventCommentAdded)
+		p.Comment = &webhook.Comment{ID: 900, Text: "Und was ist b?", Author: webhook.User{Name: author}}
+		p.CommentParentID = 600
+		return h, p
+	}
+	answered := func(t *testing.T, h *harness, p *webhook.Payload) {
+		t.Helper()
+		if handled, _ := h.r.HandleFindingReply(context.Background(), p, "platform", nil); !handled {
+			t.Error("a reply under the bot's answer must be handled here")
+		}
+		if len(h.llm.Mentions) != 1 || len(h.llm.Replies) != 0 || len(h.bb.Replies) != 1 || h.bb.Replies[0].Line != 900 {
+			t.Fatalf("mentions = %d, finding replies = %d, replies = %+v, want one Q&A answer under comment 900",
+				len(h.llm.Mentions), len(h.llm.Replies), h.bb.Replies)
+		}
+		if prompt := h.llm.Mentions[0].Prompt; !strings.Contains(prompt, "Three settings: a, b and c.") ||
+			!strings.Contains(prompt, "this bot") {
+			t.Errorf("the model must see the bot's own answer as the parent:\n%s", prompt)
+		}
+	}
+
+	// Not the author: "bob" asked, the bot answered, bob asks on.
+	h, p := under(store.BotReplyQuestion, "bob")
+	answered(t, h, p)
+
+	// The author, under the bot's answer on a finding thread (decided):
+	// a Q&A, not a second finding reply.
+	h, p = under(store.BotReplyReply, "alice")
+	answered(t, h, p)
+
+	// An ignored PR stays ignored: no answer, no reactivation.
+	h, p = under(store.BotReplyQuestion, "bob")
+	at := time.Now()
+	h.st.skipState = &store.SkipState{IgnoredAt: &at}
+	if handled, _ := h.r.HandleFindingReply(context.Background(), p, "platform", nil); !handled {
+		t.Error("a reply under the bot's answer on an ignored PR is handled: refused, not passed on")
+	}
+	if len(h.llm.Mentions)+len(h.bb.Replies) != 0 || h.st.Reactived != 0 {
+		t.Errorf("mentions = %d, replies = %d, reactivated = %d: a plain reply never brings a PR back",
+			len(h.llm.Mentions), len(h.bb.Replies), h.st.Reactived)
+	}
+
+	// The store down: the lookup fails open to "not the bot's", unanswered.
+	h, p = under(store.BotReplyQuestion, "bob")
+	h.st.failAll = true
+	h.r.HandleFindingReply(context.Background(), p, "platform", nil)
+	if len(h.llm.Mentions)+len(h.bb.Replies) != 0 {
+		t.Error("with the store down a reply under the bot's answer stays unanswered")
 	}
 }

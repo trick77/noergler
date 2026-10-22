@@ -83,7 +83,7 @@ func (r *Reviewer) retireFixed(ctx context.Context, plan *reviewPlan, fixed []st
 		replied, resolved := false, false
 		if cid := f.BitbucketCommentID; cid != nil {
 			reply := plan.lang.Pick("Behoben in `", "Fixed in `") + shortSHA(plan.sourceCommit, 8) + "`."
-			if err := r.bitbucket.ReplyToComment(ctx, plan.project, plan.repo, plan.prID, *cid, reply); err != nil {
+			if posted, err := r.bitbucket.ReplyToComment(ctx, plan.project, plan.repo, plan.prID, *cid, reply); err != nil {
 				// Usually the author resolved the thread already: Bitbucket
 				// takes no reply on a resolved one.
 				if bitbucket.ThreadResolved(err) {
@@ -93,6 +93,7 @@ func (r *Reviewer) retireFixed(ctx context.Context, plan *reviewPlan, fixed []st
 				}
 			} else {
 				replied = true
+				r.recordBotReply(ctx, store.PRKey{Project: plan.project, Repo: plan.repo, PRID: plan.prID}, posted, store.BotReplyFixed)
 				if err := r.bitbucket.ResolveCommentThread(ctx, plan.project, plan.repo, plan.prID, *cid); err != nil {
 					r.log.WarnContext(ctx, plan.prTag+": resolving a fixed finding's thread failed", logging.Err(err))
 				} else {

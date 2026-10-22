@@ -348,6 +348,52 @@ func (s *Store) FindingByComment(ctx context.Context, k PRKey, commentID int) (*
 	return &f, nil
 }
 
+// Bot reply kinds: what noergler posted, for the log line of a reply under it.
+const (
+	BotReplyQuestion = "question" // a Q&A answer, a notice or a language confirmation
+	BotReplyReply    = "reply"    // the answer on a finding's thread
+	BotReplyFixed    = "fixed"    // the "Fixed in" reply on a retired finding
+)
+
+// BotReply is one reply noergler posted, by its Bitbucket comment id.
+type BotReply struct {
+	CommentID int
+	Kind      string
+}
+
+// InsertBotReply records a reply noergler posted on a PR. A PR without a
+// row records nothing (a language confirmation on a PR never reviewed or
+// asked about), and a replayed id is kept once.
+func (s *Store) InsertBotReply(ctx context.Context, k PRKey, commentID int, kind string) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO bot_replies (pull_request_id, comment_id, kind)
+		SELECT id, $4, $5 FROM pull_requests
+		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
+		ON CONFLICT DO NOTHING`,
+		k.Project, k.Repo, k.PRID, commentID, kind)
+	return err
+}
+
+// BotReplyByComment is the reply noergler posted as commentID on that PR,
+// or nil. Scoped like FindingByComment: a comment id from another team's PR
+// finds nothing, and a merged or deleted PR is not answered on.
+func (s *Store) BotReplyByComment(ctx context.Context, k PRKey, commentID int) (*BotReply, error) {
+	var b BotReply
+	err := s.pool.QueryRow(ctx, `
+		SELECT b.comment_id, b.kind
+		FROM bot_replies b JOIN pull_requests p ON b.pull_request_id = p.id
+		WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3 AND p.`+activeFilter+`
+			AND b.comment_id = $4`,
+		k.Project, k.Repo, k.PRID, commentID).Scan(&b.CommentID, &b.Kind)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &b, nil
+}
+
 // MarkFindingReplied records the one answer on a finding's thread. A
 // non-nil dispute is the author's case against the finding. The first
 // answer wins: a finding is answered once.

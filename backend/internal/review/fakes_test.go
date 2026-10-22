@@ -131,15 +131,21 @@ func (f *fakeBitbucket) PostPRComment(_ context.Context, _, _ string, prID int, 
 	return f.nextCommentID, 1, nil
 }
 
-func (f *fakeBitbucket) ReplyToComment(_ context.Context, _, _ string, prID, parent int, text string) error {
+// ReplyToComment hands out the next comment id and keeps the reply as the
+// bot's own comment, so a later parent fetch sees it as such.
+func (f *fakeBitbucket) ReplyToComment(_ context.Context, _, _ string, prID, parent int, text string) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.Calls = append(f.Calls, fmt.Sprintf("reply:%d", parent))
 	if f.replyErr != nil {
-		return f.replyErr
+		return 0, f.replyErr
 	}
+	f.nextCommentID++
 	f.Replies = append(f.Replies, postedComment{PRID: prID, Text: text, Line: parent})
-	return nil
+	c := &bitbucket.Comment{ID: f.nextCommentID, Text: text, Version: 1}
+	c.Author.Name = f.bot
+	f.comments[f.nextCommentID] = c
+	return f.nextCommentID, nil
 }
 
 func (f *fakeBitbucket) ResolveCommentThread(_ context.Context, _, _ string, _, commentID int) error {
@@ -228,6 +234,9 @@ type fakeStore struct {
 	// byComment serves FindingByComment; Replied records MarkFindingReplied.
 	byComment map[int]*store.Finding
 	Replied   []repliedCall
+	// botReplies serves BotReplyByComment; BotReplies records InsertBotReply.
+	botReplies map[int]*store.BotReply
+	BotReplies []store.BotReply
 }
 
 type repliedCall struct {
@@ -466,6 +475,30 @@ func (f *fakeStore) SetUserLanguage(_ context.Context, userName string, l lang.L
 	}
 	f.languages[strings.ToLower(userName)] = l
 	return nil
+}
+
+func (f *fakeStore) InsertBotReply(_ context.Context, _ store.PRKey, commentID int, kind string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return err
+	}
+	b := store.BotReply{CommentID: commentID, Kind: kind}
+	f.BotReplies = append(f.BotReplies, b)
+	if f.botReplies == nil {
+		f.botReplies = map[int]*store.BotReply{}
+	}
+	f.botReplies[commentID] = &b
+	return nil
+}
+
+func (f *fakeStore) BotReplyByComment(_ context.Context, _ store.PRKey, commentID int) (*store.BotReply, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return nil, err
+	}
+	return f.botReplies[commentID], nil
 }
 
 func (f *fakeStore) MarkFindingReplied(_ context.Context, findingID int64, dispute *string) error {
