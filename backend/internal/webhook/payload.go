@@ -17,6 +17,7 @@ import (
 const (
 	EventOpened         = "pr:opened"
 	EventFromRefUpdated = "pr:from_ref_updated"
+	EventModified       = "pr:modified"
 	EventMerged         = "pr:merged"
 	EventDeclined       = "pr:declined"
 	EventDeleted        = "pr:deleted"
@@ -89,6 +90,9 @@ type PullRequest struct {
 	Author      Participant `json:"author"`
 	CreatedDate int64       `json:"createdDate"` // Bitbucket epoch milliseconds
 	Properties  *Properties `json:"properties"`
+	// Draft is Bitbucket's draft flag (DC 8.18+). A draft is the bot's turn: it is
+	// reviewed like any PR (user, 2026-10-22).
+	Draft bool `json:"draft"`
 }
 
 // Comment is the comment on a pr:comment:* event.
@@ -107,6 +111,16 @@ type Payload struct {
 	// comment. Bitbucket sends it beside the comment, not inside it.
 	CommentParentID int   `json:"commentParentId"`
 	Actor           *User `json:"actor"`
+	// PreviousDraft is sent on pr:modified only: the draft flag before the
+	// edit. nil when absent, so a payload without it never reads as "was
+	// not a draft".
+	PreviousDraft *bool `json:"previousDraft"`
+}
+
+// LeftDraft reports a pr:modified that took the PR out of draft: the
+// author's handoff from the bot to human reviewers.
+func (p *Payload) LeftDraft() bool {
+	return p.EventKey == EventModified && p.PreviousDraft != nil && *p.PreviousDraft && !p.PullRequest.Draft
 }
 
 // ErrInvalidPayload is returned when a required field is missing.

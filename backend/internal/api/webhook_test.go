@@ -69,6 +69,9 @@ func (f *fakeReviewer) HandlePRDeclined(context.Context, *webhook.Payload) {
 func (f *fakeReviewer) HandlePRDeleted(context.Context, *webhook.Payload) {
 	f.calls = append(f.calls, "deleted")
 }
+func (f *fakeReviewer) HandleReadyForReview(context.Context, *webhook.Payload) {
+	f.calls = append(f.calls, "ready-for-review")
+}
 func (f *fakeReviewer) IsAutoReviewAuthor(string) bool { return true }
 func (f *fakeReviewer) SetAuthorLists(_, _ []string)   {}
 func (f *fakeReviewer) SetUsePRDescription(on bool)    { f.usePRDescription = &on }
@@ -550,6 +553,9 @@ func TestWebhook_DispatchTable(t *testing.T) {
 			map[string]any{"status": "accepted", "reason": "comment-deleted"}, "comment-deleted"},
 		{webhook.EventCommentAdded, `,"comment":{"id":7,"text":"@noergler please look","author":{"name":"bob"}}`,
 			map[string]any{"status": "accepted", "reason": "mention", "queue": "queued"}, "mention"},
+		// The PR in payloadJSON is not a draft: previousDraft true is the flip.
+		{webhook.EventModified, `,"previousDraft":true`,
+			map[string]any{"status": "accepted", "reason": "ready-for-review", "queue": "queued"}, "ready-for-review"},
 	}
 	for _, c := range cases {
 		t.Run(c.event, func(t *testing.T) {
@@ -598,6 +604,44 @@ func TestWebhook_UnhandledPREventIsIgnoredAndWarns(t *testing.T) {
 	if len(h.q.tags) != 0 || len(h.q.keys) != 0 {
 		t.Error("an unhandled event must not reach the queue")
 	}
+}
+
+// pr:modified also carries title, description, reviewer and target edits,
+// and the flip back to draft: none of them is ours, none warns, none queues.
+func TestWebhook_ModifiedOtherThanLeavingDraftIsIgnoredQuietly(t *testing.T) {
+	cases := map[string][]byte{
+		"title edit, no previousDraft": payloadJSON(webhook.EventModified, ""),
+		"ready -> draft": []byte(strings.Replace(string(payloadJSON(webhook.EventModified, `,"previousDraft":false`)),
+			`"state":"OPEN"`, `"state":"OPEN","draft":true`, 1)),
+		"draft stays draft": []byte(strings.Replace(string(payloadJSON(webhook.EventModified, `,"previousDraft":true`)),
+			`"state":"OPEN"`, `"state":"OPEN","draft":true`, 1)),
+		"ready stays ready": payloadJSON(webhook.EventModified, `,"previousDraft":false`),
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t, nil)
+			w := h.signedPost(t, body)
+			wantBody(t, w, http.StatusOK, map[string]any{
+				"status": "ignored", "reason": "pr modified, not draft -> ready",
+			})
+			if len(h.q.tags) != 0 || len(h.q.keys) != 0 {
+				t.Error("a pr:modified that is not draft -> ready must not reach the queue")
+			}
+			if strings.Contains(h.logs.String(), "Unhandled event") {
+				t.Errorf("pr:modified is subscribed, it must not warn: %s", h.logs.String())
+			}
+		})
+	}
+}
+
+// The handoff is no review: the branch globs carve out reviews only, so a
+// draft flip on an excluded branch still reaches the handler.
+func TestWebhook_LeavingDraftPassesTheBranchGlobs(t *testing.T) {
+	h := newHarness(t, func(team *config.Team) { team.Review.ExcludeSourceBranches = []string{"*"} })
+	w := h.signedPost(t, payloadJSON(webhook.EventModified, `,"previousDraft":true`))
+	wantBody(t, w, http.StatusOK, map[string]any{
+		"status": "accepted", "reason": "ready-for-review", "queue": "queued",
+	})
 }
 
 // --- the mention gate -------------------------------------------------------

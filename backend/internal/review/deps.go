@@ -29,6 +29,7 @@ import (
 // BitbucketClient is the part of the Bitbucket adapter the pipeline uses.
 type BitbucketClient interface {
 	BotUsername() string
+	CommentURL(project, repo string, prID, commentID int) string
 	FetchPRDiff(ctx context.Context, project, repo string, prID, contextLines int) (string, error)
 	FetchPRChanges(ctx context.Context, project, repo string, prID int) ([]string, error)
 	FetchCommitDiff(ctx context.Context, project, repo string, prID int, fromCommit, toCommit string) (string, error)

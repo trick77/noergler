@@ -132,6 +132,10 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   exception, on the worker: a reply directly under the stored summary or
   under a stored bot reply is a mention, from anyone (user, 2026-10-19,
   2026-10-22); nested under either, not.
+- `pr:modified` is never a review and never warns: only draft -> ready
+  (`previousDraft` true, `draft` false) is queued, every other edit is
+  ignored. Drafts are reviewed (user, 2026-10-22: a draft is the bot's
+  turn, ready the humans'); never add a draft guard.
 - 404/503 for a slug before 401. `/onboard` and the settings PUT decode the
   body AFTER auth.
 - Response bodies are structs, never maps (`encoding/json` sorts map keys).
@@ -189,6 +193,11 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   gets a result. Tool support
   is read off the profile at startup, never required: without it a Q&A is
   one plain call.
+- Draft -> ready handoff: no model call, no run, no attempt. Open = unfixed
+  in the DB and the Bitbucket thread unresolved; unreadable counts open,
+  deleted closed; findings unreadable from the DB leave the summary as it
+  is (never safeDB there: its "none" reads as "all closed"). Banner below cost and stale (their strippers look only at
+  the top); nothing open writes nothing but the removal of an old banner.
 - HTTP totals logged once at the end of `post`, never deferred in the entry.
   `post` runs on the review's ctx, never the job's.
 - The plan across stages carries no file bodies and no raw diff.

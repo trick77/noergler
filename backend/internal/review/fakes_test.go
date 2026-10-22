@@ -46,6 +46,7 @@ type fakeBitbucket struct {
 	files    map[string]string // "commit:path" -> content
 	fileErr  map[string]error
 	comments map[int]*bitbucket.Comment
+	fetchErr map[int]error // FetchPRComment fails for these ids
 
 	nextCommentID int
 	updateErr     error
@@ -80,6 +81,10 @@ func newFakeBitbucket() *fakeBitbucket {
 }
 
 func (f *fakeBitbucket) BotUsername() string { return f.bot }
+
+func (f *fakeBitbucket) CommentURL(project, repo string, prID, commentID int) string {
+	return fmt.Sprintf("https://bb.test/projects/%s/repos/%s/pull-requests/%d/overview?commentId=%d", project, repo, prID, commentID)
+}
 
 func (f *fakeBitbucket) FetchPRDiff(_ context.Context, _, _ string, _, _ int) (string, error) {
 	if f.onPRDiff != nil {
@@ -159,6 +164,9 @@ func (f *fakeBitbucket) FetchPRComment(_ context.Context, _, _ string, _, commen
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.FetchedC = append(f.FetchedC, commentID)
+	if err := f.fetchErr[commentID]; err != nil {
+		return nil, err
+	}
 	if c, ok := f.comments[commentID]; ok {
 		return c, nil
 	}
@@ -201,6 +209,7 @@ type fakeStore struct {
 	lastErr      error
 	summary      *store.SummaryComment
 	existing     []store.Finding
+	existingErr  error // fails ExistingFindings alone
 	prCost       *int64
 	rollup       *store.RollupSnapshot
 	// languages is user_settings, keyed by lower-cased user name.
@@ -519,6 +528,9 @@ func (f *fakeStore) MarkFindingReplied(_ context.Context, findingID int64, dispu
 func (f *fakeStore) ExistingFindings(context.Context, store.PRKey) ([]store.Finding, error) {
 	if err := f.err(); err != nil {
 		return nil, err
+	}
+	if f.existingErr != nil {
+		return nil, f.existingErr
 	}
 	return f.existing, nil
 }

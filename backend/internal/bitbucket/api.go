@@ -249,6 +249,8 @@ type Comment struct {
 	// Anchor is set on a file comment, nil on a general one. Bitbucket puts
 	// it on the thread's root only, not on its replies.
 	Anchor *CommentAnchor `json:"anchor"`
+	// ThreadResolved is set on a thread's root once someone resolved it.
+	ThreadResolved bool `json:"threadResolved"`
 }
 
 // CommentAnchor is where a file comment sits. Line is 0 on a comment on the

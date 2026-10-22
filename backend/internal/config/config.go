@@ -24,6 +24,7 @@ import (
 var RequiredWebhookEvents = []string{
 	"pr:opened",
 	"pr:from_ref_updated",
+	"pr:modified",
 	"pr:comment:added",
 	"pr:comment:deleted",
 	"pr:merged",

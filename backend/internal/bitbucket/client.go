@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -153,6 +154,16 @@ func New(cfg config.Bitbucket, log *slog.Logger) (*Client, error) {
 // BotUsername is the service account's name, which doubles as the @mention
 // trigger.
 func (c *Client) BotUsername() string { return c.botUsername }
+
+// CommentURL is the comment's place in the PR overview, for a link a human
+// follows from another comment. Built like the API paths (url.URL escapes
+// the path), so a key or slug that needs escaping links where it calls.
+func (c *Client) CommentURL(project, repo string, prID, commentID int) string {
+	u := *c.base
+	u.Path = c.base.Path + fmt.Sprintf("/projects/%s/repos/%s/pull-requests/%d/overview", project, repo, prID)
+	u.RawQuery = url.Values{"commentId": {strconv.Itoa(commentID)}}.Encode()
+	return u.String()
+}
 
 // WithToken returns a copy acting as a different user, for onboarding writes
 // made with a team admin's own token. The transport (and its pool) is shared.

@@ -215,6 +215,19 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 		d.Queue.SubmitJob(key, slug, "purge", func(ctx context.Context, _ teams.Scheduler) bool { rv.HandlePRDeleted(ctx, p); return false })
 		httpx.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "deleted-purge"})
 
+	case webhook.EventModified:
+		// Only draft -> ready is ours: the author hands the PR from the bot
+		// to human reviewers. Title, description, reviewer and target edits
+		// arrive here too and are nothing to act on, so no warning. Never a
+		// review: not in reviewEventKeys, so the branch globs do not apply.
+		if !p.LeftDraft() {
+			d.Log.DebugContext(ctx, "pr:modified ignored: not draft -> ready", "pr_id", p.PullRequest.ID)
+			httpx.WriteJSON(w, http.StatusOK, ignored{"ignored", "pr modified, not draft -> ready"})
+			return
+		}
+		d.Queue.SubmitJob(key, slug, "ready-for-review", func(ctx context.Context, _ teams.Scheduler) bool { rv.HandleReadyForReview(ctx, p); return false })
+		httpx.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "ready-for-review", Queue: "queued"})
+
 	case webhook.EventCommentDeleted:
 		d.Queue.SubmitJob(key, slug, "comment-deleted", func(ctx context.Context, _ teams.Scheduler) bool { rv.HandleCommentDeleted(ctx, p); return false })
 		httpx.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "comment-deleted"})

@@ -88,6 +88,15 @@ sed -e 's/"eventKey": "pr:opened"/"eventKey": "pr:comment:added"/' -e '$d' "$pay
 printf '%s\n' ',  "comment": {"id": 900, "text": "@bot why was this PR reviewed?", "author": {"name": "jan.username", "slug": "jan.username", "displayName": "Jan"}}' '}' >> "$mention"
 sleep 1
 echo "POST /webhook/$team (mention): $(PORT="$port" TEAM="$team" SECRET=s scripts/replay.sh "$mention" pr:comment:added)"
+# Draft -> ready: the handoff to humans. The fake serves the review's inline
+# comments with no threadResolved, so they count as open and the summary
+# gets the handoff banner (log: "N of M noergler threads open"; the JSON log
+# escapes the arrow before it as >, so grep for the words).
+ready="$tmp/ready.json"
+sed -e 's/"eventKey": "pr:opened"/"eventKey": "pr:modified"/' -e '$d' "$payload" > "$ready"
+printf '%s\n' ',  "previousDraft": true' '}' >> "$ready"
+sleep 1
+echo "POST /webhook/$team (draft -> ready): $(PORT="$port" TEAM="$team" SECRET=s scripts/replay.sh "$ready" pr:modified)"
 echo "POST /webhook/$team (bad signature): HTTP $(curl -s -o /dev/null -w '%{http_code}' -X POST \
   -H 'X-Hub-Signature: sha256=deadbeef' --data-binary "@$payload" "localhost:$port/webhook/$team")"
 
@@ -140,7 +149,7 @@ sleep 2
 kill -TERM "$pid"
 wait "$pid" || true
 echo "--- log"
-grep -E "version|Database|Bitbucket:|Jira:|team_disabled|team_ready|teams_ready|http_request|stopped|listening|DISABLED|queue\[|priced by the gateway|HTTP totals|cost headers|Review of |context_window |context window |PR description |calls, tools|A reply on" "$tmp/serve.log"
+grep -E "version|Database|Bitbucket:|Jira:|team_disabled|team_ready|teams_ready|http_request|stopped|listening|DISABLED|queue\[|priced by the gateway|HTTP totals|cost headers|Review of |context_window |context window |PR description |calls, tools|A reply on|noergler threads open" "$tmp/serve.log"
 echo "--- review posted"
 grep -c "comment posted" "$tmp/fakes.log" || true
 echo "--- onboarding writes seen by bitbucket (want a create, a grant and a refusal)"
