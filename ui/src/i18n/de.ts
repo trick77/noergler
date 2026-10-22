@@ -144,8 +144,8 @@ export const de = {
     byTeam: "Nach Team",
     nothingReviewed: "In diesem Zeitraum wurde nichts reviewt.",
     team: "Team",
-    tokensIn: "Tokens rein",
-    tokensOut: "Tokens raus",
+    tokensIn: "Input-Tokens",
+    tokensOut: "Output-Tokens",
   },
   teams: {
     failedWhat: "die Team-Liste",
@@ -179,7 +179,7 @@ export const de = {
     prompt: "Prompt zusammenstellen",
     queued: "Warten auf das AI Gateway",
     gateway: "AI-Gateway-Aufruf",
-    to_post: "Warten aufs Posten",
+    to_post: "Warten auf das Posten",
     validate: "Validieren, Duplikate, Limit",
     comments: "Inline-Kommentare posten",
     record: "Speichern und Zusammenfassung",
@@ -251,7 +251,7 @@ export const de = {
     howSent: "Wie gesendet",
     notPostedTitle: "Nicht gepostet",
     verdictLowered:
-      "Verdikt von {{model}} auf {{posted}} herabgestuft, nachdem Findings verworfen wurden.",
+      "Urteil von {{model}} auf {{posted}} herabgestuft, nachdem Findings verworfen wurden.",
     movedFrom: "verschoben von :{{line}}",
     title: "Run",
     failedWhat: "den Run",
@@ -299,7 +299,7 @@ export const de = {
     suggestion: "Vorschlag",
     dispute: "Antwort des Autors",
     tokensTitle: "Tokens",
-    tokensTotal: "{{total}} total",
+    tokensTotal: "{{total}} insgesamt",
     input: "Input",
     output: "Output",
     uncached: "Input ohne Cache",
@@ -334,7 +334,7 @@ export const de = {
     none: "keine",
     prCap: "PR-Limit",
     prOf: "{{cost}} von {{cap}}",
-    preExistingTitle: "Schon vor diesem PR kaputt",
+    preExistingTitle: "Schon vor diesem PR fehlerhaft",
   },
   pr: {
     title: "Pull Request",
@@ -369,7 +369,7 @@ export const de = {
     railNew: "{{count}} neu",
     railFixed: "{{count}} behoben",
     alsoOnPR: "Ebenfalls in diesem PR",
-    callsSub: "ohne eigenen Run und eigene Seite, im PR total enthalten",
+    callsSub: "ohne eigenen Run und eigene Seite, im PR-Total enthalten",
     findingsTitle: "Findings in diesem Pull Request",
     noFindings: "In diesem Pull Request wurden keine Findings gepostet.",
     findingsNote2:
@@ -391,7 +391,7 @@ export const de = {
     costTitle: "Kosten pro Run",
     noCost: "Kein Run dieses Pull Requests hat Kosten gemeldet.",
     costNote:
-      "Das PR total enthält die Antworten, mit ihren Kosten unter Antworten aufgeführt.",
+      "Das PR-Total enthält die Antworten, mit ihren Kosten unter Antworten aufgeführt.",
     tokensTitle: "Tokens, alle Runs",
   },
   faq: {
@@ -402,7 +402,7 @@ export const de = {
       not_auto_review_author:
         "Bitte deinen Team-Admin, dich aufzunehmen, oder erwähne den Bot im PR mit @.",
       ignored_author:
-        "Meistens ein Bot-Account. Frag deinen Team-Admin, falls nicht.",
+        "Meistens ein Bot-Account. Frage deinen Team-Admin, falls nicht.",
       branch_opt_out: "Dein Branch-Name enthält es. Siehe unten.",
       pr_ignored:
         "Jemand hat die Zusammenfassung gelöscht. Danach reviewt noergler diesen PR nie mehr.",
@@ -417,26 +417,26 @@ export const de = {
     },
     whyNotQ: "Warum wurde mein PR nicht reviewt?",
     whyNotA:
-      "Öffne <strong>Runs</strong>, filtere auf Übersprungen oder Fehlgeschlagen und such deinen PR. Der Grund steht neben dem Ergebnis. Was die Gründe bedeuten:",
+      "Öffne <strong>Runs</strong>, filtere auf Übersprungen oder Fehlgeschlagen und suche deinen PR. Der Grund steht neben dem Ergebnis. Was die Gründe bedeuten:",
     whyNotNote:
-      "Übersprungen heisst, noergler hat das Modell nie gefragt. Fehlgeschlagen heisst, er hat gefragt und etwas ging kaputt.",
+      "Übersprungen heisst, noergler hat das Modell nie gefragt. Fehlgeschlagen heisst, er hat gefragt und dabei ist ein Fehler aufgetreten.",
     agentsQ: "AGENTS.md",
     agentsA1:
-      "Dagegen prüft das Review deinen Code: die Konventionen und Einschränkungen, die man einem neuen Reviewer in deinem Team erklären müsste. Leg die Datei ins Root des Repos.",
+      "Dagegen prüft das Review deinen Code: die Konventionen und Einschränkungen, die man einem neuen Reviewer in deinem Team erklären müsste. Lege die Datei in das Root des Repos.",
     agentsA2:
       "Kein AGENTS.md, kein Review. Die Zusammenfassung sagt das, statt zu schweigen, damit ein PR ohne Review nie ein Rätsel ist.",
     agentsA3:
       "Halte es kurz. Die Zusammenfassung warnt schon lange vor dem Grössenlimit, und über dem Limit hören Reviews ganz auf.",
     stopQ: "Wie verhindere ich, dass noergler einen PR reviewt?",
     stopA1:
-      "Schreib <code>noergloff</code> irgendwo in den Namen des Source-Branch: <code>feature/noergloff-spike</code> wird nie automatisch reviewt.",
+      "Schreibe <code>noergloff</code> irgendwo in den Namen des Source-Branch: <code>feature/noergloff-spike</code> wird nie automatisch reviewt.",
     stopA2:
-      "Bei einem PR, der schon offen ist, lösch stattdessen die Zusammenfassung von noergler. Danach bleibt er diesem PR fern, und nichts holt ihn zurück.",
+      "Bei einem PR, der schon offen ist, lösche stattdessen die Zusammenfassung von noergler. Danach bleibt er diesem PR fern, und nichts holt ihn zurück.",
     stopA3:
       "Dein Team kann auch Branches per Muster ausschliessen, nach Source-Branch (<code>dependabot/*</code>) oder nach Target-Branch (<code>release/*</code>). Diese PRs werden nie automatisch reviewt; eine @Erwähnung funktioniert trotzdem.",
     askQ: "Wie frage ich noergler etwas?",
     askA1:
-      "Erwähne den Bot mit seinem Bitbucket-Benutzernamen in einem PR-Kommentar. Stell eine Frage, und er antwortet; verlang ein Review, und er macht eines.",
+      "Erwähne den Bot mit seinem Bitbucket-Benutzernamen in einem PR-Kommentar. Stelle eine Frage, und er antwortet; verlange ein Review, und er macht eines.",
     askA2:
       "Eine Erwähnung übergeht die Auto-Review-Liste, deshalb funktioniert sie auch bei PRs, die sonst nie reviewt würden. Das Kostenlimit übergeht sie nicht: Jede Antwort zählt dazu, und am Limit antwortet der Bot auch nicht mehr.",
     lessQ: "Warum hat das zweite Review weniger gesagt als das erste?",
@@ -450,7 +450,7 @@ export const de = {
     filesA1:
       "Quelldateien, die sich im PR geändert haben. Lock-Files, Vendor-Verzeichnisse, generierte Dateien und Binaries werden übersprungen.",
     filesA2:
-      "Dein Team kann auch ganze Repos nach Namen ausschliessen, standardmässig <code>*-infra</code>. Die werden nie reviewt, obwohl der Webhook für sie trotzdem auslöst.",
+      "Dein Team kann auch ganze Repos nach Namen ausschliessen, standardmässig <code>*-infra</code>. Diese werden nie reviewt, obwohl der Webhook für sie trotzdem auslöst.",
     apiQ: "Wo ist die API?",
     apiA1:
       "<docs>/api/docs</docs>. Repos beanspruchen und freigeben und die Autorenlisten ändern, ohne über deinen noergler-Admin zu gehen.",
