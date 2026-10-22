@@ -893,3 +893,53 @@ func TestSettings_PRDescriptionDefaultsOn(t *testing.T) {
 		t.Errorf("use_pr_description = false on a row that never set it")
 	}
 }
+
+// A reply the bot posted is found by its comment id on its PR only, is
+// gone with the PR, and is not found once the PR is merged.
+func TestBotReplies_FoundScopedAndGoneWithThePR(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	id := upsert(t, s, key, "a")
+
+	if err := s.InsertBotReply(ctx, key, 600, BotReplyQuestion); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.InsertBotReply(ctx, key, 600, BotReplyQuestion); err != nil {
+		t.Fatalf("a replayed id must be kept once, got %v", err)
+	}
+	b, err := s.BotReplyByComment(ctx, key, 600)
+	if err != nil || b == nil || b.CommentID != 600 || b.Kind != BotReplyQuestion {
+		t.Fatalf("bot reply = %+v, err = %v", b, err)
+	}
+	other := key
+	other.PRID++
+	if b, err := s.BotReplyByComment(ctx, other, 600); err != nil || b != nil {
+		t.Errorf("another PR's lookup = %+v, %v: the comment id is scoped to its PR", b, err)
+	}
+	if b, err := s.BotReplyByComment(ctx, key, 999); err != nil || b != nil {
+		t.Errorf("unknown comment = %+v, %v", b, err)
+	}
+	// A PR without a row records nothing and is no error: a language
+	// confirmation on a PR never reviewed.
+	if err := s.InsertBotReply(ctx, other, 601, BotReplyQuestion); err != nil {
+		t.Errorf("insert for a PR without a row = %v, want none", err)
+	}
+	if err := s.InsertBotReply(ctx, key, 602, "banner"); err == nil {
+		t.Error("an unknown kind must be refused by the schema")
+	}
+
+	if err := s.MarkMerged(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := s.BotReplyByComment(ctx, key, 600); b != nil {
+		t.Errorf("a merged PR's reply is still found: %+v", b)
+	}
+
+	if _, err := s.pool.Exec(ctx, `DELETE FROM pull_requests WHERE id = $1`, id); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM bot_replies`).Scan(&n); err != nil || n != 0 {
+		t.Errorf("bot_replies after the PR's delete = %d, %v, want none", n, err)
+	}
+}

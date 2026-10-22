@@ -679,8 +679,12 @@ func TestPostPRCommentVersionDefaultsToZero(t *testing.T) {
 
 func TestReplyToComment(t *testing.T) {
 	f, c := newFake(t, jsonReply(201, `{"id":5}`))
-	if err := c.ReplyToComment(context.Background(), "PROJ", "r", 1, 42, "Feedback noted"); err != nil {
+	id, err := c.ReplyToComment(context.Background(), "PROJ", "r", 1, 42, "Feedback noted")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if id != 5 {
+		t.Errorf("id = %d, want 5: the reply's own id, for a reply under it", id)
 	}
 	parent, _ := f.last().Body["parent"].(map[string]any)
 	if parent["id"] != float64(42) {

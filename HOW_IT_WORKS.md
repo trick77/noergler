@@ -292,7 +292,13 @@ comment, the answer names no one; under the asker's own, it names the asker.
 
 A reply directly under noergler's summary comment needs no mention either: the
 worker matches its parent against the stored summary id and answers it as a
-Q&A, whoever asks.
+Q&A, whoever asks. The same holds under any reply noergler posted (a Q&A
+answer, a finding-thread answer, a language confirmation): every reply the
+bot posts is stored by its comment id (`bot_replies`), and a plain reply
+directly under one is a Q&A too, whoever asks, with the bot's answer as the
+comment it sees. The original question above that answer is not shown
+(Bitbucket sends the immediate parent only). On a PR whose summary was
+deleted such a reply is not answered: only an `@mention` brings a PR back.
 
 The PR author's reply on one of noergler's finding threads needs no mention.
 The route queues any non-empty reply not written by the bot (Bitbucket's

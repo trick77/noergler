@@ -409,11 +409,21 @@ func (r *Reviewer) parentComment(ctx context.Context, key store.PRKey, prTag str
 }
 
 // reply posts a threaded reply, logging a failure rather than propagating it:
-// a mention that cannot be answered must not fail the webhook.
+// a mention that cannot be answered must not fail the webhook. What posted
+// is recorded as the bot's, so a plain reply under it is answered.
 func (r *Reviewer) reply(ctx context.Context, project, repo string, prID, parentID int, text string) {
-	if err := r.bitbucket.ReplyToComment(ctx, project, repo, prID, parentID, text); err != nil {
+	id, err := r.bitbucket.ReplyToComment(ctx, project, repo, prID, parentID, text)
+	if err != nil {
 		r.log.ErrorContext(ctx, fmt.Sprintf("Failed to post reply on %s/%s#%d: %v", project, repo, prID, err))
+		return
 	}
+	r.recordBotReply(ctx, store.PRKey{Project: project, Repo: repo, PRID: prID}, id, store.BotReplyQuestion)
+}
+
+// recordBotReply keeps the id of a reply the bot posted. Fail open: a
+// missed row only leaves a later reply under it unanswered.
+func (r *Reviewer) recordBotReply(ctx context.Context, key store.PRKey, commentID int, kind string) {
+	safeDBErr(ctx, r.log, "InsertBotReply", func() error { return r.store.InsertBotReply(ctx, key, commentID, kind) })
 }
 
 // extractQuestion strips the @trigger from a comment and trims the rest.

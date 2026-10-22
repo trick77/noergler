@@ -35,7 +35,7 @@ type BitbucketClient interface {
 	FetchFileContent(ctx context.Context, project, repo, commit, path string) (string, error)
 	PostInlineComment(ctx context.Context, project, repo string, prID int, file string, line int, body string) (int, error)
 	PostPRComment(ctx context.Context, project, repo string, prID int, text string) (id, version int, err error)
-	ReplyToComment(ctx context.Context, project, repo string, prID, parentCommentID int, text string) error
+	ReplyToComment(ctx context.Context, project, repo string, prID, parentCommentID int, text string) (int, error)
 	FetchPRComment(ctx context.Context, project, repo string, prID, commentID int) (*bitbucket.Comment, error)
 	UpdatePRComment(ctx context.Context, project, repo string, prID, commentID, version int, text string) (int, error)
 	ResolveCommentThread(ctx context.Context, project, repo string, prID, commentID int) error
@@ -91,6 +91,8 @@ type Store interface {
 	MarkFindingFixed(ctx context.Context, findingID, runID int64) error
 	FindingByComment(ctx context.Context, k store.PRKey, commentID int) (*store.Finding, error)
 	MarkFindingReplied(ctx context.Context, findingID int64, dispute *string) error
+	InsertBotReply(ctx context.Context, k store.PRKey, commentID int, kind string) error
+	BotReplyByComment(ctx context.Context, k store.PRKey, commentID int) (*store.BotReply, error)
 	PRCost(ctx context.Context, k store.PRKey) (*int64, error)
 	PRCapState(ctx context.Context, k store.PRKey) (int64, *int64, error)
 	InsertCommentCall(ctx context.Context, team string, k store.PRKey, kind string, commentID int64, c store.LLMCall) error
