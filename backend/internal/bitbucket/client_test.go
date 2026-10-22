@@ -722,6 +722,27 @@ func TestFetchPRCommentReadsAuthorAndAnchor(t *testing.T) {
 	}
 }
 
+// The handoff counts a resolved thread as closed.
+func TestFetchPRCommentReadsThreadResolved(t *testing.T) {
+	_, c := newFake(t, jsonReply(200, `{"id":44,"version":2,"text":"x","threadResolved":true}`))
+	got, err := c.FetchPRComment(context.Background(), "PROJ", "r", 1, 44)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.ThreadResolved {
+		t.Errorf("threadResolved not read: %+v", got)
+	}
+}
+
+func TestCommentURL(t *testing.T) {
+	_, c := newFake(t, jsonReply(200, `{}`))
+	got := c.CommentURL("PROJ", "my-repo", 7, 501)
+	if !strings.HasSuffix(got, "/projects/PROJ/repos/my-repo/pull-requests/7/overview?commentId=501") ||
+		strings.Contains(got, "/rest/") || strings.Contains(got, "//projects") {
+		t.Errorf("CommentURL = %q", got)
+	}
+}
+
 func TestUpdatePRComment(t *testing.T) {
 	f, c := newFake(t, jsonReply(200, `{"id":42,"version":4}`))
 	version, err := c.UpdatePRComment(context.Background(), "PROJ", "r", 1, 42, 3, "new text")

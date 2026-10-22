@@ -154,6 +154,14 @@ func New(cfg config.Bitbucket, log *slog.Logger) (*Client, error) {
 // trigger.
 func (c *Client) BotUsername() string { return c.botUsername }
 
+// CommentURL is the comment's place in the PR overview, for a link a human
+// follows from another comment. The project and repo come from the
+// authenticated webhook, as everywhere else on the API paths.
+func (c *Client) CommentURL(project, repo string, prID, commentID int) string {
+	return fmt.Sprintf("%s/projects/%s/repos/%s/pull-requests/%d/overview?commentId=%d",
+		c.base.String(), project, repo, prID, commentID)
+}
+
 // WithToken returns a copy acting as a different user, for onboarding writes
 // made with a team admin's own token. The transport (and its pool) is shared.
 func (c *Client) WithToken(token string) *Client {

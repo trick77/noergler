@@ -64,7 +64,7 @@ func TestIsOursNeedsTheTrailingSlash(t *testing.T) {
 // reworded diff is a behavior change and must fail here.
 func TestDiffWebhook(t *testing.T) {
 	o := newOnboarder(t, newTeam(whole("PROJ")), &fakeAdmin{}, botReading(), Options{})
-	allMissing := "events: missing=['pr:comment:added', 'pr:comment:deleted', 'pr:declined', 'pr:deleted', 'pr:from_ref_updated', 'pr:merged', 'pr:opened'] extra=[]"
+	allMissing := "events: missing=['pr:comment:added', 'pr:comment:deleted', 'pr:declined', 'pr:deleted', 'pr:from_ref_updated', 'pr:merged', 'pr:modified', 'pr:opened'] extra=[]"
 	cases := []struct {
 		name string
 		hook map[string]any
@@ -79,9 +79,14 @@ func TestDiffWebhook(t *testing.T) {
 		{"stale events and no secret", goodHook(map[string]any{
 			"events": []any{"pr:opened", "zz:extra"}, "configuration": map[string]any{},
 		}), []string{
-			"events: missing=['pr:comment:added', 'pr:comment:deleted', 'pr:declined', 'pr:deleted', 'pr:from_ref_updated', 'pr:merged'] extra=['zz:extra']",
+			"events: missing=['pr:comment:added', 'pr:comment:deleted', 'pr:declined', 'pr:deleted', 'pr:from_ref_updated', 'pr:merged', 'pr:modified'] extra=['zz:extra']",
 			"configuration.secret: (unset) -> (set)",
 		}},
+		// A hook registered before pr:modified: re-running onboarding adds it.
+		{"hook from before pr:modified", goodHook(map[string]any{"events": []any{
+			"pr:opened", "pr:from_ref_updated", "pr:comment:added", "pr:comment:deleted",
+			"pr:merged", "pr:declined", "pr:deleted",
+		}}), []string{"events: missing=['pr:modified'] extra=[]"}},
 		{"inactive", goodHook(map[string]any{"active": false}), []string{"active: False -> True"}},
 		// A null is falsey, so it diffs the same as false.
 		{"null active", goodHook(map[string]any{"active": nil}), []string{"active: False -> True"}},

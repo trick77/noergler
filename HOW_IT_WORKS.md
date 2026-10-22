@@ -42,8 +42,11 @@ Ownership comes from the `team_claims` table, not from `teams.yaml`. The yaml's
 A comment containing `@<BITBUCKET_USERNAME>` routes to the Q&A path instead of a
 review. The trigger is the instance's bot name, not a per-team setting.
 
-Events handled: `pr:opened`, `pr:modified`, `pr:from_ref_updated`, `pr:merged`,
+Events handled: `pr:opened`, `pr:from_ref_updated`, `pr:modified`, `pr:merged`,
 `pr:declined`, `pr:deleted`, `pr:comment:added`, `pr:comment:deleted`.
+`pr:modified` acts only when it takes a PR out of draft (§12b); every other
+edit is ignored. A hook registered before `pr:modified` was required lacks
+it until onboarding is run again.
 
 ## 2. Guard order
 
@@ -339,6 +342,20 @@ the asker's; a finding reply is the author's. Prompts, enums, JSON keys, logs
 and alert names stay English. The prompt's language block sits above the
 untrusted input, so the cache prefix forks once per language. A `ß` the model
 writes is turned into `ss` outside code. Evals always run in English.
+
+## 12b. Draft to ready
+
+A draft is reviewed like any PR: teams open a draft so noergler reviews it
+while humans stay away, and set it ready once the findings are dealt with.
+That switch hands the PR to humans, so noergler checks its round is closed:
+each unfixed finding's thread is read from Bitbucket, and when any is still
+unresolved, a banner at the top of the summary counts them and links up to
+five. All closed: nothing is written, and a banner from an earlier switch is
+removed. A thread that cannot be read counts as open, a deleted one as
+closed. No model call and no cost; a PR without a summary, closed, or
+ignored after its summary was deleted is left alone. The banner sits below
+a cost or staleness banner and goes with the next review, which rewrites
+the summary.
 
 ## 13. Terminal events and the riptide rollup
 

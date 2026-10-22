@@ -211,3 +211,53 @@ func TestDecodeWrapsSentinelOnMalformedJSON(t *testing.T) {
 		})
 	}
 }
+
+// pr:modified carries the PR's draft flag and, beside it, previousDraft
+// (Bitbucket's event payload docs). Only draft -> ready is the handoff; a
+// payload without previousDraft (every other event, any older server)
+// never reads as one.
+func TestLeftDraft(t *testing.T) {
+	body := func(event, draft, previous string) []byte {
+		prev := ""
+		if previous != "" {
+			prev = `,"previousDraft":` + previous
+		}
+		return []byte(`{"eventKey":"` + event + `","pullRequest":{"id":1,"title":"t","draft":` + draft + `,
+			"fromRef":{"id":"refs/heads/f"},"toRef":{"id":"refs/heads/main"},
+			"author":{"user":{"name":"alice"}}}` + prev + `}`)
+	}
+	cases := []struct {
+		name                   string
+		event, draft, previous string
+		want                   bool
+	}{
+		{"draft -> ready", EventModified, "false", "true", true},
+		{"ready -> draft", EventModified, "true", "false", false},
+		{"title edit on a draft", EventModified, "true", "true", false},
+		{"title edit, no previousDraft", EventModified, "false", "", false},
+		{"opened, not modified", EventOpened, "false", "true", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			p, err := Decode(body(c.event, c.draft, c.previous))
+			if err != nil {
+				t.Fatalf("Decode: %v", err)
+			}
+			if got := p.LeftDraft(); got != c.want {
+				t.Errorf("LeftDraft() = %v, want %v", got, c.want)
+			}
+		})
+	}
+	// The real pr:opened fixture has neither field.
+	blob, err := os.ReadFile("testdata/sample_webhook.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := Decode(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.PreviousDraft != nil || p.PullRequest.Draft {
+		t.Errorf("fixture without the fields: previousDraft %v, draft %v", p.PreviousDraft, p.PullRequest.Draft)
+	}
+}

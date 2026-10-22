@@ -45,6 +45,9 @@ type Reviewer interface {
 	HandlePRMerged(ctx context.Context, p *webhook.Payload)
 	HandlePRDeclined(ctx context.Context, p *webhook.Payload)
 	HandlePRDeleted(ctx context.Context, p *webhook.Payload)
+	// HandleReadyForReview notes open finding threads on the summary when a
+	// draft goes ready. No model call.
+	HandleReadyForReview(ctx context.Context, p *webhook.Payload)
 	IsAutoReviewAuthor(author string) bool
 	SetAuthorLists(auto, ignore []string)
 	SetUsePRDescription(on bool)
