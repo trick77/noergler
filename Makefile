@@ -42,7 +42,7 @@ fe-test:
 
 build: fe-build
 	cd backend && CGO_ENABLED=0 go build \
-		-ldflags="-s -w" \
+		-ldflags="-s -w -X github.com/trick77/ship/kit/version.Version=$(VERSION)" \
 		-o ../bin/noergler ./cmd/noergler
 
 test:
