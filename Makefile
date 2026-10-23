@@ -41,7 +41,7 @@ fe-test:
 	cd ui && npx tsc -b && npm run test -- --run
 
 build: fe-build
-	cd backend && CGO_ENABLED=0 go build \
+	cd backend && CGO_ENABLED=0 go build -trimpath \
 		-ldflags="-s -w -X github.com/trick77/ship/kit/version.Version=$(VERSION)" \
 		-o ../bin/noergler ./cmd/noergler
 
