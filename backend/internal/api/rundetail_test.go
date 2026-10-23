@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -31,6 +32,14 @@ func TestRunDetailNotFound(t *testing.T) {
 		if w.Code != http.StatusNotFound {
 			t.Errorf("%s: status = %d, want 404", path, w.Code)
 		}
+	}
+}
+
+func TestRunDetailFailsLoudlyWhenTheStoreDoes(t *testing.T) {
+	h := newDashHarness(t)
+	h.st.err = errors.New("database is down")
+	if code := h.get(t, runPath).Code; code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", code)
 	}
 }
 

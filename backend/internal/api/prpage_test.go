@@ -144,6 +144,14 @@ func TestPRPageScopeUnknown(t *testing.T) {
 	}
 }
 
+func TestPRPageFailsLoudlyWhenTheStoreDoes(t *testing.T) {
+	h := newDashHarness(t)
+	h.st.err = errors.New("database is down")
+	if code := h.get(t, prPath).Code; code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", code)
+	}
+}
+
 // A failed PR total is a failed page, never a null that reads "unpriced"
 // and hides a PR at its cap.
 func TestPRPageFailsOnPRCostError(t *testing.T) {
