@@ -144,6 +144,25 @@ func TestPRPageScopeUnknown(t *testing.T) {
 	}
 }
 
+func TestPRPageFailsLoudlyWhenTheStoreDoes(t *testing.T) {
+	h := newDashHarness(t)
+	h.st.err = errors.New("database is down")
+	w := h.get(t, prPath)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", w.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if got := body["error"]; got != "could not read the pull request" {
+		t.Errorf("error = %#v, want the fixed phrase", got)
+	}
+	if strings.Contains(w.Body.String(), "database is down") {
+		t.Errorf("body carries the store error: %s", w.Body.String())
+	}
+}
+
 // A failed PR total is a failed page, never a null that reads "unpriced"
 // and hides a PR at its cap.
 func TestPRPageFailsOnPRCostError(t *testing.T) {

@@ -266,6 +266,22 @@ func TestOnboard_ClaimConflictIs409NamingTheHolder(t *testing.T) {
 	}
 }
 
+// A store failure the route has no mapping for is a 500 with a fixed phrase:
+// the cause goes to the log, never to the caller.
+func TestOnboard_UnmappedErrorIs500WithoutTheCause(t *testing.T) {
+	h := newHarness(t, nil)
+	cl := &fakeClaims{addErr: errors.New("pq: connection refused")}
+	h.setOnboard(t, &fakeBB{}, cl, "https://n.example.com")
+
+	w := h.onboardPost(t, bearer(), "tok", `{"action":"onboard","projects":[{"key":"PLAT"}]}`)
+	if w.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 (body %s)", w.StatusCode, h.body(w))
+	}
+	if got := h.decode(t, w)["error"]; got != "Internal Server Error" {
+		t.Errorf("error = %#v, want the fixed phrase", got)
+	}
+}
+
 // A successful claim refreshes the runtime, so the webhook route sees the
 // new repo immediately.
 func TestOnboard_SuccessfulClaimRefreshesTheRuntime(t *testing.T) {

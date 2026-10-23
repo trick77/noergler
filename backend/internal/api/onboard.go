@@ -1,8 +1,8 @@
 package api
 
 import (
-	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -110,7 +110,7 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 		res, err := onboarding.ClaimAndOnboard(ctx, admin, d.Bitbucket, d.Claims,
 			&team, scopes, caller, webhookURL, opts, d.Log)
 		if err != nil {
-			d.writeError(ctx, w, err)
+			d.writeError(w, r.WithContext(ctx), err)
 			return
 		}
 		if res.Claims != nil {
@@ -128,7 +128,7 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 		res, err := onboarding.RemoveAndUnclaim(ctx, admin, d.Bitbucket, d.Claims,
 			&team, scopes, caller, webhookURL, opts, d.Log)
 		if err != nil {
-			d.writeError(ctx, w, err)
+			d.writeError(w, r.WithContext(ctx), err)
 			return
 		}
 		if res.Claims != nil {
@@ -145,7 +145,7 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 		}
 		targets, err := onboarding.TargetsFor(&team, subset)
 		if err != nil {
-			d.writeError(ctx, w, err)
+			d.writeError(w, r.WithContext(ctx), err)
 			return
 		}
 		if len(targets) == 0 {
@@ -205,7 +205,7 @@ func scopesOf(in []projectScopeView) ([]config.ProjectScope, error) {
 
 // writeError maps a domain error to a status. The onboarding package knows
 // nothing about HTTP; this is the only place that translation happens.
-func (d Deps) writeError(ctx context.Context, w http.ResponseWriter, err error) {
+func (d Deps) writeError(w http.ResponseWriter, r *http.Request, err error) {
 	var unknown *onboarding.UnknownTarget
 	var noClaim *onboarding.NoClaim
 	var upstream *onboarding.UpstreamError
@@ -228,8 +228,7 @@ func (d Deps) writeError(ctx context.Context, w http.ResponseWriter, err error) 
 			Conflict: conflictHolder{Target: target, Team: conflict.OtherTeam},
 		})
 	default:
-		d.Log.ErrorContext(ctx, "onboard failed", logging.Err(err))
-		httpx.WriteError(w, http.StatusInternalServerError, "Internal Server Error")
+		httpx.ServerError(w, r, fmt.Errorf("onboard: %w", err), "Internal Server Error")
 	}
 }
 

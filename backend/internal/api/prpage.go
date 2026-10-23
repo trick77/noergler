@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"sort"
 	"time"
@@ -126,8 +127,7 @@ func (d Deps) prPage(w http.ResponseWriter, r *http.Request) {
 	}
 	pg, ok, err := d.DashboardStore.PRPage(r.Context(), token)
 	if err != nil {
-		d.Log.ErrorContext(r.Context(), "dashboard: PRPage failed: "+err.Error())
-		httpx.WriteError(w, http.StatusInternalServerError, "could not read the pull request")
+		httpx.ServerError(w, r, fmt.Errorf("dashboard: PRPage: %w", err), "could not read the pull request")
 		return
 	}
 	if !ok {
@@ -218,8 +218,7 @@ func (d Deps) prPage(w http.ResponseWriter, r *http.Request) {
 	ctx := logging.With(r.Context(), "team", pg.TeamSlug)
 	c, err := d.DashboardStore.PRCost(ctx, pg.Key)
 	if err != nil {
-		d.Log.ErrorContext(ctx, "dashboard: PRCost failed: "+err.Error())
-		httpx.WriteError(w, http.StatusInternalServerError, "could not read the pull request")
+		httpx.ServerError(w, r.WithContext(ctx), fmt.Errorf("dashboard: PRCost: %w", err), "could not read the pull request")
 		return
 	}
 	body.Cost = usd(c)
