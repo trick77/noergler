@@ -153,8 +153,7 @@ func (d Deps) prRunDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	det, ok, err := d.DashboardStore.PRRun(r.Context(), token, n)
 	if err != nil {
-		d.Log.ErrorContext(r.Context(), "dashboard: PRRun failed: "+err.Error())
-		httpx.WriteError(w, http.StatusInternalServerError, "could not read the run")
+		httpx.ServerError(w, r, fmt.Errorf("dashboard: PRRun: %w", err), "could not read the run")
 		return
 	}
 	if !ok {

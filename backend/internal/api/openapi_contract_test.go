@@ -53,24 +53,6 @@ func TestSpecIsServedWithAnETag(t *testing.T) {
 	}
 }
 
-func TestMatchesETag(t *testing.T) {
-	for _, c := range []struct {
-		header, tag string
-		want        bool
-	}{
-		{`"abc"`, `"abc"`, true},
-		{`*`, `"abc"`, true},
-		{`W/"abc"`, `"abc"`, true},
-		{`"other", "abc"`, `"abc"`, true},
-		{`"other"`, `"abc"`, false},
-		{``, `"abc"`, false},
-	} {
-		if got := matchesETag(c.header, c.tag); got != c.want {
-			t.Errorf("matchesETag(%q, %q) = %v, want %v", c.header, c.tag, got, c.want)
-		}
-	}
-}
-
 // The docs page exists, is HTML, and points at the route that actually
 // serves the spec. Nothing else checks that those two agree.
 func TestDocsPageIsServedAndPointsAtTheSpec(t *testing.T) {

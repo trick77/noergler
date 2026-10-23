@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -275,8 +276,7 @@ func (d Deps) runs(w http.ResponseWriter, r *http.Request) {
 		attemptFilter(r.URL.Query().Get("outcome")), limit,
 	)
 	if err != nil {
-		d.Log.ErrorContext(r.Context(), "dashboard: RecentAttempts failed: "+err.Error())
-		httpx.WriteError(w, http.StatusInternalServerError, "could not read runs")
+		httpx.ServerError(w, r, fmt.Errorf("dashboard: RecentAttempts: %w", err), "could not read runs")
 		return
 	}
 
@@ -415,8 +415,7 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			return false
 		}
-		d.Log.ErrorContext(ctx, "dashboard: "+what+" failed: "+err.Error())
-		httpx.WriteError(w, http.StatusInternalServerError, "could not read metrics")
+		httpx.ServerError(w, r, fmt.Errorf("dashboard: %s: %w", what, err), "could not read metrics")
 		return true
 	}
 	st := d.DashboardStore
