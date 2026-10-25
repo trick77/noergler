@@ -6,7 +6,7 @@ require (
 	github.com/getkin/kin-openapi v0.151.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/tiktoken-go/tokenizer v0.10.0
-	github.com/trick77/llmwire v0.1.6
+	github.com/trick77/llmwire v0.1.8
 	github.com/trick77/ship/kit v0.17.4
 	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/text v0.43.0
@@ -24,5 +24,4 @@ require (
 	github.com/rogpeppe/go-internal v1.16.0 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
 	golang.org/x/sync v0.24.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
