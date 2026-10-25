@@ -1,0 +1,22 @@
+name: Vuln
+
+# Weekly govulncheck: a vulnerability published since the last push fails here, not on the next one.
+# By hand: gh workflow run Vuln
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One scan per ref: a newer run cancels the one in progress (read-only, nothing to finish).
+concurrency:
+  group: vuln-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vuln:
+    uses: trick77/ship/.github/workflows/vuln.yaml@master
+    with:
+      go-dir: backend
