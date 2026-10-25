@@ -30,7 +30,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/trick77/noergler/internal/diff"
 	"github.com/trick77/noergler/internal/inference"
