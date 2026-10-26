@@ -107,6 +107,7 @@ func TestSchema_TablesExist(t *testing.T) {
 	for _, table := range []string{
 		"pull_requests", "review_runs", "findings",
 		"team_claims", "team_settings", "user_settings", "schema_migrations",
+		"team_credentials", "secrets_key_check",
 	} {
 		if !slices.Contains(present, table) {
 			t.Errorf("table %s is missing; schema has %v", table, present)

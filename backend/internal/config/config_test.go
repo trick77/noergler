@@ -65,6 +65,7 @@ func newEnv(t *testing.T) *env {
 		"JIRA_URL":                     "https://jira.example.com",
 		"JIRA_TOKEN":                   "jira-tok",
 		"DATABASE_URL":                 "postgresql://u:p@localhost/db",
+		"NOERGLER_SECRETS_KEY":         strings.Repeat("ab", 32),
 		"TEAMS_CONFIG":                 path,
 		"TEAM_PLATFORM_WEBHOOK_SECRET": "plat-secret",
 		"TEAM_PLATFORM_OPENAI_API_KEY": "plat-key",
@@ -174,13 +175,26 @@ func TestInstance_DisplayNamePattern(t *testing.T) {
 }
 
 func TestInstance_MissingRequiredIsFatalAndNamesTheVariable(t *testing.T) {
-	for _, name := range []string{"OPENAI_MODEL", "LLMWIRE_LITELLM_BASE_URL", "LLMWIRE_LITELLM_MODELS", "DATABASE_URL", "BITBUCKET_URL"} {
+	for _, name := range []string{"OPENAI_MODEL", "LLMWIRE_LITELLM_BASE_URL", "LLMWIRE_LITELLM_MODELS", "DATABASE_URL", "BITBUCKET_URL", "NOERGLER_SECRETS_KEY"} {
 		e := newEnv(t)
 		e.unset(name)
 		_, err := e.load()
 		if err == nil || !strings.Contains(err.Error(), name+" is required") {
 			t.Errorf("%s: err = %v", name, err)
 		}
+	}
+}
+
+func TestInstance_SecretsKeyMustBe32HexBytes(t *testing.T) {
+	for _, bad := range []string{"not-hex", strings.Repeat("ab", 16), strings.Repeat("ab", 33)} {
+		e := newEnv(t)
+		e.set("NOERGLER_SECRETS_KEY", bad)
+		if _, err := e.load(); err == nil || !strings.Contains(err.Error(), "NOERGLER_SECRETS_KEY") {
+			t.Errorf("%q: err = %v", bad, err)
+		}
+	}
+	if key := newEnv(t).mustLoad().SecretsKey; len(key) != 32 {
+		t.Errorf("valid key parsed to %d bytes", len(key))
 	}
 }
 

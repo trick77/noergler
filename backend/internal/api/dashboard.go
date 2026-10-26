@@ -519,6 +519,13 @@ type teamBody struct {
 	// naming. Absent for a disabled team, which has no client: its configured
 	// model may be the very thing that disabled it.
 	Model string `json:"model,omitempty"`
+	// Which Bitbucket and Jira accounts the team works with, as on its own
+	// GET /teams/{slug}: source, the bot it is mentioned as, and the fixed
+	// health status of an own account. Never a reason or a token: a reason
+	// can name an env var, and this route is unauthenticated. Null for a
+	// disabled team, which has no accounts running.
+	BitbucketAccount *bitbucketAccountView `json:"bitbucket_account"`
+	JiraAccount      *jiraAccountView      `json:"jira_account"`
 }
 
 type teamsBody struct {
@@ -565,6 +572,8 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 				if rt.LLM != nil {
 					t.Model = rt.LLM.Label()
 				}
+				bv, jv := accountViews(rt, d.BotUsername)
+				t.BitbucketAccount, t.JiraAccount = &bv, &jv
 				// A scope with no repo list is the whole project; one repo
 				// per claim row otherwise, so the page can show what a team
 				// actually owns rather than a project it half-owns.

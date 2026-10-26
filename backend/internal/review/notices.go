@@ -69,10 +69,13 @@ func (r *Reviewer) postOrUpdateSummary(ctx context.Context, project, repo string
 }
 
 // shouldRepost reports whether a failed update means "post a fresh comment"
-// rather than "give up".
+// rather than "give up". 403: the summary is another account's, the shared
+// bot's before the team pushed its own (or the reverse), and Bitbucket lets
+// only its author edit it.
 func shouldRepost(err error) bool {
 	return errors.Is(err, bitbucket.ErrVersionConflict) ||
-		bitbucket.Status(err) == http.StatusNotFound
+		bitbucket.Status(err) == http.StatusNotFound ||
+		bitbucket.Status(err) == http.StatusForbidden
 }
 
 // failureNotice posts a review-failure notice or prepends a staleness banner.
@@ -119,7 +122,9 @@ func (r *Reviewer) failureNotice(ctx context.Context, project, repo string, prID
 	newBody := render.StaleBanner(bannerLine) + "\n\n" + render.StripStaleBanner(comment.Text)
 	newVersion, err := r.bitbucket.UpdatePRComment(ctx, project, repo, prID, existing.ID, liveVersion, newBody)
 	if err != nil {
-		r.log.ErrorContext(ctx, "Failed to update existing summary with staleness banner: "+err.Error())
+		if !r.repostOtherAuthors(ctx, project, repo, prID, prReviewID, err, newBody, label) {
+			r.log.ErrorContext(ctx, "Failed to update existing summary with staleness banner: "+err.Error())
+		}
 		return
 	}
 	if prReviewID != 0 {
@@ -127,6 +132,28 @@ func (r *Reviewer) failureNotice(ctx context.Context, project, repo string, prID
 			return r.store.SetSummaryComment(ctx, prReviewID, existing.ID, newVersion)
 		})
 	}
+}
+
+// repostOtherAuthors posts body as the PR's new noergler comment when an edit
+// of the tracked summary failed with 403: the summary is another account's
+// (the shared bot's before the team pushed its own, or the reverse), and
+// Bitbucket lets only its author edit it. Reports whether it took the error
+// over; anything but a 403 is the caller's to report.
+func (r *Reviewer) repostOtherAuthors(ctx context.Context, project, repo string, prID int, prReviewID int64, err error, body, label string) bool {
+	if bitbucket.Status(err) != http.StatusForbidden {
+		return false
+	}
+	id, version, postErr := r.bitbucket.PostPRComment(ctx, project, repo, prID, body)
+	if postErr != nil {
+		r.log.ErrorContext(ctx, "Failed to post "+label+": "+postErr.Error())
+		return true
+	}
+	if prReviewID != 0 {
+		safeDBErr(ctx, r.log, "SetSummaryComment", func() error {
+			return r.store.SetSummaryComment(ctx, prReviewID, id, version)
+		})
+	}
+	return true
 }
 
 // timeoutNotice surfaces a deadline-exceeded run on the summary comment.
@@ -239,7 +266,9 @@ func (r *Reviewer) writeCostBanner(ctx context.Context, l lang.Lang, project, re
 	newBody := banner + "\n\n" + stripped
 	newVersion, err := r.bitbucket.UpdatePRComment(ctx, project, repo, prID, existing.ID, liveVersion, newBody)
 	if err != nil {
-		r.log.ErrorContext(ctx, "Failed to update existing summary with cost-limit banner: "+err.Error())
+		if !r.repostOtherAuthors(ctx, project, repo, prID, prReviewID, err, newBody, "cost-limit notice") {
+			r.log.ErrorContext(ctx, "Failed to update existing summary with cost-limit banner: "+err.Error())
+		}
 		return
 	}
 	if prReviewID != 0 {

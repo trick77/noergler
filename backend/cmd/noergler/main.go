@@ -33,6 +33,7 @@ import (
 	"github.com/trick77/noergler/internal/httpapi"
 	"github.com/trick77/noergler/internal/jira"
 	"github.com/trick77/noergler/internal/queue"
+	"github.com/trick77/noergler/internal/secretbox"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/teams"
 	"github.com/trick77/noergler/internal/tokens"
@@ -201,12 +202,19 @@ func serve(log *slog.Logger) error {
 
 	// Per-team startup. Reconciliation runs inside Boot and before any
 	// Reviewer is built, because review.New copies the review config by value.
+	// LoadInstance has checked the key's length, the one thing New refuses.
+	box, err := secretbox.New(app.SecretsKey)
+	if err != nil {
+		return fmt.Errorf("NOERGLER_SECRETS_KEY: %w", err)
+	}
 	reg, err := teams.Boot(ctx, app, teams.Deps{
 		Claims:      db,
 		ReviewStore: db,
 		Bitbucket:   bb,
 		Tokens:      counter,
 		Log:         log,
+		Credentials: db,
+		Box:         box,
 	})
 	if err != nil {
 		return err

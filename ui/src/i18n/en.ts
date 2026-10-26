@@ -32,29 +32,31 @@ export const en = {
     daysAgo_one: "{{count}}d ago",
     daysAgo_other: "{{count}}d ago",
   },
+  // Pill words (outcome, skipWord, teamState, severity, prState, the team
+  // account tags) start with a capital, in both languages (user, 2026-10-26).
   outcome: {
-    ok: "ok",
-    skipped: "skipped",
-    timed_out: "timed out",
-    unparseable: "unparseable",
-    too_large: "model limit exceeded",
-    error: "error",
+    ok: "OK",
+    skipped: "Skipped",
+    timed_out: "Timed out",
+    unparseable: "Unparseable",
+    too_large: "Model limit exceeded",
+    error: "Error",
   },
   // The pill word per review.SkipReason. Short: the long label beside a pill
   // wrapped the Outcome cell into three or four lines.
   skipWord: {
-    not_auto_review_author: "not opted in",
-    ignored_author: "ignored",
+    not_auto_review_author: "Not opted in",
+    ignored_author: "Ignored",
     pr_ignored: "PR ignored",
-    branch_opt_out: "opted out",
-    agents_md_missing: "no AGENTS.md",
+    branch_opt_out: "Opted out",
+    agents_md_missing: "No AGENTS.md",
     agents_md_too_large: "AGENTS.md too big",
-    pr_cost_cap: "cost cap",
-    no_reviewable_files: "nothing to review",
-    empty_diff: "empty diff",
-    head_unchanged: "unchanged",
-    diff_too_large: "diff too large",
-    repo_not_claimed: "unclaimed",
+    pr_cost_cap: "Cost cap",
+    no_reviewable_files: "Nothing to review",
+    empty_diff: "Empty diff",
+    head_unchanged: "Unchanged",
+    diff_too_large: "Diff too large",
+    repo_not_claimed: "Unclaimed",
   },
   // The long form, worded as review.SkipReason.Label() words it. A code this
   // build does not know falls back to the label the server sent.
@@ -73,9 +75,9 @@ export const en = {
     repo_not_claimed: "Repo no longer claimed by the team",
   },
   teamState: {
-    ready: "ready",
-    no_repos: "no repos",
-    disabled: "disabled",
+    ready: "Ready",
+    no_repos: "No repos",
+    disabled: "Disabled",
   },
   live: {
     lede: "What is running right now.",
@@ -175,11 +177,38 @@ export const en = {
     disabledNote:
       "The reason is in the pod log, on the <code>team_disabled</code> line.",
     none: "No teams configured.",
+    teamBitbucket: "Team Bitbucket token",
+    teamJira: "Team Jira token",
+    accountStatus: {
+      ok: "working",
+      rejected: "rejected",
+      unreachable: "unreachable",
+      undecryptable: "unreadable",
+      username_mismatch: "wrong username",
+    },
+    bitbucketHint: {
+      ok: "The team's own Bitbucket bot posts its reviews, and the team mentions it instead of the shared bot.",
+      rejected:
+        "Bitbucket refuses the token ({{ago}}). Webhooks are acknowledged and not processed until the team pushes a working one to PUT /teams/{{slug}}/credentials.",
+      unreachable:
+        "Bitbucket did not answer the team's bot ({{ago}}). The next call may fix it.",
+      undecryptable:
+        "The stored token cannot be read ({{ago}}). Webhooks are acknowledged and not processed until the team pushes it again to PUT /teams/{{slug}}/credentials.",
+      username_mismatch:
+        "The token belongs to another account than the username pushed with it ({{ago}}). Webhooks are acknowledged and not processed until the team pushes a matching one.",
+    },
+    jiraHint: {
+      ok: "The team's own Jira token.",
+      unreachable:
+        "Jira did not answer the team's token ({{ago}}). The next call may fix it.",
+      broken:
+        "The team's own Jira token does not work ({{ago}}). Reviews run without the ticket check until the team pushes a working one to PUT /teams/{{slug}}/credentials.",
+    },
   },
   // The model's two severities (review.txt), as the pill words them.
   severity: {
-    issue: "issue",
-    suggestion: "suggestion",
+    issue: "Issue",
+    suggestion: "Suggestion",
   },
   stage: {
     diff: "Diff",
@@ -233,9 +262,9 @@ export const en = {
     noop_suggestion: "suggested the code already there",
   },
   prState: {
-    open: "open",
-    merged: "merged",
-    declined: "declined",
+    open: "Open",
+    merged: "Merged",
+    declined: "Declined",
   },
   run: {
     legendWait: "waiting",

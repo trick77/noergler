@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/trick77/noergler/internal/lang"
+	"github.com/trick77/noergler/internal/secretbox"
 	kitenv "github.com/trick77/ship/kit/env"
 	"github.com/trick77/ship/kit/logging"
 )
@@ -311,14 +312,18 @@ type Queue struct {
 
 // App is the instance layer plus every resolved team.
 type App struct {
-	Bitbucket       Bitbucket
-	LLM             LLM
-	Review          Review
-	Jira            Jira
-	Server          Server
-	Database        Database
-	Trust           Trust
-	Queue           Queue
+	Bitbucket Bitbucket
+	LLM       LLM
+	Review    Review
+	Jira      Jira
+	Server    Server
+	Database  Database
+	Trust     Trust
+	Queue     Queue
+	// SecretsKey seals the credentials teams push (NOERGLER_SECRETS_KEY).
+	// Required even before any team pushes one: a key that appears only
+	// later is a deploy step nobody remembers.
+	SecretsKey      []byte
 	TeamsConfigPath string
 	// Teams are the enabled teams by slug in file order; Disabled the rest
 	// with the reason. A slug is in exactly one of the two.
@@ -470,6 +475,13 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 		Disabled:        map[string]string{},
 	}
 	app.Bitbucket.DisplayNamePattern = displayNamePattern(r, lookup)
+	if raw := r.Required("NOERGLER_SECRETS_KEY"); raw != "" {
+		key, err := secretbox.ParseKey(raw)
+		if err != nil {
+			r.Fail("NOERGLER_SECRETS_KEY: %v", err)
+		}
+		app.SecretsKey = key
+	}
 	if l, ok := lang.Parse(r.String("REVIEW_LANGUAGE", string(lang.Default))); ok {
 		app.Review.Language = l
 	} else {

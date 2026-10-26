@@ -57,11 +57,16 @@ sed "s/\"PROJ\"/\"$project\"/g" backend/internal/webhook/testdata/sample_webhook
 port=${PORT:-18080}
 dsn=${DATABASE_URL:-postgres://noergler:changeme@localhost:5432/noergler?sslmode=disable}
 DATABASE_URL="$dsn" "$tmp/noergler" migrate > "$tmp/migrate.log" 2>&1 || { cat "$tmp/migrate.log"; exit 1; }
+# One fixed key, never a fresh one per run: the DB is usually shared, and a
+# credential sealed under another key aborts the next boot against it. The
+# run also deletes every credential it pushes. A DB holding a local
+# instance's credentials needs that instance's key here.
+secrets_key=${NOERGLER_SECRETS_KEY:-5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a}
 env -i PATH="$PATH" \
   BITBUCKET_URL="http://localhost:$fakes_port" BITBUCKET_TOKEN=t BITBUCKET_USERNAME=bot \
   LLMWIRE_LITELLM_BASE_URL="http://localhost:$fakes_port" LLMWIRE_LITELLM_MODELS=gpt-5.5=ai-gateway-gpt-5.5 \
   OPENAI_MODEL=gpt-5.5 JIRA_URL="http://localhost:$fakes_port" JIRA_TOKEN=t \
-  DATABASE_URL="$dsn" TEAMS_CONFIG="$tmp/teams.yaml" \
+  DATABASE_URL="$dsn" TEAMS_CONFIG="$tmp/teams.yaml" NOERGLER_SECRETS_KEY="$secrets_key" \
   TEAM_SMOKE_WEBHOOK_SECRET=s TEAM_SMOKE_OPENAI_API_KEY=k \
   SERVER_PORT="$port" NOERGLER_PUBLIC_URL="http://localhost:$port" \
   "$tmp/noergler" serve > "$tmp/serve.log" 2>&1 &
@@ -144,12 +149,33 @@ echo "status (no token): HTTP $(curl -s -o /dev/null -w '%{http_code}' -X POST \
   -H 'Authorization: Bearer s' -H 'Content-Type: application/json' \
   --data '{"action":"status"}' "localhost:$port/onboard/$team")"
 
+# The team's own bot and Jira token. A revoked token is refused and changes
+# nothing; the team bot takes over the @mention, the shared one stops
+# answering for this team, and DELETE hands it back.
+creds() {
+  printf '%s' "$2" > "$tmp/creds-body.json"
+  curl -s -X "$1" -H "Authorization: Bearer s" -H 'Content-Type: application/json' \
+    --data-binary "@$tmp/creds-body.json" "localhost:$port/teams/$team/credentials${3:-}"
+}
+echo "--- own accounts"
+echo "push (revoked): $(creds PUT '{"bitbucket":{"username":"team-bot","token":"revoked-token"}}')"
+echo "push (wrong username): $(creds PUT '{"bitbucket":{"username":"someone","token":"team-bot-token"}}')"
+echo "push: $(creds PUT '{"bitbucket":{"username":"team-bot","token":"team-bot-token"},"jira":{"token":"jira-team-token"}}')"
+sed -e 's/@bot why/@team-bot why/' -e 's/"id": 900/"id": 901/' "$mention" > "$tmp/mention-own.json"
+echo "POST /webhook/$team (mention @team-bot): $(PORT="$port" TEAM="$team" SECRET=s scripts/replay.sh "$tmp/mention-own.json" pr:comment:added)"
+sed -e 's/"id": 900/"id": 902/' "$mention" > "$tmp/mention-shared.json"
+echo "POST /webhook/$team (mention @bot, want ignored): $(PORT="$port" TEAM="$team" SECRET=s scripts/replay.sh "$tmp/mention-shared.json" pr:comment:added)"
+echo "GET /api/dashboard/teams: $(curl -s "localhost:$port/api/dashboard/teams" | grep -o '"bitbucket_account":{[^}]*}' | head -1)"
+echo "delete bitbucket: $(creds DELETE '' /bitbucket)"
+echo "delete bitbucket again (want 404): $(creds DELETE '' /bitbucket)"
+echo "delete jira: $(creds DELETE '' /jira | grep -o '"jira_account":{[^}]*}')"
+
 # The worker needs a moment to pick the job up before SIGTERM drains it.
 sleep 2
 kill -TERM "$pid"
 wait "$pid" || true
 echo "--- log"
-grep -E "version|Database|Bitbucket:|Jira:|team_disabled|team_ready|teams_ready|http_request|stopped|listening|DISABLED|queue\[|priced by the gateway|HTTP totals|cost headers|Review of |context_window |context window |PR description |calls, tools|A reply on|noergler threads open" "$tmp/serve.log"
+grep -E "version|Database|Bitbucket:|Jira:|team_disabled|team_ready|teams_ready|http_request|stopped|listening|DISABLED|queue\[|priced by the gateway|HTTP totals|cost headers|Review of |context_window |context window |PR description |calls, tools|A reply on|noergler threads open|team credential|credentials push|comment mentions" "$tmp/serve.log"
 echo "--- review posted"
 grep -c "comment posted" "$tmp/fakes.log" || true
 echo "--- onboarding writes seen by bitbucket (want a create, a grant and a refusal)"

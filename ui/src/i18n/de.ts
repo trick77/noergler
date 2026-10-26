@@ -27,26 +27,26 @@ export const de = {
     daysAgo_other: "vor {{count}} Tagen",
   },
   outcome: {
-    ok: "ok",
-    skipped: "übersprungen",
+    ok: "OK",
+    skipped: "Übersprungen",
     timed_out: "Zeitüberschreitung",
-    unparseable: "unlesbar",
+    unparseable: "Unlesbar",
     too_large: "Modell-Limit überschritten",
     error: "Fehler",
   },
   skipWord: {
-    not_auto_review_author: "nicht auf der Liste",
-    ignored_author: "ignoriert",
+    not_auto_review_author: "Nicht auf der Liste",
+    ignored_author: "Ignoriert",
     pr_ignored: "PR ignoriert",
     branch_opt_out: "Opt-out im Branch",
-    agents_md_missing: "kein AGENTS.md",
+    agents_md_missing: "Kein AGENTS.md",
     agents_md_too_large: "AGENTS.md zu gross",
     pr_cost_cap: "Kostenlimit",
-    no_reviewable_files: "nichts zu prüfen",
-    empty_diff: "leerer Diff",
-    head_unchanged: "unverändert",
+    no_reviewable_files: "Nichts zu prüfen",
+    empty_diff: "Leerer Diff",
+    head_unchanged: "Unverändert",
     diff_too_large: "Diff zu gross",
-    repo_not_claimed: "nicht beansprucht",
+    repo_not_claimed: "Nicht beansprucht",
   },
   reason: {
     not_auto_review_author: "Autor nicht in den Auto-Review-Autoren",
@@ -63,9 +63,9 @@ export const de = {
     repo_not_claimed: "Repo nicht mehr vom Team beansprucht",
   },
   teamState: {
-    ready: "bereit",
-    no_repos: "keine Repos",
-    disabled: "deaktiviert",
+    ready: "Bereit",
+    no_repos: "Keine Repos",
+    disabled: "Deaktiviert",
   },
   live: {
     lede: "Was gerade läuft.",
@@ -166,6 +166,33 @@ export const de = {
     disabledNote:
       "Der Grund steht im Pod-Log in der Zeile <code>team_disabled</code>.",
     none: "Keine Teams konfiguriert.",
+    teamBitbucket: "Team-Bitbucket-Token",
+    teamJira: "Team-Jira-Token",
+    accountStatus: {
+      ok: "funktioniert",
+      rejected: "abgelehnt",
+      unreachable: "nicht erreichbar",
+      undecryptable: "unlesbar",
+      username_mismatch: "falscher Username",
+    },
+    bitbucketHint: {
+      ok: "Der eigene Bitbucket-Bot des Teams postet seine Reviews, und das Team erwähnt ihn statt des geteilten Bots.",
+      rejected:
+        "Bitbucket lehnt den Token ab ({{ago}}). Webhooks werden quittiert, aber nicht verarbeitet, bis das Team einen funktionierenden an PUT /teams/{{slug}}/credentials pusht.",
+      unreachable:
+        "Bitbucket hat dem Bot des Teams nicht geantwortet ({{ago}}). Der nächste Aufruf kann das beheben.",
+      undecryptable:
+        "Der gespeicherte Token lässt sich nicht lesen ({{ago}}). Webhooks werden quittiert, aber nicht verarbeitet, bis das Team ihn erneut an PUT /teams/{{slug}}/credentials pusht.",
+      username_mismatch:
+        "Der Token gehört einem anderen Account als dem mitgepushten Username ({{ago}}). Webhooks werden quittiert, aber nicht verarbeitet, bis das Team einen passenden pusht.",
+    },
+    jiraHint: {
+      ok: "Der eigene Jira-Token des Teams.",
+      unreachable:
+        "Jira hat auf den Token des Teams nicht geantwortet ({{ago}}). Der nächste Aufruf kann das beheben.",
+      broken:
+        "Der eigene Jira-Token des Teams funktioniert nicht ({{ago}}). Reviews laufen ohne Ticket-Check, bis das Team einen funktionierenden an PUT /teams/{{slug}}/credentials pusht.",
+    },
   },
   severity: {
     issue: "Problem",
@@ -222,9 +249,9 @@ export const de = {
     noop_suggestion: "schlägt den Code vor, der schon dasteht",
   },
   prState: {
-    open: "offen",
-    merged: "gemerged",
-    declined: "abgelehnt",
+    open: "Offen",
+    merged: "Gemerged",
+    declined: "Abgelehnt",
   },
   run: {
     legendWait: "Warten",

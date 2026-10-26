@@ -4,11 +4,11 @@ info:
   title: noergler team self-service API
   # The CONTRACT's version, not the binary's. The two move independently:
   # a release that changes no route leaves this alone.
-  version: 1.0.0
+  version: 1.1.0
   description: |
-    Claim and release projects and repositories for your team, and change who
-    gets reviewed. `{team}` is always the team's slug, the same one in the
-    webhook path.
+    Claim and release projects and repositories for your team, change who
+    gets reviewed, and bring your own Bitbucket bot and Jira token. `{team}` is
+    always the team's slug, the same one in the webhook path.
 
     ## Authentication
 
@@ -18,6 +18,33 @@ info:
     HTTP access token, with project admin on whatever you are claiming. It
     proves your admin rights per target and is never logged or stored. Not the
     bot's token, which has no admin rights.
+
+    ## Your own bot
+
+    By default every team shares one Bitbucket bot and one Jira user, and is
+    mentioned as that shared bot. `PUT /teams/{team}/credentials` swaps in your
+    own: a Bitbucket bot account (username and HTTP access token) and/or a
+    Jira token. The rest of the team's configuration stays with the noergler
+    admin.
+
+    - Your own Bitbucket token is your own bot. Reviews and replies are posted
+      as it, and your team mentions it as `@<its username>`. The shared bot's
+      `@` stops working for your team.
+    - The username is pushed with the token and checked against Bitbucket: a
+      token belonging to another account is refused.
+    - Tokens are write-only. They are stored encrypted, never logged, and no
+      response returns them; `GET /teams/{team}` shows which account is in use
+      and whether it works.
+    - After switching bots, run `POST /onboard/{team}` with `grant-bot`, so the
+      new bot gets write access to your projects. The push answer lists the
+      claimed targets it cannot read yet.
+    - A summary the old bot posted cannot be edited by the new one; the next
+      review posts a fresh summary instead.
+    - If your own Bitbucket token stops working (revoked, expired), your
+      webhooks are acknowledged and not processed until you push a working one.
+      Nothing else of your team, and no other team, is affected. A broken Jira
+      token only drops the ticket check from reviews.
+    - `DELETE /teams/{team}/credentials/{kind}` goes back to the shared account.
 
     ## Status codes
 
@@ -41,6 +68,8 @@ tags:
     description: What the team owns and how it reviews.
   - name: onboarding
     description: Claiming and releasing targets, and their webhooks.
+  - name: credentials
+    description: The team's own Bitbucket bot and Jira token.
 
 paths:
   /teams/{team}:
@@ -128,6 +157,106 @@ paths:
             The team is disabled, or the database is not ready. Nothing was
             applied: the settings are written before the running reviewer is
             touched, so a failed write changes neither.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /teams/{team}/credentials:
+    put:
+      tags: [credentials]
+      operationId: putTeamCredentials
+      summary: Bring your own Bitbucket bot and/or Jira token
+      description: |
+        A PARTIAL update: a block left out, or sent as `null`, keeps that
+        account as it is. See "Your own bot" above for what switching means.
+
+        Every part is proven before anything is stored, and a refused part
+        changes nothing, the other part included:
+
+        - Bitbucket: the token must authenticate, and the account Bitbucket
+          says it belongs to must be `username`. A Bitbucket that names no
+          account is refused: the username cannot be checked.
+        - Jira: the token must authenticate against this instance's Jira.
+
+        Accepted parts take effect immediately and survive a restart.
+      parameters:
+        - $ref: "#/components/parameters/TeamSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CredentialsRequest" }
+            examples:
+              ownBot:
+                summary: Your own Bitbucket bot
+                value:
+                  bitbucket: { username: platform-bot, token: "<HTTP access token>" }
+              ownJira:
+                summary: Your own Jira token
+                value:
+                  jira: { token: "<Jira personal access token>" }
+      responses:
+        "200":
+          description: |
+            The team as it is after the change. After a Bitbucket push,
+            `unreachable_claims` lists what the new bot cannot read yet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TeamView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/UnknownTeam" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422":
+          description: |
+            The body is malformed (as for settings), a block misses a field, or
+            a part failed its proof: the token was rejected, or it belongs to
+            another account than `username`. The error names the part and the
+            reason. Nothing changed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "502":
+          description: Bitbucket or Jira did not answer the proof. Nothing changed; try again.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: The team is disabled, or the database is not ready. Nothing changed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /teams/{team}/credentials/{kind}:
+    delete:
+      tags: [credentials]
+      operationId: deleteTeamCredentials
+      summary: Go back to the shared account
+      description: |
+        Drops the team's own account of that kind; the shared bot or Jira user
+        takes over immediately. For Bitbucket, the team is mentioned as the
+        shared bot again.
+      parameters:
+        - $ref: "#/components/parameters/TeamSlug"
+        - name: kind
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [bitbucket, jira]
+      responses:
+        "200":
+          description: The team as it is after the change.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TeamView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Unknown team, unknown kind, or the team has no own account of that kind.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: The team is disabled, or the database is not ready. Nothing changed.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -354,7 +483,7 @@ components:
     TeamView:
       type: object
       additionalProperties: false
-      required: [team, projects, auto_review_authors, ignore_authors, exclude_repos, exclude_source_branches, exclude_target_branches, use_pr_description]
+      required: [team, projects, auto_review_authors, ignore_authors, exclude_repos, exclude_source_branches, exclude_target_branches, use_pr_description, bitbucket_account, jira_account]
       properties:
         team:
           type: string
@@ -406,6 +535,83 @@ components:
           description: &usePRDescription |
             Whether the PR title and description are given to the model as
             context for reviews and @mentions. True for a new team.
+        bitbucket_account: { $ref: "#/components/schemas/BitbucketAccount" }
+        jira_account: { $ref: "#/components/schemas/JiraAccount" }
+        unreachable_claims:
+          type: array
+          description: |
+            Only in the answer to a Bitbucket push: the claimed targets the new
+            bot cannot read yet. Run `POST /onboard/{team}` with `grant-bot`.
+          items: { type: string }
+
+    AccountStatus:
+      type: [string, "null"]
+      enum: [ok, rejected, unreachable, undecryptable, username_mismatch, null]
+      description: |
+        Your own account's health, null on the shared one. `rejected`: the
+        token is refused (revoked, expired). `unreachable`: Bitbucket or Jira
+        did not answer the last call. `undecryptable`: the stored token cannot
+        be read; push it again. `username_mismatch`: the token belongs to
+        another account. A rejected, undecryptable or mismatched Bitbucket
+        account stops your reviews until you push a working token.
+
+    BitbucketAccount:
+      type: object
+      additionalProperties: false
+      required: [source, username, status, since]
+      properties:
+        source:
+          type: string
+          enum: [team, shared]
+          description: "`team`: your own bot. `shared`: the instance's bot."
+        username:
+          type: string
+          description: The bot your team @mentions, your own or the shared one.
+        status: { $ref: "#/components/schemas/AccountStatus" }
+        since:
+          type: [string, "null"]
+          format: date-time
+          description: When the status last changed. Null on the shared account.
+
+    JiraAccount:
+      type: object
+      additionalProperties: false
+      required: [source, status, since]
+      properties:
+        source:
+          type: string
+          enum: [team, shared]
+        status: { $ref: "#/components/schemas/AccountStatus" }
+        since:
+          type: [string, "null"]
+          format: date-time
+
+    CredentialsRequest:
+      type: object
+      additionalProperties: false
+      description: A partial update; a block left out or null keeps that account.
+      properties:
+        bitbucket:
+          type: [object, "null"]
+          additionalProperties: false
+          required: [username, token]
+          properties:
+            username:
+              type: string
+              description: The bot account's Bitbucket username; your team @mentions it.
+            token:
+              type: string
+              writeOnly: true
+              description: The bot account's HTTP access token. Never returned.
+        jira:
+          type: [object, "null"]
+          additionalProperties: false
+          required: [token]
+          properties:
+            token:
+              type: string
+              writeOnly: true
+              description: A Jira personal access token. Never returned.
 
     SettingsRequest:
       type: object

@@ -168,7 +168,7 @@ func newHarness(t *testing.T, tweak func(*config.Team)) *harness {
 		tweak(team)
 	}
 	rv := &fakeReviewer{}
-	rt := teams.NewRuntime(team, rv, nil, nil, nil)
+	rt := teams.NewRuntime(team, rv, nil, nil)
 
 	var buf bytes.Buffer
 	log := slog.New(logging.NewSplunkHandler(&buf, slog.LevelDebug, "noergler", "test"))

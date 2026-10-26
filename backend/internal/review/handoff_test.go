@@ -43,6 +43,23 @@ func readyPayload() *webhook.Payload {
 
 func summaryText(h *harness) string { return h.bb.comments[handoffSummaryID].Text }
 
+// After a bot switch the summary is the other account's: the banner edit is
+// refused (403), so the bannered summary goes up fresh and is tracked.
+func TestReadyForReviewRepostsAnotherAccountsSummary(t *testing.T) {
+	h := handoffHarness(t, 501)
+	h.bb.updateErr = &bitbucket.StatusError{Status: 403}
+
+	h.r.HandleReadyForReview(t.Context(), readyPayload())
+
+	if len(h.bb.Posted) != 1 || !strings.Contains(h.bb.Posted[0].Text, "## Summary\n\nbody") ||
+		!strings.Contains(h.bb.Posted[0].Text, render.HandoffBannerSentinel) {
+		t.Fatalf("posted = %+v, want the bannered summary", h.bb.Posted)
+	}
+	if len(h.st.Summaries) != 1 || h.st.Summaries[0].ID == handoffSummaryID {
+		t.Errorf("the fresh comment is not tracked: %+v", h.st.Summaries)
+	}
+}
+
 func TestReadyForReviewListsOpenThreadsOnTheSummary(t *testing.T) {
 	h := handoffHarness(t, 501, 502, 503)
 	h.bb.comments[502].ThreadResolved = true // resolved by a human

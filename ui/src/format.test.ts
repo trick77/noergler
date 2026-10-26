@@ -208,24 +208,24 @@ describe("outcomeWord", () => {
   // A skip names its reason in one or two words, so the pill never needs a
   // long label beside it that wraps the cell.
   it("names a skip by its reason", () => {
-    expect(outcomeWord("skipped", "ignored_author")).toBe("ignored");
-    expect(outcomeWord("skipped", "head_unchanged")).toBe("unchanged");
+    expect(outcomeWord("skipped", "ignored_author")).toBe("Ignored");
+    expect(outcomeWord("skipped", "head_unchanged")).toBe("Unchanged");
     expect(outcomeWord("skipped", "not_auto_review_author")).toBe(
-      "not opted in",
+      "Not opted in",
     );
   });
 
   // A reason from a newer binary, or none at all, still reads as a skip.
   it("falls back to skipped for an unknown or missing reason", () => {
-    expect(outcomeWord("skipped", "invented_later")).toBe("skipped");
-    expect(outcomeWord("skipped")).toBe("skipped");
+    expect(outcomeWord("skipped", "invented_later")).toBe("Skipped");
+    expect(outcomeWord("skipped")).toBe("Skipped");
   });
 
   it("words every other outcome for a reader, not as its code", () => {
-    expect(outcomeWord("ok")).toBe("ok");
-    expect(outcomeWord("timed_out")).toBe("timed out");
+    expect(outcomeWord("ok")).toBe("OK");
+    expect(outcomeWord("timed_out")).toBe("Timed out");
     // Written by a newer binary: its code, readable.
-    expect(outcomeWord("rate_limited")).toBe("rate limited");
+    expect(outcomeWord("rate_limited")).toBe("Rate limited");
   });
 
   // The pill shows a reader's word; the stored code an operator greps the
@@ -261,7 +261,7 @@ describe("team state", () => {
 
   it("reads an unknown state as a fault rather than as success", () => {
     expect(teamTone("invented_later")).toBe("fail");
-    expect(teamStateLabel("invented_later")).toBe("invented later");
+    expect(teamStateLabel("invented_later")).toBe("Invented later");
     // Its stored code stays on the tooltip; a known state needs none.
     expect(teamStateTitle("invented_later")).toBe("Code: invented_later");
     expect(teamStateTitle("ready")).toBeUndefined();
@@ -272,8 +272,8 @@ describe("team state", () => {
   });
 
   it("labels each state", () => {
-    expect(teamStateLabel("ready")).toBe("ready");
-    expect(teamStateLabel("no_repos")).toBe("no repos");
-    expect(teamStateLabel("disabled")).toBe("disabled");
+    expect(teamStateLabel("ready")).toBe("Ready");
+    expect(teamStateLabel("no_repos")).toBe("No repos");
+    expect(teamStateLabel("disabled")).toBe("Disabled");
   });
 });

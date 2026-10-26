@@ -135,7 +135,27 @@ an incident or an eval run: read the reason before relaxing a rule.
 - Exec probes: kit answers `/healthz` and `/readyz` on loopback only; 0.2.42
   never became ready and restart-looped on an httpGet probe.
 - Disable reasons stay in the logs: one can name an env var, and `/readyz` and
-  the dashboard are unauthenticated.
+  the dashboard are unauthenticated. Own-account health is the carve-out
+  (user, 2026-10-26: "issues like that should be visible in the ui"): a
+  fixed status names no env var and echoes no upstream body.
+- Pushed tokens encrypted: before them the DB held no credential; a dump or
+  replica would otherwise hand out every team's Bitbucket token. Key check
+  row: without it a wrong key reads as every team's row broken, the shared
+  fault disabling teams one by one.
+- A broken own account never disables its team: a disabled team gets 503 on
+  every self-service route, so it could not push the fix; an admin would
+  have to delete its row and restart (user chose stay-up, 2026-10-26). No
+  silent fallback to the shared bot either: reviews under the wrong account
+  are worse than none.
+- Summary edit 403 reposts: Bitbucket lets only a comment's author edit it,
+  so after a bot switch every old summary would otherwise stop updating.
+- Push proves no repo access: the new bot gets its rights from `grant-bot`,
+  which grants the team's current bot, so requiring access first would
+  deadlock. The answer lists `unreachable_claims` instead.
+- A 401 rechecks, never rejects: Bitbucket answers 401 for missing rights
+  too, so the first ungranted project after a bot switch blocked the whole
+  team (code review, 2026-10-26). A blocked team sends no call that could
+  clear it, hence the recheck in the webhook route.
 - Run page by token, from the summary only: numeric ids were enumerable on the
   unauthenticated dashboard, which forced headlines only and prose without
   code. A token handed out in the PR reaches the PR's audience, so the page

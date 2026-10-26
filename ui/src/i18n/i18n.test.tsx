@@ -119,7 +119,7 @@ describe("German UI", () => {
       "Brand new reason",
     );
     expect(reasonLabel("brand_new")).toBe("Code: brand_new");
-    expect(outcomeWord("skipped", "brand_new")).toBe("übersprungen");
+    expect(outcomeWord("skipped", "brand_new")).toBe("Übersprungen");
   });
 
   it("renders a page with its markup intact", () => {

@@ -162,10 +162,13 @@ export function outcomeWord(outcome: string, reason?: string): string {
 }
 
 /** readable is the one fallback for a code this build has no word for (a
- *  newer binary wrote it): the code with spaces for underscores, and a dash
- *  for no code at all, so a pill is never blank. */
+ *  newer binary wrote it): the code with spaces for underscores, capitalised
+ *  like every pill word, and a dash for no code at all, so a pill is never
+ *  blank. */
 function readable(code: string): string {
-  return code === "" ? "—" : code.replaceAll("_", " ");
+  if (code === "") return "—";
+  const words = code.replaceAll("_", " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 /** outcomeTitle is the pill's tooltip: a skip's long reason, and for a

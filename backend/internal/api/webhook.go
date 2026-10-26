@@ -185,7 +185,26 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 12. Dispatch.
+	// 12. A team on its own Bitbucket account that cannot be worked with
+	// (rejected, undecryptable, another account's username) gets no new
+	// work: a review, a mention, a reply or a handoff is acknowledged and
+	// not processed until it pushes a working token. Lifecycle events
+	// (merged, declined, deleted, comment deleted) still pass, as in step 10:
+	// Bitbucket never redelivers them, and a lost rollup or purge stays
+	// lost. Last, so every refusal above still answers as it did. A rejected
+	// token is proven again here first (rate-limited, bounded): a token
+	// re-enabled in Bitbucket unblocks on the next delivery.
+	if reviewEventKeys[eventKey] || eventKey == webhook.EventCommentAdded || eventKey == webhook.EventModified {
+		if bb, blocked := rt.BitbucketBlocked(ctx); blocked {
+			d.Log.WarnContext(ctx, "webhook not processed: the team's own Bitbucket account is "+string(bb.Status),
+				"event", eventKey, "pr_id", payload.PullRequest.ID)
+			httpx.WriteJSON(w, http.StatusOK, ignored{"ignored", "the team's own Bitbucket account is " + string(bb.Status) +
+				"; push a working token to PUT /teams/" + slug + "/credentials"})
+			return
+		}
+	}
+
+	// 13. Dispatch.
 	d.dispatch(ctx, w, rt, slug, project, repo, payload)
 }
 
@@ -241,7 +260,13 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 		if p.Comment != nil {
 			text, commentID = p.Comment.Text, p.Comment.ID
 		}
-		trigger := "@" + d.BotUsername
+		// A team on its own bot is mentioned as that bot; the shared one
+		// means nothing to it.
+		bot := d.BotUsername
+		if _, own := rt.OwnBot(); own != "" {
+			bot = own
+		}
+		trigger := "@" + bot
 		mentioned := strings.Contains(strings.ToLower(text), strings.ToLower(trigger))
 		// A reply may be on one of our finding threads or on the summary,
 		// which is answered like a mention. Whether it is takes a
@@ -249,7 +274,7 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 		// DB-free. The bot's own replies ("Fixed in ...") come back here
 		// too, and an empty reply stays "comment without mention", as pinned.
 		reply := p.CommentParentID != 0 && strings.TrimSpace(text) != "" &&
-			!strings.EqualFold(p.Comment.Author.Name, d.BotUsername)
+			!strings.EqualFold(p.Comment.Author.Name, bot)
 		if !mentioned {
 			if reply {
 				d.Log.InfoContext(ctx, "reply without "+trigger+", checked for a finding or summary thread",

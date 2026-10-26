@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/inference"
-	"github.com/trick77/noergler/internal/jira"
 	"github.com/trick77/noergler/internal/review"
 	"github.com/trick77/noergler/internal/riptide"
+	"github.com/trick77/noergler/internal/secretbox"
 	"github.com/trick77/ship/kit/logging"
 )
 
@@ -23,9 +24,14 @@ import (
 type Deps struct {
 	Claims      ClaimStore
 	ReviewStore review.Store
-	Bitbucket   review.BitbucketClient
-	Tokens      review.TokenCounter
-	Log         *slog.Logger
+	// Bitbucket is the shared bot; a team's own bot is a clone of it.
+	Bitbucket *bitbucket.Client
+	Tokens    review.TokenCounter
+	Log       *slog.Logger
+	// Credentials and Box hold and open the accounts teams push. Nil
+	// Credentials (startup tests) starts every team on the shared accounts.
+	Credentials CredentialStore
+	Box         *secretbox.Box
 	// Env is where llmwire reads its settings. Nil means the process
 	// environment.
 	Env func(string) (string, bool)
@@ -37,13 +43,30 @@ type Deps struct {
 // value, so a Reviewer built before the DB has spoken would hold the
 // teams.yaml author lists forever.
 //
-// A shared-layer failure (either claims table unreadable) comes back as err
-// and aborts boot. Everything after that is per-team: one team's fault
-// disables that team and nothing else.
+// A shared-layer failure (either claims table unreadable, the credentials
+// unreadable, a secrets key that does not match the stored one) comes back
+// as err and aborts boot. Everything after that is per-team: one team's
+// fault disables that team and nothing else, and a fault in a team's own
+// Bitbucket or Jira account does not even do that (accounts.go).
 func Boot(ctx context.Context, app *config.App, d Deps) (*Registry, error) {
 	seedErrors, err := Reconcile(ctx, d.Claims, app.Teams, app.Order, d.Log)
 	if err != nil {
 		return nil, err
+	}
+	var opened map[string]map[Kind]Opened
+	if d.Credentials != nil {
+		// Every configured team counts, disabled ones too: their rows are
+		// not orphans, a fix to teams.yaml brings them back.
+		known := map[string]bool{}
+		for slug := range app.Teams {
+			known[slug] = true
+		}
+		for slug := range app.Disabled {
+			known[slug] = true
+		}
+		if opened, err = OpenCredentials(ctx, d.Credentials, d.Box, known, d.Log); err != nil {
+			return nil, err
+		}
 	}
 
 	g := NewRegistry(nil, nil, d.Log).WithNames(app.Names)
@@ -62,7 +85,7 @@ func Boot(ctx context.Context, app *config.App, d Deps) (*Registry, error) {
 			g.disable(teamCtx, slug, reason)
 			continue
 		}
-		rt, reason := safeStart(teamCtx, app, team, d)
+		rt, reason := safeStart(teamCtx, app, team, d, opened[slug])
 		if reason != "" {
 			g.disable(teamCtx, slug, reason)
 			continue
@@ -95,13 +118,13 @@ func Boot(ctx context.Context, app *config.App, d Deps) (*Registry, error) {
 // A panic becomes that team's disable reason. Without this a nil map or a
 // slice index deep in a client constructor takes the whole instance down.
 // Nothing a single team does may do that.
-func safeStart(ctx context.Context, app *config.App, team *config.Team, d Deps) (rt *Runtime, reason string) {
+func safeStart(ctx context.Context, app *config.App, team *config.Team, d Deps, opened map[Kind]Opened) (rt *Runtime, reason string) {
 	defer func() {
 		if r := recover(); r != nil {
 			rt, reason = nil, fmt.Sprintf("startup failed: panic: %v", r)
 		}
 	}()
-	return Start(ctx, app, team, d)
+	return Start(ctx, app, team, d, opened)
 }
 
 func (g *Registry) disable(ctx context.Context, slug, reason string) {
@@ -144,8 +167,8 @@ func onOff(b bool) string {
 //
 // Every failure here is that team's alone. Nothing a single team does may
 // take the instance down, which is why this returns a reason rather than an
-// error.
-func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Runtime, string) {
+// error. opened is the team's own accounts, nil for none.
+func Start(ctx context.Context, app *config.App, team *config.Team, d Deps, opened map[Kind]Opened) (*Runtime, string) {
 	llm, err := inference.New(inference.Options{
 		Model:           team.LLM.Model,
 		ReasoningEffort: team.LLM.ReasoningEffort,
@@ -183,13 +206,17 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 			"per-PR cost cap never applies", llm.Label()))
 	}
 
-	var jr *jira.Client
-	if team.Jira.URL != "" {
-		jr, err = jira.New(team.Jira, d.Log)
-		if err != nil {
-			return nil, fmt.Sprintf("Jira client: %v", err)
-		}
+	// The team's own accounts never disable it: a bad one is reported and
+	// the team can push a working one (accounts.go). Bound to the team, so
+	// its clients' lines carry team= like the LLM client's.
+	acc, err := newAccounts(team.Slug, AccountDeps{
+		Store: d.Credentials, Box: d.Box, Shared: d.Bitbucket, Jira: team.Jira,
+		Log: d.Log.With("team", team.Slug),
+	})
+	if err != nil {
+		return nil, fmt.Sprintf("Jira client: %v", err)
 	}
+	acc.start(ctx, opened)
 
 	var rt *riptide.Emitter
 	if team.Riptide != nil {
@@ -212,8 +239,8 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 	// A typed nil in an interface passes a != nil check, so the optional
 	// dependencies go in as untyped nil when absent.
 	var jiraDep review.JiraClient
-	if jr != nil {
-		jiraDep = jr
+	if team.Jira.URL != "" {
+		jiraDep = acc.jira
 	}
 	var riptideDep review.RiptideEmitter
 	if rt != nil {
@@ -227,7 +254,7 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 		Owns:      func(project, repo string) bool { return runtime.Team().Owns(project, repo) },
 		Team:      func() *config.Team { return runtime.Team() },
 		TeamSlug:  team.Slug,
-		Bitbucket: d.Bitbucket,
+		Bitbucket: acc.bot,
 		LLM:       llm,
 		Store:     d.ReviewStore,
 		Jira:      jiraDep,
@@ -239,6 +266,7 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps) (*Ru
 		DisplayNamePattern: app.Bitbucket.DisplayNamePattern,
 		PublicURL:          app.Server.PublicURL,
 	})
-	runtime = NewRuntime(team, reviewer, llm, jr, rt)
+	runtime = NewRuntime(team, reviewer, llm, rt)
+	runtime.accounts = acc
 	return runtime, ""
 }

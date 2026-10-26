@@ -28,13 +28,14 @@ or `on`/`off` in any case; anything else is a startup error, never a silent
 | --- | --- |
 | `BITBUCKET_URL` | Base URL of the Bitbucket Server instance. |
 | `BITBUCKET_TOKEN` | HTTP access token of the shared service account. Needs to read repositories and write comments; project admin is **not** needed (self-service onboarding uses the caller's own token instead). |
-| `BITBUCKET_USERNAME` | The service account's name. It doubles as the `@mention` trigger, instance-wide: a comment containing `@<BITBUCKET_USERNAME>` reaches noergler. |
+| `BITBUCKET_USERNAME` | The service account's name. It doubles as the `@mention` trigger of every team on the shared bot: a comment containing `@<BITBUCKET_USERNAME>` reaches noergler. A team that pushed its own bot is mentioned as that bot instead (section 5). |
 | `LLMWIRE_LITELLM_BASE_URL` | Host of the OpenAI-compatible gateway endpoint. llmwire appends `/chat/completions`, or `/responses` for a profile on that protocol (gpt-6.1-sol). |
 | `LLMWIRE_LITELLM_MODELS` | `<profile>=<alias>,...`: which llmwire profiles the gateway serves, and the alias each is listed under. See "Models and aliases" below, it is the one setting most likely to be wrong. |
 | `OPENAI_MODEL` | Default model as an llmwire **profile id** (`gpt-5.5`), never a gateway alias. Must appear in `LLMWIRE_LITELLM_MODELS`. Teams may override it. |
 | `DATABASE_URL` | PostgreSQL DSN. |
 | `JIRA_URL` | Base URL of the Jira instance. |
 | `JIRA_TOKEN` | Token of a single read-only Jira user; used to fetch tickets for the acceptance-criteria check. |
+| `NOERGLER_SECRETS_KEY` | 32 bytes hex (`openssl rand -hex 32`). Seals the Bitbucket and Jira tokens teams push themselves (section 5). Required even before any team pushes one. Never change it once one has: a different key aborts startup. |
 
 ### Teams
 
@@ -172,6 +173,9 @@ the service.**
 | Model cannot reason, lacks strict JSON-schema output, or does not list the configured `reasoning_effort`, or that level switches reasoning off, or no level is set on a model that reasons only when asked and names no balanced level | That team is disabled, from its llmwire profile and before any request. The error names the valid choices. |
 | Team's riptide ping returns 401 | That team is disabled. Any other riptide error is a warning. |
 | Missing per-team secret env var | That team is disabled. |
+| `NOERGLER_SECRETS_KEY` missing, malformed, or not the key the stored team tokens were sealed with | Startup aborts. The key is shared layer. (A changed key with no team token stored yet only resets the key check.) |
+| A team's own Bitbucket token rejected, unreadable, or belonging to another account than its username | That team stays up and is **not** disabled: its webhooks are acknowledged and not processed, the Teams page shows the state, and the team heals itself by pushing a working token. No other team is affected. |
+| A team's own Jira token rejected or unreadable | The team's reviews run without the ticket check; the Teams page shows it. |
 | Database, Bitbucket or Jira unreachable at startup | Startup aborts, after reporting every failing check rather than only the first. |
 | Jira ticket unreadable during a review | Not an error. The key came off a branch name and may be noise. |
 | Gateway does not price a call | The review proceeds and the run is stored with a NULL cost. Cost fails open. |
@@ -204,6 +208,31 @@ webhook secret is per team; generate one with `openssl rand -hex 32`.
 The Bitbucket token in `BITBUCKET_TOKEN` is the shared bot's and needs no admin
 rights. The admin token used for onboarding is the caller's, passed per request
 in `X-Bitbucket-Token`, never logged and never stored.
+
+### A team's own bot and Jira token
+
+A team may replace the shared Bitbucket bot and Jira user with its own, without
+the admin: `PUT /teams/{team}/credentials` with the team's webhook secret as
+bearer (contract and examples: `GET /api/docs`, `http/5-credentials.http`).
+Everything else about the team stays in `teams.yaml` and the env.
+
+- Own Bitbucket token = own bot. Comments post as it, and the team mentions it as
+  `@<its username>`; the shared bot's `@` no longer reaches that team. The
+  username is pushed with the token and checked against the account Bitbucket
+  names (`X-AUSERNAME`, else the applinks whoami servlet); a Bitbucket that
+  names none is refused.
+- Each part is proven against Bitbucket or Jira before anything is stored;
+  takes effect immediately; `DELETE /teams/{team}/credentials/{kind}` goes back.
+- Stored in Postgres (`team_credentials`), AES-256-GCM under
+  `NOERGLER_SECRETS_KEY`, bound to the team and kind. Never logged, never
+  returned; `GET /teams/{team}` and the Teams page show which account is in use
+  and a fixed status (`ok`, `rejected`, `unreachable`, `undecryptable`,
+  `username_mismatch`), never a reason.
+- After switching bots the team runs `grant-bot` (`POST /onboard/{team}`), which
+  now grants the new bot. Summaries the old bot posted are reposted, since only
+  their author may edit them.
+- Losing the key loses the stored tokens: empty `team_credentials` and have the
+  teams push again.
 
 ## 6. Where the files go
 
