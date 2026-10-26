@@ -186,7 +186,6 @@ export function LivePage() {
                   <th className={th + " w-px whitespace-nowrap"}>
                     {t("live.lastOutcome")}
                   </th>
-                  <th className={thNum}>{t("live.prs")}</th>
                   <th className={thNum}>{t("live.lastReviewed")}</th>
                   <th className={thNum}>{t("live.lastRun")}</th>
                 </tr>
@@ -209,7 +208,6 @@ export function LivePage() {
                         {outcomeWord(tm.last_outcome, tm.last_reason)}
                       </Pill>
                     </td>
-                    <td className={tdNum}>{tm.prs}</td>
                     <td className={tdNum}>{ago(tm.last_reviewed, now)}</td>
                     <td className={tdNum}>{ago(tm.last_run, now)}</td>
                   </tr>

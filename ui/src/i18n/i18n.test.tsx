@@ -56,9 +56,11 @@ describe("catalogs", () => {
   });
 
   // Words a sweep once had to hunt out of the catalog (user, 2026-10-22):
-  // Denglish verbs, colloquial contractions and slang.
+  // Denglish verbs, colloquial contractions and slang. A Denglish participle
+  // ends in -ed, never -t: geposted, gemerged (user, 2026-10-26).
   it("keep the German professional", () => {
-    const banned = /\b(reviewt|gereviewt|Verdikt|kaputt|aufs|rein|raus)\b/i;
+    const banned =
+      /\b(reviewt|gereviewt|gepostet\w*|gemergt\w*|Verdikt|kaputt|aufs|rein|raus)\b/i;
     for (const [k, v] of Object.entries(deLeaves)) {
       expect([k, banned.exec(v)?.[0] ?? null]).toEqual([k, null]);
     }

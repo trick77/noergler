@@ -115,11 +115,14 @@ export function TeamPill({ name, slug }: { name: string; slug: string }) {
 
 export function Card({
   title,
+  hint,
   note,
   right,
   children,
 }: {
   title?: string;
+  /** Hover text on the title, e.g. the slug behind a display name. */
+  hint?: string;
   note?: ReactNode;
   right?: ReactNode;
   children: ReactNode;
@@ -131,7 +134,10 @@ export function Card({
       {(title || right) && (
         <header className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 border-b border-border bg-active px-3.5 py-2.5">
           {title && (
-            <h3 className="font-serif text-[18px] leading-tight font-medium tracking-tight text-ink">
+            <h3
+              title={hint}
+              className="font-serif text-[18px] leading-tight font-medium tracking-tight text-ink"
+            >
               {title}
             </h3>
           )}
