@@ -183,8 +183,8 @@ describe("LivePage", () => {
       (el) => el.textContent,
     );
     // No PR count: it says nothing about whether the team is live.
-    expect(cells).toEqual(["Search", "unchanged", "2h ago", "1m ago"]);
-    expect(screen.getByText("unchanged").getAttribute("title")).toBe(
+    expect(cells).toEqual(["Search", "Unchanged", "2h ago", "1m ago"]);
+    expect(screen.getByText("Unchanged").getAttribute("title")).toBe(
       "HEAD unchanged since last review",
     );
 
@@ -192,7 +192,7 @@ describe("LivePage", () => {
     const mobileCells = Array.from(mobile?.querySelectorAll("td") ?? []).map(
       (el) => el.textContent,
     );
-    expect(mobileCells).toEqual(["Mobile", "timed out", "never", "5m ago"]);
+    expect(mobileCells).toEqual(["Mobile", "Timed out", "never", "5m ago"]);
   });
 
   // State is configuration, not live: the Teams page carries it.
@@ -315,10 +315,10 @@ describe("RunsPage", () => {
     serve({ runs: { runs }, metrics });
     render(<RunsPage />);
 
-    expect(await screen.findByText("timed out")).toBeDefined();
+    expect(await screen.findByText("Timed out")).toBeDefined();
     // A skip's pill names its reason, not the bare outcome.
-    expect(await screen.findByText("unchanged")).toBeDefined();
-    expect(screen.getAllByText("ok")).toHaveLength(2);
+    expect(await screen.findByText("Unchanged")).toBeDefined();
+    expect(screen.getAllByText("OK")).toHaveLength(2);
   });
 
   it("keeps an unpriced run unpriced", async () => {
@@ -442,7 +442,7 @@ describe("RunsPage", () => {
     serve({ runs: { runs }, metrics });
     render(<RunsPage />);
 
-    const pill = await screen.findByText("unchanged");
+    const pill = await screen.findByText("Unchanged");
     expect(pill.getAttribute("title")).toBe("HEAD unchanged since last review");
   });
 
@@ -555,6 +555,17 @@ describe("TeamsPage", () => {
       exclude_source_branches: ["dependabot/*", "wip/*"],
       exclude_target_branches: [],
       model: "gpt-5.5-high",
+      bitbucket_account: {
+        source: "team",
+        username: "pay-bot",
+        status: "rejected",
+        since: new Date().toISOString(),
+      },
+      jira_account: {
+        source: "team",
+        status: "ok",
+        since: new Date().toISOString(),
+      },
     },
     {
       slug: "mobile",
@@ -571,8 +582,27 @@ describe("TeamsPage", () => {
       exclude_repos: [],
       exclude_source_branches: [],
       exclude_target_branches: [],
+      bitbucket_account: null,
+      jira_account: null,
     },
   ];
+
+  // A team on its own bot or Jira token is tagged, a broken one says so in
+  // the server's fixed word. Not the bot's name: whether the team runs on its
+  // own account is what matters (user, 2026-10-26). A team on the shared
+  // accounts, or a disabled one, gets no tag.
+  it("tags a team's own accounts and their health", async () => {
+    serve({ teams: { teams } });
+    render(<TeamsPage />);
+
+    const bot = await screen.findByText("Team Bitbucket token: rejected");
+    expect(bot.getAttribute("title")).toMatch(
+      /PUT \/teams\/payments\/credentials/,
+    );
+    expect(screen.getByText("Team Jira token")).toBeDefined();
+    expect(screen.getAllByText(/Team Bitbucket token/)).toHaveLength(1);
+    expect(screen.queryByText(/pay-bot/)).toBeNull();
+  });
 
   it("distinguishes a whole-project claim from a repo one", async () => {
     serve({ teams: { teams } });

@@ -13,7 +13,7 @@ import (
 )
 
 func newTestRuntime(t *config.Team) *Runtime {
-	return NewRuntime(t, review.New(review.Options{Config: t.Review}), nil, nil, nil)
+	return NewRuntime(t, review.New(review.Options{Config: t.Review}), nil, nil)
 }
 
 // The webhook route reads the snapshot while the team API writes it. Without

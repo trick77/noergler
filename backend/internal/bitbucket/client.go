@@ -118,6 +118,10 @@ type Client struct {
 	log          *slog.Logger
 	maxDiffBytes int
 	maxFileBytes int
+	// observe, when set, sees the outcome of every request: the status, or
+	// 0 with the transport error. A team's own account uses it to track
+	// whether its token still works; the shared one has none.
+	observe func(status int, err error)
 }
 
 // New builds a client for the shared service account.
@@ -170,7 +174,35 @@ func (c *Client) CommentURL(project, repo string, prID, commentID int) string {
 func (c *Client) WithToken(token string) *Client {
 	clone := *c
 	clone.token = token
+	clone.observe = nil
 	return &clone
+}
+
+// WithAccount returns a copy acting as a team's own bot account: its token,
+// its username (the team's @mention handle), its logger, and an observer for
+// every request (nil for none). The transport is shared.
+func (c *Client) WithAccount(token, username string, log *slog.Logger, observe func(status int, err error)) *Client {
+	clone := *c
+	clone.token = token
+	clone.botUsername = username
+	clone.log = log
+	clone.observe = observe
+	return &clone
+}
+
+// send authenticates and issues a request, and reports its outcome to the
+// observer.
+func (c *Client) send(req *http.Request) (*http.Response, error) {
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	resp, err := c.http.Do(req)
+	if c.observe != nil {
+		if err != nil {
+			c.observe(0, err)
+		} else {
+			c.observe(resp.StatusCode, nil)
+		}
+	}
+	return resp, err
 }
 
 // url builds an absolute URL. Path segments are escaped, so a file path with a
@@ -199,12 +231,11 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := c.http.Do(req)
+	resp, err := c.send(req)
 	if err != nil {
 		return err
 	}
@@ -256,13 +287,12 @@ func (c *Client) getTextCapped(ctx context.Context, path string, query url.Value
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
 	if accept == "" {
 		accept = "application/json"
 	}
 	req.Header.Set("Accept", accept)
 
-	resp, err := c.http.Do(req)
+	resp, err := c.send(req)
 	if err != nil {
 		return "", err
 	}

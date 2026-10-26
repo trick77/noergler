@@ -121,6 +121,26 @@ export interface Team {
   /** `<profile>-<effort>`, the label every run records. Absent for a
    *  disabled team: it has no started client. */
   model?: string;
+  /** The Bitbucket and Jira accounts the team works with: the shared ones,
+   *  or its own (pushed through the team API). A fixed status, never a
+   *  reason. Null for a disabled team. */
+  bitbucket_account: BitbucketAccount | null;
+  jira_account: JiraAccount | null;
+}
+
+/** AccountStatus is an own account's health; null on a shared one. */
+export type AccountStatus =
+  "ok" | "rejected" | "unreachable" | "undecryptable" | "username_mismatch";
+
+export interface JiraAccount {
+  source: "team" | "shared";
+  status: AccountStatus | null;
+  since: string | null;
+}
+
+export interface BitbucketAccount extends JiraAccount {
+  /** The bot the team @mentions: its own, or the shared one. */
+  username: string;
 }
 
 /** RunFacts is the review_runs row behind a successful attempt. */

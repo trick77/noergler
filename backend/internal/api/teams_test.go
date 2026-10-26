@@ -102,6 +102,9 @@ func TestTeams_GetRendersTheSnapshot(t *testing.T) {
 		"exclude_source_branches": []any{"dependabot/*"},
 		"exclude_target_branches": []any{},
 		"use_pr_description":      true,
+		// On the shared accounts: the handle is the shared bot's, no health.
+		"bitbucket_account": map[string]any{"source": "shared", "username": testBot, "status": nil, "since": nil},
+		"jira_account":      map[string]any{"source": "shared", "status": nil, "since": nil},
 	})
 }
 

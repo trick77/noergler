@@ -48,7 +48,7 @@ Besides automatic reviews on PR open/modify, you can mention noergler in any PR 
 - **Ask a question** — `@noergler Why was this endpoint changed?` — noergler replies to your comment with an answer based on the PR diff.
 - **Trigger a full review** — `@noergler review` — Runs a full review as if the PR was just opened. Also triggered by `@noergler` with no text, `re-review`, or `rereview`.
 
-The mention trigger is `@<BITBUCKET_USERNAME>` — whichever Bitbucket service account noergler runs as. Configure it via the `BITBUCKET_USERNAME` env var.
+The mention trigger is `@<BITBUCKET_USERNAME>` — whichever Bitbucket service account noergler runs as. Configure it via the `BITBUCKET_USERNAME` env var. A team that brought its own bot (`PUT /teams/{team}/credentials`) is mentioned as that bot instead, and noergler posts for it under that account.
 
 ## Summary comment
 
@@ -120,6 +120,7 @@ defaults for every team-overridable knob. The required variables are:
 | `OPENAI_MODEL` | Default model as an llmwire **profile id** (`gpt-5.5`), never a gateway alias. Must appear in `LLMWIRE_LITELLM_MODELS`. Instance default, overridable per team |
 | `JIRA_URL` | Jira Server/Cloud base URL |
 | `JIRA_TOKEN` | Jira API token of the single (read-only) Jira user |
+| `NOERGLER_SECRETS_KEY` | 32 bytes hex (`openssl rand -hex 32`): seals the Bitbucket and Jira tokens teams push themselves. Never change it once a team has pushed one |
 | `DATABASE_URL` | PostgreSQL connection string (see [Database](#database) below) |
 | `TEAMS_CONFIG` | Path to `teams.yaml` (default `teams.yaml`). noergler does not start without it |
 
@@ -237,8 +238,9 @@ captures that from Bitbucket directly.
 > emitted when it is claimed), so anything closed in that window is lost.
 > Requires riptide with `reviewer_handle` and optional `total_cost_usd`.
 
-The rollup also declares who we are: `reviewer_handle` (`BITBUCKET_USERNAME`,
-the account noergler comments under) plus `reviewer_account_kind: "bot"`.
+The rollup also declares who we are: `reviewer_handle` (the account noergler
+comments under: `BITBUCKET_USERNAME`, or the team's own bot) plus
+`reviewer_account_kind: "bot"`.
 riptide keeps no account names of its own — it stores the declaration. The handle is needed
 because the review comments reach riptide from Bitbucket, where noergler is just
 another user, so it is the only key back to those rows. riptide uses it to exclude our review comments from

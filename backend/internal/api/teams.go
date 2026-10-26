@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/store"
@@ -64,14 +65,63 @@ type teamView struct {
 	ExcludeSourceBranches []string `json:"exclude_source_branches"`
 	ExcludeTargetBranches []string `json:"exclude_target_branches"`
 	UsePRDescription      bool     `json:"use_pr_description"`
+	// Which accounts the team works with: its own (pushed) or the shared
+	// ones. Never a token.
+	BitbucketAccount bitbucketAccountView `json:"bitbucket_account"`
+	JiraAccount      jiraAccountView      `json:"jira_account"`
 }
 
-func viewOf(t *config.Team) teamView {
+// bitbucketAccountView is the team's Bitbucket account. Username is the
+// handle the team mentions: its own bot's, or the shared bot's. Status and
+// since are an own account's health, null on the shared one.
+type bitbucketAccountView struct {
+	Source   string  `json:"source"`
+	Username string  `json:"username"`
+	Status   *string `json:"status"`
+	Since    *string `json:"since"`
+}
+
+type jiraAccountView struct {
+	Source string  `json:"source"`
+	Status *string `json:"status"`
+	Since  *string `json:"since"`
+}
+
+// accountState renders an account's source and health. The status is the
+// fixed set of teams.Status, never a reason: this reaches the
+// unauthenticated dashboard too.
+func accountState(a teams.Account) (source string, status, since *string) {
+	if !a.Own {
+		return "shared", nil, nil
+	}
+	s, t := string(a.Status), a.Since.UTC().Format(time.RFC3339)
+	return "team", &s, &t
+}
+
+func accountViews(rt *teams.Runtime, sharedBot string) (bitbucketAccountView, jiraAccountView) {
+	bb, jr := rt.Accounts()
+	var bv bitbucketAccountView
+	bv.Source, bv.Status, bv.Since = accountState(bb)
+	bv.Username = sharedBot
+	if bb.Own {
+		bv.Username = bb.Username
+	}
+	var jv jiraAccountView
+	jv.Source, jv.Status, jv.Since = accountState(jr)
+	return bv, jv
+}
+
+// viewOf renders one snapshot of the team. rt is read for the accounts only;
+// the caller took t from it once.
+func viewOf(t *config.Team, rt *teams.Runtime, sharedBot string) teamView {
 	projects := make([]projectScopeView, 0, len(t.Projects))
 	for _, p := range t.Projects {
 		projects = append(projects, projectScopeView{Key: p.Key, Repos: p.Repos})
 	}
+	bv, jv := accountViews(rt, sharedBot)
 	return teamView{
+		BitbucketAccount:      bv,
+		JiraAccount:           jv,
 		Team:                  t.Slug,
 		Projects:              projects,
 		AutoReviewAuthors:     nonNil(t.Review.AutoReviewAuthors),
@@ -101,7 +151,7 @@ func (d Deps) getTeam(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, viewOf(rt.Team()))
+	httpx.WriteJSON(w, http.StatusOK, viewOf(rt.Team(), rt, d.BotUsername))
 }
 
 // settingsRequest is a PARTIAL update.
@@ -176,7 +226,7 @@ func (d Deps) putTeamSettings(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusServiceUnavailable, "database not ready")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, viewOf(rt.Team()))
+	httpx.WriteJSON(w, http.StatusOK, viewOf(rt.Team(), rt, d.BotUsername))
 }
 
 // decodeStrict rejects an unknown field with a 422.

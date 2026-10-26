@@ -84,6 +84,26 @@ type Client struct {
 	prefixes []string
 	http     *http.Client
 	log      *slog.Logger
+	// observe, when set, sees the outcome of every request: the status, or
+	// 0 with the transport error. A team's own token uses it to track
+	// whether it still works.
+	observe func(status int, err error)
+}
+
+// WithToken returns a copy reading as another Jira user, for a team's own
+// token. The transport (and its pool) is shared; the observer is not.
+func (c *Client) WithToken(token string) *Client {
+	clone := *c
+	clone.token = token
+	clone.observe = nil
+	return &clone
+}
+
+// Observed returns a copy that reports every request's outcome to observe.
+func (c *Client) Observed(observe func(status int, err error)) *Client {
+	clone := *c
+	clone.observe = observe
+	return &clone
 }
 
 // New builds a client for the shared read-only Jira user.
@@ -126,6 +146,13 @@ func (c *Client) get(ctx context.Context, rawURL, path string, out any) error {
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.http.Do(req)
+	if c.observe != nil {
+		if err != nil {
+			c.observe(0, err)
+		} else {
+			c.observe(resp.StatusCode, nil)
+		}
+	}
 	if err != nil {
 		return err
 	}

@@ -1,13 +1,14 @@
 import type { TFunction } from "i18next";
 import { Fragment, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import type { Team } from "./api";
+import type { AccountStatus, Team } from "./api";
 import {
   ago,
   byName,
   teamStateLabel,
   teamStateTitle,
   teamTone,
+  type Tone,
 } from "./format";
 import { usePoll, useNow } from "./usePoll";
 import {
@@ -89,6 +90,63 @@ function settingsParts(team: Team, t: TFunction) {
   return parts;
 }
 
+/** accountTone: a working account is ok; one Bitbucket or Jira did not
+ *  answer may recover on its own; anything else waits for the team to push
+ *  a working token. */
+function accountTone(status: AccountStatus | null): Tone {
+  if (status === "ok") return "ok";
+  if (status === "unreachable") return "skip";
+  return "fail";
+}
+
+/** AccountPills tags a team on its OWN Bitbucket bot or Jira token, beside
+ *  the state pill; a team on the shared accounts gets nothing. Not the bot's
+ *  name: what matters here is that the team runs on its own account and
+ *  whether that works (user, 2026-10-26). The status is the server's fixed
+ *  word, never a reason: this page is unauthenticated. */
+function AccountPills({ team, now }: { team: Team; now: number }) {
+  const { t } = useTranslation();
+  const bb = team.bitbucket_account;
+  const jr = team.jira_account;
+  const pills: ReactNode[] = [];
+  if (bb?.source === "team") {
+    const status = bb.status ?? "ok";
+    pills.push(
+      <Pill
+        key="bitbucket"
+        tone={accountTone(status)}
+        title={t(`teams.bitbucketHint.${status}`, {
+          slug: team.slug,
+          ago: ago(bb.since, now),
+        })}
+      >
+        {t("teams.teamBitbucket")}
+        {status !== "ok" && `: ${t(`teams.accountStatus.${status}`)}`}
+      </Pill>,
+    );
+  }
+  if (jr?.source === "team") {
+    const status = jr.status ?? "ok";
+    pills.push(
+      <Pill
+        key="jira"
+        tone={accountTone(status)}
+        title={t(
+          `teams.jiraHint.${status === "ok" || status === "unreachable" ? status : "broken"}`,
+          {
+            slug: team.slug,
+            ago: ago(jr.since, now),
+          },
+        )}
+      >
+        {t("teams.teamJira")}
+        {status !== "ok" && `: ${t(`teams.accountStatus.${status}`)}`}
+      </Pill>,
+    );
+  }
+  return <>{pills}</>;
+}
+
 export function TeamsPage() {
   const { t } = useTranslation();
   const { data, failed } = usePoll<{ teams: Team[] }>("teams", 30000);
@@ -141,12 +199,15 @@ export function TeamsPage() {
               </>
             }
             right={
-              <Pill
-                tone={teamTone(team.state)}
-                title={teamStateTitle(team.state)}
-              >
-                {teamStateLabel(team.state)}
-              </Pill>
+              <span className="flex flex-wrap justify-end gap-1.5">
+                <AccountPills team={team} now={now} />
+                <Pill
+                  tone={teamTone(team.state)}
+                  title={teamStateTitle(team.state)}
+                >
+                  {teamStateLabel(team.state)}
+                </Pill>
+              </span>
             }
           >
             {team.claims.length === 0 ? (

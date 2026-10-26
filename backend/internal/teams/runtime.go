@@ -9,12 +9,15 @@ package teams
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"sync"
 	"sync/atomic"
 
+	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/inference"
-	"github.com/trick77/noergler/internal/jira"
+	"github.com/trick77/noergler/internal/onboarding"
 	"github.com/trick77/noergler/internal/riptide"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
@@ -55,8 +58,9 @@ type Reviewer interface {
 
 // Runtime is one enabled team at request time.
 //
-// The Bitbucket client, the store and the queue are shared by every team;
-// the inference client, Jira and riptide are this team's own.
+// The store and the queue are shared by every team; the inference client and
+// riptide are this team's own. Bitbucket and Jira are the shared accounts
+// until the team pushes its own (accounts.go).
 //
 // The team config is copy-on-write: a reader takes one snapshot per request
 // with Team(), a writer builds a whole new *config.Team and swaps the
@@ -81,17 +85,121 @@ type Runtime struct {
 	settingsMu sync.Mutex
 	Reviewer   Reviewer
 	LLM        *inference.Client
-	Jira       *jira.Client
 	Riptide    *riptide.Emitter
+	// accounts is nil for a Runtime built without them (route tests): the
+	// team then reads as on the shared accounts.
+	accounts *accounts
 }
 
 // NewRuntime publishes the first snapshot. The team is copied, so a later
 // caller holding the same pointer cannot mutate what readers see.
-func NewRuntime(t *config.Team, r Reviewer, llm *inference.Client, jr *jira.Client, rt *riptide.Emitter) *Runtime {
-	rtm := &Runtime{Reviewer: r, LLM: llm, Jira: jr, Riptide: rt}
+func NewRuntime(t *config.Team, r Reviewer, llm *inference.Client, rt *riptide.Emitter) *Runtime {
+	rtm := &Runtime{Reviewer: r, LLM: llm, Riptide: rt}
 	snapshot := *t
 	rtm.team.Store(&snapshot)
 	return rtm
+}
+
+// StartAccounts builds and installs the team's accounts on a Runtime made
+// with NewRuntime. Start wires them itself, before the Reviewer that uses
+// them exists; this is for a Runtime built around a fake Reviewer.
+func (r *Runtime) StartAccounts(ctx context.Context, d AccountDeps, opened map[Kind]Opened) error {
+	acc, err := newAccounts(r.Team().Slug, d)
+	if err != nil {
+		return err
+	}
+	acc.start(ctx, opened)
+	r.accounts = acc
+	return nil
+}
+
+// Accounts is the state of the team's Bitbucket and Jira accounts.
+func (r *Runtime) Accounts() (bb, jr Account) {
+	if r.accounts == nil {
+		return Account{}, Account{}
+	}
+	return r.accounts.get(KindBitbucket), r.accounts.get(KindJira)
+}
+
+// OwnBot is the team's own Bitbucket client, as onboarding proves and grants
+// it, and its @mention handle; nil while the team is on the shared bot.
+func (r *Runtime) OwnBot() (onboarding.BotClient, string) {
+	bb, _ := r.Accounts()
+	if !bb.Own {
+		return nil, ""
+	}
+	return r.accounts.bot, bb.Username
+}
+
+// BitbucketBlocked reports whether the team's own Bitbucket account cannot
+// be worked with (rejected, undecryptable, another account's username): its
+// webhooks are acknowledged and not processed until it pushes a working one.
+//
+// A rejected token is proven again first, at most every recheckEvery: a
+// blocked team sends no Bitbucket call that could clear it otherwise, and a
+// token re-enabled in Bitbucket unblocks on the next delivery. The account
+// comes back from the same read the verdict is taken on.
+func (r *Runtime) BitbucketBlocked(ctx context.Context) (Account, bool) {
+	bb, _ := r.Accounts()
+	if bb.Own && bb.Status == StatusRejected {
+		r.accounts.recheck(ctx, KindBitbucket)
+		bb, _ = r.Accounts()
+	}
+	return bb, bb.blocking()
+}
+
+var errNoAccounts = errors.New("team accounts are not set up on this instance")
+
+// PushCredentials proves every part before anything is stored, then
+// persists and swaps each in; a part left nil is kept. A *PushError is a
+// proof failing, and then nothing changed.
+func (r *Runtime) PushCredentials(ctx context.Context, bb *BitbucketPush, jiraToken *string, by string) error {
+	if r.accounts == nil {
+		return errNoAccounts
+	}
+	return r.accounts.push(ctx, bb, jiraToken, by)
+}
+
+// ResetCredentials goes back to the shared account; false when the team had
+// none of that kind.
+func (r *Runtime) ResetCredentials(ctx context.Context, kind Kind, by string) (bool, error) {
+	if r.accounts == nil {
+		return false, errNoAccounts
+	}
+	return r.accounts.reset(ctx, kind, by)
+}
+
+// UnreachableClaims lists the claimed targets the team's own bot is refused
+// on (401, 403, 404): what still needs `grant-bot` after the team switched
+// bots. Any other failure (a 5xx, a timeout) says nothing about rights and
+// lists nothing.
+func (r *Runtime) UnreachableClaims(ctx context.Context) []string {
+	bot, _ := r.OwnBot()
+	if bot == nil {
+		return nil
+	}
+	refused := func(err error) bool {
+		switch bitbucket.Status(err) {
+		case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
+			return true
+		}
+		return false
+	}
+	out := []string{}
+	for _, p := range r.Team().Projects {
+		if p.Repos == nil {
+			if refused(bot.GetProject(ctx, p.Key)) {
+				out = append(out, p.Key)
+			}
+			continue
+		}
+		for _, repo := range p.Repos {
+			if refused(bot.GetRepo(ctx, p.Key, repo)) {
+				out = append(out, p.Key+"/"+repo)
+			}
+		}
+	}
+	return out
 }
 
 // Team is the current snapshot.

@@ -148,7 +148,7 @@ describe("RunPane", () => {
 
     const head = await screen.findByRole("heading", { name: "Run 2" });
     // The run's line: outcome, kind, mode, commits and when.
-    expect(head.parentElement?.textContent).toContain("ok");
+    expect(head.parentElement?.textContent).toContain("OK");
     expect(head.parentElement?.textContent).toContain("auto");
     expect(head.parentElement?.textContent).toContain("incremental");
     expect(head.parentElement?.textContent).toContain("9f8e7d6 → 3c41a0b");

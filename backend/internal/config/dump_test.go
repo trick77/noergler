@@ -16,7 +16,8 @@ func TestDump_MasksSecretsAndKeepsTheSectionHeaders(t *testing.T) {
 	e.set("BITBUCKET_TOKEN", "secret-bb-token", "JIRA_TOKEN", "secret-jira-token",
 		"DATABASE_URL", "postgresql://noergler:secret-db-password@localhost/noergler",
 		"TEAM_PLATFORM_WEBHOOK_SECRET", "secret-webhook", "TEAM_PLATFORM_OPENAI_API_KEY", "secret-api-key",
-		"TEAM_PAYMENTS_RIPTIDE_TOKEN", "secret-riptide-token", "REVIEW_AUTO_REVIEW_AUTHORS", "alice,bob", "SERVER_PORT", "9090")
+		"TEAM_PAYMENTS_RIPTIDE_TOKEN", "secret-riptide-token", "REVIEW_AUTO_REVIEW_AUTHORS", "alice,bob", "SERVER_PORT", "9090",
+		"NOERGLER_SECRETS_KEY", strings.Repeat("5e", 32))
 	app := e.mustLoad()
 	app.Disabled["broken"] = "TEAM_BROKEN_OPENAI_API_KEY is not set"
 
@@ -25,13 +26,13 @@ func TestDump_MasksSecretsAndKeepsTheSectionHeaders(t *testing.T) {
 	text := buf.String()
 
 	for _, secret := range []string{"secret-bb-token", "secret-webhook", "secret-api-key", "secret-jira-token",
-		"secret-riptide-token", "secret-db-password", "pay-secret", "pay-key", "pay-riptide"} {
+		"secret-riptide-token", "secret-db-password", "pay-secret", "pay-key", "pay-riptide", strings.Repeat("5e", 32)} {
 		if strings.Contains(text, secret) {
 			t.Errorf("secret %q in the dump", secret)
 		}
 	}
 	for _, want := range []string{
-		"[config.bitbucket]", "[config.llm]", "[config.review]", "[config.jira]", "[config.server]", "[config.database]",
+		"[config.bitbucket]", "[config.llm]", "[config.review]", "[config.jira]", "[config.server]", "[config.database]", "[config.secrets]",
 		"[config.queue]", "  inference_concurrency = 6", "  inference_concurrency_per_team = 2",
 		"[config.teams.platform]", "[config.teams.platform.llm]", "[config.teams.platform.riptide] disabled",
 		"[config.teams.payments.riptide]", "https://bb.example.com", "gpt-5.5", "['alice', 'bob']", "9090",

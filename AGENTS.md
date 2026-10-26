@@ -29,7 +29,8 @@ decision, not a cleanup.
   `project.key`. One team's fault disables that team only; a shared-layer
   fault never disables one team alone. Every team line carries `team=`.
 - No secrets in `teams.yaml`, logs, `/readyz` or the dashboard; a disable
-  reason never leaves the logs.
+  reason never leaves the logs. Carve-out: a team's own-account health
+  leaves as a fixed status, never text (INVARIANTS: teams).
 - Cost fails open (unpriced = NULL, review proceeds). DB nano-USD `BIGINT`;
   JSON USD = 3-decimal string, never float; the UI shows cents via
   `money()`, run page included (user, 2026-10-19). Key spend shown, never summed.

@@ -3,6 +3,7 @@ package bitbucket
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -31,6 +32,48 @@ func (c *Client) CheckConnectivity(ctx context.Context) error {
 	}
 	c.log.Info("Bitbucket Server " + name + " v" + version)
 	return nil
+}
+
+// Identity proves the token and returns the account Bitbucket says it belongs
+// to: the X-AUSERNAME header, else the applinks whoami servlet (plain text),
+// "" when neither names one (a proxy stripping the header, the servlet
+// absent). Logs nothing; the caller decides what a failure means.
+func (c *Client) Identity(ctx context.Context) (string, error) {
+	path := apiBase + "/application-properties"
+	who, err := c.identityGet(ctx, path, "application/json")
+	if err != nil {
+		return "", err
+	}
+	if who.header != "" {
+		return who.header, nil
+	}
+	// Only a name: a failure here proves nothing the call above did not.
+	if w, err := c.identityGet(ctx, "/plugins/servlet/applinks/whoami", "text/plain"); err == nil {
+		return strings.TrimSpace(w.body), nil
+	}
+	return "", nil
+}
+
+type identityAnswer struct{ header, body string }
+
+// identityGet GETs path for Identity: its X-AUSERNAME and its first 256 bytes.
+func (c *Client) identityGet(ctx context.Context, path, accept string) (identityAnswer, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url(path, nil), nil)
+	if err != nil {
+		return identityAnswer{}, err
+	}
+	req.Header.Set("Accept", accept)
+	resp, err := c.send(req)
+	if err != nil {
+		return identityAnswer{}, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return identityAnswer{}, statusError(http.MethodGet, path, resp)
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return identityAnswer{header: resp.Header.Get("X-AUSERNAME"), body: string(body)}, nil
 }
 
 // prPath is the base path of one pull request.

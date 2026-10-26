@@ -101,7 +101,9 @@ func (r *Reviewer) HandleReadyForReview(ctx context.Context, payload *webhook.Pa
 	}
 	newVersion, err := r.bitbucket.UpdatePRComment(ctx, key.Project, key.Repo, key.PRID, st.Summary.ID, version, body)
 	if err != nil {
-		r.log.ErrorContext(ctx, "Failed to update the summary with the handoff banner: "+err.Error())
+		if !r.repostOtherAuthors(ctx, key.Project, key.Repo, key.PRID, st.ID, err, body, "the summary with the handoff banner") {
+			r.log.ErrorContext(ctx, "Failed to update the summary with the handoff banner: "+err.Error())
+		}
 		return
 	}
 	safeDBErr(ctx, r.log, "SetSummaryComment", func() error {

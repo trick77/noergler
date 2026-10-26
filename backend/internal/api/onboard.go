@@ -78,6 +78,20 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	admin := d.Bitbucket.WithToken(token)
+	// An own bot that cannot be worked with would prove nothing and could
+	// grant rights to a name its token does not belong to: say so instead
+	// of reporting every target unreachable.
+	if bb, blocked := rt.BitbucketBlocked(ctx); blocked {
+		httpx.WriteError(w, http.StatusUnprocessableEntity, "the team's own Bitbucket account is "+string(bb.Status)+
+			"; push a working token to PUT /teams/"+slug+"/credentials first")
+		return
+	}
+	// The bot whose access is checked and granted: the team's own once it
+	// pushed one, so grant-bot after a switch gives the new bot its rights.
+	var bot onboarding.BotClient = d.Bitbucket
+	if own, _ := rt.OwnBot(); own != nil {
+		bot = own
+	}
 
 	opts := onboarding.Options{
 		GrantBot: action == "grant-bot",
@@ -107,7 +121,7 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 			httpx.WriteError(w, http.StatusUnprocessableEntity, err.Error())
 			return
 		}
-		res, err := onboarding.ClaimAndOnboard(ctx, admin, d.Bitbucket, d.Claims,
+		res, err := onboarding.ClaimAndOnboard(ctx, admin, bot, d.Claims,
 			&team, scopes, caller, webhookURL, opts, d.Log)
 		if err != nil {
 			d.writeError(w, r.WithContext(ctx), err)
@@ -125,7 +139,7 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 			httpx.WriteError(w, http.StatusUnprocessableEntity, err.Error())
 			return
 		}
-		res, err := onboarding.RemoveAndUnclaim(ctx, admin, d.Bitbucket, d.Claims,
+		res, err := onboarding.RemoveAndUnclaim(ctx, admin, bot, d.Claims,
 			&team, scopes, caller, webhookURL, opts, d.Log)
 		if err != nil {
 			d.writeError(w, r.WithContext(ctx), err)
@@ -153,7 +167,7 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 				"no targets: claim a project first (projects in the body)")
 			return
 		}
-		o := onboarding.New(admin, d.Bitbucket, &team, webhookURL, opts, d.Log)
+		o := onboarding.New(admin, bot, &team, webhookURL, opts, d.Log)
 		rows, results, text, healthy := onboarding.Run(ctx, o, onboarding.Action(action), targets)
 		if rows != nil {
 			resp["rows"] = rows

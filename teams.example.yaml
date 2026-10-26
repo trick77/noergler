@@ -9,6 +9,9 @@
 # variable holding the value (kept in the k8s Secret / .env). Convention, not
 # enforced: TEAM_<SLUG>_... with the slug uppercased and `-` replaced by `_`.
 #
+# A team's own Bitbucket bot and Jira token are not configured here either:
+# the team pushes them itself (PUT /teams/{team}/credentials, http/5-credentials.http).
+#
 # Convention in this example:
 #   - a live line ending in `# required` is mandatory
 #   - a commented line is optional; the comment names its default, and

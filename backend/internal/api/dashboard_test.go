@@ -105,6 +105,7 @@ type dashHarness struct {
 	q   *fakeDashQueue
 	st  *fakeDashStore
 	llm *inference.Client
+	rt  *teams.Runtime
 }
 
 // newDashLLM builds a team client that is never started: the roster reads its
@@ -145,7 +146,7 @@ func newDashHarness(t *testing.T) *dashHarness {
 	team.Review.ExcludeSourceBranches = []string{"dependabot/*"}
 	team.Review.IgnoreAuthors = []string{"renovate"}
 	llm := newDashLLM(t)
-	rt := teams.NewRuntime(team, &fakeReviewer{}, llm, nil, nil)
+	rt := teams.NewRuntime(team, &fakeReviewer{}, llm, nil)
 
 	var buf bytes.Buffer
 	log := slog.New(logging.NewSplunkHandler(&buf, slog.LevelDebug, "noergler", "test"))
@@ -162,7 +163,7 @@ func newDashHarness(t *testing.T) *dashHarness {
 		BitbucketURL: "https://bitbucket.example.com",
 		Dashboard:    q, DashboardStore: st,
 	})
-	return &dashHarness{srv: srv, q: q, st: st, llm: llm}
+	return &dashHarness{srv: srv, q: q, st: st, llm: llm, rt: rt}
 }
 
 func (h *dashHarness) get(t *testing.T, path string) *httptest.ResponseRecorder {
@@ -673,6 +674,49 @@ func TestTeamsNamesTheModel(t *testing.T) {
 	}
 	if strings.Count(raw, `"model"`) != 1 {
 		t.Errorf("want one model key, for the enabled team only: %s", raw)
+	}
+}
+
+// A team's own accounts show on the roster as source, bot and the fixed
+// health status; never a reason, never a token. A disabled team has none.
+func TestTeamsShowsTheAccountsHealth(t *testing.T) {
+	h := newDashHarness(t)
+	hh := &harness{rt: h.rt, log: slog.New(slog.DiscardHandler)}
+	hh.withAccounts(t, map[teams.Kind]teams.Opened{
+		teams.KindBitbucket: {Username: "plat-bot", Undecryptable: true},
+		teams.KindJira:      {Token: "revoked"},
+	})
+
+	raw := h.get(t, "/api/dashboard/teams").Body.String()
+	var got struct {
+		Teams []struct {
+			Slug             string         `json:"slug"`
+			BitbucketAccount map[string]any `json:"bitbucket_account"`
+			JiraAccount      map[string]any `json:"jira_account"`
+		} `json:"teams"`
+	}
+	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, tm := range got.Teams {
+		switch tm.Slug {
+		case "platform":
+			if bb := tm.BitbucketAccount; bb["source"] != "team" || bb["username"] != "plat-bot" || bb["status"] != "undecryptable" {
+				t.Errorf("bitbucket = %v", bb)
+			}
+			if jr := tm.JiraAccount; jr["source"] != "team" || jr["status"] != "rejected" {
+				t.Errorf("jira = %v", jr)
+			}
+		case "mobile":
+			if tm.BitbucketAccount != nil || tm.JiraAccount != nil {
+				t.Errorf("disabled team accounts = %v / %v, want null", tm.BitbucketAccount, tm.JiraAccount)
+			}
+		}
+	}
+	for _, leak := range []string{"revoked", "does not decrypt", "HTTP 401", "TEAM_MOBILE"} {
+		if strings.Contains(raw, leak) {
+			t.Errorf("%q reached the unauthenticated roster: %s", leak, raw)
+		}
 	}
 }
 

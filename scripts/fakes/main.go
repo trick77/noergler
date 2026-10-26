@@ -100,6 +100,14 @@ var (
 // in the smoke run would prove nothing.
 const adminToken = "admin-token"
 
+// accounts is who each token the smoke run uses belongs to: the shared bot
+// ("t", as BITBUCKET_TOKEN), the admin, and a team's own bot that the run
+// pushes through PUT /teams/{team}/credentials. revokedToken is refused by
+// Bitbucket and Jira alike.
+var accounts = map[string]string{"t": "bot", adminToken: "admin", "team-bot-token": "team-bot"}
+
+const revokedToken = "revoked-token"
+
 // isAdmin reports whether this request carries the admin token.
 func isAdmin(r *http.Request) bool {
 	return strings.TrimSpace(r.Header.Get("Authorization")) == "Bearer "+adminToken
@@ -184,13 +192,28 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// Bitbucket: the startup connectivity probe.
+	// Bitbucket: the startup connectivity probe, and the identity proof of a
+	// team's own bot. Like Bitbucket, it names the token's account in
+	// X-AUSERNAME; the revoked token is refused.
 	mux.HandleFunc("GET /rest/api/1.0/application-properties", func(w http.ResponseWriter, r *http.Request) {
+		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if token == revokedToken {
+			w.WriteHeader(http.StatusUnauthorized)
+			writeJSON(w, r, map[string]any{"errors": []any{map[string]any{"message": "Authentication failed"}}})
+			return
+		}
+		if who, ok := accounts[token]; ok {
+			w.Header().Set("X-AUSERNAME", who)
+		}
 		writeJSON(w, r, map[string]any{"version": "8.19.2", "displayName": "Bitbucket"})
 	})
 
-	// Jira: the startup identity probe.
+	// Jira: the startup identity probe, and a team token's proof.
 	mux.HandleFunc("GET /rest/api/2/myself", func(w http.ResponseWriter, r *http.Request) {
+		if strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ") == revokedToken {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
 		writeJSON(w, r, map[string]any{"name": "noergler", "displayName": "Noergler Bot"})
 	})
 

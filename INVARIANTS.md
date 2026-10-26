@@ -13,6 +13,24 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   DB's.
 - Gateway host/models are instance-only; an unknown `teams.yaml` key
   disables the team.
+- Own accounts (`PUT /teams/{team}/credentials`): Bitbucket and Jira only,
+  the rest stays the admin's (user, 2026-10-26). Own Bitbucket token = own
+  bot = own `@`; the shared `@` stops for that team. Every part proven before
+  anything is stored; a refused part changes nothing. AES-GCM under
+  `NOERGLER_SECRETS_KEY` (required), AAD `slug|kind`; never logged, never
+  returned.
+- Key missing, malformed or not the stored key check's = shared fault, boot
+  aborts. A team's own row or token broken = that team only, never
+  disabled: stays up (so it can push a fix), Bitbucket blocked =
+  webhooks acknowledged not processed, Jira broken = no ticket check.
+- Health leaves as a fixed status (`ok rejected unreachable undecryptable
+  username_mismatch`), never a reason. 2xx = ok, transport error =
+  unreachable; a 401 never sets rejected by itself (Bitbucket 401s a working
+  token without rights on one repo): it rechecks the token, at most every
+  30s, inline. A blocked rejected team is rechecked in the webhook route;
+  that, the push proof and onboarding are the only Bitbucket calls off the
+  worker. One log line per change.
+- A push is all or none: both parts proven, one transaction, then swapped.
 
 ## Money
 
@@ -127,7 +145,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   from toRef then fromRef -> ownership -> exclude_repos (review-starting
   events and comments) -> exclude_source/target_branches (review-starting
   events only, never comments: a mention still answers; an excluded repo
-  wins, user 2026-10-20) -> dispatch.
+  wins, user 2026-10-20) -> own Bitbucket account blocked (200 ignored; new
+  work only: review events, comments, `pr:modified`; lifecycle passes) ->
+  dispatch.
 - The mention gate is the route's; `HandleMention` does not check. One
   exception, on the worker: a reply directly under the stored summary or
   under a stored bot reply is a mention, from anyone (user, 2026-10-19,
@@ -174,6 +194,8 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   browser only, `de*` -> German, else English; no switch, no stored choice
   (decided). Review text (findings, replies) stays in the language it was
   produced in; the UI labels skip reasons by code, the server's label only as fallback.
+- Pill words start with a capital in both languages, `OK` not `Ok`, the
+  unknown-code fallback too (user, 2026-10-26).
 
 ## Review pipeline
 

@@ -40,7 +40,15 @@ Ownership comes from the `team_claims` table, not from `teams.yaml`. The yaml's
 `projects:` only seeds it on first start.
 
 A comment containing `@<BITBUCKET_USERNAME>` routes to the Q&A path instead of a
-review. The trigger is the instance's bot name, not a per-team setting.
+review. The trigger is the shared bot's name, or, for a team that pushed its
+own Bitbucket bot (`PUT /teams/{team}/credentials`), that bot's: such a team
+posts as its bot and answers only to its `@`.
+
+Last before dispatch: a team whose own Bitbucket token cannot be worked with
+(rejected, unreadable, another account's) gets no new work: a review, a
+comment or a draft handoff is acknowledged with `ignored` and nothing queued,
+until it pushes a working token. Merge, decline and delete events still pass,
+since Bitbucket never sends them again. No other team changes.
 
 Events handled: `pr:opened`, `pr:from_ref_updated`, `pr:modified`, `pr:merged`,
 `pr:declined`, `pr:deleted`, `pr:comment:added`, `pr:comment:deleted`.
