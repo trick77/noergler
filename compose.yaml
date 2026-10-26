@@ -7,8 +7,10 @@ services:
       POSTGRES_DB: noergler
     ports:
       - "5432:5432"
+    # The parent, not .../data: from 18 the image keeps PGDATA in a
+    # versioned subdirectory and refuses to start on the old mount.
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U noergler"]
       interval: 5s
