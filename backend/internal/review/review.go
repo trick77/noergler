@@ -447,7 +447,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	// bear out, then dedup against what earlier runs already posted.
 	v := r.validateFindings(ctx, prTag, result.Review.Findings, plan.anchors)
 	// The model's verdict argued from findings some of which are now gone.
-	reviewSummary := inference.AdjustVerdict(result.Review.Summary, v.Kept, len(v.Dropped))
+	reviewSummary := inference.AdjustVerdict(result.Review.Summary, v.Kept, len(v.Dropped), plan.lang)
 	for _, d := range v.Dropped {
 		plan.detail.Decisions = append(plan.detail.Decisions, decision(d.Finding, "dropped", string(d.Reason)))
 	}
@@ -754,7 +754,7 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 //
 // Returns the attempt id, for the run's detail record.
 func (r *Reviewer) handleNonOK(ctx context.Context, l lang.Lang, result inference.ReviewResult, key store.PRKey, kind store.RunKind, prTag, sourceCommit string, upsert store.PRUpsert) int64 {
-	short := shortOrUnknown(sourceCommit)
+	short := shortOrUnknown(sourceCommit, lang.EN) // logs stay English
 	project, repo, prID := key.Project, key.Repo, key.PRID
 
 	if result.Outcome == inference.OutcomeError {

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/trick77/noergler/internal/diff"
+	"github.com/trick77/noergler/internal/lang"
 )
 
 // DropReason says why ValidateFindings refused a finding. The values are log
@@ -95,8 +96,8 @@ func ValidateFindings(findings []ReviewFinding, idx diff.AnchorIndex) Validation
 // a verdict argued from a dropped finding would otherwise say "request
 // changes" beside zero posted comments. Only ever lowers: a drop cannot make
 // a review stricter. The rationale is replaced, since the model's names the
-// finding that is gone.
-func AdjustVerdict(s ReviewSummary, kept []ReviewFinding, dropped int) ReviewSummary {
+// finding that is gone; the replacement is posted, so it is in l.
+func AdjustVerdict(s ReviewSummary, kept []ReviewFinding, dropped int, l lang.Lang) ReviewSummary {
 	if dropped == 0 {
 		return s
 	}
@@ -112,7 +113,15 @@ func AdjustVerdict(s ReviewSummary, kept []ReviewFinding, dropped int) ReviewSum
 		return s
 	}
 	s.VerdictDecision = supported
-	s.VerdictRationale = fmt.Sprintf("Verdict lowered: %d finding(s) whose evidence the diff did not bear out were withheld.", dropped)
+	if dropped == 1 {
+		s.VerdictRationale = l.Pick(
+			"Empfehlung herabgestuft: 1 Finding zurückgehalten, dessen Beleg der Diff nicht stützt.",
+			"Verdict lowered: 1 finding whose evidence the diff did not bear out was withheld.")
+	} else {
+		s.VerdictRationale = fmt.Sprintf(l.Pick(
+			"Empfehlung herabgestuft: %d Findings zurückgehalten, deren Beleg der Diff nicht stützt.",
+			"Verdict lowered: %d findings whose evidence the diff did not bear out were withheld."), dropped)
+	}
 	return s
 }
 

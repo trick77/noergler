@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/trick77/noergler/internal/diff"
+	"github.com/trick77/noergler/internal/lang"
 )
 
 // validateFixture is one file whose diff shows lines 10 to 20:
@@ -459,7 +460,7 @@ func TestAdjustVerdict(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := AdjustVerdict(tc.in, tc.kept, tc.dropped)
+			got := AdjustVerdict(tc.in, tc.kept, tc.dropped, lang.EN)
 			if got.VerdictDecision != tc.decision {
 				t.Errorf("decision = %q, want %q", got.VerdictDecision, tc.decision)
 			}
@@ -467,6 +468,26 @@ func TestAdjustVerdict(t *testing.T) {
 				t.Errorf("rationale = %q, lowered = %v, want %v", got.VerdictRationale, lowered, tc.lowered)
 			}
 		})
+	}
+}
+
+// The replacement rationale is posted, so it follows the review's language.
+func TestAdjustVerdictLanguage(t *testing.T) {
+	strict := ReviewSummary{VerdictDecision: "request_changes", VerdictRationale: "the dropped bug"}
+	cases := []struct {
+		l       lang.Lang
+		dropped int
+		want    string
+	}{
+		{lang.DE, 1, "Empfehlung herabgestuft: 1 Finding zurückgehalten, dessen Beleg der Diff nicht stützt."},
+		{lang.DE, 2, "Empfehlung herabgestuft: 2 Findings zurückgehalten, deren Beleg der Diff nicht stützt."},
+		{lang.EN, 1, "Verdict lowered: 1 finding whose evidence the diff did not bear out was withheld."},
+		{lang.EN, 3, "Verdict lowered: 3 findings whose evidence the diff did not bear out were withheld."},
+	}
+	for _, tc := range cases {
+		if got := AdjustVerdict(strict, nil, tc.dropped, tc.l).VerdictRationale; got != tc.want {
+			t.Errorf("%s, %d dropped: rationale = %q, want %q", tc.l, tc.dropped, got, tc.want)
+		}
 	}
 }
 
