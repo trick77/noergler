@@ -86,7 +86,6 @@ export const de = {
     teams: "Teams",
     noRuns: "Noch keine Runs.",
     lastOutcome: "Letztes Ergebnis",
-    prs: "PRs",
     lastReviewed: "Letztes Review",
     lastRun: "Letzter Run",
   },
@@ -155,7 +154,7 @@ export const de = {
     lastRun: "letzter Run {{ago}}",
     noClaims:
       "Keine Projekte und keine Repositories beansprucht, deshalb prüft dieses Team nichts.",
-    claim: "Anspruch",
+    slug: "Slug",
     scope: "Umfang",
     scopeRepo: "Repo",
     scopeProject: "Projekt",
@@ -210,7 +209,7 @@ export const de = {
   },
   decision: {
     dropped: "verworfen",
-    repeat: "schon gepostet",
+    repeat: "schon geposted",
     cut: "über dem Kommentar-Limit",
     failed: "Posten fehlgeschlagen",
   },
@@ -224,7 +223,7 @@ export const de = {
   },
   prState: {
     open: "offen",
-    merged: "gemergt",
+    merged: "gemerged",
     declined: "abgelehnt",
   },
   run: {
@@ -249,7 +248,7 @@ export const de = {
     noFiles: "Keine Dateien erfasst.",
     file: "Datei",
     howSent: "Wie gesendet",
-    notPostedTitle: "Nicht gepostet",
+    notPostedTitle: "Nicht geposted",
     verdictLowered:
       "Urteil von {{model}} auf {{posted}} herabgestuft, nachdem Findings verworfen wurden.",
     movedFrom: "verschoben von :{{line}}",
@@ -290,10 +289,10 @@ export const de = {
     where: "Wo",
     finding: "Finding",
     result: "Ergebnis",
-    posted: "gepostet",
+    posted: "geposted",
     replied: "Autor hat geantwortet",
     fixedLater: "seither behoben",
-    noFindings: "Dieser Run hat keine Findings gepostet.",
+    noFindings: "Dieser Run hat keine Findings geposted.",
     noRun: "Es lief kein Review, deshalb gibt es keine Findings.",
     fixedTitle: "In diesem Run behoben",
     suggestion: "Vorschlag",
@@ -347,7 +346,7 @@ export const de = {
     cost: "PR-Kosten",
     ofCap: "von {{cap}} Limit",
     findings: "Findings",
-    posted: "gepostet",
+    posted: "geposted",
     findingsNote: "{{fixed}} behoben · {{open}} offen",
     scope: "Ganzer PR",
     scopeFiles_one: "{{count}} Datei",
@@ -371,10 +370,10 @@ export const de = {
     alsoOnPR: "Ebenfalls in diesem PR",
     callsSub: "ohne eigenen Run und eigene Seite, im PR-Total enthalten",
     findingsTitle: "Findings in diesem Pull Request",
-    noFindings: "In diesem Pull Request wurden keine Findings gepostet.",
+    noFindings: "In diesem Pull Request wurden keine Findings geposted.",
     findingsNote2:
-      "Nicht gepostete Findings und Bugs in Code, den der PR nicht ändert, stehen auf der Seite des jeweiligen Runs.",
-    postedIn: "Gepostet",
+      "Findings, die nicht geposted wurden, und Bugs in Code, den der PR nicht ändert, stehen auf der Seite des jeweiligen Runs.",
+    postedIn: "Geposted",
     now: "Jetzt",
     fixed: "behoben",
     open: "offen",
@@ -441,7 +440,7 @@ export const de = {
       "Eine Erwähnung übergeht die Auto-Review-Liste, deshalb funktioniert sie auch bei PRs, die sonst nie geprüft würden. Das Kostenlimit übergeht sie nicht: Jede Antwort zählt dazu, und am Limit antwortet der Bot auch nicht mehr.",
     lessQ: "Warum hat das zweite Review weniger gesagt als das erste?",
     lessA1:
-      "Ein neuer Commit wird gegen den Commit des letzten Reviews geprüft, nicht gegen den ganzen PR, und schon gepostete Findings werden nicht wiederholt.",
+      "Ein neuer Commit wird gegen den Commit des letzten Reviews geprüft, nicht gegen den ganzen PR, und Findings, die schon geposted wurden, werden nicht wiederholt.",
     lessA2: "Ein wieder geöffneter, abgelehnter PR fängt von vorne an.",
     stoppedQ: "Warum haben die Reviews mitten in meinem PR aufgehört?",
     stoppedA:

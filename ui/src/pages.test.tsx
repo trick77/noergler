@@ -182,7 +182,8 @@ describe("LivePage", () => {
     const cells = Array.from(row?.querySelectorAll("td") ?? []).map(
       (el) => el.textContent,
     );
-    expect(cells).toEqual(["Search", "unchanged", "2", "2h ago", "1m ago"]);
+    // No PR count: it says nothing about whether the team is live.
+    expect(cells).toEqual(["Search", "unchanged", "2h ago", "1m ago"]);
     expect(screen.getByText("unchanged").getAttribute("title")).toBe(
       "HEAD unchanged since last review",
     );
@@ -191,13 +192,7 @@ describe("LivePage", () => {
     const mobileCells = Array.from(mobile?.querySelectorAll("td") ?? []).map(
       (el) => el.textContent,
     );
-    expect(mobileCells).toEqual([
-      "Mobile",
-      "timed out",
-      "1",
-      "never",
-      "5m ago",
-    ]);
+    expect(mobileCells).toEqual(["Mobile", "timed out", "never", "5m ago"]);
   });
 
   // State is configuration, not live: the Teams page carries it.
@@ -595,9 +590,30 @@ describe("TeamsPage", () => {
     serve({ teams: { teams } });
     render(<TeamsPage />);
 
-    // Once: the PAY row. Not a second time beside the slug.
+    // Once: the PAY row. Not a second time in the title line.
     expect(await screen.findAllByText("project")).toHaveLength(1);
     expect(screen.queryByText(/not started/)).toBeNull();
+  });
+
+  // Name and slug side by side read as the same team twice. The slug stays
+  // on hover: the disabled note sends the reader to its team= log line.
+  it("names a team by its display name, the slug on hover", async () => {
+    serve({ teams: { teams } });
+    render(<TeamsPage />);
+
+    const name = await screen.findByText("Zahlungen");
+    expect(name.getAttribute("title")).toBe("payments");
+    expect(screen.queryByText(/\bpayments\b/)).toBeNull();
+  });
+
+  // Bitbucket's own word for the keys the column lists.
+  it("heads the claims column Slug", async () => {
+    serve({ teams: { teams } });
+    render(<TeamsPage />);
+
+    expect(
+      await screen.findByRole("columnheader", { name: "Slug" }),
+    ).toBeDefined();
   });
 
   // Unauthenticated and cross-team, so it reports that authors are

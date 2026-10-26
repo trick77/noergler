@@ -118,21 +118,21 @@ export function TeamsPage() {
           <Card
             key={team.slug}
             title={team.name}
-            // The slug leads the note: it is the webhook path, the team= log
-            // field and the settings route, so it has to stay on the page
-            // once the heading shows the display name instead. No scope here:
-            // the claims table below lists it, and a project's repo count is
+            hint={team.slug}
+            // The display name only, never the slug beside it: both read as
+            // the same team twice (user, 2026-10-26). The slug stays on
+            // hover, as on TeamPill: it is the team= log field the disabled
+            // note points at, and the webhook path. No scope here: the
+            // claims table below lists it, and a project's repo count is
             // never known, so a summary could only repeat or guess.
             note={
               <>
-                {team.slug}
                 {team.model && (
                   <>
-                    <Sep />
                     <code className="font-mono text-[12px]">{team.model}</code>
+                    <Sep />
                   </>
                 )}
-                <Sep />
                 {t("teams.prs", { count: team.prs })}
                 <Sep />
                 {t("teams.lastReviewed", { ago: ago(team.last_reviewed, now) })}
@@ -155,7 +155,7 @@ export function TeamsPage() {
               <table className={table}>
                 <thead>
                   <tr>
-                    <th className={th}>{t("teams.claim")}</th>
+                    <th className={th}>{t("teams.slug")}</th>
                     <th className={thNum}>{t("teams.scope")}</th>
                   </tr>
                 </thead>

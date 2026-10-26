@@ -95,7 +95,6 @@ export const en = {
     teams: "Teams",
     noRuns: "No runs yet.",
     lastOutcome: "Last outcome",
-    prs: "PRs",
     lastReviewed: "Last reviewed",
     lastRun: "Last run",
   },
@@ -164,7 +163,7 @@ export const en = {
     lastRun: "last run {{ago}}",
     noClaims:
       "No projects and no repositories claimed, so this team reviews nothing.",
-    claim: "Claim",
+    slug: "Slug",
     scope: "Scope",
     scopeRepo: "repo",
     scopeProject: "project",
