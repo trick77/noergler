@@ -135,10 +135,18 @@ func Summary(in SummaryInput) string {
 	// The italic fallbacks mean the model omitted the field, which is a
 	// defect worth seeing; the plain sentinels mean it looked and found
 	// nothing. Two different states, both rendered.
+	security := strings.TrimSpace(in.Summary.SecurityPerformance)
+	if isNoneSentinel(security) {
+		security = ""
+	}
+	coverage := strings.TrimSpace(in.Summary.TestCoverage)
+	if strings.EqualFold(coverage, coverageNotAssessable) {
+		coverage = p("Testabdeckung allein aus dem Diff nicht beurteilbar.", coverageNotAssessable)
+	}
 	sections = append(sections, p("### Sicherheit und Performance\n", "### Security and performance\n")+
-		orDefault(WrapProse(strings.TrimSpace(in.Summary.SecurityPerformance)), p("Nichts Auffälliges.", "None notable.")))
+		orDefault(WrapProse(security), p("Nichts Auffälliges.", "None notable.")))
 	sections = append(sections, p("### Testabdeckung\n", "### Test coverage\n")+
-		orDefault(WrapProse(strings.TrimSpace(in.Summary.TestCoverage)), p("_Nicht beurteilt._", "_Not assessed._")))
+		orDefault(WrapProse(coverage), p("_Nicht beurteilt._", "_Not assessed._")))
 
 	if in.Ticket != nil {
 		sections = append(sections, renderTicket(in))
@@ -199,15 +207,30 @@ func renderOverview(in SummaryInput) string {
 func renderStrengths(in SummaryInput) string {
 	p := in.Lang.Pick
 	heading := p("### Stärken", "### Strengths")
-	if len(in.Summary.Strengths) == 0 {
-		return heading + p("\nKeine.", "\nNone.")
-	}
 	var b strings.Builder
 	b.WriteString(heading)
 	for _, s := range in.Summary.Strengths {
-		b.WriteString("\n- " + s)
+		if !isNoneSentinel(s) {
+			b.WriteString("\n- " + s)
+		}
+	}
+	if b.Len() == len(heading) {
+		return heading + p("\nKeine.", "\nNone.")
 	}
 	return b.String()
+}
+
+// The prompt quotes its sentinels in English and asks for them verbatim, so
+// a German review would post them in English. The words are the code's: a
+// field that is only a sentinel renders as the localized one.
+const coverageNotAssessable = "Test coverage not assessable from diff alone."
+
+func isNoneSentinel(s string) bool {
+	switch strings.ToLower(strings.TrimSuffix(strings.TrimSpace(s), ".")) {
+	case "none", "none notable":
+		return true
+	}
+	return false
 }
 
 // renderAccounting is the line under the issues that says what the list

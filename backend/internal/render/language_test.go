@@ -56,6 +56,40 @@ func TestGermanSummary(t *testing.T) {
 	}
 }
 
+// The prompt's sentinels are English; the model may emit them verbatim in a
+// German review.
+func TestGermanSummaryLocalizesSentinels(t *testing.T) {
+	in := base()
+	in.Lang = lang.DE
+	in.Summary.Strengths = []string{"None."}
+	in.Summary.SecurityPerformance = "None notable."
+	in.Summary.TestCoverage = "Test coverage not assessable from diff alone."
+
+	got := Summary(in)
+	for _, want := range []string{
+		"### Stärken\nKeine.", "### Sicherheit und Performance\nNichts Auffälliges.",
+		"### Testabdeckung\nTestabdeckung allein aus dem Diff nicht beurteilbar.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary lacks %q:\n%s", want, got)
+		}
+	}
+	for _, leak := range []string{"None", "not assessable"} {
+		if strings.Contains(got, leak) {
+			t.Errorf("German summary keeps %q:\n%s", leak, got)
+		}
+	}
+
+	in.Summary.Strengths = []string{"none", "Klare Trennung"}
+	in.Summary.SecurityPerformance = "Keine Abfrage pro Element."
+	got = Summary(in)
+	for _, want := range []string{"### Stärken\n- Klare Trennung\n\n", "### Sicherheit und Performance\nKeine Abfrage pro Element."} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary lacks %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestGermanInlineComment(t *testing.T) {
 	s := "x := maß"
 	got := InlineComment(inference.ReviewFinding{Severity: "suggestion", Comment: "Das Maß.", Suggestion: &s}, lang.DE)

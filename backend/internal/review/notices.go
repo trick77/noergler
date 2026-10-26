@@ -131,7 +131,7 @@ func (r *Reviewer) failureNotice(ctx context.Context, project, repo string, prID
 
 // timeoutNotice surfaces a deadline-exceeded run on the summary comment.
 func (r *Reviewer) timeoutNotice(ctx context.Context, l lang.Lang, project, repo string, prID int, prReviewID int64, newCommit, priorCommit string) {
-	short := shortOrUnknown(newCommit)
+	short := shortOrUnknown(newCommit, l)
 	fresh := fmt.Sprintf(l.Pick(
 		"⚠️ **Review übersprungen** — keine Antwort vom Modell innerhalb von %d Minuten für Commit `%s`. "+
 			"Das Review wurde nicht abgeschlossen. Neuen Commit pushen oder `@%s` für einen neuen Versuch.",
@@ -145,7 +145,7 @@ func (r *Reviewer) timeoutNotice(ctx context.Context, l lang.Lang, project, repo
 
 // unparseableNotice surfaces a refused or unparseable model response.
 func (r *Reviewer) unparseableNotice(ctx context.Context, l lang.Lang, project, repo string, prID int, prReviewID int64, newCommit, priorCommit string) {
-	short := shortOrUnknown(newCommit)
+	short := shortOrUnknown(newCommit, l)
 	fresh := fmt.Sprintf(l.Pick(
 		"⚠️ **Review übersprungen** — das Modell hat eine Antwort geliefert, die nicht verarbeitet werden konnte "+
 			"(eventuell hat es diesen Diff abgelehnt), für Commit `%s`. Das Review wurde nicht abgeschlossen. "+
@@ -160,7 +160,7 @@ func (r *Reviewer) unparseableNotice(ctx context.Context, l lang.Lang, project, 
 
 // tooLargeNotice surfaces a PR that does not fit the model's context window.
 func (r *Reviewer) tooLargeNotice(ctx context.Context, l lang.Lang, project, repo string, prID int, prReviewID int64, newCommit, priorCommit string) {
-	short := shortOrUnknown(newCommit)
+	short := shortOrUnknown(newCommit, l)
 	fresh := fmt.Sprintf(l.Pick(
 		"⚠️ **Review übersprungen** — dieser PR ist zu gross für das Kontextfenster des Modells "+
 			"(Commit `%s`). In kleinere PRs aufteilen, dann `@%s` für einen neuen Versuch.",
@@ -249,11 +249,11 @@ func (r *Reviewer) writeCostBanner(ctx context.Context, l lang.Lang, project, re
 	}
 }
 
-// shortOrUnknown is the 8-character commit prefix the notices use, or
-// "unknown" when the commit is missing.
-func shortOrUnknown(commit string) string {
+// shortOrUnknown is the 8-character commit prefix the notices use, or the
+// word for unknown in l when the commit is missing.
+func shortOrUnknown(commit string, l lang.Lang) string {
 	if s := shortSHA(commit, 8); s != "" {
 		return s
 	}
-	return "unknown"
+	return l.Pick("unbekannt", "unknown")
 }
