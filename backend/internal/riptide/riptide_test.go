@@ -188,12 +188,15 @@ func TestStatus(t *testing.T) {
 		{200, `null`, StatusFailing},
 		{503, `nope`, StatusFailing},
 		{302, ``, StatusFailing},
+		{403, `forbidden`, StatusRejected},
 	}
 	for _, c := range cases {
 		_, e := newFake(t, reply(c.status, c.body))
 		if got := e.Status(); got != StatusFailing {
 			t.Errorf("%d before the ping: %q, want failing", c.status, got)
 		}
+		// A stale ok must not survive a failed ping: the ping sets the word.
+		e.set(StatusOK)
 		_, _ = e.VerifyAtStartup(context.Background())
 		if got := e.Status(); got != c.want {
 			t.Errorf("%d %q: %q, want %q", c.status, c.body, got, c.want)

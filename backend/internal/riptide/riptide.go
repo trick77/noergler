@@ -134,11 +134,13 @@ func (e *Emitter) Status() string {
 // A rejected token (401) is fatal and comes back as ErrAuth: emitting for weeks
 // with a dead token would lose the data silently. Anything else, including an
 // unreachable riptide, is a warning only, because riptide being down is not a
-// reason to stop reviewing.
+// reason to stop reviewing; a 403 shows as rejected on the dashboard. The
+// status is failing until the ping proves otherwise.
 func (e *Emitter) VerifyAtStartup(ctx context.Context) (string, error) {
 	if !e.enabled {
 		return "", nil
 	}
+	e.set(StatusFailing)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, e.url+pingPath, nil)
 	if err != nil {
 		return "", nil
@@ -158,6 +160,9 @@ func (e *Emitter) VerifyAtStartup(ctx context.Context) (string, error) {
 	// 3xx included: a redirected URL is a misconfiguration, and reporting it as
 	// an unreadable body would send the reader looking at riptide instead.
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if resp.StatusCode == http.StatusForbidden {
+			e.set(StatusRejected)
+		}
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, errBodyLimit))
 		e.log.WarnContext(ctx, fmt.Sprintf("Riptide ping returned unexpected status %d: %s",
 			resp.StatusCode, strings.TrimSpace(string(body))))
@@ -228,11 +233,13 @@ func (e *Emitter) EmitPRCompleted(ctx context.Context, r Rollup) {
 
 	raw, err := json.Marshal(body)
 	if err != nil {
+		e.set(StatusFailing)
 		e.log.WarnContext(ctx, "Riptide emit failed to encode: "+err.Error())
 		return
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.url+emitPath, bytes.NewReader(raw))
 	if err != nil {
+		e.set(StatusFailing)
 		e.log.WarnContext(ctx, "Riptide emit failed: "+err.Error())
 		return
 	}
@@ -242,9 +249,10 @@ func (e *Emitter) EmitPRCompleted(ctx context.Context, r Rollup) {
 	resp, err := e.http.Do(req)
 	if err != nil {
 		// Our own context ending (shutdown, a caller's deadline) says
-		// nothing about riptide: no status change, no warning.
+		// nothing about riptide, so the status stays; the rollup is still
+		// lost, so the warning stays.
 		if ctx.Err() != nil {
-			e.log.InfoContext(ctx, fmt.Sprintf("Riptide emit cancelled (event_type=pr_completed): %v", err))
+			e.log.WarnContext(ctx, fmt.Sprintf("Riptide emit cancelled, rollup lost (event_type=pr_completed): %v", err))
 			return
 		}
 		e.set(StatusFailing)
@@ -258,14 +266,16 @@ func (e *Emitter) EmitPRCompleted(ctx context.Context, r Rollup) {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		// 401/403 is the token riptide no longer takes; anything else is the
 		// rollup lost, whatever the cause. Either way the status says so.
+		word := "failed"
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 			e.set(StatusRejected)
+			word = "rejected"
 		} else {
 			e.set(StatusFailing)
 		}
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, errBodyLimit))
-		e.log.WarnContext(ctx, fmt.Sprintf("Riptide emit rejected (event_type=pr_completed, status=%d): %s",
-			resp.StatusCode, strings.TrimSpace(string(msg))))
+		e.log.WarnContext(ctx, fmt.Sprintf("Riptide emit %s (event_type=pr_completed, status=%d): %s",
+			word, resp.StatusCode, strings.TrimSpace(string(msg))))
 		return
 	}
 	e.set(StatusOK)
