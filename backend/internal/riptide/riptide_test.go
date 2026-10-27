@@ -220,16 +220,40 @@ func TestStatusFollowsEmits(t *testing.T) {
 	if got := e.Status(); got != StatusOK {
 		t.Errorf("after an accepted emit: %q, want ok", got)
 	}
+	// One refused rollup is about that rollup, not about forwarding.
 	code = 422
 	e.EmitPRCompleted(context.Background(), Rollup{Outcome: "merged"})
-	if got := e.Status(); got != StatusUnreachable {
-		t.Errorf("after a refused emit: %q, want unreachable", got)
+	if got := e.Status(); got != StatusOK {
+		t.Errorf("after a 422: %q, want ok unchanged", got)
 	}
+	code = 401
+	e.EmitPRCompleted(context.Background(), Rollup{Outcome: "merged"})
+	if got := e.Status(); got != StatusRejected {
+		t.Errorf("after a 401: %q, want rejected", got)
+	}
+	code = 500
+	e.EmitPRCompleted(context.Background(), Rollup{Outcome: "merged"})
+	if got := e.Status(); got != StatusUnreachable {
+		t.Errorf("after a 500: %q, want unreachable", got)
+	}
+
 	dead := New("http://127.0.0.1:1", "t", slog.New(slog.DiscardHandler))
-	dead.reachable.Store(true)
+	dead.last.Store(StatusOK)
 	dead.EmitPRCompleted(context.Background(), Rollup{Outcome: "merged"})
 	if got := dead.Status(); got != StatusUnreachable {
 		t.Errorf("after a transport error: %q, want unreachable", got)
+	}
+}
+
+// Our own context ending is not riptide failing: the status stays.
+func TestStatusIgnoresOwnCancellation(t *testing.T) {
+	_, e := newFake(t, reply(202, ``))
+	e.last.Store(StatusOK)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	e.EmitPRCompleted(ctx, Rollup{Outcome: "merged"})
+	if got := e.Status(); got != StatusOK {
+		t.Errorf("after a cancelled emit: %q, want ok unchanged", got)
 	}
 }
 

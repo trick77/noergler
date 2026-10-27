@@ -39,6 +39,7 @@ const (
 	StatusOff         = "off"
 	StatusOK          = "ok"
 	StatusUnreachable = "unreachable"
+	StatusRejected    = "rejected"
 )
 
 // ErrAuth means riptide rejected the token (HTTP 401). Fatal at startup: it
@@ -78,12 +79,14 @@ type Emitter struct {
 	url     string
 	token   string
 	enabled bool
-	// reachable is the last call's outcome: set by a startup ping riptide
-	// answered with a team name and by each 2xx emit, cleared by an emit
-	// that failed or was refused. Unset until proven.
-	reachable atomic.Bool
-	http      *http.Client
-	log       *slog.Logger
+	// last is the last call's outcome, a Status word: ok from a startup ping
+	// riptide answered with a team name or a 2xx emit, rejected from an emit
+	// riptide refused with 401, unreachable from a transport error or a 3xx
+	// or 5xx. Empty until proven, which reads as unreachable. Emits run on
+	// the single worker, so writes never race each other.
+	last atomic.Value
+	http *http.Client
+	log  *slog.Logger
 }
 
 // New builds an emitter. Forwarding is off unless both url and token are set.
@@ -111,16 +114,15 @@ func New(rawURL, token string, log *slog.Logger) *Emitter {
 func (e *Emitter) Enabled() bool { return e.enabled }
 
 // Status is the forwarding state as of the last call (the startup ping, then
-// each emit): off, ok or unreachable. A fixed word, never a reason.
+// each emit): off, ok, unreachable or rejected. A fixed word, never a reason.
 func (e *Emitter) Status() string {
-	switch {
-	case e == nil || !e.enabled:
+	if e == nil || !e.enabled {
 		return StatusOff
-	case e.reachable.Load():
-		return StatusOK
-	default:
-		return StatusUnreachable
 	}
+	if s, _ := e.last.Load().(string); s != "" {
+		return s
+	}
+	return StatusUnreachable
 }
 
 // VerifyAtStartup checks the token and returns the team riptide knows us as.
@@ -171,7 +173,7 @@ func (e *Emitter) VerifyAtStartup(ctx context.Context) (string, error) {
 		e.log.WarnContext(ctx, "Riptide ping named no team")
 		return "", nil
 	}
-	e.reachable.Store(true)
+	e.last.Store(StatusOK)
 	e.log.InfoContext(ctx, "Riptide: OK (team="+out.Team+")")
 	return out.Team, nil
 }
@@ -235,7 +237,11 @@ func (e *Emitter) EmitPRCompleted(ctx context.Context, r Rollup) {
 
 	resp, err := e.http.Do(req)
 	if err != nil {
-		e.reachable.Store(false)
+		// Our own context ending (shutdown, a caller's deadline) says
+		// nothing about riptide.
+		if ctx.Err() == nil {
+			e.last.Store(StatusUnreachable)
+		}
 		e.log.WarnContext(ctx, fmt.Sprintf("Riptide emit failed (event_type=pr_completed): %v", err))
 		return
 	}
@@ -244,13 +250,21 @@ func (e *Emitter) EmitPRCompleted(ctx context.Context, r Rollup) {
 	// a redirected endpoint would otherwise drop every rollup without a word,
 	// and the DB claim taken before this call means it is never retried.
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		e.reachable.Store(false)
+		// A 401 is a token riptide no longer takes: a fault, not an outage.
+		// Another 4xx is riptide refusing this one rollup and says nothing
+		// about forwarding, so the status stays.
+		switch {
+		case resp.StatusCode == http.StatusUnauthorized:
+			e.last.Store(StatusRejected)
+		case resp.StatusCode < 400 || resp.StatusCode >= 500:
+			e.last.Store(StatusUnreachable)
+		}
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, errBodyLimit))
 		e.log.WarnContext(ctx, fmt.Sprintf("Riptide emit rejected (event_type=pr_completed, status=%d): %s",
 			resp.StatusCode, strings.TrimSpace(string(msg))))
 		return
 	}
-	e.reachable.Store(true)
+	e.last.Store(StatusOK)
 	_, _ = io.Copy(io.Discard, resp.Body)
 }
 

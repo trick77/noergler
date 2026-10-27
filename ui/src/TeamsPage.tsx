@@ -73,13 +73,7 @@ function integrationPills(team: Team, now: number, t: TFunction) {
   }
 
   let jira: ReactNode;
-  if (team.jira === "off") {
-    jira = (
-      <Pill tone="quiet" title={t("teams.jiraOffHint")}>
-        {t("teams.jiraOff")}
-      </Pill>
-    );
-  } else if (jr?.source === "team") {
+  if (jr?.source === "team") {
     const status = jr.status ?? "ok";
     const hint =
       status === "ok" || status === "unreachable" ? status : "broken";
@@ -107,6 +101,7 @@ function integrationPills(team: Team, now: number, t: TFunction) {
   const riptideTone: Record<typeof rs, Tone> = {
     ok: "ok",
     unreachable: "skip",
+    rejected: "fail",
     off: "quiet",
   };
   const riptide = (

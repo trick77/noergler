@@ -185,19 +185,19 @@ export const de = {
       "Die Reviews des Teams postet der Shared Bot, und das Team erwähnt ihn.",
     ownJira: "Eigenes Jira-Token",
     sharedJira: "Shared Jira-Token",
-    sharedJiraHint: "Der Ticket-Check liest Jira mit dem Shared Token.",
-    jiraOff: "Jira aus",
-    jiraOffHint:
-      "Diese Instanz hat kein Jira (JIRA_URL), deshalb läuft kein Ticket-Check.",
+    sharedJiraHint: "Jira wird mit dem Shared Token gelesen.",
     riptide: {
       ok: "Riptide",
       unreachable: "Riptide: nicht erreichbar",
+      rejected: "Riptide: abgelehnt",
       off: "Riptide aus",
     },
     riptideHint: {
       ok: "Riptide hat auf den letzten Aufruf geantwortet (Start-Ping oder Rollup); das Rollup jedes geschlossenen PRs wird weitergeleitet.",
       unreachable:
         "Der letzte Aufruf an Riptide ist fehlgeschlagen (Start-Ping oder Rollup). Reviews laufen; ein Rollup, das in dieser Zeit gesendet wird, geht verloren.",
+      rejected:
+        "Riptide lehnt das Token ab (HTTP 401). Reviews laufen; jedes Rollup geht verloren, bis das Token korrigiert ist.",
       off: "Kein riptide-Block für dieses Team im teams.yaml, deshalb wird nichts weitergeleitet.",
     },
     accountStatus: {

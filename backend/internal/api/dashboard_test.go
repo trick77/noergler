@@ -708,29 +708,6 @@ func TestTeamsNamesTheModelSource(t *testing.T) {
 	}
 }
 
-// Without a JIRA_URL no ticket check runs, so the roster says Jira is off
-// rather than naming an account nobody uses.
-func TestTeamsShowsJiraOff(t *testing.T) {
-	jira := func(h *dashHarness) map[string]string {
-		var got teamsBody
-		if err := json.Unmarshal(h.get(t, "/api/dashboard/teams").Body.Bytes(), &got); err != nil {
-			t.Fatal(err)
-		}
-		out := map[string]string{}
-		for _, tm := range got.Teams {
-			out[tm.Slug] = tm.Jira
-		}
-		return out
-	}
-	if got := jira(newDashHarness(t)); got["platform"] != "off" || got["mobile"] != "" {
-		t.Errorf("jira = %v, want platform off, mobile absent", got)
-	}
-	on := newDashHarnessWith(t, func(team *config.Team) { team.Jira.URL = "https://jira.example.com" })
-	if got := jira(on)["platform"]; got != "on" {
-		t.Errorf("jira = %q, want on", got)
-	}
-}
-
 // Riptide shows as a fixed word from the startup ping, never the URL; off
 // without an emitter, absent for a disabled team.
 func TestTeamsShowsRiptide(t *testing.T) {
