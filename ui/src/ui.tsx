@@ -40,12 +40,16 @@ const toneClass: Record<Tone, string> = {
   skip: "bg-ochre-wash text-ochre",
   fail: "bg-danger/15 text-danger-ink",
   none: "bg-elevated text-ink-dim",
+  // Outlined, no fill: muted clears AA on the panel (6.1:1) and on a card
+  // header (5.0:1).
+  quiet: "text-muted ring-1 ring-inset ring-elevated-border",
 };
 const dotClass: Record<Tone, string> = {
   ok: "bg-online",
   skip: "bg-ochre",
   fail: "bg-danger",
   none: "bg-muted",
+  quiet: "bg-faint",
 };
 
 /** Pill always carries its word. The ok/skip/fail hues sit at dE 7.6 under

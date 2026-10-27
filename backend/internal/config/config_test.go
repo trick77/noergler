@@ -449,6 +449,29 @@ func TestTeamsFile_DisabledTeamKeepsItsName(t *testing.T) {
 
 // --- teams.yaml: team-level faults disable that team only --------------------
 
+// OwnModel compares values, not keys: a team that names the instance's own
+// model and effort still runs on the default.
+func TestTeams_OwnModelComparesWithTheInstance(t *testing.T) {
+	cases := []struct {
+		inference string
+		want      bool
+	}{
+		{"{api_key_env: TEAM_PLATFORM_OPENAI_API_KEY}", false},
+		{"{api_key_env: TEAM_PLATFORM_OPENAI_API_KEY, model: gpt-5.5}", false},
+		{"{api_key_env: TEAM_PLATFORM_OPENAI_API_KEY, model: gpt-5.4}", true},
+		{"{api_key_env: TEAM_PLATFORM_OPENAI_API_KEY, reasoning_effort: Medium}", true},
+		{"{api_key_env: TEAM_PLATFORM_OPENAI_API_KEY, context_window: 1000}", false},
+	}
+	for _, c := range cases {
+		e := newEnv(t)
+		e.teams("teams:\n  - {slug: platform, webhook_secret_env: TEAM_PLATFORM_WEBHOOK_SECRET, projects: [{key: PLAT}], inference: " + c.inference + "}\n")
+		app := e.mustLoad()
+		if got := app.Teams["platform"].OwnModel; got != c.want {
+			t.Errorf("%s: OwnModel = %v, want %v", c.inference, got, c.want)
+		}
+	}
+}
+
 func TestTeams_FullBlockResolvesOverridesOnTopOfInstanceDefaults(t *testing.T) {
 	e := newEnv(t)
 	e.teams(twoTeams)
@@ -490,6 +513,9 @@ func TestTeams_FullBlockResolvesOverridesOnTopOfInstanceDefaults(t *testing.T) {
 	}
 	if !reflect.DeepEqual(pay.Riptide, &Riptide{URL: "https://riptide-payments.example.com", Token: "pay-riptide"}) {
 		t.Errorf("payments riptide: %+v", pay.Riptide)
+	}
+	if plat.OwnModel || !pay.OwnModel {
+		t.Errorf("OwnModel: platform %v, payments %v; want false, true", plat.OwnModel, pay.OwnModel)
 	}
 	// Instance lists are not shared with the team's copies.
 	plat.Review.ExcludeRepos[0] = "changed"

@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -31,6 +32,13 @@ const (
 	errBodyLimit = 200
 	// nanoPerUSD is llmwire's cost unit, which the store also uses.
 	nanoPerUSD = 1_000_000_000
+)
+
+// Status words, as the dashboard shows them: fixed, never a reason.
+const (
+	StatusOff         = "off"
+	StatusOK          = "ok"
+	StatusUnreachable = "unreachable"
 )
 
 // ErrAuth means riptide rejected the token (HTTP 401). Fatal at startup: it
@@ -70,8 +78,11 @@ type Emitter struct {
 	url     string
 	token   string
 	enabled bool
-	http    *http.Client
-	log     *slog.Logger
+	// reachable is set only by a startup ping riptide answered with the
+	// team: anything short of that reads as unreachable.
+	reachable atomic.Bool
+	http      *http.Client
+	log       *slog.Logger
 }
 
 // New builds an emitter. Forwarding is off unless both url and token are set.
@@ -97,6 +108,19 @@ func New(rawURL, token string, log *slog.Logger) *Emitter {
 
 // Enabled reports whether this team forwards to riptide.
 func (e *Emitter) Enabled() bool { return e.enabled }
+
+// Status is the forwarding state as of the startup ping: off, ok or
+// unreachable. Emits after startup do not change it; they only log.
+func (e *Emitter) Status() string {
+	switch {
+	case e == nil || !e.enabled:
+		return StatusOff
+	case e.reachable.Load():
+		return StatusOK
+	default:
+		return StatusUnreachable
+	}
+}
 
 // VerifyAtStartup checks the token and returns the team riptide knows us as.
 //
@@ -140,6 +164,7 @@ func (e *Emitter) VerifyAtStartup(ctx context.Context) (string, error) {
 		e.log.WarnContext(ctx, "Riptide ping returned an unreadable body: "+err.Error())
 		return "", nil
 	}
+	e.reachable.Store(true)
 	e.log.InfoContext(ctx, "Riptide: OK (team="+out.Team+")")
 	return out.Team, nil
 }

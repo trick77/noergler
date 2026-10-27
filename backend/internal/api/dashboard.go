@@ -519,6 +519,12 @@ type teamBody struct {
 	// naming. Absent for a disabled team, which has no client: its configured
 	// model may be the very thing that disabled it.
 	Model string `json:"model,omitempty"`
+	// ModelSource is "team" when teams.yaml gives the team a model or effort
+	// other than the instance's, else "default". Absent with Model.
+	ModelSource string `json:"model_source,omitempty"`
+	// Riptide is the forwarding state as of the team's startup ping, a fixed
+	// word (off, ok, unreachable), never the URL. Absent for a disabled team.
+	Riptide string `json:"riptide,omitempty"`
 	// Which Bitbucket and Jira accounts the team works with, as on its own
 	// GET /teams/{slug}: source, the bot it is mentioned as, and the fixed
 	// health status of an own account. Never a reason or a token: a reason
@@ -571,7 +577,12 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 				t.ExcludeTargetBranches = append(t.ExcludeTargetBranches, team.Review.ExcludeTargetBranches...)
 				if rt.LLM != nil {
 					t.Model = rt.LLM.Label()
+					t.ModelSource = "default"
+					if team.OwnModel {
+						t.ModelSource = "team"
+					}
 				}
+				t.Riptide = rt.Riptide.Status()
 				bv, jv := accountViews(rt, d.BotUsername)
 				t.BitbucketAccount, t.JiraAccount = &bv, &jv
 				// A scope with no repo list is the whole project; one repo

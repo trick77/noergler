@@ -121,12 +121,20 @@ export interface Team {
   /** `<profile>-<effort>`, the label every run records. Absent for a
    *  disabled team: it has no started client. */
   model?: string;
+  /** "team" when teams.yaml gives the team a model or effort other than the
+   *  instance's. Absent with model. */
+  model_source?: "team" | "default";
+  /** Forwarding as of the team's startup ping, never the URL. Absent for a
+   *  disabled team. */
+  riptide?: RiptideStatus;
   /** The Bitbucket and Jira accounts the team works with: the shared ones,
    *  or its own (pushed through the team API). A fixed status, never a
    *  reason. Null for a disabled team. */
   bitbucket_account: BitbucketAccount | null;
   jira_account: JiraAccount | null;
 }
+
+export type RiptideStatus = "off" | "ok" | "unreachable";
 
 /** AccountStatus is an own account's health; null on a shared one. */
 export type AccountStatus =

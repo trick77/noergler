@@ -555,6 +555,8 @@ describe("TeamsPage", () => {
       exclude_source_branches: ["dependabot/*", "wip/*"],
       exclude_target_branches: [],
       model: "gpt-5.5-high",
+      model_source: "default",
+      riptide: "unreachable",
       bitbucket_account: {
         source: "team",
         username: "pay-bot",
@@ -589,19 +591,59 @@ describe("TeamsPage", () => {
 
   // A team on its own bot or Jira token is tagged, a broken one says so in
   // the server's fixed word. Not the bot's name: whether the team runs on its
-  // own account is what matters (user, 2026-10-26). A team on the shared
-  // accounts, or a disabled one, gets no tag.
+  // own account is what matters (user, 2026-10-26). The same pills sit in
+  // the collapsed summary and in the open list, hence two of each.
   it("tags a team's own accounts and their health", async () => {
     serve({ teams: { teams } });
     render(<TeamsPage />);
 
-    const bot = await screen.findByText("Team Bitbucket token: rejected");
-    expect(bot.getAttribute("title")).toMatch(
+    const bots = await screen.findAllByText("Own bot: rejected");
+    expect(bots).toHaveLength(2);
+    expect(bots[0].getAttribute("title")).toMatch(
       /PUT \/teams\/payments\/credentials/,
     );
-    expect(screen.getByText("Team Jira token")).toBeDefined();
-    expect(screen.getAllByText(/Team Bitbucket token/)).toHaveLength(1);
+    expect(screen.getAllByText("Own Jira token")).toHaveLength(2);
+    expect(screen.getAllByText("Riptide: unreachable")).toHaveLength(2);
     expect(screen.queryByText(/pay-bot/)).toBeNull();
+  });
+
+  // Not set up is a state, shown as one: a team on the shared accounts
+  // without riptide says so instead of showing nothing.
+  it("shows shared accounts and riptide off", async () => {
+    const shared: Team = {
+      ...teams[0],
+      slug: "hotspot",
+      name: "Hotspot",
+      riptide: "off",
+      model_source: "team",
+      bitbucket_account: {
+        source: "shared",
+        username: "noergler",
+        status: null,
+        since: null,
+      },
+      jira_account: { source: "shared", status: null, since: null },
+    };
+    serve({ teams: { teams: [shared] } });
+    render(<TeamsPage />);
+
+    expect(await screen.findAllByText("Shared bot")).toHaveLength(2);
+    expect(screen.getAllByText("Shared Jira token")).toHaveLength(2);
+    expect(screen.getAllByText("Riptide off")).toHaveLength(2);
+    expect(screen.getByText("Team")).toBeDefined();
+    expect(screen.queryByText("noergler")).toBeNull();
+  });
+
+  // Collapsed by default: the list is there to open, the summary pills are
+  // what a passing reader sees.
+  it("collapses the configuration", async () => {
+    serve({ teams: { teams } });
+    const { container } = render(<TeamsPage />);
+
+    await screen.findByText("Zahlungen");
+    const details = container.querySelectorAll("details");
+    expect(details).toHaveLength(1);
+    expect(details[0].open).toBe(false);
   });
 
   it("distinguishes a whole-project claim from a repo one", async () => {
@@ -636,13 +678,13 @@ describe("TeamsPage", () => {
     expect(screen.queryByText(/\bpayments\b/)).toBeNull();
   });
 
-  // Bitbucket's own word for the keys the column lists.
-  it("heads the claims column Slug", async () => {
+  // The column lists project keys and project/repo pairs (user, 2026-10-27).
+  it("heads the claims column Project / repository", async () => {
     serve({ teams: { teams } });
     render(<TeamsPage />);
 
     expect(
-      await screen.findByRole("columnheader", { name: "Slug" }),
+      await screen.findByRole("columnheader", { name: "Project / repository" }),
     ).toBeDefined();
   });
 
@@ -652,27 +694,40 @@ describe("TeamsPage", () => {
     serve({ teams: { teams } });
     render(<TeamsPage />);
 
-    expect(await screen.findByText(/Auto-review authors/)).toBeDefined();
+    const label = await screen.findByText("Auto-review authors");
+    expect(label.nextElementSibling?.textContent).toBe("3");
     expect(screen.queryByText(/renovate/)).toBeNull();
   });
 
-  // Branch globs are shown whole, like the repo globs; an empty list is not
-  // shown at all.
-  it("shows the excluded branches", async () => {
+  // Branch globs are shown whole, like the repo globs; an empty list says
+  // none rather than vanishing.
+  it("shows the excluded branches, set or not", async () => {
     serve({ teams: { teams } });
     render(<TeamsPage />);
 
     expect(await screen.findByText("dependabot/*, wip/*")).toBeDefined();
-    expect(screen.getByText(/Excluded source branches/)).toBeDefined();
-    expect(screen.queryByText(/Excluded target branches/)).toBeNull();
+    const target = screen.getByText("Excluded target branches");
+    expect(target.nextElementSibling?.textContent).toBe("none");
   });
 
-  // Only an enabled team has a started client, so only it names a model.
+  // An empty auto-review list means every author is reviewed, so it reads
+  // "all", not "none".
+  it("reads an empty auto-review list as all authors", async () => {
+    serve({ teams: { teams: [{ ...teams[0], auto_review_authors: 0 }] } });
+    render(<TeamsPage />);
+
+    const label = await screen.findByText("Auto-review authors");
+    expect(label.nextElementSibling?.textContent).toBe("all");
+  });
+
+  // Only an enabled team has a started client, so only it names a model,
+  // tagged with where it comes from.
   it("names the model of a team that has one", async () => {
     serve({ teams: { teams } });
     render(<TeamsPage />);
 
-    expect(await screen.findByText("gpt-5.5-high")).toBeDefined();
+    const model = await screen.findByText("gpt-5.5-high");
+    expect(model.parentElement?.textContent).toBe("gpt-5.5-highDefault");
     expect(screen.getAllByText(/-high$/)).toHaveLength(1);
   });
 
@@ -684,6 +739,8 @@ describe("TeamsPage", () => {
     // name an environment variable and this page is unauthenticated.
     expect(await screen.findByText("team_disabled")).toBeDefined();
     expect(screen.queryByText(/OPENAI_API_KEY|WEBHOOK_SECRET/)).toBeNull();
+    // Nothing about a disabled team's configuration is known.
+    expect(screen.getAllByText("Configuration")).toHaveLength(1);
   });
 });
 

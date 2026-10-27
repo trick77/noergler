@@ -167,6 +167,43 @@ func TestVerifyAtStartupOddBodyIsNotFatal(t *testing.T) {
 	}
 }
 
+// Status is OK only after riptide answered the ping with a body; every
+// survivable failure reads as unreachable, and a team without riptide as off.
+func TestStatus(t *testing.T) {
+	var none *Emitter
+	if got := none.Status(); got != StatusOff {
+		t.Errorf("nil emitter: %q, want off", got)
+	}
+	if got := New("", "", slog.New(slog.DiscardHandler)).Status(); got != StatusOff {
+		t.Errorf("disabled: %q, want off", got)
+	}
+	cases := []struct {
+		status int
+		body   string
+		want   string
+	}{
+		{200, `{"status":"ok","team":"checkout"}`, StatusOK},
+		{200, `not json`, StatusUnreachable},
+		{503, `nope`, StatusUnreachable},
+		{302, ``, StatusUnreachable},
+	}
+	for _, c := range cases {
+		_, e := newFake(t, reply(c.status, c.body))
+		if got := e.Status(); got != StatusUnreachable {
+			t.Errorf("%d before the ping: %q, want unreachable", c.status, got)
+		}
+		_, _ = e.VerifyAtStartup(context.Background())
+		if got := e.Status(); got != c.want {
+			t.Errorf("%d %q: %q, want %q", c.status, c.body, got, c.want)
+		}
+	}
+	e := New("http://127.0.0.1:1", "t", slog.New(slog.DiscardHandler))
+	_, _ = e.VerifyAtStartup(context.Background())
+	if got := e.Status(); got != StatusUnreachable {
+		t.Errorf("connection refused: %q, want unreachable", got)
+	}
+}
+
 // --- emitting ----------------------------------------------------------------
 
 func TestEmitPostsTheExpectedBody(t *testing.T) {

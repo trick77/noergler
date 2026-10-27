@@ -569,6 +569,7 @@ func ResolveTeam(block *yaml.Node, instance *App, lookup func(string) (string, b
 		WebhookSecret: webhookSecret,
 		Projects:      projects,
 		LLM:           llm,
+		OwnModel:      llm.Model != instance.LLM.Model || llm.ReasoningEffort != instance.LLM.ReasoningEffort,
 		Review:        review,
 		Jira:          jira,
 		Riptide:       riptide,
