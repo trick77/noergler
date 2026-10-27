@@ -19,6 +19,7 @@ import (
 	"github.com/trick77/noergler/internal/httpapi"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/queue"
+	"github.com/trick77/noergler/internal/riptide"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/teams"
 	"github.com/trick77/noergler/web"
@@ -137,6 +138,12 @@ func newDashLLM(t *testing.T) *inference.Client {
 
 func newDashHarness(t *testing.T) *dashHarness {
 	t.Helper()
+	return newDashHarnessWith(t, func(*config.Team) {})
+}
+
+// newDashHarnessWith lets a test adjust the team before its Runtime exists.
+func newDashHarnessWith(t *testing.T, adjust func(*config.Team)) *dashHarness {
+	t.Helper()
 	team := &config.Team{
 		Slug:     "platform",
 		Name:     "Platform Engineering",
@@ -145,6 +152,7 @@ func newDashHarness(t *testing.T) *dashHarness {
 	team.Review.ExcludeRepos = []string{"*-infra"}
 	team.Review.ExcludeSourceBranches = []string{"dependabot/*"}
 	team.Review.IgnoreAuthors = []string{"renovate"}
+	adjust(team)
 	llm := newDashLLM(t)
 	rt := teams.NewRuntime(team, &fakeReviewer{}, llm, nil)
 
@@ -674,6 +682,95 @@ func TestTeamsNamesTheModel(t *testing.T) {
 	}
 	if strings.Count(raw, `"model"`) != 1 {
 		t.Errorf("want one model key, for the enabled team only: %s", raw)
+	}
+}
+
+// The model source says whether the label is the instance default, and is
+// absent with the model on a disabled team.
+func TestTeamsNamesTheModelSource(t *testing.T) {
+	source := func(h *dashHarness) map[string]string {
+		var got teamsBody
+		if err := json.Unmarshal(h.get(t, "/api/dashboard/teams").Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]string{}
+		for _, tm := range got.Teams {
+			out[tm.Slug] = tm.ModelSource
+		}
+		return out
+	}
+	if got := source(newDashHarness(t)); got["platform"] != "default" || got["mobile"] != "" {
+		t.Errorf("model source = %v, want platform default, mobile absent", got)
+	}
+	own := newDashHarnessWith(t, func(team *config.Team) { team.OwnModel = true })
+	if got := source(own)["platform"]; got != "team" {
+		t.Errorf("model source = %q, want team", got)
+	}
+}
+
+// Without a JIRA_URL no ticket check runs, so the roster says Jira is off
+// rather than naming an account nobody uses.
+func TestTeamsShowsJiraOff(t *testing.T) {
+	jira := func(h *dashHarness) map[string]string {
+		var got teamsBody
+		if err := json.Unmarshal(h.get(t, "/api/dashboard/teams").Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]string{}
+		for _, tm := range got.Teams {
+			out[tm.Slug] = tm.Jira
+		}
+		return out
+	}
+	if got := jira(newDashHarness(t)); got["platform"] != "off" || got["mobile"] != "" {
+		t.Errorf("jira = %v, want platform off, mobile absent", got)
+	}
+	on := newDashHarnessWith(t, func(team *config.Team) { team.Jira.URL = "https://jira.example.com" })
+	if got := jira(on)["platform"]; got != "on" {
+		t.Errorf("jira = %q, want on", got)
+	}
+}
+
+// Riptide shows as a fixed word from the startup ping, never the URL; off
+// without an emitter, absent for a disabled team.
+func TestTeamsShowsRiptide(t *testing.T) {
+	h := newDashHarness(t)
+	state := func() (map[string]string, string) {
+		raw := h.get(t, "/api/dashboard/teams").Body.String()
+		var got teamsBody
+		if err := json.Unmarshal([]byte(raw), &got); err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]string{}
+		for _, tm := range got.Teams {
+			out[tm.Slug] = tm.Riptide
+		}
+		return out, raw
+	}
+	if got, _ := state(); got["platform"] != riptide.StatusOff || got["mobile"] != "" {
+		t.Errorf("riptide = %v, want platform off, mobile absent", got)
+	}
+
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"ok","team":"platform"}`))
+	}))
+	t.Cleanup(up.Close)
+	h.rt.Riptide = riptide.New(up.URL, "riptide-secret", slog.New(slog.DiscardHandler))
+	_, _ = h.rt.Riptide.VerifyAtStartup(context.Background())
+	got, raw := state()
+	if got["platform"] != riptide.StatusOK {
+		t.Errorf("riptide = %q, want ok", got["platform"])
+	}
+	for _, leak := range []string{up.URL, "riptide-secret"} {
+		if strings.Contains(raw, leak) {
+			t.Errorf("%q reached the unauthenticated roster", leak)
+		}
+	}
+
+	h.rt.Riptide = riptide.New("http://127.0.0.1:1", "t", slog.New(slog.DiscardHandler))
+	_, _ = h.rt.Riptide.VerifyAtStartup(context.Background())
+	if got, _ := state(); got["platform"] != riptide.StatusUnreachable {
+		t.Errorf("riptide = %q, want unreachable", got["platform"])
 	}
 }
 

@@ -171,7 +171,7 @@ the service.**
 | Team's model missing from `LLMWIRE_LITELLM_MODELS` | That team is disabled, rather than being routed to the vendor's own host. |
 | Gateway lists a window below 900K for the alias, or lists none and the profile's input (context less max output) is below 900K or unset | That team is disabled. Set `OPENAI_CONTEXT_WINDOW` if the real limit is higher. |
 | Model cannot reason, lacks strict JSON-schema output, or does not list the configured `reasoning_effort`, or that level switches reasoning off, or no level is set on a model that reasons only when asked and names no balanced level | That team is disabled, from its llmwire profile and before any request. The error names the valid choices. |
-| Team's riptide ping returns 401 | That team is disabled. Any other riptide error is a warning. |
+| Team's riptide ping returns 401 | That team is disabled. Any other riptide error is a warning; the Teams page shows riptide as unreachable until a rollup goes through. |
 | Missing per-team secret env var | That team is disabled. |
 | `NOERGLER_SECRETS_KEY` missing, malformed, or not the key the stored team tokens were sealed with | Startup aborts. The key is shared layer. (A changed key with no team token stored yet only resets the key check.) |
 | A team's own Bitbucket token rejected, unreadable, or belonging to another account than its username | That team stays up and is **not** disabled: its webhooks are acknowledged and not processed, the Teams page shows the state, and the team heals itself by pushing a working token. No other team is affected. |

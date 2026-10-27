@@ -154,20 +154,52 @@ export const de = {
     lastRun: "letzter Run {{ago}}",
     noClaims:
       "Keine Projekte und keine Repositories beansprucht, deshalb prüft dieses Team nichts.",
-    slug: "Slug",
+    claim: "Projekt / Repository",
     scope: "Umfang",
     scopeRepo: "Repo",
     scopeProject: "Projekt",
-    excludedRepos: "Ausgeschlossene Repos:",
-    excludedSourceBranches: "Ausgeschlossene Source-Branches:",
-    excludedTargetBranches: "Ausgeschlossene Target-Branches:",
-    autoReviewAuthors: "Auto-Review-Autoren:",
-    ignoredAuthors: "Ignorierte Autoren:",
+    configuration: "Konfiguration",
+    integrations: "Anbindungen",
+    filters: "Filter",
+    model: "Modell",
+    modelSource: {
+      team: "Team",
+      default: "Standard",
+    },
+    bitbucketBot: "Bitbucket-Bot",
+    jiraToken: "Jira-Token",
+    riptideLabel: "Riptide",
+    excludedRepos: "Ausgeschlossene Repos",
+    excludedSourceBranches: "Ausgeschlossene Source-Branches",
+    excludedTargetBranches: "Ausgeschlossene Target-Branches",
+    autoReviewAuthors: "Auto-Review-Autoren",
+    ignoredAuthors: "Ignorierte Autoren",
+    noneValue: "keine",
+    allAuthors: "alle",
     disabledNote:
       "Der Grund steht im Pod-Log in der Zeile <code>team_disabled</code>.",
     none: "Keine Teams konfiguriert.",
-    teamBitbucket: "Team-Bitbucket-Token",
-    teamJira: "Team-Jira-Token",
+    ownBot: "Eigener Bot",
+    sharedBot: "Shared Bot",
+    sharedBotHint:
+      "Die Reviews des Teams postet der Shared Bot, und das Team erwähnt ihn.",
+    ownJira: "Eigenes Jira-Token",
+    sharedJira: "Shared Jira-Token",
+    sharedJiraHint: "Der Ticket-Check liest Jira mit dem Shared Token.",
+    jiraOff: "Jira aus",
+    jiraOffHint:
+      "Diese Instanz hat kein Jira (JIRA_URL), deshalb läuft kein Ticket-Check.",
+    riptide: {
+      ok: "Riptide",
+      unreachable: "Riptide: nicht erreichbar",
+      off: "Riptide aus",
+    },
+    riptideHint: {
+      ok: "Riptide hat auf den letzten Aufruf geantwortet (Start-Ping oder Rollup); das Rollup jedes geschlossenen PRs wird weitergeleitet.",
+      unreachable:
+        "Der letzte Aufruf an Riptide ist fehlgeschlagen (Start-Ping oder Rollup). Reviews laufen; ein Rollup, das in dieser Zeit gesendet wird, geht verloren.",
+      off: "Kein riptide-Block für dieses Team im teams.yaml, deshalb wird nichts weitergeleitet.",
+    },
     accountStatus: {
       ok: "funktioniert",
       rejected: "abgelehnt",
@@ -176,22 +208,22 @@ export const de = {
       username_mismatch: "falscher Username",
     },
     bitbucketHint: {
-      ok: "Der eigene Bitbucket-Bot des Teams postet seine Reviews, und das Team erwähnt ihn statt des geteilten Bots.",
+      ok: "Der eigene Bitbucket-Bot des Teams postet seine Reviews, und das Team erwähnt ihn statt des Shared Bots.",
       rejected:
-        "Bitbucket lehnt den Token ab ({{ago}}). Webhooks werden quittiert, aber nicht verarbeitet, bis das Team einen funktionierenden an PUT /teams/{{slug}}/credentials pusht.",
+        "Bitbucket lehnt das Token ab ({{ago}}). Webhooks werden quittiert, aber nicht verarbeitet, bis das Team ein funktionierendes an PUT /teams/{{slug}}/credentials pusht.",
       unreachable:
         "Bitbucket hat dem Bot des Teams nicht geantwortet ({{ago}}). Der nächste Aufruf kann das beheben.",
       undecryptable:
-        "Der gespeicherte Token lässt sich nicht lesen ({{ago}}). Webhooks werden quittiert, aber nicht verarbeitet, bis das Team ihn erneut an PUT /teams/{{slug}}/credentials pusht.",
+        "Das gespeicherte Token lässt sich nicht lesen ({{ago}}). Webhooks werden quittiert, aber nicht verarbeitet, bis das Team es erneut an PUT /teams/{{slug}}/credentials pusht.",
       username_mismatch:
-        "Der Token gehört einem anderen Account als dem mitgepushten Username ({{ago}}). Webhooks werden quittiert, aber nicht verarbeitet, bis das Team einen passenden pusht.",
+        "Das Token gehört einem anderen Account als dem mitgepushten Username ({{ago}}). Webhooks werden quittiert, aber nicht verarbeitet, bis das Team ein passendes pusht.",
     },
     jiraHint: {
-      ok: "Der eigene Jira-Token des Teams.",
+      ok: "Das eigene Jira-Token des Teams.",
       unreachable:
-        "Jira hat auf den Token des Teams nicht geantwortet ({{ago}}). Der nächste Aufruf kann das beheben.",
+        "Jira hat auf das Token des Teams nicht geantwortet ({{ago}}). Der nächste Aufruf kann das beheben.",
       broken:
-        "Der eigene Jira-Token des Teams funktioniert nicht ({{ago}}). Reviews laufen ohne Ticket-Check, bis das Team einen funktionierenden an PUT /teams/{{slug}}/credentials pusht.",
+        "Das eigene Jira-Token des Teams funktioniert nicht ({{ago}}). Reviews laufen ohne Ticket-Check, bis das Team ein funktionierendes an PUT /teams/{{slug}}/credentials pusht.",
     },
   },
   severity: {

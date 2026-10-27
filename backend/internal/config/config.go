@@ -172,9 +172,12 @@ type Team struct {
 	WebhookSecret string
 	Projects      []ProjectScope
 	LLM           LLM
-	Review        Review
-	Jira          Jira
-	Riptide       *Riptide
+	// OwnModel: the team's model or reasoning effort differs from the
+	// instance's, so its model label is not the instance default.
+	OwnModel bool
+	Review   Review
+	Jira     Jira
+	Riptide  *Riptide
 }
 
 // ProjectScope is a Bitbucket project a team owns, optionally narrowed to
