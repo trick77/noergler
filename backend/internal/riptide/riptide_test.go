@@ -189,6 +189,7 @@ func TestStatus(t *testing.T) {
 		{503, `nope`, StatusFailing},
 		{302, ``, StatusFailing},
 		{403, `forbidden`, StatusRejected},
+		{401, `bad token`, StatusRejected},
 	}
 	for _, c := range cases {
 		_, e := newFake(t, reply(c.status, c.body))

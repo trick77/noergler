@@ -83,9 +83,10 @@ type Emitter struct {
 	enabled bool
 	// last is the last call's outcome, a Status word: ok from a startup ping
 	// riptide answered with a team name or a 2xx emit, rejected from a 401
-	// or 403 emit, failing from anything else. Nil until proven, which reads
-	// as failing. Atomic because the dashboard reads it while the worker
-	// writes; the writes themselves are serial (emits run on the worker).
+	// or 403 (ping or emit), failing from any other lost call. A cancelled
+	// emit keeps it. Nil reads as failing. Atomic because the dashboard
+	// reads it while the worker writes; the writes themselves are serial
+	// (emits run on the worker).
 	last atomic.Pointer[string]
 	http *http.Client
 	log  *slog.Logger
@@ -143,6 +144,7 @@ func (e *Emitter) VerifyAtStartup(ctx context.Context) (string, error) {
 	e.set(StatusFailing)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, e.url+pingPath, nil)
 	if err != nil {
+		e.log.WarnContext(ctx, "Riptide ping failed: "+err.Error())
 		return "", nil
 	}
 	req.Header.Set("Authorization", "Bearer "+e.token)
@@ -155,6 +157,7 @@ func (e *Emitter) VerifyAtStartup(ctx context.Context) (string, error) {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusUnauthorized {
+		e.set(StatusRejected)
 		return "", fmt.Errorf("riptide token rejected by %s (HTTP 401); check that the token matches the team's entry in team-keys.json: %w", e.url, ErrAuth)
 	}
 	// 3xx included: a redirected URL is a misconfiguration, and reporting it as
