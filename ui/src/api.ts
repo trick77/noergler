@@ -127,9 +127,6 @@ export interface Team {
   /** Forwarding as of the last call (startup ping, then each rollup), never
    *  the URL. Absent for a disabled team. */
   riptide?: RiptideStatus;
-  /** off when the instance has no Jira: no ticket check, whichever account.
-   *  Absent for a disabled team. */
-  jira?: "on" | "off";
   /** The Bitbucket and Jira accounts the team works with: the shared ones,
    *  or its own (pushed through the team API). A fixed status, never a
    *  reason. Null for a disabled team. */
@@ -137,7 +134,7 @@ export interface Team {
   jira_account: JiraAccount | null;
 }
 
-export type RiptideStatus = "off" | "ok" | "unreachable";
+export type RiptideStatus = "off" | "ok" | "failing" | "rejected";
 
 /** AccountStatus is an own account's health; null on a shared one. */
 export type AccountStatus =

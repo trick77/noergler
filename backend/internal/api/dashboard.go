@@ -522,13 +522,10 @@ type teamBody struct {
 	// ModelSource is "team" when teams.yaml gives the team a model or effort
 	// other than the instance's, else "default". Absent with Model.
 	ModelSource string `json:"model_source,omitempty"`
-	// Riptide is the forwarding state as of the team's startup ping, a fixed
-	// word (off, ok, unreachable), never the URL. Absent for a disabled team.
+	// Riptide is the forwarding state as of the last call (the startup ping,
+	// then each emit), a fixed word (off, ok, failing, rejected), never
+	// the URL. Absent for a disabled team.
 	Riptide string `json:"riptide,omitempty"`
-	// Jira is off when the instance has no Jira (JIRA_URL unset): no ticket
-	// check runs, whichever account the team is on. Else on. Absent for a
-	// disabled team.
-	Jira string `json:"jira,omitempty"`
 	// Which Bitbucket and Jira accounts the team works with, as on its own
 	// GET /teams/{slug}: source, the bot it is mentioned as, and the fixed
 	// health status of an own account. Never a reason or a token: a reason
@@ -587,10 +584,6 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				t.Riptide = rt.Riptide.Status()
-				t.Jira = "on"
-				if team.Jira.URL == "" {
-					t.Jira = "off"
-				}
 				bv, jv := accountViews(rt, d.BotUsername)
 				t.BitbucketAccount, t.JiraAccount = &bv, &jv
 				// A scope with no repo list is the whole project; one repo

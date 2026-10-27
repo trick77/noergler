@@ -556,7 +556,7 @@ describe("TeamsPage", () => {
       exclude_target_branches: [],
       model: "gpt-5.5-high",
       model_source: "default",
-      riptide: "unreachable",
+      riptide: "failing",
       bitbucket_account: {
         source: "team",
         username: "pay-bot",
@@ -603,7 +603,7 @@ describe("TeamsPage", () => {
       /PUT \/teams\/payments\/credentials/,
     );
     expect(screen.getAllByText("Own Jira token")).toHaveLength(2);
-    expect(screen.getAllByText("Riptide: unreachable")).toHaveLength(2);
+    expect(screen.getAllByText("Riptide: failing")).toHaveLength(2);
     expect(screen.queryByText(/pay-bot/)).toBeNull();
   });
 
@@ -634,14 +634,15 @@ describe("TeamsPage", () => {
     expect(screen.queryByText("noergler")).toBeNull();
   });
 
-  // Without a Jira on the instance no ticket check runs, so the page says
-  // Jira is off instead of naming the shared token.
-  it("says Jira is off when the instance has none", async () => {
-    serve({ teams: { teams: [{ ...teams[0], jira: "off" }] } });
+  // A token riptide refuses after startup is a fault, not an outage: red,
+  // not ochre.
+  it("shows a refused riptide token as rejected", async () => {
+    serve({ teams: { teams: [{ ...teams[0], riptide: "rejected" }] } });
     render(<TeamsPage />);
 
-    expect(await screen.findAllByText("Jira off")).toHaveLength(2);
-    expect(screen.queryByText("Own Jira token")).toBeNull();
+    const pills = await screen.findAllByText("Riptide: rejected");
+    expect(pills).toHaveLength(2);
+    expect(pills[0].className).toMatch(/danger/);
   });
 
   // Collapsed by default: the list is there to open, the summary pills are
