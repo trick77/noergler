@@ -197,15 +197,18 @@ export const en = {
     ownJira: "Own Jira token",
     sharedJira: "Shared Jira token",
     sharedJiraHint: "The ticket check reads Jira with the shared token.",
+    jiraOff: "Jira off",
+    jiraOffHint:
+      "This instance has no Jira (JIRA_URL), so no ticket check runs.",
     riptide: {
       ok: "Riptide",
       unreachable: "Riptide: unreachable",
       off: "Riptide off",
     },
     riptideHint: {
-      ok: "Riptide answered the startup ping; each closed PR's rollup is forwarded.",
+      ok: "Riptide answered the last call (the startup ping or a rollup); each closed PR's rollup is forwarded.",
       unreachable:
-        "Riptide did not answer the startup ping. Reviews run; a rollup sent while it is down is lost.",
+        "The last call to riptide failed (the startup ping or a rollup). Reviews run; a rollup sent while it fails is lost.",
       off: "No riptide block for this team in teams.yaml, so nothing is forwarded.",
     },
     accountStatus: {

@@ -186,15 +186,18 @@ export const de = {
     ownJira: "Eigenes Jira-Token",
     sharedJira: "Shared Jira-Token",
     sharedJiraHint: "Der Ticket-Check liest Jira mit dem Shared Token.",
+    jiraOff: "Jira aus",
+    jiraOffHint:
+      "Diese Instanz hat kein Jira (JIRA_URL), deshalb läuft kein Ticket-Check.",
     riptide: {
       ok: "Riptide",
       unreachable: "Riptide: nicht erreichbar",
       off: "Riptide aus",
     },
     riptideHint: {
-      ok: "Riptide hat beim Start auf den Ping geantwortet; das Rollup jedes geschlossenen PRs wird weitergeleitet.",
+      ok: "Riptide hat auf den letzten Aufruf geantwortet (Start-Ping oder Rollup); das Rollup jedes geschlossenen PRs wird weitergeleitet.",
       unreachable:
-        "Riptide hat beim Start nicht auf den Ping geantwortet. Reviews laufen; ein Rollup, das während des Ausfalls gesendet wird, geht verloren.",
+        "Der letzte Aufruf an Riptide ist fehlgeschlagen (Start-Ping oder Rollup). Reviews laufen; ein Rollup, das in dieser Zeit gesendet wird, geht verloren.",
       off: "Kein riptide-Block für dieses Team im teams.yaml, deshalb wird nichts weitergeleitet.",
     },
     accountStatus: {

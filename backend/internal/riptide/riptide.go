@@ -78,8 +78,9 @@ type Emitter struct {
 	url     string
 	token   string
 	enabled bool
-	// reachable is set only by a startup ping riptide answered with the
-	// team: anything short of that reads as unreachable.
+	// reachable is the last call's outcome: set by a startup ping riptide
+	// answered with a team name and by each 2xx emit, cleared by an emit
+	// that failed or was refused. Unset until proven.
 	reachable atomic.Bool
 	http      *http.Client
 	log       *slog.Logger
@@ -109,8 +110,8 @@ func New(rawURL, token string, log *slog.Logger) *Emitter {
 // Enabled reports whether this team forwards to riptide.
 func (e *Emitter) Enabled() bool { return e.enabled }
 
-// Status is the forwarding state as of the startup ping: off, ok or
-// unreachable. Emits after startup do not change it; they only log.
+// Status is the forwarding state as of the last call (the startup ping, then
+// each emit): off, ok or unreachable. A fixed word, never a reason.
 func (e *Emitter) Status() string {
 	switch {
 	case e == nil || !e.enabled:
@@ -162,6 +163,12 @@ func (e *Emitter) VerifyAtStartup(ctx context.Context) (string, error) {
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		e.log.WarnContext(ctx, "Riptide ping returned an unreadable body: "+err.Error())
+		return "", nil
+	}
+	// A 200 without a team is not riptide answering for us (a proxy, a stub):
+	// it must not read as forwarding on the dashboard.
+	if out.Team == "" {
+		e.log.WarnContext(ctx, "Riptide ping named no team")
 		return "", nil
 	}
 	e.reachable.Store(true)
@@ -228,6 +235,7 @@ func (e *Emitter) EmitPRCompleted(ctx context.Context, r Rollup) {
 
 	resp, err := e.http.Do(req)
 	if err != nil {
+		e.reachable.Store(false)
 		e.log.WarnContext(ctx, fmt.Sprintf("Riptide emit failed (event_type=pr_completed): %v", err))
 		return
 	}
@@ -236,11 +244,13 @@ func (e *Emitter) EmitPRCompleted(ctx context.Context, r Rollup) {
 	// a redirected endpoint would otherwise drop every rollup without a word,
 	// and the DB claim taken before this call means it is never retried.
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		e.reachable.Store(false)
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, errBodyLimit))
 		e.log.WarnContext(ctx, fmt.Sprintf("Riptide emit rejected (event_type=pr_completed, status=%d): %s",
 			resp.StatusCode, strings.TrimSpace(string(msg))))
 		return
 	}
+	e.reachable.Store(true)
 	_, _ = io.Copy(io.Discard, resp.Body)
 }
 

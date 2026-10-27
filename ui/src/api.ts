@@ -124,9 +124,12 @@ export interface Team {
   /** "team" when teams.yaml gives the team a model or effort other than the
    *  instance's. Absent with model. */
   model_source?: "team" | "default";
-  /** Forwarding as of the team's startup ping, never the URL. Absent for a
-   *  disabled team. */
+  /** Forwarding as of the last call (startup ping, then each rollup), never
+   *  the URL. Absent for a disabled team. */
   riptide?: RiptideStatus;
+  /** off when the instance has no Jira: no ticket check, whichever account.
+   *  Absent for a disabled team. */
+  jira?: "on" | "off";
   /** The Bitbucket and Jira accounts the team works with: the shared ones,
    *  or its own (pushed through the team API). A fixed status, never a
    *  reason. Null for a disabled team. */

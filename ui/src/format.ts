@@ -136,9 +136,8 @@ export function tokens(n: number): string {
  *  red on purpose, since the server always names one. The pill always
  *  carries the word too, because the
  *  ok/skip/fail hues sit at dE 7.6 under protanopia and colour alone would
- *  not separate them. */
-/** quiet is "not set up" (a shared account, riptide off): a fact, not a
- *  state that wants attention. */
+ *  not separate them. A fifth, quiet, is the Teams page's "not set up" (a
+ *  shared account, riptide off): a fact, not a state that wants attention. */
 export type Tone = "ok" | "skip" | "fail" | "none" | "quiet";
 
 export function outcomeTone(outcome: string): Tone {

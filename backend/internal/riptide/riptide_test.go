@@ -184,6 +184,8 @@ func TestStatus(t *testing.T) {
 	}{
 		{200, `{"status":"ok","team":"checkout"}`, StatusOK},
 		{200, `not json`, StatusUnreachable},
+		{200, `{}`, StatusUnreachable},
+		{200, `null`, StatusUnreachable},
 		{503, `nope`, StatusUnreachable},
 		{302, ``, StatusUnreachable},
 	}
@@ -201,6 +203,33 @@ func TestStatus(t *testing.T) {
 	_, _ = e.VerifyAtStartup(context.Background())
 	if got := e.Status(); got != StatusUnreachable {
 		t.Errorf("connection refused: %q, want unreachable", got)
+	}
+}
+
+// Each emit updates the status: a riptide that was down at startup turns ok
+// with its first accepted rollup, and one that dies later stops reading ok.
+func TestStatusFollowsEmits(t *testing.T) {
+	code := 503
+	_, e := newFake(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(code) })
+	_, _ = e.VerifyAtStartup(context.Background())
+	if got := e.Status(); got != StatusUnreachable {
+		t.Fatalf("after a failed ping: %q", got)
+	}
+	code = 202
+	e.EmitPRCompleted(context.Background(), Rollup{Outcome: "merged"})
+	if got := e.Status(); got != StatusOK {
+		t.Errorf("after an accepted emit: %q, want ok", got)
+	}
+	code = 422
+	e.EmitPRCompleted(context.Background(), Rollup{Outcome: "merged"})
+	if got := e.Status(); got != StatusUnreachable {
+		t.Errorf("after a refused emit: %q, want unreachable", got)
+	}
+	dead := New("http://127.0.0.1:1", "t", slog.New(slog.DiscardHandler))
+	dead.reachable.Store(true)
+	dead.EmitPRCompleted(context.Background(), Rollup{Outcome: "merged"})
+	if got := dead.Status(); got != StatusUnreachable {
+		t.Errorf("after a transport error: %q, want unreachable", got)
 	}
 }
 
