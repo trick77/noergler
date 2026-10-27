@@ -523,7 +523,7 @@ type teamBody struct {
 	// other than the instance's, else "default". Absent with Model.
 	ModelSource string `json:"model_source,omitempty"`
 	// Riptide is the forwarding state as of the last call (the startup ping,
-	// then each emit), a fixed word (off, ok, unreachable, rejected), never
+	// then each emit), a fixed word (off, ok, failing, rejected), never
 	// the URL. Absent for a disabled team.
 	Riptide string `json:"riptide,omitempty"`
 	// Which Bitbucket and Jira accounts the team works with, as on its own

@@ -134,7 +134,7 @@ export interface Team {
   jira_account: JiraAccount | null;
 }
 
-export type RiptideStatus = "off" | "ok" | "unreachable" | "rejected";
+export type RiptideStatus = "off" | "ok" | "failing" | "rejected";
 
 /** AccountStatus is an own account's health; null on a shared one. */
 export type AccountStatus =

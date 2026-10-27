@@ -199,16 +199,16 @@ export const en = {
     sharedJiraHint: "Jira is read with the shared token.",
     riptide: {
       ok: "Riptide",
-      unreachable: "Riptide: unreachable",
+      failing: "Riptide: failing",
       rejected: "Riptide: rejected",
       off: "Riptide off",
     },
     riptideHint: {
-      ok: "Riptide answered the last call (the startup ping or a rollup); each closed PR's rollup is forwarded.",
-      unreachable:
-        "The last call to riptide failed (the startup ping or a rollup). Reviews run; a rollup sent while it fails is lost.",
+      ok: "Riptide took the last call (the startup ping or a rollup); each closed PR's rollup is forwarded.",
+      failing:
+        "The last call to riptide failed (the startup ping or a rollup); the pod log says why. Reviews run; a rollup that fails is lost.",
       rejected:
-        "Riptide refuses the token (HTTP 401). Reviews run; every rollup is lost until the token is fixed.",
+        "Riptide refuses the token (HTTP 401/403). Reviews run; every rollup is lost until the token is fixed.",
       off: "No riptide block for this team in teams.yaml, so nothing is forwarded.",
     },
     accountStatus: {

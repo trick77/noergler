@@ -167,8 +167,8 @@ func TestVerifyAtStartupOddBodyIsNotFatal(t *testing.T) {
 	}
 }
 
-// Status is OK only after riptide answered the ping with a body; every
-// survivable failure reads as unreachable, and a team without riptide as off.
+// Status is OK only after riptide answered the ping with a team; every
+// survivable failure reads as failing, and a team without riptide as off.
 func TestStatus(t *testing.T) {
 	var none *Emitter
 	if got := none.Status(); got != StatusOff {
@@ -183,16 +183,16 @@ func TestStatus(t *testing.T) {
 		want   string
 	}{
 		{200, `{"status":"ok","team":"checkout"}`, StatusOK},
-		{200, `not json`, StatusUnreachable},
-		{200, `{}`, StatusUnreachable},
-		{200, `null`, StatusUnreachable},
-		{503, `nope`, StatusUnreachable},
-		{302, ``, StatusUnreachable},
+		{200, `not json`, StatusFailing},
+		{200, `{}`, StatusFailing},
+		{200, `null`, StatusFailing},
+		{503, `nope`, StatusFailing},
+		{302, ``, StatusFailing},
 	}
 	for _, c := range cases {
 		_, e := newFake(t, reply(c.status, c.body))
-		if got := e.Status(); got != StatusUnreachable {
-			t.Errorf("%d before the ping: %q, want unreachable", c.status, got)
+		if got := e.Status(); got != StatusFailing {
+			t.Errorf("%d before the ping: %q, want failing", c.status, got)
 		}
 		_, _ = e.VerifyAtStartup(context.Background())
 		if got := e.Status(); got != c.want {
@@ -201,54 +201,54 @@ func TestStatus(t *testing.T) {
 	}
 	e := New("http://127.0.0.1:1", "t", slog.New(slog.DiscardHandler))
 	_, _ = e.VerifyAtStartup(context.Background())
-	if got := e.Status(); got != StatusUnreachable {
-		t.Errorf("connection refused: %q, want unreachable", got)
+	if got := e.Status(); got != StatusFailing {
+		t.Errorf("connection refused: %q, want failing", got)
 	}
 }
 
-// Each emit updates the status: a riptide that was down at startup turns ok
-// with its first accepted rollup, and one that dies later stops reading ok.
+// Each emit sets the status to its own outcome: a riptide that was down at
+// startup turns ok with its first accepted rollup, and any lost rollup stops
+// it reading ok. Only 401/403 says why (the token).
 func TestStatusFollowsEmits(t *testing.T) {
 	code := 503
 	_, e := newFake(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(code) })
 	_, _ = e.VerifyAtStartup(context.Background())
-	if got := e.Status(); got != StatusUnreachable {
+	if got := e.Status(); got != StatusFailing {
 		t.Fatalf("after a failed ping: %q", got)
 	}
-	code = 202
-	e.EmitPRCompleted(context.Background(), Rollup{Outcome: "merged"})
-	if got := e.Status(); got != StatusOK {
-		t.Errorf("after an accepted emit: %q, want ok", got)
+	steps := []struct {
+		code int
+		want string
+	}{
+		{202, StatusOK},
+		{422, StatusFailing},
+		{200, StatusOK},
+		{401, StatusRejected},
+		{403, StatusRejected},
+		{404, StatusFailing},
+		{302, StatusFailing},
+		{500, StatusFailing},
 	}
-	// One refused rollup is about that rollup, not about forwarding.
-	code = 422
-	e.EmitPRCompleted(context.Background(), Rollup{Outcome: "merged"})
-	if got := e.Status(); got != StatusOK {
-		t.Errorf("after a 422: %q, want ok unchanged", got)
-	}
-	code = 401
-	e.EmitPRCompleted(context.Background(), Rollup{Outcome: "merged"})
-	if got := e.Status(); got != StatusRejected {
-		t.Errorf("after a 401: %q, want rejected", got)
-	}
-	code = 500
-	e.EmitPRCompleted(context.Background(), Rollup{Outcome: "merged"})
-	if got := e.Status(); got != StatusUnreachable {
-		t.Errorf("after a 500: %q, want unreachable", got)
+	for _, s := range steps {
+		code = s.code
+		e.EmitPRCompleted(context.Background(), Rollup{Outcome: "merged"})
+		if got := e.Status(); got != s.want {
+			t.Errorf("after a %d: %q, want %q", s.code, got, s.want)
+		}
 	}
 
 	dead := New("http://127.0.0.1:1", "t", slog.New(slog.DiscardHandler))
-	dead.last.Store(StatusOK)
+	dead.set(StatusOK)
 	dead.EmitPRCompleted(context.Background(), Rollup{Outcome: "merged"})
-	if got := dead.Status(); got != StatusUnreachable {
-		t.Errorf("after a transport error: %q, want unreachable", got)
+	if got := dead.Status(); got != StatusFailing {
+		t.Errorf("after a transport error: %q, want failing", got)
 	}
 }
 
 // Our own context ending is not riptide failing: the status stays.
 func TestStatusIgnoresOwnCancellation(t *testing.T) {
 	_, e := newFake(t, reply(202, ``))
-	e.last.Store(StatusOK)
+	e.set(StatusOK)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	e.EmitPRCompleted(ctx, Rollup{Outcome: "merged"})

@@ -708,8 +708,9 @@ func TestTeamsNamesTheModelSource(t *testing.T) {
 	}
 }
 
-// Riptide shows as a fixed word from the startup ping, never the URL; off
-// without an emitter, absent for a disabled team.
+// Riptide shows as a fixed word from the last call (the startup ping, then
+// each emit), never the URL; off without an emitter, absent for a disabled
+// team.
 func TestTeamsShowsRiptide(t *testing.T) {
 	h := newDashHarness(t)
 	state := func() (map[string]string, string) {
@@ -746,8 +747,8 @@ func TestTeamsShowsRiptide(t *testing.T) {
 
 	h.rt.Riptide = riptide.New("http://127.0.0.1:1", "t", slog.New(slog.DiscardHandler))
 	_, _ = h.rt.Riptide.VerifyAtStartup(context.Background())
-	if got, _ := state(); got["platform"] != riptide.StatusUnreachable {
-		t.Errorf("riptide = %q, want unreachable", got["platform"])
+	if got, _ := state(); got["platform"] != riptide.StatusFailing {
+		t.Errorf("riptide = %q, want failing", got["platform"])
 	}
 }
 

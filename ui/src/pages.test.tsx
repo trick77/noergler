@@ -556,7 +556,7 @@ describe("TeamsPage", () => {
       exclude_target_branches: [],
       model: "gpt-5.5-high",
       model_source: "default",
-      riptide: "unreachable",
+      riptide: "failing",
       bitbucket_account: {
         source: "team",
         username: "pay-bot",
@@ -603,7 +603,7 @@ describe("TeamsPage", () => {
       /PUT \/teams\/payments\/credentials/,
     );
     expect(screen.getAllByText("Own Jira token")).toHaveLength(2);
-    expect(screen.getAllByText("Riptide: unreachable")).toHaveLength(2);
+    expect(screen.getAllByText("Riptide: failing")).toHaveLength(2);
     expect(screen.queryByText(/pay-bot/)).toBeNull();
   });
 

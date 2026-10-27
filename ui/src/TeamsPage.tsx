@@ -100,7 +100,7 @@ function integrationPills(team: Team, now: number, t: TFunction) {
   const rs = team.riptide ?? "off";
   const riptideTone: Record<typeof rs, Tone> = {
     ok: "ok",
-    unreachable: "skip",
+    failing: "skip",
     rejected: "fail",
     off: "quiet",
   };
