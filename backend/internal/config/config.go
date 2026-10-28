@@ -154,6 +154,23 @@ type Riptide struct {
 	Token string
 }
 
+// Almanach is a team's Almanach, the living wiki its merged PRs' notes go
+// to; nil on the team = no note call, no row, nothing forwarded. Opt-in per
+// team, like riptide. The token is the team's identity at Almanach.
+type Almanach struct {
+	URL   string
+	Token string
+}
+
+// AlmanachLimits is the instance's cap on a note (ALMANACH_NOTE_MAX_CHARS).
+// Instance only: the cap bounds a row in the shared database and the
+// payload a shared Almanach reads; a team has no business raising it.
+type AlmanachLimits struct {
+	// NoteMaxChars is the rune count of the serialized note over which the
+	// whole note is dropped, never truncated.
+	NoteMaxChars int
+}
+
 // Trust is the context-window trust curve (instance only).
 type Trust struct {
 	HeadroomTokens int
@@ -178,6 +195,7 @@ type Team struct {
 	Review   Review
 	Jira     Jira
 	Riptide  *Riptide
+	Almanach *Almanach
 }
 
 // ProjectScope is a Bitbucket project a team owns, optionally narrowed to
@@ -323,6 +341,7 @@ type App struct {
 	Database  Database
 	Trust     Trust
 	Queue     Queue
+	Almanach  AlmanachLimits
 	// SecretsKey seals the credentials teams push (NOERGLER_SECRETS_KEY).
 	// Required even before any team pushes one: a key that appears only
 	// later is a deploy step nobody remembers.
@@ -473,6 +492,7 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 			InferenceConcurrency:        positive(r, "REVIEW_INFERENCE_CONCURRENCY", 6),
 			InferenceConcurrencyPerTeam: positive(r, "REVIEW_INFERENCE_CONCURRENCY_PER_TEAM", 2),
 		},
+		Almanach:        AlmanachLimits{NoteMaxChars: positive(r, "ALMANACH_NOTE_MAX_CHARS", 6000)},
 		TeamsConfigPath: r.String("TEAMS_CONFIG", "teams.yaml"),
 		Teams:           map[string]*Team{},
 		Disabled:        map[string]string{},

@@ -50,6 +50,7 @@ names are yours; the convention is the slug uppercased with `-` turned into `_`:
 TEAM_PLATFORM_WEBHOOK_SECRET=      # required per team: openssl rand -hex 32
 TEAM_PLATFORM_OPENAI_API_KEY=      # required per team: the team's key on the gateway
 TEAM_PLATFORM_RIPTIDE_TOKEN=       # only when the team has a riptide: block
+TEAM_PLATFORM_ALMANACH_TOKEN=      # only when the team has an almanach: block
 ```
 
 ### Instance defaults, overridable per team
@@ -95,6 +96,7 @@ Not overridable in a team block. Naming one there disables the team.
 | `CONTEXT_TRUST_TAIL` | `0.5` | Fraction of the window beyond the threshold that counts. |
 | `REVIEW_INFERENCE_CONCURRENCY` | `6` | Inference calls in flight process-wide. Bitbucket work stays on the single worker whatever this is; only the gateway call overlaps. |
 | `REVIEW_INFERENCE_CONCURRENCY_PER_TEAM` | `2` | Inference calls in flight for one team, nested inside the global cap so one team's burst cannot take every slot. Must not exceed it. |
+| `ALMANACH_NOTE_MAX_CHARS` | `6000` | Characters of a serialized Almanach note over which the whole note is dropped, never truncated. Must be greater than 0. |
 | `SERVER_HOST` | `0.0.0.0` | Listen address. |
 | `SERVER_PORT` | `8080` | Listen port. |
 | `NOERGLER_PUBLIC_URL` | *(empty)* | This instance's base URL, reachable by Bitbucket and by reviewers' browsers. `POST /onboard/{team}` writes webhooks to it, and each summary footer links the run's dashboard page under it. Empty disables both. |
@@ -150,6 +152,7 @@ teams:
 | `review.*` | no | Override any `REVIEW_*` default. |
 | `jira.acceptance_criteria_prefixes` | no | Override the instance prefixes. |
 | `riptide.url`, `riptide.token_env` | no | Present means FinOps forwarding is on. Both required together. |
+| `almanach.url`, `almanach.token_env` | no | Present means every review round writes an Almanach note and each merge forwards it (HOW_IT_WORKS §15). Both required together; absent, no note call is made. The token is the team's identity at Almanach. |
 
 Decoding is strict: an unknown key disables that team, and only that team.
 
@@ -173,6 +176,8 @@ the service.**
 | Model cannot reason, lacks strict JSON-schema output, or does not list the configured `reasoning_effort`, or that level switches reasoning off, or no level is set on a model that reasons only when asked and names no balanced level | That team is disabled, from its llmwire profile and before any request. The error names the valid choices. |
 | Team's riptide ping returns 401 | That team is disabled. Any other riptide error is a warning; the Teams page shows riptide as failing until a rollup goes through. |
 | A rollup fails after startup | The team stays up; the rollup is lost. The Teams page shows riptide as rejected on a 401/403 (every rollup is lost until the token is fixed), else as failing, until the next rollup goes through. |
+| Team's Almanach ping returns 401 | That team is disabled. Any other Almanach error is a warning; reviews run and the notes wait. |
+| A note fails to reach Almanach | The team stays up; the note stays pending and goes with the team's next merge. Nothing is lost unless the token stays rejected. |
 | Missing per-team secret env var | That team is disabled. |
 | `NOERGLER_SECRETS_KEY` missing, malformed, or not the key the stored team tokens were sealed with | Startup aborts. The key is shared layer. (A changed key with no team token stored yet only resets the key check.) |
 | A team's own Bitbucket token rejected, unreadable, or belonging to another account than its username | That team stays up and is **not** disabled: its webhooks are acknowledged and not processed, the Teams page shows the state, and the team heals itself by pushing a working token. No other team is affected. |

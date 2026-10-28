@@ -173,9 +173,10 @@ type teamBlock struct {
 		reasoningEffort *string
 		contextWindow   *int
 	}
-	review  []func(*Review) // one setter per validated key
-	jira    *[]string
-	riptide *struct{ url, tokenEnv string }
+	review   []func(*Review) // one setter per validated key
+	jira     *[]string
+	riptide  *struct{ url, tokenEnv string }
+	almanach *struct{ url, tokenEnv string }
 }
 
 type blockErrors struct{ list []string }
@@ -375,7 +376,7 @@ var reviewOverrides = map[string]reviewOverride{
 func parseBlock(m *yaml.Node) (*teamBlock, error) {
 	var e blockErrors
 	tb := &teamBlock{}
-	e.checkKeys(m, "", "slug", "name", "webhook_secret_env", "projects", "inference", "review", "jira", "riptide")
+	e.checkKeys(m, "", "slug", "name", "webhook_secret_env", "projects", "inference", "review", "jira", "riptide", "almanach")
 
 	if slug, ok := e.scalar(m, "", "slug", true); ok {
 		if !TeamSlugRE.MatchString(slug) {
@@ -473,6 +474,17 @@ func parseBlock(m *yaml.Node) (*teamBlock, error) {
 		}
 	}
 
+	if an := mappingGet(m, "almanach"); an != nil {
+		if an.Kind != yaml.MappingNode {
+			e.add("almanach", "Input should be a valid dictionary")
+		} else {
+			e.checkKeys(an, "almanach", "url", "token_env")
+			url, _ := e.scalar(an, "almanach", "url", true)
+			tok, _ := e.scalar(an, "almanach", "token_env", true)
+			tb.almanach = &struct{ url, tokenEnv string }{url, tok}
+		}
+	}
+
 	if len(e.list) > 0 {
 		return nil, &TeamError{Msg: strings.Join(e.list, "; ")}
 	}
@@ -555,6 +567,18 @@ func ResolveTeam(block *yaml.Node, instance *App, lookup func(string) (string, b
 		riptide = &Riptide{URL: strings.TrimRight(strings.TrimSpace(tb.riptide.url), "/"), Token: token}
 	}
 
+	var almanach *Almanach
+	if tb.almanach != nil {
+		if strings.TrimSpace(tb.almanach.url) == "" {
+			return nil, teamErrorf("almanach.url must be non-empty")
+		}
+		token, err := secretFromEnv("almanach.token_env", tb.almanach.tokenEnv, lookup)
+		if err != nil {
+			return nil, err
+		}
+		almanach = &Almanach{URL: strings.TrimRight(strings.TrimSpace(tb.almanach.url), "/"), Token: token}
+	}
+
 	name := tb.name
 	if name == "" {
 		name = tb.slug
@@ -573,5 +597,6 @@ func ResolveTeam(block *yaml.Node, instance *App, lookup func(string) (string, b
 		Review:        review,
 		Jira:          jira,
 		Riptide:       riptide,
+		Almanach:      almanach,
 	}, nil
 }

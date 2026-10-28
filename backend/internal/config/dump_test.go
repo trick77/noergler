@@ -26,7 +26,7 @@ func TestDump_MasksSecretsAndKeepsTheSectionHeaders(t *testing.T) {
 	text := buf.String()
 
 	for _, secret := range []string{"secret-bb-token", "secret-webhook", "secret-api-key", "secret-jira-token",
-		"secret-riptide-token", "secret-db-password", "pay-secret", "pay-key", "pay-riptide", strings.Repeat("5e", 32)} {
+		"secret-riptide-token", "secret-db-password", "pay-secret", "pay-key", "pay-riptide", "pay-almanach", strings.Repeat("5e", 32)} {
 		if strings.Contains(text, secret) {
 			t.Errorf("secret %q in the dump", secret)
 		}
@@ -36,6 +36,8 @@ func TestDump_MasksSecretsAndKeepsTheSectionHeaders(t *testing.T) {
 		"[config.queue]", "  inference_concurrency = 6", "  inference_concurrency_per_team = 2",
 		"[config.teams.platform]", "[config.teams.platform.llm]", "[config.teams.platform.riptide] disabled",
 		"[config.teams.payments.riptide]", "https://bb.example.com", "gpt-5.5", "['alice', 'bob']", "9090",
+		"[config.teams.platform.almanach] disabled", "[config.teams.payments.almanach]", "https://almanach.example.com",
+		"[config.almanach]", "  note_max_chars = 6000",
 		"projects = ['PLAT']", "projects = ['PAY/{billing,ledger}']",
 		"[config.teams.broken] DISABLED: TEAM_BROKEN_OPENAI_API_KEY is not set",
 		"  api_key = ***", "  token = ***", "  url = ***", "  webhook_secret = ***",

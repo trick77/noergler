@@ -32,6 +32,7 @@ func Dump(app *App, log *slog.Logger) {
 	section(log, "config.trust", kv{"headroom_tokens", app.Trust.HeadroomTokens}, kv{"threshold", app.Trust.Threshold}, kv{"tail", app.Trust.Tail})
 	section(log, "config.queue", kv{"inference_concurrency", app.Queue.InferenceConcurrency},
 		kv{"inference_concurrency_per_team", app.Queue.InferenceConcurrencyPerTeam})
+	section(log, "config.almanach", kv{"note_max_chars", app.Almanach.NoteMaxChars})
 	log.Info(fmt.Sprintf("[config.teams] path = %s", app.TeamsConfigPath))
 	for _, slug := range app.Order {
 		team := app.Teams[slug]
@@ -49,6 +50,11 @@ func Dump(app *App, log *slog.Logger) {
 			section(log, "config.teams."+slug+".riptide", kv{"url", team.Riptide.URL}, kv{"token", mask})
 		} else {
 			log.Info(fmt.Sprintf("[config.teams.%s.riptide] disabled", slug))
+		}
+		if team.Almanach != nil {
+			section(log, "config.teams."+slug+".almanach", kv{"url", team.Almanach.URL}, kv{"token", mask})
+		} else {
+			log.Info(fmt.Sprintf("[config.teams.%s.almanach] disabled", slug))
 		}
 	}
 	for _, slug := range slices.Sorted(maps.Keys(app.Disabled)) {
