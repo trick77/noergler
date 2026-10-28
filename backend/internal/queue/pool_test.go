@@ -739,3 +739,94 @@ func TestPostStageRunsOnTheReviewContext(t *testing.T) {
 		t.Fatal("post stage never ran")
 	}
 }
+
+// A spawned call takes a pool slot like an inference and never a PR hold:
+// the team cap binds it, no key is held the whole time, and Stop drains it.
+func TestSpawnRunsUnderThePoolWithoutAHold(t *testing.T) {
+	g := newGate()
+	q := New(syncReview(func(context.Context, string, *webhook.Payload) {}), 4, 2, quietLogger())
+	q.Start(context.Background())
+	defer q.Stop()
+	defer g.releaseAll()
+
+	for i := 0; i < 4; i++ {
+		q.Spawn(context.Background(), "busy", func(context.Context) { g.enter("busy") })
+	}
+
+	g.waitEntered(t, 2)
+	g.noMoreEntries(t)
+	if got := g.teamPeak("busy"); got != 2 {
+		t.Fatalf("team peak = %d, want the per-team cap of 2", got)
+	}
+	q.mu.Lock()
+	heldKeys, staged := len(q.inflight), q.staged
+	q.mu.Unlock()
+	if heldKeys != 0 {
+		t.Errorf("a spawned call holds %d key(s); it must hold none", heldKeys)
+	}
+	if staged != 4 {
+		t.Errorf("staged = %d, want 4: every spawned call counts until it is through the pool", staged)
+	}
+
+	g.releaseAll()
+	g.waitEntered(t, 2)
+	q.Stop()
+	q.mu.Lock()
+	staged = q.staged
+	q.mu.Unlock()
+	if staged != 0 {
+		t.Errorf("staged = %d after Stop, want 0", staged)
+	}
+}
+
+// A spawned call that panics gives its slot back: the next one still runs,
+// and nothing stays counted.
+func TestSpawnPanicReleasesTheSlot(t *testing.T) {
+	ran := make(chan struct{}, 1)
+	q := New(syncReview(func(context.Context, string, *webhook.Payload) {}), 1, 1, quietLogger())
+	q.Start(context.Background())
+	defer q.Stop()
+
+	q.Spawn(context.Background(), "t", func(context.Context) { panic("note exploded") })
+	q.Spawn(context.Background(), "t", func(context.Context) { ran <- struct{}{} })
+
+	select {
+	case <-ran:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the panic leaked the only pool slot")
+	}
+	waitFor(t, func() bool {
+		q.mu.Lock()
+		defer q.mu.Unlock()
+		return q.staged == 0
+	})
+}
+
+// A call spawned from a review's post runs beside the review, never instead
+// of it: the post still lands and the PR's hold still ends.
+func TestSpawnFromPostDoesNotDisturbTheReview(t *testing.T) {
+	posted := make(chan struct{}, 1)
+	spawned := make(chan struct{}, 1)
+	q := New(func(ctx context.Context, team string, p *webhook.Payload, sched Scheduler) bool {
+		sched.Stage(ctx, key(p.PullRequest.ID), team,
+			func(context.Context) {},
+			func(ctx context.Context) {
+				sched.Spawn(ctx, team, func(context.Context) { spawned <- struct{}{} })
+				posted <- struct{}{}
+			},
+		)
+		return true
+	}, 2, 2, quietLogger())
+	q.Start(context.Background())
+	defer q.Stop()
+
+	q.Submit(key(1), prFor(1), "t")
+	for _, ch := range []chan struct{}{posted, spawned} {
+		select {
+		case <-ch:
+		case <-time.After(2 * time.Second):
+			t.Fatal("the review's post or the spawned call never ran")
+		}
+	}
+	waitFor(t, func() bool { return !held(q, key(1)) })
+}
