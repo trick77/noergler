@@ -76,7 +76,9 @@ func (r *Reviewer) HandleReadyForReview(ctx context.Context, payload *webhook.Pa
 		banner = render.HandoffBanner(r.languageFor(ctx, pr.Author.User.Name), open)
 	}
 	body := render.PlaceHandoffBanner(summary.Text, banner)
-	if body == summary.Text {
+	// As it would post: the stored text went out through NoEmDash, the
+	// fresh banner did not yet, and an equal pair is no write.
+	if render.NoEmDash(body) == summary.Text {
 		return
 	}
 	version := summary.Version

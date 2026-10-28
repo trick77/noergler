@@ -212,8 +212,9 @@ func TestLogDiffTooLargeEmitsBothLines(t *testing.T) {
 // /changes failing must not turn a failure path into a second failure: the
 // head-only report still goes out, and the log says why it is partial.
 func TestLogDiffTooLargeDegradesWhenChangesFails(t *testing.T) {
-	r, buf := capturingReviewer(t)
-	r.bitbucket.(*fakeBitbucket).changesErr = errors.New("boom")
+	bb := newFakeBitbucket()
+	bb.changesErr = errors.New("boom")
+	r, buf := capturingReviewerWith(t, bb)
 	head := []byte(fileDiff("src/app.go", 50))
 	size := 12345
 	err := &bitbucket.ContentTooLarge{

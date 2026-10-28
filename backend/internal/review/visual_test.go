@@ -12,6 +12,7 @@ import (
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/render"
 	"github.com/trick77/noergler/internal/webhook"
 )
 
@@ -124,16 +125,19 @@ func TestScreenshotsAreDescribedInTheSummary(t *testing.T) {
 	got := lastSummary(t, h)
 	for _, want := range []string{
 		"### Visual changes -",
-		"`" + shotDir + "form-chromium-linux.png` — A red dot appears mid-form; nothing in the PR explains it. _(1 more variant)_",
-		"`" + shotDir + "new.png` — New empty page baseline.",
-		"`" + shotDir + "gone.png` — removed.",
+		"`form-chromium-linux.png` - A red dot appears mid-form; nothing in the PR explains it. _(1 more variant)_",
+		"`new.png` - New empty page baseline.",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("summary lacks %q:\n%s", want, got)
 		}
 	}
-	if strings.Contains(got, "logo.png") || strings.Contains(got, "an id never sent") {
-		t.Errorf("only baselines the run sent are listed:\n%s", got)
+	// A removed baseline gets no line; the logo is no baseline.
+	if strings.Contains(got, "gone.png") || strings.Contains(got, "logo.png") || strings.Contains(got, "an id never sent") {
+		t.Errorf("only baselines the run compared are listed:\n%s", got)
+	}
+	if strings.Contains(got, "—") {
+		t.Errorf("a posted summary carries no em dash:\n%s", got)
 	}
 	if len(h.st.VisualInserts) != 2 {
 		t.Errorf("stored %d lines, want 2", len(h.st.VisualInserts))
@@ -160,7 +164,7 @@ func TestScreenshotLinesAreReusedOnTheNextRun(t *testing.T) {
 		t.Errorf("second run read %d screenshot version(s), want none: the blob ids are the key", h.bb.byteReads-reads)
 	}
 	got := lastSummary(t, h)
-	if !strings.Contains(got, "— Dot added.") || !strings.Contains(got, "— New page.") {
+	if !strings.Contains(got, "- Dot added.") || !strings.Contains(got, "- New page.") {
 		t.Errorf("stored lines missing from the second summary:\n%s", got)
 	}
 }
@@ -232,10 +236,8 @@ func TestScreenshotWithoutTypesIsClassifiedByFetch(t *testing.T) {
 		t.Fatalf("want the added baseline sent alone, after only: %+v", imgs)
 	}
 	got := lastSummary(t, h)
-	for _, want := range []string{"`" + shotDir + "added.png` — New baseline.", "`" + shotDir + "dropped.png` — removed."} {
-		if !strings.Contains(got, want) {
-			t.Errorf("summary lacks %q:\n%s", want, got)
-		}
+	if !strings.Contains(got, "`added.png` - New baseline.") || strings.Contains(got, "dropped.png") {
+		t.Errorf("want the added baseline described and the removed one left out:\n%s", got)
 	}
 	if len(h.st.VisualInserts) != 1 || !strings.HasPrefix(h.st.VisualInserts[0].AfterID, "sha256:") {
 		t.Errorf("a pair without blob ids is keyed by its bytes: %+v", h.st.VisualInserts)
@@ -295,7 +297,7 @@ func TestScreenshotInLFSIsNamed(t *testing.T) {
 	h.bb.blobs["src1:"+shotDir+"new.png"] = []byte("version https://git-lfs.github.com/spec/v1\noid sha256:abc\nsize 1234\n")
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
 
-	if got := lastSummary(t, h); !strings.Contains(got, "`"+shotDir+"new.png` — _not compared: stored in Git LFS._") {
+	if got := lastSummary(t, h); !strings.Contains(got, "`new.png` - _not compared: stored in Git LFS._") {
 		t.Errorf("summary lacks the LFS line:\n%s", got)
 	}
 }
@@ -313,7 +315,7 @@ func TestScreenshotWithoutBaseIsNotCompared(t *testing.T) {
 			t.Errorf("sent a before side with no base: %s", img.Path)
 		}
 	}
-	if got := lastSummary(t, h); !strings.Contains(got, "`"+shotDir+"form-chromium-linux.png` — _not compared: image could not be read._") {
+	if got := lastSummary(t, h); !strings.Contains(got, "`form-chromium-linux.png` - _not compared: image could not be read._") {
 		t.Errorf("want the changed baseline not compared:\n%s", got)
 	}
 }
@@ -337,8 +339,8 @@ func TestScreenshotsComeFromTheReviewedCommit(t *testing.T) {
 	}
 }
 
-// A push that only deletes a baseline still runs, so the summary says
-// removed rather than keeping the old line.
+// A push that only deletes a baseline still runs, so the summary drops the
+// screenshot's old line; a removed one gets none of its own.
 func TestBaselineDeletionOnlyRefreshesTheSummary(t *testing.T) {
 	h := screenshotHarness(t, true)
 	h.bb.prDiff = binary("gone.png")
@@ -347,7 +349,56 @@ func TestBaselineDeletionOnlyRefreshesTheSummary(t *testing.T) {
 	if len(h.llm.Reviews) != 1 {
 		t.Fatalf("reviews = %d, want the run to go on", len(h.llm.Reviews))
 	}
-	if !strings.Contains(lastSummary(t, h), "`"+shotDir+"gone.png` — removed.") {
-		t.Errorf("summary lacks the removal:\n%s", lastSummary(t, h))
+	if strings.Contains(lastSummary(t, h), "gone.png") {
+		t.Errorf("a removed baseline is not listed:\n%s", lastSummary(t, h))
+	}
+}
+
+// Only removed baselines: no section at all.
+func TestOnlyRemovedBaselinesNoSection(t *testing.T) {
+	h := screenshotHarness(t, true)
+	h.bb.changeSet.Changes = []bitbucket.Change{{Path: shotDir + "gone.png", Type: "DELETE", FromContentID: "g1"}}
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if strings.Contains(lastSummary(t, h), "Visual changes") {
+		t.Errorf("want no section for removals only:\n%s", lastSummary(t, h))
+	}
+}
+
+// A variant gone at head (types unknown, so found by its 404) hands over to
+// the next, whose change is still sent.
+func TestRemovedVariantHandsOverToTheNext(t *testing.T) {
+	h := screenshotHarness(t, true)
+	delete(h.bb.blobs, "src1:"+shotDir+"form-chromium-linux.png")
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+	imgs := h.llm.Reviews[0].Images
+	if len(imgs) == 0 || imgs[0].Path != shotDir+"form-firefox-linux.png" {
+		t.Fatalf("want the firefox variant sent after chromium's 404: %+v", imgs)
+	}
+}
+
+// A reply goes out hard-wrapped, like the summary; its code does not.
+func TestRepliesAreWrapped(t *testing.T) {
+	h := newHarness(t, nil)
+	long := strings.Repeat("word ", 40) + "end"
+	code := "```\n" + strings.Repeat("x", 150) + "\n```"
+	h.r.reply(context.Background(), "PROJ", "repo", 1, 7, long+"\n\n"+code)
+
+	if len(h.bb.Replies) != 1 {
+		t.Fatalf("replies = %d", len(h.bb.Replies))
+	}
+	got := h.bb.Replies[0].Text
+	prose, _, _ := strings.Cut(got, "\n\n")
+	for _, line := range strings.Split(prose, "\n") {
+		if n := len([]rune(line)); n > render.WrapWidth {
+			t.Errorf("reply line of %d runes, past the %d width: %q", n, render.WrapWidth, line)
+		}
+	}
+	if !strings.Contains(prose, "\n") {
+		t.Errorf("a %d-rune reply was not wrapped: %q", len(long), prose)
+	}
+	if !strings.Contains(got, code) {
+		t.Errorf("the fenced code was touched: %q", got)
 	}
 }

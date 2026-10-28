@@ -64,7 +64,7 @@ func TestNBSPIndentedStructureIsNotWrapped(t *testing.T) {
 // An Arabic-Indic marker is a numbered list item and wraps at the narrower
 // list width. RE2's \d is ASCII and would miss it, hence \p{Nd}.
 func TestArabicIndicMarkerIsAListItem(t *testing.T) {
-	in := "١. Numbered item with an Arabic-Indic marker and enough words that the wrapping kicks in at the list width."
+	in := "١. Numbered item with an Arabic-Indic marker and enough words that the wrapping kicks in at the list width, which is the prose width."
 	got := WrapProse(in)
 	if !strings.Contains(got, "\n") {
 		t.Fatalf("expected a wrap at the list width, got %q", got)
@@ -199,5 +199,38 @@ func TestPlaceholderCharsStrippedFromInput(t *testing.T) {
 	got := WrapProse("A line with a \x00 null and a \x01 filler embedded in prose.")
 	if strings.ContainsAny(got, "\x00\x01") {
 		t.Errorf("placeholder chars survived: %q", got)
+	}
+}
+
+// A table row is structure, like a heading: a reply's settings table broken
+// across lines is no table.
+func TestTableRowIsNotWrapped(t *testing.T) {
+	row := "| Setting | Value that is long enough to cross the prose width if anything here were to wrap it, which it must not |"
+	if got := WrapProse(row); got != row {
+		t.Errorf("table row was wrapped: %q", got)
+	}
+}
+
+// Lists wrap at the prose width, not earlier than the paragraphs beside them.
+func TestListWrapsAtTheProseWidth(t *testing.T) {
+	item := "- " + strings.Repeat("word ", 21) + "end"
+	if got := WrapProse(item); strings.Contains(got, "\n") {
+		t.Errorf("a %d-rune item broke before the prose width: %q", len(item), got)
+	}
+}
+
+// Code a reply carries outside ``` fences is left whole: a ~~~ fence, an
+// indented block and a pipe table without its leading pipe.
+func TestCodeOutsideBacktickFencesIsNotWrapped(t *testing.T) {
+	long := strings.Repeat("token ", 25)
+	for _, in := range []string{
+		"~~~go\n" + long + "\n~~~",
+		"    " + long,
+		"\t" + long,
+		"Setting | Value | " + long,
+	} {
+		if got := WrapProse(in); got != in {
+			t.Errorf("code was wrapped\n in:  %q\n got: %q", in, got)
+		}
 	}
 }

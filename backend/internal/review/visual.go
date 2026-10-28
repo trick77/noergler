@@ -119,36 +119,47 @@ func (r *Reviewer) prepareVisual(ctx context.Context, key store.PRKey, prTag, he
 		room: room, cache: cache, vp: &vp}
 	vp.pending = map[string]visualPending{}
 	notCompared := map[render.VisualStatus][]string{}
-	var unchanged []string
+	unchanged := 0
+	var removed []string
 
 	// One line per group of browser and platform variants: the first that
-	// changed, chromium first. A variant whose pixels did not change hands
-	// over to the next, so a change only firefox shows still reaches the
-	// model.
+	// changed, chromium first. A variant whose pixels did not change, or
+	// that is gone, hands over to the next, so a change only firefox shows
+	// still reaches the model. A removed baseline gets no line (user,
+	// 2026-10-28: a list of "removed" says nothing a reviewer needs); the
+	// log names it.
 	for _, group := range diff.GroupVariants(shots) {
 		for i, s := range group {
-			line, same := vs.one(s)
-			if same && i < len(group)-1 {
+			line, out := vs.one(s)
+			if out == visualRemoved {
+				removed = append(removed, s.Path)
+			}
+			if out != visualShown && i < len(group)-1 {
 				continue
 			}
-			if same {
-				unchanged = append(unchanged, group[0].Path)
-				break
+			switch out {
+			case visualUnchanged:
+				unchanged++
+			case visualRemoved:
+			default:
+				line.Variants = len(group) - 1
+				if line.Status != render.VisualDescribed && line.Status != render.VisualNoAnswer {
+					notCompared[line.Status] = append(notCompared[line.Status], s.Path)
+				}
+				if line.Status == render.VisualNoAnswer {
+					vp.pending[vs.lastID] = visualPending{line: len(vp.lines), pair: vs.lastPair}
+				}
+				vp.lines = append(vp.lines, line)
 			}
-			line.Variants = len(group) - 1
-			if line.Status != render.VisualDescribed && line.Status != render.VisualDeleted && line.Status != render.VisualNoAnswer {
-				notCompared[line.Status] = append(notCompared[line.Status], s.Path)
-			}
-			if line.Status == render.VisualNoAnswer {
-				vp.pending[vs.lastID] = visualPending{line: len(vp.lines), pair: vs.lastPair}
-			}
-			vp.lines = append(vp.lines, line)
 			break
 		}
 	}
 
-	r.log.InfoContext(ctx, fmt.Sprintf("%s: screenshots: %d changed, %d shown, %d sent (~%d tokens), %d from earlier runs, %d unchanged pixels, %d read(s)",
-		prTag, len(shots), len(vp.lines), len(vp.images), vp.tokens, vs.cached, len(unchanged), vs.fetched))
+	r.log.InfoContext(ctx, fmt.Sprintf("%s: screenshots: %d changed, %d shown, %d sent (~%d tokens), %d from earlier runs, %d unchanged pixels, %d removed (not shown), %d read(s)",
+		prTag, len(shots), len(vp.lines), len(vp.images), vp.tokens, vs.cached, unchanged, len(removed), vs.fetched))
+	if len(removed) > 0 {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d screenshot(s) removed, not listed: %s", prTag, len(removed), capPaths(removed)))
+	}
 	vp.same = vs.same
 	for _, st := range slices.Sorted(maps.Keys(notCompared)) {
 		paths := notCompared[st]
@@ -178,17 +189,26 @@ type visualRun struct {
 	same []store.VisualPair
 }
 
-// one decides a single screenshot: its line, or same when its pixels did
-// not change (known from the cache or found now), which shows nothing.
-func (vs *visualRun) one(s diff.Screenshot) (line render.VisualLine, same bool) {
+// visualOutcome is what one screenshot comes to: a line, or nothing to show
+// because its pixels did not change or it was removed.
+type visualOutcome int
+
+const (
+	visualShown visualOutcome = iota
+	visualUnchanged
+	visualRemoved
+)
+
+// one decides a single screenshot: its line, or why it shows none.
+func (vs *visualRun) one(s diff.Screenshot) (line render.VisualLine, out visualOutcome) {
 	r, ctx, vp := vs.r, vs.ctx, vs.vp
 	line = render.VisualLine{Path: s.Path}
-	done := func(st render.VisualStatus) (render.VisualLine, bool) {
+	done := func(st render.VisualStatus) (render.VisualLine, visualOutcome) {
 		line.Status = st
-		return line, false
+		return line, visualShown
 	}
 	if s.Change == diff.ScreenshotDeleted {
-		return done(render.VisualDeleted)
+		return line, visualRemoved
 	}
 	// Before any read: a model without vision never wrote a stored line,
 	// so the reads would buy nothing. A team that moves off a vision model
@@ -199,22 +219,22 @@ func (vs *visualRun) one(s diff.Screenshot) (line render.VisualLine, same bool) 
 	// Known by its blob ids: the cache answers without a read.
 	pair := store.VisualPair{Path: s.Path, BeforeID: s.BeforeID, AfterID: s.AfterID}
 	known := s.AfterID != "" && (s.Change == diff.ScreenshotAdded || s.BeforeID != "")
-	lookup := func() (render.VisualLine, bool, bool) {
+	lookup := func() (render.VisualLine, visualOutcome, bool) {
 		text, ok := vs.cache[pair]
 		switch {
 		case !ok:
-			return line, false, false
+			return line, visualShown, false
 		case text == "":
-			return line, true, true
+			return line, visualUnchanged, true
 		}
 		vs.cached++
 		line.Text = text
-		l, _ := done(render.VisualDescribed)
-		return l, false, true
+		l, out := done(render.VisualDescribed)
+		return l, out, true
 	}
 	if known {
-		if l, same, hit := lookup(); hit {
-			return l, same
+		if l, out, hit := lookup(); hit {
+			return l, out
 		}
 	}
 	// No base, no before side: never the target's tip in its place.
@@ -230,7 +250,7 @@ func (vs *visualRun) one(s diff.Screenshot) (line render.VisualLine, same bool) 
 	vs.fetched++
 	switch {
 	case missing:
-		return done(render.VisualDeleted)
+		return line, visualRemoved
 	case st != render.VisualDescribed:
 		return done(st)
 	}
@@ -247,8 +267,8 @@ func (vs *visualRun) one(s diff.Screenshot) (line render.VisualLine, same bool) 
 	}
 	if !known {
 		pair.BeforeID, pair.AfterID = contentID(beforeBytes), contentID(afterBytes)
-		if l, same, hit := lookup(); hit {
-			return l, same
+		if l, out, hit := lookup(); hit {
+			return l, out
 		}
 	}
 	res, err := visual.Compare(beforeBytes, afterBytes)
@@ -263,7 +283,7 @@ func (vs *visualRun) one(s diff.Screenshot) (line render.VisualLine, same bool) 
 		// post, once a first review's PR row exists, so the pair is never
 		// read again.
 		vs.same = append(vs.same, pair)
-		return line, true
+		return line, visualUnchanged
 	}
 	img, cost := inference.NewVisualImage(len(vp.images), s.Path, res, r.tokens.Count)
 	if cost > vs.room-vp.tokens {

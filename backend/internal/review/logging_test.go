@@ -14,10 +14,17 @@ import (
 // capturingReviewer is a Reviewer whose log output can be read back.
 func capturingReviewer(t *testing.T) (*Reviewer, *bytes.Buffer) {
 	t.Helper()
+	return capturingReviewerWith(t, newFakeBitbucket())
+}
+
+// capturingReviewerWith is capturingReviewer on a fake the test keeps: New
+// wraps the client, so the Reviewer's own handle is not the fake.
+func capturingReviewerWith(t *testing.T, bb *fakeBitbucket) (*Reviewer, *bytes.Buffer) {
+	t.Helper()
 	var buf bytes.Buffer
 	r := New(Options{
 		TeamSlug:  "payments",
-		Bitbucket: newFakeBitbucket(),
+		Bitbucket: bb,
 		Log:       slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
 	})
 	return r, &buf

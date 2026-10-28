@@ -15,9 +15,10 @@ import (
 // We hard-wrap so no line runs full width.
 const WrapWidth = 110
 
-// ListWrapWidth is the narrower target for list items: a marker plus a hang
-// indent would otherwise let them render wider than the surrounding text.
-const ListWrapWidth = 90
+// ListWrapWidth is the target for list items: the prose width (user,
+// 2026-10-28). A narrower one broke list items visibly earlier than the
+// paragraphs beside them.
+const ListWrapWidth = WrapWidth
 
 // HardBreak is the token joining wrapped pieces. Bitbucket Data Center's
 // CommonMark renderer treats a single newline inside a paragraph as a visible
@@ -26,14 +27,15 @@ const ListWrapWidth = 90
 const HardBreak = "\n"
 
 // neverWrap matches fence-adjacent structure we pass through untouched:
-// block quotes and ATX headings.
+// block quotes, ATX headings and table rows (a reply's settings table: a
+// broken row is no row).
 //
 // The indent class must be Unicode-aware: a line indented with a
 // non-breaking space is still a heading or quote. RE2's \s is ASCII and
 // would miss it, so the class is spelled [\s\p{Zs}]. Without it an
 // NBSP-indented " > quote" gets wrapped and its block structure is
 // mangled (TestNBSPIndentedStructureIsNotWrapped).
-var neverWrap = regexp.MustCompile(`^[\s\p{Zs}]*(?:>[\s\p{Zs}]|#{1,6}[\s\p{Zs}])`)
+var neverWrap = regexp.MustCompile(`^[\s\p{Zs}]*(?:>[\s\p{Zs}]|#{1,6}[\s\p{Zs}]|\|)`)
 
 // listItem captures (marker, content) so the content wraps while the marker
 // is preserved and continuation lines hang-indent under the text.
@@ -79,18 +81,13 @@ func WrapProseWidth(text string, width, listWidth int) string {
 	text = strings.NewReplacer("\x00", "", "\x01", "").Replace(text)
 
 	var out []string
-	inFence := false
+	var f fences
 	for _, line := range strings.Split(text, "\n") {
 		// Unicode strip: a non-breaking space counts as indentation here,
 		// which is why unicode.IsSpace is right where the regexes above
 		// needed an explicit class.
 		stripped := strings.TrimLeftFunc(line, unicode.IsSpace)
-		if strings.HasPrefix(stripped, "```") {
-			inFence = !inFence
-			out = append(out, line)
-			continue
-		}
-		if inFence || stripped == "" || neverWrap.MatchString(line) {
+		if f.code(line) || stripped == "" || neverWrap.MatchString(line) {
 			out = append(out, line)
 			continue
 		}
@@ -98,9 +95,49 @@ func WrapProseWidth(text string, width, listWidth int) string {
 			out = append(out, wrapLine(m[2], listWidth, m[1]))
 			continue
 		}
+		// Indented code (four columns or a tab, not a list item) and a pipe
+		// table written without its leading pipe are code and structure: a
+		// break there breaks them.
+		if indentedCode(line) || strings.Count(line, "|") >= 2 {
+			out = append(out, line)
+			continue
+		}
 		out = append(out, wrapLine(line, width, ""))
 	}
 	return strings.Join(out, "\n")
+}
+
+// fences tracks fenced code across lines, for WrapProse and NoEmDash alike
+// so the two never disagree on what is code. A fence opens with ``` or ~~~
+// and closes only with the same marker: a ``` line inside a ~~~ block is
+// code.
+type fences struct{ open string }
+
+// code reports whether line is a fence line or inside a fence, and moves
+// the state past it.
+func (f *fences) code(line string) bool {
+	stripped := strings.TrimLeftFunc(line, unicode.IsSpace)
+	marker := ""
+	switch {
+	case strings.HasPrefix(stripped, "```"):
+		marker = "```"
+	case strings.HasPrefix(stripped, "~~~"):
+		marker = "~~~"
+	}
+	switch {
+	case f.open == "" && marker != "":
+		f.open = marker
+		return true
+	case f.open != "" && marker == f.open:
+		f.open = ""
+		return true
+	}
+	return f.open != ""
+}
+
+// indentedCode is a line indented four columns or by a tab.
+func indentedCode(line string) bool {
+	return strings.HasPrefix(line, "\t") || strings.HasPrefix(line, "    ")
 }
 
 // wrapLine wraps one line, masking inline code spans first.
