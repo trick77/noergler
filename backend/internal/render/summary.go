@@ -140,12 +140,14 @@ func Summary(in SummaryInput) string {
 	// Overview below stays the whole PR's whatever the push was. A full
 	// review has no latest push: whatever the model put there is not shown.
 	if in.IncrementalFrom != "" && in.ReviewedCommit != "" {
-		header += fmt.Sprintf(p("\n- Letzter Push: `%s` .. `%s`", "\n- Last push: `%s` .. `%s`"),
+		line := fmt.Sprintf(p("- Letzter Push: `%s` .. `%s`", "- Last push: `%s` .. `%s`"),
 			shortSHA(in.IncrementalFrom, 10), shortSHA(in.ReviewedCommit, 10))
-		// One line: a wrapped one would break out of the list item.
-		if push := strings.Join(strings.Fields(in.Summary.LatestPush), " "); push != "" {
-			header += " — " + push
+		// Flattened to one paragraph first, then wrapped as the list item it
+		// is (hang indent). A sentinel says nothing about a push: dropped.
+		if push := strings.Join(strings.Fields(in.Summary.LatestPush), " "); push != "" && !isNoneSentinel(push) {
+			line += " — " + push
 		}
+		header += "\n" + WrapProse(line)
 	}
 	sections = append(sections, header)
 

@@ -727,6 +727,7 @@ const gatewayAlias = "ai-gateway-gpt-5.5"
 // Keeping the default here means the fakes still work with no flags.
 const cannedReview = `{
   "overview": "A small change to the smoke fixture.",
+  "latest_push": null,
   "strengths": ["Focused diff"],
   "security_performance": "No security or performance impact.",
   "test_coverage": "Covered by the smoke run.",
@@ -737,6 +738,7 @@ const cannedReview = `{
     "comment": "A literal here would read better as a named constant.",
     "suggestion": null}],
   "fixed": [],
+  "pre_existing": [],
   "compliance_requirements": null
 }`
 
