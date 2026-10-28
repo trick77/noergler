@@ -334,6 +334,12 @@ func (s *Store) MarkFindingClosed(ctx context.Context, findingID int64) error {
 	return err
 }
 
+// MarkFindingOpen unsettles a finding whose thread was reopened on the PR.
+func (s *Store) MarkFindingOpen(ctx context.Context, findingID int64) error {
+	_, err := s.pool.Exec(ctx, `UPDATE findings SET closed_at = NULL WHERE id = $1`, findingID)
+	return err
+}
+
 // FindingByComment is the open, unfixed finding whose inline comment is
 // commentID on that PR, or nil. Scoped to the PR key the webhook
 // authenticated, so a comment id from another team's PR finds nothing.

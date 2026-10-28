@@ -360,18 +360,23 @@ func TestClosedThreadIsMarkedInThePrompt(t *testing.T) {
 	}
 }
 
-// A legacy row with no comment id has no thread to read: it counts as open.
-func TestFindingWithoutThreadStaysListed(t *testing.T) {
+// A legacy row with no comment id has no thread on the PR, so nobody could
+// resolve it: closed, or it would hold the verdict for the PR's life. Its
+// repeat is still held back.
+func TestFindingWithoutThreadIsClosed(t *testing.T) {
 	h := newHarness(t, nil)
 	incremental(h)
 	h.st.existing = []store.Finding{{ID: 11, FilePath: "a.go", LineNumber: 2, Severity: "issue",
 		Headline: ptrs("Legacy row"), CommentText: "old"}}
-	h.llm.review = okResultWith()
+	h.llm.review = okResultWith(finding("a.go", 2, "issue", "same again"))
 
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
-	if s := h.bb.Posted[0].Text; !strings.Contains(s, "1. Legacy row") || !strings.Contains(s, "**Request changes 🛑**") {
-		t.Errorf("a row with no thread must stay listed and hold the verdict:\n%s", s)
+	if s := h.bb.Posted[0].Text; strings.Contains(s, "Legacy row") || !strings.Contains(s, "**Approve ✅**") {
+		t.Errorf("a row with no thread must not be listed or hold the verdict:\n%s", s)
+	}
+	if len(h.bb.Inline) != 0 {
+		t.Errorf("inline = %d, want its repeat held back", len(h.bb.Inline))
 	}
 }
 

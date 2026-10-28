@@ -60,8 +60,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - Thread resolved or deleted = settled (user, 2026-10-28). `closeThreads`
   stamps `closed_at` on a resolved one only, never read by a review again
   (a reopen is not noticed, accepted); a 404 is closed for that run only,
-  never stamped (a passing fault would settle it for good). The handoff
-  reads stamped threads too. Settled: out of the list and verdict, never
+  never stamped (a passing fault would settle it for good). No comment id
+  (legacy) = closed: no thread anyone could resolve. The handoff reads
+  stamped threads too and unstamps a reopened one. Settled: out of the list and verdict, never
   posted again (dedupe still holds it), in the prompt marked closed with
   no id, trimmed from it before any open one.
   Unreadable or no comment id = open. Read in prepare, once per run, at

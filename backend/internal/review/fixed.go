@@ -47,9 +47,10 @@ func asFindings(stored []store.Finding) []inference.ReviewFinding {
 // closeThreads returns findings, in their order, with ClosedAt set on each
 // whose Bitbucket thread is resolved or deleted: settled (user, 2026-10-28),
 // out of the PR summary and its verdict, never posted again. Open = ClosedAt
-// nil. A thread that cannot be read stays open, failing toward showing it;
-// so does a row with no comment id (legacy: none to read). posted counts the
-// findings with a thread.
+// nil. A thread that cannot be read stays open, failing toward showing it.
+// A row with no comment id (legacy) has no thread on the PR, so nobody can
+// resolve it: closed here, for this call, or it would hold the verdict for
+// the PR's life. posted counts the findings with a thread.
 //
 // Only a resolved thread is stamped, so a review never reads it again (a
 // reopen is not noticed, accepted). A 404 is closed for this call only: a
@@ -58,18 +59,23 @@ func asFindings(stored []store.Finding) []inference.ReviewFinding {
 //
 // One GET per unsettled finding, on the worker. limit > 0 reads at most
 // that many, issues first (user, 2026-10-28: every review pays this, on the
-// shared worker); the rest stay open unread. 0 is the rare handoff: it reads
-// every thread, stamped ones too, so a reopened thread is in the banner.
-// A cancelled ctx stops the reads. Each outcome is one log line.
-func (r *Reviewer) closeThreads(ctx context.Context, key store.PRKey, prTag string, findings []store.Finding, limit int) (out []store.Finding, posted int) {
+// shared worker); the rest stay open unread, 0 reads all. handoff (the rare
+// draft-to-ready) reads stamped threads too, and a reopened one loses its
+// stamp, so the banner and the next review agree. A cancelled ctx stops the
+// reads. Each outcome is one log line.
+func (r *Reviewer) closeThreads(ctx context.Context, key store.PRKey, prTag string, findings []store.Finding, limit int, handoff bool) (out []store.Finding, posted int) {
 	out = slices.Clone(findings)
+	now := time.Now()
 	var toRead []int // indexes into out, issues first when capped
 	for i, f := range out {
-		if f.BitbucketCommentID != nil {
+		switch {
+		case f.BitbucketCommentID == nil:
+			out[i].ClosedAt = &now
+		case f.ClosedAt == nil || handoff:
 			posted++
-			if f.ClosedAt == nil || limit == 0 {
-				toRead = append(toRead, i)
-			}
+			toRead = append(toRead, i)
+		default:
+			posted++
 		}
 	}
 	if limit > 0 {
@@ -77,9 +83,8 @@ func (r *Reviewer) closeThreads(ctx context.Context, key store.PRKey, prTag stri
 			return inference.SeverityRank(out[a].Severity) - inference.SeverityRank(out[b].Severity)
 		})
 	}
-	unread, unreadable, resolved, deleted := 0, 0, 0, 0
+	unread, unreadable, resolved, deleted, reopened := 0, 0, 0, 0, 0
 	var lastErr error
-	now := time.Now()
 	for n, i := range toRead {
 		if (limit > 0 && n >= limit) || ctx.Err() != nil {
 			unread++
@@ -98,7 +103,12 @@ func (r *Reviewer) closeThreads(ctx context.Context, key store.PRKey, prTag stri
 			f.ClosedAt = &now
 			resolved++
 		case err == nil:
-			f.ClosedAt = nil // open, a stamped one reopened included
+			if f.ClosedAt != nil {
+				// Stamped, then reopened: open again, for every later review too.
+				safeDBErr(ctx, r.log, "MarkFindingOpen", func() error { return r.store.MarkFindingOpen(ctx, f.ID) })
+				reopened++
+			}
+			f.ClosedAt = nil
 		case ctx.Err() == nil:
 			f.ClosedAt = nil // fail toward showing it
 			unreadable++
@@ -110,6 +120,9 @@ func (r *Reviewer) closeThreads(ctx context.Context, key store.PRKey, prTag stri
 	if resolved+deleted > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: finding threads closed on the PR: %d resolved (settled), %d deleted",
 			prTag, resolved, deleted))
+	}
+	if reopened > 0 {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d settled finding thread(s) reopened on the PR, open again", prTag, reopened))
 	}
 	if unreadable > 0 {
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: %d finding thread(s) unreadable, kept open", prTag, unreadable), logging.Err(lastErr))

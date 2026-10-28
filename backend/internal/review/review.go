@@ -278,7 +278,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// prompt shows it closed and without an id (not raised again, never
 	// claimed fixed), dedupe still holds its repeat back, and the summary's
 	// list and verdict leave it out.
-	existing, _ = r.closeThreads(ctx, key, prTag, existing, maxThreadChecks)
+	existing, _ = r.closeThreads(ctx, key, prTag, existing, maxThreadChecks, false)
 	// Only an incremental review may retire a finding: on a full one every
 	// PR line is an added line, the buggy one too, so nothing would prove a
 	// fix. No id listed, nothing to claim.
@@ -508,7 +508,9 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	}
 	// The verdict follows the PR summary's findings, both halves, once. The
 	// new ones uncapped: a finding over the comment cap is still a finding
-	// (max_comments 0 posts none and must not approve).
+	// (max_comments 0 posts none and must not approve over it). This run
+	// only: a cut or refused one is never stored (a row needs a comment on
+	// the PR), so a later run counts it only if the model reports it again.
 	dropped := make([]inference.ReviewFinding, 0, len(v.Dropped))
 	for _, d := range v.Dropped {
 		dropped = append(dropped, d.Finding)

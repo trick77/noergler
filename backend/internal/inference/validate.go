@@ -117,7 +117,14 @@ func SettleVerdict(s ReviewSummary, earlier, current, dropped []ReviewFinding, e
 	case verdictRank(want) == was:
 		// An unknown decision ranks as approve; naming it is no change.
 	case verdictRank(want) < was && dropsCarry:
-		s.VerdictRationale = pluralRationale(l, len(dropped),
+		// Named are the drops that could have carried it, not every one.
+		n := 0
+		for _, f := range dropped {
+			if verdictRank(supportedVerdict([]ReviewFinding{f})) >= was {
+				n++
+			}
+		}
+		s.VerdictRationale = pluralRationale(l, n,
 			"Empfehlung herabgestuft: 1 Finding zurückgehalten, dessen Beleg der Diff nicht stützt.",
 			"Empfehlung herabgestuft: %d Findings zurückgehalten, deren Beleg der Diff nicht stützt.",
 			"Verdict lowered: 1 finding whose evidence the diff did not bear out was withheld.",

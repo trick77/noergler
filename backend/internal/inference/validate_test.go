@@ -452,8 +452,10 @@ func TestSettleVerdict(t *testing.T) {
 	}{
 		{"matching keeps the rationale", strict, nil, []ReviewFinding{issue}, nil, "request_changes", ""},
 		{"an earlier issue and a drop keep a matching verdict", strict, []ReviewFinding{issue}, nil, []ReviewFinding{issue}, "request_changes", ""},
-		{"every finding dropped", strict, nil, nil, []ReviewFinding{issue, sugg}, "approve",
+		{"every finding dropped", strict, nil, nil, []ReviewFinding{issue, issue}, "approve",
 			"Verdict lowered: 2 findings whose evidence the diff did not bear out were withheld."},
+		{"only drops that could carry it are named", strict, nil, nil, []ReviewFinding{issue, sugg, sugg}, "approve",
+			"Verdict lowered: 1 finding whose evidence the diff did not bear out was withheld."},
 		{"only a suggestion survives", strict, nil, []ReviewFinding{sugg}, []ReviewFinding{issue}, "approve_with_followups",
 			"Verdict lowered: 1 finding whose evidence the diff did not bear out was withheld."},
 		{"a closed thread leaves nothing to request", strict, nil, nil, nil, "approve",

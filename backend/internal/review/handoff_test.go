@@ -232,4 +232,7 @@ func TestReadyForReviewSeesAReopenedThread(t *testing.T) {
 	if !strings.Contains(summaryText(h), render.HandoffBannerSentinel) {
 		t.Errorf("a reopened thread must be in the banner:\n%s", summaryText(h))
 	}
+	if len(h.st.Reopened) != 1 || h.st.Reopened[0] != 1 {
+		t.Errorf("reopened = %v, want the stamp cleared so the next review agrees", h.st.Reopened)
+	}
 }
