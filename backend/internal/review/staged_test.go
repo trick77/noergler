@@ -21,6 +21,8 @@ func (s *inlineScheduler) Stage(ctx context.Context, _ store.PRKey, _ string, in
 	post(ctx)
 }
 
+func (s *inlineScheduler) Spawn(ctx context.Context, _, _ string, fn func(context.Context)) { fn(ctx) }
+
 // deferredScheduler holds the two stages so a test can observe what the
 // review has, and has not, done by the time it returns from the worker.
 type deferredScheduler struct {
@@ -28,10 +30,24 @@ type deferredScheduler struct {
 	ctx         context.Context
 	key         store.PRKey
 	team        string
+	// spawned holds what Spawn was handed, in order, unrun: a test decides
+	// when a spawned call happens relative to the stages, and with which
+	// ctx.
+	spawned []spawnedCall
+}
+
+type spawnedCall struct {
+	ctx  context.Context
+	name string
+	fn   func(context.Context)
 }
 
 func (s *deferredScheduler) Stage(ctx context.Context, key store.PRKey, team string, infer, post func(context.Context)) {
 	s.ctx, s.key, s.team, s.infer, s.post = ctx, key, team, infer, post
+}
+
+func (s *deferredScheduler) Spawn(ctx context.Context, _, name string, fn func(context.Context)) {
+	s.spawned = append(s.spawned, spawnedCall{ctx: ctx, name: name, fn: fn})
 }
 
 func (s *deferredScheduler) finish() {

@@ -225,6 +225,15 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - The plan across stages carries no file bodies and no raw diff.
 - Team semaphore before the global one, released in reverse.
 - `Queue.Stop` settles on "nothing runnable", not "no key held".
+- Pool work after a post (a call that posts nothing to Bitbucket) is
+  `Spawn`, never a second `Stage`: Stage's tail ends the PR hold, so a Stage
+  from inside post would drop the hold mid-call and later release a key a
+  newer review holds. `Spawn` never touches `inflight`, so the PR's purge,
+  decline, merge and next review run beside it. A spawned fn therefore:
+  re-asks `Owns` and the PR's state right before every write, as `post`
+  does; opens its own `httpstats` scope and logs it (the review's totals
+  line is already out); and captures only the few fields it needs, built
+  before Spawn, never the plan, the result or a diff.
 - `OutcomeError` posts no notice and writes no run row (its attempt and run
   detail are written).
 
