@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
@@ -139,33 +140,21 @@ func TestEmitNotePayloadAndOutcome(t *testing.T) {
 	if f.paths[0] != emitPath || f.header.Get("Authorization") != "Bearer t" || f.header.Get("Content-Type") != "application/json" {
 		t.Errorf("request = %s %v", f.paths[0], f.header)
 	}
+	// The shape is the golden's (TestPayloadGolden); here only what the
+	// golden cannot show: the sparse lanes travel as null, never as zero.
 	b := f.body
-	if b["event_type"] != EventType || b["pr_key"] != "PROJ/repo#1" || b["merge_commit_sha"] != nil || b["source_commit_sha"] != "abc1234" {
+	if b["event_type"] != EventType || b["merge_commit_sha"] != nil {
 		t.Errorf("identity = %v", b)
 	}
-	if b["merged_at"] != "2026-10-28T12:00:00Z" || b["issues_posted"] != float64(2) || b["change_kind"] != "bugfix" {
-		t.Errorf("facts = %v", b)
-	}
-	if note, ok := b["note"].(map[string]any); !ok || note["summary"] != "s" {
-		t.Errorf("note = %v", b["note"])
-	}
-	claims := b["claims"].([]any)
-	if len(claims) != 2 || claims[0].(map[string]any)["repo_slug"] != nil || claims[1].(map[string]any)["repo_slug"] != "x" {
-		t.Errorf("claims = %v", claims)
-	}
 	call := b["note_call"].(map[string]any)
-	if call["cost_usd"] != "0.0123" || call["cost_nano_usd"] != float64(12_300_000) || call["input_tokens"] != nil || call["cache_read_tokens"] != float64(90_000) {
+	if call["input_tokens"] != nil || call["cost_usd"] != "0.0123" {
 		t.Errorf("note_call = %v", call)
 	}
 	if w, ok := call["warnings"].([]any); !ok || len(w) != 0 {
 		t.Errorf("warnings = %v, want an empty array", call["warnings"])
 	}
-	rounds := b["rounds"].(map[string]any)
-	if rounds["count"] != float64(3) || rounds["cost_usd"] != "0.04" {
-		t.Errorf("rounds = %v", rounds)
-	}
 	rv := b["review_totals"].(map[string]any)
-	if rv["runs"] != float64(3) || rv["cost_usd"] != nil || rv["cost_nano_usd"] != nil {
+	if rv["cost_usd"] != nil || rv["cost_nano_usd"] != nil {
 		t.Errorf("review_totals = %v: an unpriced review is null, never 0", rv)
 	}
 	if e.Status() != StatusOK {
@@ -182,19 +171,49 @@ func TestEmitNotePayloadAndOutcome(t *testing.T) {
 	}
 }
 
-var update = flag.Bool("update", false, "rewrite testdata/pr_merged_note.json from the current payload")
+// goldenNote is a note with every lane set and every value distinct from
+// its neighbours, so the golden shows Almanach the JSON type of each field
+// and a parser reading a sibling key by mistake cannot pass.
+func goldenNote() Note {
+	return Note{
+		ProjectKey: "PROJ", RepoSlug: "repo", PRID: 42, PRKey: "PROJ/repo#42", PRTitle: "Fix the upload retry",
+		TicketKey: "PROJ-9", JiraIssueType: "Bug", ChangeKind: "bugfix",
+		ReviewedCommit: "abc1234abc1234", SourceCommitSHA: "def5678def5678", MergeCommitSHA: "0123456789abcdef",
+		MergedAt: time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC), RunID: 77, ModelLabel: "gpt-5.5-high",
+		IssuesPosted: 2, SuggestionsPosted: 1,
+		Note: json.RawMessage(`{"summary":"Der Adapter liest den Mandanten aus der Kopfzeile.","change_kind":"bugfix",` +
+			`"bugfix":{"symptom":"Upload bricht ab.","cause":"Retry ohne Backoff.","cause_kind":"logic"},` +
+			`"components":[{"name":"Uploader","text":"Nimmt Dateien an.","files":["internal/files/upload.go"]}],` +
+			`"rules":[],"invariants":[],"entities":[]}`),
+		Claims: []Claim{{ProjectKey: "PROJ"}, {ProjectKey: "OTHER", RepoSlug: "x"}},
+		NoteCall: &Call{Outcome: "ok", NoteStatus: "written", LLMCall: store.LLMCall{
+			Profile: "gpt-5.5-high", Model: "gpt-5.5", Deployment: "azure/gpt-5.5", ReasoningSent: "high", FinishReason: "stop",
+			CallID: "call-1", GatewayVer: "1.80.0",
+			InputTokens: nano(100_000), InputUncachedTokens: nano(10_000), CacheReadTokens: nano(90_000), CacheWriteTokens: nano(0),
+			OutputTokens: nano(800), ReasoningTokens: nano(300),
+			CostNanoUSD: nano(12_300_000), CostInputNanoUSD: nano(2_000_000), CostCacheReadNanoUSD: nano(9_000_000),
+			CostCacheWriteNanoUSD: nano(0), CostOutputNanoUSD: nano(1_000_000), CostReasoningNanoUSD: nano(300_000),
+			CostToolUsageNanoUSD: nano(0), KeySpendNanoUSD: nano(12_500_000_000), HeadersMS: nano(320), TotalMS: nano(2100),
+			Warnings: []string{"unaccounted"},
+		}},
+		Rounds: Rounds{Count: 3, InputTokens: 300_000, OutputTokens: 2_400, CostNanoUSD: nano(40_000_000)},
+		Review: ReviewTotals{Runs: 4, PromptTokens: 900_000, CachedTokens: 600_000, CompletionTokens: 5_000, ElapsedMS: 61_500,
+			CostNanoUSD: nano(1_250_000_000), Models: []string{"gpt-5.5"}},
+	}
+}
 
-// The wire shape is a contract with Almanach, pinned as a file: Almanach's
-// ingest test parses this same file, so a key renamed on one side fails a
-// test on the other. Regenerate with -update and copy it over.
+// The wire shape is a contract with Almanach, pinned as a file: Almanach
+// keeps a copy and parses it in its ingest test, and its gate diffs the
+// copy against this file on master, so a key renamed or added on one side
+// fails a test on the other. Regenerate with ALMANACH_GOLDEN_UPDATE=1.
 func TestPayloadGolden(t *testing.T) {
-	got, err := json.MarshalIndent(payload(sampleNote()), "", "  ")
+	got, err := json.MarshalIndent(payload(goldenNote()), "", "  ")
 	if err != nil {
 		t.Fatal(err)
 	}
 	got = append(got, '\n')
 	const path = "testdata/pr_merged_note.json"
-	if *update {
+	if os.Getenv("ALMANACH_GOLDEN_UPDATE") != "" {
 		if err := os.WriteFile(path, got, 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -203,8 +222,58 @@ func TestPayloadGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != string(want) {
-		t.Errorf("payload differs from %s; run go test ./internal/almanach -update and copy the file to Almanach\n%s", path, got)
+	// Compared as JSON, not bytes: a CRLF checkout must not fail it.
+	var gotV, wantV any
+	if err := json.Unmarshal(got, &gotV); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(want, &wantV); err != nil {
+		t.Fatalf("%s: %v", path, err)
+	}
+	if diff := firstDiff("", gotV, wantV); diff != "" {
+		t.Errorf("payload differs from %s at %s; regenerate with ALMANACH_GOLDEN_UPDATE=1 go test ./internal/almanach (from backend/) and copy the file to Almanach",
+			path, diff)
+	}
+}
+
+// firstDiff names the first path where two decoded JSON values differ,
+// "" when they are equal.
+func firstDiff(path string, a, b any) string {
+	switch av := a.(type) {
+	case map[string]any:
+		bv, ok := b.(map[string]any)
+		if !ok {
+			return path + " (object vs " + fmt.Sprintf("%T", b) + ")"
+		}
+		keys := map[string]bool{}
+		for k := range av {
+			keys[k] = true
+		}
+		for k := range bv {
+			keys[k] = true
+		}
+		for k := range keys {
+			if d := firstDiff(path+"."+k, av[k], bv[k]); d != "" {
+				return d
+			}
+		}
+		return ""
+	case []any:
+		bv, ok := b.([]any)
+		if !ok || len(av) != len(bv) {
+			return path + " (array length)"
+		}
+		for i := range av {
+			if d := firstDiff(fmt.Sprintf("%s[%d]", path, i), av[i], bv[i]); d != "" {
+				return d
+			}
+		}
+		return ""
+	default:
+		if !reflect.DeepEqual(a, b) {
+			return fmt.Sprintf("%s (%v vs %v)", path, a, b)
+		}
+		return ""
 	}
 }
 
