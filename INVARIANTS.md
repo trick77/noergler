@@ -236,7 +236,30 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   re-asks `Owns` and the PR's state right before every write, as `post`
   does; opens its own `httpstats` scope and logs it (the review's totals
   line is already out); and captures only the few fields it needs, built
-  before Spawn, never the plan, the result or a diff.
+  before Spawn, never the plan, the result or a diff. The one exception is
+  the Almanach note's replayed conversation (the review prompt string and
+  the model's answer): that is what the cache serves, and one prompt per
+  spawned call is the documented cost of the piggyback.
+
+## Almanach
+
+- The feed is per team, opt-in by the `almanach:` block; no block, no call,
+  no row. The token is the team's identity at Almanach; the payload never
+  names a team.
+- A note never enters a prompt that reviews code. It is German always
+  (`lang.SwissSS` in the validator), repo-scoped, and checked bluntly: shape,
+  secret scan on prose only (names and paths are not prose), rune caps per
+  field and in total. Over a cap the whole note drops, never truncated.
+- The note call is a continuation of the review conversation (system,
+  prompt, the answer verbatim, the note turn), one call, strict schema, no
+  retry, after the review posted. Whether the prefix cache serves it is
+  measured on `almanach_calls.cache_read_tokens`, not assumed (user,
+  2026-10-28: welcome, not a dealbreaker).
+- Every call leaves an `almanach_calls` row with a `note_status`, whatever
+  became of the note. That ledger counts toward nothing else (Money).
+- Merge stamps and sends; no model call. Emitted is marked after a 2xx, per
+  run id. A merge during an in-flight round stamps and leaves the emit to the
+  round. Declined and deleted drop a note that is not final.
 - `OutcomeError` posts no notice and writes no run row (its attempt and run
   detail are written).
 

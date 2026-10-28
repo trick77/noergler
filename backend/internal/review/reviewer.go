@@ -55,8 +55,17 @@ type Reviewer struct {
 	store     Store
 	jira      JiraClient
 	riptide   RiptideEmitter
-	tokens    TokenCounter
-	cfg       config.Review
+	// almanach is the team's Almanach, nil or disabled when the team has no
+	// almanach: block: then no note call is made and no row written.
+	almanach         AlmanachEmitter
+	almanachTmpl     string
+	almanachMaxChars int
+	// almanachInflight is the PRs whose note call is on the pool right now,
+	// so a merge that lands meanwhile stamps the row and leaves the emit to
+	// the round. Single process: a map is enough.
+	almanachInflight inflightSet
+	tokens           TokenCounter
+	cfg              config.Review
 	// The two author lists live here rather than in cfg because the team API
 	// rewrites them at runtime (PUT /teams/{slug}/settings) while the review
 	// worker may be reading them. Everything else in cfg is fixed at startup.
@@ -97,14 +106,19 @@ type Options struct {
 	Store     Store
 	Jira      JiraClient
 	Riptide   RiptideEmitter
-	Tokens    TokenCounter
-	Config    config.Review
-	// Template, MentionTemplate and FindingReplyTemplate override the
-	// compiled-in prompts, for tests only: production leaves them empty and
-	// the prompts are never configurable.
+	// Almanach is the team's note receiver; nil or disabled = no feed.
+	// AlmanachNoteMaxChars is the instance cap on a serialized note.
+	Almanach             AlmanachEmitter
+	AlmanachNoteMaxChars int
+	Tokens               TokenCounter
+	Config               config.Review
+	// Template, MentionTemplate, FindingReplyTemplate and AlmanachTemplate
+	// override the compiled-in prompts, for tests only: production leaves
+	// them empty and the prompts are never configurable.
 	Template             string
 	MentionTemplate      string
 	FindingReplyTemplate string
+	AlmanachTemplate     string
 	// DisplayNamePattern is config.Bitbucket's; nil = names off.
 	DisplayNamePattern *regexp.Regexp
 	Log                *slog.Logger
@@ -126,6 +140,9 @@ func New(opt Options) *Reviewer {
 		store:             opt.Store,
 		jira:              opt.Jira,
 		riptide:           opt.Riptide,
+		almanach:          opt.Almanach,
+		almanachTmpl:      orDefault(opt.AlmanachTemplate, prompts.AlmanachNote),
+		almanachMaxChars:  opt.AlmanachNoteMaxChars,
 		tokens:            opt.Tokens,
 		cfg:               opt.Config,
 		autoReviewAuthors: opt.Config.AutoReviewAuthors,

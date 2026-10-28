@@ -35,6 +35,7 @@ type harness struct {
 	llm *fakeLLM
 	jr  *fakeJira
 	rt  *fakeRiptide
+	al  *fakeAlmanach
 	tok *fakeTokens
 }
 
@@ -49,6 +50,7 @@ func newHarness(t *testing.T, tweak func(*harness)) *harness {
 		st:  newFakeStore(),
 		llm: newFakeLLM(),
 		rt:  &fakeRiptide{enabled: true},
+		al:  &fakeAlmanach{},
 		tok: &fakeTokens{},
 	}
 	h.bb.prDiff = sampleDiff
@@ -89,6 +91,9 @@ func newHarness(t *testing.T, tweak func(*harness)) *harness {
 		Store:                h.st,
 		Jira:                 jira,
 		Riptide:              rt,
+		Almanach:             h.al,
+		AlmanachNoteMaxChars: 6000,
+		AlmanachTemplate:     "NOTE {repo} {project} {ticket_key} {ticket_type} {note_limit} {output_language}",
 		Tokens:               h.tok,
 		Config:               cfg,
 		Template:             "REVIEW {repo_instructions} {files} {cumulative_pr_diff} {previously_posted_findings} {ticket_context} {compliance_instructions} {pr_description}",

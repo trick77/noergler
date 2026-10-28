@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/trick77/noergler/internal/almanach"
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/inference"
@@ -236,6 +237,23 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps, open
 		}
 	}
 
+	// Almanach, the same way: a rejected token disables the team, anything
+	// else is Almanach being down, and the notes wait for the next merge.
+	var al *almanach.Emitter
+	if team.Almanach != nil {
+		al = almanach.New(team.Almanach.URL, team.Almanach.Token, d.Log)
+		if al.Enabled() {
+			if _, err := al.VerifyAtStartup(ctx); err != nil {
+				if errors.Is(err, almanach.ErrAuth) {
+					return nil, fmt.Sprintf("almanach check failed: %v", err)
+				}
+				d.Log.WarnContext(ctx, "almanach ping failed, team stays enabled", "team", team.Slug, logging.Err(err))
+			}
+		} else {
+			d.Log.InfoContext(ctx, "almanach disabled for this team; no notes", "team", team.Slug)
+		}
+	}
+
 	// A typed nil in an interface passes a != nil check, so the optional
 	// dependencies go in as untyped nil when absent.
 	var jiraDep review.JiraClient
@@ -245,6 +263,10 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps, open
 	var riptideDep review.RiptideEmitter
 	if rt != nil {
 		riptideDep = rt
+	}
+	var almanachDep review.AlmanachEmitter
+	if al != nil {
+		almanachDep = al
 	}
 
 	// The Reviewer asks the live snapshot, which exists only once the
@@ -259,14 +281,18 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps, open
 		Store:     d.ReviewStore,
 		Jira:      jiraDep,
 		Riptide:   riptideDep,
+		Almanach:  almanachDep,
 		Tokens:    d.Tokens,
-		Config:    team.Review,
-		Log:       d.Log,
+
+		AlmanachNoteMaxChars: app.AlmanachLimits.NoteMaxChars,
+		Config:               team.Review,
+		Log:                  d.Log,
 
 		DisplayNamePattern: app.Bitbucket.DisplayNamePattern,
 		PublicURL:          app.Server.PublicURL,
 	})
 	runtime = NewRuntime(team, reviewer, llm, rt)
 	runtime.accounts = acc
+	runtime.Almanach = al
 	return runtime, ""
 }

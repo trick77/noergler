@@ -52,4 +52,7 @@ decision, not a cleanup.
 - Never edit an applied migration. `serve` never migrates.
 - `team_disabled`, `team_ready`, `teams_ready` are alerted on: never reword.
   Probes are exec, never httpGet.
+- Almanach (`almanach_*` tables, `internal/almanach`) never enters a prompt
+  that reviews code and never counts toward any cost figure (INVARIANTS:
+  Almanach).
 - Every eval run is committed with its README row; evals are not a gate.

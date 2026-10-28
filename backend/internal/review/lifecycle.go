@@ -62,6 +62,7 @@ func (r *Reviewer) HandlePRMerged(ctx context.Context, payload *webhook.Payload)
 	}
 
 	r.emitRollup(ctx, key, prTag, "merged", payload.MergeCommitSHA(), payload.PullRequest.FromRef.LatestCommit)
+	r.finalizeAlmanach(ctx, key, prTag, payload)
 }
 
 // HandlePRDeclined marks the PR declined and emits the rollup. The data is
@@ -74,6 +75,7 @@ func (r *Reviewer) HandlePRDeclined(ctx context.Context, payload *webhook.Payloa
 	safeDBErr(ctx, r.log, "MarkDeclined", func() error { return r.store.MarkDeclined(ctx, key) })
 	r.log.InfoContext(ctx, prTag+" declined - marked, data retained")
 	r.emitRollup(ctx, key, prTag, "declined", "", payload.PullRequest.FromRef.LatestCommit)
+	r.dropAlmanachNote(ctx, key)
 }
 
 // HandlePRDeleted marks the PR deleted and emits the rollup.
@@ -85,6 +87,7 @@ func (r *Reviewer) HandlePRDeleted(ctx context.Context, payload *webhook.Payload
 	safeDBErr(ctx, r.log, "MarkDeleted", func() error { return r.store.MarkDeleted(ctx, key) })
 	r.log.InfoContext(ctx, prTag+" deleted - marked, data retained")
 	r.emitRollup(ctx, key, prTag, "deleted", "", payload.PullRequest.FromRef.LatestCommit)
+	r.dropAlmanachNote(ctx, key)
 }
 
 // prContext resolves the key and binds the log context, reporting whether
