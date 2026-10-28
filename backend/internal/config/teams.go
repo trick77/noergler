@@ -173,10 +173,15 @@ type teamBlock struct {
 		reasoningEffort *string
 		contextWindow   *int
 	}
-	review  []func(*Review) // one setter per validated key
-	jira    *[]string
-	riptide *struct{ url, tokenEnv string }
+	review   []func(*Review) // one setter per validated key
+	jira     *[]string
+	riptide  *forwarderBlock
+	almanach *forwarderBlock
 }
+
+// forwarderBlock is a `<name>: {url, token_env}` block as parsed, before the
+// secret is read.
+type forwarderBlock struct{ url, tokenEnv string }
 
 type blockErrors struct{ list []string }
 
@@ -375,7 +380,7 @@ var reviewOverrides = map[string]reviewOverride{
 func parseBlock(m *yaml.Node) (*teamBlock, error) {
 	var e blockErrors
 	tb := &teamBlock{}
-	e.checkKeys(m, "", "slug", "name", "webhook_secret_env", "projects", "inference", "review", "jira", "riptide")
+	e.checkKeys(m, "", "slug", "name", "webhook_secret_env", "projects", "inference", "review", "jira", "riptide", "almanach")
 
 	if slug, ok := e.scalar(m, "", "slug", true); ok {
 		if !TeamSlugRE.MatchString(slug) {
@@ -462,16 +467,8 @@ func parseBlock(m *yaml.Node) (*teamBlock, error) {
 		}
 	}
 
-	if rn := mappingGet(m, "riptide"); rn != nil {
-		if rn.Kind != yaml.MappingNode {
-			e.add("riptide", "Input should be a valid dictionary")
-		} else {
-			e.checkKeys(rn, "riptide", "url", "token_env")
-			url, _ := e.scalar(rn, "riptide", "url", true)
-			tok, _ := e.scalar(rn, "riptide", "token_env", true)
-			tb.riptide = &struct{ url, tokenEnv string }{url, tok}
-		}
-	}
+	tb.riptide = e.forwarder(m, "riptide")
+	tb.almanach = e.forwarder(m, "almanach")
 
 	if len(e.list) > 0 {
 		return nil, &TeamError{Msg: strings.Join(e.list, "; ")}
@@ -481,6 +478,40 @@ func parseBlock(m *yaml.Node) (*teamBlock, error) {
 
 // secretFromEnv resolves a *_env reference. Empty is rejected: an empty
 // inference key or webhook secret is a misconfiguration, never a value.
+// forwarder parses the `<name>: {url, token_env}` block, nil when absent;
+// both keys required, no others.
+func (b *blockErrors) forwarder(m *yaml.Node, name string) *forwarderBlock {
+	n := mappingGet(m, name)
+	if n == nil {
+		return nil
+	}
+	if n.Kind != yaml.MappingNode {
+		b.add(name, "Input should be a valid dictionary")
+		return nil
+	}
+	b.checkKeys(n, name, "url", "token_env")
+	url, _ := b.scalar(n, name, "url", true)
+	tok, _ := b.scalar(n, name, "token_env", true)
+	return &forwarderBlock{url, tok}
+}
+
+// resolveForwarder turns a parsed block into the Forwarder with its secret
+// read: the URL trimmed of its trailing slash, the token from the named
+// variable. nil in, nil out.
+func resolveForwarder(name string, fb *forwarderBlock, lookup func(string) (string, bool)) (*Forwarder, error) {
+	if fb == nil {
+		return nil, nil
+	}
+	if strings.TrimSpace(fb.url) == "" {
+		return nil, teamErrorf("%s.url must be non-empty", name)
+	}
+	token, err := secretFromEnv(name+".token_env", fb.tokenEnv, lookup)
+	if err != nil {
+		return nil, err
+	}
+	return &Forwarder{URL: strings.TrimRight(strings.TrimSpace(fb.url), "/"), Token: token}, nil
+}
+
 func secretFromEnv(field, variable string, lookup func(string) (string, bool)) (string, error) {
 	if strings.TrimSpace(variable) == "" {
 		return "", teamErrorf("%s must name an environment variable", field)
@@ -543,16 +574,13 @@ func ResolveTeam(block *yaml.Node, instance *App, lookup func(string) (string, b
 		jira.AcceptanceCriteriaPrefixes = *tb.jira
 	}
 
-	var riptide *Riptide
-	if tb.riptide != nil {
-		if strings.TrimSpace(tb.riptide.url) == "" {
-			return nil, teamErrorf("riptide.url must be non-empty")
-		}
-		token, err := secretFromEnv("riptide.token_env", tb.riptide.tokenEnv, lookup)
-		if err != nil {
-			return nil, err
-		}
-		riptide = &Riptide{URL: strings.TrimRight(strings.TrimSpace(tb.riptide.url), "/"), Token: token}
+	riptide, err := resolveForwarder("riptide", tb.riptide, lookup)
+	if err != nil {
+		return nil, err
+	}
+	almanach, err := resolveForwarder("almanach", tb.almanach, lookup)
+	if err != nil {
+		return nil, err
 	}
 
 	name := tb.name
@@ -573,5 +601,6 @@ func ResolveTeam(block *yaml.Node, instance *App, lookup func(string) (string, b
 		Review:        review,
 		Jira:          jira,
 		Riptide:       riptide,
+		Almanach:      almanach,
 	}, nil
 }

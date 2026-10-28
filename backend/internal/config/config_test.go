@@ -44,6 +44,9 @@ const twoTeams = minimalTeams + `
     riptide:
       url: https://riptide-payments.example.com/
       token_env: TEAM_PAYMENTS_RIPTIDE_TOKEN
+    almanach:
+      url: https://almanach.example.com/
+      token_env: TEAM_PAYMENTS_ALMANACH_TOKEN
 `
 
 type env struct {
@@ -92,7 +95,7 @@ func (e *env) teams(text string) {
 func (e *env) lookup(name string) (string, bool) { v, ok := e.vars[name]; return v, ok }
 func (e *env) payments() {
 	e.set("TEAM_PAYMENTS_WEBHOOK_SECRET", "pay-secret", "TEAM_PAYMENTS_OPENAI_API_KEY", "pay-key",
-		"TEAM_PAYMENTS_RIPTIDE_TOKEN", "pay-riptide")
+		"TEAM_PAYMENTS_RIPTIDE_TOKEN", "pay-riptide", "TEAM_PAYMENTS_ALMANACH_TOKEN", "pay-almanach")
 }
 func (e *env) load() (*App, error) { return Load(e.lookup) }
 func (e *env) mustLoad() *App {
@@ -488,8 +491,8 @@ func TestTeams_FullBlockResolvesOverridesOnTopOfInstanceDefaults(t *testing.T) {
 	if plat.Review.MaxComments != 7 || len(plat.Review.AutoReviewAuthors) != 0 || !reflect.DeepEqual(plat.Review.IgnoreAuthors, []string{"os-jenkins-bb", "renovate"}) {
 		t.Errorf("platform review: %+v", plat.Review)
 	}
-	if !reflect.DeepEqual(plat.Jira.AcceptanceCriteriaPrefixes, DefaultAcceptanceCriteriaPrefixes) || plat.Riptide != nil {
-		t.Errorf("platform jira/riptide: %+v %+v", plat.Jira, plat.Riptide)
+	if !reflect.DeepEqual(plat.Jira.AcceptanceCriteriaPrefixes, DefaultAcceptanceCriteriaPrefixes) || plat.Riptide != nil || plat.Almanach != nil {
+		t.Errorf("platform jira/riptide/almanach: %+v %+v %+v", plat.Jira, plat.Riptide, plat.Almanach)
 	}
 
 	pay := app.Teams["payments"]
@@ -513,6 +516,12 @@ func TestTeams_FullBlockResolvesOverridesOnTopOfInstanceDefaults(t *testing.T) {
 	}
 	if !reflect.DeepEqual(pay.Riptide, &Riptide{URL: "https://riptide-payments.example.com", Token: "pay-riptide"}) {
 		t.Errorf("payments riptide: %+v", pay.Riptide)
+	}
+	if !reflect.DeepEqual(pay.Almanach, &Almanach{URL: "https://almanach.example.com", Token: "pay-almanach"}) {
+		t.Errorf("payments almanach: %+v", pay.Almanach)
+	}
+	if app.AlmanachLimits.NoteMaxChars != 6000 {
+		t.Errorf("ALMANACH_NOTE_MAX_CHARS default = %d, want 6000", app.AlmanachLimits.NoteMaxChars)
 	}
 	if plat.OwnModel || !pay.OwnModel {
 		t.Errorf("OwnModel: platform %v, payments %v; want false, true", plat.OwnModel, pay.OwnModel)
@@ -572,6 +581,21 @@ func TestTeams_FaultDisablesOnlyThatTeam(t *testing.T) {
 		{"riptide empty url", func(s string) string {
 			return strings.Replace(s, "url: https://riptide-payments.example.com/", "url: ''", 1)
 		}, "riptide.url must be non-empty"},
+		{"missing almanach var", func(s string) string {
+			return strings.ReplaceAll(s, "TEAM_PAYMENTS_ALMANACH_TOKEN", "TEAM_PAYMENTS_MISSING")
+		}, "almanach.token_env: environment variable TEAM_PAYMENTS_MISSING is not set"},
+		{"almanach without token_env", func(s string) string {
+			return strings.Replace(s, "      token_env: TEAM_PAYMENTS_ALMANACH_TOKEN\n", "", 1)
+		}, "almanach.token_env: Field required"},
+		{"almanach without url", func(s string) string {
+			return strings.Replace(s, "      url: https://almanach.example.com/\n", "", 1)
+		}, "almanach.url: Field required"},
+		{"almanach empty url", func(s string) string {
+			return strings.Replace(s, "url: https://almanach.example.com/", "url: ''", 1)
+		}, "almanach.url must be non-empty"},
+		{"almanach typo", func(s string) string {
+			return strings.Replace(s, "      token_env: TEAM_PAYMENTS_ALMANACH_TOKEN\n", "      token_env: TEAM_PAYMENTS_ALMANACH_TOKEN\n      note_max_chars: 1\n", 1)
+		}, "almanach.note_max_chars: Extra inputs are not permitted"},
 		{"bad slug", func(s string) string { return strings.Replace(s, "slug: payments", "slug: Payments", 1) },
 			"slug: Value error, slug 'Payments' must match"},
 		{"negative max_comments", func(s string) string {

@@ -30,8 +30,8 @@ For a detailed description of the review pipeline, see [HOW_IT_WORKS.md](HOW_IT_
 
 One instance serves many teams: the Bitbucket service account, the Jira user, the
 database and the LLM gateway are shared, while each team brings its own inference key,
-webhook secret, repositories, review knobs and optional riptide forwarding — see
-[Teams](#teams).
+webhook secret, repositories, review knobs and optional riptide and Almanach
+forwarding — see [Teams](#teams).
 
 ## How it works
 
@@ -125,7 +125,8 @@ defaults for every team-overridable knob. The required variables are:
 | `TEAMS_CONFIG` | Path to `teams.yaml` (default `teams.yaml`). noergler does not start without it |
 
 Plus the per-team secrets that `teams.yaml` references (`TEAM_<SLUG>_WEBHOOK_SECRET`,
-`TEAM_<SLUG>_OPENAI_API_KEY`, optionally `TEAM_<SLUG>_RIPTIDE_TOKEN`).
+`TEAM_<SLUG>_OPENAI_API_KEY`, optionally `TEAM_<SLUG>_RIPTIDE_TOKEN` and
+`TEAM_<SLUG>_ALMANACH_TOKEN`).
 
 See [CONFIGURATION.md](CONFIGURATION.md) for the complete reference of both layers, and [`.env.example`](.env.example) for all optional settings and their defaults.
 
@@ -148,6 +149,7 @@ teams:
     # review:  any REVIEW_* knob (lowercase, no prefix)
     # jira:    acceptance_criteria_prefixes
     # riptide: {url, token_env}, both or neither
+    # almanach: {url, token_env}, both or neither
 ```
 
 Rules:

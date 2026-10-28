@@ -32,6 +32,7 @@ func Dump(app *App, log *slog.Logger) {
 	section(log, "config.trust", kv{"headroom_tokens", app.Trust.HeadroomTokens}, kv{"threshold", app.Trust.Threshold}, kv{"tail", app.Trust.Tail})
 	section(log, "config.queue", kv{"inference_concurrency", app.Queue.InferenceConcurrency},
 		kv{"inference_concurrency_per_team", app.Queue.InferenceConcurrencyPerTeam})
+	section(log, "config.almanach", kv{"note_max_chars", app.AlmanachLimits.NoteMaxChars})
 	log.Info(fmt.Sprintf("[config.teams] path = %s", app.TeamsConfigPath))
 	for _, slug := range app.Order {
 		team := app.Teams[slug]
@@ -45,11 +46,8 @@ func Dump(app *App, log *slog.Logger) {
 		llmSection(log, "config.teams."+slug+".llm", team.LLM)
 		reviewSection(log, "config.teams."+slug+".review", team.Review)
 		jiraSection(log, "config.teams."+slug+".jira", team.Jira)
-		if team.Riptide != nil {
-			section(log, "config.teams."+slug+".riptide", kv{"url", team.Riptide.URL}, kv{"token", mask})
-		} else {
-			log.Info(fmt.Sprintf("[config.teams.%s.riptide] disabled", slug))
-		}
+		forwarderSection(log, "config.teams."+slug+".riptide", team.Riptide)
+		forwarderSection(log, "config.teams."+slug+".almanach", team.Almanach)
 	}
 	for _, slug := range slices.Sorted(maps.Keys(app.Disabled)) {
 		log.Error(fmt.Sprintf("[config.teams.%s] DISABLED: %s", slug, app.Disabled[slug]))
@@ -160,6 +158,16 @@ func reviewSection(log *slog.Logger, label string, r Review) {
 		kv{"agents_md_warn_tokens", r.AgentsMDWarnTokens}, kv{"agents_md_max_tokens", r.AgentsMDMaxTokens},
 		kv{"agents_md_custom_link", r.AgentsMDCustomLink}, kv{"opt_out_branch_keyword", r.OptOutBranchKeyword},
 		kv{"max_pr_cost_usd", r.MaxPRCostUSD}, kv{"language", string(r.Language)})
+}
+
+// forwarderSection is one forwarder's lines, or "disabled" when the team has
+// none.
+func forwarderSection(log *slog.Logger, label string, f *Forwarder) {
+	if f == nil {
+		log.Info("[" + label + "] disabled")
+		return
+	}
+	section(log, label, kv{"url", f.URL}, kv{"token", mask})
 }
 
 func jiraSection(log *slog.Logger, label string, j Jira) {

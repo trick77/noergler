@@ -386,16 +386,17 @@ func TestEmitSwallowsRejections(t *testing.T) {
 // and the claim taken before the POST means there is no second attempt.
 func TestEmitTreatsRedirectAsAMiss(t *testing.T) {
 	var logged bool
-	f, e := newFake(t, func(w http.ResponseWriter, r *http.Request) {
+	f, _ := newFake(t, func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "https://elsewhere.example.com/webhooks/noergler", http.StatusMovedPermanently)
 	})
-	e.log = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{
+	warn := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{
 		Level: slog.LevelWarn,
 		ReplaceAttr: func([]string, slog.Attr) slog.Attr {
 			logged = true
 			return slog.Attr{}
 		},
 	}))
+	e := New(f.srv.URL, "t", warn)
 	e.EmitPRCompleted(context.Background(), sampleRollup())
 
 	if f.calls != 1 {
@@ -491,7 +492,7 @@ func TestEmitSendsEmptyModelsAsAnArray(t *testing.T) {
 
 func TestNewTrimsTrailingSlash(t *testing.T) {
 	e := New("http://riptide.example.com/", "t", slog.New(slog.DiscardHandler))
-	if e.url != "http://riptide.example.com" {
-		t.Errorf("url = %q", e.url)
+	if e.c.URL() != "http://riptide.example.com" {
+		t.Errorf("url = %q", e.c.URL())
 	}
 }

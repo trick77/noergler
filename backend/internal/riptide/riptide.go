@@ -4,44 +4,35 @@
 // Forwarding is best-effort and must never fail a webhook: the review is the
 // product, the rollup is telemetry. Emitting is therefore silent about its own
 // failures, never retries, and is claimed in the database before the POST so a
-// crash cannot produce a second one.
+// crash cannot produce a second one. The wire (bearer, timeout, redirects,
+// the ping, the status word) is internal/forward's, shared with Almanach.
 package riptide
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
+
+	"github.com/trick77/noergler/internal/forward"
 )
 
 const (
 	emitPath = "/webhooks/noergler"
 	pingPath = "/auth/ping"
-	// requestTimeout is deliberately short: a slow riptide must not hold a
-	// review worker, and a missed rollup is cheaper than a stalled queue.
-	requestTimeout = 2 * time.Second
-	// errBodyLimit caps how much of a rejection is logged.
-	errBodyLimit = 200
 	// nanoPerUSD is llmwire's cost unit, which the store also uses.
 	nanoPerUSD = 1_000_000_000
 )
 
-// Status words, as the dashboard shows them: fixed, never a reason. Each is
-// the outcome of the last call; no word guesses why a call failed beyond the
-// one riptide states itself (401/403: the token).
+// Status words, as the dashboard shows them: forward's.
 const (
-	StatusOff      = "off"
-	StatusOK       = "ok"
-	StatusFailing  = "failing"
-	StatusRejected = "rejected"
+	StatusOff      = forward.StatusOff
+	StatusOK       = forward.StatusOK
+	StatusFailing  = forward.StatusFailing
+	StatusRejected = forward.StatusRejected
 )
 
 // ErrAuth means riptide rejected the token (HTTP 401). Fatal at startup: it
@@ -78,116 +69,45 @@ type Rollup struct {
 // Emitter posts rollups for one team. A team without both a URL and a token has
 // forwarding switched off, and every method is then a no-op.
 type Emitter struct {
-	url     string
-	token   string
-	enabled bool
-	// last is the last call's outcome, a Status word: ok from a startup ping
-	// riptide answered with a team name or a 2xx emit, rejected from a 401
-	// or 403 (ping or emit), failing from any other lost call. A cancelled
-	// emit keeps it. Nil reads as failing. Atomic because the dashboard
-	// reads it while the worker writes; the writes themselves are serial
-	// (emits run on the worker).
-	last atomic.Pointer[string]
-	http *http.Client
-	log  *slog.Logger
+	c   *forward.Client
+	log *slog.Logger
 }
-
-func (e *Emitter) set(status string) { e.last.Store(&status) }
 
 // New builds an emitter. Forwarding is off unless both url and token are set.
 func New(rawURL, token string, log *slog.Logger) *Emitter {
-	url := strings.TrimSuffix(strings.TrimSpace(rawURL), "/")
-	token = strings.TrimSpace(token)
-	e := &Emitter{
-		url:     url,
-		token:   token,
-		enabled: url != "" && token != "",
-		log:     log,
-	}
-	if e.enabled {
-		e.http = &http.Client{
-			Timeout: requestTimeout,
-			// Redirects are not followed: a 3xx would replay the bearer token
-			// at the new host. Non-2xx, so a redirect cannot read as success.
-			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-		}
-	}
-	return e
+	return &Emitter{c: forward.New("Riptide", rawURL, token, log), log: log}
 }
 
 // Enabled reports whether this team forwards to riptide.
-func (e *Emitter) Enabled() bool { return e.enabled }
+func (e *Emitter) Enabled() bool { return e != nil && e.c.Enabled() }
 
 // Status is the forwarding state as of the last call (the startup ping, then
 // each emit): off, ok, failing or rejected. A fixed word, never a reason.
 func (e *Emitter) Status() string {
-	if e == nil || !e.enabled {
+	if e == nil {
 		return StatusOff
 	}
-	if s := e.last.Load(); s != nil {
-		return *s
-	}
-	return StatusFailing
+	return e.c.Status()
 }
+
+// set records a status word; the tests drive the transitions with it.
+func (e *Emitter) set(status string) { e.c.Set(status) }
 
 // VerifyAtStartup checks the token and returns the team riptide knows us as.
 //
 // A rejected token (401) is fatal and comes back as ErrAuth: emitting for weeks
 // with a dead token would lose the data silently. Anything else, including an
 // unreachable riptide, is a warning only, because riptide being down is not a
-// reason to stop reviewing; a 403 shows as rejected on the dashboard. The
-// status is failing until the ping proves otherwise.
+// reason to stop reviewing; a 403 shows as rejected on the dashboard.
 func (e *Emitter) VerifyAtStartup(ctx context.Context) (string, error) {
-	if !e.enabled {
+	if !e.Enabled() {
 		return "", nil
 	}
-	e.set(StatusFailing)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, e.url+pingPath, nil)
-	if err != nil {
-		e.log.WarnContext(ctx, "Riptide ping failed: "+err.Error())
-		return "", nil
+	team, unauthorized := e.c.Ping(ctx, pingPath)
+	if unauthorized {
+		return "", fmt.Errorf("riptide token rejected by %s (HTTP 401); check that the token matches the team's entry in team-keys.json: %w", e.c.URL(), ErrAuth)
 	}
-	req.Header.Set("Authorization", "Bearer "+e.token)
-
-	resp, err := e.http.Do(req)
-	if err != nil {
-		e.log.WarnContext(ctx, fmt.Sprintf("Riptide unreachable at startup (url=%s): %v", e.url, err))
-		return "", nil
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode == http.StatusUnauthorized {
-		e.set(StatusRejected)
-		return "", fmt.Errorf("riptide token rejected by %s (HTTP 401); check that the token matches the team's entry in team-keys.json: %w", e.url, ErrAuth)
-	}
-	// 3xx included: a redirected URL is a misconfiguration, and reporting it as
-	// an unreadable body would send the reader looking at riptide instead.
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		if resp.StatusCode == http.StatusForbidden {
-			e.set(StatusRejected)
-		}
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, errBodyLimit))
-		e.log.WarnContext(ctx, fmt.Sprintf("Riptide ping returned unexpected status %d: %s",
-			resp.StatusCode, strings.TrimSpace(string(body))))
-		return "", nil
-	}
-
-	var out struct {
-		Team string `json:"team"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		e.log.WarnContext(ctx, "Riptide ping returned an unreadable body: "+err.Error())
-		return "", nil
-	}
-	// A 200 without a team is not riptide answering for us (a proxy, a stub):
-	// it must not read as forwarding on the dashboard.
-	if out.Team == "" {
-		e.log.WarnContext(ctx, "Riptide ping named no team")
-		return "", nil
-	}
-	e.set(StatusOK)
-	e.log.InfoContext(ctx, "Riptide: OK (team="+out.Team+")")
-	return out.Team, nil
+	return team, nil
 }
 
 // EmitPRCompleted posts the rollup. It never returns an error: a transport
@@ -195,7 +115,7 @@ func (e *Emitter) VerifyAtStartup(ctx context.Context) (string, error) {
 // a webhook, and it is never retried, because the claim that gated this call was
 // already taken.
 func (e *Emitter) EmitPRCompleted(ctx context.Context, r Rollup) {
-	if !e.enabled {
+	if !e.Enabled() {
 		return
 	}
 	if r.TotalCostNanoUSD == nil {
@@ -233,56 +153,7 @@ func (e *Emitter) EmitPRCompleted(ctx context.Context, r Rollup) {
 		body["reviewer_handle"] = r.ReviewerHandle
 		body["reviewer_account_kind"] = "bot"
 	}
-
-	raw, err := json.Marshal(body)
-	if err != nil {
-		e.set(StatusFailing)
-		e.log.WarnContext(ctx, "Riptide emit failed to encode: "+err.Error())
-		return
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.url+emitPath, bytes.NewReader(raw))
-	if err != nil {
-		e.set(StatusFailing)
-		e.log.WarnContext(ctx, "Riptide emit failed: "+err.Error())
-		return
-	}
-	req.Header.Set("Authorization", "Bearer "+e.token)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := e.http.Do(req)
-	if err != nil {
-		// Our own context ending (shutdown, a caller's deadline) says
-		// nothing about riptide, so the status stays; the rollup is still
-		// lost, so the warning stays.
-		if ctx.Err() != nil {
-			e.log.WarnContext(ctx, fmt.Sprintf("Riptide emit cancelled, rollup lost (event_type=pr_completed): %v", err))
-			return
-		}
-		e.set(StatusFailing)
-		e.log.WarnContext(ctx, fmt.Sprintf("Riptide emit failed (event_type=pr_completed): %v", err))
-		return
-	}
-	defer func() { _ = resp.Body.Close() }()
-	// Anything but a 2xx is a miss, 3xx included: redirects are not followed, so
-	// a redirected endpoint would otherwise drop every rollup without a word,
-	// and the DB claim taken before this call means it is never retried.
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// 401/403 is the token riptide no longer takes; anything else is the
-		// rollup lost, whatever the cause. Either way the status says so.
-		word := "failed"
-		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-			e.set(StatusRejected)
-			word = "rejected"
-		} else {
-			e.set(StatusFailing)
-		}
-		msg, _ := io.ReadAll(io.LimitReader(resp.Body, errBodyLimit))
-		e.log.WarnContext(ctx, fmt.Sprintf("Riptide emit %s (event_type=pr_completed, status=%d): %s",
-			word, resp.StatusCode, strings.TrimSpace(string(msg))))
-		return
-	}
-	e.set(StatusOK)
-	_, _ = io.Copy(io.Discard, resp.Body)
+	e.c.Post(ctx, emitPath, body, "event_type=pr_completed")
 }
 
 // nullableString renders an empty string as JSON null. merge_commit_sha is

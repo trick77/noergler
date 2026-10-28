@@ -18,7 +18,7 @@
 #     "instance ..." means the value is inherited from that env var
 #
 # Team-overridable: model, reasoning effort, context window, every REVIEW_*
-# knob, the Jira acceptance-criteria prefixes, riptide. NOT overridable
+# knob, the Jira acceptance-criteria prefixes, riptide, almanach. NOT overridable
 # (instance-wide, naming them here disables the team):
 # LLMWIRE_LITELLM_BASE_URL, LLMWIRE_LITELLM_MODELS. The prompts are compiled
 # into the binary.
@@ -62,9 +62,12 @@ teams:
     riptide:                                          # optional block; present = forwarding on. Both fields required when present
       url: https://riptide-platform.example.com       # required within the block; this team's riptide-collector
       token_env: TEAM_PLATFORM_RIPTIDE_TOKEN          # required within the block; env var holding the team's riptide bearer
+    almanach:                                         # optional block; present = every review round writes an Almanach note and each merge forwards it. Both fields required when present
+      url: https://almanach.example.com               # required within the block; the Almanach this team's notes go to
+      token_env: TEAM_PLATFORM_ALMANACH_TOKEN         # required within the block; env var holding the team's Almanach bearer (its identity there)
 
   # --- The minimal team: only the required keys ------------------------------
-  # Everything else comes from the instance defaults; riptide is off.
+  # Everything else comes from the instance defaults; riptide and almanach are off.
   - slug: payments                                    # required
     webhook_secret_env: TEAM_PAYMENTS_WEBHOOK_SECRET  # required
     projects:                                         # optional seed
