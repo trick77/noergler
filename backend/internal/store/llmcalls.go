@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -76,33 +77,93 @@ func (s *Store) InsertCommentCall(ctx context.Context, team string, k PRKey, kin
 // storable first: Postgres refuses invalid UTF-8 and NUL bytes, and a
 // refused row would lose the whole call.
 func (s *Store) writeCall(ctx context.Context, attemptID *int64, team string, k PRKey, kind string, commentID *int64, c LLMCall) error {
-	warnings := make([]string, 0, len(c.Warnings))
-	for _, w := range c.Warnings {
-		warnings = append(warnings, storable(w))
-	}
+	args := append([]any{attemptID, team, k.Project, k.Repo, k.PRID, kind, commentID}, callArgs(c)...)
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO llm_calls
-		    (attempt_id, team_slug, project_key, repo_slug, pr_id, kind,
-		     profile, model, deployment, reasoning_sent, finish_reason, call_id, litellm_version,
+		INSERT INTO llm_calls (attempt_id, team_slug, project_key, repo_slug, pr_id, kind, comment_id, `+callColumns+`)
+		VALUES (`+placeholders(len(args))+`)`, args...)
+	return err
+}
+
+// The gateway's columns, shared by llm_calls and almanach_calls: one list
+// for the INSERT, one for the SELECT, one set of arguments and one of scan
+// targets, so the next lane is added in one place. callArgs and callScan
+// follow callColumns' order exactly.
+const callColumns = `profile, model, deployment, reasoning_sent, finish_reason, call_id, litellm_version,
 		     input_tokens, input_uncached_tokens, cache_read_tokens, cache_write_tokens,
 		     output_tokens, reasoning_tokens,
 		     cost_nano_usd, cost_input_nano_usd, cost_cache_read_nano_usd, cost_cache_write_nano_usd,
 		     cost_output_nano_usd, cost_reasoning_nano_usd, cost_tool_usage_nano_usd,
-		     key_spend_nano_usd, headers_ms, total_ms, warnings, comment_id)
-		VALUES ($1, $2, $3, $4, $5, $31,
-		        $6, NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''), NULLIF($10, ''), NULLIF($11, ''), NULLIF($12, ''),
-		        $13, $14, $15, $16, $17, $18,
-		        $19, $20, $21, $22, $23, $24, $25,
-		        $26, $27, $28, $29, $30)`,
-		attemptID, team, k.Project, k.Repo, k.PRID,
-		storable(c.Profile), storable(c.Model), storable(c.Deployment), storable(c.ReasoningSent),
-		storable(c.FinishReason), storable(c.CallID), storable(c.GatewayVer),
+		     key_spend_nano_usd, headers_ms, total_ms, warnings`
+
+// callSelect reads callColumns back, the strings COALESCEd for a scan into
+// LLMCall. p is the table alias. llm_calls.profile is NOT NULL; a table
+// where it is not (almanach_calls, on a LEFT JOIN) reads
+// COALESCE(p.profile, ”) and then callSelectTail.
+func callSelect(p string) string {
+	return p + `.profile, ` + callSelectTail(p)
+}
+
+func callSelectTail(p string) string {
+	return `COALESCE(` + p + `.model, ''), COALESCE(` + p + `.deployment, ''), COALESCE(` + p + `.reasoning_sent, ''),
+		       COALESCE(` + p + `.finish_reason, ''), COALESCE(` + p + `.call_id, ''), COALESCE(` + p + `.litellm_version, ''),
+		       ` + p + `.input_tokens, ` + p + `.input_uncached_tokens, ` + p + `.cache_read_tokens, ` + p + `.cache_write_tokens,
+		       ` + p + `.output_tokens, ` + p + `.reasoning_tokens,
+		       ` + p + `.cost_nano_usd, ` + p + `.cost_input_nano_usd, ` + p + `.cost_cache_read_nano_usd, ` + p + `.cost_cache_write_nano_usd,
+		       ` + p + `.cost_output_nano_usd, ` + p + `.cost_reasoning_nano_usd, ` + p + `.cost_tool_usage_nano_usd,
+		       ` + p + `.key_spend_nano_usd, ` + p + `.headers_ms, ` + p + `.total_ms, ` + p + `.warnings`
+}
+
+// callArgs is one call's values for callColumns. The strings are the
+// gateway's own (header values, the response's model, llmwire's warning
+// text), so they are made storable first: Postgres refuses invalid UTF-8
+// and NUL bytes, and a refused row would lose the whole call. An empty
+// string but the profile is NULL.
+func callArgs(c LLMCall) []any {
+	warnings := make([]string, 0, len(c.Warnings))
+	for _, w := range c.Warnings {
+		warnings = append(warnings, storable(w))
+	}
+	return []any{
+		storable(c.Profile), nullIfEmpty(c.Model), nullIfEmpty(c.Deployment), nullIfEmpty(c.ReasoningSent),
+		nullIfEmpty(c.FinishReason), nullIfEmpty(c.CallID), nullIfEmpty(c.GatewayVer),
 		c.InputTokens, c.InputUncachedTokens, c.CacheReadTokens, c.CacheWriteTokens,
 		c.OutputTokens, c.ReasoningTokens,
 		c.CostNanoUSD, c.CostInputNanoUSD, c.CostCacheReadNanoUSD, c.CostCacheWriteNanoUSD,
 		c.CostOutputNanoUSD, c.CostReasoningNanoUSD, c.CostToolUsageNanoUSD,
-		c.KeySpendNanoUSD, c.HeadersMS, c.TotalMS, warnings, commentID, kind)
-	return err
+		c.KeySpendNanoUSD, c.HeadersMS, c.TotalMS, warnings,
+	}
+}
+
+// callScan is the scan targets for callSelect.
+func callScan(c *LLMCall) []any {
+	return []any{
+		&c.Profile, &c.Model, &c.Deployment, &c.ReasoningSent, &c.FinishReason, &c.CallID, &c.GatewayVer,
+		&c.InputTokens, &c.InputUncachedTokens, &c.CacheReadTokens, &c.CacheWriteTokens,
+		&c.OutputTokens, &c.ReasoningTokens,
+		&c.CostNanoUSD, &c.CostInputNanoUSD, &c.CostCacheReadNanoUSD, &c.CostCacheWriteNanoUSD,
+		&c.CostOutputNanoUSD, &c.CostReasoningNanoUSD, &c.CostToolUsageNanoUSD,
+		&c.KeySpendNanoUSD, &c.HeadersMS, &c.TotalMS, &c.Warnings,
+	}
+}
+
+// placeholders is "$1, $2, ..., $n".
+func placeholders(n int) string {
+	var b strings.Builder
+	for i := 1; i <= n; i++ {
+		if i > 1 {
+			b.WriteString(", ")
+		}
+		b.WriteString("$")
+		b.WriteString(strconv.Itoa(i))
+	}
+	return b.String()
+}
+
+func nullIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return storable(s)
 }
 
 // storable is s as Postgres TEXT accepts it: invalid UTF-8 replaced, NUL
@@ -117,22 +178,8 @@ func storable(s string) string {
 // was logged at the time. The page says "no call recorded", never "no call
 // made".
 func (s *Store) AttemptCall(ctx context.Context, attemptID int64) (c LLMCall, ok bool, err error) {
-	err = s.pool.QueryRow(ctx, `
-		SELECT profile, COALESCE(model, ''), COALESCE(deployment, ''), COALESCE(reasoning_sent, ''),
-		       COALESCE(finish_reason, ''), COALESCE(call_id, ''), COALESCE(litellm_version, ''),
-		       input_tokens, input_uncached_tokens, cache_read_tokens, cache_write_tokens,
-		       output_tokens, reasoning_tokens,
-		       cost_nano_usd, cost_input_nano_usd, cost_cache_read_nano_usd, cost_cache_write_nano_usd,
-		       cost_output_nano_usd, cost_reasoning_nano_usd, cost_tool_usage_nano_usd,
-		       key_spend_nano_usd, headers_ms, total_ms, warnings
-		  FROM llm_calls
-		 WHERE attempt_id = $1`, attemptID).Scan(
-		&c.Profile, &c.Model, &c.Deployment, &c.ReasoningSent, &c.FinishReason, &c.CallID, &c.GatewayVer,
-		&c.InputTokens, &c.InputUncachedTokens, &c.CacheReadTokens, &c.CacheWriteTokens,
-		&c.OutputTokens, &c.ReasoningTokens,
-		&c.CostNanoUSD, &c.CostInputNanoUSD, &c.CostCacheReadNanoUSD, &c.CostCacheWriteNanoUSD,
-		&c.CostOutputNanoUSD, &c.CostReasoningNanoUSD, &c.CostToolUsageNanoUSD,
-		&c.KeySpendNanoUSD, &c.HeadersMS, &c.TotalMS, &c.Warnings)
+	err = s.pool.QueryRow(ctx, `SELECT `+callSelect("c")+` FROM llm_calls c WHERE c.attempt_id = $1`, attemptID).
+		Scan(callScan(&c)...)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return LLMCall{}, false, nil
 	}
