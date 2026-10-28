@@ -89,8 +89,8 @@ and the run stops. If the last reviewed commit is no longer one of the PR's
 commits (a rebase or force push), or a merge commit lies between it and the
 new head (the target branch merged in), the run falls back to the full PR diff.
 
-The review then sees the incremental diff as the subject and the cumulative PR
-diff as context.
+The review then sees the incremental diff as the subject of its findings and
+the cumulative PR diff as context. The summary is still the PR's (section 10).
 
 ## 4. Diff fetch and file splitting
 
@@ -193,12 +193,19 @@ then resolved, and the finding leaves dedup. A claim quoting only unchanged
 lines, or any moved one, is dropped and logged. A full review lists no ids:
 its diff is the whole PR, so every line reads as added.
 
-The summary lists only this run's findings. Under them, when there is any,
-one line counts what this run checked: on an incremental review, the earlier
-findings it listed that this push fixed and those still open, and how many
-findings validation dropped. It is not a full ledger: repeats, earlier
-findings trimmed from the prompt, the comment cap and inline posts Bitbucket
-refused are in the log, not in the line.
+The summary is the PR's, never one push's: the comment is replaced on every
+run, so what it leaves out is gone. Its overview, strengths, security, test
+coverage and verdict cover the whole PR, and its issue list is every open
+finding, earlier ones (not fixed, thread neither resolved nor deleted; an
+unreadable thread counts as open) and this run's: issues first, earlier before
+new within a severity, the new ones marked when earlier ones stand beside
+them. An earlier finding still open
+raises the verdict to what it demands, even when the model saw nothing new
+or the budget trimmed the finding from its prompt. Under the list, when there
+is any, one line counts the earlier findings this push fixed and the findings
+validation dropped, or says the earlier findings could not be read from the
+database and the list is this run's only. Repeats, the comment cap and
+inline posts Bitbucket refused are in the log, not in the line.
 
 Each finding becomes one inline comment on its line:
 
@@ -216,8 +223,9 @@ A `suggestion` block is only emitted when the model supplied a concrete
 replacement; single-line replacements let Bitbucket render an "Apply suggestion"
 button.
 
-Then one summary comment per PR, edited in place on later runs. Its sections, in
-order:
+Then one summary comment per PR, edited in place on later runs. It opens with
+"PR review summary" ("PR Review-Zusammenfassung"), the last push's range
+under it on an incremental run. Its sections, in order:
 
 1. Overview
 2. Strengths

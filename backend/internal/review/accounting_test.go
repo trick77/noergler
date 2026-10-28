@@ -2,22 +2,41 @@ package review
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
 
-// The summary says what its issue list leaves out: the earlier finding still
-// open, and one the validator dropped. The repeat of that earlier finding is
-// the open one, not a second item.
-func TestSummaryAccountsForWhatItDoesNotList(t *testing.T) {
-	h := newHarness(t, nil)
+// earlier stores a finding posted by an earlier run, its thread on the PR
+// and open.
+func earlier(h *harness, id int64, severity, headline string) store.Finding {
+	cid := int(id) + 700
+	h.bb.comments[cid] = &bitbucket.Comment{ID: cid}
+	f := store.Finding{ID: id, FilePath: "a.go", LineNumber: 2, Severity: severity,
+		CommentText: "old", BitbucketCommentID: &cid}
+	if headline != "" {
+		f.Headline = ptrs(headline)
+	}
+	return f
+}
+
+// incremental puts h on a push after an earlier run.
+func incremental(h *harness) {
 	h.st.lastCommit, h.st.hasLast = "older", true
 	h.bb.commitDiff = sampleDiff
-	h.st.existing = []store.Finding{{ID: 11, FilePath: "a.go", LineNumber: 2, Severity: "issue", CommentText: "old"}}
+}
+
+// The PR summary lists the earlier finding still open, once: its repeat is
+// the open one, not a second item. The dropped one is counted.
+func TestSummaryListsEarlierOpenFindingOnce(t *testing.T) {
+	h := newHarness(t, nil)
+	incremental(h)
+	h.st.existing = []store.Finding{earlier(h, 11, "issue", "")}
 	invented := inference.ReviewFinding{File: "a.go", Line: 2, Severity: "suggestion", Comment: "x",
 		Evidence: []string{"never in the diff"}}
 	h.llm.review = okResultWith(finding("a.go", 2, "issue", "same again"), invented)
@@ -27,34 +46,145 @@ func TestSummaryAccountsForWhatItDoesNotList(t *testing.T) {
 	if len(h.bb.Posted) != 1 {
 		t.Fatalf("summaries = %d", len(h.bb.Posted))
 	}
-	want := "_Earlier findings checked: 1 still open. 1 finding dropped by validation._"
+	s := h.bb.Posted[0].Text
+	for _, want := range []string{"### Issues and suggestions\n1. old\n", "_1 finding dropped by validation._"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("summary lacks %q:\n%s", want, s)
+		}
+	}
+	if strings.Contains(s, "same again") || strings.Contains(s, "2. ") {
+		t.Errorf("the repeat must not be listed beside the open finding:\n%s", s)
+	}
+}
+
+// A push that adds nothing does not approve a PR whose earlier issue is
+// still open: the issue stays listed and the verdict is raised to match.
+func TestSummaryOfAQuietPushKeepsThePR(t *testing.T) {
+	h := newHarness(t, nil)
+	incremental(h)
+	h.st.existing = []store.Finding{earlier(h, 11, "issue", "Nil map write"), earlier(h, 12, "suggestion", "Name it")}
+	h.llm.review = okResultWith()
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	s := h.bb.Posted[0].Text
+	for _, want := range []string{
+		"1. Nil map write\n2. Name it\n",
+		"**Request changes 🛑** — Verdict raised: 1 earlier finding is still open.",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("summary lacks %q:\n%s", want, s)
+		}
+	}
+	if v := decodeDetail(t, h).Verdict; v == nil || v.Model != "approve" || v.Posted != "request_changes" {
+		t.Errorf("run page verdict = %+v, want approve -> request_changes", v)
+	}
+}
+
+// A thread the author resolved or deleted is closed on the PR, so it is
+// neither listed nor holding up the verdict.
+func TestSummaryLeavesOutClosedThreads(t *testing.T) {
+	h := newHarness(t, nil)
+	incremental(h)
+	resolved := earlier(h, 11, "issue", "Resolved one")
+	h.bb.comments[*resolved.BitbucketCommentID].ThreadResolved = true
+	deleted := earlier(h, 12, "issue", "Deleted one")
+	delete(h.bb.comments, *deleted.BitbucketCommentID)
+	h.st.existing = []store.Finding{resolved, deleted}
+	h.llm.review = okResultWith()
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	s := h.bb.Posted[0].Text
+	if !strings.Contains(s, "### Issues and suggestions\nNone.") || !strings.Contains(s, "**Approve ✅**") {
+		t.Errorf("closed threads must not be listed or raise the verdict:\n%s", s)
+	}
+}
+
+// A thread that cannot be read counts as open: fail toward showing it.
+func TestSummaryKeepsAnUnreadableThread(t *testing.T) {
+	h := newHarness(t, nil)
+	incremental(h)
+	f := earlier(h, 11, "issue", "Unreadable one")
+	h.bb.fetchErr = map[int]error{*f.BitbucketCommentID: errors.New("boom")}
+	h.st.existing = []store.Finding{f}
+	h.llm.review = okResultWith()
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	if s := h.bb.Posted[0].Text; !strings.Contains(s, "1. Unreadable one") {
+		t.Errorf("an unreadable thread must stay listed:\n%s", s)
+	}
+}
+
+// Earlier findings unreadable from the DB: the summary lists this run's and
+// says so, never reading as a PR with none.
+func TestSummarySaysEarlierFindingsUnreadable(t *testing.T) {
+	h := newHarness(t, nil)
+	incremental(h)
+	h.st.existingErr = errors.New("db down")
+	h.llm.review = okResultWith()
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	want := "_Earlier findings unreadable: the list shows this run's only._"
 	if s := h.bb.Posted[0].Text; !strings.Contains(s, want) {
 		t.Errorf("summary lacks %q:\n%s", want, s)
 	}
 }
 
-// A retired finding is counted as fixed, not as open.
+// A dropped finding replaces the model's rationale, which named it, even
+// when an earlier issue keeps the verdict where it was.
+func TestDroppedFindingRationaleNeverPostsBesideAnOpenIssue(t *testing.T) {
+	h := newHarness(t, nil)
+	incremental(h)
+	h.st.existing = []store.Finding{earlier(h, 11, "issue", "Old issue")}
+	res := okResultWith(inference.ReviewFinding{File: "a.go", Line: 2, Severity: "issue", Comment: "x",
+		Evidence: []string{"never in the diff"}})
+	res.Review.Summary.VerdictDecision = "request_changes"
+	res.Review.Summary.VerdictRationale = "Request changes: nil deref in Foo."
+	h.llm.review = res
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	s := h.bb.Posted[0].Text
+	if strings.Contains(s, "nil deref in Foo") {
+		t.Errorf("the rationale names a withheld finding:\n%s", s)
+	}
+	if !strings.Contains(s, "**Request changes 🛑** — Verdict raised: 1 earlier finding is still open.") {
+		t.Errorf("the open issue must hold the verdict:\n%s", s)
+	}
+}
+
+// A retired finding is counted as fixed and leaves the list and the verdict.
 func TestSummaryCountsARetiredFinding(t *testing.T) {
 	h := fixedHarness(t, "func new() {}")
 
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
-	want := "_Earlier findings checked: 1 fixed by this push._"
-	if s := h.bb.Posted[0].Text; !strings.Contains(s, want) {
-		t.Errorf("summary lacks %q:\n%s", want, s)
+	s := h.bb.Posted[0].Text
+	for _, want := range []string{"### Issues and suggestions\nNone.", "_1 earlier finding fixed by this push._", "**Approve ✅**"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("summary lacks %q:\n%s", want, s)
+		}
 	}
 }
 
-// A full review can retire nothing, so it says nothing about earlier
-// findings, fixed or open.
-func TestFullReviewSummarySaysNothingOfEarlierFindings(t *testing.T) {
+// A full review retires nothing, but the PR's open findings are still the
+// PR's: listed, and holding up the verdict.
+func TestFullReviewSummaryListsEarlierOpenFindings(t *testing.T) {
 	h := newHarness(t, nil)
-	h.st.existing = []store.Finding{{ID: 11, FilePath: "a.go", LineNumber: 2, Severity: "issue", CommentText: "old"}}
+	h.st.existing = []store.Finding{earlier(h, 11, "suggestion", "")}
+	h.llm.review = okResultWith(finding("a.go", 1, "issue", "new"))
 
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
 
-	if s := h.bb.Posted[0].Text; strings.Contains(s, "Earlier findings") {
-		t.Errorf("a full review must not count earlier findings:\n%s", s)
+	s := h.bb.Posted[0].Text
+	if !strings.Contains(s, "1. new _(new)_\n2. old") {
+		t.Errorf("the full review must list the earlier open finding after the new issue:\n%s", s)
+	}
+	if strings.Contains(s, "fixed by this push") {
+		t.Errorf("a full review retires nothing:\n%s", s)
 	}
 }
 
@@ -65,7 +195,8 @@ func TestFirstReviewSummaryHasNoAccounting(t *testing.T) {
 
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
 
-	if s := h.bb.Posted[0].Text; strings.Contains(s, "Earlier findings") || strings.Contains(s, "dropped by validation") {
-		t.Errorf("a first review must not carry the accounting line:\n%s", s)
+	s := h.bb.Posted[0].Text
+	if strings.Contains(s, "fixed by this push") || strings.Contains(s, "dropped by validation") || strings.Contains(s, "_(new)_") {
+		t.Errorf("a first review must not carry the accounting line or new markers:\n%s", s)
 	}
 }

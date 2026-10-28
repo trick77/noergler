@@ -52,6 +52,15 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 
 ## Prompt and findings
 
+- Summary = the whole PR on every run, never one push (user, 2026-10-28:
+  "it's called SUMMARY"): the comment is replaced each run. Prompt names it
+  the PR review summary; issue list = every open finding (`EarlierOpen` +
+  new); `FloorVerdict` raises to what open earlier findings demand. Open =
+  `openThreads`, as the handoff: unfixed, thread not resolved or deleted,
+  unreadable counts open. Earlier findings unreadable from the DB: never
+  safeDB ("none" would approve), the summary says it lists this run's only.
+  Heading "PR Review-Zusammenfassung" / "PR review summary", last push a
+  line under it.
 - `pre_existing` (bugs in unchanged code): never posted, never moves the
   verdict, never scored. `ValidatePreExisting`: evidence in the shown file,
   none on a line the PR (all pushes, on an incremental review) added or

@@ -54,6 +54,13 @@ function tabFromHash(): Tab {
   return (TABS as string[]).includes(h) ? (h as Tab) : "overview";
 }
 
+/** Strictness of a verdict, as the backend ranks it: an unknown one ranks as
+ *  approve. Drops lower the posted verdict, open earlier findings raise it. */
+const VERDICTS = ["approve", "approve_with_followups", "request_changes"];
+function verdictRank(v: string): number {
+  return Math.max(0, VERDICTS.indexOf(v));
+}
+
 function num(v: number | null | undefined): string {
   return v === null || v === undefined ? "—" : v.toLocaleString();
 }
@@ -481,10 +488,16 @@ function Findings({ d, pr }: { d: RunDetail; pr: string | null }) {
         {d.detail?.verdict &&
           d.detail.verdict.model !== d.detail.verdict.posted && (
             <Note>
-              {t("run.verdictLowered", {
-                model: d.detail.verdict.model,
-                posted: d.detail.verdict.posted,
-              })}
+              {t(
+                verdictRank(d.detail.verdict.posted) >
+                  verdictRank(d.detail.verdict.model)
+                  ? "run.verdictRaised"
+                  : "run.verdictLowered",
+                {
+                  model: d.detail.verdict.model,
+                  posted: d.detail.verdict.posted,
+                },
+              )}
             </Note>
           )}
       </Card>

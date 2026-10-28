@@ -471,6 +471,45 @@ func TestAdjustVerdict(t *testing.T) {
 	}
 }
 
+// The summary covers the whole PR: an earlier finding still open holds the
+// verdict up, whatever the push brought.
+func TestFloorVerdict(t *testing.T) {
+	issue := ReviewFinding{Severity: "issue"}
+	sugg := ReviewFinding{Severity: "suggestion"}
+	lax := ReviewSummary{VerdictDecision: "approve", VerdictRationale: "typo fixed"}
+	cases := []struct {
+		name     string
+		in       ReviewSummary
+		open     []ReviewFinding
+		decision string
+		raised   bool
+	}{
+		{"nothing open leaves it alone", lax, nil, "approve", false},
+		{"an open issue requests changes", lax, []ReviewFinding{sugg, issue}, "request_changes", true},
+		{"an open suggestion", lax, []ReviewFinding{sugg}, "approve_with_followups", true},
+		{
+			"never lowers",
+			ReviewSummary{VerdictDecision: "request_changes", VerdictRationale: "new bug"},
+			[]ReviewFinding{sugg}, "request_changes", false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := FloorVerdict(tc.in, tc.open, lang.EN)
+			if got.VerdictDecision != tc.decision {
+				t.Errorf("decision = %q, want %q", got.VerdictDecision, tc.decision)
+			}
+			if raised := got.VerdictRationale != tc.in.VerdictRationale; raised != tc.raised {
+				t.Errorf("rationale = %q, raised = %v, want %v", got.VerdictRationale, raised, tc.raised)
+			}
+		})
+	}
+	open := []ReviewFinding{issue, issue}
+	if got := FloorVerdict(lax, open, lang.DE).VerdictRationale; got != "Empfehlung angehoben: 2 frühere Findings sind noch offen." {
+		t.Errorf("German rationale = %q", got)
+	}
+}
+
 // The replacement rationale is posted, so it follows the review's language.
 func TestAdjustVerdictLanguage(t *testing.T) {
 	strict := ReviewSummary{VerdictDecision: "request_changes", VerdictRationale: "the dropped bug"}

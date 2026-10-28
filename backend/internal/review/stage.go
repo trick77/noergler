@@ -71,6 +71,9 @@ type reviewPlan struct {
 	preUnknown bool
 
 	existing []store.Finding
+	// existingUnknown: the earlier findings could not be read, so the PR
+	// summary cannot list them and says so.
+	existingUnknown bool
 	// listed are the ids the prompt showed, trimmed by budget: the only
 	// findings a `fixed` claim may name. Empty on a full review. Ids, not
 	// the findings: existing already holds them.

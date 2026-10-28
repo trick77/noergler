@@ -111,7 +111,8 @@ type MovedFinding struct {
 	To   int    `json:"to"`
 }
 
-// VerdictChange is the model's verdict and the one posted after drops.
+// VerdictChange is the model's verdict and the one posted: lowered by drops,
+// raised by earlier findings still open.
 type VerdictChange struct {
 	Model  string `json:"model"`
 	Posted string `json:"posted"`

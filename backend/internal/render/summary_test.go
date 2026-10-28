@@ -121,7 +121,8 @@ func summaryCases() map[string]SummaryInput {
 
 	accounting := base()
 	accounting.Findings = []inference.ReviewFinding{finding("issue", "c", ptrs("New one"))}
-	accounting.FixedEarlier, accounting.OpenEarlier, accounting.Dropped = 2, 3, 2
+	accounting.EarlierOpen = []inference.ReviewFinding{finding("suggestion", "c", ptrs("Older one"))}
+	accounting.FixedEarlier, accounting.Dropped = 2, 2
 	cases["accounting"] = accounting
 
 	accountingNone := base()
@@ -133,11 +134,14 @@ func summaryCases() map[string]SummaryInput {
 	accountingCapped := base()
 	accountingCapped.Findings = []inference.ReviewFinding{finding("issue", "c", ptrs("Kept"))}
 	accountingCapped.Truncated = true
-	accountingCapped.OpenEarlier = 1
+	accountingCapped.EarlierOpen = []inference.ReviewFinding{finding("issue", "c", ptrs("Still there"))}
 	cases["accounting_truncated"] = accountingCapped
 
+	// A push that adds nothing still lists the PR's open findings.
 	openOnly := base()
-	openOnly.OpenEarlier = 4
+	openOnly.EarlierOpen = []inference.ReviewFinding{
+		finding("suggestion", "c", ptrs("Older suggestion")), finding("issue", "c", ptrs("Older issue")),
+	}
 	cases["accounting_open_only"] = openOnly
 
 	agentsOver := agentsFound
@@ -339,7 +343,7 @@ func TestSummarySectionOrder(t *testing.T) {
 	got := Summary(in)
 
 	want := []string{
-		"### Overview", "### Strengths", "### Issues and suggestions",
+		"### PR review summary", "### Overview", "### Strengths", "### Issues and suggestions",
 		"### Security and performance", "### Test coverage", "### Ticket",
 		"### Recommendation", "\n---\n",
 	}
