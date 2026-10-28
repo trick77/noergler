@@ -24,15 +24,16 @@ func goodNote() AlmanachNote {
 // One pass, German always, the ticket spelled out or "none".
 func TestRenderAlmanachNotePromptIsOnePassAndGerman(t *testing.T) {
 	got := RenderAlmanachNotePrompt(AlmanachNotePromptRequest{
-		Template: "R={repo} P={project} T={ticket_key} K={ticket_type} M={note_max_chars} {output_language}",
+		Template: "R={repo} P={project} T={ticket_key} K={ticket_type} M={note_limit} {output_language}",
 		Repo:     "api", Project: "PLAT", TicketKey: "PLAT-7 {repo}", TicketType: "Bug", MaxChars: 6000,
 	})
-	if !strings.HasPrefix(got, "R=api P=PLAT T=PLAT-7 {repo} K=Bug M=6000 ") || !strings.Contains(got, "Swiss Standard German") {
+	if !strings.HasPrefix(got, "R=api P=PLAT T=PLAT-7 {repo} K=Bug M=when any field exceeds its limit or the note exceeds 6000 characters in total ") ||
+		!strings.Contains(got, "Swiss Standard German") {
 		t.Errorf("got %q", got)
 	}
-	none := RenderAlmanachNotePrompt(AlmanachNotePromptRequest{Template: "{ticket_key} ({ticket_type})"})
-	if none != "none (no type)" {
-		t.Errorf("no ticket renders %q", none)
+	none := RenderAlmanachNotePrompt(AlmanachNotePromptRequest{Template: "{ticket_key} ({ticket_type}) {note_limit}"})
+	if none != "none (no type) when any field exceeds its limit" {
+		t.Errorf("no ticket and no total cap renders %q", none)
 	}
 }
 
@@ -61,9 +62,15 @@ func TestValidateAlmanachNote(t *testing.T) {
 		{"feature with a bugfix object", func(n *AlmanachNote) { n.ChangeKind = "feature" }, 0, AlmanachInvalid},
 		{"unknown cause", func(n *AlmanachNote) { n.Bugfix.CauseKind = "cosmic" }, 0, AlmanachInvalid},
 		{"empty name", func(n *AlmanachNote) { n.Components[0].Name = "  " }, 0, AlmanachInvalid},
-		{"path with a space", func(n *AlmanachNote) { n.Components[0].Files = []string{"intake/file reader.go"} }, 0, AlmanachInvalid},
+		// A path copied as shown may hold a space; a line break is no path.
+		{"path with a space", func(n *AlmanachNote) { n.Components[0].Files = []string{"docs/Release Notes.md"} }, 0, ""},
+		{"path with a newline", func(n *AlmanachNote) { n.Components[0].Files = []string{"a.go\nb.go"} }, 0, AlmanachInvalid},
 		{"no summary but items", func(n *AlmanachNote) { n.Summary = nil; n.Bugfix = nil; n.ChangeKind = "chore" }, 0, AlmanachInvalid},
 		{"secret in prose", func(n *AlmanachNote) { n.Components[0].Text = "Token aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU gesetzt." }, 0, AlmanachSecret},
+		{"secret in the summary", func(n *AlmanachNote) { n.Summary = str("Setzt aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU als Default.") }, 0, AlmanachSecret},
+		// Identifiers and paths are not prose: the class-shift heuristic
+		// reads a CamelCase name with a digit as random text.
+		{"camel-case name is not prose", func(n *AlmanachNote) { n.Components[0].Name = "OAuth2TokenRefreshHandler9Service" }, 0, ""},
 		{"hash-like path is not prose", func(n *AlmanachNote) {
 			n.Components[0].Files = []string{"vendor/a1B2c3D4e5F6g7H8i9J0k1L2m3N4/x.go"}
 		}, 0, ""},
@@ -91,8 +98,13 @@ func TestValidateAlmanachNote(t *testing.T) {
 	n := goodNote()
 	n.Rules = nil
 	n.Components[0].Name = "  Datei-Adapter  "
+	n.Components[0].Text = "Liest Dateien, Grösse egal; `straße` bleibt Code."
+	n.Summary = str("Der Adapter misst die Größe.")
 	if _, reason := ValidateAlmanachNote(&n, 0); reason != "" || n.Rules == nil || n.Components[0].Name != "Datei-Adapter" {
 		t.Errorf("normalisation: reason %q rules %v name %q", reason, n.Rules, n.Components[0].Name)
+	}
+	if *n.Summary != "Der Adapter misst die Grösse." || n.Components[0].Text != "Liest Dateien, Grösse egal; `straße` bleibt Code." {
+		t.Errorf("Swiss spelling on prose, code spans kept: %q / %q", *n.Summary, n.Components[0].Text)
 	}
 }
 
@@ -103,6 +115,9 @@ func TestParseAlmanachNote(t *testing.T) {
 	}
 	if _, ok := ParseAlmanachNote("no note"); ok {
 		t.Error("prose parsed as a note")
+	}
+	if _, ok := ParseAlmanachNote("null"); ok {
+		t.Error("a bare null parsed as a note: it is a non-answer")
 	}
 }
 
