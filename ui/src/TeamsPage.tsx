@@ -1,7 +1,7 @@
 import type { TFunction } from "i18next";
 import type { ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import type { AccountStatus, Team } from "./api";
+import type { AccountStatus, ForwardStatus, Team } from "./api";
 import {
   ago,
   byName,
@@ -28,6 +28,15 @@ import {
   thNum,
 } from "./ui";
 
+/** forwarderTone is the tone of a forwarder's status word, riptide and
+ *  Almanach alike: a refused token is a fault, a failed call an outage. */
+const forwarderTone: Record<ForwardStatus, Tone> = {
+  ok: "ok",
+  failing: "skip",
+  rejected: "fail",
+  off: "quiet",
+};
+
 /** accountTone: a working account is ok; one Bitbucket or Jira did not
  *  answer may recover on its own; anything else waits for the team to push
  *  a working token. */
@@ -37,8 +46,8 @@ function accountTone(status: AccountStatus | null): Tone {
   return "fail";
 }
 
-/** integrationPills is the team's Bitbucket bot, Jira token and riptide,
- *  always all three: not set up (shared, off) is a state too, in the quiet
+/** integrationPills is the team's Bitbucket bot, Jira token, riptide and
+ *  Almanach, always all four: not set up (shared, off) is a state too, in the quiet
  *  tone, so a missing one never has to be inferred. Not the bot's name:
  *  what matters is whether the team runs on its own account and whether
  *  that works (user, 2026-10-26). The status is the server's fixed word,
@@ -98,19 +107,21 @@ function integrationPills(team: Team, now: number, t: TFunction) {
   }
 
   const rs = team.riptide ?? "off";
-  const riptideTone: Record<typeof rs, Tone> = {
-    ok: "ok",
-    failing: "skip",
-    rejected: "fail",
-    off: "quiet",
-  };
   const riptide = (
-    <Pill tone={riptideTone[rs]} title={t(`teams.riptideHint.${rs}`)}>
+    <Pill tone={forwarderTone[rs]} title={t(`teams.riptideHint.${rs}`)}>
       {t(`teams.riptide.${rs}`)}
     </Pill>
   );
 
-  return { bitbucket, jira, riptide };
+  // Almanach is a forwarder like riptide: same words, same tones.
+  const as = team.almanach ?? "off";
+  const almanach = (
+    <Pill tone={forwarderTone[as]} title={t(`teams.almanachHint.${as}`)}>
+      {t(`teams.almanach.${as}`)}
+    </Pill>
+  );
+
+  return { bitbucket, jira, riptide, almanach };
 }
 
 function ConfigGroup({
@@ -153,8 +164,9 @@ function ConfigRow({
   );
 }
 
-/** Configuration is collapsed by default; its summary keeps the three
- *  integration pills, so a closed card still answers "own bot? riptide?".
+/** Configuration is collapsed by default; its summary keeps the four
+ *  integration pills, so a closed card still answers "own bot? riptide?
+ *  Almanach?".
  *  Every row shows, set or not: an empty filter says so rather than
  *  vanishing. The author lists are COUNTS, never names: a roster of who
  *  works where is a different question from "is this team configured". */
@@ -185,6 +197,7 @@ function Configuration({ team, now }: { team: Team; now: number }) {
           {pills.bitbucket}
           {pills.jira}
           {pills.riptide}
+          {pills.almanach}
         </span>
       </summary>
       <div className="mt-2.5 grid gap-x-8 gap-y-4 md:grid-cols-2">
@@ -213,6 +226,9 @@ function Configuration({ team, now }: { team: Team; now: number }) {
           </ConfigRow>
           <ConfigRow label={t("teams.jiraToken")}>{pills.jira}</ConfigRow>
           <ConfigRow label={t("teams.riptideLabel")}>{pills.riptide}</ConfigRow>
+          <ConfigRow label={t("teams.almanachLabel")}>
+            {pills.almanach}
+          </ConfigRow>
         </ConfigGroup>
         <ConfigGroup title={t("teams.filters")}>
           <ConfigRow label={t("teams.excludedRepos")}>

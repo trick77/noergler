@@ -126,7 +126,11 @@ export interface Team {
   model_source?: "team" | "default";
   /** Forwarding as of the last call (startup ping, then each rollup), never
    *  the URL. Absent for a disabled team. */
-  riptide?: RiptideStatus;
+  riptide?: ForwardStatus;
+  /** The Almanach note feed, the same fixed words as riptide: off without
+   *  an almanach block, else as of the last call. Absent for a disabled
+   *  team. */
+  almanach?: ForwardStatus;
   /** The Bitbucket and Jira accounts the team works with: the shared ones,
    *  or its own (pushed through the team API). A fixed status, never a
    *  reason. Null for a disabled team. */
@@ -134,7 +138,10 @@ export interface Team {
   jira_account: JiraAccount | null;
 }
 
-export type RiptideStatus = "off" | "ok" | "failing" | "rejected";
+/** ForwardStatus is a forwarder's state (riptide, Almanach), the server's
+ *  fixed words as of its last call: never a reason. */
+export type ForwardStatus = "off" | "ok" | "failing" | "rejected";
+export type RiptideStatus = ForwardStatus;
 
 /** AccountStatus is an own account's health; null on a shared one. */
 export type AccountStatus =

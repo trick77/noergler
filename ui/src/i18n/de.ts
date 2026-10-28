@@ -200,6 +200,21 @@ export const de = {
         "Riptide lehnt das Token ab (HTTP 401/403). Reviews laufen; jedes Rollup geht verloren, bis das Token korrigiert ist.",
       off: "Kein riptide-Block für dieses Team im teams.yaml, deshalb wird nichts weitergeleitet.",
     },
+    almanachLabel: "Almanach",
+    almanach: {
+      ok: "Almanach",
+      failing: "Almanach: Fehler",
+      rejected: "Almanach: abgelehnt",
+      off: "Almanach aus",
+    },
+    almanachHint: {
+      ok: "Almanach hat den letzten Aufruf angenommen (Start-Ping oder Notiz); bei jedem Merge wird die Notiz des PRs weitergeleitet. Ob eine Runde ihre Notiz geschrieben hat, steht im Pod-Log, nicht hier.",
+      failing:
+        "Der letzte Aufruf an Almanach ist fehlgeschlagen (Start-Ping oder Notiz); der Grund steht im Pod-Log. Reviews laufen; eine Notiz, die Almanach nicht angenommen hat, geht mit dem nächsten Merge des Teams mit.",
+      rejected:
+        "Almanach lehnt das Token ab (HTTP 401/403). Reviews laufen; die Notizen warten, bis das Token korrigiert ist.",
+      off: "Kein almanach-Block für dieses Team im teams.yaml (oder einer mit leerer url oder leerem Token), deshalb wird keine Notiz geschrieben und nichts weitergeleitet.",
+    },
     accountStatus: {
       ok: "funktioniert",
       rejected: "abgelehnt",

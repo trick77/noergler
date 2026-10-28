@@ -526,6 +526,10 @@ type teamBody struct {
 	// then each emit), a fixed word (off, ok, failing, rejected), never
 	// the URL. Absent for a disabled team.
 	Riptide string `json:"riptide,omitempty"`
+	// Almanach is the note feed's state, the same fixed words as Riptide:
+	// off without an almanach block, else as of the last call (the startup
+	// ping, then each note). Absent for a disabled team.
+	Almanach string `json:"almanach,omitempty"`
 	// Which Bitbucket and Jira accounts the team works with, as on its own
 	// GET /teams/{slug}: source, the bot it is mentioned as, and the fixed
 	// health status of an own account. Never a reason or a token: a reason
@@ -584,6 +588,7 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				t.Riptide = rt.Riptide.Status()
+				t.Almanach = rt.Almanach.Status()
 				bv, jv := accountViews(rt, d.BotUsername)
 				t.BitbucketAccount, t.JiraAccount = &bv, &jv
 				// A scope with no repo list is the whole project; one repo
