@@ -283,7 +283,12 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// PR line is an added line, the buggy one too, so nothing would prove a
 	// fix. No id listed, nothing to claim.
 	posted := r.trimPreviouslyPosted(ctx, prTag, existing, budget, incrementalFrom != "")
-	previousOverview := r.previousOverview(ctx, key, prTag)
+	// Incremental only: a full review's subject is the whole PR, so a draft
+	// recovers nothing and its stale parts win (mimo kept a reverted part).
+	previousOverview := ""
+	if incrementalFrom != "" {
+		previousOverview = r.previousOverview(ctx, key, prTag)
+	}
 	sw.lap(stageContext)
 	listed := map[int64]bool{}
 	for _, p := range posted {
@@ -919,7 +924,7 @@ func (r *Reviewer) logPromptComposition(ctx context.Context, prTag string, a inf
 }
 
 // previousOverview is the overview the PR's last completed review wrote, for
-// this one to build on (user, 2026-10-28), or "" on the first review. An
+// an incremental one to build on (user, 2026-10-28), or "" if none. An
 // unreadable one reviews without it: the overview then starts over from
 // what this prompt shows, as before it was carried.
 func (r *Reviewer) previousOverview(ctx context.Context, key store.PRKey, prTag string) string {
@@ -929,7 +934,8 @@ func (r *Reviewer) previousOverview(ctx context.Context, key store.PRKey, prTag 
 	if s == nil || strings.TrimSpace(s.Overview) == "" {
 		return ""
 	}
-	r.log.InfoContext(ctx, fmt.Sprintf("%s: previous PR overview carried into the prompt (%d chars)", prTag, len([]rune(s.Overview))))
+	r.log.InfoContext(ctx, fmt.Sprintf("%s: previous PR overview carried into the prompt (%d chars, cap %d)",
+		prTag, len([]rune(strings.TrimSpace(s.Overview))), inference.PreviousOverviewCap))
 	return s.Overview
 }
 
@@ -1037,10 +1043,10 @@ func (r *Reviewer) recordRun(ctx context.Context, prReviewID int64, result infer
 	if incrementalFrom != "" {
 		from = &incrementalFrom
 	}
-	// The next review's overview builds on this one; an empty one keeps the
-	// stored overview rather than erasing it.
+	// The next review's overview builds on this one; an empty or sentinel
+	// one keeps the stored overview rather than erasing it.
 	var summary *store.PRSummary
-	if o := strings.TrimSpace(result.Review.Summary.Overview); o != "" {
+	if o := strings.TrimSpace(result.Review.Summary.Overview); o != "" && !render.IsNoneSentinel(o) {
 		summary = &store.PRSummary{Overview: o}
 	}
 	return safeDB(ctx, r.log, "InsertRun", func() (int64, error) {

@@ -52,16 +52,35 @@ func TestOverviewCarriesToTheNextReview(t *testing.T) {
 	}
 
 	incremental(h)
-	h.llm.review.Review.Summary.Overview = "   "
+	h.llm.review.Review.Summary.Overview = "None."
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	p := h.llm.Reviews[1].Prompt
 	if !strings.Contains(p, "## Previous PR overview") || !strings.Contains(p, "Adds retries with backoff to the gateway client.") {
 		t.Errorf("the second review lacks the first one's overview:\n%s", p)
 	}
-	// An empty overview never erases the stored one.
+	// A sentinel overview never erases the stored one.
 	if h.st.Runs[1].Summary != nil || h.st.lastSummary.Overview != "Adds retries with backoff to the gateway client." {
 		t.Errorf("run summary = %+v, stored = %+v", h.st.Runs[1].Summary, h.st.lastSummary)
+	}
+}
+
+// A full review writes the overview fresh from the whole PR: a stored one
+// is not carried (mimo kept a reverted part with it), and the new one is
+// still stored for the next push.
+func TestFullReviewDoesNotCarryTheOverview(t *testing.T) {
+	h := newHarness(t, nil)
+	h.st.lastSummary = &store.PRSummary{Overview: "Adds retries and refunds."}
+	h.llm.review = okResultWith()
+	h.llm.review.Review.Summary.Overview = "Adds retries."
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	if p := h.llm.Reviews[0].Prompt; strings.Contains(p, "Previous PR overview") {
+		t.Errorf("a full review carries the stored overview:\n%s", p)
+	}
+	if s := h.st.Runs[0].Summary; s == nil || s.Overview != "Adds retries." {
+		t.Errorf("run summary = %+v", s)
 	}
 }
 

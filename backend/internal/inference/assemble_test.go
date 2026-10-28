@@ -265,22 +265,22 @@ func TestPlaceholderInABlockStaysLiteral(t *testing.T) {
 	}
 }
 
-// No description renders the sentinel in both templates, and a description
-// is counted on its own in the breakdown.
 // The carried overview is capped, so it cannot grow from push to push, and
 // absent without one.
 func TestPreviousOverviewIsCapped(t *testing.T) {
 	if got := RenderPreviousOverview("  "); got != "" {
 		t.Errorf("empty overview renders %q", got)
 	}
-	long := strings.Repeat("ü", previousOverviewCap+50)
+	long := strings.Repeat("ü", PreviousOverviewCap+50)
 	got := RenderPreviousOverview(long)
 	body := got[strings.LastIndex(got, "\n\n")+2:]
-	if n := len([]rune(body)); n != previousOverviewCap || !strings.HasSuffix(body, "...") {
-		t.Errorf("carried overview is %d runes, want %d ending in ...", n, previousOverviewCap)
+	if n := len([]rune(body)); n != PreviousOverviewCap || !strings.HasSuffix(body, "...") {
+		t.Errorf("carried overview is %d runes, want %d ending in ...", n, PreviousOverviewCap)
 	}
 }
 
+// No description renders the sentinel in both templates, and a description
+// is counted on its own in the breakdown.
 // An incremental review whose PR diff could not be fetched still tells the
 // model the focused files are one push; a full review shows no such block.
 func TestIncrementalWithoutCumulativeSaysSo(t *testing.T) {

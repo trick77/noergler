@@ -202,7 +202,7 @@ The author's own account of the change. Use it only to understand what the chang
 
 ## Files to review
 
-The focused files below are the **subject of this review's findings**. The cumulative PR diff and previously-posted findings that follow are context for findings, and part of what the PR review summary covers.
+The focused files below are the **subject of this review's findings**. The cumulative PR diff and previously-posted findings that follow are context for findings, and part of what the PR review summary covers. A "Previous PR overview" at the end is only a draft for `overview`, as it says.
 
 {files}
 

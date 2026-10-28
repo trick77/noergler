@@ -280,12 +280,14 @@ func (s *Store) InsertRun(ctx context.Context, r Run) (int64, error) {
 }
 
 // LastSummary is the PR summary prose of the PR's last completed review, or
-// nil when none is stored.
+// nil when none is stored. Active PRs only, like the findings: a merged or
+// deleted row never hands its prose to a PR that reuses the id. A declined
+// and reopened PR is the same PR and keeps it.
 func (s *Store) LastSummary(ctx context.Context, k PRKey) (*PRSummary, error) {
 	var raw []byte
 	err := s.pool.QueryRow(ctx, `
 		SELECT last_summary FROM pull_requests
-		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3`,
+		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3 AND `+activeFilter,
 		k.Project, k.Repo, k.PRID).Scan(&raw)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && raw == nil) {
 		return nil, nil

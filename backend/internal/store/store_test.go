@@ -480,6 +480,17 @@ func TestLastSummary_CarriedByTheRun(t *testing.T) {
 	if got, err := s.LastSummary(ctx, key); got != nil || err != nil {
 		t.Errorf("after reactivate: %+v, %v", got, err)
 	}
+	// A deleted PR's prose never reaches a PR that reuses its id.
+	if _, err := s.InsertRun(ctx, Run{PullRequestID: id, Kind: RunAuto, ToCommit: "d", ModelLabel: "m",
+		Summary: &PRSummary{Overview: "Adds refunds."}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MarkDeleted(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.LastSummary(ctx, key); got != nil || err != nil {
+		t.Errorf("after delete: %+v, %v", got, err)
+	}
 }
 
 // The reply job finds a finding by its comment on the authenticated PR only,

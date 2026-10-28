@@ -291,9 +291,9 @@ func RenderPreviouslyPostedFindings(findings []PostedFinding) string {
 		strings.Join(lines, "\n")
 }
 
-// previousOverviewCap bounds the carried overview, so it cannot grow from
+// PreviousOverviewCap bounds the carried overview, so it cannot grow from
 // push to push.
-const previousOverviewCap = 2000
+const PreviousOverviewCap = 2000
 
 // RenderPreviousOverview is the overview the last review wrote, for this one
 // to build on (user, 2026-10-28): without it, whatever of the PR does not
@@ -304,20 +304,20 @@ func RenderPreviousOverview(overview string) string {
 	if text == "" {
 		return ""
 	}
-	if r := []rune(text); len(r) > previousOverviewCap {
-		text = string(r[:previousOverviewCap-3]) + "..."
+	if r := []rune(text); len(r) > PreviousOverviewCap {
+		text = string(r[:PreviousOverviewCap-3]) + "..."
 	}
 	return "## Previous PR overview\n" +
 		"\n" +
-		"The `overview` you wrote on the previous review of this PR, before the latest push. " +
-		"It is your own earlier draft, never evidence: your memory of what the PR does where this prompt " +
-		"no longer shows that code. Where it and the code disagree, the code wins. " +
+		"The `overview` you wrote on the previous review of this PR. " +
+		"It is your own earlier draft, never evidence and never a source of findings: your memory of what " +
+		"the PR does where this prompt no longer shows that code. Where it and the code disagree, the code wins. " +
 		"Write this review's `overview` as if the PR had been opened in its current state, in one go: " +
 		"what it does now, nothing about pushes, changes or order. " +
-		"Keep what the PR still does, include what the latest push added, and leave out entirely what a push " +
-		"removed or reverted (do not write that it was removed). " +
+		"Keep what the PR still does, include what the diffs above add, and leave out entirely what the code " +
+		"no longer has (do not write that it was removed). " +
 		"Anything about the latest push goes in `latest_push`, never here. " +
-		"The readers never saw this draft: do not mention it.\n" +
+		"Never mention that a previous overview exists.\n" +
 		"\n" +
 		text
 }

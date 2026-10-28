@@ -201,11 +201,12 @@ unreadable thread counts as open) and this run's: issues first, earlier before
 new within a severity, the new ones marked when earlier ones stand beside
 them. The list shows 30 and counts the rest under them.
 
-The overview builds on the previous one: every review after the first gets
-the overview the last completed review wrote, from the database, as its own
+The overview builds on the previous one: every incremental review gets the
+overview the last completed review wrote, from the database, as its own
 earlier draft to update. On a large PR whose diff does not fit the prompt,
 what earlier pushes did stays in the overview; what the diff contradicts
-(a reverted part) is dropped, because the code wins over the draft.
+(a reverted part) is dropped, because the code wins over the draft. A full
+review writes the overview fresh from the whole PR.
 
 A finding whose thread someone resolved or deleted is settled: it leaves
 the list and the verdict, is never posted again, and the model still sees

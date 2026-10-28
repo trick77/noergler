@@ -144,7 +144,7 @@ func Summary(in SummaryInput) string {
 			shortSHA(in.IncrementalFrom, 10), shortSHA(in.ReviewedCommit, 10))
 		// Flattened to one paragraph first, then wrapped as the list item it
 		// is (hang indent). A sentinel says nothing about a push: dropped.
-		if push := strings.Join(strings.Fields(in.Summary.LatestPush), " "); push != "" && !isNoneSentinel(push) {
+		if push := strings.Join(strings.Fields(in.Summary.LatestPush), " "); push != "" && !IsNoneSentinel(push) {
 			line += " — " + push
 		}
 		header += "\n" + WrapProse(line)
@@ -159,7 +159,7 @@ func Summary(in SummaryInput) string {
 	// defect worth seeing; the plain sentinels mean it looked and found
 	// nothing. Two different states, both rendered.
 	security := strings.TrimSpace(in.Summary.SecurityPerformance)
-	if isNoneSentinel(security) {
+	if IsNoneSentinel(security) {
 		security = ""
 	}
 	coverage := strings.TrimSpace(in.Summary.TestCoverage)
@@ -240,7 +240,7 @@ func renderStrengths(in SummaryInput) string {
 	var b strings.Builder
 	b.WriteString(heading)
 	for _, s := range in.Summary.Strengths {
-		if !isNoneSentinel(s) {
+		if !IsNoneSentinel(s) {
 			b.WriteString("\n- " + s)
 		}
 	}
@@ -255,7 +255,9 @@ func renderStrengths(in SummaryInput) string {
 // field that is only a sentinel renders as the localized one.
 const coverageNotAssessable = "Test coverage not assessable from diff alone."
 
-func isNoneSentinel(s string) bool {
+// IsNoneSentinel reports whether s is the prompt's "None." / "None notable."
+// sentinel.
+func IsNoneSentinel(s string) bool {
 	switch strings.ToLower(strings.TrimSuffix(strings.TrimSpace(s), ".")) {
 	case "none", "none notable":
 		return true
