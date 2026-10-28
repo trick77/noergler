@@ -340,12 +340,18 @@ func (s *Store) RemoveClaims(ctx context.Context, teamSlug string, scopes []conf
 // and findings cascade). The team guard keeps a team from purging data
 // another team wrote on a project that changed hands. Returns the count.
 func (s *Store) PurgeProject(ctx context.Context, teamSlug, projectKey string, repoSlug *string) (int, error) {
+	// One transaction: the PR rows and the notes go together or not at all,
+	// so a failed purge is a purge that did not happen.
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
 	var tag pgconn.CommandTag
-	var err error
 	if repoSlug == nil {
-		tag, err = s.pool.Exec(ctx, `DELETE FROM pull_requests WHERE team_slug = $1 AND project_key = $2`, teamSlug, projectKey)
+		tag, err = tx.Exec(ctx, `DELETE FROM pull_requests WHERE team_slug = $1 AND project_key = $2`, teamSlug, projectKey)
 	} else {
-		tag, err = s.pool.Exec(ctx, `DELETE FROM pull_requests WHERE team_slug = $1 AND project_key = $2 AND repo_slug = $3`, teamSlug, projectKey, *repoSlug)
+		tag, err = tx.Exec(ctx, `DELETE FROM pull_requests WHERE team_slug = $1 AND project_key = $2 AND repo_slug = $3`, teamSlug, projectKey, *repoSlug)
 	}
 	if err != nil {
 		return 0, err
@@ -353,11 +359,14 @@ func (s *Store) PurgeProject(ctx context.Context, teamSlug, projectKey string, r
 	// Almanach notes have no FK (a final one must outlive the PR row until
 	// it is sent), so the ones that are not final go here, by hand.
 	if repoSlug == nil {
-		_, err = s.pool.Exec(ctx, `DELETE FROM almanach_notes WHERE team_slug = $1 AND project_key = $2 AND finalized_at IS NULL`, teamSlug, projectKey)
+		_, err = tx.Exec(ctx, `DELETE FROM almanach_notes WHERE team_slug = $1 AND project_key = $2 AND finalized_at IS NULL`, teamSlug, projectKey)
 	} else {
-		_, err = s.pool.Exec(ctx, `DELETE FROM almanach_notes WHERE team_slug = $1 AND project_key = $2 AND repo_slug = $3 AND finalized_at IS NULL`, teamSlug, projectKey, *repoSlug)
+		_, err = tx.Exec(ctx, `DELETE FROM almanach_notes WHERE team_slug = $1 AND project_key = $2 AND repo_slug = $3 AND finalized_at IS NULL`, teamSlug, projectKey, *repoSlug)
 	}
 	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return 0, err
 	}
 	n := int(tag.RowsAffected())

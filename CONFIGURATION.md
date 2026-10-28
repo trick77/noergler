@@ -152,7 +152,7 @@ teams:
 | `review.*` | no | Override any `REVIEW_*` default. |
 | `jira.acceptance_criteria_prefixes` | no | Override the instance prefixes. |
 | `riptide.url`, `riptide.token_env` | no | Present means FinOps forwarding is on. Both required together. |
-| `almanach.url`, `almanach.token_env` | no | Present means every review round writes an Almanach note and each merge forwards it (HOW_IT_WORKS §15). Both required together; absent, no note call is made. The token is the team's identity at Almanach. |
+| `almanach.url`, `almanach.token_env` | no | Present means every review round writes an Almanach note and each merge forwards it (HOW_IT_WORKS.md, "Almanach feed"). Both required together; absent, no note call is made. The token is the team's identity at Almanach. |
 
 Decoding is strict: an unknown key disables that team, and only that team.
 

@@ -29,12 +29,16 @@ type AlmanachNote struct {
 	ModelLabel string
 }
 
-// What UpsertAlmanachNote did with a round's note. The last two are
-// almanach_calls.note_status values too.
+// What UpsertAlmanachNote did with a round's note, each an
+// almanach_calls.note_status value: written; superseded (a later round
+// already landed); already_emitted (the merge sent the note while this round
+// was in flight); no_row (the PR was declined or deleted meanwhile and its
+// row is gone).
 const (
 	NoteWritten        = "written"
 	NoteSuperseded     = "superseded"
 	NoteAlreadyEmitted = "already_emitted"
+	NoteNoRow          = "no_row"
 )
 
 // AlmanachFinal is what pr:merged stamps onto the note.
@@ -124,11 +128,15 @@ func (s *Store) UpsertAlmanachNote(ctx context.Context, n AlmanachNote) (string,
 	if tag.RowsAffected() == 1 {
 		return NoteWritten, nil
 	}
-	st, _, err := s.AlmanachNoteStatus(ctx, n.Key)
-	if err != nil {
+	st, ok, err := s.AlmanachNoteStatus(ctx, n.Key)
+	switch {
+	case err != nil:
 		return "", err
-	}
-	if st.Emitted {
+	case !ok:
+		// Gone between the two statements: a decline or a delete landed
+		// while the round ran unheld.
+		return NoteNoRow, nil
+	case st.Emitted:
 		return NoteAlreadyEmitted, nil
 	}
 	return NoteSuperseded, nil

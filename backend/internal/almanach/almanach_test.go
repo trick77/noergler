@@ -10,6 +10,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/trick77/noergler/internal/store"
 )
 
 type fake struct {
@@ -54,8 +56,8 @@ func sampleNote() Note {
 		IssuesPosted: 2, SuggestionsPosted: 1,
 		Note:   json.RawMessage(`{"summary":"s","change_kind":"bugfix"}`),
 		Claims: []Claim{{ProjectKey: "PROJ"}, {ProjectKey: "OTHER", RepoSlug: "x"}},
-		NoteCall: &Call{Outcome: "ok", NoteStatus: "written", Model: "m", CostNanoUSD: nano(12_300_000),
-			CacheReadTokens: nano(90_000), Warnings: nil},
+		NoteCall: &Call{Outcome: "ok", NoteStatus: "written", LLMCall: store.LLMCall{Model: "m", CostNanoUSD: nano(12_300_000),
+			CacheReadTokens: nano(90_000), Warnings: nil}},
 		Rounds: Rounds{Count: 3, InputTokens: 300_000, OutputTokens: 1_500, CostNanoUSD: nano(40_000_000)},
 		Review: ReviewTotals{Runs: 3, PromptTokens: 10, CompletionTokens: 20, ElapsedMS: 1500, CostNanoUSD: nil, Models: []string{"gpt-5.5"}},
 	}
@@ -201,7 +203,7 @@ func TestEmitNoteFailures(t *testing.T) {
 	_, e = newFake(t, func(_ http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
 	})
-	e.set(StatusOK)
+	e.c.Set(StatusOK)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { time.Sleep(20 * time.Millisecond); cancel() }()
 	if e.EmitNote(ctx, sampleNote()) || e.Status() != StatusOK {
