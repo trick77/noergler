@@ -144,6 +144,16 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   keys and logs stay English; `{output_language}` above "## Untrusted
   input"; `SwissSS` on model prose only, never code or `suggestion`. Evals
   pin `en`. Every banner marker exists per language.
+- No em dash in anything posted (user, 2026-10-28): the Reviewer's client
+  is wrapped (`outgoing`), so every comment write goes through
+  `render.NoEmDash`, which leaves fences and inline code alone. Post only
+  through `r.bitbucket`; a banner marker never holds an em dash, and a
+  rendered body compared with a fetched one goes through `NoEmDash` first.
+- Model prose is hard-wrapped (`WrapProse`, Bitbucket shows every newline):
+  summary, inline findings and replies alike (user, 2026-10-28; replies in
+  `outgoing`), lists at the prose width, never earlier. Fences (``` and
+  ~~~, read the same by `NoEmDash`), indented code, headings, quotes and
+  table rows pass through unbroken.
 - `.properties` size gate is NOT in `IsReviewable` (the rollup must count the
   file).
 - Test screenshots (user, 2026-10-28): summary only, never a finding (evals
@@ -152,7 +162,8 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   only on a vision profile. List = the whole PR's, from its changes; before
   = the PR's base, never the target's tip; a line is stored per pair by blob
   id and reused, never re-sent or re-read; pixel diff and crop in code, never
-  by the model. A screenshot left out is logged and its line says why.
+  by the model. A screenshot left out is logged and its line says why; a
+  removed one gets no line (user, 2026-10-28: noise).
 
 ## Evals
 

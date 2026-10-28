@@ -142,7 +142,7 @@ type Options struct {
 func New(opt Options) *Reviewer {
 	r := &Reviewer{
 		TeamSlug:          opt.TeamSlug,
-		bitbucket:         opt.Bitbucket,
+		bitbucket:         withOutgoing(opt.Bitbucket),
 		llm:               opt.LLM,
 		store:             opt.Store,
 		jira:              opt.Jira,

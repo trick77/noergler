@@ -132,7 +132,6 @@ type VisualStatus int
 // the model's line, this run's or stored; the rest say why there is none.
 const (
 	VisualDescribed VisualStatus = iota
-	VisualDeleted
 	VisualNoVision
 	VisualOverCap
 	VisualNoRoom
@@ -268,6 +267,13 @@ func renderVisual(in SummaryInput) string {
 		lines = append(lines, p("_Diesmal nicht gelesen: die Änderungen des PR waren nicht abrufbar._",
 			"_Not read this run: the PR's changes could not be fetched._"))
 	}
+	// The file name, not the path: a snapshot path is wider than a line on
+	// its own, and the description then always started under it (user,
+	// 2026-10-28). A name two screenshots share keeps its path.
+	names := map[string]int{}
+	for _, v := range in.Visual {
+		names[path.Base(v.Path)]++
+	}
 	for i, v := range in.Visual {
 		if i == maxVisualLines {
 			lines = append(lines, fmt.Sprintf(p("_… und %d weitere._", "_… and %d more._"), len(in.Visual)-i))
@@ -277,8 +283,6 @@ func renderVisual(in SummaryInput) string {
 		switch v.Status {
 		case VisualDescribed:
 			text = strings.Join(strings.Fields(v.Text), " ")
-		case VisualDeleted:
-			text = p("entfernt.", "removed.")
 		case VisualNoVision:
 			text = p("_nicht verglichen: das Modell nimmt keine Bilder._", "_not compared: the model takes no images._")
 		case VisualOverCap:
@@ -295,7 +299,11 @@ func renderVisual(in SummaryInput) string {
 		default:
 			text = p("_nicht verglichen: das Modell hat nichts dazu gesagt._", "_not compared: the model said nothing about it._")
 		}
-		line := fmt.Sprintf("- `%s` — %s", v.Path, text)
+		name := path.Base(v.Path)
+		if names[name] > 1 {
+			name = v.Path
+		}
+		line := fmt.Sprintf("- `%s` — %s", name, text)
 		if v.Variants > 0 {
 			line += " _(" + PluralIn(in.Lang, v.Variants, "weitere Variante", "weitere Varianten",
 				"more variant", "more variants") + ")_"

@@ -138,7 +138,7 @@ func TestSummaryOfAQuietPushKeepsThePR(t *testing.T) {
 	s := h.bb.Posted[0].Text
 	for _, want := range []string{
 		"1. Nil map write\n2. Name it\n",
-		"**Request changes 🛑** — Verdict raised: 1 open finding demands it.",
+		"**Request changes 🛑** - Verdict raised: 1 open finding demands it.",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("summary lacks %q:\n%s", want, s)
@@ -250,7 +250,7 @@ func TestDropBesideAnOpenIssueKeepsTheVerdict(t *testing.T) {
 
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
-	want := "**Request changes 🛑** — Verdict: 1 open finding demands it."
+	want := "**Request changes 🛑** - Verdict: 1 open finding demands it."
 	if s := h.bb.Posted[0].Text; !strings.Contains(s, want) {
 		t.Errorf("summary lacks %q:\n%s", want, s)
 	}
@@ -273,7 +273,7 @@ func TestClosedThreadLowersAStaleVerdict(t *testing.T) {
 
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
-	want := "**Approve ✅** — Verdict lowered: the PR's open findings do not support it."
+	want := "**Approve ✅** - Verdict lowered: the PR's open findings do not support it."
 	if s := h.bb.Posted[0].Text; !strings.Contains(s, want) {
 		t.Errorf("summary lacks %q:\n%s", want, s)
 	}
@@ -380,7 +380,7 @@ func TestUnreadableEarlierFindingsNeverLowerTheVerdict(t *testing.T) {
 
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
-	if s := h.bb.Posted[0].Text; !strings.Contains(s, "**Request changes 🛑** — The old retry bug is still there.") {
+	if s := h.bb.Posted[0].Text; !strings.Contains(s, "**Request changes 🛑** - The old retry bug is still there.") {
 		t.Errorf("the verdict must stand over an unread list:\n%s", s)
 	}
 }
@@ -451,7 +451,7 @@ func TestNewIssueRaisesAnApprove(t *testing.T) {
 
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
 
-	want := "**Request changes 🛑** — Verdict raised: 1 open finding demands it."
+	want := "**Request changes 🛑** - Verdict raised: 1 open finding demands it."
 	if s := h.bb.Posted[0].Text; !strings.Contains(s, want) {
 		t.Errorf("summary lacks %q:\n%s", want, s)
 	}

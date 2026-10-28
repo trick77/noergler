@@ -67,7 +67,7 @@ func TestReadyForReviewListsOpenThreadsOnTheSummary(t *testing.T) {
 	h.r.HandleReadyForReview(t.Context(), readyPayload())
 
 	got := summaryText(h)
-	if !strings.HasPrefix(got, render.HandoffBannerSentinel+"\n🔎 **Ready for review** — 2 noergler threads still open: ") {
+	if !strings.HasPrefix(got, render.HandoffBannerSentinel+"\n🔎 **Ready for review** - 2 noergler threads still open: ") {
 		t.Fatalf("summary does not open with the handoff banner:\n%s", got)
 	}
 	for _, want := range []string{
@@ -174,7 +174,7 @@ func TestReadyForReviewSpeaksTheAuthorsLanguage(t *testing.T) {
 
 	h.r.HandleReadyForReview(t.Context(), readyPayload())
 
-	if !strings.Contains(summaryText(h), "🔎 **Bereit für Reviewer** — noch 1 offener noergler-Thread: ") {
+	if !strings.Contains(summaryText(h), "🔎 **Bereit für Reviewer** - noch 1 offener noergler-Thread: ") {
 		t.Errorf("not in the author's German:\n%s", summaryText(h))
 	}
 }
@@ -212,7 +212,8 @@ func TestReadyForReviewPutsTheBannerBelowACostBanner(t *testing.T) {
 	h.r.HandleReadyForReview(t.Context(), readyPayload())
 
 	got := summaryText(h)
-	if !strings.HasPrefix(got, cost+"\n\n"+render.HandoffBannerSentinel) {
+	// As posted: the comment goes out without em dashes.
+	if !strings.HasPrefix(got, render.NoEmDash(cost)+"\n\n"+render.HandoffBannerSentinel) {
 		t.Errorf("want cost banner, then handoff banner:\n%s", got)
 	}
 	if render.StripCostBanner(got) == got {

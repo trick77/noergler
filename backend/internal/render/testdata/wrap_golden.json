@@ -29,27 +29,27 @@
  },
  {
   "in": "- A bullet item that is quite long and should wrap at the narrower list width because list items get a tighter column than plain prose does here.",
-  "out": "- A bullet item that is quite long and should wrap at the narrower list width because list\n  items get a tighter column than plain prose does here."
+  "out": "- A bullet item that is quite long and should wrap at the narrower list width because list items get a tighter\n  column than plain prose does here."
  },
  {
   "in": "* Star bullet with a lot of text so that it wraps somewhere in the middle of the sentence and gets a hang indent on the continuation line.",
-  "out": "* Star bullet with a lot of text so that it wraps somewhere in the middle of the sentence\n  and gets a hang indent on the continuation line."
+  "out": "* Star bullet with a lot of text so that it wraps somewhere in the middle of the sentence and gets a hang\n  indent on the continuation line."
  },
  {
   "in": "+ Plus bullet with a lot of text so that it wraps somewhere in the middle of the sentence and gets a hang indent on the continuation line.",
-  "out": "+ Plus bullet with a lot of text so that it wraps somewhere in the middle of the sentence\n  and gets a hang indent on the continuation line."
+  "out": "+ Plus bullet with a lot of text so that it wraps somewhere in the middle of the sentence and gets a hang\n  indent on the continuation line."
  },
  {
   "in": "• Unicode bullet with a lot of text so that it wraps somewhere in the middle of the sentence and gets a hang indent here.",
-  "out": "• Unicode bullet with a lot of text so that it wraps somewhere in the middle of the\n  sentence and gets a hang indent here."
+  "out": "• Unicode bullet with a lot of text so that it wraps somewhere in the middle of the sentence and gets a hang\n  indent here."
  },
  {
   "in": "1. Numbered item with enough words that the wrapping kicks in and the continuation is indented under the text rather than the marker.",
-  "out": "1. Numbered item with enough words that the wrapping kicks in and the continuation is\n   indented under the text rather than the marker."
+  "out": "1. Numbered item with enough words that the wrapping kicks in and the continuation is indented under the text\n   rather than the marker."
  },
  {
   "in": "2) Paren numbered item with enough words that the wrapping kicks in and the continuation is indented under the text itself.",
-  "out": "2) Paren numbered item with enough words that the wrapping kicks in and the continuation\n   is indented under the text itself."
+  "out": "2) Paren numbered item with enough words that the wrapping kicks in and the continuation is indented under the\n   text itself."
  },
  {
   "in": "# A heading that is quite long and must never be wrapped no matter how many words it contains in total here.",
@@ -97,7 +97,7 @@
  },
  {
   "in": "-   Bullet with extra spaces after the marker and a long tail of words that will need to wrap at the list width setting.",
-  "out": "-   Bullet with extra spaces after the marker and a long tail of words that will need to\n    wrap at the list width setting."
+  "out": "-   Bullet with extra spaces after the marker and a long tail of words that will need to wrap at the list\n    width setting."
  },
  {
   "in": "Hyphenated-words-joined-together-should-not-be-split-on-hyphens even when the line is long enough to require wrapping here.",
@@ -105,11 +105,11 @@
  },
  {
   "in": "- Bullet whose marker is followed by a non-breaking space, long enough that it has to wrap at the list width.",
-  "out": "- Bullet whose marker is followed by a non-breaking space, long enough that it has to wrap\n  at the list width."
+  "out": "- Bullet whose marker is followed by a non-breaking space, long enough that it has to wrap at the list width."
  },
  {
   "in": " - Bullet indented with a non-breaking space, long enough that it has to wrap somewhere at the list width cap.",
-  "out": " - Bullet indented with a non-breaking space, long enough that it has to wrap somewhere at\n   the list width cap."
+  "out": " - Bullet indented with a non-breaking space, long enough that it has to wrap somewhere at the list width cap."
  },
  {
   "in": " > Quote indented with a non-breaking space that must never wrap no matter how long the line runs in total.",
@@ -121,7 +121,7 @@
  },
  {
   "in": "١. Numbered item with an Arabic-Indic marker and enough words that the wrapping kicks in at the list width.",
-  "out": "١. Numbered item with an Arabic-Indic marker and enough words that the wrapping kicks in\n   at the list width."
+  "out": "١. Numbered item with an Arabic-Indic marker and enough words that the wrapping kicks in at the list width."
  },
  {
   "in": " ",

@@ -409,16 +409,18 @@ func TestSummaryVisualChanges(t *testing.T) {
 	}
 	in := base()
 	in.Visual = []VisualLine{
-		{Path: "s-snapshots/login-chromium.png", Text: "Submit button moved\nbelow the form; explained by `login.css`.", Variants: 2},
-		{Path: "s-snapshots/header.png", Status: VisualNoVision},
-		{Path: "s-snapshots/old.png", Status: VisualDeleted},
+		{Path: "apps/e2e/tests/__screenshots__/login.spec.ts/login-chromium.png", Text: "Submit button moved\nbelow the form; explained by `login.css`.", Variants: 2},
+		{Path: "a/__screenshots__/header.png", Status: VisualNoVision},
+		{Path: "b/__screenshots__/header.png", Status: VisualOverCap},
 	}
 	got := Summary(in)
 	for _, want := range []string{
-		// Flattened to one paragraph, then wrapped as the list item it is.
-		"### Visual changes\n- `s-snapshots/login-chromium.png` — Submit button moved below the form; explained by\n  `login.css`. _(2 more variants)_",
-		"- `s-snapshots/header.png` — _not compared: the model takes no images._",
-		"- `s-snapshots/old.png` — removed.",
+		// The file name, not the path, then the line flattened to one
+		// paragraph and wrapped as the list item it is.
+		"### Visual changes\n- `login-chromium.png` — Submit button moved below the form; explained by `login.css`. _(2 more variants)_",
+		// A name two screenshots share keeps its path.
+		"- `a/__screenshots__/header.png` — _not compared: the model takes no images._",
+		"- `b/__screenshots__/header.png` — _not compared yet",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)
