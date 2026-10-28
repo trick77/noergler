@@ -13,7 +13,7 @@ Write it the way good repository documentation reads: a comprehensive descriptio
 - `rules`: business rules the code enforces: the rule, where it applies, what happens when it is broken.
 - `invariants`: what must always hold, as the code shows it, and what keeps it so.
 - `entities`: data entities, tables, messages: their key fields and what they mean.
-- Each item: `name` (at most 80 characters), `text` (the comprehensive documentation of that item, prose, as many paragraphs as it needs), `files` (up to 5 repository paths from the files you saw, exactly as shown). At most 16 items per list. One item per thing: a component with three rules is one component and three rules.
+- Each item: `name` (at most 80 characters), `text` (the comprehensive documentation of that item, prose, as many paragraphs as it needs), `files` (up to 5 repository paths from the files you saw, exactly as shown, each at most 200 characters). At most 16 items per list. One item per thing: a component with three rules is one component and three rules.
 
 ## Never
 

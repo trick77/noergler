@@ -142,6 +142,9 @@ func TestAlmanachNoteStatuses(t *testing.T) {
 		{"unparseable", func(r *inference.AlmanachNoteResult) {
 			*r = inference.AlmanachNoteResult{Outcome: inference.OutcomeUnparseable, Cost: inference.CallCost{Answered: true}}
 		}, inference.AlmanachInvalid, 0},
+		{"cut by the output limit", func(r *inference.AlmanachNoteResult) {
+			*r = inference.AlmanachNoteResult{Outcome: inference.OutcomeUnparseable, Cut: true, Cost: inference.CallCost{Answered: true}}
+		}, inference.AlmanachTooLong, 0},
 		{"no answer", func(r *inference.AlmanachNoteResult) {
 			*r = inference.AlmanachNoteResult{Outcome: inference.OutcomeTimedOut}
 		}, inference.AlmanachNoAnswer, 0},

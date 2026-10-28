@@ -446,9 +446,13 @@ from the code, kept essential. Prose has no length cap of its own; the
 validator trims, spells Swiss, checks the shape, scans the prose for
 secret-like tokens and applies the caps that exist: a name's length, the
 files per item, the items per list, and the whole note against
-`ALMANACH_NOTE_MAX_CHARS`, the one ceiling against bloat. Over any of them
-the whole note drops and the previous round's stays; never truncated. Each
-round replaces the PR's note. Every call, whatever became of it, leaves a row in `almanach_calls`
+`ALMANACH_NOTE_MAX_CHARS`, the one ceiling against bloat, counted on the
+prose the model wrote, not on the JSON around it. Over any of them the
+whole note drops and the previous round's stays; never truncated. An
+answer the model's own output limit cut off is a length drop too, not a
+shape fault. Identifiers in backticks are scanned for credential shapes
+only: documentation names what it documents. Each round replaces the PR's
+note. Every call, whatever became of it, leaves a row in `almanach_calls`
 with the gateway's figures and a `note_status`; that ledger counts toward
 nothing else, not the PR's cost, not the dashboard spend, not the rollup.
 

@@ -152,6 +152,11 @@ func (r *Reviewer) almanachNote(ctx context.Context, job almanachJob) {
 		status = r.storeAlmanachNote(ctx, job, res)
 	case inference.OutcomeUnparseable:
 		status = inference.AlmanachInvalid
+		if res.Cut {
+			// The model's output limit ended the answer: the note did not
+			// fit, which the ledger should say as a length drop.
+			status = inference.AlmanachTooLong
+		}
 	default:
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: almanach note not written: %s (%v)", job.prTag, res.Outcome, res.Err))
 	}
