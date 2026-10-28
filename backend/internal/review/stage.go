@@ -98,6 +98,9 @@ type reviewPlan struct {
 	// Only one goroutine touches it at a time: the pool goroutine writes it,
 	// and the queue submits post only after that write has returned.
 	result inference.ReviewResult
+	// runID is the run row post wrote, 0 when none: what the Almanach note
+	// that follows is filed under.
+	runID int64
 	// sw times the stages and detail collects the run page's record, from
 	// prepare through post.
 	sw     *stopwatch
@@ -147,7 +150,12 @@ func (r *Reviewer) ReviewPullRequestStaged(ctx context.Context, payload *webhook
 
 	sched.Stage(ctx, plan.key, team,
 		func(inferCtx context.Context) { plan.result = r.infer(inferCtx, plan) },
-		func(postCtx context.Context) { r.post(postCtx, plan, plan.result) },
+		func(postCtx context.Context) {
+			r.post(postCtx, plan, plan.result)
+			// After the review is on the PR, never before: the note is a
+			// by-product and must not delay the comments.
+			r.spawnAlmanachNote(postCtx, plan, team, sched)
+		},
 	)
 	return true
 }

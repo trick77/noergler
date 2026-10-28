@@ -65,9 +65,13 @@ type InferenceClient interface {
 	Label() string
 	Ready() bool
 	InputTokenBudget() int
+	// FitCeiling is the most a request may occupy; the note call checks
+	// the replayed conversation against it before spending anything.
+	FitCeiling() int
 	Review(ctx context.Context, req inference.ReviewRequest) inference.ReviewResult
 	Mention(ctx context.Context, req inference.MentionRequest) inference.MentionResult
 	FindingReply(ctx context.Context, req inference.FindingReplyRequest) inference.FindingReplyResult
+	AlmanachNote(ctx context.Context, req inference.AlmanachNoteRequest) inference.AlmanachNoteResult
 }
 
 // Store is the part of the store the pipeline uses. Every call goes through
@@ -102,6 +106,15 @@ type Store interface {
 	PRStatus(ctx context.Context, k store.PRKey, team string) (*store.PRStatus, error)
 	UserLanguage(ctx context.Context, userName string) (lang.Lang, error)
 	SetUserLanguage(ctx context.Context, userName string, l lang.Lang) error
+	// The Almanach feed: one note per PR, replaced per round, stamped at
+	// merge, sent on, and its own call ledger.
+	UpsertAlmanachNote(ctx context.Context, n store.AlmanachNote) (string, error)
+	FinalizeAlmanachNote(ctx context.Context, k store.PRKey, team string, f store.AlmanachFinal) (bool, error)
+	DeleteAlmanachNote(ctx context.Context, k store.PRKey) error
+	MarkAlmanachEmitted(ctx context.Context, k store.PRKey, runID int64) error
+	PendingAlmanachNotes(ctx context.Context, team string, limit int) ([]store.AlmanachPending, error)
+	InsertAlmanachCall(ctx context.Context, c store.AlmanachCall) error
+	AlmanachNoteStatus(ctx context.Context, k store.PRKey) (store.AlmanachNoteState, bool, error)
 }
 
 // TokenCounter counts tokens in a string.

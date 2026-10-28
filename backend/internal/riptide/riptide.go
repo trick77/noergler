@@ -13,8 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/trick77/noergler/internal/forward"
@@ -23,8 +21,6 @@ import (
 const (
 	emitPath = "/webhooks/noergler"
 	pingPath = "/auth/ping"
-	// nanoPerUSD is llmwire's cost unit, which the store also uses.
-	nanoPerUSD = 1_000_000_000
 )
 
 // Status words, as the dashboard shows them: forward's.
@@ -173,23 +169,9 @@ func modelsOrEmpty(m []string) []string {
 	return m
 }
 
-// FormatNanoUSD renders nano-USD as a plain decimal string: no exponent, no
-// trailing zeros, always at least one digit either side of the point. Money
-// crosses this boundary as text so neither side rounds it through a float.
-func FormatNanoUSD(nano int64) string {
-	sign := ""
-	if nano < 0 {
-		sign = "-"
-		nano = -nano
-	}
-	whole := nano / nanoPerUSD
-	frac := nano % nanoPerUSD
-	if frac == 0 {
-		return sign + strconv.FormatInt(whole, 10)
-	}
-	digits := strings.TrimRight(fmt.Sprintf("%09d", frac), "0")
-	return sign + strconv.FormatInt(whole, 10) + "." + digits
-}
+// FormatNanoUSD is forward.FormatNanoUSD: money crosses this boundary as an
+// exact decimal string, never a float.
+func FormatNanoUSD(nano int64) string { return forward.FormatNanoUSD(nano) }
 
 // formatTime renders a timestamp as UTC in the shape riptide reads: second
 // precision when there are no microseconds, six digits when there are.

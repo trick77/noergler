@@ -546,6 +546,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	// finding row.
 	runID := r.recordRun(ctx, prReviewID, result, sourceCommit, plan.incrementalFrom, plan.mention,
 		elapsed, postedCount, plan.diffAdded, plan.diffRemoved, plan.totalFiles)
+	plan.runID = runID
 	r.recordFindings(ctx, prReviewID, runID, findings, postedIDs)
 	r.retireFixed(ctx, plan, fixed, runID)
 

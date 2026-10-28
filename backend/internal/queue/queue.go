@@ -58,7 +58,7 @@ type ReviewFunc func(ctx context.Context, team string, payload *webhook.Payload,
 // fn on the pool and nothing afterwards: no worker tail, no PR hold.
 type Scheduler interface {
 	Stage(ctx context.Context, key store.PRKey, team string, infer, post func(context.Context))
-	Spawn(ctx context.Context, team, name string, fn func(context.Context))
+	Spawn(ctx context.Context, key store.PRKey, team, name string, fn func(context.Context))
 }
 
 // JobFunc is a queued unit of work that is not a PR review.
@@ -430,8 +430,9 @@ func (q *Queue) Stage(ctx context.Context, key store.PRKey, team string, infer, 
 }
 
 // Spawn runs fn on the inference pool, under the team's slot and then the
-// global one, with no worker tail and no PR hold. name is what the log
-// calls it ("almanach note").
+// global one, with no worker tail and no PR hold. key is the PR the work
+// belongs to, for the log's `queue[<tag>]` bracket only: it is never held.
+// name is what the log calls the work ("almanach note").
 //
 // For a gateway call that posts nothing to Bitbucket and whose result lands
 // in the database only (the Almanach note that follows a review). Stage
@@ -452,12 +453,13 @@ func (q *Queue) Stage(ctx context.Context, key store.PRKey, team string, infer, 
 // without a timeout, and staged keeps the worker from preparing prompts
 // while spawned calls hold the slots. A panic is logged and the slot
 // released; nothing else is affected.
-func (q *Queue) Spawn(ctx context.Context, team, name string, fn func(context.Context)) {
-	q.onPool(ctx, team, name, name, func(ctx context.Context) {
+func (q *Queue) Spawn(ctx context.Context, key store.PRKey, team, name string, fn func(context.Context)) {
+	tag := key.Tag()
+	q.onPool(ctx, team, tag, name, func(ctx context.Context) {
 		defer q.release(team)
 		started := time.Now()
 		fn(ctx)
-		q.log.InfoContext(ctx, fmt.Sprintf("queue[%s]: done in %.1fs", name, time.Since(started).Seconds()))
+		q.log.InfoContext(ctx, fmt.Sprintf("queue[%s]: %s done in %.1fs", tag, name, time.Since(started).Seconds()))
 	}, nil)
 }
 
@@ -488,9 +490,9 @@ func (q *Queue) onPool(ctx context.Context, team, tag, what string, body func(co
 			if r := recover(); r != nil {
 				q.log.ErrorContext(ctx, fmt.Sprintf("queue[%s]: %s panicked: %v", tag, what, r),
 					slog.String("stack", string(debug.Stack())))
-			}
-			if onPanic != nil {
-				onPanic()
+				if onPanic != nil {
+					onPanic()
+				}
 			}
 		}()
 

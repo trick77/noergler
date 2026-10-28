@@ -14,6 +14,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/trick77/noergler/internal/almanach"
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/inference"
@@ -86,6 +87,9 @@ type Runtime struct {
 	Reviewer   Reviewer
 	LLM        *inference.Client
 	Riptide    *riptide.Emitter
+	// Almanach is the team's note receiver, nil without an almanach: block.
+	// Set by Start after NewRuntime, like the accounts.
+	Almanach *almanach.Emitter
 	// accounts is nil for a Runtime built without them (route tests): the
 	// team then reads as on the shared accounts.
 	accounts *accounts

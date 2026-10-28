@@ -393,3 +393,55 @@ The schema records **runs**, not accumulators. A PR's totals are aggregates over
 
 Every store call in the review path goes through a wrapper that warns and falls
 back: a database fault must never fail a review.
+
+## 15. Almanach feed
+
+Almanach is a companion service like riptide: a living wiki of what the model
+learns about each repository and project, built from one note per merged PR.
+noergler prepares the notes; it never reads anything back, and nothing from
+Almanach enters a review.
+
+Opt-in per team with an `almanach:` block (`url`, `token_env`) in
+`teams.yaml`, like `riptide:`. No block, no note call, no row. The token is
+the team's identity at Almanach; the startup ping behaves like riptide's (a
+401 disables the team, anything else warns).
+
+**Per review round.** After a successful review has posted, one more call
+continues the review conversation on the inference pool: the same system
+message and prompt, the model's review answer verbatim as the assistant
+turn, then the note instruction (`almanach_note.txt`). The replayed turns are
+what the gateway's prefix cache can serve; whether it does under the note's
+own response schema is read off `almanach_calls.cache_read_tokens` on the
+first live calls, never assumed. The call runs without the PR's queue hold
+(`Spawn`), so the review comment is never delayed by it; its writes re-ask
+ownership and are ordered by run id, so a slow round never overwrites a later
+one.
+
+The note is German whatever the review's language, repo-scoped, one object:
+a summary (or `null` when the PR teaches nothing), the change kind (bugfix,
+feature, refactor, chore), for a bugfix its symptom, cause and cause class,
+and up to eight components, rules, invariants and entities with the files
+they rest on. The validator trims, spells Swiss, checks the shape, scans the
+prose for secret-like tokens and applies the caps (per field in code, the
+total from `ALMANACH_NOTE_MAX_CHARS`). Over any cap the whole note drops and
+the previous round's stays; never truncated. Each round replaces the PR's
+note. Every call, whatever became of it, leaves a row in `almanach_calls`
+with the gateway's figures and a `note_status`; that ledger counts toward
+nothing else, not the PR's cost, not the dashboard spend, not the rollup.
+
+**At merge.** `pr:merged` stamps the note final with the merge facts and the
+posted issue and suggestion counts (a stub when the first round has not
+landed yet) and sends the team's pending notes on, oldest first, up to ten.
+No model call. Almanach dedupes on the PR and its source commit, so a note is
+marked emitted only after a 2xx and a refused one goes with the team's next
+merge. A merge that lands while this PR's round is still in flight stamps the
+row and leaves the emit to that round, which then sends its own note only;
+the catch-up drain stays with the merges. A round whose PR was declined,
+deleted or purged meanwhile writes nothing (`no_row`); a store fault on the
+upsert is its own status (`store_failed`). `pr:declined` and `pr:deleted` forget
+a note that is not final; a final one is kept until sent.
+
+The payload carries the note, the PR's identity and the team's claims on the
+project (the structure Almanach places the note by), the review totals and
+every lane llmwire reported for the round's note call, money as exact
+strings beside nano-USD integers.

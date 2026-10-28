@@ -476,8 +476,6 @@ func parseBlock(m *yaml.Node) (*teamBlock, error) {
 	return tb, nil
 }
 
-// secretFromEnv resolves a *_env reference. Empty is rejected: an empty
-// inference key or webhook secret is a misconfiguration, never a value.
 // forwarder parses the `<name>: {url, token_env}` block, nil when absent;
 // both keys required, no others.
 func (b *blockErrors) forwarder(m *yaml.Node, name string) *forwarderBlock {
@@ -512,6 +510,8 @@ func resolveForwarder(name string, fb *forwarderBlock, lookup func(string) (stri
 	return &Forwarder{URL: strings.TrimRight(strings.TrimSpace(fb.url), "/"), Token: token}, nil
 }
 
+// secretFromEnv resolves a *_env reference. Empty is rejected: an empty
+// inference key or webhook secret is a misconfiguration, never a value.
 func secretFromEnv(field, variable string, lookup func(string) (string, bool)) (string, error) {
 	if strings.TrimSpace(variable) == "" {
 		return "", teamErrorf("%s must name an environment variable", field)

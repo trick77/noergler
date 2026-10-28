@@ -248,6 +248,17 @@ type fakeStore struct {
 	// botReplies serves BotReplyByComment; BotReplies records InsertBotReply.
 	botReplies map[int]*store.BotReply
 	BotReplies []store.BotReply
+	// The Almanach feed: notes is the table by key, Notes every upsert that
+	// was written, Finalized every merge stamp, EmittedRuns every 2xx mark,
+	// AlmanachCalls the ledger, NoteDeletes the declines and deletes.
+	notes map[store.PRKey]*fakeNote
+	// noteErr fails the note upsert alone, the ledger still writes.
+	noteErr       error
+	Notes         []store.AlmanachNote
+	Finalized     []store.AlmanachFinal
+	EmittedRuns   []int64
+	AlmanachCalls []store.AlmanachCall
+	NoteDeletes   int
 }
 
 type repliedCall struct {
@@ -625,6 +636,7 @@ type fakeLLM struct {
 	review  inference.ReviewResult
 	mention inference.MentionResult
 	reply   inference.FindingReplyResult
+	note    inference.AlmanachNoteResult
 	// onReview runs during the gateway call, between prepare and post.
 	onReview func()
 	// onMention plays the model in a tool loop: it may run the offered
@@ -636,6 +648,7 @@ type fakeLLM struct {
 	Reviews  []inference.ReviewRequest
 	Mentions []inference.MentionRequest
 	Replies  []inference.FindingReplyRequest
+	Notes    []inference.AlmanachNoteRequest
 }
 
 func newFakeLLM() *fakeLLM {
