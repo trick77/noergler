@@ -129,10 +129,11 @@ func SettleVerdict(s ReviewSummary, earlier, current, dropped []ReviewFinding, e
 	default:
 		// Counted are the open findings that demand it, earlier and new, not
 		// every one: six suggestions beside the issue do not request changes.
-		demands := map[string]string{"request_changes": "issue", "approve_with_followups": "suggestion"}[want]
+		// As supportedVerdict reads them: an issue requests changes, any
+		// other severity (an empty one included) asks for follow-ups.
 		n := 0
 		for _, f := range slices.Concat(earlier, current) {
-			if f.Severity == demands {
+			if (f.Severity == "issue") == (want == "request_changes") {
 				n++
 			}
 		}

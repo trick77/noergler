@@ -46,23 +46,28 @@ func asFindings(stored []store.Finding) []inference.ReviewFinding {
 
 // closeThreads returns findings, in their order, with ClosedAt set on each
 // whose Bitbucket thread is resolved or deleted: settled (user, 2026-10-28),
-// out of the PR summary and its verdict, never posted again. A newly closed
-// one is stamped, so its thread is never read again; a reopened thread is
-// not noticed (accepted). Open = ClosedAt nil. A thread that cannot be read
-// stays open, failing toward showing it; so does a row with no comment id
-// (legacy: none to read). posted counts the findings with a thread.
+// out of the PR summary and its verdict, never posted again. Open = ClosedAt
+// nil. A thread that cannot be read stays open, failing toward showing it;
+// so does a row with no comment id (legacy: none to read). posted counts the
+// findings with a thread.
+//
+// Only a resolved thread is stamped, so a review never reads it again (a
+// reopen is not noticed, accepted). A 404 is closed for this call only: a
+// stamp on one would turn a passing Bitbucket fault into a finding settled
+// for good, and a deleted thread costs one cheap 404 per review.
 //
 // One GET per unsettled finding, on the worker. limit > 0 reads at most
 // that many, issues first (user, 2026-10-28: every review pays this, on the
-// shared worker); the rest stay open unread. 0 reads all, for the rare
-// handoff. A cancelled ctx stops the reads. Each outcome is one log line.
+// shared worker); the rest stay open unread. 0 is the rare handoff: it reads
+// every thread, stamped ones too, so a reopened thread is in the banner.
+// A cancelled ctx stops the reads. Each outcome is one log line.
 func (r *Reviewer) closeThreads(ctx context.Context, key store.PRKey, prTag string, findings []store.Finding, limit int) (out []store.Finding, posted int) {
 	out = slices.Clone(findings)
 	var toRead []int // indexes into out, issues first when capped
 	for i, f := range out {
 		if f.BitbucketCommentID != nil {
 			posted++
-			if f.ClosedAt == nil {
+			if f.ClosedAt == nil || limit == 0 {
 				toRead = append(toRead, i)
 			}
 		}
@@ -72,8 +77,9 @@ func (r *Reviewer) closeThreads(ctx context.Context, key store.PRKey, prTag stri
 			return inference.SeverityRank(out[a].Severity) - inference.SeverityRank(out[b].Severity)
 		})
 	}
-	unread, unreadable, closed := 0, 0, 0
+	unread, unreadable, resolved, deleted := 0, 0, 0, 0
 	var lastErr error
+	now := time.Now()
 	for n, i := range toRead {
 		if (limit > 0 && n >= limit) || ctx.Err() != nil {
 			unread++
@@ -82,20 +88,28 @@ func (r *Reviewer) closeThreads(ctx context.Context, key store.PRKey, prTag stri
 		f := &out[i]
 		c, err := r.bitbucket.FetchPRComment(ctx, key.Project, key.Repo, key.PRID, *f.BitbucketCommentID)
 		switch {
-		case bitbucket.Status(err) == http.StatusNotFound, err == nil && c.ThreadResolved:
-			now := time.Now()
+		case bitbucket.Status(err) == http.StatusNotFound:
 			f.ClosedAt = &now
-			closed++
-			safeDBErr(ctx, r.log, "MarkFindingClosed", func() error { return r.store.MarkFindingClosed(ctx, f.ID) })
-		case err != nil && ctx.Err() == nil:
+			deleted++
+		case err == nil && c.ThreadResolved:
+			if f.ClosedAt == nil {
+				safeDBErr(ctx, r.log, "MarkFindingClosed", func() error { return r.store.MarkFindingClosed(ctx, f.ID) })
+			}
+			f.ClosedAt = &now
+			resolved++
+		case err == nil:
+			f.ClosedAt = nil // open, a stamped one reopened included
+		case ctx.Err() == nil:
+			f.ClosedAt = nil // fail toward showing it
 			unreadable++
 			lastErr = err
-		case err != nil:
+		default:
 			unread++
 		}
 	}
-	if closed > 0 {
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d finding thread(s) resolved or deleted on the PR, settled", prTag, closed))
+	if resolved+deleted > 0 {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: finding threads closed on the PR: %d resolved (settled), %d deleted",
+			prTag, resolved, deleted))
 	}
 	if unreadable > 0 {
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: %d finding thread(s) unreadable, kept open", prTag, unreadable), logging.Err(lastErr))

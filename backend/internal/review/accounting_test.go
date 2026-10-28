@@ -241,6 +241,48 @@ func TestResolvedThreadIsSettled(t *testing.T) {
 	}
 }
 
+// A 404 is closed for this review only, never stamped: a passing Bitbucket
+// fault must not settle a finding for good.
+func TestDeletedThreadIsNotStamped(t *testing.T) {
+	h := newHarness(t, nil)
+	incremental(h)
+	f := earlier(h, 11, "issue", "Gone one")
+	delete(h.bb.comments, *f.BitbucketCommentID)
+	h.st.existing = []store.Finding{f}
+	h.llm.review = okResultWith()
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	if len(h.st.Closed) != 0 {
+		t.Errorf("closed = %v, want no stamp on a 404", h.st.Closed)
+	}
+	if s := h.bb.Posted[0].Text; strings.Contains(s, "Gone one") {
+		t.Errorf("a deleted thread is closed for this review:\n%s", s)
+	}
+}
+
+// Over the prompt's cap, settled findings go before open ones: an open one
+// keeps its id, so it can still be claimed fixed.
+func TestTrimDropsClosedFindingsFirst(t *testing.T) {
+	h := newHarness(t, nil)
+	incremental(h)
+	open := earlier(h, 1, "issue", "Oldest open")
+	h.st.existing = []store.Finding{open}
+	for i := range maxPreviouslyPostedFindings {
+		f := earlier(h, int64(i+2), "suggestion", "")
+		at := time.Now()
+		f.ClosedAt = &at
+		h.st.existing = append(h.st.existing, f)
+	}
+	h.llm.review = okResultWith()
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	if p := h.llm.Reviews[0].Prompt; !strings.Contains(p, "[F1]") {
+		t.Errorf("the open finding was trimmed for a closed one")
+	}
+}
+
 // A stamped finding's thread is never read again.
 func TestSettledThreadIsNotReadAgain(t *testing.T) {
 	h := newHarness(t, nil)

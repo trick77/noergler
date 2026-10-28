@@ -219,3 +219,17 @@ func TestReadyForReviewPutsTheBannerBelowACostBanner(t *testing.T) {
 		t.Error("the cost banner is no longer strippable")
 	}
 }
+
+// A thread a review stamped closed and someone reopened is open again: the
+// rare handoff reads stamped threads too, so the banner names it.
+func TestReadyForReviewSeesAReopenedThread(t *testing.T) {
+	h := handoffHarness(t, 501)
+	at := time.Now()
+	h.st.existing[0].ClosedAt = &at
+
+	h.r.HandleReadyForReview(t.Context(), readyPayload())
+
+	if !strings.Contains(summaryText(h), render.HandoffBannerSentinel) {
+		t.Errorf("a reopened thread must be in the banner:\n%s", summaryText(h))
+	}
+}

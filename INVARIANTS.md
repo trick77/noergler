@@ -57,10 +57,13 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   the PR review summary; issue list = every open finding (`EarlierOpen` +
   new); `SettleVerdict` sets the decision from that list, once, both ways;
   a match keeps the model's rationale. List shows 30, the rest counted.
-- Thread resolved or deleted = settled (user, 2026-10-28): `closeThreads`
-  stamps `closed_at` once, never read again (a reopen is not noticed,
-  accepted). Settled: out of the list and verdict, never posted again
-  (dedupe still holds it), in the prompt marked closed with no id.
+- Thread resolved or deleted = settled (user, 2026-10-28). `closeThreads`
+  stamps `closed_at` on a resolved one only, never read by a review again
+  (a reopen is not noticed, accepted); a 404 is closed for that run only,
+  never stamped (a passing fault would settle it for good). The handoff
+  reads stamped threads too. Settled: out of the list and verdict, never
+  posted again (dedupe still holds it), in the prompt marked closed with
+  no id, trimmed from it before any open one.
   Unreadable or no comment id = open. Read in prepare, once per run, at
   most 50 unsettled threads, issues first, the rest open unread (user).
   Unretireable after a full-review fallback (no ids): open until its

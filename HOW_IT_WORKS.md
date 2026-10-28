@@ -203,8 +203,10 @@ them. The list shows 30 and counts the rest under them.
 
 A finding whose thread someone resolved or deleted is settled: it leaves
 the list and the verdict, is never posted again, and the model still sees
-it, marked closed, so it does not raise it again. noergler stamps it once
-and never reads that thread again; reopening it later is not noticed. A
+it, marked closed, so it does not raise it again. A resolved thread is
+stamped once and a review never reads it again; reopening it later is not
+noticed, except by the draft-to-ready banner, which reads every thread. A
+deleted thread is closed for the review that sees it, never stamped. A
 review reads at most 50 unsettled threads, issues first; the rest count as
 open without being read. An earlier finding a full review (after a rebase)
 could not retire stays open until its thread is resolved. The verdict is settled

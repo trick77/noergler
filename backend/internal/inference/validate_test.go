@@ -470,6 +470,8 @@ func TestSettleVerdict(t *testing.T) {
 			"Verdict raised: 2 open findings demand it."},
 		{"a new issue the model approved", lax, nil, []ReviewFinding{issue}, nil, "request_changes",
 			"Verdict raised: 1 open finding demands it."},
+		{"a blank severity asks for follow-ups and is counted", lax, []ReviewFinding{{}}, nil, nil, "approve_with_followups",
+			"Verdict raised: 1 open finding demands it."},
 		{"an unknown decision is named, not changed", ReviewSummary{VerdictDecision: "bogus", VerdictRationale: "hm"},
 			nil, nil, nil, "approve", ""},
 	}

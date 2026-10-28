@@ -862,6 +862,18 @@ func (r *Reviewer) trimPreviouslyPosted(ctx context.Context, prTag string, exist
 		}
 		posted = append(posted, p)
 	}
+	// Settled ones first, so the trims below drop them before any open one:
+	// an open finding carries the id a `fixed` claim needs and the verdict
+	// counts it; a closed one only keeps the model from raising it again.
+	slices.SortStableFunc(posted, func(a, b inference.PostedFinding) int {
+		if a.Closed == b.Closed {
+			return 0
+		}
+		if a.Closed {
+			return -1
+		}
+		return 1
+	})
 	if len(posted) > maxPreviouslyPostedFindings {
 		posted = posted[len(posted)-maxPreviouslyPostedFindings:]
 	}
@@ -875,7 +887,7 @@ func (r *Reviewer) trimPreviouslyPosted(ctx context.Context, prTag string, exist
 	// here can come back as a duplicate comment.
 	if len(posted) < len(existing) {
 		r.log.InfoContext(ctx, fmt.Sprintf(
-			"%s: previously posted findings trimmed: %d of %d shown to the model, oldest dropped (caps: %d findings, %d tokens)",
+			"%s: previously posted findings trimmed: %d of %d shown to the model, closed then oldest dropped (caps: %d findings, %d tokens)",
 			prTag, len(posted), len(existing), maxPreviouslyPostedFindings, limit))
 	}
 	return posted
