@@ -210,8 +210,12 @@ type fakeStore struct {
 	summary      *store.SummaryComment
 	existing     []store.Finding
 	existingErr  error // fails ExistingFindings alone
-	prCost       *int64
-	rollup       *store.RollupSnapshot
+	// lastSummary is the PR's stored summary prose; InsertRun carries a
+	// run's onto it.
+	lastSummary    *store.PRSummary
+	lastSummaryErr error // fails LastSummary alone
+	prCost         *int64
+	rollup         *store.RollupSnapshot
 	// languages is user_settings, keyed by lower-cased user name.
 	languages map[string]lang.Lang
 	status    *store.PRStatus
@@ -402,7 +406,22 @@ func (f *fakeStore) InsertRun(_ context.Context, r store.Run) (int64, error) {
 		return 0, f.runErr
 	}
 	f.Runs = append(f.Runs, r)
+	if r.Summary != nil {
+		f.lastSummary = r.Summary
+	}
 	return int64(len(f.Runs)), nil
+}
+
+func (f *fakeStore) LastSummary(context.Context, store.PRKey) (*store.PRSummary, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return nil, err
+	}
+	if f.lastSummaryErr != nil {
+		return nil, f.lastSummaryErr
+	}
+	return f.lastSummary, nil
 }
 
 func (f *fakeStore) InsertAttempt(_ context.Context, a store.Attempt) (int64, error) {

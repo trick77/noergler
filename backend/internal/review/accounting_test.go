@@ -34,6 +34,71 @@ func incremental(h *harness) {
 	h.bb.commitDiff = sampleDiff
 }
 
+// The overview a review writes reaches the next review's prompt, so a push
+// whose prompt cannot show the whole PR does not lose it from the overview.
+// The first review has none to carry.
+func TestOverviewCarriesToTheNextReview(t *testing.T) {
+	h := newHarness(t, nil)
+	h.llm.review = okResultWith()
+	h.llm.review.Review.Summary.Overview = "Adds retries with backoff to the gateway client."
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	if p := h.llm.Reviews[0].Prompt; strings.Contains(p, "Previous PR overview") {
+		t.Errorf("the first review has no overview to carry:\n%s", p)
+	}
+	if s := h.st.Runs[0].Summary; s == nil || s.Overview != "Adds retries with backoff to the gateway client." {
+		t.Fatalf("run summary = %+v", s)
+	}
+
+	incremental(h)
+	h.llm.review.Review.Summary.Overview = "None."
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	p := h.llm.Reviews[1].Prompt
+	if !strings.Contains(p, "## Previous PR overview") || !strings.Contains(p, "Adds retries with backoff to the gateway client.") {
+		t.Errorf("the second review lacks the first one's overview:\n%s", p)
+	}
+	// A sentinel overview never erases the stored one.
+	if h.st.Runs[1].Summary != nil || h.st.lastSummary.Overview != "Adds retries with backoff to the gateway client." {
+		t.Errorf("run summary = %+v, stored = %+v", h.st.Runs[1].Summary, h.st.lastSummary)
+	}
+}
+
+// A full review writes the overview fresh from the whole PR: a stored one
+// is not carried (mimo kept a reverted part with it), and the new one is
+// still stored for the next push.
+func TestFullReviewDoesNotCarryTheOverview(t *testing.T) {
+	h := newHarness(t, nil)
+	h.st.lastSummary = &store.PRSummary{Overview: "Adds retries and refunds."}
+	h.llm.review = okResultWith()
+	h.llm.review.Review.Summary.Overview = "Adds retries."
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	if p := h.llm.Reviews[0].Prompt; strings.Contains(p, "Previous PR overview") {
+		t.Errorf("a full review carries the stored overview:\n%s", p)
+	}
+	if s := h.st.Runs[0].Summary; s == nil || s.Overview != "Adds retries." {
+		t.Errorf("run summary = %+v", s)
+	}
+}
+
+// An unreadable stored overview reviews without it, as on a first review.
+func TestUnreadableOverviewReviewsWithout(t *testing.T) {
+	h := newHarness(t, nil)
+	incremental(h)
+	h.st.lastSummary = &store.PRSummary{Overview: "Adds retries."}
+	h.st.lastSummaryErr = errors.New("db down")
+	h.llm.review = okResultWith()
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	if len(h.llm.Reviews) != 1 || strings.Contains(h.llm.Reviews[0].Prompt, "Previous PR overview") {
+		t.Errorf("reviews = %d, prompt carries an unreadable overview", len(h.llm.Reviews))
+	}
+}
+
 // The PR summary lists the earlier finding still open, once: its repeat is
 // the open one, not a second item. The dropped one is counted.
 func TestSummaryListsEarlierOpenFindingOnce(t *testing.T) {

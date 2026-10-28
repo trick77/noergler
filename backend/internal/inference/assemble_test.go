@@ -117,6 +117,11 @@ func assembleCases(template string) map[string]AssembleRequest {
 	withDesc.PRDescription = "**Title:** T\n**Description:**\nWhy it changes."
 	cases["with_pr_description"] = withDesc
 
+	carried := base(files1)
+	carried.Incremental = true
+	carried.PreviousOverview = "Adds retries with backoff to the gateway client."
+	cases["with_previous_overview"] = carried
+
 	every := base(files2)
 	every.RepoInstructions = "# Rules\nBe terse.\n"
 	every.OtherModifiedPaths = []string{"x/y.go"}
@@ -257,6 +262,20 @@ func TestPlaceholderInABlockStaysLiteral(t *testing.T) {
 	}
 	if !strings.Contains(got, "nor {ticket_context} in the description") {
 		t.Errorf("a placeholder inside pr_description was expanded:\n%s", got)
+	}
+}
+
+// The carried overview is capped, so it cannot grow from push to push, and
+// absent without one.
+func TestPreviousOverviewIsCapped(t *testing.T) {
+	if got := RenderPreviousOverview("  "); got != "" {
+		t.Errorf("empty overview renders %q", got)
+	}
+	long := strings.Repeat("ü", PreviousOverviewCap+50)
+	got := RenderPreviousOverview(long)
+	body := got[strings.LastIndex(got, "\n\n")+2:]
+	if n := len([]rune(body)); n != PreviousOverviewCap || !strings.HasSuffix(body, "...") {
+		t.Errorf("carried overview is %d runes, want %d ending in ...", n, PreviousOverviewCap)
 	}
 }
 

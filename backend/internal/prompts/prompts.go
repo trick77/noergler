@@ -5,8 +5,8 @@ package prompts
 import _ "embed"
 
 // Review is the review prompt. Its placeholder order is load-bearing:
-// {files} before {cumulative_pr_diff} and {previously_posted_findings}, for
-// the prefix cache.
+// {files} before {cumulative_pr_diff}, {previously_posted_findings} and
+// {previous_overview}, for the prefix cache.
 //
 //go:embed review.txt
 var Review string

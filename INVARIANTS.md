@@ -77,6 +77,18 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   line under it. Two schema slots, `overview` (the PR) and `latest_push`
   (that push, incremental only, rendered on the last-push line): scope is
   the schema's, never one prose field the model must keep PR-wide.
+- The overview carries over (user, 2026-10-28): every incremental review
+  gets the last completed run's `overview` (`pull_requests.last_summary`,
+  written by `InsertRun`, never the posted comment), below the posted
+  findings (changes per push, so last for the prefix cache), capped at 2000
+  chars, as the model's own draft, never evidence: the diff wins; the PR as
+  it stands, never its history (mimo narrated a revert without). Without it
+  whatever of the PR does not fit the prompt drops out of the overview. An
+  empty or sentinel overview never erases it; unreadable = review without;
+  read on active rows only (`activeFilter`); `Reactivate` clears it. Its
+  tokens are "rest" on the run page (small, no UI row). A full review never
+  gets it, writes it fresh from the whole PR and stores it (mimo kept a
+  reverted part on a full review with it). Only the overview today; the JSONB takes the other fields later.
 - `pre_existing` (bugs in unchanged code): never posted, never moves the
   verdict, never scored. `ValidatePreExisting`: evidence in the shown file,
   none on a line the PR (all pushes, on an incremental review) added or
