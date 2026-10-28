@@ -74,7 +74,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   DB: never safeDB ("none" would approve), the summary says it lists this
   run's only, the verdict is lowered only for drops.
   Heading "PR Review-Zusammenfassung" / "PR review summary", last push a
-  line under it.
+  line under it. Two schema slots, `overview` (the PR) and `latest_push`
+  (that push, incremental only, rendered on the last-push line): scope is
+  the schema's, never one prose field the model must keep PR-wide.
 - `pre_existing` (bugs in unchanged code): never posted, never moves the
   verdict, never scored. `ValidatePreExisting`: evidence in the shown file,
   none on a line the PR (all pushes, on an incremental review) added or

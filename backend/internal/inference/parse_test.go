@@ -112,6 +112,18 @@ func TestNilRequirementsDistinctFromEmpty(t *testing.T) {
 	}
 }
 
+// The latest push has its own slot beside the PR's overview; null (a full
+// review) is no push.
+func TestParseLatestPush(t *testing.T) {
+	got := ParseReview(`{"overview": "Adds retries.", "latest_push": " Fixes a typo. "}`)
+	if got.Summary.Overview != "Adds retries." || got.Summary.LatestPush != "Fixes a typo." {
+		t.Errorf("summary = %+v", got.Summary)
+	}
+	if got := ParseReview(`{"overview": "Adds retries.", "latest_push": null}`); got.Summary.LatestPush != "" {
+		t.Errorf("null latest_push = %q, want empty", got.Summary.LatestPush)
+	}
+}
+
 func TestParseReviewFindings(t *testing.T) {
 	// Non-object entries alongside a valid finding are skipped, not fatal. The
 	// full validation table lives in finding_test.go.

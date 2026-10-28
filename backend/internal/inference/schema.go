@@ -13,7 +13,7 @@ const ReviewSchemaName = "review_response"
 //
 // It is also token-counted as part of the pre-flight fit check, because the
 // gateway bills it as input like everything else. The counted form uses ", "
-// and ": " separators, which brings the serialization to 1855 bytes. Go's
+// and ": " separators, which brings the serialization to 2372 bytes. Go's
 // json.Marshal is compact and would count fewer tokens for the same schema,
 // moving every pinned total in testdata/assemble_golden.json, so SchemaJSON
 // re-inserts the separators rather than marshalling.
@@ -23,11 +23,12 @@ func ReviewResponseSchema() map[string]any {
 		"type":                 "object",
 		"additionalProperties": false,
 		"required": []any{
-			"overview", "strengths", "security_performance", "test_coverage",
+			"overview", "latest_push", "strengths", "security_performance", "test_coverage",
 			"verdict", "findings", "fixed", "pre_existing", "compliance_requirements",
 		},
 		"properties": map[string]any{
 			"overview":             map[string]any{"type": "string", "minLength": 1},
+			"latest_push":          map[string]any{"type": []any{"string", "null"}},
 			"strengths":            map[string]any{"type": "array", "maxItems": 4, "items": map[string]any{"type": "string"}},
 			"security_performance": map[string]any{"type": "string", "minLength": 1},
 			"test_coverage":        map[string]any{"type": "string", "minLength": 1},
@@ -133,8 +134,9 @@ func ReviewResponseFormat() *llmwire.ResponseFormat {
 // counted form stable. TestSchemaStringAndMapAgree asserts this stays in
 // sync with ReviewResponseSchema.
 const schemaJSON = `{"type": "object", "additionalProperties": false, "required": ` +
-	`["overview", "strengths", "security_performance", "test_coverage", "verdict", "findings", ` +
+	`["overview", "latest_push", "strengths", "security_performance", "test_coverage", "verdict", "findings", ` +
 	`"fixed", "pre_existing", "compliance_requirements"], "properties": {"overview": {"type": "string", "minLength": 1}, ` +
+	`"latest_push": {"type": ["string", "null"]}, ` +
 	`"strengths": {"type": "array", "maxItems": 4, "items": {"type": "string"}}, ` +
 	`"security_performance": {"type": "string", "minLength": 1}, ` +
 	`"test_coverage": {"type": "string", "minLength": 1}, ` +

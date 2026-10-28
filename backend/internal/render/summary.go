@@ -136,9 +136,16 @@ func Summary(in SummaryInput) string {
 	// Named for the PR (user, 2026-10-28): the last push is one line under
 	// it, never the scope of the summary.
 	header := p("### PR Review-Zusammenfassung", "### PR review summary")
+	// The latest push gets its own line, filled from its own field, so the
+	// Overview below stays the whole PR's whatever the push was. A full
+	// review has no latest push: whatever the model put there is not shown.
 	if in.IncrementalFrom != "" && in.ReviewedCommit != "" {
 		header += fmt.Sprintf(p("\n- Letzter Push: `%s` .. `%s`", "\n- Last push: `%s` .. `%s`"),
 			shortSHA(in.IncrementalFrom, 10), shortSHA(in.ReviewedCommit, 10))
+		// One line: a wrapped one would break out of the list item.
+		if push := strings.Join(strings.Fields(in.Summary.LatestPush), " "); push != "" {
+			header += " — " + push
+		}
 	}
 	sections = append(sections, header)
 
@@ -180,6 +187,7 @@ func Summary(in SummaryInput) string {
 func swissInput(in SummaryInput) SummaryInput {
 	s := in.Summary
 	s.Overview = SwissSS(s.Overview)
+	s.LatestPush = SwissSS(s.LatestPush)
 	s.SecurityPerformance = SwissSS(s.SecurityPerformance)
 	s.TestCoverage = SwissSS(s.TestCoverage)
 	s.VerdictRationale = SwissSS(s.VerdictRationale)
