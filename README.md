@@ -508,7 +508,6 @@ backend/
     prompts/           # the model prompts, compiled in (go:embed)
 scripts/               # smoke script and fakes (outside the module)
 http/                  # IntelliJ HTTP client requests for the team self-service
-archive/               # the previous implementation, kept for reference
 ```
 
 ## Licence
