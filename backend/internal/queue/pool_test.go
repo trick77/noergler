@@ -750,7 +750,7 @@ func TestSpawnRunsUnderThePoolWithoutAHold(t *testing.T) {
 	defer g.releaseAll()
 
 	for i := 0; i < 4; i++ {
-		q.Spawn(context.Background(), "busy", func(context.Context) { g.enter("busy") })
+		q.Spawn(context.Background(), "busy", "note", func(context.Context) { g.enter("busy") })
 	}
 
 	g.waitEntered(t, 2)
@@ -787,8 +787,8 @@ func TestSpawnPanicReleasesTheSlot(t *testing.T) {
 	q.Start(context.Background())
 	defer q.Stop()
 
-	q.Spawn(context.Background(), "t", func(context.Context) { panic("note exploded") })
-	q.Spawn(context.Background(), "t", func(context.Context) { ran <- struct{}{} })
+	q.Spawn(context.Background(), "t", "note", func(context.Context) { panic("note exploded") })
+	q.Spawn(context.Background(), "t", "note", func(context.Context) { ran <- struct{}{} })
 
 	select {
 	case <-ran:
@@ -811,7 +811,7 @@ func TestSpawnFromPostDoesNotDisturbTheReview(t *testing.T) {
 		sched.Stage(ctx, key(p.PullRequest.ID), team,
 			func(context.Context) {},
 			func(ctx context.Context) {
-				sched.Spawn(ctx, team, func(context.Context) { spawned <- struct{}{} })
+				sched.Spawn(ctx, team, "note", func(context.Context) { spawned <- struct{}{} })
 				posted <- struct{}{}
 			},
 		)

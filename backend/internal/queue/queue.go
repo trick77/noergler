@@ -31,8 +31,11 @@ import (
 // BacklogWarnThreshold is the depth at which the queue starts warning.
 const BacklogWarnThreshold = 10
 
-// stagedSlack is how many prepared prompts may wait beyond the pool's own
-// capacity, so a slot is never idle while the worker fetches the next diff.
+// stagedSlack is how much pool work (prepared prompts and spawned calls) may
+// wait beyond the pool's own capacity, so a slot is never idle while the
+// worker fetches the next diff. A spawned call holds no prompt, but it holds
+// a slot the same way, so it counts: preparing more prompts behind it would
+// only park them.
 const stagedSlack = 2
 
 // Submit outcomes.
@@ -55,7 +58,7 @@ type ReviewFunc func(ctx context.Context, team string, payload *webhook.Payload,
 // fn on the pool and nothing afterwards: no worker tail, no PR hold.
 type Scheduler interface {
 	Stage(ctx context.Context, key store.PRKey, team string, infer, post func(context.Context))
-	Spawn(ctx context.Context, team string, fn func(context.Context))
+	Spawn(ctx context.Context, team, name string, fn func(context.Context))
 }
 
 // JobFunc is a queued unit of work that is not a PR review.
@@ -125,8 +128,9 @@ type Queue struct {
 	perTeam int
 	teamSem map[string]chan struct{}
 	infWG   sync.WaitGroup
-	// staged counts prompts handed to the pool and not yet through it,
-	// running or still waiting for a slot. Guarded by mu.
+	// staged counts pool work (prepared prompts and spawned calls) handed
+	// to the pool and not yet through it, running or still waiting for a
+	// slot. Guarded by mu.
 	staged int
 
 	mu       sync.Mutex
@@ -390,6 +394,80 @@ func markDeferred(m map[store.PRKey]struct{}, k store.PRKey) map[store.PRKey]str
 // must not be the worker's job context, which has none of them past the
 // handoff.
 func (q *Queue) Stage(ctx context.Context, key store.PRKey, team string, infer, post func(context.Context)) {
+	tag := key.Tag()
+	posted := false
+	q.onPool(ctx, team, tag, "inference",
+		func(ctx context.Context) {
+			inferStarted := time.Now()
+			func() {
+				defer q.release(team)
+				infer(ctx)
+			}()
+			inferred := time.Since(inferStarted)
+
+			// The pool slot is already released above; the PR's hold is
+			// not. It ends when this job completes, or in onPool's panic
+			// path if the submit never happened, so there is no window
+			// where the key is free while its posting is still outstanding.
+			//
+			// post is called with the REVIEW's ctx, not the worker's: the
+			// job context queue.run builds carries team= but no pr_tag and
+			// no httpstats scope, so everything after the handoff would log
+			// without them and record no HTTP counts.
+			posted = true
+			q.submitInternal(ctx, key, team, inferred, func(context.Context, Scheduler) bool {
+				post(ctx)
+				return false
+			})
+		},
+		// Whatever happened, the hold must end. Normally post ends it; if
+		// it never got submitted, end it here.
+		func() {
+			if !posted {
+				q.done1(key)
+			}
+		})
+}
+
+// Spawn runs fn on the inference pool, under the team's slot and then the
+// global one, with no worker tail and no PR hold. name is what the log
+// calls it ("almanach note").
+//
+// For a gateway call that posts nothing to Bitbucket and whose result lands
+// in the database only (the Almanach note that follows a review). Stage
+// would be wrong for it: Stage's tail is what ends the PR's hold, so a
+// second Stage issued from inside a post would lose the hold the moment
+// that post returns and later release a key a newer review holds.
+//
+// Spawn touches inflight not at all, so the PR's other jobs (a purge, a
+// decline, a merge) and its next review run beside fn. The caller's
+// contract, pinned in INVARIANTS: fn re-asks ownership and the PR's state
+// right before it writes, as post does; it opens its own httpstats scope
+// and logs it (the review's counter was reported when post returned); and
+// it carries only the few fields it needs, built before Spawn, never the
+// plan, the result or a diff: a closure waiting for a slot keeps whatever
+// it captured resident.
+//
+// Counted like staged work: Stop drains it through infWG and waits for it
+// without a timeout, and staged keeps the worker from preparing prompts
+// while spawned calls hold the slots. A panic is logged and the slot
+// released; nothing else is affected.
+func (q *Queue) Spawn(ctx context.Context, team, name string, fn func(context.Context)) {
+	q.onPool(ctx, team, name, name, func(ctx context.Context) {
+		defer q.release(team)
+		started := time.Now()
+		fn(ctx)
+		q.log.InfoContext(ctx, fmt.Sprintf("queue[%s]: done in %.1fs", name, time.Since(started).Seconds()))
+	}, nil)
+}
+
+// onPool is the pool goroutine Stage and Spawn share: counted in staged and
+// infWG from the start, the team slot then the global one, a slow slot
+// logged, a panic logged with its stack and the slot given back. body runs
+// with the slot held and is responsible for releasing it (so Stage can
+// release before its tail). onPanic, when set, runs after a panic was
+// logged. tag names the work in the log, what names the wait.
+func (q *Queue) onPool(ctx context.Context, team, tag, what string, body func(context.Context), onPanic func()) {
 	q.infWG.Add(1)
 	q.mu.Lock()
 	q.staged++
@@ -397,7 +475,6 @@ func (q *Queue) Stage(ctx context.Context, key store.PRKey, team string, infer, 
 	go func() {
 		defer q.infWG.Done()
 
-		posted := false
 		acquired := false
 		defer func() {
 			if !acquired {
@@ -409,88 +486,20 @@ func (q *Queue) Stage(ctx context.Context, key store.PRKey, team string, infer, 
 				q.cond.Broadcast()
 			}
 			if r := recover(); r != nil {
-				q.log.ErrorContext(ctx, fmt.Sprintf("queue[%s]: inference panicked: %v", key.Tag(), r),
+				q.log.ErrorContext(ctx, fmt.Sprintf("queue[%s]: %s panicked: %v", tag, what, r),
 					slog.String("stack", string(debug.Stack())))
 			}
-			// Whatever happened, the hold must end. Normally post ends it;
-			// if it never got submitted, end it here.
-			if !posted {
-				q.done1(key)
+			if onPanic != nil {
+				onPanic()
 			}
 		}()
 
 		waited := q.acquire(team)
 		acquired = true
 		if waited > 50*time.Millisecond {
-			q.log.InfoContext(ctx, fmt.Sprintf("queue[%s]: inference waited %.1fs for a pool slot",
-				key.Tag(), waited.Seconds()))
+			q.log.InfoContext(ctx, fmt.Sprintf("queue[%s]: %s waited %.1fs for a pool slot", tag, what, waited.Seconds()))
 		}
-		inferStarted := time.Now()
-		func() {
-			defer q.release(team)
-			infer(ctx)
-		}()
-		inferred := time.Since(inferStarted)
-
-		// The pool slot is already released above; the PR's hold is not.
-		// It ends when this job completes, or in the outer defer if the
-		// submit never happened, so there is no window where the key is
-		// free while its posting is still outstanding.
-		//
-		// post is called with the REVIEW's ctx, not the worker's: the job
-		// context queue.run builds carries team= but no pr_tag and no
-		// httpstats scope, so everything after the handoff would log
-		// without them and record no HTTP counts.
-		posted = true
-		q.submitInternal(ctx, key, team, inferred, func(context.Context, Scheduler) bool {
-			post(ctx)
-			return false
-		})
-	}()
-}
-
-// Spawn runs fn on the inference pool, under the team's slot and then the
-// global one, with no worker tail and no PR hold.
-//
-// For a gateway call that posts nothing to Bitbucket and whose result lands
-// in the database only (the Almanach note that follows a review). Stage
-// would be wrong for it: Stage's tail is what ends the PR's hold, so a
-// second Stage issued from inside a post would lose the hold the moment
-// that post returns and later release a key a newer review holds. Spawn
-// touches inflight not at all; whoever calls it must order its own writes.
-//
-// Counted like staged work: Stop drains it through infWG, and staged keeps
-// the worker from preparing prompts while spawned calls hold the slots. A
-// panic is logged and the slot released; nothing else is affected.
-//
-// ctx is the caller's, carrying pr_tag and team=; it is cancelled with the
-// queue's root context on shutdown like a staged inference.
-func (q *Queue) Spawn(ctx context.Context, team string, fn func(context.Context)) {
-	q.infWG.Add(1)
-	q.mu.Lock()
-	q.staged++
-	q.mu.Unlock()
-	go func() {
-		defer q.infWG.Done()
-
-		acquired := false
-		defer func() {
-			if !acquired {
-				q.mu.Lock()
-				q.staged--
-				q.mu.Unlock()
-				q.cond.Broadcast()
-			}
-			if r := recover(); r != nil {
-				q.log.ErrorContext(ctx, fmt.Sprintf("queue: spawned call panicked (team %s): %v", team, r),
-					slog.String("stack", string(debug.Stack())))
-			}
-		}()
-
-		q.acquire(team)
-		acquired = true
-		defer q.release(team)
-		fn(ctx)
+		body(ctx)
 	}()
 }
 
@@ -684,8 +693,10 @@ type Snapshot struct {
 	// Capacity and PerTeam size the inference pool.
 	Capacity int
 	PerTeam  int
-	// Staged is prompts handed to the pool and not yet through it: running,
-	// or still waiting for a slot.
+	// Staged is pool work handed to the pool and not yet through it:
+	// running, or still waiting for a slot. Prepared prompts and spawned
+	// calls both; a spawned call holds no PR key, so it is in this count
+	// and not in Running.
 	Staged int
 	// Depth matches Depth(): waiting items, in-flight excluded.
 	Depth   int
