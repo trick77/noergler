@@ -19,6 +19,11 @@ import (
 //
 // Nothing here is a series data point. A sampled report has its own shape and
 // its own results directory; the single-run series stays as it is.
+//
+// Findings only: a case's screenshots are sent (reviewCase) but its expected
+// screenshot lines are scored by Run alone, so Seeded here counts findings
+// and is smaller than a series run's over the same corpus. Merging free-text
+// lines across samples has no blunt rule; the vote is a findings question.
 
 // mergeSlack is how far apart two samples may anchor the same finding. It is
 // the validator's anchorSlack: findings arrive here already validated, so two

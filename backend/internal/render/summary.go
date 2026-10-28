@@ -117,6 +117,40 @@ type SummaryInput struct {
 	// AgentsMDWarnTokens is the soft threshold the scope line reports
 	// against; 0 or less disables the stats entirely.
 	AgentsMDWarnTokens int
+
+	// Visual is one line per changed test screenshot of the PR; none, no
+	// section. VisualUnread: the PR's changes could not be read this run,
+	// so the section says so rather than vanishing from a PR that has one.
+	Visual       []VisualLine
+	VisualUnread bool
+}
+
+// VisualStatus is what a screenshot's line can say.
+type VisualStatus int
+
+// The statuses of a screenshot's line. Only VisualDescribed carries Text,
+// the model's line, this run's or stored; the rest say why there is none.
+const (
+	VisualDescribed VisualStatus = iota
+	VisualDeleted
+	VisualNoVision
+	VisualOverCap
+	VisualNoRoom
+	VisualTooLarge
+	VisualUnreadable
+	VisualNoAnswer
+	// VisualLFS: the raw endpoint served a Git LFS pointer, not the image.
+	VisualLFS
+)
+
+// VisualLine is one screenshot in the Visual changes section.
+type VisualLine struct {
+	Path   string
+	Status VisualStatus
+	Text   string
+	// Variants is how many browser or platform variants of it were left
+	// out as showing the same change.
+	Variants int
 }
 
 // Summary renders the PR summary comment: the whole PR, every open finding,
@@ -171,6 +205,10 @@ func Summary(in SummaryInput) string {
 	sections = append(sections, p("### Testabdeckung\n", "### Test coverage\n")+
 		orDefault(WrapProse(coverage), p("_Nicht beurteilt._", "_Not assessed._")))
 
+	if len(in.Visual) > 0 || in.VisualUnread {
+		sections = append(sections, renderVisual(in))
+	}
+
 	if in.Ticket != nil {
 		sections = append(sections, renderTicket(in))
 	}
@@ -208,7 +246,63 @@ func swissInput(in SummaryInput) SummaryInput {
 	if in.ComplianceRequirements != nil {
 		in.ComplianceRequirements = reqs
 	}
+	visual := make([]VisualLine, len(in.Visual))
+	for i, v := range in.Visual {
+		v.Text = SwissSS(v.Text)
+		visual[i] = v
+	}
+	in.Visual = visual
 	return in
+}
+
+// maxVisualLines caps the Visual changes section; the rest are counted.
+const maxVisualLines = 20
+
+// renderVisual is one line per changed test screenshot: what the model saw,
+// or why it was not compared. Never a finding (INVARIANTS: prompt and
+// findings).
+func renderVisual(in SummaryInput) string {
+	p := in.Lang.Pick
+	lines := []string{p("### Visuelle Änderungen", "### Visual changes")}
+	if in.VisualUnread {
+		lines = append(lines, p("_Diesmal nicht gelesen: die Änderungen des PR waren nicht abrufbar._",
+			"_Not read this run: the PR's changes could not be fetched._"))
+	}
+	for i, v := range in.Visual {
+		if i == maxVisualLines {
+			lines = append(lines, fmt.Sprintf(p("_… und %d weitere._", "_… and %d more._"), len(in.Visual)-i))
+			break
+		}
+		var text string
+		switch v.Status {
+		case VisualDescribed:
+			text = strings.Join(strings.Fields(v.Text), " ")
+		case VisualDeleted:
+			text = p("entfernt.", "removed.")
+		case VisualNoVision:
+			text = p("_nicht verglichen: das Modell nimmt keine Bilder._", "_not compared: the model takes no images._")
+		case VisualOverCap:
+			text = fmt.Sprintf(p("_noch nicht verglichen: mehr als %d neue pro Review._",
+				"_not compared yet: more than %d new ones per review._"), inference.MaxVisualImages)
+		case VisualNoRoom:
+			text = p("_nicht verglichen: kein Platz im Prompt._", "_not compared: no room left in the prompt._")
+		case VisualTooLarge:
+			text = p("_nicht verglichen: Bild zu gross._", "_not compared: image too large._")
+		case VisualUnreadable:
+			text = p("_nicht verglichen: Bild nicht lesbar._", "_not compared: image could not be read._")
+		case VisualLFS:
+			text = p("_nicht verglichen: liegt in Git LFS._", "_not compared: stored in Git LFS._")
+		default:
+			text = p("_nicht verglichen: das Modell hat nichts dazu gesagt._", "_not compared: the model said nothing about it._")
+		}
+		line := fmt.Sprintf("- `%s` — %s", v.Path, text)
+		if v.Variants > 0 {
+			line += " _(" + PluralIn(in.Lang, v.Variants, "weitere Variante", "weitere Varianten",
+				"more variant", "more variants") + ")_"
+		}
+		lines = append(lines, WrapProse(line))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // swissFindings copies findings with SwissSS applied to their prose.

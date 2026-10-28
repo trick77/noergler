@@ -26,6 +26,8 @@ type stubClient struct {
 	// means "answer on every case", which is what the hand-built stubs want.
 	owner   []string
 	outcome inference.Outcome
+	// visual is the line answered for each screenshot path the call sends.
+	visual map[string]string
 }
 
 // Review answers only the findings belonging to the case being reviewed.
@@ -48,9 +50,15 @@ func (s stubClient) Review(_ context.Context, req inference.ReviewRequest) infer
 			out = append(out, f)
 		}
 	}
+	var visual []inference.VisualChange
+	for _, img := range req.Images {
+		if line, ok := s.visual[img.Path]; ok {
+			visual = append(visual, inference.VisualChange{ID: img.ID, Change: line})
+		}
+	}
 	return inference.ReviewResult{
 		Outcome: s.outcome,
-		Review:  inference.ParsedReview{Findings: out, Summary: inference.NewReviewSummary()},
+		Review:  inference.ParsedReview{Findings: out, Visual: visual, Summary: inference.NewReviewSummary()},
 	}
 }
 
@@ -83,6 +91,15 @@ func perfectFindings(t *testing.T) (stubClient, int) {
 				Comment: e.Keywords[0], Evidence: []string{text},
 			})
 			s.owner = append(s.owner, mark)
+		}
+		// One line per path, carrying every case's first keyword for it:
+		// cases share a baseline path, and a perfect line satisfies each.
+		for _, e := range c.ExpectedVisual {
+			seeded++
+			if s.visual == nil {
+				s.visual = map[string]string{}
+			}
+			s.visual[e.Path] += e.Keywords[0] + "; "
 		}
 	}
 	return s, seeded

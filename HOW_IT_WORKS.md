@@ -96,7 +96,8 @@ the cumulative PR diff as context. The summary is still the PR's (section 10).
 
 The PR diff is fetched whole and split per file. Non-reviewable files are
 dropped: binaries, lockfiles, vendored and generated paths, hidden path
-components.
+components. Committed test screenshots are binaries too, never reviewed as
+code; they go to the summary only (section 11c).
 
 There is no byte cap by default. `BITBUCKET_MAX_DIFF_BYTES` can set one, but it
 skips the entire PR when exceeded, and a diff's size is dominated by the files
@@ -168,7 +169,9 @@ One call per review, never streaming: a LiteLLM stream carries no cost header.
 The prompt is assembled in a fixed order so the gateway's prefix cache can work:
 the template, then `{files}`, then `{cumulative_pr_diff}`, then
 `{previously_posted_findings}`. Substitution is literal string replacement, not
-templating: file content contains braces.
+templating: file content contains braces. Changed test screenshots, when any
+are sent, ride in a second user message after the prompt, so the prompt's
+text stays byte-identical for the cache.
 
 Budgets come off the resolved context window through a trust curve (large
 advertised windows are the least trustworthy), minus an output reserve. The
@@ -176,8 +179,9 @@ cumulative diff and the previously-posted findings each get a small slice of
 what is left.
 
 A response is required to match a JSON schema with exactly these keys:
-`overview`, `strengths`, `security_performance`, `test_coverage`, `verdict`,
-`findings`, `fixed`, `compliance_requirements`.
+`overview`, `latest_push`, `strengths`, `security_performance`,
+`test_coverage`, `verdict`, `findings`, `fixed`, `pre_existing`,
+`compliance_requirements`, `visual_changes`.
 
 ## 10. Dedup, ordering and posting
 
@@ -257,9 +261,10 @@ review's push sentence is not shown. Its sections, in order:
 3. Issues and suggestions
 4. Security and performance
 5. Test coverage
-6. Ticket or Requirement compliance
-7. Recommendation
-8. A footer: a bullet for each thing the author can act on (no AGENTS.md or
+6. Visual changes, only when the PR changed test screenshots (section 11c)
+7. Ticket or Requirement compliance
+8. Recommendation
+9. A footer: a bullet for each thing the author can act on (no AGENTS.md or
    one over its warn size, no ticket while Jira is on, files not reviewed or
    reviewed without full context), then one line of model, files, lines,
    elapsed time and cost, ending in a link to the PR's page when
@@ -304,6 +309,52 @@ shown file and on no line the PR added or removed; the line moves to the
 evidence when that is a shown line. The run page lists them with the model's
 explanation, the quoted lines and a link to the line at the reviewed commit,
 so someone can pick them up.
+
+## 11c. Test screenshots
+
+A UI repo commits its visual test baselines: an image under a `*-snapshots`
+(Playwright), `__screenshots__` or `__image_snapshots__` directory. Any other
+image is not one. The runner already compared the pixels; what a reviewer is
+not told is what changed and whether the PR's code explains it. A baseline
+that changed with no code to explain it is usually rendering drift (font,
+anti-aliasing, browser version) committed as the new truth.
+
+When the reviewed diff or the whole PR's names one, the PR's changes are
+read (`/changes`, one paged call): the list of screenshots, each one's type
+(added, deleted, moved) and blob ids, and the PR's base and head commits.
+The list is the whole PR's on every run, and "before" is the PR's base, not
+the target's tip, which may carry another PR's baseline. Without a base the
+target's tip stands in, logged; without the changes at all the section says
+it was not read this run.
+
+Browser and platform variants of one screenshot (`-chromium`, `-firefox`,
+`-webkit`, `-linux`, `-darwin`, `-win32`) are one line, chromium tried
+first; a variant whose pixels did not change hands over to the next, so a
+change only one browser shows is not lost. The line counts the rest.
+
+A pair is known by its blob ids, so one described before is shown from the
+store without a read. A new one is read at both commits (at most 20 reads a
+run, under `BITBUCKET_MAX_FILE_BYTES`); a 404 says added or deleted where
+the type does not, and bytes key the store where the ids are missing. A
+model whose profile has no vision is sent none and nothing is read for it
+(startup logs `vision=yes|no`). A baseline kept in Git LFS comes back as
+its pointer and is named as such. The pixel diff runs in noergler, not the
+model: an exact compare finds the changed region, both versions are cropped
+to it (at least 256 px a side) and downscaled to 1024 px; an image over 16
+megapixels is refused before decoding. Same pixels (a re-encode): not
+listed, and stored so the pair is never read again.
+
+At most six pairs go out per call; the rest wait for a later run, which
+finds these in the store. The images and their labels are counted into the
+fit check (w·h/750 tokens an image); one that does not fit is left out,
+never a file. A diff that changes baselines and nothing else is reviewed
+anyway on a vision model: that is the drift case.
+
+The section lists each screenshot with the model's sentence, or why there is
+none: removed, over the per-run limits, no room, too large, unreadable, in
+Git LFS, no vision, or the model said nothing. Never a finding: an image has
+no line to anchor on and no quotable evidence. Every screenshot left out is
+in the log.
 
 ## 12. Q&A by mention
 

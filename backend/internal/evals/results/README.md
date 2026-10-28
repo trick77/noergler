@@ -78,6 +78,8 @@ several reviews. Those live in `sampled/` and are never rows here.
 | 2026-10-19 | mimo-v2.6-pro | high | 20 rev7 | 13 | 11 | 0 | `prompts/review.txt`, committed secrets in remit | **run4: new revision, new baseline.** Exit 1, complete, one redraw (`buried-behavioural-hunk`, `stream idle for 1m30s`). `hardcoded-credential` caught at line 21. Two real misses, no finding at all: `ts-seeded` (missed before, run2) and `unchecked-error` (no earlier row names it as a real miss). All seven controls clean, the two new ones included. One run: a single red is noise until a second one follows. |
 | 2026-10-19 | mimo-v2.6-pro | high | 21 rev8 | 14 | 11 | 1 | `prompts/review.txt`, committed secrets after code review | **run5: new revision, new baseline.** Exit 1, complete, one redraw (`off-by-one`). `hardcoded-credential-yaml` caught. `hardcoded-credential` reported correctly at line 21, dropped `evidence_not_found`: the last evidence entry joined two lines into one (known gap); its comment also named the value, against the prompt. `lock-not-released` reported at line 20 in wording outside its keywords (known gap, the Extra). `off-by-one` no finding. All seven controls clean. |
 | 2026-10-28 | mimo-v2.6-pro | high | 21 rev8 | 14 | 13 | 1 | `prompts/review.txt`, PR summary covers the whole PR | **The summary fields describe the whole PR, the verdict follows every open finding, settled threads are marked closed, summary prose never names prompt parts.** No case carries previously posted findings or a cumulative diff, so this checks that finding quality held, not the summary. Exit 1, complete, no redraw. The miss is `ts-seeded`, no finding at all (missed before, run2 and run4). The Extra is a second `nil-deref` finding, a suggestion that the comment above the dereference contradicts the code. All seven controls clean. |
+| 2026-10-28 | mimo-v2.6-pro | high | 21 rev8 | 14 | 13 | 0 | `prompts/review.txt`, `visual_changes` key | **run2: prompt and schema gain `visual_changes`** (test screenshots, summary only). No case carries a screenshot, so this checks that finding quality held under the longer prompt and schema. Exit 1, complete, no redraw, nothing dropped. The miss is `context-not-propagated`, no finding at all (missed before in the mimo-v2.5-pro series, run5 of 2026-09-30). `ts-seeded`, the run before's miss, caught. All seven controls clean. |
+| 2026-10-28 | mimo-v2.6-pro | high | 25 rev9 | 21 | 21 | 0 | `prompts/review.txt`, `visual_changes` key | **run3: new revision, new scorer, new baseline:** four cases carry Chrome-rendered test screenshots, and their expected screenshot lines count as seeded. Exit 0, complete, one redraw (`visual-hidden-submit`, `stream idle for 1m30s`). Every seeded bug caught, `context-not-propagated` included. All six screenshot lines seen: the stacked form tied to `login.css`, the serif fallback called unexplained drift with nothing in the PR touching the UI, the added empty state described, and on `visual-hidden-submit` the missing Sign in button seen in the image and traced to the `:last-child` rule, beside the finding on that line. All nine controls clean, the two carrying screenshots included. |
 
 ## What the columns mean
 
@@ -96,7 +98,15 @@ several reviews. Those live in `sampled/` and are never rows here.
   environment, a `changeme` test fixture), taking it to 20 with 13 seeded;
   `rev8` narrows that window to the password line, makes the fixture a
   non-placeholder value and adds the same password committed in
-  `application.yaml`, taking it to 21 with 14 seeded. Bump the number when a
+  `application.yaml`, taking it to 21 with 14 seeded; `rev9` adds four
+  cases carrying test screenshots (Chrome-rendered baselines under
+  `corpus/screenshots/`): two controls, one with its CSS explaining the
+  change and one with only font drift, an added baseline, and a CSS
+  selector that hides the submit button. They add one seeded finding and six
+  expected screenshot lines, scored like findings (a keyword in the line for
+  that path), taking it to 25 with 21 seeded. The scorer changed with it:
+  Seeded and Caught now count screenshot lines, so a rev9 row starts a new
+  baseline. Sampled runs score findings only. Bump the number when a
   **scored** field changes: `file`, `lines`, `keywords`, `diff`, `content`.
   Prose does not move a score, so an edit to `description` or `why` is not a
   new revision, and rev4 covers such an edit made after run5.

@@ -32,8 +32,10 @@ type BitbucketClient interface {
 	CommentURL(project, repo string, prID, commentID int) string
 	FetchPRDiff(ctx context.Context, project, repo string, prID, contextLines int) (string, error)
 	FetchPRChanges(ctx context.Context, project, repo string, prID int) ([]string, error)
+	FetchPRChangeSet(ctx context.Context, project, repo string, prID int) (bitbucket.ChangeSet, error)
 	FetchCommitDiff(ctx context.Context, project, repo string, prID int, fromCommit, toCommit string) (string, error)
 	FetchFileContent(ctx context.Context, project, repo, commit, path string) (string, error)
+	FetchFileBytes(ctx context.Context, project, repo, commit, path string) ([]byte, error)
 	PostInlineComment(ctx context.Context, project, repo string, prID int, file string, line int, body string) (int, error)
 	PostPRComment(ctx context.Context, project, repo string, prID int, text string) (id, version int, err error)
 	ReplyToComment(ctx context.Context, project, repo string, prID, parentCommentID int, text string) (int, error)
@@ -68,6 +70,9 @@ type InferenceClient interface {
 	// FitCeiling is the most a request may occupy; the note call checks
 	// the replayed conversation against it before spending anything.
 	FitCeiling() int
+	// Vision is the profile's image support: without it no screenshot is
+	// sent.
+	Vision() bool
 	Review(ctx context.Context, req inference.ReviewRequest) inference.ReviewResult
 	Mention(ctx context.Context, req inference.MentionRequest) inference.MentionResult
 	FindingReply(ctx context.Context, req inference.FindingReplyRequest) inference.FindingReplyResult
@@ -118,6 +123,10 @@ type Store interface {
 	PendingAlmanachNotes(ctx context.Context, team string, limit int) ([]store.AlmanachPending, error)
 	InsertAlmanachCall(ctx context.Context, c store.AlmanachCall) error
 	AlmanachNoteStatus(ctx context.Context, k store.PRKey) (store.AlmanachNoteState, bool, error)
+	// What the model said per screenshot pair, kept so the summary's Visual
+	// changes section stays the PR's without re-sending images.
+	VisualChanges(ctx context.Context, k store.PRKey) (map[store.VisualPair]string, error)
+	InsertVisualChange(ctx context.Context, k store.PRKey, p store.VisualPair, text, model string) error
 }
 
 // TokenCounter counts tokens in a string.

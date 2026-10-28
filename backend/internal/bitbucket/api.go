@@ -197,6 +197,63 @@ func (c *Client) FetchPRChanges(ctx context.Context, project, repo string, prID 
 	return paths, nil
 }
 
+// ChangeSet is a PR's changed files with the two commits its diff is taken
+// between: FromHash is the PR's base (the merge base, not the target's tip),
+// ToHash its head. Either is "" when Bitbucket leaves it out.
+type ChangeSet struct {
+	FromHash, ToHash string
+	Changes          []Change
+}
+
+// Change is one changed file. Type is Bitbucket's (ADD, DELETE, MODIFY,
+// MOVE, COPY); SrcPath the old path of a move or copy; ContentID and
+// FromContentID the git blob ids of the two versions, "" when absent.
+type Change struct {
+	Path, SrcPath, Type, ContentID, FromContentID string
+}
+
+// FetchPRChangeSet is FetchPRChanges with what a screenshot comparison
+// needs: the commits on either side and each file's blob ids, so an
+// unchanged pair is known without reading it.
+func (c *Client) FetchPRChangeSet(ctx context.Context, project, repo string, prID int) (ChangeSet, error) {
+	var cs ChangeSet
+	path := prPath(project, repo, prID) + "/changes"
+	start := 0
+	for {
+		var p page
+		query := url.Values{"start": {strconv.Itoa(start)}, "limit": {strconv.Itoa(pageLimit)}}
+		if err := c.do(ctx, http.MethodGet, path, query, nil, &p); err != nil {
+			return ChangeSet{}, err
+		}
+		if cs.FromHash == "" {
+			cs.FromHash, cs.ToHash = p.FromHash, p.ToHash
+		}
+		for _, v := range p.Values {
+			if nodeType, ok := v["nodeType"].(string); ok && !strings.EqualFold(nodeType, "FILE") {
+				continue
+			}
+			ch := Change{Path: pathString(v["path"]), SrcPath: pathString(v["srcPath"])}
+			ch.Type, _ = v["type"].(string)
+			ch.ContentID, _ = v["contentId"].(string)
+			ch.FromContentID, _ = v["fromContentId"].(string)
+			if ch.Path != "" {
+				cs.Changes = append(cs.Changes, ch)
+			}
+		}
+		if p.IsLastPage == nil || *p.IsLastPage || p.NextPageStart == nil || *p.NextPageStart <= start {
+			return cs, nil
+		}
+		start = *p.NextPageStart
+	}
+}
+
+// pathString is a change's path object as one string, "" when absent.
+func pathString(v any) string {
+	m, _ := v.(map[string]any)
+	s, _ := m["toString"].(string)
+	return s
+}
+
 func shortSHA(s string) string {
 	if len(s) > 10 {
 		return s[:10]
@@ -209,6 +266,13 @@ func shortSHA(s string) string {
 func (c *Client) FetchFileContent(ctx context.Context, project, repo, commit, path string) (string, error) {
 	raw := fmt.Sprintf("%s/projects/%s/repos/%s/raw/%s", apiBase, project, repo, path)
 	return c.getTextCapped(ctx, raw, url.Values{"at": {commit}}, "", path, c.maxFileBytes)
+}
+
+// FetchFileBytes is FetchFileContent for a binary file: the bytes as served,
+// under the same cap.
+func (c *Client) FetchFileBytes(ctx context.Context, project, repo, commit, path string) ([]byte, error) {
+	raw := fmt.Sprintf("%s/projects/%s/repos/%s/raw/%s", apiBase, project, repo, path)
+	return c.getCapped(ctx, raw, url.Values{"at": {commit}}, "", path, c.maxFileBytes)
 }
 
 // PostInlineComment anchors a finished comment body to one line of one file.
@@ -383,6 +447,9 @@ type page struct {
 	Values        []map[string]any `json:"values"`
 	IsLastPage    *bool            `json:"isLastPage"`
 	NextPageStart *int             `json:"nextPageStart"`
+	// FromHash and ToHash: a PR changes page only.
+	FromHash string `json:"fromHash"`
+	ToHash   string `json:"toHash"`
 }
 
 // paged walks every page of a collection.

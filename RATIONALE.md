@@ -20,6 +20,17 @@ an incident or an eval run: read the reason before relaxing a rule.
 
 ## Findings
 
+- Screenshots summary only: an image has no line to anchor on and nothing
+  `ValidateFindings` can quote; checking a visual claim would take a judge
+  model. Pixel diff and crop in code: vision models miss small differences
+  between two whole screenshots, and a crop costs a fraction of the tokens.
+  Exact compare, no tolerance: anti-aliasing and font drift are the change a
+  reviewer most needs told about. Stored per pair: the summary is the PR's on
+  every run, and re-sending unchanged images every push pays for nothing.
+  Keyed by blob id, not bytes: a byte hash needed both versions read on every
+  push, on the single worker, to learn the answer was already stored. Before
+  = the PR's base: the target's tip may hold another PR's baseline, which the
+  model then reports as this PR's change, reversed.
 - Numbered diff lines: when the model counted, findings landed past EOF.
 - Secrets carved out of the failing-input rule: `password = "admin123"` was
   flagged in about half the runs; the remit, the "no failing input, drop"

@@ -369,11 +369,12 @@ func TestSummarySectionOrder(t *testing.T) {
 	in := base()
 	in.Ticket = testTicket("ABC-1", "T", "")
 	in.JiraEnabled = true
+	in.Visual = []VisualLine{{Path: "a-snapshots/x.png", Text: "Moved."}}
 	got := Summary(in)
 
 	want := []string{
 		"### PR review summary", "### Overview", "### Strengths", "### Issues and suggestions",
-		"### Security and performance", "### Test coverage", "### Ticket",
+		"### Security and performance", "### Test coverage", "### Visual changes", "### Ticket",
 		"### Recommendation", "\n---\n",
 	}
 	prev := -1
@@ -397,5 +398,48 @@ func TestSummaryDistinguishesOmittedFromEmpty(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)
 		}
+	}
+}
+
+// One line per screenshot: the model's words, or why it was not compared.
+// No screenshot, no section.
+func TestSummaryVisualChanges(t *testing.T) {
+	if got := Summary(base()); strings.Contains(got, "Visual changes") {
+		t.Errorf("a PR without screenshots has no section:\n%s", got)
+	}
+	in := base()
+	in.Visual = []VisualLine{
+		{Path: "s-snapshots/login-chromium.png", Text: "Submit button moved\nbelow the form; explained by `login.css`.", Variants: 2},
+		{Path: "s-snapshots/header.png", Status: VisualNoVision},
+		{Path: "s-snapshots/old.png", Status: VisualDeleted},
+	}
+	got := Summary(in)
+	for _, want := range []string{
+		// Flattened to one paragraph, then wrapped as the list item it is.
+		"### Visual changes\n- `s-snapshots/login-chromium.png` — Submit button moved below the form; explained by\n  `login.css`. _(2 more variants)_",
+		"- `s-snapshots/header.png` — _not compared: the model takes no images._",
+		"- `s-snapshots/old.png` — removed.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+
+	in.Lang = lang.DE
+	in.Visual = []VisualLine{{Path: "s-snapshots/a.png", Text: "Schrift grösser, ausserhalb des Diffs nicht erklärt: Straße."}}
+	got = Summary(in)
+	if !strings.Contains(got, "### Visuelle Änderungen") || !strings.Contains(got, "Strasse") {
+		t.Errorf("German section, SwissSS on the model's line:\n%s", got)
+	}
+}
+
+func TestSummaryVisualChangesAreCapped(t *testing.T) {
+	in := base()
+	for i := range maxVisualLines + 3 {
+		in.Visual = append(in.Visual, VisualLine{Path: fmt.Sprintf("s-snapshots/%d.png", i), Text: "x"})
+	}
+	got := Summary(in)
+	if !strings.Contains(got, "_… and 3 more._") || strings.Contains(got, fmt.Sprintf("`s-snapshots/%d.png`", maxVisualLines)) {
+		t.Errorf("want %d lines and a count:\n%s", maxVisualLines, got)
 	}
 }

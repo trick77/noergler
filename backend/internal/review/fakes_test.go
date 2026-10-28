@@ -43,10 +43,16 @@ type fakeBitbucket struct {
 	changes    []string
 	changesErr error
 
-	files    map[string]string // "commit:path" -> content
-	fileErr  map[string]error
-	comments map[int]*bitbucket.Comment
-	fetchErr map[int]error // FetchPRComment fails for these ids
+	files map[string]string // "commit:path" -> content
+	blobs map[string][]byte // "commit:path" -> bytes, for FetchFileBytes
+	// byteReads counts FetchFileBytes calls; changeSet answers
+	// FetchPRChangeSet, failing with changeSetErr.
+	byteReads    int
+	changeSet    bitbucket.ChangeSet
+	changeSetErr error
+	fileErr      map[string]error
+	comments     map[int]*bitbucket.Comment
+	fetchErr     map[int]error // FetchPRComment fails for these ids
 
 	nextCommentID int
 	updateErr     error
@@ -74,6 +80,7 @@ func newFakeBitbucket() *fakeBitbucket {
 	return &fakeBitbucket{
 		bot:           "noergler",
 		files:         map[string]string{},
+		blobs:         map[string][]byte{},
 		fileErr:       map[string]error{},
 		comments:      map[int]*bitbucket.Comment{},
 		nextCommentID: 100,
@@ -226,6 +233,10 @@ type fakeStore struct {
 	callErr error
 	runErr  error
 	failAll bool
+
+	// visual is the stored screenshot lines; VisualInserts what was stored.
+	visual        map[store.VisualPair]string
+	VisualInserts []store.VisualPair
 
 	// Details are the run detail records, by attempt id.
 	Details map[int64][]byte
@@ -673,6 +684,7 @@ type fakeLLM struct {
 	model   string
 	effort  string
 	ready   bool
+	vision  bool
 	window  int
 	budget  int
 	review  inference.ReviewResult

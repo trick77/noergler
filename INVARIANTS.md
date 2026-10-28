@@ -146,6 +146,13 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   pin `en`. Every banner marker exists per language.
 - `.properties` size gate is NOT in `IsReviewable` (the rollup must count the
   file).
+- Test screenshots (user, 2026-10-28): summary only, never a finding (evals
+  score the line, by keyword, never as one). Images ride the review call, in
+  a second user message after the prompt (never inside it: prefix cache),
+  only on a vision profile. List = the whole PR's, from its changes; before
+  = the PR's base, never the target's tip; a line is stored per pair by blob
+  id and reused, never re-sent or re-read; pixel diff and crop in code, never
+  by the model. A screenshot left out is logged and its line says why.
 
 ## Evals
 
@@ -262,7 +269,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   the top); nothing open writes nothing but the removal of an old banner.
 - HTTP totals logged once at the end of `post`, never deferred in the entry.
   `post` runs on the review's ctx, never the job's.
-- The plan across stages carries no file bodies and no raw diff.
+- The plan across stages carries no file bodies and no raw diff. One
+  exception, part of the call like the prompt: the cropped screenshot images
+  (at most `MaxVisualImages` pairs, downscaled).
 - Team semaphore before the global one, released in reverse.
 - `Queue.Stop` settles on "nothing runnable", not "no key held".
 - Pool work after a post (a call that posts nothing to Bitbucket) is

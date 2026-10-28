@@ -1,0 +1,42 @@
+{
+  "name": "visual-hidden-submit",
+  "description": "Remember-me is to be hidden until persistent sessions ship: the checkbox loses defaultChecked and a CSS rule hides the form's last div. The last div is the actions row, not the remember row, so the Sign in button disappears; the updated baseline shows it gone and the remember row still there. Seeded: the selector, and the screenshot line saying the button is gone.",
+  "files": [
+    {
+      "path": "web/src/login/LoginForm.tsx",
+      "diff": "@@ -10,7 +10,7 @@\n         <input id=\"pw\" type=\"password\" autoComplete=\"current-password\" />\n       </div>\n       <div className=\"remember\">\n-        <input type=\"checkbox\" id=\"rm\" defaultChecked />\n+        <input type=\"checkbox\" id=\"rm\" />\n         <label htmlFor=\"rm\">Keep me signed in</label>\n       </div>\n       <div className=\"actions\">",
+      "content": "export function LoginForm({ onSubmit }: { onSubmit: () => void }) {\n  return (\n    <form className=\"login-form\" onSubmit={onSubmit}>\n      <div className=\"field\">\n        <label htmlFor=\"email\">Email</label>\n        <input id=\"email\" type=\"email\" autoComplete=\"username\" />\n      </div>\n      <div className=\"field\">\n        <label htmlFor=\"pw\">Password</label>\n        <input id=\"pw\" type=\"password\" autoComplete=\"current-password\" />\n      </div>\n      <div className=\"remember\">\n        <input type=\"checkbox\" id=\"rm\" />\n        <label htmlFor=\"rm\">Keep me signed in</label>\n      </div>\n      <div className=\"actions\">\n        <button type=\"submit\">Sign in</button>\n      </div>\n    </form>\n  );\n}\n",
+      "content_fetched": true
+    },
+    {
+      "path": "web/src/login/login.css",
+      "diff": "@@ -22,3 +22,8 @@\n   width: 100%;\n   height: 40px;\n }\n+\n+/* Remember-me is hidden until persistent sessions ship. */\n+.login-form > div:last-child {\n+  display: none;\n+}",
+      "content": ".login-form {\n  display: flex;\n  flex-direction: column;\n  align-items: stretch;\n  gap: 14px;\n}\n\n.login-form .field {\n  display: flex;\n  flex-direction: column;\n  gap: 6px;\n  flex: 1;\n}\n\n.login-form .remember {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.login-form .actions button {\n  width: 100%;\n  height: 40px;\n}\n\n/* Remember-me is hidden until persistent sessions ship. */\n.login-form > div:last-child {\n  display: none;\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "screenshots": [
+    {
+      "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+      "before": "login-stack.png",
+      "after": "login-nosubmit.png"
+    }
+  ],
+  "expected": [
+    {
+      "id": "hides-the-submit-row",
+      "file": "web/src/login/login.css",
+      "lines": [26, 29],
+      "keywords": ["last-child", "submit", "sign in", "button", "actions"],
+      "why": "The form's last div is the actions row: the rule meant for remember-me hides the only way to sign in."
+    }
+  ],
+  "expected_visual": [
+    {
+      "id": "button-gone",
+      "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+      "keywords": ["missing", "gone", "hidden", "removed", "disappear", "no longer", "no sign in", "no submit"],
+      "why": "The baseline shows the Sign in button gone while remember-me stays: the screenshot says what the selector did."
+    }
+  ]
+}

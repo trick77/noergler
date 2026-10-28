@@ -14,9 +14,13 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"log"
 	"net/http"
@@ -248,11 +252,17 @@ func main() {
 	// exactly where this endpoint earns its keep.
 	mux.HandleFunc("GET /rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{id}/changes",
 		func(w http.ResponseWriter, r *http.Request) {
+			// The base is targetCommit, the head the webhook's fromRef: the
+			// screenshot's before and after are served at those two.
 			writeJSON(w, r, map[string]any{
+				"fromHash": targetCommit,
+				"toHash":   "abc123def456",
 				"values": []any{
 					map[string]any{"nodeType": "FILE", "type": "MODIFY", "path": map[string]any{"toString": "a.go"}},
 					map[string]any{"nodeType": "FILE", "type": "MODIFY", "path": map[string]any{"toString": "util.py"}},
 					map[string]any{"nodeType": "FILE", "type": "ADD", "path": map[string]any{"toString": "fixtures/big.json"}},
+					map[string]any{"nodeType": "FILE", "type": "MODIFY", "fromContentId": "5555555", "contentId": "6666666",
+						"path": map[string]any{"toString": sampleScreenshot}},
 				},
 				"isLastPage": true,
 			})
@@ -272,6 +282,11 @@ func main() {
 			if body, ok := sampleFiles[path]; ok {
 				w.Header().Set("Content-Type", "text/plain")
 				_, _ = w.Write([]byte(body))
+				return
+			}
+			if path == sampleScreenshot {
+				w.Header().Set("Content-Type", "image/png")
+				_, _ = w.Write(screenshotPNG(r.URL.Query().Get("at")))
 				return
 			}
 			w.WriteHeader(http.StatusNotFound)
@@ -676,7 +691,37 @@ index 3333333..4444444 100644
 -def removed():
 +def renamed():
      return 2
+diff --git a/` + sampleScreenshot + ` b/` + sampleScreenshot + `
+index 5555555..6666666 100644
+Binary files a/` + sampleScreenshot + ` and b/` + sampleScreenshot + ` differ
 `
+
+// sampleScreenshot is a Playwright baseline the sample PR changed, so a smoke
+// run sends one image pair and posts a Visual changes section.
+const sampleScreenshot = "e2e/login.spec.ts-snapshots/form-chromium-linux.png"
+
+// targetCommit is the toRef of backend/internal/webhook/testdata/
+// sample_webhook.json: the before side of sampleScreenshot.
+const targetCommit = "789xyz000111"
+
+// screenshotPNG is sampleScreenshot at a commit: blank on the target branch,
+// with a red bar on the PR's head.
+func screenshotPNG(commit string) []byte {
+	img := image.NewRGBA(image.Rect(0, 0, 640, 400))
+	for i := range img.Pix {
+		img.Pix[i] = 255
+	}
+	if commit != targetCommit {
+		for x := 200; x < 440; x++ {
+			for y := 180; y < 220; y++ {
+				img.Set(x, y, color.RGBA{200, 0, 0, 255})
+			}
+		}
+	}
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, img)
+	return buf.Bytes()
+}
 
 // sampleFiles are the post-change bodies of the files in sampleDiff, served
 // from the raw endpoint so the reviewer can expand context around the hunks.
@@ -739,7 +784,8 @@ const cannedReview = `{
     "suggestion": null}],
   "fixed": [],
   "pre_existing": [],
-  "compliance_requirements": null
+  "compliance_requirements": null,
+  "visual_changes": [{"id": "V1", "change": "A red bar appears mid-form; nothing in the PR explains it."}]
 }`
 
 type chatMessage = struct {

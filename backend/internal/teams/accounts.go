@@ -205,6 +205,12 @@ func (b *botSwitch) FetchCommitDiff(ctx context.Context, project, repo string, p
 func (b *botSwitch) FetchFileContent(ctx context.Context, project, repo, commit, path string) (string, error) {
 	return b.c().FetchFileContent(ctx, project, repo, commit, path)
 }
+func (b *botSwitch) FetchPRChangeSet(ctx context.Context, project, repo string, prID int) (bitbucket.ChangeSet, error) {
+	return b.c().FetchPRChangeSet(ctx, project, repo, prID)
+}
+func (b *botSwitch) FetchFileBytes(ctx context.Context, project, repo, commit, path string) ([]byte, error) {
+	return b.c().FetchFileBytes(ctx, project, repo, commit, path)
+}
 func (b *botSwitch) PostInlineComment(ctx context.Context, project, repo string, prID int, file string, line int, body string) (int, error) {
 	return b.c().PostInlineComment(ctx, project, repo, prID, file, line, body)
 }

@@ -1,0 +1,34 @@
+{
+  "name": "visual-unexplained-drift",
+  "description": "A one-line log message change in a Go handler, and a login baseline whose text fell back to a serif face: the web font did not load in CI and the run committed the result. Nothing in the diff touches the UI. A clean control for findings; the screenshot line must say the font changed and that nothing in the PR explains it.",
+  "files": [
+    {
+      "path": "internal/api/health.go",
+      "diff": "@@ -8,7 +8,7 @@\n // Health answers the load balancer's probe.\n func Health(log *slog.Logger) http.HandlerFunc {\n \treturn func(w http.ResponseWriter, r *http.Request) {\n-\t\tlog.DebugContext(r.Context(), \"health check ok\")\n+\t\tlog.DebugContext(r.Context(), \"health probe answered\")\n \t\tw.WriteHeader(http.StatusNoContent)\n \t}\n }",
+      "content": "package api\n\nimport (\n\t\"log/slog\"\n\t\"net/http\"\n)\n\n// Health answers the load balancer's probe.\nfunc Health(log *slog.Logger) http.HandlerFunc {\n\treturn func(w http.ResponseWriter, r *http.Request) {\n\t\tlog.DebugContext(r.Context(), \"health probe answered\")\n\t\tw.WriteHeader(http.StatusNoContent)\n\t}\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "screenshots": [
+    {
+      "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+      "before": "login-stack.png",
+      "after": "login-stack-serif.png"
+    }
+  ],
+  "expected": [],
+  "expected_visual": [
+    {
+      "id": "font-changed",
+      "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+      "keywords": ["font", "serif", "typeface", "type face", "glyph"],
+      "why": "Every glyph on the page changed face; that is the whole visible change."
+    },
+    {
+      "id": "unexplained",
+      "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+      "keywords": ["nothing in", "no code", "not explained", "unexplained", "does not explain", "doesn't explain", "unrelated", "drift", "no change in"],
+      "why": "The point of the feature: a baseline changed with no code to explain it is drift committed as the new truth."
+    }
+  ]
+}
