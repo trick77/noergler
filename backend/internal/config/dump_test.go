@@ -37,7 +37,7 @@ func TestDump_MasksSecretsAndKeepsTheSectionHeaders(t *testing.T) {
 		"[config.teams.platform]", "[config.teams.platform.llm]", "[config.teams.platform.riptide] disabled",
 		"[config.teams.payments.riptide]", "https://bb.example.com", "gpt-5.5", "['alice', 'bob']", "9090",
 		"[config.teams.platform.almanach] disabled", "[config.teams.payments.almanach]", "https://almanach.example.com",
-		"[config.almanach]", "  note_max_chars = 6000",
+		"[config.almanach]", "  note_max_chars = 24000",
 		"projects = ['PLAT']", "projects = ['PAY/{billing,ledger}']",
 		"[config.teams.broken] DISABLED: TEAM_BROKEN_OPENAI_API_KEY is not set",
 		"  api_key = ***", "  token = ***", "  url = ***", "  webhook_secret = ***",

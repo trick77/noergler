@@ -495,7 +495,7 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 			InferenceConcurrency:        positive(r, "REVIEW_INFERENCE_CONCURRENCY", 6),
 			InferenceConcurrencyPerTeam: positive(r, "REVIEW_INFERENCE_CONCURRENCY_PER_TEAM", 2),
 		},
-		AlmanachLimits:  AlmanachLimits{NoteMaxChars: positive(r, "ALMANACH_NOTE_MAX_CHARS", 6000)},
+		AlmanachLimits:  AlmanachLimits{NoteMaxChars: positive(r, "ALMANACH_NOTE_MAX_CHARS", 24000)},
 		TeamsConfigPath: r.String("TEAMS_CONFIG", "teams.yaml"),
 		Teams:           map[string]*Team{},
 		Disabled:        map[string]string{},

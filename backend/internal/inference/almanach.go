@@ -30,16 +30,18 @@ var (
 	AlmanachCauseKinds  = []string{"logic", "concurrency", "config", "input_validation", "integration", "missing_test", "other"}
 )
 
-// The note's caps, in runes. Over any of them the whole note is dropped,
-// never truncated: a cut sentence is a wrong sentence in a knowledge base.
-// The total is the operator's (ALMANACH_NOTE_MAX_CHARS).
+// The note's caps. Prose (summary, an item's text, a bugfix's symptom and
+// cause) has no cap of its own: the note is documentation, and its length
+// follows what the PR teaches. What is capped is the shape (a name, the
+// files, the items per list) and the whole note, the operator's
+// ALMANACH_NOTE_MAX_CHARS, the one ceiling against bloat. Over any of them
+// the whole note is dropped, never truncated: a cut sentence is a wrong
+// sentence in documentation.
 const (
-	AlmanachSummaryMax = 600
-	AlmanachNameMax    = 80
-	AlmanachTextMax    = 300
-	AlmanachFileMax    = 200
-	AlmanachFilesMax   = 5
-	AlmanachItemsMax   = 8
+	AlmanachNameMax  = 80
+	AlmanachFileMax  = 200
+	AlmanachFilesMax = 5
+	AlmanachItemsMax = 16
 )
 
 // AlmanachItem is one component, rule, invariant or entity.
@@ -250,15 +252,10 @@ func ValidateAlmanachNote(n *AlmanachNote, maxChars int) (chars int, reason stri
 		if !slices.Contains(AlmanachCauseKinds, b.CauseKind) || b.Symptom == "" || b.Cause == "" {
 			return 0, AlmanachInvalid
 		}
-		if runes(b.Symptom) > AlmanachTextMax || runes(b.Cause) > AlmanachTextMax {
-			return 0, AlmanachTooLong
-		}
 	}
 	switch {
 	case n.Summary != nil && *n.Summary == "":
 		return 0, AlmanachInvalid
-	case n.Summary != nil && runes(*n.Summary) > AlmanachSummaryMax:
-		return 0, AlmanachTooLong
 	case n.Summary == nil && !n.Empty():
 		// No summary and still items: the "nothing learned" shape misused.
 		return 0, AlmanachInvalid
@@ -299,7 +296,7 @@ func validateAlmanachItem(it *AlmanachItem) string {
 	if it.Name == "" || it.Text == "" {
 		return AlmanachInvalid
 	}
-	if runes(it.Name) > AlmanachNameMax || runes(it.Text) > AlmanachTextMax {
+	if runes(it.Name) > AlmanachNameMax {
 		return AlmanachTooLong
 	}
 	if it.Files == nil {

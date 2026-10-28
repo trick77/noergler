@@ -275,8 +275,11 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   names a team.
 - A note never enters a prompt that reviews code. It is German always
   (`lang.SwissSS` in the validator), repo-scoped, and checked bluntly: shape,
-  secret scan on prose only (names and paths are not prose), rune caps per
-  field and in total. Over a cap the whole note drops, never truncated.
+  secret scan on prose only (names and paths are not prose), caps on the
+  shape (name length, files, items per list) and on the whole note, never
+  on prose: the note is documentation, its length follows the content, the
+  total is the ceiling (user, 2026-10-28: "it's a live wiki", no sentence
+  or paragraph quota). Over a cap the whole note drops, never truncated.
 - The note call is a continuation of the review conversation (system,
   prompt, the answer verbatim, the note turn), one call, strict schema, no
   retry, after the review posted. Whether the prefix cache serves it is

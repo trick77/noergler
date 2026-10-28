@@ -38,7 +38,6 @@ func TestRenderAlmanachNotePromptIsOnePassAndGerman(t *testing.T) {
 }
 
 func TestValidateAlmanachNote(t *testing.T) {
-	long := strings.Repeat("ä", AlmanachTextMax+1)
 	cases := []struct {
 		name   string
 		mutate func(*AlmanachNote)
@@ -46,10 +45,13 @@ func TestValidateAlmanachNote(t *testing.T) {
 		want   string
 	}{
 		{"good", func(*AlmanachNote) {}, 0, ""},
-		{"exact text cap in runes passes", func(n *AlmanachNote) { n.Components[0].Text = strings.Repeat("ä", AlmanachTextMax) }, 0, ""},
-		{"text one rune over", func(n *AlmanachNote) { n.Components[0].Text = long }, 0, AlmanachTooLong},
+		// Prose has no cap of its own: a long text or summary passes under
+		// the total.
+		{"long text passes", func(n *AlmanachNote) { n.Components[0].Text = strings.Repeat("ä", 3000) }, 0, ""},
+		{"long summary passes", func(n *AlmanachNote) { n.Summary = str(strings.Repeat("x", 3000)) }, 0, ""},
 		{"name over", func(n *AlmanachNote) { n.Components[0].Name = strings.Repeat("x", AlmanachNameMax+1) }, 0, AlmanachTooLong},
-		{"summary over", func(n *AlmanachNote) { n.Summary = str(strings.Repeat("x", AlmanachSummaryMax+1)) }, 0, AlmanachTooLong},
+		// The total counts runes of the serialized note, so ä is one.
+		{"total over by prose", func(n *AlmanachNote) { n.Components[0].Text = strings.Repeat("ä", 3000) }, 3000, AlmanachTooLong},
 		{"too many items", func(n *AlmanachNote) {
 			for i := 0; i <= AlmanachItemsMax; i++ {
 				n.Rules = append(n.Rules, AlmanachItem{Name: "r", Text: "t"})
