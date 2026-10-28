@@ -3,9 +3,12 @@ package inference
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/trick77/llmwire"
+
+	"github.com/trick77/noergler/internal/visual"
 )
 
 // Outcome says how a review call ended. Every value but OutcomeOK is a skip
@@ -109,6 +112,36 @@ func visualMessage(images []VisualImage) llmwire.Message {
 // only says what follows. Exported so the caller counts it into the fit
 // check with the labels.
 const VisualIntro = "Changed test screenshots of this PR, for `visual_changes`. Answer each id once."
+
+// NewVisualImage is the n-th (from 0) image of a call, from its pixel diff,
+// and what it costs the fit check: the images' estimate plus the text the
+// turn wraps them in, its intro counted with the first. The review and the
+// evals build images through it, so both weigh a call the same.
+func NewVisualImage(n int, path string, res visual.Result, count CountFunc) (VisualImage, int) {
+	img := VisualImage{ID: fmt.Sprintf("V%d", n+1), Path: path, After: visual.DataURI(res.After), Cropped: res.Cropped}
+	if res.Before != nil {
+		img.Before = visual.DataURI(res.Before)
+	}
+	cost := res.Tokens + count(VisualLabel(img))
+	if n == 0 {
+		cost += count(VisualIntro)
+	}
+	return img, cost
+}
+
+// VisualTextTokens is the text a call's screenshot turn wraps its images in:
+// the intro once and each label. NewVisualImage's costs over a call sum to
+// this plus the images' own estimate.
+func VisualTextTokens(images []VisualImage, count CountFunc) int {
+	if len(images) == 0 {
+		return 0
+	}
+	n := count(VisualIntro)
+	for _, img := range images {
+		n += count(VisualLabel(img))
+	}
+	return n
+}
 
 // VisualLabel is the text before one pair's images.
 func VisualLabel(img VisualImage) string {

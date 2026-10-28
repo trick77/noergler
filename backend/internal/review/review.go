@@ -211,7 +211,8 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// test screenshots and nothing else (a baseline refresh, the drift the
 	// Visual changes section exists for) still goes on, to a model that can
 	// see them.
-	baselinesOnly := len(diff.Screenshots(rawDiff)) > 0 && r.llm.Vision()
+	diffHasShot := diff.HasScreenshot(rawDiff)
+	baselinesOnly := diffHasShot && r.llm.Vision()
 	if len(files) == 0 && !baselinesOnly {
 		r.log.InfoContext(ctx, prTag+" has no reviewable files after content fetch, skipping")
 		return nil, ctx, r.abort(ctx, key, kind, SkipNoReviewable, prTag, httpCounter)
@@ -324,19 +325,13 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 
 	// The whole PR's screenshots, read from its changes only when this diff
 	// or the whole PR's names one: a PR without any costs no call.
+	// A baseline-only diff goes on even when nothing is left to send (all
+	// stored, or deleted): the call is what refreshes the summary, whose
+	// section would otherwise keep the line of a screenshot this push
+	// removed or reverted.
 	var visualPlan visualPlan
-	if hasScreenshots(rawDiff, cumulativePR, incrementalFrom != "") {
-		target := pr.ToRef.LatestCommit
-		if target == "" {
-			target = pr.ToRef.ID
-		}
-		visualPlan = r.prepareVisual(ctx, key, prTag, target, sourceCommit, r.visualRoom(assembled.PromptTokens))
-	}
-	// A baseline-only diff whose screenshots all came from earlier runs or
-	// were not sent leaves the call nothing to look at.
-	if len(files) == 0 && len(visualPlan.images) == 0 {
-		r.log.InfoContext(ctx, prTag+" has no reviewable files and no screenshot to send, skipping")
-		return nil, ctx, r.abort(ctx, key, kind, SkipNoReviewable, prTag, httpCounter)
+	if diffHasShot || (incrementalFrom != "" && (cumulativePR.scope == nil || cumulativePR.hasScreenshot)) {
+		visualPlan = r.prepareVisual(ctx, key, prTag, sourceCommit, r.visualRoom(assembled.PromptTokens))
 	}
 
 	detail := &store.Pipeline{

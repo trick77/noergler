@@ -29,27 +29,16 @@ func TestIsScreenshot(t *testing.T) {
 	}
 }
 
-func TestScreenshotsReadsChangeKind(t *testing.T) {
-	const d = "diff --git a/src/app.ts b/src/app.ts\n@@ -1 +1 @@\n-a\n+b\n" +
-		"diff --git a/t/a.spec.ts-snapshots/mod.png b/t/a.spec.ts-snapshots/mod.png\n" +
-		"index 1111111..2222222 100644\nBinary files a/t/a.spec.ts-snapshots/mod.png and b/t/a.spec.ts-snapshots/mod.png differ\n" +
-		"diff --git a/t/a.spec.ts-snapshots/new.png b/t/a.spec.ts-snapshots/new.png\n" +
-		"new file mode 100644\nindex 0000000..2222222\nBinary files /dev/null and b/t/a.spec.ts-snapshots/new.png differ\n" +
-		"diff --git src://t/a.spec.ts-snapshots/gone.png dst://t/a.spec.ts-snapshots/gone.png\n" +
-		"Binary files src://t/a.spec.ts-snapshots/gone.png and /dev/null differ\n" +
-		"diff --git a/t/old-snapshots/x.png b/t/a.spec.ts-snapshots/moved.png\n" +
-		"similarity index 100%\nrename from t/old-snapshots/x.png\nrename to t/a.spec.ts-snapshots/moved.png\n" +
-		"diff --git a/public/logo.png b/public/logo.png\nBinary files a/public/logo.png and b/public/logo.png differ\n"
-
-	got := Screenshots(d)
-	want := []Screenshot{
-		{Path: "t/a.spec.ts-snapshots/gone.png", OldPath: "t/a.spec.ts-snapshots/gone.png", Change: ScreenshotDeleted},
-		{Path: "t/a.spec.ts-snapshots/mod.png", OldPath: "t/a.spec.ts-snapshots/mod.png", Change: ScreenshotModified},
-		{Path: "t/a.spec.ts-snapshots/moved.png", OldPath: "t/old-snapshots/x.png", Change: ScreenshotModified},
-		{Path: "t/a.spec.ts-snapshots/new.png", OldPath: "t/a.spec.ts-snapshots/new.png", Change: ScreenshotAdded},
+func TestHasScreenshot(t *testing.T) {
+	const code = "diff --git a/src/app.ts b/src/app.ts\n@@ -1 +1 @@\n-a\n+b\n"
+	const logo = "diff --git a/public/logo.png b/public/logo.png\nBinary files a/public/logo.png and b/public/logo.png differ\n"
+	const shot = "diff --git src://t/a.spec.ts-snapshots/x.png dst://t/a.spec.ts-snapshots/x.png\n" +
+		"Binary files src://t/a.spec.ts-snapshots/x.png and dst://t/a.spec.ts-snapshots/x.png differ\n"
+	if HasScreenshot(code+logo) || HasScreenshot("") {
+		t.Error("code and a logo are no screenshot")
 	}
-	if !slices.Equal(got, want) {
-		t.Fatalf("Screenshots:\n got %+v\nwant %+v", got, want)
+	if !HasScreenshot(code + shot) {
+		t.Error("a baseline in Bitbucket's src:// dst:// form is one")
 	}
 }
 

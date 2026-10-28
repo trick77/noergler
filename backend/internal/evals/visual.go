@@ -24,10 +24,13 @@ type ExpectedVisual struct {
 	Why      string   `json:"why"`
 }
 
-// CaseScreenshot is one changed baseline. Before is nil for an added one.
-type CaseScreenshot struct {
-	Path          string
-	Before, After []byte
+// caseImages is a case's screenshots cut as production cuts them, once per
+// load rather than once per draw: ids maps a sent id to its path, pixels is
+// the images' token estimate (the labels are counted at assembly).
+type caseImages struct {
+	images []inference.VisualImage
+	ids    map[string]string
+	pixels int
 }
 
 // VisualMatch records whether one expected screenshot line was written.
@@ -47,46 +50,37 @@ type corpusScreenshot struct {
 	After  string `json:"after"`
 }
 
-func loadScreenshots(entries []corpusScreenshot) ([]CaseScreenshot, error) {
-	var out []CaseScreenshot
+// loadImages reads a case's screenshots and cuts each pair with
+// visual.Compare and inference.NewVisualImage, as review.prepareVisual
+// does. A pair that does not differ is a broken case, not a skip.
+func loadImages(entries []corpusScreenshot) (caseImages, error) {
+	out := caseImages{ids: map[string]string{}}
+	noCount := func(string) int { return 0 }
 	for _, e := range entries {
-		s := CaseScreenshot{Path: e.Path}
+		var before []byte
 		var err error
 		if e.Before != "" {
-			if s.Before, err = screenshotFS.ReadFile("corpus/screenshots/" + e.Before); err != nil {
-				return nil, err
+			if before, err = screenshotFS.ReadFile("corpus/screenshots/" + e.Before); err != nil {
+				return caseImages{}, err
 			}
 		}
-		if s.After, err = screenshotFS.ReadFile("corpus/screenshots/" + e.After); err != nil {
-			return nil, err
-		}
-		out = append(out, s)
-	}
-	return out, nil
-}
-
-// visualImages cuts each pair as production does (visual.Compare) and ids it
-// in order, as review.prepareVisual does. ids maps a sent id to its path.
-func visualImages(shots []CaseScreenshot) (imgs []inference.VisualImage, ids map[string]string, tokens int, err error) {
-	ids = map[string]string{}
-	for _, s := range shots {
-		res, err := visual.Compare(s.Before, s.After)
+		after, err := screenshotFS.ReadFile("corpus/screenshots/" + e.After)
 		if err != nil {
-			return nil, nil, 0, fmt.Errorf("screenshot %s: %w", s.Path, err)
+			return caseImages{}, err
+		}
+		res, err := visual.Compare(before, after)
+		if err != nil {
+			return caseImages{}, fmt.Errorf("screenshot %s: %w", e.Path, err)
 		}
 		if res.Identical {
-			continue
+			return caseImages{}, fmt.Errorf("screenshot %s: before and after have the same pixels", e.Path)
 		}
-		id := fmt.Sprintf("V%d", len(imgs)+1)
-		img := inference.VisualImage{ID: id, Path: s.Path, After: visual.DataURI(res.After), Cropped: res.Cropped}
-		if res.Before != nil {
-			img.Before = visual.DataURI(res.Before)
-		}
-		imgs = append(imgs, img)
-		ids[id] = s.Path
-		tokens += res.Tokens
+		img, _ := inference.NewVisualImage(len(out.images), e.Path, res, noCount)
+		out.images = append(out.images, img)
+		out.ids[img.ID] = e.Path
+		out.pixels += res.Tokens
 	}
-	return imgs, ids, tokens, nil
+	return out, nil
 }
 
 // matchVisual scores the model's lines against what the case expects, and

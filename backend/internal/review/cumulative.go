@@ -44,9 +44,8 @@ type cumulativeContext struct {
 	// scope is the whole PR's reviewable files and lines, from the full
 	// diff; nil when it could not be read.
 	scope *store.PRScope
-	// screenshots are the whole PR's changed test screenshots, from the
-	// full diff.
-	screenshots []diff.Screenshot
+	// hasScreenshot: the full diff changes a test screenshot.
+	hasScreenshot bool
 }
 
 // fetchCumulativeDiff returns the part of the whole-PR diff worth sending as
@@ -136,7 +135,7 @@ func (r *Reviewer) fetchCumulativeDiff(ctx context.Context, key store.PRKey, prT
 		filtered, len(oversized), oversizedNames(oversized), len(omitted), largestOmitted(omitted)))
 
 	out := cumulativeContext{diff: kept.String(), partial: filtered > 0 || len(oversized) > 0 || len(omitted) > 0,
-		added: diff.AddedLines(full), screenshots: diff.Screenshots(full)}
+		added: diff.AddedLines(full), hasScreenshot: diff.HasScreenshot(full)}
 	a, d := countDiffLines(full)
 	out.scope = &store.PRScope{Added: a, Removed: d, Files: countReviewableFiles(full)}
 	for _, f := range omitted {

@@ -214,11 +214,11 @@ func TestNoScreenshotsNoSection(t *testing.T) {
 func TestScreenshotWithoutTypesIsClassifiedByFetch(t *testing.T) {
 	h := newHarness(t, func(h *harness) {
 		h.bb.prDiff = sampleDiff + binary("added.png") + binary("dropped.png")
-		h.bb.changeSet = bitbucket.ChangeSet{Changes: []bitbucket.Change{
+		h.bb.changeSet = bitbucket.ChangeSet{FromHash: "base1", Changes: []bitbucket.Change{
 			{Path: shotDir + "added.png"}, {Path: shotDir + "dropped.png"},
 		}}
 		h.bb.blobs["src1:"+shotDir+"added.png"] = shotPNG(t, true)
-		h.bb.blobs["tgt1:"+shotDir+"dropped.png"] = shotPNG(t, false)
+		h.bb.blobs["base1:"+shotDir+"dropped.png"] = shotPNG(t, false)
 		h.llm.vision = true
 	})
 	res := okResultWith()
@@ -297,5 +297,57 @@ func TestScreenshotInLFSIsNamed(t *testing.T) {
 
 	if got := lastSummary(t, h); !strings.Contains(got, "`"+shotDir+"new.png` — _not compared: stored in Git LFS._") {
 		t.Errorf("summary lacks the LFS line:\n%s", got)
+	}
+}
+
+// No base commit in the PR's changes: a changed baseline is not compared,
+// and the target's tip, which may hold another PR's baseline, is never read
+// in its place.
+func TestScreenshotWithoutBaseIsNotCompared(t *testing.T) {
+	h := screenshotHarness(t, true)
+	h.bb.changeSet.FromHash = ""
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+	for _, img := range h.llm.Reviews[0].Images {
+		if img.Before != "" {
+			t.Errorf("sent a before side with no base: %s", img.Path)
+		}
+	}
+	if got := lastSummary(t, h); !strings.Contains(got, "`"+shotDir+"form-chromium-linux.png` — _not compared: image could not be read._") {
+		t.Errorf("want the changed baseline not compared:\n%s", got)
+	}
+}
+
+// The PR moved on between the webhook and the changes read: the images come
+// from the reviewed commit, and the blob ids, the newer head's, are not the
+// key.
+func TestScreenshotsComeFromTheReviewedCommit(t *testing.T) {
+	h := screenshotHarness(t, true)
+	h.bb.changeSet.ToHash = "newer"
+	res := okResultWith()
+	res.Review.Visual = []inference.VisualChange{{ID: "V1", Change: "Dot added."}}
+	h.llm.review = res
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if len(h.llm.Reviews[0].Images) == 0 {
+		t.Fatal("want the screenshots read at the reviewed commit")
+	}
+	if len(h.st.VisualInserts) == 0 || !strings.HasPrefix(h.st.VisualInserts[0].AfterID, "sha256:") {
+		t.Errorf("want the pair keyed by its bytes: %+v", h.st.VisualInserts)
+	}
+}
+
+// A push that only deletes a baseline still runs, so the summary says
+// removed rather than keeping the old line.
+func TestBaselineDeletionOnlyRefreshesTheSummary(t *testing.T) {
+	h := screenshotHarness(t, true)
+	h.bb.prDiff = binary("gone.png")
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if len(h.llm.Reviews) != 1 {
+		t.Fatalf("reviews = %d, want the run to go on", len(h.llm.Reviews))
+	}
+	if !strings.Contains(lastSummary(t, h), "`"+shotDir+"gone.png` — removed.") {
+		t.Errorf("summary lacks the removal:\n%s", lastSummary(t, h))
 	}
 }

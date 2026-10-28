@@ -15,23 +15,33 @@ func TestCorpusScreenshotsLoadAndCompare(t *testing.T) {
 	}
 	withShots := 0
 	for _, c := range cases {
-		if len(c.Screenshots) == 0 {
+		if len(c.shots.images) == 0 {
 			if len(c.ExpectedVisual) > 0 {
 				t.Errorf("%s expects a screenshot line and carries no screenshot", c.Name)
 			}
 			continue
 		}
 		withShots++
-		imgs, ids, tokens, err := visualImages(c.Screenshots)
-		if err != nil {
-			t.Fatalf("%s: %v", c.Name, err)
+		if len(c.shots.ids) != len(c.shots.images) || c.shots.pixels <= 0 {
+			t.Errorf("%s: %d image(s), %d id(s), %d tokens", c.Name, len(c.shots.images), len(c.shots.ids), c.shots.pixels)
 		}
-		if len(imgs) != len(c.Screenshots) || len(ids) != len(imgs) || tokens <= 0 {
-			t.Errorf("%s: %d image(s) for %d screenshot(s), %d tokens: a corpus pair must differ", c.Name, len(imgs), len(c.Screenshots), tokens)
+		// Weighed as production weighs a call: images plus their labels.
+		bare := inference.AssembleReviewPrompt(inference.AssembleRequest{Template: "{files}", Files: c.Files}, countRunes)
+		if got := assemble("{files}", c, countRunes).PromptTokens; got <= bare.PromptTokens+c.shots.pixels {
+			t.Errorf("%s: PromptTokens %d leaves out the label text", c.Name, got)
 		}
 	}
 	if withShots == 0 {
 		t.Fatal("no case carries a screenshot")
+	}
+}
+
+func countRunes(s string) int { return len([]rune(s)) }
+
+// A pair whose pixels did not change is a broken case, not a skip.
+func TestLoadImagesRefusesAnUnchangedPair(t *testing.T) {
+	if _, err := loadImages([]corpusScreenshot{{Path: "x.png", Before: "login-stack.png", After: "login-stack.png"}}); err == nil {
+		t.Fatal("want an error for a pair with the same pixels")
 	}
 }
 

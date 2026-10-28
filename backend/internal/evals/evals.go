@@ -130,8 +130,9 @@ type Case struct {
 	Description    string
 	Files          []diff.FileReviewData
 	Expected       []Expected
-	Screenshots    []CaseScreenshot
 	ExpectedVisual []ExpectedVisual
+	// shots are the case's screenshots, cut once at load.
+	shots caseImages
 }
 
 // LoadCorpus reads every embedded case, sorted by name so a run is ordered.
@@ -159,7 +160,7 @@ func LoadCorpus() ([]Case, error) {
 			return nil, fmt.Errorf("%s: case has no name", name)
 		}
 		c := Case{Name: cf.Name, Description: cf.Description, Expected: cf.Expected, ExpectedVisual: cf.ExpectedVisual}
-		if c.Screenshots, err = loadScreenshots(cf.Screenshots); err != nil {
+		if c.shots, err = loadImages(cf.Screenshots); err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
 		}
 		for _, f := range cf.Files {
@@ -273,31 +274,30 @@ func Run(ctx context.Context, client Reviewer, template string, cases []Case, co
 	return score
 }
 
+// assemble renders a case's prompt. PromptTokens carries its screenshots as
+// production weighs them, images and the text around them.
 func assemble(template string, c Case, count inference.CountFunc) inference.AssembledPrompt {
-	return inference.AssembleReviewPrompt(inference.AssembleRequest{
+	a := inference.AssembleReviewPrompt(inference.AssembleRequest{
 		Template: template,
 		Files:    c.Files,
 		// The scoring matches English corpus keywords.
 		Language: lang.EN,
 	}, count)
+	a.PromptTokens += c.shots.pixels + inference.VisualTextTokens(c.shots.images, count)
+	return a
 }
 
 // reviewCase is one review of one case, validated and scored. Run and
 // RunSampled both go through it, so a sample is scored exactly like a run.
 func reviewCase(ctx context.Context, client Reviewer, c Case, assembled inference.AssembledPrompt) (Result, inference.CallCost) {
 	res := Result{Case: c.Name}
-	imgs, ids, imgTokens, err := visualImages(c.Screenshots)
-	if err != nil {
-		res.Err, res.ErrMsg = err, err.Error()
-		return res, inference.CallCost{}
-	}
 	out := client.Review(ctx, inference.ReviewRequest{
 		Prompt:         assembled.Prompt,
-		PromptTokens:   assembled.PromptTokens + imgTokens,
+		PromptTokens:   assembled.PromptTokens,
 		ResponseSchema: inference.ReviewResponseFormat(),
-		Images:         imgs,
+		Images:         c.shots.images,
 	})
-	res.VisualMatches, res.Visual = matchVisual(c.ExpectedVisual, ids, out.Review.Visual)
+	res.VisualMatches, res.Visual = matchVisual(c.ExpectedVisual, c.shots.ids, out.Review.Visual)
 	res.Outcome = out.Outcome.String()
 	idx := diff.BuildAnchorIndex(c.Files)
 	v := inference.ValidateFindings(out.Review.Findings, idx)

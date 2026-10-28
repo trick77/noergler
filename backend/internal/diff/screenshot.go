@@ -66,35 +66,15 @@ func IsScreenshot(p string) bool {
 	return false
 }
 
-// Screenshots lists the screenshots a whole-PR diff changes, in path order.
-// Added and deleted are read off the header markers git and Bitbucket write
-// for binary files; anything else is modified.
-func Screenshots(prDiff string) []Screenshot {
-	var out []Screenshot
-	for _, fd := range SplitByFile(prDiff) {
-		p := ExtractPath(fd)
-		if p == "" || !IsScreenshot(p) {
-			continue
+// HasScreenshot reports whether a diff changes any test screenshot: the
+// cheap question asked before the PR's changes are read for the list.
+func HasScreenshot(d string) bool {
+	for _, m := range diffPathRE.FindAllStringSubmatch(d, -1) {
+		if IsScreenshot(strings.TrimRight(m[1], "\r")) {
+			return true
 		}
-		s := Screenshot{Path: p, OldPath: p}
-		head := firstRunes(fd, binaryMarkerScanRunes)
-		switch {
-		case strings.Contains(head, "\nnew file mode") || strings.Contains(head, "\n--- /dev/null") ||
-			strings.Contains(head, "Binary files /dev/null and"):
-			s.Change = ScreenshotAdded
-		case strings.Contains(head, "\ndeleted file mode") || IsDeleted(fd) ||
-			strings.Contains(head, " and /dev/null differ"):
-			s.Change = ScreenshotDeleted
-		}
-		for _, line := range strings.Split(head, "\n") {
-			if from, ok := strings.CutPrefix(line, "rename from "); ok {
-				s.OldPath = strings.TrimRight(from, "\r")
-			}
-		}
-		out = append(out, s)
 	}
-	slices.SortFunc(out, func(a, b Screenshot) int { return strings.Compare(a.Path, b.Path) })
-	return out
+	return false
 }
 
 // GroupVariants groups one screenshot's browser and platform variants, in

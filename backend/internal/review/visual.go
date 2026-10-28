@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"net/http"
 	"slices"
@@ -41,6 +42,9 @@ type visualPlan struct {
 	tokens int
 	// pending is each sent id's line and cache key, for post.
 	pending map[string]visualPending
+	// same are pairs found unchanged, stored by post: prepare runs before a
+	// first review's PR row exists, and an insert then matches no row.
+	same []store.VisualPair
 }
 
 type visualPending struct {
@@ -73,26 +77,17 @@ func screenshotsOf(cs bitbucket.ChangeSet) []diff.Screenshot {
 	return out
 }
 
-// hasScreenshots reports whether this run should look at screenshots at
-// all, without a call: the diff it reviews or the whole PR's (an
-// incremental run's cumulative diff) names one, or the whole PR's could not
-// be read.
-func hasScreenshots(rawDiff string, cumulative cumulativeContext, incremental bool) bool {
-	if len(diff.Screenshots(rawDiff)) > 0 {
-		return true
-	}
-	return incremental && (cumulative.scope == nil || len(cumulative.screenshots) > 0)
-}
-
 // prepareVisual reads the PR's changed screenshots and decides, for each,
 // what the summary says: a stored line, an image to send, or why not.
 //
-// The list and both commits come from the PR's changes, every run, so the
-// section stays the PR's and "before" is the PR's base, not the target's
-// tip, which may carry another PR's baseline. target and head stand in
-// when Bitbucket leaves the commits out. room is what the fit ceiling
-// leaves after the prompt.
-func (r *Reviewer) prepareVisual(ctx context.Context, key store.PRKey, prTag, target, head string, room int) visualPlan {
+// The list and the base commit come from the PR's changes, every run, so
+// the section stays the PR's and "before" is the PR's base, never the
+// target's tip, which may carry another PR's baseline: without a base, a
+// pair that needs one is not compared. "after" is head, the commit whose
+// code this run reviews; the PR moved on since means its blob ids are not
+// head's, and the bytes key the store instead. room is what the fit
+// ceiling leaves after the prompt.
+func (r *Reviewer) prepareVisual(ctx context.Context, key store.PRKey, prTag, head string, room int) visualPlan {
 	var vp visualPlan
 	cs, err := r.bitbucket.FetchPRChangeSet(ctx, key.Project, key.Repo, key.PRID)
 	if err != nil {
@@ -104,14 +99,17 @@ func (r *Reviewer) prepareVisual(ctx context.Context, key store.PRKey, prTag, ta
 	if len(shots) == 0 {
 		return vp
 	}
-	before, after := cs.FromHash, cs.ToHash
-	if before == "" {
-		r.log.InfoContext(ctx, prTag+": the PR's changes name no base commit, screenshots compared against the target's tip")
-		before = target
+	if cs.FromHash == "" {
+		r.log.WarnContext(ctx, prTag+": the PR's changes name no base commit: a screenshot needing a before side is not compared")
 	}
-	if after == "" {
-		after = head
+	if cs.ToHash != "" && cs.ToHash != head {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: the PR moved on to %s since %s: screenshots keyed by their bytes",
+			prTag, shortSHA(cs.ToHash, 10), shortSHA(head, 10)))
+		for i := range shots {
+			shots[i].BeforeID, shots[i].AfterID = "", ""
+		}
 	}
+	before, after := cs.FromHash, head
 	// An unreadable cache reads as empty: its pairs are sent again, which
 	// costs tokens (safeDB logs the fault) but never loses a line.
 	cache := safeDB(ctx, r.log, "VisualChanges", func() (map[store.VisualPair]string, error) {
@@ -151,7 +149,8 @@ func (r *Reviewer) prepareVisual(ctx context.Context, key store.PRKey, prTag, ta
 
 	r.log.InfoContext(ctx, fmt.Sprintf("%s: screenshots: %d changed, %d shown, %d sent (~%d tokens), %d from earlier runs, %d unchanged pixels, %d read(s)",
 		prTag, len(shots), len(vp.lines), len(vp.images), vp.tokens, vs.cached, len(unchanged), vs.fetched))
-	for _, st := range slices.Sorted(mapKeys(notCompared)) {
+	vp.same = vs.same
+	for _, st := range slices.Sorted(maps.Keys(notCompared)) {
 		paths := notCompared[st]
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d screenshot(s) not compared (%s): %s",
 			prTag, len(paths), visualReason(st), capPaths(paths)))
@@ -175,6 +174,8 @@ type visualRun struct {
 	// file under its line.
 	lastID   string
 	lastPair store.VisualPair
+	// same are the pairs found unchanged, for post to store.
+	same []store.VisualPair
 }
 
 // one decides a single screenshot: its line, or same when its pixels did
@@ -216,6 +217,10 @@ func (vs *visualRun) one(s diff.Screenshot) (line render.VisualLine, same bool) 
 			return l, same
 		}
 	}
+	// No base, no before side: never the target's tip in its place.
+	if s.Change != diff.ScreenshotAdded && vs.before == "" {
+		return done(render.VisualUnreadable)
+	}
 	// Past either cap the pair waits for a later run, which finds the ones
 	// this run sent in the cache.
 	if len(vp.images) == inference.MaxVisualImages || vs.fetched >= maxVisualFetched {
@@ -254,29 +259,19 @@ func (vs *visualRun) one(s diff.Screenshot) (line render.VisualLine, same bool) 
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: screenshot %s not compared: %v", vs.prTag, s.Path, err))
 		return done(render.VisualUnreadable)
 	case res.Identical:
-		// Re-encoded, same pixels: not a visual change, and stored as such
-		// so the pair is never read again.
-		safeDBErr(ctx, r.log, "InsertVisualChange", func() error {
-			return r.store.InsertVisualChange(ctx, vs.key, pair, "", r.llm.Model())
-		})
+		// Re-encoded, same pixels: not a visual change. Stored as such by
+		// post, once a first review's PR row exists, so the pair is never
+		// read again.
+		vs.same = append(vs.same, pair)
 		return line, true
 	}
-	id := fmt.Sprintf("V%d", len(vp.images)+1)
-	img := inference.VisualImage{ID: id, Path: s.Path, After: visual.DataURI(res.After), Cropped: res.Cropped}
-	if res.Before != nil {
-		img.Before = visual.DataURI(res.Before)
-	}
-	// The text around the images is billed and fitted as well.
-	cost := res.Tokens + r.tokens.Count(inference.VisualLabel(img))
-	if len(vp.images) == 0 {
-		cost += r.tokens.Count(inference.VisualIntro)
-	}
+	img, cost := inference.NewVisualImage(len(vp.images), s.Path, res, r.tokens.Count)
 	if cost > vs.room-vp.tokens {
 		return done(render.VisualNoRoom)
 	}
 	vp.images = append(vp.images, img)
 	vp.tokens += cost
-	vs.lastID, vs.lastPair = id, pair
+	vs.lastID, vs.lastPair = img.ID, pair
 	// Until the model answers for it.
 	return done(render.VisualNoAnswer)
 }
@@ -287,16 +282,6 @@ func contentID(b []byte) string {
 		return ""
 	}
 	return "sha256:" + visual.Hash(b)
-}
-
-func mapKeys[K comparable, V any](m map[K]V) func(func(K) bool) {
-	return func(yield func(K) bool) {
-		for k := range m {
-			if !yield(k) {
-				return
-			}
-		}
-	}
 }
 
 // fetchScreenshot reads one version. The status is VisualDescribed when the
@@ -351,6 +336,11 @@ func (r *Reviewer) visualRoom(promptTokens int) int {
 // sent one the model skipped, are logged.
 func (r *Reviewer) visualLines(ctx context.Context, plan *reviewPlan, answers []inference.VisualChange) []render.VisualLine {
 	vp := plan.visual
+	for _, p := range vp.same {
+		safeDBErr(ctx, r.log, "InsertVisualChange", func() error {
+			return r.store.InsertVisualChange(ctx, plan.key, p, "", r.llm.Model())
+		})
+	}
 	lines := append([]render.VisualLine(nil), vp.lines...)
 	answered := map[string]bool{}
 	var unknown []string

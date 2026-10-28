@@ -322,10 +322,12 @@ anti-aliasing, browser version) committed as the new truth.
 When the reviewed diff or the whole PR's names one, the PR's changes are
 read (`/changes`, one paged call): the list of screenshots, each one's type
 (added, deleted, moved) and blob ids, and the PR's base and head commits.
-The list is the whole PR's on every run, and "before" is the PR's base, not
-the target's tip, which may carry another PR's baseline. Without a base the
-target's tip stands in, logged; without the changes at all the section says
-it was not read this run.
+The list is the whole PR's on every run, and "before" is the PR's base, never
+the target's tip, which may carry another PR's baseline: without a base a
+changed screenshot is not compared, logged. "After" is the commit the run
+reviews; when the PR moved on since, the blob ids belong to the newer head
+and the bytes key the store instead. Without the changes at all the section
+says it was not read this run.
 
 Browser and platform variants of one screenshot (`-chromium`, `-firefox`,
 `-webkit`, `-linux`, `-darwin`, `-win32`) are one line, chromium tried
@@ -348,7 +350,12 @@ At most six pairs go out per call; the rest wait for a later run, which
 finds these in the store. The images and their labels are counted into the
 fit check (w·h/750 tokens an image); one that does not fit is left out,
 never a file. A diff that changes baselines and nothing else is reviewed
-anyway on a vision model: that is the drift case.
+anyway on a vision model: that is the drift case, and a push that only
+deletes or reverts one still refreshes the section.
+
+Known limit: a stored line keeps the verdict it was written with. A
+baseline described as unexplained drift stays so after a later push adds
+the CSS that explains it; the pair (same blob ids) is never sent again.
 
 The section lists each screenshot with the model's sentence, or why there is
 none: removed, over the per-run limits, no room, too large, unreadable, in
