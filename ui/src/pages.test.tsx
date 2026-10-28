@@ -557,6 +557,7 @@ describe("TeamsPage", () => {
       model: "gpt-5.5-high",
       model_source: "default",
       riptide: "failing",
+      almanach: "ok",
       bitbucket_account: {
         source: "team",
         username: "pay-bot",
@@ -604,6 +605,7 @@ describe("TeamsPage", () => {
     );
     expect(screen.getAllByText("Own Jira token")).toHaveLength(2);
     expect(screen.getAllByText("Riptide: failing")).toHaveLength(2);
+    expect(screen.getAllByTitle(/Almanach took the last call/)).toHaveLength(2);
     expect(screen.queryByText(/pay-bot/)).toBeNull();
   });
 
@@ -615,6 +617,7 @@ describe("TeamsPage", () => {
       slug: "hotspot",
       name: "Hotspot",
       riptide: "off",
+      almanach: "off",
       model_source: "team",
       bitbucket_account: {
         source: "shared",
@@ -630,6 +633,7 @@ describe("TeamsPage", () => {
     expect(await screen.findAllByText("Shared bot")).toHaveLength(2);
     expect(screen.getAllByText("Shared Jira token")).toHaveLength(2);
     expect(screen.getAllByText("Riptide off")).toHaveLength(2);
+    expect(screen.getAllByText("Almanach off")).toHaveLength(2);
     expect(screen.getByText("Team")).toBeDefined();
     expect(screen.queryByText("noergler")).toBeNull();
   });
@@ -643,6 +647,26 @@ describe("TeamsPage", () => {
     const pills = await screen.findAllByText("Riptide: rejected");
     expect(pills).toHaveLength(2);
     expect(pills[0].className).toMatch(/danger/);
+  });
+
+  // Almanach is a forwarder like riptide and shows with the same words and
+  // tones; a team the server reports nothing for is off.
+  it("shows the almanach feed beside riptide", async () => {
+    serve({
+      teams: {
+        teams: [
+          { ...teams[0], almanach: "rejected" },
+          { ...teams[0], slug: "data", name: "Data", almanach: undefined },
+        ],
+      },
+    });
+    render(<TeamsPage />);
+
+    const pills = await screen.findAllByText("Almanach: rejected");
+    expect(pills).toHaveLength(2);
+    expect(pills[0].className).toMatch(/danger/);
+    expect(pills[0].getAttribute("title")).toMatch(/token/);
+    expect(screen.getAllByText("Almanach off")).toHaveLength(2);
   });
 
   // Collapsed by default: the list is there to open, the summary pills are

@@ -176,8 +176,8 @@ the service.**
 | Model cannot reason, lacks strict JSON-schema output, or does not list the configured `reasoning_effort`, or that level switches reasoning off, or no level is set on a model that reasons only when asked and names no balanced level | That team is disabled, from its llmwire profile and before any request. The error names the valid choices. |
 | Team's riptide ping returns 401 | That team is disabled. Any other riptide error is a warning; the Teams page shows riptide as failing until a rollup goes through. |
 | A rollup fails after startup | The team stays up; the rollup is lost. The Teams page shows riptide as rejected on a 401/403 (every rollup is lost until the token is fixed), else as failing, until the next rollup goes through. |
-| Team's Almanach ping returns 401 | That team is disabled. Any other Almanach error is a warning; reviews run and the notes wait. |
-| A note fails to reach Almanach | The team stays up; the note stays pending and goes with the team's next merge. Nothing is lost unless the token stays rejected. |
+| Team's Almanach ping returns 401 | That team is disabled. Any other Almanach error is a warning; reviews run, the notes wait, and the Teams page shows Almanach as failing until a note goes through. |
+| A note fails to reach Almanach | The team stays up; the note stays pending and goes with the team's next merge. Nothing is lost unless the token stays rejected. The Teams page shows Almanach as rejected on a 401/403, else as failing, until the next note goes through. |
 | Missing per-team secret env var | That team is disabled. |
 | `NOERGLER_SECRETS_KEY` missing, malformed, or not the key the stored team tokens were sealed with | Startup aborts. The key is shared layer. (A changed key with no team token stored yet only resets the key check.) |
 | A team's own Bitbucket token rejected, unreadable, or belonging to another account than its username | That team stays up and is **not** disabled: its webhooks are acknowledged and not processed, the Teams page shows the state, and the team heals itself by pushing a working token. No other team is affected. |

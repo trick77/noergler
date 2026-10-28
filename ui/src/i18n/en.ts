@@ -211,6 +211,21 @@ export const en = {
         "Riptide refuses the token (HTTP 401/403). Reviews run; every rollup is lost until the token is fixed.",
       off: "No riptide block for this team in teams.yaml, so nothing is forwarded.",
     },
+    almanachLabel: "Almanach",
+    almanach: {
+      ok: "Almanach",
+      failing: "Almanach: failing",
+      rejected: "Almanach: rejected",
+      off: "Almanach off",
+    },
+    almanachHint: {
+      ok: "Almanach took the last call (the startup ping or a note); every review round writes a note, and each merged PR's note is forwarded.",
+      failing:
+        "The last call to Almanach failed (the startup ping or a note); the pod log says why. Reviews run; a note Almanach did not take goes with the team's next merge.",
+      rejected:
+        "Almanach refuses the token (HTTP 401/403). Reviews run; notes wait until the token is fixed.",
+      off: "No almanach block for this team in teams.yaml, so no note is written and nothing is forwarded.",
+    },
     accountStatus: {
       ok: "working",
       rejected: "rejected",

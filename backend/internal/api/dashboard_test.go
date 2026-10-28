@@ -15,6 +15,7 @@ import (
 
 	"github.com/trick77/llmwire"
 	"github.com/trick77/llmwire/llmwiretest"
+	"github.com/trick77/noergler/internal/almanach"
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/httpapi"
 	"github.com/trick77/noergler/internal/inference"
@@ -749,6 +750,50 @@ func TestTeamsShowsRiptide(t *testing.T) {
 	_, _ = h.rt.Riptide.VerifyAtStartup(context.Background())
 	if got, _ := state(); got["platform"] != riptide.StatusFailing {
 		t.Errorf("riptide = %q, want failing", got["platform"])
+	}
+}
+
+// Almanach shows beside riptide with the same fixed words: off without a
+// block, ok after a ping Almanach answered, failing when it did not; never
+// the URL or the token, absent for a disabled team.
+func TestTeamsShowsAlmanach(t *testing.T) {
+	h := newDashHarness(t)
+	state := func() (map[string]string, string) {
+		raw := h.get(t, "/api/dashboard/teams").Body.String()
+		var got teamsBody
+		if err := json.Unmarshal([]byte(raw), &got); err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]string{}
+		for _, tm := range got.Teams {
+			out[tm.Slug] = tm.Almanach
+		}
+		return out, raw
+	}
+	if got, _ := state(); got["platform"] != almanach.StatusOff || got["mobile"] != "" {
+		t.Errorf("almanach = %v, want platform off, mobile absent", got)
+	}
+
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"ok","team":"platform"}`))
+	}))
+	t.Cleanup(up.Close)
+	h.rt.Almanach = almanach.New(up.URL, "almanach-secret", slog.New(slog.DiscardHandler))
+	_, _ = h.rt.Almanach.VerifyAtStartup(context.Background())
+	got, raw := state()
+	if got["platform"] != almanach.StatusOK {
+		t.Errorf("almanach = %q, want ok", got["platform"])
+	}
+	for _, leak := range []string{up.URL, "almanach-secret"} {
+		if strings.Contains(raw, leak) {
+			t.Errorf("%q reached the unauthenticated roster", leak)
+		}
+	}
+
+	h.rt.Almanach = almanach.New("http://127.0.0.1:1", "t", slog.New(slog.DiscardHandler))
+	_, _ = h.rt.Almanach.VerifyAtStartup(context.Background())
+	if got, _ := state(); got["platform"] != almanach.StatusFailing {
+		t.Errorf("almanach = %q, want failing", got["platform"])
 	}
 }
 

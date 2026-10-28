@@ -127,6 +127,10 @@ export interface Team {
   /** Forwarding as of the last call (startup ping, then each rollup), never
    *  the URL. Absent for a disabled team. */
   riptide?: RiptideStatus;
+  /** The Almanach note feed, the same fixed words as riptide: off without
+   *  an almanach block, else as of the last call. Absent for a disabled
+   *  team. */
+  almanach?: RiptideStatus;
   /** The Bitbucket and Jira accounts the team works with: the shared ones,
    *  or its own (pushed through the team API). A fixed status, never a
    *  reason. Null for a disabled team. */

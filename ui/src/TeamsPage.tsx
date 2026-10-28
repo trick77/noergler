@@ -37,8 +37,8 @@ function accountTone(status: AccountStatus | null): Tone {
   return "fail";
 }
 
-/** integrationPills is the team's Bitbucket bot, Jira token and riptide,
- *  always all three: not set up (shared, off) is a state too, in the quiet
+/** integrationPills is the team's Bitbucket bot, Jira token, riptide and
+ *  Almanach, always all four: not set up (shared, off) is a state too, in the quiet
  *  tone, so a missing one never has to be inferred. Not the bot's name:
  *  what matters is whether the team runs on its own account and whether
  *  that works (user, 2026-10-26). The status is the server's fixed word,
@@ -110,7 +110,15 @@ function integrationPills(team: Team, now: number, t: TFunction) {
     </Pill>
   );
 
-  return { bitbucket, jira, riptide };
+  // Almanach is a forwarder like riptide: same words, same tones.
+  const as = team.almanach ?? "off";
+  const almanach = (
+    <Pill tone={riptideTone[as]} title={t(`teams.almanachHint.${as}`)}>
+      {t(`teams.almanach.${as}`)}
+    </Pill>
+  );
+
+  return { bitbucket, jira, riptide, almanach };
 }
 
 function ConfigGroup({
@@ -185,6 +193,7 @@ function Configuration({ team, now }: { team: Team; now: number }) {
           {pills.bitbucket}
           {pills.jira}
           {pills.riptide}
+          {pills.almanach}
         </span>
       </summary>
       <div className="mt-2.5 grid gap-x-8 gap-y-4 md:grid-cols-2">
@@ -213,6 +222,9 @@ function Configuration({ team, now }: { team: Team; now: number }) {
           </ConfigRow>
           <ConfigRow label={t("teams.jiraToken")}>{pills.jira}</ConfigRow>
           <ConfigRow label={t("teams.riptideLabel")}>{pills.riptide}</ConfigRow>
+          <ConfigRow label={t("teams.almanachLabel")}>
+            {pills.almanach}
+          </ConfigRow>
         </ConfigGroup>
         <ConfigGroup title={t("teams.filters")}>
           <ConfigRow label={t("teams.excludedRepos")}>
