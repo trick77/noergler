@@ -51,9 +51,11 @@ const (
 type ReviewFunc func(ctx context.Context, team string, payload *webhook.Payload, sched Scheduler) (handedOff bool)
 
 // Scheduler is the pool as a review uses it. Stage runs infer on the
-// inference pool and then puts post back on the single worker.
+// inference pool and then puts post back on the single worker. Spawn runs
+// fn on the pool and nothing afterwards: no worker tail, no PR hold.
 type Scheduler interface {
 	Stage(ctx context.Context, key store.PRKey, team string, infer, post func(context.Context))
+	Spawn(ctx context.Context, team string, fn func(context.Context))
 }
 
 // JobFunc is a queued unit of work that is not a PR review.
@@ -444,6 +446,51 @@ func (q *Queue) Stage(ctx context.Context, key store.PRKey, team string, infer, 
 			post(ctx)
 			return false
 		})
+	}()
+}
+
+// Spawn runs fn on the inference pool, under the team's slot and then the
+// global one, with no worker tail and no PR hold.
+//
+// For a gateway call that posts nothing to Bitbucket and whose result lands
+// in the database only (the Almanach note that follows a review). Stage
+// would be wrong for it: Stage's tail is what ends the PR's hold, so a
+// second Stage issued from inside a post would lose the hold the moment
+// that post returns and later release a key a newer review holds. Spawn
+// touches inflight not at all; whoever calls it must order its own writes.
+//
+// Counted like staged work: Stop drains it through infWG, and staged keeps
+// the worker from preparing prompts while spawned calls hold the slots. A
+// panic is logged and the slot released; nothing else is affected.
+//
+// ctx is the caller's, carrying pr_tag and team=; it is cancelled with the
+// queue's root context on shutdown like a staged inference.
+func (q *Queue) Spawn(ctx context.Context, team string, fn func(context.Context)) {
+	q.infWG.Add(1)
+	q.mu.Lock()
+	q.staged++
+	q.mu.Unlock()
+	go func() {
+		defer q.infWG.Done()
+
+		acquired := false
+		defer func() {
+			if !acquired {
+				q.mu.Lock()
+				q.staged--
+				q.mu.Unlock()
+				q.cond.Broadcast()
+			}
+			if r := recover(); r != nil {
+				q.log.ErrorContext(ctx, fmt.Sprintf("queue: spawned call panicked (team %s): %v", team, r),
+					slog.String("stack", string(debug.Stack())))
+			}
+		}()
+
+		q.acquire(team)
+		acquired = true
+		defer q.release(team)
+		fn(ctx)
 	}()
 }
 
