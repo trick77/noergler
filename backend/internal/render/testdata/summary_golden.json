@@ -53,6 +53,9 @@
  "incremental": {
   "out": "### PR review summary\n- Last push: `aaaaaaaaaa` .. `bbbbbbbbbb`\n\n### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues and suggestions\nNone.\n\n### Security and performance\nNone notable.\n\n### Test coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n\n_`gpt-5.5-medium` · cost not reported_"
  },
+ "list_capped": {
+  "out": "### PR review summary\n\n### Overview\n_Not provided._\n\n### Strengths\nNone.\n\n### Issues and suggestions\n1. New issue _(new)_\n2. Old 0\n3. Old 1\n4. Old 2\n5. Old 3\n6. Old 4\n7. Old 5\n8. Old 6\n9. Old 7\n10. Old 8\n11. Old 9\n12. Old 10\n13. Old 11\n14. Old 12\n15. Old 13\n16. Old 14\n17. Old 15\n18. Old 16\n19. Old 17\n20. Old 18\n21. Old 19\n22. Old 20\n23. Old 21\n24. Old 22\n25. Old 23\n26. Old 24\n27. Old 25\n28. Old 26\n29. Old 27\n30. Old 28\n- … and 2 more open findings.\n\n### Security and performance\nNone notable.\n\n### Test coverage\n_Not assessed._\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n\n_`gpt-5.5-medium` · cost not reported_"
+ },
  "mixed": {
   "out": "### PR review summary\n\n### Overview\nAdds a thing.\n\n### Strengths\n- Tests included\n\n### Issues and suggestions\n1. Null deref\n2. Rename it\n\n### Security and performance\nNothing notable.\n\n### Test coverage\nGood.\n\n### Recommendation\n**Approve ✅** — Fine.\n\n---\n_`gpt-5.5-medium` · 5 files · +40 / -7 · 12.3s · $0.12, PR $1.50 of $5.00 · [Review details](https://noergler.example.com/prs/AAAAAAAAAAAAAAAAAAAAAA)_"
  },

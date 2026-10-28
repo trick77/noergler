@@ -319,7 +319,7 @@ describe("RunPane", () => {
 
     expect(
       await screen.findByText(
-        /Verdict raised from approve to request_changes: earlier findings are still open/,
+        /Verdict raised from approve to request_changes to match the PR.s open findings/,
       ),
     ).toBeDefined();
     expect(screen.queryByText(/Verdict lowered/)).toBeNull();

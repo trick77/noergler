@@ -462,14 +462,8 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	// The PR summary's earlier findings: unfixed and their thread still
 	// open on the PR. One the author resolved or deleted is closed there,
 	// so it is closed here too (as for the handoff banner).
-	threads, _ := r.openThreads(ctx, key, prTag, stillOpen)
+	threads, _ := r.openThreads(ctx, key, prTag, stillOpen, maxThreadChecks)
 	earlierOpen := asFindings(threads)
-	// The verdict covers the whole PR. The model's argued from findings some
-	// of which are now gone, so a drop lowers it and replaces the rationale
-	// that named them; an earlier finding still open then holds it up.
-	reviewSummary := inference.AdjustVerdict(result.Review.Summary, v.Kept, len(v.Dropped), plan.lang)
-	lowered := reviewSummary.VerdictDecision
-	reviewSummary = inference.FloorVerdict(reviewSummary, earlierOpen, plan.lang)
 	for _, d := range v.Dropped {
 		plan.detail.Decisions = append(plan.detail.Decisions, decision(d.Finding, "dropped", string(d.Reason)))
 	}
@@ -491,15 +485,6 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	if len(pre) > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d pre-existing bug(s) recorded for the run page, not posted", prTag, len(pre)))
 	}
-	plan.detail.Verdict = &store.VerdictChange{Model: result.Review.Summary.VerdictDecision, Posted: reviewSummary.VerdictDecision}
-	if was := result.Review.Summary.VerdictDecision; was != lowered {
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: verdict lowered %s -> %s after %d dropped finding(s)",
-			prTag, was, lowered, len(v.Dropped)))
-	}
-	if lowered != reviewSummary.VerdictDecision {
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: verdict raised %s -> %s: %d earlier finding(s) still open",
-			prTag, lowered, reviewSummary.VerdictDecision, len(earlierOpen)))
-	}
 	deduped, repeats := dedupe(v.Kept, stillOpen, plan.anchors)
 	for _, f := range repeats {
 		plan.detail.Decisions = append(plan.detail.Decisions, decision(f, "repeat", ""))
@@ -516,6 +501,13 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: finding on %s:%d (%s) over the %d-comment cap, not posted",
 				prTag, f.File, f.Line, f.Severity, r.cfg.MaxComments))
 		}
+	}
+	// The verdict follows the PR summary's list, both halves of it, once.
+	reviewSummary := inference.SettleVerdict(result.Review.Summary, earlierOpen, findings, len(v.Dropped), plan.lang)
+	plan.detail.Verdict = &store.VerdictChange{Model: result.Review.Summary.VerdictDecision, Posted: reviewSummary.VerdictDecision}
+	if was := result.Review.Summary.VerdictDecision; was != reviewSummary.VerdictDecision {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: verdict %s -> %s to match the PR summary's list: %d earlier open, %d new, %d dropped",
+			prTag, was, reviewSummary.VerdictDecision, len(earlierOpen), len(findings), len(v.Dropped)))
 	}
 
 	plan.sw.lap(stageValidate)

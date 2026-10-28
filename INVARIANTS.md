@@ -55,9 +55,13 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - Summary = the whole PR on every run, never one push (user, 2026-10-28:
   "it's called SUMMARY"): the comment is replaced each run. Prompt names it
   the PR review summary; issue list = every open finding (`EarlierOpen` +
-  new); `FloorVerdict` raises to what open earlier findings demand. Open =
+  new); `SettleVerdict` sets the decision from that list, once, both ways;
+  a match keeps the model's rationale. Open =
   `openThreads`, as the handoff: unfixed, thread not resolved or deleted,
-  unreadable counts open. Earlier findings unreadable from the DB: never
+  unreadable counts open; a review reads at most 50 threads, issues first,
+  the rest open unread; the list shows 30, the rest counted (user,
+  2026-10-28). Unretireable after a full-review fallback (no ids): stays
+  open until its thread is resolved (user kept it, 2026-10-28). Earlier findings unreadable from the DB: never
   safeDB ("none" would approve), the summary says it lists this run's only.
   Heading "PR Review-Zusammenfassung" / "PR review summary", last push a
   line under it.

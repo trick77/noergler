@@ -281,6 +281,10 @@ type listedFinding struct {
 	isNew bool
 }
 
+// maxListedFindings caps the PR summary's issue list (user, 2026-10-28);
+// the rest are counted under it, issues first in either part.
+const maxListedFindings = 30
+
 // prFindings is every open finding of the PR, issues first; within a
 // severity the earlier ones come first, in the order they were posted.
 func prFindings(in SummaryInput) []listedFinding {
@@ -334,7 +338,8 @@ func renderIssues(in SummaryInput) string {
 		lines = append(lines, "")
 	}
 	markNew := len(in.EarlierOpen) > 0
-	for i, f := range all {
+	shown := all[:min(len(all), maxListedFindings)]
+	for i, f := range shown {
 		headline := ""
 		if f.Headline != nil {
 			headline = strings.TrimSpace(*f.Headline)
@@ -349,6 +354,10 @@ func renderIssues(in SummaryInput) string {
 			headline += p(" _(neu)_", " _(new)_")
 		}
 		lines = append(lines, fmt.Sprintf("%d. %s", i+1, headline))
+	}
+	if more := len(all) - len(shown); more > 0 {
+		lines = append(lines, fmt.Sprintf(p("- … und %d weitere offene Findings.",
+			"- … and %d more open findings."), more))
 	}
 	if accounting != "" {
 		lines = append(lines, "", accounting)

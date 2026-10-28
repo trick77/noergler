@@ -3,6 +3,7 @@ package review
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -101,6 +102,41 @@ func TestSummaryLeavesOutClosedThreads(t *testing.T) {
 	}
 }
 
+// At most maxThreadChecks threads are read per review, issues first; the rest
+// count as open unread, so they stay listed even when resolved.
+func TestThreadChecksAreCapped(t *testing.T) {
+	h := newHarness(t, nil)
+	incremental(h)
+	for i := range maxThreadChecks + 1 {
+		f := earlier(h, int64(i+1), "suggestion", fmt.Sprintf("Old %d", i))
+		h.bb.comments[*f.BitbucketCommentID].ThreadResolved = true
+		h.st.existing = append(h.st.existing, f)
+	}
+	issue := earlier(h, 500, "issue", "Last-posted issue")
+	h.bb.comments[*issue.BitbucketCommentID].ThreadResolved = true
+	h.st.existing = append(h.st.existing, issue)
+	h.llm.review = okResultWith()
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	read := 0
+	for _, id := range h.bb.FetchedC {
+		if id > 700 {
+			read++
+		}
+	}
+	if read != maxThreadChecks {
+		t.Errorf("threads read = %d, want %d", read, maxThreadChecks)
+	}
+	s := h.bb.Posted[0].Text
+	if strings.Contains(s, "Last-posted issue") {
+		t.Errorf("the issue is checked first, and its thread is resolved:\n%s", s)
+	}
+	if !strings.Contains(s, "1. Old 49\n2. Old 50\n") {
+		t.Errorf("the two unread suggestions must stay listed:\n%s", s)
+	}
+}
+
 // A thread that cannot be read counts as open: fail toward showing it.
 func TestSummaryKeepsAnUnreadableThread(t *testing.T) {
 	h := newHarness(t, nil)
@@ -133,26 +169,60 @@ func TestSummarySaysEarlierFindingsUnreadable(t *testing.T) {
 	}
 }
 
-// A dropped finding replaces the model's rationale, which named it, even
-// when an earlier issue keeps the verdict where it was.
-func TestDroppedFindingRationaleNeverPostsBesideAnOpenIssue(t *testing.T) {
+// A drop beside an open earlier issue leaves a matching verdict and its
+// rationale alone: settled once against the list, not lowered and raised
+// back with the model's words lost.
+func TestDropBesideAnOpenIssueKeepsTheVerdict(t *testing.T) {
 	h := newHarness(t, nil)
 	incremental(h)
 	h.st.existing = []store.Finding{earlier(h, 11, "issue", "Old issue")}
 	res := okResultWith(inference.ReviewFinding{File: "a.go", Line: 2, Severity: "issue", Comment: "x",
 		Evidence: []string{"never in the diff"}})
 	res.Review.Summary.VerdictDecision = "request_changes"
-	res.Review.Summary.VerdictRationale = "Request changes: nil deref in Foo."
+	res.Review.Summary.VerdictRationale = "Retries are unbounded and Old issue is still open."
 	h.llm.review = res
 
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
-	s := h.bb.Posted[0].Text
-	if strings.Contains(s, "nil deref in Foo") {
-		t.Errorf("the rationale names a withheld finding:\n%s", s)
+	want := "**Request changes 🛑** — Retries are unbounded and Old issue is still open."
+	if s := h.bb.Posted[0].Text; !strings.Contains(s, want) {
+		t.Errorf("summary lacks %q:\n%s", want, s)
 	}
-	if !strings.Contains(s, "**Request changes 🛑** — Verdict raised: 1 earlier finding is still open.") {
-		t.Errorf("the open issue must hold the verdict:\n%s", s)
+	if d := decodeDetail(t, h).Verdict; d == nil || d.Model != d.Posted {
+		t.Errorf("run page verdict = %+v, want unchanged", d)
+	}
+}
+
+// A thread the author resolved leaves nothing to request: the model's
+// request_changes, argued from the open block it saw, is lowered.
+func TestClosedThreadLowersAStaleVerdict(t *testing.T) {
+	h := newHarness(t, nil)
+	incremental(h)
+	f := earlier(h, 11, "issue", "Resolved one")
+	h.bb.comments[*f.BitbucketCommentID].ThreadResolved = true
+	h.st.existing = []store.Finding{f}
+	res := okResultWith()
+	res.Review.Summary.VerdictDecision = "request_changes"
+	h.llm.review = res
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	want := "**Approve ✅** — Verdict lowered: the PR's open findings do not support it."
+	if s := h.bb.Posted[0].Text; !strings.Contains(s, want) {
+		t.Errorf("summary lacks %q:\n%s", want, s)
+	}
+}
+
+// A new issue under an approve: the list holds it, so the verdict follows.
+func TestNewIssueRaisesAnApprove(t *testing.T) {
+	h := newHarness(t, nil)
+	h.llm.review = okResultWith(finding("a.go", 2, "issue", "new"))
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+	want := "**Request changes 🛑** — Verdict raised: this run's findings demand it."
+	if s := h.bb.Posted[0].Text; !strings.Contains(s, want) {
+		t.Errorf("summary lacks %q:\n%s", want, s)
 	}
 }
 

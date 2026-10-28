@@ -68,7 +68,7 @@ func TestSilentDecisionsAreLogged(t *testing.T) {
 			res.Review.Summary.VerdictDecision = "request_changes"
 			h.llm.review = res
 		}, nil)
-		wantLogged(t, logs, "verdict lowered request_changes -> approve after 1 dropped finding(s)")
+		wantLogged(t, logs, "verdict request_changes -> approve to match the PR summary's list: 0 earlier open, 0 new, 1 dropped")
 	})
 
 	t.Run("previously posted findings trimmed from the prompt", func(t *testing.T) {
