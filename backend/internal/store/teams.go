@@ -350,6 +350,16 @@ func (s *Store) PurgeProject(ctx context.Context, teamSlug, projectKey string, r
 	if err != nil {
 		return 0, err
 	}
+	// Almanach notes have no FK (a final one must outlive the PR row until
+	// it is sent), so the ones that are not final go here, by hand.
+	if repoSlug == nil {
+		_, err = s.pool.Exec(ctx, `DELETE FROM almanach_notes WHERE team_slug = $1 AND project_key = $2 AND finalized_at IS NULL`, teamSlug, projectKey)
+	} else {
+		_, err = s.pool.Exec(ctx, `DELETE FROM almanach_notes WHERE team_slug = $1 AND project_key = $2 AND repo_slug = $3 AND finalized_at IS NULL`, teamSlug, projectKey, *repoSlug)
+	}
+	if err != nil {
+		return 0, err
+	}
 	n := int(tag.RowsAffected())
 	if n > 0 {
 		target := projectKey + "/*"

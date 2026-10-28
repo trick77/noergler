@@ -253,9 +253,12 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   snapshot. Never hang the decline-stamp clear on the reopen's review.
 - `almanach_notes`: one row per PR, replaced by run id (the round ran
   unheld), stamps set once by finalize and never touched by a round, a stub
-  when finalize beats the first round, emitted marked after a 2xx and never
-  before (Almanach dedupes; a lost note is the real cost). No FK to
-  `pull_requests`: a final note survives `PurgeProject` until emitted.
+  when finalize beats the first round (only for a PR with a row), emitted
+  marked after a 2xx and never before, for the run id that was sent
+  (Almanach dedupes; a lost note is the real cost). Delete never drops a
+  final note. No FK to `pull_requests`: a final note survives
+  `PurgeProject` until emitted; the purge drops the rest. The team slug
+  follows the latest round. The review cost a note reports is `prCostSQL`.
 
 ## Ops
 
