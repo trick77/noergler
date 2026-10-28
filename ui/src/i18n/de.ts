@@ -324,9 +324,9 @@ export const de = {
     howSent: "Wie gesendet",
     notPostedTitle: "Nicht geposted",
     verdictLowered:
-      "Urteil von {{model}} auf {{posted}} herabgestuft, nachdem Findings verworfen wurden.",
+      "Urteil von {{model}} auf {{posted}} herabgestuft, passend zu den offenen Findings des PR.",
     verdictRaised:
-      "Urteil von {{model}} auf {{posted}} angehoben: frühere Findings sind noch offen.",
+      "Urteil von {{model}} auf {{posted}} angehoben, passend zu den offenen Findings des PR.",
     movedFrom: "verschoben von :{{line}}",
     title: "Run",
     failedWhat: "den Run",

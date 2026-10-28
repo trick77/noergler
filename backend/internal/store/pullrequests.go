@@ -280,6 +280,10 @@ type Finding struct {
 	// finding. Read back, never written by InsertFinding.
 	RepliedAt   *time.Time
 	DisputeText *string
+	// ClosedAt is set once the finding's thread was found resolved or
+	// deleted on the PR: settled, out of the PR summary. Read back by
+	// ExistingFindings only, stamped by MarkFindingClosed.
+	ClosedAt *time.Time
 	// RunCommit is the source commit of the run that posted the finding: its
 	// line number belongs to that commit. Read by FindingByComment only.
 	RunCommit string
@@ -302,7 +306,7 @@ func (s *Store) InsertFinding(ctx context.Context, f Finding) error {
 func (s *Store) ExistingFindings(ctx context.Context, k PRKey) ([]Finding, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT f.id, f.pull_request_id, f.review_run_id, f.file_path, f.line_number, f.severity, f.confidence,
-			f.headline, f.comment_text, f.suggestion, f.bitbucket_comment_id, f.replied_at, f.dispute_text
+			f.headline, f.comment_text, f.suggestion, f.bitbucket_comment_id, f.replied_at, f.dispute_text, f.closed_at
 		FROM findings f JOIN pull_requests p ON f.pull_request_id = p.id
 		WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3 AND p.`+activeFilter+`
 			AND f.fixed_at IS NULL
@@ -315,12 +319,25 @@ func (s *Store) ExistingFindings(ctx context.Context, k PRKey) ([]Finding, error
 	for rows.Next() {
 		var f Finding
 		if err := rows.Scan(&f.ID, &f.PullRequestID, &f.RunID, &f.FilePath, &f.LineNumber, &f.Severity, &f.Confidence,
-			&f.Headline, &f.CommentText, &f.Suggestion, &f.BitbucketCommentID, &f.RepliedAt, &f.DisputeText); err != nil {
+			&f.Headline, &f.CommentText, &f.Suggestion, &f.BitbucketCommentID, &f.RepliedAt, &f.DisputeText, &f.ClosedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, f)
 	}
 	return out, rows.Err()
+}
+
+// MarkFindingClosed settles a finding whose thread was resolved or deleted
+// on the PR. The first stamp wins, so its thread is never read again.
+func (s *Store) MarkFindingClosed(ctx context.Context, findingID int64) error {
+	_, err := s.pool.Exec(ctx, `UPDATE findings SET closed_at = now() WHERE id = $1 AND closed_at IS NULL`, findingID)
+	return err
+}
+
+// MarkFindingOpen unsettles a finding whose thread was reopened on the PR.
+func (s *Store) MarkFindingOpen(ctx context.Context, findingID int64) error {
+	_, err := s.pool.Exec(ctx, `UPDATE findings SET closed_at = NULL WHERE id = $1`, findingID)
+	return err
 }
 
 // FindingByComment is the open, unfixed finding whose inline comment is

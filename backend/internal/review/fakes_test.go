@@ -242,6 +242,9 @@ type fakeStore struct {
 	Frozen    int
 	// Fixed is every MarkFindingFixed call as [findingID, runID].
 	Fixed [][2]int64
+	// Closed is every MarkFindingClosed call, Reopened every MarkFindingOpen.
+	Closed   []int64
+	Reopened []int64
 	// byComment serves FindingByComment; Replied records MarkFindingReplied.
 	byComment map[int]*store.Finding
 	Replied   []repliedCall
@@ -456,6 +459,26 @@ func (f *fakeStore) MarkFindingFixed(_ context.Context, findingID, runID int64) 
 		return err
 	}
 	f.Fixed = append(f.Fixed, [2]int64{findingID, runID})
+	return nil
+}
+
+func (f *fakeStore) MarkFindingClosed(_ context.Context, findingID int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return err
+	}
+	f.Closed = append(f.Closed, findingID)
+	return nil
+}
+
+func (f *fakeStore) MarkFindingOpen(_ context.Context, findingID int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return err
+	}
+	f.Reopened = append(f.Reopened, findingID)
 	return nil
 }
 

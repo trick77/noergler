@@ -2,6 +2,7 @@ package render
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -91,7 +92,7 @@ func summaryCases() map[string]SummaryInput {
 	truncated.Findings = []inference.ReviewFinding{
 		finding("issue", "c", ptrs("One")), finding("issue", "c", ptrs("Two")),
 	}
-	truncated.Truncated = true
+	truncated.Cut = 3
 	cases["truncated"] = truncated
 
 	security := base()
@@ -133,7 +134,7 @@ func summaryCases() map[string]SummaryInput {
 	// cut a second time.
 	accountingCapped := base()
 	accountingCapped.Findings = []inference.ReviewFinding{finding("issue", "c", ptrs("Kept"))}
-	accountingCapped.Truncated = true
+	accountingCapped.Cut = 1
 	accountingCapped.EarlierOpen = []inference.ReviewFinding{finding("issue", "c", ptrs("Still there"))}
 	cases["accounting_truncated"] = accountingCapped
 
@@ -143,6 +144,14 @@ func summaryCases() map[string]SummaryInput {
 		finding("suggestion", "c", ptrs("Older suggestion")), finding("issue", "c", ptrs("Older issue")),
 	}
 	cases["accounting_open_only"] = openOnly
+
+	// Past the list cap the rest is counted, issues first in the shown part.
+	long := base()
+	for i := range 31 {
+		long.EarlierOpen = append(long.EarlierOpen, finding("suggestion", "c", ptrs(fmt.Sprintf("Old %d", i))))
+	}
+	long.Findings = []inference.ReviewFinding{finding("issue", "c", ptrs("New issue"))}
+	cases["list_capped"] = long
 
 	agentsOver := agentsFound
 	agentsOver.PromptBreakdown = PromptBreakdown{Template: 1, RepoInstructions: 9000, Files: 1, Present: true}

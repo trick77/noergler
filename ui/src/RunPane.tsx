@@ -486,7 +486,8 @@ function Findings({ d, pr }: { d: RunDetail; pr: string | null }) {
           />
         )}
         {d.detail?.verdict &&
-          d.detail.verdict.model !== d.detail.verdict.posted && (
+          verdictRank(d.detail.verdict.model) !==
+            verdictRank(d.detail.verdict.posted) && (
             <Note>
               {t(
                 verdictRank(d.detail.verdict.posted) >

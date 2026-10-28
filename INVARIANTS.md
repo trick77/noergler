@@ -55,10 +55,24 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - Summary = the whole PR on every run, never one push (user, 2026-10-28:
   "it's called SUMMARY"): the comment is replaced each run. Prompt names it
   the PR review summary; issue list = every open finding (`EarlierOpen` +
-  new); `FloorVerdict` raises to what open earlier findings demand. Open =
-  `openThreads`, as the handoff: unfixed, thread not resolved or deleted,
-  unreadable counts open. Earlier findings unreadable from the DB: never
-  safeDB ("none" would approve), the summary says it lists this run's only.
+  new); `SettleVerdict` sets the decision from that list, once, both ways;
+  a match keeps the model's rationale unless a dropped finding could have carried it. List shows 30, the rest counted.
+- Thread resolved or deleted = settled (user, 2026-10-28). `closeThreads`
+  stamps `closed_at` on a resolved one only, never read by a review again
+  (a review does not notice a reopen, accepted; the handoff reads stamped
+  threads and unstamps a reopened one). A 404 is closed for that run only,
+  never stamped (a passing fault would settle it for good). Settled: out of
+  the list and verdict, never posted again (dedupe still holds it), in the
+  prompt marked closed with no id, trimmed from it before any open one. No
+  comment id (legacy): out of the list and verdict (no thread anyone could
+  resolve), keeps its id in the prompt so a fix retires it.
+  Unreadable = open. Read in prepare, once per run, at
+  most 50 unsettled threads, issues first, the rest open unread (user).
+  Unretireable after a full-review fallback (no ids): open until its
+  thread is resolved (user kept it). The verdict counts new findings over
+  the cap; the list names how many. Earlier findings unreadable from the
+  DB: never safeDB ("none" would approve), the summary says it lists this
+  run's only, the verdict is lowered only for drops.
   Heading "PR Review-Zusammenfassung" / "PR review summary", last push a
   line under it.
 - `pre_existing` (bugs in unchanged code): never posted, never moves the

@@ -24,6 +24,10 @@ const fileFetchConcurrency = 4
 // count; the token budget caps it again by size.
 const maxPreviouslyPostedFindings = 50
 
+// maxThreadChecks caps the Bitbucket GETs a review spends asking which
+// earlier finding threads are still open (user, 2026-10-28).
+const maxThreadChecks = 50
+
 // bytesPerTokenCeiling is an upper bound on bytes per token for diff text;
 // real code diffs sit at 3-4. Used to reject a cumulative-diff part by length
 // before paying to tokenize it, since tokenizing expands the text in RAM.

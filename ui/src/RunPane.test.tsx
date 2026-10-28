@@ -319,10 +319,27 @@ describe("RunPane", () => {
 
     expect(
       await screen.findByText(
-        /Verdict raised from approve to request_changes: earlier findings are still open/,
+        /Verdict raised from approve to request_changes to match the PR.s open findings/,
       ),
     ).toBeDefined();
     expect(screen.queryByText(/Verdict lowered/)).toBeNull();
+  });
+
+  // An unknown decision named approve moved nothing: no note.
+  it("says nothing when only an unknown verdict was named", async () => {
+    window.history.replaceState({}, "", `/${RUN}#findings`);
+    serve(RUN, {
+      ...detail,
+      detail: {
+        ...record,
+        decisions: [],
+        verdict: { model: "", posted: "approve" },
+      },
+    });
+    render(<RunPane token={TOK} n={2} />);
+
+    await screen.findByText("Capture is retried without its idempotency key");
+    expect(screen.queryByText(/Verdict (raised|lowered)/)).toBeNull();
   });
 
   it("says why a skipped run has nothing else", async () => {

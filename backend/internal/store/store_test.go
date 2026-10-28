@@ -422,6 +422,37 @@ func TestFindings_FixedLeavesExisting(t *testing.T) {
 	}
 }
 
+// A closed finding stays in ExistingFindings (prompt and dedup still need
+// it), carrying its stamp; the first stamp wins.
+func TestFindings_ClosedStaysWithItsStamp(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	id := upsert(t, s, key, "a")
+	r := run(t, s, id, "a", nil, "m")
+	if err := s.InsertFinding(ctx, Finding{PullRequestID: id, RunID: r, FilePath: "a.go", LineNumber: 1,
+		Severity: "issue", CommentText: "resolved"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.ExistingFindings(ctx, key)
+	if err != nil || len(got) != 1 || got[0].ClosedAt != nil {
+		t.Fatalf("findings = %+v, err = %v", got, err)
+	}
+	if err := s.MarkFindingClosed(ctx, got[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	first, _ := s.ExistingFindings(ctx, key)
+	if len(first) != 1 || first[0].ClosedAt == nil {
+		t.Fatalf("after close = %+v", first)
+	}
+	if err := s.MarkFindingClosed(ctx, got[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	again, _ := s.ExistingFindings(ctx, key)
+	if !again[0].ClosedAt.Equal(*first[0].ClosedAt) {
+		t.Errorf("closed_at moved: %v -> %v", first[0].ClosedAt, again[0].ClosedAt)
+	}
+}
+
 // The reply job finds a finding by its comment on the authenticated PR only,
 // answers it once, and a dispute rides along into the previously-posted
 // block.

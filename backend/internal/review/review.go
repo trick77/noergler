@@ -273,6 +273,12 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	if existingUnknown {
 		r.log.WarnContext(ctx, prTag+": earlier findings unreadable, the PR summary lists this run's only", logging.Err(err))
 	}
+	// Thread state, once, for everything after. A finding whose thread was
+	// resolved or deleted on the PR is settled (user, 2026-10-28): the
+	// prompt shows it closed and without an id (not raised again, never
+	// claimed fixed), dedupe still holds its repeat back, and the summary's
+	// list and verdict leave it out.
+	existing, _ = r.closeThreads(ctx, key, prTag, existing, maxThreadChecks, false)
 	// Only an incremental review may retire a finding: on a full one every
 	// PR line is an added line, the buggy one too, so nothing would prove a
 	// fix. No id listed, nothing to claim.
@@ -458,18 +464,10 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	// and resolves the old thread; a response that re-reports the very bug
 	// it claims fixed posts it again, so the bug stays flagged either way.
 	fixed := r.validateFixed(ctx, plan, result.Review.Fixed)
-	stillOpen := withoutFixed(existing, fixed)
-	// The PR summary's earlier findings: unfixed and their thread still
-	// open on the PR. One the author resolved or deleted is closed there,
-	// so it is closed here too (as for the handoff banner).
-	threads, _ := r.openThreads(ctx, key, prTag, stillOpen)
-	earlierOpen := asFindings(threads)
-	// The verdict covers the whole PR. The model's argued from findings some
-	// of which are now gone, so a drop lowers it and replaces the rationale
-	// that named them; an earlier finding still open then holds it up.
-	reviewSummary := inference.AdjustVerdict(result.Review.Summary, v.Kept, len(v.Dropped), plan.lang)
-	lowered := reviewSummary.VerdictDecision
-	reviewSummary = inference.FloorVerdict(reviewSummary, earlierOpen, plan.lang)
+	// unfixed holds back repeats, settled ones included; the summary lists
+	// and counts only what is still open on the PR (prepare's closeThreads).
+	unfixed := withoutFixed(existing, fixed)
+	earlierOpen := asFindings(openOnly(unfixed))
 	for _, d := range v.Dropped {
 		plan.detail.Decisions = append(plan.detail.Decisions, decision(d.Finding, "dropped", string(d.Reason)))
 	}
@@ -491,16 +489,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	if len(pre) > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d pre-existing bug(s) recorded for the run page, not posted", prTag, len(pre)))
 	}
-	plan.detail.Verdict = &store.VerdictChange{Model: result.Review.Summary.VerdictDecision, Posted: reviewSummary.VerdictDecision}
-	if was := result.Review.Summary.VerdictDecision; was != lowered {
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: verdict lowered %s -> %s after %d dropped finding(s)",
-			prTag, was, lowered, len(v.Dropped)))
-	}
-	if lowered != reviewSummary.VerdictDecision {
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: verdict raised %s -> %s: %d earlier finding(s) still open",
-			prTag, lowered, reviewSummary.VerdictDecision, len(earlierOpen)))
-	}
-	deduped, repeats := dedupe(v.Kept, stillOpen, plan.anchors)
+	deduped, repeats := dedupe(v.Kept, unfixed, plan.anchors)
 	for _, f := range repeats {
 		plan.detail.Decisions = append(plan.detail.Decisions, decision(f, "repeat", ""))
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: finding on %s:%d (%s) already posted by an earlier run, not posted again",
@@ -516,6 +505,22 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: finding on %s:%d (%s) over the %d-comment cap, not posted",
 				prTag, f.File, f.Line, f.Severity, r.cfg.MaxComments))
 		}
+	}
+	// The verdict follows the PR summary's findings, both halves, once. The
+	// new ones uncapped: a finding over the comment cap is still a finding
+	// (max_comments 0 posts none and must not approve over it). This run
+	// only: a cut or refused one is never stored (a row needs a comment on
+	// the PR), so a later run counts it only if the model reports it again.
+	dropped := make([]inference.ReviewFinding, 0, len(v.Dropped))
+	for _, d := range v.Dropped {
+		dropped = append(dropped, d.Finding)
+	}
+	reviewSummary := inference.SettleVerdict(result.Review.Summary, earlierOpen, deduped, dropped,
+		!plan.existingUnknown, plan.lang)
+	plan.detail.Verdict = &store.VerdictChange{Model: result.Review.Summary.VerdictDecision, Posted: reviewSummary.VerdictDecision}
+	if was := result.Review.Summary.VerdictDecision; was != reviewSummary.VerdictDecision {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: verdict %s -> %s to match the PR summary's list: %d earlier open, %d new, %d dropped",
+			prTag, was, reviewSummary.VerdictDecision, len(earlierOpen), len(deduped), len(v.Dropped)))
 	}
 
 	plan.sw.lap(stageValidate)
@@ -572,7 +577,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	summary := render.Summary(render.SummaryInput{
 		Lang:                       plan.lang,
 		Findings:                   findings,
-		Truncated:                  truncated,
+		Cut:                        len(deduped) - len(findings),
 		EarlierOpen:                earlierOpen,
 		EarlierUnknown:             plan.existingUnknown,
 		FixedEarlier:               len(fixed),
@@ -859,6 +864,18 @@ func (r *Reviewer) trimPreviouslyPosted(ctx context.Context, prTag string, exist
 		}
 		posted = append(posted, p)
 	}
+	// Settled ones first, so the trims below drop them before any open one:
+	// an open finding carries the id a `fixed` claim needs and the verdict
+	// counts it; a closed one only keeps the model from raising it again.
+	slices.SortStableFunc(posted, func(a, b inference.PostedFinding) int {
+		if a.Closed == b.Closed {
+			return 0
+		}
+		if a.Closed {
+			return -1
+		}
+		return 1
+	})
 	if len(posted) > maxPreviouslyPostedFindings {
 		posted = posted[len(posted)-maxPreviouslyPostedFindings:]
 	}
@@ -872,7 +889,7 @@ func (r *Reviewer) trimPreviouslyPosted(ctx context.Context, prTag string, exist
 	// here can come back as a duplicate comment.
 	if len(posted) < len(existing) {
 		r.log.InfoContext(ctx, fmt.Sprintf(
-			"%s: previously posted findings trimmed: %d of %d shown to the model, oldest dropped (caps: %d findings, %d tokens)",
+			"%s: previously posted findings trimmed: %d of %d shown to the model, closed then oldest dropped (caps: %d findings, %d tokens)",
 			prTag, len(posted), len(existing), maxPreviouslyPostedFindings, limit))
 	}
 	return posted

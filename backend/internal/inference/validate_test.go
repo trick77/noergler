@@ -435,97 +435,107 @@ func TestValidateFindings_VerbatimQuoteBeatsStrippedForm(t *testing.T) {
 	}
 }
 
-func TestAdjustVerdict(t *testing.T) {
+// The verdict follows the PR summary's list, earlier open findings and this
+// run's together, in both directions; a matching one keeps its rationale.
+func TestSettleVerdict(t *testing.T) {
 	issue := ReviewFinding{Severity: "issue"}
 	sugg := ReviewFinding{Severity: "suggestion"}
-	strict := ReviewSummary{VerdictDecision: "request_changes", VerdictRationale: "the dropped bug"}
+	strict := ReviewSummary{VerdictDecision: "request_changes", VerdictRationale: "names the change"}
+	lax := ReviewSummary{VerdictDecision: "approve", VerdictRationale: "names the change"}
 	cases := []struct {
-		name     string
-		in       ReviewSummary
-		kept     []ReviewFinding
-		dropped  int
-		decision string
-		lowered  bool
+		name             string
+		in               ReviewSummary
+		earlier, current []ReviewFinding
+		dropped          []ReviewFinding
+		decision         string
+		rationale        string // "" = the model's kept
 	}{
-		{"nothing dropped leaves it alone", strict, nil, 0, "request_changes", false},
-		{"every finding dropped", strict, nil, 2, "approve", true},
-		{"only a suggestion survives", strict, []ReviewFinding{sugg}, 1, "approve_with_followups", true},
-		{"an issue survives", strict, []ReviewFinding{issue, sugg}, 1, "request_changes", false},
+		{"matching keeps the rationale", strict, nil, []ReviewFinding{issue}, nil, "request_changes", ""},
+		{"a drop that could carry it replaces a matching rationale", strict, []ReviewFinding{issue}, nil, []ReviewFinding{issue}, "request_changes", "Verdict: 1 open finding demands it."},
+		{"every finding dropped", strict, nil, nil, []ReviewFinding{issue, issue}, "approve",
+			"Verdict lowered: 2 findings whose evidence the diff did not bear out were withheld."},
+		{"only drops that could carry it are named", strict, nil, nil, []ReviewFinding{issue, sugg, sugg}, "approve",
+			"Verdict lowered: 1 finding whose evidence the diff did not bear out was withheld."},
+		{"only a suggestion survives", strict, nil, []ReviewFinding{sugg}, []ReviewFinding{issue}, "approve_with_followups",
+			"Verdict lowered: 1 finding whose evidence the diff did not bear out was withheld."},
+		{"a closed thread leaves nothing to request", strict, nil, nil, nil, "approve",
+			"Verdict lowered: the PR's open findings do not support it."},
 		{
-			// A drop never makes a review stricter.
-			"never raises",
-			ReviewSummary{VerdictDecision: "approve", VerdictRationale: "fine"},
-			[]ReviewFinding{issue}, 1, "approve", false,
+			// A dropped suggestion could never carry request_changes, so it
+			// is not named as the cause.
+			"a drop that could not carry it is not blamed", strict, nil, nil, []ReviewFinding{sugg}, "approve",
+			"Verdict lowered: the PR's open findings do not support it.",
 		},
+		{"an earlier issue still open", lax, []ReviewFinding{sugg, issue}, nil, nil, "request_changes",
+			"Verdict raised: 1 open finding demands it."},
+		{"an earlier suggestion still open", lax, []ReviewFinding{sugg, sugg}, nil, nil, "approve_with_followups",
+			"Verdict raised: 2 open findings demand it."},
+		{"a new issue the model approved", lax, nil, []ReviewFinding{issue}, nil, "request_changes",
+			"Verdict raised: 1 open finding demands it."},
+		{"a blank severity asks for follow-ups and is counted", lax, []ReviewFinding{{}}, nil, nil, "approve_with_followups",
+			"Verdict raised: 1 open finding demands it."},
+		{"an unknown decision is named, not changed", ReviewSummary{VerdictDecision: "bogus", VerdictRationale: "hm"},
+			nil, nil, nil, "approve", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := AdjustVerdict(tc.in, tc.kept, tc.dropped, lang.EN)
+			got := SettleVerdict(tc.in, tc.earlier, tc.current, tc.dropped, true, lang.EN)
 			if got.VerdictDecision != tc.decision {
 				t.Errorf("decision = %q, want %q", got.VerdictDecision, tc.decision)
 			}
-			if lowered := got.VerdictRationale != tc.in.VerdictRationale; lowered != tc.lowered {
-				t.Errorf("rationale = %q, lowered = %v, want %v", got.VerdictRationale, lowered, tc.lowered)
+			want := tc.rationale
+			if want == "" {
+				want = tc.in.VerdictRationale
+			}
+			if got.VerdictRationale != want {
+				t.Errorf("rationale = %q, want %q", got.VerdictRationale, want)
 			}
 		})
 	}
 }
 
-// The summary covers the whole PR: an earlier finding still open holds the
-// verdict up, whatever the push brought.
-func TestFloorVerdict(t *testing.T) {
-	issue := ReviewFinding{Severity: "issue"}
-	sugg := ReviewFinding{Severity: "suggestion"}
-	lax := ReviewSummary{VerdictDecision: "approve", VerdictRationale: "typo fixed"}
-	cases := []struct {
-		name     string
-		in       ReviewSummary
-		open     []ReviewFinding
-		decision string
-		raised   bool
-	}{
-		{"nothing open leaves it alone", lax, nil, "approve", false},
-		{"an open issue requests changes", lax, []ReviewFinding{sugg, issue}, "request_changes", true},
-		{"an open suggestion", lax, []ReviewFinding{sugg}, "approve_with_followups", true},
-		{
-			"never lowers",
-			ReviewSummary{VerdictDecision: "request_changes", VerdictRationale: "new bug"},
-			[]ReviewFinding{sugg}, "request_changes", false,
-		},
+// Earlier findings unreadable: the list argues for nothing, so the verdict
+// is never lowered, only raised by what this run found.
+func TestSettleVerdictUnknownEarlier(t *testing.T) {
+	strict := ReviewSummary{VerdictDecision: "request_changes", VerdictRationale: "old issue still there"}
+	if got := SettleVerdict(strict, nil, nil, nil, false, lang.EN); got.VerdictDecision != strict.VerdictDecision ||
+		got.VerdictRationale != strict.VerdictRationale {
+		t.Errorf("lowered over an unread list: %+v", got)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := FloorVerdict(tc.in, tc.open, lang.EN)
-			if got.VerdictDecision != tc.decision {
-				t.Errorf("decision = %q, want %q", got.VerdictDecision, tc.decision)
-			}
-			if raised := got.VerdictRationale != tc.in.VerdictRationale; raised != tc.raised {
-				t.Errorf("rationale = %q, raised = %v, want %v", got.VerdictRationale, raised, tc.raised)
-			}
-		})
+	lax := ReviewSummary{VerdictDecision: "approve", VerdictRationale: "fine"}
+	got := SettleVerdict(lax, nil, []ReviewFinding{{Severity: "issue"}}, nil, false, lang.EN)
+	if got.VerdictDecision != "request_changes" {
+		t.Errorf("decision = %q, want request_changes", got.VerdictDecision)
 	}
-	open := []ReviewFinding{issue, issue}
-	if got := FloorVerdict(lax, open, lang.DE).VerdictRationale; got != "Empfehlung angehoben: 2 frühere Findings sind noch offen." {
-		t.Errorf("German rationale = %q", got)
+	// The model saw no earlier finding, so its request_changes rests on the
+	// one dropped: that still lowers.
+	got = SettleVerdict(strict, nil, nil, []ReviewFinding{{Severity: "issue"}}, false, lang.EN)
+	if got.VerdictDecision != "approve" {
+		t.Errorf("decision = %q, want approve after the drop", got.VerdictDecision)
 	}
 }
 
 // The replacement rationale is posted, so it follows the review's language.
-func TestAdjustVerdictLanguage(t *testing.T) {
+func TestSettleVerdictLanguage(t *testing.T) {
+	issue := ReviewFinding{Severity: "issue"}
 	strict := ReviewSummary{VerdictDecision: "request_changes", VerdictRationale: "the dropped bug"}
+	lax := ReviewSummary{VerdictDecision: "approve", VerdictRationale: "typo fixed"}
 	cases := []struct {
-		l       lang.Lang
-		dropped int
-		want    string
+		in               ReviewSummary
+		earlier, current []ReviewFinding
+		dropped          []ReviewFinding
+		want             string
 	}{
-		{lang.DE, 1, "Empfehlung herabgestuft: 1 Finding zurückgehalten, dessen Beleg der Diff nicht stützt."},
-		{lang.DE, 2, "Empfehlung herabgestuft: 2 Findings zurückgehalten, deren Beleg der Diff nicht stützt."},
-		{lang.EN, 1, "Verdict lowered: 1 finding whose evidence the diff did not bear out was withheld."},
-		{lang.EN, 3, "Verdict lowered: 3 findings whose evidence the diff did not bear out were withheld."},
+		{strict, nil, nil, []ReviewFinding{issue}, "Empfehlung herabgestuft: 1 Finding zurückgehalten, dessen Beleg der Diff nicht stützt."},
+		{strict, nil, nil, []ReviewFinding{issue, issue}, "Empfehlung herabgestuft: 2 Findings zurückgehalten, deren Beleg der Diff nicht stützt."},
+		{strict, nil, nil, nil, "Empfehlung herabgestuft: die offenen Findings des PR stützen sie nicht."},
+		{lax, []ReviewFinding{issue}, nil, nil, "Empfehlung angehoben: 1 offenes Finding verlangt sie."},
+		{lax, []ReviewFinding{issue, issue}, nil, nil, "Empfehlung angehoben: 2 offene Findings verlangen sie."},
+		{lax, nil, []ReviewFinding{issue}, nil, "Empfehlung angehoben: 1 offenes Finding verlangt sie."},
 	}
 	for _, tc := range cases {
-		if got := AdjustVerdict(strict, nil, tc.dropped, tc.l).VerdictRationale; got != tc.want {
-			t.Errorf("%s, %d dropped: rationale = %q, want %q", tc.l, tc.dropped, got, tc.want)
+		if got := SettleVerdict(tc.in, tc.earlier, tc.current, tc.dropped, true, lang.DE).VerdictRationale; got != tc.want {
+			t.Errorf("rationale = %q, want %q", got, tc.want)
 		}
 	}
 }

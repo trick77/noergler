@@ -94,6 +94,8 @@ type Store interface {
 	InsertFinding(ctx context.Context, f store.Finding) error
 	ExistingFindings(ctx context.Context, k store.PRKey) ([]store.Finding, error)
 	MarkFindingFixed(ctx context.Context, findingID, runID int64) error
+	MarkFindingClosed(ctx context.Context, findingID int64) error
+	MarkFindingOpen(ctx context.Context, findingID int64) error
 	FindingByComment(ctx context.Context, k store.PRKey, commentID int) (*store.Finding, error)
 	MarkFindingReplied(ctx context.Context, findingID int64, dispute *string) error
 	InsertBotReply(ctx context.Context, k store.PRKey, commentID int, kind string) error

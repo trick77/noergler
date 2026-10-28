@@ -56,8 +56,10 @@ type SummaryInput struct {
 	// is this run's only, and the summary says so rather than read as the
 	// whole PR.
 	EarlierUnknown bool
-	Truncated      bool
-	Summary        inference.ReviewSummary
+	// Cut is the new findings the comment cap kept off the PR. The verdict
+	// counts them, so the list says they exist.
+	Cut     int
+	Summary inference.ReviewSummary
 
 	// FixedEarlier is the earlier findings this run retired. Zero on a full
 	// review: it can retire nothing.
@@ -281,6 +283,10 @@ type listedFinding struct {
 	isNew bool
 }
 
+// maxListedFindings caps the PR summary's issue list (user, 2026-10-28);
+// the rest are counted under it, issues first in either part.
+const maxListedFindings = 30
+
 // prFindings is every open finding of the PR, issues first; within a
 // severity the earlier ones come first, in the order they were posted.
 func prFindings(in SummaryInput) []listedFinding {
@@ -305,7 +311,7 @@ func renderIssues(in SummaryInput) string {
 	lines := []string{p("### Probleme und Vorschläge", "### Issues and suggestions")}
 	accounting := renderAccounting(in)
 	all := prFindings(in)
-	if len(all) == 0 {
+	if len(all) == 0 && in.Cut == 0 {
 		none := p("\nKeine.", "\nNone.")
 		if accounting != "" {
 			return lines[0] + none + "\n\n" + accounting
@@ -324,17 +330,19 @@ func renderIssues(in SummaryInput) string {
 			PluralIn(in.Lang, securityCount, "mögliches Sicherheitsproblem", "mögliche Sicherheitsprobleme",
 				"potential security issue", "potential security issues")))
 	}
-	if in.Truncated {
-		lines = append(lines, fmt.Sprintf(
-			p("- Die %d wichtigsten neuen Findings nach Schweregrad. Weitere wurden weggelassen.",
-				"- Showing the top %d new findings by severity. Additional new findings were omitted."),
-			len(in.Findings)))
+	if in.Cut > 0 {
+		// Says what was not posted, not what is listed: the list has its own
+		// cap. The verdict counts the cut ones, so the summary names them.
+		lines = append(lines, "- "+PluralIn(in.Lang, in.Cut,
+			"weiteres neues Finding", "weitere neue Findings", "more new finding", "more new findings")+
+			p(" über dem Kommentar-Limit nicht gepostet.", " over the comment cap not posted."))
 	}
-	if securityCount > 0 || in.Truncated {
+	if securityCount > 0 || in.Cut > 0 {
 		lines = append(lines, "")
 	}
 	markNew := len(in.EarlierOpen) > 0
-	for i, f := range all {
+	shown := all[:min(len(all), maxListedFindings)]
+	for i, f := range shown {
 		headline := ""
 		if f.Headline != nil {
 			headline = strings.TrimSpace(*f.Headline)
@@ -349,6 +357,10 @@ func renderIssues(in SummaryInput) string {
 			headline += p(" _(neu)_", " _(new)_")
 		}
 		lines = append(lines, fmt.Sprintf("%d. %s", i+1, headline))
+	}
+	if more := len(all) - len(shown); more > 0 {
+		lines = append(lines, p("- … und ", "- … and ")+PluralIn(in.Lang, more,
+			"weiteres offenes Finding.", "weitere offene Findings.", "more open finding.", "more open findings."))
 	}
 	if accounting != "" {
 		lines = append(lines, "", accounting)

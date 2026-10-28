@@ -90,64 +90,92 @@ func ValidateFindings(findings []ReviewFinding, idx diff.AnchorIndex) Validation
 	return v
 }
 
-// AdjustVerdict lowers the model's verdict to what the kept findings support,
-// when validation dropped any. The prompt ties the decision to the findings
-// (request_changes needs an `issue`, approve_with_followups a `suggestion`);
-// a verdict argued from a dropped finding would otherwise say "request
-// changes" beside zero posted comments. Only ever lowers: a drop cannot make
-// a review stricter. The rationale is replaced, since the model's names the
-// finding that is gone; the replacement is posted, so it is in l.
-func AdjustVerdict(s ReviewSummary, kept []ReviewFinding, dropped int, l lang.Lang) ReviewSummary {
-	if dropped == 0 {
+// SettleVerdict sets the decision to what the PR summary's issue list
+// supports, once: earlier findings still open plus this run's. The prompt
+// ties the decision to the findings (request_changes needs an `issue`,
+// approve_with_followups a `suggestion`), and the summary covers the whole
+// PR, so the verdict never disagrees with the list under it: not "request
+// changes" over "None." after a drop or a thread the author closed, not
+// "approve" over an open issue the model never saw because the budget
+// trimmed it. A matching verdict keeps the model's rationale; a changed one
+// replaces it, since the model's argued for the other decision. The
+// replacement says why, and is posted, so it is in l. A drop alone can only
+// lower: it takes a finding out of the list, never puts one in. The drops
+// are named as the cause only when they could have carried the model's
+// verdict. earlierKnown false (the earlier findings unreadable): lowers
+// only for the drops, since a list that could not be read argues for
+// nothing and the prompt showed the model no earlier finding to argue from.
+func SettleVerdict(s ReviewSummary, earlier, current, dropped []ReviewFinding, earlierKnown bool, l lang.Lang) ReviewSummary {
+	want := supportedVerdict(slices.Concat(earlier, current))
+	was := verdictRank(s.VerdictDecision)
+	dropsCarry := verdictRank(supportedVerdict(dropped)) >= was
+	if want == s.VerdictDecision {
+		// The decision holds, but a rationale argued beside a dropped finding
+		// that could carry it may name that finding, which is not on the PR:
+		// replaced by what the list shows.
+		if len(dropped) > 0 && dropsCarry && was > 0 {
+			s.VerdictRationale = pluralRationale(l, demanding(slices.Concat(earlier, current), want),
+				"Empfehlung: 1 offenes Finding verlangt sie.",
+				"Empfehlung: %d offene Findings verlangen sie.",
+				"Verdict: 1 open finding demands it.",
+				"Verdict: %d open findings demand it.")
+		}
 		return s
 	}
-	supported := supportedVerdict(kept)
-	if verdictRank(supported) >= verdictRank(s.VerdictDecision) {
+	if !earlierKnown && verdictRank(want) < was && !dropsCarry {
 		return s
 	}
-	s.VerdictDecision = supported
-	if dropped == 1 {
-		s.VerdictRationale = l.Pick(
+	s.VerdictDecision = want
+	switch {
+	case verdictRank(want) == was:
+		// An unknown decision ranks as approve; naming it is no change.
+	case verdictRank(want) < was && dropsCarry:
+		// Named are the drops that could have carried it, not every one.
+		n := 0
+		for _, f := range dropped {
+			if verdictRank(supportedVerdict([]ReviewFinding{f})) >= was {
+				n++
+			}
+		}
+		s.VerdictRationale = pluralRationale(l, n,
 			"Empfehlung herabgestuft: 1 Finding zurückgehalten, dessen Beleg der Diff nicht stützt.",
-			"Verdict lowered: 1 finding whose evidence the diff did not bear out was withheld.")
-	} else {
-		s.VerdictRationale = fmt.Sprintf(l.Pick(
 			"Empfehlung herabgestuft: %d Findings zurückgehalten, deren Beleg der Diff nicht stützt.",
-			"Verdict lowered: %d findings whose evidence the diff did not bear out were withheld."), dropped)
+			"Verdict lowered: 1 finding whose evidence the diff did not bear out was withheld.",
+			"Verdict lowered: %d findings whose evidence the diff did not bear out were withheld.")
+	case verdictRank(want) < was:
+		s.VerdictRationale = l.Pick(
+			"Empfehlung herabgestuft: die offenen Findings des PR stützen sie nicht.",
+			"Verdict lowered: the PR's open findings do not support it.")
+	default:
+		s.VerdictRationale = pluralRationale(l, demanding(slices.Concat(earlier, current), want),
+			"Empfehlung angehoben: 1 offenes Finding verlangt sie.",
+			"Empfehlung angehoben: %d offene Findings verlangen sie.",
+			"Verdict raised: 1 open finding demands it.",
+			"Verdict raised: %d open findings demand it.")
 	}
 	return s
 }
 
-// FloorVerdict raises the verdict to what the PR's earlier findings still
-// open demand. The summary covers the whole PR, so a push that adds nothing
-// new cannot approve a PR whose earlier issue is still open. The prompt says
-// so; this holds when the model does not, or never saw the finding because
-// the budget trimmed it. Only ever raises. The rationale is replaced, since
-// the model's argued for the lower verdict; it is posted, so it is in l.
-func FloorVerdict(s ReviewSummary, open []ReviewFinding, l lang.Lang) ReviewSummary {
-	floor := supportedVerdict(open)
-	if verdictRank(floor) <= verdictRank(s.VerdictDecision) {
-		return s
-	}
-	s.VerdictDecision = floor
-	// Counted are the findings that demand the floor, not every open one:
-	// six suggestions beside the issue do not request changes.
+// demanding counts the findings that demand decision, not every one: six
+// suggestions beside the issue do not request changes. As supportedVerdict
+// reads them: an issue requests changes, any other severity (an empty one
+// included) asks for follow-ups.
+func demanding(findings []ReviewFinding, decision string) int {
 	n := 0
-	for _, f := range open {
-		if supportedVerdict([]ReviewFinding{f}) == floor {
+	for _, f := range findings {
+		if (f.Severity == "issue") == (decision == "request_changes") {
 			n++
 		}
 	}
+	return n
+}
+
+// pluralRationale picks the singular or the counted plural in l.
+func pluralRationale(l lang.Lang, n int, deOne, deMany, enOne, enMany string) string {
 	if n == 1 {
-		s.VerdictRationale = l.Pick(
-			"Empfehlung angehoben: 1 früheres Finding ist noch offen.",
-			"Verdict raised: 1 earlier finding is still open.")
-	} else {
-		s.VerdictRationale = fmt.Sprintf(l.Pick(
-			"Empfehlung angehoben: %d frühere Findings sind noch offen.",
-			"Verdict raised: %d earlier findings are still open."), n)
+		return l.Pick(deOne, enOne)
 	}
-	return s
+	return fmt.Sprintf(l.Pick(deMany, enMany), n)
 }
 
 // supportedVerdict is the decision the prompt ties to findings: any `issue`

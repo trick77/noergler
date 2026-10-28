@@ -199,9 +199,24 @@ coverage and verdict cover the whole PR, and its issue list is every open
 finding, earlier ones (not fixed, thread neither resolved nor deleted; an
 unreadable thread counts as open) and this run's: issues first, earlier before
 new within a severity, the new ones marked when earlier ones stand beside
-them. An earlier finding still open
-raises the verdict to what it demands, even when the model saw nothing new
-or the budget trimmed the finding from its prompt. Under the list, when there
+them. The list shows 30 and counts the rest under them.
+
+A finding whose thread someone resolved or deleted is settled: it leaves
+the list and the verdict, is never posted again, and the model still sees
+it, marked closed, so it does not raise it again. A resolved thread is
+stamped once and a review never reads it again; reopening it later is not
+noticed, except by the draft-to-ready banner, which reads every thread. A
+deleted thread is closed for the review that sees it, never stamped. A
+review reads at most 50 unsettled threads, issues first; the rest count as
+open without being read. An earlier finding a full review (after a rebase)
+could not retire stays open until its thread is resolved. The verdict is settled
+once against the whole list: any issue in it
+requests changes, only suggestions approve with follow-ups, none approves.
+So an earlier issue still open holds the verdict up even when the model saw
+nothing new or the budget trimmed it from the prompt, and a request for
+changes over an empty list (findings dropped, threads closed) is lowered. A
+verdict that matches keeps the model's rationale; a changed one gets a
+fixed line saying why. Under the list, when there
 is any, one line counts the earlier findings this push fixed and the findings
 validation dropped, or says the earlier findings could not be read from the
 database and the list is this run's only. Repeats, the comment cap and

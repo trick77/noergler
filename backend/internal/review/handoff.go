@@ -61,9 +61,9 @@ func (r *Reviewer) HandleReadyForReview(ctx context.Context, payload *webhook.Pa
 		r.log.WarnContext(ctx, prTag+": draft -> ready, findings unreadable, summary left as it is", logging.Err(err))
 		return
 	}
-	threads, posted := r.openThreads(ctx, key, prTag, findings)
+	threads, posted := r.closeThreads(ctx, key, prTag, findings, 0, true)
 	var open []render.HandoffThread
-	for _, f := range threads {
+	for _, f := range openOnly(threads) { // a row with no thread is closed there
 		open = append(open, render.HandoffThread{
 			File: f.FilePath, Line: f.LineNumber,
 			URL: r.bitbucket.CommentURL(key.Project, key.Repo, key.PRID, *f.BitbucketCommentID),
