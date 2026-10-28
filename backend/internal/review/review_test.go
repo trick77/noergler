@@ -96,7 +96,7 @@ func newHarness(t *testing.T, tweak func(*harness)) *harness {
 		AlmanachTemplate:     "NOTE {repo} {project} {ticket_key} {ticket_type} {note_limit} {output_language}",
 		Tokens:               h.tok,
 		Config:               cfg,
-		Template:             "REVIEW {repo_instructions} {files} {cumulative_pr_diff} {previously_posted_findings} {ticket_context} {compliance_instructions} {pr_description}",
+		Template:             "REVIEW {repo_instructions} {files} {cumulative_pr_diff} {previously_posted_findings} {previous_overview} {ticket_context} {compliance_instructions} {pr_description}",
 		MentionTemplate:      "ASK {question} {repo_instructions} {ticket_context} {pr_description} {diff}",
 		FindingReplyTemplate: "REPLY {repo_instructions} {finding} {file_excerpt}\n## The author's first name\n\n{author_first_name}\n## The reply\n{reply}",
 		Log:                  quietLogger(),

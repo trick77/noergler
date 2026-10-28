@@ -117,7 +117,8 @@ func TestEvalRunReachesAGatewayAndScoresTheResponse(t *testing.T) {
 	}
 	for _, ph := range []string{
 		inference.PlaceholderFiles, inference.PlaceholderCumulativePRDiff,
-		inference.PlaceholderPreviouslyPosted, inference.PlaceholderRepoInstructions,
+		inference.PlaceholderPreviouslyPosted, inference.PlaceholderPreviousOverview,
+		inference.PlaceholderRepoInstructions,
 		inference.PlaceholderTicketContext, inference.PlaceholderComplianceInstructions,
 		inference.PlaceholderPRDescription,
 	} {

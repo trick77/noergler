@@ -283,6 +283,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// PR line is an added line, the buggy one too, so nothing would prove a
 	// fix. No id listed, nothing to claim.
 	posted := r.trimPreviouslyPosted(ctx, prTag, existing, budget, incrementalFrom != "")
+	previousOverview := r.previousOverview(ctx, key, prTag)
 	sw.lap(stageContext)
 	listed := map[int64]bool{}
 	for _, p := range posted {
@@ -307,6 +308,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		CumulativeOmitted:     cumulativePR.omitted,
 		Incremental:           incrementalFrom != "",
 		PreviouslyPosted:      posted,
+		PreviousOverview:      previousOverview,
 		Language:              l,
 	}, r.tokens.Count)
 	r.logPromptComposition(ctx, prTag, assembled, incrementalFrom != "")
@@ -908,12 +910,27 @@ func (r *Reviewer) logPromptComposition(ctx context.Context, prTag string, a inf
 		mode = "incremental"
 	}
 	b := a.Breakdown
-	rest := a.PromptTokens - b.RepoInstructions - b.Files - b.CumulativeDiff - b.PreviouslyPosted - b.Ticket - b.PRDescription
+	rest := a.PromptTokens - b.RepoInstructions - b.Files - b.CumulativeDiff - b.PreviouslyPosted - b.PreviousOverview - b.Ticket - b.PRDescription
 	r.log.InfoContext(ctx, fmt.Sprintf(
 		// A sum, not a list: the parts add up to the total and share its
 		// unit. Listed after a dash they read as bytes or KB.
-		"%s: prompt %d tokens (%s review) = files %d + cumulative PR diff %d + AGENTS.md %d + previously posted %d + ticket %d + PR description %d + template and rest %d",
-		prTag, a.PromptTokens, mode, b.Files, b.CumulativeDiff, b.RepoInstructions, b.PreviouslyPosted, b.Ticket, b.PRDescription, rest))
+		"%s: prompt %d tokens (%s review) = files %d + cumulative PR diff %d + AGENTS.md %d + previously posted %d + previous overview %d + ticket %d + PR description %d + template and rest %d",
+		prTag, a.PromptTokens, mode, b.Files, b.CumulativeDiff, b.RepoInstructions, b.PreviouslyPosted, b.PreviousOverview, b.Ticket, b.PRDescription, rest))
+}
+
+// previousOverview is the overview the PR's last completed review wrote, for
+// this one to build on (user, 2026-10-28), or "" on the first review. An
+// unreadable one reviews without it: the overview then starts over from
+// what this prompt shows, as before it was carried.
+func (r *Reviewer) previousOverview(ctx context.Context, key store.PRKey, prTag string) string {
+	s := safeDB(ctx, r.log, "LastSummary", func() (*store.PRSummary, error) {
+		return r.store.LastSummary(ctx, key)
+	})
+	if s == nil || strings.TrimSpace(s.Overview) == "" {
+		return ""
+	}
+	r.log.InfoContext(ctx, fmt.Sprintf("%s: previous PR overview carried into the prompt (%d chars)", prTag, len([]rune(s.Overview))))
+	return s.Overview
 }
 
 // validateFindings applies inference.ValidateFindings and logs every drop and
@@ -1020,6 +1037,12 @@ func (r *Reviewer) recordRun(ctx context.Context, prReviewID int64, result infer
 	if incrementalFrom != "" {
 		from = &incrementalFrom
 	}
+	// The next review's overview builds on this one; an empty one keeps the
+	// stored overview rather than erasing it.
+	var summary *store.PRSummary
+	if o := strings.TrimSpace(result.Review.Summary.Overview); o != "" {
+		summary = &store.PRSummary{Overview: o}
+	}
 	return safeDB(ctx, r.log, "InsertRun", func() (int64, error) {
 		return r.store.InsertRun(ctx, store.Run{
 			PullRequestID:    prReviewID,
@@ -1037,6 +1060,7 @@ func (r *Reviewer) recordRun(ctx context.Context, prReviewID int64, result infer
 			LinesAdded:       added,
 			LinesRemoved:     removed,
 			FilesChanged:     filesChanged,
+			Summary:          summary,
 		})
 	})
 }

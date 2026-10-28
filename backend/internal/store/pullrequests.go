@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -164,10 +165,12 @@ func (s *Store) MarkIgnored(ctx context.Context, k PRKey) error {
 }
 
 // Reactivate clears the ignored flag and forgets the old summary comment, so
-// the next review posts a fresh one instead of updating the deleted one.
+// the next review posts a fresh one instead of updating the deleted one. Its
+// prose goes with it: the next overview starts over.
 func (s *Store) Reactivate(ctx context.Context, k PRKey) error {
 	return s.exec(ctx, `UPDATE pull_requests
-		SET ignored_at = NULL, summary_comment_id = NULL, summary_comment_version = NULL, updated_at = now()
+		SET ignored_at = NULL, summary_comment_id = NULL, summary_comment_version = NULL, last_summary = NULL,
+			updated_at = now()
 		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3`, k)
 }
 
@@ -229,6 +232,14 @@ type Run struct {
 	LinesAdded     int
 	LinesRemoved   int
 	FilesChanged   int
+	// Summary is the run's PR summary prose, carried onto the PR for the
+	// next review. nil keeps the stored one.
+	Summary *PRSummary
+}
+
+// PRSummary is the PR summary prose the next review builds on.
+type PRSummary struct {
+	Overview string `json:"overview"`
 }
 
 // InsertRun records the run and carries the run's commit and diff size onto
@@ -253,13 +264,40 @@ func (s *Store) InsertRun(ctx context.Context, r Run) (int64, error) {
 	).Scan(&id); err != nil {
 		return 0, err
 	}
+	var summary []byte
+	if r.Summary != nil {
+		if summary, err = json.Marshal(r.Summary); err != nil {
+			return 0, err
+		}
+	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE pull_requests SET final_source_commit = $2, final_lines_added = $3, final_lines_removed = $4,
-			final_files_changed = $5, updated_at = now()
-		WHERE id = $1`, r.PullRequestID, r.ToCommit, r.LinesAdded, r.LinesRemoved, r.FilesChanged); err != nil {
+			final_files_changed = $5, last_summary = COALESCE($6, last_summary), updated_at = now()
+		WHERE id = $1`, r.PullRequestID, r.ToCommit, r.LinesAdded, r.LinesRemoved, r.FilesChanged, summary); err != nil {
 		return 0, err
 	}
 	return id, tx.Commit(ctx)
+}
+
+// LastSummary is the PR summary prose of the PR's last completed review, or
+// nil when none is stored.
+func (s *Store) LastSummary(ctx context.Context, k PRKey) (*PRSummary, error) {
+	var raw []byte
+	err := s.pool.QueryRow(ctx, `
+		SELECT last_summary FROM pull_requests
+		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3`,
+		k.Project, k.Repo, k.PRID).Scan(&raw)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && raw == nil) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out PRSummary
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // Finding is one posted inline comment.

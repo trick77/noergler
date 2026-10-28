@@ -453,6 +453,35 @@ func TestFindings_ClosedStaysWithItsStamp(t *testing.T) {
 	}
 }
 
+// A run's overview is kept for the next review, a run without one keeps it,
+// and Reactivate forgets it with the summary comment.
+func TestLastSummary_CarriedByTheRun(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	if got, err := s.LastSummary(ctx, key); got != nil || err != nil {
+		t.Fatalf("no PR: %+v, %v", got, err)
+	}
+	id := upsert(t, s, key, "a")
+	run(t, s, id, "a", nil, "m")
+	if got, err := s.LastSummary(ctx, key); got != nil || err != nil {
+		t.Fatalf("no overview yet: %+v, %v", got, err)
+	}
+	if _, err := s.InsertRun(ctx, Run{PullRequestID: id, Kind: RunAuto, ToCommit: "b", ModelLabel: "m",
+		Summary: &PRSummary{Overview: "Adds retries."}}); err != nil {
+		t.Fatal(err)
+	}
+	run(t, s, id, "c", nil, "m")
+	if got, err := s.LastSummary(ctx, key); err != nil || got == nil || got.Overview != "Adds retries." {
+		t.Fatalf("after runs: %+v, %v", got, err)
+	}
+	if err := s.Reactivate(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.LastSummary(ctx, key); got != nil || err != nil {
+		t.Errorf("after reactivate: %+v, %v", got, err)
+	}
+}
+
 // The reply job finds a finding by its comment on the authenticated PR only,
 // answers it once, and a dispute rides along into the previously-posted
 // block.

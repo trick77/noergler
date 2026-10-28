@@ -291,6 +291,37 @@ func RenderPreviouslyPostedFindings(findings []PostedFinding) string {
 		strings.Join(lines, "\n")
 }
 
+// previousOverviewCap bounds the carried overview, so it cannot grow from
+// push to push.
+const previousOverviewCap = 2000
+
+// RenderPreviousOverview is the overview the last review wrote, for this one
+// to build on (user, 2026-10-28): without it, whatever of the PR does not
+// fit this run's prompt drops out of the overview. The model's own earlier
+// draft, never evidence: the diff wins.
+func RenderPreviousOverview(overview string) string {
+	text := strings.TrimSpace(overview)
+	if text == "" {
+		return ""
+	}
+	if r := []rune(text); len(r) > previousOverviewCap {
+		text = string(r[:previousOverviewCap-3]) + "..."
+	}
+	return "## Previous PR overview\n" +
+		"\n" +
+		"The `overview` you wrote on the previous review of this PR, before the latest push. " +
+		"It is your own earlier draft, never evidence: your memory of what the PR does where this prompt " +
+		"no longer shows that code. Where it and the code disagree, the code wins. " +
+		"Write this review's `overview` as if the PR had been opened in its current state, in one go: " +
+		"what it does now, nothing about pushes, changes or order. " +
+		"Keep what the PR still does, include what the latest push added, and leave out entirely what a push " +
+		"removed or reverted (do not write that it was removed). " +
+		"Anything about the latest push goes in `latest_push`, never here. " +
+		"The readers never saw this draft: do not mention it.\n" +
+		"\n" +
+		text
+}
+
 // Placeholder names substituted into the review template.
 //
 // The AGENTS.md invariant is about where they sit in the TEMPLATE: {files}
@@ -301,6 +332,8 @@ const (
 	PlaceholderFiles            = "{files}"
 	PlaceholderCumulativePRDiff = "{cumulative_pr_diff}"
 	PlaceholderPreviouslyPosted = "{previously_posted_findings}"
+	// PlaceholderPreviousOverview is last: it changes on every push.
+	PlaceholderPreviousOverview = "{previous_overview}"
 	PlaceholderRepoInstructions = "{repo_instructions}"
 	// PlaceholderTicketContext takes NoTicketContext when no ticket is
 	// linked, and PlaceholderComplianceInstructions is emptied unless a

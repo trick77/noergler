@@ -110,11 +110,12 @@ type PromptBreakdown struct {
 	Template         int
 	RepoInstructions int
 	Files            int
-	// The three below are log-only: the footnote does not render them, the
+	// The ones below are log-only: the footnote does not render them, the
 	// prompt-composition line does. Without them a run's input cost could
 	// not be attributed past the files.
 	CumulativeDiff   int
 	PreviouslyPosted int
+	PreviousOverview int
 	Ticket           int
 	PRDescription    int
 }
@@ -146,6 +147,8 @@ type AssembleRequest struct {
 	// push for the whole PR (its `latest_push` and `overview` hang on it).
 	Incremental      bool
 	PreviouslyPosted []PostedFinding
+	// PreviousOverview is the last review's overview; empty on the first.
+	PreviousOverview string
 	// Language is the PR author's; the zero value writes German. Evals pin
 	// English: their scoring matches English keywords.
 	Language lang.Lang
@@ -200,11 +203,13 @@ func AssembleReviewPrompt(req AssembleRequest, count CountFunc) AssembledPrompt 
 		cumulative = CumulativeUnavailable
 	}
 	posted := RenderPreviouslyPostedFindings(req.PreviouslyPosted)
+	previous := RenderPreviousOverview(req.PreviousOverview)
 
 	prompt := strings.NewReplacer(
 		PlaceholderFiles, files,
 		PlaceholderCumulativePRDiff, cumulative,
 		PlaceholderPreviouslyPosted, posted,
+		PlaceholderPreviousOverview, previous,
 		PlaceholderRepoInstructions, req.RepoInstructions,
 		PlaceholderTicketContext, ticketContext,
 		PlaceholderComplianceInstructions, compliance,
@@ -233,6 +238,9 @@ func AssembleReviewPrompt(req AssembleRequest, count CountFunc) AssembledPrompt 
 	}
 	if posted != "" {
 		breakdown.PreviouslyPosted = count(posted)
+	}
+	if previous != "" {
+		breakdown.PreviousOverview = count(previous)
 	}
 	if req.TicketContext != "" {
 		breakdown.Ticket = count(req.TicketContext)
