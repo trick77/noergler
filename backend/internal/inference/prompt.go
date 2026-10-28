@@ -256,7 +256,8 @@ func RenderPreviouslyPostedFindings(findings []PostedFinding) string {
 	if withIDs {
 		notes = "If the focused diff removes the defect one of them describes, list it under `fixed` " +
 			"by its id. Only when added or removed lines of that finding's file visibly fix it, " +
-			"never because the code merely moved or the finding looks stale.\n" +
+			"never because the code merely moved or the finding looks stale. The ids are for `fixed` " +
+			"only: never write one in a summary field, name the finding by its problem.\n" +
 			"\n"
 	}
 	// Only when a reply is shown: it is author text, and the model is told
