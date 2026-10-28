@@ -50,7 +50,7 @@ names are yours; the convention is the slug uppercased with `-` turned into `_`:
 TEAM_PLATFORM_WEBHOOK_SECRET=      # required per team: openssl rand -hex 32
 TEAM_PLATFORM_OPENAI_API_KEY=      # required per team: the team's key on the gateway
 TEAM_PLATFORM_RIPTIDE_TOKEN=       # only when the team has a riptide: block
-TEAM_PLATFORM_ALMANACH_TOKEN=      # only when the team has an almanach: block
+TEAM_PLATFORM_ALMANACH_TOKEN=      # only when the team has an almanach: block; the team's bearer at Almanach, as its operator issued it
 ```
 
 ### Instance defaults, overridable per team

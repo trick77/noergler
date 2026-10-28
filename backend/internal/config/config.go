@@ -167,8 +167,9 @@ type Almanach = Forwarder
 // Instance only: the cap bounds a row in the shared database and the
 // payload a shared Almanach reads; a team has no business raising it.
 type AlmanachLimits struct {
-	// NoteMaxChars is the rune count of the serialized note over which the
-	// whole note is dropped, never truncated.
+	// NoteMaxChars is the rune count of the note's prose and names (not
+	// paths, not the JSON) over which the whole note is dropped, never
+	// truncated.
 	NoteMaxChars int
 }
 

@@ -234,7 +234,7 @@ const (
 // shape (the enums, a bugfix exactly for a bugfix, an empty note that is
 // empty, a path with no control character), no secret-like token in the
 // prose, then the caps. reason is "" when the note stands, else the
-// dropped_* status; chars is the rune count of the serialized note, what
+// dropped_* status; chars is the rune count of the note's prose and names, what
 // the total cap was checked at (0 = no total cap). Over a cap the whole
 // note drops: never truncated.
 func ValidateAlmanachNote(n *AlmanachNote, maxChars int) (chars int, reason string) {
