@@ -1,5 +1,6 @@
 {
   "overview": "A small change to the smoke fixture.",
+  "latest_push": null,
   "strengths": ["Focused diff"],
   "security_performance": "No security or performance impact.",
   "test_coverage": "Covered by the smoke run.",
@@ -14,5 +15,7 @@
     "confidence": 80, "headline": "Renaming breaks callers",
     "comment": "Callers of the old name will fail at import time.",
     "suggestion": "Keep an alias for one release."}],
+  "fixed": [],
+  "pre_existing": [],
   "compliance_requirements": null
 }

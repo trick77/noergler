@@ -305,6 +305,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		CumulativePRDiff:      cumulativePR.diff,
 		CumulativePartial:     cumulativePR.partial,
 		CumulativeOmitted:     cumulativePR.omitted,
+		Incremental:           incrementalFrom != "",
 		PreviouslyPosted:      posted,
 		Language:              l,
 	}, r.tokens.Count)

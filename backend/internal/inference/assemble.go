@@ -141,7 +141,11 @@ type AssembleRequest struct {
 	// CumulativeOmitted names PR files left out of CumulativePRDiff for
 	// budget.
 	CumulativeOmitted []string
-	PreviouslyPosted  []PostedFinding
+	// Incremental: the focused files are one push, not the PR. Rendered even
+	// when no cumulative diff could be fetched, so the model never takes a
+	// push for the whole PR (its `latest_push` and `overview` hang on it).
+	Incremental      bool
+	PreviouslyPosted []PostedFinding
 	// Language is the PR author's; the zero value writes German. Evals pin
 	// English: their scoring matches English keywords.
 	Language lang.Lang
@@ -192,6 +196,9 @@ func AssembleReviewPrompt(req AssembleRequest, count CountFunc) AssembledPrompt 
 	}
 
 	cumulative := RenderCumulativePRDiff(req.CumulativePRDiff, req.CumulativePartial, req.CumulativeOmitted)
+	if cumulative == "" && req.Incremental {
+		cumulative = CumulativeUnavailable
+	}
 	posted := RenderPreviouslyPostedFindings(req.PreviouslyPosted)
 
 	prompt := strings.NewReplacer(

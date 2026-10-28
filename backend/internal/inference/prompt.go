@@ -133,6 +133,13 @@ func bullets(items []string) string {
 // block; the rest is a count.
 const maxCumulativeOmittedListed = 50
 
+// CumulativeUnavailable stands in for the cumulative block on an
+// incremental review whose PR diff could not be fetched: the model is still
+// told the focused files are one push.
+const CumulativeUnavailable = "## Cumulative PR diff (cross-file context only)\n\n" +
+	"Not available for this review. The focused review files are the latest push only, " +
+	"not the whole PR; the summary still describes the whole PR from what is shown."
+
 // RenderCumulativePRDiff wraps the PR diff as cross-file context only.
 //
 // partial says anything of the PR is missing from cumulative, filtered or

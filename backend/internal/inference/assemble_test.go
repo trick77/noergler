@@ -262,6 +262,26 @@ func TestPlaceholderInABlockStaysLiteral(t *testing.T) {
 
 // No description renders the sentinel in both templates, and a description
 // is counted on its own in the breakdown.
+// An incremental review whose PR diff could not be fetched still tells the
+// model the focused files are one push; a full review shows no such block.
+func TestIncrementalWithoutCumulativeSaysSo(t *testing.T) {
+	count := counter(t)
+	files := []diff.FileReviewData{{Path: "a.go", Diff: "@@ -1 +1 @@\n-x\n+y"}}
+	inc := AssembleReviewPrompt(AssembleRequest{Template: prompts.Review, Files: files, Incremental: true}, count)
+	if !strings.Contains(inc.Prompt, CumulativeUnavailable) {
+		t.Error("an incremental review with no PR diff must say the focused files are one push")
+	}
+	full := AssembleReviewPrompt(AssembleRequest{Template: prompts.Review, Files: files}, count)
+	if strings.Contains(full.Prompt, "## Cumulative PR diff") {
+		t.Error("a full review shows no cumulative block")
+	}
+	withDiff := AssembleReviewPrompt(AssembleRequest{Template: prompts.Review, Files: files, Incremental: true,
+		CumulativePRDiff: "diff --git a/z b/z\n@@ -1 +1 @@\n-1\n+2"}, count)
+	if strings.Contains(withDiff.Prompt, CumulativeUnavailable) {
+		t.Error("a fetched PR diff is shown, not the unavailable note")
+	}
+}
+
 func TestPRDescriptionDefault(t *testing.T) {
 	count := counter(t)
 	tmpl := "D:{pr_description}|F:{files}"

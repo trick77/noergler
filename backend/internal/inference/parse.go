@@ -27,7 +27,11 @@ var VerdictDecisions = []string{"approve", "approve_with_followups", "request_ch
 // unparseable response silently reports "request_changes"-shaped emptiness
 // instead of the approval default.
 type ReviewSummary struct {
+	// Overview is the whole PR; LatestPush is what the latest push alone
+	// changed, empty on a full review. Two slots, so the scope of each is
+	// the schema's, not the model's choice.
 	Overview            string
+	LatestPush          string
 	Strengths           []string
 	SecurityPerformance string
 	TestCoverage        string
@@ -370,6 +374,7 @@ func ParseReview(content string) ParsedReview {
 	if out.Summary.Overview == "" {
 		out.warn("overview empty after parse")
 	}
+	out.Summary.LatestPush = strings.TrimSpace(decodeString(raw["latest_push"]))
 	out.Summary.SecurityPerformance = strings.TrimSpace(decodeString(raw["security_performance"]))
 	out.Summary.TestCoverage = strings.TrimSpace(decodeString(raw["test_coverage"]))
 

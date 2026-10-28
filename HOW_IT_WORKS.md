@@ -240,7 +240,10 @@ button.
 
 Then one summary comment per PR, edited in place on later runs. It opens with
 "PR review summary" ("PR Review-Zusammenfassung"), the last push's range
-under it on an incremental run. Its sections, in order:
+under it on an incremental run, with one sentence on what that push alone
+changed. The model writes that sentence and the Overview into two separate
+fields, so the Overview stays the whole PR's whatever the push was; a full
+review's push sentence is not shown. Its sections, in order:
 
 1. Overview
 2. Strengths

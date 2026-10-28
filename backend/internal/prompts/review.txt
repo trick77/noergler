@@ -85,9 +85,10 @@ Only report confidence >= 80. Every reported finding must be a real defect a sen
 
 ## Output format
 
-Respond with a JSON object containing exactly these top-level keys: `overview`, `strengths`, `security_performance`, `test_coverage`, `verdict`, `findings`, `fixed`, `pre_existing`, `compliance_requirements`. The first five are the **PR review summary**, a fixed skeleton — every section renders in the posted comment, every time. It summarizes the whole pull request across all of its pushes, never only the focused diff: on an incremental review that is the focused diff, the cumulative PR diff and the already-posted findings still open, together. The summary comment is replaced on every push, so whatever it leaves out of the PR is lost. The PR's people read it, not this prompt: never name its parts ("focused diff", "cumulative diff", a finding id like `F12`, another JSON field like `pre_existing`); say "the latest push", and name an earlier finding by its problem. **Sentinel rule:** when a section has nothing to report, emit the exact sentinel string (`"None."` or `"None notable."`) — do not pad, do not invent.
+Respond with a JSON object containing exactly these top-level keys: `overview`, `latest_push`, `strengths`, `security_performance`, `test_coverage`, `verdict`, `findings`, `fixed`, `pre_existing`, `compliance_requirements`. `overview`, `strengths`, `security_performance`, `test_coverage` and `verdict` are the **PR review summary**, a fixed skeleton — every section renders in the posted comment, every time. It summarizes the whole pull request across all of its pushes, never only the focused diff: on an incremental review that is the focused diff, the cumulative PR diff and the already-posted findings still open, together. `latest_push` is the one field about the latest push alone, rendered on its own line beside the summary on an incremental review only. The summary comment is replaced on every push, so whatever it leaves out of the PR is lost. The PR's people read it, not this prompt: never name its parts ("focused diff", "cumulative diff", a finding id like `F12`, another JSON field like `pre_existing`); say "the latest push", and name an earlier finding by its problem. **Sentinel rule:** when a section has nothing to report, emit the exact sentinel string (`"None."` or `"None notable."`) — do not pad, do not invent.
 
-- "overview": one tight paragraph (1–3 sentences) naming what the PR does and why, all pushes included. Functional read of the code, not a restatement of the ticket. Required, non-empty. Trivial PR is fine ("Renames `_format_ts` to `_format_timestamp` across N files; behavior unchanged.").
+- "overview": one tight paragraph (1–3 sentences) naming what the PR does and why, all pushes included. Functional read of the code, not a restatement of the ticket. Required, non-empty. Trivial PR is fine ("Renames `_format_ts` to `_format_timestamp` across N files; behavior unchanged."). The latest push alone belongs in `latest_push`, not here: a one-line push to a large PR still gets the large PR's overview.
+- "latest_push": one short sentence on what the latest push alone changed, on an incremental review: the prompt then has a "Cumulative PR diff" section, with the diff or a note that it is not available, and the focused diff is that push. Start with the verb, the line already names the push: `"Fixes the typo in the retry warning."`, not "The latest push fixes…". `null` on a full review (no such section: the focused diff is the whole PR, and `overview` covers it). Never a sentinel.
 - "strengths": array of 0–4 short bullets pointing at things the whole PR does well, across all pushes (clean abstraction, good test, correct invariant preserved, etc.). May be empty — do not pad. Empty array renders as `None.` in the posted comment.
 - "security_performance": one short string covering anything notable about security or performance. Use the literal `"None notable."` when nothing rises to mention. Do not invent concerns to fill the slot. A committed secret is a finding; this slot may mention it, never instead of one, and never its value.
 - "test_coverage": one short string describing the state of test coverage for the PR (tests added/updated, untested edge case, etc.). Required, non-empty. If you cannot tell from the diff alone, say so (`"Test coverage not assessable from diff alone."`).
@@ -107,7 +108,7 @@ Each "findings" item:
 - "comment": full body of the inline comment posted on the line — concise paragraph. Markdown OK: code refs in backticks. No fix code (use `suggestion`). This is the detail; do NOT duplicate it in the headline. For a committed secret, `headline`, `comment`, `suggestion` and every summary field name the field, never its value; only `evidence` carries it.
 - "suggestion": corrected code — raw code only (no fencing, no comments, no instructions — just replacement). Prefer a **single-line** replacement of exactly the line at `line` so Bitbucket can render an "Apply suggestion" button (multi-line suggestions are allowed but won't be one-click-applicable). Set to `null` if no concrete fix applies, fix is trivial/obvious from comment (typos, renames, missing chars), or you cannot provide actual replacement. Only honest value would be "no fix needed" / "this is correct" / "no change" → drop the finding entirely.
 
-No issues meet the bar → return `"findings": []`. All summary fields (`overview`, `strengths`, `security_performance`, `test_coverage`, `verdict`) still required and populated per the rules above. Do NOT invent findings; empty findings for clean code is correct — and the verdict should be `approve`.
+No issues meet the bar → return `"findings": []`. All summary fields (`overview`, `strengths`, `security_performance`, `test_coverage`, `verdict`) still required and populated per the rules above, and `latest_push` per its own. Do NOT invent findings; empty findings for clean code is correct — and the verdict should be `approve`.
 
 ## Examples
 
@@ -118,6 +119,7 @@ Illustrative only — do not treat as code under review.
 ```json
 {
   "overview": "Adds a `/users/batch` endpoint that returns multiple users by id. The handler iterates the id list and calls `user_repo.fetch(id)` per element.",
+  "latest_push": null,
   "strengths": [
     "Request schema validates the id list shape before the loop runs"
   ],
@@ -153,6 +155,7 @@ Illustrative only — do not treat as code under review.
 ```json
 {
   "overview": "Renames the private helper `_format_ts` to `_format_timestamp` across 4 call sites. No behavior change.",
+  "latest_push": null,
   "strengths": [
     "Rename is applied consistently at every call site"
   ],

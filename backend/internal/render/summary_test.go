@@ -246,6 +246,26 @@ func summaryCases() map[string]SummaryInput {
 	inc.IncrementalFrom = strings.Repeat("a", 40)
 	cases["incremental"] = inc
 
+	// The latest push on its own line; the Overview stays the PR's.
+	incPush := inc
+	incPush.Summary.Overview = "Adds retries with backoff to the payment client."
+	incPush.Summary.LatestPush = "Fixes a typo in the\nretry log message."
+	cases["incremental_latest_push"] = incPush
+
+	// A long push sentence wraps inside its list item; a sentinel is dropped.
+	incLong := inc
+	incLong.Summary.LatestPush = "Moves the retry policy into its own type, threads the caller's context through every " +
+		"attempt and replaces the fixed sleep with a jittered backoff that resets after a success."
+	cases["incremental_latest_push_wrapped"] = incLong
+	incNone := inc
+	incNone.Summary.LatestPush = "None."
+	cases["incremental_latest_push_sentinel"] = incNone
+
+	// A full review has no latest push: whatever the model put there is not shown.
+	fullPush := base()
+	fullPush.Summary.LatestPush = "Should not render."
+	cases["full_ignores_latest_push"] = fullPush
+
 	sk := base()
 	sk.SkippedFiles = []string{"src/big.go", "x/y/huge.ts"}
 	sk.OverBudgetFiles = []string{"docs/README.md"}
