@@ -39,12 +39,14 @@ func asFindings(stored []store.Finding) []inference.ReviewFinding {
 }
 
 // openThreads is the stored findings whose Bitbucket thread is still open:
-// posted, not resolved, not deleted. A thread that cannot be read counts as
-// open, failing toward showing it. posted counts the findings with a thread.
-// One GET per finding, on the worker. limit > 0 checks at most that many,
-// issues first (user, 2026-10-28: every review pays this, on the shared
-// worker); the rest count as open unchecked, so a resolved one past the
-// limit stays listed. 0 checks all, for the rare handoff.
+// not resolved, not deleted. A thread that cannot be read counts as open,
+// failing toward showing it; so does a row with no comment id (legacy: none
+// to read). posted counts the findings with a thread. One GET per finding,
+// on the worker. limit > 0 checks at most that many, issues first (user,
+// 2026-10-28: every review pays this, on the shared worker); the rest count
+// as open unread, so a resolved one past the limit stays listed. 0 checks
+// all, for the rare handoff. A cancelled ctx stops the reads: the rest count
+// as open, logged once.
 func (r *Reviewer) openThreads(ctx context.Context, key store.PRKey, prTag string, findings []store.Finding, limit int) (open []store.Finding, posted int) {
 	if limit > 0 {
 		findings = slices.Clone(findings)
@@ -52,55 +54,42 @@ func (r *Reviewer) openThreads(ctx context.Context, key store.PRKey, prTag strin
 			return inference.SeverityRank(a.Severity) - inference.SeverityRank(b.Severity)
 		})
 	}
-	unchecked := 0
+	unread, closed := 0, 0
 	for _, f := range findings {
 		if f.BitbucketCommentID == nil {
+			open = append(open, f)
 			continue
 		}
 		posted++
-		if limit > 0 && posted > limit {
-			unchecked++
+		if (limit > 0 && posted > limit) || ctx.Err() != nil {
+			unread++
 			open = append(open, f)
 			continue
 		}
 		c, err := r.bitbucket.FetchPRComment(ctx, key.Project, key.Repo, key.PRID, *f.BitbucketCommentID)
 		switch {
 		case bitbucket.Status(err) == http.StatusNotFound:
-			r.log.InfoContext(ctx, fmt.Sprintf("%s: finding thread %d on %s:%d deleted, counted as closed",
-				prTag, *f.BitbucketCommentID, f.FilePath, f.LineNumber))
+			closed++
 			continue
-		case err != nil:
+		case err != nil && ctx.Err() == nil:
 			r.log.WarnContext(ctx, fmt.Sprintf("%s: finding thread %d unreadable, counted as open", prTag, *f.BitbucketCommentID),
 				logging.Err(err))
+		case err != nil:
+			unread++
 		case c.ThreadResolved:
-			r.log.InfoContext(ctx, fmt.Sprintf("%s: finding thread %d on %s:%d resolved, counted as closed",
-				prTag, *f.BitbucketCommentID, f.FilePath, f.LineNumber))
+			closed++
 			continue
 		}
 		open = append(open, f)
 	}
-	if unchecked > 0 {
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d finding thread(s) past the %d-check limit counted as open, not read",
-			prTag, unchecked, limit))
+	if closed > 0 {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d finding thread(s) resolved or deleted on the PR, counted as closed", prTag, closed))
+	}
+	if unread > 0 {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d finding thread(s) not read (the %d-check limit or a cancelled review), counted as open",
+			prTag, unread, limit))
 	}
 	return open, posted
-}
-
-// withoutClosed is stored minus the findings openThreads found closed: a
-// finding with a thread not among open is closed. One with no thread was
-// never read, so it stays.
-func withoutClosed(stored, open []store.Finding) []store.Finding {
-	live := make(map[int64]bool, len(open))
-	for _, f := range open {
-		live[f.ID] = true
-	}
-	out := make([]store.Finding, 0, len(stored))
-	for _, f := range stored {
-		if f.BitbucketCommentID == nil || live[f.ID] {
-			out = append(out, f)
-		}
-	}
-	return out
 }
 
 // validateFixed checks the model's `fixed` claims against the findings the

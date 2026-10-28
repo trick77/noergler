@@ -773,7 +773,7 @@ func TestFindingsLimitedInReview(t *testing.T) {
 	if len(h.bb.Inline) != 2 {
 		t.Errorf("posted %d comments, want the max_comments cap of 2", len(h.bb.Inline))
 	}
-	if len(h.bb.Posted) != 1 || !strings.Contains(h.bb.Posted[0].Text, "Posted only the top 2 new findings") {
+	if len(h.bb.Posted) != 1 || !strings.Contains(h.bb.Posted[0].Text, "- 1 more new finding over the comment cap not posted.") {
 		t.Error("the summary must report the truncation")
 	}
 }

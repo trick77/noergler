@@ -503,6 +503,12 @@ func TestSettleVerdictUnknownEarlier(t *testing.T) {
 	if got.VerdictDecision != "request_changes" {
 		t.Errorf("decision = %q, want request_changes", got.VerdictDecision)
 	}
+	// The model saw no earlier finding, so its request_changes rests on the
+	// one dropped: that still lowers.
+	got = SettleVerdict(strict, nil, nil, []ReviewFinding{{Severity: "issue"}}, false, lang.EN)
+	if got.VerdictDecision != "approve" {
+		t.Errorf("decision = %q, want approve after the drop", got.VerdictDecision)
+	}
 }
 
 // The replacement rationale is posted, so it follows the review's language.

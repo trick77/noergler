@@ -92,7 +92,7 @@ func summaryCases() map[string]SummaryInput {
 	truncated.Findings = []inference.ReviewFinding{
 		finding("issue", "c", ptrs("One")), finding("issue", "c", ptrs("Two")),
 	}
-	truncated.Truncated = true
+	truncated.Cut = 3
 	cases["truncated"] = truncated
 
 	security := base()
@@ -134,7 +134,7 @@ func summaryCases() map[string]SummaryInput {
 	// cut a second time.
 	accountingCapped := base()
 	accountingCapped.Findings = []inference.ReviewFinding{finding("issue", "c", ptrs("Kept"))}
-	accountingCapped.Truncated = true
+	accountingCapped.Cut = 1
 	accountingCapped.EarlierOpen = []inference.ReviewFinding{finding("issue", "c", ptrs("Still there"))}
 	cases["accounting_truncated"] = accountingCapped
 

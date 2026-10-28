@@ -264,8 +264,46 @@ func TestCappedFindingsStillHoldTheVerdict(t *testing.T) {
 
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
 
-	if s := h.bb.Posted[0].Text; !strings.Contains(s, "**Request changes 🛑**") {
-		t.Errorf("a capped issue must hold the verdict:\n%s", s)
+	s := h.bb.Posted[0].Text
+	for _, want := range []string{"**Request changes 🛑**", "- 1 more new finding over the comment cap not posted."} {
+		if !strings.Contains(s, want) {
+			t.Errorf("summary lacks %q:\n%s", want, s)
+		}
+	}
+}
+
+// One open list for the whole run: a finding whose thread the author
+// resolved is not in the prompt either, so the model is not told to weigh
+// it and cannot claim it fixed.
+func TestClosedThreadLeavesThePrompt(t *testing.T) {
+	h := newHarness(t, nil)
+	incremental(h)
+	f := earlier(h, 11, "issue", "Resolved one")
+	h.bb.comments[*f.BitbucketCommentID].ThreadResolved = true
+	open := earlier(h, 12, "suggestion", "Open one")
+	h.st.existing = []store.Finding{f, open}
+	h.llm.review = okResultWith()
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	p := h.llm.Reviews[0].Prompt
+	if strings.Contains(p, "[F11]") || !strings.Contains(p, "[F12]") {
+		t.Errorf("the prompt must list only the open thread:\n%s", p)
+	}
+}
+
+// A legacy row with no comment id has no thread to read: it counts as open.
+func TestFindingWithoutThreadStaysListed(t *testing.T) {
+	h := newHarness(t, nil)
+	incremental(h)
+	h.st.existing = []store.Finding{{ID: 11, FilePath: "a.go", LineNumber: 2, Severity: "issue",
+		Headline: ptrs("Legacy row"), CommentText: "old"}}
+	h.llm.review = okResultWith()
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	if s := h.bb.Posted[0].Text; !strings.Contains(s, "1. Legacy row") || !strings.Contains(s, "**Request changes 🛑**") {
+		t.Errorf("a row with no thread must stay listed and hold the verdict:\n%s", s)
 	}
 }
 

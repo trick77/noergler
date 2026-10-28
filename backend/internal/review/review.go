@@ -273,6 +273,12 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	if existingUnknown {
 		r.log.WarnContext(ctx, prTag+": earlier findings unreadable, the PR summary lists this run's only", logging.Err(err))
 	}
+	// Open on the PR, once, for everything after: the prompt's block, the
+	// fixed claims, dedupe, the summary's list and its verdict. A finding
+	// whose thread the author resolved or deleted is closed there, so it is
+	// closed here too (as for the handoff banner); the model reporting it
+	// again is a live bug, posted again.
+	existing, _ = r.openThreads(ctx, key, prTag, existing, maxThreadChecks)
 	// Only an incremental review may retire a finding: on a full one every
 	// PR line is an added line, the buggy one too, so nothing would prove a
 	// fix. No id listed, nothing to claim.
@@ -458,12 +464,9 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	// and resolves the old thread; a response that re-reports the very bug
 	// it claims fixed posts it again, so the bug stays flagged either way.
 	fixed := r.validateFixed(ctx, plan, result.Review.Fixed)
+	// existing is already what is open on the PR (prepare's openThreads).
 	stillOpen := withoutFixed(existing, fixed)
-	// The PR summary's earlier findings: unfixed and their thread still
-	// open on the PR. One the author resolved or deleted is closed there,
-	// so it is closed here too (as for the handoff banner).
-	threads, _ := r.openThreads(ctx, key, prTag, stillOpen, maxThreadChecks)
-	earlierOpen := asFindings(threads)
+	earlierOpen := asFindings(stillOpen)
 	for _, d := range v.Dropped {
 		plan.detail.Decisions = append(plan.detail.Decisions, decision(d.Finding, "dropped", string(d.Reason)))
 	}
@@ -485,10 +488,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	if len(pre) > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d pre-existing bug(s) recorded for the run page, not posted", prTag, len(pre)))
 	}
-	// A repeat only of a finding still open on the PR. One whose thread was
-	// closed is not on the PR any more; the model reporting it again is a
-	// live bug, posted again, never swallowed by a thread an author closed.
-	deduped, repeats := dedupe(v.Kept, withoutClosed(stillOpen, threads), plan.anchors)
+	deduped, repeats := dedupe(v.Kept, stillOpen, plan.anchors)
 	for _, f := range repeats {
 		plan.detail.Decisions = append(plan.detail.Decisions, decision(f, "repeat", ""))
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: finding on %s:%d (%s) already posted by an earlier run, not posted again",
@@ -574,7 +574,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	summary := render.Summary(render.SummaryInput{
 		Lang:                       plan.lang,
 		Findings:                   findings,
-		Truncated:                  truncated,
+		Cut:                        len(deduped) - len(findings),
 		EarlierOpen:                earlierOpen,
 		EarlierUnknown:             plan.existingUnknown,
 		FixedEarlier:               len(fixed),

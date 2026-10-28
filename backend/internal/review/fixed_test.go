@@ -24,6 +24,7 @@ func fixedHarness(t *testing.T, evidence ...string) *harness {
 	h.st.lastCommit, h.st.hasLast = "older", true
 	h.bb.commitDiff = sampleDiff
 	cid := 501
+	h.bb.comments[cid] = &bitbucket.Comment{ID: cid} // its thread, open on the PR
 	h.st.existing = []store.Finding{{
 		ID: 11, FilePath: "a.go", LineNumber: 2, Severity: "issue",
 		CommentText: "old() leaks", BitbucketCommentID: &cid,

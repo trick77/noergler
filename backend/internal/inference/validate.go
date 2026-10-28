@@ -102,19 +102,21 @@ func ValidateFindings(findings []ReviewFinding, idx diff.AnchorIndex) Validation
 // replacement says why, and is posted, so it is in l. A drop alone can only
 // lower: it takes a finding out of the list, never puts one in. The drops
 // are named as the cause only when they could have carried the model's
-// verdict. earlierKnown false (the earlier findings unreadable): never
-// lowers, since a list that could not be read argues for nothing.
+// verdict. earlierKnown false (the earlier findings unreadable): lowers
+// only for the drops, since a list that could not be read argues for
+// nothing and the prompt showed the model no earlier finding to argue from.
 func SettleVerdict(s ReviewSummary, earlier, current, dropped []ReviewFinding, earlierKnown bool, l lang.Lang) ReviewSummary {
-	want := stricter(supportedVerdict(earlier), supportedVerdict(current))
+	want := supportedVerdict(slices.Concat(earlier, current))
 	was := verdictRank(s.VerdictDecision)
-	if want == s.VerdictDecision || (!earlierKnown && verdictRank(want) < was) {
+	dropsCarry := verdictRank(supportedVerdict(dropped)) >= was
+	if want == s.VerdictDecision || (!earlierKnown && verdictRank(want) < was && !dropsCarry) {
 		return s
 	}
 	s.VerdictDecision = want
 	switch {
 	case verdictRank(want) == was:
 		// An unknown decision ranks as approve; naming it is no change.
-	case verdictRank(want) < was && verdictRank(supportedVerdict(dropped)) >= was:
+	case verdictRank(want) < was && dropsCarry:
 		s.VerdictRationale = pluralRationale(l, len(dropped),
 			"Empfehlung herabgestuft: 1 Finding zurückgehalten, dessen Beleg der Diff nicht stützt.",
 			"Empfehlung herabgestuft: %d Findings zurückgehalten, deren Beleg der Diff nicht stützt.",
@@ -127,9 +129,10 @@ func SettleVerdict(s ReviewSummary, earlier, current, dropped []ReviewFinding, e
 	default:
 		// Counted are the earlier findings that demand it, not every open
 		// one: six suggestions beside the issue do not request changes.
+		demands := map[string]string{"request_changes": "issue", "approve_with_followups": "suggestion"}[want]
 		n := 0
 		for _, f := range earlier {
-			if supportedVerdict([]ReviewFinding{f}) == want {
+			if f.Severity == demands {
 				n++
 			}
 		}
@@ -146,14 +149,6 @@ func SettleVerdict(s ReviewSummary, earlier, current, dropped []ReviewFinding, e
 			"Verdict raised: %d earlier findings are still open.")
 	}
 	return s
-}
-
-// stricter is the stricter of two decisions.
-func stricter(a, b string) string {
-	if verdictRank(b) > verdictRank(a) {
-		return b
-	}
-	return a
 }
 
 // pluralRationale picks the singular or the counted plural in l.

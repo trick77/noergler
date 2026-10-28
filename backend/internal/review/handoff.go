@@ -64,6 +64,9 @@ func (r *Reviewer) HandleReadyForReview(ctx context.Context, payload *webhook.Pa
 	threads, posted := r.openThreads(ctx, key, prTag, findings, 0)
 	var open []render.HandoffThread
 	for _, f := range threads {
+		if f.BitbucketCommentID == nil {
+			continue // no thread to link
+		}
 		open = append(open, render.HandoffThread{
 			File: f.FilePath, Line: f.LineNumber,
 			URL: r.bitbucket.CommentURL(key.Project, key.Repo, key.PRID, *f.BitbucketCommentID),

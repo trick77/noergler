@@ -56,8 +56,10 @@ type SummaryInput struct {
 	// is this run's only, and the summary says so rather than read as the
 	// whole PR.
 	EarlierUnknown bool
-	Truncated      bool
-	Summary        inference.ReviewSummary
+	// Cut is the new findings the comment cap kept off the PR. The verdict
+	// counts them, so the list says they exist.
+	Cut     int
+	Summary inference.ReviewSummary
 
 	// FixedEarlier is the earlier findings this run retired. Zero on a full
 	// review: it can retire nothing.
@@ -309,7 +311,7 @@ func renderIssues(in SummaryInput) string {
 	lines := []string{p("### Probleme und Vorschläge", "### Issues and suggestions")}
 	accounting := renderAccounting(in)
 	all := prFindings(in)
-	if len(all) == 0 {
+	if len(all) == 0 && in.Cut == 0 {
 		none := p("\nKeine.", "\nNone.")
 		if accounting != "" {
 			return lines[0] + none + "\n\n" + accounting
@@ -328,14 +330,14 @@ func renderIssues(in SummaryInput) string {
 			PluralIn(in.Lang, securityCount, "mögliches Sicherheitsproblem", "mögliche Sicherheitsprobleme",
 				"potential security issue", "potential security issues")))
 	}
-	if in.Truncated {
-		// Says what was posted, not what is listed: the list has its own cap.
-		lines = append(lines, fmt.Sprintf(
-			p("- Nur die %d wichtigsten neuen Findings nach Schweregrad gepostet. Weitere wurden weggelassen.",
-				"- Posted only the top %d new findings by severity. Additional new findings were omitted."),
-			len(in.Findings)))
+	if in.Cut > 0 {
+		// Says what was not posted, not what is listed: the list has its own
+		// cap. The verdict counts the cut ones, so the summary names them.
+		lines = append(lines, "- "+PluralIn(in.Lang, in.Cut,
+			"weiteres neues Finding", "weitere neue Findings", "more new finding", "more new findings")+
+			p(" über dem Kommentar-Limit nicht gepostet.", " over the comment cap not posted."))
 	}
-	if securityCount > 0 || in.Truncated {
+	if securityCount > 0 || in.Cut > 0 {
 		lines = append(lines, "")
 	}
 	markNew := len(in.EarlierOpen) > 0
