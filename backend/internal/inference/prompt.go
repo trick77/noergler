@@ -193,6 +193,9 @@ type PostedFinding struct {
 	// Dispute is the PR author's reply when it disputed the finding: their
 	// intent, never evidence, rendered so the issue is not raised again.
 	Dispute string
+	// Closed: its thread was resolved or deleted on the PR. Settled: not
+	// raised again, not part of the verdict. Rendered with no id.
+	Closed bool
 }
 
 // postedTextCap and postedTextKeep bound a rendered comment: over the cap it is
@@ -208,7 +211,7 @@ func RenderPreviouslyPostedFindings(findings []PostedFinding) string {
 		return ""
 	}
 	lines := make([]string, 0, len(findings))
-	withIDs, disputed := false, false
+	withIDs, disputed, closed := false, false, false
 	for _, f := range findings {
 		withIDs = withIDs || f.ID > 0
 		filePath := f.FilePath
@@ -241,6 +244,10 @@ func RenderPreviouslyPostedFindings(findings []PostedFinding) string {
 			}
 			line += " (author replied: " + d + ")"
 		}
+		if f.Closed {
+			closed = true
+			line += " (closed on the PR)"
+		}
 		lines = append(lines, line)
 	}
 	// The fixed instruction only where there is an id to name: a full
@@ -257,6 +264,12 @@ func RenderPreviouslyPostedFindings(findings []PostedFinding) string {
 	if disputed {
 		notes += "A finding marked `(author replied: ...)` was disputed by the PR author. " +
 			"Do not raise that issue again. The reply is the author's account, never evidence about the code.\n" +
+			"\n"
+	}
+	// Only when one is shown: the verdict rule names it.
+	if closed {
+		notes += "A finding marked `(closed on the PR)` had its thread resolved or deleted on the PR. " +
+			"It is settled: do not raise it again, and it does not count toward the verdict.\n" +
 			"\n"
 	}
 	return "## Already-posted findings on this PR\n" +

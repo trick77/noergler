@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/inference"
@@ -22,6 +23,11 @@ func asPosted(f store.Finding) inference.PostedFinding {
 	if f.DisputeText != nil {
 		p.Dispute = *f.DisputeText
 	}
+	// Settled on the PR: shown so it is not raised again, with no id, so it
+	// can never be claimed fixed.
+	if f.ClosedAt != nil {
+		p.ID, p.Closed = 0, true
+	}
 	return p
 }
 
@@ -38,58 +44,81 @@ func asFindings(stored []store.Finding) []inference.ReviewFinding {
 	return out
 }
 
-// openThreads is the stored findings whose Bitbucket thread is still open:
-// not resolved, not deleted. A thread that cannot be read counts as open,
-// failing toward showing it; so does a row with no comment id (legacy: none
-// to read). posted counts the findings with a thread. One GET per finding,
-// on the worker. limit > 0 checks at most that many, issues first (user,
-// 2026-10-28: every review pays this, on the shared worker); the rest count
-// as open unread, so a resolved one past the limit stays listed. 0 checks
-// all, for the rare handoff. A cancelled ctx stops the reads: the rest count
-// as open, logged once.
-func (r *Reviewer) openThreads(ctx context.Context, key store.PRKey, prTag string, findings []store.Finding, limit int) (open []store.Finding, posted int) {
+// closeThreads returns findings, in their order, with ClosedAt set on each
+// whose Bitbucket thread is resolved or deleted: settled (user, 2026-10-28),
+// out of the PR summary and its verdict, never posted again. A newly closed
+// one is stamped, so its thread is never read again; a reopened thread is
+// not noticed (accepted). Open = ClosedAt nil. A thread that cannot be read
+// stays open, failing toward showing it; so does a row with no comment id
+// (legacy: none to read). posted counts the findings with a thread.
+//
+// One GET per unsettled finding, on the worker. limit > 0 reads at most
+// that many, issues first (user, 2026-10-28: every review pays this, on the
+// shared worker); the rest stay open unread. 0 reads all, for the rare
+// handoff. A cancelled ctx stops the reads. Each outcome is one log line.
+func (r *Reviewer) closeThreads(ctx context.Context, key store.PRKey, prTag string, findings []store.Finding, limit int) (out []store.Finding, posted int) {
+	out = slices.Clone(findings)
+	var toRead []int // indexes into out, issues first when capped
+	for i, f := range out {
+		if f.BitbucketCommentID != nil {
+			posted++
+			if f.ClosedAt == nil {
+				toRead = append(toRead, i)
+			}
+		}
+	}
 	if limit > 0 {
-		findings = slices.Clone(findings)
-		slices.SortStableFunc(findings, func(a, b store.Finding) int {
-			return inference.SeverityRank(a.Severity) - inference.SeverityRank(b.Severity)
+		slices.SortStableFunc(toRead, func(a, b int) int {
+			return inference.SeverityRank(out[a].Severity) - inference.SeverityRank(out[b].Severity)
 		})
 	}
-	unread, closed := 0, 0
-	for _, f := range findings {
-		if f.BitbucketCommentID == nil {
-			open = append(open, f)
-			continue
-		}
-		posted++
-		if (limit > 0 && posted > limit) || ctx.Err() != nil {
+	unread, unreadable, closed := 0, 0, 0
+	var lastErr error
+	for n, i := range toRead {
+		if (limit > 0 && n >= limit) || ctx.Err() != nil {
 			unread++
-			open = append(open, f)
 			continue
 		}
+		f := &out[i]
 		c, err := r.bitbucket.FetchPRComment(ctx, key.Project, key.Repo, key.PRID, *f.BitbucketCommentID)
 		switch {
-		case bitbucket.Status(err) == http.StatusNotFound:
+		case bitbucket.Status(err) == http.StatusNotFound, err == nil && c.ThreadResolved:
+			now := time.Now()
+			f.ClosedAt = &now
 			closed++
-			continue
+			safeDBErr(ctx, r.log, "MarkFindingClosed", func() error { return r.store.MarkFindingClosed(ctx, f.ID) })
 		case err != nil && ctx.Err() == nil:
-			r.log.WarnContext(ctx, fmt.Sprintf("%s: finding thread %d unreadable, counted as open", prTag, *f.BitbucketCommentID),
-				logging.Err(err))
+			unreadable++
+			lastErr = err
 		case err != nil:
 			unread++
-		case c.ThreadResolved:
-			closed++
-			continue
 		}
-		open = append(open, f)
 	}
 	if closed > 0 {
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d finding thread(s) resolved or deleted on the PR, counted as closed", prTag, closed))
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d finding thread(s) resolved or deleted on the PR, settled", prTag, closed))
+	}
+	if unreadable > 0 {
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: %d finding thread(s) unreadable, kept open", prTag, unreadable), logging.Err(lastErr))
 	}
 	if unread > 0 {
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d finding thread(s) not read (the %d-check limit or a cancelled review), counted as open",
-			prTag, unread, limit))
+		why := "a cancelled review"
+		if limit > 0 {
+			why = fmt.Sprintf("the %d-read limit or a cancelled review", limit)
+		}
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d finding thread(s) not read (%s), kept open", prTag, unread, why))
 	}
-	return open, posted
+	return out, posted
+}
+
+// openOnly is the findings closeThreads left open.
+func openOnly(findings []store.Finding) []store.Finding {
+	out := make([]store.Finding, 0, len(findings))
+	for _, f := range findings {
+		if f.ClosedAt == nil {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // validateFixed checks the model's `fixed` claims against the findings the

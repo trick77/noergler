@@ -127,26 +127,20 @@ func SettleVerdict(s ReviewSummary, earlier, current, dropped []ReviewFinding, e
 			"Empfehlung herabgestuft: die offenen Findings des PR stützen sie nicht.",
 			"Verdict lowered: the PR's open findings do not support it.")
 	default:
-		// Counted are the earlier findings that demand it, not every open
-		// one: six suggestions beside the issue do not request changes.
+		// Counted are the open findings that demand it, earlier and new, not
+		// every one: six suggestions beside the issue do not request changes.
 		demands := map[string]string{"request_changes": "issue", "approve_with_followups": "suggestion"}[want]
 		n := 0
-		for _, f := range earlier {
+		for _, f := range slices.Concat(earlier, current) {
 			if f.Severity == demands {
 				n++
 			}
 		}
-		if n == 0 {
-			s.VerdictRationale = l.Pick(
-				"Empfehlung angehoben: die Findings dieses Laufs verlangen sie.",
-				"Verdict raised: this run's findings demand it.")
-			break
-		}
 		s.VerdictRationale = pluralRationale(l, n,
-			"Empfehlung angehoben: 1 früheres Finding ist noch offen.",
-			"Empfehlung angehoben: %d frühere Findings sind noch offen.",
-			"Verdict raised: 1 earlier finding is still open.",
-			"Verdict raised: %d earlier findings are still open.")
+			"Empfehlung angehoben: 1 offenes Finding verlangt sie.",
+			"Empfehlung angehoben: %d offene Findings verlangen sie.",
+			"Verdict raised: 1 open finding demands it.",
+			"Verdict raised: %d open findings demand it.")
 	}
 	return s
 }

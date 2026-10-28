@@ -465,11 +465,11 @@ func TestSettleVerdict(t *testing.T) {
 			"Verdict lowered: the PR's open findings do not support it.",
 		},
 		{"an earlier issue still open", lax, []ReviewFinding{sugg, issue}, nil, nil, "request_changes",
-			"Verdict raised: 1 earlier finding is still open."},
+			"Verdict raised: 1 open finding demands it."},
 		{"an earlier suggestion still open", lax, []ReviewFinding{sugg, sugg}, nil, nil, "approve_with_followups",
-			"Verdict raised: 2 earlier findings are still open."},
+			"Verdict raised: 2 open findings demand it."},
 		{"a new issue the model approved", lax, nil, []ReviewFinding{issue}, nil, "request_changes",
-			"Verdict raised: this run's findings demand it."},
+			"Verdict raised: 1 open finding demands it."},
 		{"an unknown decision is named, not changed", ReviewSummary{VerdictDecision: "bogus", VerdictRationale: "hm"},
 			nil, nil, nil, "approve", ""},
 	}
@@ -525,9 +525,9 @@ func TestSettleVerdictLanguage(t *testing.T) {
 		{strict, nil, nil, []ReviewFinding{issue}, "Empfehlung herabgestuft: 1 Finding zurückgehalten, dessen Beleg der Diff nicht stützt."},
 		{strict, nil, nil, []ReviewFinding{issue, issue}, "Empfehlung herabgestuft: 2 Findings zurückgehalten, deren Beleg der Diff nicht stützt."},
 		{strict, nil, nil, nil, "Empfehlung herabgestuft: die offenen Findings des PR stützen sie nicht."},
-		{lax, []ReviewFinding{issue}, nil, nil, "Empfehlung angehoben: 1 früheres Finding ist noch offen."},
-		{lax, []ReviewFinding{issue, issue}, nil, nil, "Empfehlung angehoben: 2 frühere Findings sind noch offen."},
-		{lax, nil, []ReviewFinding{issue}, nil, "Empfehlung angehoben: die Findings dieses Laufs verlangen sie."},
+		{lax, []ReviewFinding{issue}, nil, nil, "Empfehlung angehoben: 1 offenes Finding verlangt sie."},
+		{lax, []ReviewFinding{issue, issue}, nil, nil, "Empfehlung angehoben: 2 offene Findings verlangen sie."},
+		{lax, nil, []ReviewFinding{issue}, nil, "Empfehlung angehoben: 1 offenes Finding verlangt sie."},
 	}
 	for _, tc := range cases {
 		if got := SettleVerdict(tc.in, tc.earlier, tc.current, tc.dropped, true, lang.DE).VerdictRationale; got != tc.want {

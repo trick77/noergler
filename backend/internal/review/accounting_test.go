@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/inference"
@@ -71,7 +73,7 @@ func TestSummaryOfAQuietPushKeepsThePR(t *testing.T) {
 	s := h.bb.Posted[0].Text
 	for _, want := range []string{
 		"1. Nil map write\n2. Name it\n",
-		"**Request changes 🛑** — Verdict raised: 1 earlier finding is still open.",
+		"**Request changes 🛑** — Verdict raised: 1 open finding demands it.",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("summary lacks %q:\n%s", want, s)
@@ -213,9 +215,10 @@ func TestClosedThreadLowersAStaleVerdict(t *testing.T) {
 	}
 }
 
-// A bug whose thread the author resolved is not on the PR any more: the
-// model reporting it again posts it again and it holds the verdict up.
-func TestRepeatOfAClosedThreadIsPostedAgain(t *testing.T) {
+// A resolved thread is settled (user, 2026-10-28): the model reporting the
+// bug again posts nothing, and it holds nothing up. Stamped, so the next
+// review does not read the thread again.
+func TestResolvedThreadIsSettled(t *testing.T) {
 	h := newHarness(t, nil)
 	incremental(h)
 	f := earlier(h, 11, "issue", "Resolved one")
@@ -227,11 +230,34 @@ func TestRepeatOfAClosedThreadIsPostedAgain(t *testing.T) {
 
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
-	if len(h.bb.Inline) != 1 {
-		t.Fatalf("inline = %d, want the re-report posted", len(h.bb.Inline))
+	if len(h.bb.Inline) != 0 {
+		t.Errorf("inline = %d, want the repeat held back", len(h.bb.Inline))
 	}
-	if s := h.bb.Posted[0].Text; !strings.Contains(s, "**Request changes 🛑**") {
-		t.Errorf("the re-reported issue must hold the verdict:\n%s", s)
+	if s := h.bb.Posted[0].Text; !strings.Contains(s, "### Issues and suggestions\nNone.") || !strings.Contains(s, "**Approve ✅**") {
+		t.Errorf("a settled finding must not be listed or hold the verdict:\n%s", s)
+	}
+	if !slices.Equal(h.st.Closed, []int64{11}) {
+		t.Errorf("closed = %v, want 11 stamped", h.st.Closed)
+	}
+}
+
+// A stamped finding's thread is never read again.
+func TestSettledThreadIsNotReadAgain(t *testing.T) {
+	h := newHarness(t, nil)
+	incremental(h)
+	f := earlier(h, 11, "issue", "Settled one")
+	at := time.Now()
+	f.ClosedAt = &at
+	h.st.existing = []store.Finding{f}
+	h.llm.review = okResultWith()
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	if slices.Contains(h.bb.FetchedC, *f.BitbucketCommentID) {
+		t.Errorf("the settled thread was read again: %v", h.bb.FetchedC)
+	}
+	if s := h.bb.Posted[0].Text; strings.Contains(s, "Settled one") {
+		t.Errorf("a settled finding must not be listed:\n%s", s)
 	}
 }
 
@@ -272,10 +298,9 @@ func TestCappedFindingsStillHoldTheVerdict(t *testing.T) {
 	}
 }
 
-// One open list for the whole run: a finding whose thread the author
-// resolved is not in the prompt either, so the model is not told to weigh
-// it and cannot claim it fixed.
-func TestClosedThreadLeavesThePrompt(t *testing.T) {
+// A settled finding stays in the prompt, marked closed and with no id: the
+// model is told not to raise it again and cannot claim it fixed.
+func TestClosedThreadIsMarkedInThePrompt(t *testing.T) {
 	h := newHarness(t, nil)
 	incremental(h)
 	f := earlier(h, 11, "issue", "Resolved one")
@@ -287,8 +312,9 @@ func TestClosedThreadLeavesThePrompt(t *testing.T) {
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	p := h.llm.Reviews[0].Prompt
-	if strings.Contains(p, "[F11]") || !strings.Contains(p, "[F12]") {
-		t.Errorf("the prompt must list only the open thread:\n%s", p)
+	if strings.Contains(p, "[F11]") || !strings.Contains(p, "[F12]") ||
+		!strings.Contains(p, "- a.go:2 [issue] old (closed on the PR)") {
+		t.Errorf("the prompt must mark the closed one, with no id:\n%s", p)
 	}
 }
 
@@ -314,7 +340,7 @@ func TestNewIssueRaisesAnApprove(t *testing.T) {
 
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
 
-	want := "**Request changes 🛑** — Verdict raised: this run's findings demand it."
+	want := "**Request changes 🛑** — Verdict raised: 1 open finding demands it."
 	if s := h.bb.Posted[0].Text; !strings.Contains(s, want) {
 		t.Errorf("summary lacks %q:\n%s", want, s)
 	}

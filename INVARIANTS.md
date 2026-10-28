@@ -56,18 +56,18 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   "it's called SUMMARY"): the comment is replaced each run. Prompt names it
   the PR review summary; issue list = every open finding (`EarlierOpen` +
   new); `SettleVerdict` sets the decision from that list, once, both ways;
-  a match keeps the model's rationale. Open =
-  `openThreads`, as the handoff: unfixed, thread not resolved or deleted,
-  unreadable counts open; a review reads at most 50 threads, issues first,
-  the rest open unread; the list shows 30, the rest counted (user,
-  2026-10-28). Read once in prepare: the prompt's block, fixed claims,
-  dedupe, list and verdict use one open list; a closed thread's re-report
-  is posted again. No comment id = open. Earlier unreadable: the verdict
-  is lowered only for drops. The verdict counts new findings over the cap;
-  the list names how many.
-  Unretireable after a full-review fallback (no ids): stays
-  open until its thread is resolved (user kept it, 2026-10-28). Earlier findings unreadable from the DB: never
-  safeDB ("none" would approve), the summary says it lists this run's only.
+  a match keeps the model's rationale. List shows 30, the rest counted.
+- Thread resolved or deleted = settled (user, 2026-10-28): `closeThreads`
+  stamps `closed_at` once, never read again (a reopen is not noticed,
+  accepted). Settled: out of the list and verdict, never posted again
+  (dedupe still holds it), in the prompt marked closed with no id.
+  Unreadable or no comment id = open. Read in prepare, once per run, at
+  most 50 unsettled threads, issues first, the rest open unread (user).
+  Unretireable after a full-review fallback (no ids): open until its
+  thread is resolved (user kept it). The verdict counts new findings over
+  the cap; the list names how many. Earlier findings unreadable from the
+  DB: never safeDB ("none" would approve), the summary says it lists this
+  run's only, the verdict is lowered only for drops.
   Heading "PR Review-Zusammenfassung" / "PR review summary", last push a
   line under it.
 - `pre_existing` (bugs in unchanged code): never posted, never moves the

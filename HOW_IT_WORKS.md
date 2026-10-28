@@ -199,10 +199,15 @@ coverage and verdict cover the whole PR, and its issue list is every open
 finding, earlier ones (not fixed, thread neither resolved nor deleted; an
 unreadable thread counts as open) and this run's: issues first, earlier before
 new within a severity, the new ones marked when earlier ones stand beside
-them. The list shows 30 and counts the rest under them. A review reads at
-most 50 earlier threads from Bitbucket, issues first; the rest count as open
-without being read. An earlier finding a full review (after a rebase) could
-not retire stays open until its thread is resolved. The verdict is settled
+them. The list shows 30 and counts the rest under them.
+
+A finding whose thread someone resolved or deleted is settled: it leaves
+the list and the verdict, is never posted again, and the model still sees
+it, marked closed, so it does not raise it again. noergler stamps it once
+and never reads that thread again; reopening it later is not noticed. A
+review reads at most 50 unsettled threads, issues first; the rest count as
+open without being read. An earlier finding a full review (after a rebase)
+could not retire stays open until its thread is resolved. The verdict is settled
 once against the whole list: any issue in it
 requests changes, only suggestions approve with follow-ups, none approves.
 So an earlier issue still open holds the verdict up even when the model saw

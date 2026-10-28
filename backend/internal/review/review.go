@@ -273,12 +273,12 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	if existingUnknown {
 		r.log.WarnContext(ctx, prTag+": earlier findings unreadable, the PR summary lists this run's only", logging.Err(err))
 	}
-	// Open on the PR, once, for everything after: the prompt's block, the
-	// fixed claims, dedupe, the summary's list and its verdict. A finding
-	// whose thread the author resolved or deleted is closed there, so it is
-	// closed here too (as for the handoff banner); the model reporting it
-	// again is a live bug, posted again.
-	existing, _ = r.openThreads(ctx, key, prTag, existing, maxThreadChecks)
+	// Thread state, once, for everything after. A finding whose thread was
+	// resolved or deleted on the PR is settled (user, 2026-10-28): the
+	// prompt shows it closed and without an id (not raised again, never
+	// claimed fixed), dedupe still holds its repeat back, and the summary's
+	// list and verdict leave it out.
+	existing, _ = r.closeThreads(ctx, key, prTag, existing, maxThreadChecks)
 	// Only an incremental review may retire a finding: on a full one every
 	// PR line is an added line, the buggy one too, so nothing would prove a
 	// fix. No id listed, nothing to claim.
@@ -464,9 +464,10 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	// and resolves the old thread; a response that re-reports the very bug
 	// it claims fixed posts it again, so the bug stays flagged either way.
 	fixed := r.validateFixed(ctx, plan, result.Review.Fixed)
-	// existing is already what is open on the PR (prepare's openThreads).
-	stillOpen := withoutFixed(existing, fixed)
-	earlierOpen := asFindings(stillOpen)
+	// unfixed holds back repeats, settled ones included; the summary lists
+	// and counts only what is still open on the PR (prepare's closeThreads).
+	unfixed := withoutFixed(existing, fixed)
+	earlierOpen := asFindings(openOnly(unfixed))
 	for _, d := range v.Dropped {
 		plan.detail.Decisions = append(plan.detail.Decisions, decision(d.Finding, "dropped", string(d.Reason)))
 	}
@@ -488,7 +489,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	if len(pre) > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d pre-existing bug(s) recorded for the run page, not posted", prTag, len(pre)))
 	}
-	deduped, repeats := dedupe(v.Kept, stillOpen, plan.anchors)
+	deduped, repeats := dedupe(v.Kept, unfixed, plan.anchors)
 	for _, f := range repeats {
 		plan.detail.Decisions = append(plan.detail.Decisions, decision(f, "repeat", ""))
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: finding on %s:%d (%s) already posted by an earlier run, not posted again",
