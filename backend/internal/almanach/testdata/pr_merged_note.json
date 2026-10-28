@@ -1,0 +1,101 @@
+{
+  "change_kind": "bugfix",
+  "claims": [
+    {
+      "project_key": "PROJ",
+      "repo_slug": null
+    },
+    {
+      "project_key": "OTHER",
+      "repo_slug": "x"
+    }
+  ],
+  "event_type": "pr_merged_note",
+  "issues_posted": 2,
+  "jira_issue_type": "Bug",
+  "merge_commit_sha": "0123456789abcdef",
+  "merged_at": "2026-10-28T12:00:00Z",
+  "model_label": "gpt-5.5-high",
+  "note": {
+    "summary": "Der Adapter liest den Mandanten aus der Kopfzeile.",
+    "change_kind": "bugfix",
+    "bugfix": {
+      "symptom": "Upload bricht ab.",
+      "cause": "Retry ohne Backoff.",
+      "cause_kind": "logic"
+    },
+    "components": [
+      {
+        "name": "Uploader",
+        "text": "Nimmt Dateien an.",
+        "files": [
+          "internal/files/upload.go"
+        ]
+      }
+    ],
+    "rules": [],
+    "invariants": [],
+    "entities": []
+  },
+  "note_call": {
+    "cache_read_tokens": 90000,
+    "cache_write_tokens": 0,
+    "call_id": "call-1",
+    "cost_cache_read_nano_usd": 9000000,
+    "cost_cache_write_nano_usd": 0,
+    "cost_input_nano_usd": 2000000,
+    "cost_nano_usd": 12300000,
+    "cost_output_nano_usd": 1000000,
+    "cost_reasoning_nano_usd": 300000,
+    "cost_tool_usage_nano_usd": 0,
+    "cost_usd": "0.0123",
+    "deployment": "azure/gpt-5.5",
+    "finish_reason": "stop",
+    "headers_ms": 320,
+    "input_tokens": 100000,
+    "input_uncached_tokens": 10000,
+    "key_spend_nano_usd": 12500000000,
+    "key_spend_usd": "12.5",
+    "litellm_version": "1.80.0",
+    "model": "gpt-5.5",
+    "note_status": "written",
+    "outcome": "ok",
+    "output_tokens": 800,
+    "profile": "gpt-5.5-high",
+    "reasoning_sent": "high",
+    "reasoning_tokens": 300,
+    "total_ms": 2100,
+    "warnings": [
+      "unaccounted"
+    ]
+  },
+  "pr_id": 42,
+  "pr_key": "PROJ/repo#42",
+  "pr_title": "Fix the upload retry",
+  "project_key": "PROJ",
+  "repo_slug": "repo",
+  "review_totals": {
+    "cached_tokens": 600000,
+    "completion_tokens": 5000,
+    "cost_nano_usd": 1250000000,
+    "cost_usd": "1.25",
+    "elapsed_ms": 61500,
+    "models_used": [
+      "gpt-5.5"
+    ],
+    "prompt_tokens": 900000,
+    "runs": 4
+  },
+  "reviewed_commit": "abc1234abc1234",
+  "rounds": {
+    "cost_nano_usd": 40000000,
+    "cost_usd": "0.04",
+    "count": 3,
+    "input_tokens": 300000,
+    "output_tokens": 2400
+  },
+  "run_id": 77,
+  "source_commit_sha": "def5678def5678",
+  "suggestions_posted": 1,
+  "ticket_key": "PROJ-9"
+}
