@@ -46,6 +46,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   A tool loop logs and records each call, logs one total (`SumCosts`):
   unpriced if any call is, the key spend its last reading. The total is
   never stored; the rows sum to it.
+- The Almanach note call lives in `almanach_calls` only (decided): never
+  `llm_calls`, never summed into a PR, a team or the rollup, never
+  cap-checked.
 
 ## Prompt and findings
 
@@ -248,6 +251,14 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   (decided).
 - `ClaimRollup` stamps `riptide_emitted_at` in the statement that reads the
   snapshot. Never hang the decline-stamp clear on the reopen's review.
+- `almanach_notes`: one row per PR, replaced by run id (the round ran
+  unheld), stamps set once by finalize and never touched by a round, a stub
+  when finalize beats the first round (only for a PR with a row), emitted
+  marked after a 2xx and never before, for the run id that was sent
+  (Almanach dedupes; a lost note is the real cost). Delete never drops a
+  final note. No FK to `pull_requests`: a final note survives
+  `PurgeProject` until emitted; the purge drops the rest. The team slug
+  follows the latest round. The review cost a note reports is `prCostSQL`.
 
 ## Ops
 
