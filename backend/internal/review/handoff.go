@@ -3,9 +3,7 @@ package review
 import (
 	"context"
 	"fmt"
-	"net/http"
 
-	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/render"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
@@ -63,23 +61,9 @@ func (r *Reviewer) HandleReadyForReview(ctx context.Context, payload *webhook.Pa
 		r.log.WarnContext(ctx, prTag+": draft -> ready, findings unreadable, summary left as it is", logging.Err(err))
 		return
 	}
+	threads, posted := r.openThreads(ctx, key, prTag, findings)
 	var open []render.HandoffThread
-	posted := 0
-	for _, f := range findings {
-		if f.BitbucketCommentID == nil {
-			continue
-		}
-		posted++
-		c, err := r.bitbucket.FetchPRComment(ctx, key.Project, key.Repo, key.PRID, *f.BitbucketCommentID)
-		switch {
-		case bitbucket.Status(err) == http.StatusNotFound:
-			continue
-		case err != nil:
-			r.log.WarnContext(ctx, fmt.Sprintf("%s: finding thread %d unreadable, counted as open", prTag, *f.BitbucketCommentID),
-				logging.Err(err))
-		case c.ThreadResolved:
-			continue
-		}
+	for _, f := range threads {
 		open = append(open, render.HandoffThread{
 			File: f.FilePath, Line: f.LineNumber,
 			URL: r.bitbucket.CommentURL(key.Project, key.Repo, key.PRID, *f.BitbucketCommentID),

@@ -768,7 +768,7 @@ func TestFindingsLimitedInReview(t *testing.T) {
 	if len(h.bb.Inline) != 2 {
 		t.Errorf("posted %d comments, want the max_comments cap of 2", len(h.bb.Inline))
 	}
-	if len(h.bb.Posted) != 1 || !strings.Contains(h.bb.Posted[0].Text, "Showing top 2 findings") {
+	if len(h.bb.Posted) != 1 || !strings.Contains(h.bb.Posted[0].Text, "Showing the top 2 new findings") {
 		t.Error("the summary must report the truncation")
 	}
 }
@@ -823,8 +823,8 @@ func TestIncrementalReview(t *testing.T) {
 		if h.st.Runs[0].FromCommit == nil || *h.st.Runs[0].FromCommit != "older" {
 			t.Error("the run row must record the incremental base")
 		}
-		if len(h.bb.Posted) != 1 || !strings.Contains(h.bb.Posted[0].Text, "incremental update") {
-			t.Error("the summary must carry the incremental header")
+		if len(h.bb.Posted) != 1 || !strings.Contains(h.bb.Posted[0].Text, "### PR review summary\n- Last push: `older` .. ") {
+			t.Error("the PR summary must name the last push")
 		}
 	})
 

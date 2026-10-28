@@ -323,6 +323,8 @@ export const en = {
     notPostedTitle: "Not posted",
     verdictLowered:
       "Verdict lowered from {{model}} to {{posted}} after findings were dropped.",
+    verdictRaised:
+      "Verdict raised from {{model}} to {{posted}}: earlier findings are still open.",
     movedFrom: "moved from :{{line}}",
     title: "Run",
     failedWhat: "the run",

@@ -3,6 +3,7 @@ package review
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/inference"
@@ -21,6 +22,45 @@ func asPosted(f store.Finding) inference.PostedFinding {
 		p.Dispute = *f.DisputeText
 	}
 	return p
+}
+
+// asFindings are stored findings as the PR summary lists them and the
+// verdict counts them: still open, so still part of the PR.
+func asFindings(stored []store.Finding) []inference.ReviewFinding {
+	out := make([]inference.ReviewFinding, 0, len(stored))
+	for _, f := range stored {
+		out = append(out, inference.ReviewFinding{
+			File: f.FilePath, Line: f.LineNumber, Severity: f.Severity, Comment: f.CommentText,
+			Confidence: f.Confidence, Headline: f.Headline, Suggestion: f.Suggestion,
+		})
+	}
+	return out
+}
+
+// openThreads is the stored findings whose Bitbucket thread is still open:
+// posted, not resolved, not deleted. A thread that cannot be read counts as
+// open, failing toward showing it. posted counts the findings with a thread.
+// One GET per finding, on the worker; bounded by what was posted, like the
+// fixed-thread retirement.
+func (r *Reviewer) openThreads(ctx context.Context, key store.PRKey, prTag string, findings []store.Finding) (open []store.Finding, posted int) {
+	for _, f := range findings {
+		if f.BitbucketCommentID == nil {
+			continue
+		}
+		posted++
+		c, err := r.bitbucket.FetchPRComment(ctx, key.Project, key.Repo, key.PRID, *f.BitbucketCommentID)
+		switch {
+		case bitbucket.Status(err) == http.StatusNotFound:
+			continue
+		case err != nil:
+			r.log.WarnContext(ctx, fmt.Sprintf("%s: finding thread %d unreadable, counted as open", prTag, *f.BitbucketCommentID),
+				logging.Err(err))
+		case c.ThreadResolved:
+			continue
+		}
+		open = append(open, f)
+	}
+	return open, posted
 }
 
 // validateFixed checks the model's `fixed` claims against the findings the

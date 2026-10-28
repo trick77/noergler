@@ -90,6 +90,68 @@ const detail: RunDetail = {
   detail: null,
 };
 
+const record: NonNullable<RunDetail["detail"]> = {
+  stages: [
+    { name: "diff", ms: 1400 },
+    { name: "gateway", ms: 58420 },
+    { name: "queued", ms: 3100 },
+  ],
+  prompt: {
+    template: 4520,
+    files: 22480,
+    cumulative_diff: 9870,
+    previously_posted: 2150,
+    repo_instructions: 1240,
+    ticket: 610,
+    pr_description: 340,
+    total: 41210,
+    budget: 628000,
+  },
+  files: [
+    {
+      path: "retry.go",
+      sent: "full",
+      added: 142,
+      removed: 18,
+      tokens: 6820,
+    },
+    {
+      path: "services/payments/go.sum",
+      sent: "not_reviewable",
+      added: 2,
+      removed: 0,
+      tokens: 0,
+    },
+  ],
+  cross_file: ["CaptureClient"],
+  agents_md: { found: true, tokens: 1240, warn_tokens: 4000 },
+  ticket: "PAY-2291",
+  previously_posted: { shown: 6, total: 8 },
+  decisions: [
+    {
+      file: "config.go",
+      line: 203,
+      severity: "issue",
+      headline: "MaxRetries can go negative",
+      decision: "dropped",
+      reason: "evidence_not_found",
+    },
+  ],
+  moved: [{ file: "retry.go", from: 85, to: 88 }],
+  commit: "3c41a0bbbbbbbbbb",
+  pre_existing: [
+    {
+      file: "client/pool.go",
+      line: 42,
+      headline: "Pool never closes idle connections",
+      explanation: "Idle connections pile up until the process restarts.",
+      evidence: ["p.idle = append(p.idle, conn)"],
+    },
+  ],
+  verdict: { model: "request_changes", posted: "comment" },
+  http: [{ upstream: "bitbucket", calls: 14 }],
+};
+
 describe("onNav", () => {
   // A modified click is the browser's (new tab, new window); only a plain
   // one stays in the SPA.
@@ -205,70 +267,7 @@ describe("RunPane", () => {
   // The review's own record: stages on the timeline, the findings that
   // were not posted with why, and the prompt and files tab.
   it("shows the pipeline record", async () => {
-    serve(RUN, {
-      ...detail,
-      detail: {
-        stages: [
-          { name: "diff", ms: 1400 },
-          { name: "gateway", ms: 58420 },
-          { name: "queued", ms: 3100 },
-        ],
-        prompt: {
-          template: 4520,
-          files: 22480,
-          cumulative_diff: 9870,
-          previously_posted: 2150,
-          repo_instructions: 1240,
-          ticket: 610,
-          pr_description: 340,
-          total: 41210,
-          budget: 628000,
-        },
-        files: [
-          {
-            path: "retry.go",
-            sent: "full",
-            added: 142,
-            removed: 18,
-            tokens: 6820,
-          },
-          {
-            path: "services/payments/go.sum",
-            sent: "not_reviewable",
-            added: 2,
-            removed: 0,
-            tokens: 0,
-          },
-        ],
-        cross_file: ["CaptureClient"],
-        agents_md: { found: true, tokens: 1240, warn_tokens: 4000 },
-        ticket: "PAY-2291",
-        previously_posted: { shown: 6, total: 8 },
-        decisions: [
-          {
-            file: "config.go",
-            line: 203,
-            severity: "issue",
-            headline: "MaxRetries can go negative",
-            decision: "dropped",
-            reason: "evidence_not_found",
-          },
-        ],
-        moved: [{ file: "retry.go", from: 85, to: 88 }],
-        commit: "3c41a0bbbbbbbbbb",
-        pre_existing: [
-          {
-            file: "client/pool.go",
-            line: 42,
-            headline: "Pool never closes idle connections",
-            explanation: "Idle connections pile up until the process restarts.",
-            evidence: ["p.idle = append(p.idle, conn)"],
-          },
-        ],
-        verdict: { model: "request_changes", posted: "comment" },
-        http: [{ upstream: "bitbucket", calls: 14 }],
-      },
-    });
+    serve(RUN, { ...detail, detail: record });
     render(<RunPane token={TOK} n={2} />);
 
     expect((await screen.findAllByText("AI Gateway call")).length).toBe(2);
@@ -302,6 +301,28 @@ describe("RunPane", () => {
     expect(
       screen.getByText("go.sum").closest("td")?.getAttribute("title"),
     ).toBe("services/payments/go.sum");
+  });
+
+  // An earlier finding still open raises the posted verdict: the note says
+  // raised, never "lowered after findings were dropped".
+  it("says a verdict was raised by open earlier findings", async () => {
+    window.history.replaceState({}, "", `/${RUN}#findings`);
+    serve(RUN, {
+      ...detail,
+      detail: {
+        ...record,
+        decisions: [],
+        verdict: { model: "approve", posted: "request_changes" },
+      },
+    });
+    render(<RunPane token={TOK} n={2} />);
+
+    expect(
+      await screen.findByText(
+        /Verdict raised from approve to request_changes: earlier findings are still open/,
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText(/Verdict lowered/)).toBeNull();
   });
 
   it("says why a skipped run has nothing else", async () => {

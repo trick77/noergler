@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/trick77/noergler/internal/inference"
@@ -35,7 +36,9 @@ type PromptBreakdown struct {
 	Present          bool
 }
 
-// SummaryInput is everything the summary comment renders.
+// SummaryInput is everything the PR summary comment renders. It is the PR
+// summary: the whole PR on every run, never one push. The comment is
+// replaced on each run, so what it leaves out of the PR is gone.
 //
 // Pointer fields are the ones where absent and zero differ: a nil cost means
 // the run was not priced (and the line is omitted entirely), while 0.0 would
@@ -44,22 +47,28 @@ type SummaryInput struct {
 	// Lang is the PR author's language; the zero value renders German.
 	Lang lang.Lang
 
-	Findings  []inference.ReviewFinding
-	Truncated bool
-	Summary   inference.ReviewSummary
+	// Findings are this run's new ones; EarlierOpen the PR's earlier
+	// findings still open after it, on any run, a full one included. The
+	// issue list is both.
+	Findings    []inference.ReviewFinding
+	EarlierOpen []inference.ReviewFinding
+	// EarlierUnknown: the earlier findings could not be read, so the list
+	// is this run's only, and the summary says so rather than read as the
+	// whole PR.
+	EarlierUnknown bool
+	Truncated      bool
+	Summary        inference.ReviewSummary
 
-	// FixedEarlier and OpenEarlier are the earlier findings this run listed
-	// to the model, retired by it and still open after it. Zero on a full
-	// review: it can retire nothing, so it can say nothing about them.
+	// FixedEarlier is the earlier findings this run retired. Zero on a full
+	// review: it can retire nothing.
 	FixedEarlier int
-	OpenEarlier  int
 	// Dropped is what validation kept off the PR.
 	//
 	// Decided, not complete: the line counts only what this run checked.
-	// Repeats of earlier findings, findings trimmed from the prompt, the cap
-	// and refused inline posts are logged, not counted here. A repeat of a
-	// listed finding is already in OpenEarlier and would count twice; the
-	// cap has its own bullet; a refused post is still in the list.
+	// Repeats of earlier findings, the cap and refused inline posts are
+	// logged, not counted here. A repeat is already listed as the earlier
+	// finding; the cap has its own bullet; a refused post is still in the
+	// list.
 	Dropped int
 
 	AgentsMDFound bool
@@ -108,10 +117,11 @@ type SummaryInput struct {
 	AgentsMDWarnTokens int
 }
 
-// Summary renders the PR summary comment.
+// Summary renders the PR summary comment: the whole PR, every open finding,
+// on every run.
 //
-// Section order is fixed (TestSummarySectionOrder): optional incremental header,
-// Overview, Strengths, Issues and suggestions, Security and performance, Test
+// Section order is fixed (TestSummarySectionOrder): the PR summary heading
+// (with the last push on an incremental run), Overview, Strengths, Issues and suggestions, Security and performance, Test
 // coverage, the ticket block when a ticket is linked, Recommendation, and the
 // footnote after a horizontal rule.
 func Summary(in SummaryInput) string {
@@ -121,12 +131,14 @@ func Summary(in SummaryInput) string {
 	var sections []string
 	p := in.Lang.Pick
 
+	// Named for the PR (user, 2026-10-28): the last push is one line under
+	// it, never the scope of the summary.
+	header := p("### PR Review-Zusammenfassung", "### PR review summary")
 	if in.IncrementalFrom != "" && in.ReviewedCommit != "" {
-		sections = append(sections, fmt.Sprintf(
-			p("### Review-Zusammenfassung (inkrementell)\n- Geprüfte Änderungen: `%s` .. `%s`",
-				"### Review summary (incremental update)\n- Changes reviewed: `%s` .. `%s`"),
-			shortSHA(in.IncrementalFrom, 10), shortSHA(in.ReviewedCommit, 10)))
+		header += fmt.Sprintf(p("\n- Letzter Push: `%s` .. `%s`", "\n- Last push: `%s` .. `%s`"),
+			shortSHA(in.IncrementalFrom, 10), shortSHA(in.ReviewedCommit, 10))
 	}
+	sections = append(sections, header)
 
 	sections = append(sections, renderOverview(in))
 	sections = append(sections, renderStrengths(in))
@@ -174,16 +186,8 @@ func swissInput(in SummaryInput) SummaryInput {
 		s.Strengths[i] = SwissSS(v)
 	}
 	in.Summary = s
-	findings := make([]inference.ReviewFinding, len(in.Findings))
-	for i, f := range in.Findings {
-		f.Comment = SwissSS(f.Comment)
-		if f.Headline != nil {
-			h := SwissSS(*f.Headline)
-			f.Headline = &h
-		}
-		findings[i] = f
-	}
-	in.Findings = findings
+	in.Findings = swissFindings(in.Findings)
+	in.EarlierOpen = swissFindings(in.EarlierOpen)
 	reqs := make([]inference.ComplianceRequirement, len(in.ComplianceRequirements))
 	for i, r := range in.ComplianceRequirements {
 		r.Requirement = SwissSS(r.Requirement)
@@ -193,6 +197,20 @@ func swissInput(in SummaryInput) SummaryInput {
 		in.ComplianceRequirements = reqs
 	}
 	return in
+}
+
+// swissFindings copies findings with SwissSS applied to their prose.
+func swissFindings(in []inference.ReviewFinding) []inference.ReviewFinding {
+	out := make([]inference.ReviewFinding, len(in))
+	for i, f := range in {
+		f.Comment = SwissSS(f.Comment)
+		if f.Headline != nil {
+			h := SwissSS(*f.Headline)
+			f.Headline = &h
+		}
+		out[i] = f
+	}
+	return out
 }
 
 func renderOverview(in SummaryInput) string {
@@ -234,19 +252,18 @@ func isNoneSentinel(s string) bool {
 }
 
 // renderAccounting is the line under the issues that says what the list
-// leaves out: earlier findings and dropped ones. Empty when there is nothing
-// to say, so a first review reads as before.
+// leaves out: earlier findings this push fixed and dropped ones. Empty when
+// there is nothing to say, so a first review reads as before.
 func renderAccounting(in SummaryInput) string {
 	p := in.Lang.Pick
-	var parts, earlier []string
+	var parts []string
+	if in.EarlierUnknown {
+		parts = append(parts, p("Frühere Findings nicht lesbar: die Liste zeigt nur diesen Lauf.",
+			"Earlier findings unreadable: the list shows this run's only."))
+	}
 	if in.FixedEarlier > 0 {
-		earlier = append(earlier, fmt.Sprintf(p("%d mit diesem Push behoben", "%d fixed by this push"), in.FixedEarlier))
-	}
-	if in.OpenEarlier > 0 {
-		earlier = append(earlier, fmt.Sprintf(p("%d noch offen", "%d still open"), in.OpenEarlier))
-	}
-	if len(earlier) > 0 {
-		parts = append(parts, p("Frühere Findings geprüft: ", "Earlier findings checked: ")+strings.Join(earlier, ", ")+".")
+		parts = append(parts, PluralIn(in.Lang, in.FixedEarlier, "früheres Finding", "frühere Findings",
+			"earlier finding", "earlier findings")+p(" mit diesem Push behoben.", " fixed by this push."))
 	}
 	if in.Dropped > 0 {
 		parts = append(parts, PluralIn(in.Lang, in.Dropped, "Finding", "Findings", "finding", "findings")+
@@ -258,13 +275,37 @@ func renderAccounting(in SummaryInput) string {
 	return "_" + strings.Join(parts, " ") + "_"
 }
 
-// renderIssues lists numbered headlines only; the detail lives on the inline
-// comments.
+// listedFinding is one line of the PR summary's issue list.
+type listedFinding struct {
+	inference.ReviewFinding
+	isNew bool
+}
+
+// prFindings is every open finding of the PR, issues first; within a
+// severity the earlier ones come first, in the order they were posted.
+func prFindings(in SummaryInput) []listedFinding {
+	all := make([]listedFinding, 0, len(in.EarlierOpen)+len(in.Findings))
+	for _, f := range in.EarlierOpen {
+		all = append(all, listedFinding{ReviewFinding: f})
+	}
+	for _, f := range in.Findings {
+		all = append(all, listedFinding{ReviewFinding: f, isNew: true})
+	}
+	slices.SortStableFunc(all, func(a, b listedFinding) int {
+		return inference.SeverityRank(a.Severity) - inference.SeverityRank(b.Severity)
+	})
+	return all
+}
+
+// renderIssues lists every open finding of the PR as a numbered headline;
+// the detail lives on the inline comments. This run's are marked new when
+// earlier ones are listed beside them.
 func renderIssues(in SummaryInput) string {
 	p := in.Lang.Pick
 	lines := []string{p("### Probleme und Vorschläge", "### Issues and suggestions")}
 	accounting := renderAccounting(in)
-	if len(in.Findings) == 0 {
+	all := prFindings(in)
+	if len(all) == 0 {
 		none := p("\nKeine.", "\nNone.")
 		if accounting != "" {
 			return lines[0] + none + "\n\n" + accounting
@@ -273,7 +314,7 @@ func renderIssues(in SummaryInput) string {
 	}
 
 	securityCount := 0
-	for _, f := range in.Findings {
+	for _, f := range all {
 		if IsSecurityFinding(f.Comment) {
 			securityCount++
 		}
@@ -285,14 +326,15 @@ func renderIssues(in SummaryInput) string {
 	}
 	if in.Truncated {
 		lines = append(lines, fmt.Sprintf(
-			p("- Die %d wichtigsten Findings nach Schweregrad. Weitere wurden weggelassen.",
-				"- Showing top %d findings by severity. Additional findings were omitted."),
+			p("- Die %d wichtigsten neuen Findings nach Schweregrad. Weitere wurden weggelassen.",
+				"- Showing the top %d new findings by severity. Additional new findings were omitted."),
 			len(in.Findings)))
 	}
 	if securityCount > 0 || in.Truncated {
 		lines = append(lines, "")
 	}
-	for i, f := range in.Findings {
+	markNew := len(in.EarlierOpen) > 0
+	for i, f := range all {
 		headline := ""
 		if f.Headline != nil {
 			headline = strings.TrimSpace(*f.Headline)
@@ -302,6 +344,9 @@ func renderIssues(in SummaryInput) string {
 			if f.Comment != "" {
 				headline = strings.TrimSpace(firstLine(f.Comment))
 			}
+		}
+		if markNew && f.isNew {
+			headline += p(" _(neu)_", " _(new)_")
 		}
 		lines = append(lines, fmt.Sprintf("%d. %s", i+1, headline))
 	}

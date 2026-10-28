@@ -101,14 +101,7 @@ func AdjustVerdict(s ReviewSummary, kept []ReviewFinding, dropped int, l lang.La
 	if dropped == 0 {
 		return s
 	}
-	supported := "approve"
-	for _, f := range kept {
-		if f.Severity == "issue" {
-			supported = "request_changes"
-			break
-		}
-		supported = "approve_with_followups"
-	}
+	supported := supportedVerdict(kept)
 	if verdictRank(supported) >= verdictRank(s.VerdictDecision) {
 		return s
 	}
@@ -123,6 +116,64 @@ func AdjustVerdict(s ReviewSummary, kept []ReviewFinding, dropped int, l lang.La
 			"Verdict lowered: %d findings whose evidence the diff did not bear out were withheld."), dropped)
 	}
 	return s
+}
+
+// FloorVerdict raises the verdict to what the PR's earlier findings still
+// open demand. The summary covers the whole PR, so a push that adds nothing
+// new cannot approve a PR whose earlier issue is still open. The prompt says
+// so; this holds when the model does not, or never saw the finding because
+// the budget trimmed it. Only ever raises. The rationale is replaced, since
+// the model's argued for the lower verdict; it is posted, so it is in l.
+func FloorVerdict(s ReviewSummary, open []ReviewFinding, l lang.Lang) ReviewSummary {
+	floor := supportedVerdict(open)
+	if verdictRank(floor) <= verdictRank(s.VerdictDecision) {
+		return s
+	}
+	s.VerdictDecision = floor
+	// Counted are the findings that demand the floor, not every open one:
+	// six suggestions beside the issue do not request changes.
+	n := 0
+	for _, f := range open {
+		if supportedVerdict([]ReviewFinding{f}) == floor {
+			n++
+		}
+	}
+	if n == 1 {
+		s.VerdictRationale = l.Pick(
+			"Empfehlung angehoben: 1 früheres Finding ist noch offen.",
+			"Verdict raised: 1 earlier finding is still open.")
+	} else {
+		s.VerdictRationale = fmt.Sprintf(l.Pick(
+			"Empfehlung angehoben: %d frühere Findings sind noch offen.",
+			"Verdict raised: %d earlier findings are still open."), n)
+	}
+	return s
+}
+
+// supportedVerdict is the decision the prompt ties to findings: any `issue`
+// requests changes, only suggestions approve with follow-ups, none approves.
+func supportedVerdict(findings []ReviewFinding) string {
+	supported := "approve"
+	for _, f := range findings {
+		if f.Severity == "issue" {
+			return "request_changes"
+		}
+		supported = "approve_with_followups"
+	}
+	return supported
+}
+
+// SeverityRank orders findings for posting and for the PR summary's list:
+// issues, then suggestions, then anything else.
+func SeverityRank(s string) int {
+	switch s {
+	case "issue":
+		return 0
+	case "suggestion":
+		return 1
+	default:
+		return 99
+	}
 }
 
 // verdictRank orders the decisions by strictness; an unknown one ranks as

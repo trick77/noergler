@@ -39,6 +39,7 @@ decision, not a cleanup.
 - Every finding passes `ValidateFindings` before posting; validation is blunt
   rules, never a judge model. Drops and decisions that change what is
   reviewed, posted or billed get a log line.
+- The summary is the PR's, never one push's (INVARIANTS: prompt and findings).
 - Author text (PR description, replies, disputes) is intent, never evidence,
   never drops a finding.
 - `review.txt`: `{files}` before `{cumulative_pr_diff}` and

@@ -19,6 +19,7 @@ import (
 	"github.com/trick77/noergler/internal/render"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
+	"github.com/trick77/ship/kit/logging"
 )
 
 // contextExpansionRatio decides when a PR counts as small: its files plus
@@ -264,9 +265,14 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	ticketContext := renderTicketContext(ticket, parentTicket)
 	prDescription := r.prDescription(ctx, prTag, pr)
 
-	existing := safeDB(ctx, r.log, "ExistingFindings", func() ([]store.Finding, error) {
-		return r.store.ExistingFindings(ctx, key)
-	})
+	// Not safeDB: its fallback "none" would post a PR summary with no
+	// earlier findings and an approve over open ones. Unreadable, the
+	// review goes on and the summary says what it cannot show.
+	existing, err := r.store.ExistingFindings(ctx, key)
+	existingUnknown := err != nil
+	if existingUnknown {
+		r.log.WarnContext(ctx, prTag+": earlier findings unreadable, the PR summary lists this run's only", logging.Err(err))
+	}
 	// Only an incremental review may retire a finding: on a full one every
 	// PR line is an added line, the buggy one too, so nothing would prove a
 	// fix. No id listed, nothing to claim.
@@ -368,6 +374,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		prAdded:         prAdded,
 		preUnknown:      preUnknown,
 		existing:        existing,
+		existingUnknown: existingUnknown,
 		listed:          listed,
 		// Read from what the prompt carries (notFullContext): a deleted file
 		// is never fetched, so it is never content-skipped to begin with.
@@ -446,8 +453,23 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	// 20. Drop findings whose evidence or line the prompt's diffs do not
 	// bear out, then dedup against what earlier runs already posted.
 	v := r.validateFindings(ctx, prTag, result.Review.Findings, plan.anchors)
-	// The model's verdict argued from findings some of which are now gone.
+	// Fixed claims first: a finding this run retires is no reason to drop a
+	// new one on its line as a repeat. A half fix then posts what is left
+	// and resolves the old thread; a response that re-reports the very bug
+	// it claims fixed posts it again, so the bug stays flagged either way.
+	fixed := r.validateFixed(ctx, plan, result.Review.Fixed)
+	stillOpen := withoutFixed(existing, fixed)
+	// The PR summary's earlier findings: unfixed and their thread still
+	// open on the PR. One the author resolved or deleted is closed there,
+	// so it is closed here too (as for the handoff banner).
+	threads, _ := r.openThreads(ctx, key, prTag, stillOpen)
+	earlierOpen := asFindings(threads)
+	// The verdict covers the whole PR. The model's argued from findings some
+	// of which are now gone, so a drop lowers it and replaces the rationale
+	// that named them; an earlier finding still open then holds it up.
 	reviewSummary := inference.AdjustVerdict(result.Review.Summary, v.Kept, len(v.Dropped), plan.lang)
+	lowered := reviewSummary.VerdictDecision
+	reviewSummary = inference.FloorVerdict(reviewSummary, earlierOpen, plan.lang)
 	for _, d := range v.Dropped {
 		plan.detail.Decisions = append(plan.detail.Decisions, decision(d.Finding, "dropped", string(d.Reason)))
 	}
@@ -470,16 +492,15 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d pre-existing bug(s) recorded for the run page, not posted", prTag, len(pre)))
 	}
 	plan.detail.Verdict = &store.VerdictChange{Model: result.Review.Summary.VerdictDecision, Posted: reviewSummary.VerdictDecision}
-	if was := result.Review.Summary.VerdictDecision; was != reviewSummary.VerdictDecision {
+	if was := result.Review.Summary.VerdictDecision; was != lowered {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: verdict lowered %s -> %s after %d dropped finding(s)",
-			prTag, was, reviewSummary.VerdictDecision, len(v.Dropped)))
+			prTag, was, lowered, len(v.Dropped)))
 	}
-	// Fixed claims first: a finding this run retires is no reason to drop a
-	// new one on its line as a repeat. A half fix then posts what is left
-	// and resolves the old thread; a response that re-reports the very bug
-	// it claims fixed posts it again, so the bug stays flagged either way.
-	fixed := r.validateFixed(ctx, plan, result.Review.Fixed)
-	deduped, repeats := dedupe(v.Kept, withoutFixed(existing, fixed), plan.anchors)
+	if lowered != reviewSummary.VerdictDecision {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: verdict raised %s -> %s: %d earlier finding(s) still open",
+			prTag, lowered, reviewSummary.VerdictDecision, len(earlierOpen)))
+	}
+	deduped, repeats := dedupe(v.Kept, stillOpen, plan.anchors)
 	for _, f := range repeats {
 		plan.detail.Decisions = append(plan.detail.Decisions, decision(f, "repeat", ""))
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: finding on %s:%d (%s) already posted by an earlier run, not posted again",
@@ -551,8 +572,9 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		Lang:                       plan.lang,
 		Findings:                   findings,
 		Truncated:                  truncated,
+		EarlierOpen:                earlierOpen,
+		EarlierUnknown:             plan.existingUnknown,
 		FixedEarlier:               len(fixed),
-		OpenEarlier:                len(plan.listed) - len(fixed),
 		Dropped:                    len(v.Dropped),
 		Summary:                    reviewSummary,
 		AgentsMDFound:              plan.agentsMDFound,
@@ -923,18 +945,6 @@ func dedupe(findings []inference.ReviewFinding, existing []store.Finding, idx di
 	return out, repeats
 }
 
-// severityOrder ranks a severity for sorting; an unknown value sorts last.
-func severityOrder(s string) int {
-	switch s {
-	case "issue":
-		return 0
-	case "suggestion":
-		return 1
-	default:
-		return 99
-	}
-}
-
 // sortAndLimit orders findings by severity and caps them.
 //
 // SortStableFunc, not SortFunc: findings of equal severity must keep the
@@ -943,7 +953,7 @@ func severityOrder(s string) int {
 func sortAndLimit(findings []inference.ReviewFinding, maxComments int) ([]inference.ReviewFinding, bool) {
 	sorted := slices.Clone(findings)
 	slices.SortStableFunc(sorted, func(a, b inference.ReviewFinding) int {
-		return severityOrder(a.Severity) - severityOrder(b.Severity)
+		return inference.SeverityRank(a.Severity) - inference.SeverityRank(b.Severity)
 	})
 	truncated := len(sorted) > maxComments
 	if truncated {
