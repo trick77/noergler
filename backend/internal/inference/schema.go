@@ -18,10 +18,7 @@ const ReviewSchemaName = "review_response"
 // moving every pinned total in testdata/assemble_golden.json, so SchemaJSON
 // re-inserts the separators rather than marshalling.
 func ReviewResponseSchema() map[string]any {
-	decisions := make([]any, len(VerdictDecisions))
-	for i, d := range VerdictDecisions {
-		decisions[i] = d
-	}
+	decisions := enumValues(VerdictDecisions)
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
@@ -192,4 +189,13 @@ func schemaEquivalent() (bool, error) {
 		return false, err
 	}
 	return string(a) == string(b), nil
+}
+
+// enumValues is a string list as a JSON Schema "enum" wants it.
+func enumValues(values []string) []any {
+	out := make([]any, len(values))
+	for i, v := range values {
+		out[i] = v
+	}
+	return out
 }

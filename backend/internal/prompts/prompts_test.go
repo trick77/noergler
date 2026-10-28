@@ -13,6 +13,8 @@ func TestPromptsAreEmbedded(t *testing.T) {
 		"mention parent": {Mention, "{parent_comment}"},
 		"finding_reply":  {FindingReply, "{reply}"},
 		"reply name":     {FindingReply, "{author_first_name}"},
+		"almanach note":  {AlmanachNote, "{note_limit}"},
+		"almanach repo":  {AlmanachNote, "{repo}"},
 	} {
 		if !strings.Contains(c.text, c.placeholder) {
 			t.Errorf("%s prompt lacks %s: the embed is broken or the prompt lost it", name, c.placeholder)
