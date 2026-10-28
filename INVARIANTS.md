@@ -60,7 +60,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   `openThreads`, as the handoff: unfixed, thread not resolved or deleted,
   unreadable counts open; a review reads at most 50 threads, issues first,
   the rest open unread; the list shows 30, the rest counted (user,
-  2026-10-28). Unretireable after a full-review fallback (no ids): stays
+  2026-10-28). Dedupe skips findings whose thread is closed: a re-report is
+  posted again. Earlier unreadable: the verdict is never lowered.
+  Unretireable after a full-review fallback (no ids): stays
   open until its thread is resolved (user kept it, 2026-10-28). Earlier findings unreadable from the DB: never
   safeDB ("none" would approve), the summary says it lists this run's only.
   Heading "PR Review-Zusammenfassung" / "PR review summary", last push a

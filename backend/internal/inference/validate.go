@@ -100,19 +100,22 @@ func ValidateFindings(findings []ReviewFinding, idx diff.AnchorIndex) Validation
 // trimmed it. A matching verdict keeps the model's rationale; a changed one
 // replaces it, since the model's argued for the other decision. The
 // replacement says why, and is posted, so it is in l. A drop alone can only
-// lower: it takes a finding out of the list, never puts one in.
-func SettleVerdict(s ReviewSummary, earlier, current []ReviewFinding, dropped int, l lang.Lang) ReviewSummary {
-	want := supportedVerdict(append(slices.Clone(earlier), current...))
-	if want == s.VerdictDecision {
+// lower: it takes a finding out of the list, never puts one in. The drops
+// are named as the cause only when they could have carried the model's
+// verdict. earlierKnown false (the earlier findings unreadable): never
+// lowers, since a list that could not be read argues for nothing.
+func SettleVerdict(s ReviewSummary, earlier, current, dropped []ReviewFinding, earlierKnown bool, l lang.Lang) ReviewSummary {
+	want := stricter(supportedVerdict(earlier), supportedVerdict(current))
+	was := verdictRank(s.VerdictDecision)
+	if want == s.VerdictDecision || (!earlierKnown && verdictRank(want) < was) {
 		return s
 	}
-	was := verdictRank(s.VerdictDecision)
 	s.VerdictDecision = want
 	switch {
 	case verdictRank(want) == was:
 		// An unknown decision ranks as approve; naming it is no change.
-	case verdictRank(want) < was && dropped > 0:
-		s.VerdictRationale = pluralRationale(l, dropped,
+	case verdictRank(want) < was && verdictRank(supportedVerdict(dropped)) >= was:
+		s.VerdictRationale = pluralRationale(l, len(dropped),
 			"Empfehlung herabgestuft: 1 Finding zurückgehalten, dessen Beleg der Diff nicht stützt.",
 			"Empfehlung herabgestuft: %d Findings zurückgehalten, deren Beleg der Diff nicht stützt.",
 			"Verdict lowered: 1 finding whose evidence the diff did not bear out was withheld.",
@@ -143,6 +146,14 @@ func SettleVerdict(s ReviewSummary, earlier, current []ReviewFinding, dropped in
 			"Verdict raised: %d earlier findings are still open.")
 	}
 	return s
+}
+
+// stricter is the stricter of two decisions.
+func stricter(a, b string) string {
+	if verdictRank(b) > verdictRank(a) {
+		return b
+	}
+	return a
 }
 
 // pluralRationale picks the singular or the counted plural in l.

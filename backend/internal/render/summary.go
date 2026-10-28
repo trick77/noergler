@@ -329,9 +329,10 @@ func renderIssues(in SummaryInput) string {
 				"potential security issue", "potential security issues")))
 	}
 	if in.Truncated {
+		// Says what was posted, not what is listed: the list has its own cap.
 		lines = append(lines, fmt.Sprintf(
-			p("- Die %d wichtigsten neuen Findings nach Schweregrad. Weitere wurden weggelassen.",
-				"- Showing the top %d new findings by severity. Additional new findings were omitted."),
+			p("- Nur die %d wichtigsten neuen Findings nach Schweregrad gepostet. Weitere wurden weggelassen.",
+				"- Posted only the top %d new findings by severity. Additional new findings were omitted."),
 			len(in.Findings)))
 	}
 	if securityCount > 0 || in.Truncated {
@@ -356,8 +357,8 @@ func renderIssues(in SummaryInput) string {
 		lines = append(lines, fmt.Sprintf("%d. %s", i+1, headline))
 	}
 	if more := len(all) - len(shown); more > 0 {
-		lines = append(lines, fmt.Sprintf(p("- … und %d weitere offene Findings.",
-			"- … and %d more open findings."), more))
+		lines = append(lines, p("- … und ", "- … and ")+PluralIn(in.Lang, more,
+			"weiteres offenes Finding.", "weitere offene Findings.", "more open finding.", "more open findings."))
 	}
 	if accounting != "" {
 		lines = append(lines, "", accounting)

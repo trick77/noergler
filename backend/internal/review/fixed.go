@@ -66,11 +66,15 @@ func (r *Reviewer) openThreads(ctx context.Context, key store.PRKey, prTag strin
 		c, err := r.bitbucket.FetchPRComment(ctx, key.Project, key.Repo, key.PRID, *f.BitbucketCommentID)
 		switch {
 		case bitbucket.Status(err) == http.StatusNotFound:
+			r.log.InfoContext(ctx, fmt.Sprintf("%s: finding thread %d on %s:%d deleted, counted as closed",
+				prTag, *f.BitbucketCommentID, f.FilePath, f.LineNumber))
 			continue
 		case err != nil:
 			r.log.WarnContext(ctx, fmt.Sprintf("%s: finding thread %d unreadable, counted as open", prTag, *f.BitbucketCommentID),
 				logging.Err(err))
 		case c.ThreadResolved:
+			r.log.InfoContext(ctx, fmt.Sprintf("%s: finding thread %d on %s:%d resolved, counted as closed",
+				prTag, *f.BitbucketCommentID, f.FilePath, f.LineNumber))
 			continue
 		}
 		open = append(open, f)
@@ -80,6 +84,23 @@ func (r *Reviewer) openThreads(ctx context.Context, key store.PRKey, prTag strin
 			prTag, unchecked, limit))
 	}
 	return open, posted
+}
+
+// withoutClosed is stored minus the findings openThreads found closed: a
+// finding with a thread not among open is closed. One with no thread was
+// never read, so it stays.
+func withoutClosed(stored, open []store.Finding) []store.Finding {
+	live := make(map[int64]bool, len(open))
+	for _, f := range open {
+		live[f.ID] = true
+	}
+	out := make([]store.Finding, 0, len(stored))
+	for _, f := range stored {
+		if f.BitbucketCommentID == nil || live[f.ID] {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // validateFixed checks the model's `fixed` claims against the findings the

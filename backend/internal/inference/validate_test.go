@@ -446,30 +446,36 @@ func TestSettleVerdict(t *testing.T) {
 		name             string
 		in               ReviewSummary
 		earlier, current []ReviewFinding
-		dropped          int
+		dropped          []ReviewFinding
 		decision         string
 		rationale        string // "" = the model's kept
 	}{
-		{"matching keeps the rationale", strict, nil, []ReviewFinding{issue}, 0, "request_changes", ""},
-		{"an earlier issue and a drop keep a matching verdict", strict, []ReviewFinding{issue}, nil, 1, "request_changes", ""},
-		{"every finding dropped", strict, nil, nil, 2, "approve",
+		{"matching keeps the rationale", strict, nil, []ReviewFinding{issue}, nil, "request_changes", ""},
+		{"an earlier issue and a drop keep a matching verdict", strict, []ReviewFinding{issue}, nil, []ReviewFinding{issue}, "request_changes", ""},
+		{"every finding dropped", strict, nil, nil, []ReviewFinding{issue, sugg}, "approve",
 			"Verdict lowered: 2 findings whose evidence the diff did not bear out were withheld."},
-		{"only a suggestion survives", strict, nil, []ReviewFinding{sugg}, 1, "approve_with_followups",
+		{"only a suggestion survives", strict, nil, []ReviewFinding{sugg}, []ReviewFinding{issue}, "approve_with_followups",
 			"Verdict lowered: 1 finding whose evidence the diff did not bear out was withheld."},
-		{"a closed thread leaves nothing to request", strict, nil, nil, 0, "approve",
+		{"a closed thread leaves nothing to request", strict, nil, nil, nil, "approve",
 			"Verdict lowered: the PR's open findings do not support it."},
-		{"an earlier issue still open", lax, []ReviewFinding{sugg, issue}, nil, 0, "request_changes",
+		{
+			// A dropped suggestion could never carry request_changes, so it
+			// is not named as the cause.
+			"a drop that could not carry it is not blamed", strict, nil, nil, []ReviewFinding{sugg}, "approve",
+			"Verdict lowered: the PR's open findings do not support it.",
+		},
+		{"an earlier issue still open", lax, []ReviewFinding{sugg, issue}, nil, nil, "request_changes",
 			"Verdict raised: 1 earlier finding is still open."},
-		{"an earlier suggestion still open", lax, []ReviewFinding{sugg, sugg}, nil, 0, "approve_with_followups",
+		{"an earlier suggestion still open", lax, []ReviewFinding{sugg, sugg}, nil, nil, "approve_with_followups",
 			"Verdict raised: 2 earlier findings are still open."},
-		{"a new issue the model approved", lax, nil, []ReviewFinding{issue}, 0, "request_changes",
+		{"a new issue the model approved", lax, nil, []ReviewFinding{issue}, nil, "request_changes",
 			"Verdict raised: this run's findings demand it."},
 		{"an unknown decision is named, not changed", ReviewSummary{VerdictDecision: "bogus", VerdictRationale: "hm"},
-			nil, nil, 0, "approve", ""},
+			nil, nil, nil, "approve", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := SettleVerdict(tc.in, tc.earlier, tc.current, tc.dropped, lang.EN)
+			got := SettleVerdict(tc.in, tc.earlier, tc.current, tc.dropped, true, lang.EN)
 			if got.VerdictDecision != tc.decision {
 				t.Errorf("decision = %q, want %q", got.VerdictDecision, tc.decision)
 			}
@@ -484,6 +490,21 @@ func TestSettleVerdict(t *testing.T) {
 	}
 }
 
+// Earlier findings unreadable: the list argues for nothing, so the verdict
+// is never lowered, only raised by what this run found.
+func TestSettleVerdictUnknownEarlier(t *testing.T) {
+	strict := ReviewSummary{VerdictDecision: "request_changes", VerdictRationale: "old issue still there"}
+	if got := SettleVerdict(strict, nil, nil, nil, false, lang.EN); got.VerdictDecision != strict.VerdictDecision ||
+		got.VerdictRationale != strict.VerdictRationale {
+		t.Errorf("lowered over an unread list: %+v", got)
+	}
+	lax := ReviewSummary{VerdictDecision: "approve", VerdictRationale: "fine"}
+	got := SettleVerdict(lax, nil, []ReviewFinding{{Severity: "issue"}}, nil, false, lang.EN)
+	if got.VerdictDecision != "request_changes" {
+		t.Errorf("decision = %q, want request_changes", got.VerdictDecision)
+	}
+}
+
 // The replacement rationale is posted, so it follows the review's language.
 func TestSettleVerdictLanguage(t *testing.T) {
 	issue := ReviewFinding{Severity: "issue"}
@@ -492,18 +513,18 @@ func TestSettleVerdictLanguage(t *testing.T) {
 	cases := []struct {
 		in               ReviewSummary
 		earlier, current []ReviewFinding
-		dropped          int
+		dropped          []ReviewFinding
 		want             string
 	}{
-		{strict, nil, nil, 1, "Empfehlung herabgestuft: 1 Finding zurückgehalten, dessen Beleg der Diff nicht stützt."},
-		{strict, nil, nil, 2, "Empfehlung herabgestuft: 2 Findings zurückgehalten, deren Beleg der Diff nicht stützt."},
-		{strict, nil, nil, 0, "Empfehlung herabgestuft: die offenen Findings des PR stützen sie nicht."},
-		{lax, []ReviewFinding{issue}, nil, 0, "Empfehlung angehoben: 1 früheres Finding ist noch offen."},
-		{lax, []ReviewFinding{issue, issue}, nil, 0, "Empfehlung angehoben: 2 frühere Findings sind noch offen."},
-		{lax, nil, []ReviewFinding{issue}, 0, "Empfehlung angehoben: die Findings dieses Laufs verlangen sie."},
+		{strict, nil, nil, []ReviewFinding{issue}, "Empfehlung herabgestuft: 1 Finding zurückgehalten, dessen Beleg der Diff nicht stützt."},
+		{strict, nil, nil, []ReviewFinding{issue, issue}, "Empfehlung herabgestuft: 2 Findings zurückgehalten, deren Beleg der Diff nicht stützt."},
+		{strict, nil, nil, nil, "Empfehlung herabgestuft: die offenen Findings des PR stützen sie nicht."},
+		{lax, []ReviewFinding{issue}, nil, nil, "Empfehlung angehoben: 1 früheres Finding ist noch offen."},
+		{lax, []ReviewFinding{issue, issue}, nil, nil, "Empfehlung angehoben: 2 frühere Findings sind noch offen."},
+		{lax, nil, []ReviewFinding{issue}, nil, "Empfehlung angehoben: die Findings dieses Laufs verlangen sie."},
 	}
 	for _, tc := range cases {
-		if got := SettleVerdict(tc.in, tc.earlier, tc.current, tc.dropped, lang.DE).VerdictRationale; got != tc.want {
+		if got := SettleVerdict(tc.in, tc.earlier, tc.current, tc.dropped, true, lang.DE).VerdictRationale; got != tc.want {
 			t.Errorf("rationale = %q, want %q", got, tc.want)
 		}
 	}

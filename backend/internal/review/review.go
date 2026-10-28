@@ -485,7 +485,10 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 	if len(pre) > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d pre-existing bug(s) recorded for the run page, not posted", prTag, len(pre)))
 	}
-	deduped, repeats := dedupe(v.Kept, stillOpen, plan.anchors)
+	// A repeat only of a finding still open on the PR. One whose thread was
+	// closed is not on the PR any more; the model reporting it again is a
+	// live bug, posted again, never swallowed by a thread an author closed.
+	deduped, repeats := dedupe(v.Kept, withoutClosed(stillOpen, threads), plan.anchors)
 	for _, f := range repeats {
 		plan.detail.Decisions = append(plan.detail.Decisions, decision(f, "repeat", ""))
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: finding on %s:%d (%s) already posted by an earlier run, not posted again",
@@ -502,12 +505,19 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 				prTag, f.File, f.Line, f.Severity, r.cfg.MaxComments))
 		}
 	}
-	// The verdict follows the PR summary's list, both halves of it, once.
-	reviewSummary := inference.SettleVerdict(result.Review.Summary, earlierOpen, findings, len(v.Dropped), plan.lang)
+	// The verdict follows the PR summary's findings, both halves, once. The
+	// new ones uncapped: a finding over the comment cap is still a finding
+	// (max_comments 0 posts none and must not approve).
+	dropped := make([]inference.ReviewFinding, 0, len(v.Dropped))
+	for _, d := range v.Dropped {
+		dropped = append(dropped, d.Finding)
+	}
+	reviewSummary := inference.SettleVerdict(result.Review.Summary, earlierOpen, deduped, dropped,
+		!plan.existingUnknown, plan.lang)
 	plan.detail.Verdict = &store.VerdictChange{Model: result.Review.Summary.VerdictDecision, Posted: reviewSummary.VerdictDecision}
 	if was := result.Review.Summary.VerdictDecision; was != reviewSummary.VerdictDecision {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: verdict %s -> %s to match the PR summary's list: %d earlier open, %d new, %d dropped",
-			prTag, was, reviewSummary.VerdictDecision, len(earlierOpen), len(findings), len(v.Dropped)))
+			prTag, was, reviewSummary.VerdictDecision, len(earlierOpen), len(deduped), len(v.Dropped)))
 	}
 
 	plan.sw.lap(stageValidate)

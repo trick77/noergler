@@ -213,6 +213,62 @@ func TestClosedThreadLowersAStaleVerdict(t *testing.T) {
 	}
 }
 
+// A bug whose thread the author resolved is not on the PR any more: the
+// model reporting it again posts it again and it holds the verdict up.
+func TestRepeatOfAClosedThreadIsPostedAgain(t *testing.T) {
+	h := newHarness(t, nil)
+	incremental(h)
+	f := earlier(h, 11, "issue", "Resolved one")
+	h.bb.comments[*f.BitbucketCommentID].ThreadResolved = true
+	h.st.existing = []store.Finding{f}
+	res := okResultWith(finding("a.go", 2, "issue", "still broken"))
+	res.Review.Summary.VerdictDecision = "request_changes"
+	h.llm.review = res
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	if len(h.bb.Inline) != 1 {
+		t.Fatalf("inline = %d, want the re-report posted", len(h.bb.Inline))
+	}
+	if s := h.bb.Posted[0].Text; !strings.Contains(s, "**Request changes 🛑**") {
+		t.Errorf("the re-reported issue must hold the verdict:\n%s", s)
+	}
+}
+
+// Earlier findings unreadable: an unread list argues for nothing, so the
+// model's request_changes stands.
+func TestUnreadableEarlierFindingsNeverLowerTheVerdict(t *testing.T) {
+	h := newHarness(t, nil)
+	incremental(h)
+	h.st.existingErr = errors.New("db down")
+	res := okResultWith()
+	res.Review.Summary.VerdictDecision = "request_changes"
+	res.Review.Summary.VerdictRationale = "The old retry bug is still there."
+	h.llm.review = res
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	if s := h.bb.Posted[0].Text; !strings.Contains(s, "**Request changes 🛑** — The old retry bug is still there.") {
+		t.Errorf("the verdict must stand over an unread list:\n%s", s)
+	}
+}
+
+// A finding over the comment cap is still a finding: max_comments 0 posts
+// none and must not approve over it.
+func TestCappedFindingsStillHoldTheVerdict(t *testing.T) {
+	h := newHarness(t, nil)
+	h.r.cfg.MaxComments = 0
+	res := okResultWith(finding("a.go", 2, "issue", "real"))
+	res.Review.Summary.VerdictDecision = "request_changes"
+	h.llm.review = res
+
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if s := h.bb.Posted[0].Text; !strings.Contains(s, "**Request changes 🛑**") {
+		t.Errorf("a capped issue must hold the verdict:\n%s", s)
+	}
+}
+
 // A new issue under an approve: the list holds it, so the verdict follows.
 func TestNewIssueRaisesAnApprove(t *testing.T) {
 	h := newHarness(t, nil)
