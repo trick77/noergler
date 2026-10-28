@@ -11,13 +11,6 @@ docs/plans/
 fakes
 /bin/
 
-# Bytecode caches. The retired implementation's directories still sit
-# untracked at the root, so these must be ignored here, not only under
-# archive/.
-__pycache__/
-*.pyc
-.pytest_cache/
-
 # IDEs
 .vscode/
 .idea/
