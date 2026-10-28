@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -177,6 +179,32 @@ func TestEmitNotePayloadAndOutcome(t *testing.T) {
 	e.EmitNote(context.Background(), n)
 	if f.body["note_call"] != nil || f.body["note"] != nil {
 		t.Errorf("absent call and note = %v %v, want null", f.body["note_call"], f.body["note"])
+	}
+}
+
+var update = flag.Bool("update", false, "rewrite testdata/pr_merged_note.json from the current payload")
+
+// The wire shape is a contract with Almanach, pinned as a file: Almanach's
+// ingest test parses this same file, so a key renamed on one side fails a
+// test on the other. Regenerate with -update and copy it over.
+func TestPayloadGolden(t *testing.T) {
+	got, err := json.MarshalIndent(payload(sampleNote()), "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = append(got, '\n')
+	const path = "testdata/pr_merged_note.json"
+	if *update {
+		if err := os.WriteFile(path, got, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(want) {
+		t.Errorf("payload differs from %s; run go test ./internal/almanach -update and copy the file to Almanach\n%s", path, got)
 	}
 }
 
