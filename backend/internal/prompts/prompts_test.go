@@ -13,7 +13,7 @@ func TestPromptsAreEmbedded(t *testing.T) {
 		"mention parent": {Mention, "{parent_comment}"},
 		"finding_reply":  {FindingReply, "{reply}"},
 		"reply name":     {FindingReply, "{author_first_name}"},
-		"almanach note":  {AlmanachNote, "{note_max_chars}"},
+		"almanach note":  {AlmanachNote, "{note_limit}"},
 		"almanach repo":  {AlmanachNote, "{repo}"},
 	} {
 		if !strings.Contains(c.text, c.placeholder) {

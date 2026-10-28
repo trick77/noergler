@@ -19,7 +19,7 @@ const (
 	PlaceholderAlmanachProject    = "{project}"
 	PlaceholderAlmanachTicket     = "{ticket_key}"
 	PlaceholderAlmanachTicketType = "{ticket_type}"
-	PlaceholderAlmanachMaxChars   = "{note_max_chars}"
+	PlaceholderAlmanachLimit      = "{note_limit}"
 )
 
 // AlmanachChangeKinds is what a PR can be to Almanach; AlmanachCauseKinds
@@ -74,9 +74,14 @@ func (n AlmanachNote) Empty() bool {
 	return n.Summary == nil && n.Bugfix == nil && len(n.Components)+len(n.Rules)+len(n.Invariants)+len(n.Entities) == 0
 }
 
-// Prose is every human-readable field, for the caller's spelling pass and
-// the secret scan. Files are not prose: a path is quoted, never written.
-func (n *AlmanachNote) Prose() []*string {
+func (n *AlmanachNote) lists() []*[]AlmanachItem {
+	return []*[]AlmanachItem{&n.Components, &n.Rules, &n.Invariants, &n.Entities}
+}
+
+// prose is every sentence field: what the secret scan reads. A name is an
+// identifier (`OAuth2TokenRefreshHandler`) and a path is quoted, so neither
+// is prose; the scan would read both as random text.
+func (n *AlmanachNote) prose() []*string {
 	var out []*string
 	if n.Summary != nil {
 		out = append(out, n.Summary)
@@ -84,9 +89,20 @@ func (n *AlmanachNote) Prose() []*string {
 	if n.Bugfix != nil {
 		out = append(out, &n.Bugfix.Symptom, &n.Bugfix.Cause)
 	}
-	for _, list := range [][]AlmanachItem{n.Components, n.Rules, n.Invariants, n.Entities} {
-		for i := range list {
-			out = append(out, &list[i].Name, &list[i].Text)
+	for _, list := range n.lists() {
+		for i := range *list {
+			out = append(out, &(*list)[i].Text)
+		}
+	}
+	return out
+}
+
+// names is every name field.
+func (n *AlmanachNote) names() []*string {
+	var out []*string
+	for _, list := range n.lists() {
+		for i := range *list {
+			out = append(out, &(*list)[i].Name)
 		}
 	}
 	return out
@@ -100,7 +116,8 @@ type AlmanachNotePromptRequest struct {
 	// TicketKey and TicketType are the PR's Jira ticket, empty when none.
 	TicketKey  string
 	TicketType string
-	MaxChars   int
+	// MaxChars is the total cap; 0 means none, and the prompt says so.
+	MaxChars int
 }
 
 // RenderAlmanachNotePrompt assembles the fourth turn of the review
@@ -114,12 +131,16 @@ func RenderAlmanachNotePrompt(req AlmanachNotePromptRequest) string {
 	if kind == "" {
 		kind = "no type"
 	}
+	limit := "when any field exceeds its limit"
+	if req.MaxChars > 0 {
+		limit += " or the note exceeds " + itoa(req.MaxChars) + " characters in total"
+	}
 	return strings.NewReplacer(
 		PlaceholderAlmanachRepo, req.Repo,
 		PlaceholderAlmanachProject, req.Project,
 		PlaceholderAlmanachTicket, ticket,
 		PlaceholderAlmanachTicketType, kind,
-		PlaceholderAlmanachMaxChars, itoa(req.MaxChars),
+		PlaceholderAlmanachLimit, limit,
 		PlaceholderOutputLanguage, OutputLanguageBlock(lang.DE),
 	).Replace(req.Template)
 }
@@ -144,14 +165,6 @@ func almanachItems() map[string]any {
 }
 
 func almanachNoteFormat() llmwire.ResponseFormat {
-	kinds := make([]any, len(AlmanachChangeKinds))
-	for i, k := range AlmanachChangeKinds {
-		kinds[i] = k
-	}
-	causes := make([]any, len(AlmanachCauseKinds))
-	for i, k := range AlmanachCauseKinds {
-		causes[i] = k
-	}
 	return llmwire.ResponseFormat{
 		Kind: llmwire.FormatJSONSchema,
 		Name: AlmanachNoteSchemaName,
@@ -161,7 +174,7 @@ func almanachNoteFormat() llmwire.ResponseFormat {
 			"required":             []any{"summary", "change_kind", "bugfix", "components", "rules", "invariants", "entities"},
 			"properties": map[string]any{
 				"summary":     map[string]any{"type": []any{"string", "null"}},
-				"change_kind": map[string]any{"type": "string", "enum": kinds},
+				"change_kind": map[string]any{"type": "string", "enum": enumValues(AlmanachChangeKinds)},
 				"bugfix": map[string]any{
 					"type":                 []any{"object", "null"},
 					"additionalProperties": false,
@@ -169,7 +182,7 @@ func almanachNoteFormat() llmwire.ResponseFormat {
 					"properties": map[string]any{
 						"symptom":    map[string]any{"type": "string", "minLength": 1},
 						"cause":      map[string]any{"type": "string", "minLength": 1},
-						"cause_kind": map[string]any{"type": "string", "enum": causes},
+						"cause_kind": map[string]any{"type": "string", "enum": enumValues(AlmanachCauseKinds)},
 					},
 				},
 				"components": almanachItems(),
@@ -190,13 +203,15 @@ func AlmanachNoteSchemaJSON() string {
 }
 
 // ParseAlmanachNote reads the model's note. Shape and caps are
-// ValidateAlmanachNote's; this only wants JSON of the right keys.
+// ValidateAlmanachNote's; this only wants a JSON object. A bare `null`
+// unmarshals into the zero value without an error (as ParseReview notes),
+// so it is checked for: it is a non-answer, not an empty note.
 func ParseAlmanachNote(content string) (AlmanachNote, bool) {
-	var n AlmanachNote
-	if json.Unmarshal([]byte(stripFence(strings.TrimSpace(content))), &n) != nil {
+	var n *AlmanachNote
+	if json.Unmarshal([]byte(stripFence(strings.TrimSpace(content))), &n) != nil || n == nil {
 		return AlmanachNote{}, false
 	}
-	return n, true
+	return *n, true
 }
 
 // Almanach note statuses, as almanach_calls.note_status spells them.
@@ -210,15 +225,20 @@ const (
 	AlmanachNoAnswer       = "no_answer"
 )
 
-// ValidateAlmanachNote is the blunt check on a parsed note: shape (the
-// enums, a bugfix exactly for a bugfix, an empty note that is empty), no
-// secret-like token in its prose, then the caps. It trims every string
-// first. reason is "" when the note stands, else the dropped_* status;
-// chars is the rune count of the serialized note, what the total cap was
-// checked at. Over a cap the whole note drops: never truncated.
+// ValidateAlmanachNote is the blunt check on a parsed note, in place: every
+// string trimmed, the prose and the names spelled Swiss (lang.SwissSS), the
+// shape (the enums, a bugfix exactly for a bugfix, an empty note that is
+// empty, a path with no control character), no secret-like token in the
+// prose, then the caps. reason is "" when the note stands, else the
+// dropped_* status; chars is the rune count of the serialized note, what
+// the total cap was checked at (0 = no total cap). Over a cap the whole
+// note drops: never truncated.
 func ValidateAlmanachNote(n *AlmanachNote, maxChars int) (chars int, reason string) {
-	for _, p := range n.Prose() {
-		*p = strings.TrimSpace(*p)
+	for _, p := range n.prose() {
+		*p = lang.SwissSS(strings.TrimSpace(*p))
+	}
+	for _, p := range n.names() {
+		*p = lang.SwissSS(strings.TrimSpace(*p))
 	}
 	if !slices.Contains(AlmanachChangeKinds, n.ChangeKind) {
 		return 0, AlmanachInvalid
@@ -226,63 +246,39 @@ func ValidateAlmanachNote(n *AlmanachNote, maxChars int) (chars int, reason stri
 	if (n.Bugfix != nil) != (n.ChangeKind == "bugfix") {
 		return 0, AlmanachInvalid
 	}
-	if n.Bugfix != nil {
-		if !slices.Contains(AlmanachCauseKinds, n.Bugfix.CauseKind) || n.Bugfix.Symptom == "" || n.Bugfix.Cause == "" {
+	if b := n.Bugfix; b != nil {
+		if !slices.Contains(AlmanachCauseKinds, b.CauseKind) || b.Symptom == "" || b.Cause == "" {
 			return 0, AlmanachInvalid
 		}
-		if runes(n.Bugfix.Symptom) > AlmanachTextMax || runes(n.Bugfix.Cause) > AlmanachTextMax {
+		if runes(b.Symptom) > AlmanachTextMax || runes(b.Cause) > AlmanachTextMax {
 			return 0, AlmanachTooLong
 		}
 	}
-	if n.Summary != nil {
-		if *n.Summary == "" {
-			return 0, AlmanachInvalid
-		}
-		if runes(*n.Summary) > AlmanachSummaryMax {
-			return 0, AlmanachTooLong
-		}
-	} else if !n.Empty() {
+	switch {
+	case n.Summary != nil && *n.Summary == "":
+		return 0, AlmanachInvalid
+	case n.Summary != nil && runes(*n.Summary) > AlmanachSummaryMax:
+		return 0, AlmanachTooLong
+	case n.Summary == nil && !n.Empty():
 		// No summary and still items: the "nothing learned" shape misused.
 		return 0, AlmanachInvalid
 	}
-	for _, list := range [][]AlmanachItem{n.Components, n.Rules, n.Invariants, n.Entities} {
-		if len(list) > AlmanachItemsMax {
-			return 0, AlmanachTooLong
-		}
-		for i := range list {
-			it := &list[i]
-			if it.Name == "" || it.Text == "" || len(it.Files) > AlmanachFilesMax {
-				if len(it.Files) > AlmanachFilesMax {
-					return 0, AlmanachTooLong
-				}
-				return 0, AlmanachInvalid
-			}
-			if runes(it.Name) > AlmanachNameMax || runes(it.Text) > AlmanachTextMax {
-				return 0, AlmanachTooLong
-			}
-			if it.Files == nil {
-				it.Files = []string{}
-			}
-			for j, f := range it.Files {
-				f = strings.TrimSpace(f)
-				it.Files[j] = f
-				if f == "" || strings.IndexFunc(f, unicode.IsSpace) >= 0 {
-					return 0, AlmanachInvalid
-				}
-				if runes(f) > AlmanachFileMax {
-					return 0, AlmanachTooLong
-				}
-			}
-		}
-	}
-	for _, p := range n.Prose() {
-		if HasSecret(*p) {
-			return 0, AlmanachSecret
-		}
-	}
-	for _, list := range []*[]AlmanachItem{&n.Components, &n.Rules, &n.Invariants, &n.Entities} {
+	for _, list := range n.lists() {
 		if *list == nil {
 			*list = []AlmanachItem{}
+		}
+		if len(*list) > AlmanachItemsMax {
+			return 0, AlmanachTooLong
+		}
+		for i := range *list {
+			if reason := validateAlmanachItem(&(*list)[i]); reason != "" {
+				return 0, reason
+			}
+		}
+	}
+	for _, p := range n.prose() {
+		if HasSecret(*p) {
+			return 0, AlmanachSecret
 		}
 	}
 	b, err := json.Marshal(n)
@@ -294,6 +290,34 @@ func ValidateAlmanachNote(n *AlmanachNote, maxChars int) (chars int, reason stri
 		return chars, AlmanachTooLong
 	}
 	return chars, ""
+}
+
+func validateAlmanachItem(it *AlmanachItem) string {
+	if len(it.Files) > AlmanachFilesMax {
+		return AlmanachTooLong
+	}
+	if it.Name == "" || it.Text == "" {
+		return AlmanachInvalid
+	}
+	if runes(it.Name) > AlmanachNameMax || runes(it.Text) > AlmanachTextMax {
+		return AlmanachTooLong
+	}
+	if it.Files == nil {
+		it.Files = []string{}
+	}
+	for j, f := range it.Files {
+		f = strings.TrimSpace(f)
+		it.Files[j] = f
+		// A path may hold a space (`docs/Release Notes.md`, copied as
+		// shown); a line break or a control character is no path.
+		if f == "" || strings.IndexFunc(f, unicode.IsControl) >= 0 {
+			return AlmanachInvalid
+		}
+		if runes(f) > AlmanachFileMax {
+			return AlmanachTooLong
+		}
+	}
+	return ""
 }
 
 func runes(s string) int { return utf8.RuneCountInString(s) }
@@ -323,6 +347,10 @@ type AlmanachNoteResult struct {
 // system message and prompt, the model's review answer as the assistant
 // turn, then the note instruction. One call, a strict schema, no retry,
 // never streaming, like every other call.
+//
+// Whether the gateway's prefix cache serves the replayed turns under the
+// note's own response_format is not known from here: cache_read_tokens on
+// the recorded call is the number that says.
 func (c *Client) AlmanachNote(ctx context.Context, req AlmanachNoteRequest) AlmanachNoteResult {
 	if req.PromptTokens > 0 && c.Ready() {
 		if ceiling := c.FitCeiling(); req.PromptTokens > ceiling {

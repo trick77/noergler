@@ -19,7 +19,7 @@ Code, line numbers, commit hashes, UUIDs, credentials or config literals, PR num
 
 ## Limits
 
-The whole note is discarded unread when any field exceeds its limit or the note exceeds {note_max_chars} characters in total. Prefer fewer items to a discarded note.
+The whole note is discarded unread {note_limit}. Prefer fewer items to a discarded note.
 
 {output_language}
 
