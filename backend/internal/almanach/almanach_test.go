@@ -198,7 +198,7 @@ func TestEmitNoteFailures(t *testing.T) {
 		t.Errorf("unreachable: taken or status %q", e.Status())
 	}
 	// A cancelled context says nothing about Almanach: the word stays.
-	_, e = newFake(t, func(w http.ResponseWriter, r *http.Request) {
+	_, e = newFake(t, func(_ http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
 	})
 	e.set(StatusOK)
