@@ -1,0 +1,34 @@
+{
+  "name": "visual-explained-stack",
+  "description": "The login form goes from one row to a stacked column, and its Playwright baseline changes with it. Nothing to report as a finding: a clean control that carries a screenshot, so images cannot buy an invented finding. The screenshot line must name the stacking and tie it to login.css.",
+  "files": [
+    {
+      "path": "web/src/login/login.css",
+      "diff": "@@ -1,6 +1,6 @@\n .login-form {\n   display: flex;\n-  flex-direction: row;\n-  align-items: flex-end;\n+  flex-direction: column;\n+  align-items: stretch;\n   gap: 14px;\n }\n@@ -13,9 +13,12 @@\n }\n \n .login-form .remember {\n-  display: none;\n+  display: flex;\n+  align-items: center;\n+  gap: 8px;\n }\n \n .login-form .actions button {\n+  width: 100%;\n   height: 40px;\n }",
+      "content": ".login-form {\n  display: flex;\n  flex-direction: column;\n  align-items: stretch;\n  gap: 14px;\n}\n\n.login-form .field {\n  display: flex;\n  flex-direction: column;\n  gap: 6px;\n  flex: 1;\n}\n\n.login-form .remember {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.login-form .actions button {\n  width: 100%;\n  height: 40px;\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "screenshots": [
+    {
+      "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+      "before": "login-row.png",
+      "after": "login-stack.png"
+    }
+  ],
+  "expected": [],
+  "expected_visual": [
+    {
+      "id": "stacked",
+      "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+      "keywords": ["stack", "column", "vertical", "below", "beneath", "on top of"],
+      "why": "The visible change is the fields and the button moving from one row into a column."
+    },
+    {
+      "id": "explained-by-css",
+      "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+      "keywords": ["login.css", "flex-direction", "css"],
+      "why": "The point of the line: the PR's own CSS explains the new baseline."
+    }
+  ]
+}

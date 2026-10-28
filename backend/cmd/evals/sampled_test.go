@@ -160,7 +160,17 @@ func TestRun_RescoreReadsOnlyTheReport(t *testing.T) {
 // the client this run builds, and writes its own report.
 func TestRun_ConfirmConsolidatesASampledReport(t *testing.T) {
 	src := sampledReport(t, "s.json")
-	client, seeded := perfectFindings(t)
+	client, _ := perfectFindings(t)
+	// Findings only: a confirmed report, like a sampled one, does not score
+	// screenshot lines.
+	cases, err := evals.LoadCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seeded := 0
+	for _, c := range cases {
+		seeded += len(c.Expected)
+	}
 	opt := baseOptions(t, client)
 	opt.confirm = src
 	opt.consolidatePath = "../../internal/evals/briefs/merge.txt"

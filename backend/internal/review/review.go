@@ -207,8 +207,13 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// The line counts are the whole PR's scope, taken before compression.
 	prep := r.prepareFiles(ctx, project, repo, rawDiff, sourceCommit, prTag)
 	files, contentSkipped, oversized, diffAdded, diffRemoved := prep.files, prep.contentSkipped, prep.oversized, prep.added, prep.removed
-	// 13. Nothing reviewable after the content fetch.
-	if len(files) == 0 {
+	// 13. Nothing reviewable after the content fetch. A diff that changes
+	// test screenshots and nothing else (a baseline refresh, the drift the
+	// Visual changes section exists for) still goes on, to a model that can
+	// see them.
+	diffHasShot := diff.HasScreenshot(rawDiff)
+	baselinesOnly := diffHasShot && r.llm.Vision()
+	if len(files) == 0 && !baselinesOnly {
 		r.log.InfoContext(ctx, prTag+" has no reviewable files after content fetch, skipping")
 		return nil, ctx, r.abort(ctx, key, kind, SkipNoReviewable, prTag, httpCounter)
 	}
@@ -244,7 +249,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		r.cfg.DiffMaxExtraLinesDynamicContext, r.cfg.DiffAllowDynamicContext)
 
 	// 15. Compression can drop everything.
-	if len(files) == 0 {
+	if len(files) == 0 && !baselinesOnly {
 		r.log.InfoContext(ctx, prTag+" has no reviewable files after compression, skipping")
 		return nil, ctx, r.abort(ctx, key, kind, SkipNoReviewable, prTag, httpCounter)
 	}
@@ -318,6 +323,17 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	}, r.tokens.Count)
 	r.logPromptComposition(ctx, prTag, assembled, incrementalFrom != "")
 
+	// The whole PR's screenshots, read from its changes only when this diff
+	// or the whole PR's names one: a PR without any costs no call.
+	// A baseline-only diff goes on even when nothing is left to send (all
+	// stored, or deleted): the call is what refreshes the summary, whose
+	// section would otherwise keep the line of a screenshot this push
+	// removed or reverted.
+	var visualPlan visualPlan
+	if diffHasShot || (incrementalFrom != "" && (cumulativePR.scope == nil || cumulativePR.hasScreenshot)) {
+		visualPlan = r.prepareVisual(ctx, key, prTag, sourceCommit, r.visualRoom(assembled.PromptTokens))
+	}
+
 	detail := &store.Pipeline{
 		Prompt:    promptPartsOf(assembled, budget),
 		Files:     filesSent(prep, files, deletedPaths, renamedPaths, otherModified, fileTokens),
@@ -384,6 +400,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		counter:         httpCounter,
 		prompt:          assembled.Prompt,
 		promptTokens:    assembled.PromptTokens,
+		visual:          visualPlan,
 		anchors:         anchors,
 		prAdded:         prAdded,
 		preUnknown:      preUnknown,
@@ -414,8 +431,9 @@ func (r *Reviewer) infer(ctx context.Context, plan *reviewPlan) inference.Review
 	defer plan.sw.lap(stageGateway)
 	return r.llm.Review(ctx, inference.ReviewRequest{
 		Prompt:         plan.prompt,
-		PromptTokens:   plan.promptTokens,
+		PromptTokens:   plan.promptTokens + plan.visual.tokens,
 		ResponseSchema: inference.ReviewResponseFormat(),
+		Images:         plan.visual.images,
 	})
 }
 
@@ -616,6 +634,9 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		CumulativeCostUSD:          cumulativeCost,
 		MaxPRCostUSD:               r.cfg.MaxPRCostUSD,
 		AgentsMDWarnTokens:         r.cfg.AgentsMDWarnTokens,
+		// After the upsert above: a first review's lines need its PR row.
+		Visual:       r.visualLines(ctx, plan, result.Review.Visual),
+		VisualUnread: plan.visual.unread,
 	})
 
 	// A completed run at or over the cap keeps the banner on top, so the

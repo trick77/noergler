@@ -31,9 +31,11 @@ type Scheduler = queue.Scheduler
 // reviewPlan is what the inference and posting stages need from prepare.
 //
 // It carries no file bodies, no raw diff and nothing but the one prompt
-// string: the summary needs only counts and names, so the heavy locals die
-// with the prepare frame and a review waiting for a pool slot keeps roughly
-// one prompt resident rather than a whole PR's content.
+// string and, when screenshots changed, their cropped images (at most
+// MaxVisualImages pairs, downscaled), which are part of the same call: the
+// summary needs only counts and names, so the heavy locals die with the
+// prepare frame and a review waiting for a pool slot keeps roughly one
+// prompt resident rather than a whole PR's content.
 type reviewPlan struct {
 	key          store.PRKey
 	project      string
@@ -59,6 +61,8 @@ type reviewPlan struct {
 
 	prompt       string
 	promptTokens int
+	// visual is the screenshots: the summary's lines and the images sent.
+	visual visualPlan
 	// anchors is what the prompt's diffs showed, as line hashes, so post can
 	// check each finding's evidence and line. Hashes, not text: the rule
 	// above still holds.

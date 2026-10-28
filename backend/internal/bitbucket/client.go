@@ -283,9 +283,20 @@ func statusError(method, path string, resp *http.Response) error {
 // returned. That is the default for the PR diff, whose size is dominated by
 // files IsReviewable discards before anything expensive touches them.
 func (c *Client) getTextCapped(ctx context.Context, path string, query url.Values, accept, what string, max int) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url(path, query), nil)
+	buf, err := c.getCapped(ctx, path, query, accept, what, max)
 	if err != nil {
 		return "", err
+	}
+	// Invalid UTF-8 is replaced with U+FFFD so the body is valid text.
+	return strings.ToValidUTF8(string(buf), "�"), nil
+}
+
+// getCapped is getTextCapped's read, the body as bytes: a screenshot is not
+// text, and the UTF-8 repair would corrupt it.
+func (c *Client) getCapped(ctx context.Context, path string, query url.Values, accept, what string, max int) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url(path, query), nil)
+	if err != nil {
+		return nil, err
 	}
 	if accept == "" {
 		accept = "application/json"
@@ -294,30 +305,30 @@ func (c *Client) getTextCapped(ctx context.Context, path string, query url.Value
 
 	resp, err := c.send(req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", statusError(http.MethodGet, path, resp)
+		return nil, statusError(http.MethodGet, path, resp)
 	}
 	// Unlimited: read the body whole, no Content-Length check, no limit reader,
 	// no drain. Returning early keeps the capped path below exactly as it was.
 	if max <= 0 {
 		buf, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return "", fmt.Errorf("read %s: %w", what, err)
+			return nil, fmt.Errorf("read %s: %w", what, err)
 		}
-		return strings.ToValidUTF8(string(buf), "�"), nil
+		return buf, nil
 	}
 
 	if resp.ContentLength >= 0 && resp.ContentLength > int64(max) {
 		size := int(resp.ContentLength)
-		return "", &ContentTooLarge{What: what, Limit: max, Size: &size}
+		return nil, &ContentTooLarge{What: what, Limit: max, Size: &size}
 	}
 	buf, err := io.ReadAll(io.LimitReader(resp.Body, int64(max)+1))
 	if err != nil {
-		return "", fmt.Errorf("read %s: %w", what, err)
+		return nil, fmt.Errorf("read %s: %w", what, err)
 	}
 	if len(buf) > max {
 		// Bound the drain in time as well as bytes: a stalled connection
@@ -327,13 +338,12 @@ func (c *Client) getTextCapped(ctx context.Context, path string, query url.Value
 		stop := time.AfterFunc(drainTimeout, func() { _ = resp.Body.Close() })
 		size, truncated := drainSize(resp.Body, len(buf), max*drainCeilingFactor)
 		stop.Stop()
-		return "", &ContentTooLarge{
+		return nil, &ContentTooLarge{
 			What: what, Limit: max, Size: &size, Truncated: truncated,
 			Head: buf[:max],
 		}
 	}
-	// Invalid UTF-8 is replaced with U+FFFD so the body is valid text.
-	return strings.ToValidUTF8(string(buf), "�"), nil
+	return buf, nil
 }
 
 // drainCeilingFactor bounds the drain at this multiple of the cap. There is a

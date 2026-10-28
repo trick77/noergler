@@ -3,9 +3,12 @@ package inference
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/trick77/llmwire"
+
+	"github.com/trick77/noergler/internal/visual"
 )
 
 // Outcome says how a review call ended. Every value but OutcomeOK is a skip
@@ -74,7 +77,87 @@ type ReviewRequest struct {
 	PromptTokens int
 	// ResponseSchema, when set, is sent as a strict JSON schema.
 	ResponseSchema *llmwire.ResponseFormat
+	// Images are the screenshot pairs to describe, sent in a second user
+	// message after the prompt so the prompt's prefix stays cacheable. Sent
+	// only to a model whose profile has vision; PromptTokens includes them.
+	Images []VisualImage
 }
+
+// VisualImage is one changed screenshot, cut to what changed.
+type VisualImage struct {
+	// ID is what the model answers under in visual_changes: "V1", "V2".
+	ID   string
+	Path string
+	// Before and After are data: URIs; Before is "" for an added screenshot.
+	Before, After string
+	// Cropped: both show the changed region only, not the whole screen.
+	Cropped bool
+}
+
+// visualMessage is the user turn carrying the screenshots: per pair a label,
+// then the before and after image.
+func visualMessage(images []VisualImage) llmwire.Message {
+	parts := []llmwire.Part{{Kind: llmwire.PartText, Text: VisualIntro}}
+	for _, img := range images {
+		parts = append(parts, llmwire.Part{Kind: llmwire.PartText, Text: VisualLabel(img)})
+		if img.Before != "" {
+			parts = append(parts, llmwire.Part{Kind: llmwire.PartImage, URL: img.Before})
+		}
+		parts = append(parts, llmwire.Part{Kind: llmwire.PartImage, URL: img.After})
+	}
+	return llmwire.Message{Role: llmwire.RoleUser, Parts: parts}
+}
+
+// VisualIntro heads the screenshot turn. The rules are in review.txt; this
+// only says what follows. Exported so the caller counts it into the fit
+// check with the labels.
+const VisualIntro = "Changed test screenshots of this PR, for `visual_changes`. Answer each id once."
+
+// NewVisualImage is the n-th (from 0) image of a call, from its pixel diff,
+// and what it costs the fit check: the images' estimate plus the text the
+// turn wraps them in, its intro counted with the first. The review and the
+// evals build images through it, so both weigh a call the same.
+func NewVisualImage(n int, path string, res visual.Result, count CountFunc) (VisualImage, int) {
+	img := VisualImage{ID: fmt.Sprintf("V%d", n+1), Path: path, After: visual.DataURI(res.After), Cropped: res.Cropped}
+	if res.Before != nil {
+		img.Before = visual.DataURI(res.Before)
+	}
+	cost := res.Tokens + count(VisualLabel(img))
+	if n == 0 {
+		cost += count(VisualIntro)
+	}
+	return img, cost
+}
+
+// VisualTextTokens is the text a call's screenshot turn wraps its images in:
+// the intro once and each label. NewVisualImage's costs over a call sum to
+// this plus the images' own estimate.
+func VisualTextTokens(images []VisualImage, count CountFunc) int {
+	if len(images) == 0 {
+		return 0
+	}
+	n := count(VisualIntro)
+	for _, img := range images {
+		n += count(VisualLabel(img))
+	}
+	return n
+}
+
+// VisualLabel is the text before one pair's images.
+func VisualLabel(img VisualImage) string {
+	label := img.ID + ": `" + img.Path + "`"
+	switch {
+	case img.Before == "":
+		return label + " (added; one image)"
+	case img.Cropped:
+		return label + " (before, then after; cropped to the changed region)"
+	}
+	return label + " (before, then after)"
+}
+
+// Vision reports whether the model's profile takes images, as read at
+// startup. Asked of the profile, never probed.
+func (c *Client) Vision() bool { return c.vision }
 
 // Review runs one review call.
 //
@@ -108,6 +191,11 @@ func (c *Client) Review(ctx context.Context, req ReviewRequest) ReviewResult {
 	}
 	if req.ResponseSchema != nil {
 		chat.ResponseFormat = *req.ResponseSchema
+	}
+	// Never to a model without vision: llmwire refuses the whole request,
+	// and the caller has already said "not compared" for these.
+	if len(req.Images) > 0 && c.vision {
+		chat.Messages = append(chat.Messages, visualMessage(req.Images))
 	}
 
 	resp, warnings, err := c.wire.Chat(ctx, chat)

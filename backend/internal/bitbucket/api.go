@@ -169,32 +169,78 @@ func (c *Client) firstMerge(ctx context.Context, project, repo, since, until str
 // failing the call, so an unexpected shape degrades to a short list instead of
 // turning a failure path into a second failure.
 func (c *Client) FetchPRChanges(ctx context.Context, project, repo string, prID int) ([]string, error) {
-	values, err := c.paged(ctx, prPath(project, repo, prID)+"/changes")
+	cs, err := c.FetchPRChangeSet(ctx, project, repo, prID)
 	if err != nil {
 		return nil, err
 	}
-	paths := make([]string, 0, len(values))
-	for _, v := range values {
-		// Directories carry nodeType DIRECTORY; only files have diffs.
-		if nodeType, ok := v["nodeType"].(string); ok && !strings.EqualFold(nodeType, "FILE") {
-			continue
-		}
-		path, _ := v["path"].(map[string]any)
-		if path == nil {
-			continue
-		}
-		if s, ok := path["toString"].(string); ok && s != "" {
-			paths = append(paths, s)
-		}
-	}
-	// Entries that all failed to parse mean the response shape is not what
-	// this assumes. Erroring is the point: returning an empty list with no
-	// error would have the caller report head-only scope as if the call had
-	// never been made, hiding the very breakage the caller exists to surface.
-	if len(values) > 0 && len(paths) == 0 {
-		return nil, fmt.Errorf("changes: %d entries, none carried path.toString", len(values))
+	paths := make([]string, 0, len(cs.Changes))
+	for _, ch := range cs.Changes {
+		paths = append(paths, ch.Path)
 	}
 	return paths, nil
+}
+
+// ChangeSet is a PR's changed files with the two commits its diff is taken
+// between: FromHash is the PR's base (the merge base, not the target's tip),
+// ToHash its head. Either is "" when Bitbucket leaves it out.
+type ChangeSet struct {
+	FromHash, ToHash string
+	Changes          []Change
+}
+
+// Change is one changed file. Type is Bitbucket's (ADD, DELETE, MODIFY,
+// MOVE, COPY); SrcPath the old path of a move or copy; ContentID and
+// FromContentID the git blob ids of the two versions, "" when absent.
+type Change struct {
+	Path, SrcPath, Type, ContentID, FromContentID string
+}
+
+// FetchPRChangeSet is the PR's changed files with what a screenshot
+// comparison needs: the commits on either side and each file's blob ids, so
+// an unchanged pair is known without reading it. FetchPRChanges is its path
+// list.
+//
+// Decoding is tolerant per entry, strict over the whole: an entry without
+// `path.toString` is skipped, but entries that ALL fail mean the response
+// shape is not what this assumes, and that is an error. An empty set with no
+// error would read as "nothing changed" and hide the breakage.
+func (c *Client) FetchPRChangeSet(ctx context.Context, project, repo string, prID int) (ChangeSet, error) {
+	var cs ChangeSet
+	entries := 0
+	err := c.pages(ctx, prPath(project, repo, prID)+"/changes", func(p page) bool {
+		if cs.FromHash == "" {
+			cs.FromHash, cs.ToHash = p.FromHash, p.ToHash
+		}
+		for _, v := range p.Values {
+			entries++
+			// Directories carry nodeType DIRECTORY; only files have diffs.
+			if nodeType, ok := v["nodeType"].(string); ok && !strings.EqualFold(nodeType, "FILE") {
+				continue
+			}
+			ch := Change{Path: pathString(v["path"]), SrcPath: pathString(v["srcPath"])}
+			ch.Type, _ = v["type"].(string)
+			ch.ContentID, _ = v["contentId"].(string)
+			ch.FromContentID, _ = v["fromContentId"].(string)
+			if ch.Path != "" {
+				cs.Changes = append(cs.Changes, ch)
+			}
+		}
+		return false
+	})
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	if entries > 0 && len(cs.Changes) == 0 {
+		return ChangeSet{}, fmt.Errorf("changes: %d entries, none carried path.toString", entries)
+	}
+	return cs, nil
+}
+
+// pathString is a change's path object as one string, "" when absent.
+func pathString(v any) string {
+	m, _ := v.(map[string]any)
+	s, _ := m["toString"].(string)
+	return s
 }
 
 func shortSHA(s string) string {
@@ -209,6 +255,13 @@ func shortSHA(s string) string {
 func (c *Client) FetchFileContent(ctx context.Context, project, repo, commit, path string) (string, error) {
 	raw := fmt.Sprintf("%s/projects/%s/repos/%s/raw/%s", apiBase, project, repo, path)
 	return c.getTextCapped(ctx, raw, url.Values{"at": {commit}}, "", path, c.maxFileBytes)
+}
+
+// FetchFileBytes is FetchFileContent for a binary file: the bytes as served,
+// under the same cap.
+func (c *Client) FetchFileBytes(ctx context.Context, project, repo, commit, path string) ([]byte, error) {
+	raw := fmt.Sprintf("%s/projects/%s/repos/%s/raw/%s", apiBase, project, repo, path)
+	return c.getCapped(ctx, raw, url.Values{"at": {commit}}, "", path, c.maxFileBytes)
 }
 
 // PostInlineComment anchors a finished comment body to one line of one file.
@@ -383,6 +436,9 @@ type page struct {
 	Values        []map[string]any `json:"values"`
 	IsLastPage    *bool            `json:"isLastPage"`
 	NextPageStart *int             `json:"nextPageStart"`
+	// FromHash and ToHash: a PR changes page only.
+	FromHash string `json:"fromHash"`
+	ToHash   string `json:"toHash"`
 }
 
 // paged walks every page of a collection.
@@ -403,6 +459,19 @@ func (c *Client) paged(ctx context.Context, path string) ([]map[string]any, erro
 // counts as the last), and also when nextPageStart fails to advance, so a
 // server echoing an offset cannot spin this forever.
 func (c *Client) scan(ctx context.Context, path string, found func(map[string]any) bool) error {
+	return c.pages(ctx, path, func(p page) bool {
+		for _, v := range p.Values {
+			if found(v) {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+// pages is scan a page at a time, for a caller that reads the page's own
+// fields too (a PR's changes carry its base and head there). done stops it.
+func (c *Client) pages(ctx context.Context, path string, done func(page) bool) error {
 	start := 0
 	for {
 		var p page
@@ -410,10 +479,8 @@ func (c *Client) scan(ctx context.Context, path string, found func(map[string]an
 		if err := c.do(ctx, http.MethodGet, path, query, nil, &p); err != nil {
 			return err
 		}
-		for _, v := range p.Values {
-			if found(v) {
-				return nil
-			}
+		if done(p) {
+			return nil
 		}
 		if p.IsLastPage == nil || *p.IsLastPage {
 			return nil

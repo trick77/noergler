@@ -28,6 +28,7 @@ func (c *Client) Startup(ctx context.Context) error {
 		return err
 	}
 	c.tools = profile.Tools.Supported
+	c.vision = profile.Vision
 	// A profile not listed in LLMWIRE_LITELLM_MODELS is not gateway-routed, so
 	// FromEnv would send it to the vendor's own host. Disable the team rather
 	// than send a gateway key there.
@@ -223,8 +224,9 @@ func (c *Client) resolveWindow(ctx context.Context, profile *llmwire.Profile) er
 // runs before any team starts, so without this line the resolved value never
 // reaches the log and the operator only ever sees the configured one.
 func (c *Client) logWindow(ctx context.Context, source string) {
-	c.log.InfoContext(ctx, fmt.Sprintf("context window %d for %s (%s), tools=%s", c.window, c.Label(), source,
-		map[bool]string{true: "yes", false: "no"}[c.tools]))
+	yesNo := map[bool]string{true: "yes", false: "no"}
+	c.log.InfoContext(ctx, fmt.Sprintf("context window %d for %s (%s), tools=%s, vision=%s", c.window, c.Label(), source,
+		yesNo[c.tools], yesNo[c.vision]))
 }
 
 // profileInputLimit is the most input the profile's model accepts, 0 when the

@@ -1,0 +1,27 @@
+{
+  "name": "visual-added-empty-state",
+  "description": "A new empty state for the orders page and its first Playwright baseline, added with the component. Nothing to report as a finding. The added baseline is sent after-only; its line must say what the new screen shows.",
+  "files": [
+    {
+      "path": "web/src/orders/OrdersEmpty.tsx",
+      "diff": "@@ -0,0 +1,12 @@\n+import { CartIcon } from \"../icons\";\n+\n+export function OrdersEmpty() {\n+  return (\n+    <div className=\"empty\">\n+      <CartIcon aria-hidden />\n+      <h2>No orders yet</h2>\n+      <p>When you buy something, it shows up here.</p>\n+      <a href=\"/products\">Browse products</a>\n+    </div>\n+  );\n+}",
+      "content": "import { CartIcon } from \"../icons\";\n\nexport function OrdersEmpty() {\n  return (\n    <div className=\"empty\">\n      <CartIcon aria-hidden />\n      <h2>No orders yet</h2>\n      <p>When you buy something, it shows up here.</p>\n      <a href=\"/products\">Browse products</a>\n    </div>\n  );\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "screenshots": [
+    {
+      "path": "web/e2e/orders.spec.ts-snapshots/orders-empty-chromium-linux.png",
+      "after": "orders-empty.png"
+    }
+  ],
+  "expected": [],
+  "expected_visual": [
+    {
+      "id": "empty-state",
+      "path": "web/e2e/orders.spec.ts-snapshots/orders-empty-chromium-linux.png",
+      "keywords": ["no orders", "empty"],
+      "why": "An added baseline has no before; the line has to say what the new screen is."
+    }
+  ]
+}

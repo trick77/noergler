@@ -375,6 +375,23 @@ func TestFetchFileContentEscapesPath(t *testing.T) {
 	}
 }
 
+// A screenshot comes back byte for byte: the text path's UTF-8 repair would
+// turn every invalid byte of a PNG into U+FFFD.
+func TestFetchFileBytesKeepsBinary(t *testing.T) {
+	body := "\x89PNG\r\n\x1a\n\xff\xfe\x00"
+	f, c := newFake(t, text(body))
+	got, err := c.FetchFileBytes(context.Background(), "PROJ", "r", "abc", "t/a-snapshots/x.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != body {
+		t.Errorf("bytes = %q, want %q", got, body)
+	}
+	if want := "/rest/api/1.0/projects/PROJ/repos/r/raw/t/a-snapshots/x.png"; f.last().Path != want {
+		t.Errorf("path = %q, want %q", f.last().Path, want)
+	}
+}
+
 // --- byte caps ---------------------------------------------------------------
 
 // The default: no cap, so a diff far past the old 10 MiB limit comes back

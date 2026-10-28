@@ -68,7 +68,10 @@ type ParsedReview struct {
 	Fixed []FixedClaim
 	// PreExisting are bugs in code the PR did not change, unchecked:
 	// ValidatePreExisting decides which stand. Never posted.
-	PreExisting            []PreExistingBug
+	PreExisting []PreExistingBug
+	// Visual is what the model said per screenshot id, unchecked: the
+	// caller maps ids to the pairs it sent and drops the rest.
+	Visual                 []VisualChange
 	ComplianceRequirements []ComplianceRequirement
 	Summary                ReviewSummary
 	ParseFailed            bool
@@ -467,7 +470,37 @@ func ParseReview(content string) ParsedReview {
 		}
 	}
 
+	// As `fixed`. An entry without a string id or with a blank change says
+	// nothing about any screenshot and is dropped.
+	// Item by item: one malformed entry must not take the good ones with it.
+	if rawVisual, ok := raw["visual_changes"]; ok && !isJSONNull(rawVisual) {
+		var items []json.RawMessage
+		if err := json.Unmarshal(rawVisual, &items); err != nil {
+			out.warn("Skipping malformed visual_changes list: %s", truncateRunes(string(rawVisual), 200))
+		} else {
+			for _, item := range items {
+				var v VisualChange
+				if json.Unmarshal(item, &v) != nil {
+					out.warn("Skipping malformed visual_changes entry: %s", truncateRunes(string(item), 200))
+					continue
+				}
+				v.ID, v.Change = strings.TrimSpace(v.ID), strings.TrimSpace(v.Change)
+				if v.ID == "" || v.Change == "" {
+					out.warn("Skipping empty visual_changes entry")
+					continue
+				}
+				out.Visual = append(out.Visual, v)
+			}
+		}
+	}
+
 	return out
+}
+
+// VisualChange is the model's line on one screenshot pair.
+type VisualChange struct {
+	ID     string `json:"id"`
+	Change string `json:"change"`
 }
 
 // decodeString returns raw as a string, or "" when it is absent or not a

@@ -13,7 +13,7 @@ const ReviewSchemaName = "review_response"
 //
 // It is also token-counted as part of the pre-flight fit check, because the
 // gateway bills it as input like everything else. The counted form uses ", "
-// and ": " separators, which brings the serialization to 2372 bytes. Go's
+// and ": " separators, which brings the serialization to 2620 bytes. Go's
 // json.Marshal is compact and would count fewer tokens for the same schema,
 // moving every pinned total in testdata/assemble_golden.json, so SchemaJSON
 // re-inserts the separators rather than marshalling.
@@ -24,7 +24,7 @@ func ReviewResponseSchema() map[string]any {
 		"additionalProperties": false,
 		"required": []any{
 			"overview", "latest_push", "strengths", "security_performance", "test_coverage",
-			"verdict", "findings", "fixed", "pre_existing", "compliance_requirements",
+			"verdict", "findings", "fixed", "pre_existing", "compliance_requirements", "visual_changes",
 		},
 		"properties": map[string]any{
 			"overview":             map[string]any{"type": "string", "minLength": 1},
@@ -108,9 +108,25 @@ func ReviewResponseSchema() map[string]any {
 					},
 				},
 			},
+			"visual_changes": map[string]any{
+				"type": "array", "maxItems": MaxVisualImages,
+				"items": map[string]any{
+					"type":                 "object",
+					"additionalProperties": false,
+					"required":             []any{"id", "change"},
+					"properties": map[string]any{
+						"id":     map[string]any{"type": "string"},
+						"change": map[string]any{"type": "string", "minLength": 1},
+					},
+				},
+			},
 		},
 	}
 }
+
+// MaxVisualImages is the most screenshot pairs one review call carries; the
+// schema caps visual_changes at it.
+const MaxVisualImages = 6
 
 // ReviewResponseFormat is the schema as llmwire sends it.
 func ReviewResponseFormat() *llmwire.ResponseFormat {
@@ -135,7 +151,7 @@ func ReviewResponseFormat() *llmwire.ResponseFormat {
 // sync with ReviewResponseSchema.
 const schemaJSON = `{"type": "object", "additionalProperties": false, "required": ` +
 	`["overview", "latest_push", "strengths", "security_performance", "test_coverage", "verdict", "findings", ` +
-	`"fixed", "pre_existing", "compliance_requirements"], "properties": {"overview": {"type": "string", "minLength": 1}, ` +
+	`"fixed", "pre_existing", "compliance_requirements", "visual_changes"], "properties": {"overview": {"type": "string", "minLength": 1}, ` +
 	`"latest_push": {"type": ["string", "null"]}, ` +
 	`"strengths": {"type": "array", "maxItems": 4, "items": {"type": "string"}}, ` +
 	`"security_performance": {"type": "string", "minLength": 1}, ` +
@@ -162,7 +178,10 @@ const schemaJSON = `{"type": "object", "additionalProperties": false, "required"
 	`"compliance_requirements": {"type": ["array", "null"], "items": {"type": "object", ` +
 	`"additionalProperties": false, "required": ["requirement", "met", "evidence"], ` +
 	`"properties": {"requirement": {"type": "string"}, "met": {"type": "boolean"}, ` +
-	`"evidence": {"type": ["string", "null"]}}}}}}`
+	`"evidence": {"type": ["string", "null"]}}}}, ` +
+	`"visual_changes": {"type": "array", "maxItems": 6, "items": {"type": "object", "additionalProperties": false, ` +
+	`"required": ["id", "change"], "properties": {"id": {"type": "string"}, ` +
+	`"change": {"type": "string", "minLength": 1}}}}}}`
 
 // SchemaJSON is the schema in its pinned byte form, for token counting.
 func SchemaJSON() string { return schemaJSON }

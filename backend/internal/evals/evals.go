@@ -118,14 +118,21 @@ type CorpusFile struct {
 		ContentFetched bool   `json:"content_fetched"`
 	} `json:"files"`
 	Expected []Expected `json:"expected"`
+	// Screenshots are the test baselines the case changes, sent as
+	// production sends them; ExpectedVisual the lines they must get.
+	Screenshots    []corpusScreenshot `json:"screenshots"`
+	ExpectedVisual []ExpectedVisual   `json:"expected_visual"`
 }
 
 // Case is a loaded corpus entry.
 type Case struct {
-	Name        string
-	Description string
-	Files       []diff.FileReviewData
-	Expected    []Expected
+	Name           string
+	Description    string
+	Files          []diff.FileReviewData
+	Expected       []Expected
+	ExpectedVisual []ExpectedVisual
+	// shots are the case's screenshots, cut once at load.
+	shots caseImages
 }
 
 // LoadCorpus reads every embedded case, sorted by name so a run is ordered.
@@ -152,7 +159,10 @@ func LoadCorpus() ([]Case, error) {
 		if cf.Name == "" {
 			return nil, fmt.Errorf("%s: case has no name", name)
 		}
-		c := Case{Name: cf.Name, Description: cf.Description, Expected: cf.Expected}
+		c := Case{Name: cf.Name, Description: cf.Description, Expected: cf.Expected, ExpectedVisual: cf.ExpectedVisual}
+		if c.shots, err = loadImages(cf.Screenshots); err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
+		}
 		for _, f := range cf.Files {
 			c.Files = append(c.Files, diff.FileReviewData{
 				Path:           f.Path,
@@ -204,6 +214,10 @@ type Result struct {
 	// Redraws is how many attempts that did not complete came before this
 	// one. A redrawn result leans towards the quick answer; see maxRedraws.
 	Redraws int `json:",omitempty"`
+	// VisualMatches are the case's expected screenshot lines, scored;
+	// Visual the model's lines by path, as the summary would show them.
+	VisualMatches []VisualMatch     `json:",omitempty"`
+	Visual        map[string]string `json:",omitempty"`
 	// Err is excluded from JSON: encoding/json renders an error as {}, so a
 	// committed report would record THAT a case failed but not why, making a
 	// 401 and a timeout look identical in history. ErrMsg carries the text.
@@ -211,10 +225,16 @@ type Result struct {
 	ErrMsg string `json:"ErrMsg,omitempty"`
 }
 
-// Found reports how many seeded bugs this case's review caught.
+// Found reports how many seeded bugs this case's review caught, expected
+// screenshot lines included.
 func (r Result) Found() int {
 	n := 0
 	for _, m := range r.Matches {
+		if m.Found {
+			n++
+		}
+	}
+	for _, m := range r.VisualMatches {
 		if m.Found {
 			n++
 		}
@@ -246,7 +266,7 @@ func Run(ctx context.Context, client Reviewer, template string, cases []Case, co
 	var score Score
 	for _, c := range cases {
 		res, _ := drawCase(ctx, client, c, assemble(template, c, count))
-		score.Seeded += len(c.Expected)
+		score.Seeded += len(c.Expected) + len(c.ExpectedVisual)
 		score.Caught += res.Found()
 		score.Extra += res.Extra
 		score.Results = append(score.Results, res)
@@ -254,13 +274,17 @@ func Run(ctx context.Context, client Reviewer, template string, cases []Case, co
 	return score
 }
 
+// assemble renders a case's prompt. PromptTokens carries its screenshots as
+// production weighs them, images and the text around them.
 func assemble(template string, c Case, count inference.CountFunc) inference.AssembledPrompt {
-	return inference.AssembleReviewPrompt(inference.AssembleRequest{
+	a := inference.AssembleReviewPrompt(inference.AssembleRequest{
 		Template: template,
 		Files:    c.Files,
 		// The scoring matches English corpus keywords.
 		Language: lang.EN,
 	}, count)
+	a.PromptTokens += c.shots.pixels + inference.VisualTextTokens(c.shots.images, count)
+	return a
 }
 
 // reviewCase is one review of one case, validated and scored. Run and
@@ -271,7 +295,9 @@ func reviewCase(ctx context.Context, client Reviewer, c Case, assembled inferenc
 		Prompt:         assembled.Prompt,
 		PromptTokens:   assembled.PromptTokens,
 		ResponseSchema: inference.ReviewResponseFormat(),
+		Images:         c.shots.images,
 	})
+	res.VisualMatches, res.Visual = matchVisual(c.ExpectedVisual, c.shots.ids, out.Review.Visual)
 	res.Outcome = out.Outcome.String()
 	idx := diff.BuildAnchorIndex(c.Files)
 	v := inference.ValidateFindings(out.Review.Findings, idx)
@@ -464,7 +490,7 @@ func (s Score) Report(w io.Writer) {
 			dup += fmt.Sprintf(", %d redraw(s)", r.Redraws)
 		}
 		p("%-18s %-10s %d finding(s), %d seeded, %d caught, %d extra%s  %s\n",
-			r.Case, r.Outcome, len(r.Findings), len(r.Matches), r.Found(), r.Extra, dup, status)
+			r.Case, r.Outcome, len(r.Findings), len(r.Matches)+len(r.VisualMatches), r.Found(), r.Extra, dup, status)
 		for _, m := range r.Matches {
 			if m.Found {
 				f := r.Findings[m.Finding]
@@ -472,6 +498,17 @@ func (s Score) Report(w io.Writer) {
 				continue
 			}
 			p("    MISS   %-22s %s\n", m.Expected.ID, m.Why)
+			p("           why it matters: %s\n", m.Expected.Why)
+		}
+		for _, m := range r.VisualMatches {
+			if m.Found {
+				p("    SEEN   %-22s %s\n", m.Expected.ID, m.Change)
+				continue
+			}
+			p("    UNSEEN %-22s %s\n", m.Expected.ID, m.Why)
+			if m.Change != "" {
+				p("           the line: %s\n", m.Change)
+			}
 			p("           why it matters: %s\n", m.Expected.Why)
 		}
 	}
