@@ -127,7 +127,8 @@ func TestAlmanachNoteGates(t *testing.T) {
 // unparseable answer is invalid, no answer is no answer. Every outcome
 // leaves a call row saying so, and only a standing note a row.
 func TestAlmanachNoteStatuses(t *testing.T) {
-	long := strings.Repeat("ä", inference.AlmanachTextMax+1)
+	// Over the harness's total cap (6000): prose has no cap of its own.
+	long := strings.Repeat("ä", 6001)
 	cases := []struct {
 		name   string
 		tweak  func(*inference.AlmanachNoteResult)
@@ -141,6 +142,9 @@ func TestAlmanachNoteStatuses(t *testing.T) {
 		{"unparseable", func(r *inference.AlmanachNoteResult) {
 			*r = inference.AlmanachNoteResult{Outcome: inference.OutcomeUnparseable, Cost: inference.CallCost{Answered: true}}
 		}, inference.AlmanachInvalid, 0},
+		{"cut by the output limit", func(r *inference.AlmanachNoteResult) {
+			*r = inference.AlmanachNoteResult{Outcome: inference.OutcomeUnparseable, Cut: true, Cost: inference.CallCost{Answered: true}}
+		}, inference.AlmanachTooLong, 0},
 		{"no answer", func(r *inference.AlmanachNoteResult) {
 			*r = inference.AlmanachNoteResult{Outcome: inference.OutcomeTimedOut}
 		}, inference.AlmanachNoAnswer, 0},

@@ -445,11 +445,20 @@ one.
 The note is German whatever the review's language, repo-scoped, one object:
 a summary (or `null` when the PR teaches nothing), the change kind (bugfix,
 feature, refactor, chore), for a bugfix its symptom, cause and cause class,
-and up to eight components, rules, invariants and entities with the files
-they rest on. The validator trims, spells Swiss, checks the shape, scans the
-prose for secret-like tokens and applies the caps (per field in code, the
-total from `ALMANACH_NOTE_MAX_CHARS`). Over any cap the whole note drops and
-the previous round's stays; never truncated. Each round replaces the PR's
+and up to sixteen components, rules, invariants and entities with the files
+they rest on. It is written as documentation, not as a list of one-liners:
+the prompt asks for what a thing is for, how it is structured, which rule it
+enforces and why, what must always hold, and what a reader could not guess
+from the code, kept essential. Prose has no length cap of its own; the
+validator trims, spells Swiss, checks the shape, scans the prose for
+secret-like tokens and applies the caps that exist: a name's length, the
+files per item, the items per list, and the whole note against
+`ALMANACH_NOTE_MAX_CHARS`, the one ceiling against bloat, counted on the
+prose the model wrote, not on the JSON around it. Over any of them the
+whole note drops and the previous round's stays; never truncated. An
+answer the model's own output limit cut off is a length drop too, not a
+shape fault. Identifiers in backticks are scanned for credential shapes
+only: documentation names what it documents. Each round replaces the PR's
 note. Every call, whatever became of it, leaves a row in `almanach_calls`
 with the gateway's figures and a `note_status`; that ledger counts toward
 nothing else, not the PR's cost, not the dashboard spend, not the rollup.

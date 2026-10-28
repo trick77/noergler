@@ -520,8 +520,8 @@ func TestTeams_FullBlockResolvesOverridesOnTopOfInstanceDefaults(t *testing.T) {
 	if !reflect.DeepEqual(pay.Almanach, &Almanach{URL: "https://almanach.example.com", Token: "pay-almanach"}) {
 		t.Errorf("payments almanach: %+v", pay.Almanach)
 	}
-	if app.AlmanachLimits.NoteMaxChars != 6000 {
-		t.Errorf("ALMANACH_NOTE_MAX_CHARS default = %d, want 6000", app.AlmanachLimits.NoteMaxChars)
+	if app.AlmanachLimits.NoteMaxChars != 24000 {
+		t.Errorf("ALMANACH_NOTE_MAX_CHARS default = %d, want 24000", app.AlmanachLimits.NoteMaxChars)
 	}
 	if plat.OwnModel || !pay.OwnModel {
 		t.Errorf("OwnModel: platform %v, payments %v; want false, true", plat.OwnModel, pay.OwnModel)

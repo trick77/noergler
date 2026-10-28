@@ -1,17 +1,19 @@
 ## Almanach note
 
-You just reviewed this pull request. Now write a scratch note for Almanach, a knowledge base kept outside this review, about what the PR teaches about repository `{repo}` in Bitbucket project `{project}`. Facts about the system, never about the PR's quality, the review or your findings.
+You just reviewed this pull request. Now write a note for Almanach, the living documentation of repository `{repo}` in Bitbucket project `{project}`, kept outside this review. The note is the piece of documentation this PR adds or changes: what a maintainer of this repository must know after it that a maintainer before it did not. Facts about the system, never about the PR's quality, the review or your findings.
+
+Write it the way good repository documentation reads: a comprehensive description of what a thing is for, how it is structured, which rule it enforces and why, what must always hold, and what a reader could not guess from the code alone. There is no quota on length in either direction: as long as it takes to document the thing fully, and nothing that a file name alone says, no padding, no repetition.
 
 ## Fields
 
-- `summary`: one paragraph on what the PR does to the system, at most 600 characters. `null` when the PR teaches nothing about the system (a dependency bump, formatting, a rename); then every list below is empty.
+- `summary`: what the PR changes in the system and what the repository is for as far as the PR shows it; prose, as long as it takes. `null` when the PR teaches nothing about the system (a dependency bump, formatting, a rename); then every list below is empty.
 - `change_kind`: `bugfix`, `feature`, `refactor` or `chore`. The ticket type below is a hint; the diff decides.
-- `bugfix`: only for a bugfix, else `null`. `symptom`: what went wrong for the user or the system, one sentence. `cause`: why, as the code shows it, one sentence. `cause_kind`: `logic`, `concurrency`, `config`, `input_validation`, `integration`, `missing_test` or `other`.
-- `components`: modules, services, packages or screens the PR touches, and what each is for.
-- `rules`: business rules the code enforces.
-- `invariants`: what must always hold, as the code shows it.
-- `entities`: data entities, tables, messages, with their key fields.
-- Each item: `name` (at most 80 characters), `text` (one sentence, at most 300 characters), `files` (up to 5 repository paths from the files you saw, exactly as shown). At most 8 items per list. Nothing a reader learns from a file name alone.
+- `bugfix`: only for a bugfix, else `null`. `symptom`: what went wrong for the user or the system. `cause`: why, as the code shows it, including what the fix changed. `cause_kind`: `logic`, `concurrency`, `config`, `input_validation`, `integration`, `missing_test` or `other`.
+- `components`: modules, services, packages or screens the PR touches: what each is for, how it fits the repository's structure, what it talks to.
+- `rules`: business rules the code enforces: the rule, where it applies, what happens when it is broken.
+- `invariants`: what must always hold, as the code shows it, and what keeps it so.
+- `entities`: data entities, tables, messages: their key fields and what they mean.
+- Each item: `name` (at most 80 characters), `text` (the comprehensive documentation of that item, prose, as many paragraphs as it needs), `files` (up to 5 repository paths from the files you saw, exactly as shown, each at most 200 characters). At most 16 items per list. One item per thing: a component with three rules is one component and three rules.
 
 ## Never
 
@@ -19,7 +21,7 @@ Code, line numbers, commit hashes, UUIDs, credentials or config literals, PR num
 
 ## Limits
 
-The whole note is discarded unread {note_limit}. Prefer fewer items to a discarded note.
+The whole note is discarded unread {note_limit}. The limit is a ceiling against bloat, not a target: prefer fewer, complete items to a discarded note.
 
 {output_language}
 

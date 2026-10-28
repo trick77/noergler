@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// AlmanachNote is one PR's scratch note as a review round leaves it. See
+// AlmanachNote is one PR's documentation note as a review round leaves it. See
 // migrations/0018_almanach.sql: every round replaces the row, ordered by
 // RunID; the merge stamps it final; the forwarder marks it emitted.
 type AlmanachNote struct {

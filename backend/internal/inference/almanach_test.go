@@ -9,6 +9,18 @@ import (
 
 func str(s string) *string { return &s }
 
+// proseRunes is what the total ceiling counts, computed the long way.
+func proseRunes(n AlmanachNote) int {
+	total := 0
+	for _, p := range n.prose() {
+		total += runes(*p)
+	}
+	for _, p := range n.names() {
+		total += runes(*p)
+	}
+	return total
+}
+
 func goodNote() AlmanachNote {
 	return AlmanachNote{
 		Summary:    str("Der Datei-Adapter liest den Mandanten aus der Kopfzeile."),
@@ -38,7 +50,6 @@ func TestRenderAlmanachNotePromptIsOnePassAndGerman(t *testing.T) {
 }
 
 func TestValidateAlmanachNote(t *testing.T) {
-	long := strings.Repeat("ä", AlmanachTextMax+1)
 	cases := []struct {
 		name   string
 		mutate func(*AlmanachNote)
@@ -46,10 +57,24 @@ func TestValidateAlmanachNote(t *testing.T) {
 		want   string
 	}{
 		{"good", func(*AlmanachNote) {}, 0, ""},
-		{"exact text cap in runes passes", func(n *AlmanachNote) { n.Components[0].Text = strings.Repeat("ä", AlmanachTextMax) }, 0, ""},
-		{"text one rune over", func(n *AlmanachNote) { n.Components[0].Text = long }, 0, AlmanachTooLong},
+		// Prose has no cap of its own: a long text or summary passes under
+		// the total.
+		{"long text passes", func(n *AlmanachNote) { n.Components[0].Text = strings.Repeat("ä", 3000) }, 0, ""},
+		{"long summary passes", func(n *AlmanachNote) { n.Summary = str(strings.Repeat("x", 3000)) }, 0, ""},
 		{"name over", func(n *AlmanachNote) { n.Components[0].Name = strings.Repeat("x", AlmanachNameMax+1) }, 0, AlmanachTooLong},
-		{"summary over", func(n *AlmanachNote) { n.Summary = str(strings.Repeat("x", AlmanachSummaryMax+1)) }, 0, AlmanachTooLong},
+		// The total counts the prose runes (summary, symptom, cause, names,
+		// texts; not paths, not JSON), so ä is one: the cap sits exactly on
+		// goodNote's prose and one under it.
+		{"total at the exact prose count passes", func(*AlmanachNote) {}, proseRunes(goodNote()), ""},
+		{"total one rune under drops", func(*AlmanachNote) {}, proseRunes(goodNote()) - 1, AlmanachTooLong},
+		{"total over by prose", func(n *AlmanachNote) { n.Components[0].Text = strings.Repeat("ä", 3000) }, 3000, AlmanachTooLong},
+		// Documentation names what it documents: an identifier in backticks
+		// is not a secret; a credential shape in backticks still is, and a
+		// bare token outside backticks still drops the note.
+		{"identifier in backticks passes", func(n *AlmanachNote) {
+			n.Components[0].Text = "Der `OAuth2TokenRefreshHandler9Service` erneuert das Token vor Ablauf."
+		}, 0, ""},
+		{"credential in backticks drops", func(n *AlmanachNote) { n.Components[0].Text = "Setzt `password = \"hunter2hunter2\"` im Profil." }, 0, AlmanachSecret},
 		{"too many items", func(n *AlmanachNote) {
 			for i := 0; i <= AlmanachItemsMax; i++ {
 				n.Rules = append(n.Rules, AlmanachItem{Name: "r", Text: "t"})

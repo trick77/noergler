@@ -30,16 +30,18 @@ var (
 	AlmanachCauseKinds  = []string{"logic", "concurrency", "config", "input_validation", "integration", "missing_test", "other"}
 )
 
-// The note's caps, in runes. Over any of them the whole note is dropped,
-// never truncated: a cut sentence is a wrong sentence in a knowledge base.
-// The total is the operator's (ALMANACH_NOTE_MAX_CHARS).
+// The note's caps. Prose (summary, an item's text, a bugfix's symptom and
+// cause) has no cap of its own: the note is documentation, and its length
+// follows what the PR teaches. What is capped is the shape (a name, the
+// files, the items per list) and the whole note, the operator's
+// ALMANACH_NOTE_MAX_CHARS, the one ceiling against bloat. Over any of them
+// the whole note is dropped, never truncated: a cut sentence is a wrong
+// sentence in documentation.
 const (
-	AlmanachSummaryMax = 600
-	AlmanachNameMax    = 80
-	AlmanachTextMax    = 300
-	AlmanachFileMax    = 200
-	AlmanachFilesMax   = 5
-	AlmanachItemsMax   = 8
+	AlmanachNameMax  = 80
+	AlmanachFileMax  = 200
+	AlmanachFilesMax = 5
+	AlmanachItemsMax = 16
 )
 
 // AlmanachItem is one component, rule, invariant or entity.
@@ -57,8 +59,10 @@ type AlmanachBugfix struct {
 	CauseKind string `json:"cause_kind"`
 }
 
-// AlmanachNote is the model's scratch note of what a PR teaches about its
-// repository. Summary nil with no items means the PR taught nothing.
+// AlmanachNote is the model's documentation note of what a PR teaches
+// about its repository: the piece of the living wiki this PR adds or
+// changes, prose as long as the subject needs. Summary nil with no items
+// means the PR taught nothing.
 type AlmanachNote struct {
 	Summary    *string         `json:"summary"`
 	ChangeKind string          `json:"change_kind"`
@@ -250,15 +254,10 @@ func ValidateAlmanachNote(n *AlmanachNote, maxChars int) (chars int, reason stri
 		if !slices.Contains(AlmanachCauseKinds, b.CauseKind) || b.Symptom == "" || b.Cause == "" {
 			return 0, AlmanachInvalid
 		}
-		if runes(b.Symptom) > AlmanachTextMax || runes(b.Cause) > AlmanachTextMax {
-			return 0, AlmanachTooLong
-		}
 	}
 	switch {
 	case n.Summary != nil && *n.Summary == "":
 		return 0, AlmanachInvalid
-	case n.Summary != nil && runes(*n.Summary) > AlmanachSummaryMax:
-		return 0, AlmanachTooLong
 	case n.Summary == nil && !n.Empty():
 		// No summary and still items: the "nothing learned" shape misused.
 		return 0, AlmanachInvalid
@@ -277,19 +276,46 @@ func ValidateAlmanachNote(n *AlmanachNote, maxChars int) (chars int, reason stri
 		}
 	}
 	for _, p := range n.prose() {
-		if HasSecret(*p) {
+		// Documentation names the identifiers it documents, in backticks;
+		// an identifier is not a secret, so a span in backticks is scanned
+		// for the credential shapes only, never for the identifier
+		// heuristic. A secret outside backticks still drops the note.
+		if HasSecret(withoutCode(*p)) || credentialRE.MatchString(*p) || knownSecretRE.MatchString(*p) {
 			return 0, AlmanachSecret
 		}
 	}
-	b, err := json.Marshal(n)
-	if err != nil {
-		return 0, AlmanachInvalid
+	// The ceiling counts the prose the model wrote, in runes: the summary,
+	// every name and text, a bugfix's symptom and cause. Not the JSON
+	// around it, so the number the prompt names is the number that drops.
+	for _, p := range n.prose() {
+		chars += runes(*p)
 	}
-	chars = utf8.RuneCount(b)
+	for _, p := range n.names() {
+		chars += runes(*p)
+	}
 	if maxChars > 0 && chars > maxChars {
 		return chars, AlmanachTooLong
 	}
 	return chars, ""
+}
+
+// withoutCode is s with every backtick span removed.
+func withoutCode(s string) string {
+	if !strings.Contains(s, "`") {
+		return s
+	}
+	var b strings.Builder
+	in := false
+	for _, r := range s {
+		if r == '`' {
+			in = !in
+			continue
+		}
+		if !in {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func validateAlmanachItem(it *AlmanachItem) string {
@@ -299,7 +325,7 @@ func validateAlmanachItem(it *AlmanachItem) string {
 	if it.Name == "" || it.Text == "" {
 		return AlmanachInvalid
 	}
-	if runes(it.Name) > AlmanachNameMax || runes(it.Text) > AlmanachTextMax {
+	if runes(it.Name) > AlmanachNameMax {
 		return AlmanachTooLong
 	}
 	if it.Files == nil {
@@ -341,6 +367,10 @@ type AlmanachNoteResult struct {
 	Note    AlmanachNote
 	Cost    CallCost
 	Err     error
+	// Cut is set when the model's output limit ended the answer
+	// (finish_reason length): the note did not fit, which is a length
+	// drop, not an answer off the schema.
+	Cut bool
 }
 
 // AlmanachNote continues the review conversation by one turn: the same
@@ -374,6 +404,10 @@ func (c *Client) AlmanachNote(ctx context.Context, req AlmanachNoteRequest) Alma
 	}
 	out := AlmanachNoteResult{Cost: CostFrom(resp)}
 	out.Cost.Warnings = WarningLines(warnings)
+	if resp.FinishReason == "length" {
+		out.Outcome, out.Cut = OutcomeUnparseable, true
+		return out
+	}
 	note, ok := ParseAlmanachNote(resp.Content)
 	if !ok {
 		out.Outcome = OutcomeUnparseable
