@@ -3,6 +3,7 @@ package review
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -158,6 +159,71 @@ func TestAlmanachNoteStatuses(t *testing.T) {
 				t.Errorf("notes stored = %d, want %d", len(h.st.Notes), c.stored)
 			}
 		})
+	}
+}
+
+// A store that refuses the note is neither the model's fault nor a closed
+// PR: the ledger says store_failed, and the call still has its row.
+func TestStoreFaultOnTheNoteIsItsOwnStatus(t *testing.T) {
+	h := newHarness(t, withAlmanach)
+	h.llm.review.Raw = "x"
+	h.st.noteErr = errors.New("db hiccup")
+	h.r.ReviewPullRequestStaged(context.Background(), prPayload(webhook.EventOpened), "platform", false, &inlineScheduler{})
+	if len(h.st.AlmanachCalls) != 1 || h.st.AlmanachCalls[0].NoteStatus != store.NoteStoreFailed {
+		t.Fatalf("call rows = %+v, want one with status store_failed", h.st.AlmanachCalls)
+	}
+	if len(h.st.Notes) != 0 {
+		t.Error("a note was recorded as written")
+	}
+}
+
+// Two rounds of one PR can be on the pool at once; the first to finish
+// must not make the merge believe the second is done.
+func TestInflightCountsRounds(t *testing.T) {
+	var s inflightSet
+	k := store.PRKey{Project: "P", Repo: "r", PRID: 1}
+	s.add(k)
+	s.add(k)
+	s.remove(k)
+	if !s.has(k) {
+		t.Fatal("one round finished, the other is still in flight")
+	}
+	s.remove(k)
+	if s.has(k) {
+		t.Fatal("both rounds finished")
+	}
+	s.remove(k)
+	if s.has(k) {
+		t.Fatal("a stray remove must not go negative")
+	}
+}
+
+// A round that finds its PR merged sends its own note and nothing else:
+// the team's catch-up drain is the merge's job on the worker, not the
+// pool's.
+func TestRoundEmitsOnlyItsOwnNote(t *testing.T) {
+	h := newHarness(t, withAlmanach)
+	h.llm.review.Raw = "x"
+	h.al.refuse = true
+	h.r.ReviewPullRequestStaged(context.Background(), prPayload(webhook.EventOpened), "platform", false, &inlineScheduler{})
+	h.r.HandlePRMerged(context.Background(), prPayload(webhook.EventMerged))
+	h.al.refuse = false
+	h.al.Emitted = nil
+
+	second := prPayload(webhook.EventOpened)
+	second.PullRequest.ID = 43
+	sched := &deferredScheduler{}
+	h.r.ReviewPullRequestStaged(context.Background(), second, "platform", false, sched)
+	sched.finish()
+	merged := prPayload(webhook.EventMerged)
+	merged.PullRequest.ID = 43
+	h.r.HandlePRMerged(context.Background(), merged)
+	if len(h.al.Emitted) != 0 {
+		t.Fatalf("the merge emitted while the note was in flight: %+v", h.al.Emitted)
+	}
+	sched.spawned[0].fn(sched.spawned[0].ctx)
+	if len(h.al.Emitted) != 1 || h.al.Emitted[0].PRID != 43 {
+		t.Errorf("emitted = %+v, want PR 43 alone; PR 42 waits for the next merge", h.al.Emitted)
 	}
 }
 

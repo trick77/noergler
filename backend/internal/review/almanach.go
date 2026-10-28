@@ -14,32 +14,37 @@ import (
 	"github.com/trick77/noergler/internal/webhook"
 )
 
-// inflightSet is the PR keys whose note call is on the pool right now.
+// inflightSet counts the note calls on the pool per PR. A count, not a
+// presence: two rounds of one PR can be in flight at once (the note runs
+// unheld), and the first to finish must not clear the second.
 type inflightSet struct {
 	mu   sync.Mutex
-	keys map[store.PRKey]struct{}
+	keys map[store.PRKey]int
 }
 
 func (s *inflightSet) add(k store.PRKey) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.keys == nil {
-		s.keys = map[store.PRKey]struct{}{}
+		s.keys = map[store.PRKey]int{}
 	}
-	s.keys[k] = struct{}{}
+	s.keys[k]++
 }
 
 func (s *inflightSet) remove(k store.PRKey) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	delete(s.keys, k)
+	if s.keys[k] <= 1 {
+		delete(s.keys, k)
+		return
+	}
+	s.keys[k]--
 }
 
 func (s *inflightSet) has(k store.PRKey) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, ok := s.keys[k]
-	return ok
+	return s.keys[k] > 0
 }
 
 // AlmanachEmitter is the part of the almanach adapter the pipeline uses.
@@ -100,7 +105,7 @@ func (r *Reviewer) spawnAlmanachNote(ctx context.Context, plan *reviewPlan, team
 	// the review schema; the turn adds the answer, the instruction and the
 	// note schema. Over the ceiling the call is not made at all.
 	job.promptTokens = plan.promptTokens + r.tokens.Count(job.answer) + r.tokens.Count(job.instruction) +
-		r.tokens.Count(inference.AlmanachNoteSchemaJSON())
+		r.almanachSchemaTokens()
 	if r.llm.Ready() && job.promptTokens > r.llm.FitCeiling() {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: almanach note skipped, %d tokens exceed the fit ceiling of %d",
 			plan.prTag, job.promptTokens, r.llm.FitCeiling()))
@@ -114,6 +119,13 @@ func (r *Reviewer) spawnAlmanachNote(ctx context.Context, plan *reviewPlan, team
 	sched.Spawn(ctx, plan.key, team, "almanach note", func(c context.Context) { r.almanachNote(c, job) })
 }
 
+// almanachSchemaTokens counts the note schema once: it is a constant, and
+// the count runs on the worker.
+func (r *Reviewer) almanachSchemaTokens() int {
+	r.almanachSchemaOnce.Do(func() { r.almanachSchemaCount = r.tokens.Count(inference.AlmanachNoteSchemaJSON()) })
+	return r.almanachSchemaCount
+}
+
 // almanachNote is the spawned call: the gateway turn, the blunt checks, the
 // row, the call record, and the emit when the merge already happened. It
 // runs unheld, so every write re-asks ownership first and the store orders
@@ -121,7 +133,6 @@ func (r *Reviewer) spawnAlmanachNote(ctx context.Context, plan *reviewPlan, team
 // line is already out.
 func (r *Reviewer) almanachNote(ctx context.Context, job almanachJob) {
 	ctx, counter := httpstats.WithScope(ctx)
-	defer r.almanachInflight.remove(job.key)
 	defer func() {
 		if n := counter.Summarize()["inference"]; n > 0 {
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: almanach note HTTP totals - inference=%d", job.prTag, n))
@@ -155,12 +166,16 @@ func (r *Reviewer) almanachNote(ctx context.Context, job almanachJob) {
 
 	// The merge may have come and gone while the call ran: finalize then
 	// left the row for this round to fill, and the emit is this round's.
+	// The count drops before the status read: a merge landing between the
+	// two sees no flight and emits itself, and if both paths then send the
+	// same note, Almanach dedupes it. The other order would lose the note.
+	r.almanachInflight.remove(job.key)
 	st := safeDB(ctx, r.log, "AlmanachNoteStatus", func() (store.AlmanachNoteState, error) {
 		st, _, err := r.store.AlmanachNoteStatus(ctx, job.key)
 		return st, err
 	})
 	if st.Finalized && st.HasNote && !st.Emitted {
-		r.emitAlmanach(ctx, r.TeamSlug)
+		r.emitAlmanach(ctx, r.TeamSlug, &job.key)
 	}
 }
 
@@ -193,8 +208,9 @@ func (r *Reviewer) storeAlmanachNote(ctx context.Context, job almanachJob, res i
 		})
 	})
 	if written == "" {
-		// The store failed open: no row, and the call row says so.
-		return store.NoteNoRow
+		// The store failed open: the warn log has the error, the call row
+		// says the note never reached the table.
+		return store.NoteStoreFailed
 	}
 	return written
 }
@@ -221,7 +237,7 @@ func (r *Reviewer) finalizeAlmanach(ctx context.Context, key store.PRKey, prTag 
 		r.log.InfoContext(ctx, prTag+": almanach note still in flight, emit deferred to it")
 		return
 	}
-	r.emitAlmanach(ctx, r.TeamSlug)
+	r.emitAlmanach(ctx, r.TeamSlug, nil)
 }
 
 // dropAlmanachNote forgets a declined or deleted PR's note; the store keeps
@@ -235,12 +251,17 @@ func (r *Reviewer) dropAlmanachNote(ctx context.Context, key store.PRKey) {
 
 // emitAlmanach sends the team's final notes Almanach has not taken yet,
 // oldest first, up to almanachDrain, and marks each one Almanach answered
-// 2xx for. A note it refuses stays for the next merge.
-func (r *Reviewer) emitAlmanach(ctx context.Context, team string) {
+// 2xx for. A note it refuses stays for the next merge. With only set the
+// caller is a round on the pool: it sends its own PR's note and nothing
+// else, so the catch-up drain stays a worker job.
+func (r *Reviewer) emitAlmanach(ctx context.Context, team string, only *store.PRKey) {
 	pending := safeDB(ctx, r.log, "PendingAlmanachNotes", func() ([]store.AlmanachPending, error) {
 		return r.store.PendingAlmanachNotes(ctx, team, almanachDrain)
 	})
 	for _, p := range pending {
+		if only != nil && p.Key != *only {
+			continue
+		}
 		n := almanachNoteOf(p, r.claimsFor(p.Key.Project))
 		if !r.almanach.EmitNote(ctx, n) {
 			// The emitter logged why; the rest of the list would meet the

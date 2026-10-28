@@ -427,7 +427,10 @@ landed yet) and sends the team's pending notes on, oldest first, up to ten.
 No model call. Almanach dedupes on the PR and its source commit, so a note is
 marked emitted only after a 2xx and a refused one goes with the team's next
 merge. A merge that lands while this PR's round is still in flight stamps the
-row and leaves the emit to that round. `pr:declined` and `pr:deleted` forget
+row and leaves the emit to that round, which then sends its own note only;
+the catch-up drain stays with the merges. A round whose PR was declined,
+deleted or purged meanwhile writes nothing (`no_row`); a store fault on the
+upsert is its own status (`store_failed`). `pr:declined` and `pr:deleted` forget
 a note that is not final; a final one is kept until sent.
 
 The payload carries the note, the PR's identity and the team's claims on the

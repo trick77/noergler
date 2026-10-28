@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/trick77/noergler/internal/forward"
-	"github.com/trick77/noergler/internal/riptide"
 	"github.com/trick77/noergler/internal/store"
 )
 
@@ -256,7 +255,7 @@ func usd(nano *int64) any {
 	if nano == nil {
 		return nil
 	}
-	return riptide.FormatNanoUSD(*nano)
+	return forward.FormatNanoUSD(*nano)
 }
 
 func nullable(s string) any {

@@ -64,8 +64,11 @@ type Reviewer struct {
 	// so a merge that lands meanwhile stamps the row and leaves the emit to
 	// the round. Single process: a map is enough.
 	almanachInflight inflightSet
-	tokens           TokenCounter
-	cfg              config.Review
+	// almanachSchemaCount is the note schema's token count, taken once.
+	almanachSchemaOnce  sync.Once
+	almanachSchemaCount int
+	tokens              TokenCounter
+	cfg                 config.Review
 	// The two author lists live here rather than in cfg because the team API
 	// rewrites them at runtime (PUT /teams/{slug}/settings) while the review
 	// worker may be reading them. Everything else in cfg is fixed at startup.

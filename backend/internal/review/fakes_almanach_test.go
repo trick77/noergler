@@ -34,6 +34,9 @@ func (f *fakeStore) UpsertAlmanachNote(_ context.Context, n store.AlmanachNote) 
 	if err := f.err(); err != nil {
 		return "", err
 	}
+	if f.noteErr != nil {
+		return "", f.noteErr
+	}
 	if f.notes == nil {
 		f.notes = map[store.PRKey]*fakeNote{}
 	}
@@ -152,7 +155,7 @@ func (f *fakeStore) AlmanachNoteStatus(_ context.Context, k store.PRKey) (store.
 	if !ok {
 		return store.AlmanachNoteState{}, false, f.err()
 	}
-	return store.AlmanachNoteState{Finalized: row.final != nil, HasNote: row.Note != nil, Emitted: row.emitted}, true, f.err()
+	return store.AlmanachNoteState{Finalized: row.final != nil, HasNote: row.Note != nil, Emitted: row.emitted, PROpen: true}, true, f.err()
 }
 
 // --- fake Almanach emitter ---------------------------------------------------

@@ -196,6 +196,46 @@ func TestAlmanachEmitIsPerRound(t *testing.T) {
 
 // Declined and deleted drop a note that is not final; a final note stays,
 // whoever asks: a merged PR deleted afterwards still happened.
+// A round whose PR was declined, deleted or purged while its note call ran
+// writes nothing: the upsert needs an open PR row, and says so.
+func TestAlmanachNoteNeedsAnOpenPR(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	never := PRKey{Project: "PLAT", Repo: "api", PRID: 70}
+	if got := upsertNote(t, s, noteFor(never, 1, "n")); got != NoteNoRow {
+		t.Errorf("never-seen PR = %q, want no_row", got)
+	}
+
+	declined := PRKey{Project: "PLAT", Repo: "api", PRID: 71}
+	upsert(t, s, declined, "a")
+	upsertNote(t, s, noteFor(declined, 1, "one"))
+	if err := s.MarkDeclined(ctx, declined); err != nil {
+		t.Fatal(err)
+	}
+	if got := upsertNote(t, s, noteFor(declined, 2, "two")); got != NoteNoRow {
+		t.Errorf("declined PR = %q, want no_row", got)
+	}
+	var text string
+	if err := s.pool.QueryRow(ctx, `SELECT note->>'summary' FROM almanach_notes WHERE pr_id = $1`, declined.PRID).Scan(&text); err != nil {
+		t.Fatal(err)
+	}
+	if text != "one" {
+		t.Errorf("note = %q, the late round wrote over a declined PR", text)
+	}
+
+	deleted := PRKey{Project: "PLAT", Repo: "api", PRID: 72}
+	upsert(t, s, deleted, "a")
+	if err := s.MarkDeleted(ctx, deleted); err != nil {
+		t.Fatal(err)
+	}
+	if got := upsertNote(t, s, noteFor(deleted, 1, "n")); got != NoteNoRow {
+		t.Errorf("deleted PR = %q, want no_row", got)
+	}
+	if _, ok, _ := s.AlmanachNoteStatus(ctx, deleted); ok {
+		t.Error("a note row for a deleted PR")
+	}
+}
+
 func TestAlmanachDeleteKeepsAFinalNote(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

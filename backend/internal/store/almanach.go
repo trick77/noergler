@@ -39,6 +39,9 @@ const (
 	NoteSuperseded     = "superseded"
 	NoteAlreadyEmitted = "already_emitted"
 	NoteNoRow          = "no_row"
+	// NoteStoreFailed is the caller's word for an upsert the database
+	// refused; the store never returns it.
+	NoteStoreFailed = "store_failed"
 )
 
 // AlmanachFinal is what pr:merged stamps onto the note.
@@ -104,15 +107,20 @@ type AlmanachCall struct {
 
 // UpsertAlmanachNote writes a round's note and says what happened:
 // NoteWritten, NoteSuperseded (a later round already landed; the call ran
-// unheld) or NoteAlreadyEmitted (the merge sent the note while this round
-// was in flight). The merge stamps are never touched; the team slug follows
-// the round, as the PR row follows a repo that changed hands.
+// unheld), NoteAlreadyEmitted (the merge sent the note while this round was
+// in flight) or NoteNoRow (the PR has no open row: declined, deleted or
+// purged while the round ran, so nothing is written back). The merge stamps
+// are never touched; the team slug follows the round, as the PR row follows
+// a repo that changed hands.
 func (s *Store) UpsertAlmanachNote(ctx context.Context, n AlmanachNote) (string, error) {
 	tag, err := s.pool.Exec(ctx, `
 		INSERT INTO almanach_notes
 		    (project_key, repo_slug, pr_id, team_slug, run_id, reviewed_commit, pr_title,
 		     ticket_key, jira_issue_type, change_kind, note, chars, model_label)
-		VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''), $7, NULLIF($8, ''), NULLIF($9, ''), NULLIF($10, ''), $11, $12, NULLIF($13, ''))
+		SELECT $1, $2, $3, $4, $5, NULLIF($6, ''), $7, NULLIF($8, ''), NULLIF($9, ''), NULLIF($10, ''), $11, $12, NULLIF($13, '')
+		 WHERE EXISTS (SELECT 1 FROM pull_requests p
+		                WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3
+		                  AND p.declined_at IS NULL AND p.deleted_at IS NULL)
 		ON CONFLICT (project_key, repo_slug, pr_id) DO UPDATE SET
 		    team_slug = EXCLUDED.team_slug, run_id = EXCLUDED.run_id, reviewed_commit = EXCLUDED.reviewed_commit,
 		    pr_title = EXCLUDED.pr_title, ticket_key = EXCLUDED.ticket_key, jira_issue_type = EXCLUDED.jira_issue_type,
@@ -132,9 +140,9 @@ func (s *Store) UpsertAlmanachNote(ctx context.Context, n AlmanachNote) (string,
 	switch {
 	case err != nil:
 		return "", err
-	case !ok:
-		// Gone between the two statements: a decline or a delete landed
-		// while the round ran unheld.
+	case !ok || !st.PROpen:
+		// A decline, a delete or a purge landed while the round ran
+		// unheld: nothing for the note to land on.
 		return NoteNoRow, nil
 	case st.Emitted:
 		return NoteAlreadyEmitted, nil
@@ -279,13 +287,19 @@ type AlmanachNoteState struct {
 	Finalized bool
 	HasNote   bool
 	Emitted   bool
+	// PROpen is whether the PR row a round could write to is still there:
+	// not declined, not deleted, not purged.
+	PROpen bool
 }
 
 // AlmanachNoteStatus reads the PR's note row; ok false when there is none.
 func (s *Store) AlmanachNoteStatus(ctx context.Context, k PRKey) (st AlmanachNoteState, ok bool, err error) {
-	err = s.pool.QueryRow(ctx, `SELECT finalized_at IS NOT NULL, note IS NOT NULL, almanach_emitted_at IS NOT NULL
+	err = s.pool.QueryRow(ctx, `SELECT finalized_at IS NOT NULL, note IS NOT NULL, almanach_emitted_at IS NOT NULL,
+		       EXISTS (SELECT 1 FROM pull_requests p
+		                WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3
+		                  AND p.declined_at IS NULL AND p.deleted_at IS NULL)
 		FROM almanach_notes WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3`,
-		k.Project, k.Repo, k.PRID).Scan(&st.Finalized, &st.HasNote, &st.Emitted)
+		k.Project, k.Repo, k.PRID).Scan(&st.Finalized, &st.HasNote, &st.Emitted, &st.PROpen)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return AlmanachNoteState{}, false, nil
 	}

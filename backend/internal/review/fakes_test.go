@@ -251,7 +251,9 @@ type fakeStore struct {
 	// The Almanach feed: notes is the table by key, Notes every upsert that
 	// was written, Finalized every merge stamp, EmittedRuns every 2xx mark,
 	// AlmanachCalls the ledger, NoteDeletes the declines and deletes.
-	notes         map[store.PRKey]*fakeNote
+	notes map[store.PRKey]*fakeNote
+	// noteErr fails the note upsert alone, the ledger still writes.
+	noteErr       error
 	Notes         []store.AlmanachNote
 	Finalized     []store.AlmanachFinal
 	EmittedRuns   []int64

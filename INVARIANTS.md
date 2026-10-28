@@ -240,6 +240,8 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   the Almanach note's replayed conversation (the review prompt string and
   the model's answer): that is what the cache serves, and one prompt per
   spawned call is the documented cost of the piggyback.
+- `OutcomeError` posts no notice and writes no run row (its attempt and run
+  detail are written).
 
 ## Almanach
 
@@ -259,9 +261,12 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   became of the note. That ledger counts toward nothing else (Money).
 - Merge stamps and sends; no model call. Emitted is marked after a 2xx, per
   run id. A merge during an in-flight round stamps and leaves the emit to the
-  round. Declined and deleted drop a note that is not final.
-- `OutcomeError` posts no notice and writes no run row (its attempt and run
-  detail are written).
+  round, which sends its own note only: the drain of up to ten is a worker
+  job, never a pool job. In flight is a count per PR, not a flag. Declined
+  and deleted drop a note that is not final. A spawned round's own writes go
+  through the store's PR-state guard: a declined, deleted or purged PR gets
+  no note row back (`no_row`); a store fault is `store_failed`, never
+  `no_row`.
 
 ## Store
 
