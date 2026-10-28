@@ -13,42 +13,76 @@ func noteFor(k PRKey, runID int64, text string) AlmanachNote {
 		Note: json.RawMessage(`{"summary":"` + text + `"}`), Chars: len(text), ModelLabel: "gpt-5.5-high"}
 }
 
-func pending(t *testing.T, s *Store) []AlmanachPending {
+func pending(t *testing.T, s *Store, team string) []AlmanachPending {
 	t.Helper()
-	out, err := s.PendingAlmanachNotes(context.Background(), "platform", 10)
+	out, err := s.PendingAlmanachNotes(context.Background(), team, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return out
 }
 
+func upsertNote(t *testing.T, s *Store, n AlmanachNote) string {
+	t.Helper()
+	got, err := s.UpsertAlmanachNote(context.Background(), n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+func finalize(t *testing.T, s *Store, k PRKey, team string, f AlmanachFinal) bool {
+	t.Helper()
+	if f.MergedAt.IsZero() {
+		f.MergedAt = time.Now()
+	}
+	st, err := s.FinalizeAlmanachNote(context.Background(), k, team, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return st
+}
+
 // Rounds replace the note in run-id order, whatever order they land in: the
-// note call runs unheld, so a slow round 1 may finish after round 2.
+// note call runs unheld, so a slow round 1 may finish after round 2. The
+// team slug follows the latest round, as the PR row follows a repo that
+// changed hands.
 func TestAlmanachNoteFollowsTheLatestRound(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
+	upsert(t, s, key, "a")
 
-	if w, err := s.UpsertAlmanachNote(ctx, noteFor(key, 2, "two")); err != nil || !w {
-		t.Fatalf("round 2 = %v, %v; want written", w, err)
+	if got := upsertNote(t, s, noteFor(key, 2, "two")); got != NoteWritten {
+		t.Fatalf("round 2 = %q, want written", got)
 	}
-	if w, err := s.UpsertAlmanachNote(ctx, noteFor(key, 1, "one")); err != nil || w {
-		t.Fatalf("late round 1 = %v, %v; want superseded", w, err)
+	if got := upsertNote(t, s, noteFor(key, 1, "one")); got != NoteSuperseded {
+		t.Fatalf("late round 1 = %q, want superseded", got)
 	}
-	if w, err := s.UpsertAlmanachNote(ctx, noteFor(key, 3, "three")); err != nil || !w {
-		t.Fatalf("round 3 = %v, %v; want written", w, err)
+	moved := noteFor(key, 3, "three")
+	moved.TeamSlug = "mobile"
+	if got := upsertNote(t, s, moved); got != NoteWritten {
+		t.Fatalf("round 3 = %q, want written", got)
 	}
-	var text string
-	if err := s.pool.QueryRow(ctx, `SELECT note->>'summary' FROM almanach_notes WHERE pr_id = $1`, key.PRID).Scan(&text); err != nil {
+	var text, team string
+	if err := s.pool.QueryRow(ctx, `SELECT note->>'summary', team_slug FROM almanach_notes WHERE pr_id = $1`, key.PRID).Scan(&text, &team); err != nil {
 		t.Fatal(err)
 	}
-	if text != "three" {
-		t.Errorf("note = %q, want round 3's", text)
+	if text != "three" || team != "mobile" {
+		t.Errorf("note = %q under %q, want round 3's under mobile", text, team)
+	}
+	finalize(t, s, key, "mobile", AlmanachFinal{})
+	if got := pending(t, s, "platform"); len(got) != 0 {
+		t.Errorf("the old team still drains the note: %+v", got)
+	}
+	if got := pending(t, s, "mobile"); len(got) != 1 {
+		t.Errorf("the new team does not: %+v", got)
 	}
 }
 
 // pr:merged stamps once, with the posted-findings counts by severity; a
 // redelivery changes nothing, and the stamps survive a later round. A merge
-// before any round leaves a stub that is not pending until the note lands.
+// before any round leaves a stub that is not pending until the note lands;
+// a merge of a PR noergler has no row for leaves nothing.
 func TestAlmanachFinalizeStampsOnceAndFillsAStub(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
@@ -61,28 +95,27 @@ func TestAlmanachFinalizeStampsOnceAndFillsAStub(t *testing.T) {
 		}
 	}
 
-	final := AlmanachFinal{MergedAt: time.Now(), MergeCommit: "m1", SourceCommit: "s1", PRTitle: "t"}
-	if st, err := s.FinalizeAlmanachNote(ctx, key, "platform", final); err != nil || !st {
-		t.Fatalf("finalize = %v, %v; want stamped", st, err)
+	if !finalize(t, s, key, "platform", AlmanachFinal{MergeCommit: "m1", SourceCommit: "s1", PRTitle: "t"}) {
+		t.Fatal("first finalize must stamp")
 	}
-	if got := pending(t, s); len(got) != 0 {
+	if got := pending(t, s, "platform"); len(got) != 0 {
 		t.Fatalf("a stub without a note is pending: %+v", got)
 	}
-	if st, err := s.FinalizeAlmanachNote(ctx, key, "platform", AlmanachFinal{MergedAt: time.Now(), MergeCommit: "other"}); err != nil || st {
-		t.Fatalf("second finalize = %v, %v; want not stamped", st, err)
+	if finalize(t, s, key, "platform", AlmanachFinal{MergeCommit: "other"}) {
+		t.Fatal("second finalize must not stamp")
 	}
 
 	// The late round fills the stub and keeps the stamps.
-	if w, err := s.UpsertAlmanachNote(ctx, noteFor(key, runID, "late")); err != nil || !w {
-		t.Fatalf("late note = %v, %v; want written", w, err)
+	if got := upsertNote(t, s, noteFor(key, runID, "late")); got != NoteWritten {
+		t.Fatalf("late note = %q, want written", got)
 	}
-	got := pending(t, s)
+	got := pending(t, s, "platform")
 	if len(got) != 1 {
 		t.Fatalf("pending = %d, want 1", len(got))
 	}
 	p := got[0]
-	if p.MergeCommit != "m1" || p.SourceCommit != "s1" || p.IssuesPosted != 2 || p.SuggestionsPosted != 1 {
-		t.Errorf("final = merge %q source %q issues %d suggestions %d", p.MergeCommit, p.SourceCommit, p.IssuesPosted, p.SuggestionsPosted)
+	if p.MergeCommit != "m1" || p.SourceCommit != "s1" || p.IssuesPosted != 2 || p.SuggestionsPosted != 1 || p.MergedAt.IsZero() {
+		t.Errorf("final = merge %q source %q issues %d suggestions %d at %v", p.MergeCommit, p.SourceCommit, p.IssuesPosted, p.SuggestionsPosted, p.MergedAt)
 	}
 	if p.Review.Runs != 1 || p.Review.CostNanoUSD == nil || *p.Review.CostNanoUSD != 600 || len(p.Review.Models) != 1 {
 		t.Errorf("review totals = %+v", p.Review)
@@ -90,52 +123,106 @@ func TestAlmanachFinalizeStampsOnceAndFillsAStub(t *testing.T) {
 	if p.TicketKey != "PLAT-1" || p.JiraIssueType != "Bug" || p.ChangeKind != "bugfix" || string(p.Note) != `{"summary": "late"}` {
 		t.Errorf("note facts = %+v %s", p, p.Note)
 	}
+
+	// Never reviewed, never a row: a merge leaves nothing behind.
+	unknown := PRKey{Project: "PLAT", Repo: "api", PRID: 99}
+	if finalize(t, s, unknown, "platform", AlmanachFinal{}) {
+		t.Error("a merge of a PR noergler never saw wrote a stub")
+	}
+	if _, ok, _ := s.AlmanachNoteStatus(ctx, unknown); ok {
+		t.Error("stub row for an unknown PR")
+	}
 }
 
-// Emitted is set after Almanach took the note; an emitted note leaves the
-// pending list and is never rewritten by a straggling round. Declined and
-// deleted delete.
-func TestAlmanachEmitAndDelete(t *testing.T) {
+// The review cost a note reports is the PR's cost as the cap and the rollup
+// count it: runs, billed run-less attempts and comment calls, one figure.
+func TestAlmanachReviewCostIsThePRCost(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
-	if _, err := s.UpsertAlmanachNote(ctx, noteFor(key, 5, "n")); err != nil {
+	prID := upsert(t, s, key, "a")
+	run(t, s, prID, "a", nano(500), "m")
+	if _, err := s.InsertAttempt(ctx, Attempt{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "unparseable",
+		CostNanoUSD: nano(400)}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.FinalizeAlmanachNote(ctx, key, "platform", AlmanachFinal{MergedAt: time.Now()}); err != nil {
+	if err := s.InsertCommentCall(ctx, "platform", key, CallReply, 1, LLMCall{Profile: "p", CostNanoUSD: nano(100)}); err != nil {
 		t.Fatal(err)
 	}
-	if got := pending(t, s); len(got) != 1 {
-		t.Fatalf("pending = %d, want 1", len(got))
+	upsertNote(t, s, noteFor(key, 1, "n"))
+	finalize(t, s, key, "platform", AlmanachFinal{})
+	got := pending(t, s, "platform")
+	if len(got) != 1 || got[0].Review.CostNanoUSD == nil || *got[0].Review.CostNanoUSD != 1000 {
+		t.Fatalf("review cost = %+v, want 1000", got)
 	}
-	if err := s.MarkAlmanachEmitted(ctx, key); err != nil {
+}
+
+// Emitted is stamped for the round that was sent, after Almanach took it:
+// a round that landed in between stays pending, an emitted note leaves the
+// list, and a straggler after the emit is told so.
+func TestAlmanachEmitIsPerRound(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	upsert(t, s, key, "a")
+	upsertNote(t, s, noteFor(key, 5, "five"))
+	finalize(t, s, key, "platform", AlmanachFinal{})
+	if got := pending(t, s, "platform"); len(got) != 1 || got[0].RunID != 5 {
+		t.Fatalf("pending = %+v, want round 5", got)
+	}
+
+	// The forwarder read round 5; round 6 lands before the stamp.
+	if got := upsertNote(t, s, noteFor(key, 6, "six")); got != NoteWritten {
+		t.Fatalf("round 6 = %q", got)
+	}
+	if err := s.MarkAlmanachEmitted(ctx, key, 5); err != nil {
 		t.Fatal(err)
 	}
-	if got := pending(t, s); len(got) != 0 {
+	if got := pending(t, s, "platform"); len(got) != 1 || got[0].RunID != 6 {
+		t.Fatalf("round 6 must stay pending after round 5's stamp: %+v", got)
+	}
+	if err := s.MarkAlmanachEmitted(ctx, key, 6); err != nil {
+		t.Fatal(err)
+	}
+	if got := pending(t, s, "platform"); len(got) != 0 {
 		t.Fatalf("emitted note still pending: %+v", got)
 	}
-	if w, err := s.UpsertAlmanachNote(ctx, noteFor(key, 6, "late")); err != nil || w {
-		t.Fatalf("round after emit = %v, %v; want refused", w, err)
+	if got := upsertNote(t, s, noteFor(key, 7, "late")); got != NoteAlreadyEmitted {
+		t.Fatalf("round after emit = %q, want already_emitted", got)
 	}
 	st, ok, err := s.AlmanachNoteStatus(ctx, key)
 	if err != nil || !ok || !st.Finalized || !st.HasNote || !st.Emitted {
 		t.Errorf("status = %+v, %v, %v", st, ok, err)
 	}
+}
 
-	other := PRKey{Project: "PLAT", Repo: "api", PRID: 8}
-	if _, err := s.UpsertAlmanachNote(ctx, noteFor(other, 1, "x")); err != nil {
+// Declined and deleted drop a note that is not final; a final note stays,
+// whoever asks: a merged PR deleted afterwards still happened.
+func TestAlmanachDeleteKeepsAFinalNote(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	open := PRKey{Project: "PLAT", Repo: "api", PRID: 8}
+	upsert(t, s, open, "a")
+	upsertNote(t, s, noteFor(open, 1, "x"))
+	if err := s.DeleteAlmanachNote(ctx, open); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.DeleteAlmanachNote(ctx, other); err != nil {
+	if _, ok, _ := s.AlmanachNoteStatus(ctx, open); ok {
+		t.Error("open note still there after delete")
+	}
+
+	upsert(t, s, key, "a")
+	upsertNote(t, s, noteFor(key, 1, "n"))
+	finalize(t, s, key, "platform", AlmanachFinal{})
+	if err := s.DeleteAlmanachNote(ctx, key); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok, _ := s.AlmanachNoteStatus(ctx, other); ok {
-		t.Error("deleted note still there")
+	if got := pending(t, s, "platform"); len(got) != 1 {
+		t.Errorf("a final note was deleted: %+v", got)
 	}
 }
 
 // The note call is Almanach's ledger alone: a priced call row changes
 // neither the PR's cost, nor the team's spend, nor whether a rollup emits.
-// The pending note still carries the call and the PR's round totals.
+// The pending note still carries the round's call and the PR's round totals.
 func TestAlmanachCallCountsTowardNothing(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
@@ -163,13 +250,9 @@ func TestAlmanachCallCountsTowardNothing(t *testing.T) {
 		t.Errorf("ClaimRollup = %+v, %v; want nil: a note call alone emits no rollup", snap, err)
 	}
 
-	if _, err := s.UpsertAlmanachNote(ctx, noteFor(key, runID, "n")); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.FinalizeAlmanachNote(ctx, key, "platform", AlmanachFinal{MergedAt: time.Now()}); err != nil {
-		t.Fatal(err)
-	}
-	got := pending(t, s)
+	upsertNote(t, s, noteFor(key, runID, "n"))
+	finalize(t, s, key, "platform", AlmanachFinal{})
+	got := pending(t, s, "platform")
 	if len(got) != 1 {
 		t.Fatalf("pending = %d, want 1", len(got))
 	}
@@ -187,23 +270,56 @@ func TestAlmanachCallCountsTowardNothing(t *testing.T) {
 	}
 }
 
-// Releasing the project purges the team's PR rows and leaves the notes:
-// they are the export payload, and the forwarder still has to send them.
-func TestAlmanachNotesSurvivePurge(t *testing.T) {
+// Releasing the project purges the team's PR rows and the notes that are
+// not final; a final note stays, with zero review totals, because the
+// forwarder still has to send it. Round totals count this incarnation only.
+func TestAlmanachNotesAcrossPurge(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
+	open := PRKey{Project: "PLAT", Repo: "api", PRID: 8}
+	upsert(t, s, open, "a")
+	upsertNote(t, s, noteFor(open, 1, "open"))
 	upsert(t, s, key, "a")
-	if _, err := s.UpsertAlmanachNote(ctx, noteFor(key, 1, "n")); err != nil {
+	runID := int64(1)
+	if err := s.InsertAlmanachCall(ctx, AlmanachCall{Key: key, TeamSlug: "platform", RunID: &runID, Outcome: "ok",
+		NoteStatus: "written", Call: &LLMCall{Profile: "p", CostNanoUSD: nano(5)}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.FinalizeAlmanachNote(ctx, key, "platform", AlmanachFinal{MergedAt: time.Now()}); err != nil {
-		t.Fatal(err)
-	}
+	upsertNote(t, s, noteFor(key, 1, "final"))
+	finalize(t, s, key, "platform", AlmanachFinal{})
+
 	if _, err := s.PurgeProject(ctx, "platform", key.Project, nil); err != nil {
 		t.Fatal(err)
 	}
-	got := pending(t, s)
-	if len(got) != 1 || got[0].Review.Runs != 0 {
-		t.Fatalf("pending after purge = %+v, want the note with zero review totals", got)
+	if _, ok, _ := s.AlmanachNoteStatus(ctx, open); ok {
+		t.Error("an open note survived the purge")
+	}
+	got := pending(t, s, "platform")
+	if len(got) != 1 || got[0].Review.Runs != 0 || got[0].Review.CostNanoUSD != nil || got[0].Rounds != 1 {
+		t.Fatalf("pending after purge = %+v, want the final note with zero review totals and its one round", got)
+	}
+
+	// Claimed again: a new incarnation starts its round count from zero.
+	time.Sleep(10 * time.Millisecond)
+	upsert(t, s, key, "b")
+	if err := s.MarkAlmanachEmitted(ctx, key, 1); err != nil {
+		t.Fatal(err)
+	}
+	runID = 2
+	if err := s.InsertAlmanachCall(ctx, AlmanachCall{Key: key, TeamSlug: "platform", RunID: &runID, Outcome: "ok",
+		NoteStatus: "written", Call: &LLMCall{Profile: "p", CostNanoUSD: nano(7)}}); err != nil {
+		t.Fatal(err)
+	}
+	// The old row is emitted and final, so the new incarnation's note cannot
+	// land on it; that is the PR key's life, and a reopened PR is rare
+	// enough to log. What this pins is the round bound.
+	var rounds int
+	if err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM almanach_calls a JOIN pull_requests p
+		ON p.project_key = a.project_key AND p.repo_slug = a.repo_slug AND p.pr_id = a.pr_id
+		WHERE a.pr_id = $1 AND a.created_at >= p.created_at`, key.PRID).Scan(&rounds); err != nil {
+		t.Fatal(err)
+	}
+	if rounds != 1 {
+		t.Errorf("rounds in the new incarnation = %d, want 1", rounds)
 	}
 }

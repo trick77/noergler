@@ -6,13 +6,16 @@
 -- orders the rounds); pr:merged stamps it final with the merge facts and
 -- the posted-findings counts; the forwarder marks it emitted after Almanach
 -- answered 2xx. A finalize that arrives before any note leaves a stub (note
--- NULL) for the late round to fill. Declined and deleted PRs delete it.
+-- NULL) for the late round to fill, but only for a PR noergler has a row
+-- for. Declined and deleted PRs delete a note that is not final.
 --
 -- No FK to pull_requests: a final note must survive PurgeProject (a team
--- releasing the project) until it is emitted. Plain text columns carry the
--- structure Almanach rebuilds the Bitbucket tree from: team, project, repo,
--- PR. team_slug is the slug the webhook route authenticated, never a payload
--- value.
+-- releasing the project) until it is emitted; the purge drops the notes
+-- that are not final. Plain text columns carry the structure Almanach
+-- rebuilds the Bitbucket tree from: team, project, repo, PR. team_slug is
+-- the slug the webhook route authenticated, never a payload value, and it
+-- follows the latest round like the PR row follows a repo that changed
+-- hands.
 CREATE TABLE almanach_notes (
     project_key TEXT NOT NULL,
     repo_slug TEXT NOT NULL,
@@ -67,11 +70,13 @@ CREATE TABLE almanach_calls (
     -- inference.Outcome's String(): ok, unparseable, too_large, timed_out, error.
     outcome TEXT NOT NULL,
     -- What became of the note: written, superseded (a later round had
-    -- already landed), nothing_learned (the model returned an empty note),
-    -- dropped_too_long, dropped_secret, dropped_invalid, no_answer (the
-    -- gateway never answered).
+    -- already landed), already_emitted (the merge sent the note while this
+    -- round was in flight), nothing_learned (the model returned an empty
+    -- note), dropped_too_long, dropped_secret, dropped_invalid, no_answer
+    -- (the gateway never answered).
     note_status TEXT NOT NULL CHECK (note_status IN
-        ('written', 'superseded', 'nothing_learned', 'dropped_too_long', 'dropped_secret', 'dropped_invalid', 'no_answer')),
+        ('written', 'superseded', 'already_emitted', 'nothing_learned',
+         'dropped_too_long', 'dropped_secret', 'dropped_invalid', 'no_answer')),
     profile TEXT,
     model TEXT,
     deployment TEXT,
