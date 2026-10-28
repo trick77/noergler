@@ -171,9 +171,8 @@ func TestSummarySaysEarlierFindingsUnreadable(t *testing.T) {
 	}
 }
 
-// A drop beside an open earlier issue leaves a matching verdict and its
-// rationale alone: settled once against the list, not lowered and raised
-// back with the model's words lost.
+// A drop beside an open earlier issue keeps the verdict, but not the
+// model's rationale: it may name the dropped finding, which is on no list.
 func TestDropBesideAnOpenIssueKeepsTheVerdict(t *testing.T) {
 	h := newHarness(t, nil)
 	incremental(h)
@@ -181,12 +180,12 @@ func TestDropBesideAnOpenIssueKeepsTheVerdict(t *testing.T) {
 	res := okResultWith(inference.ReviewFinding{File: "a.go", Line: 2, Severity: "issue", Comment: "x",
 		Evidence: []string{"never in the diff"}})
 	res.Review.Summary.VerdictDecision = "request_changes"
-	res.Review.Summary.VerdictRationale = "Retries are unbounded and Old issue is still open."
+	res.Review.Summary.VerdictRationale = "Request changes: nil deref in Foo."
 	h.llm.review = res
 
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
-	want := "**Request changes 🛑** — Retries are unbounded and Old issue is still open."
+	want := "**Request changes 🛑** — Verdict: 1 open finding demands it."
 	if s := h.bb.Posted[0].Text; !strings.Contains(s, want) {
 		t.Errorf("summary lacks %q:\n%s", want, s)
 	}

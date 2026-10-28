@@ -24,8 +24,9 @@ func asPosted(f store.Finding) inference.PostedFinding {
 		p.Dispute = *f.DisputeText
 	}
 	// Settled on the PR: shown so it is not raised again, with no id, so it
-	// can never be claimed fixed.
-	if f.ClosedAt != nil {
+	// can never be claimed fixed. A legacy row with no thread is out of the
+	// summary but keeps its id: nothing was resolved, and a fix retires it.
+	if f.ClosedAt != nil && f.BitbucketCommentID != nil {
 		p.ID, p.Closed = 0, true
 	}
 	return p
@@ -67,10 +68,12 @@ func (r *Reviewer) closeThreads(ctx context.Context, key store.PRKey, prTag stri
 	out = slices.Clone(findings)
 	now := time.Now()
 	var toRead []int // indexes into out, issues first when capped
+	threadless := 0
 	for i, f := range out {
 		switch {
 		case f.BitbucketCommentID == nil:
 			out[i].ClosedAt = &now
+			threadless++
 		case f.ClosedAt == nil || handoff:
 			posted++
 			toRead = append(toRead, i)
@@ -120,6 +123,9 @@ func (r *Reviewer) closeThreads(ctx context.Context, key store.PRKey, prTag stri
 	if resolved+deleted > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: finding threads closed on the PR: %d resolved (settled), %d deleted",
 			prTag, resolved, deleted))
+	}
+	if threadless > 0 {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d finding(s) with no thread on the PR (legacy rows), left out of the summary", prTag, threadless))
 	}
 	if reopened > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d settled finding thread(s) reopened on the PR, open again", prTag, reopened))

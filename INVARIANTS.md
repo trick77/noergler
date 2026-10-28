@@ -56,16 +56,17 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   "it's called SUMMARY"): the comment is replaced each run. Prompt names it
   the PR review summary; issue list = every open finding (`EarlierOpen` +
   new); `SettleVerdict` sets the decision from that list, once, both ways;
-  a match keeps the model's rationale. List shows 30, the rest counted.
+  a match keeps the model's rationale unless a dropped finding could have carried it. List shows 30, the rest counted.
 - Thread resolved or deleted = settled (user, 2026-10-28). `closeThreads`
   stamps `closed_at` on a resolved one only, never read by a review again
-  (a reopen is not noticed, accepted); a 404 is closed for that run only,
-  never stamped (a passing fault would settle it for good). No comment id
-  (legacy) = closed: no thread anyone could resolve. The handoff reads
-  stamped threads too and unstamps a reopened one. Settled: out of the list and verdict, never
-  posted again (dedupe still holds it), in the prompt marked closed with
-  no id, trimmed from it before any open one.
-  Unreadable or no comment id = open. Read in prepare, once per run, at
+  (a review does not notice a reopen, accepted; the handoff reads stamped
+  threads and unstamps a reopened one). A 404 is closed for that run only,
+  never stamped (a passing fault would settle it for good). Settled: out of
+  the list and verdict, never posted again (dedupe still holds it), in the
+  prompt marked closed with no id, trimmed from it before any open one. No
+  comment id (legacy): out of the list and verdict (no thread anyone could
+  resolve), keeps its id in the prompt so a fix retires it.
+  Unreadable = open. Read in prepare, once per run, at
   most 50 unsettled threads, issues first, the rest open unread (user).
   Unretireable after a full-review fallback (no ids): open until its
   thread is resolved (user kept it). The verdict counts new findings over

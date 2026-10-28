@@ -109,7 +109,20 @@ func SettleVerdict(s ReviewSummary, earlier, current, dropped []ReviewFinding, e
 	want := supportedVerdict(slices.Concat(earlier, current))
 	was := verdictRank(s.VerdictDecision)
 	dropsCarry := verdictRank(supportedVerdict(dropped)) >= was
-	if want == s.VerdictDecision || (!earlierKnown && verdictRank(want) < was && !dropsCarry) {
+	if want == s.VerdictDecision {
+		// The decision holds, but a rationale argued beside a dropped finding
+		// that could carry it may name that finding, which is not on the PR:
+		// replaced by what the list shows.
+		if len(dropped) > 0 && dropsCarry && was > 0 {
+			s.VerdictRationale = pluralRationale(l, demanding(slices.Concat(earlier, current), want),
+				"Empfehlung: 1 offenes Finding verlangt sie.",
+				"Empfehlung: %d offene Findings verlangen sie.",
+				"Verdict: 1 open finding demands it.",
+				"Verdict: %d open findings demand it.")
+		}
+		return s
+	}
+	if !earlierKnown && verdictRank(want) < was && !dropsCarry {
 		return s
 	}
 	s.VerdictDecision = want
@@ -134,23 +147,27 @@ func SettleVerdict(s ReviewSummary, earlier, current, dropped []ReviewFinding, e
 			"Empfehlung herabgestuft: die offenen Findings des PR stützen sie nicht.",
 			"Verdict lowered: the PR's open findings do not support it.")
 	default:
-		// Counted are the open findings that demand it, earlier and new, not
-		// every one: six suggestions beside the issue do not request changes.
-		// As supportedVerdict reads them: an issue requests changes, any
-		// other severity (an empty one included) asks for follow-ups.
-		n := 0
-		for _, f := range slices.Concat(earlier, current) {
-			if (f.Severity == "issue") == (want == "request_changes") {
-				n++
-			}
-		}
-		s.VerdictRationale = pluralRationale(l, n,
+		s.VerdictRationale = pluralRationale(l, demanding(slices.Concat(earlier, current), want),
 			"Empfehlung angehoben: 1 offenes Finding verlangt sie.",
 			"Empfehlung angehoben: %d offene Findings verlangen sie.",
 			"Verdict raised: 1 open finding demands it.",
 			"Verdict raised: %d open findings demand it.")
 	}
 	return s
+}
+
+// demanding counts the findings that demand decision, not every one: six
+// suggestions beside the issue do not request changes. As supportedVerdict
+// reads them: an issue requests changes, any other severity (an empty one
+// included) asks for follow-ups.
+func demanding(findings []ReviewFinding, decision string) int {
+	n := 0
+	for _, f := range findings {
+		if (f.Severity == "issue") == (decision == "request_changes") {
+			n++
+		}
+	}
+	return n
 }
 
 // pluralRationale picks the singular or the counted plural in l.
