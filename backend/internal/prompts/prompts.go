@@ -20,3 +20,10 @@ var Mention string
 //
 //go:embed finding_reply.txt
 var FindingReply string
+
+// AlmanachNote is the fourth turn of the review conversation: the scratch
+// note of what the PR taught about its repository, for Almanach. Always
+// German, never shown on the PR.
+//
+//go:embed almanach_note.txt
+var AlmanachNote string

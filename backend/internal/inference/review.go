@@ -47,6 +47,10 @@ type ReviewResult struct {
 	Outcome Outcome
 	Review  ParsedReview
 	Cost    CallCost
+	// Raw is the model's content verbatim, the assistant turn the Almanach
+	// note call replays so the gateway's prefix cache can serve the
+	// conversation. Empty when the gateway never answered.
+	Raw string
 	// Err carries the underlying failure for OutcomeError, OutcomeTimedOut and
 	// OutcomeTooLarge. Nil on success.
 	Err error
@@ -115,7 +119,7 @@ func (c *Client) Review(ctx context.Context, req ReviewRequest) ReviewResult {
 		}
 	}
 
-	out := ReviewResult{Review: ParseReview(resp.Content), Cost: CostFrom(resp)}
+	out := ReviewResult{Review: ParseReview(resp.Content), Cost: CostFrom(resp), Raw: resp.Content}
 	out.Cost.Warnings = WarningLines(warnings)
 	// The parser is pure, so its operator-facing lines surface here, where the
 	// caller's context carries team and pr_tag. Emitting them inside the
