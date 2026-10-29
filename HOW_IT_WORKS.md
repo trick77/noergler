@@ -361,7 +361,8 @@ The section lists each screenshot by file name (the path where two share
 one) with the model's sentence, or why there is none: over the per-run limits, no room, too large, unreadable, in Git LFS,
 no vision, or the model said nothing. A removed baseline gets no line; a PR
 that only removes baselines has no section. Neither does a pair the model
-says shows no difference a person could see (edge smoothing, a shade): it
+says shows no difference a person could see (a few edge pixels a shade
+off; never an added baseline, which has no before): it
 is stored like same pixels, and the next variant is tried on a later run. Never a finding: an image has
 no line to anchor on and no quotable evidence. Every screenshot left out is
 in the log.

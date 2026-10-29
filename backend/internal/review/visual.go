@@ -155,7 +155,7 @@ func (r *Reviewer) prepareVisual(ctx context.Context, key store.PRKey, prTag, he
 		}
 	}
 
-	r.log.InfoContext(ctx, fmt.Sprintf("%s: screenshots: %d changed, %d shown, %d sent (~%d tokens), %d from earlier runs, %d unchanged pixels, %d removed (not shown), %d read(s)",
+	r.log.InfoContext(ctx, fmt.Sprintf("%s: screenshots: %d changed, %d shown, %d sent (~%d tokens), %d from earlier runs, %d unchanged or not visible, %d removed (not shown), %d read(s)",
 		prTag, len(shots), len(vp.lines), len(vp.images), vp.tokens, vs.cached, unchanged, len(removed), vs.fetched))
 	if len(removed) > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d screenshot(s) removed, not listed: %s", prTag, len(removed), capPaths(removed)))
@@ -378,7 +378,8 @@ func (r *Reviewer) visualLines(ctx context.Context, plan *reviewPlan, answers []
 		}
 		answered[a.ID] = true
 		text := a.Change
-		if a.Invisible {
+		// An added baseline has no before to differ from: always shown.
+		if a.Invisible && p.pair.BeforeID != "" {
 			text = ""
 			hidden[p.line] = true
 			invisible = append(invisible, p.pair.Path)

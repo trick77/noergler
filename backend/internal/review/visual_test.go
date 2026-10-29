@@ -205,13 +205,28 @@ func TestScreenshotWithNoVisibleChangeIsNotListed(t *testing.T) {
 	}
 }
 
-// Every line invisible: no section at all.
-func TestOnlyInvisibleScreenshotChangesNoSection(t *testing.T) {
+// An added baseline has no before to differ from: marked not visible, it is
+// still listed, never stored as unchanged.
+func TestAddedScreenshotIsNeverHidden(t *testing.T) {
 	h := screenshotHarness(t, true)
 	res := okResultWith()
 	res.Review.Visual = []inference.VisualChange{
-		{ID: "V1", Change: "x", Invisible: true}, {ID: "V2", Change: "y", Invisible: true},
+		{ID: "V1", Change: "x", Invisible: true}, {ID: "V2", Change: "New page, nothing to compare.", Invisible: true},
 	}
+	h.llm.review = res
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	got := lastSummary(t, h)
+	if !strings.Contains(got, "`new.png` - New page, nothing to compare.") || strings.Contains(got, "form-chromium-linux.png") {
+		t.Errorf("want the added baseline listed and the modified one hidden:\n%s", got)
+	}
+}
+
+// Every line invisible: no section at all.
+func TestOnlyInvisibleScreenshotChangesNoSection(t *testing.T) {
+	h := screenshotHarness(t, true)
+	h.bb.changeSet.Changes = h.bb.changeSet.Changes[:1]
+	res := okResultWith()
+	res.Review.Visual = []inference.VisualChange{{ID: "V1", Change: "x", Invisible: true}}
 	h.llm.review = res
 	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
 	if got := lastSummary(t, h); strings.Contains(got, "Visual changes") {

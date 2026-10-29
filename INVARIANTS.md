@@ -166,8 +166,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   removed one gets no line (user, 2026-10-28: noise), nor one the model
   marks `visible: false` (user, 2026-10-30: «kein klarer visueller
   Unterschied» lines are noise), stored as '' like same pixels; only a
-  literal false hides. Visible drift no code explains keeps its line. At
-  most 10 pairs a call (the 20 reads fill no more).
+  literal false hides, never on an added one. Visible drift no code
+  explains keeps its line. At most 10 pairs a call (a changed pair takes 2
+  of the 20 reads).
 
 ## Evals
 

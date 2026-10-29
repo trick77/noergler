@@ -5,123 +5,123 @@
   "system_tokens": 164
  },
  "english": {
-  "prompt_sha256": "99d9bce3f6ec96457c55969a0dfd885e15ecd0febf351a5dca2775e9e0498eb5",
+  "prompt_sha256": "454a60a511dedc6a4182412456fba06cda8a61963bcd4508faf82451e9733738",
   "breakdown": {
-   "template": 4567,
+   "template": 4592,
    "repo_instructions": 0,
    "files": 78
   },
-  "prompt_tokens": 5593,
-  "prompt_len": 19867
+  "prompt_tokens": 5618,
+  "prompt_len": 19970
  },
  "everything": {
-  "prompt_sha256": "4980ea5b7f9992434ff450cca4536263d4966ab678f61f7d82b1672c6630692b",
+  "prompt_sha256": "ade65209c9b33cd5f9a5b1932a103b63dccdb90397b7f338f85dfcc4dec3832e",
   "breakdown": {
-   "template": 4616,
+   "template": 4641,
    "repo_instructions": 6,
    "files": 152
   },
-  "prompt_tokens": 6311,
-  "prompt_len": 22948
+  "prompt_tokens": 6336,
+  "prompt_len": 23051
  },
  "minimal": {
-  "prompt_sha256": "bc0c046831c0dfacd91e7c6f993ee9dfca615ba34ee3826af4cafe87f5186e8c",
+  "prompt_sha256": "dd1c1774416e3468e5a53dec95f0383893409292f625aa3c407145ed9cd38aae",
   "breakdown": {
-   "template": 4616,
+   "template": 4641,
    "repo_instructions": 0,
    "files": 78
   },
-  "prompt_tokens": 5642,
-  "prompt_len": 20086
+  "prompt_tokens": 5667,
+  "prompt_len": 20189
  },
  "ticket_absent_compliance_on": {
-  "prompt_sha256": "bc0c046831c0dfacd91e7c6f993ee9dfca615ba34ee3826af4cafe87f5186e8c",
+  "prompt_sha256": "dd1c1774416e3468e5a53dec95f0383893409292f625aa3c407145ed9cd38aae",
   "breakdown": {
-   "template": 4616,
+   "template": 4641,
    "repo_instructions": 0,
    "files": 78
   },
-  "prompt_tokens": 5642,
-  "prompt_len": 20086
+  "prompt_tokens": 5667,
+  "prompt_len": 20189
  },
  "ticket_compliance_off": {
-  "prompt_sha256": "251def90527917ef219e6b20f6ee8eb0fa6606aa201b980f258eb96157887cfe",
+  "prompt_sha256": "2d03f1ff8017d1940281998899b5b353a448afd359d29e71cd5693242d7869e7",
   "breakdown": {
-   "template": 4616,
+   "template": 4641,
    "repo_instructions": 0,
    "files": 78
   },
-  "prompt_tokens": 5648,
-  "prompt_len": 20086
+  "prompt_tokens": 5673,
+  "prompt_len": 20189
  },
  "with_cross_file": {
-  "prompt_sha256": "aa2fb81078be25fd0ca2d54b0b5140e58dc5acaf110a4af06c14839a09cba06d",
+  "prompt_sha256": "e5b595303801b3e195dbc2adfa595d509de6cf1a871016403614b96c12a0271b",
   "breakdown": {
-   "template": 4616,
+   "template": 4641,
    "repo_instructions": 0,
    "files": 152
   },
-  "prompt_tokens": 5728,
-  "prompt_len": 20361
+  "prompt_tokens": 5753,
+  "prompt_len": 20464
  },
  "with_cumulative": {
-  "prompt_sha256": "a42d44f6f115d89dbba9d95222453a95009119e5650a1f5b2ffae211082dbac3",
+  "prompt_sha256": "e748306f6968f726e3faeea33538a0176c98da82c1bc6cb1a3638e2f00801382",
   "breakdown": {
-   "template": 4616,
+   "template": 4641,
    "repo_instructions": 0,
    "files": 78
   },
-  "prompt_tokens": 5781,
-  "prompt_len": 20677
+  "prompt_tokens": 5806,
+  "prompt_len": 20780
  },
  "with_pr_description": {
-  "prompt_sha256": "3eedffd6cdcbfebb54d41c358b9499fc7786555881148b05bf140501b4461116",
+  "prompt_sha256": "d1c13c09d3416f266e2ca0de569deeb18b2397582185190ada26b09a06cf512f",
   "breakdown": {
-   "template": 4616,
+   "template": 4641,
    "repo_instructions": 0,
    "files": 78
   },
-  "prompt_tokens": 5650,
-  "prompt_len": 20104
+  "prompt_tokens": 5675,
+  "prompt_len": 20207
  },
  "with_previous_overview": {
-  "prompt_sha256": "749a42dd02344b8ff9d34cb772afc6ba5811ee066d7844bf5fa4a01d422c088f",
+  "prompt_sha256": "d0ba59d8bf40a8bb44858fc1d6f4e9303c6a6299e725493d6fbbfa56913ed524",
   "breakdown": {
-   "template": 4616,
+   "template": 4641,
    "repo_instructions": 0,
    "files": 78
   },
-  "prompt_tokens": 5850,
-  "prompt_len": 21044
+  "prompt_tokens": 5875,
+  "prompt_len": 21147
  },
  "with_repo_instructions": {
-  "prompt_sha256": "9d229fe2d4fa112de894cd8a5dcf99df547c8c61ee8c9ff545cd5bcdb06da5ae",
+  "prompt_sha256": "26890ec5237d5b1c5022f9b95ebdba9138a02f7776f260899f1e8f54f8932927",
   "breakdown": {
-   "template": 4616,
+   "template": 4641,
    "repo_instructions": 6,
    "files": 78
   },
-  "prompt_tokens": 5648,
-  "prompt_len": 20104
+  "prompt_tokens": 5673,
+  "prompt_len": 20207
  },
  "with_supplementary": {
-  "prompt_sha256": "246c4a0ea56f8958ff3205a766a432a075f758c7d2ec82313985b6ce611c21f4",
+  "prompt_sha256": "b8c9a6512f2970dedded175dea1ad05e06bb666897ce562db866b4510bbe7db3",
   "breakdown": {
-   "template": 4616,
+   "template": 4641,
    "repo_instructions": 0,
    "files": 152
   },
-  "prompt_tokens": 5756,
-  "prompt_len": 20472
+  "prompt_tokens": 5781,
+  "prompt_len": 20575
  },
  "with_ticket": {
-  "prompt_sha256": "d8d8ebe429c39ecf7c209483f24d3e98311d1dbf004fdaecb89409128dcca157",
+  "prompt_sha256": "256605fbfe9d8d85122ac1c5c42c8b4695841f069481a11260ca844ec98928c1",
   "breakdown": {
-   "template": 4616,
+   "template": 4641,
    "repo_instructions": 0,
    "files": 78
   },
-  "prompt_tokens": 5887,
-  "prompt_len": 21246
+  "prompt_tokens": 5912,
+  "prompt_len": 21349
  }
 }

@@ -126,9 +126,8 @@ func ReviewResponseSchema() map[string]any {
 }
 
 // MaxVisualImages is the most screenshot pairs one review call carries; the
-// schema caps visual_changes at it. Ten is what a review's 20 reads (two a
-// pair) can fill; six left a baseline refresh waiting on a push that may
-// never come.
+// schema caps visual_changes at it. Ten changed pairs take a review's 20
+// reads; six left a baseline refresh waiting on a push that may never come.
 const MaxVisualImages = 10
 
 // ReviewResponseFormat is the schema as llmwire sends it.
