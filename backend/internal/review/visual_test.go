@@ -13,6 +13,7 @@ import (
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/render"
+	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
 
@@ -166,6 +167,55 @@ func TestScreenshotLinesAreReusedOnTheNextRun(t *testing.T) {
 	got := lastSummary(t, h)
 	if !strings.Contains(got, "- Dot added.") || !strings.Contains(got, "- New page.") {
 		t.Errorf("stored lines missing from the second summary:\n%s", got)
+	}
+}
+
+// A pair the model saw no difference in gets no line (user, 2026-10-30:
+// noise) and is stored as unchanged: the next run neither sends nor lists
+// it, and hands over to the next variant as for unchanged pixels.
+func TestScreenshotWithNoVisibleChangeIsNotListed(t *testing.T) {
+	h := screenshotHarness(t, true)
+	res := okResultWith()
+	res.Review.Visual = []inference.VisualChange{
+		{ID: "V1", Change: "No clear difference; nothing in the PR explains it, likely drift.", Invisible: true},
+		{ID: "V2", Change: "New page."},
+	}
+	h.llm.review = res
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+
+	got := lastSummary(t, h)
+	if strings.Contains(got, "form-chromium-linux.png") || strings.Contains(got, "likely drift") {
+		t.Errorf("an invisible change is listed:\n%s", got)
+	}
+	if !strings.Contains(got, "`new.png` - New page.") {
+		t.Errorf("the visible line is gone:\n%s", got)
+	}
+	pair := store.VisualPair{Path: shotDir + "form-chromium-linux.png", BeforeID: "c1", AfterID: "c2"}
+	if text, ok := h.st.visual[pair]; !ok || text != "" {
+		t.Errorf("stored %q (%v), want the unchanged marker", text, ok)
+	}
+
+	h.llm.review = okResultWith()
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	if imgs := h.llm.Reviews[1].Images; len(imgs) != 1 || imgs[0].Path != shotDir+"form-firefox-linux.png" {
+		t.Errorf("second run sent %+v, want the firefox variant only", imgs)
+	}
+	if got := lastSummary(t, h); strings.Contains(got, "form-chromium-linux.png") {
+		t.Errorf("the second run lists the invisible change:\n%s", got)
+	}
+}
+
+// Every line invisible: no section at all.
+func TestOnlyInvisibleScreenshotChangesNoSection(t *testing.T) {
+	h := screenshotHarness(t, true)
+	res := okResultWith()
+	res.Review.Visual = []inference.VisualChange{
+		{ID: "V1", Change: "x", Invisible: true}, {ID: "V2", Change: "y", Invisible: true},
+	}
+	h.llm.review = res
+	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	if got := lastSummary(t, h); strings.Contains(got, "Visual changes") {
+		t.Errorf("a section with nothing visible in it:\n%s", got)
 	}
 }
 

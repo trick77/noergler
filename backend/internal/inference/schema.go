@@ -113,10 +113,11 @@ func ReviewResponseSchema() map[string]any {
 				"items": map[string]any{
 					"type":                 "object",
 					"additionalProperties": false,
-					"required":             []any{"id", "change"},
+					"required":             []any{"id", "change", "visible"},
 					"properties": map[string]any{
-						"id":     map[string]any{"type": "string"},
-						"change": map[string]any{"type": "string", "minLength": 1},
+						"id":      map[string]any{"type": "string"},
+						"change":  map[string]any{"type": "string", "minLength": 1},
+						"visible": map[string]any{"type": "boolean"},
 					},
 				},
 			},
@@ -125,8 +126,10 @@ func ReviewResponseSchema() map[string]any {
 }
 
 // MaxVisualImages is the most screenshot pairs one review call carries; the
-// schema caps visual_changes at it.
-const MaxVisualImages = 6
+// schema caps visual_changes at it. Ten is what a review's 20 reads (two a
+// pair) can fill; six left a baseline refresh waiting on a push that may
+// never come.
+const MaxVisualImages = 10
 
 // ReviewResponseFormat is the schema as llmwire sends it.
 func ReviewResponseFormat() *llmwire.ResponseFormat {
@@ -179,9 +182,9 @@ const schemaJSON = `{"type": "object", "additionalProperties": false, "required"
 	`"additionalProperties": false, "required": ["requirement", "met", "evidence"], ` +
 	`"properties": {"requirement": {"type": "string"}, "met": {"type": "boolean"}, ` +
 	`"evidence": {"type": ["string", "null"]}}}}, ` +
-	`"visual_changes": {"type": "array", "maxItems": 6, "items": {"type": "object", "additionalProperties": false, ` +
-	`"required": ["id", "change"], "properties": {"id": {"type": "string"}, ` +
-	`"change": {"type": "string", "minLength": 1}}}}}}`
+	`"visual_changes": {"type": "array", "maxItems": 10, "items": {"type": "object", "additionalProperties": false, ` +
+	`"required": ["id", "change", "visible"], "properties": {"id": {"type": "string"}, ` +
+	`"change": {"type": "string", "minLength": 1}, "visible": {"type": "boolean"}}}}}}`
 
 // SchemaJSON is the schema in its pinned byte form, for token counting.
 func SchemaJSON() string { return schemaJSON }

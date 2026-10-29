@@ -352,8 +352,9 @@ func (r *Reviewer) visualRoom(promptTokens int) int {
 }
 
 // visualLines fills in what the model said for the pairs this run sent and
-// stores each, so a later run reuses it. An id the run did not send, and a
-// sent one the model skipped, are logged.
+// stores each, so a later run reuses it; a pair the model saw no difference
+// in loses its line. An id the run did not send, and a sent one the model
+// skipped, are logged.
 func (r *Reviewer) visualLines(ctx context.Context, plan *reviewPlan, answers []inference.VisualChange) []render.VisualLine {
 	vp := plan.visual
 	for _, p := range vp.same {
@@ -364,6 +365,11 @@ func (r *Reviewer) visualLines(ctx context.Context, plan *reviewPlan, answers []
 	lines := append([]render.VisualLine(nil), vp.lines...)
 	answered := map[string]bool{}
 	var unknown []string
+	// hidden are the lines of pairs the model saw no difference in (user,
+	// 2026-10-30: noise). Stored as "", like unchanged pixels, so a later
+	// run neither shows nor re-sends them.
+	hidden := map[int]bool{}
+	var invisible []string
 	for _, a := range answers {
 		p, ok := vp.pending[a.ID]
 		if !ok || answered[a.ID] {
@@ -371,10 +377,29 @@ func (r *Reviewer) visualLines(ctx context.Context, plan *reviewPlan, answers []
 			continue
 		}
 		answered[a.ID] = true
-		lines[p.line].Status, lines[p.line].Text = render.VisualDescribed, a.Change
+		text := a.Change
+		if a.Invisible {
+			text = ""
+			hidden[p.line] = true
+			invisible = append(invisible, p.pair.Path)
+		} else {
+			lines[p.line].Status, lines[p.line].Text = render.VisualDescribed, a.Change
+		}
 		safeDBErr(ctx, r.log, "InsertVisualChange", func() error {
-			return r.store.InsertVisualChange(ctx, plan.key, p.pair, a.Change, r.llm.Model())
+			return r.store.InsertVisualChange(ctx, plan.key, p.pair, text, r.llm.Model())
 		})
+	}
+	if len(invisible) > 0 {
+		slices.Sort(invisible)
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d screenshot(s) with no visible change, not listed: %s",
+			plan.prTag, len(invisible), capPaths(invisible)))
+		kept := lines[:0]
+		for i, l := range lines {
+			if !hidden[i] {
+				kept = append(kept, l)
+			}
+		}
+		lines = kept
 	}
 	if len(unknown) > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: visual_changes for unknown or repeated id(s) dropped: %s",

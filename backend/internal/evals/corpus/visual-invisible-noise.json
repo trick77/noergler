@@ -1,0 +1,28 @@
+{
+  "name": "visual-invisible-noise",
+  "description": "A renamed constant in a Go retry helper, and a login baseline re-recorded on another CI runner: sixty anti-aliased glyph-edge pixels are two levels lighter, nothing a reviewer could see. A clean control for findings; the screenshot must be marked not visible, so the summary lists nothing for it (user, 2026-10-30: noise).",
+  "files": [
+    {
+      "path": "internal/retry/retry.go",
+      "diff": "@@ -5,12 +5,12 @@\n \t\"time\"\n )\n \n-const maxTries = 3\n+const maxAttempts = 3\n \n // Do runs f until it succeeds or the attempts run out.\n func Do(ctx context.Context, f func() error) error {\n \tvar err error\n-\tfor range maxTries {\n+\tfor range maxAttempts {\n \t\tif err = f(); err == nil {\n \t\t\treturn nil\n \t\t}",
+      "content": "package retry\n\nimport (\n\t\"context\"\n\t\"time\"\n)\n\nconst maxAttempts = 3\n\n// Do runs f until it succeeds or the attempts run out.\nfunc Do(ctx context.Context, f func() error) error {\n\tvar err error\n\tfor range maxAttempts {\n\t\tif err = f(); err == nil {\n\t\t\treturn nil\n\t\t}\n\t\tselect {\n\t\tcase <-ctx.Done():\n\t\t\treturn ctx.Err()\n\t\tcase <-time.After(100 * time.Millisecond):\n\t\t}\n\t}\n\treturn err\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "screenshots": [
+    {
+      "path": "web/e2e/account.spec.ts-snapshots/sign-in-chromium-linux.png",
+      "before": "login-stack.png",
+      "after": "login-stack-noise.png"
+    }
+  ],
+  "expected": [],
+  "expected_visual": [
+    {
+      "id": "not-visible",
+      "path": "web/e2e/account.spec.ts-snapshots/sign-in-chromium-linux.png",
+      "hidden": true,
+      "why": "Nothing in the crop changed that a person could see; a line for it is the noise the user asked to drop."
+    }
+  ]
+}

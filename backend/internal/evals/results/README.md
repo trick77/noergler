@@ -106,7 +106,12 @@ several reviews. Those live in `sampled/` and are never rows here.
   expected screenshot lines, scored like findings (a keyword in the line for
   that path), taking it to 25 with 21 seeded. The scorer changed with it:
   Seeded and Caught now count screenshot lines, so a rev9 row starts a new
-  baseline. Sampled runs score findings only. Bump the number when a
+  baseline. `rev10` adds `visual-invisible-noise`, a control whose
+  baseline differs by sixty glyph-edge pixels two levels lighter: the line
+  is expected marked not visible (`hidden`), and an expected line marked
+  not visible no longer counts as seen, taking it to 26 with 22 seeded; the
+  scorer changed with it, so a rev10 row starts a new baseline. Sampled
+  runs score findings only. Bump the number when a
   **scored** field changes: `file`, `lines`, `keywords`, `diff`, `content`.
   Prose does not move a score, so an edit to `description` or `why` is not a
   new revision, and rev4 covers such an edit made after run5.

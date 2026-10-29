@@ -485,6 +485,13 @@ func ParseReview(content string) ParsedReview {
 					continue
 				}
 				v.ID, v.Change = strings.TrimSpace(v.ID), strings.TrimSpace(v.Change)
+				// Only a literal false hides the line: anything else the
+				// model put there shows it.
+				var flag struct {
+					Visible json.RawMessage `json:"visible"`
+				}
+				_ = json.Unmarshal(item, &flag)
+				v.Invisible = string(flag.Visible) == "false"
 				if v.ID == "" || v.Change == "" {
 					out.warn("Skipping empty visual_changes entry")
 					continue
@@ -501,6 +508,10 @@ func ParseReview(content string) ParsedReview {
 type VisualChange struct {
 	ID     string `json:"id"`
 	Change string `json:"change"`
+	// Invisible: the model named no difference it could see, so the pair
+	// gets no line. Decoded from `visible`; absent reads as visible, so a
+	// model that leaves it out loses no line.
+	Invisible bool `json:"-"`
 }
 
 // decodeString returns raw as a string, or "" when it is absent or not a

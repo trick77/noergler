@@ -21,7 +21,10 @@ type ExpectedVisual struct {
 	ID       string   `json:"id"`
 	Path     string   `json:"path"`
 	Keywords []string `json:"keywords"`
-	Why      string   `json:"why"`
+	// Hidden: the pair shows no difference a person could see, and the
+	// model must mark it not visible, so no line is shown. Keywords unread.
+	Hidden bool   `json:"hidden,omitempty"`
+	Why    string `json:"why"`
 }
 
 // caseImages is a case's screenshots cut as production cuts them, once per
@@ -84,31 +87,46 @@ func loadImages(entries []corpusScreenshot) (caseImages, error) {
 }
 
 // matchVisual scores the model's lines against what the case expects, and
-// returns the lines by path for the report.
+// returns the lines by path as the summary would show them: a pair marked
+// not visible has none.
 func matchVisual(expected []ExpectedVisual, ids map[string]string, answers []inference.VisualChange) ([]VisualMatch, map[string]string) {
+	said := map[string]inference.VisualChange{}
 	byPath := map[string]string{}
 	for _, a := range answers {
 		if p, ok := ids[a.ID]; ok {
-			if _, seen := byPath[p]; !seen {
-				byPath[p] = a.Change
+			if _, seen := said[p]; !seen {
+				said[p] = a
+				if !a.Invisible {
+					byPath[p] = a.Change
+				}
 			}
 		}
 	}
 	var out []VisualMatch
 	for _, e := range expected {
-		m := VisualMatch{Expected: e, Change: byPath[e.Path]}
-		lower := strings.ToLower(m.Change)
-		for _, k := range e.Keywords {
-			if m.Change != "" && strings.Contains(lower, strings.ToLower(k)) {
-				m.Found = true
-				break
-			}
-		}
+		a, answered := said[e.Path]
+		m := VisualMatch{Expected: e, Change: a.Change}
 		switch {
-		case m.Change == "":
+		case !answered:
 			m.Why = "no visual_changes line for the screenshot"
-		case !m.Found:
-			m.Why = "line mentions none of " + strings.Join(e.Keywords, ", ")
+		case e.Hidden:
+			m.Found = a.Invisible
+			if !m.Found {
+				m.Why = "listed, though nothing visible changed"
+			}
+		case a.Invisible:
+			m.Why = "marked not visible, so no line is shown"
+		default:
+			lower := strings.ToLower(m.Change)
+			for _, k := range e.Keywords {
+				if strings.Contains(lower, strings.ToLower(k)) {
+					m.Found = true
+					break
+				}
+			}
+			if !m.Found {
+				m.Why = "line mentions none of " + strings.Join(e.Keywords, ", ")
+			}
 		}
 		out = append(out, m)
 	}
