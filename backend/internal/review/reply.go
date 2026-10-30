@@ -205,7 +205,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	} else if n := len(fileLines(content)); f.LineNumber > n {
 		excerpt = note + fmt.Sprintf("_Line %d is past the end of the file (%d lines)._", f.LineNumber, n)
 	} else {
-		excerpt = note + truncateRunes(excerptAround(content, f.LineNumber, replyExcerptLines), replyExcerptRunes)
+		excerpt = note + lang.TruncateRunes(excerptAround(content, f.LineNumber, replyExcerptLines), replyExcerptRunes)
 	}
 	// AGENTS.md from the same commit, so code and guidelines match.
 	agentsMD := r.fetchRepoInstructions(ctx, project, repo, at, pr.ToRef.Branch())
@@ -217,7 +217,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		RepoInstructions: agentsMD,
 		Finding:          fmt.Sprintf("%s [%s]\n\n%s", where, f.Severity, f.CommentText),
 		FileExcerpt:      excerpt,
-		Reply:            truncateRunes(text, replyTextRunes),
+		Reply:            lang.TruncateRunes(text, replyTextRunes),
 		AuthorFirstName:  name,
 	})
 	req := inference.FindingReplyRequest{
@@ -232,12 +232,6 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	}
 	infer := func(inferCtx context.Context) { job.res = r.llm.FindingReply(inferCtx, req) }
 	post := func(postCtx context.Context) { r.postFindingReply(postCtx, job) }
-	if sched == nil {
-		// A direct caller or a test: inline, as the mention does.
-		infer(ctx)
-		post(ctx)
-		return true, false
-	}
 	sched.Stage(ctx, key, team, infer, post)
 	return true, true
 }
@@ -280,7 +274,7 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 	dispute := res.Reply.Intent == "disputes"
 
 	reply, nameState := guardName(res.Reply.Reply, j.name, res.Reply.Intent, j.namesOn)
-	body := truncateRunes(sharpS(j.lang, reply), replyPostRunes)
+	body := lang.TruncateRunes(sharpS(j.lang, reply), replyPostRunes)
 	agentsLine := "none"
 	if line := res.Reply.AgentsMDLine; line != "" {
 		switch reason := inference.CheckAgentsMDLine(line, j.agentsMD); {
@@ -310,7 +304,7 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 	r.recordBotReply(ctx, j.key, posted, store.BotReplyReply)
 	var stored *string
 	if dispute {
-		d := truncateRunes(j.text, disputeTextRunes)
+		d := lang.TruncateRunes(j.text, disputeTextRunes)
 		stored = &d
 	}
 	safeDBErr(ctx, r.log, "MarkFindingReplied", func() error { return r.store.MarkFindingReplied(ctx, j.findingID, stored) })
@@ -332,16 +326,7 @@ func (r *Reviewer) fetchFindingFile(ctx context.Context, project, repo, commit, 
 // codeFence is a backtick fence longer than any backtick run in s, so model
 // text cannot close it early and post markdown as the bot's own.
 func codeFence(s string) string {
-	longest, run := 0, 0
-	for _, c := range s {
-		if c == '`' {
-			run++
-			longest = max(longest, run)
-			continue
-		}
-		run = 0
-	}
-	return strings.Repeat("`", max(3, longest+1))
+	return strings.Repeat("`", max(3, lang.BacktickRun(s)+1))
 }
 
 // fileLines splits a file into its lines; a final newline ends the last

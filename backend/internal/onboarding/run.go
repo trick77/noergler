@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/trick77/noergler/internal/bitbucket"
+	"github.com/trick77/noergler/internal/lang"
 )
 
 // httpDetailCap bounds how much of a failing response body reaches a row's
@@ -21,15 +22,7 @@ func httpDetail(err error) string {
 	if !errors.As(err, &se) {
 		return err.Error()
 	}
-	return fmt.Sprintf("HTTP %d: %s", se.Status, truncateRunes(se.Body, httpDetailCap))
-}
-
-func truncateRunes(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n])
+	return fmt.Sprintf("HTTP %d: %s", se.Status, lang.TruncateRunes(se.Body, httpDetailCap))
 }
 
 // Status reports one target: owned, readable by the bot, and the state of its

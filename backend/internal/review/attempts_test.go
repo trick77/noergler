@@ -43,7 +43,7 @@ func TestAttemptRecordedForEveryOutcome(t *testing.T) {
 				Review:  inference.ParsedReview{Summary: inference.NewReviewSummary()},
 			}
 
-			h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+			h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 			if len(h.st.Attempts) != 1 {
 				t.Fatalf("expected one attempt row, got %d", len(h.st.Attempts))
@@ -77,7 +77,7 @@ func TestUnparseableAttemptCarriesItsCost(t *testing.T) {
 		Cost:    inference.CallCost{NanoUSD: &cost},
 	}
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.st.Attempts) != 1 {
 		t.Fatalf("expected one attempt, got %d", len(h.st.Attempts))
@@ -117,7 +117,7 @@ func TestAttemptKeepsTheGatewayCall(t *testing.T) {
 				Cost:    c.cost,
 			}
 
-			h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+			h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 			if len(h.st.Attempts) != 1 {
 				t.Fatalf("expected one attempt, got %d", len(h.st.Attempts))
@@ -166,7 +166,7 @@ func TestRefusedCallWriteIsLoggedAsSuch(t *testing.T) {
 		Cost:    inference.CallCost{Answered: true},
 	}
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	want := store.PRKey{Project: "PROJ", Repo: "my-repo", PRID: 42}.Tag() + ": gateway call detail not recorded; the attempt was written"
 	if !strings.Contains(logs.String(), want) {
@@ -182,7 +182,7 @@ func TestRefusedCallWriteIsLoggedAsSuch(t *testing.T) {
 func TestSuccessfulAttemptLinksItsRun(t *testing.T) {
 	h := newHarness(t, nil)
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.st.Attempts) != 1 {
 		t.Fatalf("expected one attempt, got %d", len(h.st.Attempts))
@@ -209,7 +209,7 @@ func TestSkipRecordsItsReason(t *testing.T) {
 
 	p := prPayload(webhook.EventOpened)
 	p.PullRequest.Author.User.Name = "renovate"
-	h.r.ReviewPullRequest(context.Background(), p, false)
+	h.r.reviewInline(context.Background(), p, false)
 
 	if len(h.st.Attempts) != 1 {
 		t.Fatalf("expected one attempt, got %d", len(h.st.Attempts))
@@ -247,7 +247,7 @@ func TestDiffSkipsRecordTheirOwnReason(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			h := newHarness(t, func(h *harness) { c.setup(h) })
 
-			h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+			h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 			if len(h.st.Attempts) != 1 {
 				t.Fatalf("expected one attempt, got %d", len(h.st.Attempts))
@@ -266,7 +266,7 @@ func TestHeadUnchangedRecordsItsReason(t *testing.T) {
 	h.st.lastCommit, h.st.hasLast = "src1", true
 
 	p := prPayload(webhook.EventFromRefUpdated)
-	h.r.ReviewPullRequest(context.Background(), p, false)
+	h.r.reviewInline(context.Background(), p, false)
 
 	if len(h.st.Attempts) != 1 {
 		t.Fatalf("expected one attempt, got %d", len(h.st.Attempts))
@@ -285,7 +285,7 @@ func TestDiffFetchFailureIsAnErrorNotASkip(t *testing.T) {
 		h.bb.prDiffErr = errors.New("bitbucket is down")
 	})
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.st.Attempts) != 1 {
 		t.Fatalf("attempts = %+v, want one", h.st.Attempts)
@@ -304,7 +304,7 @@ func TestDiffFetchCancelledIsNotAnError(t *testing.T) {
 		h.bb.onPRDiff = cancel
 	})
 
-	h.r.ReviewPullRequest(ctx, prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(ctx, prPayload(webhook.EventOpened), false)
 
 	for _, a := range h.st.Attempts {
 		if a.Outcome == "error" {
@@ -318,7 +318,7 @@ func TestDiffFetchCancelledIsNotAnError(t *testing.T) {
 func TestAttemptWriteFailsOpen(t *testing.T) {
 	h := newHarness(t, nil)
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 	posted := len(h.bb.Posted)
 	inline := len(h.bb.Inline)
 	if posted == 0 {
@@ -328,7 +328,7 @@ func TestAttemptWriteFailsOpen(t *testing.T) {
 	h2 := newHarness(t, nil)
 	h2.st.attemptErr = errors.New("attempts table is on fire")
 
-	h2.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h2.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h2.bb.Posted) != posted {
 		t.Errorf("summary posts = %d, want %d: a failed attempt write must not change the review",
@@ -350,7 +350,7 @@ func TestMentionReviewIsRecordedAsAMentionKind(t *testing.T) {
 
 	// skipAuthorCheck=true is the mention entry: HandleMention delegates
 	// here for an empty question or a review keyword.
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), true)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), true)
 
 	if len(h.st.Attempts) != 1 {
 		t.Fatalf("expected one attempt, got %d", len(h.st.Attempts))

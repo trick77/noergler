@@ -1,8 +1,6 @@
 package inference
 
 import (
-	"encoding/json"
-
 	"github.com/trick77/llmwire"
 )
 
@@ -187,32 +185,6 @@ const schemaJSON = `{"type": "object", "additionalProperties": false, "required"
 
 // SchemaJSON is the schema in its pinned byte form, for token counting.
 func SchemaJSON() string { return schemaJSON }
-
-// schemaEquivalent reports whether the pinned string and the map describe the
-// same schema, ignoring key order. Used by the test that keeps them in sync.
-func schemaEquivalent() (bool, error) {
-	var fromString any
-	if err := json.Unmarshal([]byte(schemaJSON), &fromString); err != nil {
-		return false, err
-	}
-	viaMap, err := json.Marshal(ReviewResponseSchema())
-	if err != nil {
-		return false, err
-	}
-	var fromMap any
-	if err := json.Unmarshal(viaMap, &fromMap); err != nil {
-		return false, err
-	}
-	a, err := json.Marshal(fromString)
-	if err != nil {
-		return false, err
-	}
-	b, err := json.Marshal(fromMap)
-	if err != nil {
-		return false, err
-	}
-	return string(a) == string(b), nil
-}
 
 // enumValues is a string list as a JSON Schema "enum" wants it.
 func enumValues(values []string) []any {

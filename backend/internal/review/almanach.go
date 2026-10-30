@@ -91,7 +91,7 @@ func (r *Reviewer) spawnAlmanachNote(ctx context.Context, plan *reviewPlan, team
 	}
 	job := almanachJob{
 		key: plan.key, prTag: plan.prTag, team: team, runID: plan.runID,
-		sourceCommit: plan.sourceCommit, prTitle: derefStr(plan.upsert.Title),
+		sourceCommit: plan.sourceCommit, prTitle: deref(plan.upsert.Title),
 		prompt: plan.prompt, answer: plan.result.Raw,
 	}
 	if plan.ticket != nil {
@@ -112,10 +112,6 @@ func (r *Reviewer) spawnAlmanachNote(ctx context.Context, plan *reviewPlan, team
 		return
 	}
 	r.almanachInflight.add(plan.key)
-	if sched == nil {
-		r.almanachNote(ctx, job)
-		return
-	}
 	sched.Spawn(ctx, plan.key, team, "almanach note", func(c context.Context) { r.almanachNote(c, job) })
 }
 
@@ -321,11 +317,4 @@ func almanachNoteOf(p store.AlmanachPending, claims []almanach.Claim) almanach.N
 		n.NoteCall = &almanach.Call{Outcome: p.NoteCallOutcome, NoteStatus: p.NoteStatus, LLMCall: p.NoteCall}
 	}
 	return n
-}
-
-func derefStr(p *string) string {
-	if p == nil {
-		return ""
-	}
-	return *p
 }

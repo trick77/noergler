@@ -22,7 +22,7 @@ func TestIncrementalDiffTooLargeFallsBackQuietly(t *testing.T) {
 	var buf bytes.Buffer
 	h.r.log = slog.New(slog.NewTextHandler(&buf, nil))
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if len(h.llm.Reviews) != 1 || h.st.Runs[0].Incremental {
 		t.Fatalf("reviews %d; want one full review", len(h.llm.Reviews))
@@ -43,7 +43,7 @@ func TestReplyOnResolvedThreadIsNotAnError(t *testing.T) {
 	var buf bytes.Buffer
 	h.r.log = slog.New(slog.NewTextHandler(&buf, nil))
 
-	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 	if len(h.st.Replied) != 0 {
 		t.Errorf("marked %+v after a refused post", h.st.Replied)

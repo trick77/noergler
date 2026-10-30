@@ -45,3 +45,14 @@ func (l Lang) Pick(de, en string) string {
 	}
 	return de
 }
+
+// TruncateRunes cuts s to at most n runes. The prefix is measured in
+// characters, not bytes, so a multi-byte rune is never split: it goes into
+// log lines, notices and Bitbucket bodies, which must stay valid text.
+func TruncateRunes(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return string(runes[:n])
+}

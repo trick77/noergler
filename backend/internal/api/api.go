@@ -1,10 +1,10 @@
 // Package api is the inbound HTTP surface: the Bitbucket webhook, team
 // self-service and onboarding.
 //
-// It sits on top of internal/httpapi, which owns the mux, the middleware and
-// the two JSON writers. Keeping the handlers here rather than there is what
-// lets httpapi stay a transport layer with a test that links nothing: these
-// routes pull in the store, the queue and the review pipeline.
+// It sits on top of internal/httpapi, which owns the mux, the probes and the
+// access log. Keeping the handlers here rather than there is what lets
+// httpapi stay a transport layer with a test that links nothing: these routes
+// pull in the store, the queue and the review pipeline.
 package api
 
 import (
@@ -19,6 +19,16 @@ import (
 	"github.com/trick77/noergler/internal/webhook"
 	"github.com/trick77/noergler/web"
 )
+
+// statusOK is the webhook's acknowledgement body. A struct, not a map: the
+// response bodies are structs (INVARIANTS: Webhook and HTTP).
+var statusOK = struct {
+	Status string `json:"status"`
+}{Status: "ok"}
+
+// errDBNotReady is the 503 text of every route that needs the store before
+// the pool is up.
+const errDBNotReady = "database not ready"
 
 // Submitter is the review queue as the routes use it.
 //

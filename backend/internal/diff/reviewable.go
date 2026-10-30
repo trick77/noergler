@@ -122,7 +122,8 @@ const binaryMarkerScanRunes = 500
 // step 3 first would pass a binary diff or a skipped extension whose header
 // the path regex could not parse.
 func IsReviewable(fileDiff string) bool {
-	head := strings.ToLower(firstLine(fileDiff))
+	head, _, _ := strings.Cut(fileDiff, "\n")
+	head = strings.ToLower(head)
 	// The heuristic scans the whole first line, so it sees the a/ side too:
 	// `diff --git a/logo.png b/logo.py` is skipped on the strength of the old name.
 	for ext := range skipExtensions {
@@ -161,6 +162,21 @@ func ExceedsSizeGate(path, fileDiff string) (changed, limit int, over bool) {
 		}
 	}
 	return 0, 0, false
+}
+
+// Scope is a whole diff's reviewable footprint: added and removed lines and
+// the number of files, over IsReviewable files only, so lock files and
+// vendored bundles that were never reviewed stay out of every total. The
+// cumulative PR scope and the merge-time rollup read it; a review's own run
+// row counts the same files as it fetches them (prepareFiles).
+func Scope(rawDiff string) (added, removed, files int) {
+	for _, fd := range SplitByFile(rawDiff) {
+		if IsReviewable(fd) {
+			a, d := CountChangedLines(fd)
+			added, removed, files = added+a, removed+d, files+1
+		}
+	}
+	return added, removed, files
 }
 
 // CountChangedLines counts one file diff's added and removed lines. The
@@ -217,13 +233,6 @@ func PathIsReviewable(path string) bool {
 		}
 	}
 	return true
-}
-
-func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
-	}
-	return s
 }
 
 // firstRunes returns at most n runes of s, so a multi-byte diff does not

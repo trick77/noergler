@@ -29,7 +29,11 @@ const contextExpansionRatio = 1.5
 // nanoPerUSD converts the DB's BIGINT nano-USD to the USD used at the edges.
 const nanoPerUSD = 1_000_000_000.0
 
-// ReviewPullRequest runs the review pipeline for one PR.
+// prepare is everything up to and including prompt assembly: the guards, the
+// Bitbucket fetches, Jira, and the token budget. It returns the plan the
+// inference and posting stages need, and the ctx carrying pr_tag and the
+// httpstats scope. The one entry is ReviewPullRequestStaged (stage.go):
+// prepare, then infer and post through the Scheduler.
 //
 // skipAuthorCheck is set by an @mention: it bypasses the author and actor
 // gates and the cost cap, because a human asked for this review explicitly.
@@ -43,20 +47,6 @@ const nanoPerUSD = 1_000_000_000.0
 // every store call goes through safeDB, and every skip that did not review
 // the new commit writes the PRIOR commit back, so raising a limit later
 // re-reviews the accumulated range instead of skipping it.
-// ReviewPullRequest runs the whole review inline: prepare, infer, post.
-// HandleMention and the tests use it; the queue uses the staged entry below.
-func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Payload, skipAuthorCheck bool) {
-	plan, ctx, ok := r.prepare(ctx, payload, skipAuthorCheck)
-	if !ok {
-		return
-	}
-	r.post(ctx, plan, r.infer(ctx, plan))
-}
-
-// prepare is everything up to and including prompt assembly: the guards, the
-// Bitbucket fetches, Jira, and the token budget. It returns the plan the
-// inference and posting stages need, and the ctx carrying pr_tag and the
-// httpstats scope.
 //
 // ok is false when the review is over: the caller must not continue. Every
 // such exit has already logged its own HTTP totals.
@@ -177,7 +167,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 			"%s: PR cost $%.2f >= limit $%.2f - skipping review (raise REVIEW_MAX_PR_COST_USD to go on)",
 			prTag, cumulative, r.cfg.MaxPRCostUSD))
 		prReviewID, _ := r.upsertKeepingPrior(ctx, upsert, key)
-		r.costLimitNotice(ctx, l, project, repo, pr.ID, prReviewID, cumulative, r.cfg.MaxPRCostUSD, true)
+		r.costLimitNotice(ctx, l, project, repo, pr.ID, prReviewID, cumulative, r.cfg.MaxPRCostUSD, true, false)
 		return nil, ctx, r.abort(ctx, key, kind, SkipCostCap, prTag, httpCounter)
 	}
 
@@ -220,7 +210,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 
 	// Every reviewable changed file, size-gated ones included: the set the
 	// +/- lines cover and the merge-time rollup counts
-	// (countReviewableFiles), so the run row, the footer and the rollup
+	// (diff.Scope), so the run row, the footer and the rollup
 	// agree. What was not reviewed is a subset, named on its own lines.
 	totalFiles := len(files) + len(oversized)
 
@@ -414,7 +404,6 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		overBudget:     otherModified,
 		ticket:         ticket,
 		parentTicket:   parentTicket,
-		breakdown:      breakdown(assembled),
 		agentsMDFound:  repoInstructions != "",
 		totalFiles:     totalFiles,
 		diffAdded:      diffAdded,
@@ -440,8 +429,9 @@ func (r *Reviewer) infer(ctx context.Context, plan *reviewPlan) inference.Review
 // post is everything after the gateway answers: the outcome branches, the
 // comments, the rows and the summary. It runs on the review worker, so every
 // Bitbucket call here is still one at a time.
-func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.ReviewResult) {
+func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 	defer r.logHTTPTotals(ctx, plan.prTag, plan.counter)
+	result := plan.result
 	// Since the call: the wait to get back onto the review worker.
 	plan.sw.lap(stageToPost)
 
@@ -613,7 +603,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.
 		SkippedFiles:               plan.oversized,
 		OverBudgetFiles:            plan.overBudget,
 		ContentSkippedFiles:        plan.contentSkipped,
-		PromptBreakdown:            plan.breakdown,
+		AgentsMDTokens:             plan.detail.AgentsMD.Tokens,
 		Ticket:                     plan.ticket,
 		ParentTicket:               plan.parentTicket,
 		ComplianceRequirements:     result.Review.ComplianceRequirements,
@@ -723,7 +713,7 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 		// 9. Same SHA: nothing changed (a retrigger or a no-op force push).
 		if sourceCommit == lastReviewed {
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: HEAD unchanged since last review (%s), skipping",
-				prTag, shortSHA(sourceCommit, 10)))
+				prTag, render.ShortSHA(sourceCommit, 10)))
 			return "", cumulativeContext{}, "", SkipHeadUnchanged, nil
 		}
 		incDiff, err := r.bitbucket.FetchCommitDiff(ctx, project, repo, prID, lastReviewed, sourceCommit)
@@ -745,14 +735,14 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 			isIncremental = true
 			incrementalFrom = lastReviewed
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: incremental review %s..%s",
-				prTag, shortSHA(lastReviewed, 10), shortSHA(sourceCommit, 10)))
+				prTag, render.ShortSHA(lastReviewed, 10), render.ShortSHA(sourceCommit, 10)))
 		default:
 			// HEAD moved but the range diff is empty: a rebase to an identical
 			// tree, or a Bitbucket edge case. Never silently skip when the
 			// SHA actually changed.
 			r.log.WarnContext(ctx, fmt.Sprintf(
 				"%s: HEAD moved %s -> %s but the incremental diff is empty - falling back to full review to avoid missing changes",
-				prTag, shortSHA(lastReviewed, 10), shortSHA(sourceCommit, 10)))
+				prTag, render.ShortSHA(lastReviewed, 10), render.ShortSHA(sourceCommit, 10)))
 		}
 	}
 
@@ -830,16 +820,14 @@ func (r *Reviewer) handleNonOK(ctx context.Context, l lang.Lang, result inferenc
 	case inference.OutcomeTimedOut:
 		r.log.ErrorContext(ctx, fmt.Sprintf("Review of %s aborted - no response within %.0fs (commit %s)",
 			prTag, inference.CallTimeout.Seconds(), short))
-		r.timeoutNotice(ctx, l, project, repo, prID, prReviewID, sourceCommit, prior)
 	case inference.OutcomeUnparseable:
 		r.log.ErrorContext(ctx, fmt.Sprintf(
 			"Review of %s aborted - model returned an unparseable/refused response (commit %s)", prTag, short))
-		r.unparseableNotice(ctx, l, project, repo, prID, prReviewID, sourceCommit, prior)
 	case inference.OutcomeTooLarge:
 		r.log.ErrorContext(ctx, fmt.Sprintf(
 			"Review of %s skipped - PR too large for the model's context window (commit %s)", prTag, short))
-		r.tooLargeNotice(ctx, l, project, repo, prID, prReviewID, sourceCommit, prior)
 	}
+	r.failureNoticeFor(ctx, result.Outcome, l, project, repo, prID, prReviewID, sourceCommit, prior)
 
 	// No run row, so a billed call's cost rides here, where PRCost reads it.
 	// The call itself is kept too: an unparseable answer is exactly the run
@@ -1056,10 +1044,7 @@ func (r *Reviewer) recordRun(ctx context.Context, prReviewID int64, result infer
 	if prReviewID == 0 {
 		return 0
 	}
-	kind := store.RunAuto
-	if mention {
-		kind = store.RunMention
-	}
+	kind := runKind(mention)
 	var from *string
 	if incrementalFrom != "" {
 		from = &incrementalFrom
@@ -1176,15 +1161,6 @@ func (r *Reviewer) priorCommit(ctx context.Context, key store.PRKey) (commit str
 		return c, err
 	})
 	return commit, readOK
-}
-
-func breakdown(a inference.AssembledPrompt) render.PromptBreakdown {
-	return render.PromptBreakdown{
-		Template:         a.Breakdown.Template,
-		RepoInstructions: a.Breakdown.RepoInstructions,
-		Files:            a.Breakdown.Files,
-		Present:          true,
-	}
 }
 
 // notFullContext is the "reviewed without full file context" list: a

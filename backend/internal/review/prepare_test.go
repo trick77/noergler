@@ -7,11 +7,12 @@ import (
 	"testing"
 
 	"github.com/trick77/noergler/internal/bitbucket"
+	"github.com/trick77/noergler/internal/diff"
 	"github.com/trick77/noergler/internal/webhook"
 )
 
-// countDiffLines ran on every review but nothing ever read its output, so the
-// header and non-reviewable rules were executed and never checked.
+// The scope count ran on every review but nothing ever read its output, so
+// the header and non-reviewable rules were executed and never checked.
 
 func TestCountDiffLines(t *testing.T) {
 	const binaryDiff = `diff --git a/logo.png b/logo.png
@@ -43,9 +44,9 @@ index 1111111..2222222 100644
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			added, removed := countDiffLines(tc.diff)
+			added, removed, _ := diff.Scope(tc.diff)
 			if added != tc.added || removed != tc.removed {
-				t.Errorf("countDiffLines = +%d/-%d, want +%d/-%d", added, removed, tc.added, tc.removed)
+				t.Errorf("diff.Scope = +%d/-%d, want +%d/-%d", added, removed, tc.added, tc.removed)
 			}
 		})
 	}
@@ -64,7 +65,7 @@ index 1111111..2222222 100644
  package a
  // unchanged
 `
-	if added, removed := countDiffLines(headersOnly); added != 0 || removed != 0 {
+	if added, removed, _ := diff.Scope(headersOnly); added != 0 || removed != 0 {
 		t.Errorf("headers counted as changes: +%d/-%d, want +0/-0", added, removed)
 	}
 }
@@ -74,7 +75,7 @@ index 1111111..2222222 100644
 func TestDiffLineCountsReachTheRunRow(t *testing.T) {
 	h := newHarness(t, nil)
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.st.Runs) != 1 {
 		t.Fatalf("expected one run row, got %d", len(h.st.Runs))
@@ -118,7 +119,7 @@ func TestDiffLineCountsReachTheRollup(t *testing.T) {
 func contentHarness(t *testing.T, tweak func(*harness)) *harness {
 	t.Helper()
 	h := newHarness(t, tweak)
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 	return h
 }
 

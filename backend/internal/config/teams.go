@@ -235,43 +235,31 @@ func (b *blockErrors) scalar(m *yaml.Node, path, key string, required bool) (str
 	return n.Value, true
 }
 
-func (b *blockErrors) intField(m *yaml.Node, path, key string) *int {
+// scalarField decodes the key's scalar as a T, nil when the key is absent;
+// anything that is not a scalar of that type is a block error with msg.
+func scalarField[T any](b *blockErrors, m *yaml.Node, path, key, msg string) *T {
 	n := mappingGet(m, key)
 	if n == nil {
 		return nil
 	}
-	var v int
+	var v T
 	if n.Kind != yaml.ScalarNode || n.Decode(&v) != nil {
-		b.add(joinPath(path, key), "Input should be a valid integer")
+		b.add(joinPath(path, key), msg)
 		return nil
 	}
 	return &v
+}
+
+func (b *blockErrors) intField(m *yaml.Node, path, key string) *int {
+	return scalarField[int](b, m, path, key, "Input should be a valid integer")
 }
 
 func (b *blockErrors) floatField(m *yaml.Node, path, key string) *float64 {
-	n := mappingGet(m, key)
-	if n == nil {
-		return nil
-	}
-	var v float64
-	if n.Kind != yaml.ScalarNode || n.Decode(&v) != nil {
-		b.add(joinPath(path, key), "Input should be a valid number")
-		return nil
-	}
-	return &v
+	return scalarField[float64](b, m, path, key, "Input should be a valid number")
 }
 
 func (b *blockErrors) boolField(m *yaml.Node, path, key string) *bool {
-	n := mappingGet(m, key)
-	if n == nil {
-		return nil
-	}
-	var v bool
-	if n.Kind != yaml.ScalarNode || n.Decode(&v) != nil {
-		b.add(joinPath(path, key), "Input should be a valid boolean")
-		return nil
-	}
-	return &v
+	return scalarField[bool](b, m, path, key, "Input should be a valid boolean")
 }
 
 func (b *blockErrors) stringField(m *yaml.Node, path, key string) *string {
@@ -556,6 +544,8 @@ func ResolveTeam(block *yaml.Node, instance *App, lookup func(string) (string, b
 	}
 
 	review := instance.Review
+	// Own copies of the lists: a team's setters append to them, and the
+	// instance defaults are every other team's too. Non-nil, as before.
 	review.AutoReviewAuthors = append([]string{}, instance.Review.AutoReviewAuthors...)
 	review.IgnoreAuthors = append([]string{}, instance.Review.IgnoreAuthors...)
 	review.ExcludeRepos = append([]string{}, instance.Review.ExcludeRepos...)

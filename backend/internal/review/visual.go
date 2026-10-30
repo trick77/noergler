@@ -104,7 +104,7 @@ func (r *Reviewer) prepareVisual(ctx context.Context, key store.PRKey, prTag, he
 	}
 	if cs.ToHash != "" && cs.ToHash != head {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: the PR moved on to %s since %s: screenshots keyed by their bytes",
-			prTag, shortSHA(cs.ToHash, 10), shortSHA(head, 10)))
+			prTag, render.ShortSHA(cs.ToHash, 10), render.ShortSHA(head, 10)))
 		for i := range shots {
 			shots[i].BeforeID, shots[i].AfterID = "", ""
 		}
@@ -317,7 +317,7 @@ func (r *Reviewer) fetchScreenshot(ctx context.Context, key store.PRKey, prTag, 
 	case errors.As(err, &status) && status.Status == http.StatusNotFound:
 		return nil, render.VisualUnreadable, true
 	case err != nil:
-		r.log.WarnContext(ctx, fmt.Sprintf("%s: screenshot %s at %s not fetched: %v", prTag, path, shortSHA(commit, 10), err))
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: screenshot %s at %s not fetched: %v", prTag, path, render.ShortSHA(commit, 10), err))
 		return nil, render.VisualUnreadable, false
 	}
 	return b, render.VisualDescribed, false

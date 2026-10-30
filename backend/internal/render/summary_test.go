@@ -79,7 +79,7 @@ func summaryCases() map[string]SummaryInput {
 		SecurityPerformance: "Nothing notable.", TestCoverage: "Good.",
 		VerdictDecision: "approve", VerdictRationale: "Fine.",
 	}
-	mixed.PromptBreakdown = PromptBreakdown{Template: 500, RepoInstructions: 300, Files: 200, Present: true}
+	mixed.AgentsMDTokens = 300
 	mixed.ElapsedSeconds, mixed.ElapsedPresent = 12.34, true
 	mixed.ModelLabel = "gpt-5.5-medium"
 	mixed.TotalFiles, mixed.FilesCountsSet = 5, true
@@ -117,7 +117,7 @@ func summaryCases() map[string]SummaryInput {
 
 	agentsFound := base()
 	agentsFound.AgentsMDFound = true
-	agentsFound.PromptBreakdown = PromptBreakdown{Template: 1, RepoInstructions: 3000, Files: 1, Present: true}
+	agentsFound.AgentsMDTokens = 3000
 	cases["no_findings_agents_found"] = agentsFound
 
 	accounting := base()
@@ -154,7 +154,7 @@ func summaryCases() map[string]SummaryInput {
 	cases["list_capped"] = long
 
 	agentsOver := agentsFound
-	agentsOver.PromptBreakdown = PromptBreakdown{Template: 1, RepoInstructions: 9000, Files: 1, Present: true}
+	agentsOver.AgentsMDTokens = 9000
 	cases["agents_over_warn"] = agentsOver
 
 	agentsNoBreakdown := base()

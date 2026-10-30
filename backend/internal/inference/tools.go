@@ -44,10 +44,8 @@ const toolCapResult = `{"error": "too many tool calls in one turn; answer with w
 // tools on offer, then one asking for none, which forces a text answer. Each round
 // is a full Chat with the whole history; there is no streaming.
 func (c *Client) mentionWithTools(ctx context.Context, req MentionRequest) MentionResult {
-	if req.PromptTokens > 0 && c.Ready() {
-		if ceiling := c.FitCeiling(); req.PromptTokens > ceiling {
-			return MentionResult{Outcome: OutcomeTooLarge, Err: &TooLargeError{PromptTokens: req.PromptTokens, Ceiling: ceiling}}
-		}
+	if err := c.tooLarge(req.PromptTokens); err != nil {
+		return MentionResult{Outcome: OutcomeTooLarge, Err: err}
 	}
 	tools := make([]llmwire.Tool, len(req.Tools))
 	byName := make(map[string]MentionTool, len(req.Tools))

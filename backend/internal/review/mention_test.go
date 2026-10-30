@@ -24,7 +24,7 @@ func mentionPayload(text, author string) *webhook.Payload {
 func TestMentionIgnoresOwnCommentAndNonOpenPR(t *testing.T) {
 	t.Run("the bot's own comment", func(t *testing.T) {
 		h := newHarness(t, nil)
-		h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "noergler"), "platform", nil)
+		h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "noergler"), "platform", &inlineScheduler{})
 		if len(h.llm.Reviews)+len(h.llm.Mentions) != 0 {
 			t.Error("the bot must not answer itself")
 		}
@@ -35,7 +35,7 @@ func TestMentionIgnoresOwnCommentAndNonOpenPR(t *testing.T) {
 	// name turns every bot notice (they all mention the bot) into a paid call.
 	t.Run("the bot's own comment, cased differently", func(t *testing.T) {
 		h := newHarness(t, nil)
-		h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "Noergler"), "platform", nil)
+		h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "Noergler"), "platform", &inlineScheduler{})
 		if len(h.llm.Reviews)+len(h.llm.Mentions) != 0 {
 			t.Error("the bot must not answer itself")
 		}
@@ -45,7 +45,7 @@ func TestMentionIgnoresOwnCommentAndNonOpenPR(t *testing.T) {
 		h := newHarness(t, nil)
 		p := mentionPayload("@noergler what is this?", "alice")
 		p.PullRequest.State = "MERGED"
-		h.r.HandleMention(context.Background(), p, "platform", nil)
+		h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
 		if len(h.llm.Reviews)+len(h.llm.Mentions) != 0 {
 			t.Error("a mention on a non-open PR must be ignored")
 		}
@@ -55,7 +55,7 @@ func TestMentionIgnoresOwnCommentAndNonOpenPR(t *testing.T) {
 		h := newHarness(t, nil)
 		p := mentionPayload("@noergler what is this?", "alice")
 		p.PullRequest.State = ""
-		h.r.HandleMention(context.Background(), p, "platform", nil)
+		h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
 		if len(h.llm.Mentions) != 1 {
 			t.Error("a payload without a state must still be answered")
 		}
@@ -81,7 +81,7 @@ func TestMentionRouting(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.text, func(t *testing.T) {
 			h := newHarness(t, nil)
-			h.r.HandleMention(context.Background(), mentionPayload(c.text, "alice"), "platform", nil)
+			h.r.HandleMention(context.Background(), mentionPayload(c.text, "alice"), "platform", &inlineScheduler{})
 
 			if c.wantReview {
 				if len(h.llm.Reviews) != 1 {
@@ -104,7 +104,7 @@ func TestMentionReviewBypassesAuthorGates(t *testing.T) {
 	h := newHarness(t, nil)
 	h.r.SetAuthorLists([]string{"nobody"}, nil)
 
-	h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "alice"), "platform", nil)
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "alice"), "platform", &inlineScheduler{})
 
 	if len(h.llm.Reviews) != 1 {
 		t.Error("a mention must review even when the author is not in the allow list")
@@ -116,7 +116,7 @@ func TestMentionReactivatesIgnoredPR(t *testing.T) {
 	now := time.Now()
 	h.st.skipState = &store.SkipState{IgnoredAt: &now}
 
-	h.r.HandleMention(context.Background(), mentionPayload("@noergler what is this?", "alice"), "platform", nil)
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler what is this?", "alice"), "platform", &inlineScheduler{})
 
 	if h.st.Reactived != 1 {
 		t.Errorf("Reactivate called %d times, want 1", h.st.Reactived)
@@ -127,7 +127,7 @@ func TestMentionQAPostsAThreadedReply(t *testing.T) {
 	h := newHarness(t, nil)
 	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "It locks the map."}
 
-	h.r.HandleMention(context.Background(), mentionPayload("@noergler is the lock held?", "alice"), "platform", nil)
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler is the lock held?", "alice"), "platform", &inlineScheduler{})
 
 	if len(h.bb.Replies) != 1 {
 		t.Fatalf("expected one reply, got %d", len(h.bb.Replies))
@@ -164,7 +164,7 @@ func TestMentionQAFailureReplies(t *testing.T) {
 			h := newHarness(t, nil)
 			h.llm.mention = c.result
 
-			h.r.HandleMention(context.Background(), mentionPayload("@noergler explain this", "alice"), "platform", nil)
+			h.r.HandleMention(context.Background(), mentionPayload("@noergler explain this", "alice"), "platform", &inlineScheduler{})
 
 			if len(h.bb.Replies) != 1 {
 				t.Fatalf("expected one reply, got %d", len(h.bb.Replies))
@@ -178,7 +178,7 @@ func TestMentionQAFailureReplies(t *testing.T) {
 	t.Run("a hard error posts nothing", func(t *testing.T) {
 		h := newHarness(t, nil)
 		h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeError}
-		h.r.HandleMention(context.Background(), mentionPayload("@noergler explain this", "alice"), "platform", nil)
+		h.r.HandleMention(context.Background(), mentionPayload("@noergler explain this", "alice"), "platform", &inlineScheduler{})
 		if len(h.bb.Replies) != 0 {
 			t.Errorf("an errored mention must not reply, got %q", h.bb.Replies[0].Text)
 		}
@@ -189,7 +189,7 @@ func TestMentionQAWithOversizedDiffReplies(t *testing.T) {
 	h := newHarness(t, nil)
 	h.bb.prDiffErr = errDiffTooLarge
 
-	h.r.HandleMention(context.Background(), mentionPayload("@noergler explain this", "alice"), "platform", nil)
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler explain this", "alice"), "platform", &inlineScheduler{})
 
 	if len(h.bb.Replies) != 1 || !strings.Contains(h.bb.Replies[0].Text, "exceeds 10 MiB") {
 		t.Errorf("expected the oversized-diff reply, got %+v", h.bb.Replies)
@@ -204,7 +204,7 @@ func TestMentionQAWithNoReviewableFilesReplies(t *testing.T) {
 		h.bb.prDiff = "diff --git a/go.sum b/go.sum\n--- a/go.sum\n+++ b/go.sum\n@@ -1 +1 @@\n-a\n+b\n"
 	})
 
-	h.r.HandleMention(context.Background(), mentionPayload("@noergler explain this", "alice"), "platform", nil)
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler explain this", "alice"), "platform", &inlineScheduler{})
 
 	if len(h.bb.Replies) != 1 || !strings.Contains(h.bb.Replies[0].Text, "No reviewable files") {
 		t.Errorf("expected the no-files reply, got %+v", h.bb.Replies)
@@ -217,7 +217,7 @@ func TestMentionReviewIsRecordedAsAMentionRun(t *testing.T) {
 	h := newHarness(t, nil)
 	h.llm.review = okResultWith()
 
-	h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "alice"), "platform", nil)
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "alice"), "platform", &inlineScheduler{})
 
 	if len(h.st.Runs) != 1 {
 		t.Fatalf("expected one run row, got %d", len(h.st.Runs))
@@ -231,7 +231,7 @@ func TestMentionPromptCarriesTheQuestion(t *testing.T) {
 	h := newHarness(t, nil)
 	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "answer"}
 
-	h.r.HandleMention(context.Background(), mentionPayload("@noergler why is a.go locked?", "alice"), "platform", nil)
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler why is a.go locked?", "alice"), "platform", &inlineScheduler{})
 
 	if len(h.llm.Mentions) != 1 {
 		t.Fatalf("expected one mention call, got %d", len(h.llm.Mentions))
@@ -252,7 +252,7 @@ func TestMentionQAStopsAtTheCap(t *testing.T) {
 	h := newHarness(t, nil)
 	h.st.prCost = ptri(6_000_000_000)
 
-	h.r.HandleMention(context.Background(), mentionPayload("@noergler is the lock held?", "alice"), "platform", nil)
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler is the lock held?", "alice"), "platform", &inlineScheduler{})
 
 	if len(h.llm.Mentions) != 0 || len(h.bb.Replies) != 0 {
 		t.Errorf("calls = %d, replies = %d: want neither at the cap", len(h.llm.Mentions), len(h.bb.Replies))
@@ -270,7 +270,7 @@ func TestMentionQARecordsEveryRound(t *testing.T) {
 	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "ok",
 		Rounds: []inference.CallCost{{Answered: true, NanoUSD: &a}, {Answered: true, NanoUSD: &b}}}
 
-	h.r.HandleMention(context.Background(), mentionPayload("@noergler why?", "alice"), "platform", nil)
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler why?", "alice"), "platform", &inlineScheduler{})
 
 	if len(h.st.CommentCalls) != 2 {
 		t.Fatalf("comment calls = %+v, want one per round", h.st.CommentCalls)
@@ -295,7 +295,7 @@ func TestCapBannerIsWrittenOnce(t *testing.T) {
 	h.st.summary = &store.SummaryComment{ID: 900, Version: 1}
 	h.bb.comments = map[int]*bitbucket.Comment{900: {ID: 900, Version: 1, Text: body}}
 
-	h.r.HandleMention(context.Background(), mentionPayload("@noergler why?", "alice"), "platform", nil)
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler why?", "alice"), "platform", &inlineScheduler{})
 
 	if len(h.bb.Updates) != 0 || len(h.bb.Posted) != 0 {
 		t.Errorf("updates = %d, posts = %d: the banner was there already", len(h.bb.Updates), len(h.bb.Posted))
@@ -310,7 +310,7 @@ func TestCapOnAnIgnoredPRPostsNothing(t *testing.T) {
 	at := time.Now()
 	h.st.skipState = &store.SkipState{IgnoredAt: &at}
 
-	h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "alice"), "platform", nil)
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "alice"), "platform", &inlineScheduler{})
 
 	if len(h.bb.Posted) != 0 || len(h.bb.Updates) != 0 || h.st.Reactived != 0 || len(h.llm.Reviews) != 0 {
 		t.Errorf("posts = %d, updates = %d, reactivated = %d, reviews = %d; want nothing",
@@ -324,7 +324,7 @@ func TestMentionQAWritesThePRRow(t *testing.T) {
 	h := newHarness(t, nil)
 	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "ok"}
 
-	h.r.HandleMention(context.Background(), mentionPayload("@noergler why?", "alice"), "platform", nil)
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler why?", "alice"), "platform", &inlineScheduler{})
 
 	if len(h.st.Upserts) != 1 || !h.st.Upserts[0].KeepPointer || h.st.Upserts[0].LastReviewedCommit != nil {
 		t.Errorf("upserts = %+v, want one that keeps the pointer", h.st.Upserts)
@@ -341,7 +341,7 @@ func TestCapRefusedMentionReviewIsRecorded(t *testing.T) {
 	h.st.summary = &store.SummaryComment{ID: 900, Version: 1}
 	h.bb.comments = map[int]*bitbucket.Comment{900: {ID: 900, Version: 1, Text: body}}
 
-	h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "alice"), "platform", nil)
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "alice"), "platform", &inlineScheduler{})
 
 	if len(h.st.Attempts) != 1 || h.st.Attempts[0].Reason != string(SkipCostCap) || h.st.Attempts[0].Kind != store.RunMention {
 		t.Errorf("attempts = %+v, want one skipped mention attempt", h.st.Attempts)
@@ -367,7 +367,7 @@ func TestMentionCarriesTheRepliedToComment(t *testing.T) {
 	p.Comment.Author.DisplayName = "Saner Jan (SJH)"
 	p.CommentParentID = 41
 
-	h.r.HandleMention(context.Background(), p, "platform", nil)
+	h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
 
 	if len(h.llm.Mentions) != 1 {
 		t.Fatalf("expected one mention call, got %d", len(h.llm.Mentions))
@@ -398,7 +398,7 @@ func TestMentionUnderABotCommentKeepsTheAskersName(t *testing.T) {
 	p.Comment.Author.DisplayName = "Saner Jan (SJH)"
 	p.CommentParentID = 41
 
-	h.r.HandleMention(context.Background(), p, "platform", nil)
+	h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
 
 	prompt := h.llm.Mentions[0].Prompt
 	if !strings.Contains(prompt, "Author: noergler (this bot)") || !strings.Contains(prompt, "nil map write") {
@@ -431,7 +431,7 @@ func TestMentionWithoutARepliedToComment(t *testing.T) {
 			p := mentionPayload("@noergler why?", "alice")
 			p.CommentParentID = c.parent
 
-			h.r.HandleMention(context.Background(), p, "platform", nil)
+			h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
 
 			if len(h.llm.Mentions) != 1 || !strings.Contains(h.llm.Mentions[0].Prompt, inference.NoParentComment) {
 				t.Fatalf("want one answer without a parent, got %+v", h.llm.Mentions)
@@ -453,7 +453,7 @@ func TestMentionCapsALongRepliedToComment(t *testing.T) {
 	p := mentionPayload("@noergler answer that", "alice")
 	p.CommentParentID = 41
 
-	h.r.HandleMention(context.Background(), p, "platform", nil)
+	h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
 
 	prompt := h.llm.Mentions[0].Prompt
 	if strings.Contains(prompt, strings.Repeat("ü", maxParentRunes+1)) || !strings.Contains(prompt, "[... cut]") {
@@ -474,7 +474,7 @@ func TestMentionUnderTheAskersOwnCommentKeepsTheName(t *testing.T) {
 	p.Comment.Author.DisplayName = "Saner Jan (SJH)"
 	p.CommentParentID = 41
 
-	h.r.HandleMention(context.Background(), p, "platform", nil)
+	h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
 
 	if prompt := h.llm.Mentions[0].Prompt; !strings.Contains(prompt, "## The developer's first name\n\nJan\n") {
 		t.Errorf("prompt lacks the asker's name:\n%s", prompt)
@@ -494,7 +494,7 @@ func TestMentionParentOnTheOldSideSaysSo(t *testing.T) {
 	p := mentionPayload("@noergler answer that", "alice")
 	p.CommentParentID = 41
 
-	h.r.HandleMention(context.Background(), p, "platform", nil)
+	h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
 
 	prompt := h.llm.Mentions[0].Prompt
 	if !strings.Contains(prompt, "Location: a.go, line 7 of the old version") || strings.Contains(prompt, "a.go:7") {
@@ -513,7 +513,7 @@ func TestMentionCapClosesAnOpenFence(t *testing.T) {
 	p := mentionPayload("@noergler answer that", "alice")
 	p.CommentParentID = 41
 
-	h.r.HandleMention(context.Background(), p, "platform", nil)
+	h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
 
 	if prompt := h.llm.Mentions[0].Prompt; !strings.Contains(prompt, "x\n```\n[... cut]") {
 		t.Errorf("the cut left the fence open:\n%s", prompt)
@@ -533,7 +533,7 @@ func TestMentionUnderAnotherCommentCutsTheParentAuthorsName(t *testing.T) {
 	p := mentionPayload("@noergler answer Peter", "jsaner")
 	p.CommentParentID = 41
 
-	h.r.HandleMention(context.Background(), p, "platform", nil)
+	h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
 
 	if len(h.bb.Replies) != 1 || h.bb.Replies[0].Text != "Three retries cap the backoff." {
 		t.Errorf("replies = %+v, want the address cut", h.bb.Replies)
@@ -552,7 +552,7 @@ func TestMentionParentOrphanedAnchorDropsTheLine(t *testing.T) {
 	p := mentionPayload("@noergler answer that", "alice")
 	p.CommentParentID = 41
 
-	h.r.HandleMention(context.Background(), p, "platform", nil)
+	h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
 
 	prompt := h.llm.Mentions[0].Prompt
 	if !strings.Contains(prompt, "Location: a.go (a line since changed") || strings.Contains(prompt, "a.go:7") {
@@ -571,7 +571,7 @@ func TestMentionClosesAnAuthorsOpenFence(t *testing.T) {
 	p := mentionPayload("@noergler answer that", "alice")
 	p.CommentParentID = 41
 
-	h.r.HandleMention(context.Background(), p, "platform", nil)
+	h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
 
 	if prompt := h.llm.Mentions[0].Prompt; !strings.Contains(prompt, "panic: nil map\n~~~\n\n## The developer") ||
 		strings.Contains(prompt, "[... cut]") {

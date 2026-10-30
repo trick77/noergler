@@ -102,7 +102,7 @@ func Boot(ctx context.Context, app *config.App, d Deps) (*Registry, error) {
 	// The three startup lines are alerted on in Splunk, which matches the
 	// rendered message, so the lists stay inside the string in the exact
 	// ['a', 'b'] form the alert matches. Do not move them to attributes.
-	summary := fmt.Sprintf("teams_ready enabled=%s disabled=%s", quotedList(enabled), quotedList(disabled))
+	summary := fmt.Sprintf("teams_ready enabled=%s disabled=%s", config.QuotedList(enabled), config.QuotedList(disabled))
 	if len(disabled) > 0 {
 		d.Log.WarnContext(ctx, summary)
 	} else {
@@ -133,20 +133,6 @@ func (g *Registry) disable(ctx context.Context, slug, reason string) {
 	g.log.ErrorContext(ctx, fmt.Sprintf("team_disabled team=%s reason=%s", slug, reason))
 }
 
-// quotedList renders a slug list as ['a', 'b'] - single quotes, ", " between
-// entries, [] when empty. The Splunk alert on teams_ready matches that exact
-// form, so the rendering is pinned.
-func quotedList(items []string) string {
-	out := "["
-	for i, s := range items {
-		if i > 0 {
-			out += ", "
-		}
-		out += "'" + s + "'"
-	}
-	return out + "]"
-}
-
 // modelLabel is the started client's label, which names the reasoning level
 // llmwire resolved: an unset level would otherwise print as the bare model.
 func modelLabel(rt *Runtime, team *config.Team) string {
@@ -161,6 +147,27 @@ func onOff(b bool) string {
 		return "on"
 	}
 	return "off"
+}
+
+// verifyForwarder checks one of the team's forwarding endpoints (riptide,
+// Almanach) at startup and returns the disable reason, if any. Only a
+// rejected token (errAuth) disables the team: emitting for weeks against a
+// bad token loses the data silently. Anything else is the service being
+// down, which is best-effort anyway, and the team stays enabled. Not enabled
+// (no URL or token) logs off, what the team goes without.
+func (d Deps) verifyForwarder(ctx context.Context, slug, name string, enabled bool,
+	verify func(context.Context) (string, error), errAuth error, off string) string {
+	if !enabled {
+		d.Log.InfoContext(ctx, name+" disabled for this team; "+off, "team", slug)
+		return ""
+	}
+	if _, err := verify(ctx); err != nil {
+		if errors.Is(err, errAuth) {
+			return fmt.Sprintf("%s check failed: %v", name, err)
+		}
+		d.Log.WarnContext(ctx, name+" ping failed, team stays enabled", "team", slug, logging.Err(err))
+	}
+	return ""
 }
 
 // Start builds one team. A non-empty reason means the team is disabled and
@@ -222,35 +229,17 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps, open
 	var rt *riptide.Emitter
 	if team.Riptide != nil {
 		rt = riptide.New(team.Riptide.URL, team.Riptide.Token, d.Log)
-		if rt.Enabled() {
-			if _, err := rt.VerifyAtStartup(ctx); err != nil {
-				// Only a rejected token disables the team: emitting for weeks
-				// against a bad token loses the rollups silently. Anything
-				// else is riptide being down, which is best-effort anyway.
-				if errors.Is(err, riptide.ErrAuth) {
-					return nil, fmt.Sprintf("riptide check failed: %v", err)
-				}
-				d.Log.WarnContext(ctx, "riptide ping failed, team stays enabled", "team", team.Slug, logging.Err(err))
-			}
-		} else {
-			d.Log.InfoContext(ctx, "riptide disabled for this team; event forwarding off", "team", team.Slug)
+		if reason := d.verifyForwarder(ctx, team.Slug, "riptide", rt.Enabled(), rt.VerifyAtStartup,
+			riptide.ErrAuth, "event forwarding off"); reason != "" {
+			return nil, reason
 		}
 	}
-
-	// Almanach, the same way: a rejected token disables the team, anything
-	// else is Almanach being down, and the notes wait for the next merge.
 	var al *almanach.Emitter
 	if team.Almanach != nil {
 		al = almanach.New(team.Almanach.URL, team.Almanach.Token, d.Log)
-		if al.Enabled() {
-			if _, err := al.VerifyAtStartup(ctx); err != nil {
-				if errors.Is(err, almanach.ErrAuth) {
-					return nil, fmt.Sprintf("almanach check failed: %v", err)
-				}
-				d.Log.WarnContext(ctx, "almanach ping failed, team stays enabled", "team", team.Slug, logging.Err(err))
-			}
-		} else {
-			d.Log.InfoContext(ctx, "almanach disabled for this team; no notes", "team", team.Slug)
+		if reason := d.verifyForwarder(ctx, team.Slug, "almanach", al.Enabled(), al.VerifyAtStartup,
+			almanach.ErrAuth, "no notes"); reason != "" {
+			return nil, reason
 		}
 	}
 

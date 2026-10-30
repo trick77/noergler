@@ -330,6 +330,18 @@ func writeJSON(opt options, report any) error {
 	return nil
 }
 
+// readSampled decodes a sampled report written by an earlier run.
+func readSampled(path string, into *evals.Sampled) error {
+	blob, err := os.ReadFile(path) //nolint:gosec // G304: an operator-supplied flag in a dev tool
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(blob, into); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return nil
+}
+
 // mix scores two sampled reports as one mixed vote. It reads files only: the
 // samples are already paid for.
 func mix(opt options) error {
@@ -339,12 +351,8 @@ func mix(opt options) error {
 	}
 	var runs [2]evals.Sampled
 	for i, path := range []string{primaryPath, secondaryPath} {
-		blob, err := os.ReadFile(path) //nolint:gosec // G304: an operator-supplied flag in a dev tool
-		if err != nil {
+		if err := readSampled(path, &runs[i]); err != nil {
 			return err
-		}
-		if err := json.Unmarshal(blob, &runs[i]); err != nil {
-			return fmt.Errorf("%s: %w", path, err)
 		}
 	}
 	cases, err := evals.LoadCorpus()
@@ -362,13 +370,9 @@ func mix(opt options) error {
 // rescore recomputes a sampled report's views from its own samples, so a
 // view added after the run was paid for is scored on the same reviews.
 func rescore(opt options) error {
-	blob, err := os.ReadFile(opt.rescore) //nolint:gosec // G304: an operator-supplied flag in a dev tool
-	if err != nil {
-		return err
-	}
 	var sampled evals.Sampled
-	if err := json.Unmarshal(blob, &sampled); err != nil {
-		return fmt.Errorf("%s: %w", opt.rescore, err)
+	if err := readSampled(opt.rescore, &sampled); err != nil {
+		return err
 	}
 	cases, err := evals.LoadCorpus()
 	if err != nil {
@@ -383,13 +387,9 @@ func rescore(opt options) error {
 
 // confirm consolidates the reviews of a finished sampled report.
 func confirm(ctx context.Context, opt options, client evals.Reviewer, template string, cases []evals.Case, count inference.CountFunc, label string) error {
-	blob, err := os.ReadFile(opt.confirm) //nolint:gosec // G304: an operator-supplied flag in a dev tool
-	if err != nil {
-		return err
-	}
 	var sampled evals.Sampled
-	if err := json.Unmarshal(blob, &sampled); err != nil {
-		return fmt.Errorf("%s: %w", opt.confirm, err)
+	if err := readSampled(opt.confirm, &sampled); err != nil {
+		return err
 	}
 	suffix, err := os.ReadFile(opt.consolidatePath) //nolint:gosec // G304: an operator-supplied flag in a dev tool
 	if err != nil {

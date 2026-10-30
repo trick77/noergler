@@ -141,7 +141,7 @@ func TestPreviouslyPostedFindingsReachThePrompt(t *testing.T) {
 		}}
 	})
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if len(h.llm.Reviews) != 1 {
 		t.Fatalf("expected one LLM call, got %d", len(h.llm.Reviews))

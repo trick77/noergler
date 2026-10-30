@@ -1,6 +1,7 @@
 package inference
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -158,10 +159,10 @@ func TestRenderCumulativePRDiff(t *testing.T) {
 	t.Run("the omitted list is capped with a count", func(t *testing.T) {
 		var omitted []string
 		for i := 0; i < maxCumulativeOmittedListed+7; i++ {
-			omitted = append(omitted, "f"+itoa(i)+".go")
+			omitted = append(omitted, "f"+strconv.Itoa(i)+".go")
 		}
 		got := RenderCumulativePRDiff("@@ -1 +1 @@", true, omitted)
-		if strings.Contains(got, "- f"+itoa(maxCumulativeOmittedListed)+".go") {
+		if strings.Contains(got, "- f"+strconv.Itoa(maxCumulativeOmittedListed)+".go") {
 			t.Error("a path past the cap was listed")
 		}
 		if !strings.HasSuffix(got, "\n- … and 7 more") {

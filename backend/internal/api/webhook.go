@@ -63,7 +63,7 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 	// 2. The diagnostics ping is answered before the body is read: Bitbucket
 	// sends it to check the endpoint is alive, without a signature.
 	if r.Header.Get("X-Event-Key") == "diagnostics:ping" {
-		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		httpx.WriteJSON(w, http.StatusOK, statusOK)
 		return
 	}
 
@@ -96,7 +96,7 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 	if signature == "" {
 		if eventKeyHeader == "" && !bytes.Contains(body, []byte("eventKey")) {
 			d.Log.InfoContext(ctx, "Test connection received (no signature, no event key)")
-			httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+			httpx.WriteJSON(w, http.StatusOK, statusOK)
 			return
 		}
 		// Logged here: the access log keeps a 401 at debug, and a team whose

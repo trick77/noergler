@@ -118,15 +118,7 @@ func PlaceHandoffBanner(body, banner string) string {
 // run inside it, so a path holding a backtick or "](" cannot break the
 // banner's markdown (code spans bind tighter than link brackets).
 func inlineCode(s string) string {
-	longest, run := 0, 0
-	for _, r := range s {
-		if r == '`' {
-			run++
-			longest = max(longest, run)
-		} else {
-			run = 0
-		}
-	}
+	longest := lang.BacktickRun(s)
 	if longest == 0 {
 		return "`" + s + "`"
 	}

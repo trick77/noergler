@@ -47,8 +47,8 @@ func (r *Reviewer) refuseOverCap(ctx context.Context, key store.PRKey, prTag, pr
 	}); state != nil && state.IgnoredAt != nil {
 		return
 	}
-	r.costLimitNoticeOnce(ctx, r.languageFor(ctx, prAuthor), key.Project, key.Repo, key.PRID, rowID,
-		cumulativeUSD, r.cfg.MaxPRCostUSD, blocked)
+	r.costLimitNotice(ctx, r.languageFor(ctx, prAuthor), key.Project, key.Repo, key.PRID, rowID,
+		cumulativeUSD, r.cfg.MaxPRCostUSD, blocked, true)
 }
 
 // ensurePRRow writes the PR's row without touching its review pointer, so a

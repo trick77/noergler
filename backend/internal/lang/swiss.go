@@ -43,6 +43,21 @@ func SwissSS(s string) string {
 	return b.String()
 }
 
+// BacktickRun is the longest run of backticks in s: a fence or code span
+// around s needs one more, or the text closes it early.
+func BacktickRun(s string) int {
+	longest, run := 0, 0
+	for _, r := range s {
+		if r == '`' {
+			run++
+			longest = max(longest, run)
+		} else {
+			run = 0
+		}
+	}
+	return longest
+}
+
 // OpenFence is the fence of a code block s opens and leaves unclosed, or "".
 // A closing fence is the opener's character, at least as long, alone on its
 // line; a backtick opener whose rest holds a backtick is an inline span.

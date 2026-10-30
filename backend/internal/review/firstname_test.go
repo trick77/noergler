@@ -128,7 +128,7 @@ func TestFindingReplyNamesTheAuthor(t *testing.T) {
 		Intent: "question", Reply: "Jan, it means the input is never checked.",
 	}}
 
-	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 	if len(h.llm.Replies) != 1 || !strings.Contains(h.llm.Replies[0].Prompt, "## The author's first name\n\nJan\n") {
 		t.Fatalf("prompt lacks the name:\n%v", h.llm.Replies)
@@ -146,9 +146,9 @@ func TestMentionPromptNamesTheAsker(t *testing.T) {
 	p := mentionPayload("@noergler what are the settings?", "jsaner")
 	p.Comment.Author.DisplayName = "Saner Jan (SJH)"
 
-	h.r.HandleMention(context.Background(), p, "platform", nil)
+	h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
 	p.Comment.Author.DisplayName = "no match"
-	h.r.HandleMention(context.Background(), p, "platform", nil)
+	h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
 
 	if len(h.llm.Mentions) != 2 {
 		t.Fatalf("expected two mention calls, got %d", len(h.llm.Mentions))
@@ -164,7 +164,7 @@ func TestMentionPromptNamesTheAsker(t *testing.T) {
 func TestFindingReplyWithoutANameSaysUnknown(t *testing.T) {
 	h, p := replyHarness(t)
 
-	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 	if len(h.llm.Replies) != 1 || !strings.Contains(h.llm.Replies[0].Prompt, "## The author's first name\n\n_Unknown._\n") {
 		t.Fatalf("prompt:\n%v", h.llm.Replies)

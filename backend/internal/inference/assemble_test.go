@@ -219,6 +219,32 @@ func TestSchemaStringAndMapAgree(t *testing.T) {
 	}
 }
 
+// schemaEquivalent reports whether the pinned string and the map describe the
+// same schema, ignoring key order.
+func schemaEquivalent() (bool, error) {
+	var fromString any
+	if err := json.Unmarshal([]byte(schemaJSON), &fromString); err != nil {
+		return false, err
+	}
+	viaMap, err := json.Marshal(ReviewResponseSchema())
+	if err != nil {
+		return false, err
+	}
+	var fromMap any
+	if err := json.Unmarshal(viaMap, &fromMap); err != nil {
+		return false, err
+	}
+	a, err := json.Marshal(fromString)
+	if err != nil {
+		return false, err
+	}
+	b, err := json.Marshal(fromMap)
+	if err != nil {
+		return false, err
+	}
+	return string(a) == string(b), nil
+}
+
 // The schema on the wire must carry the real fields, not the test stub that
 // stood in for it before.
 func TestReviewResponseFormatIsTheRealSchema(t *testing.T) {

@@ -207,7 +207,7 @@ const commentCallsLimit = 200
 // its current incarnation (the PR row's created_at, as prCostSQL counts).
 // more is true when the list was cut.
 func (s *Store) PRCommentCalls(ctx context.Context, k PRKey) (calls []CommentCall, more bool, err error) {
-	rows, err := s.pool.Query(ctx, `
+	calls, err = queryAll(ctx, s.pool, `
 		SELECT c.kind, c.comment_id, COALESCE(c.model, c.profile), c.cost_nano_usd, c.created_at
 		  FROM llm_calls c
 		  JOIN pull_requests p
@@ -215,19 +215,11 @@ func (s *Store) PRCommentCalls(ctx context.Context, k PRKey) (calls []CommentCal
 		 WHERE c.project_key = $1 AND c.repo_slug = $2 AND c.pr_id = $3
 		   AND c.attempt_id IS NULL AND c.created_at >= p.created_at
 		 ORDER BY c.created_at DESC, c.id DESC
-		 LIMIT $4`, k.Project, k.Repo, k.PRID, commentCallsLimit+1)
+		 LIMIT $4`, []any{k.Project, k.Repo, k.PRID, commentCallsLimit + 1},
+		func(row pgx.CollectableRow, c *CommentCall) error {
+			return row.Scan(&c.Kind, &c.CommentID, &c.Model, &c.CostNanoUSD, &c.CreatedAt)
+		})
 	if err != nil {
-		return nil, false, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var c CommentCall
-		if err := rows.Scan(&c.Kind, &c.CommentID, &c.Model, &c.CostNanoUSD, &c.CreatedAt); err != nil {
-			return nil, false, err
-		}
-		calls = append(calls, c)
-	}
-	if err := rows.Err(); err != nil {
 		return nil, false, err
 	}
 	if len(calls) > commentCallsLimit {

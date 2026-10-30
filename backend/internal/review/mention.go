@@ -11,7 +11,6 @@ import (
 	"github.com/trick77/noergler/internal/httpstats"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/lang"
-	"github.com/trick77/noergler/internal/render"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
@@ -112,15 +111,10 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	// of the same PR already in flight.
 	if isReview {
 		r.log.InfoContext(ctx, fmt.Sprintf("Mention triggers full review (question=%q)", question))
-		if sched != nil {
-			// The caller must keep the PR held: the staged posting is what
-			// releases it, so a push or a merge for this PR cannot run
-			// alongside the inference.
-			return r.ReviewPullRequestStaged(ctx, payload, team, true, sched)
-		}
-		// No scheduler (a direct caller, or a test): run it inline.
-		r.ReviewPullRequest(ctx, payload, true)
-		return false
+		// The caller must keep the PR held: the staged posting is what
+		// releases it, so a push or a merge for this PR cannot run
+		// alongside the inference.
+		return r.ReviewPullRequestStaged(ctx, payload, team, true, sched)
 	}
 	r.log.InfoContext(ctx, fmt.Sprintf("Handling mention Q&A on %s: %q", prTag, question))
 	// The answer is the asker's, so it is in their language, not the
@@ -185,13 +179,6 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	}
 	infer := func(inferCtx context.Context) { job.res = r.llm.Mention(inferCtx, req) }
 	post := func(postCtx context.Context) { r.postMention(postCtx, job) }
-	if sched == nil {
-		// A direct caller or a test: inline, as before.
-		staged = true
-		infer(ctx)
-		post(ctx)
-		return false
-	}
 	// The gateway call, a tool loop of up to MaxToolRounds+1 calls, goes to
 	// the inference pool instead of holding the Bitbucket worker; the tools
 	// read the store only, never Bitbucket.
@@ -389,11 +376,11 @@ func (r *Reviewer) parentComment(ctx context.Context, key store.PRKey, prTag str
 		}
 	}
 	full := strings.TrimSpace(c.Text)
-	body := truncateRunes(full, maxParentRunes)
+	body := lang.TruncateRunes(full, maxParentRunes)
 	cut := body != full
 	// A code block left open, by the cut or by its author, would run over
 	// the sections below, the question among them.
-	if f := render.OpenFence(body); f != "" {
+	if f := lang.OpenFence(body); f != "" {
 		body += "\n" + f
 	}
 	if cut {

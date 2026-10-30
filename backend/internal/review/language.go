@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/trick77/noergler/internal/lang"
-	"github.com/trick77/noergler/internal/render"
 	"github.com/trick77/ship/kit/logging"
 )
 
@@ -37,13 +36,13 @@ func languageKeyword(text string) (lang.Lang, bool) {
 	return l, ok
 }
 
-// sharpS is render.SwissSS for German text the model wrote; English is
+// sharpS is lang.SwissSS for German text the model wrote; English is
 // left as it came.
 func sharpS(l lang.Lang, s string) string {
 	if l == lang.EN {
 		return s
 	}
-	return render.SwissSS(s)
+	return lang.SwissSS(s)
 }
 
 // languageFor is the language noergler writes to user in: their own choice,

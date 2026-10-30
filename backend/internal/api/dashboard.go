@@ -56,11 +56,16 @@ type DashboardStore interface {
 // float of a decimal amount. Never an exponent either - 1E-9 breaks strict
 // parsers, which is why this formats rather than letting the encoder choose.
 // nil stays nil: an unpriced run is not a free one.
-func usd(nano *int64) *string {
+func usd(nano *int64) *string { return fmtNano(nano, inference.FormatUSD3) }
+
+// usd6 is usd at six decimals, for the per-lane call costs.
+func usd6(nano *int64) *string { return fmtNano(nano, inference.FormatUSD6) }
+
+func fmtNano(nano *int64, format func(int64) string) *string {
 	if nano == nil {
 		return nil
 	}
-	s := inference.FormatUSD3(*nano)
+	s := format(*nano)
 	return &s
 }
 

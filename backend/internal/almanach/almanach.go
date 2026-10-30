@@ -168,7 +168,7 @@ func (e *Emitter) EmitNote(ctx context.Context, n Note) bool {
 func payload(n Note) map[string]any {
 	claims := make([]map[string]any, 0, len(n.Claims))
 	for _, c := range n.Claims {
-		claims = append(claims, map[string]any{"project_key": c.ProjectKey, "repo_slug": nullable(c.RepoSlug)})
+		claims = append(claims, map[string]any{"project_key": c.ProjectKey, "repo_slug": forward.NullableString(c.RepoSlug)})
 	}
 	note := n.Note
 	if len(note) == 0 {
@@ -181,15 +181,15 @@ func payload(n Note) map[string]any {
 		"pr_id":              n.PRID,
 		"pr_key":             n.PRKey,
 		"pr_title":           n.PRTitle,
-		"ticket_key":         nullable(n.TicketKey),
-		"jira_issue_type":    nullable(n.JiraIssueType),
-		"change_kind":        nullable(n.ChangeKind),
-		"reviewed_commit":    nullable(n.ReviewedCommit),
+		"ticket_key":         forward.NullableString(n.TicketKey),
+		"jira_issue_type":    forward.NullableString(n.JiraIssueType),
+		"change_kind":        forward.NullableString(n.ChangeKind),
+		"reviewed_commit":    forward.NullableString(n.ReviewedCommit),
 		"source_commit_sha":  n.SourceCommitSHA,
-		"merge_commit_sha":   nullable(n.MergeCommitSHA),
+		"merge_commit_sha":   forward.NullableString(n.MergeCommitSHA),
 		"merged_at":          n.MergedAt.UTC().Format(time.RFC3339),
 		"run_id":             n.RunID,
-		"model_label":        nullable(n.ModelLabel),
+		"model_label":        forward.NullableString(n.ModelLabel),
 		"issues_posted":      n.IssuesPosted,
 		"suggestions_posted": n.SuggestionsPosted,
 		"note":               note,
@@ -210,7 +210,7 @@ func payload(n Note) map[string]any {
 			"elapsed_ms":        n.Review.ElapsedMS,
 			"cost_usd":          usd(n.Review.CostNanoUSD),
 			"cost_nano_usd":     n.Review.CostNanoUSD,
-			"models_used":       orEmpty(n.Review.Models),
+			"models_used":       forward.OrEmpty(n.Review.Models),
 		},
 	}
 }
@@ -222,13 +222,13 @@ func callBody(c *Call) any {
 	return map[string]any{
 		"outcome":                   c.Outcome,
 		"note_status":               c.NoteStatus,
-		"profile":                   nullable(c.Profile),
-		"model":                     nullable(c.Model),
-		"deployment":                nullable(c.Deployment),
-		"reasoning_sent":            nullable(c.ReasoningSent),
-		"finish_reason":             nullable(c.FinishReason),
-		"call_id":                   nullable(c.CallID),
-		"litellm_version":           nullable(c.GatewayVer),
+		"profile":                   forward.NullableString(c.Profile),
+		"model":                     forward.NullableString(c.Model),
+		"deployment":                forward.NullableString(c.Deployment),
+		"reasoning_sent":            forward.NullableString(c.ReasoningSent),
+		"finish_reason":             forward.NullableString(c.FinishReason),
+		"call_id":                   forward.NullableString(c.CallID),
+		"litellm_version":           forward.NullableString(c.GatewayVer),
 		"input_tokens":              c.InputTokens,
 		"input_uncached_tokens":     c.InputUncachedTokens,
 		"cache_read_tokens":         c.CacheReadTokens,
@@ -247,7 +247,7 @@ func callBody(c *Call) any {
 		"key_spend_nano_usd":        c.KeySpendNanoUSD,
 		"headers_ms":                c.HeadersMS,
 		"total_ms":                  c.TotalMS,
-		"warnings":                  orEmpty(c.Warnings),
+		"warnings":                  forward.OrEmpty(c.Warnings),
 	}
 }
 
@@ -256,18 +256,4 @@ func usd(nano *int64) any {
 		return nil
 	}
 	return forward.FormatNanoUSD(*nano)
-}
-
-func nullable(s string) any {
-	if s == "" {
-		return nil
-	}
-	return s
-}
-
-func orEmpty(s []string) []string {
-	if s == nil {
-		return []string{}
-	}
-	return s
 }

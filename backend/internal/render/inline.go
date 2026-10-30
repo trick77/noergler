@@ -23,7 +23,7 @@ func InlineComment(f inference.ReviewFinding, l lang.Lang) string {
 		if de, ok := severityDE[f.Severity]; ok {
 			label = de
 		}
-		comment = SwissSS(comment)
+		comment = lang.SwissSS(comment)
 	}
 	parts := []string{WrapProse(fmt.Sprintf("**%s:** %s", label, comment))}
 

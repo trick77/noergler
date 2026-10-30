@@ -419,11 +419,8 @@ func GatewayEnv(s Settings) map[string]string {
 func (s Score) ErrIncomplete() error {
 	var broken []string
 	for _, r := range s.Results {
-		switch {
-		case r.ErrMsg != "":
-			broken = append(broken, r.Case+": "+r.ErrMsg)
-		case r.Outcome != inference.OutcomeOK.String():
-			broken = append(broken, r.Case+": outcome "+r.Outcome)
+		if why := incomplete(r); why != "" {
+			broken = append(broken, r.Case+": "+why)
 		}
 	}
 	if len(broken) == 0 {

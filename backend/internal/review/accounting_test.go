@@ -42,7 +42,7 @@ func TestOverviewCarriesToTheNextReview(t *testing.T) {
 	h.llm.review = okResultWith()
 	h.llm.review.Review.Summary.Overview = "Adds retries with backoff to the gateway client."
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if p := h.llm.Reviews[0].Prompt; strings.Contains(p, "Previous PR overview") {
 		t.Errorf("the first review has no overview to carry:\n%s", p)
@@ -53,7 +53,7 @@ func TestOverviewCarriesToTheNextReview(t *testing.T) {
 
 	incremental(h)
 	h.llm.review.Review.Summary.Overview = "None."
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	p := h.llm.Reviews[1].Prompt
 	if !strings.Contains(p, "## Previous PR overview") || !strings.Contains(p, "Adds retries with backoff to the gateway client.") {
@@ -74,7 +74,7 @@ func TestFullReviewDoesNotCarryTheOverview(t *testing.T) {
 	h.llm.review = okResultWith()
 	h.llm.review.Review.Summary.Overview = "Adds retries."
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if p := h.llm.Reviews[0].Prompt; strings.Contains(p, "Previous PR overview") {
 		t.Errorf("a full review carries the stored overview:\n%s", p)
@@ -92,7 +92,7 @@ func TestUnreadableOverviewReviewsWithout(t *testing.T) {
 	h.st.lastSummaryErr = errors.New("db down")
 	h.llm.review = okResultWith()
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if len(h.llm.Reviews) != 1 || strings.Contains(h.llm.Reviews[0].Prompt, "Previous PR overview") {
 		t.Errorf("reviews = %d, prompt carries an unreadable overview", len(h.llm.Reviews))
@@ -109,7 +109,7 @@ func TestSummaryListsEarlierOpenFindingOnce(t *testing.T) {
 		Evidence: []string{"never in the diff"}}
 	h.llm.review = okResultWith(finding("a.go", 2, "issue", "same again"), invented)
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if len(h.bb.Posted) != 1 {
 		t.Fatalf("summaries = %d", len(h.bb.Posted))
@@ -133,7 +133,7 @@ func TestSummaryOfAQuietPushKeepsThePR(t *testing.T) {
 	h.st.existing = []store.Finding{earlier(h, 11, "issue", "Nil map write"), earlier(h, 12, "suggestion", "Name it")}
 	h.llm.review = okResultWith()
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	s := h.bb.Posted[0].Text
 	for _, want := range []string{
@@ -161,7 +161,7 @@ func TestSummaryLeavesOutClosedThreads(t *testing.T) {
 	h.st.existing = []store.Finding{resolved, deleted}
 	h.llm.review = okResultWith()
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	s := h.bb.Posted[0].Text
 	if !strings.Contains(s, "### Issues and suggestions\nNone.") || !strings.Contains(s, "**Approve ✅**") {
@@ -184,7 +184,7 @@ func TestThreadChecksAreCapped(t *testing.T) {
 	h.st.existing = append(h.st.existing, issue)
 	h.llm.review = okResultWith()
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	read := 0
 	for _, id := range h.bb.FetchedC {
@@ -213,7 +213,7 @@ func TestSummaryKeepsAnUnreadableThread(t *testing.T) {
 	h.st.existing = []store.Finding{f}
 	h.llm.review = okResultWith()
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if s := h.bb.Posted[0].Text; !strings.Contains(s, "1. Unreadable one") {
 		t.Errorf("an unreadable thread must stay listed:\n%s", s)
@@ -228,7 +228,7 @@ func TestSummarySaysEarlierFindingsUnreadable(t *testing.T) {
 	h.st.existingErr = errors.New("db down")
 	h.llm.review = okResultWith()
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	want := "_Earlier findings unreadable: the list shows this run's only._"
 	if s := h.bb.Posted[0].Text; !strings.Contains(s, want) {
@@ -248,7 +248,7 @@ func TestDropBesideAnOpenIssueKeepsTheVerdict(t *testing.T) {
 	res.Review.Summary.VerdictRationale = "Request changes: nil deref in Foo."
 	h.llm.review = res
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	want := "**Request changes 🛑** - Verdict: 1 open finding demands it."
 	if s := h.bb.Posted[0].Text; !strings.Contains(s, want) {
@@ -271,7 +271,7 @@ func TestClosedThreadLowersAStaleVerdict(t *testing.T) {
 	res.Review.Summary.VerdictDecision = "request_changes"
 	h.llm.review = res
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	want := "**Approve ✅** - Verdict lowered: the PR's open findings do not support it."
 	if s := h.bb.Posted[0].Text; !strings.Contains(s, want) {
@@ -292,7 +292,7 @@ func TestResolvedThreadIsSettled(t *testing.T) {
 	res.Review.Summary.VerdictDecision = "request_changes"
 	h.llm.review = res
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if len(h.bb.Inline) != 0 {
 		t.Errorf("inline = %d, want the repeat held back", len(h.bb.Inline))
@@ -315,7 +315,7 @@ func TestDeletedThreadIsNotStamped(t *testing.T) {
 	h.st.existing = []store.Finding{f}
 	h.llm.review = okResultWith()
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if len(h.st.Closed) != 0 {
 		t.Errorf("closed = %v, want no stamp on a 404", h.st.Closed)
@@ -340,7 +340,7 @@ func TestTrimDropsClosedFindingsFirst(t *testing.T) {
 	}
 	h.llm.review = okResultWith()
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if p := h.llm.Reviews[0].Prompt; !strings.Contains(p, "[F1]") {
 		t.Errorf("the open finding was trimmed for a closed one")
@@ -357,7 +357,7 @@ func TestSettledThreadIsNotReadAgain(t *testing.T) {
 	h.st.existing = []store.Finding{f}
 	h.llm.review = okResultWith()
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if slices.Contains(h.bb.FetchedC, *f.BitbucketCommentID) {
 		t.Errorf("the settled thread was read again: %v", h.bb.FetchedC)
@@ -378,7 +378,7 @@ func TestUnreadableEarlierFindingsNeverLowerTheVerdict(t *testing.T) {
 	res.Review.Summary.VerdictRationale = "The old retry bug is still there."
 	h.llm.review = res
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if s := h.bb.Posted[0].Text; !strings.Contains(s, "**Request changes 🛑** - The old retry bug is still there.") {
 		t.Errorf("the verdict must stand over an unread list:\n%s", s)
@@ -394,7 +394,7 @@ func TestCappedFindingsStillHoldTheVerdict(t *testing.T) {
 	res.Review.Summary.VerdictDecision = "request_changes"
 	h.llm.review = res
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	s := h.bb.Posted[0].Text
 	for _, want := range []string{"**Request changes 🛑**", "- 1 more new finding over the comment cap not posted."} {
@@ -415,7 +415,7 @@ func TestClosedThreadIsMarkedInThePrompt(t *testing.T) {
 	h.st.existing = []store.Finding{f, open}
 	h.llm.review = okResultWith()
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	p := h.llm.Reviews[0].Prompt
 	if strings.Contains(p, "[F11]") || !strings.Contains(p, "[F12]") ||
@@ -434,7 +434,7 @@ func TestFindingWithoutThreadIsClosed(t *testing.T) {
 		Headline: ptrs("Legacy row"), CommentText: "old"}}
 	h.llm.review = okResultWith(finding("a.go", 2, "issue", "same again"))
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if s := h.bb.Posted[0].Text; strings.Contains(s, "Legacy row") || !strings.Contains(s, "**Approve ✅**") {
 		t.Errorf("a row with no thread must not be listed or hold the verdict:\n%s", s)
@@ -449,7 +449,7 @@ func TestNewIssueRaisesAnApprove(t *testing.T) {
 	h := newHarness(t, nil)
 	h.llm.review = okResultWith(finding("a.go", 2, "issue", "new"))
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	want := "**Request changes 🛑** - Verdict raised: 1 open finding demands it."
 	if s := h.bb.Posted[0].Text; !strings.Contains(s, want) {
@@ -461,7 +461,7 @@ func TestNewIssueRaisesAnApprove(t *testing.T) {
 func TestSummaryCountsARetiredFinding(t *testing.T) {
 	h := fixedHarness(t, "func new() {}")
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	s := h.bb.Posted[0].Text
 	for _, want := range []string{"### Issues and suggestions\nNone.", "_1 earlier finding fixed by this push._", "**Approve ✅**"} {
@@ -478,7 +478,7 @@ func TestFullReviewSummaryListsEarlierOpenFindings(t *testing.T) {
 	h.st.existing = []store.Finding{earlier(h, 11, "suggestion", "")}
 	h.llm.review = okResultWith(finding("a.go", 1, "issue", "new"))
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	s := h.bb.Posted[0].Text
 	if !strings.Contains(s, "1. new _(new)_\n2. old") {
@@ -494,7 +494,7 @@ func TestFirstReviewSummaryHasNoAccounting(t *testing.T) {
 	h := newHarness(t, nil)
 	h.llm.review = okResultWith(finding("a.go", 2, "issue", "new"))
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	s := h.bb.Posted[0].Text
 	if strings.Contains(s, "fixed by this push") || strings.Contains(s, "dropped by validation") || strings.Contains(s, "_(new)_") {

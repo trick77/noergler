@@ -10,6 +10,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/trick77/noergler/internal/forward"
 )
 
 type fake struct {
@@ -441,7 +443,7 @@ func TestFormatNanoUSD(t *testing.T) {
 		{-12_300_000, "-0.0123"},
 	}
 	for _, tc := range tests {
-		if got := FormatNanoUSD(tc.nano); got != tc.want {
+		if got := forward.FormatNanoUSD(tc.nano); got != tc.want {
 			t.Errorf("FormatNanoUSD(%d) = %q, want %q", tc.nano, got, tc.want)
 		}
 	}

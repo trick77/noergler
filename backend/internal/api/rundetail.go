@@ -120,14 +120,6 @@ type findingBody struct {
 	Fixed      bool    `json:"fixed"`
 }
 
-func usd6(nano *int64) *string {
-	if nano == nil {
-		return nil
-	}
-	s := inference.FormatUSD6(*nano)
-	return &s
-}
-
 // runNumber is a run's path segment: a plain positive decimal, nothing else
 // (no sign, no leading zero), so one run has one path.
 func runNumber(s string) (int, bool) {

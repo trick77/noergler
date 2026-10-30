@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/forward"
 	"github.com/trick77/noergler/internal/httpstats"
 )
 
@@ -256,13 +257,11 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 
 // statusError drains the body (so the connection can be reused) and wraps it.
 func statusError(method, path string, resp *http.Response) error {
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, errBodyLimit))
-	_, _ = io.Copy(io.Discard, resp.Body)
 	return &StatusError{
 		Method: method,
 		Path:   path,
 		Status: resp.StatusCode,
-		Body:   strings.TrimSpace(strings.ToValidUTF8(string(body), "�")),
+		Body:   forward.ReadErrorBody(resp.Body, errBodyLimit),
 	}
 }
 

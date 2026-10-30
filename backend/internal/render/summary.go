@@ -1,6 +1,7 @@
 package render
 
 import (
+	"cmp"
 	"fmt"
 	"math"
 	"path"
@@ -25,15 +26,6 @@ var verdictLabels = map[lang.Lang]map[string]string{
 		"approve_with_followups": "Freigeben mit Nacharbeiten ⚠️",
 		"request_changes":        "Änderungen nötig 🛑",
 	},
-}
-
-// PromptBreakdown is the per-section input token count the footnote renders.
-// RepoInstructions doubles as the AGENTS.md figure on the scope line.
-type PromptBreakdown struct {
-	Template         int
-	RepoInstructions int
-	Files            int
-	Present          bool
 }
 
 // SummaryInput is everything the PR summary comment renders. It is the PR
@@ -83,7 +75,9 @@ type SummaryInput struct {
 	OverBudgetFiles     []string
 	ContentSkippedFiles []string
 
-	PromptBreakdown PromptBreakdown
+	// AgentsMDTokens is what the repo's AGENTS.md cost the prompt, for the
+	// bloat warning.
+	AgentsMDTokens int
 
 	Ticket       *jira.Ticket
 	ParentTicket *jira.Ticket
@@ -174,7 +168,7 @@ func Summary(in SummaryInput) string {
 	// review has no latest push: whatever the model put there is not shown.
 	if in.IncrementalFrom != "" && in.ReviewedCommit != "" {
 		line := fmt.Sprintf(p("- Letzter Push: `%s` .. `%s`", "- Last push: `%s` .. `%s`"),
-			shortSHA(in.IncrementalFrom, 10), shortSHA(in.ReviewedCommit, 10))
+			ShortSHA(in.IncrementalFrom, 10), ShortSHA(in.ReviewedCommit, 10))
 		// Flattened to one paragraph first, then wrapped as the list item it
 		// is (hang indent). A sentinel says nothing about a push: dropped.
 		if push := strings.Join(strings.Fields(in.Summary.LatestPush), " "); push != "" && !IsNoneSentinel(push) {
@@ -200,9 +194,9 @@ func Summary(in SummaryInput) string {
 		coverage = p("Testabdeckung allein aus dem Diff nicht beurteilbar.", coverageNotAssessable)
 	}
 	sections = append(sections, p("### Sicherheit und Performance\n", "### Security and performance\n")+
-		orDefault(WrapProse(security), p("Nichts Auffälliges.", "None notable.")))
+		cmp.Or(WrapProse(security), p("Nichts Auffälliges.", "None notable.")))
 	sections = append(sections, p("### Testabdeckung\n", "### Test coverage\n")+
-		orDefault(WrapProse(coverage), p("_Nicht beurteilt._", "_Not assessed._")))
+		cmp.Or(WrapProse(coverage), p("_Nicht beurteilt._", "_Not assessed._")))
 
 	if len(in.Visual) > 0 || in.VisualUnread {
 		sections = append(sections, renderVisual(in))
@@ -225,21 +219,21 @@ func Summary(in SummaryInput) string {
 // copies: the caller's findings are stored as they came.
 func swissInput(in SummaryInput) SummaryInput {
 	s := in.Summary
-	s.Overview = SwissSS(s.Overview)
-	s.LatestPush = SwissSS(s.LatestPush)
-	s.SecurityPerformance = SwissSS(s.SecurityPerformance)
-	s.TestCoverage = SwissSS(s.TestCoverage)
-	s.VerdictRationale = SwissSS(s.VerdictRationale)
+	s.Overview = lang.SwissSS(s.Overview)
+	s.LatestPush = lang.SwissSS(s.LatestPush)
+	s.SecurityPerformance = lang.SwissSS(s.SecurityPerformance)
+	s.TestCoverage = lang.SwissSS(s.TestCoverage)
+	s.VerdictRationale = lang.SwissSS(s.VerdictRationale)
 	s.Strengths = make([]string, len(in.Summary.Strengths))
 	for i, v := range in.Summary.Strengths {
-		s.Strengths[i] = SwissSS(v)
+		s.Strengths[i] = lang.SwissSS(v)
 	}
 	in.Summary = s
 	in.Findings = swissFindings(in.Findings)
 	in.EarlierOpen = swissFindings(in.EarlierOpen)
 	reqs := make([]inference.ComplianceRequirement, len(in.ComplianceRequirements))
 	for i, r := range in.ComplianceRequirements {
-		r.Requirement = SwissSS(r.Requirement)
+		r.Requirement = lang.SwissSS(r.Requirement)
 		reqs[i] = r
 	}
 	if in.ComplianceRequirements != nil {
@@ -247,7 +241,7 @@ func swissInput(in SummaryInput) SummaryInput {
 	}
 	visual := make([]VisualLine, len(in.Visual))
 	for i, v := range in.Visual {
-		v.Text = SwissSS(v.Text)
+		v.Text = lang.SwissSS(v.Text)
 		visual[i] = v
 	}
 	in.Visual = visual
@@ -317,9 +311,9 @@ func renderVisual(in SummaryInput) string {
 func swissFindings(in []inference.ReviewFinding) []inference.ReviewFinding {
 	out := make([]inference.ReviewFinding, len(in))
 	for i, f := range in {
-		f.Comment = SwissSS(f.Comment)
+		f.Comment = lang.SwissSS(f.Comment)
 		if f.Headline != nil {
-			h := SwissSS(*f.Headline)
+			h := lang.SwissSS(*f.Headline)
 			f.Headline = &h
 		}
 		out[i] = f
@@ -464,7 +458,8 @@ func renderIssues(in SummaryInput) string {
 		if headline == "" {
 			headline = p("(keine Beschreibung)", "(no description)")
 			if f.Comment != "" {
-				headline = strings.TrimSpace(firstLine(f.Comment))
+				first, _, _ := strings.Cut(f.Comment, "\n")
+				headline = strings.TrimSpace(first)
 			}
 		}
 		if markNew && f.isNew {
@@ -559,7 +554,7 @@ func renderRecommendation(in SummaryInput) string {
 	if !ok {
 		label = labels[inference.DefaultVerdictDecision]
 	}
-	rationale := orDefault(WrapProse(strings.TrimSpace(in.Summary.VerdictRationale)),
+	rationale := cmp.Or(WrapProse(strings.TrimSpace(in.Summary.VerdictRationale)),
 		p("_Keine Begründung angegeben._", "_No rationale provided._"))
 	return fmt.Sprintf(p("### Empfehlung\n**%s** — %s", "### Recommendation\n**%s** — %s"), label, rationale)
 }
@@ -680,11 +675,8 @@ func Elapsed(seconds float64) string {
 // moved to the run page.
 func agentsMDBloatLine(in SummaryInput) string {
 	p := in.Lang.Pick
-	if !in.PromptBreakdown.Present || in.AgentsMDWarnTokens <= 0 {
-		return ""
-	}
-	tokens := in.PromptBreakdown.RepoInstructions
-	if tokens <= in.AgentsMDWarnTokens {
+	tokens := in.AgentsMDTokens
+	if in.AgentsMDWarnTokens <= 0 || tokens <= in.AgentsMDWarnTokens {
 		return ""
 	}
 	return fmt.Sprintf(p("`AGENTS.md` belegt ~%d von %d Tokens (%d%%) — droht den Kontext aufzublähen, besser kürzen ⚠️",
@@ -719,21 +711,8 @@ func baseNames(paths []string) string {
 	return strings.Join(out, ", ")
 }
 
-func orDefault(s, fallback string) string {
-	if s == "" {
-		return fallback
-	}
-	return s
-}
-
-func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
-	}
-	return s
-}
-
-func shortSHA(s string, n int) string {
+// ShortSHA truncates a commit to n characters for log lines and notices.
+func ShortSHA(s string, n int) string {
 	if len(s) > n {
 		return s[:n]
 	}

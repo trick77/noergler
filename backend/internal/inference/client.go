@@ -249,3 +249,18 @@ func (c *Client) InputTokenBudget() int {
 func (c *Client) FitCeiling() int {
 	return c.window - OutputTokenReserve
 }
+
+// tooLarge is the pre-flight every call makes: a prompt over the fit ceiling
+// is refused before anything is spent. Against the ceiling, not the
+// compression budget: the budget is what compression aims at, the ceiling is
+// what will not fit. Needs a resolved window, or the unresolved 0 would
+// reject everything. Nil when the prompt fits.
+func (c *Client) tooLarge(promptTokens int) *TooLargeError {
+	if promptTokens <= 0 || !c.Ready() {
+		return nil
+	}
+	if ceiling := c.FitCeiling(); promptTokens > ceiling {
+		return &TooLargeError{PromptTokens: promptTokens, Ceiling: ceiling}
+	}
+	return nil
+}

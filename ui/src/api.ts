@@ -141,7 +141,6 @@ export interface Team {
 /** ForwardStatus is a forwarder's state (riptide, Almanach), the server's
  *  fixed words as of its last call: never a reason. */
 export type ForwardStatus = "off" | "ok" | "failing" | "rejected";
-export type RiptideStatus = ForwardStatus;
 
 /** AccountStatus is an own account's health; null on a shared one. */
 export type AccountStatus =

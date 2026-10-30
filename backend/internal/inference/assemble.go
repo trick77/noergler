@@ -104,8 +104,9 @@ func RenderMentionPrompt(req MentionPromptRequest) string {
 	).Replace(req.Template)
 }
 
-// PromptBreakdown is the per-section input token count the summary footnote
-// renders. RepoInstructions doubles as the AGENTS.md figure on the scope line.
+// PromptBreakdown is the per-section input token count, for the run detail
+// and the prompt-composition log line. RepoInstructions is also the AGENTS.md
+// figure the summary's bloat warning reads.
 type PromptBreakdown struct {
 	Template         int
 	RepoInstructions int

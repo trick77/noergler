@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/lang"
 )
 
 func newOnboarder(t *testing.T, tm *config.Team, admin *fakeAdmin, bot *fakeBot, opts Options) *Onboarder {
@@ -435,10 +436,10 @@ func TestRefuseRepoTarget(t *testing.T) {
 func TestTruncateRunesCountsCharacters(t *testing.T) {
 	// 300 two-byte runes: the cap keeps 200 of them, not 200 bytes.
 	s := strings.Repeat("ä", 300)
-	if got := truncateRunes(s, 200); len([]rune(got)) != 200 {
+	if got := lang.TruncateRunes(s, 200); len([]rune(got)) != 200 {
 		t.Errorf("kept %d runes, want 200", len([]rune(got)))
 	}
-	if got := truncateRunes("short", 200); got != "short" {
+	if got := lang.TruncateRunes("short", 200); got != "short" {
 		t.Errorf("truncated a short string: %q", got)
 	}
 }

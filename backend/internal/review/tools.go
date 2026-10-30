@@ -12,6 +12,7 @@ import (
 	"github.com/trick77/noergler/internal/diff"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/lang"
+	"github.com/trick77/noergler/internal/render"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/ship/kit/logging"
 )
@@ -246,7 +247,7 @@ func (r *Reviewer) prStatus(ctx context.Context, ask *mentionAsk) any {
 	}
 	v.Known, v.Runs = st.Known, st.Runs
 	if st.LastReviewedCommit != nil {
-		v.LastReviewedCommit = shortSHA(*st.LastReviewedCommit, 10)
+		v.LastReviewedCommit = render.ShortSHA(*st.LastReviewedCommit, 10)
 	}
 	v.Ignored, v.Merged, v.Declined = st.IgnoredAt != nil, st.MergedAt != nil, st.DeclinedAt != nil
 	if lr := st.LastRun; lr != nil {

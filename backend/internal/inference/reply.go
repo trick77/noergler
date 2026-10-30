@@ -14,10 +14,8 @@ import (
 // pre-flight, the guarded system message, an optional strict schema, no
 // retry. A non-OK outcome carries no response.
 func (c *Client) answer(ctx context.Context, prompt string, promptTokens int, format *llmwire.ResponseFormat) (*llmwire.ChatResponse, Outcome, error) {
-	if promptTokens > 0 && c.Ready() {
-		if ceiling := c.FitCeiling(); promptTokens > ceiling {
-			return nil, OutcomeTooLarge, &TooLargeError{PromptTokens: promptTokens, Ceiling: ceiling}
-		}
+	if err := c.tooLarge(promptTokens); err != nil {
+		return nil, OutcomeTooLarge, err
 	}
 	chat := llmwire.ChatRequest{
 		Model:     c.model,

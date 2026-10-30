@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/trick77/llmwire"
@@ -161,24 +162,12 @@ func (c *Client) Vision() bool { return c.vision }
 
 // Review runs one review call.
 //
-// The pre-flight check refuses a prompt that cannot fit before spending
-// anything: the whole PR is reviewed in one call, so an overflow is a skip,
-// not a partial review.
+// The pre-flight check (tooLarge) refuses a prompt that cannot fit before
+// spending anything: the whole PR is reviewed in one call, so an overflow is
+// a skip, not a partial review.
 func (c *Client) Review(ctx context.Context, req ReviewRequest) ReviewResult {
-	// Against the fit ceiling, not the compression budget: the budget is what
-	// compression aims at, the ceiling is what will not fit. Needs a resolved
-	// window, or the unresolved 0 would reject everything.
-	if req.PromptTokens > 0 && c.Ready() {
-		if ceiling := c.FitCeiling(); req.PromptTokens > ceiling {
-			return ReviewResult{
-				Outcome: OutcomeTooLarge,
-				Review:  ParsedReview{Summary: NewReviewSummary()},
-				Err: &TooLargeError{
-					PromptTokens: req.PromptTokens,
-					Ceiling:      ceiling,
-				},
-			}
-		}
+	if err := c.tooLarge(req.PromptTokens); err != nil {
+		return ReviewResult{Outcome: OutcomeTooLarge, Review: ParsedReview{Summary: NewReviewSummary()}, Err: err}
 	}
 
 	chat := llmwire.ChatRequest{
@@ -265,8 +254,8 @@ func (c *Client) Mention(ctx context.Context, req MentionRequest) MentionResult 
 	case !c.tools:
 		toolsOff = "the model's profile has no tool support"
 	case c.Ready() && req.PromptTokens+ToolHeadroomTokens > c.FitCeiling():
-		toolsOff = "no room: " + itoa(req.PromptTokens) + "+" + itoa(ToolHeadroomTokens) +
-			" tokens exceed the fit ceiling of " + itoa(c.FitCeiling())
+		toolsOff = "no room: " + strconv.Itoa(req.PromptTokens) + "+" + strconv.Itoa(ToolHeadroomTokens) +
+			" tokens exceed the fit ceiling of " + strconv.Itoa(c.FitCeiling())
 	default:
 		return c.mentionWithTools(ctx, req)
 	}
@@ -290,7 +279,7 @@ type TooLargeError struct {
 }
 
 func (e *TooLargeError) Error() string {
-	return "prompt of " + itoa(e.PromptTokens) + " tokens exceeds the fit ceiling of " + itoa(e.Ceiling)
+	return "prompt of " + strconv.Itoa(e.PromptTokens) + " tokens exceeds the fit ceiling of " + strconv.Itoa(e.Ceiling)
 }
 
 // classifyCallError maps a failed call to an outcome.

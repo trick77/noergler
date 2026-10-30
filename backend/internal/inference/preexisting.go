@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/trick77/noergler/internal/diff"
+	"github.com/trick77/noergler/internal/lang"
 )
 
 // PreExistingBug is a real bug the model noticed in code the PR did not
@@ -50,8 +51,8 @@ func parsePreExisting(item json.RawMessage) (PreExistingBug, bool) {
 	b := PreExistingBug{
 		File:        *probe.File,
 		Line:        line,
-		Headline:    truncateRunes(strings.TrimSpace(*probe.Headline), maxPreExistingHeadline),
-		Explanation: truncateRunes(strings.TrimSpace(*probe.Explanation), maxPreExistingProse),
+		Headline:    lang.TruncateRunes(strings.TrimSpace(*probe.Headline), maxPreExistingHeadline),
+		Explanation: lang.TruncateRunes(strings.TrimSpace(*probe.Explanation), maxPreExistingProse),
 	}
 	if b.Headline == "" || b.Explanation == "" {
 		return PreExistingBug{}, false

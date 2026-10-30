@@ -8,8 +8,11 @@ import (
 	"log/slog"
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/trick77/noergler/internal/lang"
 )
 
 // VerdictDecisions is the accepted verdict enum. Anything else is dropped.
@@ -106,7 +109,7 @@ func parseErrorDiagnostic(err error, content string) ParseDiagnostic {
 	if errors.As(err, &syntax) {
 		return ParseDiagnostic{
 			Level:   slog.LevelError,
-			Message: "Failed to parse review response as JSON: " + truncateRunes(content, 200),
+			Message: "Failed to parse review response as JSON: " + lang.TruncateRunes(content, 200),
 		}
 	}
 	return ParseDiagnostic{Level: slog.LevelError, Message: "Review response is not a JSON object"}
@@ -123,16 +126,6 @@ func decodesAs(raw json.RawMessage, dst any) bool {
 		return false
 	}
 	return json.Unmarshal(raw, dst) == nil
-}
-
-// truncateRunes cuts s to at most n runes. The prefix is measured in
-// characters, not bytes, so a multi-byte rune is never split.
-func truncateRunes(s string, n int) string {
-	runes := []rune(s)
-	if len(runes) <= n {
-		return s
-	}
-	return string(runes[:n])
 }
 
 // Severities are the only values a finding may carry. The JSON schema already
@@ -253,14 +246,7 @@ func isJSONNull(raw json.RawMessage) bool {
 	return string(bytes.TrimSpace(raw)) == "null"
 }
 
-func validSeverity(s string) bool {
-	for _, allowed := range Severities {
-		if s == allowed {
-			return true
-		}
-	}
-	return false
-}
+func validSeverity(s string) bool { return slices.Contains(Severities, s) }
 
 // coerceInt accepts an integer, a string holding one, or a float equal to its
 // own truncation. The wire contract coerces leniently: 95.0 -> 95, "95" -> 95;
@@ -339,36 +325,21 @@ func ParseReview(content string) ParsedReview {
 		Summary:                NewReviewSummary(),
 	}
 
-	if rawReqs, ok := raw["compliance_requirements"]; ok {
-		var items []json.RawMessage
-		if err := json.Unmarshal(rawReqs, &items); err == nil {
-			for _, item := range items {
-				// requirement must be a string and met a bool: this is a TYPE
-				// check, so a present key holding null fails it. Probing for
-				// presence alone is not
-				// enough, because encoding/json decodes a null into a string
-				// or bool field without error, turning {"met": null} into a
-				// silent "not met" and {"requirement": null} into the "???"
-				// placeholder the summary renders.
-				var probe map[string]json.RawMessage
-				if json.Unmarshal(item, &probe) != nil {
-					out.warn("Skipping malformed compliance requirement: %s", item)
-					continue
-				}
-				var reqStr string
-				if !decodesAs(probe["requirement"], &reqStr) {
-					out.warn("Skipping malformed compliance requirement: %s", item)
-					continue
-				}
-				var metBool bool
-				if !decodesAs(probe["met"], &metBool) {
-					out.warn("Skipping malformed compliance requirement: %s", item)
-					continue
-				}
-				req := ComplianceRequirement{Requirement: reqStr, Met: metBool}
-				out.ComplianceRequirements = append(out.ComplianceRequirements, req)
-			}
+	for _, item := range out.listItems(raw, "compliance_requirements") {
+		// requirement must be a string and met a bool: this is a TYPE
+		// check, so a present key holding null fails it. Probing for
+		// presence alone is not enough, because encoding/json decodes a
+		// null into a string or bool field without error, turning {"met":
+		// null} into a silent "not met" and {"requirement": null} into the
+		// "???" placeholder the summary renders.
+		var probe map[string]json.RawMessage
+		var reqStr string
+		var metBool bool
+		if json.Unmarshal(item, &probe) != nil || !decodesAs(probe["requirement"], &reqStr) || !decodesAs(probe["met"], &metBool) {
+			out.warn("Skipping malformed compliance requirement: %s", item)
+			continue
 		}
+		out.ComplianceRequirements = append(out.ComplianceRequirements, ComplianceRequirement{Requirement: reqStr, Met: metBool})
 	}
 
 	out.Summary.Overview = strings.TrimSpace(decodeString(raw["overview"]))
@@ -383,20 +354,12 @@ func ParseReview(content string) ParsedReview {
 
 	// Non-string and blank entries are dropped; the rest keep their original
 	// spacing, because the blank test trims but the stored value does not.
-	if rawStrengths, ok := raw["strengths"]; ok {
-		var items []json.RawMessage
-		if err := json.Unmarshal(rawStrengths, &items); err == nil {
-			for _, item := range items {
-				var s string
-				if json.Unmarshal(item, &s) != nil {
-					continue
-				}
-				if strings.TrimSpace(s) == "" {
-					continue
-				}
-				out.Summary.Strengths = append(out.Summary.Strengths, s)
-			}
+	for _, item := range out.listItems(raw, "strengths") {
+		var s string
+		if json.Unmarshal(item, &s) != nil || strings.TrimSpace(s) == "" {
+			continue
 		}
+		out.Summary.Strengths = append(out.Summary.Strengths, s)
 	}
 
 	if rawVerdict, ok := raw["verdict"]; ok {
@@ -415,93 +378,83 @@ func ParseReview(content string) ParsedReview {
 		}
 	}
 
-	if rawFindings, ok := raw["findings"]; ok {
-		var items []json.RawMessage
-		if err := json.Unmarshal(rawFindings, &items); err == nil {
-			for _, item := range items {
-				f, ok := parseFinding(item)
-				if !ok {
-					out.warn("Skipping malformed finding: %s", item)
-					continue
-				}
-				// A finding whose suggestion says there is nothing to do is
-				// not a finding.
-				if f.Suggestion != nil && IsVacuousSuggestion(*f.Suggestion) {
-					out.info("Dropping no-issue finding (vacuous suggestion): %s", item)
-					continue
-				}
-				out.Findings = append(out.Findings, f)
-			}
+	for _, item := range out.listItems(raw, "findings") {
+		f, ok := parseFinding(item)
+		if !ok {
+			out.warn("Skipping malformed finding: %s", item)
+			continue
 		}
+		// A finding whose suggestion says there is nothing to do is
+		// not a finding.
+		if f.Suggestion != nil && IsVacuousSuggestion(*f.Suggestion) {
+			out.info("Dropping no-issue finding (vacuous suggestion): %s", item)
+			continue
+		}
+		out.Findings = append(out.Findings, f)
 	}
 
-	// null is how models often spell an empty list; anything else that is
-	// not an array is said, so a malformed claim never reads as none.
-	if rawFixed, ok := raw["fixed"]; ok && !isJSONNull(rawFixed) {
-		var items []json.RawMessage
-		if err := json.Unmarshal(rawFixed, &items); err != nil {
-			out.warn("Skipping malformed fixed list: %s", truncateRunes(string(rawFixed), 200))
-		} else {
-			for _, item := range items {
-				c, ok := parseFixedClaim(item)
-				if !ok {
-					out.warn("Skipping malformed fixed entry: %s", item)
-					continue
-				}
-				out.Fixed = append(out.Fixed, c)
-			}
+	// The claim lists say when they are not an array, so a malformed claim
+	// never reads as none.
+	for _, item := range out.listItems(raw, "fixed") {
+		c, ok := parseFixedClaim(item)
+		if !ok {
+			out.warn("Skipping malformed fixed entry: %s", item)
+			continue
 		}
+		out.Fixed = append(out.Fixed, c)
 	}
 
-	// As `fixed`: null is an empty list, anything else not an array is said.
-	if rawPre, ok := raw["pre_existing"]; ok && !isJSONNull(rawPre) {
-		var items []json.RawMessage
-		if err := json.Unmarshal(rawPre, &items); err != nil {
-			out.warn("Skipping malformed pre_existing list: %s", truncateRunes(string(rawPre), 200))
-		} else {
-			for _, item := range items {
-				b, ok := parsePreExisting(item)
-				if !ok {
-					out.warn("Skipping malformed pre_existing entry: %s", truncateRunes(string(item), 200))
-					continue
-				}
-				out.PreExisting = append(out.PreExisting, b)
-			}
+	for _, item := range out.listItems(raw, "pre_existing") {
+		b, ok := parsePreExisting(item)
+		if !ok {
+			out.warn("Skipping malformed pre_existing entry: %s", lang.TruncateRunes(string(item), 200))
+			continue
 		}
+		out.PreExisting = append(out.PreExisting, b)
 	}
 
-	// As `fixed`. An entry without a string id or with a blank change says
-	// nothing about any screenshot and is dropped.
-	// Item by item: one malformed entry must not take the good ones with it.
-	if rawVisual, ok := raw["visual_changes"]; ok && !isJSONNull(rawVisual) {
-		var items []json.RawMessage
-		if err := json.Unmarshal(rawVisual, &items); err != nil {
-			out.warn("Skipping malformed visual_changes list: %s", truncateRunes(string(rawVisual), 200))
-		} else {
-			for _, item := range items {
-				var e struct {
-					ID      string          `json:"id"`
-					Change  string          `json:"change"`
-					Visible json.RawMessage `json:"visible"`
-				}
-				if json.Unmarshal(item, &e) != nil {
-					out.warn("Skipping malformed visual_changes entry: %s", truncateRunes(string(item), 200))
-					continue
-				}
-				// Only a literal false hides the line: anything else the
-				// model put there shows it.
-				v := VisualChange{ID: strings.TrimSpace(e.ID), Change: strings.TrimSpace(e.Change),
-					Invisible: string(e.Visible) == "false"}
-				if v.ID == "" || v.Change == "" {
-					out.warn("Skipping empty visual_changes entry")
-					continue
-				}
-				out.Visual = append(out.Visual, v)
-			}
+	// An entry without a string id or with a blank change says nothing about
+	// any screenshot and is dropped. Item by item: one malformed entry must
+	// not take the good ones with it.
+	for _, item := range out.listItems(raw, "visual_changes") {
+		var e struct {
+			ID      string          `json:"id"`
+			Change  string          `json:"change"`
+			Visible json.RawMessage `json:"visible"`
 		}
+		if json.Unmarshal(item, &e) != nil {
+			out.warn("Skipping malformed visual_changes entry: %s", lang.TruncateRunes(string(item), 200))
+			continue
+		}
+		// Only a literal false hides the line: anything else the
+		// model put there shows it.
+		v := VisualChange{ID: strings.TrimSpace(e.ID), Change: strings.TrimSpace(e.Change),
+			Invisible: string(e.Visible) == "false"}
+		if v.ID == "" || v.Change == "" {
+			out.warn("Skipping empty visual_changes entry")
+			continue
+		}
+		out.Visual = append(out.Visual, v)
 	}
 
 	return out
+}
+
+// listItems is one list field of the response, item by item. A missing key
+// and null (how models often spell an empty list) are no items. Anything
+// else that is not an array is no items either, and said: a dropped list
+// changes what is posted, so it gets its line.
+func (p *ParsedReview) listItems(raw map[string]json.RawMessage, key string) []json.RawMessage {
+	v, ok := raw[key]
+	if !ok || isJSONNull(v) {
+		return nil
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(v, &items); err != nil {
+		p.warn("Skipping malformed "+key+" list: %s", lang.TruncateRunes(string(v), 200))
+		return nil
+	}
+	return items
 }
 
 // VisualChange is the model's line on one screenshot pair.
@@ -626,7 +579,7 @@ func ParseMention(content string) string {
 				if ref.Line != nil {
 					var line int
 					if json.Unmarshal(*ref.Line, &line) == nil {
-						refLines = append(refLines, "- `"+ref.File+"`:"+itoa(line))
+						refLines = append(refLines, "- `"+ref.File+"`:"+strconv.Itoa(line))
 						continue
 					}
 				}

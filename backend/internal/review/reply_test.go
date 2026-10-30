@@ -38,7 +38,7 @@ func replyHarness(t *testing.T) (*harness, *webhook.Payload) {
 func TestFindingReplyAnswersADisputeWithAnAgentsMDLine(t *testing.T) {
 	h, p := replyHarness(t)
 
-	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 	if len(h.llm.Replies) != 1 {
 		t.Fatalf("model calls = %d", len(h.llm.Replies))
@@ -93,7 +93,7 @@ func TestFindingReplyIgnores(t *testing.T) {
 			h, p := replyHarness(t)
 			tweak(h, p)
 
-			h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+			h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 			if len(h.llm.Replies) != 0 || len(h.bb.Replies) != 0 || len(h.st.Replied) != 0 {
 				t.Errorf("model %d, replies %d, marked %d: want nothing", len(h.llm.Replies), len(h.bb.Replies), len(h.st.Replied))
@@ -109,7 +109,7 @@ func TestFindingReplyDropsTheAgentsMDLine(t *testing.T) {
 		h, p := replyHarness(t)
 		h.llm.reply.Reply.Intent = "acknowledges"
 
-		h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+		h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 		if strings.Contains(h.bb.Replies[0].Text, "AGENTS.md") {
 			t.Errorf("reply suggests a line on an acknowledgement:\n%s", h.bb.Replies[0].Text)
@@ -122,7 +122,7 @@ func TestFindingReplyDropsTheAgentsMDLine(t *testing.T) {
 		h, p := replyHarness(t)
 		h.bb.files["src1:AGENTS.md"] = "# Rules\n- Business rule validations live in the UI; the backend does not re-validate them.\n"
 
-		h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+		h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 		if strings.Contains(h.bb.Replies[0].Text, "consider adding") {
 			t.Errorf("reply repeats a line AGENTS.md has:\n%s", h.bb.Replies[0].Text)
@@ -136,7 +136,7 @@ func TestFindingReplyFailuresLeaveTheFindingUnanswered(t *testing.T) {
 		h, p := replyHarness(t)
 		h.llm.reply = inference.FindingReplyResult{Outcome: inference.OutcomeUnparseable}
 
-		h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+		h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 		if len(h.bb.Replies) != 0 || len(h.st.Replied) != 0 {
 			t.Errorf("replies %d, marked %d", len(h.bb.Replies), len(h.st.Replied))
@@ -146,7 +146,7 @@ func TestFindingReplyFailuresLeaveTheFindingUnanswered(t *testing.T) {
 		h, p := replyHarness(t)
 		h.bb.replyErr = errors.New("boom")
 
-		h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+		h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 		if len(h.st.Replied) != 0 {
 			t.Errorf("marked %+v after a failed post", h.st.Replied)
@@ -157,7 +157,7 @@ func TestFindingReplyFailuresLeaveTheFindingUnanswered(t *testing.T) {
 		h, p := replyHarness(t)
 		h.bb.fileErr["src1:a.go"] = errors.New("boom")
 
-		h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+		h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 		if len(h.bb.Replies) != 1 || !strings.Contains(h.llm.Replies[0].Prompt, "could not be read") {
 			t.Errorf("replies %d; want an answer without the file", len(h.bb.Replies))
@@ -172,7 +172,7 @@ func TestDisputeReachesTheNextReview(t *testing.T) {
 	h.st.existing = []store.Finding{{ID: 11, FilePath: "a.go", LineNumber: 2, Severity: "issue",
 		CommentText: "unchecked", DisputeText: &d}}
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if p := h.llm.Reviews[0].Prompt; !strings.Contains(p, "unchecked (author replied: we do this in the UI)") {
 		t.Errorf("prompt lacks the dispute:\n%s", p)
@@ -186,11 +186,11 @@ func TestFindingReplyIsTheAuthorsOnly(t *testing.T) {
 	h, p := replyHarness(t)
 	p.Comment.Author.Name = "carol"
 
-	if handled, _ := h.r.HandleFindingReply(context.Background(), p, "payments", nil); !handled {
+	if handled, _ := h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{}); !handled {
 		t.Error("a plain reply by someone else is handled: ignored, nothing else to do")
 	}
 	p.Comment.Text = "@noergler why?"
-	if handled, _ := h.r.HandleFindingReply(context.Background(), p, "payments", nil); handled {
+	if handled, _ := h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{}); handled {
 		t.Error("someone else's @mention belongs to the Q&A")
 	}
 	if len(h.llm.Replies) != 0 || len(h.st.Replied) != 0 {
@@ -205,7 +205,7 @@ func TestFindingReplyWithAMention(t *testing.T) {
 		h, p := replyHarness(t)
 		p.Comment.Text = "@noergler we do this in the UI"
 
-		handled, _ := h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+		handled, _ := h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 		if !handled || !strings.Contains(h.llm.Replies[0].Prompt, "## The reply") ||
 			strings.Contains(h.llm.Replies[0].Prompt, "@noergler") {
@@ -224,7 +224,7 @@ func TestFindingReplyWithAMention(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			h, p := replyHarness(t)
 			tweak(h, p)
-			if handled, _ := h.r.HandleFindingReply(context.Background(), p, "payments", nil); handled || len(h.llm.Replies) != 0 {
+			if handled, _ := h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{}); handled || len(h.llm.Replies) != 0 {
 				t.Errorf("handled = %v, calls = %d: want it left to the mention path", handled, len(h.llm.Replies))
 			}
 		})
@@ -238,7 +238,7 @@ func TestFindingReplyRespectsTheCostCap(t *testing.T) {
 	h, p := replyHarness(t)
 	h.st.prCost = ptri(6_000_000_000)
 
-	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 	if len(h.llm.Replies) != 0 {
 		t.Error("a PR at the cap must not buy a plain reply")
@@ -253,7 +253,7 @@ func TestFindingReplyRespectsTheCostCap(t *testing.T) {
 	at := time.Now()
 	h.st.skipState = &store.SkipState{IgnoredAt: &at}
 	p.Comment.Text = "@noergler we do this in the UI"
-	handled, _ := h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+	handled, _ := h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 	if handled || len(h.llm.Replies) != 0 {
 		t.Errorf("handled = %v, replies = %d: a mention at the cap is no reply either", handled, len(h.llm.Replies))
@@ -269,7 +269,7 @@ func TestFindingReplyIsRecordedAndCounted(t *testing.T) {
 	h, p := replyHarness(t)
 	cost := int64(2_000_000)
 	h.llm.reply.Cost = inference.CallCost{Answered: true, NanoUSD: &cost}
-	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 	if len(h.st.CommentCalls) != 1 || h.st.CommentCalls[0].Kind != store.CallReply ||
 		h.st.CommentCalls[0].CommentID != int64(p.Comment.ID) {
@@ -288,7 +288,7 @@ func TestFindingReplyFileExcerpt(t *testing.T) {
 		h, p := replyHarness(t)
 		h.st.byComment[501].FilePath = "b/a.go"
 
-		h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+		h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 		if !strings.Contains(h.llm.Replies[0].Prompt, "    2  func new() {}") {
 			t.Errorf("prompt lacks the file:\n%s", h.llm.Replies[0].Prompt)
@@ -300,7 +300,7 @@ func TestFindingReplyFileExcerpt(t *testing.T) {
 		h, p := replyHarness(t)
 		h.st.byComment[501].LineNumber = 5
 
-		h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+		h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 		if !strings.Contains(h.llm.Replies[0].Prompt, "Line 5 is past the end of the file (2 lines)") {
 			t.Errorf("prompt:\n%s", h.llm.Replies[0].Prompt)
@@ -310,7 +310,7 @@ func TestFindingReplyFileExcerpt(t *testing.T) {
 		h, p := replyHarness(t)
 		h.st.byComment[501].LineNumber = 400
 
-		h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+		h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 		if !strings.Contains(h.llm.Replies[0].Prompt, "Line 400 is past the end") {
 			t.Errorf("prompt:\n%s", h.llm.Replies[0].Prompt)
@@ -344,7 +344,7 @@ func TestFindingReplyReadsTheFileAsReviewed(t *testing.T) {
 	h.st.byComment[501].RunCommit = "old1"
 	h.bb.files["old1:a.go"] = "package a\nfunc old() {}\n"
 
-	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 	if pr := h.llm.Replies[0].Prompt; !strings.Contains(pr, "    2  func old() {}") || strings.Contains(pr, "func new()") {
 		t.Errorf("prompt shows the head, not the reviewed file:\n%s", pr)
@@ -356,7 +356,7 @@ func TestFindingReplyFallsBackToTheHead(t *testing.T) {
 	h, p := replyHarness(t)
 	h.st.byComment[501].RunCommit = "gone1"
 
-	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 	if pr := h.llm.Replies[0].Prompt; !strings.Contains(pr, "reviewed commit is gone") || !strings.Contains(pr, "    2  func new() {}") {
 		t.Errorf("prompt:\n%s", pr)
@@ -368,7 +368,7 @@ func TestFindingReplyRespectsAutoReviewAuthors(t *testing.T) {
 	h, p := replyHarness(t)
 	h.r.SetAuthorLists([]string{"bob"}, nil)
 
-	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 	if len(h.llm.Replies) != 0 {
 		t.Error("an author outside auto_review_authors must not buy a plain reply")
@@ -380,13 +380,13 @@ func TestFindingReplyRespectsIgnoreAuthors(t *testing.T) {
 	h, p := replyHarness(t)
 	h.r.SetAuthorLists(nil, []string{"alice"})
 
-	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 	if len(h.llm.Replies) != 0 {
 		t.Error("an ignored author's plain reply must not buy a call")
 	}
 
 	p.Comment.Text = "@noergler we do this in the UI"
-	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 	if len(h.llm.Replies) != 1 {
 		t.Error("a mention overrides the author lists")
 	}
@@ -435,7 +435,7 @@ func TestReplyOnTheSummaryIsAnsweredLikeAMention(t *testing.T) {
 	}
 
 	h, p := summaryReply("Was für Team-Einstellungen gibt es?", 555)
-	if handled, _ := h.r.HandleFindingReply(context.Background(), p, "platform", nil); !handled {
+	if handled, _ := h.r.HandleFindingReply(context.Background(), p, "platform", &inlineScheduler{}); !handled {
 		t.Error("a reply on the summary must be handled here")
 	}
 	if len(h.llm.Mentions) != 1 || len(h.bb.Replies) != 1 || h.bb.Replies[0].Line != 900 {
@@ -443,13 +443,13 @@ func TestReplyOnTheSummaryIsAnsweredLikeAMention(t *testing.T) {
 	}
 
 	h, p = summaryReply("Was für Team-Einstellungen gibt es?", 777)
-	h.r.HandleFindingReply(context.Background(), p, "platform", nil)
+	h.r.HandleFindingReply(context.Background(), p, "platform", &inlineScheduler{})
 	if len(h.llm.Mentions)+len(h.bb.Replies) != 0 {
 		t.Error("a reply on another comment must stay unanswered")
 	}
 
 	h, p = summaryReply("@noergler Was für Team-Einstellungen gibt es?", 555)
-	if handled, _ := h.r.HandleFindingReply(context.Background(), p, "platform", nil); handled || len(h.llm.Mentions) != 0 {
+	if handled, _ := h.r.HandleFindingReply(context.Background(), p, "platform", &inlineScheduler{}); handled || len(h.llm.Mentions) != 0 {
 		t.Error("a mention on the summary goes to HandleMention from the route, not from here")
 	}
 }
@@ -476,7 +476,7 @@ func TestReplyUnderNoerglersAnswerIsAnsweredLikeAMention(t *testing.T) {
 	}
 	answered := func(t *testing.T, h *harness, p *webhook.Payload) {
 		t.Helper()
-		if handled, _ := h.r.HandleFindingReply(context.Background(), p, "platform", nil); !handled {
+		if handled, _ := h.r.HandleFindingReply(context.Background(), p, "platform", &inlineScheduler{}); !handled {
 			t.Error("a reply under the bot's answer must be handled here")
 		}
 		if len(h.llm.Mentions) != 1 || len(h.llm.Replies) != 0 || len(h.bb.Replies) != 1 || h.bb.Replies[0].Line != 900 {
@@ -502,7 +502,7 @@ func TestReplyUnderNoerglersAnswerIsAnsweredLikeAMention(t *testing.T) {
 	h, p = under(store.BotReplyQuestion, "bob")
 	at := time.Now()
 	h.st.skipState = &store.SkipState{IgnoredAt: &at}
-	if handled, _ := h.r.HandleFindingReply(context.Background(), p, "platform", nil); !handled {
+	if handled, _ := h.r.HandleFindingReply(context.Background(), p, "platform", &inlineScheduler{}); !handled {
 		t.Error("a reply under the bot's answer on an ignored PR is handled: refused, not passed on")
 	}
 	if len(h.llm.Mentions)+len(h.bb.Replies) != 0 || h.st.Reactived != 0 {
@@ -513,7 +513,7 @@ func TestReplyUnderNoerglersAnswerIsAnsweredLikeAMention(t *testing.T) {
 	// The store down: the lookup fails open to "not the bot's", unanswered.
 	h, p = under(store.BotReplyQuestion, "bob")
 	h.st.failAll = true
-	h.r.HandleFindingReply(context.Background(), p, "platform", nil)
+	h.r.HandleFindingReply(context.Background(), p, "platform", &inlineScheduler{})
 	if len(h.llm.Mentions)+len(h.bb.Replies) != 0 {
 		t.Error("with the store down a reply under the bot's answer stays unanswered")
 	}
@@ -522,7 +522,7 @@ func TestReplyUnderNoerglersAnswerIsAnsweredLikeAMention(t *testing.T) {
 	// ignored PR cannot be reactivated behind a failed read.
 	h, p = under(store.BotReplyQuestion, "bob")
 	h.st.skipStateErr = errors.New("db hiccup")
-	if handled, _ := h.r.HandleFindingReply(context.Background(), p, "platform", nil); !handled {
+	if handled, _ := h.r.HandleFindingReply(context.Background(), p, "platform", &inlineScheduler{}); !handled {
 		t.Error("handled: refused, not passed on")
 	}
 	if len(h.llm.Mentions)+len(h.bb.Replies) != 0 || h.st.Reactived != 0 {
@@ -532,7 +532,7 @@ func TestReplyUnderNoerglersAnswerIsAnsweredLikeAMention(t *testing.T) {
 	// A closed PR: nothing is read, nothing answered.
 	h, p = under(store.BotReplyQuestion, "bob")
 	p.PullRequest.State = "MERGED"
-	h.r.HandleFindingReply(context.Background(), p, "platform", nil)
+	h.r.HandleFindingReply(context.Background(), p, "platform", &inlineScheduler{})
 	if len(h.llm.Mentions)+len(h.bb.Replies) != 0 {
 		t.Error("a reply on a merged PR stays unanswered")
 	}

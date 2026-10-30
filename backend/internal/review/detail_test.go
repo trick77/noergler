@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/trick77/noergler/internal/diff"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
@@ -37,7 +38,7 @@ func TestRunDetailRecord(t *testing.T) {
 	moved := finding("a.go", 40, "issue", "real, wrong line")
 	h.llm.review = okResultWith(invented, moved)
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	d := decodeDetail(t, h)
 	var names []string
@@ -84,7 +85,7 @@ func TestRunDetailOnFailure(t *testing.T) {
 		Outcome: inference.OutcomeUnparseable,
 		Review:  inference.ParsedReview{Summary: inference.NewReviewSummary()},
 	}
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	d := decodeDetail(t, h)
 	last := d.Stages[len(d.Stages)-1].Name
@@ -137,7 +138,7 @@ func TestPreExistingBugsGoToThePageOnly(t *testing.T) {
 	}
 	h.llm.review = res
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	d := decodeDetail(t, h)
 	if len(d.PreExisting) != 1 || d.PreExisting[0].Headline != "Package name shadows the stdlib" ||
@@ -160,7 +161,7 @@ func TestPreExistingBugsGoToThePageOnly(t *testing.T) {
 // cumulative diff, and none when that diff could not be read.
 func TestRunDetailRecordsThePRScope(t *testing.T) {
 	h := newHarness(t, nil)
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 	run := h.st.Runs[0]
 	if d := decodeDetail(t, h); d.PRScope == nil || *d.PRScope != (store.PRScope{Added: run.LinesAdded,
 		Removed: run.LinesRemoved, Files: run.FilesChanged}) {
@@ -169,8 +170,8 @@ func TestRunDetailRecordsThePRScope(t *testing.T) {
 
 	other := "diff --git a/b.go b/b.go\n--- a/b.go\n+++ b/b.go\n@@ -1,1 +1,3 @@\n-x\n+y\n+z\n+w\n"
 	h = incrementalHarness(t, func(h *harness) { h.bb.prDiff = sampleDiff + other })
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
-	added, removed := countDiffLines(sampleDiff + other)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	added, removed, _ := diff.Scope(sampleDiff + other)
 	if d := decodeDetail(t, h); d.PRScope == nil || *d.PRScope != (store.PRScope{Added: added, Removed: removed, Files: 2}) {
 		t.Errorf("incremental scope = %+v, want the whole PR's +%d/-%d in 2 files", d.PRScope, added, removed)
 	}
@@ -179,7 +180,7 @@ func TestRunDetailRecordsThePRScope(t *testing.T) {
 	}
 
 	h = incrementalHarness(t, func(h *harness) { h.bb.prDiffErr = errors.New("bitbucket is down") })
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 	if d := decodeDetail(t, h); d.PRScope != nil {
 		t.Errorf("no cumulative diff, yet scope = %+v", d.PRScope)
 	}

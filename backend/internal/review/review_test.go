@@ -157,7 +157,7 @@ func TestFindingsAreValidatedBeforePosting(t *testing.T) {
 	moved := finding("a.go", 40, "issue", "real, wrong line")
 	h.llm.review = okResultWith(invented, moved)
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.bb.Inline) != 1 {
 		t.Fatalf("posted %d comments, want 1: the invented finding must be dropped", len(h.bb.Inline))
@@ -178,7 +178,7 @@ func TestReviewRunsForAllowedAuthor(t *testing.T) {
 	h := newHarness(t, nil)
 	h.llm.review = okResultWith(finding("a.go", 2, "issue", "bad"))
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.llm.Reviews) != 1 {
 		t.Fatalf("expected one LLM call, got %d", len(h.llm.Reviews))
@@ -209,7 +209,7 @@ func TestSummaryAndRunRowCarryTheEffortInTheModelLabel(t *testing.T) {
 	h := newHarness(t, nil)
 	h.llm.review = okResultWith(finding("a.go", 2, "issue", "bad"))
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	// The fake is built with model gpt-5.5 at effort high.
 	const want = "gpt-5.5-high"
@@ -238,7 +238,7 @@ func TestReviewRequiresAProjectAndRepo(t *testing.T) {
 	p.PullRequest.FromRef.Repository = nil
 	p.PullRequest.ToRef.Repository = nil
 
-	h.r.ReviewPullRequest(context.Background(), p, false)
+	h.r.reviewInline(context.Background(), p, false)
 
 	if len(h.llm.Reviews) != 0 || len(h.st.Upserts) != 0 || len(h.bb.Posted) != 0 {
 		t.Error("a payload without a repository must be dropped before anything happens")
@@ -249,7 +249,7 @@ func TestSkipsDisallowedAuthorAndIgnoredActor(t *testing.T) {
 	t.Run("author not in allow list", func(t *testing.T) {
 		h := newHarness(t, nil)
 		h.r.SetAuthorLists([]string{"bob"}, nil)
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 		if len(h.llm.Reviews) != 0 {
 			t.Error("review ran for a disallowed author")
 		}
@@ -260,7 +260,7 @@ func TestSkipsDisallowedAuthorAndIgnoredActor(t *testing.T) {
 		h.r.SetAuthorLists(nil, []string{"ci-bot"})
 		p := prPayload(webhook.EventFromRefUpdated)
 		p.Actor = &webhook.User{Name: "ci-bot"}
-		h.r.ReviewPullRequest(context.Background(), p, false)
+		h.r.reviewInline(context.Background(), p, false)
 		if len(h.llm.Reviews) != 0 {
 			t.Error("review ran on a push by an ignored actor")
 		}
@@ -269,7 +269,7 @@ func TestSkipsDisallowedAuthorAndIgnoredActor(t *testing.T) {
 	t.Run("a mention bypasses both gates", func(t *testing.T) {
 		h := newHarness(t, nil)
 		h.r.SetAuthorLists([]string{"bob"}, []string{"alice"})
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), true)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), true)
 		if len(h.llm.Reviews) != 1 {
 			t.Error("a mention must bypass the author gates")
 		}
@@ -281,7 +281,7 @@ func TestIgnoredPRIsSkippedWithoutAnyAPICall(t *testing.T) {
 	now := time.Now()
 	h.st.skipState = &store.SkipState{IgnoredAt: &now}
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.llm.Reviews) != 0 || len(h.bb.Posted) != 0 {
 		t.Error("an ignored PR must not be reviewed or commented on")
@@ -295,7 +295,7 @@ func TestDeletedSummaryIgnoresButTransientErrorProceeds(t *testing.T) {
 		h := newHarness(t, nil)
 		h.st.skipState = &store.SkipState{Summary: &store.SummaryComment{ID: 999, Version: 1}}
 		// 999 is not in the fake's comment map, so the fetch 404s.
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 		if h.st.Ignored != 1 {
 			t.Errorf("MarkIgnored called %d times, want 1", h.st.Ignored)
@@ -310,7 +310,7 @@ func TestDeletedSummaryIgnoresButTransientErrorProceeds(t *testing.T) {
 		h.bb.setComment(555, "### Overview\nold", 3)
 		h.st.skipState = &store.SkipState{Summary: &store.SummaryComment{ID: 555, Version: 3}}
 
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 		if h.st.Ignored != 0 {
 			t.Error("a live summary must not mark the PR ignored")
@@ -328,7 +328,7 @@ func TestOptOutBranchKeyword(t *testing.T) {
 		p := prPayload(webhook.EventOpened)
 		p.PullRequest.FromRef.DisplayID = "feature/NOERGLOFF-thing" // case-insensitive
 
-		h.r.ReviewPullRequest(context.Background(), p, false)
+		h.r.reviewInline(context.Background(), p, false)
 
 		if len(h.llm.Reviews) != 0 {
 			t.Error("review ran on an opt-out branch")
@@ -346,7 +346,7 @@ func TestOptOutBranchKeyword(t *testing.T) {
 	t.Run("empty keyword disables the feature", func(t *testing.T) {
 		h := newHarness(t, nil)
 		h.r.cfg.OptOutBranchKeyword = ""
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 		if len(h.llm.Reviews) != 1 {
 			t.Error("an empty keyword must not skip anything")
 		}
@@ -355,7 +355,7 @@ func TestOptOutBranchKeyword(t *testing.T) {
 	t.Run("non-matching branch is unaffected", func(t *testing.T) {
 		h := newHarness(t, nil)
 		h.r.cfg.OptOutBranchKeyword = "noergloff"
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 		if len(h.llm.Reviews) != 1 {
 			t.Error("a non-matching branch must be reviewed")
 		}
@@ -365,7 +365,7 @@ func TestOptOutBranchKeyword(t *testing.T) {
 func TestAgentsMDGates(t *testing.T) {
 	t.Run("missing and required skips", func(t *testing.T) {
 		h := newHarness(t, func(h *harness) { delete(h.bb.files, "src1:AGENTS.md") })
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 		if len(h.llm.Reviews) != 0 {
 			t.Error("review ran without a required AGENTS.md")
@@ -378,7 +378,7 @@ func TestAgentsMDGates(t *testing.T) {
 	t.Run("missing and not required proceeds", func(t *testing.T) {
 		h := newHarness(t, func(h *harness) { delete(h.bb.files, "src1:AGENTS.md") })
 		h.r.cfg.RequireAgentsMD = false
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 		if len(h.llm.Reviews) != 1 {
 			t.Error("review should run when AGENTS.md is not required")
 		}
@@ -387,7 +387,7 @@ func TestAgentsMDGates(t *testing.T) {
 	t.Run("over the token limit skips", func(t *testing.T) {
 		h := newHarness(t, nil)
 		h.r.cfg.AgentsMDMaxTokens = 2 // the fake counts one token per 4 bytes
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 		if len(h.llm.Reviews) != 0 {
 			t.Error("review ran with an oversized AGENTS.md")
@@ -400,7 +400,7 @@ func TestAgentsMDGates(t *testing.T) {
 	t.Run("zero disables the hard limit", func(t *testing.T) {
 		h := newHarness(t, nil)
 		h.r.cfg.AgentsMDMaxTokens = 0
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 		if len(h.llm.Reviews) != 1 {
 			t.Error("a zero limit must disable the gate")
 		}
@@ -413,7 +413,7 @@ func TestSkipPathPostsSummaryWhenUpsertFails(t *testing.T) {
 	h := newHarness(t, func(h *harness) { delete(h.bb.files, "src1:AGENTS.md") })
 	h.st.upsertErr = errUpsert
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.bb.Posted) != 1 {
 		t.Errorf("summary must still be posted when the upsert fails, got %d comments", len(h.bb.Posted))
@@ -427,7 +427,7 @@ func TestCostCap(t *testing.T) {
 		h := newHarness(t, nil)
 		h.st.prCost = ptri(6_000_000_000) // $6 against a $5 cap
 
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 		if len(h.llm.Reviews) != 0 {
 			t.Error("review ran while over the cost cap")
@@ -448,7 +448,7 @@ func TestCostCap(t *testing.T) {
 		h.st.prCost = ptri(6_000_000_000)
 		h.llm.review = okResultWith()
 
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventCommentAdded), true)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventCommentAdded), true)
 
 		if len(h.llm.Reviews) != 0 {
 			t.Error("a mention must not run over the cap")
@@ -458,7 +458,7 @@ func TestCostCap(t *testing.T) {
 	t.Run("a nil cost never blocks", func(t *testing.T) {
 		h := newHarness(t, nil)
 		h.st.prCost = nil
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 		if len(h.llm.Reviews) != 1 {
 			t.Error("an unpriced PR must not be blocked: cost fails open")
 		}
@@ -471,7 +471,7 @@ func TestCostCap(t *testing.T) {
 		h.st.prCost = ptri(4_950_000_000)
 		h.llm.review = okResultWith()
 
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 		if len(h.bb.Posted) != 1 {
 			t.Fatalf("expected one summary, got %d", len(h.bb.Posted))
@@ -491,7 +491,7 @@ func TestCostCap(t *testing.T) {
 		h.st.prCost = ptri(6_000_000_000)
 		h.st.lastCommit, h.st.hasLast = "older", true
 
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 		if len(h.st.Upserts) != 1 {
 			t.Fatalf("expected one upsert, got %d", len(h.st.Upserts))
@@ -514,7 +514,7 @@ func TestRemovedClaimStopsTheReview(t *testing.T) {
 	t.Run("before prepare", func(t *testing.T) {
 		h := newHarness(t, nil)
 		h.r.owns = func(string, string) bool { return false }
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 		if len(h.llm.Reviews) != 0 || len(h.st.Upserts) != 0 || len(h.bb.Posted) != 0 {
 			t.Errorf("reviews=%d upserts=%d posted=%d, want none", len(h.llm.Reviews), len(h.st.Upserts), len(h.bb.Posted))
 		}
@@ -525,7 +525,7 @@ func TestRemovedClaimStopsTheReview(t *testing.T) {
 		owned := true
 		h.r.owns = func(string, string) bool { return owned }
 		h.llm.onReview = func() { owned = false } // removed during inference
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 		if len(h.llm.Reviews) != 1 {
 			t.Fatalf("reviews = %d, want the one already in flight", len(h.llm.Reviews))
 		}
@@ -543,8 +543,8 @@ func TestRemovedClaimStopsTheReview(t *testing.T) {
 		owned := true
 		h.r.owns = func(string, string) bool { return owned }
 		h.llm.onReview = func() { owned = false }
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 		if len(h.st.Attempts) != 2 {
 			t.Fatalf("attempts = %+v, want two", h.st.Attempts)
 		}
@@ -578,7 +578,7 @@ func TestFailedPriorReadKeepsThePointer(t *testing.T) {
 		Review:  inference.ParsedReview{Summary: inference.NewReviewSummary()},
 	}
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.st.Upserts) != 1 {
 		t.Fatalf("expected one upsert, got %d", len(h.st.Upserts))
@@ -610,7 +610,7 @@ func TestTerminalOutcomes(t *testing.T) {
 				Review:  inference.ParsedReview{Summary: inference.NewReviewSummary()},
 			}
 
-			h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+			h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 			if len(h.st.Runs) != 0 {
 				t.Errorf("a non-ok outcome must write no run row, got %d", len(h.st.Runs))
@@ -657,8 +657,8 @@ func TestFailureBannerDoesNotStack(t *testing.T) {
 		Review:  inference.ParsedReview{Summary: inference.NewReviewSummary()},
 	}
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.bb.Posted) != 0 {
 		t.Errorf("a tracked summary must be updated, not re-posted: %d posts", len(h.bb.Posted))
@@ -688,7 +688,7 @@ func TestDedupeAgainstExistingFindings(t *testing.T) {
 		finding("a.go", 2, "suggestion", "other"),     // different severity: kept
 	)
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.bb.Inline) != 2 {
 		t.Fatalf("expected 2 inline comments after dedup, got %d", len(h.bb.Inline))
@@ -709,7 +709,7 @@ func TestDedupeResolvesStoredDiffPrefix(t *testing.T) {
 	}
 	h.llm.review = okResultWith(finding("a.go", 2, "issue", "already raised"))
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.bb.Inline) != 0 {
 		t.Errorf("inline = %+v, want the repeat dropped", h.bb.Inline)
@@ -768,7 +768,7 @@ func TestFindingsLimitedInReview(t *testing.T) {
 		finding("a.go", 3, "issue", "three"),
 	)
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.bb.Inline) != 2 {
 		t.Errorf("posted %d comments, want the max_comments cap of 2", len(h.bb.Inline))
@@ -785,7 +785,7 @@ func TestFailedInlineCommentIsNotStored(t *testing.T) {
 	h.bb.inlineErr = errPost
 	h.llm.review = okResultWith(finding("a.go", 2, "issue", "bad"))
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.st.Findings) != 0 {
 		t.Errorf("stored %d findings for comments that never posted", len(h.st.Findings))
@@ -805,7 +805,7 @@ func TestIncrementalReview(t *testing.T) {
 		h := newHarness(t, nil)
 		h.st.lastCommit, h.st.hasLast = "src1", true
 
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 		if len(h.llm.Reviews) != 0 {
 			t.Error("an unchanged HEAD must not be re-reviewed")
@@ -817,7 +817,7 @@ func TestIncrementalReview(t *testing.T) {
 		h.st.lastCommit, h.st.hasLast = "older", true
 		h.bb.commitDiff = sampleDiff
 
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 		if len(h.llm.Reviews) != 1 {
 			t.Fatal("expected one review")
@@ -838,7 +838,7 @@ func TestIncrementalReview(t *testing.T) {
 		h.st.lastCommit, h.st.hasLast = "older", true
 		h.bb.commitErr = errIncrementalUnavailable
 
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 		if len(h.llm.Reviews) != 1 {
 			t.Fatal("a rebase must fall back to a full review, not skip it")
@@ -853,7 +853,7 @@ func TestIncrementalReview(t *testing.T) {
 		h.st.lastCommit, h.st.hasLast = "older", true
 		h.bb.commitDiff = "   "
 
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 		if len(h.llm.Reviews) != 1 {
 			t.Error("an empty compare must fall back to the full review, never silently skip")
@@ -869,7 +869,7 @@ func TestCumulativeDiffFailureDoesNotBlockTheIncrementalReview(t *testing.T) {
 	h.bb.commitDiff = sampleDiff
 	h.bb.prDiffErr = errDiffTooLarge // the cumulative fetch fails
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if len(h.llm.Reviews) != 1 {
 		t.Fatal("the incremental review must still run without the cumulative diff")
@@ -881,7 +881,7 @@ func TestCumulativeDiffFailureDoesNotBlockTheIncrementalReview(t *testing.T) {
 
 func TestEmptyDiffSkips(t *testing.T) {
 	h := newHarness(t, func(h *harness) { h.bb.prDiff = "   " })
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 	if len(h.llm.Reviews) != 0 {
 		t.Error("an empty diff must not reach the model")
 	}
@@ -892,7 +892,7 @@ func TestDiffTooLargePostsSummaryAndPreservesPointer(t *testing.T) {
 	h.st.lastCommit, h.st.hasLast = "older", true
 	h.bb.prDiffErr = errDiffTooLarge
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.llm.Reviews) != 0 {
 		t.Error("an oversized diff must not reach the model")
@@ -918,7 +918,7 @@ func TestUnpricedRunShowsNoCostLine(t *testing.T) {
 		Cost:    inference.CallCost{PromptTokens: 100, CompletionTokens: 10}, // NanoUSD nil
 	}
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.bb.Posted) != 1 {
 		t.Fatalf("expected one summary, got %d", len(h.bb.Posted))
@@ -940,7 +940,7 @@ func TestReviewSurvivesADeadDatabase(t *testing.T) {
 	h.st.failAll = true
 	h.llm.review = okResultWith(finding("a.go", 2, "issue", "bad"))
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.llm.Reviews) != 1 {
 		t.Error("the review must still run with the DB down")

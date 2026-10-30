@@ -204,7 +204,7 @@ func (s *Store) MarkAlmanachEmitted(ctx context.Context, k PRKey, runID int64) e
 // note whose PR row is gone (purged after the merge) still lists, with no
 // review totals: the note is the payload.
 func (s *Store) PendingAlmanachNotes(ctx context.Context, team string, limit int) ([]AlmanachPending, error) {
-	rows, err := s.pool.Query(ctx, `
+	return queryAll(ctx, s.pool, `
 		SELECT n.project_key, n.repo_slug, n.pr_id, n.team_slug, n.run_id, COALESCE(n.reviewed_commit, ''),
 		       n.pr_title, COALESCE(n.ticket_key, ''), COALESCE(n.jira_issue_type, ''), COALESCE(n.change_kind, ''),
 		       n.note, n.chars, COALESCE(n.model_label, ''),
@@ -239,14 +239,7 @@ func (s *Store) PendingAlmanachNotes(ctx context.Context, team string, limit int
 		         FROM review_runs r WHERE r.pull_request_id = pp.id) rv ON true
 		 WHERE n.team_slug = $1 AND n.finalized_at IS NOT NULL AND n.note IS NOT NULL AND n.almanach_emitted_at IS NULL
 		 ORDER BY n.finalized_at, n.pr_id
-		 LIMIT $2`, team, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []AlmanachPending
-	for rows.Next() {
-		var p AlmanachPending
+		 LIMIT $2`, []any{team, limit}, func(row pgx.CollectableRow, p *AlmanachPending) error {
 		var note []byte
 		targets := []any{&p.Key.Project, &p.Key.Repo, &p.Key.PRID, &p.TeamSlug, &p.RunID, &p.ReviewedCommit,
 			&p.PRTitle, &p.TicketKey, &p.JiraIssueType, &p.ChangeKind, &note, &p.Chars, &p.ModelLabel,
@@ -256,16 +249,15 @@ func (s *Store) PendingAlmanachNotes(ctx context.Context, team string, limit int
 		targets = append(targets, &p.Rounds, &p.RoundsInputTokens, &p.RoundsOutputTokens, &p.RoundsCostNanoUSD,
 			&p.Review.Runs, &p.Review.PromptTokens, &p.Review.CachedTokens, &p.Review.CompletionTokens,
 			&p.Review.ElapsedMS, &p.Review.CostNanoUSD, &p.Review.Models)
-		if err := rows.Scan(targets...); err != nil {
-			return nil, err
+		if err := row.Scan(targets...); err != nil {
+			return err
 		}
 		p.Note = json.RawMessage(note)
 		if p.Review.Models == nil {
 			p.Review.Models = []string{}
 		}
-		out = append(out, p)
-	}
-	return out, rows.Err()
+		return nil
+	})
 }
 
 // InsertAlmanachCall records one note call, the only ledger of it, with

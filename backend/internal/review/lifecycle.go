@@ -132,11 +132,11 @@ func (r *Reviewer) emitRollup(ctx context.Context, key store.PRKey, prTag, outco
 		if fullDiff, err := r.bitbucket.FetchPRDiff(ctx, key.Project, key.Repo, key.PRID, 0); err != nil {
 			r.log.InfoContext(ctx, prTag+": final PR diff unavailable at close - using last-known per-run stats")
 		} else if strings.TrimSpace(fullDiff) != "" {
-			added, removed := countDiffLines(fullDiff)
-			// files_changed counts the reviewable files, as a test pins:
-			// counting every "diff --git" header would put files that were
-			// never reviewed into the rollup.
-			changed := countReviewableFiles(fullDiff)
+			// files_changed counts the reviewable files, as a test pins
+			// (TestRollupCountsReviewableFilesOnly): counting every "diff
+			// --git" header would put files that were never reviewed into
+			// the rollup.
+			added, removed, changed := diff.Scope(fullDiff)
 			final.LinesAdded, final.LinesRemoved, final.FilesChanged = &added, &removed, &changed
 		}
 	}
@@ -164,10 +164,10 @@ func (r *Reviewer) emitRollup(ctx context.Context, key store.PRKey, prTag, outco
 		PRKey:                 prTag,
 		Repo:                  key.Project + "/" + key.Repo,
 		SourceCommitSHA:       *snapshot.SourceCommit,
-		MergeCommitSHA:        derefString(snapshot.MergeCommit),
-		LinesAdded:            derefInt(snapshot.LinesAdded),
-		LinesRemoved:          derefInt(snapshot.LinesRemoved),
-		FilesChanged:          derefInt(snapshot.FilesChanged),
+		MergeCommitSHA:        deref(snapshot.MergeCommit),
+		LinesAdded:            deref(snapshot.LinesAdded),
+		LinesRemoved:          deref(snapshot.LinesRemoved),
+		FilesChanged:          deref(snapshot.FilesChanged),
 		TotalRuns:             snapshot.Runs,
 		TotalPromptTokens:     snapshot.PromptTokens,
 		TotalCompletionTokens: snapshot.CompletionTokens,
@@ -181,32 +181,11 @@ func (r *Reviewer) emitRollup(ctx context.Context, key store.PRKey, prTag, outco
 	})
 }
 
-// countReviewableFiles counts the files in a diff the reviewer would look at.
-//
-// Counting every "diff --git" header would include lock files and vendored
-// bundles that were never reviewed. A test pins counting the reviewable
-// ones, so the number riptide records matches the number the summary reports
-// (TestRollupCountsReviewableFilesOnly).
-func countReviewableFiles(rawDiff string) int {
-	n := 0
-	for _, fd := range diff.SplitByFile(rawDiff) {
-		if diff.IsReviewable(fd) {
-			n++
-		}
-	}
-	return n
-}
-
-func derefString(p *string) string {
+// deref is the value behind p, or the zero value for a NULL column.
+func deref[T any](p *T) T {
 	if p == nil {
-		return ""
-	}
-	return *p
-}
-
-func derefInt(p *int) int {
-	if p == nil {
-		return 0
+		var zero T
+		return zero
 	}
 	return *p
 }
