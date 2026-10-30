@@ -1,5 +1,6 @@
 import type { TFunction } from "i18next";
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -16,7 +17,7 @@ import {
   teamTone,
   type Tone,
 } from "./format";
-import { navigateTo, teamPath, teamSlugFromPath } from "./routing";
+import { onNav, teamPath, teamSlugFromPath } from "./routing";
 import { usePoll, useNow } from "./usePoll";
 import {
   Card,
@@ -340,9 +341,35 @@ function CopyLink({ team }: { team: Team }) {
     const id = setTimeout(() => setCopied(false), 1200);
     return () => clearTimeout(id);
   }, [copied]);
+  // "copied" only once it is: the clipboard API is absent on a plain-http
+  // host and may refuse; execCommand is the fallback that still works there.
   const copy = () => {
-    void navigator.clipboard?.writeText(window.location.origin + path);
-    setCopied(true);
+    const text = window.location.origin + path;
+    const fallback = () => {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      let ok: boolean;
+      try {
+        ok = document.execCommand("copy");
+      } catch {
+        ok = false;
+      }
+      ta.remove();
+      setCopied(ok);
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(text)
+        .then(() => setCopied(true))
+        .catch(fallback);
+    } else {
+      fallback();
+    }
   };
   return (
     <button
@@ -381,12 +408,16 @@ function dotClass(tone: Tone): string {
 function Rail({
   teams,
   q,
+  query,
   setQ,
   current,
   pick,
 }: {
   teams: Team[];
+  /** The input's text as typed. */
   q: string;
+  /** The same, trimmed and lower-cased: what the cards match on too. */
+  query: string;
   setQ: (q: string) => void;
   current: string | null;
   pick: (slug: string) => (e: MouseEvent) => void;
@@ -414,7 +445,17 @@ function Rail({
     ...STATES,
     ...teams.map((x) => x.state).filter((s) => !STATES.includes(s)),
   ].filter((s, i, all) => all.indexOf(s) === i);
-  const shown = teams.filter((x) => matches(x, q)).length;
+  // Once per team: whether it hits, and why when the name does not say.
+  const hits = new Map(
+    teams.map((x) => {
+      const hit = matches(x, query);
+      const byName = has(x.name, query) || has(x.slug, query);
+      const claim = byName ? "" : matchedClaim(x, query);
+      const glob = byName || claim ? "" : excludeHit(x, query);
+      return [x.slug, { hit, claim, glob }];
+    }),
+  );
+  const shown = teams.filter((x) => hits.get(x.slug)?.hit).length;
 
   return (
     <nav
@@ -467,7 +508,7 @@ function Rail({
         {states.map((s) => {
           const group = teams.filter((x) => x.state === s);
           if (group.length === 0) return null;
-          const hits = group.filter((x) => matches(x, q)).length;
+          const n = group.filter((x) => hits.get(x.slug)?.hit).length;
           return (
             <div key={s} className="contents lg:block">
               <div className="mt-3 mb-1 ml-2.5 hidden items-center gap-1.5 text-[11px] font-medium tracking-[.12em] text-faint uppercase lg:flex">
@@ -479,17 +520,11 @@ function Rail({
                 />
                 {teamStateLabel(s)}
                 <span className="font-mono text-[12px] tracking-normal tabular-nums">
-                  {q === "" ? group.length : `${hits}/${group.length}`}
+                  {query === "" ? group.length : `${n}/${group.length}`}
                 </span>
               </div>
               {group.map((x) => {
-                const hit = matches(x, q);
-                const why =
-                  has(x.name, q) || has(x.slug, q)
-                    ? ""
-                    : matchedClaim(x, q) ||
-                      (excludeHit(x, q) &&
-                        t("teams.excludedHit", { glob: excludeHit(x, q) }));
+                const { hit, claim, glob } = hits.get(x.slug)!;
                 return (
                   <a
                     key={x.slug}
@@ -503,7 +538,7 @@ function Rail({
                   >
                     <span className="flex items-baseline gap-2">
                       <span className="overflow-hidden text-ellipsis">
-                        <Mark text={x.name} q={q} />
+                        <Mark text={x.name} q={query} />
                       </span>
                       {x.prs > 0 && (
                         <span className="ml-auto hidden font-mono text-[12px] text-faint tabular-nums lg:inline">
@@ -511,9 +546,21 @@ function Rail({
                         </span>
                       )}
                     </span>
-                    {why && (
+                    {/* The label stays outside the mark: only the glob
+                        matched, never the word "excluded". */}
+                    {(claim || glob) && (
                       <span className="mt-0.5 hidden overflow-hidden font-mono text-[11.5px] text-ellipsis whitespace-nowrap text-faint lg:block">
-                        ↳ <Mark text={why} q={q} />
+                        ↳{" "}
+                        {claim ? (
+                          <Mark text={claim} q={query} />
+                        ) : (
+                          <Trans
+                            i18nKey="teams.excludedHit"
+                            components={{
+                              glob: <Mark text={glob} q={query} />,
+                            }}
+                          />
+                        )}
                       </span>
                     )}
                   </a>
@@ -524,12 +571,19 @@ function Rail({
         })}
       </div>
       <p className="mt-3.5 ml-2.5 hidden text-[12.5px] text-faint lg:block">
-        {q === ""
+        {query === ""
           ? t("teams.count", { count: teams.length })
           : t("teams.matchCount", { shown, total: teams.length })}
       </p>
     </nav>
   );
+}
+
+/** cardId is a team card's DOM id. Prefixed: a bare slug is page-global
+ *  and `root`, a valid slug, is the app's mount. */
+const CARD_ID = "team-";
+function cardId(slug: string): string {
+  return CARD_ID + slug;
 }
 
 /** readQuery is the search the URL carries (?q=), so a filtered view can be
@@ -557,49 +611,59 @@ export function TeamsPage() {
   // The card in view, for the rail's marker; the focus until the reader
   // scrolls away from it.
   const [current, setCurrent] = useState(focus);
+  // Bumped by a rail click on the team already in the path, which changes
+  // nothing else and still has to scroll.
+  const [again, setAgain] = useState(0);
   const scroller = useRef<HTMLDivElement>(null);
-  const scrolledTo = useRef<string | null>(null);
+  const query = q.trim().toLowerCase();
 
-  // Back/forward between two teams' links, and navigateTo's own event.
+  // Back/forward between two teams' links, and navigateTo's own event: the
+  // URL is the source, the state follows it.
   useEffect(() => {
     const onPop = () => {
       const slug = teamSlugFromPath(window.location.pathname);
       setFocus(slug);
       setCurrent(slug);
-      scrolledTo.current = null;
       setQuery(readQuery());
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  const setQ = (next: string) => {
+  // Stable: the rail's key listener subscribes on it.
+  const setQ = useCallback((next: string) => {
     setQuery(next);
     // A search is a view of the whole page, so the path drops the team.
     setFocus(null);
     writeQuery("/teams", next);
-  };
+  }, []);
 
-  // Scroll to the focused team once its card exists, once per focus: a
-  // poll that re-renders must not yank the reader back.
+  // Scroll to the focused team once its card exists. Keyed on the focus,
+  // not the data: a poll that re-renders must not yank the reader back.
+  const loaded = data !== null;
   useEffect(() => {
-    if (!data || focus === null || scrolledTo.current === focus) return;
-    const el = document.getElementById(focus);
-    if (!el) return;
-    scrolledTo.current = focus;
+    if (!loaded || focus === null) return;
+    // A slug is [a-z0-9-], so the selector needs no escaping.
+    const el = scroller.current?.querySelector<HTMLElement>(
+      `#${cardId(focus)}`,
+    );
     // Optional: jsdom has no scrollIntoView.
-    el.scrollIntoView?.({ block: "start" });
-  }, [data, focus]);
+    el?.scrollIntoView?.({ block: "start" });
+  }, [loaded, focus, again]);
 
-  // The rail click: the SPA takes a plain click (the path changes, the page
-  // scrolls), a modified one is the browser's.
+  // The rail click is an in-app link (onNav: a modified click stays the
+  // browser's); the team already open gets its scroll by hand, since the
+  // path does not change.
   const pick = (slug: string) => (e: MouseEvent) => {
-    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0)
-      return;
-    e.preventDefault();
-    setQuery("");
-    scrolledTo.current = null;
-    navigateTo(teamPath(slug));
+    const path = teamPath(slug);
+    // Before onNav: afterwards the path is this one either way.
+    const same = window.location.pathname === path;
+    onNav(path)(e);
+    if (e.isDefaultPrevented() && same) {
+      setQ("");
+      setFocus(slug);
+      setAgain((n) => n + 1);
+    }
   };
 
   // The card at the top of the viewport marks its rail row, so the rail
@@ -607,14 +671,15 @@ export function TeamsPage() {
   // what matched, which is the more useful thing.
   const onScroll = () => {
     const root = scroller.current;
-    if (!root || q !== "") return;
+    if (!root || query !== "") return;
     const top = root.getBoundingClientRect().top + 80;
-    // The cards are the sections with an id, the slug.
-    const cards = Array.from(root.querySelectorAll<HTMLElement>("section[id]"));
+    const cards = Array.from(
+      root.querySelectorAll<HTMLElement>(`section[id^="${CARD_ID}"]`),
+    );
     const at =
-      [...cards].reverse().find((c) => c.getBoundingClientRect().top <= top) ??
-      cards[0];
-    const slug = at?.id ?? null;
+      cards.reverse().find((c) => c.getBoundingClientRect().top <= top) ??
+      cards[cards.length - 1];
+    const slug = at ? at.id.slice(CARD_ID.length) : null;
     if (slug !== current) setCurrent(slug);
   };
 
@@ -634,7 +699,6 @@ export function TeamsPage() {
   }
 
   const teams = byName(data.teams);
-  const query = q.trim().toLowerCase();
   const shown = teams.filter((team) => matches(team, query));
   const unknown = focus !== null && !teams.some((x) => x.slug === focus);
 
@@ -650,6 +714,7 @@ export function TeamsPage() {
             <Rail
               teams={teams}
               q={q}
+              query={query}
               setQ={setQ}
               current={current}
               pick={pick}
@@ -668,13 +733,10 @@ export function TeamsPage() {
               )}
               {shown.length === 0 && (
                 <p className="py-7 text-center text-[13.5px] text-faint">
-                  <Trans
-                    i18nKey="teams.noMatch"
-                    values={{ query: q.trim() }}
-                    components={{
-                      b: <b className="font-medium text-ink-dim" />,
-                    }}
-                  />{" "}
+                  {/* The query is a React child, never interpolated into
+                      the string: typed angle brackets stay text. */}
+                  {t("teams.noMatch")}{" "}
+                  <b className="font-medium text-ink-dim">{q.trim()}</b>.{" "}
                   <button
                     type="button"
                     onClick={() => setQ("")}
@@ -715,7 +777,7 @@ function TeamCard({
   const { t } = useTranslation();
   return (
     <Card
-      id={team.slug}
+      id={cardId(team.slug)}
       title={team.name}
       hint={team.slug}
       titleMark={<Mark text={team.name} q={q} />}

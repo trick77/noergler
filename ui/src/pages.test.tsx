@@ -765,6 +765,36 @@ describe("TeamsPage", () => {
     expect(window.location.search).toBe("?q=billing");
   });
 
+  // Case and stray spaces are the typist's, not the match's: the rail and
+  // the cards read the same normalised query, so neither side disagrees
+  // with the other about what hit.
+  it("matches regardless of case and whitespace, rail and cards alike", async () => {
+    serve({ teams: { teams } });
+    render(<TeamsPage />);
+
+    const box = await screen.findByRole("searchbox");
+    fireEvent.change(box, { target: { value: " Billing " } });
+
+    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(1);
+    const rail = screen.getByRole("navigation", { name: "Teams" });
+    expect(within(rail).getByText("1 of 2 teams match")).toBeDefined();
+    expect(within(rail).getByText("1/1")).toBeDefined();
+    expect(
+      within(rail).getByText(fullText("↳ SHARED/billing-lib")),
+    ).toBeDefined();
+  });
+
+  // A typed query is text, never markup, in the no-match line.
+  it("shows a query with angle brackets as typed", async () => {
+    serve({ teams: { teams } });
+    render(<TeamsPage />);
+
+    const box = await screen.findByRole("searchbox");
+    fireEvent.change(box, { target: { value: "<i>x</i>" } });
+
+    expect(screen.getByText("<i>x</i>")).toBeDefined();
+  });
+
   // A hit in the excluded repos sits behind the collapsed configuration,
   // so the card opens it: a hit nobody can see is not a hit.
   it("opens the configuration for a hit in the excluded repos", async () => {
@@ -802,7 +832,7 @@ describe("TeamsPage", () => {
     const { container } = render(<TeamsPage />);
 
     await screen.findByRole("heading", { name: "Zahlungen" });
-    expect(container.querySelector("#payments")).not.toBeNull();
+    expect(container.querySelector("#team-payments")).not.toBeNull();
     expect(container.querySelector("details")?.open).toBe(true);
     const rail = screen.getByRole("navigation", { name: "Teams" });
     expect(
@@ -817,6 +847,23 @@ describe("TeamsPage", () => {
     expect(writeText).toHaveBeenCalledWith(
       `${window.location.origin}/teams/payments`,
     );
+    // Said once the clipboard took it, not before.
+    expect(await screen.findByText("copied")).toBeDefined();
+  });
+
+  // No clipboard API (a plain-http host): the glyph falls back to the
+  // selection copy and still only says copied when that worked.
+  it("falls back when the clipboard API is missing", async () => {
+    vi.stubGlobal("navigator", { ...navigator, clipboard: undefined });
+    document.execCommand = vi.fn(() => true);
+    serve({ teams: { teams } });
+    render(<TeamsPage />);
+
+    await screen.findByRole("heading", { name: "Zahlungen" });
+    fireEvent.click(
+      screen.getByRole("button", { name: /Copy link to Zahlungen/ }),
+    );
+    expect(document.execCommand).toHaveBeenCalledWith("copy");
     expect(screen.getByText("copied")).toBeDefined();
   });
 
