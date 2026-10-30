@@ -169,7 +169,7 @@ func jiraPayload(event string) *webhook.Payload {
 func TestReviewWithJiraPutsTicketInPrompt(t *testing.T) {
 	h := jiraHarness(t, fullTicket(), nil)
 
-	h.r.ReviewPullRequest(context.Background(), jiraPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), jiraPayload(webhook.EventOpened), false)
 
 	if len(h.jr.Calls) != 1 || h.jr.Calls[0] != "PROJ-123" {
 		t.Fatalf("expected one Jira lookup for PROJ-123, got %v", h.jr.Calls)
@@ -194,7 +194,7 @@ func TestReviewWithParentTicketPutsBothInPrompt(t *testing.T) {
 	parent := &jira.Ticket{Key: "PROJ-100", Title: "The epic", URL: "https://jira/browse/PROJ-100"}
 	h := jiraHarness(t, fullTicket(), parent)
 
-	h.r.ReviewPullRequest(context.Background(), jiraPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), jiraPayload(webhook.EventOpened), false)
 
 	if len(h.llm.Reviews) != 1 {
 		t.Fatalf("expected one LLM call, got %d", len(h.llm.Reviews))
@@ -222,7 +222,7 @@ func TestReviewWithJiraPutsComplianceInSummary(t *testing.T) {
 	}
 	h.llm.review = result
 
-	h.r.ReviewPullRequest(context.Background(), jiraPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), jiraPayload(webhook.EventOpened), false)
 
 	if len(h.bb.Posted) != 1 {
 		t.Fatalf("expected one summary comment, got %d", len(h.bb.Posted))
@@ -241,7 +241,7 @@ func TestReviewWithoutTicketKeySkipsJira(t *testing.T) {
 
 	// prPayload's branch is "feature/thing" and its title "Add new feature";
 	// neither carries a key.
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.jr.Calls) != 0 {
 		t.Errorf("expected no Jira lookup, got %v", h.jr.Calls)
@@ -261,7 +261,7 @@ func TestReviewContinuesWhenJiraFails(t *testing.T) {
 		h.jr = &fakeJira{err: errors.New("jira is down")}
 	})
 
-	h.r.ReviewPullRequest(context.Background(), jiraPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), jiraPayload(webhook.EventOpened), false)
 
 	if len(h.jr.Calls) != 1 {
 		t.Fatalf("expected the lookup to be attempted, got %v", h.jr.Calls)

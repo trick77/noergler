@@ -21,7 +21,7 @@ func reviewLogs(t *testing.T, tweak func(*harness), payload *webhook.Payload) st
 	if payload == nil {
 		payload = prPayload(webhook.EventOpened)
 	}
-	h.r.ReviewPullRequest(context.Background(), payload, false)
+	h.r.reviewInline(context.Background(), payload, false)
 	return buf.String()
 }
 
@@ -53,7 +53,7 @@ func TestSilentDecisionsAreLogged(t *testing.T) {
 		h.r.cfg.MaxComments = 1
 		var buf bytes.Buffer
 		h.r.log = slog.New(slog.NewTextHandler(&buf, nil))
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 		wantLogged(t, buf.String(), "finding on a.go:2 (suggestion) over the 1-comment cap, not posted")
 		if strings.Contains(buf.String(), "(issue) over the") {
 			t.Errorf("the kept finding was logged as cut:\n%s", buf.String())

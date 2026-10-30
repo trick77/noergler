@@ -74,7 +74,7 @@ index 1111111..2222222 100644
 func TestDiffLineCountsReachTheRunRow(t *testing.T) {
 	h := newHarness(t, nil)
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.st.Runs) != 1 {
 		t.Fatalf("expected one run row, got %d", len(h.st.Runs))
@@ -118,7 +118,7 @@ func TestDiffLineCountsReachTheRollup(t *testing.T) {
 func contentHarness(t *testing.T, tweak func(*harness)) *harness {
 	t.Helper()
 	h := newHarness(t, tweak)
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 	return h
 }
 

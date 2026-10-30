@@ -155,7 +155,7 @@ func (r *Reviewer) ReviewPullRequestStaged(ctx context.Context, payload *webhook
 	sched.Stage(ctx, plan.key, team,
 		func(inferCtx context.Context) { plan.result = r.infer(inferCtx, plan) },
 		func(postCtx context.Context) {
-			r.post(postCtx, plan, plan.result)
+			r.post(postCtx, plan)
 			// After the review is on the PR, never before: the note is a
 			// by-product and must not delay the comments.
 			r.spawnAlmanachNote(postCtx, plan, team, sched)

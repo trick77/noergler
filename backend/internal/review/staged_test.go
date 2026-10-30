@@ -25,6 +25,12 @@ func (s *inlineScheduler) Spawn(ctx context.Context, _ store.PRKey, _, _ string,
 	fn(ctx)
 }
 
+// reviewInline is the staged review with both stages run on the spot: what
+// a test means by "review this PR" when the split itself is not its subject.
+func (r *Reviewer) reviewInline(ctx context.Context, payload *webhook.Payload, skipAuthorCheck bool) {
+	r.ReviewPullRequestStaged(ctx, payload, "test-team", skipAuthorCheck, &inlineScheduler{})
+}
+
 // deferredScheduler holds the two stages so a test can observe what the
 // review has, and has not, done by the time it returns from the worker.
 type deferredScheduler struct {

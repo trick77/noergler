@@ -112,15 +112,10 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	// of the same PR already in flight.
 	if isReview {
 		r.log.InfoContext(ctx, fmt.Sprintf("Mention triggers full review (question=%q)", question))
-		if sched != nil {
-			// The caller must keep the PR held: the staged posting is what
-			// releases it, so a push or a merge for this PR cannot run
-			// alongside the inference.
-			return r.ReviewPullRequestStaged(ctx, payload, team, true, sched)
-		}
-		// No scheduler (a direct caller, or a test): run it inline.
-		r.ReviewPullRequest(ctx, payload, true)
-		return false
+		// The caller must keep the PR held: the staged posting is what
+		// releases it, so a push or a merge for this PR cannot run
+		// alongside the inference.
+		return r.ReviewPullRequestStaged(ctx, payload, team, true, sched)
 	}
 	r.log.InfoContext(ctx, fmt.Sprintf("Handling mention Q&A on %s: %q", prTag, question))
 	// The answer is the asker's, so it is in their language, not the
@@ -185,13 +180,6 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	}
 	infer := func(inferCtx context.Context) { job.res = r.llm.Mention(inferCtx, req) }
 	post := func(postCtx context.Context) { r.postMention(postCtx, job) }
-	if sched == nil {
-		// A direct caller or a test: inline, as before.
-		staged = true
-		infer(ctx)
-		post(ctx)
-		return false
-	}
 	// The gateway call, a tool loop of up to MaxToolRounds+1 calls, goes to
 	// the inference pool instead of holding the Bitbucket worker; the tools
 	// read the store only, never Bitbucket.

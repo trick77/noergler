@@ -42,9 +42,6 @@ type fakeReviewer struct {
 	usePRDescription *bool
 }
 
-func (f *fakeReviewer) ReviewPullRequest(context.Context, *webhook.Payload, bool) {
-	f.calls = append(f.calls, "review")
-}
 func (f *fakeReviewer) ReviewPullRequestStaged(context.Context, *webhook.Payload, string, bool, teams.Scheduler) bool {
 	f.calls = append(f.calls, "review")
 	return false

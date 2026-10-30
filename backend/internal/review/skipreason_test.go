@@ -68,7 +68,7 @@ func TestSkipReasonNamesTheListThatDecided(t *testing.T) {
 			r, buf := capturingReviewer(t)
 			r.SetAuthorLists(tc.auto, tc.ignore)
 
-			r.ReviewPullRequest(context.Background(), payloadBy(tc.author), false)
+			r.reviewInline(context.Background(), payloadBy(tc.author), false)
 
 			out := buf.String()
 			if !strings.Contains(out, tc.want) {

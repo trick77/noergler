@@ -42,16 +42,9 @@ const nanoPerUSD = 1_000_000_000.0
 // TestAgentsMDGates, TestCostCap). Two rules run through all of it:
 // every store call goes through safeDB, and every skip that did not review
 // the new commit writes the PRIOR commit back, so raising a limit later
-// re-reviews the accumulated range instead of skipping it.
-// ReviewPullRequest runs the whole review inline: prepare, infer, post.
-// HandleMention and the tests use it; the queue uses the staged entry below.
-func (r *Reviewer) ReviewPullRequest(ctx context.Context, payload *webhook.Payload, skipAuthorCheck bool) {
-	plan, ctx, ok := r.prepare(ctx, payload, skipAuthorCheck)
-	if !ok {
-		return
-	}
-	r.post(ctx, plan, r.infer(ctx, plan))
-}
+// re-reviews the accumulated range instead of skipping it. The one entry is
+// ReviewPullRequestStaged (stage.go): prepare, then infer and post through
+// the Scheduler.
 
 // prepare is everything up to and including prompt assembly: the guards, the
 // Bitbucket fetches, Jira, and the token budget. It returns the plan the
@@ -440,8 +433,9 @@ func (r *Reviewer) infer(ctx context.Context, plan *reviewPlan) inference.Review
 // post is everything after the gateway answers: the outcome branches, the
 // comments, the rows and the summary. It runs on the review worker, so every
 // Bitbucket call here is still one at a time.
-func (r *Reviewer) post(ctx context.Context, plan *reviewPlan, result inference.ReviewResult) {
+func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 	defer r.logHTTPTotals(ctx, plan.prTag, plan.counter)
+	result := plan.result
 	// Since the call: the wait to get back onto the review worker.
 	plan.sw.lap(stageToPost)
 
@@ -1056,10 +1050,7 @@ func (r *Reviewer) recordRun(ctx context.Context, prReviewID int64, result infer
 	if prReviewID == 0 {
 		return 0
 	}
-	kind := store.RunAuto
-	if mention {
-		kind = store.RunMention
-	}
+	kind := runKind(mention)
 	var from *string
 	if incrementalFrom != "" {
 		from = &incrementalFrom

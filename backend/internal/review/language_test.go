@@ -32,7 +32,7 @@ func TestLanguageKeywordIsExact(t *testing.T) {
 func TestMentionKeywordSetsTheCommentersLanguage(t *testing.T) {
 	h := newHarness(t, nil)
 
-	h.r.HandleMention(context.Background(), mentionPayload("@noergler English", "Bob"), "payments", nil)
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler English", "Bob"), "payments", &inlineScheduler{})
 
 	if got := h.st.languages["bob"]; got != lang.EN {
 		t.Errorf("bob's language = %q, want en", got)
@@ -44,7 +44,7 @@ func TestMentionKeywordSetsTheCommentersLanguage(t *testing.T) {
 		t.Errorf("replies = %+v, want one English confirmation", h.bb.Replies)
 	}
 
-	h.r.HandleMention(context.Background(), mentionPayload("@noergler deutsch", "bob"), "payments", nil)
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler deutsch", "bob"), "payments", &inlineScheduler{})
 	if got := h.st.languages["bob"]; got != lang.DE {
 		t.Errorf("bob's language = %q, want de", got)
 	}
@@ -61,13 +61,13 @@ func TestPlainReplySwitchObeysTheGates(t *testing.T) {
 	now := time.Now()
 	h.st.skipState = &store.SkipState{IgnoredAt: &now}
 
-	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 	if len(h.bb.Replies) != 0 || h.st.languages["alice"] != "" {
 		t.Errorf("an ignored PR got a reply %+v, language %q", h.bb.Replies, h.st.languages["alice"])
 	}
 
 	p.Comment.Text = "@noergler english"
-	h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 	if h.st.languages["alice"] != lang.EN || h.st.Reactived != 0 {
 		t.Errorf("a mentioned switch: language %q, reactivated %d", h.st.languages["alice"], h.st.Reactived)
 	}
@@ -80,7 +80,7 @@ func TestMentionKeywordLeavesAnIgnoredPRIgnored(t *testing.T) {
 	now := time.Now()
 	h.st.skipState = &store.SkipState{IgnoredAt: &now}
 
-	h.r.HandleMention(context.Background(), mentionPayload("@noergler english", "bob"), "payments", nil)
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler english", "bob"), "payments", &inlineScheduler{})
 
 	if h.st.Reactived != 0 {
 		t.Error("a language switch reactivated an ignored PR")
@@ -91,7 +91,7 @@ func TestFindingReplyKeywordSetsTheLanguageAndStampsNothing(t *testing.T) {
 	h, p := replyHarness(t)
 	p.Comment.Text = "english"
 
-	handled, _ := h.r.HandleFindingReply(context.Background(), p, "payments", nil)
+	handled, _ := h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 	if !handled {
 		t.Fatal("a language switch under a finding is the reply handler's")
@@ -110,7 +110,7 @@ func TestLanguageResolution(t *testing.T) {
 	t.Run("German by default", func(t *testing.T) {
 		h := newHarness(t, nil)
 		h.r.cfg.Language = ""
-		h.r.ReviewPullRequest(context.Background(), prPayload("pr:opened"), false)
+		h.r.reviewInline(context.Background(), prPayload("pr:opened"), false)
 		if len(h.bb.Posted) != 1 || !strings.Contains(h.bb.Posted[0].Text, "### Überblick") {
 			t.Fatalf("summary not German:\n%+v", h.bb.Posted)
 		}
@@ -119,7 +119,7 @@ func TestLanguageResolution(t *testing.T) {
 		h := newHarness(t, nil)
 		h.r.cfg.Language = lang.DE
 		h.st.languages = map[string]lang.Lang{"alice": lang.EN}
-		h.r.ReviewPullRequest(context.Background(), prPayload("pr:opened"), false)
+		h.r.reviewInline(context.Background(), prPayload("pr:opened"), false)
 		if len(h.bb.Posted) != 1 || !strings.Contains(h.bb.Posted[0].Text, "### Overview") {
 			t.Fatalf("summary not English:\n%+v", h.bb.Posted)
 		}
@@ -137,7 +137,7 @@ func TestLanguageResolution(t *testing.T) {
 		h.r.cfg.Language = lang.DE
 		h.st.languages = map[string]lang.Lang{"bob": lang.EN}
 		h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK}
-		h.r.HandleMention(context.Background(), mentionPayload("@noergler why?", "bob"), "payments", nil)
+		h.r.HandleMention(context.Background(), mentionPayload("@noergler why?", "bob"), "payments", &inlineScheduler{})
 		if len(h.bb.Replies) != 1 || h.bb.Replies[0].Text != inference.MentionEmptyReply(lang.EN) {
 			t.Errorf("replies = %+v, want the English empty-answer reply", h.bb.Replies)
 		}
@@ -149,7 +149,7 @@ func TestGermanAnswersGetSwissSpelling(t *testing.T) {
 	h.r.cfg.Language = lang.DE
 	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "Das ist grösser, weil `maß` gross ist: Maß."}
 
-	h.r.HandleMention(context.Background(), mentionPayload("@noergler warum?", "carol"), "payments", nil)
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler warum?", "carol"), "payments", &inlineScheduler{})
 
 	if len(h.bb.Replies) != 1 || h.bb.Replies[0].Text != "Das ist grösser, weil `maß` gross ist: Mass." {
 		t.Errorf("replies = %+v", h.bb.Replies)

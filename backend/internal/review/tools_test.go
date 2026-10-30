@@ -202,7 +202,7 @@ func TestMentionLanguageSwitchNotStoredWhenTheLoopFails(t *testing.T) {
 	}
 	h.llm.mentionOutcome = inference.OutcomeTimedOut
 
-	h.r.HandleMention(context.Background(), mentionPayload("@noergler bitte ab jetzt auf Englisch", "erin"), "payments", nil)
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler bitte ab jetzt auf Englisch", "erin"), "payments", &inlineScheduler{})
 
 	if h.st.languages["erin"] != "" {
 		t.Errorf("stored %q after a failed loop", h.st.languages["erin"])
@@ -218,7 +218,7 @@ func TestMentionLanguageSwitchIsConfirmed(t *testing.T) {
 		return "Sure, here it is."
 	}
 
-	h.r.HandleMention(context.Background(), mentionPayload("@noergler bitte ab jetzt auf Englisch", "erin"), "payments", nil)
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler bitte ab jetzt auf Englisch", "erin"), "payments", &inlineScheduler{})
 
 	if h.st.languages["erin"] != lang.EN {
 		t.Fatalf("languages = %v", h.st.languages)

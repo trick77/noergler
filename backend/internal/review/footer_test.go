@@ -15,7 +15,7 @@ import (
 func TestFooterLinksThePRPage(t *testing.T) {
 	h := newHarness(t, nil)
 	h.r.publicURL = "https://noergler.example.com"
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 	if len(h.bb.Posted) == 0 {
 		t.Fatal("no summary posted")
 	}
@@ -25,7 +25,7 @@ func TestFooterLinksThePRPage(t *testing.T) {
 	}
 
 	h2 := newHarness(t, nil)
-	h2.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h2.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 	if s := h2.bb.Posted[0].Text; strings.Contains(s, "/prs/") {
 		t.Errorf("no public URL, yet a PR link:\n%s", s)
 	}
@@ -34,7 +34,7 @@ func TestFooterLinksThePRPage(t *testing.T) {
 	h4 := newHarness(t, nil)
 	h4.r.publicURL = "https://noergler.example.com"
 	h4.st.attemptErr = errors.New("db down")
-	h4.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h4.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 	if s := h4.bb.Posted[0].Text; !strings.Contains(s, "/prs/"+h4.st.prToken+")") {
 		t.Errorf("attempt not written, and the PR link went with it:\n%s", s)
 	}
@@ -42,7 +42,7 @@ func TestFooterLinksThePRPage(t *testing.T) {
 	h3 := newHarness(t, nil)
 	h3.r.publicURL = "https://noergler.example.com"
 	h3.st.prToken = ""
-	h3.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h3.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 	if s := h3.bb.Posted[0].Text; strings.Contains(s, "/prs/") {
 		t.Errorf("no token, yet a PR link:\n%s", s)
 	}
@@ -58,7 +58,7 @@ func TestFooterNamesTheOversizedFile(t *testing.T) {
 		props.WriteString("+key.x=value\n")
 	}
 	h.bb.prDiff = sampleDiff + props.String()
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 	s := h.bb.Posted[0].Text
 	if !strings.Contains(s, "Not reviewed (too large): `messages.properties` ⚠️") {
 		t.Errorf("footer does not name the oversized file:\n%s", s)
@@ -74,7 +74,7 @@ func TestFooterNamesTheOversizedFile(t *testing.T) {
 // more: those live on the run page (decided).
 func TestFooterKeepsTheDetailOnTheRunPage(t *testing.T) {
 	h := newHarness(t, nil)
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 	s := h.bb.Posted[0].Text
 	for _, gone := range []string{"Tokens used", "Input tokens", "key total", "↑", "cross-file"} {
 		if strings.Contains(s, gone) {

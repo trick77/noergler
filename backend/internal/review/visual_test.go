@@ -107,7 +107,7 @@ func TestScreenshotsAreDescribedInTheSummary(t *testing.T) {
 	}
 	h.llm.review = res
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.llm.Reviews) != 1 {
 		t.Fatalf("reviews = %d", len(h.llm.Reviews))
@@ -152,11 +152,11 @@ func TestScreenshotLinesAreReusedOnTheNextRun(t *testing.T) {
 	res := okResultWith()
 	res.Review.Visual = []inference.VisualChange{{ID: "V1", Change: "Dot added."}, {ID: "V2", Change: "New page."}}
 	h.llm.review = res
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 	reads := h.bb.byteReads
 
 	h.llm.review = okResultWith()
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.llm.Reviews) != 2 || len(h.llm.Reviews[1].Images) != 0 {
 		t.Fatalf("second run sent %d image pair(s), want none", len(h.llm.Reviews[1].Images))
@@ -181,7 +181,7 @@ func TestScreenshotWithNoVisibleChangeIsNotListed(t *testing.T) {
 		{ID: "V2", Change: "New page."},
 	}
 	h.llm.review = res
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	got := lastSummary(t, h)
 	if strings.Contains(got, "form-chromium-linux.png") || strings.Contains(got, "likely drift") {
@@ -196,7 +196,7 @@ func TestScreenshotWithNoVisibleChangeIsNotListed(t *testing.T) {
 	}
 
 	h.llm.review = okResultWith()
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 	if imgs := h.llm.Reviews[1].Images; len(imgs) != 1 || imgs[0].Path != shotDir+"form-firefox-linux.png" {
 		t.Errorf("second run sent %+v, want the firefox variant only", imgs)
 	}
@@ -214,7 +214,7 @@ func TestAddedScreenshotIsNeverHidden(t *testing.T) {
 		{ID: "V1", Change: "x", Invisible: true}, {ID: "V2", Change: "New page, nothing to compare.", Invisible: true},
 	}
 	h.llm.review = res
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 	got := lastSummary(t, h)
 	if !strings.Contains(got, "`new.png` - New page, nothing to compare.") || strings.Contains(got, "form-chromium-linux.png") {
 		t.Errorf("want the added baseline listed and the modified one hidden:\n%s", got)
@@ -228,7 +228,7 @@ func TestOnlyInvisibleScreenshotChangesNoSection(t *testing.T) {
 	res := okResultWith()
 	res.Review.Visual = []inference.VisualChange{{ID: "V1", Change: "x", Invisible: true}}
 	h.llm.review = res
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 	if got := lastSummary(t, h); strings.Contains(got, "Visual changes") {
 		t.Errorf("a section with nothing visible in it:\n%s", got)
 	}
@@ -238,7 +238,7 @@ func TestOnlyInvisibleScreenshotChangesNoSection(t *testing.T) {
 // summary says why.
 func TestScreenshotsWithoutVisionAreNotCompared(t *testing.T) {
 	h := screenshotHarness(t, false)
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if n := len(h.llm.Reviews[0].Images); n != 0 {
 		t.Fatalf("sent %d image pair(s) to a model without vision", n)
@@ -255,7 +255,7 @@ func TestScreenshotsWithoutVisionAreNotCompared(t *testing.T) {
 // A sent pair the model skipped says so, and nothing is stored for it.
 func TestScreenshotSkippedByTheModelIsMarked(t *testing.T) {
 	h := screenshotHarness(t, true)
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if got := lastSummary(t, h); strings.Count(got, "the model said nothing about it") != 2 {
 		t.Errorf("want both sent baselines marked unanswered:\n%s", got)
@@ -272,7 +272,7 @@ func TestNoScreenshotsNoSection(t *testing.T) {
 		h.llm.vision = true
 		h.bb.changeSetErr = errors.New("must not be called")
 	})
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 	if len(h.llm.Reviews[0].Images) != 0 || strings.Contains(lastSummary(t, h), "Visual changes") {
 		t.Error("no baselines, no images and no section")
 	}
@@ -294,7 +294,7 @@ func TestScreenshotWithoutTypesIsClassifiedByFetch(t *testing.T) {
 	res.Review.Visual = []inference.VisualChange{{ID: "V1", Change: "New baseline."}}
 	h.llm.review = res
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	imgs := h.llm.Reviews[0].Images
 	if len(imgs) != 1 || imgs[0].Path != shotDir+"added.png" || imgs[0].Before != "" {
@@ -314,7 +314,7 @@ func TestScreenshotWithoutTypesIsClassifiedByFetch(t *testing.T) {
 func TestScreenshotChangeOnlyAVariantShowsIsKept(t *testing.T) {
 	h := screenshotHarness(t, true)
 	h.bb.blobs["src1:"+shotDir+"form-chromium-linux.png"] = shotPNG(t, false)
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	imgs := h.llm.Reviews[0].Images
 	if len(imgs) == 0 || imgs[0].Path != shotDir+"form-firefox-linux.png" {
@@ -335,7 +335,7 @@ func TestBaselineOnlyPushIsReviewed(t *testing.T) {
 	res.Review.Visual = []inference.VisualChange{{ID: "V1", Change: "Dot added; no code explains it."}}
 	h.llm.review = res
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.llm.Reviews) != 1 || len(h.llm.Reviews[0].Images) == 0 {
 		t.Fatalf("a baseline-only diff must reach the model with its images")
@@ -349,7 +349,7 @@ func TestBaselineOnlyPushIsReviewed(t *testing.T) {
 func TestScreenshotsUnreadSaySo(t *testing.T) {
 	h := screenshotHarness(t, true)
 	h.bb.changeSetErr = errors.New("503")
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if got := lastSummary(t, h); !strings.Contains(got, "### Visual changes _Not read this run: the PR's changes could not be fetched._") {
 		t.Errorf("summary lacks the unread note:\n%s", got)
@@ -360,7 +360,7 @@ func TestScreenshotsUnreadSaySo(t *testing.T) {
 func TestScreenshotInLFSIsNamed(t *testing.T) {
 	h := screenshotHarness(t, true)
 	h.bb.blobs["src1:"+shotDir+"new.png"] = []byte("version https://git-lfs.github.com/spec/v1\noid sha256:abc\nsize 1234\n")
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if got := lastSummary(t, h); !strings.Contains(got, "`new.png` - _not compared: stored in Git LFS._") {
 		t.Errorf("summary lacks the LFS line:\n%s", got)
@@ -373,7 +373,7 @@ func TestScreenshotInLFSIsNamed(t *testing.T) {
 func TestScreenshotWithoutBaseIsNotCompared(t *testing.T) {
 	h := screenshotHarness(t, true)
 	h.bb.changeSet.FromHash = ""
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	for _, img := range h.llm.Reviews[0].Images {
 		if img.Before != "" {
@@ -394,7 +394,7 @@ func TestScreenshotsComeFromTheReviewedCommit(t *testing.T) {
 	res := okResultWith()
 	res.Review.Visual = []inference.VisualChange{{ID: "V1", Change: "Dot added."}}
 	h.llm.review = res
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.llm.Reviews[0].Images) == 0 {
 		t.Fatal("want the screenshots read at the reviewed commit")
@@ -409,7 +409,7 @@ func TestScreenshotsComeFromTheReviewedCommit(t *testing.T) {
 func TestBaselineDeletionOnlyRefreshesTheSummary(t *testing.T) {
 	h := screenshotHarness(t, true)
 	h.bb.prDiff = binary("gone.png")
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if len(h.llm.Reviews) != 1 {
 		t.Fatalf("reviews = %d, want the run to go on", len(h.llm.Reviews))
@@ -423,7 +423,7 @@ func TestBaselineDeletionOnlyRefreshesTheSummary(t *testing.T) {
 func TestOnlyRemovedBaselinesNoSection(t *testing.T) {
 	h := screenshotHarness(t, true)
 	h.bb.changeSet.Changes = []bitbucket.Change{{Path: shotDir + "gone.png", Type: "DELETE", FromContentID: "g1"}}
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	if strings.Contains(lastSummary(t, h), "Visual changes") {
 		t.Errorf("want no section for removals only:\n%s", lastSummary(t, h))
@@ -435,7 +435,7 @@ func TestOnlyRemovedBaselinesNoSection(t *testing.T) {
 func TestRemovedVariantHandsOverToTheNext(t *testing.T) {
 	h := screenshotHarness(t, true)
 	delete(h.bb.blobs, "src1:"+shotDir+"form-chromium-linux.png")
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	imgs := h.llm.Reviews[0].Images
 	if len(imgs) == 0 || imgs[0].Path != shotDir+"form-firefox-linux.png" {

@@ -18,7 +18,7 @@ func TestSuccessfulReviewUpdatesTheTrackedSummary(t *testing.T) {
 		h.bb.setComment(55, "the previous summary", 3)
 	})
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if len(h.bb.Updates) != 1 {
 		t.Fatalf("expected one comment update, got %d", len(h.bb.Updates))
@@ -54,7 +54,7 @@ func TestReviewKeywordMentionReactivatesAndReviewsFresh(t *testing.T) {
 		h.st.skipState = &store.SkipState{IgnoredAt: &now}
 	})
 
-	h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "alice"), "platform", nil)
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler review", "alice"), "platform", &inlineScheduler{})
 
 	if h.st.Reactived != 1 {
 		t.Errorf("Reactivate called %d times, want 1", h.st.Reactived)

@@ -232,12 +232,6 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	}
 	infer := func(inferCtx context.Context) { job.res = r.llm.FindingReply(inferCtx, req) }
 	post := func(postCtx context.Context) { r.postFindingReply(postCtx, job) }
-	if sched == nil {
-		// A direct caller or a test: inline, as the mention does.
-		infer(ctx)
-		post(ctx)
-		return true, false
-	}
 	sched.Stage(ctx, key, team, infer, post)
 	return true, true
 }

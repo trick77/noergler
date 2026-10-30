@@ -30,7 +30,6 @@ import (
 // reports which handler the dispatch table picked, without standing up an
 // inference client and a store.
 type Reviewer interface {
-	ReviewPullRequest(ctx context.Context, p *webhook.Payload, skipAuthorCheck bool)
 	// ReviewPullRequestStaged is the queued path: the gateway call goes to
 	// the inference pool and the posting comes back to the worker. It
 	// reports whether that work outlives the call, which is what keeps the

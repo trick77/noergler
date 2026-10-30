@@ -38,7 +38,7 @@ func fixedHarness(t *testing.T, evidence ...string) *harness {
 func TestFixedFindingIsRepliedToThenResolved(t *testing.T) {
 	h := fixedHarness(t, "func new() {}")
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if !strings.Contains(h.llm.Reviews[0].Prompt, "[F11] a.go:2 [issue]") {
 		t.Errorf("the prompt must list the finding by its id:\n%s", h.llm.Reviews[0].Prompt)
@@ -61,7 +61,7 @@ func TestFullReviewRetiresNothing(t *testing.T) {
 	h := fixedHarness(t, "func new() {}")
 	h.st.lastCommit, h.st.hasLast = "", false
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if p := h.llm.Reviews[0].Prompt; strings.Contains(p, "[F11]") || !strings.Contains(p, "a.go:2 [issue]") {
 		t.Errorf("a full review lists the finding without its id:\n%s", p)
@@ -76,7 +76,7 @@ func TestFullReviewRetiresNothing(t *testing.T) {
 func TestUnprovenFixedClaimTouchesNothing(t *testing.T) {
 	h := fixedHarness(t, "package a")
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if len(h.bb.Calls) != 0 || len(h.st.Fixed) != 0 {
 		t.Errorf("calls = %v, fixed = %v: an unproven claim must change nothing", h.bb.Calls, h.st.Fixed)
@@ -89,7 +89,7 @@ func TestRetiredFindingDoesNotDedupANewOne(t *testing.T) {
 	h := fixedHarness(t, "func new() {}")
 	h.llm.review.Review.Findings = []inference.ReviewFinding{finding("a.go", 2, "issue", "still leaks on error")}
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if len(h.bb.Inline) != 1 {
 		t.Errorf("inline = %+v, want the new finding posted", h.bb.Inline)
@@ -105,7 +105,7 @@ func TestFailedReplyLeavesTheThreadOpen(t *testing.T) {
 	h := fixedHarness(t, "func new() {}")
 	h.bb.replyErr = errors.New("boom")
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if want := []string{"reply:501"}; !slices.Equal(h.bb.Calls, want) {
 		t.Errorf("calls = %v, want %v", h.bb.Calls, want)
@@ -127,7 +127,7 @@ func TestReplyOnResolvedThreadStampsQuietly(t *testing.T) {
 	var buf bytes.Buffer
 	h.r.log = slog.New(slog.NewTextHandler(&buf, nil))
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if want := []string{"reply:501"}; !slices.Equal(h.bb.Calls, want) {
 		t.Errorf("calls = %v, want %v", h.bb.Calls, want)
@@ -146,7 +146,7 @@ func TestFailedResolveDoesNotFailTheRun(t *testing.T) {
 	h := fixedHarness(t, "func new() {}")
 	h.bb.resolveErr = errors.New("boom")
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if len(h.st.Fixed) != 1 || len(h.bb.Posted) != 1 {
 		t.Errorf("fixed = %v, summary posts = %d", h.st.Fixed, len(h.bb.Posted))
@@ -159,7 +159,7 @@ func TestFixedIsStampedWithoutARunRow(t *testing.T) {
 	h := fixedHarness(t, "func new() {}")
 	h.st.runErr = errors.New("db down")
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if len(h.st.Fixed) != 1 || h.st.Fixed[0] != [2]int64{11, 0} {
 		t.Errorf("fixed = %v, want row 11 stamped with run 0", h.st.Fixed)
@@ -171,7 +171,7 @@ func TestFixedClaimOnAFailedRunIsIgnored(t *testing.T) {
 	h := fixedHarness(t, "func new() {}")
 	h.llm.review.Outcome = inference.OutcomeUnparseable
 
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if len(h.bb.Calls) != 0 || len(h.st.Fixed) != 0 {
 		t.Errorf("calls = %v, fixed = %v", h.bb.Calls, h.st.Fixed)

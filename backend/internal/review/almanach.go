@@ -112,10 +112,6 @@ func (r *Reviewer) spawnAlmanachNote(ctx context.Context, plan *reviewPlan, team
 		return
 	}
 	r.almanachInflight.add(plan.key)
-	if sched == nil {
-		r.almanachNote(ctx, job)
-		return
-	}
 	sched.Spawn(ctx, plan.key, team, "almanach note", func(c context.Context) { r.almanachNote(c, job) })
 }
 

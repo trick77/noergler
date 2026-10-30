@@ -39,7 +39,7 @@ func TestReviewPromptCarriesThePRDescription(t *testing.T) {
 		h := newHarness(t, nil)
 		var buf bytes.Buffer
 		h.r.log = slog.New(slog.NewTextHandler(&buf, nil))
-		h.r.ReviewPullRequest(context.Background(), describedPayload(webhook.EventOpened), false)
+		h.r.reviewInline(context.Background(), describedPayload(webhook.EventOpened), false)
 		if len(h.llm.Reviews) != 1 {
 			t.Fatalf("expected one LLM call, got %d", len(h.llm.Reviews))
 		}
@@ -57,7 +57,7 @@ func TestReviewPromptCarriesThePRDescription(t *testing.T) {
 		h.r.SetUsePRDescription(false)
 		var buf bytes.Buffer
 		h.r.log = slog.New(slog.NewTextHandler(&buf, nil))
-		h.r.ReviewPullRequest(context.Background(), describedPayload(webhook.EventOpened), false)
+		h.r.reviewInline(context.Background(), describedPayload(webhook.EventOpened), false)
 		prompt := h.llm.Reviews[0].Prompt
 		if strings.Contains(prompt, "The retry is deliberate") {
 			t.Error("description sent although the team switched it off")
@@ -78,7 +78,7 @@ func TestMentionPromptCarriesThePRDescription(t *testing.T) {
 	h := newHarness(t, nil)
 	p := mentionPayload("@noergler why the retry?", "alice")
 	p.PullRequest.Description = "The retry is deliberate."
-	h.r.HandleMention(context.Background(), p, "platform", nil)
+	h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
 	if len(h.llm.Mentions) != 1 {
 		t.Fatalf("expected one mention call, got %d", len(h.llm.Mentions))
 	}
@@ -87,7 +87,7 @@ func TestMentionPromptCarriesThePRDescription(t *testing.T) {
 	}
 
 	h.r.SetUsePRDescription(false)
-	h.r.HandleMention(context.Background(), p, "platform", nil)
+	h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
 	if strings.Contains(h.llm.Mentions[1].Prompt, "The retry is deliberate.") {
 		t.Error("mention sent the description although the team switched it off")
 	}

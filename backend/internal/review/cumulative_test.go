@@ -40,7 +40,7 @@ func runIncremental(t *testing.T, prDiff string) (prompt, logs string) {
 	h := incrementalHarness(t, func(h *harness) { h.bb.prDiff = prDiff })
 	var buf bytes.Buffer
 	h.r.log = slog.New(slog.NewTextHandler(&buf, nil))
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 	if len(h.llm.Reviews) != 1 {
 		t.Fatalf("expected one LLM call, got %d", len(h.llm.Reviews))
 	}
@@ -59,7 +59,7 @@ func TestOversizedCumulativePartIsOmittedUntokenized(t *testing.T) {
 	huge := strings.Repeat("x", floorBudget*bytesPerTokenCeiling+1)
 
 	h := incrementalHarness(t, func(h *harness) { h.bb.prDiff = huge })
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if h.tok.counted(len(huge)) {
 		t.Error("an over-byte-budget cumulative part was tokenized; the byte pre-check did not fire")
@@ -79,7 +79,7 @@ func TestCumulativePartUnderByteCeilingIsTokenized(t *testing.T) {
 	sized := strings.Repeat("x", floorBudget*2)
 
 	h := incrementalHarness(t, func(h *harness) { h.bb.prDiff = sized })
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if !h.tok.counted(len(sized)) {
 		t.Error("a part under the byte ceiling should have been tokenized")
@@ -155,7 +155,7 @@ func TestUnparsedPartsAreNotRankedAsTouched(t *testing.T) {
 	})
 	var buf bytes.Buffer
 	h.r.log = slog.New(slog.NewTextHandler(&buf, nil))
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	if want := "(1 touched by the push, 0 related, 1 other)"; !strings.Contains(buf.String(), want) {
 		t.Errorf("log lacks %q:\n%s", want, buf.String())
@@ -225,7 +225,7 @@ func TestCumulativeBudgetFollowsThePush(t *testing.T) {
 	})
 	var buf bytes.Buffer
 	h.r.log = slog.New(slog.NewTextHandler(&buf, nil))
-	h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	want := fmt.Sprintf("budget %d (ceiling)", inference.CumulativeDiffBudget(h.llm.budget))
 	if !strings.Contains(buf.String(), want) {
@@ -252,7 +252,7 @@ func TestPromptCompositionAndReviewModeAreLogged(t *testing.T) {
 		h := newHarness(t, nil)
 		var buf bytes.Buffer
 		h.r.log = slog.New(slog.NewTextHandler(&buf, nil))
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 		for _, want := range []string{"full review (no prior reviewed commit)", "(full review) = files ", "cumulative PR diff 0 +"} {
 			if !strings.Contains(buf.String(), want) {
 				t.Errorf("log lacks %q:\n%s", want, buf.String())
@@ -264,7 +264,7 @@ func TestPromptCompositionAndReviewModeAreLogged(t *testing.T) {
 		h := newHarness(t, nil)
 		var buf bytes.Buffer
 		h.r.log = slog.New(slog.NewTextHandler(&buf, nil))
-		h.r.ReviewPullRequest(context.Background(), prPayload(webhook.EventOpened), false)
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 		if want := "full review (event pr:opened is not a push)"; !strings.Contains(buf.String(), want) {
 			t.Errorf("log lacks %q:\n%s", want, buf.String())
 		}
