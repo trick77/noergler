@@ -407,7 +407,6 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		overBudget:     otherModified,
 		ticket:         ticket,
 		parentTicket:   parentTicket,
-		breakdown:      breakdown(assembled),
 		agentsMDFound:  repoInstructions != "",
 		totalFiles:     totalFiles,
 		diffAdded:      diffAdded,
@@ -607,7 +606,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 		SkippedFiles:               plan.oversized,
 		OverBudgetFiles:            plan.overBudget,
 		ContentSkippedFiles:        plan.contentSkipped,
-		PromptBreakdown:            plan.breakdown,
+		AgentsMDTokens:             plan.detail.AgentsMD.Tokens,
 		Ticket:                     plan.ticket,
 		ParentTicket:               plan.parentTicket,
 		ComplianceRequirements:     result.Review.ComplianceRequirements,
@@ -1165,15 +1164,6 @@ func (r *Reviewer) priorCommit(ctx context.Context, key store.PRKey) (commit str
 		return c, err
 	})
 	return commit, readOK
-}
-
-func breakdown(a inference.AssembledPrompt) render.PromptBreakdown {
-	return render.PromptBreakdown{
-		Template:         a.Breakdown.Template,
-		RepoInstructions: a.Breakdown.RepoInstructions,
-		Files:            a.Breakdown.Files,
-		Present:          true,
-	}
 }
 
 // notFullContext is the "reviewed without full file context" list: a

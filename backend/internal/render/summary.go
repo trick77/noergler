@@ -27,15 +27,6 @@ var verdictLabels = map[lang.Lang]map[string]string{
 	},
 }
 
-// PromptBreakdown is the per-section input token count the footnote renders.
-// RepoInstructions doubles as the AGENTS.md figure on the scope line.
-type PromptBreakdown struct {
-	Template         int
-	RepoInstructions int
-	Files            int
-	Present          bool
-}
-
 // SummaryInput is everything the PR summary comment renders. It is the PR
 // summary: the whole PR on every run, never one push. The comment is
 // replaced on each run, so what it leaves out of the PR is gone.
@@ -83,7 +74,9 @@ type SummaryInput struct {
 	OverBudgetFiles     []string
 	ContentSkippedFiles []string
 
-	PromptBreakdown PromptBreakdown
+	// AgentsMDTokens is what the repo's AGENTS.md cost the prompt, for the
+	// bloat warning.
+	AgentsMDTokens int
 
 	Ticket       *jira.Ticket
 	ParentTicket *jira.Ticket
@@ -680,11 +673,8 @@ func Elapsed(seconds float64) string {
 // moved to the run page.
 func agentsMDBloatLine(in SummaryInput) string {
 	p := in.Lang.Pick
-	if !in.PromptBreakdown.Present || in.AgentsMDWarnTokens <= 0 {
-		return ""
-	}
-	tokens := in.PromptBreakdown.RepoInstructions
-	if tokens <= in.AgentsMDWarnTokens {
+	tokens := in.AgentsMDTokens
+	if in.AgentsMDWarnTokens <= 0 || tokens <= in.AgentsMDWarnTokens {
 		return ""
 	}
 	return fmt.Sprintf(p("`AGENTS.md` belegt ~%d von %d Tokens (%d%%) — droht den Kontext aufzublähen, besser kürzen ⚠️",

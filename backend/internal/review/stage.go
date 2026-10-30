@@ -10,7 +10,6 @@ import (
 	"github.com/trick77/noergler/internal/jira"
 	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/queue"
-	"github.com/trick77/noergler/internal/render"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
@@ -89,7 +88,6 @@ type reviewPlan struct {
 	overBudget    []string
 	ticket        *jira.Ticket
 	parentTicket  *jira.Ticket
-	breakdown     render.PromptBreakdown
 	agentsMDFound bool
 	// totalFiles is every reviewable changed file, size-gated ones included:
 	// the set diffAdded and diffRemoved count, and the run row stores. The
