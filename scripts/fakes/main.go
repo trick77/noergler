@@ -4,75 +4,32 @@
 // Covers what startup and one replayed webhook touch: the Bitbucket and Jira
 // probes, the riptide ping, and the gateway (model listing plus completions).
 //
-// With -record, every body that carries review output is written to a file so
-// two runs can be diffed against each other: the comments posted to Bitbucket,
-// the completion requests sent to the gateway, and the riptide rollup. The
-// name is the payload kind plus the order it arrived in, because the order is
-// part of what the diff has to compare.
-//
-// Usage: fakes [-addr :18099] [-record dir] [-review file]
+// Usage: fakes [-addr :18099]
 package main
 
 import (
 	"bytes"
 	"encoding/json"
 	"flag"
-	"fmt"
 	"image"
 	"image/color"
 	"image/png"
 	"io"
 	"log"
 	"net/http"
-	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 )
 
-// recorder writes request bodies to a directory, numbered per kind in arrival
-// order. A zero recorder (no -record) discards everything, so the default
-// behaviour of the fakes is unchanged.
-type recorder struct {
-	dir string
-
-	mu sync.Mutex
-	n  map[string]int
-}
-
-func newRecorder(dir string) *recorder {
-	return &recorder{dir: dir, n: make(map[string]int)}
-}
-
-// save writes body as <kind>-<seq>.json and returns the bytes it consumed, so
-// a handler can still decode what it recorded.
-func (rec *recorder) save(kind string, body []byte) {
-	if rec.dir == "" {
-		return
-	}
-	rec.mu.Lock()
-	rec.n[kind]++
-	seq := rec.n[kind]
-	rec.mu.Unlock()
-
-	name := filepath.Join(rec.dir, fmt.Sprintf("%s-%d.json", kind, seq))
-	if err := os.WriteFile(name, body, 0o644); err != nil {
-		log.Printf("record %s: %v", name, err)
-		return
-	}
-	log.Printf("recorded %s (%d bytes)", filepath.Base(name), len(body))
-}
-
-// readAndRecord drains r.Body, saves it and hands it back for decoding.
-func (rec *recorder) readAndRecord(kind string, r *http.Request) []byte {
+// readBody drains r.Body for decoding; a read failure logs and yields nil.
+func readBody(kind string, r *http.Request) []byte {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Printf("read %s body: %v", kind, err)
 		return nil
 	}
-	rec.save(kind, body)
 	return body
 }
 
@@ -172,27 +129,7 @@ func writePage(w http.ResponseWriter, r *http.Request, values []map[string]any) 
 
 func main() {
 	addr := flag.String("addr", ":18099", "listen address")
-	recordDir := flag.String("record", "", "directory to record posted comments, completion requests and riptide rollups into")
-	reviewFile := flag.String("review", "", "file holding the canned review JSON (default: the built-in one)")
 	flag.Parse()
-
-	rec := newRecorder(*recordDir)
-	if *recordDir != "" {
-		if err := os.MkdirAll(*recordDir, 0o755); err != nil {
-			log.Fatalf("record dir: %v", err)
-		}
-	}
-
-	// Two runs being diffed have to get the same review bytes, so the body
-	// can come from a shared file instead of the canned default.
-	review := cannedReview
-	if *reviewFile != "" {
-		blob, err := os.ReadFile(*reviewFile)
-		if err != nil {
-			log.Fatalf("review file: %v", err)
-		}
-		review = string(blob)
-	}
 
 	mux := http.NewServeMux()
 
@@ -234,7 +171,6 @@ func main() {
 
 	// Riptide: swallow rollups so a local run does not error on them.
 	mux.HandleFunc("POST /webhooks/noergler", func(w http.ResponseWriter, r *http.Request) {
-		rec.readAndRecord("rollup", r)
 		log.Printf("riptide rollup received")
 		w.WriteHeader(http.StatusAccepted)
 	})
@@ -298,7 +234,7 @@ func main() {
 	commentID := 1000
 	mux.HandleFunc("POST /rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{id}/comments",
 		func(w http.ResponseWriter, r *http.Request) {
-			body := rec.readAndRecord("comment", r)
+			body := readBody("comment", r)
 			// Keep the text so a later GET of this id can return it rather
 			// than 404, which both implementations read as "deleted".
 			//
@@ -345,7 +281,7 @@ func main() {
 	mux.HandleFunc("PUT /rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{id}/comments/{commentID}",
 		func(w http.ResponseWriter, r *http.Request) {
 			id := r.PathValue("commentID")
-			body := rec.readAndRecord("comment-update", r)
+			body := readBody("comment-update", r)
 			var c struct {
 				Text           *string `json:"text"`
 				Version        int     `json:"version"`
@@ -404,10 +340,7 @@ func main() {
 
 		content := "ok"
 		if len(req.ResponseFormat) > 0 {
-			content = review
-			// Only the review call is worth diffing. The startup ping is a
-			// fixed two-word prompt and every boot makes one.
-			rec.save("completion", body)
+			content = cannedReview
 		}
 		// Priced, so the run stores a cost instead of falling open to NULL.
 		w.Header().Set("x-litellm-response-cost", "0.0123")
@@ -653,9 +586,6 @@ func main() {
 	})
 
 	log.Printf("fakes listening on %s (bitbucket, jira, riptide, gateway)", *addr)
-	if *recordDir != "" {
-		log.Printf("recording comment, completion and rollup bodies to %s", *recordDir)
-	}
 	srv := &http.Server{Addr: *addr, Handler: mux}
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
@@ -761,15 +691,9 @@ def trailing():
 // scripts/smoke.sh. The listing is keyed by the alias, not the profile.
 const gatewayAlias = "ai-gateway-gpt-5.5"
 
-// cannedReview is the built-in default: one schema-valid review, so a replayed
-// webhook produces an inline comment and a summary rather than an
-// unparseable-response notice. It is what smoke.sh gets, and one finding is all
-// smoke.sh asserts on.
-//
-// Not the same bytes as scripts/testdata/review.json, deliberately: -review
-// serves that file to two runs being diffed, and it carries a finding per file
-// in sampleDiff so the posting order of several comments is compared too.
-// Keeping the default here means the fakes still work with no flags.
+// cannedReview is one schema-valid review, so a replayed webhook produces an
+// inline comment and a summary rather than an unparseable-response notice. It
+// is what smoke.sh gets, and one finding is all smoke.sh asserts on.
 const cannedReview = `{
   "overview": "A small change to the smoke fixture.",
   "latest_push": null,
