@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { PAGES, navigate, pageFromPath, pathFor } from "./routing";
+import {
+  PAGES,
+  navigate,
+  pageFromPath,
+  pathFor,
+  teamPath,
+  teamSlugFromPath,
+} from "./routing";
 
 describe("routing", () => {
   it("maps paths to pages", () => {
@@ -31,6 +38,20 @@ describe("routing", () => {
   it("agrees with the Go route allowlist", () => {
     expect(pathFor("live")).toBe("/");
     expect(pathFor("runs")).toBe("/runs");
+  });
+
+  // One team's link is the Teams page itself, so the first segment still
+  // decides the page; the slug is read on top, and only a slug-shaped one
+  // (backend/web/embed.go teamPath serves exactly these).
+  it("reads a team's slug off its link and nothing else", () => {
+    expect(pageFromPath("/teams/payments")).toBe("teams");
+    expect(teamSlugFromPath("/teams/payments")).toBe("payments");
+    expect(teamSlugFromPath(teamPath("col-devops"))).toBe("col-devops");
+    expect(teamSlugFromPath("/teams")).toBeNull();
+    expect(teamSlugFromPath("/teams/")).toBeNull();
+    expect(teamSlugFromPath("/teams/Payments")).toBeNull();
+    expect(teamSlugFromPath("/teams/payments/x")).toBeNull();
+    expect(teamSlugFromPath("/runs")).toBeNull();
   });
 });
 

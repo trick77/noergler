@@ -90,6 +90,27 @@ func TestPRPageRoute(t *testing.T) {
 	}
 }
 
+// A team's own link, /teams/{slug}, gets the shell like the page it scrolls:
+// a reload on a copied link must not 404. Only a slug-shaped segment, and
+// nothing deeper; it is an ordinary page, so none of the PR page's headers.
+func TestTeamPathRoute(t *testing.T) {
+	h := handler(built())
+	for _, path := range []string{"/teams/payments", "/teams/col-devops", "/teams/t1"} {
+		w := req(t, h, path)
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "id=root") {
+			t.Errorf("%s: status = %d, want the shell", path, w.Code)
+		}
+		if w.Header().Get("Referrer-Policy") != "" {
+			t.Errorf("%s: Referrer-Policy = %q, want none", path, w.Header().Get("Referrer-Policy"))
+		}
+	}
+	for _, path := range []string{"/teams/", "/teams/Payments", "/teams/-x", "/teams/payments/", "/teams/payments/runs", "/teams/pay_ments"} {
+		if code := req(t, h, path).Code; code != http.StatusNotFound {
+			t.Errorf("%s: status = %d, want 404", path, code)
+		}
+	}
+}
+
 // A browser holding a stale index asks for a chunk that no longer exists.
 // Answering text/html for a JS module request turns a reload-on-stale
 // heuristic into a syntax error, so a missing asset must 404.

@@ -1,4 +1,10 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FaqPage } from "./FaqPage";
 import { LivePage } from "./LivePage";
@@ -536,6 +542,18 @@ describe("MetricsPage", () => {
 });
 
 describe("TeamsPage", () => {
+  // The page reads its team and its search off the URL, so every test
+  // starts on the bare page whatever the one before left behind.
+  beforeEach(() => {
+    window.history.replaceState({}, "", "/teams");
+  });
+
+  /** fullText matches an element whose whole text is `text`, across the
+   *  <mark> a search hit splits it into. */
+  const fullText = (text: string) => (_: string, el: Element | null) =>
+    el?.textContent === text &&
+    !Array.from(el.children).some((c) => c.textContent === text);
+
   const teams: Team[] = [
     {
       slug: "payments",
@@ -675,7 +693,7 @@ describe("TeamsPage", () => {
     serve({ teams: { teams } });
     const { container } = render(<TeamsPage />);
 
-    await screen.findByText("Zahlungen");
+    await screen.findByRole("heading", { name: "Zahlungen" });
     const details = container.querySelectorAll("details");
     expect(details).toHaveLength(1);
     expect(details[0].open).toBe(false);
@@ -708,9 +726,119 @@ describe("TeamsPage", () => {
     serve({ teams: { teams } });
     render(<TeamsPage />);
 
-    const name = await screen.findByText("Zahlungen");
+    const name = await screen.findByRole("heading", { name: "Zahlungen" });
     expect(name.getAttribute("title")).toBe("payments");
     expect(screen.queryByText(/\bpayments\b/)).toBeNull();
+  });
+
+  // The rail lists every team under its state, so the roster is one glance
+  // and one click; the card count stays the rail's, not a second copy.
+  it("indexes the teams by state in the rail", async () => {
+    serve({ teams: { teams } });
+    render(<TeamsPage />);
+
+    const rail = await screen.findByRole("navigation", { name: "Teams" });
+    const rows = within(rail).getAllByRole("link");
+    expect(rows.map((r) => r.textContent)).toEqual(["Zahlungen9", "Mobile"]);
+    expect(rows[0].getAttribute("href")).toBe("/teams/payments");
+    expect(within(rail).getByText("Ready")).toBeDefined();
+    expect(within(rail).getByText("Disabled")).toBeDefined();
+  });
+
+  // The search is over everything a reader might know a team by: its name,
+  // its slug, a claim, or a repo it excludes. The miss is dimmed in the
+  // rail, not dropped, and its card goes; the hit says what matched.
+  it("filters by claim and names the hit in the rail", async () => {
+    serve({ teams: { teams } });
+    render(<TeamsPage />);
+
+    const box = await screen.findByRole("searchbox");
+    fireEvent.change(box, { target: { value: "billing" } });
+
+    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(1);
+    expect(screen.getByText(fullText("SHARED/billing-lib"))).toBeDefined();
+    const rail = screen.getByRole("navigation", { name: "Teams" });
+    expect(
+      within(rail).getByText(fullText("↳ SHARED/billing-lib")),
+    ).toBeDefined();
+    expect(within(rail).getByText("1 of 2 teams match")).toBeDefined();
+    expect(window.location.search).toBe("?q=billing");
+  });
+
+  // A hit in the excluded repos sits behind the collapsed configuration,
+  // so the card opens it: a hit nobody can see is not a hit.
+  it("opens the configuration for a hit in the excluded repos", async () => {
+    serve({ teams: { teams } });
+    const { container } = render(<TeamsPage />);
+
+    const box = await screen.findByRole("searchbox");
+    fireEvent.change(box, { target: { value: "infra" } });
+
+    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(1);
+    expect(container.querySelector("details")?.open).toBe(true);
+    expect(screen.getByText(fullText("↳ excluded: *-infra"))).toBeDefined();
+  });
+
+  it("says when nothing matches and offers the whole list back", async () => {
+    serve({ teams: { teams } });
+    render(<TeamsPage />);
+
+    const box = await screen.findByRole("searchbox");
+    fireEvent.change(box, { target: { value: "nope" } });
+
+    expect(screen.queryAllByRole("heading", { level: 3 })).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Show all" }));
+    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(2);
+    expect(window.location.search).toBe("");
+  });
+
+  // /teams/{slug} is the page scrolled to that team, its configuration
+  // open and its rail row current; the # on the card copies that link.
+  it("opens the team a link names and copies the link back", async () => {
+    window.history.pushState({}, "", "/teams/payments");
+    const writeText = vi.fn(async () => {});
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    serve({ teams: { teams } });
+    const { container } = render(<TeamsPage />);
+
+    await screen.findByRole("heading", { name: "Zahlungen" });
+    expect(container.querySelector("#payments")).not.toBeNull();
+    expect(container.querySelector("details")?.open).toBe(true);
+    const rail = screen.getByRole("navigation", { name: "Teams" });
+    expect(
+      within(rail)
+        .getByRole("link", { name: /Zahlungen/ })
+        .getAttribute("aria-current"),
+    ).toBe("true");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Copy link to Zahlungen/ }),
+    );
+    expect(writeText).toHaveBeenCalledWith(
+      `${window.location.origin}/teams/payments`,
+    );
+    expect(screen.getByText("copied")).toBeDefined();
+  });
+
+  // A stale link says so rather than scrolling nowhere in silence.
+  it("reports a slug no team has", async () => {
+    window.history.pushState({}, "", "/teams/gone");
+    serve({ teams: { teams } });
+    render(<TeamsPage />);
+
+    expect(await screen.findByText(/No team/)).toBeDefined();
+    expect(screen.getByText("gone")).toBeDefined();
+  });
+
+  // A rail click is a navigation: the path becomes the team's, so the URL
+  // bar is a copyable link too.
+  it("sets the team's path on a rail click", async () => {
+    serve({ teams: { teams } });
+    render(<TeamsPage />);
+
+    const rail = await screen.findByRole("navigation", { name: "Teams" });
+    fireEvent.click(within(rail).getByRole("link", { name: /Mobile/ }));
+    expect(window.location.pathname).toBe("/teams/mobile");
   });
 
   // The column lists project keys and project/repo pairs (user, 2026-10-27).

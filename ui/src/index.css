@@ -199,8 +199,30 @@ svg.chart {
   animation: skeleton-fade 1.4s ease-in-out infinite;
 }
 
+/* The deep-linked team's card: the accent ring the PR rail gives the
+   current run, held a few seconds and then let go, so it reads as "here"
+   rather than "selected". */
+@keyframes ring-settle {
+  0%,
+  60% {
+    border-color: var(--color-accent-strong);
+    box-shadow: 0 0 0 1px var(--color-accent-strong);
+  }
+  100% {
+    border-color: var(--color-border);
+    box-shadow: none;
+  }
+}
+.ring-settle {
+  animation: ring-settle 4s ease-out forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .skeleton {
     animation: none;
+  }
+  .ring-settle {
+    animation: none;
+    border-color: var(--color-accent-strong);
   }
 }

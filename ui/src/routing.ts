@@ -24,6 +24,22 @@ export interface PRRoute {
   n: number | null;
 }
 
+// Mirrors teamPath in backend/web/embed.go: one team on the Teams page, the
+// slug as config.TeamSlugRE shapes it. The page itself, scrolled to that
+// team with its configuration open; the link a team card's # copies.
+const TEAM_PATH = /^\/teams\/([a-z0-9][a-z0-9-]*)$/;
+
+/** teamSlugFromPath is the team a Teams path names, null on /teams itself. */
+export function teamSlugFromPath(path: string): string | null {
+  const m = TEAM_PATH.exec(path);
+  return m === null ? null : m[1];
+}
+
+/** teamPath is one team's link on the Teams page. */
+export function teamPath(slug: string): string {
+  return `/teams/${slug}`;
+}
+
 export function pageFromPath(path: string): Page {
   if (PR_PATH.test(path)) return "pr";
   const slug = path.replace(/^\/+/, "").split("/")[0];
