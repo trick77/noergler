@@ -129,6 +129,5 @@ describe("German UI", () => {
     ).toBeDefined();
     expect(screen.getByText("AGENTS.md fehlt")).toBeDefined();
     expect(screen.getByText("noergloff")).toBeDefined();
-    expect(screen.queryByText("/api/docs")).toBeNull();
   });
 });

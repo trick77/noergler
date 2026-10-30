@@ -522,7 +522,7 @@ export const de = {
       "Dein Team kann auch Branches per Muster ausschliessen, nach Source-Branch (<code>dependabot/*</code>) oder nach Target-Branch (<code>release/*</code>). Diese PRs werden nie automatisch geprüft; eine @Erwähnung funktioniert trotzdem.",
     askQ: "Wie frage ich noergler etwas?",
     askA1:
-      "Erwähne den Bot mit seinem Bitbucket-Benutzernamen in einem PR-Kommentar. Stelle eine Frage, und er antwortet; verlange ein Review, und er macht eines. Eine direkte Antwort auf einen seiner Kommentare braucht keine Erwähnung.",
+      "Erwähne den Bot mit seinem Bitbucket-Benutzernamen in einem PR-Kommentar. Stelle eine Frage, und er antwortet; verlange ein Review, und er macht eines. Eine direkte Antwort unter seiner Zusammenfassung oder einer seiner Antworten braucht keine Erwähnung; unter einem Finding wird die Antwort des PR-Autors ohne eine beantwortet.",
     askA2:
       "Eine Erwähnung übergeht die Auto-Review-Liste, deshalb funktioniert sie auch bei PRs, die sonst nie geprüft würden. Das Kostenlimit übergeht sie nicht: Jede Antwort zählt dazu, und am Limit antwortet der Bot auch nicht mehr.",
     stoppedQ: "Warum haben die Reviews mitten in meinem PR aufgehört?",

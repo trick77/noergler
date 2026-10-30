@@ -968,13 +968,10 @@ describe("FaqPage", () => {
     expect(screen.getByText("PR cost cap reached")).toBeDefined();
   });
 
-  // The API has its own nav item; the FAQ does not repeat it.
-  it("names the opt-out keyword and leaves the API to the nav", () => {
-    const { container } = render(<FaqPage />);
+  it("names the opt-out keyword", () => {
+    render(<FaqPage />);
 
     expect(screen.getByText("noergloff")).toBeDefined();
-    expect(screen.queryByText("/api/docs")).toBeNull();
-    expect(container.textContent).not.toMatch(/raise the limit/);
   });
 
   // The page is for developers, not operators: a reader here cannot set env

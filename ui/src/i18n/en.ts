@@ -534,7 +534,7 @@ export const en = {
       "Your team can also exclude branches by pattern, by source branch (<code>dependabot/*</code>) or by target branch (<code>release/*</code>). Those PRs are never auto-reviewed; an @mention still works.",
     askQ: "How do I ask noergler something?",
     askA1:
-      "Mention the bot by its Bitbucket username in a PR comment. Ask a question and it answers; ask for a review and it runs one. A direct reply to one of its comments needs no mention.",
+      "Mention the bot by its Bitbucket username in a PR comment. Ask a question and it answers; ask for a review and it runs one. A direct reply under its summary or one of its answers needs no mention; under a finding, the PR author's reply is answered without one.",
     askA2:
       "Mentioning it overrides the auto-review list, so it works on PRs that would never be reviewed on their own. It does not override the cost cap: every reply and answer counts toward it, and at the cap the bot stops answering too.",
     stoppedQ: "Why did reviews stop halfway through my PR?",
