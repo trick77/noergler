@@ -168,7 +168,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   Unterschied» lines are noise), stored as '' like same pixels; only a
   literal false hides, never on an added one. Visible drift no code
   explains keeps its line. At most 10 pairs a call (a changed pair takes 2
-  of the 20 reads).
+  of the 20 reads). Identical lines fold at render only (user, 2026-10-30):
+  exact text after whitespace, never the model, never a status line; the
+  store keeps one line per pair.
 
 ## Evals
 

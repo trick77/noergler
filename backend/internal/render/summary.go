@@ -268,15 +268,53 @@ func renderVisual(in SummaryInput) string {
 	for _, v := range in.Visual {
 		names[path.Base(v.Path)]++
 	}
-	for i, v := range in.Visual {
+	nameOf := func(v VisualLine) string {
+		if name := path.Base(v.Path); names[name] == 1 {
+			return name
+		}
+		return v.Path
+	}
+
+	// Screenshots whose described line is the same sentence fold into one
+	// line: ten tests that all picked up the new font said "the edit field
+	// uses the new font" ten times over (user, 2026-10-30). Exact text after
+	// whitespace, a rule in code, never a judgement: one word apart stays
+	// apart. Status lines never fold; the path is their content. The fold
+	// is rendering only: the store, the log and the Almanach keep one entry
+	// per pair.
+	type visualGroup struct {
+		names    []string
+		status   VisualStatus
+		text     string
+		variants int
+	}
+	var groups []*visualGroup
+	byText := map[string]*visualGroup{}
+	for _, v := range in.Visual {
+		var text string
+		if v.Status == VisualDescribed {
+			text = strings.Join(strings.Fields(v.Text), " ")
+		}
+		if g := byText[text]; text != "" && g != nil {
+			g.names = append(g.names, nameOf(v))
+			g.variants += v.Variants
+			continue
+		}
+		g := &visualGroup{names: []string{nameOf(v)}, status: v.Status, text: text, variants: v.Variants}
+		groups = append(groups, g)
+		if text != "" {
+			byText[text] = g
+		}
+	}
+
+	for i, g := range groups {
 		if i == maxVisualLines {
-			lines = append(lines, fmt.Sprintf(p("_… und %d weitere._", "_… and %d more._"), len(in.Visual)-i))
+			lines = append(lines, fmt.Sprintf(p("_… und %d weitere._", "_… and %d more._"), len(groups)-i))
 			break
 		}
-		var text string
-		switch v.Status {
+		text := g.text
+		switch g.status {
 		case VisualDescribed:
-			text = strings.Join(strings.Fields(v.Text), " ")
 		case VisualNoVision:
 			text = p("_nicht verglichen: das Modell nimmt keine Bilder._", "_not compared: the model takes no images._")
 		case VisualOverCap:
@@ -293,19 +331,31 @@ func renderVisual(in SummaryInput) string {
 		default:
 			text = p("_nicht verglichen: das Modell hat nichts dazu gesagt._", "_not compared: the model said nothing about it._")
 		}
-		name := path.Base(v.Path)
-		if names[name] > 1 {
-			name = v.Path
+		// A folded line names up to maxFoldedNames screenshots and counts
+		// the rest, variants included; a single one keeps its variant count.
+		shown, more := g.names, 0
+		if len(shown) > maxFoldedNames {
+			shown, more = shown[:maxFoldedNames], len(shown)-maxFoldedNames
 		}
-		line := fmt.Sprintf("- `%s` — %s", name, text)
-		if v.Variants > 0 {
-			line += " _(" + PluralIn(in.Lang, v.Variants, "weitere Variante", "weitere Varianten",
+		subject := "`" + strings.Join(shown, "`, `") + "`"
+		if len(g.names) > 1 {
+			if extra := more + g.variants; extra > 0 {
+				subject += fmt.Sprintf(p(" und %d weitere", " and %d more"), extra)
+			}
+		}
+		line := fmt.Sprintf("- %s — %s", subject, text)
+		if len(g.names) == 1 && g.variants > 0 {
+			line += " _(" + PluralIn(in.Lang, g.variants, "weitere Variante", "weitere Varianten",
 				"more variant", "more variants") + ")_"
 		}
 		lines = append(lines, WrapProse(line))
 	}
 	return strings.Join(lines, "\n")
 }
+
+// maxFoldedNames is how many screenshots a folded line names before counting
+// the rest, so one shared sentence never drags a wall of paths behind it.
+const maxFoldedNames = 3
 
 // swissFindings copies findings with SwissSS applied to their prose.
 func swissFindings(in []inference.ReviewFinding) []inference.ReviewFinding {
