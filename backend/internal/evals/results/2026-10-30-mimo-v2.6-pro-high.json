@@ -1,0 +1,874 @@
+{
+ "Results": [
+  {
+   "Case": "buried-behavioural-hunk",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/notify/dispatcher.go",
+     "Line": 64,
+     "Severity": "issue",
+     "Comment": "This condition is inverted relative to the previous `if !retryable(err)` check and to the doc comment on `Deliver`, which says a permanent failure \"is returned at once\". As written, `retryable(lastErr)` is true for every transient error (its body is `return !errors.Is(err, ErrPermanent)`), so a 500 or a connection timeout is returned to the caller on the first attempt and never retried, while an `ErrPermanent` failure (e.g. a 404 from the endpoint) is retried through all five attempts with backoff — exactly the opposite of the intended policy, and the log line emitted for those permanent errors now claims \"will retry\" when the documented contract is to bail out immediately.",
+     "Confidence": 97,
+     "Headline": "Retry check inverted: transient errors never retried, permanent ones are",
+     "Suggestion": "\t\tif !retryable(lastErr) {",
+     "Evidence": [
+      "\t\tif retryable(lastErr) {",
+      "\t\t\treturn lastErr",
+      "\t\t}",
+      "\t\td.log.Warn(\"notification delivery failed, will retry\",",
+      "\t\t\t\"endpoint\", ep.ID, \"attempt\", attempt, \"error\", lastErr)"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "retryable-check-inverted",
+      "file": "internal/notify/dispatcher.go",
+      "lines": [
+       60,
+       66
+      ],
+      "keywords": [
+       "!retryable",
+       "inverted",
+       "negat",
+       "flipped",
+       "non-retryable",
+       "permanent"
+      ],
+      "why": "Transient failures such as a 503 are now returned on the first attempt without any retry, while permanently rejected deliveries are retried five times with backoff."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-guard-clause",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-i18n-key-order",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-multi-file-signature",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-refactor",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-rename",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-secret-from-env",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-test-fixture-password",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "context-not-propagated",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/bitbucket/diff.go",
+     "Line": 13,
+     "Severity": "issue",
+     "Comment": "The diff replaces the caller-supplied `ctx` with `context.Background()` in both `http.NewRequestWithContext` and `getTextCapped`, so the caller's cancellation and deadline no longer apply to the diff fetch or its body read. This directly contradicts the contract stated in the function's own doc comment (\"The caller's context bounds the whole operation, including the body read.\"). Realistic scenario: a caller sets a request timeout on `ctx` and then cancels it (e.g. the upstream request is aborted or times out); the HTTP call keeps running to completion against `context.Background()`, leaving an orphaned network operation with no bound. The `ctx` parameter is now accepted but silently ignored.",
+     "Confidence": 95,
+     "Headline": "FetchDiff ignores caller context in favor of context.Background()",
+     "Suggestion": "req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)",
+     "Evidence": [
+      "// The caller's context bounds the whole operation, including the body read.",
+      "func (c *Client) FetchDiff(ctx context.Context, project, repo string, pr int) (string, error) {",
+      "req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u, nil)",
+      "return c.getTextCapped(context.Background(), req, maxDiffBytes)"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "caller-context-dropped",
+      "file": "internal/bitbucket/diff.go",
+      "lines": [
+       11,
+       18
+      ],
+      "keywords": [
+       "context.Background",
+       "background context",
+       "ctx is ignored",
+       "ignores ctx",
+       "ignores the ctx",
+       "ignores caller",
+       "not propagated",
+       "cancellation",
+       "cancelation",
+       "deadline",
+       "caller's context",
+       "callers context"
+      ],
+      "why": "ctx is a parameter but never used; context.Background() is passed to both NewRequestWithContext and getTextCapped, so the caller's timeout and cancellation cannot stop the request or the body read. Bitbucket has no Client.Timeout by design, which makes the caller's ctx the only bound on a 10 MiB diff."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "cross-file-stale-caller",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/session/manager.go",
+     "Line": 78,
+     "Severity": "issue",
+     "Comment": "`Hold` passes `int64(d.Seconds())` to `Store.Touch`, whose `ttlMillis` parameter is milliseconds after this change. A hold of 5 minutes is therefore stored as a 300 ms TTL: `Touch` calls `PExpire` with 300, the session key expires almost immediately during the export, and the next `Resume` returns `ErrNotFound`, logging the user out mid-export. The same conversion also truncates any `d` below one second to 0, which `Touch` rejects as a non-positive TTL. `NewManager` now stores the idle timeout as `idle.Milliseconds()`, so `Hold` is the only remaining seconds-based conversion and breaks the unit invariant.",
+     "Confidence": 95,
+     "Headline": "Hold passes seconds where Touch now expects milliseconds",
+     "Suggestion": "\treturn m.store.Touch(ctx, id, d.Milliseconds())",
+     "Evidence": [
+      "func (m *Manager) Hold(ctx context.Context, id string, d time.Duration) error {",
+      "\tif d \u003e m.maxHold {",
+      "\t\td = m.maxHold",
+      "\t}",
+      "\treturn m.store.Touch(ctx, id, int64(d.Seconds()))"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "hold-passes-seconds-as-millis",
+      "file": "internal/session/manager.go",
+      "lines": [
+       71,
+       79
+      ],
+      "keywords": [
+       "millisecond",
+       "ttlmillis",
+       "pexpire",
+       "1000"
+      ],
+      "why": "Touch now takes milliseconds, so a hold of two hours sets a lifetime of 7.2 seconds and the session expires while the export it was meant to cover is still running."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "hardcoded-credential-yaml",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "src/main/resources/application.yaml",
+     "Line": 15,
+     "Severity": "issue",
+     "Comment": "The reporting datasource password is committed as a plaintext literal in the main runtime config, unlike the primary datasource which resolves `password` from `${INVENTORY_DB_PASSWORD}`. Anyone with repository read access obtains the production reporting database credential, and rotating it requires a code change plus history rewrite to purge the old value.",
+     "Confidence": 95,
+     "Headline": "Hardcoded reporting database password in application.yaml",
+     "Suggestion": "    password: ${INVENTORY_REPORTING_DB_PASSWORD}",
+     "Evidence": [
+      "reporting:",
+      "  datasource:",
+      "    url: jdbc:postgresql://reporting-db.internal:5432/reporting",
+      "    username: reporting",
+      "    password: admin123"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "hardcoded-reporting-password-yaml",
+      "file": "src/main/resources/application.yaml",
+      "lines": [
+       15,
+       15
+      ],
+      "keywords": [
+       "hardcoded",
+       "hard-coded",
+       "credential",
+       "secret",
+       "committed",
+       "plaintext",
+       "source control",
+       "environment"
+      ],
+      "why": "The reporting replica's password is committed in the application config, readable by everyone with repository access, while the existing datasource takes its password from the environment."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "hardcoded-credential",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "src/main/java/com/acme/inventory/config/DataSourceConfig.java",
+     "Line": 21,
+     "Severity": "issue",
+     "Comment": "The `password` field is declared with a default-looking credential literal in application source, so the reporting database password is now committed to the repository and readable by anyone with clone access or a branch checkout. The class doc states credentials are injected by the platform at deploy time, and the inventory pool does exactly that via `@Value(\"${INVENTORY_DB_PASSWORD}\")`; this field bypasses that mechanism entirely. Treat the committed credential as compromised and rotate it before merge.",
+     "Confidence": 95,
+     "Headline": "Hard-coded password literal committed in DataSourceConfig",
+     "Suggestion": "    @Value(\"${REPORTING_DB_PASSWORD}\") private String password;",
+     "Evidence": [
+      "    public String password = \"admin123\";"
+     ]
+    },
+    {
+     "File": "src/main/java/com/acme/inventory/config/DataSourceConfig.java",
+     "Line": 35,
+     "Severity": "suggestion",
+     "Comment": "`reportingDataSource()` builds its pool from the hard-coded `reportingUrl` and `reportingUser` fields instead of environment-injected values, while `inventoryDataSource` takes its connection details from `@Value` placeholders. The class doc explicitly says \"Credentials come from the environment, injected by the platform at deploy time\", so the new bean contradicts the documented invariant and pins an environment-specific internal hostname into source — every deploy target now gets the same reporting endpoint unless the class is edited. Point the bean at `${REPORTING_DB_URL}` / `${REPORTING_DB_USER}` like the inventory pool does.",
+     "Confidence": 85,
+     "Headline": "Reporting pool hard-codes connection config instead of env injection",
+     "Suggestion": "    public DataSource reportingDataSource(\n            @Value(\"${REPORTING_DB_URL}\") String url,\n            @Value(\"${REPORTING_DB_USER}\") String user,\n            @Value(\"${REPORTING_DB_PASSWORD}\") String dbPassword) {\n        return pool(\"reporting\", url, user, dbPassword, 4, true);",
+     "Evidence": [
+      "    public String reportingUrl = \"jdbc:postgresql://reporting-db.internal:5432/reporting\";",
+      "    public String reportingUser = \"reporting\";",
+      "    public DataSource reportingDataSource() {",
+      "        return pool(\"reporting\", reportingUrl, reportingUser, password, 4, true);"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "hardcoded-reporting-password",
+      "file": "src/main/java/com/acme/inventory/config/DataSourceConfig.java",
+      "lines": [
+       21,
+       21
+      ],
+      "keywords": [
+       "hardcoded",
+       "hard-coded",
+       "credential",
+       "secret",
+       "committed",
+       "plaintext",
+       "source control",
+       "environment"
+      ],
+      "why": "The reporting replica's password is committed in source, readable by everyone with repository access, while the class's own pattern reads credentials from the environment."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 1
+  },
+  {
+   "Case": "java-seeded",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "src/main/java/com/acme/payments/transfer/TransferService.java",
+     "Line": 102,
+     "Severity": "issue",
+     "Comment": "`cancel` guards ownership with `transfer.sourceAccountId() != requesterAccountId`, which is a reference comparison between two boxed `Long` values, not a value comparison. Account ids are generated numbers that routinely exceed the `Long` cache range (-128..127): for `sourceAccountId = 2000` and `requesterAccountId = 2000` the two objects are distinct, so `!=` evaluates to true and the account owner is rejected with `TransferAccessDeniedException` on every cancellation. The same class already compares ids with `equals` in `create` (`sourceAccountId.equals(targetAccountId)`), so this also breaks the file's own established pattern.",
+     "Confidence": 95,
+     "Headline": "Ownership check in cancel compares boxed Longs by reference",
+     "Suggestion": "if (!transfer.sourceAccountId().equals(requesterAccountId)) {",
+     "Evidence": [
+      "if (transfer.sourceAccountId() != requesterAccountId) {",
+      "throw new TransferAccessDeniedException(transferId, requesterAccountId);",
+      "if (sourceAccountId.equals(targetAccountId)) {"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "boxed-long-compared-by-reference",
+      "file": "src/main/java/com/acme/payments/transfer/TransferService.java",
+      "lines": [
+       97,
+       104
+      ],
+      "keywords": [
+       "equals",
+       "boxed",
+       "reference",
+       "identity",
+       "127",
+       "unbox"
+      ],
+      "why": "Boxed Longs are compared by reference, so for any account id above 127 the owner's own cancellation is rejected as access denied."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "lock-not-released",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/teams/registry.go",
+     "Line": 20,
+     "Severity": "issue",
+     "Comment": "Removing `defer r.mu.Unlock()` and unlocking only on the success path leaves the mutex held whenever `Disable` returns early. Any call with a slug that is not in `r.byslug` — e.g. a typo'd or already-removed team — returns `unknown team` while still holding `r.mu`; the next call to `Disable` (or any other method that takes `r.mu`) blocks forever. The unlock must run on every return path, not just the final one.",
+     "Confidence": 97,
+     "Headline": "Early return in Registry.Disable skips the mutex unlock",
+     "Suggestion": "\t\tr.mu.Unlock()\n\t\treturn fmt.Errorf(\"unknown team %q\", slug)",
+     "Evidence": [
+      "r.mu.Lock()",
+      "t, ok := r.byslug[slug]",
+      "if !ok {",
+      "\t\treturn fmt.Errorf(\"unknown team %q\", slug)",
+      "\t}"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "mutex-held-on-early-return",
+      "file": "internal/teams/registry.go",
+      "lines": [
+       16,
+       24
+      ],
+      "keywords": [
+       "deadlock",
+       "still held",
+       "never released",
+       "not released",
+       "never unlocked",
+       "not unlocked",
+       "defer r.mu.Unlock",
+       "defer mu.Unlock",
+       "defer the Unlock",
+       "held forever"
+      ],
+      "why": "The Unlock now runs only on the success path, so returning the unknown-team error leaves r.mu locked and every subsequent caller blocks forever."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "nil-deref",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/review/summary.go",
+     "Line": 19,
+     "Severity": "issue",
+     "Comment": "The nil check on `r.Ticket` no longer returns early, so a `Result` with a nil `Ticket` falls through to `r.Ticket.Key` and panics with a nil pointer dereference. The comment says \"Ticket is optional\", but any caller passing a ticket-less result (e.g. a review with no linked ticket) now crashes instead of returning just the body. Restore the early return inside the guard.",
+     "Confidence": 98,
+     "Headline": "Summarize dereferences nil Ticket after removing the early return",
+     "Suggestion": "\tif r.Ticket == nil {\n\t\treturn r.Body\n\t}",
+     "Evidence": [
+      "\tif r.Ticket == nil {",
+      "\t\t// Ticket is optional; fall through to the shared renderer.",
+      "\t}",
+      "\treturn r.Body + \"\\n\\n\" + r.Ticket.Key"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "nil-ticket-deref",
+      "file": "internal/review/summary.go",
+      "lines": [
+       19,
+       22
+      ],
+      "keywords": [
+       "nil",
+       "dereference",
+       "deref",
+       "panic",
+       "Ticket"
+      ],
+      "why": "The nil branch no longer returns, so r.Ticket.Key panics whenever Ticket is nil. A reviewer may anchor on the dead check (19) or on the dereference (22)."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "off-by-one",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/diff/context.go",
+     "Line": 15,
+     "Severity": "issue",
+     "Comment": "The clamp sets `last` to `len(lines) + 1`, which is past the end of the slice, so `lines[first:last]` goes out of range. For a 10-line file with a hunk ending at line 7 (`h.Start + h.Count == 7`) and `n == 3`, `first` is 7, `last` becomes 11, and `lines[7:11]` panics with \"slice bounds out of range\" (same for a hunk ending at EOF, where the correct answer is `nil` but `first \u003c last` still holds). The window must end at `len(lines)`, which is the last valid upper bound and matches the documented invariant that the window stops at the last line of the file.",
+     "Confidence": 95,
+     "Headline": "ContextAfter clamps upper bound to len(lines)+1, causing a slice panic",
+     "Suggestion": "\t\tlast = len(lines)",
+     "Evidence": [
+      "if last \u003e= len(lines) {",
+      "\tlast = len(lines) + 1",
+      "}",
+      "\treturn lines[first:last]"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "context-window-past-end",
+      "file": "internal/diff/context.go",
+      "lines": [
+       14,
+       20
+      ],
+      "keywords": [
+       "out of range",
+       "out-of-range",
+       "bounds",
+       "past the end",
+       "beyond the end",
+       "len(lines)+1",
+       "len(lines) + 1",
+       "off-by-one",
+       "off by one",
+       "panic"
+      ],
+      "why": "The clamp sets last to len(lines)+1, so the final slice expression lines[first:last] runs one past the length. With no spare capacity that panics; with spare capacity it silently yields a phantom trailing line, which is the quieter half of the bug."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "resource-leak",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/bitbucket/whoami.go",
+     "Line": 20,
+     "Severity": "issue",
+     "Comment": "`WhoAmI` calls `c.http.Do(req)` and then decodes `resp.Body`, but the body is never closed: the `defer resp.Body.Close()` was removed and nothing else in this function closes it — `resp` is local and not returned, so no caller can do it either. On every call the connection stays checked out of the transport pool and the underlying socket is not released, so a loop of lookups (token resolution per request, batch operations) leaks file descriptors and stalls once the pool is exhausted.",
+     "Confidence": 95,
+     "Headline": "WhoAmI never closes the HTTP response body",
+     "Suggestion": "defer resp.Body.Close()",
+     "Evidence": [
+      "resp, err := c.http.Do(req)",
+      "if err != nil {",
+      "\treturn nil, fmt.Errorf(\"whoami: %w\", err)",
+      "}",
+      "if resp.StatusCode \u003c 200 || resp.StatusCode \u003e 299 {"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "response-body-never-closed",
+      "file": "internal/bitbucket/whoami.go",
+      "lines": [
+       16,
+       28
+      ],
+      "keywords": [
+       "leak",
+       "leaked",
+       "not closed",
+       "never closed",
+       "close the body",
+       "closing the body",
+       "resp.Body.Close",
+       "connection"
+      ],
+      "why": "The response body is never closed on any path, so the underlying connection is leaked on every call, successful or not."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "struct-field-race",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/queue/queue.go",
+     "Line": 35,
+     "Severity": "issue",
+     "Comment": "The worker now writes `q.depth` and reads `len(q.pending)` with no lock held, while `Submit` appends to `q.pending` under `q.mu` from caller goroutines and `Depth` reads `q.depth` under `q.mu`. On any realistic load — a caller submitting a job while the worker finishes the previous one — the worker's unsynchronized read of `q.pending` and write of `q.depth` race with those locked accesses, so `go test -race` fails and `Depth` can report a stale or torn value. Every other access to these fields in the file is guarded; this one must be too.",
+     "Confidence": 95,
+     "Headline": "Queue worker updates depth outside the mutex",
+     "Suggestion": "\t\tq.mu.Lock()\n\t\tq.depth = len(q.pending)\n\t\tq.mu.Unlock()",
+     "Evidence": [
+      "q.mu.Lock()",
+      "q.depth = len(q.pending)",
+      "q.mu.Unlock()"
+     ]
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "depth-written-without-mutex",
+      "file": "internal/queue/queue.go",
+      "lines": [
+       28,
+       35
+      ],
+      "keywords": [
+       "race",
+       "unsynchronized",
+       "unsynchronised",
+       "without holding",
+       "without the lock",
+       "without the mutex",
+       "q.mu",
+       "concurrent",
+       "data race"
+      ],
+      "why": "The worker goroutine writes q.depth and reads q.pending without holding q.mu, while Submit writes and Depth reads the same fields under the mutex; that is a data race."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "ts-seeded",
+   "Outcome": "timed_out",
+   "Findings": null,
+   "Matches": [
+    {
+     "Expected": {
+      "id": "try-returns-promise-without-await",
+      "file": "src/rates/rate-service.ts",
+      "lines": [
+       70,
+       74
+      ],
+      "keywords": [
+       "await",
+       "never catch",
+       "not caught",
+       "never run",
+       "rejection",
+       "unreachable"
+      ],
+      "why": "The rejected promise leaves the try block before it settles, so the catch never runs and a provider outage fails every request instead of serving the expired table."
+     },
+     "Found": false,
+     "Finding": -1,
+     "Why": "no finding on src/rates/rate-service.ts"
+    }
+   ],
+   "Extra": 0,
+   "ErrMsg": "llmwire: reading response: context deadline exceeded"
+  },
+  {
+   "Case": "unchecked-error",
+   "Outcome": "timed_out",
+   "Findings": null,
+   "Matches": [
+    {
+     "Expected": {
+      "id": "commit-error-swallowed",
+      "file": "internal/store/claims.go",
+      "lines": [
+       20,
+       22
+      ],
+      "keywords": [
+       "Commit",
+       "ignored",
+       "unchecked",
+       "discarded",
+       "swallow"
+      ],
+      "why": "tx.Commit's error is discarded, so a failed commit is reported to the caller as success and the claim silently does not exist."
+     },
+     "Found": false,
+     "Finding": -1,
+     "Why": "no finding on internal/store/claims.go"
+    }
+   ],
+   "Extra": 0,
+   "ErrMsg": "llmwire: Post https://token-plan-sgp.xiaomimimo.com/v1/chat/completions: context deadline exceeded"
+  },
+  {
+   "Case": "visual-added-empty-state",
+   "Outcome": "timed_out",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0,
+   "VisualMatches": [
+    {
+     "Expected": {
+      "id": "empty-state",
+      "path": "web/e2e/orders.spec.ts-snapshots/orders-empty-chromium-linux.png",
+      "keywords": [
+       "no orders",
+       "empty"
+      ],
+      "why": "An added baseline has no before; the line has to say what the new screen is."
+     },
+     "Found": false,
+     "Why": "no visual_changes line for the screenshot"
+    }
+   ],
+   "ErrMsg": "llmwire: Post https://token-plan-sgp.xiaomimimo.com/v1/chat/completions: context deadline exceeded"
+  },
+  {
+   "Case": "visual-explained-stack",
+   "Outcome": "timed_out",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0,
+   "VisualMatches": [
+    {
+     "Expected": {
+      "id": "stacked",
+      "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+      "keywords": [
+       "stack",
+       "column",
+       "vertical",
+       "below",
+       "beneath",
+       "on top of"
+      ],
+      "why": "The visible change is the fields and the button moving from one row into a column."
+     },
+     "Found": false,
+     "Why": "no visual_changes line for the screenshot"
+    },
+    {
+     "Expected": {
+      "id": "explained-by-css",
+      "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+      "keywords": [
+       "login.css",
+       "flex-direction",
+       "css"
+      ],
+      "why": "The point of the line: the PR's own CSS explains the new baseline."
+     },
+     "Found": false,
+     "Why": "no visual_changes line for the screenshot"
+    }
+   ],
+   "ErrMsg": "llmwire: Post https://token-plan-sgp.xiaomimimo.com/v1/chat/completions: context deadline exceeded"
+  },
+  {
+   "Case": "visual-hidden-submit",
+   "Outcome": "timed_out",
+   "Findings": null,
+   "Matches": [
+    {
+     "Expected": {
+      "id": "hides-the-submit-row",
+      "file": "web/src/login/login.css",
+      "lines": [
+       26,
+       29
+      ],
+      "keywords": [
+       "last-child",
+       "submit",
+       "sign in",
+       "button",
+       "actions"
+      ],
+      "why": "The form's last div is the actions row: the rule meant for remember-me hides the only way to sign in."
+     },
+     "Found": false,
+     "Finding": -1,
+     "Why": "no finding on web/src/login/login.css"
+    }
+   ],
+   "Extra": 0,
+   "VisualMatches": [
+    {
+     "Expected": {
+      "id": "button-gone",
+      "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+      "keywords": [
+       "missing",
+       "gone",
+       "hidden",
+       "removed",
+       "disappear",
+       "no longer",
+       "no sign in",
+       "no submit"
+      ],
+      "why": "The baseline shows the Sign in button gone while remember-me stays: the screenshot says what the selector did."
+     },
+     "Found": false,
+     "Why": "no visual_changes line for the screenshot"
+    }
+   ],
+   "ErrMsg": "llmwire: Post https://token-plan-sgp.xiaomimimo.com/v1/chat/completions: context deadline exceeded"
+  },
+  {
+   "Case": "visual-invisible-noise",
+   "Outcome": "timed_out",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0,
+   "VisualMatches": [
+    {
+     "Expected": {
+      "id": "not-visible",
+      "path": "web/e2e/account.spec.ts-snapshots/sign-in-chromium-linux.png",
+      "keywords": null,
+      "hidden": true,
+      "why": "Nothing in the crop changed that a person could see; a line for it is the noise the user asked to drop."
+     },
+     "Found": false,
+     "Why": "no visual_changes line for the screenshot"
+    }
+   ],
+   "ErrMsg": "llmwire: Post https://token-plan-sgp.xiaomimimo.com/v1/chat/completions: context deadline exceeded"
+  },
+  {
+   "Case": "visual-unexplained-drift",
+   "Outcome": "timed_out",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0,
+   "VisualMatches": [
+    {
+     "Expected": {
+      "id": "font-changed",
+      "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+      "keywords": [
+       "font",
+       "serif",
+       "typeface",
+       "type face",
+       "glyph"
+      ],
+      "why": "Every glyph on the page changed face; that is the whole visible change."
+     },
+     "Found": false,
+     "Why": "no visual_changes line for the screenshot"
+    },
+    {
+     "Expected": {
+      "id": "unexplained",
+      "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+      "keywords": [
+       "nothing in",
+       "no code",
+       "not explained",
+       "unexplained",
+       "does not explain",
+       "doesn't explain",
+       "unrelated",
+       "drift",
+       "no change in"
+      ],
+      "why": "The point of the feature: a baseline changed with no code to explain it is drift committed as the new truth."
+     },
+     "Found": false,
+     "Why": "no visual_changes line for the screenshot"
+    }
+   ],
+   "ErrMsg": "llmwire: Post https://token-plan-sgp.xiaomimimo.com/v1/chat/completions: context deadline exceeded"
+  },
+  {
+   "Case": "wrong-error-wrapped",
+   "Outcome": "timed_out",
+   "Findings": null,
+   "Matches": [
+    {
+     "Expected": {
+      "id": "sentinel-wraps-swapped",
+      "file": "internal/store/claims.go",
+      "lines": [
+       19,
+       23
+      ],
+      "keywords": [
+       "swapped",
+       "swap",
+       "wrong error",
+       "reversed",
+       "backwards",
+       "back to front",
+       "the other way",
+       "ErrNoClaim",
+       "errors.Is"
+      ],
+      "why": "The branches wrap each other's error: errors.Is(err, ErrNoClaim) is now false when the project is genuinely unclaimed and true when the query failed, so a database fault is treated as an unowned project."
+     },
+     "Found": false,
+     "Finding": -1,
+     "Why": "no finding on internal/store/claims.go"
+    }
+   ],
+   "Extra": 0,
+   "ErrMsg": "llmwire: Post https://token-plan-sgp.xiaomimimo.com/v1/chat/completions: context deadline exceeded"
+  }
+ ],
+ "Seeded": 22,
+ "Caught": 11,
+ "Extra": 1
+}
