@@ -2,13 +2,13 @@ package review
 
 import (
 	"context"
-	"time"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/config"
@@ -682,12 +682,12 @@ func (f *fakeStore) ClaimRollup(_ context.Context, _ store.PRKey, final store.Ro
 
 // fakeLLM returns canned review and mention results.
 type fakeLLM struct {
-	model   string
-	effort  string
-	ready   bool
-	vision  bool
-	window  int
-	budget  int
+	model  string
+	effort string
+	ready  bool
+	vision bool
+	window int
+	budget int
 	// timeout is what CallTimeout reports; 0 is the production default.
 	timeout time.Duration
 	review  inference.ReviewResult
