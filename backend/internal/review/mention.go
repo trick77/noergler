@@ -376,7 +376,7 @@ func (r *Reviewer) parentComment(ctx context.Context, key store.PRKey, prTag str
 		}
 	}
 	full := strings.TrimSpace(c.Text)
-	body := inference.TruncateRunes(full, maxParentRunes)
+	body := lang.TruncateRunes(full, maxParentRunes)
 	cut := body != full
 	// A code block left open, by the cut or by its author, would run over
 	// the sections below, the question among them.

@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/trick77/noergler/internal/lang"
 )
 
 // VerdictDecisions is the accepted verdict enum. Anything else is dropped.
@@ -107,7 +109,7 @@ func parseErrorDiagnostic(err error, content string) ParseDiagnostic {
 	if errors.As(err, &syntax) {
 		return ParseDiagnostic{
 			Level:   slog.LevelError,
-			Message: "Failed to parse review response as JSON: " + TruncateRunes(content, 200),
+			Message: "Failed to parse review response as JSON: " + lang.TruncateRunes(content, 200),
 		}
 	}
 	return ParseDiagnostic{Level: slog.LevelError, Message: "Review response is not a JSON object"}
@@ -124,16 +126,6 @@ func decodesAs(raw json.RawMessage, dst any) bool {
 		return false
 	}
 	return json.Unmarshal(raw, dst) == nil
-}
-
-// TruncateRunes cuts s to at most n runes. The prefix is measured in
-// characters, not bytes, so a multi-byte rune is never split.
-func TruncateRunes(s string, n int) string {
-	runes := []rune(s)
-	if len(runes) <= n {
-		return s
-	}
-	return string(runes[:n])
 }
 
 // Severities are the only values a finding may carry. The JSON schema already
@@ -333,7 +325,7 @@ func ParseReview(content string) ParsedReview {
 		Summary:                NewReviewSummary(),
 	}
 
-	for _, item := range out.listItems(raw, "compliance_requirements", false) {
+	for _, item := range out.listItems(raw, "compliance_requirements") {
 		// requirement must be a string and met a bool: this is a TYPE
 		// check, so a present key holding null fails it. Probing for
 		// presence alone is not enough, because encoding/json decodes a
@@ -362,7 +354,7 @@ func ParseReview(content string) ParsedReview {
 
 	// Non-string and blank entries are dropped; the rest keep their original
 	// spacing, because the blank test trims but the stored value does not.
-	for _, item := range out.listItems(raw, "strengths", false) {
+	for _, item := range out.listItems(raw, "strengths") {
 		var s string
 		if json.Unmarshal(item, &s) != nil || strings.TrimSpace(s) == "" {
 			continue
@@ -386,7 +378,7 @@ func ParseReview(content string) ParsedReview {
 		}
 	}
 
-	for _, item := range out.listItems(raw, "findings", false) {
+	for _, item := range out.listItems(raw, "findings") {
 		f, ok := parseFinding(item)
 		if !ok {
 			out.warn("Skipping malformed finding: %s", item)
@@ -403,7 +395,7 @@ func ParseReview(content string) ParsedReview {
 
 	// The claim lists say when they are not an array, so a malformed claim
 	// never reads as none.
-	for _, item := range out.listItems(raw, "fixed", true) {
+	for _, item := range out.listItems(raw, "fixed") {
 		c, ok := parseFixedClaim(item)
 		if !ok {
 			out.warn("Skipping malformed fixed entry: %s", item)
@@ -412,10 +404,10 @@ func ParseReview(content string) ParsedReview {
 		out.Fixed = append(out.Fixed, c)
 	}
 
-	for _, item := range out.listItems(raw, "pre_existing", true) {
+	for _, item := range out.listItems(raw, "pre_existing") {
 		b, ok := parsePreExisting(item)
 		if !ok {
-			out.warn("Skipping malformed pre_existing entry: %s", TruncateRunes(string(item), 200))
+			out.warn("Skipping malformed pre_existing entry: %s", lang.TruncateRunes(string(item), 200))
 			continue
 		}
 		out.PreExisting = append(out.PreExisting, b)
@@ -424,14 +416,14 @@ func ParseReview(content string) ParsedReview {
 	// An entry without a string id or with a blank change says nothing about
 	// any screenshot and is dropped. Item by item: one malformed entry must
 	// not take the good ones with it.
-	for _, item := range out.listItems(raw, "visual_changes", true) {
+	for _, item := range out.listItems(raw, "visual_changes") {
 		var e struct {
 			ID      string          `json:"id"`
 			Change  string          `json:"change"`
 			Visible json.RawMessage `json:"visible"`
 		}
 		if json.Unmarshal(item, &e) != nil {
-			out.warn("Skipping malformed visual_changes entry: %s", TruncateRunes(string(item), 200))
+			out.warn("Skipping malformed visual_changes entry: %s", lang.TruncateRunes(string(item), 200))
 			continue
 		}
 		// Only a literal false hides the line: anything else the
@@ -450,18 +442,16 @@ func ParseReview(content string) ParsedReview {
 
 // listItems is one list field of the response, item by item. A missing key
 // and null (how models often spell an empty list) are no items. Anything
-// else that is not an array is no items either, and said when warnNonArray
-// (the claim lists), so a malformed claim never reads as none.
-func (p *ParsedReview) listItems(raw map[string]json.RawMessage, key string, warnNonArray bool) []json.RawMessage {
+// else that is not an array is no items either, and said: a dropped list
+// changes what is posted, so it gets its line.
+func (p *ParsedReview) listItems(raw map[string]json.RawMessage, key string) []json.RawMessage {
 	v, ok := raw[key]
 	if !ok || isJSONNull(v) {
 		return nil
 	}
 	var items []json.RawMessage
 	if err := json.Unmarshal(v, &items); err != nil {
-		if warnNonArray {
-			p.warn("Skipping malformed "+key+" list: %s", TruncateRunes(string(v), 200))
-		}
+		p.warn("Skipping malformed "+key+" list: %s", lang.TruncateRunes(string(v), 200))
 		return nil
 	}
 	return items

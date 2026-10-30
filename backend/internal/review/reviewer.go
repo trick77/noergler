@@ -12,8 +12,8 @@ import (
 	"sync/atomic"
 
 	"github.com/trick77/noergler/internal/config"
-	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/jira"
+	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/prompts"
 	"github.com/trick77/noergler/internal/webhook"
 )
@@ -309,7 +309,7 @@ func renderPRDescription(title, description string) string {
 	if description == "" {
 		return ""
 	}
-	if capped := inference.TruncateRunes(description, maxPRDescriptionRunes); capped != description {
+	if capped := lang.TruncateRunes(description, maxPRDescriptionRunes); capped != description {
 		description = capped + "..."
 	}
 	return "**Title:** " + title + "\n**Description:**\n" + description

@@ -127,9 +127,8 @@ func (c *Client) Ping(ctx context.Context, pingPath string) (team string, unauth
 		if resp.StatusCode == http.StatusForbidden {
 			c.Set(StatusRejected)
 		}
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, errBodyLimit))
 		c.log.WarnContext(ctx, fmt.Sprintf("%s ping returned unexpected status %d: %s",
-			c.name, resp.StatusCode, strings.TrimSpace(string(body))))
+			c.name, resp.StatusCode, ReadErrorBody(resp.Body, errBodyLimit)))
 		return "", false
 	}
 
@@ -149,6 +148,32 @@ func (c *Client) Ping(ctx context.Context, pingPath string) (team string, unauth
 	c.Set(StatusOK)
 	c.log.InfoContext(ctx, c.name+": OK (team="+out.Team+")")
 	return out.Team, false
+}
+
+// NullableString renders an empty string as JSON null: a field that is always
+// present in a payload and null when there is nothing to say.
+func NullableString(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+// OrEmpty keeps a list field an array rather than null.
+func OrEmpty(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}
+
+// ReadErrorBody keeps at most limit bytes of a failed response's body for the
+// error message and drains the rest, so the connection can be reused. The
+// Bitbucket and Jira clients read their error bodies through it too.
+func ReadErrorBody(r io.Reader, limit int64) string {
+	body, _ := io.ReadAll(io.LimitReader(r, limit))
+	_, _ = io.Copy(io.Discard, r)
+	return strings.TrimSpace(strings.ToValidUTF8(string(body), "�"))
 }
 
 // Post sends body as JSON to path and reports whether the receiver took it
@@ -197,9 +222,8 @@ func (c *Client) Post(ctx context.Context, path string, body any, what string) b
 		} else {
 			c.Set(StatusFailing)
 		}
-		msg, _ := io.ReadAll(io.LimitReader(resp.Body, errBodyLimit))
 		c.log.WarnContext(ctx, fmt.Sprintf("%s emit %s (%s, status=%d): %s",
-			c.name, word, what, resp.StatusCode, strings.TrimSpace(string(msg))))
+			c.name, word, what, resp.StatusCode, ReadErrorBody(resp.Body, errBodyLimit)))
 		return false
 	}
 	c.Set(StatusOK)

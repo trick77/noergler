@@ -29,7 +29,11 @@ const contextExpansionRatio = 1.5
 // nanoPerUSD converts the DB's BIGINT nano-USD to the USD used at the edges.
 const nanoPerUSD = 1_000_000_000.0
 
-// ReviewPullRequest runs the review pipeline for one PR.
+// prepare is everything up to and including prompt assembly: the guards, the
+// Bitbucket fetches, Jira, and the token budget. It returns the plan the
+// inference and posting stages need, and the ctx carrying pr_tag and the
+// httpstats scope. The one entry is ReviewPullRequestStaged (stage.go):
+// prepare, then infer and post through the Scheduler.
 //
 // skipAuthorCheck is set by an @mention: it bypasses the author and actor
 // gates and the cost cap, because a human asked for this review explicitly.
@@ -42,14 +46,7 @@ const nanoPerUSD = 1_000_000_000.0
 // TestAgentsMDGates, TestCostCap). Two rules run through all of it:
 // every store call goes through safeDB, and every skip that did not review
 // the new commit writes the PRIOR commit back, so raising a limit later
-// re-reviews the accumulated range instead of skipping it. The one entry is
-// ReviewPullRequestStaged (stage.go): prepare, then infer and post through
-// the Scheduler.
-
-// prepare is everything up to and including prompt assembly: the guards, the
-// Bitbucket fetches, Jira, and the token budget. It returns the plan the
-// inference and posting stages need, and the ctx carrying pr_tag and the
-// httpstats scope.
+// re-reviews the accumulated range instead of skipping it.
 //
 // ok is false when the review is over: the caller must not continue. Every
 // such exit has already logged its own HTTP totals.

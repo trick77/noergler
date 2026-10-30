@@ -167,8 +167,8 @@ func ExceedsSizeGate(path, fileDiff string) (changed, limit int, over bool) {
 // Scope is a whole diff's reviewable footprint: added and removed lines and
 // the number of files, over IsReviewable files only, so lock files and
 // vendored bundles that were never reviewed stay out of every total. The
-// run row, the summary footer and the merge-time rollup all read it, so
-// they agree by construction.
+// cumulative PR scope and the merge-time rollup read it; a review's own run
+// row counts the same files as it fetches them (prepareFiles).
 func Scope(rawDiff string) (added, removed, files int) {
 	for _, fd := range SplitByFile(rawDiff) {
 		if IsReviewable(fd) {

@@ -205,7 +205,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	} else if n := len(fileLines(content)); f.LineNumber > n {
 		excerpt = note + fmt.Sprintf("_Line %d is past the end of the file (%d lines)._", f.LineNumber, n)
 	} else {
-		excerpt = note + inference.TruncateRunes(excerptAround(content, f.LineNumber, replyExcerptLines), replyExcerptRunes)
+		excerpt = note + lang.TruncateRunes(excerptAround(content, f.LineNumber, replyExcerptLines), replyExcerptRunes)
 	}
 	// AGENTS.md from the same commit, so code and guidelines match.
 	agentsMD := r.fetchRepoInstructions(ctx, project, repo, at, pr.ToRef.Branch())
@@ -217,7 +217,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		RepoInstructions: agentsMD,
 		Finding:          fmt.Sprintf("%s [%s]\n\n%s", where, f.Severity, f.CommentText),
 		FileExcerpt:      excerpt,
-		Reply:            inference.TruncateRunes(text, replyTextRunes),
+		Reply:            lang.TruncateRunes(text, replyTextRunes),
 		AuthorFirstName:  name,
 	})
 	req := inference.FindingReplyRequest{
@@ -274,7 +274,7 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 	dispute := res.Reply.Intent == "disputes"
 
 	reply, nameState := guardName(res.Reply.Reply, j.name, res.Reply.Intent, j.namesOn)
-	body := inference.TruncateRunes(sharpS(j.lang, reply), replyPostRunes)
+	body := lang.TruncateRunes(sharpS(j.lang, reply), replyPostRunes)
 	agentsLine := "none"
 	if line := res.Reply.AgentsMDLine; line != "" {
 		switch reason := inference.CheckAgentsMDLine(line, j.agentsMD); {
@@ -304,7 +304,7 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 	r.recordBotReply(ctx, j.key, posted, store.BotReplyReply)
 	var stored *string
 	if dispute {
-		d := inference.TruncateRunes(j.text, disputeTextRunes)
+		d := lang.TruncateRunes(j.text, disputeTextRunes)
 		stored = &d
 	}
 	safeDBErr(ctx, r.log, "MarkFindingReplied", func() error { return r.store.MarkFindingReplied(ctx, j.findingID, stored) })

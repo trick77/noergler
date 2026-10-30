@@ -9,7 +9,7 @@ import (
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/diff"
-	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/lang"
 )
 
 // prepareFiles splits the diff, fetches each reviewable file's content and
@@ -108,7 +108,7 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 					first = first[:idx]
 				}
 				mu.Lock()
-				r.log.WarnContext(ctx, "Could not extract path from diff chunk: "+inference.TruncateRunes(first, 200))
+				r.log.WarnContext(ctx, "Could not extract path from diff chunk: "+lang.TruncateRunes(first, 200))
 				mu.Unlock()
 				return
 			}
