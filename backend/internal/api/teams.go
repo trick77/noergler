@@ -30,22 +30,24 @@ type SettingsStore interface {
 // The team's webhook secret is its credential everywhere: Bitbucket signs
 // events with it, the team admin authenticates API calls with it. 404 and
 // 503 for the slug come first; they leak nothing the webhook route does not.
-func (d Deps) teamAuth(ctx context.Context, w http.ResponseWriter, r *http.Request, slug string) (*teams.Runtime, bool) {
-	rt, ok := d.runtimeFor(ctx, w, slug)
+func (d Deps) teamAuth(w http.ResponseWriter, r *http.Request) (rt *teams.Runtime, slug string, ctx context.Context, ok bool) {
+	slug = r.PathValue("team")
+	ctx = logging.With(r.Context(), "team", slug)
+	rt, ok = d.runtimeFor(ctx, w, slug)
 	if !ok {
-		return nil, false
+		return nil, slug, ctx, false
 	}
 	presented, ok := httpx.Bearer(r)
 	if !ok {
 		httpx.WriteError(w, http.StatusUnauthorized,
 			"Authorization: Bearer <the team's webhook secret> required")
-		return nil, false
+		return nil, slug, ctx, false
 	}
 	if !secret.Match(presented, rt.Team().WebhookSecret) {
 		httpx.WriteError(w, http.StatusUnauthorized, "wrong team secret")
-		return nil, false
+		return nil, slug, ctx, false
 	}
-	return rt, true
+	return rt, slug, ctx, true
 }
 
 // projectScopeView omits a null field rather than emitting it: a
@@ -145,9 +147,7 @@ func nonNil(s []string) []string {
 // getTeam answers the team's own settings. Read entirely from the snapshot;
 // it never touches the DB.
 func (d Deps) getTeam(w http.ResponseWriter, r *http.Request) {
-	slug := r.PathValue("team")
-	ctx := logging.With(r.Context(), "team", slug)
-	rt, ok := d.teamAuth(ctx, w, r, slug)
+	rt, _, _, ok := d.teamAuth(w, r)
 	if !ok {
 		return
 	}
@@ -194,12 +194,10 @@ func keep(v *bool, current bool) bool {
 
 // putTeamSettings updates the team's lists and the PR description switch. Takes effect immediately.
 func (d Deps) putTeamSettings(w http.ResponseWriter, r *http.Request) {
-	slug := r.PathValue("team")
-	ctx := logging.With(r.Context(), "team", slug)
 	// Auth before the body is decoded, so an unauthenticated caller cannot
 	// probe the schema: a bad body behind a bad secret answers 401, never 422.
 	// Pinned by TestTeams_AuthPrecedesBodyValidation.
-	rt, ok := d.teamAuth(ctx, w, r, slug)
+	rt, slug, ctx, ok := d.teamAuth(w, r)
 	if !ok {
 		return
 	}

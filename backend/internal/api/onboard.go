@@ -10,7 +10,6 @@ import (
 	"github.com/trick77/noergler/internal/onboarding"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/ship/kit/httpx"
-	"github.com/trick77/ship/kit/logging"
 )
 
 // onboardRequest is the /onboard body. Decoded strictly: an unknown field is
@@ -34,10 +33,7 @@ var validActions = map[string]bool{"status": true, "onboard": true, "grant-bot":
 // caller's own token, used for this request and dropped: a claim needs
 // project admin on the target, proven with that token.
 func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
-	slug := r.PathValue("team")
-	ctx := logging.With(r.Context(), "team", slug)
-
-	rt, ok := d.teamAuth(ctx, w, r, slug)
+	rt, slug, ctx, ok := d.teamAuth(w, r)
 	if !ok {
 		return
 	}

@@ -40,10 +40,8 @@ type credentialsResponse struct {
 // a refused part changes nothing. Takes effect immediately. The tokens are
 // never logged, never echoed, and stored sealed (internal/secretbox).
 func (d Deps) putTeamCredentials(w http.ResponseWriter, r *http.Request) {
-	slug := r.PathValue("team")
-	ctx := logging.With(r.Context(), "team", slug)
 	// Auth before the body is decoded, as for settings.
-	rt, ok := d.teamAuth(ctx, w, r, slug)
+	rt, slug, ctx, ok := d.teamAuth(w, r)
 	if !ok {
 		return
 	}
@@ -103,9 +101,7 @@ func (d Deps) putTeamCredentials(w http.ResponseWriter, r *http.Request) {
 
 // deleteTeamCredentials goes back to the shared account for one kind.
 func (d Deps) deleteTeamCredentials(w http.ResponseWriter, r *http.Request) {
-	slug := r.PathValue("team")
-	ctx := logging.With(r.Context(), "team", slug)
-	rt, ok := d.teamAuth(ctx, w, r, slug)
+	rt, slug, ctx, ok := d.teamAuth(w, r)
 	if !ok {
 		return
 	}

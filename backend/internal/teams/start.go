@@ -149,12 +149,6 @@ func onOff(b bool) string {
 	return "off"
 }
 
-// Start builds one team. A non-empty reason means the team is disabled and
-// the Runtime is nil.
-//
-// Every failure here is that team's alone. Nothing a single team does may
-// take the instance down, which is why this returns a reason rather than an
-// error. opened is the team's own accounts, nil for none.
 // verifyForwarder checks one of the team's forwarding endpoints (riptide,
 // Almanach) at startup and returns the disable reason, if any. Only a
 // rejected token (errAuth) disables the team: emitting for weeks against a
@@ -176,6 +170,12 @@ func (d Deps) verifyForwarder(ctx context.Context, slug, name string, enabled bo
 	return ""
 }
 
+// Start builds one team. A non-empty reason means the team is disabled and
+// the Runtime is nil.
+//
+// Every failure here is that team's alone. Nothing a single team does may
+// take the instance down, which is why this returns a reason rather than an
+// error. opened is the team's own accounts, nil for none.
 func Start(ctx context.Context, app *config.App, team *config.Team, d Deps, opened map[Kind]Opened) (*Runtime, string) {
 	llm, err := inference.New(inference.Options{
 		Model:           team.LLM.Model,
