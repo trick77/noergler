@@ -170,7 +170,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 			"%s: PR cost $%.2f >= limit $%.2f - skipping review (raise REVIEW_MAX_PR_COST_USD to go on)",
 			prTag, cumulative, r.cfg.MaxPRCostUSD))
 		prReviewID, _ := r.upsertKeepingPrior(ctx, upsert, key)
-		r.costLimitNotice(ctx, l, project, repo, pr.ID, prReviewID, cumulative, r.cfg.MaxPRCostUSD, true)
+		r.costLimitNotice(ctx, l, project, repo, pr.ID, prReviewID, cumulative, r.cfg.MaxPRCostUSD, true, false)
 		return nil, ctx, r.abort(ctx, key, kind, SkipCostCap, prTag, httpCounter)
 	}
 
@@ -824,16 +824,14 @@ func (r *Reviewer) handleNonOK(ctx context.Context, l lang.Lang, result inferenc
 	case inference.OutcomeTimedOut:
 		r.log.ErrorContext(ctx, fmt.Sprintf("Review of %s aborted - no response within %.0fs (commit %s)",
 			prTag, inference.CallTimeout.Seconds(), short))
-		r.timeoutNotice(ctx, l, project, repo, prID, prReviewID, sourceCommit, prior)
 	case inference.OutcomeUnparseable:
 		r.log.ErrorContext(ctx, fmt.Sprintf(
 			"Review of %s aborted - model returned an unparseable/refused response (commit %s)", prTag, short))
-		r.unparseableNotice(ctx, l, project, repo, prID, prReviewID, sourceCommit, prior)
 	case inference.OutcomeTooLarge:
 		r.log.ErrorContext(ctx, fmt.Sprintf(
 			"Review of %s skipped - PR too large for the model's context window (commit %s)", prTag, short))
-		r.tooLargeNotice(ctx, l, project, repo, prID, prReviewID, sourceCommit, prior)
 	}
+	r.failureNoticeFor(ctx, result.Outcome, l, project, repo, prID, prReviewID, sourceCommit, prior)
 
 	// No run row, so a billed call's cost rides here, where PRCost reads it.
 	// The call itself is kept too: an unparseable answer is exactly the run

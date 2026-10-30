@@ -38,7 +38,7 @@ func TestCostLimitNoticeRepostsAnotherAccountsSummary(t *testing.T) {
 		h.bb.updateErr = &bitbucket.StatusError{Status: 403}
 	})
 
-	h.r.costLimitNotice(context.Background(), lang.Default, "PROJ", "my-repo", 42, 7, 6, 5, true)
+	h.r.costLimitNotice(context.Background(), lang.Default, "PROJ", "my-repo", 42, 7, 6, 5, true, false)
 
 	if len(h.bb.Posted) != 1 || !strings.Contains(h.bb.Posted[0].Text, "the previous summary") {
 		t.Fatalf("posted = %+v, want the bannered summary once", h.bb.Posted)
