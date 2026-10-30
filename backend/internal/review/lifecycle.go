@@ -164,10 +164,10 @@ func (r *Reviewer) emitRollup(ctx context.Context, key store.PRKey, prTag, outco
 		PRKey:                 prTag,
 		Repo:                  key.Project + "/" + key.Repo,
 		SourceCommitSHA:       *snapshot.SourceCommit,
-		MergeCommitSHA:        derefString(snapshot.MergeCommit),
-		LinesAdded:            derefInt(snapshot.LinesAdded),
-		LinesRemoved:          derefInt(snapshot.LinesRemoved),
-		FilesChanged:          derefInt(snapshot.FilesChanged),
+		MergeCommitSHA:        deref(snapshot.MergeCommit),
+		LinesAdded:            deref(snapshot.LinesAdded),
+		LinesRemoved:          deref(snapshot.LinesRemoved),
+		FilesChanged:          deref(snapshot.FilesChanged),
 		TotalRuns:             snapshot.Runs,
 		TotalPromptTokens:     snapshot.PromptTokens,
 		TotalCompletionTokens: snapshot.CompletionTokens,
@@ -181,16 +181,11 @@ func (r *Reviewer) emitRollup(ctx context.Context, key store.PRKey, prTag, outco
 	})
 }
 
-func derefString(p *string) string {
+// deref is the value behind p, or the zero value for a NULL column.
+func deref[T any](p *T) T {
 	if p == nil {
-		return ""
-	}
-	return *p
-}
-
-func derefInt(p *int) int {
-	if p == nil {
-		return 0
+		var zero T
+		return zero
 	}
 	return *p
 }

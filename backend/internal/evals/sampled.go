@@ -360,8 +360,17 @@ func (s *Sampled) Rescore(cases []Case) error {
 }
 
 // completed reports whether a review produced a usable result.
-func completed(r Result) bool {
-	return r.ErrMsg == "" && r.Outcome == inference.OutcomeOK.String()
+func completed(r Result) bool { return incomplete(r) == "" }
+
+// incomplete says why a review produced no usable result, "" when it did.
+func incomplete(r Result) string {
+	switch {
+	case r.ErrMsg != "":
+		return r.ErrMsg
+	case r.Outcome != inference.OutcomeOK.String():
+		return "outcome " + r.Outcome
+	}
+	return ""
 }
 
 // caseViews scores every view on one case's samples, in viewNames order.
@@ -564,11 +573,8 @@ func (s Sampled) ErrIncomplete() error {
 	var broken []string
 	for _, c := range s.Cases {
 		for i, sm := range c.Samples {
-			switch {
-			case sm.ErrMsg != "":
-				broken = append(broken, fmt.Sprintf("%s#%d: %s", c.Case, i+1, sm.ErrMsg))
-			case sm.Outcome != inference.OutcomeOK.String():
-				broken = append(broken, fmt.Sprintf("%s#%d: outcome %s", c.Case, i+1, sm.Outcome))
+			if why := incomplete(sm.Result); why != "" {
+				broken = append(broken, fmt.Sprintf("%s#%d: %s", c.Case, i+1, why))
 			}
 		}
 	}

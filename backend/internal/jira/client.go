@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/forward"
 	"github.com/trick77/noergler/internal/httpstats"
 )
 
@@ -159,13 +160,11 @@ func (c *Client) get(ctx context.Context, rawURL, path string, out any) error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, errBodyLimit))
-		_, _ = io.Copy(io.Discard, resp.Body)
 		return &StatusError{
 			Method: http.MethodGet,
 			Path:   path,
 			Status: resp.StatusCode,
-			Body:   strings.TrimSpace(strings.ToValidUTF8(string(body), "�")),
+			Body:   forward.ReadErrorBody(resp.Body, errBodyLimit),
 		}
 	}
 	if out == nil {

@@ -91,7 +91,7 @@ func (r *Reviewer) spawnAlmanachNote(ctx context.Context, plan *reviewPlan, team
 	}
 	job := almanachJob{
 		key: plan.key, prTag: plan.prTag, team: team, runID: plan.runID,
-		sourceCommit: plan.sourceCommit, prTitle: derefStr(plan.upsert.Title),
+		sourceCommit: plan.sourceCommit, prTitle: deref(plan.upsert.Title),
 		prompt: plan.prompt, answer: plan.result.Raw,
 	}
 	if plan.ticket != nil {
@@ -317,11 +317,4 @@ func almanachNoteOf(p store.AlmanachPending, claims []almanach.Claim) almanach.N
 		n.NoteCall = &almanach.Call{Outcome: p.NoteCallOutcome, NoteStatus: p.NoteStatus, LLMCall: p.NoteCall}
 	}
 	return n
-}
-
-func derefStr(p *string) string {
-	if p == nil {
-		return ""
-	}
-	return *p
 }

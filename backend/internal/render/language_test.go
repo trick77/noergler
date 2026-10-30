@@ -22,8 +22,8 @@ func TestSwissSSLeavesCodeAlone(t *testing.T) {
 		"Text:\n\n    x := \"ß\"\nEnde ß": "Text:\n\n    x := \"ß\"\nEnde ss",
 	}
 	for in, want := range cases {
-		if got := SwissSS(in); got != want {
-			t.Errorf("SwissSS(%q) = %q, want %q", in, got, want)
+		if got := lang.SwissSS(in); got != want {
+			t.Errorf("lang.SwissSS(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
@@ -143,8 +143,8 @@ func TestOpenFence(t *testing.T) {
 		"```\nx\n``` not a close": "```",
 		"~~~\nx\n```\nstill open": "~~~",
 	} {
-		if got := OpenFence(in); got != want {
-			t.Errorf("OpenFence(%q) = %q, want %q", in, got, want)
+		if got := lang.OpenFence(in); got != want {
+			t.Errorf("lang.OpenFence(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

@@ -217,7 +217,7 @@ func staleBanner(l lang.Lang, lead, priorCommit string) string {
 			" — findings below reflect an earlier commit.")
 	}
 	return fmt.Sprintf(l.Pick("⚠️ %s — "+render.StaleBannerMarkerDE+" den früheren Commit `%s`.",
-		"⚠️ %s — findings below reflect the earlier commit `%s`."), lead, shortSHA(priorCommit, 8))
+		"⚠️ %s — findings below reflect the earlier commit `%s`."), lead, render.ShortSHA(priorCommit, 8))
 }
 
 // costLimitNotice surfaces a blocked auto-review on the summary comment.
@@ -240,7 +240,7 @@ func (r *Reviewer) costLimitNotice(ctx context.Context, l lang.Lang, project, re
 // shortOrUnknown is the 8-character commit prefix the notices use, or the
 // word for unknown in l when the commit is missing.
 func shortOrUnknown(commit string, l lang.Lang) string {
-	if s := shortSHA(commit, 8); s != "" {
+	if s := render.ShortSHA(commit, 8); s != "" {
 		return s
 	}
 	return l.Pick("unbekannt", "unknown")

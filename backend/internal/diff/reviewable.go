@@ -122,7 +122,8 @@ const binaryMarkerScanRunes = 500
 // step 3 first would pass a binary diff or a skipped extension whose header
 // the path regex could not parse.
 func IsReviewable(fileDiff string) bool {
-	head := strings.ToLower(firstLine(fileDiff))
+	head, _, _ := strings.Cut(fileDiff, "\n")
+	head = strings.ToLower(head)
 	// The heuristic scans the whole first line, so it sees the a/ side too:
 	// `diff --git a/logo.png b/logo.py` is skipped on the strength of the old name.
 	for ext := range skipExtensions {
@@ -232,13 +233,6 @@ func PathIsReviewable(path string) bool {
 		}
 	}
 	return true
-}
-
-func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
-	}
-	return s
 }
 
 // firstRunes returns at most n runes of s, so a multi-byte diff does not

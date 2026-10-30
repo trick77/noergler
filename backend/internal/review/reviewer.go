@@ -1,6 +1,7 @@
 package review
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 	"sync/atomic"
 
 	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/jira"
 	"github.com/trick77/noergler/internal/prompts"
 	"github.com/trick77/noergler/internal/webhook"
@@ -148,15 +150,15 @@ func New(opt Options) *Reviewer {
 		jira:              opt.Jira,
 		riptide:           opt.Riptide,
 		almanach:          opt.Almanach,
-		almanachTmpl:      orDefault(opt.AlmanachTemplate, prompts.AlmanachNote),
+		almanachTmpl:      cmp.Or(opt.AlmanachTemplate, prompts.AlmanachNote),
 		almanachMaxChars:  opt.AlmanachNoteMaxChars,
 		tokens:            opt.Tokens,
 		cfg:               opt.Config,
 		autoReviewAuthors: opt.Config.AutoReviewAuthors,
 		ignoreAuthors:     opt.Config.IgnoreAuthors,
-		template:          orDefault(opt.Template, prompts.Review),
-		mentionTmpl:       orDefault(opt.MentionTemplate, prompts.Mention),
-		replyTmpl:         orDefault(opt.FindingReplyTemplate, prompts.FindingReply),
+		template:          cmp.Or(opt.Template, prompts.Review),
+		mentionTmpl:       cmp.Or(opt.MentionTemplate, prompts.Mention),
+		replyTmpl:         cmp.Or(opt.FindingReplyTemplate, prompts.FindingReply),
 		displayName:       opt.DisplayNamePattern,
 		log:               opt.Log,
 		owns:              opt.Owns,
@@ -165,15 +167,6 @@ func New(opt Options) *Reviewer {
 	}
 	r.usePRDescription.Store(opt.Config.UsePRDescription)
 	return r
-}
-
-// orDefault is s, or the compiled-in prompt when s is empty: no Reviewer can
-// send a blank prompt.
-func orDefault(s, compiled string) string {
-	if s == "" {
-		return compiled
-	}
-	return s
 }
 
 // SetUsePRDescription switches the PR title and description in or out of
@@ -316,7 +309,7 @@ func renderPRDescription(title, description string) string {
 	if description == "" {
 		return ""
 	}
-	if capped := truncateRunes(description, maxPRDescriptionRunes); capped != description {
+	if capped := inference.TruncateRunes(description, maxPRDescriptionRunes); capped != description {
 		description = capped + "..."
 	}
 	return "**Title:** " + title + "\n**Description:**\n" + description
@@ -359,12 +352,4 @@ func (r *Reviewer) fetchRepoInstructions(ctx context.Context, project, repo, fro
 		}
 	}
 	return ""
-}
-
-// shortSHA truncates a commit for log lines and notices.
-func shortSHA(s string, n int) string {
-	if len(s) > n {
-		return s[:n]
-	}
-	return s
 }

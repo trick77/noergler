@@ -107,7 +107,7 @@ func parseErrorDiagnostic(err error, content string) ParseDiagnostic {
 	if errors.As(err, &syntax) {
 		return ParseDiagnostic{
 			Level:   slog.LevelError,
-			Message: "Failed to parse review response as JSON: " + truncateRunes(content, 200),
+			Message: "Failed to parse review response as JSON: " + TruncateRunes(content, 200),
 		}
 	}
 	return ParseDiagnostic{Level: slog.LevelError, Message: "Review response is not a JSON object"}
@@ -126,9 +126,9 @@ func decodesAs(raw json.RawMessage, dst any) bool {
 	return json.Unmarshal(raw, dst) == nil
 }
 
-// truncateRunes cuts s to at most n runes. The prefix is measured in
+// TruncateRunes cuts s to at most n runes. The prefix is measured in
 // characters, not bytes, so a multi-byte rune is never split.
-func truncateRunes(s string, n int) string {
+func TruncateRunes(s string, n int) string {
 	runes := []rune(s)
 	if len(runes) <= n {
 		return s
@@ -415,7 +415,7 @@ func ParseReview(content string) ParsedReview {
 	for _, item := range out.listItems(raw, "pre_existing", true) {
 		b, ok := parsePreExisting(item)
 		if !ok {
-			out.warn("Skipping malformed pre_existing entry: %s", truncateRunes(string(item), 200))
+			out.warn("Skipping malformed pre_existing entry: %s", TruncateRunes(string(item), 200))
 			continue
 		}
 		out.PreExisting = append(out.PreExisting, b)
@@ -431,7 +431,7 @@ func ParseReview(content string) ParsedReview {
 			Visible json.RawMessage `json:"visible"`
 		}
 		if json.Unmarshal(item, &e) != nil {
-			out.warn("Skipping malformed visual_changes entry: %s", truncateRunes(string(item), 200))
+			out.warn("Skipping malformed visual_changes entry: %s", TruncateRunes(string(item), 200))
 			continue
 		}
 		// Only a literal false hides the line: anything else the
@@ -460,7 +460,7 @@ func (p *ParsedReview) listItems(raw map[string]json.RawMessage, key string, war
 	var items []json.RawMessage
 	if err := json.Unmarshal(v, &items); err != nil {
 		if warnNonArray {
-			p.warn("Skipping malformed "+key+" list: %s", truncateRunes(string(v), 200))
+			p.warn("Skipping malformed "+key+" list: %s", TruncateRunes(string(v), 200))
 		}
 		return nil
 	}

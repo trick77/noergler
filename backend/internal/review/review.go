@@ -716,7 +716,7 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 		// 9. Same SHA: nothing changed (a retrigger or a no-op force push).
 		if sourceCommit == lastReviewed {
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: HEAD unchanged since last review (%s), skipping",
-				prTag, shortSHA(sourceCommit, 10)))
+				prTag, render.ShortSHA(sourceCommit, 10)))
 			return "", cumulativeContext{}, "", SkipHeadUnchanged, nil
 		}
 		incDiff, err := r.bitbucket.FetchCommitDiff(ctx, project, repo, prID, lastReviewed, sourceCommit)
@@ -738,14 +738,14 @@ func (r *Reviewer) resolveDiff(ctx context.Context, payload *webhook.Payload, ke
 			isIncremental = true
 			incrementalFrom = lastReviewed
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: incremental review %s..%s",
-				prTag, shortSHA(lastReviewed, 10), shortSHA(sourceCommit, 10)))
+				prTag, render.ShortSHA(lastReviewed, 10), render.ShortSHA(sourceCommit, 10)))
 		default:
 			// HEAD moved but the range diff is empty: a rebase to an identical
 			// tree, or a Bitbucket edge case. Never silently skip when the
 			// SHA actually changed.
 			r.log.WarnContext(ctx, fmt.Sprintf(
 				"%s: HEAD moved %s -> %s but the incremental diff is empty - falling back to full review to avoid missing changes",
-				prTag, shortSHA(lastReviewed, 10), shortSHA(sourceCommit, 10)))
+				prTag, render.ShortSHA(lastReviewed, 10), render.ShortSHA(sourceCommit, 10)))
 		}
 	}
 

@@ -11,7 +11,6 @@ import (
 	"github.com/trick77/noergler/internal/httpstats"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/lang"
-	"github.com/trick77/noergler/internal/render"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
 )
@@ -377,11 +376,11 @@ func (r *Reviewer) parentComment(ctx context.Context, key store.PRKey, prTag str
 		}
 	}
 	full := strings.TrimSpace(c.Text)
-	body := truncateRunes(full, maxParentRunes)
+	body := inference.TruncateRunes(full, maxParentRunes)
 	cut := body != full
 	// A code block left open, by the cut or by its author, would run over
 	// the sections below, the question among them.
-	if f := render.OpenFence(body); f != "" {
+	if f := lang.OpenFence(body); f != "" {
 		body += "\n" + f
 	}
 	if cut {

@@ -50,8 +50,8 @@ func parsePreExisting(item json.RawMessage) (PreExistingBug, bool) {
 	b := PreExistingBug{
 		File:        *probe.File,
 		Line:        line,
-		Headline:    truncateRunes(strings.TrimSpace(*probe.Headline), maxPreExistingHeadline),
-		Explanation: truncateRunes(strings.TrimSpace(*probe.Explanation), maxPreExistingProse),
+		Headline:    TruncateRunes(strings.TrimSpace(*probe.Headline), maxPreExistingHeadline),
+		Explanation: TruncateRunes(strings.TrimSpace(*probe.Explanation), maxPreExistingProse),
 	}
 	if b.Headline == "" || b.Explanation == "" {
 		return PreExistingBug{}, false

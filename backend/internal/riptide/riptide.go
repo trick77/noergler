@@ -126,7 +126,7 @@ func (e *Emitter) EmitPRCompleted(ctx context.Context, r Rollup) {
 		"pr_key":                  r.PRKey,
 		"repo":                    r.Repo,
 		"source_commit_sha":       r.SourceCommitSHA,
-		"merge_commit_sha":        nullableString(r.MergeCommitSHA),
+		"merge_commit_sha":        forward.NullableString(r.MergeCommitSHA),
 		"lines_added":             r.LinesAdded,
 		"lines_removed":           r.LinesRemoved,
 		"files_changed":           r.FilesChanged,
@@ -135,14 +135,14 @@ func (e *Emitter) EmitPRCompleted(ctx context.Context, r Rollup) {
 		"total_completion_tokens": r.TotalCompletionTokens,
 		"total_elapsed_ms":        r.TotalElapsedMS,
 		"total_findings_count":    r.TotalFindingsCount,
-		"models_used":             modelsOrEmpty(r.ModelsUsed),
+		"models_used":             forward.OrEmpty(r.ModelsUsed),
 		"first_review_at":         formatTime(r.FirstReviewAt),
 		"closed_at":               formatTime(r.ClosedAt),
 	}
 	// Cost is a decimal string, never a float: riptide stores money and a
 	// float64 cannot hold every nano-USD value exactly.
 	if r.TotalCostNanoUSD != nil {
-		body["total_cost_usd"] = FormatNanoUSD(*r.TotalCostNanoUSD)
+		body["total_cost_usd"] = forward.FormatNanoUSD(*r.TotalCostNanoUSD)
 	}
 	// The handle and the account kind travel together or not at all.
 	if r.ReviewerHandle != "" {
@@ -151,27 +151,6 @@ func (e *Emitter) EmitPRCompleted(ctx context.Context, r Rollup) {
 	}
 	e.c.Post(ctx, emitPath, body, "event_type=pr_completed")
 }
-
-// nullableString renders an empty string as JSON null. merge_commit_sha is
-// always present in the payload and null for a declined or deleted PR.
-func nullableString(s string) any {
-	if s == "" {
-		return nil
-	}
-	return s
-}
-
-// modelsOrEmpty keeps models_used an array rather than null.
-func modelsOrEmpty(m []string) []string {
-	if m == nil {
-		return []string{}
-	}
-	return m
-}
-
-// FormatNanoUSD is forward.FormatNanoUSD: money crosses this boundary as an
-// exact decimal string, never a float.
-func FormatNanoUSD(nano int64) string { return forward.FormatNanoUSD(nano) }
 
 // formatTime renders a timestamp as UTC in the shape riptide reads: second
 // precision when there are no microseconds, six digits when there are.

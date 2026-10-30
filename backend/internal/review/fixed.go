@@ -9,6 +9,7 @@ import (
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/render"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/ship/kit/logging"
 )
@@ -213,7 +214,7 @@ func (r *Reviewer) retireFixed(ctx context.Context, plan *reviewPlan, fixed []st
 	for _, f := range fixed {
 		replied, resolved := false, false
 		if cid := f.BitbucketCommentID; cid != nil {
-			reply := plan.lang.Pick("Behoben in `", "Fixed in `") + shortSHA(plan.sourceCommit, 8) + "`."
+			reply := plan.lang.Pick("Behoben in `", "Fixed in `") + render.ShortSHA(plan.sourceCommit, 8) + "`."
 			if posted, err := r.bitbucket.ReplyToComment(ctx, plan.project, plan.repo, plan.prID, *cid, reply); err != nil {
 				// Usually the author resolved the thread already: Bitbucket
 				// takes no reply on a resolved one.

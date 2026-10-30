@@ -9,6 +9,7 @@ import (
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/diff"
+	"github.com/trick77/noergler/internal/inference"
 )
 
 // prepareFiles splits the diff, fetches each reviewable file's content and
@@ -107,7 +108,7 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 					first = first[:idx]
 				}
 				mu.Lock()
-				r.log.WarnContext(ctx, "Could not extract path from diff chunk: "+truncateRunes(first, 200))
+				r.log.WarnContext(ctx, "Could not extract path from diff chunk: "+inference.TruncateRunes(first, 200))
 				mu.Unlock()
 				return
 			}
@@ -191,14 +192,4 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 		prTag, len(files), totalDiffLines, totalContentLines, withContent, len(files)-withContent))
 
 	return p
-}
-
-// truncateRunes cuts s to at most n runes. Runes and not bytes: a byte cut
-// would split a multi-byte character in the log prefix.
-func truncateRunes(s string, n int) string {
-	runes := []rune(s)
-	if len(runes) <= n {
-		return s
-	}
-	return string(runes[:n])
 }

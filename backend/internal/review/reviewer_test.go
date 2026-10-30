@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/render"
 )
 
 // The team API rewrites the author lists (PUT /teams/{slug}/settings) while
@@ -102,13 +103,13 @@ func TestIsAutoReviewAuthor(t *testing.T) {
 }
 
 func TestShortSHA(t *testing.T) {
-	if got := shortSHA("abcdef0123456789", 8); got != "abcdef01" {
+	if got := render.ShortSHA("abcdef0123456789", 8); got != "abcdef01" {
 		t.Errorf("= %q", got)
 	}
-	if got := shortSHA("abc", 8); got != "abc" {
+	if got := render.ShortSHA("abc", 8); got != "abc" {
 		t.Errorf("short input changed: %q", got)
 	}
-	if got := shortSHA("", 8); got != "" {
+	if got := render.ShortSHA("", 8); got != "" {
 		t.Errorf("empty input = %q", got)
 	}
 }
