@@ -118,21 +118,40 @@ export function TeamPill({ name, slug }: { name: string; slug: string }) {
 }
 
 export function Card({
+  id,
   title,
   hint,
+  titleMark,
+  afterTitle,
   note,
   right,
+  className = "",
   children,
 }: {
+  /** An anchor id, for a card a path names (the Teams page's cards). */
+  id?: string;
   title?: string;
   /** Hover text on the title, e.g. the slug behind a display name. */
   hint?: string;
+  /** The title rendered with marks (a search hit); `title` stays the
+   *  plain text for the heading's name. */
+  titleMark?: ReactNode;
+  /** A control right after the title, e.g. a copy-link glyph. */
+  afterTitle?: ReactNode;
   note?: ReactNode;
   right?: ReactNode;
+  /** Extra classes on the section, e.g. the deep-link ring. */
+  className?: string;
   children: ReactNode;
 }) {
   return (
-    <section className="mb-5 overflow-hidden rounded-ui border border-border bg-panel">
+    <section
+      id={id}
+      className={
+        "group/card mb-5 overflow-hidden rounded-ui border border-border bg-panel " +
+        className
+      }
+    >
       {/* A card with only `right` still gets the header bar: a control
           belongs on the rule above the table, not floating in the body. */}
       {(title || right) && (
@@ -142,9 +161,10 @@ export function Card({
               title={hint}
               className="font-serif text-[18px] leading-tight font-medium tracking-tight text-ink"
             >
-              {title}
+              {titleMark ?? title}
             </h3>
           )}
+          {afterTitle}
           {note && <span className="text-[12.5px] text-muted">{note}</span>}
           {right && <span className="ml-auto">{right}</span>}
         </header>

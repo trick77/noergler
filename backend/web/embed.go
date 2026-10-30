@@ -46,6 +46,12 @@ var routes = map[string]bool{
 // key; an old /runs/{token} link is the 404 an unknown path is (decided).
 var prPath = regexp.MustCompile(`^/prs/` + store.LinkPattern + `(?:/runs/[1-9][0-9]{0,8})?$`)
 
+// teamPath is one team on the Teams page, /teams/{slug}: the page scrolled
+// to that team with its configuration open, the link the # on a team card
+// copies. The slug is config.TeamSlugRE's shape; an unknown slug is the
+// page's to report, so any well-formed one gets the shell.
+var teamPath = regexp.MustCompile(`^/teams/[a-z0-9][a-z0-9-]*$`)
+
 func dist() fs.FS {
 	sub, err := fs.Sub(distFS, "dist")
 	if err != nil {
@@ -68,7 +74,7 @@ func Handler() http.Handler { return handler(dist()) }
 // unbuilt binary answers its routes with the placeholder and a 503.
 func handler(sub fs.FS) http.Handler {
 	h := spa.Handler(sub, spa.Options{
-		Routes:      func(p string) bool { return routes[p] || prPath.MatchString(p) },
+		Routes:      func(p string) bool { return routes[p] || prPath.MatchString(p) || teamPath.MatchString(p) },
 		Placeholder: placeholderHTML,
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
