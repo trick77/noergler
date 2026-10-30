@@ -819,7 +819,7 @@ func (r *Reviewer) handleNonOK(ctx context.Context, l lang.Lang, result inferenc
 	switch result.Outcome {
 	case inference.OutcomeTimedOut:
 		r.log.ErrorContext(ctx, fmt.Sprintf("Review of %s aborted - no response within %.0fs (commit %s)",
-			prTag, inference.CallTimeout.Seconds(), short))
+			prTag, r.llm.CallTimeout().Seconds(), short))
 	case inference.OutcomeUnparseable:
 		r.log.ErrorContext(ctx, fmt.Sprintf(
 			"Review of %s aborted - model returned an unparseable/refused response (commit %s)", prTag, short))

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/trick77/noergler/internal/httpstats"
 )
@@ -51,7 +52,7 @@ func TestInferenceRequestsAreCounted(t *testing.T) {
 // properties of its default are reproduced in countingClient and pinned here.
 // Mirrors llmwire's TestNew_DefaultHTTPClientHasNoWholeRequestTimeout.
 func TestCountingClientKeepsLLMWiresTimeoutShape(t *testing.T) {
-	c := countingClient()
+	c := countingClient(DefaultCallTimeout)
 
 	// A whole-request timeout would cut a slow completion body mid-read, the
 	// same reason Bitbucket's client must not carry one. The caller's ctx and
@@ -78,10 +79,43 @@ func TestCountingClientKeepsLLMWiresTimeoutShape(t *testing.T) {
 	// is what let the backstop land at 90s while the guard was at 300s: the
 	// transport then won the race and every review slower than 90s failed with
 	// net/http's generic error instead of ErrNoResponseHeaders.
-	if want := CallTimeout + headerBackstopHeadroom; tr.ResponseHeaderTimeout != want {
+	if want := DefaultCallTimeout + headerBackstopHeadroom; tr.ResponseHeaderTimeout != want {
 		t.Errorf("ResponseHeaderTimeout = %v, want %v (CallTimeout + headroom), "+
 			"so llmwire's guard reports the timeout under its own name",
 			tr.ResponseHeaderTimeout, want)
+	}
+}
+
+// A configured timeout moves the backstop with it: a 10m cap with a 330s
+// backstop would reopen the race the test above pins.
+func TestCountingClientBackstopFollowsConfiguredTimeout(t *testing.T) {
+	timeout := 10 * time.Minute
+	c := countingClient(timeout)
+	wrapper, ok := c.Transport.(interface{ Unwrap() http.RoundTripper })
+	if !ok {
+		t.Fatalf("client transport %T does not expose the wrapped transport", c.Transport)
+	}
+	tr := wrapper.Unwrap().(*http.Transport)
+	if want := timeout + headerBackstopHeadroom; tr.ResponseHeaderTimeout != want {
+		t.Errorf("ResponseHeaderTimeout = %v, want %v", tr.ResponseHeaderTimeout, want)
+	}
+}
+
+// Zero on Options is the default, and the client reports what it armed.
+func TestClientCallTimeoutDefaultsAndReports(t *testing.T) {
+	const alias = "gateway-alias"
+	srv := (&fakeGateway{}).start(t, alias)
+	for _, tc := range []struct {
+		in, want time.Duration
+	}{{0, DefaultCallTimeout}, {7 * time.Minute, 7 * time.Minute}} {
+		c, err := New(Options{Model: testProfile, Registry: testRegistry, APIKey: "k",
+			CallTimeout: tc.in, Env: env(srv.URL, alias, nil)})
+		if err != nil {
+			t.Fatalf("New(%v): %v", tc.in, err)
+		}
+		if got := c.CallTimeout(); got != tc.want {
+			t.Errorf("CallTimeout() with %v = %v, want %v", tc.in, got, tc.want)
+		}
 	}
 }
 

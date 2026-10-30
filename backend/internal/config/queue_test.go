@@ -3,6 +3,7 @@ package config
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestQueue_Defaults(t *testing.T) {
@@ -14,6 +15,32 @@ func TestQueue_Defaults(t *testing.T) {
 	}
 	if got := app.Queue.InferenceConcurrencyPerTeam; got != 2 {
 		t.Errorf("InferenceConcurrencyPerTeam = %d, want 2", got)
+	}
+}
+
+func TestQueue_CallTimeout(t *testing.T) {
+	if got := newEnv(t).mustLoad().Queue.InferenceCallTimeout; got != 5*time.Minute {
+		t.Errorf("default InferenceCallTimeout = %v, want 5m", got)
+	}
+	e := newEnv(t)
+	e.set("REVIEW_INFERENCE_CALL_TIMEOUT", "10m")
+	if got := e.mustLoad().Queue.InferenceCallTimeout; got != 10*time.Minute {
+		t.Errorf("InferenceCallTimeout = %v, want 10m", got)
+	}
+	// A bare number has no unit; under a minute the notices would post
+	// "0 minutes". Both fail at load and name the variable.
+	for _, bad := range []string{"300", "30s", "0", "-5m"} {
+		t.Run(bad, func(t *testing.T) {
+			e := newEnv(t)
+			e.set("REVIEW_INFERENCE_CALL_TIMEOUT", bad)
+			_, err := e.load()
+			if err == nil {
+				t.Fatalf("REVIEW_INFERENCE_CALL_TIMEOUT=%s loaded clean", bad)
+			}
+			if !strings.Contains(err.Error(), "REVIEW_INFERENCE_CALL_TIMEOUT") {
+				t.Errorf("error does not name the var: %v", err)
+			}
+		})
 	}
 }
 

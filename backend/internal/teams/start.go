@@ -182,6 +182,7 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps, open
 		ReasoningEffort: team.LLM.ReasoningEffort,
 		APIKey:          team.LLM.APIKey,
 		ContextWindow:   team.LLM.ContextWindow,
+		CallTimeout:     app.Queue.InferenceCallTimeout,
 		HeadroomTokens:  app.Trust.HeadroomTokens,
 		Threshold:       app.Trust.Threshold,
 		Tail:            app.Trust.Tail,

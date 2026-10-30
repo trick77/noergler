@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/inference"
@@ -14,9 +15,12 @@ import (
 	"github.com/trick77/noergler/internal/store"
 )
 
-// timeoutMinutes is the wall-clock cap in whole minutes, as the notices
-// phrase it.
-var timeoutMinutes = int(inference.CallTimeout.Minutes())
+// timeoutMinutes is the client's call cap in whole minutes, as the notices
+// phrase it. Rounded, not truncated: config floors the cap at one minute, so
+// a 90s cap reads as 2 minutes rather than 1.
+func timeoutMinutes(llm InferenceClient) int {
+	return int(llm.CallTimeout().Round(time.Minute).Minutes())
+}
 
 // postOrUpdateSummary posts a new summary comment or updates the existing
 // one, tracking it in the store.
@@ -178,9 +182,9 @@ func (r *Reviewer) failureNoticeFor(ctx context.Context, outcome inference.Outco
 				"Das Review wurde nicht abgeschlossen. Neuen Commit pushen oder `@%s` für einen neuen Versuch.",
 			"⚠️ **Review skipped** — no response from the model within %d minutes for commit `%s`. "+
 				"The review did not complete. Push a new commit or `@%s` to retry."),
-			timeoutMinutes, short, bot)
+			timeoutMinutes(r.llm), short, bot)
 		lead = fmt.Sprintf(l.Pick("Keine Antwort vom Modell innerhalb von %d Minuten auf Commit `%s`",
-			"No response from the model within %d minutes on commit `%s`"), timeoutMinutes, short)
+			"No response from the model within %d minutes on commit `%s`"), timeoutMinutes(r.llm), short)
 		label = "timeout notice"
 	case inference.OutcomeUnparseable:
 		fresh = fmt.Sprintf(l.Pick(

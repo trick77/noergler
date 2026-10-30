@@ -96,6 +96,7 @@ Not overridable in a team block. Naming one there disables the team.
 | `CONTEXT_TRUST_TAIL` | `0.5` | Fraction of the window beyond the threshold that counts. |
 | `REVIEW_INFERENCE_CONCURRENCY` | `6` | Inference calls in flight process-wide. Bitbucket work stays on the single worker whatever this is; only the gateway call overlaps. |
 | `REVIEW_INFERENCE_CONCURRENCY_PER_TEAM` | `2` | Inference calls in flight for one team, nested inside the global cap so one team's burst cannot take every slot. Must not exceed it. |
+| `REVIEW_INFERENCE_CALL_TIMEOUT` | `5m` | Wall-clock cap on one gateway call, a duration with a unit (`5m`, `600s`; a bare number aborts startup). At least `1m`: the timeout notice quotes it in whole minutes. A gateway or proxy timeout below it wins, so raise those too. Shutdown drains every review in flight, and that drain is prepare + pool wait + this cap + posting (a Q&A tool loop up to four calls of it): the pod's termination grace period has to follow. |
 | `ALMANACH_NOTE_MAX_CHARS` | `24000` | Runes of prose in an Almanach note (the summary, every item's name and text, a bugfix's symptom and cause; not paths, not the JSON) over which the whole note is dropped, never truncated. The one ceiling on the note's prose: items are documentation and have no length cap of their own, only a count. Must be greater than 0. |
 | `SERVER_HOST` | `0.0.0.0` | Listen address. |
 | `SERVER_PORT` | `8080` | Listen port. |

@@ -2,6 +2,7 @@ package review
 
 import (
 	"context"
+	"time"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -687,6 +688,8 @@ type fakeLLM struct {
 	vision  bool
 	window  int
 	budget  int
+	// timeout is what CallTimeout reports; 0 is the production default.
+	timeout time.Duration
 	review  inference.ReviewResult
 	mention inference.MentionResult
 	reply   inference.FindingReplyResult
@@ -728,6 +731,15 @@ func (f *fakeLLM) Label() string         { return config.ModelLabel(f.model, f.e
 func (f *fakeLLM) Ready() bool           { return f.ready }
 func (f *fakeLLM) ContextWindow() int    { return f.window }
 func (f *fakeLLM) InputTokenBudget() int { return f.budget }
+
+// CallTimeout is the production default, so the notice tests read "5
+// minutes" unless a test sets its own.
+func (f *fakeLLM) CallTimeout() time.Duration {
+	if f.timeout != 0 {
+		return f.timeout
+	}
+	return inference.DefaultCallTimeout
+}
 
 func (f *fakeLLM) Review(_ context.Context, req inference.ReviewRequest) inference.ReviewResult {
 	f.Reviews = append(f.Reviews, req)

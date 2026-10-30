@@ -31,7 +31,8 @@ func Dump(app *App, log *slog.Logger) {
 	section(log, "config.secrets", kv{"key", mask})
 	section(log, "config.trust", kv{"headroom_tokens", app.Trust.HeadroomTokens}, kv{"threshold", app.Trust.Threshold}, kv{"tail", app.Trust.Tail})
 	section(log, "config.queue", kv{"inference_concurrency", app.Queue.InferenceConcurrency},
-		kv{"inference_concurrency_per_team", app.Queue.InferenceConcurrencyPerTeam})
+		kv{"inference_concurrency_per_team", app.Queue.InferenceConcurrencyPerTeam},
+		kv{"inference_call_timeout", app.Queue.InferenceCallTimeout})
 	section(log, "config.almanach", kv{"note_max_chars", app.AlmanachLimits.NoteMaxChars})
 	log.Info(fmt.Sprintf("[config.teams] path = %s", app.TeamsConfigPath))
 	for _, slug := range app.Order {
