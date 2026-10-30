@@ -87,20 +87,12 @@ func scopesFromRows(rows []claimRow) []config.ProjectScope {
 
 // ListClaims returns the team's scopes.
 func (s *Store) ListClaims(ctx context.Context, teamSlug string) ([]config.ProjectScope, error) {
-	rows, err := s.pool.Query(ctx, `SELECT project_key, repo_slug FROM team_claims WHERE team_slug = $1 ORDER BY id`, teamSlug)
+	out, err := queryAll(ctx, s.pool, `SELECT project_key, repo_slug FROM team_claims WHERE team_slug = $1 ORDER BY id`,
+		[]any{teamSlug}, func(row pgx.CollectableRow, r *claimRow) error { return row.Scan(&r.key, &r.repo) })
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []claimRow
-	for rows.Next() {
-		var r claimRow
-		if err := rows.Scan(&r.key, &r.repo); err != nil {
-			return nil, err
-		}
-		out = append(out, r)
-	}
-	return scopesFromRows(out), rows.Err()
+	return scopesFromRows(out), nil
 }
 
 // ListAllClaims returns every team's scopes keyed by slug. A slug that ever
@@ -151,21 +143,17 @@ func (s *Store) ListAllClaims(ctx context.Context) (map[string][]config.ProjectS
 // own whole-project claim is not new, a whole-project claim replaces the
 // team's own repo claims on that project.
 func (s *Store) AddClaims(ctx context.Context, teamSlug string, scopes []config.ProjectScope, claimedBy string) ([]string, error) {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
 	added := []string{}
-	if err := s.addClaims(ctx, tx, teamSlug, scopes, claimedBy, &added); err != nil {
-		return nil, err
-	}
-	// The slug stays marked after its last claim is removed: ListAllClaims
-	// keeps naming it, so reconcile never seeds teams.yaml back over it.
-	if _, err := tx.Exec(ctx, `INSERT INTO team_claims_seeded (team_slug) VALUES ($1) ON CONFLICT DO NOTHING`, teamSlug); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := s.addClaims(ctx, tx, teamSlug, scopes, claimedBy, &added); err != nil {
+			return err
+		}
+		// The slug stays marked after its last claim is removed: ListAllClaims
+		// keeps naming it, so reconcile never seeds teams.yaml back over it.
+		_, err := tx.Exec(ctx, `INSERT INTO team_claims_seeded (team_slug) VALUES ($1) ON CONFLICT DO NOTHING`, teamSlug)
+		return err
+	})
+	if err != nil {
 		return nil, err
 	}
 	if len(added) > 0 {
@@ -287,47 +275,40 @@ func (s *Store) addClaims(ctx context.Context, tx pgx.Tx, teamSlug string, scope
 // drops the project claim and any repo claims of the team on it. Returns what
 // was dropped.
 func (s *Store) RemoveClaims(ctx context.Context, teamSlug string, scopes []config.ProjectScope) ([]string, error) {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
 	removed := []string{}
-	for _, scope := range scopes {
-		if scope.Repos == nil {
-			rows, err := tx.Query(ctx, `DELETE FROM team_claims WHERE team_slug = $1 AND project_key = $2 RETURNING repo_slug`, teamSlug, scope.Key)
-			if err != nil {
-				return nil, err
-			}
-			for rows.Next() {
-				var repo *string
-				if err := rows.Scan(&repo); err != nil {
-					rows.Close()
-					return nil, err
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		for _, scope := range scopes {
+			if scope.Repos == nil {
+				rows, err := tx.Query(ctx, `DELETE FROM team_claims WHERE team_slug = $1 AND project_key = $2 RETURNING repo_slug`, teamSlug, scope.Key)
+				if err != nil {
+					return err
 				}
-				if repo == nil {
-					removed = append(removed, scope.Key)
-				} else {
-					removed = append(removed, scope.Key+"/"+*repo)
+				repos, err := pgx.CollectRows(rows, pgx.RowTo[*string])
+				if err != nil {
+					return err
 				}
+				for _, repo := range repos {
+					if repo == nil {
+						removed = append(removed, scope.Key)
+					} else {
+						removed = append(removed, scope.Key+"/"+*repo)
+					}
+				}
+				continue
 			}
-			rows.Close()
-			if err := rows.Err(); err != nil {
-				return nil, err
-			}
-			continue
-		}
-		for _, repo := range scope.Repos {
-			tag, err := tx.Exec(ctx, `DELETE FROM team_claims WHERE team_slug = $1 AND project_key = $2 AND repo_slug = $3`, teamSlug, scope.Key, repo)
-			if err != nil {
-				return nil, err
-			}
-			if tag.RowsAffected() > 0 {
-				removed = append(removed, scope.Key+"/"+repo)
+			for _, repo := range scope.Repos {
+				tag, err := tx.Exec(ctx, `DELETE FROM team_claims WHERE team_slug = $1 AND project_key = $2 AND repo_slug = $3`, teamSlug, scope.Key, repo)
+				if err != nil {
+					return err
+				}
+				if tag.RowsAffected() > 0 {
+					removed = append(removed, scope.Key+"/"+repo)
+				}
 			}
 		}
-	}
-	if err := tx.Commit(ctx); err != nil {
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 	if len(removed) > 0 {
@@ -342,31 +323,26 @@ func (s *Store) RemoveClaims(ctx context.Context, teamSlug string, scopes []conf
 func (s *Store) PurgeProject(ctx context.Context, teamSlug, projectKey string, repoSlug *string) (int, error) {
 	// One transaction: the PR rows and the notes go together or not at all,
 	// so a failed purge is a purge that did not happen.
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
 	var tag pgconn.CommandTag
-	if repoSlug == nil {
-		tag, err = tx.Exec(ctx, `DELETE FROM pull_requests WHERE team_slug = $1 AND project_key = $2`, teamSlug, projectKey)
-	} else {
-		tag, err = tx.Exec(ctx, `DELETE FROM pull_requests WHERE team_slug = $1 AND project_key = $2 AND repo_slug = $3`, teamSlug, projectKey, *repoSlug)
-	}
+	err := s.inTx(ctx, func(tx pgx.Tx) (err error) {
+		if repoSlug == nil {
+			tag, err = tx.Exec(ctx, `DELETE FROM pull_requests WHERE team_slug = $1 AND project_key = $2`, teamSlug, projectKey)
+		} else {
+			tag, err = tx.Exec(ctx, `DELETE FROM pull_requests WHERE team_slug = $1 AND project_key = $2 AND repo_slug = $3`, teamSlug, projectKey, *repoSlug)
+		}
+		if err != nil {
+			return err
+		}
+		// Almanach notes have no FK (a final one must outlive the PR row until
+		// it is sent), so the ones that are not final go here, by hand.
+		if repoSlug == nil {
+			_, err = tx.Exec(ctx, `DELETE FROM almanach_notes WHERE team_slug = $1 AND project_key = $2 AND finalized_at IS NULL`, teamSlug, projectKey)
+		} else {
+			_, err = tx.Exec(ctx, `DELETE FROM almanach_notes WHERE team_slug = $1 AND project_key = $2 AND repo_slug = $3 AND finalized_at IS NULL`, teamSlug, projectKey, *repoSlug)
+		}
+		return err
+	})
 	if err != nil {
-		return 0, err
-	}
-	// Almanach notes have no FK (a final one must outlive the PR row until
-	// it is sent), so the ones that are not final go here, by hand.
-	if repoSlug == nil {
-		_, err = tx.Exec(ctx, `DELETE FROM almanach_notes WHERE team_slug = $1 AND project_key = $2 AND finalized_at IS NULL`, teamSlug, projectKey)
-	} else {
-		_, err = tx.Exec(ctx, `DELETE FROM almanach_notes WHERE team_slug = $1 AND project_key = $2 AND repo_slug = $3 AND finalized_at IS NULL`, teamSlug, projectKey, *repoSlug)
-	}
-	if err != nil {
-		return 0, err
-	}
-	if err := tx.Commit(ctx); err != nil {
 		return 0, err
 	}
 	n := int(tag.RowsAffected())

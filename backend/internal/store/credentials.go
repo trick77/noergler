@@ -21,41 +21,23 @@ type SealedCredential struct {
 
 // ListCredentials returns every team's pushed credentials.
 func (s *Store) ListCredentials(ctx context.Context) ([]SealedCredential, error) {
-	rows, err := s.pool.Query(ctx, `SELECT team_slug, kind, COALESCE(username, ''), nonce, ciphertext FROM team_credentials ORDER BY team_slug, kind`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []SealedCredential
-	for rows.Next() {
-		var c SealedCredential
-		if err := rows.Scan(&c.Team, &c.Kind, &c.Username, &c.Nonce, &c.Ciphertext); err != nil {
-			return nil, err
-		}
-		out = append(out, c)
-	}
-	return out, rows.Err()
+	return queryAll(ctx, s.pool, `SELECT team_slug, kind, COALESCE(username, ''), nonce, ciphertext FROM team_credentials ORDER BY team_slug, kind`,
+		nil, func(row pgx.CollectableRow, c *SealedCredential) error {
+			return row.Scan(&c.Team, &c.Kind, &c.Username, &c.Nonce, &c.Ciphertext)
+		})
 }
 
 // PutCredentials upserts team credentials, all or none: a push of both kinds
 // never lands half. The log lines name the team, the kind and the username,
 // never the token.
-func (s *Store) PutCredentials(ctx context.Context, creds []SealedCredential, updatedBy string) (err error) {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback(ctx)
-		}
-	}()
-	for _, c := range creds {
-		var username *string
-		if c.Username != "" {
-			username = &c.Username
-		}
-		if _, err = tx.Exec(ctx, `
+func (s *Store) PutCredentials(ctx context.Context, creds []SealedCredential, updatedBy string) error {
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		for _, c := range creds {
+			var username *string
+			if c.Username != "" {
+				username = &c.Username
+			}
+			if _, err := tx.Exec(ctx, `
 			INSERT INTO team_credentials (team_slug, kind, username, nonce, ciphertext, updated_by, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, now())
 			ON CONFLICT (team_slug, kind) DO UPDATE SET
@@ -64,11 +46,13 @@ func (s *Store) PutCredentials(ctx context.Context, creds []SealedCredential, up
 				ciphertext = EXCLUDED.ciphertext,
 				updated_by = EXCLUDED.updated_by,
 				updated_at = now()`,
-			c.Team, c.Kind, username, c.Nonce, c.Ciphertext, updatedBy); err != nil {
-			return err
+				c.Team, c.Kind, username, c.Nonce, c.Ciphertext, updatedBy); err != nil {
+				return err
+			}
 		}
-	}
-	if err = tx.Commit(ctx); err != nil {
+		return nil
+	})
+	if err != nil {
 		return err
 	}
 	for _, c := range creds {

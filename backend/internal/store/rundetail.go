@@ -337,44 +337,45 @@ func decodeDetail(raw []byte) (*Pipeline, error) {
 	return &p, nil
 }
 
-func deref(s *string) string {
-	if s == nil {
-		return ""
+// deref is the value behind p, or the zero value for a NULL column.
+func deref[T any](p *T) T {
+	if p == nil {
+		var zero T
+		return zero
 	}
-	return *s
+	return *p
 }
 
 // runFindings reads the page's columns of the findings matching where (one
 // placeholder, $1).
 func (s *Store) runFindings(ctx context.Context, where string, arg int64) ([]RunFinding, error) {
-	rows, err := s.pool.Query(ctx, `
+	out, err := queryAll(ctx, s.pool, `
 		SELECT f.severity, f.confidence, f.file_path, f.line_number, COALESCE(f.headline, ''),
 		       f.comment_text, f.suggestion, f.dispute_text,
 		       f.bitbucket_comment_id, f.replied_at IS NOT NULL, f.fixed_at IS NOT NULL,
 		       f.review_run_id, f.fixed_run_id
 		  FROM findings f
 		 WHERE `+where+`
-		 ORDER BY f.id`, arg)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []RunFinding{}
-	for rows.Next() {
-		var f RunFinding
+		 ORDER BY f.id`, []any{arg}, func(row pgx.CollectableRow, f *RunFinding) error {
 		var comment *int32
-		if err := rows.Scan(&f.Severity, &f.Confidence, &f.FilePath, &f.Line, &f.Headline,
+		if err := row.Scan(&f.Severity, &f.Confidence, &f.FilePath, &f.Line, &f.Headline,
 			&f.CommentText, &f.Suggestion, &f.DisputeText,
 			&comment, &f.Replied, &f.Fixed, &f.RunID, &f.FixedRunID); err != nil {
-			return nil, err
+			return err
 		}
 		if comment != nil {
 			c := int64(*comment)
 			f.CommentID = &c
 		}
-		out = append(out, f)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return out, rows.Err()
+	if out == nil {
+		out = []RunFinding{} // the page's list, never null
+	}
+	return out, nil
 }
 
 // InsertRunDetail writes one attempt's detail record. The caller swallows

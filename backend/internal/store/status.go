@@ -83,21 +83,16 @@ func (s *Store) PRStatus(ctx context.Context, k PRKey, team string) (*PRStatus, 
 		}
 	}
 
-	rows, err := s.pool.Query(ctx, `
+	st.Attempts, err = queryAll(ctx, s.pool, `
 		SELECT created_at, kind, outcome, COALESCE(reason, '') FROM review_attempts
 		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3 AND team_slug = $4 AND created_at >= $5
 		ORDER BY created_at DESC, id DESC LIMIT $6`,
-		k.Project, k.Repo, k.PRID, team, since, statusAttempts)
+		[]any{k.Project, k.Repo, k.PRID, team, since, statusAttempts},
+		func(row pgx.CollectableRow, a *AttemptBrief) error {
+			return row.Scan(&a.At, &a.Kind, &a.Outcome, &a.Reason)
+		})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var a AttemptBrief
-		if err := rows.Scan(&a.At, &a.Kind, &a.Outcome, &a.Reason); err != nil {
-			return nil, err
-		}
-		st.Attempts = append(st.Attempts, a)
-	}
-	return st, rows.Err()
+	return st, nil
 }

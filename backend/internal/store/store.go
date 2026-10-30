@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"log/slog"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/trick77/ship/kit/migrate"
@@ -36,6 +37,27 @@ func migrations() fs.FS {
 type Store struct {
 	pool *pgxpool.Pool
 	log  *slog.Logger
+}
+
+// queryAll runs sql and reads every row through scan into a slice. No rows
+// is a nil slice, as the hand loops it replaced left it (a JSON null, never
+// []); pgx.CollectRows would start from []T{}, which is why it is not used.
+func queryAll[T any](ctx context.Context, pool *pgxpool.Pool, sql string, args []any,
+	scan func(row pgx.CollectableRow, v *T) error) ([]T, error) {
+	rows, err := pool.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.AppendRows([]T(nil), rows, func(row pgx.CollectableRow) (T, error) {
+		var v T
+		return v, scan(row, &v)
+	})
+}
+
+// inTx runs fn in one transaction: committed when fn returns nil, rolled
+// back otherwise.
+func (s *Store) inTx(ctx context.Context, fn func(tx pgx.Tx) error) error {
+	return pgx.BeginFunc(ctx, s.pool, fn)
 }
 
 // Open connects with a pool of 2..10 and logs the server version at startup.

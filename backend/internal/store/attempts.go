@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // Attempt is one terminal outcome, including the ones that write no run row.
@@ -116,7 +118,7 @@ func (s *Store) RecentAttempts(ctx context.Context, team string, outcome Attempt
 	if limit <= 0 || limit > maxAttempts {
 		limit = maxAttempts
 	}
-	rows, err := s.pool.Query(ctx, `
+	return queryAll(ctx, s.pool, `
 		SELECT a.id, a.team_slug, a.project_key, a.repo_slug, a.pr_id, a.kind,
 		       a.outcome, COALESCE(a.reason, ''), a.elapsed_ms, a.created_at,
 		       r.findings_posted, r.cost_nano_usd
@@ -127,23 +129,12 @@ func (s *Store) RecentAttempts(ctx context.Context, team string, outcome Attempt
 		        OR ($2 = 'skipped' AND a.outcome = 'skipped')
 		        OR ($2 = 'failed' AND a.outcome NOT IN ('ok', 'skipped')))
 		 ORDER BY a.created_at DESC
-		 LIMIT $3`, team, string(outcome), limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var out []AttemptRow
-	for rows.Next() {
-		var a AttemptRow
-		if err := rows.Scan(&a.ID, &a.TeamSlug, &a.Key.Project, &a.Key.Repo, &a.Key.PRID,
-			&a.Kind, &a.Outcome, &a.Reason, &a.ElapsedMS, &a.CreatedAt,
-			&a.Findings, &a.CostNanoUSD); err != nil {
-			return nil, err
-		}
-		out = append(out, a)
-	}
-	return out, rows.Err()
+		 LIMIT $3`, []any{team, string(outcome), limit},
+		func(row pgx.CollectableRow, a *AttemptRow) error {
+			return row.Scan(&a.ID, &a.TeamSlug, &a.Key.Project, &a.Key.Repo, &a.Key.PRID,
+				&a.Kind, &a.Outcome, &a.Reason, &a.ElapsedMS, &a.CreatedAt,
+				&a.Findings, &a.CostNanoUSD)
+		})
 }
 
 // OutcomeCount is one bucket of the outcome breakdown.
@@ -156,24 +147,13 @@ type OutcomeCount struct {
 // OutcomeBreakdown counts attempts by outcome since a point in time. Skips
 // are split by reason; every other outcome carries an empty Reason.
 func (s *Store) OutcomeBreakdown(ctx context.Context, since time.Time) ([]OutcomeCount, error) {
-	rows, err := s.pool.Query(ctx, `
+	return queryAll(ctx, s.pool, `
 		SELECT outcome, COALESCE(reason, ''), COUNT(*)
 		  FROM review_attempts
 		 WHERE created_at >= $1
 		 GROUP BY outcome, COALESCE(reason, '')
-		 ORDER BY COUNT(*) DESC`, since)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var out []OutcomeCount
-	for rows.Next() {
-		var c OutcomeCount
-		if err := rows.Scan(&c.Outcome, &c.Reason, &c.Count); err != nil {
-			return nil, err
-		}
-		out = append(out, c)
-	}
-	return out, rows.Err()
+		 ORDER BY COUNT(*) DESC`, []any{since},
+		func(row pgx.CollectableRow, c *OutcomeCount) error {
+			return row.Scan(&c.Outcome, &c.Reason, &c.Count)
+		})
 }

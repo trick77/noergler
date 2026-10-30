@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // Every aggregate the store had before this file is keyed to one PRKey, and
@@ -80,27 +82,16 @@ type TeamTotals struct {
 // TotalsByTeam is TotalsSince grouped by the team that owns the PR. The slug
 // comes off pull_requests, which the webhook route authenticated.
 func (s *Store) TotalsByTeam(ctx context.Context, since time.Time) ([]TeamTotals, error) {
-	rows, err := s.pool.Query(ctx, spendCTE+`
+	return queryAll(ctx, s.pool, spendCTE+`
 		SELECT team_slug,`+totalsCols+`
 		  FROM spend
 		 WHERE created_at >= $1
 		 GROUP BY team_slug
-		 ORDER BY SUM(cost_nano_usd) DESC NULLS LAST`, since)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var out []TeamTotals
-	for rows.Next() {
-		var t TeamTotals
-		if err := rows.Scan(&t.TeamSlug, &t.Runs, &t.PromptTokens, &t.CachedTokens,
-			&t.CompletionTokens, &t.FindingsPosted, &t.CostNanoUSD, &t.Unpriced); err != nil {
-			return nil, err
-		}
-		out = append(out, t)
-	}
-	return out, rows.Err()
+		 ORDER BY SUM(cost_nano_usd) DESC NULLS LAST`, []any{since},
+		func(row pgx.CollectableRow, t *TeamTotals) error {
+			return row.Scan(&t.TeamSlug, &t.Runs, &t.PromptTokens, &t.CachedTokens,
+				&t.CompletionTokens, &t.FindingsPosted, &t.CostNanoUSD, &t.Unpriced)
+		})
 }
 
 // Bucket is one day of the timeseries.
@@ -115,7 +106,7 @@ type Bucket struct {
 // runs are absent rather than zero-filled: the caller knows the window it
 // asked for and fills the gaps, which keeps this query from inventing rows.
 func (s *Store) DailyByTeam(ctx context.Context, since time.Time) ([]Bucket, error) {
-	rows, err := s.pool.Query(ctx, spendCTE+`
+	return queryAll(ctx, s.pool, spendCTE+`
 		SELECT date_trunc('day', created_at) AS day,
 		       team_slug,
 		       COALESCE(SUM(run), 0),
@@ -123,47 +114,25 @@ func (s *Store) DailyByTeam(ctx context.Context, since time.Time) ([]Bucket, err
 		  FROM spend
 		 WHERE created_at >= $1
 		 GROUP BY day, team_slug
-		 ORDER BY day`, since)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var out []Bucket
-	for rows.Next() {
-		var b Bucket
-		if err := rows.Scan(&b.Day, &b.TeamSlug, &b.Runs, &b.CostNanoUSD); err != nil {
-			return nil, err
-		}
-		out = append(out, b)
-	}
-	return out, rows.Err()
+		 ORDER BY day`, []any{since},
+		func(row pgx.CollectableRow, b *Bucket) error {
+			return row.Scan(&b.Day, &b.TeamSlug, &b.Runs, &b.CostNanoUSD)
+		})
 }
 
 // DailyAttempts is attempts per day per outcome, for the throughput chart.
 // It reads review_attempts, so a day's failures and skips are visible where
 // DailyByTeam sees only the runs that succeeded.
 func (s *Store) DailyAttempts(ctx context.Context, since time.Time) ([]AttemptBucket, error) {
-	rows, err := s.pool.Query(ctx, `
+	return queryAll(ctx, s.pool, `
 		SELECT date_trunc('day', created_at) AS day, outcome, COUNT(*)
 		  FROM review_attempts
 		 WHERE created_at >= $1
 		 GROUP BY day, outcome
-		 ORDER BY day`, since)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var out []AttemptBucket
-	for rows.Next() {
-		var b AttemptBucket
-		if err := rows.Scan(&b.Day, &b.Outcome, &b.Count); err != nil {
-			return nil, err
-		}
-		out = append(out, b)
-	}
-	return out, rows.Err()
+		 ORDER BY day`, []any{since},
+		func(row pgx.CollectableRow, b *AttemptBucket) error {
+			return row.Scan(&b.Day, &b.Outcome, &b.Count)
+		})
 }
 
 // AttemptBucket is one day's count for one outcome.
@@ -195,7 +164,7 @@ type TeamActivity struct {
 // pull_requests row exists, so a team whose every run was skipped has
 // attempts and no PRs, and must still report its last run.
 func (s *Store) ActivityByTeam(ctx context.Context) ([]TeamActivity, error) {
-	rows, err := s.pool.Query(ctx, `
+	return queryAll(ctx, s.pool, `
 		WITH prs AS (
 			SELECT p.team_slug, COUNT(DISTINCT p.id) AS prs, MAX(r.created_at) AS last_reviewed
 			  FROM pull_requests p
@@ -210,26 +179,18 @@ func (s *Store) ActivityByTeam(ctx context.Context) ([]TeamActivity, error) {
 		       last.created_at, COALESCE(last.outcome, ''), COALESCE(last.reason, '')
 		  FROM prs
 		  FULL OUTER JOIN last ON last.team_slug = prs.team_slug
-		 ORDER BY 1`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var out []TeamActivity
-	for rows.Next() {
-		var a TeamActivity
-		if err := rows.Scan(&a.TeamSlug, &a.PRs, &a.LastReviewed, &a.LastRun, &a.LastOutcome, &a.LastReason); err != nil {
-			return nil, err
-		}
-		// A success newer than every attempt row IS the last run: the
-		// attempt write fails open, and runs older than review_attempts
-		// have none. Without this a team shows a last run older than its
-		// last review.
-		if a.LastReviewed != nil && (a.LastRun == nil || a.LastReviewed.After(*a.LastRun)) {
-			a.LastRun, a.LastOutcome, a.LastReason = a.LastReviewed, "ok", ""
-		}
-		out = append(out, a)
-	}
-	return out, rows.Err()
+		 ORDER BY 1`, nil,
+		func(row pgx.CollectableRow, a *TeamActivity) error {
+			if err := row.Scan(&a.TeamSlug, &a.PRs, &a.LastReviewed, &a.LastRun, &a.LastOutcome, &a.LastReason); err != nil {
+				return err
+			}
+			// A success newer than every attempt row IS the last run: the
+			// attempt write fails open, and runs older than review_attempts
+			// have none. Without this a team shows a last run older than its
+			// last review.
+			if a.LastReviewed != nil && (a.LastRun == nil || a.LastReviewed.After(*a.LastRun)) {
+				a.LastRun, a.LastOutcome, a.LastReason = a.LastReviewed, "ok", ""
+			}
+			return nil
+		})
 }

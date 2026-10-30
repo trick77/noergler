@@ -109,21 +109,26 @@ type SummaryComment struct {
 	Version int
 }
 
+// summaryRef is the stored reference from its two nullable columns: nil when
+// no comment is stored, version 0 when none was recorded.
+func summaryRef(id, version *int) *SummaryComment {
+	if id == nil {
+		return nil
+	}
+	return &SummaryComment{ID: *id, Version: deref(version)}
+}
+
 // GetSummaryComment returns the reference, or nil when none is stored.
 func (s *Store) GetSummaryComment(ctx context.Context, prID int64) (*SummaryComment, error) {
 	var id, version *int
 	err := s.pool.QueryRow(ctx, `SELECT summary_comment_id, summary_comment_version FROM pull_requests WHERE id = $1`, prID).Scan(&id, &version)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && id == nil) {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	v := 0
-	if version != nil {
-		v = *version
-	}
-	return &SummaryComment{ID: *id, Version: v}, nil
+	return summaryRef(id, version), nil
 }
 
 // SkipState is what the review guard needs to decide whether to skip a PR.
@@ -148,13 +153,7 @@ func (s *Store) GetSkipState(ctx context.Context, k PRKey) (*SkipState, error) {
 	if err != nil {
 		return nil, err
 	}
-	if id != nil {
-		v := 0
-		if version != nil {
-			v = *version
-		}
-		st.Summary = &SummaryComment{ID: *id, Version: v}
-	}
+	st.Summary = summaryRef(id, version)
 	return &st, nil
 }
 
@@ -246,37 +245,37 @@ type PRSummary struct {
 // the PR as the latest known final figures.
 // Returns the run id.
 func (s *Store) InsertRun(ctx context.Context, r Run) (int64, error) {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return 0, err
+	var summary []byte
+	if r.Summary != nil {
+		var err error
+		if summary, err = json.Marshal(r.Summary); err != nil {
+			return 0, err
+		}
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
 	var id int64
-	if err := tx.QueryRow(ctx, `
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, `
 		INSERT INTO review_runs (pull_request_id, kind, incremental, from_commit, to_commit, model_label,
 			prompt_tokens, cached_tokens, completion_tokens, cost_nano_usd, elapsed_ms, findings_posted,
 			lines_added, lines_removed, files_changed)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		RETURNING id`,
-		r.PullRequestID, string(r.Kind), r.Incremental, r.FromCommit, r.ToCommit, r.ModelLabel,
-		r.PromptTokens, r.CachedTokens, r.CompletionTokens, r.CostNanoUSD, r.ElapsedMS, r.FindingsPosted,
-		r.LinesAdded, r.LinesRemoved, r.FilesChanged,
-	).Scan(&id); err != nil {
-		return 0, err
-	}
-	var summary []byte
-	if r.Summary != nil {
-		if summary, err = json.Marshal(r.Summary); err != nil {
-			return 0, err
+			r.PullRequestID, string(r.Kind), r.Incremental, r.FromCommit, r.ToCommit, r.ModelLabel,
+			r.PromptTokens, r.CachedTokens, r.CompletionTokens, r.CostNanoUSD, r.ElapsedMS, r.FindingsPosted,
+			r.LinesAdded, r.LinesRemoved, r.FilesChanged,
+		).Scan(&id); err != nil {
+			return err
 		}
-	}
-	if _, err := tx.Exec(ctx, `
+		_, err := tx.Exec(ctx, `
 		UPDATE pull_requests SET final_source_commit = $2, final_lines_added = $3, final_lines_removed = $4,
 			final_files_changed = $5, last_summary = COALESCE($6, last_summary), updated_at = now()
-		WHERE id = $1`, r.PullRequestID, r.ToCommit, r.LinesAdded, r.LinesRemoved, r.FilesChanged, summary); err != nil {
+		WHERE id = $1`, r.PullRequestID, r.ToCommit, r.LinesAdded, r.LinesRemoved, r.FilesChanged, summary)
+		return err
+	})
+	if err != nil {
 		return 0, err
 	}
-	return id, tx.Commit(ctx)
+	return id, nil
 }
 
 // LastSummary is the PR summary prose of the PR's last completed review, or
@@ -344,27 +343,25 @@ func (s *Store) InsertFinding(ctx context.Context, f Finding) error {
 // for the previously-posted block of the prompt and for dedup. A fixed one is
 // left out of both, so the same bug coming back is posted again.
 func (s *Store) ExistingFindings(ctx context.Context, k PRKey) ([]Finding, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT f.id, f.pull_request_id, f.review_run_id, f.file_path, f.line_number, f.severity, f.confidence,
-			f.headline, f.comment_text, f.suggestion, f.bitbucket_comment_id, f.replied_at, f.dispute_text, f.closed_at
+	return queryAll(ctx, s.pool, `
+		SELECT `+findingCols+`, f.closed_at
 		FROM findings f JOIN pull_requests p ON f.pull_request_id = p.id
 		WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3 AND p.`+activeFilter+`
 			AND f.fixed_at IS NULL
-		ORDER BY f.id ASC`, k.Project, k.Repo, k.PRID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Finding
-	for rows.Next() {
-		var f Finding
-		if err := rows.Scan(&f.ID, &f.PullRequestID, &f.RunID, &f.FilePath, &f.LineNumber, &f.Severity, &f.Confidence,
-			&f.Headline, &f.CommentText, &f.Suggestion, &f.BitbucketCommentID, &f.RepliedAt, &f.DisputeText, &f.ClosedAt); err != nil {
-			return nil, err
-		}
-		out = append(out, f)
-	}
-	return out, rows.Err()
+		ORDER BY f.id ASC`, []any{k.Project, k.Repo, k.PRID},
+		func(row pgx.CollectableRow, f *Finding) error {
+			return row.Scan(append(f.scanTargets(), &f.ClosedAt)...)
+		})
+}
+
+// findingCols is the finding row as ExistingFindings and FindingByComment
+// read it, from `findings f`; scanTargets receives it in the same order.
+const findingCols = `f.id, f.pull_request_id, f.review_run_id, f.file_path, f.line_number, f.severity, f.confidence,
+			f.headline, f.comment_text, f.suggestion, f.bitbucket_comment_id, f.replied_at, f.dispute_text`
+
+func (f *Finding) scanTargets() []any {
+	return []any{&f.ID, &f.PullRequestID, &f.RunID, &f.FilePath, &f.LineNumber, &f.Severity, &f.Confidence,
+		&f.Headline, &f.CommentText, &f.Suggestion, &f.BitbucketCommentID, &f.RepliedAt, &f.DisputeText}
 }
 
 // MarkFindingClosed settles a finding whose thread was resolved or deleted
@@ -386,16 +383,12 @@ func (s *Store) MarkFindingOpen(ctx context.Context, findingID int64) error {
 func (s *Store) FindingByComment(ctx context.Context, k PRKey, commentID int) (*Finding, error) {
 	var f Finding
 	err := s.pool.QueryRow(ctx, `
-		SELECT f.id, f.pull_request_id, f.review_run_id, f.file_path, f.line_number, f.severity, f.confidence,
-			f.headline, f.comment_text, f.suggestion, f.bitbucket_comment_id, f.replied_at, f.dispute_text,
-			r.to_commit
+		SELECT `+findingCols+`, r.to_commit
 		FROM findings f JOIN pull_requests p ON f.pull_request_id = p.id
 			JOIN review_runs r ON f.review_run_id = r.id
 		WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3 AND p.`+activeFilter+`
 			AND f.fixed_at IS NULL AND f.bitbucket_comment_id = $4`,
-		k.Project, k.Repo, k.PRID, commentID).Scan(&f.ID, &f.PullRequestID, &f.RunID, &f.FilePath, &f.LineNumber,
-		&f.Severity, &f.Confidence, &f.Headline, &f.CommentText, &f.Suggestion, &f.BitbucketCommentID,
-		&f.RepliedAt, &f.DisputeText, &f.RunCommit)
+		k.Project, k.Repo, k.PRID, commentID).Scan(append(f.scanTargets(), &f.RunCommit)...)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
