@@ -12,6 +12,7 @@ package config
 import (
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/trick77/noergler/internal/lang"
@@ -212,15 +213,7 @@ func (p ProjectScope) Owns(projectKey, repoSlug string) bool {
 	if projectKey != p.Key {
 		return false
 	}
-	if p.Repos == nil {
-		return true
-	}
-	for _, r := range p.Repos {
-		if r == repoSlug {
-			return true
-		}
-	}
-	return false
+	return p.Repos == nil || slices.Contains(p.Repos, repoSlug)
 }
 
 // String renders the scope the way the config dump shows it.

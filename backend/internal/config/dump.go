@@ -42,7 +42,7 @@ func Dump(app *App, log *slog.Logger) {
 		for i, p := range team.Projects {
 			scopes[i] = p.String()
 		}
-		log.Info(fmt.Sprintf("  projects = %s", quotedList(scopes)))
+		log.Info(fmt.Sprintf("  projects = %s", QuotedList(scopes)))
 		llmSection(log, "config.teams."+slug+".llm", team.LLM)
 		reviewSection(log, "config.teams."+slug+".review", team.Review)
 		jiraSection(log, "config.teams."+slug+".jira", team.Jira)
@@ -71,7 +71,7 @@ func section(log *slog.Logger, label string, fields ...kv) {
 func render(v any) string {
 	switch x := v.(type) {
 	case []string:
-		return quotedList(x)
+		return QuotedList(x)
 	case bool:
 		if x {
 			return "True"
@@ -90,9 +90,9 @@ func render(v any) string {
 	}
 }
 
-// quotedList renders a list of strings as ['a', 'b'], single-quoted: that is
-// the shape the existing Splunk searches match on.
-func quotedList(items []string) string {
+// QuotedList renders a list of strings as ['a', 'b'], single-quoted, [] when
+// empty: the shape the Splunk searches (teams_ready among them) match on.
+func QuotedList(items []string) string {
 	quoted := make([]string, len(items))
 	for i, s := range items {
 		quoted[i] = "'" + s + "'"
