@@ -465,7 +465,8 @@ func TestSummaryVisualChangesFoldIdenticalLines(t *testing.T) {
 	}
 	got := Summary(in)
 	for _, want := range []string{
-		"- `a.png`, `d.png`, `e.png` and 4 more — The edit field uses the new font; explained by `theme.css`.",
+		// "more" counts screenshots; the variants keep their own suffix, summed.
+		"- `a.png`, `d.png`, `e.png` and 1 more — The edit field uses the new font; explained by `theme.css`. _(3 more",
 		"- `b.png` — _not compared: image too large._",
 		"- `c.png` — The edit field uses the old font",
 		"- `g.png` — _not compared: image too large._",
@@ -477,8 +478,18 @@ func TestSummaryVisualChangesFoldIdenticalLines(t *testing.T) {
 	if n := strings.Count(got, "uses the new font"); n != 1 {
 		t.Errorf("the shared sentence appears %d times, want once:\n%s", n, got)
 	}
-	if strings.Contains(got, "more variant") {
-		t.Errorf("a folded line counts variants in its total, not as a suffix:\n%s", got)
+
+	// A shared base name forces paths; a folded line then names one and
+	// counts the rest, or the subject is wider than the line again.
+	in = base()
+	in.Visual = []VisualLine{
+		{Path: "apps/e2e/__screenshots__/login.spec.ts/header.png", Text: "same"},
+		{Path: "apps/web/__screenshots__/home.spec.ts/header.png", Text: "same"},
+		{Path: "apps/web/__screenshots__/home.spec.ts/footer.png", Text: "same"},
+	}
+	got = Summary(in)
+	if !strings.Contains(got, "- `apps/e2e/__screenshots__/login.spec.ts/header.png` and 2 more — same") {
+		t.Errorf("one path and a count:\n%s", got)
 	}
 
 	// Two of them fold, the rest stay: the cap counts lines, not screenshots.
@@ -495,7 +506,7 @@ func TestSummaryVisualChangesFoldIdenticalLines(t *testing.T) {
 	in.Lang = lang.DE
 	in.Visual = []VisualLine{{Path: "s/a.png", Text: "gleich"}, {Path: "s/b.png", Text: "gleich"},
 		{Path: "s/c.png", Text: "gleich"}, {Path: "s/d.png", Text: "gleich"}}
-	if got = Summary(in); !strings.Contains(got, "- `a.png`, `b.png`, `c.png` und 1 weitere — gleich") {
+	if got = Summary(in); !strings.Contains(got, "- `a.png`, `b.png`, `c.png` und 1 weiterer — gleich") {
 		t.Errorf("German fold:\n%s", got)
 	}
 }

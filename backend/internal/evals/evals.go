@@ -29,9 +29,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/diff"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/lang"
@@ -340,6 +342,9 @@ type Settings struct {
 	// model id itself, which is what a plain OpenAI-compatible host expects.
 	Alias         string
 	ContextWindow int
+	// CallTimeout is serve's REVIEW_INFERENCE_CALL_TIMEOUT, so a slow
+	// profile times out here where it would in production, not sooner.
+	CallTimeout time.Duration
 }
 
 // ResolveSettings reads the run's settings, naming what is missing.
@@ -382,6 +387,17 @@ func ResolveSettings(getenv func(string) string, windowFlag int) (Settings, erro
 			}
 			s.ContextWindow = n
 		}
+	}
+	// Same knob, same default as serve, so an eval row and production time
+	// out at the same bound. The floor is config's; here a shorter value is
+	// the operator's own experiment.
+	s.CallTimeout = config.DefaultCallTimeout
+	if v := strings.TrimSpace(getenv("REVIEW_INFERENCE_CALL_TIMEOUT")); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d <= 0 {
+			return s, fmt.Errorf("REVIEW_INFERENCE_CALL_TIMEOUT=%q: not a positive duration (e.g. 5m)", v)
+		}
+		s.CallTimeout = d
 	}
 	return s, nil
 }

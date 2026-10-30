@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/httpstats"
 )
 
@@ -52,7 +53,7 @@ func TestInferenceRequestsAreCounted(t *testing.T) {
 // properties of its default are reproduced in countingClient and pinned here.
 // Mirrors llmwire's TestNew_DefaultHTTPClientHasNoWholeRequestTimeout.
 func TestCountingClientKeepsLLMWiresTimeoutShape(t *testing.T) {
-	c := countingClient(DefaultCallTimeout)
+	c := countingClient(config.DefaultCallTimeout)
 
 	// A whole-request timeout would cut a slow completion body mid-read, the
 	// same reason Bitbucket's client must not carry one. The caller's ctx and
@@ -79,7 +80,7 @@ func TestCountingClientKeepsLLMWiresTimeoutShape(t *testing.T) {
 	// is what let the backstop land at 90s while the guard was at 300s: the
 	// transport then won the race and every review slower than 90s failed with
 	// net/http's generic error instead of ErrNoResponseHeaders.
-	if want := DefaultCallTimeout + headerBackstopHeadroom; tr.ResponseHeaderTimeout != want {
+	if want := config.DefaultCallTimeout + headerBackstopHeadroom; tr.ResponseHeaderTimeout != want {
 		t.Errorf("ResponseHeaderTimeout = %v, want %v (CallTimeout + headroom), "+
 			"so llmwire's guard reports the timeout under its own name",
 			tr.ResponseHeaderTimeout, want)
@@ -107,7 +108,7 @@ func TestClientCallTimeoutDefaultsAndReports(t *testing.T) {
 	srv := (&fakeGateway{}).start(t, alias)
 	for _, tc := range []struct {
 		in, want time.Duration
-	}{{0, DefaultCallTimeout}, {7 * time.Minute, 7 * time.Minute}} {
+	}{{0, config.DefaultCallTimeout}, {7 * time.Minute, 7 * time.Minute}} {
 		c, err := New(Options{Model: testProfile, Registry: testRegistry, APIKey: "k",
 			CallTimeout: tc.in, Env: env(srv.URL, alias, nil)})
 		if err != nil {

@@ -14,11 +14,6 @@ import (
 	"github.com/trick77/noergler/internal/httpstats"
 )
 
-// DefaultCallTimeout is the hard wall-clock cap on a single LLM call when
-// Options.CallTimeout is zero (REVIEW_INFERENCE_CALL_TIMEOUT unset).
-// noergler imposes it; the model is unaware of any deadline.
-const DefaultCallTimeout = 300 * time.Second
-
 // Client is one team's inference client.
 //
 // Safe for concurrent use: llmwire's Client guards its own state and wraps
@@ -76,7 +71,9 @@ type Options struct {
 	APIKey string
 	// ContextWindow overrides the gateway's figure. 0 means resolve it.
 	ContextWindow int
-	// CallTimeout caps one call. 0 means DefaultCallTimeout.
+	// CallTimeout is the hard wall-clock cap on one call. noergler imposes
+	// it; the model is unaware of any deadline. 0 means
+	// config.DefaultCallTimeout.
 	CallTimeout time.Duration
 
 	HeadroomTokens int
@@ -115,7 +112,7 @@ func New(opt Options) (*Client, error) {
 
 	timeout := opt.CallTimeout
 	if timeout <= 0 {
-		timeout = DefaultCallTimeout
+		timeout = config.DefaultCallTimeout
 	}
 
 	c := &Client{
@@ -169,8 +166,8 @@ func countingClient(timeout time.Duration) *http.Client {
 }
 
 // CallTimeout is the wall-clock cap armed on every call of this client, as
-// configured or DefaultCallTimeout. The log lines and the posted notices
-// quote it, so what a reviewer reads is the bound that actually fired.
+// configured or config.DefaultCallTimeout. The log lines and the posted
+// notices quote it, so what a reviewer reads is the bound that actually fired.
 func (c *Client) CallTimeout() time.Duration { return c.timeout }
 
 // headerBackstopHeadroom mirrors llmwire's unexported constant of the same

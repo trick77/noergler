@@ -382,12 +382,17 @@ func nonNegative(r *kitenv.Reader, name string, def int) int {
 	return v
 }
 
+// DefaultCallTimeout is the gateway call cap when REVIEW_INFERENCE_CALL_TIMEOUT
+// is unset: the one figure serve, evals and the inference client's zero value
+// all fall back to.
+const DefaultCallTimeout = 5 * time.Minute
+
 // callTimeout is a duration with a floor of one minute. The timeout notices
-// quote the cap in whole minutes, so anything under one would post "0
-// minutes"; and a bare number ("300") fails in kit's reader, since its unit
-// would be a guess.
-func callTimeout(r *kitenv.Reader, name string, def time.Duration) time.Duration {
-	v := r.Duration(name, def)
+// quote the cap in whole minutes, rounded down, so anything under one would
+// post "0 minutes"; and a bare number ("300") fails in kit's reader, since
+// its unit would be a guess.
+func callTimeout(r *kitenv.Reader, name string) time.Duration {
+	v := r.Duration(name, DefaultCallTimeout)
 	if v < time.Minute {
 		r.Fail("%s: must be at least 1m, got %s", name, v)
 	}
@@ -505,7 +510,7 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 		Queue: Queue{
 			InferenceConcurrency:        positive(r, "REVIEW_INFERENCE_CONCURRENCY", 6),
 			InferenceConcurrencyPerTeam: positive(r, "REVIEW_INFERENCE_CONCURRENCY_PER_TEAM", 2),
-			InferenceCallTimeout:        callTimeout(r, "REVIEW_INFERENCE_CALL_TIMEOUT", 5*time.Minute),
+			InferenceCallTimeout:        callTimeout(r, "REVIEW_INFERENCE_CALL_TIMEOUT"),
 		},
 		AlmanachLimits:  AlmanachLimits{NoteMaxChars: positive(r, "ALMANACH_NOTE_MAX_CHARS", 24000)},
 		TeamsConfigPath: r.String("TEAMS_CONFIG", "teams.yaml"),

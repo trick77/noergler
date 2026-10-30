@@ -15,11 +15,12 @@ import (
 	"github.com/trick77/noergler/internal/store"
 )
 
-// timeoutMinutes is the client's call cap in whole minutes, as the notices
-// phrase it. Rounded, not truncated: config floors the cap at one minute, so
-// a 90s cap reads as 2 minutes rather than 1.
+// timeoutMinutes is the client's call cap in whole minutes, rounded down, as
+// the notices phrase it. Down, never up: "no response within 1 minute" holds
+// for a call cut at 90s, "within 2 minutes" would not. Config floors the cap
+// at one minute, so this is never 0.
 func timeoutMinutes(llm InferenceClient) int {
-	return int(llm.CallTimeout().Round(time.Minute).Minutes())
+	return int(llm.CallTimeout() / time.Minute)
 }
 
 // postOrUpdateSummary posts a new summary comment or updates the existing

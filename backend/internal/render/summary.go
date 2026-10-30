@@ -332,19 +332,22 @@ func renderVisual(in SummaryInput) string {
 			text = p("_nicht verglichen: das Modell hat nichts dazu gesagt._", "_not compared: the model said nothing about it._")
 		}
 		// A folded line names up to maxFoldedNames screenshots and counts
-		// the rest, variants included; a single one keeps its variant count.
-		shown, more := g.names, 0
+		// the rest; one name only when any of them had to be a path, or the
+		// subject is wider than the line again. Variants keep their own
+		// suffix, summed, so "more" means screenshots on every line.
+		shown := g.names
 		if len(shown) > maxFoldedNames {
-			shown, more = shown[:maxFoldedNames], len(shown)-maxFoldedNames
+			shown = shown[:maxFoldedNames]
+		}
+		if len(g.names) > 1 && slices.ContainsFunc(shown, func(n string) bool { return strings.Contains(n, "/") }) {
+			shown = shown[:1]
 		}
 		subject := "`" + strings.Join(shown, "`, `") + "`"
-		if len(g.names) > 1 {
-			if extra := more + g.variants; extra > 0 {
-				subject += fmt.Sprintf(p(" und %d weitere", " and %d more"), extra)
-			}
+		if more := len(g.names) - len(shown); more > 0 {
+			subject += " " + p("und ", "and ") + PluralIn(in.Lang, more, "weiterer", "weitere", "more", "more")
 		}
 		line := fmt.Sprintf("- %s — %s", subject, text)
-		if len(g.names) == 1 && g.variants > 0 {
+		if g.variants > 0 {
 			line += " _(" + PluralIn(in.Lang, g.variants, "weitere Variante", "weitere Varianten",
 				"more variant", "more variants") + ")_"
 		}

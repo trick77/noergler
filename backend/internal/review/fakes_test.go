@@ -738,7 +738,7 @@ func (f *fakeLLM) CallTimeout() time.Duration {
 	if f.timeout != 0 {
 		return f.timeout
 	}
-	return inference.DefaultCallTimeout
+	return config.DefaultCallTimeout
 }
 
 func (f *fakeLLM) Review(_ context.Context, req inference.ReviewRequest) inference.ReviewResult {
