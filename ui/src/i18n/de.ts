@@ -494,9 +494,8 @@ export const de = {
         "Meistens ein Bot-Account. Frage deinen Team-Admin, falls nicht.",
       branch_opt_out: "Dein Branch-Name enthält es. Siehe unten.",
       pr_ignored:
-        "Jemand hat die Zusammenfassung gelöscht. Danach prüft noergler diesen PR nie mehr.",
-      pr_cost_cap:
-        "Auf diesem PR läuft nichts mehr, auch keine Erwähnung. Bitte deinen Admin, das Limit zu erhöhen.",
+        "Jemand hat die Zusammenfassung gelöscht. Nur eine @Erwähnung holt noergler auf diesen PR zurück.",
+      pr_cost_cap: "Auf diesem PR läuft nichts mehr, auch keine Erwähnung.",
       no_reviewable_files:
         "Nur Lock-Files, Vendor-Code, generierte Dateien oder Binaries haben sich geändert.",
       empty_diff: "Bitbucket meldet keine Änderungen.",
@@ -512,38 +511,27 @@ export const de = {
     agentsQ: "AGENTS.md",
     agentsA1:
       "Dagegen prüft das Review deinen Code: die Konventionen und Einschränkungen, die man einem neuen Reviewer in deinem Team erklären müsste. Lege die Datei ins Root des Repos.",
-    agentsA2:
-      "Kein AGENTS.md, kein Review. Die Zusammenfassung sagt das, statt zu schweigen, damit ein PR ohne Review nie ein Rätsel ist.",
     agentsA3:
       "Halte es kurz. Die Zusammenfassung warnt schon lange vor dem Grössenlimit, und über dem Limit hören Reviews ganz auf.",
     stopQ: "Wie verhindere ich, dass noergler einen PR prüft?",
     stopA1:
       "Schreibe <code>noergloff</code> irgendwo in den Namen des Source-Branch: <code>feature/noergloff-spike</code> wird nie automatisch geprüft.",
     stopA2:
-      "Bei einem PR, der schon offen ist, lösche stattdessen die Zusammenfassung von noergler. Danach bleibt er diesem PR fern, und nichts holt ihn zurück.",
+      "Bei einem PR, der schon offen ist, lösche stattdessen die Zusammenfassung von noergler. Danach bleibt er diesem PR fern, bis ihn jemand dort mit @ erwähnt.",
     stopA3:
       "Dein Team kann auch Branches per Muster ausschliessen, nach Source-Branch (<code>dependabot/*</code>) oder nach Target-Branch (<code>release/*</code>). Diese PRs werden nie automatisch geprüft; eine @Erwähnung funktioniert trotzdem.",
     askQ: "Wie frage ich noergler etwas?",
     askA1:
-      "Erwähne den Bot mit seinem Bitbucket-Benutzernamen in einem PR-Kommentar. Stelle eine Frage, und er antwortet; verlange ein Review, und er macht eines.",
+      "Erwähne den Bot mit seinem Bitbucket-Benutzernamen in einem PR-Kommentar. Stelle eine Frage, und er antwortet; verlange ein Review, und er macht eines. Eine direkte Antwort auf einen seiner Kommentare braucht keine Erwähnung.",
     askA2:
       "Eine Erwähnung übergeht die Auto-Review-Liste, deshalb funktioniert sie auch bei PRs, die sonst nie geprüft würden. Das Kostenlimit übergeht sie nicht: Jede Antwort zählt dazu, und am Limit antwortet der Bot auch nicht mehr.",
-    lessQ: "Warum hat das zweite Review weniger gesagt als das erste?",
-    lessA1:
-      "Ein neuer Commit wird gegen den Commit des letzten Reviews geprüft, nicht gegen den ganzen PR, und Findings, die schon geposted wurden, werden nicht wiederholt.",
-    lessA2: "Ein wieder geöffneter, abgelehnter PR fängt von vorne an.",
     stoppedQ: "Warum haben die Reviews mitten in meinem PR aufgehört?",
     stoppedA:
-      "Der PR hat sein Kostenlimit erreicht; der laufende Betrag steht in der Zusammenfassung. Reviews und Antworten zählen alle dazu. Bitte deinen Admin, das Limit zu erhöhen.",
+      "Der PR hat sein Kostenlimit erreicht; der laufende Betrag steht in der Zusammenfassung. Reviews und Antworten zählen alle dazu.",
     filesQ: "Welche Dateien werden geprüft?",
     filesA1:
       "Quelldateien, die sich im PR geändert haben. Lock-Files, Vendor-Verzeichnisse, generierte Dateien und Binaries werden übersprungen.",
     filesA2:
       "Dein Team kann auch ganze Repos nach Namen ausschliessen, standardmässig <code>*-infra</code>. Diese werden nie geprüft, obwohl der Webhook für sie trotzdem auslöst.",
-    apiQ: "Wo ist die API?",
-    apiA1:
-      "<docs>/api/docs</docs>. Repos beanspruchen und freigeben und die Autorenlisten ändern, ohne über deinen noergler-Admin zu gehen.",
-    apiA2:
-      "Du brauchst das Webhook-Secret deines Teams, das der Admin hat. Zum Beanspruchen brauchst du ausserdem dein eigenes Bitbucket-Token mit Projekt-Admin-Rechten.",
   },
 } satisfies Catalog;
