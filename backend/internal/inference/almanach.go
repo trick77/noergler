@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -137,7 +138,7 @@ func RenderAlmanachNotePrompt(req AlmanachNotePromptRequest) string {
 	}
 	limit := "when any field exceeds its limit"
 	if req.MaxChars > 0 {
-		limit += " or the note exceeds " + itoa(req.MaxChars) + " characters in total"
+		limit += " or the note exceeds " + strconv.Itoa(req.MaxChars) + " characters in total"
 	}
 	return strings.NewReplacer(
 		PlaceholderAlmanachRepo, req.Repo,
@@ -220,8 +221,6 @@ func ParseAlmanachNote(content string) (AlmanachNote, bool) {
 
 // Almanach note statuses, as almanach_calls.note_status spells them.
 const (
-	AlmanachWritten        = "written"
-	AlmanachSuperseded     = "superseded"
 	AlmanachNothingLearned = "nothing_learned"
 	AlmanachTooLong        = "dropped_too_long"
 	AlmanachSecret         = "dropped_secret"
@@ -382,10 +381,8 @@ type AlmanachNoteResult struct {
 // note's own response_format is not known from here: cache_read_tokens on
 // the recorded call is the number that says.
 func (c *Client) AlmanachNote(ctx context.Context, req AlmanachNoteRequest) AlmanachNoteResult {
-	if req.PromptTokens > 0 && c.Ready() {
-		if ceiling := c.FitCeiling(); req.PromptTokens > ceiling {
-			return AlmanachNoteResult{Outcome: OutcomeTooLarge, Err: &TooLargeError{PromptTokens: req.PromptTokens, Ceiling: ceiling}}
-		}
+	if err := c.tooLarge(req.PromptTokens); err != nil {
+		return AlmanachNoteResult{Outcome: OutcomeTooLarge, Err: err}
 	}
 	chat := llmwire.ChatRequest{
 		Model:     c.model,

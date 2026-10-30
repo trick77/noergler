@@ -1,7 +1,5 @@
 package inference
 
-import "strconv"
-
 // splitLines splits on a boundary set wider than newline: \v, \f, \x1c-\x1e,
 // \x85, U+2028 and U+2029 all break a line. Terminators are not kept.
 //
@@ -42,5 +40,3 @@ func isLineBreak(r rune) bool {
 	}
 	return false
 }
-
-func itoa(n int) string { return strconv.Itoa(n) }

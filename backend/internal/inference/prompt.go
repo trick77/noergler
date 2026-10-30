@@ -182,7 +182,7 @@ func RenderCumulativePRDiff(cumulative string, partial bool, omitted []string) s
 	}
 	block += "\n\nAlso changed in this PR, diff not shown — do not assume what these contain:\n" + bullets(listed)
 	if more := len(omitted) - len(listed); more > 0 {
-		block += "\n- … and " + itoa(more) + " more"
+		block += "\n- … and " + strconv.Itoa(more) + " more"
 	}
 	return block
 }
@@ -237,7 +237,7 @@ func RenderPreviouslyPostedFindings(findings []PostedFinding) string {
 		}
 		loc := filePath
 		if f.LineNumber != nil {
-			loc = filePath + ":" + itoa(*f.LineNumber)
+			loc = filePath + ":" + strconv.Itoa(*f.LineNumber)
 		}
 		id := ""
 		if f.ID > 0 {
