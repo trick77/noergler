@@ -64,3 +64,25 @@ func TestMatchVisual(t *testing.T) {
 		t.Errorf("lines = %v", lines)
 	}
 }
+
+// A hidden pair is caught only when marked not visible; a shown one marked
+// not visible is missed, its keywords notwithstanding, and has no line.
+func TestMatchVisualHidden(t *testing.T) {
+	expected := []ExpectedVisual{
+		{ID: "noise", Path: "a.png", Hidden: true},
+		{ID: "font", Path: "b.png", Keywords: []string{"font"}},
+		{ID: "listed", Path: "c.png", Hidden: true},
+	}
+	ids := map[string]string{"V1": "a.png", "V2": "b.png", "V3": "c.png"}
+	got, lines := matchVisual(expected, ids, []inference.VisualChange{
+		{ID: "V1", Change: "No difference.", Invisible: true},
+		{ID: "V2", Change: "The font changed.", Invisible: true},
+		{ID: "V3", Change: "Edges shifted."},
+	})
+	if !got[0].Found || got[1].Found || got[1].Why != "marked not visible, so no line is shown" || got[2].Found {
+		t.Errorf("matches = %+v", got)
+	}
+	if len(lines) != 1 || lines["c.png"] == "" {
+		t.Errorf("lines = %v, want c.png only", lines)
+	}
+}

@@ -25,7 +25,9 @@ an incident or an eval run: read the reason before relaxing a rule.
   model. Pixel diff and crop in code: vision models miss small differences
   between two whole screenshots, and a crop costs a fraction of the tokens.
   Exact compare, no tolerance: anti-aliasing and font drift are the change a
-  reviewer most needs told about. Stored per pair: the summary is the PR's on
+  reviewer most needs told about. The model, not a threshold, drops a pair
+  nobody can see: a pixel tolerance is a guess a font fallback can slip
+  under, and the model already says when it sees no difference. Stored per pair: the summary is the PR's on
   every run, and re-sending unchanged images every push pays for nothing.
   Keyed by blob id, not bytes: a byte hash needed both versions read on every
   push, on the single worker, to learn the answer was already stored. Before

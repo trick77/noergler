@@ -80,6 +80,18 @@ func TestParseVisualChanges(t *testing.T) {
 	if len(got.Visual) != 1 || got.Visual[0] != (VisualChange{ID: "V1", Change: "Button moved below the form; explained by login.css."}) {
 		t.Errorf("visual = %+v", got.Visual)
 	}
+	flags := ParseReview(`{"overview": "x", "visual_changes": [` +
+		`{"id": "V1", "change": "a", "visible": true}, {"id": "V2", "change": "b", "visible": false},` +
+		`{"id": "V3", "change": "c"}, {"id": "V4", "change": "d", "visible": "false"}]}`)
+	want := []bool{false, true, false, false}
+	if len(flags.Visual) != len(want) {
+		t.Fatalf("visual = %+v", flags.Visual)
+	}
+	for i, v := range flags.Visual {
+		if v.Invisible != want[i] {
+			t.Errorf("%s: Invisible = %v, want %v (only a literal false hides a line)", v.ID, v.Invisible, want[i])
+		}
+	}
 	if none := ParseReview(`{"overview": "x", "visual_changes": null}`); none.Visual != nil {
 		t.Errorf("null visual_changes = %+v, want none", none.Visual)
 	}

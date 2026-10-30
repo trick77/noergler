@@ -785,7 +785,7 @@ const cannedReview = `{
   "fixed": [],
   "pre_existing": [],
   "compliance_requirements": null,
-  "visual_changes": [{"id": "V1", "change": "A red bar appears mid-form; nothing in the PR explains it."}]
+  "visual_changes": [{"id": "V1", "change": "A red bar appears mid-form; nothing in the PR explains it.", "visible": true}]
 }`
 
 type chatMessage = struct {

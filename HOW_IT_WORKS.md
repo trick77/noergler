@@ -346,7 +346,7 @@ to it (at least 256 px a side) and downscaled to 1024 px; an image over 16
 megapixels is refused before decoding. Same pixels (a re-encode): not
 listed, and stored so the pair is never read again.
 
-At most six pairs go out per call; the rest wait for a later run, which
+At most ten pairs go out per call; the rest wait for a later run, which
 finds these in the store. The images and their labels are counted into the
 fit check (w·h/750 tokens an image); one that does not fit is left out,
 never a file. A diff that changes baselines and nothing else is reviewed
@@ -360,7 +360,10 @@ the CSS that explains it; the pair (same blob ids) is never sent again.
 The section lists each screenshot by file name (the path where two share
 one) with the model's sentence, or why there is none: over the per-run limits, no room, too large, unreadable, in Git LFS,
 no vision, or the model said nothing. A removed baseline gets no line; a PR
-that only removes baselines has no section. Never a finding: an image has
+that only removes baselines has no section. Neither does a pair the model
+says shows no difference a person could see (a few edge pixels a shade
+off; never an added baseline, which has no before): it
+is stored like same pixels, and the next variant is tried on a later run. Never a finding: an image has
 no line to anchor on and no quotable evidence. Every screenshot left out is
 in the log.
 

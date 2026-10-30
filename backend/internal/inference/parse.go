@@ -479,12 +479,19 @@ func ParseReview(content string) ParsedReview {
 			out.warn("Skipping malformed visual_changes list: %s", truncateRunes(string(rawVisual), 200))
 		} else {
 			for _, item := range items {
-				var v VisualChange
-				if json.Unmarshal(item, &v) != nil {
+				var e struct {
+					ID      string          `json:"id"`
+					Change  string          `json:"change"`
+					Visible json.RawMessage `json:"visible"`
+				}
+				if json.Unmarshal(item, &e) != nil {
 					out.warn("Skipping malformed visual_changes entry: %s", truncateRunes(string(item), 200))
 					continue
 				}
-				v.ID, v.Change = strings.TrimSpace(v.ID), strings.TrimSpace(v.Change)
+				// Only a literal false hides the line: anything else the
+				// model put there shows it.
+				v := VisualChange{ID: strings.TrimSpace(e.ID), Change: strings.TrimSpace(e.Change),
+					Invisible: string(e.Visible) == "false"}
 				if v.ID == "" || v.Change == "" {
 					out.warn("Skipping empty visual_changes entry")
 					continue
@@ -501,6 +508,10 @@ func ParseReview(content string) ParsedReview {
 type VisualChange struct {
 	ID     string `json:"id"`
 	Change string `json:"change"`
+	// Invisible: the model named no difference it could see, so the pair
+	// gets no line. Decoded from `visible`; absent reads as visible, so a
+	// model that leaves it out loses no line.
+	Invisible bool `json:"-"`
 }
 
 // decodeString returns raw as a string, or "" when it is absent or not a
