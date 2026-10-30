@@ -223,7 +223,7 @@ func (d Deps) putTeamSettings(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		d.Log.ErrorContext(ctx, "settings update failed", logging.Err(err))
-		httpx.WriteError(w, http.StatusServiceUnavailable, "database not ready")
+		httpx.WriteError(w, http.StatusServiceUnavailable, errDBNotReady)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, viewOf(rt.Team(), rt, d.BotUsername))

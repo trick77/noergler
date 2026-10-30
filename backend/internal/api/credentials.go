@@ -90,7 +90,7 @@ func (d Deps) putTeamCredentials(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		d.Log.ErrorContext(ctx, "credentials push failed", logging.Err(err))
-		httpx.WriteError(w, http.StatusServiceUnavailable, "database not ready")
+		httpx.WriteError(w, http.StatusServiceUnavailable, errDBNotReady)
 		return
 	}
 
@@ -117,7 +117,7 @@ func (d Deps) deleteTeamCredentials(w http.ResponseWriter, r *http.Request) {
 	removed, err := rt.ResetCredentials(ctx, kind, "team:"+slug)
 	if err != nil {
 		d.Log.ErrorContext(ctx, "credentials reset failed", logging.Err(err))
-		httpx.WriteError(w, http.StatusServiceUnavailable, "database not ready")
+		httpx.WriteError(w, http.StatusServiceUnavailable, errDBNotReady)
 		return
 	}
 	if !removed {
