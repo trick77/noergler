@@ -507,9 +507,8 @@ export const en = {
         "Usually a bot account. Ask your team admin if it is not.",
       branch_opt_out: "Your branch name contains it. See below.",
       pr_ignored:
-        "Somebody deleted the summary comment. Nothing brings it back on this PR.",
-      pr_cost_cap:
-        "Nothing more runs on this PR, mentions included. Ask your admin to raise the limit.",
+        "Somebody deleted the summary comment. Only an @mention brings noergler back to this PR.",
+      pr_cost_cap: "Nothing more runs on this PR, mentions included.",
       no_reviewable_files:
         "Only lockfiles, vendored code, generated output or binaries changed.",
       empty_diff: "Bitbucket reports no changes.",
@@ -524,39 +523,28 @@ export const en = {
     agentsQ: "AGENTS.md",
     agentsA1:
       "It is what the review checks your code against: the conventions and constraints a new reviewer on your team would have to be told. Put it at the repo root.",
-    agentsA2:
-      "No AGENTS.md, no review. The summary comment says so rather than staying silent, so an unreviewed PR is never a mystery.",
     agentsA3:
       "Keep it short. The summary starts warning well before the size limit, and past the limit reviews stop entirely.",
     stopQ: "How do I stop noergler reviewing a PR?",
     stopA1:
       "Put <code>noergloff</code> anywhere in the source branch name: <code>feature/noergloff-spike</code> is never auto-reviewed.",
     stopA2:
-      "On a PR that is already open, delete noergler's summary comment instead. It stays away after that, and nothing brings it back on that PR.",
+      "On a PR that is already open, delete noergler's summary comment instead. It stays away after that until somebody @mentions it there.",
     stopA3:
       "Your team can also exclude branches by pattern, by source branch (<code>dependabot/*</code>) or by target branch (<code>release/*</code>). Those PRs are never auto-reviewed; an @mention still works.",
     askQ: "How do I ask noergler something?",
     askA1:
-      "Mention the bot by its Bitbucket username in a PR comment. Ask a question and it answers; ask for a review and it runs one.",
+      "Mention the bot by its Bitbucket username in a PR comment. Ask a question and it answers; ask for a review and it runs one. A direct reply under its summary or one of its answers needs no mention; under a finding, the PR author's reply is answered without one.",
     askA2:
       "Mentioning it overrides the auto-review list, so it works on PRs that would never be reviewed on their own. It does not override the cost cap: every reply and answer counts toward it, and at the cap the bot stops answering too.",
-    lessQ: "Why did the second review say less than the first?",
-    lessA1:
-      "A new commit is reviewed against the last reviewed commit, not the whole PR, and findings already posted are not repeated.",
-    lessA2: "Reopening a declined PR starts over from scratch.",
     stoppedQ: "Why did reviews stop halfway through my PR?",
     stoppedA:
-      "The PR hit its cost cap; the running total is on the summary comment. Reviews, replies and answers all count toward it. Ask your admin to raise the limit.",
+      "The PR hit its cost cap; the running total is on the summary comment. Reviews, replies and answers all count toward it.",
     filesQ: "Which files get reviewed?",
     filesA1:
       "Source files that changed in the PR. Lockfiles, vendored directories, generated output and binaries are skipped.",
     filesA2:
       "Your team can also exclude whole repos by name — <code>*-infra</code> by default. Those never get reviewed, even though the webhook still fires for them.",
-    apiQ: "Where is the API?",
-    apiA1:
-      "<docs>/api/docs</docs>. Claim and release repos, and change the author lists, without going through your noergler admin.",
-    apiA2:
-      "You need your team's webhook secret, which the admin has. Claiming also needs your own Bitbucket token with project admin.",
   },
 };
 

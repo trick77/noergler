@@ -64,7 +64,7 @@ The pipeline refuses early and cheaply. In order:
 2. Author is in the auto-review list (an `@mention` skips this and the next two).
 3. The actor who pushed is not in the ignore list.
 4. Skip state: if a human deleted noergler's summary comment, the PR is left
-   alone from then on.
+   alone until an `@mention` brings it back (§12).
 5. The source branch does not contain the opt-out keyword.
 6. `AGENTS.md` exists, when it is required.
 7. `AGENTS.md` is under the hard token limit.

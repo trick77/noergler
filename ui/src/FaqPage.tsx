@@ -47,13 +47,11 @@ const SKIPS = [
   "diff_too_large",
 ] as const;
 
-type MarkupKey =
-  "faq.whyNotA" | "faq.stopA1" | "faq.stopA3" | "faq.filesA2" | "faq.apiA1";
+type MarkupKey = "faq.whyNotA" | "faq.stopA1" | "faq.stopA3" | "faq.filesA2";
 
-/** T renders a catalog entry that carries markup: <code>, <strong> and
- *  <docs> map to the page's own elements, so a translation can move them
- *  around the sentence without touching JSX. <docs>, not <link>: Trans
- *  parses <link> as a void HTML tag and drops its text. */
+/** T renders a catalog entry that carries markup: <code> and <strong> map
+ *  to the page's own elements, so a translation can move them around the
+ *  sentence without touching JSX. */
 function T({ k }: { k: MarkupKey }) {
   return (
     <Trans
@@ -61,12 +59,6 @@ function T({ k }: { k: MarkupKey }) {
       components={{
         code: <Code />,
         strong: <strong />,
-        docs: (
-          <a
-            href="/api/docs"
-            className="text-ink underline hover:no-underline"
-          />
-        ),
       }}
     />
   );
@@ -100,7 +92,6 @@ export function FaqPage() {
 
         <Q q={t("faq.agentsQ")}>
           <p>{t("faq.agentsA1")}</p>
-          <p>{t("faq.agentsA2")}</p>
           <p>{t("faq.agentsA3")}</p>
         </Q>
 
@@ -119,11 +110,6 @@ export function FaqPage() {
           <p>{t("faq.askA2")}</p>
         </Q>
 
-        <Q q={t("faq.lessQ")}>
-          <p>{t("faq.lessA1")}</p>
-          <p>{t("faq.lessA2")}</p>
-        </Q>
-
         <Q q={t("faq.stoppedQ")}>
           <p>{t("faq.stoppedA")}</p>
         </Q>
@@ -133,13 +119,6 @@ export function FaqPage() {
           <p>
             <T k="faq.filesA2" />
           </p>
-        </Q>
-
-        <Q q={t("faq.apiQ")}>
-          <p>
-            <T k="faq.apiA1" />
-          </p>
-          <p>{t("faq.apiA2")}</p>
         </Q>
       </div>
     </div>

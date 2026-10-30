@@ -968,13 +968,10 @@ describe("FaqPage", () => {
     expect(screen.getByText("PR cost cap reached")).toBeDefined();
   });
 
-  it("names the opt-out keyword and points at the API docs", () => {
+  it("names the opt-out keyword", () => {
     render(<FaqPage />);
 
     expect(screen.getByText("noergloff")).toBeDefined();
-    expect(screen.getByText("/api/docs").getAttribute("href")).toBe(
-      "/api/docs",
-    );
   });
 
   // The page is for developers, not operators: a reader here cannot set env
