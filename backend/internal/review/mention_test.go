@@ -175,6 +175,18 @@ func TestMentionQAFailureReplies(t *testing.T) {
 		})
 	}
 
+	// The notice quotes the client's own cap, in whole minutes rounded down,
+	// not a constant: a reintroduced constant would keep saying 5.
+	t.Run("timeout quotes the configured cap", func(t *testing.T) {
+		h := newHarness(t, nil)
+		h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeTimedOut}
+		h.llm.timeout = 10*time.Minute + 30*time.Second
+		h.r.HandleMention(context.Background(), mentionPayload("@noergler explain this", "alice"), "platform", &inlineScheduler{})
+		if len(h.bb.Replies) != 1 || !strings.Contains(h.bb.Replies[0].Text, "within 10 minutes") {
+			t.Errorf("replies = %+v, want one naming 10 minutes", h.bb.Replies)
+		}
+	})
+
 	t.Run("a hard error posts nothing", func(t *testing.T) {
 		h := newHarness(t, nil)
 		h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeError}

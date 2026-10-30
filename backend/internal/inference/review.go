@@ -284,10 +284,10 @@ func (e *TooLargeError) Error() string {
 
 // classifyCallError maps a failed call to an outcome.
 //
-// llmwire applies CallTimeout to a context it derives itself, so the caller's
-// ctx.Err() stays nil and its sentinels are plain errors that never unwrap to
-// context.DeadlineExceeded. A non-streaming Chat arms the stall guard with the
-// call cap under stallHeaders, so the 300s cap surfaces as ErrNoResponseHeaders
+// llmwire applies the call timeout to a context it derives itself, so the
+// caller's ctx.Err() stays nil and its sentinels are plain errors that never
+// unwrap to context.DeadlineExceeded. A non-streaming Chat arms the stall guard
+// with the call cap under stallHeaders, so the cap surfaces as ErrNoResponseHeaders
 // rather than ErrCallCap. Both are the model being too slow and both must read
 // as a timeout, or a hung model is reported to the operator as a generic error.
 func classifyCallError(ctx context.Context, err error) Outcome {

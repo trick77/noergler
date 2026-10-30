@@ -437,11 +437,76 @@ func TestSummaryVisualChanges(t *testing.T) {
 
 func TestSummaryVisualChangesAreCapped(t *testing.T) {
 	in := base()
+	// Each line its own sentence: identical ones would fold into one.
 	for i := range maxVisualLines + 3 {
-		in.Visual = append(in.Visual, VisualLine{Path: fmt.Sprintf("s-snapshots/%d.png", i), Text: "x"})
+		in.Visual = append(in.Visual, VisualLine{Path: fmt.Sprintf("s-snapshots/%d.png", i), Text: fmt.Sprintf("change %d", i)})
 	}
 	got := Summary(in)
 	if !strings.Contains(got, "_… and 3 more._") || strings.Contains(got, fmt.Sprintf("`s-snapshots/%d.png`", maxVisualLines)) {
 		t.Errorf("want %d lines and a count:\n%s", maxVisualLines, got)
+	}
+}
+
+// Screenshots with the byte-identical sentence are one line (user,
+// 2026-10-30: the same "uses the new font" ten times). Exact text only; a
+// status line never folds; a folded line names three and counts the rest,
+// variants included; the cap counts folded lines.
+func TestSummaryVisualChangesFoldIdenticalLines(t *testing.T) {
+	in := base()
+	same := "The edit field uses the new font;  explained by `theme.css`.\n"
+	in.Visual = []VisualLine{
+		{Path: "s/a.png", Text: same, Variants: 1},
+		{Path: "s/b.png", Status: VisualTooLarge},
+		{Path: "s/c.png", Text: "The edit field uses the old font; explained by `theme.css`."},
+		{Path: "s/d.png", Text: same},
+		{Path: "s/e.png", Text: same, Variants: 2},
+		{Path: "s/f.png", Text: same},
+		{Path: "s/g.png", Status: VisualTooLarge},
+	}
+	got := Summary(in)
+	for _, want := range []string{
+		// "more" counts screenshots; the variants keep their own suffix, summed.
+		"- `a.png`, `d.png`, `e.png` and 1 more — The edit field uses the new font; explained by `theme.css`. _(3 more",
+		"- `b.png` — _not compared: image too large._",
+		"- `c.png` — The edit field uses the old font",
+		"- `g.png` — _not compared: image too large._",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+	if n := strings.Count(got, "uses the new font"); n != 1 {
+		t.Errorf("the shared sentence appears %d times, want once:\n%s", n, got)
+	}
+
+	// A shared base name forces paths; a folded line then names one and
+	// counts the rest, or the subject is wider than the line again.
+	in = base()
+	in.Visual = []VisualLine{
+		{Path: "apps/e2e/__screenshots__/login.spec.ts/header.png", Text: "same"},
+		{Path: "apps/web/__screenshots__/home.spec.ts/header.png", Text: "same"},
+		{Path: "apps/web/__screenshots__/home.spec.ts/footer.png", Text: "same"},
+	}
+	got = Summary(in)
+	if !strings.Contains(got, "- `apps/e2e/__screenshots__/login.spec.ts/header.png` and 2 more — same") {
+		t.Errorf("one path and a count:\n%s", got)
+	}
+
+	// Two of them fold, the rest stay: the cap counts lines, not screenshots.
+	in = base()
+	for i := range maxVisualLines + 2 {
+		in.Visual = append(in.Visual, VisualLine{Path: fmt.Sprintf("s/%d.png", i), Text: "same"})
+	}
+	in.Visual = append(in.Visual, VisualLine{Path: "s/z.png", Text: "other"})
+	got = Summary(in)
+	if strings.Contains(got, "more._") || !strings.Contains(got, "`z.png` — other") {
+		t.Errorf("folded lines fit under the cap:\n%s", got)
+	}
+
+	in.Lang = lang.DE
+	in.Visual = []VisualLine{{Path: "s/a.png", Text: "gleich"}, {Path: "s/b.png", Text: "gleich"},
+		{Path: "s/c.png", Text: "gleich"}, {Path: "s/d.png", Text: "gleich"}}
+	if got = Summary(in); !strings.Contains(got, "- `a.png`, `b.png`, `c.png` und 1 weiterer — gleich") {
+		t.Errorf("German fold:\n%s", got)
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/secretbox"
@@ -324,6 +325,10 @@ type Queue struct {
 	InferenceConcurrency int
 	// InferenceConcurrencyPerTeam stops one team's burst taking every slot.
 	InferenceConcurrencyPerTeam int
+	// InferenceCallTimeout caps one gateway call. Instance-wide: the
+	// shutdown drain budget is prepare + pool wait + this + posting per
+	// review in flight, and a Q&A tool loop is up to four calls of it.
+	InferenceCallTimeout time.Duration
 }
 
 // App is the instance layer plus every resolved team.
@@ -373,6 +378,23 @@ func nonNegative(r *kitenv.Reader, name string, def int) int {
 	v := r.Int(name, def)
 	if v < 0 {
 		r.Fail("%s: must be zero (unlimited) or a positive integer, got %d", name, v)
+	}
+	return v
+}
+
+// DefaultCallTimeout is the gateway call cap when REVIEW_INFERENCE_CALL_TIMEOUT
+// is unset: the one figure serve, evals and the inference client's zero value
+// all fall back to.
+const DefaultCallTimeout = 5 * time.Minute
+
+// callTimeout is a duration with a floor of one minute. The timeout notices
+// quote the cap in whole minutes, rounded down, so anything under one would
+// post "0 minutes"; and a bare number ("300") fails in kit's reader, since
+// its unit would be a guess.
+func callTimeout(r *kitenv.Reader, name string) time.Duration {
+	v := r.Duration(name, DefaultCallTimeout)
+	if v < time.Minute {
+		r.Fail("%s: must be at least 1m, got %s", name, v)
 	}
 	return v
 }
@@ -488,6 +510,7 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 		Queue: Queue{
 			InferenceConcurrency:        positive(r, "REVIEW_INFERENCE_CONCURRENCY", 6),
 			InferenceConcurrencyPerTeam: positive(r, "REVIEW_INFERENCE_CONCURRENCY_PER_TEAM", 2),
+			InferenceCallTimeout:        callTimeout(r, "REVIEW_INFERENCE_CALL_TIMEOUT"),
 		},
 		AlmanachLimits:  AlmanachLimits{NoteMaxChars: positive(r, "ALMANACH_NOTE_MAX_CHARS", 24000)},
 		TeamsConfigPath: r.String("TEAMS_CONFIG", "teams.yaml"),

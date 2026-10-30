@@ -73,6 +73,9 @@ type InferenceClient interface {
 	// Vision is the profile's image support: without it no screenshot is
 	// sent.
 	Vision() bool
+	// CallTimeout is the cap armed on every call; the timeout notices and
+	// log lines quote it, so they name the bound that fired.
+	CallTimeout() time.Duration
 	Review(ctx context.Context, req inference.ReviewRequest) inference.ReviewResult
 	Mention(ctx context.Context, req inference.MentionRequest) inference.MentionResult
 	FindingReply(ctx context.Context, req inference.FindingReplyRequest) inference.FindingReplyResult

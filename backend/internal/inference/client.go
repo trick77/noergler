@@ -14,10 +14,6 @@ import (
 	"github.com/trick77/noergler/internal/httpstats"
 )
 
-// CallTimeout is the hard wall-clock cap on a single LLM call. noergler
-// imposes it; the model is unaware of any deadline.
-const CallTimeout = 300 * time.Second
-
 // Client is one team's inference client.
 //
 // Safe for concurrent use: llmwire's Client guards its own state and wraps
@@ -38,6 +34,9 @@ type Client struct {
 	// vision is the profile's image input support, read at startup. A model
 	// without it is sent no screenshots; never a startup fault.
 	vision bool
+
+	// timeout is the wall-clock cap armed on every call; the notices quote it.
+	timeout time.Duration
 
 	// window is the context window resolved at startup, 0 until Startup runs.
 	// An explicit OPENAI_CONTEXT_WINDOW wins and is set here directly.
@@ -72,6 +71,10 @@ type Options struct {
 	APIKey string
 	// ContextWindow overrides the gateway's figure. 0 means resolve it.
 	ContextWindow int
+	// CallTimeout is the hard wall-clock cap on one call. noergler imposes
+	// it; the model is unaware of any deadline. 0 means
+	// config.DefaultCallTimeout.
+	CallTimeout time.Duration
 
 	HeadroomTokens int
 	Threshold      int
@@ -107,9 +110,15 @@ func New(opt Options) (*Client, error) {
 		log = slog.New(slog.DiscardHandler)
 	}
 
+	timeout := opt.CallTimeout
+	if timeout <= 0 {
+		timeout = config.DefaultCallTimeout
+	}
+
 	c := &Client{
 		model:     opt.Model,
 		effort:    opt.ReasoningEffort,
+		timeout:   timeout,
 		window:    opt.ContextWindow,
 		headroom:  opt.HeadroomTokens,
 		threshold: opt.Threshold,
@@ -118,10 +127,10 @@ func New(opt Options) (*Client, error) {
 	}
 
 	wire, err := llmwire.FromEnv(opt.Model, llmwire.Config{
-		CallTimeout: CallTimeout,
+		CallTimeout: timeout,
 		Logger:      opt.Logger,
 		Lookup:      teamLookup(opt.APIKey, env),
-		HTTPClient:  countingClient(),
+		HTTPClient:  countingClient(timeout),
 		Registry:    opt.Registry,
 		// APIKey stays empty: the team's key is answered through Lookup.
 	})
@@ -143,17 +152,23 @@ func New(opt Options) (*Client, error) {
 // than llmwire's header bound so llmwire's guard still reports the timeout
 // under its own named bound rather than the transport's generic one.
 //
-// That bound is CallTimeout, not DefaultHeaderTimeout: this Config leaves
+// That bound is the call timeout, not DefaultHeaderTimeout: this Config leaves
 // HeaderTimeout unset, and a non-streaming Chat arms llmwire's stall guard
 // with the call cap (see classifyCallError). Sizing the backstop off the 60s
-// default put it at 90s, UNDER the 300s guard, so the transport won the race
-// and every slow review failed at 90s with net/http's generic "timeout
-// awaiting response headers" instead of ErrNoResponseHeaders.
-func countingClient() *http.Client {
+// default put it at 90s, UNDER the 300s guard of the time, so the transport
+// won the race and every slow review failed at 90s with net/http's generic
+// "timeout awaiting response headers" instead of ErrNoResponseHeaders. The
+// backstop therefore follows the configured timeout, whatever it is.
+func countingClient(timeout time.Duration) *http.Client {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
-	tr.ResponseHeaderTimeout = CallTimeout + headerBackstopHeadroom
+	tr.ResponseHeaderTimeout = timeout + headerBackstopHeadroom
 	return &http.Client{Transport: httpstats.Transport("inference", tr)}
 }
+
+// CallTimeout is the wall-clock cap armed on every call of this client, as
+// configured or config.DefaultCallTimeout. The log lines and the posted
+// notices quote it, so what a reviewer reads is the bound that actually fired.
+func (c *Client) CallTimeout() time.Duration { return c.timeout }
 
 // headerBackstopHeadroom mirrors llmwire's unexported constant of the same
 // name. It is the margin that keeps llmwire's header guard ahead of the
@@ -161,7 +176,7 @@ func countingClient() *http.Client {
 //
 // llmwire computes the backstop from its RESOLVED HeaderTimeout. Size this one
 // off the same bound llmwire resolves for a non-streaming Chat, which is
-// CallTimeout while HeaderTimeout is unset. Set HeaderTimeout in the Config
+// the call timeout while HeaderTimeout is unset. Set HeaderTimeout in the Config
 // and this must follow it instead.
 const headerBackstopHeadroom = 30 * time.Second
 

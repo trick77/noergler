@@ -253,12 +253,12 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 	switch result.Outcome {
 	case inference.OutcomeTimedOut:
 		r.log.ErrorContext(ctx, fmt.Sprintf("Mention Q&A on %s aborted - no response within %.0fs",
-			prTag, inference.CallTimeout.Seconds()))
+			prTag, r.llm.CallTimeout().Seconds()))
 		r.reply(ctx, project, repo, prID, replyTo, fmt.Sprintf(l.Pick(
 			"⚠️ Keine Antwort vom Modell innerhalb von %d Minuten. Bitte nochmals versuchen, oder die Frage "+
 				"vereinfachen, falls sie viel Kontext braucht.",
 			"⚠️ No response from the model within %d minutes. Please try again, or simplify the question "+
-				"if it requires a lot of context."), timeoutMinutes))
+				"if it requires a lot of context."), timeoutMinutes(r.llm)))
 	case inference.OutcomeTooLarge:
 		r.log.WarnContext(ctx, prTag+": mention prompt too large for the model's context window")
 		reply := inference.MentionTooLargeReply(l)

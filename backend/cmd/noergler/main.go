@@ -265,7 +265,8 @@ func serve(log *slog.Logger) error {
 	// which the pod's termination grace period has to allow for: its SIGKILL
 	// ends the drain, and so does any second SIGINT/SIGTERM, pod or not. With
 	// the inference pool that budget is now prepare + pool wait + the
-	// gateway's 300s call timeout + posting, for every review still in flight.
+	// gateway call timeout (REVIEW_INFERENCE_CALL_TIMEOUT) + posting, for
+	// every review still in flight.
 	q.Stop()
 	if runErr != nil {
 		return runErr

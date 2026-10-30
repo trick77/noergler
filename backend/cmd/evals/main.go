@@ -181,6 +181,7 @@ func dialGateway(s evals.Settings, effort string) (evals.Reviewer, error) {
 		ReasoningEffort: effort,
 		APIKey:          s.APIKey,
 		ContextWindow:   s.ContextWindow,
+		CallTimeout:     s.CallTimeout,
 		Logger:          slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: &logLevel})),
 		Env: func(name string) (string, bool) {
 			v, ok := env[name]

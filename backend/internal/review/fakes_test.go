@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/config"
@@ -681,12 +682,14 @@ func (f *fakeStore) ClaimRollup(_ context.Context, _ store.PRKey, final store.Ro
 
 // fakeLLM returns canned review and mention results.
 type fakeLLM struct {
-	model   string
-	effort  string
-	ready   bool
-	vision  bool
-	window  int
-	budget  int
+	model  string
+	effort string
+	ready  bool
+	vision bool
+	window int
+	budget int
+	// timeout is what CallTimeout reports; 0 is the production default.
+	timeout time.Duration
 	review  inference.ReviewResult
 	mention inference.MentionResult
 	reply   inference.FindingReplyResult
@@ -728,6 +731,15 @@ func (f *fakeLLM) Label() string         { return config.ModelLabel(f.model, f.e
 func (f *fakeLLM) Ready() bool           { return f.ready }
 func (f *fakeLLM) ContextWindow() int    { return f.window }
 func (f *fakeLLM) InputTokenBudget() int { return f.budget }
+
+// CallTimeout is the production default, so the notice tests read "5
+// minutes" unless a test sets its own.
+func (f *fakeLLM) CallTimeout() time.Duration {
+	if f.timeout != 0 {
+		return f.timeout
+	}
+	return config.DefaultCallTimeout
+}
 
 func (f *fakeLLM) Review(_ context.Context, req inference.ReviewRequest) inference.ReviewResult {
 	f.Reviews = append(f.Reviews, req)

@@ -334,6 +334,11 @@ Browser and platform variants of one screenshot (`-chromium`, `-firefox`,
 first; a variant whose pixels did not change hands over to the next, so a
 change only one browser shows is not lost. The line counts the rest.
 
+Screenshots whose line is the same sentence, byte for byte after whitespace,
+are one line at render time: three names, then a count of the rest, variants
+included. A word apart stays apart, a status line never folds, and the store
+keeps one line per pair.
+
 A pair is known by its blob ids, so one described before is shown from the
 store without a read. A new one is read at both commits (at most 20 reads a
 run, under `BITBUCKET_MAX_FILE_BYTES`); a 404 says added or deleted where
