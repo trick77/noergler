@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/trick77/noergler/internal/diff"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
@@ -170,7 +171,7 @@ func TestRunDetailRecordsThePRScope(t *testing.T) {
 	other := "diff --git a/b.go b/b.go\n--- a/b.go\n+++ b/b.go\n@@ -1,1 +1,3 @@\n-x\n+y\n+z\n+w\n"
 	h = incrementalHarness(t, func(h *harness) { h.bb.prDiff = sampleDiff + other })
 	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
-	added, removed := countDiffLines(sampleDiff + other)
+	added, removed, _ := diff.Scope(sampleDiff + other)
 	if d := decodeDetail(t, h); d.PRScope == nil || *d.PRScope != (store.PRScope{Added: added, Removed: removed, Files: 2}) {
 		t.Errorf("incremental scope = %+v, want the whole PR's +%d/-%d in 2 files", d.PRScope, added, removed)
 	}

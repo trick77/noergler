@@ -163,6 +163,21 @@ func ExceedsSizeGate(path, fileDiff string) (changed, limit int, over bool) {
 	return 0, 0, false
 }
 
+// Scope is a whole diff's reviewable footprint: added and removed lines and
+// the number of files, over IsReviewable files only, so lock files and
+// vendored bundles that were never reviewed stay out of every total. The
+// run row, the summary footer and the merge-time rollup all read it, so
+// they agree by construction.
+func Scope(rawDiff string) (added, removed, files int) {
+	for _, fd := range SplitByFile(rawDiff) {
+		if IsReviewable(fd) {
+			a, d := CountChangedLines(fd)
+			added, removed, files = added+a, removed+d, files+1
+		}
+	}
+	return added, removed, files
+}
+
 // CountChangedLines counts one file diff's added and removed lines. The
 // ---/+++ file headers are skipped only before the first hunk: inside one, a
 // removed "-- x" reads "--- x" and is a change.

@@ -213,7 +213,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 
 	// Every reviewable changed file, size-gated ones included: the set the
 	// +/- lines cover and the merge-time rollup counts
-	// (countReviewableFiles), so the run row, the footer and the rollup
+	// (diff.Scope), so the run row, the footer and the rollup
 	// agree. What was not reviewed is a subset, named on its own lines.
 	totalFiles := len(files) + len(oversized)
 

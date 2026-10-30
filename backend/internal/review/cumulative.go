@@ -136,8 +136,8 @@ func (r *Reviewer) fetchCumulativeDiff(ctx context.Context, key store.PRKey, prT
 
 	out := cumulativeContext{diff: kept.String(), partial: filtered > 0 || len(oversized) > 0 || len(omitted) > 0,
 		added: diff.AddedLines(full), hasScreenshot: diff.HasScreenshot(full)}
-	a, d := countDiffLines(full)
-	out.scope = &store.PRScope{Added: a, Removed: d, Files: countReviewableFiles(full)}
+	a, d, n := diff.Scope(full)
+	out.scope = &store.PRScope{Added: a, Removed: d, Files: n}
 	for _, f := range omitted {
 		if f.Path != "" {
 			out.omitted = append(out.omitted, f.Path)

@@ -46,7 +46,7 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 		path := diff.ExtractPath(fd)
 		if diff.IsReviewable(fd) {
 			// Counted for every reviewable file, size-gated ones included,
-			// as the merge-time rollup (countDiffLines) counts them: not
+			// as the merge-time rollup (diff.Scope) counts them: not
 			// reviewed, but changed.
 			a, d := diff.CountChangedLines(fd)
 			p.added, p.removed = p.added+a, p.removed+d
@@ -191,19 +191,6 @@ func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sou
 		prTag, len(files), totalDiffLines, totalContentLines, withContent, len(files)-withContent))
 
 	return p
-}
-
-// countDiffLines counts added and removed lines, skipping files the reviewer
-// ignores so the count reflects real code changes rather than reformatted
-// JSON or vendored bundles.
-func countDiffLines(rawDiff string) (added, removed int) {
-	for _, fd := range diff.SplitByFile(rawDiff) {
-		if diff.IsReviewable(fd) {
-			a, d := diff.CountChangedLines(fd)
-			added, removed = added+a, removed+d
-		}
-	}
-	return added, removed
 }
 
 // truncateRunes cuts s to at most n runes. Runes and not bytes: a byte cut
