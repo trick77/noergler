@@ -129,9 +129,64 @@ non-placeholder test fixture, the same password in `application.yaml`):
 
 Decision: landed on the prompt's own contradictions, not on a measured gain.
 
+## Split experiment: findings without the summary (2026-10-31)
+
+Question: one call writes the findings and the PR summary (overview,
+verdict, strengths, screenshot lines, ...). Does the summary work cost
+findings recall, so that a findings-only call plus a summary call would
+beat it?
+
+mimo-v2.6-pro high, 26 cases rev10, 5 samples each. Arm B is
+`briefs/review-findings-only.txt`: `review.txt` with every summary key
+pinned to a fixed placeholder. Two confounds: pinning `visual_changes` to
+`[]` also dropped "a screenshot is never a finding" from the brief, and the
+model still wrote screenshot lines in 15 of 25 visual samples. Arm B did
+less summary work, not none.
+
+- full prompt: 68 of 75 seeded samples caught (single view), controls clean
+  in 55 of 55.
+- findings-only: 72 of 75, controls clean in 55 of 55.
+- Misses with no finding at all: 6 against 3, on different cases each
+  arm. Noise at 5 samples.
+- `visual-hidden-submit` 3 of 5 against 5 of 5. Both full-prompt misses
+  described the hidden button and its CSS cause correctly, in
+  `visual_changes` only: the bug went to the summary, not into `findings`.
+  `review.txt` says "a screenshot is never a finding", which the model can
+  read as "a bug a screenshot shows is not a finding"; arm B had lost that
+  sentence, so its 5 of 5 does not separate the two causes. The follow-up
+  below does.
+- Completion ~1,070 tokens a call against ~730; prompt 5,610 against 4,449.
+
++4 of 75 is about 5 points, under the ~15 a 5-sample run can show. The
+split would add a second call that resends the whole diff, so it costs more
+than the one call it replaces.
+
+Decision: production stays one call. The `visual-hidden-submit` routing is
+a prompt question for `review.txt`, not a reason to split.
+
+Follow-up, the same day: the full prompt, summary work and screenshot rule
+kept, plus one sentence after "a screenshot is never a finding": "A bug in
+the code stays a finding when a screenshot also shows it: anchor and
+evidence from the code, as if no screenshot were sent." Run with `-prompt`;
+the variant is `review.txt` since this landed. The 5 visual cases, 5
+samples each:
+
+- `visual-hidden-submit` 5 of 5 (3 of 5 above), every finding on the CSS
+  line, none naming the image.
+- the four visual controls clean in 20 of 20: an explained or drifting
+  screenshot did not turn into a finding.
+- screenshot lines still written: 33 of 35 scored, the 2 misses correct
+  lines worded outside the case's keywords.
+
+The screenshot stays summary only (INVARIANTS: test screenshots); the
+sentence keeps a code bug from leaving `findings` because an image shows it
+too.
+
 ## Known gaps
 
 - `lock-not-released` keywords miss correct findings; inflates `extra`.
+- `visual-hidden-submit` `button-gone` keywords miss correct lines worded
+  "drops" or "loses" the button.
 - Validator dropped 3 correct mini findings (`evidence_not_found`): two
   lines joined into one evidence string, or prose appended to a quoted line.
   The quote is not verbatim, so the drop stands.

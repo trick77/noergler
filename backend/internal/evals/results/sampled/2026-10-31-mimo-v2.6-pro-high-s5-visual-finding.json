@@ -1,0 +1,1616 @@
+{
+ "Model": "mimo-v2.6-pro",
+ "Effort": "high",
+ "Samples": 5,
+ "Seeded": 1,
+ "Cases": [
+  {
+   "Case": "visual-added-empty-state",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "visual-added-empty-state",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "empty-state",
+        "path": "web/e2e/orders.spec.ts-snapshots/orders-empty-chromium-linux.png",
+        "keywords": [
+         "no orders",
+         "empty"
+        ],
+        "why": "An added baseline has no before; the line has to say what the new screen is."
+       },
+       "Found": true,
+       "Change": "A new baseline screenshot shows the orders page in its empty state with a cart icon, 'No orders yet' heading, supporting copy and a blue 'Browse products' button-styled link; this is a newly added image, and the rendered content is directly produced by the new `OrdersEmpty` component (heading, paragraph and `\u003ca href='/products'\u003eBrowse products\u003c/a\u003e` in `web/src/orders/OrdersEmpty.tsx`), with button styling supplied by existing CSS not shown in this diff."
+      }
+     ],
+     "Visual": {
+      "web/e2e/orders.spec.ts-snapshots/orders-empty-chromium-linux.png": "A new baseline screenshot shows the orders page in its empty state with a cart icon, 'No orders yet' heading, supporting copy and a blue 'Browse products' button-styled link; this is a newly added image, and the rendered content is directly produced by the new `OrdersEmpty` component (heading, paragraph and `\u003ca href='/products'\u003eBrowse products\u003c/a\u003e` in `web/src/orders/OrdersEmpty.tsx`), with button styling supplied by existing CSS not shown in this diff."
+     },
+     "Cost": {
+      "PromptTokens": 5484,
+      "CachedTokens": 3072,
+      "CompletionTokens": 839,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "visual-added-empty-state",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "empty-state",
+        "path": "web/e2e/orders.spec.ts-snapshots/orders-empty-chromium-linux.png",
+        "keywords": [
+         "no orders",
+         "empty"
+        ],
+        "why": "An added baseline has no before; the line has to say what the new screen is."
+       },
+       "Found": true,
+       "Change": "An added baseline screenshot shows the orders page empty state with a cart icon, 'No orders yet' heading, supporting text, and a 'Browse products' button; the PR's new `web/src/orders/OrdersEmpty.tsx` component explains this rendering with its cart icon, heading, paragraph, and '/products' link."
+      }
+     ],
+     "Visual": {
+      "web/e2e/orders.spec.ts-snapshots/orders-empty-chromium-linux.png": "An added baseline screenshot shows the orders page empty state with a cart icon, 'No orders yet' heading, supporting text, and a 'Browse products' button; the PR's new `web/src/orders/OrdersEmpty.tsx` component explains this rendering with its cart icon, heading, paragraph, and '/products' link."
+     },
+     "Cost": {
+      "PromptTokens": 5484,
+      "CachedTokens": 5376,
+      "CompletionTokens": 502,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "visual-added-empty-state",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "empty-state",
+        "path": "web/e2e/orders.spec.ts-snapshots/orders-empty-chromium-linux.png",
+        "keywords": [
+         "no orders",
+         "empty"
+        ],
+        "why": "An added baseline has no before; the line has to say what the new screen is."
+       },
+       "Found": true,
+       "Change": "An added baseline screenshot shows the orders empty state: a page titled 'Your orders' with a centered card containing a cart icon, 'No orders yet' heading, the line 'When you buy something, it shows up here.', and a blue 'Browse products' button. The new `OrdersEmpty` component in `web/src/orders/OrdersEmpty.tsx` explains this content and the icon, heading, copy and link it renders."
+      }
+     ],
+     "Visual": {
+      "web/e2e/orders.spec.ts-snapshots/orders-empty-chromium-linux.png": "An added baseline screenshot shows the orders empty state: a page titled 'Your orders' with a centered card containing a cart icon, 'No orders yet' heading, the line 'When you buy something, it shows up here.', and a blue 'Browse products' button. The new `OrdersEmpty` component in `web/src/orders/OrdersEmpty.tsx` explains this content and the icon, heading, copy and link it renders."
+     },
+     "Cost": {
+      "PromptTokens": 5484,
+      "CachedTokens": 5376,
+      "CompletionTokens": 650,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "visual-added-empty-state",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "empty-state",
+        "path": "web/e2e/orders.spec.ts-snapshots/orders-empty-chromium-linux.png",
+        "keywords": [
+         "no orders",
+         "empty"
+        ],
+        "why": "An added baseline has no before; the line has to say what the new screen is."
+       },
+       "Found": true,
+       "Change": "A new screenshot of the orders page empty state appears, showing a cart icon, 'No orders yet' heading, explanatory copy, and a 'Browse products' button-styled link. The PR's new `OrdersEmpty.tsx` component renders exactly this content (`CartIcon`, `h2`, `p`, and the `/products` anchor), so the added code explains the new baseline image."
+      }
+     ],
+     "Visual": {
+      "web/e2e/orders.spec.ts-snapshots/orders-empty-chromium-linux.png": "A new screenshot of the orders page empty state appears, showing a cart icon, 'No orders yet' heading, explanatory copy, and a 'Browse products' button-styled link. The PR's new `OrdersEmpty.tsx` component renders exactly this content (`CartIcon`, `h2`, `p`, and the `/products` anchor), so the added code explains the new baseline image."
+     },
+     "Cost": {
+      "PromptTokens": 5484,
+      "CachedTokens": 0,
+      "CompletionTokens": 513,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "visual-added-empty-state",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "empty-state",
+        "path": "web/e2e/orders.spec.ts-snapshots/orders-empty-chromium-linux.png",
+        "keywords": [
+         "no orders",
+         "empty"
+        ],
+        "why": "An added baseline has no before; the line has to say what the new screen is."
+       },
+       "Found": true,
+       "Change": "A new orders empty-state screenshot appears showing a cart icon, the 'No orders yet' heading, supporting copy, and a blue 'Browse products' button inside a dashed panel; this is fully explained by the added `OrdersEmpty` component in web/src/orders/OrdersEmpty.tsx, which renders exactly those elements."
+      }
+     ],
+     "Visual": {
+      "web/e2e/orders.spec.ts-snapshots/orders-empty-chromium-linux.png": "A new orders empty-state screenshot appears showing a cart icon, the 'No orders yet' heading, supporting copy, and a blue 'Browse products' button inside a dashed panel; this is fully explained by the added `OrdersEmpty` component in web/src/orders/OrdersEmpty.tsx, which renders exactly those elements."
+     },
+     "Cost": {
+      "PromptTokens": 5484,
+      "CachedTokens": 5376,
+      "CompletionTokens": 381,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  },
+  {
+   "Case": "visual-explained-stack",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "visual-explained-stack",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "stacked",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "stack",
+         "column",
+         "vertical",
+         "below",
+         "beneath",
+         "on top of"
+        ],
+        "why": "The visible change is the fields and the button moving from one row into a column."
+       },
+       "Found": true,
+       "Change": "The login form now stacks Email and Password vertically with a visible 'Keep me signed in' checkbox and a full-width 'Sign In' button, replacing the previous side-by-side fields with an inline button; these differences are explained by `web/src/login/login.css` changing `.login-form` to `flex-direction: column`, `.remember` from `display: none` to `display: flex`, and adding `width: 100%` to the actions button."
+      },
+      {
+       "Expected": {
+        "id": "explained-by-css",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "login.css",
+         "flex-direction",
+         "css"
+        ],
+        "why": "The point of the line: the PR's own CSS explains the new baseline."
+       },
+       "Found": true,
+       "Change": "The login form now stacks Email and Password vertically with a visible 'Keep me signed in' checkbox and a full-width 'Sign In' button, replacing the previous side-by-side fields with an inline button; these differences are explained by `web/src/login/login.css` changing `.login-form` to `flex-direction: column`, `.remember` from `display: none` to `display: flex`, and adding `width: 100%` to the actions button."
+      }
+     ],
+     "Visual": {
+      "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png": "The login form now stacks Email and Password vertically with a visible 'Keep me signed in' checkbox and a full-width 'Sign In' button, replacing the previous side-by-side fields with an inline button; these differences are explained by `web/src/login/login.css` changing `.login-form` to `flex-direction: column`, `.remember` from `display: none` to `display: flex`, and adding `width: 100%` to the actions button."
+     },
+     "Cost": {
+      "PromptTokens": 5701,
+      "CachedTokens": 4096,
+      "CompletionTokens": 922,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "visual-explained-stack",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "stacked",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "stack",
+         "column",
+         "vertical",
+         "below",
+         "beneath",
+         "on top of"
+        ],
+        "why": "The visible change is the fields and the button moving from one row into a column."
+       },
+       "Found": true,
+       "Change": "The login form now stacks Email and Password fields vertically, shows a `Keep me signed in` checkbox, and renders the Sign In button at full width with the `Forgot your password?` link below it, whereas before the fields sat side by side with an inline button and no checkbox. This is fully explained by the diff in `web/src/login/login.css` (`.login-form` switched to `flex-direction: column`, `.login-form .remember` switched from `display: none` to `display: flex`, and `.login-form .actions button` given `width: 100%`)."
+      },
+      {
+       "Expected": {
+        "id": "explained-by-css",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "login.css",
+         "flex-direction",
+         "css"
+        ],
+        "why": "The point of the line: the PR's own CSS explains the new baseline."
+       },
+       "Found": true,
+       "Change": "The login form now stacks Email and Password fields vertically, shows a `Keep me signed in` checkbox, and renders the Sign In button at full width with the `Forgot your password?` link below it, whereas before the fields sat side by side with an inline button and no checkbox. This is fully explained by the diff in `web/src/login/login.css` (`.login-form` switched to `flex-direction: column`, `.login-form .remember` switched from `display: none` to `display: flex`, and `.login-form .actions button` given `width: 100%`)."
+      }
+     ],
+     "Visual": {
+      "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png": "The login form now stacks Email and Password fields vertically, shows a `Keep me signed in` checkbox, and renders the Sign In button at full width with the `Forgot your password?` link below it, whereas before the fields sat side by side with an inline button and no checkbox. This is fully explained by the diff in `web/src/login/login.css` (`.login-form` switched to `flex-direction: column`, `.login-form .remember` switched from `display: none` to `display: flex`, and `.login-form .actions button` given `width: 100%`)."
+     },
+     "Cost": {
+      "PromptTokens": 5701,
+      "CachedTokens": 5632,
+      "CompletionTokens": 642,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "visual-explained-stack",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "stacked",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "stack",
+         "column",
+         "vertical",
+         "below",
+         "beneath",
+         "on top of"
+        ],
+        "why": "The visible change is the fields and the button moving from one row into a column."
+       },
+       "Found": true,
+       "Change": "The login form renders vertically instead of side-by-side: Email and Password stack full width, a 'Keep me signed in' checkbox row is now visible, and the 'Sign In' button spans the form width. This is explained by the changes in `web/src/login/login.css` (`.login-form` set to `flex-direction: column` / `align-items: stretch`, `.remember` switched from `display: none` to `display: flex`, and `width: 100%` on `.actions button`)."
+      },
+      {
+       "Expected": {
+        "id": "explained-by-css",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "login.css",
+         "flex-direction",
+         "css"
+        ],
+        "why": "The point of the line: the PR's own CSS explains the new baseline."
+       },
+       "Found": true,
+       "Change": "The login form renders vertically instead of side-by-side: Email and Password stack full width, a 'Keep me signed in' checkbox row is now visible, and the 'Sign In' button spans the form width. This is explained by the changes in `web/src/login/login.css` (`.login-form` set to `flex-direction: column` / `align-items: stretch`, `.remember` switched from `display: none` to `display: flex`, and `width: 100%` on `.actions button`)."
+      }
+     ],
+     "Visual": {
+      "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png": "The login form renders vertically instead of side-by-side: Email and Password stack full width, a 'Keep me signed in' checkbox row is now visible, and the 'Sign In' button spans the form width. This is explained by the changes in `web/src/login/login.css` (`.login-form` set to `flex-direction: column` / `align-items: stretch`, `.remember` switched from `display: none` to `display: flex`, and `width: 100%` on `.actions button`)."
+     },
+     "Cost": {
+      "PromptTokens": 5701,
+      "CachedTokens": 5632,
+      "CompletionTokens": 628,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "visual-explained-stack",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "stacked",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "stack",
+         "column",
+         "vertical",
+         "below",
+         "beneath",
+         "on top of"
+        ],
+        "why": "The visible change is the fields and the button moving from one row into a column."
+       },
+       "Found": true,
+       "Change": "The login form's fields are now stacked vertically full width, the 'Keep me signed in' checkbox row is visible, and the 'Sign In' button spans the form width; these differences are explained by the `web/src/login/login.css` rules switching `.login-form` to `flex-direction: column`, changing `.remember` from `display: none` to `display: flex`, and adding `width: 100%` to the actions button."
+      },
+      {
+       "Expected": {
+        "id": "explained-by-css",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "login.css",
+         "flex-direction",
+         "css"
+        ],
+        "why": "The point of the line: the PR's own CSS explains the new baseline."
+       },
+       "Found": true,
+       "Change": "The login form's fields are now stacked vertically full width, the 'Keep me signed in' checkbox row is visible, and the 'Sign In' button spans the form width; these differences are explained by the `web/src/login/login.css` rules switching `.login-form` to `flex-direction: column`, changing `.remember` from `display: none` to `display: flex`, and adding `width: 100%` to the actions button."
+      }
+     ],
+     "Visual": {
+      "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png": "The login form's fields are now stacked vertically full width, the 'Keep me signed in' checkbox row is visible, and the 'Sign In' button spans the form width; these differences are explained by the `web/src/login/login.css` rules switching `.login-form` to `flex-direction: column`, changing `.remember` from `display: none` to `display: flex`, and adding `width: 100%` to the actions button."
+     },
+     "Cost": {
+      "PromptTokens": 5701,
+      "CachedTokens": 5632,
+      "CompletionTokens": 545,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "visual-explained-stack",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "stacked",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "stack",
+         "column",
+         "vertical",
+         "below",
+         "beneath",
+         "on top of"
+        ],
+        "why": "The visible change is the fields and the button moving from one row into a column."
+       },
+       "Found": true,
+       "Change": "The login form changed from a horizontal row (Email, Password, and Sign In side by side, with the remember-me option hidden) to a stacked column with full-width Email and Password fields, a visible 'Keep me signed in' checkbox, and a full-width Sign In button; the PR's `web/src/login/login.css` explains it via `flex-direction: column` on `.login-form`, `display: flex` on `.login-form .remember`, and `width: 100%` on `.login-form .actions button`."
+      },
+      {
+       "Expected": {
+        "id": "explained-by-css",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "login.css",
+         "flex-direction",
+         "css"
+        ],
+        "why": "The point of the line: the PR's own CSS explains the new baseline."
+       },
+       "Found": true,
+       "Change": "The login form changed from a horizontal row (Email, Password, and Sign In side by side, with the remember-me option hidden) to a stacked column with full-width Email and Password fields, a visible 'Keep me signed in' checkbox, and a full-width Sign In button; the PR's `web/src/login/login.css` explains it via `flex-direction: column` on `.login-form`, `display: flex` on `.login-form .remember`, and `width: 100%` on `.login-form .actions button`."
+      }
+     ],
+     "Visual": {
+      "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png": "The login form changed from a horizontal row (Email, Password, and Sign In side by side, with the remember-me option hidden) to a stacked column with full-width Email and Password fields, a visible 'Keep me signed in' checkbox, and a full-width Sign In button; the PR's `web/src/login/login.css` explains it via `flex-direction: column` on `.login-form`, `display: flex` on `.login-form .remember`, and `width: 100%` on `.login-form .actions button`."
+     },
+     "Cost": {
+      "PromptTokens": 5701,
+      "CachedTokens": 5632,
+      "CompletionTokens": 886,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  },
+  {
+   "Case": "visual-hidden-submit",
+   "Seeded": 1,
+   "Samples": [
+    {
+     "Case": "visual-hidden-submit",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "web/src/login/login.css",
+       "Line": 27,
+       "Severity": "issue",
+       "Comment": "The new rule is meant to hide the remember-me block, but `.login-form \u003e div:last-child` resolves to the `.actions` div (the last child of the form), not `.remember`. On every login form render the `display: none` therefore lands on the wrapper containing the `Sign in` button, so the form has no visible submit control, while the `Keep me signed in` checkbox — the thing the comment says is hidden — stays on screen. The updated e2e snapshot already shows exactly this: the button is gone, the checkbox is still there.",
+       "Confidence": 97,
+       "Headline": "Hide rule targets the actions div, not the remember-me block",
+       "Suggestion": ".login-form \u003e div.remember {",
+       "Evidence": [
+        "/* Remember-me is hidden until persistent sessions ship. */",
+        ".login-form \u003e div:last-child {",
+        "  display: none;",
+        "}"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "hides-the-submit-row",
+        "file": "web/src/login/login.css",
+        "lines": [
+         26,
+         29
+        ],
+        "keywords": [
+         "last-child",
+         "submit",
+         "sign in",
+         "button",
+         "actions"
+        ],
+        "why": "The form's last div is the actions row: the rule meant for remember-me hides the only way to sign in."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "button-gone",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "missing",
+         "gone",
+         "hidden",
+         "removed",
+         "disappear",
+         "no longer",
+         "no sign in",
+         "no submit"
+        ],
+        "why": "The baseline shows the Sign in button gone while remember-me stays: the screenshot says what the selector did."
+       },
+       "Found": false,
+       "Change": "The after screenshot drops the blue 'Sign in' button and pulls 'Forgot your password?' up, while 'Keep me signed in' remains visible; this is explained by the new rule in `web/src/login/login.css` (`.login-form \u003e div:last-child { display: none; }`), which hides the last form child (the actions block) rather than the remember-me block.",
+       "Why": "line mentions none of missing, gone, hidden, removed, disappear, no longer, no sign in, no submit"
+      }
+     ],
+     "Visual": {
+      "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png": "The after screenshot drops the blue 'Sign in' button and pulls 'Forgot your password?' up, while 'Keep me signed in' remains visible; this is explained by the new rule in `web/src/login/login.css` (`.login-form \u003e div:last-child { display: none; }`), which hides the last form child (the actions block) rather than the remember-me block."
+     },
+     "Cost": {
+      "PromptTokens": 5833,
+      "CachedTokens": 4736,
+      "CompletionTokens": 1457,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "visual-hidden-submit",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "web/src/login/login.css",
+       "Line": 27,
+       "Severity": "issue",
+       "Comment": "The rule is meant to hide the remember-me row, but `.login-form \u003e div:last-child` matches the `.actions` div (the last child of the form is `\u003cdiv className=\"actions\"\u003e`), not `\u003cdiv className=\"remember\"\u003e` (the third child). On any page load of the login form this sets `display: none` on the submit button, so the \"Sign in\" button never renders while \"Keep me signed in\" stays visible — exactly what the updated screenshot shows. Users cannot sign in through the UI at all. The selector must target the `.remember` div instead.",
+       "Confidence": 97,
+       "Headline": "CSS hides the Sign in button instead of the remember-me row",
+       "Suggestion": ".login-form \u003e div.remember {",
+       "Evidence": [
+        "\u003cdiv className=\"remember\"\u003e",
+        "  \u003cinput type=\"checkbox\" id=\"rm\" /\u003e",
+        "  \u003clabel htmlFor=\"rm\"\u003eKeep me signed in\u003c/label\u003e",
+        "\u003c/div\u003e",
+        ".login-form \u003e div:last-child {"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "hides-the-submit-row",
+        "file": "web/src/login/login.css",
+        "lines": [
+         26,
+         29
+        ],
+        "keywords": [
+         "last-child",
+         "submit",
+         "sign in",
+         "button",
+         "actions"
+        ],
+        "why": "The form's last div is the actions row: the rule meant for remember-me hides the only way to sign in."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "button-gone",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "missing",
+         "gone",
+         "hidden",
+         "removed",
+         "disappear",
+         "no longer",
+         "no sign in",
+         "no submit"
+        ],
+        "why": "The baseline shows the Sign in button gone while remember-me stays: the screenshot says what the selector did."
+       },
+       "Found": false,
+       "Change": "The cropped login snapshot loses the blue Sign in button that sat below the 'Keep me signed in' row, while the 'Keep me signed in' checkbox row and 'Forgot your password?' link remain visible; this is explained by the new `.login-form \u003e div:last-child { display: none; }` rule in `web/src/login/login.css`, which matches the actions div rather than the remember-me div the comment names.",
+       "Why": "line mentions none of missing, gone, hidden, removed, disappear, no longer, no sign in, no submit"
+      }
+     ],
+     "Visual": {
+      "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png": "The cropped login snapshot loses the blue Sign in button that sat below the 'Keep me signed in' row, while the 'Keep me signed in' checkbox row and 'Forgot your password?' link remain visible; this is explained by the new `.login-form \u003e div:last-child { display: none; }` rule in `web/src/login/login.css`, which matches the actions div rather than the remember-me div the comment names."
+     },
+     "Cost": {
+      "PromptTokens": 5833,
+      "CachedTokens": 5760,
+      "CompletionTokens": 2056,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "visual-hidden-submit",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "web/src/login/login.css",
+       "Line": 27,
+       "Severity": "issue",
+       "Comment": "The rule is meant to hide the remember-me row, but `div:last-child` resolves to the last child of `.login-form`, which is the `.actions` div — the submit button. Rendering the form with this stylesheet hides \"Sign in\" while the \"Keep me signed in\" checkbox stays visible, exactly the opposite of the stated intent, and leaves the form with no visible submit control. The updated baseline screenshot confirms the button is gone and the checkbox is still shown. Target `.remember` directly instead of relying on child position.",
+       "Confidence": 95,
+       "Headline": "Hiding rule targets the submit button, not the remember-me row",
+       "Suggestion": ".login-form .remember {\n  display: none;\n}",
+       "Evidence": [
+        "/* Remember-me is hidden until persistent sessions ship. */",
+        ".login-form \u003e div:last-child {",
+        "  display: none;",
+        "}"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "hides-the-submit-row",
+        "file": "web/src/login/login.css",
+        "lines": [
+         26,
+         29
+        ],
+        "keywords": [
+         "last-child",
+         "submit",
+         "sign in",
+         "button",
+         "actions"
+        ],
+        "why": "The form's last div is the actions row: the rule meant for remember-me hides the only way to sign in."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "button-gone",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "missing",
+         "gone",
+         "hidden",
+         "removed",
+         "disappear",
+         "no longer",
+         "no sign in",
+         "no submit"
+        ],
+        "why": "The baseline shows the Sign in button gone while remember-me stays: the screenshot says what the selector did."
+       },
+       "Found": true,
+       "Change": "The blue Sign in button disappears from the login form while the unchecked 'Keep me signed in' checkbox remains visible. This is explained by the added rule in `web/src/login/login.css` (`.login-form \u003e div:last-child { display: none; }`), which hides the `.actions` div — the last child of the form — rather than the remember-me row the comment describes."
+      }
+     ],
+     "Visual": {
+      "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png": "The blue Sign in button disappears from the login form while the unchecked 'Keep me signed in' checkbox remains visible. This is explained by the added rule in `web/src/login/login.css` (`.login-form \u003e div:last-child { display: none; }`), which hides the `.actions` div — the last child of the form — rather than the remember-me row the comment describes."
+     },
+     "Cost": {
+      "PromptTokens": 5833,
+      "CachedTokens": 5760,
+      "CompletionTokens": 1157,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "visual-hidden-submit",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "web/src/login/login.css",
+       "Line": 27,
+       "Severity": "issue",
+       "Comment": "The new rule targets `.login-form \u003e div:last-child`, but the last child of the form in `LoginForm.tsx` is the `.actions` div that holds the submit button — the `.remember` div is second to last. On any page load the Sign in button gets `display: none` (it is still in the DOM but unclickable, so login is impossible), while \"Keep me signed in\" stays visible — exactly what the updated screenshot shows. The selector contradicts the comment above it, which says the remember-me row is what gets hidden.",
+       "Confidence": 95,
+       "Headline": "CSS hides the Sign in button instead of the remember-me row",
+       "Suggestion": ".login-form .remember {",
+       "Evidence": [
+        "/* Remember-me is hidden until persistent sessions ship. */",
+        ".login-form \u003e div:last-child {",
+        "  display: none;",
+        "}"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "hides-the-submit-row",
+        "file": "web/src/login/login.css",
+        "lines": [
+         26,
+         29
+        ],
+        "keywords": [
+         "last-child",
+         "submit",
+         "sign in",
+         "button",
+         "actions"
+        ],
+        "why": "The form's last div is the actions row: the rule meant for remember-me hides the only way to sign in."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "button-gone",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "missing",
+         "gone",
+         "hidden",
+         "removed",
+         "disappear",
+         "no longer",
+         "no sign in",
+         "no submit"
+        ],
+        "why": "The baseline shows the Sign in button gone while remember-me stays: the screenshot says what the selector did."
+       },
+       "Found": true,
+       "Change": "The 'Sign in' submit button is gone in the after screenshot while 'Keep me signed in' remains visible and the card shrinks accordingly; this is explained by the new `.login-form \u003e div:last-child { display: none; }` rule in `web/src/login/login.css`, which hides the `.actions` div rather than the remember-me row."
+      }
+     ],
+     "Visual": {
+      "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png": "The 'Sign in' submit button is gone in the after screenshot while 'Keep me signed in' remains visible and the card shrinks accordingly; this is explained by the new `.login-form \u003e div:last-child { display: none; }` rule in `web/src/login/login.css`, which hides the `.actions` div rather than the remember-me row."
+     },
+     "Cost": {
+      "PromptTokens": 5833,
+      "CachedTokens": 5760,
+      "CompletionTokens": 2223,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "visual-hidden-submit",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "web/src/login/login.css",
+       "Line": 27,
+       "Severity": "issue",
+       "Comment": "The rule is intended to hide the remember-me row (\"Remember-me is hidden until persistent sessions ship\"), but `.login-form \u003e div:last-child` matches `\u003cdiv className=\"actions\"\u003e`, which wraps the submit button — the `.remember` div is second-to-last in `LoginForm.tsx`. The consequence is not cosmetic: every render of the login form hides the \"Sign in\" button while leaving the \"Keep me signed in\" checkbox visible, so a user filling the form has no way to submit it. The updated screenshot confirms exactly this outcome — the checkbox and label remain, the button is gone. Target the remember-me container directly (e.g. `.login-form .remember`) instead of the last child.",
+       "Confidence": 97,
+       "Headline": "Hidden-element rule matches the submit button, not the remember-me row",
+       "Suggestion": ".login-form .remember {",
+       "Evidence": [
+        "/* Remember-me is hidden until persistent sessions ship. */",
+        ".login-form \u003e div:last-child {",
+        "  display: none;",
+        "}"
+       ]
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "hides-the-submit-row",
+        "file": "web/src/login/login.css",
+        "lines": [
+         26,
+         29
+        ],
+        "keywords": [
+         "last-child",
+         "submit",
+         "sign in",
+         "button",
+         "actions"
+        ],
+        "why": "The form's last div is the actions row: the rule meant for remember-me hides the only way to sign in."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "button-gone",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "missing",
+         "gone",
+         "hidden",
+         "removed",
+         "disappear",
+         "no longer",
+         "no sign in",
+         "no submit"
+        ],
+        "why": "The baseline shows the Sign in button gone while remember-me stays: the screenshot says what the selector did."
+       },
+       "Found": true,
+       "Change": "The 'Sign in' button is gone from the login form snapshot while the 'Keep me signed in' checkbox row and 'Forgot your password?' link remain visible; this is explained by the new `.login-form \u003e div:last-child { display: none; }` rule in `web/src/login/login.css`, which hides the actions div instead of the remember-me row."
+      }
+     ],
+     "Visual": {
+      "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png": "The 'Sign in' button is gone from the login form snapshot while the 'Keep me signed in' checkbox row and 'Forgot your password?' link remain visible; this is explained by the new `.login-form \u003e div:last-child { display: none; }` rule in `web/src/login/login.css`, which hides the actions div instead of the remember-me row."
+     },
+     "Cost": {
+      "PromptTokens": 5833,
+      "CachedTokens": 5760,
+      "CompletionTokens": 1112,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  },
+  {
+   "Case": "visual-invisible-noise",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "visual-invisible-noise",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "not-visible",
+        "path": "web/e2e/account.spec.ts-snapshots/sign-in-chromium-linux.png",
+        "keywords": null,
+        "hidden": true,
+        "why": "Nothing in the crop changed that a person could see; a line for it is the noise the user asked to drop."
+       },
+       "Found": true,
+       "Change": "The sign-in page snapshot shows no perceptible difference between the before and after images (same heading, subtitle, and prefilled email field); nothing in the PR's code changes — a `maxTries` to `maxAttempts` rename in `internal/retry/retry.go` cannot alter this UI rendering — so any pixel-level change would be rendering drift committed as a baseline rather than an intentional screenshot update."
+      }
+     ],
+     "Cost": {
+      "PromptTokens": 5273,
+      "CachedTokens": 3072,
+      "CompletionTokens": 511,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "visual-invisible-noise",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "not-visible",
+        "path": "web/e2e/account.spec.ts-snapshots/sign-in-chromium-linux.png",
+        "keywords": null,
+        "hidden": true,
+        "why": "Nothing in the crop changed that a person could see; a line for it is the noise the user asked to drop."
+       },
+       "Found": true,
+       "Change": "The sign-in page screenshot for `sign-in-chromium-linux.png` shows no perceptible difference between before and after (same heading, subtitle, and pre-filled email field). No code in this PR touches rendering or the sign-in UI, so nothing explains a visual change — and none is visible."
+      }
+     ],
+     "Cost": {
+      "PromptTokens": 5273,
+      "CachedTokens": 5248,
+      "CompletionTokens": 370,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "visual-invisible-noise",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "not-visible",
+        "path": "web/e2e/account.spec.ts-snapshots/sign-in-chromium-linux.png",
+        "keywords": null,
+        "hidden": true,
+        "why": "Nothing in the crop changed that a person could see; a line for it is the noise the user asked to drop."
+       },
+       "Found": true,
+       "Change": "The before and after snapshots of the sign-in page look identical, with no visible difference in the cropped region; nothing in this PR touches UI code, so any screenshot refresh is not explained by these changes and appears to be re-rendering drift in the baseline."
+      }
+     ],
+     "Cost": {
+      "PromptTokens": 5273,
+      "CachedTokens": 5248,
+      "CompletionTokens": 352,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "visual-invisible-noise",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "not-visible",
+        "path": "web/e2e/account.spec.ts-snapshots/sign-in-chromium-linux.png",
+        "keywords": null,
+        "hidden": true,
+        "why": "Nothing in the crop changed that a person could see; a line for it is the noise the user asked to drop."
+       },
+       "Found": true,
+       "Change": "V1: No visible difference between the before and after crops of the sign-in form screenshot; the PR only renames a Go constant in `internal/retry/retry.go`, so nothing in it explains any rendering change in this screenshot."
+      }
+     ],
+     "Cost": {
+      "PromptTokens": 5273,
+      "CachedTokens": 5248,
+      "CompletionTokens": 510,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "visual-invisible-noise",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "not-visible",
+        "path": "web/e2e/account.spec.ts-snapshots/sign-in-chromium-linux.png",
+        "keywords": null,
+        "hidden": true,
+        "why": "Nothing in the crop changed that a person could see; a line for it is the noise the user asked to drop."
+       },
+       "Found": true,
+       "Change": "The sign-in page snapshot for `web/e2e/account.spec.ts-snapshots/sign-in-chromium-linux.png` shows no visible difference between before and after, and nothing in this PR's code changes (a constant rename in `internal/retry/retry.go`) explains any visual change to the sign-in page."
+      }
+     ],
+     "Cost": {
+      "PromptTokens": 5273,
+      "CachedTokens": 5248,
+      "CompletionTokens": 427,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  },
+  {
+   "Case": "visual-unexplained-drift",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "visual-unexplained-drift",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "font-changed",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "font",
+         "serif",
+         "typeface",
+         "type face",
+         "glyph"
+        ],
+        "why": "Every glyph on the page changed face; that is the whole visible change."
+       },
+       "Found": true,
+       "Change": "The login form screenshot now renders all text and input values in a serif face instead of the previous sans-serif face, and headings appear slightly narrower, with no other layout difference. Nothing in this PR explains it: the only changed code is the log message string in `internal/api/health.go`, so this is rendering drift (font substitution or changed browser/environment) captured in the snapshot baseline rather than a product change."
+      },
+      {
+       "Expected": {
+        "id": "unexplained",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "nothing in",
+         "no code",
+         "not explained",
+         "unexplained",
+         "does not explain",
+         "doesn't explain",
+         "unrelated",
+         "drift",
+         "no change in"
+        ],
+        "why": "The point of the feature: a baseline changed with no code to explain it is drift committed as the new truth."
+       },
+       "Found": true,
+       "Change": "The login form screenshot now renders all text and input values in a serif face instead of the previous sans-serif face, and headings appear slightly narrower, with no other layout difference. Nothing in this PR explains it: the only changed code is the log message string in `internal/api/health.go`, so this is rendering drift (font substitution or changed browser/environment) captured in the snapshot baseline rather than a product change."
+      }
+     ],
+     "Visual": {
+      "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png": "The login form screenshot now renders all text and input values in a serif face instead of the previous sans-serif face, and headings appear slightly narrower, with no other layout difference. Nothing in this PR explains it: the only changed code is the log message string in `internal/api/health.go`, so this is rendering drift (font substitution or changed browser/environment) captured in the snapshot baseline rather than a product change."
+     },
+     "Cost": {
+      "PromptTokens": 5680,
+      "CachedTokens": 4096,
+      "CompletionTokens": 380,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "visual-unexplained-drift",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "font-changed",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "font",
+         "serif",
+         "typeface",
+         "type face",
+         "glyph"
+        ],
+        "why": "Every glyph on the page changed face; that is the whole visible change."
+       },
+       "Found": true,
+       "Change": "The login form screenshot's typography changed visibly — headings, labels and body text render in a serif face in the after image instead of the sans-serif face in the before image, with slightly different text metrics and spacing. Nothing in this PR (a log message string in internal/api/health.go) can explain a font change in the login form, so this is likely rendering drift (font availability or browser version) committed as a baseline rather than a change caused by the PR's code."
+      },
+      {
+       "Expected": {
+        "id": "unexplained",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "nothing in",
+         "no code",
+         "not explained",
+         "unexplained",
+         "does not explain",
+         "doesn't explain",
+         "unrelated",
+         "drift",
+         "no change in"
+        ],
+        "why": "The point of the feature: a baseline changed with no code to explain it is drift committed as the new truth."
+       },
+       "Found": true,
+       "Change": "The login form screenshot's typography changed visibly — headings, labels and body text render in a serif face in the after image instead of the sans-serif face in the before image, with slightly different text metrics and spacing. Nothing in this PR (a log message string in internal/api/health.go) can explain a font change in the login form, so this is likely rendering drift (font availability or browser version) committed as a baseline rather than a change caused by the PR's code."
+      }
+     ],
+     "Visual": {
+      "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png": "The login form screenshot's typography changed visibly — headings, labels and body text render in a serif face in the after image instead of the sans-serif face in the before image, with slightly different text metrics and spacing. Nothing in this PR (a log message string in internal/api/health.go) can explain a font change in the login form, so this is likely rendering drift (font availability or browser version) committed as a baseline rather than a change caused by the PR's code."
+     },
+     "Cost": {
+      "PromptTokens": 5680,
+      "CachedTokens": 5632,
+      "CompletionTokens": 582,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "visual-unexplained-drift",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "font-changed",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "font",
+         "serif",
+         "typeface",
+         "type face",
+         "glyph"
+        ],
+        "why": "Every glyph on the page changed face; that is the whole visible change."
+       },
+       "Found": true,
+       "Change": "The login form snapshot's text rendering changed — headings, labels and field values render in a visibly different font/hinting style in the after image. Nothing in the PR explains it: the only code change is a log message string in `internal/api/health.go`, so this is rendering drift (font or anti-aliasing) committed as a new baseline."
+      },
+      {
+       "Expected": {
+        "id": "unexplained",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "nothing in",
+         "no code",
+         "not explained",
+         "unexplained",
+         "does not explain",
+         "doesn't explain",
+         "unrelated",
+         "drift",
+         "no change in"
+        ],
+        "why": "The point of the feature: a baseline changed with no code to explain it is drift committed as the new truth."
+       },
+       "Found": true,
+       "Change": "The login form snapshot's text rendering changed — headings, labels and field values render in a visibly different font/hinting style in the after image. Nothing in the PR explains it: the only code change is a log message string in `internal/api/health.go`, so this is rendering drift (font or anti-aliasing) committed as a new baseline."
+      }
+     ],
+     "Visual": {
+      "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png": "The login form snapshot's text rendering changed — headings, labels and field values render in a visibly different font/hinting style in the after image. Nothing in the PR explains it: the only code change is a log message string in `internal/api/health.go`, so this is rendering drift (font or anti-aliasing) committed as a new baseline."
+     },
+     "Cost": {
+      "PromptTokens": 5680,
+      "CachedTokens": 5632,
+      "CompletionTokens": 627,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "visual-unexplained-drift",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "font-changed",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "font",
+         "serif",
+         "typeface",
+         "type face",
+         "glyph"
+        ],
+        "why": "Every glyph on the page changed face; that is the whole visible change."
+       },
+       "Found": true,
+       "Change": "The login form snapshot's typography shifts from a sans-serif face to a serif face across the headings, labels and body text, with no layout change. Nothing in this PR explains it: the only code change is a log message string in `internal/api/health.go`, so the screenshot is rendering drift (font/anti-aliasing environment) committed as a baseline."
+      },
+      {
+       "Expected": {
+        "id": "unexplained",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "nothing in",
+         "no code",
+         "not explained",
+         "unexplained",
+         "does not explain",
+         "doesn't explain",
+         "unrelated",
+         "drift",
+         "no change in"
+        ],
+        "why": "The point of the feature: a baseline changed with no code to explain it is drift committed as the new truth."
+       },
+       "Found": true,
+       "Change": "The login form snapshot's typography shifts from a sans-serif face to a serif face across the headings, labels and body text, with no layout change. Nothing in this PR explains it: the only code change is a log message string in `internal/api/health.go`, so the screenshot is rendering drift (font/anti-aliasing environment) committed as a baseline."
+      }
+     ],
+     "Visual": {
+      "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png": "The login form snapshot's typography shifts from a sans-serif face to a serif face across the headings, labels and body text, with no layout change. Nothing in this PR explains it: the only code change is a log message string in `internal/api/health.go`, so the screenshot is rendering drift (font/anti-aliasing environment) committed as a baseline."
+     },
+     "Cost": {
+      "PromptTokens": 5680,
+      "CachedTokens": 5632,
+      "CompletionTokens": 347,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "visual-unexplained-drift",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "VisualMatches": [
+      {
+       "Expected": {
+        "id": "font-changed",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "font",
+         "serif",
+         "typeface",
+         "type face",
+         "glyph"
+        ],
+        "why": "Every glyph on the page changed face; that is the whole visible change."
+       },
+       "Found": true,
+       "Change": "The login form screenshot's typography changes from a sans-serif face to a serif face across headings, labels, inputs and buttons. Nothing in this PR touches the login page or any font/stylesheet rule, so the change is unexplained rendering drift captured as a new baseline."
+      },
+      {
+       "Expected": {
+        "id": "unexplained",
+        "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+        "keywords": [
+         "nothing in",
+         "no code",
+         "not explained",
+         "unexplained",
+         "does not explain",
+         "doesn't explain",
+         "unrelated",
+         "drift",
+         "no change in"
+        ],
+        "why": "The point of the feature: a baseline changed with no code to explain it is drift committed as the new truth."
+       },
+       "Found": true,
+       "Change": "The login form screenshot's typography changes from a sans-serif face to a serif face across headings, labels, inputs and buttons. Nothing in this PR touches the login page or any font/stylesheet rule, so the change is unexplained rendering drift captured as a new baseline."
+      }
+     ],
+     "Visual": {
+      "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png": "The login form screenshot's typography changes from a sans-serif face to a serif face across headings, labels, inputs and buttons. Nothing in this PR touches the login page or any font/stylesheet rule, so the change is unexplained rendering drift captured as a new baseline."
+     },
+     "Cost": {
+      "PromptTokens": 5680,
+      "CachedTokens": 5632,
+      "CompletionTokens": 330,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  }
+ ],
+ "Views": [
+  {
+   "Name": "single",
+   "Calls": 1,
+   "Caught": 1,
+   "Extra": 0,
+   "AllCaught": 1,
+   "ControlsClean": 1,
+   "CostMultiple": null
+  },
+  {
+   "Name": "agree2",
+   "Calls": 2,
+   "Caught": 1,
+   "Extra": 0,
+   "AllCaught": 1,
+   "ControlsClean": 1,
+   "CostMultiple": null
+  },
+  {
+   "Name": "either2",
+   "Calls": 2,
+   "Caught": 1,
+   "Extra": 0,
+   "AllCaught": 1,
+   "ControlsClean": 1,
+   "CostMultiple": null
+  },
+  {
+   "Name": "vote3",
+   "Calls": 3,
+   "Caught": 1,
+   "Extra": 0,
+   "AllCaught": 1,
+   "ControlsClean": 1,
+   "CostMultiple": null
+  },
+  {
+   "Name": "tiered3",
+   "Calls": 3,
+   "Caught": 1,
+   "Extra": 0,
+   "AllCaught": 1,
+   "ControlsClean": 1,
+   "CostMultiple": null
+  },
+  {
+   "Name": "union3",
+   "Calls": 3,
+   "Caught": 1,
+   "Extra": 0,
+   "AllCaught": 1,
+   "ControlsClean": 1,
+   "CostMultiple": null
+  },
+  {
+   "Name": "adaptive",
+   "Calls": 2,
+   "Caught": 1,
+   "Extra": 0,
+   "AllCaught": 1,
+   "ControlsClean": 1,
+   "CostMultiple": null
+  }
+ ],
+ "Agreement": [
+  {
+   "Votes": 1,
+   "Real": 0,
+   "RealIssue": 0,
+   "Invented": 0,
+   "InventedIssue": 0
+  },
+  {
+   "Votes": 2,
+   "Real": 0,
+   "RealIssue": 0,
+   "Invented": 0,
+   "InventedIssue": 0
+  },
+  {
+   "Votes": 3,
+   "Real": 0,
+   "RealIssue": 0,
+   "Invented": 0,
+   "InventedIssue": 0
+  },
+  {
+   "Votes": 4,
+   "Real": 0,
+   "RealIssue": 0,
+   "Invented": 0,
+   "InventedIssue": 0
+  },
+  {
+   "Votes": 5,
+   "Real": 1,
+   "RealIssue": 1,
+   "Invented": 0,
+   "InventedIssue": 0
+  }
+ ],
+ "Tokens": {
+  "ColdPrompt": 5594.2,
+  "ColdCached": 3814.4,
+  "ColdCompletion": 821.8,
+  "WarmPrompt": 5594.2,
+  "WarmCached": 5260.8,
+  "WarmCompletion": 742
+ }
+}

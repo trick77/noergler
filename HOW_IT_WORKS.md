@@ -369,8 +369,9 @@ that only removes baselines has no section. Neither does a pair the model
 says shows no difference a person could see (a few edge pixels a shade
 off; never an added baseline, which has no before): it
 is stored like same pixels, and the next variant is tried on a later run. Never a finding: an image has
-no line to anchor on and no quotable evidence. Every screenshot left out is
-in the log.
+no line to anchor on and no quotable evidence. A bug in the code that a
+screenshot also shows is still a finding, anchored and quoted from the code.
+Every screenshot left out is in the log.
 
 ## 12. Q&A by mention
 
