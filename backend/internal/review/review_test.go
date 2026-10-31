@@ -68,7 +68,9 @@ func newHarness(t *testing.T, tweak func(*harness)) *harness {
 		UsePRDescription:      true,
 		// The existing expectations are English; language_test.go covers
 		// the German default.
-		Language: lang.EN,
+		Language:                lang.EN,
+		DisputeSignalWindowDays: 30,
+		DisputeSignalThreshold:  3,
 	}
 
 	if tweak != nil {
@@ -98,7 +100,7 @@ func newHarness(t *testing.T, tweak func(*harness)) *harness {
 		Config:               cfg,
 		Template:             "REVIEW {repo_instructions} {files} {cumulative_pr_diff} {previously_posted_findings} {previous_overview} {ticket_context} {compliance_instructions} {pr_description}",
 		MentionTemplate:      "ASK {question} {repo_instructions} {ticket_context} {pr_description} {diff}",
-		FindingReplyTemplate: "REPLY {repo_instructions} {finding} {file_excerpt}\n## The author's first name\n\n{author_first_name}\n## The reply\n{reply}",
+		FindingReplyTemplate: "REPLY {repo_instructions} {dispute_signals} {finding} {file_excerpt}\n## The author's first name\n\n{author_first_name}\n## The reply\n{reply}",
 		Log:                  quietLogger(),
 	})
 	return h

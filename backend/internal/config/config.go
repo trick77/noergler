@@ -118,7 +118,22 @@ type Review struct {
 	// UsePRDescription feeds the PR title and description to the model.
 	// Team API only (no env var, no teams.yaml key); the DB row wins.
 	UsePRDescription bool
+	// DisputeSignalWindowDays is how long one dispute of a finding counts
+	// toward its dispute signal; DisputeSignalThreshold the distinct PRs
+	// inside that window at which the finding-thread answer proposes the
+	// AGENTS.md bullet (user, 2026-10-31: 30 days, 3 PRs).
+	DisputeSignalWindowDays int
+	DisputeSignalThreshold  int
 }
+
+// Ranges of the dispute-signal knobs: a window past a year is a log, not a
+// signal, and a threshold of 1 is today's every-dispute suggestion again.
+const (
+	DisputeSignalWindowMin    = 1
+	DisputeSignalWindowMax    = 365
+	DisputeSignalThresholdMin = 2
+	DisputeSignalThresholdMax = 20
+)
 
 // DefaultAcceptanceCriteriaPrefixes is the built-in prefix list.
 var DefaultAcceptanceCriteriaPrefixes = []string{
@@ -489,6 +504,8 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 			AgentsMDCustomLink:              r.String("REVIEW_AGENTS_MD_CUSTOM_LINK", ""),
 			OptOutBranchKeyword:             blankOff(r, lookup, "REVIEW_OPT_OUT_BRANCH_KEYWORD", "noergloff"),
 			MaxPRCostUSD:                    r.Float("REVIEW_MAX_PR_COST_USD", 5.00),
+			DisputeSignalWindowDays:         r.Int("REVIEW_DISPUTE_SIGNAL_WINDOW_DAYS", 30),
+			DisputeSignalThreshold:          r.Int("REVIEW_DISPUTE_SIGNAL_THRESHOLD", 3),
 		},
 		Jira: Jira{
 			URL:   r.Required("JIRA_URL"),
@@ -552,6 +569,12 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 	// every auto-review after the first priced run.
 	if v := app.Review.MaxPRCostUSD; v <= 0 {
 		r.Fail("REVIEW_MAX_PR_COST_USD: must be greater than 0, got %v", v)
+	}
+	if v := app.Review.DisputeSignalWindowDays; v < DisputeSignalWindowMin || v > DisputeSignalWindowMax {
+		r.Fail("REVIEW_DISPUTE_SIGNAL_WINDOW_DAYS: must be %d to %d, got %d", DisputeSignalWindowMin, DisputeSignalWindowMax, v)
+	}
+	if v := app.Review.DisputeSignalThreshold; v < DisputeSignalThresholdMin || v > DisputeSignalThresholdMax {
+		r.Fail("REVIEW_DISPUTE_SIGNAL_THRESHOLD: must be %d to %d, got %d", DisputeSignalThresholdMin, DisputeSignalThresholdMax, v)
 	}
 	if err := r.Err(); err != nil {
 		return nil, err

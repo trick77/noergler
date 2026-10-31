@@ -418,13 +418,39 @@ a stored, unfixed finding of that PR without an answer yet, and, for a plain
 reply, only under the PR's cost cap. An `@bot` reply on such a thread is
 answered as a reply too, unless it asks for a review or comes from someone
 else, which the Q&A answers. The call (`finding_reply.txt`) is staged
-like a review, and sees the finding, the file around it, AGENTS.md and the
-reply. A dispute, explicit or not ("we do this in the UI"), is acknowledged;
-when its reason is a project-wide rule AGENTS.md lacks, the answer suggests a
-one-line AGENTS.md bullet. The dispute is stored and later prompts show it
-beside the finding so the issue is not raised again. The thread stays open:
-the author resolves it. A reply's call is recorded and counts toward the
-PR's cost; at the cap, replies stop.
+like a review, and sees the finding, the file around it, AGENTS.md, the
+repo's open dispute signals and the reply. A dispute, explicit or not ("we do
+this in the UI"), is acknowledged. The dispute is stored and later prompts of
+the same PR show it beside the finding so the issue is not raised again. The
+thread stays open: the author resolves it. A reply's call is recorded and
+counts toward the PR's cost; at the cap, replies stop.
+
+### Dispute signals
+
+When a dispute's reason is a project-wide rule AGENTS.md lacks, the model
+words it as a one-line AGENTS.md bullet. That dispute is an occurrence of a
+dispute signal of the repo: the model is shown the repo's open signals,
+numbered, and names the one that is the same rule (`matches_signal`), or none
+for a new signal. A bare "no", a one-off, a quarrel about severity or a reply
+the code contradicts gets no bullet and is no signal.
+
+Each occurrence counts for `REVIEW_DISPUTE_SIGNAL_WINDOW_DAYS` (30), per
+distinct PR. Below `REVIEW_DISPUTE_SIGNAL_THRESHOLD` (3) PRs the answer carries
+no AGENTS.md text at all. The dispute that brings the signal to the threshold,
+and every later one while it holds, adds a statement: the how-many-th PR this
+is, links to the earlier disputed threads (10 at most), the number of
+authors, and the bullet, merged from the earlier wording and this reply, so
+that pasted into AGENTS.md the finding is not raised again. A signal nobody
+disputes for the whole window is dormant: no longer listed, and the next
+dispute on that rule starts over at one. Once AGENTS.md states the rule the
+model writes no bullet, so nothing counts; a dispute that matches a signal
+without a bullet is logged, since the review then raised a finding AGENTS.md
+already rules out.
+
+Signals are read only here, in the reply to a finding: never by a review, the
+Q&A or Almanach, and they never drop a finding. The occurrence is recorded
+once the answer is posted. Known limit: AGENTS.md is read at the finding's
+commit, so a PR opened before the AGENTS.md edit may count once more.
 
 The answer may address the author by first name ("Ok Jan - ..."), not
 always. `BITBUCKET_DISPLAY_NAME_PATTERN` extracts it from the Bitbucket

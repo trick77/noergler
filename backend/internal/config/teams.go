@@ -339,6 +339,18 @@ func (b *blockErrors) positiveFloatField(m *yaml.Node, path, key string) *float6
 	return p
 }
 
+// rangedIntField is an int inside [lo, hi], for the dispute-signal knobs.
+func rangedIntField(lo, hi int) func(*blockErrors, *yaml.Node, string, string) *int {
+	return func(b *blockErrors, m *yaml.Node, path, key string) *int {
+		p := b.intField(m, path, key)
+		if p != nil && (*p < lo || *p > hi) {
+			b.add(joinPath(path, key), fmt.Sprintf("Input should be between %d and %d", lo, hi))
+			return nil
+		}
+		return p
+	}
+}
+
 // reviewOverrides are the team-overridable review knobs: every Review field.
 // The prompts are compiled in and never configurable.
 var reviewOverrides = map[string]reviewOverride{
@@ -363,6 +375,10 @@ var reviewOverrides = map[string]reviewOverride{
 	"opt_out_branch_keyword":     field((*blockErrors).stringField, func(r *Review, v string) { r.OptOutBranchKeyword = v }),
 	"max_pr_cost_usd":            field((*blockErrors).positiveFloatField, func(r *Review, v float64) { r.MaxPRCostUSD = v }),
 	"language":                   field((*blockErrors).langField, func(r *Review, v lang.Lang) { r.Language = v }),
+	"dispute_signal_window_days": field(rangedIntField(DisputeSignalWindowMin, DisputeSignalWindowMax),
+		func(r *Review, v int) { r.DisputeSignalWindowDays = v }),
+	"dispute_signal_threshold": field(rangedIntField(DisputeSignalThresholdMin, DisputeSignalThresholdMax),
+		func(r *Review, v int) { r.DisputeSignalThreshold = v }),
 }
 
 func parseBlock(m *yaml.Node) (*teamBlock, error) {

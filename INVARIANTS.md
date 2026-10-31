@@ -120,6 +120,15 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   parent; a reply nested under another reply is not, known limit); a non-author `@bot`
   reply goes to the Q&A, a review-keyword one to the mention path (a review);
   nothing posted = nothing stamped.
+- Dispute signals (user, 2026-10-31): a `disputes` reply whose
+  `agents_md_line` passes `CheckAgentsMDLine` is one occurrence. Read and
+  written on the finding-reply path only; never in `review.txt`, the Q&A,
+  a mention or Almanach; never drops or softens a finding. Scoped by the
+  route's team and the repo; counted per distinct PR inside
+  `dispute_signal_window_days` (expiry is a WHERE, rows stay). The bullet is
+  posted only at `dispute_signal_threshold` PRs, never below; the model's
+  `matches_signal` counts only if it names the list the prompt showed.
+  Posted = recorded, nothing posted = nothing recorded.
 - Every reply the bot posts is stored (`bot_replies`, by comment id, with
   its PR). A plain reply directly under one is a Q&A from anyone, like a
   reply under the summary (user, 2026-10-22), matched from the DB, never by

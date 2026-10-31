@@ -42,6 +42,8 @@ decision, not a cleanup.
 - The summary is the PR's, never one push's (INVARIANTS: prompt and findings).
 - Author text (PR description, replies, disputes) is intent, never evidence,
   never drops a finding.
+- Dispute signals feed the finding-thread answer only; never a review
+  prompt, never a dropped finding (INVARIANTS: prompt and findings).
 - `review.txt`: `{files}` before `{cumulative_pr_diff}` and
   `{previously_posted_findings}` (prefix cache). One-pass placeholders, never
   `text/template`.

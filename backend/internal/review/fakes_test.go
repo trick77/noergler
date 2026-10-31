@@ -267,6 +267,13 @@ type fakeStore struct {
 	// botReplies serves BotReplyByComment; BotReplies records InsertBotReply.
 	botReplies map[int]*store.BotReply
 	BotReplies []store.BotReply
+	// signals serves OpenDisputeSignals, signalPRs DisputeSignalPRs by
+	// signal id; SignalReads records the reads, Occurrences the records.
+	signals     []store.DisputeSignal
+	signalPRs   map[int64][]store.DisputePR
+	signalErr   error
+	SignalReads []signalRead
+	Occurrences []occurrence
 	// The Almanach feed: notes is the table by key, Notes every upsert that
 	// was written, Finalized every merge stamp, EmittedRuns every 2xx mark,
 	// AlmanachCalls the ledger, NoteDeletes the declines and deletes.
@@ -283,6 +290,53 @@ type fakeStore struct {
 type repliedCall struct {
 	FindingID int64
 	Dispute   *string
+}
+
+type signalRead struct {
+	Team, Project, Repo string
+	WindowDays, Limit   int
+}
+
+type occurrence struct {
+	Team      string
+	SignalID  int64
+	FindingID int64
+	Rule      string
+}
+
+func (f *fakeStore) OpenDisputeSignals(_ context.Context, team, project, repo string, windowDays, limit int) ([]store.DisputeSignal, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.SignalReads = append(f.SignalReads, signalRead{team, project, repo, windowDays, limit})
+	if err := f.err(); err != nil {
+		return nil, err
+	}
+	if f.signalErr != nil {
+		return nil, f.signalErr
+	}
+	return f.signals, nil
+}
+
+func (f *fakeStore) DisputeSignalPRs(_ context.Context, signalID int64, _ int, _ store.PRKey) ([]store.DisputePR, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return nil, err
+	}
+	if f.signalErr != nil {
+		return nil, f.signalErr
+	}
+	return f.signalPRs[signalID], nil
+}
+
+func (f *fakeStore) RecordDisputeOccurrence(_ context.Context, team string, _ store.PRKey, signalID, findingID int64, rule string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return 0, err
+	}
+	f.Occurrences = append(f.Occurrences, occurrence{team, signalID, findingID, rule})
+	return signalID, nil
 }
 
 func newFakeStore() *fakeStore {
