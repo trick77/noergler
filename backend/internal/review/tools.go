@@ -114,7 +114,7 @@ type teamConfigView struct {
 	// an AGENTS.md proposal in the finding thread. The knobs, never the
 	// signals themselves.
 	DisputeSignalWindowDays int      `json:"dispute_signal_window_days"`
-	DisputeSignalThreshold  int      `json:"dispute_signal_threshold_prs"`
+	DisputeSignalThreshold  int      `json:"dispute_signal_threshold"`
 	UsePRDescription        bool     `json:"use_pr_description"`
 	TicketComplianceCheck   bool     `json:"ticket_compliance_check"`
 	JiraEnabled             bool     `json:"jira_enabled"`

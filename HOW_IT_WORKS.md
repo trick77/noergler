@@ -449,8 +449,11 @@ already rules out.
 
 Signals are read only here, in the reply to a finding: never by a review, the
 Q&A or Almanach, and they never drop a finding. The occurrence is recorded
-once the answer is posted. Known limit: AGENTS.md is read at the finding's
-commit, so a PR opened before the AGENTS.md edit may count once more.
+once the answer is posted. A match whose merged bullet fails the format check
+still counts, under the listed wording. Known limits: AGENTS.md is read at the
+finding's commit, so a PR opened before the AGENTS.md edit may count once
+more; two disputes of the same new rule answered at the same moment start a
+signal each, and the count splits between them.
 
 The answer may address the author by first name ("Ok Jan - ..."), not
 always. `BITBUCKET_DISPLAY_NAME_PATTERN` extracts it from the Bitbucket

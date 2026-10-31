@@ -123,3 +123,27 @@ func TestDisputeSignals_LimitAndCascade(t *testing.T) {
 		t.Errorf("signals without occurrences are offered: %+v", got)
 	}
 }
+
+// A purge takes the scope's signals with its PRs; another repo keeps its own.
+func TestDisputeSignals_GoWithAPurge(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	other := PRKey{Project: key.Project, Repo: "web", PRID: 1}
+	for _, k := range []PRKey{key, other} {
+		f := disputedFinding(t, s, k, 1)
+		if _, err := s.RecordDisputeOccurrence(ctx, "platform", k, 0, f, "- a"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	repo := key.Repo
+	if _, err := s.PurgeProject(ctx, "platform", key.Project, &repo); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM dispute_signals WHERE repo_slug = $1`, key.Repo).Scan(&n); err != nil || n != 0 {
+		t.Errorf("purged repo keeps %d signals, %v", n, err)
+	}
+	if got, _ := s.OpenDisputeSignals(ctx, "platform", other.Project, other.Repo, 30, 20); len(got) != 1 {
+		t.Errorf("another repo lost its signal: %+v", got)
+	}
+}

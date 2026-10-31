@@ -48,7 +48,7 @@ func TestTeamConfigIsAnAllowlist(t *testing.T) {
 	want := []string{"team", "model", "default_language", "projects", "exclude_repos", "exclude_source_branches",
 		"exclude_target_branches", "auto_review_authors", "ignore_authors", "opt_out_branch_keyword", "max_pr_cost_usd", "max_comments", "max_file_lines",
 		"require_agents_md", "agents_md_warn_tokens", "agents_md_max_tokens", "agents_md_custom_link",
-		"dispute_signal_window_days", "dispute_signal_threshold_prs",
+		"dispute_signal_window_days", "dispute_signal_threshold",
 		"use_pr_description", "ticket_compliance_check", "jira_enabled", "jira_acceptance_criteria_prefixes",
 		"riptide_enabled", "diff_context", "context_lines_before", "context_lines_after", "dynamic_context",
 		"max_dynamic_context_lines", "never_reviewed_builtin", "dirs", "files", "extensions",

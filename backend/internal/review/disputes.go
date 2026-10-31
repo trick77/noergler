@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/store"
 )
 
@@ -13,6 +14,11 @@ import (
 // finding-reply path only (HandleFindingReply); a review never reads them,
 // and a signal never drops or softens a finding. Its only way into a review
 // is a human pasting the proposed bullet into AGENTS.md.
+//
+// Known limit: two disputes of the same new rule whose calls overlap both
+// see no signal and start one each; later prompts list both and the count
+// splits. Rare (the window is one gateway call), and a semantic merge would
+// take a model call.
 
 const (
 	// disputeSignalsListed caps the open signals the reply prompt lists.
@@ -20,12 +26,6 @@ const (
 	// disputePRsLinked caps the earlier PRs the statement links.
 	disputePRsLinked = 10
 )
-
-// disputeSignalsOn is false only for a Reviewer built without the knobs;
-// config always sets them inside their ranges.
-func (r *Reviewer) disputeSignalsOn() bool {
-	return r.cfg.DisputeSignalWindowDays > 0 && r.cfg.DisputeSignalThreshold > 1
-}
 
 // signalOccurrence is this dispute's place in its signal: the signal (0 for
 // a new one), the bullet it records, the distinct PRs in the window with
@@ -38,18 +38,68 @@ type signalOccurrence struct {
 	authors int
 }
 
-// countDisputeSignal maps the model's match onto the list the prompt showed
-// and counts the signal's PRs in the window, this PR included. A match off
-// the list is a new signal; a failed read counts this PR alone, so the
-// statement is never posted on a guess.
+// weighDispute decides what the model's verdict means for the repo's dispute
+// signals: the AGENTS.md part of the log line, and the occurrence to count
+// and record (nil for none). Only a dispute counts. A match is honoured only
+// if it names the list the prompt showed. A matched rule AGENTS.md already
+// states counts nothing and is logged: the review raised a finding AGENTS.md
+// rules out. A merged bullet that fails the format check falls back to the
+// listed wording, so a valid match still counts.
+func (r *Reviewer) weighDispute(ctx context.Context, j *replyJob, rep inference.FindingReply) (string, *signalOccurrence) {
+	line := sharpS(j.lang, rep.AgentsMDLine)
+	if rep.Intent != "disputes" {
+		if line != "" {
+			return "dropped (not a dispute)", nil
+		}
+		return "none", nil
+	}
+	match := rep.MatchesSignal
+	if match > len(j.signalIDs) {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on finding %s names dispute signal [%d] of %d listed: none matched",
+			j.prTag, j.where, match, len(j.signalIDs)))
+		match = 0
+	}
+	ruledOut := func() {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on finding %s matches dispute signal %d, which AGENTS.md already states: the review raised a finding AGENTS.md rules out",
+			j.prTag, j.where, j.signalIDs[match-1]))
+	}
+	if line == "" {
+		if match > 0 {
+			ruledOut()
+		}
+		return "none", nil
+	}
+	reason := inference.CheckAgentsMDLine(line, j.agentsMD)
+	switch {
+	case reason == "already_present":
+		if match > 0 {
+			ruledOut()
+		}
+		return "dropped (already_present)", nil
+	case reason != "" && match == 0:
+		return "dropped (" + reason + ")", nil
+	case reason != "":
+		listed := j.signalRules[match-1]
+		if inference.CheckAgentsMDLine(listed, j.agentsMD) != "" {
+			return "dropped (" + reason + ")", nil
+		}
+		line = listed
+	}
+	o := r.countDisputeSignal(ctx, j, match, line)
+	state := o.logState(r.cfg.DisputeSignalThreshold, r.cfg.DisputeSignalWindowDays)
+	if reason != "" {
+		state += ", listed wording (" + reason + ")"
+	}
+	return state, o
+}
+
+// countDisputeSignal counts the signal's PRs in the window, this PR
+// included; match is 0 (a new signal) or a valid index into the list. A
+// failed read counts this PR alone, so the statement is never posted on a
+// guess.
 func (r *Reviewer) countDisputeSignal(ctx context.Context, j *replyJob, match int, rule string) *signalOccurrence {
 	o := &signalOccurrence{rule: rule, prs: 1, authors: 1}
-	switch {
-	case match == 0:
-		return o
-	case match > len(j.signalIDs):
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on finding %s names dispute signal [%d] of %d listed: counted as a new signal",
-			j.prTag, j.where, match, len(j.signalIDs)))
+	if match == 0 {
 		return o
 	}
 	o.id = j.signalIDs[match-1]
@@ -82,7 +132,7 @@ func (o *signalOccurrence) logState(threshold, windowDays int) string {
 
 // disputeStatement is what a dispute at the threshold adds to the answer:
 // how often the reason came back, where, and the bullet that would stop it.
-func (r *Reviewer) disputeStatement(j *replyJob, o *signalOccurrence, line string) string {
+func (r *Reviewer) disputeStatement(j *replyJob, o *signalOccurrence) string {
 	links := make([]string, 0, disputePRsLinked)
 	for i, p := range o.earlier {
 		if i == disputePRsLinked {
@@ -97,19 +147,18 @@ func (r *Reviewer) disputeStatement(j *replyJob, o *signalOccurrence, line strin
 	if more := len(o.earlier) - len(links); more > 0 {
 		links = append(links, j.lang.Pick(fmt.Sprintf("+%d weitere", more), fmt.Sprintf("+%d more", more)))
 	}
-	authors := j.lang.Pick(fmt.Sprintf("%d Verfasser", o.authors), plural(o.authors, "author", "authors"))
-	w := r.cfg.DisputeSignalWindowDays
 	list := strings.Join(links, ", ")
 	if list != "" {
 		list += "; "
 	}
+	w := r.cfg.DisputeSignalWindowDays
 	head := j.lang.Pick(
-		fmt.Sprintf("Das ist der %d. PR in den letzten %d Tagen mit diesem Einwand (%s%s). Vorschlag für `AGENTS.md`, damit das künftig nicht mehr bemängelt wird:",
-			o.prs, w, list, authors),
-		fmt.Sprintf("This is the %s PR in the last %d days disputing this for the same reason (%s%s). Proposed `AGENTS.md` change, so it is not raised again:",
-			ordinalEN(o.prs), w, list, authors))
-	fence := codeFence(line)
-	return "\n\n" + head + "\n\n" + fence + "markdown\n" + line + "\n" + fence
+		fmt.Sprintf("Das ist der %d. PR innert %s mit diesem Einwand (%s%d Verfasser). Vorschlag für `AGENTS.md`, damit das künftig nicht mehr bemängelt wird:",
+			o.prs, plural(w, "Tag", "Tagen"), list, o.authors),
+		fmt.Sprintf("This is the %s PR within %s disputing this for the same reason (%s%s). Proposed `AGENTS.md` change, so it is not raised again:",
+			ordinalEN(o.prs), plural(w, "day", "days"), list, plural(o.authors, "author", "authors")))
+	fence := codeFence(o.rule)
+	return "\n\n" + head + "\n\n" + fence + "markdown\n" + o.rule + "\n" + fence
 }
 
 func plural(n int, one, many string) string {

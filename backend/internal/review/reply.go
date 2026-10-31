@@ -217,13 +217,11 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	// acts on a match for a dispute only. A failed read lists none.
 	var signalIDs []int64
 	var signalRules []string
-	if r.disputeSignalsOn() {
-		for _, s := range safeDB(ctx, r.log, "OpenDisputeSignals", func() ([]store.DisputeSignal, error) {
-			return r.store.OpenDisputeSignals(ctx, team, project, repo, r.cfg.DisputeSignalWindowDays, disputeSignalsListed)
-		}) {
-			signalIDs = append(signalIDs, s.ID)
-			signalRules = append(signalRules, s.Rule)
-		}
+	for _, s := range safeDB(ctx, r.log, "OpenDisputeSignals", func() ([]store.DisputeSignal, error) {
+		return r.store.OpenDisputeSignals(ctx, team, project, repo, r.cfg.DisputeSignalWindowDays, disputeSignalsListed)
+	}) {
+		signalIDs = append(signalIDs, s.ID)
+		signalRules = append(signalRules, s.Rule)
 	}
 	prompt := inference.RenderFindingReplyPrompt(inference.FindingReplyPromptRequest{
 		Language:         l,
@@ -243,7 +241,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		key: key, team: team, project: project, repo: repo, prID: pr.ID, prTag: prTag, where: where,
 		author:    author,
 		findingID: f.ID, replyTo: comment.ID, text: text,
-		agentsMD: agentsMD, signalIDs: signalIDs, counter: counter,
+		agentsMD: agentsMD, signalIDs: signalIDs, signalRules: signalRules, counter: counter,
 		name: name, namesOn: r.displayName != nil, lang: l,
 	}
 	infer := func(inferCtx context.Context) { job.res = r.llm.FindingReply(inferCtx, req) }
@@ -267,8 +265,9 @@ type replyJob struct {
 	text      string
 	agentsMD  string
 	// signalIDs are the open dispute signals the prompt listed, in order:
-	// matches_signal n is signalIDs[n-1].
-	signalIDs []int64
+	// matches_signal n is signalIDs[n-1], worded signalRules[n-1].
+	signalIDs   []int64
+	signalRules []string
 	// name is the author's first name, "" when unknown; namesOn tells that
 	// from names off, so a drifted directory format shows in the log.
 	name    string
@@ -301,32 +300,9 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 	// signal. The AGENTS.md bullet is shown only once the signal reaches the
 	// team's threshold of distinct PRs in its window (user, 2026-10-31); below
 	// it the answer carries no bullet at all.
-	agentsLine := "none"
-	var signal *signalOccurrence
-	switch line := res.Reply.AgentsMDLine; {
-	case line == "":
-		if dispute && res.Reply.MatchesSignal > 0 {
-			// The model matched a known rule yet wrote no bullet: AGENTS.md
-			// states it and the review raised the finding anyway.
-			r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on finding %s matches dispute signal [%d] but proposes no AGENTS.md line: the review raised a finding AGENTS.md may already rule out",
-				j.prTag, j.where, res.Reply.MatchesSignal))
-		}
-	case !dispute:
-		agentsLine = "dropped (not a dispute)"
-	default:
-		if reason := inference.CheckAgentsMDLine(line, j.agentsMD); reason != "" {
-			agentsLine = "dropped (" + reason + ")"
-			break
-		}
-		if !r.disputeSignalsOn() {
-			agentsLine = "dropped (dispute signals off)"
-			break
-		}
-		signal = r.countDisputeSignal(ctx, j, res.Reply.MatchesSignal, line)
-		agentsLine = signal.logState(r.cfg.DisputeSignalThreshold, r.cfg.DisputeSignalWindowDays)
-		if signal.prs >= r.cfg.DisputeSignalThreshold {
-			body += r.disputeStatement(j, signal, line)
-		}
+	agentsLine, signal := r.weighDispute(ctx, j, res.Reply)
+	if signal != nil && signal.prs >= r.cfg.DisputeSignalThreshold {
+		body += r.disputeStatement(j, signal)
 	}
 	posted, err := r.bitbucket.ReplyToComment(ctx, j.project, j.repo, j.prID, j.replyTo, body)
 	if err != nil {

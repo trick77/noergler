@@ -128,7 +128,8 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   `dispute_signal_window_days` (expiry is a WHERE, rows stay). The bullet is
   posted only at `dispute_signal_threshold` PRs, never below; the model's
   `matches_signal` counts only if it names the list the prompt showed.
-  Posted = recorded, nothing posted = nothing recorded.
+  Posted = recorded, nothing posted = nothing recorded. A purge deletes the
+  scope's signals with its PRs.
 - Every reply the bot posts is stored (`bot_replies`, by comment id, with
   its PR). A plain reply directly under one is a Q&A from anyone, like a
   reply under the summary (user, 2026-10-22), matched from the DB, never by

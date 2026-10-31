@@ -103,7 +103,7 @@ func TestFindingReplyProposesAtTheThreshold(t *testing.T) {
 	}
 	body := h.bb.Replies[0].Text
 	for _, want := range []string{
-		"This is the 3rd PR in the last 30 days disputing this for the same reason",
+		"This is the 3rd PR within 30 days disputing this for the same reason",
 		"[#31](https://bb.test/projects/PROJ/repos/my-repo/pull-requests/31/overview?commentId=3101)",
 		"[#12](https://bb.test/projects/PROJ/repos/my-repo/pull-requests/12/overview?commentId=1201)",
 		"2 authors", "Proposed `AGENTS.md` change",
@@ -126,7 +126,7 @@ func TestFindingReplyProposesInGerman(t *testing.T) {
 	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 	body := strings.ReplaceAll(h.bb.Replies[0].Text, "\n", " ")
-	for _, want := range []string{"Das ist der 3. PR in den letzten 30 Tagen mit diesem Einwand", "2 Verfasser", "Vorschlag für `AGENTS.md`"} {
+	for _, want := range []string{"Das ist der 3. PR innert 30 Tagen mit diesem Einwand", "2 Verfasser", "Vorschlag für `AGENTS.md`"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("reply lacks %q:\n%s", want, body)
 		}
@@ -196,6 +196,41 @@ func TestDisputeStatementCapsTheLinks(t *testing.T) {
 	if !strings.Contains(body, "This is the 13th PR") || !strings.Contains(body, "#110, +2 more; 2 authors") ||
 		strings.Contains(body, "#111") {
 		t.Errorf("reply:\n%s", body)
+	}
+}
+
+// A valid match whose merged bullet fails the format check still counts,
+// under the listed wording, and that wording is what the statement shows.
+func TestFindingReplyKeepsAValidMatchWithABadBullet(t *testing.T) {
+	h, p := signalAt3(t)
+	h.llm.reply.Reply.AgentsMDLine = "- " + strings.Repeat("x", 250)
+
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
+
+	if len(h.st.Occurrences) != 1 || h.st.Occurrences[0].SignalID != 5 || h.st.Occurrences[0].Rule != "- Validation lives in the UI." {
+		t.Errorf("occurrences = %+v, want signal 5 under its listed wording", h.st.Occurrences)
+	}
+	if body := h.bb.Replies[0].Text; !strings.Contains(body, "```markdown\n- Validation lives in the UI.\n```") || strings.Contains(body, "xxxx") {
+		t.Errorf("reply:\n%s", body)
+	}
+}
+
+// A German bullet is Swiss-spelled before it is posted or stored; a one-day
+// window reads singular.
+func TestDisputeStatementSpelling(t *testing.T) {
+	h, p := signalAt3(t)
+	h.st.languages = map[string]lang.Lang{"alice": lang.DE}
+	h.llm.reply.Reply.AgentsMDLine = "- Validierung erfolgt ausschließlich im UI."
+	h.r.cfg.DisputeSignalWindowDays = 1
+
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
+
+	body := strings.ReplaceAll(h.bb.Replies[0].Text, "\n", " ")
+	if !strings.Contains(body, "ausschliesslich") || strings.Contains(body, "ß") || !strings.Contains(body, "innert 1 Tag mit") {
+		t.Errorf("reply:\n%s", body)
+	}
+	if len(h.st.Occurrences) != 1 || strings.Contains(h.st.Occurrences[0].Rule, "ß") {
+		t.Errorf("stored %+v", h.st.Occurrences)
 	}
 }
 
