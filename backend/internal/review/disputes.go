@@ -173,11 +173,12 @@ func (r *Reviewer) disputeStatement(j *replyJob, o *signalOccurrence) string {
 		list += "; "
 	}
 	window := render.PluralIn(j.lang, r.cfg.DisputeSignalWindowDays, "Tag", "Tagen", "day", "days")
+	authors := render.PluralIn(j.lang, o.authors, "Autor", "Autoren", "author", "authors") //nolint:misspell // German "Autor", not a typo of "Author"
 	head := j.lang.Pick(
-		fmt.Sprintf("Das ist der %d. PR innert %s mit diesem Einwand (%s%d Verfasser). Vorschlag für `AGENTS.md`, damit das künftig nicht mehr bemängelt wird:",
-			o.prs, window, list, o.authors),
+		fmt.Sprintf("Das ist der %d. PR innert %s mit diesem Einwand (%s%s). Vorschlag für `AGENTS.md`, damit das künftig nicht mehr bemängelt wird:",
+			o.prs, window, list, authors),
 		fmt.Sprintf("This is the %s PR within %s disputing this for the same reason (%s%s). Proposed `AGENTS.md` change, so it is not raised again:",
-			ordinalEN(o.prs), window, list, render.Plural(o.authors, "author")))
+			ordinalEN(o.prs), window, list, authors))
 	fence := codeFence(o.rule)
 	return "\n\n" + head + "\n\n" + fence + "markdown\n" + o.rule + "\n" + fence
 }

@@ -126,7 +126,7 @@ func TestFindingReplyProposesInGerman(t *testing.T) {
 	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 	body := strings.ReplaceAll(h.bb.Replies[0].Text, "\n", " ")
-	for _, want := range []string{"Das ist der 3. PR innert 30 Tagen mit diesem Einwand", "2 Verfasser", "Vorschlag für `AGENTS.md`"} {
+	for _, want := range []string{"Das ist der 3. PR innert 30 Tagen mit diesem Einwand", "2 Autoren", "Vorschlag für `AGENTS.md`"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("reply lacks %q:\n%s", want, body)
 		}
