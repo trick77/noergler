@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/render"
 	"github.com/trick77/noergler/internal/store"
 )
 
@@ -18,7 +19,9 @@ import (
 // Known limit: two disputes of the same new rule whose calls overlap both
 // see no signal and start one each; later prompts list both and the count
 // splits. Rare (the window is one gateway call), and a semantic merge would
-// take a model call.
+// take a model call. Likewise only the disputeSignalsListed most recently
+// disputed signals are listed: a repo with more open ones can start a
+// duplicate of an older one.
 
 const (
 	// disputeSignalsListed caps the open signals the reply prompt lists.
@@ -46,7 +49,7 @@ type signalOccurrence struct {
 // rules out. A merged bullet that fails the format check falls back to the
 // listed wording, so a valid match still counts.
 func (r *Reviewer) weighDispute(ctx context.Context, j *replyJob, rep inference.FindingReply) (string, *signalOccurrence) {
-	line := sharpS(j.lang, rep.AgentsMDLine)
+	line := rep.AgentsMDLine
 	if rep.Intent != "disputes" {
 		if line != "" {
 			return "dropped (not a dispute)", nil
@@ -69,7 +72,7 @@ func (r *Reviewer) weighDispute(ctx context.Context, j *replyJob, rep inference.
 		}
 		return "none", nil
 	}
-	reason := inference.CheckAgentsMDLine(line, j.agentsMD)
+	reason := r.checkBullet(j, line)
 	switch {
 	case reason == "already_present":
 		if match > 0 {
@@ -80,17 +83,35 @@ func (r *Reviewer) weighDispute(ctx context.Context, j *replyJob, rep inference.
 		return "dropped (" + reason + ")", nil
 	case reason != "":
 		listed := j.signalRules[match-1]
-		if inference.CheckAgentsMDLine(listed, j.agentsMD) != "" {
+		switch lr := r.checkBullet(j, listed); lr {
+		case "":
+			line = listed
+		case "already_present":
+			ruledOut()
+			return "dropped (already_present)", nil
+		default:
 			return "dropped (" + reason + ")", nil
 		}
-		line = listed
 	}
+	// Posted and stored Swiss-spelled for a German answer, like the prose.
+	line = sharpS(j.lang, line)
 	o := r.countDisputeSignal(ctx, j, match, line)
 	state := o.logState(r.cfg.DisputeSignalThreshold, r.cfg.DisputeSignalWindowDays)
 	if reason != "" {
 		state += ", listed wording (" + reason + ")"
 	}
 	return state, o
+}
+
+// checkBullet is CheckAgentsMDLine on the line as the model wrote it and,
+// for a German answer, as it would be posted: AGENTS.md may be written with
+// ß or with ss, and either spelling of the rule is already there.
+func (r *Reviewer) checkBullet(j *replyJob, line string) string {
+	reason := inference.CheckAgentsMDLine(line, j.agentsMD)
+	if ss := sharpS(j.lang, line); reason == "" && ss != line {
+		reason = inference.CheckAgentsMDLine(ss, j.agentsMD)
+	}
+	return reason
 }
 
 // countDisputeSignal counts the signal's PRs in the window, this PR
@@ -151,21 +172,14 @@ func (r *Reviewer) disputeStatement(j *replyJob, o *signalOccurrence) string {
 	if list != "" {
 		list += "; "
 	}
-	w := r.cfg.DisputeSignalWindowDays
+	window := render.PluralIn(j.lang, r.cfg.DisputeSignalWindowDays, "Tag", "Tagen", "day", "days")
 	head := j.lang.Pick(
 		fmt.Sprintf("Das ist der %d. PR innert %s mit diesem Einwand (%s%d Verfasser). Vorschlag für `AGENTS.md`, damit das künftig nicht mehr bemängelt wird:",
-			o.prs, plural(w, "Tag", "Tagen"), list, o.authors),
+			o.prs, window, list, o.authors),
 		fmt.Sprintf("This is the %s PR within %s disputing this for the same reason (%s%s). Proposed `AGENTS.md` change, so it is not raised again:",
-			ordinalEN(o.prs), plural(w, "day", "days"), list, plural(o.authors, "author", "authors")))
+			ordinalEN(o.prs), window, list, render.Plural(o.authors, "author")))
 	fence := codeFence(o.rule)
 	return "\n\n" + head + "\n\n" + fence + "markdown\n" + o.rule + "\n" + fence
-}
-
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return fmt.Sprintf("%d %s", n, one)
-	}
-	return fmt.Sprintf("%d %s", n, many)
 }
 
 // ordinalEN is 1st, 2nd, 3rd, 4th, 11th, 12th, 13th, 21st.

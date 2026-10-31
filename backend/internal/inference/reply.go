@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 
@@ -171,9 +172,10 @@ func ParseFindingReply(content string) (FindingReply, bool) {
 	if raw.AgentsMDLine != nil {
 		out.AgentsMDLine = strings.TrimSpace(*raw.AgentsMDLine)
 	}
-	var n int
-	if len(raw.MatchesSignal) > 0 && json.Unmarshal(raw.MatchesSignal, &n) == nil && n > 0 {
-		out.MatchesSignal = n
+	// A number, integral, at least 1: "2.0" from a gateway is still 2.
+	var n float64
+	if len(raw.MatchesSignal) > 0 && json.Unmarshal(raw.MatchesSignal, &n) == nil && n >= 1 && n <= 1<<20 && n == math.Trunc(n) {
+		out.MatchesSignal = int(n)
 	}
 	if out.Reply == "" {
 		return FindingReply{}, false

@@ -12,6 +12,7 @@ import (
 	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
+	"github.com/trick77/ship/kit/logging"
 )
 
 // Caps on what a finding reply carries and posts. The excerpt is context for
@@ -324,10 +325,15 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 	safeDBErr(ctx, r.log, "MarkFindingReplied", func() error { return r.store.MarkFindingReplied(ctx, j.findingID, stored) })
 	// Posted, so recorded: nothing posted records no occurrence.
 	if signal != nil {
-		safeDBErr(ctx, r.log, "RecordDisputeOccurrence", func() error {
-			_, err := r.store.RecordDisputeOccurrence(ctx, j.team, j.key, signal.id, j.findingID, signal.rule)
-			return err
-		})
+		id, err := r.store.RecordDisputeOccurrence(ctx, j.team, j.key, signal.id, j.findingID, signal.rule)
+		switch {
+		case err != nil:
+			r.log.WarnContext(ctx, "DB operation failed, using fallback: RecordDisputeOccurrence", logging.Err(err))
+		case id == 0:
+			// The signal left the team's repo between prepare and post (a
+			// purge): the answer stands, the occurrence is not counted.
+			r.log.WarnContext(ctx, fmt.Sprintf("%s: dispute on finding %s not recorded: signal %d is no longer this team's repo's", j.prTag, j.where, signal.id))
+		}
 	}
 	r.log.InfoContext(ctx, fmt.Sprintf("%s: answered reply on finding %s: intent %s, AGENTS.md line %s, name %s",
 		j.prTag, j.where, res.Reply.Intent, agentsLine, nameState))

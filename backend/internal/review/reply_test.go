@@ -234,6 +234,39 @@ func TestDisputeStatementSpelling(t *testing.T) {
 	}
 }
 
+// A rule AGENTS.md already states counts nothing, whichever spelling either
+// side uses, and also when only the listed wording of a fallback is there.
+func TestFindingReplyRuledOutByAGENTSMD(t *testing.T) {
+	cases := map[string]func(h *harness){
+		"model ß, AGENTS.md ss": func(h *harness) {
+			h.st.languages = map[string]lang.Lang{"alice": lang.DE}
+			h.llm.reply.Reply.AgentsMDLine = "- Validierung erfolgt ausschließlich im UI."
+			h.bb.files["src1:AGENTS.md"] = "- Validierung erfolgt ausschliesslich im UI.\n"
+		},
+		"model ß, AGENTS.md ß": func(h *harness) {
+			h.st.languages = map[string]lang.Lang{"alice": lang.DE}
+			h.llm.reply.Reply.AgentsMDLine = "- Validierung erfolgt ausschließlich im UI."
+			h.bb.files["src1:AGENTS.md"] = "- Validierung erfolgt ausschließlich im UI.\n"
+		},
+		"bad bullet, listed wording present": func(h *harness) {
+			h.llm.reply.Reply.AgentsMDLine = "- " + strings.Repeat("x", 250)
+			h.bb.files["src1:AGENTS.md"] = "- Validation lives in the UI.\n"
+		},
+	}
+	for name, tweak := range cases {
+		t.Run(name, func(t *testing.T) {
+			h, p := signalAt3(t)
+			tweak(h)
+
+			h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
+
+			if len(h.st.Occurrences) != 0 || strings.Contains(h.bb.Replies[0].Text, "AGENTS.md") {
+				t.Errorf("occurrences %+v, reply:\n%s", h.st.Occurrences, h.bb.Replies[0].Text)
+			}
+		})
+	}
+}
+
 func TestOrdinalEN(t *testing.T) {
 	for n, want := range map[int]string{1: "1st", 2: "2nd", 3: "3rd", 4: "4th", 11: "11th", 12: "12th", 13: "13th", 21: "21st", 112: "112th"} {
 		if got := ordinalEN(n); got != want {

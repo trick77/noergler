@@ -74,6 +74,10 @@ func TestParseFindingReply(t *testing.T) {
 		// A bad match is none, never a lost reply.
 		{"match not an integer", `{"intent":"disputes","reply":"Ok.","agents_md_line":null,"matches_signal":"2"}`, true,
 			FindingReply{Intent: "disputes", Reply: "Ok."}},
+		{"match as a float", `{"intent":"disputes","reply":"Ok.","agents_md_line":null,"matches_signal":2.0}`, true,
+			FindingReply{Intent: "disputes", Reply: "Ok.", MatchesSignal: 2}},
+		{"match not integral", `{"intent":"disputes","reply":"Ok.","agents_md_line":null,"matches_signal":1.5}`, true,
+			FindingReply{Intent: "disputes", Reply: "Ok."}},
 		{"match below one", `{"intent":"disputes","reply":"Ok.","agents_md_line":null,"matches_signal":0}`, true,
 			FindingReply{Intent: "disputes", Reply: "Ok."}},
 		{"empty reply", `{"intent":"disputes","reply":"  "}`, false, FindingReply{}},
