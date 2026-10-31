@@ -129,6 +129,36 @@ non-placeholder test fixture, the same password in `application.yaml`):
 
 Decision: landed on the prompt's own contradictions, not on a measured gain.
 
+## Split experiment: findings without the summary (2026-10-31)
+
+Question: one call writes the findings and the PR summary (overview,
+verdict, strengths, screenshot lines, ...). Does the summary work cost
+findings recall, so that a findings-only call plus a summary call would
+beat it?
+
+mimo-v2.6-pro high, 26 cases rev10, 5 samples each. Arm B is
+`briefs/review-findings-only.txt`: `review.txt` with every summary key
+pinned to a fixed placeholder, findings rules unchanged.
+
+- full prompt: 68 of 75 seeded samples caught (single view), controls clean
+  in 55 of 55.
+- findings-only: 72 of 75, controls clean in 55 of 55.
+- Misses with no finding at all: 6 against 3, on different cases each
+  arm. Noise at 5 samples.
+- `visual-hidden-submit` 3 of 5 against 5 of 5. Both full-prompt misses
+  described the hidden button and its CSS cause correctly, in
+  `visual_changes` only: the bug went to the summary, not into `findings`.
+  `review.txt` says "a screenshot is never a finding", which the model can
+  read as "a bug a screenshot shows is not a finding".
+- Completion ~1,070 tokens a call against ~730; prompt 5,610 against 4,449.
+
++4 of 75 is about 5 points, under the ~15 a 5-sample run can show. The
+split would add a second call that resends the whole diff, so it costs more
+than the one call it replaces.
+
+Decision: production stays one call. The `visual-hidden-submit` routing is
+a prompt question for `review.txt`, not a reason to split.
+
 ## Known gaps
 
 - `lock-not-released` keywords miss correct findings; inflates `extra`.
