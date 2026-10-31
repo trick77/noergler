@@ -119,6 +119,21 @@ func TestFindingReplyProposesAtTheThreshold(t *testing.T) {
 }
 
 // German: the ordinal is "3.", the counts are German.
+// One author disputing on every PR: the German count is singular.
+func TestFindingReplyProposesForOneAuthor(t *testing.T) {
+	h, p := signalAt3(t)
+	h.st.languages = map[string]lang.Lang{"alice": lang.DE}
+	for i := range h.st.signalPRs[5] {
+		h.st.signalPRs[5][i].Author = "alice"
+	}
+
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
+
+	if body := strings.ReplaceAll(h.bb.Replies[0].Text, "\n", " "); !strings.Contains(body, "; 1 Autor)") { //nolint:misspell // German
+		t.Errorf("reply:\n%s", body)
+	}
+}
+
 func TestFindingReplyProposesInGerman(t *testing.T) {
 	h, p := signalAt3(t)
 	h.st.languages = map[string]lang.Lang{"alice": lang.DE}
@@ -126,7 +141,7 @@ func TestFindingReplyProposesInGerman(t *testing.T) {
 	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
 	body := strings.ReplaceAll(h.bb.Replies[0].Text, "\n", " ")
-	for _, want := range []string{"Das ist der 3. PR innert 30 Tagen mit diesem Einwand", "2 Verfasser", "Vorschlag für `AGENTS.md`"} {
+	for _, want := range []string{"Das ist der 3. PR innert 30 Tagen mit diesem Einwand", "2 Autoren", "Vorschlag für `AGENTS.md`"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("reply lacks %q:\n%s", want, body)
 		}
