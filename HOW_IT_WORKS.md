@@ -459,9 +459,9 @@ signal each, and the count splits between them.
 The answer may address the author by first name ("Ok Jan - ..."), not
 always. `BITBUCKET_DISPLAY_NAME_PATTERN` extracts it from the Bitbucket
 `displayName` (default `Last First (CODE)`: the last word before the bracket); no match, no name. The model
-is told to address a question by it, always, and may use it when acknowledging
-or accepting a dispute; on any other intent code cuts a leading address from
-the answer. A Q&A answer addresses the asker by the same name. The name is
+may use it, when it reads naturally, to answer a question, acknowledge or
+accept a dispute; on any other intent code cuts a leading address from the
+answer. A Q&A answer may address the asker by the same name. The name is
 never stored or logged. Reviews carry no name.
 
 ## 12a. Language
