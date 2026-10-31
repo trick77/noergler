@@ -138,7 +138,10 @@ beat it?
 
 mimo-v2.6-pro high, 26 cases rev10, 5 samples each. Arm B is
 `briefs/review-findings-only.txt`: `review.txt` with every summary key
-pinned to a fixed placeholder, findings rules unchanged.
+pinned to a fixed placeholder. Two confounds: pinning `visual_changes` to
+`[]` also dropped "a screenshot is never a finding" from the brief, and the
+model still wrote screenshot lines in 15 of 25 visual samples. Arm B did
+less summary work, not none.
 
 - full prompt: 68 of 75 seeded samples caught (single view), controls clean
   in 55 of 55.
@@ -149,7 +152,9 @@ pinned to a fixed placeholder, findings rules unchanged.
   described the hidden button and its CSS cause correctly, in
   `visual_changes` only: the bug went to the summary, not into `findings`.
   `review.txt` says "a screenshot is never a finding", which the model can
-  read as "a bug a screenshot shows is not a finding".
+  read as "a bug a screenshot shows is not a finding"; arm B had lost that
+  sentence, so its 5 of 5 does not separate the two causes. The follow-up
+  below does.
 - Completion ~1,070 tokens a call against ~730; prompt 5,610 against 4,449.
 
 +4 of 75 is about 5 points, under the ~15 a 5-sample run can show. The
@@ -159,10 +164,12 @@ than the one call it replaces.
 Decision: production stays one call. The `visual-hidden-submit` routing is
 a prompt question for `review.txt`, not a reason to split.
 
-Follow-up, the same day: `briefs/review-visual-finding.txt` adds one
-sentence after "a screenshot is never a finding": "A bug in the code stays a
-finding when a screenshot also shows it: anchor and evidence from the code,
-as if no screenshot were sent." The 5 visual cases, 5 samples each:
+Follow-up, the same day: the full prompt, summary work and screenshot rule
+kept, plus one sentence after "a screenshot is never a finding": "A bug in
+the code stays a finding when a screenshot also shows it: anchor and
+evidence from the code, as if no screenshot were sent." Run with `-prompt`;
+the variant is `review.txt` since this landed. The 5 visual cases, 5
+samples each:
 
 - `visual-hidden-submit` 5 of 5 (3 of 5 above), every finding on the CSS
   line, none naming the image.
