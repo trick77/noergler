@@ -159,9 +159,27 @@ than the one call it replaces.
 Decision: production stays one call. The `visual-hidden-submit` routing is
 a prompt question for `review.txt`, not a reason to split.
 
+Follow-up, the same day: `briefs/review-visual-finding.txt` adds one
+sentence after "a screenshot is never a finding": "A bug in the code stays a
+finding when a screenshot also shows it: anchor and evidence from the code,
+as if no screenshot were sent." The 5 visual cases, 5 samples each:
+
+- `visual-hidden-submit` 5 of 5 (3 of 5 above), every finding on the CSS
+  line, none naming the image.
+- the four visual controls clean in 20 of 20: an explained or drifting
+  screenshot did not turn into a finding.
+- screenshot lines still written: 33 of 35 scored, the 2 misses correct
+  lines worded outside the case's keywords.
+
+The screenshot stays summary only (INVARIANTS: test screenshots); the
+sentence keeps a code bug from leaving `findings` because an image shows it
+too.
+
 ## Known gaps
 
 - `lock-not-released` keywords miss correct findings; inflates `extra`.
+- `visual-hidden-submit` `button-gone` keywords miss correct lines worded
+  "drops" or "loses" the button.
 - Validator dropped 3 correct mini findings (`evidence_not_found`): two
   lines joined into one evidence string, or prose appended to a quoted line.
   The quote is not verbatim, so the drop stands.
