@@ -75,9 +75,9 @@ func normalizeCase(s string) string {
 	return b.String()
 }
 
-// nameIntents are the reply intents that may address the author by name; a
-// question always is (user, 2026-10-19), a rebuttal ("other") reads as
-// talking down with one.
+// nameIntents are the reply intents that may address the author by name
+// (the prompt asks for it only when natural); a rebuttal ("other") reads
+// as talking down with one.
 var nameIntents = map[string]bool{"acknowledges": true, "disputes": true, "question": true}
 
 // leadGreeting is what may stand before a leading address ("Ok Jan - ",

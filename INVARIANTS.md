@@ -141,9 +141,10 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   asker is not the one answered (user, 2026-10-20), and `guardName` cuts a
   leading address to the parent's author; the asker's own parent keeps the
   name. A code block the parent leaves open is closed with its own fence.
-- Author's first name: every question (Q&A, `question` replies) always;
-  `acknowledges`/`disputes` may; `other` never (prompt asks, `guardName`
-  cuts a leading one on `other`); reviews never; extracted by code
+- Author's first name: questions (Q&A, `question` replies),
+  `acknowledges` and `disputes` may use it, when natural, never must;
+  `other` never (prompt asks, `guardName` cuts a leading one on
+  `other`); reviews never; extracted by code
   from the operator pattern, single-case parts title-cased; never stored or
   logged.
 - Language: a review is the PR author's, a Q&A the asker's; resolved user ->

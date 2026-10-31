@@ -136,8 +136,8 @@ an incident or an eval run: read the reason before relaxing a rule.
   reasoning on /chat/completions for gpt-6.1-sol ("use /v1/responses"), so
   llmwire speaks /responses there, and a function_call sent back without
   its reasoning item is refused on round 2.
-- First name on every question (user, 2026-10-19), Q&A included; it was
-  held back as talking down.
+- First name on a question: held back (talking down) -> always (user,
+  2026-10-19) -> may, not must (user, 2026-10-31): always was too much.
 - `handedOff`: the job path once released the key unconditionally, so a push
   or merge ran during a staged mention's inference.
 - HTTP totals not deferred: a defer fires before the staged call (`inference=0`).

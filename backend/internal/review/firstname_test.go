@@ -74,6 +74,7 @@ func TestGuardName(t *testing.T) {
 		{"acknowledges may", "Ok Jan - noted.", "Jan", "acknowledges", "Ok Jan - noted.", "used"},
 		{"disputes may", "Jan, understood.", "Jan", "disputes", "Jan, understood.", "used"},
 		{"question may", "Jan, the check is on line 2.", "Jan", "question", "Jan, the check is on line 2.", "used"},
+		{"question need not", "The check is on line 2.", "Jan", "question", "The check is on line 2.", "unused"},
 		{"other: leading cut", "Jan, the check is on line 2.", "Jan", "other", "The check is on line 2.", "cut"},
 		{"other: ok-lead cut", "Ok Jan - line 3 still reads it.", "Jan", "other", "Line 3 still reads it.", "cut"},
 		{"en dash", "Jan – see line 2.", "Jan", "other", "See line 2.", "cut"},
@@ -118,8 +119,8 @@ func TestGuardNameLeavesCaseAlone(t *testing.T) {
 	}
 }
 
-// End to end: the prompt carries the name, and a question's leading address
-// is posted as written.
+// End to end: the prompt carries the name, and a question's leading address,
+// when the model uses one, is posted as written.
 func TestFindingReplyNamesTheAuthor(t *testing.T) {
 	h, p := replyHarness(t)
 	h.r.displayName = defaultNameRE
@@ -138,7 +139,7 @@ func TestFindingReplyNamesTheAuthor(t *testing.T) {
 	}
 }
 
-// A Q&A answer addresses the asker by name too; unknown says so.
+// A Q&A answer may address the asker by name too; unknown says so.
 func TestMentionPromptNamesTheAsker(t *testing.T) {
 	h := newHarness(t, nil)
 	h.r.displayName = defaultNameRE
