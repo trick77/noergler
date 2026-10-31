@@ -510,7 +510,7 @@ export const de = {
       "Übersprungen heisst, noergler hat das Modell nie gefragt. Fehlgeschlagen heisst, er hat gefragt und dabei ist ein Fehler aufgetreten.",
     agentsQ: "AGENTS.md",
     agentsA1:
-      "Dagegen prüft das Review deinen Code: die Konventionen und Einschränkungen, die man einem neuen Reviewer in deinem Team erklären müsste. Lege die Datei ins Root des Repos.",
+      "Dagegen prüft das Review deinen Code: die Konventionen und Einschränkungen, die man einem neuen Reviewer in deinem Team erklären müsste. Lege die Datei ins Root des Repos. Wird ein Befund immer wieder mit demselben Grund bestritten (standardmässig in 3 PRs innert 30 Tagen), schlägt die Antwort im Befund-Thread die Zeile für AGENTS.md vor, die ihn künftig verhindert.",
     agentsA3:
       "Halte es kurz. Die Zusammenfassung warnt schon lange vor dem Grössenlimit, und über dem Limit hören Reviews ganz auf.",
     stopQ: "Wie verhindere ich, dass noergler einen PR prüft?",

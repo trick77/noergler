@@ -109,6 +109,7 @@ func TestSchema_TablesExist(t *testing.T) {
 		"team_claims", "team_settings", "user_settings", "schema_migrations",
 		"team_credentials", "secrets_key_check",
 		"almanach_notes", "almanach_calls",
+		"dispute_signals", "dispute_occurrences",
 	} {
 		if !slices.Contains(present, table) {
 			t.Errorf("table %s is missing; schema has %v", table, present)

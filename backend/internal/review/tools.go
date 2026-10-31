@@ -100,22 +100,27 @@ type teamConfigView struct {
 	ExcludeTargetBranches []string `json:"exclude_target_branches"`
 	// AutoReviewAuthors empty means every author is auto-reviewed; the
 	// ignore list wins over it.
-	AutoReviewAuthors     []string `json:"auto_review_authors"`
-	IgnoreAuthors         []string `json:"ignore_authors"`
-	OptOutBranchKeyword   string   `json:"opt_out_branch_keyword"`
-	MaxPRCostUSD          string   `json:"max_pr_cost_usd"`
-	MaxComments           int      `json:"max_comments"`
-	MaxFileLines          int      `json:"max_file_lines"`
-	RequireAgentsMD       bool     `json:"require_agents_md"`
-	AgentsMDWarnTokens    int      `json:"agents_md_warn_tokens"`
-	AgentsMDMaxTokens     int      `json:"agents_md_max_tokens"`
-	AgentsMDCustomLink    string   `json:"agents_md_custom_link,omitempty"`
-	UsePRDescription      bool     `json:"use_pr_description"`
-	TicketComplianceCheck bool     `json:"ticket_compliance_check"`
-	JiraEnabled           bool     `json:"jira_enabled"`
-	JiraACPrefixes        []string `json:"jira_acceptance_criteria_prefixes,omitempty"`
-	RiptideEnabled        bool     `json:"riptide_enabled"`
-	Diff                  struct {
+	AutoReviewAuthors   []string `json:"auto_review_authors"`
+	IgnoreAuthors       []string `json:"ignore_authors"`
+	OptOutBranchKeyword string   `json:"opt_out_branch_keyword"`
+	MaxPRCostUSD        string   `json:"max_pr_cost_usd"`
+	MaxComments         int      `json:"max_comments"`
+	MaxFileLines        int      `json:"max_file_lines"`
+	RequireAgentsMD     bool     `json:"require_agents_md"`
+	AgentsMDWarnTokens  int      `json:"agents_md_warn_tokens"`
+	AgentsMDMaxTokens   int      `json:"agents_md_max_tokens"`
+	AgentsMDCustomLink  string   `json:"agents_md_custom_link,omitempty"`
+	// The same reason disputed in this many PRs within this many days gets
+	// an AGENTS.md proposal in the finding thread. The knobs, never the
+	// signals themselves.
+	DisputeSignalWindowDays int      `json:"dispute_signal_window_days"`
+	DisputeSignalThreshold  int      `json:"dispute_signal_threshold"`
+	UsePRDescription        bool     `json:"use_pr_description"`
+	TicketComplianceCheck   bool     `json:"ticket_compliance_check"`
+	JiraEnabled             bool     `json:"jira_enabled"`
+	JiraACPrefixes          []string `json:"jira_acceptance_criteria_prefixes,omitempty"`
+	RiptideEnabled          bool     `json:"riptide_enabled"`
+	Diff                    struct {
 		ExtraLinesBefore       int  `json:"context_lines_before"`
 		ExtraLinesAfter        int  `json:"context_lines_after"`
 		DynamicContext         bool `json:"dynamic_context"`
@@ -138,26 +143,28 @@ type teamConfigView struct {
 func (r *Reviewer) teamConfig(ask *mentionAsk) teamConfigView {
 	auto, ignore := r.authorLists()
 	v := teamConfigView{
-		Team:                  r.TeamSlug,
-		Model:                 r.llm.Label(),
-		DefaultLanguage:       string(r.cfg.Language.Or(lang.Default)),
-		ExcludeRepos:          nonNilNames(r.cfg.ExcludeRepos),
-		ExcludeSourceBranches: nonNilNames(r.cfg.ExcludeSourceBranches),
-		ExcludeTargetBranches: nonNilNames(r.cfg.ExcludeTargetBranches),
-		AutoReviewAuthors:     nonNilNames(auto),
-		IgnoreAuthors:         nonNilNames(ignore),
-		OptOutBranchKeyword:   r.cfg.OptOutBranchKeyword,
-		MaxPRCostUSD:          usd3(r.cfg.MaxPRCostUSD),
-		MaxComments:           r.cfg.MaxComments,
-		MaxFileLines:          r.cfg.MaxFileLines,
-		RequireAgentsMD:       r.cfg.RequireAgentsMD,
-		AgentsMDWarnTokens:    r.cfg.AgentsMDWarnTokens,
-		AgentsMDMaxTokens:     r.cfg.AgentsMDMaxTokens,
-		AgentsMDCustomLink:    r.cfg.AgentsMDCustomLink,
-		UsePRDescription:      r.usePRDescription.Load(),
-		TicketComplianceCheck: r.cfg.TicketComplianceCheck,
-		JiraEnabled:           r.jiraEnabled(),
-		RiptideEnabled:        r.riptide != nil && r.riptide.Enabled(),
+		Team:                    r.TeamSlug,
+		Model:                   r.llm.Label(),
+		DefaultLanguage:         string(r.cfg.Language.Or(lang.Default)),
+		ExcludeRepos:            nonNilNames(r.cfg.ExcludeRepos),
+		ExcludeSourceBranches:   nonNilNames(r.cfg.ExcludeSourceBranches),
+		ExcludeTargetBranches:   nonNilNames(r.cfg.ExcludeTargetBranches),
+		AutoReviewAuthors:       nonNilNames(auto),
+		IgnoreAuthors:           nonNilNames(ignore),
+		OptOutBranchKeyword:     r.cfg.OptOutBranchKeyword,
+		MaxPRCostUSD:            usd3(r.cfg.MaxPRCostUSD),
+		MaxComments:             r.cfg.MaxComments,
+		MaxFileLines:            r.cfg.MaxFileLines,
+		DisputeSignalWindowDays: r.cfg.DisputeSignalWindowDays,
+		DisputeSignalThreshold:  r.cfg.DisputeSignalThreshold,
+		RequireAgentsMD:         r.cfg.RequireAgentsMD,
+		AgentsMDWarnTokens:      r.cfg.AgentsMDWarnTokens,
+		AgentsMDMaxTokens:       r.cfg.AgentsMDMaxTokens,
+		AgentsMDCustomLink:      r.cfg.AgentsMDCustomLink,
+		UsePRDescription:        r.usePRDescription.Load(),
+		TicketComplianceCheck:   r.cfg.TicketComplianceCheck,
+		JiraEnabled:             r.jiraEnabled(),
+		RiptideEnabled:          r.riptide != nil && r.riptide.Enabled(),
 	}
 	v.Diff.ExtraLinesBefore, v.Diff.ExtraLinesAfter = r.cfg.DiffExtraLinesBefore, r.cfg.DiffExtraLinesAfter
 	v.Diff.DynamicContext, v.Diff.MaxDynamicContextLines = r.cfg.DiffAllowDynamicContext, r.cfg.DiffMaxExtraLinesDynamicContext

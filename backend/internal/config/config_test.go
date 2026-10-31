@@ -299,6 +299,37 @@ func TestInstance_NegativeMaxCommentsAbortsBoot(t *testing.T) {
 	}
 }
 
+// Dispute signals: 30 days and 3 PRs unless set, a team overrides either,
+// and a value outside the range fails the boot.
+func TestDisputeSignalKnobs(t *testing.T) {
+	e := newEnv(t)
+	app := e.mustLoad()
+	if r := app.Review; r.DisputeSignalWindowDays != 30 || r.DisputeSignalThreshold != 3 {
+		t.Errorf("defaults = %d days, %d PRs", r.DisputeSignalWindowDays, r.DisputeSignalThreshold)
+	}
+	if r := app.Teams["platform"].Review; r.DisputeSignalWindowDays != 30 || r.DisputeSignalThreshold != 3 {
+		t.Errorf("team inherits %d days, %d PRs", r.DisputeSignalWindowDays, r.DisputeSignalThreshold)
+	}
+
+	e = newEnv(t)
+	e.teams(strings.Replace(twoTeams, "      max_pr_cost_usd: 8.5\n",
+		"      max_pr_cost_usd: 8.5\n      dispute_signal_window_days: 14\n      dispute_signal_threshold: 2\n", 1))
+	e.payments()
+	if r := e.mustLoad().Teams["payments"].Review; r.DisputeSignalWindowDays != 14 || r.DisputeSignalThreshold != 2 {
+		t.Errorf("override = %d days, %d PRs", r.DisputeSignalWindowDays, r.DisputeSignalThreshold)
+	}
+
+	for name, bad := range map[string]string{
+		"REVIEW_DISPUTE_SIGNAL_WINDOW_DAYS": "0", "REVIEW_DISPUTE_SIGNAL_THRESHOLD": "21",
+	} {
+		e := newEnv(t)
+		e.set(name, bad)
+		if _, err := e.load(); err == nil || !strings.Contains(err.Error(), name) {
+			t.Errorf("%s=%s: err = %v, want a load failure", name, bad, err)
+		}
+	}
+}
+
 // A cap of 0 reads as "no cap" but skips every auto-review after the first
 // priced run; negative is a typo. Both fail at load.
 func TestInstance_NonPositiveCostCapAbortsBoot(t *testing.T) {
@@ -604,6 +635,12 @@ func TestTeams_FaultDisablesOnlyThatTeam(t *testing.T) {
 		{"zero max_pr_cost_usd", func(s string) string {
 			return strings.Replace(s, "max_pr_cost_usd: 8.5", "max_pr_cost_usd: 0", 1)
 		}, "review.max_pr_cost_usd: Input should be greater than 0"},
+		{"dispute threshold of 1", func(s string) string {
+			return strings.Replace(s, "      max_pr_cost_usd: 8.5\n", "      max_pr_cost_usd: 8.5\n      dispute_signal_threshold: 1\n", 1)
+		}, "review.dispute_signal_threshold: Input should be between 2 and 20"},
+		{"dispute window of 0", func(s string) string {
+			return strings.Replace(s, "      max_pr_cost_usd: 8.5\n", "      max_pr_cost_usd: 8.5\n      dispute_signal_window_days: 0\n", 1)
+		}, "review.dispute_signal_window_days: Input should be between 1 and 365"},
 		{"unsupported language", func(s string) string {
 			return strings.Replace(s, "      max_pr_cost_usd: 8.5\n", "      max_pr_cost_usd: 8.5\n      language: fr\n", 1)
 		}, "review.language: Input should be 'de' or 'en'"},

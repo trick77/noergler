@@ -12,6 +12,7 @@ import (
 	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
+	"github.com/trick77/ship/kit/logging"
 )
 
 // Caps on what a finding reply carries and posts. The excerpt is context for
@@ -211,6 +212,18 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	agentsMD := r.fetchRepoInstructions(ctx, project, repo, at, pr.ToRef.Branch())
 	name := firstName(r.displayName, comment.Author.DisplayName)
 	l := r.languageFor(ctx, author)
+	// The repo's open dispute signals, read here and nowhere else: a reply
+	// on a finding is the only place they are consulted. Intent is the same
+	// call's verdict, so the list rides every finding reply; postFindingReply
+	// acts on a match for a dispute only. A failed read lists none.
+	var signalIDs []int64
+	var signalRules []string
+	for _, s := range safeDB(ctx, r.log, "OpenDisputeSignals", func() ([]store.DisputeSignal, error) {
+		return r.store.OpenDisputeSignals(ctx, team, project, repo, r.cfg.DisputeSignalWindowDays, disputeSignalsListed)
+	}) {
+		signalIDs = append(signalIDs, s.ID)
+		signalRules = append(signalRules, s.Rule)
+	}
 	prompt := inference.RenderFindingReplyPrompt(inference.FindingReplyPromptRequest{
 		Language:         l,
 		Template:         r.replyTmpl,
@@ -219,15 +232,17 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		FileExcerpt:      excerpt,
 		Reply:            lang.TruncateRunes(text, replyTextRunes),
 		AuthorFirstName:  name,
+		DisputeSignals:   signalRules,
 	})
 	req := inference.FindingReplyRequest{
 		Prompt:       prompt,
 		PromptTokens: r.tokens.Count(inference.MentionSystemMessage) + r.tokens.Count(prompt),
 	}
 	job := &replyJob{
-		key: key, project: project, repo: repo, prID: pr.ID, prTag: prTag, where: where,
+		key: key, team: team, project: project, repo: repo, prID: pr.ID, prTag: prTag, where: where,
+		author:    author,
 		findingID: f.ID, replyTo: comment.ID, text: text,
-		agentsMD: agentsMD, counter: counter,
+		agentsMD: agentsMD, signalIDs: signalIDs, signalRules: signalRules, counter: counter,
 		name: name, namesOn: r.displayName != nil, lang: l,
 	}
 	infer := func(inferCtx context.Context) { job.res = r.llm.FindingReply(inferCtx, req) }
@@ -240,13 +255,20 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 // prompt does not cross: inference holds it.
 type replyJob struct {
 	key           store.PRKey
+	team          string
 	project, repo string
 	prID          int
 	prTag, where  string
-	findingID     int64
-	replyTo       int
-	text          string
-	agentsMD      string
+	// author is the PR's author, the one whose reply this is.
+	author    string
+	findingID int64
+	replyTo   int
+	text      string
+	agentsMD  string
+	// signalIDs are the open dispute signals the prompt listed, in order:
+	// matches_signal n is signalIDs[n-1], worded signalRules[n-1].
+	signalIDs   []int64
+	signalRules []string
 	// name is the author's first name, "" when unknown; namesOn tells that
 	// from names off, so a drifted directory format shows in the log.
 	name    string
@@ -275,20 +297,13 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 
 	reply, nameState := guardName(res.Reply.Reply, j.name, res.Reply.Intent, j.namesOn)
 	body := lang.TruncateRunes(sharpS(j.lang, reply), replyPostRunes)
-	agentsLine := "none"
-	if line := res.Reply.AgentsMDLine; line != "" {
-		switch reason := inference.CheckAgentsMDLine(line, j.agentsMD); {
-		case !dispute:
-			agentsLine = "dropped (not a dispute)"
-		case reason != "":
-			agentsLine = "dropped (" + reason + ")"
-		default:
-			agentsLine = "suggested"
-			fence := codeFence(line)
-			body += j.lang.Pick("\n\nFalls das projektweit gilt, lohnt sich ein Eintrag in `AGENTS.md`:\n\n",
-				"\n\nIf this holds project-wide, consider adding to `AGENTS.md`:\n\n") +
-				fence + "markdown\n" + line + "\n" + fence
-		}
+	// A dispute with a project-wide reason is an occurrence of a dispute
+	// signal. The AGENTS.md bullet is shown only once the signal reaches the
+	// team's threshold of distinct PRs in its window (user, 2026-10-31); below
+	// it the answer carries no bullet at all.
+	agentsLine, signal := r.weighDispute(ctx, j, res.Reply)
+	if signal != nil && signal.prs >= r.cfg.DisputeSignalThreshold {
+		body += r.disputeStatement(j, signal)
 	}
 	posted, err := r.bitbucket.ReplyToComment(ctx, j.project, j.repo, j.prID, j.replyTo, body)
 	if err != nil {
@@ -308,6 +323,18 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 		stored = &d
 	}
 	safeDBErr(ctx, r.log, "MarkFindingReplied", func() error { return r.store.MarkFindingReplied(ctx, j.findingID, stored) })
+	// Posted, so recorded: nothing posted records no occurrence.
+	if signal != nil {
+		id, err := r.store.RecordDisputeOccurrence(ctx, j.team, j.key, signal.id, j.findingID, signal.rule)
+		switch {
+		case err != nil:
+			r.log.WarnContext(ctx, "DB operation failed, using fallback: RecordDisputeOccurrence", logging.Err(err))
+		case id == 0:
+			// The signal left the team's repo between prepare and post (a
+			// purge): the answer stands, the occurrence is not counted.
+			r.log.WarnContext(ctx, fmt.Sprintf("%s: dispute on finding %s not recorded: signal %d is no longer this team's repo's", j.prTag, j.where, signal.id))
+		}
+	}
 	r.log.InfoContext(ctx, fmt.Sprintf("%s: answered reply on finding %s: intent %s, AGENTS.md line %s, name %s",
 		j.prTag, j.where, res.Reply.Intent, agentsLine, nameState))
 }

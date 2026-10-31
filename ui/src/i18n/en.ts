@@ -522,7 +522,7 @@ export const en = {
       "Skipped means it never asked the model. Failed means it asked and something broke.",
     agentsQ: "AGENTS.md",
     agentsA1:
-      "It is what the review checks your code against: the conventions and constraints a new reviewer on your team would have to be told. Put it at the repo root.",
+      "It is what the review checks your code against: the conventions and constraints a new reviewer on your team would have to be told. Put it at the repo root. When findings keep being disputed for the same reason (by default in 3 PRs within 30 days), the reply in the finding thread proposes the AGENTS.md line that stops them.",
     agentsA3:
       "Keep it short. The summary starts warning well before the size limit, and past the limit reviews stop entirely.",
     stopQ: "How do I stop noergler reviewing a PR?",

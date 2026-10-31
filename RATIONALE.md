@@ -63,6 +63,14 @@ an incident or an eval run: read the reason before relaxing a rule.
   for a wrong "fixed".
 - Finding replies author-only: a reviewer's reply used up the one answer
   before the author could make their case.
+- Dispute signals, not a bullet per dispute (user, 2026-10-31): one dispute
+  is weak evidence, the same reason across PRs is a rule AGENTS.md lacks.
+  30 days so a reason nobody repeats fades; 3 PRs so a busy week of one PR
+  does not count; no distinct-author rule, a solo repo would never reach it,
+  the statement shows the count instead. The signal steers the answer only:
+  author text is intent, so a review changes only when a human edits
+  AGENTS.md. One call, not a second after the verdict: the list rides every
+  finding reply and code ignores it unless the reply is a dispute.
 - Language block above the untrusted input: below it the prompt calls
   everything data, so an instruction there is one the model may ignore; and
   the prefix up to it is the same for every PR in that language.

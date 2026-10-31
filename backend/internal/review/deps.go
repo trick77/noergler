@@ -107,6 +107,10 @@ type Store interface {
 	MarkFindingOpen(ctx context.Context, findingID int64) error
 	FindingByComment(ctx context.Context, k store.PRKey, commentID int) (*store.Finding, error)
 	MarkFindingReplied(ctx context.Context, findingID int64, dispute *string) error
+	// Dispute signals: read and written on the finding-reply path only.
+	OpenDisputeSignals(ctx context.Context, team, project, repo string, windowDays, limit int) ([]store.DisputeSignal, error)
+	DisputeSignalPRs(ctx context.Context, signalID int64, windowDays int, exclude store.PRKey) ([]store.DisputePR, error)
+	RecordDisputeOccurrence(ctx context.Context, team string, k store.PRKey, signalID, findingID int64, rule string) (int64, error)
 	InsertBotReply(ctx context.Context, k store.PRKey, commentID int, kind string) error
 	BotReplyByComment(ctx context.Context, k store.PRKey, commentID int) (*store.BotReply, error)
 	PRCost(ctx context.Context, k store.PRKey) (*int64, error)

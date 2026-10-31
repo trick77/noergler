@@ -23,6 +23,24 @@ func TestPromptsAreEmbedded(t *testing.T) {
 	}
 }
 
+// Dispute signals are consulted on a reply to a finding only: the
+// finding-reply prompt carries them once, as untrusted input, and no other
+// prompt carries them at all.
+func TestDisputeSignalsOnlyInTheFindingReply(t *testing.T) {
+	const ph = "{dispute_signals}"
+	if strings.Count(FindingReply, ph) != 1 {
+		t.Errorf("finding_reply carries %s %d times, want once", ph, strings.Count(FindingReply, ph))
+	}
+	if u := strings.Index(FindingReply, "## Untrusted input"); u < 0 || strings.Index(FindingReply, ph) < u {
+		t.Errorf("%s is not below the untrusted marker", ph)
+	}
+	for name, text := range map[string]string{"review": Review, "mention": Mention, "almanach note": AlmanachNote} {
+		if strings.Contains(text, ph) {
+			t.Errorf("%s prompt carries %s", name, ph)
+		}
+	}
+}
+
 // The review prompt's tail goes from stable to per-push, for the prefix
 // cache: the previous overview changes on every push, so it comes last.
 func TestReviewPlaceholderOrder(t *testing.T) {

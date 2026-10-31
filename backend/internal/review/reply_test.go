@@ -9,6 +9,7 @@ import (
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/prompts"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
@@ -35,7 +36,10 @@ func replyHarness(t *testing.T) (*harness, *webhook.Payload) {
 	return h, p
 }
 
-func TestFindingReplyAnswersADisputeWithAnAgentsMDLine(t *testing.T) {
+// A first dispute with a project-wide reason is answered without any
+// AGENTS.md text and recorded as a new signal (user, 2026-10-31: one
+// dispute is weak evidence).
+func TestFindingReplyAnswersADisputeAndRecordsTheSignal(t *testing.T) {
 	h, p := replyHarness(t)
 
 	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
@@ -54,14 +58,220 @@ func TestFindingReplyAnswersADisputeWithAnAgentsMDLine(t *testing.T) {
 		t.Fatalf("replies = %+v, want one under the author's comment 900", h.bb.Replies)
 	}
 	body := h.bb.Replies[0].Text
-	if !strings.Contains(body, "Understood, the UI owns that check.") ||
-		!strings.Contains(body, "consider adding to `AGENTS.md`") ||
-		!strings.Contains(body, "- Business rule validations live in the UI") {
+	if !strings.Contains(body, "Understood, the UI owns that check.") || strings.Contains(body, "AGENTS.md") {
 		t.Errorf("reply body:\n%s", body)
 	}
 	if len(h.st.Replied) != 1 || h.st.Replied[0].FindingID != 11 ||
 		h.st.Replied[0].Dispute == nil || *h.st.Replied[0].Dispute != "We do this in the UI" {
 		t.Errorf("replied = %+v, want row 11 marked disputed with the author's text", h.st.Replied)
+	}
+	want := occurrence{Team: "payments", SignalID: 0, FindingID: 11,
+		Rule: "- Business rule validations live in the UI; the backend does not re-validate them."}
+	if len(h.st.Occurrences) != 1 || h.st.Occurrences[0] != want {
+		t.Errorf("occurrences = %+v, want a new signal %+v", h.st.Occurrences, want)
+	}
+	if len(h.st.SignalReads) != 1 || h.st.SignalReads[0] != (signalRead{"payments", "PROJ", "my-repo", 30, 20}) {
+		t.Errorf("signal reads = %+v", h.st.SignalReads)
+	}
+}
+
+// signalAt3 is a reply matching open signal [2] (id 5), which two earlier
+// PRs of two authors already disputed: this one is the third PR.
+func signalAt3(t *testing.T) (*harness, *webhook.Payload) {
+	t.Helper()
+	h, p := replyHarness(t)
+	h.st.signals = []store.DisputeSignal{{ID: 4, Rule: "- Errors wrap with %w."}, {ID: 5, Rule: "- Validation lives in the UI."}}
+	c12, c31 := 1201, 3101
+	h.st.signalPRs = map[int64][]store.DisputePR{5: {
+		{PRID: 31, CommentID: &c31, Author: "bob"},
+		{PRID: 12, CommentID: &c12, Author: "Alice"},
+	}}
+	h.llm.reply.Reply.MatchesSignal = 2
+	return h, p
+}
+
+// The third PR inside the window: the answer says so, links the earlier
+// threads, counts the authors and proposes the merged bullet; the
+// occurrence goes under the matched signal.
+func TestFindingReplyProposesAtTheThreshold(t *testing.T) {
+	h, p := signalAt3(t)
+
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
+
+	if prompt := h.llm.Replies[0].Prompt; !strings.Contains(prompt, "[1] - Errors wrap with %w.\n[2] - Validation lives in the UI.") {
+		t.Errorf("prompt lacks the numbered signals:\n%s", prompt)
+	}
+	body := h.bb.Replies[0].Text
+	for _, want := range []string{
+		"This is the 3rd PR within 30 days disputing this for the same reason",
+		"[#31](https://bb.test/projects/PROJ/repos/my-repo/pull-requests/31/overview?commentId=3101)",
+		"[#12](https://bb.test/projects/PROJ/repos/my-repo/pull-requests/12/overview?commentId=1201)",
+		"2 authors", "Proposed `AGENTS.md` change",
+		"```markdown\n- Business rule validations live in the UI; the backend does not re-validate them.\n```",
+	} {
+		if !strings.Contains(strings.ReplaceAll(body, "\n", " "), strings.ReplaceAll(want, "\n", " ")) {
+			t.Errorf("reply lacks %q:\n%s", want, body)
+		}
+	}
+	if len(h.st.Occurrences) != 1 || h.st.Occurrences[0].SignalID != 5 {
+		t.Errorf("occurrences = %+v, want one under signal 5", h.st.Occurrences)
+	}
+}
+
+// German: the ordinal is "3.", the counts are German.
+func TestFindingReplyProposesInGerman(t *testing.T) {
+	h, p := signalAt3(t)
+	h.st.languages = map[string]lang.Lang{"alice": lang.DE}
+
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
+
+	body := strings.ReplaceAll(h.bb.Replies[0].Text, "\n", " ")
+	for _, want := range []string{"Das ist der 3. PR innert 30 Tagen mit diesem Einwand", "2 Verfasser", "Vorschlag für `AGENTS.md`"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("reply lacks %q:\n%s", want, body)
+		}
+	}
+}
+
+// Below the threshold, off the list, not a dispute, a dispute without a
+// bullet, a failed read: no statement. Only a checked dispute bullet is
+// recorded, and only once the answer is posted.
+func TestFindingReplyHoldsTheStatement(t *testing.T) {
+	cases := map[string]struct {
+		tweak     func(h *harness)
+		occurs    bool
+		signalID  int64
+		postFails bool
+	}{
+		"one earlier PR":       {tweak: func(h *harness) { h.st.signalPRs[5] = h.st.signalPRs[5][:1] }, occurs: true, signalID: 5},
+		"a match off the list": {tweak: func(h *harness) { h.llm.reply.Reply.MatchesSignal = 3 }, occurs: true},
+		"not a dispute":        {tweak: func(h *harness) { h.llm.reply.Reply.Intent = "question" }},
+		"no bullet": {tweak: func(h *harness) {
+			h.llm.reply.Reply.AgentsMDLine = ""
+		}},
+		"bullet AGENTS.md has": {tweak: func(h *harness) {
+			h.bb.files["src1:AGENTS.md"] = "- Business rule validations live in the UI; the backend does not re-validate them.\n"
+		}},
+		"signal reads fail": {tweak: func(h *harness) { h.st.signalErr = errors.New("boom") }, occurs: true},
+		"post fails":        {tweak: func(h *harness) { h.bb.replyErr = errors.New("boom") }, postFails: true},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			h, p := signalAt3(t)
+			c.tweak(h)
+
+			h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
+
+			if c.postFails {
+				if len(h.st.Occurrences) != 0 {
+					t.Errorf("recorded %+v without a posted answer", h.st.Occurrences)
+				}
+				return
+			}
+			if len(h.bb.Replies) != 1 || strings.Contains(h.bb.Replies[0].Text, "AGENTS.md") {
+				t.Errorf("replies = %+v, want one without AGENTS.md text", h.bb.Replies)
+			}
+			if got := len(h.st.Occurrences); (got == 1) != c.occurs || got > 1 {
+				t.Fatalf("occurrences = %+v, want recorded: %v", h.st.Occurrences, c.occurs)
+			}
+			if c.occurs && h.st.Occurrences[0].SignalID != c.signalID {
+				t.Errorf("signal = %d, want %d", h.st.Occurrences[0].SignalID, c.signalID)
+			}
+		})
+	}
+}
+
+// More earlier PRs than the statement links: the rest is a count.
+func TestDisputeStatementCapsTheLinks(t *testing.T) {
+	h, p := signalAt3(t)
+	var prs []store.DisputePR
+	for i := 1; i <= 12; i++ {
+		prs = append(prs, store.DisputePR{PRID: 100 + i, Author: "bob"})
+	}
+	h.st.signalPRs[5] = prs
+
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
+
+	body := strings.ReplaceAll(h.bb.Replies[0].Text, "\n", " ")
+	if !strings.Contains(body, "This is the 13th PR") || !strings.Contains(body, "#110, +2 more; 2 authors") ||
+		strings.Contains(body, "#111") {
+		t.Errorf("reply:\n%s", body)
+	}
+}
+
+// A valid match whose merged bullet fails the format check still counts,
+// under the listed wording, and that wording is what the statement shows.
+func TestFindingReplyKeepsAValidMatchWithABadBullet(t *testing.T) {
+	h, p := signalAt3(t)
+	h.llm.reply.Reply.AgentsMDLine = "- " + strings.Repeat("x", 250)
+
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
+
+	if len(h.st.Occurrences) != 1 || h.st.Occurrences[0].SignalID != 5 || h.st.Occurrences[0].Rule != "- Validation lives in the UI." {
+		t.Errorf("occurrences = %+v, want signal 5 under its listed wording", h.st.Occurrences)
+	}
+	if body := h.bb.Replies[0].Text; !strings.Contains(body, "```markdown\n- Validation lives in the UI.\n```") || strings.Contains(body, "xxxx") {
+		t.Errorf("reply:\n%s", body)
+	}
+}
+
+// A German bullet is Swiss-spelled before it is posted or stored; a one-day
+// window reads singular.
+func TestDisputeStatementSpelling(t *testing.T) {
+	h, p := signalAt3(t)
+	h.st.languages = map[string]lang.Lang{"alice": lang.DE}
+	h.llm.reply.Reply.AgentsMDLine = "- Validierung erfolgt ausschließlich im UI."
+	h.r.cfg.DisputeSignalWindowDays = 1
+
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
+
+	body := strings.ReplaceAll(h.bb.Replies[0].Text, "\n", " ")
+	if !strings.Contains(body, "ausschliesslich") || strings.Contains(body, "ß") || !strings.Contains(body, "innert 1 Tag mit") {
+		t.Errorf("reply:\n%s", body)
+	}
+	if len(h.st.Occurrences) != 1 || strings.Contains(h.st.Occurrences[0].Rule, "ß") {
+		t.Errorf("stored %+v", h.st.Occurrences)
+	}
+}
+
+// A rule AGENTS.md already states counts nothing, whichever spelling either
+// side uses, and also when only the listed wording of a fallback is there.
+func TestFindingReplyRuledOutByAGENTSMD(t *testing.T) {
+	cases := map[string]func(h *harness){
+		"model ß, AGENTS.md ss": func(h *harness) {
+			h.st.languages = map[string]lang.Lang{"alice": lang.DE}
+			h.llm.reply.Reply.AgentsMDLine = "- Validierung erfolgt ausschließlich im UI."
+			h.bb.files["src1:AGENTS.md"] = "- Validierung erfolgt ausschliesslich im UI.\n"
+		},
+		"model ß, AGENTS.md ß": func(h *harness) {
+			h.st.languages = map[string]lang.Lang{"alice": lang.DE}
+			h.llm.reply.Reply.AgentsMDLine = "- Validierung erfolgt ausschließlich im UI."
+			h.bb.files["src1:AGENTS.md"] = "- Validierung erfolgt ausschließlich im UI.\n"
+		},
+		"bad bullet, listed wording present": func(h *harness) {
+			h.llm.reply.Reply.AgentsMDLine = "- " + strings.Repeat("x", 250)
+			h.bb.files["src1:AGENTS.md"] = "- Validation lives in the UI.\n"
+		},
+	}
+	for name, tweak := range cases {
+		t.Run(name, func(t *testing.T) {
+			h, p := signalAt3(t)
+			tweak(h)
+
+			h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
+
+			if len(h.st.Occurrences) != 0 || strings.Contains(h.bb.Replies[0].Text, "AGENTS.md") {
+				t.Errorf("occurrences %+v, reply:\n%s", h.st.Occurrences, h.bb.Replies[0].Text)
+			}
+		})
+	}
+}
+
+func TestOrdinalEN(t *testing.T) {
+	for n, want := range map[int]string{1: "1st", 2: "2nd", 3: "3rd", 4: "4th", 11: "11th", 12: "12th", 13: "13th", 21: "21st", 112: "112th"} {
+		if got := ordinalEN(n); got != want {
+			t.Errorf("ordinalEN(%d) = %q, want %q", n, got, want)
+		}
 	}
 }
 
@@ -124,8 +334,12 @@ func TestFindingReplyDropsTheAgentsMDLine(t *testing.T) {
 
 		h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
 
-		if strings.Contains(h.bb.Replies[0].Text, "consider adding") {
+		if strings.Contains(h.bb.Replies[0].Text, "AGENTS.md") {
 			t.Errorf("reply repeats a line AGENTS.md has:\n%s", h.bb.Replies[0].Text)
+		}
+		// Nothing AGENTS.md states counts toward a signal.
+		if len(h.st.Occurrences) != 0 {
+			t.Errorf("occurrences = %+v", h.st.Occurrences)
 		}
 	})
 }

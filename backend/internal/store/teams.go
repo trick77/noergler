@@ -340,6 +340,16 @@ func (s *Store) PurgeProject(ctx context.Context, teamSlug, projectKey string, r
 		} else {
 			_, err = tx.Exec(ctx, `DELETE FROM almanach_notes WHERE team_slug = $1 AND project_key = $2 AND repo_slug = $3 AND finalized_at IS NULL`, teamSlug, projectKey, *repoSlug)
 		}
+		if err != nil {
+			return err
+		}
+		// Dispute signals hang off the repo, not a PR row: their occurrences
+		// went with the findings, the signals go here.
+		if repoSlug == nil {
+			_, err = tx.Exec(ctx, `DELETE FROM dispute_signals WHERE team_slug = $1 AND project_key = $2`, teamSlug, projectKey)
+		} else {
+			_, err = tx.Exec(ctx, `DELETE FROM dispute_signals WHERE team_slug = $1 AND project_key = $2 AND repo_slug = $3`, teamSlug, projectKey, *repoSlug)
+		}
 		return err
 	})
 	if err != nil {

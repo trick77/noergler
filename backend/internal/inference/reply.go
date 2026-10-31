@@ -3,6 +3,8 @@ package inference
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"math"
 	"slices"
 	"strings"
 
@@ -42,6 +44,9 @@ const (
 	PlaceholderFileExcerpt = "{file_excerpt}"
 	PlaceholderReply       = "{reply}"
 	PlaceholderAuthorName  = "{author_first_name}"
+	// PlaceholderDisputeSignals is the repo's open dispute signals. Only the
+	// finding-reply template carries it: a review never sees them.
+	PlaceholderDisputeSignals = "{dispute_signals}"
 )
 
 // ReplyIntents are what a reply on a finding's thread can be. "disputes"
@@ -62,8 +67,27 @@ type FindingReplyPromptRequest struct {
 	Reply string
 	// AuthorFirstName is the author's first name, or empty when unknown.
 	AuthorFirstName string
+	// DisputeSignals is the rule of each open dispute signal of the repo,
+	// listed as [1]..[n]; the model's matches_signal names one by number.
+	DisputeSignals []string
 	// Language is the author's; the zero value writes German.
 	Language lang.Lang
+}
+
+// RenderDisputeSignals is the numbered list the prompt shows, one rule per
+// line, "_None._" without one. A rule is one line already (CheckAgentsMDLine).
+func RenderDisputeSignals(rules []string) string {
+	if len(rules) == 0 {
+		return "_None._"
+	}
+	var b strings.Builder
+	for i, r := range rules {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		fmt.Fprintf(&b, "[%d] %s", i+1, r)
+	}
+	return b.String()
 }
 
 // RenderFindingReplyPrompt assembles the prompt in one substitution pass,
@@ -83,6 +107,7 @@ func RenderFindingReplyPrompt(req FindingReplyPromptRequest) string {
 		PlaceholderFileExcerpt, excerpt,
 		PlaceholderReply, req.Reply,
 		PlaceholderAuthorName, authorName,
+		PlaceholderDisputeSignals, RenderDisputeSignals(req.DisputeSignals),
 		PlaceholderOutputLanguage, OutputLanguageBlock(req.Language),
 	).Replace(req.Template)
 }
@@ -101,11 +126,12 @@ func findingReplyFormat() llmwire.ResponseFormat {
 		Schema: map[string]any{
 			"type":                 "object",
 			"additionalProperties": false,
-			"required":             []any{"intent", "reply", "agents_md_line"},
+			"required":             []any{"intent", "reply", "agents_md_line", "matches_signal"},
 			"properties": map[string]any{
 				"intent":         map[string]any{"type": "string", "enum": intents},
 				"reply":          map[string]any{"type": "string", "minLength": 1},
 				"agents_md_line": map[string]any{"type": []any{"string", "null"}},
+				"matches_signal": map[string]any{"type": []any{"integer", "null"}},
 			},
 		},
 		Strict: true,
@@ -119,16 +145,22 @@ type FindingReply struct {
 	// AgentsMDLine is the suggested AGENTS.md bullet, unchecked; empty when
 	// the model proposed none. CheckAgentsMDLine decides whether it is shown.
 	AgentsMDLine string
+	// MatchesSignal is the listed dispute signal's number (1-based) the
+	// reply's reason is the same rule as, 0 for none. Unchecked: the caller
+	// maps it to the list it sent and treats anything else as none.
+	MatchesSignal int
 }
 
 // ParseFindingReply reads the model's envelope. An unknown intent reads as
 // "other", so a model off the enum still gets its reply posted, but never
-// records a dispute nobody made.
+// records a dispute nobody made. A matches_signal that is no integer reads
+// as none: it never costs the reply.
 func ParseFindingReply(content string) (FindingReply, bool) {
 	var raw struct {
-		Intent       string  `json:"intent"`
-		Reply        string  `json:"reply"`
-		AgentsMDLine *string `json:"agents_md_line"`
+		Intent        string          `json:"intent"`
+		Reply         string          `json:"reply"`
+		AgentsMDLine  *string         `json:"agents_md_line"`
+		MatchesSignal json.RawMessage `json:"matches_signal"`
 	}
 	if json.Unmarshal([]byte(stripFence(strings.TrimSpace(content))), &raw) != nil {
 		return FindingReply{}, false
@@ -139,6 +171,11 @@ func ParseFindingReply(content string) (FindingReply, bool) {
 	}
 	if raw.AgentsMDLine != nil {
 		out.AgentsMDLine = strings.TrimSpace(*raw.AgentsMDLine)
+	}
+	// A number, integral, at least 1: "2.0" from a gateway is still 2.
+	var n float64
+	if len(raw.MatchesSignal) > 0 && json.Unmarshal(raw.MatchesSignal, &n) == nil && n >= 1 && n <= 1<<20 && n == math.Trunc(n) {
+		out.MatchesSignal = int(n)
 	}
 	if out.Reply == "" {
 		return FindingReply{}, false

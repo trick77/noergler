@@ -26,6 +26,35 @@ func TestRenderFindingReplyPromptIsOnePass(t *testing.T) {
 	}
 }
 
+// The open signals are numbered from 1, in the order given; none says so.
+// A reply naming the placeholder stays literal (one pass).
+func TestRenderFindingReplyPromptListsDisputeSignals(t *testing.T) {
+	got := RenderFindingReplyPrompt(FindingReplyPromptRequest{
+		Template:       "S={dispute_signals} R={reply}",
+		Reply:          "{dispute_signals}",
+		DisputeSignals: []string{"- Validation lives in the UI.", "- Errors wrap with %w."},
+	})
+	if got != "S=[1] - Validation lives in the UI.\n[2] - Errors wrap with %w. R={dispute_signals}" {
+		t.Errorf("got %q", got)
+	}
+	if got := RenderFindingReplyPrompt(FindingReplyPromptRequest{Template: "{dispute_signals}"}); got != "_None._" {
+		t.Errorf("no signals = %q", got)
+	}
+}
+
+// matches_signal is in the strict schema, required like every key.
+func TestFindingReplyFormatHasMatchesSignal(t *testing.T) {
+	s := findingReplyFormat().Schema
+	props := s["properties"].(map[string]any)
+	if _, ok := props["matches_signal"]; !ok {
+		t.Fatal("schema lacks matches_signal")
+	}
+	req := s["required"].([]any)
+	if len(req) != len(props) {
+		t.Errorf("required %v, properties %v: strict needs every key", req, props)
+	}
+}
+
 func TestParseFindingReply(t *testing.T) {
 	cases := []struct {
 		name, in string
@@ -40,6 +69,17 @@ func TestParseFindingReply(t *testing.T) {
 		{"unknown intent", `{"intent":"rejects","reply":"Ok."}`, true, FindingReply{Intent: "other", Reply: "Ok."}},
 		{"fenced", "```json\n{\"intent\":\"question\",\"reply\":\"It means X.\",\"agents_md_line\":null}\n```", true,
 			FindingReply{Intent: "question", Reply: "It means X."}},
+		{"matches a signal", `{"intent":"disputes","reply":"Ok.","agents_md_line":"- a","matches_signal":2}`, true,
+			FindingReply{Intent: "disputes", Reply: "Ok.", AgentsMDLine: "- a", MatchesSignal: 2}},
+		// A bad match is none, never a lost reply.
+		{"match not an integer", `{"intent":"disputes","reply":"Ok.","agents_md_line":null,"matches_signal":"2"}`, true,
+			FindingReply{Intent: "disputes", Reply: "Ok."}},
+		{"match as a float", `{"intent":"disputes","reply":"Ok.","agents_md_line":null,"matches_signal":2.0}`, true,
+			FindingReply{Intent: "disputes", Reply: "Ok.", MatchesSignal: 2}},
+		{"match not integral", `{"intent":"disputes","reply":"Ok.","agents_md_line":null,"matches_signal":1.5}`, true,
+			FindingReply{Intent: "disputes", Reply: "Ok."}},
+		{"match below one", `{"intent":"disputes","reply":"Ok.","agents_md_line":null,"matches_signal":0}`, true,
+			FindingReply{Intent: "disputes", Reply: "Ok."}},
 		{"empty reply", `{"intent":"disputes","reply":"  "}`, false, FindingReply{}},
 		{"not json", "sure, noted", false, FindingReply{}},
 	}
