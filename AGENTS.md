@@ -18,6 +18,7 @@ decision, not a cleanup.
   `make check` before merge.
 - Store tests need docker (ship starts Postgres); plain `go test` skips them.
 - Commit subjects + PR titles: Go style `area: what` (`review: …`, `store: …`), gated by ship; release notes list them by area.
+- Fresh clone: `ship hooks` before the first push (check, conform and init install it too); without the pre-push hook a push skips the gate.
 - Merge ships nothing; release = `gh workflow run Release`, GitHub-hosted
   runners only, never a laptop.
 - `./scripts/smoke.sh` boots `serve` against `scripts/fakes`.
