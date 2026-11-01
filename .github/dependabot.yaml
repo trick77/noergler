@@ -9,6 +9,11 @@ updates:
       time: "07:00"
       timezone: Europe/Zurich
     open-pull-requests-limit: 5
+    # `// indirect` too: by default Dependabot bumps only direct requirements,
+    # and an indirect one stays at whatever floor a dependency set (a
+    # vulnerable go-jose behind go-oidc reached the images that way).
+    allow:
+      - dependency-type: all
     groups:
       # kit is v0.x: a minor may break. Its own PR, never inside the
       # catch-all (first matching group wins).
