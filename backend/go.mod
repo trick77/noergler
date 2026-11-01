@@ -3,12 +3,12 @@ module github.com/trick77/noergler
 go 1.27.3
 
 require (
-	github.com/getkin/kin-openapi v0.151.0
+	github.com/getkin/kin-openapi v0.152.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/tiktoken-go/tokenizer v0.10.0
 	github.com/trick77/llmwire v0.1.8
 	github.com/trick77/ship/kit v0.18.0
-	go.yaml.in/yaml/v3 v3.0.5
+	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/text v0.43.0
 )
 
