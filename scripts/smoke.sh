@@ -5,7 +5,8 @@
 # Needs a Postgres: `docker compose up -d postgres` or DATABASE_URL.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-tmp=$(mktemp -d)
+# Explicit template: bare mktemp on macOS ignores TMPDIR (sandboxes deny /var/folders).
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/smoke.XXXXXX")
 pid=""
 fakes_pid=""
 # The server dies with the script, even when the reader of our output goes
