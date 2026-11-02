@@ -25,8 +25,8 @@ var skipExtensions = map[string]bool{
 	".json": true, ".lock": true, ".min.js": true, ".min.css": true, ".csv": true,
 	".map": true,
 	// HTTP Archive: recorded traffic replayed by e2e tests, JSON with no
-	// hand-written intent, often megabytes, and it carries cookies and auth
-	// headers that must not reach the gateway.
+	// hand-written intent and often megabytes, crowding hand-written tests
+	// out of the token budget. A noise rule, not a secret filter.
 	".har": true,
 	// Diagram markup, not code. .drawio/.excalidraw are serialized editor state
 	// rather than hand-written markup, so they are noise either way.
