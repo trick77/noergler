@@ -79,20 +79,28 @@ func TestParseVisualChanges(t *testing.T) {
 		`{"ids": [" V1 "], "change": " Button moved below the form; explained by login.css. "},` +
 		`{"ids": ["V2"], "change": "  "}, {"change": "no id"}, {"ids": [], "change": "empty ids"},` +
 		`{"ids": ["", " "], "change": "blank ids"}, {"ids": "V5", "change": "not a list"},` +
-		`{"ids": [3], "change": null}]}`)
-	if len(got.Visual) != 1 || got.Visual[0] != (VisualChange{ID: "V1", Change: "Button moved below the form; explained by login.css."}) {
-		t.Errorf("visual = %+v", got.Visual)
+		`{"ids": [3], "change": null}, {"ids": ["V6", 7, " "], "change": "mixed"}]}`)
+	want := []VisualChange{
+		{ID: "V1", Change: "Button moved below the form; explained by login.css."},
+		{ID: "V6", Change: "mixed"},
+	}
+	if !slices.Equal(got.Visual, want) {
+		t.Errorf("visual = %+v, want %+v", got.Visual, want)
+	}
+	// Every drop says so: 6 items, 4 ids (the blank pair's item twice over).
+	if len(got.Diagnostics) != 10 {
+		t.Errorf("diagnostics = %+v, want 10: one per dropped item and id", got.Diagnostics)
 	}
 	flags := ParseReview(`{"overview": "x", "visual_changes": [` +
 		`{"ids": ["V1"], "change": "a", "visible": true}, {"ids": ["V2"], "change": "b", "visible": false},` +
 		`{"ids": ["V3"], "change": "c"}, {"ids": ["V4"], "change": "d", "visible": "false"}]}`)
-	want := []bool{false, true, false, false}
-	if len(flags.Visual) != len(want) {
+	hide := []bool{false, true, false, false}
+	if len(flags.Visual) != len(hide) {
 		t.Fatalf("visual = %+v", flags.Visual)
 	}
 	for i, v := range flags.Visual {
-		if v.Invisible != want[i] {
-			t.Errorf("%s: Invisible = %v, want %v (only a literal false hides a line)", v.ID, v.Invisible, want[i])
+		if v.Invisible != hide[i] {
+			t.Errorf("%s: Invisible = %v, want %v (only a literal false hides a line)", v.ID, v.Invisible, hide[i])
 		}
 	}
 	if none := ParseReview(`{"overview": "x", "visual_changes": null}`); none.Visual != nil {

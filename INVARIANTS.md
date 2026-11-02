@@ -181,13 +181,13 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   Unterschied» lines are noise), stored as '' like same pixels; only a
   literal false hides, never on an added one. Visible drift no code
   explains keeps its line. At most 10 pairs a call (a changed pair takes 2
-  of the 20 reads). One `visual_changes` item per change,
-  its `ids` every screenshot showing it (user, 2026-11-02: eight screenshots
-  of one backlink change, each sentence reworded for its screen, never
-  folded); the parser gives each id the same sentence. Identical lines fold
+  of the 20 reads). The model groups screenshots per change, in `ids`
+  (user, 2026-11-02: asked per screenshot it reworded each sentence for its
+  screen, so eight lines of one change never folded). Identical lines fold
   at render only (user, 2026-10-30): exact text after whitespace, never a
-  fuzzy match, never a status line; the store keeps one line per pair. Not a drop, so no log line: every screenshot
-  is still named or counted on its line.
+  fuzzy match, never a status line; the store keeps one line per pair. Not
+  a drop, so no log line: every screenshot is still named or counted on its
+  line.
 
 ## Evals
 
