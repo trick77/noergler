@@ -79,10 +79,12 @@ func TestParseVisualChanges(t *testing.T) {
 		`{"ids": [" V1 "], "change": " Button moved below the form; explained by login.css. "},` +
 		`{"ids": ["V2"], "change": "  "}, {"change": "no id"}, {"ids": [], "change": "empty ids"},` +
 		`{"ids": ["", " "], "change": "blank ids"}, {"ids": "V5", "change": "not a list"},` +
-		`{"ids": [3], "change": null}, {"ids": ["V6", 7, " "], "change": "mixed"}]}`)
+		`{"ids": [3], "change": null}, {"ids": ["V6", 7, " "], "change": "mixed"},` +
+		`{"id": " V7 ", "change": "the one-id shape"}]}`)
 	want := []VisualChange{
 		{ID: "V1", Change: "Button moved below the form; explained by login.css."},
 		{ID: "V6", Change: "mixed"},
+		{ID: "V7", Change: "the one-id shape"},
 	}
 	if !slices.Equal(got.Visual, want) {
 		t.Errorf("visual = %+v, want %+v", got.Visual, want)
@@ -112,7 +114,7 @@ func TestParseVisualChanges(t *testing.T) {
 // same sentence and flag, so the summary folds them into one line.
 func TestParseVisualChangesGroupsIDs(t *testing.T) {
 	got := ParseReview(`{"overview": "x", "visual_changes": [` +
-		`{"ids": ["V1", " V2 ", "", "V3"], "change": " The backlink reads Zum Schadenfall; header.html explains it. ", "visible": false},` +
+		`{"ids": ["V1", " V2 ", "", "V3", "V1"], "change": " The backlink reads Zum Schadenfall; header.html explains it. ", "visible": false},` +
 		`{"ids": ["V4"], "change": "Font drift; nothing in the PR explains it.", "visible": true}]}`)
 	shared := "The backlink reads Zum Schadenfall; header.html explains it."
 	want := []VisualChange{

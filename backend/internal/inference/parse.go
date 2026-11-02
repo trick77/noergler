@@ -421,6 +421,7 @@ func ParseReview(content string) ParsedReview {
 	for _, item := range out.listItems(raw, "visual_changes") {
 		var e struct {
 			IDs     []json.RawMessage `json:"ids"`
+			ID      json.RawMessage   `json:"id"`
 			Change  string            `json:"change"`
 			Visible json.RawMessage   `json:"visible"`
 		}
@@ -433,14 +434,22 @@ func ParseReview(content string) ParsedReview {
 			out.warn("Skipping empty visual_changes entry")
 			continue
 		}
+		// The one-id shape from before ids: a provider that does not enforce
+		// the schema, or a model on habit, still gets its line.
+		if len(e.IDs) == 0 && len(e.ID) > 0 {
+			e.IDs = []json.RawMessage{e.ID}
+		}
 		// Id by id, like the items: a blank or non-string id costs that id
-		// alone, never the screenshots beside it.
+		// alone, never the screenshots beside it. A repeat in the same item
+		// is the same answer, not a second one.
 		var ids []string
 		for _, rawID := range e.IDs {
-			if id := strings.TrimSpace(decodeString(rawID)); id != "" {
+			id := strings.TrimSpace(decodeString(rawID))
+			switch {
+			case id == "":
+				out.warn("Skipping blank or non-string visual_changes id: %s", lang.TruncateRunes(string(rawID), 50))
+			case !slices.Contains(ids, id):
 				ids = append(ids, id)
-			} else {
-				out.warn("Skipping blank visual_changes id: %s", lang.TruncateRunes(string(rawID), 50))
 			}
 		}
 		if len(ids) == 0 {
