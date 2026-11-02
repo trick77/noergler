@@ -84,8 +84,9 @@ type ReviewRequest struct {
 	Images []VisualImage
 	// VisualKnown are the sentences the PR's summary already shows for
 	// screenshots described in earlier calls, sent with Images so a new
-	// screenshot of the same change reuses one verbatim and folds with it.
-	// The caller counts VisualKnownText into PromptTokens.
+	// screenshot of the same change can reuse one verbatim and fold with it.
+	// The caller counts VisualKnownText into PromptTokens; the evals send
+	// one call per case and none.
 	VisualKnown []string
 }
 
@@ -123,16 +124,20 @@ func visualMessage(images []VisualImage, known []string) llmwire.Message {
 // check with the labels.
 const VisualIntro = "Changed test screenshots of this PR, for `visual_changes`. Name each id in exactly one item."
 
-// VisualKnownText is the part listing the sentences the PR's summary already
-// shows for other screenshots; "" for none. Screenshots of one change sent
+// VisualKnownHeader heads the earlier sentences; review.txt names it and
+// says what to do with them, this part only lists them.
+const VisualKnownHeader = "Earlier sentences, from this PR's other screenshots:"
+
+// VisualKnownText is the part listing the sentences earlier calls wrote for
+// the PR's other screenshots; "" for none. Screenshots of one change sent
 // in different calls folded only when the model happened to word them alike
-// (user, 2026-11-02): handed the earlier sentence, it copies it.
+// (user, 2026-11-02): handed the earlier sentence, it can copy it.
 func VisualKnownText(known []string) string {
 	if len(known) == 0 {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("Already in the summary for this PR's other screenshots. A screenshot below that shows one of these changes and nothing more takes that sentence as its `change`, copied character for character:")
+	b.WriteString(VisualKnownHeader)
 	for _, s := range known {
 		b.WriteString("\n- ")
 		b.WriteString(s)
@@ -143,7 +148,8 @@ func VisualKnownText(known []string) string {
 // NewVisualImage is the n-th (from 0) image of a call, from its pixel diff,
 // and what it costs the fit check: the images' estimate plus the text the
 // turn wraps them in, its intro counted with the first. The review and the
-// evals build images through it, so both weigh a call the same.
+// evals build images through it, so both weigh the images the same; the
+// earlier sentences only a review sends are counted on top.
 func NewVisualImage(n int, path string, res visual.Result, count CountFunc) (VisualImage, int) {
 	img := VisualImage{ID: fmt.Sprintf("V%d", n+1), Path: path, After: visual.DataURI(res.After), Cropped: res.Cropped}
 	if res.Before != nil {

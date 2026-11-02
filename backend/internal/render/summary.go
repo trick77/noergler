@@ -293,7 +293,7 @@ func renderVisual(in SummaryInput) string {
 	for _, v := range in.Visual {
 		var text string
 		if v.Status == VisualDescribed {
-			text = strings.Join(strings.Fields(v.Text), " ")
+			text = VisualFoldKey(v.Text)
 		}
 		if g := byText[text]; text != "" && g != nil {
 			g.names = append(g.names, nameOf(v))
@@ -354,6 +354,13 @@ func renderVisual(in SummaryInput) string {
 		lines = append(lines, WrapProse(line))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// VisualFoldKey is a described line as the fold compares it: whitespace
+// collapsed, nothing else. The review hands earlier sentences to the model
+// in this form, so a copy folds with them.
+func VisualFoldKey(text string) string {
+	return strings.Join(strings.Fields(text), " ")
 }
 
 // maxFoldedNames is how many screenshots a folded line names before counting

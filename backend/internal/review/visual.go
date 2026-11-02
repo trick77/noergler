@@ -201,32 +201,38 @@ const maxVisualKnown = 20
 // addKnown hands the call the distinct sentences this run shows from the
 // store, when it sends any image: a screenshot of a change described in an
 // earlier call then takes the same words and folds with it (user,
-// 2026-11-02). Whitespace-normalized, as the fold compares. No room for
-// them sends none, logged: the call still runs, its lines just may not
-// fold.
+// 2026-11-02). In the fold's form, so a copy folds. As many as fit after
+// the images, in section order; any left out is logged: the call still
+// runs, those lines just may not fold.
 func (vs *visualRun) addKnown() {
 	vp := vs.vp
 	if len(vp.images) == 0 {
 		return
 	}
-	var known []string
+	var all []string
 	for _, l := range vp.lines {
 		if l.Status != render.VisualDescribed {
 			continue
 		}
-		text := strings.Join(strings.Fields(l.Text), " ")
-		if text != "" && !slices.Contains(known, text) && len(known) < maxVisualKnown {
-			known = append(known, text)
+		if text := render.VisualFoldKey(l.Text); text != "" && !slices.Contains(all, text) {
+			all = append(all, text)
 		}
 	}
-	if len(known) == 0 {
+	if len(all) == 0 {
 		return
 	}
-	cost := vs.r.tokens.Count(inference.VisualKnownText(known))
-	if cost > vs.room-vp.tokens {
-		vs.r.log.InfoContext(vs.ctx, fmt.Sprintf("%s: %d earlier screenshot line(s) not sent: no room (~%d tokens); new lines may not fold with them",
-			vs.prTag, len(known), cost))
-		return
+	var known []string
+	cost := 0
+	for _, text := range all[:min(len(all), maxVisualKnown)] {
+		c := vs.r.tokens.Count(inference.VisualKnownText(append(known, text)))
+		if c > vs.room-vp.tokens {
+			break
+		}
+		known, cost = append(known, text), c
+	}
+	if left := len(all) - len(known); left > 0 {
+		vs.r.log.InfoContext(vs.ctx, fmt.Sprintf("%s: %d of %d earlier screenshot line(s) not sent (cap %d or no room); new lines may not fold with them",
+			vs.prTag, left, len(all), maxVisualKnown))
 	}
 	vp.known = known
 	vp.tokens += cost
