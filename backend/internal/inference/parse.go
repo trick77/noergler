@@ -413,12 +413,14 @@ func ParseReview(content string) ParsedReview {
 		out.PreExisting = append(out.PreExisting, b)
 	}
 
-	// An entry without a string id or with a blank change says nothing about
-	// any screenshot and is dropped. Item by item: one malformed entry must
-	// not take the good ones with it.
+	// One entry is one change, with every screenshot that shows it; each id
+	// gets the same sentence, so the summary folds them into one line (user,
+	// 2026-11-02). An entry without a string id or with a blank change says
+	// nothing about any screenshot and is dropped. Item by item: one
+	// malformed entry must not take the good ones with it.
 	for _, item := range out.listItems(raw, "visual_changes") {
 		var e struct {
-			ID      string          `json:"id"`
+			IDs     []string        `json:"ids"`
 			Change  string          `json:"change"`
 			Visible json.RawMessage `json:"visible"`
 		}
@@ -426,15 +428,23 @@ func ParseReview(content string) ParsedReview {
 			out.warn("Skipping malformed visual_changes entry: %s", lang.TruncateRunes(string(item), 200))
 			continue
 		}
-		// Only a literal false hides the line: anything else the
-		// model put there shows it.
-		v := VisualChange{ID: strings.TrimSpace(e.ID), Change: strings.TrimSpace(e.Change),
-			Invisible: string(e.Visible) == "false"}
-		if v.ID == "" || v.Change == "" {
+		change := strings.TrimSpace(e.Change)
+		var ids []string
+		for _, id := range e.IDs {
+			if id = strings.TrimSpace(id); id != "" {
+				ids = append(ids, id)
+			}
+		}
+		if len(ids) == 0 || change == "" {
 			out.warn("Skipping empty visual_changes entry")
 			continue
 		}
-		out.Visual = append(out.Visual, v)
+		// Only a literal false hides the line: anything else the
+		// model put there shows it.
+		for _, id := range ids {
+			out.Visual = append(out.Visual, VisualChange{ID: id, Change: change,
+				Invisible: string(e.Visible) == "false"})
+		}
 	}
 
 	return out

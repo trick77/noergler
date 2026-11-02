@@ -3,6 +3,7 @@ package inference
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/trick77/llmwire"
@@ -75,14 +76,16 @@ func TestReviewSendsNoScreenshotsWithoutVision(t *testing.T) {
 
 func TestParseVisualChanges(t *testing.T) {
 	got := ParseReview(`{"overview": "x", "visual_changes": [` +
-		`{"id": " V1 ", "change": " Button moved below the form; explained by login.css. "},` +
-		`{"id": "V2", "change": "  "}, {"change": "no id"}, {"id": 3, "change": null}]}`)
+		`{"ids": [" V1 "], "change": " Button moved below the form; explained by login.css. "},` +
+		`{"ids": ["V2"], "change": "  "}, {"change": "no id"}, {"ids": [], "change": "empty ids"},` +
+		`{"ids": ["", " "], "change": "blank ids"}, {"ids": "V5", "change": "not a list"},` +
+		`{"ids": [3], "change": null}]}`)
 	if len(got.Visual) != 1 || got.Visual[0] != (VisualChange{ID: "V1", Change: "Button moved below the form; explained by login.css."}) {
 		t.Errorf("visual = %+v", got.Visual)
 	}
 	flags := ParseReview(`{"overview": "x", "visual_changes": [` +
-		`{"id": "V1", "change": "a", "visible": true}, {"id": "V2", "change": "b", "visible": false},` +
-		`{"id": "V3", "change": "c"}, {"id": "V4", "change": "d", "visible": "false"}]}`)
+		`{"ids": ["V1"], "change": "a", "visible": true}, {"ids": ["V2"], "change": "b", "visible": false},` +
+		`{"ids": ["V3"], "change": "c"}, {"ids": ["V4"], "change": "d", "visible": "false"}]}`)
 	want := []bool{false, true, false, false}
 	if len(flags.Visual) != len(want) {
 		t.Fatalf("visual = %+v", flags.Visual)
@@ -94,5 +97,23 @@ func TestParseVisualChanges(t *testing.T) {
 	}
 	if none := ParseReview(`{"overview": "x", "visual_changes": null}`); none.Visual != nil {
 		t.Errorf("null visual_changes = %+v, want none", none.Visual)
+	}
+}
+
+// One change shown by several screenshots is one item; every id gets the
+// same sentence and flag, so the summary folds them into one line.
+func TestParseVisualChangesGroupsIDs(t *testing.T) {
+	got := ParseReview(`{"overview": "x", "visual_changes": [` +
+		`{"ids": ["V1", " V2 ", "", "V3"], "change": " The backlink reads Zum Schadenfall; header.html explains it. ", "visible": false},` +
+		`{"ids": ["V4"], "change": "Font drift; nothing in the PR explains it.", "visible": true}]}`)
+	shared := "The backlink reads Zum Schadenfall; header.html explains it."
+	want := []VisualChange{
+		{ID: "V1", Change: shared, Invisible: true},
+		{ID: "V2", Change: shared, Invisible: true},
+		{ID: "V3", Change: shared, Invisible: true},
+		{ID: "V4", Change: "Font drift; nothing in the PR explains it."},
+	}
+	if !slices.Equal(got.Visual, want) {
+		t.Errorf("visual = %+v, want %+v", got.Visual, want)
 	}
 }

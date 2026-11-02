@@ -334,8 +334,10 @@ Browser and platform variants of one screenshot (`-chromium`, `-firefox`,
 first; a variant whose pixels did not change hands over to the next, so a
 change only one browser shows is not lost. The line counts the rest.
 
-Screenshots whose line is the same sentence, byte for byte after whitespace,
-are one line at render time: three names, then a count of the rest, variants
+The model answers once per change, listing every screenshot that shows it,
+and each of those screenshots is stored with that one sentence. Screenshots
+whose line is the same sentence, byte for byte after whitespace, are one
+line at render time: three names, then a count of the rest, variants
 included. A word apart stays apart, a status line never folds, and the store
 keeps one line per pair.
 

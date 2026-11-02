@@ -112,7 +112,7 @@ func visualMessage(images []VisualImage) llmwire.Message {
 // VisualIntro heads the screenshot turn. The rules are in review.txt; this
 // only says what follows. Exported so the caller counts it into the fit
 // check with the labels.
-const VisualIntro = "Changed test screenshots of this PR, for `visual_changes`. Answer each id once."
+const VisualIntro = "Changed test screenshots of this PR, for `visual_changes`. Name each id in exactly one item."
 
 // NewVisualImage is the n-th (from 0) image of a call, from its pixel diff,
 // and what it costs the fit check: the images' estimate plus the text the
