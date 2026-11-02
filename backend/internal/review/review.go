@@ -423,6 +423,7 @@ func (r *Reviewer) infer(ctx context.Context, plan *reviewPlan) inference.Review
 		PromptTokens:   plan.promptTokens + plan.visual.tokens,
 		ResponseSchema: inference.ReviewResponseFormat(),
 		Images:         plan.visual.images,
+		VisualKnown:    plan.visual.known,
 	})
 }
 

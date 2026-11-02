@@ -82,6 +82,12 @@ type ReviewRequest struct {
 	// message after the prompt so the prompt's prefix stays cacheable. Sent
 	// only to a model whose profile has vision; PromptTokens includes them.
 	Images []VisualImage
+	// VisualKnown are the sentences the PR's summary already shows for
+	// screenshots described in earlier calls, sent with Images so a new
+	// screenshot of the same change can reuse one verbatim and fold with it.
+	// The caller counts VisualKnownText into PromptTokens; the evals send
+	// one call per case and none.
+	VisualKnown []string
 }
 
 // VisualImage is one changed screenshot, cut to what changed.
@@ -95,10 +101,14 @@ type VisualImage struct {
 	Cropped bool
 }
 
-// visualMessage is the user turn carrying the screenshots: per pair a label,
-// then the before and after image.
-func visualMessage(images []VisualImage) llmwire.Message {
+// visualMessage is the user turn carrying the screenshots: the sentences
+// already shown, if any, then per pair a label and the before and after
+// image.
+func visualMessage(images []VisualImage, known []string) llmwire.Message {
 	parts := []llmwire.Part{{Kind: llmwire.PartText, Text: VisualIntro}}
+	if text := VisualKnownText(known); text != "" {
+		parts = append(parts, llmwire.Part{Kind: llmwire.PartText, Text: text})
+	}
 	for _, img := range images {
 		parts = append(parts, llmwire.Part{Kind: llmwire.PartText, Text: VisualLabel(img)})
 		if img.Before != "" {
@@ -114,10 +124,32 @@ func visualMessage(images []VisualImage) llmwire.Message {
 // check with the labels.
 const VisualIntro = "Changed test screenshots of this PR, for `visual_changes`. Name each id in exactly one item."
 
+// VisualKnownHeader heads the earlier sentences; review.txt names it and
+// says what to do with them, this part only lists them.
+const VisualKnownHeader = "Earlier sentences, from this PR's other screenshots:"
+
+// VisualKnownText is the part listing the sentences earlier calls wrote for
+// the PR's other screenshots; "" for none. Screenshots of one change sent
+// in different calls folded only when the model happened to word them alike
+// (user, 2026-11-02): handed the earlier sentence, it can copy it.
+func VisualKnownText(known []string) string {
+	if len(known) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(VisualKnownHeader)
+	for _, s := range known {
+		b.WriteString("\n- ")
+		b.WriteString(s)
+	}
+	return b.String()
+}
+
 // NewVisualImage is the n-th (from 0) image of a call, from its pixel diff,
 // and what it costs the fit check: the images' estimate plus the text the
 // turn wraps them in, its intro counted with the first. The review and the
-// evals build images through it, so both weigh a call the same.
+// evals build images through it, so both weigh the images the same; the
+// earlier sentences only a review sends are counted on top.
 func NewVisualImage(n int, path string, res visual.Result, count CountFunc) (VisualImage, int) {
 	img := VisualImage{ID: fmt.Sprintf("V%d", n+1), Path: path, After: visual.DataURI(res.After), Cropped: res.Cropped}
 	if res.Before != nil {
@@ -184,7 +216,7 @@ func (c *Client) Review(ctx context.Context, req ReviewRequest) ReviewResult {
 	// Never to a model without vision: llmwire refuses the whole request,
 	// and the caller has already said "not compared" for these.
 	if len(req.Images) > 0 && c.vision {
-		chat.Messages = append(chat.Messages, visualMessage(req.Images))
+		chat.Messages = append(chat.Messages, visualMessage(req.Images, req.VisualKnown))
 	}
 
 	resp, warnings, err := c.wire.Chat(ctx, chat)

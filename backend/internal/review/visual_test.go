@@ -7,6 +7,8 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 
@@ -167,6 +169,60 @@ func TestScreenshotLinesAreReusedOnTheNextRun(t *testing.T) {
 	got := lastSummary(t, h)
 	if !strings.Contains(got, "- Dot added.") || !strings.Contains(got, "- New page.") {
 		t.Errorf("stored lines missing from the second summary:\n%s", got)
+	}
+}
+
+// A screenshot sent in a later call is handed the sentences already shown,
+// whitespace-normalized as the fold compares, so the same change keeps one
+// wording across calls (user, 2026-11-02); they count toward the fit check.
+// A run that sends no image sends none.
+func TestEarlierScreenshotLinesRideAlong(t *testing.T) {
+	h := screenshotHarness(t, true)
+	h.st.visual = map[store.VisualPair]string{
+		{Path: shotDir + "form-chromium-linux.png", BeforeID: "c1", AfterID: "c2"}: " Red dot  added;\nlogin.css explains it. ",
+	}
+	res := okResultWith()
+	res.Review.Visual = []inference.VisualChange{{ID: "V1", Change: "Red dot added; login.css explains it."}}
+	h.llm.review = res
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+
+	req := h.llm.Reviews[0]
+	if len(req.Images) != 1 || req.Images[0].Path != shotDir+"new.png" {
+		t.Fatalf("images = %+v, want new.png only", req.Images)
+	}
+	if want := []string{"Red dot added; login.css explains it."}; !slices.Equal(req.VisualKnown, want) {
+		t.Errorf("known = %q, want %q", req.VisualKnown, want)
+	}
+	if got := lastSummary(t, h); !strings.Contains(got, "`form-chromium-linux.png`, `new.png` - Red dot added; login.css explains it.") {
+		t.Errorf("the reused sentence does not fold:\n%s", got)
+	}
+
+	h.llm.review = okResultWith()
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+	if req := h.llm.Reviews[1]; len(req.Images) != 0 || req.VisualKnown != nil {
+		t.Errorf("a run with no image sent %d image(s) and known %q", len(req.Images), req.VisualKnown)
+	}
+}
+
+// Earlier lines that do not fit beside the images are left out; the images
+// still go.
+func TestEarlierScreenshotLinesLeftOutWithoutRoom(t *testing.T) {
+	stored := map[store.VisualPair]string{
+		{Path: shotDir + "form-chromium-linux.png", BeforeID: "c1", AfterID: "c2"}: "Red dot added; login.css explains it.",
+	}
+	h := screenshotHarness(t, true)
+	h.st.visual = maps.Clone(stored)
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+	full := h.llm.Reviews[0].PromptTokens
+
+	// One token short of images and earlier lines together.
+	h = screenshotHarness(t, true)
+	h.st.visual = maps.Clone(stored)
+	h.llm.ready, h.llm.window = true, inference.OutputTokenReserve+full-1
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+	req := h.llm.Reviews[0]
+	if len(req.Images) != 1 || req.VisualKnown != nil {
+		t.Errorf("sent %d image(s) and known %q, want the image alone", len(req.Images), req.VisualKnown)
 	}
 }
 

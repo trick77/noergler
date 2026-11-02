@@ -363,9 +363,13 @@ deletes or reverts one still refreshes the section.
 Known limit: a stored line keeps the verdict it was written with. A
 baseline described as unexplained drift stays so after a later push adds
 the CSS that explains it; the pair (same blob ids) is never sent again.
-Grouping works within one call: screenshots of one change sent in
-different runs (over ten pairs, or added by a later push) get their own
-wording and stay separate lines.
+A call that sends screenshots also carries the sentences the section
+already shows from the store (at most 20, counted into the fit check), and
+a new screenshot of one of those changes copies its sentence when its
+verdict still holds for the PR's code, so screenshots sent in different
+runs (over ten pairs, or added by a later push) still fold. As many as fit
+beside the images go; the rest are logged, and their new lines may stay
+apart.
 
 The section lists each screenshot by file name (the path where two share
 one) with the model's sentence, or why there is none: over the per-run limits, no room, too large, unreadable, in Git LFS,

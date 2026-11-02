@@ -37,8 +37,11 @@ type visualPlan struct {
 	// are unknown this run.
 	unread bool
 	images []inference.VisualImage
-	// tokens is the images' estimate plus their labels', added to the fit
-	// check.
+	// known are the sentences already shown for this run's other
+	// screenshots, sent with images so the same change keeps one wording.
+	known []string
+	// tokens is the images' estimate plus their labels' and known's, added
+	// to the fit check.
 	tokens int
 	// pending is each sent id's line and cache key, for post.
 	pending map[string]visualPending
@@ -155,6 +158,8 @@ func (r *Reviewer) prepareVisual(ctx context.Context, key store.PRKey, prTag, he
 		}
 	}
 
+	vs.addKnown()
+
 	r.log.InfoContext(ctx, fmt.Sprintf("%s: screenshots: %d changed, %d shown, %d sent (~%d tokens), %d from earlier runs, %d unchanged or not visible, %d removed (not shown), %d read(s)",
 		prTag, len(shots), len(vp.lines), len(vp.images), vp.tokens, vs.cached, unchanged, len(removed), vs.fetched))
 	if len(removed) > 0 {
@@ -187,6 +192,50 @@ type visualRun struct {
 	lastPair store.VisualPair
 	// same are the pairs found unchanged, for post to store.
 	same []store.VisualPair
+}
+
+// maxVisualKnown caps the earlier sentences one call carries; a PR's
+// section shows at most maxVisualLines anyway.
+const maxVisualKnown = 20
+
+// addKnown hands the call the distinct sentences this run shows from the
+// store, when it sends any image: a screenshot of a change described in an
+// earlier call then takes the same words and folds with it (user,
+// 2026-11-02). In the fold's form, so a copy folds. As many as fit after
+// the images, in section order; any left out is logged: the call still
+// runs, those lines just may not fold.
+func (vs *visualRun) addKnown() {
+	vp := vs.vp
+	if len(vp.images) == 0 {
+		return
+	}
+	var all []string
+	for _, l := range vp.lines {
+		if l.Status != render.VisualDescribed {
+			continue
+		}
+		if text := render.VisualFoldKey(l.Text); text != "" && !slices.Contains(all, text) {
+			all = append(all, text)
+		}
+	}
+	if len(all) == 0 {
+		return
+	}
+	var known []string
+	cost := 0
+	for _, text := range all[:min(len(all), maxVisualKnown)] {
+		c := vs.r.tokens.Count(inference.VisualKnownText(append(known, text)))
+		if c > vs.room-vp.tokens {
+			break
+		}
+		known, cost = append(known, text), c
+	}
+	if left := len(all) - len(known); left > 0 {
+		vs.r.log.InfoContext(vs.ctx, fmt.Sprintf("%s: %d of %d earlier screenshot line(s) not sent (cap %d or no room); new lines may not fold with them",
+			vs.prTag, left, len(all), maxVisualKnown))
+	}
+	vp.known = known
+	vp.tokens += cost
 }
 
 // visualOutcome is what one screenshot comes to: a line, or nothing to show

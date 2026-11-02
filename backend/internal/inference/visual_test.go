@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/trick77/llmwire"
@@ -55,6 +56,31 @@ func TestReviewSendsScreenshotsAfterThePrompt(t *testing.T) {
 	// Before and after for V1, the after alone for the added V2.
 	if images != 3 {
 		t.Errorf("image parts = %d, want 3", images)
+	}
+	if len(parts) != 6 {
+		t.Errorf("parts = %d, want intro, two labels, three images: no earlier lines, no part for them", len(parts))
+	}
+}
+
+// Earlier lines ride right after the intro, before any image, so the model
+// reads them before it describes.
+func TestReviewSendsEarlierLinesBeforeTheScreenshots(t *testing.T) {
+	f := &fakeGateway{chatBody: chatBody(`{"overview": "x", "verdict": {"decision": "approve"}}`)}
+	c := reviewClient(t, f)
+	c.vision = true
+
+	c.Review(context.Background(), ReviewRequest{Prompt: "review this",
+		Images:      []VisualImage{{ID: "V1", Path: "a-snapshots/new.png", After: "data:image/png;base64,CC"}},
+		VisualKnown: []string{"Backlink reads Zum Schadenfall; header.html explains it.", "Font drift."},
+	})
+	parts := sentMessages(t, f.lastChatBody)[2]["content"].([]any)
+	text, _ := parts[1].(map[string]any)["text"].(string)
+	if text != VisualKnownText([]string{"Backlink reads Zum Schadenfall; header.html explains it.", "Font drift."}) ||
+		!strings.HasSuffix(text, "\n- Backlink reads Zum Schadenfall; header.html explains it.\n- Font drift.") {
+		t.Errorf("second part = %q, want the earlier lines", text)
+	}
+	if VisualKnownText(nil) != "" {
+		t.Error("no earlier lines, no text")
 	}
 }
 
