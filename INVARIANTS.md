@@ -183,7 +183,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   explains keeps its line. At most 10 pairs a call (a changed pair takes 2
   of the 20 reads). The model groups screenshots per change, in `ids`
   (user, 2026-11-02: asked per screenshot it reworded each sentence for its
-  screen, so eight lines of one change never folded). Identical lines fold
+  screen, so eight lines of one change never folded); across calls by the
+  shown sentences riding the screenshot turn, never the prompt (prefix
+  cache), never stale pairs from earlier pushes. Identical lines fold
   at render only (user, 2026-10-30): exact text after whitespace, never a
   fuzzy match, never a status line; the store keeps one line per pair. Not
   a drop, so no log line: every screenshot is still named or counted on its
