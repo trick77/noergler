@@ -111,9 +111,12 @@ func ReviewResponseSchema() map[string]any {
 				"items": map[string]any{
 					"type":                 "object",
 					"additionalProperties": false,
-					"required":             []any{"id", "change", "visible"},
+					"required":             []any{"ids", "change", "visible"},
 					"properties": map[string]any{
-						"id":      map[string]any{"type": "string"},
+						"ids": map[string]any{
+							"type": "array", "minItems": 1, "maxItems": MaxVisualImages,
+							"items": map[string]any{"type": "string"},
+						},
 						"change":  map[string]any{"type": "string", "minLength": 1},
 						"visible": map[string]any{"type": "boolean"},
 					},
@@ -124,7 +127,7 @@ func ReviewResponseSchema() map[string]any {
 }
 
 // MaxVisualImages is the most screenshot pairs one review call carries; the
-// schema caps visual_changes at it. Ten changed pairs take a review's 20
+// schema caps visual_changes, and each item's ids, at it. Ten changed pairs take a review's 20
 // reads; six left a baseline refresh waiting on a push that may never come.
 const MaxVisualImages = 10
 
@@ -180,7 +183,8 @@ const schemaJSON = `{"type": "object", "additionalProperties": false, "required"
 	`"properties": {"requirement": {"type": "string"}, "met": {"type": "boolean"}, ` +
 	`"evidence": {"type": ["string", "null"]}}}}, ` +
 	`"visual_changes": {"type": "array", "maxItems": 10, "items": {"type": "object", "additionalProperties": false, ` +
-	`"required": ["id", "change", "visible"], "properties": {"id": {"type": "string"}, ` +
+	`"required": ["ids", "change", "visible"], "properties": {"ids": {"type": "array", "minItems": 1, ` +
+	`"maxItems": 10, "items": {"type": "string"}}, ` +
 	`"change": {"type": "string", "minLength": 1}, "visible": {"type": "boolean"}}}}}}`
 
 // SchemaJSON is the schema in its pinned byte form, for token counting.

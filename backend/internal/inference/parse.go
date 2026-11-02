@@ -413,28 +413,55 @@ func ParseReview(content string) ParsedReview {
 		out.PreExisting = append(out.PreExisting, b)
 	}
 
-	// An entry without a string id or with a blank change says nothing about
-	// any screenshot and is dropped. Item by item: one malformed entry must
-	// not take the good ones with it.
+	// One entry is one change, with every screenshot that shows it; each id
+	// gets the same sentence, so the summary folds them into one line (user,
+	// 2026-11-02). An entry without a string id or with a blank change says
+	// nothing about any screenshot and is dropped. Item by item: one
+	// malformed entry must not take the good ones with it.
 	for _, item := range out.listItems(raw, "visual_changes") {
 		var e struct {
-			ID      string          `json:"id"`
-			Change  string          `json:"change"`
-			Visible json.RawMessage `json:"visible"`
+			IDs     []json.RawMessage `json:"ids"`
+			ID      json.RawMessage   `json:"id"`
+			Change  string            `json:"change"`
+			Visible json.RawMessage   `json:"visible"`
 		}
 		if json.Unmarshal(item, &e) != nil {
 			out.warn("Skipping malformed visual_changes entry: %s", lang.TruncateRunes(string(item), 200))
 			continue
 		}
-		// Only a literal false hides the line: anything else the
-		// model put there shows it.
-		v := VisualChange{ID: strings.TrimSpace(e.ID), Change: strings.TrimSpace(e.Change),
-			Invisible: string(e.Visible) == "false"}
-		if v.ID == "" || v.Change == "" {
+		change := strings.TrimSpace(e.Change)
+		if change == "" {
 			out.warn("Skipping empty visual_changes entry")
 			continue
 		}
-		out.Visual = append(out.Visual, v)
+		// The one-id shape from before ids: a provider that does not enforce
+		// the schema, or a model on habit, still gets its line.
+		if len(e.IDs) == 0 && len(e.ID) > 0 {
+			e.IDs = []json.RawMessage{e.ID}
+		}
+		// Id by id, like the items: a blank or non-string id costs that id
+		// alone, never the screenshots beside it. A repeat in the same item
+		// is the same answer, not a second one.
+		var ids []string
+		for _, rawID := range e.IDs {
+			id := strings.TrimSpace(decodeString(rawID))
+			switch {
+			case id == "":
+				out.warn("Skipping blank or non-string visual_changes id: %s", lang.TruncateRunes(string(rawID), 50))
+			case !slices.Contains(ids, id):
+				ids = append(ids, id)
+			}
+		}
+		if len(ids) == 0 {
+			out.warn("Skipping visual_changes entry without ids")
+			continue
+		}
+		// Only a literal false hides the line: anything else the
+		// model put there shows it.
+		invisible := string(e.Visible) == "false"
+		for _, id := range ids {
+			out.Visual = append(out.Visual, VisualChange{ID: id, Change: change, Invisible: invisible})
+		}
 	}
 
 	return out

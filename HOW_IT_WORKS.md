@@ -334,8 +334,10 @@ Browser and platform variants of one screenshot (`-chromium`, `-firefox`,
 first; a variant whose pixels did not change hands over to the next, so a
 change only one browser shows is not lost. The line counts the rest.
 
-Screenshots whose line is the same sentence, byte for byte after whitespace,
-are one line at render time: three names, then a count of the rest, variants
+The model answers once per change, listing every screenshot that shows it,
+and each of those screenshots is stored with that one sentence. Screenshots
+whose line is the same sentence, byte for byte after whitespace, are one
+line at render time: three names, then a count of the rest, variants
 included. A word apart stays apart, a status line never folds, and the store
 keeps one line per pair.
 
@@ -361,6 +363,9 @@ deletes or reverts one still refreshes the section.
 Known limit: a stored line keeps the verdict it was written with. A
 baseline described as unexplained drift stays so after a later push adds
 the CSS that explains it; the pair (same blob ids) is never sent again.
+Grouping works within one call: screenshots of one change sent in
+different runs (over ten pairs, or added by a later push) get their own
+wording and stay separate lines.
 
 The section lists each screenshot by file name (the path where two share
 one) with the model's sentence, or why there is none: over the per-run limits, no room, too large, unreadable, in Git LFS,

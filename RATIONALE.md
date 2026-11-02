@@ -32,7 +32,10 @@ an incident or an eval run: read the reason before relaxing a rule.
   Keyed by blob id, not bytes: a byte hash needed both versions read on every
   push, on the single worker, to learn the answer was already stored. Before
   = the PR's base: the target's tip may hold another PR's baseline, which the
-  model then reports as this PR's change, reversed.
+  model then reports as this PR's change, reversed. Grouped by the model, in
+  the answer shape: asked for one sentence per screenshot, it reworded each
+  for its screen ("in the first form", "in the second"), so the exact fold
+  never matched; a fuzzy match would fold two different changes.
 - Numbered diff lines: when the model counted, findings landed past EOF.
 - Secrets carved out of the failing-input rule: `password = "admin123"` was
   flagged in about half the runs; the remit, the "no failing input, drop"
