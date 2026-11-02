@@ -24,6 +24,10 @@ var skipExtensions = map[string]bool{
 	// Data / config that rarely benefits from code review
 	".json": true, ".lock": true, ".min.js": true, ".min.css": true, ".csv": true,
 	".map": true,
+	// HTTP Archive: recorded traffic replayed by e2e tests, JSON with no
+	// hand-written intent, often megabytes, and it carries cookies and auth
+	// headers that must not reach the gateway.
+	".har": true,
 	// Diagram markup, not code. .drawio/.excalidraw are serialized editor state
 	// rather than hand-written markup, so they are noise either way.
 	".puml": true, ".plantuml": true, ".pu": true, ".iuml": true,
