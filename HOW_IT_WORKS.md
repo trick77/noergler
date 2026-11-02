@@ -95,8 +95,8 @@ the cumulative PR diff as context. The summary is still the PR's (section 10).
 ## 4. Diff fetch and file splitting
 
 The PR diff is fetched whole and split per file. Non-reviewable files are
-dropped: binaries, lockfiles, vendored and generated paths, hidden path
-components. Committed test screenshots are binaries too, never reviewed as
+dropped: binaries, lockfiles, data files (JSON, CSV, recorded HTTP traffic),
+vendored and generated paths, hidden path components. Committed test screenshots are binaries too, never reviewed as
 code; they go to the summary only (section 11c).
 
 There is no byte cap by default. `BITBUCKET_MAX_DIFF_BYTES` can set one, but it

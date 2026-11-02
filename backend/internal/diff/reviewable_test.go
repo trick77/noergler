@@ -35,6 +35,10 @@ func TestIsReviewable(t *testing.T) {
 		// Every .json is skipped here, even ones DetectLanguage calls build-config.
 		{"package.json skipped", "diff --git a/package.json b/package.json\n", false},
 		{"tsconfig.json skipped", "diff --git a/tsconfig.json b/tsconfig.json\n", false},
+		// Git does not quote spaces; it quotes non-ASCII as octal escapes.
+		{"har name with spaces skipped", "diff --git a/e2e/Phone Frage anzeigen.har b/e2e/Phone Frage anzeigen.har\n", false},
+		{"har octal-escaped name skipped", "diff --git \"a/e2e/Pr\\303\\244vention.har\" \"b/e2e/Pr\\303\\244vention.har\"\n", false},
+		{"har prefix in a source name reviewed", "diff --git a/e2e/x.harness.ts b/e2e/x.harness.ts\n", true},
 		{"src:// dst:// header", "diff --git src://main.go dst://main.go\n", true},
 		{"src:// dst:// png skipped", "diff --git src://logo.png dst://logo.png\n", false},
 		{"uppercase extension", "diff --git a/LOGO.PNG b/LOGO.PNG\n", false},
@@ -78,6 +82,8 @@ func TestPathIsReviewable(t *testing.T) {
 		{"README.md", true},
 		// The case this was written for: e2e fixtures dominating a diff.
 		{"apps/e2e/fixtures/fallartwechsel.json", false},
+		{"e2e/recordings/Erfolgreich Summary einblenden.har", false},
+		{"e2e/support/login.harness.ts", true},
 		{"docs/architecture/flow.puml", false},
 		{"assets/logo.png", false},
 		{"go.sum", false},
