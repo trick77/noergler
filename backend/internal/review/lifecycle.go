@@ -145,7 +145,7 @@ func (r *Reviewer) emitRollup(ctx context.Context, key store.PRKey, prTag, outco
 		return r.store.ClaimRollup(ctx, key, final)
 	})
 	if snapshot == nil {
-		r.log.DebugContext(ctx, prTag+": rollup not emitted (already emitted or nothing billed)")
+		r.log.InfoContext(ctx, prTag+": rollup not emitted (already emitted or nothing billed)")
 		return
 	}
 	if snapshot.SourceCommit == nil || *snapshot.SourceCommit == "" {

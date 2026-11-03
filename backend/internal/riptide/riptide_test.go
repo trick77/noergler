@@ -1,6 +1,7 @@
 package riptide
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -368,6 +370,25 @@ func TestEmitOmitsAbsentReviewerHandle(t *testing.T) {
 }
 
 // Telemetry must never fail a webhook, and must never be retried.
+// A taken rollup says so at Info: without the line a merge leaves no trace
+// on noergler's side that riptide got it. A refused one keeps the wire's
+// warning and no "taken".
+func TestEmitLogsTakenRollup(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		taken  bool
+	}{{202, true}, {500, false}} {
+		f, _ := newFake(t, reply(tc.status, ``))
+		var buf bytes.Buffer
+		e := New(f.srv.URL, "t", slog.New(slog.NewTextHandler(&buf, nil)))
+		e.EmitPRCompleted(context.Background(), sampleRollup())
+		got := strings.Contains(buf.String(), "Riptide: rollup PROJ/repo#1 taken (outcome=merged)")
+		if got != tc.taken {
+			t.Errorf("status %d: taken line = %v, want %v; log:\n%s", tc.status, got, tc.taken, buf.String())
+		}
+	}
+}
+
 func TestEmitSwallowsTransportErrors(_ *testing.T) {
 	e := New("http://127.0.0.1:1", "t", slog.New(slog.DiscardHandler))
 	e.EmitPRCompleted(context.Background(), sampleRollup()) // must not panic or block

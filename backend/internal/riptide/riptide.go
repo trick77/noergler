@@ -149,7 +149,9 @@ func (e *Emitter) EmitPRCompleted(ctx context.Context, r Rollup) {
 		body["reviewer_handle"] = r.ReviewerHandle
 		body["reviewer_account_kind"] = "bot"
 	}
-	e.c.Post(ctx, emitPath, body, "event_type=pr_completed")
+	if e.c.Post(ctx, emitPath, body, "event_type=pr_completed") {
+		e.log.InfoContext(ctx, fmt.Sprintf("Riptide: rollup %s taken (outcome=%s)", r.PRKey, r.Outcome))
+	}
 }
 
 // formatTime renders a timestamp as UTC in the shape riptide reads: second
