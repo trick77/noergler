@@ -927,6 +927,40 @@ func TestSPACatchAllNeverShadowsTheRealRoutes(t *testing.T) {
 	}
 }
 
+// /teams/{slug} is both the team's API and the Teams page's link to the
+// team. Through the whole mux (the SPA's own test never saw the API route
+// win): a browser navigation gets the page, a client without a bearer the
+// API's 401, a client with one the API.
+func TestTeamLinkIsThePageForABrowser(t *testing.T) {
+	h := newDashHarness(t)
+	serve := func(accept, auth string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/teams/platform", nil)
+		if accept != "" {
+			req.Header.Set("Accept", accept)
+		}
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		h.srv.Handler().ServeHTTP(w, req)
+		return w
+	}
+	page := http.StatusServiceUnavailable
+	if web.HasBuiltIndex() {
+		page = http.StatusOK
+	}
+	browser := serve("text/html,application/xhtml+xml,*/*;q=0.8", "")
+	if browser.Code != page || !strings.Contains(browser.Header().Get("Content-Type"), "text/html") {
+		t.Errorf("browser: %d %q, want the page (%d, html)", browser.Code, browser.Header().Get("Content-Type"), page)
+	}
+	if w := serve("", ""); w.Code != http.StatusUnauthorized || !strings.Contains(w.Header().Get("Content-Type"), "json") {
+		t.Errorf("client without a bearer: %d %q, want the API's 401", w.Code, w.Header().Get("Content-Type"))
+	}
+	if w := serve("text/html", "Bearer wrong"); w.Code != http.StatusUnauthorized {
+		t.Errorf("client with a bearer asking for html: %d, want the API", w.Code)
+	}
+}
+
 // A team can pass every startup check and still review nothing, because it
 // owns no repositories. Before this state that team showed a green "ready"
 // pill beside an idle instance, which is the case an operator opens the

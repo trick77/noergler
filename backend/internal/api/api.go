@@ -9,6 +9,8 @@ package api
 
 import (
 	"log/slog"
+	"net/http"
+	"strings"
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/httpapi"
@@ -88,10 +90,25 @@ type Deps struct {
 	DashboardStore DashboardStore
 }
 
+// getTeamOrPage shares /teams/{team} between the team's own API and the
+// Teams page's link to the team (the # on a card copies it). The API is the
+// more specific pattern, so it wins the mux over the SPA catch-all, and a
+// pasted link answered a 401 in JSON. A browser navigation never carries a
+// bearer and asks for HTML: that one gets the page, when the dashboard is
+// served at all. Everything else, every API client included, is the API.
+func (d Deps) getTeamOrPage(w http.ResponseWriter, r *http.Request) {
+	if d.Dashboard != nil && d.DashboardStore != nil && r.Header.Get("Authorization") == "" &&
+		strings.Contains(r.Header.Get("Accept"), "text/html") {
+		web.Handler().ServeHTTP(w, r)
+		return
+	}
+	d.getTeam(w, r)
+}
+
 // Register adds every route this package owns to the server.
 func Register(srv *httpapi.Server, d Deps) {
 	srv.HandleFunc("POST /webhook/{team}", d.webhook)
-	srv.HandleFunc("GET /teams/{team}", d.getTeam)
+	srv.HandleFunc("GET /teams/{team}", d.getTeamOrPage)
 	srv.HandleFunc("PUT /teams/{team}/settings", d.putTeamSettings)
 	srv.HandleFunc("PUT /teams/{team}/credentials", d.putTeamCredentials)
 	srv.HandleFunc("DELETE /teams/{team}/credentials/{kind}", d.deleteTeamCredentials)

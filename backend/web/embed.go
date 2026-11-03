@@ -49,7 +49,9 @@ var prPath = regexp.MustCompile(`^/prs/` + store.LinkPattern + `(?:/runs/[1-9][0
 // teamPath is one team on the Teams page, /teams/{slug}: the page scrolled
 // to that team with its configuration open, the link the # on a team card
 // copies. The slug is config.TeamSlugRE's shape; an unknown slug is the
-// page's to report, so any well-formed one gets the shell.
+// page's to report, so any well-formed one gets the shell. The team API's
+// GET /teams/{team} wins the mux, so it is api.getTeamOrPage that hands a
+// browser navigation here; this allowlist entry alone never sees one.
 var teamPath = regexp.MustCompile(`^/teams/[a-z0-9][a-z0-9-]*$`)
 
 func dist() fs.FS {
