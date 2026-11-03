@@ -229,8 +229,8 @@ export const de = {
         "Almanach lehnt das Token ab (HTTP 401/403). Reviews laufen; die Notizen warten, bis das Token korrigiert ist.",
       off: "Kein almanach-Block für dieses Team im teams.yaml (oder einer mit leerer url oder leerem Token), deshalb wird keine Notiz geschrieben und nichts weitergeleitet.",
     },
-    almanachIgnored_one: "{{count}} ignoriert (7 T)",
-    almanachIgnored_other: "{{count}} ignoriert (7 T)",
+    almanachIgnored_one: "{{count}} ignoriert (7 Tage)",
+    almanachIgnored_other: "{{count}} ignoriert (7 Tage)",
     almanachIgnoredHint_one:
       "Almanach hat {{count}} Notiz dieses Teams aus den letzten 7 Tagen angenommen und verworfen: Das Repo ist keine Quelle in Almanach. Die Notiz ist auf keiner Seite gespeichert und wird nicht nochmals gesendet. Das Repo in Almanach als Quelle erfassen; das Almanach-Log nennt es.",
     almanachIgnoredHint_other:

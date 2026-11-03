@@ -167,6 +167,16 @@ const (
 // OK reports whether Almanach answered 2xx: the note is marked sent.
 func (s Sent) OK() bool { return s != NotSent }
 
+func (s Sent) String() string {
+	switch s {
+	case Taken:
+		return "taken"
+	case Ignored:
+		return "ignored"
+	}
+	return "not_sent"
+}
+
 // EmitNote posts one note and says what Almanach did with it. A miss is
 // logged by the wire and the note left for the next drain. Never an
 // error: a note must not fail a webhook.

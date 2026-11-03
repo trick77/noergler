@@ -579,7 +579,15 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	activity := d.activityByTeam(ctx)
-	ignored := d.almanachIgnored(ctx)
+	// Read once, and only when a team's feed is on: most instances run
+	// without Almanach, and their roster polls need not touch its table.
+	var ignored map[string]int
+	ignoredOf := func(slug string) int {
+		if ignored == nil {
+			ignored = d.almanachIgnored(ctx)
+		}
+		return ignored[slug]
+	}
 
 	body := teamsBody{Teams: make([]teamBody, 0, len(enabled)+len(disabled))}
 	add := func(slug string, isEnabled bool) {
@@ -619,7 +627,7 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 				t.Riptide = rt.Riptide.Status()
 				t.Almanach = rt.Almanach.Status()
 				if t.Almanach != almanach.StatusOff {
-					t.AlmanachIgnored7d = ignored[slug]
+					t.AlmanachIgnored7d = ignoredOf(slug)
 				}
 				bv, jv := accountViews(rt, d.BotUsername)
 				t.BitbucketAccount, t.JiraAccount = &bv, &jv

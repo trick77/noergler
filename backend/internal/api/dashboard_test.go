@@ -42,8 +42,11 @@ type fakeDashStore struct {
 	activity  []store.TeamActivity
 	// ignored is the per-team count of notes Almanach ignored; ignoredSince
 	// records the window the handler asked for.
+	// ignoredErr fails the count read alone; ignoredReads counts the reads.
 	ignored      map[string]int
 	ignoredSince time.Time
+	ignoredErr   error
+	ignoredReads int
 	// page and run are served for prToken (run for runN only); any other
 	// token or number is "not found".
 	page    store.PRPage
@@ -108,6 +111,10 @@ func (f *fakeDashStore) ActivityByTeam(context.Context) ([]store.TeamActivity, e
 }
 func (f *fakeDashStore) AlmanachIgnoredByTeam(_ context.Context, since time.Time) (map[string]int, error) {
 	f.ignoredSince = since
+	f.ignoredReads++
+	if f.ignoredErr != nil {
+		return nil, f.ignoredErr
+	}
 	return f.ignored, f.err
 }
 
@@ -798,6 +805,9 @@ func TestTeamsCountsIgnoredAlmanachNotes(t *testing.T) {
 	if n := ignoredOf(); n != 0 {
 		t.Errorf("feed off: ignored = %d, want none shown", n)
 	}
+	if h.st.ignoredReads != 0 {
+		t.Errorf("feed off everywhere: %d count reads, want none", h.st.ignoredReads)
+	}
 
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"ok","team":"platform"}`))
@@ -810,6 +820,12 @@ func TestTeamsCountsIgnoredAlmanachNotes(t *testing.T) {
 	}
 	if ago := time.Since(h.st.ignoredSince); ago < 7*24*time.Hour-time.Minute || ago > 7*24*time.Hour+time.Minute {
 		t.Errorf("window = %v, want 7 days", ago)
+	}
+
+	// The count read alone failing: the roster still answers, without it.
+	h.st.ignoredErr = errors.New("db down")
+	if n := ignoredOf(); n != 0 {
+		t.Errorf("count read failed: ignored = %d, want none shown", n)
 	}
 }
 

@@ -126,8 +126,9 @@ function integrationPills(team: Team, now: number, t: TFunction) {
   // which is how a team's every note went missing unseen (2026-11-03).
   const as = team.almanach ?? "off";
   const ignored = team.almanach_ignored_7d ?? 0;
+  // Its own gap: the configuration row is a plain cell, not a flex row.
   const almanach = (
-    <>
+    <span className="inline-flex flex-wrap gap-1.5">
       <Pill tone={forwarderTone[as]} title={t(`teams.almanachHint.${as}`)}>
         {t(`teams.almanach.${as}`)}
       </Pill>
@@ -139,7 +140,7 @@ function integrationPills(team: Team, now: number, t: TFunction) {
           {t("teams.almanachIgnored", { count: ignored })}
         </Pill>
       )}
-    </>
+    </span>
   );
 
   return { bitbucket, jira, riptide, almanach };

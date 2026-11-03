@@ -578,8 +578,9 @@ merge. A 2xx answering `ignored` (the repo is not one of Almanach's source
 repositories) is marked emitted too, as Almanach asks, but logs a warning,
 never "taken": the note is kept by neither side. The row is marked ignored,
 and the Teams page counts those per team over the last 7 days beside the
-feed's word, which stays ok for them. A merge that lands while this PR's round is still in flight stamps the
-row and leaves the emit to that round, which then sends its own note only;
+feed's word, which stays ok for them. A merge that lands while this PR's
+round is still in flight stamps the row and leaves the emit to that round,
+which then sends its own note only;
 the catch-up drain stays with the merges. A round whose PR was declined,
 deleted or purged meanwhile writes nothing (`no_row`); a store fault on the
 upsert is its own status (`store_failed`). `pr:declined` and `pr:deleted` forget
