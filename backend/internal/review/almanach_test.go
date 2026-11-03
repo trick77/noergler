@@ -413,12 +413,38 @@ func TestMergeLogsWhatItHasForAlmanach(t *testing.T) {
 		h.llm.review.Raw = "x"
 		h.al.refuse = true
 		h.r.ReviewPullRequestStaged(context.Background(), prPayload(webhook.EventOpened), "platform", false, &inlineScheduler{})
-		merge(h)
+		wantLogged(t, merge(h), "PROJ/my-repo#42: almanach note not sent (refused or behind older notes), left for the next merge")
 		h.al.refuse = false
-		wantLogged(t, merge(h), "PROJ/my-repo#42: almanach note final and unsent, sending again")
+		if logs := merge(h); strings.Contains(logs, "not sent") {
+			t.Errorf("a sent note logged as unsent:\n%s", logs)
+		}
 		if len(h.st.EmittedRuns) != 1 {
 			t.Errorf("stamped = %v, want the redelivery to send it", h.st.EmittedRuns)
 		}
+	})
+	t.Run("finalize fault", func(t *testing.T) {
+		h := newHarness(t, withAlmanach)
+		h.llm.review.Raw = "x"
+		h.r.ReviewPullRequestStaged(context.Background(), prPayload(webhook.EventOpened), "platform", false, &inlineScheduler{})
+		h.st.failAll = true
+		logs := merge(h)
+		wantLogged(t, logs, "PROJ/my-repo#42: almanach note not final, FinalizeAlmanachNote failed")
+		if strings.Contains(logs, "no PR row") {
+			t.Errorf("a store fault read as a missing PR row:\n%s", logs)
+		}
+	})
+	t.Run("merged during a round that writes nothing", func(t *testing.T) {
+		h := newHarness(t, withAlmanach)
+		h.llm.review.Raw = "x"
+		h.llm.note = inference.AlmanachNoteResult{Outcome: inference.OutcomeError, Err: errors.New("boom")}
+		sched := &deferredScheduler{}
+		h.r.ReviewPullRequestStaged(context.Background(), prPayload(webhook.EventOpened), "platform", false, sched)
+		sched.finish()
+		merge(h)
+		var buf bytes.Buffer
+		h.r.log = slog.New(slog.NewTextHandler(&buf, nil))
+		sched.spawned[0].fn(sched.spawned[0].ctx)
+		wantLogged(t, buf.String(), "PROJ/my-repo#42: merged without an almanach note, nothing to send")
 	})
 }
 
