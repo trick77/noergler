@@ -233,8 +233,9 @@ func (c *Client) Post(ctx context.Context, path string, body any, what string) (
 	return true, readAnswer(resp.Body)
 }
 
-// answerLimit caps how much of a 2xx answer is read for its status word.
-const answerLimit = 4 << 10
+// answerLimit caps how much of a 2xx answer is read for its status word;
+// an answer cut there does not parse and reads as none.
+const answerLimit = 64 << 10
 
 // readAnswer is the "status" of a JSON answer, empty for any other body,
 // and drains the rest so the connection can be reused.

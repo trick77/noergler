@@ -195,8 +195,9 @@ func (r *Reviewer) almanachNote(ctx context.Context, job almanachJob) {
 	switch {
 	case st.Finalized && st.HasNote && !st.Emitted:
 		r.emitAlmanach(ctx, r.TeamSlug, &job.key)
-	case st.Finalized && !st.HasNote:
-		// The merge deferred its emit to this round, which wrote nothing.
+	case st.Finalized && !st.HasNote && !r.almanachInflight.has(job.key):
+		// The merge deferred its emit to the rounds; this last one wrote
+		// nothing. With another still in flight, that one may.
 		r.log.InfoContext(ctx, job.prTag+": merged without an almanach note, nothing to send")
 	}
 }
@@ -259,8 +260,8 @@ func (r *Reviewer) finalizeAlmanach(ctx context.Context, key store.PRKey, prTag 
 		r.log.InfoContext(ctx, prTag+": almanach note final")
 	}
 	if r.almanachInflight.has(key) {
-		// This PR's own note lands in a moment and emits itself; the team's
-		// other pending notes go with it then.
+		// This PR's own note lands in a moment and emits itself, alone; the
+		// team's other pending notes wait for the next merge's drain.
 		r.log.InfoContext(ctx, prTag+": almanach note still in flight, emit deferred to it")
 		return
 	}
@@ -285,10 +286,19 @@ func (r *Reviewer) finalizeAlmanach(ctx context.Context, key store.PRKey, prTag 
 		// "skipped" line says why), or none has run yet and a late one
 		// fills it and sends itself.
 		r.log.InfoContext(ctx, prTag+": almanach note final without a note, nothing to send")
-	case !slices.Contains(sent, key):
-		// Sent, the emitter logged "taken"; not sent, this line says so.
+	case !slices.Contains(sent, key) && !r.emittedSince(ctx, key):
+		// Sent, the emitter logged "taken"; sent by a round that finished
+		// beside this drain, its own line says so; else this one.
 		r.log.InfoContext(ctx, prTag+": almanach note not sent (refused or behind older notes), left for the next merge")
 	}
+}
+
+// emittedSince reports whether the PR's note is marked sent now: a round
+// that finished beside the merge's drain may have sent it. A failed read
+// says no, so the "not sent" line errs towards being written.
+func (r *Reviewer) emittedSince(ctx context.Context, key store.PRKey) bool {
+	st, _, err := r.store.AlmanachNoteStatus(ctx, key)
+	return err == nil && st.Emitted
 }
 
 // dropAlmanachNote forgets a declined or deleted PR's note; the store keeps

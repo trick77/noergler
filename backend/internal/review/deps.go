@@ -143,10 +143,13 @@ type TokenCounter interface {
 
 // safeDB runs a store call and swallows its failure.
 //
-// Every store call in the review path goes through a warn-and-
-// fallback wrapper, because a DB fault must never fail a review. The zero
-// value of T is the fallback, which for the pointer and slice returns here is
-// the same "not found" the callers already handle.
+// Every store call in the review path fails open, because a DB fault must
+// never fail a review; most go through this wrapper. The zero value of T is
+// the fallback, which for the pointer and slice returns here is the same
+// "not found" the callers already handle. Where that "not found" would log
+// a wrong cause (ClaimRollup, FinalizeAlmanachNote, the merge's note reads,
+// PendingAlmanachNotes), the caller checks the error itself, warns and
+// carries on: never tidy those back into safeDB.
 func safeDB[T any](ctx context.Context, log *slog.Logger, what string, fn func() (T, error)) T {
 	v, err := fn()
 	if err != nil {

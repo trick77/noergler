@@ -375,15 +375,27 @@ func TestEmitOmitsAbsentReviewerHandle(t *testing.T) {
 func TestEmitLogsTakenRollup(t *testing.T) {
 	for _, tc := range []struct {
 		status int
-		taken  bool
-	}{{202, true}, {500, false}} {
-		f, _ := newFake(t, reply(tc.status, ``))
+		body   string
+		want   string // "" = no Riptide line at Info
+	}{
+		{202, ``, "Riptide: rollup PROJ/repo#1 taken (outcome=merged)"},
+		{202, `{"status":"accepted"}`, "Riptide: rollup PROJ/repo#1 taken (outcome=merged)"},
+		{202, `{"status":"deduped"}`, "Riptide: rollup PROJ/repo#1 answered deduped (outcome=merged)"},
+		{500, ``, ""},
+	} {
+		f, _ := newFake(t, reply(tc.status, tc.body))
 		var buf bytes.Buffer
 		e := New(f.srv.URL, "t", slog.New(slog.NewTextHandler(&buf, nil)))
 		e.EmitPRCompleted(context.Background(), sampleRollup())
-		got := strings.Contains(buf.String(), "Riptide: rollup PROJ/repo#1 taken (outcome=merged)")
-		if got != tc.taken {
-			t.Errorf("status %d: taken line = %v, want %v; log:\n%s", tc.status, got, tc.taken, buf.String())
+		logs := buf.String()
+		if tc.want == "" {
+			if strings.Contains(logs, "level=INFO msg=\"Riptide: rollup") {
+				t.Errorf("status %d: an Info rollup line on a miss:\n%s", tc.status, logs)
+			}
+			continue
+		}
+		if !strings.Contains(logs, tc.want) {
+			t.Errorf("status %d %q: log lacks %q:\n%s", tc.status, tc.body, tc.want, logs)
 		}
 	}
 }

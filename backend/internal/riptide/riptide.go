@@ -149,9 +149,17 @@ func (e *Emitter) EmitPRCompleted(ctx context.Context, r Rollup) {
 		body["reviewer_handle"] = r.ReviewerHandle
 		body["reviewer_account_kind"] = "bot"
 	}
-	if taken, _ := e.c.Post(ctx, emitPath, body, "event_type=pr_completed"); taken {
-		e.log.InfoContext(ctx, fmt.Sprintf("Riptide: rollup %s taken (outcome=%s)", r.PRKey, r.Outcome))
+	taken, answer := e.c.Post(ctx, emitPath, body, "event_type=pr_completed")
+	if !taken {
+		return
 	}
+	// The receiver's own word when it said more than "accepted": a 2xx is
+	// not a stored body.
+	if answer != "" && answer != "accepted" {
+		e.log.InfoContext(ctx, fmt.Sprintf("Riptide: rollup %s answered %s (outcome=%s)", r.PRKey, answer, r.Outcome))
+		return
+	}
+	e.log.InfoContext(ctx, fmt.Sprintf("Riptide: rollup %s taken (outcome=%s)", r.PRKey, r.Outcome))
 }
 
 // formatTime renders a timestamp as UTC in the shape riptide reads: second
