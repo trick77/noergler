@@ -65,6 +65,10 @@ func (f *fakeStore) FinalizeAlmanachNote(_ context.Context, k store.PRKey, team 
 		f.notes = map[store.PRKey]*fakeNote{}
 	}
 	row, ok := f.notes[k]
+	if !ok && len(f.Upserts) == 0 {
+		// As the store: a merge noergler never reviewed leaves no stub.
+		return false, nil
+	}
 	if !ok {
 		row = &fakeNote{AlmanachNote: store.AlmanachNote{Key: k, TeamSlug: team, PRTitle: final.PRTitle}}
 		f.notes[k] = row

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/webhook"
+	"github.com/trick77/ship/kit/logging"
 )
 
 // inflightSet counts the note calls on the pool per PR. A count, not a
@@ -86,7 +88,22 @@ func (r *Reviewer) almanachOn() bool { return r.almanach != nil && r.almanach.En
 // complete), without the model's answer (nothing to continue) or when the
 // conversation plus the note turn would not fit.
 func (r *Reviewer) spawnAlmanachNote(ctx context.Context, plan *reviewPlan, team string, sched Scheduler) {
-	if !r.almanachOn() || plan.result.Outcome != inference.OutcomeOK || plan.runID == 0 || plan.result.Raw == "" {
+	if !r.almanachOn() {
+		return
+	}
+	// Each skip leaves the PR without a note, so its merge sends Almanach
+	// nothing: say which gate held, or the merge's silence has no cause.
+	var skip string
+	switch {
+	case plan.result.Outcome != inference.OutcomeOK:
+		skip = "review outcome " + plan.result.Outcome.String()
+	case plan.runID == 0:
+		skip = "no run row"
+	case plan.result.Raw == "":
+		skip = "empty review answer"
+	}
+	if skip != "" {
+		r.log.InfoContext(ctx, plan.prTag+": almanach note skipped, "+skip)
 		return
 	}
 	job := almanachJob{
@@ -229,16 +246,41 @@ func (r *Reviewer) finalizeAlmanach(ctx context.Context, key store.PRKey, prTag 
 			SourceCommit: payload.PullRequest.FromRef.LatestCommit, PRTitle: payload.PullRequest.Title,
 		})
 	})
-	if stamped {
-		r.log.InfoContext(ctx, prTag+": almanach note final")
-	}
 	if r.almanachInflight.has(key) {
+		if stamped {
+			r.log.InfoContext(ctx, prTag+": almanach note final")
+		}
 		// This PR's own note lands in a moment and emits itself; the team's
 		// other pending notes go with it then.
 		r.log.InfoContext(ctx, prTag+": almanach note still in flight, emit deferred to it")
 		return
 	}
+	r.logAlmanachAtMerge(ctx, key, prTag, stamped)
 	r.emitAlmanach(ctx, r.TeamSlug, nil)
+}
+
+// logAlmanachAtMerge says what this merge has for Almanach. A merge with
+// no note sends nothing, and Almanach staying empty after a merge must be
+// readable from this line, not guessed.
+func (r *Reviewer) logAlmanachAtMerge(ctx context.Context, key store.PRKey, prTag string, stamped bool) {
+	st, found, err := r.store.AlmanachNoteStatus(ctx, key)
+	if err != nil {
+		r.log.WarnContext(ctx, "DB operation failed, using fallback: AlmanachNoteStatus", logging.Err(err))
+		return
+	}
+	switch {
+	case !found:
+		r.log.InfoContext(ctx, prTag+": no almanach note, PR never reviewed")
+	case st.Emitted:
+		r.log.InfoContext(ctx, prTag+": almanach note already sent")
+	case !st.HasNote:
+		// A stub: no round wrote a note (its "almanach note <status>" or
+		// "skipped" line says why), or none has run yet and a late one
+		// fills it and sends itself.
+		r.log.InfoContext(ctx, prTag+": almanach note final without a note, nothing to send")
+	case stamped:
+		r.log.InfoContext(ctx, prTag+": almanach note final")
+	}
 }
 
 // dropAlmanachNote forgets a declined or deleted PR's note; the store keeps
@@ -259,6 +301,12 @@ func (r *Reviewer) emitAlmanach(ctx context.Context, team string, only *store.PR
 	pending := safeDB(ctx, r.log, "PendingAlmanachNotes", func() ([]store.AlmanachPending, error) {
 		return r.store.PendingAlmanachNotes(ctx, team, almanachDrain)
 	})
+	if only != nil && !slices.ContainsFunc(pending, func(p store.AlmanachPending) bool { return p.Key == *only }) {
+		// Not in the oldest almanachDrain (or already gone): the next
+		// merge's drain sends it.
+		r.log.InfoContext(ctx, only.Tag()+": almanach note not pending in this drain, left for the next merge")
+		return
+	}
 	for _, p := range pending {
 		if only != nil && p.Key != *only {
 			continue
