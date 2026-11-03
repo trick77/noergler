@@ -63,7 +63,7 @@ func TestEnabledAndOff(t *testing.T) {
 	if team, unauthorized := off.Ping(context.Background(), "/auth/ping"); team != "" || unauthorized {
 		t.Error("an off client pinged")
 	}
-	if off.Post(context.Background(), "/x", map[string]any{}, "x") {
+	if taken(off.Post(context.Background(), "/x", map[string]any{}, "x")) {
 		t.Error("an off client posted")
 	}
 }
@@ -108,12 +108,34 @@ func TestPing(t *testing.T) {
 	}
 }
 
+// taken is Post's first result, for the tests that look at nothing else.
+func taken(ok bool, _ string) bool { return ok }
+
+// A 2xx carries the receiver's own word: Almanach answers 202 "ignored"
+// for a note it drops, and that must not read as stored. A body without a
+// status, or not JSON, has none.
+func TestPostAnswer(t *testing.T) {
+	for _, tc := range []struct{ body, want string }{
+		{`{"status":"ignored"}`, "ignored"},
+		{`{"status":"accepted"}`, "accepted"},
+		{`{}`, ""},
+		{``, ""},
+		{`not json`, ""},
+	} {
+		_, c := newFake(t, reply(202, tc.body))
+		ok, answer := c.Post(context.Background(), "/x", map[string]any{}, "x")
+		if !ok || answer != tc.want {
+			t.Errorf("%q: taken %v answer %q, want true %q", tc.body, ok, answer, tc.want)
+		}
+	}
+}
+
 // A post reports taken on a 2xx and nothing else; each outcome sets the
 // word, 401/403 alone saying why; our own cancellation says nothing about
 // the receiver.
 func TestPost(t *testing.T) {
 	f, c := newFake(t, reply(202, ``))
-	if !c.Post(context.Background(), "/webhooks/x", map[string]any{"k": "v"}, "x") || c.Status() != StatusOK {
+	if !taken(c.Post(context.Background(), "/webhooks/x", map[string]any{"k": "v"}, "x")) || c.Status() != StatusOK {
 		t.Fatalf("202: not taken or status %s", c.Status())
 	}
 	if f.paths[0] != "/webhooks/x" || f.header.Get("Content-Type") != "application/json" || f.body["k"] != "v" {
@@ -125,23 +147,23 @@ func TestPost(t *testing.T) {
 	}{{422, StatusFailing}, {401, StatusRejected}, {403, StatusRejected}, {404, StatusFailing}, {302, StatusFailing}, {500, StatusFailing}} {
 		_, c := newFake(t, reply(tc.status, `nope`))
 		c.Set(StatusOK)
-		if c.Post(context.Background(), "/x", map[string]any{}, "x") || c.Status() != tc.want {
+		if taken(c.Post(context.Background(), "/x", map[string]any{}, "x")) || c.Status() != tc.want {
 			t.Errorf("%d: taken or status %s, want %s", tc.status, c.Status(), tc.want)
 		}
 	}
 	dead := New("R", "http://127.0.0.1:1", "t", slog.New(slog.DiscardHandler))
 	dead.Set(StatusOK)
-	if dead.Post(context.Background(), "/x", map[string]any{}, "x") || dead.Status() != StatusFailing {
+	if taken(dead.Post(context.Background(), "/x", map[string]any{}, "x")) || dead.Status() != StatusFailing {
 		t.Errorf("transport error: taken or status %s", dead.Status())
 	}
 	_, c = newFake(t, reply(202, ``))
 	c.Set(StatusOK)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if c.Post(ctx, "/x", map[string]any{}, "x") || c.Status() != StatusOK {
+	if taken(c.Post(ctx, "/x", map[string]any{}, "x")) || c.Status() != StatusOK {
 		t.Errorf("cancelled: taken or status %s, want ok unchanged", c.Status())
 	}
-	if c.Post(context.Background(), "/x", map[string]any{"bad": make(chan int)}, "x") || c.Status() != StatusFailing {
+	if taken(c.Post(context.Background(), "/x", map[string]any{"bad": make(chan int)}, "x")) || c.Status() != StatusFailing {
 		t.Errorf("unencodable body: taken or status %s", c.Status())
 	}
 }

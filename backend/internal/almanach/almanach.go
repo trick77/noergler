@@ -25,6 +25,9 @@ import (
 const (
 	emitPath = "/webhooks/noergler"
 	pingPath = "/auth/ping"
+	// answerIgnored is Almanach's 202 status for a note it drops: a repo
+	// that is not one of its source repositories.
+	answerIgnored = "ignored"
 	// EventType is the payload's event_type.
 	EventType = "pr_merged_note"
 )
@@ -155,8 +158,16 @@ func (e *Emitter) EmitNote(ctx context.Context, n Note) bool {
 	if !e.Enabled() {
 		return false
 	}
-	if !e.c.Post(ctx, emitPath, payload(n), "note "+n.PRKey) {
+	taken, answer := e.c.Post(ctx, emitPath, payload(n), "note "+n.PRKey)
+	if !taken {
 		return false
+	}
+	if answer == answerIgnored {
+		// Taken all the same: Almanach asks for no resend, the note is
+		// marked sent. A warning because the note is gone from both
+		// sides; Almanach's own log names the reason.
+		e.log.WarnContext(ctx, "Almanach: note "+n.PRKey+" ignored by Almanach (repo not one of its source repositories), not resent")
+		return true
 	}
 	e.log.InfoContext(ctx, "Almanach: note "+n.PRKey+" taken")
 	return true

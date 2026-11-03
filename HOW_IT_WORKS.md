@@ -574,7 +574,9 @@ posted issue and suggestion counts (a stub when the first round has not
 landed yet) and sends the team's pending notes on, oldest first, up to ten.
 No model call. Almanach dedupes on the PR and its source commit, so a note is
 marked emitted only after a 2xx and a refused one goes with the team's next
-merge. A merge that lands while this PR's round is still in flight stamps the
+merge. A 2xx answering `ignored` (the repo is not one of Almanach's source
+repositories) is marked emitted too, as Almanach asks, but logs a warning,
+never "taken": the note is kept by neither side. A merge that lands while this PR's round is still in flight stamps the
 row and leaves the emit to that round, which then sends its own note only;
 the catch-up drain stays with the merges. A round whose PR was declined,
 deleted or purged meanwhile writes nothing (`no_row`); a store fault on the

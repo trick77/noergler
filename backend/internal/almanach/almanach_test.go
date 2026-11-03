@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -274,6 +275,30 @@ func firstDiff(path string, a, b any) string {
 			return fmt.Sprintf("%s (%v vs %v)", path, a, b)
 		}
 		return ""
+	}
+}
+
+// A 202 "ignored" is taken (Almanach asks for no resend) but never logged
+// as taken: the note is gone from both sides, and the line says so.
+func TestEmitNoteIgnoredByAlmanach(t *testing.T) {
+	for _, c := range []struct {
+		body, want, not string
+	}{
+		{`{"status":"ignored"}`, "note PROJ/repo#1 ignored by Almanach", "taken"},
+		{`{"status":"accepted"}`, "note PROJ/repo#1 taken", "ignored"},
+		{``, "note PROJ/repo#1 taken", "ignored"},
+	} {
+		f, _ := newFake(t, reply(202, c.body))
+		var buf strings.Builder
+		e := New(f.srv.URL, "t", slog.New(slog.NewTextHandler(&buf, nil)))
+		n := sampleNote()
+		n.PRKey = "PROJ/repo#1"
+		if !e.EmitNote(context.Background(), n) {
+			t.Errorf("%q: not taken", c.body)
+		}
+		if logs := buf.String(); !strings.Contains(logs, c.want) || strings.Contains(logs, c.not) {
+			t.Errorf("%q: log lacks %q or has %q:\n%s", c.body, c.want, c.not, logs)
+		}
 	}
 }
 

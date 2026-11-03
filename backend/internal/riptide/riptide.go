@@ -149,7 +149,7 @@ func (e *Emitter) EmitPRCompleted(ctx context.Context, r Rollup) {
 		body["reviewer_handle"] = r.ReviewerHandle
 		body["reviewer_account_kind"] = "bot"
 	}
-	if e.c.Post(ctx, emitPath, body, "event_type=pr_completed") {
+	if taken, _ := e.c.Post(ctx, emitPath, body, "event_type=pr_completed"); taken {
 		e.log.InfoContext(ctx, fmt.Sprintf("Riptide: rollup %s taken (outcome=%s)", r.PRKey, r.Outcome))
 	}
 }
