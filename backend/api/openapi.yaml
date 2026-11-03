@@ -80,6 +80,11 @@ paths:
       description: |
         Answered from the running configuration, not the database, so it shows
         what this instance is acting on right now.
+
+        The same path is the dashboard's link to the team: a request with no
+        bearer that accepts `text/html` (a browser opening the link) gets the
+        Teams page as HTML instead. Send the bearer, or no `text/html` in
+        `Accept`, to get this operation.
       parameters:
         - $ref: "#/components/parameters/TeamSlug"
       responses:

@@ -9,6 +9,9 @@ package api
 
 import (
 	"log/slog"
+	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/httpapi"
@@ -18,6 +21,7 @@ import (
 	"github.com/trick77/noergler/internal/teams"
 	"github.com/trick77/noergler/internal/webhook"
 	"github.com/trick77/noergler/web"
+	"github.com/trick77/ship/kit/httpx"
 )
 
 // statusOK is the webhook's acknowledgement body. A struct, not a map: the
@@ -88,10 +92,51 @@ type Deps struct {
 	DashboardStore DashboardStore
 }
 
+// getTeamOrPage shares /teams/{team} between the team's own API and the
+// Teams page's link to the team (the # on a card copies it). The API is the
+// more specific pattern, so it wins the mux over the SPA catch-all, and a
+// pasted link answered a 401 in JSON. A browser navigation carries no
+// bearer (an ingress's Basic auth is not one) and asks for HTML: that one
+// gets the page. Everything else, every API client included, is the API.
+// Registered only beside the SPA, so the page is there to serve.
+func (d Deps) getTeamOrPage(page http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// One URL, two answers: no cache may hand one to the other.
+		w.Header().Add("Vary", "Accept, Authorization")
+		if _, bearer := httpx.Bearer(r); !bearer && wantsHTML(r.Header.Get("Accept")) {
+			page.ServeHTTP(w, r)
+			return
+		}
+		d.getTeam(w, r)
+	}
+}
+
+// wantsHTML reports whether an Accept header names text/html without
+// refusing it (q=0). Presence is enough: a browser navigation lists it
+// first, an API client does not list it at all.
+func wantsHTML(accept string) bool {
+	for _, part := range strings.Split(accept, ",") {
+		fields := strings.Split(part, ";")
+		if !strings.EqualFold(strings.TrimSpace(fields[0]), "text/html") {
+			continue
+		}
+		for _, p := range fields[1:] {
+			if q, ok := strings.CutPrefix(strings.TrimSpace(p), "q="); ok {
+				if v, err := strconv.ParseFloat(q, 64); err == nil && v == 0 {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	return false
+}
+
 // Register adds every route this package owns to the server.
 func Register(srv *httpapi.Server, d Deps) {
 	srv.HandleFunc("POST /webhook/{team}", d.webhook)
-	srv.HandleFunc("GET /teams/{team}", d.getTeam)
+	// GET /teams/{team} is registered below: with the dashboard it also
+	// answers a browser with the page.
 	srv.HandleFunc("PUT /teams/{team}/settings", d.putTeamSettings)
 	srv.HandleFunc("PUT /teams/{team}/credentials", d.putTeamCredentials)
 	srv.HandleFunc("DELETE /teams/{team}/credentials/{kind}", d.deleteTeamCredentials)
@@ -117,6 +162,10 @@ func Register(srv *httpapi.Server, d Deps) {
 		// The SPA on the catch-all, registered LAST and only alongside the
 		// API it reads. Go's ServeMux picks the most specific pattern, so
 		// every route above and every probe still wins over "/".
-		srv.Handle("/", web.Handler())
+		page := web.Handler()
+		srv.HandleFunc("GET /teams/{team}", d.getTeamOrPage(page))
+		srv.Handle("/", page)
+		return
 	}
+	srv.HandleFunc("GET /teams/{team}", d.getTeam)
 }

@@ -927,6 +927,68 @@ func TestSPACatchAllNeverShadowsTheRealRoutes(t *testing.T) {
 	}
 }
 
+// /teams/{slug} is both the team's API and the Teams page's link to the
+// team. Through the whole mux (the SPA's own test never saw the API route
+// win): a browser navigation gets the page, a client without a bearer the
+// API's 401, a client with one the API.
+func TestTeamLinkIsThePageForABrowser(t *testing.T) {
+	h := newDashHarness(t)
+	serve := func(accept, auth string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/teams/platform", nil)
+		if accept != "" {
+			req.Header.Set("Accept", accept)
+		}
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		h.srv.Handler().ServeHTTP(w, req)
+		return w
+	}
+	page := http.StatusServiceUnavailable
+	if web.HasBuiltIndex() {
+		page = http.StatusOK
+	}
+	isPage := func(w *httptest.ResponseRecorder) bool {
+		return w.Code == page && strings.Contains(w.Header().Get("Content-Type"), "text/html")
+	}
+	isAPI := func(w *httptest.ResponseRecorder) bool {
+		return w.Code == http.StatusUnauthorized && strings.Contains(w.Header().Get("Content-Type"), "json")
+	}
+	nav := "text/html,application/xhtml+xml,*/*;q=0.8"
+	for _, c := range []struct {
+		name, accept, auth string
+		page               bool
+	}{
+		{"browser", nav, "", true},
+		{"browser behind an ingress's Basic auth", nav, "Basic dXNlcjpwdw==", true},
+		{"client without a bearer", "", "", false},
+		{"client that refuses html", "application/json, text/html;q=0", "", false},
+		{"client with a bearer asking for html", "text/html", "Bearer wrong", false},
+	} {
+		w := serve(c.accept, c.auth)
+		if c.page && !isPage(w) || !c.page && !isAPI(w) {
+			t.Errorf("%s: %d %q, want the page: %v", c.name, w.Code, w.Header().Get("Content-Type"), c.page)
+		}
+		if !strings.Contains(w.Header().Get("Vary"), "Accept") || !strings.Contains(w.Header().Get("Vary"), "Authorization") {
+			t.Errorf("%s: Vary %q, want Accept and Authorization", c.name, w.Header().Get("Vary"))
+		}
+	}
+}
+
+// Without the dashboard there is no page to serve: a browser on a team's
+// URL gets the API, as before.
+func TestTeamLinkWithoutTheDashboardIsTheAPI(t *testing.T) {
+	h := newHarness(t, nil)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/teams/"+testSlug, nil)
+	req.Header.Set("Accept", "text/html")
+	h.srv.Handler().ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("no dashboard: %d, want the API's 401", w.Code)
+	}
+}
+
 // A team can pass every startup check and still review nothing, because it
 // owns no repositories. Before this state that team showed a green "ready"
 // pill beside an idle instance, which is the case an operator opens the
