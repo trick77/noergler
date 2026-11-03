@@ -263,23 +263,36 @@ func (r *Reviewer) finalizeAlmanach(ctx context.Context, key store.PRKey, prTag 
 // no note sends nothing, and Almanach staying empty after a merge must be
 // readable from this line, not guessed.
 func (r *Reviewer) logAlmanachAtMerge(ctx context.Context, key store.PRKey, prTag string, stamped bool) {
-	st, found, err := r.store.AlmanachNoteStatus(ctx, key)
-	if err != nil {
-		r.log.WarnContext(ctx, "DB operation failed, using fallback: AlmanachNoteStatus", logging.Err(err))
-		return
+	type noteRow struct {
+		st    store.AlmanachNoteState
+		found bool
+		read  bool
 	}
+	row := safeDB(ctx, r.log, "AlmanachNoteStatus", func() (noteRow, error) {
+		st, found, err := r.store.AlmanachNoteStatus(ctx, key)
+		return noteRow{st: st, found: found, read: true}, err
+	})
 	switch {
-	case !found:
-		r.log.InfoContext(ctx, prTag+": no almanach note, PR never reviewed")
-	case st.Emitted:
+	case !row.read:
+		// The read failed (safeDB warned); the stamp still happened.
+		if stamped {
+			r.log.InfoContext(ctx, prTag+": almanach note final")
+		}
+	case !row.found:
+		// The store writes no stub without a pull_requests row.
+		r.log.InfoContext(ctx, prTag+": no almanach note, no PR row (never reviewed, or purged)")
+	case row.st.Emitted:
 		r.log.InfoContext(ctx, prTag+": almanach note already sent")
-	case !st.HasNote:
+	case !row.st.HasNote:
 		// A stub: no round wrote a note (its "almanach note <status>" or
 		// "skipped" line says why), or none has run yet and a late one
 		// fills it and sends itself.
 		r.log.InfoContext(ctx, prTag+": almanach note final without a note, nothing to send")
 	case stamped:
 		r.log.InfoContext(ctx, prTag+": almanach note final")
+	default:
+		// A redelivered merge of a note Almanach refused before.
+		r.log.InfoContext(ctx, prTag+": almanach note final and unsent, sending again")
 	}
 }
 
@@ -298,19 +311,22 @@ func (r *Reviewer) dropAlmanachNote(ctx context.Context, key store.PRKey) {
 // caller is a round on the pool: it sends its own PR's note and nothing
 // else, so the catch-up drain stays a worker job.
 func (r *Reviewer) emitAlmanach(ctx context.Context, team string, only *store.PRKey) {
-	pending := safeDB(ctx, r.log, "PendingAlmanachNotes", func() ([]store.AlmanachPending, error) {
-		return r.store.PendingAlmanachNotes(ctx, team, almanachDrain)
-	})
-	if only != nil && !slices.ContainsFunc(pending, func(p store.AlmanachPending) bool { return p.Key == *only }) {
-		// Not in the oldest almanachDrain (or already gone): the next
-		// merge's drain sends it.
-		r.log.InfoContext(ctx, only.Tag()+": almanach note not pending in this drain, left for the next merge")
+	pending, err := r.store.PendingAlmanachNotes(ctx, team, almanachDrain)
+	if err != nil {
+		r.log.WarnContext(ctx, "almanach notes not sent, PendingAlmanachNotes failed", logging.Err(err))
 		return
 	}
-	for _, p := range pending {
-		if only != nil && p.Key != *only {
-			continue
+	if only != nil {
+		i := slices.IndexFunc(pending, func(p store.AlmanachPending) bool { return p.Key == *only })
+		if i < 0 {
+			// Behind the oldest almanachDrain (the next merge's drain sends
+			// it), or a concurrent merge already sent it.
+			r.log.InfoContext(ctx, only.Tag()+": almanach note not in this drain (behind older notes or already sent), nothing sent")
+			return
 		}
+		pending = pending[i : i+1]
+	}
+	for _, p := range pending {
 		n := almanachNoteOf(p, r.claimsFor(p.Key.Project))
 		if !r.almanach.EmitNote(ctx, n) {
 			// The emitter logged why; the rest of the list would meet the

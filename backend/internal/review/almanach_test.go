@@ -384,7 +384,7 @@ func TestMergeLogsWhatItHasForAlmanach(t *testing.T) {
 	}
 	t.Run("never reviewed", func(t *testing.T) {
 		h := newHarness(t, withAlmanach)
-		wantLogged(t, merge(h), "PROJ/my-repo#42: no almanach note, PR never reviewed")
+		wantLogged(t, merge(h), "PROJ/my-repo#42: no almanach note, no PR row (never reviewed, or purged)")
 		if len(h.st.Finalized) != 0 || len(h.al.Emitted) != 0 {
 			t.Error("a merge noergler never reviewed left a stub or sent a note")
 		}
@@ -403,9 +403,38 @@ func TestMergeLogsWhatItHasForAlmanach(t *testing.T) {
 		h := newHarness(t, withAlmanach)
 		h.llm.review.Raw = "x"
 		h.r.ReviewPullRequestStaged(context.Background(), prPayload(webhook.EventOpened), "platform", false, &inlineScheduler{})
-		wantLogged(t, merge(h), "PROJ/my-repo#42: almanach note final")
+		// The closing quote ends the text handler's msg: "final" alone,
+		// not the "final without a note" line.
+		wantLogged(t, merge(h), `PROJ/my-repo#42: almanach note final"`)
 		wantLogged(t, merge(h), "PROJ/my-repo#42: almanach note already sent")
 	})
+	t.Run("refused, then redelivered", func(t *testing.T) {
+		h := newHarness(t, withAlmanach)
+		h.llm.review.Raw = "x"
+		h.al.refuse = true
+		h.r.ReviewPullRequestStaged(context.Background(), prPayload(webhook.EventOpened), "platform", false, &inlineScheduler{})
+		merge(h)
+		h.al.refuse = false
+		wantLogged(t, merge(h), "PROJ/my-repo#42: almanach note final and unsent, sending again")
+		if len(h.st.EmittedRuns) != 1 {
+			t.Errorf("stamped = %v, want the redelivery to send it", h.st.EmittedRuns)
+		}
+	})
+}
+
+// A store fault on the rollup claim is its own line, never the "already
+// emitted or nothing billed" skip: the rollup is lost, not redundant.
+func TestRollupClaimFaultIsNotASkip(t *testing.T) {
+	h := newHarness(t, nil)
+	var buf bytes.Buffer
+	h.r.log = slog.New(slog.NewTextHandler(&buf, nil))
+	h.st.failAll = true
+	h.r.HandlePRMerged(context.Background(), prPayload(webhook.EventMerged))
+	logs := buf.String()
+	wantLogged(t, logs, "PROJ/my-repo#42: rollup not emitted, ClaimRollup failed")
+	if strings.Contains(logs, "already emitted or nothing billed") {
+		t.Errorf("a store fault read as a skip:\n%s", logs)
+	}
 }
 
 // A round whose note sits past the oldest almanachDrain pending notes sends
@@ -433,5 +462,5 @@ func TestRoundNotInTheDrainSaysSo(t *testing.T) {
 	if len(h.al.Emitted) != 0 {
 		t.Fatalf("emitted = %+v, want nothing: the note is past the drain", h.al.Emitted)
 	}
-	wantLogged(t, buf.String(), "PROJ/my-repo#42: almanach note not pending in this drain, left for the next merge")
+	wantLogged(t, buf.String(), "PROJ/my-repo#42: almanach note not in this drain (behind older notes or already sent), nothing sent")
 }

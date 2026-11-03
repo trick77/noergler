@@ -369,7 +369,6 @@ func TestEmitOmitsAbsentReviewerHandle(t *testing.T) {
 	}
 }
 
-// Telemetry must never fail a webhook, and must never be retried.
 // A taken rollup says so at Info: without the line a merge leaves no trace
 // on noergler's side that riptide got it. A refused one keeps the wire's
 // warning and no "taken".
@@ -389,6 +388,7 @@ func TestEmitLogsTakenRollup(t *testing.T) {
 	}
 }
 
+// Telemetry must never fail a webhook, and must never be retried.
 func TestEmitSwallowsTransportErrors(_ *testing.T) {
 	e := New("http://127.0.0.1:1", "t", slog.New(slog.DiscardHandler))
 	e.EmitPRCompleted(context.Background(), sampleRollup()) // must not panic or block

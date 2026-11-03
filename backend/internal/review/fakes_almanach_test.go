@@ -2,6 +2,7 @@ package review
 
 import (
 	"context"
+	"slices"
 
 	"github.com/trick77/noergler/internal/almanach"
 	"github.com/trick77/noergler/internal/inference"
@@ -65,8 +66,8 @@ func (f *fakeStore) FinalizeAlmanachNote(_ context.Context, k store.PRKey, team 
 		f.notes = map[store.PRKey]*fakeNote{}
 	}
 	row, ok := f.notes[k]
-	if !ok && len(f.Upserts) == 0 {
-		// As the store: a merge noergler never reviewed leaves no stub.
+	if !ok && !slices.ContainsFunc(f.Upserts, func(u store.PRUpsert) bool { return u.Key == k }) {
+		// As the store: a merge of a PR with no row leaves no stub.
 		return false, nil
 	}
 	if !ok {
