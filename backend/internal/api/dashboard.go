@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/trick77/noergler/internal/almanach"
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/queue"
@@ -43,6 +44,7 @@ type DashboardStore interface {
 	DailyByTeam(ctx context.Context, since time.Time) ([]store.Bucket, error)
 	DailyAttempts(ctx context.Context, since time.Time) ([]store.AttemptBucket, error)
 	ActivityByTeam(ctx context.Context) ([]store.TeamActivity, error)
+	AlmanachIgnoredByTeam(ctx context.Context, since time.Time) (map[string]int, error)
 	PRPage(ctx context.Context, token string) (store.PRPage, bool, error)
 	PRRun(ctx context.Context, token string, n int) (store.RunDetail, bool, error)
 	PRCost(ctx context.Context, key store.PRKey) (*int64, error)
@@ -398,6 +400,22 @@ func (d Deps) activityByTeam(ctx context.Context) map[string]store.TeamActivity 
 	return activity
 }
 
+// almanachIgnoredWindow is how far back the Teams page counts notes
+// Almanach answered "ignored".
+const almanachIgnoredWindow = 7 * 24 * time.Hour
+
+// almanachIgnored is the per-team count of ignored notes in the window,
+// failing open like activityByTeam: the roster answers, the count is
+// missing, and the log says why.
+func (d Deps) almanachIgnored(ctx context.Context) map[string]int {
+	counts, err := d.DashboardStore.AlmanachIgnoredByTeam(ctx, time.Now().Add(-almanachIgnoredWindow))
+	if err != nil {
+		d.Log.ErrorContext(ctx, "dashboard: AlmanachIgnoredByTeam failed, reporting teams without the count: "+err.Error())
+		return map[string]int{}
+	}
+	return counts
+}
+
 // metrics is spend and throughput for the CURRENT CALENDAR MONTH, which is
 // the window a key's spend is actually budgeted and invoiced in. A rolling
 // 14 days answers a different question and cannot be reconciled with a bill.
@@ -535,6 +553,11 @@ type teamBody struct {
 	// off without an almanach block, else as of the last call (the startup
 	// ping, then each note). Absent for a disabled team.
 	Almanach string `json:"almanach,omitempty"`
+	// AlmanachIgnored7d counts the team's notes Almanach answered 202
+	// "ignored" in the last 7 days (repo not one of its source
+	// repositories): taken, so the feed reads ok, yet kept by neither side.
+	// A count, never a repo name. Absent when none, or the feed is off.
+	AlmanachIgnored7d int `json:"almanach_ignored_7d,omitempty"`
 	// Which Bitbucket and Jira accounts the team works with, as on its own
 	// GET /teams/{slug}: source, the bot it is mentioned as, and the fixed
 	// health status of an own account. Never a reason or a token: a reason
@@ -556,6 +579,15 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	activity := d.activityByTeam(ctx)
+	// Read once, and only when a team's feed is on: most instances run
+	// without Almanach, and their roster polls need not touch its table.
+	var ignored map[string]int
+	ignoredOf := func(slug string) int {
+		if ignored == nil {
+			ignored = d.almanachIgnored(ctx)
+		}
+		return ignored[slug]
+	}
 
 	body := teamsBody{Teams: make([]teamBody, 0, len(enabled)+len(disabled))}
 	add := func(slug string, isEnabled bool) {
@@ -594,6 +626,9 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 				}
 				t.Riptide = rt.Riptide.Status()
 				t.Almanach = rt.Almanach.Status()
+				if t.Almanach != almanach.StatusOff {
+					t.AlmanachIgnored7d = ignoredOf(slug)
+				}
 				bv, jv := accountViews(rt, d.BotUsername)
 				t.BitbucketAccount, t.JiraAccount = &bv, &jv
 				// A scope with no repo list is the whole project; one repo

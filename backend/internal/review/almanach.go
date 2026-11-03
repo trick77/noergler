@@ -52,7 +52,7 @@ func (s *inflightSet) has(k store.PRKey) bool {
 // AlmanachEmitter is the part of the almanach adapter the pipeline uses.
 type AlmanachEmitter interface {
 	Enabled() bool
-	EmitNote(ctx context.Context, n almanach.Note) bool
+	EmitNote(ctx context.Context, n almanach.Note) almanach.Sent
 }
 
 // almanachDrain bounds how many pending notes one merge sends on: enough to
@@ -339,14 +339,15 @@ func (r *Reviewer) emitAlmanach(ctx context.Context, team string, only *store.PR
 	var sent []store.PRKey
 	for _, p := range pending {
 		n := almanachNoteOf(p, r.claimsFor(p.Key.Project))
-		if !r.almanach.EmitNote(ctx, n) {
+		got := r.almanach.EmitNote(ctx, n)
+		if !got.OK() {
 			// The emitter logged why; the rest of the list would meet the
 			// same Almanach.
 			return sent
 		}
 		sent = append(sent, p.Key)
-		runID := p.RunID
-		safeDBErr(ctx, r.log, "MarkAlmanachEmitted", func() error { return r.store.MarkAlmanachEmitted(ctx, p.Key, runID) })
+		runID, ignored := p.RunID, got == almanach.Ignored
+		safeDBErr(ctx, r.log, "MarkAlmanachEmitted", func() error { return r.store.MarkAlmanachEmitted(ctx, p.Key, runID, ignored) })
 	}
 	return sent
 }

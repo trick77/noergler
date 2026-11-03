@@ -131,6 +131,10 @@ export interface Team {
    *  an almanach block, else as of the last call. Absent for a disabled
    *  team. */
   almanach?: ForwardStatus;
+  /** Notes Almanach answered "ignored" in the last 7 days (repo not one of
+   *  its source repositories): taken, so the feed reads ok, yet kept by
+   *  neither side. Absent when none or the feed is off. */
+  almanach_ignored_7d?: number;
   /** The Bitbucket and Jira accounts the team works with: the shared ones,
    *  or its own (pushed through the team API). A fixed status, never a
    *  reason. Null for a disabled team. */

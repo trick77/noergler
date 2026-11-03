@@ -490,3 +490,20 @@ func TestRoundNotInTheDrainSaysSo(t *testing.T) {
 	}
 	wantLogged(t, buf.String(), "PROJ/my-repo#42: almanach note not in this drain (behind older notes or already sent), nothing sent")
 }
+
+// A note Almanach answers "ignored" is marked sent, never resent, and
+// marked ignored: the Teams page counts it.
+func TestIgnoredNoteIsMarkedIgnored(t *testing.T) {
+	h := newHarness(t, withAlmanach)
+	h.llm.review.Raw = "x"
+	h.al.ignore = true
+	h.r.ReviewPullRequestStaged(context.Background(), prPayload(webhook.EventOpened), "platform", false, &inlineScheduler{})
+	h.r.HandlePRMerged(context.Background(), prPayload(webhook.EventMerged))
+	if len(h.st.EmittedRuns) != 1 || len(h.st.IgnoredRuns) != 1 || h.st.IgnoredRuns[0] != h.st.EmittedRuns[0] {
+		t.Fatalf("emitted %v ignored %v, want the one run both", h.st.EmittedRuns, h.st.IgnoredRuns)
+	}
+	h.r.HandlePRMerged(context.Background(), prPayload(webhook.EventMerged))
+	if len(h.al.Emitted) != 1 {
+		t.Errorf("an ignored note was sent again: %d sends", len(h.al.Emitted))
+	}
+}

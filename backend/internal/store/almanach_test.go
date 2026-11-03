@@ -173,13 +173,13 @@ func TestAlmanachEmitIsPerRound(t *testing.T) {
 	if got := upsertNote(t, s, noteFor(key, 6, "six")); got != NoteWritten {
 		t.Fatalf("round 6 = %q", got)
 	}
-	if err := s.MarkAlmanachEmitted(ctx, key, 5); err != nil {
+	if err := s.MarkAlmanachEmitted(ctx, key, 5, false); err != nil {
 		t.Fatal(err)
 	}
 	if got := pending(t, s, "platform"); len(got) != 1 || got[0].RunID != 6 {
 		t.Fatalf("round 6 must stay pending after round 5's stamp: %+v", got)
 	}
-	if err := s.MarkAlmanachEmitted(ctx, key, 6); err != nil {
+	if err := s.MarkAlmanachEmitted(ctx, key, 6, false); err != nil {
 		t.Fatal(err)
 	}
 	if got := pending(t, s, "platform"); len(got) != 0 {
@@ -191,6 +191,33 @@ func TestAlmanachEmitIsPerRound(t *testing.T) {
 	st, ok, err := s.AlmanachNoteStatus(ctx, key)
 	if err != nil || !ok || !st.Finalized || !st.HasNote || !st.Emitted {
 		t.Errorf("status = %+v, %v, %v", st, ok, err)
+	}
+}
+
+// An ignored note counts for its team, inside the window only; a taken
+// one never does.
+func TestAlmanachIgnoredByTeam(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	ignored := PRKey{Project: "PROJ", Repo: "a", PRID: 1}
+	stored := PRKey{Project: "PROJ", Repo: "a", PRID: 2}
+	for _, k := range []PRKey{ignored, stored} {
+		upsert(t, s, k, "a")
+		upsertNote(t, s, noteFor(k, 1, "n"))
+		finalize(t, s, k, "platform", AlmanachFinal{})
+	}
+	if err := s.MarkAlmanachEmitted(ctx, ignored, 1, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MarkAlmanachEmitted(ctx, stored, 1, false); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.AlmanachIgnoredByTeam(ctx, time.Now().Add(-time.Hour))
+	if err != nil || len(got) != 1 || got["platform"] != 1 {
+		t.Fatalf("ignored by team = %v %v, want platform=1", got, err)
+	}
+	if got, err := s.AlmanachIgnoredByTeam(ctx, time.Now().Add(time.Hour)); err != nil || len(got) != 0 {
+		t.Errorf("outside the window = %v %v, want none", got, err)
 	}
 }
 
@@ -342,7 +369,7 @@ func TestAlmanachNotesAcrossPurge(t *testing.T) {
 	// Claimed again: a new incarnation starts its round count from zero.
 	time.Sleep(10 * time.Millisecond)
 	upsert(t, s, key, "b")
-	if err := s.MarkAlmanachEmitted(ctx, key, 1); err != nil {
+	if err := s.MarkAlmanachEmitted(ctx, key, 1, false); err != nil {
 		t.Fatal(err)
 	}
 	runID = 2

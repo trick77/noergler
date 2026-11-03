@@ -188,14 +188,37 @@ func (s *Store) DeleteAlmanachNote(ctx context.Context, k PRKey) error {
 	return err
 }
 
-// MarkAlmanachEmitted records that Almanach took the note of round runID.
+// MarkAlmanachEmitted records that Almanach took the note of round runID,
+// and whether it answered "ignored" (taken, never stored on its side).
 // Called after the POST, never before, and only for the round that was
 // sent: a later round that landed in between stays pending.
-func (s *Store) MarkAlmanachEmitted(ctx context.Context, k PRKey, runID int64) error {
-	_, err := s.pool.Exec(ctx, `UPDATE almanach_notes SET almanach_emitted_at = now(), updated_at = now()
+func (s *Store) MarkAlmanachEmitted(ctx context.Context, k PRKey, runID int64, ignored bool) error {
+	_, err := s.pool.Exec(ctx, `UPDATE almanach_notes SET almanach_emitted_at = now(), almanach_ignored = $5, updated_at = now()
 		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3 AND run_id = $4 AND almanach_emitted_at IS NULL`,
-		k.Project, k.Repo, k.PRID, runID)
+		k.Project, k.Repo, k.PRID, runID, ignored)
 	return err
+}
+
+// AlmanachIgnoredByTeam counts, per team, the notes Almanach answered
+// "ignored" since since: the Teams page's sign that a team's notes are
+// dropped while the feed itself reads ok. A team with none is absent.
+func (s *Store) AlmanachIgnoredByTeam(ctx context.Context, since time.Time) (map[string]int, error) {
+	rows, err := s.pool.Query(ctx, `SELECT team_slug, COUNT(*)::int FROM almanach_notes
+		WHERE almanach_ignored AND almanach_emitted_at >= $1 GROUP BY team_slug`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var team string
+		var n int
+		if err := rows.Scan(&team, &n); err != nil {
+			return nil, err
+		}
+		out[team] = n
+	}
+	return out, rows.Err()
 }
 
 // PendingAlmanachNotes lists the team's final notes Almanach has not taken
