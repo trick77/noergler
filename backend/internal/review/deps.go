@@ -126,7 +126,7 @@ type Store interface {
 	UpsertAlmanachNote(ctx context.Context, n store.AlmanachNote) (string, error)
 	FinalizeAlmanachNote(ctx context.Context, k store.PRKey, team string, f store.AlmanachFinal) (bool, error)
 	DeleteAlmanachNote(ctx context.Context, k store.PRKey) error
-	MarkAlmanachEmitted(ctx context.Context, k store.PRKey, runID int64) error
+	MarkAlmanachEmitted(ctx context.Context, k store.PRKey, runID int64, ignored bool) error
 	PendingAlmanachNotes(ctx context.Context, team string, limit int) ([]store.AlmanachPending, error)
 	InsertAlmanachCall(ctx context.Context, c store.AlmanachCall) error
 	AlmanachNoteStatus(ctx context.Context, k store.PRKey) (store.AlmanachNoteState, bool, error)

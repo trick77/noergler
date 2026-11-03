@@ -90,7 +90,7 @@ func TestEnabledFlag(t *testing.T) {
 
 func TestDisabledIsANoOp(t *testing.T) {
 	e := New("", "", slog.New(slog.DiscardHandler))
-	if e.EmitNote(context.Background(), sampleNote()) {
+	if e.EmitNote(context.Background(), sampleNote()).OK() {
 		t.Error("a disabled emitter reported a note taken")
 	}
 	if team, err := e.VerifyAtStartup(context.Background()); team != "" || err != nil {
@@ -135,7 +135,7 @@ func TestVerifyAtStartup(t *testing.T) {
 // "taken", which is what lets the caller mark the row emitted.
 func TestEmitNotePayloadAndOutcome(t *testing.T) {
 	f, e := newFake(t, reply(202, `{"status":"accepted"}`))
-	if !e.EmitNote(context.Background(), sampleNote()) {
+	if e.EmitNote(context.Background(), sampleNote()) != Taken {
 		t.Fatal("a 202 must report the note taken")
 	}
 	if f.paths[0] != emitPath || f.header.Get("Authorization") != "Bearer t" || f.header.Get("Content-Type") != "application/json" {
@@ -283,18 +283,19 @@ func firstDiff(path string, a, b any) string {
 func TestEmitNoteIgnoredByAlmanach(t *testing.T) {
 	for _, c := range []struct {
 		body, want, not string
+		sent            Sent
 	}{
-		{`{"status":"ignored"}`, "note PROJ/repo#1 ignored by Almanach", "taken"},
-		{`{"status":"accepted"}`, "note PROJ/repo#1 taken", "ignored"},
-		{``, "note PROJ/repo#1 taken", "ignored"},
+		{`{"status":"ignored"}`, "note PROJ/repo#1 ignored by Almanach", "taken", Ignored},
+		{`{"status":"accepted"}`, "note PROJ/repo#1 taken", "ignored", Taken},
+		{``, "note PROJ/repo#1 taken", "ignored", Taken},
 	} {
 		f, _ := newFake(t, reply(202, c.body))
 		var buf strings.Builder
 		e := New(f.srv.URL, "t", slog.New(slog.NewTextHandler(&buf, nil)))
 		n := sampleNote()
 		n.PRKey = "PROJ/repo#1"
-		if !e.EmitNote(context.Background(), n) {
-			t.Errorf("%q: not taken", c.body)
+		if got := e.EmitNote(context.Background(), n); got != c.sent {
+			t.Errorf("%q: sent %v, want %v", c.body, got, c.sent)
 		}
 		if logs := buf.String(); !strings.Contains(logs, c.want) || strings.Contains(logs, c.not) {
 			t.Errorf("%q: log lacks %q or has %q:\n%s", c.body, c.want, c.not, logs)
@@ -310,7 +311,7 @@ func TestEmitNoteFailures(t *testing.T) {
 		want   string
 	}{{401, StatusRejected}, {403, StatusRejected}, {302, StatusFailing}, {500, StatusFailing}, {422, StatusFailing}} {
 		_, e := newFake(t, reply(c.status, `nope`))
-		if e.EmitNote(context.Background(), sampleNote()) {
+		if e.EmitNote(context.Background(), sampleNote()).OK() {
 			t.Errorf("status %d reported taken", c.status)
 		}
 		if e.Status() != c.want {
@@ -318,7 +319,7 @@ func TestEmitNoteFailures(t *testing.T) {
 		}
 	}
 	e := New("http://127.0.0.1:1", "t", slog.New(slog.DiscardHandler))
-	if e.EmitNote(context.Background(), sampleNote()) || e.Status() != StatusFailing {
+	if e.EmitNote(context.Background(), sampleNote()).OK() || e.Status() != StatusFailing {
 		t.Errorf("unreachable: taken or status %q", e.Status())
 	}
 	// A cancelled context says nothing about Almanach: the word stays.
@@ -328,7 +329,7 @@ func TestEmitNoteFailures(t *testing.T) {
 	e.c.Set(StatusOK)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { time.Sleep(20 * time.Millisecond); cancel() }()
-	if e.EmitNote(ctx, sampleNote()) || e.Status() != StatusOK {
+	if e.EmitNote(ctx, sampleNote()).OK() || e.Status() != StatusOK {
 		t.Errorf("cancelled: taken or status %q", e.Status())
 	}
 }

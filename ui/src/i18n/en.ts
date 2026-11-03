@@ -240,6 +240,12 @@ export const en = {
         "Almanach refuses the token (HTTP 401/403). Reviews run; notes wait until the token is fixed.",
       off: "No almanach block for this team in teams.yaml (or one with an empty url or token), so no note is written and nothing is forwarded.",
     },
+    almanachIgnored_one: "{{count}} ignored (7 d)",
+    almanachIgnored_other: "{{count}} ignored (7 d)",
+    almanachIgnoredHint_one:
+      "Almanach took {{count}} of this team's notes from the last 7 days and dropped it: the repo is not one of Almanach's source repositories. The note is kept by neither side and not sent again. Add the repo as a source in Almanach; its log names the repo.",
+    almanachIgnoredHint_other:
+      "Almanach took {{count}} of this team's notes from the last 7 days and dropped them: their repos are not among Almanach's source repositories. The notes are kept by neither side and not sent again. Add the repos as sources in Almanach; its log names each one.",
     accountStatus: {
       ok: "working",
       rejected: "rejected",

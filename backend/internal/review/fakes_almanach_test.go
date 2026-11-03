@@ -102,12 +102,15 @@ func (f *fakeStore) DeleteAlmanachNote(_ context.Context, k store.PRKey) error {
 	return f.err()
 }
 
-func (f *fakeStore) MarkAlmanachEmitted(_ context.Context, k store.PRKey, runID int64) error {
+func (f *fakeStore) MarkAlmanachEmitted(_ context.Context, k store.PRKey, runID int64, ignored bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if row, ok := f.notes[k]; ok && row.RunID == runID && !row.emitted {
 		row.emitted = true
 		f.EmittedRuns = append(f.EmittedRuns, runID)
+		if ignored {
+			f.IgnoredRuns = append(f.IgnoredRuns, runID)
+		}
 	}
 	return f.err()
 }
@@ -165,15 +168,23 @@ func (f *fakeStore) AlmanachNoteStatus(_ context.Context, k store.PRKey) (store.
 
 // --- fake Almanach emitter ---------------------------------------------------
 
-// fakeAlmanach records the notes sent; refuse makes every post a miss.
+// fakeAlmanach records the notes sent; refuse makes every post a miss,
+// ignore every post a 202 "ignored".
 type fakeAlmanach struct {
 	enabled bool
 	refuse  bool
+	ignore  bool
 	Emitted []almanach.Note
 }
 
 func (f *fakeAlmanach) Enabled() bool { return f.enabled }
-func (f *fakeAlmanach) EmitNote(_ context.Context, n almanach.Note) bool {
+func (f *fakeAlmanach) EmitNote(_ context.Context, n almanach.Note) almanach.Sent {
 	f.Emitted = append(f.Emitted, n)
-	return !f.refuse
+	switch {
+	case f.refuse:
+		return almanach.NotSent
+	case f.ignore:
+		return almanach.Ignored
+	}
+	return almanach.Taken
 }

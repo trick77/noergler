@@ -121,12 +121,25 @@ function integrationPills(team: Team, now: number, t: TFunction) {
     </Pill>
   );
 
-  // Almanach is a forwarder like riptide: same words, same tones.
+  // Almanach is a forwarder like riptide: same words, same tones. Beside
+  // it, the notes Almanach took and dropped: the word stays ok for them,
+  // which is how a team's every note went missing unseen (2026-11-03).
   const as = team.almanach ?? "off";
+  const ignored = team.almanach_ignored_7d ?? 0;
   const almanach = (
-    <Pill tone={forwarderTone[as]} title={t(`teams.almanachHint.${as}`)}>
-      {t(`teams.almanach.${as}`)}
-    </Pill>
+    <>
+      <Pill tone={forwarderTone[as]} title={t(`teams.almanachHint.${as}`)}>
+        {t(`teams.almanach.${as}`)}
+      </Pill>
+      {ignored > 0 && (
+        <Pill
+          tone="skip"
+          title={t("teams.almanachIgnoredHint", { count: ignored })}
+        >
+          {t("teams.almanachIgnored", { count: ignored })}
+        </Pill>
+      )}
+    </>
   );
 
   return { bitbucket, jira, riptide, almanach };

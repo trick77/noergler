@@ -687,6 +687,25 @@ describe("TeamsPage", () => {
     expect(screen.getAllByText("Almanach off")).toHaveLength(2);
   });
 
+  // Notes Almanach took and dropped show beside the feed's word, which
+  // stays ok for them; none, no pill.
+  it("counts the notes Almanach ignored", async () => {
+    serve({
+      teams: {
+        teams: [
+          { ...teams[0], almanach: "ok", almanach_ignored_7d: 3 },
+          { ...teams[0], slug: "data", name: "Data", almanach: "ok" },
+        ],
+      },
+    });
+    render(<TeamsPage />);
+
+    const pills = await screen.findAllByText("3 ignored (7 d)");
+    expect(pills).toHaveLength(2);
+    expect(pills[0].getAttribute("title")).toMatch(/source repositories/);
+    expect(screen.getAllByText(/ignored \(7 d\)/)).toHaveLength(2);
+  });
+
   // Collapsed by default: the list is there to open, the summary pills are
   // what a passing reader sees.
   it("collapses the configuration", async () => {

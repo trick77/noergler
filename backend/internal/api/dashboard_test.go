@@ -40,6 +40,10 @@ type fakeDashStore struct {
 	daily     []store.Bucket
 	dailyAtt  []store.AttemptBucket
 	activity  []store.TeamActivity
+	// ignored is the per-team count of notes Almanach ignored; ignoredSince
+	// records the window the handler asked for.
+	ignored      map[string]int
+	ignoredSince time.Time
 	// page and run are served for prToken (run for runN only); any other
 	// token or number is "not found".
 	page    store.PRPage
@@ -101,6 +105,10 @@ func (f *fakeDashStore) DailyAttempts(context.Context, time.Time) ([]store.Attem
 }
 func (f *fakeDashStore) ActivityByTeam(context.Context) ([]store.TeamActivity, error) {
 	return f.activity, f.err
+}
+func (f *fakeDashStore) AlmanachIgnoredByTeam(_ context.Context, since time.Time) (map[string]int, error) {
+	f.ignoredSince = since
+	return f.ignored, f.err
 }
 
 type dashHarness struct {
@@ -766,6 +774,43 @@ func TestTeamsShowsAlmanach(t *testing.T) {
 		h.rt.Almanach = almanach.New(url, token, slog.New(slog.DiscardHandler))
 		_, _ = h.rt.Almanach.VerifyAtStartup(context.Background())
 	}, func(tm teamBody) string { return tm.Almanach })
+}
+
+// The roster counts a team's notes Almanach ignored in the last 7 days,
+// beside the feed's word, which stays ok for them. None with the feed off;
+// a failed count read leaves the roster answering without it.
+func TestTeamsCountsIgnoredAlmanachNotes(t *testing.T) {
+	h := newDashHarness(t)
+	h.st.ignored = map[string]int{"platform": 3}
+	ignoredOf := func() int {
+		var got teamsBody
+		if err := json.Unmarshal(h.get(t, "/api/dashboard/teams").Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		for _, tm := range got.Teams {
+			if tm.Slug == "platform" {
+				return tm.AlmanachIgnored7d
+			}
+		}
+		t.Fatal("platform missing")
+		return 0
+	}
+	if n := ignoredOf(); n != 0 {
+		t.Errorf("feed off: ignored = %d, want none shown", n)
+	}
+
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"ok","team":"platform"}`))
+	}))
+	t.Cleanup(up.Close)
+	h.rt.Almanach = almanach.New(up.URL, "t", slog.New(slog.DiscardHandler))
+	_, _ = h.rt.Almanach.VerifyAtStartup(context.Background())
+	if n := ignoredOf(); n != 3 {
+		t.Errorf("ignored = %d, want 3", n)
+	}
+	if ago := time.Since(h.st.ignoredSince); ago < 7*24*time.Hour-time.Minute || ago > 7*24*time.Hour+time.Minute {
+		t.Errorf("window = %v, want 7 days", ago)
+	}
 }
 
 // A team's own accounts show on the roster as source, bot and the fixed

@@ -151,26 +151,42 @@ func (e *Emitter) VerifyAtStartup(ctx context.Context) (string, error) {
 	return team, nil
 }
 
-// EmitNote posts one note and reports whether Almanach took it (2xx). A
-// miss is logged by the wire and the note left for the next drain. Never
-// an error: a note must not fail a webhook.
-func (e *Emitter) EmitNote(ctx context.Context, n Note) bool {
+// Sent is what became of one note: not sent (a miss, left for the next
+// drain), taken, or taken and ignored (Almanach answered 202 "ignored").
+type Sent int
+
+const (
+	// NotSent is a miss: no 2xx, the note stays pending.
+	NotSent Sent = iota
+	// Taken is a 2xx Almanach stored (or deduped).
+	Taken
+	// Ignored is a 202 "ignored": taken, never stored on its side.
+	Ignored
+)
+
+// OK reports whether Almanach answered 2xx: the note is marked sent.
+func (s Sent) OK() bool { return s != NotSent }
+
+// EmitNote posts one note and says what Almanach did with it. A miss is
+// logged by the wire and the note left for the next drain. Never an
+// error: a note must not fail a webhook.
+func (e *Emitter) EmitNote(ctx context.Context, n Note) Sent {
 	if !e.Enabled() {
-		return false
+		return NotSent
 	}
 	taken, answer := e.c.Post(ctx, emitPath, payload(n), "note "+n.PRKey)
 	if !taken {
-		return false
+		return NotSent
 	}
 	if answer == answerIgnored {
 		// Taken all the same: Almanach asks for no resend, the note is
 		// marked sent. A warning because the note is gone from both
 		// sides; Almanach's own log names the reason.
 		e.log.WarnContext(ctx, "Almanach: note "+n.PRKey+" ignored by Almanach (repo not one of its source repositories), not resent")
-		return true
+		return Ignored
 	}
 	e.log.InfoContext(ctx, "Almanach: note "+n.PRKey+" taken")
-	return true
+	return Taken
 }
 
 // payload is the wire shape. Money travels twice: as an exact decimal
