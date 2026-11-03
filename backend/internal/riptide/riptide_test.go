@@ -1,6 +1,7 @@
 package riptide
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -364,6 +366,37 @@ func TestEmitOmitsAbsentReviewerHandle(t *testing.T) {
 	}
 	if _, present := f.body["reviewer_account_kind"]; present {
 		t.Error("reviewer_account_kind present without a handle")
+	}
+}
+
+// A taken rollup says so at Info: without the line a merge leaves no trace
+// on noergler's side that riptide got it. A refused one keeps the wire's
+// warning and no "taken".
+func TestEmitLogsTakenRollup(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		body   string
+		want   string // "" = no Riptide line at Info
+	}{
+		{202, ``, "Riptide: rollup PROJ/repo#1 taken (outcome=merged)"},
+		{202, `{"status":"accepted"}`, "Riptide: rollup PROJ/repo#1 taken (outcome=merged)"},
+		{202, `{"status":"deduped"}`, "Riptide: rollup PROJ/repo#1 answered deduped (outcome=merged)"},
+		{500, ``, ""},
+	} {
+		f, _ := newFake(t, reply(tc.status, tc.body))
+		var buf bytes.Buffer
+		e := New(f.srv.URL, "t", slog.New(slog.NewTextHandler(&buf, nil)))
+		e.EmitPRCompleted(context.Background(), sampleRollup())
+		logs := buf.String()
+		if tc.want == "" {
+			if strings.Contains(logs, "level=INFO msg=\"Riptide: rollup") {
+				t.Errorf("status %d: an Info rollup line on a miss:\n%s", tc.status, logs)
+			}
+			continue
+		}
+		if !strings.Contains(logs, tc.want) {
+			t.Errorf("status %d %q: log lacks %q:\n%s", tc.status, tc.body, tc.want, logs)
+		}
 	}
 }
 

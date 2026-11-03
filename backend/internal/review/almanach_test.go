@@ -1,9 +1,11 @@
 package review
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -106,11 +108,14 @@ func TestAlmanachNoteGates(t *testing.T) {
 	})
 	t.Run("review failed", func(t *testing.T) {
 		h := newHarness(t, withAlmanach)
+		var buf bytes.Buffer
+		h.r.log = slog.New(slog.NewTextHandler(&buf, nil))
 		h.llm.review = inference.ReviewResult{Outcome: inference.OutcomeUnparseable, Review: inference.ParsedReview{Summary: inference.NewReviewSummary()}, Raw: "garbage"}
 		h.r.ReviewPullRequestStaged(context.Background(), prPayload(webhook.EventOpened), "platform", false, &inlineScheduler{})
 		if len(h.llm.Notes) != 0 {
 			t.Error("note call after a failed review")
 		}
+		wantLogged(t, buf.String(), "PROJ/my-repo#42: almanach note skipped, review outcome unparseable")
 	})
 	t.Run("does not fit", func(t *testing.T) {
 		h := newHarness(t, withAlmanach)
@@ -365,4 +370,123 @@ func TestDeclinedAndDeletedDropTheNote(t *testing.T) {
 	if h.st.NoteDeletes != 0 {
 		t.Error("a team without almanach touched the notes table")
 	}
+}
+
+// A merge says what it has for Almanach, so an empty Almanach after a merge
+// is readable from noergler's log: never reviewed, no note written, the
+// note final, already sent.
+func TestMergeLogsWhatItHasForAlmanach(t *testing.T) {
+	merge := func(h *harness) string {
+		var buf bytes.Buffer
+		h.r.log = slog.New(slog.NewTextHandler(&buf, nil))
+		h.r.HandlePRMerged(context.Background(), prPayload(webhook.EventMerged))
+		return buf.String()
+	}
+	t.Run("never reviewed", func(t *testing.T) {
+		h := newHarness(t, withAlmanach)
+		wantLogged(t, merge(h), "PROJ/my-repo#42: no almanach note, no PR row (never reviewed, or purged)")
+		if len(h.st.Finalized) != 0 || len(h.al.Emitted) != 0 {
+			t.Error("a merge noergler never reviewed left a stub or sent a note")
+		}
+	})
+	t.Run("no note written", func(t *testing.T) {
+		h := newHarness(t, withAlmanach)
+		h.llm.review.Raw = "x"
+		h.llm.note = inference.AlmanachNoteResult{Outcome: inference.OutcomeError, Err: errors.New("boom")}
+		h.r.ReviewPullRequestStaged(context.Background(), prPayload(webhook.EventOpened), "platform", false, &inlineScheduler{})
+		wantLogged(t, merge(h), "PROJ/my-repo#42: almanach note final without a note, nothing to send")
+		if len(h.al.Emitted) != 0 {
+			t.Error("a stub was sent")
+		}
+	})
+	t.Run("final, then already sent", func(t *testing.T) {
+		h := newHarness(t, withAlmanach)
+		h.llm.review.Raw = "x"
+		h.r.ReviewPullRequestStaged(context.Background(), prPayload(webhook.EventOpened), "platform", false, &inlineScheduler{})
+		// The closing quote ends the text handler's msg: "final" alone,
+		// not the "final without a note" line.
+		wantLogged(t, merge(h), `PROJ/my-repo#42: almanach note final"`)
+		wantLogged(t, merge(h), "PROJ/my-repo#42: almanach note already sent")
+	})
+	t.Run("refused, then redelivered", func(t *testing.T) {
+		h := newHarness(t, withAlmanach)
+		h.llm.review.Raw = "x"
+		h.al.refuse = true
+		h.r.ReviewPullRequestStaged(context.Background(), prPayload(webhook.EventOpened), "platform", false, &inlineScheduler{})
+		wantLogged(t, merge(h), "PROJ/my-repo#42: almanach note not sent (refused or behind older notes), left for the next merge")
+		h.al.refuse = false
+		if logs := merge(h); strings.Contains(logs, "not sent") {
+			t.Errorf("a sent note logged as unsent:\n%s", logs)
+		}
+		if len(h.st.EmittedRuns) != 1 {
+			t.Errorf("stamped = %v, want the redelivery to send it", h.st.EmittedRuns)
+		}
+	})
+	t.Run("finalize fault", func(t *testing.T) {
+		h := newHarness(t, withAlmanach)
+		h.llm.review.Raw = "x"
+		h.r.ReviewPullRequestStaged(context.Background(), prPayload(webhook.EventOpened), "platform", false, &inlineScheduler{})
+		h.st.failAll = true
+		logs := merge(h)
+		wantLogged(t, logs, "PROJ/my-repo#42: almanach note not final, FinalizeAlmanachNote failed")
+		if strings.Contains(logs, "no PR row") {
+			t.Errorf("a store fault read as a missing PR row:\n%s", logs)
+		}
+	})
+	t.Run("merged during a round that writes nothing", func(t *testing.T) {
+		h := newHarness(t, withAlmanach)
+		h.llm.review.Raw = "x"
+		h.llm.note = inference.AlmanachNoteResult{Outcome: inference.OutcomeError, Err: errors.New("boom")}
+		sched := &deferredScheduler{}
+		h.r.ReviewPullRequestStaged(context.Background(), prPayload(webhook.EventOpened), "platform", false, sched)
+		sched.finish()
+		merge(h)
+		var buf bytes.Buffer
+		h.r.log = slog.New(slog.NewTextHandler(&buf, nil))
+		sched.spawned[0].fn(sched.spawned[0].ctx)
+		wantLogged(t, buf.String(), "PROJ/my-repo#42: merged without an almanach note, nothing to send")
+	})
+}
+
+// A store fault on the rollup claim is its own line, never the "already
+// emitted or nothing billed" skip: the rollup is lost, not redundant.
+func TestRollupClaimFaultIsNotASkip(t *testing.T) {
+	h := newHarness(t, nil)
+	var buf bytes.Buffer
+	h.r.log = slog.New(slog.NewTextHandler(&buf, nil))
+	h.st.failAll = true
+	h.r.HandlePRMerged(context.Background(), prPayload(webhook.EventMerged))
+	logs := buf.String()
+	wantLogged(t, logs, "PROJ/my-repo#42: rollup not emitted, ClaimRollup failed")
+	if strings.Contains(logs, "already emitted or nothing billed") {
+		t.Errorf("a store fault read as a skip:\n%s", logs)
+	}
+}
+
+// A round whose note sits past the oldest almanachDrain pending notes sends
+// nothing and says so: the next merge's drain takes it.
+func TestRoundNotInTheDrainSaysSo(t *testing.T) {
+	h := newHarness(t, withAlmanach)
+	h.llm.review.Raw = "x"
+	h.al.refuse = true
+	for id := 1; id <= almanachDrain; id++ {
+		open, merged := prPayload(webhook.EventOpened), prPayload(webhook.EventMerged)
+		open.PullRequest.ID, merged.PullRequest.ID = id, id
+		h.r.ReviewPullRequestStaged(context.Background(), open, "platform", false, &inlineScheduler{})
+		h.r.HandlePRMerged(context.Background(), merged)
+	}
+	h.al.refuse = false
+	h.al.Emitted = nil
+
+	sched := &deferredScheduler{}
+	h.r.ReviewPullRequestStaged(context.Background(), prPayload(webhook.EventOpened), "platform", false, sched)
+	sched.finish()
+	h.r.HandlePRMerged(context.Background(), prPayload(webhook.EventMerged))
+	var buf bytes.Buffer
+	h.r.log = slog.New(slog.NewTextHandler(&buf, nil))
+	sched.spawned[0].fn(sched.spawned[0].ctx)
+	if len(h.al.Emitted) != 0 {
+		t.Fatalf("emitted = %+v, want nothing: the note is past the drain", h.al.Emitted)
+	}
+	wantLogged(t, buf.String(), "PROJ/my-repo#42: almanach note not in this drain (behind older notes or already sent), nothing sent")
 }

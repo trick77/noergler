@@ -141,11 +141,15 @@ func (r *Reviewer) emitRollup(ctx context.Context, key store.PRKey, prTag, outco
 		}
 	}
 
-	snapshot := safeDB(ctx, r.log, "ClaimRollup", func() (*store.RollupSnapshot, error) {
-		return r.store.ClaimRollup(ctx, key, final)
-	})
+	// Not safeDB: its nil on a fault would read as "already emitted or
+	// nothing billed" below, a wrong cause for a lost rollup.
+	snapshot, err := r.store.ClaimRollup(ctx, key, final)
+	if err != nil {
+		r.log.WarnContext(ctx, prTag+": rollup not emitted, ClaimRollup failed", logging.Err(err))
+		return
+	}
 	if snapshot == nil {
-		r.log.DebugContext(ctx, prTag+": rollup not emitted (already emitted or nothing billed)")
+		r.log.InfoContext(ctx, prTag+": rollup not emitted (already emitted or nothing billed)")
 		return
 	}
 	if snapshot.SourceCommit == nil || *snapshot.SourceCommit == "" {

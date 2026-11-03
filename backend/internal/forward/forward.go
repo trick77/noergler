@@ -177,25 +177,28 @@ func ReadErrorBody(r io.Reader, limit int64) string {
 }
 
 // Post sends body as JSON to path and reports whether the receiver took it
-// (2xx). what names the body in the log ("event_type=pr_completed", "note
+// (2xx), with the receiver's own word for what it did: the "status" of a
+// JSON answer ("accepted", "deduped", "ignored"), empty when it sent none.
+// A 2xx is not a stored body: Almanach answers 202 "ignored" for a note it
+// drops. what names the body in the log ("event_type=pr_completed", "note
 // PROJ/repo#1"). Never an error: a transport failure or a rejection is
 // logged and the status word set; a cancelled context says nothing about
 // the receiver, so the word stays.
-func (c *Client) Post(ctx context.Context, path string, body any, what string) bool {
+func (c *Client) Post(ctx context.Context, path string, body any, what string) (taken bool, answer string) {
 	if !c.Enabled() {
-		return false
+		return false, ""
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {
 		c.Set(StatusFailing)
 		c.log.WarnContext(ctx, c.name+" emit failed to encode: "+err.Error())
-		return false
+		return false, ""
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url+path, bytes.NewReader(raw))
 	if err != nil {
 		c.Set(StatusFailing)
 		c.log.WarnContext(ctx, c.name+" emit failed: "+err.Error())
-		return false
+		return false, ""
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Content-Type", "application/json")
@@ -204,11 +207,11 @@ func (c *Client) Post(ctx context.Context, path string, body any, what string) b
 	if err != nil {
 		if ctx.Err() != nil {
 			c.log.WarnContext(ctx, fmt.Sprintf("%s emit cancelled (%s): %v", c.name, what, err))
-			return false
+			return false, ""
 		}
 		c.Set(StatusFailing)
 		c.log.WarnContext(ctx, fmt.Sprintf("%s emit failed (%s): %v", c.name, what, err))
-		return false
+		return false, ""
 	}
 	defer func() { _ = resp.Body.Close() }()
 	// Anything but a 2xx is a miss, 3xx included: redirects are not
@@ -224,9 +227,26 @@ func (c *Client) Post(ctx context.Context, path string, body any, what string) b
 		}
 		c.log.WarnContext(ctx, fmt.Sprintf("%s emit %s (%s, status=%d): %s",
 			c.name, word, what, resp.StatusCode, ReadErrorBody(resp.Body, errBodyLimit)))
-		return false
+		return false, ""
 	}
 	c.Set(StatusOK)
-	_, _ = io.Copy(io.Discard, resp.Body)
-	return true
+	return true, readAnswer(resp.Body)
+}
+
+// answerLimit caps how much of a 2xx answer is read for its status word;
+// an answer cut there does not parse and reads as none.
+const answerLimit = 64 << 10
+
+// readAnswer is the "status" of a JSON answer, empty for any other body,
+// and drains the rest so the connection can be reused.
+func readAnswer(r io.Reader) string {
+	raw, _ := io.ReadAll(io.LimitReader(r, answerLimit))
+	_, _ = io.Copy(io.Discard, r)
+	var out struct {
+		Status string `json:"status"`
+	}
+	if json.Unmarshal(raw, &out) != nil {
+		return ""
+	}
+	return strings.TrimSpace(out.Status)
 }
