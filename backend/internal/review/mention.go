@@ -88,9 +88,11 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	// not reactivated for nothing). Under the cap, a Q&A on a PR with no row
 	// writes one, so its calls are counted and capped from the first on.
 	// A resume request on a stopped PR is a review: it brings the PR back.
-	// Elsewhere "@bot continue" is a question.
+	// Elsewhere "@bot continue" is a question. The state is read once, here,
+	// for this and the reactivation below.
+	state := r.skipState(ctx, key)
 	isReview := question == "" || reviewKeywords[strings.ToLower(question)] ||
-		(resumeRequest(question) && r.stopped(ctx, key))
+		(state.Stopped() && resumeRequest(question))
 	rowID, cumulative, over := r.overCap(ctx, key)
 	if over {
 		r.refuseOverCap(ctx, key, prTag, pr.Author.User.Name, "mention", rowID, cumulative, isReview)
@@ -115,7 +117,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	// the review guard from re-ignoring the PR. A stopped PR comes back on a
 	// review or resume request only: a question is answered, the PR stays
 	// stopped.
-	state := r.reactivateIfIgnored(ctx, key, prTag, isReview)
+	r.reactivate(ctx, key, prTag, isReview, state)
 
 	// An empty question, or one of the review keywords, means "review this".
 	// It is a review like any other, so it takes the staged path: the
@@ -329,29 +331,40 @@ func costTotal(c inference.CallCost) string {
 	return "$" + inference.FormatUSD3(*c.NanoUSD)
 }
 
-// reactivateIfIgnored clears the ignored state a removed summary left, so a
-// mention brings the PR back. Shared by every path an @mention takes. A
-// stopped PR comes back only when resume is set (a review or resume
-// request); its summary loses the stopped banner. It returns the state as
-// read before any reactivation, nil when unread.
-func (r *Reviewer) reactivateIfIgnored(ctx context.Context, key store.PRKey, prTag string, resume bool) *store.SkipState {
-	state := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
+// skipState is the PR's skip state, nil when unread, no row or no store.
+func (r *Reviewer) skipState(ctx context.Context, key store.PRKey) *store.SkipState {
+	if r.store == nil {
+		return nil
+	}
+	return safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
 		return r.store.GetSkipState(ctx, key)
 	})
+}
+
+// reactivateIfIgnored is reactivate on a state it reads itself.
+func (r *Reviewer) reactivateIfIgnored(ctx context.Context, key store.PRKey, prTag string, resume bool) {
+	r.reactivate(ctx, key, prTag, resume, r.skipState(ctx, key))
+}
+
+// reactivate clears the ignored state a removed summary left, so a mention
+// brings the PR back. Shared by every path an @mention takes. A stopped PR
+// comes back only when resume is set (a review or resume request); its
+// summary loses the stopped banner. state is as read before, nil when
+// unread.
+func (r *Reviewer) reactivate(ctx context.Context, key store.PRKey, prTag string, resume bool, state *store.SkipState) {
 	if state == nil || state.IgnoredAt == nil {
-		return state
+		return
 	}
 	if state.Stopped() {
 		if !resume {
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: PR stays stopped (by %s): the mention asks no review", prTag, state.StoppedBy))
-			return state
+			return
 		}
 		r.resume(ctx, key, prTag, state)
-		return state
+		return
 	}
 	safeDBErr(ctx, r.log, "Reactivate", func() error { return r.store.Reactivate(ctx, key) })
 	r.log.InfoContext(ctx, prTag+": reactivating ignored PR via @mention")
-	return state
 }
 
 // maxParentRunes caps the replied-to comment in the prompt: a question is

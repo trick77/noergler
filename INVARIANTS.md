@@ -135,13 +135,18 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   its PR). A plain reply directly under one is a Q&A from anyone, like a
   reply under the summary (user, 2026-10-22), matched from the DB, never by
   fetching the parent; the finding-thread answer included (decided). Never
-  on an ignored PR: a plain reply never reactivates, only an `@mention`.
+  on a PR whose summary was deleted: a plain reply never reactivates, only
+  an `@mention`. A stopped PR answers them and stays stopped.
 - Stop by command (user, 2026-11-04): "stop monitoring", "Höre auf, diesen
   PR zu beobachten" stops reviews on push; summary, Q&A, riptide and the
   Almanach send at merge carry on. `ignored_at` stays the one flag,
   `ignore_reason` says which: `stopped` keeps the summary and overview on
-  resume, `summary_deleted` forgets both (the comment is gone); a deletion
-  overrides a stop, never the reverse. A short command is decided by code
+  resume, `summary_deleted` forgets both (the comment is gone). The last
+  word wins: a deletion turns a stop into `summary_deleted`, a stop turns
+  a deleted summary into `stopped` (summary forgotten), else the next
+  question would undo the stop. `ignore_reason` is set iff `ignored_at` is
+  (CHECK). Replies, questions and language switches are answered on a
+  stopped PR, never a review. A short command is decided by code
   (`stopRequest`), before the cost cap, no model call; anything else goes
   through the Q&A's `stop_reviewing` tool, which the model proposes and
   `stopIntent` checks against the commenter's own text. A stopped PR comes
@@ -150,8 +155,10 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   question, never a paid review. Anyone who comments may stop. "No more"
   wording and longer orders need a target (reviewing, prüfen, beobachten),
   never a code verb ("checks", "prüft"): statements about code say "no
-  longer" as often. The banner sits below cost and stale banners (their
-  strippers read the top only) and is removed on resume, before the review,
+  longer" as often; stop word and target at most 3 words apart (resume: 1),
+  quoted code (`stop()`) never counts. Banner order is fixed: cost and
+  stale, stopped, handoff (the cost and stale strippers read the top
+  only). The stopped banner is removed on resume, before the review,
   so a failed review's stale banner cannot leave it standing; the resume's
   summary fetch is the deletion check the push guard skips on a stopped PR.
 - Q&A on a reply: the immediate parent goes into the prompt as untrusted

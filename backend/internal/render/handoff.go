@@ -86,13 +86,16 @@ func PlaceHandoffBanner(body, banner string) string {
 
 // PlaceStoppedBanner is PlaceHandoffBanner for the stopped banner: below the
 // cost and stale banners, for the same reason. An empty banner removes it.
+// One order, whichever was written last: cost and stale, stopped, handoff.
+// So the stopped banner peels only cost and stale, and the handoff banner
+// peels the stopped one too.
 func PlaceStoppedBanner(body, banner string) string {
-	return placeBelowTopBanners(body, banner, StripStoppedBanner, StripHandoffBanner)
+	return placeBelowTopBanners(body, banner, StripStoppedBanner, nil)
 }
 
 // placeBelowTopBanners replaces the banner own strips with banner, below
-// the cost and stale banners and other, which are peeled off the top in
-// order and put back above it.
+// the cost and stale banners and other (nil: none), which are peeled off
+// the top in order and put back above it.
 func placeBelowTopBanners(body, banner string, own, other func(string) string) string {
 	orig := body
 	var head []string
@@ -105,6 +108,9 @@ func placeBelowTopBanners(body, banner string, own, other func(string) string) s
 		}
 		peeled := false
 		for _, strip := range []func(string) string{StripCostBanner, StripStaleBanner, other} {
+			if strip == nil {
+				continue
+			}
 			if s := strip(body); s != body {
 				head = append(head, strings.TrimRight(body[:len(body)-len(s)], "\r\n"))
 				body = s

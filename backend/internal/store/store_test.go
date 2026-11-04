@@ -298,14 +298,27 @@ func TestPullRequest_StopResume(t *testing.T) {
 	if st.Stopped() || st.IgnoreReason != IgnoreSummaryDeleted || st.StoppedBy != "" {
 		t.Errorf("state = %+v, want summary_deleted", st)
 	}
-	if got, _ := s.MarkStopped(ctx, key, "bob"); got != 0 {
-		t.Error("a stop must not downgrade a deleted summary")
+	// A stop on the deleted summary's PR is stored, the dead summary
+	// forgotten, so a resume posts a fresh one.
+	if got, _ := s.MarkStopped(ctx, key, "carol"); got != id {
+		t.Fatal("a stop on a deleted summary must be stored")
+	}
+	st, _ = s.GetSkipState(ctx, key)
+	if !st.Stopped() || st.StoppedBy != "carol" || st.Summary != nil {
+		t.Errorf("state = %+v, want stopped by carol without a summary", st)
+	}
+	if got, _ := s.LastSummary(ctx, key); got != nil {
+		t.Errorf("overview kept after the summary was deleted: %+v", got)
 	}
 	if err := s.Reactivate(ctx, key); err != nil {
 		t.Fatal(err)
 	}
-	if st, _ = s.GetSkipState(ctx, key); st.Summary != nil {
-		t.Errorf("a deleted summary's resume must forget it: %+v", st)
+	if st, _ = s.GetSkipState(ctx, key); st.IgnoredAt != nil || st.Summary != nil {
+		t.Errorf("resumed state = %+v", st)
+	}
+	// The reason and the flag move together.
+	if _, err := s.pool.Exec(ctx, `UPDATE pull_requests SET ignored_at = now() WHERE id = $1`, id); err == nil {
+		t.Error("ignored_at without a reason must be refused")
 	}
 }
 

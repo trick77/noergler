@@ -59,6 +59,16 @@ func TestStopRequest(t *testing.T) {
 		{"keep reviewing", false},
 		{"stop please", true},
 		{"bitte stopp", true},
+		// Negations in any apostrophe and with other verbs (review, medium).
+		{"don’t stop reviewing", false},
+		{"please don't pause reviews", false},
+		{"Reviews bitte nicht stoppen", false},
+		// Code and words far apart are no order.
+		{"the review comment about stop() is wrong", false},
+		{"the review comment about `stop` is wrong", false},
+		{"review again pls, fixed the stop condition", false},
+		{"checking quit early here is intended", false},
+		{"Keine Reviews mehr bitte", true},
 	}
 	for _, c := range cases {
 		if got := stopRequest(c.text); got != c.want {
@@ -89,6 +99,7 @@ func TestResumeRequest(t *testing.T) {
 		{"weiter so", false},
 		{"wieder kaputt", false},
 		{"bitte weiter", true},
+		{"continue explaining the review finding on line 4", false},
 	}
 	for _, c := range cases {
 		if got := resumeRequest(c.text); got != c.want {
@@ -302,17 +313,23 @@ func TestResumeReviewsAStoppedPR(t *testing.T) {
 	}
 }
 
-// A PR ignored after its summary was deleted is not "stopped": a stop
-// leaves it as it is, and any mention still brings it back.
-func TestStopLeavesADeletedSummaryAlone(t *testing.T) {
+// A stop on a PR ignored after its summary was deleted is stored: the next
+// question must not bring it back against the stop. The dead summary is
+// forgotten, so a later resume posts a fresh one.
+func TestStopOnADeletedSummaryIsStored(t *testing.T) {
 	h := newHarness(t, nil)
 	now := time.Now()
-	h.st.skipState = &store.SkipState{IgnoredAt: &now, IgnoreReason: store.IgnoreSummaryDeleted}
+	h.st.summary = &store.SummaryComment{ID: 55, Version: 1}
+	h.st.skipState = &store.SkipState{ID: 1, IgnoredAt: &now, IgnoreReason: store.IgnoreSummaryDeleted, Summary: h.st.summary}
 
 	h.r.HandleMention(context.Background(), mentionPayload("@noergler stop", "bob"), "platform", &inlineScheduler{})
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler what is this?", "alice"), "platform", &inlineScheduler{})
 
-	if h.st.skipState.Stopped() || h.st.Reactived != 0 {
+	if !h.st.skipState.Stopped() || h.st.skipState.Summary != nil || h.st.Reactived != 0 {
 		t.Errorf("state = %+v, reactivated %d", h.st.skipState, h.st.Reactived)
+	}
+	if len(h.bb.Replies) == 0 || !strings.Contains(h.bb.Replies[0].Text, "no longer review this PR") {
+		t.Errorf("replies = %+v", h.bb.Replies)
 	}
 }
 
@@ -331,6 +348,31 @@ func TestFindingThreadStopIsNotADispute(t *testing.T) {
 	}
 	if !h.st.skipState.Stopped() || h.st.skipState.StoppedBy != "alice" {
 		t.Errorf("state = %+v, want stopped by alice", h.st.skipState)
+	}
+}
+
+// The stop is about reviews: the author's plain reply on a finding, and a
+// plain reply under a bot answer, are still answered on a stopped PR.
+func TestStoppedPRStillAnswersReplies(t *testing.T) {
+	now := time.Now()
+	stopped := &store.SkipState{ID: 1, IgnoredAt: &now, IgnoreReason: store.IgnoreStopped, StoppedBy: "bob"}
+
+	h, p := replyHarness(t)
+	h.st.skipState = stopped
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
+	if len(h.llm.Replies) != 1 {
+		t.Errorf("finding reply calls = %d, want the reply answered", len(h.llm.Replies))
+	}
+
+	h = newHarness(t, nil)
+	h.st.skipState = stopped
+	h.st.botReplies = map[int]*store.BotReply{600: {CommentID: 600, Kind: store.BotReplyQuestion}}
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "Yes."}
+	q := mentionPayload("does this also stop the Almanach send", "carol")
+	q.CommentParentID = 600
+	h.r.HandleFindingReply(context.Background(), q, "payments", &inlineScheduler{})
+	if len(h.llm.Mentions) != 1 || !h.st.skipState.Stopped() {
+		t.Errorf("mention calls = %d, state %+v: want answered, still stopped", len(h.llm.Mentions), h.st.skipState)
 	}
 }
 

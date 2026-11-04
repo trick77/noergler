@@ -420,10 +420,8 @@ bot posts is stored by its comment id (`bot_replies`), and a plain reply
 directly under one is a Q&A too, whoever asks, with the bot's answer as the
 comment it sees. The original question above that answer is not shown
 (Bitbucket sends the immediate parent only). On a PR whose summary was
-deleted, or that was stopped (§12c), a plain reply under a bot reply is not
-answered: a plain reply never brings a PR back. Under a stopped PR's
-summary, which is still there, it is answered like a mention and the PR
-stays stopped.
+deleted such a reply is not answered: a plain reply never brings a PR
+back. On a stopped PR (§12c) it is answered, and the PR stays stopped.
 
 The PR author's reply on one of noergler's finding threads needs no mention.
 The route queues any non-empty reply not written by the bot (Bitbucket's
@@ -514,7 +512,8 @@ Anyone who comments can tell noergler to stop reviewing a PR: `@noergler
 stop monitoring`, `stop reviewing`, `Höre auf, diesen PR zu beobachten`,
 or a plain reply saying so under the summary. New pushes are then not
 reviewed (`pr_stopped` on the dashboard) and cost nothing. The rest carries
-on: questions are answered, the summary stays, and at merge the riptide
+on: questions and replies, the author's on a finding included, are
+answered, the summary stays, and at merge the riptide
 rollup and the Almanach send run as for any PR. An Almanach note round runs
 only after a review, so pushes after the stop add nothing to the note; the
 last one is sent.
@@ -531,8 +530,11 @@ naming who stopped it, in the author's language.
 `@noergler review`, or a resume request ("resume", "weiter beobachten"),
 brings the reviews back: the banner goes, and the review updates the same
 summary and builds on its overview. A question does not; the PR stays
-stopped. Deleting the summary of a stopped PR turns it into the deleted
-case (§12): any mention then brings it back, with a fresh summary.
+stopped, and on a PR that is not stopped "continue" is a question. The
+last word wins: deleting the summary of a stopped PR turns it into the
+deleted case (§12), where any mention brings it back with a fresh summary;
+a stop after the summary was deleted makes it stopped, and the resume
+posts a fresh summary.
 
 ## 13. Terminal events and the riptide rollup
 

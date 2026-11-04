@@ -473,11 +473,16 @@ func (f *fakeStore) MarkStopped(_ context.Context, _ store.PRKey, by string) (in
 		}
 		f.skipState = &store.SkipState{ID: 1, Summary: f.summary}
 	}
-	if f.skipState.IgnoredAt != nil {
+	if f.skipState.Stopped() {
 		return 0, nil
 	}
+	// A deleted summary is forgotten, as the real CASE does.
+	summary := f.skipState.Summary
+	if f.skipState.IgnoredAt != nil {
+		summary, f.summary = nil, nil
+	}
 	now := time.Now()
-	f.skipState = &store.SkipState{ID: f.skipState.ID, Summary: f.skipState.Summary,
+	f.skipState = &store.SkipState{ID: f.skipState.ID, Summary: summary,
 		IgnoredAt: &now, IgnoreReason: store.IgnoreStopped, StoppedBy: by}
 	return f.skipState.ID, nil
 }

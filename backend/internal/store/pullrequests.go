@@ -158,6 +158,13 @@ func (st *SkipState) Stopped() bool {
 	return st != nil && st.IgnoredAt != nil && st.IgnoreReason == IgnoreStopped
 }
 
+// SummaryDeleted reports whether the PR is ignored because its summary was
+// deleted: left alone entirely, unlike a stopped one, whose questions and
+// replies are still answered.
+func (st *SkipState) SummaryDeleted() bool {
+	return st != nil && st.IgnoredAt != nil && !st.Stopped()
+}
+
 // GetSkipState returns nil when the PR has no row yet (first review).
 func (s *Store) GetSkipState(ctx context.Context, k PRKey) (*SkipState, error) {
 	var st SkipState
@@ -173,15 +180,12 @@ func (s *Store) GetSkipState(ctx context.Context, k PRKey) (*SkipState, error) {
 	if err != nil {
 		return nil, err
 	}
-	if st.IgnoredAt != nil {
-		// A row ignored before the reason existed was a deleted summary.
-		st.IgnoreReason = IgnoreSummaryDeleted
-		if reason != nil {
-			st.IgnoreReason = *reason
-		}
-		if by != nil {
-			st.StoppedBy = *by
-		}
+	// Set together with ignored_at (pull_requests_ignore_reason_set).
+	if reason != nil {
+		st.IgnoreReason = *reason
+	}
+	if by != nil {
+		st.StoppedBy = *by
 	}
 	st.Summary = summaryRef(id, version)
 	return &st, nil
@@ -198,15 +202,20 @@ func (s *Store) MarkIgnored(ctx context.Context, k PRKey) error {
 			AND (ignored_at IS NULL OR ignore_reason IS DISTINCT FROM 'summary_deleted')`, k)
 }
 
-// MarkStopped flags a PR someone told noergler to stop reviewing. Only a PR
-// not ignored already: a deleted summary stays the reason. Returns the row
-// id when this call stopped it, 0 when there is no row or it was ignored
-// already.
+// MarkStopped flags a PR someone told noergler to stop reviewing. A PR
+// ignored after its summary was deleted becomes stopped too, or the next
+// question would bring it back against the stop; its summary is gone, so
+// it is forgotten as Reactivate would. Returns the row id when this call
+// stopped it, 0 when there is no row or it was stopped already.
 func (s *Store) MarkStopped(ctx context.Context, k PRKey, by string) (int64, error) {
 	var id int64
 	err := s.pool.QueryRow(ctx, `UPDATE pull_requests
-		SET ignored_at = now(), ignore_reason = 'stopped', stopped_by = $4, updated_at = now()
-		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3 AND ignored_at IS NULL
+		SET summary_comment_id = CASE WHEN ignored_at IS NULL THEN summary_comment_id END,
+			summary_comment_version = CASE WHEN ignored_at IS NULL THEN summary_comment_version END,
+			last_summary = CASE WHEN ignored_at IS NULL THEN last_summary END,
+			ignored_at = now(), ignore_reason = 'stopped', stopped_by = $4, updated_at = now()
+		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
+			AND (ignored_at IS NULL OR ignore_reason = 'summary_deleted')
 		RETURNING id`,
 		k.Project, k.Repo, k.PRID, by).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {

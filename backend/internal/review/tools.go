@@ -286,14 +286,11 @@ func (r *Reviewer) prStatus(ctx context.Context, ask *mentionAsk) any {
 		v.LastReviewedCommit = render.ShortSHA(*st.LastReviewedCommit, 10)
 	}
 	v.Ignored, v.Merged, v.Declined = st.IgnoredAt != nil, st.MergedAt != nil, st.DeclinedAt != nil
-	if v.Ignored {
-		v.IgnoreReason = store.IgnoreSummaryDeleted
-		if st.IgnoreReason != nil {
-			v.IgnoreReason = *st.IgnoreReason
-		}
-		if st.StoppedBy != nil {
-			v.StoppedBy = *st.StoppedBy
-		}
+	if st.IgnoreReason != nil {
+		v.IgnoreReason = *st.IgnoreReason
+	}
+	if st.StoppedBy != nil {
+		v.StoppedBy = *st.StoppedBy
 	}
 	if lr := st.LastRun; lr != nil {
 		v.LastRun = &prStatusRun{At: lr.At.UTC().Format(time.RFC3339), Kind: string(lr.Kind),

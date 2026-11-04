@@ -45,7 +45,7 @@ func (r *Reviewer) refuseOverCap(ctx context.Context, key store.PRKey, prTag, pr
 		prTag, cumulativeUSD, r.cfg.MaxPRCostUSD, what))
 	if state := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
 		return r.store.GetSkipState(ctx, key)
-	}); state != nil && state.IgnoredAt != nil && !state.Stopped() {
+	}); state.SummaryDeleted() {
 		return
 	}
 	r.costLimitNotice(ctx, r.languageFor(ctx, prAuthor), key.Project, key.Repo, key.PRID, rowID,

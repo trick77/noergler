@@ -7,3 +7,5 @@ ALTER TABLE pull_requests ADD COLUMN ignore_reason TEXT
     CHECK (ignore_reason IN ('summary_deleted', 'stopped'));
 ALTER TABLE pull_requests ADD COLUMN stopped_by TEXT;
 UPDATE pull_requests SET ignore_reason = 'summary_deleted' WHERE ignored_at IS NOT NULL;
+ALTER TABLE pull_requests ADD CONSTRAINT pull_requests_ignore_reason_set
+    CHECK ((ignored_at IS NULL) = (ignore_reason IS NULL));
