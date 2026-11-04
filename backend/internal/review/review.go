@@ -102,10 +102,10 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		return nil, ctx, r.abort(ctx, key, kind, SkipIgnoredAuthor, prTag, httpCounter)
 	}
 
-	// 4. Skip state. If the user removed our summary comment they want
-	// noergler to leave this PR alone.
-	if !r.checkSkipState(ctx, key, prTag) {
-		return nil, ctx, r.abort(ctx, key, kind, SkipIgnoredPR, prTag, httpCounter)
+	// 4. Skip state. If the user removed our summary comment, or told
+	// noergler to stop, they want it to leave this PR alone.
+	if why := r.checkSkipState(ctx, key, prTag); why != SkipNone {
+		return nil, ctx, r.abort(ctx, key, kind, why, prTag, httpCounter)
 	}
 
 	// Everything this run posts is in the author's language, whoever
@@ -659,43 +659,49 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 	r.log.InfoContext(ctx, strings.Join(parts, " - "))
 }
 
-// checkSkipState reports whether the review may proceed.
+// checkSkipState reports why the review may not proceed, SkipNone when it
+// may.
 //
-// An ignored PR stops here. When a summary comment is tracked, a 404 on
-// refetch means the user deleted it, which is the backstop for repos not
-// subscribed to pr:comment:deleted. Any other status, or a network failure,
-// falls THROUGH to the review: never silence a live PR on a transient fault.
-func (r *Reviewer) checkSkipState(ctx context.Context, key store.PRKey, prTag string) bool {
+// An ignored PR stops here: SkipStoppedPR when someone stopped it, else
+// SkipIgnoredPR. When a summary comment is tracked, a 404 on refetch means
+// the user deleted it, which is the backstop for repos not subscribed to
+// pr:comment:deleted. Any other status, or a network failure, falls THROUGH
+// to the review: never silence a live PR on a transient fault.
+func (r *Reviewer) checkSkipState(ctx context.Context, key store.PRKey, prTag string) SkipReason {
 	state := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
 		return r.store.GetSkipState(ctx, key)
 	})
 	if state == nil {
-		return true
+		return SkipNone
+	}
+	if state.Stopped() {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: PR stopped by %s - skipping", prTag, state.StoppedBy))
+		return SkipStoppedPR
 	}
 	if state.IgnoredAt != nil {
 		r.log.InfoContext(ctx, prTag+": PR ignored (summary comment removed) - skipping")
-		return false
+		return SkipIgnoredPR
 	}
 	if state.Summary == nil {
-		return true
+		return SkipNone
 	}
 
 	_, err := r.bitbucket.FetchPRComment(ctx, key.Project, key.Repo, key.PRID, state.Summary.ID)
 	if err == nil {
-		return true
+		return SkipNone
 	}
 	if status := bitbucket.Status(err); status == http.StatusNotFound {
 		safeDBErr(ctx, r.log, "MarkIgnored", func() error { return r.store.MarkIgnored(ctx, key) })
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: summary comment %d was deleted - ignoring PR from now on",
 			prTag, state.Summary.ID))
-		return false
+		return SkipIgnoredPR
 	} else if status != 0 {
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: could not verify summary comment %d (HTTP %d) - proceeding",
 			prTag, state.Summary.ID, status))
-		return true
+		return SkipNone
 	}
 	r.log.WarnContext(ctx, prTag+": summary-comment check failed - proceeding")
-	return true
+	return SkipNone
 }
 
 // resolveDiff decides between an incremental and a full review and fetches

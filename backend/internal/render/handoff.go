@@ -81,26 +81,40 @@ func StripHandoffBanner(body string) string {
 // their next run, and those would stack. Banners on top are peeled off in
 // order, kept, and put back above it.
 func PlaceHandoffBanner(body, banner string) string {
+	return placeBelowTopBanners(body, banner, StripHandoffBanner, StripStoppedBanner)
+}
+
+// PlaceStoppedBanner is PlaceHandoffBanner for the stopped banner: below the
+// cost and stale banners, for the same reason. An empty banner removes it.
+func PlaceStoppedBanner(body, banner string) string {
+	return placeBelowTopBanners(body, banner, StripStoppedBanner, StripHandoffBanner)
+}
+
+// placeBelowTopBanners replaces the banner own strips with banner, below
+// the cost and stale banners and other, which are peeled off the top in
+// order and put back above it.
+func placeBelowTopBanners(body, banner string, own, other func(string) string) string {
 	orig := body
 	var head []string
 	had := false
 	for {
-		if s := StripHandoffBanner(body); s != body {
+		if s := own(body); s != body {
 			had = true
 			body = s
 			continue
 		}
-		if s := StripCostBanner(body); s != body {
-			head = append(head, strings.TrimRight(body[:len(body)-len(s)], "\r\n"))
-			body = s
-			continue
+		peeled := false
+		for _, strip := range []func(string) string{StripCostBanner, StripStaleBanner, other} {
+			if s := strip(body); s != body {
+				head = append(head, strings.TrimRight(body[:len(body)-len(s)], "\r\n"))
+				body = s
+				peeled = true
+				break
+			}
 		}
-		if s := StripStaleBanner(body); s != body {
-			head = append(head, strings.TrimRight(body[:len(body)-len(s)], "\r\n"))
-			body = s
-			continue
+		if !peeled {
+			break
 		}
-		break
 	}
 	if !had && banner == "" {
 		return orig

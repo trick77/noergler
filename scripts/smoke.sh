@@ -103,6 +103,17 @@ sed -e 's/"eventKey": "pr:opened"/"eventKey": "pr:modified"/' -e '$d' "$payload"
 printf '%s\n' ',  "previousDraft": true' '}' >> "$ready"
 sleep 1
 echo "POST /webhook/$team (draft -> ready): $(PORT="$port" TEAM="$team" SECRET=s scripts/replay.sh "$ready" pr:modified)"
+# Stop by command, a push that must skip as stopped, then a resume. Log:
+# "reviews stopped by", "PR stopped by ... - skipping", "reviews resumed".
+sed -e 's/@bot why was this PR reviewed?/@bot Höre auf, diesen PR zu beobachten/' -e 's/"id": 900/"id": 903/' "$mention" > "$tmp/stop.json"
+sleep 1
+echo "POST /webhook/$team (stop): $(PORT="$port" TEAM="$team" SECRET=s scripts/replay.sh "$tmp/stop.json" pr:comment:added)"
+sed -e 's/"eventKey": "pr:opened"/"eventKey": "pr:from_ref_updated"/' "$payload" > "$tmp/push.json"
+sleep 1
+echo "POST /webhook/$team (push while stopped): $(PORT="$port" TEAM="$team" SECRET=s scripts/replay.sh "$tmp/push.json" pr:from_ref_updated)"
+sed -e 's/@bot why was this PR reviewed?/@bot review/' -e 's/"id": 900/"id": 904/' "$mention" > "$tmp/resume.json"
+sleep 1
+echo "POST /webhook/$team (resume): $(PORT="$port" TEAM="$team" SECRET=s scripts/replay.sh "$tmp/resume.json" pr:comment:added)"
 echo "POST /webhook/$team (bad signature): HTTP $(curl -s -o /dev/null -w '%{http_code}' -X POST \
   -H 'X-Hub-Signature: sha256=deadbeef' --data-binary "@$payload" "localhost:$port/webhook/$team")"
 
@@ -176,7 +187,7 @@ sleep 2
 kill -TERM "$pid"
 wait "$pid" || true
 echo "--- log"
-grep -E "version|Database|Bitbucket:|Jira:|team_disabled|team_ready|teams_ready|http_request|stopped|listening|DISABLED|queue\[|priced by the gateway|HTTP totals|cost headers|Review of |context_window |context window |PR description |calls, tools|A reply on|noergler threads open|team credential|credentials push|comment mentions|screenshot" "$tmp/serve.log"
+grep -E "version|Database|Bitbucket:|Jira:|team_disabled|team_ready|teams_ready|http_request|stopped|listening|DISABLED|queue\[|priced by the gateway|HTTP totals|cost headers|Review of |context_window |context window |PR description |calls, tools|A reply on|noergler threads open|team credential|credentials push|comment mentions|screenshot|resumed" "$tmp/serve.log"
 echo "--- review posted"
 grep -c "comment posted" "$tmp/fakes.log" || true
 echo "--- onboarding writes seen by bitbucket (want a create, a grant and a refusal)"

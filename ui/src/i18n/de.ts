@@ -38,6 +38,7 @@ export const de = {
     not_auto_review_author: "Nicht auf der Liste",
     ignored_author: "Ignoriert",
     pr_ignored: "PR ignoriert",
+    pr_stopped: "Gestoppt",
     branch_opt_out: "Opt-out im Branch",
     agents_md_missing: "Kein AGENTS.md",
     agents_md_too_large: "AGENTS.md zu gross",
@@ -52,6 +53,7 @@ export const de = {
     not_auto_review_author: "Autor nicht in den Auto-Review-Autoren",
     ignored_author: "Ignorierter Autor",
     pr_ignored: "PR ignoriert (Zusammenfassung gelöscht)",
+    pr_stopped: "Reviews per Befehl gestoppt",
     branch_opt_out: "Opt-out-Wort im Branch",
     agents_md_missing: "AGENTS.md fehlt",
     agents_md_too_large: "AGENTS.md über dem Token-Limit",
@@ -501,6 +503,8 @@ export const de = {
       branch_opt_out: "Dein Branch-Name enthält es. Siehe unten.",
       pr_ignored:
         "Jemand hat die Zusammenfassung gelöscht. Nur eine @Erwähnung holt noergler auf diesen PR zurück.",
+      pr_stopped:
+        "Jemand hat noergler gesagt, diesen PR nicht mehr zu prüfen. Fragen beantwortet er weiterhin; eine Erwähnung mit review oder weiter nimmt die Reviews wieder auf.",
       pr_cost_cap: "Auf diesem PR läuft nichts mehr, auch keine Erwähnung.",
       no_reviewable_files:
         "Nur Lock-Files, Vendor-Code, generierte Dateien oder Binaries haben sich geändert.",
@@ -523,7 +527,7 @@ export const de = {
     stopA1:
       "Schreibe <code>noergloff</code> irgendwo in den Namen des Source-Branch: <code>feature/noergloff-spike</code> wird nie automatisch geprüft.",
     stopA2:
-      "Bei einem PR, der schon offen ist, lösche stattdessen die Zusammenfassung von noergler. Danach bleibt er diesem PR fern, bis ihn jemand dort mit @ erwähnt.",
+      "Bei einem PR, der schon offen ist, erwähne den Bot mit <code>stop reviewing</code> oder sag es in eigenen Worten, auf Deutsch oder Englisch (<code>Höre auf, diesen PR zu beobachten</code>). Neue Pushes werden nicht mehr geprüft und kosten nichts; Fragen beantwortet er weiterhin, und eine Erwähnung mit <code>review</code> oder <code>weiter</code> nimmt die Reviews wieder auf. Die Zusammenfassung zu löschen geht auch: Dann bleibt noergler dem PR fern, bis ihn jemand dort mit @ erwähnt.",
     stopA3:
       "Dein Team kann auch Branches per Muster ausschliessen, nach Source-Branch (<code>dependabot/*</code>) oder nach Target-Branch (<code>release/*</code>). Diese PRs werden nie automatisch geprüft; eine @Erwähnung funktioniert trotzdem.",
     askQ: "Wie frage ich noergler etwas?",

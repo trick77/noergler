@@ -250,6 +250,8 @@ type fakeStore struct {
 	Findings  []store.Finding
 	Ignored   int
 	Reactived int
+	// Stops is every MarkStopped call's commenter.
+	Stops     []string
 	Merged    int
 	Declined  int
 	Deleted   int
@@ -419,7 +421,15 @@ func (f *fakeStore) MarkIgnored(context.Context, store.PRKey) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.Ignored++
-	return f.err()
+	if err := f.err(); err != nil {
+		return err
+	}
+	// A stopped PR becomes a deleted summary's, as the real UPDATE does.
+	if f.skipState.Stopped() {
+		f.skipState = &store.SkipState{ID: f.skipState.ID, Summary: f.skipState.Summary,
+			IgnoredAt: f.skipState.IgnoredAt, IgnoreReason: store.IgnoreSummaryDeleted}
+	}
+	return nil
 }
 
 // Reactivate clears the skip state and the tracked summary, as the real
@@ -438,9 +448,38 @@ func (f *fakeStore) Reactivate(context.Context, store.PRKey) error {
 		return err
 	}
 	f.Reactived++
+	if f.skipState.Stopped() {
+		// A stopped PR keeps its summary, as the real store's CASE does.
+		f.skipState = &store.SkipState{ID: f.skipState.ID, Summary: f.skipState.Summary}
+		return nil
+	}
 	f.skipState = nil
 	f.summary = nil
 	return nil
+}
+
+// MarkStopped stops a PR not ignored yet, as the real store's UPDATE does:
+// a PR with no row gets none (the real WHERE matches nothing).
+func (f *fakeStore) MarkStopped(_ context.Context, _ store.PRKey, by string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return 0, err
+	}
+	f.Stops = append(f.Stops, by)
+	if f.skipState == nil {
+		if len(f.Upserts) == 0 {
+			return 0, nil
+		}
+		f.skipState = &store.SkipState{ID: 1, Summary: f.summary}
+	}
+	if f.skipState.IgnoredAt != nil {
+		return 0, nil
+	}
+	now := time.Now()
+	f.skipState = &store.SkipState{ID: f.skipState.ID, Summary: f.skipState.Summary,
+		IgnoredAt: &now, IgnoreReason: store.IgnoreStopped, StoppedBy: by}
+	return f.skipState.ID, nil
 }
 
 func (f *fakeStore) MarkMerged(context.Context, store.PRKey) error {

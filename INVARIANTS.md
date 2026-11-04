@@ -85,7 +85,8 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   it stands, never its history (mimo narrated a revert without). Without it
   whatever of the PR does not fit the prompt drops out of the overview. An
   empty or sentinel overview never erases it; unreadable = review without;
-  read on active rows only (`activeFilter`); `Reactivate` clears it. Its
+  read on active rows only (`activeFilter`); `Reactivate` clears it, except
+  on a stopped PR, whose summary is still there. Its
   tokens are "rest" on the run page (small, no UI row). A full review never
   gets it, writes it fresh from the whole PR and stores it (mimo kept a
   reverted part on a full review with it). Only the overview today; the JSONB takes the other fields later.
@@ -135,6 +136,24 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   reply under the summary (user, 2026-10-22), matched from the DB, never by
   fetching the parent; the finding-thread answer included (decided). Never
   on an ignored PR: a plain reply never reactivates, only an `@mention`.
+- Stop by command (user, 2026-11-04): "stop monitoring", "Höre auf, diesen
+  PR zu beobachten" stops reviews on push; summary, Q&A, riptide and the
+  Almanach send at merge carry on. `ignored_at` stays the one flag,
+  `ignore_reason` says which: `stopped` keeps the summary and overview on
+  resume, `summary_deleted` forgets both (the comment is gone); a deletion
+  overrides a stop, never the reverse. A short command is decided by code
+  (`stopRequest`), before the cost cap, no model call; anything else goes
+  through the Q&A's `stop_reviewing` tool, which the model proposes and
+  `stopIntent` checks against the commenter's own text. A stopped PR comes
+  back on a review or resume request only, never on a question (a deleted
+  summary still comes back on any mention); elsewhere a resume phrase is a
+  question, never a paid review. Anyone who comments may stop. "No more"
+  wording and longer orders need a target (reviewing, prüfen, beobachten),
+  never a code verb ("checks", "prüft"): statements about code say "no
+  longer" as often. The banner sits below cost and stale banners (their
+  strippers read the top only) and is removed on resume, before the review,
+  so a failed review's stale banner cannot leave it standing; the resume's
+  summary fetch is the deletion check the push guard skips on a stopped PR.
 - Q&A on a reply: the immediate parent goes into the prompt as untrusted
   data, below the diff (prefix cache), capped; never the stored summary;
   a failed fetch answers without it. Another person's parent: no name, the

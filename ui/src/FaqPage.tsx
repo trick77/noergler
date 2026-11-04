@@ -30,7 +30,7 @@ function Code({ children }: { children?: React.ReactNode }) {
   );
 }
 
-// The eleven pre-flight exits, as review.SkipReason codes, in the order
+// The twelve pre-flight exits, as review.SkipReason codes, in the order
 // prepare reaches them. The label is the reason catalog's; the why is
 // faq.skipWhy.
 const SKIPS = [
@@ -40,6 +40,7 @@ const SKIPS = [
   "ignored_author",
   "branch_opt_out",
   "pr_ignored",
+  "pr_stopped",
   "pr_cost_cap",
   "no_reviewable_files",
   "empty_diff",
@@ -47,7 +48,8 @@ const SKIPS = [
   "diff_too_large",
 ] as const;
 
-type MarkupKey = "faq.whyNotA" | "faq.stopA1" | "faq.stopA3" | "faq.filesA2";
+type MarkupKey =
+  "faq.whyNotA" | "faq.stopA1" | "faq.stopA2" | "faq.stopA3" | "faq.filesA2";
 
 /** T renders a catalog entry that carries markup: <code> and <strong> map
  *  to the page's own elements, so a translation can move them around the
@@ -99,7 +101,9 @@ export function FaqPage() {
           <p>
             <T k="faq.stopA1" />
           </p>
-          <p>{t("faq.stopA2")}</p>
+          <p>
+            <T k="faq.stopA2" />
+          </p>
           <p>
             <T k="faq.stopA3" />
           </p>

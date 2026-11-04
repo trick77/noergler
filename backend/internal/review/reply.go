@@ -142,12 +142,19 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		r.setLanguage(ctx, key.Project, key.Repo, pr.ID, comment.ID, prTag, comment.Author.Name, l)
 		return true, false
 	}
+	// "@bot stop reviewing" under a finding is the stop, not a dispute of
+	// it. Only with the mention: a plain reply there is the author's case.
+	if mentioned && stopRequest(text) {
+		r.handleStop(ctx, key, prTag, comment.ID, comment.Author.Name, author, pr.Title, pr.CreatedDate)
+		return true, false
+	}
 	if f.RepliedAt != nil {
 		return notAnswered("the thread was answered already")
 	}
 	if mentioned {
-		// "@bot review" on a finding thread is still a review.
-		if text == "" || reviewKeywords[strings.ToLower(text)] {
+		// "@bot review" on a finding thread is still a review, and so is
+		// a resume request on a stopped PR.
+		if text == "" || reviewKeywords[strings.ToLower(text)] || (resumeRequest(text) && r.stopped(ctx, key)) {
 			return false, false
 		}
 	}
@@ -165,7 +172,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		// A mention, here as on the Q&A path: it reactivates an ignored PR
 		// and is the explicit override of the author lists, not of the
 		// cost cap.
-		r.reactivateIfIgnored(ctx, key, prTag)
+		r.reactivateIfIgnored(ctx, key, prTag, false)
 	} else if auto, ignored := r.autoReviewDecision(author); !auto {
 		// A plain reply is automatic: it obeys the author lists like an
 		// auto-review does, from one snapshot.

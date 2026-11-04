@@ -130,6 +130,37 @@ func CostLimitBanner(l lang.Lang, cumulativeUSD, limitUSD float64, blocked bool)
 	return CostBannerSentinel + "\n" + msg
 }
 
+// StoppedBannerSentinel marks the banner a stopped PR carries on its summary.
+const StoppedBannerSentinel = "<!-- noergler-stopped-banner -->"
+
+// The stopped banner's visible prefixes, the fallback when a renderer ate
+// the sentinel.
+const (
+	stoppedBannerVisibleEN = "⏸️ **Reviews stopped**"
+	stoppedBannerVisibleDE = "⏸️ **Reviews gestoppt**"
+)
+
+// StoppedBanner is the banner on the summary of a PR someone told noergler
+// to stop reviewing: who, and how to bring the reviews back. by is a
+// Bitbucket user name, in backticks so it notifies no one.
+func StoppedBanner(l lang.Lang, by, bot string) string {
+	who := ""
+	if by != "" {
+		who = l.Pick(" von ", " by ") + "`" + strings.ReplaceAll(by, "`", "") + "`"
+	}
+	return StoppedBannerSentinel + "\n" + l.Pick(
+		stoppedBannerVisibleDE+who+". Neue Pushes werden nicht geprüft, Fragen beantworte ich weiterhin. `@"+bot+" review` nimmt die Reviews wieder auf.",
+		stoppedBannerVisibleEN+who+". New pushes are not reviewed; questions are still answered. `@"+bot+" review` resumes them.")
+}
+
+// StripStoppedBanner removes a leading stopped banner block. Idempotent.
+// Below a cost or stale banner it is PlaceStoppedBanner's to find.
+func StripStoppedBanner(body string) string {
+	return stripBanner(body, StoppedBannerSentinel, func(line string) bool {
+		return strings.HasPrefix(line, stoppedBannerVisibleEN) || strings.HasPrefix(line, stoppedBannerVisibleDE)
+	})
+}
+
 // The blocked sentence, in both languages: CostBannerSaysBlocked looks for it.
 const (
 	costBlockedEN = " The latest commit was **not** reviewed."

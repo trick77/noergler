@@ -245,6 +245,70 @@ func TestPullRequest_SkipStateIgnoreReactivate(t *testing.T) {
 	}
 }
 
+// A stopped PR keeps its summary and overview on resume; a stop never
+// downgrades a deleted summary, and a deleted summary upgrades a stop.
+func TestPullRequest_StopResume(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	if got, err := s.MarkStopped(ctx, key, "bob"); err != nil || got != 0 {
+		t.Fatalf("no row: stopped %d, %v", got, err)
+	}
+	id := upsert(t, s, key, "abc")
+	if err := s.SetSummaryComment(ctx, id, 42, 3); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.InsertRun(ctx, Run{PullRequestID: id, Kind: RunAuto, ToCommit: "abc", ModelLabel: "m",
+		Summary: &PRSummary{Overview: "Adds retries."}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.MarkStopped(ctx, key, "bob"); err != nil || got != id {
+		t.Fatalf("stop: %d, %v, want row %d", got, err, id)
+	}
+	st, _ := s.GetSkipState(ctx, key)
+	if !st.Stopped() || st.StoppedBy != "bob" || st.Summary == nil {
+		t.Fatalf("stopped state = %+v", st)
+	}
+	if got, _ := s.MarkStopped(ctx, key, "carol"); got != 0 {
+		t.Error("a second stop must report it was stopped already")
+	}
+	status, err := s.PRStatus(ctx, key, "platform")
+	if err != nil || status.IgnoreReason == nil || *status.IgnoreReason != IgnoreStopped ||
+		status.StoppedBy == nil || *status.StoppedBy != "bob" {
+		t.Errorf("status = %+v, %v", status, err)
+	}
+	if err := s.Reactivate(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	st, _ = s.GetSkipState(ctx, key)
+	if st.IgnoredAt != nil || st.IgnoreReason != "" || st.Summary == nil || st.Summary.ID != 42 {
+		t.Errorf("resumed state = %+v, want active with summary 42", st)
+	}
+	if got, _ := s.LastSummary(ctx, key); got == nil || got.Overview != "Adds retries." {
+		t.Errorf("overview after resume = %+v", got)
+	}
+
+	// Stopped, then the summary deleted: the deletion wins.
+	if got, _ := s.MarkStopped(ctx, key, "bob"); got != id {
+		t.Fatal("stop after resume")
+	}
+	if err := s.MarkIgnored(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	st, _ = s.GetSkipState(ctx, key)
+	if st.Stopped() || st.IgnoreReason != IgnoreSummaryDeleted || st.StoppedBy != "" {
+		t.Errorf("state = %+v, want summary_deleted", st)
+	}
+	if got, _ := s.MarkStopped(ctx, key, "bob"); got != 0 {
+		t.Error("a stop must not downgrade a deleted summary")
+	}
+	if err := s.Reactivate(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ = s.GetSkipState(ctx, key); st.Summary != nil {
+		t.Errorf("a deleted summary's resume must forget it: %+v", st)
+	}
+}
+
 func TestRuns_CostAggregationWithNulls(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

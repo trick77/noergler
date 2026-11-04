@@ -15,7 +15,7 @@ import (
 )
 
 var allSkipReasons = []SkipReason{
-	SkipNotAutoAuthor, SkipIgnoredAuthor, SkipIgnoredPR, SkipBranchOptOut,
+	SkipNotAutoAuthor, SkipIgnoredAuthor, SkipIgnoredPR, SkipStoppedPR, SkipBranchOptOut,
 	SkipNoAgentsMD, SkipAgentsMDTooLarge, SkipCostCap, SkipNoReviewable,
 	SkipEmptyDiff, SkipHeadUnchanged, SkipDiffTooLarge, SkipRepoNotClaimed,
 }
