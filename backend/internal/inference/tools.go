@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/trick77/llmwire"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 // MentionTool is a function the model may call while answering a mention.

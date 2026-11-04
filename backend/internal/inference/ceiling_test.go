@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/trick77/llmwire"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 // The fit ceiling is the window less the reply reserve (OutputTokenReserve),

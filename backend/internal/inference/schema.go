@@ -1,7 +1,7 @@
 package inference
 
 import (
-	"github.com/trick77/llmwire"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 // ReviewSchemaName is the strict JSON schema's name on the wire.

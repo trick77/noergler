@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trick77/llmwire"
+	"github.com/trick77/toolkit/llmwire"
 
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/httpstats"

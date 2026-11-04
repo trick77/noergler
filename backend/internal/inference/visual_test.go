@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/llmwire"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 // sentMessages decodes the messages of the last completion request.

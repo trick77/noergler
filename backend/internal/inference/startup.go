@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/trick77/llmwire"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 // pingPrompt is the startup probe. Short on purpose: it proves the route, the

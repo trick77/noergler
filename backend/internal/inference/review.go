@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/trick77/llmwire"
+	"github.com/trick77/toolkit/llmwire"
 
 	"github.com/trick77/noergler/internal/visual"
 )

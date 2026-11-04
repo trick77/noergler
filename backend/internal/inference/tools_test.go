@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/llmwire/llmwiretest"
+	"github.com/trick77/toolkit/llmwire/llmwiretest"
 )
 
 // toolCallBody is a completion asking for the named tools, one call each.
