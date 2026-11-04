@@ -758,13 +758,8 @@ describe("TeamsPage", () => {
 
     const rail = await screen.findByRole("navigation", { name: "Teams" });
     const rows = within(rail).getAllByRole("link");
-    // The claims, not the PR count: a whole project and a single repo. A
-    // team claiming nothing shows nothing.
-    expect(rows.map((r) => r.textContent)).toEqual([
-      "Zahlungen1 proj · 1 repo",
-      "Mobile",
-    ]);
-    expect(within(rail).getByTitle("1 project, 1 repository")).toBeDefined();
+    // The name alone: the PR count (9) is the card's, never the rail's.
+    expect(rows.map((r) => r.textContent)).toEqual(["Zahlungen", "Mobile"]);
     expect(rows[0].getAttribute("href")).toBe("/teams/payments");
     expect(within(rail).getByText("Ready")).toBeDefined();
     expect(within(rail).getByText("Disabled")).toBeDefined();

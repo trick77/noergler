@@ -413,18 +413,10 @@ function dotClass(tone: Tone): string {
   return "bg-danger";
 }
 
-/** scopeCounts are a team's claims as the rail counts them: whole projects
- *  and single repos. A project's own repos are never counted: noergler does
- *  not list them, and a count would go stale with the next repo (scopeSize
- *  in the dashboard API). */
-function scopeCounts(team: Team): { projects: number; repos: number } {
-  const projects = team.claims.filter((c) => !c.repo).length;
-  return { projects, repos: team.claims.length - projects };
-}
-
 /** Rail is the team index beside the cards: search on top, then every team
- *  as a row under its state, its claimed projects and repos on the right
- *  (the PR count is on the card; user, 2026-11-04). A row that misses the
+ *  as a row under its state, the name alone: no count beside it, the PR
+ *  count is the card's (user, 2026-11-04: a bare number there read as
+ *  anything, and a project's repo count is never known). A row that misses the
  *  query is dimmed, not dropped: the roster stays whole, and the group
  *  count says how many hit. A hit on a claim or an excluded repo is named
  *  under the row, since the name alone does not say why it matched. On a
@@ -549,17 +541,6 @@ function Rail({
               </div>
               {group.map((x) => {
                 const { hit, claim, glob } = hits.get(x.slug)!;
-                const { projects, repos } = scopeCounts(x);
-                const scope = [
-                  projects > 0 && t("teams.railProjects", { count: projects }),
-                  repos > 0 && t("teams.railRepos", { count: repos }),
-                ].filter(Boolean);
-                const scopeTitle = [
-                  projects > 0 && t("teams.projects", { count: projects }),
-                  repos > 0 && t("teams.repos", { count: repos }),
-                ]
-                  .filter(Boolean)
-                  .join(", ");
                 return (
                   <a
                     key={x.slug}
@@ -575,14 +556,6 @@ function Rail({
                       <span className="overflow-hidden text-ellipsis">
                         <Mark text={x.name} q={query} />
                       </span>
-                      {scope.length > 0 && (
-                        <span
-                          title={scopeTitle}
-                          className="ml-auto hidden shrink-0 font-mono text-[12px] whitespace-nowrap text-faint tabular-nums lg:inline"
-                        >
-                          {scope.join(" · ")}
-                        </span>
-                      )}
                     </span>
                     {/* The label stays outside the mark: only the glob
                         matched, never the word "excluded". */}
