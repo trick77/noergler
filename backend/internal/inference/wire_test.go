@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/trick77/llmwire"
-	"github.com/trick77/llmwire/llmwiretest"
+	"github.com/trick77/toolkit/llmwire"
+	"github.com/trick77/toolkit/llmwire/llmwiretest"
 )
 
 // wireBody is the shape noergler cares about in an outgoing request.

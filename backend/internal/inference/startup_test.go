@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/llmwire"
-	"github.com/trick77/llmwire/llmwiretest"
+	"github.com/trick77/toolkit/llmwire"
+	"github.com/trick77/toolkit/llmwire/llmwiretest"
 )
 
 // testProfile is llmwiretest's synthetic chat model: tests assert what

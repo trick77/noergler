@@ -3,7 +3,7 @@ package inference
 import (
 	"fmt"
 
-	"github.com/trick77/llmwire"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 // CallCost is what one inference call cost, as noergler records it.

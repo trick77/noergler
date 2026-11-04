@@ -13,8 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/llmwire"
-	"github.com/trick77/llmwire/llmwiretest"
 	"github.com/trick77/noergler/internal/almanach"
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/forward"
@@ -26,6 +24,8 @@ import (
 	"github.com/trick77/noergler/internal/teams"
 	"github.com/trick77/noergler/web"
 	"github.com/trick77/ship/kit/logging"
+	"github.com/trick77/toolkit/llmwire"
+	"github.com/trick77/toolkit/llmwire/llmwiretest"
 )
 
 type fakeDashQueue struct{ snap queue.Snapshot }

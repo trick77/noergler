@@ -9,8 +9,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/trick77/llmwire"
 	"github.com/trick77/noergler/internal/lang"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 // Placeholders of the Almanach note template, beside the shared

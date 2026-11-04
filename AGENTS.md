@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Bitbucket Server PR review bridge; inference via `github.com/trick77/llmwire`
+Bitbucket Server PR review bridge; inference via `github.com/trick77/toolkit/llmwire`
 against a LiteLLM gateway. Behaviour: HOW_IT_WORKS.md.
 
 **Before editing an area, read its section in INVARIANTS.md** (teams, money,

@@ -8,8 +8,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/trick77/llmwire"
 	"github.com/trick77/noergler/internal/lang"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 // answer is the one call a mention and a finding reply share: the fit
