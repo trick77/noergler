@@ -177,6 +177,15 @@ export const en = {
       "No team <code>{{slug}}</code>. The link may be stale, or the team was removed from teams.yaml.",
     prs_one: "{{count}} PR",
     prs_other: "{{count}} PRs",
+    // The rail's short scope, full words in its tooltip.
+    railProjects_one: "{{count}} proj",
+    railProjects_other: "{{count}} proj",
+    railRepos_one: "{{count}} repo",
+    railRepos_other: "{{count}} repos",
+    projects_one: "{{count}} project",
+    projects_other: "{{count}} projects",
+    repos_one: "{{count}} repository",
+    repos_other: "{{count}} repositories",
     lastReviewed: "last reviewed {{ago}}",
     lastRun: "last run {{ago}}",
     noClaims:
