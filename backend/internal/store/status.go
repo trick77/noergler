@@ -17,10 +17,13 @@ type PRStatus struct {
 	Known              bool
 	LastReviewedCommit *string
 	IgnoredAt          *time.Time
-	MergedAt           *time.Time
-	DeclinedAt         *time.Time
-	Runs               int
-	LastRun            *RunBrief
+	// IgnoreReason and StoppedBy as in SkipState, nil when not ignored.
+	IgnoreReason *string
+	StoppedBy    *string
+	MergedAt     *time.Time
+	DeclinedAt   *time.Time
+	Runs         int
+	LastRun      *RunBrief
 	// Attempts are the latest outcomes, newest first.
 	Attempts []AttemptBrief
 }
@@ -57,9 +60,11 @@ func (s *Store) PRStatus(ctx context.Context, k PRKey, team string) (*PRStatus, 
 	// No row: every attempt of the team's on this key counts.
 	since := time.Time{}
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, created_at, last_reviewed_commit, ignored_at, merged_at, declined_at FROM pull_requests
+		SELECT id, created_at, last_reviewed_commit, ignored_at, ignore_reason, stopped_by, merged_at, declined_at
+		FROM pull_requests
 		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3 AND team_slug = $4`,
-		k.Project, k.Repo, k.PRID, team).Scan(&id, &since, &st.LastReviewedCommit, &st.IgnoredAt, &st.MergedAt, &st.DeclinedAt)
+		k.Project, k.Repo, k.PRID, team).Scan(&id, &since, &st.LastReviewedCommit, &st.IgnoredAt,
+		&st.IgnoreReason, &st.StoppedBy, &st.MergedAt, &st.DeclinedAt)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 	case err != nil:

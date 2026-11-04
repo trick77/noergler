@@ -25,6 +25,7 @@ const (
 	SkipNotAutoAuthor    SkipReason = "not_auto_review_author"
 	SkipIgnoredAuthor    SkipReason = "ignored_author"
 	SkipIgnoredPR        SkipReason = "pr_ignored"
+	SkipStoppedPR        SkipReason = "pr_stopped"
 	SkipBranchOptOut     SkipReason = "branch_opt_out"
 	SkipNoAgentsMD       SkipReason = "agents_md_missing"
 	SkipAgentsMDTooLarge SkipReason = "agents_md_too_large"
@@ -48,6 +49,8 @@ func (s SkipReason) Label() string {
 		return "Ignored author"
 	case SkipIgnoredPR:
 		return "PR ignored (summary comment removed)"
+	case SkipStoppedPR:
+		return "Reviews stopped by command"
 	case SkipBranchOptOut:
 		return "Branch opt-out keyword"
 	case SkipNoAgentsMD:

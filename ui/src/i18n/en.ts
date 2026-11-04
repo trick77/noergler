@@ -48,6 +48,7 @@ export const en = {
     not_auto_review_author: "Not opted in",
     ignored_author: "Ignored",
     pr_ignored: "PR ignored",
+    pr_stopped: "Stopped",
     branch_opt_out: "Opted out",
     agents_md_missing: "No AGENTS.md",
     agents_md_too_large: "AGENTS.md too big",
@@ -64,6 +65,7 @@ export const en = {
     not_auto_review_author: "Author not in auto-review authors",
     ignored_author: "Ignored author",
     pr_ignored: "PR ignored (summary comment removed)",
+    pr_stopped: "Reviews stopped by command",
     branch_opt_out: "Branch opt-out keyword",
     agents_md_missing: "AGENTS.md missing",
     agents_md_too_large: "AGENTS.md over the token cap",
@@ -514,6 +516,8 @@ export const en = {
       branch_opt_out: "Your branch name contains it. See below.",
       pr_ignored:
         "Somebody deleted the summary comment. Only an @mention brings noergler back to this PR.",
+      pr_stopped:
+        "Somebody told noergler to stop reviewing this PR. Questions are still answered; a mention with review or resume brings the reviews back.",
       pr_cost_cap: "Nothing more runs on this PR, mentions included.",
       no_reviewable_files:
         "Only lockfiles, vendored code, generated output or binaries changed.",
@@ -535,7 +539,7 @@ export const en = {
     stopA1:
       "Put <code>noergloff</code> anywhere in the source branch name: <code>feature/noergloff-spike</code> is never auto-reviewed.",
     stopA2:
-      "On a PR that is already open, delete noergler's summary comment instead. It stays away after that until somebody @mentions it there.",
+      "On a PR that is already open, mention the bot with <code>stop reviewing</code>, or say it in your own words, in English or German (<code>Höre auf, diesen PR zu beobachten</code>). New pushes are no longer reviewed and cost nothing; questions are still answered, and a mention with <code>review</code> or <code>resume</code> brings the reviews back. Deleting the summary comment also works: noergler then stays away until somebody @mentions it there.",
     stopA3:
       "Your team can also exclude branches by pattern, by source branch (<code>dependabot/*</code>) or by target branch (<code>release/*</code>). Those PRs are never auto-reviewed; an @mention still works.",
     askQ: "How do I ask noergler something?",

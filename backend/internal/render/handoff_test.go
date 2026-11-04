@@ -96,3 +96,28 @@ func TestPlaceHandoffBannerNeverStacksAndStaysBelowTheOthers(t *testing.T) {
 		t.Error("cost banner no longer on top")
 	}
 }
+
+// One banner order whatever was written last: cost and stale, stopped,
+// handoff. Each placement replaces its own banner, never stacks it.
+func TestStoppedAndHandoffBannersKeepOneOrder(t *testing.T) {
+	cost := CostLimitBanner(lang.EN, 6, 5, false)
+	stopped := StoppedBanner(lang.EN, "bob", "noergler")
+	handoff := HandoffBanner(lang.EN, threads(1))
+	want := cost + "\n\n" + stopped + "\n\n" + handoff + "\n\nSummary."
+
+	for name, body := range map[string]string{
+		"stopped last": PlaceStoppedBanner(cost+"\n\n"+handoff+"\n\nSummary.", stopped),
+		"handoff last": PlaceHandoffBanner(cost+"\n\n"+stopped+"\n\nSummary.", handoff),
+		"both again":   PlaceHandoffBanner(PlaceStoppedBanner(want, stopped), handoff),
+	} {
+		if body != want {
+			t.Errorf("%s:\n%s\nwant:\n%s", name, body, want)
+		}
+	}
+	if got := PlaceStoppedBanner(want, ""); got != cost+"\n\n"+handoff+"\n\nSummary." {
+		t.Errorf("removal:\n%s", got)
+	}
+	if got := PlaceStoppedBanner("Summary.", ""); got != "Summary." {
+		t.Errorf("nothing to remove changed the body: %q", got)
+	}
+}

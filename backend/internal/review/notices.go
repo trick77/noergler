@@ -112,6 +112,11 @@ func (r *Reviewer) bannerSummary(ctx context.Context, project, repo string, prID
 	}
 
 	if existing == nil {
+		// An edit-only banner (fresh "") has nothing to post on a PR
+		// without a summary.
+		if fresh == "" {
+			return
+		}
 		id, version, err := r.bitbucket.PostPRComment(ctx, project, repo, prID, fresh)
 		if err != nil {
 			r.log.ErrorContext(ctx, "Failed to post "+label+": "+err.Error())

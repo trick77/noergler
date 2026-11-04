@@ -35,8 +35,9 @@ func (r *Reviewer) overCap(ctx context.Context, key store.PRKey) (rowID int64, c
 // comment itself gets no answer. A summary that already carries a banner is
 // left as it is, so refused comments cost no further Bitbucket write, unless
 // a refused review must add the "not reviewed" sentence the banner lacks.
-// An ignored PR gets nothing posted:
-// its author removed the summary to be left alone. blocked: a review was
+// A PR ignored after its summary was removed gets nothing posted: its
+// author removed it to be left alone. A stopped PR still has its summary,
+// and a refused question there gets the banner. blocked: a review was
 // asked for and not run. The banner is in the PR author's language, as the
 // summary is.
 func (r *Reviewer) refuseOverCap(ctx context.Context, key store.PRKey, prTag, prAuthor, what string, rowID int64, cumulativeUSD float64, blocked bool) {
@@ -44,7 +45,7 @@ func (r *Reviewer) refuseOverCap(ctx context.Context, key store.PRKey, prTag, pr
 		prTag, cumulativeUSD, r.cfg.MaxPRCostUSD, what))
 	if state := safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
 		return r.store.GetSkipState(ctx, key)
-	}); state != nil && state.IgnoredAt != nil {
+	}); state.SummaryDeleted() {
 		return
 	}
 	r.costLimitNotice(ctx, r.languageFor(ctx, prAuthor), key.Project, key.Repo, key.PRID, rowID,
@@ -53,13 +54,13 @@ func (r *Reviewer) refuseOverCap(ctx context.Context, key store.PRKey, prTag, pr
 
 // ensurePRRow writes the PR's row without touching its review pointer, so a
 // Q&A on a PR never reviewed has a row its calls are counted under from the
-// first one on (prCostSQL counts calls from the row's creation). Returns the
-// row id, 0 when the write failed.
-func (r *Reviewer) ensurePRRow(ctx context.Context, key store.PRKey, author, title string, openedAt int64) int64 {
+// first one on (prCostSQL counts calls from the row's creation). A stop on
+// such a PR needs it too, to have somewhere to live.
+func (r *Reviewer) ensurePRRow(ctx context.Context, key store.PRKey, author, title string, openedAt int64) {
 	if r.store == nil {
-		return 0
+		return
 	}
-	return r.upsert(ctx, store.PRUpsert{Key: key, TeamSlug: r.TeamSlug, KeepPointer: true,
+	r.upsert(ctx, store.PRUpsert{Key: key, TeamSlug: r.TeamSlug, KeepPointer: true,
 		Author: &author, Title: &title, OpenedAt: epochMSToTime(openedAt)}, "")
 }
 

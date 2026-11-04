@@ -131,45 +131,109 @@ func (s *Store) GetSummaryComment(ctx context.Context, prID int64) (*SummaryComm
 	return summaryRef(id, version), nil
 }
 
+// Why a PR is ignored (pull_requests.ignore_reason).
+const (
+	// IgnoreSummaryDeleted: a human deleted the summary comment.
+	IgnoreSummaryDeleted = "summary_deleted"
+	// IgnoreStopped: someone told noergler to stop reviewing the PR. Its
+	// summary is still there.
+	IgnoreStopped = "stopped"
+)
+
 // SkipState is what the review guard needs to decide whether to skip a PR.
 type SkipState struct {
 	ID        int64
 	IgnoredAt *time.Time
+	// IgnoreReason is IgnoreSummaryDeleted or IgnoreStopped while IgnoredAt
+	// is set, "" otherwise.
+	IgnoreReason string
+	// StoppedBy is who stopped the PR, "" unless stopped.
+	StoppedBy string
 	// Summary is nil when no summary comment is stored.
 	Summary *SummaryComment
+}
+
+// Stopped reports whether the PR is ignored because someone stopped it.
+func (st *SkipState) Stopped() bool {
+	return st != nil && st.IgnoredAt != nil && st.IgnoreReason == IgnoreStopped
+}
+
+// SummaryDeleted reports whether the PR is ignored because its summary was
+// deleted: left alone entirely, unlike a stopped one, whose questions and
+// replies are still answered.
+func (st *SkipState) SummaryDeleted() bool {
+	return st != nil && st.IgnoredAt != nil && !st.Stopped()
 }
 
 // GetSkipState returns nil when the PR has no row yet (first review).
 func (s *Store) GetSkipState(ctx context.Context, k PRKey) (*SkipState, error) {
 	var st SkipState
 	var id, version *int
+	var reason, by *string
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, ignored_at, summary_comment_id, summary_comment_version FROM pull_requests
+		SELECT id, ignored_at, ignore_reason, stopped_by, summary_comment_id, summary_comment_version FROM pull_requests
 		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3`,
-		k.Project, k.Repo, k.PRID).Scan(&st.ID, &st.IgnoredAt, &id, &version)
+		k.Project, k.Repo, k.PRID).Scan(&st.ID, &st.IgnoredAt, &reason, &by, &id, &version)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
+	// Set together with ignored_at (pull_requests_ignore_reason_set).
+	if reason != nil {
+		st.IgnoreReason = *reason
+	}
+	if by != nil {
+		st.StoppedBy = *by
+	}
 	st.Summary = summaryRef(id, version)
 	return &st, nil
 }
 
 // MarkIgnored flags a PR whose summary comment a human deleted. Idempotent.
+// A stopped PR becomes a deleted summary's: its resume must then forget the
+// summary. ignored_at keeps its first stamp.
 func (s *Store) MarkIgnored(ctx context.Context, k PRKey) error {
-	return s.exec(ctx, `UPDATE pull_requests SET ignored_at = now(), updated_at = now()
-		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3 AND ignored_at IS NULL`, k)
+	return s.exec(ctx, `UPDATE pull_requests
+		SET ignored_at = COALESCE(ignored_at, now()), ignore_reason = 'summary_deleted', stopped_by = NULL,
+			updated_at = now()
+		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
+			AND (ignored_at IS NULL OR ignore_reason IS DISTINCT FROM 'summary_deleted')`, k)
 }
 
-// Reactivate clears the ignored flag and forgets the old summary comment, so
-// the next review posts a fresh one instead of updating the deleted one. Its
-// prose goes with it: the next overview starts over.
+// MarkStopped flags a PR someone told noergler to stop reviewing. A PR
+// ignored after its summary was deleted becomes stopped too, or the next
+// question would bring it back against the stop; its summary is gone, so
+// it is forgotten as Reactivate would. Returns the row id when this call
+// stopped it, 0 when there is no row or it was stopped already.
+func (s *Store) MarkStopped(ctx context.Context, k PRKey, by string) (int64, error) {
+	var id int64
+	err := s.pool.QueryRow(ctx, `UPDATE pull_requests
+		SET summary_comment_id = CASE WHEN ignored_at IS NULL THEN summary_comment_id END,
+			summary_comment_version = CASE WHEN ignored_at IS NULL THEN summary_comment_version END,
+			last_summary = CASE WHEN ignored_at IS NULL THEN last_summary END,
+			ignored_at = now(), ignore_reason = 'stopped', stopped_by = $4, updated_at = now()
+		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
+			AND (ignored_at IS NULL OR ignore_reason = 'summary_deleted')
+		RETURNING id`,
+		k.Project, k.Repo, k.PRID, by).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return id, err
+}
+
+// Reactivate clears the ignored flag. After a deleted summary it also
+// forgets the old summary comment, so the next review posts a fresh one
+// instead of updating the deleted one; its prose goes with it and the next
+// overview starts over. A stopped PR keeps both: its summary is still there.
 func (s *Store) Reactivate(ctx context.Context, k PRKey) error {
 	return s.exec(ctx, `UPDATE pull_requests
-		SET ignored_at = NULL, summary_comment_id = NULL, summary_comment_version = NULL, last_summary = NULL,
-			updated_at = now()
+		SET summary_comment_id = CASE WHEN ignore_reason = 'stopped' THEN summary_comment_id END,
+			summary_comment_version = CASE WHEN ignore_reason = 'stopped' THEN summary_comment_version END,
+			last_summary = CASE WHEN ignore_reason = 'stopped' THEN last_summary END,
+			ignored_at = NULL, ignore_reason = NULL, stopped_by = NULL, updated_at = now()
 		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3`, k)
 }
 

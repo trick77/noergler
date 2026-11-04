@@ -89,7 +89,9 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		if b := safeDB(ctx, r.log, "BotReplyByComment", func() (*store.BotReply, error) {
 			return r.store.BotReplyByComment(ctx, key, payload.CommentParentID)
 		}); b != nil {
-			if st == nil || st.IgnoredAt != nil {
+			// A stopped PR still answers questions; it stays stopped,
+			// since only a review request resumes it.
+			if st == nil || st.SummaryDeleted() {
 				r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on noergler's %s answer not answered: PR is ignored or its state unread", prTag, b.Kind))
 				return true, false
 			}
@@ -135,19 +137,26 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 			if auto, _ := r.autoReviewDecision(author); !auto {
 				return notAnswered("language switch from an author not auto-reviewed")
 			}
-			if st != nil && st.IgnoredAt != nil {
+			if st.SummaryDeleted() {
 				return notAnswered("language switch on an ignored PR")
 			}
 		}
 		r.setLanguage(ctx, key.Project, key.Repo, pr.ID, comment.ID, prTag, comment.Author.Name, l)
 		return true, false
 	}
+	// "@bot stop reviewing" under a finding is the stop, not a dispute of
+	// it. Only with the mention: a plain reply there is the author's case.
+	if mentioned && stopRequest(text) {
+		r.handleStop(ctx, key, prTag, comment.ID, comment.Author.Name, author, pr.Title, pr.CreatedDate)
+		return true, false
+	}
 	if f.RepliedAt != nil {
 		return notAnswered("the thread was answered already")
 	}
 	if mentioned {
-		// "@bot review" on a finding thread is still a review.
-		if text == "" || reviewKeywords[strings.ToLower(text)] {
+		// "@bot review" on a finding thread is still a review, and so is
+		// a resume request on a stopped PR.
+		if text == "" || reviewKeywords[strings.ToLower(text)] || (resumeRequest(text) && r.skipState(ctx, key).Stopped()) {
 			return false, false
 		}
 	}
@@ -165,7 +174,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		// A mention, here as on the Q&A path: it reactivates an ignored PR
 		// and is the explicit override of the author lists, not of the
 		// cost cap.
-		r.reactivateIfIgnored(ctx, key, prTag)
+		r.reactivateIfIgnored(ctx, key, prTag, false)
 	} else if auto, ignored := r.autoReviewDecision(author); !auto {
 		// A plain reply is automatic: it obeys the author lists like an
 		// auto-review does, from one snapshot.
@@ -173,9 +182,10 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 			return notAnswered("ignored author")
 		}
 		return notAnswered("not in auto-review authors")
-	} else if st != nil && st.IgnoredAt != nil {
+	} else if st.SummaryDeleted() {
 		// The author removed the summary: the bot leaves the PR alone until
 		// a mention brings it back. st was read above, on this same path.
+		// A stopped PR still answers: the stop is about reviews.
 		return notAnswered("PR is ignored")
 	}
 	// A plain reply at the cap: the banner, no answer. Fail open.

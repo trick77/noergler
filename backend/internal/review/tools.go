@@ -33,10 +33,16 @@ type mentionAsk struct {
 	// switched is set when set_my_language accepted a switch this turn:
 	// the posting stage stores and confirms it.
 	switched lang.Lang
+	// prAuthor is the PR's author: the stopped banner is in their language.
+	prAuthor string
+	// stop is set when stop_reviewing accepted this turn: the posting
+	// stage stops the PR and confirms it, as it does a switch.
+	stop bool
 }
 
-// mentionTools are the tools a Q&A answer may call: two reads and the
-// commenter's own language. Every one runs off the worker, so none calls
+// mentionTools are the tools a Q&A answer may call: two reads and two
+// writes, the commenter's own language and a stop of this PR, each checked
+// against the commenter's own words. Every one runs off the worker, so none calls
 // Bitbucket; each returns an explicit struct, never a config or a row.
 func (r *Reviewer) mentionTools(ask *mentionAsk) []inference.MentionTool {
 	return []inference.MentionTool{
@@ -67,7 +73,26 @@ func (r *Reviewer) mentionTools(ask *mentionAsk) []inference.MentionTool {
 			},
 			Run: func(ctx context.Context, args string) string { return toolJSON(r.setMyLanguage(ctx, ask, args)) },
 		},
+		{
+			Name: "stop_reviewing",
+			Description: "Stop noergler from reviewing this pull request on new pushes. Questions are still " +
+				"answered; a mention asking for a review brings the reviews back. Only when the user asks " +
+				"for it in their own comment.",
+			Run: func(ctx context.Context, _ string) string { return toolJSON(r.stopReviewing(ctx, ask)) },
+		},
 	}
+}
+
+// stopReviewing is the model proposing a stop and code deciding it: the
+// commenter's own comment must say stop (stopIntent). Stored by the posting
+// stage, with the confirmation, as a language switch is.
+func (r *Reviewer) stopReviewing(ctx context.Context, ask *mentionAsk) map[string]string {
+	if !stopIntent(ask.text) {
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: stop for %s rejected: the comment does not ask to stop", ask.prTag, ask.user))
+		return map[string]string{"result": "rejected: the user's comment does not ask to stop reviewing"}
+	}
+	ask.stop = true
+	return map[string]string{"result": "ok", "note": "reviews stop once this answer posts; the confirmation is added by code, do not repeat it"}
 }
 
 func toolJSON(v any) string {
@@ -201,14 +226,18 @@ func nonNilNames(names []string) []string {
 // prStatusView is what pr_status returns. Skip reasons are the stable enum
 // values, not dashboard labels: the model words them in the user's language.
 type prStatusView struct {
-	Known              bool              `json:"known"`
-	LastReviewedCommit string            `json:"last_reviewed_commit,omitempty"`
-	Ignored            bool              `json:"ignored_summary_deleted"`
-	Merged             bool              `json:"merged"`
-	Declined           bool              `json:"declined"`
-	Runs               int               `json:"review_runs"`
-	LastRun            *prStatusRun      `json:"last_run,omitempty"`
-	Attempts           []prStatusAttempt `json:"latest_outcomes"`
+	Known              bool   `json:"known"`
+	LastReviewedCommit string `json:"last_reviewed_commit,omitempty"`
+	Ignored            bool   `json:"ignored"`
+	// IgnoreReason: summary_deleted (only a mention brings it back) or
+	// stopped (only a review request does; questions are answered).
+	IgnoreReason string            `json:"ignore_reason,omitempty"`
+	StoppedBy    string            `json:"stopped_by,omitempty"`
+	Merged       bool              `json:"merged"`
+	Declined     bool              `json:"declined"`
+	Runs         int               `json:"review_runs"`
+	LastRun      *prStatusRun      `json:"last_run,omitempty"`
+	Attempts     []prStatusAttempt `json:"latest_outcomes"`
 	// CostUSD is nil when unpriced: never "0.000" for an unknown.
 	CostUSD *string `json:"pr_cost_usd"`
 	CapUSD  string  `json:"pr_cost_cap_usd"`
@@ -257,6 +286,12 @@ func (r *Reviewer) prStatus(ctx context.Context, ask *mentionAsk) any {
 		v.LastReviewedCommit = render.ShortSHA(*st.LastReviewedCommit, 10)
 	}
 	v.Ignored, v.Merged, v.Declined = st.IgnoredAt != nil, st.MergedAt != nil, st.DeclinedAt != nil
+	if st.IgnoreReason != nil {
+		v.IgnoreReason = *st.IgnoreReason
+	}
+	if st.StoppedBy != nil {
+		v.StoppedBy = *st.StoppedBy
+	}
 	if lr := st.LastRun; lr != nil {
 		v.LastRun = &prStatusRun{At: lr.At.UTC().Format(time.RFC3339), Kind: string(lr.Kind),
 			Incremental: lr.Incremental, Findings: lr.Findings, Model: lr.ModelLabel}

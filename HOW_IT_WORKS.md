@@ -64,7 +64,8 @@ The pipeline refuses early and cheaply. In order:
 2. Author is in the auto-review list (an `@mention` skips this and the next two).
 3. The actor who pushed is not in the ignore list.
 4. Skip state: if a human deleted noergler's summary comment, the PR is left
-   alone until an `@mention` brings it back (§12).
+   alone until an `@mention` brings it back (§12). If someone told noergler
+   to stop reviewing it (§12c), it is left alone until a review is asked for.
 5. The source branch does not contain the opt-out keyword.
 6. `AGENTS.md` exists, when it is required.
 7. `AGENTS.md` is under the hard token limit.
@@ -419,7 +420,8 @@ bot posts is stored by its comment id (`bot_replies`), and a plain reply
 directly under one is a Q&A too, whoever asks, with the bot's answer as the
 comment it sees. The original question above that answer is not shown
 (Bitbucket sends the immediate parent only). On a PR whose summary was
-deleted such a reply is not answered: only an `@mention` brings a PR back.
+deleted such a reply is not answered: a plain reply never brings a PR
+back. On a stopped PR (§12c) it is answered, and the PR stays stopped.
 
 The PR author's reply on one of noergler's finding threads needs no mention.
 The route queues any non-empty reply not written by the bot (Bitbucket's
@@ -503,6 +505,36 @@ closed. No model call and no cost; a PR without a summary, closed, or
 ignored after its summary was deleted is left alone. The banner sits below
 a cost or staleness banner and goes with the next review, which rewrites
 the summary.
+
+## 12c. Stopping reviews on a PR
+
+Anyone who comments can tell noergler to stop reviewing a PR: `@noergler
+stop monitoring`, `stop reviewing`, `Höre auf, diesen PR zu beobachten`,
+or a plain reply saying so under the summary. New pushes are then not
+reviewed (`pr_stopped` on the dashboard) and cost nothing. The rest carries
+on: questions and replies, the author's on a finding included, are
+answered, the summary stays, and at merge the riptide
+rollup and the Almanach send run as for any PR. An Almanach note round runs
+only after a review, so pushes after the stop add nothing to the note; the
+last one is sent.
+
+A short command (ten words at most, no question mark, a stop word and what
+to stop, or "stop" with nothing but "please" beside it) is decided by code:
+no model call, so it works at the cost cap too. "No longer" or "nicht mehr"
+counts only with what to stop ("nicht mehr prüfen"), since a comment about
+the code says it as often ("prüft den Token nicht mehr"). Other wording goes to the Q&A, whose model may call
+`stop_reviewing`; code accepts that only when the comment itself says stop.
+The reply confirms in the asker's language, and the summary gets a banner
+naming who stopped it, in the author's language.
+
+`@noergler review`, or a resume request ("resume", "weiter beobachten"),
+brings the reviews back: the banner goes, and the review updates the same
+summary and builds on its overview. A question does not; the PR stays
+stopped, and on a PR that is not stopped "continue" is a question. The
+last word wins: deleting the summary of a stopped PR turns it into the
+deleted case (§12), where any mention brings it back with a fresh summary;
+a stop after the summary was deleted makes it stopped, and the resume
+posts a fresh summary.
 
 ## 13. Terminal events and the riptide rollup
 

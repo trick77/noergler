@@ -223,8 +223,8 @@ func TestQuestionMentionStagesItsCall(t *testing.T) {
 	if len(h.llm.Reviews) != 0 || len(h.st.Runs) != 0 || len(h.st.Attempts) != 0 {
 		t.Error("a Q&A must not review or record an attempt")
 	}
-	if len(h.llm.Mentions[0].Tools) != 3 {
-		t.Errorf("tools offered = %d, want 3", len(h.llm.Mentions[0].Tools))
+	if len(h.llm.Mentions[0].Tools) != 4 {
+		t.Errorf("tools offered = %d, want 4", len(h.llm.Mentions[0].Tools))
 	}
 }
 

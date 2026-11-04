@@ -92,6 +92,7 @@ type Store interface {
 	GetSummaryComment(ctx context.Context, prID int64) (*store.SummaryComment, error)
 	GetSkipState(ctx context.Context, k store.PRKey) (*store.SkipState, error)
 	MarkIgnored(ctx context.Context, k store.PRKey) error
+	MarkStopped(ctx context.Context, k store.PRKey, by string) (int64, error)
 	Reactivate(ctx context.Context, k store.PRKey) error
 	MarkMerged(ctx context.Context, k store.PRKey) error
 	MarkDeclined(ctx context.Context, k store.PRKey) error

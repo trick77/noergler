@@ -123,9 +123,16 @@ an incident or an eval run: read the reason before relaxing a rule.
 - Q&A staged: a tool loop is up to four gateway calls of the call timeout
   each (`REVIEW_INFERENCE_CALL_TIMEOUT`, 5m by default), which
   inline would hold the Bitbucket worker for every team's PRs.
-- Mention tools read-only but the language: a write tool is a setting any
-  commenter, or any injection the model reads, could change. The one write
-  is the commenter's own language, and code checks their words first.
+- Mention tools read-only but the language and the stop: a write tool is a
+  setting any commenter, or any injection the model reads, could change.
+  The writes are the commenter's own language and a stop of this PR, and
+  code checks their words first. A stop only ever saves money; a resume
+  costs it, so there is no resume tool.
+- Stop by command, not only by deleting the summary (user, 2026-11-04):
+  deleting threw the summary away, and any later question brought the PR
+  back. A stop keeps the summary (banner on top) and survives questions;
+  only a review request resumes. A short command is code-decided so a PR
+  at the cost cap can still be stopped.
 - Author lists by name in `team_config`: they are Bitbucket user names any
   commenter on the team's PRs sees in Bitbucket anyway, and "who is
   auto-reviewed" is what a settings question asks (user, 2026-10-18). Counts
