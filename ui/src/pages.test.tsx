@@ -758,7 +758,8 @@ describe("TeamsPage", () => {
 
     const rail = await screen.findByRole("navigation", { name: "Teams" });
     const rows = within(rail).getAllByRole("link");
-    expect(rows.map((r) => r.textContent)).toEqual(["Zahlungen9", "Mobile"]);
+    // The name alone: the PR count (9) is the card's, never the rail's.
+    expect(rows.map((r) => r.textContent)).toEqual(["Zahlungen", "Mobile"]);
     expect(rows[0].getAttribute("href")).toBe("/teams/payments");
     expect(within(rail).getByText("Ready")).toBeDefined();
     expect(within(rail).getByText("Disabled")).toBeDefined();

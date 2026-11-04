@@ -414,7 +414,9 @@ function dotClass(tone: Tone): string {
 }
 
 /** Rail is the team index beside the cards: search on top, then every team
- *  as a row under its state, PR count on the right. A row that misses the
+ *  as a row under its state, the name alone: no count beside it, the PR
+ *  count is the card's (user, 2026-11-04: a bare number there read as
+ *  anything, and a project's repo count is never known). A row that misses the
  *  query is dimmed, not dropped: the roster stays whole, and the group
  *  count says how many hit. A hit on a claim or an excluded repo is named
  *  under the row, since the name alone does not say why it matched. On a
@@ -554,11 +556,6 @@ function Rail({
                       <span className="overflow-hidden text-ellipsis">
                         <Mark text={x.name} q={query} />
                       </span>
-                      {x.prs > 0 && (
-                        <span className="ml-auto hidden font-mono text-[12px] text-faint tabular-nums lg:inline">
-                          {x.prs}
-                        </span>
-                      )}
                     </span>
                     {/* The label stays outside the mark: only the glob
                         matched, never the word "excluded". */}
