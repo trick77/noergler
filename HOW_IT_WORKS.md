@@ -165,7 +165,10 @@ There is **no 413 bisection.** A PR that cannot fit gets a summary saying so.
 
 ## 9. What is sent to the model
 
-One call per review, never streaming: a LiteLLM stream carries no cost header.
+One call per review, streamed: the gateway cuts a connection that carries no
+byte for 300 s, and only a stream sends anything before the answer is done.
+The cost comes on the stream's usage (LiteLLM's
+`include_cost_in_streaming_usage`), never from a header.
 
 The prompt is assembled in a fixed order so the gateway's prefix cache can work:
 the template, then `{files}`, then `{cumulative_pr_diff}`, then

@@ -53,7 +53,7 @@ func TestInferenceRequestsAreCounted(t *testing.T) {
 // properties of its default are reproduced in countingClient and pinned here.
 // Mirrors llmwire's TestNew_DefaultHTTPClientHasNoWholeRequestTimeout.
 func TestCountingClientKeepsLLMWiresTimeoutShape(t *testing.T) {
-	c := countingClient(config.DefaultCallTimeout)
+	c := countingClient()
 
 	// A whole-request timeout would cut a slow completion body mid-read, the
 	// same reason Bitbucket's client must not carry one. The caller's ctx and
@@ -75,30 +75,15 @@ func TestCountingClientKeepsLLMWiresTimeoutShape(t *testing.T) {
 	}
 
 	// The backstop must sit exactly one headroom above the bound llmwire
-	// actually resolves, which for a non-streaming Chat with HeaderTimeout
-	// unset is CallTimeout. Asserting merely "later than DefaultHeaderTimeout"
-	// is what let the backstop land at 90s while the guard was at 300s: the
-	// transport then won the race and every review slower than 90s failed with
+	// actually resolves, which for a stream is the HeaderTimeout the Config
+	// sets. Asserting merely "later than DefaultHeaderTimeout" is what once
+	// let the backstop land at 90s while the guard was at 300s: the transport
+	// then won the race and every review slower than 90s failed with
 	// net/http's generic error instead of ErrNoResponseHeaders.
-	if want := config.DefaultCallTimeout + headerBackstopHeadroom; tr.ResponseHeaderTimeout != want {
-		t.Errorf("ResponseHeaderTimeout = %v, want %v (CallTimeout + headroom), "+
+	if want := HeaderTimeout + headerBackstopHeadroom; tr.ResponseHeaderTimeout != want {
+		t.Errorf("ResponseHeaderTimeout = %v, want %v (HeaderTimeout + headroom), "+
 			"so llmwire's guard reports the timeout under its own name",
 			tr.ResponseHeaderTimeout, want)
-	}
-}
-
-// A configured timeout moves the backstop with it: a 10m cap with a 330s
-// backstop would reopen the race the test above pins.
-func TestCountingClientBackstopFollowsConfiguredTimeout(t *testing.T) {
-	timeout := 10 * time.Minute
-	c := countingClient(timeout)
-	wrapper, ok := c.Transport.(interface{ Unwrap() http.RoundTripper })
-	if !ok {
-		t.Fatalf("client transport %T does not expose the wrapped transport", c.Transport)
-	}
-	tr := wrapper.Unwrap().(*http.Transport)
-	if want := timeout + headerBackstopHeadroom; tr.ResponseHeaderTimeout != want {
-		t.Errorf("ResponseHeaderTimeout = %v, want %v", tr.ResponseHeaderTimeout, want)
 	}
 }
 

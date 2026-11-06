@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -342,8 +343,11 @@ func main() {
 		if len(req.ResponseFormat) > 0 {
 			content = cannedReview
 		}
-		// Priced, so the run stores a cost instead of falling open to NULL.
-		w.Header().Set("x-litellm-response-cost", "0.0123")
+		// Every call streams. LiteLLM writes its cost header as 0 on a
+		// stream; the price rides usage.cost, as with
+		// include_cost_in_streaming_usage, so the run stores a cost instead of
+		// falling open to NULL.
+		w.Header().Set("x-litellm-response-cost", "0")
 		message := map[string]any{"role": "assistant", "content": content}
 		finish := "stop"
 		// A Q&A with tools on offer: one round asking for pr_status, then the
@@ -359,13 +363,17 @@ func main() {
 				finish = "tool_calls"
 			}
 		}
-		writeJSON(w, r, map[string]any{
-			"id":      "chatcmpl-fake",
-			"object":  "chat.completion",
-			"model":   gatewayAlias,
-			"choices": []any{map[string]any{"index": 0, "finish_reason": finish, "message": message}},
-			"usage":   map[string]any{"prompt_tokens": 1200, "completion_tokens": 300, "total_tokens": 1500},
-		})
+		if tc, ok := message["tool_calls"].([]any); ok {
+			for i, c := range tc {
+				c.(map[string]any)["index"] = i
+			}
+		}
+		writeSSE(w, r,
+			map[string]any{"id": "chatcmpl-fake", "object": "chat.completion.chunk", "model": gatewayAlias,
+				"choices": []any{map[string]any{"index": 0, "finish_reason": finish, "delta": message}}},
+			map[string]any{"id": "chatcmpl-fake", "object": "chat.completion.chunk", "model": gatewayAlias,
+				"choices": []any{}, "usage": map[string]any{"prompt_tokens": 1200, "completion_tokens": 300,
+					"total_tokens": 1500, "cost": 0.0123}})
 	})
 
 	// -- Bitbucket: the onboarding surface -- //
@@ -732,6 +740,20 @@ func lastToolResult(msgs []chatMessage) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// writeSSE answers as a stream: one data frame per chunk, then [DONE].
+func writeSSE(w http.ResponseWriter, r *http.Request, chunks ...any) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	for _, c := range chunks {
+		b, err := json.Marshal(c)
+		if err != nil {
+			log.Printf("encode %s %s: %v", r.Method, r.URL.Path, err)
+			return
+		}
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", b)
+	}
+	_, _ = io.WriteString(w, "data: [DONE]\n\n")
 }
 
 func writeJSON(w http.ResponseWriter, r *http.Request, body any) {

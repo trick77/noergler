@@ -61,9 +61,10 @@ func TestReviewRequestOnTheWire(t *testing.T) {
 	if got := sentReasoning(t, f.lastChatBody); got != llmwiretest.BalancedSent {
 		t.Errorf("reasoning = %q, want the balanced level %q", got, llmwiretest.BalancedSent)
 	}
-	// Chat only, never streaming: a LiteLLM stream carries no cost header.
-	if body.Stream != nil && *body.Stream {
-		t.Error("the request must not ask for a stream")
+	// Every call streams: the gateway cuts a call that sends nothing for
+	// 300 s, and a call without streaming sends nothing until it is done.
+	if body.Stream == nil || !*body.Stream {
+		t.Error("the request must ask for a stream")
 	}
 }
 

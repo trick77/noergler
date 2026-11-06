@@ -219,11 +219,12 @@ func (c *Client) Review(ctx context.Context, req ReviewRequest) ReviewResult {
 		chat.Messages = append(chat.Messages, visualMessage(req.Images, req.VisualKnown))
 	}
 
-	resp, warnings, err := c.wire.Chat(ctx, chat)
+	resp, warnings, err := c.chat(ctx, chat)
 	if err != nil {
 		return ReviewResult{
 			Outcome: classifyCallError(ctx, err),
 			Review:  ParsedReview{Summary: NewReviewSummary()},
+			Cost:    paid(resp, warnings),
 			Err:     err,
 		}
 	}
@@ -291,11 +292,14 @@ func (c *Client) Mention(ctx context.Context, req MentionRequest) MentionResult 
 	default:
 		return c.mentionWithTools(ctx, req)
 	}
-	resp, outcome, err := c.answer(ctx, req.Prompt, req.PromptTokens, nil)
+	resp, cost, outcome, err := c.answer(ctx, req.Prompt, req.PromptTokens, nil)
 	if outcome != OutcomeOK {
-		return MentionResult{Outcome: outcome, ToolsOff: toolsOff, Err: err}
+		out := MentionResult{Outcome: outcome, ToolsOff: toolsOff, Err: err}
+		if cost.Answered {
+			out.Cost, out.Rounds = cost, []CallCost{cost}
+		}
+		return out
 	}
-	cost := CostFrom(resp)
 	return MentionResult{Answer: ParseMention(resp.Content), Cost: cost, Rounds: []CallCost{cost}, ToolsOff: toolsOff}
 }
 
@@ -318,15 +322,17 @@ func (e *TooLargeError) Error() string {
 //
 // llmwire applies the call timeout to a context it derives itself, so the
 // caller's ctx.Err() stays nil and its sentinels are plain errors that never
-// unwrap to context.DeadlineExceeded. A non-streaming Chat arms the stall guard
-// with the call cap under stallHeaders, so the cap surfaces as ErrNoResponseHeaders
-// rather than ErrCallCap. Both are the model being too slow and both must read
-// as a timeout, or a hung model is reported to the operator as a generic error.
+// unwrap to context.DeadlineExceeded. A stream fails on one of three bounds:
+// the call cap, the headers (ErrNoResponseHeaders) or a silence past
+// IdleTimeout (ErrStreamIdle). All are the model being too slow and all must
+// read as a timeout, or a hung model is reported to the operator as a generic
+// error.
 func classifyCallError(ctx context.Context, err error) Outcome {
 	if isOverflow(err) {
 		return OutcomeTooLarge
 	}
-	if errors.Is(err, llmwire.ErrCallCap) || errors.Is(err, llmwire.ErrNoResponseHeaders) {
+	if errors.Is(err, llmwire.ErrCallCap) || errors.Is(err, llmwire.ErrNoResponseHeaders) ||
+		errors.Is(err, llmwire.ErrStreamIdle) {
 		return OutcomeTimedOut
 	}
 	// A caller's own deadline counts too: the review queue bounds a job.
@@ -337,7 +343,8 @@ func classifyCallError(ctx context.Context, err error) Outcome {
 }
 
 // isOverflow reports whether an error is a context-window overflow: a 413, or
-// a 400 whose body names one of the markers.
+// a 400 whose body names one of the markers, or the same refusal as an error
+// frame inside an open stream (status 0: the 200 was already sent).
 func isOverflow(err error) bool {
 	var api *llmwire.APIError
 	if !errors.As(err, &api) {
@@ -346,7 +353,7 @@ func isOverflow(err error) bool {
 	if api.StatusCode == 413 {
 		return true
 	}
-	if api.StatusCode != 400 {
+	if api.StatusCode != 400 && api.StatusCode != 0 {
 		return false
 	}
 	body := strings.ToLower(api.Message + " " + api.Code + " " + api.Type + " " + api.Param)

@@ -61,10 +61,13 @@ func TestEvalRunReachesAGatewayAndScoresTheResponse(t *testing.T) {
 				"comment":  "r.Ticket is nil here, so this dereference will panic",
 			}},
 		})
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"1","object":"chat.completion","model":"` + alias +
-			`","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":` +
-			string(mustJSON(string(answer))) + `}}],"usage":{"prompt_tokens":10,"completion_tokens":5}}`))
+		// Every call streams: the answer as one delta frame, the usage, [DONE].
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"id":"1","object":"chat.completion.chunk","model":"` + alias +
+			`","choices":[{"index":0,"finish_reason":"stop","delta":{"role":"assistant","content":` +
+			string(mustJSON(string(answer))) + `}}]}` + "\n\n" +
+			`data: {"id":"1","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5}}` + "\n\n" +
+			"data: [DONE]\n\n"))
 	}))
 	defer srv.Close()
 

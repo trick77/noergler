@@ -44,8 +44,8 @@ func (c *Client) Startup(ctx context.Context) error {
 }
 
 // reviewNeeds is what a review asks of a model: strict JSON-schema output,
-// which is what makes the answer parseable.
-var reviewNeeds = llmwire.Needs{JSONSchema: true}
+// which is what makes the answer parseable, and a stream, which every call is.
+var reviewNeeds = llmwire.Needs{JSONSchema: true, Streaming: true}
 
 // profile looks the model up in the client's registry, which FromEnv has
 // already rewritten with the gateway routes, and checks it can do the job:
@@ -257,7 +257,7 @@ func checkWindowFloor(n int, source string) error {
 // ping proves the route, the key and that the model answers. It carries the
 // reviews' reasoning setting, so what llmwire sent is the label's.
 func (c *Client) ping(ctx context.Context, profile *llmwire.Profile) error {
-	resp, _, err := c.wire.Chat(ctx, llmwire.ChatRequest{
+	resp, _, err := c.chat(ctx, llmwire.ChatRequest{
 		Model:     c.model,
 		Reasoning: c.reasoning(),
 		Messages:  []llmwire.Message{llmwire.User(pingPrompt)},

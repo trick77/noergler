@@ -55,10 +55,43 @@ func TestLLMWireTimeoutSentinelsClassifyAsTimedOut(t *testing.T) {
 	if errors.Is(llmwire.ErrCallCap, context.DeadlineExceeded) {
 		t.Error("assumption broken: ErrCallCap now unwraps to DeadlineExceeded")
 	}
-	for _, err := range []error{llmwire.ErrCallCap, llmwire.ErrNoResponseHeaders} {
+	for _, err := range []error{llmwire.ErrCallCap, llmwire.ErrNoResponseHeaders, llmwire.ErrStreamIdle} {
 		if got := classifyCallError(context.Background(), err); got != OutcomeTimedOut {
 			t.Errorf("classifyCallError(%v) = %v, want timed_out", err, got)
 		}
+	}
+}
+
+// An overflow refused inside an open stream arrives as an error frame after
+// the 200, status 0: it is the same too-large as a 400, not a gateway fault.
+func TestInStreamOverflowIsTooLarge(t *testing.T) {
+	frame := &llmwire.APIError{Code: "context_length_exceeded", Message: "too long"}
+	if got := classifyCallError(context.Background(), frame); got != OutcomeTooLarge {
+		t.Errorf("in-stream overflow = %v, want too_large", got)
+	}
+	other := &llmwire.APIError{Code: "1210", Message: "upstream exploded"}
+	if got := classifyCallError(context.Background(), other); got != OutcomeError {
+		t.Errorf("in-stream other error = %v, want error", got)
+	}
+}
+
+// A stream cut after its usage was billed and is recorded like an answer; one
+// that never got that far, or never opened, reported nothing.
+func TestPaidKeepsOnlyABilledStream(t *testing.T) {
+	if got := paid(nil, nil); got.Answered || got.NanoUSD != nil {
+		t.Errorf("no stream = %+v, want the zero cost", got)
+	}
+	if got := paid(&llmwire.ChatResponse{}, nil); got.Answered {
+		t.Errorf("no usage = %+v, want not answered", got)
+	}
+	resp := &llmwire.ChatResponse{Usage: llmwire.Usage{
+		Input:  llmwire.InputTokens{Total: new(int64(100))},
+		Output: llmwire.OutputTokens{Total: new(int64(5))},
+		Cost:   llmwire.Cost{NanoUSD: 7_000, Provenance: llmwire.Reported},
+	}}
+	got := paid(resp, []llmwire.Warning{{Kind: llmwire.WarnOther, Feature: "f", Details: "d"}})
+	if !got.Answered || got.NanoUSD == nil || *got.NanoUSD != 7_000 || len(got.Warnings) != 1 {
+		t.Errorf("billed stream = %+v, want answered at 7000 nano with its warning", got)
 	}
 }
 

@@ -1,6 +1,7 @@
 package inference
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -127,11 +128,13 @@ func New(opt Options) (*Client, error) {
 	}
 
 	wire, err := llmwire.FromEnv(opt.Model, llmwire.Config{
-		CallTimeout: timeout,
-		Logger:      opt.Logger,
-		Lookup:      teamLookup(opt.APIKey, env),
-		HTTPClient:  countingClient(timeout),
-		Registry:    opt.Registry,
+		CallTimeout:   timeout,
+		HeaderTimeout: HeaderTimeout,
+		IdleTimeout:   IdleTimeout,
+		Logger:        opt.Logger,
+		Lookup:        teamLookup(opt.APIKey, env),
+		HTTPClient:    countingClient(),
+		Registry:      opt.Registry,
 		// APIKey stays empty: the team's key is answered through Lookup.
 	})
 	if err != nil {
@@ -152,17 +155,69 @@ func New(opt Options) (*Client, error) {
 // than llmwire's header bound so llmwire's guard still reports the timeout
 // under its own named bound rather than the transport's generic one.
 //
-// That bound is the call timeout, not DefaultHeaderTimeout: this Config leaves
-// HeaderTimeout unset, and a non-streaming Chat arms llmwire's stall guard
-// with the call cap (see classifyCallError). Sizing the backstop off the 60s
-// default put it at 90s, UNDER the 300s guard of the time, so the transport
-// won the race and every slow review failed at 90s with net/http's generic
-// "timeout awaiting response headers" instead of ErrNoResponseHeaders. The
-// backstop therefore follows the configured timeout, whatever it is.
-func countingClient(timeout time.Duration) *http.Client {
+// That bound is HeaderTimeout: every call streams, and a stream arms
+// llmwire's header guard with it. A backstop under the guard once won the
+// race (90s against a 300s guard), and every slow review failed with
+// net/http's generic "timeout awaiting response headers" instead of
+// ErrNoResponseHeaders.
+func countingClient() *http.Client {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
-	tr.ResponseHeaderTimeout = timeout + headerBackstopHeadroom
+	tr.ResponseHeaderTimeout = HeaderTimeout + headerBackstopHeadroom
 	return &http.Client{Transport: httpstats.Transport("inference", tr)}
+}
+
+// HeaderTimeout bounds the wait for a stream's headers: a host may open the
+// stream only once the model has a first token, which a long prompt and
+// hidden reasoning put minutes off. IdleTimeout bounds a started stream's
+// silence, reasoning deltas re-arming it, so a stalled stream ends there,
+// not at the call cap. The gateway gives up on a silent connection at 300 s
+// (its request timeout); five minutes is that silence and no more. llmwire's
+// 60s and 90s defaults cut a reasoning model before its first token (evals:
+// "stream idle for 1m30s").
+const (
+	HeaderTimeout = 5 * time.Minute
+	IdleTimeout   = 5 * time.Minute
+)
+
+// chat is every gateway call: one ChatStream, read to its end, the answer
+// assembled into the response shape the callers read. Streamed because the
+// gateway cuts a call that sends no byte for 300 s, and a call without
+// streaming sends nothing until the whole answer is written (2026-11-06,
+// as Almanach since its #91).
+//
+// The response comes back with the error too, nil only when the stream never
+// opened: a stream cut after its usage arrived was paid for (see paid). The
+// model is the profile id: a stream names none of its own, and the deployment
+// is in Gateway.
+func (c *Client) chat(ctx context.Context, req llmwire.ChatRequest) (*llmwire.ChatResponse, []llmwire.Warning, error) {
+	stream, warnings, err := c.wire.ChatStream(ctx, req)
+	if err != nil {
+		return nil, warnings, err
+	}
+	defer func() { _ = stream.Close() }()
+	res, err := stream.Collect(nil)
+	resp := &llmwire.ChatResponse{
+		Content: res.Content, Reasoning: res.Reasoning, ToolCalls: res.ToolCalls,
+		FinishReason: res.FinishReason, Usage: res.Usage, Model: c.model,
+		Timing: res.Timing, Gateway: res.Gateway, ReasoningSent: res.ReasoningSent,
+		ResponseItems: res.ResponseItems,
+	}
+	return resp, stream.Warnings(), err
+}
+
+// paid is the cost of a failed call, Answered only when the stream got as
+// far as its usage: then the call was billed and is recorded like an answer,
+// otherwise nothing was reported and the zero CallCost says so.
+func paid(resp *llmwire.ChatResponse, warnings []llmwire.Warning) CallCost {
+	if resp == nil {
+		return CallCost{}
+	}
+	if n, ok := resp.Usage.Total(); !ok || n == 0 {
+		return CallCost{}
+	}
+	out := CostFrom(resp)
+	out.Warnings = WarningLines(warnings)
+	return out
 }
 
 // CallTimeout is the wall-clock cap armed on every call of this client, as
@@ -174,10 +229,8 @@ func (c *Client) CallTimeout() time.Duration { return c.timeout }
 // name. It is the margin that keeps llmwire's header guard ahead of the
 // transport's backstop; see countingClient.
 //
-// llmwire computes the backstop from its RESOLVED HeaderTimeout. Size this one
-// off the same bound llmwire resolves for a non-streaming Chat, which is
-// the call timeout while HeaderTimeout is unset. Set HeaderTimeout in the Config
-// and this must follow it instead.
+// llmwire computes the backstop from its RESOLVED HeaderTimeout, which for a
+// stream is the HeaderTimeout this Config sets.
 const headerBackstopHeadroom = 30 * time.Second
 
 // teamLookup answers the gateway's key variable with this team's key and

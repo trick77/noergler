@@ -813,9 +813,13 @@ func (r *Reviewer) handleNonOK(ctx context.Context, l lang.Lang, result inferenc
 
 	if result.Outcome == inference.OutcomeError {
 		r.log.ErrorContext(ctx, fmt.Sprintf("Review of %s failed: %v", prTag, result.Err))
+		// A stream cut after its usage was billed: its cost rides the
+		// attempt like any other billed call without a run row.
 		return r.recordAttempt(ctx, store.Attempt{
 			Key: key, TeamSlug: r.TeamSlug, Kind: kind,
-			Outcome: result.Outcome.String(),
+			Outcome:     result.Outcome.String(),
+			CostNanoUSD: result.Cost.NanoUSD,
+			Call:        r.llmCall(result.Cost),
 		})
 	}
 

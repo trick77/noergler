@@ -12,7 +12,19 @@ an incident or an eval run: read the reason before relaxing a rule.
   as log lines only, a PR could talk its way past its limit, and the money
   was missing from the dashboard. One banner, not a reply per refusal: a
   thread of "limit reached" answers is noise the summary already says.
-- Never streaming: a LiteLLM stream carries no cost header.
+- Every call streams (user, 2026-11-06, LiteLLM timeouts stay where they
+  are): the gateway cuts a connection that carries no byte for 300 s, and a
+  call without streaming sends nothing until the whole answer is written, so
+  every long review died there. Almanach hit the same and streams since its
+  #91. The cost header is written before the body, on a stream as a literal
+  0: a stream is priced from `usage.cost` only, which LiteLLM sends with
+  `include_cost_in_streaming_usage`, else unpriced (llmwire once read the 0
+  as a reported zero, a free call to the cap). The gateway's cost split is
+  header-only, so a stream has none: the `llm_calls` lanes stay NULL.
+- Header and idle bounds 5 min, not llmwire's 60 s / 90 s: a reasoning model
+  sends nothing for minutes before its first token (evals: `stream idle for
+  1m30s`), and 5 min is the gateway's own silence limit. The call cap
+  default 10m sits above it: a stream that keeps sending may run longer.
 - Never `ReasoningMinimal()`: on some models minimal is thinking off.
 - The gateway's window wins: it can cap below the vendor. LiteLLM often leaves
   `max_input_tokens` unset; prod once needed a hand-set override. Dropping
