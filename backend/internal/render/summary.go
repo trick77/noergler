@@ -574,12 +574,13 @@ func renderTicket(in SummaryInput) string {
 	}
 
 	if hasCompliance {
+		labels := criterionLabels(ticketCriteria(in)...)
 		for _, r := range reqs {
 			mark := "❌"
 			if r.Met {
 				mark = "✅"
 			}
-			requirement := r.Requirement
+			requirement := labelRequirement(r.Requirement, labels)
 			if requirement == "" {
 				requirement = "???"
 			}
@@ -605,6 +606,16 @@ func renderTicket(in SummaryInput) string {
 			"_No acceptance criteria are verifiable from code changes_")
 	}
 	return strings.Join(append(lines, reason), "\n")
+}
+
+// ticketCriteria is the acceptance criteria the requirements were read from:
+// the ticket's and, for a subtask, its parent's, where they often live.
+func ticketCriteria(in SummaryInput) []string {
+	ac := []string{in.Ticket.AcceptanceCriteria}
+	if in.ParentTicket != nil {
+		ac = append(ac, in.ParentTicket.AcceptanceCriteria)
+	}
+	return ac
 }
 
 func renderRecommendation(in SummaryInput) string {

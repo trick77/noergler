@@ -213,6 +213,15 @@ func summaryCases() map[string]SummaryInput {
 	}
 	cases["ticket_partial"] = tPartial
 
+	// The model copies the ticket's labels into the requirement however it
+	// likes; bare, Bitbucket links them to Jira issues that do not exist.
+	tLabels := tFull
+	tLabels.Ticket = testTicket("ABC-1", "Do the thing", "AK-1 does X\nAK-2 does Y")
+	tLabels.ComplianceRequirements = []inference.ComplianceRequirement{
+		{Requirement: "AK-1: Does X", Met: true}, {Requirement: "Does Y (AK-2)", Met: false},
+	}
+	cases["ticket_requirement_labels"] = tLabels
+
 	tNone := tFull
 	tNone.ComplianceRequirements = []inference.ComplianceRequirement{{Requirement: "Does X", Met: false}}
 	cases["ticket_none_met"] = tNone
