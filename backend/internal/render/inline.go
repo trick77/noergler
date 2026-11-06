@@ -16,8 +16,9 @@ import (
 //
 // The severity label is capitalised ("Issue:", "Suggestion:") and the comment
 // is wrapped; the suggestion block is appended verbatim, never wrapped, since
-// it is code.
-func InlineComment(f inference.ReviewFinding, l lang.Lang) string {
+// it is code. Criterion labels (CriterionLabels) in the comment go in a code
+// span, so Bitbucket does not link them as Jira issues.
+func InlineComment(f inference.ReviewFinding, l lang.Lang, labels ...string) string {
 	label, comment := capitalize(f.Severity), f.Comment
 	if l != lang.EN {
 		if de, ok := severityDE[f.Severity]; ok {
@@ -25,6 +26,7 @@ func InlineComment(f inference.ReviewFinding, l lang.Lang) string {
 		}
 		comment = lang.SwissSS(comment)
 	}
+	comment = spanLabels(comment, labels)
 	parts := []string{WrapProse(fmt.Sprintf("**%s:** %s", label, comment))}
 
 	if f.Suggestion != nil && *f.Suggestion != "" {
