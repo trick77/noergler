@@ -12,7 +12,22 @@ an incident or an eval run: read the reason before relaxing a rule.
   as log lines only, a PR could talk its way past its limit, and the money
   was missing from the dashboard. One banner, not a reply per refusal: a
   thread of "limit reached" answers is noise the summary already says.
-- Never streaming: a LiteLLM stream carries no cost header.
+- Every call streams (user, 2026-11-06, LiteLLM timeouts stay where they
+  are): the gateway cuts a connection that carries no byte for 300 s, and a
+  call without streaming sends nothing until the whole answer is written, so
+  every long review died there. Almanach hit the same and streams since its
+  #91. The cost header is written before the body, on a stream as a literal
+  0: a stream is priced from `usage.cost` only, which LiteLLM sends with
+  `include_cost_in_streaming_usage`, else unpriced (llmwire once read the 0
+  as a reported zero, a free call to the cap). The gateway's cost split is
+  header-only, so a stream has none: the `llm_calls` lanes stay NULL.
+- Header and idle bounds 4m30s, not llmwire's 60 s / 90 s: a reasoning model
+  sends nothing for minutes before its first token (evals: `stream idle for
+  1m30s`). Under the gateway's 300 s, not on it: at 300 s the gateway's cut
+  won the race and read as a broken stream, an error with no notice, instead
+  of a timeout (code review). The notice quotes the bound that fired. The
+  call cap default 10m sits above them: a stream that keeps sending may run
+  longer.
 - Never `ReasoningMinimal()`: on some models minimal is thinking off.
 - The gateway's window wins: it can cap below the vendor. LiteLLM often leaves
   `max_input_tokens` unset; prod once needed a hand-set override. Dropping
@@ -121,7 +136,7 @@ an incident or an eval run: read the reason before relaxing a rule.
 - Keyword mention staged: inline it held the worker and ran outside the pool,
   so inference could reach cap+1.
 - Q&A staged: a tool loop is up to four gateway calls of the call timeout
-  each (`REVIEW_INFERENCE_CALL_TIMEOUT`, 5m by default), which
+  each (`REVIEW_INFERENCE_CALL_TIMEOUT`, 10m by default), which
   inline would hold the Bitbucket worker for every team's PRs.
 - Mention tools read-only but the language and the stop: a write tool is a
   setting any commenter, or any injection the model reads, could change.

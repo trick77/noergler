@@ -399,8 +399,9 @@ func nonNegative(r *kitenv.Reader, name string, def int) int {
 
 // DefaultCallTimeout is the gateway call cap when REVIEW_INFERENCE_CALL_TIMEOUT
 // is unset: the one figure serve, evals and the inference client's zero value
-// all fall back to.
-const DefaultCallTimeout = 5 * time.Minute
+// all fall back to. Above the gateway's 300 s: a streamed call that keeps
+// sending may run longer than the silence the gateway allows.
+const DefaultCallTimeout = 10 * time.Minute
 
 // callTimeout is a duration with a floor of one minute. The timeout notices
 // quote the cap in whole minutes, rounded down, so anything under one would

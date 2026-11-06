@@ -440,11 +440,11 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 	project, repo, sourceCommit := plan.project, plan.repo, plan.sourceCommit
 	started, existing := plan.started, plan.existing
 
-	// One cost record per call, and only when a call actually happened: the
-	// too-large branch decides locally before any request, and a
-	// transport error returns with no cost, so both would otherwise report an
-	// absent cost for a call the gateway never answered.
-	if result.Outcome == inference.OutcomeOK || result.Outcome == inference.OutcomeUnparseable {
+	// One cost record per call, and only when the gateway reported one: an
+	// answer, or a stream cut after its usage, which was billed. The too-large
+	// branch decides before any request, and a call that never got that far
+	// would otherwise log an absent cost for a call nobody answered.
+	if result.Cost.Answered {
 		r.logCost(ctx, prTag, result.Cost)
 	}
 
@@ -813,9 +813,13 @@ func (r *Reviewer) handleNonOK(ctx context.Context, l lang.Lang, result inferenc
 
 	if result.Outcome == inference.OutcomeError {
 		r.log.ErrorContext(ctx, fmt.Sprintf("Review of %s failed: %v", prTag, result.Err))
+		// A stream cut after its usage was billed: its cost rides the
+		// attempt like any other billed call without a run row.
 		return r.recordAttempt(ctx, store.Attempt{
 			Key: key, TeamSlug: r.TeamSlug, Kind: kind,
-			Outcome: result.Outcome.String(),
+			Outcome:     result.Outcome.String(),
+			CostNanoUSD: result.Cost.NanoUSD,
+			Call:        r.llmCall(result.Cost),
 		})
 	}
 
@@ -823,10 +827,11 @@ func (r *Reviewer) handleNonOK(ctx context.Context, l lang.Lang, result inferenc
 	// overwrite it with this failed commit.
 	prReviewID, prior := r.upsertKeepingPrior(ctx, upsert, key)
 
+	timeout := r.llm.TimeoutOf(result.Err)
 	switch result.Outcome {
 	case inference.OutcomeTimedOut:
 		r.log.ErrorContext(ctx, fmt.Sprintf("Review of %s aborted - no response within %.0fs (commit %s)",
-			prTag, r.llm.CallTimeout().Seconds(), short))
+			prTag, timeout.Seconds(), short))
 	case inference.OutcomeUnparseable:
 		r.log.ErrorContext(ctx, fmt.Sprintf(
 			"Review of %s aborted - model returned an unparseable/refused response (commit %s)", prTag, short))
@@ -834,7 +839,7 @@ func (r *Reviewer) handleNonOK(ctx context.Context, l lang.Lang, result inferenc
 		r.log.ErrorContext(ctx, fmt.Sprintf(
 			"Review of %s skipped - PR too large for the model's context window (commit %s)", prTag, short))
 	}
-	r.failureNoticeFor(ctx, result.Outcome, l, project, repo, prID, prReviewID, sourceCommit, prior)
+	r.failureNoticeFor(ctx, result.Outcome, timeout, l, project, repo, prID, prReviewID, sourceCommit, prior)
 
 	// No run row, so a billed call's cost rides here, where PRCost reads it.
 	// The call itself is kept too: an unparseable answer is exactly the run

@@ -33,7 +33,9 @@ type fakeGateway struct {
 	// repeats. chatRequests holds every completion request.
 	chatBodies   []string
 	chatRequests [][]byte
-	// costHeader, when set, is sent as the per-call cost.
+	// costHeader, when set, is the per-call cost the gateway reports: on a
+	// stream as usage.cost, where include_cost_in_streaming_usage puts it.
+	// "None" is sent as null, any other non-number as a JSON string.
 	costHeader string
 	// delay stalls the completion route, for timeout tests.
 	delay time.Duration
@@ -70,31 +72,117 @@ func (f *fakeGateway) start(t *testing.T, alias string) *httptest.Server {
 					return
 				}
 			}
-			if f.costHeader != "" {
-				w.Header().Set("x-litellm-response-cost", f.costHeader)
-			}
-			w.Header().Set("Content-Type", "application/json")
-			if f.chatStatus != 0 {
-				w.WriteHeader(f.chatStatus)
-			}
 			body := f.chatBody
 			if n := len(f.chatBodies); n > 0 {
 				body = f.chatBodies[min(f.gotChat, n)-1]
 			}
 			f.chatRequests = append(f.chatRequests, f.lastChatBody)
-			if body == "" && strings.HasSuffix(r.URL.Path, "/responses") {
+			responses := strings.HasSuffix(r.URL.Path, "/responses")
+			if body == "" && responses {
 				body = responsesBody(`{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}`)
 			} else if body == "" {
 				body = `{"choices":[{"message":{"role":"assistant","content":"ok"}}],` +
 					`"usage":{"prompt_tokens":5,"completion_tokens":1,"total_tokens":6}}`
 			}
-			_, _ = w.Write([]byte(body))
+			// LiteLLM writes its cost header on a stream too, as a literal
+			// 0: the cost the stream is priced from rides usage.cost.
+			w.Header().Set("x-litellm-response-cost", "0")
+			if f.chatStatus != 0 && f.chatStatus/100 != 2 {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(f.chatStatus)
+				_, _ = w.Write([]byte(body))
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte(sseOf(responses, body, f.costHeader)))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// sseOf streams a whole answer the way the gateway would: a Chat Completions
+// body becomes one delta frame, a usage frame and [DONE]; a Responses body
+// rides one response.completed event. cost, when set, lands on usage.cost.
+// A body that is not a Chat Completions object (a test of a broken response)
+// is sent as it is, which no stream reader takes.
+func sseOf(responses bool, body, cost string) string {
+	var costJSON json.RawMessage
+	switch {
+	case cost == "":
+	case cost == "None":
+		costJSON = json.RawMessage("null")
+	case json.Valid([]byte(cost)):
+		costJSON = json.RawMessage(cost)
+	default:
+		costJSON, _ = json.Marshal(cost)
+	}
+	withCost := func(usage json.RawMessage) json.RawMessage {
+		if costJSON == nil || len(usage) == 0 {
+			return usage
+		}
+		var u map[string]json.RawMessage
+		if json.Unmarshal(usage, &u) != nil {
+			return usage
+		}
+		u["cost"] = costJSON
+		out, _ := json.Marshal(u)
+		return out
+	}
+	frame := func(v any) string {
+		b, _ := json.Marshal(v)
+		return "data: " + string(b) + "\n\n"
+	}
+	if responses {
+		var resp map[string]json.RawMessage
+		if json.Unmarshal([]byte(body), &resp) == nil {
+			if u, ok := resp["usage"]; ok {
+				resp["usage"] = withCost(u)
+			}
+			return frame(map[string]any{"type": "response.completed", "response": resp}) + "data: [DONE]\n\n"
+		}
+	}
+	var chat struct {
+		Choices []struct {
+			Message struct {
+				Content   *string `json:"content"`
+				ToolCalls []struct {
+					ID       string `json:"id"`
+					Type     string `json:"type"`
+					Function struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls"`
+			} `json:"message"`
+			FinishReason *string `json:"finish_reason"`
+		} `json:"choices"`
+		Usage json.RawMessage `json:"usage"`
+	}
+	if json.Unmarshal([]byte(body), &chat) != nil || len(chat.Choices) == 0 {
+		return body
+	}
+	choice := chat.Choices[0]
+	delta := map[string]any{"role": "assistant"}
+	if choice.Message.Content != nil {
+		delta["content"] = *choice.Message.Content
+	}
+	if n := len(choice.Message.ToolCalls); n > 0 {
+		calls := make([]map[string]any, n)
+		for i, tc := range choice.Message.ToolCalls {
+			calls[i] = map[string]any{"index": i, "id": tc.ID, "type": "function",
+				"function": map[string]any{"name": tc.Function.Name, "arguments": tc.Function.Arguments}}
+		}
+		delta["tool_calls"] = calls
+	}
+	out := frame(map[string]any{"choices": []any{map[string]any{"index": 0, "delta": delta,
+		"finish_reason": choice.FinishReason}}})
+	if len(chat.Usage) > 0 {
+		out += frame(map[string]any{"choices": []any{}, "usage": withCost(chat.Usage)})
+	}
+	return out + "data: [DONE]\n\n"
 }
 
 // responsesBody is a Responses-protocol answer: a reasoning item, as
@@ -684,6 +772,7 @@ const plainProfile = `
     verified: source-derived
     max_tokens_param: max_tokens
     output: {json_object: true, json_schema: true, strict_schema: true}
+    streaming: {supported: true, accepts_stream_options: true}
     limits: {context: 128000, max_output: 16384}
   - id: noergler-budget
     display_name: noergler budget
@@ -698,6 +787,7 @@ const plainProfile = `
       budget_param: thinking_budget
       min_budget: 1024
     output: {json_object: true, json_schema: true, strict_schema: true}
+    streaming: {supported: true, accepts_stream_options: true}
     limits: {context: 128000, max_output: 16384}
   - id: noergler-optin-budget
     display_name: noergler opt-in budget
@@ -712,6 +802,7 @@ const plainProfile = `
       budget_param: thinking_budget
       min_budget: 1024
     output: {json_object: true, json_schema: true, strict_schema: true}
+    streaming: {supported: true, accepts_stream_options: true}
     limits: {context: 128000, max_output: 16384}
   - id: noergler-optin
     display_name: noergler opt-in
@@ -725,6 +816,7 @@ const plainProfile = `
       control: effort
       effort_values: [none, low, high]
     output: {json_object: true, json_schema: true, strict_schema: true}
+    streaming: {supported: true, accepts_stream_options: true}
     limits: {context: 128000, max_output: 16384}
   - id: noergler-wide
     display_name: noergler wide
@@ -739,6 +831,7 @@ const plainProfile = `
       effort_values: [none, low, medium, high]
       balanced: medium
     output: {json_object: true, json_schema: true, strict_schema: true}
+    streaming: {supported: true, accepts_stream_options: true}
     limits: {context: 1050000, max_output: 128000}
   - id: noergler-tight
     display_name: noergler tight
@@ -753,6 +846,7 @@ const plainProfile = `
       effort_values: [none, low, medium, high]
       balanced: medium
     output: {json_object: true, json_schema: true, strict_schema: true}
+    streaming: {supported: true, accepts_stream_options: true}
     limits: {context: 1000000, max_output: 128000}
   - id: noergler-nolimit
     display_name: noergler no limit
@@ -767,6 +861,7 @@ const plainProfile = `
       effort_values: [none, low, medium, high]
       balanced: medium
     output: {json_object: true, json_schema: true, strict_schema: true}
+    streaming: {supported: true, accepts_stream_options: true}
 `
 
 // wideModel's input (context less max output) clears the window floor;

@@ -211,7 +211,8 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps, open
 			llm.Label(), inference.FormatUSD3(*pc.NanoUSD)))
 	} else {
 		d.Log.WarnContext(ctx, fmt.Sprintf("Model %s is not priced by the gateway "+
-			"(no usable cost on the ping): summaries will carry no cost and the "+
+			"(no usable cost on the ping; a stream carries it only with LiteLLM's "+
+			"include_cost_in_streaming_usage): summaries will carry no cost and the "+
 			"per-PR cost cap never applies", llm.Label()))
 	}
 

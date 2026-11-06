@@ -240,7 +240,8 @@ func TestWarningLines(t *testing.T) {
 	}
 }
 
-// The cost header the gateway sends must survive as a priced call end to end.
+// The cost the gateway reports on a stream's usage must survive as a priced
+// call end to end.
 func TestCostFromLiveResponse(t *testing.T) {
 	const alias = "gateway-alias"
 	f := &fakeGateway{costHeader: "0.0000925"}
@@ -257,7 +258,7 @@ func TestCostFromLiveResponse(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	resp, _, err := c.wire.Chat(context.Background(), llmwire.ChatRequest{
+	resp, _, err := c.chat(context.Background(), llmwire.ChatRequest{
 		Model:     testProfile,
 		Reasoning: llmwire.ReasoningBalanced(),
 		Messages:  []llmwire.Message{llmwire.User("hi")},

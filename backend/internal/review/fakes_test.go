@@ -3,12 +3,15 @@ package review
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/trick77/toolkit/llmwire"
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/config"
@@ -832,10 +835,16 @@ func (f *fakeLLM) Ready() bool           { return f.ready }
 func (f *fakeLLM) ContextWindow() int    { return f.window }
 func (f *fakeLLM) InputTokenBudget() int { return f.budget }
 
-// CallTimeout is the production default, so the notice tests read "5
-// minutes" unless a test sets its own.
-func (f *fakeLLM) CallTimeout() time.Duration {
-	if f.timeout != 0 {
+// TimeoutOf is the production client's rule: a stream bound when its
+// sentinel is in err, else the call cap, the production default unless a
+// test sets its own.
+func (f *fakeLLM) TimeoutOf(err error) time.Duration {
+	switch {
+	case errors.Is(err, llmwire.ErrStreamIdle):
+		return inference.IdleTimeout
+	case errors.Is(err, llmwire.ErrNoResponseHeaders):
+		return inference.HeaderTimeout
+	case f.timeout != 0:
 		return f.timeout
 	}
 	return config.DefaultCallTimeout

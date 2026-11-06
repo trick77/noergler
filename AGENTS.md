@@ -50,8 +50,9 @@ decision, not a cleanup.
   `text/template`.
 - RE2 classes are ASCII: write Unicode-aware patterns (INVARIANTS: adapters).
 - Webhook check order is fixed; do not tidy it (INVARIANTS: webhook).
-- Models are llmwire profile ids in config, never in code. `Chat` only, never
-  streaming, never retry, never `ReasoningMinimal()`.
+- Models are llmwire profile ids in config, never in code. `ChatStream` only
+  (gateway cuts a silent call at 300 s; user, 2026-11-06), never retry, never
+  `ReasoningMinimal()`.
 - Bitbucket: never `Client.Timeout`, never follow redirects.
 - Never edit an applied migration. `serve` never migrates.
 - `team_disabled`, `team_ready`, `teams_ready` are alerted on: never reword.

@@ -14,10 +14,11 @@ import (
 
 // answer is the one call a mention and a finding reply share: the fit
 // pre-flight, the guarded system message, an optional strict schema, no
-// retry. A non-OK outcome carries no response.
-func (c *Client) answer(ctx context.Context, prompt string, promptTokens int, format *llmwire.ResponseFormat) (*llmwire.ChatResponse, Outcome, error) {
+// retry. The cost is the call's; a non-OK outcome carries no response, and
+// its cost is what a cut stream was paid (the zero CallCost when nothing was).
+func (c *Client) answer(ctx context.Context, prompt string, promptTokens int, format *llmwire.ResponseFormat) (*llmwire.ChatResponse, CallCost, Outcome, error) {
 	if err := c.tooLarge(promptTokens); err != nil {
-		return nil, OutcomeTooLarge, err
+		return nil, CallCost{}, OutcomeTooLarge, err
 	}
 	chat := llmwire.ChatRequest{
 		Model:     c.model,
@@ -30,11 +31,11 @@ func (c *Client) answer(ctx context.Context, prompt string, promptTokens int, fo
 	if format != nil {
 		chat.ResponseFormat = *format
 	}
-	resp, _, err := c.wire.Chat(ctx, chat)
+	resp, warnings, err := c.chat(ctx, chat)
 	if err != nil {
-		return nil, classifyCallError(ctx, err), err
+		return nil, paid(resp, warnings), classifyCallError(ctx, err), err
 	}
-	return resp, OutcomeOK, nil
+	return resp, costOf(resp, warnings), OutcomeOK, nil
 }
 
 // Placeholders of the finding-reply template, beside the shared
@@ -222,11 +223,11 @@ type FindingReplyResult struct {
 // schema, no retry, like a mention.
 func (c *Client) FindingReply(ctx context.Context, req FindingReplyRequest) FindingReplyResult {
 	format := findingReplyFormat()
-	resp, outcome, err := c.answer(ctx, req.Prompt, req.PromptTokens, &format)
+	resp, cost, outcome, err := c.answer(ctx, req.Prompt, req.PromptTokens, &format)
 	if outcome != OutcomeOK {
-		return FindingReplyResult{Outcome: outcome, Err: err}
+		return FindingReplyResult{Outcome: outcome, Cost: cost, Err: err}
 	}
-	out := FindingReplyResult{Cost: CostFrom(resp)}
+	out := FindingReplyResult{Cost: cost}
 	reply, ok := ParseFindingReply(resp.Content)
 	if !ok {
 		out.Outcome = OutcomeUnparseable

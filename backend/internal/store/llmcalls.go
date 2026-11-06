@@ -44,6 +44,8 @@ type LLMCall struct {
 	// KeySpendNanoUSD is a gauge of the whole key: shown, never summed.
 	KeySpendNanoUSD *int64
 
+	// HeadersMS is the wait for the first byte since every call streams
+	// (2026-11-06), the whole call before; TotalMS is the model's time.
 	HeadersMS *int64
 	TotalMS   *int64
 	Warnings  []string

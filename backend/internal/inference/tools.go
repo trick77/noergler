@@ -42,7 +42,7 @@ const toolCapResult = `{"error": "too many tool calls in one turn; answer with w
 
 // mentionWithTools is Mention's loop: up to MaxToolRounds rounds with the
 // tools on offer, then one asking for none, which forces a text answer. Each round
-// is a full Chat with the whole history; there is no streaming.
+// is a full streamed call with the whole history.
 func (c *Client) mentionWithTools(ctx context.Context, req MentionRequest) MentionResult {
 	if err := c.tooLarge(req.PromptTokens); err != nil {
 		return MentionResult{Outcome: OutcomeTooLarge, Err: err}
@@ -71,16 +71,20 @@ func (c *Client) mentionWithTools(ctx context.Context, req MentionRequest) Menti
 		if final {
 			chat.ToolChoice = llmwire.ToolChoice{Mode: llmwire.ToolChoiceNone}
 		}
-		resp, _, err := c.wire.Chat(ctx, chat)
+		resp, warnings, err := c.chat(ctx, chat)
 		if err != nil {
-			// The rounds before were billed: their total stands.
+			// The rounds before were billed: their total stands, and so does
+			// this one's when its stream was cut after the usage.
+			if cost := paid(resp, warnings); cost.Answered {
+				res.Rounds = append(res.Rounds, cost)
+			}
 			res.Outcome, res.Err, res.Cost = classifyCallError(ctx, err), err, SumCosts(res.Rounds)
 			// Past the first round the PR fitted: what overflowed is the
 			// tool history, and "the PR is too large" would be untrue.
 			res.ToolOverflow = res.Outcome == OutcomeTooLarge && round > 0
 			return res
 		}
-		res.Rounds = append(res.Rounds, CostFrom(resp))
+		res.Rounds = append(res.Rounds, costOf(resp, warnings))
 		if len(resp.ToolCalls) == 0 || final {
 			res.Outcome = OutcomeOK
 			// A stray </think> was seen after a multi-turn tool history

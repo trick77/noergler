@@ -19,13 +19,13 @@ func TestQueue_Defaults(t *testing.T) {
 }
 
 func TestQueue_CallTimeout(t *testing.T) {
-	if got := newEnv(t).mustLoad().Queue.InferenceCallTimeout; got != 5*time.Minute {
-		t.Errorf("default InferenceCallTimeout = %v, want 5m", got)
+	if got := newEnv(t).mustLoad().Queue.InferenceCallTimeout; got != 10*time.Minute {
+		t.Errorf("default InferenceCallTimeout = %v, want 10m", got)
 	}
 	e := newEnv(t)
-	e.set("REVIEW_INFERENCE_CALL_TIMEOUT", "10m")
-	if got := e.mustLoad().Queue.InferenceCallTimeout; got != 10*time.Minute {
-		t.Errorf("InferenceCallTimeout = %v, want 10m", got)
+	e.set("REVIEW_INFERENCE_CALL_TIMEOUT", "15m")
+	if got := e.mustLoad().Queue.InferenceCallTimeout; got != 15*time.Minute {
+		t.Errorf("InferenceCallTimeout = %v, want 15m", got)
 	}
 	// A bare number has no unit; under a minute the notices would post
 	// "0 minutes". Both fail at load and name the variable.

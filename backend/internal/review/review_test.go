@@ -5,11 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/trick77/toolkit/llmwire"
 
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/inference"
@@ -674,6 +677,26 @@ func TestFailureBannerDoesNotStack(t *testing.T) {
 	}
 	if !strings.Contains(body, "The original body.") {
 		t.Error("the original body must be preserved under the banner")
+	}
+}
+
+// A stream gone silent ends at the idle bound, and the notice says that bound,
+// not the call cap the review never reached.
+func TestTimeoutNoticeQuotesTheBoundThatFired(t *testing.T) {
+	h := newHarness(t, nil)
+	h.llm.review = inference.ReviewResult{
+		Outcome: inference.OutcomeTimedOut,
+		Review:  inference.ParsedReview{Summary: inference.NewReviewSummary()},
+		Err:     fmt.Errorf("llmwire: %w for 4m30s", llmwire.ErrStreamIdle),
+	}
+
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if len(h.bb.Posted) != 1 {
+		t.Fatalf("expected one notice, got %d posts", len(h.bb.Posted))
+	}
+	if body := h.bb.Posted[0].Text; !strings.Contains(body, "within 4 minutes") {
+		t.Errorf("notice = %q, want the 4-minute idle bound", body)
 	}
 }
 

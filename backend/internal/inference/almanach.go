@@ -374,8 +374,8 @@ type AlmanachNoteResult struct {
 
 // AlmanachNote continues the review conversation by one turn: the same
 // system message and prompt, the model's review answer as the assistant
-// turn, then the note instruction. One call, a strict schema, no retry,
-// never streaming, like every other call.
+// turn, then the note instruction. One streamed call, a strict schema, no
+// retry, like every other call.
 //
 // Whether the gateway's prefix cache serves the replayed turns under the
 // note's own response_format is not known from here: cache_read_tokens on
@@ -395,12 +395,11 @@ func (c *Client) AlmanachNote(ctx context.Context, req AlmanachNoteRequest) Alma
 		},
 		ResponseFormat: almanachNoteFormat(),
 	}
-	resp, warnings, err := c.wire.Chat(ctx, chat)
+	resp, warnings, err := c.chat(ctx, chat)
 	if err != nil {
-		return AlmanachNoteResult{Outcome: classifyCallError(ctx, err), Err: err}
+		return AlmanachNoteResult{Outcome: classifyCallError(ctx, err), Cost: paid(resp, warnings), Err: err}
 	}
-	out := AlmanachNoteResult{Cost: CostFrom(resp)}
-	out.Cost.Warnings = WarningLines(warnings)
+	out := AlmanachNoteResult{Cost: costOf(resp, warnings)}
 	if resp.FinishReason == "length" {
 		out.Outcome, out.Cut = OutcomeUnparseable, true
 		return out
