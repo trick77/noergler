@@ -157,6 +157,9 @@ func Summary(in SummaryInput) string {
 	if in.Lang != lang.EN {
 		in = swissInput(in)
 	}
+	if labels := CriterionLabels(in.Ticket, in.ParentTicket); len(labels) > 0 {
+		in = mapProse(in, func(s string) string { return spanLabels(s, labels) })
+	}
 	var sections []string
 	p := in.Lang.Pick
 
@@ -218,19 +221,7 @@ func Summary(in SummaryInput) string {
 // swissInput is in with SwissSS applied to every text the model wrote, on
 // copies: the caller's findings are stored as they came.
 func swissInput(in SummaryInput) SummaryInput {
-	s := in.Summary
-	s.Overview = lang.SwissSS(s.Overview)
-	s.LatestPush = lang.SwissSS(s.LatestPush)
-	s.SecurityPerformance = lang.SwissSS(s.SecurityPerformance)
-	s.TestCoverage = lang.SwissSS(s.TestCoverage)
-	s.VerdictRationale = lang.SwissSS(s.VerdictRationale)
-	s.Strengths = make([]string, len(in.Summary.Strengths))
-	for i, v := range in.Summary.Strengths {
-		s.Strengths[i] = lang.SwissSS(v)
-	}
-	in.Summary = s
-	in.Findings = swissFindings(in.Findings)
-	in.EarlierOpen = swissFindings(in.EarlierOpen)
+	in = mapProse(in, lang.SwissSS)
 	reqs := make([]inference.ComplianceRequirement, len(in.ComplianceRequirements))
 	for i, r := range in.ComplianceRequirements {
 		r.Requirement = lang.SwissSS(r.Requirement)
@@ -239,9 +230,28 @@ func swissInput(in SummaryInput) SummaryInput {
 	if in.ComplianceRequirements != nil {
 		in.ComplianceRequirements = reqs
 	}
+	return in
+}
+
+// mapProse is in with f applied to the model's prose, on copies. Requirement
+// lines are left out: each caller treats them on its own.
+func mapProse(in SummaryInput, f func(string) string) SummaryInput {
+	s := in.Summary
+	s.Overview = f(s.Overview)
+	s.LatestPush = f(s.LatestPush)
+	s.SecurityPerformance = f(s.SecurityPerformance)
+	s.TestCoverage = f(s.TestCoverage)
+	s.VerdictRationale = f(s.VerdictRationale)
+	s.Strengths = make([]string, len(in.Summary.Strengths))
+	for i, v := range in.Summary.Strengths {
+		s.Strengths[i] = f(v)
+	}
+	in.Summary = s
+	in.Findings = mapFindings(in.Findings, f)
+	in.EarlierOpen = mapFindings(in.EarlierOpen, f)
 	visual := make([]VisualLine, len(in.Visual))
 	for i, v := range in.Visual {
-		v.Text = lang.SwissSS(v.Text)
+		v.Text = f(v.Text)
 		visual[i] = v
 	}
 	in.Visual = visual
@@ -367,13 +377,13 @@ func VisualFoldKey(text string) string {
 // the rest, so one shared sentence never drags a wall of paths behind it.
 const maxFoldedNames = 3
 
-// swissFindings copies findings with SwissSS applied to their prose.
-func swissFindings(in []inference.ReviewFinding) []inference.ReviewFinding {
+// mapFindings copies findings with fn applied to their prose.
+func mapFindings(in []inference.ReviewFinding, fn func(string) string) []inference.ReviewFinding {
 	out := make([]inference.ReviewFinding, len(in))
 	for i, f := range in {
-		f.Comment = lang.SwissSS(f.Comment)
+		f.Comment = fn(f.Comment)
 		if f.Headline != nil {
-			h := lang.SwissSS(*f.Headline)
+			h := fn(*f.Headline)
 			f.Headline = &h
 		}
 		out[i] = f
@@ -574,7 +584,7 @@ func renderTicket(in SummaryInput) string {
 	}
 
 	if hasCompliance {
-		labels := criterionLabels(ticketCriteria(in)...)
+		labels := CriterionLabels(in.Ticket, in.ParentTicket)
 		for _, r := range reqs {
 			mark := "❌"
 			if r.Met {
@@ -606,16 +616,6 @@ func renderTicket(in SummaryInput) string {
 			"_No acceptance criteria are verifiable from code changes_")
 	}
 	return strings.Join(append(lines, reason), "\n")
-}
-
-// ticketCriteria is the acceptance criteria the requirements were read from:
-// the ticket's and, for a subtask, its parent's, where they often live.
-func ticketCriteria(in SummaryInput) []string {
-	ac := []string{in.Ticket.AcceptanceCriteria}
-	if in.ParentTicket != nil {
-		ac = append(ac, in.ParentTicket.AcceptanceCriteria)
-	}
-	return ac
 }
 
 func renderRecommendation(in SummaryInput) string {

@@ -2,7 +2,11 @@ package render
 
 import (
 	"slices"
+	"strings"
 	"testing"
+
+	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/lang"
 )
 
 func TestLabelRequirement(t *testing.T) {
@@ -59,6 +63,20 @@ func TestLabelRequirement(t *testing.T) {
 				t.Errorf("labelRequirement(%q) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
+	}
+}
+
+// An inline comment spans the ticket's labels in its prose, never in the
+// suggested code; with no labels it is as it was.
+func TestInlineCommentSpansLabels(t *testing.T) {
+	code := "check(AK-1)"
+	f := inference.ReviewFinding{Severity: "issue", Comment: "AK-1 is not enforced.", Suggestion: &code}
+	want := "**Issue:** `AK-1` is not enforced.\n\n**Suggested change:**\n```suggestion\ncheck(AK-1)\n```"
+	if got := InlineComment(f, lang.EN, "AK-1"); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if got := InlineComment(f, lang.EN); !strings.HasPrefix(got, "**Issue:** AK-1 is") {
+		t.Errorf("no labels: got %q", got)
 	}
 }
 

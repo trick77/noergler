@@ -220,6 +220,8 @@ func summaryCases() map[string]SummaryInput {
 	tLabels.ComplianceRequirements = []inference.ComplianceRequirement{
 		{Requirement: "AK-1: Does X", Met: true}, {Requirement: "Does Y (AK-2)", Met: false},
 	}
+	tLabels.Summary.Overview = "Implements AK-1; AK-2 is still open, see ABC-1."
+	tLabels.Findings = []inference.ReviewFinding{finding("issue", "AK-2 is not enforced.", ptrs("AK-2 open"))}
 	cases["ticket_requirement_labels"] = tLabels
 
 	tNone := tFull

@@ -268,7 +268,9 @@ review's push sentence is not shown. Its sections, in order:
 6. Visual changes, only when the PR changed test screenshots (section 11c)
 7. Ticket or Requirement compliance. A requirement's criterion label from the
    ticket (`AK-1`) leads its line in a code span: bare, Bitbucket's Jira
-   integration links it as an issue key, to an issue that does not exist
+   integration links it as an issue key, to an issue that does not exist.
+   The model's prose elsewhere in the summary and in inline comments spans
+   the same labels in place
 8. Recommendation
 9. A footer: a bullet for each thing the author can act on (no AGENTS.md or
    one over its warn size, no ticket while Jira is on, files not reviewed or

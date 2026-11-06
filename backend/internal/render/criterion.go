@@ -6,6 +6,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/trick77/noergler/internal/jira"
 )
 
 // Bitbucket's Jira integration links every issue-key-shaped token in a
@@ -33,6 +35,18 @@ var (
 
 // bracketPairs are the wrappers a label may come in: "(AK-1)", "[AK-1]", "`AK-1`".
 const bracketPairs = "()[]``"
+
+// CriterionLabels is the criterion labels of a PR's ticket and, for a
+// subtask, its parent's, where the criteria often live. Either may be nil.
+func CriterionLabels(ticket, parent *jira.Ticket) []string {
+	var ac []string
+	for _, t := range []*jira.Ticket{ticket, parent} {
+		if t != nil {
+			ac = append(ac, t.AcceptanceCriteria)
+		}
+	}
+	return criterionLabels(ac...)
+}
 
 // criterionLabels is the label that starts each line of the acceptance
 // criteria, as the key it is linked as: "AK1", "AK 1" and "ak-1" are AK-1,

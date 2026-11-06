@@ -548,7 +548,8 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 	// 23. Post the inline comments. postedIDs is parallel to findings, with
 	// a zero where the post failed, so the count of successes is separate
 	// from the slice length.
-	postedIDs, postedCount, failed := r.postInlineComments(ctx, plan.lang, project, repo, plan.prID, findings)
+	labels := render.CriterionLabels(plan.ticket, plan.parentTicket)
+	postedIDs, postedCount, failed := r.postInlineComments(ctx, plan.lang, labels, project, repo, plan.prID, findings)
 	for i, id := range postedIDs {
 		if id == 0 {
 			plan.detail.Decisions = append(plan.detail.Decisions, decision(findings[i], "failed", ""))
@@ -1034,10 +1035,10 @@ func sortAndLimit(findings []inference.ReviewFinding, maxComments int) ([]infere
 // A failure is counted and logged but never stored: a finding row exists
 // only for a comment that is actually on the PR
 // (TestFailedInlineCommentIsNotStored).
-func (r *Reviewer) postInlineComments(ctx context.Context, l lang.Lang, project, repo string, prID int, findings []inference.ReviewFinding) (ids []int, posted, failed int) {
+func (r *Reviewer) postInlineComments(ctx context.Context, l lang.Lang, labels []string, project, repo string, prID int, findings []inference.ReviewFinding) (ids []int, posted, failed int) {
 	ids = make([]int, len(findings))
 	for i, f := range findings {
-		id, err := r.bitbucket.PostInlineComment(ctx, project, repo, prID, f.File, f.Line, render.InlineComment(f, l))
+		id, err := r.bitbucket.PostInlineComment(ctx, project, repo, prID, f.File, f.Line, render.InlineComment(f, l, labels...))
 		if err != nil {
 			failed++
 			r.log.ErrorContext(ctx, fmt.Sprintf("Failed to post inline comment on %s:%d: %v", f.File, f.Line, err))
