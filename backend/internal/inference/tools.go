@@ -84,7 +84,7 @@ func (c *Client) mentionWithTools(ctx context.Context, req MentionRequest) Menti
 			res.ToolOverflow = res.Outcome == OutcomeTooLarge && round > 0
 			return res
 		}
-		res.Rounds = append(res.Rounds, CostFrom(resp))
+		res.Rounds = append(res.Rounds, costOf(resp, warnings))
 		if len(resp.ToolCalls) == 0 || final {
 			res.Outcome = OutcomeOK
 			// A stray </think> was seen after a multi-turn tool history

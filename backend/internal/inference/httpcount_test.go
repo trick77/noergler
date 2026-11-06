@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/trick77/toolkit/llmwire"
+
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/httpstats"
 )
@@ -53,7 +55,7 @@ func TestInferenceRequestsAreCounted(t *testing.T) {
 // properties of its default are reproduced in countingClient and pinned here.
 // Mirrors llmwire's TestNew_DefaultHTTPClientHasNoWholeRequestTimeout.
 func TestCountingClientKeepsLLMWiresTimeoutShape(t *testing.T) {
-	c := countingClient()
+	c := countingClient(config.DefaultCallTimeout)
 
 	// A whole-request timeout would cut a slow completion body mid-read, the
 	// same reason Bitbucket's client must not carry one. The caller's ctx and
@@ -74,16 +76,53 @@ func TestCountingClientKeepsLLMWiresTimeoutShape(t *testing.T) {
 		t.Fatalf("wrapped transport is %T, want *http.Transport", wrapper.Unwrap())
 	}
 
-	// The backstop must sit exactly one headroom above the bound llmwire
-	// actually resolves, which for a stream is the HeaderTimeout the Config
-	// sets. Asserting merely "later than DefaultHeaderTimeout" is what once
-	// let the backstop land at 90s while the guard was at 300s: the transport
-	// then won the race and every review slower than 90s failed with
-	// net/http's generic error instead of ErrNoResponseHeaders.
-	if want := HeaderTimeout + headerBackstopHeadroom; tr.ResponseHeaderTimeout != want {
-		t.Errorf("ResponseHeaderTimeout = %v, want %v (HeaderTimeout + headroom), "+
+	// The backstop must sit exactly one headroom above the largest bound
+	// llmwire arms on this client: HeaderTimeout on a stream, the call cap on
+	// the non-streaming model listing. Asserting merely "later than
+	// DefaultHeaderTimeout" is what once let the backstop land at 90s while the
+	// guard was at 300s: the transport then won the race and every review
+	// slower than 90s failed with net/http's generic error instead of
+	// ErrNoResponseHeaders.
+	if want := config.DefaultCallTimeout + headerBackstopHeadroom; tr.ResponseHeaderTimeout != want {
+		t.Errorf("ResponseHeaderTimeout = %v, want %v (call cap + headroom), "+
 			"so llmwire's guard reports the timeout under its own name",
 			tr.ResponseHeaderTimeout, want)
+	}
+}
+
+// The backstop follows the larger bound either way: a configured cap above
+// the stream bound moves it, one below leaves it on HeaderTimeout.
+func TestCountingClientBackstopFollowsTheLargerBound(t *testing.T) {
+	for _, tc := range []struct{ timeout, want time.Duration }{
+		{15 * time.Minute, 15*time.Minute + headerBackstopHeadroom},
+		{time.Minute, HeaderTimeout + headerBackstopHeadroom},
+	} {
+		wrapper, ok := countingClient(tc.timeout).Transport.(interface{ Unwrap() http.RoundTripper })
+		if !ok {
+			t.Fatal("client transport does not expose the wrapped transport")
+		}
+		if got := wrapper.Unwrap().(*http.Transport).ResponseHeaderTimeout; got != tc.want {
+			t.Errorf("cap %v: ResponseHeaderTimeout = %v, want %v", tc.timeout, got, tc.want)
+		}
+	}
+}
+
+// A notice quotes the bound that fired: a stream's own bound when its
+// sentinel is in the error, the call cap otherwise.
+func TestTimeoutOfNamesTheBoundThatFired(t *testing.T) {
+	c := &Client{timeout: 10 * time.Minute}
+	for _, tc := range []struct {
+		err  error
+		want time.Duration
+	}{
+		{llmwire.ErrStreamIdle, IdleTimeout},
+		{llmwire.ErrNoResponseHeaders, HeaderTimeout},
+		{llmwire.ErrCallCap, 10 * time.Minute},
+		{nil, 10 * time.Minute},
+	} {
+		if got := c.TimeoutOf(tc.err); got != tc.want {
+			t.Errorf("TimeoutOf(%v) = %v, want %v", tc.err, got, tc.want)
+		}
 	}
 }
 

@@ -399,8 +399,7 @@ func (c *Client) AlmanachNote(ctx context.Context, req AlmanachNoteRequest) Alma
 	if err != nil {
 		return AlmanachNoteResult{Outcome: classifyCallError(ctx, err), Cost: paid(resp, warnings), Err: err}
 	}
-	out := AlmanachNoteResult{Cost: CostFrom(resp)}
-	out.Cost.Warnings = WarningLines(warnings)
+	out := AlmanachNoteResult{Cost: costOf(resp, warnings)}
 	if resp.FinishReason == "length" {
 		out.Outcome, out.Cut = OutcomeUnparseable, true
 		return out

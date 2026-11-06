@@ -294,7 +294,8 @@ type replyJob struct {
 func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 	defer r.logHTTPTotals(ctx, j.prTag, j.counter)
 	res := j.res
-	if res.Outcome == inference.OutcomeOK || res.Outcome == inference.OutcomeUnparseable {
+	// An answer, or a stream cut after its usage: either was billed.
+	if res.Cost.Answered {
 		r.logCost(ctx, j.prTag, res.Cost)
 	}
 	// Billed whether or not it is posted: the PR's cost counts it.

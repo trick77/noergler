@@ -15,12 +15,13 @@ import (
 	"github.com/trick77/noergler/internal/store"
 )
 
-// timeoutMinutes is the client's call cap in whole minutes, rounded down, as
-// the notices phrase it. Down, never up: "no response within 1 minute" holds
-// for a call cut at 90s, "within 2 minutes" would not. Config floors the cap
-// at one minute, so this is never 0.
-func timeoutMinutes(llm InferenceClient) int {
-	return int(llm.CallTimeout() / time.Minute)
+// timeoutMinutes is the bound that fired (InferenceClient.TimeoutOf) in whole
+// minutes, rounded down, as the notices phrase it. Down, never up: "no
+// response within 1 minute" holds for a call cut at 90s, "within 2 minutes"
+// would not. Config floors the cap at one minute and the stream bounds are
+// above it, so this is never 0.
+func timeoutMinutes(d time.Duration) int {
+	return int(d / time.Minute)
 }
 
 // postOrUpdateSummary posts a new summary comment or updates the existing
@@ -177,7 +178,7 @@ func (r *Reviewer) repostOtherAuthors(ctx context.Context, project, repo string,
 // failureNoticeFor surfaces a run that produced no review on the summary
 // comment: a timeout, a refused or unparseable answer, or a PR over the
 // context window. Any other outcome posts nothing.
-func (r *Reviewer) failureNoticeFor(ctx context.Context, outcome inference.Outcome, l lang.Lang, project, repo string, prID int, prReviewID int64, newCommit, priorCommit string) {
+func (r *Reviewer) failureNoticeFor(ctx context.Context, outcome inference.Outcome, timeout time.Duration, l lang.Lang, project, repo string, prID int, prReviewID int64, newCommit, priorCommit string) {
 	short := shortOrUnknown(newCommit, l)
 	bot := r.bitbucket.BotUsername()
 	var fresh, lead, label string
@@ -188,9 +189,9 @@ func (r *Reviewer) failureNoticeFor(ctx context.Context, outcome inference.Outco
 				"Das Review wurde nicht abgeschlossen. Neuen Commit pushen oder `@%s` für einen neuen Versuch.",
 			"⚠️ **Review skipped** — no response from the model within %d minutes for commit `%s`. "+
 				"The review did not complete. Push a new commit or `@%s` to retry."),
-			timeoutMinutes(r.llm), short, bot)
+			timeoutMinutes(timeout), short, bot)
 		lead = fmt.Sprintf(l.Pick("Keine Antwort vom Modell innerhalb von %d Minuten auf Commit `%s`",
-			"No response from the model within %d minutes on commit `%s`"), timeoutMinutes(r.llm), short)
+			"No response from the model within %d minutes on commit `%s`"), timeoutMinutes(timeout), short)
 		label = "timeout notice"
 	case inference.OutcomeUnparseable:
 		fresh = fmt.Sprintf(l.Pick(

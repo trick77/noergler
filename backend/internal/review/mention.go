@@ -233,8 +233,8 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 	// with an answer to post: a failed loop leaves the language alone.
 	l := j.lang
 	// One line and one row per call, and only when one happened: the
-	// too-large branch decides before any request, and a transport error
-	// returns with no cost. A tool loop logs its total too; the rows sum to
+	// too-large branch decides before any request, and a failed call is a
+	// round only when its stream was billed. A tool loop logs its total too; the rows sum to
 	// it, so the total itself is never stored.
 	for _, c := range result.Rounds {
 		r.logCost(ctx, prTag, c)
@@ -267,13 +267,14 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 	// filter nobody asked for. The Q&A reports itself in the log, as before.
 	switch result.Outcome {
 	case inference.OutcomeTimedOut:
+		timeout := r.llm.TimeoutOf(result.Err)
 		r.log.ErrorContext(ctx, fmt.Sprintf("Mention Q&A on %s aborted - no response within %.0fs",
-			prTag, r.llm.CallTimeout().Seconds()))
+			prTag, timeout.Seconds()))
 		r.reply(ctx, project, repo, prID, replyTo, fmt.Sprintf(l.Pick(
 			"⚠️ Keine Antwort vom Modell innerhalb von %d Minuten. Bitte nochmals versuchen, oder die Frage "+
 				"vereinfachen, falls sie viel Kontext braucht.",
 			"⚠️ No response from the model within %d minutes. Please try again, or simplify the question "+
-				"if it requires a lot of context."), timeoutMinutes(r.llm)))
+				"if it requires a lot of context."), timeoutMinutes(timeout)))
 	case inference.OutcomeTooLarge:
 		r.log.WarnContext(ctx, prTag+": mention prompt too large for the model's context window")
 		reply := inference.MentionTooLargeReply(l)

@@ -229,8 +229,7 @@ func (c *Client) Review(ctx context.Context, req ReviewRequest) ReviewResult {
 		}
 	}
 
-	out := ReviewResult{Review: ParseReview(resp.Content), Cost: CostFrom(resp), Raw: resp.Content}
-	out.Cost.Warnings = WarningLines(warnings)
+	out := ReviewResult{Review: ParseReview(resp.Content), Cost: costOf(resp, warnings), Raw: resp.Content}
 	// The parser is pure, so its operator-facing lines surface here, where the
 	// caller's context carries team and pr_tag. Emitting them inside the
 	// parser would leave them unbound.

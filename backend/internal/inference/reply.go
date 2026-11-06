@@ -35,7 +35,7 @@ func (c *Client) answer(ctx context.Context, prompt string, promptTokens int, fo
 	if err != nil {
 		return nil, paid(resp, warnings), classifyCallError(ctx, err), err
 	}
-	return resp, CostFrom(resp), OutcomeOK, nil
+	return resp, costOf(resp, warnings), OutcomeOK, nil
 }
 
 // Placeholders of the finding-reply template, beside the shared

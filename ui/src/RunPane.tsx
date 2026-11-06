@@ -168,9 +168,11 @@ export function RunPane({ token, n }: { token: string; n: number }) {
         <Tiles>
           <Tile label={t("run.cost")} value={money(d.cost_usd ?? null)} />
           <Tile label={t("run.elapsed")} value={duration(d.elapsed_ms)}>
-            {call?.headers_ms != null && (
+            {/* total, not headers: a stream's headers come with the first
+                byte, so headers_ms is no longer the model's time. */}
+            {call?.total_ms != null && (
               <div className="mt-0.5 text-[12px] text-faint">
-                {t("run.inModel", { time: duration(call.headers_ms) })}
+                {t("run.inModel", { time: duration(call.total_ms) })}
               </div>
             )}
           </Tile>
