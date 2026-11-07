@@ -2,6 +2,7 @@ package jira
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -142,23 +143,35 @@ func TestFetchTicketNotFound(t *testing.T) {
 	}
 }
 
-// Nor is a Jira that is down, or one that rejects the read.
-func TestFetchTicketAPIErrorIsSwallowed(t *testing.T) {
-	_, c := newFake(t, jsonReply(500, `{"errorMessages":["boom"]}`))
+// Nor is a ticket the user may not see: per-issue permissions, not Jira down.
+func TestFetchTicketForbiddenIsNotReadable(t *testing.T) {
+	_, c := newFake(t, jsonReply(403, `{"errorMessages":["no permission"]}`))
 	got, err := c.FetchTicket(context.Background(), "SEP-1")
 	if err != nil || got != nil {
 		t.Fatalf("got (%v, %v), want (nil, nil)", got, err)
 	}
 }
 
-func TestFetchTicketConnectionRefusedIsSwallowed(t *testing.T) {
+// A Jira that is down or rejects the token is unavailable, not "no ticket":
+// the summary says the check was skipped.
+func TestFetchTicketAPIErrorIsUnavailable(t *testing.T) {
+	for _, status := range []int{401, 500, 503} {
+		_, c := newFake(t, jsonReply(status, `{"errorMessages":["boom"]}`))
+		got, err := c.FetchTicket(context.Background(), "SEP-1")
+		if got != nil || !errors.Is(err, ErrUnavailable) {
+			t.Fatalf("HTTP %d: got (%v, %v), want ErrUnavailable", status, got, err)
+		}
+	}
+}
+
+func TestFetchTicketConnectionRefusedIsUnavailable(t *testing.T) {
 	c, err := New(config.Jira{URL: "http://127.0.0.1:1", Token: "t"}, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
 	got, err := c.FetchTicket(context.Background(), "SEP-1")
-	if err != nil || got != nil {
-		t.Fatalf("got (%v, %v), want (nil, nil): a refused connection is not a review failure", got, err)
+	if got != nil || !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("got (%v, %v), want ErrUnavailable", got, err)
 	}
 }
 

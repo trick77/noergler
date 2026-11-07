@@ -254,8 +254,8 @@ func TestReviewWithoutTicketKeySkipsJira(t *testing.T) {
 	}
 }
 
-// A Jira failure is not a review failure: the key came off a branch name and
-// may be noise, so the review proceeds without a ticket block.
+// A Jira failure is not a review failure: the review proceeds without a
+// ticket block and the summary says the check was skipped, not "no ticket".
 func TestReviewContinuesWhenJiraFails(t *testing.T) {
 	h := newHarness(t, func(h *harness) {
 		h.jr = &fakeJira{err: errors.New("jira is down")}
@@ -273,6 +273,13 @@ func TestReviewContinuesWhenJiraFails(t *testing.T) {
 		t.Error("prompt carries a ticket block after a failed lookup")
 	}
 	if len(h.bb.Posted) != 1 {
-		t.Errorf("expected the summary to be posted anyway, got %d", len(h.bb.Posted))
+		t.Fatalf("expected the summary to be posted anyway, got %d", len(h.bb.Posted))
+	}
+	summary := h.bb.Posted[0].Text
+	if !strings.Contains(summary, "Jira nicht erreichbar") && !strings.Contains(summary, "Jira unreachable") {
+		t.Errorf("summary does not say Jira was unreachable:\n%s", summary)
+	}
+	if strings.Contains(summary, "Kein Ticket") || strings.Contains(summary, "No ticket found") {
+		t.Errorf("summary claims no ticket while Jira was down:\n%s", summary)
 	}
 }

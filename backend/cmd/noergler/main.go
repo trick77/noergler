@@ -178,13 +178,15 @@ func serve(log *slog.Logger) error {
 		log.Info("Bitbucket: OK")
 	}
 
+	// Jira is shared but optional to a review: a malformed JIRA_URL aborts
+	// boot, a Jira that does not answer only warns. Reviews then skip the
+	// ticket check and say so in the summary; each review asks Jira afresh.
 	jr, err := jira.New(app.Jira, log)
-	if err == nil {
-		err = jr.CheckConnectivity(ctx)
-	}
 	if err != nil {
 		log.Error("Jira: " + err.Error())
 		checks = append(checks, "Jira")
+	} else if err = jr.CheckConnectivity(ctx); err != nil {
+		log.Warn("Jira: " + err.Error() + "; starting without it, reviews skip the ticket check until Jira answers")
 	} else {
 		log.Info("Jira: OK")
 	}

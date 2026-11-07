@@ -239,7 +239,7 @@ func (b *botSwitch) GetRepo(ctx context.Context, project, repo string) error {
 // jiraSwitch is the team's Jira client, swapped live like botSwitch.
 type jiraSwitch struct{ cur atomic.Pointer[jira.Client] }
 
-var errNoJira = errors.New("no usable Jira account")
+var errNoJira = fmt.Errorf("%w: no usable Jira account", jira.ErrUnavailable)
 
 func (j *jiraSwitch) FetchTicketWithParent(ctx context.Context, key string) (*jira.Ticket, *jira.Ticket, error) {
 	c := j.cur.Load()

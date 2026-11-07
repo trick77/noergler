@@ -86,6 +86,8 @@ type SummaryInput struct {
 	ComplianceExtractionFailed bool
 	TicketComplianceCheck      bool
 	JiraEnabled                bool
+	// JiraUnavailable: the PR names a ticket but Jira did not serve it.
+	JiraUnavailable bool
 
 	ElapsedSeconds  float64
 	ElapsedPresent  bool
@@ -649,7 +651,11 @@ func renderFootnote(in SummaryInput) string {
 	}
 	// Only when Jira is on: "Jira is not enabled" is true of every PR of the
 	// team and gives the author nothing to do.
-	if in.Ticket == nil && in.JiraEnabled {
+	switch {
+	case in.JiraUnavailable:
+		warn = append(warn, p("Jira nicht erreichbar, Ticket-Prüfung übersprungen ⚠️",
+			"Jira unreachable, ticket check skipped ⚠️"))
+	case in.Ticket == nil && in.JiraEnabled:
 		warn = append(warn, p("Kein Ticket in Branch-Name oder PR-Titel gefunden ℹ️",
 			"No ticket found in branch name or PR title ℹ️"))
 	}

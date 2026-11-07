@@ -237,6 +237,10 @@ func summaryCases() map[string]SummaryInput {
 	jiraOn := base()
 	jiraOn.JiraEnabled = true
 	cases["no_ticket_jira_enabled"] = jiraOn
+	jiraDown := base()
+	jiraDown.JiraEnabled = true
+	jiraDown.JiraUnavailable = true
+	cases["jira_unavailable"] = jiraDown
 	cases["no_ticket_jira_disabled"] = base()
 
 	for name, decision := range map[string]string{

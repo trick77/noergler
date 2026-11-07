@@ -174,8 +174,8 @@ func (c *Client) get(ctx context.Context, rawURL, path string, out any) error {
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-// CheckConnectivity proves the token works. Strict: this runs at startup and a
-// failure aborts boot.
+// CheckConnectivity proves the token works. It runs at startup; a failure
+// there is a warning, never an abort.
 func (c *Client) CheckConnectivity(ctx context.Context) error {
 	var me struct {
 		Name        string `json:"name"`
@@ -221,13 +221,18 @@ type issue struct {
 	} `json:"fields"`
 }
 
+// ErrUnavailable wraps a Jira that did not serve the call: refused, DNS, or a
+// status that is about Jira rather than the ticket. The review proceeds
+// without the ticket check and says so in the summary.
+var ErrUnavailable = errors.New("jira unavailable")
+
 // FetchTicket reads one ticket, or returns nil when it cannot be read.
 //
-// A missing ticket (404), an unreachable Jira and an API error all return
-// (nil, nil) with a log line: the ticket reference came out of a branch name and
-// may well be noise, so none of this is worth failing a review over. A timeout
-// or a malformed response does come back as an error, because it says the call
-// itself went wrong rather than the ticket being absent.
+// A missing ticket (404) or one the user may not see (403) returns (nil, nil):
+// the ticket reference came out of a branch name and may well be noise. A Jira
+// that is not there (refused, DNS) or answers any other non-2xx returns
+// ErrUnavailable, so the summary can say the check was skipped instead of "no
+// ticket". A timeout or a malformed response is an error of its own.
 func (c *Client) FetchTicket(ctx context.Context, ticketID string) (*Ticket, error) {
 	path := "/rest/api/2/issue/" + ticketID
 	rawURL := c.base + path + "?" + fieldsQuery
@@ -236,15 +241,11 @@ func (c *Client) FetchTicket(ctx context.Context, ticketID string) (*Ticket, err
 	err := c.get(ctx, rawURL, path, &got)
 	switch {
 	case err == nil:
-	case Status(err) == http.StatusNotFound:
-		c.log.InfoContext(ctx, "Jira ticket "+ticketID+" not found")
+	case Status(err) == http.StatusNotFound || Status(err) == http.StatusForbidden:
+		c.log.InfoContext(ctx, fmt.Sprintf("Jira ticket %s not readable (HTTP %d)", ticketID, Status(err)))
 		return nil, nil
-	case Status(err) != 0:
-		c.log.WarnContext(ctx, "Jira API error for ticket "+ticketID+": "+err.Error())
-		return nil, nil
-	case isConnectError(err):
-		c.log.WarnContext(ctx, "Failed to connect to Jira for ticket "+ticketID)
-		return nil, nil
+	case Status(err) != 0, isConnectError(err):
+		return nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	default:
 		return nil, err
 	}

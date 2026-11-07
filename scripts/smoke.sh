@@ -26,7 +26,8 @@ go build -C backend -o "$tmp/noergler" ./cmd/noergler
 # builds without a module.
 go build -o "$tmp/fakes" scripts/fakes/main.go
 
-# serve now checks Bitbucket and Jira at startup, so both have to answer.
+# serve checks Bitbucket at startup, so it has to answer. Jira down only
+# warns; the fake serves it so the review exercises the ticket path.
 fakes_port=${FAKES_PORT:-18099}
 "$tmp/fakes" -addr ":$fakes_port" > "$tmp/fakes.log" 2>&1 &
 fakes_pid=$!

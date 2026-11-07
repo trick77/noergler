@@ -160,7 +160,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	}
 
 	repoInstructions := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.Branch())
-	ticket, parent := r.fetchTicket(ctx, pr.FromRef.Branch(), pr.Title, prTag)
+	ticket, parent, _ := r.fetchTicket(ctx, pr.FromRef.Branch(), pr.Title, prTag)
 	name := firstName(r.displayName, comment.Author.DisplayName)
 	replied, byOther, parentName := r.parentComment(ctx, key, prTag, payload.CommentParentID, state, comment.Author.Name)
 	if byOther {
