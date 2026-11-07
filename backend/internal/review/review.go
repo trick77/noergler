@@ -257,7 +257,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	}
 
 	ticket, parentTicket, jiraDown := r.fetchTicket(ctx, pr.FromRef.Branch(), pr.Title, prTag)
-	ticketContext := renderTicketContext(ticket, parentTicket)
+	ticketContext := ticketContextFor(ticket, parentTicket, jiraDown)
 	prDescription := r.prDescription(ctx, prTag, pr)
 
 	// Not safeDB: its fallback "none" would post a PR summary with no
@@ -855,9 +855,24 @@ func (r *Reviewer) handleNonOK(ctx context.Context, l lang.Lang, result inferenc
 	})
 }
 
-// jiraUnavailableNote tells the Q&A model the PR's ticket exists but Jira did
-// not serve it, so it never answers as if no ticket were linked.
-const jiraUnavailableNote = "Jira was unavailable: the PR's ticket (or its parent) could not be read. Say so if the question needs it."
+// jiraUnavailableNote tells the model the PR names a ticket Jira did not
+// serve, so neither the review nor a Q&A answer reads it as "no ticket". It
+// sits in the untrusted ticket block, so it is a fact, never an instruction.
+const jiraUnavailableNote = "Jira was unavailable: the ticket this PR names (or its parent) could not be read."
+
+// ticketContextFor is the {ticket_context} value for both prompts.
+func ticketContextFor(ticket, parent *jira.Ticket, jiraDown bool) string {
+	ctx := renderTicketContext(ticket, parent)
+	if jiraDown {
+		ctx = strings.TrimSpace(ctx + "\n\n" + jiraUnavailableNote)
+	}
+	return ctx
+}
+
+// jiraLookupTimeout bounds one review's ticket lookup, child and parent
+// together. It runs on the team's Bitbucket worker: a blackholed Jira must
+// not hold every review for the client's 30 s per call. No retry.
+const jiraLookupTimeout = 10 * time.Second
 
 // fetchTicket resolves the Jira ticket for a PR, or nil when there is none.
 // jiraDown reports a key whose lookup failed: Jira unreachable, rejecting the
@@ -873,7 +888,9 @@ func (r *Reviewer) fetchTicket(ctx context.Context, branch, title, prTag string)
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: no Jira key in branch %q or title, reviewing without ticket context", prTag, branch))
 		return nil, nil, false
 	}
-	ticket, parent, err := r.jira.FetchTicketWithParent(ctx, id)
+	lctx, cancel := context.WithTimeout(ctx, jiraLookupTimeout)
+	defer cancel()
+	ticket, parent, err := r.jira.FetchTicketWithParent(lctx, id)
 	switch {
 	case err != nil && ctx.Err() != nil:
 		// The review was stopped mid-call, not Jira: no outage to report.

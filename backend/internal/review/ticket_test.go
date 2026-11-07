@@ -272,6 +272,9 @@ func TestReviewContinuesWhenJiraFails(t *testing.T) {
 	if strings.Contains(h.llm.Reviews[0].Prompt, "### Jira ticket") {
 		t.Error("prompt carries a ticket block after a failed lookup")
 	}
+	if !strings.Contains(h.llm.Reviews[0].Prompt, jiraUnavailableNote) {
+		t.Error("prompt does not tell the model Jira was unavailable")
+	}
 	if len(h.bb.Posted) != 1 {
 		t.Fatalf("expected the summary to be posted anyway, got %d", len(h.bb.Posted))
 	}

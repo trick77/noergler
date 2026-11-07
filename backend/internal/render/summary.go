@@ -609,6 +609,11 @@ func renderTicket(in SummaryInput) string {
 	switch {
 	case !in.TicketComplianceCheck:
 		reason = p("_Compliance-Prüfung in den Einstellungen deaktiviert_", "_Compliance check disabled in config_")
+	case in.Ticket.AcceptanceCriteria == "" && in.JiraUnavailable:
+		// The parent, where a subtask's criteria usually live, was never
+		// read: "none found" would be false.
+		reason = p("_Akzeptanzkriterien nicht geprüft: Jira lieferte das Parent-Ticket nicht_",
+			"_Acceptance criteria not checked: Jira did not serve the parent ticket_")
 	case in.Ticket.AcceptanceCriteria == "":
 		reason = p("_Keine Akzeptanzkriterien im Ticket gefunden_", "_No acceptance criteria found in ticket_")
 	case in.ComplianceExtractionFailed:

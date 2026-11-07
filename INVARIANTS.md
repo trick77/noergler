@@ -243,9 +243,11 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   while the last reviewed commit is still one of the PR's commits (exact SHA)
   and no merge commit lies in the range, else full.
 - Jira is never a boot or review blocker (user, 2026-11-07): down at startup
-  = warning; down in a review (refused, DNS, non-404/403 status, timeout) =
-  no ticket check, footer says so, never "no ticket", no retry. A 404/403
-  ticket is noise off a branch name: silent.
+  = warning (5 s probe); down in a review (refused, DNS, any non-404
+  status, timeout) = no ticket check, footer and prompt say so, never "no
+  ticket", no retry. Lookup bounded to 10 s: it runs on the worker. 404 is
+  noise off a branch name (Jira 404s hidden issues too): silent. 403 = the
+  account is refused, not the ticket.
 - RE2: `\w \b \d \s` are ASCII. Use `[\pL\pN_]`, `(?:^|[^\pL\pN_])`,
   `\p{Nd}`, `[\s\p{Zs}]`, and check both directions. No lookaround: write
   boundary chars back.

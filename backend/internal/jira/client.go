@@ -223,9 +223,10 @@ type issue struct {
 
 // FetchTicket reads one ticket, or returns nil when there is none to read.
 //
-// A missing ticket (404) or one the user may not see (403) returns (nil, nil):
-// the ticket reference came out of a branch name and may well be noise. Any
-// other failure (refused, DNS, timeout, another status, bad JSON) is Jira not
+// A missing ticket (404, which Jira also answers for an issue the user may not
+// see) returns (nil, nil): the ticket reference came out of a branch name and
+// may well be noise. Any other failure (refused, DNS, timeout, 401, 403 = the
+// account itself is refused or CAPTCHA-locked, 5xx, bad JSON) is Jira not
 // serving the call and comes back as an error, so the summary can say the
 // check was skipped instead of "no ticket".
 func (c *Client) FetchTicket(ctx context.Context, ticketID string) (*Ticket, error) {
@@ -236,8 +237,8 @@ func (c *Client) FetchTicket(ctx context.Context, ticketID string) (*Ticket, err
 	err := c.get(ctx, rawURL, path, &got)
 	switch {
 	case err == nil:
-	case Status(err) == http.StatusNotFound || Status(err) == http.StatusForbidden:
-		c.log.InfoContext(ctx, fmt.Sprintf("Jira ticket %s not readable (HTTP %d)", ticketID, Status(err)))
+	case Status(err) == http.StatusNotFound:
+		c.log.InfoContext(ctx, "Jira ticket "+ticketID+" not found")
 		return nil, nil
 	default:
 		return nil, err

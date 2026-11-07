@@ -161,12 +161,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 
 	repoInstructions := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.Branch())
 	ticket, parent, jiraDown := r.fetchTicket(ctx, pr.FromRef.Branch(), pr.Title, prTag)
-	ticketContext := renderTicketContext(ticket, parent)
-	if jiraDown {
-		// Without this the model reads "no ticket context" and may answer
-		// as if the PR named no ticket.
-		ticketContext = strings.TrimSpace(ticketContext + "\n\n" + jiraUnavailableNote)
-	}
+	ticketContext := ticketContextFor(ticket, parent, jiraDown)
 	name := firstName(r.displayName, comment.Author.DisplayName)
 	replied, byOther, parentName := r.parentComment(ctx, key, prTag, payload.CommentParentID, state, comment.Author.Name)
 	if byOther {

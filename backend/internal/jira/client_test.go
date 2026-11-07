@@ -142,19 +142,11 @@ func TestFetchTicketNotFound(t *testing.T) {
 	}
 }
 
-// Nor is a ticket the user may not see: per-issue permissions, not Jira down.
-func TestFetchTicketForbiddenIsNotReadable(t *testing.T) {
-	_, c := newFake(t, jsonReply(403, `{"errorMessages":["no permission"]}`))
-	got, err := c.FetchTicket(context.Background(), "SEP-1")
-	if err != nil || got != nil {
-		t.Fatalf("got (%v, %v), want (nil, nil)", got, err)
-	}
-}
-
-// A Jira that is down or rejects the token is an error, not "no ticket":
-// the summary says the check was skipped.
+// A Jira that is down or refuses the account is an error, not "no ticket":
+// the summary says the check was skipped. Jira answers an issue the user may
+// not see with 404, so a 403 is the account (no Browse, CAPTCHA lockout).
 func TestFetchTicketAPIErrorPropagates(t *testing.T) {
-	for _, status := range []int{401, 500, 503} {
+	for _, status := range []int{401, 403, 500, 503} {
 		_, c := newFake(t, jsonReply(status, `{"errorMessages":["boom"]}`))
 		got, err := c.FetchTicket(context.Background(), "SEP-1")
 		if got != nil || Status(err) != status {
