@@ -160,7 +160,8 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	}
 
 	repoInstructions := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.Branch())
-	ticket, parent := r.fetchTicket(ctx, pr.FromRef.Branch(), pr.Title, prTag)
+	ticket, parent, jiraDown := r.fetchTicket(ctx, pr.FromRef.Branch(), pr.Title, prTag)
+	ticketContext := ticketContextFor(ticket, parent, jiraDown)
 	name := firstName(r.displayName, comment.Author.DisplayName)
 	replied, byOther, parentName := r.parentComment(ctx, key, prTag, payload.CommentParentID, state, comment.Author.Name)
 	if byOther {
@@ -174,7 +175,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		Question:         question,
 		Files:            files,
 		RepoInstructions: repoInstructions,
-		TicketContext:    renderTicketContext(ticket, parent),
+		TicketContext:    ticketContext,
 		PRDescription:    r.prDescription(ctx, prTag, pr),
 		ParentComment:    replied,
 		AskerFirstName:   name,

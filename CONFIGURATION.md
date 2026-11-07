@@ -184,9 +184,11 @@ the service.**
 | Missing per-team secret env var | That team is disabled. |
 | `NOERGLER_SECRETS_KEY` missing, malformed, or not the key the stored team tokens were sealed with | Startup aborts. The key is shared layer. (A changed key with no team token stored yet only resets the key check.) |
 | A team's own Bitbucket token rejected, unreadable, or belonging to another account than its username | That team stays up and is **not** disabled: its webhooks are acknowledged and not processed, the Teams page shows the state, and the team heals itself by pushing a working token. No other team is affected. |
-| A team's own Jira token rejected or unreadable | The team's reviews run without the ticket check; the Teams page shows it. |
-| Database, Bitbucket or Jira unreachable at startup | Startup aborts, after reporting every failing check rather than only the first. |
-| Jira ticket unreadable during a review | Not an error. The key came off a branch name and may be noise. |
+| A team's own Jira token rejected or unreadable | The team's reviews run without the ticket check and the summary says so; the Teams page shows it. |
+| Database or Bitbucket unreachable at startup, or `JIRA_URL` malformed | Startup aborts, after reporting every failing check rather than only the first. |
+| Jira unreachable or rejecting the token at startup | A warning; startup goes on. |
+| Jira unreachable, failing or timing out during a review | The review runs without the ticket check (with the subtask alone when only its parent failed) and its summary says so. No retry: the next review asks Jira again. |
+| Jira ticket missing during a review (404, also what Jira answers for a ticket the account may not see) | Not an error. The key came off a branch name and may be noise. |
 | Gateway does not price a call | The review proceeds and the run is stored with a NULL cost. Cost fails open. |
 
 `teams_ready enabled=[...] disabled=[...]` is logged once at startup and is the

@@ -84,10 +84,13 @@ type reviewPlan struct {
 	contentSkipped []string
 	// oversized were kept out by the size gate; overBudget were left out of
 	// the prompt by compression (named to the model only).
-	oversized     []string
-	overBudget    []string
-	ticket        *jira.Ticket
-	parentTicket  *jira.Ticket
+	oversized    []string
+	overBudget   []string
+	ticket       *jira.Ticket
+	parentTicket *jira.Ticket
+	// jiraDown: the PR names a ticket but Jira did not serve it (or its
+	// parent), so the summary says the check was skipped or incomplete.
+	jiraDown      bool
 	agentsMDFound bool
 	// totalFiles is every reviewable changed file, size-gated ones included:
 	// the set diffAdded and diffRemoved count, and the run row stores. The

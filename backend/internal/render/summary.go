@@ -86,6 +86,9 @@ type SummaryInput struct {
 	ComplianceExtractionFailed bool
 	TicketComplianceCheck      bool
 	JiraEnabled                bool
+	// JiraUnavailable: the PR names a ticket but Jira did not serve it (or,
+	// with Ticket set, did not serve its parent).
+	JiraUnavailable bool
 
 	ElapsedSeconds  float64
 	ElapsedPresent  bool
@@ -606,6 +609,11 @@ func renderTicket(in SummaryInput) string {
 	switch {
 	case !in.TicketComplianceCheck:
 		reason = p("_Compliance-Prüfung in den Einstellungen deaktiviert_", "_Compliance check disabled in config_")
+	case in.Ticket.AcceptanceCriteria == "" && in.JiraUnavailable:
+		// The parent, where a subtask's criteria usually live, was never
+		// read: "none found" would be false.
+		reason = p("_Akzeptanzkriterien nicht geprüft: Jira lieferte das Parent-Ticket nicht_",
+			"_Acceptance criteria not checked: Jira did not serve the parent ticket_")
 	case in.Ticket.AcceptanceCriteria == "":
 		reason = p("_Keine Akzeptanzkriterien im Ticket gefunden_", "_No acceptance criteria found in ticket_")
 	case in.ComplianceExtractionFailed:
@@ -649,7 +657,16 @@ func renderFootnote(in SummaryInput) string {
 	}
 	// Only when Jira is on: "Jira is not enabled" is true of every PR of the
 	// team and gives the author nothing to do.
-	if in.Ticket == nil && in.JiraEnabled {
+	// "Unavailable", not "unreachable": a team's own token rejected or
+	// unreadable lands here too, with Jira itself up.
+	switch {
+	case in.JiraUnavailable && in.Ticket != nil:
+		warn = append(warn, p("Jira nicht verfügbar, Parent-Ticket nicht geprüft ⚠️",
+			"Jira unavailable, parent ticket not checked ⚠️"))
+	case in.JiraUnavailable:
+		warn = append(warn, p("Jira nicht verfügbar, Ticket-Prüfung übersprungen ⚠️",
+			"Jira unavailable, ticket check skipped ⚠️"))
+	case in.Ticket == nil && in.JiraEnabled:
 		warn = append(warn, p("Kein Ticket in Branch-Name oder PR-Titel gefunden ℹ️",
 			"No ticket found in branch name or PR title ℹ️"))
 	}

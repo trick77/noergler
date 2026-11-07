@@ -256,8 +256,8 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: cross-file context: %d relationship(s)", prTag, len(relationships)))
 	}
 
-	ticket, parentTicket := r.fetchTicket(ctx, pr.FromRef.Branch(), pr.Title, prTag)
-	ticketContext := renderTicketContext(ticket, parentTicket)
+	ticket, parentTicket, jiraDown := r.fetchTicket(ctx, pr.FromRef.Branch(), pr.Title, prTag)
+	ticketContext := ticketContextFor(ticket, parentTicket, jiraDown)
 	prDescription := r.prDescription(ctx, prTag, pr)
 
 	// Not safeDB: its fallback "none" would post a PR summary with no
@@ -404,6 +404,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		overBudget:     otherModified,
 		ticket:         ticket,
 		parentTicket:   parentTicket,
+		jiraDown:       jiraDown,
 		agentsMDFound:  repoInstructions != "",
 		totalFiles:     totalFiles,
 		diffAdded:      diffAdded,
@@ -612,6 +613,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 		ComplianceExtractionFailed: result.Review.ComplianceRequirements == nil,
 		TicketComplianceCheck:      r.cfg.TicketComplianceCheck,
 		JiraEnabled:                r.jiraEnabled(),
+		JiraUnavailable:            plan.jiraDown,
 		ElapsedSeconds:             elapsed.Seconds(),
 		ElapsedPresent:             true,
 		ReviewedCommit:             sourceCommit,
@@ -853,20 +855,52 @@ func (r *Reviewer) handleNonOK(ctx context.Context, l lang.Lang, result inferenc
 	})
 }
 
+// jiraUnavailableNote tells the model the PR names a ticket Jira did not
+// serve, so neither the review nor a Q&A answer reads it as "no ticket". It
+// sits in the untrusted ticket block, so it is a fact, never an instruction.
+const jiraUnavailableNote = "Jira was unavailable: the ticket this PR names (or its parent) could not be read."
+
+// ticketContextFor is the {ticket_context} value for both prompts.
+func ticketContextFor(ticket, parent *jira.Ticket, jiraDown bool) string {
+	ctx := renderTicketContext(ticket, parent)
+	if jiraDown {
+		ctx = strings.TrimSpace(ctx + "\n\n" + jiraUnavailableNote)
+	}
+	return ctx
+}
+
+// jiraLookupTimeout bounds one review's ticket lookup, child and parent
+// together. It runs on the team's Bitbucket worker: a blackholed Jira must
+// not hold every review for the client's 30 s per call. No retry.
+const jiraLookupTimeout = 10 * time.Second
+
 // fetchTicket resolves the Jira ticket for a PR, or nil when there is none.
-func (r *Reviewer) fetchTicket(ctx context.Context, branch, title, prTag string) (ticket, parent *jira.Ticket) {
+// jiraDown reports a key whose lookup failed: Jira unreachable, rejecting the
+// token, timing out, or the team's own token unusable. The review goes on
+// without the ticket check (or with the child alone when only its parent
+// failed) and the summary says so; no retry, the next review asks Jira again.
+func (r *Reviewer) fetchTicket(ctx context.Context, branch, title, prTag string) (ticket, parent *jira.Ticket, jiraDown bool) {
 	if !r.jiraEnabled() {
-		return nil, nil
+		return nil, nil, false
 	}
 	id := extractTicketID(branch, title)
 	if id == "" {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: no Jira key in branch %q or title, reviewing without ticket context", prTag, branch))
-		return nil, nil
+		return nil, nil, false
 	}
-	ticket, parent, err := r.jira.FetchTicketWithParent(ctx, id)
-	if err != nil {
-		r.log.WarnContext(ctx, fmt.Sprintf("%s: Jira lookup for %s failed: %v", prTag, id, err))
-		return nil, nil
+	lctx, cancel := context.WithTimeout(ctx, jiraLookupTimeout)
+	defer cancel()
+	ticket, parent, err := r.jira.FetchTicketWithParent(lctx, id)
+	switch {
+	case err != nil && ctx.Err() != nil:
+		// The review was stopped mid-call, not Jira: no outage to report.
+		return nil, nil, false
+	case err != nil && ticket != nil:
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: linked Jira ticket %s, its parent failed, reviewing without it: %v", prTag, id, err))
+		return ticket, nil, true
+	case err != nil:
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: Jira lookup for %s failed, reviewing without the ticket check: %v", prTag, id, err))
+		return nil, nil, true
 	}
 	if ticket != nil {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: linked Jira ticket %s", prTag, id))
@@ -874,7 +908,7 @@ func (r *Reviewer) fetchTicket(ctx context.Context, branch, title, prTag string)
 		// Not an error: the key came off a branch name and may be noise.
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: Jira ticket %s not readable, reviewing without ticket context", prTag, id))
 	}
-	return ticket, parent
+	return ticket, parent, false
 }
 
 // trimPreviouslyPosted caps the previously-posted block by count and then by

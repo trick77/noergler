@@ -242,7 +242,12 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - Incremental diff = PR `/diff?sinceId&untilId`, never `compare/diff`; only
   while the last reviewed commit is still one of the PR's commits (exact SHA)
   and no merge commit lies in the range, else full.
-- An unreadable Jira ticket is not an error; dial timeout and bad JSON are.
+- Jira is never a boot or review blocker (user, 2026-11-07): down at startup
+  = warning (5 s probe); down in a review (refused, DNS, any non-404
+  status, timeout) = no ticket check, footer and prompt say so, never "no
+  ticket", no retry. Lookup bounded to 10 s: it runs on the worker. 404 is
+  noise off a branch name (Jira 404s hidden issues too): silent. 403 = the
+  account is refused, not the ticket.
 - RE2: `\w \b \d \s` are ASCII. Use `[\pL\pN_]`, `(?:^|[^\pL\pN_])`,
   `\p{Nd}`, `[\s\p{Zs}]`, and check both directions. No lookaround: write
   boundary chars back.

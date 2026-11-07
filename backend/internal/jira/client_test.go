@@ -142,23 +142,27 @@ func TestFetchTicketNotFound(t *testing.T) {
 	}
 }
 
-// Nor is a Jira that is down, or one that rejects the read.
-func TestFetchTicketAPIErrorIsSwallowed(t *testing.T) {
-	_, c := newFake(t, jsonReply(500, `{"errorMessages":["boom"]}`))
-	got, err := c.FetchTicket(context.Background(), "SEP-1")
-	if err != nil || got != nil {
-		t.Fatalf("got (%v, %v), want (nil, nil)", got, err)
+// A Jira that is down or refuses the account is an error, not "no ticket":
+// the summary says the check was skipped. Jira answers an issue the user may
+// not see with 404, so a 403 is the account (no Browse, CAPTCHA lockout).
+func TestFetchTicketAPIErrorPropagates(t *testing.T) {
+	for _, status := range []int{401, 403, 500, 503} {
+		_, c := newFake(t, jsonReply(status, `{"errorMessages":["boom"]}`))
+		got, err := c.FetchTicket(context.Background(), "SEP-1")
+		if got != nil || Status(err) != status {
+			t.Fatalf("HTTP %d: got (%v, %v), want the status error", status, got, err)
+		}
 	}
 }
 
-func TestFetchTicketConnectionRefusedIsSwallowed(t *testing.T) {
+func TestFetchTicketConnectionRefusedPropagates(t *testing.T) {
 	c, err := New(config.Jira{URL: "http://127.0.0.1:1", Token: "t"}, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
 	got, err := c.FetchTicket(context.Background(), "SEP-1")
-	if err != nil || got != nil {
-		t.Fatalf("got (%v, %v), want (nil, nil): a refused connection is not a review failure", got, err)
+	if got != nil || err == nil {
+		t.Fatalf("got (%v, %v), want an error", got, err)
 	}
 }
 
@@ -313,8 +317,9 @@ func TestFetchTicketWithParentParentMissing(t *testing.T) {
 	}
 }
 
-// A parent whose fetch fails outright (timeout, bad JSON) must not cost the
-// caller the child: the usual `if err != nil { return }` would throw it away.
+// A parent whose fetch fails outright (timeout, bad JSON) comes back as the
+// error beside the intact child: the caller keeps the child and still tells
+// the author the parent went unchecked.
 func TestFetchTicketWithParentParentErrorKeepsTheChild(t *testing.T) {
 	var n int
 	_, c := newFake(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -327,8 +332,8 @@ func TestFetchTicketWithParentParentErrorKeepsTheChild(t *testing.T) {
 	})
 
 	ticket, parent, err := c.FetchTicketWithParent(context.Background(), "S-1")
-	if err != nil {
-		t.Fatalf("err = %v, want nil: a bad parent is not the child's fault", err)
+	if err == nil {
+		t.Fatal("err = nil, want the parent's failure")
 	}
 	if ticket == nil || ticket.Title != "child" {
 		t.Fatalf("ticket = %+v, want the child intact", ticket)
