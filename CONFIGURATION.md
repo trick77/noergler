@@ -187,7 +187,7 @@ the service.**
 | A team's own Jira token rejected or unreadable | The team's reviews run without the ticket check and the summary says so; the Teams page shows it. |
 | Database or Bitbucket unreachable at startup, or `JIRA_URL` malformed | Startup aborts, after reporting every failing check rather than only the first. |
 | Jira unreachable or rejecting the token at startup | A warning; startup goes on. |
-| Jira unreachable, failing or timing out during a review | The review runs without the ticket check and its summary says so. No retry: the next review asks Jira again. |
+| Jira unreachable, failing or timing out during a review | The review runs without the ticket check (with the subtask alone when only its parent failed) and its summary says so. No retry: the next review asks Jira again. |
 | Jira ticket missing (404) or not visible (403) during a review | Not an error. The key came off a branch name and may be noise. |
 | Gateway does not price a call | The review proceeds and the run is stored with a NULL cost. Cost fails open. |
 

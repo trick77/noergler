@@ -180,7 +180,8 @@ Rules:
   (validation error, missing secret, model not available to the key, riptide token rejected)
   disables that team: its webhooks answer `503` (the reason is in the startup log), everything else runs.
   Only file-level faults (file missing or unparseable, zero teams, duplicate slug) and
-  shared-layer faults (database, Bitbucket, Jira) abort startup.
+  shared-layer faults (database, Bitbucket, malformed `JIRA_URL`) abort startup. Jira down
+  only warns; reviews then skip the ticket check and say so in the summary.
 - **Logs:** every line about a team carries `team=<slug>` (Splunk auto-extracts it).
   Disabling logs `team_disabled team=<slug> reason=...`; startup ends with
   `teams_ready enabled=[...] disabled=[...]` (at `WARNING` when any team is disabled).

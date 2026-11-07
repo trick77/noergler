@@ -88,8 +88,8 @@ type reviewPlan struct {
 	overBudget   []string
 	ticket       *jira.Ticket
 	parentTicket *jira.Ticket
-	// jiraDown: the PR names a ticket but Jira did not serve it, so the
-	// ticket check was skipped and the summary says so.
+	// jiraDown: the PR names a ticket but Jira did not serve it (or its
+	// parent), so the summary says the check was skipped or incomplete.
 	jiraDown      bool
 	agentsMDFound bool
 	// totalFiles is every reviewable changed file, size-gated ones included:

@@ -86,7 +86,8 @@ type SummaryInput struct {
 	ComplianceExtractionFailed bool
 	TicketComplianceCheck      bool
 	JiraEnabled                bool
-	// JiraUnavailable: the PR names a ticket but Jira did not serve it.
+	// JiraUnavailable: the PR names a ticket but Jira did not serve it (or,
+	// with Ticket set, did not serve its parent).
 	JiraUnavailable bool
 
 	ElapsedSeconds  float64
@@ -651,10 +652,15 @@ func renderFootnote(in SummaryInput) string {
 	}
 	// Only when Jira is on: "Jira is not enabled" is true of every PR of the
 	// team and gives the author nothing to do.
+	// "Unavailable", not "unreachable": a team's own token rejected or
+	// unreadable lands here too, with Jira itself up.
 	switch {
+	case in.JiraUnavailable && in.Ticket != nil:
+		warn = append(warn, p("Jira nicht verfügbar, Parent-Ticket nicht geprüft ⚠️",
+			"Jira unavailable, parent ticket not checked ⚠️"))
 	case in.JiraUnavailable:
-		warn = append(warn, p("Jira nicht erreichbar, Ticket-Prüfung übersprungen ⚠️",
-			"Jira unreachable, ticket check skipped ⚠️"))
+		warn = append(warn, p("Jira nicht verfügbar, Ticket-Prüfung übersprungen ⚠️",
+			"Jira unavailable, ticket check skipped ⚠️"))
 	case in.Ticket == nil && in.JiraEnabled:
 		warn = append(warn, p("Kein Ticket in Branch-Name oder PR-Titel gefunden ℹ️",
 			"No ticket found in branch name or PR title ℹ️"))

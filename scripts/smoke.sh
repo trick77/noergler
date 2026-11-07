@@ -27,7 +27,7 @@ go build -C backend -o "$tmp/noergler" ./cmd/noergler
 go build -o "$tmp/fakes" scripts/fakes/main.go
 
 # serve checks Bitbucket at startup, so it has to answer. Jira down only
-# warns; the fake serves it so the review exercises the ticket path.
+# warns; the fake answers its startup check, tickets 404 (not readable).
 fakes_port=${FAKES_PORT:-18099}
 "$tmp/fakes" -addr ":$fakes_port" > "$tmp/fakes.log" 2>&1 &
 fakes_pid=$!

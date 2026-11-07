@@ -273,8 +273,8 @@ review's push sentence is not shown. Its sections, in order:
    the same labels in place
 8. Recommendation
 9. A footer: a bullet for each thing the author can act on (no AGENTS.md or
-   one over its warn size, no ticket while Jira is on, Jira unreachable so
-   the ticket check was skipped, files not reviewed or
+   one over its warn size, no ticket while Jira is on, Jira unavailable so
+   the ticket check was skipped or the parent went unchecked, files not reviewed or
    reviewed without full context), then one line of model, files, lines,
    elapsed time and cost, ending in a link to the PR's page when
    `NOERGLER_PUBLIC_URL` is set. The link carries the PR's random token and

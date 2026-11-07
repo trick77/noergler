@@ -1,10 +1,10 @@
 // Package jira reads tickets for the acceptance-criteria check: a ticket's
 // summary, description and criteria go into the review prompt as context.
 //
-// A ticket that cannot be read is not an error. The reference in a branch name
-// may be a false positive, the ticket may be in a project the service account
-// cannot see, and Jira may simply be down; none of that should stop a review.
-// Only the startup check is strict.
+// Jira never stops a review or a boot. A missing ticket is noise: the reference
+// in a branch name may be a false positive or in a project the service account
+// cannot see. Jira down is an error the review turns into a footer notice; at
+// startup it is a warning.
 package jira
 
 import (
@@ -221,18 +221,13 @@ type issue struct {
 	} `json:"fields"`
 }
 
-// ErrUnavailable wraps a Jira that did not serve the call: refused, DNS, or a
-// status that is about Jira rather than the ticket. The review proceeds
-// without the ticket check and says so in the summary.
-var ErrUnavailable = errors.New("jira unavailable")
-
-// FetchTicket reads one ticket, or returns nil when it cannot be read.
+// FetchTicket reads one ticket, or returns nil when there is none to read.
 //
 // A missing ticket (404) or one the user may not see (403) returns (nil, nil):
-// the ticket reference came out of a branch name and may well be noise. A Jira
-// that is not there (refused, DNS) or answers any other non-2xx returns
-// ErrUnavailable, so the summary can say the check was skipped instead of "no
-// ticket". A timeout or a malformed response is an error of its own.
+// the ticket reference came out of a branch name and may well be noise. Any
+// other failure (refused, DNS, timeout, another status, bad JSON) is Jira not
+// serving the call and comes back as an error, so the summary can say the
+// check was skipped instead of "no ticket".
 func (c *Client) FetchTicket(ctx context.Context, ticketID string) (*Ticket, error) {
 	path := "/rest/api/2/issue/" + ticketID
 	rawURL := c.base + path + "?" + fieldsQuery
@@ -244,8 +239,6 @@ func (c *Client) FetchTicket(ctx context.Context, ticketID string) (*Ticket, err
 	case Status(err) == http.StatusNotFound || Status(err) == http.StatusForbidden:
 		c.log.InfoContext(ctx, fmt.Sprintf("Jira ticket %s not readable (HTTP %d)", ticketID, Status(err)))
 		return nil, nil
-	case Status(err) != 0, isConnectError(err):
-		return nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	default:
 		return nil, err
 	}
@@ -299,33 +292,18 @@ func (c *Client) FetchTicket(ctx context.Context, ticketID string) (*Ticket, err
 
 // FetchTicketWithParent reads a ticket and, for a subtask, its parent. The
 // acceptance criteria often live on the parent story, not the subtask being
-// worked on. A parent that cannot be read is not fatal: the child still counts.
+// worked on. A missing parent (404/403) is no error: the child still counts.
+// A parent Jira failed to serve comes back as the error BESIDE the good
+// child: the caller keeps the child and still tells the author Jira failed,
+// since the criteria on the parent were never checked.
 func (c *Client) FetchTicketWithParent(ctx context.Context, ticketID string) (ticket, parent *Ticket, err error) {
 	ticket, err = c.FetchTicket(ctx, ticketID)
 	if err != nil || ticket == nil || ticket.ParentKey == "" {
 		return ticket, nil, err
 	}
-	// A parent that cannot be read costs us nothing but its context, so even the
-	// errors FetchTicket does not swallow (timeout, bad JSON) are dropped here:
-	// returning them beside a good ticket invites the caller's usual
-	// `if err != nil { return }` to throw the child away too.
 	parent, err = c.FetchTicket(ctx, ticket.ParentKey)
 	if err != nil {
-		c.log.WarnContext(ctx, "Jira parent "+ticket.ParentKey+" unreadable: "+err.Error())
-		return ticket, nil, nil //nolint:nilerr // an unreadable parent must not fail the good child; see above
+		return ticket, nil, fmt.Errorf("parent %s: %w", ticket.ParentKey, err)
 	}
 	return ticket, parent, nil
-}
-
-// isConnectError reports whether err is a failure to establish the connection
-// (refused, DNS), as opposed to a dial timeout. The split is deliberate: a
-// refused connection means Jira is not there and the ticket is skipped, a
-// timeout means something is wrong with the call and does fail.
-func isConnectError(err error) bool {
-	var opErr *net.OpError
-	if errors.As(err, &opErr) && opErr.Op == "dial" && !opErr.Timeout() {
-		return true
-	}
-	var dnsErr *net.DNSError
-	return errors.As(err, &dnsErr) && !dnsErr.IsTimeout
 }

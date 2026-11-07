@@ -276,10 +276,43 @@ func TestReviewContinuesWhenJiraFails(t *testing.T) {
 		t.Fatalf("expected the summary to be posted anyway, got %d", len(h.bb.Posted))
 	}
 	summary := h.bb.Posted[0].Text
-	if !strings.Contains(summary, "Jira nicht erreichbar") && !strings.Contains(summary, "Jira unreachable") {
-		t.Errorf("summary does not say Jira was unreachable:\n%s", summary)
+	if !strings.Contains(summary, "Ticket-Prüfung übersprungen") && !strings.Contains(summary, "ticket check skipped") {
+		t.Errorf("summary does not say the ticket check was skipped:\n%s", summary)
 	}
 	if strings.Contains(summary, "Kein Ticket") || strings.Contains(summary, "No ticket found") {
 		t.Errorf("summary claims no ticket while Jira was down:\n%s", summary)
+	}
+}
+
+// Only the parent failed: the child stays in the prompt, and the footer says
+// the parent went unchecked rather than the whole check being skipped.
+func TestReviewKeepsTheChildWhenTheParentFails(t *testing.T) {
+	h := newHarness(t, func(h *harness) {
+		h.jr = &fakeJira{ticket: fullTicket(), err: errors.New("parent SEP-1: HTTP 503")}
+	})
+
+	h.r.reviewInline(context.Background(), jiraPayload(webhook.EventOpened), false)
+
+	if len(h.llm.Reviews) != 1 || !strings.Contains(h.llm.Reviews[0].Prompt, "Add the widget") {
+		t.Fatal("the child ticket should still reach the prompt")
+	}
+	if len(h.bb.Posted) != 1 {
+		t.Fatalf("expected one summary comment, got %d", len(h.bb.Posted))
+	}
+	summary := h.bb.Posted[0].Text
+	if !strings.Contains(summary, "Parent-Ticket nicht geprüft") && !strings.Contains(summary, "parent ticket not checked") {
+		t.Errorf("summary does not say the parent went unchecked:\n%s", summary)
+	}
+}
+
+// A review stopped mid-lookup is not a Jira outage.
+func TestFetchTicketCancelledIsNotJiraDown(t *testing.T) {
+	h := newHarness(t, func(h *harness) {
+		h.jr = &fakeJira{err: context.Canceled}
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, down := h.r.fetchTicket(ctx, "feature/PROJ-123-x", "", "t"); down {
+		t.Error("a cancelled review must not report Jira as down")
 	}
 }

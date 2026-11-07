@@ -855,10 +855,15 @@ func (r *Reviewer) handleNonOK(ctx context.Context, l lang.Lang, result inferenc
 	})
 }
 
+// jiraUnavailableNote tells the Q&A model the PR's ticket exists but Jira did
+// not serve it, so it never answers as if no ticket were linked.
+const jiraUnavailableNote = "Jira was unavailable: the PR's ticket (or its parent) could not be read. Say so if the question needs it."
+
 // fetchTicket resolves the Jira ticket for a PR, or nil when there is none.
 // jiraDown reports a key whose lookup failed: Jira unreachable, rejecting the
-// token, timing out. The review goes on without the ticket check and the
-// summary says so; no retry, the next review asks Jira again.
+// token, timing out, or the team's own token unusable. The review goes on
+// without the ticket check (or with the child alone when only its parent
+// failed) and the summary says so; no retry, the next review asks Jira again.
 func (r *Reviewer) fetchTicket(ctx context.Context, branch, title, prTag string) (ticket, parent *jira.Ticket, jiraDown bool) {
 	if !r.jiraEnabled() {
 		return nil, nil, false
@@ -869,7 +874,14 @@ func (r *Reviewer) fetchTicket(ctx context.Context, branch, title, prTag string)
 		return nil, nil, false
 	}
 	ticket, parent, err := r.jira.FetchTicketWithParent(ctx, id)
-	if err != nil {
+	switch {
+	case err != nil && ctx.Err() != nil:
+		// The review was stopped mid-call, not Jira: no outage to report.
+		return nil, nil, false
+	case err != nil && ticket != nil:
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: linked Jira ticket %s, its parent failed, reviewing without it: %v", prTag, id, err))
+		return ticket, nil, true
+	case err != nil:
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: Jira lookup for %s failed, reviewing without the ticket check: %v", prTag, id, err))
 		return nil, nil, true
 	}

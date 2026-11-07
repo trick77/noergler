@@ -109,6 +109,16 @@ func listenAddr() string {
 	return net.JoinHostPort(strings.TrimSpace(os.Getenv("SERVER_HOST")), port)
 }
 
+// jiraProbeTimeout bounds the startup Jira check: a blackholed Jira would
+// otherwise hold boot for the client's 30 s just to log a warning.
+const jiraProbeTimeout = 5 * time.Second
+
+func jiraProbe(ctx context.Context, jr *jira.Client) error {
+	ctx, cancel := context.WithTimeout(ctx, jiraProbeTimeout)
+	defer cancel()
+	return jr.CheckConnectivity(ctx)
+}
+
 // migrate applies pending migrations and exits: the init container's job.
 // Only DATABASE_URL is needed, so a teams.yaml is not required here.
 func migrate(log *slog.Logger) error {
@@ -148,9 +158,10 @@ func serve(log *slog.Logger) error {
 	ctx, stop := run.Context(context.Background())
 	defer stop()
 
-	// Shared layer: any failure here aborts boot, because none of it belongs to
-	// one team. Every check runs before the abort so the log names all the
-	// failures at once rather than one per restart.
+	// Shared layer: a failure here aborts boot, because none of it belongs to
+	// one team; Jira down is the exception (below). Every check runs before
+	// the abort so the log names all the failures at once rather than one per
+	// restart.
 	checks := []string{}
 	db, err := store.Open(ctx, app.Database.URL, log)
 	if err == nil {
@@ -181,11 +192,12 @@ func serve(log *slog.Logger) error {
 	// Jira is shared but optional to a review: a malformed JIRA_URL aborts
 	// boot, a Jira that does not answer only warns. Reviews then skip the
 	// ticket check and say so in the summary; each review asks Jira afresh.
+	// The probe is short: its result is only a log line.
 	jr, err := jira.New(app.Jira, log)
 	if err != nil {
 		log.Error("Jira: " + err.Error())
 		checks = append(checks, "Jira")
-	} else if err = jr.CheckConnectivity(ctx); err != nil {
+	} else if err = jiraProbe(ctx, jr); err != nil {
 		log.Warn("Jira: " + err.Error() + "; starting without it, reviews skip the ticket check until Jira answers")
 	} else {
 		log.Info("Jira: OK")
