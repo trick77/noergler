@@ -6,50 +6,9 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 )
-
-// LLMCall is one gateway call as the AI Gateway described it. See
-// migrations/0009_llm_calls.sql and 0012: every pointer is nil when the
-// gateway did not send that figure, which is not zero. A review call's
-// CostNanoUSD is detail beside the run or attempt that carries the cost; a
-// reply's or a question's is the only record of it, and the PR cost sums it.
-type LLMCall struct {
-	// Profile is the label asked for (`<profile>-<effort>`).
-	Profile       string
-	Model         string
-	Deployment    string
-	ReasoningSent string
-	FinishReason  string
-	CallID        string
-	GatewayVer    string
-
-	InputTokens         *int64
-	InputUncachedTokens *int64
-	CacheReadTokens     *int64
-	CacheWriteTokens    *int64
-	// OutputTokens includes ReasoningTokens.
-	OutputTokens    *int64
-	ReasoningTokens *int64
-
-	CostNanoUSD           *int64
-	CostInputNanoUSD      *int64
-	CostCacheReadNanoUSD  *int64
-	CostCacheWriteNanoUSD *int64
-	CostOutputNanoUSD     *int64
-	CostReasoningNanoUSD  *int64
-	CostToolUsageNanoUSD  *int64
-	// KeySpendNanoUSD is a gauge of the whole key: shown, never summed.
-	KeySpendNanoUSD *int64
-
-	// HeadersMS is the wait for the first byte since every call streams
-	// (2026-11-06), the whole call before; TotalMS is the model's time.
-	HeadersMS *int64
-	TotalMS   *int64
-	Warnings  []string
-}
 
 // Call kinds. A review call hangs off its attempt; a reply or a question
 // writes none, and its row is the ledger.
@@ -189,16 +148,6 @@ func (s *Store) AttemptCall(ctx context.Context, attemptID int64) (c LLMCall, ok
 		return LLMCall{}, false, err
 	}
 	return c, true, nil
-}
-
-// CommentCall is one reply or question call on a PR, for the run page's
-// list. Nil cost = unpriced.
-type CommentCall struct {
-	Kind        string
-	CommentID   *int64
-	Model       string
-	CostNanoUSD *int64
-	CreatedAt   time.Time
 }
 
 // commentCallsLimit bounds the run page's list; the PR's cost counts them

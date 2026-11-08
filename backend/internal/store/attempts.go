@@ -9,31 +9,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Attempt is one terminal outcome, including the ones that write no run row.
-// See migrations/0002_review_attempts.sql for why this is its own table.
-type Attempt struct {
-	Key      PRKey
-	TeamSlug string
-	Kind     RunKind
-	// Outcome is inference.Outcome's String(), or "skipped" for a
-	// pre-flight exit that never reached the gateway.
-	Outcome string
-	// Reason is a review.SkipReason. Empty unless Outcome is "skipped".
-	Reason    string
-	ElapsedMS *int64
-	// RunID is set only when the attempt produced a run row.
-	RunID *int64
-	// CostNanoUSD is a billed call that wrote no run row (unparseable). A
-	// successful attempt leaves it nil: its cost is on the run.
-	CostNanoUSD *int64
-	// Call is the gateway call this attempt made, written to llm_calls right
-	// after the attempt and apart from it, so a missing call row can mean a
-	// refused write, not only no call. Nil when the gateway never answered (a
-	// pre-flight skip, a timeout); a late repo-unclaimed skip carries the call
-	// it paid for.
-	Call *LLMCall
-}
-
 // InsertAttempt records one attempt, and its gateway call when it made one.
 // Returns the attempt id.
 //
@@ -73,21 +48,6 @@ func (s *Store) InsertAttempt(ctx context.Context, a Attempt) (int64, error) {
 // ErrCallNotRecorded is InsertAttempt's error when the attempt (and any
 // billed cost on it) was written and only its gateway call was not.
 var ErrCallNotRecorded = errors.New("gateway call not recorded (attempt written)")
-
-// AttemptRow is one row of the dashboard's feed: the attempt, plus the run
-// figures where the attempt produced a run.
-type AttemptRow struct {
-	Attempt
-	// ID is the attempt's row id. Never its link token: the feed links to
-	// no run page.
-	ID        int64
-	CreatedAt time.Time
-	// Findings and CostNanoUSD come from the joined run. Both nil when the
-	// attempt produced none, and CostNanoUSD is nil for an unpriced run
-	// too: the two cases are distinguished by Outcome, never by a zero.
-	Findings    *int
-	CostNanoUSD *int64
-}
 
 // AttemptFilter narrows the feed by outcome. The zero value is every row.
 //
@@ -135,13 +95,6 @@ func (s *Store) RecentAttempts(ctx context.Context, team string, outcome Attempt
 				&a.Kind, &a.Outcome, &a.Reason, &a.ElapsedMS, &a.CreatedAt,
 				&a.Findings, &a.CostNanoUSD)
 		})
-}
-
-// OutcomeCount is one bucket of the outcome breakdown.
-type OutcomeCount struct {
-	Outcome string
-	Reason  string
-	Count   int
 }
 
 // OutcomeBreakdown counts attempts by outcome since a point in time. Skips

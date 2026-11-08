@@ -8,17 +8,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// SealedCredential is one team_credentials row: the token as ciphertext only.
-// Sealing and opening are the caller's (internal/teams); the store never sees
-// a token in the clear.
-type SealedCredential struct {
-	Team       string
-	Kind       string
-	Username   string
-	Nonce      []byte
-	Ciphertext []byte
-}
-
 // ListCredentials returns every team's pushed credentials.
 func (s *Store) ListCredentials(ctx context.Context) ([]SealedCredential, error) {
 	return queryAll(ctx, s.pool, `SELECT team_slug, kind, COALESCE(username, ''), nonce, ciphertext FROM team_credentials ORDER BY team_slug, kind`,

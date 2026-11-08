@@ -9,80 +9,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// RunDetail is everything the run page shows about one attempt.
-//
-// Everything, comment text and dispute included (decided): the page is
-// reached only through its PR's link token, handed out in the PR's summary
-// comment, so its audience is the PR's.
-type RunDetail struct {
-	ID int64
-	// N is the attempt's number on its PR, 1 for the oldest: the page's name
-	// for it and the last segment of its path.
-	N         int
-	Key       PRKey
-	TeamSlug  string
-	Kind      RunKind
-	Outcome   string
-	Reason    string
-	ElapsedMS *int64
-	CreatedAt time.Time
-	// AttemptCostNanoUSD is set only for a billed call with no run.
-	AttemptCostNanoUSD *int64
-
-	PRTitle string
-	// Run is nil unless the attempt produced one.
-	Run *RunFacts
-	// Call is nil when no gateway call was recorded for the attempt.
-	Call *LLMCall
-	// Findings are the ones this run posted; Fixed the earlier ones this run
-	// marked fixed.
-	Findings []RunFinding
-	Fixed    []RunFinding
-	// Detail is the run_details record; nil when none was written (an
-	// attempt from before it existed, or a skip) or it no longer decodes,
-	// which DetailErr then says.
-	Detail    *Pipeline
-	DetailErr error
-}
-
-// RunFacts is the review_runs row behind a successful attempt.
-type RunFacts struct {
-	ID               int64
-	Incremental      bool
-	FromCommit       string
-	ToCommit         string
-	ModelLabel       string
-	PromptTokens     int64
-	CachedTokens     int64
-	CompletionTokens int64
-	CostNanoUSD      *int64
-	FindingsPosted   int
-	LinesAdded       int
-	LinesRemoved     int
-	FilesChanged     int
-}
-
-// RunFinding is a posted finding as the pages show it: where, how bad, its
-// text, the Bitbucket comment it was posted as, and the runs that posted
-// and retired it.
-type RunFinding struct {
-	Severity    string
-	Confidence  *int
-	FilePath    string
-	Line        int
-	Headline    string
-	CommentText string
-	Suggestion  *string
-	// DisputeText is the author's reply when it disputed the finding.
-	DisputeText *string
-	CommentID   *int64
-	Replied     bool
-	Fixed       bool
-	// RunID posted it; FixedRunID retired it, nil while it is open.
-	RunID      int64
-	FixedRunID *int64
-}
-
 // PRPage is everything the PR page shows: the PR, every attempt on it and
 // every finding posted on it. Comment calls and the cost total are read
 // apart (PRCommentCalls, PRCost), as the cap reads them.
@@ -103,48 +29,8 @@ type PRPage struct {
 	Totals PRTotals
 }
 
-// PRTotals add up over every attempt of the PR.
-type PRTotals struct {
-	Runs             int
-	ElapsedMS        int64
-	PromptTokens     int64
-	CachedTokens     int64
-	CompletionTokens int64
-}
-
-// PRRun is one attempt as the PR page lists it.
-type PRRun struct {
-	N         int
-	Kind      RunKind
-	Outcome   string
-	Reason    string
-	ElapsedMS *int64
-	CreatedAt time.Time
-	// CostNanoUSD is the run's cost, or the attempt's for a billed call
-	// with no run: the same figure prCostSQL counts, never both.
-	CostNanoUSD *int64
-	// Run is nil unless the attempt produced one; Fixed counts the earlier
-	// findings it retired.
-	Run   *RunFacts
-	Fixed int
-	// Detail is the run_details record's stages, files and PR scope (the
-	// rest is never read here); nil when there is none or it does not decode.
-	Detail *Pipeline
-}
-
 // prRunsLimit bounds the PR page's history.
 const prRunsLimit = 300
-
-// prRow is the PR row behind a page token.
-type prRow struct {
-	ID        int64
-	Key       PRKey
-	TeamSlug  string
-	Title     string
-	CreatedAt time.Time
-	Merged    *time.Time
-	Declined  *time.Time
-}
 
 func (s *Store) prByToken(ctx context.Context, token string) (p prRow, ok bool, err error) {
 	err = s.pool.QueryRow(ctx, `

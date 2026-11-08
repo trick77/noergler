@@ -37,21 +37,6 @@ const spendCTE = `
 		 WHERE c.attempt_id IS NULL AND c.cost_nano_usd IS NOT NULL
 	)`
 
-// Totals is the headline figure set over a time window.
-type Totals struct {
-	Runs             int
-	PromptTokens     int64
-	CachedTokens     int64
-	CompletionTokens int64
-	FindingsPosted   int64
-	// CostNanoUSD sums the priced runs and billed run-less attempts. Nil
-	// when none were priced.
-	CostNanoUSD *int64
-	// Unpriced is how many runs carried no cost. Shown beside the total,
-	// never added to it.
-	Unpriced int
-}
-
 const totalsCols = `
 	COALESCE(SUM(run), 0),
 	COALESCE(SUM(prompt_tokens), 0),
@@ -73,12 +58,6 @@ func (s *Store) TotalsSince(ctx context.Context, since time.Time) (Totals, error
 	return t, err
 }
 
-// TeamTotals is Totals for one team.
-type TeamTotals struct {
-	TeamSlug string
-	Totals
-}
-
 // TotalsByTeam is TotalsSince grouped by the team that owns the PR. The slug
 // comes off pull_requests, which the webhook route authenticated.
 func (s *Store) TotalsByTeam(ctx context.Context, since time.Time) ([]TeamTotals, error) {
@@ -92,14 +71,6 @@ func (s *Store) TotalsByTeam(ctx context.Context, since time.Time) ([]TeamTotals
 			return row.Scan(&t.TeamSlug, &t.Runs, &t.PromptTokens, &t.CachedTokens,
 				&t.CompletionTokens, &t.FindingsPosted, &t.CostNanoUSD, &t.Unpriced)
 		})
-}
-
-// Bucket is one day of the timeseries.
-type Bucket struct {
-	Day         time.Time
-	TeamSlug    string
-	Runs        int
-	CostNanoUSD *int64
 }
 
 // DailyByTeam is runs and cost per day per team, for the charts. Days with no
@@ -133,28 +104,6 @@ func (s *Store) DailyAttempts(ctx context.Context, since time.Time) ([]AttemptBu
 		func(row pgx.CollectableRow, b *AttemptBucket) error {
 			return row.Scan(&b.Day, &b.Outcome, &b.Count)
 		})
-}
-
-// AttemptBucket is one day's count for one outcome.
-type AttemptBucket struct {
-	Day     time.Time
-	Outcome string
-	Count   int
-}
-
-// TeamActivity is the per-team roster figure: how many PRs a team has
-// touched, when it last produced a review, and when and how its last run of
-// any outcome ended.
-type TeamActivity struct {
-	TeamSlug string
-	PRs      int
-	// LastReviewed is the last SUCCESS: review_runs holds nothing else.
-	LastReviewed *time.Time
-	// LastRun is the last run of any outcome, skips and failures included,
-	// with that run's outcome and skip reason. Nil when the team has none.
-	LastRun     *time.Time
-	LastOutcome string
-	LastReason  string
 }
 
 // ActivityByTeam is one row per team that has ever been seen, whether or not

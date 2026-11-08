@@ -2,14 +2,6 @@ package store
 
 import "context"
 
-// VisualPair identifies one screenshot pair by content, migrations/
-// 0023_visual_changes.sql. BeforeID is "" for an added screenshot.
-type VisualPair struct {
-	Path     string
-	BeforeID string
-	AfterID  string
-}
-
 // VisualChanges is every line stored for an open PR's screenshot pairs; ""
 // for a pair stored as unchanged pixels.
 func (s *Store) VisualChanges(ctx context.Context, k PRKey) (map[VisualPair]string, error) {
