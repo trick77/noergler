@@ -4,7 +4,7 @@ go 1.27.3
 
 require (
 	github.com/getkin/kin-openapi v0.152.0
-	github.com/jackc/pgx/v5 v5.11.0
+	github.com/jackc/pgx/v5 v5.12.0
 	github.com/tiktoken-go/tokenizer v0.10.0
 	github.com/trick77/ship/kit v0.18.0
 	github.com/trick77/toolkit v0.3.1-0.20261106113746-0800b4fe4a78
@@ -14,7 +14,7 @@ require (
 
 require (
 	github.com/dlclark/regexp2/v2 v2.12.0 // indirect
-	github.com/go-openapi/jsonpointer v1.0.1 // indirect
+	github.com/go-openapi/jsonpointer v1.0.2 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.3 // indirect
