@@ -8,45 +8,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// PRStatus is what noergler knows about one PR: the answer to "why was my
-// PR (not) reviewed?". Read-only, and nothing in it is author text: no
-// finding, no dispute.
-type PRStatus struct {
-	// Known is false when noergler holds no row for the PR yet; the
-	// attempts may still say why (a skip decided before any row).
-	Known              bool
-	LastReviewedCommit *string
-	IgnoredAt          *time.Time
-	// IgnoreReason and StoppedBy as in SkipState, nil when not ignored.
-	IgnoreReason *string
-	StoppedBy    *string
-	MergedAt     *time.Time
-	DeclinedAt   *time.Time
-	Runs         int
-	LastRun      *RunBrief
-	// Attempts are the latest outcomes, newest first.
-	Attempts []AttemptBrief
-}
-
-// RunBrief is one review run, without its tokens or cost.
-type RunBrief struct {
-	At          time.Time
-	Kind        RunKind
-	Incremental bool
-	Findings    int
-	ModelLabel  string
-}
-
-// AttemptBrief is one terminal outcome.
-type AttemptBrief struct {
-	At      time.Time
-	Kind    RunKind
-	Outcome string
-	// Reason is the review.SkipReason value, empty unless Outcome is
-	// "skipped".
-	Reason string
-}
-
 // statusAttempts is how many outcomes PRStatus reads: enough to explain the
 // latest push, not a history.
 const statusAttempts = 5

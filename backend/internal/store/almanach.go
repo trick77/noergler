@@ -9,26 +9,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// AlmanachNote is one PR's documentation note as a review round leaves it. See
-// migrations/0018_almanach.sql: every round replaces the row, ordered by
-// RunID; the merge stamps it final; the forwarder marks it emitted.
-type AlmanachNote struct {
-	Key      PRKey
-	TeamSlug string
-	// RunID is the review run whose round wrote the note.
-	RunID          int64
-	ReviewedCommit string
-	PRTitle        string
-	TicketKey      string
-	JiraIssueType  string
-	ChangeKind     string
-	// Note is the validated note object; Chars the rune count it was
-	// checked at.
-	Note       json.RawMessage
-	Chars      int
-	ModelLabel string
-}
-
 // What UpsertAlmanachNote did with a round's note, each an
 // almanach_calls.note_status value: written; superseded (a later round
 // already landed); already_emitted (the merge sent the note while this round
@@ -53,45 +33,6 @@ type AlmanachFinal struct {
 	SourceCommit string
 	// PRTitle fills the stub when no round has written the row yet.
 	PRTitle string
-}
-
-// AlmanachReviewTotals is the PR's review aggregate: the runs, their
-// tokens, and the PR's cost as prCostSQL counts it (the one figure the cap,
-// the frozen cost and the rollup use). Zero and nil when the PR row is gone.
-type AlmanachReviewTotals struct {
-	Runs             int
-	PromptTokens     int64
-	CachedTokens     int64
-	CompletionTokens int64
-	ElapsedMS        int64
-	CostNanoUSD      *int64
-	Models           []string
-}
-
-// AlmanachPending is one final note the forwarder sends, with everything
-// Almanach gets beside it.
-type AlmanachPending struct {
-	AlmanachNote
-	MergedAt     time.Time
-	MergeCommit  string
-	SourceCommit string
-	// IssuesPosted and SuggestionsPosted count the findings noergler posted
-	// on the PR, by severity, as of finalize.
-	IssuesPosted      int
-	SuggestionsPosted int
-	// NoteCall is the round's own gateway call as recorded, NoteCallFound
-	// false when none was. NoteCallOutcome and NoteStatus are that row's.
-	NoteCall        LLMCall
-	NoteCallFound   bool
-	NoteCallOutcome string
-	NoteStatus      string
-	// Rounds counts every note call of this PR incarnation, with their
-	// summed tokens and cost (nil when none was priced).
-	Rounds             int
-	RoundsInputTokens  int64
-	RoundsOutputTokens int64
-	RoundsCostNanoUSD  *int64
-	Review             AlmanachReviewTotals
 }
 
 // AlmanachCall is one note call's row: the gateway's figures plus what
@@ -295,16 +236,6 @@ func (s *Store) InsertAlmanachCall(ctx context.Context, a AlmanachCall) error {
 		INSERT INTO almanach_calls (team_slug, project_key, repo_slug, pr_id, run_id, outcome, note_status, `+callColumns+`)
 		VALUES (`+placeholders(len(args))+`)`, args...)
 	return err
-}
-
-// AlmanachNoteState is what a caller reads back before deciding to emit.
-type AlmanachNoteState struct {
-	Finalized bool
-	HasNote   bool
-	Emitted   bool
-	// PROpen is whether the PR row a round could write to is still there:
-	// not declined, not deleted, not purged.
-	PROpen bool
 }
 
 // AlmanachNoteStatus reads the PR's note row; ok false when there is none.

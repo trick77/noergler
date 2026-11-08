@@ -35,23 +35,6 @@ func (c *ClaimConflict) Error() string {
 	return fmt.Sprintf("%s is claimed by team %s", target, c.OtherTeam)
 }
 
-// TeamSettings are the per-team review settings held in the DB.
-type TeamSettings struct {
-	AutoReviewAuthors []string
-	IgnoreAuthors     []string
-	ExcludeRepos      []string
-	// Branch-name globs on the source (fromRef) and target (toRef) branch.
-	ExcludeSourceBranches []string
-	ExcludeTargetBranches []string
-	UsePRDescription      bool
-}
-
-type claimRow struct {
-	team string
-	key  string
-	repo *string
-}
-
 // scopesFromRows turns (project_key, repo_slug) rows into scopes: whole
 // projects first, repo claims grouped per project, both in first-claimed
 // order.

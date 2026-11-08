@@ -11,22 +11,6 @@ import (
 // the finding-reply path only. Every read counts inside the team's window
 // (days); an occurrence outside it is kept and ignored.
 
-// DisputeSignal is one open signal of a repo: its id and the rule as the
-// newest occurrence in the window worded it.
-type DisputeSignal struct {
-	ID   int64
-	Rule string
-}
-
-// DisputePR is one PR a signal occurred on inside the window: the Bitbucket
-// PR number, the disputed finding's comment (nil if never posted) and the PR
-// author.
-type DisputePR struct {
-	PRID      int
-	CommentID *int
-	Author    string
-}
-
 // OpenDisputeSignals is the repo's signals with an occurrence in the window,
 // most recently disputed first, at most limit. Scoped by the route's team
 // as well as the repo: a repo that changed hands starts without signals.

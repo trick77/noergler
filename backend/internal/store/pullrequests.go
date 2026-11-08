@@ -4,21 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 )
-
-// PRKey identifies a pull request across Bitbucket and the store.
-type PRKey struct {
-	Project string
-	Repo    string
-	PRID    int
-}
-
-// Tag is `PROJECT/repo#id`, the log and riptide spelling.
-func (k PRKey) Tag() string { return fmt.Sprintf("%s/%s#%d", k.Project, k.Repo, k.PRID) }
 
 // PRUpsert is what a review writes about the PR itself.
 type PRUpsert struct {
@@ -139,31 +128,6 @@ const (
 	// summary is still there.
 	IgnoreStopped = "stopped"
 )
-
-// SkipState is what the review guard needs to decide whether to skip a PR.
-type SkipState struct {
-	ID        int64
-	IgnoredAt *time.Time
-	// IgnoreReason is IgnoreSummaryDeleted or IgnoreStopped while IgnoredAt
-	// is set, "" otherwise.
-	IgnoreReason string
-	// StoppedBy is who stopped the PR, "" unless stopped.
-	StoppedBy string
-	// Summary is nil when no summary comment is stored.
-	Summary *SummaryComment
-}
-
-// Stopped reports whether the PR is ignored because someone stopped it.
-func (st *SkipState) Stopped() bool {
-	return st != nil && st.IgnoredAt != nil && st.IgnoreReason == IgnoreStopped
-}
-
-// SummaryDeleted reports whether the PR is ignored because its summary was
-// deleted: left alone entirely, unlike a stopped one, whose questions and
-// replies are still answered.
-func (st *SkipState) SummaryDeleted() bool {
-	return st != nil && st.IgnoredAt != nil && !st.Stopped()
-}
 
 // GetSkipState returns nil when the PR has no row yet (first review).
 func (s *Store) GetSkipState(ctx context.Context, k PRKey) (*SkipState, error) {
@@ -365,33 +329,6 @@ func (s *Store) LastSummary(ctx context.Context, k PRKey) (*PRSummary, error) {
 	return &out, nil
 }
 
-// Finding is one posted inline comment.
-type Finding struct {
-	ID                 int64
-	PullRequestID      int64
-	RunID              int64
-	FilePath           string
-	LineNumber         int
-	Severity           string
-	Confidence         *int
-	Headline           *string
-	CommentText        string
-	Suggestion         *string
-	BitbucketCommentID *int
-	// RepliedAt is set once noergler answered a reply on this finding's
-	// thread; DisputeText is the author's reply when it disputed the
-	// finding. Read back, never written by InsertFinding.
-	RepliedAt   *time.Time
-	DisputeText *string
-	// ClosedAt is set once the finding's thread was found resolved or
-	// deleted on the PR: settled, out of the PR summary. Read back by
-	// ExistingFindings only, stamped by MarkFindingClosed.
-	ClosedAt *time.Time
-	// RunCommit is the source commit of the run that posted the finding: its
-	// line number belongs to that commit. Read by FindingByComment only.
-	RunCommit string
-}
-
 // InsertFinding stores a posted finding.
 func (s *Store) InsertFinding(ctx context.Context, f Finding) error {
 	_, err := s.pool.Exec(ctx, `
@@ -468,12 +405,6 @@ const (
 	BotReplyReply    = "reply"    // the answer on a finding's thread
 	BotReplyFixed    = "fixed"    // the "Fixed in" reply on a retired finding
 )
-
-// BotReply is one reply noergler posted, by its Bitbucket comment id.
-type BotReply struct {
-	CommentID int
-	Kind      string
-}
 
 // InsertBotReply records a reply noergler posted on a PR. A PR without a
 // row records nothing (a language confirmation on a PR never reviewed or
@@ -592,24 +523,6 @@ type RollupFinal struct {
 	LinesAdded   *int
 	LinesRemoved *int
 	FilesChanged *int
-}
-
-// RollupSnapshot is what one riptide rollup carries.
-type RollupSnapshot struct {
-	Runs             int
-	PromptTokens     int64
-	CompletionTokens int64
-	ElapsedMS        int64
-	Findings         int
-	// CostNanoUSD is nil when no run was priced.
-	CostNanoUSD   *int64
-	Models        []string
-	FirstReviewAt time.Time
-	SourceCommit  *string
-	MergeCommit   *string
-	LinesAdded    *int
-	LinesRemoved  *int
-	FilesChanged  *int
 }
 
 // ClaimRollup atomically stamps riptide_emitted_at and returns the snapshot.
