@@ -17,6 +17,9 @@ decision, not a cleanup.
   per clone. GitHub is never first to find a failure; a Dependabot PR gets
   `make check` before merge.
 - Store tests need docker (ship starts Postgres); plain `go test` skips them.
+- Schema: read `docs/schema.md` first. `TestSchemaDoc` fails on any migration
+  or `model.go` change, doc comments included, until regenerated
+  (`SCHEMADOC_UPDATE=1` plus a `SHIP_TEST_DSN`).
 - Commit subjects + PR titles: Go style `area: what` (`review: …`, `store: …`), gated by ship; release notes list them by area.
 - Fresh clone: `ship hooks` before the first push (check, conform and init install it too); without the pre-push hook a push skips the gate.
 - Merge ships nothing; release = `gh workflow run Release`, GitHub-hosted
