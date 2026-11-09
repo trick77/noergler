@@ -886,7 +886,7 @@ erDiagram
     findings }o--o| review_runs : "fixed_run_id"
     findings }o--|| pull_requests : "pull_request_id"
     findings }o--|| review_runs : "review_run_id"
-    llm_calls }o--o| review_attempts : "attempt_id"
+    llm_calls |o--o| review_attempts : "attempt_id"
     review_attempts }o--o| review_runs : "review_run_id"
     review_runs }o--|| pull_requests : "pull_request_id"
     run_details |o--|| review_attempts : "attempt_id"
