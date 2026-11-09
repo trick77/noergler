@@ -17,9 +17,14 @@ decision, not a cleanup.
   per clone. GitHub is never first to find a failure; a Dependabot PR gets
   `make check` before merge.
 - Store tests need docker (ship starts Postgres); plain `go test` skips them.
-- Schema: read `docs/schema.md` first. `TestSchemaDoc` fails on any migration
-  or `model.go` change, doc comments included, until regenerated
-  (`SCHEMADOC_UPDATE=1` plus a `SHIP_TEST_DSN`).
+- Schema: read `docs/schema.md` first. `TestSchemaDoc` golden fails on drift
+  in the migrated schema (columns, types, defaults, keys, indexes, checks; not
+  data-only migrations), `model.go` structs (name, first doc paragraph),
+  `Table:` lines, and fields + field docs of `Table: -` structs only; also on a
+  `model.go` struct with no `Table:` line or an unknown table. Fields of
+  table-bound structs are not in the doc; nothing checks a field against a
+  column. Regenerate in `backend/`: `SCHEMADOC_UPDATE=1` with a `SHIP_TEST_DSN`
+  (doc header names the command).
 - Commit subjects + PR titles: Go style `area: what` (`review: …`, `store: …`), gated by ship; release notes list them by area.
 - Fresh clone: `ship hooks` before the first push (check, conform and init install it too); without the pre-push hook a push skips the gate.
 - Merge ships nothing; release = `gh workflow run Release`, GitHub-hosted
