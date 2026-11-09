@@ -42,8 +42,8 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/tiktoken-go/tokenizer v0.10.0 h1:xcMbdR1D/rTF2/yEj1GQg3/jl5D9n5aQ546mr32di/w=
 github.com/tiktoken-go/tokenizer v0.10.0/go.mod h1:eLA0t6nGvn9mDc7gt90qt7pMat+gE9ViqwQ6l9B+tA4=
-github.com/trick77/ship/kit v0.19.0 h1:zGNSIi6AstJ2DXtXWj2YQB3OFJrw4peohSFErnZi0Pc=
-github.com/trick77/ship/kit v0.19.0/go.mod h1:cE+kQhN2nb5j2ML174YKdGrC41M2GxnILzQLqFupsHE=
+github.com/trick77/ship/kit v0.20.0 h1:q0Y6NsLENrsmG1Ju50s4av289Jcbbr0+6iHJB+KJgjc=
+github.com/trick77/ship/kit v0.20.0/go.mod h1:cE+kQhN2nb5j2ML174YKdGrC41M2GxnILzQLqFupsHE=
 github.com/trick77/toolkit v0.3.1-0.20261106113746-0800b4fe4a78 h1:9f/HH9Uhz/OIv2if1cJfFplIpBBlOHsBbQnMCMOhedE=
 github.com/trick77/toolkit v0.3.1-0.20261106113746-0800b4fe4a78/go.mod h1:8o2jn+f4FxaWh0Z2CLCAuhaEmR+morfaMG/LPjuobJE=
 go.yaml.in/yaml/v3 v3.0.6 h1:zcDfvjXEqTQmpjniUBLc91xYJMB2c4QOFxEF/LCEckM=

@@ -203,11 +203,13 @@ type TeamActivity struct {
 	PRs      int
 	// LastReviewed is the last SUCCESS: review_runs holds nothing else.
 	LastReviewed *time.Time
-	// LastRun is the last run of any outcome, skips and failures included,
-	// with that run's outcome and skip reason. Nil when the team has none.
-	LastRun     *time.Time
+	// LastRun is the last run of any outcome, skips and failures included.
+	// Nil when the team has none.
+	LastRun *time.Time
+	// LastOutcome is LastRun's outcome.
 	LastOutcome string
-	LastReason  string
+	// LastReason is LastRun's skip reason.
+	LastReason string
 }
 
 // DisputeSignal is one open signal of a repo: its id and the rule as the
