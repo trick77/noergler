@@ -48,7 +48,7 @@ Indexes:
 
 Checks:
 
-- `CHECK (note_status = ANY (ARRAY['written'::text, 'superseded'::text, 'already_emitted'::text, 'no_row'::text, 'store_failed'::text, 'nothing_learned'::text, 'dropped_too_long'::text, 'dropped_secret'::text, 'dropped_invalid'::text, 'no_answer'::text]))`
+- `CONSTRAINT almanach_calls_note_status_check CHECK (note_status = ANY (ARRAY['written'::text, 'superseded'::text, 'already_emitted'::text, 'no_row'::text, 'store_failed'::text, 'nothing_learned'::text, 'dropped_too_long'::text, 'dropped_secret'::text, 'dropped_invalid'::text, 'no_answer'::text]))`
 
 ## almanach_notes
 
@@ -108,7 +108,7 @@ Foreign keys:
 
 Checks:
 
-- `CHECK (kind = ANY (ARRAY['question'::text, 'reply'::text, 'fixed'::text]))`
+- `CONSTRAINT bot_replies_kind_check CHECK (kind = ANY (ARRAY['question'::text, 'reply'::text, 'fixed'::text]))`
 
 ## dispute_occurrences
 
@@ -240,8 +240,8 @@ Indexes:
 
 Checks:
 
-- `CHECK ((kind = 'review'::text) = (attempt_id IS NOT NULL))`
-- `CHECK (kind = ANY (ARRAY['review'::text, 'reply'::text, 'question'::text]))`
+- `CONSTRAINT llm_calls_attempt_kind_check CHECK ((kind = 'review'::text) = (attempt_id IS NOT NULL))`
+- `CONSTRAINT llm_calls_kind_check CHECK (kind = ANY (ARRAY['review'::text, 'reply'::text, 'question'::text]))`
 
 ## pull_requests
 
@@ -292,8 +292,8 @@ Indexes:
 
 Checks:
 
-- `CHECK (ignore_reason = ANY (ARRAY['summary_deleted'::text, 'stopped'::text]))`
-- `CHECK ((ignored_at IS NULL) = (ignore_reason IS NULL))`
+- `CONSTRAINT pull_requests_ignore_reason_check CHECK (ignore_reason = ANY (ARRAY['summary_deleted'::text, 'stopped'::text]))`
+- `CONSTRAINT pull_requests_ignore_reason_set CHECK ((ignored_at IS NULL) = (ignore_reason IS NULL))`
 
 ## review_attempts
 
@@ -335,8 +335,8 @@ Indexes:
 
 Checks:
 
-- `CHECK (kind = ANY (ARRAY['auto'::text, 'mention'::text]))`
-- `CHECK (outcome = ANY (ARRAY['ok'::text, 'timed_out'::text, 'unparseable'::text, 'too_large'::text, 'error'::text, 'skipped'::text]))`
+- `CONSTRAINT review_attempts_kind_check CHECK (kind = ANY (ARRAY['auto'::text, 'mention'::text]))`
+- `CONSTRAINT review_attempts_outcome_check CHECK (outcome = ANY (ARRAY['ok'::text, 'timed_out'::text, 'unparseable'::text, 'too_large'::text, 'error'::text, 'skipped'::text]))`
 
 ## review_runs
 
@@ -376,7 +376,7 @@ Indexes:
 
 Checks:
 
-- `CHECK (kind = ANY (ARRAY['auto'::text, 'mention'::text]))`
+- `CONSTRAINT review_runs_kind_check CHECK (kind = ANY (ARRAY['auto'::text, 'mention'::text]))`
 
 ## run_details
 
@@ -400,7 +400,7 @@ Foreign keys:
 
 Checks:
 
-- `CHECK (id)`
+- `CONSTRAINT secrets_key_check_id_check CHECK (id)`
 
 ## team_claims
 
@@ -447,7 +447,7 @@ Go types:
 
 Checks:
 
-- `CHECK (kind = ANY (ARRAY['bitbucket'::text, 'jira'::text]))`
+- `CONSTRAINT team_credentials_kind_check CHECK (kind = ANY (ARRAY['bitbucket'::text, 'jira'::text]))`
 
 ## team_settings
 
@@ -477,7 +477,7 @@ Go types:
 
 Checks:
 
-- `CHECK (language = ANY (ARRAY['de'::text, 'en'::text]))`
+- `CONSTRAINT user_settings_language_check CHECK (language = ANY (ARRAY['de'::text, 'en'::text]))`
 
 ## visual_changes
 
@@ -889,6 +889,6 @@ erDiagram
     llm_calls }o--o| review_attempts : "attempt_id"
     review_attempts }o--o| review_runs : "review_run_id"
     review_runs }o--|| pull_requests : "pull_request_id"
-    run_details }o--|| review_attempts : "attempt_id"
+    run_details |o--|| review_attempts : "attempt_id"
     visual_changes }o--|| pull_requests : "pull_request_id"
 ```
