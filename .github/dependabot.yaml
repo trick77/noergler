@@ -1,6 +1,8 @@
 version: 2
 updates:
   - package-ecosystem: gomod
+    cooldown:
+      default-days: 7
     directory: /backend
     commit-message: { prefix: deps }   # Go style: "deps: bump …"
     schedule:
@@ -32,6 +34,8 @@ updates:
           - major
 
   - package-ecosystem: npm
+    cooldown:
+      default-days: 7
     directory: /ui
     commit-message: { prefix: deps }   # Go style: "deps: bump …"
     schedule:
@@ -80,6 +84,8 @@ updates:
 
   # Base images in the Containerfile.
   - package-ecosystem: docker
+    cooldown:
+      default-days: 7
     directory: /
     commit-message: { prefix: deps }   # Go style: "deps: bump …"
     schedule:
@@ -103,6 +109,8 @@ updates:
 
   # Images the compose files pin by tag.
   - package-ecosystem: docker-compose
+    cooldown:
+      default-days: 7
     directory: /
     commit-message: { prefix: deps }   # Go style: "deps: bump …"
     schedule:
@@ -125,6 +133,8 @@ updates:
           - major
 
   - package-ecosystem: github-actions
+    cooldown:
+      default-days: 7
     directory: /
     commit-message: { prefix: deps }   # Go style: "deps: bump …"
     schedule:
