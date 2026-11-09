@@ -141,6 +141,8 @@ export const en = {
     runsNote: "runs",
     costTrend: "Cost trend",
     reviewedTrend: "Reviewed trend",
+    findingsTrend: "Findings trend",
+    unpricedTrend: "Unpriced trend",
     costPerDay: "Cost per day",
     spend: "Spend",
     noPriced: "No priced runs in this window.",

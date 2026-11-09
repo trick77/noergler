@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -594,8 +595,8 @@ func TestMetricsRendersTheSeries(t *testing.T) {
 	day := time.Now().Truncate(24 * time.Hour)
 	cost := int64(1_250_000_000)
 	h.st.daily = []store.Bucket{
-		{Day: day, TeamSlug: "platform", Runs: 4, CostNanoUSD: &cost},
-		{Day: day, TeamSlug: "mobile", Runs: 1},
+		{Day: day, TeamSlug: "platform", Runs: 4, FindingsPosted: 9, CostNanoUSD: &cost},
+		{Day: day, TeamSlug: "mobile", Runs: 1, Unpriced: 1},
 	}
 	h.st.dailyAtt = []store.AttemptBucket{{Day: day, Outcome: "skipped", Count: 7}}
 	h.st.byTeam = []store.TeamTotals{{TeamSlug: "platform", Totals: store.Totals{Runs: 4, CostNanoUSD: &cost}}}
@@ -616,6 +617,10 @@ func TestMetricsRendersTheSeries(t *testing.T) {
 	}
 	if got.Daily[1].Cost != nil {
 		t.Errorf("an unpriced day must stay null, got %q", *got.Daily[1].Cost)
+	}
+	if got.Daily[0].FindingsPosted != 9 || got.Daily[0].Unpriced != 0 ||
+		got.Daily[1].FindingsPosted != 0 || got.Daily[1].Unpriced != 1 {
+		t.Errorf("findings/unpriced per day = %+v", got.Daily)
 	}
 	if len(got.Attempts) != 1 || got.Attempts[0].Count != 7 {
 		t.Errorf("attempts = %+v", got.Attempts)
@@ -1132,6 +1137,34 @@ func TestRollingWindowStartsAtMidnight(t *testing.T) {
 	}
 	if got.Until.Hour() != 0 {
 		t.Errorf("until = %s, want midnight", got.Until)
+	}
+}
+
+// ?days=N is N days, today included: the page lays out since..until and
+// titles itself "the last N days".
+func TestRollingWindowIsExactlyNDays(t *testing.T) {
+	h := newDashHarness(t)
+	for _, n := range []int{1, 7, 30} {
+		var got metricsBody
+		q := fmt.Sprintf("/api/dashboard/metrics?days=%d", n)
+		before := dayStart(time.Now().UTC())
+		raw := h.get(t, q).Body.Bytes()
+		today := dayStart(time.Now().UTC())
+		if !today.Equal(before) {
+			t.Skip("the request crossed midnight UTC")
+		}
+		if err := json.Unmarshal(raw, &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.Window != "rolling" {
+			t.Errorf("%s: window = %q, want rolling", q, got.Window)
+		}
+		if !got.Until.Equal(today.AddDate(0, 0, 1)) {
+			t.Errorf("%s: until = %s, want tomorrow", q, got.Until)
+		}
+		if !got.Since.Equal(today.AddDate(0, 0, -(n - 1))) {
+			t.Errorf("%s: since = %s, want %d days including today", q, got.Since, n)
+		}
 	}
 }
 

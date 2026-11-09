@@ -13,6 +13,18 @@ export function calendarDay(iso: string): number | null {
   return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
 }
 
+/** dayMonth is a "YYYY-MM-DD" day as day and short month, e.g. "2 Oct", read
+ *  off the string in UTC like monthName. */
+export function dayMonth(day: string): string {
+  const d = calendarDay(day);
+  if (d === null) return day;
+  return new Intl.DateTimeFormat(i18n.language, {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).format(new Date(d));
+}
+
 /** monthName names the month `since` falls in, e.g. "September 2026". */
 export function monthName(since: string): string {
   // The server's month, read off the string: through the viewer's clock a

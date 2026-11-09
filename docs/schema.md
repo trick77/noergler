@@ -534,7 +534,9 @@ In `internal/store`. Bucket is one day of the timeseries.
 | `Day` | `time.Time` |  |
 | `TeamSlug` | `string` |  |
 | `Runs` | `int` |  |
+| `FindingsPosted` | `int64` |  |
 | `CostNanoUSD` | `*int64` |  |
+| `Unpriced` | `int` | Unpriced is how many of the day's runs carried no cost, as in Totals. |
 
 ### store.DisputePR
 

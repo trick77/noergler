@@ -130,6 +130,8 @@ export const de = {
     runsNote: "Runs",
     costTrend: "Kostenverlauf",
     reviewedTrend: "Verlauf der Reviews",
+    findingsTrend: "Verlauf der Findings",
+    unpricedTrend: "Verlauf ohne Preis",
     costPerDay: "Kosten pro Tag",
     spend: "Ausgaben",
     noPriced: "Keine bepreisten Runs in diesem Zeitraum.",
