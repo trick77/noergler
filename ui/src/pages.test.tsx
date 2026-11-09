@@ -113,7 +113,16 @@ const metrics: Metrics = {
       unpriced_runs: 3,
     },
   ],
-  daily: [{ day: "2026-09-02", team: "payments", runs: 2, cost_usd: "0.500" }],
+  daily: [
+    {
+      day: "2026-09-02",
+      team: "payments",
+      runs: 2,
+      findings_posted: 5,
+      cost_usd: "0.500",
+      unpriced_runs: 0,
+    },
+  ],
   daily_attempts: [
     { day: "2026-09-02", outcome: "ok", count: 2 },
     { day: "2026-09-02", outcome: "skipped", count: 4 },
@@ -521,6 +530,47 @@ describe("MetricsPage", () => {
 
     expect(await screen.findByLabelText(/Cost per day/)).toBeDefined();
     expect(await screen.findByLabelText(/Runs per day/)).toBeDefined();
+  });
+
+  // The page asks for the last 30 days, not the calendar month (user's
+  // call), and titles itself with the window the server answered.
+  it("asks for the last 30 days", async () => {
+    serve({
+      metrics: {
+        ...metrics,
+        since: "2026-09-10T00:00:00Z",
+        until: "2026-10-10T00:00:00Z",
+        window: "rolling",
+      },
+    });
+    render(<MetricsPage />);
+
+    expect(await screen.findByText("the last 30 days")).toBeDefined();
+    const calls = vi.mocked(fetch).mock.calls.map(([u]) => String(u));
+    expect(calls.some((u) => /\/metrics\?days=30$/.test(u))).toBe(true);
+  });
+
+  // Findings and Unpriced get a trend like Cost and Reviewed. Unpriced
+  // keeps the flat-line rule: zero all window long draws nothing. The gate
+  // reads the daily buckets it draws, not the total (3 here).
+  it("draws findings and unpriced trends only when there is one", async () => {
+    serve({ metrics });
+    render(<MetricsPage />);
+
+    expect(await screen.findByLabelText("Findings trend")).toBeDefined();
+    expect(screen.queryByLabelText("Unpriced trend")).toBeNull();
+  });
+
+  it("draws the unpriced trend from the daily buckets", async () => {
+    serve({
+      metrics: {
+        ...metrics,
+        daily: [{ ...metrics.daily[0], unpriced_runs: 3 }],
+      },
+    });
+    render(<MetricsPage />);
+
+    expect(await screen.findByLabelText("Unpriced trend")).toBeDefined();
   });
 
   it("says a window is empty rather than drawing an empty chart", async () => {

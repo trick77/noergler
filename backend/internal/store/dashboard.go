@@ -73,21 +73,24 @@ func (s *Store) TotalsByTeam(ctx context.Context, since time.Time) ([]TeamTotals
 		})
 }
 
-// DailyByTeam is runs and cost per day per team, for the charts. Days with no
-// runs are absent rather than zero-filled: the caller knows the window it
-// asked for and fills the gaps, which keeps this query from inventing rows.
+// DailyByTeam is runs, findings, cost and unpriced runs per day per team, for
+// the charts. Days with no runs are absent rather than zero-filled: the
+// caller knows the window it asked for and fills the gaps, which keeps this
+// query from inventing rows.
 func (s *Store) DailyByTeam(ctx context.Context, since time.Time) ([]Bucket, error) {
 	return queryAll(ctx, s.pool, spendCTE+`
 		SELECT date_trunc('day', created_at) AS day,
 		       team_slug,
 		       COALESCE(SUM(run), 0),
-		       SUM(cost_nano_usd)
+		       COALESCE(SUM(findings_posted), 0),
+		       SUM(cost_nano_usd),
+		       COUNT(*) FILTER (WHERE run = 1 AND cost_nano_usd IS NULL)
 		  FROM spend
 		 WHERE created_at >= $1
 		 GROUP BY day, team_slug
 		 ORDER BY day`, []any{since},
 		func(row pgx.CollectableRow, b *Bucket) error {
-			return row.Scan(&b.Day, &b.TeamSlug, &b.Runs, &b.CostNanoUSD)
+			return row.Scan(&b.Day, &b.TeamSlug, &b.Runs, &b.FindingsPosted, &b.CostNanoUSD, &b.Unpriced)
 		})
 }
 

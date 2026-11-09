@@ -1,7 +1,14 @@
 import { useTranslation } from "react-i18next";
 import type { Metrics } from "./api";
 import { Chart, Sparkline, type Series } from "./Chart";
-import { calendarDay, money, moneyTick, monthName, tokens } from "./format";
+import {
+  calendarDay,
+  dayMonth,
+  money,
+  moneyTick,
+  monthName,
+  tokens,
+} from "./format";
 import i18n from "./i18n";
 import { usePoll } from "./usePoll";
 import {
@@ -35,11 +42,11 @@ const SERIES_COLORS = [
 /** days lists every date in [since, until), so a day with no runs is a zero
  *  rather than a gap the chart closes over. The API returns only days that
  *  have rows, deliberately: filling them is the caller's job, and only the
- *  window itself knows how wide it is. A month is 28 to 31 days, so this is
- *  never a fixed count.
+ *  window itself knows how wide it is: 30 rolling days here, a calendar
+ *  month (28 to 31) for a request without ?days=.
  *
- *  The window is the SERVER's calendar month, so its ends are read off the
- *  ISO string rather than through the browser's clock. `new Date(iso)` plus
+ *  The window's ends are the SERVER's days, so they are read off the ISO
+ *  string rather than through the browser's clock. `new Date(iso)` plus
  *  local getters re-derives the day in the VIEWER's zone: a +02:00 server's
  *  September renders as Aug 31 to Sep 29 for a reader in New York, titles
  *  itself "August", and drops Sep 30 off the chart. The bucket keys the
@@ -56,7 +63,7 @@ function days(since: string, until: string): string[] {
 
   const out: string[] = [];
   const d = new Date(start);
-  // A month is at most 31 days; the bound stops a bad pair spinning.
+  // The server caps a window at 90 days; the bound stops a bad pair spinning.
   for (let i = 0; d.getTime() < end && i < 400; i++) {
     out.push(d.toISOString().slice(0, 10));
     d.setUTCDate(d.getUTCDate() + 1);
@@ -85,9 +92,10 @@ function niceTicks(max: number): number[] {
 
 export function MetricsPage() {
   const { t } = useTranslation();
-  // No ?days=: the default window is the current calendar month, which is
-  // the period a key's spend is budgeted and invoiced in.
-  const { data, failed } = usePoll<Metrics>("metrics", 60000);
+  // The last 30 days, today included (user's call): the trend reads the same
+  // on the 1st as on the 30th. The cost no longer matches the monthly bill;
+  // the runs page keeps the month.
+  const { data, failed } = usePoll<Metrics>("metrics?days=30", 60000);
 
   if (!data) {
     return (
@@ -106,12 +114,18 @@ export function MetricsPage() {
 
   const window = days(data.since, data.until);
   const title = windowTitle(data);
-  // Day-of-month labels, every third, so they never collide. A month reads
-  // as dates rather than as an offset from today: "d-13" is meaningless
-  // when the window has a fixed start.
+  // Day-of-month labels, every few days, so they never collide. Dates rather
+  // than an offset from today: "d-13" says nothing on its own. A rolling
+  // window crosses a month, where plain days read 26, 30, 3, 7: the first
+  // label and the first of each new month carry the month name.
   const step = window.length > 20 ? 4 : 3;
-  const label = (day: string, i: number) =>
-    i % step === 0 ? String(Number(day.slice(-2))) : "";
+  const label = (day: string, i: number) => {
+    if (i % step !== 0) return "";
+    const prev = i - step;
+    if (prev < 0 || window[prev].slice(0, 7) !== day.slice(0, 7))
+      return dayMonth(day);
+    return String(Number(day.slice(-2)));
+  };
 
   // Cost per day per team. A team's missing day is 0 for the chart's
   // purposes, which is true: it spent nothing.
@@ -129,16 +143,26 @@ export function MetricsPage() {
   const nameOf = (slug: string) =>
     data.by_team.find((row) => row.team === slug)?.team_name ?? slug;
 
-  const spendOn = (day: string, team: string) => {
-    const row = data.daily.find((b) => b.day === day && b.team === team);
-    return row?.cost_usd ? Number(row.cost_usd) : 0;
-  };
+  /** perDay sums `count` over the rows of each window day that `keep` lets
+   *  through. */
+  const perDay = <R extends { day: string }>(
+    rows: R[],
+    count: (r: R) => number,
+    keep: (r: R) => boolean = () => true,
+  ) =>
+    window.map((day) =>
+      rows
+        .filter((r) => r.day === day && keep(r))
+        .reduce((n, r) => n + count(r), 0),
+    );
+  const spend = (r: Metrics["daily"][number]) =>
+    r.cost_usd ? Number(r.cost_usd) : 0;
 
   const costSeries: Series[] = charted.map((team, i) => ({
     id: team,
     name: nameOf(team),
     color: SERIES_COLORS[i],
-    values: window.map((day) => spendOn(day, team)),
+    values: perDay(data.daily, spend, (r) => r.team === team),
   }));
   // The tail folds into one band rather than being dropped. Truncating it
   // let the card say "No priced runs in this window" beside a Cost tile
@@ -152,9 +176,7 @@ export function MetricsPage() {
           ? nameOf(rest[0])
           : t("metrics.more", { count: rest.length }),
       color: SERIES_COLORS[SERIES_COLORS.length - 1],
-      values: window.map((day) =>
-        rest.reduce((sum, team) => sum + spendOn(day, team), 0),
-      ),
+      values: perDay(data.daily, spend, (r) => rest.includes(r.team)),
     });
   }
   const costTop = Math.max(
@@ -173,10 +195,10 @@ export function MetricsPage() {
   // Attempts per day, by outcome. Skipped and failed use the status hues,
   // not the series ramp: they are states, not categories.
   const bucket = (test: (o: string) => boolean) =>
-    window.map((day) =>
-      data.daily_attempts
-        .filter((b) => b.day === day && test(b.outcome))
-        .reduce((n, b) => n + b.count, 0),
+    perDay(
+      data.daily_attempts,
+      (b) => b.count,
+      (b) => test(b.outcome),
     );
   const runSeries: Series[] = [
     {
@@ -206,6 +228,11 @@ export function MetricsPage() {
   const costTotals = costSeries.length
     ? window.map((_, i) => costSeries.reduce((sum, s) => sum + s.values[i], 0))
     : [];
+
+  // All teams per day, for the tiles' trends.
+  const findingsDaily = perDay(data.daily, (b) => b.findings_posted);
+  const unpricedDaily = perDay(data.daily, (b) => b.unpriced_runs);
+  const hasTrend = (values: number[]) => values.some((v) => v > 0);
 
   return (
     <div className={page}>
@@ -252,12 +279,30 @@ export function MetricsPage() {
           <Tile
             label={t("metrics.findings")}
             value={data.totals.findings_posted.toLocaleString()}
-          />
+          >
+            {hasTrend(findingsDaily) && (
+              <div className="mt-2">
+                <Sparkline
+                  values={findingsDaily}
+                  label={t("metrics.findingsTrend")}
+                />
+              </div>
+            )}
+          </Tile>
           <Tile
             label={t("metrics.unpriced")}
             value={data.totals.unpriced_runs}
             note={t("metrics.runsNote")}
-          />
+          >
+            {hasTrend(unpricedDaily) && (
+              <div className="mt-2">
+                <Sparkline
+                  values={unpricedDaily}
+                  label={t("metrics.unpricedTrend")}
+                />
+              </div>
+            )}
+          </Tile>
         </Tiles>
 
         <p className={eyebrow}>{t("metrics.costPerDay")}</p>

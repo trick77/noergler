@@ -320,10 +320,12 @@ type teamTotalsBody struct {
 }
 
 type dayBody struct {
-	Day  string  `json:"day"`
-	Team string  `json:"team"`
-	Runs int     `json:"runs"`
-	Cost *string `json:"cost_usd"`
+	Day            string  `json:"day"`
+	Team           string  `json:"team"`
+	Runs           int     `json:"runs"`
+	FindingsPosted int64   `json:"findings_posted"`
+	Cost           *string `json:"cost_usd"`
+	Unpriced       int     `json:"unpriced_runs"`
 }
 
 type outcomeDayBody struct {
@@ -416,12 +418,16 @@ func (d Deps) almanachIgnored(ctx context.Context) map[string]int {
 	return counts
 }
 
-// metrics is spend and throughput for the CURRENT CALENDAR MONTH, which is
-// the window a key's spend is actually budgeted and invoiced in. A rolling
-// 14 days answers a different question and cannot be reconciled with a bill.
+// metrics is spend and throughput over a window.
 //
-// ?days=N overrides it with a rolling window, clamped: an unbounded one would
-// seq-scan however much history exists. Absent means the month.
+// ?days=N is a rolling window of N days, today included. The metrics page
+// asks for 30 (user's call): a trend that reads the same on the 1st as on
+// the 30th, at the price of a cost figure that no longer matches the
+// monthly bill. N outside 1..90 falls back to 14: an unbounded window would
+// seq-scan however much history exists.
+//
+// Absent means the current calendar month, the window a key's spend is
+// budgeted and invoiced in; the runs page titles itself with it.
 func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	since := monthStart(now)
@@ -430,7 +436,7 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 		if days <= 0 || days > 90 {
 			days = 14
 		}
-		since = dayStart(now.AddDate(0, 0, -days))
+		since = dayStart(now.AddDate(0, 0, -(days - 1)))
 	}
 	ctx := r.Context()
 
@@ -489,7 +495,8 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 	for _, b := range daily {
 		body.Daily = append(body.Daily, dayBody{
 			Day: b.Day.UTC().Format(time.DateOnly), Team: b.TeamSlug,
-			Runs: b.Runs, Cost: usd(b.CostNanoUSD),
+			Runs: b.Runs, FindingsPosted: b.FindingsPosted,
+			Cost: usd(b.CostNanoUSD), Unpriced: b.Unpriced,
 		})
 	}
 	for _, b := range attempts {

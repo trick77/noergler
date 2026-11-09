@@ -276,6 +276,48 @@ func TestDailySeriesBucketByDay(t *testing.T) {
 	}
 }
 
+// The Findings and Unpriced tiles draw from the day buckets. A billed
+// run-less attempt or call adds cost to its day, never a finding or an
+// unpriced run; an unbilled one is not spend at all.
+func TestDailySeriesCarryFindingsAndUnpriced(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	day := time.Now().UTC().Truncate(24 * time.Hour)
+	prID := upsert(t, s, key, "c1")
+	run(t, s, prID, "c1", nano(1_000), "gpt-5.5")
+	run(t, s, prID, "c2", nil, "gpt-5.5")
+	run(t, s, prID, "c3", nil, "gpt-5.5")
+	for _, a := range []Attempt{
+		{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "unparseable", CostNanoUSD: nano(400)},
+		{Key: key, TeamSlug: "platform", Kind: RunAuto, Outcome: "error"},
+	} {
+		if _, err := s.InsertAttempt(ctx, a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.InsertCommentCall(ctx, "platform", key, CallReply, 1, LLMCall{Profile: "p", CostNanoUSD: nano(100)}); err != nil {
+		t.Fatal(err)
+	}
+
+	days, err := s.DailyByTeam(ctx, time.Now().Add(-24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !time.Now().UTC().Truncate(24 * time.Hour).Equal(day) {
+		t.Skip("the inserts crossed midnight UTC")
+	}
+	if len(days) != 1 {
+		t.Fatalf("day buckets = %+v, want 1", days)
+	}
+	d := days[0]
+	if d.Runs != 3 || d.FindingsPosted != 6 || d.Unpriced != 2 {
+		t.Errorf("bucket = %+v, want 3 runs, 6 findings, 2 unpriced", d)
+	}
+	if d.CostNanoUSD == nil || *d.CostNanoUSD != 1_500 {
+		t.Errorf("cost = %v, want 1500", d.CostNanoUSD)
+	}
+}
+
 // A success with no attempt row (the write fails open, and runs predate the
 // table) is still the team's last run, as an ok.
 func TestActivityByTeamReportsLastRun(t *testing.T) {

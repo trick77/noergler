@@ -178,10 +178,13 @@ type TeamTotals struct {
 //
 // Table: -
 type Bucket struct {
-	Day         time.Time
-	TeamSlug    string
-	Runs        int
-	CostNanoUSD *int64
+	Day            time.Time
+	TeamSlug       string
+	Runs           int
+	FindingsPosted int64
+	CostNanoUSD    *int64
+	// Unpriced is how many of the day's runs carried no cost, as in Totals.
+	Unpriced int
 }
 
 // AttemptBucket is one day's count for one outcome.
