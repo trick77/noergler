@@ -18,7 +18,7 @@ import {
   Failed,
   Pill,
   PrTag,
-  RangePill,
+  FilterPill,
   RefreshFailing,
   TeamPill,
   Tile,
@@ -151,13 +151,13 @@ export function RunsPage() {
               aria-label={t("runs.outcome")}
             >
               {FILTERS.map((f) => (
-                <RangePill
+                <FilterPill
                   key={f.value}
                   active={filter === f.value}
                   onClick={() => setFilter(f.value)}
                 >
                   {t(f.label)}
-                </RangePill>
+                </FilterPill>
               ))}
             </span>
           }

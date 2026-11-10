@@ -23,7 +23,7 @@ import {
   h2,
   page,
   pageTitle,
-  RangePill,
+  FilterPill,
   table,
   td,
   tdNum,
@@ -336,9 +336,9 @@ export function MetricsPage() {
             aria-label={t("metrics.span")}
           >
             {SPANS.map((s) => (
-              <RangePill key={s} active={span === s} onClick={() => pick(s)}>
+              <FilterPill key={s} active={span === s} onClick={() => pick(s)}>
                 {t("metrics.spanDays", { count: s })}
-              </RangePill>
+              </FilterPill>
             ))}
           </span>
         </div>
