@@ -87,7 +87,13 @@ export interface Metrics {
   until: string;
   /** "month" for the current calendar month, "rolling" for a ?days= window. */
   window: string;
+  /** Where daily and daily_attempts start: six days before since, so the
+   *  7-day trend has a full week behind the window's first day. */
+  lead_since: string;
   totals: Totals;
+  /** Distinct PRs, not runs: reviewed got an LLM review back, seen is every
+   *  PR touched in the window, skipped and failed included. */
+  prs: { reviewed: number; seen: number };
   by_team: (Totals & { team: string; team_name: string })[];
   daily: {
     day: string;

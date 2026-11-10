@@ -1,6 +1,6 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { Chart, Sparkline } from "./Chart";
+import { Chart, Sparkline, monotonePath } from "./Chart";
 import { _days, _niceTicks, _windowTitle } from "./MetricsPage";
 
 const s1 = (values: number[]) => [
@@ -128,12 +128,76 @@ describe("Chart", () => {
     }
   });
 
+  // The trend draws over the series, prints its latest value, and the bars
+  // step back so it reads first.
+  it("draws a trend with its latest value and dims the bars", () => {
+    const { container } = render(
+      <Chart
+        series={s1([4, 6, 8])}
+        trend={{
+          values: [null, 5, 7],
+          color: "var(--color-ink)",
+          format: (v) => `~${v}`,
+        }}
+        width={300}
+        height={120}
+        mark="bar"
+        ticks={[0, 10]}
+        label="bars"
+      />,
+    );
+    const el = svg(container);
+    expect(el.querySelector('path[stroke="var(--color-ink)"]')).not.toBeNull();
+    expect(el.querySelector("circle")).not.toBeNull();
+    expect(el.textContent).toContain("~7");
+    const bars = Array.from(el.querySelectorAll("rect")).slice(1);
+    for (const bar of bars)
+      expect(bar.getAttribute("fill-opacity")).toBe("0.5");
+  });
+
+  it("draws no trend from a single point", () => {
+    const { container } = render(
+      <Chart
+        series={s1([4, 6])}
+        trend={{ values: [null, 5], color: "var(--color-ink)", format: String }}
+        width={300}
+        height={120}
+        ticks={[0, 10]}
+        label="lines"
+      />,
+    );
+    expect(svg(container).querySelector("circle")).toBeNull();
+  });
+
   it("renders a sparkline with no axis or grid", () => {
     const { container } = render(
       <Sparkline values={[1, 3, 2]} label="spark" />,
     );
     expect(svg(container).querySelectorAll("text")).toHaveLength(0);
     expect(svg(container).querySelectorAll("line")).toHaveLength(0);
+  });
+});
+
+describe("monotonePath", () => {
+  // A spline through a drop to zero dipped below the axis: a bump the data
+  // never had. The monotone curve stays within each segment's span.
+  it("never overshoots a segment's ends", () => {
+    const pts: [number, number][] = [
+      [0, 10],
+      [10, 10],
+      [20, 100],
+      [30, 100],
+      [40, 10],
+    ];
+    // x,y pairs in order, control points included: every second is a y.
+    const ys = (monotonePath(pts).match(/-?\d+(\.\d+)?/g) ?? [])
+      .map(Number)
+      .filter((_, i) => i % 2 === 1);
+    expect(ys.length).toBeGreaterThan(pts.length);
+    for (const y of ys) {
+      expect(y).toBeGreaterThanOrEqual(10);
+      expect(y).toBeLessThanOrEqual(100);
+    }
   });
 });
 

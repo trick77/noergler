@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Metrics } from "./api";
-import { Chart, Sparkline, type Series } from "./Chart";
+import { Chart, Sparkline, type Series, type Trend } from "./Chart";
 import {
   calendarDay,
   dayMonth,
@@ -81,6 +82,38 @@ function windowTitle(m: Metrics): string {
   return monthName(m.since);
 }
 
+/** The windows on offer: 30 days by default, 90 (the server's cap) on
+ *  request (user, 2026-11-10). In the URL (?days=90), so a view can be
+ *  shared; 30 is the bare path. */
+const SPANS = [30, 90] as const;
+type Span = (typeof SPANS)[number];
+function readSpan(): Span {
+  return new URLSearchParams(window.location.search).get("days") === "90"
+    ? 90
+    : 30;
+}
+function writeSpan(span: Span) {
+  const url = window.location.pathname + (span === 30 ? "" : `?days=${span}`);
+  if (window.location.pathname + window.location.search !== url) {
+    window.history.replaceState({}, "", url);
+  }
+}
+
+/** trailingMean is each day's mean over itself and the six days before.
+ *  Seven, because every such week holds exactly one weekend: a shorter
+ *  window dipped every Saturday. The caller passes the six lead days the
+ *  API sends before the window (lead_since) and drops them afterwards, so
+ *  the line starts on the window's first day. A day with fewer than six
+ *  days behind it (an API without the lead) is null rather than a partial
+ *  week passed off as a whole one. */
+function trailingMean(values: number[], n = 7): (number | null)[] {
+  return values.map((_, i) =>
+    i < n - 1
+      ? null
+      : values.slice(i - n + 1, i + 1).reduce((a, b) => a + b, 0) / n,
+  );
+}
+
 /** niceTicks picks 0 / half / max, rounded up so the top tick is a round
  *  number rather than the data's own maximum. */
 function niceTicks(max: number): number[] {
@@ -92,10 +125,18 @@ function niceTicks(max: number): number[] {
 
 export function MetricsPage() {
   const { t } = useTranslation();
-  // The last 30 days, today included (user's call): the trend reads the same
-  // on the 1st as on the 30th. The cost no longer matches the monthly bill;
+  // Rolling days, today included (user's call): the trend reads the same on
+  // the 1st as on the 30th. The cost no longer matches the monthly bill;
   // the runs page keeps the month.
-  const { data, failed } = usePoll<Metrics>("metrics?days=30", 60000);
+  const [span, setSpan] = useState<Span>(readSpan);
+  const { data, failed, stale } = usePoll<Metrics>(
+    `metrics?days=${span}`,
+    60000,
+  );
+  const pick = (s: Span) => {
+    setSpan(s);
+    writeSpan(s);
+  };
 
   if (!data) {
     return (
@@ -118,7 +159,7 @@ export function MetricsPage() {
   // than an offset from today: "d-13" says nothing on its own. A rolling
   // window crosses a month, where plain days read 26, 30, 3, 7: the first
   // label and the first of each new month carry the month name.
-  const step = window.length > 20 ? 4 : 3;
+  const step = window.length > 45 ? 7 : window.length > 20 ? 4 : 3;
   const label = (day: string, i: number) => {
     if (i % step !== 0) return "";
     const prev = i - step;
@@ -145,16 +186,22 @@ export function MetricsPage() {
 
   /** perDay sums `count` over the rows of each window day that `keep` lets
    *  through. */
-  const perDay = <R extends { day: string }>(
+  const perDayIn = <R extends { day: string }>(
+    on: string[],
     rows: R[],
     count: (r: R) => number,
     keep: (r: R) => boolean = () => true,
   ) =>
-    window.map((day) =>
+    on.map((day) =>
       rows
         .filter((r) => r.day === day && keep(r))
         .reduce((n, r) => n + count(r), 0),
     );
+  const perDay = <R extends { day: string }>(
+    rows: R[],
+    count: (r: R) => number,
+    keep?: (r: R) => boolean,
+  ) => perDayIn(window, rows, count, keep);
   const spend = (r: Metrics["daily"][number]) =>
     r.cost_usd ? Number(r.cost_usd) : 0;
 
@@ -185,12 +232,6 @@ export function MetricsPage() {
     ),
     0,
   );
-  // Lines, not a stack: each team at its own value. Stacked, every stroke
-  // sat on the cumulative top, so the last team traced the daily total and
-  // read as the biggest spender. The axis fits the highest team, not the sum.
-  const costTicks = niceTicks(
-    Math.max(...costSeries.flatMap((s) => s.values), 0),
-  );
 
   // Attempts per day, by outcome. Skipped and failed use the status hues,
   // not the series ramp: they are states, not categories.
@@ -220,14 +261,49 @@ export function MetricsPage() {
       values: bucket((o) => o !== "ok" && o !== "skipped"),
     },
   ];
-  const runTop = Math.max(
-    ...window.map((_, i) => runSeries.reduce((sum, s) => sum + s.values[i], 0)),
-    0,
+  const runTotals = window.map((_, i) =>
+    runSeries.reduce((sum, s) => sum + s.values[i], 0),
   );
+  const runTop = Math.max(...runTotals, 0);
 
   const costTotals = costSeries.length
     ? window.map((_, i) => costSeries.reduce((sum, s) => sum + s.values[i], 0))
     : [];
+
+  // Both charts trend their TOTAL, the whole bar and every team summed:
+  // the card's title already says what is counted, and a trend of one
+  // segment would read as the trend of the chart (user, 2026-11-10).
+  //
+  // Summed straight off the rows over lead + window, not off the series:
+  // a team that spent only in the lead days is in no series, and its spend
+  // still belongs in the week the window's first days average over.
+  const lead = days(data.lead_since, data.since);
+  const trended = [...lead, ...window];
+  const ofWindow = (values: number[]) =>
+    trailingMean(values).slice(lead.length);
+  const trendColor = "var(--color-ink)";
+  const runTrend: Trend = {
+    values: ofWindow(perDayIn(trended, data.daily_attempts, (b) => b.count)),
+    color: trendColor,
+    format: (v) => String(Math.round(v)),
+  };
+  const costTrend: Trend = {
+    values: ofWindow(perDayIn(trended, data.daily, spend)),
+    color: trendColor,
+    format: (v) => money(v.toFixed(6)),
+  };
+  // Lines, not a stack: each team at its own value. Stacked, every stroke
+  // sat on the cumulative top, so the last team traced the daily total and
+  // read as the biggest spender. The axis fits the highest team or the
+  // trend, whichever is higher: the trend averages the sum, so it can
+  // clear every single team.
+  const costTicks = niceTicks(
+    Math.max(
+      ...costSeries.flatMap((s) => s.values),
+      ...costTrend.values.map((v) => v ?? 0),
+      0,
+    ),
+  );
 
   // All teams per day, for the tiles' trends.
   const findingsDaily = perDay(data.daily, (b) => b.findings_posted);
@@ -240,158 +316,223 @@ export function MetricsPage() {
         {/* The window is named ONCE, here. Repeating it on every tile and
             card says the same thing five times and crowds out what each
             card actually measures. */}
-        <h2 className={h2}>
-          {t("nav.metrics")}
-          <Sep />
-          <span className="text-muted">{title}</span>
-        </h2>
+        <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+          <h2 className={h2}>
+            {t("nav.metrics")}
+            <Sep />
+            <span className="text-muted">{title}</span>
+          </h2>
+          <span
+            className="flex gap-0.5"
+            role="group"
+            aria-label={t("metrics.span")}
+          >
+            {SPANS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => pick(s)}
+                aria-pressed={span === s}
+                className={
+                  "rounded-ui-sm px-2 py-0.5 text-[12px] transition-colors " +
+                  (span === s
+                    ? "bg-panel text-ink"
+                    : "text-muted hover:bg-panel hover:text-ink")
+                }
+              >
+                {t("metrics.spanDays", { count: s })}
+              </button>
+            ))}
+          </span>
+        </div>
         <p className={lede}>{t("metrics.lede")}</p>
 
-        <Tiles>
-          {/* On an instance that has not run yet, "unpriced" would claim the
+        <div className={stale ? "opacity-40 transition-opacity" : ""}>
+          <Tiles>
+            {/* On an instance that has not run yet, "unpriced" would claim the
               gateway declined to price something. Nothing ran; that is a
               dash. "unpriced" is reserved for runs that actually happened
               and came back without a price. */}
-          <Tile
-            label={t("metrics.cost")}
-            value={data.totals.runs === 0 ? "—" : money(data.totals.cost_usd)}
-          >
-            {costTop > 0 && (
-              <div className="mt-2">
-                <Sparkline values={costTotals} label={t("metrics.costTrend")} />
-              </div>
-            )}
-          </Tile>
-          <Tile
-            label={t("metrics.reviewed")}
-            value={data.totals.runs.toLocaleString()}
-          >
-            {/* A flat line of zeros is a line that says nothing. */}
-            {data.totals.runs > 0 && (
-              <div className="mt-2">
-                <Sparkline
-                  values={runSeries[0].values}
-                  label={t("metrics.reviewedTrend")}
-                />
-              </div>
-            )}
-          </Tile>
-          <Tile
-            label={t("metrics.findings")}
-            value={data.totals.findings_posted.toLocaleString()}
-          >
-            {hasTrend(findingsDaily) && (
-              <div className="mt-2">
-                <Sparkline
-                  values={findingsDaily}
-                  label={t("metrics.findingsTrend")}
-                />
-              </div>
-            )}
-          </Tile>
-          <Tile
-            label={t("metrics.unpriced")}
-            value={data.totals.unpriced_runs}
-            note={t("metrics.runsNote")}
-          >
-            {hasTrend(unpricedDaily) && (
-              <div className="mt-2">
-                <Sparkline
-                  values={unpricedDaily}
-                  label={t("metrics.unpricedTrend")}
-                />
-              </div>
-            )}
-          </Tile>
-        </Tiles>
+            <Tile
+              label={t("metrics.cost")}
+              value={data.totals.runs === 0 ? "—" : money(data.totals.cost_usd)}
+            >
+              {costTop > 0 && (
+                <div className="mt-2">
+                  <Sparkline
+                    values={costTotals}
+                    label={t("metrics.costTrend")}
+                  />
+                </div>
+              )}
+            </Tile>
+            {/* PRs, not runs (user's call): runs count every push and mention
+              again, so a busy PR inflated the figure and one skipped for a
+              missing precondition never showed. Reviewed = got an LLM review
+              back; seen = touched at all. The runs stay as the line below. */}
+            <Tile
+              label={t("metrics.reviewed")}
+              value={
+                data.prs.seen === 0 ? (
+                  "—"
+                ) : (
+                  <span
+                    title={t("metrics.reviewedOfSeen", {
+                      reviewed: data.prs.reviewed,
+                      seen: data.prs.seen,
+                    })}
+                  >
+                    {data.prs.reviewed.toLocaleString()}
+                    <span className="text-muted"> / </span>
+                    {data.prs.seen.toLocaleString()}
+                  </span>
+                )
+              }
+              note={data.prs.seen === 0 ? undefined : t("metrics.prsNote")}
+            >
+              {data.totals.runs > 0 && (
+                <div className="mt-0.5 text-[12.5px] text-muted tabular-nums">
+                  {t("metrics.runCount", {
+                    count: data.totals.runs,
+                    n: data.totals.runs.toLocaleString(),
+                  })}
+                </div>
+              )}
+              {/* A flat line of zeros is a line that says nothing. */}
+              {data.totals.runs > 0 && (
+                <div className="mt-2">
+                  <Sparkline
+                    values={runSeries[0].values}
+                    label={t("metrics.reviewedTrend")}
+                  />
+                </div>
+              )}
+            </Tile>
+            <Tile
+              label={t("metrics.findings")}
+              value={data.totals.findings_posted.toLocaleString()}
+            >
+              {hasTrend(findingsDaily) && (
+                <div className="mt-2">
+                  <Sparkline
+                    values={findingsDaily}
+                    label={t("metrics.findingsTrend")}
+                  />
+                </div>
+              )}
+            </Tile>
+            <Tile
+              label={t("metrics.unpriced")}
+              value={data.totals.unpriced_runs}
+              note={t("metrics.runsNote")}
+            >
+              {hasTrend(unpricedDaily) && (
+                <div className="mt-2">
+                  <Sparkline
+                    values={unpricedDaily}
+                    label={t("metrics.unpricedTrend")}
+                  />
+                </div>
+              )}
+            </Tile>
+          </Tiles>
 
-        <p className={eyebrow}>{t("metrics.costPerDay")}</p>
-        <Card title={t("metrics.spend")}>
-          {costTop === 0 ? (
-            <Empty>{t("metrics.noPriced")}</Empty>
-          ) : (
-            <>
-              <Chart
-                series={costSeries}
-                width={1290}
-                height={200}
-                mark="line"
-                ticks={costTicks}
-                xLabels={window.map(label)}
-                format={moneyTick(costTicks)}
-                label={t("metrics.costChart", { title })}
-              />
-              <Legend series={costSeries} />
-            </>
-          )}
-        </Card>
+          <p className={eyebrow}>{t("metrics.costPerDay")}</p>
+          <Card title={t("metrics.spend")}>
+            {costTop === 0 ? (
+              <Empty>{t("metrics.noPriced")}</Empty>
+            ) : (
+              <>
+                <Chart
+                  series={costSeries}
+                  trend={costTrend}
+                  width={1290}
+                  height={200}
+                  mark="line"
+                  ticks={costTicks}
+                  xLabels={window.map(label)}
+                  format={moneyTick(costTicks)}
+                  label={t("metrics.costChart", { title })}
+                />
+                <Legend series={costSeries} trend={trendColor} />
+              </>
+            )}
+          </Card>
 
-        <p className={eyebrow}>{t("metrics.runsPerDay")}</p>
-        <Card title={t("metrics.throughput")}>
-          {runTop === 0 ? (
-            <Empty>{t("metrics.noRuns")}</Empty>
-          ) : (
-            <>
-              <Chart
-                series={runSeries}
-                width={1290}
-                height={180}
-                mark="bar"
-                ticks={niceTicks(runTop)}
-                xLabels={window.map(label)}
-                label={t("metrics.runsChart", { title })}
-              />
-              <Legend series={runSeries} />
-            </>
-          )}
-        </Card>
+          <p className={eyebrow}>{t("metrics.runsPerDay")}</p>
+          <Card title={t("metrics.throughput")}>
+            {runTop === 0 ? (
+              <Empty>{t("metrics.noRuns")}</Empty>
+            ) : (
+              <>
+                <Chart
+                  series={runSeries}
+                  trend={runTrend}
+                  width={1290}
+                  height={180}
+                  mark="bar"
+                  ticks={niceTicks(runTop)}
+                  xLabels={window.map(label)}
+                  label={t("metrics.runsChart", { title })}
+                />
+                <Legend series={runSeries} trend={trendColor} />
+              </>
+            )}
+          </Card>
 
-        <p className={eyebrow}>{t("metrics.byTeam")}</p>
-        <Card>
-          {data.by_team.length === 0 ? (
-            <Empty>{t("metrics.nothingReviewed")}</Empty>
-          ) : (
-            <div className="overflow-x-auto overscroll-x-contain">
-              <table className={table}>
-                <thead>
-                  <tr>
-                    <th className={th}>{t("metrics.team")}</th>
-                    <th className={thNum}>{t("metrics.reviewed")}</th>
-                    <th className={thNum}>{t("metrics.tokensIn")}</th>
-                    <th className={thNum}>{t("metrics.tokensOut")}</th>
-                    <th className={thNum}>{t("metrics.findings")}</th>
-                    <th className={thNum}>{t("metrics.cost")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.by_team.map((row) => (
-                    // Ranked by spend, deliberately: this table answers
-                    // "who is spending", so it is not sorted by name.
-                    <tr key={row.team}>
-                      <td className={td} title={row.team}>
-                        {row.team_name}
-                      </td>
-                      <td className={tdNum}>{row.runs}</td>
-                      <td className={tdNum}>{tokens(row.prompt_tokens)}</td>
-                      <td className={tdNum}>{tokens(row.completion_tokens)}</td>
-                      <td className={tdNum}>{row.findings_posted}</td>
-                      <td className={tdNum}>{money(row.cost_usd)}</td>
+          <p className={eyebrow}>{t("metrics.byTeam")}</p>
+          <Card>
+            {data.by_team.length === 0 ? (
+              <Empty>{t("metrics.nothingReviewed")}</Empty>
+            ) : (
+              <div className="overflow-x-auto overscroll-x-contain">
+                <table className={table}>
+                  <thead>
+                    <tr>
+                      <th className={th}>{t("metrics.team")}</th>
+                      {/* Runs, not "reviewed": the tile counts PRs now and
+                        this column still counts runs. */}
+                      <th className={thNum}>{t("metrics.runs")}</th>
+                      <th className={thNum}>{t("metrics.tokensIn")}</th>
+                      <th className={thNum}>{t("metrics.tokensOut")}</th>
+                      <th className={thNum}>{t("metrics.findings")}</th>
+                      <th className={thNum}>{t("metrics.cost")}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
+                  </thead>
+                  <tbody>
+                    {data.by_team.map((row) => (
+                      // Ranked by spend, deliberately: this table answers
+                      // "who is spending", so it is not sorted by name.
+                      <tr key={row.team}>
+                        <td className={td} title={row.team}>
+                          {row.team_name}
+                        </td>
+                        <td className={tdNum}>{row.runs}</td>
+                        <td className={tdNum}>{tokens(row.prompt_tokens)}</td>
+                        <td className={tdNum}>
+                          {tokens(row.completion_tokens)}
+                        </td>
+                        <td className={tdNum}>{row.findings_posted}</td>
+                        <td className={tdNum}>{money(row.cost_usd)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        </div>
       </div>
     </div>
   );
 }
 
 /** A legend is always present for two or more series, so identity is never
- *  carried by colour alone. */
-function Legend({ series }: { series: Series[] }) {
-  if (series.length < 2) return null;
+ *  carried by colour alone; a trend's line is always named, since a lone
+ *  series with a second line beside it is two things to tell apart. */
+function Legend({ series, trend }: { series: Series[]; trend?: string }) {
+  const { t } = useTranslation();
+  if (series.length < 2 && !trend) return null;
   return (
     <div className="mt-2.5 flex flex-wrap gap-4 text-[12.5px] text-muted">
       {series.map((s) => (
@@ -404,6 +545,16 @@ function Legend({ series }: { series: Series[] }) {
           {s.name}
         </span>
       ))}
+      {trend && (
+        <span className="inline-flex items-center gap-1.5">
+          <i
+            aria-hidden
+            className="inline-block h-[2px] w-3.5 rounded-full"
+            style={{ background: trend }}
+          />
+          {t("metrics.trend")}
+        </span>
+      )}
     </div>
   );
 }

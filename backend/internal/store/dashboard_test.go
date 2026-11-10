@@ -214,6 +214,41 @@ func TestSpendIncludesBilledRunlessAttempts(t *testing.T) {
 	}
 }
 
+// Reviewed is PRs with a run, not runs: two pushes on one PR are one PR. A
+// skip and a failed LLM call make a PR seen, never reviewed. A run with no
+// attempt row (a mention writes none) still counts as seen.
+func TestPRCountsCountsPRsNotRuns(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	prID := upsert(t, s, key, "c1")
+	r1 := run(t, s, prID, "c1", nano(1), "gpt-5.5")
+	run(t, s, prID, "c2", nano(1), "gpt-5.5")
+	attempt(t, s, key, "ok", "", &r1)
+
+	attempt(t, s, PRKey{Project: "PLAT", Repo: "api", PRID: 8}, "skipped", "empty_diff", nil)
+	attempt(t, s, PRKey{Project: "PLAT", Repo: "api", PRID: 9}, "timed_out", "", nil)
+
+	mentioned := PRKey{Project: "PLAT", Repo: "web", PRID: 1}
+	mentionedID := upsert(t, s, mentioned, "m1")
+	run(t, s, mentionedID, "m1", nano(1), "gpt-5.5")
+
+	reviewed, seen, err := s.PRCountsSince(ctx, time.Now().Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reviewed != 2 || seen != 4 {
+		t.Errorf("reviewed/seen = %d/%d, want 2/4", reviewed, seen)
+	}
+
+	reviewed, seen, err = s.PRCountsSince(ctx, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reviewed != 0 || seen != 0 {
+		t.Errorf("empty window reviewed/seen = %d/%d, want 0/0", reviewed, seen)
+	}
+}
+
 func TestTotalsByTeamGroupsOnTheAuthenticatedSlug(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
@@ -449,6 +484,9 @@ func TestDashboardReadsPropagateErrors(t *testing.T) {
 	}
 	if _, err := s.TotalsSince(ctx, time.Now()); err == nil {
 		t.Error("TotalsSince must report a dead pool")
+	}
+	if _, _, err := s.PRCountsSince(ctx, time.Now()); err == nil {
+		t.Error("PRCountsSince must report a dead pool")
 	}
 	if _, err := s.TotalsByTeam(ctx, time.Now()); err == nil {
 		t.Error("TotalsByTeam must report a dead pool")

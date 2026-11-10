@@ -73,6 +73,33 @@ func (s *Store) TotalsByTeam(ctx context.Context, since time.Time) ([]TeamTotals
 		})
 }
 
+// PRCountsSince counts distinct PRs in the window: reviewed is those with at
+// least one run (an LLM review that came back), seen is every PR noergler
+// touched, whatever the outcome. Runs count per push and per mention, so a
+// busy PR inflated "reviewed" while one skipped for a missing precondition
+// never showed up at all.
+//
+// Runs join the seen side too: the attempt write fails open and a mention
+// writes no attempt, so a reviewed PR can lack an attempt row in the window.
+// Read off attempts alone, reviewed could exceed seen.
+func (s *Store) PRCountsSince(ctx context.Context, since time.Time) (reviewed, seen int, err error) {
+	err = s.pool.QueryRow(ctx, `
+		WITH prs AS (
+			SELECT project_key, repo_slug, pr_id, false AS reviewed
+			  FROM review_attempts
+			 WHERE created_at >= $1
+			UNION ALL
+			SELECT p.project_key, p.repo_slug, p.pr_id, true
+			  FROM review_runs r
+			  JOIN pull_requests p ON p.id = r.pull_request_id
+			 WHERE r.created_at >= $1
+		)
+		SELECT COUNT(DISTINCT (project_key, repo_slug, pr_id)) FILTER (WHERE reviewed),
+		       COUNT(DISTINCT (project_key, repo_slug, pr_id))
+		  FROM prs`, since).Scan(&reviewed, &seen)
+	return reviewed, seen, err
+}
+
 // DailyByTeam is runs, findings, cost and unpriced runs per day per team, for
 // the charts. Days with no runs are absent rather than zero-filled: the
 // caller knows the window it asked for and fills the gaps, which keeps this

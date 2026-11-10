@@ -91,6 +91,7 @@ const metrics: Metrics = {
   since: "2026-09-01T00:00:00",
   until: "2026-10-01T00:00:00",
   window: "month",
+  lead_since: "2026-08-26T00:00:00",
   totals: {
     runs: 12,
     prompt_tokens: 1000,
@@ -100,6 +101,7 @@ const metrics: Metrics = {
     cost_usd: "1.250",
     unpriced_runs: 3,
   },
+  prs: { reviewed: 4, seen: 7 },
   by_team: [
     {
       team: "payments",
@@ -511,6 +513,7 @@ describe("MetricsPage", () => {
           cost_usd: null,
           unpriced_runs: 0,
         },
+        prs: { reviewed: 0, seen: 0 },
         by_team: [],
         daily: [],
         daily_attempts: [],
@@ -522,6 +525,97 @@ describe("MetricsPage", () => {
     await waitFor(() => expect(screen.getByText("Cost")).toBeDefined());
     expect(screen.queryByText("unpriced")).toBeNull();
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  });
+
+  // Reviewed counts PRs, reviewed out of seen; the runs (every push and
+  // mention again) stay as the line beneath, and the team table says Runs.
+  it("shows reviewed PRs out of seen, with the runs beneath", async () => {
+    serve({ metrics });
+    render(<MetricsPage />);
+
+    const value = (await screen.findByText("Reviewed")).nextElementSibling;
+    expect(value?.textContent).toBe("4 / 7PRs");
+    expect(screen.getByTitle("4 of 7 PRs seen got reviewed")).toBeDefined();
+    expect(screen.getByText("12 runs")).toBeDefined();
+    expect(screen.getByRole("columnheader", { name: "Runs" })).toBeDefined();
+  });
+
+  // The trend averages the six lead days the API sends before the window,
+  // so it starts on the window's first day; without them a 3-day window
+  // would draw no trend at all. Both charts trend their total.
+  it("averages the lead days into the trend", async () => {
+    serve({
+      metrics: {
+        ...metrics,
+        since: "2026-09-01T00:00:00Z",
+        until: "2026-09-04T00:00:00Z",
+        lead_since: "2026-08-26T00:00:00Z",
+        window: "rolling",
+        daily_attempts: [
+          { day: "2026-08-30", outcome: "skipped", count: 14 },
+          { day: "2026-09-02", outcome: "ok", count: 7 },
+        ],
+        daily: [
+          { ...metrics.daily[0], day: "2026-08-28", cost_usd: "0.350" },
+          { ...metrics.daily[0], day: "2026-09-02", cost_usd: "0.350" },
+        ],
+      },
+    });
+    render(<MetricsPage />);
+
+    // Sep 3: (14 + 7) / 7 runs, ($0.35 + $0.35) / 7 spend.
+    const runs = await screen.findByLabelText(/Runs per day/);
+    expect(within(runs as HTMLElement).getByText("3")).toBeDefined();
+    const cost = screen.getByLabelText(/Cost per day/);
+    expect(within(cost as HTMLElement).getByText("$0.10")).toBeDefined();
+    expect(screen.getAllByText("7-day avg")).toHaveLength(2);
+  });
+
+  // 30 days by default, 90 on request, and the choice rides in the URL.
+  it("switches the window to 90 days and back", async () => {
+    window.history.replaceState({}, "", "/metrics");
+    serve({ metrics });
+    render(<MetricsPage />);
+
+    const ninety = await screen.findByRole("button", { name: "90 days" });
+    expect(
+      screen
+        .getByRole("button", { name: "30 days" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    fireEvent.click(ninety);
+
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(fetch)
+          .mock.calls.some(([u]) => /\/metrics\?days=90$/.test(String(u))),
+      ).toBe(true),
+    );
+    expect(window.location.search).toBe("?days=90");
+    expect(ninety.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "30 days" }));
+    expect(window.location.search).toBe("");
+  });
+
+  it("opens on the window the URL names", async () => {
+    window.history.replaceState({}, "", "/metrics?days=90");
+    serve({ metrics });
+    render(<MetricsPage />);
+
+    await screen.findByRole("button", { name: "90 days" });
+    const calls = vi.mocked(fetch).mock.calls.map(([u]) => String(u));
+    expect(calls.some((u) => /\/metrics\?days=90$/.test(u))).toBe(true);
+    window.history.replaceState({}, "", "/");
+  });
+
+  it("dashes reviewed when no PR was seen", async () => {
+    serve({ metrics: { ...metrics, prs: { reviewed: 0, seen: 0 } } });
+    render(<MetricsPage />);
+
+    const value = (await screen.findByText("Reviewed")).nextElementSibling;
+    expect(value?.textContent).toBe("—");
   });
 
   it("labels both charts for a screen reader", async () => {

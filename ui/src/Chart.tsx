@@ -19,8 +19,21 @@ export interface Series {
 
 export type Mark = "line" | "area" | "bar";
 
+/** A trend drawn over the series: a smoothed line with its latest value
+ *  printed at the end. While one is drawn the series step back (bars and
+ *  lines dimmed) so the trend reads first (user, 2026-11-10). */
+export interface Trend {
+  /** One per bucket; null where there is nothing to average yet. */
+  values: (number | null)[];
+  /** A CSS variable string, like a series colour. */
+  color: string;
+  /** Formats the end label. */
+  format: (v: number) => string;
+}
+
 export interface ChartProps {
   series: Series[];
+  trend?: Trend;
   width: number;
   height: number;
   mark?: Mark;
@@ -34,6 +47,52 @@ export interface ChartProps {
 }
 
 const PAD = { l: 52, r: 14, t: 12, b: 22 };
+// Room right of the plot for a trend's end label ("$12.34").
+const TREND_R = 56;
+
+/** monotonePath is a smooth curve through the points that never overshoots
+ *  between them (Fritsch-Carlson): a plain spline dipped below zero on a
+ *  drop and drew a bump the data never had. */
+export function monotonePath(pts: [number, number][]): string {
+  const f = (v: number) => v.toFixed(1);
+  if (pts.length < 3)
+    return pts.map(([x, y], i) => `${i ? "L" : "M"} ${f(x)},${f(y)}`).join(" ");
+  const n = pts.length;
+  const dx: number[] = [];
+  const m: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    dx.push(pts[i + 1][0] - pts[i][0]);
+    m.push((pts[i + 1][1] - pts[i][1]) / dx[i]);
+  }
+  const t: number[] = [m[0]];
+  for (let i = 1; i < n - 1; i++)
+    t.push(m[i - 1] * m[i] <= 0 ? 0 : (m[i - 1] + m[i]) / 2);
+  t.push(m[n - 2]);
+  for (let i = 0; i < n - 1; i++) {
+    if (m[i] === 0) {
+      t[i] = 0;
+      t[i + 1] = 0;
+      continue;
+    }
+    const a = t[i] / m[i];
+    const b = t[i + 1] / m[i];
+    const s = a * a + b * b;
+    if (s > 9) {
+      const k = 3 / Math.sqrt(s);
+      t[i] = k * a * m[i];
+      t[i + 1] = k * b * m[i];
+    }
+  }
+  let d = `M ${f(pts[0][0])},${f(pts[0][1])}`;
+  for (let i = 0; i < n - 1; i++) {
+    const h = dx[i] / 3;
+    d +=
+      ` C ${f(pts[i][0] + h)},${f(pts[i][1] + t[i] * h)}` +
+      ` ${f(pts[i + 1][0] - h)},${f(pts[i + 1][1] - t[i + 1] * h)}` +
+      ` ${f(pts[i + 1][0])},${f(pts[i + 1][1])}`;
+  }
+  return d;
+}
 
 /** stackTops turns a series list into cumulative bar segments. */
 function stackTops(series: Series[]): number[][] {
@@ -49,6 +108,7 @@ function stackTops(series: Series[]): number[][] {
 
 export function Chart({
   series,
+  trend,
   width,
   height,
   mark = "line",
@@ -60,7 +120,11 @@ export function Chart({
 }: ChartProps) {
   const clipId = useId();
   const bare = ticks === undefined;
-  const box = bare ? { l: 0, r: 0, t: pad, b: pad } : PAD;
+  const box = bare
+    ? { l: 0, r: 0, t: pad, b: pad }
+    : trend
+      ? { ...PAD, r: TREND_R }
+      : PAD;
 
   const plotW = width - box.l - box.r;
   const plotH = height - box.t - box.b;
@@ -98,6 +162,16 @@ export function Chart({
 
   const linePath = (vals: number[]) =>
     vals.map((v, i) => `${xAt(i)},${yAt(v)}`).join(" L ");
+
+  const trendPts: [number, number][] = [];
+  let trendLast: number | null = null;
+  trend?.values.forEach((v, i) => {
+    if (v === null || i >= n) return;
+    trendPts.push([xAt(i), yAt(v)]);
+    trendLast = v;
+  });
+  const showTrend = trend !== undefined && trendPts.length >= 2;
+  const trendEnd = trendPts[trendPts.length - 1];
 
   return (
     <svg
@@ -176,7 +250,7 @@ export function Chart({
                         height={Math.max(1, yBot - yTop - 2)}
                         rx={isTop ? 4 : 0}
                         fill={s.color}
-                        fillOpacity={0.85}
+                        fillOpacity={showTrend ? 0.5 : 0.85}
                       />
                     );
                   })}
@@ -201,14 +275,49 @@ export function Chart({
                     d={`M ${up}`}
                     fill="none"
                     stroke={s.color}
-                    strokeWidth={2}
+                    strokeWidth={showTrend ? 1.75 : 2}
+                    strokeOpacity={showTrend ? 0.55 : 1}
                     strokeLinejoin="round"
                     strokeLinecap="round"
                   />
                 </g>
               );
             })}
+        {showTrend && (
+          <path
+            d={monotonePath(trendPts)}
+            fill="none"
+            stroke={trend.color}
+            strokeWidth={2.25}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        )}
       </g>
+
+      {/* Outside the clip: the label sits in the right padding. */}
+      {showTrend && trendLast !== null && (
+        <g>
+          <circle
+            cx={trendEnd[0]}
+            cy={trendEnd[1]}
+            r={4}
+            fill={trend.color}
+            stroke="var(--color-panel)"
+            strokeWidth={2}
+          />
+          <text
+            x={trendEnd[0] + 9}
+            y={trendEnd[1] + 4}
+            fill={trend.color}
+            fontSize={11}
+            fontWeight={500}
+            fontFamily="var(--font-mono)"
+          >
+            {trend.format(trendLast)}
+          </text>
+        </g>
+      )}
 
       {xLabels?.map((t, i) =>
         t === "" ? null : (
