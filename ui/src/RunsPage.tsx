@@ -1,4 +1,4 @@
-import type { Metrics, Runs } from "./api";
+import type { Run, Runs } from "./api";
 import {
   ago,
   duration,
@@ -7,10 +7,10 @@ import {
   outcomeTitle,
   outcomeWord,
   reasonLabel,
-  windowTitle,
 } from "./format";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { RUNS_LIMIT } from "./runsLimit";
 import { usePoll, useNow } from "./usePoll";
 import {
   Card,
@@ -18,15 +18,15 @@ import {
   Failed,
   Pill,
   PrTag,
-  Sep,
+  RangePill,
+  RefreshFailing,
   TeamPill,
   Tile,
   Tiles,
   column,
   eyebrow,
-  h2,
-  lede,
   page,
+  pageTitle,
   table,
   td,
   tdNum,
@@ -35,27 +35,54 @@ import {
   thNum,
 } from "./ui";
 
+// The page is the latest RUNS_LIMIT runs, nothing wider (user, 2026-11-10):
+// tiles, table and skip breakdown all read the same rows, so none of them
+// can disagree with another or load on its own. No "Runs" tile: it would
+// read RUNS_LIMIT on any instance that has run that often.
+
 interface Counts {
-  total: number;
   reviewed: number;
   skipped: number;
   failed: number;
 }
 
-function counts(m: Metrics | null): Counts {
-  const c: Counts = { total: 0, reviewed: 0, skipped: 0, failed: 0 };
-  for (const b of m?.breakdown ?? []) {
-    c.total += b.count;
-    if (b.outcome === "ok") c.reviewed += b.count;
-    else if (b.outcome === "skipped") c.skipped += b.count;
-    else c.failed += b.count;
+function counts(runs: Run[]): Counts {
+  const c: Counts = { reviewed: 0, skipped: 0, failed: 0 };
+  for (const r of runs) {
+    if (r.outcome === "ok") c.reviewed++;
+    else if (r.outcome === "skipped") c.skipped++;
+    else c.failed++;
   }
   return c;
 }
 
-/** The outcome filter. Server-side, not over the fetched page: the feed is a
- *  window, so filtering what came back can show nothing while failures sit
- *  just past its edge - which reads as "nothing failed". */
+/** skipReasons is the skip breakdown, ranked. Only skips carry a reason; an
+ *  outcome that is not a skip is already named by its own word. */
+function skipReasons(runs: Run[]) {
+  const by = new Map<
+    string,
+    { reason: string; label?: string; count: number }
+  >();
+  for (const r of runs) {
+    if (r.outcome !== "skipped") continue;
+    const key = r.reason ?? "";
+    const b = by.get(key) ?? { reason: key, label: r.reason_label, count: 0 };
+    b.count++;
+    by.set(key, b);
+  }
+  // Ties by label: insertion order is newest run first, so equal counts
+  // swapped places as the feed moved and the table jumped every poll.
+  const label = (b: { reason: string; label?: string }) =>
+    reasonLabel(b.reason, b.label) ?? "";
+  return [...by.values()].sort(
+    (a, b) => b.count - a.count || label(a).localeCompare(label(b)),
+  );
+}
+
+/** The outcome filter narrows the same rows the tiles count, in the
+ *  browser: "Failed 2" on a tile is the two rows the filter shows. A failure
+ *  older than the latest runs is the API's (?outcome=failed), not the
+ *  page's. */
 type Filter = "" | "failed" | "skipped";
 const FILTERS = [
   { value: "", label: "runs.filterAll" },
@@ -63,27 +90,29 @@ const FILTERS = [
   { value: "skipped", label: "runs.filterSkipped" },
 ] as const satisfies readonly { value: Filter; label: string }[];
 
-/** The window the tiles ask for, today included; the title names the one
- *  the server answered with. */
-const RUNS_DAYS = 30;
+function keep(filter: Filter, r: Run): boolean {
+  if (filter === "skipped") return r.outcome === "skipped";
+  if (filter === "failed") return r.outcome !== "ok" && r.outcome !== "skipped";
+  return true;
+}
 
 export function RunsPage() {
   const { t } = useTranslation();
   const [filter, setFilter] = useState<Filter>("");
-  const query = `runs?limit=50${filter === "" ? "" : `&outcome=${filter}`}`;
-  const { data, failed, stale } = usePoll<Runs>(query, 10000);
-  // Same cadence as the feed: read once, the tiles drifted from the rows
-  // beneath them for as long as the page stayed open. Rolling days like the
-  // metrics page (user, 2026-11-10): the tiles are counts, not spend, so the
-  // billing month bought nothing here and read near-empty on the 1st.
-  const metrics = usePoll<Metrics>(`metrics?days=${RUNS_DAYS}`, 10000);
-  const now = useNow(10000);
+  const { data, failed, updatedAt } = usePoll<Runs>(
+    `runs?limit=${RUNS_LIMIT}`,
+    10000,
+  );
+  const wall = useNow(10000);
+  // A failing refresh freezes the "when" column at the last reading, as on
+  // Live: ages counting on beside stale rows read as a live page.
+  const now = failed && updatedAt !== null ? updatedAt : wall;
 
   if (!data) {
     return (
       <div className={page}>
         <div className={column}>
-          <h2 className={h2}>{t("nav.runs")}</h2>
+          <h2 className={pageTitle}>{t("nav.runs")}</h2>
           {failed ? (
             <Failed what={t("runs.failedWhat")} />
           ) : (
@@ -94,89 +123,55 @@ export function RunsPage() {
     );
   }
 
-  // A failing refresh dashes the counts too: kept on screen, the last
-  // reading read as current while the feed beneath moved on.
-  const counted = metrics.data !== null && !metrics.failed;
-  const c = counts(metrics.data);
-  // The skip breakdown, ranked. Only skips carry a reason; an outcome that
-  // is not a skip is already named by its own word.
-  const skips = (metrics.data?.breakdown ?? [])
-    .filter((b) => b.outcome === "skipped")
-    .sort((a, b) => b.count - a.count);
+  const c = counts(data.runs);
+  const skips = skipReasons(data.runs);
+  const rows = data.runs.filter((r) => keep(filter, r));
 
   return (
     <div className={page}>
       <div className={column}>
-        {/* The window the counts cover, named like the metrics page names
-            its own: what the server answered, not what was asked for, and
-            only once there are counts for it to describe. */}
-        <h2 className={h2}>
-          {t("nav.runs")}
-          {counted && metrics.data && (
-            <>
-              <Sep />
-              <span className="text-muted">{windowTitle(metrics.data)}</span>
-            </>
-          )}
-        </h2>
-        <p className={lede}>{t("runs.lede")}</p>
+        <h2 className={pageTitle}>{t("nav.runs")}</h2>
 
-        {/* A dash, not a zero, until the counts are read, failed or still
-            loading: the feed below may be full, and four tiles reading 0
-            beside it would be a claim rather than an absence. */}
-        <Tiles>
-          <Tile label={t("runs.tileRuns")} value={counted ? c.total : "—"} />
-          <Tile
-            label={t("runs.tileReviewed")}
-            value={counted ? c.reviewed : "—"}
-          />
-          <Tile
-            label={t("runs.tileSkipped")}
-            value={counted ? c.skipped : "—"}
-          />
-          <Tile label={t("runs.tileFailed")} value={counted ? c.failed : "—"} />
+        {failed && updatedAt !== null && (
+          <RefreshFailing at={updatedAt} now={wall} />
+        )}
+
+        <Tiles cols={3}>
+          <Tile label={t("runs.tileReviewed")} value={c.reviewed} />
+          <Tile label={t("runs.tileSkipped")} value={c.skipped} />
+          <Tile label={t("runs.tileFailed")} value={c.failed} />
         </Tiles>
 
-        <p className={eyebrow}>{t("runs.latest")}</p>
+        <p className={eyebrow}>{t("runs.latest", { n: RUNS_LIMIT })}</p>
         <Card
           right={
-            <span className="flex gap-0.5">
+            <span
+              className="flex flex-wrap gap-2"
+              role="group"
+              aria-label={t("runs.outcome")}
+            >
               {FILTERS.map((f) => (
-                <button
+                <RangePill
                   key={f.value}
-                  type="button"
+                  active={filter === f.value}
                   onClick={() => setFilter(f.value)}
-                  aria-pressed={filter === f.value}
-                  className={
-                    "rounded-ui-sm px-2 py-0.5 text-[12px] transition-colors " +
-                    (filter === f.value
-                      ? "bg-panel text-ink"
-                      : "text-muted hover:bg-panel hover:text-ink")
-                  }
                 >
                   {t(f.label)}
-                </button>
+                </RangePill>
               ))}
             </span>
           }
         >
-          {data.runs.length === 0 ? (
+          {rows.length === 0 ? (
             <Empty>
               {filter === ""
                 ? t("runs.empty")
                 : filter === "failed"
-                  ? t("runs.emptyFailed")
-                  : t("runs.emptySkipped")}
+                  ? t("runs.emptyFailed", { n: RUNS_LIMIT })
+                  : t("runs.emptySkipped", { n: RUNS_LIMIT })}
             </Empty>
           ) : (
-            <div
-              className={
-                "overflow-x-auto overscroll-x-contain transition-opacity " +
-                // Still the previous filter's rows: shown on their way out
-                // rather than presented as the answer to what was just asked.
-                (stale ? "opacity-40" : "")
-              }
-            >
+            <div className="overflow-x-auto overscroll-x-contain">
               <table className={table}>
                 <thead>
                   <tr>
@@ -190,8 +185,8 @@ export function RunsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.runs.map((r, i) => (
-                    <tr key={`${r.tag}-${r.created_at}-${i}`}>
+                  {rows.map((r) => (
+                    <tr key={r.id}>
                       <td className={tdTag}>
                         <PrTag tag={r.tag} base={data.bitbucket_url} />
                       </td>
@@ -239,11 +234,7 @@ export function RunsPage() {
 
         <p className={eyebrow}>{t("runs.whySkipped")}</p>
         <Card>
-          {metrics.failed ? (
-            <Empty>{t("runs.countsUnavailable")}</Empty>
-          ) : metrics.data === null ? (
-            <div className="skeleton h-12 rounded-ui" />
-          ) : skips.length === 0 ? (
+          {skips.length === 0 ? (
             <Empty>{t("runs.nothingSkipped")}</Empty>
           ) : (
             <table className={table}>

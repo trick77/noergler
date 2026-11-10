@@ -74,6 +74,9 @@ const maxAttempts = 100
 // The outcome filter runs in SQL, not over the returned page: filtering a
 // 100-row window client-side can come back empty while failures sit just
 // past its edge, which reads as "nothing failed" rather than "look further".
+// The dashboard's Runs page no longer asks for it: it filters the latest
+// runs it shows, on purpose (user, 2026-11-10). The API keeps ?outcome= for
+// a failure older than those.
 func (s *Store) RecentAttempts(ctx context.Context, team string, outcome AttemptFilter, limit int) ([]AttemptRow, error) {
 	if limit <= 0 || limit > maxAttempts {
 		limit = maxAttempts

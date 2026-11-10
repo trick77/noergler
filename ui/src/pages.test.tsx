@@ -329,7 +329,7 @@ describe("RunsPage", () => {
   ];
 
   it("shows failures and skips beside the successes", async () => {
-    serve({ runs: { runs }, metrics });
+    serve({ runs: { runs } });
     render(<RunsPage />);
 
     expect(await screen.findByText("Timed out")).toBeDefined();
@@ -339,7 +339,7 @@ describe("RunsPage", () => {
   });
 
   it("keeps an unpriced run unpriced", async () => {
-    serve({ runs: { runs }, metrics });
+    serve({ runs: { runs } });
     render(<RunsPage />);
 
     expect(await screen.findByText("$0.22")).toBeDefined();
@@ -348,134 +348,148 @@ describe("RunsPage", () => {
     expect(screen.queryByText("$0.00")).toBeNull();
   });
 
-  // /metrics can fail while /runs succeeds. Four tiles reading 0 above a
-  // full table would assert an absence that is really an unknown.
-  it("dashes the counts rather than claiming zero when metrics fail", async () => {
+  // The page is the latest 50 runs and nothing wider (user, 2026-11-10):
+  // one feed, no /metrics, and the tiles count the rows on screen.
+  it("counts the feed's own rows, from one request", async () => {
     serve({ runs: { runs } });
     render(<RunsPage />);
 
-    await waitFor(() => expect(screen.getByText("PAY/ledger#1")).toBeDefined());
-    expect(screen.queryByText("Counts unavailable.")).toBeDefined();
-    // The feed is there; the tiles do not claim a number.
-    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+    await screen.findByText("PAY/ledger#1");
+    // The label's sibling is the value; the heading and the filter pills
+    // carry the same words.
+    const tile = (label: string) =>
+      screen
+        .getAllByText(label)
+        .map((el) => el.nextElementSibling)
+        .find((el) => el?.className.includes("font-serif"))?.textContent;
+    // No Runs tile: it would read 50 on any busy instance.
+    expect(tile("Runs")).toBeUndefined();
+    expect(tile("Reviewed")).toBe("2");
+    expect(tile("Skipped")).toBe("1");
+    expect(tile("Failed")).toBe("1");
+    const calls = vi.mocked(fetch).mock.calls.map(([u]) => String(u));
+    expect(calls.every((u) => u.endsWith("/runs?limit=50"))).toBe(true);
   });
 
-  // Rolling days like the metrics page, not the calendar month (user's
-  // call): the tiles are counts, and a month read near-empty on the 1st.
-  it("asks for the last 30 days", async () => {
+  // "Failed 1" on the tile is the one row the filter shows: same rows,
+  // narrowed in the browser rather than a second, wider query.
+  it("filters the same rows the tiles count", async () => {
+    serve({ runs: { runs } });
+    render(<RunsPage />);
+    await screen.findByText("PAY/ledger#1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Failed" }));
+    expect(screen.getByText("PAY/ledger#4")).toBeDefined();
+    expect(screen.queryByText("PAY/ledger#1")).toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Failed" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Skipped" }));
+    expect(screen.getByText("PAY/ledger#3")).toBeDefined();
+    expect(screen.queryByText("PAY/ledger#4")).toBeNull();
+  });
+
+  it("says a filter found nothing among the latest 50", async () => {
+    serve({ runs: { runs: runs.filter((r) => r.outcome === "ok") } });
+    render(<RunsPage />);
+    await screen.findByText("PAY/ledger#1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Failed" }));
+    expect(
+      screen.getByText("No failed runs among the latest 50."),
+    ).toBeDefined();
+  });
+
+  // The skip breakdown is the feed's skips by reason, not a window's.
+  it("breaks the feed's skips down by reason", async () => {
+    const skip = runs[2];
     serve({
-      runs: { runs },
-      metrics: {
-        ...metrics,
-        since: "2026-09-10T00:00:00Z",
-        until: "2026-10-10T00:00:00Z",
-        window: "rolling",
+      runs: {
+        runs: [
+          ...runs,
+          { ...skip, id: 5 },
+          { ...skip, id: 6, reason: "draft", reason_label: "Draft PR" },
+        ],
       },
     });
     render(<RunsPage />);
 
-    expect(await screen.findByText("the last 30 days")).toBeDefined();
-    const calls = vi.mocked(fetch).mock.calls.map(([u]) => String(u));
-    expect(calls.some((u) => /\/metrics\?days=30$/.test(u))).toBe(true);
+    const head = (
+      await screen.findAllByText("HEAD unchanged since last review")
+    ).find((el) => el.tagName === "TD");
+    expect(head?.nextElementSibling?.textContent).toBe("2");
   });
 
-  // The title names the window the server answered with, not the one the
-  // page asked for: a server that ignored ?days= and answered its month
-  // must not be titled "the last 30 days".
-  it("names the window the server answered with", async () => {
-    serve({ runs: { runs }, metrics });
-    render(<RunsPage />);
-
-    expect(await screen.findByText("September 2026")).toBeDefined();
-    expect(screen.queryByText("the last 30 days")).toBeNull();
-  });
-
-  // No counts, no window: a title naming a window the dashes do not cover
-  // would be the same false claim as a 0.
-  it("names no window when metrics fail", async () => {
-    serve({ runs: { runs } });
-    render(<RunsPage />);
-
-    await waitFor(() => expect(screen.getByText("PAY/ledger#1")).toBeDefined());
-    expect(screen.queryByText(/the last \d+ days|September 2026/)).toBeNull();
-  });
-
-  // Still loading is not zero either: four 0 tiles and "Nothing was skipped"
-  // on a slow /metrics are the same false claim as on a failed one.
-  it("dashes the counts while metrics are still loading", async () => {
+  // A refresh that starts failing keeps the rows but says how old they
+  // are, and the "when" column stops counting on: stale rows must not read
+  // as a live page.
+  it("says so when the refresh fails", async () => {
+    let calls = 0;
     vi.stubGlobal(
       "fetch",
-      vi.fn((url: string) =>
-        url.includes("/metrics")
-          ? new Promise(() => {})
-          : Promise.resolve({
-              ok: true,
-              status: 200,
-              json: async () => ({ runs }),
-            }),
-      ),
-    );
-    render(<RunsPage />);
-
-    await waitFor(() => expect(screen.getByText("PAY/ledger#1")).toBeDefined());
-    expect(screen.getByText("Reviewed").nextElementSibling?.textContent).toBe(
-      "—",
-    );
-    expect(screen.queryByText("Nothing was skipped.")).toBeNull();
-  });
-
-  // The tiles were read once while the feed beneath refreshed every 10s, so
-  // the counts drifted from the rows for as long as the page stayed open.
-  it("refreshes the counts with the feed", async () => {
-    serve({ runs: { runs }, metrics });
-    render(<RunsPage />);
-    await screen.findByText("PAY/ledger#1");
-    const metricsCalls = () =>
-      (fetch as unknown as { mock: { calls: string[][] } }).mock.calls.filter(
-        ([u]) => u.includes("/metrics"),
-      ).length;
-    expect(metricsCalls()).toBe(1);
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(metricsCalls()).toBe(2);
-  });
-
-  // Polled, a /metrics that starts failing kept its first reading on the
-  // tiles beside a feed that moved on. Failing is unknown, not the old count.
-  it("dashes the counts when a metrics refresh fails", async () => {
-    let metricsCalls = 0;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string) => {
-        if (url.includes("/metrics") && ++metricsCalls > 1) {
-          return { ok: false, status: 500, json: async () => ({}) };
-        }
-        return {
-          ok: true,
-          status: 200,
-          json: async () => (url.includes("/metrics") ? metrics : { runs }),
-        };
+      vi.fn(async () => {
+        calls += 1;
+        if (calls > 1)
+          return { ok: false, status: 503, json: async () => ({}) };
+        return { ok: true, status: 200, json: async () => ({ runs }) };
       }),
     );
     render(<RunsPage />);
-    await waitFor(() =>
-      expect(
-        screen.getByText("Reviewed").nextElementSibling?.textContent,
-      ).not.toBe("—"),
-    );
+    await screen.findByText("PAY/ledger#1");
+    expect(screen.queryByText(/Refresh failing/)).toBeNull();
 
     await vi.advanceTimersByTimeAsync(10_000);
-    await waitFor(() =>
-      expect(screen.getByText("Reviewed").nextElementSibling?.textContent).toBe(
-        "—",
-      ),
-    );
-    expect(screen.getByText("Counts unavailable.")).toBeDefined();
+    expect(await screen.findByText(/Refresh failing/)).toBeDefined();
+    expect(screen.getByText("PAY/ledger#1")).toBeDefined();
   });
 
-  it("ranks the skip reasons by their label", async () => {
-    serve({ runs: { runs }, metrics });
+  // The ledes are gone (user, 2026-11-10: "ai slop").
+  it("carries no lede", async () => {
+    serve({ runs: { runs } });
     render(<RunsPage />);
-    // Once, in the breakdown: on the row the label is the pill's tooltip.
+    await screen.findByText("PAY/ledger#1");
+    expect(screen.queryByText(/What noergler did/)).toBeNull();
+  });
+
+  // By count, ties by label: insertion order is newest first, so equal
+  // counts swapped places as the feed moved. The label shows once, in the
+  // breakdown: on the row it is the pill's tooltip.
+  it("ranks the skip reasons by count, ties by label", async () => {
+    const skip = runs[2];
+    const as = (id: number, reason: string, reason_label: string) => ({
+      ...skip,
+      id,
+      reason,
+      reason_label,
+    });
+    serve({
+      runs: {
+        runs: [
+          as(10, "zeta", "Zeta"),
+          as(11, "alpha", "Alpha"),
+          as(12, "zeta", "Zeta"),
+          as(13, "alpha", "Alpha"),
+          as(14, "mid", "Mid"),
+          as(15, "mid", "Mid"),
+          as(16, "mid", "Mid"),
+        ],
+      },
+    });
+    render(<RunsPage />);
+
+    const table = (await screen.findByText("Reason")).closest("table");
+    const rows = Array.from(table?.querySelectorAll("tbody tr") ?? []).map(
+      (tr) => tr.textContent,
+    );
+    expect(rows).toEqual(["Mid3", "Alpha2", "Zeta2"]);
+  });
+
+  it("shows a skip's label once, in the breakdown", async () => {
+    serve({ runs: { runs } });
+    render(<RunsPage />);
     expect(
       await screen.findAllByText("HEAD unchanged since last review"),
     ).toHaveLength(1);
@@ -485,7 +499,7 @@ describe("RunsPage", () => {
   // four lines. The pill says it in a word and keeps the label on hover, so
   // the row still knows why without sending the reader to the logs.
   it("says why a run was skipped in the pill, with the label on hover", async () => {
-    serve({ runs: { runs }, metrics });
+    serve({ runs: { runs } });
     render(<RunsPage />);
 
     const pill = await screen.findByText("Unchanged");
@@ -495,7 +509,6 @@ describe("RunsPage", () => {
   it("links a PR tag to Bitbucket", async () => {
     serve({
       runs: { runs, bitbucket_url: "https://bitbucket.example.com" },
-      metrics,
     });
     render(<RunsPage />);
 
@@ -508,7 +521,7 @@ describe("RunsPage", () => {
   // BITBUCKET_URL unset: the tag is still the row's identity, so it stays
   // readable rather than becoming a link that goes nowhere.
   it("leaves the tag as text when the instance has no Bitbucket base", async () => {
-    serve({ runs: { runs, bitbucket_url: "" }, metrics });
+    serve({ runs: { runs, bitbucket_url: "" } });
     render(<RunsPage />);
 
     const tag = await screen.findByText("PAY/ledger#1");
@@ -556,22 +569,24 @@ describe("MetricsPage", () => {
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
-  // Reviewed counts PRs, reviewed out of seen; the runs (every push and
-  // mention again) stay as the line beneath, and the team table says Runs.
-  it("shows reviewed PRs out of seen, with the runs beneath", async () => {
+  // Reviewed counts PRs, reviewed out of seen. No runs line beneath it
+  // (user, 2026-11-10); the team table still says Runs.
+  it("shows reviewed PRs out of seen, without a runs line", async () => {
     serve({ metrics });
     render(<MetricsPage />);
 
     const value = (await screen.findByText("Reviewed")).nextElementSibling;
     expect(value?.textContent).toBe("4 / 7PRs");
     expect(screen.getByTitle("4 of 7 PRs seen got reviewed")).toBeDefined();
-    expect(screen.getByText("12 runs")).toBeDefined();
+    expect(screen.queryByText("12 runs")).toBeNull();
     expect(screen.getByRole("columnheader", { name: "Runs" })).toBeDefined();
   });
 
   // The trend averages the six lead days the API sends before the window,
   // so it starts on the window's first day; without them a 3-day window
-  // would draw no trend at all. Both charts trend their total.
+  // would draw no trend at all. Cost trends its total; throughput trends
+  // reviewed runs only, so the skips and the failure move nothing, and
+  // its legend says so.
   it("averages the lead days into the trend", async () => {
     serve({
       metrics: {
@@ -581,8 +596,10 @@ describe("MetricsPage", () => {
         lead_since: "2026-08-26T00:00:00Z",
         window: "rolling",
         daily_attempts: [
-          { day: "2026-08-30", outcome: "skipped", count: 14 },
+          { day: "2026-08-30", outcome: "ok", count: 14 },
+          { day: "2026-08-30", outcome: "skipped", count: 70 },
           { day: "2026-09-02", outcome: "ok", count: 7 },
+          { day: "2026-09-02", outcome: "timed_out", count: 7 },
         ],
         daily: [
           { ...metrics.daily[0], day: "2026-08-28", cost_usd: "0.350" },
@@ -592,15 +609,15 @@ describe("MetricsPage", () => {
     });
     render(<MetricsPage />);
 
-    // Sep 3: (14 + 7) / 7 runs, ($0.35 + $0.35) / 7 spend.
+    // Sep 3: (14 + 7) / 7 reviewed runs, ($0.35 + $0.35) / 7 spend.
     const runs = await screen.findByLabelText(/Runs per day/);
     expect(within(runs as HTMLElement).getByText("3")).toBeDefined();
     const cost = screen.getByLabelText(/Cost per day/);
     expect(within(cost as HTMLElement).getByText("$0.10")).toBeDefined();
-    expect(screen.getAllByText("7-day avg")).toHaveLength(2);
+    expect(screen.getAllByText("7-day avg")).toHaveLength(1);
+    expect(screen.getByText("7-day avg, reviewed only")).toBeDefined();
   });
 
-  // 30 days by default, 90 on request, and the choice rides in the URL.
   // A busy lead week can lift the trend above every bar in the window; the
   // axis grows with it rather than clipping the line.
   it("fits the runs axis to the trend", async () => {
@@ -612,7 +629,7 @@ describe("MetricsPage", () => {
         lead_since: "2026-08-26T00:00:00Z",
         window: "rolling",
         daily_attempts: [
-          { day: "2026-08-30", outcome: "skipped", count: 700 },
+          { day: "2026-08-30", outcome: "ok", count: 700 },
           { day: "2026-09-02", outcome: "ok", count: 7 },
         ],
       },
@@ -661,6 +678,49 @@ describe("MetricsPage", () => {
     await screen.findByRole("button", { name: "90 days" });
     const calls = vi.mocked(fetch).mock.calls.map(([u]) => String(u));
     expect(calls.some((u) => /\/metrics\?days=90$/.test(u))).toBe(true);
+    window.history.replaceState({}, "", "/");
+  });
+
+  // 7 days on request (user, 2026-11-10); 30 stays the bare path.
+  it("offers 7 days, read from and written to the URL", async () => {
+    window.history.replaceState({}, "", "/metrics?days=7");
+    serve({ metrics });
+    render(<MetricsPage />);
+
+    const seven = await screen.findByRole("button", { name: "7 days" });
+    expect(seven.getAttribute("aria-pressed")).toBe("true");
+    const calls = vi.mocked(fetch).mock.calls.map(([u]) => String(u));
+    expect(calls.some((u) => /\/metrics\?days=7$/.test(u))).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "30 days" }));
+    expect(window.location.search).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: "7 days" }));
+    expect(window.location.search).toBe("?days=7");
+    window.history.replaceState({}, "", "/");
+  });
+
+  it("reads a window it does not offer as 30 days", async () => {
+    window.history.replaceState({}, "", "/metrics?days=14");
+    serve({ metrics });
+    render(<MetricsPage />);
+
+    await screen.findByRole("button", { name: "30 days" });
+    const calls = vi.mocked(fetch).mock.calls.map(([u]) => String(u));
+    expect(calls.some((u) => /\/metrics\?days=30$/.test(u))).toBe(true);
+    // The address bar says what the page shows, not the window it refused.
+    expect(window.location.search).toBe("");
+    window.history.replaceState({}, "", "/");
+  });
+
+  it("leaves other URL parameters alone when it fixes the window", async () => {
+    window.history.replaceState({}, "", "/metrics?days=14&x=1");
+    serve({ metrics });
+    render(<MetricsPage />);
+
+    await screen.findByRole("button", { name: "30 days" });
+    expect(window.location.search).toBe("?x=1");
+    fireEvent.click(screen.getByRole("button", { name: "7 days" }));
+    expect(window.location.search).toBe("?x=1&days=7");
     window.history.replaceState({}, "", "/");
   });
 
@@ -1093,6 +1153,113 @@ describe("TeamsPage", () => {
 
     expect(await screen.findByText(/No team/)).toBeDefined();
     expect(screen.getByText("gone")).toBeDefined();
+  });
+
+  const rigi: Team = { ...teams[1], slug: "rigi", name: "Rigi" };
+  const stanserhorn: Team = {
+    ...teams[0],
+    slug: "stanserhorn",
+    name: "Stanserhorn",
+  };
+
+  // Cards in the rail's order, grouped by state then by name: alphabetical
+  // cards under a grouped rail put neighbours from different groups side by
+  // side (user, 2026-11-10).
+  it("orders the cards like the rail", async () => {
+    serve({ teams: { teams: [...teams, rigi, stanserhorn] } });
+    render(<TeamsPage />);
+
+    await screen.findByRole("heading", { name: "Rigi" });
+    const cards = screen
+      .getAllByRole("heading", { level: 3 })
+      .map((h) => h.textContent);
+    const rail = within(screen.getByRole("navigation", { name: "Teams" }))
+      .getAllByRole("link")
+      .map((a) => a.textContent);
+    expect(cards).toEqual(["Stanserhorn", "Zahlungen", "Mobile", "Rigi"]);
+    expect(rail.map((r) => r?.trim())).toEqual(cards);
+  });
+
+  /** layout fakes what jsdom cannot: an 800px viewport over 2000px of
+   *  page (scrollTop 1200 is the end), each card 300px tall at the top
+   *  given. Cards top to bottom: Stanserhorn, Zahlungen, Mobile, Rigi. */
+  async function layout(path: string) {
+    window.history.pushState({}, "", path);
+    serve({ teams: { teams: [...teams, rigi, stanserhorn] } });
+    const { container } = render(<TeamsPage />);
+    await screen.findByRole("heading", { name: "Rigi" });
+    const tops: Record<string, number> = {};
+    const rect = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: Element) {
+        const card = this.id.startsWith("team-");
+        const top = card ? (tops[this.id] ?? 2000) : 0;
+        const height = card ? 300 : 800;
+        return {
+          top,
+          bottom: top + height,
+          left: 0,
+          right: 0,
+          width: 0,
+          height,
+          x: 0,
+          y: top,
+          toJSON: () => ({}),
+        } as DOMRect;
+      });
+    const scroller = container.firstElementChild as HTMLElement;
+    let scrollTop = 0;
+    Object.defineProperty(scroller, "scrollTop", { get: () => scrollTop });
+    Object.defineProperty(scroller, "clientHeight", { get: () => 800 });
+    Object.defineProperty(scroller, "scrollHeight", { get: () => 2000 });
+    const rail = within(screen.getByRole("navigation", { name: "Teams" }));
+    return {
+      /** scrollTo moves the page and fires its scroll event. */
+      scrollTo(y: number, s: number, z: number, m: number, r: number) {
+        scrollTop = y;
+        tops["team-stanserhorn"] = s;
+        tops["team-payments"] = z;
+        tops["team-mobile"] = m;
+        tops["team-rigi"] = r;
+        fireEvent.scroll(scroller);
+      },
+      marked: () =>
+        rail
+          .getAllByRole("link")
+          .filter((a) => a.getAttribute("aria-current") === "true")
+          .map((a) => a.textContent?.trim()),
+      restore: () => rect.mockRestore(),
+    };
+  }
+
+  // The focused card in the last screenful cannot reach the top, so the
+  // scroll to it ended with the card above it on the spy's line and the
+  // rail marked that one too: clicking Stanserhorn lit up Rigi (user,
+  // 2026-11-10). The focus keeps the marker until the reader scrolls.
+  it("keeps the rail marker on the focused team at the page's end", async () => {
+    const page = await layout("/teams/rigi");
+
+    // The page's own scroll bottoms out: Mobile on the spy's line.
+    page.scrollTo(1200, -1000, -600, 40, 400);
+    expect(page.marked()).toEqual(["Rigi"]);
+
+    // The reader scrolls up 100px, Rigi still on screen: the card at
+    // the top has the marker now.
+    fireEvent.wheel(window);
+    page.scrollTo(1100, -900, -500, 140, 500);
+    expect(page.marked()).toEqual(["Zahlungen"]);
+    page.restore();
+  });
+
+  // A focus higher up does not come back at the end: once the reader
+  // scrolls, the end marks the last card, so the last rail row lights up.
+  it("marks the last card when the reader scrolls to the end", async () => {
+    const page = await layout("/teams/payments");
+
+    fireEvent.wheel(window);
+    page.scrollTo(1200, -1000, -600, 40, 400);
+    expect(page.marked()).toEqual(["Rigi"]);
+    page.restore();
   });
 
   // A rail click is a navigation: the path becomes the team's, so the URL

@@ -438,15 +438,16 @@ const trendLead = 6
 
 // metrics is spend and throughput over a window.
 //
-// ?days=N is a rolling window of N days, today included. The metrics page
-// asks for 30 by default, 90 on request (user's call): a trend that reads
-// the same on the 1st as on the 30th, at the price of a cost figure that
-// no longer matches the monthly bill. N outside 1..90 falls back to 14: an unbounded window would
-// seq-scan however much history exists.
+// ?days=N is a rolling window of N days, today included. The metrics page,
+// its only caller, asks for 30 by default, 7 or 90 on request (user's
+// call): a trend that reads the same on the 1st as on the 30th, at the
+// price of a cost figure that no longer matches the monthly bill. N
+// outside 1..90 falls back to 14: an unbounded window would seq-scan
+// however much history exists.
 //
 // Absent means the current calendar month, the window a key's spend is
-// budgeted and invoiced in. No page asks for it since the runs page went
-// rolling too; kept as the one window whose cost matches the bill.
+// budgeted and invoiced in. No page asks for it; kept as the one window
+// whose cost matches the bill.
 func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	since := monthStart(now)

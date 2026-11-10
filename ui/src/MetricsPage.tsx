@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Metrics } from "./api";
 import { Chart, Sparkline, type Series, type Trend } from "./Chart";
@@ -21,8 +21,9 @@ import {
   column,
   eyebrow,
   h2,
-  lede,
   page,
+  pageTitle,
+  RangePill,
   table,
   td,
   tdNum,
@@ -71,18 +72,23 @@ function days(since: string, until: string): string[] {
   return out;
 }
 
-/** The windows on offer: 30 days by default, 90 (the server's cap) on
- *  request (user, 2026-11-10). In the URL (?days=90), so a view can be
- *  shared; 30 is the bare path. */
-const SPANS = [30, 90] as const;
+/** The windows on offer: 30 days by default, 7 and 90 (the server's cap) on
+ *  request (user, 2026-11-10). In the URL (?days=7), so a view can be
+ *  shared; 30 is the bare path, and anything else reads as 30. */
+const SPANS = [7, 30, 90] as const;
 type Span = (typeof SPANS)[number];
 function readSpan(): Span {
-  return new URLSearchParams(window.location.search).get("days") === "90"
-    ? 90
-    : 30;
+  const raw = Number(new URLSearchParams(window.location.search).get("days"));
+  return SPANS.find((s) => s === raw) ?? 30;
 }
+/** writeSpan puts the span in the URL, touching only ?days=: 30 is its
+ *  absence, and any other parameter stays as it was. */
 function writeSpan(span: Span) {
-  const url = window.location.pathname + (span === 30 ? "" : `?days=${span}`);
+  const params = new URLSearchParams(window.location.search);
+  if (span === 30) params.delete("days");
+  else params.set("days", String(span));
+  const search = params.toString();
+  const url = window.location.pathname + (search ? `?${search}` : "");
   if (window.location.pathname + window.location.search !== url) {
     window.history.replaceState({}, "", url);
   }
@@ -121,16 +127,17 @@ export function MetricsPage() {
     `metrics?days=${span}`,
     60000,
   );
-  const pick = (s: Span) => {
-    setSpan(s);
-    writeSpan(s);
-  };
+  const pick = setSpan;
+  // The URL follows the span. A link naming a window not on offer (?days=14) shows 30; the address
+  // bar says so too, or a copied link would name a window the page never
+  // showed. An effect, not the state initializer: render stays pure.
+  useEffect(() => writeSpan(span), [span]);
 
   if (!data) {
     return (
       <div className={page}>
         <div className={column}>
-          <h2 className={h2}>{t("nav.metrics")}</h2>
+          <h2 className={pageTitle}>{t("nav.metrics")}</h2>
           {failed ? (
             <Failed what={t("metrics.failedWhat")} />
           ) : (
@@ -258,9 +265,10 @@ export function MetricsPage() {
     ? window.map((_, i) => costSeries.reduce((sum, s) => sum + s.values[i], 0))
     : [];
 
-  // Both charts trend their TOTAL, the whole bar and every team summed:
-  // the card's title already says what is counted, and a trend of one
-  // segment would read as the trend of the chart (user, 2026-11-10).
+  // Cost trends its TOTAL, every team summed: a trend of one team would
+  // read as the trend of the chart. Throughput trends REVIEWED runs only
+  // (user, 2026-11-10, reversing the earlier total): skips and failures are
+  // not throughput, and its legend says so.
   //
   // Summed straight off the rows over lead + window, not off the series:
   // a team that spent only in the lead days is in no series, and its spend
@@ -271,7 +279,14 @@ export function MetricsPage() {
     trailingMean(values).slice(lead.length);
   const trendColor = "var(--color-ink)";
   const runTrend: Trend = {
-    values: ofWindow(perDayIn(trended, data.daily_attempts, (b) => b.count)),
+    values: ofWindow(
+      perDayIn(
+        trended,
+        data.daily_attempts,
+        (b) => b.count,
+        (b) => b.outcome === "ok",
+      ),
+    ),
     color: trendColor,
     format: (v) => Math.round(v).toLocaleString(),
   };
@@ -309,36 +324,24 @@ export function MetricsPage() {
         {/* The window is named ONCE, here. Repeating it on every tile and
             card says the same thing five times and crowds out what each
             card actually measures. */}
-        <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
           <h2 className={h2}>
             {t("nav.metrics")}
             <Sep />
             <span className="text-muted">{title}</span>
           </h2>
           <span
-            className="flex gap-0.5"
+            className="flex flex-wrap gap-2"
             role="group"
             aria-label={t("metrics.span")}
           >
             {SPANS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => pick(s)}
-                aria-pressed={span === s}
-                className={
-                  "rounded-ui-sm px-2 py-0.5 text-[12px] transition-colors " +
-                  (span === s
-                    ? "bg-panel text-ink"
-                    : "text-muted hover:bg-panel hover:text-ink")
-                }
-              >
+              <RangePill key={s} active={span === s} onClick={() => pick(s)}>
                 {t("metrics.spanDays", { count: s })}
-              </button>
+              </RangePill>
             ))}
           </span>
         </div>
-        <p className={lede}>{t("metrics.lede")}</p>
 
         <div className={stale ? "opacity-40 transition-opacity" : ""}>
           <Tiles>
@@ -362,7 +365,8 @@ export function MetricsPage() {
             {/* PRs, not runs (user's call): runs count every push and mention
               again, so a busy PR inflated the figure and one skipped for a
               missing precondition never showed. Reviewed = got an LLM review
-              back; seen = touched at all. The runs stay as the line below. */}
+              back; seen = touched at all. No runs line under it either
+              (user, 2026-11-10): Throughput shows the runs. */}
             <Tile
               label={t("metrics.reviewed")}
               value={
@@ -383,16 +387,8 @@ export function MetricsPage() {
               }
               note={data.prs.seen === 0 ? undefined : t("metrics.prsNote")}
             >
-              {data.totals.runs > 0 && (
-                <div className="mt-0.5 text-[12.5px] text-muted tabular-nums">
-                  {t("metrics.runCount", {
-                    count: data.totals.runs,
-                    n: data.totals.runs.toLocaleString(),
-                  })}
-                </div>
-              )}
               {/* A flat line of zeros is a line that says nothing. */}
-              {data.totals.runs > 0 && (
+              {hasTrend(runSeries[0].values) && (
                 <div className="mt-2">
                   <Sparkline
                     values={runSeries[0].values}
@@ -468,7 +464,11 @@ export function MetricsPage() {
                   xLabels={window.map(label)}
                   label={t("metrics.runsChart", { title })}
                 />
-                <Legend series={runSeries} trend={trendColor} />
+                <Legend
+                  series={runSeries}
+                  trend={trendColor}
+                  trendLabel={t("metrics.trendReviewed")}
+                />
               </>
             )}
           </Card>
@@ -523,7 +523,16 @@ export function MetricsPage() {
 /** A legend is always present for two or more series, so identity is never
  *  carried by colour alone; a trend's line is always named, since a lone
  *  series with a second line beside it is two things to tell apart. */
-function Legend({ series, trend }: { series: Series[]; trend?: string }) {
+function Legend({
+  series,
+  trend,
+  trendLabel,
+}: {
+  series: Series[];
+  trend?: string;
+  /** What the trend averages, when it is not the whole chart. */
+  trendLabel?: string;
+}) {
   const { t } = useTranslation();
   if (series.length < 2 && !trend) return null;
   return (
@@ -545,7 +554,7 @@ function Legend({ series, trend }: { series: Series[]; trend?: string }) {
             className="inline-block h-[2px] w-3.5 rounded-full"
             style={{ background: trend }}
           />
-          {t("metrics.trend")}
+          {trendLabel ?? t("metrics.trend")}
         </span>
       )}
     </div>

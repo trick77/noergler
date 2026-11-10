@@ -15,12 +15,12 @@ import {
   Failed,
   Pill,
   PrTag,
+  RefreshFailing,
   Sep,
   TeamPill,
   column,
-  h2,
-  lede,
   page,
+  pageTitle,
   table,
   td,
   tdNum,
@@ -69,8 +69,7 @@ export function LivePage() {
     return (
       <div className={page}>
         <div className={column}>
-          <h2 className={h2}>{t("nav.live")}</h2>
-          <p className={lede}>{t("live.lede")}</p>
+          <h2 className={pageTitle}>{t("nav.live")}</h2>
           {failed ? (
             <Failed what={t("live.failedWhat")} />
           ) : (
@@ -86,15 +85,10 @@ export function LivePage() {
   return (
     <div className={page}>
       <div className={column}>
-        <h2 className={h2}>{t("nav.live")}</h2>
-        <p className={lede}>{t("live.lede")}</p>
+        <h2 className={pageTitle}>{t("nav.live")}</h2>
 
         {failed && updatedAt !== null && (
-          <div className="mb-3.5 rounded-ui border border-border bg-panel px-3.5 py-3 text-[13.5px] text-muted">
-            {t("live.refreshFailing", {
-              ago: ago(new Date(updatedAt).toISOString(), wall),
-            })}
-          </div>
+          <RefreshFailing at={updatedAt} now={wall} />
         )}
 
         <Card
