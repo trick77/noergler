@@ -8,7 +8,8 @@
 // all of it and a flat number here would be wrong for somebody.
 import { Trans, useTranslation } from "react-i18next";
 import { reasonLabel } from "./format";
-import { Card, Note, column, h2, lede, page } from "./ui";
+import { RUNS_LIMIT } from "./runsLimit";
+import { Card, Note, column, page, pageTitle } from "./ui";
 
 function Q({ q, children }: { q: string; children: React.ReactNode }) {
   return (
@@ -54,10 +55,11 @@ type MarkupKey =
 /** T renders a catalog entry that carries markup: <code> and <strong> map
  *  to the page's own elements, so a translation can move them around the
  *  sentence without touching JSX. */
-function T({ k }: { k: MarkupKey }) {
+function T({ k, values }: { k: MarkupKey; values?: Record<string, unknown> }) {
   return (
     <Trans
       i18nKey={k}
+      values={values}
       components={{
         code: <Code />,
         strong: <strong />,
@@ -71,12 +73,11 @@ export function FaqPage() {
   return (
     <div className={page}>
       <div className={column}>
-        <h2 className={h2}>{t("nav.faq")}</h2>
-        <p className={lede}>{t("faq.lede")}</p>
+        <h2 className={pageTitle}>{t("nav.faq")}</h2>
 
         <Q q={t("faq.whyNotQ")}>
           <p>
-            <T k="faq.whyNotA" />
+            <T k="faq.whyNotA" values={{ n: RUNS_LIMIT }} />
           </p>
           <ul className="mt-1 space-y-1.5">
             {SKIPS.map((code) => (

@@ -3,7 +3,7 @@
 // page reads as markup, and a change lands in one place.
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { prUrl, type Tone } from "./format";
+import { ago, prUrl, type Tone } from "./format";
 
 /** Sep is the dot between the clauses of a note or a heading.
  *
@@ -31,7 +31,9 @@ export const page = "h-full overflow-auto";
 export const column = "mx-auto max-w-[1400px] px-4 py-7 sm:px-6 lg:px-10";
 export const h2 =
   "font-serif text-[22px] font-medium leading-tight tracking-tight text-ink sm:text-[28px]";
-export const lede = "mt-1 mb-6 max-w-[66ch] text-[14.5px] text-muted";
+/** The page's own title, with the gap to what follows. The ledes that sat
+ *  under it are gone (user, 2026-11-10: "ai slop"). */
+export const pageTitle = h2 + " mb-6";
 export const eyebrow =
   "mt-7 mb-2.5 text-[11px] font-medium tracking-[.12em] text-faint uppercase";
 
@@ -83,6 +85,38 @@ export function Pill({
       />
       {children}
     </span>
+  );
+}
+
+/** RangePill is one choice of a page control (a span, an outcome filter),
+ *  carried over from ../ismimodown's window pills: its own border on every
+ *  pill, so the control reads as one before it is hovered, and the pressed
+ *  one a soft accent tint, never a solid fill (an inverted fill "read as too
+ *  loud" in ../peeq). The earlier bg-panel active state sat at about 1.05:1
+ *  on the page and could not be seen (user, 2026-11-10). */
+export function RangePill({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={
+        "cursor-pointer rounded-full border px-[13px] py-[5px] font-mono text-[12.5px] leading-tight whitespace-nowrap transition-colors duration-[120ms] " +
+        (active
+          ? "border-accent-dim bg-accent/12 text-accent-strong"
+          : "border-border bg-panel/60 text-muted hover:border-accent-dim hover:text-ink")
+      }
+    >
+      {children}
+    </button>
   );
 }
 
@@ -177,10 +211,24 @@ export function Card({
 /** Tiles is the hairline stat grid: negative margins on the grid and a
  *  border on every cell, so adjacent cells share one rule instead of
  *  drawing two. */
-export function Tiles({ children }: { children: ReactNode }) {
+export function Tiles({
+  cols = 4,
+  children,
+}: {
+  /** Tiles per row from sm up. */
+  cols?: 3 | 4;
+  children: ReactNode;
+}) {
   return (
     <div className="overflow-hidden rounded-ui border border-border bg-panel">
-      <div className="-mr-px -mb-px grid grid-cols-2 sm:grid-cols-4">
+      <div
+        className={
+          "-mr-px -mb-px grid " +
+          (cols === 3
+            ? "grid-cols-1 sm:grid-cols-3"
+            : "grid-cols-2 sm:grid-cols-4")
+        }
+      >
         {children}
       </div>
     </div>
@@ -234,6 +282,20 @@ export function Empty({ children }: { children: ReactNode }) {
 
 export function Note({ children }: { children: ReactNode }) {
   return <p className="mt-2.5 text-[12.5px] text-faint">{children}</p>;
+}
+
+/** RefreshFailing is a polled page's last reading going stale: the rows
+ *  stay, and this says how old they are, so a dead instance does not read
+ *  as a live one. */
+export function RefreshFailing({ at, now }: { at: number; now: number }) {
+  const { t } = useTranslation();
+  return (
+    <div className="mb-3.5 rounded-ui border border-border bg-panel px-3.5 py-3 text-[13.5px] text-muted">
+      {t("common.refreshFailing", {
+        ago: ago(new Date(at).toISOString(), now),
+      })}
+    </div>
+  );
 }
 
 /** Failed takes `what` already translated, in the case the sentence needs

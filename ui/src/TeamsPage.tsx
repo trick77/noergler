@@ -407,6 +407,25 @@ function CopyLink({ team }: { team: Team }) {
  *  build has no word for still gets a group, after these, so no team hides. */
 const STATES = ["ready", "no_repos", "disabled"];
 
+/** stateOrder is the rail's groups for these teams: STATES, then any state
+ *  this build has no word for. */
+function stateOrder(teams: Team[]): string[] {
+  return [
+    ...STATES,
+    ...teams.map((x) => x.state).filter((s) => !STATES.includes(s)),
+  ].filter((s, i, all) => all.indexOf(s) === i);
+}
+
+/** inRailOrder puts the cards in the rail's order: by state group, by name
+ *  within it (the input is byName already). Alphabetical cards under a
+ *  grouped rail meant neighbouring cards came from different groups, so the
+ *  scroll spy's marker jumped between them, and the last card by name was
+ *  not the last row of the rail (user, 2026-11-10). A team changing state
+ *  moves its card; that is the price. */
+function inRailOrder(teams: Team[]): Team[] {
+  return stateOrder(teams).flatMap((s) => teams.filter((x) => x.state === s));
+}
+
 function dotClass(tone: Tone): string {
   if (tone === "ok") return "bg-online";
   if (tone === "skip") return "bg-ochre";
@@ -457,10 +476,7 @@ function Rail({
     return () => document.removeEventListener("keydown", onKey);
   }, [setQ]);
 
-  const states = [
-    ...STATES,
-    ...teams.map((x) => x.state).filter((s) => !STATES.includes(s)),
-  ].filter((s, i, all) => all.indexOf(s) === i);
+  const states = stateOrder(teams);
   // Once per team: whether it hits, and why when the name does not say.
   const hits = new Map(
     teams.map((x) => {
@@ -625,8 +641,27 @@ export function TeamsPage() {
   // Bumped by a rail click on the team already in the path, which changes
   // nothing else and still has to scroll.
   const [again, setAgain] = useState(0);
+  // True from the page's own scroll to the focus until the reader scrolls
+  // (wheel, touch, a key, the scrollbar): the clicked team keeps the marker
+  // exactly as long as the reader has not moved away from where it put them.
+  const held = useRef(false);
   const scroller = useRef<HTMLDivElement>(null);
   const query = q.trim().toLowerCase();
+
+  useEffect(() => {
+    const drop = () => {
+      held.current = false;
+    };
+    const opts = { passive: true } as const;
+    window.addEventListener("wheel", drop, opts);
+    window.addEventListener("touchstart", drop, opts);
+    window.addEventListener("keydown", drop);
+    return () => {
+      window.removeEventListener("wheel", drop);
+      window.removeEventListener("touchstart", drop);
+      window.removeEventListener("keydown", drop);
+    };
+  }, []);
 
   // Back/forward between two teams' links, and navigateTo's own event: the
   // URL is the source, the state follows it.
@@ -658,6 +693,7 @@ export function TeamsPage() {
     const el = scroller.current?.querySelector<HTMLElement>(
       `#${cardId(focus)}`,
     );
+    held.current = true;
     // Optional: jsdom has no scrollIntoView.
     el?.scrollIntoView?.({ block: "start" });
   }, [loaded, focus, again]);
@@ -673,6 +709,7 @@ export function TeamsPage() {
     if (e.isDefaultPrevented() && same) {
       setQ("");
       setFocus(slug);
+      setCurrent(slug);
       setAgain((n) => n + 1);
     }
   };
@@ -680,16 +717,37 @@ export function TeamsPage() {
   // The card at the top of the viewport marks its rail row, so the rail
   // doubles as a scroll position. Not while searching: the rows then say
   // what matched, which is the more useful thing.
+  //
+  // A card in the last screenful cannot be scrolled to the line: the scroll
+  // to it bottoms out with the card ABOVE it there, and the spy marked that
+  // one too (clicking Stanserhorn lit up Rigi, user, 2026-11-10). So:
+  // - after the page's own scroll to the focus, until the reader scrolls,
+  //   the focus keeps the marker while its card is on screen;
+  // - at the page's end otherwise, the last card has it: nothing below can
+  //   reach the line, and the last rail row would never light up.
   const onScroll = () => {
     const root = scroller.current;
     if (!root || query !== "") return;
-    const top = root.getBoundingClientRect().top + 80;
+    const box = root.getBoundingClientRect();
+    if (held.current && focus !== null) {
+      const at = root
+        .querySelector<HTMLElement>(`#${cardId(focus)}`)
+        ?.getBoundingClientRect().top;
+      if (at !== undefined && at >= box.top && at < box.bottom) {
+        if (current !== focus) setCurrent(focus);
+        return;
+      }
+    }
+    const bottomed =
+      root.scrollTop + root.clientHeight >= root.scrollHeight - 1;
+    const top = box.top + 80;
     const cards = Array.from(
       root.querySelectorAll<HTMLElement>(`section[id^="${CARD_ID}"]`),
     );
-    const at =
-      cards.reverse().find((c) => c.getBoundingClientRect().top <= top) ??
-      cards[cards.length - 1];
+    const at = bottomed
+      ? cards[cards.length - 1]
+      : (cards.reverse().find((c) => c.getBoundingClientRect().top <= top) ??
+        cards[cards.length - 1]);
     const slug = at ? at.id.slice(CARD_ID.length) : null;
     if (slug !== current) setCurrent(slug);
   };
@@ -709,12 +767,20 @@ export function TeamsPage() {
     );
   }
 
-  const teams = byName(data.teams);
+  const teams = inRailOrder(byName(data.teams));
   const shown = teams.filter((team) => matches(team, query));
   const unknown = focus !== null && !teams.some((x) => x.slug === focus);
 
   return (
-    <div ref={scroller} onScroll={onScroll} className={page}>
+    <div
+      ref={scroller}
+      onScroll={onScroll}
+      // The scrollbar is the reader's scroll too.
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) held.current = false;
+      }}
+      className={page}
+    >
       <div className={column}>
         <h2 className={h2}>{t("nav.teams")}</h2>
 
