@@ -41,6 +41,7 @@ type DashboardStore interface {
 	OutcomeBreakdown(ctx context.Context, since time.Time) ([]store.OutcomeCount, error)
 	TotalsSince(ctx context.Context, since time.Time) (store.Totals, error)
 	TotalsByTeam(ctx context.Context, since time.Time) ([]store.TeamTotals, error)
+	PRCountsSince(ctx context.Context, since time.Time) (reviewed, seen int, err error)
 	DailyByTeam(ctx context.Context, since time.Time) ([]store.Bucket, error)
 	DailyAttempts(ctx context.Context, since time.Time) ([]store.AttemptBucket, error)
 	ActivityByTeam(ctx context.Context) ([]store.TeamActivity, error)
@@ -341,15 +342,28 @@ type breakdownBody struct {
 	Count   int    `json:"count"`
 }
 
+type prCountsBody struct {
+	Reviewed int `json:"reviewed"`
+	Seen     int `json:"seen"`
+}
+
 type metricsBody struct {
 	Since time.Time `json:"since"`
 	// Until is the exclusive end of the window, so the page can lay out a
 	// month's days without deciding where the month ends itself.
 	Until time.Time `json:"until"`
+	// LeadSince is where daily and daily_attempts start: trendLead days
+	// before Since, so the page's 7-day trend has a full week behind the
+	// window's first day. Everything else covers [Since, Until).
+	LeadSince time.Time `json:"lead_since"`
 	// Window is "month" or "rolling", so the page can title itself honestly
 	// rather than assuming which one it asked for.
-	Window    string           `json:"window"`
-	Totals    totalsBody       `json:"totals"`
+	Window string     `json:"window"`
+	Totals totalsBody `json:"totals"`
+	// PRs counts pull requests, not runs: reviewed got at least one LLM
+	// review back, seen is every PR noergler touched in the window. Top
+	// level, because totalsBody is shared with by_team.
+	PRs       prCountsBody     `json:"prs"`
 	ByTeam    []teamTotalsBody `json:"by_team"`
 	Daily     []dayBody        `json:"daily"`
 	Attempts  []outcomeDayBody `json:"daily_attempts"`
@@ -418,12 +432,16 @@ func (d Deps) almanachIgnored(ctx context.Context) map[string]int {
 	return counts
 }
 
+// trendLead is how many days before the window the daily series reach back:
+// a 7-day trailing mean needs six earlier days for the window's first.
+const trendLead = 6
+
 // metrics is spend and throughput over a window.
 //
 // ?days=N is a rolling window of N days, today included. The metrics page
-// asks for 30 (user's call): a trend that reads the same on the 1st as on
-// the 30th, at the price of a cost figure that no longer matches the
-// monthly bill. N outside 1..90 falls back to 14: an unbounded window would
+// asks for 30 by default, 90 on request (user's call): a trend that reads
+// the same on the 1st as on the 30th, at the price of a cost figure that
+// no longer matches the monthly bill. N outside 1..90 falls back to 14: an unbounded window would
 // seq-scan however much history exists.
 //
 // Absent means the current calendar month, the window a key's spend is
@@ -456,11 +474,19 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 	if failed("TotalsByTeam", err) {
 		return
 	}
-	daily, err := st.DailyByTeam(ctx, since)
+	reviewedPRs, seenPRs, err := st.PRCountsSince(ctx, since)
+	if failed("PRCountsSince", err) {
+		return
+	}
+	// The daily series start trendLead days early: the page's 7-day trend
+	// needs the six days before the window's first, or its line would start
+	// a week late. Totals, breakdown and PR counts stay on the window.
+	leadSince := since.AddDate(0, 0, -trendLead)
+	daily, err := st.DailyByTeam(ctx, leadSince)
 	if failed("DailyByTeam", err) {
 		return
 	}
-	attempts, err := st.DailyAttempts(ctx, since)
+	attempts, err := st.DailyAttempts(ctx, leadSince)
 	if failed("DailyAttempts", err) {
 		return
 	}
@@ -478,9 +504,11 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 
 	body := metricsBody{
 		Since:     since,
+		LeadSince: leadSince,
 		Until:     until,
 		Window:    window,
 		Totals:    toTotals(totals),
+		PRs:       prCountsBody{Reviewed: reviewedPRs, Seen: seenPRs},
 		ByTeam:    make([]teamTotalsBody, 0, len(byTeam)),
 		Daily:     make([]dayBody, 0, len(daily)),
 		Attempts:  make([]outcomeDayBody, 0, len(attempts)),

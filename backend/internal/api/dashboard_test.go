@@ -37,10 +37,15 @@ type fakeDashStore struct {
 	attempts  []store.AttemptRow
 	breakdown []store.OutcomeCount
 	totals    store.Totals
-	byTeam    []store.TeamTotals
-	daily     []store.Bucket
-	dailyAtt  []store.AttemptBucket
-	activity  []store.TeamActivity
+	reviewed  int
+	seen      int
+	// dailySince and attemptsSince record where the daily reads started.
+	dailySince    *time.Time
+	attemptsSince *time.Time
+	byTeam        []store.TeamTotals
+	daily         []store.Bucket
+	dailyAtt      []store.AttemptBucket
+	activity      []store.TeamActivity
 	// ignored is the per-team count of notes Almanach ignored; ignoredSince
 	// records the window the handler asked for.
 	// ignoredErr fails the count read alone; ignoredReads counts the reads.
@@ -98,13 +103,18 @@ func (f *fakeDashStore) OutcomeBreakdown(context.Context, time.Time) ([]store.Ou
 func (f *fakeDashStore) TotalsSince(context.Context, time.Time) (store.Totals, error) {
 	return f.totals, f.err
 }
+func (f *fakeDashStore) PRCountsSince(context.Context, time.Time) (int, int, error) {
+	return f.reviewed, f.seen, f.err
+}
 func (f *fakeDashStore) TotalsByTeam(context.Context, time.Time) ([]store.TeamTotals, error) {
 	return f.byTeam, f.err
 }
-func (f *fakeDashStore) DailyByTeam(context.Context, time.Time) ([]store.Bucket, error) {
+func (f *fakeDashStore) DailyByTeam(_ context.Context, since time.Time) ([]store.Bucket, error) {
+	f.dailySince = &since
 	return f.daily, f.err
 }
-func (f *fakeDashStore) DailyAttempts(context.Context, time.Time) ([]store.AttemptBucket, error) {
+func (f *fakeDashStore) DailyAttempts(_ context.Context, since time.Time) ([]store.AttemptBucket, error) {
+	f.attemptsSince = &since
 	return f.dailyAtt, f.err
 }
 func (f *fakeDashStore) ActivityByTeam(context.Context) ([]store.TeamActivity, error) {
@@ -463,6 +473,40 @@ func TestMetricsReportsUnpricedBesideTheTotal(t *testing.T) {
 	}
 	if got.Totals.Unpriced != 23 {
 		t.Errorf("unpriced = %d, want 23 reported separately", got.Totals.Unpriced)
+	}
+}
+
+// PR counts sit beside the run totals, never in place of them: the tile
+// shows PRs, its note the runs.
+func TestMetricsReportsPRCountsBesideTheRuns(t *testing.T) {
+	h := newDashHarness(t)
+	h.st.totals = store.Totals{Runs: 619}
+	h.st.reviewed, h.st.seen = 45, 120
+
+	var got metricsBody
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/metrics?days=30").Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.PRs.Reviewed != 45 || got.PRs.Seen != 120 || got.Totals.Runs != 619 {
+		t.Errorf("prs = %+v, runs = %d, want 45/120 and 619", got.PRs, got.Totals.Runs)
+	}
+}
+
+// The daily series reach six days before the window so the 7-day trend has a
+// full week behind the first day; the window itself does not move.
+func TestMetricsDailySeriesLeadTheWindowByAWeek(t *testing.T) {
+	h := newDashHarness(t)
+	var got metricsBody
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/metrics?days=30").Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if want := got.Since.AddDate(0, 0, -6); !got.LeadSince.Equal(want) {
+		t.Errorf("lead_since = %s, want %s (six days before since)", got.LeadSince, want)
+	}
+	if h.st.dailySince == nil || !h.st.dailySince.Equal(got.LeadSince) ||
+		h.st.attemptsSince == nil || !h.st.attemptsSince.Equal(got.LeadSince) {
+		t.Errorf("daily read from %v, attempts from %v, want both from lead_since %s",
+			h.st.dailySince, h.st.attemptsSince, got.LeadSince)
 	}
 }
 
