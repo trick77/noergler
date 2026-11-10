@@ -1,6 +1,7 @@
 // Formatters. Every number a person reads passes through one of these, so
 // the page never decides locally how money or a duration looks. Their words
 // come from the i18n catalog; the shapes of numbers do not change with it.
+import type { Metrics } from "./api";
 import i18n from "./i18n";
 import { en, type Catalog } from "./i18n/en";
 
@@ -38,6 +39,25 @@ export function monthName(since: string): string {
     year: "numeric",
     ...(start === null ? {} : { timeZone: "UTC" }),
   }).format(start === null ? new Date() : new Date(start));
+}
+
+/** windowTitle names the window the API actually answered with, rather than
+ *  the one the page assumed it asked for: "the last 30 days", or the month
+ *  for a request without ?days=. Shared by Metrics and Runs, so both pages
+ *  word one window alike. */
+export function windowTitle(
+  m: Pick<Metrics, "since" | "until" | "window">,
+): string {
+  if (m.window === "month") return monthName(m.since);
+  // Server days off the strings, like calendarDay's other callers; a bad
+  // pair counts zero rather than guessing.
+  const start = calendarDay(m.since);
+  const end = calendarDay(m.until);
+  const count =
+    start === null || end === null || end < start
+      ? 0
+      : Math.round((end - start) / 86_400_000);
+  return i18n.t("metrics.lastDays", { count });
 }
 
 /** money renders the API's decimal string, rounded to cents.

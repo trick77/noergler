@@ -3,11 +3,11 @@ import {
   ago,
   duration,
   money,
-  monthName,
   outcomeTone,
   outcomeTitle,
   outcomeWord,
   reasonLabel,
+  windowTitle,
 } from "./format";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -18,6 +18,7 @@ import {
   Failed,
   Pill,
   PrTag,
+  Sep,
   TeamPill,
   Tile,
   Tiles,
@@ -62,14 +63,20 @@ const FILTERS = [
   { value: "skipped", label: "runs.filterSkipped" },
 ] as const satisfies readonly { value: Filter; label: string }[];
 
+/** The window the tiles ask for, today included; the title names the one
+ *  the server answered with. */
+const RUNS_DAYS = 30;
+
 export function RunsPage() {
   const { t } = useTranslation();
   const [filter, setFilter] = useState<Filter>("");
   const query = `runs?limit=50${filter === "" ? "" : `&outcome=${filter}`}`;
   const { data, failed, stale } = usePoll<Runs>(query, 10000);
   // Same cadence as the feed: read once, the tiles drifted from the rows
-  // beneath them for as long as the page stayed open.
-  const metrics = usePoll<Metrics>("metrics", 10000);
+  // beneath them for as long as the page stayed open. Rolling days like the
+  // metrics page (user, 2026-11-10): the tiles are counts, not spend, so the
+  // billing month bought nothing here and read near-empty on the 1st.
+  const metrics = usePoll<Metrics>(`metrics?days=${RUNS_DAYS}`, 10000);
   const now = useNow(10000);
 
   if (!data) {
@@ -100,13 +107,19 @@ export function RunsPage() {
   return (
     <div className={page}>
       <div className={column}>
-        <h2 className={h2}>{t("nav.runs")}</h2>
-        <p className={lede}>
-          {/* The server's month once metrics answer; the viewer's until then. */}
-          {t("runs.lede", {
-            month: monthName(metrics.data?.since ?? new Date().toISOString()),
-          })}
-        </p>
+        {/* The window the counts cover, named like the metrics page names
+            its own: what the server answered, not what was asked for, and
+            only once there are counts for it to describe. */}
+        <h2 className={h2}>
+          {t("nav.runs")}
+          {counted && metrics.data && (
+            <>
+              <Sep />
+              <span className="text-muted">{windowTitle(metrics.data)}</span>
+            </>
+          )}
+        </h2>
+        <p className={lede}>{t("runs.lede")}</p>
 
         {/* A dash, not a zero, until the counts are read, failed or still
             loading: the feed below may be full, and four tiles reading 0

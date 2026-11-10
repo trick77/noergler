@@ -16,7 +16,7 @@ import {
   tokens,
 } from "./format";
 
-// The ledes name the month instead of saying "this month".
+// A month window is titled by name, never "this month".
 describe("monthName", () => {
   it("names the server's month, whatever the viewer's zone", () => {
     expect(monthName("2026-09-01T00:00:00+02:00")).toBe("September 2026");

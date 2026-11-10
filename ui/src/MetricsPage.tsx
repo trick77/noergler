@@ -7,10 +7,9 @@ import {
   dayMonth,
   money,
   moneyTick,
-  monthName,
   tokens,
+  windowTitle,
 } from "./format";
-import i18n from "./i18n";
 import { usePoll } from "./usePoll";
 import {
   Card,
@@ -72,16 +71,6 @@ function days(since: string, until: string): string[] {
   return out;
 }
 
-/** windowTitle names the window the API actually answered with, rather than
- *  the one the page assumed it asked for. */
-function windowTitle(m: Metrics): string {
-  if (m.window !== "month")
-    return i18n.t("metrics.lastDays", {
-      count: days(m.since, m.until).length,
-    });
-  return monthName(m.since);
-}
-
 /** The windows on offer: 30 days by default, 90 (the server's cap) on
  *  request (user, 2026-11-10). In the URL (?days=90), so a view can be
  *  shared; 30 is the bare path. */
@@ -126,8 +115,7 @@ function niceTicks(max: number): number[] {
 export function MetricsPage() {
   const { t } = useTranslation();
   // Rolling days, today included (user's call): the trend reads the same on
-  // the 1st as on the 30th. The cost no longer matches the monthly bill;
-  // the runs page keeps the month.
+  // the 1st as on the 30th. The cost no longer matches the monthly bill.
   const [span, setSpan] = useState<Span>(readSpan);
   const { data, failed, stale } = usePoll<Metrics>(
     `metrics?days=${span}`,
@@ -564,4 +552,4 @@ function Legend({ series, trend }: { series: Series[]; trend?: string }) {
   );
 }
 
-export { days as _days, niceTicks as _niceTicks, windowTitle as _windowTitle };
+export { days as _days, niceTicks as _niceTicks };
