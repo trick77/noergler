@@ -88,13 +88,24 @@ export function Pill({
   );
 }
 
-/** RangePill is one choice of a page control (a span, an outcome filter),
- *  carried over from ../ismimodown's window pills: its own border on every
- *  pill, so the control reads as one before it is hovered, and the pressed
- *  one a soft accent tint, never a solid fill (an inverted fill "read as too
- *  loud" in ../peeq). The earlier bg-panel active state sat at about 1.05:1
- *  on the page and could not be seen (user, 2026-11-10). */
-export function RangePill({
+/** FilterPill is one choice of a filter (a span, an outcome). Every filter
+ *  in this UI is a row of these pills (user, 2026-11-10): a new one takes
+ *  this, not a look of its own.
+ *
+ *  Pill-shaped like ../ismimodown's window pills, sans like every other
+ *  control here. The chosen one is told by its accent-strong edge, the
+ *  accent this UI marks a chosen run or tab with; the raised fill under it
+ *  is a second cue that nearly vanishes on the Runs card header (bg-active),
+ *  so the edge has to carry it. Never a solid accent fill: an inverted fill
+ *  "read as too loud" in ../peeq. Hover brightens text and edge only, so a
+ *  hovered pill never looks chosen.
+ *
+ *  Unchosen: a faint edge (about 3.3:1 on the page) around a panel fill, so
+ *  it reads as a button on the page and as an inset on the card header.
+ *  Status Pills differ by their dot and their small medium-weight word;
+ *  the first version of this, a bg-panel chosen state at about 1.05:1, could
+ *  not be seen at all (user, 2026-11-10). */
+export function FilterPill({
   active,
   onClick,
   children,
@@ -109,10 +120,10 @@ export function RangePill({
       aria-pressed={active}
       onClick={onClick}
       className={
-        "cursor-pointer rounded-full border px-[13px] py-[5px] font-mono text-[12.5px] leading-tight whitespace-nowrap transition-colors duration-[120ms] " +
+        "cursor-pointer rounded-full border px-3 py-1 text-[13px] leading-tight whitespace-nowrap transition-colors duration-[120ms] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent " +
         (active
-          ? "border-accent-dim bg-accent/12 text-accent-strong"
-          : "border-border bg-panel/60 text-muted hover:border-accent-dim hover:text-ink")
+          ? "border-accent-strong bg-elevated text-ink"
+          : "border-faint bg-panel text-muted hover:border-muted hover:text-ink")
       }
     >
       {children}
