@@ -445,7 +445,8 @@ const trendLead = 6
 // seq-scan however much history exists.
 //
 // Absent means the current calendar month, the window a key's spend is
-// budgeted and invoiced in; the runs page titles itself with it.
+// budgeted and invoiced in. No page asks for it since the runs page went
+// rolling too; kept as the one window whose cost matches the bill.
 func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	since := monthStart(now)

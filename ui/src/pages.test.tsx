@@ -360,15 +360,44 @@ describe("RunsPage", () => {
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
-  it("names the server's month rather than saying this month", async () => {
+  // Rolling days like the metrics page, not the calendar month (user's
+  // call): the tiles are counts, and a month read near-empty on the 1st.
+  it("asks for the last 30 days", async () => {
+    serve({
+      runs: { runs },
+      metrics: {
+        ...metrics,
+        since: "2026-09-10T00:00:00Z",
+        until: "2026-10-10T00:00:00Z",
+        window: "rolling",
+      },
+    });
+    render(<RunsPage />);
+
+    expect(await screen.findByText("the last 30 days")).toBeDefined();
+    const calls = vi.mocked(fetch).mock.calls.map(([u]) => String(u));
+    expect(calls.some((u) => /\/metrics\?days=30$/.test(u))).toBe(true);
+  });
+
+  // The title names the window the server answered with, not the one the
+  // page asked for: a server that ignored ?days= and answered its month
+  // must not be titled "the last 30 days".
+  it("names the window the server answered with", async () => {
     serve({ runs: { runs }, metrics });
     render(<RunsPage />);
 
-    expect(
-      await screen.findByText(
-        "What noergler did with every PR in September 2026, and the latest 50 runs.",
-      ),
-    ).toBeDefined();
+    expect(await screen.findByText("September 2026")).toBeDefined();
+    expect(screen.queryByText("the last 30 days")).toBeNull();
+  });
+
+  // No counts, no window: a title naming a window the dashes do not cover
+  // would be the same false claim as a 0.
+  it("names no window when metrics fail", async () => {
+    serve({ runs: { runs } });
+    render(<RunsPage />);
+
+    await waitFor(() => expect(screen.getByText("PAY/ledger#1")).toBeDefined());
+    expect(screen.queryByText(/the last \d+ days|September 2026/)).toBeNull();
   });
 
   // Still loading is not zero either: four 0 tiles and "Nothing was skipped"

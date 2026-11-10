@@ -103,7 +103,7 @@ export const en = {
     lastRun: "Last run",
   },
   runs: {
-    lede: "What noergler did with every PR in {{month}}, and the latest 50 runs.",
+    lede: "What noergler did with every PR, and the latest 50 runs.",
     failedWhat: "the runs feed",
     tileRuns: "Runs",
     tileReviewed: "Reviewed",

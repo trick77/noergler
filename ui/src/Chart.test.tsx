@@ -1,7 +1,8 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Chart, Sparkline, monotonePath } from "./Chart";
-import { _days, _niceTicks, _windowTitle } from "./MetricsPage";
+import { windowTitle } from "./format";
+import { _days, _niceTicks } from "./MetricsPage";
 
 const s1 = (values: number[]) => [
   { id: "a", name: "a", color: "var(--color-s1)", values },
@@ -241,7 +242,7 @@ describe("days", () => {
   });
 });
 
-// The window is the server's calendar month. Reading it back through the
+// A month window (a request without ?days=). Reading it back through the
 // browser's clock shifted the whole page by a day for any reader west of
 // the server: a +02:00 September rendered as Aug 31 to Sep 29 in New York,
 // titled itself "August", and dropped Sep 30 off the chart.
@@ -258,7 +259,7 @@ describe("the server's month, whatever the viewer's zone", () => {
 
   it("titles itself with the server's month", () => {
     const m = { since, until, window: "month" };
-    expect(_windowTitle(m as never)).toBe("September 2026");
+    expect(windowTitle(m)).toBe("September 2026");
   });
 
   // A UTC server is the other direction, and must not shift either.
@@ -274,33 +275,39 @@ describe("the server's month, whatever the viewer's zone", () => {
 });
 
 describe("windowTitle", () => {
-  const base = {
-    totals: {},
-    by_team: [],
-    daily: [],
-    daily_attempts: [],
-    breakdown: [],
-  };
-
   it("names the month for the default window", () => {
     const m = {
-      ...base,
       since: "2026-09-01T00:00:00+02:00",
       until: "2026-10-01T00:00:00+02:00",
       window: "month",
     };
-    expect(_windowTitle(m as never)).toBe("September 2026");
+    expect(windowTitle(m)).toBe("September 2026");
   });
 
   // The title follows what the API answered with, not what the page assumed
   // it asked for.
   it("names a rolling window by its length", () => {
     const m = {
-      ...base,
       since: "2026-09-08T00:00:00+02:00",
       until: "2026-09-22T00:00:00+02:00",
       window: "rolling",
     };
-    expect(_windowTitle(m as never)).toBe("the last 14 days");
+    expect(windowTitle(m)).toBe("the last 14 days");
+  });
+
+  // Across a DST change the server's days still count whole: the strings
+  // are read as calendar days, never through the viewer's clock.
+  it("counts 30 days across a DST change", () => {
+    const m = {
+      since: "2026-10-12T00:00:00+02:00",
+      until: "2026-11-11T00:00:00+01:00",
+      window: "rolling",
+    };
+    expect(windowTitle(m)).toBe("the last 30 days");
+  });
+
+  it("counts a bad pair as zero rather than guessing", () => {
+    const m = { since: "not a date", until: "2026-09-22", window: "rolling" };
+    expect(windowTitle(m)).toBe("the last 0 days");
   });
 });
