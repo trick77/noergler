@@ -118,6 +118,15 @@ function niceTicks(max: number): number[] {
   return [0, top / 2, top];
 }
 
+/** wholeTicks lifts a count axis whose middle tick is fractional to the
+ *  next even top: [0, 7.5, 15] becomes [0, 8, 16]. */
+function wholeTicks(ticks: number[]): number[] {
+  const mid = ticks[1];
+  if (Number.isInteger(mid)) return ticks;
+  const half = Math.ceil(mid);
+  return [0, half, half * 2];
+}
+
 export function MetricsPage() {
   const { t } = useTranslation();
   // Rolling days, today included (user's call): the trend reads the same on
@@ -200,27 +209,37 @@ export function MetricsPage() {
   const spend = (r: Metrics["daily"][number]) =>
     r.cost_usd ? Number(r.cost_usd) : 0;
 
-  const costSeries: Series[] = charted.map((team, i) => ({
-    id: team,
-    name: nameOf(team),
-    color: SERIES_COLORS[i],
-    values: perDay(data.daily, spend, (r) => r.team === team),
-  }));
-  // The tail folds into one band rather than being dropped. Truncating it
-  // let the card say "No priced runs in this window" beside a Cost tile
-  // showing the server's full, non-zero total.
-  if (rest.length > 0) {
-    costSeries.push({
-      // Not a slug: TeamSlugRE cannot start with "_", so no team collides.
-      id: "__rest",
-      name:
-        rest.length === 1
-          ? nameOf(rest[0])
-          : t("metrics.more", { count: rest.length }),
-      color: SERIES_COLORS[SERIES_COLORS.length - 1],
-      values: perDay(data.daily, spend, (r) => rest.includes(r.team)),
-    });
-  }
+  const lineOf = (r: Metrics["daily"][number]) => r.lines;
+
+  /** teamSeries is one series per charted team plus the folded tail. Cost
+   *  and LOC share the ranking and the colours, so a team reads the same
+   *  hue on both charts. */
+  const teamSeries = (count: (r: Metrics["daily"][number]) => number) => {
+    const out: Series[] = charted.map((team, i) => ({
+      id: team,
+      name: nameOf(team),
+      color: SERIES_COLORS[i],
+      values: perDay(data.daily, count, (r) => r.team === team),
+    }));
+    // The tail folds into one band rather than being dropped. Truncating it
+    // let the card say "No priced runs in this window" beside a Cost tile
+    // showing the server's full, non-zero total.
+    if (rest.length > 0) {
+      out.push({
+        // Not a slug: TeamSlugRE cannot start with "_", so no team collides.
+        id: "__rest",
+        name:
+          rest.length === 1
+            ? nameOf(rest[0])
+            : t("metrics.more", { count: rest.length }),
+        color: SERIES_COLORS[SERIES_COLORS.length - 1],
+        values: perDay(data.daily, count, (r) => rest.includes(r.team)),
+      });
+    }
+    return out;
+  };
+  const costSeries = teamSeries(spend);
+  const linesSeries = teamSeries(lineOf);
   const costTop = Math.max(
     ...window.map((_, i) =>
       costSeries.reduce((sum, s) => sum + s.values[i], 0),
@@ -312,11 +331,31 @@ export function MetricsPage() {
   const runTicks = niceTicks(
     Math.max(runTop, ...runTrend.values.map((v) => v ?? 0)),
   );
+  // LOC like cost: a line per team, the trend averaging every team summed.
+  // Days before the figure existed read 0 and pull the trend down. The
+  // card's note names such runs in the window; the six lead days have no
+  // per-day count, so their share goes unnamed until a week after 0029.
+  const linesTrend: Trend = {
+    values: ofWindow(perDayIn(trended, data.daily, lineOf)),
+    color: trendColor,
+    format: (v) => compact(Math.round(v)),
+  };
+  const linesTop = Math.max(...linesSeries.flatMap((s) => s.values), 0);
+  // Whole lines on the axis: niceTicks halves the top, and 15 LOC would
+  // put a 7.5 tick under a count.
+  const linesTicks = wholeTicks(
+    niceTicks(Math.max(linesTop, ...linesTrend.values.map((v) => v ?? 0))),
+  );
+  // Every run predates the figure: nothing was counted, which is not
+  // "no lines reviewed". The tile shows a dash for the same case.
+  const linesNone =
+    data.totals.runs > 0 &&
+    data.totals.lines_uncounted_runs >= data.totals.runs;
 
   // All teams per day, for the tiles' trends.
   const findingsDaily = perDay(data.daily, (b) => b.findings_posted);
   const unpricedDaily = perDay(data.daily, (b) => b.unpriced_runs);
-  const linesDaily = perDay(data.daily, (b) => b.lines);
+  const linesDaily = perDay(data.daily, lineOf);
   const lines = data.totals.lines_added + data.totals.lines_removed;
   const uncounted = data.totals.lines_uncounted_runs;
   /** The exact total and split behind a compact LOC figure, and the older
@@ -477,6 +516,32 @@ export function MetricsPage() {
             </Tile>
           </Tiles>
 
+          {/* Throughput, cost, LOC (user, 2026-11-11). */}
+          <p className={eyebrow}>{t("metrics.runsPerDay")}</p>
+          <Card title={t("metrics.throughput")}>
+            {runTop === 0 ? (
+              <Empty>{t("metrics.noRuns")}</Empty>
+            ) : (
+              <>
+                <Chart
+                  series={runSeries}
+                  trend={runTrend}
+                  width={1290}
+                  height={180}
+                  mark="bar"
+                  ticks={runTicks}
+                  xLabels={window.map(label)}
+                  label={t("metrics.runsChart", { title })}
+                />
+                <Legend
+                  series={runSeries}
+                  trend={trendColor}
+                  trendLabel={t("metrics.trendReviewed")}
+                />
+              </>
+            )}
+          </Card>
+
           <p className={eyebrow}>{t("metrics.costPerDay")}</p>
           <Card title={t("metrics.spend")}>
             {costTop === 0 ? (
@@ -499,27 +564,33 @@ export function MetricsPage() {
             )}
           </Card>
 
-          <p className={eyebrow}>{t("metrics.runsPerDay")}</p>
-          <Card title={t("metrics.throughput")}>
-            {runTop === 0 ? (
-              <Empty>{t("metrics.noRuns")}</Empty>
+          <p className={eyebrow}>{t("metrics.linesPerDay")}</p>
+          <Card
+            title={t("metrics.codeVolume")}
+            note={
+              uncounted > 0 && !linesNone
+                ? t("metrics.linesUncounted", { count: uncounted })
+                : undefined
+            }
+          >
+            {linesNone ? (
+              <Empty>{t("metrics.linesNotCounted")}</Empty>
+            ) : linesTop === 0 ? (
+              <Empty>{t("metrics.noLines")}</Empty>
             ) : (
               <>
                 <Chart
-                  series={runSeries}
-                  trend={runTrend}
+                  series={linesSeries}
+                  trend={linesTrend}
                   width={1290}
-                  height={180}
-                  mark="bar"
-                  ticks={runTicks}
+                  height={200}
+                  mark="line"
+                  ticks={linesTicks}
                   xLabels={window.map(label)}
-                  label={t("metrics.runsChart", { title })}
+                  format={compact}
+                  label={t("metrics.linesChart", { title })}
                 />
-                <Legend
-                  series={runSeries}
-                  trend={trendColor}
-                  trendLabel={t("metrics.trendReviewed")}
-                />
+                <Legend series={linesSeries} trend={trendColor} />
               </>
             )}
           </Card>
@@ -616,4 +687,4 @@ function Legend({
   );
 }
 
-export { days as _days, niceTicks as _niceTicks };
+export { days as _days, niceTicks as _niceTicks, wholeTicks as _wholeTicks };

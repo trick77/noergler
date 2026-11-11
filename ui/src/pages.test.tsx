@@ -701,19 +701,32 @@ describe("MetricsPage", () => {
           { day: "2026-09-02", outcome: "timed_out", count: 7 },
         ],
         daily: [
-          { ...metrics.daily[0], day: "2026-08-28", cost_usd: "0.350" },
-          { ...metrics.daily[0], day: "2026-09-02", cost_usd: "0.350" },
+          {
+            ...metrics.daily[0],
+            day: "2026-08-28",
+            cost_usd: "0.350",
+            lines: 4900,
+          },
+          {
+            ...metrics.daily[0],
+            day: "2026-09-02",
+            cost_usd: "0.350",
+            lines: 2100,
+          },
         ],
       },
     });
     render(<MetricsPage />);
 
-    // Sep 3: (14 + 7) / 7 reviewed runs, ($0.35 + $0.35) / 7 spend.
+    // Sep 3: (14 + 7) / 7 reviewed runs, ($0.35 + $0.35) / 7 spend,
+    // (4,900 + 2,100) / 7 LOC.
     const runs = await screen.findByLabelText(/Runs per day/);
     expect(within(runs as HTMLElement).getByText("3")).toBeDefined();
     const cost = screen.getByLabelText(/Cost per day/);
     expect(within(cost as HTMLElement).getByText("$0.10")).toBeDefined();
-    expect(screen.getAllByText("7-day avg")).toHaveLength(1);
+    const loc = screen.getByLabelText(/LOC reviewed per day/);
+    expect(within(loc as HTMLElement).getByText("1.0K")).toBeDefined();
+    expect(screen.getAllByText("7-day avg")).toHaveLength(2);
     expect(screen.getByText("7-day avg, reviewed only")).toBeDefined();
   });
 
@@ -831,12 +844,83 @@ describe("MetricsPage", () => {
     expect(value?.textContent).toBe("—");
   });
 
-  it("labels both charts for a screen reader", async () => {
+  it("labels every chart for a screen reader", async () => {
     serve({ metrics });
     render(<MetricsPage />);
 
     expect(await screen.findByLabelText(/Cost per day/)).toBeDefined();
     expect(await screen.findByLabelText(/Runs per day/)).toBeDefined();
+    expect(await screen.findByLabelText(/LOC reviewed per day/)).toBeDefined();
+  });
+
+  // Throughput, cost, LOC (user, 2026-11-11).
+  it("orders the charts throughput, cost, LOC", async () => {
+    serve({ metrics });
+    render(<MetricsPage />);
+
+    await screen.findByText("Throughput");
+    const titles = screen
+      .getAllByRole("heading", { level: 3 })
+      .map((h) => h.textContent);
+    expect(titles).toEqual(["Throughput", "Spend", "Code volume"]);
+  });
+
+  // A team keeps its colour across cost and LOC: both rank by spend.
+  it("draws LOC per team in the cost chart's colours", async () => {
+    serve({ metrics });
+    render(<MetricsPage />);
+
+    await screen.findByText("Code volume");
+    // Legend entries carry a swatch; the team table's cell does not.
+    const legends = screen
+      .getAllByText("Payments")
+      .filter((el) => el.querySelector("i"));
+    expect(legends).toHaveLength(2);
+    const swatch = (el: HTMLElement) =>
+      (el.querySelector("i") as HTMLElement).style.background;
+    expect(swatch(legends[0])).toBe("var(--color-s1)");
+    expect(swatch(legends[1])).toBe("var(--color-s1)");
+  });
+
+  it("says when no lines were reviewed", async () => {
+    serve({
+      metrics: {
+        ...metrics,
+        daily: metrics.daily.map((d) => ({ ...d, lines: 0 })),
+      },
+    });
+    render(<MetricsPage />);
+
+    expect(
+      await screen.findByText("No lines reviewed in this window."),
+    ).toBeDefined();
+    expect(screen.queryByLabelText(/LOC reviewed per day/)).toBeNull();
+  });
+
+  // Every run predates the figure: nothing was counted, which the card
+  // says, rather than claiming nothing was reviewed.
+  it("says when no run in the window was counted", async () => {
+    serve({
+      metrics: {
+        ...metrics,
+        totals: {
+          ...metrics.totals,
+          lines_added: 0,
+          lines_removed: 0,
+          lines_uncounted_runs: metrics.totals.runs,
+        },
+        daily: metrics.daily.map((d) => ({ ...d, lines: 0 })),
+      },
+    });
+    render(<MetricsPage />);
+
+    expect(
+      await screen.findByText(
+        "Every run in this window predates the LOC count.",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText("No lines reviewed in this window.")).toBeNull();
+    expect(screen.queryByText(/older runs?$/)).toBeNull();
   });
 
   // The page asks for the last 30 days, not the calendar month (user's

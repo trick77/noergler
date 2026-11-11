@@ -2,7 +2,7 @@ import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Chart, Sparkline, monotonePath } from "./Chart";
 import { windowTitle } from "./format";
-import { _days, _niceTicks } from "./MetricsPage";
+import { _days, _niceTicks, _wholeTicks } from "./MetricsPage";
 
 const s1 = (values: number[]) => [
   { id: "a", name: "a", color: "var(--color-s1)", values },
@@ -207,6 +207,16 @@ describe("niceTicks", () => {
     expect(_niceTicks(0)).toEqual([0, 1]);
     expect(_niceTicks(3.7)).toEqual([0, 2, 4]);
     expect(_niceTicks(175)).toEqual([0, 100, 200]);
+  });
+});
+
+describe("wholeTicks", () => {
+  // A count axis never reads 7.5 lines.
+  it("lifts a fractional middle tick to the next whole one", () => {
+    expect(_wholeTicks(_niceTicks(15))).toEqual([0, 8, 16]);
+    expect(_wholeTicks(_niceTicks(1))).toEqual([0, 1, 2]);
+    expect(_wholeTicks(_niceTicks(175))).toEqual([0, 100, 200]);
+    expect(_wholeTicks(_niceTicks(0))).toEqual([0, 1]);
   });
 });
 
