@@ -88,46 +88,73 @@ export function Pill({
   );
 }
 
-/** FilterPill is one choice of a filter (a span, an outcome). Every filter
- *  in this UI is a row of these pills (user, 2026-11-10): a new one takes
- *  this, not a look of its own.
+/** FilterTrack is one filter (a span, an outcome): its choices as pills in
+ *  one track. Every filter in this UI is a FilterTrack (user, 2026-11-11,
+ *  picked from a mock of four): a new one takes this, not a look of its own.
+ *  The pills are drawn here, never on their own: without the track a pill
+ *  at rest is a bare word.
  *
- *  Pill-shaped like ../ismimodown's window pills, sans like every other
- *  control here. The chosen one is told by its accent-strong edge, the
- *  accent this UI marks a chosen run or tab with; the raised fill under it
- *  is a second cue that nearly vanishes on the Runs card header (bg-active),
- *  so the edge has to carry it. Never a solid accent fill: an inverted fill
- *  "read as too loud" in ../peeq. Hover brightens text and edge only, so a
- *  hovered pill never looks chosen.
+ *  One track, not loose pills: the bordered loose pills before it were the
+ *  only control here with an edge at rest, and their accent edge on the
+ *  chosen one spoke the focus ring's and the deep-link ring's language, so
+ *  it read as focused rather than chosen. The shape is ../rongo's
+ *  turn/thread switch, same token family. The track is bg-panel on every
+ *  surface: darker than the page and than a card header, so it sinks on
+ *  both. It wraps rather than overflow a narrow card header (Card clips);
+ *  a fixed radius, not rounded-full, so a wrapped track keeps its corners.
  *
- *  Unchosen: a faint edge (about 3.3:1 on the page) around a panel fill, so
- *  it reads as a button on the page and as an inset on the card header.
- *  Status Pills differ by their dot and their small medium-weight word;
- *  the first version of this, a bg-panel chosen state at about 1.05:1, could
- *  not be seen at all (user, 2026-11-10). */
-export function FilterPill({
-  active,
-  onClick,
-  children,
+ *  A pill has no edge and no fill at rest, like the top nav. Chosen:
+ *  bg-elevated with an elevated-border edge, ink and medium weight. The fill
+ *  alone is faint (1.42:1 on the track), and a fill-only chosen state at
+ *  about 1.05:1 could not be seen at all (user, 2026-11-10), so the text
+ *  change and the edge carry it. No accent at rest: never a solid accent
+ *  fill (an inverted fill "read as too loud" in ../peeq). Hover brightens
+ *  the text only, so a hovered pill never looks chosen. The focus ring sits
+ *  inside the pill: outside it would cover the neighbour across the 2px gap.
+ *
+ *  The second, invisible span reserves the medium-weight width, so the row
+ *  does not shift when the choice moves. */
+export function FilterTrack<T extends string | number>({
+  label,
+  options,
+  value,
+  onChange,
 }: {
-  active: boolean;
-  onClick: () => void;
-  children: ReactNode;
+  /** The group's name for a screen reader ("Window", "Outcome"). */
+  label: string;
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
 }) {
   return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={
-        "cursor-pointer rounded-full border px-3 py-1 text-[13px] leading-tight whitespace-nowrap transition-colors duration-[120ms] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent " +
-        (active
-          ? "border-accent-strong bg-elevated text-ink"
-          : "border-faint bg-panel text-muted hover:border-muted hover:text-ink")
-      }
+    <span
+      role="group"
+      aria-label={label}
+      className="inline-flex max-w-full flex-wrap gap-0.5 rounded-[16px] border border-border bg-panel p-0.5"
     >
-      {children}
-    </button>
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          aria-pressed={value === o.value}
+          onClick={() => onChange(o.value)}
+          className={
+            "inline-grid justify-items-center rounded-full px-3 py-1 text-[13px] leading-tight whitespace-nowrap transition-[color,background-color,box-shadow] duration-[120ms] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent " +
+            (value === o.value
+              ? "bg-elevated font-medium text-ink ring-1 ring-elevated-border ring-inset"
+              : "text-muted hover:text-ink")
+          }
+        >
+          <span>{o.label}</span>
+          <span
+            aria-hidden
+            className="invisible h-0 overflow-hidden font-medium"
+          >
+            {o.label}
+          </span>
+        </button>
+      ))}
+    </span>
   );
 }
 

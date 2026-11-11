@@ -23,7 +23,7 @@ import {
   h2,
   page,
   pageTitle,
-  FilterPill,
+  FilterTrack,
   table,
   td,
   tdNum,
@@ -330,17 +330,15 @@ export function MetricsPage() {
             <Sep />
             <span className="text-muted">{title}</span>
           </h2>
-          <span
-            className="flex flex-wrap gap-2"
-            role="group"
-            aria-label={t("metrics.span")}
-          >
-            {SPANS.map((s) => (
-              <FilterPill key={s} active={span === s} onClick={() => pick(s)}>
-                {t("metrics.spanDays", { count: s })}
-              </FilterPill>
-            ))}
-          </span>
+          <FilterTrack
+            label={t("metrics.span")}
+            options={SPANS.map((s) => ({
+              value: s,
+              label: t("metrics.spanDays", { count: s }),
+            }))}
+            value={span}
+            onChange={pick}
+          />
         </div>
 
         <div className={stale ? "opacity-40 transition-opacity" : ""}>
