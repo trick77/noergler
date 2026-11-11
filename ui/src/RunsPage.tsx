@@ -18,7 +18,7 @@ import {
   Failed,
   Pill,
   PrTag,
-  FilterPill,
+  FilterTrack,
   RefreshFailing,
   TeamPill,
   Tile,
@@ -145,21 +145,15 @@ export function RunsPage() {
         <p className={eyebrow}>{t("runs.latest", { n: RUNS_LIMIT })}</p>
         <Card
           right={
-            <span
-              className="flex flex-wrap gap-2"
-              role="group"
-              aria-label={t("runs.outcome")}
-            >
-              {FILTERS.map((f) => (
-                <FilterPill
-                  key={f.value}
-                  active={filter === f.value}
-                  onClick={() => setFilter(f.value)}
-                >
-                  {t(f.label)}
-                </FilterPill>
-              ))}
-            </span>
+            <FilterTrack
+              label={t("runs.outcome")}
+              options={FILTERS.map((f) => ({
+                value: f.value,
+                label: t(f.label),
+              }))}
+              value={filter}
+              onChange={setFilter}
+            />
           }
         >
           {rows.length === 0 ? (
