@@ -153,11 +153,13 @@ export function elapsedSince(iso: string, now: number = Date.now()): string {
   return duration(Math.max(0, now - then));
 }
 
-/** tokens abbreviates a count. Thousands separators at this magnitude make a
- *  table column that is mostly punctuation. */
-export function tokens(n: number): string {
+/** compact abbreviates a count (tokens, LOC). Thousands separators at this
+ *  magnitude make a table column that is mostly punctuation. The suffix is
+ *  picked after rounding: 999,960 is 1.0M, never 1000.0K. */
+export function compact(n: number): string {
   if (n < 1000) return String(n);
-  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}K`;
+  const k = (n / 1000).toFixed(1);
+  if (Number(k) < 1000) return `${k}K`;
   return `${(n / 1_000_000).toFixed(1)}M`;
 }
 

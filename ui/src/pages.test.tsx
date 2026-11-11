@@ -589,18 +589,45 @@ describe("MetricsPage", () => {
     expect(screen.getByRole("columnheader", { name: "Runs" })).toBeDefined();
   });
 
-  // + and − as one figure, the split on hover, in the tile and the team
-  // row; a dash before anything ran.
-  it("shows lines reviewed as one figure with the split on hover", async () => {
+  // + and − as one figure, compact (1.5K, not KLOC), the exact split on
+  // hover, in the tile and the team row; a dash before anything ran.
+  it("shows LOC reviewed as one compact figure with the split on hover", async () => {
     serve({ metrics });
     render(<MetricsPage />);
 
-    const value = (await screen.findByText("Lines reviewed"))
-      .nextElementSibling;
-    expect(value?.textContent).toBe((1540).toLocaleString());
-    const split = `+${(1200).toLocaleString()} / −340: lines sent to the model, each counted once per PR`;
-    expect(screen.getAllByTitle(split)).toHaveLength(2);
-    expect(screen.getByRole("columnheader", { name: "Lines" })).toBeDefined();
+    const value = (await screen.findByText("LOC reviewed")).nextElementSibling;
+    expect(value?.textContent).toBe("1.5K");
+    const split = `${(1540).toLocaleString()} LOC (+${(1200).toLocaleString()} / −340): lines sent to the model, each counted once per PR`;
+    const cells = screen.getAllByTitle(split);
+    expect(cells).toHaveLength(2);
+    expect(cells[1].textContent).toBe("1.5K");
+    expect(screen.getByRole("columnheader", { name: "LOC" })).toBeDefined();
+  });
+
+  // A team row never states a low number as exact: ≥ when some of its runs
+  // predate the figure, a dash when all of them do.
+  it("marks a team's LOC that leaves older runs out", async () => {
+    const row = metrics.by_team[0];
+    serve({
+      metrics: {
+        ...metrics,
+        by_team: [
+          { ...row, lines_uncounted_runs: 4 },
+          {
+            ...row,
+            team: "old",
+            team_name: "Old",
+            lines_added: 0,
+            lines_removed: 0,
+            lines_uncounted_runs: row.runs,
+          },
+        ],
+      },
+    });
+    render(<MetricsPage />);
+    expect(await screen.findByText("≥1.5K")).toBeDefined();
+    const old = screen.getByTitle("old").closest("tr");
+    expect(old?.textContent).toContain("—");
   });
 
   it("shows a dash for lines reviewed before anything has run", async () => {
@@ -619,8 +646,7 @@ describe("MetricsPage", () => {
     });
     render(<MetricsPage />);
 
-    const value = (await screen.findByText("Lines reviewed"))
-      .nextElementSibling;
+    const value = (await screen.findByText("LOC reviewed")).nextElementSibling;
     expect(value?.textContent).toBe("—");
   });
 
@@ -634,11 +660,8 @@ describe("MetricsPage", () => {
       },
     });
     render(<MetricsPage />);
-    const value = (await screen.findByText("Lines reviewed"))
-      .nextElementSibling;
-    expect(value?.textContent).toBe(
-      `${(1540).toLocaleString()}without 9 older runs`,
-    );
+    const value = (await screen.findByText("LOC reviewed")).nextElementSibling;
+    expect(value?.textContent).toBe("1.5Kwithout 9 older runs");
   });
 
   it("shows a dash when every run predates lines reviewed", async () => {
@@ -654,8 +677,7 @@ describe("MetricsPage", () => {
       },
     });
     render(<MetricsPage />);
-    const value = (await screen.findByText("Lines reviewed"))
-      .nextElementSibling;
+    const value = (await screen.findByText("LOC reviewed")).nextElementSibling;
     expect(value?.textContent).toBe("—");
   });
 
