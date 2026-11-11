@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { Metrics } from "./api";
+import type { Metrics, Totals } from "./api";
 import { Chart, Sparkline, type Series, type Trend } from "./Chart";
 import {
   calendarDay,
+  compact,
   dayMonth,
   money,
   moneyTick,
-  tokens,
   windowTitle,
 } from "./format";
 import { usePoll } from "./usePoll";
@@ -319,6 +319,25 @@ export function MetricsPage() {
   const linesDaily = perDay(data.daily, (b) => b.lines);
   const lines = data.totals.lines_added + data.totals.lines_removed;
   const uncounted = data.totals.lines_uncounted_runs;
+  /** The exact total and split behind a compact LOC figure, and the older
+   *  runs it leaves out, if any. */
+  const linesTitle = (r: Totals) => {
+    const split = t("metrics.linesSplit", {
+      total: (r.lines_added + r.lines_removed).toLocaleString(),
+      added: r.lines_added.toLocaleString(),
+      removed: r.lines_removed.toLocaleString(),
+    });
+    return r.lines_uncounted_runs > 0
+      ? `${split} (${t("metrics.linesUncounted", { count: r.lines_uncounted_runs })})`
+      : split;
+  };
+  /** A team row's LOC: a dash when every run predates the figure, ≥ when
+   *  some do, so the column never states a low number as exact. */
+  const teamLines = (r: Totals) => {
+    if (r.lines_uncounted_runs >= r.runs) return "—";
+    const n = compact(r.lines_added + r.lines_removed);
+    return r.lines_uncounted_runs > 0 ? `≥${n}` : n;
+  };
   const hasTrend = (values: number[]) => values.some((v) => v > 0);
 
   return (
@@ -411,7 +430,9 @@ export function MetricsPage() {
                 </div>
               )}
             </Tile>
-            {/* + and − as one figure (user, 2026-11-11), the split on hover.
+            {/* + and − as one figure, labelled LOC and compact (12.3K), not
+              KLOC (user, 2026-11-11): a unit of thousands would read 0.005
+              on a quiet week. The exact total and split are on hover.
               Only what the prompts carried, each line once per PR: a
               re-review re-reads lines already counted. Runs from before the
               figure existed add nothing: all of them is a dash, some of
@@ -427,14 +448,7 @@ export function MetricsPage() {
                 data.totals.runs === uncounted ? (
                   "—"
                 ) : (
-                  <span
-                    title={t("metrics.linesSplit", {
-                      added: data.totals.lines_added.toLocaleString(),
-                      removed: data.totals.lines_removed.toLocaleString(),
-                    })}
-                  >
-                    {lines.toLocaleString()}
-                  </span>
+                  <span title={linesTitle(data.totals)}>{compact(lines)}</span>
                 )
               }
             >
@@ -539,21 +553,13 @@ export function MetricsPage() {
                           {row.team_name}
                         </td>
                         <td className={tdNum}>{row.runs}</td>
-                        <td className={tdNum}>{tokens(row.prompt_tokens)}</td>
+                        <td className={tdNum}>{compact(row.prompt_tokens)}</td>
                         <td className={tdNum}>
-                          {tokens(row.completion_tokens)}
+                          {compact(row.completion_tokens)}
                         </td>
                         <td className={tdNum}>{row.findings_posted}</td>
-                        <td
-                          className={tdNum}
-                          title={t("metrics.linesSplit", {
-                            added: row.lines_added.toLocaleString(),
-                            removed: row.lines_removed.toLocaleString(),
-                          })}
-                        >
-                          {(
-                            row.lines_added + row.lines_removed
-                          ).toLocaleString()}
+                        <td className={tdNum} title={linesTitle(row)}>
+                          {teamLines(row)}
                         </td>
                         <td className={tdNum}>{money(row.cost_usd)}</td>
                       </tr>

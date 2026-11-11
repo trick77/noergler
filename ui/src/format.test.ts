@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ago,
   byName,
+  compact,
   duration,
   money,
   moneyTick,
@@ -13,7 +14,6 @@ import {
   teamStateLabel,
   teamStateTitle,
   teamTone,
-  tokens,
 } from "./format";
 
 // A month window is titled by name, never "this month".
@@ -241,11 +241,16 @@ describe("outcomeWord", () => {
   });
 });
 
-describe("tokens", () => {
+describe("compact", () => {
   it("abbreviates", () => {
-    expect(tokens(950)).toBe("950");
-    expect(tokens(18_400_000)).toBe("18.4M");
-    expect(tokens(412_000)).toBe("412.0K");
+    expect(compact(950)).toBe("950");
+    expect(compact(18_400_000)).toBe("18.4M");
+    expect(compact(412_000)).toBe("412.0K");
+  });
+
+  it("picks the suffix after rounding", () => {
+    expect(compact(999_949)).toBe("999.9K");
+    expect(compact(999_960)).toBe("1.0M");
   });
 });
 
