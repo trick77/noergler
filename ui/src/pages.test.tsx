@@ -630,6 +630,32 @@ describe("MetricsPage", () => {
     expect(old?.textContent).toContain("—");
   });
 
+  // The server sends by_team ranked by spend (the charts need that to pick
+  // their teams); the table never ranks teams, it reads A to Z.
+  it("lists teams by name, not by spend", async () => {
+    const row = metrics.by_team[0];
+    serve({
+      metrics: {
+        ...metrics,
+        by_team: [
+          row,
+          {
+            ...row,
+            team: "ausgaben",
+            team_name: "Ausgaben",
+            cost_usd: "0.010",
+          },
+        ],
+      },
+    });
+    render(<MetricsPage />);
+    const table = (await screen.findByTitle("ausgaben")).closest("table");
+    const names = Array.from(
+      table?.querySelectorAll("tbody tr td:first-child") ?? [],
+    ).map((el) => el.textContent);
+    expect(names).toEqual(["Ausgaben", "Payments"]);
+  });
+
   it("shows a dash for lines reviewed before anything has run", async () => {
     serve({
       metrics: {

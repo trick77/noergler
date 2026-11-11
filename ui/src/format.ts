@@ -379,17 +379,23 @@ export function sourceUrl(
   return `${r.repo}/browse/${path}?at=${encodeURIComponent(commit)}#${line}`;
 }
 
-/** byName sorts teams the way the page reads them: by display name, folding
- *  case and accents, so "Diecibärg" files under D rather than after Z.
+/** compareNames orders two team display names the way the page reads them,
+ *  folding case and accents, so "Diecibärg" files under D rather than after
+ *  Z. Every team table reads alphabetically (user, 2026-11-11); spend and
+ *  activity are columns, never the order. The live page is the one
+ *  exception: it is time based, see byLastRun. */
+export function compareNames(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { sensitivity: "base" });
+}
+
+/** byName sorts teams by display name (compareNames).
  *
  *  A COPY, never in place: the array comes from the poller and is reused
  *  between renders, so sorting it where it lies mutates state React is
  *  holding. The server's own order is by slug, which looks arbitrary once
  *  the page stops printing slugs. */
 export function byName<T extends { name: string }>(teams: T[]): T[] {
-  return [...teams].sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
-  );
+  return [...teams].sort((a, b) => compareNames(a.name, b.name));
 }
 
 /** byLastRun sorts teams most-recently-active first, which is the order the
@@ -410,6 +416,6 @@ export function byLastRun<T extends { name: string; last_run: string | null }>(
   return [...teams].sort((a, b) => {
     const diff = at(b) - at(a);
     if (diff !== 0 && !Number.isNaN(diff)) return diff;
-    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    return compareNames(a.name, b.name);
   });
 }
