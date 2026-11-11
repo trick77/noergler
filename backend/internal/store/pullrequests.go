@@ -259,6 +259,11 @@ type Run struct {
 	LinesAdded     int
 	LinesRemoved   int
 	FilesChanged   int
+	// ReviewedAdded and ReviewedRemoved count only the files the prompt
+	// carried: Lines* above include size-gated and over-budget ones. Run
+	// row only, never the PR's final_lines_*.
+	ReviewedAdded   int
+	ReviewedRemoved int
 	// Summary is the run's PR summary prose, carried onto the PR for the
 	// next review. nil keeps the stored one.
 	Summary *PRSummary
@@ -285,12 +290,12 @@ func (s *Store) InsertRun(ctx context.Context, r Run) (int64, error) {
 		if err := tx.QueryRow(ctx, `
 		INSERT INTO review_runs (pull_request_id, kind, incremental, from_commit, to_commit, model_label,
 			prompt_tokens, cached_tokens, completion_tokens, cost_nano_usd, elapsed_ms, findings_posted,
-			lines_added, lines_removed, files_changed)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+			lines_added, lines_removed, files_changed, reviewed_lines_added, reviewed_lines_removed)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 		RETURNING id`,
 			r.PullRequestID, string(r.Kind), r.Incremental, r.FromCommit, r.ToCommit, r.ModelLabel,
 			r.PromptTokens, r.CachedTokens, r.CompletionTokens, r.CostNanoUSD, r.ElapsedMS, r.FindingsPosted,
-			r.LinesAdded, r.LinesRemoved, r.FilesChanged,
+			r.LinesAdded, r.LinesRemoved, r.FilesChanged, r.ReviewedAdded, r.ReviewedRemoved,
 		).Scan(&id); err != nil {
 			return err
 		}

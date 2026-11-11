@@ -277,6 +277,81 @@ func TestTotalsByTeamGroupsOnTheAuthenticatedSlug(t *testing.T) {
 	}
 }
 
+// Lines reviewed count once per PR: the first run and the incremental ones
+// add lines, a full re-review (mention, rebase) re-reads them and adds
+// nothing. A run from before the column (NULL) counts nothing, even as its
+// PR's first run, and a later full run on that PR is still a re-review.
+func TestLinesReviewedCountOncePerPR(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	reviewed := func(prID int64, to string, kind RunKind, incremental bool, added, removed int) int64 {
+		t.Helper()
+		id, err := s.InsertRun(ctx, Run{PullRequestID: prID, Kind: kind, Incremental: incremental,
+			ToCommit: to, ModelLabel: "m", LinesAdded: 99, LinesRemoved: 99,
+			ReviewedAdded: added, ReviewedRemoved: removed})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	prID := upsert(t, s, key, "c1")
+	reviewed(prID, "c1", RunAuto, false, 10, 3)    // first run: counts
+	reviewed(prID, "c2", RunAuto, true, 5, 1)      // incremental: counts
+	reviewed(prID, "c2", RunMention, false, 15, 4) // mention re-review: not
+	reviewed(prID, "c3", RunAuto, false, 15, 4)    // rebase re-review: not
+
+	other := PRKey{Project: "PAY", Repo: "ledger", PRID: 1}
+	otherID, err := s.UpsertPullRequest(ctx, PRUpsert{Key: other, TeamSlug: "payments", LastReviewedCommit: str("d1")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := reviewed(otherID, "d1", RunAuto, false, 7, 7)
+	if _, err := s.pool.Exec(ctx, `UPDATE review_runs SET reviewed_lines_added = NULL, reviewed_lines_removed = NULL WHERE id = $1`, old); err != nil {
+		t.Fatal(err)
+	}
+	reviewed(otherID, "d2", RunAuto, true, 2, 0)  // incremental: counts
+	reviewed(otherID, "d3", RunAuto, false, 9, 9) // re-review: not
+
+	since := time.Now().Add(-time.Hour)
+	got, err := s.TotalsSince(ctx, since)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LinesAdded != 17 || got.LinesRemoved != 4 {
+		t.Errorf("totals = +%d/-%d, want +17/-4", got.LinesAdded, got.LinesRemoved)
+	}
+	if got.LinesUncounted != 1 {
+		t.Errorf("uncounted runs = %d, want 1 (the NULL row)", got.LinesUncounted)
+	}
+
+	teams, err := s.TotalsByTeam(ctx, since)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byTeam := map[string]Totals{}
+	for _, r := range teams {
+		byTeam[r.TeamSlug] = r.Totals
+	}
+	if p := byTeam["platform"]; p.LinesAdded != 15 || p.LinesRemoved != 4 {
+		t.Errorf("platform = +%d/-%d, want +15/-4", p.LinesAdded, p.LinesRemoved)
+	}
+	if p := byTeam["payments"]; p.LinesAdded != 2 || p.LinesRemoved != 0 {
+		t.Errorf("payments = +%d/-%d, want +2/-0", p.LinesAdded, p.LinesRemoved)
+	}
+
+	days, err := s.DailyByTeam(ctx, since)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lines int64
+	for _, d := range days {
+		lines += d.Lines
+	}
+	if lines != 21 {
+		t.Errorf("daily lines = %d, want 21 (the totals' +17/-4)", lines)
+	}
+}
+
 func TestDailySeriesBucketByDay(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

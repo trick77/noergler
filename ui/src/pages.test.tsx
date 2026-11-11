@@ -100,6 +100,9 @@ const metrics: Metrics = {
     findings_posted: 5,
     cost_usd: "1.250",
     unpriced_runs: 3,
+    lines_added: 1200,
+    lines_removed: 340,
+    lines_uncounted_runs: 0,
   },
   prs: { reviewed: 4, seen: 7 },
   by_team: [
@@ -113,6 +116,9 @@ const metrics: Metrics = {
       findings_posted: 5,
       cost_usd: "1.250",
       unpriced_runs: 3,
+      lines_added: 1200,
+      lines_removed: 340,
+      lines_uncounted_runs: 0,
     },
   ],
   daily: [
@@ -123,6 +129,7 @@ const metrics: Metrics = {
       findings_posted: 5,
       cost_usd: "0.500",
       unpriced_runs: 0,
+      lines: 1540,
     },
   ],
   daily_attempts: [
@@ -580,6 +587,76 @@ describe("MetricsPage", () => {
     expect(screen.getByTitle("4 of 7 PRs seen got reviewed")).toBeDefined();
     expect(screen.queryByText("12 runs")).toBeNull();
     expect(screen.getByRole("columnheader", { name: "Runs" })).toBeDefined();
+  });
+
+  // + and − as one figure, the split on hover, in the tile and the team
+  // row; a dash before anything ran.
+  it("shows lines reviewed as one figure with the split on hover", async () => {
+    serve({ metrics });
+    render(<MetricsPage />);
+
+    const value = (await screen.findByText("Lines reviewed"))
+      .nextElementSibling;
+    expect(value?.textContent).toBe((1540).toLocaleString());
+    const split = `+${(1200).toLocaleString()} / −340: lines sent to the model, each counted once per PR`;
+    expect(screen.getAllByTitle(split)).toHaveLength(2);
+    expect(screen.getByRole("columnheader", { name: "Lines" })).toBeDefined();
+  });
+
+  it("shows a dash for lines reviewed before anything has run", async () => {
+    serve({
+      metrics: {
+        ...metrics,
+        totals: {
+          ...metrics.totals,
+          runs: 0,
+          lines_added: 0,
+          lines_removed: 0,
+        },
+        by_team: [],
+        daily: [],
+      },
+    });
+    render(<MetricsPage />);
+
+    const value = (await screen.findByText("Lines reviewed"))
+      .nextElementSibling;
+    expect(value?.textContent).toBe("—");
+  });
+
+  // Runs from before the figure existed add no lines: some of them is a
+  // note beside the number, all of them a dash, never a silent low figure.
+  it("says when older runs are not in lines reviewed", async () => {
+    serve({
+      metrics: {
+        ...metrics,
+        totals: { ...metrics.totals, lines_uncounted_runs: 9 },
+      },
+    });
+    render(<MetricsPage />);
+    const value = (await screen.findByText("Lines reviewed"))
+      .nextElementSibling;
+    expect(value?.textContent).toBe(
+      `${(1540).toLocaleString()}without 9 older runs`,
+    );
+  });
+
+  it("shows a dash when every run predates lines reviewed", async () => {
+    serve({
+      metrics: {
+        ...metrics,
+        totals: {
+          ...metrics.totals,
+          lines_added: 0,
+          lines_removed: 0,
+          lines_uncounted_runs: 12,
+        },
+      },
+    });
+    render(<MetricsPage />);
+    const value = (await screen.findByText("Lines reviewed"))
+      .nextElementSibling;
+    expect(value?.textContent).toBe("—");
   });
 
   // The trend averages the six lead days the API sends before the window,

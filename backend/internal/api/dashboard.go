@@ -312,6 +312,12 @@ type totalsBody struct {
 	// Unpriced is runs the gateway did not price. Reported beside the cost,
 	// never inside it.
 	Unpriced int `json:"unpriced_runs"`
+	// Lines reviewed: what the prompts carried, once per PR (store.Totals).
+	LinesAdded   int64 `json:"lines_added"`
+	LinesRemoved int64 `json:"lines_removed"`
+	// LinesUncounted is runs from before the figure existed: they add no
+	// lines, so the page notes the figure reads low.
+	LinesUncounted int `json:"lines_uncounted_runs"`
 }
 
 type teamTotalsBody struct {
@@ -327,6 +333,8 @@ type dayBody struct {
 	FindingsPosted int64   `json:"findings_posted"`
 	Cost           *string `json:"cost_usd"`
 	Unpriced       int     `json:"unpriced_runs"`
+	// Lines is the day's lines reviewed, added plus removed.
+	Lines int64 `json:"lines"`
 }
 
 type outcomeDayBody struct {
@@ -375,6 +383,7 @@ func toTotals(t store.Totals) totalsBody {
 		Runs: t.Runs, PromptTokens: t.PromptTokens, CachedTokens: t.CachedTokens,
 		CompletionTokens: t.CompletionTokens, FindingsPosted: t.FindingsPosted,
 		Cost: usd(t.CostNanoUSD), Unpriced: t.Unpriced,
+		LinesAdded: t.LinesAdded, LinesRemoved: t.LinesRemoved, LinesUncounted: t.LinesUncounted,
 	}
 }
 
@@ -526,7 +535,7 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 		body.Daily = append(body.Daily, dayBody{
 			Day: b.Day.UTC().Format(time.DateOnly), Team: b.TeamSlug,
 			Runs: b.Runs, FindingsPosted: b.FindingsPosted,
-			Cost: usd(b.CostNanoUSD), Unpriced: b.Unpriced,
+			Cost: usd(b.CostNanoUSD), Unpriced: b.Unpriced, Lines: b.Lines,
 		})
 	}
 	for _, b := range attempts {

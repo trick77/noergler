@@ -98,6 +98,11 @@ type reviewPlan struct {
 	totalFiles  int
 	diffAdded   int
 	diffRemoved int
+	// sentAdded and sentRemoved count only the files the prompt carries,
+	// after the size gate and compression: what the metrics page calls
+	// lines reviewed.
+	sentAdded   int
+	sentRemoved int
 
 	// result is filled by the inference stage and read by the posting stage.
 	// Only one goroutine touches it at a time: the pool goroutine writes it,

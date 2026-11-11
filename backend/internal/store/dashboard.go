@@ -21,18 +21,40 @@ import (
 // money prCostSQL counts per PR. Read off runs alone, the monthly figure fell
 // short of the key's real spend. The attempts and calls add cost only, never
 // a run, a token or a finding.
+//
+// Lines reviewed (lines_added, lines_removed) are the run's
+// reviewed_lines_*, the files the prompt carried, counted once per PR: an
+// incremental run's lines are new, and so are the PR's first run's; any
+// other full run (a mention, a rebase or force push, an incremental diff
+// that would not fetch) re-reads lines already counted and adds nothing.
+// The gap is known and leans low, never high: new commits under a rebase's
+// full re-review are not counted. NULL (a run from before the column)
+// counts nothing; lines_uncounted counts those runs, so the page can say a
+// window reaching back past migration 0029 reads low.
+//
+// k.counted: incremental, or the PR's first run ever (not merely the
+// window's). OFFSET 0 keeps the planner from pulling the subquery up and
+// pasting its NOT EXISTS into both CASEs, which would probe twice a row.
 const spendCTE = `
 	WITH spend AS (
 		SELECT p.team_slug, r.created_at, r.cost_nano_usd, 1 AS run, r.prompt_tokens,
-		       r.cached_tokens, r.completion_tokens, r.findings_posted
+		       r.cached_tokens, r.completion_tokens, r.findings_posted,
+		       CASE WHEN k.counted THEN COALESCE(r.reviewed_lines_added, 0) ELSE 0 END AS lines_added,
+		       CASE WHEN k.counted THEN COALESCE(r.reviewed_lines_removed, 0) ELSE 0 END AS lines_removed,
+		       CASE WHEN r.reviewed_lines_added IS NULL THEN 1 ELSE 0 END AS lines_uncounted
 		  FROM review_runs r
 		  JOIN pull_requests p ON p.id = r.pull_request_id
+		 CROSS JOIN LATERAL (
+		       SELECT r.incremental OR NOT EXISTS (
+		              SELECT 1 FROM review_runs e
+		               WHERE e.pull_request_id = r.pull_request_id AND e.id < r.id) AS counted
+		       OFFSET 0) k
 		UNION ALL
-		SELECT a.team_slug, a.created_at, a.cost_nano_usd, 0, 0, 0, 0, 0
+		SELECT a.team_slug, a.created_at, a.cost_nano_usd, 0, 0, 0, 0, 0, 0, 0, 0
 		  FROM review_attempts a
 		 WHERE a.review_run_id IS NULL AND a.cost_nano_usd IS NOT NULL
 		UNION ALL
-		SELECT c.team_slug, c.created_at, c.cost_nano_usd, 0, 0, 0, 0, 0
+		SELECT c.team_slug, c.created_at, c.cost_nano_usd, 0, 0, 0, 0, 0, 0, 0, 0
 		  FROM llm_calls c
 		 WHERE c.attempt_id IS NULL AND c.cost_nano_usd IS NOT NULL
 	)`
@@ -44,7 +66,10 @@ const totalsCols = `
 	COALESCE(SUM(completion_tokens), 0),
 	COALESCE(SUM(findings_posted), 0),
 	SUM(cost_nano_usd),
-	COUNT(*) FILTER (WHERE run = 1 AND cost_nano_usd IS NULL)`
+	COUNT(*) FILTER (WHERE run = 1 AND cost_nano_usd IS NULL),
+	COALESCE(SUM(lines_added), 0),
+	COALESCE(SUM(lines_removed), 0),
+	COALESCE(SUM(lines_uncounted), 0)`
 
 // TotalsSince aggregates every team's runs in the window.
 func (s *Store) TotalsSince(ctx context.Context, since time.Time) (Totals, error) {
@@ -54,7 +79,8 @@ func (s *Store) TotalsSince(ctx context.Context, since time.Time) (Totals, error
 		  FROM spend
 		 WHERE created_at >= $1`, since).
 		Scan(&t.Runs, &t.PromptTokens, &t.CachedTokens, &t.CompletionTokens,
-			&t.FindingsPosted, &t.CostNanoUSD, &t.Unpriced)
+			&t.FindingsPosted, &t.CostNanoUSD, &t.Unpriced, &t.LinesAdded, &t.LinesRemoved,
+			&t.LinesUncounted)
 	return t, err
 }
 
@@ -69,7 +95,8 @@ func (s *Store) TotalsByTeam(ctx context.Context, since time.Time) ([]TeamTotals
 		 ORDER BY SUM(cost_nano_usd) DESC NULLS LAST`, []any{since},
 		func(row pgx.CollectableRow, t *TeamTotals) error {
 			return row.Scan(&t.TeamSlug, &t.Runs, &t.PromptTokens, &t.CachedTokens,
-				&t.CompletionTokens, &t.FindingsPosted, &t.CostNanoUSD, &t.Unpriced)
+				&t.CompletionTokens, &t.FindingsPosted, &t.CostNanoUSD, &t.Unpriced,
+				&t.LinesAdded, &t.LinesRemoved, &t.LinesUncounted)
 		})
 }
 
@@ -100,8 +127,9 @@ func (s *Store) PRCountsSince(ctx context.Context, since time.Time) (reviewed, s
 	return reviewed, seen, err
 }
 
-// DailyByTeam is runs, findings, cost and unpriced runs per day per team, for
-// the charts. Days with no runs are absent rather than zero-filled: the
+// DailyByTeam is runs, findings, cost, unpriced runs and lines reviewed
+// (once per PR, as spendCTE counts them) per day per team, for the charts
+// and the tiles' trends. Days with no runs are absent rather than zero-filled: the
 // caller knows the window it asked for and fills the gaps, which keeps this
 // query from inventing rows.
 func (s *Store) DailyByTeam(ctx context.Context, since time.Time) ([]Bucket, error) {
@@ -111,13 +139,14 @@ func (s *Store) DailyByTeam(ctx context.Context, since time.Time) ([]Bucket, err
 		       COALESCE(SUM(run), 0),
 		       COALESCE(SUM(findings_posted), 0),
 		       SUM(cost_nano_usd),
-		       COUNT(*) FILTER (WHERE run = 1 AND cost_nano_usd IS NULL)
+		       COUNT(*) FILTER (WHERE run = 1 AND cost_nano_usd IS NULL),
+		       COALESCE(SUM(lines_added + lines_removed), 0)
 		  FROM spend
 		 WHERE created_at >= $1
 		 GROUP BY day, team_slug
 		 ORDER BY day`, []any{since},
 		func(row pgx.CollectableRow, b *Bucket) error {
-			return row.Scan(&b.Day, &b.TeamSlug, &b.Runs, &b.FindingsPosted, &b.CostNanoUSD, &b.Unpriced)
+			return row.Scan(&b.Day, &b.TeamSlug, &b.Runs, &b.FindingsPosted, &b.CostNanoUSD, &b.Unpriced, &b.Lines)
 		})
 }
 

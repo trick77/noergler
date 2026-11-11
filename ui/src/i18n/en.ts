@@ -146,6 +146,13 @@ export const en = {
     reviewedTrend: "Reviewed trend",
     findingsTrend: "Findings trend",
     unpricedTrend: "Unpriced trend",
+    linesReviewed: "Lines reviewed",
+    lines: "Lines",
+    linesSplit:
+      "+{{added}} / −{{removed}}: lines sent to the model, each counted once per PR",
+    linesTrend: "Lines reviewed trend",
+    linesUncounted_one: "without {{count}} older run",
+    linesUncounted_other: "without {{count}} older runs",
     costPerDay: "Cost per day",
     spend: "Spend",
     noPriced: "No priced runs in this window.",

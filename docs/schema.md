@@ -364,6 +364,8 @@ Go types:
 | `lines_removed` | integer | no |  |  |
 | `files_changed` | integer | no |  |  |
 | `created_at` | timestamp with time zone | no | `now()` |  |
+| `reviewed_lines_added` | integer | yes |  |  |
+| `reviewed_lines_removed` | integer | yes |  |  |
 
 Foreign keys:
 
@@ -537,6 +539,7 @@ In `internal/store`. Bucket is one day of the timeseries.
 | `FindingsPosted` | `int64` |  |
 | `CostNanoUSD` | `*int64` |  |
 | `Unpriced` | `int` | Unpriced is how many of the day's runs carried no cost, as in Totals. |
+| `Lines` | `int64` | Lines is the day's lines reviewed, added plus removed, as in Totals. |
 
 ### store.DisputePR
 
@@ -625,6 +628,9 @@ In `internal/store`. Totals is the headline figure set over a time window.
 | `FindingsPosted` | `int64` |  |
 | `CostNanoUSD` | `*int64` | CostNanoUSD sums the priced runs and billed run-less attempts. Nil when none were priced. |
 | `Unpriced` | `int` | Unpriced is how many runs carried no cost. Shown beside the total, never added to it. |
+| `LinesAdded` | `int64` | LinesAdded and LinesRemoved are the lines reviewed: the +/- of the files the prompt carried, counted once per PR (spendCTE). |
+| `LinesRemoved` | `int64` | see `LinesAdded` |
+| `LinesUncounted` | `int` | LinesUncounted is how many runs predate the column (migration 0029) and add no lines, so the page can say the figure reads low. |
 
 ## Diagram
 
@@ -826,6 +832,8 @@ erDiagram
         integer lines_removed
         integer files_changed
         timestamp_with_time_zone created_at
+        integer reviewed_lines_added
+        integer reviewed_lines_removed
     }
     run_details {
         bigint attempt_id PK, FK
