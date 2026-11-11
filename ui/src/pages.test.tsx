@@ -654,6 +654,14 @@ describe("MetricsPage", () => {
       table?.querySelectorAll("tbody tr td:first-child") ?? [],
     ).map((el) => el.textContent);
     expect(names).toEqual(["Ausgaben", "Payments"]);
+
+    // The charts still rank by spend: the table sorts a copy, so by_team
+    // keeps the order that picks the charted teams and their colours.
+    const legend = screen
+      .getAllByText(/^(Ausgaben|Payments)$/)
+      .filter((el) => el.querySelector("i"))
+      .map((el) => el.textContent);
+    expect(legend.slice(0, 2)).toEqual(["Payments", "Ausgaben"]);
   });
 
   it("shows a dash for lines reviewed before anything has run", async () => {
