@@ -12,19 +12,46 @@ Built for the realities of enterprise setups: self-hosted Bitbucket Server, on-p
 
 ## Features
 
-- Automatic AI-powered code review on PR open/modify
-- Incremental reviews — only reviews new changes on push, not the entire PR
-- Cross-file context analysis — detects when changed symbols are referenced in other PR files
-- Mention-based interaction — ask questions or trigger re-reviews via `@noergler` in PR comments
-- Smart context enrichment — fetches full file content, not just diffs, for better AI understanding
-- Asymmetric and dynamic diff context expansion with language-aware scope detection
-- Token-aware chunking and compression for large PRs
-- Prompt-cache-optimised template layout — stable rules and examples first, per-PR variables (ticket context, diff) last, so repeated reviews maximise LLM prompt-cache reuse and the diff lands where model recall is strongest
-- Jira ticket compliance checking against acceptance criteria
-- Project-specific review guidelines via `AGENTS.md`
-- Comment deduplication against existing review comments
-- HMAC-SHA256 webhook signature validation
-- Corporate CA certificate support
+**Review**
+
+- Automatic review on PR open and on every push, drafts included (open a draft to get the bot's round done before humans look)
+- Incremental reviews: a push is reviewed from the last reviewed commit, a full review after a force-push; the summary always covers the whole PR
+- One streamed model call per review; a PR too large for the window drops whole files by priority and still names them to the model
+- Full file content as context, diff hunks expanded back to the enclosing declaration, changed symbols mapped to their references in other PR files
+- Every language is reviewed; scope and symbol detection is language-aware for Python, Java / Kotlin / Groovy and TypeScript / JavaScript, generic (`func` / `fn` / `def`, braces) for the rest, Go included. Lockfiles, vendored code, generated output and binaries are skipped
+- Vision: changed visual test baselines (Playwright `*-snapshots`, `__screenshots__`, `__image_snapshots__`) are pixel-diffed in noergler, cropped to the change and described by the model in a "Visual changes" section, which calls out rendering drift no code explains. Needs a model profile with vision
+- Every finding passes rule-based validation (quoted evidence, a line to anchor on) before it is posted; single-line fixes get Bitbucket's "Apply suggestion" button
+- A finding the next push fixes gets a "Fixed in `<sha>`" reply and its thread resolved; a resolved or deleted thread is never raised again
+- Bugs the model spots in code the PR did not touch are never posted; the run page lists them for someone to pick up
+- Jira ticket compliance per acceptance criterion; project rules via `AGENTS.md`
+- German (Swiss spelling) or English, per team and per user
+- Prompt laid out for the gateway's prefix cache: stable rules first, per-PR parts last
+
+**Conversation**
+
+- `@noergler` answers questions about the PR or re-runs a review; a reply under the summary or under any bot reply needs no mention. On a model that takes tools, the answer can look up the team's settings and the PR's status
+- The PR author's reply on a finding thread is answered. A dispute is acknowledged and the finding not raised again on that PR; when several PRs dispute the same rule, the answer offers a ready-to-paste `AGENTS.md` bullet
+- Stop and resume reviews on a PR by comment; deleting the summary opts the PR out
+- Draft to ready: a banner on the summary lists the findings still unresolved
+
+**Cost**
+
+- Per-PR cost cap over reviews, replies and answers; cost is what the gateway reports, an unpriced run still goes ahead
+- The gateway key's total spend is shown on the run page, never added to a PR's cost
+
+**Operations**
+
+- One instance, many teams: each brings its webhook secret, inference key, repositories, review knobs and optionally its own Bitbucket bot; a fault in one team disables that team only
+- Self-service API to claim projects and repositories, create the webhooks and change settings, documented at `/api/docs`
+- Dashboard (English / German, read-only, no login: the ingress is the boundary):
+  - Live: the inference pool, what runs and what waits
+  - Runs: the latest 50 runs with an outcome filter and why runs were skipped
+  - Metrics: cost, reviewed PRs, findings and their trends over 7, 30 or 90 days
+  - Teams: each team's health, claimed projects and repositories, configuration and filters
+  - FAQ: why a PR was not reviewed and what to do about it
+  - A page per PR, reached only through the link in its summary footer: every finding posted, the files reviewed, cost against the cap, and per run the findings not posted, the step timeline and the gateway call
+- Optional per team: review-cost rollups to [riptide](https://github.com/trick77/riptide), a note per merged PR to Almanach
+- HMAC-SHA256 webhook signatures, corporate CA bundles, one container plus Postgres
 
 For a detailed description of the review pipeline, see [HOW_IT_WORKS.md](HOW_IT_WORKS.md).
 
@@ -38,8 +65,8 @@ forwarding — see [Teams](#teams).
 1. **Webhook** — Bitbucket Server fires a `pr:opened` or `pr:from_ref_updated` event to the team's `/webhook/<team>` endpoint. The request is validated via HMAC-SHA256 against that team's secret, and the PR's repository must be one the team owns.
 2. **Diff fetch** — On new PRs, the full diff is fetched. On updates, noergler performs an incremental review covering only changes since the last review (falling back to full review after force-pushes).
 3. **Context enrichment** — Full file content is fetched for each reviewable file. Diff hunks are expanded with asymmetric context and language-aware scope detection. Cross-file analysis maps changed symbols to their references in other PR files.
-4. **AI review** — Files are grouped into token-aware chunks and sent to the configured LLM API (any OpenAI-compatible endpoint). The prompt includes file content, diffs, cross-file relationships, repo guidelines (`AGENTS.md`), and Jira ticket context.
-5. **Post results** — Findings are deduplicated against existing comments, sorted by severity, capped at the configured limit, and posted as inline comments. A summary comment tracks the reviewed commit for incremental reviews.
+4. **AI review** — The PR goes to the configured LLM API (any OpenAI-compatible endpoint) in one streamed call. The prompt includes file content, diffs, cross-file relationships, repo guidelines (`AGENTS.md`), and Jira ticket context. A PR that does not fit drops whole files by priority.
+5. **Post results** — Findings are validated, deduplicated against the findings already posted (read from the database), sorted by severity, capped at the configured limit, and posted as inline comments. A summary comment tracks the reviewed commit for incremental reviews.
 
 ## Interacting with noergler
 
