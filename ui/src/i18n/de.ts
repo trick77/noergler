@@ -142,6 +142,12 @@ export const de = {
     linesTrend: "Verlauf der geprüften LOC",
     linesUncounted_one: "ohne {{count}} älteren Run",
     linesUncounted_other: "ohne {{count}} ältere Runs",
+    linesPerDay: "LOC pro Tag",
+    codeVolume: "Codevolumen",
+    noLines: "Keine geprüften LOC in diesem Zeitraum.",
+    linesNotCounted:
+      "Alle Runs in diesem Zeitraum stammen von vor der LOC-Zählung.",
+    linesChart: "Geprüfte LOC pro Tag für {{title}}, nach Team",
     costPerDay: "Kosten pro Tag",
     spend: "Ausgaben",
     noPriced: "Keine bepreisten Runs in diesem Zeitraum.",
