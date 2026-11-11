@@ -38,6 +38,19 @@ type prepared struct {
 // lineCount is one file's added and removed lines.
 type lineCount struct{ Added, Removed int }
 
+// sentLines sums the +/- of the diffs the prompt carries, after the size
+// gate and compression and before context expansion. Counted off each
+// sent diff, not prepared.lines: compression drops deletion-only hunks
+// from a file it keeps, and a path can appear in two chunks (a type
+// change), which a per-path count would read once, twice or wrong.
+func sentLines(sent []diff.FileReviewData) (added, removed int) {
+	for _, f := range sent {
+		a, d := diff.CountChangedLines(f.Diff)
+		added, removed = added+a, removed+d
+	}
+	return added, removed
+}
+
 func (r *Reviewer) prepareFiles(ctx context.Context, project, repo, rawDiff, sourceCommit, prTag string) prepared {
 	all := diff.SplitByFile(rawDiff)
 	var reviewable, skipped []string

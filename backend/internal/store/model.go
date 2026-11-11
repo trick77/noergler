@@ -164,6 +164,13 @@ type Totals struct {
 	// Unpriced is how many runs carried no cost. Shown beside the total,
 	// never added to it.
 	Unpriced int
+	// LinesAdded and LinesRemoved are the lines reviewed: the +/- of the
+	// files the prompt carried, counted once per PR (spendCTE).
+	LinesAdded   int64
+	LinesRemoved int64
+	// LinesUncounted is how many runs predate the column (migration 0029)
+	// and add no lines, so the page can say the figure reads low.
+	LinesUncounted int
 }
 
 // TeamTotals is Totals for one team.
@@ -185,6 +192,8 @@ type Bucket struct {
 	CostNanoUSD    *int64
 	// Unpriced is how many of the day's runs carried no cost, as in Totals.
 	Unpriced int
+	// Lines is the day's lines reviewed, added plus removed, as in Totals.
+	Lines int64
 }
 
 // AttemptBucket is one day's count for one outcome.

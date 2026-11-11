@@ -88,6 +88,48 @@ func TestDiffLineCountsReachTheRunRow(t *testing.T) {
 	}
 }
 
+// Lines reviewed are what the prompt carried: a size-gated file is in the
+// PR's +/- but the model never saw it, so the run's reviewed lines leave it
+// out.
+func TestReviewedLinesLeaveOutWhatThePromptDidNotCarry(t *testing.T) {
+	big := "diff --git a/messages.properties b/messages.properties\n--- a/messages.properties\n+++ b/messages.properties\n@@ -0,0 +1,51 @@\n" +
+		strings.Repeat("+key=value\n", 51)
+	h := newHarness(t, nil)
+	h.bb.prDiff = sampleDiff + big
+
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if len(h.st.Runs) != 1 {
+		t.Fatalf("expected one run row, got %d", len(h.st.Runs))
+	}
+	run := h.st.Runs[0]
+	if run.LinesAdded != 52 || run.LinesRemoved != 1 {
+		t.Errorf("run lines = +%d/-%d, want +52/-1 (the oversized file is still changed)", run.LinesAdded, run.LinesRemoved)
+	}
+	if run.ReviewedAdded != 1 || run.ReviewedRemoved != 1 {
+		t.Errorf("reviewed lines = +%d/-%d, want +1/-1 (sampleDiff only)", run.ReviewedAdded, run.ReviewedRemoved)
+	}
+}
+
+// The count reads the diffs as sent: a deletion-only hunk compression
+// dropped from a kept file is not reviewed, and a path in two chunks (a
+// type change) counts each chunk once.
+func TestSentLinesCountTheDiffsAsSent(t *testing.T) {
+	const twoHunks = "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n" +
+		"@@ -1,3 +1,1 @@\n-x\n-y\n-z\n" +
+		"@@ -10,1 +8,2 @@\n ctx\n+new\n"
+	cleaned := diff.RemoveDeletionOnlyHunks(twoHunks)
+	chunk := "diff --git a/b.go b/b.go\n--- a/b.go\n+++ b/b.go\n@@ -1 +1 @@\n-old\n+new\n"
+	added, removed := sentLines([]diff.FileReviewData{
+		{Path: "a.go", Diff: cleaned},
+		{Path: "b.go", Diff: chunk},
+		{Path: "b.go", Diff: strings.Replace(chunk, "+new", "+new\n+more", 1)},
+	})
+	if added != 4 || removed != 2 {
+		t.Errorf("sentLines = +%d/-%d, want +4/-2", added, removed)
+	}
+}
+
 // And the merge rollup carries them too, which is the figure that leaves the
 // service.
 func TestDiffLineCountsReachTheRollup(t *testing.T) {

@@ -253,8 +253,8 @@ export function Tiles({
   cols = 4,
   children,
 }: {
-  /** Tiles per row from sm up. */
-  cols?: 3 | 4;
+  /** Tiles per row from sm up; five go three to a row until lg. */
+  cols?: 3 | 4 | 5;
   children: ReactNode;
 }) {
   return (
@@ -264,7 +264,9 @@ export function Tiles({
           "-mr-px -mb-px grid " +
           (cols === 3
             ? "grid-cols-1 sm:grid-cols-3"
-            : "grid-cols-2 sm:grid-cols-4")
+            : cols === 5
+              ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5"
+              : "grid-cols-2 sm:grid-cols-4")
         }
       >
         {children}

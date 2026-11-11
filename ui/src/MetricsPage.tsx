@@ -316,6 +316,9 @@ export function MetricsPage() {
   // All teams per day, for the tiles' trends.
   const findingsDaily = perDay(data.daily, (b) => b.findings_posted);
   const unpricedDaily = perDay(data.daily, (b) => b.unpriced_runs);
+  const linesDaily = perDay(data.daily, (b) => b.lines);
+  const lines = data.totals.lines_added + data.totals.lines_removed;
+  const uncounted = data.totals.lines_uncounted_runs;
   const hasTrend = (values: number[]) => values.some((v) => v > 0);
 
   return (
@@ -342,7 +345,7 @@ export function MetricsPage() {
         </div>
 
         <div className={stale ? "opacity-40 transition-opacity" : ""}>
-          <Tiles>
+          <Tiles cols={5}>
             {/* On an instance that has not run yet, "unpriced" would claim the
               gateway declined to price something. Nothing ran; that is a
               dash. "unpriced" is reserved for runs that actually happened
@@ -404,6 +407,42 @@ export function MetricsPage() {
                   <Sparkline
                     values={findingsDaily}
                     label={t("metrics.findingsTrend")}
+                  />
+                </div>
+              )}
+            </Tile>
+            {/* + and − as one figure (user, 2026-11-11), the split on hover.
+              Only what the prompts carried, each line once per PR: a
+              re-review re-reads lines already counted. Runs from before the
+              figure existed add nothing: all of them is a dash, some of
+              them a note, never a firm number that silently reads low. */}
+            <Tile
+              label={t("metrics.linesReviewed")}
+              note={
+                uncounted > 0 && uncounted < data.totals.runs
+                  ? t("metrics.linesUncounted", { count: uncounted })
+                  : undefined
+              }
+              value={
+                data.totals.runs === uncounted ? (
+                  "—"
+                ) : (
+                  <span
+                    title={t("metrics.linesSplit", {
+                      added: data.totals.lines_added.toLocaleString(),
+                      removed: data.totals.lines_removed.toLocaleString(),
+                    })}
+                  >
+                    {lines.toLocaleString()}
+                  </span>
+                )
+              }
+            >
+              {hasTrend(linesDaily) && (
+                <div className="mt-2">
+                  <Sparkline
+                    values={linesDaily}
+                    label={t("metrics.linesTrend")}
                   />
                 </div>
               )}
@@ -487,6 +526,7 @@ export function MetricsPage() {
                       <th className={thNum}>{t("metrics.tokensIn")}</th>
                       <th className={thNum}>{t("metrics.tokensOut")}</th>
                       <th className={thNum}>{t("metrics.findings")}</th>
+                      <th className={thNum}>{t("metrics.lines")}</th>
                       <th className={thNum}>{t("metrics.cost")}</th>
                     </tr>
                   </thead>
@@ -504,6 +544,17 @@ export function MetricsPage() {
                           {tokens(row.completion_tokens)}
                         </td>
                         <td className={tdNum}>{row.findings_posted}</td>
+                        <td
+                          className={tdNum}
+                          title={t("metrics.linesSplit", {
+                            added: row.lines_added.toLocaleString(),
+                            removed: row.lines_removed.toLocaleString(),
+                          })}
+                        >
+                          {(
+                            row.lines_added + row.lines_removed
+                          ).toLocaleString()}
+                        </td>
                         <td className={tdNum}>{money(row.cost_usd)}</td>
                       </tr>
                     ))}

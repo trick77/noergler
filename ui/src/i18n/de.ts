@@ -135,6 +135,13 @@ export const de = {
     reviewedTrend: "Verlauf der Reviews",
     findingsTrend: "Verlauf der Findings",
     unpricedTrend: "Verlauf ohne Preis",
+    linesReviewed: "Zeilen geprüft",
+    lines: "Zeilen",
+    linesSplit:
+      "+{{added}} / −{{removed}}: ans Modell gesendete Zeilen, pro PR einmal gezählt",
+    linesTrend: "Verlauf der geprüften Zeilen",
+    linesUncounted_one: "ohne {{count}} älteren Run",
+    linesUncounted_other: "ohne {{count}} ältere Runs",
     costPerDay: "Kosten pro Tag",
     spend: "Ausgaben",
     noPriced: "Keine bepreisten Runs in diesem Zeitraum.",

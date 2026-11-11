@@ -235,6 +235,8 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 				prTag, len(otherModified), budget, capPaths(otherModified)))
 		}
 	}
+	// Before expansion: it adds context lines the count must not read.
+	sentAdded, sentRemoved := sentLines(files)
 	files = diff.ExpandAllFiles(files, r.cfg.DiffExtraLinesBefore, r.cfg.DiffExtraLinesAfter,
 		r.cfg.DiffMaxExtraLinesDynamicContext, r.cfg.DiffAllowDynamicContext)
 
@@ -409,6 +411,8 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		totalFiles:     totalFiles,
 		diffAdded:      diffAdded,
 		diffRemoved:    diffRemoved,
+		sentAdded:      sentAdded,
+		sentRemoved:    sentRemoved,
 	}, ctx, true
 }
 
@@ -568,8 +572,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 	// cannot be interleaved ahead of it. The comments are already on the PR
 	// by this point, so a crash before InsertRun leaves them there with no
 	// finding row.
-	runID := r.recordRun(ctx, prReviewID, result, sourceCommit, plan.incrementalFrom, plan.mention,
-		elapsed, postedCount, plan.diffAdded, plan.diffRemoved, plan.totalFiles)
+	runID := r.recordRun(ctx, prReviewID, result, sourceCommit, plan, elapsed, postedCount)
 	plan.runID = runID
 	r.recordFindings(ctx, prReviewID, runID, findings, postedIDs)
 	r.retireFixed(ctx, plan, fixed, runID)
@@ -1086,12 +1089,12 @@ func (r *Reviewer) postInlineComments(ctx context.Context, l lang.Lang, labels [
 
 // recordRun writes the run row and returns its id.
 func (r *Reviewer) recordRun(ctx context.Context, prReviewID int64, result inference.ReviewResult,
-	sourceCommit, incrementalFrom string, mention bool, elapsed time.Duration,
-	postedCount, added, removed, filesChanged int) int64 {
+	sourceCommit string, plan *reviewPlan, elapsed time.Duration, postedCount int) int64 {
 	if prReviewID == 0 {
 		return 0
 	}
-	kind := runKind(mention)
+	kind := runKind(plan.mention)
+	incrementalFrom := plan.incrementalFrom
 	var from *string
 	if incrementalFrom != "" {
 		from = &incrementalFrom
@@ -1116,9 +1119,11 @@ func (r *Reviewer) recordRun(ctx context.Context, prReviewID int64, result infer
 			CostNanoUSD:      result.Cost.NanoUSD,
 			ElapsedMS:        elapsed.Milliseconds(),
 			FindingsPosted:   postedCount,
-			LinesAdded:       added,
-			LinesRemoved:     removed,
-			FilesChanged:     filesChanged,
+			LinesAdded:       plan.diffAdded,
+			LinesRemoved:     plan.diffRemoved,
+			FilesChanged:     plan.totalFiles,
+			ReviewedAdded:    plan.sentAdded,
+			ReviewedRemoved:  plan.sentRemoved,
 			Summary:          summary,
 		})
 	})

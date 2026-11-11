@@ -79,6 +79,11 @@ export interface Totals {
   findings_posted: number;
   cost_usd: string | null;
   unpriced_runs: number;
+  /** Lines reviewed: what the prompts carried, each line once per PR. */
+  lines_added: number;
+  lines_removed: number;
+  /** Runs from before the figure existed: they add no lines. */
+  lines_uncounted_runs: number;
 }
 
 export interface Metrics {
@@ -102,6 +107,8 @@ export interface Metrics {
     findings_posted: number;
     cost_usd: string | null;
     unpriced_runs: number;
+    /** Lines reviewed that day, added plus removed. */
+    lines: number;
   }[];
   daily_attempts: { day: string; outcome: string; count: number }[];
   breakdown: {

@@ -304,6 +304,13 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   ("—") when it did not read the whole diff; never an older run's (an
   earlier commit), never a sum of increments, and how it was derived never
   reaches the page. Files tab = every file any run listed.
+- Metrics "lines reviewed" (user, 2026-11-11) = `reviewed_lines_*`, the
+  files the prompt carried (never size-gated or over-budget ones), summed
+  over incremental runs plus each PR's first run (`spendCTE`). A sum of
+  increments on purpose, unlike the PR page: a full re-review (mention,
+  rebase) re-reads counted lines and adds none, so it leans low, never high.
+  NULL before 0029, never backfilled (detail cannot tell sent from named);
+  the tile says how many runs that leaves out, a dash when all of them.
 - Dashboard text only through `ui/src/i18n` (i18next): `de` mirrors `en`
   (`satisfies Catalog`, same placeholders), Swiss German, no `ß`. Language =
   browser only, `de*` -> German, else English; no switch, no stored choice

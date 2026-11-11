@@ -476,6 +476,34 @@ func TestMetricsReportsUnpricedBesideTheTotal(t *testing.T) {
 	}
 }
 
+// Lines reviewed leave as plain integers under the names the page reads, on
+// the totals, each team and each day.
+func TestMetricsCarriesLinesReviewed(t *testing.T) {
+	h := newDashHarness(t)
+	h.st.totals = store.Totals{Runs: 3, LinesAdded: 1200, LinesRemoved: 340, LinesUncounted: 1}
+	h.st.byTeam = []store.TeamTotals{{TeamSlug: "platform", Totals: store.Totals{Runs: 3, LinesAdded: 1200, LinesRemoved: 340}}}
+	h.st.daily = []store.Bucket{{Day: time.Now().UTC(), TeamSlug: "platform", Runs: 3, Lines: 1540}}
+
+	var got struct {
+		Totals map[string]any   `json:"totals"`
+		ByTeam []map[string]any `json:"by_team"`
+		Daily  []map[string]any `json:"daily"`
+	}
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/metrics?days=7").Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Totals["lines_added"] != 1200.0 || got.Totals["lines_removed"] != 340.0 ||
+		got.Totals["lines_uncounted_runs"] != 1.0 {
+		t.Errorf("totals = %v, want lines_added 1200, lines_removed 340", got.Totals)
+	}
+	if len(got.ByTeam) != 1 || got.ByTeam[0]["lines_added"] != 1200.0 || got.ByTeam[0]["lines_removed"] != 340.0 {
+		t.Errorf("by_team = %v", got.ByTeam)
+	}
+	if len(got.Daily) != 1 || got.Daily[0]["lines"] != 1540.0 {
+		t.Errorf("daily = %v, want lines 1540", got.Daily)
+	}
+}
+
 // PR counts sit beside the run totals, never in place of them: the tile
 // shows PRs, its note the runs.
 func TestMetricsReportsPRCountsBesideTheRuns(t *testing.T) {
