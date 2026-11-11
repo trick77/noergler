@@ -5,10 +5,10 @@ import { Chart, Sparkline, type Series, type Trend } from "./Chart";
 import {
   calendarDay,
   compact,
-  compareNames,
   dayMonth,
   money,
   moneyTick,
+  sortedByName,
   windowTitle,
 } from "./format";
 import { usePoll } from "./usePoll";
@@ -617,30 +617,28 @@ export function MetricsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {/* By name, not by spend: team tables never rank
-                      (compareNames). A copy: by_team belongs to the poller,
-                      and its spend order still picks the charted teams. */}
-                    {[...data.by_team]
-                      .sort((a, b) => compareNames(a.team_name, b.team_name))
-                      .map((row) => (
-                        <tr key={row.team}>
-                          <td className={td} title={row.team}>
-                            {row.team_name}
-                          </td>
-                          <td className={tdNum}>{row.runs}</td>
-                          <td className={tdNum}>
-                            {compact(row.prompt_tokens)}
-                          </td>
-                          <td className={tdNum}>
-                            {compact(row.completion_tokens)}
-                          </td>
-                          <td className={tdNum}>{row.findings_posted}</td>
-                          <td className={tdNum} title={linesTitle(row)}>
-                            {teamLines(row)}
-                          </td>
-                          <td className={tdNum}>{money(row.cost_usd)}</td>
-                        </tr>
-                      ))}
+                    {/* By name, not by spend: see sortedByName. */}
+                    {sortedByName(
+                      data.by_team,
+                      (r) => r.team_name,
+                      (r) => r.team,
+                    ).map((row) => (
+                      <tr key={row.team}>
+                        <td className={td} title={row.team}>
+                          {row.team_name}
+                        </td>
+                        <td className={tdNum}>{row.runs}</td>
+                        <td className={tdNum}>{compact(row.prompt_tokens)}</td>
+                        <td className={tdNum}>
+                          {compact(row.completion_tokens)}
+                        </td>
+                        <td className={tdNum}>{row.findings_posted}</td>
+                        <td className={tdNum} title={linesTitle(row)}>
+                          {teamLines(row)}
+                        </td>
+                        <td className={tdNum}>{money(row.cost_usd)}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>

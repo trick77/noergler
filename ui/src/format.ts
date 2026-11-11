@@ -379,23 +379,44 @@ export function sourceUrl(
   return `${r.repo}/browse/${path}?at=${encodeURIComponent(commit)}#${line}`;
 }
 
-/** compareNames orders two team display names the way the page reads them,
- *  folding case and accents, so "Diecibärg" files under D rather than after
- *  Z. Every team table reads alphabetically (user, 2026-11-11); spend and
- *  activity are columns, never the order. The live page is the one
- *  exception: it is time based, see byLastRun. */
-export function compareNames(a: string, b: string): number {
-  return a.localeCompare(b, undefined, { sensitivity: "base" });
+/** compareNames orders two team display names the way the page reads them:
+ *  case and accents folded, so "Diecibärg" files under D rather than after
+ *  Z, and digits as numbers, so "Squad 2" comes before "Squad 10". */
+function compareNames(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
 }
 
-/** byName sorts teams by display name (compareNames).
+/** sortedByName is the order of every team table: by display name, never
+ *  ranked by spend or activity, which are columns. The live page is time
+ *  based (byLastRun); the Teams page groups by state first, then by name.
+ *
+ *  Equal names fall back to the id (slug): two teams may display the same
+ *  name, and without the tie-break they keep whatever order the server sent,
+ *  which for by_team moves with spend, so rows swapped between polls.
  *
  *  A COPY, never in place: the array comes from the poller and is reused
  *  between renders, so sorting it where it lies mutates state React is
- *  holding. The server's own order is by slug, which looks arbitrary once
- *  the page stops printing slugs. */
-export function byName<T extends { name: string }>(teams: T[]): T[] {
-  return [...teams].sort((a, b) => compareNames(a.name, b.name));
+ *  holding (by_team's own spend order picks the charted teams). */
+export function sortedByName<T>(
+  rows: T[],
+  name: (r: T) => string,
+  id: (r: T) => string,
+): T[] {
+  return [...rows].sort(
+    (a, b) => compareNames(name(a), name(b)) || id(a).localeCompare(id(b)),
+  );
+}
+
+/** byName is sortedByName for the roster. The server's own order is by
+ *  slug, which looks arbitrary once the page stops printing slugs. */
+export function byName<T extends { name: string; slug?: string }>(
+  teams: T[],
+): T[] {
+  return sortedByName(
+    teams,
+    (t) => t.name,
+    (t) => t.slug ?? "",
+  );
 }
 
 /** byLastRun sorts teams most-recently-active first, which is the order the
@@ -403,19 +424,19 @@ export function byName<T extends { name: string }>(teams: T[]): T[] {
  *  minute ago is more interesting than one that starts with an A.
  *
  *  A team that has never run sorts last rather than first: null is "no
- *  activity", not "infinitely old". Ties fall back to the name, so the order
- *  is stable across polls instead of wandering with whatever the server
- *  happened to emit first.
+ *  activity", not "infinitely old". Ties fall back to the name, then the
+ *  slug, so the order is stable across polls instead of wandering with
+ *  whatever the server happened to emit first.
  *
  *  A COPY, as byName: the array belongs to the poller. */
-export function byLastRun<T extends { name: string; last_run: string | null }>(
-  teams: T[],
-): T[] {
+export function byLastRun<
+  T extends { name: string; slug: string; last_run: string | null },
+>(teams: T[]): T[] {
   const at = (t: T) =>
     t.last_run === null ? -Infinity : new Date(t.last_run).getTime();
   return [...teams].sort((a, b) => {
     const diff = at(b) - at(a);
     if (diff !== 0 && !Number.isNaN(diff)) return diff;
-    return compareNames(a.name, b.name);
+    return compareNames(a.name, b.name) || a.slug.localeCompare(b.slug);
   });
 }

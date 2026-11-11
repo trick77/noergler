@@ -138,6 +138,20 @@ describe("byName", () => {
     ]);
   });
 
+  it("reads digits as numbers", () => {
+    const teams = [{ name: "Squad 10" }, { name: "Squad 2" }];
+    expect(byName(teams).map((t) => t.name)).toEqual(["Squad 2", "Squad 10"]);
+  });
+
+  // Two teams may display the same name; the slug keeps their order fixed
+  // whatever order the server sent them in.
+  it("breaks a name tie by slug", () => {
+    const a = { slug: "pay-a", name: "Payments" };
+    const b = { slug: "pay-b", name: "payments" };
+    expect(byName([b, a]).map((t) => t.slug)).toEqual(["pay-a", "pay-b"]);
+    expect(byName([a, b]).map((t) => t.slug)).toEqual(["pay-a", "pay-b"]);
+  });
+
   // The array comes from the poller and is reused between renders.
   it("does not sort the caller's array in place", () => {
     const teams = [{ name: "Zulu" }, { name: "Alpha" }];
