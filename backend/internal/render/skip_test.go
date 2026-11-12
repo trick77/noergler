@@ -3,6 +3,7 @@ package render
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/trick77/noergler/internal/lang"
@@ -46,6 +47,22 @@ func TestSkipSummariesIsPinned(t *testing.T) {
 	}
 	if got := DiffTooLargeSummary(lang.EN, 10*1024*1024); got != g.DiffTooLarge {
 		t.Errorf("DiffTooLargeSummary\n got:  %q\n want: %q", got, g.DiffTooLarge)
+	}
+}
+
+// The PR author cannot change teams.yaml; the summary only says how to add
+// the file, never how to switch the requirement off.
+func TestAgentsMDMissingSummaryHasNoOptOut(t *testing.T) {
+	for _, l := range []lang.Lang{lang.EN, lang.DE} {
+		got := AgentsMDMissingSummary(l)
+		for _, banned := range []string{"require_agents_md", "REVIEW_REQUIRE_AGENTS_MD", "teams.yaml", "Opt-out"} {
+			if strings.Contains(got, banned) {
+				t.Errorf("%s summary mentions %q:\n%s", l, banned, got)
+			}
+		}
+		if !strings.Contains(got, "AGENTS.md") {
+			t.Errorf("%s summary lost its body:\n%s", l, got)
+		}
 	}
 }
 

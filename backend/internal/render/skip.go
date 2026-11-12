@@ -81,11 +81,7 @@ func agentsMDMissingSummaryEN() string {
 		"- Add an `AGENTS.md` file to the repository root describing project " +
 		"conventions, forbidden patterns, and areas the reviewer should focus on.\n" +
 		"- Push the file to the PR branch (or merge it into the target branch) and " +
-		"the next webhook event on this PR will trigger a full review.\n\n" +
-		"**Opt-out**\n" +
-		"- To review PRs without an `AGENTS.md`, set `require_agents_md: false` " +
-		"for this team in the noergler `teams.yaml` (or `REVIEW_REQUIRE_AGENTS_MD=false` " +
-		"as the instance default) and restart.\n"
+		"the next webhook event on this PR will trigger a full review.\n"
 }
 
 // diffTooLargeSummaryEN is the skip summary when the PR diff exceeds the byte

@@ -45,11 +45,7 @@ func AgentsMDMissingSummary(l lang.Lang) string {
 		"- Eine `AGENTS.md` im Repo-Root anlegen, die Projektkonventionen, " +
 		"verbotene Muster und Schwerpunkte für das Review beschreibt.\n" +
 		"- Die Datei auf den PR-Branch pushen (oder in den Ziel-Branch mergen); " +
-		"das nächste Webhook-Event auf diesem PR löst ein volles Review aus.\n\n" +
-		"**Opt-out**\n" +
-		"- Um PRs ohne `AGENTS.md` zu prüfen, `require_agents_md: false` " +
-		"für dieses Team in der noergler-`teams.yaml` setzen (oder `REVIEW_REQUIRE_AGENTS_MD=false` " +
-		"als Instanz-Default) und neu starten.\n"
+		"das nächste Webhook-Event auf diesem PR löst ein volles Review aus.\n"
 }
 
 // DiffTooLargeSummary is the skip summary when the PR diff exceeds the byte
