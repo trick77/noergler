@@ -36,7 +36,7 @@ func TestQAAnswerKeepsTheQuestionsLine(t *testing.T) {
 			bot := &bitbucket.Comment{ID: 950, Text: "Use a mutex."}
 			bot.Author.Name = "noergler"
 			h.bb.comments[950] = bot
-			h.st.botReplies = map[int]*store.BotReply{950: {CommentID: 950, Kind: store.BotReplyQuestion,
+			h.st.botReplies = map[int]*store.BotReply{950: {CommentID: 950, Kind: store.BotReplyAnswer,
 				Anchor: &store.BotReplyAnchor{Path: "a.go", Line: 2, Commit: "src1"}}}
 			p.CommentParentID = 950
 		},
@@ -82,7 +82,7 @@ func answerHarness(t *testing.T) (*harness, *webhook.Payload) {
 	bot := &bitbucket.Comment{ID: 950, Text: "Validate the input in new()."}
 	bot.Author.Name = "noergler"
 	h.bb.comments[950] = bot
-	h.st.botReplies = map[int]*store.BotReply{950: {CommentID: 950, Kind: store.BotReplyQuestion,
+	h.st.botReplies = map[int]*store.BotReply{950: {CommentID: 950, Kind: store.BotReplyAnswer,
 		Anchor: &store.BotReplyAnchor{Path: "a.go", Line: 2, Commit: "src1"}}}
 	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "On it.", Apply: true}
 	h.llm.fix = inference.FindingFixResult{Outcome: inference.OutcomeOK, Fix: inference.FindingFix{
@@ -112,9 +112,10 @@ func TestApplyQAAnswerCommits(t *testing.T) {
 	if len(h.st.Fixes) != 1 || h.st.Fixes[0] != (store.FindingFix{AnswerCommentID: 950, TeamSlug: "platform", Outcome: store.FixCommitted, CommitSHA: "c0ffee1234567890"}) {
 		t.Errorf("fixes = %+v", h.st.Fixes)
 	}
-	// The confirmation keeps no code line: no second fix starts from it.
-	if last := h.st.BotReplies[len(h.st.BotReplies)-1]; last.Anchor != nil {
-		t.Errorf("confirmation kept %+v", last.Anchor)
+	// The confirmation is about answer 950 and keeps its line: "apply it"
+	// under it is answer 950 again ("already applied").
+	if last := h.st.BotReplies[len(h.st.BotReplies)-1]; last.Source != 950 || last.Anchor == nil {
+		t.Errorf("confirmation kept %+v", last)
 	}
 	kinds := []string{}
 	for _, c := range h.st.CommentCalls {
@@ -169,6 +170,74 @@ func TestApplyQAAnswerSaysWhyNot(t *testing.T) {
 				t.Errorf("fixes = %+v", h.st.Fixes)
 			}
 		})
+	}
+}
+
+// "apply it" under a reply of the fix flow (the not-author notice, a
+// "please ask again") applies the answer that reply is about.
+func TestApplyUnderAReplyAboutTheAnswer(t *testing.T) {
+	h, p := answerHarness(t)
+	notice := &bitbucket.Comment{ID: 960, Text: "Only the PR author can have me apply this."}
+	notice.Author.Name = "noergler"
+	h.bb.comments[960] = notice
+	h.st.botReplies[960] = &store.BotReply{CommentID: 960, Kind: store.BotReplyAnswer, Source: 950,
+		Anchor: h.st.botReplies[950].Anchor}
+	p.CommentParentID = 960
+
+	h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
+
+	if len(h.bb.Edits) != 1 || !strings.Contains(h.llm.Mentions[0].Fix.Prompt, "Validate the input in new().") ||
+		strings.Contains(h.llm.Mentions[0].Fix.Prompt, "Only the PR author") {
+		t.Errorf("edits %d: want answer 950 applied, not the notice", len(h.bb.Edits))
+	}
+	if len(h.st.Fixes) != 1 || h.st.Fixes[0].AnswerCommentID != 950 {
+		t.Errorf("fixes = %+v", h.st.Fixes)
+	}
+}
+
+// The not-author notice is kept about the answer, so the author's "apply
+// it" under it works (it says so).
+func TestNotAuthorNoticeIsAboutTheAnswer(t *testing.T) {
+	h, p := answerHarness(t)
+	p.Comment.Author.Name = "bob"
+
+	h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
+
+	if last := h.st.BotReplies[len(h.st.BotReplies)-1]; last.Kind != store.BotReplyAnswer || last.Source != 950 || last.Anchor == nil {
+		t.Errorf("notice kept %+v", last)
+	}
+}
+
+// `apply` where no Q&A answer of noergler's is replied to: the model's
+// sentence (which may promise the change) is never posted.
+func TestApplyElsewhereSaysWhyNot(t *testing.T) {
+	h := newHarness(t, nil)
+	h.r.mentionTmpl = prompts.Mention
+	h.st.languages = map[string]lang.Lang{"alice": lang.EN}
+	h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "On it!", Apply: true}
+
+	h.r.HandleMention(context.Background(), mentionPayload("@noergler apply it", "alice"), "platform", &inlineScheduler{})
+
+	if len(h.bb.Replies) != 1 || strings.Contains(h.bb.Replies[0].Text, "On it!") ||
+		!strings.Contains(h.bb.Replies[0].Text, "I can't apply that here.") {
+		t.Errorf("replies = %+v", h.bb.Replies)
+	}
+}
+
+// A question on one commit's diff keeps that commit's line, never head's.
+func TestQuestionOnACommitDiffKeepsThatCommit(t *testing.T) {
+	c := anchored(77, "alice", "q", "a.go", 2)
+	c.Anchor.DiffType, c.Anchor.ToHash = "COMMIT", "old1"
+	if a := usableAnchor(c, "src1"); a == nil || a.Commit != "old1" {
+		t.Errorf("anchor = %+v, want commit old1", a)
+	}
+	c.Anchor.ToHash = ""
+	if a := usableAnchor(c, "src1"); a != nil {
+		t.Errorf("a commit diff without its hash kept %+v", a)
+	}
+	c.Anchor.DiffType = "EFFECTIVE"
+	if a := usableAnchor(c, "src1"); a == nil || a.Commit != "src1" {
+		t.Errorf("the PR diff's line = %+v, want head", a)
 	}
 }
 

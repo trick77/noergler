@@ -31,16 +31,29 @@ type answerFix struct {
 	// threadID is the comment the commit message links to.
 	threadID int
 	where    string
+	// anchor is the answer's code line, kept with every reply of the fix
+	// flow, so "apply it" under any of them applies the answer.
+	anchor *store.BotReplyAnchor
 }
 
 // usableAnchor is a comment's code line, when it points at one in the
-// PR's new version: not an old-side line, not one gone from the diff.
-func usableAnchor(c *bitbucket.Comment, commit string) *store.BotReplyAnchor {
+// PR's new version: not an old-side line, not one gone from the diff. A
+// line on the PR's diff belongs to head; one on a single commit's or a
+// range's diff belongs to that diff's to-commit, and is found again by its
+// text at fix time, never taken as head's line number.
+func usableAnchor(c *bitbucket.Comment, head string) *store.BotReplyAnchor {
 	if c == nil || c.Anchor == nil {
 		return nil
 	}
 	a := c.Anchor
-	if a.Path == "" || a.Line <= 0 || a.Orphaned || a.FileType == "FROM" || commit == "" {
+	if a.Path == "" || a.Line <= 0 || a.Orphaned || a.FileType == "FROM" {
+		return nil
+	}
+	commit := head
+	if a.DiffType != "" && a.DiffType != "EFFECTIVE" {
+		commit = a.ToHash
+	}
+	if commit == "" {
 		return nil
 	}
 	return &store.BotReplyAnchor{Path: a.Path, Line: a.Line, Commit: commit}
@@ -57,7 +70,7 @@ func (r *Reviewer) questionAnchor(ctx context.Context, key store.PRKey, prTag st
 	if a := usableAnchor(parent, head); a != nil {
 		return a
 	}
-	if parentBot != nil && parentBot.Anchor != nil {
+	if parentBot != nil && parentBot.Kind == store.BotReplyAnswer && parentBot.Anchor != nil {
 		a := *parentBot.Anchor
 		return &a
 	}
@@ -74,21 +87,26 @@ func (r *Reviewer) questionAnchor(ctx context.Context, key store.PRKey, prTag st
 
 // prepareAnswerFix gets a fix of noergler's answer parent ready, before the
 // Q&A's call: the posting stage can stage nothing, so the fix call rides
-// the Q&A's pool slot. nil when the parent is no Q&A answer of noergler's.
-// Only the PR author may have it applied; anyone else is told so, with no
-// call paid.
+// the Q&A's pool slot. nil when the parent is no Q&A answer of noergler's,
+// nor a reply of the fix flow about one (then its source is applied: "apply
+// it" under "only the PR author can" or "please ask again" works). Only the
+// PR author may have it applied; anyone else is told so, with no call paid.
 func (r *Reviewer) prepareAnswerFix(ctx context.Context, pr webhook.PullRequest, key store.PRKey, prTag, commenter string,
 	parentID int, parent *bitbucket.Comment, parentBot *store.BotReply, agentsMD, request string, l lang.Lang) *answerFix {
-	if parent == nil || parentBot == nil || parentBot.Kind != store.BotReplyQuestion {
+	if parent == nil || parentBot == nil || parentBot.Kind != store.BotReplyAnswer {
 		return nil
 	}
-	x := &answerFix{answerID: parentID, threadID: parentID, where: fmt.Sprintf("answer %d", parentID)}
+	answerID := parentID
+	if parentBot.Source != 0 {
+		answerID = parentBot.Source
+	}
+	x := &answerFix{answerID: answerID, threadID: answerID, where: fmt.Sprintf("answer %d", answerID), anchor: parentBot.Anchor}
 	if author := pr.Author.User.Name; author == "" || !strings.EqualFold(commenter, author) {
 		x.gate = "not_author"
 		return x
 	}
 	if sha := safeDB(ctx, r.log, "AnswerFixCommit", func() (string, error) {
-		return r.store.AnswerFixCommit(ctx, parentID)
+		return r.store.AnswerFixCommit(ctx, answerID)
 	}); sha != "" {
 		x.done = &sha
 		return x
@@ -98,7 +116,19 @@ func (r *Reviewer) prepareAnswerFix(ctx context.Context, pr webhook.PullRequest,
 		x.plan = &fixPlan{unavailable: "no_anchor"}
 		return x
 	}
-	x.where = fmt.Sprintf("answer %d on %s:%d", parentID, a.Path, a.Line)
+	x.where = fmt.Sprintf("answer %d on %s:%d", answerID, a.Path, a.Line)
+	suggestion := parent.Text
+	if answerID != parentID {
+		// The parent is a reply about the answer: the answer is what is
+		// applied, one fetch.
+		c, err := r.bitbucket.FetchPRComment(ctx, key.Project, key.Repo, key.PRID, answerID)
+		if err != nil {
+			r.log.WarnContext(ctx, fmt.Sprintf("%s: %s not fetched for its fix: %v", prTag, x.where, err))
+			x.plan = &fixPlan{unavailable: "unreadable"}
+			return x
+		}
+		suggestion = c.Text
+	}
 	// The line belongs to the head the question was read at; at a later
 	// head it is found again by its text, as a finding's is.
 	f := &store.Finding{FilePath: a.Path, LineNumber: a.Line, RunCommit: a.Commit}
@@ -117,7 +147,7 @@ func (r *Reviewer) prepareAnswerFix(ctx context.Context, pr webhook.PullRequest,
 		Template:         r.fixTmpl,
 		RepoInstructions: agentsMD,
 		Finding: fmt.Sprintf("%s:%d (your answer to a question on this line)\n\n%s",
-			a.Path, a.Line, lang.TruncateRunes(strings.TrimSpace(parent.Text), replyExcerptRunes/4)),
+			a.Path, a.Line, lang.TruncateRunes(strings.TrimSpace(suggestion), replyExcerptRunes/4)),
 		FilePath:   x.plan.path,
 		Code:       x.plan.code,
 		StartLine:  x.plan.from,
@@ -135,29 +165,37 @@ func (r *Reviewer) prepareAnswerFix(ctx context.Context, pr webhook.PullRequest,
 
 // postAnswerFix answers "apply it" under noergler's Q&A answer, on the
 // worker, never silently: not the PR author, or the finding's fix flow.
-func (r *Reviewer) postAnswerFix(ctx context.Context, j *mentionJob) {
+// prefix is what the same turn confirmed (a language switch, a stop).
+func (r *Reviewer) postAnswerFix(ctx context.Context, j *mentionJob, prefix string) {
 	x, prTag := j.fix, j.ask.prTag
 	if x.gate == "not_author" {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: fix of %s asked by %s, not the PR author: not applied", prTag, x.where, j.ask.user))
-		r.reply(ctx, j.project, j.repo, j.prID, j.replyTo, j.lang.Pick(
+		// Kept as a reply about the answer: the author's "apply it" under
+		// this notice applies the answer.
+		r.replyAnswer(ctx, j.project, j.repo, j.prID, j.replyTo, prefix+j.lang.Pick(
 			"Umsetzen lasse ich mich nur vom PR-Autor. Wenn er den Vorschlag will, kann er hier ‚setz das um' schreiben.", //nolint:misspell // German "Autor", not a typo of "Author"
-			"Only the PR author can have me apply this. If they want the suggestion, they can reply 'apply it' here."))
+			"Only the PR author can have me apply this. If they want the suggestion, they can reply 'apply it' here."),
+			x.anchor, x.answerID)
 		return
 	}
 	thread := x.threadID
 	r.postFix(ctx, &fixTarget{key: j.ask.key, team: j.team, project: j.project, repo: j.repo, prID: j.prID,
 		prTag: prTag, where: x.where, replyTo: j.replyTo, threadID: &thread, lang: j.lang,
-		plan: x.plan, res: j.res.Fix, answerID: x.answerID, done: x.done})
+		plan: x.plan, res: j.res.Fix, answerID: x.answerID, anchor: x.anchor, done: x.done, prefix: prefix})
 }
 
-// replyAnswer is reply for the Q&A's answer: the code line its question sat
-// on is kept with it, so the author can have its suggestion applied.
-func (r *Reviewer) replyAnswer(ctx context.Context, project, repo string, prID, parentID int, text string, anchor *store.BotReplyAnchor) {
+// replyAnswer is reply for the Q&A's answer (source 0) or a reply about
+// answer source: the code line its question sat on is kept with it, so the
+// author can have its suggestion applied from under either.
+func (r *Reviewer) replyAnswer(ctx context.Context, project, repo string, prID, parentID int, text string,
+	anchor *store.BotReplyAnchor, source int) {
 	id, err := r.bitbucket.ReplyToComment(ctx, project, repo, prID, parentID, text)
 	if err != nil {
 		r.log.ErrorContext(ctx, fmt.Sprintf("Failed to post reply on %s/%s#%d: %v", project, repo, prID, err))
 		return
 	}
 	key := store.PRKey{Project: project, Repo: repo, PRID: prID}
-	safeDBErr(ctx, r.log, "InsertAnswerBotReply", func() error { return r.store.InsertAnswerBotReply(ctx, key, id, anchor) })
+	safeDBErr(ctx, r.log, "InsertAnswerBotReply", func() error {
+		return r.store.InsertAnswerBotReply(ctx, key, id, anchor, source)
+	})
 }

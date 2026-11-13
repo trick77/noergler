@@ -231,8 +231,12 @@ type fixTarget struct {
 	// One of findingID and answerID is set: the finding_fixes row's source.
 	findingID int64
 	answerID  int
+	// anchor is an answer's code line, kept with the reply about it.
+	anchor *store.BotReplyAnchor
 	// done is the commit made for this source already, nil when none.
 	done *string
+	// prefix goes before the answer: what the same turn confirmed.
+	prefix string
 }
 
 // postFix is a fix request's posting stage, on the worker: validate, commit,
@@ -251,8 +255,10 @@ func (r *Reviewer) postFix(ctx context.Context, t *fixTarget) (posted bool) {
 	switch {
 	case err != nil:
 		r.log.WarnContext(ctx, "DB operation failed, using fallback: RecordFindingFix", logging.Err(err))
+	case !inserted && sha != "":
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: fix on %s committed as %s but not recorded: it has a committed fix already, or its PR no row", t.prTag, t.where, sha))
 	case !inserted:
-		r.log.WarnContext(ctx, fmt.Sprintf("%s: fix on %s committed as %s but not recorded: it has a committed fix already", t.prTag, t.where, sha))
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: fix request on %s (%s) not recorded: its PR has no row", t.prTag, t.where, outcome))
 	}
 	posted = r.postFixAnswer(ctx, t, sha, body)
 	r.log.InfoContext(ctx, fmt.Sprintf("%s: fix requested on %s: %s%s", t.prTag, t.where, outcome, func() string {
@@ -352,11 +358,12 @@ func unavailableText(l lang.Lang, why string) string {
 
 // postFixAnswer posts the answer under the author's reply. On a finding's
 // thread its id is kept with the finding, so a reply under it is a reply on
-// the finding again; after a Q&A it is a plain bot reply, with no code
-// line, so no second fix of the same suggestion starts from it. A failed
-// post after a commit is an error: the commit stands unannounced.
+// the finding again; after a Q&A it is kept as a reply about the answer,
+// so "apply it" under it applies the answer (a second commit of it is
+// "already applied"). A failed post after a commit is an error: the commit
+// stands unannounced.
 func (r *Reviewer) postFixAnswer(ctx context.Context, t *fixTarget, sha, body string) bool {
-	body = lang.TruncateRunes(body, replyPostRunes)
+	body = t.prefix + lang.TruncateRunes(body, replyPostRunes)
 	posted, err := r.bitbucket.ReplyToComment(ctx, t.project, t.repo, t.prID, t.replyTo, body)
 	if err != nil {
 		if sha != "" {
@@ -369,7 +376,11 @@ func (r *Reviewer) postFixAnswer(ctx context.Context, t *fixTarget, sha, body st
 	if t.findingID != 0 {
 		r.recordFindingBotReply(ctx, t.key, posted, t.findingID)
 	} else {
-		r.recordBotReply(ctx, t.key, posted, store.BotReplyQuestion)
+		// About the answer: "apply it" under this reply (asked again after
+		// a moved branch, say) applies the answer, never this reply.
+		safeDBErr(ctx, r.log, "InsertAnswerBotReply", func() error {
+			return r.store.InsertAnswerBotReply(ctx, t.key, posted, t.anchor, t.answerID)
+		})
 	}
 	return true
 }

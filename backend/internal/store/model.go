@@ -381,6 +381,9 @@ type BotReply struct {
 	FindingID int64
 	// Anchor is the code line a Q&A answer's question sat on, nil for none.
 	Anchor *BotReplyAnchor
+	// Source is the Q&A answer a reply of the fix flow is about, 0 when the
+	// reply is that answer itself (or none).
+	Source int
 }
 
 // BotReplyAnchor is the code line of a Q&A answer's question: the file, the

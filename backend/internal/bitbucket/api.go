@@ -363,6 +363,12 @@ type CommentAnchor struct {
 	// Orphaned: the anchored line is gone from the PR's current diff, so
 	// Line points at code that has since changed.
 	Orphaned bool `json:"orphaned"`
+	// DiffType is the diff the line was commented on: EFFECTIVE (the PR's
+	// diff, kept current by Bitbucket), COMMIT or RANGE (one commit's or a
+	// range's, whose ToHash is the version Line belongs to). Empty on an
+	// older server: read as EFFECTIVE.
+	DiffType string `json:"diffType"`
+	ToHash   string `json:"toHash"`
 }
 
 // FetchPRComment reads one comment, for its current text and version.

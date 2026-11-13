@@ -142,10 +142,14 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - Auto-fix from a Q&A answer (user, 2026-11-13: inline only, PR author
   only): the envelope's `apply` is the model's reading, code decides. The
   answer's code line is resolved when it is posted, never at fix time
-  (Bitbucket sends the immediate parent only); a confirmation keeps no line,
-  so no second fix starts from it. Not the PR author: a fixed answer in the
-  asker's language, no fix call, no `finding_fixes` row. An answer's row goes
-  with its PR (`pull_request_id`), a finding's with its finding.
+  (Bitbucket sends the immediate parent only). Only kind `answer` carries a
+  suggestion: notices and language confirmations stay `question`. Every
+  reply of the fix flow is an `answer` row about its source answer (line
+  kept), so "apply it" under it applies the source, and a second commit is
+  "already applied". `apply` is never posted as the model's sentence. Not
+  the PR author: a fixed answer in the asker's language, no fix call, no
+  `finding_fixes` row. An answer's row goes with its PR (`pull_request_id`),
+  a finding's with its finding.
 - Dispute signals (user, 2026-10-31): a `disputes` reply whose
   `agents_md_line` passes `CheckAgentsMDLine` is one occurrence. Read and
   written on the finding-reply path only; never in `review.txt`, the Q&A,

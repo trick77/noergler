@@ -489,11 +489,18 @@ The same works for a Q&A answer whose question sat on a line of code
 question's own when it is the thread's root (one comment fetch per such
 mention), else the inline root it replies to, else the line kept with the
 noergler answer it replies to; never an old-side line or one gone from the
-diff. A reply under that answer asking noergler to apply it ("gute Idee,
-setz das um") is the Q&A envelope's `apply`; the same fix call, checks,
-commit and answers follow, the answer's text being what is applied. Only
-the PR author may: anyone else is told so, with no call paid and no row.
-No code line, the answer says so. An answer is committed once.
+diff. A line on one commit's diff belongs to that commit and is found again
+by its text. A question replying to a reply in an inline thread keeps no
+line (known limit: Bitbucket sends the immediate parent only). A reply
+under that answer asking noergler to apply it ("gute Idee, setz das um") is
+the Q&A envelope's `apply`; the same fix call, checks, commit and answers
+follow, the answer's text being what is applied. Every reply of that flow
+(done, not possible, ask again, only the PR author) is kept about the
+answer (`bot_replies.source_comment_id`), so "apply it" under it applies
+the answer. Only the PR author may: anyone else is told so, with no call
+paid and no row. No code line, the answer says so. `apply` anywhere else
+gets a fixed "can't apply that here", never the model's sentence. An answer
+is committed once.
 
 ### Dispute signals
 

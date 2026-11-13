@@ -122,7 +122,7 @@ type Store interface {
 	RecordDisputeOccurrence(ctx context.Context, team string, k store.PRKey, signalID, findingID int64, rule string) (int64, error)
 	InsertBotReply(ctx context.Context, k store.PRKey, commentID int, kind string) error
 	InsertFindingBotReply(ctx context.Context, k store.PRKey, commentID int, kind string, findingID int64) error
-	InsertAnswerBotReply(ctx context.Context, k store.PRKey, commentID int, anchor *store.BotReplyAnchor) error
+	InsertAnswerBotReply(ctx context.Context, k store.PRKey, commentID int, anchor *store.BotReplyAnchor, source int) error
 	BotReplyByComment(ctx context.Context, k store.PRKey, commentID int) (*store.BotReply, error)
 	PRCost(ctx context.Context, k store.PRKey) (*int64, error)
 	PRCapState(ctx context.Context, k store.PRKey) (int64, *int64, error)

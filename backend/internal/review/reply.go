@@ -391,7 +391,7 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 			where: "finding " + j.where, replyTo: j.replyTo, threadID: j.threadID, lang: j.lang,
 			plan: j.fix, res: res.Fix, findingID: j.findingID, done: j.botFixCommit}
 		// Nothing posted, nothing stamped: a later reply may try again.
-		if r.postFix(ctx, t) && !j.secondPass && j.botFixCommit == nil {
+		if r.postFix(ctx, t) && !j.secondPass {
 			safeDBErr(ctx, r.log, "MarkFindingReplied", func() error { return r.store.MarkFindingReplied(ctx, j.findingID, nil) })
 		}
 		return
