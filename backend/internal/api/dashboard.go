@@ -52,7 +52,6 @@ type DashboardStore interface {
 	PRCost(ctx context.Context, key store.PRKey) (*int64, error)
 	PRCommentCalls(ctx context.Context, key store.PRKey) ([]store.CommentCall, bool, error)
 	FixCountsSince(ctx context.Context, since time.Time) ([]store.FixCount, error)
-	FixesDaily(ctx context.Context, since time.Time) ([]store.FixDay, error)
 }
 
 // usd renders nano-USD as a fixed-point decimal string with 3 decimals,
@@ -537,22 +536,44 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 	if failed("FixCountsSince", err) {
 		return
 	}
-	fixDays, err := st.FixesDaily(ctx, since)
-	if failed("FixesDaily", err) {
-		return
-	}
+	// One read, two sums: per team (the columns, outcomes on hover) and per
+	// day (the chart). Rows come day by day, so a team's outcome sums over
+	// the days before it is listed, in outcome order.
 	fixes := map[string]*fixesBody{}
+	outcomes := map[string]map[string]int{}
+	var fixDays []fixDayBody
 	for _, c := range fixCounts {
 		f := fixes[c.TeamSlug]
 		if f == nil {
 			f = &fixesBody{Outcomes: []fixOutcomeCount{}}
-			fixes[c.TeamSlug] = f
+			fixes[c.TeamSlug], outcomes[c.TeamSlug] = f, map[string]int{}
+		}
+		committed := 0
+		if c.Outcome == store.FixCommitted {
+			committed = c.Count
 		}
 		f.Requested += c.Count
-		if c.Outcome == store.FixCommitted {
-			f.Committed += c.Count
+		f.Committed += committed
+		outcomes[c.TeamSlug][c.Outcome] += c.Count
+		day := c.Day.UTC().Format(time.DateOnly)
+		if n := len(fixDays); n == 0 || fixDays[n-1].Day != day {
+			fixDays = append(fixDays, fixDayBody{Day: day})
 		}
-		f.Outcomes = append(f.Outcomes, fixOutcomeCount{Outcome: c.Outcome, Count: c.Count})
+		fixDays[len(fixDays)-1].Requested += c.Count
+		fixDays[len(fixDays)-1].Committed += committed
+	}
+	for slug, byOutcome := range outcomes {
+		names := make([]string, 0, len(byOutcome))
+		for o := range byOutcome {
+			names = append(names, o)
+		}
+		slices.Sort(names)
+		for _, o := range names {
+			fixes[slug].Outcomes = append(fixes[slug].Outcomes, fixOutcomeCount{Outcome: o, Count: byOutcome[o]})
+		}
+	}
+	if fixDays == nil {
+		fixDays = []fixDayBody{}
 	}
 
 	window := "month"
@@ -573,7 +594,7 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 		Daily:      make([]dayBody, 0, len(daily)),
 		Attempts:   make([]outcomeDayBody, 0, len(attempts)),
 		Breakdown:  make([]breakdownBody, 0, len(breakdown)),
-		FixesDaily: make([]fixDayBody, 0, len(fixDays)),
+		FixesDaily: fixDays,
 	}
 	nameOf := d.teamNamer()
 	for _, t := range byTeam {
@@ -608,11 +629,6 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 	for _, b := range attempts {
 		body.Attempts = append(body.Attempts, outcomeDayBody{
 			Day: b.Day.UTC().Format(time.DateOnly), Outcome: b.Outcome, Count: b.Count,
-		})
-	}
-	for _, d := range fixDays {
-		body.FixesDaily = append(body.FixesDaily, fixDayBody{
-			Day: d.Day.UTC().Format(time.DateOnly), Requested: d.Requested, Committed: d.Committed,
 		})
 	}
 	for _, c := range breakdown {

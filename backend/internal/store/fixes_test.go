@@ -62,16 +62,19 @@ func TestFindingFixes_RecordedCommittedOnceAndCounted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []FixCount{{"payments", FixCommitted, 1}, {"payments", FixNoWrite, 1}}
-	if len(counts) != 2 || counts[0] != want[0] || counts[1] != want[1] {
-		t.Errorf("counts = %+v, want %+v", counts, want)
+	// Summed over the days: the two rows may straddle UTC midnight.
+	byOutcome := map[string]int{}
+	for _, c := range counts {
+		if c.TeamSlug != "payments" || !c.Day.Equal(c.Day.Truncate(24*time.Hour)) {
+			t.Errorf("row %+v: want team payments on a whole UTC day", c)
+		}
+		byOutcome[c.Outcome] += c.Count
+	}
+	if len(byOutcome) != 2 || byOutcome[FixCommitted] != 1 || byOutcome[FixNoWrite] != 1 {
+		t.Errorf("counts = %+v, want one committed, one no_write", counts)
 	}
 	if counts, _ := s.FixCountsSince(ctx, time.Now().Add(time.Hour)); len(counts) != 0 {
 		t.Errorf("a later window counts %+v", counts)
-	}
-	days, err := s.FixesDaily(ctx, time.Now().Add(-time.Hour))
-	if err != nil || len(days) != 1 || days[0].Requested != 2 || days[0].Committed != 1 {
-		t.Errorf("days = %+v, %v: want one day, 2 requests, 1 committed", days, err)
 	}
 }
 

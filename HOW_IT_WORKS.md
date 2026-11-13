@@ -478,8 +478,10 @@ Every request is answered in the thread, never silently: "Applied in
 merge", or why not: not feasible (the model's reason), rejected as unsafe,
 no write permission (401/403: the token may be read-only; asked again, it is
 tried again), the branch moved (409), refused by Bitbucket (a pre-receive
-hook), or the call failed. Each request is a `finding_fixes` row, the
-metrics page's Auto-fixes column; a finding is committed once. The fix
+hook), or the call failed. Each request is a `finding_fixes` row: the
+metrics page shows, per team beside the findings, fix requests (every ask,
+its outcomes on hover) and fixes committed, and a chart of both per day
+(committed and not committed stacked). A finding is committed once. The fix
 call is its own `llm_calls` row (`fix`) and counts toward the PR's cost. The
 next review retires a finding noergler committed without a "Fixed in" reply
 and without resolving it: the author resolves the thread after looking.
