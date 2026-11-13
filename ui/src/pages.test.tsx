@@ -760,6 +760,7 @@ describe("MetricsPage", () => {
     expect(within(cost as HTMLElement).getByText("$0.10")).toBeDefined();
     const loc = screen.getByLabelText(/LOC reviewed per day/);
     expect(within(loc as HTMLElement).getByText("1.0K")).toBeDefined();
+    expect(screen.getByText("LOC (reviewed) per day")).toBeDefined();
     expect(screen.getAllByText("7-day avg")).toHaveLength(2);
     expect(screen.getByText("7-day avg, reviewed only")).toBeDefined();
   });
