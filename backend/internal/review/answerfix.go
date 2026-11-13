@@ -18,19 +18,40 @@ import (
 // `apply`; the fix call, ValidateFix, the commit and the answers are the
 // finding's (autofix.go).
 
+// parentBotReply carries the bot reply the finding-reply route read for a
+// reply's parent into HandleMention, so the same row is not read twice on
+// the worker.
+type parentBotReplyKey struct{}
+
+type parentBotReply struct {
+	parentID int
+	row      *store.BotReply
+}
+
+func withParentBotReply(ctx context.Context, parentID int, b *store.BotReply) context.Context {
+	return context.WithValue(ctx, parentBotReplyKey{}, parentBotReply{parentID, b})
+}
+
+// parentBotReplyFrom is the row read for parentID, and whether it was read.
+func parentBotReplyFrom(ctx context.Context, parentID int) (*store.BotReply, bool) {
+	v, ok := ctx.Value(parentBotReplyKey{}).(parentBotReply)
+	if !ok || v.parentID != parentID {
+		return nil, false
+	}
+	return v.row, true
+}
+
 // answerFix is a Q&A's request to apply noergler's earlier answer.
 type answerFix struct {
 	// answerID is noergler's answer, the suggestion applied.
 	answerID int
 	// gate is why the fix may not be asked for: "" when it may,
 	// "not_author" when the commenter is not the PR's author (then no plan).
-	gate string
-	plan *fixPlan
-	req  *inference.FindingFixRequest
-	done *string
-	// threadID is the comment the commit message links to.
-	threadID int
-	where    string
+	gate  string
+	plan  *fixPlan
+	req   *inference.FindingFixRequest
+	done  *string
+	where string
 	// anchor is the answer's code line, kept with every reply of the fix
 	// flow, so "apply it" under any of them applies the answer.
 	anchor *store.BotReplyAnchor
@@ -49,9 +70,12 @@ func usableAnchor(c *bitbucket.Comment, head string) *store.BotReplyAnchor {
 	if a.Path == "" || a.Line <= 0 || a.Orphaned || a.FileType == "FROM" {
 		return nil
 	}
-	commit := head
-	if a.DiffType != "" && a.DiffType != "EFFECTIVE" {
-		commit = a.ToHash
+	// The anchor's own to-commit when Bitbucket names it, on any diff: an
+	// EFFECTIVE anchor not yet drifted after a push still counts lines of
+	// the commit before it. Without one, the PR's diff is head's.
+	commit := a.ToHash
+	if commit == "" && (a.DiffType == "" || a.DiffType == "EFFECTIVE") {
+		commit = head
 	}
 	if commit == "" {
 		return nil
@@ -100,14 +124,20 @@ func (r *Reviewer) prepareAnswerFix(ctx context.Context, pr webhook.PullRequest,
 	if parentBot.Source != 0 {
 		answerID = parentBot.Source
 	}
-	x := &answerFix{answerID: answerID, threadID: answerID, where: fmt.Sprintf("answer %d", answerID), anchor: parentBot.Anchor}
+	x := &answerFix{answerID: answerID, where: fmt.Sprintf("answer %d", answerID), anchor: parentBot.Anchor}
 	if author := pr.Author.User.Name; author == "" || !strings.EqualFold(commenter, author) {
 		x.gate = "not_author"
 		return x
 	}
-	if sha := safeDB(ctx, r.log, "AnswerFixCommit", func() (string, error) {
-		return r.store.AnswerFixCommit(ctx, answerID)
-	}); sha != "" {
+	// Fails closed, unlike the reads around it: an unread state could
+	// commit an answer a second time.
+	sha, err := r.store.AnswerFixCommit(ctx, answerID)
+	switch {
+	case err != nil:
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: whether %s was applied could not be read, no fix: %v", prTag, x.where, err))
+		x.plan = &fixPlan{unavailable: "state_unread"}
+		return x
+	case sha != "":
 		x.done = &sha
 		return x
 	}
@@ -178,9 +208,9 @@ func (r *Reviewer) postAnswerFix(ctx context.Context, j *mentionJob, prefix stri
 			x.anchor, x.answerID)
 		return
 	}
-	thread := x.threadID
+	// The commit message links to the answer applied.
 	r.postFix(ctx, &fixTarget{key: j.ask.key, team: j.team, project: j.project, repo: j.repo, prID: j.prID,
-		prTag: prTag, where: x.where, replyTo: j.replyTo, threadID: &thread, lang: j.lang,
+		prTag: prTag, where: x.where, replyTo: j.replyTo, threadID: &x.answerID, lang: j.lang,
 		plan: x.plan, res: j.res.Fix, answerID: x.answerID, anchor: x.anchor, done: x.done, prefix: prefix})
 }
 
@@ -189,9 +219,8 @@ func (r *Reviewer) postAnswerFix(ctx context.Context, j *mentionJob, prefix stri
 // author can have its suggestion applied from under either.
 func (r *Reviewer) replyAnswer(ctx context.Context, project, repo string, prID, parentID int, text string,
 	anchor *store.BotReplyAnchor, source int) {
-	id, err := r.bitbucket.ReplyToComment(ctx, project, repo, prID, parentID, text)
-	if err != nil {
-		r.log.ErrorContext(ctx, fmt.Sprintf("Failed to post reply on %s/%s#%d: %v", project, repo, prID, err))
+	id, ok := r.postReply(ctx, project, repo, prID, parentID, text)
+	if !ok {
 		return
 	}
 	key := store.PRKey{Project: project, Repo: repo, PRID: prID}

@@ -352,6 +352,9 @@ func unavailableText(l lang.Lang, why string) string {
 		return l.Pick("die Stelle gibt es im aktuellen Stand nicht mehr.", "that line is no longer in the current code.")
 	case "no_anchor":
 		return l.Pick("die Frage hängt an keiner Code-Zeile.", "the question is not on a line of code.")
+	case "state_unread":
+		return l.Pick("ob das schon umgesetzt ist, liess sich gerade nicht lesen. Bitte nochmals versuchen.",
+			"whether this was applied already could not be read just now. Please ask again.")
 	}
 	return l.Pick("die Datei liess sich nicht lesen.", "the file could not be read.")
 }

@@ -193,7 +193,7 @@ func TestReviewTimeout(t *testing.T) {
 	}
 }
 
-func TestParseMentionApply(t *testing.T) {
+func TestParseMentionEnvelopeApply(t *testing.T) {
 	for in, want := range map[string]bool{
 		`{"answer":"ok","apply":true}`:                     true,
 		"```json\n{\"answer\":\"ok\",\"apply\":true}\n```": true,
@@ -202,8 +202,8 @@ func TestParseMentionApply(t *testing.T) {
 		`{"answer":"ok"}`:                                  false,
 		"plain text":                                       false,
 	} {
-		if got := ParseMentionApply(in); got != want {
-			t.Errorf("ParseMentionApply(%q) = %v, want %v", in, got, want)
+		if answer, got := ParseMentionEnvelope(in); got != want || answer == "" {
+			t.Errorf("ParseMentionEnvelope(%q) = %q, %v; want apply %v", in, answer, got, want)
 		}
 	}
 }
