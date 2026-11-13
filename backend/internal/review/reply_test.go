@@ -308,10 +308,6 @@ func TestFindingReplyIgnores(t *testing.T) {
 			at := time.Now()
 			h.st.skipState = &store.SkipState{IgnoredAt: &at}
 		},
-		// noergler committed the fix already: the thread is done.
-		"a finding noergler fixed already": func(h *harness, _ *webhook.Payload) {
-			h.st.byComment[501].BotFixCommit = ptrs("c0ffee")
-		},
 	}
 	for name, tweak := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -441,14 +437,24 @@ func TestFindingReplyWithAMention(t *testing.T) {
 			t.Errorf("handled = %v; the reply must reach the prompt without the mention", handled)
 		}
 	})
+	// A thread answered already still answers a mention, as a reply on the
+	// finding (so "@noergler fix it" is heard), without a second stamp.
+	t.Run("answered already", func(t *testing.T) {
+		h, p := replyHarness(t)
+		p.Comment.Text = "@noergler why?"
+		at := time.Now()
+		h.st.byComment[501].RepliedAt = &at
+		h.llm.reply.Reply = inference.FindingReply{Intent: "question", Reply: "It means the input is never checked."}
+
+		handled, _ := h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
+
+		if !handled || len(h.bb.Replies) != 1 || len(h.st.Replied) != 0 {
+			t.Errorf("handled %v, replies %d, marked %d: want it answered here, unstamped", handled, len(h.bb.Replies), len(h.st.Replied))
+		}
+	})
 	for name, tweak := range map[string]func(*harness, *webhook.Payload){
 		"asks for a review": func(_ *harness, p *webhook.Payload) { p.Comment.Text = "@noergler review" },
 		"not a finding":     func(_ *harness, p *webhook.Payload) { p.Comment.Text = "@noergler why?"; p.CommentParentID = 777 },
-		"answered already": func(h *harness, p *webhook.Payload) {
-			p.Comment.Text = "@noergler why?"
-			at := time.Now()
-			h.st.byComment[501].RepliedAt = &at
-		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			h, p := replyHarness(t)

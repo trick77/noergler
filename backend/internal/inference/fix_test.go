@@ -56,6 +56,11 @@ func TestValidateFix(t *testing.T) {
 		"crlf kept":   {"a\r\nb\r\nc\r\n", 1, 3, fix("b\n", "x\ny\n"), "a\r\nx\r\ny\r\nc\r\n", ""},
 		"bom kept":    {"\ufeffa\nb\n", 1, 2, fix("b", "c"), "\ufeffa\nc\n", ""},
 		"no final nl": {"a\nb", 1, 2, fix("b", "c"), "a\nc", ""},
+		// A replacement that lost (or gained) its last newline keeps the
+		// lines apart, as old had them.
+		"newline lost":   {"a\nx := 1\ny\n", 1, 3, fix("x := 1\n", "x := 2"), "a\nx := 2\ny\n", ""},
+		"newline gained": {"a\nx := 1\ny\n", 1, 3, fix("x := 1", "x := 2\n"), "a\nx := 2\ny\n", ""},
+		"deleted line":   {"a\nx := 1\ny\n", 1, 3, fix("x := 1\n", ""), "a\ny\n", ""},
 	} {
 		t.Run(name, func(t *testing.T) {
 			out, reason := ValidateFix([]byte(c.content), c.from, c.to, c.fix)
@@ -75,6 +80,9 @@ func TestCheckCommitSubject(t *testing.T) {
 		"":                            "",
 		strings.Repeat("x", 73):       "",
 		strings.Repeat("ä", 72):       strings.Repeat("ä", 72),
+		"HTTPClient: close body":      "HTTPClient: close body",
+		`"fix loop."`:                 "fix loop",
+		"X":                           "x",
 	} {
 		got, ok := CheckCommitSubject(in)
 		if got != want || ok != (want != "") {

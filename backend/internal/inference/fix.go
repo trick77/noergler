@@ -183,6 +183,15 @@ const (
 // final newline). reason is log vocabulary, empty when the fix stands.
 func ValidateFix(content []byte, from, to int, fix FindingFix) (out []byte, reason string) {
 	oldText, newText := fix.Old, fix.New
+	// Whole lines in, whole lines out: a model that drops (or adds) the
+	// final newline of a replacement would join two lines of the file.
+	switch {
+	case newText == "":
+	case strings.HasSuffix(oldText, "\n") && !strings.HasSuffix(newText, "\n"):
+		newText += "\n"
+	case !strings.HasSuffix(oldText, "\n") && strings.HasSuffix(newText, "\n"):
+		newText = strings.TrimSuffix(newText, "\n")
+	}
 	if bytes.Contains(content, []byte("\r\n")) {
 		oldText = toCRLF(oldText)
 		newText = toCRLF(newText)
@@ -229,18 +238,23 @@ func lineCount(s string) int {
 // CommitSubjectMax bounds the commit's first line.
 const CommitSubjectMax = 72
 
-// CheckCommitSubject is the subject as committed: one line, no trailing
-// period, lower case first letter, at most CommitSubjectMax runes. ok is
+// CheckCommitSubject is the subject as committed: one line, no quotes
+// around it, no trailing period, a lower case first letter, at most
+// CommitSubjectMax runes. Only a capitalised word is lowered ("Fix" ->
+// "fix"); an acronym or identifier ("HTTPClient") keeps its case. ok is
 // false when nothing usable is left, and the caller falls back.
 func CheckCommitSubject(s string) (string, bool) {
 	s = strings.TrimSpace(s)
 	if strings.ContainsAny(s, "\r\n") {
 		return "", false
 	}
-	s = strings.Trim(strings.TrimRight(s, "."), "`\"' ")
+	s = strings.TrimSpace(strings.TrimRight(strings.Trim(s, "`\"' "), "."))
 	if s == "" || utf8.RuneCountInString(s) > CommitSubjectMax {
 		return "", false
 	}
 	r, n := utf8.DecodeRuneInString(s)
-	return string(unicode.ToLower(r)) + s[n:], true
+	if next, _ := utf8.DecodeRuneInString(s[n:]); unicode.IsUpper(r) && !unicode.IsUpper(next) {
+		return string(unicode.ToLower(r)) + s[n:], true
+	}
+	return s, true
 }

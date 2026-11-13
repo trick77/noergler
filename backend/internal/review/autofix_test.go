@@ -19,6 +19,8 @@ func fixHarness(t *testing.T) (*harness, *webhook.Payload) {
 	t.Helper()
 	h, p := replyHarness(t)
 	h.st.languages = map[string]lang.Lang{"alice": lang.EN}
+	// Posted at the current head: its line number is the line.
+	h.st.byComment[501].RunCommit = "src1"
 	p.Comment.Text = "fix it"
 	h.llm.reply = inference.FindingReplyResult{Outcome: inference.OutcomeOK, Reply: inference.FindingReply{
 		Intent: inference.IntentRequestsFix, Reply: "On it.",
@@ -197,6 +199,131 @@ func TestReplyUnderNoerglersFindingAnswer(t *testing.T) {
 			t.Errorf("replies %d, marked %d, edits %d: want the answer, nothing stamped", len(h.bb.Replies), len(h.st.Replied), len(h.bb.Edits))
 		}
 	})
+}
+
+// A fix request on a finding noergler committed already is told so, never
+// dropped; nothing is committed twice.
+func TestFixRequestOnAFindingCommittedAlready(t *testing.T) {
+	h, p := fixHarness(t)
+	at := time.Now()
+	h.st.byComment[501].RepliedAt = &at
+	h.st.byComment[501].BotFixCommit = ptrs("c0ffee1234567890")
+
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
+
+	if len(h.bb.Edits) != 0 || len(h.st.Fixes) != 0 {
+		t.Errorf("edits %d, fixes %d: want neither", len(h.bb.Edits), len(h.st.Fixes))
+	}
+	if len(h.bb.Replies) != 1 || !strings.Contains(h.bb.Replies[0].Text, "Already applied in `c0ffee12`") {
+		t.Errorf("replies = %+v", h.bb.Replies)
+	}
+}
+
+// Under noergler's own answer the reply is addressed to the bot: the
+// author lists do not gate it, as the Q&A did not before.
+func TestReplyUnderTheAnswerIgnoresTheAuthorLists(t *testing.T) {
+	h, p := fixHarness(t)
+	h.r.SetAuthorLists([]string{"bob"}, nil)
+	at := time.Now()
+	h.st.byComment[501].RepliedAt = &at
+	h.st.botReplies = map[int]*store.BotReply{950: {CommentID: 950, Kind: store.BotReplyReply, FindingID: 11}}
+	h.st.skipState = &store.SkipState{}
+	p.CommentParentID = 950
+
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
+
+	if len(h.bb.Edits) != 1 || len(h.bb.Replies) != 1 {
+		t.Errorf("edits %d, replies %d: want the fix", len(h.bb.Edits), len(h.bb.Replies))
+	}
+}
+
+// "@noergler fix it" under noergler's answer is a fix request too.
+func TestMentionedFixRequestUnderTheAnswer(t *testing.T) {
+	h, p := fixHarness(t)
+	p.Comment.Text = "@noergler fix it"
+	at := time.Now()
+	h.st.byComment[501].RepliedAt = &at
+	h.st.botReplies = map[int]*store.BotReply{950: {CommentID: 950, Kind: store.BotReplyReply, FindingID: 11}}
+	p.CommentParentID = 950
+
+	handled, _ := h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
+
+	if !handled || len(h.bb.Edits) != 1 {
+		t.Errorf("handled %v, edits %d: want the fix, not the Q&A", handled, len(h.bb.Edits))
+	}
+}
+
+// Where the finding's line is: the number at the head only when posted at
+// the head; else found again by its text in the file it was posted on; a
+// commit gone or a file no text file means no fix, never a guess, and no
+// fix call is paid.
+func TestFixFindsTheLineOrSaysWhy(t *testing.T) {
+	t.Run("moved by a later push", func(t *testing.T) {
+		h, p := fixHarness(t)
+		h.st.byComment[501].RunCommit = "old1"
+		h.st.byComment[501].LineNumber = 4
+		h.bb.files["old1:a.go"] = "package a\n\n// x\nfunc new() {}\n"
+
+		h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
+
+		if len(h.bb.Edits) != 1 || !strings.Contains(h.llm.Replies[0].Fix.Prompt, "The finding is on line 2") {
+			t.Errorf("edits %d: want the fix on line 2", len(h.bb.Edits))
+		}
+	})
+	for name, c := range map[string]struct {
+		tweak func(*harness)
+		say   string
+	}{
+		"posted commit gone": {func(h *harness) { h.st.byComment[501].RunCommit = "gone1" }, "no longer in the current code"},
+		"not utf-8":          {func(h *harness) { h.bb.files["src1:a.go"] = "package a\n// gr\xfcn\nfunc new() {}\n" }, "not a text file"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h, p := fixHarness(t)
+			c.tweak(h)
+
+			h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
+
+			if h.llm.Replies[0].Fix != nil || len(h.bb.Edits) != 0 {
+				t.Errorf("fix request %v, edits %d: want neither", h.llm.Replies[0].Fix != nil, len(h.bb.Edits))
+			}
+			if len(h.bb.Replies) != 1 || !strings.Contains(h.bb.Replies[0].Text, c.say) {
+				t.Errorf("replies = %+v, want %q", h.bb.Replies, c.say)
+			}
+			if len(h.st.Fixes) != 1 || h.st.Fixes[0].Outcome != store.FixNotFeasible {
+				t.Errorf("fixes = %+v", h.st.Fixes)
+			}
+		})
+	}
+}
+
+// Posted at the head, the file the reply read is the file the fix needs:
+// no second fetch on the worker.
+func TestFixReusesTheFileTheReplyRead(t *testing.T) {
+	h, p := fixHarness(t)
+
+	h.r.HandleFindingReply(context.Background(), p, "payments", &inlineScheduler{})
+
+	if h.bb.byteReads != 0 || len(h.bb.Edits) != 1 {
+		t.Errorf("byte reads %d, edits %d: want no second fetch and the fix", h.bb.byteReads, len(h.bb.Edits))
+	}
+}
+
+func TestFindLine(t *testing.T) {
+	old := []string{"a", "", "b", "c"}
+	for _, c := range []struct {
+		lines []string
+		n     int
+		want  int
+	}{
+		{[]string{"x", "a", "", "b", "c"}, 3, 4}, // "b" moved down one
+		{[]string{"x", "a", "", "b", "c"}, 2, 3}, // blank: "a" above, offset 1
+		{[]string{"x"}, 3, 0},
+		{[]string{"a", "", "b"}, 9, 0},
+	} {
+		if got := findLine(c.lines, old, c.n); got != c.want {
+			t.Errorf("findLine(%q, %d) = %d, want %d", c.lines, c.n, got, c.want)
+		}
+	}
 }
 
 func TestNearestLine(t *testing.T) {

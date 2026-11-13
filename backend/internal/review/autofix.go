@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/inference"
@@ -47,13 +48,23 @@ type fixPlan struct {
 	from, to, anchor int
 }
 
+// fetchedFile is the finding's file as the reply read it: at the commit it
+// was posted at, or the PR head when that commit is gone. ok is false when
+// neither answered.
+type fetchedFile struct {
+	at, path, content string
+	ok                bool
+}
+
 // prepareFix reads the finding's file at the PR head and finds the
-// finding's line in it. runContent is the file at the commit the finding
-// was posted at (at), when runOK. The line is found by its text, the one
-// nearest the finding's number: a later push moves lines. No text, no fix.
-func (r *Reviewer) prepareFix(ctx context.Context, pr webhook.PullRequest, project, repo, prTag string, f *store.Finding, at, runContent string, runOK bool) *fixPlan {
+// finding's line in it. The line number belongs to the commit the finding
+// was posted at: at the head it is the line only when that commit is the
+// head; otherwise the line is found by its text in the file read at that
+// commit, the one nearest the old number (a later push moves lines). No
+// such file, no text: no fix, never a guess.
+func (r *Reviewer) prepareFix(ctx context.Context, pr webhook.PullRequest, project, repo, prTag string, f *store.Finding, run fetchedFile) *fixPlan {
 	p := &fixPlan{project: project, repo: repo, branch: pr.FromRef.Branch(), head: pr.FromRef.LatestCommit,
-		path: inference.StripSidePrefix(f.FilePath)}
+		path: f.FilePath}
 	if src := pr.FromRef.Repository; src != nil && src.Project.Key != "" && src.Slug != "" {
 		p.project, p.repo = src.Project.Key, src.Slug
 	}
@@ -61,11 +72,18 @@ func (r *Reviewer) prepareFix(ctx context.Context, pr webhook.PullRequest, proje
 		p.unavailable = "no_head"
 		return p
 	}
-	content, err := r.bitbucket.FetchFileBytes(ctx, p.project, p.repo, p.head, f.FilePath)
-	if stripped := inference.StripSidePrefix(f.FilePath); err != nil && stripped != f.FilePath && bitbucket.Status(err) == http.StatusNotFound {
-		content, err = r.bitbucket.FetchFileBytes(ctx, p.project, p.repo, p.head, stripped)
-	} else if err == nil {
-		p.path = f.FilePath
+	var content []byte
+	var err error
+	if run.ok && run.at == p.head && p.project == project && p.repo == repo {
+		// The reply read this very file a moment ago: no second fetch on
+		// the worker.
+		content, p.path = []byte(run.content), run.path
+	} else {
+		content, err = r.bitbucket.FetchFileBytes(ctx, p.project, p.repo, p.head, f.FilePath)
+		if stripped := inference.StripSidePrefix(f.FilePath); err != nil && stripped != f.FilePath && bitbucket.Status(err) == http.StatusNotFound {
+			content, err = r.bitbucket.FetchFileBytes(ctx, p.project, p.repo, p.head, stripped)
+			p.path = stripped
+		}
 	}
 	var tooLarge *bitbucket.ContentTooLarge
 	switch {
@@ -76,20 +94,21 @@ func (r *Reviewer) prepareFix(ctx context.Context, pr webhook.PullRequest, proje
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: file for a fix on %s unavailable: %v", prTag, f.FilePath, err))
 		p.unavailable = "unreadable"
 		return p
-	case bytes.IndexByte(content, 0) >= 0:
+	case bytes.IndexByte(content, 0) >= 0 || !utf8.Valid(content):
+		// ValidateFix refuses the same: no call is paid for a fix that
+		// could only be rejected (a Latin-1 file).
 		p.unavailable = "binary"
 		return p
 	}
 	p.content = content
 	lines := fileLines(strings.ReplaceAll(string(content), "\r\n", "\n"))
-	p.anchor = 0
-	if at == p.head && f.LineNumber >= 1 && f.LineNumber <= len(lines) {
-		p.anchor = f.LineNumber
-	} else if runOK {
-		run := fileLines(strings.ReplaceAll(runContent, "\r\n", "\n"))
-		if f.LineNumber >= 1 && f.LineNumber <= len(run) {
-			p.anchor = nearestLine(lines, strings.TrimSpace(run[f.LineNumber-1]), f.LineNumber)
+	switch {
+	case f.RunCommit != "" && f.RunCommit == p.head:
+		if f.LineNumber >= 1 && f.LineNumber <= len(lines) {
+			p.anchor = f.LineNumber
 		}
+	case run.ok && run.at == f.RunCommit:
+		p.anchor = findLine(lines, fileLines(strings.ReplaceAll(run.content, "\r\n", "\n")), f.LineNumber)
 	}
 	if p.anchor == 0 {
 		p.unavailable = "line_gone"
@@ -104,6 +123,36 @@ func (r *Reviewer) prepareFix(ctx context.Context, pr webhook.PullRequest, proje
 	}
 	p.unavailable = "too_large"
 	return p
+}
+
+// findLine is line n of old found again in lines (both 1-based), by text.
+// A blank line has no text to find: the nearest non-blank line above it
+// (else below) is found instead, and the offset carried over. 0 when there
+// is nothing to find.
+func findLine(lines, old []string, n int) int {
+	if n < 1 || n > len(old) {
+		return 0
+	}
+	k := 0
+	for d := 0; d < len(old) && k == 0; d++ {
+		for _, i := range []int{n - d, n + d} {
+			if i >= 1 && i <= len(old) && strings.TrimSpace(old[i-1]) != "" {
+				k = i
+				break
+			}
+		}
+	}
+	if k == 0 {
+		return 0
+	}
+	at := nearestLine(lines, strings.TrimSpace(old[k-1]), k)
+	if at == 0 {
+		return 0
+	}
+	if got := at + (n - k); got >= 1 && got <= len(lines) {
+		return got
+	}
+	return 0
 }
 
 // nearestLine is the 1-based number of the line whose trimmed text is want,

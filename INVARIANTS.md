@@ -120,10 +120,12 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   resolved (user, 2026-11-13: the author resolves after looking).
 - Finding replies: PR author only, answered and stamped once, never resolve;
   a plain reply on a thread answered already still gets a call, answered
-  only if it is a fix request, nothing stamped again (user, 2026-11-13).
-  Found: directly under the finding's comment, or the author's plain reply
-  directly under noergler's answer there (`bot_replies.finding_id`; answered
-  for any intent, stamps nothing). Nested deeper is not (Bitbucket sends the
+  only if it is a fix request, nothing stamped again (user, 2026-11-13); an
+  `@bot` reply there is answered whatever it is. Found: directly under the
+  finding's comment, or the author's reply (plain or `@bot`) directly under
+  noergler's answer there (`bot_replies.finding_id`; answered for any intent,
+  no author-list gate, as the Q&A took it before, stamps nothing). A fix
+  request on a finding noergler committed is told so, never dropped. Nested deeper is not (Bitbucket sends the
   immediate parent, known limit); a non-author `@bot` reply goes to the Q&A,
   a review-keyword one to the mention path (a review); nothing posted =
   nothing stamped.

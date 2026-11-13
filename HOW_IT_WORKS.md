@@ -439,7 +439,8 @@ The route queues any non-empty reply not written by the bot (Bitbucket's
 `commentParentId`); the worker answers only the author, only when the parent is
 a stored, unfixed finding of that PR without an answer yet, and, for a plain
 reply, only under the PR's cost cap. On a thread answered already a plain
-reply still gets a call, but only a fix request (below) is answered. An
+reply still gets a call, but only a fix request (below) is answered; an
+`@bot` reply there is answered whatever it asks. An
 `@bot` reply on such a thread is
 answered as a reply too, unless it asks for a review or comes from someone
 else, which the Q&A answers. The call (`finding_reply.txt`) is staged
@@ -456,8 +457,10 @@ A reply asking noergler to make the change itself ("tue dies selber", "flick
 das", "setz das um", "fix it") is the intent `requests_fix`; "ich flicke das"
 or "fixed" acknowledges. Always on, no setting. On that intent a second call
 (`finding_fix.txt`, same profile, same pool slot) gets the file at the PR
-head, 60 lines either side of the finding's line (found again by its text,
-nearest the old number; gone = not feasible) and AGENTS.md, and returns one
+head, 60 lines either side of the finding's line (its number when posted at
+the head, else found again by its text in the file it was posted on, nearest
+the old number, a blank line by its neighbour; that file or text gone = not
+feasible; not UTF-8 = not feasible, no call) and AGENTS.md, and returns one
 exact `old` text and its replacement, written in the team's style (AGENTS.md
 conventions, else the surrounding code's), or `feasible: false` with a reason (another file,
 a generator run, a decision only the author can make). `ValidateFix`, blunt

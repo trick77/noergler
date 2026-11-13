@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -567,6 +568,19 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 		}
 		body.ByTeam = append(body.ByTeam, teamTotalsBody{
 			Team: t.TeamSlug, TeamName: nameOf(t.TeamSlug), totalsBody: toTotals(t.Totals), Fixes: f,
+		})
+		delete(fixes, t.TeamSlug)
+	}
+	// A team whose only activity in the window was a fix request (its PR
+	// reviewed earlier) still shows its fixes, with zero totals.
+	rest := make([]string, 0, len(fixes))
+	for slug := range fixes {
+		rest = append(rest, slug)
+	}
+	slices.Sort(rest)
+	for _, slug := range rest {
+		body.ByTeam = append(body.ByTeam, teamTotalsBody{
+			Team: slug, TeamName: nameOf(slug), totalsBody: toTotals(store.Totals{}), Fixes: *fixes[slug],
 		})
 	}
 	for _, b := range daily {
