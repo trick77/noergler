@@ -153,7 +153,7 @@ export const en = {
     linesTrend: "LOC reviewed trend",
     linesUncounted_one: "without {{count}} older run",
     linesUncounted_other: "without {{count}} older runs",
-    linesPerDay: "LOC per day",
+    linesPerDay: "LOC (reviewed) per day",
     codeVolume: "Code volume",
     noLines: "No lines reviewed in this window.",
     linesNotCounted: "Every run in this window predates the LOC count.",

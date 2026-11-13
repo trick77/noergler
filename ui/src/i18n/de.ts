@@ -142,7 +142,7 @@ export const de = {
     linesTrend: "Verlauf der geprüften LOC",
     linesUncounted_one: "ohne {{count}} älteren Run",
     linesUncounted_other: "ohne {{count}} ältere Runs",
-    linesPerDay: "LOC pro Tag",
+    linesPerDay: "LOC (geprüft) pro Tag",
     codeVolume: "Codevolumen",
     noLines: "Keine geprüften LOC in diesem Zeitraum.",
     linesNotCounted:
