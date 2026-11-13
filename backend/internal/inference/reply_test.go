@@ -149,6 +149,29 @@ func TestFindingReplyCall(t *testing.T) {
 			t.Errorf("Outcome = %v, calls = %d: must refuse before calling the model", got.Outcome, f.gotChat)
 		}
 	})
+
+	// A fix request makes the fix call, under its own system message and
+	// schema; without the file to change, or any other intent, it does not.
+	t.Run("fix request", func(t *testing.T) {
+		body := chatBody(`{"intent":"requests_fix","reply":"On it.","agents_md_line":null,"matches_signal":null}`)
+		for name, c := range map[string]struct {
+			fix   *FindingFixRequest
+			calls int
+		}{"with the file": {&FindingFixRequest{Prompt: "fix"}, 2}, "without": {nil, 1}} {
+			t.Run(name, func(t *testing.T) {
+				f := &fakeGateway{chatBody: body}
+				cl := reviewClient(t, f)
+				got := cl.FindingReply(context.Background(), FindingReplyRequest{Prompt: "p", Fix: c.fix})
+				if f.gotChat != c.calls || (got.Fix != nil) != (c.fix != nil) {
+					t.Fatalf("calls = %d, fix = %+v", f.gotChat, got.Fix)
+				}
+				if c.fix != nil && (!strings.Contains(string(f.lastChatBody), "applying one review finding") ||
+					!strings.Contains(string(f.lastChatBody), FindingFixSchemaName)) {
+					t.Errorf("the fix call went out without its system message or schema:\n%s", f.lastChatBody)
+				}
+			})
+		}
+	})
 }
 
 func TestRenderPreviouslyPostedFindingsCarriesTheDispute(t *testing.T) {

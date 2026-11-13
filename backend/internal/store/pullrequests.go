@@ -363,11 +363,13 @@ func (s *Store) ExistingFindings(ctx context.Context, k PRKey) ([]Finding, error
 // findingCols is the finding row as ExistingFindings and FindingByComment
 // read it, from `findings f`; scanTargets receives it in the same order.
 const findingCols = `f.id, f.pull_request_id, f.review_run_id, f.file_path, f.line_number, f.severity, f.confidence,
-			f.headline, f.comment_text, f.suggestion, f.bitbucket_comment_id, f.replied_at, f.dispute_text`
+			f.headline, f.comment_text, f.suggestion, f.bitbucket_comment_id, f.replied_at, f.dispute_text,
+			(SELECT x.commit_sha FROM finding_fixes x WHERE x.finding_id = f.id AND x.outcome = 'committed')`
 
 func (f *Finding) scanTargets() []any {
 	return []any{&f.ID, &f.PullRequestID, &f.RunID, &f.FilePath, &f.LineNumber, &f.Severity, &f.Confidence,
-		&f.Headline, &f.CommentText, &f.Suggestion, &f.BitbucketCommentID, &f.RepliedAt, &f.DisputeText}
+		&f.Headline, &f.CommentText, &f.Suggestion, &f.BitbucketCommentID, &f.RepliedAt, &f.DisputeText,
+		&f.BotFixCommit}
 }
 
 // MarkFindingClosed settles a finding whose thread was resolved or deleted
@@ -411,16 +413,43 @@ const (
 	BotReplyFixed    = "fixed"    // the "Fixed in" reply on a retired finding
 )
 
+// FindingByID is FindingByComment for a finding named by its row id, the
+// one a stored bot reply points at. Scoped and filtered the same way.
+func (s *Store) FindingByID(ctx context.Context, k PRKey, id int64) (*Finding, error) {
+	var f Finding
+	err := s.pool.QueryRow(ctx, `
+		SELECT `+findingCols+`, r.to_commit
+		FROM findings f JOIN pull_requests p ON f.pull_request_id = p.id
+			JOIN review_runs r ON f.review_run_id = r.id
+		WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3 AND p.`+activeFilter+`
+			AND f.fixed_at IS NULL AND f.id = $4`,
+		k.Project, k.Repo, k.PRID, id).Scan(append(f.scanTargets(), &f.RunCommit)...)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &f, nil
+}
+
 // InsertBotReply records a reply noergler posted on a PR. A PR without a
 // row records nothing (a language confirmation on a PR never reviewed or
 // asked about), and a replayed id is kept once.
 func (s *Store) InsertBotReply(ctx context.Context, k PRKey, commentID int, kind string) error {
+	return s.InsertFindingBotReply(ctx, k, commentID, kind, 0)
+}
+
+// InsertFindingBotReply is InsertBotReply for an answer on a finding's
+// thread: findingID names the finding (0 for none), so the author's reply
+// under that answer finds its finding again.
+func (s *Store) InsertFindingBotReply(ctx context.Context, k PRKey, commentID int, kind string, findingID int64) error {
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO bot_replies (pull_request_id, comment_id, kind)
-		SELECT id, $4, $5 FROM pull_requests
+		INSERT INTO bot_replies (pull_request_id, comment_id, kind, finding_id)
+		SELECT id, $4, $5, NULLIF($6::bigint, 0) FROM pull_requests
 		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
 		ON CONFLICT DO NOTHING`,
-		k.Project, k.Repo, k.PRID, commentID, kind)
+		k.Project, k.Repo, k.PRID, commentID, kind, findingID)
 	return err
 }
 
@@ -430,11 +459,11 @@ func (s *Store) InsertBotReply(ctx context.Context, k PRKey, commentID int, kind
 func (s *Store) BotReplyByComment(ctx context.Context, k PRKey, commentID int) (*BotReply, error) {
 	var b BotReply
 	err := s.pool.QueryRow(ctx, `
-		SELECT b.comment_id, b.kind
+		SELECT b.comment_id, b.kind, COALESCE(b.finding_id, 0)
 		FROM bot_replies b JOIN pull_requests p ON b.pull_request_id = p.id
 		WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3 AND p.`+activeFilter+`
 			AND b.comment_id = $4`,
-		k.Project, k.Repo, k.PRID, commentID).Scan(&b.CommentID, &b.Kind)
+		k.Project, k.Repo, k.PRID, commentID).Scan(&b.CommentID, &b.Kind, &b.FindingID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}

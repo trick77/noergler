@@ -459,6 +459,15 @@ func (r *Reviewer) recordBotReply(ctx context.Context, key store.PRKey, commentI
 	safeDBErr(ctx, r.log, "InsertBotReply", func() error { return r.store.InsertBotReply(ctx, key, commentID, kind) })
 }
 
+// recordFindingBotReply is recordBotReply for noergler's answer on a
+// finding's thread, naming the finding: the author's reply under it is a
+// reply on that finding again.
+func (r *Reviewer) recordFindingBotReply(ctx context.Context, key store.PRKey, commentID int, findingID int64) {
+	safeDBErr(ctx, r.log, "InsertFindingBotReply", func() error {
+		return r.store.InsertFindingBotReply(ctx, key, commentID, store.BotReplyReply, findingID)
+	})
+}
+
 // extractQuestion strips the @trigger from a comment and trims the rest.
 //
 // The trailing word boundary must be Unicode-aware, the same rule the ticket

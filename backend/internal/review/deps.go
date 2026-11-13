@@ -30,6 +30,10 @@ import (
 type BitbucketClient interface {
 	BotUsername() string
 	CommentURL(project, repo string, prID, commentID int) string
+	CommitURL(project, repo, commit string) string
+	// EditFile is the one write to repository content: a fix the PR author
+	// asked for. Never routed through outgoing's comment rewriting.
+	EditFile(ctx context.Context, project, repo, branch, path, sourceCommitID, message string, content []byte) (string, error)
 	FetchPRDiff(ctx context.Context, project, repo string, prID, contextLines int) (string, error)
 	FetchPRChanges(ctx context.Context, project, repo string, prID int) ([]string, error)
 	FetchPRChangeSet(ctx context.Context, project, repo string, prID int) (bitbucket.ChangeSet, error)
@@ -108,12 +112,15 @@ type Store interface {
 	MarkFindingClosed(ctx context.Context, findingID int64) error
 	MarkFindingOpen(ctx context.Context, findingID int64) error
 	FindingByComment(ctx context.Context, k store.PRKey, commentID int) (*store.Finding, error)
+	FindingByID(ctx context.Context, k store.PRKey, id int64) (*store.Finding, error)
 	MarkFindingReplied(ctx context.Context, findingID int64, dispute *string) error
+	RecordFindingFix(ctx context.Context, x store.FindingFix) (bool, error)
 	// Dispute signals: read and written on the finding-reply path only.
 	OpenDisputeSignals(ctx context.Context, team, project, repo string, windowDays, limit int) ([]store.DisputeSignal, error)
 	DisputeSignalPRs(ctx context.Context, signalID int64, windowDays int, exclude store.PRKey) ([]store.DisputePR, error)
 	RecordDisputeOccurrence(ctx context.Context, team string, k store.PRKey, signalID, findingID int64, rule string) (int64, error)
 	InsertBotReply(ctx context.Context, k store.PRKey, commentID int, kind string) error
+	InsertFindingBotReply(ctx context.Context, k store.PRKey, commentID int, kind string, findingID int64) error
 	BotReplyByComment(ctx context.Context, k store.PRKey, commentID int) (*store.BotReply, error)
 	PRCost(ctx context.Context, k store.PRKey) (*int64, error)
 	PRCapState(ctx context.Context, k store.PRKey) (int64, *int64, error)

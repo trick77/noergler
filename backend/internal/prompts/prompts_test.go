@@ -14,6 +14,8 @@ func TestPromptsAreEmbedded(t *testing.T) {
 		"mention parent":  {Mention, "{parent_comment}"},
 		"finding_reply":   {FindingReply, "{reply}"},
 		"reply name":      {FindingReply, "{author_first_name}"},
+		"finding_fix":     {FindingFix, "{code}"},
+		"fix commit":      {FindingFix, "{commit_language}"},
 		"almanach note":   {AlmanachNote, "{note_limit}"},
 		"almanach repo":   {AlmanachNote, "{repo}"},
 	} {
@@ -34,7 +36,7 @@ func TestDisputeSignalsOnlyInTheFindingReply(t *testing.T) {
 	if u := strings.Index(FindingReply, "## Untrusted input"); u < 0 || strings.Index(FindingReply, ph) < u {
 		t.Errorf("%s is not below the untrusted marker", ph)
 	}
-	for name, text := range map[string]string{"review": Review, "mention": Mention, "almanach note": AlmanachNote} {
+	for name, text := range map[string]string{"review": Review, "mention": Mention, "almanach note": AlmanachNote, "finding_fix": FindingFix} {
 		if strings.Contains(text, ph) {
 			t.Errorf("%s prompt carries %s", name, ph)
 		}

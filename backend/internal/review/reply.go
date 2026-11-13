@@ -78,6 +78,12 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	// PR back, only an @mention does (decided), so an unread state answers
 	// nothing rather than let HandleMention reactivate.
 	var st *store.SkipState
+	// f is set here when the reply is the PR author's under noergler's own
+	// answer on a finding's thread: "ok, fix it" lands there more often
+	// than under the finding itself (user, 2026-11-13).
+	var f *store.Finding
+	underAnswer := false
+	isAuthor := author != "" && strings.EqualFold(comment.Author.Name, author)
 	if !mentioned {
 		st = safeDB(ctx, r.log, "GetSkipState", func() (*store.SkipState, error) {
 			return r.store.GetSkipState(ctx, key)
@@ -95,22 +101,36 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 				r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on noergler's %s answer not answered: PR is ignored or its state unread", prTag, b.Kind))
 				return true, false
 			}
-			r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on noergler's %s answer, answered like a mention", prTag, b.Kind))
-			return true, r.HandleMention(ctx, payload, team, sched)
+			// The author under noergler's answer on a finding's thread goes
+			// on as a reply on that finding, so a fix request there is
+			// heard; anyone else, and a finding fixed or gone, is a Q&A.
+			if isAuthor && b.Kind == store.BotReplyReply && b.FindingID != 0 {
+				f = safeDB(ctx, r.log, "FindingByID", func() (*store.Finding, error) {
+					return r.store.FindingByID(ctx, key, b.FindingID)
+				})
+			}
+			if f == nil {
+				r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on noergler's %s answer, answered like a mention", prTag, b.Kind))
+				return true, r.HandleMention(ctx, payload, team, sched)
+			}
+			underAnswer = true
+			r.log.InfoContext(ctx, fmt.Sprintf("%s: author's reply on noergler's answer, answered as a reply on its finding", prTag))
 		}
 	}
 	// A reviewer-to-reviewer exchange under a finding is no event.
-	if author == "" || !strings.EqualFold(comment.Author.Name, author) {
+	if !isAuthor {
 		r.log.DebugContext(ctx, fmt.Sprintf("%s: reply under comment %d not answered: not the PR's author", prTag, payload.CommentParentID))
 		return !mentioned, false
 	}
-	// Only a reply directly under a finding's comment is found: Bitbucket
-	// sends the immediate parent, and a reply nested under another reply
-	// names that reply. Known limit, accepted: walking the thread for every
-	// reply costs a fetch per comment.
-	f := safeDB(ctx, r.log, "FindingByComment", func() (*store.Finding, error) {
-		return r.store.FindingByComment(ctx, key, payload.CommentParentID)
-	})
+	// Only a reply directly under a finding's comment, or under noergler's
+	// answer there, is found: Bitbucket sends the immediate parent, and a
+	// reply nested deeper names that reply. Known limit, accepted: walking
+	// the thread for every reply costs a fetch per comment.
+	if f == nil {
+		f = safeDB(ctx, r.log, "FindingByComment", func() (*store.Finding, error) {
+			return r.store.FindingByComment(ctx, key, payload.CommentParentID)
+		})
+	}
 	if f == nil {
 		r.log.DebugContext(ctx, fmt.Sprintf("%s: reply under comment %d is not on a finding thread", prTag, payload.CommentParentID))
 		return false, false
@@ -150,7 +170,18 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		r.handleStop(ctx, key, prTag, comment.ID, comment.Author.Name, author, pr.Title, pr.CreatedDate)
 		return true, false
 	}
-	if f.RepliedAt != nil {
+	// A thread answered already takes one more call per reply, for a fix
+	// request only (user, 2026-11-13): anything else stays unanswered, as
+	// before. Under noergler's own answer every reply is answered, as the
+	// Q&A answered it before; neither stamps the finding again. A finding
+	// noergler committed already is done, except under its answer.
+	// An @mention there stays the Q&A's, as before.
+	secondPass := f.RepliedAt != nil || underAnswer
+	fixOnly := secondPass && !underAnswer
+	if f.BotFixCommit != nil && !underAnswer {
+		return notAnswered("noergler committed this finding's fix already")
+	}
+	if fixOnly && mentioned {
 		return notAnswered("the thread was answered already")
 	}
 	if mentioned {
@@ -248,12 +279,40 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		Prompt:       prompt,
 		PromptTokens: r.tokens.Count(inference.MentionSystemMessage) + r.tokens.Count(prompt),
 	}
+	// What a fix needs is read here, on the worker, before the call: the
+	// posting stage cannot stage a second one, so a fix request's change is
+	// asked for on the same pool slot. Read for every reply the call may
+	// turn out to be a fix request, accepted: author replies are rare.
+	var fix *fixPlan
+	if f.BotFixCommit == nil {
+		fix = r.prepareFix(ctx, pr, project, repo, prTag, f, at, content, err == nil)
+		if fix.unavailable == "" {
+			fixPrompt := inference.RenderFindingFixPrompt(inference.FindingFixPromptRequest{
+				Template:         r.fixTmpl,
+				RepoInstructions: agentsMD,
+				Finding:          fmt.Sprintf("%s [%s]\n\n%s", where, f.Severity, f.CommentText),
+				FilePath:         fix.path,
+				Code:             fix.code,
+				StartLine:        fix.from,
+				AnchorLine:       fix.anchor,
+				Reply:            lang.TruncateRunes(text, replyTextRunes),
+				Language:         l,
+			})
+			req.Fix = &inference.FindingFixRequest{
+				Prompt:       fixPrompt,
+				PromptTokens: r.tokens.Count(inference.FixSystemMessage) + r.tokens.Count(fixPrompt),
+			}
+			fix.code = "" // in the prompt now; the post needs the bytes only
+		}
+	}
 	job := &replyJob{
 		key: key, team: team, project: project, repo: repo, prID: pr.ID, prTag: prTag, where: where,
 		author:    author,
 		findingID: f.ID, replyTo: comment.ID, text: text,
 		agentsMD: agentsMD, signalIDs: signalIDs, signalRules: signalRules, counter: counter,
 		name: name, namesOn: r.displayName != nil, lang: l,
+		secondPass: secondPass, fixOnly: fixOnly, fix: fix,
+		threadID: f.BitbucketCommentID, botFixCommit: f.BotFixCommit,
 	}
 	infer := func(inferCtx context.Context) { job.res = r.llm.FindingReply(inferCtx, req) }
 	post := func(postCtx context.Context) { r.postFindingReply(postCtx, job) }
@@ -286,6 +345,14 @@ type replyJob struct {
 	lang    lang.Lang
 	counter *httpstats.Counter
 	res     inference.FindingReplyResult
+	// secondPass is a reply on a thread answered already: it stamps
+	// nothing and records no dispute. fixOnly posts for a fix request only.
+	secondPass, fixOnly bool
+	// fix is what a fix request needs, nil when the finding was committed
+	// already; threadID is the finding's comment, for the commit's link.
+	fix          *fixPlan
+	threadID     *int
+	botFixCommit *string
 }
 
 // postFindingReply is the reply's posting stage, on the worker: the answer,
@@ -300,11 +367,28 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 	}
 	// Billed whether or not it is posted: the PR's cost counts it.
 	r.recordCommentCall(ctx, j.key, store.CallReply, j.replyTo, res.Cost)
+	if res.Fix != nil {
+		if res.Fix.Cost.Answered {
+			r.logCost(ctx, j.prTag, res.Fix.Cost)
+		}
+		r.recordCommentCall(ctx, j.key, store.CallFix, j.replyTo, res.Fix.Cost)
+	}
 	if res.Outcome != inference.OutcomeOK {
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: reply on finding %s not answered: %s %v", j.prTag, j.where, res.Outcome, res.Err))
 		return
 	}
-	dispute := res.Reply.Intent == "disputes"
+	if res.Reply.Intent == inference.IntentRequestsFix {
+		r.postFix(ctx, j)
+		return
+	}
+	if j.fixOnly {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on finding %s not answered: the thread was answered already and the reply is no fix request (intent %s)",
+			j.prTag, j.where, res.Reply.Intent))
+		return
+	}
+	// A second pass answers but records nothing: the finding's one answer
+	// and its dispute were the first reply's.
+	dispute := res.Reply.Intent == "disputes" && !j.secondPass
 
 	reply, nameState := guardName(res.Reply.Reply, j.name, res.Reply.Intent, j.namesOn)
 	body := lang.TruncateRunes(sharpS(j.lang, reply), replyPostRunes)
@@ -312,7 +396,10 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 	// signal. The AGENTS.md bullet is shown only once the signal reaches the
 	// team's threshold of distinct PRs in its window (user, 2026-10-31); below
 	// it the answer carries no bullet at all.
-	agentsLine, signal := r.weighDispute(ctx, j, res.Reply)
+	agentsLine, signal := "none (second reply)", (*signalOccurrence)(nil)
+	if !j.secondPass {
+		agentsLine, signal = r.weighDispute(ctx, j, res.Reply)
+	}
 	if signal != nil && signal.prs >= r.cfg.DisputeSignalThreshold {
 		body += r.disputeStatement(j, signal)
 	}
@@ -327,13 +414,15 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 		r.log.ErrorContext(ctx, fmt.Sprintf("%s: reply on finding %s failed to post: %v", j.prTag, j.where, err))
 		return
 	}
-	r.recordBotReply(ctx, j.key, posted, store.BotReplyReply)
+	r.recordFindingBotReply(ctx, j.key, posted, j.findingID)
 	var stored *string
 	if dispute {
 		d := lang.TruncateRunes(j.text, disputeTextRunes)
 		stored = &d
 	}
-	safeDBErr(ctx, r.log, "MarkFindingReplied", func() error { return r.store.MarkFindingReplied(ctx, j.findingID, stored) })
+	if !j.secondPass {
+		safeDBErr(ctx, r.log, "MarkFindingReplied", func() error { return r.store.MarkFindingReplied(ctx, j.findingID, stored) })
+	}
 	// Posted, so recorded: nothing posted records no occurrence.
 	if signal != nil {
 		id, err := r.store.RecordDisputeOccurrence(ctx, j.team, j.key, signal.id, j.findingID, signal.rule)

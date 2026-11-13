@@ -1,11 +1,15 @@
 package bitbucket
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	pathpkg "path"
 	"strconv"
 	"strings"
 )
@@ -646,4 +650,62 @@ func (c *Client) GetProject(ctx context.Context, project string) error {
 // GetRepo reads one repository, to prove the same.
 func (c *Client) GetRepo(ctx context.Context, project, repo string) error {
 	return c.do(ctx, http.MethodGet, apiBase+"/projects/"+project+"/repos/"+repo, nil, nil, nil)
+}
+
+// EditFile commits content as the whole new body of path on branch, the
+// way Bitbucket's "Edit file" does, and returns the new commit's id.
+// sourceCommitID is the commit content was derived from: Bitbucket refuses
+// with 409 when the branch has moved past it, so nothing written meanwhile
+// is overwritten. 401/403 is a token or account without write permission
+// on that branch.
+//
+// The body is multipart, never JSON: the endpoint takes form fields only.
+// content goes out byte for byte; review's outgoing wrapper, which rewrites
+// comment text, leaves this method alone.
+func (c *Client) EditFile(ctx context.Context, project, repo, branch, path, sourceCommitID, message string, content []byte) (string, error) {
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	for _, f := range [][2]string{{"branch", branch}, {"sourceCommitId", sourceCommitID}, {"message", message}} {
+		if err := form.WriteField(f[0], f[1]); err != nil {
+			return "", err
+		}
+	}
+	part, err := form.CreateFormFile("content", pathpkg.Base(path))
+	if err != nil {
+		return "", err
+	}
+	if _, err := part.Write(content); err != nil {
+		return "", err
+	}
+	if err := form.Close(); err != nil {
+		return "", err
+	}
+	apiPath := fmt.Sprintf("%s/projects/%s/repos/%s/browse/%s", apiBase, project, repo, path)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.url(apiPath, nil), &body)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", form.FormDataContentType())
+	// Bitbucket's XSRF check refuses a multipart write without it.
+	req.Header.Set("X-Atlassian-Token", "no-check")
+	resp, err := c.send(req)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", statusError(http.MethodPut, apiPath, resp)
+	}
+	var commit struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&commit); err != nil {
+		return "", fmt.Errorf("decode PUT %s: %w", apiPath, err)
+	}
+	if commit.ID == "" {
+		return "", fmt.Errorf("PUT %s: no commit id in the answer", apiPath)
+	}
+	c.log.InfoContext(ctx, fmt.Sprintf("Committed %s on %s/%s branch %s", path, project, repo, branch))
+	return commit.ID, nil
 }

@@ -86,6 +86,14 @@ export interface Totals {
   lines_uncounted_runs: number;
 }
 
+/** A team's fix requests: the PR author asked noergler to apply a finding.
+ *  outcomes say why the ones not committed did not land. */
+export interface Fixes {
+  requested: number;
+  committed: number;
+  outcomes: { outcome: string; count: number }[];
+}
+
 export interface Metrics {
   since: string;
   /** Exclusive end of the window. */
@@ -99,7 +107,7 @@ export interface Metrics {
   /** Distinct PRs, not runs: reviewed got an LLM review back, seen is every
    *  PR touched in the window, skipped and failed included. */
   prs: { reviewed: number; seen: number };
-  by_team: (Totals & { team: string; team_name: string })[];
+  by_team: (Totals & { team: string; team_name: string; fixes: Fixes })[];
   daily: {
     day: string;
     team: string;

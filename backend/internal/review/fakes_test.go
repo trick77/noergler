@@ -73,6 +73,9 @@ type fakeBitbucket struct {
 	Calls      []string
 	replyErr   error
 	resolveErr error
+	// Edits is every EditFile call; editErr fails them.
+	Edits   []editedFile
+	editErr error
 
 	// UpdateVersions records the version each UpdatePRComment was sent
 	// with; the optimistic-locking version is otherwise invisible to a
@@ -95,6 +98,26 @@ func (f *fakeBitbucket) BotUsername() string { return f.bot }
 
 func (f *fakeBitbucket) CommentURL(project, repo string, prID, commentID int) string {
 	return fmt.Sprintf("https://bb.test/projects/%s/repos/%s/pull-requests/%d/overview?commentId=%d", project, repo, prID, commentID)
+}
+
+func (f *fakeBitbucket) CommitURL(project, repo, commit string) string {
+	return fmt.Sprintf("https://bb.test/projects/%s/repos/%s/commits/%s", project, repo, commit)
+}
+
+// editedFile is one EditFile call.
+type editedFile struct {
+	Project, Repo, Branch, Path, Source, Message string
+	Content                                      string
+}
+
+func (f *fakeBitbucket) EditFile(_ context.Context, project, repo, branch, path, source, message string, content []byte) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.Edits = append(f.Edits, editedFile{project, repo, branch, path, source, message, string(content)})
+	if f.editErr != nil {
+		return "", f.editErr
+	}
+	return "c0ffee1234567890", nil
 }
 
 func (f *fakeBitbucket) FetchPRDiff(_ context.Context, _, _ string, _, _ int) (string, error) {
@@ -272,6 +295,8 @@ type fakeStore struct {
 	// botReplies serves BotReplyByComment; BotReplies records InsertBotReply.
 	botReplies map[int]*store.BotReply
 	BotReplies []store.BotReply
+	// Fixes records RecordFindingFix.
+	Fixes []store.FindingFix
 	// signals serves OpenDisputeSignals, signalPRs DisputeSignalPRs by
 	// signal id; SignalReads records the reads, Occurrences the records.
 	signals     []store.DisputeSignal
@@ -659,13 +684,41 @@ func (f *fakeStore) SetUserLanguage(_ context.Context, userName string, l lang.L
 	return nil
 }
 
-func (f *fakeStore) InsertBotReply(_ context.Context, _ store.PRKey, commentID int, kind string) error {
+func (f *fakeStore) InsertBotReply(ctx context.Context, k store.PRKey, commentID int, kind string) error {
+	return f.InsertFindingBotReply(ctx, k, commentID, kind, 0)
+}
+
+func (f *fakeStore) FindingByID(_ context.Context, _ store.PRKey, id int64) (*store.Finding, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return nil, err
+	}
+	for _, fd := range f.byComment {
+		if fd.ID == id {
+			return fd, nil
+		}
+	}
+	return nil, nil
+}
+
+func (f *fakeStore) RecordFindingFix(_ context.Context, x store.FindingFix) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return false, err
+	}
+	f.Fixes = append(f.Fixes, x)
+	return true, nil
+}
+
+func (f *fakeStore) InsertFindingBotReply(_ context.Context, _ store.PRKey, commentID int, kind string, findingID int64) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err := f.err(); err != nil {
 		return err
 	}
-	b := store.BotReply{CommentID: commentID, Kind: kind}
+	b := store.BotReply{CommentID: commentID, Kind: kind, FindingID: findingID}
 	f.BotReplies = append(f.BotReplies, b)
 	if f.botReplies == nil {
 		f.botReplies = map[int]*store.BotReply{}
@@ -796,7 +849,9 @@ type fakeLLM struct {
 	review  inference.ReviewResult
 	mention inference.MentionResult
 	reply   inference.FindingReplyResult
-	note    inference.AlmanachNoteResult
+	// fix answers the fix call a requests_fix reply makes.
+	fix  inference.FindingFixResult
+	note inference.AlmanachNoteResult
 	// onReview runs during the gateway call, between prepare and post.
 	onReview func()
 	// onMention plays the model in a tool loop: it may run the offered
@@ -884,7 +939,13 @@ func (f *fakeLLM) Mention(ctx context.Context, req inference.MentionRequest) inf
 
 func (f *fakeLLM) FindingReply(_ context.Context, req inference.FindingReplyRequest) inference.FindingReplyResult {
 	f.Replies = append(f.Replies, req)
-	return f.reply
+	out := f.reply
+	// As the client does: the fix call follows a fix request that has one.
+	if out.Outcome == inference.OutcomeOK && out.Reply.Intent == inference.IntentRequestsFix && req.Fix != nil {
+		fix := f.fix
+		out.Fix = &fix
+	}
+	return out
 }
 
 // fakeJira serves one ticket and optionally its parent.

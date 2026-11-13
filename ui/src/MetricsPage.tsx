@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { Metrics, Totals } from "./api";
+import type { Fixes, Metrics, Totals } from "./api";
 import { Chart, Sparkline, type Series, type Trend } from "./Chart";
 import {
   calendarDay,
@@ -371,6 +371,17 @@ export function MetricsPage() {
       ? `${split} (${t("metrics.linesUncounted", { count: r.lines_uncounted_runs })})`
       : split;
   };
+  /** Why the requests that were not committed did not land, one outcome per
+   *  line; the header's title says what the two numbers are. */
+  const fixesTitle = (f: Fixes) =>
+    f.outcomes.length === 0
+      ? t("metrics.autoFixesTitle")
+      : f.outcomes
+          .map(
+            (o) =>
+              `${o.count} ${t(`metrics.fixOutcome.${o.outcome}`, { defaultValue: o.outcome })}`,
+          )
+          .join("\n");
   /** A team row's LOC: a dash when every run predates the figure, ≥ when
    *  some do, so the column never states a low number as exact. */
   const teamLines = (r: Totals) => {
@@ -613,6 +624,9 @@ export function MetricsPage() {
                       <th className={thNum}>{t("metrics.tokensOut")}</th>
                       <th className={thNum}>{t("metrics.findings")}</th>
                       <th className={thNum}>{t("metrics.lines")}</th>
+                      <th className={thNum} title={t("metrics.autoFixesTitle")}>
+                        {t("metrics.autoFixes")}
+                      </th>
                       <th className={thNum}>{t("metrics.cost")}</th>
                     </tr>
                   </thead>
@@ -635,6 +649,9 @@ export function MetricsPage() {
                         <td className={tdNum}>{row.findings_posted}</td>
                         <td className={tdNum} title={linesTitle(row)}>
                           {teamLines(row)}
+                        </td>
+                        <td className={tdNum} title={fixesTitle(row.fixes)}>
+                          {row.fixes.committed} / {row.fixes.requested}
                         </td>
                         <td className={tdNum}>{money(row.cost_usd)}</td>
                       </tr>

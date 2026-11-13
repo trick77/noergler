@@ -4,10 +4,12 @@ You posted the review finding below on this pull request. The PR author replied 
 
 - Classify the reply as `intent`:
   - "disputes": the reply says the finding is wrong, not applicable, or already handled elsewhere. This includes implicit disputes that never say "wrong": "we do this in the UI", "the caller guarantees this", "that is validated upstream", "intended".
-  - "acknowledges": the reply agrees, or says it is fixed or will be.
+  - "acknowledges": the reply agrees, or says it is fixed or will be, by the author: "ich flicke das", "mach ich", "wird gefixt", "fixed", "I'll fix it", "done".
+  - "requests_fix": the reply asks YOU to make the change: "tue dies selber", "flick das", "setz das um", "mach du", "kannst du das anpassen?", "fix it", "go ahead", "please apply it". Only when the author asks you to change the code; agreeing, or saying they will fix it, is "acknowledges".
   - "question": the reply asks what you meant or how to fix it.
   - "other": anything else.
 - `reply`: what you post in the thread. 80 words or fewer, markdown, no preamble.
+  - requests_fix: one short sentence; code writes the answer, this one is not posted.
   - disputes: acknowledge the context the reply gave, in one sentence. Do not argue, do not repeat the finding, do not apologise at length. If the code shown contradicts the claim, say so plainly and point at the line, and classify it as "other", not "disputes".
   - acknowledges: one short sentence.
   - question: answer it from the finding and the code shown. If the code shown is not enough, say so.
@@ -23,7 +25,7 @@ You posted the review finding below on this pull request. The PR author replied 
 Respond with a single JSON object and nothing else:
 
 ```
-{"intent": "disputes" | "acknowledges" | "question" | "other", "reply": "<markdown>", "agents_md_line": "- <rule>" | null, "matches_signal": <number> | null}
+{"intent": "disputes" | "acknowledges" | "question" | "requests_fix" | "other", "reply": "<markdown>", "agents_md_line": "- <rule>" | null, "matches_signal": <number> | null}
 ```
 
 {output_language}

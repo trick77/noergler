@@ -50,6 +50,7 @@ type DashboardStore interface {
 	PRRun(ctx context.Context, token string, n int) (store.RunDetail, bool, error)
 	PRCost(ctx context.Context, key store.PRKey) (*int64, error)
 	PRCommentCalls(ctx context.Context, key store.PRKey) ([]store.CommentCall, bool, error)
+	FixCountsSince(ctx context.Context, since time.Time) ([]store.FixCount, error)
 }
 
 // usd renders nano-USD as a fixed-point decimal string with 3 decimals,
@@ -324,6 +325,22 @@ type teamTotalsBody struct {
 	Team     string `json:"team"`
 	TeamName string `json:"team_name"`
 	totalsBody
+	// Fixes is the team's fix requests in the window: the PR author asked
+	// noergler to apply a finding.
+	Fixes fixesBody `json:"fixes"`
+}
+
+// fixesBody counts fix requests: committed is the share that landed, the
+// outcomes say why the rest did not (store.Fix* values).
+type fixesBody struct {
+	Requested int               `json:"requested"`
+	Committed int               `json:"committed"`
+	Outcomes  []fixOutcomeCount `json:"outcomes"`
+}
+
+type fixOutcomeCount struct {
+	Outcome string `json:"outcome"`
+	Count   int    `json:"count"`
 }
 
 type dayBody struct {
@@ -505,6 +522,23 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 	if failed("OutcomeBreakdown", err) {
 		return
 	}
+	fixCounts, err := st.FixCountsSince(ctx, since)
+	if failed("FixCountsSince", err) {
+		return
+	}
+	fixes := map[string]*fixesBody{}
+	for _, c := range fixCounts {
+		f := fixes[c.TeamSlug]
+		if f == nil {
+			f = &fixesBody{Outcomes: []fixOutcomeCount{}}
+			fixes[c.TeamSlug] = f
+		}
+		f.Requested += c.Count
+		if c.Outcome == store.FixCommitted {
+			f.Committed += c.Count
+		}
+		f.Outcomes = append(f.Outcomes, fixOutcomeCount{Outcome: c.Outcome, Count: c.Count})
+	}
 
 	window := "month"
 	until := monthStart(now).AddDate(0, 1, 0)
@@ -527,8 +561,12 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 	}
 	nameOf := d.teamNamer()
 	for _, t := range byTeam {
+		f := fixesBody{Outcomes: []fixOutcomeCount{}}
+		if c := fixes[t.TeamSlug]; c != nil {
+			f = *c
+		}
 		body.ByTeam = append(body.ByTeam, teamTotalsBody{
-			Team: t.TeamSlug, TeamName: nameOf(t.TeamSlug), totalsBody: toTotals(t.Totals),
+			Team: t.TeamSlug, TeamName: nameOf(t.TeamSlug), totalsBody: toTotals(t.Totals), Fixes: f,
 		})
 	}
 	for _, b := range daily {

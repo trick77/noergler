@@ -20,6 +20,10 @@ func (f *fakeBitbucket) FetchFileBytes(_ context.Context, _, _, commit, path str
 	if b, ok := f.blobs[key]; ok {
 		return b, nil
 	}
+	// A text file serves its bytes too, as the real raw endpoint does.
+	if s, ok := f.files[key]; ok {
+		return []byte(s), nil
+	}
 	return nil, &bitbucket.StatusError{Method: "GET", Path: "/raw/" + path, Status: 404}
 }
 

@@ -21,6 +21,12 @@ var Mention string
 //go:embed finding_reply.txt
 var FindingReply string
 
+// FindingFix writes the change the PR author asked for on a finding's
+// thread; its output becomes a commit.
+//
+//go:embed finding_fix.txt
+var FindingFix string
+
 // AlmanachNote is the fourth turn of the review conversation: the scratch
 // note of what the PR taught about its repository, for Almanach. Always
 // German, never shown on the PR.

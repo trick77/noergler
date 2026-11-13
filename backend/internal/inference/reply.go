@@ -17,6 +17,12 @@ import (
 // retry. The cost is the call's; a non-OK outcome carries no response, and
 // its cost is what a cut stream was paid (the zero CallCost when nothing was).
 func (c *Client) answer(ctx context.Context, prompt string, promptTokens int, format *llmwire.ResponseFormat) (*llmwire.ChatResponse, CallCost, Outcome, error) {
+	return c.answerAs(ctx, MentionSystemMessage, prompt, promptTokens, format)
+}
+
+// answerAs is answer under another system message: the fix call is the one
+// call allowed to write a change.
+func (c *Client) answerAs(ctx context.Context, system, prompt string, promptTokens int, format *llmwire.ResponseFormat) (*llmwire.ChatResponse, CallCost, Outcome, error) {
 	if err := c.tooLarge(promptTokens); err != nil {
 		return nil, CallCost{}, OutcomeTooLarge, err
 	}
@@ -24,7 +30,7 @@ func (c *Client) answer(ctx context.Context, prompt string, promptTokens int, fo
 		Model:     c.model,
 		Reasoning: c.reasoning(),
 		Messages: []llmwire.Message{
-			llmwire.System(MentionSystemMessage),
+			llmwire.System(system),
 			llmwire.User(prompt),
 		},
 	}
@@ -52,8 +58,12 @@ const (
 
 // ReplyIntents are what a reply on a finding's thread can be. "disputes"
 // covers the implicit case too: "we do this in the UI" disputes the finding
-// without saying it is wrong.
-var ReplyIntents = []string{"disputes", "acknowledges", "question", "other"}
+// without saying it is wrong. "requests_fix" asks noergler to apply the
+// finding itself ("flick das", "fix it"); "I'll fix it" acknowledges.
+var ReplyIntents = []string{"disputes", "acknowledges", "question", "requests_fix", "other"}
+
+// IntentRequestsFix is the intent that makes noergler commit the change.
+const IntentRequestsFix = "requests_fix"
 
 // FindingReplyPromptRequest is one finding-reply prompt's inputs.
 type FindingReplyPromptRequest struct {
@@ -209,18 +219,27 @@ func CheckAgentsMDLine(line, agentsMD string) string {
 type FindingReplyRequest struct {
 	Prompt       string
 	PromptTokens int
+	// Fix is the fix call, made only when the reply's intent is
+	// requests_fix; nil when the file to change could not be read, so a fix
+	// request is answered without one.
+	Fix *FindingFixRequest
 }
 
-// FindingReplyResult is one finding-reply call.
+// FindingReplyResult is one finding-reply call and, for a fix request, the
+// fix call after it.
 type FindingReplyResult struct {
 	Outcome Outcome
 	Reply   FindingReply
 	Cost    CallCost
 	Err     error
+	// Fix is the fix call's result, nil when none was made.
+	Fix *FindingFixResult
 }
 
 // FindingReply answers a reply on a finding's thread: one call, a strict
-// schema, no retry, like a mention.
+// schema, no retry, like a mention. A requests_fix intent with a Fix
+// request makes the second call, the change, on the same pool slot: the
+// posting stage can stage nothing, and the file it needs was read before.
 func (c *Client) FindingReply(ctx context.Context, req FindingReplyRequest) FindingReplyResult {
 	format := findingReplyFormat()
 	resp, cost, outcome, err := c.answer(ctx, req.Prompt, req.PromptTokens, &format)
@@ -234,5 +253,9 @@ func (c *Client) FindingReply(ctx context.Context, req FindingReplyRequest) Find
 		return out
 	}
 	out.Reply = reply
+	if reply.Intent == IntentRequestsFix && req.Fix != nil {
+		fix := c.FindingFix(ctx, *req.Fix)
+		out.Fix = &fix
+	}
 	return out
 }

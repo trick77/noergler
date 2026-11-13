@@ -148,6 +148,18 @@ export const en = {
     unpricedTrend: "Unpriced trend",
     linesReviewed: "LOC reviewed",
     lines: "LOC",
+    autoFixes: "Auto-fixes",
+    autoFixesTitle:
+      "Committed / requested: PR authors asked noergler to apply a finding",
+    fixOutcome: {
+      committed: "committed",
+      not_feasible: "not feasible",
+      rejected: "rejected as unsafe",
+      no_write: "no write permission",
+      conflict: "branch had moved",
+      refused: "refused by Bitbucket",
+      error: "failed",
+    },
     linesSplit:
       "{{total}} LOC (+{{added}} / −{{removed}}): lines sent to the model, each counted once per PR",
     linesTrend: "LOC reviewed trend",
@@ -331,6 +343,7 @@ export const en = {
   callKind: {
     reply: "reply to a finding",
     question: "answer to a mention",
+    fix: "auto-fix of a finding",
   },
   decision: {
     dropped: "dropped",

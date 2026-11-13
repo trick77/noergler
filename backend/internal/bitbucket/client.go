@@ -170,6 +170,14 @@ func (c *Client) CommentURL(project, repo string, prID, commentID int) string {
 	return u.String()
 }
 
+// CommitURL is one commit's page in its repository, for the link in the
+// reply that confirms a commit noergler made.
+func (c *Client) CommitURL(project, repo, commit string) string {
+	u := *c.base
+	u.Path = c.base.Path + fmt.Sprintf("/projects/%s/repos/%s/commits/%s", project, repo, commit)
+	return u.String()
+}
+
 // WithToken returns a copy acting as a different user, for onboarding writes
 // made with a team admin's own token. The transport (and its pool) is shared.
 func (c *Client) WithToken(token string) *Client {

@@ -193,6 +193,12 @@ func (b *botSwitch) BotUsername() string { return b.c().BotUsername() }
 func (b *botSwitch) CommentURL(project, repo string, prID, commentID int) string {
 	return b.c().CommentURL(project, repo, prID, commentID)
 }
+func (b *botSwitch) CommitURL(project, repo, commit string) string {
+	return b.c().CommitURL(project, repo, commit)
+}
+func (b *botSwitch) EditFile(ctx context.Context, project, repo, branch, path, sourceCommitID, message string, content []byte) (string, error) {
+	return b.c().EditFile(ctx, project, repo, branch, path, sourceCommitID, message, content)
+}
 func (b *botSwitch) FetchPRDiff(ctx context.Context, project, repo string, prID, contextLines int) (string, error) {
 	return b.c().FetchPRDiff(ctx, project, repo, prID, contextLines)
 }

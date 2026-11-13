@@ -210,9 +210,19 @@ func withoutFixed(existing, fixed []store.Finding) []store.Finding {
 // retry, because the next push's diff no longer holds the fix, so an
 // unstamped row would only dedup a real recurrence for the life of the PR.
 // A failed reply leaves an open thread on fixed code, and the log says so.
+//
+// A finding noergler committed itself at the author's request is stamped
+// only: its thread already says "Applied in", and it stays open so the
+// author resolves it once they have looked at the change (user, 2026-11-13).
 func (r *Reviewer) retireFixed(ctx context.Context, plan *reviewPlan, fixed []store.Finding, runID int64) {
 	for _, f := range fixed {
 		replied, resolved := false, false
+		if f.BotFixCommit != nil {
+			safeDBErr(ctx, r.log, "MarkFindingFixed", func() error { return r.store.MarkFindingFixed(ctx, f.ID, runID) })
+			r.log.InfoContext(ctx, fmt.Sprintf("%s: earlier finding on %s:%d (%s) fixed by noergler's commit %s: thread left open",
+				plan.prTag, f.FilePath, f.LineNumber, f.Severity, render.ShortSHA(*f.BotFixCommit, 8)))
+			continue
+		}
 		if cid := f.BitbucketCommentID; cid != nil {
 			reply := plan.lang.Pick("Behoben in `", "Fixed in `") + render.ShortSHA(plan.sourceCommit, 8) + "`."
 			if posted, err := r.bitbucket.ReplyToComment(ctx, plan.project, plan.repo, plan.prID, *cid, reply); err != nil {

@@ -89,8 +89,10 @@ type Reviewer struct {
 	// compiled-in ones unless a test overrides them.
 	template    string
 	mentionTmpl string
-	// replyTmpl answers a reply on a finding's thread.
+	// replyTmpl answers a reply on a finding's thread; fixTmpl writes the
+	// change when that reply asks noergler to apply the finding.
 	replyTmpl string
+	fixTmpl   string
 	// displayName extracts the author's first name for a finding reply;
 	// nil = names off.
 	displayName *regexp.Regexp
@@ -127,6 +129,7 @@ type Options struct {
 	Template             string
 	MentionTemplate      string
 	FindingReplyTemplate string
+	FindingFixTemplate   string
 	AlmanachTemplate     string
 	// DisplayNamePattern is config.Bitbucket's; nil = names off.
 	DisplayNamePattern *regexp.Regexp
@@ -159,6 +162,7 @@ func New(opt Options) *Reviewer {
 		template:          cmp.Or(opt.Template, prompts.Review),
 		mentionTmpl:       cmp.Or(opt.MentionTemplate, prompts.Mention),
 		replyTmpl:         cmp.Or(opt.FindingReplyTemplate, prompts.FindingReply),
+		fixTmpl:           cmp.Or(opt.FindingFixTemplate, prompts.FindingFix),
 		displayName:       opt.DisplayNamePattern,
 		log:               opt.Log,
 		owns:              opt.Owns,

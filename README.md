@@ -372,7 +372,7 @@ Ready-made requests for the IntelliJ HTTP client are in [`http/`](http/), one fi
 
 The answer is JSON: `healthy` (`status`: every target owned, bot can **write**, hook `ok`, no strays; actions: no target `failed`), `rows` per target, `text` (the same as a table), and with `projects` also `claimed` / `unclaimed` and `purged_prs`. `401` without the team secret or without `X-Bitbucket-Token`, `404` unknown team, `503` team disabled or `NOERGLER_PUBLIC_URL` unset, `400` unknown target, `409` the target belongs to another team, `413` body over 1 MiB, `422` malformed body or unknown field, `502` Bitbucket failed. Hooks are created or updated idempotently (a second run reports `already up to date`). A failure on one target is reported and the rest continue. `remove` without `projects` only removes hooks; claims and data stay.
 
-Write, not read: noergler posts review comments, so `grant-bot` grants `PROJECT_WRITE` / `REPO_WRITE` and the status check verifies that permission rather than the bot's ability to read the repository.
+Write, not read: noergler posts review comments, and on the PR author's request ("fix it" on a finding's thread) commits the fix to the PR's branch, so `grant-bot` grants `PROJECT_WRITE` / `REPO_WRITE` and the status check verifies that permission rather than the bot's ability to read the repository. A token or branch without write access only costs the auto-fix: noergler says so in the thread.
 
 **The full contract is served by the instance itself, at `/api/docs`** (the spec alone at `/api/openapi.yaml`), and is reachable from the dashboard's nav.
 
