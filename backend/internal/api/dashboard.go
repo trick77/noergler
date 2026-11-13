@@ -563,16 +563,16 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := metricsBody{
-		Since:     since,
-		LeadSince: leadSince,
-		Until:     until,
-		Window:    window,
-		Totals:    toTotals(totals),
-		PRs:       prCountsBody{Reviewed: reviewedPRs, Seen: seenPRs},
-		ByTeam:    make([]teamTotalsBody, 0, len(byTeam)),
-		Daily:     make([]dayBody, 0, len(daily)),
-		Attempts:  make([]outcomeDayBody, 0, len(attempts)),
-		Breakdown: make([]breakdownBody, 0, len(breakdown)),
+		Since:      since,
+		LeadSince:  leadSince,
+		Until:      until,
+		Window:     window,
+		Totals:     toTotals(totals),
+		PRs:        prCountsBody{Reviewed: reviewedPRs, Seen: seenPRs},
+		ByTeam:     make([]teamTotalsBody, 0, len(byTeam)),
+		Daily:      make([]dayBody, 0, len(daily)),
+		Attempts:   make([]outcomeDayBody, 0, len(attempts)),
+		Breakdown:  make([]breakdownBody, 0, len(breakdown)),
 		FixesDaily: make([]fixDayBody, 0, len(fixDays)),
 	}
 	nameOf := d.teamNamer()
