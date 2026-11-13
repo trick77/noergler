@@ -112,10 +112,14 @@ var ErrVersionConflict = errors.New("comment version conflict")
 
 // Client talks to one Bitbucket instance as one account.
 type Client struct {
-	base         *url.URL
-	token        string
-	botUsername  string
-	http         *http.Client
+	base        *url.URL
+	token       string
+	botUsername string
+	http        *http.Client
+	// git is http for git's smart HTTP: no header timeout, since
+	// upload-pack computes the whole pack before it answers; the caller's
+	// context bounds it.
+	git          *http.Client
 	log          *slog.Logger
 	maxDiffBytes int
 	maxFileBytes int
@@ -148,6 +152,15 @@ func New(cfg config.Bitbucket, log *slog.Logger) (*Client, error) {
 			}),
 			// Redirects are not followed: a 3xx would replay the bearer token
 			// at the new host. Non-2xx, so a redirect cannot read as success.
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
+		git: &http.Client{
+			Transport: httpstats.Transport("bitbucket", &http.Transport{
+				Proxy:               http.ProxyFromEnvironment,
+				DialContext:         (&net.Dialer{Timeout: dialTimeout}).DialContext,
+				TLSHandshakeTimeout: dialTimeout,
+				ForceAttemptHTTP2:   true,
+			}),
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
 		log:          log,

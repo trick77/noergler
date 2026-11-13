@@ -397,16 +397,20 @@ type BotReplyAnchor struct {
 }
 
 // FindingFix is one request of the PR author to have noergler apply a
-// finding, and what came of it.
+// finding or an answer, or resolve the PR's merge conflict, and what came
+// of it.
 //
 // Table: finding_fixes
 type FindingFix struct {
-	// One of FindingID and AnswerCommentID is set: a finding, or
-	// noergler's Q&A answer whose suggestion the author asked for.
-	FindingID       int64
-	AnswerCommentID int
-	TeamSlug        string
-	Outcome         string
+	// One of FindingID, AnswerCommentID and ConflictCommentID is set: a
+	// finding, noergler's Q&A answer whose suggestion the author asked
+	// for, or the author's comment asking to resolve the PR's merge
+	// conflict.
+	FindingID         int64
+	AnswerCommentID   int
+	ConflictCommentID int
+	TeamSlug          string
+	Outcome           string
 	// CommitSHA is set on a committed fix only.
 	CommitSHA string
 }

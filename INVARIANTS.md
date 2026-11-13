@@ -35,7 +35,10 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 ## Money
 
 - Per-PR cap stops everything: reviews, replies, Q&A, mention or not
-  (decided). One notice: the summary's cost banner.
+  (decided). One notice: the summary's cost banner. Two exceptions: a stop,
+  and a merge conflict code resolves alone (both cost nothing); a conflict
+  that needs the model is refused at the cap with an answer in its thread,
+  never silently.
 - Billed call with no run row: cost on the attempt. Reply and Q&A calls: an
   `llm_calls` row, no attempt. `prCostSQL` and `spendCTE` both sum runs +
   those attempts + `attempt_id IS NULL` calls: one figure everywhere. A
@@ -135,9 +138,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   The fix call rides the reply's pool slot (a post cannot Stage), the file
   read before it on the worker. One replacement in the finding's file,
   `ValidateFix` blunt rules, spliced byte for byte; committed on the source
-  branch at the head it was read at (409, never overwrite). `EditFile` is the
-  only repo write and never goes through `outgoing` (NoEmDash/WrapProse would
-  rewrite code). Committed once per finding (unique index); a confirmation
+  branch at the head it was read at (409, never overwrite). `EditFile` and
+  the merge-conflict push are the only repo writes; neither goes through
+  `outgoing` (NoEmDash/WrapProse would rewrite code). Committed once per finding (unique index); a confirmation
   always tells the author to review the change.
 - Auto-fix from a Q&A answer (user, 2026-11-13: inline only, PR author
   only): the envelope's `apply` is the model's reading, code decides. The
@@ -153,6 +156,28 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   the PR author: a fixed answer in the asker's language, no fix call, no
   `finding_fixes` row. An answer's row goes with its PR (`pull_request_id`),
   a finding's with its finding.
+- Merge-conflict resolution (user, 2026-11-13): `conflictRequest` decides,
+  by code, never the model; negated or self-spoken ("I'll resolve it
+  myself", "später") is no request; checked in the finding route too,
+  before its call, the author's plain reply included. PR author only; not the author = a fixed answer, no row.
+  Same repo only (a fork is refused). Bitbucket must report `conflicted`; a
+  merge here that finds no conflict is refused, never pushed. `Merge3`
+  stands only where Myers and patience align alike (`ErrAmbiguous` else),
+  checked against git's Myers and histogram; a file one side adds where
+  the other adds a directory is refused. Code first: a conflict
+  where both sides only inserted, share no non-blank line and set no key
+  both (text before `:`/`=`) is target then source, no model; the rest goes to one call that answers line ids (`T3`,
+  `S1`), never text; `ValidateResolution` blunt rules, no judge. All or
+  nothing within merge's bounds (constants, never settings): any conflict
+  past them, a lockfile, generated or binary file, add/add, delete/modify,
+  a mode change refuses the whole request. Merge commit, parents
+  `[source, target]`, pushed without force, compare-and-swap on the source
+  head read. The answer quotes every dropped line and tells the author to
+  build and test; an answer that would not hold every dropped line in full
+  refuses the request before the push. One `finding_fixes` row per request past the author
+  check (`conflict_comment_id`), counted under auto-fixes; its call is
+  `fix` in `llm_calls`. The push's full re-review is wanted, as after a
+  merge by hand.
 - Dispute signals (user, 2026-10-31): a `disputes` reply whose
   `agents_md_line` passes `CheckAgentsMDLine` is one occurrence. Read and
   written on the finding-reply path only; never in `review.txt`, the Q&A,
@@ -380,7 +405,16 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   `post` runs on the review's ctx, never the job's.
 - The plan across stages carries no file bodies and no raw diff. One
   exception, part of the call like the prompt: the cropped screenshot images
-  (at most `MaxVisualImages` pairs, downscaled).
+  (at most `MaxVisualImages` pairs, downscaled). A merge-conflict request
+  carries its merged files and the tree's entries, never the fetch: the
+  repo is detached (`gitrepo.Repo.Detach`) before `Stage`.
+- Git fetch and push are Bitbucket calls: on the worker, each worker stage
+  bounded (`conflictStageTimeout`), a fetch bounded in wire bytes and in
+  inflated bytes held (`MaxInflated`; the pack inflates many times over),
+  a shallower fetch let go before a deeper one. Through the
+  adapter's HTTP client and go-git's session API, never `git.Remote` (its
+  transport is a process-wide registry). Never a client timeout, never a
+  redirect (go-git's policy `NoFollowRedirects` on top of the adapter's).
 - Team semaphore before the global one, released in reverse.
 - `Queue.Stop` settles on "nothing runnable", not "no key held".
 - Pool work after a post (a call that posts nothing to Bitbucket) is

@@ -27,6 +27,12 @@ var FindingReply string
 //go:embed finding_fix.txt
 var FindingFix string
 
+// MergeConflict picks the lines a merge keeps where the PR's branches
+// conflict; its output becomes a merge commit.
+//
+//go:embed merge_conflict.txt
+var MergeConflict string
+
 // AlmanachNote is the fourth turn of the review conversation: the scratch
 // note of what the PR taught about its repository, for Almanach. Always
 // German, never shown on the PR.

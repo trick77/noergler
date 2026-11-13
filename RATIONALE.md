@@ -102,6 +102,46 @@ an incident or an eval run: read the reason before relaxing a rule.
 - Auto-fix call on the reply's pool slot: Stage's tail ends the PR's hold, so
   a second Stage from a post would release a key a newer job holds. The file
   is read on the worker before, for every author reply, accepted: rare.
+- Merge conflict by a merge commit over git, never `EditFile`: a one-parent
+  commit leaves the merge base where it was, so the same hunks conflict
+  again. Bitbucket's REST makes neither a merge commit nor a rebase with
+  content. go-git (no git binary: the image is distroless); its own merge
+  only fast-forwards, so the three-way merge is `internal/merge`, checked
+  against `git merge-file` (`TestAgreesWithGit`). Merged twice, Myers and
+  patience, and refused where they differ: a server's merge (ort) diffs
+  by histogram, so a file of repeated lines ("}") may settle there where
+  Myers conflicts, or the other way round; pushing either guess would put
+  code nobody was shown in "merged without a conflict".
+- Merge conflict, code first (user, 2026-11-13: "auf den deterministischen
+  teil möchte ich nicht verzichten"): insert/insert with nothing shared is
+  exact without a model and free; the model only gets what code cannot
+  settle. Nothing builds or tests the result (user: "noergler hat kein
+  runtime/test environment"), hence simple only, all or nothing, and every
+  dropped line quoted.
+- Merge conflict as line ids, never text: the model cannot write a line no
+  side has, line ends and a BOM stay byte for byte (the auto-fix reason),
+  and dropped lines are computed by code, not claimed by the model. A side
+  is dropped only where the kept version carries its change; else not
+  feasible.
+- Merge conflict author only: the push lands on the author's branch.
+- Merge conflict on the worker, not the pool: a fetch and a push are
+  Bitbucket calls, and serialization is for Bitbucket. Bounded instead:
+  60 s a stage, 300 MiB a fetch on the wire and 600 MiB inflated (one
+  process serves every team: an OOM would take them all down), depth 50
+  then 500. Paint-down merge base: a shallow fetch hides parents. An edge
+  on one side's walk only is harmless when the other side's walk ended
+  without one (a hidden commit would have been reached and fetched), so a
+  target that merged an old branch keeps its base; both edges, or no base,
+  is "fetch deeper", never a guessed base.
+- Merge conflict request negated or self-spoken is none ("I'll resolve the
+  conflict myself, just review"): a push the author did not ask for is
+  worse than a command missed, which the Q&A then answers in words.
+- Merge conflict's push re-reviews the whole PR (user, 2026-11-13: wanted):
+  a merge commit in the range forces a full review, as after a merge by
+  hand; skipping it only moves the full review to the next push.
+- Merge conflict at the cap: code's resolution costs nothing, so it runs
+  (like a stop); a model one is refused with an answer, because the author
+  asked and a fix request never goes silent.
 - A finding noergler committed is retired silently and its thread left open:
   the confirmation already asks the author to review the change; resolving
   it would hide the change the author was told to look at.

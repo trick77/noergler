@@ -12,7 +12,7 @@ import (
 // a finding. One row per request; the metrics page counts them.
 const (
 	FixCommitted   = "committed"    // the change is on the source branch
-	FixNotFeasible = "not_feasible" // the model said it cannot be done in one file
+	FixNotFeasible = "not_feasible" // the model or a code check said it cannot be done (a merge conflict: past a bound, a fork, the cap)
 	FixRejected    = "rejected"     // the change failed ValidateFix
 	FixNoWrite     = "no_write"     // Bitbucket refused the commit: 401/403
 	FixConflict    = "conflict"     // the branch moved since the file was read: 409
@@ -20,12 +20,13 @@ const (
 	FixError       = "error"        // the call failed or nothing usable came back
 )
 
-// RecordFindingFix writes one fix request, of a finding or of a Q&A answer
-// on k's PR. A second committed row for the same source is dropped (the
-// partial unique indexes): inserted is false then, and the caller logs it.
-// An answer's request on a PR without a row records nothing.
+// RecordFindingFix writes one fix request, of a finding, of a Q&A answer
+// or of a merge conflict on k's PR. A second committed row for the same
+// finding or answer is dropped (the partial unique indexes): inserted is
+// false then, and the caller logs it. An answer's or a conflict's request
+// on a PR without a row records nothing.
 func (s *Store) RecordFindingFix(ctx context.Context, k PRKey, x FindingFix) (inserted bool, err error) {
-	var sha, finding, answer any
+	var sha, finding, answer, conflict any
 	if x.CommitSHA != "" {
 		sha = x.CommitSHA
 	}
@@ -35,15 +36,18 @@ func (s *Store) RecordFindingFix(ctx context.Context, k PRKey, x FindingFix) (in
 	if x.AnswerCommentID != 0 {
 		answer = int64(x.AnswerCommentID)
 	}
+	if x.ConflictCommentID != 0 {
+		conflict = int64(x.ConflictCommentID)
+	}
 	tag, err := s.pool.Exec(ctx, `
-		INSERT INTO finding_fixes (finding_id, answer_comment_id, pull_request_id, team_slug, outcome, commit_sha)
-		SELECT $1::bigint, $2::bigint,
-		       CASE WHEN $2::bigint IS NULL THEN NULL ELSE
+		INSERT INTO finding_fixes (finding_id, answer_comment_id, conflict_comment_id, pull_request_id, team_slug, outcome, commit_sha)
+		SELECT $1::bigint, $2::bigint, $9::bigint,
+		       CASE WHEN $1::bigint IS NOT NULL THEN NULL ELSE
 		            (SELECT id FROM pull_requests WHERE project_key = $6 AND repo_slug = $7 AND pr_id = $8) END,
 		       $3, $4, $5
-		 WHERE $2::bigint IS NULL
+		 WHERE $1::bigint IS NOT NULL
 		    OR EXISTS (SELECT 1 FROM pull_requests WHERE project_key = $6 AND repo_slug = $7 AND pr_id = $8)
-		ON CONFLICT DO NOTHING`, finding, answer, x.TeamSlug, x.Outcome, sha, k.Project, k.Repo, k.PRID)
+		ON CONFLICT DO NOTHING`, finding, answer, x.TeamSlug, x.Outcome, sha, k.Project, k.Repo, k.PRID, conflict)
 	if err != nil {
 		return false, err
 	}

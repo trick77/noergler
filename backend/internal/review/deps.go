@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/trick77/noergler/internal/bitbucket"
+	"github.com/trick77/noergler/internal/gitrepo"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/jira"
 	"github.com/trick77/noergler/internal/lang"
@@ -34,6 +35,12 @@ type BitbucketClient interface {
 	// EditFile is the one write to repository content: a fix the PR author
 	// asked for. Never routed through outgoing's comment rewriting.
 	EditFile(ctx context.Context, project, repo, branch, path, sourceCommitID, message string, content []byte) (string, error)
+	// MergeStatus, GitRemote and BotIdentity serve a merge-conflict
+	// request: its merge commit, pushed over git, is the other write to
+	// repository content.
+	MergeStatus(ctx context.Context, project, repo string, prID int) (bitbucket.MergeStatus, error)
+	GitRemote(ctx context.Context, project, repo string, maxBytes int64) (gitrepo.Remote, error)
+	BotIdentity(ctx context.Context) (name, email string, err error)
 	FetchPRDiff(ctx context.Context, project, repo string, prID, contextLines int) (string, error)
 	FetchPRChanges(ctx context.Context, project, repo string, prID int) ([]string, error)
 	FetchPRChangeSet(ctx context.Context, project, repo string, prID int) (bitbucket.ChangeSet, error)
@@ -84,6 +91,7 @@ type InferenceClient interface {
 	Review(ctx context.Context, req inference.ReviewRequest) inference.ReviewResult
 	Mention(ctx context.Context, req inference.MentionRequest) inference.MentionResult
 	FindingReply(ctx context.Context, req inference.FindingReplyRequest) inference.FindingReplyResult
+	ResolveConflict(ctx context.Context, req inference.ConflictRequest) inference.ConflictResult
 	AlmanachNote(ctx context.Context, req inference.AlmanachNoteRequest) inference.AlmanachNoteResult
 }
 

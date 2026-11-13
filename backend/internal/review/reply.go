@@ -160,6 +160,16 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	if mentioned {
 		text = extractQuestion(text, bot)
 	}
+	// "behebe den Merge-Konflikt" under a finding is the PR's conflict, not
+	// this finding: the mention path's, before the model could read it as
+	// a fix request. The author's plain reply too (only the author's
+	// reaches here).
+	if conflictRequest(text) {
+		if mentioned {
+			return false, false
+		}
+		return true, r.HandleMention(ctx, payload, team, sched)
+	}
 	// "english" under a finding sets the author's language, even on a
 	// thread answered already: a command, not a reply, so it stamps nothing.
 	// Without a mention it obeys what a plain reply obeys: the bot does not

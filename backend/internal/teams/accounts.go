@@ -13,6 +13,7 @@ import (
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/gitrepo"
 	"github.com/trick77/noergler/internal/jira"
 	"github.com/trick77/noergler/internal/secretbox"
 	"github.com/trick77/noergler/internal/store"
@@ -234,6 +235,15 @@ func (b *botSwitch) UpdatePRComment(ctx context.Context, project, repo string, p
 }
 func (b *botSwitch) ResolveCommentThread(ctx context.Context, project, repo string, prID, commentID int) error {
 	return b.c().ResolveCommentThread(ctx, project, repo, prID, commentID)
+}
+func (b *botSwitch) MergeStatus(ctx context.Context, project, repo string, prID int) (bitbucket.MergeStatus, error) {
+	return b.c().MergeStatus(ctx, project, repo, prID)
+}
+func (b *botSwitch) GitRemote(ctx context.Context, project, repo string, maxBytes int64) (gitrepo.Remote, error) {
+	return b.c().GitRemote(ctx, project, repo, maxBytes)
+}
+func (b *botSwitch) BotIdentity(ctx context.Context) (string, string, error) {
+	return b.c().BotIdentity(ctx)
 }
 func (b *botSwitch) GetProject(ctx context.Context, project string) error {
 	return b.c().GetProject(ctx, project)
