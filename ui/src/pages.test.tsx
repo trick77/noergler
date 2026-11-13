@@ -945,7 +945,8 @@ describe("MetricsPage", () => {
     expect(await screen.findByLabelText(/LOC reviewed per day/)).toBeDefined();
   });
 
-  // Throughput, cost, LOC (user, 2026-11-11).
+  // Throughput, cost, LOC (user, 2026-11-11), then fix requests (user,
+  // 2026-11-13).
   it("orders the charts throughput, cost, LOC, auto-fix", async () => {
     serve({ metrics });
     render(<MetricsPage />);

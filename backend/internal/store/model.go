@@ -411,22 +411,15 @@ type FindingFix struct {
 	CommitSHA string
 }
 
-// FixCount is how many fix requests of one team ended in one outcome.
+// FixCount is how many fix requests of one team ended in one outcome on
+// one day.
 //
 // Table: -
 type FixCount struct {
+	Day      time.Time
 	TeamSlug string
 	Outcome  string
 	Count    int
-}
-
-// FixDay is one day's fix requests and the commits among them.
-//
-// Table: -
-type FixDay struct {
-	Day       time.Time
-	Requested int
-	Committed int
 }
 
 // RollupSnapshot is what one riptide rollup carries.

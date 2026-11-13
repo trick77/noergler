@@ -608,23 +608,14 @@ In `internal/store`. DisputePR is one PR a signal occurred on inside the window:
 
 ### store.FixCount
 
-In `internal/store`. FixCount is how many fix requests of one team ended in one outcome.
-
-| Field | Type | Doc |
-| --- | --- | --- |
-| `TeamSlug` | `string` |  |
-| `Outcome` | `string` |  |
-| `Count` | `int` |  |
-
-### store.FixDay
-
-In `internal/store`. FixDay is one day's fix requests and the commits among them.
+In `internal/store`. FixCount is how many fix requests of one team ended in one outcome on one day.
 
 | Field | Type | Doc |
 | --- | --- | --- |
 | `Day` | `time.Time` |  |
-| `Requested` | `int` |  |
-| `Committed` | `int` |  |
+| `TeamSlug` | `string` |  |
+| `Outcome` | `string` |  |
+| `Count` | `int` |  |
 
 ### store.OutcomeCount
 

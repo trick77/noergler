@@ -357,21 +357,29 @@ export function MetricsPage() {
   // A stack of committed and not committed: the bar's height is the
   // requests, the green part the commits. Two lines hid one under the other
   // on a day where every request was committed.
+  // States, not teams: status hues, never the team ramp the charts above
+  // use. Not committed is neutral, it mixes refusals, conflicts and "not
+  // feasible"; ochre already reads "skipped" in Throughput. An older server
+  // without the field leaves the card empty, never the page broken.
+  const fixRows = data.fixes_daily ?? [];
   const fixSeries: Series[] = [
     {
       id: "committed",
       name: t("metrics.fixesCommitted"),
-      color: "var(--color-s2)",
-      values: perDay(data.fixes_daily, (d) => d.committed),
+      color: "var(--color-online)",
+      values: perDay(fixRows, (d) => d.committed),
     },
     {
       id: "not_committed",
       name: t("metrics.fixesNotCommitted"),
-      color: "var(--color-ochre)",
-      values: perDay(data.fixes_daily, (d) => d.requested - d.committed),
+      color: "var(--color-muted)",
+      values: perDay(fixRows, (d) => d.requested - d.committed),
     },
   ];
-  const fixTop = Math.max(...perDay(data.fixes_daily, (d) => d.requested), 0);
+  const fixTop = Math.max(
+    ...window.map((_, i) => fixSeries.reduce((sum, s) => sum + s.values[i], 0)),
+    0,
+  );
   const fixTicks = wholeTicks(niceTicks(fixTop));
 
   // All teams per day, for the tiles' trends.
@@ -550,7 +558,8 @@ export function MetricsPage() {
             </Tile>
           </Tiles>
 
-          {/* Throughput, cost, LOC (user, 2026-11-11). */}
+          {/* Throughput, cost, LOC (user, 2026-11-11), then fix requests
+            (user, 2026-11-13). */}
           <p className={eyebrow}>{t("metrics.runsPerDay")}</p>
           <Card title={t("metrics.throughput")}>
             {runTop === 0 ? (
