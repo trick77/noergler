@@ -163,6 +163,11 @@ export const de = {
     linesNotCounted:
       "Alle Runs in diesem Zeitraum stammen von vor der LOC-Zählung.",
     linesChart: "Geprüfte LOC pro Tag für {{title}}, nach Team",
+    fixesPerDay: "Fix-Anfragen pro Tag",
+    autoFix: "Auto-Fix",
+    noFixes: "Keine Fix-Anfragen in diesem Zeitraum.",
+    fixesChart: "Fix-Anfragen und committete Fixes pro Tag für {{title}}",
+    fixesNotCommitted: "Nicht committet",
     costPerDay: "Kosten pro Tag",
     spend: "Ausgaben",
     noPriced: "Keine bepreisten Runs in diesem Zeitraum.",

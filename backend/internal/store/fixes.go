@@ -63,8 +63,25 @@ func (s *Store) AnswerFixCommit(ctx context.Context, answerCommentID int) (strin
 	return sha, err
 }
 
+// FixesDaily is fix requests and commits per day, every team summed, for
+// the metrics page's chart. Days without a request are absent: the caller
+// fills the window, as for DailyByTeam.
+func (s *Store) FixesDaily(ctx context.Context, since time.Time) ([]FixDay, error) {
+	return queryAll(ctx, s.pool, `
+		SELECT date_trunc('day', created_at) AS day,
+		       COUNT(*),
+		       COUNT(*) FILTER (WHERE outcome = 'committed')
+		  FROM finding_fixes
+		 WHERE created_at >= $1
+		 GROUP BY day
+		 ORDER BY day`, []any{since},
+		func(row pgx.CollectableRow, d *FixDay) error {
+			return row.Scan(&d.Day, &d.Requested, &d.Committed)
+		})
+}
+
 // FixCountsSince counts the fix requests in the window per team and
-// outcome, for the metrics page's Auto-fixes column.
+// outcome, for the metrics page's fix columns.
 func (s *Store) FixCountsSince(ctx context.Context, since time.Time) ([]FixCount, error) {
 	return queryAll(ctx, s.pool, `
 		SELECT team_slug, outcome, COUNT(*)

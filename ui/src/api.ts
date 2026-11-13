@@ -119,6 +119,9 @@ export interface Metrics {
     lines: number;
   }[];
   daily_attempts: { day: string; outcome: string; count: number }[];
+  /** Fix requests and the commits among them per day, every team summed;
+   *  days without a request are absent. */
+  fixes_daily: { day: string; requested: number; committed: number }[];
   breakdown: {
     outcome: string;
     reason?: string;

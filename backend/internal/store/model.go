@@ -420,6 +420,15 @@ type FixCount struct {
 	Count    int
 }
 
+// FixDay is one day's fix requests and the commits among them.
+//
+// Table: -
+type FixDay struct {
+	Day       time.Time
+	Requested int
+	Committed int
+}
+
 // RollupSnapshot is what one riptide rollup carries.
 //
 // Table: -

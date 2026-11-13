@@ -44,6 +44,7 @@ type fakeDashStore struct {
 	attemptsSince *time.Time
 	byTeam        []store.TeamTotals
 	fixCounts     []store.FixCount
+	fixDays       []store.FixDay
 	daily         []store.Bucket
 	dailyAtt      []store.AttemptBucket
 	activity      []store.TeamActivity
@@ -103,6 +104,9 @@ func (f *fakeDashStore) OutcomeBreakdown(context.Context, time.Time) ([]store.Ou
 }
 func (f *fakeDashStore) FixCountsSince(context.Context, time.Time) ([]store.FixCount, error) {
 	return f.fixCounts, f.err
+}
+func (f *fakeDashStore) FixesDaily(context.Context, time.Time) ([]store.FixDay, error) {
+	return f.fixDays, f.err
 }
 func (f *fakeDashStore) TotalsSince(context.Context, time.Time) (store.Totals, error) {
 	return f.totals, f.err
@@ -536,6 +540,23 @@ func TestMetricsCountsFixRequests(t *testing.T) {
 	}
 	if q := got.ByTeam[1].Fixes; q.Requested != 0 || q.Committed != 0 || q.Outcomes == nil {
 		t.Errorf("payments fixes = %+v, want zero with an empty list", q)
+	}
+}
+
+// The chart's day series: one row per day with requests, both counts.
+func TestMetricsCarriesFixesPerDay(t *testing.T) {
+	h := newDashHarness(t)
+	day := time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC)
+	h.st.fixDays = []store.FixDay{{Day: day, Requested: 4, Committed: 1}}
+
+	var got struct {
+		FixesDaily []fixDayBody `json:"fixes_daily"`
+	}
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/metrics?days=7").Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.FixesDaily) != 1 || got.FixesDaily[0] != (fixDayBody{"2026-11-13", 4, 1}) {
+		t.Errorf("fixes_daily = %+v", got.FixesDaily)
 	}
 }
 

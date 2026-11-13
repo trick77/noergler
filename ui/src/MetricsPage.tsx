@@ -353,6 +353,27 @@ export function MetricsPage() {
     data.totals.runs > 0 &&
     data.totals.lines_uncounted_runs >= data.totals.runs;
 
+  // Fix requests and commits per day, every team summed (user, 2026-11-13).
+  // A stack of committed and not committed: the bar's height is the
+  // requests, the green part the commits. Two lines hid one under the other
+  // on a day where every request was committed.
+  const fixSeries: Series[] = [
+    {
+      id: "committed",
+      name: t("metrics.fixesCommitted"),
+      color: "var(--color-s2)",
+      values: perDay(data.fixes_daily, (d) => d.committed),
+    },
+    {
+      id: "not_committed",
+      name: t("metrics.fixesNotCommitted"),
+      color: "var(--color-ochre)",
+      values: perDay(data.fixes_daily, (d) => d.requested - d.committed),
+    },
+  ];
+  const fixTop = Math.max(...perDay(data.fixes_daily, (d) => d.requested), 0);
+  const fixTicks = wholeTicks(niceTicks(fixTop));
+
   // All teams per day, for the tiles' trends.
   const findingsDaily = perDay(data.daily, (b) => b.findings_posted);
   const unpricedDaily = perDay(data.daily, (b) => b.unpriced_runs);
@@ -604,6 +625,26 @@ export function MetricsPage() {
                   label={t("metrics.linesChart", { title })}
                 />
                 <Legend series={linesSeries} trend={trendColor} />
+              </>
+            )}
+          </Card>
+
+          <p className={eyebrow}>{t("metrics.fixesPerDay")}</p>
+          <Card title={t("metrics.autoFix")}>
+            {fixTop === 0 ? (
+              <Empty>{t("metrics.noFixes")}</Empty>
+            ) : (
+              <>
+                <Chart
+                  series={fixSeries}
+                  width={1290}
+                  height={180}
+                  mark="bar"
+                  ticks={fixTicks}
+                  xLabels={window.map(label)}
+                  label={t("metrics.fixesChart", { title })}
+                />
+                <Legend series={fixSeries} />
               </>
             )}
           </Card>
