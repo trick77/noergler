@@ -557,16 +557,31 @@ describe("MetricsPage", () => {
     expect(await screen.findAllByText("3")).not.toHaveLength(0);
   });
 
-  // Committed over requested, and why the rest did not land on hover.
-  it("shows a team's auto-fixes with their outcomes", async () => {
+  // Requests and commits as two named columns right after the findings, the
+  // outcomes of the requests on hover.
+  it("shows a team's fix requests and commits beside the findings", async () => {
     serve({ metrics });
     render(<MetricsPage />);
 
-    const cell = await screen.findByText("3 / 5");
-    expect(cell.getAttribute("title")).toBe(
+    await screen.findByText("Fix requests");
+    const headers = screen
+      .getAllByRole("columnheader")
+      .map((h) => h.textContent);
+    const at = headers.indexOf("Findings");
+    expect(headers.slice(at, at + 3)).toEqual([
+      "Findings",
+      "Fix requests",
+      "Fixes committed",
+    ]);
+    const row = screen.getAllByRole("row").at(-1) as HTMLElement;
+    const cells = within(row)
+      .getAllByRole("cell")
+      .map((c) => c.textContent);
+    expect(cells.slice(at, at + 3)).toEqual(["5", "5", "3"]);
+    const requests = within(row).getAllByRole("cell")[at + 1];
+    expect(requests.getAttribute("title")).toBe(
       "3 committed\n2 no write permission",
     );
-    expect(screen.getByText("Auto-fixes")).toBeDefined();
   });
 
   // A fresh instance has run nothing, which is not the same as having run

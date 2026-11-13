@@ -371,11 +371,12 @@ export function MetricsPage() {
       ? `${split} (${t("metrics.linesUncounted", { count: r.lines_uncounted_runs })})`
       : split;
   };
-  /** Why the requests that were not committed did not land, one outcome per
-   *  line; the header's title says what the two numbers are. */
+  /** What came of a team's fix requests, one outcome per line: the
+   *  requests count every ask, committed or not (no write permission, not
+   *  feasible, ...). */
   const fixesTitle = (f: Fixes) =>
     f.outcomes.length === 0
-      ? t("metrics.autoFixesTitle")
+      ? t("metrics.fixRequestsTitle")
       : f.outcomes
           .map(
             (o) =>
@@ -622,11 +623,22 @@ export function MetricsPage() {
                       <th className={thNum}>{t("metrics.runs")}</th>
                       <th className={thNum}>{t("metrics.tokensIn")}</th>
                       <th className={thNum}>{t("metrics.tokensOut")}</th>
+                      {/* Fixes beside the findings they apply, as two named
+                        counts: "3 / 5" read as nothing (user, 2026-11-13). */}
                       <th className={thNum}>{t("metrics.findings")}</th>
-                      <th className={thNum}>{t("metrics.lines")}</th>
-                      <th className={thNum} title={t("metrics.autoFixesTitle")}>
-                        {t("metrics.autoFixes")}
+                      <th
+                        className={thNum}
+                        title={t("metrics.fixRequestsTitle")}
+                      >
+                        {t("metrics.fixRequests")}
                       </th>
+                      <th
+                        className={thNum}
+                        title={t("metrics.fixesCommittedTitle")}
+                      >
+                        {t("metrics.fixesCommitted")}
+                      </th>
+                      <th className={thNum}>{t("metrics.lines")}</th>
                       <th className={thNum}>{t("metrics.cost")}</th>
                     </tr>
                   </thead>
@@ -647,11 +659,12 @@ export function MetricsPage() {
                           {compact(row.completion_tokens)}
                         </td>
                         <td className={tdNum}>{row.findings_posted}</td>
+                        <td className={tdNum} title={fixesTitle(row.fixes)}>
+                          {row.fixes.requested}
+                        </td>
+                        <td className={tdNum}>{row.fixes.committed}</td>
                         <td className={tdNum} title={linesTitle(row)}>
                           {teamLines(row)}
-                        </td>
-                        <td className={tdNum} title={fixesTitle(row.fixes)}>
-                          {row.fixes.committed} / {row.fixes.requested}
                         </td>
                         <td className={tdNum}>{money(row.cost_usd)}</td>
                       </tr>

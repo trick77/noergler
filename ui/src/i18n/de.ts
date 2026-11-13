@@ -137,9 +137,12 @@ export const de = {
     unpricedTrend: "Verlauf ohne Preis",
     linesReviewed: "LOC geprüft",
     lines: "LOC",
-    autoFixes: "Auto-Fixes",
-    autoFixesTitle:
-      "Committet / angefragt: PR-Autoren liessen noergler ein Finding umsetzen",
+    fixRequests: "Fix-Anfragen",
+    fixRequestsTitle:
+      "Wie oft PR-Autoren noergler angefragt haben, ein Finding umzusetzen, egal was daraus wurde",
+    fixesCommitted: "Fixes committet",
+    fixesCommittedTitle:
+      "Fix-Anfragen, die noergler auf den PR-Branch committet hat",
     fixOutcome: {
       committed: "committet",
       not_feasible: "nicht machbar",
