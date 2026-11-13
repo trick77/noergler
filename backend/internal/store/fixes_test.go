@@ -163,3 +163,43 @@ func TestAnswerFixes_AnchorKeptCommittedOnceGoneWithThePR(t *testing.T) {
 		t.Errorf("after the PR's purge counts = %+v", counts)
 	}
 }
+
+// A merge-conflict request is a fix row of its PR, sourced from the
+// author's comment: committed as often as conflicts come, counted with the
+// rest under auto-fixes, gone with its PR.
+func TestConflictFixes_CountedGoneWithThePR(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	id := upsert(t, s, key, "a")
+	for _, x := range []FindingFix{
+		{ConflictCommentID: 970, TeamSlug: "payments", Outcome: FixNotFeasible},
+		{ConflictCommentID: 971, TeamSlug: "payments", Outcome: FixCommitted, CommitSHA: "abc"},
+		{ConflictCommentID: 972, TeamSlug: "payments", Outcome: FixCommitted, CommitSHA: "def"},
+	} {
+		if ok, err := s.RecordFindingFix(ctx, key, x); err != nil || !ok {
+			t.Fatalf("record %+v: %v, %v", x, ok, err)
+		}
+	}
+	if _, err := s.RecordFindingFix(ctx, key, FindingFix{ConflictCommentID: 973, AnswerCommentID: 974, TeamSlug: "payments", Outcome: FixError}); err == nil {
+		t.Error("a row with two sources was written")
+	}
+	other := key
+	other.PRID++
+	if ok, err := s.RecordFindingFix(ctx, other, FindingFix{ConflictCommentID: 980, TeamSlug: "payments", Outcome: FixError}); err != nil || ok {
+		t.Errorf("a conflict on a PR without a row = %v, %v: want nothing recorded", ok, err)
+	}
+	counts, _ := s.FixCountsSince(ctx, time.Now().Add(-time.Hour))
+	got := map[string]int{}
+	for _, c := range counts {
+		got[c.Outcome] += c.Count
+	}
+	if got[FixCommitted] != 2 || got[FixNotFeasible] != 1 {
+		t.Errorf("counts = %+v", counts)
+	}
+	if _, err := s.pool.Exec(ctx, `DELETE FROM pull_requests WHERE id = $1`, id); err != nil {
+		t.Fatal(err)
+	}
+	if counts, _ := s.FixCountsSince(ctx, time.Now().Add(-time.Hour)); len(counts) != 0 {
+		t.Errorf("after the PR's purge counts = %+v", counts)
+	}
+}

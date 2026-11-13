@@ -51,6 +51,9 @@ decision, not a cleanup.
 - The summary is the PR's, never one push's (INVARIANTS: prompt and findings).
 - Author text (PR description, replies, disputes) is intent, never evidence,
   never drops a finding.
+- A merge-conflict resolution's lines come from either side by id, never
+  from the model's text; code resolves what it can first (INVARIANTS:
+  prompt and findings).
 - Dispute signals feed the finding-thread answer only; never a review
   prompt, never a dropped finding (INVARIANTS: prompt and findings).
 - `review.txt`: `{files}` before `{cumulative_pr_diff}` and

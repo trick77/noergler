@@ -162,7 +162,7 @@ Indexes:
 
 Go types:
 
-- `store.FindingFix` (internal/store): FindingFix is one request of the PR author to have noergler apply a finding, and what came of it.
+- `store.FindingFix` (internal/store): FindingFix is one request of the PR author to have noergler apply a finding or an answer, or resolve the PR's merge conflict, and what came of it.
 
 | Column | Type | Null | Default | PK |
 | --- | --- | --- | --- | --- |
@@ -174,6 +174,7 @@ Go types:
 | `created_at` | timestamp with time zone | no | `now()` |  |
 | `answer_comment_id` | bigint | yes |  |  |
 | `pull_request_id` | bigint | yes |  |  |
+| `conflict_comment_id` | bigint | yes |  |  |
 
 Foreign keys:
 
@@ -190,7 +191,7 @@ Checks:
 
 - `CONSTRAINT finding_fixes_check CHECK ((outcome = 'committed'::text) = (commit_sha IS NOT NULL))`
 - `CONSTRAINT finding_fixes_outcome_check CHECK (outcome = ANY (ARRAY['committed'::text, 'not_feasible'::text, 'rejected'::text, 'no_write'::text, 'conflict'::text, 'refused'::text, 'error'::text]))`
-- `CONSTRAINT finding_fixes_source_check CHECK ((finding_id IS NULL) <> (answer_comment_id IS NULL) AND (answer_comment_id IS NULL) = (pull_request_id IS NULL))`
+- `CONSTRAINT finding_fixes_source_check CHECK (num_nonnulls(finding_id, answer_comment_id, conflict_comment_id) = 1 AND (finding_id IS NULL) = (pull_request_id IS NOT NULL))`
 
 ## findings
 
@@ -795,6 +796,7 @@ erDiagram
         timestamp_with_time_zone created_at
         bigint answer_comment_id
         bigint pull_request_id FK
+        bigint conflict_comment_id
     }
     findings {
         bigint id PK

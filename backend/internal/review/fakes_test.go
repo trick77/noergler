@@ -15,6 +15,7 @@ import (
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/gitrepo"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/jira"
 	"github.com/trick77/noergler/internal/lang"
@@ -77,6 +78,14 @@ type fakeBitbucket struct {
 	Edits   []editedFile
 	editErr error
 
+	// A merge-conflict request reads the merge status and pushes to
+	// remote, a real git server in the test.
+	mergeStatus bitbucket.MergeStatus
+	mergeErr    error
+	remote      gitrepo.Remote
+	remoteErr   error
+	noBotEmail  bool
+
 	// UpdateVersions records the version each UpdatePRComment was sent
 	// with; the optimistic-locking version is otherwise invisible to a
 	// test that only reads Updates.
@@ -102,6 +111,23 @@ func (f *fakeBitbucket) CommentURL(project, repo string, prID, commentID int) st
 
 func (f *fakeBitbucket) CommitURL(project, repo, commit string) string {
 	return fmt.Sprintf("https://bb.test/projects/%s/repos/%s/commits/%s", project, repo, commit)
+}
+
+func (f *fakeBitbucket) MergeStatus(context.Context, string, string, int) (bitbucket.MergeStatus, error) {
+	return f.mergeStatus, f.mergeErr
+}
+
+func (f *fakeBitbucket) GitRemote(_ context.Context, _, _ string, maxBytes int64) (gitrepo.Remote, error) {
+	r := f.remote
+	r.MaxBytes = maxBytes
+	return r, f.remoteErr
+}
+
+func (f *fakeBitbucket) BotIdentity(context.Context) (string, string, error) {
+	if f.noBotEmail {
+		return "noergler bot", "", nil
+	}
+	return "noergler bot", "noergler@example.invalid", nil
 }
 
 // editedFile is one EditFile call.
@@ -894,6 +920,9 @@ type fakeLLM struct {
 	Mentions []inference.MentionRequest
 	Replies  []inference.FindingReplyRequest
 	Notes    []inference.AlmanachNoteRequest
+	// conflict answers ResolveConflict; Conflicts is every request.
+	conflict  inference.ConflictResult
+	Conflicts []inference.ConflictRequest
 }
 
 func newFakeLLM() *fakeLLM {
@@ -971,6 +1000,11 @@ func (f *fakeLLM) Mention(ctx context.Context, req inference.MentionRequest) inf
 		out.Fix = &fix
 	}
 	return out
+}
+
+func (f *fakeLLM) ResolveConflict(_ context.Context, req inference.ConflictRequest) inference.ConflictResult {
+	f.Conflicts = append(f.Conflicts, req)
+	return f.conflict
 }
 
 func (f *fakeLLM) FindingReply(_ context.Context, req inference.FindingReplyRequest) inference.FindingReplyResult {

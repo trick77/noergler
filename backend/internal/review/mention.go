@@ -83,6 +83,15 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		return false
 	}
 
+	// "@bot behebe den Merge-Konflikt": decided by code, before the cap,
+	// which it checks itself: a conflict code resolves costs nothing and
+	// runs at the cap too; one the model must answer is refused there,
+	// with an answer.
+	if conflictRequest(question) {
+		staged = r.handleConflict(ctx, payload, key, prTag, team, sched, httpCounter)
+		return staged
+	}
+
 	// At the cap a mention stops like everything else, review or question:
 	// the banner, no answer, and the PR stays as it was (an ignored one is
 	// not reactivated for nothing). Under the cap, a Q&A on a PR with no row

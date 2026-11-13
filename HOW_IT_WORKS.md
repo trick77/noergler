@@ -504,6 +504,54 @@ paid and no row. No code line, the answer says so. `apply` anywhere else
 gets a fixed "can't apply that here", never the model's sentence. An answer
 is committed once.
 
+### Merge conflicts
+
+When Bitbucket shows a merge conflict, the PR author can write `@noergler
+behebe den Merge-Konflikt` ("löse den Konflikt auf", "resolve the merge
+conflict", "fix the conflicts"): a short command, a verb near "conflict",
+decided by code, under a finding too. Anyone else is told only the author
+can ask. A question ("how do I resolve the conflict?"), a negation or the
+author speaking of doing it ("I'll resolve the conflict myself", "später")
+goes to the Q&A.
+
+On the worker, bounded to 60 s: Bitbucket's merge status must say
+`conflicted` (else "no merge conflict"); a fork PR is refused. noergler
+fetches the source and target branches over git (smart HTTP, the account's
+token, no disk: in memory, at most 300 MiB read and 600 MiB held, 50
+commits deep, else 500) and finds their merge base. Every path both
+branches changed since then is merged line by line, git's way
+(`internal/merge`), twice, aligned by Myers and by patience; a file the two
+align differently is refused, since a server's histogram merge might
+settle it otherwise. A path only one side changed takes that side.
+
+Simple only, all or nothing: at most 10 paths both changed, 5 conflicts in 3
+files, 15 lines a side; no lockfile, generated or binary file, no file added
+on both sides or deleted on one, no mode change, no file on one side where
+the other has a directory; an answer too long to quote every dropped line
+in full. Past any bound the request
+is refused with the reason, nothing asked, nothing pushed. A conflict where
+both sides only added lines, share none and set no key both (`"lodash":`
+on both sides, `const X =` twice) is resolved by code: target's lines,
+then source's. The rest goes to one call (`merge_conflict.txt`):
+the model sees each conflict's base, target and source lines, numbered, and
+answers per conflict the ids of the lines to keep (`T1`, `S2`), never text.
+`ValidateResolution`: every id exists, none twice, each side's order kept,
+no base line. The model may drop one side's version only where the other
+already carries its change, else it says not feasible and why. At the cost
+cap a code-only resolution still runs; one that needs the model is refused
+with an answer.
+
+The merge commit (parents source then target, `Merge branch 'master' into
+feature/x`, the resolved spots, a link to the request) is authored by the
+bot account and pushed to the source branch without force, only if it still
+points where it was read. The answer links the commit, lists each spot and
+whether code or the model resolved it, quotes every dropped line, names the
+files merged without a conflict, and asks the author to build and test
+before merging. Failures answer like an auto-fix: no write permission,
+branch moved, refused by a hook, failed. Each request is a `finding_fixes`
+row (Auto-fixes on the metrics page), its call a `fix` row. The push
+triggers a full re-review, as a merge by hand does.
+
 ### Dispute signals
 
 When a dispute's reason is a project-wide rule AGENTS.md lacks, the model
