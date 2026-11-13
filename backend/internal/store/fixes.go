@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -19,22 +20,47 @@ const (
 	FixError       = "error"        // the call failed or nothing usable came back
 )
 
-// RecordFindingFix writes one fix request. A second committed row for the
-// same finding is dropped (the partial unique index): inserted is false
-// then, and the caller logs it.
-func (s *Store) RecordFindingFix(ctx context.Context, x FindingFix) (inserted bool, err error) {
-	var sha any
+// RecordFindingFix writes one fix request, of a finding or of a Q&A answer
+// on k's PR. A second committed row for the same source is dropped (the
+// partial unique indexes): inserted is false then, and the caller logs it.
+// An answer's request on a PR without a row records nothing.
+func (s *Store) RecordFindingFix(ctx context.Context, k PRKey, x FindingFix) (inserted bool, err error) {
+	var sha, finding, answer any
 	if x.CommitSHA != "" {
 		sha = x.CommitSHA
 	}
+	if x.FindingID != 0 {
+		finding = x.FindingID
+	}
+	if x.AnswerCommentID != 0 {
+		answer = int64(x.AnswerCommentID)
+	}
 	tag, err := s.pool.Exec(ctx, `
-		INSERT INTO finding_fixes (finding_id, team_slug, outcome, commit_sha)
-		VALUES ($1, $2, $3, $4)
-		ON CONFLICT DO NOTHING`, x.FindingID, x.TeamSlug, x.Outcome, sha)
+		INSERT INTO finding_fixes (finding_id, answer_comment_id, pull_request_id, team_slug, outcome, commit_sha)
+		SELECT $1::bigint, $2::bigint,
+		       CASE WHEN $2::bigint IS NULL THEN NULL ELSE
+		            (SELECT id FROM pull_requests WHERE project_key = $6 AND repo_slug = $7 AND pr_id = $8) END,
+		       $3, $4, $5
+		 WHERE $2::bigint IS NULL
+		    OR EXISTS (SELECT 1 FROM pull_requests WHERE project_key = $6 AND repo_slug = $7 AND pr_id = $8)
+		ON CONFLICT DO NOTHING`, finding, answer, x.TeamSlug, x.Outcome, sha, k.Project, k.Repo, k.PRID)
 	if err != nil {
 		return false, err
 	}
 	return tag.RowsAffected() == 1, nil
+}
+
+// AnswerFixCommit is the commit made for noergler's Q&A answer
+// answerCommentID, "" when none.
+func (s *Store) AnswerFixCommit(ctx context.Context, answerCommentID int) (string, error) {
+	var sha string
+	err := s.pool.QueryRow(ctx, `
+		SELECT commit_sha FROM finding_fixes
+		 WHERE answer_comment_id = $1 AND outcome = 'committed'`, int64(answerCommentID)).Scan(&sha)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return sha, err
 }
 
 // FixCountsSince counts the fix requests in the window per team and

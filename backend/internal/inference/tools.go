@@ -89,7 +89,8 @@ func (c *Client) mentionWithTools(ctx context.Context, req MentionRequest) Menti
 			res.Outcome = OutcomeOK
 			// A stray </think> was seen after a multi-turn tool history
 			// (llmwire FINDINGS §2): it is markup, never the answer.
-			res.Answer = ParseMention(strings.ReplaceAll(resp.Content, "</think>", ""))
+			content := strings.ReplaceAll(resp.Content, "</think>", "")
+			res.Answer, res.Apply = ParseMention(content), ParseMentionApply(content)
 			res.Cost = SumCosts(res.Rounds)
 			return res
 		}

@@ -387,7 +387,13 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 		return
 	}
 	if res.Reply.Intent == inference.IntentRequestsFix {
-		r.postFix(ctx, j)
+		t := &fixTarget{key: j.key, team: j.team, project: j.project, repo: j.repo, prID: j.prID, prTag: j.prTag,
+			where: "finding " + j.where, replyTo: j.replyTo, threadID: j.threadID, lang: j.lang,
+			plan: j.fix, res: res.Fix, findingID: j.findingID, done: j.botFixCommit}
+		// Nothing posted, nothing stamped: a later reply may try again.
+		if r.postFix(ctx, t) && !j.secondPass && j.botFixCommit == nil {
+			safeDBErr(ctx, r.log, "MarkFindingReplied", func() error { return r.store.MarkFindingReplied(ctx, j.findingID, nil) })
+		}
 		return
 	}
 	if j.fixOnly {

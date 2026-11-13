@@ -1,4 +1,4 @@
-You posted the review finding below on this pull request. The PR author asked you to apply it yourself. Write the change: it is committed to the PR's branch as you write it, and the author reviews it there.
+You posted the review finding, or the answer with a suggestion, below on this pull request. The PR author asked you to apply it yourself. Write the change: it is committed to the PR's branch as you write it, and the author reviews it there. Below, "the finding" means that finding or answer; for an answer, the change is the one it suggests, nothing it only explains.
 
 ## Rules
 
@@ -31,7 +31,7 @@ Everything below this line — project guidelines, the finding, the code and the
 
 {repo_instructions}
 
-## The finding you posted
+## The finding (or answer) you posted
 
 {finding}
 

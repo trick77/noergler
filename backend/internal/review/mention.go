@@ -163,12 +163,23 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	ticket, parent, jiraDown := r.fetchTicket(ctx, pr.FromRef.Branch(), pr.Title, prTag)
 	ticketContext := ticketContextFor(ticket, parent, jiraDown)
 	name := firstName(r.displayName, comment.Author.DisplayName)
-	replied, byOther, parentName := r.parentComment(ctx, key, prTag, payload.CommentParentID, state, comment.Author.Name)
+	replied, byOther, parentName, parentC := r.parentComment(ctx, key, prTag, payload.CommentParentID, state, comment.Author.Name)
 	if byOther {
 		// The answer is to someone else's comment: naming the asker would
 		// address the wrong person, so it names no one (user, 2026-10-20).
 		name = ""
 	}
+	// noergler's answer under its own earlier answer: that answer's row,
+	// read once, for the code line and for a fix of its suggestion.
+	var parentBot *store.BotReply
+	if parentC != nil && strings.EqualFold(parentC.Author.Name, r.bitbucket.BotUsername()) {
+		parentBot = safeDB(ctx, r.log, "BotReplyByComment", func() (*store.BotReply, error) {
+			return r.store.BotReplyByComment(ctx, key, payload.CommentParentID)
+		})
+	}
+	anchor := r.questionAnchor(ctx, key, prTag, comment.ID, payload.CommentParentID, parentC, parentBot, pr.FromRef.LatestCommit)
+	answerFix := r.prepareAnswerFix(ctx, pr, key, prTag, comment.Author.Name, payload.CommentParentID, parentC, parentBot,
+		repoInstructions, question, l)
 
 	prompt := inference.RenderMentionPrompt(inference.MentionPromptRequest{
 		Template:         r.mentionTmpl,
@@ -187,11 +198,15 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		name: name, namesOn: r.displayName != nil, nameWithheld: byOther, parentName: parentName,
 		ask: &mentionAsk{key: key, prTag: prTag, user: comment.Author.Name, text: question, lang: l,
 			from: pr.FromRef.Branch(), to: pr.ToRef.Branch(), prAuthor: pr.Author.User.Name},
+		anchor: anchor, fix: answerFix, team: team,
 	}
 	req := inference.MentionRequest{
 		Prompt:       prompt,
 		PromptTokens: r.tokens.Count(inference.MentionSystemMessage) + r.tokens.Count(prompt),
 		Tools:        r.mentionTools(job.ask),
+	}
+	if answerFix != nil {
+		req.Fix = answerFix.req
 	}
 	infer := func(inferCtx context.Context) { job.res = r.llm.Mention(inferCtx, req) }
 	post := func(postCtx context.Context) { r.postMention(postCtx, job) }
@@ -222,6 +237,13 @@ type mentionJob struct {
 	ask          *mentionAsk
 	counter      *httpstats.Counter
 	res          inference.MentionResult
+	// anchor is the code line the question sat on, kept with the answer so
+	// the author can have its suggestion applied; nil for none.
+	anchor *store.BotReplyAnchor
+	// fix is the request to apply noergler's earlier answer, nil when the
+	// mention replies to no Q&A answer of noergler's.
+	fix  *answerFix
+	team string
 }
 
 // postMention is the Q&A's posting stage, on the worker.
@@ -240,6 +262,12 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 	for _, c := range result.Rounds {
 		r.logCost(ctx, prTag, c)
 		r.recordCommentCall(ctx, j.ask.key, store.CallQuestion, replyTo, c)
+	}
+	if result.Fix != nil {
+		if result.Fix.Cost.Answered {
+			r.logCost(ctx, prTag, result.Fix.Cost)
+		}
+		r.recordCommentCall(ctx, j.ask.key, store.CallFix, replyTo, result.Fix.Cost)
 	}
 	// Which way the tools went: without them a settings question is
 	// answered with "cannot see", and prod once ran a model so unnoticed.
@@ -284,6 +312,12 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 		}
 		r.reply(ctx, project, repo, prID, replyTo, reply)
 	case inference.OutcomeOK:
+		// "setz das um" under noergler's own answer: code answers, the
+		// model's sentence is not posted.
+		if result.Apply && j.fix != nil {
+			r.postAnswerFix(ctx, j)
+			return
+		}
 		// An empty answer still gets a reply: a mention is never left
 		// silently unanswered.
 		// The switch is stored here and confirmed by code, in the new
@@ -318,7 +352,7 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 			_, nameState = guardName(answer, j.name, "question", j.namesOn)
 		}
 		answer = prefix + answer
-		r.reply(ctx, project, repo, prID, replyTo, answer)
+		r.replyAnswer(ctx, project, repo, prID, replyTo, answer, j.anchor)
 		r.log.InfoContext(ctx, fmt.Sprintf("Posted Q&A reply on %s (name=%s)", prTag, nameState))
 	default:
 		r.log.ErrorContext(ctx, fmt.Sprintf("Mention Q&A on %s failed: %v", prTag, result.Err))
@@ -381,19 +415,20 @@ const maxParentRunes = 4096
 // a reply comes without a location (known limit, as for finding replies).
 // byOther is a parent neither the bot nor the asker wrote, otherName its
 // author's first name ("" when unknown). state is the PR's skip state as
-// HandleMention read it, nil when unread.
+// HandleMention read it, nil when unread. c is the comment as fetched, nil
+// when there is none.
 func (r *Reviewer) parentComment(ctx context.Context, key store.PRKey, prTag string, parentID int,
-	state *store.SkipState, asker string) (text string, byOther bool, otherName string) {
+	state *store.SkipState, asker string) (text string, byOther bool, otherName string, c *bitbucket.Comment) {
 	if parentID == 0 {
-		return "", false, ""
+		return "", false, "", nil
 	}
 	if state != nil && state.Summary != nil && state.Summary.ID == parentID {
-		return "", false, ""
+		return "", false, "", nil
 	}
 	c, err := r.bitbucket.FetchPRComment(ctx, key.Project, key.Repo, key.PRID, parentID)
 	if err != nil {
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: replied-to comment %d not fetched, answered without it: %v", prTag, parentID, err))
-		return "", false, ""
+		return "", false, "", nil
 	}
 	bot := strings.EqualFold(c.Author.Name, r.bitbucket.BotUsername())
 	var b strings.Builder
@@ -436,9 +471,9 @@ func (r *Reviewer) parentComment(ctx context.Context, key store.PRKey, prTag str
 	r.log.InfoContext(ctx, fmt.Sprintf("%s: mention replies to comment %d (bot=%t, anchored=%t)",
 		prTag, parentID, bot, c.Anchor != nil && c.Anchor.Path != ""))
 	if bot || strings.EqualFold(c.Author.Name, asker) {
-		return b.String(), false, ""
+		return b.String(), false, "", c
 	}
-	return b.String(), true, firstName(r.displayName, c.Author.DisplayName)
+	return b.String(), true, firstName(r.displayName, c.Author.DisplayName), c
 }
 
 // reply posts a threaded reply, logging a failure rather than propagating it:

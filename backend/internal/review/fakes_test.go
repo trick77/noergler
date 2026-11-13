@@ -702,7 +702,7 @@ func (f *fakeStore) FindingByID(_ context.Context, _ store.PRKey, id int64) (*st
 	return nil, nil
 }
 
-func (f *fakeStore) RecordFindingFix(_ context.Context, x store.FindingFix) (bool, error) {
+func (f *fakeStore) RecordFindingFix(_ context.Context, _ store.PRKey, x store.FindingFix) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err := f.err(); err != nil {
@@ -710,6 +710,32 @@ func (f *fakeStore) RecordFindingFix(_ context.Context, x store.FindingFix) (boo
 	}
 	f.Fixes = append(f.Fixes, x)
 	return true, nil
+}
+
+func (f *fakeStore) AnswerFixCommit(_ context.Context, answerID int) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, x := range f.Fixes {
+		if x.AnswerCommentID == answerID && x.Outcome == store.FixCommitted {
+			return x.CommitSHA, nil
+		}
+	}
+	return "", nil
+}
+
+func (f *fakeStore) InsertAnswerBotReply(_ context.Context, _ store.PRKey, commentID int, anchor *store.BotReplyAnchor) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return err
+	}
+	b := store.BotReply{CommentID: commentID, Kind: store.BotReplyQuestion, Anchor: anchor}
+	f.BotReplies = append(f.BotReplies, b)
+	if f.botReplies == nil {
+		f.botReplies = map[int]*store.BotReply{}
+	}
+	f.botReplies[commentID] = &b
+	return nil
 }
 
 func (f *fakeStore) InsertFindingBotReply(_ context.Context, _ store.PRKey, commentID int, kind string, findingID int64) error {
@@ -934,7 +960,13 @@ func (f *fakeLLM) Mention(ctx context.Context, req inference.MentionRequest) inf
 		}
 		return inference.MentionResult{Outcome: inference.OutcomeOK, Answer: answer}
 	}
-	return f.mention
+	out := f.mention
+	// As the client does: the fix call follows an `apply` that has one.
+	if out.Outcome == inference.OutcomeOK && out.Apply && req.Fix != nil {
+		fix := f.fix
+		out.Fix = &fix
+	}
+	return out
 }
 
 func (f *fakeLLM) FindingReply(_ context.Context, req inference.FindingReplyRequest) inference.FindingReplyResult {

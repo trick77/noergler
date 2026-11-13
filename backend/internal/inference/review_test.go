@@ -193,6 +193,43 @@ func TestReviewTimeout(t *testing.T) {
 	}
 }
 
+func TestParseMentionApply(t *testing.T) {
+	for in, want := range map[string]bool{
+		`{"answer":"ok","apply":true}`:                     true,
+		"```json\n{\"answer\":\"ok\",\"apply\":true}\n```": true,
+		`{"answer":"ok","apply":false}`:                    false,
+		`{"answer":"ok","apply":"true"}`:                   false,
+		`{"answer":"ok"}`:                                  false,
+		"plain text":                                       false,
+	} {
+		if got := ParseMentionApply(in); got != want {
+			t.Errorf("ParseMentionApply(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+// `apply` with a Fix request makes the fix call after the answer; without
+// either, none.
+func TestMentionMakesTheFixCallOnApply(t *testing.T) {
+	for name, c := range map[string]struct {
+		body  string
+		fix   *FindingFixRequest
+		calls int
+	}{
+		"apply with a fix":    {`{"answer":"ok","apply":true}`, &FindingFixRequest{Prompt: "fix"}, 2},
+		"apply without a fix": {`{"answer":"ok","apply":true}`, nil, 1},
+		"no apply":            {`{"answer":"ok","apply":false}`, &FindingFixRequest{Prompt: "fix"}, 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := &fakeGateway{chatBody: chatBody(c.body)}
+			got := reviewClient(t, f).Mention(context.Background(), MentionRequest{Prompt: "why?", Fix: c.fix})
+			if f.gotChat != c.calls || (got.Fix != nil) != (c.calls == 2) {
+				t.Errorf("calls = %d, fix = %+v", f.gotChat, got.Fix)
+			}
+		})
+	}
+}
+
 func TestMention(t *testing.T) {
 	t.Run("envelope is rendered", func(t *testing.T) {
 		f := &fakeGateway{chatBody: chatBody(`{"answer": "because of X", "refs": [{"file": "a.py", "line": 4}]}`)}

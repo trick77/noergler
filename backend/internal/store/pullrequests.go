@@ -446,22 +446,42 @@ func (s *Store) InsertFindingBotReply(ctx context.Context, k PRKey, commentID in
 	return err
 }
 
+// InsertAnswerBotReply is InsertBotReply for noergler's Q&A answer: anchor
+// is the code line its question sat on, nil for none.
+func (s *Store) InsertAnswerBotReply(ctx context.Context, k PRKey, commentID int, anchor *BotReplyAnchor) error {
+	if anchor == nil {
+		return s.InsertBotReply(ctx, k, commentID, BotReplyQuestion)
+	}
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO bot_replies (pull_request_id, comment_id, kind, anchor_path, anchor_line, anchor_commit)
+		SELECT id, $4, $5, $6, $7, $8 FROM pull_requests
+		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
+		ON CONFLICT DO NOTHING`,
+		k.Project, k.Repo, k.PRID, commentID, BotReplyQuestion, storable(anchor.Path), anchor.Line, anchor.Commit)
+	return err
+}
+
 // BotReplyByComment is the reply noergler posted as commentID on that PR,
 // or nil. Scoped like FindingByComment: a comment id from another team's PR
 // finds nothing, and a merged or deleted PR is not answered on.
 func (s *Store) BotReplyByComment(ctx context.Context, k PRKey, commentID int) (*BotReply, error) {
 	var b BotReply
+	var path, commit *string
+	var line *int
 	err := s.pool.QueryRow(ctx, `
-		SELECT b.comment_id, b.kind, COALESCE(b.finding_id, 0)
+		SELECT b.comment_id, b.kind, COALESCE(b.finding_id, 0), b.anchor_path, b.anchor_line, b.anchor_commit
 		FROM bot_replies b JOIN pull_requests p ON b.pull_request_id = p.id
 		WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3 AND p.`+activeFilter+`
 			AND b.comment_id = $4`,
-		k.Project, k.Repo, k.PRID, commentID).Scan(&b.CommentID, &b.Kind, &b.FindingID)
+		k.Project, k.Repo, k.PRID, commentID).Scan(&b.CommentID, &b.Kind, &b.FindingID, &path, &line, &commit)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	if path != nil && line != nil && commit != nil {
+		b.Anchor = &BotReplyAnchor{Path: *path, Line: *line, Commit: *commit}
 	}
 	return &b, nil
 }
