@@ -18,7 +18,8 @@ import (
 // looser.
 const FixSystemMessage = "You are a code review assistant applying one review finding to one file, because the " +
 	"pull request's author asked you to. Change only what the finding asks for, in the code shown, and nothing " +
-	"else: no refactoring, no formatting, no other fixes. When the finding cannot be fixed by replacing one " +
+	"else: no refactoring, no formatting, no other fixes. Write the change in the team's own style: the coding " +
+	"conventions of the project guidelines, else those of the surrounding code. When the finding cannot be fixed by replacing one " +
 	"contiguous piece of the code shown (it needs other files, a generator run, a decision only the author can " +
 	"make, or the code shown does not contain it), say so instead of guessing. Respond only with the JSON " +
 	"envelope described in the prompt.\n" +

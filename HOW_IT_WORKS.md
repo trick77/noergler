@@ -457,8 +457,9 @@ das", "setz das um", "fix it") is the intent `requests_fix`; "ich flicke das"
 or "fixed" acknowledges. Always on, no setting. On that intent a second call
 (`finding_fix.txt`, same profile, same pool slot) gets the file at the PR
 head, 60 lines either side of the finding's line (found again by its text,
-nearest the old number; gone = not feasible), and returns one exact `old`
-text and its replacement, or `feasible: false` with a reason (another file,
+nearest the old number; gone = not feasible) and AGENTS.md, and returns one
+exact `old` text and its replacement, written in the team's style (AGENTS.md
+conventions, else the surrounding code's), or `feasible: false` with a reason (another file,
 a generator run, a decision only the author can make). `ValidateFix`, blunt
 rules: `old` once in the file, inside the excerpt, at most 40 lines, no new
 secret-like literal; the file is spliced byte for byte (line ends, BOM, last

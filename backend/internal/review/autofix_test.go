@@ -38,9 +38,11 @@ func TestFixRequestCommitsAndConfirms(t *testing.T) {
 	if len(h.llm.Replies) != 1 || h.llm.Replies[0].Fix == nil {
 		t.Fatalf("model calls %d, fix request %v: want one reply call carrying the fix call", len(h.llm.Replies), h.llm.Replies)
 	}
+	// The team's conventions (AGENTS.md) ride the fix prompt: the change
+	// must read like the team's own code.
 	if fp := h.llm.Replies[0].Fix.Prompt; !strings.Contains(fp, "func new() {}") || !strings.Contains(fp, "fix it") ||
-		!strings.Contains(fp, "fix loop redirection") {
-		t.Errorf("fix prompt lacks the code, the request or the commit style:\n%s", fp)
+		!strings.Contains(fp, "fix loop redirection") || !strings.Contains(fp, "Be terse.") {
+		t.Errorf("fix prompt lacks the code, the request, the commit style or AGENTS.md:\n%s", fp)
 	}
 	if len(h.bb.Edits) != 1 {
 		t.Fatalf("edits = %+v, want one commit", h.bb.Edits)
