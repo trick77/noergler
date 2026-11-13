@@ -137,7 +137,7 @@ func TestApplyQAAnswerOnlyForThePRAuthor(t *testing.T) {
 	if h.llm.Mentions[0].Fix != nil || len(h.bb.Edits) != 0 || len(h.st.Fixes) != 0 {
 		t.Errorf("fix request %v, edits %d, fixes %d: want none", h.llm.Mentions[0].Fix != nil, len(h.bb.Edits), len(h.st.Fixes))
 	}
-	if len(h.bb.Replies) != 1 || !strings.Contains(h.bb.Replies[0].Text, "Umsetzen lasse ich mich nur vom PR-Autor") {
+	if len(h.bb.Replies) != 1 || !strings.Contains(h.bb.Replies[0].Text, "Umsetzen lasse ich mich nur vom PR-Autor") { //nolint:misspell // German
 		t.Errorf("replies = %+v", h.bb.Replies)
 	}
 }
