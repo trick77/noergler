@@ -146,7 +146,10 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   suggestion: notices and language confirmations stay `question`. Every
   reply of the fix flow is an `answer` row about its source answer (line
   kept), so "apply it" under it applies the source, and a second commit is
-  "already applied". `apply` is never posted as the model's sentence. Not
+  "already applied"; an answer under such a reply, and a Q&A notice under
+  an apply request, stay about the source too. The applied-state read
+  fails closed, unlike every other read here: an unread state could commit
+  twice. `apply` is never posted as the model's sentence. Not
   the PR author: a fixed answer in the asker's language, no fix call, no
   `finding_fixes` row. An answer's row goes with its PR (`pull_request_id`),
   a finding's with its finding.
