@@ -322,8 +322,8 @@ func (c *Client) mention(ctx context.Context, req MentionRequest) MentionResult 
 		}
 		return out
 	}
-	return MentionResult{Answer: ParseMention(resp.Content), Apply: ParseMentionApply(resp.Content),
-		Cost: cost, Rounds: []CallCost{cost}, ToolsOff: toolsOff}
+	answer, apply := ParseMentionEnvelope(resp.Content)
+	return MentionResult{Answer: answer, Apply: apply, Cost: cost, Rounds: []CallCost{cost}, ToolsOff: toolsOff}
 }
 
 // Tools reports whether the model's profile takes tool calls, as read at

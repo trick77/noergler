@@ -421,9 +421,12 @@ func (s *Store) openFinding(ctx context.Context, k PRKey, col string, v int64) (
 
 // Bot reply kinds: what noergler posted, for the log line of a reply under it.
 const (
-	BotReplyQuestion = "question" // a Q&A answer, a notice or a language confirmation
+	BotReplyQuestion = "question" // a notice or a language confirmation
 	BotReplyReply    = "reply"    // the answer on a finding's thread
 	BotReplyFixed    = "fixed"    // the "Fixed in" reply on a retired finding
+	// BotReplyAnswer is a Q&A answer, or a reply of the fix flow about one
+	// (Source names it): the only kind whose suggestion can be applied.
+	BotReplyAnswer = "answer"
 )
 
 // InsertBotReply records a reply noergler posted on a PR. A PR without a
@@ -446,18 +449,20 @@ func (s *Store) InsertFindingBotReply(ctx context.Context, k PRKey, commentID in
 	return err
 }
 
-// InsertAnswerBotReply is InsertBotReply for noergler's Q&A answer: anchor
-// is the code line its question sat on, nil for none.
-func (s *Store) InsertAnswerBotReply(ctx context.Context, k PRKey, commentID int, anchor *BotReplyAnchor) error {
-	if anchor == nil {
-		return s.InsertBotReply(ctx, k, commentID, BotReplyQuestion)
+// InsertAnswerBotReply records noergler's Q&A answer (source 0) or a reply
+// of the fix flow about answer source: anchor is the code line the
+// answer's question sat on, nil for none.
+func (s *Store) InsertAnswerBotReply(ctx context.Context, k PRKey, commentID int, anchor *BotReplyAnchor, source int) error {
+	var path, line, commit any
+	if anchor != nil {
+		path, line, commit = storable(anchor.Path), anchor.Line, anchor.Commit
 	}
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO bot_replies (pull_request_id, comment_id, kind, anchor_path, anchor_line, anchor_commit)
-		SELECT id, $4, $5, $6, $7, $8 FROM pull_requests
+		INSERT INTO bot_replies (pull_request_id, comment_id, kind, anchor_path, anchor_line, anchor_commit, source_comment_id)
+		SELECT id, $4, $5, $6, $7, $8, NULLIF($9::bigint, 0) FROM pull_requests
 		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3
 		ON CONFLICT DO NOTHING`,
-		k.Project, k.Repo, k.PRID, commentID, BotReplyQuestion, storable(anchor.Path), anchor.Line, anchor.Commit)
+		k.Project, k.Repo, k.PRID, commentID, BotReplyAnswer, path, line, commit, int64(source))
 	return err
 }
 
@@ -469,11 +474,12 @@ func (s *Store) BotReplyByComment(ctx context.Context, k PRKey, commentID int) (
 	var path, commit *string
 	var line *int
 	err := s.pool.QueryRow(ctx, `
-		SELECT b.comment_id, b.kind, COALESCE(b.finding_id, 0), b.anchor_path, b.anchor_line, b.anchor_commit
+		SELECT b.comment_id, b.kind, COALESCE(b.finding_id, 0), b.anchor_path, b.anchor_line, b.anchor_commit,
+		       COALESCE(b.source_comment_id, 0)
 		FROM bot_replies b JOIN pull_requests p ON b.pull_request_id = p.id
 		WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3 AND p.`+activeFilter+`
 			AND b.comment_id = $4`,
-		k.Project, k.Repo, k.PRID, commentID).Scan(&b.CommentID, &b.Kind, &b.FindingID, &path, &line, &commit)
+		k.Project, k.Repo, k.PRID, commentID).Scan(&b.CommentID, &b.Kind, &b.FindingID, &path, &line, &commit, &b.Source)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}

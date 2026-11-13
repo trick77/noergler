@@ -723,13 +723,13 @@ func (f *fakeStore) AnswerFixCommit(_ context.Context, answerID int) (string, er
 	return "", nil
 }
 
-func (f *fakeStore) InsertAnswerBotReply(_ context.Context, _ store.PRKey, commentID int, anchor *store.BotReplyAnchor) error {
+func (f *fakeStore) InsertAnswerBotReply(_ context.Context, _ store.PRKey, commentID int, anchor *store.BotReplyAnchor, source int) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err := f.err(); err != nil {
 		return err
 	}
-	b := store.BotReply{CommentID: commentID, Kind: store.BotReplyQuestion, Anchor: anchor}
+	b := store.BotReply{CommentID: commentID, Kind: store.BotReplyAnswer, Anchor: anchor, Source: source}
 	f.BotReplies = append(f.BotReplies, b)
 	if f.botReplies == nil {
 		f.botReplies = map[int]*store.BotReply{}

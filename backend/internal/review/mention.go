@@ -312,12 +312,6 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 		}
 		r.reply(ctx, project, repo, prID, replyTo, reply)
 	case inference.OutcomeOK:
-		// "setz das um" under noergler's own answer: code answers, the
-		// model's sentence is not posted.
-		if result.Apply && j.fix != nil {
-			r.postAnswerFix(ctx, j)
-			return
-		}
 		// An empty answer still gets a reply: a mention is never left
 		// silently unanswered.
 		// The switch is stored here and confirmed by code, in the new
@@ -338,6 +332,21 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 			o := r.stopReviews(ctx, j.ask.key, prTag, j.ask.user, j.ask.prAuthor, nil)
 			prefix += stopReply(l, o, r.bitbucket.BotUsername()) + "\n\n"
 		}
+		// "apply it": code answers, the model's sentence is never posted,
+		// it may promise a change nobody makes. Under noergler's Q&A answer
+		// it is the fix flow; anywhere else it is said why not.
+		if result.Apply {
+			if j.fix != nil {
+				j.lang = l
+				r.postAnswerFix(ctx, j, prefix)
+				return
+			}
+			r.log.InfoContext(ctx, prTag+": apply asked where no Q&A answer of noergler's is replied to: not applied")
+			r.reply(ctx, project, repo, prID, replyTo, prefix+l.Pick(
+				"Das kann ich hier nicht umsetzen. Umsetzen lasse ich mich nur vom PR-Autor, unter einem Finding oder unter meiner Antwort auf eine Frage an einer Code-Zeile.", //nolint:misspell // German "Autor", not a typo of "Author"
+				"I can't apply that here. Only the PR author can have me apply a change, under a finding or under my answer to a question on a line of code."))
+			return
+		}
 		answer := sharpS(l, result.Answer)
 		if answer == "" {
 			answer = inference.MentionEmptyReply(l)
@@ -352,7 +361,7 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 			_, nameState = guardName(answer, j.name, "question", j.namesOn)
 		}
 		answer = prefix + answer
-		r.replyAnswer(ctx, project, repo, prID, replyTo, answer, j.anchor)
+		r.replyAnswer(ctx, project, repo, prID, replyTo, answer, j.anchor, 0)
 		r.log.InfoContext(ctx, fmt.Sprintf("Posted Q&A reply on %s (name=%s)", prTag, nameState))
 	default:
 		r.log.ErrorContext(ctx, fmt.Sprintf("Mention Q&A on %s failed: %v", prTag, result.Err))

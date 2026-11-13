@@ -562,26 +562,25 @@ func IsVacuousSuggestion(suggestion string) bool {
 // JSON true. A model without the field, or off the envelope, applies
 // nothing.
 func ParseMentionApply(content string) bool {
-	text := strings.TrimSpace(content)
-	if strings.HasPrefix(text, "```") {
-		text = strings.TrimSpace(stripFence(text))
-	}
-	var raw struct {
-		Apply json.RawMessage `json:"apply"`
-	}
-	if json.Unmarshal([]byte(text), &raw) != nil {
-		return false
-	}
-	return string(raw.Apply) == "true"
+	_, apply := ParseMentionEnvelope(content)
+	return apply
 }
 
 // ParseMention turns a mention.txt JSON envelope into a rendered markdown
 // answer, falling back to the raw content when parsing fails. Models that
 // disregard the envelope still produce a usable reply.
 func ParseMention(content string) string {
+	answer, _ := ParseMentionEnvelope(content)
+	return answer
+}
+
+// ParseMentionEnvelope is the one parse of a mention.txt envelope: the
+// rendered answer (ParseMention) and `apply` (ParseMentionApply), so the
+// two never read one response two ways.
+func ParseMentionEnvelope(content string) (answer string, apply bool) {
 	text := strings.TrimSpace(content)
 	if text == "" {
-		return ""
+		return "", false
 	}
 	stripped := text
 	if strings.HasPrefix(stripped, "```") {
@@ -591,15 +590,15 @@ func ParseMention(content string) string {
 	var raw map[string]json.RawMessage
 	// As in ParseReview, `null` unmarshals into a nil map rather than failing.
 	if err := json.Unmarshal([]byte(stripped), &raw); err != nil || raw == nil {
-		return text
+		return text, false
 	}
+	apply = string(raw["apply"]) == "true"
 	rawAnswer, ok := raw["answer"]
 	if !ok {
-		return text
+		return text, apply
 	}
-	var answer string
 	if json.Unmarshal(rawAnswer, &answer) != nil {
-		return text
+		return text, apply
 	}
 	answer = strings.TrimSpace(answer)
 
@@ -634,5 +633,5 @@ func ParseMention(content string) string {
 	if len(refLines) > 0 {
 		answer = answer + "\n\n**References:**\n" + strings.Join(refLines, "\n")
 	}
-	return answer
+	return answer, apply
 }

@@ -103,14 +103,21 @@ func TestAnswerFixes_AnchorKeptCommittedOnceGoneWithThePR(t *testing.T) {
 	ctx := context.Background()
 	id := upsert(t, s, key, "a")
 	a := &BotReplyAnchor{Path: "a.go", Line: 7, Commit: "src1"}
-	if err := s.InsertAnswerBotReply(ctx, key, 950, a); err != nil {
+	if err := s.InsertAnswerBotReply(ctx, key, 950, a, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.InsertAnswerBotReply(ctx, key, 951, nil); err != nil {
+	if err := s.InsertAnswerBotReply(ctx, key, 951, nil, 0); err != nil {
 		t.Fatal(err)
 	}
-	if b, _ := s.BotReplyByComment(ctx, key, 950); b == nil || b.Kind != BotReplyQuestion || b.Anchor == nil || *b.Anchor != *a {
+	// A reply of the fix flow about answer 950 keeps its line and names it.
+	if err := s.InsertAnswerBotReply(ctx, key, 952, a, 950); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := s.BotReplyByComment(ctx, key, 950); b == nil || b.Kind != BotReplyAnswer || b.Anchor == nil || *b.Anchor != *a || b.Source != 0 {
 		t.Errorf("answer = %+v, want its anchor %+v", b, a)
+	}
+	if b, _ := s.BotReplyByComment(ctx, key, 952); b == nil || b.Source != 950 || b.Anchor == nil {
+		t.Errorf("reply about the answer = %+v", b)
 	}
 	if b, _ := s.BotReplyByComment(ctx, key, 951); b == nil || b.Anchor != nil {
 		t.Errorf("answer without a line = %+v", b)

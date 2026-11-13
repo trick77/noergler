@@ -112,7 +112,13 @@ an incident or an eval run: read the reason before relaxing a rule.
 - A Q&A answer's code line resolved when it is posted: Bitbucket anchors
   only a thread's root and sends a reply's immediate parent only, so at fix
   time the line would take a walk up the thread, a fetch per level. Posted,
-  it is one fetch at most (a root question) and otherwise inherited.
+  it is one fetch at most (a root question, paid also by a general one,
+  accepted) and otherwise inherited. The fix's file is read before the
+  call for every PR-author reply under an answer, accepted: a post cannot
+  stage the fix call, so it must be ready when the model says `apply`.
+- Kind `answer` apart from `question`: a notice or a language confirmation
+  carries no suggestion, and "ok" under one must not start a fix that can
+  only fail and count as not feasible.
 - Q&A fix for the PR author only (user, 2026-11-13): a reviewer's question
   would otherwise push commits onto someone else's branch through the bot.
 - Language block above the untrusted input: below it the prompt calls

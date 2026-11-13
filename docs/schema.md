@@ -105,6 +105,7 @@ Go types:
 | `anchor_path` | text | yes |  |  |
 | `anchor_line` | integer | yes |  |  |
 | `anchor_commit` | text | yes |  |  |
+| `source_comment_id` | bigint | yes |  |  |
 
 Foreign keys:
 
@@ -118,7 +119,7 @@ Indexes:
 Checks:
 
 - `CONSTRAINT bot_replies_anchor_check CHECK ((anchor_path IS NULL) = (anchor_line IS NULL) AND (anchor_path IS NULL) = (anchor_commit IS NULL))`
-- `CONSTRAINT bot_replies_kind_check CHECK (kind = ANY (ARRAY['question'::text, 'reply'::text, 'fixed'::text]))`
+- `CONSTRAINT bot_replies_kind_check CHECK (kind = ANY (ARRAY['question'::text, 'reply'::text, 'fixed'::text, 'answer'::text]))`
 
 ## dispute_occurrences
 
@@ -769,6 +770,7 @@ erDiagram
         text anchor_path
         integer anchor_line
         text anchor_commit
+        bigint source_comment_id
     }
     dispute_occurrences {
         bigint signal_id PK, FK
