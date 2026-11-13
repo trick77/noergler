@@ -68,13 +68,13 @@ func TestValidateFix(t *testing.T) {
 
 func TestCheckCommitSubject(t *testing.T) {
 	for in, want := range map[string]string{
-		"Fix loop redirection.":           "fix loop redirection",
-		"`behebe Schleifenumleitung`":     "behebe Schleifenumleitung",
-		"  Überprüfe die Eingabe ":        "überprüfe die Eingabe",
-		"two\nlines":                      "",
-		"":                                "",
-		strings.Repeat("x", 73):           "",
-		strings.Repeat("ä", 72):           strings.Repeat("ä", 72),
+		"Fix loop redirection.":       "fix loop redirection",
+		"`behebe Schleifenumleitung`": "behebe Schleifenumleitung",
+		"  Überprüfe die Eingabe ":    "überprüfe die Eingabe",
+		"two\nlines":                  "",
+		"":                            "",
+		strings.Repeat("x", 73):       "",
+		strings.Repeat("ä", 72):       strings.Repeat("ä", 72),
 	} {
 		got, ok := CheckCommitSubject(in)
 		if got != want || ok != (want != "") {

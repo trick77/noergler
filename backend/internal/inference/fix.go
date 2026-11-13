@@ -41,7 +41,7 @@ type FindingFixPromptRequest struct {
 	Template         string
 	RepoInstructions string
 	// Finding is the finding as posted: location, severity and its comment.
-	Finding string
+	Finding  string
 	FilePath string
 	// Code is the excerpt of the file at the PR head the change must come
 	// from, verbatim, unnumbered: what `old` is matched against.
