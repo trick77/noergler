@@ -140,7 +140,7 @@ func (r *Reviewer) postAnswerFix(ctx context.Context, j *mentionJob) {
 	if x.gate == "not_author" {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: fix of %s asked by %s, not the PR author: not applied", prTag, x.where, j.ask.user))
 		r.reply(ctx, j.project, j.repo, j.prID, j.replyTo, j.lang.Pick(
-			"Umsetzen lasse ich mich nur vom PR-Autor. Wenn er den Vorschlag will, kann er hier ‚setz das um' schreiben.",
+			"Umsetzen lasse ich mich nur vom PR-Autor. Wenn er den Vorschlag will, kann er hier ‚setz das um' schreiben.", //nolint:misspell // German "Autor", not a typo of "Author"
 			"Only the PR author can have me apply this. If they want the suggestion, they can reply 'apply it' here."))
 		return
 	}
