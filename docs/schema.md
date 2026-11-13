@@ -102,6 +102,9 @@ Go types:
 | `kind` | text | no |  |  |
 | `created_at` | timestamp with time zone | no | `now()` |  |
 | `finding_id` | bigint | yes |  |  |
+| `anchor_path` | text | yes |  |  |
+| `anchor_line` | integer | yes |  |  |
+| `anchor_commit` | text | yes |  |  |
 
 Foreign keys:
 
@@ -114,6 +117,7 @@ Indexes:
 
 Checks:
 
+- `CONSTRAINT bot_replies_anchor_check CHECK ((anchor_path IS NULL) = (anchor_line IS NULL) AND (anchor_path IS NULL) = (anchor_commit IS NULL))`
 - `CONSTRAINT bot_replies_kind_check CHECK (kind = ANY (ARRAY['question'::text, 'reply'::text, 'fixed'::text]))`
 
 ## dispute_occurrences
@@ -162,18 +166,22 @@ Go types:
 | Column | Type | Null | Default | PK |
 | --- | --- | --- | --- | --- |
 | `id` | bigint | no | `nextval('finding_fixes_id_seq'::regclass)` | 1 |
-| `finding_id` | bigint | no |  |  |
+| `finding_id` | bigint | yes |  |  |
 | `team_slug` | text | no |  |  |
 | `outcome` | text | no |  |  |
 | `commit_sha` | text | yes |  |  |
 | `created_at` | timestamp with time zone | no | `now()` |  |
+| `answer_comment_id` | bigint | yes |  |  |
+| `pull_request_id` | bigint | yes |  |  |
 
 Foreign keys:
 
 - `finding_id` → `findings` (`id`), on delete CASCADE
+- `pull_request_id` → `pull_requests` (`id`), on delete CASCADE
 
 Indexes:
 
+- `finding_fixes_answer_committed_idx` (`answer_comment_id`) unique where `outcome = 'committed'::text`
 - `finding_fixes_committed_idx` (`finding_id`) unique where `outcome = 'committed'::text`
 - `finding_fixes_team_time_idx` (`team_slug`, `created_at`)
 
@@ -181,6 +189,7 @@ Checks:
 
 - `CONSTRAINT finding_fixes_check CHECK ((outcome = 'committed'::text) = (commit_sha IS NOT NULL))`
 - `CONSTRAINT finding_fixes_outcome_check CHECK (outcome = ANY (ARRAY['committed'::text, 'not_feasible'::text, 'rejected'::text, 'no_write'::text, 'conflict'::text, 'refused'::text, 'error'::text]))`
+- `CONSTRAINT finding_fixes_source_check CHECK ((finding_id IS NULL) <> (answer_comment_id IS NULL) AND (answer_comment_id IS NULL) = (pull_request_id IS NULL))`
 
 ## findings
 
@@ -562,6 +571,16 @@ In `internal/store`. AttemptBucket is one day's count for one outcome.
 | `Outcome` | `string` |  |
 | `Count` | `int` |  |
 
+### store.BotReplyAnchor
+
+In `internal/store`. BotReplyAnchor is the code line of a Q&A answer's question: the file, the line in the PR's new version, and the PR head it was read at.
+
+| Field | Type | Doc |
+| --- | --- | --- |
+| `Path` | `string` |  |
+| `Line` | `int` |  |
+| `Commit` | `string` |  |
+
 ### store.Bucket
 
 In `internal/store`. Bucket is one day of the timeseries.
@@ -747,6 +766,9 @@ erDiagram
         text kind
         timestamp_with_time_zone created_at
         bigint finding_id FK
+        text anchor_path
+        integer anchor_line
+        text anchor_commit
     }
     dispute_occurrences {
         bigint signal_id PK, FK
@@ -768,6 +790,8 @@ erDiagram
         text outcome
         text commit_sha
         timestamp_with_time_zone created_at
+        bigint answer_comment_id
+        bigint pull_request_id FK
     }
     findings {
         bigint id PK
@@ -948,7 +972,8 @@ erDiagram
     bot_replies }o--|| pull_requests : "pull_request_id"
     dispute_occurrences }o--|| findings : "finding_id"
     dispute_occurrences }o--|| dispute_signals : "signal_id"
-    finding_fixes }o--|| findings : "finding_id"
+    finding_fixes }o--o| findings : "finding_id"
+    finding_fixes }o--o| pull_requests : "pull_request_id"
     findings }o--o| review_runs : "fixed_run_id"
     findings }o--|| pull_requests : "pull_request_id"
     findings }o--|| review_runs : "review_run_id"

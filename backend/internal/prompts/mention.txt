@@ -19,11 +19,12 @@ A developer asked a question about this pull request. Answer based on the code c
 Respond with a single JSON object and nothing else — no preamble, no markdown fence around it:
 
 ```
-{"answer": "<your markdown answer>", "refs": [{"file": "<path>", "line": <number>}, ...]}
+{"answer": "<your markdown answer>", "refs": [{"file": "<path>", "line": <number>}, ...], "apply": true | false}
 ```
 
 - "answer": markdown answer the developer will read. Obey the length cap. Embed `inline code` and fenced blocks inside this string as needed.
 - "refs": optional array of file/line references anchoring your answer to specific diff locations. Omit or pass an empty array when no specific line is relevant.
+- "apply": true only when the comment replied to (shown below) is your own earlier answer (author: noergler, this bot) and the developer asks YOU to make the change it suggests: "gute Idee, setz das um", "mach das", "flick das", "go ahead, apply it", "please implement that". Agreeing, thanking, or saying they will change it themselves is false: "danke", "gute Idee, mach ich", "I'll do it". Otherwise false. You never write the change here: code decides whether it may be applied and writes the reply for it, so when true, "answer" is one short sentence.
 
 If you cannot answer, still return the envelope — put the refusal or "insufficient context" message in "answer", leave "refs" empty.
 

@@ -211,66 +211,89 @@ func abs(n int) int {
 	return n
 }
 
+// fixTarget is what a fix request's posting needs, from a finding's thread
+// or from noergler's Q&A answer: one way through for both.
+type fixTarget struct {
+	key           store.PRKey
+	team          string
+	project, repo string
+	prID          int
+	prTag         string
+	// where names the source in the log: "finding a.go:12", "answer 950".
+	where string
+	// replyTo is the author's request, the answer goes under it; threadID is
+	// the thread's comment for the commit message's link.
+	replyTo  int
+	threadID *int
+	lang     lang.Lang
+	plan     *fixPlan
+	res      *inference.FindingFixResult
+	// One of findingID and answerID is set: the finding_fixes row's source.
+	findingID int64
+	answerID  int
+	// done is the commit made for this source already, nil when none.
+	done *string
+}
+
 // postFix is a fix request's posting stage, on the worker: validate, commit,
 // confirm. Every request gets one answer in the thread, never silence
 // (user, 2026-11-13), and one finding_fixes row, the metric's source.
-func (r *Reviewer) postFix(ctx context.Context, j *replyJob) {
-	pick := j.lang.Pick
-	if j.botFixCommit != nil {
-		r.postFixAnswer(ctx, j, "", pick("Schon umgesetzt in `", "Already applied in `")+render.ShortSHA(*j.botFixCommit, 8)+"`.")
-		return
+// posted reports whether the answer reached the thread.
+func (r *Reviewer) postFix(ctx context.Context, t *fixTarget) (posted bool) {
+	pick := t.lang.Pick
+	if t.done != nil {
+		return r.postFixAnswer(ctx, t, "", pick("Schon umgesetzt in `", "Already applied in `")+render.ShortSHA(*t.done, 8)+"`.")
 	}
-	outcome, sha, body := r.applyFix(ctx, j)
+	outcome, sha, body := r.applyFix(ctx, t)
 	// Recorded before the answer: the commit is made, whatever the post does.
-	inserted, err := r.store.RecordFindingFix(ctx, store.FindingFix{FindingID: j.findingID, TeamSlug: j.team, Outcome: outcome, CommitSHA: sha})
+	inserted, err := r.store.RecordFindingFix(ctx, t.key, store.FindingFix{FindingID: t.findingID, AnswerCommentID: t.answerID,
+		TeamSlug: t.team, Outcome: outcome, CommitSHA: sha})
 	switch {
 	case err != nil:
 		r.log.WarnContext(ctx, "DB operation failed, using fallback: RecordFindingFix", logging.Err(err))
 	case !inserted:
-		r.log.WarnContext(ctx, fmt.Sprintf("%s: fix on finding %s committed as %s but not recorded: the finding has a committed fix already", j.prTag, j.where, sha))
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: fix on %s committed as %s but not recorded: it has a committed fix already", t.prTag, t.where, sha))
 	}
-	// Nothing posted, nothing stamped: a later reply may try again.
-	if posted := r.postFixAnswer(ctx, j, sha, body); posted && !j.secondPass {
-		safeDBErr(ctx, r.log, "MarkFindingReplied", func() error { return r.store.MarkFindingReplied(ctx, j.findingID, nil) })
-	}
-	r.log.InfoContext(ctx, fmt.Sprintf("%s: fix requested on finding %s: %s%s", j.prTag, j.where, outcome, func() string {
+	posted = r.postFixAnswer(ctx, t, sha, body)
+	r.log.InfoContext(ctx, fmt.Sprintf("%s: fix requested on %s: %s%s", t.prTag, t.where, outcome, func() string {
 		if sha == "" {
 			return ""
 		}
 		return " " + sha
 	}()))
+	return posted
 }
 
 // applyFix decides the outcome and writes the commit. body is the answer
 // posted in the thread, in the author's language.
-func (r *Reviewer) applyFix(ctx context.Context, j *replyJob) (outcome, sha, body string) {
-	pick := j.lang.Pick
+func (r *Reviewer) applyFix(ctx context.Context, t *fixTarget) (outcome, sha, body string) {
+	pick := t.lang.Pick
 	cannot := func(why string) string {
 		return pick("Kann ich nicht selbst umsetzen: ", "I can't apply this myself: ") + why
 	}
-	p := j.fix
+	p := t.plan
 	if p == nil || p.unavailable != "" {
 		why := "unknown"
 		if p != nil {
 			why = p.unavailable
 		}
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: fix on finding %s not asked for: %s", j.prTag, j.where, why))
-		return store.FixNotFeasible, "", cannot(unavailableText(j.lang, why))
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: fix on %s not asked for: %s", t.prTag, t.where, why))
+		return store.FixNotFeasible, "", cannot(unavailableText(t.lang, why))
 	}
-	res := j.res.Fix
+	res := t.res
 	if res != nil && res.Outcome == inference.OutcomeTooLarge {
 		// Deterministic: asking again would fail the same way, and pay.
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: fix call on finding %s too large: %v", j.prTag, j.where, res.Err))
-		return store.FixNotFeasible, "", cannot(unavailableText(j.lang, "too_large"))
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: fix call on %s too large: %v", t.prTag, t.where, res.Err))
+		return store.FixNotFeasible, "", cannot(unavailableText(t.lang, "too_large"))
 	}
 	if res == nil || res.Outcome != inference.OutcomeOK {
 		if res != nil {
-			r.log.WarnContext(ctx, fmt.Sprintf("%s: fix call on finding %s failed: %s %v", j.prTag, j.where, res.Outcome, res.Err))
+			r.log.WarnContext(ctx, fmt.Sprintf("%s: fix call on %s failed: %s %v", t.prTag, t.where, res.Outcome, res.Err))
 		}
 		return store.FixError, "", pick("Der Fix ist fehlgeschlagen, bitte nochmals versuchen.", "Writing the fix failed, please ask again.")
 	}
 	if !res.Fix.Feasible {
-		why := sharpS(j.lang, strings.TrimSpace(res.Fix.Reason))
+		why := sharpS(t.lang, strings.TrimSpace(res.Fix.Reason))
 		if why == "" {
 			why = pick("die Änderung geht über eine Stelle in einer Datei hinaus.", "the change goes beyond one spot in one file.")
 		}
@@ -278,22 +301,22 @@ func (r *Reviewer) applyFix(ctx context.Context, j *replyJob) (outcome, sha, bod
 	}
 	content, reason := inference.ValidateFix(p.content, p.from, p.to, res.Fix)
 	if reason != "" {
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: fix on finding %s dropped: %s", j.prTag, j.where, reason))
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: fix on %s dropped: %s", t.prTag, t.where, reason))
 		return store.FixRejected, "", pick("Kann ich nicht sicher selbst ändern. Bitte passe die Stelle selbst an.",
 			"I can't change this safely myself. Please make the change yourself.")
 	}
-	subject, ok := inference.CheckCommitSubject(sharpS(j.lang, res.Fix.CommitSubject))
+	subject, ok := inference.CheckCommitSubject(sharpS(t.lang, res.Fix.CommitSubject))
 	if !ok {
-		subject = pick("setze Review-Finding in ", "apply review finding in ") + path.Base(p.path) + pick(" um", "")
+		subject = pick("setze Review-Vorschlag in ", "apply review suggestion in ") + path.Base(p.path) + pick(" um", "")
 	}
 	message := subject
-	if j.threadID != nil {
-		message += "\n\n" + r.bitbucket.CommentURL(j.project, j.repo, j.prID, *j.threadID)
+	if t.threadID != nil {
+		message += "\n\n" + r.bitbucket.CommentURL(t.project, t.repo, t.prID, *t.threadID)
 	}
 	sha, err := r.bitbucket.EditFile(ctx, p.project, p.repo, p.branch, p.path, p.head, message, content)
 	if err != nil {
 		status := bitbucket.Status(err)
-		r.log.WarnContext(ctx, fmt.Sprintf("%s: fix commit on finding %s refused: %v", j.prTag, j.where, err))
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: fix commit on %s refused: %v", t.prTag, t.where, err))
 		switch {
 		case status == http.StatusUnauthorized || status == http.StatusForbidden:
 			return store.FixNoWrite, "", pick("Kann ich nicht selbst committen: mir fehlen die Schreibrechte auf diesen Branch.",
@@ -320,25 +343,33 @@ func unavailableText(l lang.Lang, why string) string {
 	case "too_large":
 		return l.Pick("die Datei oder die Projektrichtlinien sind zu gross.", "the file or the project guidelines are too large.")
 	case "line_gone":
-		return l.Pick("die Stelle des Findings gibt es im aktuellen Stand nicht mehr.", "the finding's line is no longer in the current code.")
+		return l.Pick("die Stelle gibt es im aktuellen Stand nicht mehr.", "that line is no longer in the current code.")
+	case "no_anchor":
+		return l.Pick("die Frage hängt an keiner Code-Zeile.", "the question is not on a line of code.")
 	}
 	return l.Pick("die Datei liess sich nicht lesen.", "the file could not be read.")
 }
 
-// postFixAnswer posts the answer under the author's reply and keeps its id
-// with the finding, so a reply under it is a reply on the finding again. A
-// failed post after a commit is an error: the commit stands unannounced.
-func (r *Reviewer) postFixAnswer(ctx context.Context, j *replyJob, sha, body string) bool {
+// postFixAnswer posts the answer under the author's reply. On a finding's
+// thread its id is kept with the finding, so a reply under it is a reply on
+// the finding again; after a Q&A it is a plain bot reply, with no code
+// line, so no second fix of the same suggestion starts from it. A failed
+// post after a commit is an error: the commit stands unannounced.
+func (r *Reviewer) postFixAnswer(ctx context.Context, t *fixTarget, sha, body string) bool {
 	body = lang.TruncateRunes(body, replyPostRunes)
-	posted, err := r.bitbucket.ReplyToComment(ctx, j.project, j.repo, j.prID, j.replyTo, body)
+	posted, err := r.bitbucket.ReplyToComment(ctx, t.project, t.repo, t.prID, t.replyTo, body)
 	if err != nil {
 		if sha != "" {
-			r.log.ErrorContext(ctx, fmt.Sprintf("%s: fix on finding %s committed as %s, but its confirmation failed to post: %v", j.prTag, j.where, sha, err))
+			r.log.ErrorContext(ctx, fmt.Sprintf("%s: fix on %s committed as %s, but its confirmation failed to post: %v", t.prTag, t.where, sha, err))
 			return false
 		}
-		r.log.ErrorContext(ctx, fmt.Sprintf("%s: answer to a fix request on finding %s failed to post: %v", j.prTag, j.where, err))
+		r.log.ErrorContext(ctx, fmt.Sprintf("%s: answer to a fix request on %s failed to post: %v", t.prTag, t.where, err))
 		return false
 	}
-	r.recordFindingBotReply(ctx, j.key, posted, j.findingID)
+	if t.findingID != 0 {
+		r.recordFindingBotReply(ctx, t.key, posted, t.findingID)
+	} else {
+		r.recordBotReply(ctx, t.key, posted, store.BotReplyQuestion)
+	}
 	return true
 }

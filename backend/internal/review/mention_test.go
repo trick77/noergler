@@ -429,7 +429,9 @@ func TestMentionWithoutARepliedToComment(t *testing.T) {
 		summary bool
 		fetched bool
 	}{
-		"top-level":   {parent: 0},
+		// A top-level question reads its own comment once, for its code line
+		// (kept with the answer, for a later "apply it").
+		"top-level":   {parent: 0, fetched: true},
 		"summary":     {parent: 555, summary: true},
 		"fetch fails": {parent: 41, fetched: true},
 	} {

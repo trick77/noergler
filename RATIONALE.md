@@ -105,6 +105,16 @@ an incident or an eval run: read the reason before relaxing a rule.
 - A finding noergler committed is retired silently and its thread left open:
   the confirmation already asks the author to review the change; resolving
   it would hide the change the author was told to look at.
+- Q&A fix request as an envelope field, not a classifier call: every other
+  reply under a Q&A answer keeps the full Q&A (diff, tools), and a second
+  call to classify would cost every such reply. The Q&A prompt still never
+  writes code; the fix call does, under its own system message.
+- A Q&A answer's code line resolved when it is posted: Bitbucket anchors
+  only a thread's root and sends a reply's immediate parent only, so at fix
+  time the line would take a walk up the thread, a fetch per level. Posted,
+  it is one fetch at most (a root question) and otherwise inherited.
+- Q&A fix for the PR author only (user, 2026-11-13): a reviewer's question
+  would otherwise push commits onto someone else's branch through the bot.
 - Language block above the untrusted input: below it the prompt calls
   everything data, so an instruction there is one the model may ignore; and
   the prefix up to it is the same for every PR in that language.

@@ -249,6 +249,10 @@ type MentionRequest struct {
 	// Tools the model may call. Ignored on a model whose profile has no
 	// tool support: the answer is then one plain call, as before.
 	Tools []MentionTool
+	// Fix is the fix call, made only when the answer says `apply` (the PR
+	// author asked noergler to apply its own earlier answer); nil when
+	// noergler may not, or cannot, apply it here.
+	Fix *FindingFixRequest
 }
 
 // MentionResult is one mention, one call or a tool loop of several.
@@ -272,6 +276,12 @@ type MentionResult struct {
 	// with "cannot see", so the caller logs it.
 	ToolsOff string
 	Err      error
+	// Apply is the envelope's `apply`: the comment asks noergler to apply
+	// the suggestion of its answer replied to. The model's reading only:
+	// code decides whether that may happen.
+	Apply bool
+	// Fix is the fix call's result, nil when none was made.
+	Fix *FindingFixResult
 }
 
 // Mention answers a developer's question about a PR.
@@ -279,7 +289,20 @@ type MentionResult struct {
 // Unlike a review there is no schema and no unparseable outcome: the envelope
 // parser falls back to the raw text, so a model that ignores the envelope
 // still produces a usable reply.
+//
+// An answer that says `apply`, with a Fix request, makes the fix call on
+// the same pool slot, as a finding reply does: the posting stage can stage
+// nothing.
 func (c *Client) Mention(ctx context.Context, req MentionRequest) MentionResult {
+	res := c.mention(ctx, req)
+	if res.Outcome == OutcomeOK && res.Apply && req.Fix != nil {
+		fix := c.FindingFix(ctx, *req.Fix)
+		res.Fix = &fix
+	}
+	return res
+}
+
+func (c *Client) mention(ctx context.Context, req MentionRequest) MentionResult {
 	toolsOff := ""
 	switch {
 	case len(req.Tools) == 0:
@@ -299,7 +322,8 @@ func (c *Client) Mention(ctx context.Context, req MentionRequest) MentionResult 
 		}
 		return out
 	}
-	return MentionResult{Answer: ParseMention(resp.Content), Cost: cost, Rounds: []CallCost{cost}, ToolsOff: toolsOff}
+	return MentionResult{Answer: ParseMention(resp.Content), Apply: ParseMentionApply(resp.Content),
+		Cost: cost, Rounds: []CallCost{cost}, ToolsOff: toolsOff}
 }
 
 // Tools reports whether the model's profile takes tool calls, as read at

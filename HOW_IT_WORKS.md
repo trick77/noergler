@@ -484,6 +484,17 @@ call is its own `llm_calls` row (`fix`) and counts toward the PR's cost. The
 next review retires a finding noergler committed without a "Fixed in" reply
 and without resolving it: the author resolves the thread after looking.
 
+The same works for a Q&A answer whose question sat on a line of code
+(inline only). The answer keeps that line (`bot_replies.anchor_*`): the
+question's own when it is the thread's root (one comment fetch per such
+mention), else the inline root it replies to, else the line kept with the
+noergler answer it replies to; never an old-side line or one gone from the
+diff. A reply under that answer asking noergler to apply it ("gute Idee,
+setz das um") is the Q&A envelope's `apply`; the same fix call, checks,
+commit and answers follow, the answer's text being what is applied. Only
+the PR author may: anyone else is told so, with no call paid and no row.
+No code line, the answer says so. An answer is committed once.
+
 ### Dispute signals
 
 When a dispute's reason is a project-wide rule AGENTS.md lacks, the model

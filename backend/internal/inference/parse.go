@@ -558,6 +558,23 @@ func IsVacuousSuggestion(suggestion string) bool {
 	return false
 }
 
+// ParseMentionApply reads the envelope's `apply`: true only for a literal
+// JSON true. A model without the field, or off the envelope, applies
+// nothing.
+func ParseMentionApply(content string) bool {
+	text := strings.TrimSpace(content)
+	if strings.HasPrefix(text, "```") {
+		text = strings.TrimSpace(stripFence(text))
+	}
+	var raw struct {
+		Apply json.RawMessage `json:"apply"`
+	}
+	if json.Unmarshal([]byte(text), &raw) != nil {
+		return false
+	}
+	return string(raw.Apply) == "true"
+}
+
 // ParseMention turns a mention.txt JSON envelope into a rendered markdown
 // answer, falling back to the raw content when parsing fails. Models that
 // disregard the envelope still produce a usable reply.

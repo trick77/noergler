@@ -379,6 +379,18 @@ type BotReply struct {
 	Kind      string
 	// FindingID is the finding whose thread the reply answered, 0 for none.
 	FindingID int64
+	// Anchor is the code line a Q&A answer's question sat on, nil for none.
+	Anchor *BotReplyAnchor
+}
+
+// BotReplyAnchor is the code line of a Q&A answer's question: the file, the
+// line in the PR's new version, and the PR head it was read at.
+//
+// Table: -
+type BotReplyAnchor struct {
+	Path   string
+	Line   int
+	Commit string
 }
 
 // FindingFix is one request of the PR author to have noergler apply a
@@ -386,9 +398,12 @@ type BotReply struct {
 //
 // Table: finding_fixes
 type FindingFix struct {
-	FindingID int64
-	TeamSlug  string
-	Outcome   string
+	// One of FindingID and AnswerCommentID is set: a finding, or
+	// noergler's Q&A answer whose suggestion the author asked for.
+	FindingID       int64
+	AnswerCommentID int
+	TeamSlug        string
+	Outcome         string
 	// CommitSHA is set on a committed fix only.
 	CommitSHA string
 }

@@ -26,17 +26,17 @@ func TestFindingFixes_RecordedCommittedOnceAndCounted(t *testing.T) {
 		{FindingID: f.ID, TeamSlug: "payments", Outcome: FixNoWrite},
 		{FindingID: f.ID, TeamSlug: "payments", Outcome: FixCommitted, CommitSHA: "abc"},
 	} {
-		if ok, err := s.RecordFindingFix(ctx, x); err != nil || !ok {
+		if ok, err := s.RecordFindingFix(ctx, key, x); err != nil || !ok {
 			t.Fatalf("record %+v: %v, %v", x, ok, err)
 		}
 	}
-	if ok, err := s.RecordFindingFix(ctx, FindingFix{FindingID: f.ID, TeamSlug: "payments", Outcome: FixCommitted, CommitSHA: "def"}); err != nil || ok {
+	if ok, err := s.RecordFindingFix(ctx, key, FindingFix{FindingID: f.ID, TeamSlug: "payments", Outcome: FixCommitted, CommitSHA: "def"}); err != nil || ok {
 		t.Errorf("a second commit of one finding = %v, %v: want dropped", ok, err)
 	}
-	if _, err := s.RecordFindingFix(ctx, FindingFix{FindingID: f.ID, TeamSlug: "payments", Outcome: FixCommitted}); err == nil {
+	if _, err := s.RecordFindingFix(ctx, key, FindingFix{FindingID: f.ID, TeamSlug: "payments", Outcome: FixCommitted}); err == nil {
 		t.Error("a committed fix without its sha must be refused by the schema")
 	}
-	if _, err := s.RecordFindingFix(ctx, FindingFix{FindingID: f.ID, TeamSlug: "payments", Outcome: "maybe"}); err == nil {
+	if _, err := s.RecordFindingFix(ctx, key, FindingFix{FindingID: f.ID, TeamSlug: "payments", Outcome: "maybe"}); err == nil {
 		t.Error("an unknown outcome must be refused by the schema")
 	}
 
@@ -93,5 +93,59 @@ func TestBotReplies_KeepTheirFinding(t *testing.T) {
 	}
 	if b, _ := s.BotReplyByComment(ctx, key, 701); b == nil || b.FindingID != 0 {
 		t.Errorf("Q&A answer = %+v, want no finding", b)
+	}
+}
+
+// A Q&A answer keeps its question's code line; its fix is recorded against
+// the answer, committed once, counted with the findings', gone with its PR.
+func TestAnswerFixes_AnchorKeptCommittedOnceGoneWithThePR(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	id := upsert(t, s, key, "a")
+	a := &BotReplyAnchor{Path: "a.go", Line: 7, Commit: "src1"}
+	if err := s.InsertAnswerBotReply(ctx, key, 950, a); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.InsertAnswerBotReply(ctx, key, 951, nil); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := s.BotReplyByComment(ctx, key, 950); b == nil || b.Kind != BotReplyQuestion || b.Anchor == nil || *b.Anchor != *a {
+		t.Errorf("answer = %+v, want its anchor %+v", b, a)
+	}
+	if b, _ := s.BotReplyByComment(ctx, key, 951); b == nil || b.Anchor != nil {
+		t.Errorf("answer without a line = %+v", b)
+	}
+
+	if sha, err := s.AnswerFixCommit(ctx, 950); err != nil || sha != "" {
+		t.Errorf("before = %q, %v", sha, err)
+	}
+	for _, x := range []FindingFix{
+		{AnswerCommentID: 950, TeamSlug: "payments", Outcome: FixConflict},
+		{AnswerCommentID: 950, TeamSlug: "payments", Outcome: FixCommitted, CommitSHA: "abc"},
+	} {
+		if ok, err := s.RecordFindingFix(ctx, key, x); err != nil || !ok {
+			t.Fatalf("record %+v: %v, %v", x, ok, err)
+		}
+	}
+	if ok, err := s.RecordFindingFix(ctx, key, FindingFix{AnswerCommentID: 950, TeamSlug: "payments", Outcome: FixCommitted, CommitSHA: "def"}); err != nil || ok {
+		t.Errorf("a second commit of one answer = %v, %v: want dropped", ok, err)
+	}
+	if sha, _ := s.AnswerFixCommit(ctx, 950); sha != "abc" {
+		t.Errorf("AnswerFixCommit = %q, want abc", sha)
+	}
+	other := key
+	other.PRID++
+	if ok, err := s.RecordFindingFix(ctx, other, FindingFix{AnswerCommentID: 960, TeamSlug: "payments", Outcome: FixError}); err != nil || ok {
+		t.Errorf("an answer on a PR without a row = %v, %v: want nothing recorded", ok, err)
+	}
+	if counts, _ := s.FixCountsSince(ctx, time.Now().Add(-time.Hour)); len(counts) != 2 {
+		t.Errorf("counts = %+v, want committed and conflict", counts)
+	}
+
+	if _, err := s.pool.Exec(ctx, `DELETE FROM pull_requests WHERE id = $1`, id); err != nil {
+		t.Fatal(err)
+	}
+	if counts, _ := s.FixCountsSince(ctx, time.Now().Add(-time.Hour)); len(counts) != 0 {
+		t.Errorf("after the PR's purge counts = %+v", counts)
 	}
 }
