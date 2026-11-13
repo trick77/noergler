@@ -148,9 +148,11 @@ export const en = {
     unpricedTrend: "Unpriced trend",
     linesReviewed: "LOC reviewed",
     lines: "LOC",
-    autoFixes: "Auto-fixes",
-    autoFixesTitle:
-      "Committed / requested: PR authors asked noergler to apply a finding",
+    fixRequests: "Fix requests",
+    fixRequestsTitle:
+      "How often PR authors asked noergler to apply a finding, whatever came of it",
+    fixesCommitted: "Fixes committed",
+    fixesCommittedTitle: "Fix requests noergler committed to the PR's branch",
     fixOutcome: {
       committed: "committed",
       not_feasible: "not feasible",
