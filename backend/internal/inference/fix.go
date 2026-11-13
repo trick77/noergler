@@ -67,7 +67,7 @@ func commitLanguage(l lang.Lang) string {
 
 // RenderFindingFixPrompt assembles the fix prompt in one substitution pass.
 func RenderFindingFixPrompt(req FindingFixPromptRequest) string {
-	fence := strings.Repeat("`", max(3, lang.BacktickRun(req.Code)+1))
+	fence := lang.Fence(req.Code)
 	return strings.NewReplacer(
 		PlaceholderRepoInstructions, req.RepoInstructions,
 		PlaceholderFinding, req.Finding,
@@ -192,10 +192,6 @@ func ValidateFix(content []byte, from, to int, fix FindingFix) (out []byte, reas
 	case !strings.HasSuffix(oldText, "\n") && strings.HasSuffix(newText, "\n"):
 		newText = strings.TrimSuffix(newText, "\n")
 	}
-	if bytes.Contains(content, []byte("\r\n")) {
-		oldText = toCRLF(oldText)
-		newText = toCRLF(newText)
-	}
 	switch {
 	case !utf8.Valid(content) || bytes.IndexByte(content, 0) >= 0:
 		return nil, "binary"
@@ -205,10 +201,17 @@ func ValidateFix(content []byte, from, to int, fix FindingFix) (out []byte, reas
 		return nil, "no_change"
 	case lineCount(oldText) > FixMaxLines || lineCount(newText) > FixMaxLines:
 		return nil, "too_large"
-	case HasSecret(newText) && !HasSecret(oldText):
+	case addsSecret(oldText, newText):
 		return nil, "secret"
 	}
+	// The model writes LF. A CRLF file, or the CRLF part of a mixed one,
+	// gets old and new in CRLF: LF is tried first, so an LF region of a
+	// mixed file still matches.
 	at := bytes.Index(content, []byte(oldText))
+	if at < 0 && bytes.Contains(content, []byte("\r\n")) {
+		oldText, newText = toCRLF(oldText), toCRLF(newText)
+		at = bytes.Index(content, []byte(oldText))
+	}
 	if at < 0 {
 		return nil, "old_not_found"
 	}
@@ -225,6 +228,21 @@ func ValidateFix(content []byte, from, to int, fix FindingFix) (out []byte, reas
 	out = append(out, newText...)
 	out = append(out, content[at+len(oldText):]...)
 	return out, ""
+}
+
+// addsSecret reports a secret-like line in new that old does not have: a
+// fix may keep an existing literal in the lines it touches, never add one.
+func addsSecret(oldText, newText string) bool {
+	have := map[string]bool{}
+	for l := range strings.SplitSeq(oldText, "\n") {
+		have[strings.TrimSpace(l)] = true
+	}
+	for l := range strings.SplitSeq(newText, "\n") {
+		if t := strings.TrimSpace(l); HasSecret(t) && !have[t] {
+			return true
+		}
+	}
+	return false
 }
 
 func toCRLF(s string) string {

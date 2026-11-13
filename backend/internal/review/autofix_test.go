@@ -326,15 +326,34 @@ func TestFindLine(t *testing.T) {
 	}
 }
 
+// A common line whose own spot changed does not land on another occurrence
+// with other neighbours.
+func TestFindLineNeedsItsNeighbours(t *testing.T) {
+	old := []string{"if err != nil {", "return err", "}"}
+	head := []string{"if err != nil {", "return fmt.Errorf(\"x: %w\", err)", "}", "", "y()", "return err", "z()"}
+	if got := findLine(head, old, 2); got != 0 {
+		t.Errorf("findLine = %d, want 0: the line at its spot changed", got)
+	}
+	moved := []string{"// new", "if err != nil {", "return err", "}"}
+	if got := findLine(moved, old, 2); got != 3 {
+		t.Errorf("findLine = %d, want 3", got)
+	}
+}
+
 func TestNearestLine(t *testing.T) {
 	lines := []string{"a", "  x := 1", "b", "x := 1", "c"}
 	for _, c := range []struct {
-		want string
+		want lineContext
 		near int
 		got  int
-	}{{"x := 1", 1, 2}, {"x := 1", 5, 4}, {"y", 3, 0}, {"", 3, 0}} {
+	}{
+		{lineContext{"a", "x := 1", "b"}, 5, 2},
+		{lineContext{"b", "x := 1", "c"}, 1, 4},
+		{lineContext{"q", "x := 1", "r"}, 1, 0},
+		{lineContext{"", "", ""}, 3, 0},
+	} {
 		if n := nearestLine(lines, c.want, c.near); n != c.got {
-			t.Errorf("nearestLine(%q, %d) = %d, want %d", c.want, c.near, n, c.got)
+			t.Errorf("nearestLine(%+v, %d) = %d, want %d", c.want, c.near, n, c.got)
 		}
 	}
 }

@@ -61,6 +61,16 @@ func TestValidateFix(t *testing.T) {
 		"newline lost":   {"a\nx := 1\ny\n", 1, 3, fix("x := 1\n", "x := 2"), "a\nx := 2\ny\n", ""},
 		"newline gained": {"a\nx := 1\ny\n", 1, 3, fix("x := 1", "x := 2\n"), "a\nx := 2\ny\n", ""},
 		"deleted line":   {"a\nx := 1\ny\n", 1, 3, fix("x := 1\n", ""), "a\ny\n", ""},
+		// A mixed file: the LF part matches as LF, the CRLF part as CRLF.
+		"mixed, lf part":   {"a\r\nb\nc\n", 1, 3, fix("b\n", "x\n"), "a\r\nx\nc\n", ""},
+		"mixed, crlf part": {"a\r\nb\nc\n", 1, 3, fix("a\n", "y\n"), "y\r\nb\nc\n", ""},
+		// An existing literal may stay; a second one may not be added.
+		"secret kept": {"a\npassword := \"hunter2hunter2\"\nb\n", 1, 3,
+			fix("password := \"hunter2hunter2\"\nb", "password := \"hunter2hunter2\"\nc"),
+			"a\npassword := \"hunter2hunter2\"\nc\n", ""},
+		"secret added beside one": {"a\npassword := \"hunter2hunter2\"\nb\n", 1, 3,
+			fix("password := \"hunter2hunter2\"\nb", "password := \"hunter2hunter2\"\ntoken := \""+"ghp"+"_"+strings.Repeat("a1", 18)+"\""),
+			"", "secret"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			out, reason := ValidateFix([]byte(c.content), c.from, c.to, c.fix)

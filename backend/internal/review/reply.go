@@ -464,9 +464,7 @@ func (r *Reviewer) fetchFindingFile(ctx context.Context, project, repo, commit, 
 
 // codeFence is a backtick fence longer than any backtick run in s, so model
 // text cannot close it early and post markdown as the bot's own.
-func codeFence(s string) string {
-	return strings.Repeat("`", max(3, lang.BacktickRun(s)+1))
-}
+func codeFence(s string) string { return lang.Fence(s) }
 
 // fileLines splits a file into its lines; a final newline ends the last
 // line, it does not start a phantom one.

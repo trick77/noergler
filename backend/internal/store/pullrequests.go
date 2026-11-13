@@ -389,14 +389,27 @@ func (s *Store) MarkFindingOpen(ctx context.Context, findingID int64) error {
 // commentID on that PR, or nil. Scoped to the PR key the webhook
 // authenticated, so a comment id from another team's PR finds nothing.
 func (s *Store) FindingByComment(ctx context.Context, k PRKey, commentID int) (*Finding, error) {
+	return s.openFinding(ctx, k, "f.bitbucket_comment_id", int64(commentID))
+}
+
+// FindingByID is FindingByComment for a finding named by its row id, the
+// one a stored bot reply points at.
+func (s *Store) FindingByID(ctx context.Context, k PRKey, id int64) (*Finding, error) {
+	return s.openFinding(ctx, k, "f.id", id)
+}
+
+// openFinding is the one query behind FindingByComment and FindingByID:
+// scoped to the PR key, the PR active, the finding unfixed. col is a
+// literal column name from those two callers, never input.
+func (s *Store) openFinding(ctx context.Context, k PRKey, col string, v int64) (*Finding, error) {
 	var f Finding
 	err := s.pool.QueryRow(ctx, `
 		SELECT `+findingCols+`, r.to_commit
 		FROM findings f JOIN pull_requests p ON f.pull_request_id = p.id
 			JOIN review_runs r ON f.review_run_id = r.id
 		WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3 AND p.`+activeFilter+`
-			AND f.fixed_at IS NULL AND f.bitbucket_comment_id = $4`,
-		k.Project, k.Repo, k.PRID, commentID).Scan(append(f.scanTargets(), &f.RunCommit)...)
+			AND f.fixed_at IS NULL AND `+col+` = $4`,
+		k.Project, k.Repo, k.PRID, v).Scan(append(f.scanTargets(), &f.RunCommit)...)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -412,26 +425,6 @@ const (
 	BotReplyReply    = "reply"    // the answer on a finding's thread
 	BotReplyFixed    = "fixed"    // the "Fixed in" reply on a retired finding
 )
-
-// FindingByID is FindingByComment for a finding named by its row id, the
-// one a stored bot reply points at. Scoped and filtered the same way.
-func (s *Store) FindingByID(ctx context.Context, k PRKey, id int64) (*Finding, error) {
-	var f Finding
-	err := s.pool.QueryRow(ctx, `
-		SELECT `+findingCols+`, r.to_commit
-		FROM findings f JOIN pull_requests p ON f.pull_request_id = p.id
-			JOIN review_runs r ON f.review_run_id = r.id
-		WHERE p.project_key = $1 AND p.repo_slug = $2 AND p.pr_id = $3 AND p.`+activeFilter+`
-			AND f.fixed_at IS NULL AND f.id = $4`,
-		k.Project, k.Repo, k.PRID, id).Scan(append(f.scanTargets(), &f.RunCommit)...)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &f, nil
-}
 
 // InsertBotReply records a reply noergler posted on a PR. A PR without a
 // row records nothing (a language confirmation on a PR never reviewed or
