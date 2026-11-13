@@ -616,6 +616,16 @@ In `internal/store`. FixCount is how many fix requests of one team ended in one 
 | `Outcome` | `string` |  |
 | `Count` | `int` |  |
 
+### store.FixDay
+
+In `internal/store`. FixDay is one day's fix requests and the commits among them.
+
+| Field | Type | Doc |
+| --- | --- | --- |
+| `Day` | `time.Time` |  |
+| `Requested` | `int` |  |
+| `Committed` | `int` |  |
+
 ### store.OutcomeCount
 
 In `internal/store`. OutcomeCount is one bucket of the outcome breakdown.

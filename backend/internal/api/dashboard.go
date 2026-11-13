@@ -52,6 +52,7 @@ type DashboardStore interface {
 	PRCost(ctx context.Context, key store.PRKey) (*int64, error)
 	PRCommentCalls(ctx context.Context, key store.PRKey) ([]store.CommentCall, bool, error)
 	FixCountsSince(ctx context.Context, since time.Time) ([]store.FixCount, error)
+	FixesDaily(ctx context.Context, since time.Time) ([]store.FixDay, error)
 }
 
 // usd renders nano-USD as a fixed-point decimal string with 3 decimals,
@@ -339,6 +340,12 @@ type fixesBody struct {
 	Outcomes  []fixOutcomeCount `json:"outcomes"`
 }
 
+type fixDayBody struct {
+	Day       string `json:"day"`
+	Requested int    `json:"requested"`
+	Committed int    `json:"committed"`
+}
+
 type fixOutcomeCount struct {
 	Outcome string `json:"outcome"`
 	Count   int    `json:"count"`
@@ -394,6 +401,9 @@ type metricsBody struct {
 	Daily     []dayBody        `json:"daily"`
 	Attempts  []outcomeDayBody `json:"daily_attempts"`
 	Breakdown []breakdownBody  `json:"breakdown"`
+	// FixesDaily is fix requests and commits per day over the window, every
+	// team summed; days without a request are absent.
+	FixesDaily []fixDayBody `json:"fixes_daily"`
 }
 
 func toTotals(t store.Totals) totalsBody {
@@ -527,6 +537,10 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 	if failed("FixCountsSince", err) {
 		return
 	}
+	fixDays, err := st.FixesDaily(ctx, since)
+	if failed("FixesDaily", err) {
+		return
+	}
 	fixes := map[string]*fixesBody{}
 	for _, c := range fixCounts {
 		f := fixes[c.TeamSlug]
@@ -559,6 +573,7 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 		Daily:     make([]dayBody, 0, len(daily)),
 		Attempts:  make([]outcomeDayBody, 0, len(attempts)),
 		Breakdown: make([]breakdownBody, 0, len(breakdown)),
+		FixesDaily: make([]fixDayBody, 0, len(fixDays)),
 	}
 	nameOf := d.teamNamer()
 	for _, t := range byTeam {
@@ -593,6 +608,11 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 	for _, b := range attempts {
 		body.Attempts = append(body.Attempts, outcomeDayBody{
 			Day: b.Day.UTC().Format(time.DateOnly), Outcome: b.Outcome, Count: b.Count,
+		})
+	}
+	for _, d := range fixDays {
+		body.FixesDaily = append(body.FixesDaily, fixDayBody{
+			Day: d.Day.UTC().Format(time.DateOnly), Requested: d.Requested, Committed: d.Committed,
 		})
 	}
 	for _, c := range breakdown {

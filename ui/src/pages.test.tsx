@@ -154,6 +154,7 @@ const metrics: Metrics = {
     },
     { outcome: "error", count: 1 },
   ],
+  fixes_daily: [{ day: "2026-09-02", requested: 5, committed: 3 }],
 };
 
 beforeEach(() => {
@@ -563,7 +564,7 @@ describe("MetricsPage", () => {
     serve({ metrics });
     render(<MetricsPage />);
 
-    await screen.findByText("Fix requests");
+    await screen.findByRole("columnheader", { name: "Fix requests" });
     const headers = screen
       .getAllByRole("columnheader")
       .map((h) => h.textContent);
@@ -582,6 +583,27 @@ describe("MetricsPage", () => {
     expect(requests.getAttribute("title")).toBe(
       "3 committed\n2 no write permission",
     );
+  });
+
+  // Both counts per day in one chart: committed and not committed stacked,
+  // the bar's height the requests.
+  it("charts fix requests and fixes committed per day", async () => {
+    serve({ metrics });
+    render(<MetricsPage />);
+
+    expect(
+      await screen.findByLabelText(/Fix requests and fixes committed per day/),
+    ).toBeDefined();
+    expect(screen.getAllByText("Fix requests per day")).toHaveLength(1);
+  });
+
+  it("says so when there are no fix requests", async () => {
+    serve({ metrics: { ...metrics, fixes_daily: [] } });
+    render(<MetricsPage />);
+
+    expect(
+      await screen.findByText("No fix requests in this window."),
+    ).toBeDefined();
   });
 
   // A fresh instance has run nothing, which is not the same as having run
@@ -924,7 +946,7 @@ describe("MetricsPage", () => {
   });
 
   // Throughput, cost, LOC (user, 2026-11-11).
-  it("orders the charts throughput, cost, LOC", async () => {
+  it("orders the charts throughput, cost, LOC, auto-fix", async () => {
     serve({ metrics });
     render(<MetricsPage />);
 
@@ -932,7 +954,7 @@ describe("MetricsPage", () => {
     const titles = screen
       .getAllByRole("heading", { level: 3 })
       .map((h) => h.textContent);
-    expect(titles).toEqual(["Throughput", "Spend", "Code volume"]);
+    expect(titles).toEqual(["Throughput", "Spend", "Code volume", "Auto-fix"]);
   });
 
   // A team keeps its colour across cost and LOC: both rank by spend.

@@ -69,6 +69,10 @@ func TestFindingFixes_RecordedCommittedOnceAndCounted(t *testing.T) {
 	if counts, _ := s.FixCountsSince(ctx, time.Now().Add(time.Hour)); len(counts) != 0 {
 		t.Errorf("a later window counts %+v", counts)
 	}
+	days, err := s.FixesDaily(ctx, time.Now().Add(-time.Hour))
+	if err != nil || len(days) != 1 || days[0].Requested != 2 || days[0].Committed != 1 {
+		t.Errorf("days = %+v, %v: want one day, 2 requests, 1 committed", days, err)
+	}
 }
 
 // noergler's answer on a finding's thread keeps its finding.
