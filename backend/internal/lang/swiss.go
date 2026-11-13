@@ -58,6 +58,12 @@ func BacktickRun(s string) int {
 	return longest
 }
 
+// Fence is a backtick fence longer than any backtick run in s, at least
+// three, so text inside it cannot close it early.
+func Fence(s string) string {
+	return strings.Repeat("`", max(3, BacktickRun(s)+1))
+}
+
 // OpenFence is the fence of a code block s opens and leaves unclosed, or "".
 // A closing fence is the opener's character, at least as long, alone on its
 // line; a backtick opener whose rest holds a backtick is an inline span.

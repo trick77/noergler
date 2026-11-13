@@ -405,7 +405,7 @@ export interface RunFinding {
 }
 
 export interface CommentCall {
-  /** reply | question */
+  /** reply | question | fix */
   kind: string;
   comment_id: number | null;
   model: string;
