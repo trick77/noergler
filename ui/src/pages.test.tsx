@@ -119,6 +119,14 @@ const metrics: Metrics = {
       lines_added: 1200,
       lines_removed: 340,
       lines_uncounted_runs: 0,
+      fixes: {
+        requested: 5,
+        committed: 3,
+        outcomes: [
+          { outcome: "committed", count: 3 },
+          { outcome: "no_write", count: 2 },
+        ],
+      },
     },
   ],
   daily: [
@@ -547,6 +555,18 @@ describe("MetricsPage", () => {
     expect(await screen.findByText("Unpriced")).toBeDefined();
     // The unpriced count stands on its own rather than being folded in.
     expect(await screen.findAllByText("3")).not.toHaveLength(0);
+  });
+
+  // Committed over requested, and why the rest did not land on hover.
+  it("shows a team's auto-fixes with their outcomes", async () => {
+    serve({ metrics });
+    render(<MetricsPage />);
+
+    const cell = await screen.findByText("3 / 5");
+    expect(cell.getAttribute("title")).toBe(
+      "3 committed\n2 no write permission",
+    );
+    expect(screen.getByText("Auto-fixes")).toBeDefined();
   });
 
   // A fresh instance has run nothing, which is not the same as having run

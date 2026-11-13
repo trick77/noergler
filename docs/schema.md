@@ -2,7 +2,7 @@
 
 # Database schema
 
-18 tables; the diagram is at the end. Go types are the `model.go` structs whose rows they hold.
+19 tables; the diagram is at the end. Go types are the `model.go` structs whose rows they hold.
 
 ## almanach_calls
 
@@ -101,10 +101,16 @@ Go types:
 | `comment_id` | bigint | no |  | 2 |
 | `kind` | text | no |  |  |
 | `created_at` | timestamp with time zone | no | `now()` |  |
+| `finding_id` | bigint | yes |  |  |
 
 Foreign keys:
 
+- `finding_id` → `findings` (`id`), on delete CASCADE
 - `pull_request_id` → `pull_requests` (`id`), on delete CASCADE
+
+Indexes:
+
+- `bot_replies_finding_idx` (`finding_id`) where `finding_id IS NOT NULL`
 
 Checks:
 
@@ -146,6 +152,35 @@ Go types:
 Indexes:
 
 - `idx_dispute_signals_repo` (`team_slug`, `project_key`, `repo_slug`)
+
+## finding_fixes
+
+Go types:
+
+- `store.FindingFix` (internal/store): FindingFix is one request of the PR author to have noergler apply a finding, and what came of it.
+
+| Column | Type | Null | Default | PK |
+| --- | --- | --- | --- | --- |
+| `id` | bigint | no | `nextval('finding_fixes_id_seq'::regclass)` | 1 |
+| `finding_id` | bigint | no |  |  |
+| `team_slug` | text | no |  |  |
+| `outcome` | text | no |  |  |
+| `commit_sha` | text | yes |  |  |
+| `created_at` | timestamp with time zone | no | `now()` |  |
+
+Foreign keys:
+
+- `finding_id` → `findings` (`id`), on delete CASCADE
+
+Indexes:
+
+- `finding_fixes_committed_idx` (`finding_id`) unique where `outcome = 'committed'::text`
+- `finding_fixes_team_time_idx` (`team_slug`, `created_at`)
+
+Checks:
+
+- `CONSTRAINT finding_fixes_check CHECK ((outcome = 'committed'::text) = (commit_sha IS NOT NULL))`
+- `CONSTRAINT finding_fixes_outcome_check CHECK (outcome = ANY (ARRAY['committed'::text, 'not_feasible'::text, 'rejected'::text, 'no_write'::text, 'conflict'::text, 'refused'::text, 'error'::text]))`
 
 ## findings
 
@@ -241,7 +276,7 @@ Indexes:
 Checks:
 
 - `CONSTRAINT llm_calls_attempt_kind_check CHECK ((kind = 'review'::text) = (attempt_id IS NOT NULL))`
-- `CONSTRAINT llm_calls_kind_check CHECK (kind = ANY (ARRAY['review'::text, 'reply'::text, 'question'::text]))`
+- `CONSTRAINT llm_calls_kind_check CHECK (kind = ANY (ARRAY['review'::text, 'reply'::text, 'question'::text, 'fix'::text]))`
 
 ## pull_requests
 
@@ -551,6 +586,16 @@ In `internal/store`. DisputePR is one PR a signal occurred on inside the window:
 | `CommentID` | `*int` |  |
 | `Author` | `string` |  |
 
+### store.FixCount
+
+In `internal/store`. FixCount is how many fix requests of one team ended in one outcome.
+
+| Field | Type | Doc |
+| --- | --- | --- |
+| `TeamSlug` | `string` |  |
+| `Outcome` | `string` |  |
+| `Count` | `int` |  |
+
 ### store.OutcomeCount
 
 In `internal/store`. OutcomeCount is one bucket of the outcome breakdown.
@@ -701,6 +746,7 @@ erDiagram
         bigint comment_id PK
         text kind
         timestamp_with_time_zone created_at
+        bigint finding_id FK
     }
     dispute_occurrences {
         bigint signal_id PK, FK
@@ -713,6 +759,14 @@ erDiagram
         text team_slug
         text project_key
         text repo_slug
+        timestamp_with_time_zone created_at
+    }
+    finding_fixes {
+        bigint id PK
+        bigint finding_id FK
+        text team_slug
+        text outcome
+        text commit_sha
         timestamp_with_time_zone created_at
     }
     findings {
@@ -890,9 +944,11 @@ erDiagram
         text model
         timestamp_with_time_zone created_at
     }
+    bot_replies }o--o| findings : "finding_id"
     bot_replies }o--|| pull_requests : "pull_request_id"
     dispute_occurrences }o--|| findings : "finding_id"
     dispute_occurrences }o--|| dispute_signals : "signal_id"
+    finding_fixes }o--|| findings : "finding_id"
     findings }o--o| review_runs : "fixed_run_id"
     findings }o--|| pull_requests : "pull_request_id"
     findings }o--|| review_runs : "review_run_id"

@@ -55,6 +55,23 @@ func TestFixedFindingIsRepliedToThenResolved(t *testing.T) {
 	}
 }
 
+// A finding noergler committed itself is stamped fixed, but its thread is
+// left alone: it said "Applied in" already, and the author resolves it
+// after looking at the change (user, 2026-11-13).
+func TestFindingFixedByNoerglerIsStampedOnly(t *testing.T) {
+	h := fixedHarness(t, "func new() {}")
+	h.st.existing[0].BotFixCommit = ptrs("c0ffee1234567890")
+
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	if len(h.bb.Calls) != 0 || len(h.bb.Replies) != 0 {
+		t.Errorf("calls = %v, replies = %+v: want no reply and no resolve", h.bb.Calls, h.bb.Replies)
+	}
+	if len(h.st.Fixed) != 1 || h.st.Fixed[0] != [2]int64{11, 1} {
+		t.Errorf("fixed = %v, want row 11 stamped by run 1", h.st.Fixed)
+	}
+}
+
 // A full review's diff is the whole PR, every line of it added, the buggy one
 // too: no id is listed, and a claim retires nothing.
 func TestFullReviewRetiresNothing(t *testing.T) {

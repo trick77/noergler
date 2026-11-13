@@ -1,0 +1,265 @@
+package review
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"strings"
+
+	"github.com/trick77/noergler/internal/bitbucket"
+	"github.com/trick77/noergler/internal/inference"
+	"github.com/trick77/noergler/internal/lang"
+	"github.com/trick77/noergler/internal/render"
+	"github.com/trick77/noergler/internal/store"
+	"github.com/trick77/noergler/internal/webhook"
+	"github.com/trick77/ship/kit/logging"
+)
+
+// The PR author can ask noergler to apply a finding itself ("flick das",
+// "fix it"; user, 2026-11-13). The reply call classifies the request; the
+// fix call writes one replacement in one file; ValidateFix checks it; the
+// commit goes to the PR's source branch through Bitbucket's edit-file API.
+// Always on, no setting: without write permission noergler says so, every
+// time, and tries again on the next request (user, 2026-11-13).
+
+// fixExcerptLines is how far around the finding's line the fix call sees
+// the file: a fix changes a spot, so this bounds where it may land too.
+const (
+	fixExcerptLines      = 60
+	fixExcerptLinesSmall = 20
+)
+
+// fixPlan is what a fix request needs on the worker, read before the call.
+type fixPlan struct {
+	// unavailable says why no fix can be asked for (log vocabulary), empty
+	// when it can.
+	unavailable string
+	// The source side of the PR: its repo (a fork's for a fork PR), branch
+	// and head, which the file was read at and the commit is based on.
+	project, repo, branch, head string
+	path                        string
+	content                     []byte
+	// code is the excerpt sent, lines from..to; anchor the finding's line
+	// at the head.
+	code             string
+	from, to, anchor int
+}
+
+// prepareFix reads the finding's file at the PR head and finds the
+// finding's line in it. runContent is the file at the commit the finding
+// was posted at (at), when runOK. The line is found by its text, the one
+// nearest the finding's number: a later push moves lines. No text, no fix.
+func (r *Reviewer) prepareFix(ctx context.Context, pr webhook.PullRequest, project, repo, prTag string, f *store.Finding, at, runContent string, runOK bool) *fixPlan {
+	p := &fixPlan{project: project, repo: repo, branch: pr.FromRef.Branch(), head: pr.FromRef.LatestCommit,
+		path: inference.StripSidePrefix(f.FilePath)}
+	if src := pr.FromRef.Repository; src != nil && src.Project.Key != "" && src.Slug != "" {
+		p.project, p.repo = src.Project.Key, src.Slug
+	}
+	if p.head == "" || p.branch == "" {
+		p.unavailable = "no_head"
+		return p
+	}
+	content, err := r.bitbucket.FetchFileBytes(ctx, p.project, p.repo, p.head, f.FilePath)
+	if stripped := inference.StripSidePrefix(f.FilePath); err != nil && stripped != f.FilePath && bitbucket.Status(err) == http.StatusNotFound {
+		content, err = r.bitbucket.FetchFileBytes(ctx, p.project, p.repo, p.head, stripped)
+	} else if err == nil {
+		p.path = f.FilePath
+	}
+	var tooLarge *bitbucket.ContentTooLarge
+	switch {
+	case errors.As(err, &tooLarge):
+		p.unavailable = "too_large"
+		return p
+	case err != nil:
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: file for a fix on %s unavailable: %v", prTag, f.FilePath, err))
+		p.unavailable = "unreadable"
+		return p
+	case bytes.IndexByte(content, 0) >= 0:
+		p.unavailable = "binary"
+		return p
+	}
+	p.content = content
+	lines := fileLines(strings.ReplaceAll(string(content), "\r\n", "\n"))
+	p.anchor = 0
+	if at == p.head && f.LineNumber >= 1 && f.LineNumber <= len(lines) {
+		p.anchor = f.LineNumber
+	} else if runOK {
+		run := fileLines(strings.ReplaceAll(runContent, "\r\n", "\n"))
+		if f.LineNumber >= 1 && f.LineNumber <= len(run) {
+			p.anchor = nearestLine(lines, strings.TrimSpace(run[f.LineNumber-1]), f.LineNumber)
+		}
+	}
+	if p.anchor == 0 {
+		p.unavailable = "line_gone"
+		return p
+	}
+	for _, n := range []int{fixExcerptLines, fixExcerptLinesSmall} {
+		p.from, p.to = max(1, p.anchor-n), min(len(lines), p.anchor+n)
+		p.code = strings.Join(lines[p.from-1:p.to], "\n")
+		if len([]rune(p.code)) <= replyExcerptRunes {
+			return p
+		}
+	}
+	p.unavailable = "too_large"
+	return p
+}
+
+// nearestLine is the 1-based number of the line whose trimmed text is want,
+// nearest to near; 0 when want is blank or no line has it.
+func nearestLine(lines []string, want string, near int) int {
+	if want == "" {
+		return 0
+	}
+	best := 0
+	for i, l := range lines {
+		if strings.TrimSpace(l) != want {
+			continue
+		}
+		if n := i + 1; best == 0 || abs(n-near) < abs(best-near) {
+			best = n
+		}
+	}
+	return best
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
+// postFix is a fix request's posting stage, on the worker: validate, commit,
+// confirm. Every request gets one answer in the thread, never silence
+// (user, 2026-11-13), and one finding_fixes row, the metric's source.
+func (r *Reviewer) postFix(ctx context.Context, j *replyJob) {
+	pick := j.lang.Pick
+	if j.botFixCommit != nil {
+		r.postFixAnswer(ctx, j, "", pick("Schon umgesetzt in `", "Already applied in `")+render.ShortSHA(*j.botFixCommit, 8)+"`.")
+		return
+	}
+	outcome, sha, body := r.applyFix(ctx, j)
+	// Recorded before the answer: the commit is made, whatever the post does.
+	inserted, err := r.store.RecordFindingFix(ctx, store.FindingFix{FindingID: j.findingID, TeamSlug: j.team, Outcome: outcome, CommitSHA: sha})
+	switch {
+	case err != nil:
+		r.log.WarnContext(ctx, "DB operation failed, using fallback: RecordFindingFix", logging.Err(err))
+	case !inserted:
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: fix on finding %s committed as %s but not recorded: the finding has a committed fix already", j.prTag, j.where, sha))
+	}
+	r.postFixAnswer(ctx, j, sha, body)
+	if !j.secondPass {
+		safeDBErr(ctx, r.log, "MarkFindingReplied", func() error { return r.store.MarkFindingReplied(ctx, j.findingID, nil) })
+	}
+	r.log.InfoContext(ctx, fmt.Sprintf("%s: fix requested on finding %s: %s%s", j.prTag, j.where, outcome, func() string {
+		if sha == "" {
+			return ""
+		}
+		return " " + sha
+	}()))
+}
+
+// applyFix decides the outcome and writes the commit. body is the answer
+// posted in the thread, in the author's language.
+func (r *Reviewer) applyFix(ctx context.Context, j *replyJob) (outcome, sha, body string) {
+	pick := j.lang.Pick
+	cannot := func(why string) string {
+		return pick("Kann ich nicht selbst umsetzen: ", "I can't apply this myself: ") + why
+	}
+	p := j.fix
+	if p == nil || p.unavailable != "" {
+		why := "unknown"
+		if p != nil {
+			why = p.unavailable
+		}
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: fix on finding %s not asked for: %s", j.prTag, j.where, why))
+		return store.FixNotFeasible, "", cannot(unavailableText(j.lang, why))
+	}
+	res := j.res.Fix
+	if res == nil || res.Outcome != inference.OutcomeOK {
+		if res != nil {
+			r.log.WarnContext(ctx, fmt.Sprintf("%s: fix call on finding %s failed: %s %v", j.prTag, j.where, res.Outcome, res.Err))
+		}
+		return store.FixError, "", pick("Der Fix ist fehlgeschlagen, bitte nochmals versuchen.", "Writing the fix failed, please ask again.")
+	}
+	if !res.Fix.Feasible {
+		why := sharpS(j.lang, strings.TrimSpace(res.Fix.Reason))
+		if why == "" {
+			why = pick("die Änderung geht über eine Stelle in einer Datei hinaus.", "the change goes beyond one spot in one file.")
+		}
+		return store.FixNotFeasible, "", cannot(lang.TruncateRunes(why, replyPostRunes/2))
+	}
+	content, reason := inference.ValidateFix(p.content, p.from, p.to, res.Fix)
+	if reason != "" {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: fix on finding %s dropped: %s", j.prTag, j.where, reason))
+		return store.FixRejected, "", pick("Kann ich nicht sicher selbst ändern. Bitte passe die Stelle selbst an.",
+			"I can't change this safely myself. Please make the change yourself.")
+	}
+	subject, ok := inference.CheckCommitSubject(sharpS(j.lang, res.Fix.CommitSubject))
+	if !ok {
+		subject = pick("setze Review-Finding in ", "apply review finding in ") + pathBase(p.path) + pick(" um", "")
+	}
+	message := subject
+	if j.threadID != nil {
+		message += "\n\n" + r.bitbucket.CommentURL(j.project, j.repo, j.prID, *j.threadID)
+	}
+	sha, err := r.bitbucket.EditFile(ctx, p.project, p.repo, p.branch, p.path, p.head, message, content)
+	if err != nil {
+		status := bitbucket.Status(err)
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: fix commit on finding %s refused: %v", j.prTag, j.where, err))
+		switch {
+		case status == http.StatusUnauthorized || status == http.StatusForbidden:
+			return store.FixNoWrite, "", pick("Kann ich nicht selbst committen: mir fehlen die Schreibrechte auf diesen Branch.",
+				"I can't commit this myself: I have no write permission on this branch.")
+		case status == http.StatusConflict:
+			return store.FixConflict, "", pick("Der Branch hat sich inzwischen bewegt. Bitte nochmals fragen.",
+				"The branch has moved in the meantime. Please ask again.")
+		case status >= 400 && status < 500:
+			return store.FixRefused, "", pick("Bitbucket hat den Commit abgelehnt.", "Bitbucket refused the commit.")
+		}
+		return store.FixError, "", pick("Der Commit ist fehlgeschlagen, bitte nochmals versuchen.", "The commit failed, please ask again.")
+	}
+	link := r.bitbucket.CommitURL(p.project, p.repo, sha)
+	body = pick("Umgesetzt in ", "Applied in ") + "[`" + render.ShortSHA(sha, 8) + "`](" + link + "):\n\n> " + subject + "\n\n" +
+		pick("Bitte prüfe die Anpassung genau, bevor du mergst.", "Please review the change carefully before you merge.")
+	return store.FixCommitted, sha, body
+}
+
+// unavailableText is why a fix could not even be asked for, for the author.
+func unavailableText(l lang.Lang, why string) string {
+	switch why {
+	case "binary":
+		return l.Pick("die Datei ist keine Textdatei.", "the file is not a text file.")
+	case "too_large":
+		return l.Pick("die Datei ist zu gross.", "the file is too large.")
+	case "line_gone":
+		return l.Pick("die Stelle des Findings gibt es im aktuellen Stand nicht mehr.", "the finding's line is no longer in the current code.")
+	}
+	return l.Pick("die Datei liess sich nicht lesen.", "the file could not be read.")
+}
+
+// postFixAnswer posts the answer under the author's reply and keeps its id
+// with the finding, so a reply under it is a reply on the finding again. A
+// failed post after a commit is an error: the commit stands unannounced.
+func (r *Reviewer) postFixAnswer(ctx context.Context, j *replyJob, sha, body string) {
+	body = lang.TruncateRunes(body, replyPostRunes)
+	posted, err := r.bitbucket.ReplyToComment(ctx, j.project, j.repo, j.prID, j.replyTo, body)
+	if err != nil {
+		if sha != "" {
+			r.log.ErrorContext(ctx, fmt.Sprintf("%s: fix on finding %s committed as %s, but its confirmation failed to post: %v", j.prTag, j.where, sha, err))
+			return
+		}
+		r.log.ErrorContext(ctx, fmt.Sprintf("%s: answer to a fix request on finding %s failed to post: %v", j.prTag, j.where, err))
+		return
+	}
+	r.recordFindingBotReply(ctx, j.key, posted, j.findingID)
+}
+
+func pathBase(p string) string {
+	if i := strings.LastIndexByte(p, '/'); i >= 0 {
+		return p[i+1:]
+	}
+	return p
+}

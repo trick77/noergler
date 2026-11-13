@@ -137,6 +137,18 @@ export const de = {
     unpricedTrend: "Verlauf ohne Preis",
     linesReviewed: "LOC geprüft",
     lines: "LOC",
+    autoFixes: "Auto-Fixes",
+    autoFixesTitle:
+      "Committet / angefragt: PR-Autoren liessen noergler ein Finding umsetzen",
+    fixOutcome: {
+      committed: "committet",
+      not_feasible: "nicht machbar",
+      rejected: "als unsicher verworfen",
+      no_write: "keine Schreibrechte",
+      conflict: "Branch hatte sich bewegt",
+      refused: "von Bitbucket abgelehnt",
+      error: "fehlgeschlagen",
+    },
     linesSplit:
       "{{total}} LOC (+{{added}} / −{{removed}}): ans Modell gesendete Zeilen, pro PR einmal gezählt",
     linesTrend: "Verlauf der geprüften LOC",
@@ -320,6 +332,7 @@ export const de = {
   callKind: {
     reply: "Antwort auf ein Finding",
     question: "Antwort auf eine Erwähnung",
+    fix: "Auto-Fix eines Findings",
   },
   decision: {
     dropped: "verworfen",

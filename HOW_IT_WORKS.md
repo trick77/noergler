@@ -426,7 +426,10 @@ Q&A, whoever asks. The same holds under any reply noergler posted (a Q&A
 answer, a finding-thread answer, a language confirmation): every reply the
 bot posts is stored by its comment id (`bot_replies`), and a plain reply
 directly under one is a Q&A too, whoever asks, with the bot's answer as the
-comment it sees. The original question above that answer is not shown
+comment it sees. One exception: the PR author's plain reply under
+noergler's answer on a finding's thread is a reply on that finding (the
+answer is stored with its finding), so "ok, fix it" there is heard. The
+original question above that answer is not shown
 (Bitbucket sends the immediate parent only). On a PR whose summary was
 deleted such a reply is not answered: a plain reply never brings a PR
 back. On a stopped PR (§12c) it is answered, and the PR stays stopped.
@@ -435,7 +438,9 @@ The PR author's reply on one of noergler's finding threads needs no mention.
 The route queues any non-empty reply not written by the bot (Bitbucket's
 `commentParentId`); the worker answers only the author, only when the parent is
 a stored, unfixed finding of that PR without an answer yet, and, for a plain
-reply, only under the PR's cost cap. An `@bot` reply on such a thread is
+reply, only under the PR's cost cap. On a thread answered already a plain
+reply still gets a call, but only a fix request (below) is answered. An
+`@bot` reply on such a thread is
 answered as a reply too, unless it asks for a review or comes from someone
 else, which the Q&A answers. The call (`finding_reply.txt`) is staged
 like a review, and sees the finding, the file around it, AGENTS.md, the
@@ -444,6 +449,36 @@ this in the UI"), is acknowledged. The dispute is stored and later prompts of
 the same PR show it beside the finding so the issue is not raised again. The
 thread stays open: the author resolves it. A reply's call is recorded and
 counts toward the PR's cost; at the cap, replies stop.
+
+### Auto-fix
+
+A reply asking noergler to make the change itself ("tue dies selber", "flick
+das", "setz das um", "fix it") is the intent `requests_fix`; "ich flicke das"
+or "fixed" acknowledges. Always on, no setting. On that intent a second call
+(`finding_fix.txt`, same profile, same pool slot) gets the file at the PR
+head, 60 lines either side of the finding's line (found again by its text,
+nearest the old number; gone = not feasible), and returns one exact `old`
+text and its replacement, or `feasible: false` with a reason (another file,
+a generator run, a decision only the author can make). `ValidateFix`, blunt
+rules: `old` once in the file, inside the excerpt, at most 40 lines, no new
+secret-like literal; the file is spliced byte for byte (line ends, BOM, last
+newline kept). The commit goes to the source branch (a fork's repo for a fork
+PR) through Bitbucket's edit-file API, based on the head the file was read
+at: a branch that moved since is a 409, never an overwrite. Commit message:
+the model's subject in the author's language, verb first, present tense,
+lower case (`fix loop redirection`, `behebe Schleifenumleitung`), then a link
+to the finding's thread.
+
+Every request is answered in the thread, never silently: "Applied in
+`<sha>`" with the subject and "please review the change carefully before you
+merge", or why not: not feasible (the model's reason), rejected as unsafe,
+no write permission (401/403: the token may be read-only; asked again, it is
+tried again), the branch moved (409), refused by Bitbucket (a pre-receive
+hook), or the call failed. Each request is a `finding_fixes` row, the
+metrics page's Auto-fixes column; a finding is committed once. The fix
+call is its own `llm_calls` row (`fix`) and counts toward the PR's cost. The
+next review retires a finding noergler committed without a "Fixed in" reply
+and without resolving it: the author resolves the thread after looking.
 
 ### Dispute signals
 

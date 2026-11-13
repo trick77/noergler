@@ -16,6 +16,9 @@ const (
 	CallReview   = "review"
 	CallReply    = "reply"
 	CallQuestion = "question"
+	// CallFix is the call that writes the change a PR author asked for on
+	// a finding's thread; the reply call that read the request is CallReply.
+	CallFix = "fix"
 )
 
 // insertLLMCall writes one review call for an attempt that is already
@@ -24,10 +27,11 @@ func (s *Store) insertLLMCall(ctx context.Context, attemptID int64, a Attempt, c
 	return s.writeCall(ctx, &attemptID, a.TeamSlug, a.Key, CallReview, nil, c)
 }
 
-// InsertCommentCall records a reply's or a question's gateway call, the only
-// record of it: the PR's cost counts it. commentID is the comment answered.
+// InsertCommentCall records a reply's, a question's or a fix's gateway call,
+// the only record of it: the PR's cost counts it. commentID is the comment
+// answered.
 func (s *Store) InsertCommentCall(ctx context.Context, team string, k PRKey, kind string, commentID int64, c LLMCall) error {
-	if kind != CallReply && kind != CallQuestion {
+	if kind != CallReply && kind != CallQuestion && kind != CallFix {
 		return fmt.Errorf("comment call kind %q", kind)
 	}
 	return s.writeCall(ctx, nil, team, k, kind, &commentID, c)

@@ -308,9 +308,9 @@ func TestFindingReplyIgnores(t *testing.T) {
 			at := time.Now()
 			h.st.skipState = &store.SkipState{IgnoredAt: &at}
 		},
-		"a finding answered already": func(h *harness, _ *webhook.Payload) {
-			at := time.Now()
-			h.st.byComment[501].RepliedAt = &at
+		// noergler committed the fix already: the thread is done.
+		"a finding noergler fixed already": func(h *harness, _ *webhook.Payload) {
+			h.st.byComment[501].BotFixCommit = ptrs("c0ffee")
 		},
 	}
 	for name, tweak := range cases {

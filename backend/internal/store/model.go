@@ -362,8 +362,13 @@ type Finding struct {
 	// ExistingFindings only, stamped by MarkFindingClosed.
 	ClosedAt *time.Time
 	// RunCommit is the source commit of the run that posted the finding: its
-	// line number belongs to that commit. Read by FindingByComment only.
+	// line number belongs to that commit. Read by FindingByComment and
+	// FindingByID only.
 	RunCommit string
+	// BotFixCommit is the commit noergler made when the PR author asked it
+	// to apply the finding, nil when it made none. A review retires such a
+	// finding without the "Fixed in" reply and leaves the thread open.
+	BotFixCommit *string
 }
 
 // BotReply is one reply noergler posted, by its Bitbucket comment id.
@@ -372,6 +377,29 @@ type Finding struct {
 type BotReply struct {
 	CommentID int
 	Kind      string
+	// FindingID is the finding whose thread the reply answered, 0 for none.
+	FindingID int64
+}
+
+// FindingFix is one request of the PR author to have noergler apply a
+// finding, and what came of it.
+//
+// Table: finding_fixes
+type FindingFix struct {
+	FindingID int64
+	TeamSlug  string
+	Outcome   string
+	// CommitSHA is set on a committed fix only.
+	CommitSHA string
+}
+
+// FixCount is how many fix requests of one team ended in one outcome.
+//
+// Table: -
+type FixCount struct {
+	TeamSlug string
+	Outcome  string
+	Count    int
 }
 
 // RollupSnapshot is what one riptide rollup carries.

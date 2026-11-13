@@ -109,7 +109,7 @@ type prFileSent struct {
 }
 
 type commentCallBody struct {
-	// Kind is reply or question.
+	// Kind is reply, question or fix.
 	Kind      string    `json:"kind"`
 	CommentID *int64    `json:"comment_id"`
 	Model     string    `json:"model"`

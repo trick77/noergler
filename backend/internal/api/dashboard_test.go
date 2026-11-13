@@ -43,6 +43,7 @@ type fakeDashStore struct {
 	dailySince    *time.Time
 	attemptsSince *time.Time
 	byTeam        []store.TeamTotals
+	fixCounts     []store.FixCount
 	daily         []store.Bucket
 	dailyAtt      []store.AttemptBucket
 	activity      []store.TeamActivity
@@ -99,6 +100,9 @@ func (f *fakeDashStore) PRCommentCalls(context.Context, store.PRKey) ([]store.Co
 }
 func (f *fakeDashStore) OutcomeBreakdown(context.Context, time.Time) ([]store.OutcomeCount, error) {
 	return f.breakdown, f.err
+}
+func (f *fakeDashStore) FixCountsSince(context.Context, time.Time) ([]store.FixCount, error) {
+	return f.fixCounts, f.err
 }
 func (f *fakeDashStore) TotalsSince(context.Context, time.Time) (store.Totals, error) {
 	return f.totals, f.err
@@ -501,6 +505,37 @@ func TestMetricsCarriesLinesReviewed(t *testing.T) {
 	}
 	if len(got.Daily) != 1 || got.Daily[0]["lines"] != 1540.0 {
 		t.Errorf("daily = %v, want lines 1540", got.Daily)
+	}
+}
+
+// Fix requests per team: requested sums every outcome, committed the ones
+// that landed; a team without any reads zero, never null.
+func TestMetricsCountsFixRequests(t *testing.T) {
+	h := newDashHarness(t)
+	h.st.byTeam = []store.TeamTotals{{TeamSlug: "platform"}, {TeamSlug: "payments"}}
+	h.st.fixCounts = []store.FixCount{
+		{TeamSlug: "platform", Outcome: store.FixCommitted, Count: 3},
+		{TeamSlug: "platform", Outcome: store.FixNoWrite, Count: 2},
+	}
+
+	var got struct {
+		ByTeam []struct {
+			Team  string    `json:"team"`
+			Fixes fixesBody `json:"fixes"`
+		} `json:"by_team"`
+	}
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/metrics?days=7").Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.ByTeam) != 2 {
+		t.Fatalf("by_team = %+v", got.ByTeam)
+	}
+	p := got.ByTeam[0].Fixes
+	if p.Requested != 5 || p.Committed != 3 || len(p.Outcomes) != 2 || p.Outcomes[1] != (fixOutcomeCount{store.FixNoWrite, 2}) {
+		t.Errorf("platform fixes = %+v", p)
+	}
+	if q := got.ByTeam[1].Fixes; q.Requested != 0 || q.Committed != 0 || q.Outcomes == nil {
+		t.Errorf("payments fixes = %+v, want zero with an empty list", q)
 	}
 }
 

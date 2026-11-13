@@ -42,7 +42,7 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   review's call row is detail; never sum it.
 - Read the PR total only when this run is priced.
 - `null` = unpriced, never rendered `$0.000`. Only
-  `Usage.Cost.Provenance == Reported` is priced. Reply and Q&A cost is recorded and counted (decided).
+  `Usage.Cost.Provenance == Reported` is priced. Reply, Q&A and fix cost is recorded and counted (decided).
   A tool loop logs and records each call, logs one total (`SumCosts`):
   unpriced if any call is, the key spend its last reading. The total is
   never stored; the rows sum to it.
@@ -115,12 +115,28 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   lower the verdict, never raise it.
 - Fixed claims (`ValidateFixed`): incremental runs only; one quoted line added
   or removed, none moved; reply, then resolve only if the reply landed; the
-  row is stamped regardless. Limits are in the doc comment and decided.
-- Finding replies: PR author only, once, never resolve; only a reply directly
-  under the finding's comment is found (Bitbucket sends the immediate
-  parent; a reply nested under another reply is not, known limit); a non-author `@bot`
-  reply goes to the Q&A, a review-keyword one to the mention path (a review);
-  nothing posted = nothing stamped.
+  row is stamped regardless. Limits are in the doc comment and decided. A
+  finding noergler committed (auto-fix): stamped only, no reply, never
+  resolved (user, 2026-11-13: the author resolves after looking).
+- Finding replies: PR author only, answered and stamped once, never resolve;
+  a plain reply on a thread answered already still gets a call, answered
+  only if it is a fix request, nothing stamped again (user, 2026-11-13).
+  Found: directly under the finding's comment, or the author's plain reply
+  directly under noergler's answer there (`bot_replies.finding_id`; answered
+  for any intent, stamps nothing). Nested deeper is not (Bitbucket sends the
+  immediate parent, known limit); a non-author `@bot` reply goes to the Q&A,
+  a review-keyword one to the mention path (a review); nothing posted =
+  nothing stamped.
+- Auto-fix (user, 2026-11-13): `requests_fix` intent by the model; always
+  on, no setting, no pre-check of write rights: every request is tried and
+  answered in the thread, never silently, and is one `finding_fixes` row.
+  The fix call rides the reply's pool slot (a post cannot Stage), the file
+  read before it on the worker. One replacement in the finding's file,
+  `ValidateFix` blunt rules, spliced byte for byte; committed on the source
+  branch at the head it was read at (409, never overwrite). `EditFile` is the
+  only repo write and never goes through `outgoing` (NoEmDash/WrapProse would
+  rewrite code). Committed once per finding (unique index); a confirmation
+  always tells the author to review the change.
 - Dispute signals (user, 2026-10-31): a `disputes` reply whose
   `agents_md_line` passes `CheckAgentsMDLine` is one occurrence. Read and
   written on the finding-reply path only; never in `review.txt`, the Q&A,
@@ -134,7 +150,8 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - Every reply the bot posts is stored (`bot_replies`, by comment id, with
   its PR). A plain reply directly under one is a Q&A from anyone, like a
   reply under the summary (user, 2026-10-22), matched from the DB, never by
-  fetching the parent; the finding-thread answer included (decided). Never
+  fetching the parent; the finding-thread answer included (decided), except
+  the PR author's reply there, which is a reply on its finding. Never
   on a PR whose summary was deleted: a plain reply never reactivates, only
   an `@mention`. A stopped PR answers them and stays stopped.
 - Stop by command (user, 2026-11-04): "stop monitoring", "Höre auf, diesen
@@ -266,7 +283,8 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - The mention gate is the route's; `HandleMention` does not check. One
   exception, on the worker: a reply directly under the stored summary or
   under a stored bot reply is a mention, from anyone (user, 2026-10-19,
-  2026-10-22); nested under either, not.
+  2026-10-22); nested under either, not. The PR author under noergler's
+  finding-thread answer is a reply on that finding instead (2026-11-13).
 - `pr:modified` is never a review and never warns: only draft -> ready
   (`previousDraft` true, `draft` false) is queued, every other edit is
   ignored. Drafts are reviewed (user, 2026-10-22: a draft is the bot's

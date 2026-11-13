@@ -89,6 +89,22 @@ an incident or an eval run: read the reason before relaxing a rule.
   author text is intent, so a review changes only when a human edits
   AGENTS.md. One call, not a second after the verdict: the list rides every
   finding reply and code ignores it unless the reply is a dispute.
+- Auto-fix without a pre-check of write rights (user, 2026-11-13: "wir
+  probieren es einfach"): Bitbucket does not tell a token's scope apart from
+  a branch permission or a fork, and commenting needs read only, so no earlier
+  call proves anything. Trying costs one call; the answer says why it failed.
+- Auto-fix as one `old`/`new` replacement, not a whole file or a diff: a
+  whole file from the model rewrites line ends, a BOM, unrelated lines and
+  long files cut off; a diff's line numbers drift. An exact unique text
+  inside the excerpt is checkable by code, and the splice leaves every other
+  byte alone. The finding's line is found again by its text because no
+  evidence quote is stored with a finding.
+- Auto-fix call on the reply's pool slot: Stage's tail ends the PR's hold, so
+  a second Stage from a post would release a key a newer job holds. The file
+  is read on the worker before, for every author reply, accepted: rare.
+- A finding noergler committed is retired silently and its thread left open:
+  the confirmation already asks the author to review the change; resolving
+  it would hide the change the author was told to look at.
 - Language block above the untrusted input: below it the prompt calls
   everything data, so an instruction there is one the model may ignore; and
   the prefix up to it is the same for every PR in that language.
