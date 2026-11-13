@@ -2,6 +2,7 @@ package review
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -239,6 +240,58 @@ func TestQuestionOnACommitDiffKeepsThatCommit(t *testing.T) {
 	if a := usableAnchor(c, "src1"); a == nil || a.Commit != "src1" {
 		t.Errorf("the PR diff's line = %+v, want head", a)
 	}
+	// Not yet drifted after a push: its own to-commit, not head.
+	c.Anchor.ToHash = "old2"
+	if a := usableAnchor(c, "src1"); a == nil || a.Commit != "old2" {
+		t.Errorf("the PR diff's line with its hash = %+v, want old2", a)
+	}
+}
+
+// An unread "applied already?" never commits: fails closed, says so.
+func TestApplyQAAnswerFailsClosedOnAnUnreadState(t *testing.T) {
+	h, p := answerHarness(t)
+	h.st.answerFixErr = errors.New("db down")
+
+	h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
+
+	if len(h.bb.Edits) != 0 || h.llm.Mentions[0].Fix != nil {
+		t.Errorf("edits %d, fix request %v: want neither", len(h.bb.Edits), h.llm.Mentions[0].Fix != nil)
+	}
+	if len(h.bb.Replies) != 1 || !strings.Contains(h.bb.Replies[0].Text, "could not be read just now") {
+		t.Errorf("replies = %+v", h.bb.Replies)
+	}
+}
+
+// A notice under an apply request (a timeout) and an answer under a reply
+// of the fix flow stay about the answer: "apply it" under them applies it.
+func TestRepliesInTheFixFlowStayAboutTheAnswer(t *testing.T) {
+	t.Run("timeout notice", func(t *testing.T) {
+		h, p := answerHarness(t)
+		h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeTimedOut, Err: context.DeadlineExceeded}
+
+		h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
+
+		if last := h.st.BotReplies[len(h.st.BotReplies)-1]; last.Kind != store.BotReplyAnswer || last.Source != 950 {
+			t.Errorf("notice kept %+v", last)
+		}
+	})
+	t.Run("an explanation under the confirmation", func(t *testing.T) {
+		h, p := answerHarness(t)
+		confirm := &bitbucket.Comment{ID: 970, Text: "Applied in abc."}
+		confirm.Author.Name = "noergler"
+		h.bb.comments[970] = confirm
+		h.st.botReplies[970] = &store.BotReply{CommentID: 970, Kind: store.BotReplyAnswer, Source: 950,
+			Anchor: h.st.botReplies[950].Anchor}
+		h.llm.mention = inference.MentionResult{Outcome: inference.OutcomeOK, Answer: "Because of X."}
+		p.Comment.Text = "why that way?"
+		p.CommentParentID = 970
+
+		h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
+
+		if last := h.st.BotReplies[len(h.st.BotReplies)-1]; last.Source != 950 || last.Anchor == nil {
+			t.Errorf("explanation kept %+v, want it about answer 950", last)
+		}
+	})
 }
 
 // Without `apply` it is a question like any other: answered, nothing

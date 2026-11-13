@@ -295,8 +295,9 @@ type fakeStore struct {
 	// botReplies serves BotReplyByComment; BotReplies records InsertBotReply.
 	botReplies map[int]*store.BotReply
 	BotReplies []store.BotReply
-	// Fixes records RecordFindingFix.
-	Fixes []store.FindingFix
+	// Fixes records RecordFindingFix; answerFixErr fails AnswerFixCommit.
+	Fixes        []store.FindingFix
+	answerFixErr error
 	// signals serves OpenDisputeSignals, signalPRs DisputeSignalPRs by
 	// signal id; SignalReads records the reads, Occurrences the records.
 	signals     []store.DisputeSignal
@@ -715,6 +716,9 @@ func (f *fakeStore) RecordFindingFix(_ context.Context, _ store.PRKey, x store.F
 func (f *fakeStore) AnswerFixCommit(_ context.Context, answerID int) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.answerFixErr != nil {
+		return "", f.answerFixErr
+	}
 	for _, x := range f.Fixes {
 		if x.AnswerCommentID == answerID && x.Outcome == store.FixCommitted {
 			return x.CommitSHA, nil

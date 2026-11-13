@@ -171,13 +171,20 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	}
 	// noergler's answer under its own earlier answer: that answer's row,
 	// read once, for the code line and for a fix of its suggestion.
-	var parentBot *store.BotReply
-	if parentC != nil && strings.EqualFold(parentC.Author.Name, r.bitbucket.BotUsername()) {
+	// The finding-reply route read it already when it handed the reply here.
+	parentBot, read := parentBotReplyFrom(ctx, payload.CommentParentID)
+	if !read && parentC != nil && strings.EqualFold(parentC.Author.Name, r.bitbucket.BotUsername()) {
 		parentBot = safeDB(ctx, r.log, "BotReplyByComment", func() (*store.BotReply, error) {
 			return r.store.BotReplyByComment(ctx, key, payload.CommentParentID)
 		})
 	}
 	anchor := r.questionAnchor(ctx, key, prTag, comment.ID, payload.CommentParentID, parentC, parentBot, pr.FromRef.LatestCommit)
+	// An answer under a reply of the fix flow is about that reply's answer
+	// too: "apply it" under it applies the answer, never this explanation.
+	source := 0
+	if parentBot != nil && parentBot.Kind == store.BotReplyAnswer {
+		source = parentBot.Source
+	}
 	answerFix := r.prepareAnswerFix(ctx, pr, key, prTag, comment.Author.Name, payload.CommentParentID, parentC, parentBot,
 		repoInstructions, question, l)
 
@@ -198,7 +205,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		name: name, namesOn: r.displayName != nil, nameWithheld: byOther, parentName: parentName,
 		ask: &mentionAsk{key: key, prTag: prTag, user: comment.Author.Name, text: question, lang: l,
 			from: pr.FromRef.Branch(), to: pr.ToRef.Branch(), prAuthor: pr.Author.User.Name},
-		anchor: anchor, fix: answerFix, team: team,
+		anchor: anchor, source: source, fix: answerFix, team: team,
 	}
 	req := inference.MentionRequest{
 		Prompt:       prompt,
@@ -240,6 +247,9 @@ type mentionJob struct {
 	// anchor is the code line the question sat on, kept with the answer so
 	// the author can have its suggestion applied; nil for none.
 	anchor *store.BotReplyAnchor
+	// source is the answer this one is about when it replies to a reply of
+	// the fix flow, 0 when it stands on its own.
+	source int
 	// fix is the request to apply noergler's earlier answer, nil when the
 	// mention replies to no Q&A answer of noergler's.
 	fix  *answerFix
@@ -263,12 +273,7 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 		r.logCost(ctx, prTag, c)
 		r.recordCommentCall(ctx, j.ask.key, store.CallQuestion, replyTo, c)
 	}
-	if result.Fix != nil {
-		if result.Fix.Cost.Answered {
-			r.logCost(ctx, prTag, result.Fix.Cost)
-		}
-		r.recordCommentCall(ctx, j.ask.key, store.CallFix, replyTo, result.Fix.Cost)
-	}
+	r.recordFixCall(ctx, j.ask.key, prTag, replyTo, result.Fix)
 	// Which way the tools went: without them a settings question is
 	// answered with "cannot see", and prod once ran a model so unnoticed.
 	switch {
@@ -299,7 +304,7 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 		timeout := r.llm.TimeoutOf(result.Err)
 		r.log.ErrorContext(ctx, fmt.Sprintf("Mention Q&A on %s aborted - no response within %.0fs",
 			prTag, timeout.Seconds()))
-		r.reply(ctx, project, repo, prID, replyTo, fmt.Sprintf(l.Pick(
+		r.replyNotice(ctx, j, fmt.Sprintf(l.Pick(
 			"⚠️ Keine Antwort vom Modell innerhalb von %d Minuten. Bitte nochmals versuchen, oder die Frage "+
 				"vereinfachen, falls sie viel Kontext braucht.",
 			"⚠️ No response from the model within %d minutes. Please try again, or simplify the question "+
@@ -310,7 +315,7 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 		if result.ToolOverflow {
 			reply = inference.MentionToolOverflowReply(l)
 		}
-		r.reply(ctx, project, repo, prID, replyTo, reply)
+		r.replyNotice(ctx, j, reply)
 	case inference.OutcomeOK:
 		// An empty answer still gets a reply: a mention is never left
 		// silently unanswered.
@@ -361,7 +366,7 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 			_, nameState = guardName(answer, j.name, "question", j.namesOn)
 		}
 		answer = prefix + answer
-		r.replyAnswer(ctx, project, repo, prID, replyTo, answer, j.anchor, 0)
+		r.replyAnswer(ctx, project, repo, prID, replyTo, answer, j.anchor, j.source)
 		r.log.InfoContext(ctx, fmt.Sprintf("Posted Q&A reply on %s (name=%s)", prTag, nameState))
 	default:
 		r.log.ErrorContext(ctx, fmt.Sprintf("Mention Q&A on %s failed: %v", prTag, result.Err))
@@ -489,12 +494,43 @@ func (r *Reviewer) parentComment(ctx context.Context, key store.PRKey, prTag str
 // a mention that cannot be answered must not fail the webhook. What posted
 // is recorded as the bot's, so a plain reply under it is answered.
 func (r *Reviewer) reply(ctx context.Context, project, repo string, prID, parentID int, text string) {
+	if id, ok := r.postReply(ctx, project, repo, prID, parentID, text); ok {
+		r.recordBotReply(ctx, store.PRKey{Project: project, Repo: repo, PRID: prID}, id, store.BotReplyQuestion)
+	}
+}
+
+// postReply is the one post behind reply and replyAnswer; the caller keeps
+// the id the way its kind needs.
+func (r *Reviewer) postReply(ctx context.Context, project, repo string, prID, parentID int, text string) (int, bool) {
 	id, err := r.bitbucket.ReplyToComment(ctx, project, repo, prID, parentID, text)
 	if err != nil {
 		r.log.ErrorContext(ctx, fmt.Sprintf("Failed to post reply on %s/%s#%d: %v", project, repo, prID, err))
+		return 0, false
+	}
+	return id, true
+}
+
+// replyNotice is reply for a Q&A notice (a timeout, too large): under a
+// request to apply noergler's answer it is kept about that answer, so
+// "apply it" under the notice is the retry it asks for.
+func (r *Reviewer) replyNotice(ctx context.Context, j *mentionJob, text string) {
+	if j.fix != nil {
+		r.replyAnswer(ctx, j.project, j.repo, j.prID, j.replyTo, text, j.fix.anchor, j.fix.answerID)
 		return
 	}
-	r.recordBotReply(ctx, store.PRKey{Project: project, Repo: repo, PRID: prID}, id, store.BotReplyQuestion)
+	r.reply(ctx, j.project, j.repo, j.prID, j.replyTo, text)
+}
+
+// recordFixCall logs and records a fix call's cost, from a finding reply or
+// a Q&A: one place bills it.
+func (r *Reviewer) recordFixCall(ctx context.Context, key store.PRKey, prTag string, commentID int, fix *inference.FindingFixResult) {
+	if fix == nil {
+		return
+	}
+	if fix.Cost.Answered {
+		r.logCost(ctx, prTag, fix.Cost)
+	}
+	r.recordCommentCall(ctx, key, store.CallFix, commentID, fix.Cost)
 }
 
 // recordBotReply keeps the id of a reply the bot posted. Fail open: a

@@ -120,7 +120,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 			return true, false
 		default:
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on noergler's %s answer, answered like a mention", prTag, b.Kind))
-			return true, r.HandleMention(ctx, payload, team, sched)
+			return true, r.HandleMention(withParentBotReply(ctx, payload.CommentParentID, b), payload, team, sched)
 		}
 		// A plain reply under noergler's answer on an ignored PR is not
 		// answered either: a plain reply never brings a PR back.
@@ -376,12 +376,7 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 	}
 	// Billed whether or not it is posted: the PR's cost counts it.
 	r.recordCommentCall(ctx, j.key, store.CallReply, j.replyTo, res.Cost)
-	if res.Fix != nil {
-		if res.Fix.Cost.Answered {
-			r.logCost(ctx, j.prTag, res.Fix.Cost)
-		}
-		r.recordCommentCall(ctx, j.key, store.CallFix, j.replyTo, res.Fix.Cost)
-	}
+	r.recordFixCall(ctx, j.key, j.prTag, j.replyTo, res.Fix)
 	if res.Outcome != inference.OutcomeOK {
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: reply on finding %s not answered: %s %v", j.prTag, j.where, res.Outcome, res.Err))
 		return
