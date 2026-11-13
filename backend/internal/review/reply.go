@@ -92,29 +92,41 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 			r.log.InfoContext(ctx, prTag+": reply on the summary, answered like a mention")
 			return true, r.HandleMention(ctx, payload, team, sched)
 		}
-		if b := safeDB(ctx, r.log, "BotReplyByComment", func() (*store.BotReply, error) {
-			return r.store.BotReplyByComment(ctx, key, payload.CommentParentID)
-		}); b != nil {
-			// A stopped PR still answers questions; it stays stopped,
-			// since only a review request resumes it.
-			if st == nil || st.SummaryDeleted() {
-				r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on noergler's %s answer not answered: PR is ignored or its state unread", prTag, b.Kind))
-				return true, false
-			}
-			// The author under noergler's answer on a finding's thread goes
-			// on as a reply on that finding, so a fix request there is
-			// heard; anyone else, and a finding fixed or gone, is a Q&A.
-			if isAuthor && b.Kind == store.BotReplyReply && b.FindingID != 0 {
-				f = safeDB(ctx, r.log, "FindingByID", func() (*store.Finding, error) {
-					return r.store.FindingByID(ctx, key, b.FindingID)
-				})
-			}
-			if f == nil {
-				r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on noergler's %s answer, answered like a mention", prTag, b.Kind))
-				return true, r.HandleMention(ctx, payload, team, sched)
-			}
+	}
+	if b := safeDB(ctx, r.log, "BotReplyByComment", func() (*store.BotReply, error) {
+		return r.store.BotReplyByComment(ctx, key, payload.CommentParentID)
+	}); b != nil {
+		// The author under noergler's answer on a finding's thread goes on
+		// as a reply on that finding, mention or not, so a fix request
+		// there is heard; anyone else, and a finding fixed or gone, is a
+		// Q&A. Read for a mention too: before, a mention there never
+		// reached this, the parent being no finding.
+		if isAuthor && b.Kind == store.BotReplyReply && b.FindingID != 0 {
+			f = safeDB(ctx, r.log, "FindingByID", func() (*store.Finding, error) {
+				return r.store.FindingByID(ctx, key, b.FindingID)
+			})
+		}
+		switch {
+		case f != nil:
 			underAnswer = true
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: author's reply on noergler's answer, answered as a reply on its finding", prTag))
+		case mentioned:
+			// A mention under any other bot reply is the mention path's.
+			return false, false
+		case st == nil || st.SummaryDeleted():
+			// A stopped PR still answers questions; it stays stopped, since
+			// only a review request resumes it.
+			r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on noergler's %s answer not answered: PR is ignored or its state unread", prTag, b.Kind))
+			return true, false
+		default:
+			r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on noergler's %s answer, answered like a mention", prTag, b.Kind))
+			return true, r.HandleMention(ctx, payload, team, sched)
+		}
+		// A plain reply under noergler's answer on an ignored PR is not
+		// answered either: a plain reply never brings a PR back.
+		if !mentioned && (st == nil || st.SummaryDeleted()) {
+			r.log.InfoContext(ctx, prTag+": reply on noergler's finding answer not answered: PR is ignored or its state unread")
+			return true, false
 		}
 	}
 	// A reviewer-to-reviewer exchange under a finding is no event.
@@ -154,7 +166,9 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	// post on a PR it was told to leave alone.
 	if l, ok := languageKeyword(text); ok {
 		if !mentioned {
-			if auto, _ := r.autoReviewDecision(author); !auto {
+			// Under noergler's own answer the reply is addressed to the bot,
+			// as the Q&A took it before: no author-list gate there.
+			if auto, _ := r.autoReviewDecision(author); !auto && !underAnswer {
 				return notAnswered("language switch from an author not auto-reviewed")
 			}
 			if st.SummaryDeleted() {
@@ -170,20 +184,14 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		r.handleStop(ctx, key, prTag, comment.ID, comment.Author.Name, author, pr.Title, pr.CreatedDate)
 		return true, false
 	}
-	// A thread answered already takes one more call per reply, for a fix
-	// request only (user, 2026-11-13): anything else stays unanswered, as
-	// before. Under noergler's own answer every reply is answered, as the
-	// Q&A answered it before; neither stamps the finding again. A finding
-	// noergler committed already is done, except under its answer.
-	// An @mention there stays the Q&A's, as before.
-	secondPass := f.RepliedAt != nil || underAnswer
-	fixOnly := secondPass && !underAnswer
-	if f.BotFixCommit != nil && !underAnswer {
-		return notAnswered("noergler committed this finding's fix already")
-	}
-	if fixOnly && mentioned {
-		return notAnswered("the thread was answered already")
-	}
+	// A thread answered already takes one more call per plain reply, for a
+	// fix request only (user, 2026-11-13): anything else stays unanswered,
+	// as before. Under noergler's own answer, or with a mention, every reply
+	// is answered, as the Q&A answered it before; none stamps the finding
+	// again. A fix request on a finding noergler committed already is told
+	// so, never dropped.
+	secondPass := f.RepliedAt != nil || underAnswer || f.BotFixCommit != nil
+	fixOnly := secondPass && !underAnswer && !mentioned
 	if mentioned {
 		// "@bot review" on a finding thread is still a review, and so is
 		// a resume request on a stopped PR.
@@ -206,9 +214,10 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		// and is the explicit override of the author lists, not of the
 		// cost cap.
 		r.reactivateIfIgnored(ctx, key, prTag, false)
-	} else if auto, ignored := r.autoReviewDecision(author); !auto {
+	} else if auto, ignored := r.autoReviewDecision(author); !auto && !underAnswer {
 		// A plain reply is automatic: it obeys the author lists like an
-		// auto-review does, from one snapshot.
+		// auto-review does, from one snapshot. Under noergler's own answer
+		// it is addressed to the bot, as the Q&A took it before: no gate.
 		if ignored {
 			return notAnswered("ignored author")
 		}
@@ -236,10 +245,10 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	// Without any file the finding still stands on its own text: a failed
 	// fetch narrows the context, it does not skip the answer.
 	at, note := f.RunCommit, ""
-	content, err := r.fetchFindingFile(ctx, project, repo, at, f.FilePath)
+	content, path, err := r.fetchFindingFile(ctx, project, repo, at, f.FilePath)
 	if err != nil {
 		at, note = pr.FromRef.LatestCommit, "_The reviewed commit is gone; this is the PR head, its lines may have moved._\n\n"
-		content, err = r.fetchFindingFile(ctx, project, repo, at, f.FilePath)
+		content, path, err = r.fetchFindingFile(ctx, project, repo, at, f.FilePath)
 	}
 	excerpt := ""
 	if err != nil {
@@ -285,7 +294,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	// turn out to be a fix request, accepted: author replies are rare.
 	var fix *fixPlan
 	if f.BotFixCommit == nil {
-		fix = r.prepareFix(ctx, pr, project, repo, prTag, f, at, content, err == nil)
+		fix = r.prepareFix(ctx, pr, project, repo, prTag, f, fetchedFile{at: at, path: path, content: content, ok: err == nil})
 		if fix.unavailable == "" {
 			fixPrompt := inference.RenderFindingFixPrompt(inference.FindingFixPromptRequest{
 				Template:         r.fixTmpl,
@@ -442,12 +451,15 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 // fetchFindingFile reads the finding's file at the PR head. A row stored
 // before paths were resolved may carry the model's a/ or b/; a real a/ or
 // b/ directory is tried as written first, and only a 404 falls back.
-func (r *Reviewer) fetchFindingFile(ctx context.Context, project, repo, commit, path string) (string, error) {
+//
+// The path returned is the one that answered: a fix commits to it.
+func (r *Reviewer) fetchFindingFile(ctx context.Context, project, repo, commit, path string) (string, string, error) {
 	content, err := r.bitbucket.FetchFileContent(ctx, project, repo, commit, path)
 	if stripped := inference.StripSidePrefix(path); stripped != path && bitbucket.Status(err) == http.StatusNotFound {
-		return r.bitbucket.FetchFileContent(ctx, project, repo, commit, stripped)
+		content, err = r.bitbucket.FetchFileContent(ctx, project, repo, commit, stripped)
+		return content, stripped, err
 	}
-	return content, err
+	return content, path, err
 }
 
 // codeFence is a backtick fence longer than any backtick run in s, so model

@@ -539,6 +539,27 @@ func TestMetricsCountsFixRequests(t *testing.T) {
 	}
 }
 
+// A team whose only activity in the window was a fix request still shows.
+func TestMetricsShowsATeamWithFixesOnly(t *testing.T) {
+	h := newDashHarness(t)
+	h.st.byTeam = []store.TeamTotals{{TeamSlug: "platform"}}
+	h.st.fixCounts = []store.FixCount{{TeamSlug: "payments", Outcome: store.FixCommitted, Count: 1}}
+
+	var got struct {
+		ByTeam []struct {
+			Team  string    `json:"team"`
+			Runs  int       `json:"runs"`
+			Fixes fixesBody `json:"fixes"`
+		} `json:"by_team"`
+	}
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/metrics?days=7").Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.ByTeam) != 2 || got.ByTeam[1].Team != "payments" || got.ByTeam[1].Fixes.Committed != 1 || got.ByTeam[1].Runs != 0 {
+		t.Errorf("by_team = %+v, want payments after platform with its fix", got.ByTeam)
+	}
+}
+
 // PR counts sit beside the run totals, never in place of them: the tile
 // shows PRs, its note the runs.
 func TestMetricsReportsPRCountsBesideTheRuns(t *testing.T) {
