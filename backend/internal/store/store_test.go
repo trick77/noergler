@@ -203,6 +203,31 @@ func TestPullRequest_LastReviewedCommitExcludesClosedPRs(t *testing.T) {
 	}
 }
 
+// The open merge-conflict offer: none, set, cleared.
+func TestPullRequest_ConflictOffer(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	id := upsert(t, s, key, "abc")
+	if got, err := s.ConflictOffer(ctx, id); err != nil || got != 0 {
+		t.Fatalf("fresh row: %d %v", got, err)
+	}
+	if err := s.SetConflictOffer(ctx, id, 77); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.ConflictOffer(ctx, id); got != 77 {
+		t.Fatalf("set: %d", got)
+	}
+	if err := s.SetConflictOffer(ctx, id, 0); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.ConflictOffer(ctx, id); got != 0 {
+		t.Fatalf("cleared: %d", got)
+	}
+	if got, err := s.ConflictOffer(ctx, id+1000); err != nil || got != 0 {
+		t.Fatalf("no row: %d %v", got, err)
+	}
+}
+
 func TestPullRequest_SkipStateIgnoreReactivate(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

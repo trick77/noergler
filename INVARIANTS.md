@@ -183,6 +183,19 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   check (`conflict_comment_id`), counted under auto-fixes; its call is
   `fix` in `llm_calls`. The push's full re-review is wanted, as after a
   merge by hand.
+- Merge-conflict offer (user, 2026-11-14): a completed review under the cost
+  cap checks the merge status and, on a conflict, runs a request's
+  `mergeConflict` (its depths, no model, no commit, a stage's timeout).
+  It only offers, never pushes: a comment of its own mentioning the author,
+  recorded as a bot reply (a plain reply under it reaches the bot),
+  `pull_requests.conflict_offer_comment_id` the open one, at most one open;
+  withdrawn (thread resolved) once no offer holds, at the cap, or when
+  noergler pushed the merge; a later conflict offered anew. Past the
+  bounds no comment. A failed check is unknown, never none: the open offer
+  stays (else a flaky check withdraws and reposts it). A read failure of
+  the open offer posts nothing (no double). Checks are remembered per PR by
+  both heads, in memory. Known limit: a review that stops before `post`
+  (nothing reviewable, diff too large) leaves an open offer as it is.
 - Dispute signals (user, 2026-10-31): a `disputes` reply whose
   `agents_md_line` passes `CheckAgentsMDLine` is one occurrence. Read and
   written on the finding-reply path only; never in `review.txt`, the Q&A,
@@ -421,7 +434,12 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - Git fetch and push are Bitbucket calls: on the worker, each worker stage
   bounded (`conflictStageTimeout`), a fetch bounded in wire bytes and in
   inflated bytes held (`MaxInflated`; the pack inflates many times over),
-  a shallower fetch let go before a deeper one. Through the
+  a shallower fetch let go before a deeper one. A review's offer check
+  fetches at the end of `post`, after the run's record (no stage of the
+  review), on the worker too: one stage's timeout, one check fetching
+  process-wide (`offerSlot`; a busy slot is unknown, not waited for: every
+  team's reviews may end at once, each fetch up to `MaxInflated`), nothing
+  kept after it. Through the
   adapter's HTTP client and go-git's session API, never `git.Remote` (its
   transport is a process-wide registry). Never a client timeout, never a
   redirect (go-git's policy `NoFollowRedirects` on top of the adapter's).

@@ -268,8 +268,11 @@ type fakeStore struct {
 	hasLast      bool
 	lastErr      error
 	summary      *store.SummaryComment
-	existing     []store.Finding
-	existingErr  error // fails ExistingFindings alone
+	// conflictOffer is the open offer comment; ConflictOffers every set.
+	conflictOffer  int
+	ConflictOffers []int
+	existing       []store.Finding
+	existingErr    error // fails ExistingFindings alone
 	// lastSummary is the PR's stored summary prose; InsertRun carries a
 	// run's onto it.
 	lastSummary    *store.PRSummary
@@ -452,6 +455,26 @@ func (f *fakeStore) SetSummaryComment(_ context.Context, _ int64, commentID, ver
 	}
 	f.Summaries = append(f.Summaries, store.SummaryComment{ID: commentID, Version: version})
 	f.summary = &store.SummaryComment{ID: commentID, Version: version}
+	return nil
+}
+
+func (f *fakeStore) ConflictOffer(context.Context, int64) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return 0, err
+	}
+	return f.conflictOffer, nil
+}
+
+func (f *fakeStore) SetConflictOffer(_ context.Context, _ int64, commentID int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return err
+	}
+	f.conflictOffer = commentID
+	f.ConflictOffers = append(f.ConflictOffers, commentID)
 	return nil
 }
 

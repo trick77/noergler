@@ -328,6 +328,7 @@ Go types:
 | `last_summary` | jsonb | yes |  |  |
 | `ignore_reason` | text | yes |  |  |
 | `stopped_by` | text | yes |  |  |
+| `conflict_offer_comment_id` | integer | yes |  |  |
 
 Indexes:
 
@@ -881,6 +882,7 @@ erDiagram
         jsonb last_summary
         text ignore_reason
         text stopped_by
+        integer conflict_offer_comment_id
     }
     review_attempts {
         bigint id PK

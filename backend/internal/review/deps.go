@@ -103,6 +103,10 @@ type Store interface {
 	SetSummaryComment(ctx context.Context, prID int64, commentID, version int) error
 	PRLinkToken(ctx context.Context, prID int64) (string, error)
 	GetSummaryComment(ctx context.Context, prID int64) (*store.SummaryComment, error)
+	// ConflictOffer and SetConflictOffer hold the open merge-conflict
+	// offer comment of the PR row; 0 is none.
+	ConflictOffer(ctx context.Context, prID int64) (int, error)
+	SetConflictOffer(ctx context.Context, prID int64, commentID int) error
 	GetSkipState(ctx context.Context, k store.PRKey) (*store.SkipState, error)
 	MarkIgnored(ctx context.Context, k store.PRKey) error
 	MarkStopped(ctx context.Context, k store.PRKey, by string) (int64, error)

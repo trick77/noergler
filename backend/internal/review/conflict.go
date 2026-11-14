@@ -106,6 +106,9 @@ type conflictJob struct {
 	// counter is the mention's HTTP scope: a staged request logs its
 	// totals when its post ends, like a Q&A.
 	counter *httpstats.Counter
+	// offer is a review's check for an offer (conflictOffer), not a
+	// request: it merges and pushes nothing, and logs as an offer.
+	offer bool
 }
 
 // conflictFile is a file with conflicts: its chunks, and per conflict the
@@ -189,18 +192,9 @@ func (j *conflictJob) count() int {
 // spent on the shallow fetch alone, never the deeper retry.
 func (r *Reviewer) prepareConflict(ctx context.Context, j *conflictJob, pr webhook.PullRequest, overCap bool) (outcome, answer string) {
 	pick := j.lang.Pick
-	cannot := func(logWhy, why string) (string, string) {
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: merge conflict not resolved: %s", j.prTag, logWhy))
-		return store.FixNotFeasible, conflictCannot(j.lang, why)
-	}
-	failed := func(what string, err error) (string, string) {
-		r.log.WarnContext(ctx, fmt.Sprintf("%s: merge conflict: %s failed: %v", j.prTag, what, err))
-		return store.FixError, conflictFailed(j.lang)
-	}
-	// A fork's branch lives in another repository, whose history the
-	// target's need not reach (v1: not done).
-	if src := pr.FromRef.Repository; src != nil && src.Slug != "" &&
-		(!strings.EqualFold(src.Project.Key, j.key.Project) || !strings.EqualFold(src.Slug, j.key.Repo)) {
+	cannot := func(logWhy, why string) (string, string) { return r.conflictRefused(ctx, j, logWhy, why) }
+	failed := func(what string, err error) (string, string) { return r.conflictError(ctx, j, what, err) }
+	if conflictFromFork(pr, j.key) {
 		return cannot("fork", pick("der PR kommt aus einem Fork.", "the PR comes from a fork."))
 	}
 	if j.source == "" || j.target == "" {
@@ -215,6 +209,66 @@ func (r *Reviewer) prepareConflict(ctx context.Context, j *conflictJob, pr webho
 		return store.FixNotFeasible, pick("Bitbucket meldet für diesen PR keinen Merge-Konflikt.",
 			"Bitbucket reports no merge conflict on this PR.")
 	}
+	if outcome, answer := r.mergeConflict(ctx, j, overCap); outcome != "" {
+		return outcome, answer
+	}
+	// The commit's author is the bot account as Bitbucket knows it: a
+	// commit-checker hook compares it with the pusher, and a commit
+	// without an email is no commit to leave on a branch.
+	name, email, err := r.bitbucket.BotIdentity(ctx)
+	if err != nil {
+		return failed("bot identity", err)
+	}
+	if email == "" {
+		return cannot("no_bot_email", pick("mein Bitbucket-Konto hat keine E-Mail-Adresse für den Commit.",
+			"my Bitbucket account has no email address for the commit."))
+	}
+	j.sig = gitrepo.Signature{Name: name, Email: email}
+	// The fetch's objects are not held across the model's call.
+	j.repo = j.repo.Detach()
+	return "", ""
+}
+
+// conflictFromFork reports a PR whose branch lives in another repository,
+// whose history the target's need not reach (v1: not resolved).
+func conflictFromFork(pr webhook.PullRequest, key store.PRKey) bool {
+	src := pr.FromRef.Repository
+	return src != nil && src.Slug != "" &&
+		(!strings.EqualFold(src.Project.Key, key.Project) || !strings.EqualFold(src.Slug, key.Repo))
+}
+
+// conflictRefused logs why a conflict is no simple merge and is the
+// request's answer; an offer (j.offer) only logs it.
+func (r *Reviewer) conflictRefused(ctx context.Context, j *conflictJob, logWhy, why string) (string, string) {
+	if j.offer {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: merge conflict offer: none (%s)", j.prTag, logWhy))
+	} else {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: merge conflict not resolved: %s", j.prTag, logWhy))
+	}
+	return store.FixNotFeasible, conflictCannot(j.lang, why)
+}
+
+func (r *Reviewer) conflictError(ctx context.Context, j *conflictJob, what string, err error) (string, string) {
+	if j.offer {
+		// A review's own check: tried again at the next one, no request
+		// failed.
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: merge conflict offer: %s failed: %v", j.prTag, what, err))
+	} else {
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: merge conflict: %s failed: %v", j.prTag, what, err))
+	}
+	return store.FixError, conflictFailed(j.lang)
+}
+
+// mergeConflict fetches both branches, merges them and resolves what code
+// can, within merge's bounds: what a request does before the model, and
+// all an offer does. outcome is "" when the merge stands, j.pending then
+// holds what the model must answer. At the cost cap (overCap) only the
+// shallow fetch is tried, never the deeper retry.
+func (r *Reviewer) mergeConflict(ctx context.Context, j *conflictJob, overCap bool) (outcome, answer string) {
+	pick := j.lang.Pick
+	cannot := func(logWhy, why string) (string, string) { return r.conflictRefused(ctx, j, logWhy, why) }
+	failed := func(what string, err error) (string, string) { return r.conflictError(ctx, j, what, err) }
+	var err error
 	j.remote, err = r.bitbucket.GitRemote(ctx, j.key.Project, j.key.Repo, conflictMaxBytes)
 	if err != nil {
 		return failed("clone URL", err)
@@ -385,20 +439,6 @@ func (r *Reviewer) prepareConflict(ctx context.Context, j *conflictJob, pr webho
 			j.pending = append(j.pending, conflictRef{file: f, k: k})
 		}
 	}
-	// The commit's author is the bot account as Bitbucket knows it: a
-	// commit-checker hook compares it with the pusher, and a commit
-	// without an email is no commit to leave on a branch.
-	name, email, err := r.bitbucket.BotIdentity(ctx)
-	if err != nil {
-		return failed("bot identity", err)
-	}
-	if email == "" {
-		return cannot("no_bot_email", pick("mein Bitbucket-Konto hat keine E-Mail-Adresse für den Commit.",
-			"my Bitbucket account has no email address for the commit."))
-	}
-	j.sig = gitrepo.Signature{Name: name, Email: email}
-	// The fetch's objects are not held across the model's call.
-	j.repo = repo.Detach()
 	return "", ""
 }
 
@@ -542,6 +582,7 @@ func (r *Reviewer) commitConflict(ctx context.Context, j *conflictJob) {
 	}
 	sha := commit.String()
 	r.finishConflict(ctx, j, store.FixCommitted, sha, j.answer(sha, r.bitbucket.CommitURL(j.key.Project, j.key.Repo, sha)))
+	r.conflictResolvedOffer(ctx, j.key, j.prTag)
 }
 
 // commitMessage is git's own merge subject, then what was resolved how.

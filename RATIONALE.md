@@ -172,6 +172,18 @@ an incident or an eval run: read the reason before relaxing a rule.
 - Merge conflict at the cap: code's resolution costs nothing, so it runs
   (like a stop); a model one is refused with an answer, because the author
   asked and a fix request never goes silent.
+- Merge-conflict offer (user, 2026-11-14): authors did not know the command
+  or that their conflict was simple. A comment of its own with a mention,
+  not a summary line (the summary often goes unread) and not inline (the
+  conflict sits in target's changes, which the PR diff does not show).
+  Offered only, even when code alone resolves: a push nobody asked for on
+  the author's branch. Past the bounds silent: Bitbucket shows the conflict,
+  and the command names the reason if asked. At the cap nothing is checked
+  and an open offer is withdrawn (user: stop there; a model resolution would
+  be refused, so the offer would invite a refusal). At a review only, the first included (the common
+  case: a branch cut from a stale master): `pr:to_ref_updated` is
+  unavailable (BSERV-14136), and `repo:refs_changed` would deliver every
+  push of every branch to check a few PRs.
 - A finding noergler committed is retired silently and its thread left open:
   the confirmation already asks the author to review the change; resolving
   it would hide the change the author was told to look at.
