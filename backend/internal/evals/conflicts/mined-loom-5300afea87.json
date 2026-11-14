@@ -1,0 +1,25 @@
+{
+  "name": "mined-loom-5300afea87",
+  "origin": "mined",
+  "source": "https://github.com/trick77/loom/commit/5300afea87e8c76bcecc4e71577624518ba7d143",
+  "why": "The PR branch added buildImageStats above GeneratedArtifactCard; master exported GeneratedArtifactCard. The new function stays, then master's exported line replaces the unexported one.",
+  "target_branch": "origin/master",
+  "source_branch": "worktree-feat+image-gen-stats",
+  "control": false,
+  "files": [
+    {
+      "path": "frontend/src/ChatShell.tsx",
+      "merged": "  );\n}\n\n<<<<<<< source\nexport function buildImageStats(artifact: Artifact): string | null {\n  const segments: string[] = [];\n  if (artifact.model) segments.push(artifact.model);\n  if (artifact.width && artifact.height) segments.push(`${artifact.width}×${artifact.height}`);\n  if (artifact.durationMs && artifact.durationMs > 0) segments.push(formatDuration(artifact.durationMs));\n  return segments.length > 0 ? segments.join(\" · \") : null;\n}\n\nfunction GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {\n||||||| base\nfunction GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {\n=======\nexport function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {\n>>>>>>> target\n  const [error, setError] = useState(\"\");\n  const [previewUrl, setPreviewUrl] = useState(\"\");\n  const isImage = artifact.mimeType.startsWith(\"image/\");\n"
+    }
+  ],
+  "accept": [
+    {
+      "file": "frontend/src/ChatShell.tsx",
+      "conflict": 1,
+      "texts": [
+        "export function buildImageStats(artifact: Artifact): string | null {\n  const segments: string[] = [];\n  if (artifact.model) segments.push(artifact.model);\n  if (artifact.width && artifact.height) segments.push(`${artifact.width}×${artifact.height}`);\n  if (artifact.durationMs && artifact.durationMs > 0) segments.push(formatDuration(artifact.durationMs));\n  return segments.length > 0 ? segments.join(\" · \") : null;\n}\n\nexport function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {\n"
+      ],
+      "any_order": false
+    }
+  ]
+}

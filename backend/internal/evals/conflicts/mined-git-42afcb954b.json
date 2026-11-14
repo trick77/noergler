@@ -1,0 +1,16 @@
+{
+  "name": "mined-git-42afcb954b",
+  "origin": "mined",
+  "source": "https://github.com/git/git/commit/42afcb954bd4a69deba0a7b9823a9307b4223136",
+  "why": "Control. Master folded sort plus remove_duplicates(list, 0) into string_list_sort_u(list, 0); the topic changed the flag to 1. The author wrote string_list_sort_u(list, 1), a line neither branch has.",
+  "target_branch": "jh/alias-i18n-fixes",
+  "source_branch": "master",
+  "control": true,
+  "files": [
+    {
+      "path": "help.c",
+      "merged": "\tif (repo_config_get_string_tmp(the_repository, \"completion.commands\", &cmd_list))\n\t\treturn;\n\n<<<<<<< source\n\tstring_list_sort_u(list, 0);\n||||||| base\n\tstring_list_sort(list);\n\tstring_list_remove_duplicates(list, 0);\n=======\n\tstring_list_sort(list);\n\tstring_list_remove_duplicates(list, 1);\n>>>>>>> target\n\n\twhile (*cmd_list) {\n\t\tstruct strbuf sb = STRBUF_INIT;\n"
+    }
+  ],
+  "accept": null
+}

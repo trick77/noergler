@@ -1,0 +1,25 @@
+{
+  "name": "mined-git-1c1256682a",
+  "origin": "mined",
+  "source": "https://github.com/git/git/commit/1c1256682a54d6738880e11ed2edf4b36757ef6c",
+  "why": "Master removed the Rust installer block; the topic kept it and added a block disabling Git Credential Manager after it. The author dropped the Rust lines and kept the new block.",
+  "target_branch": "ps/meson-improvements",
+  "source_branch": "master",
+  "control": false,
+  "files": [
+    {
+      "path": "ci/install-dependencies.ps1",
+      "merged": "$mesonMsi = Get-Installer \"meson.msi\" `\n    \"https://github.com/mesonbuild/meson/releases/download/$MesonVersion/meson-$MesonVersion-64.msi\"\nInvoke-Installer msiexec.exe @('/i', $mesonMsi, 'INSTALLDIR=C:\\Meson', '/quiet', '/norestart')\n<<<<<<< source\n||||||| base\n\n$rustMsi = Get-Installer \"rust.msi\" `\n    \"https://static.rust-lang.org/dist/rust-$RustVersion-x86_64-pc-windows-msvc.msi\"\nInvoke-Installer msiexec.exe @('/i', $rustMsi, 'INSTALLDIR=C:\\Rust', 'ADDLOCAL=Rustc,Cargo,Std', '/quiet', '/norestart')\n=======\n\n$rustMsi = Get-Installer \"rust.msi\" `\n    \"https://static.rust-lang.org/dist/rust-$RustVersion-x86_64-pc-windows-msvc.msi\"\nInvoke-Installer msiexec.exe @('/i', $rustMsi, 'INSTALLDIR=C:\\Rust', 'ADDLOCAL=Rustc,Cargo,Std', '/quiet', '/norestart')\n\n# Disable Git Credential Manager, which is auto-configured by PortableGit.\n# GitLab's runner picks up this Git in its cleanup stage and runs `git\n# credential reject`, which hangs in GCM and makes the job time out.\n& \"C:\\Program Files\\Git\\bin\\git.exe\" config unset --all --system credential.helper\nif ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 5) {\n    throw \"Failed to unset credential.helper with exit code $LASTEXITCODE\"\n}\n>>>>>>> target\n"
+    }
+  ],
+  "accept": [
+    {
+      "file": "ci/install-dependencies.ps1",
+      "conflict": 1,
+      "texts": [
+        "\n# Disable Git Credential Manager, which is auto-configured by PortableGit.\n# GitLab's runner picks up this Git in its cleanup stage and runs `git\n# credential reject`, which hangs in GCM and makes the job time out.\n& \"C:\\Program Files\\Git\\bin\\git.exe\" config unset --all --system credential.helper\nif ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 5) {\n    throw \"Failed to unset credential.helper with exit code $LASTEXITCODE\"\n}\n"
+      ],
+      "any_order": false
+    }
+  ]
+}

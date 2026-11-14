@@ -1,0 +1,25 @@
+{
+  "name": "mined-git-bd5c2827b2",
+  "origin": "mined",
+  "source": "https://github.com/git/git/commit/bd5c2827b27812eff5766af9fb56b0ea2437f3f5",
+  "why": "Both branches postponed the Rust default, the topic to 2.54, master to 2.55; the author kept master's later release. A value both sides set: declining is right too, picking 2.54 is wrong.",
+  "target_branch": "bc/rust-by-default",
+  "source_branch": "master",
+  "control": false,
+  "files": [
+    {
+      "path": "Documentation/BreakingChanges.adoc",
+      "merged": "1. Initially, with Git 2.52, support for Rust will be auto-detected by Meson and\n   disabled in our Makefile so that the project can sort out the initial\n   infrastructure.\n<<<<<<< source\n2. In Git 2.55, both build systems will default-enable support for Rust.\n||||||| base\n2. In Git 2.53, both build systems will default-enable support for Rust.\n=======\n2. In Git 2.54, both build systems will default-enable support for Rust.\n>>>>>>> target\n   Consequently, builds will break by default if Rust is not available on the\n   build host. The use of Rust can still be explicitly disabled via build\n   flags.\n"
+    }
+  ],
+  "accept": [
+    {
+      "file": "Documentation/BreakingChanges.adoc",
+      "conflict": 1,
+      "texts": [
+        "2. In Git 2.55, both build systems will default-enable support for Rust.\n"
+      ],
+      "any_order": false
+    }
+  ]
+}

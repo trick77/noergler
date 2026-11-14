@@ -1,0 +1,16 @@
+{
+  "name": "web-doximity-renamed-and-flag",
+  "origin": "web",
+  "source": "https://technology.doximity.com/articles/finding-joy-in-git-conflict-resolution (example 1)",
+  "why": "Control. The PR renamed BlueMessage to GreenMessage, target flipped include_signature to false; the page's answer, GreenMessage.send(include_signature: false), is on neither branch.",
+  "target_branch": "merged-branch",
+  "source_branch": "feature/green-message",
+  "control": true,
+  "files": [
+    {
+      "path": "app/notifier.rb",
+      "merged": "def notify\n<<<<<<< source\n  GreenMessage.send(include_signature: true)\n||||||| base\n  BlueMessage.send(include_signature: true)\n=======\n  BlueMessage.send(include_signature: false)\n>>>>>>> target\nend\n"
+    }
+  ],
+  "accept": []
+}

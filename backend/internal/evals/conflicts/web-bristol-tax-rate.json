@@ -1,0 +1,16 @@
+{
+  "name": "web-bristol-tax-rate",
+  "origin": "web",
+  "source": "https://bristol-training.github.io/advanced-git/pages/300-conflicts.html (calculator.py; base reconstructed, the page shows none)",
+  "why": "Control. The PR taxes at 20 %, target at 15 %; the page lists keep-yours, keep-theirs and a new combined signature. Which rate holds is the author's decision.",
+  "target_branch": "feature/update-tax-calculation",
+  "source_branch": "main",
+  "control": true,
+  "files": [
+    {
+      "path": "calculator.py",
+      "merged": "def calculate_total(items):\n<<<<<<< source\n    total = sum(item.price * 1.2 for item in items)  # With 20% tax\n||||||| base\n    total = sum(item.price for item in items)\n=======\n    total = sum(item.price * 1.15 for item in items)  # With 15% tax\n>>>>>>> target\n    return total\n"
+    }
+  ],
+  "accept": []
+}

@@ -1,0 +1,25 @@
+{
+  "name": "inv-superset-fix",
+  "origin": "invented",
+  "source": "hand-written",
+  "why": "Both branches fixed the off-by-one (> to >=); the PR's line also rejects a negative index. It carries the target's fix plus more, so it alone is right.",
+  "target_branch": "main",
+  "source_branch": "fix/negative-index",
+  "control": false,
+  "files": [
+    {
+      "path": "list/at.go",
+      "merged": "// At returns the i-th item, false when there is none.\nfunc At(items []string, i int) (string, bool) {\n<<<<<<< source\n\tif i >= len(items) || i < 0 {\n||||||| base\n\tif i > len(items) {\n=======\n\tif i >= len(items) {\n>>>>>>> target\n\t\treturn \"\", false\n\t}\n\treturn items[i], true\n"
+    }
+  ],
+  "accept": [
+    {
+      "file": "list/at.go",
+      "conflict": 1,
+      "texts": [
+        "\tif i >= len(items) || i < 0 {\n"
+      ],
+      "any_order": false
+    }
+  ]
+}

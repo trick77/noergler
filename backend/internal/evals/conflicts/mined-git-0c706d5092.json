@@ -1,0 +1,33 @@
+{
+  "name": "mined-git-0c706d5092",
+  "origin": "mined",
+  "source": "https://github.com/git/git/commit/0c706d509299d4bd6065214699d2c0382ea9faa9",
+  "why": "The topic wrapped the value list in an AsciiDoc open block (the -- lines); master reworded both entries for Git 3.0. The author kept the block's -- lines around master's wording, in both conflicts.",
+  "target_branch": "ta/doc-config-adoc-fixes",
+  "source_branch": "master",
+  "control": false,
+  "files": [
+    {
+      "path": "Documentation/config/safe.adoc",
+      "merged": "\tSpecifies which bare repositories Git will work with. The currently\n\tsupported values are:\n+\n<<<<<<< source\n* `all`: Git works with all bare repositories. This is the default in\n  Git 2.x.\n||||||| base\n* `all`: Git works with all bare repositories. This is the default.\n=======\n--\n* `all`: Git works with all bare repositories. This is the default.\n>>>>>>> target\n* `explicit`: Git only works with bare repositories specified via\n  the top-level `--git-dir` command-line option, or the `GIT_DIR`\n<<<<<<< source\n  environment variable (see linkgit:git[1]). This will be the default\n  in Git 3.0.\n||||||| base\n  environment variable (see linkgit:git[1]).\n=======\n  environment variable (see linkgit:git[1]).\n--\n>>>>>>> target\n+\nIf you do not use bare repositories in your workflow, then it may be\nbeneficial to set `safe.bareRepository` to `explicit` in your global\n"
+    }
+  ],
+  "accept": [
+    {
+      "file": "Documentation/config/safe.adoc",
+      "conflict": 1,
+      "texts": [
+        "--\n* `all`: Git works with all bare repositories. This is the default in\n  Git 2.x.\n"
+      ],
+      "any_order": false
+    },
+    {
+      "file": "Documentation/config/safe.adoc",
+      "conflict": 2,
+      "texts": [
+        "  environment variable (see linkgit:git[1]). This will be the default\n  in Git 3.0.\n--\n"
+      ],
+      "any_order": false
+    }
+  ]
+}

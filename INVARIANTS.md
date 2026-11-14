@@ -165,11 +165,12 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   stands only where Myers and patience align alike (`ErrAmbiguous` else),
   checked against git's Myers and histogram; a file one side adds where
   the other adds a directory is refused. Code first: a conflict
-  where both sides only inserted, share no non-blank line and set no key
+  where both sides only inserted, none of it a block both added (no
+  trimmed edge), share no non-blank line (whitespace ignored) and set no key
   both (text before `:`/`=`) is target then source, no model; the rest goes to one call that answers line ids (`T3`,
   `S1`), never text; `ValidateResolution` blunt rules, no judge. All or
   nothing within merge's bounds (constants, never settings): any conflict
-  past them, a lockfile, generated or binary file, add/add, delete/modify,
+  past them, a lockfile, generated, built (`dist/`) or binary file, add/add, delete/modify,
   a mode change refuses the whole request. Merge commit, parents
   `[source, target]`, pushed without force, compare-and-swap on the source
   head read. The answer quotes every dropped line and tells the author to
@@ -283,6 +284,11 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   series.
 - Scoring stays blunt (file + line window + keyword); the corpus keeps a case
   with no expected findings.
+- Merge-conflict evals (`-conflicts`, corpus `conflicts/`, never `corpus/`):
+  the picked text against texts the case accepts, never the ids, read by
+  production's `merge.ReadAnswer`. Exit 1 = a `wrong`: a valid answer
+  production would push that no text accepts, or any valid answer on a
+  control. A case's conflicts are what `merge.Merge3` shows (test).
 
 ## llmwire
 

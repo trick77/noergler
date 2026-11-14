@@ -1,0 +1,16 @@
+{
+  "name": "web-gitdocs-fruits-both-removed",
+  "origin": "web",
+  "source": "https://kernel.org/pub/software/scm/git/docs/gitmergeconflicts.html (diff3 example; shown as merge.Merge3 trims it)",
+  "why": "Control. Each branch removed a different fruit (the PR \"banana\", target \"cherry\"); the page resolves to neither line. An empty choice is no valid answer, so no line choice can write it.",
+  "target_branch": "add-fruit",
+  "source_branch": "main",
+  "control": true,
+  "files": [
+    {
+      "path": "fruits.py",
+      "merged": "FRUITS = [\n    \"apple\",\n<<<<<<< source\n    \"cherry\",\n||||||| base\n    \"banana\",\n    \"cherry\",\n    \"mangoooo\",\n=======\n    \"banana\",\n>>>>>>> target\n    \"mango\",\n    \"orange\",\n]\n"
+    }
+  ],
+  "accept": []
+}

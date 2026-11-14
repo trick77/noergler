@@ -1,0 +1,25 @@
+{
+  "name": "mined-git-6a5621b604",
+  "origin": "mined",
+  "source": "https://github.com/git/git/commit/6a5621b6047088e8d557ad45243cce620ccfd65f",
+  "why": "Master added a linux-musl-meson job to the case; the topic split the case in two, the first exporting GIT_TEST_USE_SET_E for every linux-* job. The author put the musl job into the first case and repeated the export in it (a line used twice: no id answer). Target's split, then master's job opening the second case, does the same: the musl job still matches linux-* first. Master's job first would match before linux-* and lose the export: wrong.",
+  "target_branch": "ps/test-set-e-clean",
+  "source_branch": "master",
+  "control": false,
+  "files": [
+    {
+      "path": "ci/run-build-and-tests.sh",
+      "merged": "export TEST_CONTRIB_TOO=yes\n\ncase \"$jobname\" in\n<<<<<<< source\nlinux-musl-meson)\n\tMESONFLAGS=\"$MESONFLAGS -Drust=disabled\"\n\t;;\n||||||| base\n=======\nalmalinux-*|debian-*|fedora-*|linux-*)\n\texport GIT_TEST_USE_SET_E=yes\n\t;;\nesac\n\ncase \"$jobname\" in\n>>>>>>> target\nfedora-breaking-changes-musl|linux-breaking-changes)\n\texport WITH_BREAKING_CHANGES=YesPlease\n\tMESONFLAGS=\"$MESONFLAGS -Dbreaking_changes=true\"\n"
+    }
+  ],
+  "accept": [
+    {
+      "file": "ci/run-build-and-tests.sh",
+      "conflict": 1,
+      "texts": [
+        "almalinux-*|debian-*|fedora-*|linux-*)\n\texport GIT_TEST_USE_SET_E=yes\n\t;;\nesac\n\ncase \"$jobname\" in\nlinux-musl-meson)\n\tMESONFLAGS=\"$MESONFLAGS -Drust=disabled\"\n\t;;\n"
+      ],
+      "any_order": false
+    }
+  ]
+}

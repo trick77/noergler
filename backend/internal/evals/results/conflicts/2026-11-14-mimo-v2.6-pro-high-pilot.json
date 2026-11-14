@@ -1,0 +1,98 @@
+{
+ "Model": "mimo-v2.6-pro",
+ "Effort": "high",
+ "Samples": 2,
+ "Cases": [
+  {
+   "Case": "inv-superset-fix",
+   "Origin": "invented",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1"
+      ]
+     },
+     "Seconds": 1.8386735,
+     "PromptTokens": 1020,
+     "CachedTokens": 0,
+     "CompletionTokens": 53
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1"
+      ]
+     },
+     "Seconds": 2.807277625,
+     "PromptTokens": 1020,
+     "CachedTokens": 0,
+     "CompletionTokens": 94
+    }
+   ]
+  },
+  {
+   "Case": "mined-git-1950f4628e",
+   "Origin": "mined",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2",
+       "T3",
+       "T4"
+      ]
+     },
+     "Seconds": 21.602686334,
+     "PromptTokens": 1099,
+     "CachedTokens": 0,
+     "CompletionTokens": 2662
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The two branches edited the same statement differently — T keeps `queue.compare` while adding the `gen_ordered = 0` block, S renames the field to `queue.pq.compare` — so the merged code needs `queue.pq.compare` inside T's new block, a line neither branch has.",
+     "Seconds": 4.018944208,
+     "PromptTokens": 1099,
+     "CachedTokens": 1024,
+     "CompletionTokens": 410
+    }
+   ]
+  },
+  {
+   "Case": "web-progit-footer",
+   "Origin": "web",
+   "Control": true,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "declined",
+     "Why": "The two branches rewrote the footer line in incompatible ways (iss53 restructures the text while master changes the email address), and no existing lines combine both changes, so the author must decide.",
+     "Seconds": 2.15186725,
+     "PromptTokens": 1011,
+     "CachedTokens": 0,
+     "CompletionTokens": 179
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Conflict 1 changes the same footer content two incompatible ways — the target branch rewords the message while the PR branch changes the email address — and neither version carries the other's change, so choosing lines would drop one of the author's edits.",
+     "Seconds": 2.1578515,
+     "PromptTokens": 1011,
+     "CachedTokens": 896,
+     "CompletionTokens": 193
+    }
+   ]
+  }
+ ],
+ "Seconds": 21.603442708
+}

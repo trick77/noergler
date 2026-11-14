@@ -1,0 +1,26 @@
+{
+  "name": "mined-git-b6a7e39a8c",
+  "origin": "mined",
+  "source": "https://github.com/git/git/commit/b6a7e39a8c100513cc2672790a74d0668fa61549",
+  "why": "Both branches taught RUST_LIB the same thing, a CARGO_BUILD_TARGET directory, spelled differently; the author kept master's. Target's spelling builds the same path, so either line alone is right.",
+  "target_branch": "jc/rust-cargo-build-target",
+  "source_branch": "master",
+  "control": false,
+  "files": [
+    {
+      "path": "Makefile",
+      "merged": "else\nRUST_LIB_NAME = libgitcore.a\nendif\n<<<<<<< source\nRUST_LIB = target$(if $(CARGO_BUILD_TARGET),/$(CARGO_BUILD_TARGET))/$(RUST_BUILD_CONFIG)/$(RUST_LIB_NAME)\n||||||| base\nRUST_LIB = target/$(RUST_BUILD_CONFIG)/$(RUST_LIB_NAME)\n=======\nRUST_LIB = target/$(if $(CARGO_BUILD_TARGET),$(CARGO_BUILD_TARGET)/)$(RUST_BUILD_CONFIG)/$(RUST_LIB_NAME)\n>>>>>>> target\nendif\n\nGITLIBS = common-main.o $(LIB_FILE)\n"
+    }
+  ],
+  "accept": [
+    {
+      "file": "Makefile",
+      "conflict": 1,
+      "texts": [
+        "RUST_LIB = target$(if $(CARGO_BUILD_TARGET),/$(CARGO_BUILD_TARGET))/$(RUST_BUILD_CONFIG)/$(RUST_LIB_NAME)\n",
+        "RUST_LIB = target/$(if $(CARGO_BUILD_TARGET),$(CARGO_BUILD_TARGET)/)$(RUST_BUILD_CONFIG)/$(RUST_LIB_NAME)\n"
+      ],
+      "any_order": false
+    }
+  ]
+}

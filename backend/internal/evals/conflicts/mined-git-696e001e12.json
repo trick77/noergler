@@ -1,0 +1,25 @@
+{
+  "name": "mined-git-696e001e12",
+  "origin": "mined",
+  "source": "https://github.com/git/git/commit/696e001e125ad99f765988f2eb06904558eb5078",
+  "why": "Adjacent lines, one change each: target recoloured the polygon line, master tightened the regexp. The author kept target's first line and master's second (T1, S2).",
+  "target_branch": "sb/heed-ref-decoration-settings",
+  "source_branch": "master",
+  "control": false,
+  "files": [
+    {
+      "path": "gitk",
+      "merged": "            }\n            set xl [expr {$xl - $delta/2}]\n            $canv create polygon $x $yt $xr $yt $xr $yb $x $yb \\\n<<<<<<< source\n                -width 1 -outline black -fill $col -tags tag.$id\n            if {[regexp {^(remotes/[^/]*/|remotes/)} $tag match remoteprefix]} {\n||||||| base\n                -width 1 -outline black -fill $col -tags tag.$id\n            if {[regexp {^(remotes/.*/|remotes/)} $tag match remoteprefix]} {\n=======\n                -width 1 -outline $refoutlinecol -fill $reffillcol -tags tag.$id\n            if {[regexp {^(remotes/.*/|remotes/)} $tag match remoteprefix]} {\n>>>>>>> target\n                set rwid [font measure mainfont $remoteprefix]\n                set xi [expr {$x + 1}]\n                set yti [expr {$yt + 1}]\n"
+    }
+  ],
+  "accept": [
+    {
+      "file": "gitk",
+      "conflict": 1,
+      "texts": [
+        "                -width 1 -outline $refoutlinecol -fill $reffillcol -tags tag.$id\n            if {[regexp {^(remotes/[^/]*/|remotes/)} $tag match remoteprefix]} {\n"
+      ],
+      "any_order": false
+    }
+  ]
+}

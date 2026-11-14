@@ -1,0 +1,26 @@
+{
+  "name": "web-bristol-docstring",
+  "origin": "web",
+  "source": "https://bristol-training.github.io/advanced-git/pages/300-conflicts.html (calc_lib.py exercise; base reconstructed; shown as merge.Merge3 trims the shared quote lines)",
+  "why": "Both branches rewrote the docstring; the page keeps target's text and the PR's Example section. Either docstring alone loses the other branch's part (the PR's example, or target's rewording), so only the page's combination is accepted; declining is fine.",
+  "target_branch": "main",
+  "source_branch": "docs/multiply-example",
+  "control": false,
+  "files": [
+    {
+      "path": "calc_lib.py",
+      "merged": "def multiply(a, b):\n    \"\"\"\n<<<<<<< source\n    Calculate the product of two numbers.\n\n    Parameters:\n        a (float): The first number\n        b (float): The second number\n\n    Returns:\n        float: a multiplied by b\n\n    Example:\n        >>> multiply(4, 5)\n        20\n||||||| base\n    Multiply a and b.\n=======\n    Multiply two numbers together.\n\n    Args:\n        a (float): First multiplicand\n        b (float): Second multiplicand\n\n    Returns:\n        float: The product of a and b\n>>>>>>> target\n    \"\"\"\n    return a * b\n"
+    }
+  ],
+  "accept": [
+    {
+      "file": "calc_lib.py",
+      "conflict": 1,
+      "texts": [
+        "    Multiply two numbers together.\n\n    Args:\n        a (float): First multiplicand\n        b (float): Second multiplicand\n\n    Returns:\n        float: The product of a and b\n\n    Example:\n        >>> multiply(4, 5)\n        20\n",
+        "    Multiply two numbers together.\n\n    Args:\n        a (float): First multiplicand\n        b (float): Second multiplicand\n\n    Returns:\n        float: The product of a and b\n    Example:\n        >>> multiply(4, 5)\n        20\n"
+      ],
+      "any_order": false
+    }
+  ]
+}

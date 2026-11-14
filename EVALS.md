@@ -182,6 +182,69 @@ The screenshot stays summary only (INVARIANTS: test screenshots); the
 sentence keeps a code bug from leaving `findings` because an image shows it
 too.
 
+## Merge-conflict resolution (2026-11-14)
+
+Question: how often does a resolution go wrong unnoticed (a commit nobody
+checked), on the code path and on the model path?
+
+**Code path** (`merge.Trivial`, no model, runs past the cost cap).
+`cmd/conflictmine` over 1500 git/git merges and 20 public trick77/ipverse
+repos, every both-changed file checked as production checks it: 69
+conflicts within production's bounds, 13 (19 %) resolved by code (12
+distinct: git/git merged the replay.c conflict twice). Against the merge
+author: 4 identical, 5 the same lines in another order, 3 differing in
+blank lines (none of these 8 checked beyond that), 1 broken: git/git 8f0d663e
+`t/lib-gpg.sh`, both branches added the same function with headers
+differing in one space; target then source keeps both headers and the
+script no longer parses (`sh -n`). Fixed since: lines and keys compare
+without whitespace, and a conflict whose edges Merge3 trimmed (a block both
+added) is never trivial. Mined again under that rule: code resolves 4 of
+the 69 (6 %), each the author's lines in another order (two include lists,
+two meson test lists), none broken; the other 9 go to the model. Order: the author put the branch
+merged into first, code puts target first; in git/git that branch is
+master, in production the PR branch, so the data cannot say which order
+is right.
+
+**Model path**, mimo-v2.6-pro high, 35 cases rev1, 10 answers each
+(results/conflicts): 138 of 200 solvable answers correct, 44 declined;
+controls 144 of 150 declined or rejected, 6 wrong. Wrong answers cluster
+by case (0 or 5 of 10), so count cases, not answers: 2 of 15 controls and
+1 of 20 solvable cases drew a real wrong. Read by hand, the 23 wrong:
+
+- 10 keep base lines one branch deleted and the other left as they were
+  (a removed installer block comes back; both fruits of the git docs'
+  diff3 example kept). The one real pattern.
+- 1 keeps a line the other branch deleted, where it changed it
+  (delete vs modify).
+- 12 are the corpus, not the model: the injected comment dropped, the
+  rest correct; a version line merged three-way where the author kept
+  the PR's. For rev2.
+
+That pattern is mechanical: for a text the base region has, keep it at most
+max(0, t + s - b) times. Rescored offline, a blunt check of that catches
+all 10 and rejects none of the 138 correct answers; against the 45 author
+resolutions of every mined draft it rejects one (the version case, where
+the author kept a line the other branch changed: a refusal, never a bad
+push). As a prompt rule (read each branch against B; a B line one branch
+kept and the other changed or deleted follows the change): 0 of 10 wrong
+on the two cases (was 10 of 20), the 7 solvable cases that were right
+stayed right (60 answers, `-draft.json`). Drawn from the two cases it was
+tested on, on 12 of 35 cases; the abort clauses added with it (delete vs
+modify: 1 of 5 against 1 of 10, no effect seen; built files) are untested.
+
+The rule alone went into `merge_conflict.txt` (user, 2026-11-14) and ran on
+all 32 cases of rev2 (run2): 0 wrong of 190 solvable answers (rev1: 17 of
+200, 5 of them real), 1 of 130 on controls (rev1: 6 of 150). No case with
+braces or blank lines in its conflict lost a correct answer, the worry that
+a text rule drops a `}` the other branch still has. Delete vs modify was
+declined 10 of 10 without its abort clause. The one wrong keeps the PR's
+version of a line both branches changed, where target's flag change is lost:
+a line neither side carries in full, the case the prompt already declines.
+
+Declines are the cost: version bumps both branches set (`agents-md-sync`,
+`bd5c2827b2`) and a docstring both rewrote were declined in every answer.
+The author picked; the prompt says to leave a value both set to them.
+
 ## Known gaps
 
 - `lock-not-released` keywords miss correct findings; inflates `extra`.

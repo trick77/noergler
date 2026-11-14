@@ -1,0 +1,16 @@
+{
+  "name": "inv-rename-vs-new-argument",
+  "origin": "invented",
+  "source": "hand-written",
+  "why": "Control. Target renamed compute to calculate, the PR added an argument to the same call; the right line, calculate(ctx, a, b, opts), is on neither branch.",
+  "target_branch": "main",
+  "source_branch": "feature/compute-options",
+  "control": true,
+  "files": [
+    {
+      "path": "service/handle.go",
+      "merged": "func (s *Service) Handle(ctx context.Context, a, b int) (int, error) {\n\topts := s.defaults()\n\topts.Trace = s.trace\n<<<<<<< source\n\tresult, err := compute(ctx, a, b, opts)\n||||||| base\n\tresult, err := compute(ctx, a, b)\n=======\n\tresult, err := calculate(ctx, a, b)\n>>>>>>> target\n\tif err != nil {\n\t\treturn 0, err\n\t}\n"
+    }
+  ],
+  "accept": []
+}

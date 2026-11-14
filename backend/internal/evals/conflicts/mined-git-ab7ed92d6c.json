@@ -1,0 +1,16 @@
+{
+  "name": "mined-git-ab7ed92d6c",
+  "origin": "mined",
+  "source": "https://github.com/git/git/commit/ab7ed92d6cd704979f818eefc3ebe46d7d6f5afd",
+  "why": "Control. In two places master moved to repo_hold_lock_file_for_update(r, ...) and the topic to hold_lock_file_for_update_timeout(..., config_lock_timeout_ms(r)); the right call carries both, a line neither branch has.",
+  "target_branch": "jt/config-lock-timeout",
+  "source_branch": "master",
+  "control": true,
+  "files": [
+    {
+      "path": "config.c",
+      "merged": "\t * The lock serves a purpose in addition to locking: the new\n\t * contents of .git/config will be written into it.\n\t */\n<<<<<<< source\n\tfd = repo_hold_lock_file_for_update(r, &lock, config_filename, 0);\n||||||| base\n\tfd = hold_lock_file_for_update(&lock, config_filename, 0);\n=======\n\tfd = hold_lock_file_for_update_timeout(&lock, config_filename, 0,\n\t\t\t\t\t       config_lock_timeout_ms(r));\n>>>>>>> target\n\tif (fd < 0) {\n\t\terror_errno(_(\"could not lock config file %s\"), config_filename);\n\t\tret = CONFIG_NO_LOCK;\n\tif (!config_filename)\n\t\tconfig_filename = filename_buf = repo_git_path(r, \"config\");\n\n<<<<<<< source\n\tout_fd = repo_hold_lock_file_for_update(r, &lock, config_filename, 0);\n||||||| base\n\tout_fd = hold_lock_file_for_update(&lock, config_filename, 0);\n=======\n\tout_fd = hold_lock_file_for_update_timeout(&lock, config_filename, 0,\n\t\t\t\t\t\t   config_lock_timeout_ms(r));\n>>>>>>> target\n\tif (out_fd < 0) {\n\t\tret = error(_(\"could not lock config file %s\"), config_filename);\n\t\tgoto out;\n"
+    }
+  ],
+  "accept": null
+}

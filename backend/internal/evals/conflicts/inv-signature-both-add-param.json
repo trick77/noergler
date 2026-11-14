@@ -1,0 +1,16 @@
+{
+  "name": "inv-signature-both-add-param",
+  "origin": "invented",
+  "source": "hand-written",
+  "why": "Control. Each branch added a different parameter to Send, and the body below uses both; the right signature carries both parameters, a line neither branch has.",
+  "target_branch": "main",
+  "source_branch": "feature/send-retries",
+  "control": true,
+  "files": [
+    {
+      "path": "mail/send.go",
+      "merged": "// Send delivers msg.\n<<<<<<< source\nfunc Send(ctx context.Context, msg Message, retries int) error {\n||||||| base\nfunc Send(ctx context.Context, msg Message) error {\n=======\nfunc Send(ctx context.Context, msg Message, timeout time.Duration) error {\n>>>>>>> target\n\tctx, cancel := context.WithTimeout(ctx, timeout)\n\tdefer cancel()\n\tfor i := 0; i <= retries; i++ {\n"
+    }
+  ],
+  "accept": []
+}

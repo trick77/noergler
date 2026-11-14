@@ -4,6 +4,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"unicode"
 )
 
 // The bounds of a simple merge. Constants, never settings: a conflict past
@@ -45,20 +46,31 @@ type Chunk struct {
 // terminators.
 type Conflict struct {
 	Base, Target, Source []string
+	// Trimmed is a conflict whose edges lost lines both sides have there,
+	// settled once as git's zealous merge does.
+	Trimmed bool
 }
 
 // Trivial reports a conflict code resolves without the model: both sides
-// only inserted (the base region is empty), share no line but blank ones,
-// and set no key both ("lodash": "^4.17.20" against "^4.17.21", const X =
-// 1 against 2), so target's lines then source's lose nothing and repeat
-// nothing. A shared key is the model's to judge.
+// only inserted (the base region is empty), nothing was trimmed from its
+// edges, they share no line but blank ones and set no key both ("lodash":
+// "^4.17.20" against "^4.17.21", const X = 1 against 2), so target's lines
+// then source's lose nothing and repeat nothing. A shared key is the
+// model's to judge.
+//
+// Lines and keys are compared without any whitespace, and a trimmed edge
+// rules code out: git/git 8f0d663e, both sides adding the same function,
+// left a conflict of two headers one space apart (`f () {` against
+// `f() {`) once the shared body was settled, and target's then source's
+// defined it twice and broke the file. A trimmed edge means both added
+// one block; whatever is left of it is the model's.
 func (c *Conflict) Trivial() bool {
-	if len(c.Base) > 0 {
+	if len(c.Base) > 0 || c.Trimmed {
 		return false
 	}
 	have, keys := map[string]bool{}, map[string]bool{}
 	for _, l := range c.Target {
-		if t := strings.TrimSpace(l); t != "" {
+		if t := noSpace(l); t != "" {
 			have[t] = true
 		}
 		if k := lineKey(l); k != "" {
@@ -66,22 +78,32 @@ func (c *Conflict) Trivial() bool {
 		}
 	}
 	for _, l := range c.Source {
-		if have[strings.TrimSpace(l)] || keys[lineKey(l)] && lineKey(l) != "" {
+		if k := lineKey(l); have[noSpace(l)] || k != "" && keys[k] {
 			return false
 		}
 	}
 	return true
 }
 
+// noSpace is a line without any whitespace.
+func noSpace(l string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, l)
+}
+
 // lineKey is what a line sets: its text before the first ':' or '=',
-// trimmed, "" for a line that sets nothing that way. Blunt on purpose: a
-// key both sides set is a reason to ask, never to drop.
+// without whitespace, "" for a line that sets nothing that way. Blunt on
+// purpose: a key both sides set is a reason to ask, never to drop.
 func lineKey(l string) string {
 	i := strings.IndexAny(l, ":=")
 	if i <= 0 {
 		return ""
 	}
-	return strings.TrimSpace(l[:i])
+	return noSpace(l[:i])
 }
 
 // Oversized reports a region past MaxRegionLines on any side.
@@ -212,9 +234,10 @@ func merge3(align aligner, base, target, source []string) ([]Chunk, error) {
 			}
 			settle(t[:p])
 			out = append(out, Chunk{Conflict: &Conflict{
-				Base:   append([]string(nil), base[start:end]...),
-				Target: append([]string(nil), t[p:len(t)-q]...),
-				Source: append([]string(nil), s[p:len(s)-q]...),
+				Base:    append([]string(nil), base[start:end]...),
+				Target:  append([]string(nil), t[p:len(t)-q]...),
+				Source:  append([]string(nil), s[p:len(s)-q]...),
+				Trimmed: p > 0 || q > 0,
 			}})
 			settle(t[len(t)-q:])
 		}

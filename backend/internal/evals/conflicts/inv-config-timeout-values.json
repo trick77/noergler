@@ -1,0 +1,16 @@
+{
+  "name": "inv-config-timeout-values",
+  "origin": "invented",
+  "source": "hand-written",
+  "why": "Control. Each branch set the same timeout to a different value; which one holds is the author's call, no line choice is plainly right.",
+  "target_branch": "main",
+  "source_branch": "feature/faster-timeouts",
+  "control": true,
+  "files": [
+    {
+      "path": "deploy/server.yaml",
+      "merged": "server:\n  host: 0.0.0.0\n  port: 8080\n<<<<<<< source\n  timeout: 10s\n||||||| base\n  timeout: 20s\n=======\n  timeout: 30s\n>>>>>>> target\n  max_body: 1MB\n  log_level: info\n"
+    }
+  ],
+  "accept": []
+}

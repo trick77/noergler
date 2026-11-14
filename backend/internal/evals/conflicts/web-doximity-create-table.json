@@ -1,0 +1,25 @@
+{
+  "name": "web-doximity-create-table",
+  "origin": "web",
+  "source": "https://technology.doximity.com/articles/finding-joy-in-git-conflict-resolution (example 2)",
+  "why": "Target added the comment_user_mentions table in front of comments; the PR dropped \"id: :integer\" from the comments line. Target's new table, then the PR's comments line: the page's resolution.",
+  "target_branch": "origin/other-branch",
+  "source_branch": "feature/comment-ids",
+  "control": false,
+  "files": [
+    {
+      "path": "db/schema.rb",
+      "merged": "ActiveRecord::Schema.define(version: 2021_03_01_000000) do\n  enable_extension \"plpgsql\"\n\n<<<<<<< source\n  create_table \"comments\" do |t|\n||||||| base\n  create_table \"comments\", id: :integer do |t|\n=======\n  create_table \"comment_user_mentions\" do |t|\n    t.integer \"user_id\", null: false\n    t.integer \"comment_id\", null: false\n    t.datetime \"created_at\", precision: 6, null: false\n    t.datetime \"updated_at\", precision: 6, null: false\n    t.index [\"comment_id\"]\n    t.index [\"user_id\"]\n  end\n\n  create_table \"comments\", id: :integer do |t|\n>>>>>>> target\n    t.text \"body\", null: false\n    t.integer \"user_id\", null: false\n    t.datetime \"created_at\", precision: 6, null: false\n"
+    }
+  ],
+  "accept": [
+    {
+      "file": "db/schema.rb",
+      "conflict": 1,
+      "texts": [
+        "  create_table \"comment_user_mentions\" do |t|\n    t.integer \"user_id\", null: false\n    t.integer \"comment_id\", null: false\n    t.datetime \"created_at\", precision: 6, null: false\n    t.datetime \"updated_at\", precision: 6, null: false\n    t.index [\"comment_id\"]\n    t.index [\"user_id\"]\n  end\n\n  create_table \"comments\" do |t|\n"
+      ],
+      "any_order": false
+    }
+  ]
+}

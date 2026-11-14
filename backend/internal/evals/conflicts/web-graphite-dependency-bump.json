@@ -1,0 +1,25 @@
+{
+  "name": "web-graphite-dependency-bump",
+  "origin": "web",
+  "source": "https://graphite.com/guides/how-to-resolve-merge-conflicts-in-git (config.json; base reconstructed so both branches bumped libraryA, as the page's conflict implies)",
+  "why": "Both branches bumped libraryA; target's bump goes further (^2.1.0 over ^2.0.0) and adds libraryB. Target's lines carry the PR's change: the page keeps them.",
+  "target_branch": "03-19-chore_update_dependencies",
+  "source_branch": "feature/library-a-2",
+  "control": false,
+  "files": [
+    {
+      "path": "config.json",
+      "merged": "{\n  \"name\": \"app\",\n  \"version\": \"1.0.1\",\n  \"dependencies\": {\n<<<<<<< source\n    \"libraryA\": \"^2.0.0\"\n||||||| base\n    \"libraryA\": \"^1.9.0\"\n=======\n    \"libraryA\": \"^2.1.0\",\n    \"libraryB\": \"^3.0.0\"\n>>>>>>> target\n  }\n}\n"
+    }
+  ],
+  "accept": [
+    {
+      "file": "config.json",
+      "conflict": 1,
+      "texts": [
+        "    \"libraryA\": \"^2.1.0\",\n    \"libraryB\": \"^3.0.0\"\n"
+      ],
+      "any_order": false
+    }
+  ]
+}
