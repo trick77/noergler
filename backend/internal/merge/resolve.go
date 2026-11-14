@@ -52,7 +52,8 @@ func TrivialResolution(c *Conflict) []Ref {
 
 // ValidateResolution is the blunt check on a resolution, no judge: every
 // ref names a line of the conflict, none twice, each side's lines keep
-// their order, and it is empty only when both sides are. reason is log
+// their order, it is empty only when both sides are, and it brings back
+// no base line a branch deleted or changed (undoesChange). reason is log
 // vocabulary, empty when it stands.
 func ValidateResolution(c *Conflict, refs []Ref) (reason string) {
 	if len(refs) == 0 {
@@ -87,7 +88,44 @@ func ValidateResolution(c *Conflict, refs []Ref) (reason string) {
 			lastS = r.N
 		}
 	}
+	if undoesChange(c, refs) {
+		return "undoes_change"
+	}
 	return ""
+}
+
+// undoesChange reports a base text kept more often than both sides still
+// have it beyond the base: max(0, t+s-b) times, over the whole region
+// (Base, and each side with the trimmed Head and Tail). A base line one
+// branch left as it was and the other deleted or changed is then kept by
+// neither count, and keeping it undoes that branch's work. The prompt asks
+// for the same (merge_conflict.txt); this is the check when a model does
+// not follow it.
+//
+// Text compares exactly, line end aside: a re-indent is a change (YAML,
+// Python), unlike Trivial and Dropped, which ignore whitespace to stay
+// safe the other way. Counts know no position: a side that deletes a base
+// `}` and adds one elsewhere looks like a kept copy, and a resolution with
+// it may be refused. That fails safe, with no push.
+func undoesChange(c *Conflict, refs []Ref) bool {
+	count := func(lss ...[]string) map[string]int {
+		m := map[string]int{}
+		for _, ls := range lss {
+			for _, l := range ls {
+				m[TrimEOL(l)]++
+			}
+		}
+		return m
+	}
+	base := count(c.Base)
+	sides := count(c.Head, c.Target, c.Tail, c.Head, c.Source, c.Tail)
+	kept := count(c.Head, Pick(c, refs), c.Tail)
+	for x, n := range kept {
+		if b := base[x]; b > 0 && n > max(0, sides[x]-b) {
+			return true
+		}
+	}
+	return false
 }
 
 // Pick is the lines refs name.

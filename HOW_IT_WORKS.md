@@ -536,8 +536,10 @@ then source's. The rest goes to one call (`merge_conflict.txt`):
 the model sees each conflict's base, target and source lines, numbered, and
 answers per conflict the ids of the lines to keep (`T1`, `S2`), never text.
 `ValidateResolution`: every id exists, none twice, each side's order kept,
-no base line. The model may drop one side's version only where the other
-already carries its change, else it says not feasible and why. At the cost
+no base id, and no base line one branch deleted or changed brought back
+through the other branch's copy. The model may drop one side's version
+only where the other already carries its change, else it says not
+feasible and why. At the cost
 cap a code-only resolution still runs; one that needs the model is refused
 with an answer.
 

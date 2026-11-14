@@ -199,6 +199,67 @@ func TestValidateResolution(t *testing.T) {
 	}
 }
 
+func TestValidateResolutionUndoesChange(t *testing.T) {
+	cases := []struct {
+		name         string
+		base, tg, sc string
+		refs         string
+		want         string
+	}{
+		// Target deleted "gone", source left it and added a line.
+		{"deletion followed", "keep\ngone\n", "keep\n", "keep\ngone\nnew\n", "T1 S3", ""},
+		{"deletion undone", "keep\ngone\n", "keep\n", "keep\ngone\nnew\n", "S1 S2 S3", "undoes_change"},
+		{"kept line twice", "keep\ngone\n", "keep\n", "keep\ngone\nnew\n", "T1 S1 S3", "undoes_change"},
+		// Target changed v, source left it and added w.
+		{"change followed", "v=1\n", "v=2\n", "v=1\nw=1\n", "T1 S2", ""},
+		{"change undone", "v=1\n", "v=2\n", "v=1\nw=1\n", "S1 S2", "undoes_change"},
+		// A line both kept, kept once, from either side.
+		{"both kept", "a\nb\n", "a\nb\nt\n", "a\nb\ns\n", "S1 S2 T3 S3", ""},
+		// Target only re-indented: in YAML or Python that is the change.
+		{"re-indent followed", "debug: true\n", "  debug: true\n", "debug: true\nlevel: 2\n", "T1 S2", ""},
+		{"re-indent undone", "debug: true\n", "  debug: true\n", "debug: true\nlevel: 2\n", "S1 S2", "undoes_change"},
+		// A line end is no change of the line.
+		{"line end only", "a\r\n", "a\n", "a\r\nb\r\n", "S1 S2", ""},
+		// A blank line target deleted comes back.
+		{"blank undone", "x\n\ny\n", "x\ny\n", "x\n\ny\nz\n", "S1 S2 S3 S4", "undoes_change"},
+		// No base: nothing to undo.
+		{"no base", "", "t\n", "s\n", "S1 T1", ""},
+	}
+	for _, tc := range cases {
+		c := &Conflict{Base: ls(tc.base), Target: ls(tc.tg), Source: ls(tc.sc)}
+		var refs []Ref
+		for f := range strings.FieldsSeq(tc.refs) {
+			r, ok := ParseRef(f)
+			if !ok {
+				t.Fatalf("%s: ParseRef(%q)", tc.name, f)
+			}
+			refs = append(refs, r)
+		}
+		if got := ValidateResolution(c, refs); got != tc.want {
+			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
+		}
+	}
+	// Trimmed edges count: Merge3 settles the shared trailing "b", Base
+	// keeps the whole region. Target added a second "b", so a
+	// resolution keeping one beside the settled one undoes nothing.
+	chunks, err := Merge3(ls("b\nc\n"), ls("}\nb\nb\n"), ls("c\n}\nb\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs := Conflicts(chunks)
+	if len(cs) != 1 || !cs[0].Trimmed || len(cs[0].Tail) != 1 {
+		t.Fatalf("want one conflict with a trimmed tail: %+v", cs)
+	}
+	if got := ValidateResolution(cs[0], []Ref{{Target: true, N: 1}, {Target: true, N: 2}, {N: 2}}); got != "" {
+		t.Errorf("trimmed: %q, want it to stand", got)
+	}
+	// ReadAnswer passes the reason on: no push.
+	c := &Conflict{Base: ls("v=1\n"), Target: ls("v=2\n"), Source: ls("v=1\nw=1\n")}
+	if _, why := ReadAnswer([]*Conflict{c}, map[int][]string{1: {"S1", "S2"}}); why != "conflict 1: undoes_change" {
+		t.Errorf("ReadAnswer: %q", why)
+	}
+}
+
 func TestParseRefRefusesBase(t *testing.T) {
 	for _, s := range []string{"B1", "T0", "S", "X1", "T-1", "t1"} {
 		if _, ok := ParseRef(s); ok {

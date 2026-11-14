@@ -128,6 +128,21 @@ an incident or an eval run: read the reason before relaxing a rule.
   changed while the other left it, e.g. a removed installer block came
   back. The rule alone went in (user, 2026-11-14); the abort clauses
   drafted with it showed no effect.
+- Merge conflict base-line check in code (user, 2026-11-14): with the
+  prompt rule the pattern drew 0 wrong, so the check is for a model or
+  prompt that stops following it. Replayed offline on every stored answer:
+  the 10 old-prompt wrong answers rejected, 0 of 313 correct ones; 1 of 39
+  mined author resolutions refused (a version pin kept against a branch's
+  bump: no push, the author resolves). Text exact (line end aside): a
+  re-indent is a change in YAML or Python; whitespace-blind counting
+  scored the same on the data but let a re-indent be undone. `}` and blank
+  lines included: excluding them changed nothing measured. Counts carry no
+  position, so a side that moves a `}` can get a correct resolution
+  refused: safe, no push. Trimmed edges (`Head`, `Tail`) count with each
+  side, or a block both added is refused. Misses a change lost where the
+  kept line is the other branch's change (delete vs modify, git/git
+  42afcb954b); "refuse a resolution that is one side verbatim" catches
+  those but refused 22 of 139 correct answers.
 - Merge conflict trivial rule (user, 2026-11-14): on 1500 git/git merges one
   trivial resolution broke a file (8f0d663e: both sides added one function,
   Merge3 settled the shared body, the headers one space apart were kept
