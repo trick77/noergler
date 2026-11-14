@@ -85,6 +85,34 @@ func (s *Store) SetSummaryComment(ctx context.Context, prID int64, commentID, ve
 	return err
 }
 
+// ConflictOffer is the PR row's open merge-conflict offer comment, 0 when
+// none is open.
+func (s *Store) ConflictOffer(ctx context.Context, prID int64) (int, error) {
+	var id *int
+	err := s.pool.QueryRow(ctx, `SELECT conflict_offer_comment_id FROM pull_requests WHERE id = $1`, prID).Scan(&id)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return 0, nil
+	case err != nil:
+		return 0, err
+	case id == nil:
+		return 0, nil
+	}
+	return *id, nil
+}
+
+// SetConflictOffer records the open offer comment; 0 clears it.
+func (s *Store) SetConflictOffer(ctx context.Context, prID int64, commentID int) error {
+	var id *int
+	if commentID != 0 {
+		id = &commentID
+	}
+	_, err := s.pool.Exec(ctx, `
+		UPDATE pull_requests SET conflict_offer_comment_id = $2, updated_at = now()
+		WHERE id = $1`, prID, id)
+	return err
+}
+
 // PRLinkToken is the PR page's link token, for the summary's link.
 func (s *Store) PRLinkToken(ctx context.Context, prID int64) (string, error) {
 	var tok string

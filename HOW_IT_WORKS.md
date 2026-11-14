@@ -554,6 +554,19 @@ branch moved, refused by a hook, failed. Each request is a `finding_fixes`
 row (Auto-fixes on the metrics page), its call a `fix` row. The push
 triggers a full re-review, as a merge by hand does.
 
+A review offers it. After each completed review under the cost cap,
+noergler asks Bitbucket for the merge status; on a conflict it fetches and
+merges as a request would, without the model. A conflict code resolves
+alone, or one within the bounds the model would answer, gets a comment of
+its own that mentions the author and quotes the command (a plain reply
+under it reaches noergler too); past the bounds nothing is said. One offer
+is open at a time: a later review that finds no offer holding (conflict
+gone, or past the bounds), a review at the cost cap, or noergler's own
+push of the merge resolves its thread, and a conflict after that is
+offered anew. A check that fails leaves the open offer as it is. A review
+on the same two heads fetches nothing again. Bitbucket sends no event when the target branch
+moves, so a conflict that arises after a review shows at the next push.
+
 ### Dispute signals
 
 When a dispute's reason is a project-wide rule AGENTS.md lacks, the model

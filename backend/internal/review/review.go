@@ -388,6 +388,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		incrementalFrom: incrementalFrom,
 		mention:         skipAuthorCheck,
 		lang:            l,
+		offer:           offerPROf(pr, key),
 		started:         started,
 		counter:         httpCounter,
 		prompt:          assembled.Prompt,
@@ -646,6 +647,19 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 
 	r.postOrUpdateSummary(ctx, project, repo, plan.prID, prReviewID, summary)
 	r.finishDetail(ctx, plan, attemptID, stageRecordSum)
+
+	// A conflict noergler could resolve is offered, in a comment of its
+	// own; after the run's record, so its fetch is no stage of the review.
+	// At or over the cost cap nothing is checked and an open offer is
+	// withdrawn (user, 2026-11-14: stop there; the model one would be
+	// refused).
+	if prReviewID != 0 {
+		kind := offerNone
+		if cumulativeCost == nil || *cumulativeCost < r.cfg.MaxPRCostUSD {
+			kind = r.conflictOffer(ctx, key, prTag, plan.offer)
+		}
+		r.noteConflictOffer(ctx, key, prReviewID, prTag, plan.lang, plan.offer, kind)
+	}
 
 	parts := []string{
 		fmt.Sprintf("Review of %s completed in %.1fs", prTag, elapsed.Seconds()),

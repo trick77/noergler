@@ -70,6 +70,9 @@ type Reviewer struct {
 	// so a merge that lands meanwhile stamps the row and leaves the emit to
 	// the round. Single process: a map is enough.
 	almanachInflight inflightSet
+	// offers is each PR's last merge-conflict offer check, by its heads
+	// (conflictoffer.go).
+	offers offerCache
 	// almanachSchemaCount is the note schema's token count, taken once.
 	almanachSchemaOnce  sync.Once
 	almanachSchemaCount int

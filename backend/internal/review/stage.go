@@ -51,6 +51,8 @@ type reviewPlan struct {
 	// lang is the PR author's language, resolved once in prepare: every
 	// text this run posts is in it.
 	lang lang.Lang
+	// offer is what the merge-conflict offer check needs of the PR.
+	offer offerPR
 	// started is when the review began, so the elapsed time the summary and
 	// the run row report is the author's wall clock, pool wait included.
 	started time.Time
