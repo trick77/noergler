@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/trick77/noergler/internal/lang"
+	"github.com/trick77/noergler/internal/merge"
 	"github.com/trick77/toolkit/llmwire"
 )
 
@@ -34,6 +35,13 @@ type ConflictHunk struct {
 	Path                 string
 	Before, After        []string
 	Base, Target, Source []string
+}
+
+// HunkOf is conflict c of a merged file as the model sees it, with the
+// settled lines around it (merge.Context).
+func HunkOf(path string, c *merge.Conflict, before, after []string) ConflictHunk {
+	return ConflictHunk{Path: path, Before: merge.TrimEOLs(before), After: merge.TrimEOLs(after),
+		Base: merge.TrimEOLs(c.Base), Target: merge.TrimEOLs(c.Target), Source: merge.TrimEOLs(c.Source)}
 }
 
 // ConflictPromptRequest is one merge-conflict prompt's inputs.

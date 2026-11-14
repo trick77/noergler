@@ -1,0 +1,25 @@
+{
+  "name": "inv-adjacent-constants",
+  "origin": "invented",
+  "source": "hand-written",
+  "why": "Adjacent lines, one change each: target raised MaxRetries, the PR raised Timeout. Keeping target's MaxRetries line and the PR's Timeout line keeps both changes.",
+  "target_branch": "main",
+  "source_branch": "feature/longer-timeout",
+  "control": false,
+  "files": [
+    {
+      "path": "client/limits.go",
+      "merged": "package client\n\nimport \"time\"\n\nconst (\n<<<<<<< source\n\tMaxRetries = 3\n\tTimeout    = 10 * time.Second\n||||||| base\n\tMaxRetries = 3\n\tTimeout    = 5 * time.Second\n=======\n\tMaxRetries = 5\n\tTimeout    = 5 * time.Second\n>>>>>>> target\n\tBackoff    = 2\n)\n"
+    }
+  ],
+  "accept": [
+    {
+      "file": "client/limits.go",
+      "conflict": 1,
+      "texts": [
+        "\tMaxRetries = 5\n\tTimeout    = 10 * time.Second\n"
+      ],
+      "any_order": false
+    }
+  ]
+}

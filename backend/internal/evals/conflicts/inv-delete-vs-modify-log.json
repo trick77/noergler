@@ -1,0 +1,16 @@
+{
+  "name": "inv-delete-vs-modify-log",
+  "origin": "invented",
+  "source": "hand-written",
+  "why": "Control. Target deleted a debug log line, the PR extended it; keeping it undoes the deletion, dropping it loses the PR's change. The author decides.",
+  "target_branch": "main",
+  "source_branch": "feature/pool-metrics",
+  "control": true,
+  "files": [
+    {
+      "path": "pool/pool.go",
+      "merged": "func (p *Pool) Get() *Conn {\n\tp.mu.Lock()\n\tdefer p.mu.Unlock()\n<<<<<<< source\n\tlog.Printf(\"pool: get, %d idle, %d busy\", len(p.idle), p.busy)\n||||||| base\n\tlog.Printf(\"pool: get, %d idle\", len(p.idle))\n=======\n>>>>>>> target\n\tif len(p.idle) == 0 {\n\t\tp.busy++\n\t\treturn p.dial()\n"
+    }
+  ],
+  "accept": []
+}

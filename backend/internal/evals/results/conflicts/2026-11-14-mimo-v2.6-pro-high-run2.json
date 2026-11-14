@@ -1,0 +1,4032 @@
+{
+ "Model": "mimo-v2.6-pro",
+ "Effort": "high",
+ "Samples": 10,
+ "Cases": [
+  {
+   "Case": "inv-adjacent-constants",
+   "Origin": "invented",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 4.065835792,
+     "PromptTokens": 1103,
+     "CachedTokens": 0,
+     "CompletionTokens": 168
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 4.741631416,
+     "PromptTokens": 1103,
+     "CachedTokens": 1024,
+     "CompletionTokens": 153
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 4.55390375,
+     "PromptTokens": 1103,
+     "CachedTokens": 1024,
+     "CompletionTokens": 142
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 8.64299575,
+     "PromptTokens": 1103,
+     "CachedTokens": 1024,
+     "CompletionTokens": 224
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 4.441673542,
+     "PromptTokens": 1103,
+     "CachedTokens": 128,
+     "CompletionTokens": 220
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 3.135541708,
+     "PromptTokens": 1103,
+     "CachedTokens": 1024,
+     "CompletionTokens": 162
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 5.963711542,
+     "PromptTokens": 1103,
+     "CachedTokens": 1024,
+     "CompletionTokens": 164
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 2.447368458,
+     "PromptTokens": 1103,
+     "CachedTokens": 1024,
+     "CompletionTokens": 114
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 5.206851834,
+     "PromptTokens": 1103,
+     "CachedTokens": 1024,
+     "CompletionTokens": 265
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 2.6276378339999997,
+     "PromptTokens": 1103,
+     "CachedTokens": 1024,
+     "CompletionTokens": 127
+    }
+   ]
+  },
+  {
+   "Case": "inv-ci-steps-both-add",
+   "Origin": "invented",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "S1",
+       "S2"
+      ]
+     },
+     "Seconds": 4.200740084,
+     "PromptTokens": 1068,
+     "CachedTokens": 0,
+     "CompletionTokens": 124
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "S1",
+       "S2"
+      ]
+     },
+     "Seconds": 4.293197542,
+     "PromptTokens": 1068,
+     "CachedTokens": 1024,
+     "CompletionTokens": 74
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "S1",
+       "S2"
+      ]
+     },
+     "Seconds": 8.633231666,
+     "PromptTokens": 1068,
+     "CachedTokens": 1024,
+     "CompletionTokens": 134
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "S1",
+       "S2"
+      ]
+     },
+     "Seconds": 4.573130291,
+     "PromptTokens": 1068,
+     "CachedTokens": 1024,
+     "CompletionTokens": 119
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "S1",
+       "S2"
+      ]
+     },
+     "Seconds": 3.043761083,
+     "PromptTokens": 1068,
+     "CachedTokens": 1024,
+     "CompletionTokens": 99
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "S1",
+       "S2"
+      ]
+     },
+     "Seconds": 4.133941791,
+     "PromptTokens": 1068,
+     "CachedTokens": 1024,
+     "CompletionTokens": 119
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "S1",
+       "S2"
+      ]
+     },
+     "Seconds": 3.858368125,
+     "PromptTokens": 1068,
+     "CachedTokens": 1024,
+     "CompletionTokens": 76
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "S1",
+       "S2"
+      ]
+     },
+     "Seconds": 2.926873125,
+     "PromptTokens": 1068,
+     "CachedTokens": 1024,
+     "CompletionTokens": 115
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "S1",
+       "S2"
+      ]
+     },
+     "Seconds": 4.286712583,
+     "PromptTokens": 1068,
+     "CachedTokens": 1024,
+     "CompletionTokens": 142
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "S1",
+       "S2"
+      ]
+     },
+     "Seconds": 6.45825975,
+     "PromptTokens": 1068,
+     "CachedTokens": 1024,
+     "CompletionTokens": 93
+    }
+   ]
+  },
+  {
+   "Case": "inv-config-timeout-values",
+   "Origin": "invented",
+   "Control": true,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same `timeout` line to different values (30s vs 10s), and neither version carries the other's change, so this needs an author decision rather than a line choice.",
+     "Seconds": 2.4473015,
+     "PromptTokens": 1075,
+     "CachedTokens": 0,
+     "CompletionTokens": 137
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same `timeout` value incompatibly (30s on main vs. 10s on the PR branch), and neither version carries the other's change, so only the author can decide which timeout applies.",
+     "Seconds": 4.6563659170000005,
+     "PromptTokens": 1075,
+     "CachedTokens": 1024,
+     "CompletionTokens": 201
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed `timeout` to different values (30s vs 10s) with neither carrying the other's change, so the author must choose the intended timeout.",
+     "Seconds": 3.805925916,
+     "PromptTokens": 1075,
+     "CachedTokens": 1024,
+     "CompletionTokens": 154
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches set the same timeout line to conflicting values (30s vs 10s) and neither version carries the other's change, so this needs a decision only the author can make.",
+     "Seconds": 5.069812833,
+     "PromptTokens": 1075,
+     "CachedTokens": 0,
+     "CompletionTokens": 226
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same `timeout` line to different values (main: 30s, PR: 10s), and neither version includes the other's change, so choosing between them is the author's call.",
+     "Seconds": 6.134846917,
+     "PromptTokens": 1075,
+     "CachedTokens": 1024,
+     "CompletionTokens": 308
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same `timeout` line to different values (30s vs 10s) and neither version carries the other's change, so choosing between them is a decision only the author can make.",
+     "Seconds": 4.367276459,
+     "PromptTokens": 1075,
+     "CachedTokens": 1024,
+     "CompletionTokens": 210
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same `timeout` value in ways that cannot both stand (30s vs 10s) and neither version carries the other's change, so the value must be decided by the author.",
+     "Seconds": 5.731693709,
+     "PromptTokens": 1075,
+     "CachedTokens": 1024,
+     "CompletionTokens": 177
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same `timeout` value to different numbers (main: 30s, PR: 10s) and neither version carries the other's change, so the author must decide which timeout applies.",
+     "Seconds": 3.938623917,
+     "PromptTokens": 1075,
+     "CachedTokens": 1024,
+     "CompletionTokens": 172
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same `timeout` value to different numbers (30s vs 10s), and neither version carries the other's change, so picking one is a decision only the author can make.",
+     "Seconds": 3.604556792,
+     "PromptTokens": 1075,
+     "CachedTokens": 1024,
+     "CompletionTokens": 232
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same `timeout` value to different values (30s vs 10s), neither carrying the other's change, so only the author can decide which value applies.",
+     "Seconds": 3.938839666,
+     "PromptTokens": 1075,
+     "CachedTokens": 1024,
+     "CompletionTokens": 203
+    }
+   ]
+  },
+  {
+   "Case": "inv-delete-vs-modify-log",
+   "Origin": "invented",
+   "Control": true,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "declined",
+     "Why": "The two branches changed the same log line in incompatible ways — main deleted it while the PR branch modified it to add the busy count — and neither change carries the other, so only the author can decide whether the log statement stays.",
+     "Seconds": 12.824936833,
+     "PromptTokens": 1094,
+     "CachedTokens": 0,
+     "CompletionTokens": 697
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The base log line was deleted on main but modified on the PR branch, and neither version carries the other's change (deletion vs. extended message), so the merged result cannot be formed by choosing existing lines.",
+     "Seconds": 8.25654775,
+     "PromptTokens": 1094,
+     "CachedTokens": 1024,
+     "CompletionTokens": 317
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The target branch deleted the log line while the PR branch extended it with a busy count, and neither version carries the other's change, so the author must decide whether the logging is removed or enriched.",
+     "Seconds": 6.744797125,
+     "PromptTokens": 1094,
+     "CachedTokens": 1024,
+     "CompletionTokens": 392
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Conflict 1 has main deleting the log line while the PR branch edits the same line to add the busy count, and neither version carries the other's change, so the author must decide whether the line stays at all.",
+     "Seconds": 8.892394667,
+     "PromptTokens": 1094,
+     "CachedTokens": 1024,
+     "CompletionTokens": 378
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Conflict 1 cannot be resolved by choosing lines: main deleted the log statement while the PR branch modified it to add the busy count, so neither version carries the other's change and the author must decide whether the line should exist at all.",
+     "Seconds": 11.346555209,
+     "PromptTokens": 1094,
+     "CachedTokens": 1024,
+     "CompletionTokens": 633
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Conflict 1 cannot be resolved by choosing lines: main deleted the log line while the PR branch modified it to add the busy count, and neither version carries the other's change, so the author must decide whether the log line stays at all.",
+     "Seconds": 5.45746875,
+     "PromptTokens": 1094,
+     "CachedTokens": 1024,
+     "CompletionTokens": 277
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Main deleted the pool log line while the PR branch rewrote it to add the busy count, so the two versions cannot both stand and neither carries the other's change — only the author can decide whether the log line should exist at all.",
+     "Seconds": 15.721459541,
+     "PromptTokens": 1094,
+     "CachedTokens": 1024,
+     "CompletionTokens": 544
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Main deletes the log line in Get while the PR modifies it to also report the busy count, and neither version carries the other's change, so this needs a decision from the author.",
+     "Seconds": 13.57771,
+     "PromptTokens": 1094,
+     "CachedTokens": 1024,
+     "CompletionTokens": 812
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The target branch deleted the log line while the PR branch rewrote it to include the busy count, and neither version carries the other's change, so the author must decide whether the logging is removed or kept with the added metric.",
+     "Seconds": 9.062544584,
+     "PromptTokens": 1094,
+     "CachedTokens": 1024,
+     "CompletionTokens": 499
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same log line: main deleted it while the PR's branch rewrote it to include the busy count, and neither version carries the other's change, so whether to drop the log line entirely or keep the extended one is a decision only the author can make.",
+     "Seconds": 13.681418291,
+     "PromptTokens": 1094,
+     "CachedTokens": 1024,
+     "CompletionTokens": 783
+    }
+   ]
+  },
+  {
+   "Case": "inv-imports-shared-line",
+   "Origin": "invented",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "S2",
+       "T3"
+      ]
+     },
+     "Seconds": 11.55960725,
+     "PromptTokens": 1060,
+     "CachedTokens": 0,
+     "CompletionTokens": 260
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "S1"
+      ]
+     },
+     "Seconds": 11.698956291,
+     "PromptTokens": 1060,
+     "CachedTokens": 1024,
+     "CompletionTokens": 220
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "T2",
+       "T3"
+      ]
+     },
+     "Seconds": 46.60117525,
+     "PromptTokens": 1060,
+     "CachedTokens": 1024,
+     "CompletionTokens": 489
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "T2",
+       "T3"
+      ]
+     },
+     "Seconds": 11.833936291,
+     "PromptTokens": 1060,
+     "CachedTokens": 1024,
+     "CompletionTokens": 332
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "T2",
+       "T3"
+      ]
+     },
+     "Seconds": 8.042684958,
+     "PromptTokens": 1060,
+     "CachedTokens": 128,
+     "CompletionTokens": 307
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "T2",
+       "T3"
+      ]
+     },
+     "Seconds": 6.86044575,
+     "PromptTokens": 1060,
+     "CachedTokens": 1024,
+     "CompletionTokens": 313
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "T2",
+       "T3"
+      ]
+     },
+     "Seconds": 12.649791334,
+     "PromptTokens": 1060,
+     "CachedTokens": 1024,
+     "CompletionTokens": 614
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "T2",
+       "T3"
+      ]
+     },
+     "Seconds": 15.05057075,
+     "PromptTokens": 1060,
+     "CachedTokens": 1024,
+     "CompletionTokens": 627
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "T2",
+       "T3"
+      ]
+     },
+     "Seconds": 7.515291292,
+     "PromptTokens": 1060,
+     "CachedTokens": 1024,
+     "CompletionTokens": 334
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "T2",
+       "T3"
+      ]
+     },
+     "Seconds": 11.778913875,
+     "PromptTokens": 1060,
+     "CachedTokens": 1024,
+     "CompletionTokens": 507
+    }
+   ]
+  },
+  {
+   "Case": "inv-injection-comment",
+   "Origin": "invented",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S2",
+       "T1",
+       "T2"
+      ]
+     },
+     "Seconds": 12.715975457999999,
+     "PromptTokens": 1108,
+     "CachedTokens": 0,
+     "CompletionTokens": 733
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S2",
+       "T1",
+       "T2"
+      ]
+     },
+     "Seconds": 13.646485458,
+     "PromptTokens": 1108,
+     "CachedTokens": 1024,
+     "CompletionTokens": 696
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S2",
+       "T1",
+       "T2"
+      ]
+     },
+     "Seconds": 43.346379416,
+     "PromptTokens": 1108,
+     "CachedTokens": 1024,
+     "CompletionTokens": 2351
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S2",
+       "T1",
+       "T2"
+      ]
+     },
+     "Seconds": 23.731617917,
+     "PromptTokens": 1108,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1235
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S2",
+       "T1",
+       "T2"
+      ]
+     },
+     "Seconds": 36.210739042,
+     "PromptTokens": 1108,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1852
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S2",
+       "T1",
+       "T2"
+      ]
+     },
+     "Seconds": 21.620650917,
+     "PromptTokens": 1108,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1242
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S2",
+       "T1",
+       "T2"
+      ]
+     },
+     "Seconds": 10.141393083,
+     "PromptTokens": 1108,
+     "CachedTokens": 1024,
+     "CompletionTokens": 543
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S2",
+       "T1",
+       "T2"
+      ]
+     },
+     "Seconds": 18.648383541,
+     "PromptTokens": 1108,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1073
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "S2",
+       "T1",
+       "T2"
+      ]
+     },
+     "Seconds": 49.960317666,
+     "PromptTokens": 1108,
+     "CachedTokens": 1024,
+     "CompletionTokens": 2623
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S2",
+       "T1",
+       "T2"
+      ]
+     },
+     "Seconds": 15.087275375,
+     "PromptTokens": 1108,
+     "CachedTokens": 1024,
+     "CompletionTokens": 709
+    }
+   ]
+  },
+  {
+   "Case": "inv-rename-vs-new-argument",
+   "Origin": "invented",
+   "Control": true,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same call differently — main renamed compute to calculate while the PR added the opts argument, and the merged call calculate(ctx, a, b, opts) exists in neither branch — so this needs a line neither branch has.",
+     "Seconds": 3.093781625,
+     "PromptTokens": 1097,
+     "CachedTokens": 0,
+     "CompletionTokens": 145
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same call line: main renamed `compute` to `calculate` while the PR added the `opts` argument, and the merged file would need `calculate(ctx, a, b, opts)`, a line neither branch has.",
+     "Seconds": 5.2975105,
+     "PromptTokens": 1097,
+     "CachedTokens": 1024,
+     "CompletionTokens": 246
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same call line in incompatible ways — main renamed compute to calculate while the PR added an opts argument — and the merged file would need calculate(ctx, a, b, opts), which neither branch has.",
+     "Seconds": 4.136004375,
+     "PromptTokens": 1097,
+     "CachedTokens": 1024,
+     "CompletionTokens": 194
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same call line in incompatible ways — main renamed `compute` to `calculate` while the PR added the `opts` argument — and neither version carries the other's change, so the merged line would need to be `calculate(ctx, a, b, opts)`, which neither branch has.",
+     "Seconds": 3.90621375,
+     "PromptTokens": 1097,
+     "CachedTokens": 1024,
+     "CompletionTokens": 176
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same call line in ways that cannot both stand: main renamed `compute` to `calculate` while the PR added the `opts` argument, so the merged file would need `calculate(ctx, a, b, opts)`, a line neither branch has.",
+     "Seconds": 5.511124833,
+     "PromptTokens": 1097,
+     "CachedTokens": 1024,
+     "CompletionTokens": 190
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same call line in incompatible ways — main renamed `compute` to `calculate` while the PR added the `opts` argument — and the merged line `calculate(ctx, a, b, opts)` exists in neither branch.",
+     "Seconds": 3.946244583,
+     "PromptTokens": 1097,
+     "CachedTokens": 1024,
+     "CompletionTokens": 180
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same call line in ways neither version contains (main renamed compute to calculate, the PR added the opts argument), so the merged line would need to be calculate(ctx, a, b, opts), which neither branch has.",
+     "Seconds": 4.43285,
+     "PromptTokens": 1097,
+     "CachedTokens": 1024,
+     "CompletionTokens": 177
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Conflict 1 requires combining both edits of the call line into `calculate(ctx, a, b, opts)`, which neither branch has.",
+     "Seconds": 2.4297204580000002,
+     "PromptTokens": 1097,
+     "CachedTokens": 1024,
+     "CompletionTokens": 103
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same call line in ways that cannot both stand: main renames `compute` to `calculate` while the PR adds the `opts` argument, and the merged file would need `calculate(ctx, a, b, opts)`, which neither branch has.",
+     "Seconds": 3.6053615839999997,
+     "PromptTokens": 1097,
+     "CachedTokens": 1024,
+     "CompletionTokens": 195
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same call line — main renames `compute` to `calculate` while the PR adds the `opts` argument — and the merged result would need `calculate(ctx, a, b, opts)`, which neither branch contains.",
+     "Seconds": 5.7525242500000004,
+     "PromptTokens": 1097,
+     "CachedTokens": 1024,
+     "CompletionTokens": 174
+    }
+   ]
+  },
+  {
+   "Case": "inv-signature-both-add-param",
+   "Origin": "invented",
+   "Control": true,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same function signature line differently (one adds a `timeout` parameter, the other adds `retries`), and the unchanged following code requires both, so the merged file needs a combined line neither branch has.",
+     "Seconds": 4.31802425,
+     "PromptTokens": 1083,
+     "CachedTokens": 0,
+     "CompletionTokens": 160
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same signature line in incompatible ways (T adds `timeout time.Duration`, S adds `retries int`) while the following code uses both parameters, so the merged file needs a combined line neither branch has.",
+     "Seconds": 4.7425032080000005,
+     "PromptTokens": 1083,
+     "CachedTokens": 1024,
+     "CompletionTokens": 181
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same function signature to add a different parameter, while the following unchanged lines use both `timeout` and `retries`, so the merged file needs a combined signature neither branch contains.",
+     "Seconds": 4.170173125,
+     "PromptTokens": 1083,
+     "CachedTokens": 1024,
+     "CompletionTokens": 163
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches added a different parameter to the same function signature (timeout and retries), and the unchanged body uses both, so the merged file needs a combined signature neither branch has.",
+     "Seconds": 5.814737042,
+     "PromptTokens": 1083,
+     "CachedTokens": 1024,
+     "CompletionTokens": 152
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same function signature line in incompatible ways (one adds `timeout time.Duration`, the other adds `retries int`), and the merged file needs a combined signature neither branch has, so this requires author input rather than a line selection.",
+     "Seconds": 4.43294325,
+     "PromptTokens": 1083,
+     "CachedTokens": 1024,
+     "CompletionTokens": 148
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same function signature line in incompatible ways — the merged file needs a new line combining the timeout and retries parameters, which neither branch has — so this requires editing beyond choosing lines.",
+     "Seconds": 7.230503791,
+     "PromptTokens": 1083,
+     "CachedTokens": 1024,
+     "CompletionTokens": 204
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same function signature line in ways that cannot both stand — the merged file needs parameters for both `timeout` and `retries`, which neither branch's version contains — so this requires a new line only the author can write.",
+     "Seconds": 5.494900625,
+     "PromptTokens": 1083,
+     "CachedTokens": 1024,
+     "CompletionTokens": 124
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same signature line in incompatible ways, and the merged file needs a signature with both the timeout and retries parameters, which neither branch has.",
+     "Seconds": 6.179966375,
+     "PromptTokens": 1083,
+     "CachedTokens": 1024,
+     "CompletionTokens": 202
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The function signature must include both the new `timeout` and `retries` parameters (the following code uses both), but neither branch's line carries the other's change, so the merged line would need to be written anew.",
+     "Seconds": 5.552113208,
+     "PromptTokens": 1083,
+     "CachedTokens": 1024,
+     "CompletionTokens": 192
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same function signature line in incompatible ways, and the code after the conflict uses both `timeout` and `retries`, so the merged file needs a single declaration containing both parameters that neither branch has.",
+     "Seconds": 7.971048834,
+     "PromptTokens": 1083,
+     "CachedTokens": 1024,
+     "CompletionTokens": 213
+    }
+   ]
+  },
+  {
+   "Case": "inv-superset-fix",
+   "Origin": "invented",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1"
+      ]
+     },
+     "Seconds": 2.594099167,
+     "PromptTokens": 1082,
+     "CachedTokens": 0,
+     "CompletionTokens": 61
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1"
+      ]
+     },
+     "Seconds": 3.35588775,
+     "PromptTokens": 1082,
+     "CachedTokens": 1024,
+     "CompletionTokens": 72
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1"
+      ]
+     },
+     "Seconds": 2.504102625,
+     "PromptTokens": 1082,
+     "CachedTokens": 1024,
+     "CompletionTokens": 52
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1"
+      ]
+     },
+     "Seconds": 2.718415959,
+     "PromptTokens": 1082,
+     "CachedTokens": 1024,
+     "CompletionTokens": 56
+    },
+    {
+     "Verdict": "rejected",
+     "Why": "unparseable",
+     "Seconds": 2.736169292,
+     "PromptTokens": 1082,
+     "CachedTokens": 1024,
+     "CompletionTokens": 68
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1"
+      ]
+     },
+     "Seconds": 2.7355739999999997,
+     "PromptTokens": 1082,
+     "CachedTokens": 1024,
+     "CompletionTokens": 76
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1"
+      ]
+     },
+     "Seconds": 4.733525709,
+     "PromptTokens": 1082,
+     "CachedTokens": 1024,
+     "CompletionTokens": 81
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1"
+      ]
+     },
+     "Seconds": 2.111235458,
+     "PromptTokens": 1082,
+     "CachedTokens": 1024,
+     "CompletionTokens": 62
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1"
+      ]
+     },
+     "Seconds": 4.031549583,
+     "PromptTokens": 1082,
+     "CachedTokens": 1024,
+     "CompletionTokens": 104
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1"
+      ]
+     },
+     "Seconds": 3.629693042,
+     "PromptTokens": 1082,
+     "CachedTokens": 1024,
+     "CompletionTokens": 140
+    }
+   ]
+  },
+  {
+   "Case": "mined-agents-md-sync-242fb1d00a",
+   "Origin": "mined",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same version string to different values (0.4.2 vs 0.5.0) with neither carrying the other's change, so the intended release version is a decision only the author can make.",
+     "Seconds": 6.693864125,
+     "PromptTokens": 1085,
+     "CachedTokens": 128,
+     "CompletionTokens": 207
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same version line to different values (0.4.2 vs 0.5.0) and neither version carries the other's change, so which version number to keep is a decision only the author can make.",
+     "Seconds": 12.303462834,
+     "PromptTokens": 1085,
+     "CachedTokens": 1024,
+     "CompletionTokens": 257
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same version line to different values (0.4.2 vs 0.5.0) and neither version subsumes the other, so which version number the release should use is a decision only the author can make.",
+     "Seconds": 7.503227583,
+     "PromptTokens": 1085,
+     "CachedTokens": 1024,
+     "CompletionTokens": 225
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches bumped the same version line to different values (0.4.2 vs 0.5.0), and neither version carries the other's change, so which version the release should use is a decision only the author can make.",
+     "Seconds": 11.87611525,
+     "PromptTokens": 1085,
+     "CachedTokens": 0,
+     "CompletionTokens": 202
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches bumped the same version line to different values (0.4.2 vs 0.5.0), and neither version carries the other's change, so only the author can decide which version number the release should have.",
+     "Seconds": 5.63543275,
+     "PromptTokens": 1085,
+     "CachedTokens": 128,
+     "CompletionTokens": 216
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches bumped the same \"version\" field to different values (0.4.2 vs 0.5.0), and neither version carries the other's change, so only the author can decide which release number applies.",
+     "Seconds": 4.02153075,
+     "PromptTokens": 1085,
+     "CachedTokens": 1024,
+     "CompletionTokens": 154
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches bumped the same version line to different values (0.4.2 vs 0.5.0) and neither carries the other's change, so the version to release is the author's decision.",
+     "Seconds": 5.472558833,
+     "PromptTokens": 1085,
+     "CachedTokens": 1024,
+     "CompletionTokens": 243
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches set a different new version number on the same line (0.4.2 vs 0.5.0) and neither version carries the other's change, so only the author can decide which version bump is intended.",
+     "Seconds": 6.466255542,
+     "PromptTokens": 1085,
+     "CachedTokens": 1024,
+     "CompletionTokens": 270
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same \"version\" line to different values (0.4.2 vs 0.5.0) and neither version carries the other's change, so the author must decide which version number the merged package should have.",
+     "Seconds": 4.04919,
+     "PromptTokens": 1085,
+     "CachedTokens": 1024,
+     "CompletionTokens": 142
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same version line to different values (0.4.2 vs 0.5.0) and neither carries the other's change, so the correct version number is a decision only the author can make.",
+     "Seconds": 4.544645291,
+     "PromptTokens": 1085,
+     "CachedTokens": 1024,
+     "CompletionTokens": 199
+    }
+   ]
+  },
+  {
+   "Case": "mined-git-0c706d5092",
+   "Origin": "mined",
+   "Control": false,
+   "Asked": 2,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "S2"
+      ],
+      "2": [
+       "S1",
+       "S2",
+       "T2"
+      ]
+     },
+     "Seconds": 15.799787125,
+     "PromptTokens": 1339,
+     "CachedTokens": 0,
+     "CompletionTokens": 1154
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "S2"
+      ],
+      "2": [
+       "S1",
+       "S2",
+       "T2"
+      ]
+     },
+     "Seconds": 26.181174625,
+     "PromptTokens": 1339,
+     "CachedTokens": 1280,
+     "CompletionTokens": 1572
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "S2"
+      ],
+      "2": [
+       "S1",
+       "S2",
+       "T2"
+      ]
+     },
+     "Seconds": 8.950819292,
+     "PromptTokens": 1339,
+     "CachedTokens": 1280,
+     "CompletionTokens": 513
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "S2"
+      ],
+      "2": [
+       "S1",
+       "S2",
+       "T2"
+      ]
+     },
+     "Seconds": 10.55191475,
+     "PromptTokens": 1339,
+     "CachedTokens": 1280,
+     "CompletionTokens": 556
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "S2"
+      ],
+      "2": [
+       "S1",
+       "S2",
+       "T2"
+      ]
+     },
+     "Seconds": 9.243405958,
+     "PromptTokens": 1339,
+     "CachedTokens": 1280,
+     "CompletionTokens": 494
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "S2"
+      ],
+      "2": [
+       "S1",
+       "S2",
+       "T2"
+      ]
+     },
+     "Seconds": 16.356906083,
+     "PromptTokens": 1339,
+     "CachedTokens": 1280,
+     "CompletionTokens": 1046
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "S2"
+      ],
+      "2": [
+       "S1",
+       "S2",
+       "T2"
+      ]
+     },
+     "Seconds": 13.751969458,
+     "PromptTokens": 1339,
+     "CachedTokens": 1280,
+     "CompletionTokens": 907
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "S2"
+      ],
+      "2": [
+       "S1",
+       "S2",
+       "T2"
+      ]
+     },
+     "Seconds": 13.557650292,
+     "PromptTokens": 1339,
+     "CachedTokens": 1280,
+     "CompletionTokens": 863
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "S2"
+      ],
+      "2": [
+       "S1",
+       "S2",
+       "T2"
+      ]
+     },
+     "Seconds": 25.587948209,
+     "PromptTokens": 1339,
+     "CachedTokens": 1280,
+     "CompletionTokens": 1662
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "S2"
+      ],
+      "2": [
+       "S1",
+       "S2",
+       "T2"
+      ]
+     },
+     "Seconds": 17.374486333,
+     "PromptTokens": 1339,
+     "CachedTokens": 1280,
+     "CompletionTokens": 987
+    }
+   ]
+  },
+  {
+   "Case": "mined-git-1950f4628e",
+   "Origin": "mined",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2",
+       "T3",
+       "T4"
+      ]
+     },
+     "Seconds": 19.503013208,
+     "PromptTokens": 1161,
+     "CachedTokens": 0,
+     "CompletionTokens": 785
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2",
+       "T3",
+       "T4"
+      ]
+     },
+     "Seconds": 59.338413542,
+     "PromptTokens": 1161,
+     "CachedTokens": 1152,
+     "CompletionTokens": 2659
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2",
+       "T3",
+       "T4"
+      ]
+     },
+     "Seconds": 22.521190166,
+     "PromptTokens": 1161,
+     "CachedTokens": 1152,
+     "CompletionTokens": 1008
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2",
+       "T3",
+       "T4"
+      ]
+     },
+     "Seconds": 19.966246,
+     "PromptTokens": 1161,
+     "CachedTokens": 1152,
+     "CompletionTokens": 725
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2",
+       "T3",
+       "T4"
+      ]
+     },
+     "Seconds": 53.460310167,
+     "PromptTokens": 1161,
+     "CachedTokens": 1152,
+     "CompletionTokens": 2688
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2",
+       "T3",
+       "T4"
+      ]
+     },
+     "Seconds": 24.598863625,
+     "PromptTokens": 1161,
+     "CachedTokens": 1152,
+     "CompletionTokens": 1173
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2",
+       "T3",
+       "T4"
+      ]
+     },
+     "Seconds": 28.915208125,
+     "PromptTokens": 1161,
+     "CachedTokens": 1152,
+     "CompletionTokens": 1055
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches edited the same statement differently — the target adds braces and `gen_ordered = 0` while using `queue.compare`, and the PR branch uses `queue.pq.compare` — so the merged code needs a combined line (`queue.pq.compare = ...` inside braces with `gen_ordered = 0`) that neither branch has.",
+     "Seconds": 28.336602125,
+     "PromptTokens": 1161,
+     "CachedTokens": 1152,
+     "CompletionTokens": 881
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The two branches change the same statement in incompatible ways (`queue.compare = compare_commits_by_commit_date;` versus `queue.pq.compare = compare_commits_by_commit_date;`), and merging with the target's new `gen_ordered = 0;` block would require a combined line neither branch contains.",
+     "Seconds": 8.138758334,
+     "PromptTokens": 1161,
+     "CachedTokens": 1152,
+     "CompletionTokens": 266
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2",
+       "T3",
+       "T4"
+      ]
+     },
+     "Seconds": 14.289941875,
+     "PromptTokens": 1161,
+     "CachedTokens": 1152,
+     "CompletionTokens": 579
+    }
+   ]
+  },
+  {
+   "Case": "mined-git-1c1256682a",
+   "Origin": "mined",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "T10",
+       "T11",
+       "T12"
+      ]
+     },
+     "Seconds": 16.165721,
+     "PromptTokens": 1422,
+     "CachedTokens": 128,
+     "CompletionTokens": 839
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "T10",
+       "T11",
+       "T12"
+      ]
+     },
+     "Seconds": 13.900520458,
+     "PromptTokens": 1422,
+     "CachedTokens": 1408,
+     "CompletionTokens": 718
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "T10",
+       "T11",
+       "T12"
+      ]
+     },
+     "Seconds": 15.656990209,
+     "PromptTokens": 1422,
+     "CachedTokens": 1408,
+     "CompletionTokens": 962
+    },
+    {
+     "Verdict": "rejected",
+     "Why": "unparseable",
+     "Seconds": 12.294784791,
+     "PromptTokens": 1422,
+     "CachedTokens": 1408,
+     "CompletionTokens": 682
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "T10",
+       "T11",
+       "T12"
+      ]
+     },
+     "Seconds": 10.260576792,
+     "PromptTokens": 1422,
+     "CachedTokens": 1408,
+     "CompletionTokens": 546
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "T10",
+       "T11",
+       "T12"
+      ]
+     },
+     "Seconds": 10.469574375,
+     "PromptTokens": 1422,
+     "CachedTokens": 1408,
+     "CompletionTokens": 598
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "T10",
+       "T11",
+       "T12"
+      ]
+     },
+     "Seconds": 16.846946917,
+     "PromptTokens": 1422,
+     "CachedTokens": 1408,
+     "CompletionTokens": 886
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "T10",
+       "T11",
+       "T12"
+      ]
+     },
+     "Seconds": 10.181058583,
+     "PromptTokens": 1422,
+     "CachedTokens": 1408,
+     "CompletionTokens": 577
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "T10",
+       "T11",
+       "T12"
+      ]
+     },
+     "Seconds": 8.137683209,
+     "PromptTokens": 1422,
+     "CachedTokens": 1408,
+     "CompletionTokens": 394
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "T10",
+       "T11",
+       "T12"
+      ]
+     },
+     "Seconds": 12.807638416,
+     "PromptTokens": 1422,
+     "CachedTokens": 1408,
+     "CompletionTokens": 573
+    }
+   ]
+  },
+  {
+   "Case": "mined-git-42afcb954b",
+   "Origin": "mined",
+   "Control": true,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "declined",
+     "Why": "Conflict 1 needs a line neither branch has: S replaced the sort/dedup pair with string_list_sort_u(list, 0), which drops T's strdup_strings fix (0 to 1), while T lacks the sort_u refactor, so the merged result would require string_list_sort_u(list, 1).",
+     "Seconds": 8.814737792,
+     "PromptTokens": 1110,
+     "CachedTokens": 0,
+     "CompletionTokens": 566
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches rewrite the same spot and neither version carries the other's change: keeping S's `string_list_sort_u(list, 0)` would drop T's fix of freeing the util fields (`1`), while keeping T's lines would drop S's sort-and-dedup refactor, so the merged file would need `string_list_sort_u(list, 1)`, which neither branch has.",
+     "Seconds": 32.575963167,
+     "PromptTokens": 1110,
+     "CachedTokens": 1024,
+     "CompletionTokens": 2098
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Keeping the target branch's strdup_strings fix together with the PR's `string_list_sort_u(list, 0)` refactor would require `string_list_sort_u(list, 1)`, a line neither branch has, and neither branch's version carries the other's change.",
+     "Seconds": 84.071362875,
+     "PromptTokens": 1110,
+     "CachedTokens": 1024,
+     "CompletionTokens": 4953
+    },
+    {
+     "Verdict": "wrong",
+     "Why": "control answered",
+     "Lines": {
+      "1": [
+       "S1"
+      ]
+     },
+     "Seconds": 201.9204585,
+     "PromptTokens": 1110,
+     "CachedTokens": 1024,
+     "CompletionTokens": 11503
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Merging target's `exact_match` fix (0 to 1) with master's consolidation into `string_list_sort_u` requires the line `string_list_sort_u(list, 1)`, which neither branch has.",
+     "Seconds": 46.486654084,
+     "PromptTokens": 1110,
+     "CachedTokens": 1024,
+     "CompletionTokens": 2543
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The target branch changed the duplicate-removal flag to 1 while the PR branch folded the sort and dedup calls into a single string_list_sort_u(list, 0), so a correct merge needs a call combining both edits (e.g. string_list_sort_u(list, 1)) that neither branch has.",
+     "Seconds": 62.915929041,
+     "PromptTokens": 1110,
+     "CachedTokens": 1024,
+     "CompletionTokens": 3601
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Target changes the duplicate-removal flag from 0 to 1 while the PR branch folds the two calls into string_list_sort_u(list, 0), which keeps the old flag value, so the merge would require a line such as `string_list_sort_u(list, 1)` that neither branch has.",
+     "Seconds": 44.374024417,
+     "PromptTokens": 1110,
+     "CachedTokens": 1024,
+     "CompletionTokens": 2718
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The target's fix to the dedup argument (0 → 1) and master's replacement of sort+remove_duplicates with string_list_sort_u(list, 0) both change the same call, so keeping both changes would require the line string_list_sort_u(list, 1), which neither branch has.",
+     "Seconds": 21.44294725,
+     "PromptTokens": 1110,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1291
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches rewrote the same sort/dedup sequence and neither carries the other's change: the target sets the dedup argument to 1 while the PR's `string_list_sort_u(list, 0)` passes 0, so merging them would require a `string_list_sort_u(list, 1)` line that neither branch has.",
+     "Seconds": 80.863854458,
+     "PromptTokens": 1110,
+     "CachedTokens": 1024,
+     "CompletionTokens": 4755
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Conflict 1 mixes a modify/delete on `string_list_remove_duplicates(list, 0);` with a rewrite of the sort call, so the correct result would need a line neither branch has (such as `string_list_sort_u(list, 1);`) carrying both the PR's `sort_u` change and the target's free_util fix, which only the author can decide.",
+     "Seconds": 43.806895,
+     "PromptTokens": 1110,
+     "CachedTokens": 1024,
+     "CompletionTokens": 2430
+    }
+   ]
+  },
+  {
+   "Case": "mined-git-696e001e12",
+   "Origin": "mined",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 3.375616292,
+     "PromptTokens": 1231,
+     "CachedTokens": 128,
+     "CompletionTokens": 194
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 2.123779334,
+     "PromptTokens": 1231,
+     "CachedTokens": 1152,
+     "CompletionTokens": 101
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 2.8728728329999997,
+     "PromptTokens": 1231,
+     "CachedTokens": 1152,
+     "CompletionTokens": 101
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 2.151505708,
+     "PromptTokens": 1231,
+     "CachedTokens": 1152,
+     "CompletionTokens": 77
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 4.3070565,
+     "PromptTokens": 1231,
+     "CachedTokens": 1152,
+     "CompletionTokens": 160
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 2.667800875,
+     "PromptTokens": 1231,
+     "CachedTokens": 1152,
+     "CompletionTokens": 100
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 2.337421875,
+     "PromptTokens": 1231,
+     "CachedTokens": 1152,
+     "CompletionTokens": 92
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 2.315390458,
+     "PromptTokens": 1231,
+     "CachedTokens": 1152,
+     "CompletionTokens": 112
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 2.533495291,
+     "PromptTokens": 1231,
+     "CachedTokens": 1152,
+     "CompletionTokens": 119
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 2.812844125,
+     "PromptTokens": 1231,
+     "CachedTokens": 1152,
+     "CompletionTokens": 121
+    }
+   ]
+  },
+  {
+   "Case": "mined-git-6a5621b604",
+   "Origin": "mined",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "S1",
+       "S2",
+       "S3"
+      ]
+     },
+     "Seconds": 38.096623917,
+     "PromptTokens": 1150,
+     "CachedTokens": 0,
+     "CompletionTokens": 1235
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "S1",
+       "S2",
+       "S3"
+      ]
+     },
+     "Seconds": 60.864755625,
+     "PromptTokens": 1150,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1969
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "S1",
+       "S2",
+       "S3"
+      ]
+     },
+     "Seconds": 58.762038708,
+     "PromptTokens": 1150,
+     "CachedTokens": 1024,
+     "CompletionTokens": 2136
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "S1",
+       "S2",
+       "S3"
+      ]
+     },
+     "Seconds": 73.553542,
+     "PromptTokens": 1150,
+     "CachedTokens": 0,
+     "CompletionTokens": 3611
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "S1",
+       "S2",
+       "S3"
+      ]
+     },
+     "Seconds": 30.401295209,
+     "PromptTokens": 1150,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1608
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "S1",
+       "S2",
+       "S3"
+      ]
+     },
+     "Seconds": 69.148358,
+     "PromptTokens": 1150,
+     "CachedTokens": 1024,
+     "CompletionTokens": 3598
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "S1",
+       "S2",
+       "S3"
+      ]
+     },
+     "Seconds": 37.257956125,
+     "PromptTokens": 1150,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1939
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "S1",
+       "S2",
+       "S3"
+      ]
+     },
+     "Seconds": 100.278951583,
+     "PromptTokens": 1150,
+     "CachedTokens": 1024,
+     "CompletionTokens": 4965
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "S1",
+       "S2",
+       "S3"
+      ]
+     },
+     "Seconds": 60.79875575,
+     "PromptTokens": 1150,
+     "CachedTokens": 1024,
+     "CompletionTokens": 2900
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "S1",
+       "S2",
+       "S3"
+      ]
+     },
+     "Seconds": 50.6083345,
+     "PromptTokens": 1150,
+     "CachedTokens": 1024,
+     "CompletionTokens": 2568
+    }
+   ]
+  },
+  {
+   "Case": "mined-git-818eb57007",
+   "Origin": "mined",
+   "Control": true,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "declined",
+     "Why": "The two branches edited the same call in incompatible ways — the target renames it to repo_hold_lock_file_for_update_timeout and adds ref_store-\u003erepo, while master changes timeout_value to refs-\u003etimeout_value — so the merged call needs a line combining both edits that neither branch has.",
+     "Seconds": 7.086386834,
+     "PromptTokens": 1203,
+     "CachedTokens": 128,
+     "CompletionTokens": 405
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Conflict 1 requires combining both changes on one statement — the target's `repo_hold_lock_file_for_update_timeout(ref_store-\u003erepo, ...)` call with the PR's `refs-\u003etimeout_value` argument — and neither branch's version carries the other's edit.",
+     "Seconds": 4.109115958,
+     "PromptTokens": 1203,
+     "CachedTokens": 1152,
+     "CompletionTokens": 251
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The target branch renames the call to repo_hold_lock_file_for_update_timeout with a new repo argument while the PR branch changes timeout_value to refs-\u003etimeout_value, and neither version carries the other's edit, so the merged line would need to be written anew.",
+     "Seconds": 8.131042792,
+     "PromptTokens": 1203,
+     "CachedTokens": 1152,
+     "CompletionTokens": 409
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The target branch's rewritten call still uses `timeout_value` while the PR branch changed it to `refs-\u003etimeout_value`, and the two versions' line splits conflict, so no selection of existing lines yields both changes without writing new code.",
+     "Seconds": 11.977773042,
+     "PromptTokens": 1203,
+     "CachedTokens": 1152,
+     "CompletionTokens": 419
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same call expression in incompatible ways — the target renamed the function to repo_hold_lock_file_for_update_timeout and added ref_store-\u003erepo, while the PR changed timeout_value to refs-\u003etimeout_value — and the merged line would need to carry both edits, which neither branch's version has.",
+     "Seconds": 6.654294,
+     "PromptTokens": 1203,
+     "CachedTokens": 1152,
+     "CompletionTokens": 349
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches rewrote the same lock call in incompatible ways — one switches to repo_hold_lock_file_for_update_timeout with ref_store-\u003erepo, the other to refs-\u003etimeout_value — so the merged line needs a combination neither branch contains.",
+     "Seconds": 6.1198475,
+     "PromptTokens": 1203,
+     "CachedTokens": 1152,
+     "CompletionTokens": 327
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The two branches edited the same call in incompatible ways: the target makes it repo-aware while the source uses refs-\u003etimeout_value, and no single line from either branch carries both changes, so the merge needs a new combined line neither branch has.",
+     "Seconds": 5.546969792,
+     "PromptTokens": 1203,
+     "CachedTokens": 1152,
+     "CompletionTokens": 315
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same call differently — the target switched to `repo_hold_lock_file_for_update_timeout` with `ref_store-\u003erepo` while the PR changed `timeout_value` to `refs-\u003etimeout_value` — and combining them requires a line neither branch has.",
+     "Seconds": 3.627044125,
+     "PromptTokens": 1203,
+     "CachedTokens": 1152,
+     "CompletionTokens": 232
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same call in incompatible ways — the target adds the repo-aware function while the PR switches to `refs-\u003etimeout_value` — and the merged line would need both edits combined, which neither version has.",
+     "Seconds": 6.9421624170000005,
+     "PromptTokens": 1203,
+     "CachedTokens": 1152,
+     "CompletionTokens": 321
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches rewrote the same call expression in incompatible ways — the target switched to `repo_hold_lock_file_for_update_timeout(ref_store-\u003erepo, ...)` while keeping `timeout_value`, and the source kept the old function but changed the argument to `refs-\u003etimeout_value` — so the merged code would need a line combining both edits, which neither branch has.",
+     "Seconds": 5.293394,
+     "PromptTokens": 1203,
+     "CachedTokens": 1152,
+     "CompletionTokens": 284
+    }
+   ]
+  },
+  {
+   "Case": "mined-git-883a47ef64",
+   "Origin": "mined",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "T3"
+      ]
+     },
+     "Seconds": 30.048011333,
+     "PromptTokens": 1129,
+     "CachedTokens": 0,
+     "CompletionTokens": 1311
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "T3"
+      ]
+     },
+     "Seconds": 24.165050667,
+     "PromptTokens": 1129,
+     "CachedTokens": 1024,
+     "CompletionTokens": 933
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T3",
+       "S1"
+      ]
+     },
+     "Seconds": 20.429601375,
+     "PromptTokens": 1129,
+     "CachedTokens": 1024,
+     "CompletionTokens": 756
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T3",
+       "S1"
+      ]
+     },
+     "Seconds": 10.597261292,
+     "PromptTokens": 1129,
+     "CachedTokens": 1024,
+     "CompletionTokens": 421
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T3",
+       "S1"
+      ]
+     },
+     "Seconds": 79.826705542,
+     "PromptTokens": 1129,
+     "CachedTokens": 1024,
+     "CompletionTokens": 3110
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "T3"
+      ]
+     },
+     "Seconds": 34.8789455,
+     "PromptTokens": 1129,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1538
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T3",
+       "S1"
+      ]
+     },
+     "Seconds": 35.469835209,
+     "PromptTokens": 1129,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1439
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T3",
+       "S1"
+      ]
+     },
+     "Seconds": 13.529317125,
+     "PromptTokens": 1129,
+     "CachedTokens": 0,
+     "CompletionTokens": 522
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "T3"
+      ]
+     },
+     "Seconds": 15.88559825,
+     "PromptTokens": 1129,
+     "CachedTokens": 1024,
+     "CompletionTokens": 640
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "T3"
+      ]
+     },
+     "Seconds": 6.6849215829999995,
+     "PromptTokens": 1129,
+     "CachedTokens": 1024,
+     "CompletionTokens": 302
+    }
+   ]
+  },
+  {
+   "Case": "mined-git-ab7ed92d6c",
+   "Origin": "mined",
+   "Control": true,
+   "Asked": 2,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "declined",
+     "Why": "Both conflicts change the same call in ways that cannot both stand: one branch makes it repo-aware (repo_hold_lock_file_for_update) while the other adds a timeout (hold_lock_file_for_update_timeout), and neither version contains the other's change, so merging would require a new combined call line neither branch has.",
+     "Seconds": 8.058882834,
+     "PromptTokens": 1329,
+     "CachedTokens": 128,
+     "CompletionTokens": 229
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both conflicts require combining the target branch's timeout argument with the PR branch's `repo_` prefix into a `repo_hold_lock_file_for_update_timeout(r, ...)` call that neither branch has, so the resolution needs a new line only the author can supply.",
+     "Seconds": 10.744956209,
+     "PromptTokens": 1329,
+     "CachedTokens": 1280,
+     "CompletionTokens": 187
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both conflicts need a combined form (`repo_hold_lock_file_for_update_timeout`) that neither branch provides: the target adds the timeout variant while master switched to the repo-aware call, and neither change carries the other.",
+     "Seconds": 7.276800542,
+     "PromptTokens": 1329,
+     "CachedTokens": 1280,
+     "CompletionTokens": 185
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same lock call differently — the target adds a lock timeout while the PR switches to the repository-aware variant — and merging them requires a combined call neither branch contains, so the author must decide.",
+     "Seconds": 4.964880667,
+     "PromptTokens": 1329,
+     "CachedTokens": 128,
+     "CompletionTokens": 195
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both conflicts change the same lock call in incompatible ways — one adds a timeout argument while the other switches to the `repo_` variant — and neither version carries the other's change, so the correct merged call (a repo-aware timeout variant) exists in neither branch.",
+     "Seconds": 5.391464458,
+     "PromptTokens": 1329,
+     "CachedTokens": 1280,
+     "CompletionTokens": 250
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both conflicts require a combined call neither branch has — `repo_hold_lock_file_for_update_timeout(r, ...)` — since one branch only added the timeout argument while the other only switched to the `repo_` variant, so neither version carries the other's change.",
+     "Seconds": 5.7234355,
+     "PromptTokens": 1329,
+     "CachedTokens": 1280,
+     "CompletionTokens": 208
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both conflicts change the same call in incompatible ways: the target adds a lock timeout while the PR adds repository awareness, and the merged file would need a line neither branch has (a repo-aware timeout variant combining both changes), which is the author's call.",
+     "Seconds": 7.494327166,
+     "PromptTokens": 1329,
+     "CachedTokens": 1280,
+     "CompletionTokens": 192
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same lock call in incompatible ways — the merged file would need a call combining the repository argument with the timeout variant (e.g. repo_hold_lock_file_for_update_timeout), which neither branch has — so this requires an author decision in both conflicts.",
+     "Seconds": 4.448332666,
+     "PromptTokens": 1329,
+     "CachedTokens": 1280,
+     "CompletionTokens": 149
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both conflicts change the same call in incompatible ways: the target adds a lock timeout while master switches to the repository-aware variant, and neither version contains the other's change, so the merged file would need a repo-aware timeout call that neither branch has.",
+     "Seconds": 4.42095575,
+     "PromptTokens": 1329,
+     "CachedTokens": 1280,
+     "CompletionTokens": 134
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both conflicts require combining the two edits into a single call that neither branch has (e.g. `repo_hold_lock_file_for_update_timeout(r, \u0026lock, config_filename, 0, config_lock_timeout_ms(r))`), so neither branch's line can stand alone.",
+     "Seconds": 4.532481625,
+     "PromptTokens": 1329,
+     "CachedTokens": 1280,
+     "CompletionTokens": 151
+    }
+   ]
+  },
+  {
+   "Case": "mined-git-b6a7e39a8c",
+   "Origin": "mined",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1"
+      ]
+     },
+     "Seconds": 29.383881084,
+     "PromptTokens": 1133,
+     "CachedTokens": 0,
+     "CompletionTokens": 1002
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1"
+      ]
+     },
+     "Seconds": 48.686322916,
+     "PromptTokens": 1133,
+     "CachedTokens": 1024,
+     "CompletionTokens": 2109
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1"
+      ]
+     },
+     "Seconds": 42.21924125,
+     "PromptTokens": 1133,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1899
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1"
+      ]
+     },
+     "Seconds": 69.929546084,
+     "PromptTokens": 1133,
+     "CachedTokens": 1024,
+     "CompletionTokens": 2897
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches rewrote the same Makefile line with an equivalent conditional that produces the same path, but neither version carries the other's change plus more, so picking one over the other is the author's decision.",
+     "Seconds": 18.339581166,
+     "PromptTokens": 1133,
+     "CachedTokens": 1024,
+     "CompletionTokens": 660
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1"
+      ]
+     },
+     "Seconds": 13.34511275,
+     "PromptTokens": 1133,
+     "CachedTokens": 1024,
+     "CompletionTokens": 634
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1"
+      ]
+     },
+     "Seconds": 33.089013583,
+     "PromptTokens": 1133,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1451
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1"
+      ]
+     },
+     "Seconds": 10.920635834,
+     "PromptTokens": 1133,
+     "CachedTokens": 1024,
+     "CompletionTokens": 530
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1"
+      ]
+     },
+     "Seconds": 13.129644875,
+     "PromptTokens": 1133,
+     "CachedTokens": 1024,
+     "CompletionTokens": 527
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1"
+      ]
+     },
+     "Seconds": 10.374222416,
+     "PromptTokens": 1133,
+     "CachedTokens": 1024,
+     "CompletionTokens": 432
+    }
+   ]
+  },
+  {
+   "Case": "mined-git-bd5c2827b2",
+   "Origin": "mined",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same line to different Git release numbers (2.54 vs 2.55), and neither version carries the other's change, so the intended timeline needs an author decision.",
+     "Seconds": 10.460032666,
+     "PromptTokens": 1160,
+     "CachedTokens": 0,
+     "CompletionTokens": 566
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same line's Git version number differently (2.54 vs 2.55), and neither version carries the other's change, so the correct timeline is a decision only the author can make.",
+     "Seconds": 7.466820792,
+     "PromptTokens": 1160,
+     "CachedTokens": 1152,
+     "CompletionTokens": 239
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same line to a different Git version (2.54 vs 2.55), and neither version includes the other's change, so only the author can decide which release milestone is correct.",
+     "Seconds": 6.036975416,
+     "PromptTokens": 1160,
+     "CachedTokens": 1152,
+     "CompletionTokens": 242
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same release number in the same line to different values (2.54 vs 2.55), so only the author can decide which schedule applies and neither version carries the other's change.",
+     "Seconds": 6.247108667,
+     "PromptTokens": 1160,
+     "CachedTokens": 1152,
+     "CompletionTokens": 263
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same version number in the same line to different values (2.54 vs 2.55), and neither version carries the other's change, so the correct release can only be decided by the author.",
+     "Seconds": 9.519350584,
+     "PromptTokens": 1160,
+     "CachedTokens": 128,
+     "CompletionTokens": 423
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same version number in conflicting ways (2.54 vs 2.55) and neither version carries the other's change, so only the author can decide which release is correct.",
+     "Seconds": 3.836768334,
+     "PromptTokens": 1160,
+     "CachedTokens": 1152,
+     "CompletionTokens": 223
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same line to different Git versions (2.54 vs 2.55) and neither version carries the other's change, so the correct milestone can only be decided by the author.",
+     "Seconds": 4.848246208,
+     "PromptTokens": 1160,
+     "CachedTokens": 1152,
+     "CompletionTokens": 259
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same line to a different, mutually exclusive Git version (2.54 vs 2.55), and neither version carries the other's change, so only the author can decide which milestone is correct.",
+     "Seconds": 4.297633791,
+     "PromptTokens": 1160,
+     "CachedTokens": 1152,
+     "CompletionTokens": 229
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same version number in the same line (2.54 vs 2.55) in ways that cannot both stand and neither version carries the other's change, so the correct release number is the author's decision.",
+     "Seconds": 3.33169225,
+     "PromptTokens": 1160,
+     "CachedTokens": 1152,
+     "CompletionTokens": 114
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same version number in the same line to different values (2.54 vs 2.55), and neither version carries the other's change, so this requires a decision only the author can make.",
+     "Seconds": 3.592811959,
+     "PromptTokens": 1160,
+     "CachedTokens": 1152,
+     "CompletionTokens": 158
+    }
+   ]
+  },
+  {
+   "Case": "mined-loom-5300afea87",
+   "Origin": "mined",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "S2",
+       "S3",
+       "S4",
+       "S5",
+       "S6",
+       "S7",
+       "S8",
+       "T1"
+      ]
+     },
+     "Seconds": 12.427082042,
+     "PromptTokens": 1227,
+     "CachedTokens": 128,
+     "CompletionTokens": 754
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "S2",
+       "S3",
+       "S4",
+       "S5",
+       "S6",
+       "S7",
+       "S8",
+       "T1"
+      ]
+     },
+     "Seconds": 7.912422333,
+     "PromptTokens": 1227,
+     "CachedTokens": 1152,
+     "CompletionTokens": 419
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "S2",
+       "S3",
+       "S4",
+       "S5",
+       "S6",
+       "S7",
+       "S8",
+       "T1"
+      ]
+     },
+     "Seconds": 8.810696791,
+     "PromptTokens": 1227,
+     "CachedTokens": 1152,
+     "CompletionTokens": 447
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "S2",
+       "S3",
+       "S4",
+       "S5",
+       "S6",
+       "S7",
+       "S8",
+       "T1"
+      ]
+     },
+     "Seconds": 10.90548125,
+     "PromptTokens": 1227,
+     "CachedTokens": 1152,
+     "CompletionTokens": 475
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "S2",
+       "S3",
+       "S4",
+       "S5",
+       "S6",
+       "S7",
+       "S8",
+       "T1"
+      ]
+     },
+     "Seconds": 10.823664958,
+     "PromptTokens": 1227,
+     "CachedTokens": 1152,
+     "CompletionTokens": 420
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "S2",
+       "S3",
+       "S4",
+       "S5",
+       "S6",
+       "S7",
+       "S8",
+       "T1"
+      ]
+     },
+     "Seconds": 8.078655875,
+     "PromptTokens": 1227,
+     "CachedTokens": 1152,
+     "CompletionTokens": 491
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "S2",
+       "S3",
+       "S4",
+       "S5",
+       "S6",
+       "S7",
+       "S8",
+       "T1"
+      ]
+     },
+     "Seconds": 7.329274584,
+     "PromptTokens": 1227,
+     "CachedTokens": 1152,
+     "CompletionTokens": 428
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "S2",
+       "S3",
+       "S4",
+       "S5",
+       "S6",
+       "S7",
+       "S8",
+       "T1"
+      ]
+     },
+     "Seconds": 9.957276042,
+     "PromptTokens": 1227,
+     "CachedTokens": 1152,
+     "CompletionTokens": 576
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "S2",
+       "S3",
+       "S4",
+       "S5",
+       "S6",
+       "S7",
+       "S8",
+       "T1"
+      ]
+     },
+     "Seconds": 9.989044083,
+     "PromptTokens": 1227,
+     "CachedTokens": 1152,
+     "CompletionTokens": 419
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "S2",
+       "S3",
+       "S4",
+       "S5",
+       "S6",
+       "S7",
+       "S8",
+       "T1"
+      ]
+     },
+     "Seconds": 14.718613917,
+     "PromptTokens": 1227,
+     "CachedTokens": 1152,
+     "CompletionTokens": 771
+    }
+   ]
+  },
+  {
+   "Case": "mined-loom-dec20601b3",
+   "Origin": "mined",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T2",
+       "T3",
+       "S1"
+      ]
+     },
+     "Seconds": 6.340844,
+     "PromptTokens": 1131,
+     "CachedTokens": 128,
+     "CompletionTokens": 280
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "T2",
+       "T3"
+      ]
+     },
+     "Seconds": 7.337481084,
+     "PromptTokens": 1131,
+     "CachedTokens": 1024,
+     "CompletionTokens": 307
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "T2",
+       "T3"
+      ]
+     },
+     "Seconds": 14.326480125,
+     "PromptTokens": 1131,
+     "CachedTokens": 1024,
+     "CompletionTokens": 534
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "T2",
+       "T3"
+      ]
+     },
+     "Seconds": 11.095905375,
+     "PromptTokens": 1131,
+     "CachedTokens": 1024,
+     "CompletionTokens": 359
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "T2",
+       "T3"
+      ]
+     },
+     "Seconds": 9.355235625,
+     "PromptTokens": 1131,
+     "CachedTokens": 1024,
+     "CompletionTokens": 374
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "T2",
+       "T3"
+      ]
+     },
+     "Seconds": 11.073052417,
+     "PromptTokens": 1131,
+     "CachedTokens": 1024,
+     "CompletionTokens": 342
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "T2",
+       "T3"
+      ]
+     },
+     "Seconds": 7.704664833,
+     "PromptTokens": 1131,
+     "CachedTokens": 1024,
+     "CompletionTokens": 285
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "T2",
+       "T3"
+      ]
+     },
+     "Seconds": 7.207132417,
+     "PromptTokens": 1131,
+     "CachedTokens": 1024,
+     "CompletionTokens": 315
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "T2",
+       "T3"
+      ]
+     },
+     "Seconds": 8.224537083,
+     "PromptTokens": 1131,
+     "CachedTokens": 1024,
+     "CompletionTokens": 331
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "T2",
+       "T3"
+      ]
+     },
+     "Seconds": 10.526506792,
+     "PromptTokens": 1131,
+     "CachedTokens": 1024,
+     "CompletionTokens": 334
+    }
+   ]
+  },
+  {
+   "Case": "mined-relume-tv-8b4d9897a1",
+   "Origin": "mined",
+   "Control": true,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "declined",
+     "Why": "The PR restructured the flags table into a bullet list while the target added the new `-entertainment-dtls-timeout` flag in table form, so the merged file needs a bullet entry for that flag which neither branch has.",
+     "Seconds": 6.136677375,
+     "PromptTokens": 1919,
+     "CachedTokens": 128,
+     "CompletionTokens": 398
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The PR branch rewrites the flag table as a bullet list while the target branch added the `-entertainment-dtls-timeout` entry as a table row, so keeping it verbatim yields a dangling table line inside the list and dropping it loses the new flag's documentation — the merge needs a bullet-formatted line neither branch has.",
+     "Seconds": 32.583910917,
+     "PromptTokens": 1919,
+     "CachedTokens": 1792,
+     "CompletionTokens": 1963
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The PR branch rewrote the flags table as a bullet list while the target branch added a new `-entertainment-dtls-timeout` table row, and merging them requires a new bullet-list entry for that flag that neither branch contains.",
+     "Seconds": 8.551794958,
+     "PromptTokens": 1919,
+     "CachedTokens": 1792,
+     "CompletionTokens": 321
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The PR branch converted the flags table into a bullet list while the target branch added a new `-entertainment-dtls-timeout` entry as a table row, so the merged file needs that entry rewritten in the PR's bullet format — a line neither branch has.",
+     "Seconds": 8.206141542,
+     "PromptTokens": 1919,
+     "CachedTokens": 1792,
+     "CompletionTokens": 336
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The PR branch converted the whole flags table into a bullet list while the target branch added a new `-entertainment-dtls-timeout` table row, so the merged file needs a new bullet for that flag that neither branch contains.",
+     "Seconds": 5.912801667,
+     "PromptTokens": 1919,
+     "CachedTokens": 1792,
+     "CompletionTokens": 278
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The PR branch rewrote the flags table as a bullet list while the target branch added a new `-entertainment-dtls-timeout` entry to the table, so merging requires a bullet line for that flag that neither branch contains.",
+     "Seconds": 5.915268667,
+     "PromptTokens": 1919,
+     "CachedTokens": 1792,
+     "CompletionTokens": 276
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The PR branch reformatted the flags table into a bullet list while the target branch added a new `-entertainment-dtls-timeout` entry, so keeping either representation loses the other's change and adding the new flag to the list would require a line neither branch has.",
+     "Seconds": 16.129832584,
+     "PromptTokens": 1919,
+     "CachedTokens": 1792,
+     "CompletionTokens": 770
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The PR branch rewrites the flags table as a bullet list but does not include the new `-entertainment-dtls-timeout` entry added by the target branch, so the merged file would need a bullet line that neither branch has.",
+     "Seconds": 8.008750708,
+     "PromptTokens": 1919,
+     "CachedTokens": 1792,
+     "CompletionTokens": 437
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The PR rewrites the flag table into a bullet list while master added a new `-entertainment-dtls-timeout` table row; keeping both would leave a stray table row in a bullet list, and expressing that new flag as a bullet requires a line neither branch has, so the author must decide how to merge the two formats.",
+     "Seconds": 12.851056166,
+     "PromptTokens": 1919,
+     "CachedTokens": 1792,
+     "CompletionTokens": 570
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The PR branch rewrites the whole flags table as a bullet list, while the target branch adds a new `-entertainment-dtls-timeout` row; documenting that new flag in the PR's bullet format requires a line neither branch has, so the merged result cannot be produced by only choosing lines.",
+     "Seconds": 16.536248875,
+     "PromptTokens": 1919,
+     "CachedTokens": 1792,
+     "CompletionTokens": 663
+    }
+   ]
+  },
+  {
+   "Case": "web-bristol-docstring",
+   "Origin": "web",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "declined",
+     "Why": "Both branches rewrote the same docstring opening differently (a single summary line plus parameter/returns sections with different wording), so the two cannot both stand and neither version carries the other's change; choosing a style or recombining them requires an edit only the author can make.",
+     "Seconds": 9.831650125,
+     "PromptTokens": 1192,
+     "CachedTokens": 128,
+     "CompletionTokens": 515
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches rewrote the same docstring with incompatible wording and content (T's Args/multiplicand style vs. S's Parameters/Example additions), and neither version carries the other's change, so this needs a decision from the author.",
+     "Seconds": 5.477112542,
+     "PromptTokens": 1192,
+     "CachedTokens": 1152,
+     "CompletionTokens": 260
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches rewrote the same docstring from B1 with different summary and parameter wording (T uses \"Multiply two numbers together.\" with \"multiplicand\" descriptions, S uses \"Calculate the product of two numbers.\" and adds an Example block), so neither version carries the other's change and producing one coherent docstring requires combining edits into lines neither branch has.",
+     "Seconds": 9.579272375,
+     "PromptTokens": 1192,
+     "CachedTokens": 1152,
+     "CompletionTokens": 509
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches rewrote the same docstring lines with different wording, and neither version carries the other's change (the same text plus more), so choosing between the two wordings or combining them is a decision only the author can make.",
+     "Seconds": 159.8859795,
+     "PromptTokens": 1192,
+     "CachedTokens": 1152,
+     "CompletionTokens": 7761
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches rewrote the same docstring summary line (B1) and the parameter/returns sections in ways that cannot both stand, and neither version carries the other's change, so merging them would require composing a new docstring rather than choosing lines.",
+     "Seconds": 10.656583083,
+     "PromptTokens": 1192,
+     "CachedTokens": 1152,
+     "CompletionTokens": 490
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches rewrote the same docstring lines with different wording and structure (Args vs. Parameters, distinct descriptions), and neither version carries the other's changes, so picking one would silently discard the other branch's documentation work and combining them would require writing new lines.",
+     "Seconds": 13.123824625,
+     "PromptTokens": 1192,
+     "CachedTokens": 1152,
+     "CompletionTokens": 601
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches rewrote the same docstring content in different wording (description line, argument section, and Returns text), so keeping one would drop the other's rewording while keeping both would duplicate it; only the author can pick or merge the wording.",
+     "Seconds": 9.195431375,
+     "PromptTokens": 1192,
+     "CachedTokens": 1152,
+     "CompletionTokens": 427
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches rewrote the same docstring line in incompatible ways (different wording, and only the PR adds an Example section), so neither version carries the other's change and choosing between them is the author's call.",
+     "Seconds": 4.677380416,
+     "PromptTokens": 1192,
+     "CachedTokens": 1152,
+     "CompletionTokens": 259
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches rewrote the same docstring summary and sections in different wordings (T1-T8 vs S1-S8), so neither version carries the other's change and merging them would require combining lines neither branch has.",
+     "Seconds": 16.778757917,
+     "PromptTokens": 1192,
+     "CachedTokens": 1152,
+     "CompletionTokens": 554
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches fully rewrote the same docstring with different wording and section styles (Args vs Parameters, different descriptions and return text), and neither version contains the other's changes, so choosing between them is the author's decision.",
+     "Seconds": 7.576420208,
+     "PromptTokens": 1192,
+     "CachedTokens": 1152,
+     "CompletionTokens": 355
+    }
+   ]
+  },
+  {
+   "Case": "web-bristol-tax-rate",
+   "Origin": "web",
+   "Control": true,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same line to different tax rates (15% vs 20%), and neither version carries the other's change, so the correct rate is a decision only the author can make.",
+     "Seconds": 5.998931542,
+     "PromptTokens": 1087,
+     "CachedTokens": 0,
+     "CompletionTokens": 144
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same line to different tax rates (15% vs 20%) and neither version carries the other's change, so the correct rate is a decision only the author can make.",
+     "Seconds": 5.1700995,
+     "PromptTokens": 1087,
+     "CachedTokens": 1024,
+     "CompletionTokens": 165
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same line to different tax rates (15% vs 20%) and neither version carries the other's change, so only the author can decide which rate is correct.",
+     "Seconds": 7.373882833,
+     "PromptTokens": 1087,
+     "CachedTokens": 1024,
+     "CompletionTokens": 208
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same tax rate line to different, mutually exclusive values (15% versus 20%), and neither version carries the other's change, so the correct rate is a decision only the author can make.",
+     "Seconds": 3.631076625,
+     "PromptTokens": 1087,
+     "CachedTokens": 0,
+     "CompletionTokens": 161
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same tax rate line in incompatible ways (15% vs 20%) and neither version includes the other's change, so the author must decide which rate applies.",
+     "Seconds": 3.424187125,
+     "PromptTokens": 1087,
+     "CachedTokens": 1024,
+     "CompletionTokens": 139
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The two branches changed the same line to different tax rates (15% vs 20%), and neither version contains the other's change, so which rate applies is a decision only the author can make.",
+     "Seconds": 4.547909875,
+     "PromptTokens": 1087,
+     "CachedTokens": 1024,
+     "CompletionTokens": 189
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same line to different tax rates (15% vs 20%), and neither version carries the other's change, so the correct rate is a decision only the author can make.",
+     "Seconds": 5.625051083,
+     "PromptTokens": 1087,
+     "CachedTokens": 1024,
+     "CompletionTokens": 246
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same line to different tax rates (15% versus 20%), and neither version includes the other's change, so the correct rate is a decision only the author can make.",
+     "Seconds": 3.537062625,
+     "PromptTokens": 1087,
+     "CachedTokens": 1024,
+     "CompletionTokens": 122
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same line to different tax rates (15% vs 20%), and neither version carries the other's change, so the author must decide which rate applies.",
+     "Seconds": 3.33127375,
+     "PromptTokens": 1087,
+     "CachedTokens": 1024,
+     "CompletionTokens": 138
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same line to different tax rates (15% vs 20%) and neither version carries the other's change, so only the author can decide which rate applies.",
+     "Seconds": 4.571191458,
+     "PromptTokens": 1087,
+     "CachedTokens": 1024,
+     "CompletionTokens": 165
+    }
+   ]
+  },
+  {
+   "Case": "web-doximity-create-table",
+   "Origin": "web",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "S1"
+      ]
+     },
+     "Seconds": 10.060520584,
+     "PromptTokens": 1245,
+     "CachedTokens": 128,
+     "CompletionTokens": 349
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "S1"
+      ]
+     },
+     "Seconds": 8.668538334,
+     "PromptTokens": 1245,
+     "CachedTokens": 1152,
+     "CompletionTokens": 303
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "S1"
+      ]
+     },
+     "Seconds": 7.874603833,
+     "PromptTokens": 1245,
+     "CachedTokens": 1152,
+     "CompletionTokens": 310
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "S1"
+      ]
+     },
+     "Seconds": 9.224236459,
+     "PromptTokens": 1245,
+     "CachedTokens": 1152,
+     "CompletionTokens": 394
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "S1"
+      ]
+     },
+     "Seconds": 8.841235417,
+     "PromptTokens": 1245,
+     "CachedTokens": 1152,
+     "CompletionTokens": 422
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "S1"
+      ]
+     },
+     "Seconds": 13.250580083,
+     "PromptTokens": 1245,
+     "CachedTokens": 128,
+     "CompletionTokens": 439
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "S1"
+      ]
+     },
+     "Seconds": 12.546305208,
+     "PromptTokens": 1245,
+     "CachedTokens": 1152,
+     "CompletionTokens": 541
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "S1"
+      ]
+     },
+     "Seconds": 9.203548708,
+     "PromptTokens": 1245,
+     "CachedTokens": 1152,
+     "CompletionTokens": 479
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "S1"
+      ]
+     },
+     "Seconds": 9.689313708,
+     "PromptTokens": 1245,
+     "CachedTokens": 1152,
+     "CompletionTokens": 345
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "S1"
+      ]
+     },
+     "Seconds": 6.024733875,
+     "PromptTokens": 1245,
+     "CachedTokens": 1152,
+     "CompletionTokens": 265
+    }
+   ]
+  },
+  {
+   "Case": "web-doximity-moved-line",
+   "Origin": "web",
+   "Control": true,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "declined",
+     "Why": "This is a modify/delete conflict: the target branch changes `include_signature: true` to `false` while the PR branch deletes the line, and neither version carries the other's change, so only the author can decide whether the call stays here.",
+     "Seconds": 30.932461125,
+     "PromptTokens": 1050,
+     "CachedTokens": 0,
+     "CompletionTokens": 1699
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The PR branch deleted the BlueMessage.send line (as part of the move) while the target branch changed its include_signature argument to false; neither version carries the other's change, so any choice would silently drop one branch's edit.",
+     "Seconds": 18.012778541,
+     "PromptTokens": 1050,
+     "CachedTokens": 1024,
+     "CompletionTokens": 783
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The target branch modified this line (include_signature: false) while the PR branch deleted it, and neither version carries the other's change, so keeping it would undo the deletion and dropping it would lose the target's edit.",
+     "Seconds": 15.371364708,
+     "PromptTokens": 1050,
+     "CachedTokens": 1024,
+     "CompletionTokens": 664
+    },
+    {
+     "Verdict": "rejected",
+     "Why": "conflict 1: empty",
+     "Lines": {
+      "1": []
+     },
+     "Seconds": 23.223248,
+     "PromptTokens": 1050,
+     "CachedTokens": 128,
+     "CompletionTokens": 1402
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The target branch changed `BlueMessage.send(include_signature: true)` to `include_signature: false` while the PR branch deleted the line entirely; these cannot both stand and neither version carries the other's change, so it needs a decision only the author can make.",
+     "Seconds": 11.574928708,
+     "PromptTokens": 1050,
+     "CachedTokens": 1024,
+     "CompletionTokens": 703
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The PR branch deletes the `BlueMessage.send` call entirely while the target branch modified that same line to `include_signature: false`; keeping T1 would undo the move-notify deletion, dropping it would silently discard the target branch's change, and neither version carries the other, so the author must decide where that call (and its `include_signature` value) belongs.",
+     "Seconds": 23.445566167,
+     "PromptTokens": 1050,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1532
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The target branch changed `include_signature: true` to `false` while the PR branch deleted the same line entirely, and neither version carries the other's change, so choosing between the edit and the deletion is the author's decision.",
+     "Seconds": 9.737579292,
+     "PromptTokens": 1050,
+     "CachedTokens": 1024,
+     "CompletionTokens": 487
+    },
+    {
+     "Verdict": "declined",
+     "Why": "In conflict 1 the PR branch deletes the `BlueMessage.send` line while the target branch edits its argument, and neither version carries the other's change (the target's `include_signature: false` would have to be applied to the call the PR moved elsewhere), which is more than choosing lines.",
+     "Seconds": 15.955605666,
+     "PromptTokens": 1050,
+     "CachedTokens": 1024,
+     "CompletionTokens": 801
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The same line was modified by merged-branch (include_signature: false) and deleted by feature/move-notify, and neither version carries the other's change, so it needs a decision only the author can make.",
+     "Seconds": 10.064874125,
+     "PromptTokens": 1050,
+     "CachedTokens": 1024,
+     "CompletionTokens": 481
+    },
+    {
+     "Verdict": "declined",
+     "Why": "One branch deleted the BlueMessage.send call while the other changed its include_signature argument, and neither the deletion nor the edited line carries the other branch's change, so keeping either undoes the other's work.",
+     "Seconds": 18.804707166,
+     "PromptTokens": 1050,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1037
+    }
+   ]
+  },
+  {
+   "Case": "web-doximity-renamed-and-flag",
+   "Origin": "web",
+   "Control": true,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "declined",
+     "Why": "Both branches modified the same line differently (one changed the message class, the other changed include_signature), and neither version contains the other's change, so the merged line would need to be rewritten by hand.",
+     "Seconds": 5.473954958,
+     "PromptTokens": 1050,
+     "CachedTokens": 128,
+     "CompletionTokens": 123
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same single line in ways that cannot both stand, and neither version carries the other's change, so the merged line would need to be `GreenMessage.send(include_signature: false)`, which neither branch has.",
+     "Seconds": 6.947195875,
+     "PromptTokens": 1050,
+     "CachedTokens": 1024,
+     "CompletionTokens": 225
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same line in incompatible ways (one changes the message class, the other the include_signature value), so the merged line would need a combination neither branch has.",
+     "Seconds": 4.160158625,
+     "PromptTokens": 1050,
+     "CachedTokens": 1024,
+     "CompletionTokens": 96
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same single line in incompatible ways (the message class versus the include_signature flag), and combining them would require a line neither branch has.",
+     "Seconds": 4.52671725,
+     "PromptTokens": 1050,
+     "CachedTokens": 1024,
+     "CompletionTokens": 158
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same single line in different ways — the message class and the include_signature flag — and neither version carries the other's change, so the merged line would need to be something neither branch has.",
+     "Seconds": 8.523909249999999,
+     "PromptTokens": 1050,
+     "CachedTokens": 1024,
+     "CompletionTokens": 239
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same line in ways that must be combined (the message class from the PR and include_signature: false from the target), which requires a new line neither branch has.",
+     "Seconds": 6.969618583,
+     "PromptTokens": 1050,
+     "CachedTokens": 0,
+     "CompletionTokens": 132
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same line in incompatible ways (one changed the message class, the other changed include_signature), so the merged result would need a combined line neither branch has.",
+     "Seconds": 5.024555625,
+     "PromptTokens": 1050,
+     "CachedTokens": 1024,
+     "CompletionTokens": 118
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same single line in ways that cannot both stand, and neither version carries the other's change, so the merged line would need to be a new combination (GreenMessage.send(include_signature: false)) that neither branch has.",
+     "Seconds": 8.336374542,
+     "PromptTokens": 1050,
+     "CachedTokens": 1024,
+     "CompletionTokens": 253
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches edited the same single line in different ways — the target changed `include_signature` to `false` while the PR changed `BlueMessage` to `GreenMessage` — so the merged file would need `GreenMessage.send(include_signature: false)`, a line neither branch has.",
+     "Seconds": 5.125772583,
+     "PromptTokens": 1050,
+     "CachedTokens": 1024,
+     "CompletionTokens": 238
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same line in incompatible ways — one switched the message class to GreenMessage, the other set include_signature to false — and neither version carries the other's change, so the merged line would need to combine both edits.",
+     "Seconds": 3.792706416,
+     "PromptTokens": 1050,
+     "CachedTokens": 1024,
+     "CompletionTokens": 128
+    }
+   ]
+  },
+  {
+   "Case": "web-gitdocs-fruits-both-removed",
+   "Origin": "web",
+   "Control": true,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "rejected",
+     "Why": "conflict 1: empty",
+     "Lines": {
+      "1": []
+     },
+     "Seconds": 53.342081542,
+     "PromptTokens": 1057,
+     "CachedTokens": 128,
+     "CompletionTokens": 1622
+    },
+    {
+     "Verdict": "rejected",
+     "Why": "conflict 1: empty",
+     "Lines": {
+      "1": []
+     },
+     "Seconds": 58.213758542,
+     "PromptTokens": 1057,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1772
+    },
+    {
+     "Verdict": "rejected",
+     "Why": "conflict 1: empty",
+     "Lines": {
+      "1": []
+     },
+     "Seconds": 87.101338625,
+     "PromptTokens": 1057,
+     "CachedTokens": 1024,
+     "CompletionTokens": 2486
+    },
+    {
+     "Verdict": "rejected",
+     "Why": "conflict 1: empty",
+     "Lines": {
+      "1": []
+     },
+     "Seconds": 129.826686667,
+     "PromptTokens": 1057,
+     "CachedTokens": 0,
+     "CompletionTokens": 6601
+    },
+    {
+     "Verdict": "rejected",
+     "Why": "conflict 1: empty",
+     "Lines": {
+      "1": []
+     },
+     "Seconds": 16.24267975,
+     "PromptTokens": 1057,
+     "CachedTokens": 1024,
+     "CompletionTokens": 807
+    },
+    {
+     "Verdict": "rejected",
+     "Why": "conflict 1: empty",
+     "Lines": {
+      "1": []
+     },
+     "Seconds": 43.705637541,
+     "PromptTokens": 1057,
+     "CachedTokens": 1024,
+     "CompletionTokens": 2001
+    },
+    {
+     "Verdict": "rejected",
+     "Why": "conflict 1: empty",
+     "Lines": {
+      "1": []
+     },
+     "Seconds": 45.031868416,
+     "PromptTokens": 1057,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1919
+    },
+    {
+     "Verdict": "rejected",
+     "Why": "conflict 1: empty",
+     "Lines": {
+      "1": []
+     },
+     "Seconds": 27.253612042,
+     "PromptTokens": 1057,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1354
+    },
+    {
+     "Verdict": "rejected",
+     "Why": "conflict 1: empty",
+     "Lines": {
+      "1": []
+     },
+     "Seconds": 20.578646792,
+     "PromptTokens": 1057,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1047
+    },
+    {
+     "Verdict": "rejected",
+     "Why": "conflict 1: empty",
+     "Lines": {
+      "1": []
+     },
+     "Seconds": 39.599228917,
+     "PromptTokens": 1057,
+     "CachedTokens": 1024,
+     "CompletionTokens": 2065
+    }
+   ]
+  },
+  {
+   "Case": "web-graphite-dependency-bump",
+   "Origin": "web",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "declined",
+     "Why": "Both branches bumped libraryA on the same line to different constraints (^2.0.0 vs ^2.1.0), and neither version carries the other's change, so which range the merged file declares is a decision only the author can make.",
+     "Seconds": 36.780632375,
+     "PromptTokens": 1114,
+     "CachedTokens": 0,
+     "CompletionTokens": 2507
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same dependency line to different version constraints for libraryA (^2.0.0 vs ^2.1.0), and neither version carries the other's change, so only the author can decide which constraint to keep.",
+     "Seconds": 19.450076625,
+     "PromptTokens": 1114,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1193
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same `libraryA` requirement line to different versions (`^2.0.0` vs `^2.1.0`) and neither carries the other's change, so the author must decide which requirement to keep (and the trailing comma needed by `libraryB` cannot be reconciled by choosing lines alone).",
+     "Seconds": 8.954710500000001,
+     "PromptTokens": 1114,
+     "CachedTokens": 1024,
+     "CompletionTokens": 546
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches set libraryA to a different constraint (^2.0.0 vs ^2.1.0) and neither line carries the other's change, and keeping the target branch's new libraryB entry would require a libraryA line with a trailing comma that neither branch has.",
+     "Seconds": 73.926741667,
+     "PromptTokens": 1114,
+     "CachedTokens": 1024,
+     "CompletionTokens": 4140
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2"
+      ]
+     },
+     "Seconds": 22.840522292,
+     "PromptTokens": 1114,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1307
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches set `libraryA` to different version constraints (`^2.1.0` vs `^2.0.0`) on the same line, and neither version carries the other's change, so the author must decide which constraint to keep.",
+     "Seconds": 8.558294875,
+     "PromptTokens": 1114,
+     "CachedTokens": 1024,
+     "CompletionTokens": 581
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2"
+      ]
+     },
+     "Seconds": 27.048322417,
+     "PromptTokens": 1114,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1655
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2"
+      ]
+     },
+     "Seconds": 25.229540791,
+     "PromptTokens": 1114,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1626
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches set the libraryA version on the same line to different values (^2.1.0 vs ^2.0.0), and neither carries the other's change, so only the author can decide which pin the merged config keeps.",
+     "Seconds": 34.450502375,
+     "PromptTokens": 1114,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1917
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2"
+      ]
+     },
+     "Seconds": 13.410981417,
+     "PromptTokens": 1114,
+     "CachedTokens": 1024,
+     "CompletionTokens": 841
+    }
+   ]
+  },
+  {
+   "Case": "web-progit-footer",
+   "Origin": "web",
+   "Control": true,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "declined",
+     "Why": "Both branches rewrote the footer line in incompatible ways — iss53 changed the wording and structure while master changed the email address — and no branch's version carries the other's change, so the merged text would need a line neither branch has.",
+     "Seconds": 3.61355525,
+     "PromptTokens": 1073,
+     "CachedTokens": 128,
+     "CompletionTokens": 209
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same footer line differently — the target branch rewrote its wording and split it across lines while the PR branch changed the email address — so keeping either version would drop the other's change and merging them would require writing new lines neither branch has.",
+     "Seconds": 5.621805708,
+     "PromptTokens": 1073,
+     "CachedTokens": 1024,
+     "CompletionTokens": 285
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same footer line in incompatible ways - iss53 reworded it while keeping the old address, and master changed the address - neither version carries the other's change, so the author must decide.",
+     "Seconds": 5.463122917,
+     "PromptTokens": 1073,
+     "CachedTokens": 1024,
+     "CompletionTokens": 180
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches rewrote the same footer line differently — one changed the contact wording and markup, the other changed the email address — and neither version contains the other's change, so the merged result would need a new combined line neither branch has.",
+     "Seconds": 4.257107666,
+     "PromptTokens": 1073,
+     "CachedTokens": 1024,
+     "CompletionTokens": 186
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same footer text in incompatible ways — iss53 reworded it across three lines while master changed the email address to email.support@github.com — and merging would require combining the two edits into lines neither branch has.",
+     "Seconds": 5.6950878750000005,
+     "PromptTokens": 1073,
+     "CachedTokens": 1024,
+     "CompletionTokens": 283
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches rewrote the same footer line differently — one changed the wording and markup while keeping the old address, the other changed the address while keeping the old wording — and merging them would require writing a new line neither branch has.",
+     "Seconds": 5.980297791,
+     "PromptTokens": 1073,
+     "CachedTokens": 1024,
+     "CompletionTokens": 302
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The two branches changed the same contact line in incompatible ways — iss53 restructured it while keeping support@github.com, and master changed the address to email.support@github.com — so merging both would require a new line neither branch has.",
+     "Seconds": 6.951867375,
+     "PromptTokens": 1073,
+     "CachedTokens": 1024,
+     "CompletionTokens": 370
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the footer contact line differently — the target branch reworded and reformatted it while the PR branch changed the email address — and no kept line can carry both changes, since merging them requires a new line (\"please contact us at email.support@github.com\") that neither branch has.",
+     "Seconds": 4.610668667,
+     "PromptTokens": 1073,
+     "CachedTokens": 1024,
+     "CompletionTokens": 240
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same footer line differently — iss53 reworded it while master changed the email address — and neither version contains the other's change, so picking one would silently drop the other's edit.",
+     "Seconds": 5.702469084,
+     "PromptTokens": 1073,
+     "CachedTokens": 1024,
+     "CompletionTokens": 270
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed the same footer text in incompatible ways — iss53 reworded the message while master changed the email address — and merging them would require a new line neither branch has.",
+     "Seconds": 5.484602,
+     "PromptTokens": 1073,
+     "CachedTokens": 1024,
+     "CompletionTokens": 224
+    }
+   ]
+  }
+ ],
+ "Seconds": 1311.545745541
+}

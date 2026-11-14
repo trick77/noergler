@@ -1,0 +1,25 @@
+{
+  "name": "mined-loom-dec20601b3",
+  "origin": "mined",
+  "source": "https://github.com/trick77/loom/commit/dec20601b31b92b3c9356d90980341821a240915",
+  "why": "Master added ReactNode and useId to the react import; the topic added two type imports below it. The author rewrote all of it as one multi-line import (lines neither branch has); master's import plus the topic's two type imports compiles the same (a second import from react is valid TypeScript, and loom lints no duplicate imports), in any order.",
+  "target_branch": "topic",
+  "source_branch": "master",
+  "control": false,
+  "files": [
+    {
+      "path": "frontend/src/ChatShell.tsx",
+      "merged": "<<<<<<< source\nimport { type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from \"react\";\n||||||| base\nimport { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from \"react\";\n=======\nimport { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from \"react\";\nimport type { ComponentPropsWithoutRef } from \"react\";\nimport type { ExtraProps } from \"react-markdown\";\n>>>>>>> target\nimport Markdown from \"react-markdown\";\nimport remarkGfm from \"remark-gfm\";\nimport rehypeHighlight from \"rehype-highlight\";\n"
+    }
+  ],
+  "accept": [
+    {
+      "file": "frontend/src/ChatShell.tsx",
+      "conflict": 1,
+      "texts": [
+        "import { type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from \"react\";\nimport type { ComponentPropsWithoutRef } from \"react\";\nimport type { ExtraProps } from \"react-markdown\";\n"
+      ],
+      "any_order": true
+    }
+  ]
+}

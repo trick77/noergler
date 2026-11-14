@@ -1,0 +1,16 @@
+{
+  "name": "web-progit-footer",
+  "origin": "web",
+  "source": "https://git-scm.com/book/en/v2/Git-Branching-Basic-Branching-and-Merging (index.html; base reconstructed)",
+  "why": "Control. The PR changed the address to email.support@, target reworded the footer onto three lines; the book's answer combines both into a line neither branch has.",
+  "target_branch": "iss53",
+  "source_branch": "master",
+  "control": true,
+  "files": [
+    {
+      "path": "index.html",
+      "merged": "<html>\n<body>\n<<<<<<< source\n<div id=\"footer\">contact : email.support@github.com</div>\n||||||| base\n<div id=\"footer\">contact : support@github.com</div>\n=======\n<div id=\"footer\">\n please contact us at support@github.com\n</div>\n>>>>>>> target\n</body>\n</html>\n"
+    }
+  ],
+  "accept": []
+}

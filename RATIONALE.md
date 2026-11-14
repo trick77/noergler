@@ -123,6 +123,21 @@ an incident or an eval run: read the reason before relaxing a rule.
   and dropped lines are computed by code, not claimed by the model. A side
   is dropped only where the kept version carries its change; else not
   feasible.
+- Merge conflict prompt, read against B (eval 2026-11-14, EVALS.md): 10 of
+  the 11 real wrong answers kept a base line one branch had deleted or
+  changed while the other left it, e.g. a removed installer block came
+  back. The rule alone went in (user, 2026-11-14); the abort clauses
+  drafted with it showed no effect.
+- Merge conflict trivial rule (user, 2026-11-14): on 1500 git/git merges one
+  trivial resolution broke a file (8f0d663e: both sides added one function,
+  Merge3 settled the shared body, the headers one space apart were kept
+  twice). Lines and keys compare without whitespace, and a conflict whose
+  edges Merge3 trimmed (a block both added) is never code's: a header
+  differing in more than whitespace would break the same way.
+- Merge conflict build output (`dist/`) excluded like a lockfile (user,
+  2026-11-14): asset hashes only a rebuild gets right, and the model
+  declined them anyway. Web build files only (html, js, css, map, json):
+  Go's `cmd/dist` and Python `dist` packages are source.
 - Merge conflict author only: the push lands on the author's branch.
 - Merge conflict on the worker, not the pool: a fetch and a push are
   Bitbucket calls, and serialization is for Bitbucket. Bounded instead:

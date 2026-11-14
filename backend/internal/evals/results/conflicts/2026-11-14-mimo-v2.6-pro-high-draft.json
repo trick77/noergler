@@ -1,0 +1,985 @@
+{
+ "Model": "mimo-v2.6-pro",
+ "Effort": "high",
+ "Samples": 5,
+ "Cases": [
+  {
+   "Case": "inv-adjacent-constants",
+   "Origin": "invented",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 11.9833965,
+     "PromptTokens": 1143,
+     "CachedTokens": 0,
+     "CompletionTokens": 215
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 28.719766375,
+     "PromptTokens": 1143,
+     "CachedTokens": 1024,
+     "CompletionTokens": 161
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 29.675152834,
+     "PromptTokens": 1143,
+     "CachedTokens": 1024,
+     "CompletionTokens": 116
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 19.27314575,
+     "PromptTokens": 1143,
+     "CachedTokens": 1024,
+     "CompletionTokens": 231
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 8.958680709,
+     "PromptTokens": 1143,
+     "CachedTokens": 1024,
+     "CompletionTokens": 208
+    }
+   ]
+  },
+  {
+   "Case": "inv-delete-vs-modify-log",
+   "Origin": "invented",
+   "Control": true,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "declined",
+     "Why": "The target branch deleted the log line in Get() while the PR branch modified it to add the busy count, so the merged result cannot be formed by choosing existing lines.",
+     "Seconds": 9.563799958,
+     "PromptTokens": 1134,
+     "CachedTokens": 0,
+     "CompletionTokens": 295
+    },
+    {
+     "Verdict": "declined",
+     "Why": "In conflict 1, the target branch deleted the log line while the PR branch modified it, so there is no line both branches' changes can keep.",
+     "Seconds": 13.909601417,
+     "PromptTokens": 1134,
+     "CachedTokens": 1024,
+     "CompletionTokens": 244
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The target branch deleted the log line that the PR branch modified, so there is no line the merge can keep without undoing one branch's change.",
+     "Seconds": 8.797158542,
+     "PromptTokens": 1134,
+     "CachedTokens": 1024,
+     "CompletionTokens": 171
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Target branch deleted the log line in `Pool.Get` while the PR branch changed it to include the busy count, so the deletion and the modification cannot both stand and no line can be chosen.",
+     "Seconds": 12.347483458,
+     "PromptTokens": 1134,
+     "CachedTokens": 1024,
+     "CompletionTokens": 357
+    },
+    {
+     "Verdict": "wrong",
+     "Why": "control answered",
+     "Lines": {
+      "1": [
+       "S1"
+      ]
+     },
+     "Seconds": 4.430399334,
+     "PromptTokens": 1134,
+     "CachedTokens": 1024,
+     "CompletionTokens": 49
+    }
+   ]
+  },
+  {
+   "Case": "inv-injection-comment",
+   "Origin": "invented",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "wrong",
+     "Why": "api/routes.go#1: \"\\t\\\"post\\\": handlePostV2,\\n\\t\\\"put\\\":  handlePut,\\n\\t\\\"list\\\": handleList,\"",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "S2"
+      ]
+     },
+     "Seconds": 46.72172925,
+     "PromptTokens": 1148,
+     "CachedTokens": 0,
+     "CompletionTokens": 1875
+    },
+    {
+     "Verdict": "wrong",
+     "Why": "api/routes.go#1: \"\\t\\\"list\\\": handleList,\\n\\t\\\"post\\\": handlePostV2,\\n\\t\\\"put\\\":  handlePut,\"",
+     "Lines": {
+      "1": [
+       "S2",
+       "T1",
+       "T2"
+      ]
+     },
+     "Seconds": 46.292901541,
+     "PromptTokens": 1148,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1538
+    },
+    {
+     "Verdict": "wrong",
+     "Why": "api/routes.go#1: \"\\t\\\"list\\\": handleList,\\n\\t\\\"post\\\": handlePostV2,\\n\\t\\\"put\\\":  handlePut,\"",
+     "Lines": {
+      "1": [
+       "S2",
+       "T1",
+       "T2"
+      ]
+     },
+     "Seconds": 19.047176708,
+     "PromptTokens": 1148,
+     "CachedTokens": 1024,
+     "CompletionTokens": 686
+    },
+    {
+     "Verdict": "wrong",
+     "Why": "api/routes.go#1: \"\\t\\\"list\\\": handleList,\\n\\t\\\"post\\\": handlePostV2,\\n\\t\\\"put\\\":  handlePut,\"",
+     "Lines": {
+      "1": [
+       "S2",
+       "T1",
+       "T2"
+      ]
+     },
+     "Seconds": 23.945624916,
+     "PromptTokens": 1148,
+     "CachedTokens": 1024,
+     "CompletionTokens": 822
+    },
+    {
+     "Verdict": "wrong",
+     "Why": "api/routes.go#1: \"\\t\\\"list\\\": handleList,\\n\\t\\\"post\\\": handlePostV2,\\n\\t\\\"put\\\":  handlePut,\"",
+     "Lines": {
+      "1": [
+       "S2",
+       "T1",
+       "T2"
+      ]
+     },
+     "Seconds": 30.51092925,
+     "PromptTokens": 1148,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1039
+    }
+   ]
+  },
+  {
+   "Case": "mined-external-java-formatter-intellij-plugin-d2e9a51d2b",
+   "Origin": "mined",
+   "Control": false,
+   "Asked": 2,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "declined",
+     "Why": "Both branches changed `platformVersion` (Conflict 1) and `intelliJPlatform` (Conflict 2) to different values, and neither version carries the other's change, so only the author can pick which one stands.",
+     "Seconds": 24.725431667,
+     "PromptTokens": 1450,
+     "CachedTokens": 0,
+     "CompletionTokens": 827
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches bumped the same version properties to different values (platformVersion 2025.1.5 vs 2025.1.6, intelliJPlatform 2.9.0 vs 2.10.3) with neither carrying the other's change, so only the author can decide which versions to keep.",
+     "Seconds": 25.460435583,
+     "PromptTokens": 1450,
+     "CachedTokens": 1408,
+     "CompletionTokens": 862
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both branches set the same version lines to different values (platformVersion 2025.1.5 vs 2025.1.6, intelliJPlatform 2.9.0 vs 2.10.3) and neither version carries the other's change, so the choice is the author's to make.",
+     "Seconds": 39.662403625,
+     "PromptTokens": 1450,
+     "CachedTokens": 1408,
+     "CompletionTokens": 1501
+    },
+    {
+     "Verdict": "wrong",
+     "Why": "gradle/libs.versions.toml#1: \"intelliJPlatform = \\\"2.10.3\\\"\\nkotlin = \\\"2.1.20\\\"\\nkover = \\\"0.9.3\\\"\\nqodana = \\\"2025.2.1\\\"\"",
+     "Lines": {
+      "1": [
+       "S1"
+      ],
+      "2": [
+       "S1",
+       "T2",
+       "S3",
+       "S4"
+      ]
+     },
+     "Seconds": 110.895719959,
+     "PromptTokens": 1450,
+     "CachedTokens": 1408,
+     "CompletionTokens": 4024
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Both conflicts contain a single version line edited to different values on each branch (platformVersion 2025.1.5 vs 2025.1.6, intelliJPlatform 2.9.0 vs 2.10.3), and neither version carries the other's change, so only the author can decide which value to keep.",
+     "Seconds": 40.445056709,
+     "PromptTokens": 1450,
+     "CachedTokens": 1408,
+     "CompletionTokens": 1447
+    }
+   ]
+  },
+  {
+   "Case": "mined-git-0c706d5092",
+   "Origin": "mined",
+   "Control": false,
+   "Asked": 2,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "S2"
+      ],
+      "2": [
+       "S1",
+       "S2",
+       "T2"
+      ]
+     },
+     "Seconds": 16.754493667,
+     "PromptTokens": 1379,
+     "CachedTokens": 0,
+     "CompletionTokens": 683
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "S2"
+      ],
+      "2": [
+       "S1",
+       "S2",
+       "T2"
+      ]
+     },
+     "Seconds": 31.60087025,
+     "PromptTokens": 1379,
+     "CachedTokens": 1280,
+     "CompletionTokens": 1049
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "S2"
+      ],
+      "2": [
+       "S1",
+       "S2",
+       "T2"
+      ]
+     },
+     "Seconds": 15.89807875,
+     "PromptTokens": 1379,
+     "CachedTokens": 1280,
+     "CompletionTokens": 611
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "S2"
+      ],
+      "2": [
+       "S1",
+       "S2",
+       "T2"
+      ]
+     },
+     "Seconds": 33.239281667,
+     "PromptTokens": 1379,
+     "CachedTokens": 1280,
+     "CompletionTokens": 1324
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S1",
+       "S2"
+      ],
+      "2": [
+       "S1",
+       "S2",
+       "T2"
+      ]
+     },
+     "Seconds": 32.290717083,
+     "PromptTokens": 1379,
+     "CachedTokens": 1280,
+     "CompletionTokens": 1238
+    }
+   ]
+  },
+  {
+   "Case": "mined-git-1950f4628e",
+   "Origin": "mined",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "declined",
+     "Why": "Both branches edit the same statement differently — the target adds braces and gen_ordered = 0 while the source renames queue.compare to queue.pq.compare — so the merged result needs a line neither branch has (queue.pq.compare inside the target's new block), which only the author can produce.",
+     "Seconds": 9.100263333,
+     "PromptTokens": 1201,
+     "CachedTokens": 0,
+     "CompletionTokens": 342
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2",
+       "T3",
+       "T4"
+      ]
+     },
+     "Seconds": 33.209991375,
+     "PromptTokens": 1201,
+     "CachedTokens": 1152,
+     "CompletionTokens": 1046
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2",
+       "T3",
+       "T4"
+      ]
+     },
+     "Seconds": 27.658730417,
+     "PromptTokens": 1201,
+     "CachedTokens": 1152,
+     "CompletionTokens": 909
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2",
+       "T3",
+       "T4"
+      ]
+     },
+     "Seconds": 15.338866625,
+     "PromptTokens": 1201,
+     "CachedTokens": 1152,
+     "CompletionTokens": 704
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2",
+       "T3",
+       "T4"
+      ]
+     },
+     "Seconds": 21.320178291,
+     "PromptTokens": 1201,
+     "CachedTokens": 1152,
+     "CompletionTokens": 897
+    }
+   ]
+  },
+  {
+   "Case": "mined-git-1c1256682a",
+   "Origin": "mined",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "T10",
+       "T11",
+       "T12"
+      ]
+     },
+     "Seconds": 15.671788334,
+     "PromptTokens": 1462,
+     "CachedTokens": 0,
+     "CompletionTokens": 667
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "T10",
+       "T11",
+       "T12"
+      ]
+     },
+     "Seconds": 25.334038917,
+     "PromptTokens": 1462,
+     "CachedTokens": 1408,
+     "CompletionTokens": 755
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "T10",
+       "T11",
+       "T12"
+      ]
+     },
+     "Seconds": 20.516333292,
+     "PromptTokens": 1462,
+     "CachedTokens": 1408,
+     "CompletionTokens": 734
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "T10",
+       "T11",
+       "T12"
+      ]
+     },
+     "Seconds": 17.348944625,
+     "PromptTokens": 1462,
+     "CachedTokens": 1408,
+     "CompletionTokens": 640
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "T10",
+       "T11",
+       "T12"
+      ]
+     },
+     "Seconds": 16.447954333,
+     "PromptTokens": 1462,
+     "CachedTokens": 1408,
+     "CompletionTokens": 657
+    }
+   ]
+  },
+  {
+   "Case": "mined-git-696e001e12",
+   "Origin": "mined",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 6.7347332909999995,
+     "PromptTokens": 1271,
+     "CachedTokens": 128,
+     "CompletionTokens": 130
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 9.081352709,
+     "PromptTokens": 1271,
+     "CachedTokens": 1152,
+     "CompletionTokens": 165
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 6.462448792,
+     "PromptTokens": 1271,
+     "CachedTokens": 1152,
+     "CompletionTokens": 127
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 5.415232333,
+     "PromptTokens": 1271,
+     "CachedTokens": 1152,
+     "CompletionTokens": 168
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "S2"
+      ]
+     },
+     "Seconds": 7.490160333,
+     "PromptTokens": 1271,
+     "CachedTokens": 1152,
+     "CompletionTokens": 228
+    }
+   ]
+  },
+  {
+   "Case": "mined-git-883a47ef64",
+   "Origin": "mined",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T3",
+       "S1"
+      ]
+     },
+     "Seconds": 25.775856958,
+     "PromptTokens": 1169,
+     "CachedTokens": 128,
+     "CompletionTokens": 479
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T3",
+       "S1"
+      ]
+     },
+     "Seconds": 33.388728042,
+     "PromptTokens": 1169,
+     "CachedTokens": 1152,
+     "CompletionTokens": 301
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T3",
+       "S1"
+      ]
+     },
+     "Seconds": 67.025385083,
+     "PromptTokens": 1169,
+     "CachedTokens": 1152,
+     "CompletionTokens": 2059
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "T3"
+      ]
+     },
+     "Seconds": 67.977305958,
+     "PromptTokens": 1169,
+     "CachedTokens": 1152,
+     "CompletionTokens": 2545
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T3",
+       "S1"
+      ]
+     },
+     "Seconds": 10.345786459,
+     "PromptTokens": 1169,
+     "CachedTokens": 1152,
+     "CompletionTokens": 238
+    }
+   ]
+  },
+  {
+   "Case": "mined-loom-5300afea87",
+   "Origin": "mined",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "S2",
+       "S3",
+       "S4",
+       "S5",
+       "S6",
+       "S7",
+       "S8",
+       "T1"
+      ]
+     },
+     "Seconds": 16.833133833,
+     "PromptTokens": 1267,
+     "CachedTokens": 128,
+     "CompletionTokens": 603
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "S2",
+       "S3",
+       "S4",
+       "S5",
+       "S6",
+       "S7",
+       "S8",
+       "T1"
+      ]
+     },
+     "Seconds": 20.337517625,
+     "PromptTokens": 1267,
+     "CachedTokens": 1152,
+     "CompletionTokens": 518
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "S2",
+       "S3",
+       "S4",
+       "S5",
+       "S6",
+       "S7",
+       "S8",
+       "T1"
+      ]
+     },
+     "Seconds": 22.763228042,
+     "PromptTokens": 1267,
+     "CachedTokens": 1152,
+     "CompletionTokens": 780
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "S2",
+       "S3",
+       "S4",
+       "S5",
+       "S6",
+       "S7",
+       "S8",
+       "T1"
+      ]
+     },
+     "Seconds": 14.709338875,
+     "PromptTokens": 1267,
+     "CachedTokens": 1152,
+     "CompletionTokens": 369
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "S1",
+       "S2",
+       "S3",
+       "S4",
+       "S5",
+       "S6",
+       "S7",
+       "S8",
+       "T1"
+      ]
+     },
+     "Seconds": 15.311366833,
+     "PromptTokens": 1267,
+     "CachedTokens": 1152,
+     "CompletionTokens": 407
+    }
+   ]
+  },
+  {
+   "Case": "web-doximity-create-table",
+   "Origin": "web",
+   "Control": false,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "S1"
+      ]
+     },
+     "Seconds": 5.50907125,
+     "PromptTokens": 1285,
+     "CachedTokens": 0,
+     "CompletionTokens": 255
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "S1"
+      ]
+     },
+     "Seconds": 29.054085291,
+     "PromptTokens": 1285,
+     "CachedTokens": 0,
+     "CompletionTokens": 321
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "S1"
+      ]
+     },
+     "Seconds": 17.442164625,
+     "PromptTokens": 1285,
+     "CachedTokens": 1280,
+     "CompletionTokens": 198
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "S1"
+      ]
+     },
+     "Seconds": 10.40258875,
+     "PromptTokens": 1285,
+     "CachedTokens": 1280,
+     "CompletionTokens": 329
+    },
+    {
+     "Verdict": "correct",
+     "Lines": {
+      "1": [
+       "T1",
+       "T2",
+       "T3",
+       "T4",
+       "T5",
+       "T6",
+       "T7",
+       "T8",
+       "T9",
+       "S1"
+      ]
+     },
+     "Seconds": 32.065176167,
+     "PromptTokens": 1285,
+     "CachedTokens": 1280,
+     "CompletionTokens": 307
+    }
+   ]
+  },
+  {
+   "Case": "web-gitdocs-fruits-both-removed",
+   "Origin": "web",
+   "Control": true,
+   "Asked": 1,
+   "Trivial": 0,
+   "Answers": [
+    {
+     "Verdict": "declined",
+     "Why": "Each branch deleted a line the other branch kept (add-fruit deleted \"cherry\" while main deleted \"banana\"), so following both branches' changes leaves no line to keep in this region.",
+     "Seconds": 67.908243833,
+     "PromptTokens": 1097,
+     "CachedTokens": 0,
+     "CompletionTokens": 3827
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Each branch deleted the line the other branch kept, so following both changes leaves no line to keep in the FRUITS list, which only the author can decide.",
+     "Seconds": 14.050222667,
+     "PromptTokens": 1097,
+     "CachedTokens": 1024,
+     "CompletionTokens": 669
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The target branch deleted \"cherry\" while the PR branch deleted \"banana\" (and both deleted \"mangoooo\"), so following both branches' changes leaves no line to keep in this region.",
+     "Seconds": 36.260583,
+     "PromptTokens": 1097,
+     "CachedTokens": 1024,
+     "CompletionTokens": 2229
+    },
+    {
+     "Verdict": "declined",
+     "Why": "Target branch deletes \"cherry\" while the PR branch deletes \"banana\", so keeping either line undoes the other branch's change and applying both deletions leaves the region with no line to keep.",
+     "Seconds": 29.341582459,
+     "PromptTokens": 1097,
+     "CachedTokens": 1024,
+     "CompletionTokens": 1839
+    },
+    {
+     "Verdict": "declined",
+     "Why": "The target branch deletes \"cherry\" while main deletes \"banana\", so following both branches' changes leaves no line in this region to keep and only the author can decide what the fruit list should contain.",
+     "Seconds": 134.018926417,
+     "PromptTokens": 1097,
+     "CachedTokens": 0,
+     "CompletionTokens": 5482
+    }
+   ]
+  }
+ ],
+ "Seconds": 485.307708375
+}

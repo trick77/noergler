@@ -1,0 +1,25 @@
+{
+  "name": "mined-git-1950f4628e",
+  "origin": "mined",
+  "source": "https://github.com/git/git/commit/1950f4628e3973847d447e51162f61e69748ea92",
+  "why": "Target braced the if and added gen_ordered = 0; master renamed queue.compare to queue.pq.compare. The author kept target's braces and new line around master's renamed line (T1, S2, T3, T4).",
+  "target_branch": "kk/commit-reach-find-all-fix",
+  "source_branch": "master",
+  "control": false,
+  "files": [
+    {
+      "path": "commit-reach.c",
+      "merged": "\ttimestamp_t last_gen = GENERATION_NUMBER_INFINITY;\n\tstruct commit_list **tail = result;\n\n<<<<<<< source\n\tif (!min_generation && !corrected_commit_dates_enabled(r))\n\t\tqueue.pq.compare = compare_commits_by_commit_date;\n||||||| base\n\tif (!min_generation && !corrected_commit_dates_enabled(r))\n\t\tqueue.compare = compare_commits_by_commit_date;\n=======\n\tif (!min_generation && !corrected_commit_dates_enabled(r)) {\n\t\tqueue.compare = compare_commits_by_commit_date;\n\t\tgen_ordered = 0;\n\t}\n>>>>>>> target\n\n\tone->object.flags |= PARENT1;\n\tif (!n) {\n"
+    }
+  ],
+  "accept": [
+    {
+      "file": "commit-reach.c",
+      "conflict": 1,
+      "texts": [
+        "\tif (!min_generation && !corrected_commit_dates_enabled(r)) {\n\t\tqueue.pq.compare = compare_commits_by_commit_date;\n\t\tgen_ordered = 0;\n\t}\n"
+      ],
+      "any_order": false
+    }
+  ]
+}

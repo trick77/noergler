@@ -1,0 +1,25 @@
+{
+  "name": "inv-imports-shared-line",
+  "origin": "invented",
+  "source": "hand-written",
+  "why": "Both branches added imports and both added \"strings\"; every import stays, \"strings\" once. gofmt sorts the block, so the order is free.",
+  "target_branch": "main",
+  "source_branch": "feature/http-report",
+  "control": false,
+  "files": [
+    {
+      "path": "report/write.go",
+      "merged": "package report\n\nimport (\n\t\"fmt\"\n\t\"os\"\n<<<<<<< source\n\t\"net/http\"\n\t\"strings\"\n||||||| base\n=======\n\t\"io\"\n\t\"strings\"\n\t\"time\"\n>>>>>>> target\n)\n\nfunc Write(w io.Writer, r *http.Request, at time.Time) error {\n\tname := strings.TrimSpace(r.URL.Query().Get(\"name\"))\n\tif name == \"\" {\n\t\tfmt.Fprintln(os.Stderr, \"report: no name\")\n"
+    }
+  ],
+  "accept": [
+    {
+      "file": "report/write.go",
+      "conflict": 1,
+      "texts": [
+        "\t\"io\"\n\t\"net/http\"\n\t\"strings\"\n\t\"time\"\n"
+      ],
+      "any_order": true
+    }
+  ]
+}

@@ -90,6 +90,9 @@ type options struct {
 	// mix is "primary.json,secondary.json": two sampled reports scored as
 	// one mixed vote, without a gateway.
 	mix string
+	// conflicts scores the merge-conflict prompt on its own corpus
+	// (internal/evals/conflicts) instead of the review prompt.
+	conflicts bool
 	// rescore is a sampled report to score again from the samples it holds.
 	rescore string
 	// confirm is a sampled report whose reviews are unioned in groups of
@@ -144,6 +147,8 @@ func main() {
 		"primary.json,secondary.json: score one primary review voted with secondary ones from two sampled reports; makes no calls")
 	flag.StringVar(&opt.rescore, "rescore", "",
 		"sampled.json: recompute every view from the samples a sampled report holds; makes no calls")
+	flag.BoolVar(&opt.conflicts, "conflicts", false,
+		"score the merge-conflict prompt on internal/evals/conflicts; -samples answers per case, -parallel calls in flight")
 	flag.Parse()
 	opt.effortSet = wasSet(flag.CommandLine, "effort")
 	if *usage {
@@ -221,6 +226,9 @@ func run(ctx context.Context, opt options) (bool, error) {
 	// gets today's behaviour.
 	if opt.samples == 0 {
 		opt.samples = 1
+	}
+	if opt.conflicts {
+		return runConflicts(ctx, opt)
 	}
 	if opt.samples != 1 && opt.samples < evals.MinSamples {
 		return false, fmt.Errorf("-samples %d: 1 for the series run, or at least %d for a sampled one",
@@ -416,6 +424,11 @@ func confirm(ctx context.Context, opt options, client evals.Reviewer, template s
 // error: a typo must not quietly run a smaller corpus and report its score
 // as the answer.
 func selectCases(cases []evals.Case, only string) ([]evals.Case, error) {
+	return selectNamed(cases, func(c evals.Case) string { return c.Name }, only)
+}
+
+// selectNamed keeps the cases -cases names, failing on a name no case has.
+func selectNamed[T any](cases []T, name func(T) string, only string) ([]T, error) {
 	if strings.TrimSpace(only) == "" {
 		return cases, nil
 	}
@@ -423,15 +436,80 @@ func selectCases(cases []evals.Case, only string) ([]evals.Case, error) {
 	for _, n := range strings.Split(only, ",") {
 		want[strings.TrimSpace(n)] = true
 	}
-	var out []evals.Case
+	var out []T
 	for _, c := range cases {
-		if want[c.Name] {
+		if want[name(c)] {
 			out = append(out, c)
-			delete(want, c.Name)
+			delete(want, name(c))
 		}
 	}
 	for n := range want {
 		return nil, fmt.Errorf("-cases: no case named %q", n)
 	}
 	return out, nil
+}
+
+// runConflicts scores the merge-conflict prompt. Exit 1 is an answer
+// production would have pushed wrong; an answer that never came is exit 2.
+func runConflicts(ctx context.Context, opt options) (bool, error) {
+	// Everything checked before the gateway is dialled: a run on a
+	// paid model must not start for a flag it then ignores.
+	switch {
+	case opt.mix != "" || opt.rescore != "" || opt.confirm != "":
+		return false, errors.New("-conflicts takes none of -mix, -rescore, -confirm")
+	case opt.samples < 1:
+		return false, fmt.Errorf("-samples %d: at least 1", opt.samples)
+	}
+	// The compiled-in prompt unless -prompt names a draft to score.
+	var template string
+	if opt.promptPath != "" {
+		raw, err := os.ReadFile(opt.promptPath) //nolint:gosec // G304: an operator-supplied flag in a dev tool
+		if err != nil {
+			return false, fmt.Errorf("read prompt: %w", err)
+		}
+		template = string(raw)
+	}
+	settings, err := evals.ResolveSettings(opt.getenv, opt.window)
+	if err != nil {
+		return false, err
+	}
+	opt.effort = evals.DefaultSeries().EffortFor(settings.Model, opt.effort, opt.effortSet)
+	cases, err := evals.LoadConflictCorpus()
+	if err != nil {
+		return false, fmt.Errorf("load conflict corpus: %w", err)
+	}
+	if cases, err = selectNamed(cases, func(c evals.LoadedConflictCase) string { return c.Name }, opt.only); err != nil {
+		return false, err
+	}
+	counter, err := tokens.New()
+	if err != nil {
+		return false, fmt.Errorf("tokenizer: %w", err)
+	}
+	client, err := opt.newClient(settings, opt.effort)
+	if err != nil {
+		return false, err
+	}
+	resolver, ok := client.(evals.ConflictResolver)
+	if !ok {
+		return false, errors.New("the client cannot resolve conflicts")
+	}
+	ctx, cancel := context.WithTimeout(ctx, opt.timeout)
+	defer cancel()
+	_, _ = fmt.Fprintf(opt.stdout, "model %s via %s, %d conflict case(s), %d sample(s) each\n\n",
+		header(client, settings.Model, opt.effort), settings.BaseURL, len(cases), opt.samples)
+	res := evals.RunConflicts(ctx, resolver, cases, template, counter.Count, opt.samples, opt.parallel, opt.stdout)
+	res.Model, res.Effort = settings.Model, opt.effort
+	if res.Effort == "" {
+		res.Effort = "balanced"
+	}
+	res.Report(opt.stdout)
+	if err := writeJSON(opt, res); err != nil {
+		return false, err
+	}
+	// A wrong answer is exit 1 even beside an answer that never came:
+	// it is the number that counts, and a missing one does not undo it.
+	if err := res.ErrWrong(); err != nil {
+		return true, errors.Join(err, res.ErrIncomplete())
+	}
+	return false, res.ErrIncomplete()
 }

@@ -3,6 +3,7 @@ package merge
 import (
 	"bytes"
 	"path"
+	"slices"
 	"strings"
 	"unicode/utf8"
 )
@@ -17,12 +18,16 @@ var lockfiles = map[string]bool{
 	"flake.lock": true, "bun.lockb": true,
 }
 
+// builtExt are what a web build writes into a dist directory.
+var builtExt = map[string]bool{".html": true, ".js": true, ".mjs": true, ".cjs": true, ".css": true, ".map": true, ".json": true}
+
 // generatedMarker is Go's convention for a generated file, also used
 // elsewhere; looked for in the head only.
 var generatedMarker = []byte("DO NOT EDIT")
 
 // Excluded says why a both-changed file is no simple merge whatever its
-// lines: a lockfile, a minified or generated file, or not UTF-8 text. ""
+// lines: a lockfile, a minified, built (under a dist directory) or
+// generated file, or not UTF-8 text. ""
 // when it may be merged. Every version merged is passed: any one binary or
 // generated version rules it out.
 func Excluded(p string, versions ...[]byte) string {
@@ -31,6 +36,11 @@ func Excluded(p string, versions ...[]byte) string {
 	case lockfiles[base] || strings.HasSuffix(base, ".lock"):
 		return "lockfile"
 	case strings.Contains(base, ".min."):
+		return "generated"
+	case slices.Contains(strings.Split(path.Dir(p), "/"), "dist") && builtExt[path.Ext(base)]:
+		// A committed web build: asset hashes only a rebuild gets right,
+		// whichever side's line is kept. Source under a dist directory
+		// (Go's cmd/dist, a Python dist package) is not built output.
 		return "generated"
 	}
 	for _, v := range versions {

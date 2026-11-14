@@ -47,8 +47,6 @@ const (
 	// conflictMaxFileBytes bounds one both-changed file, as the file
 	// fetches of a review are (BITBUCKET_MAX_FILE_BYTES' default).
 	conflictMaxFileBytes int64 = 1 << 20
-	// conflictContextLines is the settled code shown around a conflict.
-	conflictContextLines = 3
 )
 
 // conflictDepths are the fetch depths tried for the merge base: most PRs
@@ -407,48 +405,14 @@ func (r *Reviewer) prepareConflict(ctx context.Context, j *conflictJob, pr webho
 func (r *Reviewer) conflictRequest(j *conflictJob) inference.ConflictRequest {
 	hunks := make([]inference.ConflictHunk, 0, len(j.pending))
 	for _, pc := range j.pending {
-		before, after := conflictContext(pc.file.chunks, pc.k)
-		c := pc.file.conflicts[pc.k]
-		hunks = append(hunks, inference.ConflictHunk{Path: pc.file.path, Before: before, After: after,
-			Base: noEOL(c.Base), Target: noEOL(c.Target), Source: noEOL(c.Source)})
+		before, after := merge.Context(pc.file.chunks, pc.k)
+		hunks = append(hunks, inference.HunkOf(pc.file.path, pc.file.conflicts[pc.k], before, after))
 	}
 	prompt := inference.RenderConflictPrompt(inference.ConflictPromptRequest{
 		Template: prompts.MergeConflict, TargetBranch: j.target, SourceBranch: j.source, Hunks: hunks, Language: j.lang,
 	})
 	return inference.ConflictRequest{Prompt: prompt,
 		PromptTokens: r.tokens.Count(inference.ConflictSystemMessage) + r.tokens.Count(prompt)}
-}
-
-// conflictContext is the settled lines around conflict k of a file.
-func conflictContext(chunks []merge.Chunk, k int) (before, after []string) {
-	seen := -1
-	for i, c := range chunks {
-		if c.Conflict == nil {
-			continue
-		}
-		seen++
-		if seen != k {
-			continue
-		}
-		if i > 0 && chunks[i-1].Conflict == nil {
-			ls := chunks[i-1].Lines
-			before = noEOL(ls[max(0, len(ls)-conflictContextLines):])
-		}
-		if i+1 < len(chunks) && chunks[i+1].Conflict == nil {
-			ls := chunks[i+1].Lines
-			after = noEOL(ls[:min(len(ls), conflictContextLines)])
-		}
-		break
-	}
-	return before, after
-}
-
-func noEOL(ls []string) []string {
-	out := make([]string, len(ls))
-	for i, l := range ls {
-		out[i] = merge.TrimEOL(l)
-	}
-	return out
 }
 
 // The answers more than one stage gives.
@@ -501,30 +465,17 @@ func (r *Reviewer) postConflict(ctx context.Context, j *conflictJob) {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: merge conflict resolution dropped: %s", j.prTag, why))
 		r.finishConflict(ctx, j, store.FixRejected, "", conflictUnsafe(j.lang))
 	}
-	if len(res.Resolution.Lines) != len(j.pending) {
-		rejected(fmt.Sprintf("%d resolutions for %d conflicts", len(res.Resolution.Lines), len(j.pending)))
+	asked := make([]*merge.Conflict, len(j.pending))
+	for i, pc := range j.pending {
+		asked[i] = pc.file.conflicts[pc.k]
+	}
+	refs, why := merge.ReadAnswer(asked, res.Resolution.Lines)
+	if why != "" {
+		rejected(why)
 		return
 	}
 	for i, pc := range j.pending {
-		ids, ok := res.Resolution.Lines[i+1]
-		if !ok {
-			rejected(fmt.Sprintf("conflict %d unanswered", i+1))
-			return
-		}
-		refs := make([]merge.Ref, 0, len(ids))
-		for _, id := range ids {
-			ref, ok := merge.ParseRef(id)
-			if !ok {
-				rejected(fmt.Sprintf("conflict %d: bad ref %q", i+1, id))
-				return
-			}
-			refs = append(refs, ref)
-		}
-		if why := merge.ValidateResolution(pc.file.conflicts[pc.k], refs); why != "" {
-			rejected(fmt.Sprintf("conflict %d: %s", i+1, why))
-			return
-		}
-		pc.file.resolutions[pc.k] = refs
+		pc.file.resolutions[pc.k] = refs[i]
 	}
 	r.commitConflict(ctx, j)
 }

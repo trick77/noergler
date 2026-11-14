@@ -1,0 +1,16 @@
+{
+  "name": "web-doximity-moved-line",
+  "origin": "web",
+  "source": "https://technology.doximity.com/articles/finding-joy-in-git-conflict-resolution (example 5)",
+  "why": "Control. The PR deleted the line (moved it elsewhere), target changed its flag; the page says to drop it here and carry the flag change to wherever the line went. Keeping target's line brings back a moved line.",
+  "target_branch": "merged-branch",
+  "source_branch": "feature/move-notify",
+  "control": true,
+  "files": [
+    {
+      "path": "app/signup.rb",
+      "merged": "def complete(user)\n  user.activate!\n<<<<<<< source\n||||||| base\n  BlueMessage.send(include_signature: true)\n=======\n  BlueMessage.send(include_signature: false)\n>>>>>>> target\n  redirect_to dashboard_path\nend\n"
+    }
+  ],
+  "accept": []
+}

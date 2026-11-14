@@ -1,0 +1,26 @@
+{
+  "name": "inv-ci-steps-both-add",
+  "origin": "invented",
+  "source": "hand-written",
+  "why": "Both branches added a CI step at the same spot. Both steps stay, each whole; which runs first does not matter.",
+  "target_branch": "main",
+  "source_branch": "feature/run-tests",
+  "control": false,
+  "files": [
+    {
+      "path": ".github/workflows/ci.yaml",
+      "merged": "jobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - name: checkout\n        uses: actions/checkout@v4\n<<<<<<< source\n      - name: test\n        run: make test\n||||||| base\n=======\n      - name: lint\n        run: make lint\n>>>>>>> target\n      - name: build\n        run: make build\n"
+    }
+  ],
+  "accept": [
+    {
+      "file": ".github/workflows/ci.yaml",
+      "conflict": 1,
+      "texts": [
+        "      - name: lint\n        run: make lint\n      - name: test\n        run: make test\n",
+        "      - name: test\n        run: make test\n      - name: lint\n        run: make lint\n"
+      ],
+      "any_order": false
+    }
+  ]
+}

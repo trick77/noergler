@@ -1,0 +1,25 @@
+{
+  "name": "mined-agents-md-sync-242fb1d00a",
+  "origin": "mined",
+  "source": "https://github.com/trick77/agents-md-sync/commit/242fb1d00a8da90500f9791df77daaa97169f057",
+  "why": "Both branches bumped the package version, master to 0.4.2, the PR branch to 0.5.0; the author kept 0.5.0. A value both set: declining is right too, 0.4.2 is wrong.",
+  "target_branch": "origin/master",
+  "source_branch": "fixes",
+  "control": false,
+  "files": [
+    {
+      "path": "package.json",
+      "merged": "{\n  \"name\": \"agents-md-sync\",\n<<<<<<< source\n  \"version\": \"0.5.0\",\n||||||| base\n  \"version\": \"0.4.1\",\n=======\n  \"version\": \"0.4.2\",\n>>>>>>> target\n  \"description\": \"Sync AGENTS.md across many repositories from a central markdown template repo, via pull requests.\",\n  \"license\": \"MIT\",\n  \"repository\": {\n"
+    }
+  ],
+  "accept": [
+    {
+      "file": "package.json",
+      "conflict": 1,
+      "texts": [
+        "  \"version\": \"0.5.0\",\n"
+      ],
+      "any_order": false
+    }
+  ]
+}

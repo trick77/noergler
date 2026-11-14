@@ -525,12 +525,12 @@ align differently is refused, since a server's histogram merge might
 settle it otherwise. A path only one side changed takes that side.
 
 Simple only, all or nothing: at most 10 paths both changed, 5 conflicts in 3
-files, 15 lines a side; no lockfile, generated or binary file, no file added
+files, 15 lines a side; no lockfile, generated, built (`dist/`) or binary file, no file added
 on both sides or deleted on one, no mode change, no file on one side where
 the other has a directory; an answer too long to quote every dropped line
 in full. Past any bound the request
 is refused with the reason, nothing asked, nothing pushed. A conflict where
-both sides only added lines, share none and set no key both (`"lodash":`
+both sides only added lines, not one block both added, share none (whitespace ignored) and set no key both (`"lodash":`
 on both sides, `const X =` twice) is resolved by code: target's lines,
 then source's. The rest goes to one call (`merge_conflict.txt`):
 the model sees each conflict's base, target and source lines, numbered, and

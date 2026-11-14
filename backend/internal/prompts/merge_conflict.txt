@@ -13,6 +13,7 @@ Each conflict shows, for one spot in one file:
 
 - Answer each conflict with the list of line ids the merged file keeps there, in order: `T3`, `S1`. Never text, never a `B` id.
 - Keep each branch's lines in their own order: `T2` never before `T1`, `S2` never before `S1`. You may interleave the two branches.
+- Read each branch against `B` first. A `B` line that one branch kept as it was and the other branch changed or deleted is the other branch's change: the merged file follows the change. Never keep such a line: keeping it undoes that branch's work, a deletion included.
 - Keep both branches' changes where both belong: a line each branch added, a list entry, an import.
 - A line both branches have with the same meaning, keep once.
 - Where the two branches changed the same line in ways that cannot both stand, keep one version only when it already carries what the other one changed (the same fix, plus more); the other is dropped, and every dropped line is shown to the author. When neither version carries the other's change, it is not yours to pick: infeasible.

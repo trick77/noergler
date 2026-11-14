@@ -107,16 +107,18 @@ func Pick(c *Conflict, refs []Ref) []string {
 // first, without their terminators. Counted per text: a side's line is
 // dropped as often as the side has its text more often than the merged
 // region does, so a line both sides have, kept once, is no loss, and one
-// copy of a line a side repeats on purpose is one.
+// copy of a line a side repeats on purpose is one. Text is compared
+// without whitespace, as Trivial compares it: `f() {` left out beside a
+// kept `f () {` is the same line, not a loss.
 func Dropped(c *Conflict, refs []Ref) (target, source []string) {
 	out := map[string]int{}
 	for _, l := range Pick(c, refs) {
-		out[TrimEOL(l)]++
+		out[noSpace(l)]++
 	}
 	side := func(lines []string, isTarget bool) []string {
 		have := map[string]int{}
 		for _, l := range lines {
-			have[TrimEOL(l)]++
+			have[noSpace(l)]++
 		}
 		used := map[int]bool{}
 		for _, r := range refs {
@@ -126,9 +128,9 @@ func Dropped(c *Conflict, refs []Ref) (target, source []string) {
 		}
 		var dropped []string
 		for i, l := range lines {
-			t := TrimEOL(l)
+			t := noSpace(l)
 			if !used[i+1] && have[t] > out[t] {
-				dropped = append(dropped, t)
+				dropped = append(dropped, TrimEOL(l))
 				have[t]--
 			}
 		}
@@ -140,6 +142,18 @@ func Dropped(c *Conflict, refs []Ref) (target, source []string) {
 // TrimEOL is a line without its terminator, "\n" or "\r\n".
 func TrimEOL(l string) string {
 	return strings.TrimSuffix(strings.TrimSuffix(l, "\n"), "\r")
+}
+
+// TrimEOLs is TrimEOL over lines; nil stays nil.
+func TrimEOLs(ls []string) []string {
+	if ls == nil {
+		return nil
+	}
+	out := make([]string, len(ls))
+	for i, l := range ls {
+		out[i] = TrimEOL(l)
+	}
+	return out
 }
 
 // ErrNoEOL is a line without a newline that would not end the file: joined
@@ -193,4 +207,62 @@ func LineOf(chunks []Chunk, resolutions [][]Ref, k int) int {
 		seen++
 	}
 	return line
+}
+
+// ContextLines is the settled code shown around a conflict.
+const ContextLines = 3
+
+// Context is the settled lines around conflict k (0-based) of a file, at
+// most ContextLines on each side, terminators kept.
+func Context(chunks []Chunk, k int) (before, after []string) {
+	seen := -1
+	for i, c := range chunks {
+		if c.Conflict == nil {
+			continue
+		}
+		seen++
+		if seen != k {
+			continue
+		}
+		if i > 0 && chunks[i-1].Conflict == nil {
+			ls := chunks[i-1].Lines
+			before = ls[max(0, len(ls)-ContextLines):]
+		}
+		if i+1 < len(chunks) && chunks[i+1].Conflict == nil {
+			ls := chunks[i+1].Lines
+			after = ls[:min(len(ls), ContextLines)]
+		}
+		break
+	}
+	return before, after
+}
+
+// ReadAnswer turns the model's ids, per conflict numbered from 1 in the
+// order asked, into refs that each pass ValidateResolution. All or
+// nothing: why is log vocabulary for the first problem, empty when every
+// conflict stands.
+func ReadAnswer(asked []*Conflict, answer map[int][]string) (refs [][]Ref, why string) {
+	if len(answer) != len(asked) {
+		return nil, fmt.Sprintf("%d resolutions for %d conflicts", len(answer), len(asked))
+	}
+	refs = make([][]Ref, len(asked))
+	for i, c := range asked {
+		ids, ok := answer[i+1]
+		if !ok {
+			return nil, fmt.Sprintf("conflict %d unanswered", i+1)
+		}
+		rs := make([]Ref, 0, len(ids))
+		for _, id := range ids {
+			r, ok := ParseRef(id)
+			if !ok {
+				return nil, fmt.Sprintf("conflict %d: bad ref %q", i+1, id)
+			}
+			rs = append(rs, r)
+		}
+		if why := ValidateResolution(c, rs); why != "" {
+			return nil, fmt.Sprintf("conflict %d: %s", i+1, why)
+		}
+		refs[i] = rs
+	}
+	return refs, ""
 }
