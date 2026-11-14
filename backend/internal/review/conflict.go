@@ -30,7 +30,8 @@ import (
 //   - code first: a conflict where both branches only added lines, none in
 //     common, is target's lines then source's, no model, no cost;
 //   - the rest goes to the model, which picks existing lines by id and
-//     writes none (merge.ValidateResolution checks it);
+//     writes none and brings back no line a branch deleted or changed
+//     (merge.ValidateResolution checks both);
 //   - every line dropped is quoted in the answer.
 // The bounds are merge's constants. Only the PR author may ask. The
 // fetch and the push run on the worker, like every Bitbucket call.

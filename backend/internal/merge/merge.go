@@ -49,6 +49,10 @@ type Conflict struct {
 	// Trimmed is a conflict whose edges lost lines both sides have there,
 	// settled once as git's zealous merge does.
 	Trimmed bool
+	// Head and Tail are those lines, settled before and after the
+	// conflict; Base still holds the whole region. Set by Merge3 only: a
+	// diff3 text cannot carry them.
+	Head, Tail []string
 }
 
 // Trivial reports a conflict code resolves without the model: both sides
@@ -238,6 +242,8 @@ func merge3(align aligner, base, target, source []string) ([]Chunk, error) {
 				Target:  append([]string(nil), t[p:len(t)-q]...),
 				Source:  append([]string(nil), s[p:len(s)-q]...),
 				Trimmed: p > 0 || q > 0,
+				Head:    append([]string(nil), t[:p]...),
+				Tail:    append([]string(nil), t[len(t)-q:]...),
 			}})
 			settle(t[len(t)-q:])
 		}

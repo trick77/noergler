@@ -168,7 +168,11 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   where both sides only inserted, none of it a block both added (no
   trimmed edge), share no non-blank line (whitespace ignored) and set no key
   both (text before `:`/`=`) is target then source, no model; the rest goes to one call that answers line ids (`T3`,
-  `S1`), never text; `ValidateResolution` blunt rules, no judge. All or
+  `S1`), never text; `ValidateResolution` blunt rules, no judge. A base
+  text kept more often than the sides have it beyond the base is refused
+  (`undoes_change`): a backstop, not the rule. It misses a change lost to
+  the other branch's change (delete vs modify), so the prompt's read
+  against B stays. All or
   nothing within merge's bounds (constants, never settings): any conflict
   past them, a lockfile, generated, built (`dist/`) or binary file, add/add, delete/modify,
   a mode change refuses the whole request. Merge commit, parents

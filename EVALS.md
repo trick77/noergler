@@ -245,6 +245,13 @@ Declines are the cost: version bumps both branches set (`agents-md-sync`,
 `bd5c2827b2`) and a docstring both rewrote were declined in every answer.
 The author picked; the prompt says to leave a value both set to them.
 
+The check went into `merge.ValidateResolution` as well (`undoes_change`,
+user, 2026-11-14), so a later run scores such an answer `rejected`, not
+`wrong`. Replayed through it, every stored answer: rev1's 10 base-line
+wrong answers rejected, none of 313 correct ones (rev1, draft, run2);
+1 of 39 author resolutions from a fresh mine refused (the version case).
+The run2 wrong (`42afcb954b`) passes it: no base line is kept.
+
 ## Known gaps
 
 - `lock-not-released` keywords miss correct findings; inflates `extra`.
