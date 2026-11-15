@@ -242,6 +242,9 @@ func (b *botSwitch) FetchPRFileDiff(ctx context.Context, project, repo string, p
 func (b *botSwitch) OpenTasks(ctx context.Context, project, repo string, prID int) ([]bitbucket.Comment, error) {
 	return b.c().OpenTasks(ctx, project, repo, prID)
 }
+func (b *botSwitch) PostInlineTask(ctx context.Context, project, repo string, prID int, file string, line int, body string) (int, error) {
+	return b.c().PostInlineTask(ctx, project, repo, prID, file, line, body)
+}
 func (b *botSwitch) PostPRTask(ctx context.Context, project, repo string, prID int, text string) (int, error) {
 	return b.c().PostPRTask(ctx, project, repo, prID, text)
 }

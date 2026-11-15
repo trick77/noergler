@@ -107,13 +107,21 @@ type Expected struct {
 	// This is what stops an unrelated remark on the right line from scoring.
 	Keywords []string `json:"keywords"`
 	Why      string   `json:"why"`
+	// Blocking is the rule id (B<n>, from the case's agents_md) the
+	// finding must carry and production must accept as a task
+	// (inference.CheckBlocking). Empty: the finding may be anything but a
+	// task, which counts under FalseTasks.
+	Blocking string `json:"blocking,omitempty"`
 }
 
 // CorpusFile is the on-disk shape of one case.
 type CorpusFile struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	Files       []struct {
+	// AgentsMD is the repo's AGENTS.md, empty for none: its [blocking]
+	// rules go into the prompt as production puts them.
+	AgentsMD string `json:"agents_md"`
+	Files    []struct {
 		Path           string `json:"path"`
 		Diff           string `json:"diff"`
 		Content        string `json:"content"`
@@ -133,6 +141,9 @@ type Case struct {
 	Files          []diff.FileReviewData
 	Expected       []Expected
 	ExpectedVisual []ExpectedVisual
+	// AgentsMD and its blocking rules, read once at load.
+	AgentsMD      string
+	BlockingRules []inference.BlockingRule
 	// shots are the case's screenshots, cut once at load.
 	shots caseImages
 }
@@ -161,7 +172,9 @@ func LoadCorpus() ([]Case, error) {
 		if cf.Name == "" {
 			return nil, fmt.Errorf("%s: case has no name", name)
 		}
-		c := Case{Name: cf.Name, Description: cf.Description, Expected: cf.Expected, ExpectedVisual: cf.ExpectedVisual}
+		c := Case{Name: cf.Name, Description: cf.Description, Expected: cf.Expected, ExpectedVisual: cf.ExpectedVisual,
+			AgentsMD: cf.AgentsMD}
+		c.BlockingRules, _ = inference.ExtractBlockingRules(cf.AgentsMD)
 		if c.shots, err = loadImages(cf.Screenshots); err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
 		}
@@ -220,6 +233,11 @@ type Result struct {
 	// Visual the model's lines by path, as the summary would show them.
 	VisualMatches []VisualMatch     `json:",omitempty"`
 	Visual        map[string]string `json:",omitempty"`
+	// Blocking is every finding's blocking claim as production settles it
+	// (inference.CheckBlocking), FalseTasks the tasks no expectation asked
+	// for: a task blocks a merge, so one too many is noise that costs.
+	Blocking   []BlockingClaim `json:",omitempty"`
+	FalseTasks int             `json:",omitempty"`
 	// Err is excluded from JSON: encoding/json renders an error as {}, so a
 	// committed report would record THAT a case failed but not why, making a
 	// 401 and a timeout look identical in history. ErrMsg carries the text.
@@ -251,6 +269,8 @@ type Score struct {
 	// on a clean case every finding is noise, on a buggy one it is a finding
 	// that pinned nothing the case asked for.
 	Seeded, Caught, Extra int
+	// FalseTasks is summed across cases: tasks no expectation asked for.
+	FalseTasks int `json:",omitempty"`
 }
 
 // Reviewer is the inference call an eval run makes. The real
@@ -271,6 +291,7 @@ func Run(ctx context.Context, client Reviewer, template string, cases []Case, co
 		score.Seeded += len(c.Expected) + len(c.ExpectedVisual)
 		score.Caught += res.Found()
 		score.Extra += res.Extra
+		score.FalseTasks += res.FalseTasks
 		score.Results = append(score.Results, res)
 	}
 	return score
@@ -280,8 +301,10 @@ func Run(ctx context.Context, client Reviewer, template string, cases []Case, co
 // production weighs them, images and the text around them.
 func assemble(template string, c Case, count inference.CountFunc) inference.AssembledPrompt {
 	a := inference.AssembleReviewPrompt(inference.AssembleRequest{
-		Template: template,
-		Files:    c.Files,
+		Template:         template,
+		Files:            c.Files,
+		RepoInstructions: c.AgentsMD,
+		BlockingRules:    c.BlockingRules,
 		// The scoring matches English corpus keywords.
 		Language: lang.EN,
 	}, count)
@@ -318,7 +341,66 @@ func reviewCase(ctx context.Context, client Reviewer, c Case, assembled inferenc
 		res.Err, res.ErrMsg = out.Err, out.Err.Error()
 	}
 	res.Matches, res.Extra, res.Duplicates = match(c.Expected, res.Findings)
+	res.Blocking, res.FalseTasks = scoreBlocking(res.Matches, res.Findings, c.BlockingRules)
 	return res, out.Cost
+}
+
+// BlockingClaim is one finding's blocking claim and what production makes
+// of it before the task cap and the switches (inference.CheckBlocking).
+type BlockingClaim struct {
+	Finding int
+	Rule    string
+	Outcome inference.BlockingOutcome
+}
+
+// scoreBlocking holds the blocking half of a case: an expectation naming a
+// rule is caught only by a finding production would post as a task for
+// that rule (else it turns into a miss, saying why), and every task no
+// expectation asked for is a false task. Blunt, like the rest: production's
+// own check, never a judge.
+func scoreBlocking(matches []Match, findings []inference.ReviewFinding, rules []inference.BlockingRule) ([]BlockingClaim, int) {
+	var claims []BlockingClaim
+	task := make(map[int]string, len(findings))
+	for i, f := range findings {
+		if !f.Marked() {
+			continue
+		}
+		rule, outcome, ok := inference.CheckBlocking(f, rules)
+		claim := BlockingClaim{Finding: i, Rule: *f.BlockingRule, Outcome: outcome}
+		if rule != nil {
+			claim.Rule = rule.ID
+		}
+		claims = append(claims, claim)
+		if ok {
+			task[i] = rule.ID
+		}
+	}
+	asked := map[int]bool{}
+	for mi := range matches {
+		m := &matches[mi]
+		if !m.Found || m.Expected.Blocking == "" {
+			continue
+		}
+		if task[m.Finding] == m.Expected.Blocking {
+			asked[m.Finding] = true
+			continue
+		}
+		why := "no blocking_rule"
+		if f := findings[m.Finding]; f.Marked() {
+			_, outcome, _ := inference.CheckBlocking(f, rules)
+			why = fmt.Sprintf("blocking_rule %q: %s", *f.BlockingRule, outcome)
+		}
+		m.Found, m.Why = false, fmt.Sprintf("caught on %s:%d, but not a task for %s (%s)",
+			findings[m.Finding].File, findings[m.Finding].Line, m.Expected.Blocking, why)
+		m.Finding = -1
+	}
+	falseTasks := 0
+	for i := range task {
+		if !asked[i] {
+			falseTasks++
+		}
+	}
+	return claims, falseTasks
 }
 
 // drawCase is reviewCase, drawn again while the call does not complete, up
@@ -483,6 +565,22 @@ func (s Score) ErrInvented() error {
 		len(noisy), strings.Join(noisy, "; "))
 }
 
+// ErrFalseTasks reports blocking tasks no expectation asked for, on any
+// case: a task blocks a merge, so a false one costs like an invented
+// finding on a control. Nil when there was none.
+func (s Score) ErrFalseTasks() error {
+	var noisy []string
+	for _, r := range s.Results {
+		if r.FalseTasks > 0 {
+			noisy = append(noisy, fmt.Sprintf("%s: %d", r.Case, r.FalseTasks))
+		}
+	}
+	if len(noisy) == 0 {
+		return nil
+	}
+	return fmt.Errorf("blocking task(s) no case asked for: %s", strings.Join(noisy, "; "))
+}
+
 // Report renders a run for a terminal.
 //
 // Write errors are dropped: this goes to stdout, and a report that cannot be
@@ -524,9 +622,16 @@ func (s Score) Report(w io.Writer) {
 			}
 			p("           why it matters: %s\n", m.Expected.Why)
 		}
+		for _, b := range r.Blocking {
+			f := r.Findings[b.Finding]
+			p("    BLOCK  %-22s %s:%d %s\n", b.Rule, f.File, f.Line, b.Outcome)
+		}
+		if r.FalseTasks > 0 {
+			p("    FALSE TASK(S) %d\n", r.FalseTasks)
+		}
 	}
-	p("\nseeded %d, caught %d, missed %d, extra findings %d\n",
-		s.Seeded, s.Caught, s.Seeded-s.Caught, s.Extra)
+	p("\nseeded %d, caught %d, missed %d, extra findings %d, false tasks %d\n",
+		s.Seeded, s.Caught, s.Seeded-s.Caught, s.Extra, s.FalseTasks)
 }
 
 // match pairs seeded bugs with findings. One finding can satisfy at most one

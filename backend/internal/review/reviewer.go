@@ -90,10 +90,11 @@ type Reviewer struct {
 	ignoreAuthorGlobs []string
 	// usePRDescription is rewritten by the same API, so it is atomic too.
 	usePRDescription atomic.Bool
-	// snapshotTask is the team's switch, rewritten by the same API;
-	// createTasks the instance's, fixed at startup (snapshottask.go).
-	snapshotTask atomic.Bool
-	createTasks  bool
+	// teamTasks is the team's task switch (create_tasks), rewritten by the
+	// same API; createTasks the instance's, fixed at startup. Both on or no
+	// task call at all (tasksOn).
+	teamTasks   atomic.Bool
+	createTasks bool
 	// defaultBranches is each repo's default branch, read once an hour.
 	defaultBranches branchCache
 	// snapshotMemo is each PR's last SNAPSHOT hits by its build files.
@@ -189,7 +190,7 @@ func New(opt Options) *Reviewer {
 		publicURL:         opt.PublicURL,
 	}
 	r.usePRDescription.Store(opt.Config.UsePRDescription)
-	r.snapshotTask.Store(opt.Config.SnapshotTask)
+	r.teamTasks.Store(opt.Config.CreateTasks)
 	return r
 }
 
@@ -197,9 +198,14 @@ func New(opt Options) *Reviewer {
 // the prompt for every later review and mention.
 func (r *Reviewer) SetUsePRDescription(on bool) { r.usePRDescription.Store(on) }
 
-// SetSnapshotTask switches the team's SNAPSHOT task on or off for every
-// later review.
-func (r *Reviewer) SetSnapshotTask(on bool) { r.snapshotTask.Store(on) }
+// SetCreateTasks switches the team's tasks (the SNAPSHOT task and a
+// blocking rule's) on or off for every later review.
+func (r *Reviewer) SetCreateTasks(on bool) { r.teamTasks.Store(on) }
+
+// tasksOn reports whether noergler may make any task call for this team:
+// the instance's switch and the team's both on (user, 2026-11-15: "off
+// means off").
+func (r *Reviewer) tasksOn() bool { return r.createTasks && r.teamTasks.Load() }
 
 // SetAuthorLists replaces the two author lists.
 //

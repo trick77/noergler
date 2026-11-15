@@ -70,9 +70,10 @@ type teamView struct {
 	ExcludeSourceBranches []string `json:"exclude_source_branches"`
 	ExcludeTargetBranches []string `json:"exclude_target_branches"`
 	UsePRDescription      bool     `json:"use_pr_description"`
-	// SnapshotTask: a Bitbucket task on a PR into the default branch that
-	// adds a SNAPSHOT build (REVIEW_CREATE_TASKS gates it instance-wide).
-	SnapshotTask bool `json:"snapshot_task"`
+	// CreateTasks: noergler may open Bitbucket tasks in this team, the
+	// SNAPSHOT task and a blocking rule's (REVIEW_CREATE_TASKS gates it
+	// instance-wide).
+	CreateTasks bool `json:"create_tasks"`
 	// Which accounts the team works with: its own (pushed) or the shared
 	// ones. Never a token.
 	BitbucketAccount bitbucketAccountView `json:"bitbucket_account"`
@@ -139,7 +140,7 @@ func viewOf(t *config.Team, rt *teams.Runtime, sharedBot string, authorGlobs []s
 		ExcludeSourceBranches: nonNil(t.Review.ExcludeSourceBranches),
 		ExcludeTargetBranches: nonNil(t.Review.ExcludeTargetBranches),
 		UsePRDescription:      t.Review.UsePRDescription,
-		SnapshotTask:          t.Review.SnapshotTask,
+		CreateTasks:           t.Review.CreateTasks,
 	}
 }
 
@@ -175,7 +176,7 @@ type settingsRequest struct {
 	ExcludeSourceBranches *[]string `json:"exclude_source_branches"`
 	ExcludeTargetBranches *[]string `json:"exclude_target_branches"`
 	UsePRDescription      *bool     `json:"use_pr_description"`
-	SnapshotTask          *bool     `json:"snapshot_task"`
+	CreateTasks           *bool     `json:"create_tasks"`
 }
 
 // clean resolves one partial-update field: nil keeps the current list,
@@ -224,7 +225,7 @@ func (d Deps) putTeamSettings(w http.ResponseWriter, r *http.Request) {
 			ExcludeSourceBranches: clean(body.ExcludeSourceBranches, current.ExcludeSourceBranches),
 			ExcludeTargetBranches: clean(body.ExcludeTargetBranches, current.ExcludeTargetBranches),
 			UsePRDescription:      keep(body.UsePRDescription, current.UsePRDescription),
-			SnapshotTask:          keep(body.SnapshotTask, current.SnapshotTask),
+			CreateTasks:           keep(body.CreateTasks, current.CreateTasks),
 		}
 	}, func(next store.TeamSettings) error {
 		return d.Store.PutSettings(ctx, slug, next, "team:"+slug)

@@ -479,6 +479,43 @@ func TestFindings_ExistingOnlyForOpenPR(t *testing.T) {
 	}
 }
 
+// A blocking claim's rule text and outcome come back with the finding; the
+// outcome is the closed vocabulary of inference.BlockingOutcome.
+func TestFindings_BlockingRuleRoundTrips(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	id := upsert(t, s, key, "a")
+	runID := run(t, s, id, "a", nil, "m")
+	f := Finding{PullRequestID: id, RunID: runID, FilePath: "a.go", LineNumber: 1, Severity: "issue", CommentText: "c",
+		BitbucketCommentID: num(5), BlockingRule: str("No SQL in controllers."), BlockingOutcome: str("task")}
+	if err := s.InsertFinding(ctx, f); err != nil {
+		t.Fatal(err)
+	}
+	plain := Finding{PullRequestID: id, RunID: runID, FilePath: "a.go", LineNumber: 2, Severity: "issue", CommentText: "d"}
+	if err := s.InsertFinding(ctx, plain); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.ExistingFindings(ctx, key)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("findings = %+v, err = %v", got, err)
+	}
+	if !got[0].IsTask() || *got[0].BlockingRule != "No SQL in controllers." || got[1].BlockingRule != nil || got[1].IsTask() {
+		t.Errorf("blocking fields: %+v / %+v", got[0], got[1])
+	}
+	// A task whose rule left AGENTS.md: settled and marked, still listed.
+	if err := s.MarkRuleRemoved(ctx, got[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := s.ExistingFindings(ctx, key)
+	if after[0].IsTask() || *after[0].BlockingOutcome != "rule_removed" || after[0].ClosedAt == nil {
+		t.Errorf("after rule removed: %+v", after[0])
+	}
+	f.BlockingOutcome = str("blocked")
+	if err := s.InsertFinding(ctx, f); err == nil {
+		t.Error("an outcome outside the vocabulary must be refused")
+	}
+}
+
 // A fixed finding leaves the previously-posted block and dedup, so the same
 // bug coming back is posted again. The first stamp wins.
 func TestFindings_FixedLeavesExisting(t *testing.T) {
@@ -1065,12 +1102,12 @@ func TestSettings_PRDescriptionDefaultsOn(t *testing.T) {
 	if !all["old"].UsePRDescription {
 		t.Errorf("use_pr_description = false on a row that never set it")
 	}
-	if !all["old"].SnapshotTask {
-		t.Errorf("snapshot_task = false on a row that never set it")
+	if !all["old"].CreateTasks {
+		t.Errorf("create_tasks = false on a row that never set it")
 	}
 	_ = s.PutSettings(ctx, "old", TeamSettings{UsePRDescription: true}, "jan")
-	if all, _ = s.GetAllSettings(ctx); all["old"].SnapshotTask {
-		t.Errorf("snapshot_task false not stored")
+	if all, _ = s.GetAllSettings(ctx); all["old"].CreateTasks {
+		t.Errorf("create_tasks false not stored")
 	}
 }
 

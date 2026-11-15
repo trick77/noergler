@@ -1,0 +1,32 @@
+{
+  "name": "blocking-unrelated-bug",
+  "description": "AGENTS.md marks two rules blocking, and the diff breaks neither: it drops the end clamp of a pager, so the last partial page panics. A real finding that must not be marked blocking: a task on it is a false task.",
+  "agents_md": "# billing-api\n\n- Go 1.24, stdlib net/http only.\n- [blocking] Never log a request body or a customer's personal data (email, IBAN, name).\n- [blocking] Every handler that loads an invoice by id checks it belongs to the caller's tenant (`authz.SameTenant(r, inv.TenantID)`) before returning it.\n",
+  "files": [
+    {
+      "path": "internal/api/paging.go",
+      "diff": "@@ -6,9 +6,5 @@ func page[T any](items []T, n, size int) []T {\n \tif start >= len(items) {\n \t\treturn nil\n \t}\n-\tend := start + size\n-\tif end > len(items) {\n-\t\tend = len(items)\n-\t}\n-\treturn items[start:end]\n+\treturn items[start : start+size]\n }",
+      "content": "package api\n\n// page returns the items of page n (1-based), size per page.\nfunc page[T any](items []T, n, size int) []T {\n\tstart := (n - 1) * size\n\tif start >= len(items) {\n\t\treturn nil\n\t}\n\treturn items[start : start+size]\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": [
+    {
+      "id": "last-page-out-of-range",
+      "file": "internal/api/paging.go",
+      "lines": [
+        8,
+        10
+      ],
+      "keywords": [
+        "range",
+        "panic",
+        "bounds",
+        "last page",
+        "len",
+        "partial"
+      ],
+      "why": "Without the clamp, start+size passes len(items) on a partial last page and the slice expression panics. No blocking rule covers it."
+    }
+  ]
+}

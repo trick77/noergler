@@ -26,6 +26,10 @@ func (c outgoing) PostInlineComment(ctx context.Context, project, repo string, p
 	return c.BitbucketClient.PostInlineComment(ctx, project, repo, prID, file, line, render.NoEmDash(body))
 }
 
+func (c outgoing) PostInlineTask(ctx context.Context, project, repo string, prID int, file string, line int, body string) (int, error) {
+	return c.BitbucketClient.PostInlineTask(ctx, project, repo, prID, file, line, render.NoEmDash(body))
+}
+
 func (c outgoing) PostPRComment(ctx context.Context, project, repo string, prID int, text string) (id, version int, err error) {
 	return c.BitbucketClient.PostPRComment(ctx, project, repo, prID, render.NoEmDash(text))
 }

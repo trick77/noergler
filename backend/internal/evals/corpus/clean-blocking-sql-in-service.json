@@ -1,0 +1,14 @@
+{
+  "name": "clean-blocking-sql-in-service",
+  "description": "Control, similar but allowed: the same blocking rule ('controllers never access the database'), and the diff adds the same JdbcTemplate query, but to the @Service the rule names as the right place. No finding, no task.",
+  "agents_md": "# Orders service\n\n- Java 21, Spring Boot 3.\n- [blocking] Controllers never access the database directly (no `JdbcTemplate`, no repository): every query goes through a service.\n- Prefer constructor injection.\n",
+  "files": [
+    {
+      "path": "src/main/java/com/acme/orders/OrderService.java",
+      "diff": "@@ -1,17 +1,27 @@\n package com.acme.orders;\n \n+import java.util.List;\n+import java.util.Map;\n+\n+import org.springframework.jdbc.core.JdbcTemplate;\n import org.springframework.stereotype.Service;\n \n @Service\n public class OrderService {\n \n     private final OrderRepository repo;\n+    private final JdbcTemplate jdbc;\n \n-    public OrderService(OrderRepository repo) {\n+    public OrderService(OrderRepository repo, JdbcTemplate jdbc) {\n         this.repo = repo;\n+        this.jdbc = jdbc;\n     }\n \n     public Order find(long id) {\n         return repo.findById(id).orElseThrow(() -> new OrderNotFound(id));\n     }\n+\n+    public List<Map<String, Object>> lines(long id) {\n+        return jdbc.queryForList(\"SELECT sku, qty FROM order_lines WHERE order_id = ?\", id);\n+    }\n }",
+      "content": "package com.acme.orders;\n\nimport java.util.List;\nimport java.util.Map;\n\nimport org.springframework.jdbc.core.JdbcTemplate;\nimport org.springframework.stereotype.Service;\n\n@Service\npublic class OrderService {\n\n    private final OrderRepository repo;\n    private final JdbcTemplate jdbc;\n\n    public OrderService(OrderRepository repo, JdbcTemplate jdbc) {\n        this.repo = repo;\n        this.jdbc = jdbc;\n    }\n\n    public Order find(long id) {\n        return repo.findById(id).orElseThrow(() -> new OrderNotFound(id));\n    }\n\n    public List<Map<String, Object>> lines(long id) {\n        return jdbc.queryForList(\"SELECT sku, qty FROM order_lines WHERE order_id = ?\", id);\n    }\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": []
+}

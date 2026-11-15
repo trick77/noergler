@@ -1,0 +1,288 @@
+{
+ "Results": [
+  {
+   "Case": "blocking-float-money",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "src/cart/total.ts",
+     "Line": 14,
+     "Severity": "issue",
+     "Comment": "`totalWithVat` converts the integer-cent subtotal to euros (`subtotal(lines) / 100`), multiplies by `(1 + vatRate)` in floating point, then scales back to cents. This is arithmetic on amounts as floating-point euros, which the project's blocking rule forbids, and it produces non-integer or off-by-one-cent results on ordinary input: e.g. a subtotal of 1999 cents with `vatRate = 0.2` goes through `19.99 * 1.2 = 23.988000000000002`, and `23.988000000000002 * 100 = 2398.8000000000002`, which is not a whole number of cents and does not match the mathematically rounded 2399. Any caller summing or charging the result gets a wrong or fractional amount.",
+     "Confidence": 95,
+     "Headline": "VAT total computed in floating-point euros, violating Cents invariant",
+     "Suggestion": "export function totalWithVat(lines: Line[], vatRate: number): Cents {\n  return Math.round(subtotal(lines) * (1 + vatRate)) as Cents;\n}",
+     "Evidence": [
+      "export function totalWithVat(lines: Line[], vatRate: number): Cents {",
+      "  const euros = subtotal(lines) / 100;",
+      "  const gross = euros * (1 + vatRate);",
+      "  return (gross * 100) as Cents;"
+     ],
+     "BlockingRule": "B1"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "vat-total-not-integer-cents",
+      "file": "src/cart/total.ts",
+      "lines": [
+       13,
+       16
+      ],
+      "keywords": [
+       "float",
+       "cents",
+       "round",
+       "integer",
+       "euro",
+       "precision",
+       "fraction"
+      ],
+      "why": "The total is computed in floating-point euros and returned unrounded as Cents, which the blocking rule forbids and which yields fractional cents.",
+      "blocking": "B1"
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0,
+   "Blocking": [
+    {
+     "Finding": 0,
+     "Rule": "B1",
+     "Outcome": "task"
+    }
+   ]
+  },
+  {
+   "Case": "blocking-pii-log",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/api/customers.go",
+     "Line": 25,
+     "Severity": "issue",
+     "Comment": "The new success log line writes `c.Email` and `c.IBAN` to the structured log on every successful create. The blocking guideline B1 forbids logging a customer's personal data (email, IBAN, name), and this handler has both values in scope from the decoded request body, so any create request ends up with the customer's contact and bank details in the log stream — visible to anyone with log access and likely persisted to log storage. The same request body data must not be logged in any form.",
+     "Confidence": 98,
+     "Headline": "Success log writes customer email and IBAN to the log",
+     "Suggestion": "h.Log.Info(\"customer created\", \"id\", c.ID)",
+     "Evidence": [
+      "h.Log.Info(\"customer created\", \"id\", c.ID, \"email\", c.Email, \"iban\", c.IBAN)",
+      "w.WriteHeader(http.StatusCreated)"
+     ],
+     "BlockingRule": "B1"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "customer-pii-logged",
+      "file": "internal/api/customers.go",
+      "lines": [
+       24,
+       26
+      ],
+      "keywords": [
+       "email",
+       "IBAN",
+       "personal",
+       "PII",
+       "log"
+      ],
+      "why": "The success log carries the customer's email and IBAN, which the blocking rule forbids.",
+      "blocking": "B1"
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0,
+   "Blocking": [
+    {
+     "Finding": 0,
+     "Rule": "B1",
+     "Outcome": "task"
+    }
+   ]
+  },
+  {
+   "Case": "blocking-sql-in-controller",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "src/main/java/com/acme/orders/OrderController.java",
+     "Line": 29,
+     "Severity": "issue",
+     "Comment": "The new `/orders/{id}/lines` endpoint queries the database straight from the controller via the injected `JdbcTemplate` (`jdbc.queryForList(\"SELECT sku, qty FROM order_lines WHERE order_id = ?\", id)`). The project guideline marked blocking requires that every query goes through a service, so `OrderService` (already used by `get`) should expose a lines lookup and `lines` should delegate to it instead of holding a `JdbcTemplate` field at all.",
+     "Confidence": 95,
+     "Headline": "Controller queries the database directly via JdbcTemplate",
+     "Suggestion": "        return orders.findLines(id);",
+     "Evidence": [
+      "private final OrderService orders;",
+      "private final JdbcTemplate jdbc;",
+      "@GetMapping(\"/orders/{id}/lines\")",
+      "public List\u003cMap\u003cString, Object\u003e\u003e lines(@PathVariable long id) {",
+      "return jdbc.queryForList(\"SELECT sku, qty FROM order_lines WHERE order_id = ?\", id);"
+     ],
+     "BlockingRule": "B1"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "controller-runs-sql",
+      "file": "src/main/java/com/acme/orders/OrderController.java",
+      "lines": [
+       15,
+       29
+      ],
+      "keywords": [
+       "service",
+       "controller",
+       "database",
+       "JdbcTemplate",
+       "jdbc",
+       "SQL",
+       "query"
+      ],
+      "why": "The new endpoint queries order_lines from the controller, which the blocking rule forbids. A reviewer may anchor on the query (29), the method (28) or the injected field (15).",
+      "blocking": "B1"
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0,
+   "Blocking": [
+    {
+     "Finding": 0,
+     "Rule": "B1",
+     "Outcome": "task"
+    }
+   ]
+  },
+  {
+   "Case": "blocking-tenant-check",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/api/invoices.go",
+     "Line": 26,
+     "Severity": "issue",
+     "Comment": "The new `Get` handler loads an invoice solely by the path id and encodes it straight to the response. Any authenticated caller from a different tenant who knows or guesses an invoice id (ids in URL paths routinely leak via logs, referrers, and support tickets) receives another tenant's invoice record. The project rule requires `authz.SameTenant(r, inv.TenantID)` before returning an invoice loaded by id; the `List` handler right above scopes by tenant, so this handler is the one hole in the invariant.",
+     "Confidence": 95,
+     "Headline": "Invoice Get handler skips the SameTenant authorization check",
+     "Suggestion": "inv, err := h.Store.Invoice(r.Context(), r.PathValue(\"id\"))\nif err != nil {\n\thttp.Error(w, \"not found\", http.StatusNotFound)\n\treturn\n}\nif !authz.SameTenant(r, inv.TenantID) {\n\thttp.Error(w, \"not found\", http.StatusNotFound)\n\treturn\n}",
+     "Evidence": [
+      "inv, err := h.Store.Invoice(r.Context(), r.PathValue(\"id\"))",
+      "if err != nil {",
+      "http.Error(w, \"not found\", http.StatusNotFound)",
+      "return",
+      "}"
+     ],
+     "BlockingRule": "B2"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "invoice-without-tenant-check",
+      "file": "internal/api/invoices.go",
+      "lines": [
+       25,
+       31
+      ],
+      "keywords": [
+       "tenant",
+       "SameTenant",
+       "authz",
+       "authoriz",
+       "another"
+      ],
+      "why": "Get returns any invoice by id to any caller; the blocking rule demands authz.SameTenant first. Anchors anywhere from the signature (25) to the encode (31) are honest.",
+      "blocking": "B2"
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0,
+   "Blocking": [
+    {
+     "Finding": 0,
+     "Rule": "B2",
+     "Outcome": "task"
+    }
+   ]
+  },
+  {
+   "Case": "blocking-unrelated-bug",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/api/paging.go",
+     "Line": 9,
+     "Severity": "issue",
+     "Comment": "The `end` clamp was removed, so `items[start : start+size]` runs past the slice whenever a page is not full. For example, with 5 items, `page(items, 1, 10)` computes `start = 0`, passes the `start \u003e= len(items)` guard (`0 \u003c 5`), and evaluates `items[0:10]`, which panics with \"slice bounds out of range\". The same panic hits the common short-last-page case: 5 items at `page(items, 2, 3)` gives `start = 3` and `items[3:6]` on a length-5 slice. Any call where `len(items)` is not an exact multiple of `size`, or where `size` exceeds `len(items)`, crashes the request.",
+     "Confidence": 97,
+     "Headline": "page() panics when the requested page runs past the end of items",
+     "Suggestion": "\treturn items[start:min(start+size, len(items))]",
+     "Evidence": [
+      "\tif start \u003e= len(items) {",
+      "\t\treturn nil",
+      "\t}",
+      "\treturn items[start : start+size]"
+     ],
+     "BlockingRule": null
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "last-page-out-of-range",
+      "file": "internal/api/paging.go",
+      "lines": [
+       8,
+       10
+      ],
+      "keywords": [
+       "range",
+       "panic",
+       "bounds",
+       "last page",
+       "len",
+       "partial"
+      ],
+      "why": "Without the clamp, start+size passes len(items) on a partial last page and the slice expression panics. No blocking rule covers it."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-blocking-sql-in-service",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-blocking-tenant-checked",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  }
+ ],
+ "Seeded": 5,
+ "Caught": 5,
+ "Extra": 0
+}

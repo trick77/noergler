@@ -155,6 +155,17 @@ type ReviewFinding struct {
 	// does not, so the drop is logged with its reason like every other.
 	Evidence []string
 
+	// BlockingRule is the id (B<n>) of the blocking rule the model says the
+	// finding violates, nil when none. A claim only: CheckBlocking decides.
+	BlockingRule *string
+
+	// Blocking is what code made of BlockingRule ("" when the model named
+	// none), BlockingText the rule's text when its id was known: for the
+	// inline comment, the summary and the findings row. Set by the review
+	// (or read back from the row), never parsed.
+	Blocking     BlockingOutcome `json:"-"`
+	BlockingText string          `json:"-"`
+
 	// MovedFrom is the line the model cited when ValidateFindings moved the
 	// finding to its evidence; nil = not moved (a pointer: the model can
 	// cite line 0). Set by validation, never parsed or serialized, so it
@@ -181,6 +192,9 @@ func parseFinding(raw json.RawMessage) (ReviewFinding, bool) {
 		Headline   *string          `json:"headline"`
 		Suggestion *string          `json:"suggestion"`
 		Evidence   *json.RawMessage `json:"evidence"`
+		// BlockingRule: anything but a string reads as no claim; the
+		// finding stands either way.
+		BlockingRule json.RawMessage `json:"blocking_rule"`
 	}
 	if json.Unmarshal(raw, &probe) != nil {
 		return ReviewFinding{}, false
@@ -205,6 +219,10 @@ func parseFinding(raw json.RawMessage) (ReviewFinding, bool) {
 	}
 	if probe.Evidence != nil {
 		out.Evidence = coerceEvidence(*probe.Evidence)
+	}
+	var rule string
+	if json.Unmarshal(probe.BlockingRule, &rule) == nil && strings.TrimSpace(rule) != "" {
+		out.BlockingRule = &rule
 	}
 	// confidence is optional, so an explicit null is absent rather than
 	// invalid. Any other unusable value drops the finding.

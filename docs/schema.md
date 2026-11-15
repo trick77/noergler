@@ -219,6 +219,8 @@ Go types:
 | `replied_at` | timestamp with time zone | yes |  |  |
 | `dispute_text` | text | yes |  |  |
 | `closed_at` | timestamp with time zone | yes |  |  |
+| `blocking_rule` | text | yes |  |  |
+| `blocking_outcome` | text | yes |  |  |
 
 Foreign keys:
 
@@ -230,6 +232,10 @@ Indexes:
 
 - `idx_findings_comment` (`bitbucket_comment_id`)
 - `idx_findings_dedup` (`pull_request_id`, `file_path`, `line_number`, `severity`)
+
+Checks:
+
+- `CONSTRAINT findings_blocking_outcome_check CHECK (blocking_outcome = ANY (ARRAY['task'::text, 'downgraded_unknown_rule'::text, 'downgraded_severity'::text, 'downgraded_confidence'::text, 'downgraded_cap'::text, 'downgraded_tasks_off'::text, 'downgraded_task_failed'::text, 'rule_removed'::text]))`
 
 ## llm_calls
 
@@ -516,7 +522,7 @@ Go types:
 | `use_pr_description` | boolean | no | `true` |  |
 | `exclude_source_branches` | text[] | no | `'{}'::text[]` |  |
 | `exclude_target_branches` | text[] | no | `'{}'::text[]` |  |
-| `snapshot_task` | boolean | no | `true` |  |
+| `create_tasks` | boolean | no | `true` |  |
 
 ## user_settings
 
@@ -819,6 +825,8 @@ erDiagram
         timestamp_with_time_zone replied_at
         text dispute_text
         timestamp_with_time_zone closed_at
+        text blocking_rule
+        text blocking_outcome
     }
     llm_calls {
         bigint id PK
@@ -963,7 +971,7 @@ erDiagram
         boolean use_pr_description
         text[] exclude_source_branches
         text[] exclude_target_branches
-        boolean snapshot_task
+        boolean create_tasks
     }
     user_settings {
         text user_name PK

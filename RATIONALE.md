@@ -217,6 +217,24 @@ an incident or an eval run: read the reason before relaxing a rule.
   switches (user: "off means off!"): no call, an open task stays for a
   person. Team switch
   on for every team (user), instance switch on by default (user).
+- Blocking rules (user, 2026-11-15): for rules only a model can check
+  ("no DB access from controllers"); a rule code can check stays code (the
+  SNAPSHOT task). The marker is read by code, the model never picks what
+  blocks: a merge must not hang on a model's reading of which rule is
+  strict. A task, not a finding flag: the merge check blocks on it and the
+  author resolves it on purpose. Downgrade, never drop: a weak claim is
+  still a finding. Confidence 90 (user), not the plan's 8: the scale is
+  0-100 and the schema floor 80, so 80 filters nothing; 90 is the prompt's
+  "exact line, failing input describable". Caps (10 rules, 3 tasks) bound a
+  model that marks everything. Posted to `blocker-comments` with the
+  anchor: the 7.6 reference's "Blocker file line comment"; `/comments` with
+  anchor + severity is not documented. A rule removed resolves its task
+  (user), which settles the finding: the team said it no longer blocks.
+  Rules from the target branch (code review): read from the PR's head, a
+  PR could delete the marker it violates and unblock itself; a rule a PR
+  adds blocks from its merge on. One more GET per review. A reworded rule
+  is a removed one (text is the key), so its row holds back no new task:
+  else the violation under the new wording would be a held-back repeat.
 - Merge conflict author only: the push lands on the author's branch.
 - A yes to the offer (user, 2026-11-15: "a reply with yes should simply be
   enough"; a word list misses "let's try that", so the model reads the

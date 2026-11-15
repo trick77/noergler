@@ -280,6 +280,12 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// claimed fixed), dedupe still holds its repeat back, and the summary's
 	// list and verdict leave it out.
 	existing, _ = r.closeThreads(ctx, key, prTag, existing, maxThreadChecks, false)
+	// The target branch's rules, never the PR's own: the branch a rule
+	// gates must not lift it. A rule it no longer marks blocks nothing: its
+	// open tasks go.
+	rulesMD, rulesKnown := r.targetAgentsMD(ctx, project, repo, pr.ToRef.Branch())
+	blockingRules := r.blockingRules(ctx, prTag, rulesMD)
+	existing = r.retireRemovedRules(ctx, key, prTag, existing, blockingRules, rulesKnown)
 	// Only an incremental review may retire a finding: on a full one every
 	// PR line is an added line, the buggy one too, so nothing would prove a
 	// fix. No id listed, nothing to claim.
@@ -302,6 +308,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		Template:              r.template,
 		Files:                 files,
 		RepoInstructions:      repoInstructions,
+		BlockingRules:         blockingRules,
 		OtherModifiedPaths:    otherModified,
 		DeletedFilePaths:      deletedPaths,
 		RenamedFilePaths:      renamedPaths,
@@ -391,6 +398,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		sourceCommit:    sourceCommit,
 		incrementalFrom: incrementalFrom,
 		mention:         skipAuthorCheck,
+		blockingRules:   blockingRules,
 		lang:            l,
 		offer:           offerPROf(pr, key),
 		started:         started,
@@ -516,14 +524,19 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 	if len(pre) > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d pre-existing bug(s) recorded for the run page, not posted", prTag, len(pre)))
 	}
-	deduped, repeats := dedupe(v.Kept, unfixed, plan.anchors)
+	// The model's blocking claims, checked by code: what passes is a task
+	// for now, sorted first; capTasks settles the cap and the switches.
+	// Before dedupe: a task whose rule was reworded holds back no new task.
+	deduped, repeats := dedupe(decideBlocking(v.Kept, plan.blockingRules), unfixed, plan.anchors)
 	for _, f := range repeats {
 		plan.detail.Decisions = append(plan.detail.Decisions, decision(f, "repeat", ""))
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: finding on %s:%d (%s) already posted by an earlier run, not posted again",
 			prTag, f.File, f.Line, f.Severity))
 	}
+	r.logBlockingNotPosted(ctx, prTag, repeats, "a repeat of an earlier finding")
 	// 21. Sort by severity and cap.
 	findings, truncated := sortAndLimit(deduped, r.cfg.MaxComments)
+	capTasks(findings, r.tasksOn())
 	if truncated {
 		// Sorting with no cap gives the same order, so the tail is the cut.
 		all, _ := sortAndLimit(deduped, len(deduped))
@@ -532,6 +545,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: finding on %s:%d (%s) over the %d-comment cap, not posted",
 				prTag, f.File, f.Line, f.Severity, r.cfg.MaxComments))
 		}
+		r.logBlockingNotPosted(ctx, prTag, all[len(findings):], "over the comment cap")
 	}
 	// The verdict follows the PR summary's findings, both halves, once. The
 	// new ones uncapped: a finding over the comment cap is still a finding
@@ -542,6 +556,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 	for _, d := range v.Dropped {
 		dropped = append(dropped, d.Finding)
 	}
+	r.logBlockingNotPosted(ctx, prTag, decideBlocking(dropped, plan.blockingRules), "dropped by validation")
 	reviewSummary := inference.SettleVerdict(result.Review.Summary, earlierOpen, deduped, dropped,
 		!plan.existingUnknown, plan.lang)
 	plan.detail.Verdict = &store.VerdictChange{Model: result.Review.Summary.VerdictDecision, Posted: reviewSummary.VerdictDecision}
@@ -560,6 +575,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 	// from the slice length.
 	labels := render.CriterionLabels(plan.ticket, plan.parentTicket)
 	postedIDs, postedCount, failed := r.postInlineComments(ctx, plan.lang, labels, project, repo, plan.prID, findings)
+	r.logBlocking(ctx, prTag, findings, postedIDs)
 	for i, id := range postedIDs {
 		if id == 0 {
 			plan.detail.Decisions = append(plan.detail.Decisions, decision(findings[i], "failed", ""))
@@ -1043,6 +1059,11 @@ func (r *Reviewer) validateFindings(ctx context.Context, prTag string, findings 
 // dedupe drops findings an earlier run already posted, keyed on file, line
 // and severity. repeats are the dropped ones, for the log. A stored path is
 // resolved like a new one: older rows kept the model's a/ or b/ prefix.
+//
+// One exception: a task noergler resolved because its rule left AGENTS.md
+// holds back a plain repeat, never a new task (blocking.go). A reworded
+// rule resolves the old task; the violation it still sees under the new
+// wording must block again.
 func dedupe(findings []inference.ReviewFinding, existing []store.Finding, idx diff.AnchorIndex) (out, repeats []inference.ReviewFinding) {
 	type dedupeKey struct {
 		file     string
@@ -1050,12 +1071,19 @@ func dedupe(findings []inference.ReviewFinding, existing []store.Finding, idx di
 		severity string
 	}
 	seen := make(map[dedupeKey]bool, len(existing))
+	retired := map[dedupeKey]bool{}
 	for _, f := range existing {
-		seen[dedupeKey{inference.ShownPath(f.FilePath, idx), f.LineNumber, f.Severity}] = true
+		k := dedupeKey{inference.ShownPath(f.FilePath, idx), f.LineNumber, f.Severity}
+		if blockingOf(f) == inference.BlockingRuleRemoved {
+			retired[k] = true
+			continue
+		}
+		seen[k] = true
 	}
 	out = make([]inference.ReviewFinding, 0, len(findings))
 	for _, f := range findings {
-		if seen[dedupeKey{f.File, f.Line, f.Severity}] {
+		k := dedupeKey{f.File, f.Line, f.Severity}
+		if seen[k] || (retired[k] && !f.IsTask()) {
 			repeats = append(repeats, f)
 			continue
 		}
@@ -1071,9 +1099,9 @@ func dedupe(findings []inference.ReviewFinding, existing []store.Finding, idx di
 // same review (TestSortAndLimit).
 func sortAndLimit(findings []inference.ReviewFinding, maxComments int) ([]inference.ReviewFinding, bool) {
 	sorted := slices.Clone(findings)
-	slices.SortStableFunc(sorted, func(a, b inference.ReviewFinding) int {
-		return inference.SeverityRank(a.Severity) - inference.SeverityRank(b.Severity)
-	})
+	// A blocking task first within its severity: the cap must not cut it
+	// for a plain finding (blocking.go).
+	slices.SortStableFunc(sorted, inference.CompareFindings)
 	truncated := len(sorted) > maxComments
 	if truncated {
 		sorted = sorted[:maxComments]
@@ -1090,10 +1118,28 @@ func sortAndLimit(findings []inference.ReviewFinding, maxComments int) ([]infere
 // A failure is counted and logged but never stored: a finding row exists
 // only for a comment that is actually on the PR
 // (TestFailedInlineCommentIsNotStored).
+//
+// A blocking task goes up as a task; one Bitbucket refuses (a 4xx) is
+// posted as a plain comment instead (BlockingTaskFailed, set in findings),
+// so the finding still reaches the PR. Any other failure fails it like a
+// comment: the task may exist with its answer lost, and a comment beside
+// it would say there is none.
 func (r *Reviewer) postInlineComments(ctx context.Context, l lang.Lang, labels []string, project, repo string, prID int, findings []inference.ReviewFinding) (ids []int, posted, failed int) {
 	ids = make([]int, len(findings))
 	for i, f := range findings {
-		id, err := r.bitbucket.PostInlineComment(ctx, project, repo, prID, f.File, f.Line, render.InlineComment(f, l, labels...))
+		var id int
+		var err error
+		if f.IsTask() {
+			id, err = r.bitbucket.PostInlineTask(ctx, project, repo, prID, f.File, f.Line, render.InlineComment(f, l, labels...))
+			if status := bitbucket.Status(err); status >= 400 && status < 500 {
+				r.log.WarnContext(ctx, fmt.Sprintf("Failed to post blocking task on %s:%d, posting it as a comment: %v", f.File, f.Line, err))
+				findings[i].Blocking = inference.BlockingTaskFailed
+				f = findings[i]
+			}
+		}
+		if !f.IsTask() {
+			id, err = r.bitbucket.PostInlineComment(ctx, project, repo, prID, f.File, f.Line, render.InlineComment(f, l, labels...))
+		}
 		if err != nil {
 			failed++
 			r.log.ErrorContext(ctx, fmt.Sprintf("Failed to post inline comment on %s:%d: %v", f.File, f.Line, err))
@@ -1168,6 +1214,14 @@ func (r *Reviewer) recordFindings(ctx context.Context, prReviewID, runID int64, 
 			CommentText:        f.Comment,
 			Suggestion:         f.Suggestion,
 			BitbucketCommentID: &commentID,
+		}
+		if f.Blocking != "" {
+			outcome := string(f.Blocking)
+			row.BlockingOutcome = &outcome
+		}
+		if f.BlockingText != "" {
+			text := f.BlockingText
+			row.BlockingRule = &text
 		}
 		safeDBErr(ctx, r.log, "InsertFinding", func() error { return r.store.InsertFinding(ctx, row) })
 	}

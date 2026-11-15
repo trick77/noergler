@@ -96,8 +96,11 @@ type fakeBitbucket struct {
 	// Tasks is every PostPRTask, ResolvedTasks every ResolveTask id;
 	// taskErr fails both. defaultBranch answers DefaultBranch
 	// (refs/heads/master when empty), DefaultBranchCalls counts them.
-	Tasks              []postedComment
-	ResolvedTasks      []int
+	Tasks         []postedComment
+	ResolvedTasks []int
+	// InlineTasks is every PostInlineTask; inlineTaskErr fails it.
+	InlineTasks        []postedComment
+	inlineTaskErr      error
 	taskErr            error
 	defaultBranch      string
 	defaultBranchErr   error
@@ -132,6 +135,24 @@ func (f *fakeBitbucket) PostPRTask(_ context.Context, _, _ string, prID int, tex
 	f.nextCommentID++
 	f.Tasks = append(f.Tasks, postedComment{PRID: prID, Text: text})
 	c := &bitbucket.Comment{ID: f.nextCommentID, Text: text, Version: 1, Severity: "BLOCKER", State: "OPEN"}
+	c.Author.Name = f.bot
+	f.comments[f.nextCommentID] = c
+	return f.nextCommentID, nil
+}
+
+// PostInlineTask is PostInlineComment as a task: kept in InlineTasks and
+// as an open BLOCKER comment, so OpenTasks and FetchPRComment see it;
+// inlineTaskErr fails it.
+func (f *fakeBitbucket) PostInlineTask(_ context.Context, _, _ string, prID int, file string, line int, body string) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.inlineTaskErr != nil {
+		return 0, f.inlineTaskErr
+	}
+	f.nextCommentID++
+	f.InlineTasks = append(f.InlineTasks, postedComment{PRID: prID, Text: body, File: file, Line: line})
+	c := &bitbucket.Comment{ID: f.nextCommentID, Text: body, Version: 1, Severity: "BLOCKER", State: "OPEN",
+		Anchor: &bitbucket.CommentAnchor{Path: file, Line: line, FileType: "TO"}}
 	c.Author.Name = f.bot
 	f.comments[f.nextCommentID] = c
 	return f.nextCommentID, nil
@@ -410,6 +431,8 @@ type fakeStore struct {
 	// Closed is every MarkFindingClosed call, Reopened every MarkFindingOpen.
 	Closed   []int64
 	Reopened []int64
+	// RuleRemoved is every MarkRuleRemoved call.
+	RuleRemoved []int64
 	// byComment serves FindingByComment; Replied records MarkFindingReplied.
 	byComment map[int]*store.Finding
 	Replied   []repliedCall
@@ -799,6 +822,17 @@ func (f *fakeStore) MarkFindingClosed(_ context.Context, findingID int64) error 
 		return err
 	}
 	f.Closed = append(f.Closed, findingID)
+	return nil
+}
+
+// MarkRuleRemoved is recorded in RuleRemoved.
+func (f *fakeStore) MarkRuleRemoved(_ context.Context, findingID int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return err
+	}
+	f.RuleRemoved = append(f.RuleRemoved, findingID)
 	return nil
 }
 

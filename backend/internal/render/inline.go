@@ -28,6 +28,9 @@ func InlineComment(f inference.ReviewFinding, l lang.Lang, labels ...string) str
 	}
 	comment = spanLabels(comment, labels)
 	parts := []string{WrapProse(fmt.Sprintf("**%s:** %s", label, comment))}
+	if rule := blockingLine(f, l); rule != "" {
+		parts = append(parts, WrapProse(rule))
+	}
 
 	if f.Suggestion != nil && *f.Suggestion != "" {
 		body := strings.Trim(*f.Suggestion, "\n")
@@ -43,6 +46,35 @@ func InlineComment(f inference.ReviewFinding, l lang.Lang, labels ...string) str
 			"**Suggested change:**\n```%s\n%s\n```"), fence, body))
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+// blockingLine names the blocking rule a finding violates: on a task, what
+// it blocks and how it ends; on one code left a plain comment past the
+// task cap or with tasks off, why it is no task. Nothing for a claim code
+// refused (unknown rule, severity, confidence): the model's say-so alone
+// is not shown as a rule violation. The rule is AGENTS.md's text, never
+// rewritten (no SwissSS: it is not model prose).
+func blockingLine(f inference.ReviewFinding, l lang.Lang) string {
+	if f.BlockingText == "" {
+		return ""
+	}
+	head := l.Pick("**Blockierende Regel:** ", "**Blocking rule:** ") + f.BlockingText
+	switch f.Blocking {
+	case inference.BlockingTask:
+		return head + "\n\n" + l.Pick(
+			"Dieser Task blockiert den Merge, bis er erledigt ist. Behebt ein Push die Verletzung, erledige ich ihn selbst; "+
+				"soll der PR trotzdem so gemergt werden, erledige ihn von Hand.",
+			"This task blocks the merge until it is resolved. Once a push fixes the violation, I resolve it myself; "+
+				"to merge the PR as it is anyway, resolve it yourself.")
+	case inference.BlockingCap:
+		return head + fmt.Sprintf(l.Pick(" (kein Task: dieses Review hat seine %d Tasks schon geöffnet)",
+			" (no task: this review opened its %d tasks already)"), inference.MaxBlockingTasks)
+	case inference.BlockingTasksOff:
+		return head + l.Pick(" (kein Task: Tasks sind ausgeschaltet)", " (no task: tasks are switched off)")
+	case inference.BlockingTaskFailed:
+		return head + l.Pick(" (kein Task: Bitbucket hat ihn abgelehnt)", " (no task: Bitbucket refused it)")
+	}
+	return ""
 }
 
 // severityDE labels the severity enum in German; the enum itself stays

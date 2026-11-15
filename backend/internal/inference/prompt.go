@@ -335,6 +335,10 @@ const (
 	// PlaceholderPreviousOverview is last: it changes on every push.
 	PlaceholderPreviousOverview = "{previous_overview}"
 	PlaceholderRepoInstructions = "{repo_instructions}"
+	// PlaceholderBlockingRules is right after {repo_instructions}, from which
+	// code reads it: as stable as AGENTS.md, so the prefix cache holds.
+	// Empty without a marked rule. Review template only.
+	PlaceholderBlockingRules = "{blocking_rules}"
 	// PlaceholderTicketContext takes NoTicketContext when no ticket is
 	// linked, and PlaceholderComplianceInstructions is emptied unless a
 	// ticket is present and the compliance check is on.

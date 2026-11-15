@@ -11,7 +11,7 @@ const ReviewSchemaName = "review_response"
 //
 // It is also token-counted as part of the pre-flight fit check, because the
 // gateway bills it as input like everything else. The counted form uses ", "
-// and ": " separators, which brings the serialization to 2620 bytes. Go's
+// and ": " separators, which brings the serialization to 2789 bytes. Go's
 // json.Marshal is compact and would count fewer tokens for the same schema,
 // moving every pinned total in testdata/assemble_golden.json, so SchemaJSON
 // re-inserts the separators rather than marshalling.
@@ -44,7 +44,7 @@ func ReviewResponseSchema() map[string]any {
 				"items": map[string]any{
 					"type":                 "object",
 					"additionalProperties": false,
-					"required":             []any{"file", "line", "evidence", "severity", "confidence", "headline", "comment", "suggestion"},
+					"required":             []any{"file", "line", "evidence", "severity", "confidence", "headline", "comment", "suggestion", "blocking_rule"},
 					"properties": map[string]any{
 						"file": map[string]any{"type": "string"},
 						"line": map[string]any{"type": "integer"},
@@ -57,6 +57,9 @@ func ReviewResponseSchema() map[string]any {
 						"headline":   map[string]any{"type": "string", "minLength": 1},
 						"comment":    map[string]any{"type": "string"},
 						"suggestion": map[string]any{"type": []any{"string", "null"}},
+						// The id of a blocking rule the finding violates
+						// (B<n>), null for none; code checks it (blocking.go).
+						"blocking_rule": map[string]any{"type": []any{"string", "null"}},
 					},
 				},
 			},
@@ -163,13 +166,13 @@ const schemaJSON = `{"type": "object", "additionalProperties": false, "required"
 	`"properties": {"decision": {"type": "string", "enum": ["approve", "approve_with_followups", ` +
 	`"request_changes"]}, "rationale": {"type": "string", "minLength": 1}}}, ` +
 	`"findings": {"type": "array", "items": {"type": "object", "additionalProperties": false, ` +
-	`"required": ["file", "line", "evidence", "severity", "confidence", "headline", "comment", "suggestion"], ` +
+	`"required": ["file", "line", "evidence", "severity", "confidence", "headline", "comment", "suggestion", "blocking_rule"], ` +
 	`"properties": {"file": {"type": "string"}, "line": {"type": "integer"}, ` +
 	`"evidence": {"type": "array", "minItems": 1, "maxItems": 5, "items": {"type": "string"}}, ` +
 	`"severity": {"type": "string", "enum": ["issue", "suggestion"]}, ` +
 	`"confidence": {"type": "integer", "minimum": 80, "maximum": 100}, ` +
 	`"headline": {"type": "string", "minLength": 1}, "comment": {"type": "string"}, ` +
-	`"suggestion": {"type": ["string", "null"]}}}}, ` +
+	`"suggestion": {"type": ["string", "null"]}, "blocking_rule": {"type": ["string", "null"]}}}}, ` +
 	`"fixed": {"type": "array", "items": {"type": "object", "additionalProperties": false, ` +
 	`"required": ["id", "evidence"], "properties": {"id": {"type": "string"}, ` +
 	`"evidence": {"type": "array", "minItems": 1, "maxItems": 5, "items": {"type": "string"}}}}}, ` +

@@ -48,6 +48,9 @@ type reviewPlan struct {
 	// mention is the old skipAuthorCheck: this run answers a mention rather
 	// than passing the author gate.
 	mention bool
+	// blockingRules are AGENTS.md's [blocking] rules, as the prompt listed
+	// them (blocking.go).
+	blockingRules []inference.BlockingRule
 	// lang is the PR author's language, resolved once in prepare: every
 	// text this run posts is in it.
 	lang lang.Lang

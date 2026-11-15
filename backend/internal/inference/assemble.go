@@ -126,6 +126,9 @@ type AssembleRequest struct {
 	Template         string
 	Files            []diff.FileReviewData
 	RepoInstructions string
+	// BlockingRules are the rules RepoInstructions marks `[blocking]`
+	// (ExtractBlockingRules); none renders no block.
+	BlockingRules []BlockingRule
 
 	OtherModifiedPaths []string
 	DeletedFilePaths   []string
@@ -212,6 +215,7 @@ func AssembleReviewPrompt(req AssembleRequest, count CountFunc) AssembledPrompt 
 		PlaceholderPreviouslyPosted, posted,
 		PlaceholderPreviousOverview, previous,
 		PlaceholderRepoInstructions, req.RepoInstructions,
+		PlaceholderBlockingRules, RenderBlockingRules(req.BlockingRules),
 		PlaceholderTicketContext, ticketContext,
 		PlaceholderComplianceInstructions, compliance,
 		PlaceholderPRDescription, orNoPRDescription(req.PRDescription),
@@ -221,9 +225,13 @@ func AssembleReviewPrompt(req AssembleRequest, count CountFunc) AssembledPrompt 
 	breakdown := PromptBreakdown{
 		// The language block is part of the template, not a section of
 		// its own: counted here at its real size, not as the placeholder.
+		// The blocking rules repeat AGENTS.md lines: "rest", like the
+		// cross-file notes, never the AGENTS.md figure the bloat warning
+		// reads.
 		Template: count(strings.NewReplacer(
 			PlaceholderFiles, "",
 			PlaceholderRepoInstructions, "",
+			PlaceholderBlockingRules, "",
 			PlaceholderOutputLanguage, OutputLanguageBlock(req.Language),
 		).Replace(req.Template)),
 		Files: 0,

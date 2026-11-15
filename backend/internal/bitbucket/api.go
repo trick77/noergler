@@ -287,8 +287,20 @@ func (c *Client) FetchFileBytes(ctx context.Context, project, repo, commit, path
 // and there is no way to tell which from the diff alone, so a 400 is retried
 // once as CONTEXT. Only a 400 retries; anything else fails on the first try.
 func (c *Client) PostInlineComment(ctx context.Context, project, repo string, prID int, file string, line int, body string) (int, error) {
-	path := prPath(project, repo, prID) + "/comments"
+	return c.postAnchored(ctx, prPath(project, repo, prID)+"/comments", "comment", file, line, body)
+}
 
+// PostInlineTask is PostInlineComment as a task: the same anchor posted to
+// blocker-comments, the Bitbucket DC 7.6 reference's "Blocker file line
+// comment". It blocks the merge only where the repo's "incomplete tasks"
+// merge check is on.
+func (c *Client) PostInlineTask(ctx context.Context, project, repo string, prID int, file string, line int, body string) (int, error) {
+	return c.postAnchored(ctx, prPath(project, repo, prID)+"/blocker-comments", "task", file, line, body)
+}
+
+// postAnchored posts body on one line of file at path, ADDED then CONTEXT
+// on a 400. what names it in the log.
+func (c *Client) postAnchored(ctx context.Context, path, what, file string, line int, body string) (int, error) {
 	var lastErr error
 	for _, lineType := range [...]string{"ADDED", "CONTEXT"} {
 		payload := map[string]any{
@@ -305,7 +317,7 @@ func (c *Client) PostInlineComment(ctx context.Context, project, repo string, pr
 		}
 		err := c.do(ctx, http.MethodPost, path, nil, payload, &created)
 		if err == nil {
-			c.log.InfoContext(ctx, fmt.Sprintf("Posted inline comment on %s:%d", file, line))
+			c.log.InfoContext(ctx, fmt.Sprintf("Posted inline %s on %s:%d", what, file, line))
 			return created.ID, nil
 		}
 		lastErr = err
@@ -315,7 +327,7 @@ func (c *Client) PostInlineComment(ctx context.Context, project, repo string, pr
 	}
 	// Both anchors rejected: log what Bitbucket objected to, then fail. The
 	// caller counts the miss and carries on with the other findings.
-	c.log.WarnContext(ctx, fmt.Sprintf("Inline comment rejected for %s:%d: %v", file, line, lastErr))
+	c.log.WarnContext(ctx, fmt.Sprintf("Inline %s rejected for %s:%d: %v", what, file, line, lastErr))
 	return 0, lastErr
 }
 

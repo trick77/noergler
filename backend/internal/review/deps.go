@@ -54,10 +54,12 @@ type BitbucketClient interface {
 	UpdatePRComment(ctx context.Context, project, repo string, prID, commentID, version int, text string) (int, error)
 	ResolveCommentThread(ctx context.Context, project, repo string, prID, commentID int) error
 	// FetchPRFileDiff, OpenTasks, PostPRTask, ResolveTask and
-	// DefaultBranch serve the SNAPSHOT task (snapshottask.go).
+	// DefaultBranch serve the SNAPSHOT task (snapshottask.go);
+	// PostInlineTask and ResolveTask a blocking rule's task (blocking.go).
 	FetchPRFileDiff(ctx context.Context, project, repo string, prID int, path, srcPath string) (string, error)
 	OpenTasks(ctx context.Context, project, repo string, prID int) ([]bitbucket.Comment, error)
 	PostPRTask(ctx context.Context, project, repo string, prID int, text string) (int, error)
+	PostInlineTask(ctx context.Context, project, repo string, prID int, file string, line int, body string) (int, error)
 	ResolveTask(ctx context.Context, project, repo string, prID, commentID int) error
 	DefaultBranch(ctx context.Context, project, repo string) (string, error)
 }
@@ -133,6 +135,8 @@ type Store interface {
 	ExistingFindings(ctx context.Context, k store.PRKey) ([]store.Finding, error)
 	MarkFindingFixed(ctx context.Context, findingID, runID int64) error
 	MarkFindingClosed(ctx context.Context, findingID int64) error
+	// MarkRuleRemoved settles a task whose rule left AGENTS.md (blocking.go).
+	MarkRuleRemoved(ctx context.Context, findingID int64) error
 	MarkFindingOpen(ctx context.Context, findingID int64) error
 	FindingByComment(ctx context.Context, k store.PRKey, commentID int) (*store.Finding, error)
 	FindingByID(ctx context.Context, k store.PRKey, id int64) (*store.Finding, error)

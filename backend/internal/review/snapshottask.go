@@ -38,7 +38,7 @@ import (
 // hit".
 //
 // Off is off (user, 2026-11-15: "off means off"): with the instance's
-// REVIEW_CREATE_TASKS or the team's snapshot_task off, no task call at all.
+// REVIEW_CREATE_TASKS or the team's create_tasks off, no task call at all.
 //
 // The package is imported as snap: this package's tests have a snapshot()
 // helper.
@@ -216,7 +216,7 @@ func (r *Reviewer) readHits(ctx context.Context, key store.PRKey, build []bitbuc
 // checkSnapshotTask keeps the PR's SNAPSHOT tasks in step with its delta.
 func (r *Reviewer) checkSnapshotTask(ctx context.Context, pr webhook.PullRequest, key store.PRKey,
 	upsert store.PRUpsert, prTag string, l lang.Lang) {
-	if !r.createTasks || !r.snapshotTask.Load() || r.store == nil {
+	if !r.tasksOn() || r.store == nil {
 		return
 	}
 	unknown := func(format string, args ...any) {
@@ -377,7 +377,7 @@ func lineList(lines []render.SnapshotLine) string {
 // would get none, one away from it would keep its task. The review's gates
 // that come before the task apply (claim, author, actor, stop, opt-out).
 func (r *Reviewer) HandleRetargeted(ctx context.Context, p *webhook.Payload) {
-	if !r.createTasks || !r.snapshotTask.Load() || r.store == nil {
+	if !r.tasksOn() || r.store == nil {
 		return
 	}
 	pr := p.PullRequest

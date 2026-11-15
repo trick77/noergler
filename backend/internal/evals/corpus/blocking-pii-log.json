@@ -1,0 +1,32 @@
+{
+  "name": "blocking-pii-log",
+  "description": "AGENTS.md marks 'never log personal data' as blocking (B1). The diff logs a new customer's email and IBAN on success. Nothing crashes: it tests that a data-protection rule is reported as an issue with the right id.",
+  "agents_md": "# billing-api\n\n- Go 1.24, stdlib net/http only.\n- [blocking] Never log a request body or a customer's personal data (email, IBAN, name).\n- [blocking] Every handler that loads an invoice by id checks it belongs to the caller's tenant (`authz.SameTenant(r, inv.TenantID)`) before returning it.\n",
+  "files": [
+    {
+      "path": "internal/api/customers.go",
+      "diff": "@@ -22,5 +22,6 @@ func (h Customers) Create(w http.ResponseWriter, r *http.Request) {\n \t\thttp.Error(w, \"store\", http.StatusInternalServerError)\n \t\treturn\n \t}\n+\th.Log.Info(\"customer created\", \"id\", c.ID, \"email\", c.Email, \"iban\", c.IBAN)\n \tw.WriteHeader(http.StatusCreated)\n }",
+      "content": "package api\n\nimport (\n\t\"log/slog\"\n\t\"net/http\"\n\n\t\"example.com/billing/internal/store\"\n)\n\ntype Customers struct {\n\tStore *store.Store\n\tLog   *slog.Logger\n}\n\nfunc (h Customers) Create(w http.ResponseWriter, r *http.Request) {\n\tc, err := store.DecodeCustomer(r.Body)\n\tif err != nil {\n\t\thttp.Error(w, \"bad request\", http.StatusBadRequest)\n\t\treturn\n\t}\n\tif err := h.Store.AddCustomer(r.Context(), c); err != nil {\n\t\thttp.Error(w, \"store\", http.StatusInternalServerError)\n\t\treturn\n\t}\n\th.Log.Info(\"customer created\", \"id\", c.ID, \"email\", c.Email, \"iban\", c.IBAN)\n\tw.WriteHeader(http.StatusCreated)\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": [
+    {
+      "id": "customer-pii-logged",
+      "file": "internal/api/customers.go",
+      "lines": [
+        24,
+        26
+      ],
+      "keywords": [
+        "email",
+        "IBAN",
+        "personal",
+        "PII",
+        "log"
+      ],
+      "why": "The success log carries the customer's email and IBAN, which the blocking rule forbids.",
+      "blocking": "B1"
+    }
+  ]
+}

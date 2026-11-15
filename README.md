@@ -378,7 +378,7 @@ Write, not read: noergler posts review comments, and on the PR author's request 
 
 **The full contract is served by the instance itself, at `/api/docs`** (the spec alone at `/api/openapi.yaml`), and is reachable from the dashboard's nav.
 
-`GET /teams/<team>` returns the claims, the two author lists, the instance's `ignore_author_globs` (read-only), the excluded repos, the excluded source and target branches, `use_pr_description` and `snapshot_task`. `PUT /teams/<team>/settings` updates any of `use_pr_description` (default `true`: the PR title and description go to the model as context for reviews and @mentions; the code stays the source of truth, so a description the code does not match is never a finding by itself), `snapshot_task` (default `true` for every team: a PR into the repo's default branch that adds a `-SNAPSHOT` version to a Maven/Gradle build file gets a Bitbucket task the author must resolve, and noergler resolves it once no such line is left; it blocks the merge where the repo's "incomplete tasks" merge check is on; the instance's `REVIEW_CREATE_TASKS`, default `true`, turns tasks off for every team; off means no task call at all, an open task stays), `auto_review_authors` (only these authors get automatic reviews, empty = everyone), `ignore_authors` (never an automatic review, wins over the first list; an @mention still reviews) and `exclude_repos` (repo slug globs, case-insensitive, default `*-infra`: a project webhook delivers for every repo in the project, these never get a review, @mentions included, while merge/decline/delete of a PR reviewed earlier is still recorded; a repo named explicitly in a `repos:` claim is never excluded), `exclude_source_branches` and `exclude_target_branches` (branch name globs, case-insensitive, `*` crosses `/`, default empty: a PR from a matching source branch, e.g. `dependabot/*`, or into a matching target branch, e.g. `release/*`, gets no automatic review and no comment, an @mention still works; an excluded repo wins); a field left out stays, a list given replaces the whole list, `[]` clears it, `false` turns the PR description or the SNAPSHOT task off. Both need only the team secret. Changes take effect immediately, no redeploy.
+`GET /teams/<team>` returns the claims, the two author lists, the instance's `ignore_author_globs` (read-only), the excluded repos, the excluded source and target branches, `use_pr_description` and `create_tasks`. `PUT /teams/<team>/settings` updates any of `use_pr_description` (default `true`: the PR title and description go to the model as context for reviews and @mentions; the code stays the source of truth, so a description the code does not match is never a finding by itself), `create_tasks` (default `true` for every team: noergler may open Bitbucket tasks, which block the merge where the repo's "incomplete tasks" merge check is on. Two kinds: a PR into the repo's default branch that adds a `-SNAPSHOT` version to a Maven/Gradle build file gets a task the author must resolve, and noergler resolves it once no such line is left; a finding that violates an `AGENTS.md` rule marked `[blocking]` is posted as a task, see [Blocking rules](#blocking-rules). The instance's `REVIEW_CREATE_TASKS`, default `true`, turns tasks off for every team; off means no task call at all, an open task stays, and a blocking finding is a plain comment), `auto_review_authors` (only these authors get automatic reviews, empty = everyone), `ignore_authors` (never an automatic review, wins over the first list; an @mention still reviews) and `exclude_repos` (repo slug globs, case-insensitive, default `*-infra`: a project webhook delivers for every repo in the project, these never get a review, @mentions included, while merge/decline/delete of a PR reviewed earlier is still recorded; a repo named explicitly in a `repos:` claim is never excluded), `exclude_source_branches` and `exclude_target_branches` (branch name globs, case-insensitive, `*` crosses `/`, default empty: a PR from a matching source branch, e.g. `dependabot/*`, or into a matching target branch, e.g. `release/*`, gets no automatic review and no comment, an @mention still works; an excluded repo wins); a field left out stays, a list given replaces the whole list, `[]` clears it, `false` turns the PR description or tasks off. Both need only the team secret. Changes take effect immediately, no redeploy.
 
 | Claim | Webhook | New repo in the project |
 |---|---|---|
@@ -411,7 +411,7 @@ Edit `backend/internal/prompts/review.txt` to change the review focus or output 
 Both `review.txt` and `mention.txt` in `backend/internal/prompts/` are ordered deliberately:
 
 1. **Stable prefix** — role, rules, output format, examples, and prompt-injection guardrails. No placeholders, identical on every call.
-2. **Per-repo block** — `{repo_instructions}` (the `AGENTS.md` content). Stable across all PRs in the same repo.
+2. **Per-repo block** — `{repo_instructions}` (the `AGENTS.md` content), then `{blocking_rules}` (its `[blocking]` lines, read by code). Stable across all PRs in the same repo.
 3. **Per-PR block** — `{ticket_context}` and finally `{files}` (or `{diff}` + `{question}` in the mention template).
 
 Three reasons this matters, and they all push the same layout:
@@ -429,6 +429,23 @@ Drop an `AGENTS.md` file in the repository root to provide project-specific revi
 By default, reviews are **gated** on the presence of `AGENTS.md` — without one, noergler skips the review and posts a short summary comment explaining why. To review PRs without an `AGENTS.md`, set `REVIEW_REQUIRE_AGENTS_MD=false`.
 
 The review summary reports how many tokens `AGENTS.md` consumes against a configurable soft limit (`REVIEW_AGENTS_MD_WARN_TOKENS`, default `4000`). When the file exceeds that limit, the summary flags it as a **context bloat** risk so you know to trim it. Reviews still run either way — this is a warning, not a hard cap.
+
+#### Blocking rules
+
+Start a rule's line with `[blocking]` to make its violation hold the merge:
+
+```markdown
+- [blocking] Controllers never access the database directly; every query goes through a service.
+```
+
+A finding the model says violates such a rule is posted as a Bitbucket **task** on its line instead of a comment. With the repository's merge check "incomplete tasks" on, the PR cannot merge until the task is resolved: by the author (who may also resolve it to merge anyway), or by noergler once a push fixes the violation. Without that merge check a task is only a marked comment.
+
+- Meant for rules only a reviewer can judge. Something code can check belongs in CI; a SNAPSHOT version already gets its own task, do not mark that rule again.
+- Probabilistic: the model may miss a violation. Code only decides which rules block and whether a claim is strong enough (severity `issue`, confidence at least 90); a weaker claim is posted as a normal comment, never dropped.
+- At most 10 marked rules per `AGENTS.md` (the rest stay normal guidelines) and 3 tasks per review (the rest are comments that name the rule).
+- The rules come from the PR's **target branch**: a rule takes effect once it is merged there, and a PR cannot lift a rule by editing `AGENTS.md` itself. A rule may wrap over indented lines.
+- Removing the marker or the rule resolves its open tasks on the next review; so does rewording it (re-wrapping does not), since a task belongs to the rule's text. A violation the reworded rule still covers becomes a task again.
+- The team switch `create_tasks` and the instance's `REVIEW_CREATE_TASKS` turn tasks off; findings are then normal comments.
 
 ## Running tests
 

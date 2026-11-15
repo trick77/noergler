@@ -180,9 +180,9 @@ type teamConfigView struct {
 	DisputeSignalWindowDays int  `json:"dispute_signal_window_days"`
 	DisputeSignalThreshold  int  `json:"dispute_signal_threshold"`
 	UsePRDescription        bool `json:"use_pr_description"`
-	// SnapshotTask is the team's switch, CreateTasks the instance's: a task
-	// is posted only when both are on.
-	SnapshotTask          bool     `json:"snapshot_task"`
+	// TeamTasks is the team's switch, CreateTasks the instance's: a task
+	// (SNAPSHOT or a blocking rule's) is posted only when both are on.
+	TeamTasks             bool     `json:"create_tasks"`
 	CreateTasks           bool     `json:"instance_create_tasks"`
 	TicketComplianceCheck bool     `json:"ticket_compliance_check"`
 	JiraEnabled           bool     `json:"jira_enabled"`
@@ -231,7 +231,7 @@ func (r *Reviewer) teamConfig(ask *mentionAsk) teamConfigView {
 		AgentsMDMaxTokens:       r.cfg.AgentsMDMaxTokens,
 		AgentsMDCustomLink:      r.cfg.AgentsMDCustomLink,
 		UsePRDescription:        r.usePRDescription.Load(),
-		SnapshotTask:            r.snapshotTask.Load(),
+		TeamTasks:               r.teamTasks.Load(),
 		CreateTasks:             r.createTasks,
 		TicketComplianceCheck:   r.cfg.TicketComplianceCheck,
 		JiraEnabled:             r.jiraEnabled(),

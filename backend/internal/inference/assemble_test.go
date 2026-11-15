@@ -88,6 +88,11 @@ func assembleCases(template string) map[string]AssembleRequest {
 	withRepo.RepoInstructions = "# Rules\nBe terse.\n"
 	cases["with_repo_instructions"] = withRepo
 
+	withBlocking := base(files1)
+	withBlocking.RepoInstructions = "# Rules\n- [blocking] No SQL in controllers.\n"
+	withBlocking.BlockingRules, _ = ExtractBlockingRules(withBlocking.RepoInstructions)
+	cases["with_blocking_rules"] = withBlocking
+
 	withTicket := base(files1)
 	withTicket.TicketContext = "### Jira ticket: [ABC-1](u)\n**Title:** T"
 	cases["with_ticket"] = withTicket
