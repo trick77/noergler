@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"slices"
 	"strings"
@@ -200,7 +201,61 @@ func TestTaskFailingOtherwiseIsNotDoubled(t *testing.T) {
 			if len(h.bb.Inline) != 0 || len(h.st.Findings) != 0 {
 				t.Errorf("comments = %+v, rows = %+v: want neither", h.bb.Inline, h.st.Findings)
 			}
+			if summary := h.bb.Posted[len(h.bb.Posted)-1].Text; strings.Contains(summary, "blocking task") {
+				t.Errorf("a task whose post failed is no open task on the PR:\n%s", summary)
+			}
 		})
+	}
+}
+
+// With tasks off a claim is a plain comment before the sort: it takes no
+// comment-cap slot ahead of an equal finding the model listed first.
+func TestClaimWithTasksOffSortsAsPlain(t *testing.T) {
+	plain := finding("a.go", 2, "issue", "nil map write")
+	h := blockingHarness(t, plain, marked("B1", 95, "controller runs SQL"))
+	h.r.teamTasks.Store(false)
+	h.r.cfg.MaxComments = 1
+
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if len(h.bb.Inline) != 1 || !strings.Contains(h.bb.Inline[0].Text, "nil map write") {
+		t.Errorf("comments = %+v: want the model's first finding", h.bb.Inline)
+	}
+}
+
+// A noergler-committed fix leaves its thread open (user, 2026-11-13) but
+// resolves its task: the stamped row leaves every later review, so an
+// open task would hold the merge unseen.
+func TestBotFixedTaskIsResolved(t *testing.T) {
+	h := blockingHarness(t)
+	h.st.lastCommit, h.st.hasLast = "older", true
+	h.bb.commitDiff = sampleDiff
+	earlierTask(h, "No SQL in controllers.")
+	h.st.existing[0].BotFixCommit = ptrs("c0ffee1234567890")
+	h.llm.review.Review.Fixed = []inference.FixedClaim{{ID: "F11", Evidence: []string{"func new() {}"}}}
+
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+	if !slices.Equal(h.bb.ResolvedTasks, []int{501}) || len(h.st.Fixed) != 1 || len(h.bb.Replies) != 0 {
+		t.Errorf("resolved tasks = %v, fixed = %v, replies = %v: want stamped, task resolved, no reply",
+			h.bb.ResolvedTasks, h.st.Fixed, h.bb.Replies)
+	}
+}
+
+// A task resolved for its rule's sake holds back a plain repeat; whether
+// the claim is a task is settled after the switches and the cap, so a
+// claim tasks-off makes plain is held back too.
+func TestRetiredTaskHoldsBackAClaimTasksOffMakesPlain(t *testing.T) {
+	h := blockingHarness(t, marked("B1", 95, "controller runs SQL"))
+	earlierTask(h, "No SQL in the controller layer.")
+	removed := string(inference.BlockingRuleRemoved)
+	h.st.existing[0].BlockingOutcome = &removed
+	h.r.teamTasks.Store(false)
+
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if len(h.bb.Inline) != 0 || len(h.bb.InlineTasks) != 0 {
+		t.Errorf("comments = %+v, tasks = %+v: a plain repeat must stay held back", h.bb.Inline, h.bb.InlineTasks)
 	}
 }
 
@@ -332,6 +387,14 @@ func TestTaskOfAKeptRuleStays(t *testing.T) {
 		// The PR's own AGENTS.md drops the rule: the target's still has it.
 		"the PR removes it": func(h *harness) {
 			h.bb.files["src1:AGENTS.md"] = "# Rules\n"
+		},
+		// Ten new rules above it: past the cap, still marked.
+		"pushed past the cap": func(h *harness) {
+			var b strings.Builder
+			for i := range inference.MaxBlockingRules {
+				fmt.Fprintf(&b, "- [blocking] Rule %d.\n", i)
+			}
+			h.bb.files["master:AGENTS.md"] = b.String() + "- [blocking] No SQL in controllers.\n"
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

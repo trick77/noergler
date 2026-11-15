@@ -231,7 +231,8 @@ sorted by severity and capped at `REVIEW_MAX_COMMENTS`.
 
 **Blocking rules.** A line of the target branch's AGENTS.md (never the
 PR's own, so a PR cannot drop the rule it breaks) that starts with
-`[blocking]` (any case, after optional indentation and one `- ` or `* `;
+`[blocking]` (any case, after optional indentation and one list marker,
+`-`, `*`, `+` or `1.`/`1)`;
 not inside a code fence; indented continuation lines belong to it) is a
 blocking rule; at most 10, numbered `B1`, `B2`, ... for this review and
 listed to the model under "Blocking rules". A finding the model
@@ -251,10 +252,16 @@ The task blocks the merge where the repo's "incomplete tasks" merge check
 is on, and the summary counts and marks open tasks. A task is a finding:
 deduped like one, so one the author resolved is never posted again;
 resolved, it is settled like a resolved thread; a `fixed` claim on it
-replies and resolves the task, even when the reply failed. A task whose
-rule the target's AGENTS.md no longer marks, or marks reworded, is
+replies and resolves the task, even when the reply failed; a fix
+noergler committed itself resolves its task too, though it leaves the
+thread open (the stamped row leaves every later review, so a task left
+open would block unseen). A task whose rule the target's AGENTS.md no longer marks
+(a rule past the cap of 10 is still marked), or marks reworded, is
 resolved on the next review (never when that file could not be read);
-the violation reported under the new wording is a task again. A dispute
+the violation reported under the new wording is a task again. The cap
+of 3 and the switches apply before the sort and the comment cap, so a
+claim that ends a plain comment takes no slot ahead of its peers; a task
+whose post failed is neither counted nor marked in the summary. A dispute
 in the thread changes nothing.
 
 On an incremental review each earlier finding is listed to the model with an

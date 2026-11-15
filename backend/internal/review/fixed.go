@@ -226,13 +226,24 @@ func withoutFixed(existing, fixed []store.Finding) []store.Finding {
 // A finding noergler committed itself at the author's request is stamped
 // only: its thread already says "Applied in", and it stays open so the
 // author resolves it once they have looked at the change (user, 2026-11-13).
+// Its blocking task is resolved all the same: the stamped row leaves every
+// later review, so a task left open would hold the merge unseen, out of
+// the summary and past a removed rule.
 func (r *Reviewer) retireFixed(ctx context.Context, plan *reviewPlan, fixed []store.Finding, runID int64) {
 	for _, f := range fixed {
 		replied, resolved := false, false
 		if f.BotFixCommit != nil {
+			if f.IsTask() && r.tasksOn() && f.BitbucketCommentID != nil {
+				if err := r.bitbucket.ResolveTask(ctx, plan.project, plan.repo, plan.prID, *f.BitbucketCommentID); err != nil {
+					r.log.WarnContext(ctx, fmt.Sprintf("%s: resolving the bot-fixed finding's task %d failed, it holds the merge until a person resolves it",
+						plan.prTag, *f.BitbucketCommentID), logging.Err(err))
+				} else {
+					resolved = true
+				}
+			}
 			safeDBErr(ctx, r.log, "MarkFindingFixed", func() error { return r.store.MarkFindingFixed(ctx, f.ID, runID) })
-			r.log.InfoContext(ctx, fmt.Sprintf("%s: earlier finding on %s:%d (%s) fixed by noergler's commit %s: thread left open",
-				plan.prTag, f.FilePath, f.LineNumber, f.Severity, render.ShortSHA(*f.BotFixCommit, 8)))
+			r.log.InfoContext(ctx, fmt.Sprintf("%s: earlier finding on %s:%d (%s) fixed by noergler's commit %s: thread left open, task resolved %s",
+				plan.prTag, f.FilePath, f.LineNumber, f.Severity, render.ShortSHA(*f.BotFixCommit, 8), yesNo(resolved)))
 			continue
 		}
 		if cid := f.BitbucketCommentID; cid != nil {

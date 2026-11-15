@@ -217,16 +217,22 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   review), the model only names the rule a finding violates
   (`blocking_rule`). `CheckBlocking` is blunt: id known, `issue`,
   confidence >= 90; else a plain comment, never a drop. At most 3 tasks a
-  review, sorted first so the comment cap never cuts one; a 4xx-refused
+  review; cap and switches apply before the sort, then a task sorts first
+  so the comment cap never cuts one (a downgraded claim takes no slot
+  ahead of its peers); a 4xx-refused
   task posts as a comment, any other failure fails like a comment (the
   task may exist). Every claim is one log line, posted or not, and its
   rule text + outcome are on the findings row (threshold to be tuned on
   them). A task is a finding: deduped, resolved = settled like a resolved
   thread, never re-posted; a fixed claim resolves the task even when the
-  reply failed (the row is stamped either way). A rule gone from the
-  target's AGENTS.md (reworded counts) resolves its open tasks, only when
-  that file was read for sure (a fetch fault is not "no rules"); such a
-  row (`rule_removed`) holds back no new task. Disputes change nothing.
+  reply failed (the row is stamped either way); a noergler-committed fix
+  resolves its task too (the thread stays open, user 2026-11-13; a
+  stamped row leaves every later review, an open task would block
+  unseen). A rule gone from the
+  target's AGENTS.md (reworded counts; past the cap of 10 does not)
+  resolves its open tasks, only when that file was read for sure (a fetch
+  fault is not "no rules"); such a row (`rule_removed`) holds back no new
+  task, judged after the cap and switches. Disputes change nothing.
   Same switches as the SNAPSHOT task, off = no task call, the finding
   posts as a comment. `{blocking_rules}` sits right after
   `{repo_instructions}` (prefix cache).

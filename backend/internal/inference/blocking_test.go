@@ -16,7 +16,8 @@ func TestExtractBlockingRules(t *testing.T) {
 		"- [blocking] No SQL in controllers.", // repeat
 		"- [blocking]",                        // empty
 		"- not [blocking] mid-line",
-		"1. [blocking] numbered lists are not markers",
+		"1. [blocking] Numbered items count.",
+		"+ [blocking] So do plus items.",
 		"```md",
 		"- [blocking] an example in a fence",
 		"```",
@@ -41,13 +42,15 @@ func TestExtractBlockingRules(t *testing.T) {
 		{"B1", "No SQL in controllers."},
 		{"B2", "Every handler checks the tenant."},
 		{"B3", "Money is nano-USD, never float."},
-		{"B4", "Unicode indentation counts."},
-		{"B5", "A wrapped rule goes on over indented lines, all of them."},
-		{"B6", "So does"},
-		{"B7", "And a"},
+		{"B4", "Numbered items count."},
+		{"B5", "So do plus items."},
+		{"B6", "Unicode indentation counts."},
+		{"B7", "A wrapped rule goes on over indented lines, all of them."},
+		{"B8", "So does"},
+		{"B9", "And a"},
 	}
-	if fmt.Sprint(rules) != fmt.Sprint(want) || over != 0 {
-		t.Errorf("rules = %q, over = %d\nwant %q", rules, over, want)
+	if fmt.Sprint(rules) != fmt.Sprint(want) || len(over) != 0 {
+		t.Errorf("rules = %q, over = %q\nwant %q", rules, over, want)
 	}
 }
 
@@ -58,8 +61,8 @@ func TestExtractBlockingRulesCaps(t *testing.T) {
 	}
 	fmt.Fprintf(&b, "- [blocking] %s\n", strings.Repeat("x", 400))
 	rules, over := ExtractBlockingRules(b.String())
-	if len(rules) != MaxBlockingRules || over != 3 || rules[9].ID != "B10" {
-		t.Errorf("len = %d, over = %d, last = %+v", len(rules), over, rules[len(rules)-1])
+	if len(rules) != MaxBlockingRules || len(over) != 3 || rules[9].ID != "B10" || over[0] != "rule 10" {
+		t.Errorf("len = %d, over = %q, last = %+v", len(rules), over, rules[len(rules)-1])
 	}
 	long, _ := ExtractBlockingRules("[blocking] " + strings.Repeat("y", 400))
 	if n := len([]rune(long[0].Text)); n != maxBlockingRuleRunes || !strings.HasSuffix(long[0].Text, "…") {

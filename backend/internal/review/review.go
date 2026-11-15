@@ -284,8 +284,8 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// gates must not lift it. A rule it no longer marks blocks nothing: its
 	// open tasks go.
 	rulesMD, rulesKnown := r.targetAgentsMD(ctx, project, repo, pr.ToRef.Branch())
-	blockingRules := r.blockingRules(ctx, prTag, rulesMD)
-	existing = r.retireRemovedRules(ctx, key, prTag, existing, blockingRules, rulesKnown)
+	blockingRules, markedRules := r.blockingRules(ctx, prTag, rulesMD)
+	existing = r.retireRemovedRules(ctx, key, prTag, existing, markedRules, rulesKnown)
 	// Only an incremental review may retire a finding: on a full one every
 	// PR line is an added line, the buggy one too, so nothing would prove a
 	// fix. No id listed, nothing to claim.
@@ -524,10 +524,15 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 	if len(pre) > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d pre-existing bug(s) recorded for the run page, not posted", prTag, len(pre)))
 	}
-	// The model's blocking claims, checked by code: what passes is a task
-	// for now, sorted first; capTasks settles the cap and the switches.
-	// Before dedupe: a task whose rule was reworded holds back no new task.
-	deduped, repeats := dedupe(decideBlocking(v.Kept, plan.blockingRules), unfixed, plan.anchors)
+	// The model's blocking claims, checked by code; capTasks settles the
+	// cap and the switches on what is no repeat, before the sort, so only a
+	// real task sorts first. Then a plain finding on a task resolved for its
+	// rule's sake is a repeat after all (holdBackRetired): only the task
+	// may come back.
+	deduped, repeats, retired := dedupe(decideBlocking(v.Kept, plan.blockingRules), unfixed, plan.anchors)
+	capTasks(deduped, r.tasksOn())
+	deduped, held := holdBackRetired(deduped, retired)
+	repeats = append(repeats, held...)
 	for _, f := range repeats {
 		plan.detail.Decisions = append(plan.detail.Decisions, decision(f, "repeat", ""))
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: finding on %s:%d (%s) already posted by an earlier run, not posted again",
@@ -536,7 +541,6 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 	r.logBlockingNotPosted(ctx, prTag, repeats, "a repeat of an earlier finding")
 	// 21. Sort by severity and cap.
 	findings, truncated := sortAndLimit(deduped, r.cfg.MaxComments)
-	capTasks(findings, r.tasksOn())
 	if truncated {
 		// Sorting with no cap gives the same order, so the tail is the cut.
 		all, _ := sortAndLimit(deduped, len(deduped))
@@ -556,7 +560,9 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 	for _, d := range v.Dropped {
 		dropped = append(dropped, d.Finding)
 	}
-	r.logBlockingNotPosted(ctx, prTag, decideBlocking(dropped, plan.blockingRules), "dropped by validation")
+	droppedClaims := decideBlocking(dropped, plan.blockingRules)
+	capTasks(droppedClaims, r.tasksOn()) // logged as a kept claim would be
+	r.logBlockingNotPosted(ctx, prTag, droppedClaims, "dropped by validation")
 	reviewSummary := inference.SettleVerdict(result.Review.Summary, earlierOpen, deduped, dropped,
 		!plan.existingUnknown, plan.lang)
 	plan.detail.Verdict = &store.VerdictChange{Model: result.Review.Summary.VerdictDecision, Posted: reviewSummary.VerdictDecision}
@@ -576,7 +582,14 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 	labels := render.CriterionLabels(plan.ticket, plan.parentTicket)
 	postedIDs, postedCount, failed := r.postInlineComments(ctx, plan.lang, labels, project, repo, plan.prID, findings)
 	r.logBlocking(ctx, prTag, findings, postedIDs)
+	// The summary counts and marks only tasks known to be on the PR: a
+	// failed post may or may not have left one (postInlineComments), so it
+	// is listed as a plain finding there. Its outcome stays as logged.
+	summaryFindings := slices.Clone(findings)
 	for i, id := range postedIDs {
+		if id == 0 && summaryFindings[i].IsTask() {
+			summaryFindings[i].Blocking = ""
+		}
 		if id == 0 {
 			plan.detail.Decisions = append(plan.detail.Decisions, decision(findings[i], "failed", ""))
 		}
@@ -619,7 +632,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 
 	summary := render.Summary(render.SummaryInput{
 		Lang:                       plan.lang,
-		Findings:                   findings,
+		Findings:                   summaryFindings,
 		Cut:                        len(deduped) - len(findings),
 		EarlierOpen:                earlierOpen,
 		EarlierUnknown:             plan.existingUnknown,
@@ -1061,17 +1074,13 @@ func (r *Reviewer) validateFindings(ctx context.Context, prTag string, findings 
 // resolved like a new one: older rows kept the model's a/ or b/ prefix.
 //
 // One exception: a task noergler resolved because its rule left AGENTS.md
-// holds back a plain repeat, never a new task (blocking.go). A reworded
-// rule resolves the old task; the violation it still sees under the new
-// wording must block again.
-func dedupe(findings []inference.ReviewFinding, existing []store.Finding, idx diff.AnchorIndex) (out, repeats []inference.ReviewFinding) {
-	type dedupeKey struct {
-		file     string
-		line     int
-		severity string
-	}
+// holds back nothing here; its key goes to retired, and holdBackRetired
+// holds back its plain repeat once capTasks has settled which findings
+// are tasks (blocking.go). A reworded rule resolves the old task; the
+// violation it still sees under the new wording must block again.
+func dedupe(findings []inference.ReviewFinding, existing []store.Finding, idx diff.AnchorIndex) (out, repeats []inference.ReviewFinding, retired map[dedupeKey]bool) {
 	seen := make(map[dedupeKey]bool, len(existing))
-	retired := map[dedupeKey]bool{}
+	retired = map[dedupeKey]bool{}
 	for _, f := range existing {
 		k := dedupeKey{inference.ShownPath(f.FilePath, idx), f.LineNumber, f.Severity}
 		if blockingOf(f) == inference.BlockingRuleRemoved {
@@ -1082,8 +1091,21 @@ func dedupe(findings []inference.ReviewFinding, existing []store.Finding, idx di
 	}
 	out = make([]inference.ReviewFinding, 0, len(findings))
 	for _, f := range findings {
-		k := dedupeKey{f.File, f.Line, f.Severity}
-		if seen[k] || (retired[k] && !f.IsTask()) {
+		if seen[keyOf(f)] {
+			repeats = append(repeats, f)
+			continue
+		}
+		out = append(out, f)
+	}
+	return out, repeats, retired
+}
+
+// holdBackRetired is dedupe's second half, after capTasks: a finding on a
+// retired key is a repeat unless it is a task itself.
+func holdBackRetired(findings []inference.ReviewFinding, retired map[dedupeKey]bool) (out, repeats []inference.ReviewFinding) {
+	out = make([]inference.ReviewFinding, 0, len(findings))
+	for _, f := range findings {
+		if retired[keyOf(f)] && !f.IsTask() {
 			repeats = append(repeats, f)
 			continue
 		}
@@ -1091,6 +1113,15 @@ func dedupe(findings []inference.ReviewFinding, existing []store.Finding, idx di
 	}
 	return out, repeats
 }
+
+// dedupeKey is what makes a finding a repeat: file, line and severity.
+type dedupeKey struct {
+	file     string
+	line     int
+	severity string
+}
+
+func keyOf(f inference.ReviewFinding) dedupeKey { return dedupeKey{f.File, f.Line, f.Severity} }
 
 // sortAndLimit orders findings by severity and caps them.
 //
