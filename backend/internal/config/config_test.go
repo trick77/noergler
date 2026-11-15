@@ -137,6 +137,9 @@ func TestInstance_RequiredVarsAndDefaults(t *testing.T) {
 	if !reflect.DeepEqual(app.Review.ExcludeRepos, []string{"*-infra"}) || len(app.Review.AutoReviewAuthors) != 0 {
 		t.Errorf("list defaults: %+v", app.Review)
 	}
+	if !reflect.DeepEqual(app.IgnoreAuthorGlobs, []string{"*renovate*"}) {
+		t.Errorf("ignore author globs default: %v", app.IgnoreAuthorGlobs)
+	}
 	if app.Server.Host != "0.0.0.0" || app.Server.Port != 8080 || app.Trust.Threshold != 256000 {
 		t.Errorf("server/trust defaults: %+v %+v", app.Server, app.Trust)
 	}
@@ -174,6 +177,20 @@ func TestInstance_DisplayNamePattern(t *testing.T) {
 		if _, err := e.load(); err == nil || !strings.Contains(err.Error(), "BITBUCKET_DISPLAY_NAME_PATTERN") {
 			t.Errorf("%q: err = %v", bad, err)
 		}
+	}
+}
+
+// Blank set explicitly turns the instance author globs off; a value
+// replaces the default.
+func TestInstance_IgnoreAuthorGlobs(t *testing.T) {
+	e := newEnv(t)
+	e.set("REVIEW_IGNORE_AUTHOR_GLOBS", " ")
+	if g := e.mustLoad().IgnoreAuthorGlobs; g == nil || len(g) != 0 {
+		t.Errorf("blank = %#v, want empty", g)
+	}
+	e.set("REVIEW_IGNORE_AUTHOR_GLOBS", "*renovate*, svc-deps-*")
+	if g := e.mustLoad().IgnoreAuthorGlobs; !reflect.DeepEqual(g, []string{"*renovate*", "svc-deps-*"}) {
+		t.Errorf("override = %v", g)
 	}
 }
 

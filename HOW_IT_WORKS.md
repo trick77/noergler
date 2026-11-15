@@ -61,8 +61,11 @@ it until onboarding is run again.
 The pipeline refuses early and cheaply. In order:
 
 1. Project and repository resolvable from the payload.
-2. Author is in the auto-review list (an `@mention` skips this and the next two).
-3. The actor who pushed is not in the ignore list.
+2. Author is in the auto-review list and not ignored: neither in the team's
+   ignore list nor matching the instance-wide author globs
+   (`REVIEW_IGNORE_AUTHOR_GLOBS`, default `*renovate*`, case-insensitive, no
+   team can lift them). An `@mention` skips this and the next two.
+3. The actor who pushed is not ignored by the same two lists.
 4. Skip state: if a human deleted noergler's summary comment, the PR is left
    alone until an `@mention` brings it back (§12). If someone told noergler
    to stop reviewing it (§12c), it is left alone until a review is asked for.
@@ -399,7 +402,7 @@ replies in the comment's own thread. Keywords route the question; anything else
 is answered as a question about the PR, or about noergler on it. On a model
 that takes tools the answer may call `team_config` (the team's effective
 settings: claimed projects, excluded repos and branches, both author lists by name, the
-built-in skipped dirs, files and extensions, and whether the asker is on the
+instance-wide author globs, the built-in skipped dirs, files and extensions, and whether the asker is on the
 lists; a settings answer is a Markdown table),
 `pr_status` (runs, the latest outcomes and skip reasons, cost against the cap, the branches and the exclude list they match)
 and `set_my_language` (the asker's language, only when their own comment names

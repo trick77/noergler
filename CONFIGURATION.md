@@ -61,6 +61,7 @@ Everything here is a default a team block may replace.
 | --- | --- | --- |
 | `REVIEW_AUTO_REVIEW_AUTHORS` | *(empty)* | Comma-separated author names. Empty reviews every author. |
 | `REVIEW_IGNORE_AUTHORS` | *(empty)* | Never auto-reviewed (CI and dependency bots). Wins over the list above. |
+| `REVIEW_IGNORE_AUTHOR_GLOBS` | `*renovate*` | Not a team default: author-name globs, case-insensitive, `*` crosses `/`, ignored by every team on top of its own `ignore_authors`, existing teams included. No team can lift it; an @mention still reviews. Blank turns it off. |
 | `REVIEW_EXCLUDE_REPOS` | `*-infra` | Repo-slug globs a team's project webhook delivers but noergler ignores. Seeds each team once. Blank turns it off. |
 | `REVIEW_EXCLUDE_SOURCE_BRANCHES` | *(empty)* | Source-branch globs (`dependabot/*`), case-insensitive, `*` crosses `/`. Never auto-reviewed; an @mention still works. Seeds a team the DB does not know yet; every existing team keeps its stored list (empty after the upgrade), change it with `PUT /teams/<team>/settings`. |
 | `REVIEW_EXCLUDE_TARGET_BRANCHES` | *(empty)* | The same on the target branch (`release/*`), same seeding. |

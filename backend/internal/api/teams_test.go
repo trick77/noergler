@@ -98,6 +98,7 @@ func TestTeams_GetRendersTheSnapshot(t *testing.T) {
 		},
 		"auto_review_authors":     []any{},
 		"ignore_authors":          []any{},
+		"ignore_author_globs":     []any{"*renovate*"},
 		"exclude_repos":           []any{"*-infra"},
 		"exclude_source_branches": []any{"dependabot/*"},
 		"exclude_target_branches": []any{},

@@ -488,7 +488,7 @@ components:
     TeamView:
       type: object
       additionalProperties: false
-      required: [team, projects, auto_review_authors, ignore_authors, exclude_repos, exclude_source_branches, exclude_target_branches, use_pr_description, bitbucket_account, jira_account]
+      required: [team, projects, auto_review_authors, ignore_authors, ignore_author_globs, exclude_repos, exclude_source_branches, exclude_target_branches, use_pr_description, bitbucket_account, jira_account]
       properties:
         team:
           type: string
@@ -513,6 +513,15 @@ components:
             re-review either, and their plain replies are not answered. An
             @mention still works. This is where CI and dependency bots go.
             Exact, case-sensitive.
+          items: { type: string }
+        ignore_author_globs:
+          type: array
+          description: |
+            Read-only. The instance's author-name globs (default `*renovate*`),
+            never auto-reviewed by any team on top of ignore_authors, with the
+            same effect. Set by the noergler admin
+            (REVIEW_IGNORE_AUTHOR_GLOBS), not by the team API; no team can
+            lift them. Case-insensitive, `*` crosses `/`.
           items: { type: string }
         exclude_repos:
           type: array

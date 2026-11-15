@@ -271,6 +271,26 @@ func TestSkipsDisallowedAuthorAndIgnoredActor(t *testing.T) {
 		}
 	})
 
+	t.Run("push by an actor the instance globs ignore", func(t *testing.T) {
+		h := newHarness(t, nil)
+		h.r.ignoreAuthorGlobs = []string{"*renovate*"}
+		p := prPayload(webhook.EventFromRefUpdated)
+		p.Actor = &webhook.User{Name: "tech-renovate"}
+		h.r.reviewInline(context.Background(), p, false)
+		if len(h.llm.Reviews) != 0 {
+			t.Error("review ran on a push by a globbed actor")
+		}
+	})
+
+	t.Run("a mention bypasses the instance globs", func(t *testing.T) {
+		h := newHarness(t, nil)
+		h.r.ignoreAuthorGlobs = []string{"*"}
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), true)
+		if len(h.llm.Reviews) != 1 {
+			t.Error("a mention must bypass the instance globs")
+		}
+	})
+
 	t.Run("a mention bypasses both gates", func(t *testing.T) {
 		h := newHarness(t, nil)
 		h.r.SetAuthorLists([]string{"bob"}, []string{"alice"})

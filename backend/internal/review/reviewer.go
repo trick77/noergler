@@ -86,6 +86,8 @@ type Reviewer struct {
 	authorsMu         sync.RWMutex
 	autoReviewAuthors []string
 	ignoreAuthors     []string
+	// ignoreAuthorGlobs is the instance's, fixed at startup: no lock.
+	ignoreAuthorGlobs []string
 	// usePRDescription is rewritten by the same API, so it is atomic too.
 	usePRDescription atomic.Bool
 	// template is the review prompt, mentionTmpl the Q&A prompt; both the
@@ -136,7 +138,9 @@ type Options struct {
 	AlmanachTemplate     string
 	// DisplayNamePattern is config.Bitbucket's; nil = names off.
 	DisplayNamePattern *regexp.Regexp
-	Log                *slog.Logger
+	// IgnoreAuthorGlobs is config.App's, instance-wide; nil = none.
+	IgnoreAuthorGlobs []string
+	Log               *slog.Logger
 	// Owns reports whether the team still claims the repo; nil claims all.
 	Owns func(project, repo string) bool
 	// Team is the live team snapshot (claims, exclude_repos, Jira, riptide),
@@ -162,6 +166,7 @@ func New(opt Options) *Reviewer {
 		cfg:               opt.Config,
 		autoReviewAuthors: opt.Config.AutoReviewAuthors,
 		ignoreAuthors:     opt.Config.IgnoreAuthors,
+		ignoreAuthorGlobs: opt.IgnoreAuthorGlobs,
 		template:          cmp.Or(opt.Template, prompts.Review),
 		mentionTmpl:       cmp.Or(opt.MentionTemplate, prompts.Mention),
 		replyTmpl:         cmp.Or(opt.FindingReplyTemplate, prompts.FindingReply),
@@ -220,7 +225,27 @@ func (r *Reviewer) IsAutoReviewAuthor(author string) bool {
 
 func (r *Reviewer) isIgnoredAuthor(name string) bool {
 	_, ignore := r.authorLists()
-	return slices.Contains(ignore, name)
+	return r.ignoredBy(ignore, name)
+}
+
+// ignoredBy is the team's exact list plus the instance-wide globs
+// (case-insensitive), which no team can lift.
+func (r *Reviewer) ignoredBy(ignore []string, name string) bool {
+	return slices.Contains(ignore, name) || r.ignoredByGlob(name)
+}
+
+// ignoredByGlob names the instance globs as the reason, for the log: a team
+// admin who finds the name in no team list must still learn why.
+func (r *Reviewer) ignoredByGlob(name string) bool {
+	return config.MatchesAny(r.ignoreAuthorGlobs, name)
+}
+
+// ignoredWhy is the log wording for an ignored author.
+func (r *Reviewer) ignoredWhy(name string) string {
+	if r.ignoredByGlob(name) {
+		return "ignored author, instance REVIEW_IGNORE_AUTHOR_GLOBS"
+	}
+	return "ignored author"
 }
 
 // autoReviewDecision answers both "is this author auto-reviewed" and "which
@@ -232,7 +257,7 @@ func (r *Reviewer) isIgnoredAuthor(name string) bool {
 // is meant to remove. Same rule as teams.Runtime: one snapshot per request.
 func (r *Reviewer) autoReviewDecision(author string) (autoReview, ignored bool) {
 	auto, ignore := r.authorLists()
-	if slices.Contains(ignore, author) {
+	if r.ignoredBy(ignore, author) {
 		return false, true
 	}
 	if len(auto) == 0 {

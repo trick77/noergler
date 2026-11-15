@@ -35,10 +35,20 @@ func TestSkipReasonNamesTheListThatDecided(t *testing.T) {
 		name     string
 		auto     []string
 		ignore   []string
+		globs    []string
 		author   string
 		want     string
 		unwanted string
 	}{
+		{
+			// A team admin finds the name in no team list: the log must say
+			// the instance globs decided.
+			name:     "an author the instance globs ignore names the globs",
+			globs:    []string{"*renovate*"},
+			author:   "tech-renovate",
+			want:     "(ignored author, instance REVIEW_IGNORE_AUTHOR_GLOBS)",
+			unwanted: "not in auto-review authors",
+		},
 		{
 			name:     "an ignored author is reported as ignored",
 			ignore:   []string{"renovate_diecibaerg"},
@@ -67,6 +77,7 @@ func TestSkipReasonNamesTheListThatDecided(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r, buf := capturingReviewer(t)
 			r.SetAuthorLists(tc.auto, tc.ignore)
+			r.ignoreAuthorGlobs = tc.globs
 
 			r.reviewInline(context.Background(), payloadBy(tc.author), false)
 

@@ -176,7 +176,7 @@ func newHarness(t *testing.T, tweak func(*config.Team)) *harness {
 	)
 	q := &fakeQueue{}
 	srv := httpapi.New(reg.Status, log)
-	Register(srv, Deps{Teams: reg, Queue: q, Log: log, BotUsername: testBot})
+	Register(srv, Deps{Teams: reg, Queue: q, Log: log, BotUsername: testBot, IgnoreAuthorGlobs: []string{"*renovate*"}})
 	return &harness{srv: srv, q: q, rv: rv, rt: rt, reg: reg, log: log, logs: &buf}
 }
 

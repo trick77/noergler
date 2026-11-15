@@ -46,7 +46,7 @@ func TestTeamConfigIsAnAllowlist(t *testing.T) {
 	}
 	walk(reflect.TypeOf(teamConfigView{}))
 	want := []string{"team", "model", "default_language", "projects", "exclude_repos", "exclude_source_branches",
-		"exclude_target_branches", "auto_review_authors", "ignore_authors", "opt_out_branch_keyword", "max_pr_cost_usd", "max_comments", "max_file_lines",
+		"exclude_target_branches", "auto_review_authors", "ignore_authors", "ignore_author_globs", "opt_out_branch_keyword", "max_pr_cost_usd", "max_comments", "max_file_lines",
 		"require_agents_md", "agents_md_warn_tokens", "agents_md_max_tokens", "agents_md_custom_link",
 		"dispute_signal_window_days", "dispute_signal_threshold",
 		"use_pr_description", "ticket_compliance_check", "jira_enabled", "jira_acceptance_criteria_prefixes",
@@ -63,6 +63,7 @@ func TestTeamConfigIsAnAllowlist(t *testing.T) {
 func TestTeamConfigShowsTheLiveTeam(t *testing.T) {
 	h := newHarness(t, nil)
 	h.r.SetAuthorLists([]string{"alice", "bob"}, []string{"renovate"})
+	h.r.ignoreAuthorGlobs = []string{"*renovate*"}
 	h.st.languages = map[string]lang.Lang{"bob": lang.EN}
 	h.r.team = func() *config.Team {
 		return &config.Team{
@@ -87,6 +88,7 @@ func TestTeamConfigShowsTheLiveTeam(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(v.AutoReviewAuthors, []string{"alice", "bob"}) || !reflect.DeepEqual(v.IgnoreAuthors, []string{"renovate"}) ||
+		!reflect.DeepEqual(v.IgnoreAuthorGlobs, []string{"*renovate*"}) ||
 		!reflect.DeepEqual(v.Projects, []string{"PAY", "OPS/{ci}"}) || !reflect.DeepEqual(v.ExcludeRepos, []string{"*-infra", "sandbox"}) ||
 		!reflect.DeepEqual(v.ExcludeSourceBranches, []string{"dependabot/*"}) || !reflect.DeepEqual(v.ExcludeTargetBranches, []string{"release/*"}) ||
 		!v.Asker.AutoReviewed || v.Asker.Language != "en" || v.MaxPRCostUSD != "5.000" || v.Team != "payments" ||

@@ -248,14 +248,15 @@ func serve(log *slog.Logger) error {
 
 	srv := httpapi.New(reg.Status, log)
 	api.Register(srv, api.Deps{
-		Teams:       reg,
-		Queue:       q,
-		Store:       db,
-		Claims:      db,
-		Bitbucket:   api.Bot(bb),
-		Log:         log,
-		BotUsername: bb.BotUsername(),
-		PublicURL:   app.Server.PublicURL,
+		Teams:             reg,
+		Queue:             q,
+		Store:             db,
+		Claims:            db,
+		Bitbucket:         api.Bot(bb),
+		Log:               log,
+		BotUsername:       bb.BotUsername(),
+		IgnoreAuthorGlobs: app.IgnoreAuthorGlobs,
+		PublicURL:         app.Server.PublicURL,
 		// Trimmed once, here, so the page never joins a double slash.
 		BitbucketURL: strings.TrimRight(app.Bitbucket.BaseURL, "/"),
 		// The operator dashboard. Read-only and unauthenticated, so the
