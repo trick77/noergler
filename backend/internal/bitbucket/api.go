@@ -96,6 +96,18 @@ func (c *Client) FetchPRDiff(ctx context.Context, project, repo string, prID, co
 	return c.getTextCapped(ctx, prPath(project, repo, prID)+"/diff", query, "text/plain", what, c.maxDiffBytes)
 }
 
+// FetchPRFileDiff returns the PR's diff of one file as text, the same
+// endpoint as FetchPRDiff with the path appended; srcPath is a moved file's
+// old path ("" otherwise), so the diff is against it rather than all added.
+func (c *Client) FetchPRFileDiff(ctx context.Context, project, repo string, prID int, path, srcPath string) (string, error) {
+	var query url.Values
+	if srcPath != "" {
+		query = url.Values{"srcPath": {srcPath}}
+	}
+	what := fmt.Sprintf("%s/%s#%d diff %s", project, repo, prID, path)
+	return c.getTextCapped(ctx, prPath(project, repo, prID)+"/diff/"+path, query, "text/plain", what, c.maxDiffBytes)
+}
+
 // FetchCommitDiff returns what one push changed on a PR: the PR diff from
 // fromCommit to toCommit, raw text like FetchPRDiff.
 //
@@ -351,6 +363,10 @@ type Comment struct {
 	Anchor *CommentAnchor `json:"anchor"`
 	// ThreadResolved is set on a thread's root once someone resolved it.
 	ThreadResolved bool `json:"threadResolved"`
+	// Severity is BLOCKER on a task, NORMAL on a comment; State is OPEN or
+	// RESOLVED (a task done). Bitbucket DC 7.2+.
+	Severity string `json:"severity"`
+	State    string `json:"state"`
 }
 
 // CommentAnchor is where a file comment sits. Line is 0 on a comment on the
@@ -428,6 +444,83 @@ func (c *Client) ResolveCommentThread(ctx context.Context, project, repo string,
 	}
 	c.log.InfoContext(ctx, fmt.Sprintf("Resolved comment thread %d on PR %d", commentID, prID))
 	return nil
+}
+
+// PostPRTask posts a task: a top-level comment with severity BLOCKER
+// (Bitbucket DC 7.2+). It blocks the merge only where the repo's "incomplete
+// tasks" merge check is on.
+func (c *Client) PostPRTask(ctx context.Context, project, repo string, prID int, text string) (int, error) {
+	var created struct {
+		ID int `json:"id"`
+	}
+	if err := c.do(ctx, http.MethodPost, prPath(project, repo, prID)+"/comments", nil,
+		map[string]any{"text": text, "severity": "BLOCKER"}, &created); err != nil {
+		return 0, err
+	}
+	c.log.InfoContext(ctx, fmt.Sprintf("Posted task %d on PR %d", created.ID, prID))
+	return created.ID, nil
+}
+
+// OpenTasks is every open task on the PR, one paged call
+// (blocker-comments?state=OPEN, Bitbucket DC 7.2+): text, version and
+// author included.
+func (c *Client) OpenTasks(ctx context.Context, project, repo string, prID int) ([]Comment, error) {
+	var out []Comment
+	start := 0
+	for {
+		var p struct {
+			Values        []Comment `json:"values"`
+			IsLastPage    *bool     `json:"isLastPage"`
+			NextPageStart *int      `json:"nextPageStart"`
+		}
+		query := url.Values{"state": {"OPEN"}, "start": {strconv.Itoa(start)}, "limit": {strconv.Itoa(pageLimit)}}
+		if err := c.do(ctx, http.MethodGet, prPath(project, repo, prID)+"/blocker-comments", query, nil, &p); err != nil {
+			return nil, err
+		}
+		out = append(out, p.Values...)
+		if p.IsLastPage == nil || *p.IsLastPage || p.NextPageStart == nil || *p.NextPageStart <= start {
+			return out, nil
+		}
+		start = *p.NextPageStart
+	}
+}
+
+// ResolveTask marks a task done: PUT the comment with its version and state
+// RESOLVED, which the comment's author (noergler) may do. The version is
+// read fresh, a 409 retried once, as ResolveCommentThread does.
+func (c *Client) ResolveTask(ctx context.Context, project, repo string, prID, commentID int) error {
+	path := fmt.Sprintf("%s/comments/%d", prPath(project, repo, prID), commentID)
+	var err error
+	for range 2 {
+		var cur *Comment
+		if cur, err = c.FetchPRComment(ctx, project, repo, prID, commentID); err != nil {
+			return err
+		}
+		err = c.do(ctx, http.MethodPut, path, nil, map[string]any{"version": cur.Version, "state": "RESOLVED"}, nil)
+		if Status(err) != http.StatusConflict {
+			break
+		}
+	}
+	if err != nil {
+		return err
+	}
+	c.log.InfoContext(ctx, fmt.Sprintf("Resolved task %d on PR %d", commentID, prID))
+	return nil
+}
+
+// DefaultBranch is the repo's configured default branch as a ref id
+// (refs/heads/main), set even before the branch exists.
+func (c *Client) DefaultBranch(ctx context.Context, project, repo string) (string, error) {
+	var ref struct {
+		ID string `json:"id"`
+	}
+	if err := c.do(ctx, http.MethodGet, targetPath(project, repo)+"/default-branch", nil, nil, &ref); err != nil {
+		return "", err
+	}
+	if ref.ID == "" {
+		return "", fmt.Errorf("%s/%s: default branch without an id", project, repo)
+	}
+	return ref.ID, nil
 }
 
 // targetPath addresses a project (repo == "") or one repo inside it. Project

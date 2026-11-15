@@ -2,7 +2,6 @@ package merge
 
 import (
 	"errors"
-	"regexp"
 	"slices"
 	"strings"
 	"unicode"
@@ -109,27 +108,6 @@ func lineKey(l string) string {
 		return ""
 	}
 	return noSpace(l[:i])
-}
-
-// snapshotStamp is a resolved Maven snapshot (1.0-20251115.093012-3): an
-// unreleased build without the word.
-var snapshotStamp = regexp.MustCompile(`-\d{8}\.\d{6}-\d+`)
-
-// Snapshot reports a target or source line naming an unreleased build:
-// `-SNAPSHOT` in any case (Maven compares it ignoring case) or a resolved
-// snapshot's timestamp. Never resolved or offered (user, 2026-11-15:
-// "snapshot darf nicht in den master"): a resolution makes the PR
-// mergeable. Base, Head and Tail are left out: a resolution never picks
-// the base, and both sides already have Head and Tail. The hyphen keeps
-// identifiers (`takeSnapshot`, `case SNAPSHOT:`) out; a stray match fails
-// safe, nothing pushed.
-func (c *Conflict) Snapshot() bool {
-	for _, l := range slices.Concat(c.Target, c.Source) {
-		if strings.Contains(strings.ToLower(l), "-snapshot") || snapshotStamp.MatchString(l) {
-			return true
-		}
-	}
-	return false
 }
 
 // Oversized reports a region past MaxRegionLines on any side.

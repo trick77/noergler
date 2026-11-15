@@ -40,6 +40,8 @@ type fakeReviewer struct {
 	replyHandled bool
 	// usePRDescription is the last value mirrored by a settings write.
 	usePRDescription *bool
+	// snapshotTask is the same for the SNAPSHOT task switch.
+	snapshotTask *bool
 }
 
 func (f *fakeReviewer) ReviewPullRequestStaged(context.Context, *webhook.Payload, string, bool, teams.Scheduler) bool {
@@ -69,9 +71,13 @@ func (f *fakeReviewer) HandlePRDeleted(context.Context, *webhook.Payload) {
 func (f *fakeReviewer) HandleReadyForReview(context.Context, *webhook.Payload) {
 	f.calls = append(f.calls, "ready-for-review")
 }
+func (f *fakeReviewer) HandleRetargeted(context.Context, *webhook.Payload) {
+	f.calls = append(f.calls, "retargeted")
+}
 func (f *fakeReviewer) IsAutoReviewAuthor(string) bool { return true }
 func (f *fakeReviewer) SetAuthorLists(_, _ []string)   {}
 func (f *fakeReviewer) SetUsePRDescription(on bool)    { f.usePRDescription = &on }
+func (f *fakeReviewer) SetSnapshotTask(on bool)        { f.snapshotTask = &on }
 func (f *fakeReviewer) String() string                 { return strings.Join(f.calls, ",") }
 
 // fakeQueue captures submissions without running a worker. Jobs are run on
@@ -159,7 +165,7 @@ func newHarness(t *testing.T, tweak func(*config.Team)) *harness {
 		WebhookSecret: testSecret,
 		Projects:      []config.ProjectScope{{Key: "PLAT"}},
 		// The instance default, as LoadInstance sets it.
-		Review: config.Review{UsePRDescription: true},
+		Review: config.Review{UsePRDescription: true, SnapshotTask: true},
 	}
 	if tweak != nil {
 		tweak(team)
@@ -553,6 +559,9 @@ func TestWebhook_DispatchTable(t *testing.T) {
 		// The PR in payloadJSON is not a draft: previousDraft true is the flip.
 		{webhook.EventModified, `,"previousDraft":true`,
 			map[string]any{"status": "accepted", "reason": "ready-for-review", "queue": "queued"}, "ready-for-review"},
+		// A new target runs the SNAPSHOT task alone.
+		{webhook.EventModified, `,"previousTarget":{"id":"refs/heads/develop","displayId":"develop"}`,
+			map[string]any{"status": "accepted", "reason": "retargeted", "queue": "queued"}, "retargeted"},
 	}
 	for _, c := range cases {
 		t.Run(c.event, func(t *testing.T) {
@@ -613,6 +622,7 @@ func TestWebhook_ModifiedOtherThanLeavingDraftIsIgnoredQuietly(t *testing.T) {
 		"draft stays draft": []byte(strings.Replace(string(payloadJSON(webhook.EventModified, `,"previousDraft":true`)),
 			`"state":"OPEN"`, `"state":"OPEN","draft":true`, 1)),
 		"ready stays ready": payloadJSON(webhook.EventModified, `,"previousDraft":false`),
+		"target unchanged":  payloadJSON(webhook.EventModified, `,"previousTarget":{"id":"refs/heads/main","displayId":"main"}`),
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -628,6 +638,22 @@ func TestWebhook_ModifiedOtherThanLeavingDraftIsIgnoredQuietly(t *testing.T) {
 				t.Errorf("pr:modified is subscribed, it must not warn: %s", h.logs.String())
 			}
 		})
+	}
+}
+
+// A retarget passes the review's exclusions: an excluded branch or repo
+// gets no SNAPSHOT task it could never have resolved.
+func TestWebhook_RetargetHonoursTheExclusions(t *testing.T) {
+	for name, tweak := range map[string]func(*config.Team){
+		"target branch": func(team *config.Team) { team.Review.ExcludeTargetBranches = []string{"main"} },
+		"repo":          func(team *config.Team) { team.Review.ExcludeRepos = []string{"svc"} },
+	} {
+		h := newHarness(t, tweak)
+		w := h.signedPost(t, payloadJSON(webhook.EventModified, `,"previousTarget":{"id":"refs/heads/develop","displayId":"develop"}`))
+		wantBody(t, w, http.StatusOK, map[string]any{"status": "ignored", "reason": "pr modified, not draft -> ready"})
+		if len(h.q.tags) != 0 {
+			t.Errorf("%s: queued %v", name, h.q.tags)
+		}
 	}
 }
 

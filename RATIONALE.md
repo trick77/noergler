@@ -158,9 +158,49 @@ an incident or an eval run: read the reason before relaxing a rule.
   mergeable, and the version on either side is the author's to settle.
   Code-resolvable ones too. Conflict regions only, not the whole PR; target
   and source only (base and trimmed edges are never a resolution's to
-  bring). `-snapshot` ignoring case, as Maven compares it; the hyphen keeps
-  identifiers (`case SNAPSHOT:`) out, every file kept in (an image tag in
-  YAML is a build too).
+  bring). The loose rule (`snapshot.Mentions`): `-snapshot` in any case
+  anywhere, every file (an image tag in YAML is a build too); a repository
+  name or Gradle logic about the suffix refuses too: a stray match costs
+  an offer, never a merge. The task's strict rule (`snapshot.Line`) was
+  tried here and dropped: two reviews pulled it both ways at once.
+- SNAPSHOT task (user, 2026-11-15): a Bitbucket task, not a finding: the
+  author must resolve it on purpose, and the repo's merge check can block on
+  it. Code decides, never the model: a task that blocks a merge must not
+  hang on whether a model noticed a rule. Only into the default branch
+  (user), from Bitbucket's API, no config. Only Maven/Gradle build files
+  (user: nothing else uses SNAPSHOT; image tags in Helm/K8s YAML missed on
+  purpose): a stray task blocks a merge, unlike the conflict refusal. So
+  the strict rule (`snapshot.Line`): `-SNAPSHOT` in capitals after a word
+  character, `}`, `>` or `=` (`1.0.0-beta-SNAPSHOT`,
+  `<changelist>-SNAPSHOT`, `suffix=-SNAPSHOT`), any case only after a
+  digit, `}` or BUILD; a quote, paren or blank before it is Gradle logic
+  (`endsWith("-SNAPSHOT")`) or a comment, a lower-case name after a word
+  a repository (`libs-snapshot`); a `-` after it a qualifier. PR
+  delta only (user: "nur im PR delta reklamieren"): a SNAPSHOT already on
+  the line before the change is never claimed; pairing per change block,
+  by count, blunt: a SNAPSHOT moved to another block counts there, the safe
+  way. A resolved task stays resolved for the lines it named (user), keyed
+  by path + text without whitespace + the count of equal lines before it
+  (two dependencies on one `<version>` line are two), no line number; keys
+  leave a task once the line leaves the delta, so a SNAPSHOT removed and
+  added again is new. A new line gets a task of its own, never an edit of
+  an open one: an edit would name lines whose task the author already
+  resolved. An open task's text follows its lines. Retarget (`pr:modified`)
+  runs it alone: no push follows, and a task on a PR moved off the default
+  branch would block it. Not on a stopped PR (user: decided; a stop before the first SNAPSHOT
+  push gets no task, accepted) nor an opt-out branch, as a stop. Before the
+  AGENTS.md gates and the cost cap: no model, nothing to save. Own diff,
+  one changed build file at a time, not the review's: the cumulative one
+  may be cut, a push's is not the delta, and the whole PR diff again would
+  be a second large read per push on the single worker and fail at
+  BITBUCKET_MAX_DIFF_BYTES. Past 50 build files (a reactor's
+  `versions:set`, the usual way a SNAPSHOT lands) the whole diff once
+  beats 50 calls. Hits remembered by the build files' blob ids, in memory:
+  a push that leaves them alone reads no diff. Build files (user: only
+  those): `pom.xml`, `.mvn/maven.config`, every Gradle script, properties,
+  Version Catalog; Kotlin in buildSrc is code, left out. Off is off on both switches (user:
+  "aus heisst aus!"): no call, an open task stays for a person. Team switch
+  on for every team (user), instance switch on by default (user).
 - Merge conflict author only: the push lands on the author's branch.
 - Merge conflict on the worker, not the pool: a fetch and a push are
   Bitbucket calls, and serialization is for Bitbucket. Bounded instead:

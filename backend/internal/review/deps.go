@@ -53,6 +53,13 @@ type BitbucketClient interface {
 	FetchPRComment(ctx context.Context, project, repo string, prID, commentID int) (*bitbucket.Comment, error)
 	UpdatePRComment(ctx context.Context, project, repo string, prID, commentID, version int, text string) (int, error)
 	ResolveCommentThread(ctx context.Context, project, repo string, prID, commentID int) error
+	// FetchPRFileDiff, OpenTasks, PostPRTask, ResolveTask and
+	// DefaultBranch serve the SNAPSHOT task (snapshottask.go).
+	FetchPRFileDiff(ctx context.Context, project, repo string, prID int, path, srcPath string) (string, error)
+	OpenTasks(ctx context.Context, project, repo string, prID int) ([]bitbucket.Comment, error)
+	PostPRTask(ctx context.Context, project, repo string, prID int, text string) (int, error)
+	ResolveTask(ctx context.Context, project, repo string, prID, commentID int) error
+	DefaultBranch(ctx context.Context, project, repo string) (string, error)
 }
 
 // JiraClient is the part of the Jira adapter the pipeline uses.
@@ -107,6 +114,10 @@ type Store interface {
 	// offer comment of the PR row; 0 is none.
 	ConflictOffer(ctx context.Context, prID int64) (int, error)
 	SetConflictOffer(ctx context.Context, prID int64, commentID int) error
+	// SnapshotTasks (by the PR's key, with its row id; 0 = no row) and
+	// SetSnapshotTasks hold the PR's SNAPSHOT tasks.
+	SnapshotTasks(ctx context.Context, k store.PRKey) (int64, []store.SnapshotTask, error)
+	SetSnapshotTasks(ctx context.Context, prID int64, tasks []store.SnapshotTask) error
 	GetSkipState(ctx context.Context, k store.PRKey) (*store.SkipState, error)
 	MarkIgnored(ctx context.Context, k store.PRKey) error
 	MarkStopped(ctx context.Context, k store.PRKey, by string) (int64, error)

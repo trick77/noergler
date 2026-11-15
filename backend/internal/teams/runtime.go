@@ -51,9 +51,13 @@ type Reviewer interface {
 	// HandleReadyForReview notes open finding threads on the summary when a
 	// draft goes ready. No model call.
 	HandleReadyForReview(ctx context.Context, p *webhook.Payload)
+	// HandleRetargeted runs the SNAPSHOT task alone after a new target.
+	// No model call.
+	HandleRetargeted(ctx context.Context, p *webhook.Payload)
 	IsAutoReviewAuthor(author string) bool
 	SetAuthorLists(auto, ignore []string)
 	SetUsePRDescription(on bool)
+	SetSnapshotTask(on bool)
 }
 
 // Runtime is one enabled team at request time.
@@ -258,6 +262,7 @@ func (r *Runtime) UpdateSettings(merge func(store.TeamSettings) store.TeamSettin
 	r.team.Store(&next)
 	r.Reviewer.SetAuthorLists(s.AutoReviewAuthors, s.IgnoreAuthors)
 	r.Reviewer.SetUsePRDescription(s.UsePRDescription)
+	r.Reviewer.SetSnapshotTask(s.SnapshotTask)
 	return nil
 }
 
@@ -271,6 +276,7 @@ func settingsOf(t *config.Team) store.TeamSettings {
 		ExcludeSourceBranches: t.Review.ExcludeSourceBranches,
 		ExcludeTargetBranches: t.Review.ExcludeTargetBranches,
 		UsePRDescription:      t.Review.UsePRDescription,
+		SnapshotTask:          t.Review.SnapshotTask,
 	}
 }
 
@@ -281,4 +287,5 @@ func applySettings(t *config.Team, s store.TeamSettings) {
 	t.Review.ExcludeSourceBranches = s.ExcludeSourceBranches
 	t.Review.ExcludeTargetBranches = s.ExcludeTargetBranches
 	t.Review.UsePRDescription = s.UsePRDescription
+	t.Review.SnapshotTask = s.SnapshotTask
 }

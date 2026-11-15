@@ -52,8 +52,8 @@ since Bitbucket never sends them again. No other team changes.
 
 Events handled: `pr:opened`, `pr:from_ref_updated`, `pr:modified`, `pr:merged`,
 `pr:declined`, `pr:deleted`, `pr:comment:added`, `pr:comment:deleted`.
-`pr:modified` acts only when it takes a PR out of draft (§12b); every other
-edit is ignored. A hook registered before `pr:modified` was required lacks
+`pr:modified` acts only when it takes a PR out of draft (§12b) or changes
+its target (the SNAPSHOT task alone, §2); every other edit is ignored. A hook registered before `pr:modified` was required lacks
 it until onboarding is run again.
 
 ## 2. Guard order
@@ -70,6 +70,8 @@ The pipeline refuses early and cheaply. In order:
    alone until an `@mention` brings it back (§12). If someone told noergler
    to stop reviewing it (§12c), it is left alone until a review is asked for.
 5. The source branch does not contain the opt-out keyword.
+5b. Not a guard: the SNAPSHOT task (below). It runs here, before every guard
+   that can end the run without a review, since it calls no model.
 6. `AGENTS.md` exists, when it is required.
 7. `AGENTS.md` is under the hard token limit.
 8. The PR's accumulated cost is under the cap. An `@mention` does not override
@@ -81,6 +83,37 @@ instead of skipping past it.
 
 Every skip that is a stable state of the PR (opt-out branch, missing or oversized
 `AGENTS.md`, cost cap) posts a summary saying why. Guards 1 to 4 post nothing.
+
+**SNAPSHOT task.** A PR into the repo's default branch (Bitbucket's
+`default-branch`, read once an hour per repo) whose delta adds an unreleased
+Maven/Gradle build gets a Bitbucket task (a comment with severity
+`BLOCKER`), in the author's language, naming the lines. Only `+` lines
+count, only in `pom.xml`, `.mvn/maven.config`, any `*.gradle(.kts)`,
+`gradle.properties` and `*.versions.toml`, and only `-SNAPSHOT` on a version
+(in capitals after a word character, `}`, `>` or `=`,
+`1.0.0-beta-SNAPSHOT`; in any case after a digit, `}` or `BUILD`; a
+qualifier may follow, `1.0-SNAPSHOT-jdk17`; `endsWith("-SNAPSHOT")` is
+Gradle logic, `libs-snapshot` a repository) or a resolved snapshot's
+timestamp. A change block that removes as many SNAPSHOT lines as
+it adds brings none in (`1.0-SNAPSHOT` → `1.1-SNAPSHOT`). Only the changed
+build files' diffs are read, one call each, or the whole PR diff once past
+50 of them; build files with the blob ids of the last check are not read
+again (in memory). A PR touching none costs one changes call; the open
+tasks are one call. The task blocks the merge only where the repo's
+"incomplete tasks" merge check is on.
+Each task names the lines it was posted for. A line no task named gets a
+new task; the lines of a task the author resolved never get another while
+they stay. An open task's text follows its lines (one released drops out),
+and noergler resolves it once none is left, or once the PR targets another
+branch. A SNAPSHOT removed and added again is new. Any read that fails
+leaves everything as it is. A task a person reopened counts as open again;
+noergler's own open task with the text it is about to post is taken over,
+never posted twice. A `pr:modified` that changes the target of an open PR
+runs the check alone, no review, unless the team's `exclude_repos` or
+branch globs exclude the PR. `REVIEW_CREATE_TASKS` (instance, default
+`true`) and the team's `snapshot_task` (API, default `true`) must both be
+on; off, no task call at all, an open task stays. A stopped PR, an
+opt-out branch and an author or actor the review skips get no check.
 
 ## 3. Incremental review detection
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -110,6 +111,52 @@ func (s *Store) SetConflictOffer(ctx context.Context, prID int64, commentID int)
 	_, err := s.pool.Exec(ctx, `
 		UPDATE pull_requests SET conflict_offer_comment_id = $2, updated_at = now()
 		WHERE id = $1`, prID, id)
+	return err
+}
+
+// SnapshotTask is one SNAPSHOT task noergler posted on a PR, an element of
+// pull_requests.snapshot_tasks: its comment id, the keys of the lines it
+// names, and whether it was open when last read.
+type SnapshotTask struct {
+	ID   int      `json:"id"`
+	Keys []string `json:"keys"`
+	Open bool     `json:"open"`
+}
+
+// SnapshotTasks reads the PR's SNAPSHOT tasks by its key, with the row's
+// id; no row is 0 and none.
+func (s *Store) SnapshotTasks(ctx context.Context, k PRKey) (int64, []SnapshotTask, error) {
+	var rowID int64
+	var raw []byte
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, snapshot_tasks FROM pull_requests
+		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3`,
+		k.Project, k.Repo, k.PRID).Scan(&rowID, &raw)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return 0, nil, nil
+	case err != nil:
+		return 0, nil, err
+	}
+	var tasks []SnapshotTask
+	if err := json.Unmarshal(raw, &tasks); err != nil {
+		return 0, nil, fmt.Errorf("snapshot_tasks: %w", err)
+	}
+	return rowID, tasks, nil
+}
+
+// SetSnapshotTasks writes the PR row's SNAPSHOT tasks.
+func (s *Store) SetSnapshotTasks(ctx context.Context, prID int64, tasks []SnapshotTask) error {
+	if tasks == nil {
+		tasks = []SnapshotTask{}
+	}
+	raw, err := json.Marshal(tasks)
+	if err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(ctx, `
+		UPDATE pull_requests SET snapshot_tasks = $2, updated_at = now()
+		WHERE id = $1`, prID, raw)
 	return err
 }
 

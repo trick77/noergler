@@ -103,6 +103,7 @@ func TestTeams_GetRendersTheSnapshot(t *testing.T) {
 		"exclude_source_branches": []any{"dependabot/*"},
 		"exclude_target_branches": []any{},
 		"use_pr_description":      true,
+		"snapshot_task":           true,
 		// On the shared accounts: the handle is the shared bot's, no health.
 		"bitbucket_account": map[string]any{"source": "shared", "username": testBot, "status": nil, "since": nil},
 		"jira_account":      map[string]any{"source": "shared", "status": nil, "since": nil},
@@ -121,38 +122,38 @@ func TestTeams_PutIsAPartialUpdate(t *testing.T) {
 			AutoReviewAuthors: []string{"alice"},
 			IgnoreAuthors:     []string{"ci-bot"},
 			ExcludeRepos:      []string{"*-infra"},
-			UsePRDescription:  true,
+			UsePRDescription:  true, SnapshotTask: true,
 		}},
 		{"explicit null keeps", `{"auto_review_authors":null}`, store.TeamSettings{
 			AutoReviewAuthors: []string{"alice"},
 			IgnoreAuthors:     []string{"ci-bot"},
 			ExcludeRepos:      []string{"*-infra"},
-			UsePRDescription:  true,
+			UsePRDescription:  true, SnapshotTask: true,
 		}},
 		{"a list replaces", `{"auto_review_authors":["bob"]}`, store.TeamSettings{
 			AutoReviewAuthors: []string{"bob"},
 			IgnoreAuthors:     []string{"ci-bot"},
 			ExcludeRepos:      []string{"*-infra"},
-			UsePRDescription:  true,
+			UsePRDescription:  true, SnapshotTask: true,
 		}},
 		{"empty list clears", `{"exclude_repos":[]}`, store.TeamSettings{
 			AutoReviewAuthors: []string{"alice"},
 			IgnoreAuthors:     []string{"ci-bot"},
 			ExcludeRepos:      []string{},
-			UsePRDescription:  true,
+			UsePRDescription:  true, SnapshotTask: true,
 		}},
 		{"entries are trimmed and blanks dropped", `{"ignore_authors":["  bob  ","","   "]}`, store.TeamSettings{
 			AutoReviewAuthors: []string{"alice"},
 			IgnoreAuthors:     []string{"bob"},
 			ExcludeRepos:      []string{"*-infra"},
-			UsePRDescription:  true,
+			UsePRDescription:  true, SnapshotTask: true,
 		}},
 		{"all three at once", `{"auto_review_authors":["x"],"ignore_authors":[],"exclude_repos":["*-test"]}`,
 			store.TeamSettings{
 				AutoReviewAuthors: []string{"x"},
 				IgnoreAuthors:     []string{},
 				ExcludeRepos:      []string{"*-test"},
-				UsePRDescription:  true,
+				UsePRDescription:  true, SnapshotTask: true,
 			}},
 	}
 	for _, c := range cases {
@@ -248,6 +249,27 @@ func TestTeams_PutSwitchesThePRDescriptionOff(t *testing.T) {
 	}
 	if h.rv.usePRDescription == nil || *h.rv.usePRDescription {
 		t.Errorf("reviewer not mirrored: %v", h.rv.usePRDescription)
+	}
+}
+
+// The SNAPSHOT task switch: on by default, off through the API, mirrored
+// to the live reviewer like the PR description switch.
+func TestTeams_PutSwitchesTheSnapshotTaskOff(t *testing.T) {
+	h := newHarness(t, nil)
+	h.setStore(t, &fakeSettingsStore{})
+
+	w := h.do(t, http.MethodPut, "/teams/"+testSlug+"/settings", bearer(), `{"snapshot_task":false}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if h.rt.Team().Review.SnapshotTask || !h.rt.Team().Review.UsePRDescription {
+		t.Errorf("snapshot = %+v", h.rt.Team().Review)
+	}
+	if got := decodeBody(t, w)["snapshot_task"]; got != false {
+		t.Errorf("snapshot_task = %v, want false", got)
+	}
+	if h.rv.snapshotTask == nil || *h.rv.snapshotTask {
+		t.Errorf("reviewer not mirrored: %v", h.rv.snapshotTask)
 	}
 }
 

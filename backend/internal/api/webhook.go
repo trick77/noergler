@@ -235,10 +235,24 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 		httpx.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "deleted-purge"})
 
 	case webhook.EventModified:
-		// Only draft -> ready is ours: the author hands the PR from the bot
-		// to human reviewers. Title, description, reviewer and target edits
-		// arrive here too and are nothing to act on, so no warning. Never a
-		// review: not in reviewEventKeys, so the branch globs do not apply.
+		// Draft -> ready is ours: the author hands the PR from the bot to
+		// human reviewers. A new target runs the SNAPSHOT task alone (it
+		// depends on the target; no push follows a retarget). Title,
+		// description and reviewer edits arrive here too and are nothing to
+		// act on, so no warning. Never a review: not in reviewEventKeys, so
+		// the branch globs do not apply.
+		// The retarget passes the review's exclusions (steps 10 and 11, here
+		// rather than there: they would drop a draft -> ready in the same
+		// event): a PR noergler never reviews gets no task it could not
+		// resolve later.
+		if team := rt.Team(); p.Retargeted() && team.ReviewsRepo(project, repo) &&
+			team.ExcludedBranch(p.PullRequest.FromRef.Branch(), p.PullRequest.ToRef.Branch()) == "" {
+			d.Queue.SubmitJob(key, slug, "snapshot-task", func(ctx context.Context, _ teams.Scheduler) bool { rv.HandleRetargeted(ctx, p); return false })
+			if !p.LeftDraft() {
+				httpx.WriteJSON(w, http.StatusOK, accepted{Status: "accepted", Reason: "retargeted", Queue: "queued"})
+				return
+			}
+		}
 		if !p.LeftDraft() {
 			d.Log.DebugContext(ctx, "pr:modified ignored: not draft -> ready", "pr_id", p.PullRequest.ID)
 			httpx.WriteJSON(w, http.StatusOK, ignored{"ignored", "pr modified, not draft -> ready"})

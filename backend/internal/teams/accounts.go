@@ -236,6 +236,21 @@ func (b *botSwitch) UpdatePRComment(ctx context.Context, project, repo string, p
 func (b *botSwitch) ResolveCommentThread(ctx context.Context, project, repo string, prID, commentID int) error {
 	return b.c().ResolveCommentThread(ctx, project, repo, prID, commentID)
 }
+func (b *botSwitch) FetchPRFileDiff(ctx context.Context, project, repo string, prID int, path, srcPath string) (string, error) {
+	return b.c().FetchPRFileDiff(ctx, project, repo, prID, path, srcPath)
+}
+func (b *botSwitch) OpenTasks(ctx context.Context, project, repo string, prID int) ([]bitbucket.Comment, error) {
+	return b.c().OpenTasks(ctx, project, repo, prID)
+}
+func (b *botSwitch) PostPRTask(ctx context.Context, project, repo string, prID int, text string) (int, error) {
+	return b.c().PostPRTask(ctx, project, repo, prID, text)
+}
+func (b *botSwitch) ResolveTask(ctx context.Context, project, repo string, prID, commentID int) error {
+	return b.c().ResolveTask(ctx, project, repo, prID, commentID)
+}
+func (b *botSwitch) DefaultBranch(ctx context.Context, project, repo string) (string, error) {
+	return b.c().DefaultBranch(ctx, project, repo)
+}
 func (b *botSwitch) MergeStatus(ctx context.Context, project, repo string, prID int) (bitbucket.MergeStatus, error) {
 	return b.c().MergeStatus(ctx, project, repo, prID)
 }

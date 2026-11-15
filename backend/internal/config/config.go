@@ -118,6 +118,10 @@ type Review struct {
 	// UsePRDescription feeds the PR title and description to the model.
 	// Team API only (no env var, no teams.yaml key); the DB row wins.
 	UsePRDescription bool
+	// SnapshotTask posts a Bitbucket task on a PR into the default branch
+	// that adds a SNAPSHOT build (user, 2026-11-15: on for every team).
+	// Team API only, like UsePRDescription; App.CreateTasks gates it.
+	SnapshotTask bool
 	// DisputeSignalWindowDays is how long one dispute of a finding counts
 	// toward its dispute signal; DisputeSignalThreshold the distinct PRs
 	// inside that window at which the finding-thread answer proposes the
@@ -365,6 +369,11 @@ type App struct {
 	// seeds new teams only, so a per-team default never reached the existing
 	// ones, and no team can lift these.
 	IgnoreAuthorGlobs []string
+	// CreateTasks (REVIEW_CREATE_TASKS, default true) lets noergler touch
+	// Bitbucket tasks at all; a team's switch (Review.SnapshotTask) only
+	// narrows it. Off is off (user, 2026-11-15: "aus heisst aus!"): no task
+	// is posted, read or resolved, an open one stays for a person.
+	CreateTasks bool
 	// SecretsKey seals the credentials teams push (NOERGLER_SECRETS_KEY).
 	// Required even before any team pushes one: a key that appears only
 	// later is a deploy step nobody remembers.
@@ -505,6 +514,7 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 			DiffAllowDynamicContext:         r.Bool("REVIEW_DIFF_ALLOW_DYNAMIC_CONTEXT", true),
 			TicketComplianceCheck:           r.Bool("REVIEW_TICKET_COMPLIANCE_CHECK", true),
 			UsePRDescription:                true,
+			SnapshotTask:                    true,
 			RequireAgentsMD:                 r.Bool("REVIEW_REQUIRE_AGENTS_MD", true),
 			AgentsMDWarnTokens:              r.Int("REVIEW_AGENTS_MD_WARN_TOKENS", 4000),
 			AgentsMDMaxTokens:               r.Int("REVIEW_AGENTS_MD_MAX_TOKENS", 7000),
@@ -538,6 +548,7 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 		},
 		AlmanachLimits:    AlmanachLimits{NoteMaxChars: positive(r, "ALMANACH_NOTE_MAX_CHARS", 24000)},
 		IgnoreAuthorGlobs: blankNone(r, lookup, "REVIEW_IGNORE_AUTHOR_GLOBS", []string{"*renovate*"}),
+		CreateTasks:       r.Bool("REVIEW_CREATE_TASKS", true),
 		TeamsConfigPath:   r.String("TEAMS_CONFIG", "teams.yaml"),
 		Teams:             map[string]*Team{},
 		Disabled:          map[string]string{},
