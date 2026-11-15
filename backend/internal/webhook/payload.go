@@ -115,6 +115,18 @@ type Payload struct {
 	// edit. nil when absent, so a payload without it never reads as "was
 	// not a draft".
 	PreviousDraft *bool `json:"previousDraft"`
+	// PreviousTarget is sent on pr:modified when the target branch changed:
+	// the target before the edit.
+	PreviousTarget *Ref `json:"previousTarget"`
+}
+
+// Retargeted reports a pr:modified that changed the PR's target branch.
+func (p *Payload) Retargeted() bool {
+	if p.EventKey != EventModified || p.PreviousTarget == nil {
+		return false
+	}
+	before, after := p.PreviousTarget.Branch(), p.PullRequest.ToRef.Branch()
+	return before != "" && before != after
 }
 
 // LeftDraft reports a pr:modified that took the PR out of draft: the

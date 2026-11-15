@@ -205,6 +205,13 @@ func main() {
 			})
 		})
 
+	// Bitbucket: the repo's default branch, which the SNAPSHOT task compares
+	// the PR's target with. sampleDiff touches no build file, so no task.
+	mux.HandleFunc("GET /rest/api/1.0/projects/{project}/repos/{repo}/default-branch",
+		func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, r, map[string]any{"id": "refs/heads/master", "displayId": "master", "type": "BRANCH"})
+		})
+
 	// Bitbucket: raw file bodies. AGENTS.md is the repo instructions the
 	// reviewer requires; anything else is a file it wants to expand context
 	// from. A 404 here is a real answer, not a gap in the fake.

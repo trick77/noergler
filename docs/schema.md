@@ -329,6 +329,7 @@ Go types:
 | `ignore_reason` | text | yes |  |  |
 | `stopped_by` | text | yes |  |  |
 | `conflict_offer_comment_id` | integer | yes |  |  |
+| `snapshot_tasks` | jsonb | no | `'[]'::jsonb` |  |
 
 Indexes:
 
@@ -515,6 +516,7 @@ Go types:
 | `use_pr_description` | boolean | no | `true` |  |
 | `exclude_source_branches` | text[] | no | `'{}'::text[]` |  |
 | `exclude_target_branches` | text[] | no | `'{}'::text[]` |  |
+| `snapshot_task` | boolean | no | `true` |  |
 
 ## user_settings
 
@@ -883,6 +885,7 @@ erDiagram
         text ignore_reason
         text stopped_by
         integer conflict_offer_comment_id
+        jsonb snapshot_tasks
     }
     review_attempts {
         bigint id PK
@@ -960,6 +963,7 @@ erDiagram
         boolean use_pr_description
         text[] exclude_source_branches
         text[] exclude_target_branches
+        boolean snapshot_task
     }
     user_settings {
         text user_name PK

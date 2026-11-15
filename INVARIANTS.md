@@ -184,6 +184,24 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   check (`conflict_comment_id`), counted under auto-fixes; its call is
   `fix` in `llm_calls`. The push's full re-review is wanted, as after a
   merge by hand.
+- SNAPSHOT task (user, 2026-11-15): code decides (`snapshot.AddedIn`),
+  never the model, never a finding. PR delta only: `+` lines of each
+  changed build file's PR diff (Maven/Gradle only), a change block's
+  SNAPSHOT lines exempt up to as many as it removes; context, removed lines
+  and the rest of the repo never count. Into the repo's default branch
+  only. Each task keeps the keys it named (`pull_requests.snapshot_tasks`);
+  a key any task named never gets another while in the delta; a key gone
+  from the delta leaves its task, and an open task with none left is
+  resolved by noergler. Task state is Bitbucket's open list, read every
+  run, never the stored flag alone (a person may reopen). A failed read is
+  unknown, never "no hit": nothing posted, resolved or written. A posted
+  task's id is written past a shutdown, and an unknown own open task with
+  the same text is taken over (a lost id would post twice, resolve once).
+  A retarget passes `exclude_repos` and the branch globs like a review. Both switches on
+  (`REVIEW_CREATE_TASKS`, team `snapshot_task`), else no task call at all
+  (user: "aus heisst aus!"). Runs in prepare after the opt-out branch,
+  before the AGENTS.md gates and the cost cap, and alone on a retarget;
+  never on a stopped PR.
 - Merge-conflict offer (user, 2026-11-14): a completed review under the cost
   cap checks the merge status and, on a conflict, runs a request's
   `mergeConflict` (its depths, no model, no commit, a stage's timeout).
@@ -351,8 +369,8 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   2026-10-22); nested under either, not. The PR author under noergler's
   finding-thread answer is a reply on that finding instead (2026-11-13).
 - `pr:modified` is never a review and never warns: only draft -> ready
-  (`previousDraft` true, `draft` false) is queued, every other edit is
-  ignored. Drafts are reviewed (user, 2026-10-22: a draft is the bot's
+  (`previousDraft` true, `draft` false) and a new target (`previousTarget`,
+  the SNAPSHOT task alone) are queued, every other edit is ignored. Drafts are reviewed (user, 2026-10-22: a draft is the bot's
   turn, ready the humans'); never add a draft guard.
 - 404/503 for a slug before 401. `/onboard` and the settings PUT decode the
   body AFTER auth.

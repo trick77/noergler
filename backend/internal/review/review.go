@@ -130,6 +130,10 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		return nil, ctx, r.abort(ctx, key, kind, SkipBranchOptOut, prTag, httpCounter)
 	}
 
+	// 5b. The SNAPSHOT task: no model, so before every guard that can end
+	// the run without a review (snapshottask.go).
+	r.checkSnapshotTask(ctx, pr, key, upsert, prTag, l)
+
 	repoInstructions := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.Branch())
 
 	// 6. AGENTS.md required and absent.

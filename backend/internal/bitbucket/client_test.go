@@ -867,6 +867,83 @@ func TestResolveCommentThreadReportsAMissingComment(t *testing.T) {
 	}
 }
 
+// A task is a comment with severity BLOCKER (Bitbucket DC 7.2+ REST docs).
+func TestPostPRTask(t *testing.T) {
+	f, c := newFake(t, sequence(t, [2]string{"201", `{"id":7,"version":0,"severity":"BLOCKER","state":"OPEN"}`}))
+	id, err := c.PostPRTask(context.Background(), "PROJ", "r", 1, "fix it")
+	if err != nil || id != 7 {
+		t.Fatalf("id = %d, err = %v", id, err)
+	}
+	post := f.last()
+	if post.Method != http.MethodPost || post.Path != "/rest/api/1.0/projects/PROJ/repos/r/pull-requests/1/comments" ||
+		post.Body["severity"] != "BLOCKER" || post.Body["text"] != "fix it" {
+		t.Errorf("post = %s %s %v", post.Method, post.Path, post.Body)
+	}
+}
+
+// Resolving a task sets state RESOLVED at the version just read, text left
+// alone; one 409 is retried.
+func TestResolveTask(t *testing.T) {
+	f, c := newFake(t, sequence(t,
+		[2]string{"200", `{"id":7,"version":2,"state":"OPEN"}`},
+		[2]string{"409", `{"errors":[{"message":"version conflict"}]}`},
+		[2]string{"200", `{"id":7,"version":3,"state":"OPEN"}`},
+		[2]string{"200", `{"id":7,"version":4,"state":"RESOLVED"}`},
+	))
+	if err := c.ResolveTask(context.Background(), "PROJ", "r", 1, 7); err != nil {
+		t.Fatal(err)
+	}
+	put := f.last()
+	if put.Method != http.MethodPut || put.Body["state"] != "RESOLVED" || put.Body["version"] != float64(3) {
+		t.Errorf("put = %s %v", put.Method, put.Body)
+	}
+	if _, ok := put.Body["text"]; ok {
+		t.Errorf("body = %v: resolving must not rewrite the text", put.Body)
+	}
+}
+
+func TestOpenTasks(t *testing.T) {
+	f, c := newFake(t, sequence(t,
+		[2]string{"200", `{"values":[{"id":7,"version":1,"text":"a","state":"OPEN","author":{"name":"noergler"}}],"isLastPage":false,"nextPageStart":1}`},
+		[2]string{"200", `{"values":[{"id":9,"version":2,"text":"b","state":"OPEN"}],"isLastPage":true}`},
+	))
+	got, err := c.OpenTasks(context.Background(), "PROJ", "r", 1)
+	if err != nil || len(got) != 2 || got[0].ID != 7 || got[0].Author.Name != "noergler" || got[1].Version != 2 {
+		t.Fatalf("tasks = %+v, err = %v", got, err)
+	}
+	last := f.last()
+	if last.Path != "/rest/api/1.0/projects/PROJ/repos/r/pull-requests/1/blocker-comments" ||
+		last.Query.Get("state") != "OPEN" || last.Query.Get("start") != "1" {
+		t.Errorf("request = %s ?%v", last.Path, last.Query)
+	}
+}
+
+func TestFetchPRFileDiff(t *testing.T) {
+	f, c := newFake(t, sequence(t, [2]string{"200", "diff --git src://lib/pom.xml dst://lib/pom.xml\n"}))
+	if _, err := c.FetchPRFileDiff(context.Background(), "PROJ", "r", 1, "lib/pom.xml", "old/pom.xml"); err != nil {
+		t.Fatal(err)
+	}
+	got := f.last()
+	if got.Path != "/rest/api/1.0/projects/PROJ/repos/r/pull-requests/1/diff/lib/pom.xml" || got.Query.Get("srcPath") != "old/pom.xml" {
+		t.Errorf("request = %s ?%v", got.Path, got.Query)
+	}
+}
+
+func TestDefaultBranch(t *testing.T) {
+	f, c := newFake(t, sequence(t, [2]string{"200", `{"id":"refs/heads/main","displayId":"main","type":"BRANCH"}`}))
+	ref, err := c.DefaultBranch(context.Background(), "PROJ", "r")
+	if err != nil || ref != "refs/heads/main" {
+		t.Fatalf("ref = %q, err = %v", ref, err)
+	}
+	if got := f.last().Path; got != "/rest/api/1.0/projects/PROJ/repos/r/default-branch" {
+		t.Errorf("path = %s", got)
+	}
+	_, c = newFake(t, sequence(t, [2]string{"200", `{}`}))
+	if _, err := c.DefaultBranch(context.Background(), "PROJ", "r"); err == nil {
+		t.Error("an answer without an id was taken")
+	}
+}
+
 // --- paging ------------------------------------------------------------------
 
 func TestPagedWalksEveryPage(t *testing.T) {

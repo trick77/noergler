@@ -90,6 +90,14 @@ type Reviewer struct {
 	ignoreAuthorGlobs []string
 	// usePRDescription is rewritten by the same API, so it is atomic too.
 	usePRDescription atomic.Bool
+	// snapshotTask is the team's switch, rewritten by the same API;
+	// createTasks the instance's, fixed at startup (snapshottask.go).
+	snapshotTask atomic.Bool
+	createTasks  bool
+	// defaultBranches is each repo's default branch, read once an hour.
+	defaultBranches branchCache
+	// snapshotMemo is each PR's last SNAPSHOT hits by its build files.
+	snapshotMemo hitsMemo
 	// template is the review prompt, mentionTmpl the Q&A prompt; both the
 	// compiled-in ones unless a test overrides them.
 	template    string
@@ -140,7 +148,9 @@ type Options struct {
 	DisplayNamePattern *regexp.Regexp
 	// IgnoreAuthorGlobs is config.App's, instance-wide; nil = none.
 	IgnoreAuthorGlobs []string
-	Log               *slog.Logger
+	// CreateTasks is config.App's: off, no task call at all.
+	CreateTasks bool
+	Log         *slog.Logger
 	// Owns reports whether the team still claims the repo; nil claims all.
 	Owns func(project, repo string) bool
 	// Team is the live team snapshot (claims, exclude_repos, Jira, riptide),
@@ -167,6 +177,7 @@ func New(opt Options) *Reviewer {
 		autoReviewAuthors: opt.Config.AutoReviewAuthors,
 		ignoreAuthors:     opt.Config.IgnoreAuthors,
 		ignoreAuthorGlobs: opt.IgnoreAuthorGlobs,
+		createTasks:       opt.CreateTasks,
 		template:          cmp.Or(opt.Template, prompts.Review),
 		mentionTmpl:       cmp.Or(opt.MentionTemplate, prompts.Mention),
 		replyTmpl:         cmp.Or(opt.FindingReplyTemplate, prompts.FindingReply),
@@ -178,12 +189,17 @@ func New(opt Options) *Reviewer {
 		publicURL:         opt.PublicURL,
 	}
 	r.usePRDescription.Store(opt.Config.UsePRDescription)
+	r.snapshotTask.Store(opt.Config.SnapshotTask)
 	return r
 }
 
 // SetUsePRDescription switches the PR title and description in or out of
 // the prompt for every later review and mention.
 func (r *Reviewer) SetUsePRDescription(on bool) { r.usePRDescription.Store(on) }
+
+// SetSnapshotTask switches the team's SNAPSHOT task on or off for every
+// later review.
+func (r *Reviewer) SetSnapshotTask(on bool) { r.snapshotTask.Store(on) }
 
 // SetAuthorLists replaces the two author lists.
 //

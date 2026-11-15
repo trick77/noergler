@@ -141,14 +141,18 @@ type teamConfigView struct {
 	// The same reason disputed in this many PRs within this many days gets
 	// an AGENTS.md proposal in the finding thread. The knobs, never the
 	// signals themselves.
-	DisputeSignalWindowDays int      `json:"dispute_signal_window_days"`
-	DisputeSignalThreshold  int      `json:"dispute_signal_threshold"`
-	UsePRDescription        bool     `json:"use_pr_description"`
-	TicketComplianceCheck   bool     `json:"ticket_compliance_check"`
-	JiraEnabled             bool     `json:"jira_enabled"`
-	JiraACPrefixes          []string `json:"jira_acceptance_criteria_prefixes,omitempty"`
-	RiptideEnabled          bool     `json:"riptide_enabled"`
-	Diff                    struct {
+	DisputeSignalWindowDays int  `json:"dispute_signal_window_days"`
+	DisputeSignalThreshold  int  `json:"dispute_signal_threshold"`
+	UsePRDescription        bool `json:"use_pr_description"`
+	// SnapshotTask is the team's switch, CreateTasks the instance's: a task
+	// is posted only when both are on.
+	SnapshotTask          bool     `json:"snapshot_task"`
+	CreateTasks           bool     `json:"instance_create_tasks"`
+	TicketComplianceCheck bool     `json:"ticket_compliance_check"`
+	JiraEnabled           bool     `json:"jira_enabled"`
+	JiraACPrefixes        []string `json:"jira_acceptance_criteria_prefixes,omitempty"`
+	RiptideEnabled        bool     `json:"riptide_enabled"`
+	Diff                  struct {
 		ExtraLinesBefore       int  `json:"context_lines_before"`
 		ExtraLinesAfter        int  `json:"context_lines_after"`
 		DynamicContext         bool `json:"dynamic_context"`
@@ -191,6 +195,8 @@ func (r *Reviewer) teamConfig(ask *mentionAsk) teamConfigView {
 		AgentsMDMaxTokens:       r.cfg.AgentsMDMaxTokens,
 		AgentsMDCustomLink:      r.cfg.AgentsMDCustomLink,
 		UsePRDescription:        r.usePRDescription.Load(),
+		SnapshotTask:            r.snapshotTask.Load(),
+		CreateTasks:             r.createTasks,
 		TicketComplianceCheck:   r.cfg.TicketComplianceCheck,
 		JiraEnabled:             r.jiraEnabled(),
 		RiptideEnabled:          r.riptide != nil && r.riptide.Enabled(),

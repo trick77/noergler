@@ -281,6 +281,7 @@ func Start(ctx context.Context, app *config.App, team *config.Team, d Deps, open
 
 		DisplayNamePattern: app.Bitbucket.DisplayNamePattern,
 		IgnoreAuthorGlobs:  app.IgnoreAuthorGlobs,
+		CreateTasks:        app.CreateTasks,
 		PublicURL:          app.Server.PublicURL,
 	})
 	runtime = NewRuntime(team, reviewer, llm, rt)

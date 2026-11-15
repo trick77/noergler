@@ -30,6 +30,10 @@ func (c outgoing) PostPRComment(ctx context.Context, project, repo string, prID 
 	return c.BitbucketClient.PostPRComment(ctx, project, repo, prID, render.NoEmDash(text))
 }
 
+func (c outgoing) PostPRTask(ctx context.Context, project, repo string, prID int, text string) (int, error) {
+	return c.BitbucketClient.PostPRTask(ctx, project, repo, prID, render.NoEmDash(text))
+}
+
 func (c outgoing) ReplyToComment(ctx context.Context, project, repo string, prID, parentCommentID int, text string) (int, error) {
 	return c.BitbucketClient.ReplyToComment(ctx, project, repo, prID, parentCommentID, render.NoEmDash(render.WrapProse(text)))
 }

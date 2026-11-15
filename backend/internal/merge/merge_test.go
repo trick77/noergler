@@ -28,6 +28,9 @@ func TestSnapshot(t *testing.T) {
 		{"base only", Conflict{Base: ls("v 1.0-SNAPSHOT\n"), Target: ls("v 1.0\n"), Source: ls("v 1.0.1\n")}, false},
 		{"edges only", Conflict{Head: ls("v 1.0-SNAPSHOT\n"), Tail: ls("w 2-SNAPSHOT\n"), Target: ls("a\n"), Source: ls("b\n")}, false},
 		{"identifier", Conflict{Target: ls("case SNAPSHOT:\n"), Source: ls("takeSnapshot()\n")}, false},
+		// The loose rule: a repository name or Gradle logic refuses too.
+		{"repository name", Conflict{Target: ls("<id>nexus-snapshots</id>\n"), Source: ls("b\n")}, true},
+		{"gradle logic", Conflict{Target: ls("a\n"), Source: ls(`if (v.endsWith("-SNAPSHOT")) {` + "\n")}, true},
 	} {
 		if got := tc.c.Snapshot(); got != tc.want {
 			t.Errorf("%s: Snapshot() = %v, want %v", tc.name, got, tc.want)

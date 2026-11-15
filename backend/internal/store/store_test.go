@@ -1065,6 +1065,43 @@ func TestSettings_PRDescriptionDefaultsOn(t *testing.T) {
 	if !all["old"].UsePRDescription {
 		t.Errorf("use_pr_description = false on a row that never set it")
 	}
+	if !all["old"].SnapshotTask {
+		t.Errorf("snapshot_task = false on a row that never set it")
+	}
+	_ = s.PutSettings(ctx, "old", TeamSettings{UsePRDescription: true}, "jan")
+	if all, _ = s.GetAllSettings(ctx); all["old"].SnapshotTask {
+		t.Errorf("snapshot_task false not stored")
+	}
+}
+
+// The SNAPSHOT tasks: none on a fresh row, written and read back by the
+// PR's key, cleared; no row is 0 and none.
+func TestSnapshotTasks_RoundTrip(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	id := upsert(t, s, key, "a")
+	row, got, err := s.SnapshotTasks(ctx, key)
+	if err != nil || row != id || len(got) != 0 {
+		t.Fatalf("fresh = %d %+v, %v", row, got, err)
+	}
+	want := []SnapshotTask{{ID: 77, Keys: []string{"pom.xml <version>1-SNAPSHOT</version> 1"}, Open: true}, {ID: 80, Keys: []string{"b 2"}}}
+	if err := s.SetSnapshotTasks(ctx, id, want); err != nil {
+		t.Fatal(err)
+	}
+	if _, got, _ = s.SnapshotTasks(ctx, key); !reflect.DeepEqual(got, want) {
+		t.Fatalf("read = %+v", got)
+	}
+	if err := s.SetSnapshotTasks(ctx, id, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, got, _ = s.SnapshotTasks(ctx, key); len(got) != 0 {
+		t.Fatalf("cleared = %+v", got)
+	}
+	other := key
+	other.PRID = 999999
+	if row, got, err = s.SnapshotTasks(ctx, other); err != nil || row != 0 || got != nil {
+		t.Fatalf("no row = %d %+v, %v", row, got, err)
+	}
 }
 
 // A reply the bot posted is found by its comment id on its PR only, is

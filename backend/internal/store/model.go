@@ -628,6 +628,7 @@ type TeamSettings struct {
 	ExcludeSourceBranches []string
 	ExcludeTargetBranches []string
 	UsePRDescription      bool
+	SnapshotTask          bool
 }
 
 // claimRow is one team_claims row as the claim reads take it.

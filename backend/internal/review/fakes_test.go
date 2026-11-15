@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/config"
+	"github.com/trick77/noergler/internal/diff"
 	"github.com/trick77/noergler/internal/gitrepo"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/jira"
@@ -90,6 +92,92 @@ type fakeBitbucket struct {
 	// with; the optimistic-locking version is otherwise invisible to a
 	// test that only reads Updates.
 	UpdateVersions []int
+
+	// Tasks is every PostPRTask, ResolvedTasks every ResolveTask id;
+	// taskErr fails both. defaultBranch answers DefaultBranch
+	// (refs/heads/master when empty), DefaultBranchCalls counts them.
+	Tasks              []postedComment
+	ResolvedTasks      []int
+	taskErr            error
+	defaultBranch      string
+	defaultBranchErr   error
+	DefaultBranchCalls int
+	FileDiffs          int
+	openTasksErr       error
+}
+
+// FetchPRFileDiff answers the file's part of prDiff, the one diff the fake
+// serves; FileDiffs counts the calls.
+func (f *fakeBitbucket) FetchPRFileDiff(_ context.Context, _, _ string, _ int, path, _ string) (string, error) {
+	f.mu.Lock()
+	f.FileDiffs++
+	f.mu.Unlock()
+	if f.prDiffErr != nil {
+		return "", f.prDiffErr
+	}
+	for _, part := range diff.SplitByFile(f.prDiff) {
+		if diff.ExtractPath(part) == path {
+			return part, nil
+		}
+	}
+	return "", nil
+}
+
+func (f *fakeBitbucket) PostPRTask(_ context.Context, _, _ string, prID int, text string) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.taskErr != nil {
+		return 0, f.taskErr
+	}
+	f.nextCommentID++
+	f.Tasks = append(f.Tasks, postedComment{PRID: prID, Text: text})
+	c := &bitbucket.Comment{ID: f.nextCommentID, Text: text, Version: 1, Severity: "BLOCKER", State: "OPEN"}
+	c.Author.Name = f.bot
+	f.comments[f.nextCommentID] = c
+	return f.nextCommentID, nil
+}
+
+// OpenTasks is every BLOCKER comment in state OPEN, by id; openTasksErr
+// fails it.
+func (f *fakeBitbucket) OpenTasks(context.Context, string, string, int) ([]bitbucket.Comment, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.openTasksErr != nil {
+		return nil, f.openTasksErr
+	}
+	var out []bitbucket.Comment
+	for id := 1; id <= f.nextCommentID; id++ {
+		if c, ok := f.comments[id]; ok && c.Severity == "BLOCKER" && c.State == "OPEN" {
+			out = append(out, *c)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeBitbucket) ResolveTask(_ context.Context, _, _ string, _, commentID int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.taskErr != nil {
+		return f.taskErr
+	}
+	f.ResolvedTasks = append(f.ResolvedTasks, commentID)
+	if c, ok := f.comments[commentID]; ok {
+		c.State = "RESOLVED"
+	}
+	return nil
+}
+
+func (f *fakeBitbucket) DefaultBranch(_ context.Context, _, _ string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.DefaultBranchCalls++
+	if f.defaultBranchErr != nil {
+		return "", f.defaultBranchErr
+	}
+	if f.defaultBranch == "" {
+		return "refs/heads/master", nil
+	}
+	return f.defaultBranch, nil
 }
 
 func newFakeBitbucket() *fakeBitbucket {
@@ -271,8 +359,12 @@ type fakeStore struct {
 	// conflictOffer is the open offer comment; ConflictOffers every set.
 	conflictOffer  int
 	ConflictOffers []int
-	existing       []store.Finding
-	existingErr    error // fails ExistingFindings alone
+	// snapshotTasks is the PR's SNAPSHOT tasks; SnapshotTaskSets counts
+	// the writes.
+	snapshotTasks    []store.SnapshotTask
+	SnapshotTaskSets int
+	existing         []store.Finding
+	existingErr      error // fails ExistingFindings alone
 	// lastSummary is the PR's stored summary prose; InsertRun carries a
 	// run's onto it.
 	lastSummary    *store.PRSummary
@@ -475,6 +567,35 @@ func (f *fakeStore) SetConflictOffer(_ context.Context, _ int64, commentID int) 
 	}
 	f.conflictOffer = commentID
 	f.ConflictOffers = append(f.ConflictOffers, commentID)
+	return nil
+}
+
+// SnapshotTasks answers row 1 once a row was written (SnapshotTaskSets) or
+// an upsert ran, else none.
+func (f *fakeStore) SnapshotTasks(context.Context, store.PRKey) (int64, []store.SnapshotTask, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return 0, nil, err
+	}
+	if len(f.Upserts) == 0 && f.SnapshotTaskSets == 0 {
+		return 0, nil, nil
+	}
+	out := make([]store.SnapshotTask, 0, len(f.snapshotTasks))
+	for _, t := range f.snapshotTasks {
+		out = append(out, store.SnapshotTask{ID: t.ID, Keys: slices.Clone(t.Keys), Open: t.Open})
+	}
+	return 1, out, nil
+}
+
+func (f *fakeStore) SetSnapshotTasks(_ context.Context, _ int64, tasks []store.SnapshotTask) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return err
+	}
+	f.snapshotTasks = tasks
+	f.SnapshotTaskSets++
 	return nil
 }
 
