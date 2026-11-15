@@ -390,6 +390,14 @@ func (r *Reviewer) mergeConflict(ctx context.Context, j *conflictJob, overCap bo
 		}
 		j.files[p] = s
 		cs := merge.Conflicts(chunks)
+		// Before the count and size bounds: the one reason a smaller
+		// conflict would not lift.
+		for _, c := range cs {
+			if c.Snapshot() {
+				return cannot("snapshot "+p, where+pick(": ein Konflikt enthält eine SNAPSHOT-Version.",
+					": a conflict holds a SNAPSHOT version."))
+			}
+		}
 		if len(cs) == 0 {
 			out, err := merge.Assemble(chunks, nil)
 			if err != nil {

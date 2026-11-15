@@ -211,6 +211,9 @@ func LoadConflictCase(c ConflictCase) (LoadedConflictCase, error) {
 			if cf.Oversized() {
 				return l, fmt.Errorf("%s: over %d lines", key, merge.MaxRegionLines)
 			}
+			if cf.Snapshot() {
+				return l, fmt.Errorf("%s: SNAPSHOT, production refuses it", key)
+			}
 			if cf.Trivial() {
 				if _, ok := accept[key]; ok {
 					return l, fmt.Errorf("%s: trivial, code resolves it", key)

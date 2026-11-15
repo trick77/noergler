@@ -153,6 +153,14 @@ an incident or an eval run: read the reason before relaxing a rule.
   2026-11-14): asset hashes only a rebuild gets right, and the model
   declined them anyway. Web build files only (html, js, css, map, json):
   Go's `cmd/dist` and Python `dist` packages are source.
+- Merge conflict with `SNAPSHOT` refused, never offered (user, 2026-11-15:
+  "snapshot darf nicht in den master"): a resolution makes the PR
+  mergeable, and the version on either side is the author's to settle.
+  Code-resolvable ones too. Conflict regions only, not the whole PR; target
+  and source only (base and trimmed edges are never a resolution's to
+  bring). `-snapshot` ignoring case, as Maven compares it; the hyphen keeps
+  identifiers (`case SNAPSHOT:`) out, every file kept in (an image tag in
+  YAML is a build too).
 - Merge conflict author only: the push lands on the author's branch.
 - Merge conflict on the worker, not the pool: a fetch and a push are
   Bitbucket calls, and serialization is for Bitbucket. Bounded instead:
