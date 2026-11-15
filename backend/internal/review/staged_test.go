@@ -21,6 +21,13 @@ func (s *inlineScheduler) Stage(ctx context.Context, _ store.PRKey, _ string, in
 	post(ctx)
 }
 
+func (s *inlineScheduler) StageThen(ctx context.Context, _ store.PRKey, _ string, infer func(context.Context),
+	post func(context.Context, Scheduler) bool) {
+	s.staged++
+	infer(ctx)
+	post(ctx, s)
+}
+
 func (s *inlineScheduler) Spawn(ctx context.Context, _ store.PRKey, _, _ string, fn func(context.Context)) {
 	fn(ctx)
 }
@@ -52,6 +59,11 @@ type spawnedCall struct {
 
 func (s *deferredScheduler) Stage(ctx context.Context, key store.PRKey, team string, infer, post func(context.Context)) {
 	s.ctx, s.key, s.team, s.infer, s.post = ctx, key, team, infer, post
+}
+
+func (s *deferredScheduler) StageThen(ctx context.Context, key store.PRKey, team string, infer func(context.Context),
+	post func(context.Context, Scheduler) bool) {
+	s.Stage(ctx, key, team, infer, func(ctx context.Context) { post(ctx, &inlineScheduler{}) })
 }
 
 func (s *deferredScheduler) Spawn(ctx context.Context, _ store.PRKey, _, name string, fn func(context.Context)) {

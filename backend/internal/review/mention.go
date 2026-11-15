@@ -91,15 +91,35 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		staged = r.handleConflict(ctx, payload, key, prTag, team, sched, httpCounter)
 		return staged
 	}
+	// The PR's state, read once, here, for the offer, the cap and the
+	// reactivation below.
+	state := r.skipState(ctx, key)
+	// A short yes directly under the open offer is the same request, by
+	// code. Anyone's: handleConflict tells a commenter other than the PR's
+	// author, kindly, that only the author may ask.
+	underOffer := r.underOpenOffer(ctx, state, payload.CommentParentID)
+	if underOffer && conflictConsent(question) {
+		r.log.InfoContext(ctx, prTag+": yes under the merge conflict offer, taken as the request")
+		staged = r.handleConflict(ctx, payload, key, prTag, team, sched, httpCounter)
+		return staged
+	}
+	// An order to change the PR from anyone but its author: told kindly
+	// that only the author may (authoronly.go), no model, before the cap.
+	// Under noergler's Q&A answer the answer's fix flow tells it, kept as a
+	// reply about that answer (postAnswerFix).
+	if pr.Author.User.Name != "" && !strings.EqualFold(comment.Author.Name, pr.Author.User.Name) && changeRequest(question) &&
+		!r.underQAAnswer(ctx, key, payload.CommentParentID) {
+		r.log.InfoContext(ctx, prTag+": change asked by someone other than the PR's author: told only the author may")
+		r.reply(ctx, project, repo, pr.ID, comment.ID, authorOnlyReply(r.languageFor(ctx, comment.Author.Name)))
+		return false
+	}
 
 	// At the cap a mention stops like everything else, review or question:
 	// the banner, no answer, and the PR stays as it was (an ignored one is
 	// not reactivated for nothing). Under the cap, a Q&A on a PR with no row
 	// writes one, so its calls are counted and capped from the first on.
 	// A resume request on a stopped PR is a review: it brings the PR back.
-	// Elsewhere "@bot continue" is a question. The state is read once, here,
-	// for this and the reactivation below.
-	state := r.skipState(ctx, key)
+	// Elsewhere "@bot continue" is a question.
 	isReview := question == "" || reviewKeywords[strings.ToLower(question)] ||
 		(state.Stopped() && resumeRequest(question))
 	rowID, cumulative, over := r.overCap(ctx, key)
@@ -213,8 +233,8 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		project: project, repo: repo, prID: pr.ID, replyTo: comment.ID, lang: l, counter: httpCounter,
 		name: name, namesOn: r.displayName != nil, nameWithheld: byOther, parentName: parentName,
 		ask: &mentionAsk{key: key, prTag: prTag, user: comment.Author.Name, text: question, lang: l,
-			from: pr.FromRef.Branch(), to: pr.ToRef.Branch(), prAuthor: pr.Author.User.Name},
-		anchor: anchor, source: source, fix: answerFix, team: team,
+			from: pr.FromRef.Branch(), to: pr.ToRef.Branch(), prAuthor: pr.Author.User.Name, underOffer: underOffer},
+		anchor: anchor, source: source, fix: answerFix, team: team, payload: payload,
 	}
 	req := inference.MentionRequest{
 		Prompt:       prompt,
@@ -225,12 +245,13 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		req.Fix = answerFix.req
 	}
 	infer := func(inferCtx context.Context) { job.res = r.llm.Mention(inferCtx, req) }
-	post := func(postCtx context.Context) { r.postMention(postCtx, job) }
+	post := func(postCtx context.Context, s Scheduler) bool { return r.postMention(postCtx, s, job) }
 	// The gateway call, a tool loop of up to MaxToolRounds+1 calls, goes to
 	// the inference pool instead of holding the Bitbucket worker; the tools
-	// read the store only, never Bitbucket.
+	// read the store only, never Bitbucket. The post may start a
+	// merge-conflict resolution the tool accepted, staged in turn.
 	staged = true
-	sched.Stage(ctx, key, team, infer, post)
+	sched.StageThen(ctx, key, team, infer, post)
 	return true
 }
 
@@ -263,12 +284,21 @@ type mentionJob struct {
 	// mention replies to no Q&A answer of noergler's.
 	fix  *answerFix
 	team string
+	// payload is the mention's: a resolution the tool accepted starts
+	// from it, as a request does.
+	payload *webhook.Payload
 }
 
-// postMention is the Q&A's posting stage, on the worker.
-func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
+// postMention is the Q&A's posting stage, on the worker. handedOff when it
+// started a merge-conflict resolution the tool accepted, staged in turn.
+func (r *Reviewer) postMention(ctx context.Context, sched Scheduler, j *mentionJob) (handedOff bool) {
 	prTag := j.ask.prTag
-	defer r.logHTTPTotals(ctx, prTag, j.counter)
+	// A staged resolution logs the scope's totals when its own post ends.
+	defer func() {
+		if !handedOff {
+			r.logHTTPTotals(ctx, prTag, j.counter)
+		}
+	}()
 	project, repo, prID, replyTo := j.project, j.repo, j.prID, j.replyTo
 	result := j.res
 	// The asker's language until a switch is stored, which happens only
@@ -298,9 +328,8 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 	// meanwhile, as in a review's post.
 	if r.owns != nil && !r.owns(project, repo) {
 		r.log.InfoContext(ctx, prTag+": repo no longer claimed by the team, Q&A not posted")
-		return
+		return false
 	}
-
 	// No review_attempts row on THIS path, deliberately. A mention asking
 	// for a review delegates to ReviewPullRequestStaged above and is
 	// recorded there, as kind=mention; what reaches here is the Q&A, which
@@ -346,6 +375,24 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 			o := r.stopReviews(ctx, j.ask.key, prTag, j.ask.user, j.ask.prAuthor, nil)
 			prefix += stopReply(l, o, r.bitbucket.BotUsername()) + "\n\n"
 		}
+		// The model read the reply as a yes to the offer and code let it
+		// stand (conflictVeto): the request, answered by its own replies,
+		// never the model's sentence about it; what this turn confirmed
+		// first. handleConflict checks the author. Only on a loop that
+		// ended well, as a switch or a stop.
+		if j.ask.resolveConflict {
+			r.log.InfoContext(ctx, prTag+": the model read the reply as a yes to the merge conflict offer")
+			if prefix != "" {
+				r.reply(ctx, project, repo, prID, replyTo, strings.TrimSpace(prefix))
+			}
+			return r.handleConflict(ctx, j.payload, j.ask.key, prTag, j.team, sched, j.counter)
+		}
+		// Under the offer, a model without the tool may promise a resolution
+		// nobody starts, and a yes code vetoed waits for one: both say what
+		// starts it.
+		if j.ask.underOffer && (result.ToolsOff != "" || j.ask.consentRefused) {
+			result.Answer = strings.TrimSpace(result.Answer + "\n\n" + offerHint(l, r.bitbucket.BotUsername()))
+		}
 		// "apply it": code answers, the model's sentence is never posted,
 		// it may promise a change nobody makes. Under noergler's Q&A answer
 		// it is the fix flow; anywhere else it is said why not.
@@ -380,6 +427,7 @@ func (r *Reviewer) postMention(ctx context.Context, j *mentionJob) {
 	default:
 		r.log.ErrorContext(ctx, fmt.Sprintf("Mention Q&A on %s failed: %v", prTag, result.Err))
 	}
+	return false
 }
 
 // costTotal is a summed cost for the log: 3 decimals, or "unpriced".

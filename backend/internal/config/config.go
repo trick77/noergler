@@ -371,7 +371,7 @@ type App struct {
 	IgnoreAuthorGlobs []string
 	// CreateTasks (REVIEW_CREATE_TASKS, default true) lets noergler touch
 	// Bitbucket tasks at all; a team's switch (Review.SnapshotTask) only
-	// narrows it. Off is off (user, 2026-11-15: "aus heisst aus!"): no task
+	// narrows it. Off is off (user, 2026-11-15: "off means off"): no task
 	// is posted, read or resolved, an open one stays for a person.
 	CreateTasks bool
 	// SecretsKey seals the credentials teams push (NOERGLER_SECRETS_KEY).

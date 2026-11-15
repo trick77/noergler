@@ -155,8 +155,8 @@ an incident or an eval run: read the reason before relaxing a rule.
   through merges histogram conflicts on (code review). All four must
   agree; on a repeat-heavy stress (4 seeds, ~11 400 comparisons) merges
   clean where git conflicts or differs fell from 80 (master) to 4, a
-  subset, and conflicts where git is clean to 0, refusals ~2.5%. User:
-  "4 von 11000 ist tragbares risiko". No indent heuristic: `git
+  subset, and conflicts where git is clean to 0, refusals ~2.5%. User: "4
+  in 11000 is an acceptable risk". No indent heuristic: `git
   merge-file` leaves it off.
 - Merge conflict trivial rule (user, 2026-11-14): on 1500 git/git merges one
   trivial resolution broke a file (8f0d663e: both sides added one function,
@@ -169,7 +169,7 @@ an incident or an eval run: read the reason before relaxing a rule.
   declined them anyway. Web build files only (html, js, css, map, json):
   Go's `cmd/dist` and Python `dist` packages are source.
 - Merge conflict with `SNAPSHOT` refused, never offered (user, 2026-11-15:
-  "snapshot darf nicht in den master"): a resolution makes the PR
+  "a snapshot must not go into master"): a resolution makes the PR
   mergeable, and the version on either side is the author's to settle.
   Code-resolvable ones too. Conflict regions only, not the whole PR; target
   and source only (base and trimmed edges are never a resolution's to
@@ -191,7 +191,7 @@ an incident or an eval run: read the reason before relaxing a rule.
   digit, `}` or BUILD; a quote, paren or blank before it is Gradle logic
   (`endsWith("-SNAPSHOT")`) or a comment, a lower-case name after a word
   a repository (`libs-snapshot`); a `-` after it a qualifier. PR
-  delta only (user: "nur im PR delta reklamieren"): a SNAPSHOT already on
+  delta only (user: "flag it only in the PR delta"): a SNAPSHOT already on
   the line before the change is never claimed; pairing per change block,
   by count, blunt: a SNAPSHOT moved to another block counts there, the safe
   way. A resolved task stays resolved for the lines it named (user), keyed
@@ -213,10 +213,32 @@ an incident or an eval run: read the reason before relaxing a rule.
   beats 50 calls. Hits remembered by the build files' blob ids, in memory:
   a push that leaves them alone reads no diff. Build files (user: only
   those): `pom.xml`, `.mvn/maven.config`, every Gradle script, properties,
-  Version Catalog; Kotlin in buildSrc is code, left out. Off is off on both switches (user:
-  "aus heisst aus!"): no call, an open task stays for a person. Team switch
+  Version Catalog; Kotlin in buildSrc is code, left out. Off is off on both
+  switches (user: "off means off!"): no call, an open task stays for a
+  person. Team switch
   on for every team (user), instance switch on by default (user).
 - Merge conflict author only: the push lands on the author's branch.
+- A yes to the offer (user, 2026-11-15: "a reply with yes should simply be
+  enough"; a word list misses "let's try that", so the model reads the
+  rest). Not on a PR ignored since its summary was deleted: a plain reply
+  never brings a PR back, so a yes there is not answered (known limit; the
+  command with a mention works). Loosens 2026-11-13's "by code, never the model"
+  only for whether a reply under the open offer agrees: a tool offered
+  there alone, code's veto on a no or a put-off, the bounds and checks of
+  the request untouched. A wrong yes is a merge commit on the author's
+  branch, visible and revertable; the veto catches the plain no. Pronouns
+  are no veto there ("ich bin einverstanden"), unlike the command's
+  conflictSelf. The post starts the request through StageThen: the
+  answer's post may stage again, the PR's hold kept.
+- Author-only actions answer anyone else kindly, never silently (user,
+  2026-11-15: general rule): a reviewer's "ok" under the offer is told only
+  the author may ask; a reviewer's "fix it" under a finding, or a mention
+  ordering a change, too (`changeRequest`, by code). Narrow on purpose: a
+  short order only, no question ("how would you fix this?" is the Q&A's),
+  nobody speaking of their own doing; a miss stays as before, silent under
+  a finding. Under noergler's Q&A answer the answer's own notice stays (it
+  is kept as a reply about the answer, so the author's "apply it" under it
+  works).
 - Merge conflict on the worker, not the pool: a fetch and a push are
   Bitbucket calls, and serialization is for Bitbucket. Bounded instead:
   60 s a stage, 300 MiB a fetch on the wire and 600 MiB inflated (one

@@ -472,7 +472,11 @@ back. On a stopped PR (§12c) it is answered, and the PR stays stopped.
 
 The PR author's reply on one of noergler's finding threads needs no mention.
 The route queues any non-empty reply not written by the bot (Bitbucket's
-`commentParentId`); the worker answers only the author, only when the parent is
+`commentParentId`); the worker answers only the author, except that anyone
+else who orders a change there ("fix it", "bitte beheben"; short, no
+question, decided by code) is told kindly that only the author may, as a
+mention asking a change is anywhere (author-only actions are never met with
+silence); only when the parent is
 a stored, unfixed finding of that PR without an answer yet, and, for a plain
 reply, only under the PR's cost cap. On a thread answered already a plain
 reply still gets a call, but only a fix request (below) is answered; an
@@ -549,6 +553,18 @@ decided by code, under a finding too. Anyone else is told only the author
 can ask. A question ("how do I resolve the conflict?"), a negation or the
 author speaking of doing it ("I'll resolve the conflict myself", "später")
 goes to the Q&A.
+
+A yes directly under noergler's open offer (below) is the same request: a
+short one ("ja", "ok bitte", "👍") by code; any other wording ("lass uns das
+versuchen") reaches the Q&A, whose model has a `resolve_merge_conflict`
+tool there and only there. Code vetoes the tool on a no or a put-off in the
+commenter's own words ("nicht jetzt", "mach ich selbst"); else the request
+starts after the turn, answers with its own replies, and the model's
+sentence is not posted. Without the tool, or after a veto, the answer adds
+what starts it. Anyone but the author is told only the author can ask. On
+a PR ignored since its summary was deleted a plain reply, a yes too, is
+not answered (a plain reply never brings a PR back); the command with a
+mention works there.
 
 On the worker, bounded to 60 s: Bitbucket's merge status must say
 `conflicted` (else "no merge conflict"); a fork PR is refused. noergler

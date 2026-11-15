@@ -160,6 +160,12 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   by code, never the model; negated or self-spoken ("I'll resolve it
   myself", "später") is no request; checked in the finding route too,
   before its call, the author's plain reply included. PR author only; not the author = a fixed answer, no row.
+  A yes directly under the open offer is the request too (user,
+  2026-11-15): a short one by code (`conflictConsent`); any other wording
+  by the Q&A model's `resolve_merge_conflict` tool, offered only there,
+  which code vetoes on a no or a put-off in the commenter's own text
+  (`conflictVeto`). The model decides only whether it is a yes, never how
+  to resolve; its sentence is not posted, the request answers.
   Same repo only (a fork is refused). Bitbucket must report `conflicted`; a
   merge here that finds no conflict is refused, never pushed. `Merge3`
   stands only where Myers and patience, each as found and slid as git
@@ -201,7 +207,7 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   the same text is taken over (a lost id would post twice, resolve once).
   A retarget passes `exclude_repos` and the branch globs like a review. Both switches on
   (`REVIEW_CREATE_TASKS`, team `snapshot_task`), else no task call at all
-  (user: "aus heisst aus!"). Runs in prepare after the opt-out branch,
+  (user: "off means off"). Runs in prepare after the opt-out branch,
   before the AGENTS.md gates and the cost cap, and alone on a retarget;
   never on a stopped PR.
 - Merge-conflict offer (user, 2026-11-14): a completed review under the cost

@@ -37,7 +37,7 @@ import (
 // Any read that fails leaves everything as it is: an unknown is never "no
 // hit".
 //
-// Off is off (user, 2026-11-15: "aus heisst aus!"): with the instance's
+// Off is off (user, 2026-11-15: "off means off"): with the instance's
 // REVIEW_CREATE_TASKS or the team's snapshot_task off, no task call at all.
 //
 // The package is imported as snap: this package's tests have a snapshot()

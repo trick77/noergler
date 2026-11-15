@@ -8,7 +8,7 @@ import (
 
 // Snapshot reports a target or source line mentioning an unreleased build
 // (snapshot.Mentions, the loose rule), in any file. Never resolved or
-// offered (user, 2026-11-15: "snapshot darf nicht in den master"): a
+// offered (user, 2026-11-15: "a snapshot must not go into master"): a
 // resolution makes the PR mergeable. Base, Head and Tail are left out: a
 // resolution never picks the base, and both sides already have Head and
 // Tail. A stray match fails safe, nothing pushed.
