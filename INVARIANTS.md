@@ -162,7 +162,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   before its call, the author's plain reply included. PR author only; not the author = a fixed answer, no row.
   Same repo only (a fork is refused). Bitbucket must report `conflicted`; a
   merge here that finds no conflict is refused, never pushed. `Merge3`
-  stands only where Myers and patience align alike (`ErrAmbiguous` else),
+  stands only where Myers and patience, each as found and slid as git
+  slides changes, all four merge alike (`ErrAmbiguous` else; never the
+  slid pair alone, which lets through merges histogram conflicts on),
   checked against git's Myers and histogram; a file one side adds where
   the other adds a directory is refused. Code first: a conflict
   where both sides only inserted, none of it a block both added (no

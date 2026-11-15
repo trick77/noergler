@@ -12,9 +12,6 @@ import (
 // resolution makes the PR mergeable. Base, Head and Tail are left out: a
 // resolution never picks the base, and both sides already have Head and
 // Tail. A stray match fails safe, nothing pushed.
-//
-// Its own file, not merge.go: TestAgreesWithGit merges edits of merge.go's
-// first lines, so an edit there changes what that test checks.
 func (c *Conflict) Snapshot() bool {
 	for _, l := range slices.Concat(c.Target, c.Source) {
 		if snapshot.Mentions(l) {

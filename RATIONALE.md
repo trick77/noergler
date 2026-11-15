@@ -143,6 +143,21 @@ an incident or an eval run: read the reason before relaxing a rule.
   kept line is the other branch's change (delete vs modify, git/git
   42afcb954b); "refuse a resolution that is one side verbatim" catches
   those but refused 22 of 139 correct answers.
+- Merge3's slid witnesses (2026-11-15): a change that can slide (a blank
+  inserted beside a blank) sits where git's `xdl_change_compact` puts it,
+  at the bottom of its run unless it lines up with the other side's
+  change. Myers and patience as found put it elsewhere: a blank after `}`
+  touched the other branch's change of the `}` and conflicted where git
+  merged cleanly (TestAgreesWithGit found it only once `merge.go`'s head,
+  then its base, changed; the bases are fixed testdata now). Slid diffs
+  are two more witnesses, never the merge alone: slid only, Myers and
+  patience agreed far more often, and patience, histogram's stand-in, let
+  through merges histogram conflicts on (code review). All four must
+  agree; on a repeat-heavy stress (4 seeds, ~11 400 comparisons) merges
+  clean where git conflicts or differs fell from 80 (master) to 4, a
+  subset, and conflicts where git is clean to 0, refusals ~2.5%. User:
+  "4 von 11000 ist tragbares risiko". No indent heuristic: `git
+  merge-file` leaves it off.
 - Merge conflict trivial rule (user, 2026-11-14): on 1500 git/git merges one
   trivial resolution broke a file (8f0d663e: both sides added one function,
   Merge3 settled the shared body, the headers one space apart were kept
