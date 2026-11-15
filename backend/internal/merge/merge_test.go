@@ -320,8 +320,8 @@ func TestPatienceMatchesRebuild(t *testing.T) {
 	}
 	for _, c := range cases {
 		a, b := ls(c.a), ls(c.b)
-		hs, ok := diffWith(patience, a, b, MaxEdits)
-		if !ok {
+		hs, err := diffWith(patience, false, a, b, MaxEdits)
+		if err != nil {
 			t.Fatalf("patience(%q,%q) gave up", c.a, c.b)
 		}
 		var out []string
@@ -375,75 +375,192 @@ func TestExcluded(t *testing.T) {
 	}
 }
 
+// A merge that changes once its changes slide as git slides them depends
+// on the alignment: refused. Target's extra blank, slid below the existing
+// blank as git puts it, clears source's change of "}"; as Myers found it,
+// right after "}", it conflicts. git merges cleanly; master's Merge3
+// conflicted (found by TestAgreesWithGit once merge.go's first lines
+// changed): a conflict git does not have, now never handed on.
+func TestSlideChangesTheMergeIsRefused(t *testing.T) {
+	// Target's first change keeps the common head from settling the rest.
+	base := ls("a\nk\n}\n\n// T\nb\n")
+	target := ls("a2\nk\n}\n\n\n// T\nb\n")
+	source := ls("a\nk\nx\n\n// T\nb\n")
+	if _, err := Merge3(base, target, source); !errors.Is(err, ErrAmbiguous) {
+		t.Fatalf("err = %v, want ErrAmbiguous", err)
+	}
+	if _, clean := gitMerge(t, "histogram", base, target, source); !clean {
+		t.Fatal("git conflicts: the case no longer shows what it pins")
+	}
+}
+
+// Merges the slide settles cleanly where git's histogram merge conflicts
+// (code review, 2026-11-15): never clean, refused or a conflict.
+func TestNeverCleanWhereHistogramConflicts(t *testing.T) {
+	cases := [][3]string{{
+		"\n\n}\nu3\n\n\n}\n\n\n}\n\t}\n}\n\t}\nx\nx\n\t}\n\nx\n}\n}\n",
+		"\n\n}\nu3\n\n}\n\n\n}\n\t}\n}\n\t}\nx\nt1\n\t}\n\nt2\nx\n}\n}\n",
+		"\n\n}\n\n\n\n}\n\n\ns0\n\t}\n}\n\t}\nx\nx\n\t}\n\nx\n}\n}\n",
+	}}
+	for i, c := range cases {
+		base, target, source := ls(c[0]), ls(c[1]), ls(c[2])
+		chunks, err := Merge3(base, target, source)
+		if err != nil || len(Conflicts(chunks)) > 0 {
+			continue
+		}
+		got, _ := Assemble(chunks, nil)
+		if out, clean := gitMerge(t, "histogram", base, target, source); !clean || out != string(got) {
+			t.Errorf("case %d: Merge3 clean, git histogram clean=%t", i, clean)
+		}
+	}
+}
+
+// gitMerge is `git merge-file -p` of the three with git's algo, skipping
+// the test without git or one too old for --diff-algorithm. An exit of 128
+// or more is git failing, not a conflict count.
+func gitMerge(t *testing.T, algo string, base, target, source []string) (out string, clean bool) {
+	t.Helper()
+	gitBin, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("no git binary")
+	}
+	dir := t.TempDir()
+	for name, l := range map[string][]string{"base": base, "target": target, "source": source} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(strings.Join(l, "")), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	b, err := exec.Command(gitBin, "merge-file", "-p", "--diff-algorithm="+algo,
+		filepath.Join(dir, "target"), filepath.Join(dir, "base"), filepath.Join(dir, "source")).Output()
+	var exit *exec.ExitError
+	switch {
+	case err == nil:
+		return string(b), true
+	case !errors.As(err, &exit):
+		t.Fatal(err)
+	case exit.ExitCode() >= 128:
+		t.Skipf("git merge-file failed (exit %d): %s", exit.ExitCode(), exit.Stderr)
+	}
+	return string(b), false
+}
+
+// marks is a changed-line slice from a pattern: 'x' changed, '.' not.
+func marks(p string) []bool {
+	out := make([]bool, len(p))
+	for i, c := range p {
+		out[i] = c == 'x'
+	}
+	return out
+}
+
+func pattern(c []bool) string {
+	var b strings.Builder
+	for _, x := range c {
+		b.WriteByte(map[bool]byte{true: 'x', false: '.'}[x])
+	}
+	return b.String()
+}
+
+// compact as git's xdl_change_compact: a group slides to the bottom of
+// its run, back to where it lined up with the other side's change, and
+// joins a group it slides into.
+func TestCompact(t *testing.T) {
+	cases := []struct {
+		name          string
+		rec           []int
+		changed, othr string
+		want          string
+	}{
+		// "a x x b" -> "a x b": the deleted x goes to the bottom.
+		{"down", []int{0, 1, 1, 2}, ".x..", "...", "..x."},
+		// "a x x b" -> "a Y x b", found as: Y inserted, the second x
+		// deleted. The deletion slides up to face Y: one replace.
+		{"back to the other side", []int{0, 1, 1, 2}, "..x.", ".x..", ".x.."},
+		// "a x x y b" -> "a x b", found as x(1) and y deleted: x(1) slides
+		// into y's group, one group of two.
+		{"joins", []int{0, 1, 1, 3, 2}, ".x.x.", "...", "..xx."},
+		// Out of step (the other side's groups do not pair): refused.
+		{"out of step", []int{0, 1, 1, 2}, "..x.", "", ""},
+	}
+	for _, c := range cases {
+		changed := marks(c.changed)
+		ok := compact(c.rec, changed, marks(c.othr))
+		if c.want == "" {
+			if ok {
+				t.Errorf("%s: compacted out of step to %s", c.name, pattern(changed))
+			}
+			continue
+		}
+		if !ok || pattern(changed) != c.want {
+			t.Errorf("%s: %s (ok %t), want %s", c.name, pattern(changed), ok, c.want)
+		}
+	}
+	// Through diffWith, the side's pass: an inserted blank beside a blank
+	// goes to the bottom; the first line's change keeps the common head
+	// out of it.
+	hs, err := diffWith(myers, true, ls("a\nk\n\n\nb\n"), ls("a2\nk\n\n\n\nb\n"), 100)
+	if err != nil || len(hs) != 2 || hs[1] != (hunk{b0: 4, b1: 4, s0: 4, s1: 5}) {
+		t.Fatalf("blank: hunks = %+v, %v", hs, err)
+	}
+}
+
 // TestAgreesWithGit runs random edits of a realistic file through Merge3
 // and `git merge-file`, with git's Myers and histogram diffs both (a
 // server's merge uses histogram): wherever Merge3 merges at all (it may
 // refuse as ErrAmbiguous), it agrees with each on whether the merge is
 // clean, and a clean merge comes out byte for byte the same. The edits
 // repeat existing lines ("}", blank) too, where alignments differ.
+//
+// The bases are fixed files in testdata, not merge.go itself: an edit of
+// merge.go's head once changed what this test checked, and only then did
+// it show a disagreement it had always had. agree_base_2 is that head.
 // Skipped without git.
 func TestAgreesWithGit(t *testing.T) {
-	gitBin, err := exec.LookPath("git")
-	if err != nil {
-		t.Skip("no git binary")
-	}
-	src, err := os.ReadFile("merge.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	baseLines := Lines(src)[:120]
-	rng := rand.New(rand.NewSource(1))
-	dir := t.TempDir()
-	disagree, ambiguous := 0, 0
-	const trials = 600
-	for trial := range trials {
-		target := edit(rng, baseLines, trial, "t")
-		source := edit(rng, baseLines, trial, "s")
-		files := map[string][]string{"base": baseLines, "target": target, "source": source}
-		for name, l := range files {
-			if err := os.WriteFile(filepath.Join(dir, name), []byte(strings.Join(l, "")), 0o600); err != nil {
-				t.Fatal(err)
-			}
+	for _, name := range []string{"agree_base_1.txt", "agree_base_2.txt"} {
+		src, err := os.ReadFile(filepath.Join("testdata", name))
+		if err != nil {
+			t.Fatal(err)
 		}
-		chunks, mErr := Merge3(baseLines, target, source)
-		if errors.Is(mErr, ErrAmbiguous) {
-			ambiguous++
-			continue
-		}
-		if mErr != nil {
-			t.Fatal(mErr)
-		}
-		ours := len(Conflicts(chunks)) == 0
-		for _, algo := range []string{"myers", "histogram"} {
-			cmd := exec.Command(gitBin, "merge-file", "-p", "--diff-algorithm="+algo,
-				filepath.Join(dir, "target"), filepath.Join(dir, "base"), filepath.Join(dir, "source"))
-			out, err := cmd.Output()
-			var exit *exec.ExitError
-			gitClean := err == nil
-			if err != nil && !errors.As(err, &exit) {
-				t.Fatal(err)
-			}
-			if ours != gitClean {
-				disagree++
-				t.Logf("trial %d: git %s clean=%t, Merge3 clean=%t", trial, algo, gitClean, ours)
+		baseLines := Lines(src)
+		rng := rand.New(rand.NewSource(1))
+		disagree, ambiguous := 0, 0
+		const trials = 600
+		for trial := range trials {
+			target := edit(rng, baseLines, trial, "t")
+			source := edit(rng, baseLines, trial, "s")
+			chunks, mErr := Merge3(baseLines, target, source)
+			if errors.Is(mErr, ErrAmbiguous) {
+				ambiguous++
 				continue
 			}
-			if ours {
-				got, err := Assemble(chunks, nil)
-				if err != nil || string(got) != string(out) {
-					t.Errorf("trial %d: clean merges differ from git %s", trial, algo)
+			if mErr != nil {
+				t.Fatal(mErr)
+			}
+			ours := len(Conflicts(chunks)) == 0
+			for _, algo := range []string{"myers", "histogram"} {
+				out, gitClean := gitMerge(t, algo, baseLines, target, source)
+				if ours != gitClean {
+					disagree++
+					t.Logf("%s trial %d: git %s clean=%t, Merge3 clean=%t", name, trial, algo, gitClean, ours)
+					continue
+				}
+				if ours {
+					got, err := Assemble(chunks, nil)
+					if err != nil || string(got) != out {
+						t.Errorf("%s trial %d: clean merges differ from git %s", name, trial, algo)
+					}
 				}
 			}
 		}
+		if disagree > 0 {
+			t.Errorf("%s: %d of %d comparisons disagree with git", name, disagree, 2*(trials-ambiguous))
+		}
+		// Refusing everything would agree trivially.
+		if ambiguous > trials/4 {
+			t.Errorf("%s: %d of %d trials refused as ambiguous", name, ambiguous, trials)
+		}
+		t.Logf("%s: %d of %d trials ambiguous", name, ambiguous, trials)
 	}
-	if disagree > 0 {
-		t.Errorf("%d of %d comparisons disagree with git", disagree, 2*(trials-ambiguous))
-	}
-	// Refusing everything would agree trivially.
-	if ambiguous > trials/4 {
-		t.Errorf("%d of %d trials refused as ambiguous", ambiguous, trials)
-	}
-	t.Logf("%d of %d trials ambiguous", ambiguous, trials)
 }
 
 // edit makes one to three random line edits: insert a new line or a copy

@@ -34,15 +34,20 @@ type hunk struct{ b0, b1, s0, s1 int }
 // false past maxEdits.
 type aligner func(a, b []int, maxEdits int) ([][2]int, bool)
 
-// diff is the hunks turning base into side by Myers' diff, nil and false
-// when they need more than maxEdits line edits: a file changed that much is
-// no simple merge, and the search's memory grows with the square of the
-// edits.
+// diff is the hunks turning base into side by Myers' diff as found, nil and
+// false when they need more than maxEdits line edits: a file changed that
+// much is no simple merge, and the search's memory grows with the square of
+// the edits.
 func diff(base, side []string, maxEdits int) ([]hunk, bool) {
-	return diffWith(myers, base, side, maxEdits)
+	hs, err := diffWith(myers, false, base, side, maxEdits)
+	return hs, err == nil
 }
 
-func diffWith(align aligner, base, side []string, maxEdits int) ([]hunk, bool) {
+// diffWith is the hunks turning base into side by align; slid, with every
+// change placed as git places it (compact). ErrTooDifferent past maxEdits;
+// ErrAmbiguous when compact loses its footing, which a correct alignment
+// never makes it do: refused, never looped on.
+func diffWith(align aligner, slid bool, base, side []string, maxEdits int) ([]hunk, error) {
 	ids := map[string]int{}
 	intern := func(ls []string) []int {
 		out := make([]int, len(ls))
@@ -68,17 +73,148 @@ func diffWith(align aligner, base, side []string, maxEdits int) ([]hunk, bool) {
 	}
 	matches, ok := align(a[pre:len(a)-suf], b[pre:len(b)-suf], maxEdits)
 	if !ok {
-		return nil, false
+		return nil, ErrTooDifferent
+	}
+	// Changed lines of each side, the alignment's gaps.
+	ca, cb := make([]bool, len(a)), make([]bool, len(b))
+	x, y := pre, pre
+	for _, m := range append(matches, [2]int{len(a) - pre - suf, len(b) - pre - suf}) {
+		for ; x < m[0]+pre; x++ {
+			ca[x] = true
+		}
+		for ; y < m[1]+pre; y++ {
+			cb[y] = true
+		}
+		x, y = m[0]+pre+1, m[1]+pre+1
+	}
+	if slid && (!compact(a, ca, cb) || !compact(b, cb, ca)) {
+		return nil, ErrAmbiguous
 	}
 	var hs []hunk
-	x, y := 0, 0
-	for _, m := range append(matches, [2]int{len(a) - pre - suf, len(b) - pre - suf}) {
-		if m[0] > x || m[1] > y {
-			hs = append(hs, hunk{b0: x + pre, b1: m[0] + pre, s0: y + pre, s1: m[1] + pre})
+	i, j := 0, 0
+	for i < len(a) || j < len(b) {
+		if (i < len(a) && ca[i]) || (j < len(b) && cb[j]) {
+			h := hunk{b0: i, s0: j}
+			for i < len(a) && ca[i] {
+				i++
+			}
+			for j < len(b) && cb[j] {
+				j++
+			}
+			h.b1, h.s1 = i, j
+			hs = append(hs, h)
+			continue
 		}
-		x, y = m[0]+1, m[1]+1
+		i, j = i+1, j+1
 	}
-	return hs, true
+	return hs, nil
+}
+
+// compact places each group of changed lines in rec (changed marks it,
+// other marks the other side's) as git's xdl_change_compact does, without
+// the indent heuristic, which git merge-file leaves off: a group that can
+// slide (an inserted line next to an equal one, a blank beside a blank)
+// goes as far down as it can, unless on the way it lined up with a change
+// of the other side, where it goes back to the last such place. Where a
+// group sits decides whether it touches the other branch's change.
+//
+// False where git calls BUG(): the two sides' groups out of step. A
+// correct alignment never gets there; a wrong one is refused, never looped
+// on.
+func compact(rec []int, changed, other []bool) bool {
+	n := len(changed)
+	at := func(c []bool, i int) bool { return i >= 0 && i < len(c) && c[i] }
+	// A group is [start, end) of changed lines, possibly empty; the k-th
+	// group of one side faces the k-th of the other.
+	type group struct{ start, end int }
+	next := func(c []bool, g *group) bool {
+		if g.end >= len(c) {
+			return false
+		}
+		g.start = g.end + 1
+		for g.end = g.start; at(c, g.end); g.end++ {
+		}
+		return true
+	}
+	prev := func(c []bool, g *group) bool {
+		if g.start == 0 {
+			return false
+		}
+		g.end = g.start - 1
+		for g.start = g.end; at(c, g.start-1); g.start-- {
+		}
+		return true
+	}
+	slideDown := func(g *group) bool {
+		if g.end < n && rec[g.start] == rec[g.end] {
+			changed[g.start], changed[g.end] = false, true
+			g.start++
+			g.end++
+			for at(changed, g.end) {
+				g.end++
+			}
+			return true
+		}
+		return false
+	}
+	slideUp := func(g *group) bool {
+		if g.start > 0 && rec[g.start-1] == rec[g.end-1] {
+			g.start--
+			g.end--
+			changed[g.start], changed[g.end] = true, false
+			for at(changed, g.start-1) {
+				g.start--
+			}
+			return true
+		}
+		return false
+	}
+	// The first groups: next from before the start.
+	g, og := group{-1, -1}, group{-1, -1}
+	next(changed, &g)
+	next(other, &og)
+	for {
+		if g.end != g.start {
+			var earliestEnd, endMatchingOther int
+			for {
+				size := g.end - g.start
+				endMatchingOther = -1
+				for slideUp(&g) {
+					if !prev(other, &og) {
+						return false
+					}
+				}
+				earliestEnd = g.end
+				if og.end > og.start {
+					endMatchingOther = g.end
+				}
+				for slideDown(&g) {
+					if !next(other, &og) {
+						return false
+					}
+					if og.end > og.start {
+						endMatchingOther = g.end
+					}
+				}
+				if size == g.end-g.start {
+					break
+				}
+			}
+			if g.end != earliestEnd && endMatchingOther != -1 {
+				for og.end == og.start {
+					if !slideUp(&g) || !prev(other, &og) {
+						return false
+					}
+				}
+			}
+		}
+		if !next(changed, &g) {
+			return true
+		}
+		if !next(other, &og) {
+			return false
+		}
+	}
 }
 
 // myers is the matched index pairs of a and b, ascending, by Myers' greedy

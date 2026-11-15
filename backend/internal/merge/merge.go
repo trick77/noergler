@@ -121,23 +121,32 @@ func (c *Conflict) Oversized() bool {
 // lines are a conflict. Lines common to both sides at a conflict's edges
 // are settled, as git's zealous merge does.
 //
-// The merge is made twice, aligned by Myers (git merge-file's default) and
-// by patience (the histogram family, a server-side merge's), and stands
-// only when both agree: where they differ, which lines conflict depends on
-// the algorithm, and the merge is ErrAmbiguous rather than a guess.
+// The merge is made four times, aligned by Myers (git merge-file's
+// default) and by patience (the histogram family, a server-side merge's),
+// each as found and slid as git slides changes (compact), and stands only
+// when all four agree: where they differ, which lines conflict depends on
+// the alignment, and the merge is ErrAmbiguous rather than a guess. Slid
+// alone, Myers and patience agree too often: patience only stands in for
+// histogram, and a merge both slid diffs settle can conflict under
+// histogram (code review, 2026-11-15).
 func Merge3(base, target, source []string) ([]Chunk, error) {
-	m, err := merge3(myers, base, target, source)
-	if err != nil {
-		return nil, err
+	var first []Chunk
+	var want string
+	for i, v := range []struct {
+		align aligner
+		slid  bool
+	}{{myers, false}, {patience, false}, {myers, true}, {patience, true}} {
+		chunks, err := merge3(v.align, v.slid, base, target, source)
+		if err != nil {
+			return nil, err
+		}
+		if i == 0 {
+			first, want = chunks, render3(chunks)
+		} else if render3(chunks) != want {
+			return nil, ErrAmbiguous
+		}
 	}
-	p, err := merge3(patience, base, target, source)
-	if err != nil {
-		return nil, err
-	}
-	if render3(m) != render3(p) {
-		return nil, ErrAmbiguous
-	}
-	return m, nil
+	return first, nil
 }
 
 // render3 is chunks as one comparable string.
@@ -154,14 +163,14 @@ func render3(chunks []Chunk) string {
 	return b.String()
 }
 
-func merge3(align aligner, base, target, source []string) ([]Chunk, error) {
-	ht, ok := diffWith(align, base, target, MaxEdits)
-	if !ok {
-		return nil, ErrTooDifferent
+func merge3(align aligner, slid bool, base, target, source []string) ([]Chunk, error) {
+	ht, err := diffWith(align, slid, base, target, MaxEdits)
+	if err != nil {
+		return nil, err
 	}
-	hs, ok := diffWith(align, base, source, MaxEdits)
-	if !ok {
-		return nil, ErrTooDifferent
+	hs, err := diffWith(align, slid, base, source, MaxEdits)
+	if err != nil {
+		return nil, err
 	}
 	type tagged struct {
 		hunk

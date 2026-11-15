@@ -556,9 +556,10 @@ fetches the source and target branches over git (smart HTTP, the account's
 token, no disk: in memory, at most 300 MiB read and 600 MiB held, 50
 commits deep, else 500) and finds their merge base. Every path both
 branches changed since then is merged line by line, git's way
-(`internal/merge`), twice, aligned by Myers and by patience; a file the two
-align differently is refused, since a server's histogram merge might
-settle it otherwise. A path only one side changed takes that side.
+(`internal/merge`) four times: aligned by Myers and by patience, each as
+found and with its changes slid as git slides them (`xdl_change_compact`);
+a file the four merge differently is refused, since a server's histogram
+merge might settle it otherwise. A path only one side changed takes that side.
 
 Simple only, all or nothing: at most 10 paths both changed, 5 conflicts in 3
 files, 15 lines a side; no lockfile, generated, built (`dist/`) or binary file, no file added

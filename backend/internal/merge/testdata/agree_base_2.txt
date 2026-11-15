@@ -1,0 +1,120 @@
+package merge
+
+import (
+	"errors"
+	"slices"
+	"strings"
+	"unicode"
+
+	"github.com/trick77/noergler/internal/snapshot"
+)
+
+// The bounds of a simple merge. Constants, never settings: a conflict past
+// them goes to the author, whatever a team would like (user, 2026-11-13).
+const (
+	// MaxConflicts is the most conflict regions a request may resolve, over
+	// all files.
+	MaxConflicts = 5
+	// MaxConflictFiles is the most files with a conflict.
+	MaxConflictFiles = 3
+	// MaxBothChanged is the most paths both sides changed, conflicting or
+	// not: each one runs through this package's merge, which no build
+	// checks.
+	MaxBothChanged = 10
+	// MaxRegionLines is the most lines a conflict's base, target or source
+	// side may have.
+	MaxRegionLines = 15
+	// MaxEdits bounds the line diff of one side against the base.
+	MaxEdits = 2000
+)
+
+// ErrTooDifferent is a side that changed a file past MaxEdits.
+var ErrTooDifferent = errors.New("a side changed the file too much")
+
+// ErrAmbiguous is a file whose merge depends on the line diff: Myers and
+// patience align its lines differently, so git's histogram merge may
+// settle or conflict elsewhere than this one.
+var ErrAmbiguous = errors.New("the merge depends on how lines are aligned")
+
+// Chunk is one piece of a merged file: settled lines, or a conflict.
+type Chunk struct {
+	Lines    []string
+	Conflict *Conflict
+}
+
+// Conflict is a region both sides changed differently. Target is the
+// branch merged in (the PR's target), Source the branch merged into (the
+// PR's source); Base is the region in their merge base. Lines keep their
+// terminators.
+type Conflict struct {
+	Base, Target, Source []string
+	// Trimmed is a conflict whose edges lost lines both sides have there,
+	// settled once as git's zealous merge does.
+	Trimmed bool
+	// Head and Tail are those lines, settled before and after the
+	// conflict; Base still holds the whole region. Set by Merge3 only: a
+	// diff3 text cannot carry them.
+	Head, Tail []string
+}
+
+// Trivial reports a conflict code resolves without the model: both sides
+// only inserted (the base region is empty), nothing was trimmed from its
+// edges, they share no line but blank ones and set no key both ("lodash":
+// "^4.17.20" against "^4.17.21", const X = 1 against 2), so target's lines
+// then source's lose nothing and repeat nothing. A shared key is the
+// model's to judge.
+//
+// Lines and keys are compared without any whitespace, and a trimmed edge
+// rules code out: git/git 8f0d663e, both sides adding the same function,
+// left a conflict of two headers one space apart (`f () {` against
+// `f() {`) once the shared body was settled, and target's then source's
+// defined it twice and broke the file. A trimmed edge means both added
+// one block; whatever is left of it is the model's.
+func (c *Conflict) Trivial() bool {
+	if len(c.Base) > 0 || c.Trimmed {
+		return false
+	}
+	have, keys := map[string]bool{}, map[string]bool{}
+	for _, l := range c.Target {
+		if t := noSpace(l); t != "" {
+			have[t] = true
+		}
+		if k := lineKey(l); k != "" {
+			keys[k] = true
+		}
+	}
+	for _, l := range c.Source {
+		if k := lineKey(l); have[noSpace(l)] || k != "" && keys[k] {
+			return false
+		}
+	}
+	return true
+}
+
+// noSpace is a line without any whitespace.
+func noSpace(l string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, l)
+}
+
+// lineKey is what a line sets: its text before the first ':' or '=',
+// without whitespace, "" for a line that sets nothing that way. Blunt on
+// purpose: a key both sides set is a reason to ask, never to drop.
+func lineKey(l string) string {
+	i := strings.IndexAny(l, ":=")
+	if i <= 0 {
+		return ""
+	}
+	return noSpace(l[:i])
+}
+
+// Snapshot reports a target or source line naming an unreleased build
+// (snapshot.Line), in any file. Never resolved or offered (user,
+// 2026-11-15: "snapshot darf nicht in den master"): a resolution makes the
+// PR mergeable. Base, Head and Tail are left out: a resolution never picks
+// the base, and both sides already have Head and Tail. A stray match fails
+// safe, nothing pushed.
