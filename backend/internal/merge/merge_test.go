@@ -14,6 +14,27 @@ import (
 
 func ls(s string) []string { return Lines([]byte(s)) }
 
+func TestSnapshot(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		c    Conflict
+		want bool
+	}{
+		{"source", Conflict{Target: ls("v 1.0\n"), Source: ls("v 1.1-SNAPSHOT\n")}, true},
+		{"target", Conflict{Target: ls("v 1.1-SNAPSHOT\n"), Source: ls("v 1.0\n")}, true},
+		{"lowercase", Conflict{Source: ls("<version>1.4.0-snapshot</version>\n")}, true},
+		{"spring", Conflict{Source: ls("v 1.0.0.BUILD-SNAPSHOT\n")}, true},
+		{"timestamped", Conflict{Source: ls("<version>2.1-20251110.081500-7</version>\n")}, true},
+		{"base only", Conflict{Base: ls("v 1.0-SNAPSHOT\n"), Target: ls("v 1.0\n"), Source: ls("v 1.0.1\n")}, false},
+		{"edges only", Conflict{Head: ls("v 1.0-SNAPSHOT\n"), Tail: ls("w 2-SNAPSHOT\n"), Target: ls("a\n"), Source: ls("b\n")}, false},
+		{"identifier", Conflict{Target: ls("case SNAPSHOT:\n"), Source: ls("takeSnapshot()\n")}, false},
+	} {
+		if got := tc.c.Snapshot(); got != tc.want {
+			t.Errorf("%s: Snapshot() = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
 func TestLinesRoundTrip(t *testing.T) {
 	for _, s := range []string{"", "a", "a\n", "a\r\nb", "a\n\nb\n"} {
 		if got := strings.Join(Lines([]byte(s)), ""); got != s {

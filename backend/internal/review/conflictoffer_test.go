@@ -93,6 +93,19 @@ func TestConflictOfferNoneForALockfile(t *testing.T) {
 	}
 }
 
+// A conflict with a SNAPSHOT version is never offered, even one code
+// would resolve.
+func TestConflictOfferNoneForASnapshot(t *testing.T) {
+	repo := newConflictRepo(t, map[string]string{"build.gradle": "a\n"},
+		map[string]string{"build.gradle": "a\nimplementation 'x:lib:1.0'\n"},
+		map[string]string{"build.gradle": "a\nimplementation 'y:lib:1.0.9-SNAPSHOT'\n"})
+	h := conflictHarness(t, repo)
+	h.offerReview(t, "src1", "tgt1")
+	if offers := h.offers(); len(offers) != 0 || h.st.conflictOffer != 0 {
+		t.Fatalf("offers = %q, open = %d", offers, h.st.conflictOffer)
+	}
+}
+
 // A fork's PR is never offered, conflict or not.
 func TestConflictOfferNoneForAFork(t *testing.T) {
 	repo := newConflictRepo(t, map[string]string{"l": "a\n"}, map[string]string{"l": "a\nt\n"}, map[string]string{"l": "a\ns\n"})

@@ -175,7 +175,8 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   against B stays. All or
   nothing within merge's bounds (constants, never settings): any conflict
   past them, a lockfile, generated, built (`dist/`) or binary file, add/add, delete/modify,
-  a mode change refuses the whole request. Merge commit, parents
+  a mode change, a conflict whose target or source names an unreleased
+  build (`merge.Snapshot`, user, 2026-11-15) refuses the whole request. Merge commit, parents
   `[source, target]`, pushed without force, compare-and-swap on the source
   head read. The answer quotes every dropped line and tells the author to
   build and test; an answer that would not hold every dropped line in full

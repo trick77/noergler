@@ -306,6 +306,33 @@ func TestConflictPastTheBounds(t *testing.T) {
 			t.Fatalf("fixes = %+v, replies = %+v", h.st.Fixes, h.bb.Replies)
 		}
 	})
+	t.Run("snapshot", func(t *testing.T) {
+		// Both sides only added: code would resolve it, a SNAPSHOT refuses.
+		repo := newConflictRepo(t, map[string]string{"build.gradle": "a\n"},
+			map[string]string{"build.gradle": "a\nimplementation 'x:lib:1.0'\n"},
+			map[string]string{"build.gradle": "a\nimplementation 'y:lib:1.0.9-SNAPSHOT'\n"})
+		before := repo.run(repo.bare, "rev-parse", "feature/thing")
+		h := conflictHarness(t, repo)
+		h.askConflict(t, "alice")
+		if len(h.llm.Conflicts) != 0 || len(h.st.Fixes) != 1 || h.st.Fixes[0].Outcome != store.FixNotFeasible ||
+			!strings.Contains(h.bb.Replies[0].Text, "`build.gradle`: a conflict holds a SNAPSHOT version") {
+			t.Fatalf("fixes = %+v, replies = %+v", h.st.Fixes, h.bb.Replies)
+		}
+		if got := repo.run(repo.bare, "rev-parse", "feature/thing"); got != before {
+			t.Fatal("a SNAPSHOT conflict was pushed")
+		}
+	})
+	t.Run("snapshot for the model", func(t *testing.T) {
+		// One changed line on both sides: the model's, refused before it.
+		repo := newConflictRepo(t, map[string]string{"pom.xml": "<version>1.0</version>\n"},
+			map[string]string{"pom.xml": "<version>1.1</version>\n"},
+			map[string]string{"pom.xml": "<version>1.1-snapshot</version>\n"})
+		h := conflictHarness(t, repo)
+		h.askConflict(t, "alice")
+		if len(h.llm.Conflicts) != 0 || len(h.st.Fixes) != 1 || !strings.Contains(h.bb.Replies[0].Text, "SNAPSHOT version") {
+			t.Fatalf("model calls = %d, fixes = %+v, replies = %+v", len(h.llm.Conflicts), h.st.Fixes, h.bb.Replies)
+		}
+	})
 	t.Run("too many conflicts", func(t *testing.T) {
 		var b, tg, s strings.Builder
 		for i := range 6 {

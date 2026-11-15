@@ -401,6 +401,9 @@ func (m *miner) mergeFiles(base, source, target, sha string) (files []mined, ski
 			if c.Oversized() {
 				return nil, "oversized", nil
 			}
+			if c.Snapshot() {
+				return nil, "snapshot", nil
+			}
 		}
 		// A case file ends every line; one without (a file's last) could
 		// make two sides equal that production keeps apart.
