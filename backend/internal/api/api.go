@@ -86,6 +86,8 @@ type Deps struct {
 	// BITBUCKET_USERNAME: the @mention trigger of every team on the shared
 	// bot. A team on its own bot is mentioned as that bot (Runtime.OwnBot).
 	BotUsername string
+	// IgnoreAuthorGlobs is config.App's, shown read-only in every team view.
+	IgnoreAuthorGlobs []string
 	// Dashboard is the review queue's read side, for the live panel.
 	Dashboard DashboardQueue
 	// DashboardStore is the read-only half of the store the dashboard uses.

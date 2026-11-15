@@ -25,6 +25,7 @@ func Dump(app *App, log *slog.Logger) {
 		kv{"display_name_pattern", patternOrOff(app.Bitbucket.DisplayNamePattern)})
 	llmSection(log, "config.llm", app.LLM)
 	reviewSection(log, "config.review", app.Review)
+	section(log, "config.review.instance_only", kv{"ignore_author_globs", app.IgnoreAuthorGlobs})
 	jiraSection(log, "config.jira", app.Jira)
 	section(log, "config.server", kv{"host", app.Server.Host}, kv{"port", app.Server.Port}, kv{"public_url", app.Server.PublicURL})
 	section(log, "config.database", kv{"url", mask})

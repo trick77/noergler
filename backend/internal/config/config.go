@@ -359,6 +359,12 @@ type App struct {
 	// AlmanachLimits is the instance's note cap; a team's Almanach endpoint
 	// is Team.Almanach.
 	AlmanachLimits AlmanachLimits
+	// IgnoreAuthorGlobs (REVIEW_IGNORE_AUTHOR_GLOBS, default `*renovate*`)
+	// are author-name globs no team auto-reviews, on top of its own
+	// ignore_authors. Instance-only on purpose, outside Review: a team list
+	// seeds new teams only, so a per-team default never reached the existing
+	// ones, and no team can lift these.
+	IgnoreAuthorGlobs []string
 	// SecretsKey seals the credentials teams push (NOERGLER_SECRETS_KEY).
 	// Required even before any team pushes one: a key that appears only
 	// later is a deploy step nobody remembers.
@@ -530,10 +536,11 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 			InferenceConcurrencyPerTeam: positive(r, "REVIEW_INFERENCE_CONCURRENCY_PER_TEAM", 2),
 			InferenceCallTimeout:        callTimeout(r, "REVIEW_INFERENCE_CALL_TIMEOUT"),
 		},
-		AlmanachLimits:  AlmanachLimits{NoteMaxChars: positive(r, "ALMANACH_NOTE_MAX_CHARS", 24000)},
-		TeamsConfigPath: r.String("TEAMS_CONFIG", "teams.yaml"),
-		Teams:           map[string]*Team{},
-		Disabled:        map[string]string{},
+		AlmanachLimits:    AlmanachLimits{NoteMaxChars: positive(r, "ALMANACH_NOTE_MAX_CHARS", 24000)},
+		IgnoreAuthorGlobs: blankNone(r, lookup, "REVIEW_IGNORE_AUTHOR_GLOBS", []string{"*renovate*"}),
+		TeamsConfigPath:   r.String("TEAMS_CONFIG", "teams.yaml"),
+		Teams:             map[string]*Team{},
+		Disabled:          map[string]string{},
 	}
 	app.Bitbucket.DisplayNamePattern = displayNamePattern(r, lookup)
 	if raw := r.Required("NOERGLER_SECRETS_KEY"); raw != "" {

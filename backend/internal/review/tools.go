@@ -125,8 +125,11 @@ type teamConfigView struct {
 	ExcludeTargetBranches []string `json:"exclude_target_branches"`
 	// AutoReviewAuthors empty means every author is auto-reviewed; the
 	// ignore list wins over it.
-	AutoReviewAuthors   []string `json:"auto_review_authors"`
-	IgnoreAuthors       []string `json:"ignore_authors"`
+	AutoReviewAuthors []string `json:"auto_review_authors"`
+	IgnoreAuthors     []string `json:"ignore_authors"`
+	// IgnoreAuthorGlobs are instance-wide, the same for every team, matched
+	// case-insensitively on top of IgnoreAuthors.
+	IgnoreAuthorGlobs   []string `json:"ignore_author_globs"`
 	OptOutBranchKeyword string   `json:"opt_out_branch_keyword"`
 	MaxPRCostUSD        string   `json:"max_pr_cost_usd"`
 	MaxComments         int      `json:"max_comments"`
@@ -176,6 +179,7 @@ func (r *Reviewer) teamConfig(ask *mentionAsk) teamConfigView {
 		ExcludeTargetBranches:   nonNilNames(r.cfg.ExcludeTargetBranches),
 		AutoReviewAuthors:       nonNilNames(auto),
 		IgnoreAuthors:           nonNilNames(ignore),
+		IgnoreAuthorGlobs:       nonNilNames(r.ignoreAuthorGlobs),
 		OptOutBranchKeyword:     r.cfg.OptOutBranchKeyword,
 		MaxPRCostUSD:            usd3(r.cfg.MaxPRCostUSD),
 		MaxComments:             r.cfg.MaxComments,

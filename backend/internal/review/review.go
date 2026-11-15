@@ -89,7 +89,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 			// reintroduces exactly the confusion this branch exists to end.
 			reason, why := "not in auto-review authors", SkipNotAutoAuthor
 			if ignored {
-				reason, why = "ignored author", SkipIgnoredAuthor
+				reason, why = r.ignoredWhy(author), SkipIgnoredAuthor
 			}
 			r.log.InfoContext(ctx, fmt.Sprintf("Skipping %s by %s (%s)", prTag, author, reason))
 			return nil, ctx, r.abort(ctx, key, kind, why, prTag, httpCounter)
@@ -98,7 +98,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// 3. A push by an ignored account (CI amending someone's PR) is not a
 	// reason to re-review; the author's next push is.
 	if !skipAuthorCheck && payload.Actor != nil && r.isIgnoredAuthor(payload.Actor.Name) {
-		r.log.InfoContext(ctx, fmt.Sprintf("Skipping %s: pushed by ignored author %s", prTag, payload.Actor.Name))
+		r.log.InfoContext(ctx, fmt.Sprintf("Skipping %s: pushed by %s (%s)", prTag, payload.Actor.Name, r.ignoredWhy(payload.Actor.Name)))
 		return nil, ctx, r.abort(ctx, key, kind, SkipIgnoredAuthor, prTag, httpCounter)
 	}
 

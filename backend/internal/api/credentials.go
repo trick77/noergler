@@ -92,7 +92,7 @@ func (d Deps) putTeamCredentials(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := credentialsResponse{teamView: viewOf(rt.Team(), rt, d.BotUsername)}
+	resp := credentialsResponse{teamView: viewOf(rt.Team(), rt, d.BotUsername, d.IgnoreAuthorGlobs)}
 	if bb != nil {
 		resp.UnreachableClaims = rt.UnreachableClaims(ctx)
 	}
@@ -120,5 +120,5 @@ func (d Deps) deleteTeamCredentials(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusNotFound, "the team has no own "+string(kind)+" account")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, viewOf(rt.Team(), rt, d.BotUsername))
+	httpx.WriteJSON(w, http.StatusOK, viewOf(rt.Team(), rt, d.BotUsername, d.IgnoreAuthorGlobs))
 }

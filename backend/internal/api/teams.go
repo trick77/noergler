@@ -62,7 +62,10 @@ type teamView struct {
 	Projects          []projectScopeView `json:"projects"`
 	AutoReviewAuthors []string           `json:"auto_review_authors"`
 	IgnoreAuthors     []string           `json:"ignore_authors"`
-	ExcludeRepos      []string           `json:"exclude_repos"`
+	// Instance-wide author globs on top of IgnoreAuthors; read-only here,
+	// no team can lift them.
+	IgnoreAuthorGlobs []string `json:"ignore_author_globs"`
+	ExcludeRepos      []string `json:"exclude_repos"`
 	// Branch globs; a match skips auto-review only, a mention still works.
 	ExcludeSourceBranches []string `json:"exclude_source_branches"`
 	ExcludeTargetBranches []string `json:"exclude_target_branches"`
@@ -115,7 +118,7 @@ func accountViews(rt *teams.Runtime, sharedBot string) (bitbucketAccountView, ji
 
 // viewOf renders one snapshot of the team. rt is read for the accounts only;
 // the caller took t from it once.
-func viewOf(t *config.Team, rt *teams.Runtime, sharedBot string) teamView {
+func viewOf(t *config.Team, rt *teams.Runtime, sharedBot string, authorGlobs []string) teamView {
 	projects := make([]projectScopeView, 0, len(t.Projects))
 	for _, p := range t.Projects {
 		projects = append(projects, projectScopeView{Key: p.Key, Repos: p.Repos})
@@ -128,6 +131,7 @@ func viewOf(t *config.Team, rt *teams.Runtime, sharedBot string) teamView {
 		Projects:              projects,
 		AutoReviewAuthors:     nonNil(t.Review.AutoReviewAuthors),
 		IgnoreAuthors:         nonNil(t.Review.IgnoreAuthors),
+		IgnoreAuthorGlobs:     nonNil(authorGlobs),
 		ExcludeRepos:          nonNil(t.Review.ExcludeRepos),
 		ExcludeSourceBranches: nonNil(t.Review.ExcludeSourceBranches),
 		ExcludeTargetBranches: nonNil(t.Review.ExcludeTargetBranches),
@@ -151,7 +155,7 @@ func (d Deps) getTeam(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, viewOf(rt.Team(), rt, d.BotUsername))
+	httpx.WriteJSON(w, http.StatusOK, viewOf(rt.Team(), rt, d.BotUsername, d.IgnoreAuthorGlobs))
 }
 
 // settingsRequest is a PARTIAL update.
@@ -224,7 +228,7 @@ func (d Deps) putTeamSettings(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusServiceUnavailable, errDBNotReady)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, viewOf(rt.Team(), rt, d.BotUsername))
+	httpx.WriteJSON(w, http.StatusOK, viewOf(rt.Team(), rt, d.BotUsername, d.IgnoreAuthorGlobs))
 }
 
 // decodeStrict rejects an unknown field with a 422.

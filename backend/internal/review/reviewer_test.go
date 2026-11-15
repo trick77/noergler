@@ -102,6 +102,41 @@ func TestIsAutoReviewAuthor(t *testing.T) {
 	}
 }
 
+// The instance globs ignore on top of the team's exact list, case-insensitive,
+// and win over the allow list like the team's ignore list does.
+func TestIgnoreAuthorGlobs(t *testing.T) {
+	globs := []string{"*renovate*"}
+	cases := []struct {
+		name   string
+		allow  []string
+		author string
+		want   bool
+	}{
+		{"matches with empty team lists", nil, "tech-renovate", false},
+		{"case-insensitive", nil, "Tech-Renovate", false},
+		{"other author unaffected", nil, "alice", true},
+		{"wins over the allow list", []string{"tech-renovate"}, "tech-renovate", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := New(Options{Config: config.Review{AutoReviewAuthors: c.allow}, IgnoreAuthorGlobs: globs})
+			auto, ignored := r.autoReviewDecision(c.author)
+			if auto != c.want || ignored == c.want {
+				t.Errorf("autoReviewDecision(%q) = (%v, %v), want (%v, %v)", c.author, auto, ignored, c.want, !c.want)
+			}
+			if r.isIgnoredAuthor(c.author) == c.want {
+				t.Errorf("isIgnoredAuthor(%q) = %v", c.author, !c.want)
+			}
+		})
+	}
+	// SetAuthorLists (the team API) replaces the team lists, never the globs.
+	r := New(Options{IgnoreAuthorGlobs: globs})
+	r.SetAuthorLists(nil, []string{"ci-bot"})
+	if r.IsAutoReviewAuthor("tech-renovate") || r.IsAutoReviewAuthor("ci-bot") {
+		t.Error("globs or team list lost after SetAuthorLists")
+	}
+}
+
 func TestShortSHA(t *testing.T) {
 	if got := render.ShortSHA("abcdef0123456789", 8); got != "abcdef01" {
 		t.Errorf("= %q", got)
