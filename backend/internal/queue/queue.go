@@ -58,6 +58,10 @@ type ReviewFunc func(ctx context.Context, team string, payload *webhook.Payload,
 // fn on the pool and nothing afterwards: no worker tail, no PR hold.
 type Scheduler interface {
 	Stage(ctx context.Context, key store.PRKey, team string, infer, post func(context.Context))
+	// StageThen is Stage whose post may stage more (a Q&A answer that
+	// starts a merge-conflict resolution).
+	StageThen(ctx context.Context, key store.PRKey, team string, infer func(context.Context),
+		post func(ctx context.Context, sched Scheduler) (handedOff bool))
 	Spawn(ctx context.Context, key store.PRKey, team, name string, fn func(context.Context))
 }
 
@@ -394,6 +398,17 @@ func markDeferred(m map[store.PRKey]struct{}, k store.PRKey) map[store.PRKey]str
 // must not be the worker's job context, which has none of them past the
 // handoff.
 func (q *Queue) Stage(ctx context.Context, key store.PRKey, team string, infer, post func(context.Context)) {
+	q.StageThen(ctx, key, team, infer, func(ctx context.Context, _ Scheduler) bool {
+		post(ctx)
+		return false
+	})
+}
+
+// StageThen is Stage whose post may stage further work: it gets the
+// scheduler and reports a handoff on JobFunc's contract, true keeping the
+// PR's hold for what it staged.
+func (q *Queue) StageThen(ctx context.Context, key store.PRKey, team string, infer func(context.Context),
+	post func(ctx context.Context, sched Scheduler) (handedOff bool)) {
 	tag := key.Tag()
 	posted := false
 	q.onPool(ctx, team, tag, "inference",
@@ -415,9 +430,8 @@ func (q *Queue) Stage(ctx context.Context, key store.PRKey, team string, infer, 
 			// no httpstats scope, so everything after the handoff would log
 			// without them and record no HTTP counts.
 			posted = true
-			q.submitInternal(ctx, key, team, inferred, func(context.Context, Scheduler) bool {
-				post(ctx)
-				return false
+			q.submitInternal(ctx, key, team, inferred, func(_ context.Context, sched Scheduler) bool {
+				return post(ctx, sched)
 			})
 		},
 		// Whatever happened, the hold must end. Normally post ends it; if

@@ -37,14 +37,17 @@ func ConflictOffer(l lang.Lang, byCode bool, author, bot, target string) string 
 	cmd := inlineCode("@" + bot + " " + l.Pick(ConflictCommandDE, ConflictCommandEN))
 	head := Mention(author) + " " + l.Pick("Dieser PR hat einen Merge-Konflikt mit ", "This PR has a merge conflict with ") +
 		inlineCode(target) + "."
+	// A yes in reply here is the request (review.conflictConsent and the
+	// Q&A's resolve_merge_conflict tool); the command works anywhere.
+	ask := l.Pick(" Antworte hier mit **ja** (oder schreib "+cmd+")", " Reply **yes** here (or write "+cmd+")")
 	if byCode {
 		return head + l.Pick(
-			" Ich kann ihn ohne Modell auflösen. Schreib "+cmd+", dann pushe ich den Merge-Commit auf deinen Branch.",
-			" I can resolve it without the model. Write "+cmd+" and I push the merge commit to your branch.")
+			" Ich kann ihn ohne Modell auflösen."+ask+", dann pushe ich den Merge-Commit auf deinen Branch.",
+			" I can resolve it without the model."+ask+" and I push the merge commit to your branch.")
 	}
 	return head + l.Pick(
-		" Er sieht einfach genug aus, dass ich versuchen kann, ihn aufzulösen. Schreib "+cmd+
+		" Er sieht einfach genug aus, dass ich versuchen kann, ihn aufzulösen."+ask+
 			". Geht es nicht sicher, sage ich dir, warum.",
-		" It looks simple enough for me to try to resolve it. Write "+cmd+
+		" It looks simple enough for me to try to resolve it."+ask+
 			". If I can't do it safely, I'll tell you why.")
 }

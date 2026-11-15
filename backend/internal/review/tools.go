@@ -38,14 +38,23 @@ type mentionAsk struct {
 	// stop is set when stop_reviewing accepted this turn: the posting
 	// stage stops the PR and confirms it, as it does a switch.
 	stop bool
+	// underOffer: the comment replies directly to the PR's open
+	// merge-conflict offer, the one place resolve_merge_conflict is offered.
+	// resolveConflict is set when that tool accepted: the posting stage
+	// starts the request instead of posting an answer. consentRefused when
+	// code vetoed it: the answer then says what starts it.
+	underOffer, resolveConflict, consentRefused bool
 }
 
 // mentionTools are the tools a Q&A answer may call: two reads and two
 // writes, the commenter's own language and a stop of this PR, each checked
-// against the commenter's own words. Every one runs off the worker, so none calls
-// Bitbucket; each returns an explicit struct, never a config or a row.
+// against the commenter's own words; directly under the open merge-conflict
+// offer a third write, a yes to it, whose request the posting stage starts
+// (a fetch and a push to the author's branch). Every one runs off the
+// worker, so none calls Bitbucket itself; each returns an explicit struct,
+// never a config or a row.
 func (r *Reviewer) mentionTools(ask *mentionAsk) []inference.MentionTool {
-	return []inference.MentionTool{
+	tools := []inference.MentionTool{
 		{
 			Name: "team_config",
 			Description: "noergler's effective review settings for this team, and whether the asking user " +
@@ -81,6 +90,33 @@ func (r *Reviewer) mentionTools(ask *mentionAsk) []inference.MentionTool {
 			Run: func(ctx context.Context, _ string) string { return toolJSON(r.stopReviewing(ctx, ask)) },
 		},
 	}
+	// Only directly under the open offer: nowhere else can a model start a
+	// merge.
+	if ask.underOffer {
+		tools = append(tools, inference.MentionTool{
+			Name: "resolve_merge_conflict",
+			Description: "Have noergler resolve this pull request's merge conflict, as offered in the comment " +
+				"the user replies to. Only when the user's own reply agrees to that offer, in any wording.",
+			Run: func(ctx context.Context, _ string) string { return toolJSON(r.resolveConflictTool(ctx, ask)) },
+		})
+	}
+	return tools
+}
+
+// resolveConflictTool is the model reading a reply as a yes to the offer
+// and code deciding it: no veto in the commenter's own text
+// (conflictVeto). The posting stage starts the request, which checks the
+// author and answers by itself.
+func (r *Reviewer) resolveConflictTool(ctx context.Context, ask *mentionAsk) map[string]string {
+	if conflictVeto(ask.text) {
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: merge conflict resolution for %s rejected: the reply turns the offer down or puts it off",
+			ask.prTag, ask.user))
+		ask.consentRefused = true
+		return map[string]string{"result": "rejected: the user's reply does not agree to the offer"}
+	}
+	ask.resolveConflict = true
+	return map[string]string{"result": "ok", "note": "noergler starts the resolution once this turn ends and answers " +
+		"in its own reply; your answer is not posted, keep it short"}
 }
 
 // stopReviewing is the model proposing a stop and code deciding it: the

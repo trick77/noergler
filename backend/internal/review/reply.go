@@ -129,8 +129,19 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 			return true, false
 		}
 	}
-	// A reviewer-to-reviewer exchange under a finding is no event.
+	// A reviewer-to-reviewer exchange under a finding is no event. An order
+	// to change the PR there, straight under noergler's finding, is
+	// addressed to it: told kindly that only the author may (authoronly.go).
+	// A mention goes on to the mention path, which tells the same.
 	if !isAuthor {
+		// Never on a PR left alone: a plain reply there is not answered.
+		if !mentioned && st != nil && !st.SummaryDeleted() && changeRequest(text) && safeDB(ctx, r.log, "FindingByComment", func() (*store.Finding, error) {
+			return r.store.FindingByComment(ctx, key, payload.CommentParentID)
+		}) != nil {
+			r.log.InfoContext(ctx, prTag+": change asked under a finding by someone other than the PR's author: told only the author may")
+			r.reply(ctx, key.Project, key.Repo, pr.ID, comment.ID, authorOnlyReply(r.languageFor(ctx, comment.Author.Name)))
+			return true, false
+		}
 		r.log.DebugContext(ctx, fmt.Sprintf("%s: reply under comment %d not answered: not the PR's author", prTag, payload.CommentParentID))
 		return !mentioned, false
 	}

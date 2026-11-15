@@ -81,6 +81,105 @@ func conflictRequest(text string) bool {
 	return short(t) && !conflictNot.MatchString(t) && !conflictSelf.MatchString(t) && conflictNear.MatchString(t)
 }
 
+// A yes to noergler's offer (user, 2026-11-15: "a reply with yes should
+// simply be enough"), read only directly under the open offer
+// (underOpenOffer). A short yes is code's; any other wording ("let's try
+// that") the Q&A model reads, through its resolve_merge_conflict tool,
+// which code checks against conflictVeto.
+var (
+	// consentWords and consentPairs are a yes, one word or two; read word
+	// by word (consentOnly), never by a regexp, whose boundary would eat
+	// the blank between "ja gerne".
+	consentWords = map[string]bool{
+		"ja": true, "jawohl": true, "jep": true, "jo": true, "klar": true, "gerne": true, "gern": true,
+		"mach": true, "machs": true, "mach's": true, "los": true, "einverstanden": true,
+		"yes": true, "yep": true, "yeah": true, "yup": true, "sure": true, "ok": true, "okay": true,
+		"go": true, "agreed": true, "👍": true, "✅": true,
+	}
+	consentPairs = map[string]bool{"go ahead": true, "do it": true, "mach das": true}
+	// conflictBackOff is a reply that turns the offer down, puts it off or
+	// keeps the work for the commenter: no consent, whatever else it says.
+	conflictBackOff = words(`nein|nope|nö|noe|lieber nicht|warte|wait|stop|stopp|` +
+		`selbst|selber|myself|ourselves|später|later|morgen|tomorrow|` +
+		`i'll|i will|i'm on it|i got it|i've got it|i'll handle it|we'll|` +
+		`ich mach\pL*|mach\pL* ich|ich übernehme|übernehme ich|wir mach\pL*|mach\pL* wir`)
+	// consentIdioms are yeses built of a no ("kein Problem", "why not"):
+	// taken out before the veto reads the text.
+	consentIdioms = words(`kein problem|keine sorge|no problem|no worries|warum nicht|why not|kein ding|` +
+		`kein stress|keine eile|no rush|no hurry|can't wait|cant wait`)
+)
+
+// consentFiller is what a short yes may carry besides its yes: never a
+// thanks, which makes "ok, danke" an acknowledgement as often as a yes (the
+// model's to read).
+var consentFiller = map[string]bool{
+	"please": true, "pls": true, "now": true, "it": true, "that": true, "this": true,
+	"bitte": true, "jetzt": true, "das": true, "noergler": true,
+}
+
+// conflictConsent reports whether text is a short yes and nothing else but
+// filler: "ja", "Ja gerne", "ok bitte", "👍".
+func conflictConsent(text string) bool {
+	t := normalize(text)
+	return short(t) && !conflictVeto(t) && onlyOf(t, consentWords, consentPairs, consentFiller)
+}
+
+// onlyOf reports whether every word of t is one of words, a pair of pairs
+// or filler, and at least one is a word or a pair: read word by word,
+// punctuation trimmed.
+func onlyOf(t string, words, pairs, filler map[string]bool) bool {
+	var ws []string
+	for _, w := range strings.Fields(strings.ToLower(t)) {
+		if w = strings.Trim(w, ".,:;!-"); w != "" {
+			ws = append(ws, w)
+		}
+	}
+	found := false
+	for i := 0; i < len(ws); i++ {
+		switch {
+		case i+1 < len(ws) && pairs[ws[i]+" "+ws[i+1]]:
+			found = true
+			i++
+		case words[ws[i]]:
+			found = true
+		case filler[ws[i]]:
+		default:
+			return false
+		}
+	}
+	return found
+}
+
+// conflictVeto is the resolve_merge_conflict tool's guard: the commenter's
+// own text turns the offer down ("nein", "not now") or keeps the work for
+// themselves ("mach ich selbst", "I'll do it", "later"). A pronoun alone is
+// no veto ("ich bin einverstanden"), nor a yes built of a no ("kein
+// Problem").
+func conflictVeto(text string) bool {
+	t := consentIdioms.ReplaceAllString(normalize(text), " ")
+	return conflictNot.MatchString(t) || conflictBackOff.MatchString(t)
+}
+
+// offerHint says what starts the offered resolution: a yes here, or the
+// command.
+func offerHint(l lang.Lang, bot string) string {
+	cmd := "`@" + bot + " " + l.Pick(render.ConflictCommandDE, render.ConflictCommandEN) + "`"
+	return l.Pick("Soll ich den Merge-Konflikt auflösen, antworte hier mit **ja** (oder schreib "+cmd+").",
+		"For me to resolve the merge conflict, reply **yes** here (or write "+cmd+").")
+}
+
+// underOpenOffer reports whether parentID is the PR's open merge-conflict
+// offer: a reply directly under it is an answer to it. A withdrawn offer is
+// none: its conflict may be gone or another one. st is the PR's skip state,
+// read once by the caller.
+func (r *Reviewer) underOpenOffer(ctx context.Context, st *store.SkipState, parentID int) bool {
+	if parentID == 0 || st == nil || st.ID == 0 {
+		return false
+	}
+	open := safeDB(ctx, r.log, "ConflictOffer", func() (int, error) { return r.store.ConflictOffer(ctx, st.ID) })
+	return open != 0 && open == parentID
+}
+
 // conflictJob is one request across its stages. Across the model's call it
 // holds the merged files and the tree's entries, never the fetch: the repo
 // is detached.
