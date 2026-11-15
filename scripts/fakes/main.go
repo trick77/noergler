@@ -36,9 +36,13 @@ func readBody(kind string, r *http.Request) []byte {
 
 // posted holds the comment bodies this process accepted, keyed by the id it
 // handed out, so a GET of one can answer with the text instead of a 404.
+// taskState holds the state (OPEN, RESOLVED) of the ones posted as tasks
+// (blocker-comments), so a GET reports them as Bitbucket does: severity
+// BLOCKER and the state a resolve set.
 var (
-	postedMu sync.Mutex
-	posted   = map[string]string{}
+	postedMu  sync.Mutex
+	posted    = map[string]string{}
+	taskState = map[string]string{}
 )
 
 // Onboarding state. The webhooks have to survive between requests: onboarding
@@ -238,30 +242,36 @@ func main() {
 		})
 
 	// Bitbucket: the comments the review posts. Both the inline comments and
-	// the summary land here; the id lets the store record them.
+	// the summary land here, and a blocking finding's task on
+	// blocker-comments (a task is a comment, one id space); the id lets the
+	// store record them.
 	commentID := 1000
-	mux.HandleFunc("POST /rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{id}/comments",
-		func(w http.ResponseWriter, r *http.Request) {
-			body := readBody("comment", r)
-			// Keep the text so a later GET of this id can return it rather
-			// than 404, which both implementations read as "deleted".
-			//
-			// The id is handed out under the same lock that stores the text:
-			// two concurrent posts reading the counter would otherwise get the
-			// same id, and the second would overwrite the first, so a GET
-			// would answer with the wrong comment. The posts are interleaved,
-			// so this is reachable.
-			var c struct{ Text string }
-			_ = json.Unmarshal(body, &c)
-			postedMu.Lock()
-			commentID++
-			id := commentID
-			posted[strconv.Itoa(id)] = c.Text
-			postedMu.Unlock()
-			log.Printf("comment posted id=%d", id)
-			w.WriteHeader(http.StatusCreated)
-			writeJSON(w, r, map[string]any{"id": id, "version": 0})
-		})
+	postComment := func(w http.ResponseWriter, r *http.Request) {
+		body := readBody("comment", r)
+		// Keep the text so a later GET of this id can return it rather
+		// than 404, which both implementations read as "deleted".
+		//
+		// The id is handed out under the same lock that stores the text:
+		// two concurrent posts reading the counter would otherwise get the
+		// same id, and the second would overwrite the first, so a GET
+		// would answer with the wrong comment. The posts are interleaved,
+		// so this is reachable.
+		var c struct{ Text string }
+		_ = json.Unmarshal(body, &c)
+		postedMu.Lock()
+		commentID++
+		id := commentID
+		posted[strconv.Itoa(id)] = c.Text
+		if strings.HasSuffix(r.URL.Path, "/blocker-comments") {
+			taskState[strconv.Itoa(id)] = "OPEN"
+		}
+		postedMu.Unlock()
+		log.Printf("comment posted id=%d", id)
+		w.WriteHeader(http.StatusCreated)
+		writeJSON(w, r, map[string]any{"id": id, "version": 0})
+	}
+	mux.HandleFunc("POST /rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{id}/comments", postComment)
+	mux.HandleFunc("POST /rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{id}/blocker-comments", postComment)
 
 	// Bitbucket: reading one comment back. Both implementations fetch the
 	// summary they recorded to see whether a human deleted it, and a 404 here
@@ -273,6 +283,7 @@ func main() {
 			id := r.PathValue("commentID")
 			postedMu.Lock()
 			text, ok := posted[id]
+			state, task := taskState[id]
 			postedMu.Unlock()
 			if !ok {
 				w.WriteHeader(http.StatusNotFound)
@@ -280,7 +291,11 @@ func main() {
 				return
 			}
 			n, _ := strconv.Atoi(id)
-			writeJSON(w, r, map[string]any{"id": n, "text": text, "version": 0})
+			c := map[string]any{"id": n, "text": text, "version": 0}
+			if task {
+				c["severity"], c["state"] = "BLOCKER", state
+			}
+			writeJSON(w, r, c)
 		})
 
 	// Bitbucket: editing a comment in place. A re-review updates its summary
@@ -294,6 +309,7 @@ func main() {
 				Text           *string `json:"text"`
 				Version        int     `json:"version"`
 				ThreadResolved bool    `json:"threadResolved"`
+				State          string  `json:"state"`
 			}
 			_ = json.Unmarshal(body, &c)
 			postedMu.Lock()
@@ -302,6 +318,10 @@ func main() {
 			if known && c.Text != nil {
 				text = *c.Text
 				posted[id] = text
+			}
+			// A task's resolve (ResolveTask) sends its state.
+			if _, task := taskState[id]; task && c.State != "" {
+				taskState[id] = c.State
 			}
 			postedMu.Unlock()
 			if !known {

@@ -5,6 +5,9 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+	"unicode/utf8"
+
+	"github.com/trick77/noergler/internal/lang"
 )
 
 // Blocking rules (user, 2026-11-15): a line of the repo's AGENTS.md marked
@@ -41,9 +44,10 @@ type BlockingRule struct {
 }
 
 // blockingMarker is `[blocking]` at the start of a line, after optional
-// indentation and one list marker (`- `, `* `), any case. RE2 classes are
-// ASCII: the indentation is matched as Unicode space.
-var blockingMarker = regexp.MustCompile(`(?i)^[\s\p{Zs}]*(?:[-*][\s\p{Zs}]+)?\[blocking\][\s\p{Zs}]*(.*)$`)
+// indentation and one list marker (`- `, `* `, `+ `, `1. `, `1) `: the
+// ones listItem knows), any case. RE2 classes are ASCII: the indentation
+// is matched as Unicode space.
+var blockingMarker = regexp.MustCompile(`(?i)^[\s\p{Zs}]*(?:(?:[-*+]|\p{Nd}+[.)])[\s\p{Zs}]+)?\[blocking\][\s\p{Zs}]*(.*)$`)
 
 // fenceLine opens or closes a code fence (``` or ~~~): a marked line inside
 // one is an example, not a rule.
@@ -56,9 +60,9 @@ var listItem = regexp.MustCompile(`^[\s\p{Zs}]*(?:[-*+][\s\p{Zs}]|\p{Nd}+[.)][\s
 // numbered from B1. A rule wrapped over indented lines is one rule, its
 // whitespace folded (NormalizeRule): a blank line, a list item, a heading,
 // a fence or a line at the margin ends it. A repeated text counts once; an
-// empty one never. over is how many marked rules past MaxBlockingRules
-// were left plain.
-func ExtractBlockingRules(agentsMD string) (rules []BlockingRule, over int) {
+// empty one never. over is the texts of the marked rules past
+// MaxBlockingRules, left plain: still marked, so their open tasks stay.
+func ExtractBlockingRules(agentsMD string) (rules []BlockingRule, over []string) {
 	var texts []string
 	open := false // the last text may take a continuation line
 	fence := ""
@@ -96,7 +100,7 @@ func ExtractBlockingRules(agentsMD string) (rules []BlockingRule, over int) {
 		}
 		seen[text] = true
 		if len(rules) == MaxBlockingRules {
-			over++
+			over = append(over, text)
 			continue
 		}
 		rules = append(rules, BlockingRule{ID: fmt.Sprintf("B%d", len(rules)+1), Text: text})
@@ -111,12 +115,12 @@ func NormalizeRule(text string) string {
 	return strings.Join(strings.Fields(text), " ")
 }
 
+// capRunes cuts s to n runes, the last an ellipsis.
 func capRunes(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
+	if utf8.RuneCountInString(s) <= n {
 		return s
 	}
-	return strings.TrimSpace(string(r[:n-1])) + "…"
+	return strings.TrimSpace(lang.TruncateRunes(s, n-1)) + "…"
 }
 
 // RenderBlockingRules is the {blocking_rules} block: the rules with their

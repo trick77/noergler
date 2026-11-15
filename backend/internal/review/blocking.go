@@ -30,10 +30,10 @@ import (
 // evidence.
 
 // decideBlocking settles the model's blocking claims on the findings this
-// run may post, before the sort: a claim CheckBlocking accepts is a task
-// for now, so the sort puts it first among its severity and the comment
-// cap never cuts it for a plain finding. capTasks then applies the cap and
-// the switches to what survived the cut.
+// run may post: a claim CheckBlocking accepts is a task for now; capTasks
+// then applies the cap and the switches, before the sort, so the sort puts
+// only a real task first among its severity and the comment cap never cuts
+// it for a plain finding.
 func decideBlocking(findings []inference.ReviewFinding, rules []inference.BlockingRule) []inference.ReviewFinding {
 	out := slices.Clone(findings)
 	for i := range out {
@@ -49,8 +49,9 @@ func decideBlocking(findings []inference.ReviewFinding, rules []inference.Blocki
 	return out
 }
 
-// capTasks downgrades the tasks past inference.MaxBlockingTasks, in post
-// order, or every one when tasks are off.
+// capTasks downgrades the tasks past inference.MaxBlockingTasks, or every
+// one when tasks are off. In the model's order, which is post order among
+// tasks: every task is an `issue`, and the sort is stable.
 func capTasks(findings []inference.ReviewFinding, tasksOn bool) {
 	n := 0
 	for i := range findings {
@@ -117,15 +118,13 @@ func taskDone(c *bitbucket.Comment) bool {
 // marks: the rule does not block anymore, so neither may its task. The
 // finding is settled with it, as when a person resolves the task. Only
 // when tasks are on and AGENTS.md was read for sure (known): a fetch that
-// failed reads as no rules and would resolve every task.
+// failed reads as no rules and would resolve every task. marked holds
+// every marked rule's text, those past the cap too: a rule pushed past it
+// is still marked, and its task stays.
 func (r *Reviewer) retireRemovedRules(ctx context.Context, key store.PRKey, prTag string, existing []store.Finding,
-	rules []inference.BlockingRule, known bool) []store.Finding {
+	marked map[string]bool, known bool) []store.Finding {
 	if !r.tasksOn() || !known {
 		return existing
-	}
-	marked := make(map[string]bool, len(rules))
-	for _, rule := range rules {
-		marked[inference.NormalizeRule(rule.Text)] = true
 	}
 	out := slices.Clone(existing)
 	now := time.Now()
@@ -182,14 +181,24 @@ func (r *Reviewer) targetAgentsMD(ctx context.Context, project, repo, branch str
 }
 
 // blockingRules reads the review's rules off AGENTS.md and logs them.
-func (r *Reviewer) blockingRules(ctx context.Context, prTag, agentsMD string) []inference.BlockingRule {
+// marked is every marked rule's text exactly as BlockingRule.Text holds it
+// (normalized and capped, so the stored BlockingRule of a finding matches),
+// past the cap too, for retireRemovedRules.
+func (r *Reviewer) blockingRules(ctx context.Context, prTag, agentsMD string) (rules []inference.BlockingRule, marked map[string]bool) {
 	rules, over := inference.ExtractBlockingRules(agentsMD)
 	if len(rules) > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d blocking rule(s) in AGENTS.md", prTag, len(rules)))
 	}
-	if over > 0 {
+	if len(over) > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d more [blocking] rule(s) past the cap of %d left plain guidelines",
-			prTag, over, inference.MaxBlockingRules))
+			prTag, len(over), inference.MaxBlockingRules))
 	}
-	return rules
+	marked = make(map[string]bool, len(rules)+len(over))
+	for _, rule := range rules {
+		marked[rule.Text] = true
+	}
+	for _, text := range over {
+		marked[text] = true
+	}
+	return rules, marked
 }

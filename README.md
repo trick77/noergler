@@ -432,17 +432,17 @@ The review summary reports how many tokens `AGENTS.md` consumes against a config
 
 #### Blocking rules
 
-Start a rule's line with `[blocking]` to make its violation hold the merge:
+Start a rule's line with `[blocking]`, after a list marker (`-`, `*`, `+`, `1.`) if any, to make its violation hold the merge:
 
 ```markdown
 - [blocking] Controllers never access the database directly; every query goes through a service.
 ```
 
-A finding the model says violates such a rule is posted as a Bitbucket **task** on its line instead of a comment. With the repository's merge check "incomplete tasks" on, the PR cannot merge until the task is resolved: by the author (who may also resolve it to merge anyway), or by noergler once a push fixes the violation. Without that merge check a task is only a marked comment.
+A finding the model says violates such a rule is posted as a Bitbucket **task** on its line instead of a comment. With the repository's merge check "incomplete tasks" on, the PR cannot merge until the task is resolved: by the author (who may also resolve it to merge anyway), or by noergler once a push fixes the violation, a fix noergler committed on request included. Without that merge check a task is only a marked comment.
 
 - Meant for rules only a reviewer can judge. Something code can check belongs in CI; a SNAPSHOT version already gets its own task, do not mark that rule again.
 - Probabilistic: the model may miss a violation. Code only decides which rules block and whether a claim is strong enough (severity `issue`, confidence at least 90); a weaker claim is posted as a normal comment, never dropped.
-- At most 10 marked rules per `AGENTS.md` (the rest stay normal guidelines) and 3 tasks per review (the rest are comments that name the rule).
+- At most 10 marked rules per `AGENTS.md` (the rest stay normal guidelines, and a task already open under one stays open) and 3 tasks per review (the rest are comments that name the rule).
 - The rules come from the PR's **target branch**: a rule takes effect once it is merged there, and a PR cannot lift a rule by editing `AGENTS.md` itself. A rule may wrap over indented lines.
 - Removing the marker or the rule resolves its open tasks on the next review; so does rewording it (re-wrapping does not), since a task belongs to the rule's text. A violation the reworded rule still covers becomes a task again.
 - The team switch `create_tasks` and the instance's `REVIEW_CREATE_TASKS` turn tasks off; findings are then normal comments.
