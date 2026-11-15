@@ -11,12 +11,14 @@ import {
   commentUrl,
   duration,
   money,
+  num,
   outcomeTitle,
   outcomeTone,
   outcomeWord,
   prUrl,
   severityTone,
   severityWord,
+  when,
 } from "./format";
 import {
   ContextCard,
@@ -59,10 +61,6 @@ function tabFromHash(): Tab {
 const VERDICTS = ["approve", "approve_with_followups", "request_changes"];
 function verdictRank(v: string): number {
   return Math.max(0, VERDICTS.indexOf(v));
-}
-
-function num(v: number | null | undefined): string {
-  return v === null || v === undefined ? "—" : v.toLocaleString();
 }
 
 export function RunPane({ token, n }: { token: string; n: number }) {
@@ -155,12 +153,7 @@ export function RunPane({ token, n }: { token: string; n: number }) {
             )}
           </span>
           <Sep />
-          <span>
-            {new Date(d.created_at).toLocaleString(undefined, {
-              dateStyle: "medium",
-              timeStyle: "medium",
-            })}
-          </span>
+          <span>{when(d.created_at, true)}</span>
         </div>
       </div>
 
@@ -191,7 +184,7 @@ export function RunPane({ token, n }: { token: string; n: number }) {
             value={
               inTokens === null && outTokens === null
                 ? "—"
-                : ((inTokens ?? 0) + (outTokens ?? 0)).toLocaleString()
+                : num((inTokens ?? 0) + (outTokens ?? 0))
             }
           >
             {inTokens ? (
@@ -541,7 +534,7 @@ function CostTab({ call }: { call: RunCall | null }) {
     );
   }
   const absent = t("run.absent");
-  const tok = (v: number | null) => (v === null ? absent : v.toLocaleString());
+  const tok = (v: number | null) => (v === null ? absent : num(v));
   const lane = (v: string | null) => (v === null ? absent : money(v));
   const input = call.input_tokens ?? 0;
   const output = call.output_tokens ?? 0;
@@ -595,7 +588,7 @@ function CostTab({ call }: { call: RunCall | null }) {
       <Card
         title={t("run.tokensTitle")}
         note={t("run.tokensTotal", {
-          total: (input + output).toLocaleString(),
+          total: num(input + output),
         })}
       >
         {[
@@ -650,7 +643,7 @@ function CostTab({ call }: { call: RunCall | null }) {
               </div>
             </div>
             <span className="text-right font-mono text-[12.5px] text-ink-dim tabular-nums">
-              {row.total.toLocaleString()}
+              {num(row.total)}
             </span>
           </div>
         ))}
@@ -721,7 +714,7 @@ function CostTab({ call }: { call: RunCall | null }) {
                         ? l.k === t("run.laneTool")
                           ? "—"
                           : absent
-                        : l.tokens.toLocaleString()}
+                        : num(l.tokens)}
                     </td>
                     <td
                       className={

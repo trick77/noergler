@@ -4,6 +4,42 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ago, prUrl, type Tone } from "./format";
+import { setLanguage, type UiLanguage } from "./i18n";
+
+/** LanguageSwitch is the header's globe and the active language's code; a
+ *  click switches to the other one and keeps the choice (setLanguage). Same
+ *  markup as ../riptide's, so both apps switch alike. */
+export function LanguageSwitch() {
+  const { t, i18n } = useTranslation();
+  const next: UiLanguage = i18n.language === "de" ? "en" : "de";
+  return (
+    <button
+      type="button"
+      onClick={() => setLanguage(next)}
+      aria-label={t("lang.switch")}
+      title={t("lang.switch")}
+      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-ui-sm border border-border bg-panel px-2.5 text-[12.5px] tracking-[.06em] text-ink-dim hover:bg-active"
+    >
+      <svg
+        aria-hidden="true"
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="text-muted"
+      >
+        <circle cx="12" cy="12" r="9" />
+        <path d="M3 12h18" />
+        <path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z" />
+      </svg>
+      {t("lang.code")}
+    </button>
+  );
+}
 
 /** Sep is the dot between the clauses of a note or a heading.
  *

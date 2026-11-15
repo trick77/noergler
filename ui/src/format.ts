@@ -5,6 +5,22 @@ import type { Metrics } from "./api";
 import i18n from "./i18n";
 import { en, type Catalog } from "./i18n/en";
 
+/** locale is the Intl locale of every count and date on the page: Swiss in
+ *  either language, only the words translated (user, 2026-11-15). en-CH
+ *  keeps 1'540 and 02.10.2026, 14:05, and only a month name follows the
+ *  language: "2 Oct" next to de-CH's "2. Okt.". Never the browser's locale,
+ *  so the header's switch is the only thing that changes a word. Money is
+ *  not here: it is rounded as a string (money) and stays ungrouped. */
+export function locale(): "de-CH" | "en-CH" {
+  return i18n.language === "de" ? "de-CH" : "en-CH";
+}
+
+/** num is a count for a person to read, grouped the Swiss way; a dash for
+ *  none. */
+export function num(n: number | null | undefined): string {
+  return n === null || n === undefined ? "—" : n.toLocaleString(locale());
+}
+
 /** calendarDay reads the Y-M-D the server wrote, as a UTC timestamp, with no
  *  reference to the viewer's zone. Returns null for anything unparseable, so
  *  a bad pair renders an empty window rather than 400 wrong days. */
@@ -19,7 +35,7 @@ export function calendarDay(iso: string): number | null {
 export function dayMonth(day: string): string {
   const d = calendarDay(day);
   if (d === null) return day;
-  return new Intl.DateTimeFormat(i18n.language, {
+  return new Intl.DateTimeFormat(locale(), {
     day: "numeric",
     month: "short",
     timeZone: "UTC",
@@ -34,7 +50,7 @@ export function monthName(since: string): string {
   // timeZone UTC: `start` is the server's calendar day as a UTC timestamp,
   // so formatting it in the viewer's zone would shift it back a day. An
   // unreadable `since` falls back to the viewer's own month.
-  return new Intl.DateTimeFormat(i18n.language, {
+  return new Intl.DateTimeFormat(locale(), {
     month: "long",
     year: "numeric",
     ...(start === null ? {} : { timeZone: "UTC" }),
@@ -108,11 +124,19 @@ function roundToCents(usd: string): string {
   return `${sign}${digits.slice(0, -2)}.${digits.slice(-2)}`;
 }
 
-/** when is a timestamp in the viewer's short date and time, for a list. */
-export function when(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    dateStyle: "short",
-    timeStyle: "short",
+/** when is a timestamp in the viewer's zone, 02.10.2026, 14:05, with the
+ *  seconds for a run's own header. Fields spelled out, never dateStyle: a
+ *  style picks a different shape per locale (de-CH short has a two-digit
+ *  year, en-CH medium spells the month), and the switch must not change
+ *  how a date looks. */
+export function when(iso: string, seconds = false): string {
+  return new Date(iso).toLocaleString(locale(), {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    ...(seconds ? { second: "2-digit" } : {}),
   });
 }
 

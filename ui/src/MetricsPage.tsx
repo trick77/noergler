@@ -8,6 +8,7 @@ import {
   dayMonth,
   money,
   moneyTick,
+  num,
   sortedByName,
   windowTitle,
 } from "./format";
@@ -308,7 +309,7 @@ export function MetricsPage() {
       ),
     ),
     color: trendColor,
-    format: (v) => Math.round(v).toLocaleString(),
+    format: (v) => num(Math.round(v)),
   };
   const costTrend: Trend = {
     values: ofWindow(perDayIn(trended, data.daily, spend)),
@@ -392,9 +393,9 @@ export function MetricsPage() {
    *  runs it leaves out, if any. */
   const linesTitle = (r: Totals) => {
     const split = t("metrics.linesSplit", {
-      total: (r.lines_added + r.lines_removed).toLocaleString(),
-      added: r.lines_added.toLocaleString(),
-      removed: r.lines_removed.toLocaleString(),
+      total: num(r.lines_added + r.lines_removed),
+      added: num(r.lines_added),
+      removed: num(r.lines_removed),
     });
     return r.lines_uncounted_runs > 0
       ? `${split} (${t("metrics.linesUncounted", { count: r.lines_uncounted_runs })})`
@@ -480,9 +481,9 @@ export function MetricsPage() {
                       seen: data.prs.seen,
                     })}
                   >
-                    {data.prs.reviewed.toLocaleString()}
+                    {num(data.prs.reviewed)}
                     <span className="text-muted"> / </span>
-                    {data.prs.seen.toLocaleString()}
+                    {num(data.prs.seen)}
                   </span>
                 )
               }
@@ -500,7 +501,7 @@ export function MetricsPage() {
             </Tile>
             <Tile
               label={t("metrics.findings")}
-              value={data.totals.findings_posted.toLocaleString()}
+              value={num(data.totals.findings_posted)}
             >
               {hasTrend(findingsDaily) && (
                 <div className="mt-2">

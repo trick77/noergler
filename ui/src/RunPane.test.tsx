@@ -275,7 +275,7 @@ describe("RunPane", () => {
     // Captioned with the stages' own sum, not the run's elapsed time.
     expect(screen.getByText("1m 3s")).toBeDefined();
     expect(screen.getByText("PAY-2291")).toBeDefined();
-    expect(screen.getByText("1,240 of 4,000 tokens (31%)")).toBeDefined();
+    expect(screen.getByText("1'240 of 4'000 tokens (31%)")).toBeDefined();
 
     fireEvent.click(screen.getByRole("tab", { name: /Findings/ }));
     expect(screen.getByText("MaxRetries can go negative")).toBeDefined();

@@ -19,6 +19,11 @@ export const en = {
     faq: "FAQ",
     api: "API",
   },
+  // The header's switch: the active language's code, and where a click goes.
+  lang: {
+    code: "EN",
+    switch: "Language: English. Switch to German",
+  },
   common: {
     failed:
       "Could not load {{what}}. The instance may be starting, or the database may be unreachable.",

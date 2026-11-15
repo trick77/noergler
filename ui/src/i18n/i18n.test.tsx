@@ -1,8 +1,23 @@
-import { render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FaqPage } from "../FaqPage";
-import { ago, money, outcomeWord, reasonLabel } from "../format";
-import i18n, { browserLanguage } from "./index";
+import {
+  ago,
+  dayMonth,
+  money,
+  monthName,
+  num,
+  outcomeWord,
+  reasonLabel,
+  when,
+} from "../format";
+import { LanguageSwitch } from "../ui";
+import i18n, {
+  browserLanguage,
+  initialLanguage,
+  setLanguage,
+  storedLanguage,
+} from "./index";
 import { de } from "./de";
 import { en } from "./en";
 
@@ -15,6 +30,121 @@ describe("browserLanguage", () => {
   it("reads English for everything else", () => {
     for (const l of ["en-US", "fr-CH", "it-CH", "rm", ""]) {
       expect(browserLanguage(l)).toBe("en");
+    }
+  });
+});
+
+describe("language choice", () => {
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    await i18n.changeLanguage("en");
+  });
+
+  const browser = (language: string) =>
+    vi.stubGlobal("navigator", { ...navigator, language });
+  const blockStorage = (method: "getItem" | "setItem") =>
+    vi.spyOn(Storage.prototype, method).mockImplementation(() => {
+      throw new DOMException("blocked", "SecurityError");
+    });
+
+  it("lets a stored choice beat the browser", () => {
+    browser("de-CH");
+    localStorage.setItem("lang", "en");
+    expect(initialLanguage()).toBe("en");
+    browser("en-US");
+    localStorage.setItem("lang", "de");
+    expect(initialLanguage()).toBe("de");
+  });
+
+  it("falls back to the browser without a choice", () => {
+    browser("de-CH");
+    expect(storedLanguage()).toBeNull();
+    expect(initialLanguage()).toBe("de");
+  });
+
+  it("reads junk from an older build as no choice", () => {
+    browser("de-AT");
+    localStorage.setItem("lang", "fr");
+    expect(storedLanguage()).toBeNull();
+    expect(initialLanguage()).toBe("de");
+  });
+
+  it("reads blocked storage as no choice", () => {
+    browser("de-CH");
+    localStorage.setItem("lang", "en");
+    blockStorage("getItem");
+    expect(storedLanguage()).toBeNull();
+    expect(initialLanguage()).toBe("de");
+  });
+
+  it("keeps the switched language and names it on <html lang>", () => {
+    setLanguage("de");
+    expect(localStorage.getItem("lang")).toBe("de");
+    expect(i18n.language).toBe("de");
+    expect(document.documentElement.lang).toBe("de");
+    setLanguage("en");
+    expect(localStorage.getItem("lang")).toBe("en");
+    expect(document.documentElement.lang).toBe("en");
+  });
+
+  it("still switches when storage refuses the choice", () => {
+    blockStorage("setItem");
+    setLanguage("de");
+    expect(i18n.language).toBe("de");
+    expect(document.documentElement.lang).toBe("de");
+  });
+
+  it("switches the page from the header button", () => {
+    render(<LanguageSwitch />);
+    const button = screen.getByRole("button", {
+      name: "Language: English. Switch to German",
+    });
+    expect(button.textContent).toBe("EN");
+    act(() => {
+      fireEvent.click(button);
+    });
+    expect(button.textContent).toBe("DE");
+    expect(button.getAttribute("aria-label")).toBe(
+      "Sprache: Deutsch. Auf Englisch wechseln",
+    );
+    expect(localStorage.getItem("lang")).toBe("de");
+  });
+
+  it("follows a switch made in another tab", () => {
+    localStorage.setItem("lang", "de");
+    act(() => {
+      window.dispatchEvent(new StorageEvent("storage", { key: "lang" }));
+    });
+    expect(i18n.language).toBe("de");
+    localStorage.setItem("other", "en");
+    act(() => {
+      window.dispatchEvent(new StorageEvent("storage", { key: "other" }));
+    });
+    expect(i18n.language).toBe("de");
+  });
+});
+
+// Counts and dates stay Swiss in either language; only a month name is a
+// word and follows it (user, 2026-11-15). One date shape in both: a
+// dateStyle once gave de-CH a two-digit year and en-CH a four-digit one.
+describe("formats", () => {
+  afterEach(async () => {
+    await i18n.changeLanguage("en");
+  });
+
+  it("are Swiss in both languages, with the month in the reader's", async () => {
+    const at = new Date(2026, 9, 2, 14, 5).toISOString();
+    for (const [lng, month, day] of [
+      ["en", "October 2026", "2 Oct"],
+      ["de", "Oktober 2026", "2. Okt."],
+    ] as const) {
+      await i18n.changeLanguage(lng);
+      expect(num(1540)).toBe("1'540");
+      expect(when(at)).toBe("02.10.2026, 14:05");
+      expect(when(at, true)).toBe("02.10.2026, 14:05:00");
+      expect(monthName("2026-10-01T00:00:00+02:00")).toBe(month);
+      expect(dayMonth("2026-10-02")).toBe(day);
     }
   });
 });

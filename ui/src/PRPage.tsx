@@ -15,6 +15,7 @@ import {
   duration,
   known,
   money,
+  num,
   prUrl,
   severityTone,
   severityWord,
@@ -298,10 +299,7 @@ function Overview({
             </div>
           )}
         </Tile>
-        <Tile
-          label={t("pr.tokens")}
-          value={tokens === 0 ? "—" : tokens.toLocaleString()}
-        >
+        <Tile label={t("pr.tokens")} value={tokens === 0 ? "—" : num(tokens)}>
           <div className="mt-0.5 text-[12px] text-faint">
             {d.prompt_tokens > 0 &&
               t("pr.fromCache", {
@@ -706,24 +704,22 @@ function CostTab({ d }: { d: PRPageData }) {
             <tbody>
               <tr>
                 <td className={td}>{t("run.laneInput")}</td>
-                <td className={tdNum}>{uncached.toLocaleString()}</td>
+                <td className={tdNum}>{num(uncached)}</td>
               </tr>
               <tr>
                 <td className={td}>{t("run.laneCacheRead")}</td>
-                <td className={tdNum}>{d.cached_tokens.toLocaleString()}</td>
+                <td className={tdNum}>{num(d.cached_tokens)}</td>
               </tr>
               <tr>
                 <td className={td}>{t("run.laneOutput")}</td>
-                <td className={tdNum}>
-                  {d.completion_tokens.toLocaleString()}
-                </td>
+                <td className={tdNum}>{num(d.completion_tokens)}</td>
               </tr>
               <tr>
                 <td className={td + " font-medium text-ink"}>
                   {t("run.total")}
                 </td>
                 <td className={tdNum + " text-ink"}>
-                  {(d.prompt_tokens + d.completion_tokens).toLocaleString()}
+                  {num(d.prompt_tokens + d.completion_tokens)}
                 </td>
               </tr>
             </tbody>

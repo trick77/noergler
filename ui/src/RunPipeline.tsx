@@ -7,6 +7,7 @@ import type { RunPipeline } from "./api";
 import {
   duration,
   known,
+  num,
   severityTone,
   severityWord,
   sourceUrl,
@@ -121,11 +122,11 @@ export function ContextCard({ p }: { p: RunPipeline }) {
               ? t("run.agentsMissing")
               : a.warn_tokens > 0
                 ? t("run.agentsOf", {
-                    tokens: a.tokens.toLocaleString(),
-                    warn: a.warn_tokens.toLocaleString(),
+                    tokens: num(a.tokens),
+                    warn: num(a.warn_tokens),
                     pct: Math.round((a.tokens / a.warn_tokens) * 100),
                   })
-                : t("run.agentsTokens", { tokens: a.tokens.toLocaleString() })
+                : t("run.agentsTokens", { tokens: num(a.tokens) })
           }
         />
         <KV k={t("run.ticket")} mono v={p.ticket || "—"} />
@@ -187,8 +188,8 @@ export function InputTab({ p }: { p: RunPipeline | null }) {
       <Card
         title={t("run.promptTitle")}
         note={t("run.promptNote", {
-          total: p.prompt.total.toLocaleString(),
-          budget: p.prompt.budget.toLocaleString(),
+          total: num(p.prompt.total),
+          budget: num(p.prompt.budget),
         })}
       >
         <div className="overflow-x-auto overscroll-x-contain">
@@ -205,7 +206,7 @@ export function InputTab({ p }: { p: RunPipeline | null }) {
               {PARTS.map((k) => (
                 <tr key={k}>
                   <td className={td}>{t(`promptPart.${k}`)}</td>
-                  <td className={tdNum}>{p.prompt[k].toLocaleString()}</td>
+                  <td className={tdNum}>{num(p.prompt[k])}</td>
                   <td className={tdNum}>
                     {p.prompt.total > 0
                       ? `${Math.round((p.prompt[k] / p.prompt.total) * 100)}%`
@@ -224,7 +225,7 @@ export function InputTab({ p }: { p: RunPipeline | null }) {
               {rest > 0 && (
                 <tr>
                   <td className={td + " text-muted"}>{t("promptPart.rest")}</td>
-                  <td className={tdNum}>{rest.toLocaleString()}</td>
+                  <td className={tdNum}>{num(rest)}</td>
                   <td className={tdNum} />
                   <td className={td} />
                 </tr>
@@ -272,7 +273,7 @@ export function InputTab({ p }: { p: RunPipeline | null }) {
                       <td className={tdNum}>{f.added}</td>
                       <td className={tdNum}>{f.removed}</td>
                       <td className={tdNum}>
-                        {f.tokens > 0 ? f.tokens.toLocaleString() : "—"}
+                        {f.tokens > 0 ? num(f.tokens) : "—"}
                       </td>
                     </tr>
                   );

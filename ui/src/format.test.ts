@@ -22,7 +22,7 @@ describe("monthName", () => {
     expect(monthName("2026-09-01T00:00:00+02:00")).toBe("September 2026");
   });
   it("falls back to the viewer's month, never to 'this month'", () => {
-    const now = new Intl.DateTimeFormat("en", {
+    const now = new Intl.DateTimeFormat("en-CH", {
       month: "long",
       year: "numeric",
     }).format(new Date());
