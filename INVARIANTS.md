@@ -206,10 +206,30 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   task's id is written past a shutdown, and an unknown own open task with
   the same text is taken over (a lost id would post twice, resolve once).
   A retarget passes `exclude_repos` and the branch globs like a review. Both switches on
-  (`REVIEW_CREATE_TASKS`, team `snapshot_task`), else no task call at all
+  (`REVIEW_CREATE_TASKS`, team `create_tasks`), else no task call at all
   (user: "off means off"). Runs in prepare after the opt-out branch,
   before the AGENTS.md gates and the cost cap, and alone on a retarget;
   never on a stopped PR.
+- Blocking rules (user, 2026-11-15): code decides which rules block
+  (`[blocking]` line prefix in the TARGET branch's AGENTS.md, never the
+  PR's: the gated branch must not lift its gate; `ExtractBlockingRules`,
+  wrapped lines joined, fences skipped, at most 10, ids `B<n>` per
+  review), the model only names the rule a finding violates
+  (`blocking_rule`). `CheckBlocking` is blunt: id known, `issue`,
+  confidence >= 90; else a plain comment, never a drop. At most 3 tasks a
+  review, sorted first so the comment cap never cuts one; a 4xx-refused
+  task posts as a comment, any other failure fails like a comment (the
+  task may exist). Every claim is one log line, posted or not, and its
+  rule text + outcome are on the findings row (threshold to be tuned on
+  them). A task is a finding: deduped, resolved = settled like a resolved
+  thread, never re-posted; a fixed claim resolves the task even when the
+  reply failed (the row is stamped either way). A rule gone from the
+  target's AGENTS.md (reworded counts) resolves its open tasks, only when
+  that file was read for sure (a fetch fault is not "no rules"); such a
+  row (`rule_removed`) holds back no new task. Disputes change nothing.
+  Same switches as the SNAPSHOT task, off = no task call, the finding
+  posts as a comment. `{blocking_rules}` sits right after
+  `{repo_instructions}` (prefix cache).
 - Merge-conflict offer (user, 2026-11-14): a completed review under the cost
   cap checks the merge status and, on a conflict, runs a request's
   `mergeConflict` (its depths, no model, no commit, a stage's timeout).
@@ -322,8 +342,11 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 
 ## Evals
 
-- Exit 1 = a seeded bug missed OR any finding on a clean control; two
-  consecutive reds are the signal, one is noise; the exit code stays strict.
+- Exit 1 = a seeded bug missed OR any finding on a clean control OR a
+  blocking task no case asked for; two consecutive reds are the signal,
+  one is noise; the exit code stays strict. A blocking expectation is
+  caught only by a claim `CheckBlocking` accepts (production's check);
+  `-samples`/`-confirm` do not score blocking.
 - No model or level default in code (`corpus/series.yaml`); one pair per
   series.
 - Scoring stays blunt (file + line window + keyword); the corpus keeps a case

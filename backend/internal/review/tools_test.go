@@ -49,7 +49,7 @@ func TestTeamConfigIsAnAllowlist(t *testing.T) {
 		"exclude_target_branches", "auto_review_authors", "ignore_authors", "ignore_author_globs", "opt_out_branch_keyword", "max_pr_cost_usd", "max_comments", "max_file_lines",
 		"require_agents_md", "agents_md_warn_tokens", "agents_md_max_tokens", "agents_md_custom_link",
 		"dispute_signal_window_days", "dispute_signal_threshold",
-		"use_pr_description", "snapshot_task", "instance_create_tasks", "ticket_compliance_check", "jira_enabled", "jira_acceptance_criteria_prefixes",
+		"use_pr_description", "create_tasks", "instance_create_tasks", "ticket_compliance_check", "jira_enabled", "jira_acceptance_criteria_prefixes",
 		"riptide_enabled", "diff_context", "context_lines_before", "context_lines_after", "dynamic_context",
 		"max_dynamic_context_lines", "never_reviewed_builtin", "dirs", "files", "extensions",
 		"reviewed_only_up_to_changed_lines", "asking_user", "language", "auto_reviewed", "ignored"}

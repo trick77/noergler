@@ -40,6 +40,30 @@ func TestInlineCommentIsPinned(t *testing.T) {
 	}
 }
 
+// A blocking rule shows on the finding: a task says what it blocks and how
+// it ends, a downgraded one why it is no task; a claim code refused shows
+// nothing. The rule is AGENTS.md's text: never SwissSS'd.
+func TestInlineCommentBlockingRule(t *testing.T) {
+	f := inference.ReviewFinding{Severity: "issue", Comment: "Der Controller ruft SQL auf.",
+		BlockingText: "Kein SQL im Controller (Straße).", Blocking: inference.BlockingTask}
+	got := InlineComment(f, lang.DE)
+	if !strings.Contains(got, "**Blockierende Regel:** Kein SQL im Controller (Straße).") ||
+		!strings.Contains(got, "Dieser Task blockiert den Merge") {
+		t.Errorf("task:\n%s", got)
+	}
+	f.Blocking = inference.BlockingCap
+	if got := InlineComment(f, lang.EN); !strings.Contains(got, "(no task: this review opened its 3 tasks already)") ||
+		strings.Contains(got, "blocks the merge") {
+		t.Errorf("capped:\n%s", got)
+	}
+	for _, refused := range []inference.BlockingOutcome{inference.BlockingConfidence, inference.BlockingSeverity, inference.BlockingUnknownRule} {
+		f.Blocking = refused
+		if got := InlineComment(f, lang.EN); strings.Contains(got, "Blocking rule") {
+			t.Errorf("%s shows the rule:\n%s", refused, got)
+		}
+	}
+}
+
 // A single-line suggestion gets the ```suggestion fence so Bitbucket renders
 // the "Apply suggestion" button; a multi-line one must not, or the button
 // would replace only one line.

@@ -352,6 +352,11 @@ type Finding struct {
 	CommentText        string
 	Suggestion         *string
 	BitbucketCommentID *int
+	// BlockingRule is the text of the blocking rule the model said the
+	// finding violates, BlockingOutcome what code made of that claim
+	// (inference.BlockingOutcome); "task" = the comment is a Bitbucket task.
+	BlockingRule    *string
+	BlockingOutcome *string
 	// RepliedAt is set once noergler answered a reply on this finding's
 	// thread; DisputeText is the author's reply when it disputed the
 	// finding. Read back, never written by InsertFinding.
@@ -628,7 +633,7 @@ type TeamSettings struct {
 	ExcludeSourceBranches []string
 	ExcludeTargetBranches []string
 	UsePRDescription      bool
-	SnapshotTask          bool
+	CreateTasks           bool
 }
 
 // claimRow is one team_claims row as the claim reads take it.

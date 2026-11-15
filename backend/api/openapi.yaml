@@ -147,10 +147,10 @@ paths:
                 summary: Review without the PR title and description
                 value:
                   use_pr_description: false
-              noSnapshotTask:
-                summary: No Bitbucket task for a SNAPSHOT version
+              noTasks:
+                summary: No Bitbucket tasks (SNAPSHOT version, blocking rules)
                 value:
-                  snapshot_task: false
+                  create_tasks: false
       responses:
         "200":
           description: The team as it is after the change.
@@ -492,7 +492,7 @@ components:
     TeamView:
       type: object
       additionalProperties: false
-      required: [team, projects, auto_review_authors, ignore_authors, ignore_author_globs, exclude_repos, exclude_source_branches, exclude_target_branches, use_pr_description, snapshot_task, bitbucket_account, jira_account]
+      required: [team, projects, auto_review_authors, ignore_authors, ignore_author_globs, exclude_repos, exclude_source_branches, exclude_target_branches, use_pr_description, create_tasks, bitbucket_account, jira_account]
       properties:
         team:
           type: string
@@ -553,17 +553,23 @@ components:
           description: &usePRDescription |
             Whether the PR title and description are given to the model as
             context for reviews and @mentions. True for a new team.
-        snapshot_task:
+        create_tasks:
           type: boolean
-          description: &snapshotTask |
-            Whether a PR into the repository's default branch that adds a
-            SNAPSHOT version (`-SNAPSHOT`, a resolved snapshot's timestamp) to a
-            Maven or Gradle build file gets a Bitbucket task the author must
-            resolve; noergler resolves it itself once no such line is left. A
-            line that already named a SNAPSHOT before the change does not
-            count. The instance's `REVIEW_CREATE_TASKS` gates it: off there, no
-            team gets a task. True for every team. Off means off: no task is
-            posted, read or resolved; an open one stays.
+          description: &createTasks |
+            Whether noergler may open Bitbucket tasks in this team. Two kinds:
+            a PR into the repository's default branch that adds a SNAPSHOT
+            version (`-SNAPSHOT`, a resolved snapshot's timestamp) to a Maven
+            or Gradle build file gets a task the author must resolve, which
+            noergler resolves itself once no such line is left (a line that
+            already named a SNAPSHOT before the change does not count); and a
+            finding that violates a rule the repository's AGENTS.md marks
+            `[blocking]` is posted as a task on its line instead of a
+            comment. A task blocks the merge where the repository's
+            "incomplete tasks" merge check is on. The instance's
+            `REVIEW_CREATE_TASKS` gates it: off there, no team gets a task.
+            True for every team. Off means off: no task is posted, read or
+            resolved, an open one stays, and a blocking finding is posted as
+            a plain comment.
         bitbucket_account: { $ref: "#/components/schemas/BitbucketAccount" }
         jira_account: { $ref: "#/components/schemas/JiraAccount" }
         unreachable_claims:
@@ -672,9 +678,9 @@ components:
         use_pr_description:
           type: [boolean, "null"]
           description: *usePRDescription
-        snapshot_task:
+        create_tasks:
           type: [boolean, "null"]
-          description: *snapshotTask
+          description: *createTasks
 
     OnboardRequest:
       type: object

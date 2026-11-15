@@ -40,8 +40,8 @@ type fakeReviewer struct {
 	replyHandled bool
 	// usePRDescription is the last value mirrored by a settings write.
 	usePRDescription *bool
-	// snapshotTask is the same for the SNAPSHOT task switch.
-	snapshotTask *bool
+	// createTasks is the same for the task switch.
+	createTasks *bool
 }
 
 func (f *fakeReviewer) ReviewPullRequestStaged(context.Context, *webhook.Payload, string, bool, teams.Scheduler) bool {
@@ -77,7 +77,7 @@ func (f *fakeReviewer) HandleRetargeted(context.Context, *webhook.Payload) {
 func (f *fakeReviewer) IsAutoReviewAuthor(string) bool { return true }
 func (f *fakeReviewer) SetAuthorLists(_, _ []string)   {}
 func (f *fakeReviewer) SetUsePRDescription(on bool)    { f.usePRDescription = &on }
-func (f *fakeReviewer) SetSnapshotTask(on bool)        { f.snapshotTask = &on }
+func (f *fakeReviewer) SetCreateTasks(on bool)         { f.createTasks = &on }
 func (f *fakeReviewer) String() string                 { return strings.Join(f.calls, ",") }
 
 // fakeQueue captures submissions without running a worker. Jobs are run on
@@ -165,7 +165,7 @@ func newHarness(t *testing.T, tweak func(*config.Team)) *harness {
 		WebhookSecret: testSecret,
 		Projects:      []config.ProjectScope{{Key: "PLAT"}},
 		// The instance default, as LoadInstance sets it.
-		Review: config.Review{UsePRDescription: true, SnapshotTask: true},
+		Review: config.Review{UsePRDescription: true, CreateTasks: true},
 	}
 	if tweak != nil {
 		tweak(team)

@@ -88,10 +88,16 @@ func perfectFindings(t *testing.T) (stubClient, int) {
 		for _, e := range c.Expected {
 			seeded++
 			line, text := firstShownLine(t, c, e)
-			s.findings = append(s.findings, inference.ReviewFinding{
+			f := inference.ReviewFinding{
 				File: e.File, Line: line, Severity: "issue",
 				Comment: e.Keywords[0], Evidence: []string{text},
-			})
+			}
+			// A blocking expectation is caught only by a task for its rule.
+			if e.Blocking != "" {
+				rule, conf := e.Blocking, inference.BlockingMinConfidence
+				f.BlockingRule, f.Confidence = &rule, &conf
+			}
+			s.findings = append(s.findings, f)
 			s.owner = append(s.owner, mark)
 		}
 		// One line per path, carrying every case's first keyword for it:

@@ -469,7 +469,8 @@ type listedFinding struct {
 const maxListedFindings = 30
 
 // prFindings is every open finding of the PR, issues first; within a
-// severity the earlier ones come first, in the order they were posted.
+// severity blocking tasks first, then the earlier ones, in the order they
+// were posted.
 func prFindings(in SummaryInput) []listedFinding {
 	all := make([]listedFinding, 0, len(in.EarlierOpen)+len(in.Findings))
 	for _, f := range in.EarlierOpen {
@@ -479,7 +480,7 @@ func prFindings(in SummaryInput) []listedFinding {
 		all = append(all, listedFinding{ReviewFinding: f, isNew: true})
 	}
 	slices.SortStableFunc(all, func(a, b listedFinding) int {
-		return inference.SeverityRank(a.Severity) - inference.SeverityRank(b.Severity)
+		return inference.CompareFindings(a.ReviewFinding, b.ReviewFinding)
 	})
 	return all
 }
@@ -500,11 +501,22 @@ func renderIssues(in SummaryInput) string {
 		return lines[0] + none
 	}
 
-	securityCount := 0
+	securityCount, taskCount := 0, 0
 	for _, f := range all {
 		if IsSecurityFinding(f.Comment) {
 			securityCount++
 		}
+		if f.IsTask() {
+			taskCount++
+		}
+	}
+	// Open blocking tasks first: they hold the merge where the repo's
+	// "incomplete tasks" merge check is on.
+	if taskCount > 0 {
+		lines = append(lines, "- "+PluralIn(in.Lang, taskCount,
+			"offener blockierender Task", "offene blockierende Tasks", "open blocking task", "open blocking tasks")+
+			p(": Der Merge wartet, bis sie erledigt sind (blockierende Regeln aus AGENTS.md).",
+				": the merge waits until they are resolved (blocking rules from AGENTS.md)."))
 	}
 	if securityCount > 0 {
 		lines = append(lines, fmt.Sprintf(p("- %s 🔒 — sorgfältig prüfen", "- %s 🔒 — review carefully"),
@@ -518,7 +530,7 @@ func renderIssues(in SummaryInput) string {
 			"weiteres neues Finding", "weitere neue Findings", "more new finding", "more new findings")+
 			p(" über dem Kommentar-Limit nicht gepostet.", " over the comment cap not posted."))
 	}
-	if securityCount > 0 || in.Cut > 0 {
+	if securityCount > 0 || in.Cut > 0 || taskCount > 0 {
 		lines = append(lines, "")
 	}
 	markNew := len(in.EarlierOpen) > 0
@@ -534,6 +546,9 @@ func renderIssues(in SummaryInput) string {
 				first, _, _ := strings.Cut(f.Comment, "\n")
 				headline = strings.TrimSpace(first)
 			}
+		}
+		if f.IsTask() {
+			headline += p(" _(blockierender Task)_", " _(blocking task)_")
 		}
 		if markNew && f.isNew {
 			headline += p(" _(neu)_", " _(new)_")

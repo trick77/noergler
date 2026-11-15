@@ -1,0 +1,34 @@
+{
+  "name": "blocking-float-money",
+  "description": "AGENTS.md marks integer cents as blocking. The new totalWithVat converts to euros, multiplies by a float rate and converts back without rounding: 19.99 EUR at 19% returns 2378.81 'cents'. Violation and real bug in one line.",
+  "agents_md": "# checkout-web\n\n- TypeScript, React 18.\n- [blocking] Money is integer cents (`Cents`) end to end; never do arithmetic on amounts as floating-point euros.\n",
+  "files": [
+    {
+      "path": "src/cart/total.ts",
+      "diff": "@@ -9,3 +9,9 @@ export interface Line {\n export function subtotal(lines: Line[]): Cents {\n   return lines.reduce((sum, l) => sum + l.unitPrice * l.qty, 0) as Cents;\n }\n+\n+export function totalWithVat(lines: Line[], vatRate: number): Cents {\n+  const euros = subtotal(lines) / 100;\n+  const gross = euros * (1 + vatRate);\n+  return (gross * 100) as Cents;\n+}",
+      "content": "import type { Cents } from \"../money\";\n\nexport interface Line {\n  sku: string;\n  qty: number;\n  unitPrice: Cents;\n}\n\nexport function subtotal(lines: Line[]): Cents {\n  return lines.reduce((sum, l) => sum + l.unitPrice * l.qty, 0) as Cents;\n}\n\nexport function totalWithVat(lines: Line[], vatRate: number): Cents {\n  const euros = subtotal(lines) / 100;\n  const gross = euros * (1 + vatRate);\n  return (gross * 100) as Cents;\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": [
+    {
+      "id": "vat-total-not-integer-cents",
+      "file": "src/cart/total.ts",
+      "lines": [
+        13,
+        16
+      ],
+      "keywords": [
+        "float",
+        "cents",
+        "round",
+        "integer",
+        "euro",
+        "precision",
+        "fraction"
+      ],
+      "why": "The total is computed in floating-point euros and returned unrounded as Cents, which the blocking rule forbids and which yields fractional cents.",
+      "blocking": "B1"
+    }
+  ]
+}

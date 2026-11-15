@@ -182,6 +182,26 @@ The screenshot stays summary only (INVARIANTS: test screenshots); the
 sentence keeps a code bug from leaving `findings` because an image shows it
 too.
 
+## Blocking rules (2026-11-15)
+
+Question: given `[blocking]` rules from AGENTS.md, does the model name the
+broken rule on a real violation, and only there?
+
+mimo-v2.6-pro high, the seven rev11 blocking cases, one review each:
+four violations (SQL in a controller, a missing tenant check, float money,
+PII in a log line), one unrelated bug in a repo with rules, two controls
+that obey the rule.
+
+- 4 of 4 violations claimed the right id and passed `CheckBlocking`
+  (`issue`, confidence >= 90): no downgrade for severity or confidence.
+- The unrelated bug was caught without a claim; both controls clean.
+  0 false tasks.
+- ~39k prompt and ~5k completion tokens for the run.
+
+One sample per case: this shows the claim works, not how often. The
+measure that matters for teams is false tasks, since a wrong one blocks a
+merge; a larger run should weigh controls near a rule's topic.
+
 ## Merge-conflict resolution (2026-11-14)
 
 Question: how often does a resolution go wrong unnoticed (a commit nobody

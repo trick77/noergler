@@ -1,0 +1,34 @@
+{
+  "name": "blocking-sql-in-controller",
+  "description": "AGENTS.md marks 'controllers never access the database' as blocking; the diff adds a JdbcTemplate query straight into a @RestController. A guideline violation with no crash: it tests that the model reports it as a task-worthy finding (issue, confidence >= 90, blocking_rule B1).",
+  "agents_md": "# Orders service\n\n- Java 21, Spring Boot 3.\n- [blocking] Controllers never access the database directly (no `JdbcTemplate`, no repository): every query goes through a service.\n- Prefer constructor injection.\n",
+  "files": [
+    {
+      "path": "src/main/java/com/acme/orders/OrderController.java",
+      "diff": "@@ -1,20 +1,31 @@\n package com.acme.orders;\n \n+import java.util.List;\n+import java.util.Map;\n+\n+import org.springframework.jdbc.core.JdbcTemplate;\n import org.springframework.web.bind.annotation.GetMapping;\n import org.springframework.web.bind.annotation.PathVariable;\n import org.springframework.web.bind.annotation.RestController;\n \n @RestController\n public class OrderController {\n \n     private final OrderService orders;\n+    private final JdbcTemplate jdbc;\n \n-    public OrderController(OrderService orders) {\n+    public OrderController(OrderService orders, JdbcTemplate jdbc) {\n         this.orders = orders;\n+        this.jdbc = jdbc;\n     }\n \n     @GetMapping(\"/orders/{id}\")\n     public Order get(@PathVariable long id) {\n         return orders.find(id);\n     }\n+\n+    @GetMapping(\"/orders/{id}/lines\")\n+    public List<Map<String, Object>> lines(@PathVariable long id) {\n+        return jdbc.queryForList(\"SELECT sku, qty FROM order_lines WHERE order_id = ?\", id);\n+    }\n }",
+      "content": "package com.acme.orders;\n\nimport java.util.List;\nimport java.util.Map;\n\nimport org.springframework.jdbc.core.JdbcTemplate;\nimport org.springframework.web.bind.annotation.GetMapping;\nimport org.springframework.web.bind.annotation.PathVariable;\nimport org.springframework.web.bind.annotation.RestController;\n\n@RestController\npublic class OrderController {\n\n    private final OrderService orders;\n    private final JdbcTemplate jdbc;\n\n    public OrderController(OrderService orders, JdbcTemplate jdbc) {\n        this.orders = orders;\n        this.jdbc = jdbc;\n    }\n\n    @GetMapping(\"/orders/{id}\")\n    public Order get(@PathVariable long id) {\n        return orders.find(id);\n    }\n\n    @GetMapping(\"/orders/{id}/lines\")\n    public List<Map<String, Object>> lines(@PathVariable long id) {\n        return jdbc.queryForList(\"SELECT sku, qty FROM order_lines WHERE order_id = ?\", id);\n    }\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": [
+    {
+      "id": "controller-runs-sql",
+      "file": "src/main/java/com/acme/orders/OrderController.java",
+      "lines": [
+        15,
+        29
+      ],
+      "keywords": [
+        "service",
+        "controller",
+        "database",
+        "JdbcTemplate",
+        "jdbc",
+        "SQL",
+        "query"
+      ],
+      "why": "The new endpoint queries order_lines from the controller, which the blocking rule forbids. A reviewer may anchor on the query (29), the method (28) or the injected field (15).",
+      "blocking": "B1"
+    }
+  ]
+}

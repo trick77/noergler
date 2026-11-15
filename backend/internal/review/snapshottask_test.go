@@ -33,7 +33,7 @@ func snapshotHarness(t *testing.T, added ...string) *harness {
 		h.bb.files["src1:pom.xml"] = "<a>\n" + strings.Join(added, "\n") + "\n"
 	})
 	h.r.createTasks = true
-	h.r.snapshotTask.Store(true)
+	h.r.teamTasks.Store(true)
 	return h
 }
 
@@ -188,7 +188,7 @@ func TestSnapshotTaskOnRetarget(t *testing.T) {
 // Off is off: no task call at all, an open task left as it is.
 func TestSnapshotTaskOffIsOff(t *testing.T) {
 	for name, off := range map[string]func(*Reviewer){
-		"team":     func(r *Reviewer) { r.snapshotTask.Store(false) },
+		"team":     func(r *Reviewer) { r.teamTasks.Store(false) },
 		"instance": func(r *Reviewer) { r.createTasks = false },
 	} {
 		h := snapshotHarness(t, snap1)

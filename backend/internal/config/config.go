@@ -118,10 +118,10 @@ type Review struct {
 	// UsePRDescription feeds the PR title and description to the model.
 	// Team API only (no env var, no teams.yaml key); the DB row wins.
 	UsePRDescription bool
-	// SnapshotTask posts a Bitbucket task on a PR into the default branch
-	// that adds a SNAPSHOT build (user, 2026-11-15: on for every team).
-	// Team API only, like UsePRDescription; App.CreateTasks gates it.
-	SnapshotTask bool
+	// CreateTasks lets noergler open Bitbucket tasks in this team: the
+	// SNAPSHOT task and a blocking rule's (user, 2026-11-15: on for every
+	// team). Team API only, like UsePRDescription; App.CreateTasks gates it.
+	CreateTasks bool
 	// DisputeSignalWindowDays is how long one dispute of a finding counts
 	// toward its dispute signal; DisputeSignalThreshold the distinct PRs
 	// inside that window at which the finding-thread answer proposes the
@@ -370,7 +370,7 @@ type App struct {
 	// ones, and no team can lift these.
 	IgnoreAuthorGlobs []string
 	// CreateTasks (REVIEW_CREATE_TASKS, default true) lets noergler touch
-	// Bitbucket tasks at all; a team's switch (Review.SnapshotTask) only
+	// Bitbucket tasks at all; a team's switch (Review.CreateTasks) only
 	// narrows it. Off is off (user, 2026-11-15: "off means off"): no task
 	// is posted, read or resolved, an open one stays for a person.
 	CreateTasks bool
@@ -514,7 +514,7 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 			DiffAllowDynamicContext:         r.Bool("REVIEW_DIFF_ALLOW_DYNAMIC_CONTEXT", true),
 			TicketComplianceCheck:           r.Bool("REVIEW_TICKET_COMPLIANCE_CHECK", true),
 			UsePRDescription:                true,
-			SnapshotTask:                    true,
+			CreateTasks:                     true,
 			RequireAgentsMD:                 r.Bool("REVIEW_REQUIRE_AGENTS_MD", true),
 			AgentsMDWarnTokens:              r.Int("REVIEW_AGENTS_MD_WARN_TOKENS", 4000),
 			AgentsMDMaxTokens:               r.Int("REVIEW_AGENTS_MD_MAX_TOKENS", 7000),

@@ -1,0 +1,14 @@
+{
+  "name": "clean-blocking-tenant-checked",
+  "description": "Control, similar but allowed: the same two blocking rules, and the same new Get handler, which does check authz.SameTenant before returning the invoice. No finding, no task.",
+  "agents_md": "# billing-api\n\n- Go 1.24, stdlib net/http only.\n- [blocking] Never log a request body or a customer's personal data (email, IBAN, name).\n- [blocking] Every handler that loads an invoice by id checks it belongs to the caller's tenant (`authz.SameTenant(r, inv.TenantID)`) before returning it.\n",
+  "files": [
+    {
+      "path": "internal/api/invoices.go",
+      "diff": "@@ -21,3 +21,12 @@ func (h Invoices) List(w http.ResponseWriter, r *http.Request) {\n \t}\n \t_ = json.NewEncoder(w).Encode(invs)\n }\n+\n+func (h Invoices) Get(w http.ResponseWriter, r *http.Request) {\n+\tinv, err := h.Store.Invoice(r.Context(), r.PathValue(\"id\"))\n+\tif err != nil || !authz.SameTenant(r, inv.TenantID) {\n+\t\thttp.Error(w, \"not found\", http.StatusNotFound)\n+\t\treturn\n+\t}\n+\t_ = json.NewEncoder(w).Encode(inv)\n+}",
+      "content": "package api\n\nimport (\n\t\"encoding/json\"\n\t\"net/http\"\n\n\t\"example.com/billing/internal/authz\"\n\t\"example.com/billing/internal/store\"\n)\n\ntype Invoices struct {\n\tStore *store.Store\n}\n\nfunc (h Invoices) List(w http.ResponseWriter, r *http.Request) {\n\ttenant := authz.Tenant(r)\n\tinvs, err := h.Store.InvoicesOf(r.Context(), tenant)\n\tif err != nil {\n\t\thttp.Error(w, \"store\", http.StatusInternalServerError)\n\t\treturn\n\t}\n\t_ = json.NewEncoder(w).Encode(invs)\n}\n\nfunc (h Invoices) Get(w http.ResponseWriter, r *http.Request) {\n\tinv, err := h.Store.Invoice(r.Context(), r.PathValue(\"id\"))\n\tif err != nil || !authz.SameTenant(r, inv.TenantID) {\n\t\thttp.Error(w, \"not found\", http.StatusNotFound)\n\t\treturn\n\t}\n\t_ = json.NewEncoder(w).Encode(inv)\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": []
+}

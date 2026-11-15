@@ -111,7 +111,7 @@ noergler's own open task with the text it is about to post is taken over,
 never posted twice. A `pr:modified` that changes the target of an open PR
 runs the check alone, no review, unless the team's `exclude_repos` or
 branch globs exclude the PR. `REVIEW_CREATE_TASKS` (instance, default
-`true`) and the team's `snapshot_task` (API, default `true`) must both be
+`true`) and the team's `create_tasks` (API, default `true`) must both be
 on; off, no task call at all, an open task stays. A stopped PR, an
 opt-out branch and an author or actor the review skips get no check.
 
@@ -228,6 +228,34 @@ A response is required to match a JSON schema with exactly these keys:
 Findings already posted by earlier runs are filtered out by reading the
 **database**, not by fetching and parsing Bitbucket comments. What is left is
 sorted by severity and capped at `REVIEW_MAX_COMMENTS`.
+
+**Blocking rules.** A line of the target branch's AGENTS.md (never the
+PR's own, so a PR cannot drop the rule it breaks) that starts with
+`[blocking]` (any case, after optional indentation and one `- ` or `* `;
+not inside a code fence; indented continuation lines belong to it) is a
+blocking rule; at most 10, numbered `B1`, `B2`, ... for this review and
+listed to the model under "Blocking rules". A finding the model
+says violates one carries its id in `blocking_rule`. Code checks it: the id
+must be one of the review's rules, the severity `issue`, the confidence at
+least 90. A finding that passes is posted as a Bitbucket task on its line
+(`blocker-comments` with the same anchor as a comment), naming the rule;
+it sorts first within its severity, so the comment cap never cuts it. At
+most 3 tasks a review; past them, with tasks off (same two switches as the
+SNAPSHOT task), or when Bitbucket refuses the task (a 4xx), the finding is
+a plain comment that names the rule and says why it is no task; any other
+failure fails it like a comment, since the task may exist. A claim that fails
+the check is a plain comment that does not name the rule. Nothing is
+dropped for its claim. Each claim is one log line (rule, confidence,
+outcome) and its rule text and outcome are kept on the finding's row.
+The task blocks the merge where the repo's "incomplete tasks" merge check
+is on, and the summary counts and marks open tasks. A task is a finding:
+deduped like one, so one the author resolved is never posted again;
+resolved, it is settled like a resolved thread; a `fixed` claim on it
+replies and resolves the task, even when the reply failed. A task whose
+rule the target's AGENTS.md no longer marks, or marks reworded, is
+resolved on the next review (never when that file could not be read);
+the violation reported under the new wording is a task again. A dispute
+in the thread changes nothing.
 
 On an incremental review each earlier finding is listed to the model with an
 id (`F12`). When the model names one under `fixed`, quoting a line of that

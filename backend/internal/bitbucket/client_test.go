@@ -598,6 +598,35 @@ func TestPostInlineCommentAnchor(t *testing.T) {
 	}
 }
 
+// A blocking rule's task: the same anchor and ADDED-then-CONTEXT retry,
+// posted to blocker-comments (the 7.6 reference's "Blocker file line
+// comment"), which makes it a task without a severity field.
+func TestPostInlineTaskGoesToBlockerComments(t *testing.T) {
+	var n int
+	f, c := newFake(t, func(w http.ResponseWriter, _ *http.Request) {
+		n++
+		if n == 1 {
+			jsonReply(400, `{"errors":[{"message":"invalid line"}]}`)(w, nil)
+			return
+		}
+		jsonReply(201, `{"id":11}`)(w, nil)
+	})
+	id, err := c.PostInlineTask(context.Background(), "PROJ", "my-repo", 1, "src/main.py", 10, "**Issue:** SQL")
+	if err != nil || id != 11 {
+		t.Fatalf("id = %d, err = %v", id, err)
+	}
+	if want := "/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/1/blocker-comments"; f.last().Path != want {
+		t.Errorf("path = %s, want %s", f.last().Path, want)
+	}
+	anchor, _ := f.last().Body["anchor"].(map[string]any)
+	if anchor["path"] != "src/main.py" || anchor["line"] != float64(10) || anchor["fileType"] != "TO" || anchor["lineType"] != "CONTEXT" {
+		t.Errorf("anchor = %v", anchor)
+	}
+	if f.last().Body["text"] != "**Issue:** SQL" {
+		t.Errorf("text = %v", f.last().Body["text"])
+	}
+}
+
 // The path arrives as the repo path (the diff parser and the validator have
 // already resolved any a/ or b/ prefix). Stripping again moved a comment on a
 // real top-level b/ directory onto a different file.

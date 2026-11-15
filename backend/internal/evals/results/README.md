@@ -85,6 +85,7 @@ several reviews. Those live in `sampled/` and are never rows here.
 | 2026-10-30 | mimo-v2.6-pro | high | 26 rev10 | 22 | 17 | 0 | `prompts/review.txt`, `visual_changes` gains `visible` | **run3, same prompt: the regression confirmed.** Two redraws (`off-by-one`). Again no explaining half on the stacked form and the serif fallback; `visual-hidden-submit` both caught. Misses moved to `lock-not-released`, `resource-leak`, `ts-seeded` (noise). The appended `visible` rule diluted "then whether the code explains it": fixed in the next prompt. |
 | 2026-10-30 | mimo-v2.6-pro | high | 26 rev10 | 22 | 20 | 0 | `prompts/review.txt`, `change` has two halves | **run4: `change` always has two halves, one alone is incomplete; the `visible` rule moved after it.** One redraw (`off-by-one`). Every screenshot line explains itself again: the stack tied to `login.css` rule by rule, the serif fallback called drift with nothing but a log string changed, the empty state tied to `OrdersEmpty`, the noise marked not visible. Both misses are `visual-hidden-submit`: no finding and no screenshot line, the answer empty for it, no parse warning. Alone (`-cases`, not recorded) it caught both. Controls clean. |
 | 2026-10-30 | mimo-v2.6-pro | high | 26 rev10 | 22 | 20 | 0 | `prompts/review.txt`, `change` has two halves | **run5, same prompt, no redraw.** Same picture as run4, `visual-hidden-submit` again empty in the full run: two in a row is a signal on that case, not yet explained (the JSON keeps no raw answer). Every other seeded bug and screenshot line caught; controls clean. |
+| 2026-11-15 | mimo-v2.6-pro | high | 7 of 33 rev11 (`-cases`) | 5 | 5 | 0 | `prompts/review.txt`, `{blocking_rules}` + `blocking_rule` | **Blocking rules, the seven new cases only: not a row of the series.** No redraw, 0 false tasks. All four violations claimed the right rule and passed the check (`issue`, confidence ≥ 90) as tasks; `blocking-unrelated-bug` caught without a claim; both controls clean. Direct mimo Token Plan host, ~39k prompt and ~5k completion tokens in all, unpriced. |
 
 ## What the columns mean
 
@@ -115,7 +116,13 @@ several reviews. Those live in `sampled/` and are never rows here.
   baseline differs by sixty glyph-edge pixels two levels lighter: the line
   is expected marked not visible (`hidden`), and an expected line marked
   not visible no longer counts as seen, taking it to 26 with 22 seeded; the
-  scorer changed with it, so a rev10 row starts a new baseline. Sampled
+  scorer changed with it, so a rev10 row starts a new baseline. `rev11`
+  adds seven blocking-rule cases (a case may carry `agents_md` and an
+  expected `blocking` rule id), taking it to 33 with 27 seeded. The scorer
+  changed with it: where a case expects a rule, a match whose finding is
+  not a task for that rule (no claim, the wrong id, or a claim that fails
+  the severity or confidence check) is a miss, and a task no expectation
+  asks for counts as a false task and fails the run. Sampled
   runs score findings only. Bump the number when a
   **scored** field changes: `file`, `lines`, `keywords`, `diff`, `content`.
   Prose does not move a score, so an edit to `description` or `why` is not a

@@ -41,13 +41,23 @@ func asFindings(stored []store.Finding) []inference.ReviewFinding {
 		out = append(out, inference.ReviewFinding{
 			File: f.FilePath, Line: f.LineNumber, Severity: f.Severity, Comment: f.CommentText,
 			Confidence: f.Confidence, Headline: f.Headline, Suggestion: f.Suggestion,
+			Blocking: blockingOf(f), BlockingText: deref(f.BlockingRule),
 		})
 	}
 	return out
 }
 
+// blockingOf is a stored finding's blocking outcome, "" for none.
+func blockingOf(f store.Finding) inference.BlockingOutcome {
+	if f.BlockingOutcome == nil {
+		return ""
+	}
+	return inference.BlockingOutcome(*f.BlockingOutcome)
+}
+
 // closeThreads returns findings, in their order, with ClosedAt set on each
-// whose Bitbucket thread is resolved or deleted: settled (user, 2026-10-28),
+// whose Bitbucket thread is resolved or deleted, or whose blocking task is
+// resolved: settled (user, 2026-10-28),
 // out of the PR summary and its verdict, never posted again. Open = ClosedAt
 // nil. A thread that cannot be read stays open, failing toward showing it.
 // A row with no comment id (legacy) has no thread on the PR, so nobody can
@@ -100,7 +110,9 @@ func (r *Reviewer) closeThreads(ctx context.Context, key store.PRKey, prTag stri
 		case bitbucket.Status(err) == http.StatusNotFound:
 			f.ClosedAt = &now
 			deleted++
-		case err == nil && c.ThreadResolved:
+		case err == nil && (c.ThreadResolved || taskDone(c)):
+			// A blocking task someone resolved is settled like a resolved
+			// thread: the author dealt with it on purpose.
 			if f.ClosedAt == nil {
 				safeDBErr(ctx, r.log, "MarkFindingClosed", func() error { return r.store.MarkFindingClosed(ctx, f.ID) })
 			}
@@ -236,6 +248,23 @@ func (r *Reviewer) retireFixed(ctx context.Context, plan *reviewPlan, fixed []st
 			} else {
 				replied = true
 				r.recordBotReply(ctx, plan.key, posted, store.BotReplyFixed)
+			}
+			// A blocking task is done, not a thread resolved: that is what
+			// lifts the merge check, so it is resolved even when the reply
+			// failed: the row is stamped below either way, and a task left
+			// open would hold the merge with no review ever reading it
+			// again. Tasks off, no task call: the thread is resolved and
+			// the task stays for a person.
+			task := f.IsTask() && r.tasksOn()
+			switch {
+			case task:
+				if err := r.bitbucket.ResolveTask(ctx, plan.project, plan.repo, plan.prID, *cid); err != nil {
+					r.log.WarnContext(ctx, fmt.Sprintf("%s: resolving the fixed finding's task %d failed, it holds the merge until a person resolves it",
+						plan.prTag, *cid), logging.Err(err))
+				} else {
+					resolved = true
+				}
+			case replied:
 				if err := r.bitbucket.ResolveCommentThread(ctx, plan.project, plan.repo, plan.prID, *cid); err != nil {
 					r.log.WarnContext(ctx, plan.prTag+": resolving a fixed finding's thread failed", logging.Err(err))
 				} else {

@@ -413,10 +413,10 @@ func (s *Store) LastSummary(ctx context.Context, k PRKey) (*PRSummary, error) {
 func (s *Store) InsertFinding(ctx context.Context, f Finding) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO findings (pull_request_id, review_run_id, file_path, line_number, severity, confidence, headline,
-			comment_text, suggestion, bitbucket_comment_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+			comment_text, suggestion, bitbucket_comment_id, blocking_rule, blocking_outcome)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
 		f.PullRequestID, f.RunID, f.FilePath, f.LineNumber, f.Severity, f.Confidence, f.Headline,
-		f.CommentText, f.Suggestion, f.BitbucketCommentID)
+		f.CommentText, f.Suggestion, f.BitbucketCommentID, f.BlockingRule, f.BlockingOutcome)
 	return err
 }
 
@@ -439,18 +439,33 @@ func (s *Store) ExistingFindings(ctx context.Context, k PRKey) ([]Finding, error
 // read it, from `findings f`; scanTargets receives it in the same order.
 const findingCols = `f.id, f.pull_request_id, f.review_run_id, f.file_path, f.line_number, f.severity, f.confidence,
 			f.headline, f.comment_text, f.suggestion, f.bitbucket_comment_id, f.replied_at, f.dispute_text,
-			(SELECT x.commit_sha FROM finding_fixes x WHERE x.finding_id = f.id AND x.outcome = 'committed')`
+			(SELECT x.commit_sha FROM finding_fixes x WHERE x.finding_id = f.id AND x.outcome = 'committed'),
+			f.blocking_rule, f.blocking_outcome`
 
 func (f *Finding) scanTargets() []any {
 	return []any{&f.ID, &f.PullRequestID, &f.RunID, &f.FilePath, &f.LineNumber, &f.Severity, &f.Confidence,
 		&f.Headline, &f.CommentText, &f.Suggestion, &f.BitbucketCommentID, &f.RepliedAt, &f.DisputeText,
-		&f.BotFixCommit}
+		&f.BotFixCommit, &f.BlockingRule, &f.BlockingOutcome}
+}
+
+// IsTask reports whether the finding's comment is a blocking task.
+func (f Finding) IsTask() bool {
+	return f.BlockingOutcome != nil && *f.BlockingOutcome == "task"
 }
 
 // MarkFindingClosed settles a finding whose thread was resolved or deleted
 // on the PR. The first stamp wins, so its thread is never read again.
 func (s *Store) MarkFindingClosed(ctx context.Context, findingID int64) error {
 	_, err := s.pool.Exec(ctx, `UPDATE findings SET closed_at = now() WHERE id = $1 AND closed_at IS NULL`, findingID)
+	return err
+}
+
+// MarkRuleRemoved settles a task noergler resolved because its rule left
+// AGENTS.md: closed like a resolved thread, and marked so it holds back no
+// new task for the same line under the rule's new wording.
+func (s *Store) MarkRuleRemoved(ctx context.Context, findingID int64) error {
+	_, err := s.pool.Exec(ctx, `UPDATE findings SET blocking_outcome = 'rule_removed',
+		closed_at = COALESCE(closed_at, now()) WHERE id = $1`, findingID)
 	return err
 }
 

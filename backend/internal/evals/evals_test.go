@@ -79,6 +79,45 @@ func TestRun_CatchesASeededBug(t *testing.T) {
 	}
 }
 
+// A blocking expectation is caught only by a task production would post
+// for its rule; any other task is a false one, and fails the run.
+func TestRun_BlockingIsScoredLikeProduction(t *testing.T) {
+	blocking := seeded
+	blocking.Blocking = "B1"
+	cases := func() []Case {
+		c := oneCase(blocking)
+		c[0].BlockingRules = []inference.BlockingRule{{ID: "B1", Text: "No nil."}}
+		return c
+	}
+	marked := func(line, conf int, id string) inference.ReviewFinding {
+		f := finding("a/b.go", line, "this can panic when the pointer is nil")
+		f.Confidence, f.BlockingRule = &conf, &id
+		return f
+	}
+	for name, c := range map[string]struct {
+		findings     []inference.ReviewFinding
+		caught, fake int
+	}{
+		"task":          {[]inference.ReviewFinding{marked(12, 95, "B1")}, 1, 0},
+		"no mark":       {[]inference.ReviewFinding{finding("a/b.go", 12, "nil panic")}, 0, 0},
+		"weak":          {[]inference.ReviewFinding{marked(12, 85, "B1")}, 0, 0},
+		"wrong id":      {[]inference.ReviewFinding{marked(12, 95, "B2")}, 0, 0},
+		"extra task":    {[]inference.ReviewFinding{marked(12, 95, "B1"), marked(40, 95, "B1")}, 1, 1},
+		"task, unasked": {[]inference.ReviewFinding{marked(40, 95, "B1")}, 0, 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			score := Run(context.Background(), stubReviewer{findings: c.findings}, "{files}", cases(), countStub)
+			if score.Caught != c.caught || score.FalseTasks != c.fake {
+				t.Errorf("caught %d, false tasks %d; want %d, %d (%+v)", score.Caught, score.FalseTasks, c.caught, c.fake,
+					score.Results[0].Matches)
+			}
+			if (score.ErrFalseTasks() != nil) != (c.fake > 0) {
+				t.Errorf("ErrFalseTasks = %v", score.ErrFalseTasks())
+			}
+		})
+	}
+}
+
 func TestRun_FindingOutsideTheLineWindowIsAMiss(t *testing.T) {
 	client := stubReviewer{findings: []inference.ReviewFinding{
 		finding("a/b.go", 40, "this can panic when the pointer is nil"),
