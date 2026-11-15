@@ -355,6 +355,6 @@ describe("PRPage", () => {
     expect(screen.getAllByText("$0.21 of $2.00").length).toBeGreaterThan(0);
     expect(screen.getAllByText("$0.14").length).toBeGreaterThan(0);
     expect(screen.getByText("Input, uncached")).toBeDefined();
-    expect(screen.getByText("64,000")).toBeDefined();
+    expect(screen.getByText("64'000")).toBeDefined();
   });
 });

@@ -1,6 +1,7 @@
 import type { Catalog } from "./en";
 
-// German UI catalog, shown for every de-* browser language. Swiss
+// German UI catalog, shown when chosen in the header or, without a choice,
+// for every de-* browser language. Swiss
 // orthography: double s, never eszett. No gendered forms: generic masculine
 // ("der Autor"). "Run" stays "Run", "AI Gateway" stays "AI Gateway".
 export const de = {
@@ -12,6 +13,10 @@ export const de = {
     teams: "Teams",
     faq: "FAQ",
     api: "API",
+  },
+  lang: {
+    code: "DE",
+    switch: "Sprache: Deutsch. Auf Englisch wechseln",
   },
   common: {
     failed:

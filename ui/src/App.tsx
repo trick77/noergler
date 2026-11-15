@@ -6,6 +6,7 @@ import { MetricsPage } from "./MetricsPage";
 import { PRPage } from "./PRPage";
 import { RunsPage } from "./RunsPage";
 import { TeamsPage } from "./TeamsPage";
+import { LanguageSwitch } from "./ui";
 import {
   PAGES,
   navigate,
@@ -47,13 +48,18 @@ export default function App() {
 
   return (
     // h-dvh, not h-screen: iOS Safari counts the collapsed toolbar into 100vh.
-    <div className="grid h-dvh grid-rows-[56px_1fr]">
+    // minmax(0,1fr): the implicit column grew to the header's min-content
+    // (569px at a 375px phone) and took main with it.
+    <div className="grid h-dvh grid-cols-[minmax(0,1fr)] grid-rows-[56px_1fr]">
       <header className="flex items-center gap-4 border-b border-border bg-panel px-4 sm:gap-6 sm:px-5">
-        <h1 className="font-serif text-[21px] leading-7 font-medium whitespace-nowrap text-wordmark">
+        <h1 className="shrink-0 font-serif text-[21px] leading-7 font-medium whitespace-nowrap text-wordmark">
           noergler
         </h1>
+        {/* At phone width the pages do not fit: the nav scrolls on its own,
+            so the language switch after it stays on screen and the page
+            never scrolls sideways. */}
         <nav
-          className="flex flex-1 items-center gap-0.5"
+          className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto"
           aria-label={t("nav.label")}
         >
           {PAGES.map((p) => (
@@ -63,7 +69,7 @@ export default function App() {
               onClick={() => go(p)}
               aria-current={p === route ? "page" : undefined}
               className={
-                "rounded-ui-sm px-3 py-1.5 text-sm transition-colors " +
+                "shrink-0 rounded-ui-sm px-3 py-1.5 text-sm transition-colors " +
                 // A PR page belongs to Runs: highlighted, not current.
                 (p === route || (p === "runs" && route === "pr")
                   ? "bg-active text-ink"
@@ -80,11 +86,12 @@ export default function App() {
               it is part of the same service. */}
           <a
             href="/api/docs"
-            className="rounded-ui-sm px-3 py-1.5 text-sm text-muted transition-colors hover:bg-active hover:text-ink"
+            className="shrink-0 rounded-ui-sm px-3 py-1.5 text-sm text-muted transition-colors hover:bg-active hover:text-ink"
           >
             {t("nav.api")}
           </a>
         </nav>
+        <LanguageSwitch />
       </header>
 
       <main className="min-h-0 min-w-0">

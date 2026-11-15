@@ -654,7 +654,8 @@ describe("MetricsPage", () => {
 
     const value = (await screen.findByText("LOC reviewed")).nextElementSibling;
     expect(value?.textContent).toBe("1.5K");
-    const split = `${(1540).toLocaleString()} LOC (+${(1200).toLocaleString()} / −340): lines sent to the model, each counted once per PR`;
+    const split =
+      "1'540 LOC (+1'200 / −340): lines sent to the model, each counted once per PR";
     const cells = screen.getAllByTitle(split);
     expect(cells).toHaveLength(2);
     expect(cells[1].textContent).toBe("1.5K");

@@ -451,8 +451,12 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   the tile says how many runs that leaves out, a dash when all of them.
 - Dashboard text only through `ui/src/i18n` (i18next): `de` mirrors `en`
   (`satisfies Catalog`, same placeholders), Swiss German, no `ß`. Language =
-  browser only, `de*` -> German, else English; no switch, no stored choice
-  (decided). Review text (findings, replies) stays in the language it was
+  the header switch's stored choice (`localStorage["lang"]`, same key and
+  markup as ../riptide), else browser `de*` -> German, else English (user,
+  2026-11-15). Counts and dates always Swiss (`locale()`: de-CH/en-CH,
+  dates by explicit fields, never `dateStyle`), only words follow the
+  language; never the browser's locale. Money stays its ungrouped string.
+  Review text (findings, replies) stays in the language it was
   produced in; the UI labels skip reasons by code, the server's label only as fallback.
 - Pill words start with a capital in both languages, `OK` not `Ok`, the
   unknown-code fallback too (user, 2026-10-26).
