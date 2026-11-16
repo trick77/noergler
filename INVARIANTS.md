@@ -197,7 +197,17 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   never the model, never a finding. PR delta only: `+` lines of each
   changed build file's PR diff (Maven/Gradle only), a change block's
   SNAPSHOT lines exempt up to as many as it removes; context, removed lines
-  and the rest of the repo never count. Into the repo's default branch
+  and the rest of the repo never count. Dependencies only (user,
+  2026-11-16): the own version and a reactor module's never count
+  (`snapshot.OwnLine`, a POM's `PomFile.OwnLines` from the whole file),
+  on neither side of a block, so an own bump never exempts a dependency.
+  A POM's parent is own only when its POM is in the repo at Maven's first
+  lookup with the same coordinates. A read that fails is unknown; a head
+  file that cannot be told keeps its lines, one not matching its diff is
+  told by version strings, a base one exempts only past the block's own
+  lines: a task too many, never a dependency let through. Hits that read a
+  file the PR does not change are remembered with the head. Into the
+  repo's default branch
   only. Each task keeps the keys it named (`pull_requests.snapshot_tasks`);
   a key any task named never gets another while in the delta; a key gone
   from the delta leaves its task, and an open task with none left is

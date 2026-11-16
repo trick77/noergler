@@ -190,7 +190,37 @@ an incident or an eval run: read the reason before relaxing a rule.
   `<changelist>-SNAPSHOT`, `suffix=-SNAPSHOT`), any case only after a
   digit, `}` or BUILD; a quote, paren or blank before it is Gradle logic
   (`endsWith("-SNAPSHOT")`) or a comment, a lower-case name after a word
-  a repository (`libs-snapshot`); a `-` after it a qualifier. PR
+  a repository (`libs-snapshot`); a `-` after it a qualifier. Dependencies
+  only (user, 2026-11-16: the own version "MUST" be a SNAPSHOT, "only
+  dependencies from outside", "especially with Maven"): the first cut
+  flagged a new component's `version=0.1.0-SNAPSHOT`. Own is told per
+  file (`OwnLine`, a POM read whole), never by narrowing `Line`: a bare
+  suffix may build an outside dependency's version too
+  (`2.0${lib.qualifier}`). A POM's `<version>` reads the same for the
+  project, its parent and a dependency, so a POM with a hit is read
+  whole; the reactor is told by the version string, not the groupId (one
+  groupId spans many repos, so a same-group dependency from another repo
+  must still count): every element whose text is the own version is the
+  reactor's. The parent by where Maven finds it: its POM in the repo at
+  `<relativePath>` (default `../pom.xml`) with its coordinates, else from
+  outside (a company parent on a SNAPSHOT is a dependency, and then
+  nothing is inherited as own). Blunt, accepted: an outside dependency on
+  the very same version string passes. Gradle siblings are
+  `project(":x")`, no version; a named `version = "…"` argument is told
+  from the project's by a `,`/`)` after it or a `,`/`(` ending the line
+  before, blanks and comments skipped; a line before that a hunk does not
+  show reads as an argument. gradle.properties' own key beyond `version`
+  comes from the build script beside it (`version = projectVersion`),
+  one read. The safe side throughout, without stalling: an error aborts
+  the run, so a stable one (too large, no commit, a charset the two
+  reads convert apart) must never be one, or no task is ever posted
+  again. A head file that cannot be told keeps its lines; one not
+  matching its diff, or past 50 reads (single worker), is told by the own
+  version strings read (`>v<`). A base that cannot be told exempts only
+  past the block's added own lines: the 1:1 dependency bump (user) still
+  brings none, an own bump never exempts a dependency. The memo keys on
+  the changed files' blob ids; a parent or script read outside them adds
+  the head. PR
   delta only (user: "flag it only in the PR delta"): a SNAPSHOT already on
   the line before the change is never claimed; pairing per change block,
   by count, blunt: a SNAPSHOT moved to another block counts there, the safe
@@ -209,7 +239,7 @@ an incident or an eval run: read the reason before relaxing a rule.
   may be cut, a push's is not the delta, and the whole PR diff again would
   be a second large read per push on the single worker and fail at
   BITBUCKET_MAX_DIFF_BYTES. Past 50 build files (a reactor's
-  `versions:set`, the usual way a SNAPSHOT lands) the whole diff once
+  `versions:set`) the whole diff once
   beats 50 calls. Hits remembered by the build files' blob ids, in memory:
   a push that leaves them alone reads no diff. Build files (user: only
   those): `pom.xml`, `.mvn/maven.config`, every Gradle script, properties,

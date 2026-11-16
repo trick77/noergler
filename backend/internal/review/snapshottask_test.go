@@ -3,6 +3,7 @@ package review
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -28,13 +29,20 @@ func snapshotHarness(t *testing.T, added ...string) *harness {
 	t.Helper()
 	h := newHarness(t, func(h *harness) {
 		h.bb.changes = []string{"pom.xml"}
-		h.bb.changeSet = bitbucket.ChangeSet{Changes: []bitbucket.Change{{Path: "pom.xml", Type: "MODIFY"}}}
-		h.bb.prDiff = pomDiff(added...)
-		h.bb.files["src1:pom.xml"] = "<a>\n" + strings.Join(added, "\n") + "\n"
+		h.bb.changeSet = bitbucket.ChangeSet{FromHash: "base1", ToHash: "src1",
+			Changes: []bitbucket.Change{{Path: "pom.xml", Type: "MODIFY"}}}
+		h.setPom(added...)
 	})
 	h.r.createTasks = true
 	h.r.teamTasks.Store(true)
 	return h
+}
+
+// setPom is a push of pom.xml with these lines added after <a>: its diff
+// and the file at the head, which a POM's own version is read from.
+func (h *harness) setPom(added ...string) {
+	h.bb.prDiff = pomDiff(added...)
+	h.bb.files["src1:pom.xml"] = "<a>\n" + strings.Join(added, "\n") + "\n</a>\n"
 }
 
 func (h *harness) push(t *testing.T) {
@@ -89,7 +97,7 @@ func TestSnapshotTaskResolvedByTheAuthor(t *testing.T) {
 		t.Fatalf("tasks = %d, stored = %+v", len(h.bb.Tasks), st)
 	}
 
-	h.bb.prDiff = pomDiff(snap1, snap2)
+	h.setPom(snap1, snap2)
 	h.push(t)
 	if len(h.bb.Tasks) != 2 || strings.Contains(h.bb.Tasks[1].Text, "1.1-SNAPSHOT") ||
 		!strings.Contains(h.bb.Tasks[1].Text, "2.0-SNAPSHOT") {
@@ -104,7 +112,7 @@ func TestSnapshotTaskNewLineNewTask(t *testing.T) {
 	h.push(t)
 	first := h.st.snapshotTasks[0].ID
 
-	h.bb.prDiff = pomDiff(snap1, snap2)
+	h.setPom(snap1, snap2)
 	h.push(t)
 	if len(h.bb.Tasks) != 2 || strings.Contains(h.bb.Tasks[1].Text, "1.1-SNAPSHOT") || h.taskEdit(first) != "" {
 		t.Fatalf("tasks = %+v, edit = %q", h.bb.Tasks, h.taskEdit(first))
@@ -118,7 +126,7 @@ func TestSnapshotTaskFollowsItsLines(t *testing.T) {
 	h.push(t)
 	id := h.st.snapshotTasks[0].ID
 
-	h.bb.prDiff = pomDiff(snap1, "<version>2.0</version>")
+	h.setPom(snap1, "<version>2.0</version>")
 	h.push(t)
 	if e := h.taskEdit(id); !strings.Contains(e, "1.1-SNAPSHOT") || strings.Contains(e, "2.0-SNAPSHOT") {
 		t.Fatalf("edit = %q", e)
@@ -127,13 +135,13 @@ func TestSnapshotTaskFollowsItsLines(t *testing.T) {
 		t.Fatalf("stored = %+v", st)
 	}
 
-	h.bb.prDiff = pomDiff("<version>1.1</version>")
+	h.setPom("<version>1.1</version>")
 	h.push(t)
 	if len(h.bb.ResolvedTasks) != 1 || h.bb.ResolvedTasks[0] != id || h.taskState(id) != "RESOLVED" || len(h.st.snapshotTasks) != 0 {
 		t.Fatalf("resolved = %v, stored = %+v", h.bb.ResolvedTasks, h.st.snapshotTasks)
 	}
 
-	h.bb.prDiff = pomDiff(snap1)
+	h.setPom(snap1)
 	h.push(t)
 	if len(h.bb.Tasks) != 2 {
 		t.Fatalf("re-added: tasks = %d", len(h.bb.Tasks))
@@ -147,7 +155,7 @@ func TestSnapshotTaskSameVersionLineTwice(t *testing.T) {
 	h.push(t)
 	h.bb.comments[h.st.snapshotTasks[0].ID].State = "RESOLVED"
 
-	h.bb.prDiff = pomDiff("<artifactId>a</artifactId>", snap2, "<artifactId>b</artifactId>", snap2)
+	h.setPom("<artifactId>a</artifactId>", snap2, "<artifactId>b</artifactId>", snap2)
 	h.push(t)
 	if len(h.bb.Tasks) != 2 || !strings.Contains(h.bb.Tasks[1].Text, "`pom.xml:5`") {
 		t.Fatalf("tasks = %+v", h.bb.Tasks)
@@ -196,7 +204,7 @@ func TestSnapshotTaskOffIsOff(t *testing.T) {
 		id := h.st.snapshotTasks[0].ID
 		off(h.r)
 		h.bb.DefaultBranchCalls = 0
-		h.bb.prDiff = pomDiff("<version>1.1</version>")
+		h.setPom("<version>1.1</version>")
 		h.push(t)
 		p := prPayload(webhook.EventModified)
 		p.PreviousTarget = &webhook.Ref{DisplayID: "develop"}
@@ -220,12 +228,180 @@ func TestSnapshotTaskUnknownLeavesItAsItIs(t *testing.T) {
 		h := snapshotHarness(t, snap1)
 		h.push(t)
 		sets := h.st.SnapshotTaskSets
-		h.bb.prDiff = pomDiff()
+		h.setPom()
 		fail(h)
 		h.r.HandleRetargeted(context.Background(), retargetPayload())
 		if len(h.bb.ResolvedTasks) != 0 || h.st.SnapshotTaskSets != sets {
 			t.Errorf("%s: resolved = %v, stored = %+v", name, h.bb.ResolvedTasks, h.st.snapshotTasks)
 		}
+	}
+}
+
+// A POM that does not read is unknown too: a new SNAPSHOT line posts
+// nothing, the open task stays.
+func TestSnapshotTaskPomUnreadLeavesItAsItIs(t *testing.T) {
+	h := snapshotHarness(t, snap1)
+	h.push(t)
+	sets, tasks := h.st.SnapshotTaskSets, len(h.bb.Tasks)
+	h.setPom(snap1, snap2)
+	h.bb.fileErr["src1:pom.xml"] = errors.New("boom")
+	h.r.HandleRetargeted(context.Background(), retargetPayload())
+	if len(h.bb.Tasks) != tasks || len(h.bb.ResolvedTasks) != 0 || h.st.SnapshotTaskSets != sets {
+		t.Fatalf("tasks = %d, resolved = %v, stored = %+v", len(h.bb.Tasks), h.bb.ResolvedTasks, h.st.snapshotTasks)
+	}
+}
+
+// A reactor module's POM: the inherited own version, the parent and a
+// sibling module are no task, only the outside dependency (user,
+// 2026-11-16).
+func TestSnapshotTaskReactorModule(t *testing.T) {
+	pom := []string{
+		"<project>",
+		"<parent><groupId>ch.example</groupId><artifactId>root</artifactId><version>1.0-SNAPSHOT</version></parent>",
+		"<artifactId>app</artifactId>",
+		"<dependencies>",
+		"<dependency><groupId>ch.example</groupId><artifactId>core</artifactId><version>1.0-SNAPSHOT</version></dependency>",
+		"<dependency><groupId>org.outside</groupId><artifactId>lib</artifactId><version>2.0-SNAPSHOT</version></dependency>",
+		"</dependencies>",
+		"</project>",
+	}
+	for name, tc := range map[string]struct {
+		root  string
+		lines []string
+	}{
+		"reactor parent": {"<project><groupId>ch.example</groupId><artifactId>root</artifactId><version>1.0-SNAPSHOT</version></project>",
+			[]string{"app/pom.xml:6"}},
+		// No root POM in the repo: a parent from outside, its SNAPSHOT
+		// counts, and nothing is inherited as own.
+		"outside parent": {"", []string{"app/pom.xml:2", "app/pom.xml:5", "app/pom.xml:6"}},
+	} {
+		h := snapshotHarness(t)
+		h.bb.changeSet.Changes[0] = bitbucket.Change{Path: "app/pom.xml", Type: "ADD"}
+		h.bb.prDiff = "diff --git src://app/pom.xml dst://app/pom.xml\n--- /dev/null\n+++ dst://app/pom.xml\n@@ -0,0 +1,8 @@\n+" +
+			strings.Join(pom, "\n+") + "\n"
+		h.bb.files["src1:app/pom.xml"] = strings.Join(pom, "\n") + "\n"
+		if tc.root != "" {
+			h.bb.files["src1:pom.xml"] = tc.root
+		} else {
+			delete(h.bb.files, "src1:pom.xml")
+		}
+		h.push(t)
+		if len(h.bb.Tasks) != 1 {
+			t.Fatalf("%s: tasks = %+v", name, h.bb.Tasks)
+		}
+		for _, l := range []string{"app/pom.xml:2", "app/pom.xml:5", "app/pom.xml:6"} {
+			if got, want := strings.Contains(h.bb.Tasks[0].Text, "`"+l+"`"), slices.Contains(tc.lines, l); got != want {
+				t.Errorf("%s: names %s = %v, want %v:\n%s", name, l, got, want, h.bb.Tasks[0].Text)
+			}
+		}
+	}
+}
+
+// A POM at the head that is not the file its diff shows (a push in
+// between, a charset) never stalls the check: its own lines are told by
+// its own version string, the dependency gets its task.
+func TestSnapshotTaskPomMovedOn(t *testing.T) {
+	h := snapshotHarness(t, snap1, snap2)
+	h.bb.files["src1:pom.xml"] = "<project>\n<b/>\n" + snap1 + "\n<x>" + "2.0-SNAPSHOT</x>\n</project>\n"
+	h.push(t)
+	if len(h.bb.Tasks) != 1 || strings.Contains(h.bb.Tasks[0].Text, "1.1-SNAPSHOT") || !strings.Contains(h.bb.Tasks[0].Text, "2.0-SNAPSHOT") {
+		t.Fatalf("tasks = %+v", h.bb.Tasks)
+	}
+}
+
+// Hits that hang on a file the PR does not change (the reactor parent)
+// are remembered with the head: the same head reads nothing again, a new
+// one does.
+func TestSnapshotTaskRemembersHeadForOutsideFiles(t *testing.T) {
+	pom := []string{"<project>",
+		"<parent><groupId>g</groupId><artifactId>root</artifactId><version>1.0-SNAPSHOT</version></parent>",
+		"<artifactId>app</artifactId>", "</project>"}
+	h := snapshotHarness(t)
+	h.bb.changeSet.Changes[0] = bitbucket.Change{Path: "app/pom.xml", Type: "ADD", ContentID: "b"}
+	h.bb.prDiff = "diff --git src://app/pom.xml dst://app/pom.xml\n--- /dev/null\n+++ dst://app/pom.xml\n@@ -0,0 +1,4 @@\n+" +
+		strings.Join(pom, "\n+") + "\n"
+	h.bb.files["src1:app/pom.xml"] = strings.Join(pom, "\n") + "\n"
+	h.bb.files["src1:pom.xml"] = "<project><groupId>g</groupId><artifactId>root</artifactId><version>1.0-SNAPSHOT</version></project>"
+	h.push(t)
+	h.push(t)
+	if h.bb.FileDiffs != 1 || len(h.bb.Tasks) != 0 {
+		t.Fatalf("same head: file diffs = %d, tasks = %d", h.bb.FileDiffs, len(h.bb.Tasks))
+	}
+	// The target merged in: the root moved on, the module did not.
+	h.bb.changeSet.ToHash = "src2"
+	h.bb.files["src2:app/pom.xml"] = h.bb.files["src1:app/pom.xml"]
+	h.bb.files["src2:pom.xml"] = "<project><groupId>g</groupId><artifactId>root</artifactId><version>2.0-SNAPSHOT</version></project>"
+	h.push(t)
+	if h.bb.FileDiffs != 2 || len(h.bb.Tasks) != 1 || !strings.Contains(h.bb.Tasks[0].Text, "`app/pom.xml:2`") {
+		t.Fatalf("new head: file diffs = %d, tasks = %+v", h.bb.FileDiffs, h.bb.Tasks)
+	}
+}
+
+// gradle.properties' own version under another key: the build script
+// beside it sets the version from it (user, 2026-11-16).
+func TestSnapshotTaskOwnVersionKey(t *testing.T) {
+	h := snapshotHarness(t)
+	h.bb.changeSet.Changes[0].Path = "gradle.properties"
+	h.bb.prDiff = "diff --git src://gradle.properties dst://gradle.properties\n--- src://gradle.properties\n+++ dst://gradle.properties\n" +
+		"@@ -0,0 +1,2 @@\n+projectVersion=0.1.0-SNAPSHOT\n+libVersion=2.0-SNAPSHOT\n"
+	h.bb.files["src1:build.gradle.kts"] = "group = \"ch.example\"\nversion = projectVersion\n"
+	h.push(t)
+	if len(h.bb.Tasks) != 1 || strings.Contains(h.bb.Tasks[0].Text, "projectVersion") || !strings.Contains(h.bb.Tasks[0].Text, "libVersion") {
+		t.Fatalf("tasks = %+v", h.bb.Tasks)
+	}
+}
+
+// A POM at the head too large to read: its own version unknown, its lines
+// count; the check does not stall.
+func TestSnapshotTaskPomTooLarge(t *testing.T) {
+	h := snapshotHarness(t, snap1)
+	h.bb.fileErr["src1:pom.xml"] = &bitbucket.ContentTooLarge{What: "pom.xml", Limit: 1}
+	h.push(t)
+	if len(h.bb.Tasks) != 1 {
+		t.Fatalf("tasks = %d", len(h.bb.Tasks))
+	}
+}
+
+// The base POM does not parse: its removed own version exempts nothing,
+// the outside dependency added beside the own bump gets its task.
+func TestSnapshotTaskBaseUnknownExemptsNothing(t *testing.T) {
+	head := "<project>\n<version>1.1-SNAPSHOT</version>\n<x>2.0-SNAPSHOT</x>\n</project>\n"
+	h := snapshotHarness(t)
+	h.bb.prDiff = "diff --git src://pom.xml dst://pom.xml\n--- src://pom.xml\n+++ dst://pom.xml\n@@ -1,2 +1,3 @@\n <project>\n" +
+		"-<version>1.0-SNAPSHOT</version>\n+<version>1.1-SNAPSHOT</version>\n+<x>2.0-SNAPSHOT</x>\n"
+	h.bb.files["src1:pom.xml"] = head
+	h.bb.files["base1:pom.xml"] = "<project>\n<version>1.0-SNAPSHOT</version\n"
+	h.push(t)
+	if len(h.bb.Tasks) != 1 || !strings.Contains(h.bb.Tasks[0].Text, "`pom.xml:3`") {
+		t.Fatalf("tasks = %+v", h.bb.Tasks)
+	}
+}
+
+// A task an older release posted with other wording and whose id a failed
+// write lost is found by its lines and taken over, never posted twice.
+func TestSnapshotTaskLostOldWording(t *testing.T) {
+	h := snapshotHarness(t, snap1)
+	h.push(t)
+	id := h.st.snapshotTasks[0].ID
+	c := h.bb.comments[id]
+	c.Text = strings.Replace(c.Text, "SNAPSHOT dependency into", "SNAPSHOT version into", 1)
+	h.bb.comments[id] = c
+	h.st.snapshotTasks = nil
+	h.push(t)
+	if len(h.bb.Tasks) != 1 || len(h.st.snapshotTasks) != 1 || h.st.snapshotTasks[0].ID != id {
+		t.Fatalf("tasks = %d, stored = %+v", len(h.bb.Tasks), h.st.snapshotTasks)
+	}
+}
+
+// The project's own version alone: no task, no POM read.
+func TestSnapshotTaskOwnGradleVersion(t *testing.T) {
+	h := snapshotHarness(t)
+	h.bb.changeSet.Changes[0].Path = "gradle.properties"
+	h.bb.prDiff = "diff --git src://gradle.properties dst://gradle.properties\n--- src://gradle.properties\n+++ dst://gradle.properties\n" +
+		"@@ -0,0 +1,2 @@\n+version=0.1.0-SNAPSHOT\n+group=ch.example\n"
+	h.push(t)
+	if len(h.bb.Tasks) != 0 || h.st.SnapshotTaskSets != 0 {
+		t.Fatalf("tasks = %+v, writes = %d", h.bb.Tasks, h.st.SnapshotTaskSets)
 	}
 }
 
@@ -265,7 +441,7 @@ func TestSnapshotTaskReopened(t *testing.T) {
 	h.push(t)
 	h.bb.comments[id].State = "OPEN"
 
-	h.bb.prDiff = pomDiff("<version>1.1</version>")
+	h.setPom("<version>1.1</version>")
 	h.push(t)
 	if len(h.bb.ResolvedTasks) != 1 || h.bb.ResolvedTasks[0] != id {
 		t.Fatalf("resolved = %v", h.bb.ResolvedTasks)
@@ -293,7 +469,7 @@ func TestSnapshotTaskManyBuildFiles(t *testing.T) {
 	for i := range maxSnapshotBuildFiles + 1 {
 		cs = append(cs, bitbucket.Change{Path: strings.Repeat("m/", i) + "pom.xml", Type: "MODIFY"})
 	}
-	h.bb.changeSet = bitbucket.ChangeSet{Changes: cs}
+	h.bb.changeSet = bitbucket.ChangeSet{ToHash: "src1", Changes: cs}
 	h.push(t)
 	if len(h.bb.Tasks) != 1 || h.bb.FileDiffs != 0 {
 		t.Fatalf("tasks = %d, file diffs = %d", len(h.bb.Tasks), h.bb.FileDiffs)
@@ -303,7 +479,8 @@ func TestSnapshotTaskManyBuildFiles(t *testing.T) {
 // Build files unchanged since the last check (same blob ids): no diff read.
 func TestSnapshotTaskRemembersHits(t *testing.T) {
 	h := snapshotHarness(t, snap1)
-	h.bb.changeSet = bitbucket.ChangeSet{Changes: []bitbucket.Change{{Path: "pom.xml", Type: "MODIFY", FromContentID: "a", ContentID: "b"}}}
+	h.bb.changeSet = bitbucket.ChangeSet{ToHash: "src1",
+		Changes: []bitbucket.Change{{Path: "pom.xml", Type: "MODIFY", FromContentID: "a", ContentID: "b"}}}
 	h.push(t)
 	h.push(t)
 	if h.bb.FileDiffs != 1 || len(h.bb.Tasks) != 1 {

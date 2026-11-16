@@ -3,6 +3,8 @@ package snapshot
 import (
 	"slices"
 	"testing"
+
+	"github.com/trick77/noergler/internal/diff"
 )
 
 func TestLine(t *testing.T) {
@@ -54,6 +56,17 @@ func TestBuildFile(t *testing.T) {
 	}
 }
 
+// added is every build file's hits in a whole diff, no Own known.
+func added(raw string) []Hit {
+	var hits []Hit
+	for _, fd := range diff.SplitByFile(raw) {
+		if p := diff.ExtractPath(fd); p != "" && BuildFile(p) {
+			hits = append(hits, ParseDiff(p, fd).Hits(Own{})...)
+		}
+	}
+	return hits
+}
+
 func lines(hs []Hit) []string {
 	var out []string
 	for _, h := range hs {
@@ -98,9 +111,9 @@ func TestAdded(t *testing.T) {
 +++ dst://gradle.properties
 @@ -1,2 +1,2 @@
  group=x
--version=1.0-SNAPSHOT
+-libVersion=1.0-SNAPSHOT
 \ No newline at end of file
-+version=1.1-SNAPSHOT
++libVersion=1.1-SNAPSHOT
 \ No newline at end of file
 `, nil},
 		{"snapshot in context only", `diff --git src://pom.xml dst://pom.xml
@@ -132,7 +145,7 @@ func TestAdded(t *testing.T) {
 -<version>1.0-SNAPSHOT</version>
 `, nil},
 	} {
-		if got := lines(Added(tc.diff)); !slices.Equal(got, tc.want) {
+		if got := lines(added(tc.diff)); !slices.Equal(got, tc.want) {
 			t.Errorf("%s: Added = %q, want %q", tc.name, got, tc.want)
 		}
 	}
@@ -163,14 +176,15 @@ diff --git src://b/pom.xml dst://b/pom.xml
  <b>
 +<version>2.0-SNAPSHOT</version>
 `
-	if got := FileHits("b/pom.xml", raw); len(got) != 1 || got[0].Path != "b/pom.xml" || got[0].Text != "<version>2.0-SNAPSHOT</version>" {
+	fileHits := func(p, raw string) []Hit { return ParseDiff(p, FilePart(p, raw)).Hits(Own{}) }
+	if got := fileHits("b/pom.xml", raw); len(got) != 1 || got[0].Path != "b/pom.xml" || got[0].Text != "<version>2.0-SNAPSHOT</version>" {
 		t.Fatalf("hits = %+v", got)
 	}
-	if got := FileHits("c/pom.xml", raw); len(got) != 0 {
+	if got := fileHits("c/pom.xml", raw); len(got) != 0 {
 		t.Fatalf("unknown path: hits = %+v", got)
 	}
 	single := "@@ -1 +1,2 @@\n <a>\n+<version>1.0-SNAPSHOT</version>\n"
-	if got := FileHits("pom.xml", single); len(got) != 1 || got[0].Line != 2 {
+	if got := fileHits("pom.xml", single); len(got) != 1 || got[0].Line != 2 {
 		t.Fatalf("headerless: hits = %+v", got)
 	}
 }
@@ -188,7 +202,7 @@ func TestMentions(t *testing.T) {
 
 // Two dependencies on the same version line are two hits, two keys.
 func TestAddedNumbersEqualLines(t *testing.T) {
-	hits := Added(`diff --git src://pom.xml dst://pom.xml
+	hits := added(`diff --git src://pom.xml dst://pom.xml
 --- src://pom.xml
 +++ dst://pom.xml
 @@ -1,1 +1,7 @@
