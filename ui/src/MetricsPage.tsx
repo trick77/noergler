@@ -161,6 +161,11 @@ export function MetricsPage() {
 
   const window = days(data.since, data.until);
   const title = windowTitle(data);
+  // A new window is a new chart: keyed by it, the charts draw in afresh
+  // when the span's data arrives, rather than reusing day 1-7's bars for
+  // other days and growing only the rest. A poll of the same window keeps
+  // them.
+  const drawKey = `${data.since}|${data.until}`;
   // Day-of-month labels, every few days, so they never collide. Dates rather
   // than an offset from today: "d-13" says nothing on its own. A rolling
   // window crosses a month, where plain days read 26, 30, 3, 7: the first
@@ -580,6 +585,7 @@ export function MetricsPage() {
             ) : (
               <>
                 <Chart
+                  key={drawKey}
                   series={runSeries}
                   trend={runTrend}
                   width={1290}
@@ -605,6 +611,7 @@ export function MetricsPage() {
             ) : (
               <>
                 <Chart
+                  key={drawKey}
                   series={costSeries}
                   trend={costTrend}
                   width={1290}
@@ -636,6 +643,7 @@ export function MetricsPage() {
             ) : (
               <>
                 <Chart
+                  key={drawKey}
                   series={linesSeries}
                   trend={linesTrend}
                   width={1290}
@@ -658,6 +666,7 @@ export function MetricsPage() {
             ) : (
               <>
                 <Chart
+                  key={drawKey}
                   series={fixSeries}
                   width={1290}
                   height={180}

@@ -217,7 +217,53 @@ svg.chart {
   animation: ring-settle 4s ease-out forwards;
 }
 
+/* Charts come in on first draw (user, 2026-11-16): bars grow from the
+   floor, lines draw left to right, shades and the trend's end label fade
+   in after them. CSS on mount only: a poll keeps the elements (stable
+   keys) and only changes their attributes, so nothing replays every few
+   seconds; a bar that is new on a poll grows in once, without delay. The
+   delays live inline (Chart.tsx), sized to the window's bar count. */
+@keyframes chart-grow {
+  from {
+    transform: scaleY(0);
+  }
+}
+@keyframes chart-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+@keyframes chart-fade {
+  from {
+    opacity: 0;
+  }
+}
+.chart-bar {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: chart-grow 520ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+/* Dash 1, gap 2 on a pathLength of 1: at offset 1 the whole line is gap,
+   endpoint included. With a plain "1" the next dash started exactly at the
+   end and a round cap drew it as a dot during the delay. */
+.chart-line {
+  stroke-dasharray: 1 2;
+  animation: chart-draw 700ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+.chart-fill {
+  animation: chart-fade 600ms ease-out 250ms both;
+}
+.chart-trend-end {
+  animation: chart-fade 300ms ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .chart-bar,
+  .chart-line,
+  .chart-fill,
+  .chart-trend-end {
+    animation: none;
+  }
   .skeleton {
     animation: none;
   }

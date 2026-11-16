@@ -5,7 +5,7 @@
 // No charting library, and the component never invents a hue: colours arrive
 // as "var(--color-s1)" strings from the caller, so the palette lives in
 // index.css where it was validated and nowhere else.
-import { useId } from "react";
+import { useId, useState } from "react";
 
 export interface Series {
   /** Stable identity (a slug, an outcome). Never the name: two teams may
@@ -57,6 +57,10 @@ const TREND_R = 64;
 // Between two stacks of one day: apart enough to read as two bars, close
 // enough to read as one day.
 const STACK_GAP = 3;
+// Draw-in: the whole row of bars starts within STAGGER_MS, however many
+// days; each stack segment above the first a SEGMENT_MS beat later.
+const STAGGER_MS = 400;
+const SEGMENT_MS = 90;
 
 /** monotonePath is a smooth curve through the points that never overshoots
  *  between them (Fritsch-Carlson): a plain spline dipped below zero on a
@@ -154,6 +158,19 @@ export function Chart({
   pad = 2,
 }: ChartProps) {
   const clipId = useId();
+  // The draw-in stagger is for the bars of the first draw only: a bar that
+  // is new on a poll grows at once, never waits out a stagger meant for the
+  // whole row while the segments around it have already moved. Remembered
+  // per bar, not as a "first render" flag: dropping the delay of a bar
+  // still growing would restart its timing mid-way.
+  const [firstBars] = useState(
+    () =>
+      new Set(
+        series.flatMap((s) =>
+          s.values.flatMap((v, i) => (v ? [`${s.id}:${i}`] : [])),
+        ),
+      ),
+  );
   const bare = ticks === undefined;
   const box = bare
     ? { l: 0, r: 0, t: pad, b: pad }
@@ -209,6 +226,31 @@ export function Chart({
   const showTrend = trend !== undefined && trendPts.length >= 2;
   const trendEnd = trendPts[trendPts.length - 1];
 
+  // Shading (user, 2026-11-16): each series' own hue fading downward, only
+  // opacity, never a new colour. Bars per shape (objectBoundingBox), so
+  // every bar runs top to floor. Lines over the plot (userSpaceOnUse), so
+  // the shade under a low day is faint and under a high one strong, the
+  // same scale for every series; per shape, a flat series was unshaded.
+  // Several lines overlap their shades, so those stay fainter: the stroke
+  // and the legend carry identity, the shade is ground only.
+  const [shadeTop, shadeBottom] =
+    mark === "bar"
+      ? [1, 0.7]
+      : mark === "area"
+        ? [0.32, 0.02]
+        : series.length > 1
+          ? [0.14, 0]
+          : [0.22, 0];
+  const shadeId = (si: number) => `${clipId}-shade-${si}`;
+  // Draw-in timing: bars stagger left to right within STAGGER_MS whatever
+  // the window's length, a stack's upper segments a beat later; the trend
+  // starts once the bars have, its label once it is drawn.
+  const step = Math.min(14, STAGGER_MS / n);
+  const barDelay = (id: string, si: number, i: number) =>
+    firstBars.has(`${id}:${i}`) ? Math.round(i * step) + si * SEGMENT_MS : 0;
+  const trendDelay =
+    mark === "bar" ? STAGGER_MS + SEGMENT_MS * (series.length - 1) : 350;
+
   return (
     <svg
       className="chart"
@@ -222,6 +264,32 @@ export function Chart({
         <clipPath id={clipId}>
           <rect x={box.l} y={box.t} width={plotW} height={plotH} />
         </clipPath>
+        {series.map((s, si) => (
+          <linearGradient
+            key={s.id}
+            id={shadeId(si)}
+            x1="0"
+            x2="0"
+            {...(mark === "bar"
+              ? { y1: "0", y2: "1" }
+              : {
+                  gradientUnits: "userSpaceOnUse",
+                  y1: box.t,
+                  y2: box.t + plotH,
+                })}
+          >
+            <stop
+              offset="0"
+              style={{ stopColor: s.color }}
+              stopOpacity={shadeTop}
+            />
+            <stop
+              offset="1"
+              style={{ stopColor: s.color }}
+              stopOpacity={shadeBottom}
+            />
+          </linearGradient>
+        ))}
       </defs>
 
       {ticks?.map((t) => {
@@ -281,47 +349,57 @@ export function Chart({
                     return (
                       <rect
                         key={i}
+                        className="chart-bar"
+                        style={{
+                          animationDelay: `${barDelay(s.id, si, i)}ms`,
+                        }}
                         x={xAt(i) + bars.offset(key, i)}
                         y={yTop}
                         width={bars.bw}
                         height={Math.max(1, yBot - yTop - 2)}
                         rx={isTop ? 4 : 0}
-                        fill={s.color}
-                        fillOpacity={showTrend ? 0.5 : 0.85}
+                        fill={`url(#${shadeId(si)})`}
+                        fillOpacity={showTrend ? 0.55 : 0.95}
                       />
                     );
                   })}
                 </g>
               );
             })
-          : series.map((s, si) => {
-              const top = tops[si];
-              const up = linePath(top);
-              const filled = mark === "area";
-              const floor = `${xAt(n - 1)},${yAt(dataMin)} L ${xAt(0)},${yAt(dataMin)}`;
-              return (
-                <g key={s.id}>
-                  {filled && (
-                    <path
-                      d={`M ${up} L ${floor} Z`}
-                      fill={s.color}
-                      fillOpacity={0.15}
-                    />
-                  )}
-                  <path
-                    d={`M ${up}`}
-                    fill="none"
-                    stroke={s.color}
-                    strokeWidth={showTrend ? 1.75 : 2}
-                    strokeOpacity={showTrend ? 0.55 : 1}
-                    strokeLinejoin="round"
-                    strokeLinecap="round"
-                  />
-                </g>
-              );
-            })}
+          : // Every shade first, then every line: a later series' shade
+            // must never paint over an earlier series' line.
+            [
+              ...series.map((s, si) => (
+                <path
+                  key={`${s.id}-fill`}
+                  className="chart-fill"
+                  d={`M ${linePath(tops[si])} L ${xAt(n - 1)},${yAt(dataMin)} L ${xAt(0)},${yAt(dataMin)} Z`}
+                  fill={`url(#${shadeId(si)})`}
+                  fillOpacity={showTrend ? 0.6 : 1}
+                />
+              )),
+              // Drawn left to right on first show: pathLength 1 makes the
+              // dash the whole line, whatever its length.
+              ...series.map((s, si) => (
+                <path
+                  key={`${s.id}-line`}
+                  className="chart-line chart-stroke"
+                  pathLength={1}
+                  d={`M ${linePath(tops[si])}`}
+                  fill="none"
+                  stroke={s.color}
+                  strokeWidth={showTrend ? 1.75 : 2}
+                  strokeOpacity={showTrend ? 0.55 : 1}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              )),
+            ]}
         {showTrend && (
           <path
+            className="chart-line"
+            style={{ animationDelay: `${trendDelay}ms` }}
+            pathLength={1}
             d={monotonePath(trendPts)}
             fill="none"
             stroke={trend.color}
@@ -334,7 +412,10 @@ export function Chart({
 
       {/* Outside the clip: the label sits in the right padding. */}
       {showTrend && trendLast !== null && (
-        <g>
+        <g
+          className="chart-trend-end"
+          style={{ animationDelay: `${trendDelay + 700}ms` }}
+        >
           <circle
             cx={trendEnd[0]}
             cy={trendEnd[1]}
