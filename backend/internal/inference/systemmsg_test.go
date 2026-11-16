@@ -3,6 +3,7 @@ package inference
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -27,8 +28,11 @@ func TestReviewSystemMessageGuardrails(t *testing.T) {
 
 func TestMentionSystemMessageGuardrails(t *testing.T) {
 	for _, want := range []string{
-		"read-only code review assistant",
 		"never produce full patches",
+		"never modify repository content yourself",
+		"only for the PR author",
+		"never promise a change",
+		"never answer that the code cannot be changed",
 		"UNTRUSTED USER INPUT",
 		"JSON envelope",
 		"decline anything else",
@@ -38,7 +42,15 @@ func TestMentionSystemMessageGuardrails(t *testing.T) {
 			t.Errorf("MentionSystemMessage is missing %q", want)
 		}
 	}
+	// It decides the Q&A's "apply" and a finding reply's "requests_fix":
+	// called read-only, the model refused every fix request with it.
+	if readOnly.MatchString(MentionSystemMessage) {
+		t.Error("MentionSystemMessage calls noergler read-only")
+	}
 }
+
+// readOnly is any spelling of "read-only", English or German.
+var readOnly = regexp.MustCompile(`(?i)read[\s_-]*only|nur[\s-]*lesend|schreibgeschützt`)
 
 // The compliance block drives the acceptance-criteria extraction, including
 // the AK-1/AC-1 hint the Jira prefix matcher depends on.
@@ -67,7 +79,7 @@ func TestSystemMessagesArePinned(t *testing.T) {
 		sha    string
 	}{
 		{"review", ReviewSystemMessage, 808, "8085a331b655a85a"},
-		{"mention", MentionSystemMessage, 949, "5510c88bbc721c81"},
+		{"mention", MentionSystemMessage, 1136, "c62070dc4eb87237"},
 		{"compliance", ComplianceInstructions, 1139, "fa8972c0b065ecf0"},
 	}
 	for _, tc := range cases {
