@@ -294,6 +294,10 @@ an incident or an eval run: read the reason before relaxing a rule.
   reply under a Q&A answer keeps the full Q&A (diff, tools), and a second
   call to classify would cost every such reply. The Q&A prompt still never
   writes code; the fix call does, under its own system message.
+- Q&A and finding-reply prompts never call noergler read-only: they decide
+  `apply` and `requests_fix`, and told it was read-only the model refused
+  every fix request with that reason ("kann ich als Read-only Reviewer nicht
+  ändern"). The no-patches-in-the-answer rule stays.
 - A Q&A answer's code line resolved when it is posted: Bitbucket anchors
   only a thread's root and sends a reply's immediate parent only, so at fix
   time the line would take a walk up the thread, a fetch per level. Posted,

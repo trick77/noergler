@@ -1,6 +1,7 @@
 package prompts
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -41,6 +42,18 @@ func TestDisputeSignalsOnlyInTheFindingReply(t *testing.T) {
 	for name, text := range map[string]string{"review": Review, "mention": Mention, "almanach note": AlmanachNote, "finding_fix": FindingFix, "merge_conflict": MergeConflict} {
 		if strings.Contains(text, ph) {
 			t.Errorf("%s prompt carries %s", name, ph)
+		}
+	}
+}
+
+// The prompts that decide a change request ("apply", "requests_fix") never
+// call noergler read-only: the model read it as "I cannot change code" and
+// refused every fix request with that reason.
+func TestChangeRequestPromptsNotReadOnly(t *testing.T) {
+	readOnly := regexp.MustCompile(`(?i)read[\s_-]*only|nur[\s-]*lesend|schreibgeschützt`)
+	for name, text := range map[string]string{"mention": Mention, "finding_reply": FindingReply} {
+		if readOnly.MatchString(text) {
+			t.Errorf("%s prompt calls noergler read-only", name)
 		}
 	}
 }
