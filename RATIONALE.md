@@ -248,6 +248,13 @@ an incident or an eval run: read the reason before relaxing a rule.
   are no veto there ("ich bin einverstanden"), unlike the command's
   conflictSelf. The post starts the request through StageThen: the
   answer's post may stage again, the PR's hold kept.
+- A reply that tags someone else is addressed to them (user, 2026-11-16):
+  "@SJH, dann musst du …" under noergler's answer was answered as a Q&A.
+  Tagged + no `@bot` = silence on every thread, the author-only answer
+  included ("@jan bitte fixen" is for Jan). Decided at the route by text,
+  no DB. A bare annotation in prose ("@Override fehlt") counts as a tag,
+  accepted: checking real users costs a Bitbucket call per reply, and the
+  payload's participants are not everyone tagged. Code spans never count.
 - Author-only actions answer anyone else kindly, never silently (user,
   2026-11-15: general rule): a reviewer's "ok" under the offer is told only
   the author may ask; a reviewer's "fix it" under a finding, or a mention

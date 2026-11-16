@@ -290,6 +290,15 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 		reply := p.CommentParentID != 0 && strings.TrimSpace(text) != "" &&
 			!strings.EqualFold(p.Comment.Author.Name, bot)
 		if !mentioned {
+			// A reply that tags someone else is addressed to them, on any
+			// thread: never answered unless the bot is tagged too (user,
+			// 2026-11-16). Text only, so the route decides it.
+			if reply && webhook.MentionsOther(text, bot) {
+				d.Log.InfoContext(ctx, "reply addressed to someone else, not answered",
+					"comment_id", commentID, "parent_id", p.CommentParentID)
+				httpx.WriteJSON(w, http.StatusOK, ignored{"ignored", "reply to someone else"})
+				return
+			}
 			if reply {
 				d.Log.InfoContext(ctx, "reply without "+trigger+", checked for a finding or summary thread",
 					"comment_id", commentID, "parent_id", p.CommentParentID)
