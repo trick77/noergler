@@ -25,3 +25,20 @@ func TestPickAndOr(t *testing.T) {
 		t.Error("Or")
 	}
 }
+
+// WithoutCode blanks the code SwissSS leaves alone and keeps the prose.
+func TestWithoutCode(t *testing.T) {
+	for in, want := range map[string]string{
+		"a `b` c":                "a   c",
+		"a ``x `y` z`` c":        "a   c",
+		"a `open":                "a  ",
+		"a\n```\n@Test\n```\nb":  "a\n\n\n\nb",
+		"a\n~~~\n@Test\n~~~\nb":  "a\n\n\n\nb",
+		"a\n    @Test\n\tx\nb":   "a\n\n\nb",
+		"no code, Strasse und ß": "no code, Strasse und ß",
+	} {
+		if got := WithoutCode(in); got != want {
+			t.Errorf("WithoutCode(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

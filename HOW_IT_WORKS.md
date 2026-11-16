@@ -505,6 +505,11 @@ original question above that answer is not shown
 deleted such a reply is not answered: a plain reply never brings a PR
 back. On a stopped PR (§12c) it is answered, and the PR stays stopped.
 
+A reply that tags someone else (`@sjh`, `@"jan.saner"`) is addressed to that
+person, not to noergler: the route ignores it on every thread, summary,
+answers and findings alike, unless noergler is tagged as well. A tag inside
+code (`` `@Transactional` ``) does not count; a bare annotation in prose does.
+
 The PR author's reply on one of noergler's finding threads needs no mention.
 The route queues any non-empty reply not written by the bot (Bitbucket's
 `commentParentId`); the worker answers only the author, except that anyone

@@ -54,6 +54,8 @@ decision, not a cleanup.
 - Author-only actions (fixes, merge-conflict resolution): anyone else who
   asks noergler, a mention or a reply to its comment, gets a kind answer
   that only the PR author may, never silence (user, 2026-11-15).
+- A reply that tags someone else (outside code) is theirs: never answered,
+  on any thread, unless noergler is tagged too (user, 2026-11-16).
 - A merge-conflict resolution's lines come from either side by id, never
   from the model's text; code resolves what it can first (INVARIANTS:
   prompt and findings).

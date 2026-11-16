@@ -122,6 +122,7 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   finding noergler committed (auto-fix): stamped only, no reply, never
   resolved (user, 2026-11-13: the author resolves after looking).
 - Finding replies: PR author only, answered and stamped once, never resolve;
+  a plain reply tagging someone else is theirs, never answered (Webhook);
   a plain reply on a thread answered already still gets a call, answered
   only if it is a fix request, nothing stamped again (user, 2026-11-13); an
   `@bot` reply there is answered whatever it is. Found: directly under the
@@ -265,7 +266,8 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   fetching the parent; the finding-thread answer included (decided), except
   the PR author's reply there, which is a reply on its finding. Never
   on a PR whose summary was deleted: a plain reply never reactivates, only
-  an `@mention`. A stopped PR answers them and stays stopped.
+  an `@mention`. A stopped PR answers them and stays stopped. One that
+  tags someone else is never answered (Webhook, user 2026-11-16).
 - Stop by command (user, 2026-11-04): "stop monitoring", "Höre auf, diesen
   PR zu beobachten" stops reviews on push; summary, Q&A, riptide and the
   Almanach send at merge carry on. `ignored_at` stays the one flag,
@@ -405,6 +407,10 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   under a stored bot reply is a mention, from anyone (user, 2026-10-19,
   2026-10-22); nested under either, not. The PR author under noergler's
   finding-thread answer is a reply on that finding instead (2026-11-13).
+  A reply without `@bot` that tags anyone else (`MentionsOther`, code
+  blanked) is ignored at the route, on every thread, before any of this:
+  addressed to them, not the bot (user, 2026-11-16). Beats the author-only
+  answer too. `@bot` tagged as well = a mention as before.
 - `pr:modified` is never a review and never warns: only draft -> ready
   (`previousDraft` true, `draft` false) and a new target (`previousTarget`,
   the SNAPSHOT task alone) are queued, every other edit is ignored. Drafts are reviewed (user, 2026-10-22: a draft is the bot's

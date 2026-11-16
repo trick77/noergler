@@ -726,6 +726,11 @@ func TestWebhook_ReplyWithoutMentionIsQueuedForTheFindingCheck(t *testing.T) {
 		{"reply with a mention", `,"commentParentId":501,"comment":{"id":7,"text":"@noergler why?","author":{"name":"bob"}}`, "mention", "finding-reply,mention"},
 		// The bot's own "Fixed in" reply never becomes a job.
 		{"the bot's own reply", `,"commentParentId":501,"comment":{"id":7,"text":"Fixed in abc.","author":{"name":"noergler"}}`, "comment without mention", ""},
+		// Tagging someone else addresses them, on any thread (user,
+		// 2026-11-16); with the bot tagged too it is the bot's again.
+		{"reply tagging someone else", `,"commentParentId":501,"comment":{"id":7,"text":"@SJH , damit das funktioniert","author":{"name":"bob"}}`, "reply to someone else", ""},
+		{"reply tagging the bot and someone else", `,"commentParentId":501,"comment":{"id":7,"text":"@sjh @noergler stimmt das?","author":{"name":"bob"}}`, "mention", "finding-reply,mention"},
+		{"reply quoting an annotation", `,"commentParentId":501,"comment":{"id":7,"text":"` + "`@Transactional`" + ` fehlt nicht","author":{"name":"bob"}}`, "reply", "finding-reply"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

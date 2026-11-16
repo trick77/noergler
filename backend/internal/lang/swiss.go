@@ -17,6 +17,25 @@ func SwissSS(s string) string {
 	if !strings.ContainsAny(s, "ßẞ") {
 		return s
 	}
+	swiss := strings.NewReplacer("ß", "ss", "ẞ", "SS")
+	return mapProse(s, swiss.Replace, func(code string) string { return code })
+}
+
+// WithoutCode is s with its code blanked out, the same code SwissSS leaves
+// alone: a fenced or indented block becomes an empty line, an inline span a
+// space. For reading what a comment says in prose, never for posting.
+func WithoutCode(s string) string {
+	return mapProse(s, func(prose string) string { return prose }, func(code string) string {
+		if strings.HasSuffix(code, "\n") {
+			return "\n"
+		}
+		return " "
+	})
+}
+
+// mapProse rewrites s piece by piece: prose through prose, code through
+// code. A code line reaches code with its newline.
+func mapProse(s string, prose, code func(string) string) string {
 	var b strings.Builder
 	b.Grow(len(s) + 8)
 	fence := ""
@@ -26,19 +45,19 @@ func SwissSS(s string) string {
 			if strings.HasPrefix(trimmed, fence) {
 				fence = ""
 			}
-			b.WriteString(line)
+			b.WriteString(code(line))
 			continue
 		}
 		if f := fenceOf(trimmed); f != "" {
 			fence = f
-			b.WriteString(line)
+			b.WriteString(code(line))
 			continue
 		}
 		if strings.HasPrefix(line, "    ") || strings.HasPrefix(line, "\t") {
-			b.WriteString(line)
+			b.WriteString(code(line))
 			continue
 		}
-		b.WriteString(swissLine(line))
+		b.WriteString(proseLine(line, prose, code))
 	}
 	return b.String()
 }
@@ -100,10 +119,10 @@ func fenceOf(trimmed string) string {
 	return ""
 }
 
-// swissLine rewrites one prose line outside its code spans. A span opens
+// proseLine rewrites one prose line outside its code spans. A span opens
 // with a run of backticks and closes with a run of the same length; an
 // unclosed one shields the rest of the line, as Bitbucket renders it.
-func swissLine(line string) string {
+func proseLine(line string, prose, code func(string) string) string {
 	var b strings.Builder
 	for i := 0; i < len(line); {
 		if line[i] == '`' {
@@ -114,10 +133,10 @@ func swissLine(line string) string {
 			run := line[i:j]
 			end := strings.Index(line[j:], run)
 			if end < 0 {
-				b.WriteString(line[i:])
+				b.WriteString(code(line[i:]))
 				return b.String()
 			}
-			b.WriteString(line[i : j+end+len(run)])
+			b.WriteString(code(line[i : j+end+len(run)]))
 			i = j + end + len(run)
 			continue
 		}
@@ -125,7 +144,7 @@ func swissLine(line string) string {
 		if next < 0 {
 			next = len(line) - i
 		}
-		b.WriteString(strings.NewReplacer("ß", "ss", "ẞ", "SS").Replace(line[i : i+next]))
+		b.WriteString(prose(line[i : i+next]))
 		i += next
 	}
 	return b.String()
