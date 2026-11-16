@@ -85,21 +85,45 @@ Every skip that is a stable state of the PR (opt-out branch, missing or oversize
 `AGENTS.md`, cost cap) posts a summary saying why. Guards 1 to 4 post nothing.
 
 **SNAPSHOT task.** A PR into the repo's default branch (Bitbucket's
-`default-branch`, read once an hour per repo) whose delta adds an unreleased
-Maven/Gradle build gets a Bitbucket task (a comment with severity
-`BLOCKER`), in the author's language, naming the lines. Only `+` lines
-count, only in `pom.xml`, `.mvn/maven.config`, any `*.gradle(.kts)`,
+`default-branch`, read once an hour per repo) whose delta adds a dependency
+on an unreleased Maven/Gradle build gets a Bitbucket task (a comment with
+severity `BLOCKER`), in the author's language, naming the lines. Only `+`
+lines count, only in `pom.xml`, `.mvn/maven.config`, any `*.gradle(.kts)`,
 `gradle.properties` and `*.versions.toml`, and only `-SNAPSHOT` on a version
 (in capitals after a word character, `}`, `>` or `=`,
 `1.0.0-beta-SNAPSHOT`; in any case after a digit, `}` or `BUILD`; a
 qualifier may follow, `1.0-SNAPSHOT-jdk17`; `endsWith("-SNAPSHOT")` is
 Gradle logic, `libs-snapshot` a repository) or a resolved snapshot's
-timestamp. A change block that removes as many SNAPSHOT lines as
-it adds brings none in (`1.0-SNAPSHOT` → `1.1-SNAPSHOT`). Only the changed
-build files' diffs are read, one call each, or the whole PR diff once past
-50 of them; build files with the blob ids of the last check are not read
-again (in memory). A PR touching none costs one changes call; the open
-tasks are one call. The task blocks the merge only where the repo's
+timestamp. The project's own version never counts, nor a reactor
+module's: `version` in `gradle.properties`, or the key the build script
+beside it (`build.gradle.kts`, `build.gradle`) sets the version from
+(`version = projectVersion`); a Gradle script's `version = …` or
+`project.version` (Groovy and Kotlin; a plugin's `id(…) version "…"`
+and a dependency's named `version = "…"` argument are dependencies, so
+is a `version =` line whose line before a hunk does not show);
+`-Drevision`/`-Dchangelist`/`-Dsha1` in `maven.config`. A `pom.xml`
+that adds a SNAPSHOT line is read whole at the PR's head: its
+`revision`, `changelist` and `sha1` properties are own, and every
+element whose text is the own version (its `<version>`, else the
+inherited parent's), so sibling modules and their managed versions
+bring no task. The parent is own only when its POM stands in the repo
+where Maven looks first (`<relativePath>`, default `../pom.xml`) with
+the same coordinates, read only when the module inherits its version or
+the PR changes the parent's version line; a company parent from outside
+counts. An outside dependency on the very same version string reads as
+own. A POM that does not match its diff (a push in between, a charset)
+or past 50 files read whole is told by the own version strings read so
+far; one too large or not parsing keeps its lines (logged). A change
+block that removes as many dependency SNAPSHOT lines as it adds brings
+none in (`1.0-SNAPSHOT` → `1.1-SNAPSHOT`); the base POM is read only for
+a block that may exempt a dependency, and when it cannot be told the
+block's removed lines exempt only as many as they outnumber its added
+own lines. Lines taken as the own version are logged. Only the changed
+build files' diffs are read, one call each, or the whole PR diff once
+past 50 of them. Build files with the blob ids of the last check are not
+read again (in memory), with the head commit too when a file the PR does
+not change was read (a parent, a build script). A PR touching none costs
+one changes call; the open tasks are one call. The task blocks the merge only where the repo's
 "incomplete tasks" merge check is on.
 Each task names the lines it was posted for. A line no task named gets a
 new task; the lines of a task the author resolved never get another while

@@ -1,6 +1,9 @@
-// Package snapshot spots an unreleased Maven or Gradle build: a version
-// with the -SNAPSHOT suffix, or a resolved snapshot's timestamp. Blunt
-// rules, never a model: what they decide blocks a merge.
+// Package snapshot spots a dependency on an unreleased Maven or Gradle
+// build: a version with the -SNAPSHOT suffix, or a resolved snapshot's
+// timestamp. Only a dependency from outside the build counts, never the
+// project's own version or a reactor module's (user, 2026-11-16: the own
+// version "MUST" be a SNAPSHOT; own.go). Blunt rules, never a model: what
+// they decide blocks a merge.
 package snapshot
 
 import (
@@ -17,8 +20,10 @@ import (
 // `/`. In capitals, the way versions write it, after a word character
 // (`1.0.0-beta-SNAPSHOT`), `}`, `>` (`<changelist>-SNAPSHOT`) or `=`
 // (`suffix=-SNAPSHOT`); in any case (Maven compares it ignoring case) only
-// after a digit, `}` or BUILD. Gradle logic about the suffix has a quote,
-// paren or blank before it (`endsWith("-SNAPSHOT")`, a comment), a
+// after a digit, `}` or BUILD. A bare suffix may build an outside
+// dependency's version too (`2.0${lib.qualifier}`): only OwnLine and
+// ParsePom tell the own version's. Gradle logic about the suffix has a
+// quote, paren or blank before it (`endsWith("-SNAPSHOT")`, a comment), a
 // repository's name is lower case after a word (`libs-snapshot`,
 // `maven-snapshots`): neither is a version. A `-` after it is a qualifier
 // (`1.0-SNAPSHOT-jdk17`). RE2 classes are ASCII, so the classes are \pL\pN
@@ -61,7 +66,7 @@ func BuildFile(p string) bool {
 		strings.HasSuffix(base, ".versions.toml")
 }
 
-// Hit is one added line naming an unreleased build.
+// Hit is one added line naming an unreleased dependency.
 type Hit struct {
 	Path string
 	// Line is the line's number in the new file.
@@ -89,27 +94,10 @@ func noSpace(s string) string {
 	}, s)
 }
 
-// Added is the PR delta's hits: the lines a diff adds to a build file,
-// never a context line, a removed one or any other file. A change that
-// replaces a line naming an unreleased build with another (1.0-SNAPSHOT to
-// 1.1-SNAPSHOT) brings none in (user, 2026-11-15): per change block, a run
-// of removed and added lines, as many added hits are exempt as the block
-// removes; only the rest count. A hit moved to another block counts there,
-// the safe way.
-func Added(rawDiff string) []Hit {
-	var hits []Hit
-	for _, fd := range diff.SplitByFile(rawDiff) {
-		if p := diff.ExtractPath(fd); p != "" && BuildFile(p) {
-			hits = append(hits, AddedIn(p, fd)...)
-		}
-	}
-	return hits
-}
-
-// FileHits is the hits of a per-file diff response for path: only its part
-// for path counts, whatever else the response carries; a response with one
-// part, or none with a header, is that file's.
-func FileHits(p, raw string) []Hit {
+// FilePart is a per-file diff response's part for path: only that part
+// counts, whatever else the response carries; a response with one part, or
+// none with a header, is that file's. "" when no part is path's.
+func FilePart(p, raw string) string {
 	var parts []string
 	for _, part := range diff.SplitByFile(raw) {
 		if strings.HasPrefix(part, "diff --git ") {
@@ -118,62 +106,14 @@ func FileHits(p, raw string) []Hit {
 	}
 	switch len(parts) {
 	case 0:
-		return AddedIn(p, raw)
+		return raw
 	case 1:
-		return AddedIn(p, parts[0])
+		return parts[0]
 	}
 	for _, part := range parts {
 		if diff.ExtractPath(part) == p {
-			return AddedIn(p, part)
+			return part
 		}
 	}
-	return nil
-}
-
-// AddedIn is Added for one file's diff, its path given rather than read from
-// the header.
-func AddedIn(p, fileDiff string) []Hit {
-	if diff.IsDeleted(fileDiff) {
-		return nil
-	}
-	var hits []Hit
-	_, hunks := diff.ParseHunks(fileDiff)
-	for _, h := range hunks {
-		n, removed := h.NewStart, 0
-		var added []Hit
-		flush := func() {
-			if len(added) > removed {
-				hits = append(hits, added[removed:]...)
-			}
-			removed, added = 0, nil
-		}
-		for _, l := range h.BodyLines {
-			l = strings.TrimSuffix(l, "\r")
-			switch {
-			case strings.HasPrefix(l, `\`):
-				// "\ No newline at end of file" sits inside a block, never
-				// ends one.
-			case strings.HasPrefix(l, "-"):
-				if Line(l[1:]) {
-					removed++
-				}
-			case strings.HasPrefix(l, "+"):
-				if Line(l[1:]) {
-					added = append(added, Hit{Path: p, Line: n, Text: l[1:]})
-				}
-				n++
-			default:
-				flush()
-				n++
-			}
-		}
-		flush()
-	}
-	seq := map[string]int{}
-	for i := range hits {
-		t := noSpace(hits[i].Text)
-		seq[t]++
-		hits[i].Seq = seq[t]
-	}
-	return hits
+	return ""
 }

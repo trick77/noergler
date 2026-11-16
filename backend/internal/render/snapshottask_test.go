@@ -11,7 +11,7 @@ import (
 func TestSnapshotTask(t *testing.T) {
 	line := SnapshotLine{Path: "pom.xml", Line: 12, Text: "    <version>1.1-SNAPSHOT</version>"}
 	en := SnapshotTask(lang.EN, "master", []SnapshotLine{line})
-	for _, want := range []string{"**SNAPSHOT version into `master`**", "- `pom.xml:12` `<version>1.1-SNAPSHOT</version>`",
+	for _, want := range []string{"**SNAPSHOT dependency into `master`**", "- `pom.xml:12` `<version>1.1-SNAPSHOT</version>`",
 		"resolve the task yourself"} {
 		if !strings.Contains(en, want) {
 			t.Errorf("EN lacks %q:\n%s", want, en)
