@@ -122,6 +122,9 @@ export interface Metrics {
   /** Fix requests and the commits among them per day, every team summed;
    *  days without a request are absent. */
   fixes_daily: { day: string; requested: number; committed: number }[];
+  /** Blocking tasks posted per day, every team summed; days without one
+   *  are absent. Missing from an older server: no tasks. */
+  tasks_daily?: { day: string; count: number }[];
   breakdown: {
     outcome: string;
     reason?: string;

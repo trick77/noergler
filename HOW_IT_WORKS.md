@@ -585,8 +585,11 @@ tried again), the branch moved (409), refused by Bitbucket (a pre-receive
 hook), or the call failed. Each request is a `finding_fixes` row: the
 metrics page shows, per team beside the findings, fix requests (every ask,
 its outcomes on hover) and fixes committed, and a chart of both per day
-(committed and not committed stacked). A finding is committed once. The fix
-call is its own `llm_calls` row (`fix`) and counts toward the PR's cost. The
+(Tasks & Fixes: committed and not committed stacked, the blocking tasks
+noergler posted that day a bar of their own beside it, never added in; a
+task whose rule later left AGENTS.md still counts, SNAPSHOT tasks do not,
+they keep no time). A finding is committed once. The fix call is its own
+`llm_calls` row (`fix`) and counts toward the PR's cost. The
 next review retires a finding noergler committed without a "Fixed in" reply
 and without resolving it: the author resolves the thread after looking.
 
@@ -670,7 +673,7 @@ whether code or the model resolved it, quotes every dropped line, names the
 files merged without a conflict, and asks the author to build and test
 before merging. Failures answer like an auto-fix: no write permission,
 branch moved, refused by a hook, failed. Each request is a `finding_fixes`
-row (Auto-fixes on the metrics page), its call a `fix` row. The push
+row (Tasks & Fixes on the metrics page), its call a `fix` row. The push
 triggers a full re-review, as a merge by hand does.
 
 A review offers it. After each completed review under the cost cap,

@@ -431,6 +431,15 @@ type FixCount struct {
 	Count    int
 }
 
+// TaskCount is how many blocking tasks noergler posted on one day, every
+// team summed.
+//
+// Table: -
+type TaskCount struct {
+	Day   time.Time
+	Count int
+}
+
 // RollupSnapshot is what one riptide rollup carries.
 //
 // Table: -

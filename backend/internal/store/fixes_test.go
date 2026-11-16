@@ -203,3 +203,45 @@ func TestConflictFixes_CountedGoneWithThePR(t *testing.T) {
 		t.Errorf("after the PR's purge counts = %+v", counts)
 	}
 }
+
+// A posted task counts, also once its rule left AGENTS.md; a downgrade and
+// a task Bitbucket refused do not, nor does a plain finding.
+func TestTaskCountsSince_CountsPostedTasksOnly(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	id := upsert(t, s, key, "a")
+	runID := run(t, s, id, "a", nil, "m")
+	for i, outcome := range []*string{str("task"), str("task"), str("downgraded_task_failed"), str("downgraded_cap"), nil} {
+		f := Finding{PullRequestID: id, RunID: runID, FilePath: "a.go", LineNumber: i + 1, Severity: "issue",
+			CommentText: "c", BitbucketCommentID: num(600 + i), BlockingOutcome: outcome}
+		if outcome != nil {
+			f.BlockingRule = str("No SQL in controllers.")
+		}
+		if err := s.InsertFinding(ctx, f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	existing, _ := s.ExistingFindings(ctx, key)
+	if err := s.MarkRuleRemoved(ctx, existing[0].ID); err != nil {
+		t.Fatal(err)
+	}
+
+	counts, err := s.TaskCountsSince(ctx, time.Now().Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Summed over the days: the rows may straddle UTC midnight.
+	total := 0
+	for _, c := range counts {
+		if !c.Day.Equal(c.Day.Truncate(24 * time.Hour)) {
+			t.Errorf("row %+v: want a whole UTC day", c)
+		}
+		total += c.Count
+	}
+	if total != 2 {
+		t.Errorf("counts = %+v, want the two posted tasks", counts)
+	}
+	if counts, _ := s.TaskCountsSince(ctx, time.Now().Add(time.Hour)); len(counts) != 0 {
+		t.Errorf("a later window counts %+v", counts)
+	}
+}

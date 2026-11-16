@@ -155,6 +155,7 @@ const metrics: Metrics = {
     { outcome: "error", count: 1 },
   ],
   fixes_daily: [{ day: "2026-09-02", requested: 5, committed: 3 }],
+  tasks_daily: [{ day: "2026-09-02", count: 1 }],
 };
 
 beforeEach(() => {
@@ -586,24 +587,48 @@ describe("MetricsPage", () => {
   });
 
   // Both counts per day in one chart: committed and not committed stacked,
-  // the bar's height the requests.
-  it("charts fix requests and fixes committed per day", async () => {
+  // the bar's height the requests; posted tasks a bar of their own.
+  it("charts tasks, fix requests and fixes committed per day", async () => {
     serve({ metrics });
     render(<MetricsPage />);
 
     expect(
-      await screen.findByLabelText(/Fix requests and fixes committed per day/),
+      await screen.findByLabelText(
+        /Blocking tasks posted, fix requests and fixes committed per day/,
+      ),
     ).toBeDefined();
-    expect(screen.getAllByText("Fix requests per day")).toHaveLength(1);
+    expect(screen.getAllByText("Tasks and fix requests per day")).toHaveLength(
+      1,
+    );
+    expect(screen.getByText("Blocking tasks posted")).toBeDefined();
   });
 
-  it("says so when there are no fix requests", async () => {
-    serve({ metrics: { ...metrics, fixes_daily: [] } });
+  it("says so when there are neither tasks nor fix requests", async () => {
+    serve({ metrics: { ...metrics, fixes_daily: [], tasks_daily: [] } });
     render(<MetricsPage />);
 
     expect(
-      await screen.findByText("No fix requests in this window."),
+      await screen.findByText("No tasks or fix requests in this window."),
     ).toBeDefined();
+  });
+
+  // A day with tasks and no fix request still draws the chart.
+  it("charts a window with tasks only", async () => {
+    serve({
+      metrics: {
+        ...metrics,
+        fixes_daily: [],
+        tasks_daily: [{ day: "2026-09-02", count: 2 }],
+      },
+    });
+    render(<MetricsPage />);
+
+    expect(
+      await screen.findByLabelText(/Blocking tasks posted, fix requests/),
+    ).toBeDefined();
+    expect(
+      screen.queryByText("No tasks or fix requests in this window."),
+    ).toBeNull();
   });
 
   // A fresh instance has run nothing, which is not the same as having run
@@ -947,8 +972,8 @@ describe("MetricsPage", () => {
   });
 
   // Throughput, cost, LOC (user, 2026-11-11), then fix requests (user,
-  // 2026-11-13).
-  it("orders the charts throughput, cost, LOC, auto-fix", async () => {
+  // 2026-11-13), tasks beside them (user, 2026-11-16).
+  it("orders the charts throughput, cost, LOC, tasks & fixes", async () => {
     serve({ metrics });
     render(<MetricsPage />);
 
@@ -956,7 +981,12 @@ describe("MetricsPage", () => {
     const titles = screen
       .getAllByRole("heading", { level: 3 })
       .map((h) => h.textContent);
-    expect(titles).toEqual(["Throughput", "Spend", "Code volume", "Auto-fix"]);
+    expect(titles).toEqual([
+      "Throughput",
+      "Spend",
+      "Code volume",
+      "Tasks & Fixes",
+    ]);
   });
 
   // A team keeps its colour across cost and LOC: both rank by spend.

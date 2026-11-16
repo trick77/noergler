@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Fixes, Metrics, Totals } from "./api";
-import { Chart, Sparkline, type Series, type Trend } from "./Chart";
+import { Chart, Sparkline, stackTops, type Series, type Trend } from "./Chart";
 import {
   calendarDay,
   compact,
@@ -362,25 +362,37 @@ export function MetricsPage() {
   // use. Not committed is neutral, it mixes refusals, conflicts and "not
   // feasible"; ochre already reads "skipped" in Throughput. An older server
   // without the field leaves the card empty, never the page broken.
+  // Blocking tasks noergler posted (user, 2026-11-16) are their own bar
+  // beside the fix stack, never on it: tasks plus fix requests is a sum
+  // that means nothing. The accent, noergler's own act, not s1: s1 is the
+  // top team in the charts above. Never in the same bar as the green, and
+  // always left of it, so position tells them apart where hue may not.
   const fixRows = data.fixes_daily ?? [];
   const fixSeries: Series[] = [
+    {
+      id: "tasks",
+      name: t("metrics.tasksPosted"),
+      color: "var(--color-accent-strong)",
+      values: perDay(data.tasks_daily ?? [], (d) => d.count),
+      stack: "tasks",
+    },
     {
       id: "committed",
       name: t("metrics.fixesCommitted"),
       color: "var(--color-online)",
       values: perDay(fixRows, (d) => d.committed),
+      stack: "fixes",
     },
     {
       id: "not_committed",
       name: t("metrics.fixesNotCommitted"),
       color: "var(--color-muted)",
       values: perDay(fixRows, (d) => d.requested - d.committed),
+      stack: "fixes",
     },
   ];
-  const fixTop = Math.max(
-    ...window.map((_, i) => fixSeries.reduce((sum, s) => sum + s.values[i], 0)),
-    0,
-  );
+  // The axis fits the higher bar of a day, tasks or fix requests.
+  const fixTop = Math.max(...stackTops(fixSeries).flat(), 0);
   const fixTicks = wholeTicks(niceTicks(fixTop));
 
   // All teams per day, for the tiles' trends.
@@ -639,10 +651,10 @@ export function MetricsPage() {
             )}
           </Card>
 
-          <p className={eyebrow}>{t("metrics.fixesPerDay")}</p>
-          <Card title={t("metrics.autoFix")}>
+          <p className={eyebrow}>{t("metrics.tasksFixesPerDay")}</p>
+          <Card title={t("metrics.tasksFixes")}>
             {fixTop === 0 ? (
-              <Empty>{t("metrics.noFixes")}</Empty>
+              <Empty>{t("metrics.noTasksFixes")}</Empty>
             ) : (
               <>
                 <Chart
@@ -652,7 +664,7 @@ export function MetricsPage() {
                   mark="bar"
                   ticks={fixTicks}
                   xLabels={window.map(label)}
-                  label={t("metrics.fixesChart", { title })}
+                  label={t("metrics.tasksFixesChart", { title })}
                 />
                 <Legend series={fixSeries} />
               </>
