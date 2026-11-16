@@ -180,29 +180,127 @@ describe("Chart", () => {
         label="lines"
       />,
     );
-    const [a, b] = Array.from(svg(container).querySelectorAll("path")).map(
-      (p) => p.getAttribute("d"),
-    );
+    const [a, b] = Array.from(
+      svg(container).querySelectorAll("path.chart-stroke"),
+    ).map((p) => p.getAttribute("d"));
     expect(b).toBe(a);
+  });
+
+  // Shading is the series' own hue fading downward: every bar and every
+  // shaded area points at a gradient made of that series' var(), nothing
+  // else.
+  it("shades each series in its own hue", () => {
+    for (const mark of ["bar", "line", "area"] as const) {
+      const { container, unmount } = render(
+        <Chart
+          series={[
+            { id: "a", name: "a", color: "var(--color-s1)", values: [1, 2] },
+            { id: "b", name: "b", color: "var(--color-s2)", values: [2, 1] },
+          ]}
+          width={200}
+          height={100}
+          mark={mark}
+          ticks={[0, 4]}
+          label={mark}
+        />,
+      );
+      const el = svg(container);
+      const shaded = Array.from(
+        el.querySelectorAll("rect.chart-bar, path.chart-fill"),
+      );
+      expect(shaded.length).toBeGreaterThan(0);
+      for (const shape of shaded) {
+        const id = /^url\(#(.+)\)$/.exec(shape.getAttribute("fill") ?? "")?.[1];
+        const gradient = id ? el.querySelector(`[id="${id}"]`) : null;
+        expect(gradient?.tagName).toBe("linearGradient");
+        const colours = Array.from(
+          gradient?.querySelectorAll("stop") ?? [],
+        ).map((s) => (s as SVGStopElement).style.stopColor);
+        expect(colours).toHaveLength(2);
+        expect(new Set(colours).size).toBe(1);
+        expect(colours[0]).toMatch(/^var\(--color-s[12]\)$/);
+      }
+      unmount();
+    }
   });
 
   // A colour is always the caller's var() string. A hex literal in chart
   // code is how a palette stops being the one that was validated.
   it("never invents a hue", () => {
+    for (const mark of ["bar", "line", "area"] as const) {
+      const { container, unmount } = render(
+        <Chart
+          series={s1([1, 2, 3])}
+          trend={{
+            values: [1, 2, 3],
+            color: "var(--color-ink)",
+            format: String,
+          }}
+          width={200}
+          height={80}
+          mark={mark}
+          ticks={[0, 4]}
+          label="x"
+        />,
+      );
+      // Fill and stroke apart: a shape with fill="none" still has a
+      // stroke, and a gradient fill is only a url() to one.
+      const shapes = svg(container).querySelectorAll(
+        "path, rect, circle, line, text",
+      );
+      for (const shape of Array.from(shapes))
+        for (const attr of ["fill", "stroke"])
+          expect(shape.getAttribute(attr) ?? "").not.toMatch(/^#/);
+      unmount();
+    }
+  });
+
+  // Every shade under every line first, then the lines: a later team's
+  // shade painted over an earlier team's line tinted and dimmed it.
+  it("draws every line above every shade", () => {
     const { container } = render(
       <Chart
-        series={s1([1, 2])}
-        width={100}
-        height={40}
-        mark="area"
-        label="x"
+        series={[
+          { id: "a", name: "a", color: "var(--color-s1)", values: [1, 2] },
+          { id: "b", name: "b", color: "var(--color-s2)", values: [2, 1] },
+        ]}
+        width={200}
+        height={100}
+        ticks={[0, 4]}
+        label="lines"
       />,
     );
-    for (const path of Array.from(svg(container).querySelectorAll("path"))) {
-      const paint =
-        path.getAttribute("fill") ?? path.getAttribute("stroke") ?? "";
-      expect(paint.startsWith("#")).toBe(false);
-    }
+    const kinds = Array.from(svg(container).querySelectorAll("path")).map((p) =>
+      p.getAttribute("class"),
+    );
+    expect(kinds).toEqual([
+      "chart-fill",
+      "chart-fill",
+      "chart-line chart-stroke",
+      "chart-line chart-stroke",
+    ]);
+  });
+
+  // The stagger is the first draw's: a bar that turns up on a poll grows
+  // at once instead of sitting hidden behind a delay meant for the row.
+  it("staggers bars on the first draw only", () => {
+    const props = {
+      width: 300,
+      height: 120,
+      mark: "bar" as const,
+      ticks: [0, 4],
+      label: "bars",
+    };
+    const { container, rerender } = render(
+      <Chart series={s1([1, 2, 0])} {...props} />,
+    );
+    const delays = () =>
+      Array.from(svg(container).querySelectorAll("rect.chart-bar")).map(
+        (r) => (r as SVGRectElement).style.animationDelay,
+      );
+    expect(delays()[1]).not.toBe("0ms");
+    rerender(<Chart series={s1([1, 2, 3])} {...props} />);
+    expect(delays()[2]).toBe("0ms");
   });
 
   // The trend draws over the series, prints its latest value, and the bars
@@ -229,7 +327,7 @@ describe("Chart", () => {
     expect(el.textContent).toContain("~7");
     const bars = Array.from(el.querySelectorAll("rect")).slice(1);
     for (const bar of bars)
-      expect(bar.getAttribute("fill-opacity")).toBe("0.5");
+      expect(bar.getAttribute("fill-opacity")).toBe("0.55");
   });
 
   it("draws no trend from a single point", () => {
