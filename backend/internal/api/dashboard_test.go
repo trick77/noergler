@@ -44,6 +44,7 @@ type fakeDashStore struct {
 	attemptsSince *time.Time
 	byTeam        []store.TeamTotals
 	fixCounts     []store.FixCount
+	taskCounts    []store.TaskCount
 	daily         []store.Bucket
 	dailyAtt      []store.AttemptBucket
 	activity      []store.TeamActivity
@@ -103,6 +104,9 @@ func (f *fakeDashStore) OutcomeBreakdown(context.Context, time.Time) ([]store.Ou
 }
 func (f *fakeDashStore) FixCountsSince(context.Context, time.Time) ([]store.FixCount, error) {
 	return f.fixCounts, f.err
+}
+func (f *fakeDashStore) TaskCountsSince(context.Context, time.Time) ([]store.TaskCount, error) {
+	return f.taskCounts, f.err
 }
 func (f *fakeDashStore) TotalsSince(context.Context, time.Time) (store.Totals, error) {
 	return f.totals, f.err
@@ -564,7 +568,7 @@ func TestMetricsCarriesFixesPerDay(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []fixDayBody{{"2026-11-12", 3, 2}, {"2026-11-13", 2, 1}}
-	if len(got.FixesDaily) != 2 || got.FixesDaily[0] != want[0] || got.FixesDaily[1] != want[1] {
+	if !slices.Equal(got.FixesDaily, want) {
 		t.Errorf("fixes_daily = %+v, want %+v", got.FixesDaily, want)
 	}
 	p := got.ByTeam[0].Fixes
@@ -574,14 +578,34 @@ func TestMetricsCarriesFixesPerDay(t *testing.T) {
 	}
 }
 
+// Posted tasks per day, their own series beside the fix days.
+func TestMetricsCarriesTasksPerDay(t *testing.T) {
+	h := newDashHarness(t)
+	d1 := time.Date(2026, 11, 12, 0, 0, 0, 0, time.UTC)
+	h.st.taskCounts = []store.TaskCount{{Day: d1, Count: 3}, {Day: d1.AddDate(0, 0, 2), Count: 4}}
+
+	var got struct {
+		TasksDaily []taskDayBody `json:"tasks_daily"`
+	}
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/metrics?days=7").Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	want := []taskDayBody{{"2026-11-12", 3}, {"2026-11-14", 4}}
+	if !slices.Equal(got.TasksDaily, want) {
+		t.Errorf("tasks_daily = %+v, want %+v", got.TasksDaily, want)
+	}
+}
+
 func TestMetricsFixesDailyIsAnEmptyListWithoutRequests(t *testing.T) {
 	h := newDashHarness(t)
 	var got map[string]any
 	if err := json.Unmarshal(h.get(t, "/api/dashboard/metrics?days=7").Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if v, ok := got["fixes_daily"].([]any); !ok || len(v) != 0 {
-		t.Errorf("fixes_daily = %#v, want []", got["fixes_daily"])
+	for _, key := range []string{"fixes_daily", "tasks_daily"} {
+		if v, ok := got[key].([]any); !ok || len(v) != 0 {
+			t.Errorf("%s = %#v, want []", key, got[key])
+		}
 	}
 }
 

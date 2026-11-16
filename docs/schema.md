@@ -232,6 +232,7 @@ Indexes:
 
 - `idx_findings_comment` (`bitbucket_comment_id`)
 - `idx_findings_dedup` (`pull_request_id`, `file_path`, `line_number`, `severity`)
+- `idx_findings_task_time` (`created_at`) where `blocking_outcome = ANY (ARRAY['task'::text, 'rule_removed'::text])`
 
 Checks:
 
@@ -668,6 +669,15 @@ In `internal/store`. RollupSnapshot is what one riptide rollup carries.
 | `LinesAdded` | `*int` |  |
 | `LinesRemoved` | `*int` |  |
 | `FilesChanged` | `*int` |  |
+
+### store.TaskCount
+
+In `internal/store`. TaskCount is how many blocking tasks noergler posted on one day, every team summed.
+
+| Field | Type | Doc |
+| --- | --- | --- |
+| `Day` | `time.Time` |  |
+| `Count` | `int` |  |
 
 ### store.TeamActivity
 

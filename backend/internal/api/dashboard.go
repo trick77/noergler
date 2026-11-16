@@ -52,6 +52,7 @@ type DashboardStore interface {
 	PRCost(ctx context.Context, key store.PRKey) (*int64, error)
 	PRCommentCalls(ctx context.Context, key store.PRKey) ([]store.CommentCall, bool, error)
 	FixCountsSince(ctx context.Context, since time.Time) ([]store.FixCount, error)
+	TaskCountsSince(ctx context.Context, since time.Time) ([]store.TaskCount, error)
 }
 
 // usd renders nano-USD as a fixed-point decimal string with 3 decimals,
@@ -345,6 +346,13 @@ type fixDayBody struct {
 	Committed int    `json:"committed"`
 }
 
+// taskDayBody is the blocking tasks noergler posted on one day: charted
+// beside the fix requests, never summed with them.
+type taskDayBody struct {
+	Day   string `json:"day"`
+	Count int    `json:"count"`
+}
+
 type fixOutcomeCount struct {
 	Outcome string `json:"outcome"`
 	Count   int    `json:"count"`
@@ -403,6 +411,9 @@ type metricsBody struct {
 	// FixesDaily is fix requests and commits per day over the window, every
 	// team summed; days without a request are absent.
 	FixesDaily []fixDayBody `json:"fixes_daily"`
+	// TasksDaily is the blocking tasks posted per day over the window, every
+	// team summed; days without one are absent.
+	TasksDaily []taskDayBody `json:"tasks_daily"`
 }
 
 func toTotals(t store.Totals) totalsBody {
@@ -572,8 +583,16 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 			fixes[slug].Outcomes = append(fixes[slug].Outcomes, fixOutcomeCount{Outcome: o, Count: byOutcome[o]})
 		}
 	}
+	taskCounts, err := st.TaskCountsSince(ctx, since)
+	if failed("TaskCountsSince", err) {
+		return
+	}
 	if fixDays == nil {
 		fixDays = []fixDayBody{}
+	}
+	taskDays := make([]taskDayBody, 0, len(taskCounts))
+	for _, c := range taskCounts {
+		taskDays = append(taskDays, taskDayBody{Day: c.Day.UTC().Format(time.DateOnly), Count: c.Count})
 	}
 
 	window := "month"
@@ -595,6 +614,7 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 		Attempts:   make([]outcomeDayBody, 0, len(attempts)),
 		Breakdown:  make([]breakdownBody, 0, len(breakdown)),
 		FixesDaily: fixDays,
+		TasksDaily: taskDays,
 	}
 	nameOf := d.teamNamer()
 	for _, t := range byTeam {
