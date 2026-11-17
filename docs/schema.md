@@ -213,6 +213,7 @@ Indexes:
 - `finding_fixes_answer_committed_idx` (`answer_comment_id`) unique where `outcome = 'committed'::text`
 - `finding_fixes_committed_idx` (`finding_id`) unique where `outcome = 'committed'::text`
 - `finding_fixes_team_time_idx` (`team_slug`, `created_at`)
+- `idx_finding_fixes_time` (`created_at`)
 
 Checks:
 

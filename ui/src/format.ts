@@ -220,6 +220,18 @@ export function outcomeWord(outcome: string, reason?: string): string {
     : i18n.t("outcome.skipped");
 }
 
+/** actWord is the pill word of a feed row that is no review (an
+ *  engagement, a fix, a SNAPSHOT task), capitalised like every pill word
+ *  (user, 2026-11-17). A fix's "refused" is Bitbucket's, an engagement's
+ *  the cost cap's: two words for one code. A code this build lacks reads
+ *  as readable() does. */
+export function actWord(act: string, outcome: string): string {
+  const key = act === "fix" && outcome === "refused" ? "refused_fix" : outcome;
+  return Object.hasOwn(en.runs.actOutcome, key)
+    ? i18n.t(`runs.actOutcome.${key as keyof Catalog["runs"]["actOutcome"]}`)
+    : readable(outcome);
+}
+
 /** readable is the one fallback for a code this build has no word for (a
  *  newer binary wrote it): the code with spaces for underscores, capitalised
  *  like every pill word, and a dash for no code at all, so a pill is never

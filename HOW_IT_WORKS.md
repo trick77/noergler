@@ -597,7 +597,11 @@ fix and a review asked by mention as a run instead. SNAPSHOT tasks and
 engagements live in `activity_events`, one row per comment, counted from
 0039 on. Findings, tasks and engagements stack by team; fixes stack
 committed and not committed. A new figure is one more kind, never another
-chart or column. A finding is committed once. The fix call is its own
+chart or column. The Runs page lists the same acts, each its own row: a
+review (its findings and tasks apart), an engagement, a fix request, a
+SNAPSHOT task, filtered by kind and outcome in the browser; an
+engagement's time and cost are its own calls', a fix row shows none (its
+call row names no request). A finding is committed once. The fix call is its own
 `llm_calls` row (`fix`) and counts toward the PR's cost. The
 next review retires a finding noergler committed without a "Fixed in" reply
 and without resolving it: the author resolves the thread after looking.

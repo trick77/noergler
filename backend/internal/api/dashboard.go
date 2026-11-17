@@ -258,6 +258,16 @@ type runRow struct {
 	Tasks     *int      `json:"tasks"`
 	Cost      *string   `json:"cost_usd"`
 	CreatedAt time.Time `json:"created_at"`
+	// Act is what the row is (store.Act*): review, engagement, fix or a
+	// SNAPSHOT task. ID is unique within one act only.
+	Act string `json:"act"`
+	// Detail: an engagement's trigger (mention, reply), a fix's source
+	// (finding, answer, conflict). Commit is a committed fix's.
+	Detail string  `json:"detail,omitempty"`
+	Commit *string `json:"commit,omitempty"`
+	// Unpriced: an engagement with a call the gateway did not price; its
+	// cost is null then, never the priced part alone.
+	Unpriced bool `json:"unpriced,omitempty"`
 }
 
 type runsBody struct {
@@ -302,6 +312,7 @@ func (d Deps) runs(w http.ResponseWriter, r *http.Request) {
 			ReasonMsg: review.SkipReason(a.Reason).Label(),
 			ElapsedMS: a.ElapsedMS, Findings: a.Findings, Tasks: a.Tasks,
 			Cost: usd(a.CostNanoUSD), CreatedAt: a.CreatedAt,
+			Act: a.Act, Detail: a.Detail, Commit: a.Commit, Unpriced: a.Unpriced,
 		})
 	}
 	httpx.WriteJSON(w, http.StatusOK, body)

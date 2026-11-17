@@ -423,8 +423,127 @@ describe("RunsPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Failed" }));
     expect(
-      screen.getByText("No failed runs among the latest 50."),
+      screen.getByText("Nothing failed among the latest 50."),
     ).toBeDefined();
+  });
+
+  // A review whose run row is missing has no figures, which is a dash; an
+  // engagement with an unpriced call reads unpriced, never a partial sum.
+  it("keeps missing figures missing and unpriced engagements unpriced", async () => {
+    serve({
+      runs: {
+        runs: [
+          { ...runs[0], findings: null, cost_usd: "0.100" },
+          {
+            ...runs[0],
+            id: 2,
+            act: "engagement",
+            tag: "PAY/ledger#9",
+            outcome: "answered",
+            detail: "reply",
+            findings: null,
+            cost_usd: null,
+            unpriced: true,
+          },
+        ],
+      },
+    });
+    render(<RunsPage />);
+
+    await screen.findByText("PAY/ledger#9");
+    expect(screen.queryByText(/0 findings/)).toBeNull();
+    expect(screen.getByText("unpriced")).toBeDefined();
+  });
+
+  // Every act its own row (user, 2026-11-17): a review's findings and
+  // tasks apart, an engagement by its trigger, a fix by its source and
+  // commit, a SNAPSHOT task; every pill word starts with a capital.
+  it("lists every act, each its own row, with a kind filter", async () => {
+    const at = new Date().toISOString();
+    const base = {
+      team: "payments",
+      team_name: "Payments",
+      kind: "",
+      created_at: at,
+    };
+    serve({
+      runs: {
+        runs: [
+          { ...runs[0], tasks: 2 },
+          {
+            ...base,
+            id: 1,
+            act: "engagement",
+            tag: "PAY/ledger#5",
+            outcome: "answered",
+            detail: "mention",
+            elapsed_ms: 9100,
+            findings: null,
+            cost_usd: "0.031",
+          },
+          {
+            ...base,
+            id: 1,
+            act: "fix",
+            tag: "PAY/ledger#6",
+            outcome: "committed",
+            detail: "conflict",
+            commit: "abc1234def",
+            elapsed_ms: null,
+            findings: null,
+            cost_usd: null,
+          },
+          {
+            ...base,
+            id: 7,
+            act: "fix",
+            tag: "PAY/ledger#7",
+            outcome: "error",
+            detail: "finding",
+            elapsed_ms: null,
+            findings: null,
+            cost_usd: null,
+          },
+          {
+            ...base,
+            id: 9,
+            act: "task",
+            tag: "PAY/ledger#8",
+            outcome: "posted",
+            elapsed_ms: null,
+            findings: null,
+            cost_usd: null,
+          },
+        ],
+      },
+    });
+    render(<RunsPage />);
+
+    expect(await screen.findByText("6 findings · 2 tasks")).toBeDefined();
+    for (const word of ["Answered", "Committed", "Failed", "Posted"]) {
+      expect(screen.getAllByText(word).some((el) => el.closest("span"))).toBe(
+        true,
+      );
+    }
+    expect(screen.getByText("Tagged")).toBeDefined();
+    expect(screen.getByText("Merge conflict")).toBeDefined();
+    expect(screen.getByText("abc1234")).toBeDefined();
+    expect(screen.getByText("SNAPSHOT dependency")).toBeDefined();
+    expect(screen.getByText("$0.03")).toBeDefined();
+
+    const tile = (label: string) =>
+      screen
+        .getAllByText(label)
+        .map((el) => el.nextElementSibling)
+        .find((el) => el?.className.includes("font-serif"))?.textContent;
+    expect(tile("Engagements")).toBe("1");
+    expect(tile("Fixes")).toBe("2");
+    expect(tile("Failed")).toBe("1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixes" }));
+    expect(screen.getByText("PAY/ledger#6")).toBeDefined();
+    expect(screen.queryByText("PAY/ledger#5")).toBeNull();
+    expect(screen.queryByText("PAY/ledger#1")).toBeNull();
   });
 
   // The skip breakdown is the feed's skips by reason, not a window's.

@@ -47,8 +47,20 @@ export interface Live {
 }
 
 export interface Run {
-  /** The attempt id, the key of its run detail page. */
+  /** The attempt id for a review; for another act its own row's id,
+   *  unique within that act only. */
   id: number;
+  /** What the row is: review, engagement, fix or (a SNAPSHOT) task.
+   *  Absent from an older server: a review. */
+  act?: string;
+  /** An engagement's trigger (mention, reply), a fix's source (finding,
+   *  answer, conflict). */
+  detail?: string;
+  /** A committed fix's commit. */
+  commit?: string;
+  /** An engagement with a call the gateway did not price: cost_usd is
+   *  null then, never the priced part alone. */
+  unpriced?: boolean;
   tag: string;
   team: string;
   team_name: string;

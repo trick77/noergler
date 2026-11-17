@@ -127,6 +127,16 @@ type AttemptRow struct {
 	Findings    *int
 	Tasks       *int
 	CostNanoUSD *int64
+	// Act is what the row is (store.Act*): a review attempt, or another act
+	// in the feed. Kind is a review's only. ID is unique within one Act.
+	Act string
+	// Detail says how an act came about: an engagement's trigger, a fix's
+	// source (finding, answer, conflict). Commit is a committed fix's.
+	Detail string
+	Commit *string
+	// Unpriced is an engagement whose calls the gateway did not all price:
+	// CostNanoUSD is nil then, never the priced part alone.
+	Unpriced bool
 }
 
 // OutcomeCount is one bucket of the outcome breakdown.
