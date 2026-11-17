@@ -98,7 +98,7 @@ export interface Fixes {
 }
 
 /** One team's acts of one kind on one day. The server's kinds:
- *  finding, task, fix_committed, fix_other. */
+ *  finding, task, fix_committed, fix_other, engagement. */
 export interface ActivityDay {
   day: string;
   team: string;
@@ -123,8 +123,12 @@ export interface Metrics {
     team: string;
     team_name: string;
     fixes: Fixes;
-    /** Blocking tasks, never among findings_posted. */
+    /** Blocking tasks, a review's or SNAPSHOT, never among
+     *  findings_posted. */
     tasks: number;
+    /** Comments that tagged noergler or replied to it; a fix request is
+     *  not one. */
+    engagements: number;
   })[];
   daily: {
     day: string;

@@ -2,7 +2,34 @@
 
 # Database schema
 
-19 tables; the diagram is at the end. Go types are the `model.go` structs whose rows they hold.
+20 tables; the diagram is at the end. Go types are the `model.go` structs whose rows they hold.
+
+## activity_events
+
+| Column | Type | Null | Default | PK |
+| --- | --- | --- | --- | --- |
+| `pull_request_id` | bigint | no |  | 1 |
+| `kind` | text | no |  | 2 |
+| `comment_id` | bigint | no |  | 3 |
+| `trigger` | text | yes |  |  |
+| `outcome` | text | yes |  |  |
+| `created_at` | timestamp with time zone | no | `now()` |  |
+
+Foreign keys:
+
+- `pull_request_id` → `pull_requests` (`id`), on delete CASCADE
+
+Indexes:
+
+- `idx_activity_events_time` (`created_at`)
+
+Checks:
+
+- `CONSTRAINT activity_events_check CHECK ((kind = 'engagement'::text) = (trigger IS NOT NULL))`
+- `CONSTRAINT activity_events_check1 CHECK ((kind = 'engagement'::text) = (outcome IS NOT NULL))`
+- `CONSTRAINT activity_events_kind_check CHECK (kind = ANY (ARRAY['snapshot_task'::text, 'engagement'::text]))`
+- `CONSTRAINT activity_events_outcome_check CHECK (outcome = ANY (ARRAY['answered'::text, 'author_only'::text, 'refused'::text, 'failed'::text]))`
+- `CONSTRAINT activity_events_trigger_check CHECK (trigger = ANY (ARRAY['mention'::text, 'reply'::text]))`
 
 ## almanach_calls
 
@@ -723,6 +750,14 @@ In `internal/store`. Totals is the headline figure set over a time window.
 
 ```mermaid
 erDiagram
+    activity_events {
+        bigint pull_request_id PK, FK
+        text kind PK
+        bigint comment_id PK
+        text trigger
+        text outcome
+        timestamp_with_time_zone created_at
+    }
     almanach_calls {
         bigint id PK
         text team_slug
@@ -999,6 +1034,7 @@ erDiagram
         text model
         timestamp_with_time_zone created_at
     }
+    activity_events }o--|| pull_requests : "pull_request_id"
     bot_replies }o--o| findings : "finding_id"
     bot_replies }o--|| pull_requests : "pull_request_id"
     dispute_occurrences }o--|| findings : "finding_id"

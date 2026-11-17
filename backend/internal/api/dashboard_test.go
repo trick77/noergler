@@ -578,12 +578,14 @@ func TestMetricsCarriesActivityPerDay(t *testing.T) {
 		{Day: d1, TeamSlug: "platform", Kind: store.ActivityFinding, Count: 5},
 		{Day: d1, TeamSlug: "platform", Kind: store.ActivityTask, Count: 1},
 		{Day: d1.AddDate(0, 0, 2), TeamSlug: "platform", Kind: store.ActivityTask, Count: 2},
+		{Day: d1.AddDate(0, 0, 2), TeamSlug: "payments", Kind: store.ActivityEngagement, Count: 2},
 	}
 
 	var got struct {
 		ByTeam []struct {
-			Team  string `json:"team"`
-			Tasks int    `json:"tasks"`
+			Team        string `json:"team"`
+			Tasks       int    `json:"tasks"`
+			Engagements int    `json:"engagements"`
 		} `json:"by_team"`
 		Activity []activityDayBody `json:"activity_daily"`
 	}
@@ -591,12 +593,15 @@ func TestMetricsCarriesActivityPerDay(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []activityDayBody{{"2026-11-12", "platform", "finding", 5}, {"2026-11-12", "platform", "task", 1},
-		{"2026-11-14", "platform", "task", 2}}
+		{"2026-11-14", "platform", "task", 2}, {"2026-11-14", "payments", "engagement", 2}}
 	if !slices.Equal(got.Activity, want) {
 		t.Errorf("activity_daily = %+v, want %+v", got.Activity, want)
 	}
-	if len(got.ByTeam) != 1 || got.ByTeam[0].Tasks != 3 {
-		t.Errorf("by_team = %+v, want platform with 3 tasks", got.ByTeam)
+	// payments ran nothing in the window: listed after the ranked teams,
+	// for its engagements.
+	if len(got.ByTeam) != 2 || got.ByTeam[0].Tasks != 3 || got.ByTeam[1].Team != "payments" ||
+		got.ByTeam[1].Engagements != 2 {
+		t.Errorf("by_team = %+v, want platform with 3 tasks, then payments with 2 engagements", got.ByTeam)
 	}
 }
 

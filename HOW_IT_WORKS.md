@@ -588,10 +588,16 @@ hook), or the call failed. Each request is a `finding_fixes` row: the
 metrics page shows, per team beside the findings and tasks, fix requests
 (every ask, its outcomes on hover) and fixes committed. Its Activity card
 charts one kind of act per day, picked by a switch (`?activity=`):
-findings, tasks or fixes, each act under one kind only (`activity_daily`,
-`ActivitySince`). Findings and tasks stack by team; fixes stack committed
-and not committed. A new figure is one more kind, never another chart
-or column. A finding is committed once. The fix call is its own
+findings, tasks (a review's and SNAPSHOT tasks), fixes or engagements,
+each act under one kind only (`activity_daily`, `ActivitySince`). An
+engagement is a comment that tags noergler or replies to one of its
+comments, counted once whatever came of it (answered, only-the-author,
+refused at the cap, failed); a fix or merge-conflict request counts as a
+fix and a review asked by mention as a run instead. SNAPSHOT tasks and
+engagements live in `activity_events`, one row per comment, counted from
+0039 on. Findings, tasks and engagements stack by team; fixes stack
+committed and not committed. A new figure is one more kind, never another
+chart or column. A finding is committed once. The fix call is its own
 `llm_calls` row (`fix`) and counts toward the PR's cost. The
 next review retires a finding noergler committed without a "Fixed in" reply
 and without resolving it: the author resolves the thread after looking.

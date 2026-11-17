@@ -573,6 +573,14 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   `findings_posted` leaves the run's tasks out, `tasks_posted` holds them.
   A task Bitbucket refused went up as a comment and is a finding. riptide's
   `total_findings_count` alone adds tasks back: its consumers read it so.
+  Same for every act the metrics count: a SNAPSHOT task is a task, a fix
+  or merge-conflict request noergler takes on a fix (a `finding_fixes` row,
+  never an engagement too), a review asked by mention a run. One it only
+  answers, never a fix row (not the PR's author, already applied), is an
+  engagement: every comment that tags noergler or replies to it counts
+  once, under one kind. `activity_events` holds one row per Bitbucket
+  comment, so a replayed event or a task taken over never counts twice; a
+  failed engagement handled again takes the later outcome.
 - `llm_calls` = what the AI Gateway reported per call, written after its
   attempt and apart from it (a refused call row never loses the attempt's
   billed cost). Its cost is detail, never summed beside runs/attempts. A lane

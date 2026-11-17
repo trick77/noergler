@@ -237,6 +237,9 @@ type fixTarget struct {
 	done *string
 	// prefix goes before the answer: what the same turn confirmed.
 	prefix string
+	// trigger is how the request reached noergler (store.Engagement*), for
+	// the one answer that is no fix request: "already applied".
+	trigger string
 }
 
 // postFix is a fix request's posting stage, on the worker: validate, commit,
@@ -246,6 +249,9 @@ type fixTarget struct {
 func (r *Reviewer) postFix(ctx context.Context, t *fixTarget) (posted bool) {
 	pick := t.lang.Pick
 	if t.done != nil {
+		// Committed once already, so no second fix row: the answer counts
+		// as an engagement instead, never nowhere.
+		r.recordEngagement(ctx, t.key, t.replyTo, t.trigger, store.EngagementAnswered)
 		return r.postFixAnswer(ctx, t, "", pick("Schon umgesetzt in `", "Already applied in `")+render.ShortSHA(*t.done, 8)+"`.")
 	}
 	outcome, sha, body := r.applyFix(ctx, t)

@@ -217,6 +217,11 @@ func TestFixRequestOnAFindingCommittedAlready(t *testing.T) {
 	if len(h.bb.Replies) != 1 || !strings.Contains(h.bb.Replies[0].Text, "Already applied in `c0ffee12`") {
 		t.Errorf("replies = %+v", h.bb.Replies)
 	}
+	// No second fix row, so the answer counts as an engagement, never
+	// nowhere.
+	if len(h.st.Engagements) != 1 || h.st.Engagements[0].Outcome != store.EngagementAnswered {
+		t.Errorf("engagements = %+v, want the answer counted", h.st.Engagements)
+	}
 }
 
 // Under noergler's own answer the reply is addressed to the bot: the

@@ -120,6 +120,10 @@ type Store interface {
 	// SetSnapshotTasks hold the PR's SNAPSHOT tasks.
 	SnapshotTasks(ctx context.Context, k store.PRKey) (int64, []store.SnapshotTask, error)
 	SetSnapshotTasks(ctx context.Context, prID int64, tasks []store.SnapshotTask) error
+	// RecordSnapshotTasks and RecordEngagement count acts with no table of
+	// their own for the metrics (activity_events), each comment once.
+	RecordSnapshotTasks(ctx context.Context, prID int64, ids []int) error
+	RecordEngagement(ctx context.Context, k store.PRKey, commentID int, trigger, outcome string) (noRow bool, err error)
 	GetSkipState(ctx context.Context, k store.PRKey) (*store.SkipState, error)
 	MarkIgnored(ctx context.Context, k store.PRKey) error
 	MarkStopped(ctx context.Context, k store.PRKey, by string) (int64, error)

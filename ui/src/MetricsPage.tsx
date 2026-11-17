@@ -99,7 +99,7 @@ function writeSpan(span: Span) {
 /** The Activity card's kinds, one view each (user, 2026-11-17): a new
  *  figure is one more kind here, never another chart or column. Findings
  *  the default; the choice rides the URL (?activity=tasks) like the span. */
-const KINDS = ["findings", "tasks", "fixes"] as const;
+const KINDS = ["findings", "tasks", "fixes", "engagements"] as const;
 type Kind = (typeof KINDS)[number];
 function readKind(): Kind {
   const raw = new URLSearchParams(window.location.search).get("activity");
@@ -121,6 +121,7 @@ const SERVER_KINDS: Record<Kind, string[]> = {
   findings: ["finding"],
   tasks: ["task"],
   fixes: ["fix_committed", "fix_other"],
+  engagements: ["engagement"],
 };
 
 /** trailingMean is each day's mean over itself and the six days before.
@@ -769,6 +770,12 @@ export function MetricsPage() {
                       >
                         {t("metrics.fixesCommitted")}
                       </th>
+                      <th
+                        className={thNum}
+                        title={t("metrics.kindNote.engagements")}
+                      >
+                        {t("metrics.kind.engagements")}
+                      </th>
                       <th className={thNum}>{t("metrics.lines")}</th>
                       <th className={thNum}>{t("metrics.cost")}</th>
                     </tr>
@@ -791,6 +798,7 @@ export function MetricsPage() {
                           {row.fixes.requested}
                         </td>
                         <td className={tdNum}>{row.fixes.committed}</td>
+                        <td className={tdNum}>{row.engagements ?? 0}</td>
                         <td className={tdNum} title={linesTitle(row)}>
                           {teamLines(row)}
                         </td>

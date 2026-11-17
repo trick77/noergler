@@ -570,6 +570,9 @@ func (r *Reviewer) checkSnapshotTask(ctx context.Context, pr webhook.PullRequest
 		next = append(next, store.SnapshotTask{ID: t.ID, Keys: keys, Open: t.Open})
 	}
 
+	// counted are the tasks this check posted or took over: the metrics
+	// count each once, as a task (RecordSnapshotTasks keeps one per id).
+	var counted []int
 	var fresh []string
 	for _, h := range hits {
 		if k := h.Key(); !named[k] {
@@ -582,11 +585,13 @@ func (r *Reviewer) checkSnapshotTask(ctx context.Context, pr webhook.PullRequest
 		if id := r.lostTask(openList, known, l, lines); id != 0 {
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: snapshot task %d found open with this text, taken over", prTag, id))
 			next = append(next, store.SnapshotTask{ID: id, Keys: fresh, Open: true})
+			counted = append(counted, id)
 		} else if id, err := r.bitbucket.PostPRTask(ctx, key.Project, key.Repo, key.PRID, text); err != nil {
 			r.log.WarnContext(ctx, fmt.Sprintf("%s: snapshot task: post failed: %v, tried again next run", prTag, err))
 		} else {
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: snapshot task %d posted: %d SNAPSHOT line(s) %s", prTag, id, len(fresh), lineList(lines)))
 			next = append(next, store.SnapshotTask{ID: id, Keys: fresh, Open: true})
+			counted = append(counted, id)
 		}
 	}
 	if slices.EqualFunc(next, tasks, sameTask) {
@@ -605,6 +610,9 @@ func (r *Reviewer) checkSnapshotTask(ctx context.Context, pr webhook.PullRequest
 	if err := r.store.SetSnapshotTasks(wctx, rowID, next); err != nil {
 		r.log.ErrorContext(ctx, fmt.Sprintf("%s: snapshot task: write failed: %v", prTag, err))
 	}
+	// Counted apart from the list above and failing open: a lost count
+	// costs a bar on the metrics page, never a task posted twice.
+	safeDBErr(wctx, r.log, "RecordSnapshotTasks", func() error { return r.store.RecordSnapshotTasks(wctx, rowID, counted) })
 }
 
 // lostTask is noergler's own open SNAPSHOT task naming exactly these

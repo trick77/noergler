@@ -56,7 +56,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		return true, false
 	}
 	text := strings.TrimSpace(comment.Text)
-	mentioned := strings.Contains(strings.ToLower(text), "@"+strings.ToLower(bot))
+	mentioned := mentionsBot(text, bot)
 	ctx, key, prTag, ok := prContext(ctx, payload)
 	if !ok {
 		r.log.ErrorContext(ctx, "Could not extract project/repo from webhook payload")
@@ -140,6 +140,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		}) != nil {
 			r.log.InfoContext(ctx, prTag+": change asked under a finding by someone other than the PR's author: told only the author may")
 			r.reply(ctx, key.Project, key.Repo, pr.ID, comment.ID, authorOnlyReply(r.languageFor(ctx, comment.Author.Name)))
+			r.recordEngagement(ctx, key, comment.ID, store.EngagementReply, store.EngagementAuthorOnly)
 			return true, false
 		}
 		r.log.DebugContext(ctx, fmt.Sprintf("%s: reply under comment %d not answered: not the PR's author", prTag, payload.CommentParentID))
@@ -171,6 +172,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	if mentioned {
 		text = extractQuestion(text, bot)
 	}
+	trigger := engagementTrigger(comment.Text, bot)
 	// "behebe den Merge-Konflikt" under a finding is the PR's conflict, not
 	// this finding: the mention path's, before the model could read it as
 	// a fix request. The author's plain reply too (only the author's
@@ -197,12 +199,14 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 			}
 		}
 		r.setLanguage(ctx, key.Project, key.Repo, pr.ID, comment.ID, prTag, comment.Author.Name, l)
+		r.recordEngagement(ctx, key, comment.ID, trigger, store.EngagementAnswered)
 		return true, false
 	}
 	// "@bot stop reviewing" under a finding is the stop, not a dispute of
 	// it. Only with the mention: a plain reply there is the author's case.
 	if mentioned && stopRequest(text) {
 		r.handleStop(ctx, key, prTag, comment.ID, comment.Author.Name, author, pr.Title, pr.CreatedDate)
+		r.recordEngagement(ctx, key, comment.ID, trigger, store.EngagementAnswered)
 		return true, false
 	}
 	// A thread answered already takes one more call per plain reply, for a
@@ -253,6 +257,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	if !mentioned {
 		if rowID, cumulative, over := r.overCap(ctx, key); over {
 			r.refuseOverCap(ctx, key, prTag, author, "reply on finding "+where, rowID, cumulative, false)
+			r.recordEngagement(ctx, key, comment.ID, trigger, store.EngagementRefused)
 			return notAnswered(atCap)
 		}
 	}
@@ -342,7 +347,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		agentsMD: agentsMD, signalIDs: signalIDs, signalRules: signalRules, counter: counter,
 		name: name, namesOn: r.displayName != nil, lang: l,
 		secondPass: secondPass, fixOnly: fixOnly, fix: fix,
-		threadID: f.BitbucketCommentID, botFixCommit: f.BotFixCommit,
+		threadID: f.BitbucketCommentID, botFixCommit: f.BotFixCommit, trigger: trigger,
 	}
 	infer := func(inferCtx context.Context) { job.res = r.llm.FindingReply(inferCtx, req) }
 	post := func(postCtx context.Context) { r.postFindingReply(postCtx, job) }
@@ -383,6 +388,8 @@ type replyJob struct {
 	fix          *fixPlan
 	threadID     *int
 	botFixCommit *string
+	// trigger is how the reply reached noergler, for its engagement.
+	trigger string
 }
 
 // postFindingReply is the reply's posting stage, on the worker: the answer,
@@ -398,14 +405,16 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 	// Billed whether or not it is posted: the PR's cost counts it.
 	r.recordCommentCall(ctx, j.key, store.CallReply, j.replyTo, res.Cost)
 	r.recordFixCall(ctx, j.key, j.prTag, j.replyTo, res.Fix)
+	engaged := func(outcome string) { r.recordEngagement(ctx, j.key, j.replyTo, j.trigger, outcome) }
 	if res.Outcome != inference.OutcomeOK {
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: reply on finding %s not answered: %s %v", j.prTag, j.where, res.Outcome, res.Err))
+		engaged(store.EngagementFailed)
 		return
 	}
 	if res.Reply.Intent == inference.IntentRequestsFix {
 		t := &fixTarget{key: j.key, team: j.team, project: j.project, repo: j.repo, prID: j.prID, prTag: j.prTag,
 			where: "finding " + j.where, replyTo: j.replyTo, threadID: j.threadID, lang: j.lang,
-			plan: j.fix, res: res.Fix, findingID: j.findingID, done: j.botFixCommit}
+			plan: j.fix, res: res.Fix, findingID: j.findingID, done: j.botFixCommit, trigger: j.trigger}
 		// Nothing posted, nothing stamped: a later reply may try again.
 		if r.postFix(ctx, t) && !j.secondPass {
 			safeDBErr(ctx, r.log, "MarkFindingReplied", func() error { return r.store.MarkFindingReplied(ctx, j.findingID, nil) })
@@ -443,9 +452,11 @@ func (r *Reviewer) postFindingReply(ctx context.Context, j *replyJob) {
 			return
 		}
 		r.log.ErrorContext(ctx, fmt.Sprintf("%s: reply on finding %s failed to post: %v", j.prTag, j.where, err))
+		engaged(store.EngagementFailed)
 		return
 	}
 	r.recordFindingBotReply(ctx, j.key, posted, j.findingID)
+	engaged(store.EngagementAnswered)
 	var stored *string
 	if dispute {
 		d := lang.TruncateRunes(j.text, disputeTextRunes)

@@ -206,25 +206,31 @@ func (r *Reviewer) postAnswerFix(ctx context.Context, j *mentionJob, prefix stri
 			"Umsetzen lasse ich mich nur vom PR-Autor. Wenn er den Vorschlag will, kann er hier ‚setz das um' schreiben.", //nolint:misspell // German "Autor", not a typo of "Author"
 			"Only the PR author can have me apply this. If they want the suggestion, they can reply 'apply it' here."),
 			x.anchor, x.answerID)
+		// No fix row for a request refused here: an engagement, as every
+		// other only-the-author answer.
+		r.recordEngagement(ctx, j.ask.key, j.replyTo, j.trigger, store.EngagementAuthorOnly)
 		return
 	}
 	// The commit message links to the answer applied.
 	r.postFix(ctx, &fixTarget{key: j.ask.key, team: j.team, project: j.project, repo: j.repo, prID: j.prID,
 		prTag: prTag, where: x.where, replyTo: j.replyTo, threadID: &x.answerID, lang: j.lang,
-		plan: x.plan, res: j.res.Fix, answerID: x.answerID, anchor: x.anchor, done: x.done, prefix: prefix})
+		plan: x.plan, res: j.res.Fix, answerID: x.answerID, anchor: x.anchor, done: x.done, prefix: prefix,
+		trigger: j.trigger})
 }
 
 // replyAnswer is reply for the Q&A's answer (source 0) or a reply about
 // answer source: the code line its question sat on is kept with it, so the
 // author can have its suggestion applied from under either.
+// posted reports whether the answer reached the PR.
 func (r *Reviewer) replyAnswer(ctx context.Context, project, repo string, prID, parentID int, text string,
-	anchor *store.BotReplyAnchor, source int) {
+	anchor *store.BotReplyAnchor, source int) (posted bool) {
 	id, ok := r.postReply(ctx, project, repo, prID, parentID, text)
 	if !ok {
-		return
+		return false
 	}
 	key := store.PRKey{Project: project, Repo: repo, PRID: prID}
 	safeDBErr(ctx, r.log, "InsertAnswerBotReply", func() error {
 		return r.store.InsertAnswerBotReply(ctx, key, id, anchor, source)
 	})
+	return true
 }

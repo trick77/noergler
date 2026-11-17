@@ -332,9 +332,12 @@ type teamTotalsBody struct {
 	// Fixes is the team's fix requests in the window: the PR author asked
 	// noergler to apply a finding.
 	Fixes fixesBody `json:"fixes"`
-	// Tasks is the blocking tasks posted on the team's PRs, never among
-	// its findings_posted.
+	// Tasks is the blocking tasks posted on the team's PRs, a review's or
+	// a SNAPSHOT task, never among its findings_posted.
 	Tasks int `json:"tasks"`
+	// Engagements is the comments that tagged noergler or replied to it on
+	// the team's PRs, whatever came of them; a fix request is not one.
+	Engagements int `json:"engagements"`
 }
 
 // fixesBody counts fix requests: committed is the share that landed, the
@@ -576,12 +579,15 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	activity := make([]activityDayBody, 0, len(acts))
-	tasks := map[string]int{}
+	tasks, engagements := map[string]int{}, map[string]int{}
 	for _, c := range acts {
 		activity = append(activity, activityDayBody{Day: c.Day.UTC().Format(time.DateOnly), Team: c.TeamSlug,
 			Kind: c.Kind, Count: c.Count})
-		if c.Kind == store.ActivityTask {
+		switch c.Kind {
+		case store.ActivityTask:
 			tasks[c.TeamSlug] += c.Count
+		case store.ActivityEngagement:
+			engagements[c.TeamSlug] += c.Count
 		}
 	}
 
@@ -611,7 +617,8 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 		if c := fixes[slug]; c != nil {
 			f = *c
 		}
-		return teamTotalsBody{Team: slug, TeamName: nameOf(slug), totalsBody: toTotals(t), Fixes: f, Tasks: tasks[slug]}
+		return teamTotalsBody{Team: slug, TeamName: nameOf(slug), totalsBody: toTotals(t), Fixes: f,
+			Tasks: tasks[slug], Engagements: engagements[slug]}
 	}
 	listed := map[string]bool{}
 	for _, t := range byTeam {
@@ -621,7 +628,8 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 	// A team whose only activity in the window was no run of its own (a fix
 	// request on a PR reviewed earlier) still shows it, with zero totals.
 	var rest []string
-	for _, slug := range slices.Concat(slices.Collect(maps.Keys(fixes)), slices.Collect(maps.Keys(tasks))) {
+	for _, slug := range slices.Concat(slices.Collect(maps.Keys(fixes)), slices.Collect(maps.Keys(tasks)),
+		slices.Collect(maps.Keys(engagements))) {
 		if !listed[slug] {
 			rest = append(rest, slug)
 			listed[slug] = true

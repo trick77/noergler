@@ -237,6 +237,10 @@ func (r *Reviewer) handleConflict(ctx context.Context, payload *webhook.Payload,
 		r.reply(ctx, key.Project, key.Repo, pr.ID, comment.ID, l.Pick(
 			"Merge-Konflikte löse ich nur auf Anfrage des PR-Autors auf.", //nolint:misspell // German "Autors"
 			"I resolve merge conflicts only when the PR's author asks."))
+		// No fix row for a request refused here: the comment counts as an
+		// engagement, as every other only-the-author answer does.
+		r.engageOn(ctx, pr, key, comment.ID, engagementTrigger(comment.Text, r.bitbucket.BotUsername()),
+			store.EngagementAuthorOnly)
 		return false
 	}
 	rowID, cumulative, over := r.overCap(ctx, key)

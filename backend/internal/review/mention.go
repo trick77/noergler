@@ -66,12 +66,17 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	}()
 
 	question := extractQuestion(comment.Text, r.bitbucket.BotUsername())
+	// How the comment reached noergler, for the engagement count: the paths
+	// below that answer it record one, by outcome.
+	trigger := engagementTrigger(comment.Text, r.bitbucket.BotUsername())
+	engaged := func(outcome string) { r.engageOn(ctx, pr, key, comment.ID, trigger, outcome) }
 
 	// "@bot english" sets the commenter's own language: a keyword, decided
 	// by code, never by the model, and no inference call. A setting, not
 	// engagement with the PR, so it does not reactivate an ignored one.
 	if l, ok := languageKeyword(question); ok {
 		r.setLanguage(ctx, project, repo, pr.ID, comment.ID, prTag, comment.Author.Name, l)
+		engaged(store.EngagementAnswered)
 		return false
 	}
 
@@ -80,6 +85,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	// there too).
 	if stopRequest(question) {
 		r.handleStop(ctx, key, prTag, comment.ID, comment.Author.Name, pr.Author.User.Name, pr.Title, pr.CreatedDate)
+		engaged(store.EngagementAnswered)
 		return false
 	}
 
@@ -111,6 +117,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		!r.underQAAnswer(ctx, key, payload.CommentParentID) {
 		r.log.InfoContext(ctx, prTag+": change asked by someone other than the PR's author: told only the author may")
 		r.reply(ctx, project, repo, pr.ID, comment.ID, authorOnlyReply(r.languageFor(ctx, comment.Author.Name)))
+		engaged(store.EngagementAuthorOnly)
 		return false
 	}
 
@@ -131,6 +138,8 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 			// deferred totals line above already logs this scope.
 			r.recordAttempt(ctx, store.Attempt{Key: key, TeamSlug: r.TeamSlug, Kind: store.RunMention,
 				Outcome: "skipped", Reason: string(SkipCostCap)})
+		} else {
+			engaged(store.EngagementRefused)
 		}
 		return false
 	}
@@ -173,10 +182,12 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		r.reply(ctx, project, repo, pr.ID, comment.ID, fmt.Sprintf(l.Pick(
 			"Der Diff dieses PRs ist grösser als %d MiB, zu gross, um Fragen dazu zu beantworten.",
 			"This PR's diff exceeds %d MiB, too large to answer questions about."), tooLarge.Limit/(1024*1024)))
+		engaged(store.EngagementFailed)
 		return false
 	}
 	if err != nil {
 		r.log.ErrorContext(ctx, fmt.Sprintf("Mention Q&A on %s failed: %v", prTag, err))
+		engaged(store.EngagementFailed)
 		return false
 	}
 
@@ -185,6 +196,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		r.log.InfoContext(ctx, prTag+": mention not answered by the model - no reviewable files")
 		r.reply(ctx, project, repo, pr.ID, comment.ID, l.Pick("Dieser PR enthält keine prüfbaren Dateien.",
 			"No reviewable files in this PR."))
+		engaged(store.EngagementFailed)
 		return false
 	}
 
@@ -234,7 +246,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		name: name, namesOn: r.displayName != nil, nameWithheld: byOther, parentName: parentName,
 		ask: &mentionAsk{key: key, prTag: prTag, user: comment.Author.Name, text: question, lang: l,
 			from: pr.FromRef.Branch(), to: pr.ToRef.Branch(), prAuthor: pr.Author.User.Name, underOffer: underOffer},
-		anchor: anchor, source: source, fix: answerFix, team: team, payload: payload,
+		anchor: anchor, source: source, fix: answerFix, team: team, payload: payload, trigger: trigger,
 	}
 	req := inference.MentionRequest{
 		Prompt:       prompt,
@@ -287,6 +299,8 @@ type mentionJob struct {
 	// payload is the mention's: a resolution the tool accepted starts
 	// from it, as a request does.
 	payload *webhook.Payload
+	// trigger is how the comment reached noergler, for its engagement.
+	trigger string
 }
 
 // postMention is the Q&A's posting stage, on the worker. handedOff when it
@@ -301,6 +315,7 @@ func (r *Reviewer) postMention(ctx context.Context, sched Scheduler, j *mentionJ
 	}()
 	project, repo, prID, replyTo := j.project, j.repo, j.prID, j.replyTo
 	result := j.res
+	engaged := func(outcome string) { r.recordEngagement(ctx, j.ask.key, replyTo, j.trigger, outcome) }
 	// The asker's language until a switch is stored, which happens only
 	// with an answer to post: a failed loop leaves the language alone.
 	l := j.lang
@@ -347,6 +362,7 @@ func (r *Reviewer) postMention(ctx context.Context, sched Scheduler, j *mentionJ
 				"vereinfachen, falls sie viel Kontext braucht.",
 			"⚠️ No response from the model within %d minutes. Please try again, or simplify the question "+
 				"if it requires a lot of context."), timeoutMinutes(timeout)))
+		engaged(store.EngagementFailed)
 	case inference.OutcomeTooLarge:
 		r.log.WarnContext(ctx, prTag+": mention prompt too large for the model's context window")
 		reply := inference.MentionTooLargeReply(l)
@@ -354,6 +370,7 @@ func (r *Reviewer) postMention(ctx context.Context, sched Scheduler, j *mentionJ
 			reply = inference.MentionToolOverflowReply(l)
 		}
 		r.replyNotice(ctx, j, reply)
+		engaged(store.EngagementFailed)
 	case inference.OutcomeOK:
 		// An empty answer still gets a reply: a mention is never left
 		// silently unanswered.
@@ -406,6 +423,7 @@ func (r *Reviewer) postMention(ctx context.Context, sched Scheduler, j *mentionJ
 			r.reply(ctx, project, repo, prID, replyTo, prefix+l.Pick(
 				"Das kann ich hier nicht umsetzen. Umsetzen lasse ich mich nur vom PR-Autor, unter einem Finding oder unter meiner Antwort auf eine Frage an einer Code-Zeile.", //nolint:misspell // German "Autor", not a typo of "Author"
 				"I can't apply that here. Only the PR author can have me apply a change, under a finding or under my answer to a question on a line of code."))
+			engaged(store.EngagementAnswered)
 			return
 		}
 		answer := sharpS(l, result.Answer)
@@ -422,10 +440,17 @@ func (r *Reviewer) postMention(ctx context.Context, sched Scheduler, j *mentionJ
 			_, nameState = guardName(answer, j.name, "question", j.namesOn)
 		}
 		answer = prefix + answer
-		r.replyAnswer(ctx, project, repo, prID, replyTo, answer, j.anchor, j.source)
+		// Answered only once the answer is on the PR, as on a finding's
+		// thread: a refused post is a failed engagement.
+		if !r.replyAnswer(ctx, project, repo, prID, replyTo, answer, j.anchor, j.source) {
+			engaged(store.EngagementFailed)
+			return false
+		}
 		r.log.InfoContext(ctx, fmt.Sprintf("Posted Q&A reply on %s (name=%s)", prTag, nameState))
+		engaged(store.EngagementAnswered)
 	default:
 		r.log.ErrorContext(ctx, fmt.Sprintf("Mention Q&A on %s failed: %v", prTag, result.Err))
+		engaged(store.EngagementFailed)
 	}
 	return false
 }
@@ -588,6 +613,49 @@ func (r *Reviewer) recordFixCall(ctx context.Context, key store.PRKey, prTag str
 		r.logCost(ctx, prTag, fix.Cost)
 	}
 	r.recordCommentCall(ctx, key, store.CallFix, commentID, fix.Cost)
+}
+
+// recordEngagement counts the person's comment commentID as an engagement
+// for the metrics (user, 2026-11-17), by what came of it. Fail open: a
+// missed row costs a bar on the metrics page, never an answer. Never for a
+// fix or merge-conflict request (a finding_fixes row) nor a review asked by
+// mention (a run): each act counts under one kind.
+// It reports a PR without a row, which counted nothing; false on a failed
+// write, logged, so nobody writes a row for it.
+func (r *Reviewer) recordEngagement(ctx context.Context, key store.PRKey, commentID int, trigger, outcome string) (noRow bool) {
+	if r.store == nil {
+		return false
+	}
+	return safeDB(ctx, r.log, "RecordEngagement", func() (bool, error) {
+		return r.store.RecordEngagement(ctx, key, commentID, trigger, outcome)
+	})
+}
+
+// mentionsBot tells a comment that tags noergler: the one test the routing
+// (HandleFindingReply) and the engagement's trigger share, so the two never
+// drift apart.
+func mentionsBot(text, bot string) bool {
+	return strings.Contains(strings.ToLower(text), "@"+strings.ToLower(bot))
+}
+
+// engagementTrigger is how a comment reached noergler: it tags noergler, or
+// it replies to one of noergler's comments without the tag.
+func engagementTrigger(text, bot string) string {
+	if mentionsBot(text, bot) {
+		return store.EngagementMention
+	}
+	return store.EngagementReply
+}
+
+// engageOn is recordEngagement for a comment on a PR that may have no row
+// yet (a mention on a PR never reviewed): without one, the row is written,
+// as the Q&A writes it, and the comment counted then. One write when the
+// row exists, the common case.
+func (r *Reviewer) engageOn(ctx context.Context, pr webhook.PullRequest, key store.PRKey, commentID int, trigger, outcome string) {
+	if r.recordEngagement(ctx, key, commentID, trigger, outcome) {
+		r.ensurePRRow(ctx, key, pr.Author.User.Name, pr.Title, pr.CreatedDate)
+		r.recordEngagement(ctx, key, commentID, trigger, outcome)
+	}
 }
 
 // recordBotReply keeps the id of a reply the bot posted. Fail open: a

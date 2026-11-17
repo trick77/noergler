@@ -439,6 +439,12 @@ type fakeStore struct {
 	// botReplies serves BotReplyByComment; BotReplies records InsertBotReply.
 	botReplies map[int]*store.BotReply
 	BotReplies []store.BotReply
+	// SnapshotCounted records RecordSnapshotTasks, Engagements
+	// RecordEngagement, each comment once as the table keeps it.
+	SnapshotCounted []int
+	Engagements     []engagement
+	// noPRRow makes RecordEngagement see no PR row until an upsert.
+	noPRRow bool
 	// Fixes records RecordFindingFix; answerFixErr fails AnswerFixCommit.
 	Fixes        []store.FindingFix
 	answerFixErr error
@@ -620,6 +626,49 @@ func (f *fakeStore) SetSnapshotTasks(_ context.Context, _ int64, tasks []store.S
 	f.snapshotTasks = tasks
 	f.SnapshotTaskSets++
 	return nil
+}
+
+// engagement is one RecordEngagement call.
+type engagement struct {
+	CommentID        int
+	Trigger, Outcome string
+}
+
+func (f *fakeStore) RecordSnapshotTasks(_ context.Context, _ int64, ids []int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if !slices.Contains(f.SnapshotCounted, id) {
+			f.SnapshotCounted = append(f.SnapshotCounted, id)
+		}
+	}
+	return nil
+}
+
+func (f *fakeStore) RecordEngagement(_ context.Context, _ store.PRKey, commentID int, trigger, outcome string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return false, err
+	}
+	// noPRRow: the PR has no row until something upserts one.
+	if f.noPRRow && len(f.Upserts) == 0 {
+		return true, nil
+	}
+	for i, e := range f.Engagements {
+		if e.CommentID == commentID {
+			// As the table: a failure handled again takes the later outcome.
+			if e.Outcome == store.EngagementFailed {
+				f.Engagements[i].Outcome = outcome
+			}
+			return false, nil
+		}
+	}
+	f.Engagements = append(f.Engagements, engagement{commentID, trigger, outcome})
+	return false, nil
 }
 
 func (f *fakeStore) GetSummaryComment(context.Context, int64) (*store.SummaryComment, error) {

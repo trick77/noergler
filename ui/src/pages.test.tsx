@@ -128,6 +128,7 @@ const metrics: Metrics = {
         ],
       },
       tasks: 1,
+      engagements: 4,
     },
   ],
   daily: [
@@ -160,6 +161,7 @@ const metrics: Metrics = {
     { day: "2026-09-02", team: "payments", kind: "task", count: 1 },
     { day: "2026-09-02", team: "payments", kind: "fix_committed", count: 3 },
     { day: "2026-09-02", team: "payments", kind: "fix_other", count: 2 },
+    { day: "2026-09-02", team: "payments", kind: "engagement", count: 4 },
   ],
 };
 
@@ -575,17 +577,18 @@ describe("MetricsPage", () => {
       .getAllByRole("columnheader")
       .map((h) => h.textContent);
     const at = headers.indexOf("Findings");
-    expect(headers.slice(at, at + 4)).toEqual([
+    expect(headers.slice(at, at + 5)).toEqual([
       "Findings",
       "Tasks",
       "Fix requests",
       "Fixes committed",
+      "Engagements",
     ]);
     const row = screen.getAllByRole("row").at(-1) as HTMLElement;
     const cells = within(row)
       .getAllByRole("cell")
       .map((c) => c.textContent);
-    expect(cells.slice(at, at + 4)).toEqual(["5", "1", "5", "3"]);
+    expect(cells.slice(at, at + 5)).toEqual(["5", "1", "5", "3", "4"]);
     const requests = within(row).getAllByRole("cell")[at + 2];
     expect(requests.getAttribute("title")).toBe(
       "3 committed\n2 no write permission",
@@ -612,6 +615,12 @@ describe("MetricsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Fixes" }));
     expect(await screen.findByLabelText(/^Fixes per day for /)).toBeDefined();
     expect(screen.getByText("Not committed")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Engagements" }));
+    expect(
+      await screen.findByLabelText(/^Engagements per day for /),
+    ).toBeDefined();
+    expect(window.location.search).toBe("?activity=engagements");
     window.history.replaceState({}, "", "/metrics");
   });
 
