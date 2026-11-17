@@ -84,7 +84,7 @@ func (s *Store) RecentAttempts(ctx context.Context, team string, outcome Attempt
 	return queryAll(ctx, s.pool, `
 		SELECT a.id, a.team_slug, a.project_key, a.repo_slug, a.pr_id, a.kind,
 		       a.outcome, COALESCE(a.reason, ''), a.elapsed_ms, a.created_at,
-		       r.findings_posted, r.cost_nano_usd
+		       r.findings_posted, r.tasks_posted, r.cost_nano_usd
 		  FROM review_attempts a
 		  LEFT JOIN review_runs r ON r.id = a.review_run_id
 		 WHERE ($1 = '' OR a.team_slug = $1)
@@ -96,7 +96,7 @@ func (s *Store) RecentAttempts(ctx context.Context, team string, outcome Attempt
 		func(row pgx.CollectableRow, a *AttemptRow) error {
 			return row.Scan(&a.ID, &a.TeamSlug, &a.Key.Project, &a.Key.Repo, &a.Key.PRID,
 				&a.Kind, &a.Outcome, &a.Reason, &a.ElapsedMS, &a.CreatedAt,
-				&a.Findings, &a.CostNanoUSD)
+				&a.Findings, &a.Tasks, &a.CostNanoUSD)
 		})
 }
 

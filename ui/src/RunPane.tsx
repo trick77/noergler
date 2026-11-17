@@ -173,6 +173,13 @@ export function RunPane({ token, n }: { token: string; n: number }) {
             label={t("run.findings")}
             value={d.run ? d.run.findings_posted : "—"}
           >
+            {/* Beside the findings, never in them: a post is a finding or
+                a task (user, 2026-11-17). */}
+            {(d.run?.tasks_posted ?? 0) > 0 && (
+              <div className="mt-0.5 text-[12px] text-faint">
+                {t("run.tasksPosted", { count: d.run?.tasks_posted })}
+              </div>
+            )}
             {d.fixed.length > 0 && (
               <div className="mt-0.5 text-[12px] text-faint">
                 {t("run.fixedEarlier", { count: d.fixed.length })}

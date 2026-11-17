@@ -222,6 +222,15 @@ describe("RunPane", () => {
     }
   });
 
+  // A post is a finding or a task (user, 2026-11-17): the tile counts the
+  // findings and names the tasks beside them.
+  it("names the run's tasks beside its findings", async () => {
+    serve(RUN, { ...detail, run: { ...detail.run, tasks_posted: 2 } });
+    render(<RunPane token={TOK} n={2} />);
+
+    expect(await screen.findByText("plus 2 blocking tasks")).toBeDefined();
+  });
+
   // The headline only: the full text is on the PR, behind the link.
   it("shows a finding's headline and links its comment", async () => {
     window.history.replaceState({}, "", `/${RUN}#findings`);

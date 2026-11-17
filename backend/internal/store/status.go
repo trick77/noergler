@@ -38,9 +38,9 @@ func (s *Store) PRStatus(ctx context.Context, k PRKey, team string) (*PRStatus, 
 		}
 		var r RunBrief
 		err := s.pool.QueryRow(ctx, `
-			SELECT created_at, kind, incremental, findings_posted, model_label FROM review_runs
+			SELECT created_at, kind, incremental, findings_posted, tasks_posted, model_label FROM review_runs
 			WHERE pull_request_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1`, id).
-			Scan(&r.At, &r.Kind, &r.Incremental, &r.Findings, &r.ModelLabel)
+			Scan(&r.At, &r.Kind, &r.Incremental, &r.Findings, &r.Tasks, &r.ModelLabel)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
 		}

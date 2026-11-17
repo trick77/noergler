@@ -421,6 +421,7 @@ Go types:
 | `created_at` | timestamp with time zone | no | `now()` |  |
 | `reviewed_lines_added` | integer | yes |  |  |
 | `reviewed_lines_removed` | integer | yes |  |  |
+| `tasks_posted` | integer | no | `0` |  |
 
 Foreign keys:
 
@@ -940,6 +941,7 @@ erDiagram
         timestamp_with_time_zone created_at
         integer reviewed_lines_added
         integer reviewed_lines_removed
+        integer tasks_posted
     }
     run_details {
         bigint attempt_id PK, FK

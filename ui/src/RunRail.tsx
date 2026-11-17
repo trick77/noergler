@@ -191,6 +191,9 @@ function RunEntry({
       {r.run && (
         <div className="mt-1 hidden flex-wrap gap-x-2.5 font-mono text-[12px] text-faint tabular-nums lg:flex">
           <span>{t("pr.railNew", { count: r.run.findings_posted })}</span>
+          {(r.run.tasks_posted ?? 0) > 0 && (
+            <span>{t("pr.railTasks", { count: r.run.tasks_posted })}</span>
+          )}
           <span>{t("pr.railFixed", { count: r.fixed })}</span>
           <span>{duration(r.elapsed_ms)}</span>
           {r.cost_usd !== null && <span>{money(r.cost_usd)}</span>}

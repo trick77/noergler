@@ -123,7 +123,9 @@ type AttemptRow struct {
 	// Findings and CostNanoUSD come from the joined run. Both nil when the
 	// attempt produced none, and CostNanoUSD is nil for an unpriced run
 	// too: the two cases are distinguished by Outcome, never by a zero.
+	// Tasks is the run's blocking tasks, never among its Findings.
 	Findings    *int
+	Tasks       *int
 	CostNanoUSD *int64
 }
 
@@ -512,6 +514,7 @@ type RunFacts struct {
 	CompletionTokens int64
 	CostNanoUSD      *int64
 	FindingsPosted   int
+	TasksPosted      int
 	LinesAdded       int
 	LinesRemoved     int
 	FilesChanged     int
@@ -616,6 +619,7 @@ type RunBrief struct {
 	Kind        RunKind
 	Incremental bool
 	Findings    int
+	Tasks       int
 	ModelLabel  string
 }
 

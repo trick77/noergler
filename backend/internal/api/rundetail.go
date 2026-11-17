@@ -60,6 +60,7 @@ type runFactsBody struct {
 	CachedTokens     int64  `json:"cached_tokens"`
 	CompletionTokens int64  `json:"completion_tokens"`
 	FindingsPosted   int    `json:"findings_posted"`
+	TasksPosted      int    `json:"tasks_posted"`
 	LinesAdded       int    `json:"lines_added"`
 	LinesRemoved     int    `json:"lines_removed"`
 	FilesChanged     int    `json:"files_changed"`
@@ -72,7 +73,7 @@ func runFacts(f *store.RunFacts) *runFactsBody {
 	return &runFactsBody{
 		Incremental: f.Incremental, FromCommit: f.FromCommit, ToCommit: f.ToCommit, Model: f.ModelLabel,
 		PromptTokens: f.PromptTokens, CachedTokens: f.CachedTokens, CompletionTokens: f.CompletionTokens,
-		FindingsPosted: f.FindingsPosted, LinesAdded: f.LinesAdded, LinesRemoved: f.LinesRemoved,
+		FindingsPosted: f.FindingsPosted, TasksPosted: f.TasksPosted, LinesAdded: f.LinesAdded, LinesRemoved: f.LinesRemoved,
 		FilesChanged: f.FilesChanged,
 	}
 }

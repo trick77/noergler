@@ -273,8 +273,10 @@ the check is a plain comment that does not name the rule. Nothing is
 dropped for its claim. Each claim is one log line (rule, confidence,
 outcome) and its rule text and outcome are kept on the finding's row.
 The task blocks the merge where the repo's "incomplete tasks" merge check
-is on, and the summary counts and marks open tasks. A task is a finding:
-deduped like one, so one the author resolved is never posted again;
+is on, and the summary counts and marks open tasks. Counted, a task is a
+task and never a finding: the run's `findings_posted` leaves it out, its
+`tasks_posted` holds it, and every page shows the two apart (riptide's
+total adds them back). Handled, a task is a finding: deduped like one, so one the author resolved is never posted again;
 resolved, it is settled like a resolved thread; a `fixed` claim on it
 replies and resolves the task, even when the reply failed; a fix
 noergler committed itself resolves its task too, though it leaves the

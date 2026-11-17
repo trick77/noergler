@@ -254,6 +254,7 @@ type runRow struct {
 	ReasonMsg string    `json:"reason_label,omitempty"`
 	ElapsedMS *int64    `json:"elapsed_ms"`
 	Findings  *int      `json:"findings"`
+	Tasks     *int      `json:"tasks"`
 	Cost      *string   `json:"cost_usd"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -298,7 +299,7 @@ func (d Deps) runs(w http.ResponseWriter, r *http.Request) {
 			ID: a.ID, Tag: a.Key.Tag(), Team: a.TeamSlug, TeamName: nameOf(a.TeamSlug), Kind: string(a.Kind),
 			Outcome: a.Outcome, Reason: a.Reason,
 			ReasonMsg: review.SkipReason(a.Reason).Label(),
-			ElapsedMS: a.ElapsedMS, Findings: a.Findings,
+			ElapsedMS: a.ElapsedMS, Findings: a.Findings, Tasks: a.Tasks,
 			Cost: usd(a.CostNanoUSD), CreatedAt: a.CreatedAt,
 		})
 	}

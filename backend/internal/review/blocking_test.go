@@ -183,6 +183,25 @@ func TestRefusedTaskFallsBackToAComment(t *testing.T) {
 	if got := deref(h.st.Findings[0].BlockingOutcome); got != string(inference.BlockingTaskFailed) {
 		t.Errorf("outcome = %q", got)
 	}
+	if run := h.st.Runs[0]; run.FindingsPosted != 1 || run.TasksPosted != 0 {
+		t.Errorf("run = %d findings, %d tasks: a task posted as a comment is a finding", run.FindingsPosted, run.TasksPosted)
+	}
+}
+
+// A post is a finding or a task, never both (user, 2026-11-17): the run
+// counts each once, in its own figure.
+func TestRunCountsTasksApartFromFindings(t *testing.T) {
+	plain := finding("a.go", 2, "issue", "plain")
+	h := blockingHarness(t, plain, marked("B1", 95, "controller runs SQL"))
+
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if len(h.bb.InlineTasks) != 1 || len(h.bb.Inline) != 1 {
+		t.Fatalf("tasks = %d, comments = %d", len(h.bb.InlineTasks), len(h.bb.Inline))
+	}
+	if run := h.st.Runs[0]; run.FindingsPosted != 1 || run.TasksPosted != 1 {
+		t.Errorf("run = %d findings, %d tasks, want 1 and 1", run.FindingsPosted, run.TasksPosted)
+	}
 }
 
 // Any other failure may hide a task Bitbucket created: no comment beside

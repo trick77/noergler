@@ -568,6 +568,11 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 
 - `review_runs` = successes only; failures and skips are `review_attempts`,
   written fail-open. A mention writes no attempt.
+- A post is a finding or a blocking task, never both, in every count (user,
+  2026-11-17: "entweder is es ein finding oder ein blocking task"):
+  `findings_posted` leaves the run's tasks out, `tasks_posted` holds them.
+  A task Bitbucket refused went up as a comment and is a finding. riptide's
+  `total_findings_count` alone adds tasks back: its consumers read it so.
 - `llm_calls` = what the AI Gateway reported per call, written after its
   attempt and apart from it (a refused call row never loses the attempt's
   billed cost). Its cost is detail, never summed beside runs/attempts. A lane

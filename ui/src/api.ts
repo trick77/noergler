@@ -58,6 +58,9 @@ export interface Run {
   reason_label?: string;
   elapsed_ms: number | null;
   findings: number | null;
+  /** The run's blocking tasks, never among its findings. Absent from an
+   *  older server. */
+  tasks?: number | null;
   // A decimal STRING, or null for an unpriced run. Never a number: an
   // unpriced run is not a free one, and a float would round the money.
   cost_usd: string | null;
@@ -204,7 +207,10 @@ export interface RunFacts {
   prompt_tokens: number;
   cached_tokens: number;
   completion_tokens: number;
+  /** Inline comments only: a post is a finding or a task, never both. */
   findings_posted: number;
+  /** Absent from an older server. */
+  tasks_posted?: number;
   lines_added: number;
   lines_removed: number;
   files_changed: number;

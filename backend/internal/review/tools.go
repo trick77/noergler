@@ -300,6 +300,7 @@ type prStatusRun struct {
 	Kind        string `json:"kind"`
 	Incremental bool   `json:"incremental"`
 	Findings    int    `json:"findings_posted"`
+	Tasks       int    `json:"tasks_posted"`
 	Model       string `json:"model"`
 }
 
@@ -340,7 +341,7 @@ func (r *Reviewer) prStatus(ctx context.Context, ask *mentionAsk) any {
 	}
 	if lr := st.LastRun; lr != nil {
 		v.LastRun = &prStatusRun{At: lr.At.UTC().Format(time.RFC3339), Kind: string(lr.Kind),
-			Incremental: lr.Incremental, Findings: lr.Findings, Model: lr.ModelLabel}
+			Incremental: lr.Incremental, Findings: lr.Findings, Tasks: lr.Tasks, Model: lr.ModelLabel}
 	}
 	for _, a := range st.Attempts {
 		v.Attempts = append(v.Attempts, prStatusAttempt{At: a.At.UTC().Format(time.RFC3339), Kind: string(a.Kind),

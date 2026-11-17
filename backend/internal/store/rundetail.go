@@ -63,7 +63,7 @@ func (s *Store) PRPage(ctx context.Context, token string) (pg PRPage, ok bool, e
 		SELECT n, total, all_elapsed, all_prompt, all_cached, all_completion,
 		       kind, outcome, reason, elapsed_ms, created_at, cost,
 		       run_id, incremental, from_commit, to_commit, model_label, prompt_tokens, cached_tokens,
-		       completion_tokens, run_cost, findings_posted, lines_added, lines_removed, files_changed, detail
+		       completion_tokens, run_cost, findings_posted, tasks_posted, lines_added, lines_removed, files_changed, detail
 		  FROM (
 		SELECT row_number() OVER (ORDER BY a.created_at, a.id) AS n, count(*) OVER () AS total,
 		       COALESCE(sum(a.elapsed_ms) OVER (), 0) AS all_elapsed,
@@ -73,7 +73,7 @@ func (s *Store) PRPage(ctx context.Context, token string) (pg PRPage, ok bool, e
 		       a.kind, a.outcome, COALESCE(a.reason, '') AS reason, a.elapsed_ms, a.created_at,
 		       COALESCE(r.cost_nano_usd, a.cost_nano_usd) AS cost,
 		       r.id AS run_id, r.incremental, r.from_commit, r.to_commit, r.model_label, r.prompt_tokens,
-		       r.cached_tokens, r.completion_tokens, r.cost_nano_usd AS run_cost, r.findings_posted,
+		       r.cached_tokens, r.completion_tokens, r.cost_nano_usd AS run_cost, r.findings_posted, r.tasks_posted,
 		       r.lines_added, r.lines_removed, r.files_changed,
 		       -- The three parts the page reads, not the whole record.
 		       CASE WHEN d.detail IS NOT NULL THEN jsonb_build_object('stages', d.detail->'stages',
@@ -96,11 +96,11 @@ func (s *Store) PRPage(ctx context.Context, token string) (pg PRPage, ok bool, e
 		var inc *bool
 		var from, to, model *string
 		var prompt, cached, completion, runCost *int64
-		var posted, added, removed, files *int
+		var posted, tasks, added, removed, files *int
 		var raw []byte
 		if err := rows.Scan(&r.N, &total, &pg.Totals.ElapsedMS, &pg.Totals.PromptTokens, &pg.Totals.CachedTokens,
 			&pg.Totals.CompletionTokens, &r.Kind, &r.Outcome, &r.Reason, &r.ElapsedMS, &r.CreatedAt, &r.CostNanoUSD,
-			&runID, &inc, &from, &to, &model, &prompt, &cached, &completion, &runCost, &posted,
+			&runID, &inc, &from, &to, &model, &prompt, &cached, &completion, &runCost, &posted, &tasks,
 			&added, &removed, &files, &raw); err != nil {
 			return PRPage{}, false, err
 		}
@@ -108,7 +108,7 @@ func (s *Store) PRPage(ctx context.Context, token string) (pg PRPage, ok bool, e
 		if runID != nil {
 			r.Run = &RunFacts{ID: *runID, Incremental: *inc, FromCommit: deref(from), ToCommit: deref(to),
 				ModelLabel: deref(model), PromptTokens: *prompt, CachedTokens: *cached, CompletionTokens: *completion,
-				CostNanoUSD: runCost, FindingsPosted: *posted, LinesAdded: *added, LinesRemoved: *removed,
+				CostNanoUSD: runCost, FindingsPosted: *posted, TasksPosted: *tasks, LinesAdded: *added, LinesRemoved: *removed,
 				FilesChanged: *files}
 		}
 		// No record, one without the three parts, or one that does not decode
@@ -173,10 +173,10 @@ func (s *Store) PRRun(ctx context.Context, token string, n int) (d RunDetail, ok
 		var from, to *string
 		err = s.pool.QueryRow(ctx, `
 			SELECT id, incremental, from_commit, to_commit, model_label, prompt_tokens, cached_tokens,
-			       completion_tokens, cost_nano_usd, findings_posted, lines_added, lines_removed, files_changed
+			       completion_tokens, cost_nano_usd, findings_posted, tasks_posted, lines_added, lines_removed, files_changed
 			  FROM review_runs WHERE id = $1`, *runID).Scan(
 			&r.ID, &r.Incremental, &from, &to, &r.ModelLabel, &r.PromptTokens, &r.CachedTokens,
-			&r.CompletionTokens, &r.CostNanoUSD, &r.FindingsPosted, &r.LinesAdded, &r.LinesRemoved, &r.FilesChanged)
+			&r.CompletionTokens, &r.CostNanoUSD, &r.FindingsPosted, &r.TasksPosted, &r.LinesAdded, &r.LinesRemoved, &r.FilesChanged)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return RunDetail{}, false, err
 		}

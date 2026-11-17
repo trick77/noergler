@@ -328,9 +328,12 @@ type Run struct {
 	CompletionTokens int64
 	// CostNanoUSD is nil when the gateway reported no cost: the run counts,
 	// its price does not (fail open).
-	CostNanoUSD    *int64
-	ElapsedMS      int64
+	CostNanoUSD *int64
+	ElapsedMS   int64
+	// FindingsPosted is the inline comments the run posted, its tasks not
+	// among them: a post is a finding or a task (TasksPosted), never both.
 	FindingsPosted int
+	TasksPosted    int
 	LinesAdded     int
 	LinesRemoved   int
 	FilesChanged   int
@@ -365,12 +368,12 @@ func (s *Store) InsertRun(ctx context.Context, r Run) (int64, error) {
 		if err := tx.QueryRow(ctx, `
 		INSERT INTO review_runs (pull_request_id, kind, incremental, from_commit, to_commit, model_label,
 			prompt_tokens, cached_tokens, completion_tokens, cost_nano_usd, elapsed_ms, findings_posted,
-			lines_added, lines_removed, files_changed, reviewed_lines_added, reviewed_lines_removed)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+			lines_added, lines_removed, files_changed, reviewed_lines_added, reviewed_lines_removed, tasks_posted)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 		RETURNING id`,
 			r.PullRequestID, string(r.Kind), r.Incremental, r.FromCommit, r.ToCommit, r.ModelLabel,
 			r.PromptTokens, r.CachedTokens, r.CompletionTokens, r.CostNanoUSD, r.ElapsedMS, r.FindingsPosted,
-			r.LinesAdded, r.LinesRemoved, r.FilesChanged, r.ReviewedAdded, r.ReviewedRemoved,
+			r.LinesAdded, r.LinesRemoved, r.FilesChanged, r.ReviewedAdded, r.ReviewedRemoved, r.TasksPosted,
 		).Scan(&id); err != nil {
 			return err
 		}
@@ -698,7 +701,10 @@ func (s *Store) ClaimRollup(ctx context.Context, k PRKey, final RollupFinal) (*R
 			RETURNING p.id, p.created_at, p.final_source_commit, p.final_merge_commit, p.final_lines_added, p.final_lines_removed, p.final_files_changed
 		)
 		SELECT COUNT(r.id), COALESCE(SUM(r.prompt_tokens), 0), COALESCE(SUM(r.completion_tokens), 0),
-			COALESCE(SUM(r.elapsed_ms), 0), COALESCE(SUM(r.findings_posted), 0),
+			-- Tasks added back: riptide's total_findings_count counted every
+			-- posted comment before 0037 split tasks off, and its consumers
+			-- read it so.
+			COALESCE(SUM(r.elapsed_ms), 0), COALESCE(SUM(r.findings_posted + r.tasks_posted), 0),
 			(SELECT `+prCostSQL+` FROM pull_requests p WHERE p.id = c.id),
 			ARRAY(SELECT DISTINCT m FROM unnest(array_agg(r.model_label)) AS m WHERE m IS NOT NULL ORDER BY m),
 			COALESCE(MIN(r.created_at), c.created_at),

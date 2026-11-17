@@ -606,7 +606,8 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 	// cannot be interleaved ahead of it. The comments are already on the PR
 	// by this point, so a crash before InsertRun leaves them there with no
 	// finding row.
-	runID := r.recordRun(ctx, prReviewID, result, sourceCommit, plan, elapsed, postedCount)
+	tasks := postedTasks(findings, postedIDs)
+	runID := r.recordRun(ctx, prReviewID, result, sourceCommit, plan, elapsed, postedCount-tasks, tasks)
 	plan.runID = runID
 	r.recordFindings(ctx, prReviewID, runID, findings, postedIDs)
 	r.retireFixed(ctx, plan, fixed, runID)
@@ -1140,6 +1141,20 @@ func sortAndLimit(findings []inference.ReviewFinding, maxComments int) ([]infere
 	return sorted, truncated
 }
 
+// postedTasks counts the findings that reached the PR as a Bitbucket task.
+// A post is a finding or a task, never both (user, 2026-11-17): the run's
+// findings_posted leaves these out. One Bitbucket refused went up as a
+// comment (BlockingTaskFailed) and counts as a finding.
+func postedTasks(findings []inference.ReviewFinding, ids []int) int {
+	n := 0
+	for i, f := range findings {
+		if ids[i] != 0 && f.IsTask() {
+			n++
+		}
+	}
+	return n
+}
+
 // postInlineComments posts one comment per finding.
 //
 // ids is parallel to findings and holds the Bitbucket comment id, or 0 where
@@ -1184,7 +1199,7 @@ func (r *Reviewer) postInlineComments(ctx context.Context, l lang.Lang, labels [
 
 // recordRun writes the run row and returns its id.
 func (r *Reviewer) recordRun(ctx context.Context, prReviewID int64, result inference.ReviewResult,
-	sourceCommit string, plan *reviewPlan, elapsed time.Duration, postedCount int) int64 {
+	sourceCommit string, plan *reviewPlan, elapsed time.Duration, findingsPosted, tasksPosted int) int64 {
 	if prReviewID == 0 {
 		return 0
 	}
@@ -1213,7 +1228,8 @@ func (r *Reviewer) recordRun(ctx context.Context, prReviewID int64, result infer
 			CompletionTokens: result.Cost.CompletionTokens,
 			CostNanoUSD:      result.Cost.NanoUSD,
 			ElapsedMS:        elapsed.Milliseconds(),
-			FindingsPosted:   postedCount,
+			FindingsPosted:   findingsPosted,
+			TasksPosted:      tasksPosted,
 			LinesAdded:       plan.diffAdded,
 			LinesRemoved:     plan.diffRemoved,
 			FilesChanged:     plan.totalFiles,
