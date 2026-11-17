@@ -15,11 +15,6 @@ export interface Series {
   /** A CSS variable string, never a hex literal. */
   color: string;
   values: number[];
-  /** Bars only: series sharing a key stack; each key is its own bar,
-   *  side by side in the day's slot, in order of first appearance. Two
-   *  things that must not add up (tasks beside fix requests) get two keys.
-   *  Absent: one stack of every series. */
-  stack?: string;
 }
 
 export type Mark = "line" | "area" | "bar";
@@ -54,9 +49,6 @@ export interface ChartProps {
 const PAD = { l: 52, r: 14, t: 12, b: 22 };
 // Room right of the plot for a trend's end label, up to "$1234.56".
 const TREND_R = 64;
-// Between two stacks of one day: apart enough to read as two bars, close
-// enough to read as one day.
-const STACK_GAP = 3;
 // Draw-in: the whole row of bars starts within STAGGER_MS, however many
 // days; each stack segment above the first a SEGMENT_MS beat later.
 const STAGGER_MS = 400;
@@ -106,43 +98,19 @@ export function monotonePath(pts: [number, number][]): string {
   return d;
 }
 
-/** stackTops turns a series list into cumulative bar segments, one stack
- *  per `stack` key: each series' tops sit on the series before it in the
- *  same stack. */
+/** stackTops turns a series list into cumulative bar segments: each
+ *  series' tops sit on the series before it. One stack a day: two things
+ *  that must not add up go in two charts, never two stacks of one (the
+ *  Activity card's switch, user, 2026-11-17). */
 export function stackTops(series: Series[]): number[][] {
   const tops: number[][] = [];
-  const below = new Map<string, number[]>();
+  let below: number[] = [];
   for (const s of series) {
-    const under = below.get(s.stack ?? "") ?? [];
-    const top = s.values.map((v, i) => (under[i] ?? 0) + v);
+    const top = s.values.map((v, i) => (below[i] ?? 0) + v);
     tops.push(top);
-    below.set(s.stack ?? "", top);
+    below = top;
   }
   return tops;
-}
-
-/** barLayout sizes the bars of one band: one bar per stack key. One stack
- *  keeps the width it always had; more share a wider slot, never thinner
- *  than 1px (a negative width is not drawn at all). A day's bars centre on
- *  its label, counting only the stacks that have something that day, so a
- *  lone fix stack does not sit off its date beside an empty task slot. */
-export function barLayout(series: Series[], band: number) {
-  const stacks = [...new Set(series.map((s) => s.stack ?? ""))];
-  const k = stacks.length;
-  const slotW =
-    k === 1 ? Math.min(26, band * 0.62) : Math.min(22 * k, band * 0.86);
-  const gap = k === 1 ? 0 : Math.min(STACK_GAP, slotW * 0.1);
-  const bw = Math.max(1, (slotW - gap * (k - 1)) / k);
-  /** Left edge of stack key's bar on day i, relative to the band centre. */
-  const offset = (key: string, i: number) => {
-    const shown = stacks.filter((st) =>
-      series.some((s) => (s.stack ?? "") === st && s.values[i]),
-    );
-    const j = Math.max(0, shown.indexOf(key));
-    const m = Math.max(1, shown.length);
-    return -(m * bw + gap * (m - 1)) / 2 + j * (bw + gap);
-  };
-  return { bw, offset };
 }
 
 export function Chart({
@@ -206,7 +174,7 @@ export function Chart({
   // A bar sits on its band's centre so the outermost bars stay inside the
   // plot; a line runs endpoint to endpoint so it spans the full width.
   const band = plotW / n;
-  const bars = mark === "bar" ? barLayout(series, band) : null;
+  const bw = Math.min(26, band * 0.62);
   const xAt = (i: number) =>
     mark === "bar"
       ? box.l + band * (i + 0.5)
@@ -330,9 +298,8 @@ export function Chart({
       )}
 
       <g clipPath={`url(#${clipId})`}>
-        {bars
+        {mark === "bar"
           ? series.map((s, si) => {
-              const key = s.stack ?? "";
               return (
                 <g key={s.id}>
                   {s.values.map((v, i) => {
@@ -340,12 +307,11 @@ export function Chart({
                     const base = tops[si][i] - v;
                     const yTop = yAt(base + v);
                     const yBot = yAt(base);
-                    // The topmost visible segment of its stack gets the
-                    // rounded end; a 2px gap keeps two segments from
-                    // reading as one shape.
+                    // The topmost visible segment gets the rounded end; a
+                    // 2px gap keeps two segments from reading as one shape.
                     const isTop = series
                       .slice(si + 1)
-                      .every((o) => (o.stack ?? "") !== key || !o.values[i]);
+                      .every((o) => !o.values[i]);
                     return (
                       <rect
                         key={i}
@@ -353,9 +319,9 @@ export function Chart({
                         style={{
                           animationDelay: `${barDelay(s.id, si, i)}ms`,
                         }}
-                        x={xAt(i) + bars.offset(key, i)}
+                        x={xAt(i) - bw / 2}
                         y={yTop}
-                        width={bars.bw}
+                        width={bw}
                         height={Math.max(1, yBot - yTop - 2)}
                         rx={isTop ? 4 : 0}
                         fill={`url(#${shadeId(si)})`}

@@ -422,24 +422,24 @@ type FindingFix struct {
 	CommitSHA string
 }
 
-// FixCount is how many fix requests of one team ended in one outcome on
-// one day.
+// FixCount is how many fix requests of one team ended in one outcome.
 //
 // Table: -
 type FixCount struct {
-	Day      time.Time
 	TeamSlug string
 	Outcome  string
 	Count    int
 }
 
-// TaskCount is how many blocking tasks noergler posted on one day, every
-// team summed.
+// ActivityCount is how many acts of one kind (store.Activity*) one team's
+// PRs saw on one day.
 //
 // Table: -
-type TaskCount struct {
-	Day   time.Time
-	Count int
+type ActivityCount struct {
+	Day      time.Time
+	TeamSlug string
+	Kind     string
+	Count    int
 }
 
 // RollupSnapshot is what one riptide rollup carries.

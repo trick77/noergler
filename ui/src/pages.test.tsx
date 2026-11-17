@@ -127,6 +127,7 @@ const metrics: Metrics = {
           { outcome: "no_write", count: 2 },
         ],
       },
+      tasks: 1,
     },
   ],
   daily: [
@@ -154,8 +155,12 @@ const metrics: Metrics = {
     },
     { outcome: "error", count: 1 },
   ],
-  fixes_daily: [{ day: "2026-09-02", requested: 5, committed: 3 }],
-  tasks_daily: [{ day: "2026-09-02", count: 1 }],
+  activity_daily: [
+    { day: "2026-09-02", team: "payments", kind: "finding", count: 5 },
+    { day: "2026-09-02", team: "payments", kind: "task", count: 1 },
+    { day: "2026-09-02", team: "payments", kind: "fix_committed", count: 3 },
+    { day: "2026-09-02", team: "payments", kind: "fix_other", count: 2 },
+  ],
 };
 
 beforeEach(() => {
@@ -570,8 +575,9 @@ describe("MetricsPage", () => {
       .getAllByRole("columnheader")
       .map((h) => h.textContent);
     const at = headers.indexOf("Findings");
-    expect(headers.slice(at, at + 3)).toEqual([
+    expect(headers.slice(at, at + 4)).toEqual([
       "Findings",
+      "Tasks",
       "Fix requests",
       "Fixes committed",
     ]);
@@ -579,56 +585,74 @@ describe("MetricsPage", () => {
     const cells = within(row)
       .getAllByRole("cell")
       .map((c) => c.textContent);
-    expect(cells.slice(at, at + 3)).toEqual(["5", "5", "3"]);
-    const requests = within(row).getAllByRole("cell")[at + 1];
+    expect(cells.slice(at, at + 4)).toEqual(["5", "1", "5", "3"]);
+    const requests = within(row).getAllByRole("cell")[at + 2];
     expect(requests.getAttribute("title")).toBe(
       "3 committed\n2 no write permission",
     );
   });
 
-  // Both counts per day in one chart: committed and not committed stacked,
-  // the bar's height the requests; posted tasks a bar of their own.
-  it("charts tasks, fix requests and fixes committed per day", async () => {
+  // One card, one kind at a time (user, 2026-11-17): findings first, a
+  // switch for the rest, kept in the URL so a view can be shared.
+  it("charts one kind of activity at a time, picked by a switch", async () => {
+    window.history.replaceState({}, "", "/metrics");
     serve({ metrics });
     render(<MetricsPage />);
 
     expect(
-      await screen.findByLabelText(
-        /Blocking tasks posted, fix requests and fixes committed per day/,
-      ),
+      await screen.findByLabelText(/^Findings per day for /),
     ).toBeDefined();
-    expect(screen.getAllByText("Tasks and fix requests per day")).toHaveLength(
-      1,
-    );
-    expect(screen.getByText("Blocking tasks posted")).toBeDefined();
+    expect(screen.getByText("Inline comments from reviews")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Tasks" }));
+    expect(await screen.findByLabelText(/^Tasks per day for /)).toBeDefined();
+    expect(window.location.search).toBe("?activity=tasks");
+
+    // Fixes alone stack by outcome, never by team.
+    fireEvent.click(screen.getByRole("button", { name: "Fixes" }));
+    expect(await screen.findByLabelText(/^Fixes per day for /)).toBeDefined();
+    expect(screen.getByText("Not committed")).toBeDefined();
+    window.history.replaceState({}, "", "/metrics");
   });
 
-  it("says so when there are neither tasks nor fix requests", async () => {
-    serve({ metrics: { ...metrics, fixes_daily: [], tasks_daily: [] } });
+  // A link naming a kind opens on it.
+  it("opens on the kind the URL names", async () => {
+    window.history.replaceState({}, "", "/metrics?activity=fixes");
+    serve({ metrics });
     render(<MetricsPage />);
 
-    expect(
-      await screen.findByText("No tasks or fix requests in this window."),
-    ).toBeDefined();
+    expect(await screen.findByLabelText(/^Fixes per day for /)).toBeDefined();
+    window.history.replaceState({}, "", "/metrics");
   });
 
-  // A day with tasks and no fix request still draws the chart.
-  it("charts a window with tasks only", async () => {
+  it("says so when a kind has nothing in the window", async () => {
+    window.history.replaceState({}, "", "/metrics?activity=tasks");
     serve({
       metrics: {
         ...metrics,
-        fixes_daily: [],
-        tasks_daily: [{ day: "2026-09-02", count: 2 }],
+        activity_daily: metrics.activity_daily.filter((a) => a.kind !== "task"),
       },
     });
     render(<MetricsPage />);
 
     expect(
-      await screen.findByLabelText(/Blocking tasks posted, fix requests/),
+      await screen.findByText("Nothing of this kind in this window."),
     ).toBeDefined();
+    window.history.replaceState({}, "", "/metrics");
+  });
+
+  // Tokens left the table for the cost's hover (user, 2026-11-17).
+  it("puts a team's tokens on its cost's hover", async () => {
+    serve({ metrics });
+    render(<MetricsPage />);
+
+    await screen.findByRole("columnheader", { name: "Cost" });
     expect(
-      screen.queryByText("No tasks or fix requests in this window."),
+      screen.queryByRole("columnheader", { name: "Tokens in" }),
     ).toBeNull();
+    expect(
+      screen.getByTitle(/^Tokens in: 1.000\s+Tokens out: 100$/),
+    ).toBeDefined();
   });
 
   // A fresh instance has run nothing, which is not the same as having run
@@ -973,7 +997,7 @@ describe("MetricsPage", () => {
 
   // Throughput, cost, LOC (user, 2026-11-11), then fix requests (user,
   // 2026-11-13), tasks beside them (user, 2026-11-16).
-  it("orders the charts throughput, cost, LOC, tasks & fixes", async () => {
+  it("orders the charts throughput, cost, LOC, activity", async () => {
     serve({ metrics });
     render(<MetricsPage />);
 
@@ -981,15 +1005,11 @@ describe("MetricsPage", () => {
     const titles = screen
       .getAllByRole("heading", { level: 3 })
       .map((h) => h.textContent);
-    expect(titles).toEqual([
-      "Throughput",
-      "Spend",
-      "Code volume",
-      "Tasks & Fixes",
-    ]);
+    expect(titles).toEqual(["Throughput", "Spend", "Code volume", "Activity"]);
   });
 
-  // A team keeps its colour across cost and LOC: both rank by spend.
+  // A team keeps its colour across cost, LOC and activity: all rank by
+  // spend. Activity's lone series carries no legend, so two here.
   it("draws LOC per team in the cost chart's colours", async () => {
     serve({ metrics });
     render(<MetricsPage />);
@@ -1002,8 +1022,7 @@ describe("MetricsPage", () => {
     expect(legends).toHaveLength(2);
     const swatch = (el: HTMLElement) =>
       (el.querySelector("i") as HTMLElement).style.background;
-    expect(swatch(legends[0])).toBe("var(--color-s1)");
-    expect(swatch(legends[1])).toBe("var(--color-s1)");
+    for (const l of legends) expect(swatch(l)).toBe("var(--color-s1)");
   });
 
   it("says when no lines were reviewed", async () => {

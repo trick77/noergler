@@ -1,6 +1,6 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { Chart, Sparkline, barLayout, monotonePath } from "./Chart";
+import { Chart, Sparkline, monotonePath } from "./Chart";
 import { windowTitle } from "./format";
 import { _days, _niceTicks, _wholeTicks } from "./MetricsPage";
 
@@ -89,80 +89,30 @@ describe("Chart", () => {
     }
   });
 
-  // Tasks and fix requests must not add up: two stack keys are two bars
-  // side by side, each from the floor; series of one key still stack.
-  it("puts each stack key in its own bar, side by side", () => {
+  // One stack a day: the series sit on each other, centred on the day,
+  // and only the topmost segment gets the rounded end.
+  it("stacks the series in one bar a day", () => {
     const { container } = render(
       <Chart
         series={[
-          {
-            id: "t",
-            name: "t",
-            color: "var(--color-s1)",
-            values: [4],
-            stack: "tasks",
-          },
-          {
-            id: "c",
-            name: "c",
-            color: "var(--color-s2)",
-            values: [2],
-            stack: "fixes",
-          },
-          {
-            id: "n",
-            name: "n",
-            color: "var(--color-s3)",
-            values: [2],
-            stack: "fixes",
-          },
+          { id: "c", name: "c", color: "var(--color-s2)", values: [2] },
+          { id: "n", name: "n", color: "var(--color-s3)", values: [2] },
         ]}
         width={300}
         height={120}
         mark="bar"
         ticks={[0, 4]}
-        label="grouped"
+        label="stacked"
       />,
     );
-    const [plot, t, c, n] = Array.from(svg(container).querySelectorAll("rect"));
+    const [plot, c, n] = Array.from(svg(container).querySelectorAll("rect"));
     const num = (el: Element, a: string) => Number(el.getAttribute(a));
     const floor = num(plot, "y") + num(plot, "height");
-    // Both stacks reach 4: same top, from the same floor.
-    expect(num(t, "y")).toBeCloseTo(num(n, "y"));
-    expect(num(t, "y") + num(t, "height")).toBeCloseTo(floor - 2);
     expect(num(c, "y") + num(c, "height")).toBeCloseTo(floor - 2);
-    // Side by side, never overlapping; the fixes stack shares one x.
-    expect(num(t, "x") + num(t, "width")).toBeLessThan(num(c, "x"));
+    expect(num(n, "y")).toBeLessThan(num(c, "y"));
     expect(num(n, "x")).toBe(num(c, "x"));
-    // The rounded end is each stack's own top.
-    expect(t.getAttribute("rx")).toBe("4");
     expect(c.getAttribute("rx")).toBe("0");
     expect(n.getAttribute("rx")).toBe("4");
-  });
-
-  // A day with only one stack centres it on the date, not beside an empty
-  // slot; a crowded window never draws a bar below 1px.
-  it("centres a lone stack on its day and never draws a bar below 1px", () => {
-    const series = [
-      {
-        id: "t",
-        name: "t",
-        color: "var(--color-s1)",
-        values: [0, 3],
-        stack: "tasks",
-      },
-      {
-        id: "c",
-        name: "c",
-        color: "var(--color-s2)",
-        values: [2, 2],
-        stack: "fixes",
-      },
-    ];
-    const roomy = barLayout(series, 40);
-    expect(roomy.offset("fixes", 0)).toBeCloseTo(-roomy.bw / 2);
-    expect(roomy.offset("tasks", 1)).toBeLessThan(roomy.offset("fixes", 1));
-    expect(barLayout(series, 2).bw).toBe(1);
   });
 
   // Each line sits at its own value. Stacked, the last series traced the

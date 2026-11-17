@@ -97,6 +97,15 @@ export interface Fixes {
   outcomes: { outcome: string; count: number }[];
 }
 
+/** One team's acts of one kind on one day. The server's kinds:
+ *  finding, task, fix_committed, fix_other. */
+export interface ActivityDay {
+  day: string;
+  team: string;
+  kind: string;
+  count: number;
+}
+
 export interface Metrics {
   since: string;
   /** Exclusive end of the window. */
@@ -110,7 +119,13 @@ export interface Metrics {
   /** Distinct PRs, not runs: reviewed got an LLM review back, seen is every
    *  PR touched in the window, skipped and failed included. */
   prs: { reviewed: number; seen: number };
-  by_team: (Totals & { team: string; team_name: string; fixes: Fixes })[];
+  by_team: (Totals & {
+    team: string;
+    team_name: string;
+    fixes: Fixes;
+    /** Blocking tasks, never among findings_posted. */
+    tasks: number;
+  })[];
   daily: {
     day: string;
     team: string;
@@ -122,12 +137,9 @@ export interface Metrics {
     lines: number;
   }[];
   daily_attempts: { day: string; outcome: string; count: number }[];
-  /** Fix requests and the commits among them per day, every team summed;
-   *  days without a request are absent. */
-  fixes_daily: { day: string; requested: number; committed: number }[];
-  /** Blocking tasks posted per day, every team summed; days without one
-   *  are absent. Missing from an older server: no tasks. */
-  tasks_daily?: { day: string; count: number }[];
+  /** noergler's acts per day, team and kind, each act under one kind;
+   *  days, teams and kinds without one are absent. */
+  activity_daily: ActivityDay[];
   breakdown: {
     outcome: string;
     reason?: string;

@@ -232,7 +232,6 @@ Indexes:
 
 - `idx_findings_comment` (`bitbucket_comment_id`)
 - `idx_findings_dedup` (`pull_request_id`, `file_path`, `line_number`, `severity`)
-- `idx_findings_task_time` (`created_at`) where `blocking_outcome = ANY (ARRAY['task'::text, 'rule_removed'::text])`
 
 Checks:
 
@@ -560,6 +559,17 @@ Foreign keys:
 
 ## Types not stored as rows
 
+### store.ActivityCount
+
+In `internal/store`. ActivityCount is how many acts of one kind (store.Activity*) one team's PRs saw on one day.
+
+| Field | Type | Doc |
+| --- | --- | --- |
+| `Day` | `time.Time` |  |
+| `TeamSlug` | `string` |  |
+| `Kind` | `string` |  |
+| `Count` | `int` |  |
+
 ### store.AlmanachReviewTotals
 
 In `internal/store`. AlmanachReviewTotals is the PR's review aggregate: the runs, their tokens, and the PR's cost as prCostSQL counts it (the one figure the cap, the frozen cost and the rollup use). Zero and nil when the PR row is gone.
@@ -620,11 +630,10 @@ In `internal/store`. DisputePR is one PR a signal occurred on inside the window:
 
 ### store.FixCount
 
-In `internal/store`. FixCount is how many fix requests of one team ended in one outcome on one day.
+In `internal/store`. FixCount is how many fix requests of one team ended in one outcome.
 
 | Field | Type | Doc |
 | --- | --- | --- |
-| `Day` | `time.Time` |  |
 | `TeamSlug` | `string` |  |
 | `Outcome` | `string` |  |
 | `Count` | `int` |  |
@@ -670,15 +679,6 @@ In `internal/store`. RollupSnapshot is what one riptide rollup carries.
 | `LinesAdded` | `*int` |  |
 | `LinesRemoved` | `*int` |  |
 | `FilesChanged` | `*int` |  |
-
-### store.TaskCount
-
-In `internal/store`. TaskCount is how many blocking tasks noergler posted on one day, every team summed.
-
-| Field | Type | Doc |
-| --- | --- | --- |
-| `Day` | `time.Time` |  |
-| `Count` | `int` |  |
 
 ### store.TeamActivity
 

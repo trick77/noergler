@@ -168,12 +168,22 @@ export const de = {
     linesNotCounted:
       "Alle Runs in diesem Zeitraum stammen von vor der LOC-Zählung.",
     linesChart: "Geprüfte LOC pro Tag für {{title}}, nach Team",
-    tasksFixesPerDay: "Tasks und Fix-Anfragen pro Tag",
-    tasksFixes: "Tasks & Fixes",
-    noTasksFixes: "Keine Tasks und keine Fix-Anfragen in diesem Zeitraum.",
-    tasksFixesChart:
-      "Gesetzte Blocking-Tasks, Fix-Anfragen und committete Fixes pro Tag für {{title}}",
-    tasksPosted: "Blocking-Tasks gesetzt",
+    activityPerDay: "Aktivität pro Tag",
+    activity: "Aktivität",
+    activityKind: "Art",
+    tasks: "Tasks",
+    kind: {
+      findings: "Findings",
+      tasks: "Tasks",
+      fixes: "Fixes",
+    },
+    kindNote: {
+      findings: "Inline-Kommentare aus Reviews",
+      tasks: "Blocking-Tasks: AGENTS.md-Regeln",
+      fixes: "Fix- und Merge-Konflikt-Anfragen des PR-Autors",
+    },
+    noActivity: "Nichts davon in diesem Zeitraum.",
+    activityChart: "{{kind}} pro Tag für {{title}}",
     fixesNotCommitted: "Nicht committet",
     costPerDay: "Kosten pro Tag",
     spend: "Ausgaben",

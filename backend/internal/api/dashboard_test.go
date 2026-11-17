@@ -44,7 +44,7 @@ type fakeDashStore struct {
 	attemptsSince *time.Time
 	byTeam        []store.TeamTotals
 	fixCounts     []store.FixCount
-	taskCounts    []store.TaskCount
+	acts          []store.ActivityCount
 	daily         []store.Bucket
 	dailyAtt      []store.AttemptBucket
 	activity      []store.TeamActivity
@@ -105,8 +105,8 @@ func (f *fakeDashStore) OutcomeBreakdown(context.Context, time.Time) ([]store.Ou
 func (f *fakeDashStore) FixCountsSince(context.Context, time.Time) ([]store.FixCount, error) {
 	return f.fixCounts, f.err
 }
-func (f *fakeDashStore) TaskCountsSince(context.Context, time.Time) ([]store.TaskCount, error) {
-	return f.taskCounts, f.err
+func (f *fakeDashStore) ActivitySince(context.Context, time.Time) ([]store.ActivityCount, error) {
+	return f.acts, f.err
 }
 func (f *fakeDashStore) TotalsSince(context.Context, time.Time) (store.Totals, error) {
 	return f.totals, f.err
@@ -543,18 +543,13 @@ func TestMetricsCountsFixRequests(t *testing.T) {
 	}
 }
 
-// One read, two sums: per day for the chart (every team), per team for the
-// columns (every day, one entry per outcome).
-func TestMetricsCarriesFixesPerDay(t *testing.T) {
+// Per team, one entry per outcome.
+func TestMetricsSumsFixesPerTeam(t *testing.T) {
 	h := newDashHarness(t)
-	d1 := time.Date(2026, 11, 12, 0, 0, 0, 0, time.UTC)
-	d2 := d1.AddDate(0, 0, 1)
 	h.st.byTeam = []store.TeamTotals{{TeamSlug: "platform"}}
 	h.st.fixCounts = []store.FixCount{
-		{Day: d1, TeamSlug: "payments", Outcome: store.FixNoWrite, Count: 1},
-		{Day: d1, TeamSlug: "platform", Outcome: store.FixCommitted, Count: 2},
-		{Day: d2, TeamSlug: "platform", Outcome: store.FixCommitted, Count: 1},
-		{Day: d2, TeamSlug: "platform", Outcome: store.FixConflict, Count: 1},
+		{TeamSlug: "platform", Outcome: store.FixCommitted, Count: 3},
+		{TeamSlug: "platform", Outcome: store.FixConflict, Count: 1},
 	}
 
 	var got struct {
@@ -562,14 +557,9 @@ func TestMetricsCarriesFixesPerDay(t *testing.T) {
 			Team  string    `json:"team"`
 			Fixes fixesBody `json:"fixes"`
 		} `json:"by_team"`
-		FixesDaily []fixDayBody `json:"fixes_daily"`
 	}
 	if err := json.Unmarshal(h.get(t, "/api/dashboard/metrics?days=7").Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
-	}
-	want := []fixDayBody{{"2026-11-12", 3, 2}, {"2026-11-13", 2, 1}}
-	if !slices.Equal(got.FixesDaily, want) {
-		t.Errorf("fixes_daily = %+v, want %+v", got.FixesDaily, want)
 	}
 	p := got.ByTeam[0].Fixes
 	if p.Requested != 4 || p.Committed != 3 || len(p.Outcomes) != 2 ||
@@ -578,34 +568,46 @@ func TestMetricsCarriesFixesPerDay(t *testing.T) {
 	}
 }
 
-// Posted tasks per day, their own series beside the fix days.
-func TestMetricsCarriesTasksPerDay(t *testing.T) {
+// The activity rows go out as they came, one shape for every kind; the
+// tasks also sum per team for the table's column.
+func TestMetricsCarriesActivityPerDay(t *testing.T) {
 	h := newDashHarness(t)
 	d1 := time.Date(2026, 11, 12, 0, 0, 0, 0, time.UTC)
-	h.st.taskCounts = []store.TaskCount{{Day: d1, Count: 3}, {Day: d1.AddDate(0, 0, 2), Count: 4}}
+	h.st.byTeam = []store.TeamTotals{{TeamSlug: "platform"}}
+	h.st.acts = []store.ActivityCount{
+		{Day: d1, TeamSlug: "platform", Kind: store.ActivityFinding, Count: 5},
+		{Day: d1, TeamSlug: "platform", Kind: store.ActivityTask, Count: 1},
+		{Day: d1.AddDate(0, 0, 2), TeamSlug: "platform", Kind: store.ActivityTask, Count: 2},
+	}
 
 	var got struct {
-		TasksDaily []taskDayBody `json:"tasks_daily"`
+		ByTeam []struct {
+			Team  string `json:"team"`
+			Tasks int    `json:"tasks"`
+		} `json:"by_team"`
+		Activity []activityDayBody `json:"activity_daily"`
 	}
 	if err := json.Unmarshal(h.get(t, "/api/dashboard/metrics?days=7").Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	want := []taskDayBody{{"2026-11-12", 3}, {"2026-11-14", 4}}
-	if !slices.Equal(got.TasksDaily, want) {
-		t.Errorf("tasks_daily = %+v, want %+v", got.TasksDaily, want)
+	want := []activityDayBody{{"2026-11-12", "platform", "finding", 5}, {"2026-11-12", "platform", "task", 1},
+		{"2026-11-14", "platform", "task", 2}}
+	if !slices.Equal(got.Activity, want) {
+		t.Errorf("activity_daily = %+v, want %+v", got.Activity, want)
+	}
+	if len(got.ByTeam) != 1 || got.ByTeam[0].Tasks != 3 {
+		t.Errorf("by_team = %+v, want platform with 3 tasks", got.ByTeam)
 	}
 }
 
-func TestMetricsFixesDailyIsAnEmptyListWithoutRequests(t *testing.T) {
+func TestMetricsActivityIsAnEmptyListWithoutActs(t *testing.T) {
 	h := newDashHarness(t)
 	var got map[string]any
 	if err := json.Unmarshal(h.get(t, "/api/dashboard/metrics?days=7").Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"fixes_daily", "tasks_daily"} {
-		if v, ok := got[key].([]any); !ok || len(v) != 0 {
-			t.Errorf("%s = %#v, want []", key, got[key])
-		}
+	if v, ok := got["activity_daily"].([]any); !ok || len(v) != 0 {
+		t.Errorf("activity_daily = %#v, want []", got["activity_daily"])
 	}
 }
 

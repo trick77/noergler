@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -52,7 +53,7 @@ type DashboardStore interface {
 	PRCost(ctx context.Context, key store.PRKey) (*int64, error)
 	PRCommentCalls(ctx context.Context, key store.PRKey) ([]store.CommentCall, bool, error)
 	FixCountsSince(ctx context.Context, since time.Time) ([]store.FixCount, error)
-	TaskCountsSince(ctx context.Context, since time.Time) ([]store.TaskCount, error)
+	ActivitySince(ctx context.Context, since time.Time) ([]store.ActivityCount, error)
 }
 
 // usd renders nano-USD as a fixed-point decimal string with 3 decimals,
@@ -331,6 +332,9 @@ type teamTotalsBody struct {
 	// Fixes is the team's fix requests in the window: the PR author asked
 	// noergler to apply a finding.
 	Fixes fixesBody `json:"fixes"`
+	// Tasks is the blocking tasks posted on the team's PRs, never among
+	// its findings_posted.
+	Tasks int `json:"tasks"`
 }
 
 // fixesBody counts fix requests: committed is the share that landed, the
@@ -341,16 +345,12 @@ type fixesBody struct {
 	Outcomes  []fixOutcomeCount `json:"outcomes"`
 }
 
-type fixDayBody struct {
-	Day       string `json:"day"`
-	Requested int    `json:"requested"`
-	Committed int    `json:"committed"`
-}
-
-// taskDayBody is the blocking tasks noergler posted on one day: charted
-// beside the fix requests, never summed with them.
-type taskDayBody struct {
+// activityDayBody is one team's acts of one kind on one day
+// (store.Activity*): the Activity chart's one series shape.
+type activityDayBody struct {
 	Day   string `json:"day"`
+	Team  string `json:"team"`
+	Kind  string `json:"kind"`
 	Count int    `json:"count"`
 }
 
@@ -409,12 +409,9 @@ type metricsBody struct {
 	Daily     []dayBody        `json:"daily"`
 	Attempts  []outcomeDayBody `json:"daily_attempts"`
 	Breakdown []breakdownBody  `json:"breakdown"`
-	// FixesDaily is fix requests and commits per day over the window, every
-	// team summed; days without a request are absent.
-	FixesDaily []fixDayBody `json:"fixes_daily"`
-	// TasksDaily is the blocking tasks posted per day over the window, every
-	// team summed; days without one are absent.
-	TasksDaily []taskDayBody `json:"tasks_daily"`
+	// Activity is noergler's acts per day, team and kind over the window,
+	// each act under one kind; days, teams and kinds without one are absent.
+	Activity []activityDayBody `json:"activity_daily"`
 }
 
 func toTotals(t store.Totals) totalsBody {
@@ -548,31 +545,21 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 	if failed("FixCountsSince", err) {
 		return
 	}
-	// One read, two sums: per team (the columns, outcomes on hover) and per
-	// day (the chart). Rows come day by day, so a team's outcome sums over
-	// the days before it is listed, in outcome order.
+	// Per team: the columns, outcomes on hover, in outcome order. The
+	// chart's per-day series is the activity read below.
 	fixes := map[string]*fixesBody{}
 	outcomes := map[string]map[string]int{}
-	var fixDays []fixDayBody
 	for _, c := range fixCounts {
 		f := fixes[c.TeamSlug]
 		if f == nil {
 			f = &fixesBody{Outcomes: []fixOutcomeCount{}}
 			fixes[c.TeamSlug], outcomes[c.TeamSlug] = f, map[string]int{}
 		}
-		committed := 0
-		if c.Outcome == store.FixCommitted {
-			committed = c.Count
-		}
 		f.Requested += c.Count
-		f.Committed += committed
-		outcomes[c.TeamSlug][c.Outcome] += c.Count
-		day := c.Day.UTC().Format(time.DateOnly)
-		if n := len(fixDays); n == 0 || fixDays[n-1].Day != day {
-			fixDays = append(fixDays, fixDayBody{Day: day})
+		if c.Outcome == store.FixCommitted {
+			f.Committed += c.Count
 		}
-		fixDays[len(fixDays)-1].Requested += c.Count
-		fixDays[len(fixDays)-1].Committed += committed
+		outcomes[c.TeamSlug][c.Outcome] += c.Count
 	}
 	for slug, byOutcome := range outcomes {
 		names := make([]string, 0, len(byOutcome))
@@ -584,16 +571,18 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 			fixes[slug].Outcomes = append(fixes[slug].Outcomes, fixOutcomeCount{Outcome: o, Count: byOutcome[o]})
 		}
 	}
-	taskCounts, err := st.TaskCountsSince(ctx, since)
-	if failed("TaskCountsSince", err) {
+	acts, err := st.ActivitySince(ctx, since)
+	if failed("ActivitySince", err) {
 		return
 	}
-	if fixDays == nil {
-		fixDays = []fixDayBody{}
-	}
-	taskDays := make([]taskDayBody, 0, len(taskCounts))
-	for _, c := range taskCounts {
-		taskDays = append(taskDays, taskDayBody{Day: c.Day.UTC().Format(time.DateOnly), Count: c.Count})
+	activity := make([]activityDayBody, 0, len(acts))
+	tasks := map[string]int{}
+	for _, c := range acts {
+		activity = append(activity, activityDayBody{Day: c.Day.UTC().Format(time.DateOnly), Team: c.TeamSlug,
+			Kind: c.Kind, Count: c.Count})
+		if c.Kind == store.ActivityTask {
+			tasks[c.TeamSlug] += c.Count
+		}
 	}
 
 	window := "month"
@@ -604,41 +593,43 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := metricsBody{
-		Since:      since,
-		LeadSince:  leadSince,
-		Until:      until,
-		Window:     window,
-		Totals:     toTotals(totals),
-		PRs:        prCountsBody{Reviewed: reviewedPRs, Seen: seenPRs},
-		ByTeam:     make([]teamTotalsBody, 0, len(byTeam)),
-		Daily:      make([]dayBody, 0, len(daily)),
-		Attempts:   make([]outcomeDayBody, 0, len(attempts)),
-		Breakdown:  make([]breakdownBody, 0, len(breakdown)),
-		FixesDaily: fixDays,
-		TasksDaily: taskDays,
+		Since:     since,
+		LeadSince: leadSince,
+		Until:     until,
+		Window:    window,
+		Totals:    toTotals(totals),
+		PRs:       prCountsBody{Reviewed: reviewedPRs, Seen: seenPRs},
+		ByTeam:    make([]teamTotalsBody, 0, len(byTeam)),
+		Daily:     make([]dayBody, 0, len(daily)),
+		Attempts:  make([]outcomeDayBody, 0, len(attempts)),
+		Breakdown: make([]breakdownBody, 0, len(breakdown)),
+		Activity:  activity,
 	}
 	nameOf := d.teamNamer()
-	for _, t := range byTeam {
+	row := func(slug string, t store.Totals) teamTotalsBody {
 		f := fixesBody{Outcomes: []fixOutcomeCount{}}
-		if c := fixes[t.TeamSlug]; c != nil {
+		if c := fixes[slug]; c != nil {
 			f = *c
 		}
-		body.ByTeam = append(body.ByTeam, teamTotalsBody{
-			Team: t.TeamSlug, TeamName: nameOf(t.TeamSlug), totalsBody: toTotals(t.Totals), Fixes: f,
-		})
-		delete(fixes, t.TeamSlug)
+		return teamTotalsBody{Team: slug, TeamName: nameOf(slug), totalsBody: toTotals(t), Fixes: f, Tasks: tasks[slug]}
 	}
-	// A team whose only activity in the window was a fix request (its PR
-	// reviewed earlier) still shows its fixes, with zero totals.
-	rest := make([]string, 0, len(fixes))
-	for slug := range fixes {
-		rest = append(rest, slug)
+	listed := map[string]bool{}
+	for _, t := range byTeam {
+		body.ByTeam = append(body.ByTeam, row(t.TeamSlug, t.Totals))
+		listed[t.TeamSlug] = true
+	}
+	// A team whose only activity in the window was no run of its own (a fix
+	// request on a PR reviewed earlier) still shows it, with zero totals.
+	var rest []string
+	for _, slug := range slices.Concat(slices.Collect(maps.Keys(fixes)), slices.Collect(maps.Keys(tasks))) {
+		if !listed[slug] {
+			rest = append(rest, slug)
+			listed[slug] = true
+		}
 	}
 	slices.Sort(rest)
 	for _, slug := range rest {
-		body.ByTeam = append(body.ByTeam, teamTotalsBody{
-			Team: slug, TeamName: nameOf(slug), totalsBody: toTotals(store.Totals{}), Fixes: *fixes[slug],
-		})
+		body.ByTeam = append(body.ByTeam, row(slug, store.Totals{}))
 	}
 	for _, b := range daily {
 		body.Daily = append(body.Daily, dayBody{

@@ -585,12 +585,13 @@ merge", or why not: not feasible (the model's reason), rejected as unsafe,
 no write permission (401/403: the token may be read-only; asked again, it is
 tried again), the branch moved (409), refused by Bitbucket (a pre-receive
 hook), or the call failed. Each request is a `finding_fixes` row: the
-metrics page shows, per team beside the findings, fix requests (every ask,
-its outcomes on hover) and fixes committed, and a chart of both per day
-(Tasks & Fixes: committed and not committed stacked, the blocking tasks
-noergler posted that day a bar of their own beside it, never added in; a
-task whose rule later left AGENTS.md still counts, SNAPSHOT tasks do not,
-they keep no time). A finding is committed once. The fix call is its own
+metrics page shows, per team beside the findings and tasks, fix requests
+(every ask, its outcomes on hover) and fixes committed. Its Activity card
+charts one kind of act per day, picked by a switch (`?activity=`):
+findings, tasks or fixes, each act under one kind only (`activity_daily`,
+`ActivitySince`). Findings and tasks stack by team; fixes stack committed
+and not committed. A new figure is one more kind, never another chart
+or column. A finding is committed once. The fix call is its own
 `llm_calls` row (`fix`) and counts toward the PR's cost. The
 next review retires a finding noergler committed without a "Fixed in" reply
 and without resolving it: the author resolves the thread after looking.
@@ -675,7 +676,7 @@ whether code or the model resolved it, quotes every dropped line, names the
 files merged without a conflict, and asks the author to build and test
 before merging. Failures answer like an auto-fix: no write permission,
 branch moved, refused by a hook, failed. Each request is a `finding_fixes`
-row (Tasks & Fixes on the metrics page), its call a `fix` row. The push
+row (Activity, Fixes, on the metrics page), its call a `fix` row. The push
 triggers a full re-review, as a merge by hand does.
 
 A review offers it. After each completed review under the cost cap,

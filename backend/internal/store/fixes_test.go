@@ -62,11 +62,10 @@ func TestFindingFixes_RecordedCommittedOnceAndCounted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Summed over the days: the two rows may straddle UTC midnight.
 	byOutcome := map[string]int{}
 	for _, c := range counts {
-		if c.TeamSlug != "payments" || !c.Day.Equal(c.Day.Truncate(24*time.Hour)) {
-			t.Errorf("row %+v: want team payments on a whole UTC day", c)
+		if c.TeamSlug != "payments" {
+			t.Errorf("row %+v: want team payments", c)
 		}
 		byOutcome[c.Outcome] += c.Count
 	}
@@ -204,44 +203,55 @@ func TestConflictFixes_CountedGoneWithThePR(t *testing.T) {
 	}
 }
 
-// A posted task counts, also once its rule left AGENTS.md; a downgrade and
-// a task Bitbucket refused do not, nor does a plain finding.
-func TestTaskCountsSince_CountsPostedTasksOnly(t *testing.T) {
+// Every act once, under its one kind: a run's findings and tasks apart, a
+// fix request whatever came of it, committed or not.
+func TestActivitySince_CountsEachActOnce(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	id := upsert(t, s, key, "a")
-	runID := run(t, s, id, "a", nil, "m")
-	for i, outcome := range []*string{str("task"), str("task"), str("downgraded_task_failed"), str("downgraded_cap"), nil} {
-		f := Finding{PullRequestID: id, RunID: runID, FilePath: "a.go", LineNumber: i + 1, Severity: "issue",
-			CommentText: "c", BitbucketCommentID: num(600 + i), BlockingOutcome: outcome}
-		if outcome != nil {
-			f.BlockingRule = str("No SQL in controllers.")
-		}
-		if err := s.InsertFinding(ctx, f); err != nil {
+	for _, r := range []Run{{FindingsPosted: 3, TasksPosted: 1}, {FindingsPosted: 2}, {TasksPosted: 2}} {
+		r.PullRequestID, r.Kind, r.ToCommit, r.ModelLabel = id, RunAuto, "a", "m"
+		if _, err := s.InsertRun(ctx, r); err != nil {
 			t.Fatal(err)
 		}
 	}
-	existing, _ := s.ExistingFindings(ctx, key)
-	if err := s.MarkRuleRemoved(ctx, existing[0].ID); err != nil {
+	runID := run(t, s, id, "b", nil, "m") // FindingsPosted 2
+	if err := s.InsertFinding(ctx, Finding{PullRequestID: id, RunID: runID, FilePath: "a.go", LineNumber: 2,
+		Severity: "issue", CommentText: "c", BitbucketCommentID: num(901)}); err != nil {
 		t.Fatal(err)
 	}
+	f, _ := s.FindingByComment(ctx, key, 901)
+	for _, x := range []FindingFix{
+		{FindingID: f.ID, TeamSlug: "platform", Outcome: FixNoWrite},
+		{FindingID: f.ID, TeamSlug: "platform", Outcome: FixCommitted, CommitSHA: "abc"},
+	} {
+		if _, err := s.RecordFindingFix(ctx, key, x); err != nil {
+			t.Fatal(err)
+		}
+	}
 
-	counts, err := s.TaskCountsSince(ctx, time.Now().Add(-time.Hour))
+	counts, err := s.ActivitySince(ctx, time.Now().Add(-time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Summed over the days: the rows may straddle UTC midnight.
-	total := 0
+	byKind := map[string]int{}
 	for _, c := range counts {
-		if !c.Day.Equal(c.Day.Truncate(24 * time.Hour)) {
-			t.Errorf("row %+v: want a whole UTC day", c)
+		if c.TeamSlug != "platform" || !c.Day.Equal(c.Day.Truncate(24*time.Hour)) {
+			t.Errorf("row %+v: want team platform on a whole UTC day", c)
 		}
-		total += c.Count
+		byKind[c.Kind] += c.Count
 	}
-	if total != 2 {
-		t.Errorf("counts = %+v, want the two posted tasks", counts)
+	want := map[string]int{ActivityFinding: 7, ActivityTask: 3, ActivityFixCommitted: 1, ActivityFixOther: 1}
+	if len(byKind) != len(want) {
+		t.Errorf("kinds = %+v, want %+v", byKind, want)
 	}
-	if counts, _ := s.TaskCountsSince(ctx, time.Now().Add(time.Hour)); len(counts) != 0 {
+	for k, n := range want {
+		if byKind[k] != n {
+			t.Errorf("%s = %d, want %d", k, byKind[k], n)
+		}
+	}
+	if counts, _ := s.ActivitySince(ctx, time.Now().Add(time.Hour)); len(counts) != 0 {
 		t.Errorf("a later window counts %+v", counts)
 	}
 }

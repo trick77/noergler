@@ -96,6 +96,33 @@ function writeSpan(span: Span) {
   }
 }
 
+/** The Activity card's kinds, one view each (user, 2026-11-17): a new
+ *  figure is one more kind here, never another chart or column. Findings
+ *  the default; the choice rides the URL (?activity=tasks) like the span. */
+const KINDS = ["findings", "tasks", "fixes"] as const;
+type Kind = (typeof KINDS)[number];
+function readKind(): Kind {
+  const raw = new URLSearchParams(window.location.search).get("activity");
+  return KINDS.find((k) => k === raw) ?? "findings";
+}
+/** writeKind puts the kind in the URL, touching only ?activity=. */
+function writeKind(kind: Kind) {
+  const params = new URLSearchParams(window.location.search);
+  if (kind === "findings") params.delete("activity");
+  else params.set("activity", kind);
+  const search = params.toString();
+  const url = window.location.pathname + (search ? `?${search}` : "");
+  if (window.location.pathname + window.location.search !== url) {
+    window.history.replaceState({}, "", url);
+  }
+}
+/** The server's kinds behind each view. */
+const SERVER_KINDS: Record<Kind, string[]> = {
+  findings: ["finding"],
+  tasks: ["task"],
+  fixes: ["fix_committed", "fix_other"],
+};
+
 /** trailingMean is each day's mean over itself and the six days before.
  *  Seven, because every such week holds exactly one weekend: a shorter
  *  window dipped every Saturday. The caller passes the six lead days the
@@ -143,6 +170,8 @@ export function MetricsPage() {
   // bar says so too, or a copied link would name a window the page never
   // showed. An effect, not the state initializer: render stays pure.
   useEffect(() => writeSpan(span), [span]);
+  const [kind, setKind] = useState<Kind>(readKind);
+  useEffect(() => writeKind(kind), [kind]);
 
   if (!data) {
     return (
@@ -218,33 +247,46 @@ export function MetricsPage() {
 
   const lineOf = (r: Metrics["daily"][number]) => r.lines;
 
-  /** teamSeries is one series per charted team plus the folded tail. Cost
-   *  and LOC share the ranking and the colours, so a team reads the same
-   *  hue on both charts. */
-  const teamSeries = (count: (r: Metrics["daily"][number]) => number) => {
+  /** teamSeriesOf is one series per charted team plus the folded tail,
+   *  over the rows keep lets through. Cost, LOC and Activity share the
+   *  ranking and the colours, so a team reads the same hue on every chart. */
+  const teamSeriesOf = <R extends { day: string; team: string }>(
+    rows: R[],
+    count: (r: R) => number,
+    keep: (r: R) => boolean = () => true,
+  ) => {
     const out: Series[] = charted.map((team, i) => ({
       id: team,
       name: nameOf(team),
       color: SERIES_COLORS[i],
-      values: perDay(data.daily, count, (r) => r.team === team),
+      values: perDay(rows, count, (r) => keep(r) && r.team === team),
     }));
     // The tail folds into one band rather than being dropped. Truncating it
     // let the card say "No priced runs in this window" beside a Cost tile
-    // showing the server's full, non-zero total.
-    if (rest.length > 0) {
+    // showing the server's full, non-zero total. Every team past the
+    // charted ones, a team the ranking does not know included; named by
+    // the teams it holds.
+    const inTail = (r: R) => keep(r) && !charted.includes(r.team);
+    const tailTeams = [
+      ...new Set([...rest, ...rows.filter(inTail).map((r) => r.team)]),
+    ];
+    const tail = perDay(rows, count, inTail);
+    if (rest.length > 0 || tail.some((v) => v > 0)) {
       out.push({
         // Not a slug: TeamSlugRE cannot start with "_", so no team collides.
         id: "__rest",
         name:
-          rest.length === 1
-            ? nameOf(rest[0])
-            : t("metrics.more", { count: rest.length }),
+          tailTeams.length === 1
+            ? nameOf(tailTeams[0])
+            : t("metrics.more", { count: tailTeams.length }),
         color: SERIES_COLORS[SERIES_COLORS.length - 1],
-        values: perDay(data.daily, count, (r) => rest.includes(r.team)),
+        values: tail,
       });
     }
     return out;
   };
+  const teamSeries = (count: (r: Metrics["daily"][number]) => number) =>
+    teamSeriesOf(data.daily, count);
   const costSeries = teamSeries(spend);
   const linesSeries = teamSeries(lineOf);
   const costTop = Math.max(
@@ -359,46 +401,44 @@ export function MetricsPage() {
     data.totals.runs > 0 &&
     data.totals.lines_uncounted_runs >= data.totals.runs;
 
-  // Fix requests and commits per day, every team summed (user, 2026-11-13).
-  // A stack of committed and not committed: the bar's height is the
-  // requests, the green part the commits. Two lines hid one under the other
-  // on a day where every request was committed.
-  // States, not teams: status hues, never the team ramp the charts above
-  // use. Not committed is neutral, it mixes refusals, conflicts and "not
-  // feasible"; ochre already reads "skipped" in Throughput. An older server
-  // without the field leaves the card empty, never the page broken.
-  // Blocking tasks noergler posted (user, 2026-11-16) are their own bar
-  // beside the fix stack, never on it: tasks plus fix requests is a sum
-  // that means nothing. The accent, noergler's own act, not s1: s1 is the
-  // top team in the charts above. Never in the same bar as the green, and
-  // always left of it, so position tells them apart where hue may not.
-  const fixRows = data.fixes_daily ?? [];
-  const fixSeries: Series[] = [
-    {
-      id: "tasks",
-      name: t("metrics.tasksPosted"),
-      color: "var(--color-accent-strong)",
-      values: perDay(data.tasks_daily ?? [], (d) => d.count),
-      stack: "tasks",
-    },
-    {
-      id: "committed",
-      name: t("metrics.fixesCommitted"),
-      color: "var(--color-online)",
-      values: perDay(fixRows, (d) => d.committed),
-      stack: "fixes",
-    },
-    {
-      id: "not_committed",
-      name: t("metrics.fixesNotCommitted"),
-      color: "var(--color-muted)",
-      values: perDay(fixRows, (d) => d.requested - d.committed),
-      stack: "fixes",
-    },
-  ];
-  // The axis fits the higher bar of a day, tasks or fix requests.
-  const fixTop = Math.max(...stackTops(fixSeries).flat(), 0);
-  const fixTicks = wholeTicks(niceTicks(fixTop));
+  // Activity (user, 2026-11-17): one card, one kind at a time, never two
+  // kinds in one bar: a finding and a task are never summed, and findings
+  // run ten times higher than the rest. Each kind stacks by team, the same
+  // ranking and hues as Cost and LOC, so a team reads the same everywhere.
+  //
+  // Fixes alone stack by outcome (user, 2026-11-13, kept 2026-11-17): the
+  // bar's height is the requests, the green part the commits. States, not
+  // teams: status hues, never the team ramp. Not committed is neutral, it
+  // mixes refusals, conflicts and "not feasible"; ochre already reads
+  // "skipped" in Throughput.
+  const acts = data.activity_daily ?? [];
+  const actCount = (r: Metrics["activity_daily"][number]) => r.count;
+  const ofKind = (kind: string) =>
+    perDay(acts, actCount, (r) => r.kind === kind);
+  const activitySeries = (k: Kind): Series[] => {
+    if (k === "fixes") {
+      return [
+        {
+          id: "committed",
+          name: t("metrics.fixesCommitted"),
+          color: "var(--color-online)",
+          values: ofKind("fix_committed"),
+        },
+        {
+          id: "not_committed",
+          name: t("metrics.fixesNotCommitted"),
+          color: "var(--color-muted)",
+          values: ofKind("fix_other"),
+        },
+      ];
+    }
+    const kinds = SERVER_KINDS[k];
+    return teamSeriesOf(acts, actCount, (r) => kinds.includes(r.kind));
+  };
+  const actSeries = activitySeries(kind);
+  const actTop = Math.max(...stackTops(actSeries).flat(), 0);
+  const actTicks = wholeTicks(niceTicks(actTop));
+  const kindLabel = t(`metrics.kind.${kind}`);
 
   // All teams per day, for the tiles' trends.
   const findingsDaily = perDay(data.daily, (b) => b.findings_posted);
@@ -659,23 +699,40 @@ export function MetricsPage() {
             )}
           </Card>
 
-          <p className={eyebrow}>{t("metrics.tasksFixesPerDay")}</p>
-          <Card title={t("metrics.tasksFixes")}>
-            {fixTop === 0 ? (
-              <Empty>{t("metrics.noTasksFixes")}</Empty>
+          <p className={eyebrow}>{t("metrics.activityPerDay")}</p>
+          <Card
+            title={t("metrics.activity")}
+            note={t(`metrics.kindNote.${kind}`)}
+            right={
+              <FilterTrack
+                label={t("metrics.activityKind")}
+                options={KINDS.map((k) => ({
+                  value: k,
+                  label: t(`metrics.kind.${k}`),
+                }))}
+                value={kind}
+                onChange={setKind}
+              />
+            }
+          >
+            {actTop === 0 ? (
+              <Empty>{t("metrics.noActivity")}</Empty>
             ) : (
               <>
+                {/* Keyed by the kind too: another kind is another chart,
+                    drawn in afresh, never one kind's bars grown into the
+                    next. */}
                 <Chart
-                  key={drawKey}
-                  series={fixSeries}
+                  key={`${drawKey}|${kind}`}
+                  series={actSeries}
                   width={1290}
                   height={180}
                   mark="bar"
-                  ticks={fixTicks}
+                  ticks={actTicks}
                   xLabels={window.map(label)}
-                  label={t("metrics.tasksFixesChart", { title })}
+                  label={t("metrics.activityChart", { kind: kindLabel, title })}
                 />
-                <Legend series={fixSeries} />
+                <Legend series={actSeries} />
               </>
             )}
           </Card>
@@ -693,11 +750,13 @@ export function MetricsPage() {
                       {/* Runs, not "reviewed": the tile counts PRs now and
                         this column still counts runs. */}
                       <th className={thNum}>{t("metrics.runs")}</th>
-                      <th className={thNum}>{t("metrics.tokensIn")}</th>
-                      <th className={thNum}>{t("metrics.tokensOut")}</th>
                       {/* Fixes beside the findings they apply, as two named
-                        counts: "3 / 5" read as nothing (user, 2026-11-13). */}
+                        counts: "3 / 5" read as nothing (user, 2026-11-13).
+                        Tasks beside the findings, never in them (user,
+                        2026-11-17). Tokens moved into the cost's hover to
+                        make room (user, 2026-11-17: "dann hover"). */}
                       <th className={thNum}>{t("metrics.findings")}</th>
+                      <th className={thNum}>{t("metrics.tasks")}</th>
                       <th
                         className={thNum}
                         title={t("metrics.fixRequestsTitle")}
@@ -726,11 +785,8 @@ export function MetricsPage() {
                           {row.team_name}
                         </td>
                         <td className={tdNum}>{row.runs}</td>
-                        <td className={tdNum}>{compact(row.prompt_tokens)}</td>
-                        <td className={tdNum}>
-                          {compact(row.completion_tokens)}
-                        </td>
                         <td className={tdNum}>{row.findings_posted}</td>
+                        <td className={tdNum}>{row.tasks ?? 0}</td>
                         <td className={tdNum} title={fixesTitle(row.fixes)}>
                           {row.fixes.requested}
                         </td>
@@ -738,7 +794,12 @@ export function MetricsPage() {
                         <td className={tdNum} title={linesTitle(row)}>
                           {teamLines(row)}
                         </td>
-                        <td className={tdNum}>{money(row.cost_usd)}</td>
+                        <td
+                          className={tdNum}
+                          title={`${t("metrics.tokensIn")}: ${num(row.prompt_tokens)}\n${t("metrics.tokensOut")}: ${num(row.completion_tokens)}`}
+                        >
+                          {money(row.cost_usd)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
