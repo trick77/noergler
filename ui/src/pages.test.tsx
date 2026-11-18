@@ -362,6 +362,21 @@ describe("RunsPage", () => {
     expect(screen.getAllByText("OK")).toHaveLength(2);
   });
 
+  // A clean review's details are a dash, never "0 findings" (user,
+  // 2026-11-18); its tasks still show.
+  it("leaves a zero out of a review's details", async () => {
+    serve({
+      runs: {
+        runs: [runs[1], { ...runs[1], id: 5, tag: "PAY/ledger#5", tasks: 1 }],
+      },
+    });
+    render(<RunsPage />);
+
+    await screen.findByText("PAY/ledger#5");
+    expect(screen.queryByText(/0 findings/)).toBeNull();
+    expect(screen.getByText("1 task")).toBeDefined();
+  });
+
   it("keeps an unpriced run unpriced", async () => {
     serve({ runs: { runs } });
     render(<RunsPage />);
