@@ -587,7 +587,7 @@ func TestMentionClosesAnAuthorsOpenFence(t *testing.T) {
 
 	h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
 
-	if prompt := h.llm.Mentions[0].Prompt; !strings.Contains(prompt, "panic: nil map\n~~~\n\n## The developer") ||
+	if prompt := h.llm.Mentions[0].Prompt; !strings.Contains(prompt, "panic: nil map\n~~~\n\n## Can noergler") ||
 		strings.Contains(prompt, "[... cut]") {
 		t.Errorf("the open fence was not closed:\n%s", prompt)
 	}

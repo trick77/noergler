@@ -153,7 +153,10 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   "already applied"; an answer under such a reply, and a Q&A notice under
   an apply request, stay about the source too. The applied-state read
   fails closed, unlike every other read here: an unread state could commit
-  twice. `apply` is never posted as the model's sentence. Not
+  twice. `apply` is never posted as the model's sentence. The answer
+  offers a fix only when code would apply it (`{apply_offer}`, below the
+  diff: per question, prefix cache); an offer code refuses is the bug
+  this prevents (2026-11-18). Not
   the PR author: a fixed answer in the asker's language, no fix call, no
   `finding_fixes` row. An answer's row goes with its PR (`pull_request_id`),
   a finding's with its finding.

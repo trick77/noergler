@@ -370,6 +370,33 @@ func TestMentionParentComment(t *testing.T) {
 	}
 }
 
+// The answer offers to apply a suggested change only on a code line: off
+// one, the fix flow answers "not on a line of code" to the offer it took.
+func TestMentionApplyOffer(t *testing.T) {
+	tmpl := prompts.Mention
+	off := RenderMentionPrompt(MentionPromptRequest{Template: tmpl})
+	on := RenderMentionPrompt(MentionPromptRequest{Template: tmpl, Appliable: true})
+	if !strings.Contains(off, ApplyOfferNo) || strings.Contains(off, ApplyOfferYes) {
+		t.Errorf("off a code line, the prompt must say no")
+	}
+	if !strings.Contains(on, ApplyOfferYes) || strings.Contains(on, ApplyOfferNo) {
+		t.Errorf("on a code line, the prompt must say yes")
+	}
+	// Per question, so below the diff: the prefix before it stays one
+	// for every question on the PR (prefix cache).
+	if d, a := strings.Index(tmpl, PlaceholderDiff), strings.Index(tmpl, PlaceholderApplyOffer); d < 0 || a < d {
+		t.Errorf("%s at %d, want after %s at %d", PlaceholderApplyOffer, a, PlaceholderDiff, d)
+	}
+	if strings.Contains(on, PlaceholderApplyOffer) || strings.Contains(off, PlaceholderApplyOffer) {
+		t.Errorf("%s left unrendered", PlaceholderApplyOffer)
+	}
+	// A question quoting the placeholder stays literal: one pass.
+	q := RenderMentionPrompt(MentionPromptRequest{Template: "Q:{question}", Question: "what is {apply_offer}?"})
+	if q != "Q:what is {apply_offer}?" {
+		t.Errorf("question = %q", q)
+	}
+}
+
 // Both halves of the compliance rule: instructions only when a ticket is
 // present AND the check is on, and the ticket default when no ticket linked.
 func TestComplianceAndTicketDefaults(t *testing.T) {

@@ -620,7 +620,11 @@ follow, the answer's text being what is applied. Every reply of that flow
 (done, not possible, ask again, only the PR author) is kept about the
 answer (`bot_replies.source_comment_id`), so "apply it" under it applies
 the answer. Only the PR author may: anyone else is told so, with no call
-paid and no row. No code line, the answer says so. `apply` anywhere else
+paid and no row. No code line, the answer says so. An answer offers to
+apply its suggestion only when "apply it" under it would apply it: its
+question kept a line and it is no reply in a fix flow (there "apply it"
+applies the source answer); the not-author notice names the reply only
+on a line. `apply` anywhere else
 gets a fixed "can't apply that here", never the model's sentence. An answer
 is committed once.
 
