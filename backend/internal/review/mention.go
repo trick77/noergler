@@ -97,34 +97,16 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		staged = r.handleConflict(ctx, payload, key, prTag, team, sched, httpCounter, nil)
 		return staged
 	}
-	// "T" directly under the open question which side of a conflict
-	// stands settles the merge kept with it, by code, no model, before the
-	// cap. Anyone's: handleConflict tells others only the author may. The
-	// author's go-ahead naming no side ("Lets go!") is asked again for the
-	// letters; anything else (a command, a question) goes on as any reply.
-	if choice := r.openPick(ctx, key, payload.CommentParentID); choice != nil {
-		if target, ok := readPicks(question, choice.Asked()); ok {
-			r.log.InfoContext(ctx, prTag+": answer under the merge conflict question, taken as the pick")
-			staged = r.handleConflict(ctx, payload, key, prTag, team, sched, httpCounter, &conflictPick{choice: choice, target: target})
-			return staged
-		}
-		if strings.EqualFold(comment.Author.Name, pr.Author.User.Name) && pickNudge(question, choice.Asked()) {
-			r.log.InfoContext(ctx, prTag+": reply under the merge conflict question names no side: asked again")
-			r.reply(ctx, project, repo, pr.ID, comment.ID, pickHint(r.languageFor(ctx, comment.Author.Name), choice.Asked()))
-			engaged(store.EngagementAnswered)
-			return false
-		}
-	}
 	// The PR's state, read once, here, for the offer, the cap and the
 	// reactivation below.
 	state := r.skipState(ctx, key)
-	// A short yes directly under the open offer is the same request, by
-	// code. Anyone's: handleConflict tells a commenter other than the PR's
-	// author, kindly, that only the author may ask.
-	underOffer := r.underOpenOffer(ctx, state, payload.CommentParentID)
-	if underOffer && conflictConsent(question) {
-		r.log.InfoContext(ctx, prTag+": yes under the merge conflict offer, taken as the request")
-		staged = r.handleConflict(ctx, payload, key, prTag, team, sched, httpCounter, nil)
+	// Directly under the open offer or question: the table's code rows
+	// (conflictreply.go), before the cap. Anyone's: handleConflict tells
+	// others only the author may. What code leaves goes on to the Q&A with
+	// the tool its parent allows.
+	route := r.routeConflictReply(ctx, payload, key, prTag, team, sched, httpCounter, state, question, engaged)
+	if route.done {
+		staged = route.staged
 		return staged
 	}
 	// An order to change the PR from anyone but its author: told kindly
@@ -266,7 +248,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		project: project, repo: repo, prID: pr.ID, replyTo: comment.ID, lang: l, counter: httpCounter,
 		name: name, namesOn: r.displayName != nil, nameWithheld: byOther, parentName: parentName,
 		ask: &mentionAsk{key: key, prTag: prTag, user: comment.Author.Name, text: question, lang: l,
-			from: pr.FromRef.Branch(), to: pr.ToRef.Branch(), prAuthor: pr.Author.User.Name, underOffer: underOffer},
+			from: pr.FromRef.Branch(), to: pr.ToRef.Branch(), prAuthor: pr.Author.User.Name, underOffer: route.underOffer, pickOpen: route.pickOpen, pickTool: route.pickTool},
 		anchor: anchor, source: source, fix: answerFix, team: team, payload: payload, trigger: trigger,
 	}
 	req := inference.MentionRequest{
@@ -413,23 +395,12 @@ func (r *Reviewer) postMention(ctx context.Context, sched Scheduler, j *mentionJ
 			o := r.stopReviews(ctx, j.ask.key, prTag, j.ask.user, j.ask.prAuthor, nil)
 			prefix += stopReply(l, o, r.bitbucket.BotUsername()) + "\n\n"
 		}
-		// The model read the reply as a yes to the offer and code let it
-		// stand (conflictVeto): the request, answered by its own replies,
-		// never the model's sentence about it; what this turn confirmed
-		// first. handleConflict checks the author. Only on a loop that
-		// ended well, as a switch or a stop.
-		if j.ask.resolveConflict {
-			r.log.InfoContext(ctx, prTag+": the model read the reply as a yes to the merge conflict offer")
-			if prefix != "" {
-				r.reply(ctx, project, repo, prID, replyTo, strings.TrimSpace(prefix))
-			}
-			return r.handleConflict(ctx, j.payload, j.ask.key, prTag, j.team, sched, j.counter, nil)
-		}
-		// Under the offer, a model without the tool may promise a resolution
-		// nobody starts, and a yes code vetoed waits for one: both say what
-		// starts it.
-		if j.ask.underOffer && (result.ToolsOff != "" || j.ask.consentRefused) {
-			result.Answer = strings.TrimSpace(result.Answer + "\n\n" + offerHint(l, r.bitbucket.BotUsername()))
+		// The table's model rows (conflictreply.go): a yes or the sides
+		// code let stand start the request or settle the merge, never with
+		// the model's sentence. Only on a loop that ended well, as a switch
+		// or a stop.
+		if started, staged := r.postConflictTools(ctx, sched, j, prefix, &result, l); started {
+			return staged
 		}
 		// "apply it": code answers, the model's sentence is never posted,
 		// it may promise a change nobody makes. Under noergler's Q&A answer

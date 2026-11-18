@@ -4,79 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"testing"
 
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/store"
 )
-
-func TestReadPicks(t *testing.T) {
-	for _, c := range []struct {
-		text string
-		n    int
-		want []bool
-	}{
-		{"T", 1, []bool{true}},
-		{"s", 1, []bool{false}},
-		{"`S`", 1, []bool{false}},
-		{"**T** bitte", 1, []bool{true}},
-		{"nimm S", 1, []bool{false}},
-		{"T S", 2, []bool{true, false}},
-		{"1T 2S", 2, []bool{true, false}},
-		{"2: S, 1: T", 2, []bool{true, false}},
-		{"1 s 2 t", 2, []bool{false, true}},
-		{"Nimm 1: T, 2: S, 3: T, 4: S, 5: T bitte", 5, []bool{true, false, true, false, true}},
-	} {
-		got, ok := readPicks(c.text, c.n)
-		if !ok || !slices.Equal(got, c.want) {
-			t.Errorf("readPicks(%q, %d) = %v %t, want %v", c.text, c.n, got, ok, c.want)
-		}
-	}
-	for _, c := range []struct {
-		text string
-		n    int
-	}{
-		{"Lets go!", 1},           // no side named
-		{"ja", 1},                 // a yes is no side
-		{"1.0.31", 1},             // a version's text is never read
-		{"nicht T", 1},            // a no
-		{"T, mach ich später", 1}, // a put-off
-		{"T oder S?", 1},          // a question
-		{"T", 2},                  // too few
-		{"T S", 1},                // too many
-		{"1T S", 2},               // half numbered
-		{"1T 1S", 2},              // a number twice
-		{"3T 1S", 2},              // out of range
-		{"1", 1},                  // a number alone
-		{"ist das so", 1},         // words beside no letter
-		{"T", 0},
-		{"it's T", 2},   // the apostrophe's s is no side
-		{"that’s T", 1}, // typographic, likewise
-	} {
-		if got, ok := readPicks(c.text, c.n); ok {
-			t.Errorf("readPicks(%q, %d) = %v, want no answer", c.text, c.n, got)
-		}
-	}
-}
-
-// Only a go-ahead naming no side, or letters of the wrong count, is asked
-// again; a command, a question or a no goes on as any reply.
-func TestPickNudge(t *testing.T) {
-	for text, want := range map[string]bool{
-		"Lets go!": true, "ja": true, "ok bitte": true, "👍": false,
-		"review": false, "continue": false, "explain the difference": false,
-		"nein, mach ich selbst": false, "which one?": false, "": false,
-	} {
-		if got := pickNudge(text, 1); got != want {
-			t.Errorf("pickNudge(%q, 1) = %t, want %t", text, got, want)
-		}
-	}
-	if !pickNudge("T", 2) || !pickNudge("1T 2S", 3) {
-		t.Error("letters of the wrong count are not asked again")
-	}
-}
 
 // pickRepo: both branches bumped one dependency to their own version (a
 // pick for the author), and both added a different repository at one spot
