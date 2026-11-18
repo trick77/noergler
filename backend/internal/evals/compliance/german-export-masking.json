@@ -1,0 +1,27 @@
+{
+  "name": "german-export-masking",
+  "why": "A German ticket. The masking is in the diff; the nightly schedule lives in a job definition the PR does not touch, so it cannot be shown.",
+  "ticket_context": "### Jira ticket: [FIN-340](https://jira.example/browse/FIN-340)\n**Title:** Kontoexport mit maskierter IBAN\n**Type:** Story · **Status:** In Arbeit\n**Acceptance criteria:** AK-1 Der Export zeigt von der IBAN nur die letzten vier Zeichen. AK-2 Der Export läuft jede Nacht automatisch.",
+  "files": [
+    {
+      "path": "export/accounts.go",
+      "diff": "@@ -10,7 +10,15 @@ type Account struct {\n \n func row(a Account) []string {\n-\treturn []string{a.Holder, a.IBAN}\n+\treturn []string{a.Holder, maskIBAN(a.IBAN)}\n+}\n+\n+// maskIBAN keeps the last four characters and hides the rest.\n+func maskIBAN(iban string) string {\n+\tif len(iban) <= 4 {\n+\t\treturn iban\n+\t}\n+\treturn strings.Repeat(\"*\", len(iban)-4) + iban[len(iban)-4:]\n }",
+      "content": "package export\n\nimport \"strings\"\n\ntype Account struct {\n\tHolder string\n\tIBAN   string\n}\n\n\nfunc row(a Account) []string {\n\treturn []string{a.Holder, maskIBAN(a.IBAN)}\n}\n\n// maskIBAN keeps the last four characters and hides the rest.\nfunc maskIBAN(iban string) string {\n\tif len(iban) <= 4 {\n\t\treturn iban\n\t}\n\treturn strings.Repeat(\"*\", len(iban)-4) + iban[len(iban)-4:]\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expect": [
+    {
+      "label": "AK-1",
+      "keywords": ["iban", "maskier", "vier"],
+      "shown": true,
+      "why": "maskIBAN and the row using it."
+    },
+    {
+      "label": "AK-2",
+      "keywords": ["nacht", "nightly", "automatisch"],
+      "shown": false,
+      "why": "The schedule is not in the shown code."
+    }
+  ]
+}
