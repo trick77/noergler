@@ -74,8 +74,12 @@ type reviewPlan struct {
 	// prAdded is every line the whole PR added, by file, on an incremental
 	// review; nil on a full one. Hashes only.
 	prAdded map[string]map[uint64]bool
+	// history is the cumulative diff the prompt showed, by file, on an
+	// incremental review; nil on a full one. Hashes only.
+	history diff.AnchorIndex
 	// preUnknown: an incremental review whose PR history could not be
-	// read; no pre-existing claim stands.
+	// read; no pre-existing claim stands, and the ticket check says it
+	// could not look.
 	preUnknown bool
 
 	existing []store.Finding

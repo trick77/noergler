@@ -84,8 +84,11 @@ type SummaryInput struct {
 
 	ComplianceRequirements     []inference.ComplianceRequirement
 	ComplianceExtractionFailed bool
-	TicketComplianceCheck      bool
-	JiraEnabled                bool
+	// ComplianceHistoryUnknown: an incremental review that could not read
+	// the PR's whole diff, so what earlier pushes implemented went unchecked.
+	ComplianceHistoryUnknown bool
+	TicketComplianceCheck    bool
+	JiraEnabled              bool
 	// JiraUnavailable: the PR names a ticket but Jira did not serve it (or,
 	// with Ticket set, did not serve its parent).
 	JiraUnavailable bool
@@ -565,54 +568,48 @@ func renderIssues(in SummaryInput) string {
 	return strings.Join(lines, "\n")
 }
 
+// renderTicket shows the ticket and the requirements proven implemented,
+// never one as unmet and never a verdict over the ticket: a PR is a delta,
+// so "not met" is never proven (the requirement can be met outside it), and
+// a count of the proven ones would need a total only the model gives. An
+// unmet requirement that reaches here anyway is left out.
 func renderTicket(in SummaryInput) string {
 	var reqs []inference.ComplianceRequirement
 	if in.TicketComplianceCheck {
-		reqs = in.ComplianceRequirements
+		for _, r := range in.ComplianceRequirements {
+			if r.Met {
+				reqs = append(reqs, r)
+			}
+		}
 	}
 	hasCompliance := len(reqs) > 0
 	p := in.Lang.Pick
 
 	heading := "### Ticket"
-	verdictSuffix := ""
 	if hasCompliance {
-		met := 0
-		for _, r := range reqs {
-			if r.Met {
-				met++
-			}
-		}
-		label, emoji := p("Nicht erfüllt", "Not compliant"), "❌"
-		switch {
-		case met == len(reqs):
-			label, emoji = p("Vollständig erfüllt", "Fully compliant"), "✅"
-		case met > 0:
-			label, emoji = p("Teilweise erfüllt", "Partially compliant"), "⚠️"
-		}
-		verdictSuffix = fmt.Sprintf(" · **%s** %s", label, emoji)
-		heading = p("### Erfüllung der Anforderungen", "### Requirement compliance")
+		heading = p("### Belegt umgesetzt", "### Shown implemented")
 	}
 
 	lines := []string{heading}
 	if in.ParentTicket != nil {
 		lines = append(lines, fmt.Sprintf("**[%s](%s)** — %s", in.ParentTicket.Key, in.ParentTicket.URL, in.ParentTicket.Title))
-		lines = append(lines, fmt.Sprintf("**↳ [%s](%s)** — %s%s", in.Ticket.Key, in.Ticket.URL, in.Ticket.Title, verdictSuffix))
+		lines = append(lines, fmt.Sprintf("**↳ [%s](%s)** — %s", in.Ticket.Key, in.Ticket.URL, in.Ticket.Title))
 	} else {
-		lines = append(lines, fmt.Sprintf("**[%s](%s)** — %s%s", in.Ticket.Key, in.Ticket.URL, in.Ticket.Title, verdictSuffix))
+		lines = append(lines, fmt.Sprintf("**[%s](%s)** — %s", in.Ticket.Key, in.Ticket.URL, in.Ticket.Title))
 	}
 
 	if hasCompliance {
 		labels := CriterionLabels(in.Ticket, in.ParentTicket)
 		for _, r := range reqs {
-			mark := "❌"
-			if r.Met {
-				mark = "✅"
-			}
 			requirement := labelRequirement(r.Requirement, labels)
 			if requirement == "" {
 				requirement = "???"
 			}
-			lines = append(lines, fmt.Sprintf("- %s %s", requirement, mark))
+			lines = append(lines, fmt.Sprintf("- %s ✅", requirement))
+		}
+		if in.ComplianceHistoryUnknown {
+			lines = append(lines, p("_Nur aus dem letzten Push belegt: der Diff des ganzen PRs war nicht lesbar_",
+				"_Shown from the latest push only: the PR's whole diff could not be read_"))
 		}
 		return strings.Join(lines, "\n")
 	}
@@ -634,9 +631,13 @@ func renderTicket(in SummaryInput) string {
 	case in.ComplianceExtractionFailed:
 		reason = p("_Compliance-Auswertung im LLM-Review fehlgeschlagen — siehe Logs_",
 			"_Compliance extraction failed during LLM review — check logs_")
+	case in.ComplianceHistoryUnknown:
+		// What earlier pushes implemented could not be checked: "none
+		// shown" would be a claim about lines nobody read.
+		reason = p("_Anforderungen nicht geprüft: der Diff des ganzen PRs war nicht lesbar_",
+			"_Requirements not checked: the PR's whole diff could not be read_")
 	default:
-		reason = p("_Keine Akzeptanzkriterien anhand der Code-Änderungen prüfbar_",
-			"_No acceptance criteria are verifiable from code changes_")
+		reason = p("_Keine Anforderung im Code belegt_", "_No requirement shown implemented in the code_")
 	}
 	return strings.Join(append(lines, reason), "\n")
 }

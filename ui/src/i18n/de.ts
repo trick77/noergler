@@ -421,6 +421,14 @@ export const de = {
     anchor_mismatch: "Beleg nicht auf seiner Zeile, und mehrdeutig",
     noop_suggestion: "schlägt den Code vor, der schon dasteht",
   },
+  complianceDrop: {
+    not_met: "als nicht erfüllt gemeldet, was ein PR nicht belegen kann",
+    no_quote: "zitiert keinen Code",
+    quote_too_short: "zitiert zu wenig, um etwas zu belegen",
+    unknown_file: "nennt eine Datei, die der Prompt nicht zeigte",
+    quote_removed: "zitiert eine Zeile, die der PR entfernt",
+    quote_not_found: "zitiert Code, den es nicht gibt",
+  },
   prState: {
     open: "Offen",
     merged: "Gemerged",
@@ -538,6 +546,10 @@ export const de = {
     prCap: "PR-Limit",
     prOf: "{{cost}} von {{cap}}",
     preExistingTitle: "Schon vor diesem PR fehlerhaft",
+    complianceTitle: "Ticket-Anforderungen",
+    requirement: "Anforderung",
+    shown: "gezeigt",
+    leftOut: "weggelassen",
   },
   pr: {
     title: "Pull Request",

@@ -98,6 +98,20 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   none on a line the PR (all pushes, on an incremental review) added or
   removed, no in-diff rule; prose with a secret-like token dropped (code is
   fine); at most 5. Run page only.
+- Ticket check shows proven ✅ only, never ❌, never a verdict label over the
+  ticket (user, 2026-11-18). `ConfirmCompliance` keeps a requirement only
+  when `met` and its `quote` matches an added, unchanged or full-file line
+  of its `file` (`matchEvidence`); a removed line proves nothing, an unmet
+  one is never kept, a quote under 6 letters and digits proves nothing
+  (`}` and a lone `+` match nearly every file). Incremental: the
+  cumulative diff as shown, by file, proves too (the summary is the PR's);
+  a line outside every shown hunk of a file the push did not touch does
+  not, known limit. History unreadable: "not checked", never "none shown".
+  `renderTicket` also drops unmet ones itself. Every drop: a log line
+  (secret-like text withheld) and a run page row. The quote proves the line
+  exists, not that it implements the requirement. The prompt bars claiming
+  a requirement unmet anywhere (overview, verdict, findings); free text is
+  not checked, known limit.
 - A secret literal the diff adds (code or config file, not moved) is a
   finding without a failing input; default-looking values (`admin123`,
   `changeme`) count, runtime lookups, empty or templated values and files

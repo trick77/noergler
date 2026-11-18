@@ -101,11 +101,12 @@ func ReviewResponseSchema() map[string]any {
 				"items": map[string]any{
 					"type":                 "object",
 					"additionalProperties": false,
-					"required":             []any{"requirement", "met", "evidence"},
+					"required":             []any{"requirement", "met", "file", "quote"},
 					"properties": map[string]any{
 						"requirement": map[string]any{"type": "string"},
 						"met":         map[string]any{"type": "boolean"},
-						"evidence":    map[string]any{"type": []any{"string", "null"}},
+						"file":        map[string]any{"type": []any{"string", "null"}},
+						"quote":       map[string]any{"type": []any{"string", "null"}},
 					},
 				},
 			},
@@ -182,9 +183,9 @@ const schemaJSON = `{"type": "object", "additionalProperties": false, "required"
 	`"evidence": {"type": "array", "minItems": 1, "maxItems": 5, "items": {"type": "string"}}, ` +
 	`"headline": {"type": "string", "minLength": 1}, "explanation": {"type": "string", "minLength": 1}}}}, ` +
 	`"compliance_requirements": {"type": ["array", "null"], "items": {"type": "object", ` +
-	`"additionalProperties": false, "required": ["requirement", "met", "evidence"], ` +
+	`"additionalProperties": false, "required": ["requirement", "met", "file", "quote"], ` +
 	`"properties": {"requirement": {"type": "string"}, "met": {"type": "boolean"}, ` +
-	`"evidence": {"type": ["string", "null"]}}}}, ` +
+	`"file": {"type": ["string", "null"]}, "quote": {"type": ["string", "null"]}}}}, ` +
 	`"visual_changes": {"type": "array", "maxItems": 10, "items": {"type": "object", "additionalProperties": false, ` +
 	`"required": ["ids", "change", "visible"], "properties": {"ids": {"type": "array", "minItems": 1, ` +
 	`"maxItems": 10, "items": {"type": "string"}}, ` +

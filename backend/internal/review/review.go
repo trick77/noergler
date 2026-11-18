@@ -377,11 +377,15 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	anchors := diff.BuildAnchorIndex(files)
 	anchors.AddContextDiff(cumulativePR.diff)
 	var prAdded map[string]map[uint64]bool
+	var history diff.AnchorIndex
 	preUnknown := false
 	if incrementalFrom != "" {
 		// No history read (a failed fetch): every pre-existing claim drops,
 		// rather than passing on one push's diff alone.
 		prAdded, preUnknown = cumulativePR.added, cumulativePR.added == nil
+		// The cumulative diff as shown, by file: a ticket requirement an
+		// earlier push implemented is proven by its lines there.
+		history = diff.BuildAnchorIndex(diff.FilesOf(cumulativePR.diff))
 	}
 	// The last of prepare's own work: what follows is the wait for a slot.
 	sw.lap(stagePrompt)
@@ -408,6 +412,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		visual:          visualPlan,
 		anchors:         anchors,
 		prAdded:         prAdded,
+		history:         history,
 		preUnknown:      preUnknown,
 		existing:        existing,
 		existingUnknown: existingUnknown,
@@ -630,6 +635,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 	attemptID := r.recordAttempt(ctx, attempt)
 
 	runCost, cumulativeCost := r.resolveCost(ctx, key, result)
+	compliance := r.confirmCompliance(ctx, plan, result.Review.ComplianceRequirements)
 
 	summary := render.Summary(render.SummaryInput{
 		Lang:                       plan.lang,
@@ -647,8 +653,9 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 		AgentsMDTokens:             plan.detail.AgentsMD.Tokens,
 		Ticket:                     plan.ticket,
 		ParentTicket:               plan.parentTicket,
-		ComplianceRequirements:     result.Review.ComplianceRequirements,
+		ComplianceRequirements:     compliance,
 		ComplianceExtractionFailed: result.Review.ComplianceRequirements == nil,
+		ComplianceHistoryUnknown:   plan.preUnknown,
 		TicketComplianceCheck:      r.cfg.TicketComplianceCheck,
 		JiraEnabled:                r.jiraEnabled(),
 		JiraUnavailable:            plan.jiraDown,

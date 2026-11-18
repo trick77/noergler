@@ -21,6 +21,7 @@ import {
   when,
 } from "./format";
 import {
+  ComplianceCard,
   ContextCard,
   FindingText,
   InputTab,
@@ -508,6 +509,7 @@ function Findings({ d, pr }: { d: RunDetail; pr: string | null }) {
       {d.detail && (
         <PreExistingCard p={d.detail} tag={d.tag} base={d.bitbucket_url} />
       )}
+      {d.detail && <ComplianceCard p={d.detail} />}
       {d.fixed.length > 0 && (
         <Card title={t("run.fixedTitle")}>
           <FindingRows rows={d.fixed} pr={pr} fixedTable />

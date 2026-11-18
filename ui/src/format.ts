@@ -285,6 +285,7 @@ type CodeGroup =
   | "sent"
   | "decision"
   | "dropReason"
+  | "complianceDrop"
   | "callKind"
   | "prState";
 

@@ -35,6 +35,16 @@ an incident or an eval run: read the reason before relaxing a rule.
 
 ## Findings
 
+- Ticket check without ❌: a PR is a delta, so "not met" is never provable;
+  the requirement can live in another file, an earlier PR, another repo or
+  the pipeline. A requirement met by deployment scripts the PR did not
+  touch read "not compliant" on the PR, the model quoting the changed
+  config line it did see. Rejected: a third "not assessable" mark (still a
+  verdict on what the review cannot see), the model sorting unmet from
+  "outside the PR" (the same judgement that failed), a quote rule for ❌
+  (an absence has nothing to quote; the changed line passes it). A count
+  ("2 of 4") needs a total only the model gives. Loading files outside the
+  diff would add ✅ lines, not prevent a wrong one; not built.
 - Screenshots summary only: an image has no line to anchor on and nothing
   `ValidateFindings` can quote; checking a visual claim would take a judge
   model. Pixel diff and crop in code: vision models miss small differences

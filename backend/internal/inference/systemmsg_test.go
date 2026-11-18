@@ -80,7 +80,7 @@ func TestSystemMessagesArePinned(t *testing.T) {
 	}{
 		{"review", ReviewSystemMessage, 808, "8085a331b655a85a"},
 		{"mention", MentionSystemMessage, 1136, "c62070dc4eb87237"},
-		{"compliance", ComplianceInstructions, 1139, "fa8972c0b065ecf0"},
+		{"compliance", ComplianceInstructions, 1661, "de597e9866f06a3f"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

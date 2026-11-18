@@ -182,6 +182,32 @@ func TestWellFormedComplianceRequirementsSurvive(t *testing.T) {
 	}
 }
 
+// The quoted proof survives the parse; a null or absent one reads as none
+// (ConfirmCompliance then leaves the requirement out) and warns nothing.
+func TestComplianceQuoteIsParsed(t *testing.T) {
+	got := ParseReview(`{"overview":"x","compliance_requirements":[` +
+		`{"requirement":"does X","met":true,"file":"a.go","quote":"x := 1"},` +
+		`{"requirement":"does Y","met":true,"file":null,"quote":null},` +
+		`{"requirement":"does Z","met":true}]}`)
+
+	want := []ComplianceRequirement{
+		{Requirement: "does X", Met: true, File: "a.go", Quote: "x := 1"},
+		{Requirement: "does Y", Met: true},
+		{Requirement: "does Z", Met: true},
+	}
+	if len(got.ComplianceRequirements) != len(want) {
+		t.Fatalf("kept %+v, want %+v", got.ComplianceRequirements, want)
+	}
+	for i := range want {
+		if got.ComplianceRequirements[i] != want[i] {
+			t.Errorf("item %d = %+v, want %+v", i, got.ComplianceRequirements[i], want[i])
+		}
+	}
+	if len(got.Diagnostics) != 0 {
+		t.Errorf("items warned: %v", got.Diagnostics)
+	}
+}
+
 // A parse failure returns before the overview check, so it reports the failure
 // alone rather than also complaining that the overview is empty.
 func TestParseFailureDoesNotAlsoWarnAboutTheOverview(t *testing.T) {

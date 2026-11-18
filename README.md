@@ -83,7 +83,7 @@ Alongside the inline findings, noergler posts (or updates) a single summary comm
 
 - **Top findings** — severity-sorted excerpt of the review comments, capped to a few lines.
 - **Scope** — whether an `AGENTS.md` was used (with token count against `REVIEW_AGENTS_MD_WARN_TOKENS` so you can spot context bloat), plus Jira ticket status or a tip if none was found.
-- **Ticket compliance** — per-acceptance-criterion verdict (✅ / ❌) when `REVIEW_TICKET_COMPLIANCE_CHECK` is on and a Jira ticket is linked.
+- **Ticket requirements** — the acceptance criteria a quoted line of the shown code proves implemented (✅ only; nothing is marked unmet, since a PR is a delta) when `REVIEW_TICKET_COMPLIANCE_CHECK` is on and a Jira ticket is linked.
 - **Reviewed / skipped files** — counts, added/removed line totals, and which files were skipped (lock files, binaries, config).
 - **Token usage** — prompt / completion token counts for the run.
 - **Last reviewed commit** — so incremental reviews on `pr:from_ref_updated` know where to start.

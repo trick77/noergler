@@ -432,6 +432,16 @@ export const en = {
     anchor_mismatch: "evidence not at its line, and ambiguous",
     noop_suggestion: "suggested the code already there",
   },
+  // Why the summary left a ticket requirement out, by the code
+  // ConfirmCompliance writes.
+  complianceDrop: {
+    not_met: "called unmet, which a PR cannot prove",
+    no_quote: "quoted no code",
+    quote_too_short: "quoted too little to tie to anything",
+    unknown_file: "names a file the prompt did not show",
+    quote_removed: "quoted a line the PR removed",
+    quote_not_found: "quoted code that is not there",
+  },
   prState: {
     open: "Open",
     merged: "Merged",
@@ -548,6 +558,10 @@ export const en = {
     prCap: "PR cap",
     prOf: "{{cost}} of {{cap}}",
     preExistingTitle: "Already broken before this PR",
+    complianceTitle: "Ticket requirements",
+    requirement: "Requirement",
+    shown: "shown",
+    leftOut: "left out",
   },
   pr: {
     title: "Pull request",
