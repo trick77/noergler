@@ -349,6 +349,10 @@ export const td = "border-b border-border-soft py-1.5 pr-2.5 text-ink-dim";
 export const tdNum =
   td + " text-right font-mono tabular-nums text-muted whitespace-nowrap";
 export const tdTag = td + " font-mono text-[12.5px] whitespace-nowrap";
+// A cell with more behind its hover says so: a dotted underline, else
+// nobody finds the tokens in the cost cell (user, 2026-11-18).
+export const hint =
+  " underline decoration-dotted decoration-faint underline-offset-3";
 
 /** Empty is what a panel says when there is nothing, which is a real state
  *  here: an idle instance is healthy, not broken. */

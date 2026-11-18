@@ -29,6 +29,7 @@ import {
   table,
   td,
   tdNum,
+  hint,
   th,
   thNum,
 } from "./ui";
@@ -794,16 +795,19 @@ export function MetricsPage() {
                         <td className={tdNum}>{row.runs}</td>
                         <td className={tdNum}>{row.findings_posted}</td>
                         <td className={tdNum}>{row.tasks ?? 0}</td>
-                        <td className={tdNum} title={fixesTitle(row.fixes)}>
+                        <td
+                          className={tdNum + hint}
+                          title={fixesTitle(row.fixes)}
+                        >
                           {row.fixes.requested}
                         </td>
                         <td className={tdNum}>{row.fixes.committed}</td>
                         <td className={tdNum}>{row.engagements ?? 0}</td>
-                        <td className={tdNum} title={linesTitle(row)}>
+                        <td className={tdNum + hint} title={linesTitle(row)}>
                           {teamLines(row)}
                         </td>
                         <td
-                          className={tdNum}
+                          className={tdNum + hint}
                           title={`${t("metrics.tokensIn")}: ${num(row.prompt_tokens)}\n${t("metrics.tokensOut")}: ${num(row.completion_tokens)}`}
                         >
                           {money(row.cost_usd)}
