@@ -94,8 +94,26 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	// runs at the cap too; one the model must answer is refused there,
 	// with an answer.
 	if conflictRequest(question) {
-		staged = r.handleConflict(ctx, payload, key, prTag, team, sched, httpCounter)
+		staged = r.handleConflict(ctx, payload, key, prTag, team, sched, httpCounter, nil)
 		return staged
+	}
+	// "T" directly under the open question which side of a conflict
+	// stands settles the merge kept with it, by code, no model, before the
+	// cap. Anyone's: handleConflict tells others only the author may. The
+	// author's go-ahead naming no side ("Lets go!") is asked again for the
+	// letters; anything else (a command, a question) goes on as any reply.
+	if choice := r.openPick(ctx, key, payload.CommentParentID); choice != nil {
+		if target, ok := readPicks(question, choice.Asked()); ok {
+			r.log.InfoContext(ctx, prTag+": answer under the merge conflict question, taken as the pick")
+			staged = r.handleConflict(ctx, payload, key, prTag, team, sched, httpCounter, &conflictPick{choice: choice, target: target})
+			return staged
+		}
+		if strings.EqualFold(comment.Author.Name, pr.Author.User.Name) && pickNudge(question, choice.Asked()) {
+			r.log.InfoContext(ctx, prTag+": reply under the merge conflict question names no side: asked again")
+			r.reply(ctx, project, repo, pr.ID, comment.ID, pickHint(r.languageFor(ctx, comment.Author.Name), choice.Asked()))
+			engaged(store.EngagementAnswered)
+			return false
+		}
 	}
 	// The PR's state, read once, here, for the offer, the cap and the
 	// reactivation below.
@@ -106,7 +124,7 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	underOffer := r.underOpenOffer(ctx, state, payload.CommentParentID)
 	if underOffer && conflictConsent(question) {
 		r.log.InfoContext(ctx, prTag+": yes under the merge conflict offer, taken as the request")
-		staged = r.handleConflict(ctx, payload, key, prTag, team, sched, httpCounter)
+		staged = r.handleConflict(ctx, payload, key, prTag, team, sched, httpCounter, nil)
 		return staged
 	}
 	// An order to change the PR from anyone but its author: told kindly
@@ -405,7 +423,7 @@ func (r *Reviewer) postMention(ctx context.Context, sched Scheduler, j *mentionJ
 			if prefix != "" {
 				r.reply(ctx, project, repo, prID, replyTo, strings.TrimSpace(prefix))
 			}
-			return r.handleConflict(ctx, j.payload, j.ask.key, prTag, j.team, sched, j.counter)
+			return r.handleConflict(ctx, j.payload, j.ask.key, prTag, j.team, sched, j.counter, nil)
 		}
 		// Under the offer, a model without the tool may promise a resolution
 		// nobody starts, and a yes code vetoed waits for one: both say what

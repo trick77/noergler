@@ -116,6 +116,10 @@ type Store interface {
 	// offer comment of the PR row; 0 is none.
 	ConflictOffer(ctx context.Context, prID int64) (int, error)
 	SetConflictOffer(ctx context.Context, prID int64, commentID int) error
+	// ConflictChoice and SetConflictChoice hold the open question to the
+	// PR's author, which side of a conflict stands (nil: none).
+	ConflictChoice(ctx context.Context, k store.PRKey) (*store.ConflictChoice, error)
+	SetConflictChoice(ctx context.Context, k store.PRKey, c *store.ConflictChoice) error
 	// SnapshotTasks (by the PR's key, with its row id; 0 = no row) and
 	// SetSnapshotTasks hold the PR's SNAPSHOT tasks.
 	SnapshotTasks(ctx context.Context, k store.PRKey) (int64, []store.SnapshotTask, error)

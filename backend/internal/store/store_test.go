@@ -228,6 +228,37 @@ func TestPullRequest_ConflictOffer(t *testing.T) {
 	}
 }
 
+// The open question to the author: none, set, read back whole, cleared.
+func TestPullRequest_ConflictChoice(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	if got, err := s.ConflictChoice(ctx, key); err != nil || got != nil {
+		t.Fatalf("no row: %+v %v", got, err)
+	}
+	upsert(t, s, key, "abc")
+	if got, err := s.ConflictChoice(ctx, key); err != nil || got != nil {
+		t.Fatalf("fresh row: %+v %v", got, err)
+	}
+	want := &ConflictChoice{CommentID: 91, SourceHead: "s1", TargetHead: "t1", Conflicts: []ChoiceConflict{
+		{Path: "build.gradle", Target: []string{"v 1.0.31"}, Source: []string{"v 1.0.29"}, How: ChoiceAsk},
+		{Path: "list.txt", Target: []string{"t"}, Source: []string{"s"}, How: ChoiceRule, Refs: []string{"T1", "S1"}},
+	}}
+	if err := s.SetConflictChoice(ctx, key, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.ConflictChoice(ctx, key)
+	if err != nil || got == nil || got.CommentID != 91 || got.TargetHead != "t1" || len(got.Conflicts) != 2 ||
+		got.Conflicts[1].Refs[1] != "S1" || got.Asked() != 1 {
+		t.Fatalf("set: %+v %v", got, err)
+	}
+	if err := s.SetConflictChoice(ctx, key, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.ConflictChoice(ctx, key); err != nil || got != nil {
+		t.Fatalf("cleared: %+v %v", got, err)
+	}
+}
+
 func TestPullRequest_SkipStateIgnoreReactivate(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

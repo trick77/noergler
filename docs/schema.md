@@ -364,6 +364,7 @@ Go types:
 | `stopped_by` | text | yes |  |  |
 | `conflict_offer_comment_id` | integer | yes |  |  |
 | `snapshot_tasks` | jsonb | no | `'[]'::jsonb` |  |
+| `conflict_choice` | jsonb | yes |  |  |
 
 Indexes:
 
@@ -941,6 +942,7 @@ erDiagram
         text stopped_by
         integer conflict_offer_comment_id
         jsonb snapshot_tasks
+        jsonb conflict_choice
     }
     review_attempts {
         bigint id PK

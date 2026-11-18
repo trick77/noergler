@@ -102,8 +102,13 @@ const stopCommandWords = 10
 // apostrophes as ASCII (iOS and macOS type "don’t"), quoted code as a
 // placeholder word, so "stop()" is no order and the word gaps still count.
 func normalize(text string) string {
-	t := strings.NewReplacer("’", "'", "‘", "'").Replace(strings.TrimSpace(text))
-	return codeSpan.ReplaceAllString(t, " code ")
+	return codeSpan.ReplaceAllString(asciiQuotes(text), " code ")
+}
+
+// asciiQuotes is the trimmed text with typographic apostrophes as ASCII,
+// code spans kept: what every reader of a command starts from.
+func asciiQuotes(text string) string {
+	return strings.NewReplacer("’", "'", "‘", "'").Replace(strings.TrimSpace(text))
 }
 
 // short reports whether t can be a command decided by code: no question,

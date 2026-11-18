@@ -188,7 +188,15 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   nothing within merge's bounds (constants, never settings): any conflict
   past them, a lockfile, generated, built (`dist/`) or binary file, add/add, delete/modify,
   a mode change, a conflict whose target or source names an unreleased
-  build (`merge.Snapshot`, user, 2026-11-15) refuses the whole request. Merge commit, parents
+  build (`merge.Snapshot`, user, 2026-11-15) refuses the whole request.
+  Two whole versions neither carrying the other's change are the author's
+  pick, never the model's (user, 2026-11-18): the model only names them
+  (`ask`), code checks `merge.Choosable`, asks T or S, and pushes nothing
+  until the answer. The answer is read by code, side letters only (never
+  a version's text: "nicht 1.0.31" would pick it), and settles the merge
+  kept with the question (`conflict_choice`: heads, every conflict's
+  resolution), no second call, so one answer ends it; heads or conflicts
+  changed = nothing pushed, ask again. Merge commit, parents
   `[source, target]`, pushed without force, compare-and-swap on the source
   head read. The answer quotes every dropped line and tells the author to
   build and test; an answer that would not hold every dropped line in full
