@@ -93,6 +93,9 @@ type options struct {
 	// conflicts scores the merge-conflict prompt on its own corpus
 	// (internal/evals/conflicts) instead of the review prompt.
 	conflicts bool
+	// compliance scores the ticket check on its own corpus
+	// (internal/evals/compliance): what the summary would show.
+	compliance bool
 	// rescore is a sampled report to score again from the samples it holds.
 	rescore string
 	// confirm is a sampled report whose reviews are unioned in groups of
@@ -149,6 +152,8 @@ func main() {
 		"sampled.json: recompute every view from the samples a sampled report holds; makes no calls")
 	flag.BoolVar(&opt.conflicts, "conflicts", false,
 		"score the merge-conflict prompt on internal/evals/conflicts; -samples answers per case, -parallel calls in flight")
+	flag.BoolVar(&opt.compliance, "compliance", false,
+		"score the ticket check on internal/evals/compliance; -samples reviews per case, -parallel calls in flight")
 	flag.Parse()
 	opt.effortSet = wasSet(flag.CommandLine, "effort")
 	if *usage {
@@ -229,6 +234,9 @@ func run(ctx context.Context, opt options) (bool, error) {
 	}
 	if opt.conflicts {
 		return runConflicts(ctx, opt)
+	}
+	if opt.compliance {
+		return runCompliance(ctx, opt)
 	}
 	if opt.samples != 1 && opt.samples < evals.MinSamples {
 		return false, fmt.Errorf("-samples %d: 1 for the series run, or at least %d for a sampled one",
@@ -508,6 +516,64 @@ func runConflicts(ctx context.Context, opt options) (bool, error) {
 	}
 	// A wrong answer is exit 1 even beside an answer that never came:
 	// it is the number that counts, and a missing one does not undo it.
+	if err := res.ErrWrong(); err != nil {
+		return true, errors.Join(err, res.ErrIncomplete())
+	}
+	return false, res.ErrIncomplete()
+}
+
+// runCompliance scores the ticket check. Exit 1 is a requirement shown that
+// the shown code does not implement; an answer that never came is exit 2.
+// How many provable requirements survive is reported, never a failure: it is
+// the number to read, not a gate.
+func runCompliance(ctx context.Context, opt options) (bool, error) {
+	switch {
+	case opt.mix != "" || opt.rescore != "" || opt.confirm != "":
+		return false, errors.New("-compliance takes none of -mix, -rescore, -confirm")
+	case opt.samples < 1:
+		return false, fmt.Errorf("-samples %d: at least 1", opt.samples)
+	}
+	var template string
+	if opt.promptPath != "" {
+		raw, err := os.ReadFile(opt.promptPath) //nolint:gosec // G304: an operator-supplied flag in a dev tool
+		if err != nil {
+			return false, fmt.Errorf("read prompt: %w", err)
+		}
+		template = string(raw)
+	}
+	settings, err := evals.ResolveSettings(opt.getenv, opt.window)
+	if err != nil {
+		return false, err
+	}
+	opt.effort = evals.DefaultSeries().EffortFor(settings.Model, opt.effort, opt.effortSet)
+	cases, err := evals.LoadComplianceCorpus()
+	if err != nil {
+		return false, fmt.Errorf("load compliance corpus: %w", err)
+	}
+	if cases, err = selectNamed(cases, func(c evals.ComplianceCase) string { return c.Name }, opt.only); err != nil {
+		return false, err
+	}
+	counter, err := tokens.New()
+	if err != nil {
+		return false, fmt.Errorf("tokenizer: %w", err)
+	}
+	client, err := opt.newClient(settings, opt.effort)
+	if err != nil {
+		return false, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, opt.timeout)
+	defer cancel()
+	_, _ = fmt.Fprintf(opt.stdout, "model %s via %s, %d ticket case(s), %d sample(s) each\n\n",
+		header(client, settings.Model, opt.effort), settings.BaseURL, len(cases), opt.samples)
+	res := evals.RunCompliance(ctx, client, cases, template, counter.Count, opt.samples, opt.parallel, opt.stdout)
+	res.Model, res.Effort = settings.Model, opt.effort
+	if res.Effort == "" {
+		res.Effort = "balanced"
+	}
+	res.Report(opt.stdout)
+	if err := writeJSON(opt, res); err != nil {
+		return false, err
+	}
 	if err := res.ErrWrong(); err != nil {
 		return true, errors.Join(err, res.ErrIncomplete())
 	}

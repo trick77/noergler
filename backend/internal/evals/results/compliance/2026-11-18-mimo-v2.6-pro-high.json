@@ -1,0 +1,528 @@
+{
+ "model": "mimo-v2.6-pro",
+ "effort": "high",
+ "samples": 3,
+ "seconds": 238.913736625,
+ "cases": [
+  {
+   "case": "german-export-masking",
+   "answers": [
+    {
+     "outcome": "ok",
+     "seconds": 18.5298915,
+     "requirements": [
+      {
+       "requirement": "AK-1: The export shows only the last four characters of the IBAN.",
+       "met": true,
+       "file": "export/accounts.go",
+       "quote": "return strings.Repeat(\"*\", len(iban)-4) + iban[len(iban)-4:]"
+      }
+     ],
+     "expect": [
+      {
+       "label": "AK-1",
+       "expected_shown": true,
+       "verdict": "shown"
+      },
+      {
+       "label": "AK-2",
+       "expected_shown": false,
+       "verdict": "held_back"
+      }
+     ],
+     "unmet": 0,
+     "prompt_tokens": 5823,
+     "output_tokens": 794
+    },
+    {
+     "outcome": "ok",
+     "seconds": 33.208089667,
+     "requirements": null,
+     "expect": [
+      {
+       "label": "AK-1",
+       "expected_shown": true,
+       "verdict": "unlisted"
+      },
+      {
+       "label": "AK-2",
+       "expected_shown": false,
+       "verdict": "held_back"
+      }
+     ],
+     "unmet": 0,
+     "prompt_tokens": 5823,
+     "output_tokens": 1290
+    },
+    {
+     "outcome": "ok",
+     "seconds": 19.293870917,
+     "requirements": [
+      {
+       "requirement": "AK-1: Der Export zeigt von der IBAN nur die letzten vier Zeichen.",
+       "met": true,
+       "file": "export/accounts.go",
+       "quote": "return strings.Repeat(\"*\", len(iban)-4) + iban[len(iban)-4:]"
+      }
+     ],
+     "expect": [
+      {
+       "label": "AK-1",
+       "expected_shown": true,
+       "verdict": "shown"
+      },
+      {
+       "label": "AK-2",
+       "expected_shown": false,
+       "verdict": "held_back"
+      }
+     ],
+     "unmet": 0,
+     "prompt_tokens": 5823,
+     "output_tokens": 640
+    }
+   ]
+  },
+  {
+   "case": "met-in-unchanged-code",
+   "answers": [
+    {
+     "outcome": "ok",
+     "seconds": 40.458745834,
+     "requirements": [
+      {
+       "requirement": "AC-1: GET /v2/orders returns the caller's orders",
+       "met": true,
+       "file": "orders/routes.go",
+       "quote": "mux.HandleFunc(\"GET /v2/orders\", s.listOrders)"
+      },
+      {
+       "requirement": "AC-2: Every endpoint requires an authenticated caller",
+       "met": true,
+       "file": "orders/routes.go",
+       "quote": "return requireAuth(mux)"
+      }
+     ],
+     "expect": [
+      {
+       "label": "AC-1",
+       "expected_shown": true,
+       "verdict": "shown"
+      },
+      {
+       "label": "AC-2",
+       "expected_shown": true,
+       "verdict": "shown"
+      }
+     ],
+     "unmet": 0,
+     "prompt_tokens": 6084,
+     "output_tokens": 1771
+    },
+    {
+     "outcome": "ok",
+     "seconds": 35.716027958,
+     "requirements": null,
+     "expect": [
+      {
+       "label": "AC-1",
+       "expected_shown": true,
+       "verdict": "unlisted"
+      },
+      {
+       "label": "AC-2",
+       "expected_shown": true,
+       "verdict": "unlisted"
+      }
+     ],
+     "unmet": 0,
+     "prompt_tokens": 6084,
+     "output_tokens": 1264
+    },
+    {
+     "outcome": "ok",
+     "seconds": 36.959359042,
+     "requirements": [
+      {
+       "requirement": "AC-1 GET /v2/orders returns the caller's orders",
+       "met": true,
+       "file": "orders/list.go",
+       "quote": "orders, err := s.store.OrdersOf(r.Context(), callerFrom(r))"
+      },
+      {
+       "requirement": "AC-2 Every endpoint requires an authenticated caller",
+       "met": true,
+       "file": "orders/routes.go",
+       "quote": "return requireAuth(mux)"
+      }
+     ],
+     "expect": [
+      {
+       "label": "AC-1",
+       "expected_shown": true,
+       "verdict": "shown"
+      },
+      {
+       "label": "AC-2",
+       "expected_shown": true,
+       "verdict": "shown"
+      }
+     ],
+     "unmet": 0,
+     "prompt_tokens": 6084,
+     "output_tokens": 831
+    }
+   ]
+  },
+  {
+   "case": "met-outside-pr",
+   "answers": [
+    {
+     "outcome": "ok",
+     "seconds": 5.628829959,
+     "requirements": [
+      {
+       "requirement": "AK-2: The settings store no longer uses the environment builder",
+       "met": true,
+       "file": "app/settings.config",
+       "quote": "  \u003cstore mode=\"plain\" /\u003e"
+      },
+      {
+       "requirement": "AK-2: The settings store no longer uses the environment builder",
+       "met": true,
+       "file": "app/settings.worker.config",
+       "quote": "  \u003cstore mode=\"plain\" /\u003e"
+      }
+     ],
+     "expect": [
+      {
+       "label": "AK-1",
+       "expected_shown": false,
+       "verdict": "held_back"
+      },
+      {
+       "label": "AK-2",
+       "expected_shown": true,
+       "verdict": "shown"
+      }
+     ],
+     "unmet": 0,
+     "prompt_tokens": 5793,
+     "output_tokens": 426
+    },
+    {
+     "outcome": "ok",
+     "seconds": 14.823403417,
+     "requirements": [
+      {
+       "requirement": "AK-2 The settings store no longer uses the environment builder.",
+       "met": true,
+       "file": "app/settings.config",
+       "quote": "\u003cstore mode=\"plain\" /\u003e"
+      }
+     ],
+     "expect": [
+      {
+       "label": "AK-1",
+       "expected_shown": false,
+       "verdict": "held_back"
+      },
+      {
+       "label": "AK-2",
+       "expected_shown": true,
+       "verdict": "shown"
+      }
+     ],
+     "unmet": 0,
+     "prompt_tokens": 5793,
+     "output_tokens": 935
+    },
+    {
+     "outcome": "ok",
+     "seconds": 10.104616625,
+     "requirements": [
+      {
+       "requirement": "AK-2: The settings store no longer uses the environment builder.",
+       "met": true,
+       "file": "app/settings.config",
+       "quote": "\u003cstore mode=\"plain\" /\u003e"
+      }
+     ],
+     "expect": [
+      {
+       "label": "AK-1",
+       "expected_shown": false,
+       "verdict": "held_back"
+      },
+      {
+       "label": "AK-2",
+       "expected_shown": true,
+       "verdict": "shown"
+      }
+     ],
+     "unmet": 0,
+     "prompt_tokens": 5793,
+     "output_tokens": 498
+    }
+   ]
+  },
+  {
+   "case": "partial-missing-header",
+   "answers": [
+    {
+     "outcome": "ok",
+     "seconds": 66.913864208,
+     "requirements": null,
+     "expect": [
+      {
+       "label": "AC-1",
+       "expected_shown": true,
+       "verdict": "unlisted"
+      },
+      {
+       "label": "AC-2",
+       "expected_shown": false,
+       "verdict": "held_back"
+      }
+     ],
+     "unmet": 0,
+     "prompt_tokens": 5917,
+     "output_tokens": 3326
+    },
+    {
+     "outcome": "ok",
+     "seconds": 42.141974125,
+     "requirements": [
+      {
+       "requirement": "AC-1: Each client is limited to 100 requests per minute.",
+       "met": true,
+       "file": "api/ratelimit.go",
+       "quote": "const requestsPerMinute = 100"
+      }
+     ],
+     "expect": [
+      {
+       "label": "AC-1",
+       "expected_shown": true,
+       "verdict": "shown"
+      },
+      {
+       "label": "AC-2",
+       "expected_shown": false,
+       "verdict": "held_back"
+      }
+     ],
+     "unmet": 0,
+     "prompt_tokens": 5917,
+     "output_tokens": 2271
+    },
+    {
+     "outcome": "ok",
+     "seconds": 106.256182292,
+     "requirements": [
+      {
+       "requirement": "AC-1: Each client is limited to 100 requests per minute",
+       "met": true,
+       "file": "api/ratelimit.go",
+       "quote": "l := limiters.For(clientID(r), rate.Limit(float64(requestsPerMinute)/60), requestsPerMinute)"
+      }
+     ],
+     "expect": [
+      {
+       "label": "AC-1",
+       "expected_shown": true,
+       "verdict": "shown"
+      },
+      {
+       "label": "AC-2",
+       "expected_shown": false,
+       "verdict": "held_back"
+      }
+     ],
+     "unmet": 0,
+     "prompt_tokens": 5917,
+     "output_tokens": 5944
+    }
+   ]
+  },
+  {
+   "case": "process-criteria-only",
+   "answers": [
+    {
+     "outcome": "ok",
+     "seconds": 10.864183582999999,
+     "requirements": null,
+     "expect": [
+      {
+       "label": "AC-1",
+       "expected_shown": false,
+       "verdict": "held_back"
+      },
+      {
+       "label": "AC-2",
+       "expected_shown": false,
+       "verdict": "held_back"
+      }
+     ],
+     "unmet": 0,
+     "prompt_tokens": 5633,
+     "output_tokens": 344
+    },
+    {
+     "outcome": "ok",
+     "seconds": 11.494021,
+     "requirements": null,
+     "expect": [
+      {
+       "label": "AC-1",
+       "expected_shown": false,
+       "verdict": "held_back"
+      },
+      {
+       "label": "AC-2",
+       "expected_shown": false,
+       "verdict": "held_back"
+      }
+     ],
+     "unmet": 0,
+     "prompt_tokens": 5633,
+     "output_tokens": 315
+    },
+    {
+     "outcome": "ok",
+     "seconds": 10.153559584,
+     "requirements": null,
+     "expect": [
+      {
+       "label": "AC-1",
+       "expected_shown": false,
+       "verdict": "held_back"
+      },
+      {
+       "label": "AC-2",
+       "expected_shown": false,
+       "verdict": "held_back"
+      }
+     ],
+     "unmet": 0,
+     "prompt_tokens": 5633,
+     "output_tokens": 414
+    }
+   ]
+  },
+  {
+   "case": "retry-implemented",
+   "answers": [
+    {
+     "outcome": "ok",
+     "seconds": 67.423965667,
+     "requirements": [
+      {
+       "requirement": "AC-1: A failed capture is retried up to 3 times",
+       "met": true,
+       "file": "payments/capture.go",
+       "quote": "for attempt := 1; attempt \u003c= maxCaptureAttempts; attempt++ {"
+      },
+      {
+       "requirement": "AC-2: Every retry is logged with its attempt number",
+       "met": true,
+       "file": "payments/capture.go",
+       "quote": "slog.WarnContext(ctx, \"capture failed, retrying\", \"id\", id, \"attempt\", attempt)"
+      }
+     ],
+     "expect": [
+      {
+       "label": "AC-1",
+       "expected_shown": true,
+       "verdict": "shown"
+      },
+      {
+       "label": "AC-2",
+       "expected_shown": true,
+       "verdict": "shown"
+      }
+     ],
+     "unmet": 0,
+     "prompt_tokens": 5876,
+     "output_tokens": 3061
+    },
+    {
+     "outcome": "ok",
+     "seconds": 24.374661875,
+     "requirements": [
+      {
+       "requirement": "A failed capture is retried up to 3 times",
+       "met": true,
+       "file": "payments/capture.go",
+       "quote": "const maxCaptureAttempts = 3"
+      },
+      {
+       "requirement": "Every retry is logged with its attempt number",
+       "met": true,
+       "file": "payments/capture.go",
+       "quote": "slog.WarnContext(ctx, \"capture failed, retrying\", \"id\", id, \"attempt\", attempt)"
+      }
+     ],
+     "expect": [
+      {
+       "label": "AC-1",
+       "expected_shown": true,
+       "verdict": "shown"
+      },
+      {
+       "label": "AC-2",
+       "expected_shown": true,
+       "verdict": "shown"
+      }
+     ],
+     "unmet": 0,
+     "prompt_tokens": 5876,
+     "output_tokens": 598
+    },
+    {
+     "outcome": "ok",
+     "seconds": 25.029083459,
+     "requirements": [
+      {
+       "requirement": "AC-1: A failed capture is retried up to 3 times.",
+       "met": true,
+       "file": "payments/capture.go",
+       "quote": "const maxCaptureAttempts = 3"
+      },
+      {
+       "requirement": "AC-2: Every retry is logged with its attempt number.",
+       "met": true,
+       "file": "payments/capture.go",
+       "quote": "slog.WarnContext(ctx, \"capture failed, retrying\", \"id\", id, \"attempt\", attempt)"
+      }
+     ],
+     "expect": [
+      {
+       "label": "AC-1",
+       "expected_shown": true,
+       "verdict": "shown"
+      },
+      {
+       "label": "AC-2",
+       "expected_shown": true,
+       "verdict": "shown"
+      }
+     ],
+     "unmet": 0,
+     "prompt_tokens": 5876,
+     "output_tokens": 784
+    }
+   ]
+  }
+ ],
+ "totals": {
+  "provable": 21,
+  "shown": 17,
+  "dropped": {},
+  "unlisted": 4,
+  "unprovable": 15,
+  "false_shown": 0,
+  "unmet": 0,
+  "incomplete": 0
+ }
+}

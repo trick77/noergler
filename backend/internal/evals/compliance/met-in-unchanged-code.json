@@ -1,0 +1,33 @@
+{
+  "name": "met-in-unchanged-code",
+  "why": "One criterion is the new endpoint the diff adds; the other, authentication on every endpoint, is met by unchanged lines of the same file, shown only in its full content. A quote from those lines proves it.",
+  "ticket_context": "### Jira ticket: [ORD-58](https://jira.example/browse/ORD-58)\n**Title:** Orders list endpoint\n**Type:** Story · **Status:** In Progress\n**Acceptance criteria:** AC-1 GET /v2/orders returns the caller's orders. AC-2 Every endpoint requires an authenticated caller.",
+  "files": [
+    {
+      "path": "orders/routes.go",
+      "diff": "@@ -14,5 +14,6 @@ func Routes(s *Service) http.Handler {\n \tmux := http.NewServeMux()\n \tmux.HandleFunc(\"GET /v2/orders/{id}\", s.getOrder)\n+\tmux.HandleFunc(\"GET /v2/orders\", s.listOrders)\n \tmux.HandleFunc(\"POST /v2/orders\", s.createOrder)\n \treturn requireAuth(mux)\n }",
+      "content": "package orders\n\nimport \"net/http\"\n\n// requireAuth rejects a request without a valid caller before any route\n// runs.\nfunc requireAuth(next http.Handler) http.Handler {\n\treturn http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {\n\t\tif callerFrom(r) == \"\" {\n\t\t\thttp.Error(w, \"unauthorized\", http.StatusUnauthorized)\n\t\t\treturn\n\t\t}\n\t\tnext.ServeHTTP(w, r)\n\t})\n}\n\nfunc Routes(s *Service) http.Handler {\n\tmux := http.NewServeMux()\n\tmux.HandleFunc(\"GET /v2/orders/{id}\", s.getOrder)\n\tmux.HandleFunc(\"GET /v2/orders\", s.listOrders)\n\tmux.HandleFunc(\"POST /v2/orders\", s.createOrder)\n\treturn requireAuth(mux)\n}\n",
+      "content_fetched": true
+    },
+    {
+      "path": "orders/list.go",
+      "diff": "@@ -0,0 +1,14 @@\n+package orders\n+\n+import (\n+\t\"encoding/json\"\n+\t\"net/http\"\n+)\n+\n+func (s *Service) listOrders(w http.ResponseWriter, r *http.Request) {\n+\torders, err := s.store.OrdersOf(r.Context(), callerFrom(r))\n+\tif err != nil {\n+\t\thttp.Error(w, \"internal error\", http.StatusInternalServerError)\n+\t\treturn\n+\t}\n+\t_ = json.NewEncoder(w).Encode(orders)\n+}",
+      "content": "package orders\n\nimport (\n\t\"encoding/json\"\n\t\"net/http\"\n)\n\nfunc (s *Service) listOrders(w http.ResponseWriter, r *http.Request) {\n\torders, err := s.store.OrdersOf(r.Context(), callerFrom(r))\n\tif err != nil {\n\t\thttp.Error(w, \"internal error\", http.StatusInternalServerError)\n\t\treturn\n\t}\n\t_ = json.NewEncoder(w).Encode(orders)\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expect": [
+    {
+      "label": "AC-1",
+      "keywords": ["/v2/orders", "orders list", "caller's orders"],
+      "shown": true,
+      "why": "The added route and listOrders."
+    },
+    {
+      "label": "AC-2",
+      "keywords": ["authenticat"],
+      "shown": true,
+      "why": "`return requireAuth(mux)` wraps every route; an unchanged line the diff shows as context."
+    }
+  ]
+}

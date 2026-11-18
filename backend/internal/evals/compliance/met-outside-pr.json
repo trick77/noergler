@@ -1,0 +1,33 @@
+{
+  "name": "met-outside-pr",
+  "why": "The PR drops a builder attribute from a settings file. One criterion is about encrypting that file during deployment, which deployment scripts outside the PR do; the shown code cannot prove it, so showing it is wrong and calling it unmet is the old wrong comment. The other criterion, the builder gone, the added line proves.",
+  "ticket_context": "### Jira ticket: [ABC-101](https://jira.example/browse/ABC-101)\n**Title:** Settings store without the environment builder\n**Type:** Story · **Status:** In Progress\n**Acceptance criteria:** AK-1 The settings file is encrypted during deployment. AK-2 The settings store no longer uses the environment builder.",
+  "files": [
+    {
+      "path": "app/settings.config",
+      "diff": "@@ -1,5 +1,5 @@\n <?xml version=\"1.0\"?>\n <settings>\n-  <store builder=\"EnvBuilder\" mode=\"plain\" />\n+  <store mode=\"plain\" />\n   <entry key=\"region\" value=\"eu\" />\n </settings>",
+      "content": "<?xml version=\"1.0\"?>\n<settings>\n  <store mode=\"plain\" />\n  <entry key=\"region\" value=\"eu\" />\n</settings>\n",
+      "content_fetched": true
+    },
+    {
+      "path": "app/settings.worker.config",
+      "diff": "@@ -1,4 +1,4 @@\n <?xml version=\"1.0\"?>\n <settings>\n-  <store builder=\"EnvBuilder\" mode=\"plain\" />\n+  <store mode=\"plain\" />\n </settings>",
+      "content": "<?xml version=\"1.0\"?>\n<settings>\n  <store mode=\"plain\" />\n</settings>\n",
+      "content_fetched": true
+    }
+  ],
+  "expect": [
+    {
+      "label": "AK-1",
+      "keywords": ["encrypt"],
+      "shown": false,
+      "why": "Encryption happens in deployment scripts the PR does not touch; nothing shown implements it."
+    },
+    {
+      "label": "AK-2",
+      "keywords": ["builder"],
+      "shown": true,
+      "why": "The added `<store mode=\"plain\" />` line is the store without the builder."
+    }
+  ]
+}

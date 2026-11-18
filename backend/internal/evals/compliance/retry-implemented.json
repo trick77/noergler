@@ -1,0 +1,27 @@
+{
+  "name": "retry-implemented",
+  "why": "Both criteria are implemented in the added code. Control for the drop rate: a quote rule that loses these leaves the section empty where it should be full.",
+  "ticket_context": "### Jira ticket: [PAY-212](https://jira.example/browse/PAY-212)\n**Title:** Retry failed captures\n**Type:** Story · **Status:** In Review\n**Acceptance criteria:** AC-1 A failed capture is retried up to 3 times. AC-2 Every retry is logged with its attempt number.",
+  "files": [
+    {
+      "path": "payments/capture.go",
+      "diff": "@@ -8,9 +8,20 @@ import (\n \n type Gateway interface{ Capture(ctx context.Context, id string) error }\n \n+const maxCaptureAttempts = 3\n+\n func Capture(ctx context.Context, gw Gateway, id string) error {\n-\treturn gw.Capture(ctx, id)\n+\tvar err error\n+\tfor attempt := 1; attempt <= maxCaptureAttempts; attempt++ {\n+\t\tif err = gw.Capture(ctx, id); err == nil {\n+\t\t\treturn nil\n+\t\t}\n+\t\tif attempt < maxCaptureAttempts {\n+\t\t\tslog.WarnContext(ctx, \"capture failed, retrying\", \"id\", id, \"attempt\", attempt)\n+\t\t}\n+\t}\n+\treturn err\n }",
+      "content": "package payments\n\nimport (\n\t\"context\"\n\t\"log/slog\"\n)\n\n\ntype Gateway interface{ Capture(ctx context.Context, id string) error }\n\nconst maxCaptureAttempts = 3\n\nfunc Capture(ctx context.Context, gw Gateway, id string) error {\n\tvar err error\n\tfor attempt := 1; attempt <= maxCaptureAttempts; attempt++ {\n\t\tif err = gw.Capture(ctx, id); err == nil {\n\t\t\treturn nil\n\t\t}\n\t\tif attempt < maxCaptureAttempts {\n\t\t\tslog.WarnContext(ctx, \"capture failed, retrying\", \"id\", id, \"attempt\", attempt)\n\t\t}\n\t}\n\treturn err\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expect": [
+    {
+      "label": "AC-1",
+      "keywords": ["3 times", "three times", "retried"],
+      "shown": true,
+      "why": "`const maxCaptureAttempts = 3` and the loop."
+    },
+    {
+      "label": "AC-2",
+      "keywords": ["logged", "attempt number"],
+      "shown": true,
+      "why": "The slog.WarnContext line carries the attempt."
+    }
+  ]
+}

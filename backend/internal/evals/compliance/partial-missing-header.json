@@ -1,0 +1,27 @@
+{
+  "name": "partial-missing-header",
+  "why": "The limit is implemented, the Retry-After header is not: the 429 line exists, so a quote of it passes the existence check while proving nothing about the header. Tests the known limit of the rule: the code checks that the line is there, not that it implements the requirement.",
+  "ticket_context": "### Jira ticket: [API-77](https://jira.example/browse/API-77)\n**Title:** Rate limit the public API\n**Type:** Story · **Status:** In Progress\n**Acceptance criteria:** AC-1 Each client is limited to 100 requests per minute. AC-2 A limited request gets HTTP 429 with a Retry-After header.",
+  "files": [
+    {
+      "path": "api/ratelimit.go",
+      "diff": "@@ -0,0 +1,22 @@\n+package api\n+\n+import (\n+\t\"net/http\"\n+\n+\t\"golang.org/x/time/rate\"\n+)\n+\n+const requestsPerMinute = 100\n+\n+// RateLimit allows each client requestsPerMinute requests per minute.\n+func RateLimit(next http.Handler, limiters *Limiters) http.Handler {\n+\treturn http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {\n+\t\tl := limiters.For(clientID(r), rate.Limit(float64(requestsPerMinute)/60), requestsPerMinute)\n+\t\tif !l.Allow() {\n+\t\t\thttp.Error(w, \"too many requests\", http.StatusTooManyRequests)\n+\t\t\treturn\n+\t\t}\n+\t\tnext.ServeHTTP(w, r)\n+\t})\n+}\n+",
+      "content": "package api\n\nimport (\n\t\"net/http\"\n\n\t\"golang.org/x/time/rate\"\n)\n\nconst requestsPerMinute = 100\n\n// RateLimit allows each client requestsPerMinute requests per minute.\nfunc RateLimit(next http.Handler, limiters *Limiters) http.Handler {\n\treturn http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {\n\t\tl := limiters.For(clientID(r), rate.Limit(float64(requestsPerMinute)/60), requestsPerMinute)\n\t\tif !l.Allow() {\n\t\t\thttp.Error(w, \"too many requests\", http.StatusTooManyRequests)\n\t\t\treturn\n\t\t}\n\t\tnext.ServeHTTP(w, r)\n\t})\n}\n\n",
+      "content_fetched": true
+    }
+  ],
+  "expect": [
+    {
+      "label": "AC-1",
+      "keywords": ["100 requests", "per minute"],
+      "shown": true,
+      "why": "`const requestsPerMinute = 100` and the limiter."
+    },
+    {
+      "label": "AC-2",
+      "keywords": ["retry-after", "429"],
+      "shown": false,
+      "why": "The 429 is there, the Retry-After header is not; the requirement as a whole is not implemented in the shown code."
+    }
+  ]
+}

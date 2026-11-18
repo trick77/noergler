@@ -1,0 +1,27 @@
+{
+  "name": "process-criteria-only",
+  "why": "Every criterion is a process step no code implements. Nothing may be shown.",
+  "ticket_context": "### Jira ticket: [OPS-9](https://jira.example/browse/OPS-9)\n**Title:** Raise the upload size limit\n**Type:** Task · **Status:** In Progress\n**Acceptance criteria:** AC-1 The support team is informed about the new limit. AC-2 The runbook in Confluence states the new limit.",
+  "files": [
+    {
+      "path": "upload/limits.go",
+      "diff": "@@ -1,4 +1,4 @@\n package upload\n \n // MaxUploadBytes caps one uploaded file.\n-const MaxUploadBytes = 10 << 20\n+const MaxUploadBytes = 25 << 20",
+      "content": "package upload\n\n// MaxUploadBytes caps one uploaded file.\nconst MaxUploadBytes = 25 << 20\n",
+      "content_fetched": true
+    }
+  ],
+  "expect": [
+    {
+      "label": "AC-1",
+      "keywords": ["support"],
+      "shown": false,
+      "why": "Informing people is not code."
+    },
+    {
+      "label": "AC-2",
+      "keywords": ["runbook", "confluence"],
+      "shown": false,
+      "why": "A Confluence page is outside the repo."
+    }
+  ]
+}
