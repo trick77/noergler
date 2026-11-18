@@ -363,8 +363,13 @@ review's push sentence is not shown. Its sections, in order:
 4. Security and performance
 5. Test coverage
 6. Visual changes, only when the PR changed test screenshots (section 11c)
-7. Ticket or Requirement compliance. A requirement's criterion label from the
-   ticket (`AK-1`) leads its line in a code span: bare, Bitbucket's Jira
+7. Ticket, or the requirements shown implemented. Only a requirement the
+   model proves with a line of the shown code (an added, unchanged or
+   full-file line of the file it names; never a removed one) is listed,
+   with ✅. Nothing is ever marked unmet and the ticket gets no verdict: a
+   PR is a delta, and a requirement can be met outside it. What was left
+   out, and why, is on the run page. A requirement's criterion label from
+   the ticket (`AK-1`) leads its line in a code span: bare, Bitbucket's Jira
    integration links it as an issue key, to an issue that does not exist.
    The model's prose elsewhere in the summary and in inline comments spans
    the same labels in place

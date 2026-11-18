@@ -396,6 +396,15 @@ export interface RunPipeline {
     explanation: string;
     evidence?: string[];
   }[];
+  /** Every ticket requirement the model listed: shown in the summary when
+   *  drop is absent, else left out for that reason. Absent on records from
+   *  before the check and on runs without a ticket check. */
+  compliance?: {
+    requirement: string;
+    file?: string;
+    quote?: string;
+    drop?: string;
+  }[];
   /** Requests per upstream, by name. */
   http: { upstream: string; calls: number }[];
 }

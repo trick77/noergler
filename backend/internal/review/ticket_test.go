@@ -212,13 +212,20 @@ func TestReviewWithParentTicketPutsBothInPrompt(t *testing.T) {
 	}
 }
 
-// The compliance list the model returns reaches the summary a human reads.
-func TestReviewWithJiraPutsComplianceInSummary(t *testing.T) {
+// The summary shows only the requirements a quoted line of the shown code
+// proves implemented. One the model calls unmet never shows: a PR is a
+// delta, and the requirement can be met by code outside it, which is how a
+// requirement met in deployment scripts the PR did not touch once read "not
+// compliant".
+func TestReviewWithJiraShowsOnlyProvenCompliance(t *testing.T) {
 	h := jiraHarness(t, fullTicket(), nil)
 	result := okResultWith()
 	result.Review.ComplianceRequirements = []inference.ComplianceRequirement{
-		{Requirement: "it widgets", Met: true},
-		{Requirement: "it sprockets", Met: false},
+		{Requirement: "it widgets", Met: true, File: "a.go", Quote: "func new() {}"},
+		{Requirement: "it sprockets", Met: false, File: "a.go", Quote: "func new() {}"},
+		{Requirement: "it gizmos", Met: true, File: "a.go", Quote: "func old() {}"},
+		{Requirement: "it gadgets", Met: true, File: "a.go", Quote: "func gadget() {}"},
+		{Requirement: "it doodads", Met: true},
 	}
 	h.llm.review = result
 
@@ -228,10 +235,73 @@ func TestReviewWithJiraPutsComplianceInSummary(t *testing.T) {
 		t.Fatalf("expected one summary comment, got %d", len(h.bb.Posted))
 	}
 	summary := h.bb.Posted[0].Text
-	for _, want := range []string{"[PROJ-123]", "it widgets", "it sprockets"} {
+	for _, want := range []string{"[PROJ-123]", "it widgets ✅"} {
 		if !strings.Contains(summary, want) {
 			t.Errorf("summary is missing %q, got:\n%s", want, summary)
 		}
+	}
+	for _, unwanted := range []string{"it sprockets", "it gizmos", "it gadgets", "it doodads", "❌", "compliant"} {
+		if strings.Contains(summary, unwanted) {
+			t.Errorf("summary carries %q, got:\n%s", unwanted, summary)
+		}
+	}
+}
+
+// The PR's whole diff unreadable on a later push: what earlier pushes
+// implemented went unchecked, so the summary says so instead of "none
+// shown", a claim about lines nobody read.
+func TestIncrementalReviewWithoutHistorySaysUnchecked(t *testing.T) {
+	h := newHarness(t, func(h *harness) {
+		h.jr = &fakeJira{ticket: fullTicket()}
+		h.st.lastCommit, h.st.hasLast = "old1", true
+		h.bb.commitDiff = sampleDiff
+		h.bb.prDiffErr = errors.New("bitbucket down")
+	})
+	result := okResultWith()
+	result.Review.ComplianceRequirements = []inference.ComplianceRequirement{
+		{Requirement: "it widgets", Met: true, File: "widget.go", Quote: "func Widget() {}"},
+	}
+	h.llm.review = result
+
+	h.r.reviewInline(context.Background(), jiraPayload(webhook.EventFromRefUpdated), false)
+
+	if len(h.bb.Posted) != 1 {
+		t.Fatalf("expected one summary comment, got %d", len(h.bb.Posted))
+	}
+	summary := h.bb.Posted[0].Text
+	if !strings.Contains(summary, "Requirements not checked") || strings.Contains(summary, "No requirement shown") {
+		t.Errorf("summary claims what it could not check:\n%s", summary)
+	}
+}
+
+// The summary is the PR's on every push: a requirement an earlier push
+// implemented stays shown on a push that never touched its file. Without the
+// PR's cumulative diff the section flipped to "none shown" on every later push.
+func TestIncrementalReviewKeepsComplianceFromEarlierPushes(t *testing.T) {
+	h := newHarness(t, func(h *harness) {
+		h.jr = &fakeJira{ticket: fullTicket()}
+		h.st.lastCommit, h.st.hasLast = "old1", true
+		h.bb.commitDiff = sampleDiff
+		h.bb.prDiff = sampleDiff + addedFileDiff("widget.go", "func Widget() {}")
+	})
+	result := okResultWith()
+	result.Review.ComplianceRequirements = []inference.ComplianceRequirement{
+		{Requirement: "it widgets", Met: true, File: "widget.go", Quote: "func Widget() {}"},
+		{Requirement: "it sprockets", Met: true, File: "widget.go", Quote: "func Sprocket() {}"},
+	}
+	h.llm.review = result
+
+	h.r.reviewInline(context.Background(), jiraPayload(webhook.EventFromRefUpdated), false)
+
+	if len(h.bb.Posted) != 1 {
+		t.Fatalf("expected one summary comment, got %d", len(h.bb.Posted))
+	}
+	summary := h.bb.Posted[0].Text
+	if !strings.Contains(summary, "it widgets ✅") {
+		t.Errorf("summary lost the earlier push's requirement:\n%s", summary)
+	}
+	if strings.Contains(summary, "it sprockets") {
+		t.Errorf("summary shows a requirement no line of the PR proves:\n%s", summary)
 	}
 }
 

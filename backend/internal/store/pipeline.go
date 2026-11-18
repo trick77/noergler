@@ -26,6 +26,10 @@ type Pipeline struct {
 	// PreExisting are bugs the model saw in code the PR did not change,
 	// as validation kept them. Never posted to the PR.
 	PreExisting []PreExistingBug `json:"pre_existing"`
+	// Compliance is every ticket requirement the model listed and what
+	// became of it: shown in the summary when Drop is empty, else left out
+	// for that reason (inference.ComplianceDrop).
+	Compliance []ComplianceCheck `json:"compliance,omitempty"`
 	// HTTP is a list, not a map: a response body is a struct with a fixed
 	// order, never map keys.
 	HTTP []HTTPCount `json:"http"`
@@ -122,6 +126,15 @@ type VerdictChange struct {
 type HTTPCount struct {
 	Upstream string `json:"upstream"`
 	Calls    int    `json:"calls"`
+}
+
+// ComplianceCheck is one ticket requirement the model listed: the line it
+// quoted as proof, and why the summary left it out (empty when shown).
+type ComplianceCheck struct {
+	Requirement string `json:"requirement"`
+	File        string `json:"file,omitempty"`
+	Quote       string `json:"quote,omitempty"`
+	Drop        string `json:"drop,omitempty"`
 }
 
 // PreExistingBug is one bug in unchanged code: where, a headline, the

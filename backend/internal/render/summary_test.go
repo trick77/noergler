@@ -199,19 +199,19 @@ func summaryCases() map[string]SummaryInput {
 	tNoReqs.Ticket = testTicket("ABC-1", "Do the thing", "AC-1 do it")
 	tNoReqs.JiraEnabled = true
 	tNoReqs.ComplianceRequirements = []inference.ComplianceRequirement{}
-	cases["ticket_no_requirements_code_relevant"] = tNoReqs
+	cases["ticket_no_requirements"] = tNoReqs
 
 	tFull := base()
 	tFull.Ticket = testTicket("ABC-1", "Do the thing", "AC-1")
 	tFull.JiraEnabled = true
 	tFull.ComplianceRequirements = []inference.ComplianceRequirement{{Requirement: "Does X", Met: true}}
-	cases["ticket_fully_compliant"] = tFull
+	cases["ticket_shown"] = tFull
 
 	tPartial := tFull
 	tPartial.ComplianceRequirements = []inference.ComplianceRequirement{
 		{Requirement: "Does X", Met: true}, {Requirement: "Does Y", Met: false},
 	}
-	cases["ticket_partial"] = tPartial
+	cases["ticket_unmet_left_out"] = tPartial
 
 	// The model copies the ticket's labels into the requirement however it
 	// likes; bare, Bitbucket links them to Jira issues that do not exist.
@@ -226,7 +226,7 @@ func summaryCases() map[string]SummaryInput {
 
 	tNone := tFull
 	tNone.ComplianceRequirements = []inference.ComplianceRequirement{{Requirement: "Does X", Met: false}}
-	cases["ticket_none_met"] = tNone
+	cases["ticket_none_shown"] = tNone
 
 	tParent := base()
 	tParent.Ticket = testTicket("ABC-2", "Sub", "")
@@ -380,6 +380,57 @@ func TestSummaryIsPinned(t *testing.T) {
 		if _, ok := golden[name]; !ok {
 			t.Errorf("Go case %q has no golden value", name)
 		}
+	}
+}
+
+// The ticket section never says a requirement is unmet and never rates the
+// ticket, in either language, whatever list reaches it: a PR is a delta, so
+// "not met" is never proven. Once a requirement met in deployment scripts
+// the PR did not touch read "not compliant" on the PR.
+func TestTicketNeverSaysUnmet(t *testing.T) {
+	lists := [][]inference.ComplianceRequirement{
+		{{Requirement: "Does X", Met: false}},
+		{{Requirement: "Does X", Met: true}, {Requirement: "Does Y", Met: false}},
+		{{Requirement: "Does X", Met: true}},
+		{},
+	}
+	banned := []string{"❌", "⚠️", "Nicht erfüllt", "Teilweise erfüllt", "Vollständig erfüllt",
+		"Not compliant", "Partially compliant", "Fully compliant", "Does Y"}
+	for _, l := range []lang.Lang{lang.DE, lang.EN} {
+		for i, reqs := range lists {
+			in := base()
+			in.Lang = l
+			in.Ticket = testTicket("ABC-1", "Do the thing", "AC-1 do it")
+			in.ParentTicket = testTicket("ABC-0", "Parent", "")
+			in.JiraEnabled = true
+			in.TicketComplianceCheck = true
+			in.ComplianceRequirements = reqs
+			got := renderTicket(in)
+			for _, b := range banned {
+				if strings.Contains(got, b) {
+					t.Errorf("%s list %d: ticket section carries %q:\n%s", l, i, b, got)
+				}
+			}
+		}
+	}
+}
+
+// The PR's whole diff unreadable: the latest push's proofs still show, with
+// a line saying they are all that was checked; none at all reads "not
+// checked", never "none shown".
+func TestTicketHistoryUnknown(t *testing.T) {
+	in := base()
+	in.Ticket = testTicket("ABC-1", "Do the thing", "AC-1 do it")
+	in.JiraEnabled = true
+	in.TicketComplianceCheck = true
+	in.ComplianceHistoryUnknown = true
+	in.ComplianceRequirements = []inference.ComplianceRequirement{{Requirement: "Does X", Met: true}}
+	if got := renderTicket(in); !strings.Contains(got, "Does X ✅") || !strings.Contains(got, "latest push only") {
+		t.Errorf("proofs without the note:\n%s", got)
+	}
+	in.ComplianceRequirements = []inference.ComplianceRequirement{}
+	if got := renderTicket(in); !strings.Contains(got, "Requirements not checked") || strings.Contains(got, "No requirement shown") {
+		t.Errorf("an unchecked history reads as none shown:\n%s", got)
 	}
 }
 

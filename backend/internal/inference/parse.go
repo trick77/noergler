@@ -51,11 +51,15 @@ func NewReviewSummary() ReviewSummary {
 	return ReviewSummary{VerdictDecision: DefaultVerdictDecision}
 }
 
-// ComplianceRequirement is one acceptance-criteria check. Both fields must be
-// present and correctly typed or the item is skipped.
+// ComplianceRequirement is one acceptance-criteria check. Requirement and Met
+// must be present and correctly typed or the item is skipped. File and Quote
+// are the line the model says shows the requirement met, unchecked:
+// ConfirmCompliance decides which stand.
 type ComplianceRequirement struct {
 	Requirement string `json:"requirement"`
 	Met         bool   `json:"met"`
+	File        string `json:"file,omitempty"`
+	Quote       string `json:"quote,omitempty"`
 }
 
 // ParsedReview is the result of parsing a model review response.
@@ -357,7 +361,13 @@ func ParseReview(content string) ParsedReview {
 			out.warn("Skipping malformed compliance requirement: %s", item)
 			continue
 		}
-		out.ComplianceRequirements = append(out.ComplianceRequirements, ComplianceRequirement{Requirement: reqStr, Met: metBool})
+		// file and quote are nullable: absent or null reads as none, which
+		// ConfirmCompliance then refuses like any other unproven line.
+		var file, quote string
+		decodesAs(probe["file"], &file)
+		decodesAs(probe["quote"], &quote)
+		out.ComplianceRequirements = append(out.ComplianceRequirements,
+			ComplianceRequirement{Requirement: reqStr, Met: metBool, File: file, Quote: quote})
 	}
 
 	out.Summary.Overview = strings.TrimSpace(decodeString(raw["overview"]))

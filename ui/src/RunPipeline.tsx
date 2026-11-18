@@ -462,3 +462,54 @@ export function PreExistingCard({
     </Card>
   );
 }
+
+/** ComplianceCard lists every ticket requirement the model named and what
+ *  the summary did with it: shown, with the line that proves it, or left
+ *  out and why. The summary never says a requirement is unmet (a PR is a
+ *  delta), so a requirement the model called unmet is only seen here. */
+export function ComplianceCard({ p }: { p: RunPipeline }) {
+  const { t } = useTranslation();
+  const reqs = p.compliance ?? [];
+  if (reqs.length === 0) return null;
+  return (
+    <Card title={t("run.complianceTitle")}>
+      <div className="overflow-x-auto overscroll-x-contain">
+        <table className={table}>
+          <thead>
+            <tr>
+              <th className={th}>{t("run.requirement")}</th>
+              <th className={th + " w-px"}>{t("run.result")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {reqs.map((r, i) => (
+              <tr key={`${r.requirement}:${i}`}>
+                <td className={td}>
+                  <div className="text-ink">{r.requirement || "—"}</div>
+                  {r.file && (
+                    <div className="mt-1 font-mono text-[12px] text-muted">
+                      {r.file}
+                    </div>
+                  )}
+                  <Evidence lines={r.quote ? [r.quote] : undefined} />
+                </td>
+                <td className={td + " whitespace-nowrap text-[12.5px]"}>
+                  <Pill tone={r.drop ? "quiet" : "ok"}>
+                    {r.drop ? t("run.leftOut") : t("run.shown")}
+                  </Pill>
+                  {r.drop && (
+                    <div className="mt-1 text-[11.5px] text-faint">
+                      {known("complianceDrop", r.drop)
+                        ? t(`complianceDrop.${r.drop}`)
+                        : r.drop}
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}

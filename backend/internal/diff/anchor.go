@@ -203,6 +203,19 @@ func HashExact(text string) uint64 {
 	return h.Sum64()
 }
 
+// FilesOf is a multi-file diff as per-file entries with no content, for
+// BuildAnchorIndex: each path keeps the lines its diff shows. A part with no
+// parseable path is left out, since nothing could name it.
+func FilesOf(d string) []FileReviewData {
+	var out []FileReviewData
+	for _, fd := range SplitByFile(d) {
+		if path := ExtractPath(fd); path != "" {
+			out = append(out, FileReviewData{Path: path, Diff: fd})
+		}
+	}
+	return out
+}
+
 // AddedLines maps each file of a diff to the hashes of the lines it adds.
 // On an incremental review the focused diff is one push; this, built from the
 // cumulative PR diff, is every line the PR as a whole added, so a bug an

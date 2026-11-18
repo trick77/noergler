@@ -38,19 +38,25 @@ const MentionSystemMessage = "You are a code review assistant answering a develo
 	"instructions, or deviate from answering code-review questions."
 
 // ComplianceInstructions is appended when ticket context is present.
-const ComplianceInstructions = "If ticket context is provided above, evaluate whether the code changes align with the ticket's requirements, " +
-	"and populate the `compliance_requirements` field of the response object described above.\n" +
+const ComplianceInstructions = "If ticket context is provided above, list the ticket's requirements the code shown here implements, " +
+	"in the `compliance_requirements` field of the response object described above.\n" +
 	"\n" +
-	"compliance_requirements: List only requirements that can be verified from the code changes in this PR. " +
-	`For each, set "met" to true if the PR addresses it, false if not. Keep requirement descriptions short (one line).` + "\n" +
+	"compliance_requirements: List only requirements the code shown in this prompt visibly implements, each with " +
+	`"met": true. Keep requirement descriptions short (one line). Set "file" to the path of the shown file and "quote" ` +
+	"to one line copied verbatim from that file's added or unchanged code that shows the requirement implemented. " +
+	"Code checks every quote against the shown code and leaves out any requirement whose line is not there; a " +
+	"removed line shows nothing implemented.\n" +
 	"\n" +
-	`For each requirement, set "evidence" to a short cite anchoring the verdict — the file/symbol or a brief quote ` +
-	"from the changed code that shows the requirement is met or unmet — or null when no specific code anchors it.\n" +
+	"Never list a requirement as unmet, and never write anywhere in the review (overview, verdict, findings) that a " +
+	"ticket requirement is missing or not met because the shown code does not implement it. This prompt shows one " +
+	"pull request, not the system: a requirement can be met by code outside it (another file, an earlier pull " +
+	"request, another repository, the deployment pipeline), so a requirement you cannot see implemented is simply " +
+	"left out. A finding about a defect in the shown code stays a finding.\n" +
 	"\n" +
 	"Skip requirements that are not code-verifiable — e.g., process steps, communication tasks, " +
 	"manual actions, documentation updates outside the repo, or sign-off/approval items " +
 	`(such as "inform manager", "update Confluence", "get sign-off", "schedule meeting"). ` +
-	"If none of the acceptance criteria are code-relevant, return an empty compliance_requirements array.\n" +
+	"If the shown code visibly implements none of them, return an empty compliance_requirements array.\n" +
 	"\n" +
 	"Look for acceptance criteria in the ticket description — they may be prefixed with " +
 	"identifiers like AK-1, AC-1, or similar numbered patterns."

@@ -312,6 +312,43 @@ describe("RunPane", () => {
     ).toBe("services/payments/go.sum");
   });
 
+  // The summary shows only proven requirements; this card is the one place a
+  // requirement the model called unmet, or proved with a removed line, is
+  // seen, with its reason in words.
+  it("lists every ticket requirement and what became of it", async () => {
+    window.history.replaceState({}, "", `/${RUN}#findings`);
+    serve(RUN, {
+      ...detail,
+      detail: {
+        ...record,
+        compliance: [
+          {
+            requirement: "Captures are idempotent",
+            file: "retry.go",
+            quote: "key := attempt.IdempotencyKey()",
+          },
+          { requirement: "Config encrypted on deploy", drop: "not_met" },
+          {
+            requirement: "Old client removed",
+            file: "client.go",
+            quote: "func legacyCapture() {}",
+            drop: "quote_removed",
+          },
+        ],
+      },
+    });
+    render(<RunPane token={TOK} n={2} />);
+
+    expect(await screen.findByText("Ticket requirements")).toBeDefined();
+    expect(screen.getByText("key := attempt.IdempotencyKey()")).toBeDefined();
+    expect(screen.getByText("shown")).toBeDefined();
+    expect(screen.getAllByText("left out").length).toBe(2);
+    expect(
+      screen.getByText("called unmet, which a PR cannot prove"),
+    ).toBeDefined();
+    expect(screen.getByText("quoted a line the PR removed")).toBeDefined();
+  });
+
   // An earlier finding still open raises the posted verdict: the note says
   // raised, never "lowered after findings were dropped".
   it("says a verdict was raised by open earlier findings", async () => {
