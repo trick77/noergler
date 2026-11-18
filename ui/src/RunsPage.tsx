@@ -214,10 +214,13 @@ export function RunsPage() {
     switch (actOf(r)) {
       case "review":
         // No run row (its write failed): the figures are missing, which is
-        // a dash, never "0 findings".
+        // a dash. A zero is left out too, never "0 findings" (user,
+        // 2026-11-18): a clean review reads as a dash.
         if (r.outcome !== "ok" || r.findings === null) return "";
         return [
-          t("runs.detailFindings", { count: r.findings ?? 0 }),
+          ...(r.findings > 0
+            ? [t("runs.detailFindings", { count: r.findings })]
+            : []),
           ...((r.tasks ?? 0) > 0
             ? [t("runs.detailTasks", { count: r.tasks ?? 0 })]
             : []),
