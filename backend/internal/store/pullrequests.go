@@ -121,10 +121,13 @@ type ConflictChoice struct {
 	CommentID int `json:"comment_id"`
 	// RequestID is the comment that asked to resolve the conflict: the
 	// answer's fix row and commit link name it, never the "T".
-	RequestID  int              `json:"request_id"`
-	SourceHead string           `json:"source_head"`
-	TargetHead string           `json:"target_head"`
-	Conflicts  []ChoiceConflict `json:"conflicts"`
+	RequestID int `json:"request_id"`
+	// QuestionRunes is the question's length: a Q&A that would see it cut
+	// may not pick sides from it. 0 is unknown.
+	QuestionRunes int              `json:"question_runes,omitempty"`
+	SourceHead    string           `json:"source_head"`
+	TargetHead    string           `json:"target_head"`
+	Conflicts     []ChoiceConflict `json:"conflicts"`
 }
 
 // How a ChoiceConflict is settled.

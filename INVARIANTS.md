@@ -192,8 +192,13 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   Two whole versions neither carrying the other's change are the author's
   pick, never the model's (user, 2026-11-18): the model only names them
   (`ask`), code checks `merge.Choosable`, asks T or S, and pushes nothing
-  until the answer. The answer is read by code, side letters only (never
-  a version's text: "nicht 1.0.31" would pick it), and settles the merge
+  until the answer. Code reads side letters only (never a version's text:
+  "nicht 1.0.31" would pick it); any other wording directly under the
+  question is the Q&A model's, through `pick_conflict_side` offered only
+  there, as the offer's yes (user, 2026-11-18): the model names sides, code
+  vetoes a no or a put-off and a wrong count, never posts its sentence.
+  One reading order for both, the table in `conflictreply.go`: change it
+  there, never a check beside it. Either way the answer settles the merge
   kept with the question (`conflict_choice`: heads, every conflict's
   resolution), no second call, so one answer ends it; heads or conflicts
   changed = nothing pushed, ask again. Merge commit, parents

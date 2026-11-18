@@ -700,9 +700,18 @@ event's head says so before any fetch) or a conflict changed: nothing
 pushed, ask again. A failure on the way keeps the question and writes no
 row, so the same answer may be sent again; the request's one row comes
 with the answer that ends it. The author's go-ahead naming no side ("Lets
-go!") or letters of the wrong count get the letters asked again; anything
-else there goes on as any reply; anyone else's pick is told only the
-author may. Any other end of a request clears the question. A question
+go!") or letters of the wrong count get the letters asked again. Any
+other wording there ("das passt, nimm 1.0.31", "T (1.0.31)") reaches the
+Q&A, whose model has a `pick_conflict_side` tool there and only there,
+and only when it sees the question whole (a parent is cut at 4,096 runes;
+the question's length is kept with it): it names a side per spot, code
+rejects, with a log line, a no or a put-off in the commenter's own words,
+a wrong count or a side that is neither, and the sides settle the merge
+as letters do; the model's sentence is not posted. Whatever the model did
+or did not call, the author's answer there that settled nothing ends with
+what settles it. At the cost cap such wording gets that hint and no call:
+the letters are free. Anyone else's pick is told only the author may. Who
+reads which reply, in order: the table in `conflictreply.go`. Any other end of a request clears the question. A question
 never answered leaves its call row and no fix row. Two sides sharing a
 line are no pick (two additions T or S would halve); the question is
 asked only if either pick assembles and the confirmation could quote

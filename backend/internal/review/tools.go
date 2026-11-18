@@ -44,13 +44,22 @@ type mentionAsk struct {
 	// starts the request instead of posting an answer. consentRefused when
 	// code vetoed it: the answer then says what starts it.
 	underOffer, resolveConflict, consentRefused bool
+	// pickOpen is the open merge-conflict question the comment replies to
+	// directly; pickTool when pick_conflict_side is offered there (the
+	// model sees the question whole). pickTarget is set when that tool
+	// accepted (per asked spot, whether target's side stands): the posting
+	// stage settles the merge instead of posting an answer.
+	pickOpen   *store.ConflictChoice
+	pickTool   bool
+	pickTarget []bool
 }
 
 // mentionTools are the tools a Q&A answer may call: two reads and two
 // writes, the commenter's own language and a stop of this PR, each checked
 // against the commenter's own words; directly under the open merge-conflict
-// offer a third write, a yes to it, whose request the posting stage starts
-// (a fetch and a push to the author's branch). Every one runs off the
+// offer or question a third write, the yes or the sides, which the posting
+// stage acts on (conflictreply.go: a fetch and a push to the author's
+// branch). Every one runs off the
 // worker, so none calls Bitbucket itself; each returns an explicit struct,
 // never a config or a row.
 func (r *Reviewer) mentionTools(ask *mentionAsk) []inference.MentionTool {
@@ -100,23 +109,27 @@ func (r *Reviewer) mentionTools(ask *mentionAsk) []inference.MentionTool {
 			Run: func(ctx context.Context, _ string) string { return toolJSON(r.resolveConflictTool(ctx, ask)) },
 		})
 	}
-	return tools
-}
-
-// resolveConflictTool is the model reading a reply as a yes to the offer
-// and code deciding it: no veto in the commenter's own text
-// (conflictVeto). The posting stage starts the request, which checks the
-// author and answers by itself.
-func (r *Reviewer) resolveConflictTool(ctx context.Context, ask *mentionAsk) map[string]string {
-	if conflictVeto(ask.text) {
-		r.log.WarnContext(ctx, fmt.Sprintf("%s: merge conflict resolution for %s rejected: the reply turns the offer down or puts it off",
-			ask.prTag, ask.user))
-		ask.consentRefused = true
-		return map[string]string{"result": "rejected: the user's reply does not agree to the offer"}
+	// Only directly under the open question: nowhere else can a model pick
+	// a side.
+	if ask.pickTool {
+		tools = append(tools, inference.MentionTool{
+			Name: "pick_conflict_side",
+			Description: "Settle noergler's merge-conflict question the user replies to: which version stands at " +
+				"each spot it asks about, T (the target branch's) or S (the PR branch's), one per spot in the " +
+				"question's order. Only when the user's own reply says which version to keep, in any wording " +
+				"(a version number, a branch name); never guess one.",
+			Parameters: map[string]any{
+				"type":                 "object",
+				"additionalProperties": false,
+				"required":             []any{"sides"},
+				"properties": map[string]any{
+					"sides": map[string]any{"type": "array", "items": map[string]any{"type": "string", "enum": []any{"T", "S"}}},
+				},
+			},
+			Run: func(ctx context.Context, args string) string { return toolJSON(r.pickConflictSide(ctx, ask, args)) },
+		})
 	}
-	ask.resolveConflict = true
-	return map[string]string{"result": "ok", "note": "noergler starts the resolution once this turn ends and answers " +
-		"in its own reply; your answer is not posted, keep it short"}
+	return tools
 }
 
 // stopReviewing is the model proposing a stop and code deciding it: the

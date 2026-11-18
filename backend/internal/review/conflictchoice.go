@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/trick77/noergler/internal/lang"
 	"github.com/trick77/noergler/internal/merge"
@@ -19,164 +17,16 @@ import (
 // request used to fail whole on it, and IntelliJ leaves it to the developer
 // too). The model names it in `ask`; code checks either side alone stands
 // (merge.Choosable), resolves every other conflict as before, and asks
-// "T or S?" instead of giving up. The answer, read by code (readPicks),
-// settles the merge kept from that request: same heads, same conflicts,
-// no second call, so one answer ends it. Heads moved: the question is
-// cleared and the author asks for the merge again.
+// "T or S?" instead of giving up (askPick). The answer (conflictreply.go)
+// settles the merge kept from that request (bindPick): same heads, same
+// conflicts, no second call, so one answer ends it. Heads moved: the
+// question is cleared and the author asks for the merge again.
 
 // conflictPick is the author's answer to the open question: per asked
 // conflict, in order, whether target's side stands.
 type conflictPick struct {
 	choice *store.ConflictChoice
 	target []bool
-}
-
-// pickFiller is what an answer may carry besides its letters.
-var pickFiller = func() map[string]bool {
-	m := map[string]bool{
-		"nimm": true, "nehme": true, "nehmen": true, "take": true, "use": true, "pick": true,
-		"version": true, "seite": true, "side": true, "die": true, "der": true, "the": true,
-		"von": true, "from": true, "ich": true, "i": true, "and": true, "und": true,
-	}
-	for w := range consentWords {
-		m[w] = true
-	}
-	for w := range consentFiller {
-		m[w] = true
-	}
-	return m
-}()
-
-// readPicks reads the author's answer to a question about n conflicts:
-// `T` or `S` for one, the letters in order (`T S`) or numbered (`1T 2S`,
-// `1: T, 2: S`) for several. Letters only, never a version's text ("nicht
-// 1.0.31" would pick it), and nothing but filler beside them; a no or a
-// put-off is no answer.
-func readPicks(text string, n int) ([]bool, bool) {
-	t := pickText(text)
-	if n < 1 || !pickShort(t, n) || conflictVeto(t) {
-		return nil, false
-	}
-	type pick struct {
-		num    int
-		target bool
-	}
-	var picks []pick
-	num := 0
-	isDigits := func(s string) bool {
-		return s != "" && strings.IndexFunc(s, func(r rune) bool { return !unicode.IsDigit(r) }) < 0
-	}
-	for _, w := range pickWords(t) {
-		last := w[len(w)-1]
-		prefix := w[:len(w)-1]
-		switch {
-		case isDigits(w):
-			if num != 0 {
-				return nil, false
-			}
-			num, _ = strconv.Atoi(w)
-		case (last == 't' || last == 's') && (prefix == "" || isDigits(prefix)):
-			p := pick{num: num, target: last == 't'}
-			if prefix != "" {
-				if num != 0 {
-					return nil, false
-				}
-				p.num, _ = strconv.Atoi(prefix)
-			}
-			picks = append(picks, p)
-			num = 0
-		case pickFiller[w] && num == 0:
-		default:
-			return nil, false
-		}
-	}
-	if num != 0 || len(picks) != n {
-		return nil, false
-	}
-	out := make([]bool, n)
-	numbered := 0
-	for _, p := range picks {
-		if p.num != 0 {
-			numbered++
-		}
-	}
-	switch numbered {
-	case 0:
-		for i, p := range picks {
-			out[i] = p.target
-		}
-	case n:
-		seen := make([]bool, n)
-		for _, p := range picks {
-			if p.num < 1 || p.num > n || seen[p.num-1] {
-				return nil, false
-			}
-			seen[p.num-1] = true
-			out[p.num-1] = p.target
-		}
-	default:
-		return nil, false
-	}
-	return out, true
-}
-
-// pickText is a reply as readPicks reads it: code spans kept ("`T`" is an
-// answer, unlike normalize's placeholder), markup gone.
-func pickText(text string) string {
-	return strings.NewReplacer("`", " ", "*", " ").Replace(asciiQuotes(text))
-}
-
-// pickWords are t's words, lower case. An apostrophe stays inside its word:
-// "it's T" is no "s" and a "t".
-func pickWords(t string) []string {
-	return strings.FieldsFunc(strings.ToLower(t), func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '\''
-	})
-}
-
-// pickShort is short for an answer about n conflicts: no question, and a
-// word budget that grows with n ("1: T, 2: S, ..." takes two a spot).
-func pickShort(t string, n int) bool {
-	return !strings.Contains(t, "?") && len(strings.Fields(t)) <= stopCommandWords+2*n
-}
-
-// pickNudge reports a reply under the question about n conflicts that is
-// no answer but reads like one: a go-ahead naming no side ("Lets go!",
-// "ja"), or letters of the wrong count ("T" for two). Asked again for the
-// letters. Anything else (a command, a question, a no) goes on as any
-// reply.
-func pickNudge(text string, n int) bool {
-	t := pickText(text)
-	ws := pickWords(t)
-	if !pickShort(t, n) || conflictVeto(t) || len(ws) == 0 {
-		return false
-	}
-	for _, w := range ws {
-		side := strings.TrimLeftFunc(w, unicode.IsDigit)
-		if !pickFiller[w] && w != "lets" && w != "let's" && side != "" && side != "t" && side != "s" {
-			return false
-		}
-	}
-	return true
-}
-
-// openPick is the PR's open question when parentID is its comment: a reply
-// directly under it is an answer to it. nil otherwise, and on a failed
-// read (the reply goes on as any other).
-func (r *Reviewer) openPick(ctx context.Context, key store.PRKey, parentID int) *store.ConflictChoice {
-	if parentID == 0 {
-		return nil
-	}
-	// The question is a notice: under any other bot reply, read already
-	// by the reply route, there is none to answer.
-	if b, read := parentBotReplyFrom(ctx, parentID); read && (b == nil || b.Kind != store.BotReplyQuestion) {
-		return nil
-	}
-	c := safeDB(ctx, r.log, "ConflictChoice", func() (*store.ConflictChoice, error) { return r.store.ConflictChoice(ctx, key) })
-	if c == nil || c.CommentID != parentID || c.Asked() == 0 {
-		return nil
-	}
-	return c
 }
 
 // pickMoved answers a pick whose merge is gone: a branch moved, or the
@@ -301,7 +151,7 @@ func (r *Reviewer) askPick(ctx context.Context, j *conflictJob, choose []bool) {
 	}
 	// A plain reply under it is addressed to the bot, as under any notice.
 	r.recordBotReply(ctx, j.key, id, store.BotReplyQuestion)
-	choice.CommentID = id
+	choice.CommentID, choice.QuestionRunes = id, len([]rune(text))
 	safeDBErr(ctx, r.log, "SetConflictChoice", func() error { return r.store.SetConflictChoice(ctx, j.key, choice) })
 	r.log.InfoContext(ctx, fmt.Sprintf("%s: merge conflict: asked the author to pick %d of %d conflicts (comment %d)", j.prTag, n, len(choice.Conflicts), id))
 }
