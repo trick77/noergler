@@ -13,6 +13,7 @@ func TestPromptsAreEmbedded(t *testing.T) {
 		"review overview": {Review, "{previous_overview}"},
 		"mention":         {Mention, "{question}"},
 		"mention parent":  {Mention, "{parent_comment}"},
+		"mention apply":   {Mention, "{apply_offer}"},
 		"finding_reply":   {FindingReply, "{reply}"},
 		"reply name":      {FindingReply, "{author_first_name}"},
 		"finding_fix":     {FindingFix, "{code}"},

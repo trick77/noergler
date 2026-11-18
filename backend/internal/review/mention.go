@@ -238,7 +238,10 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		PRDescription:    r.prDescription(ctx, prTag, pr),
 		ParentComment:    replied,
 		AskerFirstName:   name,
-		Language:         l,
+		// Under a reply of the fix flow "apply it" applies that reply's
+		// source answer, never this one: no offer there either.
+		Appliable: anchor != nil && source == 0,
+		Language:  l,
 	})
 
 	job := &mentionJob{

@@ -55,6 +55,9 @@ func TestQAAnswerKeepsTheQuestionsLine(t *testing.T) {
 			if last.Anchor == nil || *last.Anchor != *want {
 				t.Errorf("answer kept %+v, want %+v", last.Anchor, want)
 			}
+			if pr := h.llm.Mentions[0].Prompt; !strings.Contains(pr, inference.ApplyOfferYes) || strings.Contains(pr, inference.ApplyOfferNo) {
+				t.Errorf("a question on a code line was not allowed to offer the fix")
+			}
 		})
 	}
 	t.Run("old side or general", func(t *testing.T) {
@@ -69,6 +72,10 @@ func TestQAAnswerKeepsTheQuestionsLine(t *testing.T) {
 
 		if a := h.st.BotReplies[len(h.st.BotReplies)-1].Anchor; a != nil {
 			t.Errorf("an old-side line kept %+v", a)
+		}
+		// No line, no offer: "apply it" would only be told it cannot.
+		if pr := h.llm.Mentions[0].Prompt; !strings.Contains(pr, inference.ApplyOfferNo) || strings.Contains(pr, inference.ApplyOfferYes) {
+			t.Errorf("a question on no code line was allowed to offer the fix")
 		}
 	})
 }
@@ -207,6 +214,24 @@ func TestNotAuthorNoticeIsAboutTheAnswer(t *testing.T) {
 	if last := h.st.BotReplies[len(h.st.BotReplies)-1]; last.Kind != store.BotReplyAnswer || last.Source != 950 || last.Anchor == nil {
 		t.Errorf("notice kept %+v", last)
 	}
+	if len(h.bb.Replies) != 1 || !strings.Contains(h.bb.Replies[0].Text, "reply 'apply it' here") {
+		t.Errorf("replies = %+v, want the hint", h.bb.Replies)
+	}
+}
+
+// Off a code line the author's "apply it" could only be refused: the
+// not-author notice points to no such reply.
+func TestNotAuthorNoticeOffACodeLineGivesNoHint(t *testing.T) {
+	h, p := answerHarness(t)
+	h.st.botReplies[950].Anchor = nil
+	p.Comment.Author.Name = "bob"
+
+	h.r.HandleMention(context.Background(), p, "platform", &inlineScheduler{})
+
+	if len(h.bb.Replies) != 1 || !strings.Contains(h.bb.Replies[0].Text, "Only the PR author can have me apply this.") ||
+		strings.Contains(h.bb.Replies[0].Text, "apply it") {
+		t.Errorf("replies = %+v, want the notice without the hint", h.bb.Replies)
+	}
 }
 
 // `apply` where no Q&A answer of noergler's is replied to: the model's
@@ -290,6 +315,11 @@ func TestRepliesInTheFixFlowStayAboutTheAnswer(t *testing.T) {
 
 		if last := h.st.BotReplies[len(h.st.BotReplies)-1]; last.Source != 950 || last.Anchor == nil {
 			t.Errorf("explanation kept %+v, want it about answer 950", last)
+		}
+		// "apply it" under it applies answer 950, never this one: no offer.
+		if !strings.Contains(h.llm.Mentions[0].Prompt, inference.ApplyOfferNo) ||
+			strings.Contains(h.llm.Mentions[0].Prompt, inference.ApplyOfferYes) {
+			t.Errorf("an answer under the fix flow was allowed to offer its own fix")
 		}
 	})
 }

@@ -29,11 +29,22 @@ const (
 	PlaceholderAskerName = "{asker_first_name}"
 	// PlaceholderParentComment is the comment a mention replies to.
 	PlaceholderParentComment = "{parent_comment}"
+	// PlaceholderApplyOffer is whether this answer may offer to apply its
+	// suggestion. Per question, so below the diff (prefix cache).
+	PlaceholderApplyOffer = "{apply_offer}"
 )
 
 // NoParentComment is what {parent_comment} becomes on a top-level mention,
 // a reply under the summary, or a parent that could not be read.
 const NoParentComment = "_None._"
+
+// What {apply_offer} becomes. Code applies an answer only on a code line
+// (answerfix.go); an offer anywhere else is a promise the next reply
+// breaks with "the question is not on a line of code".
+const (
+	ApplyOfferYes = "Yes: the PR author can have it applied."
+	ApplyOfferNo  = "No: noergler cannot apply this answer here."
+)
 
 // MentionTooLargeReply is what a mention gets when the PR does not fit,
 // whether the pre-flight or the endpoint said so.
@@ -69,6 +80,9 @@ type MentionPromptRequest struct {
 	ParentComment string
 	// AskerFirstName is the asker's first name, or empty when unknown.
 	AskerFirstName string
+	// Appliable is an answer "apply it" under it would apply: only then
+	// may it offer to apply its suggestion.
+	Appliable bool
 	// Language is the asker's; the zero value writes German.
 	Language lang.Lang
 }
@@ -92,7 +106,12 @@ func RenderMentionPrompt(req MentionPromptRequest) string {
 	if parentComment == "" {
 		parentComment = NoParentComment
 	}
+	applyOffer := ApplyOfferNo
+	if req.Appliable {
+		applyOffer = ApplyOfferYes
+	}
 	return strings.NewReplacer(
+		PlaceholderApplyOffer, applyOffer,
 		PlaceholderQuestion, req.Question,
 		PlaceholderAskerName, askerName,
 		PlaceholderParentComment, parentComment,
