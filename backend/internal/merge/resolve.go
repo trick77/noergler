@@ -275,32 +275,91 @@ func Context(chunks []Chunk, k int) (before, after []string) {
 	return before, after
 }
 
+// Whole is one side of c as a resolution: every line of target's side, or
+// of source's.
+func Whole(c *Conflict, target bool) []Ref {
+	n := len(c.Source)
+	if target {
+		n = len(c.Target)
+	}
+	out := make([]Ref, n)
+	for i := range out {
+		out[i] = Ref{Target: target, N: i + 1}
+	}
+	return out
+}
+
+// Choosable reports a conflict the author may settle by picking one side
+// whole: both sides hold lines, they share no non-blank line (whitespace
+// ignored: a shared line beside each side's own is two additions, which
+// T or S would halve, not two versions), and either alone passes
+// ValidateResolution, so neither pick brings back a base line the other
+// branch changed.
+func Choosable(c *Conflict) bool {
+	if len(c.Target) == 0 || len(c.Source) == 0 {
+		return false
+	}
+	target := map[string]bool{}
+	for _, l := range c.Target {
+		if t := noSpace(l); t != "" {
+			target[t] = true
+		}
+	}
+	for _, l := range c.Source {
+		if target[noSpace(l)] {
+			return false
+		}
+	}
+	return ValidateResolution(c, Whole(c, true)) == "" && ValidateResolution(c, Whole(c, false)) == ""
+}
+
 // ReadAnswer turns the model's ids, per conflict numbered from 1 in the
-// order asked, into refs that each pass ValidateResolution. All or
-// nothing: why is log vocabulary for the first problem, empty when every
-// conflict stands.
-func ReadAnswer(asked []*Conflict, answer map[int][]string) (refs [][]Ref, why string) {
-	if len(answer) != len(asked) {
-		return nil, fmt.Sprintf("%d resolutions for %d conflicts", len(answer), len(asked))
+// order asked, into refs that each pass ValidateResolution. ask are the
+// conflicts the model leaves to the author, each Choosable: they get nil
+// refs and true in choose. Every conflict is answered or asked, never
+// both. All or nothing: why is log vocabulary for the first problem,
+// empty when every conflict stands.
+func ReadAnswer(asked []*Conflict, answer map[int][]string, ask []int) (refs [][]Ref, choose []bool, why string) {
+	choose = make([]bool, len(asked))
+	for _, n := range ask {
+		switch {
+		case n < 1 || n > len(asked):
+			return nil, nil, fmt.Sprintf("asked about conflict %d of %d", n, len(asked))
+		case choose[n-1]:
+			return nil, nil, fmt.Sprintf("asked about conflict %d twice", n)
+		}
+		if _, ok := answer[n]; ok {
+			return nil, nil, fmt.Sprintf("conflict %d answered and asked", n)
+		}
+		if !Choosable(asked[n-1]) {
+			return nil, nil, fmt.Sprintf("conflict %d: no whole side to pick", n)
+		}
+		choose[n-1] = true
+	}
+	if len(answer)+len(ask) != len(asked) {
+		return nil, nil, fmt.Sprintf("%d resolutions and %d asked for %d conflicts", len(answer), len(ask), len(asked))
 	}
 	refs = make([][]Ref, len(asked))
 	for i, c := range asked {
+		if choose[i] {
+			continue
+		}
 		ids, ok := answer[i+1]
 		if !ok {
-			return nil, fmt.Sprintf("conflict %d unanswered", i+1)
+			return nil, nil, fmt.Sprintf("conflict %d unanswered", i+1)
 		}
 		rs := make([]Ref, 0, len(ids))
 		for _, id := range ids {
 			r, ok := ParseRef(id)
 			if !ok {
-				return nil, fmt.Sprintf("conflict %d: bad ref %q", i+1, id)
+				return nil, nil, fmt.Sprintf("conflict %d: bad ref %q", i+1, id)
 			}
 			rs = append(rs, r)
 		}
 		if why := ValidateResolution(c, rs); why != "" {
-			return nil, fmt.Sprintf("conflict %d: %s", i+1, why)
+			return nil, nil, fmt.Sprintf("conflict %d: %s", i+1, why)
 		}
 		refs[i] = rs
 	}
-	return refs, ""
+	return refs, choose, ""
 }

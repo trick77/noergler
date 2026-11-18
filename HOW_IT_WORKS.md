@@ -682,11 +682,37 @@ feasible and why. At the cost
 cap a code-only resolution still runs; one that needs the model is refused
 with an answer.
 
+Two whole versions of the same lines, neither carrying the other's change
+(each branch bumped one dependency to its own version), are the author's
+pick (2026-11-18). The model names them in `ask`; code checks either side
+alone passes `ValidateResolution` (`merge.Choosable`), else the answer is
+refused. noergler resolves the rest as above but pushes nothing yet: it
+replies with each asked spot, both versions quoted (`T` from the target,
+`S` from the PR's branch), and asks for **T** or **S** (`1T 2S` for
+several). The merge, its heads and every conflict's resolution are kept
+on the PR row (`conflict_choice`). A reply directly under that question
+naming the sides, read by code (letters only, never a version's text,
+filler aside, a no or a put-off is none), settles it: same heads, same
+conflicts, the kept resolutions and the picks, no second call, then the
+commit and answer as below ("your pick"), the answer under the pick, the
+fix row and the commit link naming the request. A branch moved (the
+event's head says so before any fetch) or a conflict changed: nothing
+pushed, ask again. A failure on the way keeps the question and writes no
+row, so the same answer may be sent again; the request's one row comes
+with the answer that ends it. The author's go-ahead naming no side ("Lets
+go!") or letters of the wrong count get the letters asked again; anything
+else there goes on as any reply; anyone else's pick is told only the
+author may. Any other end of a request clears the question. A question
+never answered leaves its call row and no fix row. Two sides sharing a
+line are no pick (two additions T or S would halve); the question is
+asked only if either pick assembles and the confirmation could quote
+whichever side is dropped.
+
 The merge commit (parents source then target, `Merge branch 'master' into
 feature/x`, the resolved spots, a link to the request) is authored by the
 bot account and pushed to the source branch without force, only if it still
 points where it was read. The answer links the commit, lists each spot and
-whether code or the model resolved it, quotes every dropped line, names the
+whether code, the model or the author's pick resolved it, quotes every dropped line, names the
 files merged without a conflict, and asks the author to build and test
 before merging. Failures answer like an auto-fix: no write permission,
 branch moved, refused by a hook, failed. Each request is a `finding_fixes`

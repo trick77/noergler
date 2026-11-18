@@ -114,6 +114,93 @@ func (s *Store) SetConflictOffer(ctx context.Context, prID int64, commentID int)
 	return err
 }
 
+// ConflictChoice is pull_requests.conflict_choice: a merge-conflict
+// request waiting on the PR author to pick a side, with the question's
+// comment, the heads it merged and every conflict of that merge in order.
+type ConflictChoice struct {
+	CommentID int `json:"comment_id"`
+	// RequestID is the comment that asked to resolve the conflict: the
+	// answer's fix row and commit link name it, never the "T".
+	RequestID  int              `json:"request_id"`
+	SourceHead string           `json:"source_head"`
+	TargetHead string           `json:"target_head"`
+	Conflicts  []ChoiceConflict `json:"conflicts"`
+}
+
+// How a ChoiceConflict is settled.
+const (
+	ChoiceRule  = "rule"  // code's resolution
+	ChoiceModel = "model" // the model's
+	ChoiceAsk   = "ask"   // the author's pick, asked
+)
+
+// ChoiceConflict is one conflict of a ConflictChoice: its file, both
+// sides' lines (no terminators) to find it again, how it is settled and,
+// unless asked, its line ids ("T1", "S2").
+type ChoiceConflict struct {
+	Path   string   `json:"path"`
+	Target []string `json:"target"`
+	Source []string `json:"source"`
+	How    string   `json:"how"`
+	Refs   []string `json:"refs,omitempty"`
+}
+
+// Asked is how many of c's conflicts wait on the author.
+func (c *ConflictChoice) Asked() int {
+	n := 0
+	for _, x := range c.Conflicts {
+		if x.How == ChoiceAsk {
+			n++
+		}
+	}
+	return n
+}
+
+// ConflictChoice is the PR's open question to its author, nil when none
+// (or no row).
+func (s *Store) ConflictChoice(ctx context.Context, k PRKey) (*ConflictChoice, error) {
+	var raw []byte
+	err := s.pool.QueryRow(ctx, `
+		SELECT conflict_choice FROM pull_requests
+		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3`,
+		k.Project, k.Repo, k.PRID).Scan(&raw)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return nil, nil
+	case err != nil:
+		return nil, err
+	case raw == nil:
+		return nil, nil
+	}
+	var c ConflictChoice
+	if err := json.Unmarshal(raw, &c); err != nil {
+		return nil, fmt.Errorf("conflict_choice: %w", err)
+	}
+	return &c, nil
+}
+
+// SetConflictChoice records the PR's open question; nil clears it, a
+// no-op (updated_at untouched) when none is open. By the PR's key: a
+// request may run on a PR whose row id it never read.
+func (s *Store) SetConflictChoice(ctx context.Context, k PRKey, c *ConflictChoice) error {
+	if c == nil {
+		_, err := s.pool.Exec(ctx, `
+			UPDATE pull_requests SET conflict_choice = NULL, updated_at = now()
+			WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3 AND conflict_choice IS NOT NULL`,
+			k.Project, k.Repo, k.PRID)
+		return err
+	}
+	raw, err := json.Marshal(c)
+	if err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(ctx, `
+		UPDATE pull_requests SET conflict_choice = $4, updated_at = now()
+		WHERE project_key = $1 AND repo_slug = $2 AND pr_id = $3`,
+		k.Project, k.Repo, k.PRID, raw)
+	return err
+}
+
 // SnapshotTask is one SNAPSHOT task noergler posted on a PR, an element of
 // pull_requests.snapshot_tasks: its comment id, the keys of the lines it
 // names, and whether it was open when last read.

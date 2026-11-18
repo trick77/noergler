@@ -438,8 +438,9 @@ func (l LoadedConflictCase) Request(template string, count inference.CountFunc) 
 const (
 	// VerdictCorrect: every conflict resolved to an accepted text.
 	VerdictCorrect = "correct"
-	// VerdictDeclined: feasible false. Right on a control, a harmless
-	// miss elsewhere.
+	// VerdictDeclined: feasible false, or a valid answer that leaves a
+	// conflict to the author (`ask`): nothing pushed without a human.
+	// Right on a control, a harmless miss elsewhere.
 	VerdictDeclined = "declined"
 	// VerdictRejected: production would drop the answer (unparseable, or
 	// merge.ReadAnswer refuses it). Nothing pushed.
@@ -489,9 +490,13 @@ func ScoreConflict(l LoadedConflictCase, res inference.ConflictResult) ConflictA
 	for i, a := range l.asked {
 		cs[i] = a.conflict
 	}
-	refs, why := merge.ReadAnswer(cs, res.Resolution.Lines)
+	refs, choose, why := merge.ReadAnswer(cs, res.Resolution.Lines, res.Resolution.Ask)
 	if why != "" {
 		out.Verdict, out.Why = VerdictRejected, why
+		return out
+	}
+	if slices.Contains(choose, true) {
+		out.Verdict, out.Why = VerdictDeclined, fmt.Sprintf("asked the author about %v", res.Resolution.Ask)
 		return out
 	}
 	// Production assembles every file before it commits, and drops the

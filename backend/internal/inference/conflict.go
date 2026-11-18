@@ -101,10 +101,11 @@ func conflictFormat() llmwire.ResponseFormat {
 		Schema: map[string]any{
 			"type":                 "object",
 			"additionalProperties": false,
-			"required":             []any{"feasible", "reason", "resolutions"},
+			"required":             []any{"feasible", "reason", "resolutions", "ask"},
 			"properties": map[string]any{
 				"feasible": map[string]any{"type": "boolean"},
 				"reason":   map[string]any{"type": "string"},
+				"ask":      map[string]any{"type": "array", "items": map[string]any{"type": "integer"}},
 				"resolutions": map[string]any{
 					"type": "array",
 					"items": map[string]any{
@@ -131,6 +132,10 @@ type ConflictResolution struct {
 	// Reason says why not, for the author; empty when feasible.
 	Reason string
 	Lines  map[int][]string
+	// Ask are the conflicts (1-based) left to the PR author: two whole
+	// versions, neither carrying the other's change. Unchecked here:
+	// merge.ReadAnswer decides.
+	Ask []int
 }
 
 // ParseConflictResolution reads the model's envelope. A conflict answered
@@ -143,11 +148,12 @@ func ParseConflictResolution(content string) (ConflictResolution, bool) {
 			Conflict int      `json:"conflict"`
 			Lines    []string `json:"lines"`
 		} `json:"resolutions"`
+		Ask []int `json:"ask"`
 	}
 	if json.Unmarshal([]byte(stripFence(strings.TrimSpace(content))), &raw) != nil {
 		return ConflictResolution{}, false
 	}
-	out := ConflictResolution{Feasible: raw.Feasible, Reason: strings.TrimSpace(raw.Reason), Lines: map[int][]string{}}
+	out := ConflictResolution{Feasible: raw.Feasible, Reason: strings.TrimSpace(raw.Reason), Lines: map[int][]string{}, Ask: raw.Ask}
 	for _, r := range raw.Resolutions {
 		if _, dup := out.Lines[r.Conflict]; dup {
 			return ConflictResolution{}, false

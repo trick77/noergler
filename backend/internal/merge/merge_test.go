@@ -279,8 +279,53 @@ func TestValidateResolutionUndoesChange(t *testing.T) {
 	}
 	// ReadAnswer passes the reason on: no push.
 	c := &Conflict{Base: ls("v=1\n"), Target: ls("v=2\n"), Source: ls("v=1\nw=1\n")}
-	if _, why := ReadAnswer([]*Conflict{c}, map[int][]string{1: {"S1", "S2"}}); why != "conflict 1: undoes_change" {
+	if _, _, why := ReadAnswer([]*Conflict{c}, map[int][]string{1: {"S1", "S2"}}, nil); why != "conflict 1: undoes_change" {
 		t.Errorf("ReadAnswer: %q", why)
+	}
+}
+
+// A conflict left to the author is one whose either side, whole, stands:
+// two versions of one dependency. One whose whole side would bring back a
+// base line the other branch changed is no pick.
+func TestReadAnswerAsks(t *testing.T) {
+	version := &Conflict{Base: ls("v=1.0.27\n"), Target: ls("v=1.0.31\n"), Source: ls("v=1.0.29\n")}
+	other := &Conflict{Base: ls("x=1\n"), Target: ls("x=2\n"), Source: ls("x=2 // two\n")}
+	refs, choose, why := ReadAnswer([]*Conflict{version, other}, map[int][]string{2: {"S1"}}, []int{1})
+	if why != "" || !choose[0] || choose[1] || refs[0] != nil || len(refs[1]) != 1 {
+		t.Fatalf("refs %v, choose %v, why %q", refs, choose, why)
+	}
+	// Each side whole keeps "b" or "a", a base line the other side changed.
+	split := &Conflict{Base: ls("a\nb\n"), Target: ls("a2\nb\n"), Source: ls("a\nb2\n")}
+	if Choosable(split) {
+		t.Error("a conflict each side changed half of is no pick")
+	}
+	// Both set x=2 and added their own import: two additions, which T or
+	// S would halve.
+	shared := &Conflict{Base: ls("x=1\n"), Target: ls("x=2\nimport a\n"), Source: ls("x=2\nimport b\n")}
+	if Choosable(shared) {
+		t.Error("sides sharing a line are no pick")
+	}
+	for name, c := range map[string]struct {
+		answer map[int][]string
+		ask    []int
+		want   string
+	}{
+		"no pick":      {nil, []int{1}, "conflict 1: no whole side to pick"},
+		"out of range": {nil, []int{2}, "asked about conflict 2 of 1"},
+		"twice":        {nil, []int{1, 1}, "asked about conflict 1 twice"},
+		"both":         {map[int][]string{1: {"T1"}}, []int{1}, "conflict 1 answered and asked"},
+		"neither":      {nil, nil, "0 resolutions and 0 asked for 1 conflicts"},
+	} {
+		cs := []*Conflict{split}
+		if name != "no pick" {
+			cs = []*Conflict{version}
+		}
+		if _, _, why := ReadAnswer(cs, c.answer, c.ask); why != c.want {
+			t.Errorf("%s: %q, want %q", name, why, c.want)
+		}
+	}
+	if got := Whole(version, false); len(got) != 1 || got[0] != (Ref{N: 1}) {
+		t.Errorf("Whole = %v", got)
 	}
 }
 

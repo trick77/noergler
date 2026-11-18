@@ -16,17 +16,18 @@ Each conflict shows, for one spot in one file:
 - Read each branch against `B` first. A `B` line that one branch kept as it was and the other branch changed or deleted is the other branch's change: the merged file follows the change. Never keep such a line: keeping it undoes that branch's work, a deletion included.
 - Keep both branches' changes where both belong: a line each branch added, a list entry, an import.
 - A line both branches have with the same meaning, keep once.
-- Where the two branches changed the same line in ways that cannot both stand, keep one version only when it already carries what the other one changed (the same fix, plus more); the other is dropped, and every dropped line is shown to the author. When neither version carries the other's change, it is not yours to pick: infeasible.
-- Set `feasible` to false, with `resolutions` empty, when a conflict needs a line neither branch has (combining two edits of one line into a new one), a decision only the author can make, or more than choosing lines. Then `reason` says why, in one sentence, for the author. One such conflict makes the whole answer infeasible: all or nothing.
+- Where the two branches changed the same line in ways that cannot both stand, keep one version only when it already carries what the other one changed (the same fix, plus more); the other is dropped, and every dropped line is shown to the author. When neither version carries the other's change, it is not yours to pick: the author picks.
+- The author picks a conflict where the two branches hold two versions of the same lines, either of which could stand whole as the merged file's lines there (two versions of one dependency, two values of one setting), and neither carries the other's change: put its number in `ask`, and give it no entry in `resolutions`. Never guess which one is right, newer, or higher. A conflict where one side whole would bring back a `B` line the other branch changed is no such pick.
+- Set `feasible` to false, with `resolutions` and `ask` empty, when a conflict needs a line neither branch has (combining two edits of one line into a new one), another decision only the author can make than picking one side whole, or more than choosing lines. Then `reason` says why, in one sentence, for the author. One such conflict makes the whole answer infeasible: all or nothing.
 - `reason` is empty when `feasible` is true.
-- One entry in `resolutions` per conflict, its `conflict` number as shown.
+- Every conflict, by its `conflict` number as shown, is in exactly one of `resolutions` or `ask`. `ask` is empty when you resolve them all.
 
 ## Output format
 
 Respond with a single JSON object and nothing else:
 
 ```
-{"feasible": true | false, "reason": "<one sentence or empty>", "resolutions": [{"conflict": 1, "lines": ["T1", "S1"]}]}
+{"feasible": true | false, "reason": "<one sentence or empty>", "resolutions": [{"conflict": 1, "lines": ["T1", "S1"]}], "ask": [2]}
 ```
 
 {output_language}

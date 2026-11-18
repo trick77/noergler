@@ -380,6 +380,9 @@ type fakeStore struct {
 	// conflictOffer is the open offer comment; ConflictOffers every set.
 	conflictOffer  int
 	ConflictOffers []int
+	// conflictChoice is the open question; ConflictChoices every set.
+	conflictChoice  *store.ConflictChoice
+	ConflictChoices []*store.ConflictChoice
 	// snapshotTasks is the PR's SNAPSHOT tasks; SnapshotTaskSets counts
 	// the writes.
 	snapshotTasks    []store.SnapshotTask
@@ -596,6 +599,26 @@ func (f *fakeStore) SetConflictOffer(_ context.Context, _ int64, commentID int) 
 	}
 	f.conflictOffer = commentID
 	f.ConflictOffers = append(f.ConflictOffers, commentID)
+	return nil
+}
+
+func (f *fakeStore) ConflictChoice(context.Context, store.PRKey) (*store.ConflictChoice, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return nil, err
+	}
+	return f.conflictChoice, nil
+}
+
+func (f *fakeStore) SetConflictChoice(_ context.Context, _ store.PRKey, c *store.ConflictChoice) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.err(); err != nil {
+		return err
+	}
+	f.conflictChoice = c
+	f.ConflictChoices = append(f.ConflictChoices, c)
 	return nil
 }
 

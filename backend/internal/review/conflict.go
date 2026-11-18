@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -208,6 +209,12 @@ type conflictJob struct {
 	// offer is a review's check for an offer (conflictOffer), not a
 	// request: it merges and pushes nothing, and logs as an offer.
 	offer bool
+	// pick is the author's answer to the open question (conflictchoice.go):
+	// the merge is settled from it, never by the model.
+	pick *conflictPick
+	// replyTo is the comment answered: the request's, or the pick's, whose
+	// request (commentID) the fix row and the commit link name.
+	replyTo int
 }
 
 // conflictFile is a file with conflicts: its chunks, and per conflict the
@@ -218,6 +225,7 @@ type conflictFile struct {
 	conflicts   []*merge.Conflict
 	resolutions [][]merge.Ref
 	byModel     []bool
+	byAuthor    []bool
 }
 
 type conflictRef struct {
@@ -225,11 +233,12 @@ type conflictRef struct {
 	k    int
 }
 
-// handleConflict answers a merge-conflict request. handedOff as for a
-// staged Q&A: the model's call went to the pool, and the post logs the
-// HTTP totals of counter.
+// handleConflict answers a merge-conflict request, or with pick the
+// author's answer to the open question. handedOff as for a staged Q&A: the
+// model's call went to the pool, and the post logs the HTTP totals of
+// counter.
 func (r *Reviewer) handleConflict(ctx context.Context, payload *webhook.Payload, key store.PRKey, prTag, team string,
-	sched Scheduler, counter *httpstats.Counter) (handedOff bool) {
+	sched Scheduler, counter *httpstats.Counter, pick *conflictPick) (handedOff bool) {
 	comment, pr := payload.Comment, payload.PullRequest
 	l := r.languageFor(ctx, comment.Author.Name)
 	if pr.Author.User.Name == "" || !strings.EqualFold(comment.Author.Name, pr.Author.User.Name) {
@@ -249,14 +258,38 @@ func (r *Reviewer) handleConflict(ctx context.Context, payload *webhook.Payload,
 		r.ensurePRRow(ctx, key, pr.Author.User.Name, pr.Title, pr.CreatedDate)
 	}
 	r.reactivateIfIgnored(ctx, key, prTag, false)
-	j := &conflictJob{key: key, prTag: prTag, team: team, commentID: comment.ID, lang: l,
-		source: pr.FromRef.Branch(), target: pr.ToRef.Branch(), counter: counter}
+	j := &conflictJob{key: key, prTag: prTag, team: team, commentID: comment.ID, replyTo: comment.ID, lang: l,
+		source: pr.FromRef.Branch(), target: pr.ToRef.Branch(), counter: counter, pick: pick}
+	if pick != nil {
+		if pick.choice.RequestID != 0 {
+			j.commentID = pick.choice.RequestID
+		}
+		// The PR's branch moved since the question, as the event says:
+		// refused before any fetch.
+		if head := pr.FromRef.LatestCommit; head != "" && head != pick.choice.SourceHead {
+			r.log.InfoContext(ctx, prTag+": merge conflict answer not applied: the PR's branch moved")
+			r.finishConflict(ctx, j, store.FixConflict, "", pickMoved(l))
+			return false
+		}
+	}
 
+	// An answer calls no model, so the cap does not narrow its fetch: the
+	// question's merge was read at the request's depth.
 	prepCtx, cancel := context.WithTimeout(ctx, conflictStageTimeout)
-	outcome, why := r.prepareConflict(prepCtx, j, pr, over)
+	outcome, why := r.prepareConflict(prepCtx, j, pr, over && pick == nil)
 	cancel()
 	if outcome != "" {
 		r.finishConflict(ctx, j, outcome, "", why)
+		return false
+	}
+	if pick != nil {
+		if why := j.bindPick(); why != "" {
+			r.log.InfoContext(ctx, fmt.Sprintf("%s: merge conflict answer not applied: %s", prTag, why))
+			r.finishConflict(ctx, j, store.FixConflict, "", pickMoved(l))
+			return false
+		}
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: merge conflict settled by the author's pick: %d conflicts", prTag, j.count()))
+		r.commitConflict(ctx, j)
 		return false
 	}
 	if len(j.pending) == 0 {
@@ -512,7 +545,7 @@ func (r *Reviewer) mergeConflict(ctx context.Context, j *conflictJob, overCap bo
 			continue
 		}
 		j.merged = append(j.merged, &conflictFile{path: p, chunks: chunks, conflicts: cs,
-			resolutions: make([][]merge.Ref, len(cs)), byModel: make([]bool, len(cs))})
+			resolutions: make([][]merge.Ref, len(cs)), byModel: make([]bool, len(cs)), byAuthor: make([]bool, len(cs))})
 	}
 	// A file one side added where the other added a directory: git's
 	// file/directory conflict, which a tree cannot hold.
@@ -621,13 +654,17 @@ func (r *Reviewer) postConflict(ctx context.Context, j *conflictJob) {
 	for i, pc := range j.pending {
 		asked[i] = pc.file.conflicts[pc.k]
 	}
-	refs, why := merge.ReadAnswer(asked, res.Resolution.Lines)
+	refs, choose, why := merge.ReadAnswer(asked, res.Resolution.Lines, res.Resolution.Ask)
 	if why != "" {
 		rejected(why)
 		return
 	}
 	for i, pc := range j.pending {
 		pc.file.resolutions[pc.k] = refs[i]
+	}
+	if slices.Contains(choose, true) {
+		r.askPick(ctx, j, choose)
+		return
 	}
 	r.commitConflict(ctx, j)
 }
@@ -650,14 +687,7 @@ func (r *Reviewer) commitConflict(ctx context.Context, j *conflictJob) {
 		}
 		content[f.path] = out
 	}
-	// The answer quotes every dropped line in full: one that would not fit
-	// a comment is no merge to push, never a cut quote.
-	placeholder := strings.Repeat("0", 40)
-	if n := len([]rune(j.answer(placeholder, r.bitbucket.CommitURL(j.key.Project, j.key.Repo, placeholder)))); n > conflictAnswerRunes {
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: merge conflict not resolved: answer of %d runes, over %d", j.prTag, n, conflictAnswerRunes))
-		r.finishConflict(ctx, j, store.FixNotFeasible, "", conflictCannot(j.lang, pick(
-			"die verworfenen Zeilen sind zu lang, um sie hier vollständig zu zeigen.",
-			"the dropped lines are too long to show here in full.")))
+	if !r.answerFits(ctx, j) {
 		return
 	}
 	commit, objects, err := j.repo.Commit(j.files, content, []plumbing.Hash{j.sourceHead, j.targetHead}, j.sig,
@@ -696,6 +726,22 @@ func (r *Reviewer) commitConflict(ctx context.Context, j *conflictJob) {
 	r.conflictResolvedOffer(ctx, j.key, j.prTag)
 }
 
+// answerFits reports whether the confirmation of j's resolutions quotes
+// every dropped line in full: one that would not fit a comment is no merge
+// to push, never a cut quote. When not, the request is answered so.
+func (r *Reviewer) answerFits(ctx context.Context, j *conflictJob) bool {
+	placeholder := strings.Repeat("0", 40)
+	n := len([]rune(j.answer(placeholder, r.bitbucket.CommitURL(j.key.Project, j.key.Repo, placeholder))))
+	if n <= conflictAnswerRunes {
+		return true
+	}
+	r.log.InfoContext(ctx, fmt.Sprintf("%s: merge conflict not resolved: answer of %d runes, over %d", j.prTag, n, conflictAnswerRunes))
+	r.finishConflict(ctx, j, store.FixNotFeasible, "", conflictCannot(j.lang, j.lang.Pick(
+		"die verworfenen Zeilen sind zu lang, um sie hier vollständig zu zeigen.",
+		"the dropped lines are too long to show here in full.")))
+	return false
+}
+
 // commitMessage is git's own merge subject, then what was resolved how.
 // English, like git's.
 func (j *conflictJob) commitMessage(commentURL string) string {
@@ -704,8 +750,11 @@ func (j *conflictJob) commitMessage(commentURL string) string {
 	for _, f := range j.merged {
 		for k := range f.conflicts {
 			how := "rule"
-			if f.byModel[k] {
+			switch {
+			case f.byModel[k]:
 				how = "model"
+			case f.byAuthor[k]:
+				how = "author"
 			}
 			fmt.Fprintf(&b, "- %s:%d (%s)\n", f.path, merge.LineOf(f.chunks, f.resolutions, k), how)
 		}
@@ -731,8 +780,11 @@ func (j *conflictJob) answer(sha, link string) string {
 		for k, c := range f.conflicts {
 			where := fmt.Sprintf("%s:%d", f.path, merge.LineOf(f.chunks, f.resolutions, k))
 			how := pick("Regel: beide Seiten übernommen", "rule: both sides kept")
-			if f.byModel[k] {
+			switch {
+			case f.byModel[k]:
 				how = pick("Modell", "model")
+			case f.byAuthor[k]:
+				how = pick("deine Wahl", "your pick")
 			}
 			fmt.Fprintf(&b, "- `%s` (%s)\n", where, how)
 			tgt, src := merge.Dropped(c, f.resolutions[k])
@@ -764,17 +816,31 @@ func (j *conflictJob) answer(sha, link string) string {
 // finishConflict records the request and answers it. Recorded before the
 // answer: a pushed merge stands, whatever the post does.
 func (r *Reviewer) finishConflict(ctx context.Context, j *conflictJob, outcome, sha, body string) {
-	safeDBErr(ctx, r.log, "RecordFindingFix", func() error {
-		_, err := r.store.RecordFindingFix(ctx, j.key, store.FindingFix{ConflictCommentID: j.commentID, TeamSlug: j.team,
-			Outcome: outcome, CommitSHA: sha})
-		return err
-	})
-	code, model := 0, 0
+	// Whatever ends a request ends an open question too: an answered one
+	// is settled, and a new request's merge is not the one asked about.
+	// Not a failure (a fetch, a timeout): the same answer may be tried
+	// again under the same question, for free.
+	if outcome != store.FixError {
+		safeDBErr(ctx, r.log, "SetConflictChoice", func() error { return r.store.SetConflictChoice(ctx, j.key, nil) })
+	}
+	// A failed answer leaves its request open: the row comes with the
+	// answer that ends it, one per request.
+	if j.pick == nil || outcome != store.FixError {
+		safeDBErr(ctx, r.log, "RecordFindingFix", func() error {
+			_, err := r.store.RecordFindingFix(ctx, j.key, store.FindingFix{ConflictCommentID: j.commentID, TeamSlug: j.team,
+				Outcome: outcome, CommitSHA: sha})
+			return err
+		})
+	}
+	code, model, author := 0, 0, 0
 	for _, f := range j.merged {
-		for _, m := range f.byModel {
-			if m {
+		for k, m := range f.byModel {
+			switch {
+			case m:
 				model++
-			} else {
+			case f.byAuthor[k]:
+				author++
+			default:
 				code++
 			}
 		}
@@ -783,8 +849,9 @@ func (r *Reviewer) finishConflict(ctx context.Context, j *conflictJob, outcome, 
 	if sha != "" {
 		tail = " " + sha
 	}
-	r.log.InfoContext(ctx, fmt.Sprintf("%s: merge conflict request: %s%s (%d code, %d model, %d clean)", j.prTag, outcome, tail, code, model, len(j.clean)))
-	r.reply(ctx, j.key.Project, j.key.Repo, j.key.PRID, j.commentID, lang.TruncateRunes(body, conflictAnswerRunes))
+	r.log.InfoContext(ctx, fmt.Sprintf("%s: merge conflict request: %s%s (%d code, %d model, %d author, %d clean)",
+		j.prTag, outcome, tail, code, model, author, len(j.clean)))
+	r.reply(ctx, j.key.Project, j.key.Repo, j.key.PRID, j.replyTo, lang.TruncateRunes(body, conflictAnswerRunes))
 }
 
 // conflictAnswerRunes bounds the confirmation: dropped lines are quoted in

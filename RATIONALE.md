@@ -123,6 +123,14 @@ an incident or an eval run: read the reason before relaxing a rule.
   and dropped lines are computed by code, not claimed by the model. A side
   is dropped only where the kept version carries its change; else not
   feasible.
+- Merge conflict, the author picks two whole versions (user, 2026-11-18):
+  a dependency both branches bumped to their own version failed the whole
+  request, the Q&A then suggested a side and offered an apply it could not
+  do. IntelliJ leaves the same line to the developer, so noergler asks T
+  or S instead of guessing newer or higher. The question keeps the merge,
+  not just the picks: a second model call could answer the other
+  conflicts differently, or ask again. Letters, not text: a reply quoting
+  a version can negate it.
 - Merge conflict prompt, read against B (eval 2026-11-14, EVALS.md): 10 of
   the 11 real wrong answers kept a base line one branch had deleted or
   changed while the other left it, e.g. a removed installer block came

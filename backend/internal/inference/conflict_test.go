@@ -52,4 +52,11 @@ func TestParseConflictResolution(t *testing.T) {
 	if !ok || r.Feasible || r.Reason != "needs a new line" {
 		t.Fatalf("got %+v, %t", r, ok)
 	}
+	r, ok = ParseConflictResolution(`{"feasible":true,"reason":"","resolutions":[{"conflict":2,"lines":["S1"]}],"ask":[1]}`)
+	if !ok || len(r.Ask) != 1 || r.Ask[0] != 1 || len(r.Lines) != 1 {
+		t.Fatalf("ask: got %+v, %t", r, ok)
+	}
+	if req := conflictFormat().Schema["required"].([]any); req[len(req)-1] != "ask" {
+		t.Errorf("ask is not required: %v", req)
+	}
 }
