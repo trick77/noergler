@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { Fixes, Metrics, Totals } from "./api";
+import type { FindingOutcome, Fixes, Metrics, Totals } from "./api";
 import type { ReactNode } from "react";
 import {
   FluidChart,
@@ -1085,6 +1085,14 @@ export function MetricsPage() {
               </div>
             )}
           </Card>
+
+          <p className={eyebrow}>{t("metrics.findingOutcomes")}</p>
+          <Card
+            title={t("metrics.byConfidence")}
+            note={t("metrics.findingOutcomesNote")}
+          >
+            <FindingOutcomes rows={data.finding_outcomes ?? []} />
+          </Card>
         </div>
       </div>
     </div>
@@ -1157,6 +1165,66 @@ function ChartTip({ day, rows }: { day: string; rows: TipRow[] }) {
         </div>
       ))}
     </>
+  );
+}
+
+const BANDS = ["95+", "90-94", "<90", "unknown"] as const;
+const OUTCOMES = ["fixed", "disputed", "closed", "open"] as const;
+
+/** One row per confidence band, all teams and severities summed, each
+ *  outcome as a count and its share of the band: the numbers a confidence
+ *  threshold is tuned on. */
+export function FindingOutcomes({ rows }: { rows: FindingOutcome[] }) {
+  const { t } = useTranslation();
+  const cell = new Map<string, number>();
+  const add = (band: string, outcome: string, n: number) => {
+    cell.set(`${band}|${outcome}`, (cell.get(`${band}|${outcome}`) ?? 0) + n);
+    cell.set(`${band}|`, (cell.get(`${band}|`) ?? 0) + n);
+  };
+  for (const r of rows) {
+    add(r.confidence_band, r.outcome, r.count);
+    add("", r.outcome, r.count);
+  }
+  if (!cell.get("|")) return <Empty>{t("metrics.noMergedFindings")}</Empty>;
+  const bands = BANDS.filter((b) => cell.get(`${b}|`));
+  const share = (band: string, outcome: string) => {
+    const n = cell.get(`${band}|${outcome}`) ?? 0;
+    const total = cell.get(`${band}|`) ?? 0;
+    return total ? `${num(n)} (${Math.round((100 * n) / total)}%)` : "0";
+  };
+  const row = (band: string, label: string) => (
+    <tr key={band || "all"}>
+      <td className={td}>{label}</td>
+      <td className={tdNum}>{num(cell.get(`${band}|`) ?? 0)}</td>
+      {OUTCOMES.map((o) => (
+        <td key={o} className={tdNum}>
+          {share(band, o)}
+        </td>
+      ))}
+    </tr>
+  );
+  return (
+    <div className="overflow-x-auto overscroll-x-contain">
+      <table className={table}>
+        <thead>
+          <tr>
+            <th className={th}>{t("metrics.confidence")}</th>
+            <th className={thNum}>{t("metrics.findings")}</th>
+            {OUTCOMES.map((o) => (
+              <th key={o} className={thNum}>
+                {t(`metrics.outcome.${o}`)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {bands.map((b) =>
+            row(b, b === "unknown" ? t("metrics.bandUnknown") : b),
+          )}
+          {row("", t("metrics.allBands"))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

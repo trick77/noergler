@@ -252,6 +252,21 @@ export const de = {
     seriesFailed: "fehlgeschlagen",
     byTeam: "Nach Team",
     nothingReviewed: "In diesem Zeitraum wurde nichts geprüft.",
+    findingOutcomes: "Was aus den Findings wurde",
+    byConfidence: "Nach Confidence",
+    findingOutcomesNote:
+      "Inline-Findings der PRs, die in diesem Zeitraum gemerged wurden, nach der Confidence, die ihnen das Review gab. Die erste Zutreffende zählt: gefixt, vom Autor bestritten, Thread ohne Fix aufgelöst, noch offen. Ausser einem Fix, den noergler committet hat, gilt der Stand beim letzten Review: Ein Thread, der danach aufgelöst wurde, zählt als offen.",
+    noMergedFindings:
+      "Keine Findings auf PRs, die in diesem Zeitraum gemerged wurden.",
+    confidence: "Confidence",
+    allBands: "Alle",
+    bandUnknown: "nicht gespeichert",
+    outcome: {
+      fixed: "Gefixt",
+      disputed: "Bestritten",
+      closed: "Aufgelöst ohne Fix",
+      open: "Offen beim letzten Review",
+    },
     team: "Team",
     tokensIn: "Input-Tokens",
     tokensOut: "Output-Tokens",

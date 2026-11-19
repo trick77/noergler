@@ -118,6 +118,17 @@ export interface ActivityDay {
   count: number;
 }
 
+/** How many findings of one team, severity and confidence band ended in
+ *  one outcome on PRs merged in the window. Bands: "95+", "90-94", "<90",
+ *  "unknown"; outcomes: fixed, disputed, closed, open. */
+export interface FindingOutcome {
+  team: string;
+  severity: string;
+  confidence_band: string;
+  outcome: string;
+  count: number;
+}
+
 export interface Metrics {
   since: string;
   /** Exclusive end of the window. */
@@ -156,6 +167,9 @@ export interface Metrics {
   /** noergler's acts per day, team and kind, each act under one kind;
    *  days, teams and kinds without one are absent. */
   activity_daily: ActivityDay[];
+  /** What became of the findings of PRs merged in the window; absent from
+   *  a server older than the field. */
+  finding_outcomes?: FindingOutcome[];
   breakdown: {
     outcome: string;
     reason?: string;

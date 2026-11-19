@@ -8,7 +8,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FaqPage } from "./FaqPage";
 import { LivePage } from "./LivePage";
-import { MetricsPage } from "./MetricsPage";
+import { FindingOutcomes, MetricsPage } from "./MetricsPage";
 import { RunsPage } from "./RunsPage";
 import { TeamsPage } from "./TeamsPage";
 import type { Live, Metrics, Run, Team } from "./api";
@@ -687,6 +687,76 @@ describe("RunsPage", () => {
   });
 });
 
+describe("FindingOutcomes", () => {
+  // Teams and severities sum into one row per band; each outcome is a
+  // count and its share of the band, and a band with nothing is left out.
+  it("sums per confidence band with each outcome's share", () => {
+    render(
+      <FindingOutcomes
+        rows={[
+          {
+            team: "a",
+            severity: "issue",
+            confidence_band: "95+",
+            outcome: "fixed",
+            count: 3,
+          },
+          {
+            team: "b",
+            severity: "suggestion",
+            confidence_band: "95+",
+            outcome: "open",
+            count: 1,
+          },
+          {
+            team: "a",
+            severity: "issue",
+            confidence_band: "<90",
+            outcome: "disputed",
+            count: 2,
+          },
+        ]}
+      />,
+    );
+    const cells = (name: string) =>
+      within(screen.getByText(name).closest("tr") as HTMLElement)
+        .getAllByRole("cell")
+        .map((c) => c.textContent);
+    expect(cells("95+")).toEqual([
+      "95+",
+      "4",
+      "3 (75%)",
+      "0 (0%)",
+      "0 (0%)",
+      "1 (25%)",
+    ]);
+    expect(cells("<90")).toEqual([
+      "<90",
+      "2",
+      "0 (0%)",
+      "2 (100%)",
+      "0 (0%)",
+      "0 (0%)",
+    ]);
+    expect(cells("All")).toEqual([
+      "All",
+      "6",
+      "3 (50%)",
+      "2 (33%)",
+      "0 (0%)",
+      "1 (17%)",
+    ]);
+    expect(screen.queryByText("90-94")).toBeNull();
+  });
+
+  it("says so when no merged PR had a finding", () => {
+    render(<FindingOutcomes rows={[]} />);
+    expect(
+      screen.getByText("No findings on PRs merged in this window."),
+    ).toBeDefined();
+  });
+});
+
 describe("MetricsPage", () => {
   it("reports unpriced runs beside the cost, never inside it", async () => {
     serve({ metrics });
@@ -1229,6 +1299,8 @@ describe("MetricsPage", () => {
 
   // Throughput, cost, LOC (user, 2026-11-11), then fix requests (user,
   // 2026-11-13), tasks beside them (user, 2026-11-16).
+  // The finding outcomes come last, below the team table: a reading taken
+  // at merge, not a chart of the window's days.
   it("orders the charts throughput, cost, LOC, activity", async () => {
     serve({ metrics });
     render(<MetricsPage />);
@@ -1237,7 +1309,13 @@ describe("MetricsPage", () => {
     const titles = screen
       .getAllByRole("heading", { level: 3 })
       .map((h) => h.textContent);
-    expect(titles).toEqual(["Throughput", "Spend", "Code volume", "Activity"]);
+    expect(titles).toEqual([
+      "Throughput",
+      "Spend",
+      "Code volume",
+      "Activity",
+      "By confidence",
+    ]);
   });
 
   // A team keeps its colour across cost, LOC and activity: all rank by

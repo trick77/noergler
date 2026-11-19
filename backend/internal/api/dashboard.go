@@ -57,6 +57,7 @@ type DashboardStore interface {
 	PRCommentCalls(ctx context.Context, key store.PRKey) ([]store.CommentCall, bool, error)
 	FixCountsSince(ctx context.Context, since time.Time) ([]store.FixCount, error)
 	ActivitySince(ctx context.Context, since time.Time) ([]store.ActivityCount, error)
+	FindingOutcomesSince(ctx context.Context, since time.Time) ([]store.FindingOutcomeCount, error)
 }
 
 // usd renders nano-USD as a fixed-point decimal string with 3 decimals,
@@ -400,6 +401,17 @@ type breakdownBody struct {
 	Count   int    `json:"count"`
 }
 
+// findingOutcomeBody is how many findings of one team, severity and
+// confidence band ended in one outcome on PRs merged in the window
+// (store.Outcome*, store.Band*).
+type findingOutcomeBody struct {
+	Team     string `json:"team"`
+	Severity string `json:"severity"`
+	Band     string `json:"confidence_band"`
+	Outcome  string `json:"outcome"`
+	Count    int    `json:"count"`
+}
+
 type prCountsBody struct {
 	Reviewed int `json:"reviewed"`
 	Seen     int `json:"seen"`
@@ -435,6 +447,9 @@ type metricsBody struct {
 	// previous month is whole against a partial one, and when the window
 	// before starts ahead of the instance's first row.
 	Previous *previousBody `json:"previous"`
+	// FindingOutcomes is what became of the findings of PRs merged in the
+	// window; rows without a finding are absent.
+	FindingOutcomes []findingOutcomeBody `json:"finding_outcomes"`
 }
 
 type previousBody struct {
@@ -643,6 +658,16 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	outcomeCounts, err := st.FindingOutcomesSince(ctx, since)
+	if failed("FindingOutcomesSince", err) {
+		return
+	}
+	findingOutcomes := make([]findingOutcomeBody, 0, len(outcomeCounts))
+	for _, c := range outcomeCounts {
+		findingOutcomes = append(findingOutcomes, findingOutcomeBody{Team: c.TeamSlug, Severity: c.Severity,
+			Band: c.Band, Outcome: c.Outcome, Count: c.Count})
+	}
+
 	window := "month"
 	until := monthStart(now).AddDate(0, 1, 0)
 	if r.URL.Query().Get("days") != "" {
@@ -663,6 +688,8 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 		Breakdown: make([]breakdownBody, 0, len(breakdown)),
 		Activity:  activity,
 		Previous:  previous,
+
+		FindingOutcomes: findingOutcomes,
 	}
 	nameOf := d.teamNamer()
 	row := func(slug string, t store.Totals) teamTotalsBody {
