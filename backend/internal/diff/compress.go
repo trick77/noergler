@@ -33,8 +33,9 @@ func isDeletionOnlyHunk(hunkLines []string) bool {
 // RemoveDeletionOnlyHunks drops hunks that only remove code.
 //
 // Returns "" when no hunk survives, including a diff with no hunks at all (a
-// pure mode change, or a rename whose hunks were not included). Compress then
-// files that path under deleted, which mislabels it.
+// pure mode change, or a rename whose hunks were not included). Compress
+// keeps a diff with no hunks as it came and files only an emptied one under
+// deleted.
 //
 // Splits on \n only and rejoins with \n: splitting on the wider set would
 // rewrite a form feed inside a hunk body as a newline on the rejoin.
@@ -72,10 +73,12 @@ func RemoveDeletionOnlyHunks(fileDiff string) string {
 	return strings.Join(append(headerLines, kept...), "\n")
 }
 
-// IsRenameOnly reports whether a diff is a pure rename.
+// IsRenameOnly reports whether a diff is a pure rename, read off the header
+// alone: a hunk quoting a rename's header lines is a change.
 func IsRenameOnly(fileDiff string) bool {
-	return strings.Contains(fileDiff, "similarity index 100%") &&
-		(strings.Contains(fileDiff, "rename from") || strings.Contains(fileDiff, "rename to"))
+	h := diffHeader(fileDiff)
+	return strings.Contains(h, "similarity index 100%") &&
+		(strings.Contains(h, "rename from") || strings.Contains(h, "rename to"))
 }
 
 // Compress fits as many files as the token budget allows, naming the rest.
@@ -106,6 +109,13 @@ func Compress(
 
 	var compressedActive []FileReviewData
 	for _, f := range active {
+		// No hunks at all (a mode change): nothing was deleted, and nothing
+		// in the file changed, so it goes on header only: its unchanged body
+		// would take budget from files whose code did change.
+		if !hasHunks(f.Diff) {
+			compressedActive = append(compressedActive, FileReviewData{Path: f.Path, Diff: f.Diff})
+			continue
+		}
 		cleaned := RemoveDeletionOnlyHunks(f.Diff)
 		if cleaned == "" {
 			result.DeletedFilePaths = append(result.DeletedFilePaths, f.Path)

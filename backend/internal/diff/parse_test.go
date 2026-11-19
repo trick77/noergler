@@ -75,6 +75,9 @@ func TestIsDeleted(t *testing.T) {
 		{"deleted at start", "+++ /dev/null\n", true},
 		{"not deleted", "diff --git a/f.go b/f.go\n+++ b/f.go\n", false},
 		{"dev null on old side only", "--- /dev/null\n+++ b/f.go\n", false},
+		// An added line `++ /dev/null` reads `+++ /dev/null` in its hunk: a
+		// change, not a deletion.
+		{"dev null inside a hunk", "diff --git a/f.sh b/f.sh\n--- a/f.sh\n+++ b/f.sh\n@@ -1 +1,2 @@\n x\n+++ /dev/null\n", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
