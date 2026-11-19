@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -30,6 +31,9 @@ type stubClient struct {
 	// hidden the paths answered as not visible.
 	visual map[string]string
 	hidden map[string]bool
+	// fixed[i] is answered on the case fixedOwner[i] marks, like owner.
+	fixed      []inference.FixedClaim
+	fixedOwner []string
 }
 
 // Review answers only the findings belonging to the case being reviewed.
@@ -58,9 +62,15 @@ func (s stubClient) Review(_ context.Context, req inference.ReviewRequest) infer
 			visual = append(visual, inference.VisualChange{ID: img.ID, Change: line, Invisible: s.hidden[img.Path]})
 		}
 	}
+	var fixed []inference.FixedClaim
+	for i, c := range s.fixed {
+		if strings.Contains(req.Prompt, s.fixedOwner[i]) {
+			fixed = append(fixed, c)
+		}
+	}
 	return inference.ReviewResult{
 		Outcome: s.outcome,
-		Review:  inference.ParsedReview{Findings: out, Visual: visual, Summary: inference.NewReviewSummary()},
+		Review:  inference.ParsedReview{Findings: out, Visual: visual, Fixed: fixed, Summary: inference.NewReviewSummary()},
 	}
 }
 
@@ -114,8 +124,48 @@ func perfectFindings(t *testing.T) (stubClient, int) {
 			}
 			s.visual[e.Path] += e.Keywords[0] + "; "
 		}
+		// A fix claimed by the first line the push adds: a changed line of
+		// the file, which is what production's ValidateFixed asks for.
+		for _, e := range c.ExpectedFixed {
+			seeded++
+			s.fixed = append(s.fixed, inference.FixedClaim{ID: e.ID, Evidence: []string{firstAddedLine(t, c, fixedFile(t, c, e.ID))}})
+			s.fixedOwner = append(s.fixedOwner, mark)
+		}
 	}
 	return s, seeded
+}
+
+// fixedFile is the file of the earlier finding an expected fix names: a
+// claim must quote a changed line of that file, not of any.
+func fixedFile(t *testing.T, c evals.Case, id string) string {
+	t.Helper()
+	for _, p := range c.PreviouslyPosted {
+		if inference.FixedIDPrefix+strconv.FormatInt(p.ID, 10) == id {
+			return p.FilePath
+		}
+	}
+	t.Fatalf("%s: expected fix %s names no earlier finding", c.Name, id)
+	return ""
+}
+
+// firstAddedLine is the first non-blank line the case adds to path.
+func firstAddedLine(t *testing.T, c evals.Case, path string) string {
+	t.Helper()
+	for _, f := range c.Files {
+		if f.Path != path {
+			continue
+		}
+		_, hunks := diff.ParseHunks(f.Diff)
+		for _, h := range hunks {
+			for _, l := range h.BodyLines {
+				if strings.HasPrefix(l, "+") && strings.TrimSpace(l[1:]) != "" {
+					return l[1:]
+				}
+			}
+		}
+	}
+	t.Fatalf("%s: the push adds no line to %s", c.Name, path)
+	return ""
 }
 
 // firstShownLine is the first non-blank new-side line of the expected window

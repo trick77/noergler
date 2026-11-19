@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -132,6 +133,47 @@ type CorpusFile struct {
 	// production sends them; ExpectedVisual the lines they must get.
 	Screenshots    []corpusScreenshot `json:"screenshots"`
 	ExpectedVisual []ExpectedVisual   `json:"expected_visual"`
+	// Incremental makes the case a later push on a PR an earlier review
+	// already saw: Files are that push, the block holds the rest.
+	Incremental *corpusIncremental `json:"incremental"`
+	// ExpectedFixed are the earlier findings the push fixes: each must be
+	// claimed under `fixed` and kept by production's ValidateFixed.
+	ExpectedFixed []ExpectedFixed `json:"expected_fixed"`
+	// Repeats are earlier findings the push must not raise again, each as
+	// a window and keywords on the push's version of the file.
+	Repeats []Expected `json:"repeats"`
+}
+
+// corpusIncremental is what production adds to the prompt on a push after
+// the first review: the PR's cumulative diff, the findings already posted
+// and the overview the last review wrote.
+type corpusIncremental struct {
+	// CumulativeDiff is the whole PR as it stands, a multi-file diff with
+	// `diff --git` headers, as production fetches it.
+	CumulativeDiff   string         `json:"cumulative_diff"`
+	PreviousOverview string         `json:"previous_overview"`
+	PreviousFindings []corpusPosted `json:"previous_findings"`
+}
+
+// corpusPosted is one earlier finding. Line is where it was posted, on the
+// version the earlier review saw: a push that shifts code does not move it.
+type corpusPosted struct {
+	ID       int64  `json:"id"`
+	File     string `json:"file"`
+	Line     int    `json:"line"`
+	Severity string `json:"severity"`
+	Comment  string `json:"comment"`
+	// Dispute is the PR author's reply disputing it; Closed its thread
+	// resolved on the PR.
+	Dispute string `json:"dispute"`
+	Closed  bool   `json:"closed"`
+}
+
+// ExpectedFixed is an earlier finding, by its prompt id (`F<n>`), the push
+// must be found to fix.
+type ExpectedFixed struct {
+	ID  string `json:"id"`
+	Why string `json:"why"`
 }
 
 // Case is a loaded corpus entry.
@@ -146,6 +188,25 @@ type Case struct {
 	BlockingRules []inference.BlockingRule
 	// shots are the case's screenshots, cut once at load.
 	shots caseImages
+	// Incremental: Files are one push; the rest is the PR around it.
+	Incremental      bool
+	CumulativeDiff   string
+	PreviouslyPosted []inference.PostedFinding
+	PreviousOverview string
+	ExpectedFixed    []ExpectedFixed
+	Repeats          []Expected
+}
+
+// asPosted is one earlier finding as production shows it (review.asPosted):
+// a closed one has no id, so it can never be claimed fixed.
+func (p corpusPosted) asPosted() inference.PostedFinding {
+	line := p.Line
+	out := inference.PostedFinding{ID: p.ID, FilePath: p.File, LineNumber: &line, Severity: p.Severity,
+		CommentText: p.Comment, Dispute: p.Dispute}
+	if p.Closed {
+		out.ID, out.Closed = 0, true
+	}
+	return out
 }
 
 // LoadCorpus reads every embedded case, sorted by name so a run is ordered.
@@ -173,7 +234,28 @@ func LoadCorpus() ([]Case, error) {
 			return nil, fmt.Errorf("%s: case has no name", name)
 		}
 		c := Case{Name: cf.Name, Description: cf.Description, Expected: cf.Expected, ExpectedVisual: cf.ExpectedVisual,
-			AgentsMD: cf.AgentsMD}
+			AgentsMD: cf.AgentsMD, ExpectedFixed: cf.ExpectedFixed, Repeats: cf.Repeats}
+		if inc := cf.Incremental; inc != nil {
+			c.Incremental, c.CumulativeDiff, c.PreviousOverview = true, inc.CumulativeDiff, inc.PreviousOverview
+			for _, p := range inc.PreviousFindings {
+				c.PreviouslyPosted = append(c.PreviouslyPosted, p.asPosted())
+			}
+			// Closed first, as production lists them (trimPreviouslyPosted):
+			// the eval must send the prompt production sends.
+			slices.SortStableFunc(c.PreviouslyPosted, func(a, b inference.PostedFinding) int {
+				switch {
+				case a.Closed == b.Closed:
+					return 0
+				case a.Closed:
+					return -1
+				}
+				return 1
+			})
+		} else if len(cf.ExpectedFixed) > 0 || len(cf.Repeats) > 0 {
+			// Only an incremental review lists ids; a full one could never
+			// catch it, and the run would read as a regression.
+			return nil, fmt.Errorf("%s: expected_fixed needs an incremental block", name)
+		}
 		c.BlockingRules, _ = inference.ExtractBlockingRules(cf.AgentsMD)
 		if c.shots, err = loadImages(cf.Screenshots); err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
@@ -238,6 +320,16 @@ type Result struct {
 	// for: a task blocks a merge, so one too many is noise that costs.
 	Blocking   []BlockingClaim `json:",omitempty"`
 	FalseTasks int             `json:",omitempty"`
+	// FixedMatches are the case's expected fixes, scored; Fixed every claim
+	// ValidateFixed kept and FixedDropped the ones it refused, as production
+	// would. FalseFixed counts kept claims no expectation asked for: each
+	// resolves a thread on a live bug.
+	FixedMatches []FixedMatch             `json:",omitempty"`
+	Fixed        []string                 `json:",omitempty"`
+	FixedDropped []inference.DroppedFixed `json:",omitempty"`
+	FalseFixed   []string                 `json:",omitempty"`
+	// Repeated are the case's `repeats` a kept finding raised again.
+	Repeated []string `json:",omitempty"`
 	// Err is excluded from JSON: encoding/json renders an error as {}, so a
 	// committed report would record THAT a case failed but not why, making a
 	// 401 and a timeout look identical in history. ErrMsg carries the text.
@@ -259,7 +351,20 @@ func (r Result) Found() int {
 			n++
 		}
 	}
+	for _, m := range r.FixedMatches {
+		if m.Found {
+			n++
+		}
+	}
 	return n
+}
+
+// FixedMatch records whether one expected fix was claimed and kept.
+type FixedMatch struct {
+	Expected ExpectedFixed
+	Found    bool
+	// Why says what happened to the claim when it was not kept.
+	Why string `json:",omitempty"`
 }
 
 // Score is a whole run.
@@ -271,6 +376,10 @@ type Score struct {
 	Seeded, Caught, Extra int
 	// FalseTasks is summed across cases: tasks no expectation asked for.
 	FalseTasks int `json:",omitempty"`
+	// FalseFixed is summed across cases: kept fixed claims no case asked for.
+	FalseFixed int `json:",omitempty"`
+	// Repeated is summed across cases: earlier findings raised again.
+	Repeated int `json:",omitempty"`
 }
 
 // Reviewer is the inference call an eval run makes. The real
@@ -288,10 +397,12 @@ func Run(ctx context.Context, client Reviewer, template string, cases []Case, co
 	var score Score
 	for _, c := range cases {
 		res, _ := drawCase(ctx, client, c, assemble(template, c, count))
-		score.Seeded += len(c.Expected) + len(c.ExpectedVisual)
+		score.Seeded += len(c.Expected) + len(c.ExpectedVisual) + len(c.ExpectedFixed)
 		score.Caught += res.Found()
 		score.Extra += res.Extra
 		score.FalseTasks += res.FalseTasks
+		score.FalseFixed += len(res.FalseFixed)
+		score.Repeated += len(res.Repeated)
 		score.Results = append(score.Results, res)
 	}
 	return score
@@ -305,6 +416,10 @@ func assemble(template string, c Case, count inference.CountFunc) inference.Asse
 		Files:            c.Files,
 		RepoInstructions: c.AgentsMD,
 		BlockingRules:    c.BlockingRules,
+		CumulativePRDiff: c.CumulativeDiff,
+		Incremental:      c.Incremental,
+		PreviouslyPosted: c.PreviouslyPosted,
+		PreviousOverview: c.PreviousOverview,
 		// The scoring matches English corpus keywords.
 		Language: lang.EN,
 	}, count)
@@ -324,11 +439,20 @@ func reviewCase(ctx context.Context, client Reviewer, c Case, assembled inferenc
 	})
 	res.VisualMatches, res.Visual = matchVisual(c.ExpectedVisual, c.shots.ids, out.Review.Visual)
 	res.Outcome = out.Outcome.String()
+	// As production builds it (review.prepare): on an incremental case the
+	// cumulative diff is quotable too.
 	idx := diff.BuildAnchorIndex(c.Files)
+	idx.AddContextDiff(c.CumulativeDiff)
 	v := inference.ValidateFindings(out.Review.Findings, idx)
 	res.Findings, res.Dropped, res.Moved = v.Kept, v.Dropped, v.Reanchored
-	// A case is one full diff: its own added lines are the PR's.
-	res.PreExisting, res.PreExistingDropped = inference.ValidatePreExisting(out.Review.PreExisting, idx, nil)
+	// A full case is one diff: its own added lines are the PR's. An
+	// incremental one's are the cumulative diff's.
+	var prAdded map[string]map[uint64]bool
+	if c.Incremental {
+		prAdded = diff.AddedLines(c.CumulativeDiff)
+	}
+	res.PreExisting, res.PreExistingDropped = inference.ValidatePreExisting(out.Review.PreExisting, idx, prAdded)
+	res.FixedMatches, res.Fixed, res.FixedDropped, res.FalseFixed = scoreFixed(c, out.Review.Fixed, idx)
 	for i, d := range res.PreExistingDropped {
 		// Results are committed: prose carrying a secret-like token
 		// is not written down, whatever the claim was dropped for.
@@ -341,6 +465,7 @@ func reviewCase(ctx context.Context, client Reviewer, c Case, assembled inferenc
 		res.Err, res.ErrMsg = out.Err, out.Err.Error()
 	}
 	res.Matches, res.Extra, res.Duplicates = match(c.Expected, res.Findings)
+	res.Repeated = scoreRepeats(c, res.Findings)
 	res.Blocking, res.FalseTasks = scoreBlocking(res.Matches, res.Findings, c.BlockingRules)
 	return res, out.Cost
 }
@@ -401,6 +526,70 @@ func scoreBlocking(matches []Match, findings []inference.ReviewFinding, rules []
 		}
 	}
 	return claims, falseTasks
+}
+
+// scoreFixed holds a case's `fixed` claims to production's ValidateFixed: an
+// expected fix is caught only by a claim it keeps, and every kept claim no
+// expectation names is a false fix.
+func scoreFixed(c Case, claims []inference.FixedClaim, idx diff.AnchorIndex) (matches []FixedMatch, kept []string, dropped []inference.DroppedFixed, falseIDs []string) {
+	v := inference.ValidateFixed(claims, c.PreviouslyPosted, idx)
+	keptIDs := map[int64]bool{}
+	for _, k := range v.Kept {
+		keptIDs[k.Finding.ID] = true
+		kept = append(kept, inference.FixedIDPrefix+strconv.FormatInt(k.Finding.ID, 10))
+	}
+	asked := map[int64]bool{}
+	for _, e := range c.ExpectedFixed {
+		want, _ := fixedNum(e.ID)
+		asked[want] = true
+		m := FixedMatch{Expected: e, Found: keptIDs[want]}
+		if !m.Found {
+			m.Why = "not claimed"
+			// The first drop of a claim on it: a later duplicate would
+			// hide the reason the real claim failed.
+			for _, d := range v.Dropped {
+				if n, ok := fixedNum(d.Claim.ID); ok && n == want {
+					m.Why = "claimed, dropped: " + string(d.Reason)
+					break
+				}
+			}
+		}
+		matches = append(matches, m)
+	}
+	for _, k := range v.Kept {
+		if !asked[k.Finding.ID] {
+			falseIDs = append(falseIDs, inference.FixedIDPrefix+strconv.FormatInt(k.Finding.ID, 10))
+		}
+	}
+	return matches, kept, v.Dropped, falseIDs
+}
+
+// fixedNum reads an id as production's ValidateFixed does: "F101",
+// "[F101]", "f101" and a bare "101" are the same finding.
+func fixedNum(id string) (int64, bool) {
+	raw := strings.TrimSpace(strings.Trim(id, "[] \t"))
+	if len(raw) > 0 && strings.EqualFold(raw[:1], inference.FixedIDPrefix) {
+		raw = raw[1:]
+	}
+	n, err := strconv.ParseInt(raw, 10, 64)
+	return n, err == nil
+}
+
+// scoreRepeats counts the kept findings that raise an earlier finding
+// again: one that lands in a case's `repeats` window and names one of its
+// keywords. A repeat is the regression the incremental cases exist for, on
+// a case with a seeded bug as on a clean one.
+func scoreRepeats(c Case, findings []inference.ReviewFinding) []string {
+	var out []string
+	for _, r := range c.Repeats {
+		for _, f := range findings {
+			if samePath(f.File, r.File) && f.Line >= r.Lines[0] && f.Line <= r.Lines[1] && mentions(f, r.Keywords) {
+				out = append(out, r.ID)
+				break
+			}
+		}
+	}
+	return out
 }
 
 // drawCase is reviewCase, drawn again while the call does not complete, up
@@ -581,6 +770,37 @@ func (s Score) ErrFalseTasks() error {
 	return fmt.Errorf("blocking task(s) no case asked for: %s", strings.Join(noisy, "; "))
 }
 
+// ErrFalseFixed reports kept fixed claims no case asked for: production
+// would reply "Fixed" and resolve the thread of a live bug. Nil when there
+// was none.
+func (s Score) ErrFalseFixed() error {
+	var noisy []string
+	for _, r := range s.Results {
+		if len(r.FalseFixed) > 0 {
+			noisy = append(noisy, r.Case+": "+strings.Join(r.FalseFixed, ", "))
+		}
+	}
+	if len(noisy) == 0 {
+		return nil
+	}
+	return fmt.Errorf("fixed claim(s) no case asked for: %s", strings.Join(noisy, "; "))
+}
+
+// ErrRepeated reports earlier findings a review raised again: the author
+// gets the same comment twice. Nil when there was none.
+func (s Score) ErrRepeated() error {
+	var noisy []string
+	for _, r := range s.Results {
+		if len(r.Repeated) > 0 {
+			noisy = append(noisy, r.Case+": "+strings.Join(r.Repeated, ", "))
+		}
+	}
+	if len(noisy) == 0 {
+		return nil
+	}
+	return fmt.Errorf("earlier finding(s) raised again: %s", strings.Join(noisy, "; "))
+}
+
 // Report renders a run for a terminal.
 //
 // Write errors are dropped: this goes to stdout, and a report that cannot be
@@ -601,7 +821,7 @@ func (s Score) Report(w io.Writer) {
 			dup += fmt.Sprintf(", %d redraw(s)", r.Redraws)
 		}
 		p("%-18s %-10s %d finding(s), %d seeded, %d caught, %d extra%s  %s\n",
-			r.Case, r.Outcome, len(r.Findings), len(r.Matches)+len(r.VisualMatches), r.Found(), r.Extra, dup, status)
+			r.Case, r.Outcome, len(r.Findings), len(r.Matches)+len(r.VisualMatches)+len(r.FixedMatches), r.Found(), r.Extra, dup, status)
 		for _, m := range r.Matches {
 			if m.Found {
 				f := r.Findings[m.Finding]
@@ -629,9 +849,23 @@ func (s Score) Report(w io.Writer) {
 		if r.FalseTasks > 0 {
 			p("    FALSE TASK(S) %d\n", r.FalseTasks)
 		}
+		for _, m := range r.FixedMatches {
+			if m.Found {
+				p("    FIXED  %-22s\n", m.Expected.ID)
+				continue
+			}
+			p("    UNFIXED %-21s %s\n", m.Expected.ID, m.Why)
+			p("           why it matters: %s\n", m.Expected.Why)
+		}
+		if len(r.FalseFixed) > 0 {
+			p("    FALSE FIXED %s\n", strings.Join(r.FalseFixed, ", "))
+		}
+		if len(r.Repeated) > 0 {
+			p("    REPEATED %s\n", strings.Join(r.Repeated, ", "))
+		}
 	}
-	p("\nseeded %d, caught %d, missed %d, extra findings %d, false tasks %d\n",
-		s.Seeded, s.Caught, s.Seeded-s.Caught, s.Extra, s.FalseTasks)
+	p("\nseeded %d, caught %d, missed %d, extra findings %d, false tasks %d, false fixed %d, repeated %d\n",
+		s.Seeded, s.Caught, s.Seeded-s.Caught, s.Extra, s.FalseTasks, s.FalseFixed, s.Repeated)
 }
 
 // match pairs seeded bugs with findings. One finding can satisfy at most one

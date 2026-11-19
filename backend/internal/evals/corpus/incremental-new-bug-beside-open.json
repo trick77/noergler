@@ -1,0 +1,47 @@
+{
+  "name": "incremental-new-bug-beside-open",
+  "description": "Incremental push. An earlier finding is still open on Get (expired entries are never evicted). This push adds Delete above Set without taking c.mu, so it reads and writes the map unsynchronised against Set and Get: concurrent use is a data race and can panic with concurrent map writes. The new bug must be found and the open one must not be claimed fixed. A repeat of the open one is not scored here: its line is outside the push's diff, so validation drops it as it would in production.",
+  "files": [
+    {
+      "path": "internal/cache/cache.go",
+      "diff": "@@ -19,6 +19,13 @@ type Cache struct {\n // New returns an empty cache.\n func New() *Cache { return &Cache{items: map[string]entry{}} }\n \n+// Delete removes key and reports whether it was present.\n+func (c *Cache) Delete(key string) bool {\n+\t_, ok := c.items[key]\n+\tdelete(c.items, key)\n+\treturn ok\n+}\n+\n // Set stores value under key for ttl.\n func (c *Cache) Set(key, value string, ttl time.Duration) {\n \tc.mu.Lock()",
+      "content": "package cache\n\nimport (\n\t\"sync\"\n\t\"time\"\n)\n\ntype entry struct {\n\tvalue   string\n\texpires time.Time\n}\n\n// Cache is a string cache with a TTL per entry.\ntype Cache struct {\n\tmu    sync.Mutex\n\titems map[string]entry\n}\n\n// New returns an empty cache.\nfunc New() *Cache { return &Cache{items: map[string]entry{}} }\n\n// Delete removes key and reports whether it was present.\nfunc (c *Cache) Delete(key string) bool {\n\t_, ok := c.items[key]\n\tdelete(c.items, key)\n\treturn ok\n}\n\n// Set stores value under key for ttl.\nfunc (c *Cache) Set(key, value string, ttl time.Duration) {\n\tc.mu.Lock()\n\tdefer c.mu.Unlock()\n\tc.items[key] = entry{value: value, expires: time.Now().Add(ttl)}\n}\n\n// Get returns the value under key while it has not expired.\nfunc (c *Cache) Get(key string) (string, bool) {\n\tc.mu.Lock()\n\tdefer c.mu.Unlock()\n\te, ok := c.items[key]\n\tif !ok || time.Now().After(e.expires) {\n\t\treturn \"\", false\n\t}\n\treturn e.value, true\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "incremental": {
+    "cumulative_diff": "diff --git a/internal/cache/cache.go b/internal/cache/cache.go\nnew file mode 100644\n--- /dev/null\n+++ b/internal/cache/cache.go\n@@ -0,0 +1,45 @@\n+package cache\n+\n+import (\n+\t\"sync\"\n+\t\"time\"\n+)\n+\n+type entry struct {\n+\tvalue   string\n+\texpires time.Time\n+}\n+\n+// Cache is a string cache with a TTL per entry.\n+type Cache struct {\n+\tmu    sync.Mutex\n+\titems map[string]entry\n+}\n+\n+// New returns an empty cache.\n+func New() *Cache { return &Cache{items: map[string]entry{}} }\n+\n+// Delete removes key and reports whether it was present.\n+func (c *Cache) Delete(key string) bool {\n+\t_, ok := c.items[key]\n+\tdelete(c.items, key)\n+\treturn ok\n+}\n+\n+// Set stores value under key for ttl.\n+func (c *Cache) Set(key, value string, ttl time.Duration) {\n+\tc.mu.Lock()\n+\tdefer c.mu.Unlock()\n+\tc.items[key] = entry{value: value, expires: time.Now().Add(ttl)}\n+}\n+\n+// Get returns the value under key while it has not expired.\n+func (c *Cache) Get(key string) (string, bool) {\n+\tc.mu.Lock()\n+\tdefer c.mu.Unlock()\n+\te, ok := c.items[key]\n+\tif !ok || time.Now().After(e.expires) {\n+\t\treturn \"\", false\n+\t}\n+\treturn e.value, true\n+}",
+    "previous_overview": "Adds `cache.Cache`, a mutex-guarded string cache with a TTL per entry.",
+    "previous_findings": [
+      {
+        "id": 105,
+        "file": "internal/cache/cache.go",
+        "line": 34,
+        "severity": "suggestion",
+        "comment": "Expired entries are only skipped by `Get`, never removed, so a cache written with many distinct keys grows without bound.",
+        "dispute": "",
+        "closed": false
+      }
+    ]
+  },
+  "expected": [
+    {
+      "id": "delete-without-lock",
+      "lines": [
+        23,
+        26
+      ],
+      "keywords": [
+        "lock",
+        "mutex",
+        "race",
+        "concurrent",
+        "synchron"
+      ],
+      "why": "Delete touches c.items without c.mu while Set and Get hold it: a data race, and Go aborts the process on a concurrent map write.",
+      "file": "internal/cache/cache.go"
+    }
+  ],
+  "expected_fixed": [],
+  "repeats": []
+}
