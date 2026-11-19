@@ -198,11 +198,14 @@ Each file reaches the model as full content plus the minimal diff:
 ```py
 ...
 ```
-### Changes (diff: lines with `-` are REMOVED, lines with `+` are ADDED):
+### Changes (diff: left column is the new-file line number, blank on removed lines; lines with `-` are REMOVED, lines with `+` are ADDED):
 ```diff
 ...
 ```
 ````
+
+A block whose text holds a run of backticks gets a fence one longer, so a
+Markdown file's own fence cannot close it; past ten backticks, a tilde fence.
 
 **File order is content-independent**: by group, then language, then path. Not
 "larger files first".

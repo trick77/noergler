@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/trick77/noergler/internal/diff"
+	langpkg "github.com/trick77/noergler/internal/lang"
 )
 
 // ReviewSystemMessage and MentionSystemMessage carry the injection guardrails.
@@ -70,11 +71,16 @@ const ComplianceInstructions = "If ticket context is provided above, list the ti
 func FormatFileEntry(f diff.FileReviewData) string {
 	lang := fenceLanguage(f.Path)
 
+	// Each block's fence outruns any backtick run inside it (a Markdown file,
+	// a fixture): a ``` in the file must not close the block and turn the
+	// rest into prompt structure. A file without a run of three backticks
+	// keeps three, so its prompt bytes are unchanged (prefix cache).
 	var b strings.Builder
 	b.WriteString("## File: " + f.Path + "\n")
 	switch {
 	case f.ContentFetched:
-		b.WriteString("### Full file content (new version):\n```" + lang + "\n" + f.Content + "\n```\n")
+		fence := blockFence(f.Content)
+		b.WriteString("### Full file content (new version):\n" + fence + lang + "\n" + f.Content + "\n" + fence + "\n")
 	case diff.IsDeleted(f.Diff):
 		b.WriteString("_(file deleted)_\n")
 	default:
@@ -82,10 +88,36 @@ func FormatFileEntry(f diff.FileReviewData) string {
 	}
 	// The diff carries its new-file line numbers in a left gutter
 	// (diff.NumberDiff): a finding's line is read, not counted.
+	numbered := diff.NumberDiff(f.Diff)
+	fence := blockFence(numbered)
 	b.WriteString("### Changes (diff: left column is the new-file line number, blank on removed lines; " +
-		"lines with `-` are REMOVED, lines with `+` are ADDED):\n```diff\n" +
-		diff.NumberDiff(f.Diff) + "\n```")
+		"lines with `-` are REMOVED, lines with `+` are ADDED):\n" + fence + "diff\n" +
+		numbered + "\n" + fence)
 	return b.String()
+}
+
+// maxBacktickFence is the longest backtick fence blockFence writes. A file
+// with a longer run (a separator line, generated output) would get a fence
+// as long as the run, four times over per file; a tilde fence costs a few.
+const maxBacktickFence = 10
+
+// blockFence is the fence for a block holding s: lang.Fence while that stays
+// short, else a tilde fence longer than any tilde run in s (a ``` cannot
+// close a ~~~ block).
+func blockFence(s string) string {
+	if f := langpkg.Fence(s); len(f) <= maxBacktickFence {
+		return f
+	}
+	longest, run := 0, 0
+	for _, r := range s {
+		if r == '~' {
+			run++
+			longest = max(longest, run)
+		} else {
+			run = 0
+		}
+	}
+	return strings.Repeat("~", max(3, longest+1))
 }
 
 // fenceLanguage is the code-fence label for a path: the filename suffix with
