@@ -375,7 +375,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   score the line, by keyword, never as one). A code bug a screenshot also
   shows stays a finding, on the code (EVALS: split experiment). Images ride
   the review call, in a second user message after the prompt (never inside
-  it: prefix cache), only on a vision profile. List = the whole PR's, from
+  it: prefix cache), only on a vision profile; the `visual_changes` rules
+  ride that message too (`VisualIntro`), never `review.txt`, which every
+  review sends. List = the whole PR's, from
   its changes; before
   = the PR's base, never the target's tip; a line is stored per pair by blob
   id and reused, never re-sent or re-read; pixel diff and crop in code, never
