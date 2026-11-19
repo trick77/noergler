@@ -59,11 +59,12 @@ export function LivePage() {
   // 3s: fast enough that a review starting is visible while you watch,
   // slow enough that the access log stays quiet (these paths are silenced
   // server-side for exactly this reason).
-  const { data, failed, updatedAt } = usePoll<Live>("live", 3000);
+  const { data, failed, updatedAt, asleep } = usePoll<Live>("live", 3000);
   const wall = useNow(1000);
   // A failing refresh freezes the clocks at the last reading: counting on
   // against frozen rows showed a dead instance as a review stuck for ages.
-  const now = failed && updatedAt !== null ? updatedAt : wall;
+  // So does a tab coming back, until its first refresh lands.
+  const now = (failed || asleep) && updatedAt !== null ? updatedAt : wall;
 
   if (!data) {
     return (
