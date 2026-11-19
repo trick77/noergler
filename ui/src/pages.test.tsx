@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -1861,6 +1862,53 @@ describe("TeamsPage", () => {
     );
     // Said once the clipboard took it, not before.
     expect(await screen.findByText("copied")).toBeDefined();
+  });
+
+  // Clearing the search, by Escape or by ×, keeps the team the path names:
+  // only typing a search turns the page into the whole roster.
+  it("keeps the team's path when the search is cleared", async () => {
+    // jsdom has no scrollIntoView: count the scrolls to the team's card.
+    const scrolled: string[] = [];
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this.id);
+    };
+    try {
+      for (const clear of ["escape", "button", "typed", "showAll"] as const) {
+        // Show all is offered only when nothing matches.
+        const q = clear === "showAll" ? "nope" : "mob";
+        window.history.pushState({}, "", `/teams/payments?q=${q}`);
+        serve({ teams: { teams } });
+        const { unmount } = render(<TeamsPage />);
+
+        const box = (await screen.findByRole("searchbox")) as HTMLInputElement;
+        // The rail's key listener is a passive effect: let it register.
+        await act(async () => {});
+        scrolled.length = 0;
+        if (clear === "escape") {
+          box.focus();
+          fireEvent.keyDown(box, { key: "Escape" });
+        } else if (clear === "button") {
+          fireEvent.click(screen.getByRole("button", { name: /Clear search/ }));
+        } else if (clear === "typed") {
+          fireEvent.change(box, { target: { value: "" } });
+        } else {
+          fireEvent.click(screen.getByRole("button", { name: /Show all/ }));
+        }
+
+        expect(window.location.pathname).toBe("/teams/payments");
+        expect(window.location.search).toBe("");
+        expect(box.value).toBe("");
+        // The team is the page's again: its card is back and in view.
+        expect(
+          await screen.findByRole("heading", { name: "Zahlungen" }),
+        ).toBeDefined();
+        await waitFor(() => expect(scrolled).toContain("team-payments"));
+        unmount();
+      }
+    } finally {
+      // @ts-expect-error: removed again, as jsdom ships it
+      delete Element.prototype.scrollIntoView;
+    }
   });
 
   // Clicking the team already open scrolls back to it and clears a search,
