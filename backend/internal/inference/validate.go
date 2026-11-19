@@ -178,6 +178,10 @@ func pluralRationale(l lang.Lang, n int, deOne, deMany, enOne, enMany string) st
 	return fmt.Sprintf(l.Pick(deMany, enMany), n)
 }
 
+// VerdictOf is the decision a list of open findings supports, as
+// SettleVerdict sets it.
+func VerdictOf(findings []ReviewFinding) string { return supportedVerdict(findings) }
+
 // supportedVerdict is the decision the prompt ties to findings: any `issue`
 // requests changes, only suggestions approve with follow-ups, none approves.
 func supportedVerdict(findings []ReviewFinding) string {

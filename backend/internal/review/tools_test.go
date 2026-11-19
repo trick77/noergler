@@ -157,6 +157,87 @@ func TestPRStatusUnpricedAndFailOpen(t *testing.T) {
 	}
 }
 
+// pr_findings lists the PR's findings as the summary does: open before
+// resolved, issues first, a legacy row with no thread left out; the
+// recommendation follows the open ones only; the author's dispute and the
+// evidence never leave.
+func TestPRFindingsListsWhatTheSummaryLists(t *testing.T) {
+	h := newHarness(t, nil)
+	now := time.Now()
+	c11, c12 := 11, 12
+	h.st.existing = []store.Finding{
+		{ID: 1, FilePath: "a.go", LineNumber: 3, Severity: "issue", CommentText: "nil deref\non error",
+			BitbucketCommentID: &c11, ClosedAt: &now},
+		{ID: 2, FilePath: "b.go", LineNumber: 9, Severity: "suggestion", CommentText: "long text",
+			Headline: ptrs("Retry never backs off"), BitbucketCommentID: &c12, DisputeText: ptrs("SECRET-REPLY")},
+		{ID: 3, FilePath: "c.go", LineNumber: 1, Severity: "issue", CommentText: "legacy"},
+	}
+
+	out := toolByName(t, h, testAsk("alice", "what is still open?"), "pr_findings")("{}")
+
+	if strings.Contains(out, "SECRET-REPLY") || strings.Contains(out, "legacy") {
+		t.Errorf("pr_findings leaks a dispute or a legacy row: %s", out)
+	}
+	var v prFindingsView
+	if err := json.Unmarshal([]byte(out), &v); err != nil {
+		t.Fatal(err)
+	}
+	want := []prFindingsRecord{
+		{File: "b.go", Line: 9, Severity: "suggestion", Headline: "Retry never backs off", State: "open"},
+		{File: "a.go", Line: 3, Severity: "issue", Headline: "nil deref", State: "resolved"},
+	}
+	if !reflect.DeepEqual(v.Findings, want) || v.Open != 1 || v.Recommendation != "approve_with_followups" || v.Note == "" {
+		t.Errorf("pr_findings = %+v", v)
+	}
+
+	h.st.failAll = true
+	if out := toolByName(t, h, testAsk("alice", "open?"), "pr_findings")("{}"); !strings.Contains(out, `"error"`) {
+		t.Errorf("a DB fault must read as unavailable, not as no findings: %s", out)
+	}
+}
+
+// Past the cap the open ones win the rows, tasks first within a severity as
+// the summary orders them, and the overflow is counted per state; a PR with
+// no stored finding gets no recommendation at all; the last review's time
+// says how fresh the states are.
+func TestPRFindingsCapsLikeTheSummary(t *testing.T) {
+	h := newHarness(t, nil)
+	at := time.Date(2026, 11, 19, 8, 0, 0, 0, time.UTC)
+	h.st.status = &store.PRStatus{Known: true, Runs: 1, LastRun: &store.RunBrief{At: at}}
+	if out := toolByName(t, h, testAsk("alice", "open?"), "pr_findings")("{}"); strings.Contains(out, `"recommendation_from_stored_findings"`) ||
+		!strings.Contains(out, `"as_of":"2026-11-19T08:00:00Z"`) {
+		t.Errorf("no stored finding: no recommendation, and the review time: %s", out)
+	}
+	now := time.Now()
+	task := "task"
+	var rows []store.Finding
+	for i := range 33 {
+		id := 100 + i
+		f := store.Finding{ID: int64(i + 1), FilePath: "a.go", LineNumber: i + 1, Severity: "issue",
+			CommentText: "c", BitbucketCommentID: &id}
+		if i == 32 {
+			f.BlockingOutcome = &task
+		}
+		rows = append(rows, f)
+	}
+	for i := range 4 {
+		id := 200 + i
+		rows = append(rows, store.Finding{ID: int64(40 + i), FilePath: "b.go", LineNumber: i + 1,
+			Severity: "suggestion", CommentText: "s", BitbucketCommentID: &id, ClosedAt: &now})
+	}
+	h.st.existing = rows
+
+	var v prFindingsView
+	if err := json.Unmarshal([]byte(toolByName(t, h, testAsk("alice", "open?"), "pr_findings")("{}")), &v); err != nil {
+		t.Fatal(err)
+	}
+	if len(v.Findings) != prFindingsCap || !v.Findings[0].Task || v.MoreOpen != 3 || v.MoreResolved != 4 ||
+		v.Open != 33 || v.Recommendation != "request_changes" {
+		t.Errorf("pr_findings = first %+v, %d rows, more open %d, more resolved %d, open %d, rec %q",
+			v.Findings[0], len(v.Findings), v.MoreOpen, v.MoreResolved, v.Open, v.Recommendation)
+	}
+}
+
 // The model proposes, the commenter's own words decide: a call an injection
 // in the diff steered it into finds no language in the comment.
 func TestSetMyLanguageNeedsTheCommentersWords(t *testing.T) {

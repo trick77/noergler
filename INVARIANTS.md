@@ -333,7 +333,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   so a failed review's stale banner cannot leave it standing; the resume's
   summary fetch is the deletion check the push guard skips on a stopped PR.
 - Q&A on a reply: the immediate parent goes into the prompt as untrusted
-  data, below the diff (prefix cache), capped; never the stored summary;
+  data, below the diff (prefix cache), capped; never the stored summary
+  (the `pr_findings` tool reads finding rows, headlines capped, no dispute,
+  no evidence, its texts marked as data);
   a failed fetch answers without it. Another person's parent: no name, the
   asker is not the one answered (user, 2026-10-20), and `guardName` cuts a
   leading address to the parent's author; the asker's own parent keeps the
