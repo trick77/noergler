@@ -120,10 +120,15 @@ func newUpstream(t *testing.T, tokens map[string]string) *fakeUpstream {
 		who, ok := u.tokens[strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")]
 		denied, noRights, broken := u.denied[r.URL.Path], u.noRights[r.URL.Path], u.broken[r.URL.Path]
 		u.mu.Unlock()
-		// No whoami servlet: the account is named in X-AUSERNAME or not at
-		// all, so a token mapped to "" is one Bitbucket names no account for.
-		if r.URL.Path == "/plugins/servlet/applinks/whoami" || broken {
+		if broken {
 			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		// No whoami servlet (a 404, as an absent one answers): the account is
+		// named in X-AUSERNAME or not at all, so a token mapped to "" is one
+		// Bitbucket names no account for.
+		if r.URL.Path == "/plugins/servlet/applinks/whoami" {
+			http.NotFound(w, r)
 			return
 		}
 		if !ok || noRights {
@@ -566,6 +571,20 @@ func TestAccounts_UnverifiableUsernameIsRefused(t *testing.T) {
 	var pe *PushError
 	if err := a.push(context.Background(), &BitbucketPush{Username: "a-bot", Token: "tok"}, nil, "x"); !errors.As(err, &pe) || pe.Status != StatusUsernameMismatch {
 		t.Fatalf("err = %v, want a username_mismatch PushError", err)
+	}
+}
+
+// The whoami servlet failing for a passing reason is no verdict on the
+// username: the push is refused as unreachable, never as username_mismatch,
+// which would be final for the token.
+func TestAccounts_WhoamiFaultIsUnreachable(t *testing.T) {
+	u := newUpstream(t, map[string]string{"shared-token": "rop", "tok": "", "shared-jira": "rop"})
+	u.broken["/plugins/servlet/applinks/whoami"] = true
+	a, _ := accountsFor(t, u, newCredStore(), testBox(t, 1), "alpha")
+	a.start(context.Background(), nil)
+	var pe *PushError
+	if err := a.push(context.Background(), &BitbucketPush{Username: "a-bot", Token: "tok"}, nil, "x"); !errors.As(err, &pe) || pe.Status != StatusUnreachable {
+		t.Fatalf("err = %v, want an unreachable PushError", err)
 	}
 }
 
