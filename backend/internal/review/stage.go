@@ -101,6 +101,9 @@ type reviewPlan struct {
 	// parent), so the summary says the check was skipped or incomplete.
 	jiraDown      bool
 	agentsMDFound bool
+	// agentsMDLeft are the AGENTS.md files below the root left out over
+	// the token limit, for the summary footer.
+	agentsMDLeft []string
 	// totalFiles is every reviewable changed file, size-gated ones included:
 	// the set diffAdded and diffRemoved count, and the run row stores. The
 	// unreviewed ones (oversized, overBudget) are a subset of it.

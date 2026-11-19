@@ -218,6 +218,28 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// agree. What was not reviewed is a subset, named on its own lines.
 	totalFiles := len(files) + len(oversized)
 
+	// 13b. AGENTS.md below the root, for the whole PR's paths: the full
+	// cumulative diff's on an incremental review (unfiltered, never the
+	// budgeted copy), this diff's on a full one (it is the PR). A cumulative
+	// diff that could not be read falls back to the push, logged: the set
+	// then follows the push for that run. After the root's gates: those
+	// decide whether a review runs, a nested file never does.
+	paths := prPaths(rawDiff)
+	if incrementalFrom != "" {
+		if cumulativePR.paths != nil {
+			paths = cumulativePR.paths
+		} else {
+			r.log.InfoContext(ctx, prTag+": nested AGENTS.md looked up for the push's paths only: the PR's diff was not read")
+		}
+	}
+	rootInstructions := repoInstructions
+	nested := r.fetchNestedAgentsMD(ctx, project, repo, sourceCommit, prTag, paths)
+	repoInstructions, nestedDropped := withNested(repoInstructions, nested, r.cfg.AgentsMDMaxTokens, r.tokens.Count)
+	if len(nestedDropped) > 0 {
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: left out over the AGENTS.md limit of %d tokens: %s",
+			prTag, r.cfg.AgentsMDMaxTokens, strings.Join(nestedDropped, ", ")))
+	}
+
 	// 14. Small PRs get context expansion; large ones are compressed first.
 	var otherModified, deletedPaths, renamedPaths []string
 	budget := r.llm.InputTokenBudget()
@@ -341,8 +363,10 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		Prompt:    promptPartsOf(assembled, budget),
 		Files:     filesSent(prep, files, deletedPaths, renamedPaths, otherModified, fileTokens),
 		CrossFile: []string{},
-		AgentsMD: store.AgentsMDFacts{Found: repoInstructions != "", Tokens: assembled.Breakdown.RepoInstructions,
-			WarnTokens: r.cfg.AgentsMDWarnTokens},
+		// The root file's facts: the footer's tip and bloat line are about
+		// the root AGENTS.md, which nested files neither replace nor bloat.
+		AgentsMD: store.AgentsMDFacts{Found: rootInstructions != "", Tokens: rootTokens(rootInstructions, repoInstructions,
+			assembled.Breakdown.RepoInstructions, r.tokens.Count), WarnTokens: r.cfg.AgentsMDWarnTokens},
 		PreviouslyPosted: store.PreviouslyPosted{Shown: len(posted), Total: len(existing)},
 		Decisions:        []store.FindingDecision{},
 		Moved:            []store.MovedFinding{},
@@ -425,7 +449,8 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		ticket:         ticket,
 		parentTicket:   parentTicket,
 		jiraDown:       jiraDown,
-		agentsMDFound:  repoInstructions != "",
+		agentsMDFound:  rootInstructions != "",
+		agentsMDLeft:   nestedDropped,
 		totalFiles:     totalFiles,
 		diffAdded:      diffAdded,
 		diffRemoved:    diffRemoved,
@@ -647,6 +672,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 		Dropped:                    len(v.Dropped),
 		Summary:                    reviewSummary,
 		AgentsMDFound:              plan.agentsMDFound,
+		AgentsMDLeftOut:            plan.agentsMDLeft,
 		SkippedFiles:               plan.oversized,
 		OverBudgetFiles:            plan.overBudget,
 		ContentSkippedFiles:        plan.contentSkipped,

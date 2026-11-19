@@ -66,6 +66,9 @@ type SummaryInput struct {
 	Dropped int
 
 	AgentsMDFound bool
+	// AgentsMDLeftOut are the AGENTS.md files below the root that applied
+	// to the PR but were left out over the token limit.
+	AgentsMDLeftOut []string
 	// SkippedFiles were too large for the size gate; OverBudgetFiles were
 	// left out of the prompt because the PR is over the model's token budget
 	// (named to the model only), whatever their own size. Both are not
@@ -671,6 +674,10 @@ func renderFootnote(in SummaryInput) string {
 	} else if line := agentsMDBloatLine(in); line != "" {
 		warn = append(warn, line)
 	}
+	if len(in.AgentsMDLeftOut) > 0 {
+		warn = append(warn, p("Nicht berücksichtigt (über dem AGENTS.md-Token-Limit): ",
+			"Not used (over the AGENTS.md token limit): ")+codeList(in.AgentsMDLeftOut)+" ⚠️")
+	}
 	// Only when Jira is on: "Jira is not enabled" is true of every PR of the
 	// team and gives the author nothing to do.
 	// "Unavailable", not "unreachable": a team's own token rejected or
@@ -797,6 +804,16 @@ func diffParts(added, removed int) string {
 		parts = append(parts, fmt.Sprintf("-%d", removed))
 	}
 	return strings.Join(parts, " / ")
+}
+
+// codeList is paths in full, each in backticks: every AGENTS.md has the
+// same base name.
+func codeList(paths []string) string {
+	out := make([]string, len(paths))
+	for i, p := range paths {
+		out[i] = "`" + p + "`"
+	}
+	return strings.Join(out, ", ")
 }
 
 // baseNames renders a comma-separated list of quoted file basenames.
