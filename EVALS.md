@@ -182,6 +182,19 @@ The screenshot stays summary only (INVARIANTS: test screenshots); the
 sentence keeps a code bug from leaving `findings` because an image shows it
 too.
 
+## A fence inside a reviewed file (2026-11-19)
+
+Question: does a ``` in a reviewed file, which closed the prompt's block
+early before the block fence followed the file, cost recall?
+
+mimo-v2.6-pro high, `fenced-docstring` (rev13) alone, five samples a side
+(`sampled/…-fence-before`, `…-fence-fixed`): caught 5 of 5 both ways.
+
+- On a short file the model reads past a broken block. The fix stays as
+  hygiene: a longer file, or one whose fence opens text that looks like an
+  instruction, is not measured.
+- run15, the first full rev13 run, caught the case at line 14.
+
 ## Blocking rules (2026-11-15)
 
 Question: given `[blocking]` rules from AGENTS.md, does the model name the
