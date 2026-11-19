@@ -26,6 +26,8 @@ type Client struct {
 	wire   *llmwire.Client
 	model  string
 	effort string
+	// vendor: Options.AllowVendor, the eval CLI's vendor route.
+	vendor bool
 	// sent is the reasoning setting llmwire put on the wire for the startup
 	// ping, which is the one every review sends too. Empty before Startup.
 	sent string
@@ -86,6 +88,10 @@ type Options struct {
 	// Env is where llmwire reads its settings. Nil means the process
 	// environment; tests pass a map.
 	Env func(string) (string, bool)
+	// AllowVendor lets a profile not routed through the gateway go to its
+	// vendor's host with that vendor's key. The eval CLI's vendor route
+	// only: serve never sets it, a team is gateway-only (Startup).
+	AllowVendor bool
 }
 
 // New builds a team's client.
@@ -126,6 +132,7 @@ func New(opt Options) (*Client, error) {
 		threshold: opt.Threshold,
 		tail:      opt.Tail,
 		log:       log,
+		vendor:    opt.AllowVendor,
 	}
 
 	wire, err := llmwire.FromEnv(opt.Model, llmwire.Config{

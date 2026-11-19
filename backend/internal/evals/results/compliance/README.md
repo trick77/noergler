@@ -12,8 +12,9 @@ Findings are not scored. Never a row in `../README.md`: another corpus
       go run ./cmd/evals -compliance -samples 3 -parallel 3 -timeout 25m \
       -json internal/evals/results/compliance/<date>-<model>-<effort>.json
 
-A direct mimo Token Plan key works as
-`EVAL_BASE_URL=https://token-plan-sgp.xiaomimimo.com/v1`.
+A direct mimo Token Plan key goes in `LLMWIRE_MIMO_API_KEY`, with no
+`EVAL_BASE_URL` or `EVAL_API_KEY`: the vendor route, llmwire's own host and
+client handling for the profile.
 
 ## Verdicts, per criterion and answer
 

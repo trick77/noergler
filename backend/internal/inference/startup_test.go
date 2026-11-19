@@ -949,3 +949,29 @@ func TestProfileInputLimit(t *testing.T) {
 		}
 	}
 }
+
+// A profile the gateway does not route is refused at startup: a team is
+// gateway-only. Only the eval CLI's vendor route (AllowVendor) gets past
+// this check, and serve never sets it.
+func TestStartupRefusesAnUnroutedProfile(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(srv.Close)
+	// The profile's own vendor, no gateway route.
+	vendorEnv := func(name string) (string, bool) {
+		switch name {
+		case "LLMWIRE_LLMWIRETEST_BASE_URL":
+			return srv.URL, true
+		case "LLMWIRE_LLMWIRETEST_API_KEY":
+			return "vendor-key", true
+		}
+		return "", false
+	}
+	c := newTestClient(t, srv, "gateway-alias", func(o *Options) { o.Env = vendorEnv })
+	if err := c.Startup(context.Background()); err == nil || !strings.Contains(err.Error(), "is not routed through the gateway") {
+		t.Errorf("err = %v, want the gateway-only refusal", err)
+	}
+	v := newTestClient(t, srv, "gateway-alias", func(o *Options) { o.Env, o.AllowVendor = vendorEnv, true })
+	if err := v.Startup(context.Background()); err != nil && strings.Contains(err.Error(), "is not routed through the gateway") {
+		t.Errorf("AllowVendor must pass the routing check: %v", err)
+	}
+}

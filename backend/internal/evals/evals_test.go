@@ -326,6 +326,32 @@ func TestResolveSettings_NamesEveryMissingVariable(t *testing.T) {
 	}
 }
 
+// No gateway and a vendor key: the vendor route, the key handed to llmwire
+// and nothing of the gateway's. A half gateway stays an error, vendor key
+// or not: it is a typo, never a request for the vendor.
+func TestResolveSettings_VendorRouteWithoutAGateway(t *testing.T) {
+	s, err := ResolveSettings(envOf(map[string]string{"LLMWIRE_MIMO_API_KEY": "k"}), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := GatewayEnv(s)
+	if s.Route() != "vendor" || env["LLMWIRE_MIMO_API_KEY"] != "k" || len(env) != 1 {
+		t.Errorf("route %q, env keys %d: want vendor and the mimo key alone", s.Route(), len(env))
+	}
+	if _, err := ResolveSettings(envOf(map[string]string{"LLMWIRE_MIMO_API_KEY": "k", "EVAL_BASE_URL": "https://gw"}), 0); err == nil ||
+		!strings.Contains(err.Error(), "EVAL_API_KEY") || !strings.Contains(err.Error(), "unset EVAL_BASE_URL and EVAL_API_KEY") {
+		t.Errorf("a gateway URL without its key must still fail, saying what blocks the vendor key: %v", err)
+	}
+	if _, err := ResolveSettings(envOf(map[string]string{"LLMWIRE_MIMO_API_KEY": "k", "EVAL_ALIAS": "x"}), 0); err == nil {
+		t.Error("EVAL_ALIAS on the vendor route must fail, never be dropped silently")
+	}
+	g, err := ResolveSettings(envOf(map[string]string{"EVAL_BASE_URL": "https://gw", "EVAL_API_KEY": "x",
+		"LLMWIRE_MIMO_API_KEY": "k"}), 0)
+	if err != nil || g.VendorKeys != nil || g.Route() != "https://gw" {
+		t.Errorf("a full gateway wins over a vendor key: %+v, %v", g.VendorKeys, err)
+	}
+}
+
 // resolveWindow's advice is to set OPENAI_CONTEXT_WINDOW; honouring it here
 // is what makes that followable rather than a permanent failure.
 func TestResolveSettings_ContextWindowFromFlagThenEnv(t *testing.T) {
