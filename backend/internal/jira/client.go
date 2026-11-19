@@ -26,9 +26,17 @@ import (
 	"github.com/trick77/noergler/internal/httpstats"
 )
 
-// maxDescriptionLength caps a description before markup is stripped. Long
-// descriptions are mostly changelogs and templates, and the prompt has a budget.
+// maxDescriptionLength caps the stripped description the prompt carries, in
+// bytes. Long descriptions are mostly changelogs and templates, and the prompt
+// has a budget; the acceptance criteria are read before the cap.
 const maxDescriptionLength = 5000
+
+// maxRawDescription bounds the raw description stripped at all, in bytes.
+const maxRawDescription = 64 << 10
+
+// maxCriteriaLength bounds the acceptance criteria kept, in bytes, whole
+// lines only (capCriteria).
+const maxCriteriaLength = 2000
 
 // requestTimeout bounds one Jira call. Responses are small, so unlike the
 // Bitbucket client a total timeout is the right shape here.
@@ -250,23 +258,26 @@ func (c *Client) FetchTicket(ctx context.Context, ticketID string) (*Ticket, err
 		key = ticketID
 	}
 
-	// Truncate the raw markup first, then strip: the cap is about how much text
-	// is carried, and stripping afterwards only ever shortens it.
+	// Strip the description first, then take the criteria, then cap: a cut
+	// through raw markup leaves a {color} pair unmatched, and criteria read
+	// off the capped text lost every AK line past it, or kept one cut in
+	// half. The cap is only how much description the prompt carries; the
+	// criteria have their own (capCriteria). What is stripped at all is
+	// bounded too: a pasted log of megabytes is no ticket to read whole.
 	description := ""
 	if got.Fields.Description != nil {
-		description = *got.Fields.Description
-	}
-	if len(description) > maxDescriptionLength {
-		// Back to a character's start: a cut through an umlaut would hand
-		// invalid UTF-8 to the prompt.
-		n := maxDescriptionLength
-		for n > 0 && !utf8.RuneStart(description[n]) {
-			n--
+		raw := *got.Fields.Description
+		if len(raw) > maxRawDescription {
+			c.log.InfoContext(ctx, fmt.Sprintf("Jira ticket %s description read to %d of %d bytes", key, maxRawDescription, len(raw)))
+			raw = raw[:runeCut(raw, maxRawDescription)]
 		}
-		description = description[:n] + "..."
+		description = stripMarkup(raw)
 	}
-	if description != "" {
-		description = stripMarkup(description)
+	criteria := c.capCriteria(ctx, key, acceptanceCriteria(description, c.prefixes))
+	if full := len(description); full > maxDescriptionLength {
+		n := runeCut(description, maxDescriptionLength)
+		description = description[:n] + "..."
+		c.log.InfoContext(ctx, fmt.Sprintf("Jira ticket %s description cut to %d of %d bytes for the prompt (criteria read in full)", key, n, full))
 	}
 
 	var subtasks []string
@@ -282,7 +293,7 @@ func (c *Client) FetchTicket(ctx context.Context, ticketID string) (*Ticket, err
 		Title:              got.Fields.Summary,
 		Description:        description,
 		Labels:             got.Fields.Labels,
-		AcceptanceCriteria: acceptanceCriteria(description, c.prefixes),
+		AcceptanceCriteria: criteria,
 		Subtasks:           subtasks,
 		URL:                c.base + "/browse/" + key,
 	}
@@ -296,6 +307,37 @@ func (c *Client) FetchTicket(ctx context.Context, ticketID string) (*Ticket, err
 		t.ParentKey = got.Fields.Parent.Key
 	}
 	return t, nil
+}
+
+// runeCut is the largest cut of s at or below n bytes that starts a
+// character: a cut through an umlaut would hand invalid UTF-8 on.
+func runeCut(s string, n int) int {
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return n
+}
+
+// capCriteria keeps whole criterion lines up to maxCriteriaLength bytes: they
+// ride every review and Q&A prompt, for the ticket and its parent, and a
+// checklist or a pasted log matching a prefix must not flood them. A dropped
+// line gets a log line, never half a requirement.
+func (c *Client) capCriteria(ctx context.Context, key, criteria string) string {
+	if len(criteria) <= maxCriteriaLength {
+		return criteria
+	}
+	lines := strings.Split(criteria, "\n")
+	kept, size := 0, 0
+	for _, l := range lines {
+		if size+len(l)+1 > maxCriteriaLength+1 {
+			break
+		}
+		size += len(l) + 1
+		kept++
+	}
+	c.log.InfoContext(ctx, fmt.Sprintf("Jira ticket %s: %d of %d acceptance criteria kept, the rest over %d bytes",
+		key, kept, len(lines), maxCriteriaLength))
+	return strings.Join(lines[:kept], "\n")
 }
 
 // FetchTicketWithParent reads a ticket and, for a subtask, its parent. The

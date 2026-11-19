@@ -2,6 +2,7 @@ package jira
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -186,7 +187,7 @@ func TestFetchTicketMalformedJSONPropagates(t *testing.T) {
 	}
 }
 
-// Truncation happens on the raw markup, before stripping, and appends "...".
+// The stripped description is cut to the cap and gets "...".
 func TestFetchTicketTruncatesDescription(t *testing.T) {
 	long := strings.Repeat("x", 6000)
 	_, c := newFake(t, jsonReply(200, `{"key":"S-1","fields":{"description":"`+long+`"}}`))
@@ -199,6 +200,60 @@ func TestFetchTicketTruncatesDescription(t *testing.T) {
 	}
 	if !strings.HasSuffix(got.Description, "...") {
 		t.Errorf("description does not end in an ellipsis: %q", got.Description[len(got.Description)-10:])
+	}
+}
+
+// The criteria come from the whole description: one past the cap, after a
+// long changelog, is still checked, and one the cap would halve is whole.
+func TestFetchTicketCriteriaPastTheCap(t *testing.T) {
+	// "AK1: " starts 20 bytes before the cap, so the cut runs through it.
+	filler := strings.Repeat("x", maxDescriptionLength-20) + "\\n"
+	desc := filler + "AK1: Der Export enthält alle Felder\\nAK2: Leere Felder bleiben leer"
+	_, c := newFake(t, jsonReply(200, `{"key":"S-1","fields":{"description":"`+desc+`"}}`))
+	got, err := c.FetchTicket(context.Background(), "S-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "AK1: Der Export enthält alle Felder\nAK2: Leere Felder bleiben leer"
+	if got.AcceptanceCriteria != want {
+		t.Errorf("criteria = %q, want %q", got.AcceptanceCriteria, want)
+	}
+	if len(got.Description) != maxDescriptionLength+3 || !strings.HasSuffix(got.Description, "...") {
+		t.Errorf("description is %d bytes, want cut to the cap", len(got.Description))
+	}
+}
+
+// The criteria have their own cap, whole lines only: a checklist matching a
+// prefix past it does not flood every prompt.
+func TestFetchTicketCriteriaAreCapped(t *testing.T) {
+	var b strings.Builder
+	for i := range 200 {
+		fmt.Fprintf(&b, "AK%d: requirement number %d of a pasted checklist\\n", i, i)
+	}
+	_, c := newFake(t, jsonReply(200, `{"key":"S-1","fields":{"description":"`+b.String()+`"}}`))
+	got, err := c.FetchTicket(context.Background(), "S-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(got.AcceptanceCriteria); n > maxCriteriaLength || n < maxCriteriaLength-100 {
+		t.Errorf("criteria are %d bytes, want just under %d", n, maxCriteriaLength)
+	}
+	if !strings.HasSuffix(got.AcceptanceCriteria, "checklist") {
+		t.Errorf("criteria end mid-line: %q", got.AcceptanceCriteria[len(got.AcceptanceCriteria)-20:])
+	}
+}
+
+// Markup is stripped before the cut: a {color} pair the cap would split is
+// still stripped, so no raw tag reaches the prompt.
+func TestFetchTicketStripsMarkupAcrossTheCap(t *testing.T) {
+	desc := "{color:red}" + strings.Repeat("x", 6000) + "{color}"
+	_, c := newFake(t, jsonReply(200, `{"key":"S-1","fields":{"description":"`+desc+`"}}`))
+	got, err := c.FetchTicket(context.Background(), "S-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got.Description, "{color") {
+		t.Errorf("raw markup reached the description: %q", got.Description[:20])
 	}
 }
 
