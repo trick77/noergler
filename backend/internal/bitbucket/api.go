@@ -41,7 +41,8 @@ func (c *Client) CheckConnectivity(ctx context.Context) error {
 // Identity proves the token and returns the account Bitbucket says it belongs
 // to: the X-AUSERNAME header, else the applinks whoami servlet (plain text),
 // "" when neither names one (a proxy stripping the header, the servlet
-// absent). Logs nothing; the caller decides what a failure means.
+// absent, blocked or redirected). A passing fault of the servlet is an
+// error instead. Logs nothing; the caller decides what a failure means.
 func (c *Client) Identity(ctx context.Context) (string, error) {
 	path := apiBase + "/application-properties"
 	who, err := c.identityGet(ctx, path, "application/json")
@@ -51,11 +52,25 @@ func (c *Client) Identity(ctx context.Context) (string, error) {
 	if who.header != "" {
 		return who.header, nil
 	}
-	// Only a name: a failure here proves nothing the call above did not.
-	if w, err := c.identityGet(ctx, "/plugins/servlet/applinks/whoami", "text/plain"); err == nil {
-		return strings.TrimSpace(w.body), nil
+	// Only a name, and the token is proven above, so the servlet's answer
+	// says nothing about it. A passing fault (no answer, a 5xx, a 429) is an
+	// error: "" would read as a mismatch, final for the account. Any other
+	// refusal (absent, a WAF's 403, a redirect to an SSO login) is lasting:
+	// nobody can say, "".
+	w, err := c.identityGet(ctx, "/plugins/servlet/applinks/whoami", "text/plain")
+	if err != nil {
+		if passingFault(err) {
+			return "", err
+		}
+		return "", nil //nolint:nilerr // a lasting refusal names no account; the token is proven above
 	}
-	return "", nil
+	return strings.TrimSpace(w.body), nil
+}
+
+// passingFault is a failure worth asking again: no answer, a 5xx, a 429.
+func passingFault(err error) bool {
+	st := Status(err)
+	return st == 0 || st >= 500 || st == http.StatusTooManyRequests
 }
 
 type identityAnswer struct{ header, body string }

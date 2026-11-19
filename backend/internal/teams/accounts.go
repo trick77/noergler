@@ -461,7 +461,9 @@ func probeBitbucket(ctx context.Context, c *bitbucket.Client, username string) (
 	// No name is no proof: the username becomes the team's @ and the
 	// bot's-own-comment check, so an unchecked one could have the bot answer
 	// its own notices. Bitbucket Data Center names the account in
-	// X-AUSERNAME or the whoami servlet; neither answering is refused.
+	// X-AUSERNAME or the whoami servlet; neither naming one (the servlet
+	// absent or blocked) is refused. A passing fault of the servlet is an
+	// error above, unreachable, never this.
 	if who == "" {
 		return StatusUsernameMismatch, "Bitbucket does not say which account the token belongs to, so the username cannot be checked"
 	}
