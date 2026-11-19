@@ -265,8 +265,8 @@ what is left.
 
 A response is required to match a JSON schema with exactly these keys:
 `overview`, `latest_push`, `strengths`, `security_performance`,
-`test_coverage`, `verdict`, `findings`, `fixed`, `pre_existing`,
-`compliance_requirements`, `visual_changes`.
+`test_coverage`, `verdict`, `review_focus`, `findings`, `fixed`,
+`pre_existing`, `compliance_requirements`, `visual_changes`.
 
 Each finding names its `category`: `bug`, `security`, `secret`, `guideline`
 or `contradiction`, the prompt's four remit items with security split out.
@@ -384,13 +384,18 @@ changed. The model writes that sentence and the Overview into two separate
 fields, so the Overview stays the whole PR's whatever the push was; a full
 review's push sentence is not shown. Its sections, in order:
 
-1. Overview
-2. Strengths
-3. Issues and suggestions
-4. Security and performance
-5. Test coverage
-6. Visual changes, only when the PR changed test screenshots (section 11c)
-7. Ticket, or the requirements shown implemented. Only a requirement the
+1. Recommendation
+2. Issues and suggestions
+3. Overview
+4. Review focus: up to three places of the diff a person should read first,
+   each `file:line` and one sentence (`review_focus`). Code keeps a place only
+   when the file was in the prompt and the line is one the focused diff
+   shows; a dropped one is logged. Never a finding, never the verdict
+5. Security and performance, only when it names something
+6. Test coverage, only when it says something beyond "not assessable"
+7. Strengths, only when there is one
+8. Visual changes, only when the PR changed test screenshots (section 11c)
+9. Ticket, or the requirements shown implemented. Only a requirement the
    model proves with a line of the shown code (an added, unchanged or
    full-file line of the file it names; never a removed one) is listed,
    with ✅. Nothing is ever marked unmet and the ticket gets no verdict: a
@@ -400,8 +405,7 @@ review's push sentence is not shown. Its sections, in order:
    integration links it as an issue key, to an issue that does not exist.
    The model's prose elsewhere in the summary and in inline comments spans
    the same labels in place
-8. Recommendation
-9. A footer: a bullet for each thing the author can act on (no AGENTS.md or
+10. A footer: a bullet for each thing the author can act on (no AGENTS.md or
    one over its warn size, no ticket while Jira is on, Jira unavailable so
    the ticket check was skipped or the parent went unchecked, files not reviewed or
    reviewed without full context), then one line of model, files, lines,
@@ -415,7 +419,10 @@ review's push sentence is not shown. Its sections, in order:
    under it, in the same shell, with the findings that were not posted,
    their text and quoted lines, the step timeline and the gateway call
 
-There is no effort score and no "What changed" section. Tokens, prompt parts,
+What the reader acts on comes first, the summary often going unread past its
+top; a section with only its sentinel is left out. The overview, the issue
+list and the recommendation always render. There is no effort score and no
+per-file walkthrough. Tokens, prompt parts,
 cross-file symbols, the gateway's cost split and the key spend are on the run
 pages, not in the PR. On the PR page cost is the cap's total, tokens and time
 add up over runs, the waits are one total, and the lines and files are the

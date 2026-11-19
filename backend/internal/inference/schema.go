@@ -22,7 +22,7 @@ func ReviewResponseSchema() map[string]any {
 		"additionalProperties": false,
 		"required": []any{
 			"overview", "latest_push", "strengths", "security_performance", "test_coverage",
-			"verdict", "findings", "fixed", "pre_existing", "compliance_requirements", "visual_changes",
+			"verdict", "review_focus", "findings", "fixed", "pre_existing", "compliance_requirements", "visual_changes",
 		},
 		"properties": map[string]any{
 			"overview":             map[string]any{"type": "string", "minLength": 1},
@@ -76,6 +76,21 @@ func ReviewResponseSchema() map[string]any {
 							"type": "array", "minItems": 1, "maxItems": 5,
 							"items": map[string]any{"type": "string"},
 						},
+					},
+				},
+			},
+			// Where a person should read first; code checks each place
+			// against the diff (ValidateFocus).
+			"review_focus": map[string]any{
+				"type": "array", "maxItems": MaxFocus,
+				"items": map[string]any{
+					"type":                 "object",
+					"additionalProperties": false,
+					"required":             []any{"file", "line", "why"},
+					"properties": map[string]any{
+						"file": map[string]any{"type": "string"},
+						"line": map[string]any{"type": "integer"},
+						"why":  map[string]any{"type": "string", "minLength": 1},
 					},
 				},
 			},
@@ -158,7 +173,7 @@ func ReviewResponseFormat() *llmwire.ResponseFormat {
 // counted form stable. TestSchemaStringAndMapAgree asserts this stays in
 // sync with ReviewResponseSchema.
 const schemaJSON = `{"type": "object", "additionalProperties": false, "required": ` +
-	`["overview", "latest_push", "strengths", "security_performance", "test_coverage", "verdict", "findings", ` +
+	`["overview", "latest_push", "strengths", "security_performance", "test_coverage", "verdict", "review_focus", "findings", ` +
 	`"fixed", "pre_existing", "compliance_requirements", "visual_changes"], "properties": {"overview": {"type": "string", "minLength": 1}, ` +
 	`"latest_push": {"type": ["string", "null"]}, ` +
 	`"strengths": {"type": "array", "maxItems": 4, "items": {"type": "string"}}, ` +
@@ -167,6 +182,9 @@ const schemaJSON = `{"type": "object", "additionalProperties": false, "required"
 	`"verdict": {"type": "object", "additionalProperties": false, "required": ["decision", "rationale"], ` +
 	`"properties": {"decision": {"type": "string", "enum": ["approve", "approve_with_followups", ` +
 	`"request_changes"]}, "rationale": {"type": "string", "minLength": 1}}}, ` +
+	`"review_focus": {"type": "array", "maxItems": 3, "items": {"type": "object", "additionalProperties": false, ` +
+	`"required": ["file", "line", "why"], "properties": {"file": {"type": "string"}, "line": {"type": "integer"}, ` +
+	`"why": {"type": "string", "minLength": 1}}}}, ` +
 	`"findings": {"type": "array", "items": {"type": "object", "additionalProperties": false, ` +
 	`"required": ["file", "line", "evidence", "severity", "category", "confidence", "headline", "comment", "suggestion", "blocking_rule"], ` +
 	`"properties": {"file": {"type": "string"}, "line": {"type": "integer"}, ` +

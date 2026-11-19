@@ -93,6 +93,9 @@ type ParsedReview struct {
 	// PreExisting are bugs in code the PR did not change, unchecked:
 	// ValidatePreExisting decides which stand. Never posted.
 	PreExisting []PreExistingBug
+	// Focus is where the model says a person should read first, unchecked:
+	// ValidateFocus decides which stand.
+	Focus []FocusItem
 	// Visual is what the model said per screenshot id, unchecked: the
 	// caller maps ids to the pairs it sent and drops the rest.
 	Visual                 []VisualChange
@@ -457,6 +460,15 @@ func ParseReview(content string) ParsedReview {
 			continue
 		}
 		out.Fixed = append(out.Fixed, c)
+	}
+
+	for _, item := range out.listItems(raw, "review_focus") {
+		f, ok := parseFocus(item)
+		if !ok {
+			out.warn("Skipping malformed review_focus entry: %s", lang.TruncateRunes(string(item), 200))
+			continue
+		}
+		out.Focus = append(out.Focus, f)
 	}
 
 	for _, item := range out.listItems(raw, "pre_existing") {

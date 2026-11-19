@@ -65,14 +65,20 @@ func TestGermanSummaryLocalizesSentinels(t *testing.T) {
 	in.Summary.SecurityPerformance = "None notable."
 	in.Summary.TestCoverage = "Test coverage not assessable from diff alone."
 
+	// A section with only its sentinel is left out, in either language.
 	got := Summary(in)
-	for _, want := range []string{
-		"### Stärken\nKeine.", "### Sicherheit und Performance\nNichts Auffälliges.",
-		"### Testabdeckung\nTestabdeckung allein aus dem Diff nicht beurteilbar.",
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("summary lacks %q:\n%s", want, got)
+	for _, gone := range []string{"### Stärken", "### Sicherheit und Performance", "### Testabdeckung"} {
+		if strings.Contains(got, gone) {
+			t.Errorf("a sentinel-only section must be left out, found %q:\n%s", gone, got)
 		}
+	}
+	// A German review writes the sentinels in German: left out the same.
+	in.Summary.Strengths = []string{"Keine."}
+	in.Summary.SecurityPerformance = "Nichts Auffälliges."
+	in.Summary.TestCoverage = "Testabdeckung allein aus dem Diff nicht beurteilbar."
+	if de := Summary(in); strings.Contains(de, "### Stärken") || strings.Contains(de, "### Sicherheit") ||
+		strings.Contains(de, "### Testabdeckung") {
+		t.Errorf("German sentinels must leave their sections out:\n%s", de)
 	}
 	for _, leak := range []string{"None", "not assessable"} {
 		if strings.Contains(got, leak) {

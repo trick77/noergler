@@ -588,6 +588,12 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 	if len(pre) > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d pre-existing bug(s) recorded for the run page, not posted", prTag, len(pre)))
 	}
+	// Where to read first: summary only, never a finding, never the
+	// verdict. A place the diff does not show is dropped with its reason.
+	focus, focusDropped := inference.ValidateFocus(result.Review.Focus, plan.anchors, plan.history)
+	for _, d := range focusDropped {
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: review focus on %s:%d dropped: %s", prTag, d.Item.File, d.Item.Line, d.Reason))
+	}
 	// The model's blocking claims, checked by code; capTasks settles the
 	// cap and the switches on what is no repeat, before the sort, so only a
 	// real task sorts first. Then a plain finding on a task resolved for its
@@ -705,6 +711,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 		FixedEarlier:               len(fixed),
 		Dropped:                    len(v.Dropped),
 		Summary:                    reviewSummary,
+		Focus:                      focus,
 		AgentsMDFound:              plan.agentsMDFound,
 		AgentsMDLeftOut:            plan.agentsMDLeft,
 		SkippedFiles:               plan.oversized,

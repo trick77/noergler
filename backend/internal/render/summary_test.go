@@ -88,6 +88,13 @@ func summaryCases() map[string]SummaryInput {
 	mixed.PRURL = "https://noergler.example.com/prs/AAAAAAAAAAAAAAAAAAAAAA"
 	cases["mixed"] = mixed
 
+	focus := mixed
+	focus.Focus = []inference.FocusItem{
+		{File: "app/users.go", Line: 41, Why: "Validates the id list; check the length limit that bounds the loop."},
+		{File: "app/store.go", Line: 12, Why: "Batches the lookups; check the empty list."},
+	}
+	cases["focus"] = focus
+
 	truncated := base()
 	truncated.Findings = []inference.ReviewFinding{
 		finding("issue", "c", ptrs("One")), finding("issue", "c", ptrs("Two")),
@@ -358,6 +365,26 @@ func TestElapsed(t *testing.T) {
 	}
 }
 
+// TestSummaryGoldenUpdate rewrites testdata/summary_golden.json from the
+// current renderer when SUMMARY_GOLDEN_UPDATE=1; otherwise it does nothing.
+// The golden's diff is what a reviewer of a layout change reads.
+func TestSummaryGoldenUpdate(t *testing.T) {
+	if os.Getenv("SUMMARY_GOLDEN_UPDATE") != "1" {
+		t.Skip("set SUMMARY_GOLDEN_UPDATE=1 to rewrite the golden")
+	}
+	out := map[string]summaryGolden{}
+	for name, in := range summaryCases() {
+		out[name] = summaryGolden{Out: Summary(in)}
+	}
+	blob, err := json.MarshalIndent(out, "", " ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("testdata/summary_golden.json", append(blob, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestSummaryIsPinned drives the builder over the whole case corpus and
 // compares the rendered markdown byte for byte.
 func TestSummaryIsPinned(t *testing.T) {
@@ -434,19 +461,23 @@ func TestTicketHistoryUnknown(t *testing.T) {
 	}
 }
 
-// Section order is load-bearing: readers scan for Recommendation last and the
-// footnote is always after a rule.
+// Section order is load-bearing: the summary often goes unread past its top,
+// so what the reader acts on (the recommendation, the open findings) comes
+// first; the footnote is always after a rule.
 func TestSummarySectionOrder(t *testing.T) {
 	in := base()
 	in.Ticket = testTicket("ABC-1", "T", "")
 	in.JiraEnabled = true
 	in.Visual = []VisualLine{{Path: "a-snapshots/x.png", Text: "Moved."}}
+	in.Focus = []inference.FocusItem{{File: "a.go", Line: 1, Why: "Read this."}}
+	in.Summary.SecurityPerformance, in.Summary.TestCoverage = "One query per row.", "Handler tested."
+	in.Summary.Strengths = []string{"Small"}
 	got := Summary(in)
 
 	want := []string{
-		"### PR review summary", "### Overview", "### Strengths", "### Issues and suggestions",
-		"### Security and performance", "### Test coverage", "### Visual changes", "### Ticket",
-		"### Recommendation", "\n---\n",
+		"### PR review summary", "### Recommendation", "### Issues and suggestions", "### Overview",
+		"### Review focus", "### Security and performance", "### Test coverage", "### Strengths",
+		"### Visual changes", "### Ticket", "\n---\n",
 	}
 	prev := -1
 	for _, section := range want {
@@ -461,13 +492,20 @@ func TestSummarySectionOrder(t *testing.T) {
 	}
 }
 
-// The italic fallbacks mean the model omitted the field; the plain sentinels
-// mean it looked and found nothing. Conflating them hides a model defect.
-func TestSummaryDistinguishesOmittedFromEmpty(t *testing.T) {
+// The overview, the issue list and the recommendation always render, an
+// omitted overview or rationale as its italic fallback (a model defect worth
+// seeing). Every other section with nothing to say, omitted or a sentinel,
+// is left out: a heading over "None." is a line the reader skips past.
+func TestSummaryLeavesOutEmptySections(t *testing.T) {
 	got := Summary(base())
-	for _, want := range []string{"_Not provided._", "None.", "None notable.", "_Not assessed._", "_No rationale provided._"} {
+	for _, want := range []string{"_Not provided._", "### Issues and suggestions\nNone.", "_No rationale provided._"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+	for _, gone := range []string{"### Strengths", "### Security and performance", "### Test coverage", "### Review focus"} {
+		if strings.Contains(got, gone) {
+			t.Errorf("empty section %q rendered:\n%s", gone, got)
 		}
 	}
 }

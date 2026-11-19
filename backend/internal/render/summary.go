@@ -65,6 +65,10 @@ type SummaryInput struct {
 	// list.
 	Dropped int
 
+	// Focus is where to read first, as ValidateFocus kept it; none, no
+	// section.
+	Focus []inference.FocusItem
+
 	AgentsMDFound bool
 	// AgentsMDLeftOut are the AGENTS.md files below the root that applied
 	// to the PR but were left out over the token limit.
@@ -159,9 +163,12 @@ type VisualLine struct {
 // on every run.
 //
 // Section order is fixed (TestSummarySectionOrder): the PR summary heading
-// (with the last push on an incremental run), Overview, Strengths, Issues and suggestions, Security and performance, Test
-// coverage, the ticket block when a ticket is linked, Recommendation, and the
-// footnote after a horizontal rule.
+// (with the last push on an incremental run), Recommendation, Issues and
+// suggestions, Overview, Review focus, Security and performance, Test
+// coverage, Strengths, Visual changes, the ticket block when a ticket is
+// linked, and the footnote after a horizontal rule. Overview, issues and
+// recommendation always render; any other section with nothing to say,
+// omitted or a sentinel, is left out.
 func Summary(in SummaryInput) string {
 	if in.Lang != lang.EN {
 		in = swissInput(in)
@@ -190,25 +197,27 @@ func Summary(in SummaryInput) string {
 	}
 	sections = append(sections, header)
 
-	sections = append(sections, renderOverview(in))
-	sections = append(sections, renderStrengths(in))
+	// What the reader acts on first (the summary often goes unread past the
+	// top): the recommendation and the open findings, then what the PR
+	// does and where to look. A section with nothing to say is left out.
+	sections = append(sections, renderRecommendation(in))
 	sections = append(sections, renderIssues(in))
+	sections = append(sections, renderOverview(in))
+	if len(in.Focus) > 0 {
+		sections = append(sections, renderFocus(in))
+	}
 
-	// The italic fallbacks mean the model omitted the field, which is a
-	// defect worth seeing; the plain sentinels mean it looked and found
-	// nothing. Two different states, both rendered.
 	security := strings.TrimSpace(in.Summary.SecurityPerformance)
-	if IsNoneSentinel(security) {
-		security = ""
+	if security != "" && !IsNoneSentinel(security) {
+		sections = append(sections, p("### Sicherheit und Performance\n", "### Security and performance\n")+WrapProse(security))
 	}
 	coverage := strings.TrimSpace(in.Summary.TestCoverage)
-	if strings.EqualFold(coverage, coverageNotAssessable) {
-		coverage = p("Testabdeckung allein aus dem Diff nicht beurteilbar.", coverageNotAssessable)
+	if coverage != "" && !IsNoneSentinel(coverage) && !notAssessable(coverage) {
+		sections = append(sections, p("### Testabdeckung\n", "### Test coverage\n")+WrapProse(coverage))
 	}
-	sections = append(sections, p("### Sicherheit und Performance\n", "### Security and performance\n")+
-		cmp.Or(WrapProse(security), p("Nichts Auffälliges.", "None notable.")))
-	sections = append(sections, p("### Testabdeckung\n", "### Test coverage\n")+
-		cmp.Or(WrapProse(coverage), p("_Nicht beurteilt._", "_Not assessed._")))
+	if strengths := renderStrengths(in); strengths != "" {
+		sections = append(sections, strengths)
+	}
 
 	if len(in.Visual) > 0 || in.VisualUnread {
 		sections = append(sections, renderVisual(in))
@@ -217,8 +226,6 @@ func Summary(in SummaryInput) string {
 	if in.Ticket != nil {
 		sections = append(sections, renderTicket(in))
 	}
-
-	sections = append(sections, renderRecommendation(in))
 
 	if footnote := renderFootnote(in); footnote != "" {
 		sections = append(sections, footnote)
@@ -256,6 +263,12 @@ func mapProse(in SummaryInput, f func(string) string) SummaryInput {
 		s.Strengths[i] = f(v)
 	}
 	in.Summary = s
+	focus := make([]inference.FocusItem, len(in.Focus))
+	for i, x := range in.Focus {
+		x.Why = f(x.Why)
+		focus[i] = x
+	}
+	in.Focus = focus
 	in.Findings = mapFindings(in.Findings, f)
 	in.EarlierOpen = mapFindings(in.EarlierOpen, f)
 	visual := make([]VisualLine, len(in.Visual))
@@ -415,29 +428,50 @@ func renderStrengths(in SummaryInput) string {
 	var b strings.Builder
 	b.WriteString(heading)
 	for _, s := range in.Summary.Strengths {
-		if !IsNoneSentinel(s) {
+		if s = strings.TrimSpace(s); s != "" && !IsNoneSentinel(s) {
 			b.WriteString("\n- " + s)
 		}
 	}
 	if b.Len() == len(heading) {
-		return heading + p("\nKeine.", "\nNone.")
+		return ""
 	}
 	return b.String()
 }
 
-// The prompt quotes its sentinels in English and asks for them verbatim, so
-// a German review would post them in English. The words are the code's: a
-// field that is only a sentinel renders as the localized one.
+// renderFocus is the places the model says to read first, each checked
+// against the diff (inference.ValidateFocus): never a finding.
+func renderFocus(in SummaryInput) string {
+	p := in.Lang.Pick
+	lines := []string{p("### Review-Fokus", "### Review focus")}
+	for _, f := range in.Focus {
+		lines = append(lines, WrapProse(fmt.Sprintf("- `%s:%d` — %s", f.File, f.Line, f.Why)))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// The prompt quotes its sentinels in English, and the German output block
+// asks for quoted fixed sentences in German, so either language arrives. A
+// section with only one of them is left out.
 const coverageNotAssessable = "Test coverage not assessable from diff alone."
 
+// coverageNotAssessableDE is the same sentence as a German review writes it.
+const coverageNotAssessableDE = "Testabdeckung allein aus dem Diff nicht beurteilbar."
+
 // IsNoneSentinel reports whether s is the prompt's "None." / "None notable."
-// sentinel.
+// sentinel, in English or German.
 func IsNoneSentinel(s string) bool {
 	switch strings.ToLower(strings.TrimSuffix(strings.TrimSpace(s), ".")) {
-	case "none", "none notable":
+	case "none", "none notable", "keine", "keines", "nichts", "nichts auffälliges", "nichts nennenswertes":
 		return true
 	}
 	return false
+}
+
+// notAssessable reports whether a test-coverage sentence only says the diff
+// cannot tell, in English or German.
+func notAssessable(s string) bool {
+	s = strings.TrimSpace(s)
+	return strings.EqualFold(s, coverageNotAssessable) || strings.EqualFold(s, coverageNotAssessableDE)
 }
 
 // renderAccounting is the line under the issues that says what the list

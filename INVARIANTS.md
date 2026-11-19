@@ -77,7 +77,12 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   DB: never safeDB ("none" would approve), the summary says it lists this
   run's only, the verdict is lowered only for drops.
   Heading "PR Review-Zusammenfassung" / "PR review summary", last push a
-  line under it. Two schema slots, `overview` (the PR) and `latest_push`
+  line under it, then Recommendation and the issue list before the
+  overview (user, 2026-11-19: what the reader acts on first). A section
+  with only its sentinel is left out; overview, issues and recommendation
+  always render. Review focus: at most 3 places, code keeps only a file the
+  prompt carried and a line its diff shows (`ValidateFocus`), never a
+  finding, never the verdict. Two schema slots, `overview` (the PR) and `latest_push`
   (that push, incremental only, rendered on the last-push line): scope is
   the schema's, never one prose field the model must keep PR-wide.
 - The overview carries over (user, 2026-10-28): every incremental review

@@ -35,6 +35,13 @@ an incident or an eval run: read the reason before relaxing a rule.
 
 ## Findings
 
+- Summary top-down by what the reader acts on (user, 2026-11-19): the
+  summary often goes unread past its top, and a fixed skeleton put the
+  recommendation last behind sections reading "None.". Sentinel-only
+  sections are left out instead of shown. Review focus is the model's own
+  hunk triage ("Where to spend attention"), which the old schema threw
+  away; checked by path and line only, never by what the sentence says
+  (no judge).
 - Ticket check without ❌: a PR is a delta, so "not met" is never provable;
   the requirement can live in another file, an earlier PR, another repo or
   the pipeline. A requirement met by deployment scripts the PR did not
