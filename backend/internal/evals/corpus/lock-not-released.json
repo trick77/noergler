@@ -27,7 +27,13 @@
         "defer r.mu.Unlock",
         "defer mu.Unlock",
         "defer the Unlock",
-        "held forever"
+        "held forever",
+        "mutex held",
+        "mutex locked",
+        "leaves the mutex",
+        "left locked",
+        "stays locked",
+        "remains locked"
       ],
       "why": "The Unlock now runs only on the success path, so returning the unknown-team error leaves r.mu locked and every subsequent caller blocks forever."
     }

@@ -1,0 +1,41 @@
+{
+  "name": "fenced-docstring",
+  "description": "A Python docstring carries a fenced ```python example, and the line after it was changed to stop the range at len(items) - size, so chunk drops its last chunk on every input. The fence sits in the file and in the diff: a prompt that wraps either in a fixed three-backtick fence closes its block at the docstring and turns the rest of the file into prompt text.",
+  "files": [
+    {
+      "path": "export/batching.py",
+      "diff": "@@ -9,6 +9,6 @@ def chunk(items, size):\n     [[1, 2], [3, 4], [5]]\n     ```\n     \"\"\"\n     if size < 1:\n         raise ValueError(\"size must be positive\")\n-    return [items[i:i + size] for i in range(0, len(items), size)]\n+    return [items[i:i + size] for i in range(0, len(items) - size, size)]",
+      "content": "\"\"\"Batch helpers for the export job.\"\"\"\n\n\ndef chunk(items, size):\n    \"\"\"Split items into lists of at most size elements.\n\n    ```python\n    >>> chunk([1, 2, 3, 4, 5], 2)\n    [[1, 2], [3, 4], [5]]\n    ```\n    \"\"\"\n    if size < 1:\n        raise ValueError(\"size must be positive\")\n    return [items[i:i + size] for i in range(0, len(items) - size, size)]\n\n\ndef batches(rows, size=500):\n    \"\"\"Yield the export rows in batches the API accepts.\"\"\"\n    yield from chunk(rows, size)\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": [
+    {
+      "id": "last-chunk-dropped",
+      "file": "export/batching.py",
+      "lines": [
+        4,
+        14
+      ],
+      "keywords": [
+        "last chunk",
+        "final chunk",
+        "last batch",
+        "final batch",
+        "trailing",
+        "remainder",
+        "tail",
+        "drops",
+        "dropped",
+        "skips",
+        "skipped",
+        "missing",
+        "lost",
+        "len(items) - size",
+        "off-by-one",
+        "off by one"
+      ],
+      "why": "range(0, len(items) - size, size) stops one step early: for five items and size 2 it yields starts 0 and 2 only, so [5] is lost, and for four items [3, 4] is. The docstring's own example says the tail chunk is kept."
+    }
+  ]
+}
