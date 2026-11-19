@@ -284,8 +284,9 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	} else {
 		excerpt = note + lang.TruncateRunes(excerptAround(content, f.LineNumber, replyExcerptLines), replyExcerptRunes)
 	}
-	// AGENTS.md from the same commit, so code and guidelines match.
-	rootMD := r.fetchRepoInstructions(ctx, project, repo, at, pr.ToRef.Branch())
+	// AGENTS.md from the same commit, so code and guidelines match;
+	// unreadable, the answer goes on without it.
+	rootMD := r.fetchRepoInstructions(ctx, project, repo, at, pr.ToRef.Branch()).text
 	// The nested one that applies to the finding's file, from the same
 	// commit, for the prompts. A dispute bullet is checked against the root
 	// alone: the signal is repo-wide, a nested rule covers one directory.

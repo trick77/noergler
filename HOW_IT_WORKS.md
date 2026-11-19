@@ -72,8 +72,12 @@ The pipeline refuses early and cheaply. In order:
 5. The source branch does not contain the opt-out keyword.
 5b. Not a guard: the SNAPSHOT task (below). It runs here, before every guard
    that can end the run without a review, since it calls no model.
-6. `AGENTS.md` exists, when it is required.
-7. `AGENTS.md` is under the hard token limit.
+6. `AGENTS.md` exists, when it is required. Bitbucket failing to serve it
+   on both branches (anything but a 404) is not "missing": the run is a
+   fault, an error attempt with nothing posted, like a diff that would not
+   fetch.
+7. `AGENTS.md` is under the hard token limit. One over the file byte cap is
+   too large to read at all and gets this notice, its tokens estimated.
 8. The PR's accumulated cost is under the cap. An `@mention` does not override
    it.
 

@@ -134,13 +134,45 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// the run without a review (snapshottask.go).
 	r.checkSnapshotTask(ctx, pr, key, upsert, prTag, l)
 
-	repoInstructions := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.Branch())
+	md := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.Branch())
+	repoInstructions := md.text
 
-	// 6. AGENTS.md required and absent.
+	// 6a. AGENTS.md over the file cap: it exists and is far over any token
+	// limit (the cap is 1 MiB, the limit thousands of tokens), so guard 7's
+	// notice, its size estimated at four bytes a token (the notice says ~).
+	// Without a token limit it is merely unreadable: 6b.
+	if repoInstructions == "" && md.oversize > 0 && r.cfg.AgentsMDMaxTokens > 0 {
+		n := md.oversize / 4
+		r.log.InfoContext(ctx, fmt.Sprintf(
+			"%s: AGENTS.md over the file cap (%d bytes, ~%d tokens > %d), skipping review",
+			prTag, md.oversize, n, r.cfg.AgentsMDMaxTokens))
+		prReviewID, _ := r.upsertKeepingPrior(ctx, upsert, key)
+		r.postOrUpdateSummary(ctx, project, repo, pr.ID, prReviewID,
+			render.AgentsMDTooLargeSummary(l, n, r.cfg.AgentsMDMaxTokens, r.cfg.AgentsMDCustomLink))
+		return nil, ctx, r.abort(ctx, key, kind, SkipAgentsMDTooLarge, prTag, httpCounter)
+	}
+
+	// 6b. AGENTS.md required and unreadable on every branch: a fault, like a
+	// diff that would not fetch. Not "missing": the summary would say so
+	// wrongly. No notice, the pointer stays, the next push reviews this one
+	// too.
+	if repoInstructions == "" && (md.unknown || md.oversize > 0) && r.cfg.RequireAgentsMD {
+		if ctx.Err() == nil {
+			r.log.WarnContext(ctx, prTag+": AGENTS.md unreadable, not reviewed (the next push reviews this range too)")
+			r.recordAttempt(ctx, store.Attempt{
+				Key: key, TeamSlug: r.TeamSlug, Kind: kind,
+				Outcome: inference.OutcomeError.String(),
+			})
+		}
+		return nil, ctx, r.abort(ctx, key, kind, SkipNone, prTag, httpCounter)
+	}
+
+	// 6. AGENTS.md required and absent. The prior commit stands: nothing of
+	// this push was reviewed, so the review that follows a fix covers it.
 	if repoInstructions == "" && r.cfg.RequireAgentsMD {
 		r.log.InfoContext(ctx, fmt.Sprintf(
 			"%s: no AGENTS.md found on PR or target branch, skipping review (set REVIEW_REQUIRE_AGENTS_MD=false to override)", prTag))
-		prReviewID := r.upsert(ctx, upsert, pr.FromRef.LatestCommit)
+		prReviewID, _ := r.upsertKeepingPrior(ctx, upsert, key)
 		r.postOrUpdateSummary(ctx, project, repo, pr.ID, prReviewID, render.AgentsMDMissingSummary(l))
 		return nil, ctx, r.abort(ctx, key, kind, SkipNoAgentsMD, prTag, httpCounter)
 	}
@@ -151,7 +183,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 			r.log.InfoContext(ctx, fmt.Sprintf(
 				"%s: AGENTS.md too large (%d > %d tokens), skipping review (set REVIEW_AGENTS_MD_MAX_TOKENS=0 to disable the hard limit)",
 				prTag, n, r.cfg.AgentsMDMaxTokens))
-			prReviewID := r.upsert(ctx, upsert, pr.FromRef.LatestCommit)
+			prReviewID, _ := r.upsertKeepingPrior(ctx, upsert, key)
 			r.postOrUpdateSummary(ctx, project, repo, pr.ID, prReviewID,
 				render.AgentsMDTooLargeSummary(l, n, r.cfg.AgentsMDMaxTokens, r.cfg.AgentsMDCustomLink))
 			return nil, ctx, r.abort(ctx, key, kind, SkipAgentsMDTooLarge, prTag, httpCounter)
@@ -449,13 +481,15 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		ticket:         ticket,
 		parentTicket:   parentTicket,
 		jiraDown:       jiraDown,
-		agentsMDFound:  rootInstructions != "",
-		agentsMDLeft:   nestedDropped,
-		totalFiles:     totalFiles,
-		diffAdded:      diffAdded,
-		diffRemoved:    diffRemoved,
-		sentAdded:      sentAdded,
-		sentRemoved:    sentRemoved,
+		// One that could not be read is no reason for the "add an
+		// AGENTS.md" tip: it may well exist.
+		agentsMDFound: rootInstructions != "" || md.unknown || md.oversize > 0,
+		agentsMDLeft:  nestedDropped,
+		totalFiles:    totalFiles,
+		diffAdded:     diffAdded,
+		diffRemoved:   diffRemoved,
+		sentAdded:     sentAdded,
+		sentRemoved:   sentRemoved,
 	}, ctx, true
 }
 
