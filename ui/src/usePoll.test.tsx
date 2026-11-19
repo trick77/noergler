@@ -21,9 +21,29 @@ function PathProbe({ path }: { path: string }) {
   );
 }
 
+/** SleepProbe shows the count and whether the hook calls its data asleep. */
+function SleepProbe({ interval }: { interval: number }) {
+  const { data, asleep } = usePoll<{ n: number }>("live", interval);
+  if (!data) return <p>loading</p>;
+  return (
+    <p>
+      n={data.n} {asleep ? "asleep" : "awake"}
+    </p>
+  );
+}
+
+let visibility: DocumentVisibilityState = "visible";
+function setVisibility(v: DocumentVisibilityState) {
+  visibility = v;
+  document.dispatchEvent(new Event("visibilitychange"));
+}
+
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  visibility = "visible";
+  // @ts-expect-error: the tests' own property, removed after each
+  delete document.visibilityState;
 });
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -144,6 +164,38 @@ describe("usePoll", () => {
 
     release(null);
     await waitFor(() => expect(screen.getByText(/n=2 fresh/)).toBeDefined());
+  });
+
+  // A hidden tab reads nothing: /live is a database read every 3 s, and a
+  // dashboard left open in a background tab ran it all day. Back in view,
+  // it refreshes at once rather than waiting out the interval.
+  it("skips ticks while the tab is hidden and refreshes on return", async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        calls += 1;
+        return { ok: true, status: 200, json: async () => ({ n: calls }) };
+      }),
+    );
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => visibility,
+    });
+
+    // An interval far past waitFor's second: only the return can explain a
+    // second request.
+    render(<SleepProbe interval={60_000} />);
+    await waitFor(() => expect(screen.getByText("n=1 awake")).toBeDefined());
+
+    setVisibility("hidden");
+    await waitFor(() => expect(screen.getByText("n=1 asleep")).toBeDefined());
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(calls).toBe(1);
+
+    setVisibility("visible");
+    await waitFor(() => expect(screen.getByText("n=2 awake")).toBeDefined());
+    expect(calls).toBe(2);
   });
 
   // A refresh of the SAME path is not stale: it is the same question, and

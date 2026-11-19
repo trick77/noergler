@@ -176,14 +176,15 @@ export function RunsPage() {
   const { t } = useTranslation();
   const [filter, setFilter] = useState<Filter>("");
   const [act, setAct] = useState<Act>("");
-  const { data, failed, updatedAt } = usePoll<Runs>(
+  const { data, failed, updatedAt, asleep } = usePoll<Runs>(
     `runs?limit=${RUNS_LIMIT}`,
     10000,
   );
   const wall = useNow(10000);
   // A failing refresh freezes the "when" column at the last reading, as on
-  // Live: ages counting on beside stale rows read as a live page.
-  const now = failed && updatedAt !== null ? updatedAt : wall;
+  // Live: ages counting on beside stale rows read as a live page. So does a
+  // tab coming back, until its first refresh lands.
+  const now = (failed || asleep) && updatedAt !== null ? updatedAt : wall;
 
   if (!data) {
     return (

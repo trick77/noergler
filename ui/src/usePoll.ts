@@ -11,6 +11,11 @@ export interface Poll<T> {
   /** When data last arrived (ms epoch), null before the first. A caller
    *  showing a clock against stale data reads it off this, not the wall. */
   updatedAt: number | null;
+  /** True from the moment a polling tab is hidden until the first refresh
+   *  after it is back: the data is as old as the hide, and a clock counting
+   *  on against it would show a finished review as running for hours. A
+   *  caller freezes its clock on it, as on failed. */
+  asleep: boolean;
 }
 
 /** usePoll fetches one endpoint and, when intervalMs is given, keeps it
@@ -27,6 +32,7 @@ export function usePoll<T>(path: string, intervalMs?: number): Poll<T> {
   const [data, setData] = useState<T | null>(null);
   const [failed, setFailed] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const [asleep, setAsleep] = useState(false);
   // Held in a ref so the effect does not re-run when data arrives, which
   // would restart the interval on every tick.
   const alive = useRef(true);
@@ -64,6 +70,7 @@ export function usePoll<T>(path: string, intervalMs?: number): Poll<T> {
         setDataPath(path);
         setUpdatedAt(Date.now());
         setFailed(false);
+        setAsleep(false);
       } catch (err) {
         if ((err as Error).name === "AbortError" || !alive.current) return;
         setFailed(true);
@@ -72,17 +79,41 @@ export function usePoll<T>(path: string, intervalMs?: number): Poll<T> {
       }
     };
 
+    // A hidden tab skips its ticks: /live is a database read every 3 s, and
+    // a dashboard left in a background tab ran it all day for nobody. Back
+    // in view it refreshes at once, and the interval starts over from there,
+    // so the next tick is a full interval later, not a second read at once.
+    const hidden = () => document.visibilityState === "hidden";
+    const tick = () => {
+      if (!hidden()) void run();
+    };
+    let id: number | undefined;
+    const arm = () => {
+      if (id) window.clearInterval(id);
+      id = intervalMs ? window.setInterval(tick, intervalMs) : undefined;
+    };
+    const onVisibility = () => {
+      if (hidden()) {
+        setAsleep(true);
+        return;
+      }
+      void run();
+      arm();
+    };
+
     void run();
-    const id = intervalMs ? window.setInterval(run, intervalMs) : undefined;
+    arm();
+    if (intervalMs) document.addEventListener("visibilitychange", onVisibility);
     return () => {
       // Unmount still aborts: that request's result has nowhere to go.
       alive.current = false;
       controller?.abort();
       if (id) window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [path, intervalMs]);
 
-  return { data, failed, stale, updatedAt };
+  return { data, failed, stale, updatedAt, asleep };
 }
 
 /** useNow ticks a clock so an elapsed display advances without refetching.
