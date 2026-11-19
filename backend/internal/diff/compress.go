@@ -18,10 +18,12 @@ type CompressionResult struct {
 	RenamedFilePaths   []string
 }
 
-// isDeletionOnlyHunk reports whether a hunk adds nothing.
+// isDeletionOnlyHunk reports whether a hunk adds nothing. Every `+` line
+// counts: a hunk starts at its @@ line, so the `+++` file header is never in
+// one, and an added `++i;` reads `+++i;`.
 func isDeletionOnlyHunk(hunkLines []string) bool {
 	for _, line := range hunkLines {
-		if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
+		if strings.HasPrefix(line, "+") {
 			return false
 		}
 	}
