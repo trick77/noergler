@@ -979,7 +979,12 @@ export function MetricsPage() {
                         {t("metrics.kind.engagements")}
                       </th>
                       <th className={thNum}>{t("metrics.lines")}</th>
-                      <th className={thNum}>{t("metrics.cost")}</th>
+                      {/* Over the share bar and the amount: each in its own
+                          cell, so a bar never moves with the width of the
+                          amount beside it ($0.03 against $45.91). */}
+                      <th className={thNum} colSpan={2}>
+                        {t("metrics.cost")}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1020,16 +1025,15 @@ export function MetricsPage() {
                           <td className={tdNum + hint} title={linesTitle(row)}>
                             {teamLines(row)}
                           </td>
-                          <td
-                            className={tdNum + hint}
-                            title={`${t("metrics.tokensIn")}: ${num(row.prompt_tokens)}\n${t("metrics.tokensOut")}: ${num(row.completion_tokens)}`}
-                          >
-                            {/* The share of the window's spend at a glance,
-                                against the biggest team. */}
+                          {/* The share of the window's spend at a glance,
+                              against the biggest team. */}
+                          {/* Right in its cell, against the amount it
+                              belongs to, clear of the LOC before it. */}
+                          <td className={td + " w-24 pl-4 align-middle"}>
                             {maxTeamCost > 0 && (
                               <span
                                 aria-hidden
-                                className="mr-2.5 inline-block h-1 w-16 overflow-hidden rounded-full bg-active align-middle"
+                                className="ml-auto block h-1 w-16 overflow-hidden rounded-full bg-active"
                               >
                                 <span
                                   className="block h-1 rounded-full"
@@ -1040,6 +1044,11 @@ export function MetricsPage() {
                                 />
                               </span>
                             )}
+                          </td>
+                          <td
+                            className={tdNum + hint}
+                            title={`${t("metrics.tokensIn")}: ${num(row.prompt_tokens)}\n${t("metrics.tokensOut")}: ${num(row.completion_tokens)}`}
+                          >
                             {money(row.cost_usd)}
                           </td>
                         </tr>
@@ -1065,6 +1074,7 @@ export function MetricsPage() {
                         >
                           {teamLines(data.totals)}
                         </td>
+                        <td className={tdFoot} />
                         <td className={tdNumFoot}>
                           {money(data.totals.cost_usd)}
                         </td>
