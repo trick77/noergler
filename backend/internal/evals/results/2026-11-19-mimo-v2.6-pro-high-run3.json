@@ -1,0 +1,1325 @@
+{
+ "Results": [
+  {
+   "Case": "blocking-float-money",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "src/cart/total.ts",
+     "Line": 14,
+     "Severity": "issue",
+     "Comment": "`totalWithVat` violates blocking rule B1: it converts `Cents` to floating-point euros (`subtotal(lines) / 100`), multiplies by `(1 + vatRate)`, and converts back. On realistic input this also produces a non-integer result: for a subtotal of 100 cents with `vatRate = 0.21`, `1 * 1.21 * 100` evaluates to `121.00000000000001` in IEEE-754, so the returned `Cents` is no longer an integer cent amount and downstream money code gets a fractional value. Keep the computation in cents and round explicitly, e.g. multiply the cent subtotal by the rate and round to the nearest cent.",
+     "Confidence": 97,
+     "Headline": "VAT total computes money as floating-point euros",
+     "Suggestion": "  const cents = subtotal(lines);\n  return Math.round(cents * (1 + vatRate)) as Cents;",
+     "Evidence": [
+      "export function totalWithVat(lines: Line[], vatRate: number): Cents {",
+      "  const euros = subtotal(lines) / 100;",
+      "  const gross = euros * (1 + vatRate);",
+      "  return (gross * 100) as Cents;",
+      "}"
+     ],
+     "BlockingRule": "B1",
+     "Category": "guideline"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "vat-total-not-integer-cents",
+      "file": "src/cart/total.ts",
+      "lines": [
+       13,
+       16
+      ],
+      "keywords": [
+       "float",
+       "cents",
+       "round",
+       "integer",
+       "euro",
+       "precision",
+       "fraction"
+      ],
+      "why": "The total is computed in floating-point euros and returned unrounded as Cents, which the blocking rule forbids and which yields fractional cents.",
+      "blocking": "B1"
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0,
+   "Blocking": [
+    {
+     "Finding": 0,
+     "Rule": "B1",
+     "Outcome": "task"
+    }
+   ]
+  },
+  {
+   "Case": "blocking-pii-log",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/api/customers.go",
+     "Line": 25,
+     "Severity": "issue",
+     "Comment": "This new log line emits the customer's `email` and `iban` — exactly the personal data B1 forbids logging. On any successful `Customers.Create` request the body is parsed and these values land in the log stream, where they persist in log aggregation and are readable by anyone with log access.",
+     "Confidence": 95,
+     "Headline": "Customer creation logs email and IBAN, violating B1",
+     "Suggestion": "\th.Log.Info(\"customer created\", \"id\", c.ID)",
+     "Evidence": [
+      "\th.Log.Info(\"customer created\", \"id\", c.ID, \"email\", c.Email, \"iban\", c.IBAN)"
+     ],
+     "BlockingRule": "B1",
+     "Category": "security"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "customer-pii-logged",
+      "file": "internal/api/customers.go",
+      "lines": [
+       24,
+       26
+      ],
+      "keywords": [
+       "email",
+       "IBAN",
+       "personal",
+       "PII",
+       "log"
+      ],
+      "why": "The success log carries the customer's email and IBAN, which the blocking rule forbids.",
+      "blocking": "B1"
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0,
+   "Blocking": [
+    {
+     "Finding": 0,
+     "Rule": "B1",
+     "Outcome": "task"
+    }
+   ]
+  },
+  {
+   "Case": "blocking-sql-in-controller",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "src/main/java/com/acme/orders/OrderController.java",
+     "Line": 29,
+     "Severity": "issue",
+     "Comment": "The new `/orders/{id}/lines` handler injects `JdbcTemplate` and runs `jdbc.queryForList(...)` directly from `OrderController`, which is the exact pattern the project's blocking rule forbids: controllers must never access the database and every query goes through a service. Realistic path: a request to `/orders/{id}/lines` reaches the controller and executes SQL without any service in between, so the rule is broken on every call to this endpoint.",
+     "Confidence": 99,
+     "Headline": "Controller queries the database directly via JdbcTemplate",
+     "Suggestion": "        return orders.lines(id);",
+     "Evidence": [
+      "private final JdbcTemplate jdbc;",
+      "public OrderController(OrderService orders, JdbcTemplate jdbc) {",
+      "@GetMapping(\"/orders/{id}/lines\")",
+      "public List\u003cMap\u003cString, Object\u003e\u003e lines(@PathVariable long id) {",
+      "    return jdbc.queryForList(\"SELECT sku, qty FROM order_lines WHERE order_id = ?\", id);"
+     ],
+     "BlockingRule": "B1",
+     "Category": "guideline"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "controller-runs-sql",
+      "file": "src/main/java/com/acme/orders/OrderController.java",
+      "lines": [
+       15,
+       29
+      ],
+      "keywords": [
+       "service",
+       "controller",
+       "database",
+       "JdbcTemplate",
+       "jdbc",
+       "SQL",
+       "query"
+      ],
+      "why": "The new endpoint queries order_lines from the controller, which the blocking rule forbids. A reviewer may anchor on the query (29), the method (28) or the injected field (15).",
+      "blocking": "B1"
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0,
+   "Blocking": [
+    {
+     "Finding": 0,
+     "Rule": "B1",
+     "Outcome": "task"
+    }
+   ]
+  },
+  {
+   "Case": "blocking-tenant-check",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [
+    {
+     "Expected": {
+      "id": "invoice-without-tenant-check",
+      "file": "internal/api/invoices.go",
+      "lines": [
+       25,
+       31
+      ],
+      "keywords": [
+       "tenant",
+       "SameTenant",
+       "authz",
+       "authoriz",
+       "another"
+      ],
+      "why": "Get returns any invoice by id to any caller; the blocking rule demands authz.SameTenant first. Anchors anywhere from the signature (25) to the encode (31) are honest.",
+      "blocking": "B2"
+     },
+     "Found": false,
+     "Finding": -1,
+     "Why": "no finding on internal/api/invoices.go"
+    }
+   ],
+   "Extra": 0,
+   "Dropped": [
+    {
+     "Finding": {
+      "File": "internal/api/invoices.go",
+      "Line": 31,
+      "Severity": "issue",
+      "Comment": "The new `Get` handler loads an invoice by id and returns it without an `authz.SameTenant(r, inv.TenantID)` check. A caller from tenant A who knows or guesses an invoice id of tenant B gets the full invoice back, which is exactly the cross-tenant read that the project's blocking rule B2 forbids for every handler that loads an invoice by id. The neighboring `List` handler scopes its query by `authz.Tenant(r)`, so the file establishes the expected tenant isolation pattern and this handler breaks it.",
+      "Confidence": 95,
+      "Headline": "New invoice Get handler skips the SameTenant check",
+      "Suggestion": "if !authz.SameTenant(r, inv.TenantID) {\n\t\thttp.Error(w, \"not found\", http.StatusNotFound)\n\t\treturn\n\t}\n\t_ = json.NewEncoder(w).Encode(inv)",
+      "Evidence": [
+       "inv, err := h.Store.Invoice(r.Context(), r.PathValue(\"id\"))",
+       "if err != nil {",
+       "\thttp.Error(w, \"not found\", http.StatusNotFound)",
+       "\treturn",
+       "}_ = json.NewEncoder(w).Encode(inv)"
+      ],
+      "BlockingRule": "B2",
+      "Category": "security"
+     },
+     "Reason": "evidence_not_found"
+    }
+   ]
+  },
+  {
+   "Case": "blocking-unrelated-bug",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/api/paging.go",
+     "Line": 9,
+     "Severity": "issue",
+     "Comment": "Dropping the end-of-slice clamp makes `page` slice past `len(items)` on any partial last page. With 7 items and `page(items, 2, 5)`, `start` is 5, which passes the `start \u003e= len(items)` guard, but `items[start : start+size]` evaluates `items[5:10]` and panics with a slice-bounds error. The previous code clamped `end` to `len(items)` precisely to cover this case.",
+     "Confidence": 95,
+     "Headline": "page() panics on the last partial page",
+     "Suggestion": "\treturn items[start:min(start+size, len(items))]",
+     "Evidence": [
+      "\tif start \u003e= len(items) {",
+      "\t\treturn nil",
+      "\t}",
+      "\treturn items[start : start+size]"
+     ],
+     "BlockingRule": null,
+     "Category": "bug"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "last-page-out-of-range",
+      "file": "internal/api/paging.go",
+      "lines": [
+       8,
+       10
+      ],
+      "keywords": [
+       "range",
+       "panic",
+       "bounds",
+       "last page",
+       "len",
+       "partial"
+      ],
+      "why": "Without the clamp, start+size passes len(items) on a partial last page and the slice expression panics. No blocking rule covers it."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "buried-behavioural-hunk",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/notify/dispatcher.go",
+     "Line": 64,
+     "Severity": "issue",
+     "Comment": "The retry predicate is inverted: `retryable` returns true for transient errors (`!errors.Is(err, ErrPermanent)`), so this returns immediately on exactly the failures the retry loop is meant to handle — a 503 or connection error now aborts after one attempt with no backoff and no retry, losing the delivery. Conversely a permanent failure (e.g. a 404 rejection) falls through to the backoff loop and is retried five times before being wrapped as \"giving up\", despite the `Deliver` doc comment saying \"a permanent one is returned at once\". The condition must return on permanent errors and continue on transient ones.",
+     "Confidence": 95,
+     "Headline": "Retry condition inverted: transient errors abort, permanent ones retried",
+     "Suggestion": "if !retryable(lastErr) {",
+     "Evidence": [
+      "if retryable(lastErr) {",
+      "\t\t\treturn lastErr",
+      "\t\t}",
+      "\t\td.log.Warn(\"notification delivery failed, will retry\",",
+      "\t\t\t\"endpoint\", ep.ID, \"attempt\", attempt, \"error\", lastErr)"
+     ],
+     "BlockingRule": null,
+     "Category": "bug"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "retryable-check-inverted",
+      "file": "internal/notify/dispatcher.go",
+      "lines": [
+       60,
+       66
+      ],
+      "keywords": [
+       "!retryable",
+       "inverted",
+       "negat",
+       "flipped",
+       "non-retryable",
+       "permanent"
+      ],
+      "why": "Transient failures such as a 503 are now returned on the first attempt without any retry, while permanently rejected deliveries are retried five times with backoff."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-blocking-sql-in-service",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-blocking-tenant-checked",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-guard-clause",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-i18n-key-order",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-multi-file-signature",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-refactor",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-rename",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-secret-from-env",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "clean-test-fixture-password",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "context-not-propagated",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/bitbucket/diff.go",
+     "Line": 13,
+     "Severity": "issue",
+     "Comment": "`FetchDiff` now builds the request and reads the body with `context.Background()` instead of the caller's `ctx`, so caller cancellation and deadlines no longer apply to the diff fetch at all. The doc comment directly above still states the caller's context bounds the whole operation including the body read, which is now false: a caller that cancels on timeout or shutdown will keep waiting while the HTTP request and the capped body read run to completion (or hang on a stalled connection). The `ctx` parameter is now accepted and ignored.",
+     "Confidence": 95,
+     "Headline": "FetchDiff drops the caller's context in favor of context.Background()",
+     "Suggestion": "\treq, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)",
+     "Evidence": [
+      "// The caller's context bounds the whole operation, including the body read.",
+      "func (c *Client) FetchDiff(ctx context.Context, project, repo string, pr int) (string, error) {",
+      "\tu := fmt.Sprintf(\"%s/projects/%s/repos/%s/pull-requests/%d/diff\", c.base, project, repo, pr)",
+      "\treq, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u, nil)",
+      "\treturn c.getTextCapped(context.Background(), req, maxDiffBytes)"
+     ],
+     "BlockingRule": null,
+     "Category": "contradiction"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "caller-context-dropped",
+      "file": "internal/bitbucket/diff.go",
+      "lines": [
+       11,
+       18
+      ],
+      "keywords": [
+       "context.Background",
+       "background context",
+       "ctx is ignored",
+       "ignores ctx",
+       "ignores the ctx",
+       "ignores caller",
+       "not propagated",
+       "cancellation",
+       "cancelation",
+       "deadline",
+       "caller's context",
+       "callers context"
+      ],
+      "why": "ctx is a parameter but never used; context.Background() is passed to both NewRequestWithContext and getTextCapped, so the caller's timeout and cancellation cannot stop the request or the body read. Bitbucket has no Client.Timeout by design, which makes the caller's ctx the only bound on a 10 MiB diff."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "cross-file-stale-caller",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/session/manager.go",
+     "Line": 78,
+     "Severity": "issue",
+     "Comment": "`Hold` computes the TTL with `int64(d.Seconds())`, but `Store.Touch` (and the `PExpire` call behind it) now takes milliseconds. Calling `Hold(ctx, id, 5*time.Minute)` stores 300 and hands it to `PExpire` as 300ms, so the session dies within a third of a second instead of being held for the export duration — exactly the case `Hold` exists for. Sub-second durations are worse: `int64(d.Seconds())` truncates to 0 and `Touch` rejects it as a non-positive ttl.",
+     "Confidence": 95,
+     "Headline": "Hold passes seconds where Touch now expects milliseconds",
+     "Suggestion": "\treturn m.store.Touch(ctx, id, d.Milliseconds())",
+     "Evidence": [
+      "// the next Resume returns the session to the idle timeout.",
+      "func (m *Manager) Hold(ctx context.Context, id string, d time.Duration) error {",
+      "\tif d \u003e m.maxHold {",
+      "\t\td = m.maxHold",
+      "\t}"
+     ],
+     "BlockingRule": null,
+     "Category": "bug"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "hold-passes-seconds-as-millis",
+      "file": "internal/session/manager.go",
+      "lines": [
+       71,
+       79
+      ],
+      "keywords": [
+       "millisecond",
+       "ttlmillis",
+       "pexpire",
+       "1000"
+      ],
+      "why": "Touch now takes milliseconds, so a hold of two hours sets a lifetime of 7.2 seconds and the session expires while the export it was meant to cover is still running."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "hardcoded-credential-yaml",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "src/main/resources/application.yaml",
+     "Line": 15,
+     "Severity": "issue",
+     "Comment": "The new `reporting.datasource` block commits a plaintext credential in `password: admin123`, while the primary datasource above correctly reads `INVENTORY_DB_PASSWORD` from the environment. Anyone with repository or artifact access (or anyone who obtains the built jar) can read this password and connect to the internal `reporting-db.internal` database as the `reporting` user. A default-looking value like `admin123` is still a real credential and must not be committed.",
+     "Confidence": 95,
+     "Headline": "Hardcoded reporting DB password committed in application.yaml",
+     "Suggestion": "    password: ${REPORTING_DB_PASSWORD}",
+     "Evidence": [
+      "  datasource:",
+      "    url: jdbc:postgresql://reporting-db.internal:5432/reporting",
+      "    username: reporting",
+      "    password: admin123",
+      "    read-only: true"
+     ],
+     "BlockingRule": null,
+     "Category": "secret"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "hardcoded-reporting-password-yaml",
+      "file": "src/main/resources/application.yaml",
+      "lines": [
+       15,
+       15
+      ],
+      "keywords": [
+       "hardcoded",
+       "hard-coded",
+       "credential",
+       "secret",
+       "committed",
+       "plaintext",
+       "source control",
+       "environment"
+      ],
+      "why": "The reporting replica's password is committed in the application config, readable by everyone with repository access, while the existing datasource takes its password from the environment."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "hardcoded-credential",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "src/main/java/com/acme/inventory/config/DataSourceConfig.java",
+     "Line": 21,
+     "Severity": "issue",
+     "Comment": "This diff adds a plaintext database password literal as a field initializer on `DataSourceConfig`, checked into source and shipped in the built artifact. Anyone with repository or image access can read `password` and connect to the reporting replica, and the value is now baked into git history even if it is rotated later. The inventory pool in the same class gets its password from `${INVENTORY_DB_PASSWORD}` at runtime; the reporting pool must do the same rather than commit a credential.",
+     "Confidence": 95,
+     "Headline": "Hardcoded database password committed in DataSourceConfig",
+     "Suggestion": "public String password = System.getenv(\"REPORTING_DB_PASSWORD\");",
+     "Evidence": [
+      "public String reportingUrl = \"jdbc:postgresql://reporting-db.internal:5432/reporting\";",
+      "public String reportingUser = \"reporting\";",
+      "public String password = \"admin123\";"
+     ],
+     "BlockingRule": null,
+     "Category": "secret"
+    },
+    {
+     "File": "src/main/java/com/acme/inventory/config/DataSourceConfig.java",
+     "Line": 35,
+     "Severity": "issue",
+     "Comment": "The class Javadoc states that credentials are injected by the platform at deploy time, and `inventoryDataSource` follows that with `@Value(\"${...}\")` injection. The new `reportingDataSource` instead reads hardcoded fields (`reportingUrl`, `reportingUser`, `password`), so the reporting pool's endpoint and credentials can only change with a rebuild and the documented contract no longer holds for this bean. Under a deploy that rotates the reporting credentials via the environment, the inventory pool picks them up while the reporting pool keeps using the compiled-in values.",
+     "Confidence": 90,
+     "Headline": "Reporting pool ignores env-injected config promised by class docs",
+     "Suggestion": null,
+     "Evidence": [
+      "public String reportingUrl = \"jdbc:postgresql://reporting-db.internal:5432/reporting\";",
+      "public String reportingUser = \"reporting\";",
+      "return pool(\"reporting\", reportingUrl, reportingUser, password, 4, true);"
+     ],
+     "BlockingRule": null,
+     "Category": "contradiction"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "hardcoded-reporting-password",
+      "file": "src/main/java/com/acme/inventory/config/DataSourceConfig.java",
+      "lines": [
+       21,
+       21
+      ],
+      "keywords": [
+       "hardcoded",
+       "hard-coded",
+       "credential",
+       "secret",
+       "committed",
+       "plaintext",
+       "source control",
+       "environment"
+      ],
+      "why": "The reporting replica's password is committed in source, readable by everyone with repository access, while the class's own pattern reads credentials from the environment."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 1
+  },
+  {
+   "Case": "incremental-disputed-closed",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "incremental-fixed",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0,
+   "FixedMatches": [
+    {
+     "Expected": {
+      "id": "F101",
+      "why": "The push replaces `return nil` with `return w.Error()`: the flagged defect is gone, and leaving the thread open makes the author resolve a fixed finding by hand."
+     },
+     "Found": true
+    }
+   ],
+   "Fixed": [
+    "F101"
+   ]
+  },
+  {
+   "Case": "incremental-moved-not-fixed",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "incremental-new-bug-beside-open",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/cache/cache.go",
+     "Line": 23,
+     "Severity": "issue",
+     "Comment": "`Delete` reads and writes `c.items` without taking `c.mu`, while `Set` and `Get` both lock it. Any goroutine calling `Delete` concurrently with `Set` or `Get` on the same `*Cache` is an unsynchronized map access: Go's runtime may throw a fatal `concurrent map read and map write` crash, or the delete may race with a write and corrupt the map. The other two methods establish the invariant that every access to `c.items` is mutex-guarded; this method breaks it on its first use under concurrency.",
+     "Confidence": 95,
+     "Headline": "Delete mutates the cache map without holding the mutex",
+     "Suggestion": "func (c *Cache) Delete(key string) bool {\n\tc.mu.Lock()\n\tdefer c.mu.Unlock()\n\t_, ok := c.items[key]\n\tdelete(c.items, key)\n\treturn ok\n}",
+     "Evidence": [
+      "func (c *Cache) Delete(key string) bool {",
+      "\t_, ok := c.items[key]",
+      "\tdelete(c.items, key)",
+      "\treturn ok",
+      "}"
+     ],
+     "BlockingRule": null,
+     "Category": "bug"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "delete-without-lock",
+      "file": "internal/cache/cache.go",
+      "lines": [
+       23,
+       26
+      ],
+      "keywords": [
+       "lock",
+       "mutex",
+       "race",
+       "concurrent",
+       "synchron"
+      ],
+      "why": "Delete touches c.items without c.mu while Set and Get hold it: a data race, and Go aborts the process on a concurrent map write."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "java-seeded",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "src/main/java/com/acme/payments/transfer/TransferService.java",
+     "Line": 102,
+     "Severity": "issue",
+     "Comment": "`cancel` decides ownership with `!=` on two boxed `Long` values. `requesterAccountId` comes from the caller and `transfer.sourceAccountId()` from the repository, so for any account id outside the `Long` cache (i.e. above 127) they are distinct objects and `!=` evaluates to true even when the values are equal. A request like `cancel(5, 1000)` where the transfer's source account is 1000 therefore throws `TransferAccessDeniedException` for the legitimate owner, making cancellation unusable for real-world ids. The rest of the class already compares ids with `equals` in `create`.",
+     "Confidence": 95,
+     "Headline": "Ownership check compares boxed Longs with reference equality",
+     "Suggestion": "if (!transfer.sourceAccountId().equals(requesterAccountId)) {",
+     "Evidence": [
+      "if (transfer.sourceAccountId() != requesterAccountId) {",
+      "throw new TransferAccessDeniedException(transferId, requesterAccountId);",
+      "if (sourceAccountId.equals(targetAccountId)) {"
+     ],
+     "BlockingRule": null,
+     "Category": "bug"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "boxed-long-compared-by-reference",
+      "file": "src/main/java/com/acme/payments/transfer/TransferService.java",
+      "lines": [
+       97,
+       104
+      ],
+      "keywords": [
+       "equals",
+       "boxed",
+       "reference",
+       "identity",
+       "127",
+       "unbox"
+      ],
+      "why": "Boxed Longs are compared by reference, so for any account id above 127 the owner's own cancellation is rejected as access denied."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "lock-not-released",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [
+    {
+     "Expected": {
+      "id": "mutex-held-on-early-return",
+      "file": "internal/teams/registry.go",
+      "lines": [
+       16,
+       24
+      ],
+      "keywords": [
+       "deadlock",
+       "still held",
+       "never released",
+       "not released",
+       "never unlocked",
+       "not unlocked",
+       "defer r.mu.Unlock",
+       "defer mu.Unlock",
+       "defer the Unlock",
+       "held forever"
+      ],
+      "why": "The Unlock now runs only on the success path, so returning the unknown-team error leaves r.mu locked and every subsequent caller blocks forever."
+     },
+     "Found": false,
+     "Finding": -1,
+     "Why": "no finding on internal/teams/registry.go"
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "nil-deref",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/review/summary.go",
+     "Line": 19,
+     "Severity": "issue",
+     "Comment": "The old guard returned `r.Body` when no ticket was linked; the rewritten `if r.Ticket == nil` block is now empty (its body is only a comment) and execution falls through to `r.Ticket.Key`. Any caller passing a `*Result` with a nil `Ticket` — which the code itself declares legal via \"Ticket is optional\" — dereferences nil and panics. Restore the early return for the nil-ticket case.",
+     "Confidence": 95,
+     "Headline": "Nil-ticket path panics in Summarize",
+     "Suggestion": "\tif r.Ticket == nil {\n\t\treturn r.Body\n\t}",
+     "Evidence": [
+      "\tif r.Ticket == nil {",
+      "\t\t// Ticket is optional; fall through to the shared renderer.",
+      "\t}",
+      "\treturn r.Body + \"\\n\\n\" + r.Ticket.Key"
+     ],
+     "BlockingRule": null,
+     "Category": "bug"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "nil-ticket-deref",
+      "file": "internal/review/summary.go",
+      "lines": [
+       19,
+       22
+      ],
+      "keywords": [
+       "nil",
+       "dereference",
+       "deref",
+       "panic",
+       "Ticket"
+      ],
+      "why": "The nil branch no longer returns, so r.Ticket.Key panics whenever Ticket is nil. A reviewer may anchor on the dead check (19) or on the dereference (22)."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "off-by-one",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/diff/context.go",
+     "Line": 15,
+     "Severity": "issue",
+     "Comment": "`ContextAfter` clamps `last` to `len(lines) + 1` and then returns `lines[first:last]`, which is a slice bounds violation in Go whenever the trailing-context window reaches or passes the end of `lines`. For a 5-line file with `h = {Start: 3, Count: 1}` and `n = 2`: `first = 4`, `last = 6`, the clamp fires (`6 \u003e= 5`) and sets `last = 6` again, and `lines[4:6]` panics with \"slice bounds out of range\". Any hunk near EOF — i.e. the common case the clamp exists for — crashes instead of returning the remaining lines. The doc comment above also says the window \"must stop at the last line of the file\", which `len(lines) + 1` does not.",
+     "Confidence": 96,
+     "Headline": "ContextAfter clamps to len(lines)+1 and slices out of range",
+     "Suggestion": "\t\tlast = len(lines)",
+     "Evidence": [
+      "last := first + n",
+      "if last \u003e= len(lines) {",
+      "last = len(lines) + 1",
+      "}",
+      "return lines[first:last]"
+     ],
+     "BlockingRule": null,
+     "Category": "bug"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "context-window-past-end",
+      "file": "internal/diff/context.go",
+      "lines": [
+       14,
+       20
+      ],
+      "keywords": [
+       "out of range",
+       "out-of-range",
+       "bounds",
+       "past the end",
+       "beyond the end",
+       "len(lines)+1",
+       "len(lines) + 1",
+       "off-by-one",
+       "off by one",
+       "panic"
+      ],
+      "why": "The clamp sets last to len(lines)+1, so the final slice expression lines[first:last] runs one past the length. With no spare capacity that panics; with spare capacity it silently yields a phantom trailing line, which is the quieter half of the bug."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "resource-leak",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/bitbucket/whoami.go",
+     "Line": 21,
+     "Severity": "issue",
+     "Comment": "Dropping `defer resp.Body.Close()` leaves the response body unclosed on every path: once `c.http.Do(req)` succeeds, `WhoAmI` reads `resp.Body` via `json.NewDecoder(...).Decode(\u0026u)` and returns without ever closing it. A caller that resolves the token's account per request (e.g. an auth middleware hitting whoami) never returns the connection to the transport's idle pool, so each call leaks a connection/fd until GC runs, and sustained load exhausts file descriptors (`dial tcp: too many open files`) — even the non-2xx and decode-error returns leak it. The defer needs to be restored right after the `Do` error check so the body is closed on the status, decode and success paths alike.",
+     "Confidence": 95,
+     "Headline": "Response body never closed in WhoAmI, leaking one connection per call",
+     "Suggestion": "\tdefer resp.Body.Close()\n\tif resp.StatusCode \u003c 200 || resp.StatusCode \u003e 299 {",
+     "Evidence": [
+      "\tresp, err := c.http.Do(req)",
+      "\t\treturn nil, fmt.Errorf(\"whoami: %w\", err)",
+      "\t}",
+      "\tdefer resp.Body.Close()",
+      "\tif resp.StatusCode \u003c 200 || resp.StatusCode \u003e 299 {"
+     ],
+     "BlockingRule": null,
+     "Category": "bug"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "response-body-never-closed",
+      "file": "internal/bitbucket/whoami.go",
+      "lines": [
+       16,
+       28
+      ],
+      "keywords": [
+       "leak",
+       "leaked",
+       "not closed",
+       "never closed",
+       "close the body",
+       "closing the body",
+       "resp.Body.Close",
+       "connection"
+      ],
+      "why": "The response body is never closed on any path, so the underlying connection is leaked on every call, successful or not."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "struct-field-race",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/queue/queue.go",
+     "Line": 35,
+     "Severity": "issue",
+     "Comment": "The mutex acquisition around the depth update in `worker()` was dropped, so `q.depth = len(q.pending)` now runs unsynchronized while `Submit` writes the same field under `q.mu` and `Depth` reads it under `q.mu`. With the worker goroutine draining jobs while a request handler calls `Submit` or `Depth` — the normal operating state of this queue — the concurrent unsynchronized write is a data race: `Depth()` can report stale or torn values and the Go race detector will flag the program.",
+     "Confidence": 95,
+     "Headline": "Worker updates depth without holding the mutex",
+     "Suggestion": "\t\tq.mu.Lock()\n\t\tq.depth = len(q.pending)\n\t\tq.mu.Unlock()",
+     "Evidence": [
+      "\t\tq.run(j)",
+      "\t\tq.depth = len(q.pending)",
+      "\t}"
+     ],
+     "BlockingRule": null,
+     "Category": "bug"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "depth-written-without-mutex",
+      "file": "internal/queue/queue.go",
+      "lines": [
+       28,
+       35
+      ],
+      "keywords": [
+       "race",
+       "unsynchronized",
+       "unsynchronised",
+       "without holding",
+       "without the lock",
+       "without the mutex",
+       "q.mu",
+       "concurrent",
+       "data race"
+      ],
+      "why": "The worker goroutine writes q.depth and reads q.pending without holding q.mu, while Submit writes and Depth reads the same fields under the mutex; that is a data race."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "ts-seeded",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "src/rates/rate-service.ts",
+     "Line": 72,
+     "Severity": "issue",
+     "Comment": "`this.refresh(base)` is an async method, so it always reports failure as a rejected promise rather than a synchronous throw. `return this.refresh(base)` inside the `try` hands that promise straight to the caller without awaiting it inside the `try` block, so the `catch` clause never runs on a rejection. On a realistic path — cached table present and expired, `provider.fetch` rejects (upstream outage) — `getRates` rejects with the provider error instead of falling back to `cached`, exactly the behavior this change is meant to add; `staleServedCount` also stays at 0 forever. The rejection propagates to `convert` and out to callers. Awaiting the call inside the `try` (`return await this.refresh(base)`) makes the `catch` observe the rejection.",
+     "Confidence": 95,
+     "Headline": "Stale-cache fallback never runs: refresh's rejection bypasses the catch",
+     "Suggestion": "      return await this.refresh(base);",
+     "Evidence": [
+      "try {",
+      "return this.refresh(base);",
+      "} catch (err) {",
+      "if (!cached) {",
+      "return cached;"
+     ],
+     "BlockingRule": null,
+     "Category": "bug"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "try-returns-promise-without-await",
+      "file": "src/rates/rate-service.ts",
+      "lines": [
+       70,
+       74
+      ],
+      "keywords": [
+       "await",
+       "never catch",
+       "not caught",
+       "never run",
+       "rejection",
+       "unreachable"
+      ],
+      "why": "The rejected promise leaves the try block before it settles, so the catch never runs and a provider outage fails every request instead of serving the expired table."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "unchecked-error",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/store/claims.go",
+     "Line": 21,
+     "Severity": "issue",
+     "Comment": "`AddClaim` now discards the error returned by `tx.Commit(ctx)` and unconditionally returns `nil`. If the commit fails — deferred constraint violation, serialization failure, or the connection dropping between the `INSERT` and the commit — the caller is told the team's claim was recorded while nothing was persisted, so the claim is silently lost and a later `AddClaim` or claim lookup behaves as if it never happened. The removed code checked and wrapped this error; dropping that check removes the only place the failure surfaced.",
+     "Confidence": 95,
+     "Headline": "Commit error in AddClaim is ignored, reporting false success",
+     "Suggestion": "if err := tx.Commit(ctx); err != nil {\n\t\treturn err\n\t}\n\treturn nil",
+     "Evidence": [
+      "tx.Commit(ctx)",
+      "return nil",
+      "}"
+     ],
+     "BlockingRule": null,
+     "Category": "bug"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "commit-error-swallowed",
+      "file": "internal/store/claims.go",
+      "lines": [
+       20,
+       22
+      ],
+      "keywords": [
+       "Commit",
+       "ignored",
+       "unchecked",
+       "discarded",
+       "swallow"
+      ],
+      "why": "tx.Commit's error is discarded, so a failed commit is reported to the caller as success and the claim silently does not exist."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  },
+  {
+   "Case": "visual-added-empty-state",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0,
+   "VisualMatches": [
+    {
+     "Expected": {
+      "id": "empty-state",
+      "path": "web/e2e/orders.spec.ts-snapshots/orders-empty-chromium-linux.png",
+      "keywords": [
+       "no orders",
+       "empty"
+      ],
+      "why": "An added baseline has no before; the line has to say what the new screen is."
+     },
+     "Found": true,
+     "Change": "The orders empty state appears: a cart icon above the heading 'No orders yet', the copy 'When you buy something, it shows up here.', and a 'Browse products' control in a dashed-bordered card. This is explained by the new `OrdersEmpty` component in `web/src/orders/OrdersEmpty.tsx` that renders exactly this markup."
+    }
+   ],
+   "Visual": {
+    "web/e2e/orders.spec.ts-snapshots/orders-empty-chromium-linux.png": "The orders empty state appears: a cart icon above the heading 'No orders yet', the copy 'When you buy something, it shows up here.', and a 'Browse products' control in a dashed-bordered card. This is explained by the new `OrdersEmpty` component in `web/src/orders/OrdersEmpty.tsx` that renders exactly this markup."
+   }
+  },
+  {
+   "Case": "visual-explained-stack",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0,
+   "VisualMatches": [
+    {
+     "Expected": {
+      "id": "stacked",
+      "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+      "keywords": [
+       "stack",
+       "column",
+       "vertical",
+       "below",
+       "beneath",
+       "on top of"
+      ],
+      "why": "The visible change is the fields and the button moving from one row into a column."
+     },
+     "Found": true,
+     "Change": "The login form fields stack vertically, a 'Keep me signed in' checkbox appears below the password field, and the Sign In button becomes full width; these changes match the CSS update in web/src/login/login.css (`.login-form` set to `flex-direction: column` with `align-items: stretch`, `.login-form .remember` changed from `display: none` to `display: flex`, and `.login-form .actions button` given `width: 100%`)."
+    },
+    {
+     "Expected": {
+      "id": "explained-by-css",
+      "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+      "keywords": [
+       "login.css",
+       "flex-direction",
+       "css"
+      ],
+      "why": "The point of the line: the PR's own CSS explains the new baseline."
+     },
+     "Found": true,
+     "Change": "The login form fields stack vertically, a 'Keep me signed in' checkbox appears below the password field, and the Sign In button becomes full width; these changes match the CSS update in web/src/login/login.css (`.login-form` set to `flex-direction: column` with `align-items: stretch`, `.login-form .remember` changed from `display: none` to `display: flex`, and `.login-form .actions button` given `width: 100%`)."
+    }
+   ],
+   "Visual": {
+    "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png": "The login form fields stack vertically, a 'Keep me signed in' checkbox appears below the password field, and the Sign In button becomes full width; these changes match the CSS update in web/src/login/login.css (`.login-form` set to `flex-direction: column` with `align-items: stretch`, `.login-form .remember` changed from `display: none` to `display: flex`, and `.login-form .actions button` given `width: 100%`)."
+   }
+  },
+  {
+   "Case": "visual-hidden-submit",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "web/src/login/login.css",
+     "Line": 27,
+     "Severity": "issue",
+     "Comment": "The new rule hides `.login-form \u003e div:last-child`, but the last `div` inside the form is the `.actions` row holding the submit button; `.remember` is the middle `div`. On any load of the login page the `display: none` therefore removes the \"Sign in\" button from the rendered form (only \"Forgot your password?\" remains below the fields), so a user with valid credentials has no way to submit — while the \"Keep me signed in\" control the comment says is hidden stays visible. The updated snapshot baseline captures exactly this state, so the regression is already baked into the test fixture.",
+     "Confidence": 97,
+     "Headline": "Hide rule targets the actions row, not the remember-me row",
+     "Suggestion": ".login-form .remember {",
+     "Evidence": [
+      "/* Remember-me is hidden until persistent sessions ship. */",
+      ".login-form \u003e div:last-child {",
+      "  display: none;",
+      "  \u003cdiv className=\"actions\"\u003e",
+      "    \u003cbutton type=\"submit\"\u003eSign in\u003c/button\u003e"
+     ],
+     "BlockingRule": null,
+     "Category": "bug"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "hides-the-submit-row",
+      "file": "web/src/login/login.css",
+      "lines": [
+       26,
+       29
+      ],
+      "keywords": [
+       "last-child",
+       "submit",
+       "sign in",
+       "button",
+       "actions"
+      ],
+      "why": "The form's last div is the actions row: the rule meant for remember-me hides the only way to sign in."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0,
+   "VisualMatches": [
+    {
+     "Expected": {
+      "id": "button-gone",
+      "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+      "keywords": [
+       "missing",
+       "gone",
+       "hidden",
+       "removed",
+       "disappear",
+       "no longer",
+       "no sign in",
+       "no submit"
+      ],
+      "why": "The baseline shows the Sign in button gone while remember-me stays: the screenshot says what the selector did."
+     },
+     "Found": true,
+     "Change": "The Sign in button row disappears from the login form while the 'Keep me signed in' checkbox remains visible; this is explained by the new rule in web/src/login/login.css, whose `.login-form \u003e div:last-child` selector targets the actions row rather than the remember-me row."
+    }
+   ],
+   "Visual": {
+    "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png": "The Sign in button row disappears from the login form while the 'Keep me signed in' checkbox remains visible; this is explained by the new rule in web/src/login/login.css, whose `.login-form \u003e div:last-child` selector targets the actions row rather than the remember-me row."
+   }
+  },
+  {
+   "Case": "visual-invisible-noise",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0,
+   "VisualMatches": [
+    {
+     "Expected": {
+      "id": "not-visible",
+      "path": "web/e2e/account.spec.ts-snapshots/sign-in-chromium-linux.png",
+      "keywords": null,
+      "hidden": true,
+      "why": "Nothing in the crop changed that a person could see; a line for it is the noise the user asked to drop."
+     },
+     "Found": true,
+     "Change": "No discernible difference between the before and after images of the sign-in form (heading, subtitle and prefilled email field look identical), and nothing in the PR explains a visual change since the only change renames the retry constant `maxTries` to `maxAttempts` in `internal/retry/retry.go`."
+    }
+   ]
+  },
+  {
+   "Case": "visual-unexplained-drift",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0,
+   "VisualMatches": [
+    {
+     "Expected": {
+      "id": "font-changed",
+      "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+      "keywords": [
+       "font",
+       "serif",
+       "typeface",
+       "type face",
+       "glyph"
+      ],
+      "why": "Every glyph on the page changed face; that is the whole visible change."
+     },
+     "Found": true,
+     "Change": "The sign-in form text (heading, labels, button text) renders in a serif face instead of the previous sans-serif. Nothing in the PR's code touches styles or rendering, so this appears to be rendering drift (font substitution or browser/environment change) captured in the baseline screenshot."
+    },
+    {
+     "Expected": {
+      "id": "unexplained",
+      "path": "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png",
+      "keywords": [
+       "nothing in",
+       "no code",
+       "not explained",
+       "unexplained",
+       "does not explain",
+       "doesn't explain",
+       "unrelated",
+       "drift",
+       "no change in"
+      ],
+      "why": "The point of the feature: a baseline changed with no code to explain it is drift committed as the new truth."
+     },
+     "Found": true,
+     "Change": "The sign-in form text (heading, labels, button text) renders in a serif face instead of the previous sans-serif. Nothing in the PR's code touches styles or rendering, so this appears to be rendering drift (font substitution or browser/environment change) captured in the baseline screenshot."
+    }
+   ],
+   "Visual": {
+    "web/e2e/login.spec.ts-snapshots/login-form-chromium-linux.png": "The sign-in form text (heading, labels, button text) renders in a serif face instead of the previous sans-serif. Nothing in the PR's code touches styles or rendering, so this appears to be rendering drift (font substitution or browser/environment change) captured in the baseline screenshot."
+   }
+  },
+  {
+   "Case": "wrong-error-wrapped",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/store/claims.go",
+     "Line": 23,
+     "Severity": "issue",
+     "Comment": "This change swaps which error each branch wraps, inverting the invariant documented just above: `ErrNoClaim` exists so \"callers distinguish 'nobody owns it' from a database fault with errors.Is\". As written, a database outage or constraint failure now wraps `ErrNoClaim`, so a caller doing `errors.Is(err, store.ErrNoClaim)` concludes the project is unowned and may let another team claim it; conversely a genuine no-owner lookup now wraps the driver error, so the documented \"nobody owns it\" signal never matches. Both branches must be swapped back so `errNoRows` maps to `ErrNoClaim` and every other error is passed through.",
+     "Confidence": 97,
+     "Headline": "Owner() inverts ErrNoClaim and database-fault error wrapping",
+     "Suggestion": "if errors.Is(err, errNoRows) {\n\t\treturn \"\", fmt.Errorf(\"owner of %q: %w\", project, ErrNoClaim)\n\t}\n\tif err != nil {\n\t\treturn \"\", fmt.Errorf(\"owner of %q: %w\", project, err)\n\t}",
+     "Evidence": [
+      "\tif errors.Is(err, errNoRows) {",
+      "\t\treturn \"\", fmt.Errorf(\"owner of %q: %w\", project, err)",
+      "\t}",
+      "\tif err != nil {",
+      "\t\treturn \"\", fmt.Errorf(\"owner of %q: %w\", project, ErrNoClaim)"
+     ],
+     "BlockingRule": null,
+     "Category": "contradiction"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "sentinel-wraps-swapped",
+      "file": "internal/store/claims.go",
+      "lines": [
+       19,
+       23
+      ],
+      "keywords": [
+       "swapped",
+       "swap",
+       "wrong error",
+       "reversed",
+       "backwards",
+       "back to front",
+       "the other way",
+       "ErrNoClaim",
+       "errors.Is"
+      ],
+      "why": "The branches wrap each other's error: errors.Is(err, ErrNoClaim) is now false when the project is genuinely unclaimed and true when the query failed, so a database fault is treated as an unowned project."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  }
+ ],
+ "Seeded": 29,
+ "Caught": 27,
+ "Extra": 1,
+ "Route": "vendor"
+}
