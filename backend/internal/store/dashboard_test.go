@@ -249,6 +249,52 @@ func TestPRCountsCountsPRsNotRuns(t *testing.T) {
 	}
 }
 
+// The Between reads stop at until: a run after it belongs to the next
+// window, never to both.
+func TestBetweenReadsStopAtUntil(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	if first, err := s.FirstActivity(ctx); err != nil || first != nil {
+		t.Fatalf("first on an empty store = %v, %v, want nil", first, err)
+	}
+	prID := upsert(t, s, key, "c1")
+	r1 := run(t, s, prID, "c1", nano(5), "gpt-5.5")
+	attempt(t, s, key, "ok", "", &r1)
+	since := time.Now().Add(-time.Hour)
+	if first, err := s.FirstActivity(ctx); err != nil || first == nil || first.Before(since) {
+		t.Errorf("first = %v, %v, want the run just written", first, err)
+	}
+
+	tot, err := s.TotalsBetween(ctx, since, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tot.Runs != 1 {
+		t.Errorf("runs = %d, want 1 inside the window", tot.Runs)
+	}
+	tot, err = s.TotalsBetween(ctx, since, since.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tot.Runs != 0 || tot.CostNanoUSD != nil {
+		t.Errorf("totals = %+v, want nothing before the run", tot)
+	}
+	reviewed, seen, err := s.PRCountsBetween(ctx, since, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reviewed != 1 || seen != 1 {
+		t.Errorf("reviewed/seen = %d/%d, want 1/1", reviewed, seen)
+	}
+	reviewed, seen, err = s.PRCountsBetween(ctx, since, since.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reviewed != 0 || seen != 0 {
+		t.Errorf("reviewed/seen = %d/%d, want 0/0 before the run", reviewed, seen)
+	}
+}
+
 func TestTotalsByTeamGroupsOnTheAuthenticatedSlug(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

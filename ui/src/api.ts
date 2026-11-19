@@ -162,6 +162,15 @@ export interface Metrics {
     label?: string;
     count: number;
   }[];
+  /** The window before this one, as long and cut at the same time of day,
+   *  for the tiles' change. Null for the month window; absent from an
+   *  older server. */
+  previous?: {
+    since: string;
+    until: string;
+    totals: Totals;
+    prs: { reviewed: number; seen: number };
+  } | null;
 }
 
 export interface Team {

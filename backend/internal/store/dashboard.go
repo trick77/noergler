@@ -73,11 +73,23 @@ const totalsCols = `
 
 // TotalsSince aggregates every team's runs in the window.
 func (s *Store) TotalsSince(ctx context.Context, since time.Time) (Totals, error) {
+	return s.totals(ctx, since, nil)
+}
+
+// TotalsBetween is TotalsSince over [since, until): the metrics page's
+// previous window, compared against the current one.
+func (s *Store) TotalsBetween(ctx context.Context, since, until time.Time) (Totals, error) {
+	return s.totals(ctx, since, &until)
+}
+
+// totals reads [since, until), or from since on when until is nil.
+func (s *Store) totals(ctx context.Context, since time.Time, until *time.Time) (Totals, error) {
 	var t Totals
 	err := s.pool.QueryRow(ctx, spendCTE+`
 		SELECT`+totalsCols+`
 		  FROM spend
-		 WHERE created_at >= $1`, since).
+		 WHERE created_at >= $1
+		   AND ($2::timestamptz IS NULL OR created_at < $2)`, since, until).
 		Scan(&t.Runs, &t.PromptTokens, &t.CachedTokens, &t.CompletionTokens,
 			&t.FindingsPosted, &t.CostNanoUSD, &t.Unpriced, &t.LinesAdded, &t.LinesRemoved,
 			&t.LinesUncounted)
@@ -110,20 +122,42 @@ func (s *Store) TotalsByTeam(ctx context.Context, since time.Time) ([]TeamTotals
 // PR can lack an attempt row in the window. Read off attempts alone,
 // reviewed could exceed seen.
 func (s *Store) PRCountsSince(ctx context.Context, since time.Time) (reviewed, seen int, err error) {
+	return s.prCounts(ctx, since, nil)
+}
+
+// FirstActivity is when this instance first ran, attempted or called
+// anything, nil when it never has: the metrics page's previous window is
+// only whole when it starts after this.
+func (s *Store) FirstActivity(ctx context.Context) (*time.Time, error) {
+	var first *time.Time
+	err := s.pool.QueryRow(ctx, `
+		SELECT LEAST(
+		       (SELECT MIN(created_at) FROM review_runs),
+		       (SELECT MIN(created_at) FROM review_attempts),
+		       (SELECT MIN(created_at) FROM llm_calls))`).Scan(&first)
+	return first, err
+}
+
+// PRCountsBetween is PRCountsSince over [since, until).
+func (s *Store) PRCountsBetween(ctx context.Context, since, until time.Time) (reviewed, seen int, err error) {
+	return s.prCounts(ctx, since, &until)
+}
+
+func (s *Store) prCounts(ctx context.Context, since time.Time, until *time.Time) (reviewed, seen int, err error) {
 	err = s.pool.QueryRow(ctx, `
 		WITH prs AS (
 			SELECT project_key, repo_slug, pr_id, false AS reviewed
 			  FROM review_attempts
-			 WHERE created_at >= $1
+			 WHERE created_at >= $1 AND ($2::timestamptz IS NULL OR created_at < $2)
 			UNION ALL
 			SELECT p.project_key, p.repo_slug, p.pr_id, true
 			  FROM review_runs r
 			  JOIN pull_requests p ON p.id = r.pull_request_id
-			 WHERE r.created_at >= $1
+			 WHERE r.created_at >= $1 AND ($2::timestamptz IS NULL OR r.created_at < $2)
 		)
 		SELECT COUNT(DISTINCT (project_key, repo_slug, pr_id)) FILTER (WHERE reviewed),
 		       COUNT(DISTINCT (project_key, repo_slug, pr_id))
-		  FROM prs`, since).Scan(&reviewed, &seen)
+		  FROM prs`, since, until).Scan(&reviewed, &seen)
 	return reviewed, seen, err
 }
 

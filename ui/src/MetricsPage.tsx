@@ -1,15 +1,26 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Fixes, Metrics, Totals } from "./api";
-import { Chart, Sparkline, stackTops, type Series, type Trend } from "./Chart";
+import type { ReactNode } from "react";
+import {
+  FluidChart,
+  Sparkline,
+  labelEvery,
+  stackTops,
+  type Series,
+  type Trend,
+} from "./Chart";
 import {
   calendarDay,
+  change,
   compact,
   dayMonth,
+  isWeekend,
   money,
   moneyTick,
   num,
   sortedByName,
+  weekdayDay,
   windowTitle,
 } from "./format";
 import { usePoll } from "./usePoll";
@@ -33,6 +44,10 @@ import {
   th,
   thNum,
 } from "./ui";
+
+/** Which chart the pointer is on and which day: every chart draws its
+ *  crosshair on that day, only the one under the pointer its tip. */
+type Hover = { chart: string; day: number } | null;
 
 // Fixed order, never cycled: a team keeps its colour as teams come and go,
 // so a filter that drops one does not repaint the others.
@@ -174,6 +189,10 @@ export function MetricsPage() {
   useEffect(() => writeSpan(span), [span]);
   const [kind, setKind] = useState<Kind>(readKind);
   useEffect(() => writeKind(kind), [kind]);
+  const [hover, setHover] = useState<Hover>(null);
+  // A series id (a team's slug, or the folded tail) the legends and the
+  // team table bring forward in every chart that draws it.
+  const [focus, setFocus] = useState<string | null>(null);
 
   if (!data) {
     return (
@@ -197,18 +216,50 @@ export function MetricsPage() {
   // other days and growing only the rest. A poll of the same window keeps
   // them.
   const drawKey = `${data.since}|${data.until}`;
-  // Day-of-month labels, every few days, so they never collide. Dates rather
-  // than an offset from today: "d-13" says nothing on its own. A rolling
-  // window crosses a month, where plain days read 26, 30, 3, 7: the first
-  // label and the first of each new month carry the month name.
-  const step = window.length > 45 ? 7 : window.length > 20 ? 4 : 3;
-  const label = (day: string, i: number) => {
-    if (i % step !== 0) return "";
-    const prev = i - step;
-    if (prev < 0 || window[prev].slice(0, 7) !== day.slice(0, 7))
-      return dayMonth(day);
-    return String(Number(day.slice(-2)));
+  // Day-of-month labels, as many as the chart's width holds without two
+  // colliding. Dates rather than an offset from today: "d-13" says nothing
+  // on its own. A rolling window crosses a month, where plain days read 26,
+  // 30, 3, 7: the first label and the first of each new month carry the
+  // month name.
+  //
+  // A rolling window's last day is today, still filling: drawn as such
+  // (outlined bars, a dashed last segment) and labelled "today", with no
+  // date label crowding it.
+  const partial = data.window === "rolling";
+  const labels = (width: number) => {
+    const step = labelEvery(width, window.length);
+    return window.map((day, i) => {
+      const last = window.length - 1;
+      if (partial && i === last) return t("metrics.today");
+      if (i % step !== 0 || (partial && last - i < step)) return "";
+      const prev = i - step;
+      if (prev < 0 || window[prev].slice(0, 7) !== day.slice(0, 7))
+        return dayMonth(day);
+      return String(Number(day.slice(-2)));
+    });
   };
+  const weekends = window.map(isWeekend);
+  /** What every chart on the page shares: the weekend bands, today, the
+   *  crosshair's day and the focused team. */
+  const shared = (chart: string) => ({
+    bands: weekends,
+    partialLast: partial,
+    // Every chart keeps the trend label's room, trend or not, so two
+    // stacked in a column put each day at the same x.
+    reserveTrend: true,
+    hover: hover?.day ?? null,
+    // The same day again keeps the state as it is: a new object on every
+    // pointer move re-rendered the whole page per pixel.
+    onHover: (day: number | null) =>
+      setHover((h) =>
+        day === null
+          ? null
+          : h?.chart === chart && h.day === day
+            ? h
+            : { chart, day },
+      ),
+    focus,
+  });
 
   // Cost per day per team. A team's missing day is 0 for the chart's
   // purposes, which is true: it spent nothing.
@@ -308,19 +359,21 @@ export function MetricsPage() {
     );
   const runSeries: Series[] = [
     {
-      id: "reviewed",
+      // "__", like the folded tail: a team slug cannot start with it, so
+      // focusing a team named "failed" never lights up an outcome.
+      id: "__reviewed",
       name: t("metrics.seriesReviewed"),
       color: "var(--color-s1)",
       values: bucket((o) => o === "ok"),
     },
     {
-      id: "skipped",
+      id: "__skipped",
       name: t("metrics.seriesSkipped"),
       color: "var(--color-ochre)",
       values: bucket((o) => o === "skipped"),
     },
     {
-      id: "failed",
+      id: "__failed",
       name: t("metrics.seriesFailed"),
       color: "var(--color-danger)",
       values: bucket((o) => o !== "ok" && o !== "skipped"),
@@ -421,13 +474,13 @@ export function MetricsPage() {
     if (k === "fixes") {
       return [
         {
-          id: "committed",
+          id: "__committed",
           name: t("metrics.fixesCommitted"),
           color: "var(--color-online)",
           values: ofKind("fix_committed"),
         },
         {
-          id: "not_committed",
+          id: "__not_committed",
           name: t("metrics.fixesNotCommitted"),
           color: "var(--color-muted)",
           values: ofKind("fix_other"),
@@ -444,7 +497,6 @@ export function MetricsPage() {
 
   // All teams per day, for the tiles' trends.
   const findingsDaily = perDay(data.daily, (b) => b.findings_posted);
-  const unpricedDaily = perDay(data.daily, (b) => b.unpriced_runs);
   const linesDaily = perDay(data.daily, lineOf);
   const lines = data.totals.lines_added + data.totals.lines_removed;
   const uncounted = data.totals.lines_uncounted_runs;
@@ -481,6 +533,105 @@ export function MetricsPage() {
   };
   const hasTrend = (values: number[]) => values.some((v) => v > 0);
 
+  // The change on the window before, as long and cut at the same hour. A
+  // figure that is not whole on either side has none: a window with
+  // unpriced runs leans low on cost, one with runs from before the LOC
+  // count leans low on lines, and either would print a drop that is not.
+  // A tile that shows a dash has no change beside it either.
+  const prev = data.previous ?? null;
+  const changeOf = (now: number, before: number, whole = true) => {
+    if (prev === null || !whole) return undefined;
+    const c = change(now, before);
+    return c === null ? undefined : (
+      <span title={t("metrics.changeTitle", { count: window.length })}>
+        {c}
+      </span>
+    );
+  };
+  const costChange =
+    prev &&
+    changeOf(
+      Number(data.totals.cost_usd ?? 0),
+      Number(prev.totals.cost_usd ?? 0),
+      data.totals.runs > 0 &&
+        data.totals.cost_usd !== null &&
+        prev.totals.cost_usd !== null &&
+        data.totals.unpriced_runs === 0 &&
+        prev.totals.unpriced_runs === 0,
+    );
+  const reviewedChange =
+    prev && changeOf(data.prs.reviewed, prev.prs.reviewed, data.prs.seen > 0);
+  const findingsChange =
+    prev && changeOf(data.totals.findings_posted, prev.totals.findings_posted);
+  const linesChange =
+    prev &&
+    changeOf(
+      lines,
+      prev.totals.lines_added + prev.totals.lines_removed,
+      data.totals.runs > 0 &&
+        uncounted === 0 &&
+        prev.totals.lines_uncounted_runs === 0,
+    );
+
+  /** tipFor is a chart's hover tip, for the chart under the pointer only:
+   *  the day, each series' value, a stack's total, the trend. */
+  const tipFor = (
+    chart: string,
+    series: Series[],
+    fmt: (v: number) => string,
+    opts: { trend?: Trend; trendLabel?: string; total?: boolean } = {},
+  ) =>
+    hover?.chart !== chart
+      ? undefined
+      : (i: number) => {
+          const rows: TipRow[] = series.map((s) => ({
+            key: s.id,
+            swatch: s.color,
+            name: s.name,
+            value: fmt(s.values[i]),
+          }));
+          if (opts.total && series.length > 1) {
+            rows.push({
+              key: "__total",
+              name: t("metrics.total"),
+              value: fmt(series.reduce((sum, s) => sum + s.values[i], 0)),
+            });
+          }
+          const tv = opts.trend?.values[i];
+          if (opts.trend && tv !== null && tv !== undefined) {
+            rows.push({
+              key: "__trend",
+              line: opts.trend.color,
+              name: opts.trendLabel ?? t("metrics.trend"),
+              value: opts.trend.format(tv),
+            });
+          }
+          const today = partial && i === window.length - 1;
+          return (
+            <ChartTip
+              day={
+                weekdayDay(window[i]) + (today ? ` ${t("metrics.soFar")}` : "")
+              }
+              rows={rows}
+            />
+          );
+        };
+  const costValue = (v: number) => money(v.toFixed(6));
+
+  // A team row, a legend entry: the series id it focuses. A team past the
+  // charted ones lives in the folded tail.
+  const seriesOf = (slug: string) => (charted.includes(slug) ? slug : "__rest");
+  const colorOf = (slug: string) => {
+    const i = charted.indexOf(slug);
+    return SERIES_COLORS[i < 0 ? SERIES_COLORS.length - 1 : i];
+  };
+  const teamCosts = data.by_team.map((r) =>
+    r.cost_usd === null ? 0 : Number(r.cost_usd),
+  );
+  const maxTeamCost = Math.max(...teamCosts, 0);
+  const sumOf = (count: (r: Metrics["by_team"][number]) => number) =>
+    data.by_team.reduce((n, r) => n + count(r), 0);
+
   return (
     <div className={page}>
       <div className={column}>
@@ -505,18 +656,30 @@ export function MetricsPage() {
         </div>
 
         <div className={stale ? "opacity-40 transition-opacity" : ""}>
-          <Tiles cols={5}>
+          <Tiles cols={4}>
             {/* On an instance that has not run yet, "unpriced" would claim the
               gateway declined to price something. Nothing ran; that is a
               dash. "unpriced" is reserved for runs that actually happened
-              and came back without a price. */}
+              and came back without a price.
+              Unpriced runs are a note on the cost, not a tile (user,
+              2026-11-19): the tile read 0 nearly always, and the cost is
+              what they make incomplete. */}
             <Tile
               label={t("metrics.cost")}
               value={data.totals.runs === 0 ? "—" : money(data.totals.cost_usd)}
+              warn={
+                data.totals.unpriced_runs > 0
+                  ? t("metrics.unpricedRuns", {
+                      count: data.totals.unpriced_runs,
+                    })
+                  : undefined
+              }
+              aside={costChange}
             >
               {costTop > 0 && (
                 <div className="mt-2">
                   <Sparkline
+                    partial={partial}
                     values={costTotals}
                     label={t("metrics.costTrend")}
                   />
@@ -547,11 +710,13 @@ export function MetricsPage() {
                 )
               }
               note={data.prs.seen === 0 ? undefined : t("metrics.prsNote")}
+              aside={reviewedChange}
             >
               {/* A flat line of zeros is a line that says nothing. */}
               {hasTrend(runSeries[0].values) && (
                 <div className="mt-2">
                   <Sparkline
+                    partial={partial}
                     values={runSeries[0].values}
                     label={t("metrics.reviewedTrend")}
                   />
@@ -561,10 +726,12 @@ export function MetricsPage() {
             <Tile
               label={t("metrics.findings")}
               value={num(data.totals.findings_posted)}
+              aside={findingsChange}
             >
               {hasTrend(findingsDaily) && (
                 <div className="mt-2">
                   <Sparkline
+                    partial={partial}
                     values={findingsDaily}
                     label={t("metrics.findingsTrend")}
                   />
@@ -580,6 +747,7 @@ export function MetricsPage() {
               them a note, never a firm number that silently reads low. */}
             <Tile
               label={t("metrics.linesReviewed")}
+              aside={linesChange}
               note={
                 uncounted > 0 && uncounted < data.totals.runs
                   ? t("metrics.linesUncounted", { count: uncounted })
@@ -596,148 +764,181 @@ export function MetricsPage() {
               {hasTrend(linesDaily) && (
                 <div className="mt-2">
                   <Sparkline
+                    partial={partial}
                     values={linesDaily}
                     label={t("metrics.linesTrend")}
                   />
                 </div>
               )}
             </Tile>
-            <Tile
-              label={t("metrics.unpriced")}
-              value={data.totals.unpriced_runs}
-              note={t("metrics.runsNote")}
-            >
-              {hasTrend(unpricedDaily) && (
-                <div className="mt-2">
-                  <Sparkline
-                    values={unpricedDaily}
-                    label={t("metrics.unpricedTrend")}
-                  />
-                </div>
-              )}
-            </Tile>
           </Tiles>
 
-          {/* Throughput, cost, LOC (user, 2026-11-11), then fix requests
-            (user, 2026-11-13). */}
-          <p className={eyebrow}>{t("metrics.runsPerDay")}</p>
-          <Card title={t("metrics.throughput")}>
-            {runTop === 0 ? (
-              <Empty>{t("metrics.noRuns")}</Empty>
-            ) : (
-              <>
-                <Chart
-                  key={drawKey}
-                  series={runSeries}
-                  trend={runTrend}
-                  width={1290}
-                  height={180}
-                  mark="bar"
-                  ticks={runTicks}
-                  xLabels={window.map(label)}
-                  label={t("metrics.runsChart", { title })}
-                />
-                <Legend
-                  series={runSeries}
-                  trend={trendColor}
-                  trendLabel={t("metrics.trendReviewed")}
-                />
-              </>
-            )}
-          </Card>
+          {/* Throughput, cost, LOC (user, 2026-11-11), then activity
+            (user, 2026-11-13), two to a row from xl up (user, 2026-11-19):
+            the four stacked ran four screens long. What each counts per
+            day is the card's note, not an eyebrow above it. Every chart is
+            one height, so the two in a row end level. */}
+          <div className="mt-5 grid grid-cols-[minmax(0,1fr)] gap-x-5 xl:grid-cols-2">
+            <Card
+              className="min-w-0"
+              title={t("metrics.throughput")}
+              note={t("metrics.runsPerDay")}
+            >
+              {runTop === 0 ? (
+                <Empty>{t("metrics.noRuns")}</Empty>
+              ) : (
+                <>
+                  <FluidChart
+                    key={drawKey}
+                    {...shared("runs")}
+                    series={runSeries}
+                    trend={runTrend}
+                    height={CHART_H}
+                    mark="bar"
+                    ticks={runTicks}
+                    xLabels={labels}
+                    label={t("metrics.runsChart", { title })}
+                    tip={tipFor("runs", runSeries, num, {
+                      trend: runTrend,
+                      trendLabel: t("metrics.trendReviewed"),
+                      total: true,
+                    })}
+                  />
+                  <Legend
+                    series={runSeries}
+                    trend={trendColor}
+                    trendLabel={t("metrics.trendReviewed")}
+                  />
+                </>
+              )}
+            </Card>
 
-          <p className={eyebrow}>{t("metrics.costPerDay")}</p>
-          <Card title={t("metrics.spend")}>
-            {costTop === 0 ? (
-              <Empty>{t("metrics.noPriced")}</Empty>
-            ) : (
-              <>
-                <Chart
-                  key={drawKey}
-                  series={costSeries}
-                  trend={costTrend}
-                  width={1290}
-                  height={200}
-                  mark="line"
-                  ticks={costTicks}
-                  xLabels={window.map(label)}
-                  format={moneyTick(costTicks)}
-                  label={t("metrics.costChart", { title })}
-                />
-                <Legend series={costSeries} trend={trendColor} />
-              </>
-            )}
-          </Card>
+            <Card
+              className="min-w-0"
+              title={t("metrics.spend")}
+              note={t("metrics.costPerDay")}
+            >
+              {costTop === 0 ? (
+                <Empty>{t("metrics.noPriced")}</Empty>
+              ) : (
+                <>
+                  <FluidChart
+                    key={drawKey}
+                    {...shared("cost")}
+                    series={costSeries}
+                    trend={costTrend}
+                    height={CHART_H}
+                    mark="line"
+                    ticks={costTicks}
+                    xLabels={labels}
+                    format={moneyTick(costTicks)}
+                    label={t("metrics.costChart", { title })}
+                    tip={tipFor("cost", costSeries, costValue, {
+                      trend: costTrend,
+                    })}
+                  />
+                  <Legend
+                    series={costSeries}
+                    trend={trendColor}
+                    focus={focus}
+                    onFocus={setFocus}
+                  />
+                </>
+              )}
+            </Card>
 
-          <p className={eyebrow}>{t("metrics.linesPerDay")}</p>
-          <Card
-            title={t("metrics.codeVolume")}
-            note={
-              uncounted > 0 && !linesNone
-                ? t("metrics.linesUncounted", { count: uncounted })
-                : undefined
-            }
-          >
-            {linesNone ? (
-              <Empty>{t("metrics.linesNotCounted")}</Empty>
-            ) : linesTop === 0 ? (
-              <Empty>{t("metrics.noLines")}</Empty>
-            ) : (
-              <>
-                <Chart
-                  key={drawKey}
-                  series={linesSeries}
-                  trend={linesTrend}
-                  width={1290}
-                  height={200}
-                  mark="line"
-                  ticks={linesTicks}
-                  xLabels={window.map(label)}
-                  format={compact}
-                  label={t("metrics.linesChart", { title })}
-                />
-                <Legend series={linesSeries} trend={trendColor} />
-              </>
-            )}
-          </Card>
+            <Card
+              className="min-w-0"
+              title={t("metrics.codeVolume")}
+              note={
+                uncounted > 0 && !linesNone ? (
+                  <>
+                    {t("metrics.linesPerDay")}
+                    <Sep />
+                    {t("metrics.linesUncounted", { count: uncounted })}
+                  </>
+                ) : (
+                  t("metrics.linesPerDay")
+                )
+              }
+            >
+              {linesNone ? (
+                <Empty>{t("metrics.linesNotCounted")}</Empty>
+              ) : linesTop === 0 ? (
+                <Empty>{t("metrics.noLines")}</Empty>
+              ) : (
+                <>
+                  <FluidChart
+                    key={drawKey}
+                    {...shared("lines")}
+                    series={linesSeries}
+                    trend={linesTrend}
+                    height={CHART_H}
+                    mark="line"
+                    ticks={linesTicks}
+                    xLabels={labels}
+                    format={compact}
+                    label={t("metrics.linesChart", { title })}
+                    tip={tipFor("lines", linesSeries, compact, {
+                      trend: linesTrend,
+                    })}
+                  />
+                  <Legend
+                    series={linesSeries}
+                    trend={trendColor}
+                    focus={focus}
+                    onFocus={setFocus}
+                  />
+                </>
+              )}
+            </Card>
 
-          <p className={eyebrow}>{t("metrics.activityPerDay")}</p>
-          <Card
-            title={t("metrics.activity")}
-            note={t(`metrics.kindNote.${kind}`)}
-            right={
-              <FilterTrack
-                label={t("metrics.activityKind")}
-                options={KINDS.map((k) => ({
-                  value: k,
-                  label: t(`metrics.kind.${k}`),
-                }))}
-                value={kind}
-                onChange={setKind}
-              />
-            }
-          >
-            {actTop === 0 ? (
-              <Empty>{t("metrics.noActivity")}</Empty>
-            ) : (
-              <>
-                {/* Keyed by the kind too: another kind is another chart,
+            <Card
+              className="min-w-0"
+              title={t("metrics.activity")}
+              note={t(`metrics.kindNote.${kind}`)}
+              right={
+                <FilterTrack
+                  label={t("metrics.activityKind")}
+                  options={KINDS.map((k) => ({
+                    value: k,
+                    label: t(`metrics.kind.${k}`),
+                  }))}
+                  value={kind}
+                  onChange={setKind}
+                />
+              }
+            >
+              {actTop === 0 ? (
+                <Empty>{t("metrics.noActivity")}</Empty>
+              ) : (
+                <>
+                  {/* Keyed by the kind too: another kind is another chart,
                     drawn in afresh, never one kind's bars grown into the
                     next. */}
-                <Chart
-                  key={`${drawKey}|${kind}`}
-                  series={actSeries}
-                  width={1290}
-                  height={180}
-                  mark="bar"
-                  ticks={actTicks}
-                  xLabels={window.map(label)}
-                  label={t("metrics.activityChart", { kind: kindLabel, title })}
-                />
-                <Legend series={actSeries} />
-              </>
-            )}
-          </Card>
+                  <FluidChart
+                    key={`${drawKey}|${kind}`}
+                    {...shared("activity")}
+                    series={actSeries}
+                    height={CHART_H}
+                    mark="bar"
+                    ticks={actTicks}
+                    xLabels={labels}
+                    label={t("metrics.activityChart", {
+                      kind: kindLabel,
+                      title,
+                    })}
+                    tip={tipFor("activity", actSeries, num, { total: true })}
+                  />
+                  <Legend
+                    series={actSeries}
+                    focus={focus}
+                    onFocus={kind === "fixes" ? undefined : setFocus}
+                  />
+                </>
+              )}
+            </Card>
+          </div>
 
           <p className={eyebrow}>{t("metrics.byTeam")}</p>
           <Card>
@@ -787,34 +988,89 @@ export function MetricsPage() {
                       data.by_team,
                       (r) => r.team_name,
                       (r) => r.team,
-                    ).map((row) => (
-                      <tr key={row.team}>
-                        <td className={td} title={row.team}>
-                          {row.team_name}
-                        </td>
-                        <td className={tdNum}>{row.runs}</td>
-                        <td className={tdNum}>{row.findings_posted}</td>
-                        <td className={tdNum}>{row.tasks ?? 0}</td>
-                        <td
-                          className={tdNum + hint}
-                          title={fixesTitle(row.fixes)}
+                    ).map((row) => {
+                      const cost =
+                        row.cost_usd === null ? 0 : Number(row.cost_usd);
+                      return (
+                        <tr
+                          key={row.team}
+                          onMouseEnter={() => setFocus(seriesOf(row.team))}
+                          onMouseLeave={() => setFocus(null)}
+                          className="hover:bg-active/50"
                         >
-                          {row.fixes.requested}
-                        </td>
-                        <td className={tdNum}>{row.fixes.committed}</td>
-                        <td className={tdNum}>{row.engagements ?? 0}</td>
-                        <td className={tdNum + hint} title={linesTitle(row)}>
-                          {teamLines(row)}
-                        </td>
+                          <td className={td} title={row.team}>
+                            {/* The team's hue on every chart, so a row and
+                                its line are found together. */}
+                            <i
+                              aria-hidden
+                              className="mr-2 inline-block h-2.5 w-2.5 rounded-[2px] align-[-1px]"
+                              style={{ background: colorOf(row.team) }}
+                            />
+                            {row.team_name}
+                          </td>
+                          <Count n={row.runs} />
+                          <Count n={row.findings_posted} />
+                          <Count n={row.tasks ?? 0} />
+                          <Count
+                            n={row.fixes.requested}
+                            title={fixesTitle(row.fixes)}
+                          />
+                          <Count n={row.fixes.committed} />
+                          <Count n={row.engagements ?? 0} />
+                          <td className={tdNum + hint} title={linesTitle(row)}>
+                            {teamLines(row)}
+                          </td>
+                          <td
+                            className={tdNum + hint}
+                            title={`${t("metrics.tokensIn")}: ${num(row.prompt_tokens)}\n${t("metrics.tokensOut")}: ${num(row.completion_tokens)}`}
+                          >
+                            {/* The share of the window's spend at a glance,
+                                against the biggest team. */}
+                            {maxTeamCost > 0 && (
+                              <span
+                                aria-hidden
+                                className="mr-2.5 inline-block h-1 w-16 overflow-hidden rounded-full bg-active align-middle"
+                              >
+                                <span
+                                  className="block h-1 rounded-full"
+                                  style={{
+                                    width: `${(cost / maxTeamCost) * 100}%`,
+                                    background: colorOf(row.team),
+                                  }}
+                                />
+                              </span>
+                            )}
+                            {money(row.cost_usd)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  {/* Every team summed. Runs, findings, LOC and cost are
+                      the server's own totals; the rest add up here, and
+                      are whole counts that do. */}
+                  {data.by_team.length > 1 && (
+                    <tfoot>
+                      <tr className="font-medium">
+                        <td className={tdFoot}>{t("metrics.allTeams")}</td>
+                        <Count n={data.totals.runs} foot />
+                        <Count n={data.totals.findings_posted} foot />
+                        <Count n={sumOf((r) => r.tasks ?? 0)} foot />
+                        <Count n={sumOf((r) => r.fixes.requested)} foot />
+                        <Count n={sumOf((r) => r.fixes.committed)} foot />
+                        <Count n={sumOf((r) => r.engagements ?? 0)} foot />
                         <td
-                          className={tdNum + hint}
-                          title={`${t("metrics.tokensIn")}: ${num(row.prompt_tokens)}\n${t("metrics.tokensOut")}: ${num(row.completion_tokens)}`}
+                          className={tdNumFoot + hint}
+                          title={linesTitle(data.totals)}
                         >
-                          {money(row.cost_usd)}
+                          {teamLines(data.totals)}
+                        </td>
+                        <td className={tdNumFoot}>
+                          {money(data.totals.cost_usd)}
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
+                    </tfoot>
+                  )}
                 </table>
               </div>
             )}
@@ -825,33 +1081,133 @@ export function MetricsPage() {
   );
 }
 
+/** One chart height for all four, so two cards in a row end level. */
+const CHART_H = 200;
+
+const tdFoot = td + " border-t border-border text-ink";
+const tdNumFoot = tdNum + " border-t border-border text-ink";
+
+/** Count is a table count; a zero steps back to faint, so the figures
+ *  that are there stand out from the ones that are not. */
+function Count({
+  n,
+  title,
+  foot = false,
+}: {
+  n: number;
+  title?: string;
+  foot?: boolean;
+}) {
+  const base = foot ? tdNumFoot : tdNum;
+  return (
+    <td
+      className={
+        base + (title ? hint : "") + (n === 0 && !foot ? " text-faint" : "")
+      }
+      title={title}
+    >
+      {num(n)}
+    </td>
+  );
+}
+
+type TipRow = {
+  key: string;
+  name: string;
+  value: string;
+  /** A series' square, or a trend's line; neither for a total. */
+  swatch?: string;
+  line?: string;
+};
+
+/** ChartTip is a chart's hover tip: the day, then one row per figure. */
+function ChartTip({ day, rows }: { day: string; rows: TipRow[] }) {
+  return (
+    <>
+      <div className="mb-1 font-medium whitespace-nowrap text-ink">{day}</div>
+      {rows.map((r) => (
+        <div
+          key={r.key}
+          className="flex items-center gap-2 leading-[1.6] whitespace-nowrap"
+        >
+          <i
+            aria-hidden
+            className={
+              "inline-block shrink-0 " +
+              (r.line
+                ? "h-[2px] w-3.5 rounded-full"
+                : "h-2.5 w-2.5 rounded-[2px]")
+            }
+            style={{ background: r.swatch ?? r.line ?? "transparent" }}
+          />
+          <span className="mr-3.5 flex-1">{r.name}</span>
+          <span className="font-mono text-[11.5px] tabular-nums text-ink">
+            {r.value}
+          </span>
+        </div>
+      ))}
+    </>
+  );
+}
+
 /** A legend is always present for two or more series, so identity is never
  *  carried by colour alone; a trend's line is always named, since a lone
- *  series with a second line beside it is two things to tell apart. */
+ *  series with a second line beside it is two things to tell apart.
+ *  Team legends focus a team on hover or keyboard focus: its series steps
+ *  forward in every chart, the others back. */
 function Legend({
   series,
   trend,
   trendLabel,
+  focus = null,
+  onFocus,
 }: {
   series: Series[];
   trend?: string;
   /** What the trend averages, when it is not the whole chart. */
   trendLabel?: string;
+  focus?: string | null;
+  onFocus?: (id: string | null) => void;
 }) {
   const { t } = useTranslation();
   if (series.length < 2 && !trend) return null;
+  const swatch = (s: Series): ReactNode => (
+    <i
+      aria-hidden
+      className="inline-block h-2.5 w-2.5 rounded-[2px]"
+      style={{ background: s.color }}
+    />
+  );
   return (
     <div className="mt-2.5 flex flex-wrap gap-4 text-[12.5px] text-muted">
-      {series.map((s) => (
-        <span key={s.id} className="inline-flex items-center gap-1.5">
-          <i
-            aria-hidden
-            className="inline-block h-2.5 w-2.5 rounded-[2px]"
-            style={{ background: s.color }}
-          />
-          {s.name}
-        </span>
-      ))}
+      {series.map((s) =>
+        onFocus ? (
+          <button
+            key={s.id}
+            type="button"
+            onMouseEnter={() => onFocus(s.id)}
+            onMouseLeave={() => onFocus(null)}
+            onFocus={() => onFocus(s.id)}
+            onBlur={() => onFocus(null)}
+            className={
+              "inline-flex items-center gap-1.5 rounded-[4px] transition-opacity duration-[120ms] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent " +
+              (focus === s.id
+                ? "text-ink"
+                : focus !== null && series.some((o) => o.id === focus)
+                  ? "opacity-45"
+                  : "hover:text-ink")
+            }
+          >
+            {swatch(s)}
+            {s.name}
+          </button>
+        ) : (
+          <span key={s.id} className="inline-flex items-center gap-1.5">
+            {swatch(s)}
+            {s.name}
+          </span>
+        ),
+      )}
       {trend && (
         <span className="inline-flex items-center gap-1.5">
           <i

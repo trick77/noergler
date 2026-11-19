@@ -44,6 +44,9 @@ type DashboardStore interface {
 	TotalsSince(ctx context.Context, since time.Time) (store.Totals, error)
 	TotalsByTeam(ctx context.Context, since time.Time) ([]store.TeamTotals, error)
 	PRCountsSince(ctx context.Context, since time.Time) (reviewed, seen int, err error)
+	TotalsBetween(ctx context.Context, since, until time.Time) (store.Totals, error)
+	PRCountsBetween(ctx context.Context, since, until time.Time) (reviewed, seen int, err error)
+	FirstActivity(ctx context.Context) (*time.Time, error)
 	DailyByTeam(ctx context.Context, since time.Time) ([]store.Bucket, error)
 	DailyAttempts(ctx context.Context, since time.Time) ([]store.AttemptBucket, error)
 	ActivityByTeam(ctx context.Context) ([]store.TeamActivity, error)
@@ -426,6 +429,19 @@ type metricsBody struct {
 	// Activity is noergler's acts per day, team and kind over the window,
 	// each act under one kind; days, teams and kinds without one are absent.
 	Activity []activityDayBody `json:"activity_daily"`
+	// Previous is the window before this one, cut at the same time of day
+	// (now minus the window's length): a whole day against today's few
+	// hours read every tile as a drop. Null for the month window, whose
+	// previous month is whole against a partial one, and when the window
+	// before starts ahead of the instance's first row.
+	Previous *previousBody `json:"previous"`
+}
+
+type previousBody struct {
+	Since  time.Time    `json:"since"`
+	Until  time.Time    `json:"until"`
+	Totals totalsBody   `json:"totals"`
+	PRs    prCountsBody `json:"prs"`
 }
 
 func toTotals(t store.Totals) totalsBody {
@@ -510,8 +526,9 @@ const trendLead = 6
 func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	since := monthStart(now)
+	days := 0
 	if raw := r.URL.Query().Get("days"); raw != "" {
-		days, _ := strconv.Atoi(raw)
+		days, _ = strconv.Atoi(raw)
 		if days <= 0 || days > 90 {
 			days = 14
 		}
@@ -538,6 +555,30 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 	reviewedPRs, seenPRs, err := st.PRCountsSince(ctx, since)
 	if failed("PRCountsSince", err) {
 		return
+	}
+	var previous *previousBody
+	p := previousBody{Since: since.AddDate(0, 0, -days), Until: now.AddDate(0, 0, -days)}
+	// A previous window reaching back before the instance's first row
+	// holds only its last few days: every tile would read a surge.
+	whole := false
+	if days > 0 {
+		first, err := st.FirstActivity(ctx)
+		if failed("FirstActivity", err) {
+			return
+		}
+		whole = first != nil && !first.After(p.Since)
+	}
+	if whole {
+		prevTotals, err := st.TotalsBetween(ctx, p.Since, p.Until)
+		if failed("TotalsBetween", err) {
+			return
+		}
+		p.PRs.Reviewed, p.PRs.Seen, err = st.PRCountsBetween(ctx, p.Since, p.Until)
+		if failed("PRCountsBetween", err) {
+			return
+		}
+		p.Totals = toTotals(prevTotals)
+		previous = &p
 	}
 	// The daily series start trendLead days early: the page's 7-day trend
 	// needs the six days before the window's first, or its line would start
@@ -621,6 +662,7 @@ func (d Deps) metrics(w http.ResponseWriter, r *http.Request) {
 		Attempts:  make([]outcomeDayBody, 0, len(attempts)),
 		Breakdown: make([]breakdownBody, 0, len(breakdown)),
 		Activity:  activity,
+		Previous:  previous,
 	}
 	nameOf := d.teamNamer()
 	row := func(slug string, t store.Totals) teamTotalsBody {

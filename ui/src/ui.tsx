@@ -315,16 +315,30 @@ export function Tile({
   label,
   value,
   note,
+  warn,
+  aside,
   children,
 }: {
   label: string;
   value: ReactNode;
   note?: string;
+  /** Something about the value that needs a look (runs left unpriced):
+   *  ochre, the skip hue, never red. */
+  warn?: string;
+  /** Small text right of the label, e.g. the change on the window before. */
+  aside?: ReactNode;
   children?: ReactNode;
 }) {
+  // The aside is placed, and comes last: the value stays the label's next
+  // element, which is how the label names it.
   return (
-    <div className="border-r border-b border-border px-3.5 py-3">
-      <div className="text-[11px] font-medium tracking-[.12em] text-faint uppercase">
+    <div className="relative min-w-0 border-r border-b border-border px-3.5 py-3">
+      <div
+        className={
+          "text-[11px] font-medium tracking-[.12em] text-faint uppercase" +
+          (aside ? " pr-14" : "")
+        }
+      >
         {label}
       </div>
       <div className="mt-1 font-serif text-[21px] leading-tight tabular-nums text-ink sm:text-[26px]">
@@ -334,8 +348,18 @@ export function Tile({
             {note}
           </small>
         )}
+        {warn && (
+          <small className="ml-1.5 font-sans text-[12.5px] text-ochre">
+            {warn}
+          </small>
+        )}
       </div>
       {children}
+      {aside && (
+        <div className="absolute top-3 right-3.5 font-mono text-[11.5px] leading-[16.5px] whitespace-nowrap text-muted">
+          {aside}
+        </div>
+      )}
     </div>
   );
 }

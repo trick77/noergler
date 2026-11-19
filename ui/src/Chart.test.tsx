@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Chart, Sparkline, monotonePath } from "./Chart";
 import { windowTitle } from "./format";
@@ -145,7 +145,17 @@ describe("Chart", () => {
         <Chart
           series={[
             { id: "a", name: "a", color: "var(--color-s1)", values: [1, 2] },
-            { id: "b", name: "b", color: "var(--color-s2)", values: [2, 1] },
+            // A lone line is shaded; several are not (next test).
+            ...(mark === "line"
+              ? []
+              : [
+                  {
+                    id: "b",
+                    name: "b",
+                    color: "var(--color-s2)",
+                    values: [2, 1],
+                  },
+                ]),
           ]}
           width={200}
           height={100}
@@ -216,6 +226,7 @@ describe("Chart", () => {
         ]}
         width={200}
         height={100}
+        mark="area"
         ticks={[0, 4]}
         label="lines"
       />,
@@ -229,6 +240,163 @@ describe("Chart", () => {
       "chart-line chart-stroke",
       "chart-line chart-stroke",
     ]);
+  });
+
+  // Several lines carry no shade: overlapping shades read as murk.
+  it("leaves several lines unshaded", () => {
+    const { container } = render(
+      <Chart
+        series={[
+          { id: "a", name: "a", color: "var(--color-s1)", values: [1, 2] },
+          { id: "b", name: "b", color: "var(--color-s2)", values: [2, 1] },
+        ]}
+        width={200}
+        height={100}
+        ticks={[0, 4]}
+        label="lines"
+      />,
+    );
+    expect(svg(container).querySelectorAll("path.chart-fill")).toHaveLength(0);
+  });
+
+  // Today is not over: its bar is an outline and its line segment dashed,
+  // never a solid drop.
+  it("draws a still-filling last bucket as unfinished", () => {
+    const bars = render(
+      <Chart
+        series={s1([3, 3, 1])}
+        width={300}
+        height={120}
+        mark="bar"
+        ticks={[0, 4]}
+        label="bars"
+        partialLast
+      />,
+    );
+    const rects = Array.from(
+      svg(bars.container).querySelectorAll("rect.chart-bar"),
+    );
+    expect(rects.map((r) => r.getAttribute("fill"))).toEqual([
+      expect.stringMatching(/^url\(/),
+      expect.stringMatching(/^url\(/),
+      "none",
+    ]);
+    bars.unmount();
+
+    const lines = render(
+      <Chart
+        series={s1([3, 3, 1])}
+        width={300}
+        height={120}
+        ticks={[0, 4]}
+        label="line"
+        partialLast
+      />,
+    );
+    const dashed = Array.from(
+      svg(lines.container).querySelectorAll("path[stroke-dasharray]"),
+    );
+    expect(dashed).toHaveLength(1);
+  });
+
+  it("bands the buckets it is told to, behind the marks", () => {
+    const { container } = render(
+      <Chart
+        series={s1([1, 1, 1, 1])}
+        width={300}
+        height={120}
+        mark="bar"
+        ticks={[0, 2]}
+        label="bars"
+        bands={[false, true, true, false]}
+      />,
+    );
+    const banded = Array.from(svg(container).querySelectorAll("rect")).filter(
+      (r) => r.getAttribute("fill") === "var(--color-active)",
+    );
+    expect(banded).toHaveLength(2);
+  });
+
+  // A hovered day draws its crosshair; the tip shows only where one is
+  // passed, beside the svg rather than in it.
+  it("draws the crosshair on the hovered day and the tip beside it", () => {
+    const { container } = render(
+      <Chart
+        series={s1([1, 2, 3])}
+        width={300}
+        height={120}
+        mark="bar"
+        ticks={[0, 4]}
+        label="bars"
+        hover={1}
+        onHover={() => {}}
+        tip={(i) => <span>day {i}</span>}
+      />,
+    );
+    expect(svg(container).querySelectorAll("line")).toHaveLength(
+      // two grid lines, the axis, the crosshair
+      4,
+    );
+    // The tip is placed from the pointer, so it shows once one moved.
+    expect(container.textContent).not.toContain("day 1");
+    const catcher = svg(container).querySelector(
+      'rect[fill="transparent"]',
+    ) as Element;
+    fireEvent.pointerMove(catcher, { clientX: 0 });
+    expect(container.textContent).toContain("day 1");
+  });
+
+  // Moving within one day reports it once: every pixel used to re-render
+  // the whole page.
+  it("reports a hovered day only when it changes", () => {
+    const onHover = vi.fn();
+    const { container } = render(
+      <Chart
+        series={s1([1, 2, 3])}
+        width={300}
+        height={120}
+        mark="bar"
+        ticks={[0, 4]}
+        label="bars"
+        onHover={onHover}
+      />,
+    );
+    const catcher = svg(container).querySelector(
+      'rect[fill="transparent"]',
+    ) as Element;
+    fireEvent.pointerMove(catcher, { clientX: 1 });
+    fireEvent.pointerMove(catcher, { clientX: 2 });
+    expect(onHover).toHaveBeenCalledTimes(1);
+    fireEvent.pointerLeave(catcher);
+    expect(onHover).toHaveBeenLastCalledWith(null);
+  });
+
+  // A focused series steps forward; one the chart does not draw changes
+  // nothing.
+  it("dims the other series only when it draws the focused one", () => {
+    const series = [
+      { id: "a", name: "a", color: "var(--color-s1)", values: [1, 2] },
+      { id: "b", name: "b", color: "var(--color-s2)", values: [2, 1] },
+    ];
+    const opacities = (focus: string) => {
+      const { container, unmount } = render(
+        <Chart
+          series={series}
+          width={200}
+          height={100}
+          ticks={[0, 4]}
+          label="lines"
+          focus={focus}
+        />,
+      );
+      const out = Array.from(
+        svg(container).querySelectorAll("path.chart-line"),
+      ).map((p) => p.getAttribute("stroke-opacity"));
+      unmount();
+      return out;
+    };
+    expect(opacities("b")).toEqual(["0.15", "1"]);
+    expect(opacities("payments")).toEqual(["1", "1"]);
   });
 
   // The stagger is the first draw's: a bar that turns up on a poll grows

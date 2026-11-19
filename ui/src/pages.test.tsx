@@ -692,12 +692,101 @@ describe("MetricsPage", () => {
     serve({ metrics });
     render(<MetricsPage />);
 
-    // Twice on purpose: the headline tile and the by-team row. The point
-    // is that the figure is the priced sum in both places.
-    expect(await screen.findAllByText("$1.25")).toHaveLength(2);
-    expect(await screen.findByText("Unpriced")).toBeDefined();
-    // The unpriced count stands on its own rather than being folded in.
-    expect(await screen.findAllByText("3")).not.toHaveLength(0);
+    // The cost is the priced sum, the unpriced runs a note beside it
+    // rather than folded in.
+    const value = (await screen.findAllByText("Cost"))[0].nextElementSibling;
+    expect(value?.textContent).toBe("$1.253 runs unpriced");
+    expect(screen.queryByText("Unpriced")).toBeNull();
+  });
+
+  it("leaves the unpriced note off when every run was priced", async () => {
+    serve({
+      metrics: {
+        ...metrics,
+        totals: { ...metrics.totals, unpriced_runs: 0 },
+      },
+    });
+    render(<MetricsPage />);
+
+    const value = (await screen.findAllByText("Cost"))[0].nextElementSibling;
+    expect(value?.textContent).toBe("$1.25");
+  });
+
+  // The change on the window before, only where both sides are whole.
+  it("shows each tile's change on the window before", async () => {
+    const totals = {
+      ...metrics.totals,
+      unpriced_runs: 0,
+      lines_uncounted_runs: 0,
+    };
+    serve({
+      metrics: {
+        ...metrics,
+        totals,
+        previous: {
+          since: "2026-08-20T00:00:00Z",
+          until: "2026-09-19T10:00:00Z",
+          totals: {
+            ...totals,
+            cost_usd: "1.000",
+            findings_posted: totals.findings_posted * 2,
+            lines_added: 0,
+            lines_removed: 0,
+          },
+          prs: { reviewed: metrics.prs.reviewed, seen: 9 },
+        },
+      },
+    });
+    render(<MetricsPage />);
+
+    expect(await screen.findByText("+25 %")).toBeDefined();
+    // The change never stands between a tile's label and its value.
+    const cost = screen.getAllByText("Cost")[0].nextElementSibling;
+    expect(cost?.textContent).toBe("$1.25");
+    expect(screen.getByText("−50 %")).toBeDefined();
+    expect(screen.getByText("±0 %")).toBeDefined();
+    // No lines before: no percentage to print.
+    expect(screen.getAllByTitle(/before, up to the same time/)).toHaveLength(3);
+  });
+
+  // A dash is no figure: nothing to compare.
+  it("shows no change beside a dash", async () => {
+    serve({
+      metrics: {
+        ...metrics,
+        prs: { reviewed: 0, seen: 0 },
+        previous: {
+          since: "2026-08-20T00:00:00Z",
+          until: "2026-09-19T10:00:00Z",
+          totals: metrics.totals,
+          prs: { reviewed: 12, seen: 20 },
+        },
+      },
+    });
+    render(<MetricsPage />);
+
+    const value = (await screen.findByText("Reviewed")).nextElementSibling;
+    expect(value?.textContent).toBe("—");
+    expect(screen.queryByText("−100 %")).toBeNull();
+  });
+
+  it("shows no change where the previous window is not whole", async () => {
+    serve({
+      metrics: {
+        ...metrics,
+        previous: {
+          since: "2026-08-20T00:00:00Z",
+          until: "2026-09-19T10:00:00Z",
+          totals: { ...metrics.totals, cost_usd: "1.000" },
+          prs: metrics.prs,
+        },
+      },
+    });
+    render(<MetricsPage />);
+
+    await screen.findAllByText("Cost");
+    // Unpriced runs on this side: the cost change would claim a drop.
+    expect(screen.queryByText("+25 %")).toBeNull();
   });
 
   // Requests and commits as two named columns right after the findings, the
@@ -1158,10 +1247,10 @@ describe("MetricsPage", () => {
     render(<MetricsPage />);
 
     await screen.findByText("Code volume");
-    // Legend entries carry a swatch; the team table's cell does not.
+    // Legend entries are buttons; the team table's cell is not.
     const legends = screen
       .getAllByText("Payments")
-      .filter((el) => el.querySelector("i"));
+      .filter((el) => el.tagName === "BUTTON");
     expect(legends).toHaveLength(2);
     const swatch = (el: HTMLElement) =>
       (el.querySelector("i") as HTMLElement).style.background;
@@ -1227,27 +1316,66 @@ describe("MetricsPage", () => {
     expect(calls.some((u) => /\/metrics\?days=30$/.test(u))).toBe(true);
   });
 
-  // Findings and Unpriced get a trend like Cost and Reviewed. Unpriced
-  // keeps the flat-line rule: zero all window long draws nothing. The gate
-  // reads the daily buckets it draws, not the total (3 here).
-  it("draws findings and unpriced trends only when there is one", async () => {
+  // Findings get a trend like Cost and Reviewed.
+  it("draws the findings trend", async () => {
     serve({ metrics });
     render(<MetricsPage />);
 
     expect(await screen.findByLabelText("Findings trend")).toBeDefined();
-    expect(screen.queryByLabelText("Unpriced trend")).toBeNull();
   });
 
-  it("draws the unpriced trend from the daily buckets", async () => {
-    serve({
-      metrics: {
-        ...metrics,
-        daily: [{ ...metrics.daily[0], unpriced_runs: 3 }],
+  // Hovering a legend's team brings it forward in every chart; the
+  // outcome chart, which draws no team, stays as it is.
+  const twoTeams: Metrics = {
+    ...metrics,
+    by_team: [
+      ...metrics.by_team,
+      {
+        ...metrics.by_team[0],
+        team: "platform",
+        team_name: "Platform",
+        cost_usd: "0.500",
       },
-    });
+    ],
+    daily: [...metrics.daily, { ...metrics.daily[0], team: "platform" }],
+  };
+
+  it("focuses a team from its legend entry", async () => {
+    serve({ metrics: twoTeams });
     render(<MetricsPage />);
 
-    expect(await screen.findByLabelText("Unpriced trend")).toBeDefined();
+    await screen.findByText("Code volume");
+    const legend = screen
+      .getAllByText("Payments")
+      .find((el) => el.tagName === "BUTTON") as HTMLElement;
+    fireEvent.mouseEnter(legend);
+    const dimmed = document.querySelectorAll(
+      'path.chart-line[stroke-opacity="0.15"]',
+    );
+    expect(dimmed.length).toBeGreaterThan(0);
+    fireEvent.mouseLeave(legend);
+    expect(
+      document.querySelectorAll('path.chart-line[stroke-opacity="0.15"]'),
+    ).toHaveLength(0);
+  });
+
+  it("sums every team in a closing row, only for more than one", async () => {
+    serve({ metrics: twoTeams });
+    const { unmount } = render(<MetricsPage />);
+
+    const label = await screen.findByText("All teams");
+    const row = label.closest("tr") as HTMLElement;
+    expect(row.parentElement?.tagName).toBe("TFOOT");
+    // Tasks summed over both teams (1 each).
+    expect(
+      Array.from(row.querySelectorAll("td")).map((c) => c.textContent),
+    ).toContain("2");
+    unmount();
+
+    serve({ metrics });
+    render(<MetricsPage />);
+    await screen.findByText("Code volume");
+    expect(screen.queryByText("All teams")).toBeNull();
   });
 
   it("says a window is empty rather than drawing an empty chart", async () => {
