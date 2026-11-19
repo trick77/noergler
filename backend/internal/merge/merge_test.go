@@ -75,6 +75,13 @@ func TestDiffMatchesShortestEdit(t *testing.T) {
 	}
 }
 
+// diff is the hunks turning base into side by Myers' diff as found, false
+// past maxEdits: diffWith as Merge3 calls it for one of its alignments.
+func diff(base, side []string, maxEdits int) ([]hunk, bool) {
+	hs, err := diffWith(myers, false, base, side, maxEdits)
+	return hs, err == nil
+}
+
 func TestDiffGivesUpPastMaxEdits(t *testing.T) {
 	var a, b []string
 	for i := range 50 {

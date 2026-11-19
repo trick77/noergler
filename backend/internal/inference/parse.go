@@ -586,18 +586,12 @@ func IsVacuousSuggestion(suggestion string) bool {
 	return false
 }
 
-// ParseMention turns a mention.txt JSON envelope into a rendered markdown
-// answer, falling back to the raw content when parsing fails. Models that
-// disregard the envelope still produce a usable reply.
-func ParseMention(content string) string {
-	answer, _ := ParseMentionEnvelope(content)
-	return answer
-}
-
 // ParseMentionEnvelope is the one parse of a mention.txt envelope: the
-// rendered answer (ParseMention's) and `apply`, true only for a literal
-// JSON true (a model without the field, or off the envelope, applies
-// nothing), so the two never read one response two ways.
+// answer rendered as markdown, falling back to the raw content when parsing
+// fails (a model that disregards the envelope still produces a usable
+// reply), and `apply`, true only for a literal JSON true (a model without
+// the field, or off the envelope, applies nothing), so the two never read
+// one response two ways.
 func ParseMentionEnvelope(content string) (answer string, apply bool) {
 	text := strings.TrimSpace(content)
 	if text == "" {
