@@ -12,6 +12,7 @@ import type { AccountStatus, ForwardStatus, Team } from "./api";
 import {
   ago,
   byName,
+  num,
   teamStateLabel,
   teamStateTitle,
   teamTone,
@@ -270,7 +271,7 @@ function Configuration({
       unset(t("teams.noneValue"))
     );
   const count = (n: number, empty: string) =>
-    n > 0 ? <span className="tabular-nums">{n}</span> : unset(empty);
+    n > 0 ? <span className="tabular-nums">{num(n)}</span> : unset(empty);
 
   return (
     <details open={open} className="group mt-3.5 border-t border-border pt-2.5">
@@ -558,7 +559,9 @@ function Rail({
                 />
                 {teamStateLabel(s)}
                 <span className="font-mono text-[12px] tracking-normal tabular-nums">
-                  {query === "" ? group.length : `${n}/${group.length}`}
+                  {query === ""
+                    ? num(group.length)
+                    : `${num(n)}/${num(group.length)}`}
                 </span>
               </div>
               {group.map((x) => {

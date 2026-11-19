@@ -145,7 +145,7 @@ export function ContextCard({ p }: { p: RunPipeline }) {
             key={h.upstream}
             k={t("run.httpCalls", { upstream: h.upstream })}
             mono
-            v={h.calls}
+            v={num(h.calls)}
           />
         ))}
       </dl>
@@ -265,8 +265,8 @@ export function InputTab({ p }: { p: RunPipeline | null }) {
                       <td className={td + (out ? " text-faint" : "")}>
                         {known("sent", f.sent) ? t(`sent.${f.sent}`) : f.sent}
                       </td>
-                      <td className={tdNum}>{f.added}</td>
-                      <td className={tdNum}>{f.removed}</td>
+                      <td className={tdNum}>{num(f.added)}</td>
+                      <td className={tdNum}>{num(f.removed)}</td>
                       <td className={tdNum}>
                         {f.tokens > 0 ? num(f.tokens) : "—"}
                       </td>

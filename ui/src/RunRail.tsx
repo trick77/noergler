@@ -12,6 +12,7 @@ import type { PRPage as PRPageData, PRRun } from "./api";
 import {
   duration,
   money,
+  num,
   outcomeTitle,
   outcomeTone,
   outcomeWord,
@@ -84,7 +85,7 @@ export function RunRail({
       <div className={label}>
         {t("pr.railRuns")}
         <span className="rounded-full bg-active px-1.5 font-mono text-[12px] tracking-normal text-ink-dim">
-          {d.runs_total}
+          {num(d.runs_total)}
         </span>
       </div>
       {runs.map((r) => (
@@ -115,7 +116,9 @@ export function RunRail({
                   would read as none. */}
               {d.calls.length > 0 && (
                 <span className="ml-auto font-mono text-[12px] text-faint">
-                  {d.more_calls ? `${d.calls.length}+` : d.calls.length}
+                  {d.more_calls
+                    ? `${num(d.calls.length)}+`
+                    : num(d.calls.length)}
                 </span>
               )}
             </div>
@@ -181,7 +184,7 @@ function RunEntry({
             <Sep />
             {t("pr.scopeFiles", { count: r.run.files_changed })}{" "}
             <span className="font-mono">
-              +{r.run.lines_added}/−{r.run.lines_removed}
+              +{num(r.run.lines_added)}/−{num(r.run.lines_removed)}
             </span>
           </>
         ) : (
