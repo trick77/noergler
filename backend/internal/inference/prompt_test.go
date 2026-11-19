@@ -56,6 +56,24 @@ func TestFormatFileEntryIsPinned(t *testing.T) {
 			diff.FileReviewData{Path: "a.spec.ts", Diff: "@@ -1 +1 @@\n+x", Content: "q", ContentFetched: true},
 			"## File: a.spec.ts\n### Full file content (new version):\n```ts\nq\n```\n" + changes,
 		},
+		{
+			// A file holding a fence (Markdown, a fixture) gets a longer one,
+			// so its own ``` cannot close the block and turn the rest into
+			// prompt structure. Content and diff each by their own text.
+			"content with a fence",
+			diff.FileReviewData{Path: "README.md", Diff: "@@ -1 +1 @@\n+```", Content: "```go\nx\n```", ContentFetched: true},
+			"## File: README.md\n### Full file content (new version):\n````md\n```go\nx\n```\n````\n" +
+				"### Changes (diff: left column is the new-file line number, blank on removed lines; lines with `-` are REMOVED, lines with `+` are ADDED):\n````diff\n@@ -1 +1 @@\n1 +```\n````",
+		},
+	}
+	// A run far longer than any fence worth writing: a tilde fence, a few
+	// characters, whatever the run.
+	{
+		long := strings.Repeat("`", 500)
+		got := FormatFileEntry(diff.FileReviewData{Path: "f.txt", Diff: "@@ -1 +1 @@\n+x", Content: long + "\n~~~~", ContentFetched: true})
+		if !strings.Contains(got, "~~~~~txt\n"+long+"\n~~~~\n~~~~~\n") {
+			t.Errorf("long backtick run: want a tilde fence past the content's tildes, got %q", got[:min(len(got), 120)])
+		}
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
