@@ -34,6 +34,7 @@ import {
   Card,
   Empty,
   Failed,
+  KV,
   Note,
   Pill,
   Sep,
@@ -261,23 +262,6 @@ export function RunPane({ token, n }: { token: string; n: number }) {
         {tab === "input" && <InputTab p={d.detail} />}
       </div>
     </>
-  );
-}
-
-/** KV is a label/value pair in the two-column key list. */
-function KV({ k, v, mono }: { k: string; v: ReactNode; mono?: boolean }) {
-  return (
-    <div className="flex min-w-0 justify-between gap-3 border-b border-border-soft py-1.5 text-[13.5px]">
-      <dt className="whitespace-nowrap text-muted">{k}</dt>
-      <dd
-        className={
-          "min-w-0 text-right break-words text-ink-dim " +
-          (mono ? "font-mono text-[12.5px]" : "")
-        }
-      >
-        {v}
-      </dd>
-    </div>
   );
 }
 

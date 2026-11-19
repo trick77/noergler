@@ -378,6 +378,31 @@ export const tdTag = td + " font-mono text-[12.5px] whitespace-nowrap";
 export const hint =
   " underline decoration-dotted decoration-faint underline-offset-3";
 
+/** KV is a label/value pair in a two-column key list (run pane, pipeline). */
+export function KV({
+  k,
+  v,
+  mono,
+}: {
+  k: string;
+  v: ReactNode;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex min-w-0 justify-between gap-3 border-b border-border-soft py-1.5 text-[13.5px]">
+      <dt className="whitespace-nowrap text-muted">{k}</dt>
+      <dd
+        className={
+          "min-w-0 text-right break-words text-ink-dim " +
+          (mono ? "font-mono text-[12.5px]" : "")
+        }
+      >
+        {v}
+      </dd>
+    </div>
+  );
+}
+
 /** Empty is what a panel says when there is nothing, which is a real state
  *  here: an idle instance is healthy, not broken. */
 export function Empty({ children }: { children: ReactNode }) {

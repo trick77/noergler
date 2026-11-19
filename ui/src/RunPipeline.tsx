@@ -12,7 +12,18 @@ import {
   severityWord,
   sourceUrl,
 } from "./format";
-import { Card, Empty, Pill, table, td, tdNum, tdTag, th, thNum } from "./ui";
+import {
+  Card,
+  Empty,
+  KV,
+  Pill,
+  table,
+  td,
+  tdNum,
+  tdTag,
+  th,
+  thNum,
+} from "./ui";
 
 // A stage the page does not know (a newer binary) still draws, under its
 // own name. Waits are hatched, the gateway call has its own hue, the rest is
@@ -90,22 +101,6 @@ export function StageTimeline({ p }: { p: RunPipeline }) {
         </span>
       </div>
     </>
-  );
-}
-
-function KV({ k, v, mono }: { k: string; v: React.ReactNode; mono?: boolean }) {
-  return (
-    <div className="flex min-w-0 justify-between gap-3 border-b border-border-soft py-1.5 text-[13.5px]">
-      <dt className="whitespace-nowrap text-muted">{k}</dt>
-      <dd
-        className={
-          "min-w-0 text-right break-words text-ink-dim " +
-          (mono ? "font-mono text-[12.5px]" : "")
-        }
-      >
-        {v}
-      </dd>
-    </div>
   );
 }
 
