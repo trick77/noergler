@@ -1,6 +1,10 @@
 package render
 
-import "regexp"
+import (
+	"regexp"
+
+	"github.com/trick77/noergler/internal/inference"
+)
 
 // securityKeywords flags a finding as security-relevant so the summary can
 // surface a count above the Issues list.
@@ -34,4 +38,14 @@ var securityKeywordsDE = regexp.MustCompile(
 // keyword.
 func IsSecurityFinding(comment string) bool {
 	return securityKeywords.MatchString(comment) || securityKeywordsDE.MatchString(comment)
+}
+
+// isSecurity counts a finding as security-relevant by the category the
+// review gave it; a finding without one (a row from before the field, a
+// model that named none) falls back to the comment's keywords.
+func isSecurity(f inference.ReviewFinding) bool {
+	if f.Category != nil {
+		return inference.IsSecurityCategory(*f.Category)
+	}
+	return IsSecurityFinding(f.Comment)
 }

@@ -4,7 +4,29 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
+
+	"github.com/trick77/noergler/internal/inference"
 )
+
+// The category decides when the review gave one, both ways; without one the
+// comment's keywords still do.
+func TestIsSecurityPrefersTheCategory(t *testing.T) {
+	cat := func(c string) *string { return &c }
+	for _, tc := range []struct {
+		f    inference.ReviewFinding
+		want bool
+	}{
+		{inference.ReviewFinding{Comment: "off by one", Category: cat(inference.CategorySecret)}, true},
+		{inference.ReviewFinding{Comment: "off by one", Category: cat(inference.CategorySecurity)}, true},
+		{inference.ReviewFinding{Comment: "sql injection in the log line", Category: cat(inference.CategoryBug)}, false},
+		{inference.ReviewFinding{Comment: "sql injection"}, true},
+		{inference.ReviewFinding{Comment: "off by one"}, false},
+	} {
+		if got := isSecurity(tc.f); got != tc.want {
+			t.Errorf("isSecurity(%q, %v) = %v, want %v", tc.f.Comment, tc.f.Category, got, tc.want)
+		}
+	}
+}
 
 // Expected values are the golden corpus in testdata, compared case by case.
 // Both directions of the Unicode-boundary rule are covered: "üinsecure" and

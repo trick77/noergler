@@ -261,6 +261,12 @@ A response is required to match a JSON schema with exactly these keys:
 `test_coverage`, `verdict`, `findings`, `fixed`, `pre_existing`,
 `compliance_requirements`, `visual_changes`.
 
+Each finding names its `category`: `bug`, `security`, `secret`, `guideline`
+or `contradiction`, the prompt's four remit items with security split out.
+It is stored on the row (`findings.category`). The summary's 🔒 count reads
+it (`security` and `secret`); a finding without one, a row from before the
+column or an unknown value, falls back to the comment's security keywords.
+
 ## 10. Dedup, ordering and posting
 
 Findings already posted by earlier runs are filtered out by reading the

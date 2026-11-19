@@ -18,6 +18,23 @@ import (
 // VerdictDecisions is the accepted verdict enum. Anything else is dropped.
 var VerdictDecisions = []string{"approve", "approve_with_followups", "request_changes"}
 
+// The kinds of defect a finding names: the review prompt's four remit
+// items, security split out from bugs so the summary can count it.
+const (
+	CategoryBug           = "bug"
+	CategorySecurity      = "security"
+	CategorySecret        = "secret"
+	CategoryGuideline     = "guideline"
+	CategoryContradiction = "contradiction"
+)
+
+// Categories is every category, the schema's enum.
+var Categories = []string{CategoryBug, CategorySecurity, CategorySecret, CategoryGuideline, CategoryContradiction}
+
+// IsSecurityCategory reports whether a category is one the summary counts
+// as security-relevant.
+func IsSecurityCategory(c string) bool { return c == CategorySecurity || c == CategorySecret }
+
 // ReviewSummary is the non-finding half of a review response.
 //
 // Every field is populated on every review: sentinel strings carry the
@@ -163,6 +180,10 @@ type ReviewFinding struct {
 	// finding violates, nil when none. A claim only: CheckBlocking decides.
 	BlockingRule *string
 
+	// Category is the kind of defect (Category*), nil when the model named
+	// none or an unknown one: the finding stands either way.
+	Category *string
+
 	// Blocking is what code made of BlockingRule ("" when the model named
 	// none), BlockingText the rule's text when its id was known: for the
 	// inline comment, the summary and the findings row. Set by the review
@@ -199,6 +220,8 @@ func parseFinding(raw json.RawMessage) (ReviewFinding, bool) {
 		// BlockingRule: anything but a string reads as no claim; the
 		// finding stands either way.
 		BlockingRule json.RawMessage `json:"blocking_rule"`
+		// Category: an unknown value reads as none; the finding stands.
+		Category json.RawMessage `json:"category"`
 	}
 	if json.Unmarshal(raw, &probe) != nil {
 		return ReviewFinding{}, false
@@ -227,6 +250,10 @@ func parseFinding(raw json.RawMessage) (ReviewFinding, bool) {
 	var rule string
 	if json.Unmarshal(probe.BlockingRule, &rule) == nil && strings.TrimSpace(rule) != "" {
 		out.BlockingRule = &rule
+	}
+	var category string
+	if json.Unmarshal(probe.Category, &category) == nil && slices.Contains(Categories, category) {
+		out.Category = &category
 	}
 	// confidence is optional, so an explicit null is absent rather than
 	// invalid. Any other unusable value drops the finding.
