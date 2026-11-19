@@ -5,11 +5,13 @@
 // own line. Reached only through the PR's summary comment, so it shows the
 // full text.
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import type { RunCall, RunDetail, RunFinding } from "./api";
 import {
   commentUrl,
   duration,
+  known,
   money,
   num,
   outcomeTitle,
@@ -63,6 +65,13 @@ function tabFromHash(): Tab {
 const VERDICTS = ["approve", "approve_with_followups", "request_changes"];
 function verdictRank(v: string): number {
   return Math.max(0, VERDICTS.indexOf(v));
+}
+
+/** verdictWord is a verdict as the posted summary words it. An unknown code
+ *  reads as approve, as the summary renders it and verdictRank ranks it, so
+ *  the run page never says what the PR does not. */
+function verdictWord(t: TFunction, v: string): string {
+  return known("verdict", v) ? t(`verdict.${v}`) : t("verdict.approve");
 }
 
 export function RunPane({ token, n }: { token: string; n: number }) {
@@ -493,8 +502,8 @@ function Findings({ d, pr }: { d: RunDetail; pr: string | null }) {
                   ? "run.verdictRaised"
                   : "run.verdictLowered",
                 {
-                  model: d.detail.verdict.model,
-                  posted: d.detail.verdict.posted,
+                  model: verdictWord(t, d.detail.verdict.model),
+                  posted: verdictWord(t, d.detail.verdict.posted),
                 },
               )}
             </Note>

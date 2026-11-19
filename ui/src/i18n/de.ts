@@ -7,6 +7,7 @@ import type { Catalog } from "./en";
 export const de = {
   nav: {
     label: "Seiten",
+    breadcrumb: "Pfad",
     live: "Live",
     runs: "Runs",
     metrics: "Review-Metriken",
@@ -449,6 +450,11 @@ export const de = {
     quote_removed: "zitiert eine Zeile, die der PR entfernt",
     quote_not_found: "zitiert Code, den es nicht gibt",
   },
+  verdict: {
+    approve: "Freigeben",
+    approve_with_followups: "Freigeben mit Nacharbeiten",
+    request_changes: "Änderungen nötig",
+  },
   prState: {
     open: "Offen",
     merged: "Gemerged",
@@ -478,9 +484,9 @@ export const de = {
     howSent: "Wie gesendet",
     notPostedTitle: "Nicht geposted",
     verdictLowered:
-      "Urteil von {{model}} auf {{posted}} herabgestuft, passend zu den offenen Findings des PR.",
+      "Urteil von «{{model}}» auf «{{posted}}» herabgestuft, passend zu den offenen Findings des PR.",
     verdictRaised:
-      "Urteil von {{model}} auf {{posted}} angehoben, passend zu den offenen Findings des PR.",
+      "Urteil von «{{model}}» auf «{{posted}}» angehoben, passend zu den offenen Findings des PR.",
     movedFrom: "verschoben von :{{line}}",
     title: "Run",
     failedWhat: "den Run",

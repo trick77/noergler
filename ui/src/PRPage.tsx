@@ -127,7 +127,10 @@ export function PRPage({ token, n }: { token: string; n: number | null }) {
           </>
         ) : (
           <>
-            <nav className="text-[13px] text-faint" aria-label="breadcrumb">
+            <nav
+              className="text-[13px] text-faint"
+              aria-label={t("nav.breadcrumb")}
+            >
               <a
                 href="/runs"
                 onClick={onNav("/runs")}

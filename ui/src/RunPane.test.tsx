@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RunDetail } from "./api";
+import i18n from "./i18n";
 import { RunPane } from "./RunPane";
 import { onNav, pageFromPath, prRouteFromPath } from "./routing";
 
@@ -148,7 +149,7 @@ const record: NonNullable<RunDetail["detail"]> = {
       evidence: ["p.idle = append(p.idle, conn)"],
     },
   ],
-  verdict: { model: "request_changes", posted: "comment" },
+  verdict: { model: "request_changes", posted: "approve_with_followups" },
   http: [{ upstream: "bitbucket", calls: 14 }],
 };
 
@@ -301,7 +302,10 @@ describe("RunPane", () => {
     expect(screen.getByText("quoted code that is not there")).toBeDefined();
     expect(screen.getByText("moved from :85")).toBeDefined();
     expect(
-      screen.getByText(/Verdict lowered from request_changes to comment/),
+      // The summary's words, quoted: a label of several words reads as one.
+      screen.getByText(
+        /Verdict lowered from “Request changes” to “Approve with follow-ups”/,
+      ),
     ).toBeDefined();
 
     fireEvent.click(screen.getByRole("tab", { name: /Prompt and files/ }));
@@ -365,10 +369,32 @@ describe("RunPane", () => {
 
     expect(
       await screen.findByText(
-        /Verdict raised from approve to request_changes to match the PR.s open findings/,
+        /Verdict raised from “Approve” to “Request changes” to match the PR.s open findings/,
       ),
     ).toBeDefined();
     expect(screen.queryByText(/Verdict lowered/)).toBeNull();
+  });
+
+  // In German the summary's German words; an unknown code reads as approve,
+  // as the posted summary renders it.
+  it("words the verdict in German, an unknown one as approve", async () => {
+    await i18n.changeLanguage("de");
+    window.history.replaceState({}, "", `/${RUN}#findings`);
+    serve(RUN, {
+      ...detail,
+      detail: {
+        ...record,
+        decisions: [],
+        verdict: { model: "request_changes", posted: "comment" },
+      },
+    });
+    render(<RunPane token={TOK} n={2} />);
+
+    expect(
+      await screen.findByText(
+        /Urteil von «Änderungen nötig» auf «Freigeben» herabgestuft/,
+      ),
+    ).toBeDefined();
   });
 
   // An unknown decision named approve moved nothing: no note.
