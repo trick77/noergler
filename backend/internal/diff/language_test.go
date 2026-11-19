@@ -29,7 +29,7 @@ func TestDetectLanguage(t *testing.T) {
 		{"package.json", "build-config"},
 		{"tsconfig.json", "build-config"},
 		{"tsconfig.app.json", "build-config"},
-		// Case-sensitive, unlike IsTestFile.
+		// Case-sensitive, unlike most of IsTestFile.
 		{"Main.PY", "other"},
 		{"main.Py", "other"},
 		// Build-file map is basename-exact, so a nested one still matches.
@@ -71,7 +71,7 @@ func TestIsTestFile(t *testing.T) {
 		{"src/tests/helper.go", true},
 		{"src/test/helper.go", true},
 		{"src/__tests__/helper.js", true},
-		// Case-insensitive, unlike DetectLanguage.
+		// Case-insensitive, unlike DetectLanguage, but for Java's Test.
 		{"FOO_TEST.PY", true},
 		{"src/TESTS/x.go", true},
 		{"main.py", false},
@@ -87,6 +87,18 @@ func TestIsTestFile(t *testing.T) {
 		{"app.ts", false},
 		{"src/test/Helper.java", true},
 		{"src/__tests__/App.tsx", true},
+		// A word that ends in "test" is no test: Java's suffix is the
+		// capitalised Test, a Python test_ prefix starts the file name.
+		{"src/main/Latest.java", false},
+		{"Contest.java", false},
+		{"latest_utils.py", false},
+		{"src/contest_rules.py", false},
+		// A snake_case word boundary counts: helpers named for tests are.
+		{"src/integration_test_helpers.py", true},
+		{"e2e_test_utils.py", true},
+		// A top-level test directory is one too.
+		{"test/Foo.java", true},
+		{"tests/conftest.py", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {

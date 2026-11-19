@@ -48,14 +48,16 @@ var deprioritizedLanguages = map[string]bool{
 	"build-config": true, "config": true, "docs": true, "other": true,
 }
 
-// testPatterns is case-insensitive and unanchored, unlike DetectLanguage.
-var testPatterns = regexp.MustCompile(`(?i)(?:` +
-	`_test\.py$|test_[^/]*\.py$` +
-	`|Test\.java$|Tests\.java$` +
-	`|\.spec\.ts$|\.test\.ts$` +
-	`|\.spec\.tsx$|\.test\.tsx$` +
-	`|\.spec\.js$|\.test\.js$` +
-	`|/tests?/|/__tests__/` +
+// testPatterns is case-insensitive, unlike DetectLanguage, except for Java's
+// suffix: the capitalised Test is the convention, and folding it made
+// Latest.java and Contest.java tests. A Python test_ starts a path segment
+// or a snake_case word (integration_test_helpers.py), never inside a word
+// (latest_utils.py); a test directory starts a path segment.
+var testPatterns = regexp.MustCompile(`(?:` +
+	`(?i:_test\.py$|(?:^|[/_])test_[^/]*\.py$)` +
+	`|Tests?\.java$` +
+	`|(?i:\.(?:spec|test)\.(?:ts|tsx|js)$)` +
+	`|(?i:(?:^|/)(?:tests?|__tests__)/)` +
 	`)`)
 
 // DetectLanguage returns the language group for a path. Case-sensitive.
@@ -80,7 +82,7 @@ func DetectLanguage(path string) string {
 	return "other"
 }
 
-// IsTestFile reports whether a path looks like a test. Case-insensitive.
+// IsTestFile reports whether a path looks like a test (testPatterns).
 func IsTestFile(path string) bool { return testPatterns.MatchString(path) }
 
 // SortByLanguagePriority orders files by (group, language rank, path).
