@@ -193,6 +193,37 @@ func TestAssembleReviewPromptIsPinned(t *testing.T) {
 	}
 }
 
+// TestAssembleGoldenUpdate rewrites testdata/assemble_golden.json from the
+// current template, schema and system message when ASSEMBLE_GOLDEN_UPDATE=1;
+// otherwise it does nothing. A prompt or schema edit is a decision, so the
+// diff of the golden is what a reviewer reads, never a hand-edited number.
+func TestAssembleGoldenUpdate(t *testing.T) {
+	if os.Getenv("ASSEMBLE_GOLDEN_UPDATE") != "1" {
+		t.Skip("set ASSEMBLE_GOLDEN_UPDATE=1 to rewrite the golden")
+	}
+	count := counter(t)
+	out := map[string]any{"_schema": schemaGolden{
+		JSONLen: len(SchemaJSON()), Tokens: count(SchemaJSON()), SystemTokens: count(ReviewSystemMessage),
+	}}
+	for name, req := range assembleCases(prompts.Review) {
+		got := AssembleReviewPrompt(req, count)
+		sum := sha256.Sum256([]byte(got.Prompt))
+		var g assembleGolden
+		g.PromptSHA256 = hex.EncodeToString(sum[:])
+		g.Breakdown.Template, g.Breakdown.RepoInstructions, g.Breakdown.Files =
+			got.Breakdown.Template, got.Breakdown.RepoInstructions, got.Breakdown.Files
+		g.PromptTokens, g.PromptLen = got.PromptTokens, len(got.Prompt)
+		out[name] = g
+	}
+	blob, err := json.MarshalIndent(out, "", " ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("testdata/assemble_golden.json", append(blob, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // The fit check weighs system + prompt + schema, because the gateway bills
 // all three as input. Counting the prompt alone would under-count by roughly
 // the schema and let a PR through that does not fit.

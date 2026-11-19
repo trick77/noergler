@@ -251,6 +251,7 @@ Go types:
 | `closed_at` | timestamp with time zone | yes |  |  |
 | `blocking_rule` | text | yes |  |  |
 | `blocking_outcome` | text | yes |  |  |
+| `category` | text | yes |  |  |
 
 Foreign keys:
 
@@ -892,6 +893,7 @@ erDiagram
         timestamp_with_time_zone closed_at
         text blocking_rule
         text blocking_outcome
+        text category
     }
     llm_calls {
         bigint id PK

@@ -44,7 +44,7 @@ func ReviewResponseSchema() map[string]any {
 				"items": map[string]any{
 					"type":                 "object",
 					"additionalProperties": false,
-					"required":             []any{"file", "line", "evidence", "severity", "confidence", "headline", "comment", "suggestion", "blocking_rule"},
+					"required":             []any{"file", "line", "evidence", "severity", "category", "confidence", "headline", "comment", "suggestion", "blocking_rule"},
 					"properties": map[string]any{
 						"file": map[string]any{"type": "string"},
 						"line": map[string]any{"type": "integer"},
@@ -53,6 +53,7 @@ func ReviewResponseSchema() map[string]any {
 							"items": map[string]any{"type": "string"},
 						},
 						"severity":   map[string]any{"type": "string", "enum": []any{"issue", "suggestion"}},
+						"category":   map[string]any{"type": "string", "enum": enumValues(Categories)},
 						"confidence": map[string]any{"type": "integer", "minimum": 80, "maximum": 100},
 						"headline":   map[string]any{"type": "string", "minLength": 1},
 						"comment":    map[string]any{"type": "string"},
@@ -167,10 +168,11 @@ const schemaJSON = `{"type": "object", "additionalProperties": false, "required"
 	`"properties": {"decision": {"type": "string", "enum": ["approve", "approve_with_followups", ` +
 	`"request_changes"]}, "rationale": {"type": "string", "minLength": 1}}}, ` +
 	`"findings": {"type": "array", "items": {"type": "object", "additionalProperties": false, ` +
-	`"required": ["file", "line", "evidence", "severity", "confidence", "headline", "comment", "suggestion", "blocking_rule"], ` +
+	`"required": ["file", "line", "evidence", "severity", "category", "confidence", "headline", "comment", "suggestion", "blocking_rule"], ` +
 	`"properties": {"file": {"type": "string"}, "line": {"type": "integer"}, ` +
 	`"evidence": {"type": "array", "minItems": 1, "maxItems": 5, "items": {"type": "string"}}, ` +
 	`"severity": {"type": "string", "enum": ["issue", "suggestion"]}, ` +
+	`"category": {"type": "string", "enum": ["bug", "security", "secret", "guideline", "contradiction"]}, ` +
 	`"confidence": {"type": "integer", "minimum": 80, "maximum": 100}, ` +
 	`"headline": {"type": "string", "minLength": 1}, "comment": {"type": "string"}, ` +
 	`"suggestion": {"type": ["string", "null"]}, "blocking_rule": {"type": ["string", "null"]}}}}, ` +

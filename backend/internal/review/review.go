@@ -1328,6 +1328,7 @@ func (r *Reviewer) recordFindings(ctx context.Context, prReviewID, runID int64, 
 			CommentText:        f.Comment,
 			Suggestion:         f.Suggestion,
 			BitbucketCommentID: &commentID,
+			Category:           f.Category,
 		}
 		if f.Blocking != "" {
 			outcome := string(f.Blocking)

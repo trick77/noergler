@@ -369,6 +369,9 @@ type Finding struct {
 	// (inference.BlockingOutcome); "task" = the comment is a Bitbucket task.
 	BlockingRule    *string
 	BlockingOutcome *string
+	// Category is the kind of defect the review named (inference.Category*),
+	// nil on a row from before it was asked for.
+	Category *string
 	// RepliedAt is set once noergler answered a reply on this finding's
 	// thread; DisputeText is the author's reply when it disputed the
 	// finding. Read back, never written by InsertFinding.

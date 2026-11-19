@@ -509,7 +509,7 @@ func renderIssues(in SummaryInput) string {
 
 	securityCount, taskCount := 0, 0
 	for _, f := range all {
-		if IsSecurityFinding(f.Comment) {
+		if isSecurity(f.ReviewFinding) {
 			securityCount++
 		}
 		if f.IsTask() {

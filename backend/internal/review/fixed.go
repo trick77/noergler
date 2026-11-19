@@ -41,7 +41,7 @@ func asFindings(stored []store.Finding) []inference.ReviewFinding {
 		out = append(out, inference.ReviewFinding{
 			File: f.FilePath, Line: f.LineNumber, Severity: f.Severity, Comment: f.CommentText,
 			Confidence: f.Confidence, Headline: f.Headline, Suggestion: f.Suggestion,
-			Blocking: blockingOf(f), BlockingText: deref(f.BlockingRule),
+			Blocking: blockingOf(f), BlockingText: deref(f.BlockingRule), Category: f.Category,
 		})
 	}
 	return out

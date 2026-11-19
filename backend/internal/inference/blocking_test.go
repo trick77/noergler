@@ -115,6 +115,32 @@ func TestCheckBlocking(t *testing.T) {
 	}
 }
 
+// A category is kept only when it is one of the enum; anything else reads
+// as none and the finding stands.
+func TestParseCategory(t *testing.T) {
+	for raw, want := range map[string]string{
+		`"security"`: "security",
+		`"secret"`:   "secret",
+		`"style"`:    "",
+		`null`:       "",
+		`3`:          "",
+	} {
+		item := `{"file": "a.go", "line": 1, "severity": "issue", "comment": "c", "category": ` + raw + `}`
+		f, ok := parseFinding(json.RawMessage(item))
+		if !ok {
+			t.Errorf("%s: the finding must stand", raw)
+			continue
+		}
+		got := ""
+		if f.Category != nil {
+			got = *f.Category
+		}
+		if got != want {
+			t.Errorf("%s: category = %q, want %q", raw, got, want)
+		}
+	}
+}
+
 // A blocking_rule that is no string is no claim; the finding stands.
 func TestParseBlockingRule(t *testing.T) {
 	for raw, want := range map[string]string{

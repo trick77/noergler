@@ -104,6 +104,7 @@ Each "findings" item:
 - "line": line in **new version** where issue occurs, read from the diff's line-number column. Multi-line: line where bug triggers or fix applies.
 - "evidence": 1–5 lines copied exactly from the file's diff or full content that the finding rests on, at least one of them a diff line — the code only, without the line number and without the leading `+`, `-` or space. A finding whose evidence is not in the file is discarded. A committed secret's line is copied with the secret in it, never masked: evidence is compared byte for byte.
 - "severity": "issue" or "suggestion"
+- "category": which of these five kinds it is (the four things that count, with security split out of bugs): "bug" (a reachable defect that is not about security), "security" (injection, broken auth, an exposed secret path, unsafe deserialization and the like), "secret" (a committed credential literal), "guideline" (a violation of the project guidelines below), "contradiction" (the diff contradicts the surrounding code or a comment). The kind of defect, not how bad it is: `severity` carries that. One defect is one finding with one category: a committed secret is `secret`, never a second `contradiction` finding about the comment that promised otherwise; pick the category that fits best and report it once.
 - "confidence": integer 80–100
 - "headline": one-line title (≤ 80 chars) summarizing the finding for the numbered Issues list in the review summary. Imperative or noun-phrase form, plain text only (no markdown, no leading number). No severity wording: `severity` carries it. Example: `"Retry loop never resets the backoff after a success"`.
 - "comment": full body of the inline comment posted on the line — concise paragraph. Markdown OK: code refs in backticks. No fix code (use `suggestion`). This is the detail; do NOT duplicate it in the headline. For a committed secret, `headline`, `comment`, `suggestion` and every summary field name the field, never its value; only `evidence` carries it.
@@ -140,6 +141,7 @@ Illustrative only — do not treat as code under review.
         "    users.append(await user_repo.fetch(id))"
       ],
       "severity": "suggestion",
+      "category": "bug",
       "confidence": 90,
       "headline": "N+1 query in /users/batch handler",
       "comment": "Iterating `user_repo.fetch(id)` inside the request loop issues one SQL query per id. For a 200-id payload this is 200 round trips on the hot path and will dominate latency under load.",

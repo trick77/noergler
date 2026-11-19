@@ -506,10 +506,10 @@ func (s *Store) LastSummary(ctx context.Context, k PRKey) (*PRSummary, error) {
 func (s *Store) InsertFinding(ctx context.Context, f Finding) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO findings (pull_request_id, review_run_id, file_path, line_number, severity, confidence, headline,
-			comment_text, suggestion, bitbucket_comment_id, blocking_rule, blocking_outcome)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+			comment_text, suggestion, bitbucket_comment_id, blocking_rule, blocking_outcome, category)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
 		f.PullRequestID, f.RunID, f.FilePath, f.LineNumber, f.Severity, f.Confidence, f.Headline,
-		f.CommentText, f.Suggestion, f.BitbucketCommentID, f.BlockingRule, f.BlockingOutcome)
+		f.CommentText, f.Suggestion, f.BitbucketCommentID, f.BlockingRule, f.BlockingOutcome, f.Category)
 	return err
 }
 
@@ -533,12 +533,12 @@ func (s *Store) ExistingFindings(ctx context.Context, k PRKey) ([]Finding, error
 const findingCols = `f.id, f.pull_request_id, f.review_run_id, f.file_path, f.line_number, f.severity, f.confidence,
 			f.headline, f.comment_text, f.suggestion, f.bitbucket_comment_id, f.replied_at, f.dispute_text,
 			(SELECT x.commit_sha FROM finding_fixes x WHERE x.finding_id = f.id AND x.outcome = 'committed'),
-			f.blocking_rule, f.blocking_outcome`
+			f.blocking_rule, f.blocking_outcome, f.category`
 
 func (f *Finding) scanTargets() []any {
 	return []any{&f.ID, &f.PullRequestID, &f.RunID, &f.FilePath, &f.LineNumber, &f.Severity, &f.Confidence,
 		&f.Headline, &f.CommentText, &f.Suggestion, &f.BitbucketCommentID, &f.RepliedAt, &f.DisputeText,
-		&f.BotFixCommit, &f.BlockingRule, &f.BlockingOutcome}
+		&f.BotFixCommit, &f.BlockingRule, &f.BlockingOutcome, &f.Category}
 }
 
 // IsTask reports whether the finding's comment is a blocking task.
