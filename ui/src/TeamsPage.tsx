@@ -445,6 +445,7 @@ function Rail({
   q,
   query,
   setQ,
+  clearQ,
   current,
   pick,
 }: {
@@ -454,6 +455,8 @@ function Rail({
   /** The same, trimmed and lower-cased: what the cards match on too. */
   query: string;
   setQ: (q: string) => void;
+  /** Empties the search, keeping the team the path names. */
+  clearQ: () => void;
   current: string | null;
   pick: (slug: string) => (e: MouseEvent) => void;
 }) {
@@ -469,12 +472,12 @@ function Rail({
         el.focus();
         el.select();
       } else if (e.key === "Escape" && document.activeElement === el) {
-        setQ("");
+        clearQ();
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [setQ]);
+  }, [clearQ]);
 
   const states = stateOrder(teams);
   // Once per team: whether it hits, and why when the name does not say.
@@ -510,7 +513,10 @@ function Rail({
           ref={input}
           type="search"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) =>
+            // Emptied by hand is a clear like × or Escape, not a search.
+            e.target.value === "" ? clearQ() : setQ(e.target.value)
+          }
           placeholder={t("teams.searchPlaceholder")}
           aria-label={t("teams.searchLabel")}
           autoComplete="off"
@@ -527,7 +533,7 @@ function Rail({
         ) : (
           <button
             type="button"
-            onClick={() => setQ("")}
+            onClick={clearQ}
             aria-label={t("teams.clearSearch")}
             className="absolute right-2 rounded-[5px] px-1.5 text-[12px] text-muted hover:bg-active hover:text-ink"
           >
@@ -684,6 +690,17 @@ export function TeamsPage() {
     writeQuery("/teams", next);
   }, []);
 
+  // Clearing is no search: the team the path names (a shared
+  // /teams/<slug>?q= link) stays, and so does its link. Typing a search
+  // already left /teams/<slug>, so there the path is /teams either way.
+  // The search may have hidden that team's card when the page loaded, so
+  // the scroll to it runs again now that the card is back.
+  const clearQ = useCallback(() => {
+    setQuery("");
+    writeQuery(window.location.pathname, "");
+    setAgain((n) => n + 1);
+  }, []);
+
   // Scroll to the focused team once its card exists. Keyed on the focus,
   // not the data: a poll that re-renders must not yank the reader back.
   const loaded = data !== null;
@@ -709,8 +726,7 @@ export function TeamsPage() {
     if (e.isDefaultPrevented() && same) {
       // Clear the search but stay on the team's path: setQ("") would write
       // /teams and lose the link to the team still on screen.
-      setQuery("");
-      writeQuery(path, "");
+      clearQ();
       setFocus(slug);
       setCurrent(slug);
       setAgain((n) => n + 1);
@@ -796,6 +812,7 @@ export function TeamsPage() {
               q={q}
               query={query}
               setQ={setQ}
+              clearQ={clearQ}
               current={current}
               pick={pick}
             />
@@ -819,7 +836,7 @@ export function TeamsPage() {
                   <b className="font-medium text-ink-dim">{q.trim()}</b>.{" "}
                   <button
                     type="button"
-                    onClick={() => setQ("")}
+                    onClick={clearQ}
                     className="text-muted underline hover:text-ink"
                   >
                     {t("teams.showAll")}
