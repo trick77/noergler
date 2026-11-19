@@ -104,11 +104,7 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 	// snapshot the webhook route reads must never be written through.
 	team := *rt.Team()
 
-	resp := map[string]any{
-		"team":        slug,
-		"action":      action,
-		"webhook_url": webhookURL,
-	}
+	resp := onboardResponse{Team: slug, Action: action, WebhookURL: webhookURL}
 
 	switch {
 	case body.Projects != nil && action != "remove":
@@ -126,8 +122,8 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 		if res.Claims != nil {
 			rt.ApplyClaims(res.Claims)
 		}
-		resp["claimed"] = res.Claimed
-		fill(resp, res.Results, res.Text, res.Healthy)
+		resp.Claimed = &res.Claimed
+		resp.fill(res.Results, res.Text, res.Healthy)
 
 	case body.Projects != nil:
 		scopes, err := scopesOf(*body.Projects)
@@ -144,9 +140,8 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 		if res.Claims != nil {
 			rt.ApplyClaims(res.Claims)
 		}
-		resp["unclaimed"] = res.Unclaimed
-		resp["purged_prs"] = res.PurgedPRs
-		fill(resp, res.Results, res.Text, res.Healthy)
+		resp.Unclaimed, resp.PurgedPRs = &res.Unclaimed, &res.PurgedPRs
+		resp.fill(res.Results, res.Text, res.Healthy)
 
 	default:
 		var subset []string
@@ -165,24 +160,32 @@ func (d Deps) onboard(w http.ResponseWriter, r *http.Request) {
 		}
 		o := onboarding.New(admin, bot, &team, webhookURL, opts, d.Log)
 		rows, results, text, healthy := onboarding.Run(ctx, o, onboarding.Action(action), targets)
+		resp.fill(results, text, healthy)
 		if rows != nil {
-			resp["rows"] = rows
-		} else {
-			resp["rows"] = results
+			resp.Rows = rows
 		}
-		resp["text"] = text
-		resp["healthy"] = healthy
-		httpx.WriteJSON(w, http.StatusOK, resp)
-		return
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, resp)
 }
 
-func fill(resp map[string]any, results []onboarding.TargetResult, text string, healthy bool) {
-	resp["rows"] = results
-	resp["text"] = text
-	resp["healthy"] = healthy
+// onboardResponse is the /onboard answer. A struct, never a map (INVARIANTS:
+// Webhook and HTTP); its fields keep the order the map's sorted keys gave
+// the wire. The pointers are the keys only some actions send.
+type onboardResponse struct {
+	Action     string    `json:"action"`
+	Claimed    *[]string `json:"claimed,omitempty"`
+	Healthy    bool      `json:"healthy"`
+	PurgedPRs  *int      `json:"purged_prs,omitempty"`
+	Rows       any       `json:"rows"` // []StatusRow for status, else []TargetResult
+	Team       string    `json:"team"`
+	Text       string    `json:"text"`
+	Unclaimed  *[]string `json:"unclaimed,omitempty"`
+	WebhookURL string    `json:"webhook_url"`
+}
+
+func (b *onboardResponse) fill(results []onboarding.TargetResult, text string, healthy bool) {
+	b.Rows, b.Text, b.Healthy = results, text, healthy
 }
 
 // scopesOf applies the project-scope rules to the JSON path: the key is
