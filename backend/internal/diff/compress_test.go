@@ -106,6 +106,31 @@ func TestCompressMislabelsEmptiedFileAsDeleted(t *testing.T) {
 	}
 }
 
+// A diff with no hunks at all (a mode change) deleted nothing: it is never
+// filed under deleted, it goes on as the uncompressed path sends it.
+func TestCompressKeepsAModeChange(t *testing.T) {
+	mode := "diff --git a/run.sh b/run.sh\nold mode 100644\nnew mode 100755\n"
+	files := []FileReviewData{{Path: "run.sh", Diff: mode, Content: "#!/bin/sh\necho unchanged\n", ContentFetched: true}}
+	got := Compress(files, 100000, "tpl {files}", charCount, pathEntry)
+	if len(got.DeletedFilePaths) != 0 {
+		t.Errorf("deleted = %q, want none", got.DeletedFilePaths)
+	}
+	// Header only: the unchanged body takes no budget.
+	if len(got.IncludedFiles) != 1 || got.IncludedFiles[0].Diff != mode ||
+		got.IncludedFiles[0].Content != "" || got.IncludedFiles[0].ContentFetched {
+		t.Errorf("included = %+v, want the mode change without its body", got.IncludedFiles)
+	}
+}
+
+// A deleted empty file's diff has no ---/+++ lines, only its mode.
+func TestCompressFilesADeletedEmptyFile(t *testing.T) {
+	gone := "diff --git a/pkg/__init__.py b/pkg/__init__.py\ndeleted file mode 100644\nindex e69de29..0000000\n"
+	got := Compress([]FileReviewData{{Path: "pkg/__init__.py", Diff: gone}}, 100000, "tpl {files}", charCount, pathEntry)
+	if len(got.DeletedFilePaths) != 1 || len(got.IncludedFiles) != 0 {
+		t.Errorf("deleted = %q, included = %+v; want it filed under deleted", got.DeletedFilePaths, got.IncludedFiles)
+	}
+}
+
 // First-fit does not stop at the first miss: a later, smaller file still fits.
 func TestCompressFirstFitContinuesPastAMiss(t *testing.T) {
 	files := []FileReviewData{
@@ -285,6 +310,10 @@ func TestIsRenameOnlyCases(t *testing.T) {
 		{"rename only", "diff --git a/old.py b/new.py\nsimilarity index 100%\nrename from old.py\nrename to new.py\n", true},
 		{"rename with changes", "diff --git a/old.py b/new.py\nsimilarity index 95%\nrename from old.py\nrename to new.py\n@@ -1 +1 @@\n+x\n", false},
 		{"not a rename", "diff --git a/f.py b/f.py\n@@ -1 +1 @@\n+x\n", false},
+		// Only the header says what became of the file: a hunk may quote a
+		// rename's header lines (a test of this very function) and is still
+		// a change to be reviewed.
+		{"rename text inside a hunk", "diff --git a/t.go b/t.go\n@@ -1 +1,3 @@\n+similarity index 100%\n+rename from a.go\n+rename to b.go\n", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

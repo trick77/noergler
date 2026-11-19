@@ -83,10 +83,29 @@ func ExtractPath(fileDiff string) string {
 	return ""
 }
 
-// IsDeleted reports whether a per-file diff represents a deletion.
+// IsDeleted reports whether a per-file diff represents a deletion. Read off
+// the header alone: an added line `++ /dev/null` reads `+++ /dev/null` in its
+// hunk. A deleted empty file has no ---/+++ lines at all, only its mode.
 func IsDeleted(fileDiff string) bool {
-	return strings.Contains(fileDiff, "\n+++ /dev/null") ||
-		strings.HasPrefix(fileDiff, "+++ /dev/null")
+	h := diffHeader(fileDiff)
+	return strings.Contains(h, "\n+++ /dev/null") || strings.HasPrefix(h, "+++ /dev/null") ||
+		strings.Contains(h, "\ndeleted file mode") || strings.HasPrefix(h, "deleted file mode")
+}
+
+// hasHunks reports whether a per-file diff holds any hunk, by diffHeader's
+// one test for where a hunk starts.
+func hasHunks(fileDiff string) bool { return diffHeader(fileDiff) != fileDiff }
+
+// diffHeader is a per-file diff's header, everything before its first hunk.
+// Only the header says what became of the file; a hunk may quote any of it.
+func diffHeader(fileDiff string) string {
+	if strings.HasPrefix(fileDiff, "@@") {
+		return ""
+	}
+	if i := strings.Index(fileDiff, "\n@@"); i >= 0 {
+		return fileDiff[:i+1]
+	}
+	return fileDiff
 }
 
 // ParseHunks splits a per-file diff into the leading header lines and its hunks.
