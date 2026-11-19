@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/store"
 	"github.com/trick77/noergler/internal/teams"
 	"github.com/trick77/noergler/internal/webhook"
@@ -205,7 +206,7 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 13. Dispatch.
-	d.dispatch(ctx, w, rt, slug, project, repo, payload)
+	d.dispatch(ctx, w, rt, team, slug, project, repo, payload)
 }
 
 // dispatch routes an authenticated, owned PR event.
@@ -217,7 +218,11 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 //
 // Pinned by a test: pr:deleted and pr:comment:deleted go on the queue,
 // but their response bodies carry no queue key.
-func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Runtime, slug, project, repo string, p *webhook.Payload) {
+//
+// team is the webhook's one snapshot (INVARIANTS: one teams.Runtime snapshot
+// per request): a settings PUT landing mid-request must not make the
+// retarget check disagree with steps 10 and 11.
+func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Runtime, team *config.Team, slug, project, repo string, p *webhook.Payload) {
 	key := store.PRKey{Project: project, Repo: repo, PRID: p.PullRequest.ID}
 	rv := rt.Reviewer
 
@@ -245,7 +250,7 @@ func (d Deps) dispatch(ctx context.Context, w http.ResponseWriter, rt *teams.Run
 		// rather than there: they would drop a draft -> ready in the same
 		// event): a PR noergler never reviews gets no task it could not
 		// resolve later.
-		if team := rt.Team(); p.Retargeted() && team.ReviewsRepo(project, repo) &&
+		if p.Retargeted() && team.ReviewsRepo(project, repo) &&
 			team.ExcludedBranch(p.PullRequest.FromRef.Branch(), p.PullRequest.ToRef.Branch()) == "" {
 			d.Queue.SubmitJob(key, slug, "snapshot-task", func(ctx context.Context, _ teams.Scheduler) bool { rv.HandleRetargeted(ctx, p); return false })
 			if !p.LeftDraft() {
