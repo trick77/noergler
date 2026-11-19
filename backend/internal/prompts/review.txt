@@ -179,6 +179,25 @@ Illustrative only — do not treat as code under review.
 }
 ```
 
+**Example 3 — blocking bug with a one-line fix (the `findings` item only).** Diff changes a pagination guard so that a page past the end is no longer rejected.
+
+```json
+{
+  "file": "internal/paging/page.go",
+  "line": 18,
+  "evidence": [
+    "if start > len(items) {"
+  ],
+  "severity": "issue",
+  "category": "bug",
+  "confidence": 95,
+  "headline": "Last page panics when start equals len(items)",
+  "comment": "The guard now lets `start == len(items)` through, so `items[start:end]` with `end = start + size` slices past the end and panics for a request one page beyond the data, which any client paging until it sees an empty page sends.",
+  "suggestion": "if start >= len(items) {",
+  "blocking_rule": null
+}
+```
+
 Empty `findings` is correct when nothing meets the bar. Do not invent issues.
 
 {output_language}
