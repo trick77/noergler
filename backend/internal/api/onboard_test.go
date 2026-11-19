@@ -2,8 +2,10 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -222,6 +224,56 @@ func TestOnboard_UpstreamFailureIs502(t *testing.T) {
 	w := h.onboardPost(t, bearer(), "tok", `{"action":"onboard","projects":[{"key":"PLAT"}]}`)
 	if w.StatusCode != http.StatusBadGateway {
 		t.Errorf("status = %d, want 502 (body %s)", w.StatusCode, h.body(w))
+	}
+}
+
+// The body is a struct (INVARIANTS: never a map), its keys in the order the
+// map's sorted encoding gave them, so no client sees the wire move. Each
+// action adds only its own optional keys.
+func TestOnboard_BodyKeyOrder(t *testing.T) {
+	cases := map[string]struct {
+		body string
+		want []string
+	}{
+		"status": {`{"action":"status"}`,
+			[]string{"action", "healthy", "rows", "team", "text", "webhook_url"}},
+		"onboard": {`{"action":"onboard","projects":[{"key":"PLAT"}]}`,
+			[]string{"action", "claimed", "healthy", "rows", "team", "text", "webhook_url"}},
+		"remove": {`{"action":"remove","projects":[{"key":"PLAT"}]}`,
+			[]string{"action", "healthy", "purged_prs", "rows", "team", "text", "unclaimed", "webhook_url"}},
+		// No projects: the targets path, results rather than status rows.
+		"onboard the held targets": {`{"action":"onboard"}`,
+			[]string{"action", "healthy", "rows", "team", "text", "webhook_url"}},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t, nil)
+			h.setOnboard(t, &fakeBB{}, &fakeClaims{}, "https://n.example.com")
+			w := h.onboardPost(t, bearer(), "tok", c.body)
+			body := h.body(w)
+			if w.StatusCode != http.StatusOK {
+				t.Fatalf("status = %d, want 200 (body %s)", w.StatusCode, body)
+			}
+			dec := json.NewDecoder(strings.NewReader(body))
+			var keys []string
+			if _, err := dec.Token(); err != nil { // {
+				t.Fatal(err)
+			}
+			for dec.More() {
+				tok, err := dec.Token()
+				if err != nil {
+					t.Fatal(err)
+				}
+				keys = append(keys, tok.(string))
+				var skip json.RawMessage
+				if err := dec.Decode(&skip); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !slices.Equal(keys, c.want) {
+				t.Errorf("keys = %v, want %v", keys, c.want)
+			}
+		})
 	}
 }
 
