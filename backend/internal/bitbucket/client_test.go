@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1412,6 +1413,10 @@ func TestDrainStopsOnAStalledBody(t *testing.T) {
 	restore := drainTimeout
 	drainTimeout = 50 * time.Millisecond
 	defer func() { drainTimeout = restore }()
+	// Far past the deadline below: only the drain's own bound can end it.
+	restoreIdle := bodyIdleTimeout
+	bodyIdleTimeout = time.Hour
+	defer func() { bodyIdleTimeout = restoreIdle }()
 
 	_, c := newFake(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
@@ -1439,6 +1444,103 @@ func TestDrainStopsOnAStalledBody(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("drain did not give up: the review worker would be held indefinitely")
+	}
+}
+
+// A body that stops mid-way without closing must not hold the single review
+// worker: the read gives up after bodyIdleTimeout without a byte, for the
+// uncapped diff read and for a JSON answer alike. The bound is on silence,
+// not on the whole download (no Client.Timeout).
+func TestStalledBodyGivesUp(t *testing.T) {
+	restore := bodyIdleTimeout
+	bodyIdleTimeout = 100 * time.Millisecond
+	defer func() { bodyIdleTimeout = restore }()
+
+	for name, call := range map[string]func(*Client) error{
+		"uncapped diff": func(c *Client) error {
+			c.maxDiffBytes = 0
+			_, err := c.FetchPRDiff(context.Background(), "PROJ", "my-repo", 1, 0)
+			return err
+		},
+		"json": func(c *Client) error {
+			_, err := c.DefaultBranch(context.Background(), "PROJ", "my-repo")
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			blocked := make(chan struct{})
+			defer close(blocked)
+			_, c := newFake(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.(http.Flusher).Flush() // chunked: no Content-Length
+				_, _ = io.WriteString(w, `{"displayId": "mas`)
+				w.(http.Flusher).Flush()
+				<-blocked // never send the rest, never close
+			})
+
+			done := make(chan error, 1)
+			go func() { done <- call(c) }()
+			select {
+			case err := <-done:
+				if !errors.Is(err, ErrBodyIdle) {
+					t.Fatalf("err = %v, want ErrBodyIdle", err)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("read did not give up: the review worker would be held indefinitely")
+			}
+		})
+	}
+}
+
+// A team's own account hears of a stalled body like a refused dial: its
+// health is not "ok" while every body times out.
+func TestStalledBodyReachesTheObserver(t *testing.T) {
+	restore := bodyIdleTimeout
+	bodyIdleTimeout = 100 * time.Millisecond
+	defer func() { bodyIdleTimeout = restore }()
+
+	blocked := make(chan struct{})
+	defer close(blocked)
+	_, c := newFake(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.(http.Flusher).Flush()
+		<-blocked
+	})
+	var mu sync.Mutex
+	var seen []error
+	own := c.WithAccount("own-token", "plat-bot", slog.New(slog.DiscardHandler), func(_ int, err error) {
+		mu.Lock()
+		seen = append(seen, err)
+		mu.Unlock()
+	})
+	if _, err := own.DefaultBranch(context.Background(), "PROJ", "my-repo"); !errors.Is(err, ErrBodyIdle) {
+		t.Fatalf("err = %v, want ErrBodyIdle", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) != 2 || seen[0] != nil || !errors.Is(seen[1], ErrBodyIdle) {
+		t.Errorf("observer saw %v, want the 200 then ErrBodyIdle", seen)
+	}
+}
+
+// A body that trickles, a byte now and then, is alive: the bound re-arms on
+// every read and the download completes.
+func TestTricklingBodyCompletes(t *testing.T) {
+	restore := bodyIdleTimeout
+	bodyIdleTimeout = time.Second
+	defer func() { bodyIdleTimeout = restore }()
+
+	_, c := newFake(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		for range 6 {
+			_, _ = io.WriteString(w, "x")
+			w.(http.Flusher).Flush()
+			// 1.2 s in all, past the bound, never 1 s silent: a loaded
+			// runner keeps ten times the gap in hand.
+			time.Sleep(200 * time.Millisecond)
+		}
+	})
+	got, err := c.FetchPRDiff(context.Background(), "PROJ", "my-repo", 1, 0)
+	if err != nil || got != "xxxxxx" {
+		t.Fatalf("got %q, %v; want the whole body", got, err)
 	}
 }
 

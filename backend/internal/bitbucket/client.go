@@ -15,6 +15,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/trick77/noergler/internal/config"
@@ -213,7 +215,7 @@ func (c *Client) WithAccount(token, username string, log *slog.Logger, observe f
 }
 
 // send authenticates and issues a request, and reports its outcome to the
-// observer.
+// observer. The body comes back under the idle bound (idleBody).
 func (c *Client) send(req *http.Request) (*http.Response, error) {
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	resp, err := c.http.Do(req)
@@ -224,7 +226,83 @@ func (c *Client) send(req *http.Request) (*http.Response, error) {
 			c.observe(resp.StatusCode, nil)
 		}
 	}
+	if err == nil {
+		// A body gone silent is a transport failure as much as a refused
+		// dial: the team's account health hears of it like one.
+		var onIdle func()
+		if c.observe != nil {
+			observe := c.observe
+			onIdle = func() { observe(0, ErrBodyIdle) }
+		}
+		resp.Body = newIdleBody(resp.Body, bodyIdleTimeout, onIdle)
+	}
 	return resp, err
+}
+
+// bodyIdleTimeout is how long a response body may send nothing before it is
+// closed (user, 2026-11-19). A bound on silence, never on the download: no
+// Client.Timeout, a large diff that keeps arriving takes as long as it takes.
+// Without it a connection that stalls mid-body holds the single review
+// worker, every team's, for good: ResponseHeaderTimeout covers the head
+// only, and the review's ctx has no deadline. Not on the git client: its
+// stages carry their own timeout.
+var bodyIdleTimeout = 60 * time.Second
+
+// ErrBodyIdle is a response body that sent nothing for bodyIdleTimeout.
+var ErrBodyIdle = errors.New("response body idle")
+
+// idleBody closes the body once it has been silent for d, re-armed by every
+// read that returns a byte. Closing is what interrupts a Read already blocked
+// in the kernel; the read then reports ErrBodyIdle rather than the
+// transport's "read on closed body". onIdle, when set, runs once when it
+// fires.
+type idleBody struct {
+	rc    io.ReadCloser
+	d     time.Duration
+	fired atomic.Bool
+
+	// mu orders re-arming against Close: a Read returning bytes as the drain
+	// closes the body must not start the stopped timer again.
+	mu     sync.Mutex
+	timer  *time.Timer
+	closed bool
+}
+
+func newIdleBody(rc io.ReadCloser, d time.Duration, onIdle func()) *idleBody {
+	b := &idleBody{rc: rc, d: d}
+	b.timer = time.AfterFunc(d, func() {
+		b.fired.Store(true)
+		_ = rc.Close()
+		if onIdle != nil {
+			onIdle()
+		}
+	})
+	return b
+}
+
+func (b *idleBody) Read(p []byte) (int, error) {
+	n, err := b.rc.Read(p)
+	// Only a read the close broke is idle: one that ended the body, or
+	// returned bytes, as the timer fired completed in time.
+	if err != nil && err != io.EOF && b.fired.Load() {
+		return n, fmt.Errorf("%w for %s", ErrBodyIdle, b.d)
+	}
+	if n > 0 {
+		b.mu.Lock()
+		if !b.closed {
+			b.timer.Reset(b.d)
+		}
+		b.mu.Unlock()
+	}
+	return n, err
+}
+
+func (b *idleBody) Close() error {
+	b.mu.Lock()
+	b.closed = true
+	b.timer.Stop()
+	b.mu.Unlock()
+	return b.rc.Close()
 }
 
 // url builds an absolute URL. Path segments are escaped, so a file path with a
