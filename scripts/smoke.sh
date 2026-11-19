@@ -184,9 +184,18 @@ echo "delete bitbucket again (want 404): $(creds DELETE '' /bitbucket)"
 echo "delete jira: $(creds DELETE '' /jira | grep -o '"jira_account":{[^}]*}')"
 
 # The worker needs a moment to pick the job up before SIGTERM drains it.
+# A server that died, or that exits non-zero from the drain, fails the run,
+# but only after its log is printed: under errexit a bare failed kill would
+# end the script and the trap delete the log unread.
 sleep 2
-kill -TERM "$pid"
-wait "$pid" || true
+serve_failed=""
+kill -TERM "$pid" 2>/dev/null || serve_failed="serve was not running at the end (crashed?)"
+serve_rc=0
+wait "$pid" || serve_rc=$?
+pid="" # reaped: the trap must not signal a pid the OS may have handed on
+if [ -z "$serve_failed" ] && [ "$serve_rc" -ne 0 ]; then
+  serve_failed="serve exited $serve_rc after SIGTERM"
+fi
 echo "--- log"
 grep -E "version|Database|Bitbucket:|Jira:|team_disabled|team_ready|teams_ready|http_request|stopped|listening|DISABLED|queue\[|priced by the gateway|HTTP totals|cost headers|Review of |context_window |context window |PR description |calls, tools|A reply on|noergler threads open|team credential|credentials push|comment mentions|screenshot|resumed" "$tmp/serve.log"
 echo "--- review posted"
@@ -195,3 +204,11 @@ echo "--- onboarding writes seen by bitbucket (want a create, a grant and a refu
 grep "onboarding:" "$tmp/fakes.log" || true
 echo "--- endpoints scripts/fakes does not serve (want none)"
 grep "unhandled:" "$tmp/fakes.log" | sed 's/.*unhandled: //' | sort -u || true
+
+# The filter above keeps no panic and no "startup aborted": the raw tail
+# says why serve went.
+if [ -n "$serve_failed" ]; then
+  echo "--- FAILED: $serve_failed; last lines of serve.log"
+  tail -n 50 "$tmp/serve.log"
+  exit 1
+fi
