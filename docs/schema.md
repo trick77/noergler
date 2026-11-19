@@ -657,6 +657,18 @@ In `internal/store`. DisputePR is one PR a signal occurred on inside the window:
 | `CommentID` | `*int` |  |
 | `Author` | `string` |  |
 
+### store.FindingOutcomeCount
+
+In `internal/store`. FindingOutcomeCount is how many findings of one team, severity and confidence band (store.Band*) ended in one outcome (store.Outcome*) on PRs merged in the window.
+
+| Field | Type | Doc |
+| --- | --- | --- |
+| `TeamSlug` | `string` |  |
+| `Severity` | `string` |  |
+| `Band` | `string` |  |
+| `Outcome` | `string` |  |
+| `Count` | `int` |  |
+
 ### store.FixCount
 
 In `internal/store`. FixCount is how many fix requests of one team ended in one outcome.

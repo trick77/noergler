@@ -441,6 +441,19 @@ type FixCount struct {
 	Count    int
 }
 
+// FindingOutcomeCount is how many findings of one team, severity and
+// confidence band (store.Band*) ended in one outcome (store.Outcome*) on
+// PRs merged in the window.
+//
+// Table: -
+type FindingOutcomeCount struct {
+	TeamSlug string
+	Severity string
+	Band     string
+	Outcome  string
+	Count    int
+}
+
 // ActivityCount is how many acts of one kind (store.Activity*) one team's
 // PRs saw on one day.
 //

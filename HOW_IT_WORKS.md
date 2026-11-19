@@ -611,6 +611,20 @@ call row names no request). A finding is committed once. The fix call is its own
 next review retires a finding noergler committed without a "Fixed in" reply
 and without resolving it: the author resolves the thread after looking.
 
+Below the team table, "What became of the findings" counts the inline
+findings of PRs merged in the window by confidence band (95+, 90-94, below
+90, not stored), each in one outcome, first match wins: fixed (a checked
+fixed claim or a fix noergler committed), disputed by the author, thread
+resolved without either, open (`finding_outcomes`, `FindingOutcomesSince`;
+the API keeps team and severity too). Merged PRs only: an open PR's
+findings may still be fixed, a declined one says nothing. Blocking tasks,
+a task resolved because its rule left AGENTS.md and legacy rows without a
+thread are left out. Known limits: every state but a committed fix is what
+the last review saw (a thread resolved after it, or deleted, reads open),
+and a dispute is the first answered reply's. It is a reading for tuning the
+confidence threshold by hand, never a prompt input, never a filter, never
+a cost.
+
 The same works for a Q&A answer whose question sat on a line of code
 (inline only). The answer keeps that line (`bot_replies.anchor_*`): the
 question's own when it is the thread's root (one comment fetch per such

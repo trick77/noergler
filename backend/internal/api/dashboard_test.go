@@ -45,6 +45,7 @@ type fakeDashStore struct {
 	byTeam        []store.TeamTotals
 	fixCounts     []store.FixCount
 	acts          []store.ActivityCount
+	outcomes      []store.FindingOutcomeCount
 	daily         []store.Bucket
 	dailyAtt      []store.AttemptBucket
 	activity      []store.TeamActivity
@@ -115,6 +116,9 @@ func (f *fakeDashStore) FixCountsSince(context.Context, time.Time) ([]store.FixC
 }
 func (f *fakeDashStore) ActivitySince(context.Context, time.Time) ([]store.ActivityCount, error) {
 	return f.acts, f.err
+}
+func (f *fakeDashStore) FindingOutcomesSince(context.Context, time.Time) ([]store.FindingOutcomeCount, error) {
+	return f.outcomes, f.err
 }
 func (f *fakeDashStore) TotalsSince(context.Context, time.Time) (store.Totals, error) {
 	return f.totals, f.err
@@ -629,8 +633,29 @@ func TestMetricsActivityIsAnEmptyListWithoutActs(t *testing.T) {
 	if err := json.Unmarshal(h.get(t, "/api/dashboard/metrics?days=7").Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if v, ok := got["activity_daily"].([]any); !ok || len(v) != 0 {
-		t.Errorf("activity_daily = %#v, want []", got["activity_daily"])
+	for _, field := range []string{"activity_daily", "finding_outcomes"} {
+		if v, ok := got[field].([]any); !ok || len(v) != 0 {
+			t.Errorf("%s = %#v, want []", field, got[field])
+		}
+	}
+}
+
+// The outcome rows go out as the store counted them.
+func TestMetricsCarriesFindingOutcomes(t *testing.T) {
+	h := newDashHarness(t)
+	h.st.outcomes = []store.FindingOutcomeCount{
+		{TeamSlug: "platform", Severity: "issue", Band: store.BandHigh, Outcome: store.OutcomeFixed, Count: 4},
+		{TeamSlug: "platform", Severity: "suggestion", Band: store.BandLow, Outcome: store.OutcomeOpen, Count: 2},
+	}
+	var got struct {
+		Outcomes []findingOutcomeBody `json:"finding_outcomes"`
+	}
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/metrics?days=7").Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	want := []findingOutcomeBody{{"platform", "issue", "95+", "fixed", 4}, {"platform", "suggestion", "<90", "open", 2}}
+	if !slices.Equal(got.Outcomes, want) {
+		t.Errorf("finding_outcomes = %+v, want %+v", got.Outcomes, want)
 	}
 }
 
