@@ -213,6 +213,8 @@ Indexes:
 - `finding_fixes_answer_committed_idx` (`answer_comment_id`) unique where `outcome = 'committed'::text`
 - `finding_fixes_committed_idx` (`finding_id`) unique where `outcome = 'committed'::text`
 - `finding_fixes_team_time_idx` (`team_slug`, `created_at`)
+- `idx_finding_fixes_finding` (`finding_id`) where `finding_id IS NOT NULL`
+- `idx_finding_fixes_pr` (`pull_request_id`) where `pull_request_id IS NOT NULL`
 - `idx_finding_fixes_time` (`created_at`)
 
 Checks:
@@ -260,6 +262,8 @@ Indexes:
 
 - `idx_findings_comment` (`bitbucket_comment_id`)
 - `idx_findings_dedup` (`pull_request_id`, `file_path`, `line_number`, `severity`)
+- `idx_findings_fixed_run` (`fixed_run_id`) where `fixed_run_id IS NOT NULL`
+- `idx_findings_run` (`review_run_id`)
 
 Checks:
 
@@ -315,6 +319,7 @@ Foreign keys:
 Indexes:
 
 - `idx_llm_calls_attempt` (`attempt_id`) unique where `attempt_id IS NOT NULL`
+- `idx_llm_calls_comment_time` (`created_at`) where `attempt_id IS NULL`
 - `idx_llm_calls_pr` (`project_key`, `repo_slug`, `pr_id`)
 - `llm_calls_comment_pr_idx` (`project_key`, `repo_slug`, `pr_id`, `created_at`) where `attempt_id IS NULL`
 
