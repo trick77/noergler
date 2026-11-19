@@ -1863,6 +1863,31 @@ describe("TeamsPage", () => {
     expect(await screen.findByText("copied")).toBeDefined();
   });
 
+  // Clicking the team already open scrolls back to it and clears a search,
+  // but the URL keeps naming the team: it is still the page of that team,
+  // and a link copied off the address bar must open it again.
+  it("keeps the team's path on a rail click to the open team", async () => {
+    for (const start of ["/teams/payments?q=mob", "/teams/payments"]) {
+      window.history.pushState({}, "", start);
+      serve({ teams: { teams } });
+      const { unmount } = render(<TeamsPage />);
+
+      const rail = await screen.findByRole("navigation", { name: "Teams" });
+      fireEvent.click(within(rail).getByRole("link", { name: /Zahlungen/ }));
+
+      expect(window.location.pathname).toBe("/teams/payments");
+      expect(window.location.search).toBe("");
+      // The search really cleared: empty box, the team's card back.
+      expect((screen.getByRole("searchbox") as HTMLInputElement).value).toBe(
+        "",
+      );
+      expect(
+        await screen.findByRole("heading", { name: "Zahlungen" }),
+      ).toBeDefined();
+      unmount();
+    }
+  });
+
   // No clipboard API (a plain-http host): the glyph falls back to the
   // selection copy and still only says copied when that worked.
   it("falls back when the clipboard API is missing", async () => {

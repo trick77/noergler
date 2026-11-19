@@ -707,7 +707,10 @@ export function TeamsPage() {
     const same = window.location.pathname === path;
     onNav(path)(e);
     if (e.isDefaultPrevented() && same) {
-      setQ("");
+      // Clear the search but stay on the team's path: setQ("") would write
+      // /teams and lose the link to the team still on screen.
+      setQuery("");
+      writeQuery(path, "");
       setFocus(slug);
       setCurrent(slug);
       setAgain((n) => n + 1);
