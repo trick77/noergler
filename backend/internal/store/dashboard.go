@@ -128,13 +128,18 @@ func (s *Store) PRCountsSince(ctx context.Context, since time.Time) (reviewed, s
 // FirstActivity is when this instance first ran, attempted or called
 // anything, nil when it never has: the metrics page's previous window is
 // only whole when it starts after this.
+//
+// Only comment calls (replies, questions, fixes) from llm_calls: a review's call is
+// written after its attempt, so the attempts' MIN covers it, and the filter
+// lets idx_llm_calls_comment_time serve this on every metrics request
+// instead of a scan of every call ever made.
 func (s *Store) FirstActivity(ctx context.Context) (*time.Time, error) {
 	var first *time.Time
 	err := s.pool.QueryRow(ctx, `
 		SELECT LEAST(
 		       (SELECT MIN(created_at) FROM review_runs),
 		       (SELECT MIN(created_at) FROM review_attempts),
-		       (SELECT MIN(created_at) FROM llm_calls))`).Scan(&first)
+		       (SELECT MIN(created_at) FROM llm_calls WHERE attempt_id IS NULL))`).Scan(&first)
 	return first, err
 }
 
