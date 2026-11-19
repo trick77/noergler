@@ -59,7 +59,7 @@ const defaultBranchTTL = time.Hour
 const maxSnapshotBuildFiles = 50
 
 // hitsMemo is each PR's last hits by the build files' blob ids: a push
-// that changes no build file reads no diff again.
+// that changes no build file reads no diff again. Bounded by prMemoMax.
 type hitsMemo struct {
 	mu sync.Mutex
 	m  map[store.PRKey]hitsEntry
@@ -83,10 +83,19 @@ func (c *hitsMemo) get(k store.PRKey, sig string) ([]snap.Hit, bool) {
 func (c *hitsMemo) put(k store.PRKey, sig string, hits []snap.Hit) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.m == nil {
+	// Starts over only for a PR it does not hold: updating one never grows
+	// the map, so it never costs the others theirs.
+	if _, held := c.m[k]; c.m == nil || (!held && len(c.m) >= prMemoMax) {
 		c.m = map[store.PRKey]hitsEntry{}
 	}
 	c.m[k] = hitsEntry{sig: sig, hits: hits}
+}
+
+// forget drops a closed PR, so the cap is a backstop, not the eviction.
+func (c *hitsMemo) forget(k store.PRKey) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.m, k)
 }
 
 // buildSig is the build files' identity for hitsMemo, "" when any lacks a

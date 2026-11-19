@@ -59,9 +59,10 @@ func offerPROf(pr webhook.PullRequest, key store.PRKey) offerPR {
 		sourceHead: pr.FromRef.LatestCommit, targetHead: pr.ToRef.LatestCommit, fork: conflictFromFork(pr, key)}
 }
 
-// offerCacheMax bounds the check's memory of PRs: past it, it starts over
-// (a check is repeated, nothing more).
-const offerCacheMax = 1000
+// prMemoMax bounds an in-memory per-PR memo (the offer check's, the
+// SNAPSHOT hits'): past it, the memo starts over (a check or a diff read is
+// repeated, nothing more). The process lives for weeks, PRs keep coming.
+const prMemoMax = 1000
 
 // offerCache is each PR's last check, by the heads it ran on: a review on
 // the same two heads fetches nothing again. Memory only; the open comment
@@ -92,10 +93,19 @@ func (c *offerCache) put(k store.PRKey, p offerPR, kind offerKind) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.m == nil || len(c.m) >= offerCacheMax {
+	// Starts over only for a PR it does not hold: updating one never grows
+	// the map, so it never costs the others theirs.
+	if _, held := c.m[k]; c.m == nil || (!held && len(c.m) >= prMemoMax) {
 		c.m = map[store.PRKey]offerEntry{}
 	}
 	c.m[k] = offerEntry{sourceHead: p.sourceHead, targetHead: p.targetHead, kind: kind}
+}
+
+// forget drops a closed PR, so the cap is a backstop, not the eviction.
+func (c *offerCache) forget(k store.PRKey) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.m, k)
 }
 
 // conflictOffer checks the PR for a conflict noergler could resolve: the
