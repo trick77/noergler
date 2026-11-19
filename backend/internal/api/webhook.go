@@ -139,9 +139,10 @@ func (d Deps) webhook(w http.ResponseWriter, r *http.Request) {
 	eventKey := payload.EventKey
 
 	// 8. Bitbucket nests the repository under toRef or fromRef; either side
-	// may carry it.
+	// may carry it. Both parts required: Owns(project, "") holds under a
+	// whole-project claim, and an empty repo is no PR anyone could review.
 	project, repo := payload.ProjectRepo()
-	if project == "" && repo == "" {
+	if project == "" || repo == "" {
 		d.Log.ErrorContext(ctx, "event missing repository info",
 			"event", eventKey, "pr_id", payload.PullRequest.ID)
 		httpx.WriteJSON(w, http.StatusOK, ignored{"ignored", "missing repository"})

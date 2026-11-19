@@ -372,6 +372,30 @@ func TestWebhook_MissingRepositoryIsIgnored(t *testing.T) {
 	wantBody(t, w, http.StatusOK, map[string]any{"status": "ignored", "reason": "missing repository"})
 }
 
+// A repository with a project and no slug is no repository: under a
+// whole-project claim Owns(project, "") holds, and a PR key with an empty
+// repo would reach the queue.
+func TestWebhook_RepositoryWithoutSlugIsIgnored(t *testing.T) {
+	for name, repo := range map[string]string{
+		"no slug":    `{"slug":"","project":{"key":"PLAT"}}`,
+		"no project": `{"slug":"svc","project":{"key":""}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t, nil)
+			body := []byte(`{"eventKey":"pr:opened",
+				"pullRequest":{"id":42,"title":"t",
+				"fromRef":{"id":"a","displayId":"a"},
+				"toRef":{"id":"b","displayId":"b","repository":` + repo + `},
+				"author":{"user":{"name":"alice"}}}}`)
+			w := h.signedPost(t, body)
+			wantBody(t, w, http.StatusOK, map[string]any{"status": "ignored", "reason": "missing repository"})
+			if len(h.q.keys) != 0 || len(h.q.tags) != 0 {
+				t.Error("a payload without a whole repository must not reach the queue")
+			}
+		})
+	}
+}
+
 // --- the ownership check ----------------------------------------------------
 
 // The invariant: holding a team's secret does not make another team's repo
