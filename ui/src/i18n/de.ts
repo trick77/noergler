@@ -9,7 +9,7 @@ export const de = {
     label: "Seiten",
     live: "Live",
     runs: "Runs",
-    metrics: "Metriken",
+    metrics: "Review-Metriken",
     teams: "Teams",
     faq: "FAQ",
     api: "API",
@@ -166,7 +166,7 @@ export const de = {
     count: "Anzahl",
   },
   metrics: {
-    failedWhat: "die Metriken",
+    failedWhat: "die Review-Metriken",
     lastDays_one: "der letzte Tag",
     lastDays_other: "die letzten {{count}} Tage",
     cost: "Kosten",
