@@ -984,6 +984,52 @@ describe("MetricsPage", () => {
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
+  // A team whose window holds a fix request and no run of its own is listed
+  // with empty totals: no run, so no unpriced one either. A dash, as the
+  // Cost tile shows for an instance that has run nothing.
+  it("shows a dash for the cost of a team with no runs", async () => {
+    const idle = {
+      ...metrics.by_team[0],
+      team: "infra",
+      team_name: "Infra",
+      runs: 0,
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      findings_posted: 0,
+      cost_usd: null,
+      unpriced_runs: 0,
+      lines_added: 0,
+      lines_removed: 0,
+    };
+    serve({ metrics: { ...metrics, by_team: [...metrics.by_team, idle] } });
+    render(<MetricsPage />);
+
+    // The team cell carries the slug as its title; the name is in a legend too.
+    const row = (await screen.findByTitle("infra")).closest("tr");
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).queryByText("unpriced")).toBeNull();
+    // Cost is the last column.
+    expect(row?.lastElementChild?.textContent).toBe("—");
+  });
+
+  // No review run but priced replies: that is spend, shown, never hidden
+  // behind a dash.
+  it("shows the run-less spend of a team with no runs", async () => {
+    const replies = {
+      ...metrics.by_team[0],
+      team: "infra",
+      team_name: "Infra",
+      runs: 0,
+      cost_usd: "0.040",
+      unpriced_runs: 0,
+    };
+    serve({ metrics: { ...metrics, by_team: [...metrics.by_team, replies] } });
+    render(<MetricsPage />);
+
+    const row = (await screen.findByTitle("infra")).closest("tr");
+    expect(row?.lastElementChild?.textContent).toBe("$0.04");
+  });
+
   // Reviewed counts PRs, reviewed out of seen. No runs line beneath it
   // (user, 2026-11-10); the team table still says Runs.
   it("shows reviewed PRs out of seen, without a runs line", async () => {

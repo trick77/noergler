@@ -160,7 +160,18 @@ export function RunPane({ token, n }: { token: string; n: number }) {
 
       <div className="mt-5">
         <Tiles>
-          <Tile label={t("run.cost")} value={money(d.cost_usd ?? null)} />
+          {/* A skip with no call and no cost asked nothing of the model, so
+            nothing went unpriced. A failure or an ok run without a call row
+            (a timeout, a refused write, a run before llm_calls) may have
+            been billed: unpriced, as the Runs page says. */}
+          <Tile
+            label={t("run.cost")}
+            value={
+              d.outcome === "skipped" && call === null && d.cost_usd == null
+                ? "—"
+                : money(d.cost_usd ?? null)
+            }
+          />
           <Tile label={t("run.elapsed")} value={duration(d.elapsed_ms)}>
             {/* total, not headers: a stream's headers come with the first
                 byte, so headers_ms is no longer the model's time. */}

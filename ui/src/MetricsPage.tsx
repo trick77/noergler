@@ -75,6 +75,13 @@ const SERIES_COLORS = [
  *  UTC arithmetic in the middle, because Date.UTC has no DST: stepping a
  *  local date across a spring-forward boundary can land on the same day
  *  twice. */
+/** noSpend is a totals row with nothing spent and no run unpriced: its cost
+ *  is a dash, never "unpriced", which would claim a call the gateway did not
+ *  price. A row with run-less spend (priced replies) has a cost. */
+function noSpend(t: { cost_usd: string | null; unpriced_runs: number }) {
+  return t.cost_usd === null && t.unpriced_runs === 0;
+}
+
 function days(since: string, until: string): string[] {
   const start = calendarDay(since);
   const end = calendarDay(until);
@@ -657,16 +664,17 @@ export function MetricsPage() {
 
         <div className={stale ? "opacity-40 transition-opacity" : ""}>
           <Tiles cols={4}>
-            {/* On an instance that has not run yet, "unpriced" would claim the
-              gateway declined to price something. Nothing ran; that is a
+            {/* On an instance that has spent nothing yet, "unpriced" would
+              claim the gateway declined to price something; that is a
               dash. "unpriced" is reserved for runs that actually happened
-              and came back without a price.
+              and came back without a price. Run-less spend (priced replies
+              before the window's first review) is spend.
               Unpriced runs are a note on the cost, not a tile (user,
               2026-11-19): the tile read 0 nearly always, and the cost is
               what they make incomplete. */}
             <Tile
               label={t("metrics.cost")}
-              value={data.totals.runs === 0 ? "—" : money(data.totals.cost_usd)}
+              value={noSpend(data.totals) ? "—" : money(data.totals.cost_usd)}
               warn={
                 data.totals.unpriced_runs > 0
                   ? t("metrics.unpricedRuns", {
@@ -1049,7 +1057,11 @@ export function MetricsPage() {
                             className={tdNum + hint}
                             title={`${t("metrics.tokensIn")}: ${num(row.prompt_tokens)}\n${t("metrics.tokensOut")}: ${num(row.completion_tokens)}`}
                           >
-                            {money(row.cost_usd)}
+                            {/* Nothing spent and nothing unpriced (a team
+                              listed for a fix or an engagement alone): the
+                              dash the Cost tile uses. Run-less spend (a
+                              priced reply, an unparseable answer) shows. */}
+                            {noSpend(row) ? "—" : money(row.cost_usd)}
                           </td>
                         </tr>
                       );
@@ -1076,7 +1088,9 @@ export function MetricsPage() {
                         </td>
                         <td className={tdFoot} />
                         <td className={tdNumFoot}>
-                          {money(data.totals.cost_usd)}
+                          {noSpend(data.totals)
+                            ? "—"
+                            : money(data.totals.cost_usd)}
                         </td>
                       </tr>
                     </tfoot>

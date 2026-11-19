@@ -403,5 +403,19 @@ describe("RunPane", () => {
     expect(
       await screen.findByText("HEAD unchanged since last review"),
     ).toBeDefined();
+    // No call was made, so nothing went unpriced: a dash, not "unpriced".
+    expect(screen.queryByText("unpriced")).toBeNull();
+    expect(screen.getByText("Cost").nextElementSibling?.textContent).toBe("—");
+  });
+
+  // An ok run whose call row is missing (a refused write, a run from before
+  // llm_calls) and whose price is unknown was a real call: unpriced.
+  it("keeps an ok run without a call row unpriced", async () => {
+    serve(RUN, { ...detail, outcome: "ok", cost_usd: null, call: null });
+    render(<RunPane token={TOK} n={2} />);
+    await screen.findByText("Cost");
+    expect(screen.getByText("Cost").nextElementSibling?.textContent).toBe(
+      "unpriced",
+    );
   });
 });
