@@ -42,6 +42,37 @@ export function dayMonth(day: string): string {
   }).format(new Date(d));
 }
 
+/** weekdayDay is a "YYYY-MM-DD" day with its weekday, e.g. "Wed, 11 Nov",
+ *  read off the string in UTC like dayMonth. */
+export function weekdayDay(day: string): string {
+  const d = calendarDay(day);
+  if (d === null) return day;
+  return new Intl.DateTimeFormat(locale(), {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).format(new Date(d));
+}
+
+/** isWeekend says whether a "YYYY-MM-DD" day is a Saturday or Sunday. */
+export function isWeekend(day: string): boolean {
+  const d = calendarDay(day);
+  if (d === null) return false;
+  const dow = new Date(d).getUTCDay();
+  return dow === 0 || dow === 6;
+}
+
+/** change is the step from `before` to `now` as a signed whole percent
+ *  ("+13 %", "−4 %", "±0 %"), or null where there is nothing to compare
+ *  against: a zero before has no percentage. */
+export function change(now: number, before: number): string | null {
+  if (!(before > 0) || !Number.isFinite(now)) return null;
+  const pct = Math.round(((now - before) / before) * 100);
+  const sign = pct > 0 ? "+" : pct < 0 ? "−" : "±";
+  return `${sign}${num(Math.abs(pct))} %`;
+}
+
 /** monthName names the month `since` falls in, e.g. "September 2026". */
 export function monthName(since: string): string {
   // The server's month, read off the string: through the viewer's clock a

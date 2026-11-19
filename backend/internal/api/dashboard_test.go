@@ -67,6 +67,14 @@ type fakeDashStore struct {
 	// calls are the PR's reply and question calls.
 	calls []store.CommentCall
 
+	// prevTotals and prev* are the previous window's; prevSince and
+	// prevUntil record what the handler asked for.
+	prevTotals             store.Totals
+	prevReviewed, prevSeen int
+	prevSince, prevUntil   time.Time
+	// first is the instance's first row; nil, never ran.
+	first *time.Time
+
 	err error
 	// lastTeam, lastOutcome and lastLimit record what the handler asked for.
 	lastTeam    string
@@ -113,6 +121,16 @@ func (f *fakeDashStore) TotalsSince(context.Context, time.Time) (store.Totals, e
 }
 func (f *fakeDashStore) PRCountsSince(context.Context, time.Time) (int, int, error) {
 	return f.reviewed, f.seen, f.err
+}
+func (f *fakeDashStore) TotalsBetween(_ context.Context, since, until time.Time) (store.Totals, error) {
+	f.prevSince, f.prevUntil = since, until
+	return f.prevTotals, f.err
+}
+func (f *fakeDashStore) PRCountsBetween(context.Context, time.Time, time.Time) (int, int, error) {
+	return f.prevReviewed, f.prevSeen, f.err
+}
+func (f *fakeDashStore) FirstActivity(context.Context) (*time.Time, error) {
+	return f.first, f.err
 }
 func (f *fakeDashStore) TotalsByTeam(context.Context, time.Time) ([]store.TeamTotals, error) {
 	return f.byTeam, f.err
@@ -650,6 +668,61 @@ func TestMetricsReportsPRCountsBesideTheRuns(t *testing.T) {
 	}
 	if got.PRs.Reviewed != 45 || got.PRs.Seen != 120 || got.Totals.Runs != 619 {
 		t.Errorf("prs = %+v, runs = %d, want 45/120 and 619", got.PRs, got.Totals.Runs)
+	}
+}
+
+// The previous window is as long as this one and ends at the same time of
+// day, so today's few hours are compared with that day's same few hours.
+func TestMetricsComparesThePreviousWindowCutAtTheSameHour(t *testing.T) {
+	h := newDashHarness(t)
+	h.st.prevTotals = store.Totals{Runs: 40, FindingsPosted: 90}
+	h.st.prevReviewed, h.st.prevSeen = 12, 20
+	longAgo := time.Now().AddDate(-1, 0, 0)
+	h.st.first = &longAgo
+
+	before := time.Now()
+	var got metricsBody
+	if err := json.Unmarshal(h.get(t, "/api/dashboard/metrics?days=7").Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	p := got.Previous
+	if p == nil {
+		t.Fatal("previous = null, want the window before")
+	}
+	if want := got.Since.AddDate(0, 0, -7); !p.Since.Equal(want) || !h.st.prevSince.Equal(want) {
+		t.Errorf("previous since = %s, asked %s, want %s", p.Since, h.st.prevSince, want)
+	}
+	if lo, hi := before.AddDate(0, 0, -7), time.Now().AddDate(0, 0, -7); p.Until.Before(lo) || p.Until.After(hi) ||
+		!h.st.prevUntil.Equal(p.Until) {
+		t.Errorf("previous until = %s, want now minus 7 days", p.Until)
+	}
+	if p.Totals.Runs != 40 || p.Totals.FindingsPosted != 90 || p.PRs.Reviewed != 12 || p.PRs.Seen != 20 {
+		t.Errorf("previous = %+v", p)
+	}
+}
+
+// A previous window that starts before the instance's first row is not
+// whole: compared with it, every tile would read a surge.
+func TestMetricsHasNoPreviousBeforeTheFirstRow(t *testing.T) {
+	h := newDashHarness(t)
+	for name, first := range map[string]*time.Time{
+		"never ran":    nil,
+		"ran days ago": new(time.Now().AddDate(0, 0, -10)),
+	} {
+		h.st.first = first
+		body := h.get(t, "/api/dashboard/metrics?days=7").Body.String()
+		if !strings.Contains(body, `"previous":null`) {
+			t.Errorf("%s: body = %s, want previous null", name, body)
+		}
+	}
+}
+
+// The month window has no previous: last month is whole, this one is not.
+func TestMetricsMonthWindowHasNoPrevious(t *testing.T) {
+	h := newDashHarness(t)
+	body := h.get(t, "/api/dashboard/metrics").Body.String()
+	if !strings.Contains(body, `"previous":null`) {
+		t.Errorf("body = %s, want previous null", body)
 	}
 }
 
