@@ -503,7 +503,13 @@ that takes tools the answer may call `team_config` (the team's effective
 settings: claimed projects, excluded repos and branches, both author lists by name, the
 instance-wide author globs, the built-in skipped dirs, files and extensions, and whether the asker is on the
 lists; a settings answer is a Markdown table),
-`pr_status` (runs, the latest outcomes and skip reasons, cost against the cap, the branches and the exclude list they match)
+`pr_status` (runs, the latest outcomes and skip reasons, cost against the cap, the branches and the exclude list they match),
+`pr_findings` (the findings not yet seen fixed, ordered as the summary lists
+them: file, line, severity, headline, open or resolved, with the last
+review's time, since every state is that review's and a thread resolved or
+deleted since reads open; and the recommendation the stored open ones
+support, which can differ from the posted one; read from the rows, never
+the posted summary, never a dispute or evidence)
 and `set_my_language` (the asker's language, only when their own comment names
 it). Up to three tool rounds, four calls each, then a final round without
 tools. Each answer logs whether the tools were offered, called or withheld and
