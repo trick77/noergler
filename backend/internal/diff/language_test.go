@@ -71,7 +71,7 @@ func TestIsTestFile(t *testing.T) {
 		{"src/tests/helper.go", true},
 		{"src/test/helper.go", true},
 		{"src/__tests__/helper.js", true},
-		// Case-insensitive, unlike DetectLanguage, but for Java's Test.
+		// Case-insensitive, unlike DetectLanguage, but for the JVM suffixes.
 		{"FOO_TEST.PY", true},
 		{"src/TESTS/x.go", true},
 		{"main.py", false},
@@ -99,6 +99,35 @@ func TestIsTestFile(t *testing.T) {
 		// A top-level test directory is one too.
 		{"test/Foo.java", true},
 		{"tests/conftest.py", true},
+		// The conventions of every language DetectLanguage groups.
+		{"src/App.test.jsx", true},
+		{"src/util.spec.mjs", true},
+		{"src/test/kotlin/FooServiceTest.kt", true},
+		{"src/it/OrderFlowIT.java", true},
+		{"FooTestCase.java", true},
+		{"src/FooSpec.groovy", true},
+		{"shop/tests.py", true},
+		{"conftest.py", true},
+		{"src/integrationTest/java/com/x/Flow.java", true},
+		{"src/testFixtures/java/com/x/Fixture.java", true},
+		{"e2e/src/app.e2e-spec.ts", true},
+		{"cypress/e2e/login.cy.ts", true},
+		{"src/androidTest/java/com/x/HiltRunner.kt", true},
+		{"src/commonTest/kotlin/x/Helpers.kt", true},
+		{"src/test/kotlin/x/FooSpec.kt", true},
+		{"FooTest.groovy", true},
+		{"pkg/utils_tests.py", true},
+		{"test.py", true},
+		// ...and what merely looks like them: an acronym ending in IT, and
+		// production code under src/main whatever its name (a Jenkins
+		// pipeline Spec, a speed test feature).
+		{"src/Commit.java", false},
+		{"src/Audit.kt", false},
+		{"shop/contests.py", false},
+		{"src/main/java/x/PIT.java", false},
+		{"src/main/java/x/AUDIT.java", false},
+		{"src/main/groovy/org/acme/PipelineSpec.groovy", false},
+		{"src/main/kotlin/x/SpeedTest.kt", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {

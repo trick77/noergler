@@ -48,17 +48,27 @@ var deprioritizedLanguages = map[string]bool{
 	"build-config": true, "config": true, "docs": true, "other": true,
 }
 
-// testPatterns is case-insensitive, unlike DetectLanguage, except for Java's
-// suffix: the capitalised Test is the convention, and folding it made
-// Latest.java and Contest.java tests. A Python test_ starts a path segment
-// or a snake_case word (integration_test_helpers.py), never inside a word
-// (latest_utils.py); a test directory starts a path segment.
+// testPatterns is case-insensitive, unlike DetectLanguage, except for the
+// JVM suffixes: the capitalised Test, TestCase, IT (Failsafe, after a
+// lowercase letter or digit, so PIT.java is no test) and Spec (Spock,
+// Kotest) are the convention, and folding them made Latest.java and
+// Contest.java tests. A Python test_ starts a path segment or a snake_case
+// word (integration_test_helpers.py), never inside a word (latest_utils.py);
+// test(s).py, conftest.py and *_tests.py are tests by name. A test
+// directory starts a path segment, and so does a camelCase source set ending
+// in Test (androidTest, commonTest, integrationTest) or testFixtures.
 var testPatterns = regexp.MustCompile(`(?:` +
-	`(?i:_test\.py$|(?:^|[/_])test_[^/]*\.py$)` +
-	`|Tests?\.java$` +
-	`|(?i:\.(?:spec|test)\.(?:ts|tsx|js)$)` +
-	`|(?i:(?:^|/)(?:tests?|__tests__)/)` +
+	`(?i:_tests?\.py$|(?:^|[/_])test_[^/]*\.py$|(?:^|/)(?:tests?|conftest)\.py$)` +
+	`|(?:Tests?|TestCase|[a-z0-9]IT)\.(?:java|kt|groovy)$|Spec\.(?:groovy|kt)$` +
+	`|(?i:\.(?:spec|test|e2e-spec|cy)\.(?:ts|tsx|js|jsx|mjs)$)` +
+	`|(?i:(?:^|/)(?:tests?|__tests__|testFixtures)/)` +
+	`|(?:^|/)src/[a-z][A-Za-z]*Test/` +
 	`)`)
+
+// mainSourceSet is Maven's and Gradle's production tree: a file under it is
+// never a test, whatever its name (a pipeline DSL's PipelineSpec.groovy, a
+// SpeedTest feature).
+var mainSourceSet = regexp.MustCompile(`(?:^|/)src/main/`)
 
 // DetectLanguage returns the language group for a path. Case-sensitive.
 func DetectLanguage(path string) string {
@@ -83,7 +93,9 @@ func DetectLanguage(path string) string {
 }
 
 // IsTestFile reports whether a path looks like a test (testPatterns).
-func IsTestFile(path string) bool { return testPatterns.MatchString(path) }
+func IsTestFile(path string) bool {
+	return !mainSourceSet.MatchString(path) && testPatterns.MatchString(path)
+}
 
 // SortByLanguagePriority orders files by (group, language rank, path).
 //
