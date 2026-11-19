@@ -46,6 +46,10 @@ type cumulativeContext struct {
 	scope *store.PRScope
 	// hasScreenshot: the full diff changes a test screenshot.
 	hasScreenshot bool
+	// paths is every path the full diff names, unfiltered and unbudgeted:
+	// the nested AGENTS.md set follows the whole PR, never one push or the
+	// budgeted copy. nil when the diff could not be read.
+	paths []string
 }
 
 // fetchCumulativeDiff returns the part of the whole-PR diff worth sending as
@@ -135,7 +139,7 @@ func (r *Reviewer) fetchCumulativeDiff(ctx context.Context, key store.PRKey, prT
 		filtered, len(oversized), oversizedNames(oversized), len(omitted), largestOmitted(omitted)))
 
 	out := cumulativeContext{diff: kept.String(), partial: filtered > 0 || len(oversized) > 0 || len(omitted) > 0,
-		added: diff.AddedLines(full), hasScreenshot: diff.HasScreenshot(full)}
+		added: diff.AddedLines(full), hasScreenshot: diff.HasScreenshot(full), paths: prPaths(full)}
 	a, d, n := diff.Scope(full)
 	out.scope = &store.PRScope{Added: a, Removed: d, Files: n}
 	for _, f := range omitted {

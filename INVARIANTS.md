@@ -251,6 +251,11 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   (user: "off means off"). Runs in prepare after the opt-out branch,
   before the AGENTS.md gates and the cost cap, and alone on a retarget;
   never on a stopped PR.
+- Nested AGENTS.md: picked from the whole PR's paths, never one push's
+  (`{repo_instructions}` sits at the top: a set that followed the push
+  would break the prefix cache), path order only; never a gate (the root
+  decides skips), never a blocking rule. Probes and kept files are capped:
+  each probe is a Bitbucket call on the worker.
 - Blocking rules (user, 2026-11-15): code decides which rules block
   (`[blocking]` line prefix in the TARGET branch's AGENTS.md, never the
   PR's: the gated branch must not lift its gate; `ExtractBlockingRules`,

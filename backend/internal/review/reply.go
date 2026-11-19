@@ -285,7 +285,15 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		excerpt = note + lang.TruncateRunes(excerptAround(content, f.LineNumber, replyExcerptLines), replyExcerptRunes)
 	}
 	// AGENTS.md from the same commit, so code and guidelines match.
-	agentsMD := r.fetchRepoInstructions(ctx, project, repo, at, pr.ToRef.Branch())
+	rootMD := r.fetchRepoInstructions(ctx, project, repo, at, pr.ToRef.Branch())
+	// The nested one that applies to the finding's file, from the same
+	// commit, for the prompts. A dispute bullet is checked against the root
+	// alone: the signal is repo-wide, a nested rule covers one directory.
+	agentsMD, left := withNested(rootMD, r.fetchNestedAgentsMD(ctx, project, repo, at, prTag, []string{f.FilePath}),
+		r.cfg.AgentsMDMaxTokens, r.tokens.Count)
+	if len(left) > 0 {
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: left out over the AGENTS.md limit: %s", prTag, strings.Join(left, ", ")))
+	}
 	name := firstName(r.displayName, comment.Author.DisplayName)
 	l := r.languageFor(ctx, author)
 	// The repo's open dispute signals, read here and nowhere else: a reply
@@ -344,7 +352,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		key: key, team: team, project: project, repo: repo, prID: pr.ID, prTag: prTag, where: where,
 		author:    author,
 		findingID: f.ID, replyTo: comment.ID, text: text,
-		agentsMD: agentsMD, signalIDs: signalIDs, signalRules: signalRules, counter: counter,
+		agentsMD: rootMD, signalIDs: signalIDs, signalRules: signalRules, counter: counter,
 		name: name, namesOn: r.displayName != nil, lang: l,
 		secondPass: secondPass, fixOnly: fixOnly, fix: fix,
 		threadID: f.BitbucketCommentID, botFixCommit: f.BotFixCommit, trigger: trigger,
@@ -368,7 +376,9 @@ type replyJob struct {
 	findingID int64
 	replyTo   int
 	text      string
-	agentsMD  string
+	// agentsMD is the root AGENTS.md alone, what a dispute bullet is
+	// checked against; the prompts carry the nested one too.
+	agentsMD string
 	// signalIDs are the open dispute signals the prompt listed, in order:
 	// matches_signal n is signalIDs[n-1], worded signalRules[n-1].
 	signalIDs   []int64

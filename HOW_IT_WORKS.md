@@ -84,6 +84,20 @@ instead of skipping past it.
 Every skip that is a stable state of the PR (opt-out branch, missing or oversized
 `AGENTS.md`, cost cap) posts a summary saying why. Guards 1 to 4 post nothing.
 
+**AGENTS.md below the root.** Guards 6 and 7 read the root file only. Once
+the diff is known, the directories of the whole PR's changed files (the full
+cumulative diff on an incremental review, unfiltered) down to three levels
+are probed for an `AGENTS.md` at the PR head, at most eight, deepest first.
+A found file is kept where it is some changed file's nearest one, at most
+three, none over 32 KiB, and follows the root rules in path order, each
+under a heading naming its directory. One that would take the whole over
+the hard token limit is left out and the footer names it; a nested file
+never skips a review. The footer's tip and size warning are about the root
+file alone. Every file cut or not read is logged. `[blocking]` lines in a
+nested file block nothing (logged): blocking rules are the target branch's
+root file only. The Q&A reads the same for the PR's paths, a finding reply
+for the finding's file; a dispute bullet is checked against the root alone.
+
 **SNAPSHOT task.** A PR into the repo's default branch (Bitbucket's
 `default-branch`, read once an hour per repo) whose delta adds a dependency
 on an unreleased Maven/Gradle build gets a Bitbucket task (a comment with

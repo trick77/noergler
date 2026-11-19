@@ -581,3 +581,18 @@ func TestSummaryVisualChangesFoldIdenticalLines(t *testing.T) {
 		t.Errorf("German fold:\n%s", got)
 	}
 }
+
+// A nested AGENTS.md left out over the token limit is named in full: every
+// one has the same base name.
+func TestSummaryNamesAgentsMDLeftOut(t *testing.T) {
+	in := base()
+	in.AgentsMDFound = true
+	in.AgentsMDLeftOut = []string{"services/pay/AGENTS.md"}
+	if got := Summary(in); !strings.Contains(got, "Not used (over the AGENTS.md token limit): `services/pay/AGENTS.md`") {
+		t.Errorf("footer must name the file left out:\n%s", got)
+	}
+	in.AgentsMDLeftOut = nil
+	if got := Summary(in); strings.Contains(got, "Not used (over") {
+		t.Errorf("nothing left out, no line:\n%s", got)
+	}
+}
