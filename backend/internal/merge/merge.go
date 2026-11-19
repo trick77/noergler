@@ -22,7 +22,9 @@ const (
 	// MaxRegionLines is the most lines a conflict's base, target or source
 	// side may have.
 	MaxRegionLines = 15
-	// MaxEdits bounds the line diff of one side against the base.
+	// MaxEdits bounds the line diff of one side against the base: a file
+	// changed that much is no simple merge, and the search's memory grows
+	// with the square of the edits.
 	MaxEdits = 2000
 )
 

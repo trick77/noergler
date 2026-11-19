@@ -34,15 +34,6 @@ type hunk struct{ b0, b1, s0, s1 int }
 // false past maxEdits.
 type aligner func(a, b []int, maxEdits int) ([][2]int, bool)
 
-// diff is the hunks turning base into side by Myers' diff as found, nil and
-// false when they need more than maxEdits line edits: a file changed that
-// much is no simple merge, and the search's memory grows with the square of
-// the edits.
-func diff(base, side []string, maxEdits int) ([]hunk, bool) {
-	hs, err := diffWith(myers, false, base, side, maxEdits)
-	return hs, err == nil
-}
-
 // diffWith is the hunks turning base into side by align; slid, with every
 // change placed as git places it (compact). ErrTooDifferent past maxEdits;
 // ErrAmbiguous when compact loses its footing, which a correct alignment

@@ -204,7 +204,9 @@ func TestVacuousLengthBoundIsRunes(t *testing.T) {
 }
 
 // The mention-response parse is pinned: these are the shapes the model emits.
-func TestParseMentionIsPinned(t *testing.T) {
+// None carries a literal "apply": true, so none applies anything; the
+// fallback paths above all (off the envelope is never an apply).
+func TestParseMentionEnvelopeIsPinned(t *testing.T) {
 	cases := []struct {
 		name, content, want string
 	}{
@@ -231,8 +233,12 @@ func TestParseMentionIsPinned(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := ParseMention(tc.content); got != tc.want {
-				t.Errorf("ParseMention(%q) = %q, want %q", tc.content, got, tc.want)
+			got, apply := ParseMentionEnvelope(tc.content)
+			if got != tc.want {
+				t.Errorf("ParseMentionEnvelope(%q) answer = %q, want %q", tc.content, got, tc.want)
+			}
+			if apply {
+				t.Errorf("ParseMentionEnvelope(%q) apply = true, want false", tc.content)
 			}
 		})
 	}
