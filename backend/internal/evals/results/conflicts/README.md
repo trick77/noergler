@@ -12,9 +12,10 @@ row in `../README.md`: another prompt, another corpus
       -json internal/evals/results/conflicts/<date>-<model>-<effort>.json
 
 `-cases` buys a few cases, `-usage` logs every call's tokens, `-prompt` scores
-a draft of the template. A direct mimo Token Plan key works as
-`EVAL_BASE_URL=https://token-plan-sgp.xiaomimimo.com/v1`: measured
-2026-11-14, ~22 s an answer, ~1.1k prompt and ~1.1k completion tokens.
+a draft of the template. A direct mimo Token Plan key goes in
+`LLMWIRE_MIMO_API_KEY`, with no `EVAL_BASE_URL` or `EVAL_API_KEY` (the
+vendor route). Measured 2026-11-14 over the token-plan host as a gateway:
+~22 s an answer, ~1.1k prompt and ~1.1k completion tokens.
 
 ## Verdicts, per answer
 

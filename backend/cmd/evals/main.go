@@ -27,6 +27,12 @@
 // uses, so an eval exercises the real client: real schema, real parse, real
 // cost accounting. Nothing about the review path is stubbed.
 //
+// With neither EVAL_BASE_URL nor EVAL_API_KEY set, a vendor key
+// (LLMWIRE_MIMO_API_KEY and the like) takes the vendor route: llmwire sends
+// the profile to its vendor's host from its own profiles, with that host's
+// handling (MiMo's Token Plan client emulation included). The report's header
+// and JSON name the route.
+//
 // -samples N reviews each case N times and scores what merging those reviews
 // would post (2-of-3 vote, union, a 2+1 adaptive rule) next to the single
 // run, with each view's cost against one review. It is an experiment report
@@ -197,6 +203,7 @@ func dialGateway(s evals.Settings, effort string) (evals.Reviewer, error) {
 			v, ok := env[name]
 			return v, ok
 		},
+		AllowVendor: s.VendorKeys != nil,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("client: %w", err)
@@ -206,6 +213,9 @@ func dialGateway(s evals.Settings, effort string) (evals.Reviewer, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	if err := client.Startup(ctx); err != nil {
+		if s.VendorKeys != nil {
+			return nil, fmt.Errorf("vendor unreachable, key refused or profile not listed: %w", err)
+		}
 		return nil, fmt.Errorf("gateway unreachable or profile not served: %w", err)
 	}
 	return client, nil
@@ -286,7 +296,7 @@ func run(ctx context.Context, opt options) (bool, error) {
 	// Write errors are dropped: this is the progress line on stdout, and a
 	// report that cannot be printed changes nothing about the verdict.
 	_, _ = fmt.Fprintf(opt.stdout, "model %s via %s, %d case(s)\n\n",
-		header(client, settings.Model, opt.effort), settings.BaseURL, len(cases))
+		header(client, settings.Model, opt.effort), settings.Route(), len(cases))
 	if opt.confirm != "" {
 		return false, confirm(ctx, opt, client, string(template), cases, counter.Count,
 			header(client, settings.Model, opt.effort))
@@ -310,6 +320,7 @@ func run(ctx context.Context, opt options) (bool, error) {
 		return false, nil
 	}
 	score := evals.Run(ctx, client, string(template), cases, counter.Count)
+	score.Route = settings.Route()
 	score.Report(opt.stdout)
 	if err := writeJSON(opt, score); err != nil {
 		return false, err
@@ -504,7 +515,7 @@ func runConflicts(ctx context.Context, opt options) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, opt.timeout)
 	defer cancel()
 	_, _ = fmt.Fprintf(opt.stdout, "model %s via %s, %d conflict case(s), %d sample(s) each\n\n",
-		header(client, settings.Model, opt.effort), settings.BaseURL, len(cases), opt.samples)
+		header(client, settings.Model, opt.effort), settings.Route(), len(cases), opt.samples)
 	res := evals.RunConflicts(ctx, resolver, cases, template, counter.Count, opt.samples, opt.parallel, opt.stdout)
 	res.Model, res.Effort = settings.Model, opt.effort
 	if res.Effort == "" {
@@ -564,7 +575,7 @@ func runCompliance(ctx context.Context, opt options) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, opt.timeout)
 	defer cancel()
 	_, _ = fmt.Fprintf(opt.stdout, "model %s via %s, %d ticket case(s), %d sample(s) each\n\n",
-		header(client, settings.Model, opt.effort), settings.BaseURL, len(cases), opt.samples)
+		header(client, settings.Model, opt.effort), settings.Route(), len(cases), opt.samples)
 	res := evals.RunCompliance(ctx, client, cases, template, counter.Count, opt.samples, opt.parallel, opt.stdout)
 	res.Model, res.Effort = settings.Model, opt.effort
 	if res.Effort == "" {

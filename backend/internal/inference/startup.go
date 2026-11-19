@@ -32,7 +32,7 @@ func (c *Client) Startup(ctx context.Context) error {
 	// A profile not listed in LLMWIRE_LITELLM_MODELS is not gateway-routed, so
 	// FromEnv would send it to the vendor's own host. Disable the team rather
 	// than send a gateway key there.
-	if profile.Gateway == "" {
+	if profile.Gateway == "" && !c.vendor {
 		return fmt.Errorf("model %q is not routed through the gateway: add it to %s",
 			c.model, llmwire.GatewayModelsEnv)
 	}

@@ -376,6 +376,9 @@ type Score struct {
 	Seeded, Caught, Extra int
 	// FalseTasks is summed across cases: tasks no expectation asked for.
 	FalseTasks int `json:",omitempty"`
+	// Route is where the calls went (Settings.Route): a gateway's URL or
+	// "vendor". Rows from different routes are not one series.
+	Route string `json:",omitempty"`
 	// FalseFixed is summed across cases: kept fixed claims no case asked for.
 	FalseFixed int `json:",omitempty"`
 	// Repeated is summed across cases: earlier findings raised again.
@@ -616,7 +619,24 @@ type Settings struct {
 	// CallTimeout is serve's REVIEW_INFERENCE_CALL_TIMEOUT, so a slow
 	// profile times out here where it would in production, not sooner.
 	CallTimeout time.Duration
+	// VendorKeys holds the LLMWIRE_<PROVIDER>_API_KEY variables found when
+	// no gateway is set: llmwire then sends the profile to its vendor's host
+	// from its profiles, with that vendor's key. Empty on a gateway run.
+	VendorKeys map[string]string
 }
+
+// Route names where a run's calls go, for the report's header: the
+// gateway's URL, or "vendor" on the vendor route.
+func (s Settings) Route() string {
+	if s.VendorKeys != nil {
+		return "vendor"
+	}
+	return s.BaseURL
+}
+
+// VendorKeyNames are the vendor key variables a run may read, the ones
+// llmwire's profiles name a provider for.
+var VendorKeyNames = []string{"LLMWIRE_MIMO_API_KEY", "LLMWIRE_ZAI_API_KEY", "LLMWIRE_OPENAI_API_KEY", "LLMWIRE_ANTHROPIC_API_KEY"}
 
 // ResolveSettings reads the run's settings, naming what is missing.
 //
@@ -636,16 +656,36 @@ func ResolveSettings(getenv func(string) string, windowFlag int) (Settings, erro
 	if s.Model == "" {
 		s.Model = DefaultSeries().Model
 	}
+	// No gateway at all: the vendor route, when a vendor key is set. A half
+	// gateway (a URL without a key, or the other way) is still an error: it
+	// is a typo, never a request for the vendor.
+	if s.BaseURL == "" && s.APIKey == "" {
+		for _, name := range VendorKeyNames {
+			if v := strings.TrimSpace(getenv(name)); v != "" {
+				if s.VendorKeys == nil {
+					s.VendorKeys = map[string]string{}
+				}
+				s.VendorKeys[name] = v
+			}
+		}
+	}
 	var missing []string
-	if s.BaseURL == "" {
+	if s.BaseURL == "" && s.VendorKeys == nil {
 		missing = append(missing, "EVAL_BASE_URL")
 	}
-	if s.APIKey == "" {
+	if s.APIKey == "" && s.VendorKeys == nil {
 		missing = append(missing, "EVAL_API_KEY")
 	}
-	if len(missing) > 0 {
-		return s, fmt.Errorf("set %s to point at an OpenAI-compatible endpoint",
-			strings.Join(missing, ", "))
+	switch {
+	case len(missing) == 2:
+		return s, fmt.Errorf("set %s to point at an OpenAI-compatible endpoint, or a vendor key (%s) to reach the profile's vendor",
+			strings.Join(missing, ", "), strings.Join(VendorKeyNames, ", "))
+	case len(missing) == 1:
+		// A half gateway: a vendor key, if set, is ignored while it stands.
+		return s, fmt.Errorf("set %s too, or unset EVAL_BASE_URL and EVAL_API_KEY both to use a vendor key", missing[0])
+	}
+	if s.VendorKeys != nil && s.Alias != "" {
+		return s, fmt.Errorf("EVAL_ALIAS=%q names a gateway alias; the vendor route sends the profile's own model id, unset it", s.Alias)
 	}
 	// resolveWindow's error tells the operator to set OPENAI_CONTEXT_WINDOW,
 	// which only internal/config reads. Honouring it here makes that advice
@@ -686,6 +726,15 @@ func ResolveSettings(getenv func(string) string, windowFlag int) (Settings, erro
 // answers Startup with "not listed by the gateway for this key". EVAL_ALIAS
 // covers the case where an operator's gateway does rename it.
 func GatewayEnv(s Settings) map[string]string {
+	// The vendor route: only the vendor keys, no gateway variable, so
+	// llmwire takes the profile's own host.
+	if s.VendorKeys != nil {
+		env := make(map[string]string, len(s.VendorKeys))
+		for k, v := range s.VendorKeys {
+			env[k] = v
+		}
+		return env
+	}
 	alias := s.Alias
 	if alias == "" {
 		alias = s.Model
