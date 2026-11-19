@@ -341,7 +341,7 @@ function Overview({ d }: { d: RunDetail }) {
             <KV
               k={t("run.lines")}
               mono
-              v={`+${d.run.lines_added} / −${d.run.lines_removed}`}
+              v={`+${num(d.run.lines_added)} / −${num(d.run.lines_removed)}`}
             />
           </dl>
         </Card>

@@ -451,7 +451,29 @@ export function sourceUrl(
  *  case and accents folded, so "Diecibärg" files under D rather than after
  *  Z, and digits as numbers, so "Squad 2" comes before "Squad 10". */
 function compareNames(a: string, b: string): number {
-  return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
+  return collator(true).compare(a, b);
+}
+
+/** compareText orders plain strings (slugs, labels) in the page's locale. */
+export function compareText(a: string, b: string): number {
+  return collator(false).compare(a, b);
+}
+
+/** One Intl.Collator per locale and kind, built once: localeCompare with an
+ *  explicit locale builds a new one on every comparison, and the tables sort
+ *  on every poll. The page's Swiss locale, never the browser's. */
+const collators = new Map<string, Intl.Collator>();
+function collator(names: boolean): Intl.Collator {
+  const key = `${locale()}:${names}`;
+  let c = collators.get(key);
+  if (!c) {
+    c = new Intl.Collator(
+      locale(),
+      names ? { sensitivity: "base", numeric: true } : undefined,
+    );
+    collators.set(key, c);
+  }
+  return c;
 }
 
 /** sortedByName is the order of every team table: by display name, never
@@ -471,7 +493,7 @@ export function sortedByName<T>(
   id: (r: T) => string,
 ): T[] {
   return [...rows].sort(
-    (a, b) => compareNames(name(a), name(b)) || id(a).localeCompare(id(b)),
+    (a, b) => compareNames(name(a), name(b)) || compareText(id(a), id(b)),
   );
 }
 
@@ -505,6 +527,6 @@ export function byLastRun<
   return [...teams].sort((a, b) => {
     const diff = at(b) - at(a);
     if (diff !== 0 && !Number.isNaN(diff)) return diff;
-    return compareNames(a.name, b.name) || a.slug.localeCompare(b.slug);
+    return compareNames(a.name, b.name) || compareText(a.slug, b.slug);
   });
 }

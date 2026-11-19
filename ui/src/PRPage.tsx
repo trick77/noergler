@@ -269,7 +269,7 @@ function Overview({
         </Tile>
         <Tile
           label={t("pr.findings")}
-          value={d.findings.length}
+          value={num(d.findings.length)}
           note={t("pr.posted")}
         >
           {d.findings.length > 0 && (
@@ -288,7 +288,7 @@ function Overview({
               "—"
             ) : (
               <span className="font-mono text-[18px] sm:text-[21px]">
-                +{d.scope.added} / −{d.scope.removed}
+                +{num(d.scope.added)} / −{num(d.scope.removed)}
               </span>
             )
           }
@@ -626,7 +626,7 @@ function FilesTab({ d, token }: { d: PRPageData; token: string }) {
                     ))}
                   </span>
                 </td>
-                <td className={tdNum}>{f.findings || "—"}</td>
+                <td className={tdNum}>{f.findings ? num(f.findings) : "—"}</td>
               </tr>
             ))}
           </tbody>

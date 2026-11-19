@@ -3,7 +3,9 @@ import {
   actWord,
   ago,
   duration,
+  compareText,
   money,
+  num,
   outcomeTone,
   outcomeTitle,
   outcomeWord,
@@ -149,7 +151,7 @@ function skipReasons(runs: Run[]) {
   const label = (b: { reason: string; label?: string }) =>
     reasonLabel(b.reason, b.label) ?? "";
   return [...by.values()].sort(
-    (a, b) => b.count - a.count || label(a).localeCompare(label(b)),
+    (a, b) => b.count - a.count || compareText(label(a), label(b)),
   );
 }
 
@@ -254,11 +256,11 @@ export function RunsPage() {
         )}
 
         <Tiles cols={5}>
-          <Tile label={t("runs.tileReviewed")} value={c.reviewed} />
-          <Tile label={t("runs.tileSkipped")} value={c.skipped} />
-          <Tile label={t("runs.tileFailed")} value={c.failed} />
-          <Tile label={t("runs.tileEngagements")} value={c.engagements} />
-          <Tile label={t("runs.tileFixes")} value={c.fixes} />
+          <Tile label={t("runs.tileReviewed")} value={num(c.reviewed)} />
+          <Tile label={t("runs.tileSkipped")} value={num(c.skipped)} />
+          <Tile label={t("runs.tileFailed")} value={num(c.failed)} />
+          <Tile label={t("runs.tileEngagements")} value={num(c.engagements)} />
+          <Tile label={t("runs.tileFixes")} value={num(c.fixes)} />
         </Tiles>
 
         <p className={eyebrow}>{t("runs.latest", { n: RUNS_LIMIT })}</p>
@@ -391,7 +393,7 @@ export function RunsPage() {
                 {skips.map((b) => (
                   <tr key={b.reason}>
                     <td className={td}>{reasonLabel(b.reason, b.label)}</td>
-                    <td className={tdNum}>{b.count}</td>
+                    <td className={tdNum}>{num(b.count)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -528,7 +528,7 @@ export function MetricsPage() {
       : f.outcomes
           .map(
             (o) =>
-              `${o.count} ${t(`metrics.fixOutcome.${o.outcome}`, { defaultValue: o.outcome })}`,
+              `${num(o.count)} ${t(`metrics.fixOutcome.${o.outcome}`, { defaultValue: o.outcome })}`,
           )
           .join("\n");
   /** A team row's LOC: a dash when every run predates the figure, ≥ when
