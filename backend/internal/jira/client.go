@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/forward"
@@ -256,7 +257,13 @@ func (c *Client) FetchTicket(ctx context.Context, ticketID string) (*Ticket, err
 		description = *got.Fields.Description
 	}
 	if len(description) > maxDescriptionLength {
-		description = description[:maxDescriptionLength] + "..."
+		// Back to a character's start: a cut through an umlaut would hand
+		// invalid UTF-8 to the prompt.
+		n := maxDescriptionLength
+		for n > 0 && !utf8.RuneStart(description[n]) {
+			n--
+		}
+		description = description[:n] + "..."
 	}
 	if description != "" {
 		description = stripMarkup(description)

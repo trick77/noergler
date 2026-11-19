@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/httpstats"
@@ -198,6 +199,27 @@ func TestFetchTicketTruncatesDescription(t *testing.T) {
 	}
 	if !strings.HasSuffix(got.Description, "...") {
 		t.Errorf("description does not end in an ellipsis: %q", got.Description[len(got.Description)-10:])
+	}
+}
+
+// The cap never splits a character: an umlaut across it is left out whole,
+// so no invalid UTF-8 reaches the prompt.
+func TestFetchTicketTruncatesOnARune(t *testing.T) {
+	// "x" first puts every "ü" (two bytes) on an odd offset: byte 5000 is
+	// the middle of one.
+	long := "x" + strings.Repeat("ü", 3000)
+	_, c := newFake(t, jsonReply(200, `{"key":"S-1","fields":{"description":"`+long+`"}}`))
+	got, err := c.FetchTicket(context.Background(), "S-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tail := func(s string) string { return s[max(0, len(s)-12):] }
+	if !utf8.ValidString(got.Description) {
+		t.Fatalf("description is not valid UTF-8, ends %q", tail(got.Description))
+	}
+	if want := "x" + strings.Repeat("ü", 2499) + "..."; got.Description != want {
+		t.Errorf("description ends %q (%d bytes), want %q (%d bytes)",
+			tail(got.Description), len(got.Description), tail(want), len(want))
 	}
 }
 
