@@ -249,6 +249,21 @@ func TestPRCountsCountsPRsNotRuns(t *testing.T) {
 	}
 }
 
+// An instance whose only rows are comment calls (a reply on a PR no review
+// ran on) has a first activity: the call's.
+func TestFirstActivityOfCommentCallsAlone(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	upsert(t, s, key, "")
+	if err := s.InsertCommentCall(ctx, "platform", key, CallReply, 1, LLMCall{Profile: "p", CostNanoUSD: nano(100)}); err != nil {
+		t.Fatal(err)
+	}
+	since := time.Now().Add(-time.Hour)
+	if first, err := s.FirstActivity(ctx); err != nil || first == nil || first.Before(since) {
+		t.Errorf("first = %v, %v, want the reply call just written", first, err)
+	}
+}
+
 // The Between reads stop at until: a run after it belongs to the next
 // window, never to both.
 func TestBetweenReadsStopAtUntil(t *testing.T) {
