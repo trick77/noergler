@@ -1359,6 +1359,19 @@ describe("MetricsPage", () => {
     ).toHaveLength(0);
   });
 
+  // The share bar has a cell of its own: beside the amount, it moved with
+  // the amount's width ($0.03 against $45.91).
+  it("keeps the cost share bar out of the amount's cell", async () => {
+    serve({ metrics: twoTeams });
+    render(<MetricsPage />);
+
+    const amount = (await screen.findAllByText("$0.50")).find(
+      (el) => el.tagName === "TD",
+    ) as HTMLElement;
+    expect(amount.querySelector("span")).toBeNull();
+    expect(amount.previousElementSibling?.querySelector("span")).not.toBeNull();
+  });
+
   it("sums every team in a closing row, only for more than one", async () => {
     serve({ metrics: twoTeams });
     const { unmount } = render(<MetricsPage />);
