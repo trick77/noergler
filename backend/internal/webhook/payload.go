@@ -197,7 +197,7 @@ func (p *Payload) Validate() error {
 //
 // Bitbucket Server nests the repository under fromRef/toRef, and either side
 // may carry it, so toRef is tried first and fromRef second.
-// Both empty means the payload is unusable for a review.
+// Either part empty means the payload is unusable for a review.
 func (p *Payload) ProjectRepo() (project, repo string) {
 	for _, ref := range []Ref{p.PullRequest.ToRef, p.PullRequest.FromRef} {
 		if ref.Repository != nil {
