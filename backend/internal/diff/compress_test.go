@@ -31,8 +31,17 @@ func TestRemoveDeletionOnlyHunks(t *testing.T) {
 			"",
 		},
 		{
-			"+++ does not count as an addition",
-			"@@ -1,1 +1,0 @@\n+++ b/f.go\n-gone\n",
+			// A hunk starts at @@, so the +++ header is never in one: an
+			// added `++i;` reads `+++i;` and is an addition like any other.
+			"an added ++i; is an addition",
+			"hdr\n@@ -1,1 +1,1 @@\n+++i;\n-gone\n",
+			"hdr\n@@ -1,1 +1,1 @@\n+++i;\n-gone\n",
+		},
+		{
+			// The real header stays the header: its +++ line never makes a
+			// deletion-only file look like it adds something.
+			"a real +++ header is no addition",
+			"diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1,1 +1,0 @@\n-gone\n",
 			"",
 		},
 	}
