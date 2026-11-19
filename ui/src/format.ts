@@ -318,7 +318,8 @@ type CodeGroup =
   | "dropReason"
   | "complianceDrop"
   | "callKind"
-  | "prState";
+  | "prState"
+  | "verdict";
 
 /** known tells a code the catalog has from one a newer binary wrote, which
  *  the page prints as it came. */

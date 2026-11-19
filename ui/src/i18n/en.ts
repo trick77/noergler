@@ -12,6 +12,7 @@
 export const en = {
   nav: {
     label: "Pages",
+    breadcrumb: "Breadcrumb",
     live: "Live",
     runs: "Runs",
     metrics: "Review metrics",
@@ -461,6 +462,13 @@ export const en = {
     quote_removed: "quoted a line the PR removed",
     quote_not_found: "quoted code that is not there",
   },
+  // The posted summary's words for the verdict (render/summary.go
+  // verdictLabels), without its emoji: keep the two in step.
+  verdict: {
+    approve: "Approve",
+    approve_with_followups: "Approve with follow-ups",
+    request_changes: "Request changes",
+  },
   prState: {
     open: "Open",
     merged: "Merged",
@@ -490,9 +498,9 @@ export const en = {
     howSent: "How it was sent",
     notPostedTitle: "Not posted",
     verdictLowered:
-      "Verdict lowered from {{model}} to {{posted}} to match the PR's open findings.",
+      "Verdict lowered from “{{model}}” to “{{posted}}” to match the PR's open findings.",
     verdictRaised:
-      "Verdict raised from {{model}} to {{posted}} to match the PR's open findings.",
+      "Verdict raised from “{{model}}” to “{{posted}}” to match the PR's open findings.",
     movedFrom: "moved from :{{line}}",
     title: "Run",
     failedWhat: "the run",

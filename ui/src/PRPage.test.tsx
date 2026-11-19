@@ -209,6 +209,10 @@ describe("PRPage", () => {
     expect(screen.getByText("retry.go:88 ↗").getAttribute("href")).toBe(
       "https://bb.example.com/projects/PAY/repos/checkout/pull-requests/1482/overview?commentId=555",
     );
+    // The breadcrumb is named in the page's language, as every label is.
+    expect(
+      screen.getByRole("navigation", { name: "Breadcrumb" }),
+    ).toBeDefined();
   });
 
   // Newest first, each a link to its pane; the PR's own view is marked.
