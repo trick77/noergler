@@ -20,12 +20,15 @@
 package evals
 
 import (
+	"bytes"
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"path"
 	"slices"
 	"sort"
 	"strconv"
@@ -226,51 +229,92 @@ func LoadCorpus() ([]Case, error) {
 		if err != nil {
 			return nil, err
 		}
-		var cf CorpusFile
-		if err := json.Unmarshal(raw, &cf); err != nil {
+		c, err := loadCorpusCase(name, raw)
+		if err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
-		}
-		if cf.Name == "" {
-			return nil, fmt.Errorf("%s: case has no name", name)
-		}
-		c := Case{Name: cf.Name, Description: cf.Description, Expected: cf.Expected, ExpectedVisual: cf.ExpectedVisual,
-			AgentsMD: cf.AgentsMD, ExpectedFixed: cf.ExpectedFixed, Repeats: cf.Repeats}
-		if inc := cf.Incremental; inc != nil {
-			c.Incremental, c.CumulativeDiff, c.PreviousOverview = true, inc.CumulativeDiff, inc.PreviousOverview
-			for _, p := range inc.PreviousFindings {
-				c.PreviouslyPosted = append(c.PreviouslyPosted, p.asPosted())
-			}
-			// Closed first, as production lists them (trimPreviouslyPosted):
-			// the eval must send the prompt production sends.
-			slices.SortStableFunc(c.PreviouslyPosted, func(a, b inference.PostedFinding) int {
-				switch {
-				case a.Closed == b.Closed:
-					return 0
-				case a.Closed:
-					return -1
-				}
-				return 1
-			})
-		} else if len(cf.ExpectedFixed) > 0 || len(cf.Repeats) > 0 {
-			// Only an incremental review lists ids; a full one could never
-			// catch it, and the run would read as a regression.
-			return nil, fmt.Errorf("%s: expected_fixed needs an incremental block", name)
-		}
-		c.BlockingRules, _ = inference.ExtractBlockingRules(cf.AgentsMD)
-		if c.shots, err = loadImages(cf.Screenshots); err != nil {
-			return nil, fmt.Errorf("%s: %w", name, err)
-		}
-		for _, f := range cf.Files {
-			c.Files = append(c.Files, diff.FileReviewData{
-				Path:           f.Path,
-				Diff:           f.Diff,
-				Content:        f.Content,
-				ContentFetched: f.ContentFetched,
-			})
 		}
 		out = append(out, c)
 	}
 	return out, nil
+}
+
+// loadCorpusCase reads one corpus file, strictly, as the conflicts and
+// compliance corpora are read: a misspelt key (expected_visual, blocking)
+// would otherwise drop out silently and the case pass or miss on what it no
+// longer asks for. The name is the file's, and a blocking expectation names
+// a rule the case's AGENTS.md marks, or a typo reads as a plain miss.
+func loadCorpusCase(name string, raw []byte) (Case, error) {
+	var cf CorpusFile
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&cf); err != nil {
+		return Case{}, err
+	}
+	// One object and nothing after it, as json.Unmarshal held it: a second
+	// object from a botched merge must not load as the first alone.
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		return Case{}, errors.New("data after the case's object")
+	}
+	if cf.Name == "" {
+		return Case{}, errors.New("case has no name")
+	}
+	if want := strings.TrimSuffix(path.Base(name), ".json"); cf.Name != want {
+		return Case{}, fmt.Errorf("name %q, want %q (the file's)", cf.Name, want)
+	}
+	c := Case{Name: cf.Name, Description: cf.Description, Expected: cf.Expected, ExpectedVisual: cf.ExpectedVisual,
+		AgentsMD: cf.AgentsMD, ExpectedFixed: cf.ExpectedFixed, Repeats: cf.Repeats}
+	if inc := cf.Incremental; inc != nil {
+		c.Incremental, c.CumulativeDiff, c.PreviousOverview = true, inc.CumulativeDiff, inc.PreviousOverview
+		for _, p := range inc.PreviousFindings {
+			c.PreviouslyPosted = append(c.PreviouslyPosted, p.asPosted())
+		}
+		// Closed first, as production lists them (trimPreviouslyPosted):
+		// the eval must send the prompt production sends.
+		slices.SortStableFunc(c.PreviouslyPosted, func(a, b inference.PostedFinding) int {
+			switch {
+			case a.Closed == b.Closed:
+				return 0
+			case a.Closed:
+				return -1
+			}
+			return 1
+		})
+	} else if len(cf.ExpectedFixed) > 0 || len(cf.Repeats) > 0 {
+		// Only an incremental review lists ids; a full one could never
+		// catch it, and the run would read as a regression.
+		return Case{}, errors.New("expected_fixed and repeats need an incremental block")
+	}
+	var over []string
+	c.BlockingRules, over = inference.ExtractBlockingRules(cf.AgentsMD)
+	for _, e := range c.Expected {
+		if e.Blocking != "" && !slices.ContainsFunc(c.BlockingRules, func(r inference.BlockingRule) bool { return r.ID == e.Blocking }) {
+			if len(over) > 0 {
+				return Case{}, fmt.Errorf("expected %q: blocking %q names no rule within the cap of %d marked ones (%d more are marked)",
+					e.ID, e.Blocking, len(c.BlockingRules), len(over))
+			}
+			return Case{}, fmt.Errorf("expected %q: blocking %q names no rule the case's agents_md marks", e.ID, e.Blocking)
+		}
+	}
+	// A repeat is scored as held back or not, never as a task: a blocking
+	// key there would load and ask nothing.
+	for _, r := range c.Repeats {
+		if r.Blocking != "" {
+			return Case{}, fmt.Errorf("repeat %q: blocking is not scored on a repeat", r.ID)
+		}
+	}
+	var err error
+	if c.shots, err = loadImages(cf.Screenshots); err != nil {
+		return Case{}, err
+	}
+	for _, f := range cf.Files {
+		c.Files = append(c.Files, diff.FileReviewData{
+			Path:           f.Path,
+			Diff:           f.Diff,
+			Content:        f.Content,
+			ContentFetched: f.ContentFetched,
+		})
+	}
+	return c, nil
 }
 
 // Match records whether one seeded bug was found, and by which finding.

@@ -574,6 +574,32 @@ func TestRun_RecordsTheOutcomeName(t *testing.T) {
 	}
 }
 
+// A corpus file is read strictly: a misspelt key, a name that is not the
+// file's, a blocking id the case's AGENTS.md does not mark, data after the
+// object and a blocking repeat all refuse to load instead of quietly
+// changing what the case asks.
+func TestLoadCorpusCase_Refuses(t *testing.T) {
+	cases := map[string]struct{ raw, why string }{
+		"misspelt key":     {`{"name":"c","expected_visuals":[]}`, "unknown field"},
+		"name not file's":  {`{"name":"other"}`, "the file's"},
+		"unknown blocking": {`{"name":"c","agents_md":"- [blocking] no float money\n","expected":[{"id":"E1","file":"a.go","lines":[1,2],"keywords":["x"],"blocking":"B2"}]}`, `expected "E1": blocking "B2"`},
+		"data after it":    {`{"name":"c"}{"name":"c","expected":[]}`, "data after"},
+		"blocking repeat":  {`{"name":"c","agents_md":"- [blocking] no float money\n","incremental":{},"repeats":[{"id":"R1","file":"a.go","lines":[1,2],"keywords":["x"],"blocking":"B1"}]}`, `repeat "R1"`},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := loadCorpusCase("corpus/c.json", []byte(c.raw))
+			if err == nil || !strings.Contains(err.Error(), c.why) {
+				t.Errorf("err = %v, want a refusal saying %q", err, c.why)
+			}
+		})
+	}
+	ok := `{"name":"c","agents_md":"- [blocking] no float money\n","expected":[{"file":"a.go","lines":[1,2],"keywords":["x"],"blocking":"B1"}]}`
+	if _, err := loadCorpusCase("corpus/c.json", []byte(ok)); err != nil {
+		t.Errorf("a known blocking id refused: %v", err)
+	}
+}
+
 // The corpus ships with the binary, so a broken case file is a build-time
 // asset problem rather than something only a live run would surface.
 func TestLoadCorpus_EveryCaseIsUsable(t *testing.T) {
