@@ -14,6 +14,7 @@ import (
 
 	"github.com/trick77/toolkit/llmwire"
 
+	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/lang"
@@ -428,6 +429,107 @@ func TestAgentsMDGates(t *testing.T) {
 		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 		if len(h.llm.Reviews) != 1 {
 			t.Error("a zero limit must disable the gate")
+		}
+	})
+
+	// Neither skip reviewed the push, so the prior commit stands: a fixed
+	// AGENTS.md then reviews the whole accumulated range, not the last push.
+	for name, tweak := range map[string]func(*harness){
+		"missing":   func(h *harness) { delete(h.bb.files, "src1:AGENTS.md") },
+		"too large": func(h *harness) { h.r.cfg.AgentsMDMaxTokens = 2 },
+	} {
+		t.Run(name+" keeps the prior commit", func(t *testing.T) {
+			h := newHarness(t, nil)
+			tweak(h)
+			h.st.lastCommit, h.st.hasLast = "older", true
+
+			h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+			if len(h.llm.Reviews) != 0 {
+				t.Fatal("review ran past the AGENTS.md gate")
+			}
+			if len(h.st.Upserts) != 1 {
+				t.Fatalf("upserts = %d, want 1", len(h.st.Upserts))
+			}
+			if got := h.st.Upserts[0].LastReviewedCommit; got == nil || *got != "older" {
+				t.Errorf("pointer = %v, want the prior commit", got)
+			}
+		})
+	}
+
+	// An AGENTS.md Bitbucket failed to serve is unknown, not missing: no
+	// "missing" summary, no pointer move, an error attempt like a diff that
+	// would not fetch.
+	t.Run("unreadable and required is a fault", func(t *testing.T) {
+		h := newHarness(t, func(h *harness) {
+			h.bb.fileErr["src1:AGENTS.md"] = &bitbucket.StatusError{Method: "GET", Path: "/raw/AGENTS.md", Status: 503}
+		})
+		h.st.lastCommit, h.st.hasLast = "older", true
+
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+		if len(h.llm.Reviews) != 0 {
+			t.Error("review ran without its AGENTS.md")
+		}
+		if len(h.bb.Posted) != 0 {
+			t.Errorf("a fetch fault must post nothing, got %+v", h.bb.Posted)
+		}
+		if len(h.st.Upserts) != 0 {
+			t.Errorf("a fetch fault must not touch the pointer, got %+v", h.st.Upserts)
+		}
+		if len(h.st.Attempts) != 1 || h.st.Attempts[0].Outcome != inference.OutcomeError.String() {
+			t.Errorf("attempts = %+v, want one error attempt", h.st.Attempts)
+		}
+	})
+
+	// The PR branch's would not read, the target's does: that one guides the
+	// review, as the fallback always did.
+	t.Run("unreadable on the PR branch falls back to the target", func(t *testing.T) {
+		h := newHarness(t, func(h *harness) {
+			h.bb.fileErr["src1:AGENTS.md"] = &bitbucket.StatusError{Method: "GET", Path: "/raw/AGENTS.md", Status: 503}
+			h.bb.files["master:AGENTS.md"] = "# Target rules\n"
+		})
+
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+
+		if len(h.llm.Reviews) != 1 || !strings.Contains(h.llm.Reviews[0].Prompt, "# Target rules") {
+			t.Error("the target branch's AGENTS.md must guide the review")
+		}
+	})
+
+	// Over the file cap it exists, far over the token limit: guard 7's
+	// notice, never a silent fault on every push.
+	t.Run("over the file cap posts the too-large notice", func(t *testing.T) {
+		size := 2 << 20
+		h := newHarness(t, func(h *harness) {
+			h.bb.fileErr["src1:AGENTS.md"] = &bitbucket.ContentTooLarge{What: "AGENTS.md", Limit: 1 << 20, Size: &size}
+		})
+		h.st.lastCommit, h.st.hasLast = "older", true
+
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
+
+		if len(h.llm.Reviews) != 0 {
+			t.Error("review ran with an AGENTS.md over the file cap")
+		}
+		if len(h.bb.Posted) != 1 || !strings.Contains(h.bb.Posted[0].Text, "too large") {
+			t.Errorf("expected the too-large summary, got %+v", h.bb.Posted)
+		}
+		if len(h.st.Upserts) != 1 || h.st.Upserts[0].LastReviewedCommit == nil || *h.st.Upserts[0].LastReviewedCommit != "older" {
+			t.Errorf("pointer must stay on the prior commit, got %+v", h.st.Upserts)
+		}
+	})
+
+	// Not required: the review goes on without it, as before.
+	t.Run("unreadable and not required reviews", func(t *testing.T) {
+		h := newHarness(t, func(h *harness) {
+			h.bb.fileErr["src1:AGENTS.md"] = &bitbucket.StatusError{Method: "GET", Path: "/raw/AGENTS.md", Status: 503}
+		})
+		h.r.cfg.RequireAgentsMD = false
+
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+
+		if len(h.llm.Reviews) != 1 {
+			t.Error("an optional AGENTS.md that would not fetch must not stop the review")
 		}
 	})
 }

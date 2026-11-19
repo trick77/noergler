@@ -3,14 +3,17 @@ package review
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"regexp"
 	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 
+	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/jira"
 	"github.com/trick77/noergler/internal/lang"
@@ -388,22 +391,54 @@ func (r *Reviewer) prDescription(ctx context.Context, prTag string, pr webhook.P
 	return block
 }
 
+// repoInstructions is AGENTS.md as fetchRepoInstructions found it. text is
+// the first non-blank one; when there is none, unknown and oversize say why
+// that is not "missing".
+type repoInstructions struct {
+	text string
+	// unknown: a read failed for a reason other than a 404 or the byte cap
+	// (a 5xx, a timeout, a refused token). The file may well exist.
+	unknown bool
+	// oversize is the size in bytes of a file over the byte cap, 0 for none:
+	// it exists, too large to read at all.
+	oversize int
+}
+
 // fetchRepoInstructions reads AGENTS.md from the PR branch, falling back to
-// the target branch.
-func (r *Reviewer) fetchRepoInstructions(ctx context.Context, project, repo, fromCommit, toDisplayID string) string {
+// the target branch, as before, when the PR branch's is missing, oversized or
+// unreadable: the target's file is a better guide than none.
+func (r *Reviewer) fetchRepoInstructions(ctx context.Context, project, repo, fromCommit, toDisplayID string) repoInstructions {
+	var out repoInstructions
 	for _, ref := range []string{fromCommit, toDisplayID} {
 		if ref == "" {
 			continue
 		}
 		content, err := r.bitbucket.FetchFileContent(ctx, project, repo, ref, "AGENTS.md")
-		if err != nil {
+		var tooLarge *bitbucket.ContentTooLarge
+		switch {
+		case bitbucket.Status(err) == http.StatusNotFound:
 			r.log.DebugContext(ctx, "AGENTS.md not found at ref "+ref)
+			continue
+		case errors.As(err, &tooLarge):
+			if out.oversize == 0 {
+				out.oversize = tooLarge.Limit + 1
+				if tooLarge.Size != nil {
+					out.oversize = *tooLarge.Size
+				}
+			}
+			r.log.InfoContext(ctx, fmt.Sprintf("AGENTS.md at ref %s over the file cap: %v", ref, err))
+			continue
+		case err != nil:
+			if ctx.Err() == nil {
+				r.log.WarnContext(ctx, fmt.Sprintf("AGENTS.md unreadable at ref %s: %v", ref, err))
+			}
+			out.unknown = true
 			continue
 		}
 		if strings.TrimSpace(content) != "" {
 			r.log.InfoContext(ctx, "Loaded AGENTS.md from ref "+ref)
-			return content
+			return repoInstructions{text: content}
 		}
 	}
-	return ""
+	return out
 }

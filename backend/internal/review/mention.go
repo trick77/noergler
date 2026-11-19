@@ -200,7 +200,8 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 		return false
 	}
 
-	repoInstructions := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.Branch())
+	// Unreadable: the answer goes on without it.
+	repoInstructions := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.Branch()).text
 	// The nested ones for the PR's paths, as a review reads them.
 	repoInstructions, left := withNested(repoInstructions,
 		r.fetchNestedAgentsMD(ctx, project, repo, pr.FromRef.LatestCommit, prTag, prPaths(rawDiff)),
