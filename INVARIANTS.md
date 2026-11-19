@@ -391,7 +391,9 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 ## Evals
 
 - Exit 1 = a seeded bug missed OR any finding on a clean control OR a
-  blocking task no case asked for; two consecutive reds are the signal,
+  blocking task no case asked for OR a kept `fixed` claim no case asked
+  for (it resolves a live bug's thread) OR an earlier finding raised again
+  (a case's `repeats`); two consecutive reds are the signal,
   one is noise; the exit code stays strict. A blocking expectation is
   caught only by a claim `CheckBlocking` accepts (production's check);
   `-samples`/`-confirm` do not score blocking.
@@ -399,6 +401,10 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   series.
 - Scoring stays blunt (file + line window + keyword); the corpus keeps a case
   with no expected findings.
+- Incremental cases go through production's renderers and checks
+  (`AssembleReviewPrompt` blocks, `AddContextDiff`, `ValidateFixed`), never
+  a copy; a closed earlier finding loses its id as in `asPosted`. Not
+  production's `dedupe`: a repeat is the model's, scored as a finding.
 - Merge-conflict evals (`-conflicts`, corpus `conflicts/`, never `corpus/`):
   the picked text against texts the case accepts, never the ids, read by
   production's `merge.ReadAnswer`. Exit 1 = a `wrong`: a valid answer

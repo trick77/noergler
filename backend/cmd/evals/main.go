@@ -322,7 +322,7 @@ func run(ctx context.Context, opt options) (bool, error) {
 	// exit code CI reads for a regression. Only ErrIncomplete, which means the
 	// run could not happen, is the other one. Joined rather than returned in
 	// turn: a run that both missed a bug and invented one should say so once.
-	if err := errors.Join(score.ErrMissed(), score.ErrInvented(), score.ErrFalseTasks()); err != nil {
+	if err := errors.Join(score.ErrMissed(), score.ErrInvented(), score.ErrFalseTasks(), score.ErrFalseFixed(), score.ErrRepeated()); err != nil {
 		return true, err
 	}
 	return false, nil

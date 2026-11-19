@@ -1,0 +1,35 @@
+{
+  "name": "incremental-fixed",
+  "description": "Incremental push. The earlier review flagged that Export returns nil after csv.Writer.Flush without checking w.Error(), so a write error after the last row reports success. This push returns w.Error(). The fix must be claimed under `fixed` and kept by production's check; nothing else in the push is a finding.",
+  "files": [
+    {
+      "path": "internal/report/export.go",
+      "diff": "@@ -23,5 +23,5 @@ func Export(path string, header []string, rows [][]string) error {\n \t\t}\n \t}\n \tw.Flush()\n-\treturn nil\n+\treturn w.Error()\n }",
+      "content": "package report\n\nimport (\n\t\"encoding/csv\"\n\t\"os\"\n)\n\n// Export writes rows to path as CSV, header first.\nfunc Export(path string, header []string, rows [][]string) error {\n\tf, err := os.Create(path)\n\tif err != nil {\n\t\treturn err\n\t}\n\tdefer f.Close()\n\n\tw := csv.NewWriter(f)\n\tif err := w.Write(header); err != nil {\n\t\treturn err\n\t}\n\tfor _, row := range rows {\n\t\tif err := w.Write(row); err != nil {\n\t\t\treturn err\n\t\t}\n\t}\n\tw.Flush()\n\treturn w.Error()\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "incremental": {
+    "cumulative_diff": "diff --git a/internal/report/export.go b/internal/report/export.go\nnew file mode 100644\n--- /dev/null\n+++ b/internal/report/export.go\n@@ -0,0 +1,27 @@\n+package report\n+\n+import (\n+\t\"encoding/csv\"\n+\t\"os\"\n+)\n+\n+// Export writes rows to path as CSV, header first.\n+func Export(path string, header []string, rows [][]string) error {\n+\tf, err := os.Create(path)\n+\tif err != nil {\n+\t\treturn err\n+\t}\n+\tdefer f.Close()\n+\n+\tw := csv.NewWriter(f)\n+\tif err := w.Write(header); err != nil {\n+\t\treturn err\n+\t}\n+\tfor _, row := range rows {\n+\t\tif err := w.Write(row); err != nil {\n+\t\t\treturn err\n+\t\t}\n+\t}\n+\tw.Flush()\n+\treturn w.Error()\n+}",
+    "previous_overview": "Adds `report.Export`, which writes a header and rows to a CSV file.",
+    "previous_findings": [
+      {
+        "id": 101,
+        "file": "internal/report/export.go",
+        "line": 25,
+        "severity": "issue",
+        "comment": "`csv.Writer` buffers writes and keeps the first write error for `Error()`. `Export` calls `w.Flush()` and returns nil without checking `w.Error()`, so a full disk during the final flush leaves a truncated file that the caller is told was written.",
+        "dispute": "",
+        "closed": false
+      }
+    ]
+  },
+  "expected": [],
+  "expected_fixed": [
+    {
+      "id": "F101",
+      "why": "The push replaces `return nil` with `return w.Error()`: the flagged defect is gone, and leaving the thread open makes the author resolve a fixed finding by hand."
+    }
+  ],
+  "repeats": []
+}

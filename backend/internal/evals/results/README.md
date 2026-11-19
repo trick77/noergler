@@ -122,13 +122,26 @@ several reviews. Those live in `sampled/` and are never rows here.
   changed with it: where a case expects a rule, a match whose finding is
   not a task for that rule (no claim, the wrong id, or a claim that fails
   the severity or confidence check) is a miss, and a task no expectation
-  asks for counts as a false task and fails the run. Sampled
+  asks for counts as a false task and fails the run. `rev12` adds four
+  incremental cases (a case may carry an `incremental` block: the PR's
+  cumulative diff, the findings already posted, the previous overview, as
+  production renders them): a push that fixes an open finding (expected
+  under `fixed`), a push that only shifts an open finding's line, a push
+  beside a disputed and a closed finding, and a new bug beside an open one,
+  taking it to 37 with 29 seeded. The scorer changed with it: Seeded and
+  Caught count expected fixes, caught only by a claim production's
+  `ValidateFixed` keeps, and a kept claim no case asks for counts as a
+  false fix and fails the run. A case's `repeats` (an earlier finding as a
+  window and keywords) fail the run when a kept finding raises one again,
+  seeded case or not. Sampled
   runs score findings only. Bump the number when a
-  **scored** field changes: `file`, `lines`, `keywords`, `diff`, `content`.
+  **scored** field changes: `file`, `lines`, `keywords`, `diff`, `content`,
+  `expected_fixed`, `repeats`, and anything in the `incremental` block.
   Prose does not move a score, so an edit to `description` or `why` is not a
   new revision, and rev4 covers such an edit made after run5.
 - **Seeded / Caught**: bugs the corpus planted, and how many the review
-  reported inside the line window with a matching keyword.
+  reported inside the line window with a matching keyword; from rev12 also
+  the expected fixes, caught by a `fixed` claim production keeps.
 - **Extra**: findings that pinned no seeded bug. Byte-identical repeats are
   collapsed before counting, so a model stuttering does not read as
   invention; the per-case line reports how many were collapsed. Read the

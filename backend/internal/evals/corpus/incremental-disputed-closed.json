@@ -1,0 +1,67 @@
+{
+  "name": "incremental-disputed-closed",
+  "description": "Incremental push. Two earlier findings on Withdraw: one the author disputed (amounts are validated as positive by the API handler), one whose thread was resolved. This push only adds a correct Balance getter above Withdraw, shifting both lines by 7. Neither may be raised again, and the push itself is clean.",
+  "files": [
+    {
+      "path": "internal/wallet/wallet.go",
+      "diff": "@@ -14,6 +14,13 @@ type Wallet struct {\n \tbalance int64\n }\n \n+// Balance is the current balance in cents.\n+func (w *Wallet) Balance() int64 {\n+\tw.mu.Lock()\n+\tdefer w.mu.Unlock()\n+\treturn w.balance\n+}\n+\n // Withdraw takes amount cents out of the wallet.\n func (w *Wallet) Withdraw(amount int64) error {\n \tw.mu.Lock()",
+      "content": "package wallet\n\nimport (\n\t\"errors\"\n\t\"sync\"\n)\n\n// ErrInsufficient is returned when a withdrawal exceeds the balance.\nvar ErrInsufficient = errors.New(\"wallet: insufficient funds\")\n\n// Wallet holds a balance in cents.\ntype Wallet struct {\n\tmu      sync.Mutex\n\tbalance int64\n}\n\n// Balance is the current balance in cents.\nfunc (w *Wallet) Balance() int64 {\n\tw.mu.Lock()\n\tdefer w.mu.Unlock()\n\treturn w.balance\n}\n\n// Withdraw takes amount cents out of the wallet.\nfunc (w *Wallet) Withdraw(amount int64) error {\n\tw.mu.Lock()\n\tdefer w.mu.Unlock()\n\tif w.balance < amount {\n\t\treturn ErrInsufficient\n\t}\n\tw.balance -= amount\n\treturn nil\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "incremental": {
+    "cumulative_diff": "diff --git a/internal/wallet/wallet.go b/internal/wallet/wallet.go\nnew file mode 100644\n--- /dev/null\n+++ b/internal/wallet/wallet.go\n@@ -0,0 +1,33 @@\n+package wallet\n+\n+import (\n+\t\"errors\"\n+\t\"sync\"\n+)\n+\n+// ErrInsufficient is returned when a withdrawal exceeds the balance.\n+var ErrInsufficient = errors.New(\"wallet: insufficient funds\")\n+\n+// Wallet holds a balance in cents.\n+type Wallet struct {\n+\tmu      sync.Mutex\n+\tbalance int64\n+}\n+\n+// Balance is the current balance in cents.\n+func (w *Wallet) Balance() int64 {\n+\tw.mu.Lock()\n+\tdefer w.mu.Unlock()\n+\treturn w.balance\n+}\n+\n+// Withdraw takes amount cents out of the wallet.\n+func (w *Wallet) Withdraw(amount int64) error {\n+\tw.mu.Lock()\n+\tdefer w.mu.Unlock()\n+\tif w.balance < amount {\n+\t\treturn ErrInsufficient\n+\t}\n+\tw.balance -= amount\n+\treturn nil\n+}",
+    "previous_overview": "Adds a mutex-guarded `wallet.Wallet` with `Withdraw`, which refuses a withdrawal larger than the balance.",
+    "previous_findings": [
+      {
+        "id": 103,
+        "file": "internal/wallet/wallet.go",
+        "line": 21,
+        "severity": "issue",
+        "comment": "`Withdraw` accepts a negative `amount`: `w.balance < amount` is false and `w.balance -= amount` then increases the balance, so a negative withdrawal credits the wallet.",
+        "dispute": "Amounts are validated as positive by the API handler before Withdraw is called; Withdraw is internal.",
+        "closed": false
+      },
+      {
+        "id": 104,
+        "file": "internal/wallet/wallet.go",
+        "line": 22,
+        "severity": "suggestion",
+        "comment": "`ErrInsufficient` carries neither the requested amount nor the balance, so a caller cannot tell the user how much is missing.",
+        "dispute": "",
+        "closed": true
+      }
+    ]
+  },
+  "expected": [],
+  "expected_fixed": [],
+  "repeats": [
+    {
+      "id": "F103",
+      "lines": [
+        24,
+        32
+      ],
+      "keywords": [
+        "negative"
+      ],
+      "why": "The author disputed F103; the prompt says not to raise it again.",
+      "file": "internal/wallet/wallet.go"
+    },
+    {
+      "id": "F104",
+      "lines": [
+        24,
+        32
+      ],
+      "keywords": [
+        "shortfall",
+        "how much",
+        "requested amount",
+        "missing"
+      ],
+      "why": "F104's thread was resolved: settled, never raised again.",
+      "file": "internal/wallet/wallet.go"
+    }
+  ]
+}

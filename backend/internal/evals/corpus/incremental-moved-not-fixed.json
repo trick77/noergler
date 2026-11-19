@@ -1,0 +1,47 @@
+{
+  "name": "incremental-moved-not-fixed",
+  "description": "Incremental push. The earlier review flagged that Page treats n as 0-based although its doc says 1-based (start := n * size skips the first page and slices past the end on the last). This push only adds PageCount above Page, which is correct, and shifts the flagged line down by 8. The finding is not fixed and must not be raised again: no finding, no fixed claim.",
+  "files": [
+    {
+      "path": "internal/paging/paging.go",
+      "diff": "@@ -1,5 +1,13 @@\n package paging\n \n+// PageCount is how many pages of size items it takes to hold total items.\n+func PageCount(total, size int) int {\n+\tif size <= 0 {\n+\t\treturn 0\n+\t}\n+\treturn (total + size - 1) / size\n+}\n+\n // Page returns the items of page n (1-based), size items per page.\n func Page(items []string, n, size int) []string {\n \tstart := n * size",
+      "content": "package paging\n\n// PageCount is how many pages of size items it takes to hold total items.\nfunc PageCount(total, size int) int {\n\tif size <= 0 {\n\t\treturn 0\n\t}\n\treturn (total + size - 1) / size\n}\n\n// Page returns the items of page n (1-based), size items per page.\nfunc Page(items []string, n, size int) []string {\n\tstart := n * size\n\tend := start + size\n\tif end > len(items) {\n\t\tend = len(items)\n\t}\n\treturn items[start:end]\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "incremental": {
+    "cumulative_diff": "diff --git a/internal/paging/paging.go b/internal/paging/paging.go\nnew file mode 100644\n--- /dev/null\n+++ b/internal/paging/paging.go\n@@ -0,0 +1,19 @@\n+package paging\n+\n+// PageCount is how many pages of size items it takes to hold total items.\n+func PageCount(total, size int) int {\n+\tif size <= 0 {\n+\t\treturn 0\n+\t}\n+\treturn (total + size - 1) / size\n+}\n+\n+// Page returns the items of page n (1-based), size items per page.\n+func Page(items []string, n, size int) []string {\n+\tstart := n * size\n+\tend := start + size\n+\tif end > len(items) {\n+\t\tend = len(items)\n+\t}\n+\treturn items[start:end]\n+}",
+    "previous_overview": "Adds `paging.Page`, which returns one page of a string slice.",
+    "previous_findings": [
+      {
+        "id": 102,
+        "file": "internal/paging/paging.go",
+        "line": 5,
+        "severity": "issue",
+        "comment": "The doc says `n` is 1-based, but `start := n * size` treats it as 0-based: page 1 returns the second page, and the last page starts past the end of `items`, so `items[start:end]` panics with slice bounds out of range.",
+        "dispute": "",
+        "closed": false
+      }
+    ]
+  },
+  "expected": [],
+  "expected_fixed": [],
+  "repeats": [
+    {
+      "id": "F102",
+      "lines": [
+        11,
+        19
+      ],
+      "keywords": [
+        "1-based",
+        "0-based",
+        "first page",
+        "bounds",
+        "out of range"
+      ],
+      "why": "F102 is still open and listed; raising it again posts the same comment twice.",
+      "file": "internal/paging/paging.go"
+    }
+  ]
+}
