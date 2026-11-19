@@ -52,6 +52,7 @@ func (r *Reviewer) HandlePRMerged(ctx context.Context, payload *webhook.Payload)
 	}
 
 	safeDBErr(ctx, r.log, "MarkMerged", func() error { return r.store.MarkMerged(ctx, key) })
+	r.forgetPR(key)
 	if frozen := safeDB(ctx, r.log, "FreezeFinalCost", func() (*int64, error) {
 		return r.store.FreezeFinalCost(ctx, key)
 	}); frozen != nil {
@@ -73,6 +74,7 @@ func (r *Reviewer) HandlePRDeclined(ctx context.Context, payload *webhook.Payloa
 		return
 	}
 	safeDBErr(ctx, r.log, "MarkDeclined", func() error { return r.store.MarkDeclined(ctx, key) })
+	r.forgetPR(key)
 	r.log.InfoContext(ctx, prTag+" declined - marked, data retained")
 	r.emitRollup(ctx, key, prTag, "declined", "", payload.PullRequest.FromRef.LatestCommit)
 	r.dropAlmanachNote(ctx, key)
@@ -85,9 +87,17 @@ func (r *Reviewer) HandlePRDeleted(ctx context.Context, payload *webhook.Payload
 		return
 	}
 	safeDBErr(ctx, r.log, "MarkDeleted", func() error { return r.store.MarkDeleted(ctx, key) })
+	r.forgetPR(key)
 	r.log.InfoContext(ctx, prTag+" deleted - marked, data retained")
 	r.emitRollup(ctx, key, prTag, "deleted", "", payload.PullRequest.FromRef.LatestCommit)
 	r.dropAlmanachNote(ctx, key)
+}
+
+// forgetPR drops a closed PR from the in-memory per-PR memos. A declined PR
+// reopened just fills them again.
+func (r *Reviewer) forgetPR(key store.PRKey) {
+	r.offers.forget(key)
+	r.snapshotMemo.forget(key)
 }
 
 // prContext resolves the key and binds the log context, reporting whether

@@ -513,3 +513,50 @@ func TestSnapshotTaskNoBuildFile(t *testing.T) {
 		t.Fatalf("tasks = %d, file diffs = %d, writes = %d", len(h.bb.Tasks), h.bb.FileDiffs, h.st.SnapshotTaskSets)
 	}
 }
+
+// The memo is per PR and the process lives for weeks: it is bounded like the
+// conflict-offer memo, starting over past prMemoMax (a diff read again,
+// nothing more).
+func TestHitsMemoIsBounded(t *testing.T) {
+	var m hitsMemo
+	for i := range prMemoMax + 10 {
+		m.put(store.PRKey{Project: "P", Repo: "r", PRID: i}, "sig", nil)
+	}
+	if n := len(m.m); n > prMemoMax {
+		t.Fatalf("memo holds %d PRs, want at most %d", n, prMemoMax)
+	}
+	last := store.PRKey{Project: "P", Repo: "r", PRID: prMemoMax + 9}
+	if _, ok := m.get(last, "sig"); !ok {
+		t.Error("the newest entry must survive the reset")
+	}
+}
+
+// Full, an update of a PR it holds keeps every other PR's entry: only a new
+// PR may start the memo over.
+func TestHitsMemoUpdateKeepsTheOthers(t *testing.T) {
+	var m hitsMemo
+	for i := range prMemoMax {
+		m.put(store.PRKey{Project: "P", Repo: "r", PRID: i}, "sig", nil)
+	}
+	m.put(store.PRKey{Project: "P", Repo: "r", PRID: 0}, "sig2", nil)
+	if n := len(m.m); n != prMemoMax {
+		t.Fatalf("memo holds %d PRs after an update, want %d", n, prMemoMax)
+	}
+}
+
+// A merged PR leaves both memos at once.
+func TestClosedPRLeavesTheMemos(t *testing.T) {
+	h := newHarness(t, nil)
+	key := store.PRKey{Project: "PROJ", Repo: "my-repo", PRID: 42}
+	h.r.snapshotMemo.put(key, "sig", nil)
+	h.r.offers.put(key, offerPR{sourceHead: "s", targetHead: "t"}, offerNone)
+
+	h.r.HandlePRMerged(context.Background(), prPayload(webhook.EventMerged))
+
+	if _, ok := h.r.snapshotMemo.get(key, "sig"); ok {
+		t.Error("the SNAPSHOT memo kept a merged PR")
+	}
+	if _, ok := h.r.offers.get(key, offerPR{sourceHead: "s", targetHead: "t"}); ok {
+		t.Error("the offer memo kept a merged PR")
+	}
+}
