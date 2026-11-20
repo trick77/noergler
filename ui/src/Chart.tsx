@@ -27,9 +27,11 @@ export interface Series {
 
 export type Mark = "line" | "area" | "bar";
 
-/** A trend drawn over the series: a smoothed line with its latest value
- *  printed at the end. While one is drawn the series step back (bars and
- *  lines dimmed) so the trend reads first (user, 2026-11-10). */
+/** A trend drawn over the series: a smoothed line with the value of its
+ *  last non-null point printed in the right padding. That point need not be
+ *  the last bucket: the metrics page ends its trend on yesterday. While one
+ *  is drawn the series step back (bars and lines dimmed) so the trend reads
+ *  first (user, 2026-11-10). */
 export interface Trend {
   /** One per bucket; null where there is nothing to average yet. */
   values: (number | null)[];
@@ -516,7 +518,10 @@ export function Chart({
         )}
       </g>
 
-      {/* Outside the clip: the label sits in the right padding. */}
+      {/* Outside the clip: the label sits in the right padding, past the
+          last day's band, whichever day the trend ends on. A trend that
+          stops before today (the metrics page) would otherwise print its
+          label over today's bar. */}
       {showTrend && trendLast !== null && (
         <g
           className="chart-trend-end"
@@ -531,7 +536,7 @@ export function Chart({
             strokeWidth={2}
           />
           <text
-            x={trendEnd[0] + 9}
+            x={box.l + plotW + 6}
             y={trendEnd[1] + 4}
             fill={trend.color}
             fontSize={11}

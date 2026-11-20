@@ -35,12 +35,19 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    document.title =
+    const name =
       route === "pr"
-        ? `${pr?.n == null ? t("pr.title") : t("run.title")} · noergler`
+        ? pr?.n == null
+          ? t("pr.title")
+          : t("run.title")
         : // The tab names the page as its heading does; the nav says
           // only "Metrics" (user, 2026-11-20).
-          `${route === "metrics" ? t("metrics.title") : t(`nav.${route}`)} · noergler`;
+          route === "metrics"
+          ? t("metrics.title")
+          : t(`nav.${route}`);
+    // An en space each side of the middot: plain spaces read cramped.
+    const en = String.fromCharCode(0x2002);
+    document.title = `${name}${en}·${en}noergler`;
   }, [route, pr, t]);
 
   const go = (page: Exclude<Page, "pr">) => {

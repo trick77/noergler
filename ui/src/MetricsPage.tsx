@@ -13,6 +13,7 @@ import {
 import {
   calendarDay,
   change,
+  changePct,
   compact,
   dayMonth,
   isWeekend,
@@ -559,12 +560,10 @@ export function MetricsPage() {
   const changeOf = (now: number, before: number, whole = true) => {
     if (prev === null || !whole) return undefined;
     const c = change(now, before);
-    if (c === null) return undefined;
-    const hue = c.startsWith("+")
-      ? "text-online"
-      : c.startsWith("−")
-        ? "text-danger-ink"
-        : undefined;
+    const pct = changePct(now, before);
+    if (c === null || pct === null) return undefined;
+    const hue =
+      pct > 0 ? "text-online" : pct < 0 ? "text-danger-ink" : undefined;
     return (
       <span
         className={hue}
