@@ -71,12 +71,9 @@ export function changePct(now: number, before: number): number | null {
   return Math.round(((now - before) / before) * 100);
 }
 
-/** change is the step from `before` to `now` as a signed whole percent
- *  ("+13 %", "−4 %", "±0 %"), or null where there is nothing to compare
- *  against: a zero before has no percentage. */
-export function change(now: number, before: number): string | null {
-  const pct = changePct(now, before);
-  if (pct === null) return null;
+/** change prints a changePct as a signed whole percent ("+13 %", "−4 %",
+ *  "±0 %"). */
+export function change(pct: number): string {
   const sign = pct > 0 ? "+" : pct < 0 ? "−" : "±";
   return `${sign}${num(Math.abs(pct))} %`;
 }

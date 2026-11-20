@@ -28,7 +28,7 @@ export interface Series {
 export type Mark = "line" | "area" | "bar";
 
 /** A trend drawn over the series: a smoothed line with the value of its
- *  last non-null point printed in the right padding. That point need not be
+ *  last non-null point printed past the last day's bar or point. That point need not be
  *  the last bucket: the metrics page ends its trend on yesterday. While one
  *  is drawn the series step back (bars and lines dimmed) so the trend reads
  *  first (user, 2026-11-10). */
@@ -265,6 +265,12 @@ export function Chart({
   });
   const showTrend = trend !== undefined && trendPts.length >= 2;
   const trendEnd = trendPts[trendPts.length - 1];
+  // The label starts past the last day's bar (a line: its point), whichever
+  // day the trend ends on, and never closer than 9px to its dot. A trend that stops before
+  // today (the metrics page) printed its label over today's bar; one put in
+  // the right padding instead floated half a band off a dot on the last day.
+  const lastRight = xAt(n - 1) + (mark === "bar" ? bw / 2 : 0);
+  const trendLabelX = trendEnd ? Math.max(trendEnd[0] + 9, lastRight + 6) : 0;
 
   // Shading (user, 2026-11-16): each series' own hue fading downward, only
   // opacity, never a new colour. Bars per shape (objectBoundingBox), so
@@ -518,10 +524,7 @@ export function Chart({
         )}
       </g>
 
-      {/* Outside the clip: the label sits in the right padding, past the
-          last day's band, whichever day the trend ends on. A trend that
-          stops before today (the metrics page) would otherwise print its
-          label over today's bar. */}
+      {/* Outside the clip: the label runs on into the right padding. */}
       {showTrend && trendLast !== null && (
         <g
           className="chart-trend-end"
@@ -536,7 +539,7 @@ export function Chart({
             strokeWidth={2}
           />
           <text
-            x={box.l + plotW + 6}
+            x={trendLabelX}
             y={trendEnd[1] + 4}
             fill={trend.color}
             fontSize={11}
