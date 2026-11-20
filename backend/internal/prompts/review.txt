@@ -109,7 +109,7 @@ Each "findings" item:
 - "confidence": integer 80–100
 - "headline": one-line title (≤ 80 chars) summarizing the finding for the numbered Issues list in the review summary. Imperative or noun-phrase form, plain text only (no markdown, no leading number). No severity wording: `severity` carries it. Example: `"Retry loop never resets the backoff after a success"`.
 - "comment": full body of the inline comment posted on the line — concise paragraph. Markdown OK: code refs in backticks. No fix code (use `suggestion`). This is the detail; do NOT duplicate it in the headline. For a committed secret, `headline`, `comment`, `suggestion` and every summary field name the field, never its value; only `evidence` carries it.
-- "suggestion": corrected code — raw code only (no fencing, no comments, no instructions — just replacement). Prefer a **single-line** replacement of exactly the line at `line` so Bitbucket can render an "Apply suggestion" button (multi-line suggestions are allowed but won't be one-click-applicable). Set to `null` if no concrete fix applies, fix is trivial/obvious from comment (typos, renames, missing chars), or you cannot provide actual replacement. Only honest value would be "no fix needed" / "this is correct" / "no change" → drop the finding entirely.
+- "suggestion": corrected code — raw code only (no fencing, no comments, no instructions — just replacement). Prefer a **single-line** replacement of exactly the line at `line` so Bitbucket can render an "Apply suggestion" button (multi-line suggestions are allowed but won't be one-click-applicable). Keep each line's leading whitespace exactly: the button replaces the whole line. Set to `null` if no concrete fix applies, fix is trivial/obvious from comment (typos, renames, missing chars), or you cannot provide actual replacement. Only honest value would be "no fix needed" / "this is correct" / "no change" → drop the finding entirely.
 - "blocking_rule": the id (`"B<n>"`) of the rule under "Blocking rules" that this finding shows the diff violating, else `null`. Only when the `+` lines break that rule as written, not a neighbouring one; a finding that merely touches the rule's topic is `null`. No "Blocking rules" section → always `null`. Marking never lowers the bar for a finding: same evidence, severity and confidence rules as any other.
 
 No issues meet the bar → return `"findings": []`. All summary fields (`overview`, `strengths`, `security_performance`, `test_coverage`, `verdict`, `review_focus`) still required and populated per the rules above, and `latest_push` per its own. Do NOT invent findings; empty findings for clean code is correct — and the verdict should be `approve`.
@@ -184,22 +184,27 @@ Illustrative only — do not treat as code under review.
 }
 ```
 
-**Example 3 — blocking bug with a one-line fix (the `findings` item only).** Diff changes a pagination guard so that a page past the end is no longer rejected.
+**Example 3 — `issue` with a one-line fix (only `findings` shown; the answer still carries every key).** Diff replaces `expires_at = datetime.now(timezone.utc) + ttl` with `datetime.now() + ttl` (the file imports `datetime` and `timezone`); the next line, unchanged, compares it with `session.absolute_deadline`, which the shown SQLAlchemy model declares as `Column(DateTime(timezone=True))`.
 
 ```json
 {
-  "file": "internal/paging/page.go",
-  "line": 18,
-  "evidence": [
-    "if start > len(items) {"
-  ],
-  "severity": "issue",
-  "category": "bug",
-  "confidence": 95,
-  "headline": "Last page panics when start equals len(items)",
-  "comment": "The guard now lets `start == len(items)` through, so `items[start:end]` with `end = start + size` slices past the end and panics for a request one page beyond the data, which any client paging until it sees an empty page sends.",
-  "suggestion": "if start >= len(items) {",
-  "blocking_rule": null
+  "findings": [
+    {
+      "file": "app/auth/session.py",
+      "line": 31,
+      "evidence": [
+        "    expires_at = datetime.now() + ttl",
+        "    if expires_at > session.absolute_deadline:"
+      ],
+      "severity": "issue",
+      "category": "bug",
+      "confidence": 95,
+      "headline": "Session refresh compares a naive time with an aware deadline",
+      "comment": "`datetime.now()` returns a naive local time, and the next line compares it with `session.absolute_deadline`, an aware UTC datetime: Python raises `TypeError: can't compare offset-naive and offset-aware datetimes` on every refresh. The removed line built an aware time.",
+      "suggestion": "    expires_at = datetime.now(timezone.utc) + ttl",
+      "blocking_rule": null
+    }
+  ]
 }
 ```
 
