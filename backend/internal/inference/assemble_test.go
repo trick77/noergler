@@ -154,6 +154,11 @@ func assembleCases(template string) map[string]AssembleRequest {
 // SHA-256 against a golden corpus, plus the breakdown counts and the
 // fit-check token total.
 func TestAssembleReviewPromptIsPinned(t *testing.T) {
+	// The update run rewrites the golden this test reads: checked against
+	// the old one first, it would fail every case on the run that fixes them.
+	if os.Getenv("ASSEMBLE_GOLDEN_UPDATE") == "1" {
+		t.Skip("ASSEMBLE_GOLDEN_UPDATE=1 rewrites the golden")
+	}
 	golden, _ := loadAssembleGolden(t)
 	template := prompts.Review
 	count := counter(t)
@@ -199,7 +204,7 @@ func TestAssembleReviewPromptIsPinned(t *testing.T) {
 // diff of the golden is what a reviewer reads, never a hand-edited number.
 func TestAssembleGoldenUpdate(t *testing.T) {
 	if os.Getenv("ASSEMBLE_GOLDEN_UPDATE") != "1" {
-		t.Skip("set ASSEMBLE_GOLDEN_UPDATE=1 to rewrite the golden")
+		t.Skip("rewrite the golden in backend/: ASSEMBLE_GOLDEN_UPDATE=1 go test ./internal/inference -run TestAssembleGoldenUpdate")
 	}
 	count := counter(t)
 	out := map[string]any{"_schema": schemaGolden{
