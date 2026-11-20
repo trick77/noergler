@@ -2,6 +2,7 @@ package inference
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -108,17 +109,20 @@ func TestCountingClientBackstopFollowsTheLargerBound(t *testing.T) {
 }
 
 // A notice quotes the bound that fired: a stream's own bound when its
-// sentinel is in the error, the call cap otherwise.
+// sentinel is in the error, the call cap otherwise. A cap shorter than
+// HeaderTimeout that wins before the headers carries both sentinels, and the
+// cap is what fired.
 func TestTimeoutOfNamesTheBoundThatFired(t *testing.T) {
-	c := &Client{timeout: 10 * time.Minute}
+	c := &Client{timeout: 2 * time.Minute}
 	for _, tc := range []struct {
 		err  error
 		want time.Duration
 	}{
 		{llmwire.ErrStreamIdle, IdleTimeout},
 		{llmwire.ErrNoResponseHeaders, HeaderTimeout},
-		{llmwire.ErrCallCap, 10 * time.Minute},
-		{nil, 10 * time.Minute},
+		{llmwire.ErrCallCap, 2 * time.Minute},
+		{errors.Join(llmwire.ErrNoResponseHeaders, llmwire.ErrCallCap), 2 * time.Minute},
+		{nil, 2 * time.Minute},
 	} {
 		if got := c.TimeoutOf(tc.err); got != tc.want {
 			t.Errorf("TimeoutOf(%v) = %v, want %v", tc.err, got, tc.want)
