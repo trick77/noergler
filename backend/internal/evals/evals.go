@@ -194,6 +194,9 @@ type Case struct {
 	BlockingRules []inference.BlockingRule
 	// shots are the case's screenshots, cut once at load.
 	shots caseImages
+	// questions is the questions experiment's brief (WithQuestions), ""
+	// on every other run.
+	questions string
 	// Incremental: Files are one push; the rest is the PR around it.
 	Incremental      bool
 	CumulativeDiff   string
@@ -379,6 +382,12 @@ type Result struct {
 	FalseFixed   []string                 `json:",omitempty"`
 	// Repeated are the case's `repeats` a kept finding raised again.
 	Repeated []string `json:",omitempty"`
+	// Questions, QuestionsOverCap and QuestionsOutOfBand: the questions
+	// experiment only (questions.go), absent from every other run.
+	Questions          []ScoredQuestion `json:",omitempty"`
+	QuestionsOverCap   int              `json:",omitempty"`
+	QuestionsOutOfBand int              `json:",omitempty"`
+	QuestionsUnparsed  int              `json:",omitempty"`
 	// Err is excluded from JSON: encoding/json renders an error as {}, so a
 	// committed report would record THAT a case failed but not why, making a
 	// 401 and a timeout look identical in history. ErrMsg carries the text.
@@ -478,6 +487,11 @@ func assemble(template string, c Case, count inference.CountFunc) inference.Asse
 		Language: lang.EN,
 	}, count)
 	a.PromptTokens += c.shots.pixels + inference.VisualTextTokens(c.shots.images, count)
+	// After assembly: the brief is never read for placeholders.
+	if c.questions != "" {
+		a.Prompt += c.questions
+		a.PromptTokens += count(c.questions) + count(questionsSchemaText())
+	}
 	return a
 }
 
@@ -485,10 +499,14 @@ func assemble(template string, c Case, count inference.CountFunc) inference.Asse
 // RunSampled both go through it, so a sample is scored exactly like a run.
 func reviewCase(ctx context.Context, client Reviewer, c Case, assembled inference.AssembledPrompt) (Result, inference.CallCost) {
 	res := Result{Case: c.Name}
+	schema := inference.ReviewResponseFormat()
+	if c.questions != "" {
+		schema = questionsResponseFormat()
+	}
 	out := client.Review(ctx, inference.ReviewRequest{
 		Prompt:         assembled.Prompt,
 		PromptTokens:   assembled.PromptTokens,
-		ResponseSchema: inference.ReviewResponseFormat(),
+		ResponseSchema: schema,
 		Images:         c.shots.images,
 	})
 	res.VisualMatches, res.Visual = matchVisual(c.ExpectedVisual, c.shots.ids, out.Review.Visual)
@@ -521,6 +539,11 @@ func reviewCase(ctx context.Context, client Reviewer, c Case, assembled inferenc
 	}
 	res.Matches, res.Extra, res.Duplicates = match(c.Expected, res.Findings)
 	res.Repeated = scoreRepeats(c, res.Findings)
+	if c.questions != "" {
+		var qs []Question
+		qs, res.QuestionsUnparsed = parseQuestions(out.Raw)
+		res.Questions, res.QuestionsOverCap, res.QuestionsOutOfBand = scoreQuestions(c, qs, idx, res.Matches)
+	}
 	res.Blocking, res.FalseTasks = scoreBlocking(res.Matches, res.Findings, c.BlockingRules)
 	return res, out.Cost
 }

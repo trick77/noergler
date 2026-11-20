@@ -182,6 +182,44 @@ The screenshot stays summary only (INVARIANTS: test screenshots); the
 sentence keeps a code bug from leaving `findings` because an image shows it
 too.
 
+## Questions instead of silence (2026-11-20)
+
+Question: `review.txt` withholds a suspected defect whose failing path
+depends on unseen code ("when in doubt, withhold"). Would a question to the
+author, for exactly that band (confidence under 80), turn misses into leads,
+and at what cost on clean code?
+
+mimo-v2.6-pro high, 40 cases rev16, 5 samples, two arms run side by side
+(`sampled/2026-11-20-…-questions-base`, `…-questions`). The variant is
+`-questions internal/evals/briefs/questions.txt`: the brief appended to the
+assembled prompt and a `questions` key (0–2 items: file, line, evidence,
+question, confidence) added to the schema, eval only. A question is
+validated like a finding and scored by window: on a control, rescued (in a
+seeded window with no finding there), redundant (beside one), elsewhere,
+dropped.
+
+- Questions: 2 in 200 reviews, both on controls, both plausible guesses
+  about unseen code (`Store.Invoice` returning nil with nil error; a second
+  `DataSource` bean taken by `@Primary`). 0 rescued, 0 redundant, 0 dropped,
+  confidence 50 and 55. The run predates the per-item parse count: a
+  question item that failed to decode would not show, though the strict
+  schema types every field.
+- Findings unchanged: 110 of 115 seeded samples caught in both arms, the
+  misses on different cases each arm (noise). No question landed on a
+  missed bug in the variant arm.
+- Extras 2 against 3; the variant's third is a re-raise of an open finding
+  on `incremental-moved-not-fixed`, not a question.
+- Cost: +272 prompt tokens a call for the brief.
+
+The corpus leaves the benefit almost no room (the series catches 30–31 of
+31), so the run measures cost more than gain. On it the model all but
+never asks, and when it does, it asks about clean code.
+
+Recommendation, the decision open: no questions in production; the
+withhold rule stands. Kept: the `-questions` flag and the brief, so the
+experiment can be repeated on a corpus with withheld-band misses or on
+another model.
+
 ## A fence inside a reviewed file (2026-11-20)
 
 Question: does a ``` in a reviewed file, which closed the prompt's block

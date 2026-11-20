@@ -1,0 +1,11 @@
+
+
+## Questions to the author
+
+One more output key, "questions": an array of 0–2 questions for the PR's author. It holds only a suspected defect you are withholding because your confidence is below 80: the failing path depends on code you cannot see (a caller, a contract, a config value) and the diff alone does not show whether it holds. Ask the one thing the author can answer that would settle it.
+
+- Never a defect you report under `findings`: a finding and a question on the same lines is wrong. Confidence 80 or more → a finding, never a question.
+- Never style, naming, a test request or a general "did you consider": a question names a concrete way the `+` lines would fail.
+- Usually empty. Nothing suspected → `[]`.
+
+Each item: `{"file": "...", "line": <line in the new version>, "evidence": [...], "question": "<one sentence to the author, ending in ?>", "confidence": <integer 0–100>}`. `file`, `line` and `evidence` follow the rules of a finding: evidence is 1–5 lines copied exactly, at least one of them a diff line of that file, and `line` is where the suspected defect is.
