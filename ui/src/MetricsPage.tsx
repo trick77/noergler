@@ -559,9 +559,8 @@ export function MetricsPage() {
   const prev = data.previous ?? null;
   const changeOf = (now: number, before: number, whole = true) => {
     if (prev === null || !whole) return undefined;
-    const c = change(now, before);
     const pct = changePct(now, before);
-    if (c === null || pct === null) return undefined;
+    if (pct === null) return undefined;
     const hue =
       pct > 0 ? "text-online" : pct < 0 ? "text-danger-ink" : undefined;
     return (
@@ -569,7 +568,7 @@ export function MetricsPage() {
         className={hue}
         title={t("metrics.changeTitle", { count: window.length })}
       >
-        {c}
+        {change(pct)}
       </span>
     );
   };

@@ -448,40 +448,68 @@ describe("Chart", () => {
       expect(bar.getAttribute("fill-opacity")).toBe("0.55");
   });
 
-  // A trend that ends before the last bucket (the metrics page stops it on
-  // yesterday) keeps its label in the right padding, clear of the last bar;
-  // the dot stays on the trend's last point.
-  it("keeps the trend label past the last bar", () => {
-    const { container } = render(
-      <Chart
-        series={s1([4, 6, 8, 2])}
-        trend={{
-          values: [null, 5, 7, null],
-          color: "var(--color-ink)",
-          format: (v) => `~${v}`,
-        }}
-        width={300}
-        height={120}
-        mark="bar"
-        ticks={[0, 10]}
-        label="bars"
-        partialLast
-      />,
-    );
-    const el = svg(container);
-    const label = Array.from(el.querySelectorAll("text")).find(
-      (t) => t.textContent === "~7",
-    );
-    const labelX = Number(label?.getAttribute("x"));
-    const barRight = Math.max(
-      ...Array.from(el.querySelectorAll("rect")).map(
-        (r) => Number(r.getAttribute("x")) + Number(r.getAttribute("width")),
-      ),
-    );
-    expect(labelX).toBeGreaterThan(barRight);
-    const dot = Number(el.querySelector("circle")?.getAttribute("cx"));
-    expect(dot).toBeLessThan(barRight);
-  });
+  // The trend label starts just past the last day's bar or point, whichever
+  // day the trend ends on: the metrics page stops it on yesterday while
+  // today is open, and on the last day once the window is closed. Measured
+  // against the marks, not the plot's edge, so a label left out in the
+  // padding, half a band off its dot, fails too. On a line ending on the
+  // last day the dot sits on that point, so its 9px floor wins.
+  it.each([
+    ["bar", "ends before the last day", [null, 5, 7, null], true, 7],
+    ["bar", "ends on the last day", [null, 5, 6, 7], false, 7],
+    ["line", "ends before the last day", [null, 5, 7, null], true, 6],
+    ["line", "ends on the last day", [null, 5, 6, 7], false, 9],
+  ] as const)(
+    "keeps the trend label next to the last %s when it %s",
+    (mark, _, values, partialLast, maxGap) => {
+      const { container } = render(
+        <Chart
+          series={s1([4, 6, 8, 2])}
+          trend={{
+            values: [...values],
+            color: "var(--color-ink)",
+            format: (v) => `~${v}`,
+          }}
+          width={300}
+          height={120}
+          mark={mark}
+          ticks={[0, 10]}
+          label="marks"
+          partialLast={partialLast}
+        />,
+      );
+      const el = svg(container);
+      const label = Array.from(el.querySelectorAll("text")).find(
+        (t) => t.textContent === "~7",
+      );
+      const labelX = Number(label?.getAttribute("x"));
+      // A bar's right edge, or the series' rightmost point: every x in the
+      // series' paths (the trend's own path left out).
+      const lastRight =
+        mark === "bar"
+          ? Math.max(
+              ...Array.from(el.querySelectorAll("rect.chart-bar")).map(
+                (r) =>
+                  Number(r.getAttribute("x")) + Number(r.getAttribute("width")),
+              ),
+            )
+          : Math.max(
+              ...Array.from(
+                el.querySelectorAll('path:not([stroke="var(--color-ink)"])'),
+              ).flatMap((p) =>
+                Array.from(
+                  (p.getAttribute("d") ?? "").matchAll(/([\d.]+),[\d.]+/g),
+                  (m) => Number(m[1]),
+                ),
+              ),
+            );
+      expect(labelX - lastRight).toBeGreaterThan(0);
+      expect(labelX - lastRight).toBeLessThanOrEqual(maxGap);
+      const dot = Number(el.querySelector("circle")?.getAttribute("cx"));
+      expect(dot).toBeLessThanOrEqual(lastRight);
+      expect(labelX - dot).toBeGreaterThanOrEqual(9);
+    },
+  );
 
   it("draws no trend from a single point", () => {
     const { container } = render(
